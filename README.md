@@ -2,9 +2,9 @@
 
 Standalone CET/Lua runtime profiler manager for **Cyberpunk 2077**, with optional 0-Engine Scheduler attribution.
 
-## v3.0.0-alpha8 — native C# manager
+## v3.0.0-alpha9 — guided setup + optional frame-time companion
 
-The standalone manager has been ported from the development PowerShell/VBS form to a normal **C# / .NET 8 WinForms application**.
+The standalone manager is a normal **C# / .NET 8 WinForms application**. Alpha9 keeps the CET profiler standalone while making synchronized frame-time capture easier to discover.
 
 The port keeps the established profiler behavior and file ownership model:
 
@@ -38,12 +38,22 @@ There is no separate F12/export action.
 ## Standalone workflow
 
 1. Run `G-CET-Runtime-Profiler.exe`.
-2. Select the Cyberpunk 2077 game folder.
-3. Review CET / 0-Engine / Scheduler status.
-4. Use **INSTALL PROFILER**.
-5. In game, use F11 to start and stop the measurement.
-6. Use **COLLECT RESULTS / CLEAR LIVE** to archive the live CET CSVs into this package's `RESULTS/` folder.
-7. Use **RESTORE ORIGINAL STATE** when finished with profiling.
+2. On **Setup**, select the Cyberpunk 2077 folder.
+3. Optionally enable **Run with a frame-time capture tool** and link an existing profiler executable plus its capture/results folder.
+4. Continue to **Install, Capture & Recovery**. CET / 0-Engine / Scheduler compatibility is checked there.
+5. Use **INSTALL PROFILER**. The CET capture binding is preset and verified as F11.
+6. In game, use F11 to start and stop the CET measurement.
+7. Use **COLLECT RESULTS / CLEAR LIVE**. Known CET runtime output is copied and verified before being removed from the live game folder.
+8. If a frame-time companion is configured, its latest capture is copied into the same result directory under `FrameTime/`. The external profiler's source files are never deleted.
+9. Use **RESTORE ORIGINAL STATE** when finished with profiling.
+
+### Optional frame-time companion
+
+The companion is **not a dependency** and CET never launches, configures, modifies, or requires it. It exists only to help users synchronize a frame-time capture and keep both outputs together.
+
+Alpha9 recognizes CapFrameX configuration read-only and can report its `CaptureHotKey`. **CapFrameX 1.9.1.2 Beta** is the tested reference used during development. Other profilers can be linked; when their key format is unknown the manager reports **UNKNOWN** and asks the user to verify F11 manually.
+
+The companion executable and results paths are stored in package-local convenience settings. Collection copies the newest detected companion capture into the CET archive and leaves the external source untouched.
 
 The managed installation state is stored in the game folder:
 
@@ -55,7 +65,7 @@ That state survives closing or restarting the manager and is the same state cons
 
 ## 0-Engine behavior
 
-The C# core preserves the existing three-mode behavior.
+The C# core preserves the existing three-mode behavior. The core-only choice is no longer presented as a normal setup decision: it appears as a fallback only when the installed 0-Engine cannot be integrated safely or Scheduler integration fails and rolls back.
 
 **Existing Scheduler-integrated 0-Engine:** the user's `init.lua` remains untouched. A profiler-aware Scheduler is temporarily installed only when required, with exact backup/restore.
 
@@ -71,7 +81,7 @@ The manager records the original CET ASI, affected 0-Engine files, CETProfilerCo
 
 Pre-existing `CETProfilerControls` content is backed up and restored exactly. Legacy TOTAL Profiler 0.2.19 CET binding state is also understood during migration.
 
-If live profiler CSVs still exist when Restore is requested, they are archived into the standalone `RESULTS/` folder before game files are restored.
+If live profiler output still exists when Restore is requested, known scripted CET output files are archived into the standalone `RESULTS/` folder before game files are restored. Exact filenames plus the manifest-owned `CET_Runtime_Profile_*` output patterns are eligible; unrelated files in the CET directory are never swept.
 
 ### Emergency Restore
 
@@ -138,7 +148,7 @@ GitHub Actions verifies the hash-locked native/Lua payload before compilation, b
 adaptive 0-Engine
 install
 F11 binding transaction
-collect + verified clear
+collect + verified clear of exact outputs and scripted metadata patterns
 restore exact init.lua
 restore pre-existing CETProfilerControls
 restore prior CET bindings
