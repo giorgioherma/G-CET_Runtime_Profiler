@@ -23,6 +23,9 @@ public sealed class ProfilerService : IProfilerService
         PropertyNameCaseInsensitive = true
     };
 
+    public string PackageVersion => manifest.PackageVersion;
+    public string ResultsRoot => resultsRoot;
+
     public ProfilerService(string? packageRoot = null)
     {
         this.packageRoot = Path.GetFullPath(packageRoot ?? AppContext.BaseDirectory);
