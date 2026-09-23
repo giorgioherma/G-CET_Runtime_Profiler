@@ -463,11 +463,12 @@ public sealed class MainForm : Form
 
     private void UpdateCompanionControls()
     {
-        var enabled = pairFrameTime.Checked;
-        companionExe.Enabled = enabled;
-        companionResults.Enabled = enabled;
-        browseCompanionExe.Enabled = enabled && !busy;
-        browseCompanionResults.Enabled = enabled && !busy;
+        // The checkbox controls whether the companion participates in this run.
+        // Keep the remembered paths visible/editable even when pairing is unchecked.
+        companionExe.Enabled = !busy;
+        companionResults.Enabled = !busy;
+        browseCompanionExe.Enabled = !busy;
+        browseCompanionResults.Enabled = !busy;
     }
 
     private void RenderStatus(ProfilerStatus snapshot)
