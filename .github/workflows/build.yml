@@ -69,6 +69,15 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $exe = (Resolve-Path 'publish\G-CET-Runtime-Profiler.exe').Path
+
+          # Status must remain safe before CET has created its own subdirectory.
+          $missingCetFixture = Join-Path $env:RUNNER_TEMP 'gcet-missing-cet-fixture'
+          if (Test-Path $missingCetFixture) { Remove-Item $missingCetFixture -Recurse -Force }
+          New-Item -ItemType Directory -Force (Join-Path $missingCetFixture 'bin\x64\plugins') | Out-Null
+          $missingCetStatus = (& $exe --status --game $missingCetFixture --json | ConvertFrom-Json)
+          if ($missingCetStatus.cet -ne 'MISSING') { throw 'Status did not report MISSING when CET root was absent.' }
+          if ([int]$missingCetStatus.liveResultCount -ne 0) { throw 'Missing CET root unexpectedly reported live profiler output.' }
+
           $fixture = Join-Path $env:RUNNER_TEMP 'gcet-fixture'
           if (Test-Path $fixture) { Remove-Item $fixture -Recurse -Force }
 
