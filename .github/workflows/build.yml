@@ -152,6 +152,65 @@ jobs:
           & $exe --restore --game $fixture2 --json | Out-Null
           if ((Get-FileHash (Join-Path $zero2 'init.lua') -Algorithm SHA256).Hash -ne $coreHash) { throw 'Core-only restore changed 0-Engine.' }
 
+          # Emergency restore path: one changed profiler-owned file must not block
+          # safe restoration of independent components.
+          $fixture3 = Join-Path $env:RUNNER_TEMP 'gcet-emergency-fixture'
+          if (Test-Path $fixture3) { Remove-Item $fixture3 -Recurse -Force }
+          $plugins3 = Join-Path $fixture3 'bin\x64\plugins'
+          $cet3 = Join-Path $plugins3 'cyber_engine_tweaks'
+          $mods3 = Join-Path $cet3 'mods'
+          $zero3 = Join-Path $mods3 '0-Engine'
+          New-Item -ItemType Directory -Force (Join-Path $zero3 'modules') | Out-Null
+          Copy-Item 'publish\payload\cyber_engine_tweaks.PROFILER.asi' (Join-Path $plugins3 'cyber_engine_tweaks.asi')
+
+          @'
+          local Engine = {}
+          function Engine.Register(name)
+              local Mod = {}
+              return Mod
+          end
+          return Engine
+          '@ | Set-Content -LiteralPath (Join-Path $zero3 'init.lua') -Encoding utf8
+          $emergencyInitHash = (Get-FileHash (Join-Path $zero3 'init.lua') -Algorithm SHA256).Hash
+
+          @{
+            OtherMod = @{ SomeBinding = 88 }
+            CETProfilerControls = @{ CETProfiler_Toggle = 234 }
+          } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $cet3 'bindings.json') -Encoding utf8
+          $bindingsOriginalHash = (Get-FileHash (Join-Path $cet3 'bindings.json') -Algorithm SHA256).Hash
+
+          $emergencyInstall = (& $exe --install --game $fixture3 --json | ConvertFrom-Json)
+          if (!$emergencyInstall.managed) { throw 'Emergency fixture install failed.' }
+
+          $changedScheduler = Join-Path $zero3 'modules\CETProfilerScheduler.lua'
+          '-- external user/mod-manager change after install' | Set-Content -LiteralPath $changedScheduler -Encoding utf8
+          $changedSchedulerHash = (Get-FileHash $changedScheduler -Algorithm SHA256).Hash
+
+          $normalRestoreOutput = & $exe --restore --game $fixture3 --json 2>&1
+          if ($LASTEXITCODE -eq 0) { throw 'Normal restore should have refused the externally changed profiler file.' }
+
+          $emergency = (& $exe --emergency-restore --game $fixture3 --json | ConvertFrom-Json)
+          if ($emergency.complete) { throw 'Emergency restore incorrectly reported complete with an unresolved changed file.' }
+          if (!$emergency.statePreserved) { throw 'Emergency restore did not preserve recovery state after a skipped component.' }
+          if (@($emergency.manualReview).Count -lt 1) { throw 'Emergency restore produced no manual-review entry.' }
+          if (!(Test-Path -LiteralPath $emergency.reportPath -PathType Leaf)) { throw 'Emergency restore report was not written.' }
+
+          if ((Get-FileHash (Join-Path $zero3 'init.lua') -Algorithm SHA256).Hash -ne $emergencyInitHash) {
+            throw 'Emergency restore did not restore the independently safe init.lua.'
+          }
+          if ((Get-FileHash $changedScheduler -Algorithm SHA256).Hash -ne $changedSchedulerHash) {
+            throw 'Emergency restore overwrote the externally changed scheduler instead of skipping it.'
+          }
+          $bindings3 = Get-Content -LiteralPath (Join-Path $cet3 'bindings.json') -Raw | ConvertFrom-Json
+          if ([int64]$bindings3.CETProfilerControls.CETProfiler_Toggle -ne 234) { throw 'Emergency restore did not restore previous CET binding.' }
+          if ([int64]$bindings3.OtherMod.SomeBinding -ne 88) { throw 'Emergency restore changed unrelated binding data.' }
+
+          # Resolve only the one manually reported conflict and rerun emergency.
+          Remove-Item -LiteralPath $changedScheduler -Force
+          $emergency2 = (& $exe --emergency-restore --game $fixture3 --json | ConvertFrom-Json)
+          if (!$emergency2.complete) { throw 'Emergency restore did not finish after the only conflict was manually resolved.' }
+          if (Test-Path -LiteralPath (Join-Path $plugins3 '.cet_runtime_profiler')) { throw 'Emergency restore left state after all components were resolved.' }
+
           # Smoke tests use the package-local RESULTS path; do not ship their fixtures.
           Remove-Item publish\RESULTS -Recurse -Force
           New-Item -ItemType Directory -Force publish\RESULTS | Out-Null
@@ -162,7 +221,7 @@ jobs:
         id: upload_public_artifact
         uses: actions/upload-artifact@v4
         with:
-          name: G-CET-Runtime-Profiler-v3.0.0-alpha7
+          name: G-CET-Runtime-Profiler-v3.0.0-alpha8
           path: publish
 
       # The public Release asset is the exact ZIP produced by GitHub for the
@@ -179,7 +238,7 @@ jobs:
             throw 'upload-artifact did not return an artifact id.'
           }
 
-          $asset = 'G-CET-Runtime-Profiler_v3.0.0-alpha7.zip'
+          $asset = 'G-CET-Runtime-Profiler_v3.0.0-alpha8.zip'
           $uri = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/artifacts/$env:ARTIFACT_ID/zip"
 
           curl.exe -fL -H "Authorization: Bearer $env:GH_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" $uri -o $asset
@@ -199,15 +258,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = 'v3.0.0-alpha7'
-          $title = 'G-CET Runtime Profiler v3.0.0-alpha7'
+          $tag = 'v3.0.0-alpha8'
+          $title = 'G-CET Runtime Profiler v3.0.0-alpha8'
           $asset = $env:PUBLIC_ASSET
           $shaAsset = "$asset.sha256.txt"
 
           $notes = @(
-            'First native C# standalone-manager build.',
+            'C# standalone manager update with emergency partial restore, Start Cyberpunk, and automatic result-folder opening.',
             '',
             'Capture: F11 START / F11 STOP + automatic CSV export.',
+            'Recovery: normal restore remains strict; Emergency Restore independently restores only components that pass safety checks and reports anything left for manual review.',
             '',
             'Distribution:',
             '- C# / .NET 8 self-contained win-x64',
