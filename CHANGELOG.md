@@ -2,6 +2,18 @@
 
 All notable public changes to G-CET Runtime Profiler are recorded here.
 
+## [Unreleased]
+
+### Result presentation
+
+- Added `CET_Report.html` as the human-first starting point for every collected capture.
+- Added `CET_Summary.json` as a compact machine-readable interpretation layer for standalone automation and future TOTAL integration.
+- Organized verified native output under `Data/Runtime`, `Data/Scheduler`, and `Data/Metadata` instead of presenting a flat CSV pile.
+- Added direct CET-side findings for sustained workload, call volume, callback hotspots, shared callback boundaries, heavy timeline windows, recorded callback spikes, and recurring presence in the heaviest CET windows.
+- Added a dedicated 0-Engine Scheduler section that separates client-job attribution from the normal 0-Engine owner total and surfaces multi-job single-frame pile-ups plus common cadence groups.
+- Result interpretation is downstream of verified raw collection: a report failure cannot invalidate or discard the native capture.
+- The standalone report remains explicitly scoped to CET/Lua evidence; it does not infer REDscript, native-engine, GPU, or whole-frame causation.
+
 ## [1.0.0] - 2026-09-23
 
 First stable public release.
