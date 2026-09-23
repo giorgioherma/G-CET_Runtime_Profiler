@@ -630,6 +630,7 @@ public sealed class ProfilerService : IProfilerService
             "CETProfilerScheduler.lua changed after profiler installation. Restore aborted to avoid overwriting user changes.");
 
         ValidateControlsRestore(paths, state.Controls);
+        bindings.ValidateRestore(paths, state.Binding);
     }
 
     private static void ValidateRestoreFile(
