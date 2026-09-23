@@ -82,7 +82,7 @@ internal sealed class ZeroEngineService
         if (text.Contains(manifest.ZeroEngine.ProfilerBridgeMarker, StringComparison.Ordinal))
             return true;
 
-        var hasReturn = Regex.IsMatch(text, @"(?m)^[ \t]*return[ \t]+Engine[ \t]*$");
+        var hasReturn = Regex.IsMatch(text, @"(?m)^[ \t]*return[ \t]+Engine[ \t]*\r?$");
         var hasEngineTable = Regex.IsMatch(text, @"(?m)^\s*(local\s+)?Engine\s*=\s*\{");
         return hasReturn && hasEngineTable;
     }
@@ -98,7 +98,7 @@ internal sealed class ZeroEngineService
                 "0-Engine init.lua structure is not recognized as safe for adaptive Scheduler injection. " +
                 "No 0-Engine files were changed. Use 'Core profiler only - leave 0-Engine untouched' instead.");
 
-        var matches = Regex.Matches(text, @"(?m)^[ \t]*return[ \t]+Engine[ \t]*$");
+        var matches = Regex.Matches(text, @"(?m)^[ \t]*return[ \t]+Engine[ \t]*\r?$");
         if (matches.Count == 0)
             throw new InvalidOperationException("0-Engine export anchor was not found.");
 
