@@ -98,9 +98,15 @@ public sealed class MainForm : Form
         collect.SetBounds(265, 409, 275, 44);
         collect.Click += async (_, _) => await RunOperationAsync(
             () => profiler.Collect(gameRoot.Text.Trim()),
-            destination => "Results archived successfully." + Environment.NewLine + Environment.NewLine +
-                           "Archive folder:" + Environment.NewLine + destination + Environment.NewLine + Environment.NewLine +
-                           "Live CET profiler CSVs were cleared.");
+            destination =>
+            {
+                if (!string.IsNullOrWhiteSpace(destination) && Directory.Exists(destination))
+                    Process.Start(new ProcessStartInfo(destination) { UseShellExecute = true });
+
+                return "Results archived successfully." + Environment.NewLine + Environment.NewLine +
+                       "Archive folder:" + Environment.NewLine + destination + Environment.NewLine + Environment.NewLine +
+                       "Live CET profiler CSVs were cleared.";
+            });
 
         restore.Text = "RESTORE ORIGINAL STATE";
         restore.SetBounds(555, 409, 225, 44);
