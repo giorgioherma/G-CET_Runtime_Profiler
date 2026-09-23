@@ -1,5 +1,5 @@
 {
-  "packageVersion": "3.0.0-alpha8",
+  "packageVersion": "3.0.0-alpha9",
   "profilerNativeVersion": "2.11.0",
   "targetCET": {
     "version": "1.37.1",
@@ -26,15 +26,26 @@
     "CET_Runtime_Profile_Scheduler_FrameBursts.csv"
   ],
   "managerChanges": [
+    "two-page setup keeps optional frame-time pairing separate from CET/0-Engine installation and recovery",
+    "optional frame-time companion detection is read-only; CapFrameX start-key detection recognizes CaptureHotKey without modifying CapFrameX",
+    "companion captures are copied into the CET archive under FrameTime and are never deleted from their source",
     "single CETProfiler_Toggle input defaults to F11",
-    "first F11 starts a fresh measurement; second F11 stops and automatically exports CSV results",
+    "first F11 starts a fresh measurement; second F11 stops and automatically exports CET results",
+    "known CET runtime output patterns are copied, verified, then removed from the live CET folder; unrelated files are never swept",
     "CET binding state is stored inside the persistent game-side profiler state and restored transactionally",
     "standalone RESULTS remain package-local; TOTAL Profiler does not redirect profiler-owned output paths",
-    "0-Engine status reports FOUND - UNVERIFIED instead of claiming arbitrary versions are compatible",
+    "0-Engine core-only mode is presented as a fallback only when safe Scheduler integration is unavailable or fails",
     "Core profiler fallback leaves the user's 0-Engine folder and Scheduler completely untouched and loaded normally",
-    "recognized unintegrated 0-Engine versions are patched transactionally using their own init.lua",
+    "recognized unintegrated/custom 0-Engine versions are patched transactionally using their own init.lua",
     "adaptive mode uses unique modules/CETProfilerScheduler.lua to avoid colliding with 0-Engine Scheduler.lua",
     "existing PASS/Scheduler-integrated 0-Engine keeps the proven Scheduler.lua swap path",
     "CETProfilerControls remains temporary profiler-owned UI and is removed on restore"
+  ],
+  "liveResultPatterns": [
+    "CET_Runtime_Profile_*.csv",
+    "CET_Runtime_Profile_*.json",
+    "CET_Runtime_Profile_*.txt",
+    "CET_Runtime_Profile_*.log",
+    "CET_Runtime_Profile_*.tmp"
   ]
 }
