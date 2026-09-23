@@ -36,6 +36,7 @@ public sealed class MainForm : Form
     private readonly Button startGame = new();
     private readonly Button emergencyRestore = new();
     private readonly Button refresh = new();
+    private readonly Label restoreOutcome = new();
 
     private bool busy;
     private bool fallbackVisible;
@@ -45,8 +46,8 @@ public sealed class MainForm : Form
     {
         Text = $"G-CET Runtime Profiler - v{profiler.PackageVersion}";
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(860, 690);
-        MinimumSize = new Size(880, 730);
+        ClientSize = new Size(860, 720);
+        MinimumSize = new Size(880, 760);
         Font = new Font("Segoe UI", 9F);
 
         BuildSetupPage();
@@ -310,6 +311,11 @@ public sealed class MainForm : Form
         emergencyRestore.SetBounds(580, 596, 260, 36);
         emergencyRestore.Click += async (_, _) => await RunEmergencyRestoreAsync();
 
+        restoreOutcome.SetBounds(20, 642, 820, 28);
+        restoreOutcome.Font = new Font("Segoe UI Semibold", 10F);
+        restoreOutcome.TextAlign = ContentAlignment.MiddleLeft;
+        restoreOutcome.Visible = false;
+
         var info = new Label
         {
             Text = "F11 #1 starts a fresh CET measurement. F11 #2 stops it and exports results. " +
@@ -317,12 +323,12 @@ public sealed class MainForm : Form
             MaximumSize = new Size(820, 0),
             AutoSize = true,
             ForeColor = SystemColors.GrayText,
-            Location = new Point(20, 646)
+            Location = new Point(20, 680)
         };
 
         profilerPage.Controls.AddRange([
             title, back, statusGroup, compatibility, filesGroup,
-            install, collect, restore, openResults, startGame, emergencyRestore, info
+            install, collect, restore, openResults, startGame, emergencyRestore, restoreOutcome, info
         ]);
     }
 
@@ -677,10 +683,12 @@ public sealed class MainForm : Form
                   Environment.NewLine + Environment.NewLine +
                   "Final live results were archived to:" + Environment.NewLine + archived;
 
+            ShowRestoreOutcome(true, "RESTORE SUCCESSFUL — original managed state restored.");
             MessageBox.Show(this, message, Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)
         {
+            ShowRestoreOutcome(false, "RESTORE NOT COMPLETED — recovery state/backups preserved.");
             MessageBox.Show(
                 this,
                 "Normal restore could not complete safely. The recovery state/backups were kept." +
@@ -723,6 +731,12 @@ public sealed class MainForm : Form
             var restored = result.Actions.Count(x => x.Status is "RESTORED" or "ARCHIVED");
             var skipped = result.Actions.Count(x => x.Status == "SKIPPED");
 
+            ShowRestoreOutcome(
+                result.Complete,
+                result.Complete
+                    ? "EMERGENCY RESTORE SUCCESSFUL — recovery completed."
+                    : $"EMERGENCY RESTORE PARTIAL — {skipped} component{(skipped == 1 ? "" : "s")} still need manual review.");
+
             MessageBox.Show(
                 this,
                 result.Complete
@@ -734,6 +748,7 @@ public sealed class MainForm : Form
         }
         catch (Exception ex)
         {
+            ShowRestoreOutcome(false, "EMERGENCY RESTORE FAILED — no success state was recorded.");
             MessageBox.Show(this, FriendlyMessage(ex), Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
@@ -741,6 +756,14 @@ public sealed class MainForm : Form
             SetBusy(false);
             await RefreshStatusAsync(silent: true);
         }
+    }
+
+    private void ShowRestoreOutcome(bool success, string message)
+    {
+        restoreOutcome.Text = (success ? "✓ " : "✗ ") + message;
+        restoreOutcome.ForeColor = success ? Color.ForestGreen : Color.Firebrick;
+        restoreOutcome.Visible = true;
+        restoreOutcome.BringToFront();
     }
 
     private void SetBusy(bool value)
