@@ -175,7 +175,63 @@ jobs:
           $patchedInitHash = (Get-FileHash (Join-Path $zero 'init.lua') -Algorithm SHA256).Hash
           if ($patchedInitHash -eq $originalInitHash) { throw 'Adaptive init.lua was not patched.' }
 
-          'marker-test' | Set-Content -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_Markers.csv') -Encoding utf8
+          @(
+            'Mod,Calls,CallsPerSecond,InclusiveTotalMs,ExclusiveTotalMs,InclusiveMsPerSecond,ExclusiveMsPerSecond,MeasuredOneCorePct,AvgExclusiveUs,MaxInclusiveMs,MaxExclusiveMs,MeasuredExclusiveSharePct,ElapsedSeconds,Coverage',
+            '0-Engine,1000,100,500,500,50,50,5,500,6,5,66.6667,10,FULL',
+            'Repeatable Cyberpsychos,5000,500,200,150,20,15,1.5,30,4.5,4,20,10,FULL',
+            'Native Interactions,1000,100,120,100,12,10,1,100,2,1.5,13.3333,10,FULL'
+          ) | Set-Content -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_ByMod.csv') -Encoding utf8
+
+          @(
+            'Mod,Kind,Target,Calls,CallsPerSecond,InclusiveTotalMs,ExclusiveTotalMs,InclusiveMsPerSecond,ExclusiveMsPerSecond,MeasuredOneCorePct,AvgExclusiveUs,MaxInclusiveMs,MaxExclusiveMs,MeasuredExclusiveSharePct,ElapsedSeconds,Coverage',
+            'Repeatable Cyberpsychos,Observe,PlayerPuppet::OnAction,3000,300,90,80,9,8,0.8,26.7,2.2,2,10.6667,10,FULL',
+            'Native Interactions,Observe,PlayerPuppet::OnAction,800,80,40,30,4,3,0.3,37.5,1.2,1,4,10,FULL',
+            'Third Mod,Observe,PlayerPuppet::OnAction,500,50,20,10,2,1,0.1,20,0.8,0.7,1.3333,10,FULL',
+            '0-Engine,Event,onUpdate,1000,100,500,500,50,50,5,500,6,5,66.6667,10,FULL'
+          ) | Set-Content -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_Detail.csv') -Encoding utf8
+
+          @(
+            'BucketIndex,BucketStartMs,BucketEndMs,Mod,Calls,ExclusiveMs,MaxExclusiveMs,BucketWidthMs,DroppedTimelineRowsAtDump,Interpretation',
+            '1,0,50,0-Engine,100,3.1,1.0,50,0,continuous-per-mod-correlation',
+            '1,0,50,Repeatable Cyberpsychos,250,1.4,0.4,50,0,continuous-per-mod-correlation',
+            '2,50,100,0-Engine,110,4.2,1.2,50,0,continuous-per-mod-correlation',
+            '2,50,100,Repeatable Cyberpsychos,280,2.0,0.5,50,0,continuous-per-mod-correlation',
+            '3,100,150,0-Engine,90,2.8,0.9,50,0,continuous-per-mod-correlation',
+            '3,100,150,Native Interactions,80,1.1,0.4,50,0,continuous-per-mod-correlation',
+            '4,150,200,0-Engine,120,5.0,1.4,50,0,continuous-per-mod-correlation',
+            '4,150,200,Repeatable Cyberpsychos,300,2.4,0.6,50,0,continuous-per-mod-correlation'
+          ) | Set-Content -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_Timeline.csv') -Encoding utf8
+
+          @(
+            'Sequence,CaptureStartMs,CaptureEndMs,InclusiveMs,ExclusiveMs,ChildMs,Mod,Kind,Target,ThreadId,ThresholdMs,DroppedEventsAtDump,Interpretation',
+            '1,155,160,5.5,4.8,0.7,Repeatable Cyberpsychos,Observe,PlayerPuppet::OnAction,1,1,0,callback-spike'
+          ) | Set-Content -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_Spikes.csv') -Encoding utf8
+
+          @(
+            'Sequence,CaptureMs,UnixEpochMs,Label,DroppedMarkersAtDump',
+            '1,0,1770000000000,START,0',
+            '2,10000,1770000010000,STOP,0'
+          ) | Set-Content -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_Markers.csv') -Encoding utf8
+
+          @(
+            'Owner,JobType,Job,IntervalValue,IntervalUnit,Calls,CallsPerSecond,TotalMs,MsPerSecond,MeasuredOneCorePct,AvgUs,MaxMs,ElapsedSeconds,Interpretation',
+            'Repeatable Cyberpsychos,timed,refresh,1,s,10,1,15,1.5,0.15,1500,2.2,10,inclusive-inside-0-engine-do-not-add-to-mod-totals',
+            'Native Interactions,timed,update,1,s,10,1,12,1.2,0.12,1200,1.9,10,inclusive-inside-0-engine-do-not-add-to-mod-totals',
+            'Third Mod,timed,cleanup,5,s,2,0.2,8,0.8,0.08,4000,2.0,10,inclusive-inside-0-engine-do-not-add-to-mod-totals'
+          ) | Set-Content -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_Scheduler_ByJob.csv') -Encoding utf8
+
+          @(
+            'Sequence,Frame,CaptureStartMs,CaptureEndMs,DurationMs,Owner,JobType,Job,IntervalValue,IntervalUnit,ThresholdMs,DroppedEventsAtDump,Interpretation',
+            '1,4242,5000,5002.2,2.2,Repeatable Cyberpsychos,timed,refresh,1,s,2,0,scheduler-job-inclusive-wall-time-inside-0-engine'
+          ) | Set-Content -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_Scheduler_Spikes.csv') -Encoding utf8
+
+          @(
+            'BurstSequence,Frame,CaptureStartMs,CaptureEndMs,SchedulerWallMs,TotalJobMs,JobCount,SampleIndex,Owner,JobType,Job,IntervalValue,IntervalUnit,JobMs,JobSharePct,ThresholdMs,DroppedBurstsAtDump,Interpretation',
+            '1,4242,5000,5005.1,5.3,5.1,3,1,Repeatable Cyberpsychos,timed,refresh,1,s,2.0,39.2,5,0,all-jobs-in-combined-scheduler-burst-frame',
+            '1,4242,5000,5005.1,5.3,5.1,3,2,Native Interactions,timed,update,1,s,1.8,35.3,5,0,all-jobs-in-combined-scheduler-burst-frame',
+            '1,4242,5000,5005.1,5.3,5.1,3,3,Third Mod,timed,cleanup,5,s,1.3,25.5,5,0,all-jobs-in-combined-scheduler-burst-frame'
+          ) | Set-Content -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_Scheduler_FrameBursts.csv') -Encoding utf8
+
           '{"capture":"metadata-test"}' | Set-Content -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_Metadata.json') -Encoding utf8
           'unrelated-user-file' | Set-Content -LiteralPath (Join-Path $cet 'keep_me.txt') -Encoding utf8
 
@@ -184,7 +240,20 @@ jobs:
           if (!(Test-Path -LiteralPath $collected.destination -PathType Container)) { throw 'Collected result folder missing.' }
           if (Test-Path -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_Markers.csv')) { throw 'Verified live result was not cleared.' }
           if (Test-Path -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_Metadata.json')) { throw 'Scripted metadata output was not cleared.' }
-          if (!(Test-Path -LiteralPath (Join-Path $collected.destination 'CET_Runtime_Profile_Metadata.json') -PathType Leaf)) { throw 'Scripted metadata output was not archived.' }
+          if (!(Test-Path -LiteralPath (Join-Path $collected.destination 'Data\Runtime\CET_Runtime_Profile_ByMod.csv') -PathType Leaf)) { throw 'Runtime profiler CSV was not organized under Data\Runtime.' }
+          if (!(Test-Path -LiteralPath (Join-Path $collected.destination 'Data\Scheduler\CET_Runtime_Profile_Scheduler_ByJob.csv') -PathType Leaf)) { throw 'Scheduler profiler CSV was not organized under Data\Scheduler.' }
+          if (!(Test-Path -LiteralPath (Join-Path $collected.destination 'Data\Metadata\CET_Runtime_Profile_Metadata.json') -PathType Leaf)) { throw 'Scripted metadata output was not archived under Data\Metadata.' }
+          if (!(Test-Path -LiteralPath (Join-Path $collected.destination 'CET_Report.html') -PathType Leaf)) { throw 'Human-readable CET report was not generated.' }
+          if (!(Test-Path -LiteralPath (Join-Path $collected.destination 'CET_Summary.json') -PathType Leaf)) { throw 'Machine-readable CET summary was not generated.' }
+
+          $reportText = Get-Content -LiteralPath (Join-Path $collected.destination 'CET_Report.html') -Raw
+          if ($reportText -notmatch 'CET Scheduler spike') { throw 'Report did not surface the Scheduler burst finding.' }
+          if ($reportText -notmatch '3 scheduled jobs ran in one frame') { throw 'Report did not explain the Scheduler job pile-up.' }
+          if ($reportText -notmatch '2 of them belong to the 1 s cadence group') { throw 'Report did not identify the dominant Scheduler cadence group.' }
+          if ($reportText -notmatch 'Highest CET call volume') { throw 'Report did not surface call-volume analysis.' }
+          if ($reportText -notmatch 'Shared hot callback') { throw 'Report did not surface shared callback analysis.' }
+          if ($reportText -notmatch 'Repeatable Cyberpsychos') { throw 'Report lost owner attribution.' }
+
           if (!(Test-Path -LiteralPath (Join-Path $cet 'keep_me.txt') -PathType Leaf)) { throw 'Unrelated CET-directory file was incorrectly deleted.' }
 
           $restore = (& $exe --restore --game $fixture --json | ConvertFrom-Json)
