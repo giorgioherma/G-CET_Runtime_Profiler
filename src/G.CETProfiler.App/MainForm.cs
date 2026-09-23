@@ -46,8 +46,8 @@ public sealed class MainForm : Form
     {
         Text = $"G-CET Runtime Profiler - v{profiler.PackageVersion}";
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(860, 720);
-        MinimumSize = new Size(880, 760);
+        ClientSize = new Size(860, 690);
+        MinimumSize = new Size(880, 730);
         Font = new Font("Segoe UI", 9F);
 
         BuildSetupPage();
@@ -317,19 +317,9 @@ public sealed class MainForm : Form
         restoreOutcome.TextAlign = ContentAlignment.MiddleLeft;
         restoreOutcome.Visible = false;
 
-        var info = new Label
-        {
-            Text = "F11 #1 starts a fresh CET measurement. F11 #2 stops it and exports results. " +
-                   "If a frame-time companion is configured, COLLECT copies its latest capture into the same result folder; the external source is never deleted.",
-            MaximumSize = new Size(820, 0),
-            AutoSize = true,
-            ForeColor = SystemColors.GrayText,
-            Location = new Point(20, 680)
-        };
-
         profilerPage.Controls.AddRange([
             title, back, statusGroup, compatibility, filesGroup,
-            install, collect, restore, openResults, startGame, emergencyRestore, restoreOutcome, info
+            install, collect, restore, openResults, startGame, emergencyRestore, restoreOutcome
         ]);
     }
 
