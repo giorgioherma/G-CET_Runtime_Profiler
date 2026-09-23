@@ -242,6 +242,45 @@ jobs:
           if (!$emergency2.complete) { throw 'Emergency restore did not finish after the only conflict was manually resolved.' }
           if (Test-Path -LiteralPath (Join-Path $plugins3 '.cet_runtime_profiler')) { throw 'Emergency restore left state after all components were resolved.' }
 
+          # Explicit Scheduler status semantics: PRESENT / INTEGRATED / PROFILER-AWARE.
+          $fixture4 = Join-Path $env:RUNNER_TEMP 'gcet-integrated-scheduler-fixture'
+          if (Test-Path $fixture4) { Remove-Item $fixture4 -Recurse -Force }
+          $plugins4 = Join-Path $fixture4 'bin\x64\plugins'
+          $cet4 = Join-Path $plugins4 'cyber_engine_tweaks'
+          $zero4 = Join-Path $cet4 'mods\0-Engine'
+          New-Item -ItemType Directory -Force (Join-Path $zero4 'modules') | Out-Null
+          Copy-Item 'publish\payload\cyber_engine_tweaks.PROFILER.asi' (Join-Path $plugins4 'cyber_engine_tweaks.asi')
+
+          @'
+          local Engine = {}
+          local Mod = {}
+          local Scheduler = require('modules/Scheduler')
+          Scheduler.Init(nil, nil)
+          Scheduler.Update(nil)
+          Engine.Schedule = {}
+          Mod.Schedule = {}
+          return Engine
+          '@ | Set-Content -LiteralPath (Join-Path $zero4 'init.lua') -Encoding utf8
+
+          '-- ordinary pre-existing scheduler' | Set-Content -LiteralPath (Join-Path $zero4 'modules\Scheduler.lua') -Encoding utf8
+          $ordinarySchedulerHash = (Get-FileHash (Join-Path $zero4 'modules\Scheduler.lua') -Algorithm SHA256).Hash
+
+          $schedulerBefore = (& $exe --status --game $fixture4 --json | ConvertFrom-Json)
+          if (!$schedulerBefore.schedulerPresent) { throw 'Scheduler PRESENT should be YES for the integrated fixture.' }
+          if (!$schedulerBefore.schedulerIntegrated) { throw 'Scheduler INTEGRATED should be YES for the integrated fixture.' }
+          if ($schedulerBefore.schedulerProfilerAware) { throw 'Ordinary Scheduler incorrectly reported profiler-aware before install.' }
+
+          $integratedInstall = (& $exe --install --game $fixture4 --json | ConvertFrom-Json)
+          if ($integratedInstall.managedMode -ne 'integrated') { throw "Expected integrated mode, got $($integratedInstall.managedMode)" }
+          if (!$integratedInstall.schedulerPresent) { throw 'Scheduler PRESENT changed unexpectedly after integrated install.' }
+          if (!$integratedInstall.schedulerIntegrated) { throw 'Scheduler INTEGRATED changed unexpectedly after integrated install.' }
+          if (!$integratedInstall.schedulerProfilerAware) { throw 'Profiler-aware Scheduler was not reported after replacement.' }
+
+          & $exe --restore --game $fixture4 --json | Out-Null
+          if ((Get-FileHash (Join-Path $zero4 'modules\Scheduler.lua') -Algorithm SHA256).Hash -ne $ordinarySchedulerHash) {
+            throw 'Integrated Scheduler fixture did not restore its original Scheduler.lua.'
+          }
+
           # Smoke tests use the package-local RESULTS path; do not ship their fixtures.
           Remove-Item publish\RESULTS -Recurse -Force
           New-Item -ItemType Directory -Force publish\RESULTS | Out-Null
