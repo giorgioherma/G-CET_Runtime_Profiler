@@ -173,19 +173,17 @@ public sealed class MainForm : Form
         {
             SetBusy(true);
             var snapshot = await Task.Run(() => profiler.GetStatus(root));
+            SetBusy(false);
             RenderStatus(snapshot);
             SetActionState(snapshot);
         }
         catch (Exception ex)
         {
+            SetBusy(false);
             status.Text = "STATUS ERROR:\r\n" + FriendlyMessage(ex);
             SetActionState(null);
             if (!silent)
                 MessageBox.Show(this, FriendlyMessage(ex), Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
-        }
-        finally
-        {
-            SetBusy(false, preserveActionState: true);
         }
     }
 
