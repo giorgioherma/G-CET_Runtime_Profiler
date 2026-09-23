@@ -118,17 +118,30 @@ A strict headless emergency-recovery command is retained for advanced/manual rec
 G-CET-Runtime-Profiler.exe --emergency-restore --game "..." --json
 ```
 
-## Results ownership
+## Results
 
 Standalone results remain package-local:
 
 ```text
-G-CET-Runtime-Profiler\RESULTS\
+G-CET-Runtime-Profiler\RESULTS\<capture>\
+├─ CET_Report.html
+├─ CET_Summary.json
+├─ Data\
+│  ├─ Runtime\
+│  ├─ Scheduler\
+│  └─ Metadata\
+└─ FrameTime\              # only when a companion capture is copied
 ```
 
-On collection, known live CET profiler output is copied and verified into the standalone result directory, then removed from the live game folder.
+**Open `CET_Report.html` first.** Collection now turns the existing native profiler data into a human-readable CET diagnosis: the bulk of measured CET work, call volume, callback hotspots shared across mods, heavy CET timeline windows, recorded callback spikes, and 0-Engine Scheduler pile-ups where Scheduler attribution is available.
 
-External frame-time results follow the separate copy-only rule described above.
+The report is a presentation layer, not a replacement for the raw data. Every verified native profiler file is preserved under `Data\`, and `CET_Summary.json` exposes the same condensed findings for automation and future higher-level tooling.
+
+0-Engine is treated specially in the report because it can carry client work. Scheduler job timing is shown as work measured **inside** 0-Engine and is never added again to normal CET owner totals.
+
+On collection, known live CET profiler output is copied and hash-verified before any live profiler file is removed. Report generation happens only after the raw capture is safe; if presentation fails, the verified native data remains archived and a `CET_Report_Error.txt` diagnostic is written.
+
+External frame-time results follow the separate copy-only rule described above. The standalone CET report stays scoped to CET/Lua evidence and does not claim REDscript, native-engine, GPU, or whole-frame causation.
 
 ## Headless JSON interface
 
