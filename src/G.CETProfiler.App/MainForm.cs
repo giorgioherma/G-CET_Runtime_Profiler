@@ -124,13 +124,7 @@ public sealed class MainForm : Form
 
             if (answer != DialogResult.Yes) return;
 
-            await RunOperationAsync(
-                () => profiler.Restore(gameRoot.Text.Trim()),
-                archived => string.IsNullOrWhiteSpace(archived)
-                    ? "Original CET / 0-Engine files and the previous CET binding state were restored."
-                    : "Original CET / 0-Engine files and the previous CET binding state were restored." +
-                      Environment.NewLine + Environment.NewLine +
-                      "Final live results were archived to:" + Environment.NewLine + archived);
+            await RunStrictRestoreAsync();
         };
 
         openResults.Text = "Open Results Folder";
@@ -272,6 +266,43 @@ public sealed class MainForm : Form
         var gameRunning = IsCyberpunkRunning();
         startGame.Enabled = !busy && File.Exists(gameExe) && !gameRunning;
         startGame.Text = gameRunning ? "CYBERPUNK RUNNING" : "START CYBERPUNK";
+    }
+
+    private async Task RunStrictRestoreAsync()
+    {
+        if (busy) return;
+
+        try
+        {
+            SetBusy(true);
+            var archived = await Task.Run(() => profiler.Restore(gameRoot.Text.Trim()));
+
+            var message = string.IsNullOrWhiteSpace(archived)
+                ? "Original CET / 0-Engine files and the previous CET binding state were restored."
+                : "Original CET / 0-Engine files and the previous CET binding state were restored." +
+                  Environment.NewLine + Environment.NewLine +
+                  "Final live results were archived to:" + Environment.NewLine + archived;
+
+            MessageBox.Show(this, message, Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                this,
+                "Normal restore could not complete safely. The recovery state/backups were kept." +
+                Environment.NewLine + Environment.NewLine +
+                "Reason:" + Environment.NewLine + FriendlyMessage(ex) +
+                Environment.NewLine + Environment.NewLine +
+                "Use EMERGENCY RESTORE to restore every independent component that still passes its own safety checks. Anything uncertain will be left untouched and listed for manual review.",
+                Text,
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+        }
+        finally
+        {
+            SetBusy(false);
+            await RefreshStatusAsync(silent: true);
+        }
     }
 
     private async Task RunOperationAsync<T>(Func<T> operation, Func<T, string> successMessage)
