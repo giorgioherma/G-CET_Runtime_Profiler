@@ -13,6 +13,7 @@ public sealed class MainForm : Form
     private readonly Button collect = new();
     private readonly Button restore = new();
     private readonly Button openResults = new();
+    private readonly Button startGame = new();
     private readonly Button refresh = new();
     private readonly Button browse = new();
 
@@ -129,6 +130,10 @@ public sealed class MainForm : Form
         openResults.SetBounds(20, 468, 230, 36);
         openResults.Click += (_, _) => OpenResultsFolder();
 
+        startGame.Text = "START CYBERPUNK";
+        startGame.SetBounds(265, 468, 275, 36);
+        startGame.Click += (_, _) => StartCyberpunk();
+
         var info = new Label
         {
             Text = "One capture key: F11 starts a fresh measurement; F11 again stops it and exports CSVs. " +
@@ -138,7 +143,7 @@ public sealed class MainForm : Form
 
         Controls.AddRange([
             pathLabel, gameRoot, browse, statusGroup, compatibility,
-            install, collect, restore, openResults, info
+            install, collect, restore, openResults, startGame, info
         ]);
 
         Shown += async (_, _) => await RefreshStatusAsync(silent: true);
@@ -211,6 +216,8 @@ public sealed class MainForm : Form
             collect.Enabled = false;
             restore.Enabled = false;
             coreOnly.Enabled = false;
+            startGame.Enabled = false;
+            startGame.Text = "START CYBERPUNK";
             return;
         }
 
@@ -219,6 +226,11 @@ public sealed class MainForm : Form
         collect.Enabled = !busy && snapshot.LiveResultCount > 0;
         restore.Enabled = !busy && snapshot.Managed;
         coreOnly.Enabled = !busy && snapshot.ZeroEnginePresent && !snapshot.Managed;
+
+        var gameExe = GetGameExe(snapshot.GameRoot);
+        var gameRunning = IsCyberpunkRunning();
+        startGame.Enabled = !busy && File.Exists(gameExe) && !gameRunning;
+        startGame.Text = gameRunning ? "CYBERPUNK RUNNING" : "START CYBERPUNK";
     }
 
     private async Task RunOperationAsync<T>(Func<T> operation, Func<T, string> successMessage)
@@ -250,6 +262,7 @@ public sealed class MainForm : Form
         refresh.Enabled = !value;
         gameRoot.Enabled = !value;
         openResults.Enabled = !value;
+        if (value) startGame.Enabled = false;
 
         if (value)
         {
@@ -274,6 +287,53 @@ public sealed class MainForm : Form
         catch (Exception ex)
         {
             MessageBox.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void StartCyberpunk()
+    {
+        try
+        {
+            var root = gameRoot.Text.Trim();
+            var exe = GetGameExe(root);
+            if (!File.Exists(exe))
+                throw new FileNotFoundException("Cyberpunk2077.exe was not found in the selected game folder.", exe);
+
+            if (IsCyberpunkRunning())
+            {
+                startGame.Enabled = false;
+                startGame.Text = "CYBERPUNK RUNNING";
+                return;
+            }
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = exe,
+                WorkingDirectory = Path.GetDirectoryName(exe)!,
+                UseShellExecute = true
+            });
+
+            startGame.Enabled = false;
+            startGame.Text = "CYBERPUNK RUNNING";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private static string GetGameExe(string root) =>
+        Path.Combine(root, "bin", "x64", "Cyberpunk2077.exe");
+
+    private static bool IsCyberpunkRunning()
+    {
+        try
+        {
+            return Process.GetProcessesByName("Cyberpunk2077").Length > 0;
+        }
+        catch
+        {
+            return false;
         }
     }
 
