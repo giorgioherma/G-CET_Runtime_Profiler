@@ -34,6 +34,18 @@ public sealed class ProfilerStatus
     [JsonPropertyName("scheduler")]
     public string Scheduler { get; init; } = "";
 
+    [JsonPropertyName("schedulerPresent")]
+    public bool SchedulerPresent { get; init; }
+
+    [JsonPropertyName("schedulerIntegrated")]
+    public bool SchedulerIntegrated { get; init; }
+
+    [JsonPropertyName("schedulerProfilerAware")]
+    public bool SchedulerProfilerAware { get; init; }
+
+    [JsonPropertyName("adaptiveProfilerSchedulerPresent")]
+    public bool AdaptiveProfilerSchedulerPresent { get; init; }
+
     [JsonPropertyName("managed")]
     public bool Managed { get; init; }
 

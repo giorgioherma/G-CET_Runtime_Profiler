@@ -25,7 +25,9 @@ TOTAL may:
 
 TOTAL should consume a versioned standalone release of this repository and invoke `G-CET-Runtime-Profiler.exe` headlessly. The files used by TOTAL must be byte-identical to the standalone package for that release.
 
-Combined-capture conveniences belong in TOTAL. If TOTAL needs a new CET capability, that capability should first be exposed by the standalone core/headless contract rather than implemented as a TOTAL-only fork.
+Combined-capture orchestration and correlation belong in TOTAL. The standalone GUI's optional frame-time companion is only a convenience layer: it is not part of the CET headless dependency contract and TOTAL must not rely on it.
+
+If TOTAL needs a new CET lifecycle capability, that capability should first be exposed by the standalone core/headless contract rather than implemented as a TOTAL-only fork.
 
 
 ## Recovery behavior
