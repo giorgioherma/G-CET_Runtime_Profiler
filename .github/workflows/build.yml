@@ -181,13 +181,25 @@ jobs:
 
           $emergencyInstall = (& $exe --install --game $fixture3 --json | ConvertFrom-Json)
           if (!$emergencyInstall.managed) { throw 'Emergency fixture install failed.' }
+          $patchedEmergencyInitHash = (Get-FileHash (Join-Path $zero3 'init.lua') -Algorithm SHA256).Hash
 
           $changedScheduler = Join-Path $zero3 'modules\CETProfilerScheduler.lua'
           '-- external user/mod-manager change after install' | Set-Content -LiteralPath $changedScheduler -Encoding utf8
           $changedSchedulerHash = (Get-FileHash $changedScheduler -Algorithm SHA256).Hash
 
+          # WinExe exit-code propagation differs between Windows shells, so prove the
+          # strict restore refusal from filesystem state instead of LASTEXITCODE.
           $normalRestoreOutput = & $exe --restore --game $fixture3 --json 2>&1
-          if ($LASTEXITCODE -eq 0) { throw 'Normal restore should have refused the externally changed profiler file.' }
+          $managedState3 = Join-Path $plugins3 '.cet_runtime_profiler'
+          if (!(Test-Path -LiteralPath $managedState3 -PathType Container)) {
+            throw 'Normal restore incorrectly removed managed state despite the externally changed profiler file.'
+          }
+          if ((Get-FileHash $changedScheduler -Algorithm SHA256).Hash -ne $changedSchedulerHash) {
+            throw 'Normal restore touched the externally changed profiler file.'
+          }
+          if ((Get-FileHash (Join-Path $zero3 'init.lua') -Algorithm SHA256).Hash -ne $patchedEmergencyInitHash) {
+            throw 'Normal restore changed another managed file before completing whole-transaction validation.'
+          }
 
           $emergency = (& $exe --emergency-restore --game $fixture3 --json | ConvertFrom-Json)
           if ($emergency.complete) { throw 'Emergency restore incorrectly reported complete with an unresolved changed file.' }
