@@ -22,6 +22,31 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      - name: Load and verify product version
+        id: product_version
+        shell: pwsh
+        run: |
+          $version = (Get-Content VERSION.txt -Raw).Trim()
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw 'VERSION.txt is empty.'
+          }
+
+          $manifest = Get-Content MANIFEST.json -Raw | ConvertFrom-Json
+          [xml]$props = Get-Content Directory.Build.props -Raw
+          $manifestVersion = [string]$manifest.packageVersion
+          $msbuildVersion = [string]$props.Project.PropertyGroup.Version
+
+          if ($manifestVersion -ne $version) {
+            throw "Version mismatch: VERSION.txt=$version MANIFEST.json=$manifestVersion"
+          }
+          if ($msbuildVersion -ne $version) {
+            throw "Version mismatch: VERSION.txt=$version Directory.Build.props=$msbuildVersion"
+          }
+
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "PRODUCT_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Canonical product version: $version"
+
       - name: Verify hash-locked payload bytes
         shell: pwsh
         run: |
@@ -63,6 +88,20 @@ jobs:
           }
           if (!(Test-Path publish\G-CET-Runtime-Profiler.exe)) { throw 'C# manager EXE missing.' }
           if (!(Test-Path publish\payload\cyber_engine_tweaks.PROFILER.asi)) { throw 'Profiler ASI payload missing.' }
+
+          $publishedVersion = (Get-Content publish\VERSION.txt -Raw).Trim()
+          $publishedManifest = Get-Content publish\MANIFEST.json -Raw | ConvertFrom-Json
+          $productVersion = (Get-Item publish\G-CET-Runtime-Profiler.exe).VersionInfo.ProductVersion
+
+          if ($publishedVersion -ne $env:PRODUCT_VERSION) {
+            throw "Published VERSION.txt mismatch: expected $env:PRODUCT_VERSION, got $publishedVersion"
+          }
+          if ([string]$publishedManifest.packageVersion -ne $env:PRODUCT_VERSION) {
+            throw "Published MANIFEST.json mismatch: expected $env:PRODUCT_VERSION, got $($publishedManifest.packageVersion)"
+          }
+          if ([string]::IsNullOrWhiteSpace($productVersion) -or !$productVersion.StartsWith($env:PRODUCT_VERSION, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Published EXE ProductVersion mismatch: expected prefix $env:PRODUCT_VERSION, got $productVersion"
+          }
 
       - name: C# lifecycle integration smoke test
         shell: pwsh
@@ -300,7 +339,7 @@ jobs:
         id: upload_public_artifact
         uses: actions/upload-artifact@v4
         with:
-          name: G-CET-Runtime-Profiler-v3.0.0-alpha9
+          name: G-CET-Runtime-Profiler-v${{ steps.product_version.outputs.version }}
           path: publish
 
       # The public Release asset is the exact ZIP produced by GitHub for the
@@ -317,7 +356,7 @@ jobs:
             throw 'upload-artifact did not return an artifact id.'
           }
 
-          $asset = 'G-CET-Runtime-Profiler_v3.0.0-alpha9.zip'
+          $asset = "G-CET-Runtime-Profiler_v$env:PRODUCT_VERSION.zip"
           $uri = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/artifacts/$env:ARTIFACT_ID/zip"
 
           curl.exe -fL -H "Authorization: Bearer $env:GH_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" $uri -o $asset
@@ -337,8 +376,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = 'v3.0.0-alpha9'
-          $title = 'G-CET Runtime Profiler v3.0.0-alpha9'
+          $tag = "v$env:PRODUCT_VERSION"
+          $title = "G-CET Runtime Profiler v$env:PRODUCT_VERSION"
           $asset = $env:PUBLIC_ASSET
           $shaAsset = "$asset.sha256.txt"
 

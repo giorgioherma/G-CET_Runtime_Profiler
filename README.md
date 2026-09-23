@@ -2,9 +2,9 @@
 
 Standalone CET/Lua runtime profiler manager for **Cyberpunk 2077**, with optional 0-Engine Scheduler attribution.
 
-## v3.0.0-alpha9 — guided setup + optional frame-time companion
+## v0.1.0-beta — guided setup + optional frame-time companion
 
-The standalone manager is a normal **C# / .NET 8 WinForms application**. Alpha9 keeps the CET profiler standalone while making synchronized frame-time capture easier to discover.
+The standalone manager is a normal **C# / .NET 8 WinForms application**. The beta keeps the CET profiler standalone while making synchronized frame-time capture easier to discover.
 
 The port keeps the established profiler behavior and file ownership model:
 
@@ -51,7 +51,7 @@ There is no separate F12/export action.
 
 The companion is **not a dependency** and CET never launches, configures, modifies, or requires it. It exists only to help users synchronize a frame-time capture and keep both outputs together.
 
-Alpha9 recognizes CapFrameX configuration read-only and can report its `CaptureHotKey`. **CapFrameX 1.9.1.2 Beta** is the tested reference used during development. Other profilers can be linked; when their key format is unknown the manager reports **UNKNOWN** and asks the user to verify F11 manually.
+The beta recognizes CapFrameX configuration read-only and can report its `CaptureHotKey`. **CapFrameX 1.9.1.2 Beta** is the tested reference used during development. Other profilers can be linked; when their key format is unknown the manager reports **UNKNOWN** and asks the user to verify F11 manually.
 
 The companion executable and results paths are stored in package-local convenience settings. Collection copies the newest detected companion capture into the CET archive and leaves the external source untouched.
 
