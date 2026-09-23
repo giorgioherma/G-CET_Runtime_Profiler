@@ -1,0 +1,4 @@
+# Profiler payload files are hash-locked runtime artifacts.
+# Never apply checkout line-ending conversion to them.
+payload/**/*.lua -text
+payload/**/*.asi -text
