@@ -73,6 +73,18 @@ The C# core preserves the existing three-mode behavior. The core-only choice is 
 
 **Core profiler only:** 0-Engine is left byte-for-byte untouched. Native CET profiling remains available, but Scheduler attribution is skipped unless the user's own environment already exposes it.
 
+## 0-Engine resolver / handoff contract
+
+0-Engine compatibility is resolved from the installed structure and capabilities, **not from an assumed version number**.
+
+- no 0-Engine: CET core profiling works without adding 0-Engine;
+- recognized existing Scheduler API: preserve `init.lua`, transactionally manage only `Scheduler.lua` when required;
+- recognized unintegrated `Engine` layout: preserve the user's existing `Scheduler.lua`, patch the verified `init.lua` anchor transactionally, and use the uniquely named `CETProfilerScheduler.lua`;
+- existing profiler bridge marker: reuse the recognized bridge without rewriting `init.lua`;
+- unrecognized structure: reject full integration before mutation and allow the core-only fallback, which leaves 0-Engine byte-untouched.
+
+CI exercises these paths as a regression contract so resolver/handoff behavior cannot silently drift.
+
 ## Restore safety
 
 ### Restore UI feedback
