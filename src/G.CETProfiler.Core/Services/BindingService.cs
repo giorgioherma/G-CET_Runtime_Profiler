@@ -72,14 +72,41 @@ internal sealed class BindingService
         }
     }
 
-    public void Restore(ProfilerPaths paths, BindingTransactionState? state)
+    public void ValidateRestore(ProfilerPaths paths, BindingTransactionState? state)
     {
         state ??= ReadLegacyTotalState(paths);
+        if (state is null) return;
 
-        if (state?.FileExistedBefore == true && !File.Exists(paths.Bindings))
+        if (state.FileExistedBefore && !File.Exists(paths.Bindings))
             throw new InvalidOperationException(
                 "CET bindings.json existed before profiling but is now missing. " +
                 "Automatic restore will not recreate only part of the file. The full original backup is preserved for manual recovery.");
+
+        _ = ReadBindingsObject(paths);
+
+        if (state.HadNode)
+        {
+            if (string.IsNullOrWhiteSpace(state.OriginalNodeJson))
+                throw new InvalidOperationException("Saved CETProfilerControls binding state is empty.");
+
+            try
+            {
+                _ = JsonNode.Parse(state.OriginalNodeJson)
+                    ?? throw new InvalidOperationException("Saved CETProfilerControls binding state is invalid.");
+            }
+            catch (JsonException ex)
+            {
+                throw new InvalidOperationException("Saved CETProfilerControls binding state is invalid.", ex);
+            }
+        }
+    }
+
+    public void Restore(ProfilerPaths paths, BindingTransactionState? state)
+    {
+        state ??= ReadLegacyTotalState(paths);
+        if (state is null) return;
+
+        ValidateRestore(paths, state);
 
         var root = ReadBindingsObject(paths);
         root.Remove("CETProfilerControls");
