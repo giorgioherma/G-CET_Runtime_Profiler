@@ -335,6 +335,10 @@ jobs:
 
           Write-Host 'C# lifecycle integration smoke test passed.'
 
+      - name: Alpha6b resolver and handoff regression contract
+        shell: pwsh
+        run: ./tests/ResolverHandoffContract.ps1 -PublishedRoot ./publish
+
       - name: Upload transparent Windows artifact
         id: upload_public_artifact
         uses: actions/upload-artifact@v4
