@@ -39,6 +39,7 @@ public sealed class MainForm : Form
     private readonly Label restoreOutcome = new();
 
     private bool busy;
+    private bool loadingSettings = true;
     private bool suppressActivationRefresh;
     private bool fallbackVisible;
     private ProfilerStatus? lastStatus;
@@ -57,10 +58,12 @@ public sealed class MainForm : Form
         Controls.Add(setupPage);
 
         gameRoot.Text = FindInitialGameRoot();
-        pairFrameTime.Checked = appSettings.PairFrameTimeProfiler;
         companionExe.Text = appSettings.ExternalProfilerExe;
         companionResults.Text = appSettings.ExternalResultsDirectory;
+        pairFrameTime.Checked = appSettings.PairFrameTimeProfiler;
+        loadingSettings = false;
         UpdateCompanionControls();
+        RefreshCompanionStatus();
         ShowPage(0);
 
         Shown += async (_, _) =>
@@ -134,8 +137,10 @@ public sealed class MainForm : Form
         pairFrameTime.SetBounds(18, 28, 300, 24);
         pairFrameTime.CheckedChanged += (_, _) =>
         {
+            if (loadingSettings) return;
             UpdateCompanionControls();
             RefreshCompanionStatus();
+            SaveSettingsFromUi();
         };
 
         var explanation = new Label
@@ -173,8 +178,10 @@ public sealed class MainForm : Form
         companionExe.SetBounds(18, 180, 680, 26);
         companionExe.TextChanged += (_, _) =>
         {
+            if (loadingSettings) return;
             RefreshCompanionStatus();
             SetActionState(lastStatus);
+            SaveSettingsFromUi();
         };
         browseCompanionExe.Text = "Browse...";
         browseCompanionExe.SetBounds(708, 178, 92, 30);
@@ -199,6 +206,12 @@ public sealed class MainForm : Form
 
         var resultLabel = new Label { Text = "Capture / results folder", AutoSize = true, Location = new Point(18, 218) };
         companionResults.SetBounds(18, 240, 680, 26);
+        companionResults.TextChanged += (_, _) =>
+        {
+            if (loadingSettings) return;
+            RefreshCompanionStatus();
+            SaveSettingsFromUi();
+        };
         browseCompanionResults.Text = "Browse...";
         browseCompanionResults.SetBounds(708, 238, 92, 30);
         browseCompanionResults.Click += (_, _) =>
@@ -212,6 +225,7 @@ public sealed class MainForm : Form
             companionResults.Text = dialog.SelectedPath;
             RefreshCompanionStatus();
             SetActionState(lastStatus);
+            SaveSettingsFromUi();
         };
 
         companionStatus.SetBounds(18, 282, 780, 62);
@@ -420,7 +434,8 @@ public sealed class MainForm : Form
 
     private void RefreshCompanionStatus()
     {
-        SyncSettingsFromUi();
+        if (!loadingSettings)
+            SyncSettingsFromUi();
         var snapshot = CompanionProfilerService.Inspect(appSettings);
 
         if (!snapshot.Enabled)
@@ -447,11 +462,12 @@ public sealed class MainForm : Form
 
     private void UpdateCompanionControls()
     {
-        var enabled = pairFrameTime.Checked;
-        companionExe.Enabled = enabled;
-        companionResults.Enabled = enabled;
-        browseCompanionExe.Enabled = enabled && !busy;
-        browseCompanionResults.Enabled = enabled && !busy;
+        // The checkbox controls whether the companion participates in this run.
+        // Keep the remembered paths visible/editable even when pairing is unchecked.
+        companionExe.Enabled = !busy;
+        companionResults.Enabled = !busy;
+        browseCompanionExe.Enabled = !busy;
+        browseCompanionResults.Enabled = !busy;
     }
 
     private void RenderStatus(ProfilerStatus snapshot)
