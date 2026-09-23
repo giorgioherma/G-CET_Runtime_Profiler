@@ -112,6 +112,8 @@ public sealed class MainForm : Form
         gameRoot.TextChanged += async (_, _) =>
         {
             ClearRestoreOutcome();
+            if (!loadingSettings)
+                SaveSettingsFromUi();
             await RefreshStatusAsync(silent: true);
             RenderSetupGameStatus();
         };
@@ -146,6 +148,9 @@ public sealed class MainForm : Form
             UpdateCompanionControls();
             RefreshCompanionStatus();
             SaveSettingsFromUi();
+            if (lastStatus is not null)
+                RenderStatus(lastStatus);
+            RenderReadyState(lastStatus);
         };
 
         var explanation = new Label
@@ -187,6 +192,9 @@ public sealed class MainForm : Form
             RefreshCompanionStatus();
             SetActionState(lastStatus);
             SaveSettingsFromUi();
+            if (lastStatus is not null)
+                RenderStatus(lastStatus);
+            RenderReadyState(lastStatus);
         };
         browseCompanionExe.Text = "Browse...";
         browseCompanionExe.SetBounds(708, 178, 92, 30);
@@ -216,6 +224,10 @@ public sealed class MainForm : Form
             if (loadingSettings) return;
             RefreshCompanionStatus();
             SaveSettingsFromUi();
+            SetActionState(lastStatus);
+            if (lastStatus is not null)
+                RenderStatus(lastStatus);
+            RenderReadyState(lastStatus);
         };
         browseCompanionResults.Text = "Browse...";
         browseCompanionResults.SetBounds(708, 238, 92, 30);
@@ -509,7 +521,7 @@ public sealed class MainForm : Form
             ? "DEPLOYED ✅"
             : snapshot.ControlsPresent
                 ? "Present but not managed by this install ⚠️"
-                : "NOT DEPLOYED ❌";
+                : snapshot.Managed ? "MISSING AFTER INSTALL ❌" : "Ready to deploy ⚠️";
 
         var zeroLine = "0-Engine: Not installed · optional ⚠️";
         var schedulerLine = "Scheduler: Not applicable · optional ⚠️";
@@ -568,7 +580,7 @@ public sealed class MainForm : Form
 
         var frameLine = companionConfigured
             ? $"Frame-Time Profiler: {companion.DisplayName} found ✅"
-            : "Frame-Time Profiler: Not provided ❌";
+            : "Frame-Time Profiler: Not provided ⚠️";
 
         string syncLines;
         if (!companionConfigured)
@@ -590,7 +602,7 @@ public sealed class MainForm : Form
                 ? companion.StartKey + " ⚠️"
                 : "Unknown ⚠️";
             syncLines =
-                "Synced keybind: NO ❌\r\n" +
+                "Synced keybind: NO ⚠️\r\n" +
                 $"    - CET: {(snapshot.F11Binding ? "F11 ✅" : "F11 pending deployment ⚠️")}\r\n" +
                 $"    - Frame-Time Profiler: {externalKey}";
         }
@@ -617,11 +629,24 @@ public sealed class MainForm : Form
         snapshot.ControlsPresent &&
         snapshot.F11Binding;
 
+    private static bool HasCriticalProfilerError(ProfilerStatus? snapshot) =>
+        snapshot is null ||
+        snapshot.CetState is "MISSING" or "UNKNOWN" ||
+        (snapshot.Managed && (!snapshot.ControlsPresent || !snapshot.F11Binding));
+
     private void RenderReadyState(ProfilerStatus? snapshot)
     {
         var ready = IsProfilerReady(snapshot);
-        readyHeading.Text = ready ? "PROFILER IS READY!" : "PROFILER IS NOT READY!";
-        readyHeading.ForeColor = ready ? Color.ForestGreen : Color.Firebrick;
+        var blocked = HasCriticalProfilerError(snapshot);
+
+        readyHeading.Text = ready
+            ? "PROFILER IS READY!"
+            : "PROFILER IS NOT READY!";
+
+        readyHeading.ForeColor = ready
+            ? Color.ForestGreen
+            : blocked ? Color.Firebrick : Color.DarkGoldenrod;
+
         readyInstructions.Enabled = ready;
     }
 
@@ -660,6 +685,11 @@ public sealed class MainForm : Form
             "Unique files should still have your own backup if this is their only copy. Unknown/unowned files are never deleted.";
     }
 
+    private bool HasConfiguredCompanion() =>
+        pairFrameTime.Checked &&
+        File.Exists(companionExe.Text.Trim()) &&
+        Directory.Exists(companionResults.Text.Trim());
+
     private void SetActionState(ProfilerStatus? snapshot)
     {
         if (snapshot is null)
@@ -682,11 +712,7 @@ public sealed class MainForm : Form
         restore.Enabled = !busy && snapshot.Managed;
         coreOnly.Enabled = !busy && coreOnly.Visible && !snapshot.Managed;
 
-        var companionPath = companionExe.Text.Trim();
-        startCompanion.Enabled = !busy &&
-                                 pairFrameTime.Checked &&
-                                 !string.IsNullOrWhiteSpace(companionPath) &&
-                                 File.Exists(companionPath);
+        startCompanion.Enabled = !busy && HasConfiguredCompanion();
 
         var gameExe = GetGameExe(snapshot.GameRoot);
         var gameRunning = IsCyberpunkRunning();
@@ -750,7 +776,7 @@ public sealed class MainForm : Form
 
             CompanionCollectResult? companion = null;
             string? companionError = null;
-            if (!string.IsNullOrWhiteSpace(destination) && pairFrameTime.Checked)
+            if (!string.IsNullOrWhiteSpace(destination) && HasConfiguredCompanion())
             {
                 try
                 {
@@ -765,8 +791,8 @@ public sealed class MainForm : Form
             if (!string.IsNullOrWhiteSpace(destination) && Directory.Exists(destination))
                 Process.Start(new ProcessStartInfo(destination) { UseShellExecute = true });
 
-            var companionText = !pairFrameTime.Checked
-                ? "Frame-time companion: disabled."
+            var companionText = !HasConfiguredCompanion()
+                ? "Frame-time companion: not configured; CET results were collected normally."
                 : companionError is not null
                     ? "Frame-time companion: CET collection succeeded, but companion copy failed: " + companionError
                     : "Frame-time companion: " + (companion?.Message ?? "not collected.");
