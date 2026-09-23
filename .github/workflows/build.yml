@@ -382,12 +382,13 @@ jobs:
           $shaAsset = "$asset.sha256.txt"
 
           $notes = @(
-            'Standalone workflow update: two-page setup, optional read-only frame-time companion detection, companion result bundling, and cleaner 0-Engine fallback UX.',
+            'Beta UI/recovery pass: frame-time launcher, restore confirmation race fix, and simplified capture controls.',
             '',
             'Capture: CET F11 is preset and verified; F11 START / F11 STOP + automatic export.',
-            'Frame-time companion: optional only. CapFrameX 1.9.1.2 Beta is the tested reference, but custom profilers can be linked. External results are copied into the CET result folder and never deleted at source.',
+            'Frame-time companion: optional only. When a linked executable exists, START FRAME-TIME TOOL launches it from the capture page. Custom profilers remain supported; G-CET does not configure or modify them.',
+            'Restore: clicking Yes can no longer be swallowed by the automatic window-activation refresh. The page now shows RESTORING immediately, then a persistent green success or red failure state.',
+            'UI: START CYBERPUNK is the last action button; the Emergency Restore button was removed from the standalone GUI. The headless --emergency-restore recovery command remains available.',
             'Cleanup: known CET runtime output patterns are copied, verified, then removed from the live CET folder; unrelated files remain untouched.',
-            'Recovery: normal restore remains strict; Emergency Restore independently restores only components that pass safety checks and reports anything left for manual review.',
             '',
             'Distribution:',
             '- C# / .NET 8 self-contained win-x64',

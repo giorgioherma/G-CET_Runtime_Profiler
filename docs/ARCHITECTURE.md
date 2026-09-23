@@ -46,7 +46,7 @@ CLI arguments -> headless JSON
 
 There is no separate TOTAL-specific backend.
 
-The WinForms app may also provide **optional companion conveniences** that do not belong to the CET lifecycle core: read-only detection of an external frame-time profiler, read-only start-key reporting where a known adapter exists, and copy-only bundling of the latest external capture beside the CET archive. This does not make any external profiler a dependency, and headless/TOTAL behavior remains CET-only.
+The WinForms app may also provide **optional companion conveniences** that do not belong to the CET lifecycle core: read-only detection of an external frame-time profiler, read-only start-key reporting where a known adapter exists, explicit user-triggered launch of the configured executable, and copy-only bundling of the latest external capture beside the CET archive. This does not make any external profiler a dependency, and headless/TOTAL behavior remains CET-only.
 
 ## Package-owned files
 

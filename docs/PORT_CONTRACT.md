@@ -2,7 +2,7 @@
 
 The PowerShell alpha6c implementation under `reference/powershell-alpha6c/` is a behavioral reference only.
 
-**v0.1.1-beta implements this contract in C#/.NET 8.** The reference scripts are no longer part of the public runtime package.
+**v0.1.2-beta implements this contract in C#/.NET 8.** The reference scripts are no longer part of the public runtime package.
 
 Future changes should preserve these behavioral invariants unless the standalone profiler contract is intentionally versioned.
 
@@ -17,7 +17,7 @@ Future changes should preserve these behavioral invariants unless the standalone
 - Native profiler live output remains in the normal CET location until `Collect`.
 - `Collect` copies + verifies exact manifest outputs plus explicit scripted `CET_Runtime_Profile_*` metadata/status/temp patterns into standalone package `RESULTS/`, then clears only those owned files.
 - Unrelated files in the CET directory are never swept.
-- Optional GUI-only frame-time pairing is not a dependency: known tools may have their START key detected read-only; companion results are copy-only and external originals are never deleted.
+- Optional GUI-only frame-time pairing is not a dependency: known tools may have their START key detected read-only; a linked executable may be launched on explicit user action; companion results are copy-only and external originals are never deleted.
 - Install/restore state is game-side under `bin/x64/plugins/.cet_runtime_profiler/` and survives application restart.
 - Exact original CET ASI / 0-Engine files are backed up before changes and hash-verified.
 - Existing Scheduler-integrated 0-Engine uses the known scheduler path.

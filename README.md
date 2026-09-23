@@ -2,7 +2,7 @@
 
 Standalone CET/Lua runtime profiler manager for **Cyberpunk 2077**, with optional 0-Engine Scheduler attribution.
 
-## v0.1.1-beta — guided setup + optional frame-time companion
+## v0.1.2-beta — guided setup + optional frame-time companion
 
 The standalone manager is a normal **C# / .NET 8 WinForms application**. The beta keeps the CET profiler standalone while making synchronized frame-time capture easier to discover.
 
@@ -49,11 +49,11 @@ There is no separate F12/export action.
 
 ### Optional frame-time companion
 
-The companion is **not a dependency** and CET never launches, configures, modifies, or requires it. It exists only to help users synchronize a frame-time capture and keep both outputs together.
+The companion is **not a dependency**. G-CET never configures or modifies it and never requires it for CET profiling. If the user links an executable, the capture page can launch that tool as a convenience; capture control remains owned by the external profiler.
 
 The beta recognizes CapFrameX configuration read-only and can report its `CaptureHotKey`. **CapFrameX 1.9.1.2 Beta** is the tested reference used during development. Other profilers can be linked; when their key format is unknown the manager reports **UNKNOWN** and asks the user to verify F11 manually.
 
-The companion executable and results paths are stored in package-local convenience settings. Collection copies the newest detected companion capture into the CET archive and leaves the external source untouched.
+The companion executable and results paths are stored in package-local convenience settings. The capture page enables **START FRAME-TIME TOOL** only when the optional pairing is enabled and the linked executable exists. Collection copies the newest detected companion capture into the CET archive and leaves the external source untouched.
 
 The managed installation state is stored in the game folder:
 
@@ -75,6 +75,11 @@ The C# core preserves the existing three-mode behavior. The core-only choice is 
 
 ## Restore safety
 
+### Restore UI feedback
+
+The restore confirmation is guarded from the window-activation auto-refresh path, so clicking **Yes** cannot be swallowed by a simultaneous status refresh. The capture page shows an immediate **RESTORING ORIGINAL STATE...** state, then a persistent green success or red failure result.
+
+
 Installation is a persistent, hash-verified transaction.
 
 The manager records the original CET ASI, affected 0-Engine files, CETProfilerControls state, and prior CET binding state before changing them. Restore refuses to overwrite unexpected user changes.
@@ -83,11 +88,11 @@ Pre-existing `CETProfilerControls` content is backed up and restored exactly. Le
 
 If live profiler output still exists when Restore is requested, known scripted CET output files are archived into the standalone `RESULTS/` folder before game files are restored. Exact filenames plus the manifest-owned `CET_Runtime_Profile_*` output patterns are eligible; unrelated files in the CET directory are never swept.
 
-### Emergency Restore
+### Headless emergency recovery
 
 Normal **RESTORE ORIGINAL STATE** stays intentionally strict: if any managed file is missing, changed, or has a bad backup, normal restore stops before changing anything.
 
-**EMERGENCY RESTORE** is the recovery path for that dead end. It evaluates every managed component independently:
+The headless `--emergency-restore` command remains available for advanced/manual recovery when strict restore cannot proceed. It evaluates every managed component independently:
 
 - components with a valid original backup and a known live state are restored;
 - profiler-added files are removed only when they still match the profiler-owned version;
