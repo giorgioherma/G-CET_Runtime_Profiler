@@ -33,12 +33,13 @@ public sealed class MainForm : Form
     private readonly Button collect = new();
     private readonly Button restore = new();
     private readonly Button openResults = new();
+    private readonly Button startCompanion = new();
     private readonly Button startGame = new();
-    private readonly Button emergencyRestore = new();
     private readonly Button refresh = new();
     private readonly Label restoreOutcome = new();
 
     private bool busy;
+    private bool suppressActivationRefresh;
     private bool fallbackVisible;
     private ProfilerStatus? lastStatus;
 
@@ -70,7 +71,7 @@ public sealed class MainForm : Form
 
         Activated += async (_, _) =>
         {
-            if (busy) return;
+            if (busy || suppressActivationRefresh) return;
             await RefreshStatusAsync(silent: true);
             RefreshCompanionStatus();
         };
@@ -170,7 +171,11 @@ public sealed class MainForm : Form
 
         var exeLabel = new Label { Text = "Profiler executable", AutoSize = true, Location = new Point(18, 158) };
         companionExe.SetBounds(18, 180, 680, 26);
-        companionExe.TextChanged += (_, _) => RefreshCompanionStatus();
+        companionExe.TextChanged += (_, _) =>
+        {
+            RefreshCompanionStatus();
+            SetActionState(lastStatus);
+        };
         browseCompanionExe.Text = "Browse...";
         browseCompanionExe.SetBounds(708, 178, 92, 30);
         browseCompanionExe.Click += (_, _) =>
@@ -206,6 +211,7 @@ public sealed class MainForm : Form
             if (dialog.ShowDialog(this) != DialogResult.OK) return;
             companionResults.Text = dialog.SelectedPath;
             RefreshCompanionStatus();
+            SetActionState(lastStatus);
         };
 
         companionStatus.SetBounds(18, 282, 780, 62);
@@ -288,14 +294,26 @@ public sealed class MainForm : Form
         restore.SetBounds(580, 540, 260, 42);
         restore.Click += async (_, _) =>
         {
-            var answer = MessageBox.Show(
-                this,
-                "Restore the CET profiler-managed game state?\r\n\r\n" +
-                "Original CET / 0-Engine files and the previous CET binding state will be restored. " +
-                "Any current live CET profiler output is archived first.",
-                Text,
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Warning);
+            if (busy) return;
+
+            DialogResult answer;
+            suppressActivationRefresh = true;
+            try
+            {
+                answer = MessageBox.Show(
+                    this,
+                    "Restore the CET profiler-managed game state?\r\n\r\n" +
+                    "Original CET / 0-Engine files and the previous CET binding state will be restored. " +
+                    "Any current live CET profiler output is archived first.",
+                    Text,
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning);
+            }
+            finally
+            {
+                suppressActivationRefresh = false;
+            }
+
             if (answer == DialogResult.Yes)
                 await RunStrictRestoreAsync();
         };
@@ -304,13 +322,13 @@ public sealed class MainForm : Form
         openResults.SetBounds(20, 596, 230, 36);
         openResults.Click += (_, _) => OpenResultsFolder();
 
-        startGame.Text = "START CYBERPUNK";
-        startGame.SetBounds(265, 596, 300, 36);
-        startGame.Click += (_, _) => StartCyberpunk();
+        startCompanion.Text = "START FRAME-TIME TOOL";
+        startCompanion.SetBounds(265, 596, 300, 36);
+        startCompanion.Click += (_, _) => StartFrameTimeTool();
 
-        emergencyRestore.Text = "EMERGENCY RESTORE";
-        emergencyRestore.SetBounds(580, 596, 260, 36);
-        emergencyRestore.Click += async (_, _) => await RunEmergencyRestoreAsync();
+        startGame.Text = "START CYBERPUNK";
+        startGame.SetBounds(580, 596, 260, 36);
+        startGame.Click += (_, _) => StartCyberpunk();
 
         restoreOutcome.SetBounds(20, 642, 820, 28);
         restoreOutcome.Font = new Font("Segoe UI Semibold", 10F);
@@ -319,7 +337,7 @@ public sealed class MainForm : Form
 
         profilerPage.Controls.AddRange([
             title, back, statusGroup, compatibility, filesGroup,
-            install, collect, restore, openResults, startGame, emergencyRestore, restoreOutcome
+            install, collect, restore, openResults, startCompanion, startGame, restoreOutcome
         ]);
     }
 
@@ -546,7 +564,7 @@ public sealed class MainForm : Form
             install.Enabled = false;
             collect.Enabled = false;
             restore.Enabled = false;
-            emergencyRestore.Enabled = false;
+            startCompanion.Enabled = false;
             startGame.Enabled = false;
             coreOnly.Enabled = false;
             return;
@@ -559,8 +577,13 @@ public sealed class MainForm : Form
         install.Enabled = !busy && cetAllowed && !snapshot.Managed && snapshot.LiveResultCount == 0 && fallbackSatisfied;
         collect.Enabled = !busy && snapshot.LiveResultCount > 0;
         restore.Enabled = !busy && snapshot.Managed;
-        emergencyRestore.Enabled = !busy && snapshot.Managed;
         coreOnly.Enabled = !busy && coreOnly.Visible && !snapshot.Managed;
+
+        var companionPath = companionExe.Text.Trim();
+        startCompanion.Enabled = !busy &&
+                                 pairFrameTime.Checked &&
+                                 !string.IsNullOrWhiteSpace(companionPath) &&
+                                 File.Exists(companionPath);
 
         var gameExe = GetGameExe(snapshot.GameRoot);
         var gameRunning = IsCyberpunkRunning();
@@ -671,7 +694,10 @@ public sealed class MainForm : Form
 
         try
         {
+            ShowRestoreProgress("RESTORING ORIGINAL STATE...");
             SetBusy(true);
+            restoreOutcome.Refresh();
+
             var archived = await Task.Run(() => profiler.Restore(gameRoot.Text.Trim()));
 
             var message = string.IsNullOrWhiteSpace(archived)
@@ -680,7 +706,12 @@ public sealed class MainForm : Form
                   Environment.NewLine + Environment.NewLine +
                   "Final live results were archived to:" + Environment.NewLine + archived;
 
-            ShowRestoreOutcome(true, "RESTORE SUCCESSFUL — original managed state restored.");
+            var verified = await Task.Run(() => profiler.GetStatus(gameRoot.Text.Trim()));
+            if (verified.Managed)
+                throw new InvalidOperationException("Restore returned, but managed profiler state is still present.");
+
+            lastStatus = verified;
+            ShowRestoreOutcome(true, "RESTORE SUCCESSFUL — profiler removed and original state restored.");
             MessageBox.Show(this, message, Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)
@@ -704,55 +735,12 @@ public sealed class MainForm : Form
         }
     }
 
-    private async Task RunEmergencyRestoreAsync()
+    private void ShowRestoreProgress(string message)
     {
-        var answer = MessageBox.Show(
-            this,
-            "Emergency restore checks each profiler-managed component independently.\r\n\r\n" +
-            "Safe components are restored. Anything changed, missing, or uncertain is LEFT UNTOUCHED. " +
-            "If anything is skipped, recovery state/backups remain and the report lists what needs manual review.\r\n\r\nContinue?",
-            Text,
-            MessageBoxButtons.YesNo,
-            MessageBoxIcon.Warning);
-
-        if (answer != DialogResult.Yes) return;
-
-        try
-        {
-            SetBusy(true);
-            var result = await Task.Run(() => profiler.EmergencyRestore(gameRoot.Text.Trim()));
-
-            if (!result.Complete && !string.IsNullOrWhiteSpace(result.ReportPath) && File.Exists(result.ReportPath))
-                Process.Start(new ProcessStartInfo(result.ReportPath) { UseShellExecute = true });
-
-            var restored = result.Actions.Count(x => x.Status is "RESTORED" or "ARCHIVED");
-            var skipped = result.Actions.Count(x => x.Status == "SKIPPED");
-
-            ShowRestoreOutcome(
-                result.Complete,
-                result.Complete
-                    ? "EMERGENCY RESTORE SUCCESSFUL — recovery completed."
-                    : $"EMERGENCY RESTORE PARTIAL — {skipped} component{(skipped == 1 ? "" : "s")} still need manual review.");
-
-            MessageBox.Show(
-                this,
-                result.Complete
-                    ? $"Emergency restore completed safely.\r\n\r\nRestored/archived components: {restored}\r\nRecovery state removed.\r\n\r\nReport:\r\n{result.ReportPath}"
-                    : $"Emergency restore completed PARTIALLY.\r\n\r\nRestored/archived components: {restored}\r\nSkipped for safety: {skipped}\r\n\r\nNothing uncertain was overwritten or deleted. Recovery state/backups were preserved.\r\n\r\nReport:\r\n{result.ReportPath}",
-                Text,
-                MessageBoxButtons.OK,
-                result.Complete ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
-        }
-        catch (Exception ex)
-        {
-            ShowRestoreOutcome(false, "EMERGENCY RESTORE FAILED — no success state was recorded.");
-            MessageBox.Show(this, FriendlyMessage(ex), Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
-        }
-        finally
-        {
-            SetBusy(false);
-            await RefreshStatusAsync(silent: true);
-        }
+        restoreOutcome.Text = "… " + message;
+        restoreOutcome.ForeColor = SystemColors.ControlText;
+        restoreOutcome.Visible = true;
+        restoreOutcome.BringToFront();
     }
 
     private void ShowRestoreOutcome(bool success, string message)
@@ -790,6 +778,27 @@ public sealed class MainForm : Form
         {
             Directory.CreateDirectory(profiler.ResultsRoot);
             Process.Start(new ProcessStartInfo(profiler.ResultsRoot) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void StartFrameTimeTool()
+    {
+        try
+        {
+            var exe = companionExe.Text.Trim();
+            if (string.IsNullOrWhiteSpace(exe) || !File.Exists(exe))
+                throw new FileNotFoundException("No frame-time profiler executable is configured.", exe);
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = exe,
+                WorkingDirectory = Path.GetDirectoryName(Path.GetFullPath(exe))!,
+                UseShellExecute = true
+            });
         }
         catch (Exception ex)
         {
