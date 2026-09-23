@@ -1,5 +1,5 @@
 {
-  "packageVersion": "0.1.2-beta",
+  "packageVersion": "1.0.0",
   "profilerNativeVersion": "2.11.0",
   "targetCET": {
     "version": "1.37.1",
@@ -26,6 +26,8 @@
     "CET_Runtime_Profile_Scheduler_FrameBursts.csv"
   ],
   "managerChanges": [
+    "v1.0.0 stable standalone release uses a portable ZIP with package-local settings and RESULTS",
+    "second-page readiness UI uses green confirmed states, warnings for optional/pending states, and red only for blocking errors",
     "restore confirmation suppresses activation refresh so clicking Yes cannot be swallowed by the automatic status refresh",
     "optional frame-time companion can be launched from the capture page when a configured executable exists",
     "two-page setup keeps optional frame-time pairing separate from CET/0-Engine installation and recovery",
