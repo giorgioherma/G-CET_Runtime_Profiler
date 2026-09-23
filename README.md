@@ -2,7 +2,7 @@
 
 Standalone CET/Lua runtime profiler manager for **Cyberpunk 2077**, with optional 0-Engine Scheduler attribution.
 
-## v0.1.0-beta — guided setup + optional frame-time companion
+## v0.1.1-beta — guided setup + optional frame-time companion
 
 The standalone manager is a normal **C# / .NET 8 WinForms application**. The beta keeps the CET profiler standalone while making synchronized frame-time capture easier to discover.
 
