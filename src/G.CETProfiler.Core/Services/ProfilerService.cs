@@ -70,11 +70,22 @@ public sealed class ProfilerService : IProfilerService
             : new ZeroFileState("absent", "0-ENGINE NOT FOUND");
 
         var schedulerText = "-";
+        var schedulerPresent = zeroPresent && File.Exists(paths.ZeroScheduler);
+        var schedulerIntegrated = zeroPresent && zeroEngine.IsSchedulerIntegrated(paths.ZeroInit);
+        var schedulerState = schedulerPresent
+            ? zeroEngine.GetSchedulerState(paths)
+            : new ZeroFileState("absent", "ABSENT");
+        var schedulerProfilerAware = schedulerState.Kind == "aware";
+        var adaptiveProfilerSchedulerPresent =
+            zeroPresent &&
+            File.Exists(paths.ZeroAdaptiveScheduler) &&
+            zeroEngine.GetAdaptiveSchedulerState(paths).Kind == "aware";
+
         if (zeroPresent)
         {
             schedulerText = initState.Kind switch
             {
-                "integrated" => zeroEngine.GetSchedulerState(paths).Text,
+                "integrated" => schedulerState.Text,
                 "adaptive" or "profiler-bridge" => zeroEngine.GetAdaptiveSchedulerState(paths).Text,
                 _ => "CHECK CORE PROFILER MODE"
             };
@@ -91,6 +102,10 @@ public sealed class ProfilerService : IProfilerService
             ZeroEngineInitKind = initState.Kind,
             ZeroEngineInit = initState.Text,
             Scheduler = schedulerText,
+            SchedulerPresent = schedulerPresent,
+            SchedulerIntegrated = schedulerIntegrated,
+            SchedulerProfilerAware = schedulerProfilerAware,
+            AdaptiveProfilerSchedulerPresent = adaptiveProfilerSchedulerPresent,
             Managed = state is not null,
             ManagedMode = state?.ZeroEngine.Mode ?? "",
             ControlsPresent = Directory.Exists(paths.Controls),
