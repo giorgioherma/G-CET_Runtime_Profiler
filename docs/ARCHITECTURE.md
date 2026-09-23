@@ -99,12 +99,18 @@ The standalone manager's `Collect` operation:
 ```text
 find exact manifest files + scripted CET_Runtime_Profile_* output patterns
         ↓
-copy to package RESULTS/<timestamp>/
+copy into RESULTS/<timestamp>/Data/{Runtime|Scheduler|Metadata}/
         ↓
-SHA-256 verify every copy
+SHA-256 verify every native file
+        ↓
+generate CET_Report.html + CET_Summary.json from the verified copy
         ↓
 only then delete those explicitly owned live files
 ```
+
+The result report is downstream presentation, not part of native measurement. It derives human-readable findings from the existing CET CSV contract: owner cost, call volume, callback aggregation, 50 ms CET timeline windows, native callback spikes, and optional 0-Engine Scheduler attribution. Scheduler timing is explicitly treated as work measured inside 0-Engine rather than additive owner cost.
+
+Report generation is best-effort by design. If interpretation fails after raw verification, the manager keeps the verified capture, writes `CET_Report_Error.txt`, and still clears only the already-verified profiler-owned live files. Presentation can therefore fail without turning a valid capture into a recovery problem.
 
 Unrelated files in the CET directory are never swept. If the GUI has an optional frame-time companion configured, its selected/latest capture is copied under `FrameTime/` after CET collection; the external source is never modified or deleted.
 
