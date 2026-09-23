@@ -739,7 +739,7 @@ public sealed class MainForm : Form
                 Environment.NewLine + Environment.NewLine +
                 "Reason:" + Environment.NewLine + FriendlyMessage(ex) +
                 Environment.NewLine + Environment.NewLine +
-                "Use EMERGENCY RESTORE to recover each independent component that still passes its own safety checks. Anything uncertain stays untouched.",
+                "No uncertain file was overwritten. The managed recovery state/backups were left in place for diagnosis or advanced recovery.",
                 Text,
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
