@@ -83,6 +83,11 @@ internal static class CompanionProfilerService
         if (string.IsNullOrWhiteSpace(sourceRoot) || !Directory.Exists(sourceRoot))
             return new(false, 0, "Frame-time results folder is not configured or does not exist.", null, null, null);
 
+        var sourceFull = Path.GetFullPath(sourceRoot);
+        var destinationFull = Path.GetFullPath(cetDestination);
+        if (PathsOverlap(sourceFull, destinationFull))
+            return new(false, 0, "Frame-time results folder overlaps the CET archive location; companion copy was skipped to prevent recursive/self-copy.", null, null, null);
+
         var status = Inspect(settings);
         var candidate = status.Kind == "capframex"
             ? FindNewestCapFrameXCapture(sourceRoot)
@@ -311,6 +316,17 @@ internal static class CompanionProfilerService
         }
 
         return count;
+    }
+
+    private static bool PathsOverlap(string left, string right)
+    {
+        static string WithSeparator(string path) =>
+            path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+
+        var a = WithSeparator(Path.GetFullPath(left));
+        var b = WithSeparator(Path.GetFullPath(right));
+        return a.StartsWith(b, StringComparison.OrdinalIgnoreCase) ||
+               b.StartsWith(a, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string UniquePath(string parent, string name)
