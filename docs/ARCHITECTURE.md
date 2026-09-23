@@ -1,0 +1,113 @@
+# Architecture
+
+## Product boundary
+
+`G-CET_Runtime_Profiler` is a standalone product. Its C# core owns all CET-specific behavior. The TOTAL Profiler is an external orchestrator and must not duplicate this logic.
+
+## Projects
+
+```text
+src/
+├─ G.CETProfiler.Core/
+│  ├─ Models/
+│  └─ Services/
+└─ G.CETProfiler.App/
+   ├─ Program.cs
+   └─ MainForm.cs
+```
+
+### G.CETProfiler.Core
+
+The core is the authoritative implementation for:
+
+- game/CET path resolution;
+- manifest and payload validation;
+- SHA-256 and directory fingerprints;
+- persistent install state;
+- CET ASI replacement/restore;
+- CET binding snapshot/F11 install/restore;
+- 0-Engine mode detection;
+- Scheduler and adaptive Scheduler deployment;
+- adaptive `init.lua` bridge injection;
+- CETProfilerControls backup/deployment/restore;
+- live result collection and verification;
+- safe rollback after failed installation.
+
+The core has no WinForms dependency.
+
+### G.CETProfiler.App
+
+The application contains two front ends over the same `IProfilerService`:
+
+```text
+no arguments -> WinForms manager
+CLI arguments -> headless JSON
+```
+
+There is no separate TOTAL-specific backend.
+
+## Package-owned files
+
+The public package owns the payload under:
+
+```text
+payload/
+├─ cyber_engine_tweaks.PROFILER.asi
+├─ CETProfilerControls/init.lua
+└─ 0-Engine/modules/
+   ├─ Scheduler.lua
+   └─ CETProfilerScheduler.lua
+```
+
+These runtime payload files are hash locked. `.gitattributes` prevents checkout line-ending conversion from changing their bytes.
+
+## Persistent transaction
+
+A managed install creates:
+
+```text
+Cyberpunk 2077/
+└─ bin/x64/plugins/.cet_runtime_profiler/
+   ├─ state.json
+   ├─ cyber_engine_tweaks.ORIGINAL.asi          (when replaced)
+   ├─ 0-Engine.init.ORIGINAL.lua               (when patched)
+   ├─ 0-Engine.Scheduler.ORIGINAL.lua          (when replaced)
+   ├─ 0-Engine.CETProfilerScheduler.ORIGINAL.lua
+   └─ CETProfilerControls.ORIGINAL/            (when pre-existing)
+```
+
+The state is written atomically through a temporary file. Backups are verified before live files are replaced.
+
+A failed install attempts rollback in reverse ownership order. If rollback itself cannot complete safely, the managed state directory is retained instead of pretending the operation succeeded.
+
+## Restore rule
+
+Restore first validates that backups still match their recorded fingerprints/hashes and that current live files are either the installed profiler version or the known original version.
+
+Unexpected changes cause restore to abort before destructive replacement.
+
+Current live CET results are collected and verified before the managed game files are restored.
+
+## Result ownership
+
+The native profiler writes live CSV files into CET's normal directory.
+
+The standalone manager's `Collect` operation:
+
+```text
+find manifest-declared live CSVs
+        ↓
+copy to package RESULTS/<timestamp>/
+        ↓
+SHA-256 verify every copy
+        ↓
+only then delete live CSVs
+```
+
+TOTAL Profiler does not redirect this path. It consumes the completed standalone result after collection.
+
+## Compatibility
+
+The C# state model is deliberately tolerant of extra JSON fields so states produced by earlier development managers can be read.
+
+Legacy TOTAL Profiler 0.2.19 binding rollback state and pre-existing CETProfilerControls backups are supported during restore migration.
