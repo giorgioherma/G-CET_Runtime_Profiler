@@ -261,10 +261,11 @@ public sealed class ProfilerService : IProfilerService
             return;
         }
 
+        FileSystemService.CopyFileVerified(paths.LiveAsi, paths.BackupAsi, liveHash);
+
         state.Asi.Mode = "replaced";
         SaveState(paths, state);
 
-        FileSystemService.CopyFileVerified(paths.LiveAsi, paths.BackupAsi, liveHash);
         FileSystemService.CopyFileVerified(profilerSource, paths.LiveAsi, profilerHash);
 
         if (!HashEquals(FileSystemService.Sha256(paths.LiveAsi), profilerHash))
@@ -342,13 +343,13 @@ public sealed class ProfilerService : IProfilerService
             }
             else
             {
-                state.ZeroEngine.Init.Mode = "patched-adaptive";
-                SaveState(paths, state);
-
                 FileSystemService.CopyFileVerified(
                     paths.ZeroInit,
                     paths.BackupZeroInit,
                     state.ZeroEngine.Init.OriginalHash);
+
+                state.ZeroEngine.Init.Mode = "patched-adaptive";
+                SaveState(paths, state);
 
                 zeroEngine.AddAdaptiveProfilerSchedulerBridge(paths.ZeroInit);
                 state.ZeroEngine.Init.InstalledHash = FileSystemService.Sha256(paths.ZeroInit);
@@ -395,10 +396,10 @@ public sealed class ProfilerService : IProfilerService
 
         if (current.Kind == "other")
         {
+            FileSystemService.CopyFileVerified(livePath, backupPath, current.Hash);
             transaction.Mode = "replaced";
             transaction.OriginalHash = current.Hash;
             SaveState(paths, state);
-            FileSystemService.CopyFileVerified(livePath, backupPath, current.Hash);
         }
         else
         {
@@ -474,7 +475,7 @@ public sealed class ProfilerService : IProfilerService
         string badBackupMessage,
         string changedLiveMessage)
     {
-        if (transaction.Mode == "replaced")
+        if (transaction.Mode is "replaced" or "patched-adaptive")
         {
             RequireFile(backupPath, missingBackupMessage);
             RequireHash(backupPath, transaction.OriginalHash, badBackupMessage);
