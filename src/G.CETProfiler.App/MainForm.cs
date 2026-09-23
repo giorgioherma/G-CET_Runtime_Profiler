@@ -804,7 +804,10 @@ public sealed class MainForm : Form
             }
 
             if (!string.IsNullOrWhiteSpace(destination) && Directory.Exists(destination))
-                Process.Start(new ProcessStartInfo(destination) { UseShellExecute = true });
+            {
+                var report = Path.Combine(destination, ResultReportService.ReportFileName);
+                Process.Start(new ProcessStartInfo(File.Exists(report) ? report : destination) { UseShellExecute = true });
+            }
 
             var companionText = !HasConfiguredCompanion()
                 ? "Frame-time companion: not configured; CET results were collected normally."
@@ -815,6 +818,7 @@ public sealed class MainForm : Form
             MessageBox.Show(
                 this,
                 "CET results archived successfully and known live profiler output was cleared.\r\n\r\n" +
+                "CET_Report.html is the human-readable starting point. Full native data remains under Data\\.\r\n\r\n" +
                 "Archive folder:\r\n" + destination + "\r\n\r\n" +
                 companionText,
                 Text,
