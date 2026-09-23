@@ -1,8 +1,10 @@
 # C# port contract
 
-The PowerShell alpha6c implementation under `reference/powershell-alpha6c/` is a behavioral reference only. The public product must be a C#/.NET 8 WinForms application.
+The PowerShell alpha6c implementation under `reference/powershell-alpha6c/` is a behavioral reference only.
 
-Port **behavior first, implementation second**. Do not redesign behavior during the port.
+**v3.0.0-alpha7 implements this contract in C#/.NET 8.** The reference scripts are no longer part of the public runtime package.
+
+Future changes should preserve these behavioral invariants unless the standalone profiler contract is intentionally versioned.
 
 ## Invariants
 

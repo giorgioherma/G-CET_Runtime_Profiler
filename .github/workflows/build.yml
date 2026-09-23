@@ -1,4 +1,8 @@
-name: Build G CET Runtime Profiler C# Port
+name: Build G CET Runtime Profiler
+
+permissions:
+  contents: write
+  actions: read
 
 on:
   workflow_dispatch:
@@ -9,6 +13,7 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+
     steps:
       - uses: actions/checkout@v4
 
@@ -17,21 +22,213 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      - name: Verify hash-locked payload bytes
+        shell: pwsh
+        run: |
+          $manifest = Get-Content MANIFEST.json -Raw | ConvertFrom-Json
+          $checks = @(
+            @{ Path = 'payload\cyber_engine_tweaks.PROFILER.asi'; Expected = [string]$manifest.targetCET.profilerSha256 },
+            @{ Path = 'payload\0-Engine\modules\Scheduler.lua'; Expected = [string]$manifest.zeroEngine.profilerSchedulerSha256 },
+            @{ Path = 'payload\0-Engine\modules\CETProfilerScheduler.lua'; Expected = [string]$manifest.zeroEngine.profilerAdaptiveSchedulerSha256 }
+          )
+          foreach ($check in $checks) {
+            $actual = (Get-FileHash -LiteralPath $check.Path -Algorithm SHA256).Hash.ToLowerInvariant()
+            $expected = $check.Expected.ToLowerInvariant()
+            Write-Host "$($check.Path) SHA256 $actual"
+            if ($actual -ne $expected) {
+              throw "Hash mismatch for $($check.Path): expected $expected, got $actual"
+            }
+          }
+
       - name: Build
         run: dotnet build G-CET-Runtime-Profiler.sln -c Release
 
-      - name: Publish win-x64
-        run: dotnet publish src/G.CETProfiler.App/G.CETProfiler.App.csproj -c Release -r win-x64 --self-contained true -o publish
+      - name: Publish transparent win-x64 package
+        run: dotnet publish src/G.CETProfiler.App/G.CETProfiler.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -o publish
 
-      - name: Copy docs
+      - name: Copy public docs
         shell: pwsh
         run: |
           Copy-Item README.md publish\README.md
           Copy-Item VERSION.txt publish\VERSION.txt
           New-Item -ItemType Directory -Force publish\RESULTS | Out-Null
 
+      - name: Verify public package contains no dev manager scripts
+        shell: pwsh
+        run: |
+          $bad = @(Get-ChildItem publish -Recurse -File | Where-Object { $_.Extension -in '.ps1','.vbs','.cmd' })
+          if ($bad.Count -gt 0) {
+            $bad | ForEach-Object { Write-Error $_.FullName }
+            throw 'Public C# package unexpectedly contains PowerShell/VBS/CMD manager files.'
+          }
+          if (!(Test-Path publish\G-CET-Runtime-Profiler.exe)) { throw 'C# manager EXE missing.' }
+          if (!(Test-Path publish\payload\cyber_engine_tweaks.PROFILER.asi)) { throw 'Profiler ASI payload missing.' }
+
+      - name: C# lifecycle integration smoke test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = (Resolve-Path 'publish\G-CET-Runtime-Profiler.exe').Path
+          $fixture = Join-Path $env:RUNNER_TEMP 'gcet-fixture'
+          if (Test-Path $fixture) { Remove-Item $fixture -Recurse -Force }
+
+          $plugins = Join-Path $fixture 'bin\x64\plugins'
+          $cet = Join-Path $plugins 'cyber_engine_tweaks'
+          $mods = Join-Path $cet 'mods'
+          $zero = Join-Path $mods '0-Engine'
+          New-Item -ItemType Directory -Force (Join-Path $zero 'modules') | Out-Null
+
+          Copy-Item 'publish\payload\cyber_engine_tweaks.PROFILER.asi' (Join-Path $plugins 'cyber_engine_tweaks.asi')
+
+          @'
+          local Engine = {}
+          function Engine.Register(name)
+              local Mod = {}
+              return Mod
+          end
+          return Engine
+          '@ | Set-Content -LiteralPath (Join-Path $zero 'init.lua') -Encoding utf8
+
+          $originalInitHash = (Get-FileHash (Join-Path $zero 'init.lua') -Algorithm SHA256).Hash
+
+          $oldControls = Join-Path $mods 'CETProfilerControls'
+          New-Item -ItemType Directory -Force $oldControls | Out-Null
+          'KEEP-ME' | Set-Content -LiteralPath (Join-Path $oldControls 'existing.txt') -Encoding utf8
+
+          @{
+            OtherMod = @{ SomeBinding = 77 }
+            CETProfilerControls = @{
+              CETProfiler_Toggle = 123
+              CETProfiler_Dump = 456
+            }
+          } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $cet 'bindings.json') -Encoding utf8
+
+          $install = (& $exe --install --game $fixture --json | ConvertFrom-Json)
+          if (!$install.managed) { throw 'Install did not create managed state.' }
+          if (!$install.f11Binding) { throw 'Install did not configure F11.' }
+          if ($install.managedMode -ne 'adaptive') { throw "Expected adaptive mode, got $($install.managedMode)" }
+
+          $patchedInitHash = (Get-FileHash (Join-Path $zero 'init.lua') -Algorithm SHA256).Hash
+          if ($patchedInitHash -eq $originalInitHash) { throw 'Adaptive init.lua was not patched.' }
+
+          'marker-test' | Set-Content -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_Markers.csv') -Encoding utf8
+
+          $collected = (& $exe --collect --game $fixture --json | ConvertFrom-Json)
+          if ([string]::IsNullOrWhiteSpace([string]$collected.destination)) { throw 'Collect returned no destination.' }
+          if (!(Test-Path -LiteralPath $collected.destination -PathType Container)) { throw 'Collected result folder missing.' }
+          if (Test-Path -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_Markers.csv')) { throw 'Verified live result was not cleared.' }
+
+          $restore = (& $exe --restore --game $fixture --json | ConvertFrom-Json)
+          if ($restore.status.managed) { throw 'Restore left managed state active.' }
+
+          $restoredInitHash = (Get-FileHash (Join-Path $zero 'init.lua') -Algorithm SHA256).Hash
+          if ($restoredInitHash -ne $originalInitHash) { throw 'init.lua did not restore exactly.' }
+
+          if ((Get-Content -LiteralPath (Join-Path $oldControls 'existing.txt') -Raw).Trim() -ne 'KEEP-ME') {
+            throw 'Pre-existing CETProfilerControls directory was not restored.'
+          }
+
+          $bindings = Get-Content -LiteralPath (Join-Path $cet 'bindings.json') -Raw | ConvertFrom-Json
+          if ([int64]$bindings.CETProfilerControls.CETProfiler_Toggle -ne 123) { throw 'Previous CET toggle binding was not restored.' }
+          if ([int64]$bindings.CETProfilerControls.CETProfiler_Dump -ne 456) { throw 'Previous CET dump binding was not restored.' }
+          if ([int64]$bindings.OtherMod.SomeBinding -ne 77) { throw 'Unrelated CET binding changed.' }
+          if (Test-Path -LiteralPath (Join-Path $plugins '.cet_runtime_profiler')) { throw 'Managed state directory remained after restore.' }
+
+          # Core-only path: deliberately unsafe 0-Engine must remain byte-identical.
+          $fixture2 = Join-Path $env:RUNNER_TEMP 'gcet-core-only-fixture'
+          if (Test-Path $fixture2) { Remove-Item $fixture2 -Recurse -Force }
+          $plugins2 = Join-Path $fixture2 'bin\x64\plugins'
+          $cet2 = Join-Path $plugins2 'cyber_engine_tweaks'
+          $zero2 = Join-Path $cet2 'mods\0-Engine'
+          New-Item -ItemType Directory -Force $zero2 | Out-Null
+          Copy-Item 'publish\payload\cyber_engine_tweaks.PROFILER.asi' (Join-Path $plugins2 'cyber_engine_tweaks.asi')
+          '-- deliberately unsupported custom init' | Set-Content -LiteralPath (Join-Path $zero2 'init.lua') -Encoding utf8
+          $coreHash = (Get-FileHash (Join-Path $zero2 'init.lua') -Algorithm SHA256).Hash
+
+          $coreInstall = (& $exe --install --game $fixture2 --core-only --json | ConvertFrom-Json)
+          if ($coreInstall.managedMode -ne 'core-only') { throw 'Core-only install did not report core-only mode.' }
+          if ((Get-FileHash (Join-Path $zero2 'init.lua') -Algorithm SHA256).Hash -ne $coreHash) { throw 'Core-only mode changed 0-Engine.' }
+
+          & $exe --restore --game $fixture2 --json | Out-Null
+          if ((Get-FileHash (Join-Path $zero2 'init.lua') -Algorithm SHA256).Hash -ne $coreHash) { throw 'Core-only restore changed 0-Engine.' }
+
+          # Smoke tests use the package-local RESULTS path; do not ship their fixtures.
+          Remove-Item publish\RESULTS -Recurse -Force
+          New-Item -ItemType Directory -Force publish\RESULTS | Out-Null
+
+          Write-Host 'C# lifecycle integration smoke test passed.'
+
       - name: Upload transparent Windows artifact
+        id: upload_public_artifact
         uses: actions/upload-artifact@v4
         with:
-          name: G-CET-Runtime-Profiler-CSharp-Port
+          name: G-CET-Runtime-Profiler-v3.0.0-alpha7
           path: publish
+
+      # The public Release asset is the exact ZIP produced by GitHub for the
+      # successful Actions artifact. It is downloaded back and uploaded unchanged,
+      # avoiding a second local repackaging fingerprint.
+      - name: Fetch exact GitHub artifact archive for public release
+        if: github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.upload_public_artifact.outputs.artifact-id }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:ARTIFACT_ID)) {
+            throw 'upload-artifact did not return an artifact id.'
+          }
+
+          $asset = 'G-CET-Runtime-Profiler_v3.0.0-alpha7.zip'
+          $uri = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/artifacts/$env:ARTIFACT_ID/zip"
+
+          curl.exe -fL -H "Authorization: Bearer $env:GH_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" $uri -o $asset
+
+          if (!(Test-Path -LiteralPath $asset -PathType Leaf)) {
+            throw 'GitHub artifact archive download failed.'
+          }
+
+          $hash = (Get-FileHash -LiteralPath $asset -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $asset" | Set-Content -Encoding ASCII "$asset.sha256.txt"
+          "PUBLIC_ASSET=$asset" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "PUBLIC_SHA256=$hash" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Publish C# standalone prerelease
+        if: github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = 'v3.0.0-alpha7'
+          $title = 'G-CET Runtime Profiler v3.0.0-alpha7'
+          $asset = $env:PUBLIC_ASSET
+          $shaAsset = "$asset.sha256.txt"
+
+          $notes = @(
+            'First native C# standalone-manager build.',
+            '',
+            'Capture: F11 START / F11 STOP + automatic CSV export.',
+            '',
+            'Distribution:',
+            '- C# / .NET 8 self-contained win-x64',
+            '- normal transparent multi-file package',
+            '- no PowerShell/VBS manager in the public package',
+            '- no PyInstaller, UPX, or self-extracting wrapper',
+            '- Release ZIP is byte-identical to the successful GitHub Actions artifact archive',
+            '',
+            'SHA-256:',
+            $env:PUBLIC_SHA256
+          ) -join [Environment]::NewLine
+
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title $title --notes $notes --prerelease
+            if ($LASTEXITCODE -ne 0) { throw 'Could not create GitHub prerelease.' }
+          }
+          else {
+            gh release edit $tag --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title $title --notes $notes --prerelease
+            if ($LASTEXITCODE -ne 0) { throw 'Could not update GitHub prerelease.' }
+          }
+
+          gh release upload $tag $asset $shaAsset --repo $env:GITHUB_REPOSITORY --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Could not upload public Release assets.' }

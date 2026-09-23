@@ -4,6 +4,9 @@ namespace GCETRuntimeProfiler.Core.Services;
 
 public interface IProfilerService
 {
+    string PackageVersion { get; }
+    string ResultsRoot { get; }
+
     ProfilerStatus GetStatus(string gameRoot);
     ProfilerStatus Install(string gameRoot, bool coreProfilerOnly);
     string? Collect(string gameRoot);
