@@ -1,28 +1,43 @@
 # G-CET Runtime Profiler
 
-Standalone CET/Lua runtime profiler manager for **Cyberpunk 2077**, with optional 0-Engine Scheduler attribution.
+**v1.0.0 — first stable release**
 
-## v0.1.2-beta — guided setup + optional frame-time companion
+A standalone Cyberpunk 2077 CET/Lua runtime profiler with transactional install/restore, optional 0-Engine Scheduler attribution, optional frame-time pairing, and a headless interface for G's Cyberpunk 2077 TOTAL Profiler.
 
-The standalone manager is a normal **C# / .NET 8 WinForms application**. The beta keeps the CET profiler standalone while making synchronized frame-time capture easier to discover.
+## Download and run
 
-The port keeps the established profiler behavior and file ownership model:
+The public release is a **portable ZIP**. No installer is required.
 
 ```text
-G-CET-Runtime-Profiler.exe
-        │
-        ├─ GUI mode for standalone users
-        └─ headless JSON mode for TOTAL Profiler
-                 │
-                 ▼
-        G.CETProfiler.Core
-                 │
-        ┌────────┼─────────┐
-        ▼        ▼         ▼
-      CET ASI  0-Engine  RESULTS
+G-CET-Runtime-Profiler-v1.0.0.zip
+└─ G-CET-Runtime-Profiler\
+   ├─ G-CET-Runtime-Profiler.exe
+   ├─ G.CETProfiler.Core.dll
+   ├─ MANIFEST.json
+   ├─ VERSION.txt
+   ├─ README.md
+   ├─ payload\
+   ├─ RESULTS\
+   └─ .NET self-contained runtime files...
 ```
 
-The PowerShell implementation remains under `reference/powershell-alpha6c/` as historical/reference material only. It is **not shipped in the public C# package**.
+Extract the ZIP to a normal writable folder and run `G-CET-Runtime-Profiler.exe`.
+
+The profiler is self-contained: users do **not** need to install .NET separately. Settings are created beside the EXE in the extracted profiler folder rather than being sent to Windows roaming/app-data folders.
+
+## Requirements
+
+Required:
+
+- Cyberpunk 2077
+- Cyber Engine Tweaks (CET)
+
+Optional:
+
+- 0-Engine — adds Scheduler attribution/integration where the installed layout is recognized
+- a frame-time capture tool — CapFrameX is the tested/recommended companion, but another profiler or compatible CapFrameX version can be used
+
+Neither 0-Engine nor a frame-time profiler is required for a normal CET profiler run.
 
 ## Capture contract
 
@@ -30,94 +45,94 @@ The profiler owns one CET input, defaulting to **F11**:
 
 ```text
 F11 #1 -> START fresh capture
-F11 #2 -> STOP + AUTO EXPORT CSV
+F11 #2 -> STOP + AUTO EXPORT
 ```
 
-There is no separate F12/export action.
+There is no separate export key.
 
 ## Standalone workflow
 
 1. Run `G-CET-Runtime-Profiler.exe`.
-2. On **Setup**, select the Cyberpunk 2077 folder.
-3. Optionally enable **Run with a frame-time capture tool** and link an existing profiler executable plus its capture/results folder.
-4. Continue to **Install, Capture & Recovery**. CET / 0-Engine / Scheduler compatibility is checked there.
-5. Use **INSTALL PROFILER**. The CET capture binding is preset and verified as F11.
-6. In game, use F11 to start and stop the CET measurement.
-7. Use **COLLECT RESULTS / CLEAR LIVE**. Known CET runtime output is copied and verified before being removed from the live game folder.
-8. If a frame-time companion is configured, its latest capture is copied into the same result directory under `FrameTime/`. The external profiler's source files are never deleted.
-9. Use **RESTORE ORIGINAL STATE** when finished with profiling.
+2. On **SETUP**, select the Cyberpunk 2077 folder.
+3. Optionally link a frame-time profiler executable and its results folder.
+4. Continue to **INSTALL, CAPTURE & RECOVERY**.
+5. Review the status list and use **INSTALL PROFILER**.
+6. When the page reports **PROFILER IS READY!**, optionally launch the frame-time tool and then start Cyberpunk.
+7. In game, press F11 to start and F11 again to stop/export.
+8. Return to the manager and use **COLLECT RESULTS / CLEAR LIVE**.
+9. When finished profiling, use **RESTORE ORIGINAL STATE**.
 
-### Optional frame-time companion
+### Status language
 
-The companion is **not a dependency**. G-CET never configures or modifies it and never requires it for CET profiling. If the user links an executable, the capture page can launch that tool as a convenience; capture control remains owned by the external profiler.
+The second page uses one shared status convention:
 
-The beta recognizes CapFrameX configuration read-only and can report its `CaptureHotKey`. **CapFrameX 1.9.1.2 Beta** is the tested reference used during development. Other profilers can be linked; when their key format is unknown the manager reports **UNKNOWN** and asks the user to verify F11 manually.
+- ✅ confirmed good / completed
+- ⚠️ optional, pending, unknown, or degraded-but-usable
+- ❌ blocking error requiring attention
 
-The companion executable and results paths are stored in package-local convenience settings. The capture page enables **START FRAME-TIME TOOL** only when the optional pairing is enabled and the linked executable exists. Collection copies the newest detected companion capture into the CET archive and leaves the external source untouched.
+Optional components never make the core CET profiler unavailable by themselves.
 
-The managed installation state is stored in the game folder:
+## Optional frame-time companion
+
+Frame-time pairing is convenience-only and is **not a dependency**.
+
+CapFrameX is the development/test reference. The manager can inspect recognized CapFrameX configuration read-only to report its capture key and suggest its capture directory. Other profilers are accepted; if their key cannot be identified the UI reports it as unknown and asks the user to verify synchronization manually.
+
+External frame-time files are always **copied only** into the collected CET result. The source files belonging to the external profiler are never moved, deleted, or modified.
+
+## 0-Engine behavior
+
+0-Engine compatibility is resolved from the installed structure/capabilities rather than from an assumed version number.
+
+### Existing Scheduler-integrated 0-Engine
+
+The user's `init.lua` stays untouched. If its Scheduler is not already profiler-aware, the original Scheduler is copied and verified before the profiler-aware Scheduler is temporarily deployed.
+
+### Recognized unintegrated/custom 0-Engine
+
+The original `init.lua` is copied and hash-verified before a temporary adaptive profiler bridge is inserted. The profiler uses `modules/CETProfilerScheduler.lua` so it does not collide with a user's existing `Scheduler.lua`.
+
+### Core-profiler fallback
+
+If the 0-Engine structure cannot be integrated safely, the manager can run CET profiling in core-only mode. 0-Engine remains byte-for-byte untouched and Scheduler attribution is skipped.
+
+## File safety and restore
+
+Installation is transactional.
+
+Before a pre-existing user file or directory is modified, its recoverable original state is copied and verified. Unknown/unowned files are not swept.
+
+Managed state is stored in:
 
 ```text
 bin\x64\plugins\.cet_runtime_profiler\
 ```
 
-That state survives closing or restarting the manager and is the same state consumed by G's Cyberpunk 2077 TOTAL Profiler.
+**RESTORE ORIGINAL STATE** restores the original CET/0-Engine/binding state and removes profiler-owned temporary integration files.
 
-## 0-Engine behavior
+If live CET profiler output exists, known profiler output is archived before restore. Unrelated files in the CET directory remain untouched.
 
-The C# core preserves the existing three-mode behavior. The core-only choice is no longer presented as a normal setup decision: it appears as a fallback only when the installed 0-Engine cannot be integrated safely or Scheduler integration fails and rolls back.
+A strict headless emergency-recovery command is retained for advanced/manual recovery:
 
-**Existing Scheduler-integrated 0-Engine:** the user's `init.lua` remains untouched. A profiler-aware Scheduler is temporarily installed only when required, with exact backup/restore.
+```text
+G-CET-Runtime-Profiler.exe --emergency-restore --game "..." --json
+```
 
-**Recognized unintegrated/custom 0-Engine:** the original `init.lua` is hash-backed-up and a temporary adaptive bridge is inserted immediately before its final `return Engine`. The profiler uses the separate `modules/CETProfilerScheduler.lua` filename so it does not collide with the user's Scheduler.
+## Results ownership
 
-**Core profiler only:** 0-Engine is left byte-for-byte untouched. Native CET profiling remains available, but Scheduler attribution is skipped unless the user's own environment already exposes it.
+Standalone results remain package-local:
 
-## 0-Engine resolver / handoff contract
+```text
+G-CET-Runtime-Profiler\RESULTS\
+```
 
-0-Engine compatibility is resolved from the installed structure and capabilities, **not from an assumed version number**.
+On collection, known live CET profiler output is copied and verified into the standalone result directory, then removed from the live game folder.
 
-- no 0-Engine: CET core profiling works without adding 0-Engine;
-- recognized existing Scheduler API: preserve `init.lua`, transactionally manage only `Scheduler.lua` when required;
-- recognized unintegrated `Engine` layout: preserve the user's existing `Scheduler.lua`, patch the verified `init.lua` anchor transactionally, and use the uniquely named `CETProfilerScheduler.lua`;
-- existing profiler bridge marker: reuse the recognized bridge without rewriting `init.lua`;
-- unrecognized structure: reject full integration before mutation and allow the core-only fallback, which leaves 0-Engine byte-untouched.
-
-CI exercises these paths as a regression contract so resolver/handoff behavior cannot silently drift.
-
-## Restore safety
-
-### Restore UI feedback
-
-The restore confirmation is guarded from the window-activation auto-refresh path, so clicking **Yes** cannot be swallowed by a simultaneous status refresh. The capture page shows an immediate **RESTORING ORIGINAL STATE...** state, then a persistent green success or red failure result.
-
-
-Installation is a persistent, hash-verified transaction.
-
-The manager records the original CET ASI, affected 0-Engine files, CETProfilerControls state, and prior CET binding state before changing them. Restore refuses to overwrite unexpected user changes.
-
-Pre-existing `CETProfilerControls` content is backed up and restored exactly. Legacy TOTAL Profiler 0.2.19 CET binding state is also understood during migration.
-
-If live profiler output still exists when Restore is requested, known scripted CET output files are archived into the standalone `RESULTS/` folder before game files are restored. Exact filenames plus the manifest-owned `CET_Runtime_Profile_*` output patterns are eligible; unrelated files in the CET directory are never swept.
-
-### Headless emergency recovery
-
-Normal **RESTORE ORIGINAL STATE** stays intentionally strict: if any managed file is missing, changed, or has a bad backup, normal restore stops before changing anything.
-
-The headless `--emergency-restore` command remains available for advanced/manual recovery when strict restore cannot proceed. It evaluates every managed component independently:
-
-- components with a valid original backup and a known live state are restored;
-- profiler-added files are removed only when they still match the profiler-owned version;
-- changed or ambiguous files are left untouched;
-- successful components do not get blocked by one unrelated failure;
-- if anything is skipped, `.cet_runtime_profiler` and its backups are preserved;
-- a text recovery report is written under `RESULTS/RecoveryReports/` with exact live/backup paths for manual review.
-
-The manager also keeps a full original backup of `bindings.json` before changing the CET profiler binding. Normal restoration remains surgical so unrelated bindings changed later are not rolled back.
+External frame-time results follow the separate copy-only rule described above.
 
 ## Headless JSON interface
 
-TOTAL Profiler uses the **same executable and same C# core**:
+The same executable and the same C# core are used by higher-level orchestration:
 
 ```text
 G-CET-Runtime-Profiler.exe --status  --game "..." --json
@@ -128,53 +143,20 @@ G-CET-Runtime-Profiler.exe --restore --game "..." --json
 G-CET-Runtime-Profiler.exe --emergency-restore --game "..." --json
 ```
 
-Headless mode emits JSON to stdout and errors as JSON to stderr.
+## TOTAL Profiler boundary
 
-## TOTAL Profiler ownership boundary
+This repository is the source of truth for the standalone CET profiler.
 
-This repository is the source of truth for CET profiling.
+G's Cyberpunk 2077 TOTAL Profiler consumes the **exact standalone release unchanged**. TOTAL may orchestrate it, query status, trigger lifecycle actions through the public interface, copy/read completed results, and correlate them with other profiler outputs.
 
-TOTAL Profiler may invoke this standalone executable, verify its status, ask it to collect a completed capture, and copy that completed result into a combined package.
-
-TOTAL Profiler does **not** own CET installation, CET key bindings, CETProfilerControls, 0-Engine injection, CET restore, or CET's standalone result path.
+TOTAL does not maintain a separate CET profiler binary or TOTAL-specific CET package.
 
 See `docs/TOTAL_INTEGRATION_CONTRACT.md`.
 
-## Public package
-
-The Windows build is a transparent self-contained `win-x64` directory:
-
-```text
-G-CET-Runtime-Profiler.exe
-G.CETProfiler.Core.dll
-MANIFEST.json
-README.md
-VERSION.txt
-payload\
-RESULTS\
-.NET self-contained runtime files...
-```
-
-No Python, PyInstaller, PowerShell manager, VBS launcher, UPX, or self-extracting wrapper is used.
-
-## CI validation
-
-GitHub Actions verifies the hash-locked native/Lua payload before compilation, builds and publishes the C# application, confirms no development manager scripts are present in the public package, then runs an integration fixture covering:
-
-```text
-adaptive 0-Engine
-install
-F11 binding transaction
-collect + verified clear of exact outputs and scripted metadata patterns
-restore exact init.lua
-restore pre-existing CETProfilerControls
-restore prior CET bindings
-remove persistent state
-core-only byte preservation
-```
+## Technical notes
 
 The native profiler payload remains version **2.11.0**, targeting the manifest-locked CET **1.37.1** binary set.
 
-## Development reference
+The public manager is a C# / .NET 8 WinForms application. The PowerShell implementation under `reference/powershell-alpha6c/` is historical/reference material only and is not shipped in the public package.
 
-`reference/powershell-alpha6c/` exists only to preserve the behavior that was ported. New runtime behavior belongs in `src/G.CETProfiler.Core/`, and the WinForms/headless front end belongs in `src/G.CETProfiler.App/`.
+CI validates the hash-locked payload, builds the self-contained Windows package, exercises installation/collection/restore and 0-Engine integration fixtures, then produces the portable release ZIP.
