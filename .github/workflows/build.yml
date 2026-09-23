@@ -126,11 +126,16 @@ jobs:
           if ($patchedInitHash -eq $originalInitHash) { throw 'Adaptive init.lua was not patched.' }
 
           'marker-test' | Set-Content -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_Markers.csv') -Encoding utf8
+          '{"capture":"metadata-test"}' | Set-Content -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_Metadata.json') -Encoding utf8
+          'unrelated-user-file' | Set-Content -LiteralPath (Join-Path $cet 'keep_me.txt') -Encoding utf8
 
           $collected = (& $exe --collect --game $fixture --json | ConvertFrom-Json)
           if ([string]::IsNullOrWhiteSpace([string]$collected.destination)) { throw 'Collect returned no destination.' }
           if (!(Test-Path -LiteralPath $collected.destination -PathType Container)) { throw 'Collected result folder missing.' }
           if (Test-Path -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_Markers.csv')) { throw 'Verified live result was not cleared.' }
+          if (Test-Path -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_Metadata.json')) { throw 'Scripted metadata output was not cleared.' }
+          if (!(Test-Path -LiteralPath (Join-Path $collected.destination 'CET_Runtime_Profile_Metadata.json') -PathType Leaf)) { throw 'Scripted metadata output was not archived.' }
+          if (!(Test-Path -LiteralPath (Join-Path $cet 'keep_me.txt') -PathType Leaf)) { throw 'Unrelated CET-directory file was incorrectly deleted.' }
 
           $restore = (& $exe --restore --game $fixture --json | ConvertFrom-Json)
           if ($restore.status.managed) { throw 'Restore left managed state active.' }
@@ -247,7 +252,7 @@ jobs:
         id: upload_public_artifact
         uses: actions/upload-artifact@v4
         with:
-          name: G-CET-Runtime-Profiler-v3.0.0-alpha8
+          name: G-CET-Runtime-Profiler-v3.0.0-alpha9
           path: publish
 
       # The public Release asset is the exact ZIP produced by GitHub for the
@@ -264,7 +269,7 @@ jobs:
             throw 'upload-artifact did not return an artifact id.'
           }
 
-          $asset = 'G-CET-Runtime-Profiler_v3.0.0-alpha8.zip'
+          $asset = 'G-CET-Runtime-Profiler_v3.0.0-alpha9.zip'
           $uri = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/artifacts/$env:ARTIFACT_ID/zip"
 
           curl.exe -fL -H "Authorization: Bearer $env:GH_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" $uri -o $asset
@@ -284,15 +289,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = 'v3.0.0-alpha8'
-          $title = 'G-CET Runtime Profiler v3.0.0-alpha8'
+          $tag = 'v3.0.0-alpha9'
+          $title = 'G-CET Runtime Profiler v3.0.0-alpha9'
           $asset = $env:PUBLIC_ASSET
           $shaAsset = "$asset.sha256.txt"
 
           $notes = @(
-            'C# standalone manager update with emergency partial restore, Start Cyberpunk, and automatic result-folder opening.',
+            'Standalone workflow update: two-page setup, optional read-only frame-time companion detection, companion result bundling, and cleaner 0-Engine fallback UX.',
             '',
-            'Capture: F11 START / F11 STOP + automatic CSV export.',
+            'Capture: CET F11 is preset and verified; F11 START / F11 STOP + automatic export.',
+            'Frame-time companion: optional only. CapFrameX 1.9.1.2 Beta is the tested reference, but custom profilers can be linked. External results are copied into the CET result folder and never deleted at source.',
+            'Cleanup: known CET runtime output patterns are copied, verified, then removed from the live CET folder; unrelated files remain untouched.',
             'Recovery: normal restore remains strict; Emergency Restore independently restores only components that pass safety checks and reports anything left for manual review.',
             '',
             'Distribution:',
