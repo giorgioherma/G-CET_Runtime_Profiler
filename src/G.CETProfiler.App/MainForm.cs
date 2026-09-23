@@ -447,7 +447,11 @@ public sealed class MainForm : Form
 
     private void RenderStatus(ProfilerStatus snapshot)
     {
-        var zeroText = snapshot.ZeroEnginePresent ? snapshot.ZeroEngineInit : "NOT INSTALLED";
+        var zeroText = !snapshot.ZeroEnginePresent
+            ? "NOT INSTALLED"
+            : snapshot.ZeroEngineInitKind == "unsafe"
+                ? "PRESENT · STRUCTURE NOT RECOGNIZED"
+                : "PRESENT";
         var f11 = snapshot.F11Binding
             ? "F11 ✓"
             : snapshot.Managed
