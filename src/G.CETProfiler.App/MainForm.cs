@@ -354,7 +354,7 @@ public sealed class MainForm : Form
                 "Game:       NOT FOUND\r\n" +
                 "CET:        -\r\n" +
                 "0-Engine:   -\r\n" +
-                "Scheduler:  -\r\n" +
+                "Scheduler:  PRESENT -   INTEGRATED -   PROFILER-AWARE -\r\n" +
                 "CET F11:    -\r\n" +
                 "Live files: -";
             RenderSetupGameStatus();
@@ -448,11 +448,17 @@ public sealed class MainForm : Form
                 ? "NOT F11 / NOT CONFIGURED"
                 : "F11 WILL BE PRESET ON INSTALL";
 
+        var schedulerLine = snapshot.ZeroEnginePresent
+            ? $"PRESENT {(snapshot.SchedulerPresent ? "YES" : "NO")}   " +
+              $"INTEGRATED {(snapshot.SchedulerIntegrated ? "YES" : "NO")}   " +
+              $"PROFILER-AWARE {(snapshot.SchedulerProfilerAware ? "YES" : "NO")}"
+            : "PRESENT NO   INTEGRATED NO   PROFILER-AWARE NO";
+
         status.Text =
             $"Game:       FOUND\r\n" +
             $"CET:        {snapshot.CetState}\r\n" +
             $"0-Engine:   {zeroText}\r\n" +
-            $"Scheduler:  {snapshot.Scheduler}\r\n" +
+            $"Scheduler:  {schedulerLine}\r\n" +
             $"CET F11:    {f11}\r\n" +
             $"Controls:   {(snapshot.ControlsPresent ? "PRESENT" : "NOT INSTALLED")}\r\n" +
             $"Live files: {snapshot.LiveResultCount}    Managed install: {(snapshot.Managed ? "YES" : "NO")}";
@@ -495,10 +501,22 @@ public sealed class MainForm : Form
             compatibilityText.Text =
                 "Scheduler integration did not complete safely and was rolled back. You can retry using the CET core-only fallback; 0-Engine will be left untouched.";
         }
+        else if (snapshot.ZeroEngineInitKind == "integrated")
+        {
+            compatibilityText.Text = snapshot.SchedulerProfilerAware
+                ? "0-Engine has Scheduler integrated and the installed Scheduler is already profiler-aware. Normal install keeps the compatible integration path."
+                : "0-Engine has Scheduler integrated, but the installed Scheduler is not profiler-aware. Normal install backs it up, verifies the backup, then temporarily replaces it with the profiler-aware Scheduler.";
+        }
+        else if (snapshot.ZeroEngineInitKind is "adaptive" or "profiler-bridge")
+        {
+            compatibilityText.Text = snapshot.AdaptiveProfilerSchedulerPresent
+                ? "0-Engine does not integrate its existing Scheduler through the recognized API. The separate profiler-aware CETProfilerScheduler bridge is already present."
+                : "0-Engine does not integrate its existing Scheduler through the recognized API. Normal install leaves that Scheduler.lua untouched and adds a separate profiler-aware CETProfilerScheduler bridge.";
+        }
         else
         {
             compatibilityText.Text =
-                "0-Engine was detected and its Scheduler integration path is recognized. The normal install will use the transactional integration path and verified backups.";
+                "0-Engine was detected. The normal install will use only the recognized transactional integration path and verified backups.";
         }
     }
 
