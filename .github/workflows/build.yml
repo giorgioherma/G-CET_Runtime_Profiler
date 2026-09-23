@@ -75,6 +75,8 @@ jobs:
         shell: pwsh
         run: |
           Copy-Item README.md publish\README.md
+          Copy-Item CHANGELOG.md publish\CHANGELOG.md
+          Copy-Item RELEASE_NOTES.md publish\RELEASE_NOTES.md
           Copy-Item VERSION.txt publish\VERSION.txt
           New-Item -ItemType Directory -Force publish\RESULTS | Out-Null
 
@@ -339,81 +341,77 @@ jobs:
         shell: pwsh
         run: ./tests/ResolverHandoffContract.ps1 -PublishedRoot ./publish
 
-      - name: Upload transparent Windows artifact
-        id: upload_public_artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: G-CET-Runtime-Profiler-v${{ steps.product_version.outputs.version }}
-          path: publish
-
-      # The public Release asset is the exact ZIP produced by GitHub for the
-      # successful Actions artifact. It is downloaded back and uploaded unchanged,
-      # avoiding a second local repackaging fingerprint.
-      - name: Fetch exact GitHub artifact archive for public release
-        if: github.ref == 'refs/heads/main'
+      - name: Stage portable release ZIP
         shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ARTIFACT_ID: ${{ steps.upload_public_artifact.outputs.artifact-id }}
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:ARTIFACT_ID)) {
-            throw 'upload-artifact did not return an artifact id.'
-          }
+          $ErrorActionPreference = 'Stop'
+          $portableRoot = 'portable'
+          $productRoot = Join-Path $portableRoot 'G-CET-Runtime-Profiler'
+          if (Test-Path $portableRoot) { Remove-Item $portableRoot -Recurse -Force }
+          New-Item -ItemType Directory -Force $productRoot | Out-Null
 
-          $asset = "G-CET-Runtime-Profiler_v$env:PRODUCT_VERSION.zip"
-          $uri = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/artifacts/$env:ARTIFACT_ID/zip"
+          Copy-Item publish\* $productRoot -Recurse -Force
 
-          curl.exe -fL -H "Authorization: Bearer $env:GH_TOKEN" -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" $uri -o $asset
-
-          if (!(Test-Path -LiteralPath $asset -PathType Leaf)) {
-            throw 'GitHub artifact archive download failed.'
-          }
+          $asset = "G-CET-Runtime-Profiler-v$env:PRODUCT_VERSION.zip"
+          if (Test-Path $asset) { Remove-Item $asset -Force }
+          Compress-Archive -Path $productRoot -DestinationPath $asset -CompressionLevel Optimal
 
           $hash = (Get-FileHash -LiteralPath $asset -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $asset" | Set-Content -Encoding ASCII "$asset.sha256.txt"
+
           "PUBLIC_ASSET=$asset" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           "PUBLIC_SHA256=$hash" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-      - name: Publish C# standalone prerelease
-        if: github.ref == 'refs/heads/main'
+          Write-Host "Portable release: $asset"
+          Write-Host "SHA256: $hash"
+
+      - name: Upload portable Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: G-CET-Runtime-Profiler-v${{ steps.product_version.outputs.version }}
+          path: |
+            G-CET-Runtime-Profiler-v${{ steps.product_version.outputs.version }}.zip
+            G-CET-Runtime-Profiler-v${{ steps.product_version.outputs.version }}.zip.sha256.txt
+
+      - name: Publish clean v1.0.0 stable release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.head_commit.message == 'Release v1.0.0'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          $ErrorActionPreference = 'Stop'
           $tag = "v$env:PRODUCT_VERSION"
-          $title = "G-CET Runtime Profiler v$env:PRODUCT_VERSION"
+          $title = "G-CET-Runtime-Profiler_v$env:PRODUCT_VERSION"
           $asset = $env:PUBLIC_ASSET
           $shaAsset = "$asset.sha256.txt"
 
-          $notes = @(
-            'Beta UI/recovery pass: frame-time launcher, restore confirmation race fix, and simplified capture controls.',
-            '',
-            'Capture: CET F11 is preset and verified; F11 START / F11 STOP + automatic export.',
-            'Frame-time companion: optional only. When a linked executable exists, START FRAME-TIME TOOL launches it from the capture page. Custom profilers remain supported; G-CET does not configure or modify them.',
-            'Restore: clicking Yes can no longer be swallowed by the automatic window-activation refresh. The page now shows RESTORING immediately, then a persistent green success or red failure state.',
-            'UI: START CYBERPUNK is the last action button; the Emergency Restore button was removed from the standalone GUI. The headless --emergency-restore recovery command remains available.',
-            'Cleanup: known CET runtime output patterns are copied, verified, then removed from the live CET folder; unrelated files remain untouched.',
-            '',
-            'Distribution:',
-            '- C# / .NET 8 self-contained win-x64',
-            '- normal transparent multi-file package',
-            '- no PowerShell/VBS manager in the public package',
-            '- no PyInstaller, UPX, or self-extracting wrapper',
-            '- Release ZIP is byte-identical to the successful GitHub Actions artifact archive',
-            '',
-            'SHA-256:',
-            $env:PUBLIC_SHA256
-          ) -join [Environment]::NewLine
-
-          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
-          if ($LASTEXITCODE -ne 0) {
-            gh release create $tag --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title $title --notes $notes --prerelease
-            if ($LASTEXITCODE -ne 0) { throw 'Could not create GitHub prerelease.' }
-          }
-          else {
-            gh release edit $tag --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title $title --notes $notes --prerelease
-            if ($LASTEXITCODE -ne 0) { throw 'Could not update GitHub prerelease.' }
+          # First stable release: remove all old beta/prerelease Releases and their tags.
+          $releaseTags = @(gh release list --repo $env:GITHUB_REPOSITORY --limit 100 --json tagName --jq '.[].tagName')
+          foreach ($oldTag in $releaseTags) {
+            if (![string]::IsNullOrWhiteSpace($oldTag)) {
+              Write-Host "Removing old release $oldTag"
+              gh release delete $oldTag --repo $env:GITHUB_REPOSITORY --yes --cleanup-tag
+              if ($LASTEXITCODE -ne 0) { throw "Could not delete old release $oldTag" }
+            }
           }
 
-          gh release upload $tag $asset $shaAsset --repo $env:GITHUB_REPOSITORY --clobber
-          if ($LASTEXITCODE -ne 0) { throw 'Could not upload public Release assets.' }
+          # Remove dangling version tags from pre-1.0 builds as well.
+          $tagRefs = @(gh api "repos/$env:GITHUB_REPOSITORY/git/matching-refs/tags/" --jq '.[].ref')
+          foreach ($ref in $tagRefs) {
+            if ([string]::IsNullOrWhiteSpace($ref)) { continue }
+            $name = $ref -replace '^refs/tags/', ''
+            if ($name -match '^(v)?[0-9]' -and $name -ne $tag) {
+              Write-Host "Removing old version tag $name"
+              gh api --method DELETE "repos/$env:GITHUB_REPOSITORY/git/refs/tags/$name" | Out-Null
+              if ($LASTEXITCODE -ne 0) { throw "Could not delete old tag $name" }
+            }
+          }
+
+          $body = (Get-Content RELEASE_NOTES.md -Raw).TrimEnd() +
+            [Environment]::NewLine + [Environment]::NewLine +
+            "## SHA-256" + [Environment]::NewLine + [Environment]::NewLine +
+            "`$env:PUBLIC_SHA256`  `$asset`" + [Environment]::NewLine
+          $body | Set-Content -LiteralPath release-body.md -Encoding utf8
+
+          gh release create $tag $asset $shaAsset --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title $title --notes-file release-body.md --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Could not create stable GitHub release.' }
