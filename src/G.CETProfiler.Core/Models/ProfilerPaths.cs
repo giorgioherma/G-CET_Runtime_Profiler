@@ -22,6 +22,7 @@ internal sealed class ProfilerPaths
     public required string BackupZeroScheduler { get; init; }
     public required string BackupZeroAdaptiveScheduler { get; init; }
     public required string BackupControlsRoot { get; init; }
+    public required string BackupBindings { get; init; }
 
     public static ProfilerPaths FromGameRoot(string root)
     {
@@ -53,7 +54,8 @@ internal sealed class ProfilerPaths
             BackupZeroInit = Path.Combine(stateRoot, "0-Engine.init.ORIGINAL.lua"),
             BackupZeroScheduler = Path.Combine(stateRoot, "0-Engine.Scheduler.ORIGINAL.lua"),
             BackupZeroAdaptiveScheduler = Path.Combine(stateRoot, "0-Engine.CETProfilerScheduler.ORIGINAL.lua"),
-            BackupControlsRoot = Path.Combine(stateRoot, "CETProfilerControls.ORIGINAL")
+            BackupControlsRoot = Path.Combine(stateRoot, "CETProfilerControls.ORIGINAL"),
+            BackupBindings = Path.Combine(stateRoot, "bindings.ORIGINAL.json")
         };
     }
 }
