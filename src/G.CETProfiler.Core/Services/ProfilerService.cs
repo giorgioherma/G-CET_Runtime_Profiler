@@ -978,7 +978,9 @@ public sealed class ProfilerService : IProfilerService
         {
             foreach (var source in found)
             {
-                var target = Path.Combine(destination, Path.GetFileName(source));
+                var relative = ResultReportService.GetArchiveRelativePath(Path.GetFileName(source));
+                var target = Path.Combine(destination, relative);
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
                 FileSystemService.CopyFileVerified(source, target);
             }
         }
@@ -988,6 +990,22 @@ public sealed class ProfilerService : IProfilerService
             // destination is removed so it cannot be mistaken for a valid capture.
             FileSystemService.DeleteDirectoryIfExists(destination);
             throw;
+        }
+
+        // Human presentation is deliberately downstream of verified raw collection.
+        // A report failure must never discard a valid native capture or leave live
+        // profiler output behind merely because presentation could not be built.
+        try
+        {
+            ResultReportService.Generate(destination);
+        }
+        catch (Exception ex)
+        {
+            File.WriteAllText(
+                Path.Combine(destination, "CET_Report_Error.txt"),
+                "The native CET profiler data was archived successfully, but the human-readable report could not be generated."
+                + Environment.NewLine + Environment.NewLine
+                + ex);
         }
 
         foreach (var source in found)
