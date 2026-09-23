@@ -18,6 +18,9 @@ public sealed class PackageManifest
 
     [JsonPropertyName("liveResultFiles")]
     public List<string> LiveResultFiles { get; set; } = [];
+
+    [JsonPropertyName("liveResultPatterns")]
+    public List<string> LiveResultPatterns { get; set; } = [];
 }
 
 public sealed class TargetCetManifest
