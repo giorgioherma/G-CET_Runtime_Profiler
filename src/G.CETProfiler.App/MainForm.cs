@@ -13,6 +13,8 @@ public sealed class MainForm : Form
     private readonly Button collect = new();
     private readonly Button restore = new();
     private readonly Button openResults = new();
+    private readonly Button startGame = new();
+    private readonly Button emergencyRestore = new();
     private readonly Button refresh = new();
     private readonly Button browse = new();
 
@@ -97,9 +99,15 @@ public sealed class MainForm : Form
         collect.SetBounds(265, 409, 275, 44);
         collect.Click += async (_, _) => await RunOperationAsync(
             () => profiler.Collect(gameRoot.Text.Trim()),
-            destination => "Results archived successfully." + Environment.NewLine + Environment.NewLine +
-                           "Archive folder:" + Environment.NewLine + destination + Environment.NewLine + Environment.NewLine +
-                           "Live CET profiler CSVs were cleared.");
+            destination =>
+            {
+                if (!string.IsNullOrWhiteSpace(destination) && Directory.Exists(destination))
+                    Process.Start(new ProcessStartInfo(destination) { UseShellExecute = true });
+
+                return "Results archived successfully." + Environment.NewLine + Environment.NewLine +
+                       "Archive folder:" + Environment.NewLine + destination + Environment.NewLine + Environment.NewLine +
+                       "Live CET profiler CSVs were cleared.";
+            });
 
         restore.Text = "RESTORE ORIGINAL STATE";
         restore.SetBounds(555, 409, 225, 44);
@@ -116,18 +124,48 @@ public sealed class MainForm : Form
 
             if (answer != DialogResult.Yes) return;
 
-            await RunOperationAsync(
-                () => profiler.Restore(gameRoot.Text.Trim()),
-                archived => string.IsNullOrWhiteSpace(archived)
-                    ? "Original CET / 0-Engine files and the previous CET binding state were restored."
-                    : "Original CET / 0-Engine files and the previous CET binding state were restored." +
-                      Environment.NewLine + Environment.NewLine +
-                      "Final live results were archived to:" + Environment.NewLine + archived);
+            await RunStrictRestoreAsync();
         };
 
         openResults.Text = "Open Results Folder";
         openResults.SetBounds(20, 468, 230, 36);
         openResults.Click += (_, _) => OpenResultsFolder();
+
+        startGame.Text = "START CYBERPUNK";
+        startGame.SetBounds(265, 468, 275, 36);
+        startGame.Click += (_, _) => StartCyberpunk();
+
+        emergencyRestore.Text = "EMERGENCY RESTORE";
+        emergencyRestore.SetBounds(555, 468, 225, 36);
+        emergencyRestore.Click += async (_, _) =>
+        {
+            var answer = MessageBox.Show(
+                this,
+                "Emergency restore is for a managed state that normal RESTORE cannot finish.\r\n\r\n" +
+                "It checks every profiler-managed component independently. Safe components are restored; anything changed, missing, or uncertain is LEFT UNTOUCHED.\r\n\r\n" +
+                "If anything is skipped, the recovery state/backups stay in the game folder and a report lists exactly what needs manual review.\r\n\r\n" +
+                "Continue?",
+                Text,
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+
+            if (answer != DialogResult.Yes) return;
+
+            await RunOperationAsync(
+                () => profiler.EmergencyRestore(gameRoot.Text.Trim()),
+                result =>
+                {
+                    if (!result.Complete && !string.IsNullOrWhiteSpace(result.ReportPath) && File.Exists(result.ReportPath))
+                        Process.Start(new ProcessStartInfo(result.ReportPath) { UseShellExecute = true });
+
+                    var restored = result.Actions.Count(x => x.Status is "RESTORED" or "ARCHIVED");
+                    var skipped = result.Actions.Count(x => x.Status == "SKIPPED");
+
+                    return result.Complete
+                        ? $"Emergency restore completed safely.\r\n\r\nRestored/archived components: {restored}\r\nRecovery state removed.\r\n\r\nReport:\r\n{result.ReportPath}"
+                        : $"Emergency restore completed PARTIALLY.\r\n\r\nRestored/archived components: {restored}\r\nSkipped for safety: {skipped}\r\n\r\nNothing uncertain was overwritten or deleted. The recovery state/backups were preserved.\r\n\r\nThe recovery report has been opened:\r\n{result.ReportPath}";
+                });
+        };
 
         var info = new Label
         {
@@ -138,7 +176,7 @@ public sealed class MainForm : Form
 
         Controls.AddRange([
             pathLabel, gameRoot, browse, statusGroup, compatibility,
-            install, collect, restore, openResults, info
+            install, collect, restore, openResults, startGame, emergencyRestore, info
         ]);
 
         Shown += async (_, _) => await RefreshStatusAsync(silent: true);
@@ -211,6 +249,9 @@ public sealed class MainForm : Form
             collect.Enabled = false;
             restore.Enabled = false;
             coreOnly.Enabled = false;
+            startGame.Enabled = false;
+            startGame.Text = "START CYBERPUNK";
+            emergencyRestore.Enabled = false;
             return;
         }
 
@@ -219,6 +260,49 @@ public sealed class MainForm : Form
         collect.Enabled = !busy && snapshot.LiveResultCount > 0;
         restore.Enabled = !busy && snapshot.Managed;
         coreOnly.Enabled = !busy && snapshot.ZeroEnginePresent && !snapshot.Managed;
+        emergencyRestore.Enabled = !busy && snapshot.Managed;
+
+        var gameExe = GetGameExe(snapshot.GameRoot);
+        var gameRunning = IsCyberpunkRunning();
+        startGame.Enabled = !busy && File.Exists(gameExe) && !gameRunning;
+        startGame.Text = gameRunning ? "CYBERPUNK RUNNING" : "START CYBERPUNK";
+    }
+
+    private async Task RunStrictRestoreAsync()
+    {
+        if (busy) return;
+
+        try
+        {
+            SetBusy(true);
+            var archived = await Task.Run(() => profiler.Restore(gameRoot.Text.Trim()));
+
+            var message = string.IsNullOrWhiteSpace(archived)
+                ? "Original CET / 0-Engine files and the previous CET binding state were restored."
+                : "Original CET / 0-Engine files and the previous CET binding state were restored." +
+                  Environment.NewLine + Environment.NewLine +
+                  "Final live results were archived to:" + Environment.NewLine + archived;
+
+            MessageBox.Show(this, message, Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                this,
+                "Normal restore could not complete safely. The recovery state/backups were kept." +
+                Environment.NewLine + Environment.NewLine +
+                "Reason:" + Environment.NewLine + FriendlyMessage(ex) +
+                Environment.NewLine + Environment.NewLine +
+                "Use EMERGENCY RESTORE to restore every independent component that still passes its own safety checks. Anything uncertain will be left untouched and listed for manual review.",
+                Text,
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+        }
+        finally
+        {
+            SetBusy(false);
+            await RefreshStatusAsync(silent: true);
+        }
     }
 
     private async Task RunOperationAsync<T>(Func<T> operation, Func<T, string> successMessage)
@@ -250,6 +334,11 @@ public sealed class MainForm : Form
         refresh.Enabled = !value;
         gameRoot.Enabled = !value;
         openResults.Enabled = !value;
+        if (value)
+        {
+            startGame.Enabled = false;
+            emergencyRestore.Enabled = false;
+        }
 
         if (value)
         {
@@ -274,6 +363,53 @@ public sealed class MainForm : Form
         catch (Exception ex)
         {
             MessageBox.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private void StartCyberpunk()
+    {
+        try
+        {
+            var root = gameRoot.Text.Trim();
+            var exe = GetGameExe(root);
+            if (!File.Exists(exe))
+                throw new FileNotFoundException("Cyberpunk2077.exe was not found in the selected game folder.", exe);
+
+            if (IsCyberpunkRunning())
+            {
+                startGame.Enabled = false;
+                startGame.Text = "CYBERPUNK RUNNING";
+                return;
+            }
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = exe,
+                WorkingDirectory = Path.GetDirectoryName(exe)!,
+                UseShellExecute = true
+            });
+
+            startGame.Enabled = false;
+            startGame.Text = "CYBERPUNK RUNNING";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private static string GetGameExe(string root) =>
+        Path.Combine(root, "bin", "x64", "Cyberpunk2077.exe");
+
+    private static bool IsCyberpunkRunning()
+    {
+        try
+        {
+            return Process.GetProcessesByName("Cyberpunk2077").Length > 0;
+        }
+        catch
+        {
+            return false;
         }
     }
 

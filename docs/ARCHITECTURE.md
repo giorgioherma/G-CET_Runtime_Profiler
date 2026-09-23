@@ -111,3 +111,12 @@ TOTAL Profiler does not redirect this path. It consumes the completed standalone
 The C# state model is deliberately tolerant of extra JSON fields so states produced by earlier development managers can be read.
 
 Legacy TOTAL Profiler 0.2.19 binding rollback state and pre-existing CETProfilerControls backups are supported during restore migration.
+
+
+## Recovery invariant
+
+**Rule #1: before the profiler mutates any user-owned file or directory, preserve the original state first.**
+
+Replaced files are copied into the persistent recovery directory and hash-verified before the live copy is changed. Added profiler-owned files record that no original existed. `bindings.json` has both a full-file backup and a surgical CETProfilerControls-node snapshot so normal restore can preserve unrelated bindings changed later.
+
+Normal restore remains all-or-nothing and prevalidates every managed component before mutation. Emergency Restore is deliberately different: it validates and restores each component independently, skips anything ambiguous, preserves the recovery state when any item is unresolved, and writes a manual-review report.

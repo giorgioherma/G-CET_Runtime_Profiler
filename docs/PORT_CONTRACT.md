@@ -2,7 +2,7 @@
 
 The PowerShell alpha6c implementation under `reference/powershell-alpha6c/` is a behavioral reference only.
 
-**v3.0.0-alpha7 implements this contract in C#/.NET 8.** The reference scripts are no longer part of the public runtime package.
+**v3.0.0-alpha8 implements this contract in C#/.NET 8.** The reference scripts are no longer part of the public runtime package.
 
 Future changes should preserve these behavioral invariants unless the standalone profiler contract is intentionally versioned.
 
@@ -37,3 +37,10 @@ G-CET-Runtime-Profiler.exe --restore --game "..." --json
 ```
 
 The JSON contract should remain stable enough for TOTAL Profiler to consume without knowing CET internals.
+
+
+## Recovery invariant
+
+Every user-owned file or directory that the profiler replaces or edits must have recoverable original state recorded **before** the mutation. Added profiler-only files are tracked as additions rather than pretending an original existed.
+
+Strict restore prevalidates the whole transaction. Emergency restore is allowed to make partial progress, but only component-by-component after that component's own backup/ownership checks pass. Anything uncertain stays untouched and is listed for manual review.

@@ -140,8 +140,6 @@ public sealed class ProfilerService : IProfilerService
                 "0-Engine was found, but its init.lua structure is not recognized as safe for adaptive Scheduler injection. " +
                 "Check 'Core profiler only - leave 0-Engine untouched' and install again.");
 
-        Directory.CreateDirectory(paths.StateRoot);
-
         var controlsPresentBefore = Directory.Exists(paths.Controls);
         var state = new ProfilerState
         {
@@ -248,6 +246,191 @@ public sealed class ProfilerService : IProfilerService
 
         Directory.Delete(paths.StateRoot, true);
         return archived;
+    }
+
+    public EmergencyRestoreResult EmergencyRestore(string gameRoot)
+    {
+        AssertGameClosed();
+        var paths = GetValidatedPaths(gameRoot);
+        var state = ReadState(paths, allowMissing: false)
+            ?? throw new InvalidOperationException("No managed profiler installation state was found.");
+
+        var actions = new List<EmergencyRestoreAction>();
+        var manual = new List<string>();
+        string? archived = null;
+        var failed = false;
+
+        void NoChange(string component, string path, string message) =>
+            actions.Add(new EmergencyRestoreAction
+            {
+                Component = component,
+                Status = "NO CHANGE",
+                Path = path,
+                Message = message
+            });
+
+        void TryStep(string component, string path, string? backupPath, Action action)
+        {
+            try
+            {
+                action();
+                actions.Add(new EmergencyRestoreAction
+                {
+                    Component = component,
+                    Status = "RESTORED",
+                    Path = path,
+                    Message = "Independent safety checks passed."
+                });
+            }
+            catch (Exception ex)
+            {
+                failed = true;
+                actions.Add(new EmergencyRestoreAction
+                {
+                    Component = component,
+                    Status = "SKIPPED",
+                    Path = path,
+                    Message = ex.Message
+                });
+
+                var backup = !string.IsNullOrWhiteSpace(backupPath) && (File.Exists(backupPath) || Directory.Exists(backupPath))
+                    ? $" Backup preserved at: {backupPath}"
+                    : "";
+                manual.Add($"{component}: {ex.Message} Live path: {path}.{backup}");
+            }
+        }
+
+        try
+        {
+            archived = CollectResultsInternal(paths, allowEmpty: true);
+            actions.Add(new EmergencyRestoreAction
+            {
+                Component = "Live CET results",
+                Status = string.IsNullOrWhiteSpace(archived) ? "NO CHANGE" : "ARCHIVED",
+                Path = paths.CetRoot,
+                Message = string.IsNullOrWhiteSpace(archived)
+                    ? "No live profiler CSVs were present."
+                    : $"Archived safely to {archived}."
+            });
+        }
+        catch (Exception ex)
+        {
+            failed = true;
+            actions.Add(new EmergencyRestoreAction
+            {
+                Component = "Live CET results",
+                Status = "SKIPPED",
+                Path = paths.CetRoot,
+                Message = ex.Message
+            });
+            manual.Add($"Live CET results: {ex.Message} Live CSVs were left untouched in {paths.CetRoot}.");
+        }
+
+        if (state.Binding is not null || File.Exists(paths.LegacyTotalBindingState))
+        {
+            TryStep(
+                "CET bindings",
+                paths.Bindings,
+                File.Exists(paths.BackupBindings) ? paths.BackupBindings : null,
+                () => bindings.Restore(paths, state.Binding));
+        }
+        else
+        {
+            NoChange("CET bindings", paths.Bindings, "No recorded binding transaction exists; left untouched.");
+        }
+
+        if (state.Controls.Mode is "replaced" or "added" or "profiler-owned")
+        {
+            TryStep(
+                "CETProfilerControls",
+                paths.Controls,
+                state.Controls.Mode == "replaced" ? paths.BackupControlsRoot : null,
+                () =>
+                {
+                    ValidateControlsRestore(paths, state.Controls);
+                    RestoreControls(paths, state);
+                });
+        }
+        else
+        {
+            NoChange("CETProfilerControls", paths.Controls, $"State mode '{state.Controls.Mode}' is not a profiler-owned mutation; left untouched.");
+        }
+
+        if (state.ZeroEngine.Mode == "bypassed")
+        {
+            TryStep(
+                "0-Engine folder",
+                paths.ZeroRoot,
+                paths.BackupZeroRoot,
+                () =>
+                {
+                    ValidateBypassedZeroRestore(paths, state);
+                    RestoreBypassedZeroEngine(paths, state);
+                });
+        }
+        else
+        {
+            EmergencyRestoreFile(
+                "0-Engine init.lua",
+                paths.ZeroInit,
+                paths.BackupZeroInit,
+                state.ZeroEngine.Init,
+                actions,
+                manual,
+                ref failed);
+
+            EmergencyRestoreFile(
+                "0-Engine Scheduler.lua",
+                paths.ZeroScheduler,
+                paths.BackupZeroScheduler,
+                state.ZeroEngine.Scheduler,
+                actions,
+                manual,
+                ref failed);
+
+            EmergencyRestoreFile(
+                "0-Engine CETProfilerScheduler.lua",
+                paths.ZeroAdaptiveScheduler,
+                paths.BackupZeroAdaptiveScheduler,
+                state.ZeroEngine.AdaptiveScheduler,
+                actions,
+                manual,
+                ref failed);
+        }
+
+        if (state.Asi.Mode == "replaced")
+        {
+            TryStep(
+                "CET ASI",
+                paths.LiveAsi,
+                paths.BackupAsi,
+                () =>
+                {
+                    ValidateAsiRestore(paths, state);
+                    RestoreAsi(paths, state);
+                });
+        }
+        else
+        {
+            NoChange("CET ASI", paths.LiveAsi, $"State mode '{state.Asi.Mode}' means this manager did not replace the user's ASI; left untouched.");
+        }
+
+        var complete = !failed;
+        if (complete && Directory.Exists(paths.StateRoot))
+            Directory.Delete(paths.StateRoot, true);
+
+        var reportPath = WriteEmergencyRestoreReport(paths, actions, manual, archived, complete);
+
+        return new EmergencyRestoreResult
+        {
+            Ok = true,
+            Complete = complete,
+            Archived = archived,
+            StatePreserved = !complete && Directory.Exists(paths.StateRoot),
+            ReportPath = reportPath,
+            Actions = actions,
+            ManualReview = manual
+        };
     }
 
     private void InstallAsi(
@@ -417,31 +600,10 @@ public sealed class ProfilerService : IProfilerService
 
     private void ValidateRestore(ProfilerPaths paths, ProfilerState state)
     {
-        var profilerHash = state.Asi.InstalledHash?.ToLowerInvariant();
-
-        if (state.Asi.Mode == "replaced")
-        {
-            RequireFile(paths.BackupAsi, "Original CET ASI backup is missing. Restore aborted before changing anything.");
-            RequireHash(paths.BackupAsi, state.Asi.OriginalHash, "Original CET ASI backup hash is wrong. Restore aborted before changing anything.");
-
-            var current = FileSystemService.Sha256(paths.LiveAsi);
-            if (!HashEquals(current, profilerHash) && !HashEquals(current, state.Asi.OriginalHash))
-                throw new InvalidOperationException("Live CET ASI changed after profiler installation. Restore aborted to avoid overwriting user changes.");
-        }
+        ValidateAsiRestore(paths, state);
 
         if (state.ZeroEngine.Mode == "bypassed")
-        {
-            if (!Directory.Exists(paths.BackupZeroRoot))
-                throw new InvalidOperationException("Full 0-Engine backup is missing. Restore aborted before changing anything.");
-
-            var expected = state.ZeroEngine.Bypass.OriginalFingerprint;
-            if (!string.Equals(FileSystemService.DirectoryFingerprint(paths.BackupZeroRoot), expected, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("Full 0-Engine backup fingerprint is wrong. Restore aborted before changing anything.");
-
-            if (Directory.Exists(paths.ZeroRoot) &&
-                !string.Equals(FileSystemService.DirectoryFingerprint(paths.ZeroRoot), expected, StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("0-Engine reappeared or changed while compatibility mode was active. Restore aborted to avoid overwriting user files.");
-        }
+            ValidateBypassedZeroRestore(paths, state);
 
         ValidateRestoreFile(
             paths.ZeroInit,
@@ -468,6 +630,7 @@ public sealed class ProfilerService : IProfilerService
             "CETProfilerScheduler.lua changed after profiler installation. Restore aborted to avoid overwriting user changes.");
 
         ValidateControlsRestore(paths, state.Controls);
+        bindings.ValidateRestore(paths, state.Binding);
     }
 
     private static void ValidateRestoreFile(
@@ -586,9 +749,155 @@ public sealed class ProfilerService : IProfilerService
                     StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("CETProfilerControls restoration failed verification.");
         }
-        else
+        else if (state.Controls.Mode is "added" or "profiler-owned")
         {
             FileSystemService.DeleteDirectoryIfExists(paths.Controls);
+        }
+    }
+
+    private static void ValidateAsiRestore(ProfilerPaths paths, ProfilerState state)
+    {
+        if (state.Asi.Mode != "replaced") return;
+
+        RequireFile(paths.BackupAsi, "Original CET ASI backup is missing.");
+        RequireHash(paths.BackupAsi, state.Asi.OriginalHash, "Original CET ASI backup hash is wrong.");
+
+        var current = FileSystemService.Sha256(paths.LiveAsi);
+        if (!HashEquals(current, state.Asi.InstalledHash) && !HashEquals(current, state.Asi.OriginalHash))
+            throw new InvalidOperationException("Live CET ASI changed after profiler installation; it was left untouched.");
+    }
+
+    private static void ValidateBypassedZeroRestore(ProfilerPaths paths, ProfilerState state)
+    {
+        if (state.ZeroEngine.Mode != "bypassed") return;
+
+        if (!Directory.Exists(paths.BackupZeroRoot))
+            throw new InvalidOperationException("Full 0-Engine backup is missing.");
+
+        var expected = state.ZeroEngine.Bypass.OriginalFingerprint;
+        if (!string.Equals(FileSystemService.DirectoryFingerprint(paths.BackupZeroRoot), expected, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Full 0-Engine backup fingerprint is wrong.");
+
+        if (Directory.Exists(paths.ZeroRoot) &&
+            !string.Equals(FileSystemService.DirectoryFingerprint(paths.ZeroRoot), expected, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("0-Engine reappeared or changed while compatibility mode was active; it was left untouched.");
+    }
+
+    private static void RestoreBypassedZeroEngine(ProfilerPaths paths, ProfilerState state)
+    {
+        var expected = state.ZeroEngine.Bypass.OriginalFingerprint;
+        if (!Directory.Exists(paths.ZeroRoot))
+            FileSystemService.CopyDirectoryExact(paths.BackupZeroRoot, paths.ZeroRoot);
+
+        if (!string.Equals(FileSystemService.DirectoryFingerprint(paths.ZeroRoot), expected, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("0-Engine full-folder restoration failed verification.");
+    }
+
+    private static void EmergencyRestoreFile(
+        string component,
+        string livePath,
+        string backupPath,
+        FileTransactionState transaction,
+        List<EmergencyRestoreAction> actions,
+        List<string> manual,
+        ref bool failed)
+    {
+        if (transaction.Mode is not ("replaced" or "patched-adaptive" or "added"))
+        {
+            actions.Add(new EmergencyRestoreAction
+            {
+                Component = component,
+                Status = "NO CHANGE",
+                Path = livePath,
+                Message = $"State mode '{transaction.Mode}' is not a profiler-owned mutation; left untouched."
+            });
+            return;
+        }
+
+        try
+        {
+            ValidateRestoreFile(
+                livePath,
+                backupPath,
+                transaction,
+                $"Original backup is missing for {component}.",
+                $"Original backup hash is wrong for {component}.",
+                $"{component} changed after profiler installation; it was left untouched.");
+
+            RestoreFile(livePath, backupPath, transaction, $"{component} restoration failed verification.");
+
+            actions.Add(new EmergencyRestoreAction
+            {
+                Component = component,
+                Status = "RESTORED",
+                Path = livePath,
+                Message = "Independent safety checks passed."
+            });
+        }
+        catch (Exception ex)
+        {
+            failed = true;
+            actions.Add(new EmergencyRestoreAction
+            {
+                Component = component,
+                Status = "SKIPPED",
+                Path = livePath,
+                Message = ex.Message
+            });
+
+            var backup = File.Exists(backupPath) ? $" Backup preserved at: {backupPath}" : "";
+            manual.Add($"{component}: {ex.Message} Live path: {livePath}.{backup}");
+        }
+    }
+
+    private string WriteEmergencyRestoreReport(
+        ProfilerPaths paths,
+        IReadOnlyList<EmergencyRestoreAction> actions,
+        IReadOnlyList<string> manual,
+        string? archived,
+        bool complete)
+    {
+        try
+        {
+            var reportRoot = Path.Combine(resultsRoot, "RecoveryReports");
+            Directory.CreateDirectory(reportRoot);
+
+            var reportPath = Path.Combine(
+                reportRoot,
+                $"EmergencyRestore-{DateTime.Now:yyyyMMdd-HHmmss}.txt");
+
+            var lines = new List<string>
+            {
+                $"G-CET Runtime Profiler {manifest.PackageVersion}",
+                "EMERGENCY RESTORE REPORT",
+                $"Created: {DateTimeOffset.Now:O}",
+                $"Game: {paths.Root}",
+                $"Complete: {(complete ? "YES" : "NO")}",
+                $"Managed recovery state preserved: {(!complete && Directory.Exists(paths.StateRoot) ? "YES" : "NO")}",
+                $"Managed state/backups: {paths.StateRoot}",
+                $"Archived live results: {archived ?? "(none)"}",
+                "",
+                "Actions:"
+            };
+
+            foreach (var action in actions)
+                lines.Add($"[{action.Status}] {action.Component} | {action.Path} | {action.Message}");
+
+            if (manual.Count > 0)
+            {
+                lines.Add("");
+                lines.Add("MANUAL REVIEW REQUIRED:");
+                lines.AddRange(manual.Select(x => "- " + x));
+                lines.Add("");
+                lines.Add("Do not delete the .cet_runtime_profiler recovery folder until the skipped items are resolved.");
+            }
+
+            File.WriteAllLines(reportPath, lines);
+            return reportPath;
+        }
+        catch
+        {
+            return "";
         }
     }
 

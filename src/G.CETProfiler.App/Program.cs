@@ -50,6 +50,7 @@ internal static class Program
                 case "--collect": command = "collect"; break;
                 case "--reset": command = "reset"; break;
                 case "--restore": command = "restore"; break;
+                case "--emergency-restore": command = "emergency-restore"; break;
                 case "--core-only": coreOnly = true; break;
                 case "--json": break; // JSON is always used in headless mode.
                 case "--game" when i + 1 < args.Length: game = args[++i]; break;
@@ -64,7 +65,7 @@ internal static class Program
         }
 
         if (string.IsNullOrWhiteSpace(command))
-            throw new ArgumentException("Specify --status, --install, --collect, --reset, or --restore.");
+            throw new ArgumentException("Specify --status, --install, --collect, --reset, --restore, or --emergency-restore.");
         if (string.IsNullOrWhiteSpace(game))
             throw new ArgumentException("Specify --game <Cyberpunk 2077 root>.");
 
@@ -92,6 +93,7 @@ internal static class Program
                 archived = service.Restore(game),
                 status = service.GetStatus(game)
             },
+            "emergency-restore" => service.EmergencyRestore(game),
             _ => throw new InvalidOperationException()
         };
 
@@ -114,5 +116,6 @@ internal static class Program
         "  --install --game <root> [--core-only] --json\n" +
         "  --collect --game <root> --json\n" +
         "  --reset   --game <root> --json\n" +
-        "  --restore --game <root> --json\n";
+        "  --restore --game <root> --json\n" +
+        "  --emergency-restore --game <root> --json\n";
 }

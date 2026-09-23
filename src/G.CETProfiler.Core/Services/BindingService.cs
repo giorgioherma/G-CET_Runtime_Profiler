@@ -17,6 +17,14 @@ internal sealed class BindingService
     public BindingTransactionState Snapshot(ProfilerPaths paths)
     {
         var fileExisted = File.Exists(paths.Bindings);
+        string? originalFileHash = null;
+
+        if (fileExisted)
+        {
+            originalFileHash = FileSystemService.Sha256(paths.Bindings);
+            FileSystemService.CopyFileVerified(paths.Bindings, paths.BackupBindings, originalFileHash);
+        }
+
         var root = ReadBindingsObject(paths);
         var hadNode = root.TryGetPropertyValue("CETProfilerControls", out var node) && node is not null;
 
@@ -25,7 +33,8 @@ internal sealed class BindingService
             FileExistedBefore = fileExisted,
             HadNode = hadNode,
             OriginalNodeJson = hadNode ? node!.ToJsonString() : "",
-            InstalledToggle = F11BindCode
+            InstalledToggle = F11BindCode,
+            OriginalFileHash = originalFileHash
         };
     }
 
@@ -63,9 +72,41 @@ internal sealed class BindingService
         }
     }
 
+    public void ValidateRestore(ProfilerPaths paths, BindingTransactionState? state)
+    {
+        state ??= ReadLegacyTotalState(paths);
+        if (state is null) return;
+
+        if (state.FileExistedBefore && !File.Exists(paths.Bindings))
+            throw new InvalidOperationException(
+                "CET bindings.json existed before profiling but is now missing. " +
+                "Automatic restore will not recreate only part of the file. The full original backup is preserved for manual recovery.");
+
+        _ = ReadBindingsObject(paths);
+
+        if (state.HadNode)
+        {
+            if (string.IsNullOrWhiteSpace(state.OriginalNodeJson))
+                throw new InvalidOperationException("Saved CETProfilerControls binding state is empty.");
+
+            try
+            {
+                _ = JsonNode.Parse(state.OriginalNodeJson)
+                    ?? throw new InvalidOperationException("Saved CETProfilerControls binding state is invalid.");
+            }
+            catch (JsonException ex)
+            {
+                throw new InvalidOperationException("Saved CETProfilerControls binding state is invalid.", ex);
+            }
+        }
+    }
+
     public void Restore(ProfilerPaths paths, BindingTransactionState? state)
     {
         state ??= ReadLegacyTotalState(paths);
+        if (state is null) return;
+
+        ValidateRestore(paths, state);
 
         var root = ReadBindingsObject(paths);
         root.Remove("CETProfilerControls");
@@ -132,7 +173,8 @@ internal sealed class BindingService
                 FileExistedBefore = existed,
                 HadNode = hadNode,
                 OriginalNodeJson = originalNode,
-                InstalledToggle = F11BindCode
+                InstalledToggle = F11BindCode,
+                OriginalFileHash = null
             };
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException)

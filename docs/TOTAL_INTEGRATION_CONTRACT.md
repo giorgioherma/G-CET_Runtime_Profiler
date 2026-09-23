@@ -26,3 +26,8 @@ TOTAL may:
 TOTAL should consume a versioned standalone release of this repository and invoke `G-CET-Runtime-Profiler.exe` headlessly. The files used by TOTAL must be byte-identical to the standalone package for that release.
 
 Combined-capture conveniences belong in TOTAL. If TOTAL needs a new CET capability, that capability should first be exposed by the standalone core/headless contract rather than implemented as a TOTAL-only fork.
+
+
+## Recovery behavior
+
+TOTAL must expose the standalone manager's strict `--restore` and partial `--emergency-restore` semantics rather than recreating CET cleanup logic. A failed strict restore is not a dead end: Emergency Restore may recover independently safe CET-owned components while leaving ambiguous user changes untouched and reporting them for manual review.
