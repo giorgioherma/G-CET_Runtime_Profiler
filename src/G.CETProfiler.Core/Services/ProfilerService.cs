@@ -111,7 +111,7 @@ public sealed class ProfilerService : IProfilerService
             throw new InvalidOperationException("Profiler manager state already exists. Restore/clean the previous managed install first.");
 
         if (GetLiveResults(paths).Count > 0)
-            throw new InvalidOperationException("Live profiler CSVs already exist in the CET folder. Use COLLECT RESULTS / CLEAR LIVE first.");
+            throw new InvalidOperationException("Live profiler output already exists in the CET folder. Use COLLECT RESULTS / CLEAR LIVE first.");
 
         var officialHash = manifest.TargetCet.OfficialSha256.ToLowerInvariant();
         var profilerHash = manifest.TargetCet.ProfilerSha256.ToLowerInvariant();
@@ -946,7 +946,7 @@ public sealed class ProfilerService : IProfilerService
         if (found.Count == 0)
         {
             if (allowEmpty) return null;
-            throw new InvalidOperationException("No live profiler CSV files were found in the CET folder.");
+            throw new InvalidOperationException("No live profiler output files were found in the CET folder.");
         }
 
         Directory.CreateDirectory(resultsRoot);
@@ -983,14 +983,31 @@ public sealed class ProfilerService : IProfilerService
 
     private List<string> GetLiveResults(ProfilerPaths paths)
     {
-        var found = new List<string>();
+        var found = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // Exact names remain the primary contract.
         foreach (var name in manifest.LiveResultFiles)
         {
             var path = Path.Combine(paths.CetRoot, name);
             if (File.Exists(path)) found.Add(path);
         }
 
-        return found;
+        // Scripted profiler-owned output patterns cover small metadata/status/temp
+        // companions without ever sweeping arbitrary files from the CET directory.
+        foreach (var pattern in manifest.LiveResultPatterns)
+        {
+            if (string.IsNullOrWhiteSpace(pattern) ||
+                pattern.Contains(Path.DirectorySeparatorChar) ||
+                pattern.Contains(Path.AltDirectorySeparatorChar))
+                continue;
+
+            foreach (var path in Directory.EnumerateFiles(paths.CetRoot, pattern, SearchOption.TopDirectoryOnly))
+                found.Add(path);
+        }
+
+        return found
+            .OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private ProfilerState? ReadState(ProfilerPaths paths, bool allowMissing)
