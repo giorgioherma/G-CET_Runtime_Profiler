@@ -33,10 +33,15 @@ internal sealed class BindingService
     {
         var root = ReadBindingsObject(paths);
 
-        var node = root["CETProfilerControls"] as JsonObject ?? new JsonObject();
+        var node = root["CETProfilerControls"] as JsonObject;
+        if (node is null)
+        {
+            node = new JsonObject();
+            root["CETProfilerControls"] = node;
+        }
+
         node["CETProfiler_Toggle"] = F11BindCode;
         node.Remove("CETProfiler_Dump");
-        root["CETProfilerControls"] = node;
 
         WriteBindings(paths, root);
     }
