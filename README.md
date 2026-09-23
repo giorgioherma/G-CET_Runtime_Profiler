@@ -88,11 +88,11 @@ Pre-existing `CETProfilerControls` content is backed up and restored exactly. Le
 
 If live profiler output still exists when Restore is requested, known scripted CET output files are archived into the standalone `RESULTS/` folder before game files are restored. Exact filenames plus the manifest-owned `CET_Runtime_Profile_*` output patterns are eligible; unrelated files in the CET directory are never swept.
 
-### Emergency Restore
+### Headless emergency recovery
 
 Normal **RESTORE ORIGINAL STATE** stays intentionally strict: if any managed file is missing, changed, or has a bad backup, normal restore stops before changing anything.
 
-**EMERGENCY RESTORE** is the recovery path for that dead end. It evaluates every managed component independently:
+The headless `--emergency-restore` command remains available for advanced/manual recovery when strict restore cannot proceed. It evaluates every managed component independently:
 
 - components with a valid original backup and a known live state are restored;
 - profiler-added files are removed only when they still match the profiler-owned version;
