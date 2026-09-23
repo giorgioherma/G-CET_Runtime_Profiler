@@ -28,6 +28,9 @@ public sealed class MainForm : Form
     private readonly Label compatibilityText = new();
     private readonly CheckBox coreOnly = new();
     private readonly Label touchedFiles = new();
+    private readonly GroupBox readyGroup = new();
+    private readonly Label readyHeading = new();
+    private readonly Label readyInstructions = new();
 
     private readonly Button install = new();
     private readonly Button collect = new();
@@ -57,7 +60,9 @@ public sealed class MainForm : Form
         Controls.Add(profilerPage);
         Controls.Add(setupPage);
 
-        gameRoot.Text = FindInitialGameRoot();
+        gameRoot.Text = !string.IsNullOrWhiteSpace(appSettings.GameRoot)
+            ? appSettings.GameRoot
+            : FindInitialGameRoot();
         companionExe.Text = appSettings.ExternalProfilerExe;
         companionResults.Text = appSettings.ExternalResultsDirectory;
         pairFrameTime.Checked = appSettings.PairFrameTimeProfiler;
@@ -270,42 +275,51 @@ public sealed class MainForm : Form
         };
 
         var statusGroup = new GroupBox { Text = "Profiler status" };
-        statusGroup.SetBounds(20, 66, 820, 214);
-        status.SetBounds(18, 27, 775, 145);
-        status.Font = new Font("Consolas", 9.5F);
-        refresh.Text = "REFRESH";
-        refresh.SetBounds(694, 174, 100, 28);
-        refresh.Click += async (_, _) => await RefreshStatusAsync();
-        statusGroup.Controls.AddRange([status, refresh]);
-
-        var compatibility = new GroupBox { Text = "0-Engine / Scheduler" };
-        compatibility.SetBounds(20, 290, 820, 112);
-        compatibilityText.SetBounds(18, 25, 775, 42);
-        compatibilityText.MaximumSize = new Size(775, 0);
-        compatibilityText.AutoSize = true;
+        statusGroup.SetBounds(20, 66, 820, 306);
+        status.SetBounds(18, 27, 775, 222);
+        status.Font = new Font("Segoe UI", 9.5F);
 
         coreOnly.Text = "Fallback: install CET core profiler only and leave 0-Engine completely untouched";
-        coreOnly.SetBounds(18, 76, 600, 24);
-        coreOnly.CheckedChanged += (_, _) => SetActionState(lastStatus);
-        compatibility.Controls.AddRange([compatibilityText, coreOnly]);
+        coreOnly.SetBounds(18, 252, 610, 24);
+        coreOnly.CheckedChanged += (_, _) =>
+        {
+            SetActionState(lastStatus);
+            RenderReadyState(lastStatus);
+        };
 
-        var filesGroup = new GroupBox { Text = "Files / safety" };
-        filesGroup.SetBounds(20, 412, 820, 112);
-        touchedFiles.SetBounds(18, 24, 775, 76);
-        touchedFiles.MaximumSize = new Size(775, 0);
-        touchedFiles.AutoSize = true;
-        filesGroup.Controls.Add(touchedFiles);
+        refresh.Text = "REFRESH";
+        refresh.SetBounds(694, 264, 100, 28);
+        refresh.Click += async (_, _) => await RefreshStatusAsync();
+        statusGroup.Controls.AddRange([status, coreOnly, refresh]);
+
+        readyGroup.Text = "";
+        readyGroup.SetBounds(20, 382, 820, 148);
+
+        readyHeading.SetBounds(18, 18, 775, 28);
+        readyHeading.Font = new Font("Segoe UI Semibold", 11F);
+        readyHeading.AutoSize = false;
+
+        readyInstructions.SetBounds(18, 48, 775, 90);
+        readyInstructions.Font = new Font("Segoe UI", 9.5F);
+        readyInstructions.AutoSize = false;
+        readyInstructions.Text =
+            "1. Run your Frame-time Capture Tool if you're using one and enter the game.\r\n" +
+            "2. To start measurement press your shared keybind (F11). To stop capture and prep the results press the same key again (F11).\r\n" +
+            "3. Return to installer and COLLECT RESULTS.\r\n" +
+            "4. After usage RESTORE ORIGINAL STATE to finish.";
+
+        readyGroup.Controls.AddRange([readyHeading, readyInstructions]);
 
         install.Text = "INSTALL PROFILER";
-        install.SetBounds(20, 540, 230, 42);
+        install.SetBounds(20, 544, 230, 42);
         install.Click += async (_, _) => await InstallAsync();
 
         collect.Text = "COLLECT RESULTS / CLEAR LIVE";
-        collect.SetBounds(265, 540, 300, 42);
+        collect.SetBounds(265, 544, 300, 42);
         collect.Click += async (_, _) => await CollectAsync();
 
         restore.Text = "RESTORE ORIGINAL STATE";
-        restore.SetBounds(580, 540, 260, 42);
+        restore.SetBounds(580, 544, 260, 42);
         restore.Click += async (_, _) =>
         {
             if (busy) return;
@@ -333,15 +347,15 @@ public sealed class MainForm : Form
         };
 
         openResults.Text = "Open Results Folder";
-        openResults.SetBounds(20, 596, 230, 36);
+        openResults.SetBounds(20, 598, 230, 36);
         openResults.Click += (_, _) => OpenResultsFolder();
 
         startCompanion.Text = "START FRAME-TIME TOOL";
-        startCompanion.SetBounds(265, 596, 300, 36);
+        startCompanion.SetBounds(265, 598, 300, 36);
         startCompanion.Click += (_, _) => StartFrameTimeTool();
 
         startGame.Text = "START CYBERPUNK";
-        startGame.SetBounds(580, 596, 260, 36);
+        startGame.SetBounds(580, 598, 260, 36);
         startGame.Click += (_, _) => StartCyberpunk();
 
         restoreOutcome.SetBounds(20, 642, 820, 28);
@@ -350,7 +364,7 @@ public sealed class MainForm : Form
         restoreOutcome.Visible = false;
 
         profilerPage.Controls.AddRange([
-            title, back, statusGroup, compatibility, filesGroup,
+            title, back, statusGroup, readyGroup,
             install, collect, restore, openResults, startCompanion, startGame, restoreOutcome
         ]);
     }
@@ -368,6 +382,8 @@ public sealed class MainForm : Form
         else
         {
             profilerPage.BringToFront();
+            RenderStatus(lastStatus);
+            RenderReadyState(lastStatus);
         }
     }
 
@@ -380,15 +396,14 @@ public sealed class MainForm : Form
         {
             lastStatus = null;
             status.Text =
-                "Game:       NOT FOUND\r\n" +
-                "CET:        -\r\n" +
-                "0-Engine:   -\r\n" +
-                "Scheduler:  PRESENT -   INTEGRATED -   PROFILER-AWARE -\r\n" +
-                "CET F11:    -\r\n" +
-                "Live files: -";
+                "Game: NOT FOUND ❌\r\n" +
+                "CET Profiler: unavailable ❌\r\n" +
+                "CET Controls: unavailable ❌\r\n" +
+                "Live Files: -";
             RenderSetupGameStatus();
             RenderCompatibility(null);
             RenderTouchedFiles(null);
+            RenderReadyState(null);
             SetActionState(null);
             return;
         }
@@ -401,6 +416,7 @@ public sealed class MainForm : Form
             RenderStatus(snapshot);
             RenderCompatibility(snapshot);
             RenderTouchedFiles(snapshot);
+            RenderReadyState(snapshot);
             RenderSetupGameStatus();
             SetBusy(false);
             SetActionState(snapshot);
@@ -413,6 +429,7 @@ public sealed class MainForm : Form
             RenderSetupGameStatus();
             RenderCompatibility(null);
             RenderTouchedFiles(null);
+            RenderReadyState(null);
             SetActionState(null);
             if (!silent)
                 MessageBox.Show(this, FriendlyMessage(ex), Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -472,39 +489,148 @@ public sealed class MainForm : Form
 
     private void RenderStatus(ProfilerStatus snapshot)
     {
-        var zeroText = !snapshot.ZeroEnginePresent
-            ? "NOT INSTALLED"
-            : snapshot.ZeroEngineInitKind == "unsafe"
-                ? "PRESENT · STRUCTURE NOT RECOGNIZED"
-                : "PRESENT";
-        var f11 = snapshot.F11Binding
-            ? "F11 ✓"
-            : snapshot.Managed
-                ? "NOT F11 / NOT CONFIGURED"
-                : "F11 WILL BE PRESET ON INSTALL";
+        var state = snapshot.State;
 
-        var schedulerLine = snapshot.ZeroEnginePresent
-            ? $"PRESENT {(snapshot.SchedulerPresent ? "YES" : "NO")}   " +
-              $"INTEGRATED {(snapshot.SchedulerIntegrated ? "YES" : "NO")}   " +
-              $"PROFILER-AWARE {(snapshot.SchedulerProfilerAware ? "YES" : "NO")}"
-            : "PRESENT NO   INTEGRATED NO   PROFILER-AWARE NO";
+        var cetProfiler = snapshot.CetState switch
+        {
+            "PROFILER_ACTIVE" when snapshot.Managed && state?.Asi.Mode == "replaced"
+                => "ACTIVE · original ASI backed up ✅",
+            "PROFILER_ACTIVE" when snapshot.Managed && state?.Asi.Mode == "preexisting-profiler"
+                => "ACTIVE · profiler ASI already present ✅",
+            "PROFILER_ACTIVE" when snapshot.Managed
+                => "ACTIVE ✅",
+            "OFFICIAL" => "Ready to deploy profiler ASI ⚠️",
+            "MISSING" => "CET ASI missing ❌",
+            "UNKNOWN" => "Unsupported / unknown CET ASI ❌",
+            _ => snapshot.CetState + " ⚠️"
+        };
+
+        var controls = snapshot.Managed && snapshot.ControlsPresent
+            ? "DEPLOYED ✅"
+            : snapshot.ControlsPresent
+                ? "Present but not managed by this install ⚠️"
+                : "NOT DEPLOYED ❌";
+
+        var zeroLine = "0-Engine: Not installed · optional ⚠️";
+        var schedulerLine = "Scheduler: Not applicable · optional ⚠️";
+
+        if (snapshot.ZeroEnginePresent)
+        {
+            if (snapshot.Managed && snapshot.ManagedMode == "core-only")
+            {
+                zeroLine = "0-Engine: Present · intentionally left untouched ✅";
+                schedulerLine = "Scheduler: Skipped in core-only mode ✅";
+            }
+            else if (snapshot.Managed && state is not null)
+            {
+                zeroLine = state.ZeroEngine.Init.Mode switch
+                {
+                    "patched-adaptive" => "0-Engine: init.lua backed up and adjusted ✅",
+                    "preexisting-compatible" => "0-Engine: compatible integrated init.lua preserved ✅",
+                    "preexisting-profiler-bridge" => "0-Engine: existing profiler bridge reused ✅",
+                    "left-untouched" => "0-Engine: left untouched ✅",
+                    _ => "0-Engine: Present ✅"
+                };
+
+                var schedulerState = state.ZeroEngine.Mode == "adaptive"
+                    ? state.ZeroEngine.AdaptiveScheduler
+                    : state.ZeroEngine.Scheduler;
+
+                schedulerLine = schedulerState.Mode switch
+                {
+                    "replaced" => "Scheduler: original backed up · profiler-aware scheduler deployed ✅",
+                    "added" => "Scheduler: profiler-aware scheduler added ✅",
+                    "preexisting-profiler" => "Scheduler: existing profiler-aware scheduler reused ✅",
+                    "left-untouched" => "Scheduler: left untouched ✅",
+                    _ when snapshot.SchedulerProfilerAware || snapshot.AdaptiveProfilerSchedulerPresent
+                        => "Scheduler: profiler-aware ✅",
+                    _ => "Scheduler: integration pending ⚠️"
+                };
+            }
+            else
+            {
+                zeroLine = snapshot.ZeroEngineInitKind == "unsafe"
+                    ? "0-Engine: Present · structure needs core-only fallback ⚠️"
+                    : "0-Engine: Present · optional integration pending ⚠️";
+
+                schedulerLine = snapshot.SchedulerProfilerAware
+                    ? "Scheduler: profiler-aware already present ✅"
+                    : "Scheduler: profiler-aware pass not installed yet ⚠️";
+            }
+        }
+
+        SyncSettingsFromUi();
+        var companion = CompanionProfilerService.Inspect(appSettings);
+        var companionConfigured =
+            pairFrameTime.Checked &&
+            companion.ExeFound &&
+            Directory.Exists(companionResults.Text.Trim());
+
+        var frameLine = companionConfigured
+            ? $"Frame-Time Profiler: {companion.DisplayName} found ✅"
+            : "Frame-Time Profiler: Not provided ❌";
+
+        string syncLines;
+        if (!companionConfigured)
+        {
+            syncLines =
+                "Synced keybind: Need frame capture tool ⚠️\r\n" +
+                $"    - CET: {(snapshot.F11Binding ? "F11 ✅" : "F11 pending deployment ⚠️")}";
+        }
+        else if (companion.StartKeyKnown && companion.StartKeyIsF11 && snapshot.F11Binding)
+        {
+            syncLines =
+                "Synced keybind: YES ✅\r\n" +
+                "    - CET: F11 ✅\r\n" +
+                "    - Frame-Time Profiler: F11 ✅";
+        }
+        else
+        {
+            var externalKey = companion.StartKeyKnown
+                ? companion.StartKey + " ⚠️"
+                : "Unknown ⚠️";
+            syncLines =
+                "Synced keybind: NO ❌\r\n" +
+                $"    - CET: {(snapshot.F11Binding ? "F11 ✅" : "F11 pending deployment ⚠️")}\r\n" +
+                $"    - Frame-Time Profiler: {externalKey}";
+        }
+
+        var installed = IsProfilerReady(snapshot);
 
         status.Text =
-            $"Game:       FOUND\r\n" +
-            $"CET:        {snapshot.CetState}\r\n" +
-            $"0-Engine:   {zeroText}\r\n" +
-            $"Scheduler:  {schedulerLine}\r\n" +
-            $"CET F11:    {f11}\r\n" +
-            $"Controls:   {(snapshot.ControlsPresent ? "PRESENT" : "NOT INSTALLED")}\r\n" +
-            $"Live files: {snapshot.LiveResultCount}    Managed install: {(snapshot.Managed ? "YES" : "NO")}";
+            "Game: Found ✅\r\n" +
+            $"CET Profiler: {cetProfiler}\r\n" +
+            $"CET Controls: {controls}\r\n" +
+            "optional:\r\n" +
+            zeroLine + "\r\n" +
+            schedulerLine + "\r\n" +
+            frameLine + "\r\n" +
+            syncLines + "\r\n\r\n" +
+            $"G-CET PROFILER IS {(installed ? "INSTALLED. ✅" : "NOT INSTALLED. ❌")}\r\n" +
+            $"Live Files: {snapshot.LiveResultCount}";
+    }
+
+    private bool IsProfilerReady(ProfilerStatus? snapshot) =>
+        snapshot is not null &&
+        snapshot.Managed &&
+        snapshot.CetState == "PROFILER_ACTIVE" &&
+        snapshot.ControlsPresent &&
+        snapshot.F11Binding;
+
+    private void RenderReadyState(ProfilerStatus? snapshot)
+    {
+        var ready = IsProfilerReady(snapshot);
+        readyHeading.Text = ready ? "PROFILER IS READY!" : "PROFILER IS NOT READY!";
+        readyHeading.ForeColor = ready ? Color.ForestGreen : Color.Firebrick;
+        readyInstructions.Enabled = ready;
     }
 
     private void RenderCompatibility(ProfilerStatus? snapshot)
     {
         if (snapshot is null)
         {
-            compatibilityText.Text = "Select a valid Cyberpunk 2077 folder to inspect 0-Engine / Scheduler compatibility.";
             coreOnly.Visible = false;
+            coreOnly.Checked = false;
             return;
         }
 
@@ -514,45 +640,6 @@ public sealed class MainForm : Form
         coreOnly.Visible = showFallback;
         if (!showFallback)
             coreOnly.Checked = false;
-
-        if (!snapshot.ZeroEnginePresent)
-        {
-            compatibilityText.Text =
-                "0-Engine is not installed. That is fine: CET core profiling does not require it. No 0-Engine files will be added or changed.";
-        }
-        else if (snapshot.Managed && snapshot.ManagedMode == "core-only")
-        {
-            compatibilityText.Text =
-                "Managed install is running in CET core-only mode. The pre-existing 0-Engine installation was left untouched.";
-        }
-        else if (unsafeZero)
-        {
-            compatibilityText.Text =
-                "This 0-Engine init/Scheduler layout is not recognized as safe for automatic integration. Full install is blocked before changes. " +
-                "Enable the fallback below to install CET profiling while leaving 0-Engine byte-untouched.";
-        }
-        else if (fallbackVisible)
-        {
-            compatibilityText.Text =
-                "Scheduler integration did not complete safely and was rolled back. You can retry using the CET core-only fallback; 0-Engine will be left untouched.";
-        }
-        else if (snapshot.ZeroEngineInitKind == "integrated")
-        {
-            compatibilityText.Text = snapshot.SchedulerProfilerAware
-                ? "0-Engine has Scheduler integrated and the installed Scheduler is already profiler-aware. Normal install keeps the compatible integration path."
-                : "0-Engine has Scheduler integrated, but the installed Scheduler is not profiler-aware. Normal install backs it up, verifies the backup, then temporarily replaces it with the profiler-aware Scheduler.";
-        }
-        else if (snapshot.ZeroEngineInitKind is "adaptive" or "profiler-bridge")
-        {
-            compatibilityText.Text = snapshot.AdaptiveProfilerSchedulerPresent
-                ? "0-Engine does not integrate its existing Scheduler through the recognized API. The separate profiler-aware CETProfilerScheduler bridge is already present."
-                : "0-Engine does not integrate its existing Scheduler through the recognized API. Normal install leaves that Scheduler.lua untouched and adds a separate profiler-aware CETProfilerScheduler bridge.";
-        }
-        else
-        {
-            compatibilityText.Text =
-                "0-Engine was detected. The normal install will use only the recognized transactional integration path and verified backups.";
-        }
     }
 
     private void RenderTouchedFiles(ProfilerStatus? snapshot)
@@ -855,6 +942,7 @@ public sealed class MainForm : Form
 
     private void SyncSettingsFromUi()
     {
+        appSettings.GameRoot = gameRoot.Text.Trim();
         appSettings.PairFrameTimeProfiler = pairFrameTime.Checked;
         appSettings.ExternalProfilerExe = companionExe.Text.Trim();
         appSettings.ExternalResultsDirectory = companionResults.Text.Trim();
