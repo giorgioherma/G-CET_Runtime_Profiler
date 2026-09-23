@@ -1009,15 +1009,19 @@ public sealed class ProfilerService : IProfilerService
 
         // Scripted profiler-owned output patterns cover small metadata/status/temp
         // companions without ever sweeping arbitrary files from the CET directory.
-        foreach (var pattern in manifest.LiveResultPatterns)
+        // A valid game root can exist before CET creates its own subdirectory.
+        if (Directory.Exists(paths.CetRoot))
         {
-            if (string.IsNullOrWhiteSpace(pattern) ||
-                pattern.Contains(Path.DirectorySeparatorChar) ||
-                pattern.Contains(Path.AltDirectorySeparatorChar))
-                continue;
+            foreach (var pattern in manifest.LiveResultPatterns)
+            {
+                if (string.IsNullOrWhiteSpace(pattern) ||
+                    pattern.Contains(Path.DirectorySeparatorChar) ||
+                    pattern.Contains(Path.AltDirectorySeparatorChar))
+                    continue;
 
-            foreach (var path in Directory.EnumerateFiles(paths.CetRoot, pattern, SearchOption.TopDirectoryOnly))
-                found.Add(path);
+                foreach (var path in Directory.EnumerateFiles(paths.CetRoot, pattern, SearchOption.TopDirectoryOnly))
+                    found.Add(path);
+            }
         }
 
         return found
