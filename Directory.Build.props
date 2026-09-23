@@ -1,0 +1,10 @@
+<Project>
+  <PropertyGroup>
+    <Version>3.0.0-alpha6c</Version>
+    <AssemblyVersion>3.0.0.0</AssemblyVersion>
+    <FileVersion>3.0.0.0</FileVersion>
+    <Authors>Gregor Maher</Authors>
+    <Product>G CET Runtime Profiler</Product>
+    <RepositoryUrl>https://github.com/giorgioherma/G-CET-Runtime-Profiler</RepositoryUrl>
+  </PropertyGroup>
+</Project>
