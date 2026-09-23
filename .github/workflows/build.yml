@@ -18,6 +18,24 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      - name: Verify hash-locked payload bytes
+        shell: pwsh
+        run: |
+          $manifest = Get-Content MANIFEST.json -Raw | ConvertFrom-Json
+          $checks = @(
+            @{ Path = 'payload\cyber_engine_tweaks.PROFILER.asi'; Expected = [string]$manifest.targetCET.profilerSha256 },
+            @{ Path = 'payload\0-Engine\modules\Scheduler.lua'; Expected = [string]$manifest.zeroEngine.profilerSchedulerSha256 },
+            @{ Path = 'payload\0-Engine\modules\CETProfilerScheduler.lua'; Expected = [string]$manifest.zeroEngine.profilerAdaptiveSchedulerSha256 }
+          )
+          foreach ($check in $checks) {
+            $actual = (Get-FileHash -LiteralPath $check.Path -Algorithm SHA256).Hash.ToLowerInvariant()
+            $expected = $check.Expected.ToLowerInvariant()
+            Write-Host "$($check.Path) SHA256 $actual"
+            if ($actual -ne $expected) {
+              throw "Hash mismatch for $($check.Path): expected $expected, got $actual"
+            }
+          }
+
       - name: Build
         run: dotnet build G-CET-Runtime-Profiler.sln -c Release
 
