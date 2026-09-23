@@ -21,7 +21,7 @@ public sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "G CET Runtime Profiler";
+        Text = $"CET Runtime Profiler Manager - v{profiler.PackageVersion}";
         StartPosition = FormStartPosition.CenterScreen;
         ClientSize = new Size(800, 585);
         MinimumSize = new Size(820, 625);
@@ -268,9 +268,8 @@ public sealed class MainForm : Form
     {
         try
         {
-            var results = Path.Combine(AppContext.BaseDirectory, "RESULTS");
-            Directory.CreateDirectory(results);
-            Process.Start(new ProcessStartInfo(results) { UseShellExecute = true });
+            Directory.CreateDirectory(profiler.ResultsRoot);
+            Process.Start(new ProcessStartInfo(profiler.ResultsRoot) { UseShellExecute = true });
         }
         catch (Exception ex)
         {
