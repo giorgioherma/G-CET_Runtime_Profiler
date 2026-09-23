@@ -102,11 +102,25 @@ jobs:
               CETProfiler_Dump = 456
             }
           } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $cet 'bindings.json') -Encoding utf8
+          $fixtureBindingsOriginalHash = (Get-FileHash (Join-Path $cet 'bindings.json') -Algorithm SHA256).Hash
 
           $install = (& $exe --install --game $fixture --json | ConvertFrom-Json)
           if (!$install.managed) { throw 'Install did not create managed state.' }
           if (!$install.f11Binding) { throw 'Install did not configure F11.' }
           if ($install.managedMode -ne 'adaptive') { throw "Expected adaptive mode, got $($install.managedMode)" }
+
+          # Rule #1: every user-owned item we mutate must already have recoverable
+          # original state before the live mutation is accepted.
+          $stateRoot = Join-Path $plugins '.cet_runtime_profiler'
+          $initBackup = Join-Path $stateRoot '0-Engine.init.ORIGINAL.lua'
+          $controlsBackup = Join-Path $stateRoot 'CETProfilerControls.ORIGINAL\existing.txt'
+          $bindingsBackup = Join-Path $stateRoot 'bindings.ORIGINAL.json'
+          if (!(Test-Path -LiteralPath $initBackup -PathType Leaf)) { throw 'Original init.lua backup missing after install.' }
+          if ((Get-FileHash $initBackup -Algorithm SHA256).Hash -ne $originalInitHash) { throw 'Original init.lua backup is not byte-identical.' }
+          if (!(Test-Path -LiteralPath $controlsBackup -PathType Leaf)) { throw 'Original CETProfilerControls backup missing after install.' }
+          if ((Get-Content -LiteralPath $controlsBackup -Raw).Trim() -ne 'KEEP-ME') { throw 'Original CETProfilerControls backup content is wrong.' }
+          if (!(Test-Path -LiteralPath $bindingsBackup -PathType Leaf)) { throw 'Original bindings.json backup missing after install.' }
+          if ((Get-FileHash $bindingsBackup -Algorithm SHA256).Hash -ne $fixtureBindingsOriginalHash) { throw 'Original bindings.json backup is not byte-identical.' }
 
           $patchedInitHash = (Get-FileHash (Join-Path $zero 'init.lua') -Algorithm SHA256).Hash
           if ($patchedInitHash -eq $originalInitHash) { throw 'Adaptive init.lua was not patched.' }
