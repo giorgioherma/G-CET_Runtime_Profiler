@@ -2,7 +2,7 @@
 
 Standalone CET/Lua runtime profiler manager for **Cyberpunk 2077**, with optional 0-Engine Scheduler attribution.
 
-## v3.0.0-alpha7 — native C# manager
+## v3.0.0-alpha8 — native C# manager
 
 The standalone manager has been ported from the development PowerShell/VBS form to a normal **C# / .NET 8 WinForms application**.
 
@@ -73,6 +73,21 @@ Pre-existing `CETProfilerControls` content is backed up and restored exactly. Le
 
 If live profiler CSVs still exist when Restore is requested, they are archived into the standalone `RESULTS/` folder before game files are restored.
 
+### Emergency Restore
+
+Normal **RESTORE ORIGINAL STATE** stays intentionally strict: if any managed file is missing, changed, or has a bad backup, normal restore stops before changing anything.
+
+**EMERGENCY RESTORE** is the recovery path for that dead end. It evaluates every managed component independently:
+
+- components with a valid original backup and a known live state are restored;
+- profiler-added files are removed only when they still match the profiler-owned version;
+- changed or ambiguous files are left untouched;
+- successful components do not get blocked by one unrelated failure;
+- if anything is skipped, `.cet_runtime_profiler` and its backups are preserved;
+- a text recovery report is written under `RESULTS/RecoveryReports/` with exact live/backup paths for manual review.
+
+The manager also keeps a full original backup of `bindings.json` before changing the CET profiler binding. Normal restoration remains surgical so unrelated bindings changed later are not rolled back.
+
 ## Headless JSON interface
 
 TOTAL Profiler uses the **same executable and same C# core**:
@@ -83,6 +98,7 @@ G-CET-Runtime-Profiler.exe --install --game "..." [--core-only] --json
 G-CET-Runtime-Profiler.exe --collect --game "..." --json
 G-CET-Runtime-Profiler.exe --reset   --game "..." --json
 G-CET-Runtime-Profiler.exe --restore --game "..." --json
+G-CET-Runtime-Profiler.exe --emergency-restore --game "..." --json
 ```
 
 Headless mode emits JSON to stdout and errors as JSON to stderr.
