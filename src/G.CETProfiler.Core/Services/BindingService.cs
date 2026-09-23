@@ -17,6 +17,14 @@ internal sealed class BindingService
     public BindingTransactionState Snapshot(ProfilerPaths paths)
     {
         var fileExisted = File.Exists(paths.Bindings);
+        string? originalFileHash = null;
+
+        if (fileExisted)
+        {
+            originalFileHash = FileSystemService.Sha256(paths.Bindings);
+            FileSystemService.CopyFileVerified(paths.Bindings, paths.BackupBindings, originalFileHash);
+        }
+
         var root = ReadBindingsObject(paths);
         var hadNode = root.TryGetPropertyValue("CETProfilerControls", out var node) && node is not null;
 
@@ -25,7 +33,8 @@ internal sealed class BindingService
             FileExistedBefore = fileExisted,
             HadNode = hadNode,
             OriginalNodeJson = hadNode ? node!.ToJsonString() : "",
-            InstalledToggle = F11BindCode
+            InstalledToggle = F11BindCode,
+            OriginalFileHash = originalFileHash
         };
     }
 
@@ -66,6 +75,11 @@ internal sealed class BindingService
     public void Restore(ProfilerPaths paths, BindingTransactionState? state)
     {
         state ??= ReadLegacyTotalState(paths);
+
+        if (state?.FileExistedBefore == true && !File.Exists(paths.Bindings))
+            throw new InvalidOperationException(
+                "CET bindings.json existed before profiling but is now missing. " +
+                "Automatic restore will not recreate only part of the file. The full original backup is preserved for manual recovery.");
 
         var root = ReadBindingsObject(paths);
         root.Remove("CETProfilerControls");
@@ -132,7 +146,8 @@ internal sealed class BindingService
                 FileExistedBefore = existed,
                 HadNode = hadNode,
                 OriginalNodeJson = originalNode,
-                InstalledToggle = F11BindCode
+                InstalledToggle = F11BindCode,
+                OriginalFileHash = null
             };
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException)
