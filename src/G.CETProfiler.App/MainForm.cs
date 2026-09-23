@@ -102,6 +102,7 @@ public sealed class MainForm : Form
         gameRoot.SetBounds(18, 30, 680, 26);
         gameRoot.TextChanged += async (_, _) =>
         {
+            ClearRestoreOutcome();
             await RefreshStatusAsync(silent: true);
             RenderSetupGameStatus();
         };
@@ -581,6 +582,8 @@ public sealed class MainForm : Form
     {
         if (busy) return;
 
+        ClearRestoreOutcome();
+
         try
         {
             SetBusy(true);
@@ -768,6 +771,12 @@ public sealed class MainForm : Form
         restoreOutcome.ForeColor = success ? Color.ForestGreen : Color.Firebrick;
         restoreOutcome.Visible = true;
         restoreOutcome.BringToFront();
+    }
+
+    private void ClearRestoreOutcome()
+    {
+        restoreOutcome.Text = "";
+        restoreOutcome.Visible = false;
     }
 
     private void SetBusy(bool value)
