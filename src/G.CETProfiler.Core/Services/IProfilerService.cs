@@ -12,4 +12,5 @@ public interface IProfilerService
     string? Collect(string gameRoot);
     string? ResetLive(string gameRoot);
     string? Restore(string gameRoot);
+    EmergencyRestoreResult EmergencyRestore(string gameRoot);
 }
