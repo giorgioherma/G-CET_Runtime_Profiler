@@ -46,6 +46,8 @@ CLI arguments -> headless JSON
 
 There is no separate TOTAL-specific backend.
 
+The WinForms app may also provide **optional companion conveniences** that do not belong to the CET lifecycle core: read-only detection of an external frame-time profiler, read-only start-key reporting where a known adapter exists, and copy-only bundling of the latest external capture beside the CET archive. This does not make any external profiler a dependency, and headless/TOTAL behavior remains CET-only.
+
 ## Package-owned files
 
 The public package owns the payload under:
@@ -90,21 +92,23 @@ Current live CET results are collected and verified before the managed game file
 
 ## Result ownership
 
-The native profiler writes live CSV files into CET's normal directory.
+The native profiler writes live runtime output into CET's normal directory.
 
 The standalone manager's `Collect` operation:
 
 ```text
-find manifest-declared live CSVs
+find exact manifest files + scripted CET_Runtime_Profile_* output patterns
         ↓
 copy to package RESULTS/<timestamp>/
         ↓
 SHA-256 verify every copy
         ↓
-only then delete live CSVs
+only then delete those explicitly owned live files
 ```
 
-TOTAL Profiler does not redirect this path. It consumes the completed standalone result after collection.
+Unrelated files in the CET directory are never swept. If the GUI has an optional frame-time companion configured, its selected/latest capture is copied under `FrameTime/` after CET collection; the external source is never modified or deleted.
+
+TOTAL Profiler does not redirect CET's path. It consumes the completed standalone CET result after collection.
 
 ## Compatibility
 
