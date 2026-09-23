@@ -70,7 +70,6 @@ public sealed class MainForm : Form
         {
             await RefreshStatusAsync(silent: true);
             RefreshCompanionStatus();
-            SaveSettingsFromUi();
         };
 
         Activated += async (_, _) =>
