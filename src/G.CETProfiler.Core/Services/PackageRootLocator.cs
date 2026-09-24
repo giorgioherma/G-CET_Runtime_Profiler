@@ -16,15 +16,18 @@ public static class PackageRootLocator
             return Path.GetFullPath(explicitRoot!);
 
         var start = Path.GetFullPath(startingDirectory ?? AppContext.BaseDirectory);
-        if (LooksLikePackageRoot(start))
-            return start;
 
-        var parent = Directory.GetParent(start)?.FullName;
-        if (LooksLikePackageRoot(parent))
-            return Path.GetFullPath(parent!);
+        // AppContext.BaseDirectory normally ends with a directory separator. Walk
+        // actual DirectoryInfo ancestors rather than assuming a single GetParent()
+        // call lands on the package root.
+        for (DirectoryInfo? current = new(start); current is not null; current = current.Parent)
+        {
+            if (LooksLikePackageRoot(current.FullName))
+                return current.FullName;
+        }
 
-        // Keep the historical failure mode useful: callers that require a package
-        // root will report the missing MANIFEST.json relative to where the app ran.
+        // Keep the failure mode useful: callers that require a package root will
+        // report the missing MANIFEST.json relative to where the app actually ran.
         return start;
     }
 
