@@ -214,6 +214,12 @@ jobs:
           if (@(Get-ChildItem publish -Recurse -File -Filter '*.pdb').Count -gt 0) {
             throw 'Public PDBs leaked into the portable package.'
           }
+          if (Test-Path -LiteralPath 'publish\app\MANIFEST.json' -PathType Leaf) {
+            throw 'Package MANIFEST.json leaked into app\; it belongs only at the public package root.'
+          }
+          if (Test-Path -LiteralPath 'publish\app\payload' -PathType Container) {
+            throw 'Profiler payload leaked into app\; it belongs only at the public package root.'
+          }
 
           $forbiddenSatelliteDirs = @(
             'cs','de','es','fr','it','ja','ko','pl','pt-BR','ru','tr','zh-Hans','zh-Hant'
