@@ -18,7 +18,6 @@ public static partial class ResultReportService
         public bool ExactAlignment { get; init; }
         public string SyncQuality { get; init; } = "UNAVAILABLE";
         public string AlignmentMethod { get; init; } = "none";
-        public double StartDeltaMs { get; init; }
         public double DurationDeltaMs { get; init; }
         public double RecordLagMs { get; init; }
         public int FrameCount { get; init; }
@@ -55,8 +54,7 @@ public static partial class ResultReportService
     private sealed class CapFrameMetric
     {
         public int Index { get; init; }
-        public double CapRelativeStartMs { get; init; }
-        public double CetRelativeStartMs { get; init; }
+        public double RelativeStartMs { get; init; }
         public double FrameMs { get; init; }
         public double CpuActiveMs { get; init; }
         public double GpuActiveMs { get; init; }
@@ -127,7 +125,7 @@ public static partial class ResultReportService
         var cpuTimes = parsed.Frames.Select(x => x.CpuActiveMs).Where(x => x > 0 && double.IsFinite(x)).ToList();
         var gpuTimes = parsed.Frames.Select(x => x.GpuActiveMs).Where(x => x > 0 && double.IsFinite(x)).ToList();
 
-        var capDurationMs = parsed.Frames.Max(x => x.CapRelativeStartMs + x.FrameMs);
+        var capDurationMs = parsed.Frames.Max(x => x.RelativeStartMs + x.FrameMs);
         var cetStartUnix = FindCetStartUnixMs(markers);
         DateTimeOffset? cetStartUtc = cetStartUnix is null
             ? null
@@ -136,7 +134,6 @@ public static partial class ResultReportService
         // CapFrameX Info.CreationDate is a record/save timestamp in current
         // CapFrameX builds, not the F11 capture-start timestamp. Never use it as
         // an absolute start-clock anchor.
-        var startDeltaMs = double.NaN;
 
         var durationDeltaMs = cetCaptureSeconds > 0
             ? capDurationMs - cetCaptureSeconds * 1000.0
@@ -172,19 +169,7 @@ public static partial class ResultReportService
             ? "shared-F11 relative clocks"
             : "none";
 
-        var alignedFrames = parsed.Frames
-            .Select(x => new CapFrameMetric
-            {
-                Index = x.Index,
-                CapRelativeStartMs = x.CapRelativeStartMs,
-                CetRelativeStartMs = x.CapRelativeStartMs,
-                FrameMs = x.FrameMs,
-                CpuActiveMs = x.CpuActiveMs,
-                GpuActiveMs = x.GpuActiveMs,
-                PcLatencyMs = x.PcLatencyMs,
-                FrameType = x.FrameType
-            })
-            .ToList();
+        var alignedFrames = parsed.Frames;
 
         var orderedWindows = allWindows.OrderBy(x => x.StartMs).ToList();
         var positiveCet = orderedWindows.Select(x => x.ExclusiveMs).Where(x => x > 0).OrderBy(x => x).ToList();
@@ -203,7 +188,7 @@ public static partial class ResultReportService
                 .Select(x => new FrameStallMetric
                 {
                     FrameIndex = x.Index,
-                    StartMs = x.CapRelativeStartMs,
+                    StartMs = x.RelativeStartMs,
                     FrameMs = x.FrameMs,
                     CpuActiveMs = x.CpuActiveMs,
                     GpuActiveMs = x.GpuActiveMs,
@@ -258,7 +243,6 @@ public static partial class ResultReportService
             ExactAlignment = exactAlignment,
             SyncQuality = syncQuality,
             AlignmentMethod = alignmentMethod,
-            StartDeltaMs = startDeltaMs,
             DurationDeltaMs = durationDeltaMs,
             RecordLagMs = recordLagMs,
             FrameCount = frameTimes.Count,
@@ -368,8 +352,7 @@ public static partial class ResultReportService
                         parsedFrames.Add(new CapFrameMetric
                         {
                             Index = i,
-                            CapRelativeStartMs = time[i] * 1000.0,
-                            CetRelativeStartMs = time[i] * 1000.0,
+                            RelativeStartMs = time[i] * 1000.0,
                             FrameMs = frame[i],
                             CpuActiveMs = i < cpu.Count && double.IsFinite(cpu[i]) ? Math.Max(0, cpu[i]) : 0,
                             GpuActiveMs = i < gpu.Count && double.IsFinite(gpu[i]) ? Math.Max(0, gpu[i]) : 0,
@@ -433,12 +416,12 @@ public static partial class ResultReportService
             for (var i = frameIndex; i < frames.Count; i++)
             {
                 var frame = frames[i];
-                if (frame.CetRelativeStartMs >= window.EndMs)
+                if (frame.RelativeStartMs >= window.EndMs)
                     break;
 
                 if (Overlaps(
-                        frame.CetRelativeStartMs,
-                        frame.CetRelativeStartMs + frame.FrameMs,
+                        frame.RelativeStartMs,
+                        frame.RelativeStartMs + frame.FrameMs,
                         window.StartMs,
                         window.EndMs))
                     inWindow.Add(frame);
@@ -482,20 +465,20 @@ public static partial class ResultReportService
         var output = new List<FrameStallMetric>();
         foreach (var frame in ordered)
         {
-            var frameEnd = frame.CetRelativeStartMs + frame.FrameMs;
-            var midpoint = frame.CetRelativeStartMs + frame.FrameMs * 0.5;
+            var frameEnd = frame.RelativeStartMs + frame.FrameMs;
+            var midpoint = frame.RelativeStartMs + frame.FrameMs * 0.5;
             var window = FindWindow(windows, midpoint);
 
             var callback = exactAlignment
                 ? spikes
-                    .Where(x => Overlaps(frame.CetRelativeStartMs, frameEnd, x.CaptureStartMs, x.CaptureEndMs))
+                    .Where(x => Overlaps(frame.RelativeStartMs, frameEnd, x.CaptureStartMs, x.CaptureEndMs))
                     .OrderByDescending(x => x.ExclusiveMs)
                     .FirstOrDefault()
                 : null;
 
             var scheduler = exactAlignment
                 ? bursts
-                    .Where(x => Overlaps(frame.CetRelativeStartMs, frameEnd, x.CaptureStartMs, x.CaptureEndMs))
+                    .Where(x => Overlaps(frame.RelativeStartMs, frameEnd, x.CaptureStartMs, x.CaptureEndMs))
                     .OrderByDescending(x => x.TotalJobMs)
                     .FirstOrDefault()
                 : null;
@@ -517,7 +500,7 @@ public static partial class ResultReportService
             output.Add(new FrameStallMetric
             {
                 FrameIndex = frame.Index,
-                StartMs = frame.CetRelativeStartMs,
+                StartMs = frame.RelativeStartMs,
                 FrameMs = frame.FrameMs,
                 CpuActiveMs = frame.CpuActiveMs,
                 GpuActiveMs = frame.GpuActiveMs,
