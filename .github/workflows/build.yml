@@ -20,7 +20,7 @@ jobs:
       - name: Set up .NET 8
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '8.0.425'
 
       - name: Load and verify product version
         id: product_version
@@ -70,6 +70,23 @@ jobs:
 
       - name: Publish self-contained managed app
         run: dotnet publish src/G.CETProfiler.App/G.CETProfiler.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o publish-app
+
+      - name: Verify pinned self-contained runtime
+        shell: pwsh
+        run: |
+          $runtimeConfig = Get-Content 'publish-app\G-CET-Runtime-Profiler.App.runtimeconfig.json' -Raw | ConvertFrom-Json
+          $versions = @($runtimeConfig.runtimeOptions.includedFrameworks | ForEach-Object { [string]$_.version } | Sort-Object -Unique)
+          if ($versions.Count -ne 1 -or $versions[0] -ne '8.0.30') {
+            throw "Published runtime drifted from pinned 8.0.30: $($versions -join ', ')"
+          }
+
+          $deps = Get-Content 'publish-app\G-CET-Runtime-Profiler.App.deps.json' -Raw
+          if ($deps -notmatch 'runtimepack\.Microsoft\.NETCore\.App\.Runtime\.win-x64/8\.0\.30' -or
+              $deps -notmatch 'runtimepack\.Microsoft\.WindowsDesktop\.App\.Runtime\.win-x64/8\.0\.30') {
+            throw 'Published deps.json does not contain the pinned 8.0.30 runtime packs.'
+          }
+
+          Write-Host 'Pinned runtime verified: .NET / WindowsDesktop 8.0.30'
 
       - name: Build native root launcher
         shell: pwsh
