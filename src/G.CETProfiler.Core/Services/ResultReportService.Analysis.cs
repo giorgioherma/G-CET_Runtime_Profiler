@@ -20,6 +20,7 @@ public static partial class ResultReportService
         public List<SchedulerSpikeMetric> SchedulerSpikes { get; init; } = [];
         public SchedulerBurstMetric? WorstSchedulerBurst { get; init; }
         public OwnerMetric? ZeroEngine { get; init; }
+        public FrameTimeAnalysis? FrameTime { get; init; }
         public List<Finding> Findings { get; init; } = [];
         public double CaptureSeconds { get; init; }
         public double TotalMsPerSecond { get; init; }
@@ -34,6 +35,7 @@ public static partial class ResultReportService
         var byMod = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_ByMod.csv"));
         var detail = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Detail.csv"));
         var timeline = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Timeline.csv"));
+        var markers = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Markers.csv"));
         var spikes = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Spikes.csv"));
         var schedulerJobs = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Scheduler_ByJob.csv"));
         var schedulerSpikes = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Scheduler_Spikes.csv"));
@@ -88,7 +90,7 @@ public static partial class ResultReportService
             .OrderByDescending(x => x.ExclusiveMsPerSecond)
             .ToList();
 
-        var spikeMetrics = spikes
+        var allSpikeMetrics = spikes
             .Select(r => new SpikeMetric
             {
                 Sequence = L(r, "Sequence"),
@@ -102,10 +104,13 @@ public static partial class ResultReportService
             })
             .Where(x => !string.IsNullOrWhiteSpace(x.Mod) || x.ExclusiveMs > 0)
             .OrderByDescending(x => x.ExclusiveMs)
-            .Take(12)
             .ToList();
+        var spikeMetrics = allSpikeMetrics.Take(12).ToList();
 
-        var topWindows = BuildHeavyWindows(timeline)
+        var allWindows = BuildHeavyWindows(timeline)
+            .OrderBy(x => x.StartMs)
+            .ToList();
+        var topWindows = allWindows
             .OrderByDescending(x => x.ExclusiveMs)
             .Take(20)
             .ToList();
@@ -166,6 +171,14 @@ public static partial class ResultReportService
             .Take(10)
             .ToList();
 
+        var frameTime = AnalyzeFrameTime(
+            captureRoot,
+            markers,
+            allWindows,
+            allSpikeMetrics,
+            schedulerBurstMetrics,
+            captureSeconds);
+
         var findings = BuildFindings(
             owners,
             totalMsPerSecond,
@@ -175,6 +188,8 @@ public static partial class ResultReportService
             spikeMetrics,
             sharedCallbacks,
             worstSchedulerBurst);
+
+        AddFrameTimeFindings(findings, frameTime);
 
         return new ResultAnalysis
         {
@@ -190,7 +205,8 @@ public static partial class ResultReportService
             SchedulerSpikes = schedulerSpikeMetrics,
             WorstSchedulerBurst = worstSchedulerBurst,
             ZeroEngine = zeroEngine,
-            Findings = findings,
+            FrameTime = frameTime,
+            Findings = findings.Take(8).ToList(),
             CaptureSeconds = captureSeconds,
             TotalMsPerSecond = totalMsPerSecond,
             TotalOneCorePct = totalOneCorePct,
@@ -357,6 +373,8 @@ public static partial class ResultReportService
                 {
                     Sequence = L(first, "BurstSequence"),
                     Frame = L(first, "Frame"),
+                    CaptureStartMs = D(first, "CaptureStartMs", "CaptureMs"),
+                    CaptureEndMs = D(first, "CaptureEndMs", "CaptureMs"),
                     SchedulerWallMs = D(first, "SchedulerWallMs"),
                     TotalJobMs = totalJobMs,
                     JobCount = jobCount,
@@ -615,6 +633,8 @@ public static partial class ResultReportService
     {
         public long Sequence { get; init; }
         public long Frame { get; init; }
+        public double CaptureStartMs { get; init; }
+        public double CaptureEndMs { get; init; }
         public double SchedulerWallMs { get; init; }
         public double TotalJobMs { get; init; }
         public int JobCount { get; init; }
