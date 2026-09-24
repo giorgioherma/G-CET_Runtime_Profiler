@@ -25,7 +25,6 @@ public sealed class MainForm : Form
     private readonly LinkLabel capFrameXLink = new();
 
     private readonly Label status = new();
-    private readonly Label compatibilityText = new();
     private readonly CheckBox coreOnly = new();
     private readonly Label touchedFiles = new();
     private readonly GroupBox readyGroup = new();
