@@ -480,13 +480,13 @@ public sealed class MainForm : Form
             : Directory.Exists(companionResults.Text) ? "FOUND" : "NOT FOUND";
 
         var keyText = snapshot.StartKeyKnown
-            ? snapshot.StartKeyIsF11 ? "F11 ✓" : snapshot.StartKey + "  (use F11 to sync)"
+            ? snapshot.StartKeyIsF11 ? "F11 ✓" : snapshot.StartKey + "  (use F11 to match CET)"
             : "UNKNOWN — verify F11 manually";
 
         companionStatus.Text =
-            $"CET START:      {(lastStatus?.F11Binding == true ? "F11 ✓" : "F11 preset on install")}\r\n" +
-            $"Frame-time:     {snapshot.DisplayName} · START {keyText}\r\n" +
-            $"Results folder: {results}";
+            $"CET capture key:        {(lastStatus?.F11Binding == true ? "F11 ✓" : "F11 preset on install")}\r\n" +
+            $"Frame-time config key:  {keyText}\r\n" +
+            $"Results folder:         {results}";
     }
 
     private void UpdateCompanionControls()
@@ -590,22 +590,22 @@ public sealed class MainForm : Form
             Directory.Exists(companionResults.Text.Trim());
 
         var frameLine = companionConfigured
-            ? $"Frame-Time Profiler: {companion.DisplayName} found ✅"
+            ? $"Frame-Time Profiler: {companion.DisplayName} configured ✅"
             : "Frame-Time Profiler: Not provided ⚠️";
 
         string syncLines;
         if (!companionConfigured)
         {
             syncLines =
-                "Synced keybind: Need frame capture tool ⚠️\r\n" +
+                "Capture key match: Need frame capture tool ⚠️\r\n" +
                 $"    - CET: {(snapshot.F11Binding ? "F11 ✅" : "F11 pending deployment ⚠️")}";
         }
         else if (companion.StartKeyKnown && companion.StartKeyIsF11 && snapshot.F11Binding)
         {
             syncLines =
-                "Synced keybind: YES ✅\r\n" +
+                "Capture key match: YES ✅\r\n" +
                 "    - CET: F11 ✅\r\n" +
-                "    - Frame-Time Profiler: F11 ✅";
+                $"    - {companion.DisplayName} config: F11 ✅";
         }
         else
         {
@@ -613,9 +613,9 @@ public sealed class MainForm : Form
                 ? companion.StartKey + " ⚠️"
                 : "Unknown ⚠️";
             syncLines =
-                "Synced keybind: NO ⚠️\r\n" +
+                "Capture key match: NO ⚠️\r\n" +
                 $"    - CET: {(snapshot.F11Binding ? "F11 ✅" : "F11 pending deployment ⚠️")}\r\n" +
-                $"    - Frame-Time Profiler: {externalKey}";
+                $"    - {companion.DisplayName} config: {externalKey}";
         }
 
         var installed = IsProfilerReady(snapshot);
@@ -744,18 +744,8 @@ public sealed class MainForm : Form
         try
         {
             SetBusy(true);
-            var result = await Task.Run(() => profiler.Install(gameRoot.Text.Trim(), coreOnly.Visible && coreOnly.Checked));
+            await Task.Run(() => profiler.Install(gameRoot.Text.Trim(), coreOnly.Visible && coreOnly.Checked));
             fallbackVisible = false;
-            MessageBox.Show(
-                this,
-                "Profiler installed.\r\n\r\n" +
-                "CET capture key: F11\r\n" +
-                "F11 #1 = START\r\n" +
-                "F11 #2 = STOP + AUTO EXPORT\r\n\r\n" +
-                "0-Engine mode: " + result.ManagedMode,
-                Text,
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
         }
         catch (Exception ex)
         {
