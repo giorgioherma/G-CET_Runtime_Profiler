@@ -12,17 +12,7 @@ internal sealed record CompanionProfilerStatus(
     string DisplayName,
     string StartKey,
     bool StartKeyKnown,
-    bool StartKeyIsF11,
-    string? SuggestedResultsDirectory,
-    string Message);
-
-internal sealed record CompanionCollectResult(
-    bool Copied,
-    int FileCount,
-    string Message,
-    string? Source,
-    string? Destination,
-    string? Fingerprint);
+    bool StartKeyIsF11);
 
 internal static class CompanionProfilerService
 {
@@ -33,12 +23,11 @@ internal static class CompanionProfilerService
     public static CompanionProfilerStatus Inspect(AppSettings settings)
     {
         if (!settings.PairFrameTimeProfiler)
-            return new(false, false, "disabled", "None", "-", false, false, null, "Optional frame-time pairing is disabled.");
+            return new(false, false, "disabled", "None", "-", false, false);
 
         var exe = settings.ExternalProfilerExe.Trim();
         if (string.IsNullOrWhiteSpace(exe) || !File.Exists(exe))
-            return new(true, false, "unknown", "Not linked", "UNKNOWN", false, false, null,
-                "Select a frame-time profiler executable, or continue without one.");
+            return new(true, false, "unknown", "Not linked", "UNKNOWN", false, false);
 
         var kind = DetectKind(exe);
         if (kind == "capframex")
@@ -52,13 +41,7 @@ internal static class CompanionProfilerService
                 "CapFrameX",
                 key ?? "UNKNOWN",
                 !string.IsNullOrWhiteSpace(key),
-                string.Equals(key, "F11", StringComparison.OrdinalIgnoreCase),
-                captures,
-                key is null
-                    ? "CapFrameX detected. Capture key could not be read; verify F11 manually."
-                    : string.Equals(key, "F11", StringComparison.OrdinalIgnoreCase)
-                        ? "CapFrameX detected. Capture START key is F11."
-                        : $"CapFrameX detected. Capture START key is {key}; use F11 for synchronized starts.");
+                string.Equals(key, "F11", StringComparison.OrdinalIgnoreCase));
         }
 
         var display = Path.GetFileNameWithoutExtension(exe);
@@ -69,24 +52,22 @@ internal static class CompanionProfilerService
             string.IsNullOrWhiteSpace(display) ? "Custom profiler" : display,
             "UNKNOWN",
             false,
-            false,
-            null,
-            "Custom profiler detected. Its capture key format is unknown; verify F11 manually.");
+            false);
     }
 
-    public static CompanionCollectResult CollectLatest(AppSettings settings, string cetDestination)
+    public static string CollectLatest(AppSettings settings, string cetDestination)
     {
         if (!settings.PairFrameTimeProfiler)
-            return new(false, 0, "Frame-time companion disabled.", null, null, null);
+            return "Frame-time companion disabled.";
 
         var sourceRoot = settings.ExternalResultsDirectory.Trim();
         if (string.IsNullOrWhiteSpace(sourceRoot) || !Directory.Exists(sourceRoot))
-            return new(false, 0, "Frame-time results folder is not configured or does not exist.", null, null, null);
+            return "Frame-time results folder is not configured or does not exist.";
 
         var sourceFull = Path.GetFullPath(sourceRoot);
         var destinationFull = Path.GetFullPath(cetDestination);
         if (PathsOverlap(sourceFull, destinationFull))
-            return new(false, 0, "Frame-time results folder overlaps the CET archive location; companion copy was skipped to prevent recursive/self-copy.", null, null, null);
+            return "Frame-time results folder overlaps the CET archive location; companion copy was skipped to prevent recursive/self-copy.";
 
         var status = Inspect(settings);
         var candidate = status.Kind == "capframex"
@@ -94,14 +75,14 @@ internal static class CompanionProfilerService
             : FindNewestTopLevelItem(sourceRoot);
 
         if (candidate is null)
-            return new(false, 0, "No frame-time result was found in the selected results folder.", null, null, null);
+            return "No frame-time result was found in the selected results folder.";
 
         var fingerprint = FingerprintItem(candidate);
         if (string.Equals(settings.LastCollectedExternalSource, candidate, StringComparison.OrdinalIgnoreCase) &&
             string.Equals(settings.LastCollectedExternalFingerprint, fingerprint, StringComparison.OrdinalIgnoreCase))
         {
             WriteManifest(cetDestination, status, sourceRoot, candidate, null, 0, fingerprint, "No new external capture detected; previous source was not copied again.");
-            return new(false, 0, "No new frame-time capture detected; CET results were collected normally.", candidate, null, fingerprint);
+            return "No new frame-time capture detected; CET results were collected normally.";
         }
 
         var frameTimeRoot = Path.Combine(cetDestination, "FrameTime");
@@ -127,8 +108,7 @@ internal static class CompanionProfilerService
         settings.LastCollectedExternalFingerprint = fingerprint;
         settings.Save();
 
-        return new(true, count, $"Copied frame-time companion result ({count} file{(count == 1 ? "" : "s")}). External originals were left untouched.",
-            candidate, target, fingerprint);
+        return $"Copied frame-time companion result ({count} file{(count == 1 ? "" : "s")}). External originals were left untouched.";
     }
 
     public static string? SuggestResultsDirectory(string exePath)
