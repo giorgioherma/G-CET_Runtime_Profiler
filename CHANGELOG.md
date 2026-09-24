@@ -17,7 +17,6 @@ All notable public changes to G-CET Runtime Profiler are recorded here.
 - Removed the orphaned pre-headless `ProfilerCommand` enum, an abandoned WinForms compatibility label, an unused path property, unused companion DTO fields, and binding-state fields that were written but never consumed.
 - Removed the old absolute-start-offset frametime model and its permanently-null `startDeltaMs` output; CapFrameX/CET correlation now carries one relative frame timestamp per frame.
 - Stopped publishing a duplicate `MANIFEST.json` inside `app/` and removed obsolete single-file publish metadata left over from the previous bundle layout.
-- Kept legacy binding migration/recovery support and the archived `reference/powershell-alpha6c/` implementation intentionally; they are compatibility/reference material, not live packaged code.
 
 ### Result presentation
 
