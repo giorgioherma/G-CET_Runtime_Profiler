@@ -39,7 +39,7 @@ All notable public changes to G-CET Runtime Profiler are recorded here.
 - Removed dead hidden UI remnants and obsolete internal companion-result fields.
 - Removed stale frametime start-delta plumbing now that CapFrameX synchronization uses shared-F11 relative clocks.
 - Consolidated duplicated relative frame-time fields into a single relative timestamp and removed unused locals/types.
-- Kept the legacy PowerShell manager only under `reference/` as non-compiled historical material; it is not part of the public package.
+- Removed the retired PowerShell manager from the live tree; Git history remains the archive.
  - 2026-09-23
 
 First stable public release.
