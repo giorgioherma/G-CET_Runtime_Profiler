@@ -1069,7 +1069,7 @@ public sealed class MainForm : Form
     private void ShowRestoreProgress(string message)
     {
         restoreOutcome.Text = "… " + message;
-        restoreOutcome.ForeColor = SystemColors.ControlText;
+        restoreOutcome.ForeColor = ThemeText;
         restoreOutcome.Visible = true;
         restoreOutcome.BringToFront();
     }
@@ -1214,7 +1214,7 @@ public sealed class MainForm : Form
             switch (control)
             {
                 case Panel panel:
-                    panel.BackColor = panel.Tag as string switch
+                    panel.BackColor = (panel.Tag as string) switch
                     {
                         "gcet-accent-cyan" => ThemeBorder,
                         "gcet-accent-magenta" => ThemeMagenta,
