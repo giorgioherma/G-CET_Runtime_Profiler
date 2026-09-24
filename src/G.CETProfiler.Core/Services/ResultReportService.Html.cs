@@ -33,7 +33,7 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}.barwrap{width:
 .mono{font-family:Consolas,"Courier New",monospace}.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}.healthline{display:grid;grid-template-columns:170px 1fr;gap:8px;padding:4px 0;border-bottom:1px solid #1c2a33}.healthline:last-child{border-bottom:0}
 details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-top:10px}summary{cursor:pointer;font-weight:650;color:#dffbff}
 .links a{color:var(--accent);text-decoration:none}.links a:hover{color:#ff73dd;text-decoration:none}.footer{color:var(--muted);font-size:12px;margin:28px 0 8px;padding-top:10px;border-top:1px solid var(--line)}
-.chartbox{position:relative;background:var(--panel);border:1px solid var(--line2);border-radius:9px;padding:12px;margin-top:10px;box-shadow:0 0 16px #36e8f20d}.chartbox canvas{display:block;width:100%;height:330px;background:#080f15;border-radius:6px}.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}.toolbar button,.toolbar select{background:#121d25;color:var(--text);border:1px solid var(--line2);border-radius:6px;padding:6px 9px}.toolbar button:hover,.toolbar select:hover{border-color:var(--accent)}.legend{display:flex;gap:14px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin-top:8px}.sw{display:inline-block;width:12px;height:3px;vertical-align:middle;margin-right:5px}.sw.ft{background:#36e8f2}.sw.cpu{background:#f1c154}.sw.gpu{background:#7ee897}.sw.cet{background:#ff55d7}.charttip{position:absolute;display:none;pointer-events:none;z-index:4;background:#070c11;border:1px solid var(--line2);border-radius:6px;padding:7px 9px;white-space:pre-line;font-size:12px;box-shadow:0 6px 24px #0009}.syncgood{color:#7ee897}.synccoarse{color:#f1c154}.syncbad{color:#ff6f74}
+.chartbox{position:relative;background:var(--panel);border:1px solid var(--line2);border-radius:9px;padding:12px;margin-top:10px;box-shadow:0 0 16px #36e8f20d}.chartbox canvas{display:block;width:100%;height:330px;background:#080f15;border-radius:6px}.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}.toolbar button,.toolbar select{background:#121d25;color:var(--text);border:1px solid var(--line2);border-radius:6px;padding:6px 9px}.toolbar button:hover,.toolbar select:hover{border-color:var(--accent)}.zoomhint{margin-left:auto;color:var(--muted);font-size:12px}.legend{display:flex;gap:14px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin-top:8px}.sw{display:inline-block;width:12px;height:3px;vertical-align:middle;margin-right:5px}.sw.ft{background:#36e8f2}.sw.cpu{background:#f1c154}.sw.gpu{background:#7ee897}.sw.cet{background:#ff55d7}.charttip{position:absolute;display:none;pointer-events:none;z-index:4;background:#070c11;border:1px solid var(--line2);border-radius:6px;padding:7px 9px;white-space:pre-line;font-size:12px;box-shadow:0 6px 24px #0009}.syncgood{color:#7ee897}.synccoarse{color:#f1c154}.syncbad{color:#ff6f74}
 @media(max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}.findings,.two{grid-template-columns:1fr}.wrap{padding:14px}}
 @media(max-width:520px){.grid{grid-template-columns:1fr}.hero{display:block}}
 </style>
@@ -166,6 +166,7 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
             .Append("<button onclick=\"gcetFtFull()\">Full capture</button>")
             .Append("<button onclick=\"gcetFtWorst()\">Around worst frame</button>")
             .Append("<label class=\"small\">Scale <select id=\"gcetFtScale\" onchange=\"gcetFtDraw()\"><option value=\"auto\">Auto</option><option value=\"50\">0–50 ms</option><option value=\"100\">0–100 ms</option><option value=\"250\">0–250 ms</option><option value=\"500\">0–500 ms</option></select></label>")
+            .Append("<span class=\"zoomhint\">Shift + mouse wheel over graph: zoom</span>")
             .Append("</div><canvas id=\"gcetFtChart\"></canvas><div id=\"gcetFtTip\" class=\"charttip\"></div>")
             .Append("<div class=\"legend\"><span><i class=\"sw ft\"></i>Max frametime / CET 50 ms window</span><span><i class=\"sw cpu\"></i>CPU active max</span><span><i class=\"sw gpu\"></i>GPU active max</span><span><i class=\"sw cet\"></i>Measured CET work / 50 ms window</span></div></div>")
             .Append("<div class=\"note\"><b>Read the layers together; do not add or subtract them.</b> CapFrameX is actual rendered frametime. CET is observed script-side work aggregated into the same 50 ms clock windows.</div>");
@@ -257,6 +258,28 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
     tip.textContent=(p.t/1000).toFixed(3)+' s\nFrametime max: '+p.ft.toFixed(2)+' ms\nCPU active max: '+p.cpu.toFixed(2)+' ms\nGPU active max: '+p.gpu.toFixed(2)+' ms\nCET work: '+p.cet.toFixed(2)+' ms\nTop CET owner: '+(p.owner||'—')+'\n'+signal;
     tip.style.display='block';tip.style.left=Math.min(r.width-235,Math.max(8,ev.clientX-r.left+12))+'px';tip.style.top=Math.max(8,ev.clientY-r.top-115)+'px';
   });
+  canvas.addEventListener('wheel',ev=>{
+    if(!ev.shiftKey)return;
+    ev.preventDefault();
+
+    const fullMin=data[0].t,fullMax=data[data.length-1].e;
+    const fullSpan=fullMax-fullMin,currentSpan=xmax-xmin;
+    if(fullSpan<=0)return;
+
+    const rect=canvas.getBoundingClientRect(),padL=48,padR=18;
+    const ratio=Math.max(0,Math.min(1,(ev.clientX-rect.left-padL)/(rect.width-padL-padR)));
+    const anchor=xmin+ratio*currentSpan;
+    const factor=ev.deltaY<0?0.78:1.28;
+    const minSpan=Math.min(fullSpan,500);
+    const nextSpan=Math.max(minSpan,Math.min(fullSpan,currentSpan*factor));
+
+    let nextMin=anchor-ratio*nextSpan;
+    let nextMax=nextMin+nextSpan;
+    if(nextMin<fullMin){nextMin=fullMin;nextMax=fullMin+nextSpan;}
+    if(nextMax>fullMax){nextMax=fullMax;nextMin=fullMax-nextSpan;}
+
+    xmin=nextMin;xmax=nextMax;gcetFtDraw();
+  },{passive:false});
   canvas.addEventListener('mouseleave',()=>tip.style.display='none');
   window.addEventListener('resize',resize);requestAnimationFrame(resize);
 })();
