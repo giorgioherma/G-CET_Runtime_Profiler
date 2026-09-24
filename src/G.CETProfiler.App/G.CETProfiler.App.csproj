@@ -12,11 +12,15 @@
     <PublishTrimmed>false</PublishTrimmed>
     <AssemblyName>G-CET-Runtime-Profiler.App</AssemblyName>
     <RootNamespace>GCETRuntimeProfiler</RootNamespace>
+    <ApplicationIcon>..\..\assets\g-cet-app-icon.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\G.CETProfiler.Core\G.CETProfiler.Core.csproj" />
     <EmbeddedResource Include="..\..\assets\g-cet-icon.png">
       <LogicalName>GCETRuntimeProfiler.GCetIcon.png</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\..\assets\g-cet-app-icon.png">
+      <LogicalName>GCETRuntimeProfiler.GCetAppIcon.png</LogicalName>
     </EmbeddedResource>
     <Content Include="..\..\payload\**\*">
       <Link>payload\%(RecursiveDir)%(Filename)%(Extension)</Link>
