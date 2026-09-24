@@ -65,63 +65,11 @@ jobs:
             }
           }
 
-      - name: Generate Windows application icon
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          Add-Type -AssemblyName System.Drawing
-
-          $sourcePath = (Resolve-Path 'assets\g-cet-icon.png').Path
-          $iconPath = Join-Path (Get-Location) 'assets\g-cet-icon.ico'
-
-          $source = [System.Drawing.Image]::FromFile($sourcePath)
-          try {
-            $bitmap = [System.Drawing.Bitmap]::new(256, 256, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
-            try {
-              $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-              try {
-                $graphics.Clear([System.Drawing.Color]::Transparent)
-                $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
-                $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
-                $graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
-                $graphics.DrawImage($source, 0, 0, 256, 256)
-              }
-              finally {
-                $graphics.Dispose()
-              }
-
-              $hIcon = $bitmap.GetHicon()
-              $icon = [System.Drawing.Icon]::FromHandle($hIcon)
-              $stream = [System.IO.File]::Create($iconPath)
-              try {
-                $icon.Save($stream)
-              }
-              finally {
-                $stream.Dispose()
-              }
-            }
-            finally {
-              $bitmap.Dispose()
-            }
-          }
-          finally {
-            $source.Dispose()
-          }
-
-          if (!(Test-Path -LiteralPath $iconPath -PathType Leaf)) {
-            throw 'Windows icon generation failed.'
-          }
-
-          "GCET_ICON_PATH=$iconPath" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          Write-Host "Generated Windows icon: $iconPath"
-
       - name: Build
-        shell: pwsh
-        run: dotnet build G-CET-Runtime-Profiler.sln -c Release -p:ApplicationIcon="$env:GCET_ICON_PATH"
+        run: dotnet build G-CET-Runtime-Profiler.sln -c Release
 
       - name: Publish self-contained managed app
-        shell: pwsh
-        run: dotnet publish src/G.CETProfiler.App/G.CETProfiler.App.csproj -c Release -r win-x64 --self-contained true -p:ApplicationIcon="$env:GCET_ICON_PATH" -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o publish-app
+        run: dotnet publish src/G.CETProfiler.App/G.CETProfiler.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o publish-app
 
       - name: Build native root launcher
         shell: pwsh
