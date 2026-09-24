@@ -121,6 +121,7 @@ jobs:
           $obj = Join-Path $buildDir 'launcher.obj'
           $res = Join-Path $buildDir 'launcher.res'
           $out = Join-Path $buildDir 'G-CET-Runtime-Profiler.exe'
+          $imports = Join-Path $buildDir 'launcher-imports.txt'
           $script = Join-Path $buildDir 'build-launcher.cmd'
 
           @"
@@ -129,7 +130,9 @@ jobs:
           if errorlevel 1 exit /b %errorlevel%
           rc.exe /nologo /fo"$res" "$rc"
           if errorlevel 1 exit /b %errorlevel%
-          cl.exe /nologo /O2 /MT /DUNICODE /D_UNICODE /Fo:"$obj" "$src" "$res" /link /SUBSYSTEM:WINDOWS user32.lib /OUT:"$out"
+          cl.exe /nologo /O2 /GS /guard:cf /MT /DUNICODE /D_UNICODE /Fo:"$obj" "$src" "$res" /link /SUBSYSTEM:WINDOWS /DYNAMICBASE /NXCOMPAT /HIGHENTROPYVA /guard:cf user32.lib shell32.lib /OUT:"$out"
+          if errorlevel 1 exit /b %errorlevel%
+          dumpbin.exe /imports "$out" > "$imports"
           exit /b %errorlevel%
           "@ | Set-Content -LiteralPath $script -Encoding ascii
 
@@ -140,6 +143,27 @@ jobs:
           if (!(Test-Path -LiteralPath $out -PathType Leaf)) {
             throw 'Native launcher output is missing.'
           }
+
+          $importText = Get-Content -LiteralPath $imports -Raw
+          if ($importText -notmatch 'ShellExecuteExW') {
+            throw 'Launcher no longer imports ShellExecuteExW.'
+          }
+          foreach ($forbiddenImport in @('CreateProcessW','SetEnvironmentVariableW','HeapAlloc')) {
+            if ($importText -match $forbiddenImport) {
+              throw "Launcher unexpectedly imports $forbiddenImport."
+            }
+          }
+
+          $versionInfo = (Get-Item -LiteralPath $out).VersionInfo
+          if ($versionInfo.ProductName -ne 'G-CET Runtime Profiler') {
+            throw "Launcher ProductName metadata mismatch: $($versionInfo.ProductName)"
+          }
+          if ($versionInfo.FileDescription -ne 'G-CET Runtime Profiler Launcher') {
+            throw "Launcher FileDescription metadata mismatch: $($versionInfo.FileDescription)"
+          }
+
+          Write-Host 'Launcher imports: standard ShellExecuteExW path; suspicious legacy imports absent.'
+          Write-Host "Launcher metadata: $($versionInfo.ProductName) $($versionInfo.ProductVersion)"
 
       - name: Stage normal Windows app layout
         shell: pwsh
