@@ -12,18 +12,21 @@ The public release is a **portable ZIP**. No installer is required.
 G-CET-Runtime-Profiler-v1.0.0.zip
 └─ G-CET-Runtime-Profiler\
    ├─ G-CET-Runtime-Profiler.exe
-   ├─ G.CETProfiler.Core.dll
    ├─ MANIFEST.json
    ├─ VERSION.txt
-   ├─ README.md
    ├─ payload\
    ├─ RESULTS\
-   └─ .NET self-contained runtime files...
+   └─ docs\
+      ├─ README.md
+      ├─ CHANGELOG.md
+      └─ RELEASE_NOTES.md
 ```
+
+The .NET runtime and managed assemblies are bundled into the single EXE so the public root stays clean. `payload\` remains external on purpose because those exact profiler/integration files are hash-verified before deployment.
 
 Extract the ZIP to a normal writable folder and run `G-CET-Runtime-Profiler.exe`.
 
-The profiler is self-contained: users do **not** need to install .NET separately. Settings are created beside the EXE in the extracted profiler folder rather than being sent to Windows roaming/app-data folders.
+The profiler is self-contained: users do **not** need to install .NET separately. `G-CET-Runtime-Profiler.settings.json` is created beside the EXE on first use rather than being sent to Windows roaming/app-data folders.
 
 ## Requirements
 
@@ -175,6 +178,6 @@ See `docs/TOTAL_INTEGRATION_CONTRACT.md`.
 
 The native profiler payload remains version **2.11.0**, targeting the manifest-locked CET **1.37.1** binary set.
 
-The public manager is a C# / .NET 8 WinForms application. The PowerShell implementation under `reference/powershell-alpha6c/` is historical/reference material only and is not shipped in the public package.
+The public manager is a C# / .NET 8 WinForms application published as a self-contained single EXE. The PowerShell implementation under `reference/powershell-alpha6c/` is historical/reference material only and is not shipped in the public package.
 
 CI validates the hash-locked payload, builds the self-contained Windows package, exercises installation/collection/restore and 0-Engine integration fixtures, then produces the portable release ZIP.
