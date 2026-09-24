@@ -695,31 +695,15 @@ public sealed class MainForm : Form
         status.SuspendLayout();
         try
         {
+            // Status prose stays white. Semantic color is reserved strictly for
+            // the trailing/inline state markers so the box remains easy to scan.
             status.SelectAll();
             status.SelectionColor = ThemeText;
 
-            for (var i = 0; i < status.Lines.Length; i++)
-            {
-                var line = status.Lines[i];
-                var start = status.GetFirstCharIndexFromLine(i);
-                if (start < 0)
-                    continue;
-
-                var color = line.Contains('❌') ||
-                            line.Contains("ERROR", StringComparison.OrdinalIgnoreCase) ||
-                            line.Contains("BLOCKED", StringComparison.OrdinalIgnoreCase)
-                    ? ThemeRed
-                    : line.Contains('✅')
-                        ? ThemeGreen
-                        : line.Contains('⚠')
-                            ? ThemeAmber
-                            : line.Trim().Equals("optional:", StringComparison.OrdinalIgnoreCase)
-                                ? ThemeMuted
-                                : ThemeText;
-
-                status.Select(start, line.Length);
-                status.SelectionColor = color;
-            }
+            ColorStatusMarkers("✅", ThemeGreen);
+            ColorStatusMarkers("❌", ThemeRed);
+            ColorStatusMarkers("⚠️", ThemeAmber);
+            ColorStatusMarkers("⚠", ThemeAmber);
 
             status.Select(0, 0);
             status.SelectionLength = 0;
@@ -727,6 +711,21 @@ public sealed class MainForm : Form
         finally
         {
             status.ResumeLayout();
+        }
+    }
+
+    private void ColorStatusMarkers(string marker, Color color)
+    {
+        var searchFrom = 0;
+        while (searchFrom < status.TextLength)
+        {
+            var index = status.Text.IndexOf(marker, searchFrom, StringComparison.Ordinal);
+            if (index < 0)
+                break;
+
+            status.Select(index, marker.Length);
+            status.SelectionColor = color;
+            searchFrom = index + marker.Length;
         }
     }
 
@@ -1286,6 +1285,7 @@ public sealed class MainForm : Form
         // accent color identifying the normal forward path and restore boundary.
         AccentButton(install, ThemeCyan);
         AccentButton(collect, ThemeCyan);
+        AccentButton(openResults, ThemeCyan);
         AccentButton(startGame, ThemeCyan);
         AccentButton(startCompanion, ThemeCyan);
         AccentButton(restore, ThemeMagenta);
