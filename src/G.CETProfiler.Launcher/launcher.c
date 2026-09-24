@@ -68,16 +68,27 @@ int WINAPI wWinMain(
     // managed executable under app\, keeping this root EXE as close as possible
     // to a normal Windows shortcut without scripts, injection, or child-process
     // command-line construction.
-    HINSTANCE result = ShellExecuteW(
-        NULL,
-        L"open",
-        appPath,
-        NULL,
-        packageRoot,
-        SW_SHOWNORMAL);
+    SHELLEXECUTEINFOW launch;
+    ZeroMemory(&launch, sizeof(launch));
+    launch.cbSize = sizeof(launch);
+    launch.fMask = SEE_MASK_NOCLOSEPROCESS |
+                   SEE_MASK_FLAG_NO_UI |
+                   SEE_MASK_NOZONECHECKS;
+    launch.hwnd = NULL;
+    launch.lpVerb = L"open";
+    launch.lpFile = appPath;
+    launch.lpParameters = NULL;
+    launch.lpDirectory = packageRoot;
+    launch.nShow = SW_SHOWNORMAL;
 
-    if ((INT_PTR)result <= 32)
+    // The user has already explicitly chosen to run the root G-CET application.
+    // Do not ask Windows Attachment Manager to present a second Unknown Publisher
+    // prompt for the bundled managed child executable.
+    if (!ShellExecuteExW(&launch))
         return Fail(L"Windows could not start the internal profiler application.");
+
+    if (launch.hProcess != NULL)
+        CloseHandle(launch.hProcess);
 
     return 0;
 }
