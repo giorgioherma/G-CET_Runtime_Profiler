@@ -184,6 +184,6 @@ See `docs/TOTAL_INTEGRATION_CONTRACT.md`.
 
 The native profiler payload remains version **2.11.0**, targeting the manifest-locked CET **1.37.1** binary set.
 
-The public manager is a C# / .NET 8 WinForms application published as a self-contained single EXE. The PowerShell implementation under `reference/powershell-alpha6c/` is historical/reference material only and is not shipped in the public package.
+The public manager is a C# / .NET 8 WinForms application shipped behind a small native launcher, with the self-contained managed app/runtime isolated under `app/`. The PowerShell implementation under `reference/powershell-alpha6c/` is historical/reference material only and is not compiled or shipped in the public package.
 
 CI validates the hash-locked payload, builds the self-contained Windows package, exercises installation/collection/restore and 0-Engine integration fixtures, then produces the portable release ZIP.
