@@ -71,7 +71,6 @@ public static partial class ResultReportService
         public string TopOwner { get; init; } = "";
         public double TopOwnerCetMs { get; init; }
         public double FrameMaxMs { get; init; }
-        public double FrameMeanMs { get; init; }
         public double CpuActiveMaxMs { get; init; }
         public double GpuActiveMaxMs { get; init; }
         public int SlowFrameCount { get; init; }
@@ -408,7 +407,7 @@ public static partial class ResultReportService
         foreach (var window in windows)
         {
             while (frameIndex < frames.Count &&
-                   frames[frameIndex].CetRelativeStartMs + frames[frameIndex].FrameMs < window.StartMs)
+                   frames[frameIndex].RelativeStartMs + frames[frameIndex].FrameMs < window.StartMs)
                 frameIndex++;
 
             var inWindow = new List<CapFrameMetric>();
@@ -435,7 +434,6 @@ public static partial class ResultReportService
                 TopOwner = window.TopOwner,
                 TopOwnerCetMs = window.TopOwnerExclusiveMs,
                 FrameMaxMs = inWindow.Count == 0 ? 0 : inWindow.Max(x => x.FrameMs),
-                FrameMeanMs = inWindow.Count == 0 ? 0 : inWindow.Average(x => x.FrameMs),
                 CpuActiveMaxMs = inWindow.Count == 0 ? 0 : inWindow.Max(x => x.CpuActiveMs),
                 GpuActiveMaxMs = inWindow.Count == 0 ? 0 : inWindow.Max(x => x.GpuActiveMs),
                 SlowFrameCount = inWindow.Count(x => x.FrameMs >= 33.3),
