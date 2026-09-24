@@ -48,7 +48,7 @@ Required:
 Optional:
 
 - 0-Engine — adds Scheduler attribution/integration where the installed layout is recognized
-- a frame-time capture tool — CapFrameX is the tested/recommended companion, but another profiler or compatible CapFrameX version can be used
+- a frame-time capture tool — CapFrameX **1.9.1.2 Beta** is the tested/recommended reference build, but another frame-time profiler can be used
 
 Neither 0-Engine nor a frame-time profiler is required for a normal CET profiler run.
 
@@ -68,7 +68,7 @@ There is no separate export key.
 1. Run `G-CET-Runtime-Profiler.exe`.
 2. On **SETUP**, select the Cyberpunk 2077 folder.
 3. Optionally link a frame-time profiler executable and its results folder.
-4. Continue to **INSTALL, CAPTURE & RECOVERY**.
+4. Continue to **INSTALL -> CAPTURE -> RESTORE**.
 5. Review the status list and use **INSTALL PROFILER**.
 6. When the page reports **PROFILER IS READY!**, optionally launch the frame-time tool and then start Cyberpunk.
 7. In game, press F11 to start and F11 again to stop/export.
@@ -85,15 +85,17 @@ The second page uses one shared status convention:
 
 Optional components never make the core CET profiler unavailable by themselves.
 
+The final v1.0.0 UI keeps status prose white and colors only the semantic markers themselves. Disabled actions are visibly gray; enabled forward actions use the cyan G-CET accent, while **RESTORE ORIGINAL STATE** uses magenta when available.
+
 ## Optional frame-time companion
 
 Frame-time pairing is convenience-only and is **not a dependency**.
 
-CapFrameX is the development/test reference. The manager can inspect recognized CapFrameX configuration read-only to report its capture key and suggest its capture directory. Other profilers are accepted; if their key cannot be identified the UI reports it as unknown and asks the user to verify synchronization manually.
+CapFrameX **1.9.1.2 Beta** is the development/test reference used for v1.0.0. The manager can inspect recognized CapFrameX configuration read-only to report its capture key and suggest its capture directory. The CapFrameX releases link intentionally points to the upstream release page rather than claiming that the upstream release-page label matches the executable's internal version. Other profilers are accepted; if their key cannot be identified the UI reports it as unknown and asks the user to verify synchronization manually.
 
 External frame-time files are always **copied only** into the collected CET result. The source files belonging to the external profiler are never moved, deleted, or modified.
 
-When the copied companion is a recognized CapFrameX JSON capture, the standalone report automatically adds a second evidence layer: average/median/P95/P99/max frametime, slow-frame counts, CPU Active and GPU Active readings, shared-F11 relative-timeline synchronization, CET 50 ms-window overlap, recorded callback-spike overlap, 0-Engine Scheduler-burst overlap, a synchronized CET/frametime timeline, and a table of the worst rendered-frame events. CapFrameX `Info.CreationDate` is treated as record/save metadata rather than a capture-start clock. Other/custom profiler files remain preserved under `FrameTime\` even when their schema cannot be interpreted automatically.
+When the copied companion is a recognized CapFrameX JSON capture, the standalone report automatically adds a second evidence layer: average/median/P95/P99/max frametime, slow-frame counts, CPU Active and GPU Active readings, shared-F11 relative-timeline synchronization, CET 50 ms-window overlap, recorded callback-spike overlap, 0-Engine Scheduler-burst overlap, a synchronized CET/frametime timeline, and a table of the worst rendered-frame events. Hold **Shift** and use the mouse wheel over the timeline to zoom in/out around the pointer; the existing Full capture / Around worst frame controls remain available. CapFrameX `Info.CreationDate` is treated as record/save metadata rather than a capture-start clock. Other/custom profiler files remain preserved under `FrameTime\` even when their schema cannot be interpreted automatically.
 
 ## 0-Engine behavior
 
@@ -188,6 +190,6 @@ See `docs/TOTAL_INTEGRATION_CONTRACT.md`.
 
 The native profiler payload remains version **2.11.0**, targeting the manifest-locked CET **1.37.1** binary set.
 
-The public manager is a C# / .NET 8 WinForms application shipped behind a small native launcher, with the self-contained managed app/runtime isolated under `app/`. The retired PowerShell manager has been removed from the live tree; its history remains available through Git.
+The public manager is a C# / .NET 8 WinForms application shipped behind a small native launcher, with the self-contained managed app/runtime isolated under `app/`. Both Windows executables carry the final multi-size G-CET application icon. The retired PowerShell manager has been removed from the live tree; its history remains available through Git.
 
-CI validates the hash-locked payload, builds the self-contained Windows package, exercises installation/collection/restore and 0-Engine integration fixtures, then produces the portable release ZIP.
+CI validates the hash-locked payload, builds the self-contained Windows package, exercises installation/collection/restore and 0-Engine integration fixtures, then produces the portable release ZIP. A successful push to `main` also refreshes the matching canonical GitHub release tag, notes, ZIP, and SHA-256 file for the version declared by `VERSION.txt`.
