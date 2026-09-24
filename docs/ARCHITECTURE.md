@@ -143,7 +143,7 @@ Report generation is best-effort by design. If interpretation fails after raw ve
 
 Unrelated files in the CET directory are never swept. If the GUI has an optional frame-time companion configured, its selected/latest capture is copied under `FrameTime/` after CET collection; the external source is never modified or deleted.
 
-For recognized CapFrameX JSON, correlation uses the CapFrameX `Info.CreationDate` clock and CET's epoch START marker. Exact callback/Scheduler-event overlap is enabled only for close start alignment; coarser synchronization can still expose frametime statistics without pretending to have exact event attribution. CapFrameX provides rendered frametime plus CPU Active/GPU Active; CET provides script-side workload. The two domains are synchronized evidence layers, not an additive/subtractive CPU budget.
+For recognized CapFrameX JSON, `Info.CreationDate` is treated as record/save metadata, not as the F11 capture start. When the companion manifest confirms F11 on both sides and the CET/CapFrameX capture durations agree closely, both already-normalized relative timelines are aligned at relative time zero. Duration agreement is used as a same-capture sanity check; `CreationDate` is retained only as a diagnostic record timestamp/save-lag value. Exact callback/Scheduler-event overlap is enabled only for a GOOD shared-F11 match; coarse matches keep window-level evidence without pretending to have exact event attribution. CapFrameX provides rendered frametime plus CPU Active/GPU Active; CET provides script-side workload. The two domains are synchronized evidence layers, not an additive/subtractive CPU budget.
 
 TOTAL Profiler does not redirect CET's path. It consumes the completed standalone CET result after collection.
 
