@@ -1214,7 +1214,12 @@ public sealed class MainForm : Form
             switch (control)
             {
                 case Panel panel:
-                    panel.BackColor = ThemeBg;
+                    panel.BackColor = panel.Tag as string switch
+                    {
+                        "gcet-accent-cyan" => ThemeBorder,
+                        "gcet-accent-magenta" => ThemeMagenta,
+                        _ => ThemeBg
+                    };
                     panel.ForeColor = ThemeText;
                     break;
 
@@ -1313,12 +1318,14 @@ public sealed class MainForm : Form
     {
         var cyan = new Panel
         {
+            Tag = "gcet-accent-cyan",
             BackColor = ThemeBorder,
             Location = new Point(20, y),
             Size = new Size(820, 1)
         };
         var magenta = new Panel
         {
+            Tag = "gcet-accent-magenta",
             BackColor = ThemeMagenta,
             Location = new Point(20, y + 1),
             Size = new Size(92, 1)
