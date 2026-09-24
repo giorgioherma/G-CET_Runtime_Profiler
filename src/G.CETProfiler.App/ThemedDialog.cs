@@ -92,16 +92,20 @@ internal static class ThemedDialog
             Image = GetSystemIcon(icon)?.ToBitmap()
         };
 
-        var message = new Label
+        var message = new RichTextBox
         {
             Left = 76,
             Top = 18,
             Width = clientWidth - 94,
             Height = clientHeight - 88,
-            AutoSize = false,
+            ReadOnly = true,
+            BorderStyle = BorderStyle.None,
+            ScrollBars = RichTextBoxScrollBars.Vertical,
+            DetectUrls = false,
+            TabStop = false,
             Text = text,
             ForeColor = Text,
-            BackColor = Color.Transparent
+            BackColor = Bg
         };
 
         var buttonPanel = new Panel
