@@ -14,6 +14,12 @@ G-CET-Runtime-Profiler-v1.0.0.zip
    ├─ G-CET-Runtime-Profiler.exe
    ├─ MANIFEST.json
    ├─ VERSION.txt
+   ├─ app\
+   │  ├─ G-CET-Runtime-Profiler.App.exe
+   │  ├─ G-CET-Runtime-Profiler.App.deps.json
+   │  ├─ G-CET-Runtime-Profiler.App.runtimeconfig.json
+   │  ├─ G.CETProfiler.Core.dll
+   │  └─ .NET runtime files...
    ├─ payload\
    ├─ RESULTS\
    └─ docs\
@@ -22,11 +28,11 @@ G-CET-Runtime-Profiler-v1.0.0.zip
       └─ RELEASE_NOTES.md
 ```
 
-The .NET runtime and managed assemblies are bundled into the single EXE so the public root stays clean. `payload\` remains external on purpose because those exact profiler/integration files are hash-verified before deployment.
+The root EXE is a small native launcher. The self-contained WinForms application and .NET runtime live under `app\`, keeping the public root readable without hiding the whole application inside one large opaque executable. `payload\` remains separate because those exact profiler/integration files are hash-verified before deployment.
 
 Extract the ZIP to a normal writable folder and run `G-CET-Runtime-Profiler.exe`.
 
-The profiler is self-contained: users do **not** need to install .NET separately. `G-CET-Runtime-Profiler.settings.json` is created beside the EXE on first use rather than being sent to Windows roaming/app-data folders.
+The profiler is self-contained: users do **not** need to install .NET separately. `G-CET-Runtime-Profiler.settings.json` is created beside the root launcher on first use rather than being sent to Windows roaming/app-data folders. The launcher forwards both GUI and headless commands to the same application under `app\`.
 
 ## Requirements
 
