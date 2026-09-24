@@ -3,33 +3,6 @@
 
 #define APP_RELATIVE_PATH L"\\app\\G-CET-Runtime-Profiler.App.exe"
 
-static const wchar_t* SkipExecutableToken(const wchar_t* commandLine)
-{
-    const wchar_t* p = commandLine;
-
-    while (*p == L' ' || *p == L'\t')
-        ++p;
-
-    if (*p == L'"')
-    {
-        ++p;
-        while (*p && *p != L'"')
-            ++p;
-        if (*p == L'"')
-            ++p;
-    }
-    else
-    {
-        while (*p && *p != L' ' && *p != L'\t')
-            ++p;
-    }
-
-    while (*p == L' ' || *p == L'\t')
-        ++p;
-
-    return p;
-}
-
 static int Fail(const wchar_t* message)
 {
     MessageBoxW(
@@ -91,40 +64,20 @@ int WINAPI wWinMain(
             L"Re-extract the complete profiler package.");
     }
 
-    // The managed app already resolves the package root from its parent
-    // directory. Keep this launcher deliberately boring: ask the Windows shell
-    // to open the real application rather than manually constructing and
-    // injecting a CreateProcess command line/environment.
-    const wchar_t* forwarded = SkipExecutableToken(GetCommandLineW());
-    const BOOL headless = forwarded != NULL && *forwarded != L'\0';
+    // Human-facing launcher only. Headless/automation entry points live on the
+    // managed executable under app\, keeping this root EXE as close as possible
+    // to a normal Windows shortcut without scripts, injection, or child-process
+    // command-line construction.
+    HINSTANCE result = ShellExecuteW(
+        NULL,
+        L"open",
+        appPath,
+        NULL,
+        packageRoot,
+        SW_SHOWNORMAL);
 
-    SHELLEXECUTEINFOW launch;
-    ZeroMemory(&launch, sizeof(launch));
-    launch.cbSize = sizeof(launch);
-    launch.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_FLAG_NO_UI;
-    launch.hwnd = NULL;
-    launch.lpVerb = L"open";
-    launch.lpFile = appPath;
-    launch.lpParameters = headless ? forwarded : NULL;
-    launch.lpDirectory = packageRoot;
-    launch.nShow = SW_SHOWNORMAL;
-
-    if (!ShellExecuteExW(&launch) || launch.hProcess == NULL)
+    if ((INT_PTR)result <= 32)
         return Fail(L"Windows could not start the internal profiler application.");
 
-    // GUI launch: return immediately. CLI/headless launch: preserve the existing
-    // launcher contract by waiting and forwarding the managed app's exit code.
-    if (!headless)
-    {
-        CloseHandle(launch.hProcess);
-        return 0;
-    }
-
-    WaitForSingleObject(launch.hProcess, INFINITE);
-
-    DWORD exitCode = 1;
-    GetExitCodeProcess(launch.hProcess, &exitCode);
-    CloseHandle(launch.hProcess);
-
-    return (int)exitCode;
+    return 0;
 }
