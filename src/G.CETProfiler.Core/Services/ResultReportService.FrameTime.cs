@@ -674,4 +674,43 @@ public static partial class ResultReportService
 
         return ranks;
     }
+    private static void AddFrameTimeFindings(List<Finding> findings, FrameTimeAnalysis? frameTime)
+    {
+        if (frameTime is null)
+            return;
+
+        if (!frameTime.Correlated)
+        {
+            findings.Insert(0, new Finding(
+                "CapFrameX capture available",
+                $"{frameTime.FrameCount:N0} frames · {F(frameTime.MeanFrameMs)} ms average · {F(frameTime.P99FrameMs)} ms P99",
+                "Frametime statistics are available, but CET and CapFrameX start clocks were not close enough for CET/stall attribution."));
+            return;
+        }
+
+        var worst = frameTime.WorstFrames.FirstOrDefault();
+        if (worst is not null)
+        {
+            var cet = worst.CetWindowMs > 0
+                ? $"{F(worst.CetWindowMs)} ms of measured CET work in the aligned 50 ms window"
+                : "little measured CET work in the aligned 50 ms window";
+            var owner = string.IsNullOrWhiteSpace(worst.TopCetOwner)
+                ? ""
+                : $" Largest CET owner in that window: {worst.TopCetOwner} ({F(worst.TopCetOwnerMs)} ms).";
+
+            findings.Insert(0, new Finding(
+                "Worst frametime event",
+                $"{F(worst.FrameMs)} ms frame at {F(worst.StartMs / 1000.0, 3)} s; {cet}.{owner}",
+                worst.Evidence));
+        }
+
+        if (frameTime.FramesOver33Ms > 0)
+        {
+            findings.Insert(Math.Min(1, findings.Count), new Finding(
+                "Slow-frame CET overlap",
+                $"{frameTime.SlowFramesHighCet} of {frameTime.FramesOver33Ms} frames ≥33.3 ms occurred during top-10% CET workload windows; {frameTime.SlowFramesCetNormal} occurred while CET evidence was otherwise normal.",
+                $"Across 50 ms windows, CET workload vs maximum frametime has Spearman r={F(frameTime.SpearmanWindowCorrelation, 3)}. This is synchronized overlap evidence, not a claim that CET caused every slow frame."));
+        }
+    }
+
 }
