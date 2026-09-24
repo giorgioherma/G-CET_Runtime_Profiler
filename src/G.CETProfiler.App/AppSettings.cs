@@ -1,4 +1,5 @@
 using System.Text.Json;
+using GCETRuntimeProfiler.Core.Services;
 
 namespace GCETRuntimeProfiler;
 
@@ -12,7 +13,7 @@ internal sealed class AppSettings
     public string LastCollectedExternalFingerprint { get; set; } = "";
 
     private static string SettingsPath =>
-        Path.Combine(AppContext.BaseDirectory, "G-CET-Runtime-Profiler.settings.json");
+        Path.Combine(PackageRootLocator.Resolve(), "G-CET-Runtime-Profiler.settings.json");
 
     public static AppSettings Load()
     {
