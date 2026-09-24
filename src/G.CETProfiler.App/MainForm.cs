@@ -204,7 +204,7 @@ public sealed class MainForm : Form
         {
             Text = "For synchronized captures, use the same START key. G-CET presets its CET binding to F11 during install.",
             AutoSize = true,
-            ForeColor = SystemColors.GrayText,
+            ForeColor = ThemeText,
             Location = new Point(150, 118)
         };
 
