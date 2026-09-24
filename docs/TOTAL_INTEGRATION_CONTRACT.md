@@ -1,6 +1,6 @@
 # TOTAL Profiler integration contract
 
-`G-CET-Runtime-Profiler` is a standalone product first. TOTAL Profiler consumes the exact standalone release unchanged.
+`G-CET-Runtime-Profiler` is a standalone product first. **v1.0.0 is the frozen standalone CET baseline.** TOTAL Profiler consumes the exact standalone release unchanged.
 
 TOTAL must not:
 
@@ -24,7 +24,7 @@ TOTAL may:
 
 ## Dependency rule
 
-TOTAL should consume a versioned standalone release of this repository and invoke `G-CET-Runtime-Profiler.exe` headlessly. The files used by TOTAL must be byte-identical to the standalone package for that release.
+TOTAL should consume the canonical **v1.0.0** standalone release of this repository and invoke `G-CET-Runtime-Profiler.exe` headlessly. The files used by TOTAL must be byte-identical to the standalone package for that release.
 
 Combined-capture orchestration and correlation belong in TOTAL. The standalone GUI's optional frame-time companion is only a convenience layer: it is not part of the CET headless dependency contract and TOTAL must not rely on it.
 

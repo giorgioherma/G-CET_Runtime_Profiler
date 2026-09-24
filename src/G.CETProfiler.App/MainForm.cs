@@ -18,6 +18,9 @@ public sealed class MainForm : Form
     private static readonly Color ThemeBorder = Color.FromArgb(40, 71, 82);
     private static readonly Color ThemeText = Color.FromArgb(232, 243, 246);
     private static readonly Color ThemeMuted = Color.FromArgb(172, 188, 197);
+    private static readonly Color ThemeInactive = Color.FromArgb(104, 118, 126);
+    private static readonly Color ThemeDisabledSurface = Color.FromArgb(18, 25, 31);
+    private static readonly Color ThemeDisabledBorder = Color.FromArgb(49, 61, 68);
     private static readonly Color ThemeCyan = Color.FromArgb(54, 244, 244);
     private static readonly Color ThemeMagenta = Color.FromArgb(255, 63, 215);
     private static readonly Color ThemeGreen = Color.FromArgb(94, 255, 130);
@@ -182,6 +185,7 @@ public sealed class MainForm : Form
             Text = "CET Runtime Profiler works standalone. Pairing it with a frame-time capture lets you compare CET/Lua activity with actual frame-time behavior. This build was designed and tested alongside CapFrameX 1.9.1.2 Beta, but you can use a profiler you already have.",
             MaximumSize = new Size(770, 0),
             AutoSize = true,
+            ForeColor = ThemeText,
             Location = new Point(18, 62)
         };
 
@@ -204,11 +208,11 @@ public sealed class MainForm : Form
         {
             Text = "For synchronized captures, use the same START key. G-CET presets its CET binding to F11 during install.",
             AutoSize = true,
-            ForeColor = SystemColors.GrayText,
+            ForeColor = ThemeText,
             Location = new Point(150, 118)
         };
 
-        var exeLabel = new Label { Text = "Profiler executable", AutoSize = true, Location = new Point(18, 158) };
+        var exeLabel = new Label { Text = "Profiler executable", AutoSize = true, ForeColor = ThemeText, Location = new Point(18, 158) };
         companionExe.SetBounds(18, 180, 680, 26);
         companionExe.TextChanged += (_, _) =>
         {
@@ -241,7 +245,7 @@ public sealed class MainForm : Form
             RefreshCompanionStatus();
         };
 
-        var resultLabel = new Label { Text = "Capture / results folder", AutoSize = true, Location = new Point(18, 218) };
+        var resultLabel = new Label { Text = "Capture / results folder", AutoSize = true, ForeColor = ThemeText, Location = new Point(18, 218) };
         companionResults.SetBounds(18, 240, 680, 26);
         companionResults.TextChanged += (_, _) =>
         {
@@ -691,31 +695,15 @@ public sealed class MainForm : Form
         status.SuspendLayout();
         try
         {
+            // Status prose stays white. Semantic color is reserved strictly for
+            // the trailing/inline state markers so the box remains easy to scan.
             status.SelectAll();
             status.SelectionColor = ThemeText;
 
-            for (var i = 0; i < status.Lines.Length; i++)
-            {
-                var line = status.Lines[i];
-                var start = status.GetFirstCharIndexFromLine(i);
-                if (start < 0)
-                    continue;
-
-                var color = line.Contains('❌') ||
-                            line.Contains("ERROR", StringComparison.OrdinalIgnoreCase) ||
-                            line.Contains("BLOCKED", StringComparison.OrdinalIgnoreCase)
-                    ? ThemeRed
-                    : line.Contains('✅')
-                        ? ThemeGreen
-                        : line.Contains('⚠')
-                            ? ThemeAmber
-                            : line.Trim().Equals("optional:", StringComparison.OrdinalIgnoreCase)
-                                ? ThemeMuted
-                                : ThemeText;
-
-                status.Select(start, line.Length);
-                status.SelectionColor = color;
-            }
+            ColorStatusMarkers("✅", ThemeGreen);
+            ColorStatusMarkers("❌", ThemeRed);
+            ColorStatusMarkers("⚠️", ThemeAmber);
+            ColorStatusMarkers("⚠", ThemeAmber);
 
             status.Select(0, 0);
             status.SelectionLength = 0;
@@ -723,6 +711,21 @@ public sealed class MainForm : Form
         finally
         {
             status.ResumeLayout();
+        }
+    }
+
+    private void ColorStatusMarkers(string marker, Color color)
+    {
+        var searchFrom = 0;
+        while (searchFrom < status.TextLength)
+        {
+            var index = status.Text.IndexOf(marker, searchFrom, StringComparison.Ordinal);
+            if (index < 0)
+                break;
+
+            status.Select(index, marker.Length);
+            status.SelectionColor = color;
+            searchFrom = index + marker.Length;
         }
     }
 
@@ -759,8 +762,8 @@ public sealed class MainForm : Form
         // and the capture/collect/restore steps become active.
         readyInstallInstruction.Enabled = true;
         readyCaptureInstructions.Enabled = true;
-        readyInstallInstruction.ForeColor = snapshot?.Managed == true ? ThemeMuted : ThemeCyan;
-        readyCaptureInstructions.ForeColor = ready ? ThemeText : ThemeMuted;
+        readyInstallInstruction.ForeColor = snapshot?.Managed == true ? ThemeInactive : ThemeCyan;
+        readyCaptureInstructions.ForeColor = ready ? ThemeText : ThemeInactive;
 
         readyNotice.Text = GetReadyNotice(snapshot);
         readyNotice.ForeColor = blocked
@@ -870,6 +873,7 @@ public sealed class MainForm : Form
             var postInstallWarning = BuildPostInstallWarning(installedSnapshot);
             if (!string.IsNullOrWhiteSpace(postInstallWarning))
             {
+                await SettleProfilerUiBeforeNotificationAsync(installedSnapshot);
                 ThemedDialog.Show(
                     this,
                     postInstallWarning,
@@ -1055,6 +1059,8 @@ public sealed class MainForm : Form
             if (reportRefreshError is not null)
                 companionText += "\r\nReport refresh: CapFrameX copy is safe, but the post-copy report refresh failed: " + reportRefreshError;
 
+            await SettleProfilerUiBeforeNotificationAsync();
+
             ThemedDialog.Show(
                 this,
                 "CET results archived successfully and known live profiler output was cleared.\r\n\r\n" +
@@ -1100,6 +1106,7 @@ public sealed class MainForm : Form
 
             lastStatus = verified;
             ShowRestoreOutcome(true, "RESTORE SUCCESSFUL — profiler removed and original state restored.");
+            await SettleProfilerUiBeforeNotificationAsync(verified);
             ThemedDialog.Show(this, message, Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)
@@ -1121,6 +1128,34 @@ public sealed class MainForm : Form
             SetBusy(false);
             await RefreshStatusAsync(silent: true);
         }
+    }
+
+    private async Task SettleProfilerUiBeforeNotificationAsync(ProfilerStatus? snapshot = null)
+    {
+        // Never open a modal while the entire profiler page is still disabled by
+        // the busy state. WinForms can briefly repaint that disabled parent with
+        // system colors, and a modal then freezes the flash underneath it.
+        SetBusy(false);
+
+        if (snapshot is null)
+        {
+            await RefreshStatusAsync(silent: true);
+        }
+        else
+        {
+            lastStatus = snapshot;
+            RenderStatus(snapshot);
+            RenderCompatibility(snapshot);
+            RenderReadyState(snapshot);
+            RenderSetupGameStatus();
+            SetActionState(snapshot);
+        }
+
+        // Give the final dark/neon state a full paint cycle and a short visual
+        // settle before the modal takes focus.
+        profilerPage.Refresh();
+        profilerPage.Update();
+        await Task.Delay(500);
     }
 
     private void ShowRestoreProgress(string message)
@@ -1250,6 +1285,7 @@ public sealed class MainForm : Form
         // accent color identifying the normal forward path and restore boundary.
         AccentButton(install, ThemeCyan);
         AccentButton(collect, ThemeCyan);
+        AccentButton(openResults, ThemeCyan);
         AccentButton(startGame, ThemeCyan);
         AccentButton(startCompanion, ThemeCyan);
         AccentButton(restore, ThemeMagenta);
@@ -1346,15 +1382,15 @@ public sealed class MainForm : Form
             if (button.Enabled)
                 return;
 
-            e.Graphics.Clear(ThemePanel);
-            using var border = new Pen(ThemeBorder);
+            e.Graphics.Clear(ThemeDisabledSurface);
+            using var border = new Pen(ThemeDisabledBorder);
             e.Graphics.DrawRectangle(border, 0, 0, Math.Max(0, button.Width - 1), Math.Max(0, button.Height - 1));
             TextRenderer.DrawText(
                 e.Graphics,
                 button.Text,
                 button.Font,
                 button.ClientRectangle,
-                ThemeMuted,
+                ThemeInactive,
                 TextFormatFlags.HorizontalCenter |
                 TextFormatFlags.VerticalCenter |
                 TextFormatFlags.SingleLine |

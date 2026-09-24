@@ -2,13 +2,13 @@
 
 The retired PowerShell alpha6c implementation is preserved only in Git history; the live tree and public package use the C# manager exclusively.
 
-**v0.1.2-beta implements this contract in C#/.NET 8.** The reference scripts are no longer part of the public runtime package.
+**v1.0.0 implements this contract in C#/.NET 8.** The reference scripts are no longer part of the public runtime package.
 
 Future changes should preserve these behavioral invariants unless the standalone profiler contract is intentionally versioned.
 
 ## Invariants
 
-- Guided two-page standalone workflow: Setup, then Install/Capture/Recovery.
+- Guided two-page standalone workflow: SETUP, then INSTALL -> CAPTURE -> RESTORE.
 - One CET input, default F11.
 - F11 #1 starts a fresh capture.
 - F11 #2 stops capture and automatically exports CSV results.
@@ -37,6 +37,7 @@ G-CET-Runtime-Profiler.exe --collect --game "..." --json
 G-CET-Runtime-Profiler.exe --reset   --game "..." --json
 G-CET-Runtime-Profiler.exe --restore --game "..." --json
 G-CET-Runtime-Profiler.exe --emergency-restore --game "..." --json
+G-CET-Runtime-Profiler.exe --report --capture "RESULTS\<capture>" --json
 ```
 
 The JSON contract should remain stable enough for TOTAL Profiler to consume without knowing CET internals.

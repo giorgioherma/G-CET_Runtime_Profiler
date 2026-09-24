@@ -678,3 +678,66 @@ jobs:
           name: G-CET-Runtime-Profiler-v${{ steps.product_version.outputs.version }}
           path: portable/
           if-no-files-found: error
+
+      - name: Publish canonical GitHub release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $tag = "v$env:PRODUCT_VERSION"
+          $repo = $env:GITHUB_REPOSITORY
+          $sha = $env:GITHUB_SHA
+          $releaseNotes = Join-Path $env:RUNNER_TEMP "gcet-release-notes-$env:PRODUCT_VERSION.md"
+
+          if (!(Test-Path -LiteralPath $env:PUBLIC_ASSET -PathType Leaf)) {
+            throw "Release ZIP is missing: $env:PUBLIC_ASSET"
+          }
+          if (!(Test-Path -LiteralPath "$env:PUBLIC_ASSET.sha256.txt" -PathType Leaf)) {
+            throw "Release SHA-256 file is missing: $env:PUBLIC_ASSET.sha256.txt"
+          }
+
+          # v1.0.0 existed during final stabilization. The canonical tag must point
+          # at the exact final main commit that produced the published assets.
+          & gh api --method PATCH "repos/$repo/git/refs/tags/$tag" -f sha="$sha" -F force=true *> $null
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "Tag $tag does not exist yet; creating it at $sha."
+            & gh api --method POST "repos/$repo/git/refs" -f ref="refs/tags/$tag" -f sha="$sha" *> $null
+            if ($LASTEXITCODE -ne 0) {
+              throw "Could not create or move tag $tag to $sha."
+            }
+          }
+
+          $notes = (Get-Content -LiteralPath RELEASE_NOTES.md -Raw).TrimEnd()
+          @"
+          $notes
+
+          ## SHA-256
+
+          ```text
+          $env:PUBLIC_SHA256  $env:PUBLIC_ASSET
+          ```
+          "@ | Set-Content -LiteralPath $releaseNotes -Encoding utf8
+
+          & gh release view $tag --repo $repo *> $null
+          $releaseExists = $LASTEXITCODE -eq 0
+
+          if ($releaseExists) {
+            & gh release edit $tag --repo $repo --title "G-CET Runtime Profiler v$env:PRODUCT_VERSION" --notes-file $releaseNotes --target $sha --latest
+          }
+          else {
+            & gh release create $tag --repo $repo --title "G-CET Runtime Profiler v$env:PRODUCT_VERSION" --notes-file $releaseNotes --target $sha --latest
+          }
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not create/update GitHub release $tag."
+          }
+
+          & gh release upload $tag $env:PUBLIC_ASSET "$env:PUBLIC_ASSET.sha256.txt" --repo $repo --clobber
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not upload canonical release assets for $tag."
+          }
+
+          Write-Host "Published canonical release $tag from commit $sha"
+          Write-Host "Release asset SHA256: $env:PUBLIC_SHA256"
