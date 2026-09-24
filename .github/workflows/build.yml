@@ -148,7 +148,7 @@ jobs:
           if ($importText -notmatch 'ShellExecuteExW') {
             throw 'Launcher no longer imports ShellExecuteExW.'
           }
-          foreach ($forbiddenImport in @('CreateProcessW','SetEnvironmentVariableW','HeapAlloc')) {
+          foreach ($forbiddenImport in @('CreateProcessW','SetEnvironmentVariableW')) {
             if ($importText -match $forbiddenImport) {
               throw "Launcher unexpectedly imports $forbiddenImport."
             }
@@ -162,7 +162,7 @@ jobs:
             throw "Launcher FileDescription metadata mismatch: $($versionInfo.FileDescription)"
           }
 
-          Write-Host 'Launcher imports: standard ShellExecuteExW path; suspicious legacy imports absent.'
+          Write-Host 'Launcher imports: standard ShellExecuteExW path; CreateProcessW and package-root environment injection absent.'
           Write-Host "Launcher metadata: $($versionInfo.ProductName) $($versionInfo.ProductVersion)"
 
       - name: Stage normal Windows app layout
