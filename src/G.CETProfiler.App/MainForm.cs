@@ -65,6 +65,9 @@ public sealed class MainForm : Form
     public MainForm()
     {
         Text = $"G-CET Runtime Profiler - v{profiler.PackageVersion}";
+        var executableIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+        if (executableIcon is not null)
+            Icon = executableIcon;
         StartPosition = FormStartPosition.CenterScreen;
         ClientSize = new Size(860, 690);
         MinimumSize = new Size(880, 730);
