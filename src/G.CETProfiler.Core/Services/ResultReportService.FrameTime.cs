@@ -556,16 +556,16 @@ public static partial class ResultReportService
 
     private static double? FindCetStartUnixMs(IReadOnlyList<Dictionary<string, string>> markers)
     {
-        // Marker files can contain more than one START row across repeated captures.
-        // The report describes the latest exported capture, so use the newest valid
-        // START epoch rather than the earliest CaptureMs row.
-        var epochs = markers
+        var start = markers
             .Where(r => S(r, "Label").Contains("START", StringComparison.OrdinalIgnoreCase))
-            .Select(r => D(r, "UnixEpochMs", "EpochMs"))
-            .Where(x => x > 0)
-            .ToList();
+            .OrderBy(r => D(r, "CaptureMs"))
+            .FirstOrDefault();
 
-        return epochs.Count == 0 ? null : epochs.Max();
+        if (start is null)
+            return null;
+
+        var epoch = D(start, "UnixEpochMs", "EpochMs");
+        return epoch > 0 ? epoch : null;
     }
 
     private sealed record CompanionSyncInfo(bool StartKeyKnown, bool StartKeyIsF11);
