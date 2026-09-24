@@ -10,7 +10,7 @@ All notable public changes to G-CET Runtime Profiler are recorded here.
 - Public root is intentionally limited to the launcher, `MANIFEST.json`, `VERSION.txt`, `app/`, `payload/`, `RESULTS/`, and `docs/`; package-local settings are still created beside the launcher on first use.
 - Managed assemblies, native .NET runtime files and framework plumbing are isolated under `app/` instead of spilling into the product root.
 - Non-English .NET satellite resource folders and public PDBs are excluded from the portable package.
-- CI verifies both the launcher-forwarding/headless contract and the clean public-root layout.
+- Root launcher is now GUI-only and uses the standard Windows shell open path; headless automation invokes the managed app under `app/` directly. CI verifies both entry points and the clean public-root layout.
 
 ### Internal cleanup
 
