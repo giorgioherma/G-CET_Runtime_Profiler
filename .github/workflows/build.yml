@@ -474,6 +474,9 @@ jobs:
           if (!$summary.frameTime.sync.correlated) { throw 'Synthetic F11-aligned CapFrameX capture did not correlate.' }
           if ($summary.frameTime.sync.quality -ne 'GOOD') { throw "Expected GOOD CapFrameX sync, got $($summary.frameTime.sync.quality)" }
           if ($summary.frameTime.sync.alignmentMethod -ne 'shared-F11 relative clocks') { throw "Unexpected CapFrameX alignment method: $($summary.frameTime.sync.alignmentMethod)" }
+          if ($summary.frameTime.sync.PSObject.Properties.Name -contains 'startDeltaMs') { throw 'Obsolete startDeltaMs field leaked back into CET_Summary.json.' }
+          $recordLagMs = [double]$summary.frameTime.sync.recordLagMs
+          if ($recordLagMs -lt 1900 -or $recordLagMs -gt 2100) { throw "Expected ~2000 ms CapFrameX record/save lag, got $recordLagMs ms" }
           $cetStartIso = ([datetimeoffset]$summary.frameTime.sync.cetStartUtc).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss')
           if ($cetStartIso -ne '2026-02-02T02:40:00') { throw "CET START marker was not preserved: $cetStartIso" }
           if ($reportText -notmatch 'CapFrameX record/save time') { throw 'Report did not label CapFrameX CreationDate as record/save metadata.' }
