@@ -7,8 +7,6 @@ public sealed class PackageManifest
     [JsonPropertyName("packageVersion")]
     public string PackageVersion { get; set; } = "";
 
-    [JsonPropertyName("profilerNativeVersion")]
-    public string ProfilerNativeVersion { get; set; } = "";
 
     [JsonPropertyName("targetCET")]
     public TargetCetManifest TargetCet { get; set; } = new();
