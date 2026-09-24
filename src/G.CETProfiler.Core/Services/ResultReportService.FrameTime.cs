@@ -12,11 +12,12 @@ public static partial class ResultReportService
         public string GameName { get; init; } = "";
         public string GPU { get; init; } = "";
         public string Processor { get; init; } = "";
-        public DateTimeOffset? CapFrameXStartUtc { get; init; }
+        public DateTimeOffset? CapFrameXRecordUtc { get; init; }
         public DateTimeOffset? CetStartUtc { get; init; }
         public bool Correlated { get; init; }
         public bool ExactAlignment { get; init; }
         public string SyncQuality { get; init; } = "UNAVAILABLE";
+        public string AlignmentMethod { get; init; } = "none";
         public double StartDeltaMs { get; init; }
         public double DurationDeltaMs { get; init; }
         public int FrameCount { get; init; }
@@ -105,7 +106,7 @@ public static partial class ResultReportService
         public string GameName { get; init; } = "";
         public string GPU { get; init; } = "";
         public string Processor { get; init; } = "";
-        public DateTimeOffset? StartUtc { get; init; }
+        public DateTimeOffset? RecordUtc { get; init; }
         public List<CapFrameMetric> Frames { get; init; } = [];
     }
 
@@ -131,33 +132,44 @@ public static partial class ResultReportService
             ? null
             : DateTimeOffset.FromUnixTimeMilliseconds((long)Math.Round(cetStartUnix.Value));
 
-        var startDeltaMs = parsed.StartUtc is not null && cetStartUnix is not null
-            ? parsed.StartUtc.Value.ToUnixTimeMilliseconds() - cetStartUnix.Value
-            : double.NaN;
+        // CapFrameX Info.CreationDate is a record/save timestamp in current
+        // CapFrameX builds, not the F11 capture-start timestamp. Never use it as
+        // an absolute start-clock anchor.
+        var startDeltaMs = double.NaN;
 
         var durationDeltaMs = cetCaptureSeconds > 0
             ? capDurationMs - cetCaptureSeconds * 1000.0
             : double.NaN;
 
-        var absStart = double.IsFinite(startDeltaMs) ? Math.Abs(startDeltaMs) : double.PositiveInfinity;
         var absDuration = double.IsFinite(durationDeltaMs) ? Math.Abs(durationDeltaMs) : double.PositiveInfinity;
+        var companion = ReadCompanionSyncInfo(captureRoot);
 
-        var correlated = absStart <= 250.0;
-        var exactAlignment = correlated && absStart <= 50.0;
-        var syncQuality = !double.IsFinite(startDeltaMs)
-            ? "NO CET EPOCH"
-            : absStart <= 50.0
-                ? "GOOD"
-                : absStart <= 250.0
-                    ? "COARSE"
-                    : "NOT ALIGNED";
+        // Both profilers normalize their own capture timelines from zero. When the
+        // manager verified that both capture keys are F11, close duration agreement
+        // is evidence that the copied CapFrameX file belongs to this CET capture.
+        // Align the relative clocks directly instead of comparing unrelated wall-clock
+        // metadata. This is also resilient to CapFrameX save/processing latency.
+        var durationToleranceMs = cetCaptureSeconds > 0
+            ? Math.Clamp(cetCaptureSeconds * 1000.0 * 0.03, 750.0, 2500.0)
+            : 750.0;
+        var sharedF11 = companion.StartKeyKnown && companion.StartKeyIsF11;
+        var correlated = sharedF11 && absDuration <= durationToleranceMs;
+        var exactAlignment = correlated && absDuration <= 1000.0;
+        var syncQuality = correlated
+            ? exactAlignment ? "GOOD" : "COARSE"
+            : !sharedF11
+                ? "NO SHARED KEY"
+                : "DURATION MISMATCH";
+        var alignmentMethod = correlated
+            ? "shared-F11 relative clocks"
+            : "none";
 
         var alignedFrames = parsed.Frames
             .Select(x => new CapFrameMetric
             {
                 Index = x.Index,
                 CapRelativeStartMs = x.CapRelativeStartMs,
-                CetRelativeStartMs = correlated ? x.CapRelativeStartMs + startDeltaMs : x.CapRelativeStartMs,
+                CetRelativeStartMs = x.CapRelativeStartMs,
                 FrameMs = x.FrameMs,
                 CpuActiveMs = x.CpuActiveMs,
                 GpuActiveMs = x.GpuActiveMs,
@@ -232,11 +244,12 @@ public static partial class ResultReportService
             GameName = parsed.GameName,
             GPU = parsed.GPU,
             Processor = parsed.Processor,
-            CapFrameXStartUtc = parsed.StartUtc,
+            CapFrameXRecordUtc = parsed.RecordUtc,
             CetStartUtc = cetStartUtc,
             Correlated = correlated,
             ExactAlignment = exactAlignment,
             SyncQuality = syncQuality,
+            AlignmentMethod = alignmentMethod,
             StartDeltaMs = startDeltaMs,
             DurationDeltaMs = durationDeltaMs,
             FrameCount = frameTimes.Count,
@@ -370,14 +383,14 @@ public static partial class ResultReportService
                     GameName = JsonString(info, "GameName"),
                     GPU = JsonString(info, "GPU"),
                     Processor = JsonString(info, "Processor"),
-                    StartUtc = start,
+                    RecordUtc = start,
                     Frames = runBestFrames
                 };
 
                 if (best is null ||
                     candidate.Frames.Count > best.Frames.Count ||
                     (candidate.Frames.Count == best.Frames.Count &&
-                     (candidate.StartUtc ?? DateTimeOffset.MinValue) > (best.StartUtc ?? DateTimeOffset.MinValue)))
+                     (candidate.RecordUtc ?? DateTimeOffset.MinValue) > (best.RecordUtc ?? DateTimeOffset.MinValue)))
                     best = candidate;
             }
             catch
@@ -543,16 +556,42 @@ public static partial class ResultReportService
 
     private static double? FindCetStartUnixMs(IReadOnlyList<Dictionary<string, string>> markers)
     {
-        var start = markers
+        // Marker files can contain more than one START row across repeated captures.
+        // The report describes the latest exported capture, so use the newest valid
+        // START epoch rather than the earliest CaptureMs row.
+        var epochs = markers
             .Where(r => S(r, "Label").Contains("START", StringComparison.OrdinalIgnoreCase))
-            .OrderBy(r => D(r, "CaptureMs"))
-            .FirstOrDefault();
+            .Select(r => D(r, "UnixEpochMs", "EpochMs"))
+            .Where(x => x > 0)
+            .ToList();
 
-        if (start is null)
-            return null;
+        return epochs.Count == 0 ? null : epochs.Max();
+    }
 
-        var epoch = D(start, "UnixEpochMs", "EpochMs");
-        return epoch > 0 ? epoch : null;
+    private sealed record CompanionSyncInfo(bool StartKeyKnown, bool StartKeyIsF11);
+
+    private static CompanionSyncInfo ReadCompanionSyncInfo(string captureRoot)
+    {
+        var path = Path.Combine(captureRoot, "FrameTime", "CompanionManifest.json");
+        if (!File.Exists(path))
+            return new(false, false);
+
+        try
+        {
+            using var doc = JsonDocument.Parse(File.ReadAllText(path));
+            var root = doc.RootElement;
+            var known = root.TryGetProperty("startKeyKnown", out var knownValue) &&
+                        knownValue.ValueKind is JsonValueKind.True or JsonValueKind.False &&
+                        knownValue.GetBoolean();
+            var f11 = root.TryGetProperty("startKeyIsF11", out var f11Value) &&
+                      f11Value.ValueKind is JsonValueKind.True or JsonValueKind.False &&
+                      f11Value.GetBoolean();
+            return new(known, f11);
+        }
+        catch
+        {
+            return new(false, false);
+        }
     }
 
     private static bool Overlaps(double aStart, double aEnd, double bStart, double bEnd) =>
