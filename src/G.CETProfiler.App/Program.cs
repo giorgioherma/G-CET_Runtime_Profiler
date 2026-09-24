@@ -39,6 +39,7 @@ internal static class Program
     {
         string? command = null;
         string? game = null;
+        string? capture = null;
         bool coreOnly = false;
 
         for (var i = 0; i < args.Length; i++)
@@ -51,9 +52,11 @@ internal static class Program
                 case "--reset": command = "reset"; break;
                 case "--restore": command = "restore"; break;
                 case "--emergency-restore": command = "emergency-restore"; break;
+                case "--report": command = "report"; break;
                 case "--core-only": coreOnly = true; break;
                 case "--json": break; // JSON is always used in headless mode.
                 case "--game" when i + 1 < args.Length: game = args[++i]; break;
+                case "--capture" when i + 1 < args.Length: capture = args[++i]; break;
                 case "--help":
                 case "-h":
                 case "/?":
@@ -65,7 +68,27 @@ internal static class Program
         }
 
         if (string.IsNullOrWhiteSpace(command))
-            throw new ArgumentException("Specify --status, --install, --collect, --reset, --restore, or --emergency-restore.");
+            throw new ArgumentException("Specify --status, --install, --collect, --reset, --restore, --emergency-restore, or --report.");
+
+        if (command == "report")
+        {
+            if (string.IsNullOrWhiteSpace(capture))
+                throw new ArgumentException("Specify --capture <collected CET result folder>.");
+
+            var report = ResultReportService.Generate(capture);
+            Console.WriteLine(JsonSerializer.Serialize(new
+            {
+                ok = true,
+                report.ReportPath,
+                report.SummaryPath,
+                report.FindingsCount,
+                report.HasCoreData,
+                report.HasSchedulerData,
+                report.HasFrameTimeData
+            }, JsonOptions));
+            return 0;
+        }
+
         if (string.IsNullOrWhiteSpace(game))
             throw new ArgumentException("Specify --game <Cyberpunk 2077 root>.");
 
@@ -117,5 +140,6 @@ internal static class Program
         "  --collect --game <root> --json\n" +
         "  --reset   --game <root> --json\n" +
         "  --restore --game <root> --json\n" +
-        "  --emergency-restore --game <root> --json\n";
+        "  --emergency-restore --game <root> --json\n" +
+        "  --report  --capture <collected result folder> --json\n";
 }
