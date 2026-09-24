@@ -28,7 +28,7 @@ TOTAL should consume a versioned standalone release of this repository and invok
 
 Combined-capture orchestration and correlation belong in TOTAL. The standalone GUI's optional frame-time companion is only a convenience layer: it is not part of the CET headless dependency contract and TOTAL must not rely on it.
 
-The standalone CET result interpretation also remains CET-owned. TOTAL may reuse the published `CET_Summary.json` and preserved raw data, but should not maintain a second fork of CET-specific ranking/Scheduler interpretation logic. TOTAL's report adds cross-profiler context; it does not replace the standalone CET diagnosis.
+The standalone CET result interpretation also remains CET-owned. This now includes CET + recognized CapFrameX interpretation when a copied CapFrameX JSON is present under `FrameTime/`: synchronization quality, frametime/stall statistics, CET-window overlap, callback-spike overlap and Scheduler-burst overlap. TOTAL may reuse the published `CET_Summary.json` and preserved raw data, but should not maintain a second fork of CET-specific ranking/Scheduler/CapFrameX interpretation logic. TOTAL's report adds GRSP and other cross-profiler context; it does not replace the standalone CET diagnosis.
 
 If TOTAL needs a new CET lifecycle capability, that capability should first be exposed by the standalone core/headless contract rather than implemented as a TOTAL-only fork.
 
