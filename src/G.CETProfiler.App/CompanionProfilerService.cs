@@ -32,7 +32,7 @@ internal static class CompanionProfilerService
         var kind = DetectKind(exe);
         if (kind == "capframex")
         {
-            var (captures, config) = DetectCapFrameXPaths(exe);
+            var (_, config) = DetectCapFrameXPaths(exe);
             var key = ReadCapFrameXStartKey(config);
             return new(
                 true,
