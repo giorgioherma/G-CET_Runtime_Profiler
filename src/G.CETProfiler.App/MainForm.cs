@@ -1381,6 +1381,17 @@ public sealed class MainForm : Form
     {
         try
         {
+            using var executableIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+            if (executableIcon is not null)
+                return executableIcon.ToBitmap();
+        }
+        catch
+        {
+            // Fall through to the embedded PNG.
+        }
+
+        try
+        {
             using var stream = Assembly.GetExecutingAssembly()
                 .GetManifestResourceStream("GCETRuntimeProfiler.GCetIcon.png");
             if (stream is null)
