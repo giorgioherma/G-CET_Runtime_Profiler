@@ -8,7 +8,8 @@ public sealed record ResultReportBuildResult(
     string SummaryPath,
     int FindingsCount,
     bool HasCoreData,
-    bool HasSchedulerData);
+    bool HasSchedulerData,
+    bool HasFrameTimeData);
 
 /// <summary>
 /// Human-first post-capture interpretation for the standalone CET profiler.
@@ -67,9 +68,11 @@ public static partial class ResultReportService
 
         var summary = new
         {
-            schemaVersion = "1.0",
+            schemaVersion = "1.1",
             generatedUtc = DateTime.UtcNow.ToString("O"),
-            scope = "CET-side runtime workload only",
+            scope = a.FrameTime is null
+                ? "CET-side runtime workload only"
+                : "CET-side runtime workload with optional CapFrameX frametime correlation",
             capture = new
             {
                 elapsedSeconds = Round(a.CaptureSeconds, 3),
@@ -169,6 +172,74 @@ public static partial class ResultReportService
                     cadence = FormatCadence(x.IntervalValue, x.IntervalUnit)
                 })
             },
+            frameTime = a.FrameTime is null
+                ? null
+                : new
+                {
+                    source = a.FrameTime.SourceFile,
+                    appVersion = a.FrameTime.AppVersion,
+                    game = a.FrameTime.GameName,
+                    gpu = a.FrameTime.GPU,
+                    processor = a.FrameTime.Processor,
+                    sync = new
+                    {
+                        quality = a.FrameTime.SyncQuality,
+                        correlated = a.FrameTime.Correlated,
+                        exactAlignment = a.FrameTime.ExactAlignment,
+                        capFrameXStartUtc = a.FrameTime.CapFrameXStartUtc?.ToString("O"),
+                        cetStartUtc = a.FrameTime.CetStartUtc?.ToString("O"),
+                        startDeltaMs = double.IsFinite(a.FrameTime.StartDeltaMs) ? Round(a.FrameTime.StartDeltaMs, 3) : (double?)null,
+                        durationDeltaMs = double.IsFinite(a.FrameTime.DurationDeltaMs) ? Round(a.FrameTime.DurationDeltaMs, 3) : (double?)null
+                    },
+                    frames = new
+                    {
+                        count = a.FrameTime.FrameCount,
+                        durationSeconds = Round(a.FrameTime.DurationSeconds, 3),
+                        averageFps = Round(a.FrameTime.AverageFps, 3),
+                        meanMs = Round(a.FrameTime.MeanFrameMs, 6),
+                        medianMs = Round(a.FrameTime.MedianFrameMs, 6),
+                        p95Ms = Round(a.FrameTime.P95FrameMs, 6),
+                        p99Ms = Round(a.FrameTime.P99FrameMs, 6),
+                        maxMs = Round(a.FrameTime.MaxFrameMs, 6),
+                        over25Ms = a.FrameTime.FramesOver25Ms,
+                        over33_3Ms = a.FrameTime.FramesOver33Ms,
+                        over50Ms = a.FrameTime.FramesOver50Ms,
+                        over100Ms = a.FrameTime.FramesOver100Ms,
+                        meanCpuActiveMs = Round(a.FrameTime.MeanCpuActiveMs, 6),
+                        p95CpuActiveMs = Round(a.FrameTime.P95CpuActiveMs, 6),
+                        meanGpuActiveMs = Round(a.FrameTime.MeanGpuActiveMs, 6),
+                        p95GpuActiveMs = Round(a.FrameTime.P95GpuActiveMs, 6)
+                    },
+                    correlation = new
+                    {
+                        highCetThresholdMsPer50msWindow = Round(a.FrameTime.HighCetThresholdMs, 6),
+                        slowFramesHighCet = a.FrameTime.SlowFramesHighCet,
+                        slowFramesExactCallback = a.FrameTime.SlowFramesExactCallback,
+                        slowFramesSchedulerBurst = a.FrameTime.SlowFramesSchedulerBurst,
+                        slowFramesCetNormal = a.FrameTime.SlowFramesCetNormal,
+                        topCetWindowsWithSlowFrame = a.FrameTime.TopCetWindowsWithSlowFrame,
+                        topCetWindowCount = a.FrameTime.TopCetWindowCount,
+                        highCetWindowSlowRatePct = Round(a.FrameTime.HighCetWindowSlowRatePct, 3),
+                        normalCetWindowSlowRatePct = Round(a.FrameTime.NormalCetWindowSlowRatePct, 3),
+                        pearson50ms = Round(a.FrameTime.PearsonWindowCorrelation, 6),
+                        spearman50ms = Round(a.FrameTime.SpearmanWindowCorrelation, 6)
+                    },
+                    worstFrames = a.FrameTime.WorstFrames.Select(x => new
+                    {
+                        frameIndex = x.FrameIndex,
+                        startMs = Round(x.StartMs, 3),
+                        frameMs = Round(x.FrameMs, 6),
+                        cpuActiveMs = Round(x.CpuActiveMs, 6),
+                        gpuActiveMs = Round(x.GpuActiveMs, 6),
+                        pcLatencyMs = Round(x.PcLatencyMs, 6),
+                        frameType = x.FrameType,
+                        cetWindowMs = Round(x.CetWindowMs, 6),
+                        topCetOwner = x.TopCetOwner,
+                        topCetOwnerMs = Round(x.TopCetOwnerMs, 6),
+                        highCet = x.HighCet,
+                        evidence = x.Evidence
+                    })
+                },
             findings = a.Findings.Select(x => new
             {
                 x.Title,
@@ -203,6 +274,7 @@ public static partial class ResultReportService
             summaryPath,
             a.Findings.Count,
             a.Owners.Count > 0 || a.TopCallbacks.Count > 0,
-            a.SchedulerJobs.Count > 0 || a.WorstSchedulerBurst is not null);
+            a.SchedulerJobs.Count > 0 || a.WorstSchedulerBurst is not null,
+            a.FrameTime is not null);
     }
 }
