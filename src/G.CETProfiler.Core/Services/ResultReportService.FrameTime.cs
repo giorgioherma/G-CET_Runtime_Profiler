@@ -179,7 +179,6 @@ public static partial class ResultReportService
             ? BuildFrameTimeBuckets(orderedWindows, alignedFrames, allSpikes, schedulerBursts, highCetThreshold, exactAlignment)
             : [];
 
-        var slowFrames = alignedFrames.Where(x => x.FrameMs >= 33.3).ToList();
         var worstFrames = correlated
             ? BuildWorstFrameEvidence(alignedFrames, orderedWindows, allSpikes, schedulerBursts, highCetThreshold, exactAlignment)
             : alignedFrames
