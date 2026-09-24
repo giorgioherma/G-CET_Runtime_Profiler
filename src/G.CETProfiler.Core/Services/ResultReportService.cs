@@ -189,7 +189,6 @@ public static partial class ResultReportService
                         alignmentMethod = a.FrameTime.AlignmentMethod,
                         capFrameXRecordUtc = a.FrameTime.CapFrameXRecordUtc?.ToString("O"),
                         cetStartUtc = a.FrameTime.CetStartUtc?.ToString("O"),
-                        startDeltaMs = double.IsFinite(a.FrameTime.StartDeltaMs) ? Round(a.FrameTime.StartDeltaMs, 3) : (double?)null,
                         durationDeltaMs = double.IsFinite(a.FrameTime.DurationDeltaMs) ? Round(a.FrameTime.DurationDeltaMs, 3) : (double?)null,
                         recordLagMs = double.IsFinite(a.FrameTime.RecordLagMs) ? Round(a.FrameTime.RecordLagMs, 3) : (double?)null
                     },
