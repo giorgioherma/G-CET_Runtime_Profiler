@@ -5,7 +5,6 @@ internal sealed class ProfilerPaths
     public required string Root { get; init; }
     public required string Plugins { get; init; }
     public required string CetRoot { get; init; }
-    public required string Mods { get; init; }
     public required string LiveAsi { get; init; }
     public required string ZeroRoot { get; init; }
     public required string ZeroInit { get; init; }
@@ -38,7 +37,6 @@ internal sealed class ProfilerPaths
             Root = root,
             Plugins = plugins,
             CetRoot = cetRoot,
-            Mods = mods,
             LiveAsi = Path.Combine(plugins, "cyber_engine_tweaks.asi"),
             ZeroRoot = zeroRoot,
             ZeroInit = Path.Combine(zeroRoot, "init.lua"),
