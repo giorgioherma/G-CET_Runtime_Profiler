@@ -120,7 +120,7 @@ internal static class ThemedDialog
 
         ConfigureButtons(form, buttonPanel, buttons, accent);
 
-        form.Shown += (_, _) => TryUseDarkTitleBar(form.Handle);
+        form.Shown += (_, _) => ApplyDarkTitleBar(form);
         return form;
     }
 
@@ -144,7 +144,7 @@ internal static class ThemedDialog
             }
         };
 
-        var right = panel.ClientSize.Width - 12;
+        var right = form.ClientSize.Width - 12;
         Button? defaultButton = null;
         Button? cancelButton = null;
 
@@ -205,9 +205,13 @@ internal static class ThemedDialog
             _ => Green
         };
 
-    private static void TryUseDarkTitleBar(IntPtr handle)
+    public static void ApplyDarkTitleBar(Form form)
     {
-        if (!OperatingSystem.IsWindows() || handle == IntPtr.Zero)
+        if (!OperatingSystem.IsWindows() || form.IsDisposed)
+            return;
+
+        var handle = form.Handle;
+        if (handle == IntPtr.Zero)
             return;
 
         var enabled = 1;
