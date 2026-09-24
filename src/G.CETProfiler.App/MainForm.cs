@@ -182,6 +182,7 @@ public sealed class MainForm : Form
             Text = "CET Runtime Profiler works standalone. Pairing it with a frame-time capture lets you compare CET/Lua activity with actual frame-time behavior. This build was designed and tested alongside CapFrameX 1.9.1.2 Beta, but you can use a profiler you already have.",
             MaximumSize = new Size(770, 0),
             AutoSize = true,
+            ForeColor = ThemeText,
             Location = new Point(18, 62)
         };
 
@@ -208,7 +209,7 @@ public sealed class MainForm : Form
             Location = new Point(150, 118)
         };
 
-        var exeLabel = new Label { Text = "Profiler executable", AutoSize = true, Location = new Point(18, 158) };
+        var exeLabel = new Label { Text = "Profiler executable", AutoSize = true, ForeColor = ThemeText, Location = new Point(18, 158) };
         companionExe.SetBounds(18, 180, 680, 26);
         companionExe.TextChanged += (_, _) =>
         {
@@ -241,7 +242,7 @@ public sealed class MainForm : Form
             RefreshCompanionStatus();
         };
 
-        var resultLabel = new Label { Text = "Capture / results folder", AutoSize = true, Location = new Point(18, 218) };
+        var resultLabel = new Label { Text = "Capture / results folder", AutoSize = true, ForeColor = ThemeText, Location = new Point(18, 218) };
         companionResults.SetBounds(18, 240, 680, 26);
         companionResults.TextChanged += (_, _) =>
         {
