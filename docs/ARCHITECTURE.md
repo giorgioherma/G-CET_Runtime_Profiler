@@ -57,7 +57,7 @@ G-CET-Runtime-Profiler\
 └─ docs\
 ```
 
-The launcher forwards command-line arguments and, for headless calls, the managed application's exit code. GUI launch detaches the launcher after successfully starting the internal app. The launcher supplies the package root explicitly; the managed application also has a parent-directory fallback, so direct execution from `app/` still resolves the root package correctly.
+The native launcher is deliberately GUI-only and uses the normal Windows shell open path to start the managed application. It does not forward arbitrary command lines or inject a package-root environment variable. Headless/automation calls invoke `app/G-CET-Runtime-Profiler.App.exe` directly; the managed application's parent-directory fallback resolves the public package root correctly.
 
 `G-CET-Runtime-Profiler.settings.json` is created beside the launcher on first use. `MANIFEST.json`, `payload/`, and `RESULTS/` remain rooted at the public package level. The external `payload/` directory is deliberate because lifecycle code validates and copies those exact bytes.
 
