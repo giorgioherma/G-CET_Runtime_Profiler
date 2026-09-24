@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/g-cet-icon.png" alt="G-CET Runtime Profiler" width="192">
+</p>
+
 # G-CET Runtime Profiler
 
 **v1.0.0 — first stable release**
