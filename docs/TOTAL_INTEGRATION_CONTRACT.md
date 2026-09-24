@@ -13,7 +13,7 @@ TOTAL must not:
 
 TOTAL may:
 
-- call the standalone EXE headlessly;
+- call the standalone managed headless endpoint under `app/`;
 - verify that CET is installed and bound to F11;
 - ask CET to collect the completed capture;
 - copy the completed CET result into TOTAL's combined `Raw/CET` package;
@@ -24,7 +24,7 @@ TOTAL may:
 
 ## Dependency rule
 
-TOTAL should consume a versioned standalone release of this repository and invoke `G-CET-Runtime-Profiler.exe` headlessly. The files used by TOTAL must be byte-identical to the standalone package for that release.
+TOTAL should consume a versioned standalone release of this repository and invoke `app/G-CET-Runtime-Profiler.App.exe` headlessly. The root `G-CET-Runtime-Profiler.exe` is intentionally GUI-only. The files used by TOTAL must remain byte-identical to the standalone package for that release.
 
 Combined-capture orchestration and correlation belong in TOTAL. The standalone GUI's optional frame-time companion is only a convenience layer: it is not part of the CET headless dependency contract and TOTAL must not rely on it.
 
