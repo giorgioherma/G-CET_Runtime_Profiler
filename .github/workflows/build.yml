@@ -469,7 +469,8 @@ jobs:
           if ($summary.frameTime.sync.quality -ne 'GOOD') { throw "Expected GOOD CapFrameX sync, got $($summary.frameTime.sync.quality)" }
           if ($summary.frameTime.sync.alignmentMethod -ne 'shared-F11 relative clocks') { throw "Unexpected CapFrameX alignment method: $($summary.frameTime.sync.alignmentMethod)" }
           if ($null -ne $summary.frameTime.sync.startDeltaMs) { throw 'CapFrameX record/save timestamp was incorrectly treated as capture start.' }
-          if ($summary.frameTime.sync.cetStartUtc -notmatch '2026-02-02T02:40:00') { throw "CET START marker was not preserved: $($summary.frameTime.sync.cetStartUtc)" }
+          $cetStartIso = ([datetimeoffset]$summary.frameTime.sync.cetStartUtc).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss')
+          if ($cetStartIso -ne '2026-02-02T02:40:00') { throw "CET START marker was not preserved: $cetStartIso" }
           if ($reportText -notmatch 'CapFrameX record timestamp') { throw 'Report still labels CapFrameX record time as capture start.' }
           if ([int]$summary.frameTime.correlation.slowFramesExactCallback -lt 1) { throw 'Exact callback/stall overlap was not counted.' }
           if ([int]$summary.frameTime.correlation.slowFramesSchedulerBurst -lt 1) { throw 'Scheduler-burst/stall overlap was not counted.' }
