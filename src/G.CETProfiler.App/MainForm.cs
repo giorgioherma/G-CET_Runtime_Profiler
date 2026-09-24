@@ -94,6 +94,7 @@ public sealed class MainForm : Form
 
         Shown += async (_, _) =>
         {
+            ThemedDialog.ApplyDarkTitleBar(this);
             await RefreshStatusAsync(silent: true);
             RefreshCompanionStatus();
         };
