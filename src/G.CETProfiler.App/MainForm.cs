@@ -26,7 +26,6 @@ public sealed class MainForm : Form
 
     private readonly Label status = new();
     private readonly CheckBox coreOnly = new();
-    private readonly Label touchedFiles = new();
     private readonly GroupBox readyGroup = new();
     private readonly Label readyHeading = new();
     private readonly Label readyInstructions = new();
@@ -413,7 +412,6 @@ public sealed class MainForm : Form
                 "Live Files: -";
             RenderSetupGameStatus();
             RenderCompatibility(null);
-            RenderTouchedFiles(null);
             RenderReadyState(null);
             SetActionState(null);
             return;
@@ -426,7 +424,6 @@ public sealed class MainForm : Form
             lastStatus = snapshot;
             RenderStatus(snapshot);
             RenderCompatibility(snapshot);
-            RenderTouchedFiles(snapshot);
             RenderReadyState(snapshot);
             RenderSetupGameStatus();
             SetBusy(false);
@@ -439,7 +436,6 @@ public sealed class MainForm : Form
             status.Text = "STATUS ERROR:\r\n" + FriendlyMessage(ex);
             RenderSetupGameStatus();
             RenderCompatibility(null);
-            RenderTouchedFiles(null);
             RenderReadyState(null);
             SetActionState(null);
             if (!silent)
@@ -679,24 +675,6 @@ public sealed class MainForm : Form
         coreOnly.Visible = showFallback;
         if (!showFallback)
             coreOnly.Checked = false;
-    }
-
-    private void RenderTouchedFiles(ProfilerStatus? snapshot)
-    {
-        if (snapshot is null)
-        {
-            touchedFiles.Text = "No files will be changed until a valid game/CET installation is detected.";
-            return;
-        }
-
-        var zero = snapshot.ZeroEnginePresent && snapshot.ZeroEngineInitKind != "unsafe" && !coreOnly.Checked
-            ? " · recognized 0-Engine init/Scheduler integration"
-            : "";
-
-        touchedFiles.Text =
-            "Managed scope: CET ASI · CET bindings.json · CETProfilerControls" + zero + ".\r\n" +
-            "Rule #1: every pre-existing user file/directory we change is copied and verified first. " +
-            "Unique files should still have your own backup if this is their only copy. Unknown/unowned files are never deleted.";
     }
 
     private bool HasConfiguredCompanion() =>
