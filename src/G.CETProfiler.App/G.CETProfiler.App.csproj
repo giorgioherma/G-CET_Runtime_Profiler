@@ -12,7 +12,6 @@
     <PublishTrimmed>false</PublishTrimmed>
     <AssemblyName>G-CET-Runtime-Profiler.App</AssemblyName>
     <RootNamespace>GCETRuntimeProfiler</RootNamespace>
-    <ApplicationIcon>..\..\assets\g-cet-icon.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\G.CETProfiler.Core\G.CETProfiler.Core.csproj" />
