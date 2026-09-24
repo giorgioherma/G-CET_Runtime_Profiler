@@ -46,7 +46,9 @@ CLI arguments -> headless JSON
 
 There is no separate TOTAL-specific backend.
 
-The WinForms app may also provide **optional companion conveniences** that do not belong to the CET lifecycle core: read-only detection of an external frame-time profiler, read-only start-key reporting where a known adapter exists, explicit user-triggered launch of the configured executable, and copy-only bundling of the latest external capture beside the CET archive. This does not make any external profiler a dependency, and headless/TOTAL behavior remains CET-only.
+The WinForms app may also provide **optional companion conveniences** that do not belong to the CET lifecycle core: read-only detection of an external frame-time profiler, read-only start-key reporting where a known adapter exists, explicit user-triggered launch of the configured executable, and copy-only bundling of the latest external capture beside the CET archive. This does not make any external profiler a dependency.
+
+The result-analysis core itself can interpret a recognized CapFrameX JSON already present under a collected result's `FrameTime/` folder. The GUI therefore performs CET collection first, copies the optional companion second, and rebuilds the report third. The same rebuild path is exposed headlessly through `--report --capture <folder>`.
 
 ## Package-owned files
 
@@ -113,6 +115,8 @@ The result report is downstream presentation, not part of native measurement. It
 Report generation is best-effort by design. If interpretation fails after raw verification, the manager keeps the verified capture, writes `CET_Report_Error.txt`, and still clears only the already-verified profiler-owned live files. Presentation can therefore fail without turning a valid capture into a recovery problem.
 
 Unrelated files in the CET directory are never swept. If the GUI has an optional frame-time companion configured, its selected/latest capture is copied under `FrameTime/` after CET collection; the external source is never modified or deleted.
+
+For recognized CapFrameX JSON, correlation uses the CapFrameX `Info.CreationDate` clock and CET's epoch START marker. Exact callback/Scheduler-event overlap is enabled only for close start alignment; coarser synchronization can still expose frametime statistics without pretending to have exact event attribution. CapFrameX provides rendered frametime plus CPU Active/GPU Active; CET provides script-side workload. The two domains are synchronized evidence layers, not an additive/subtractive CPU budget.
 
 TOTAL Profiler does not redirect CET's path. It consumes the completed standalone CET result after collection.
 
