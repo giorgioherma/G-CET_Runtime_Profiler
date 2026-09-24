@@ -106,7 +106,7 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
 
     private static void AppendFrameTime(StringBuilder sb, FrameTimeAnalysis ft)
     {
-        sb.Append("<div class=\"section\"><h2>Frametime & CET overlap</h2>");
+        sb.Append("<div class=\"section\"><h2>Frametime &amp; CET overlap</h2>");
         sb.Append("<div class=\"grid\">");
         MetricCard(sb, "Average", F(ft.AverageFps, 1) + " FPS", F(ft.MeanFrameMs) + " ms mean · " + N(ft.FrameCount) + " frames");
         MetricCard(sb, "P95 / P99", F(ft.P95FrameMs) + " / " + F(ft.P99FrameMs) + " ms", "Median " + F(ft.MedianFrameMs) + " ms");
@@ -491,7 +491,24 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
         if (schedulerLinks == 0)
             sb.Append("<div class=\"muted\">No Scheduler attribution in this capture.</div>");
 
-        sb.Append("</div></div><p class=\"muted\">Machine-readable condensed findings: <a href=\"")
+        sb.Append("</div></div>");
+
+        var frameTimeRoot = Path.Combine(captureRoot, "FrameTime");
+        if (Directory.Exists(frameTimeRoot))
+        {
+            sb.Append("<details><summary>Frame-time companion files</summary><div class=\"links\">");
+            foreach (var path in Directory.EnumerateFiles(frameTimeRoot, "*", SearchOption.AllDirectories)
+                         .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+                         .Take(40))
+            {
+                var relative = Path.GetRelativePath(captureRoot, path).Replace('\\', '/');
+                sb.Append("<div><a href=\"").Append(Href(relative)).Append("\">")
+                    .Append(H(relative)).Append("</a></div>");
+            }
+            sb.Append("</div></details>");
+        }
+
+        sb.Append("<p class=\"muted\">Machine-readable condensed findings: <a href=\"")
             .Append(Href(SummaryFileName)).Append("\">").Append(SummaryFileName)
             .Append("</a>.</p></div>");
     }
