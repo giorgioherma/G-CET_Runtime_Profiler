@@ -21,12 +21,22 @@ First stable release of the standalone G-CET Runtime Profiler.
 G-CET-Runtime-Profiler-v1.0.0.zip
 └─ G-CET-Runtime-Profiler\
    ├─ G-CET-Runtime-Profiler.exe
-   ├─ payload\
-   ├─ RESULTS\
    ├─ MANIFEST.json
    ├─ VERSION.txt
-   ├─ README.md
-   └─ self-contained .NET runtime files...
+   ├─ app\
+   │  ├─ G-CET-Runtime-Profiler.App.exe
+   │  ├─ G-CET-Runtime-Profiler.App.deps.json
+   │  ├─ G-CET-Runtime-Profiler.App.runtimeconfig.json
+   │  ├─ G.CETProfiler.Core.dll
+   │  └─ .NET runtime files...
+   ├─ payload\
+   ├─ RESULTS\
+   └─ docs\
+      ├─ README.md
+      ├─ CHANGELOG.md
+      └─ RELEASE_NOTES.md
 ```
+
+The root EXE is a small native launcher. The managed application and self-contained .NET runtime live under `app\`; profiler payload, manifest, results, and documentation remain separate at the package root.
 
 Extract to a writable folder and run `G-CET-Runtime-Profiler.exe`.
