@@ -28,7 +28,7 @@ public sealed class ProfilerService : IProfilerService
 
     public ProfilerService(string? packageRoot = null)
     {
-        this.packageRoot = Path.GetFullPath(packageRoot ?? AppContext.BaseDirectory);
+        this.packageRoot = Path.GetFullPath(packageRoot ?? PackageRootLocator.Resolve());
         payloadRoot = Path.Combine(this.packageRoot, "payload");
         resultsRoot = Path.Combine(this.packageRoot, "RESULTS");
 
