@@ -71,7 +71,8 @@ jobs:
           $ErrorActionPreference = 'Stop'
           Add-Type -AssemblyName System.Drawing
 
-          $sourcePath = (Resolve-Path 'assets\g-cet-icon.png').Path
+          # Use the compact icon-specific artwork rather than the larger README/report mark.
+          $sourcePath = (Resolve-Path 'assets\g-cet-app-icon.png').Path
           $iconPath = Join-Path (Get-Location) 'assets\g-cet-icon.ico'
 
           $source = [System.Drawing.Image]::FromFile($sourcePath)
