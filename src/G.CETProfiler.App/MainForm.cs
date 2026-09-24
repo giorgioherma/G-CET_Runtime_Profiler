@@ -17,12 +17,13 @@ public sealed class MainForm : Form
     private static readonly Color ThemePanelAlt = Color.FromArgb(11, 18, 25);
     private static readonly Color ThemeBorder = Color.FromArgb(40, 71, 82);
     private static readonly Color ThemeText = Color.FromArgb(232, 243, 246);
-    private static readonly Color ThemeMuted = Color.FromArgb(137, 157, 166);
+    private static readonly Color ThemeMuted = Color.FromArgb(171, 188, 196);
+    private static readonly Color ThemeDisabledBg = Color.FromArgb(39, 52, 61);
     private static readonly Color ThemeCyan = Color.FromArgb(54, 232, 242);
     private static readonly Color ThemeMagenta = Color.FromArgb(255, 63, 207);
-    private static readonly Color ThemeGreen = Color.FromArgb(126, 232, 151);
-    private static readonly Color ThemeAmber = Color.FromArgb(241, 193, 84);
-    private static readonly Color ThemeRed = Color.FromArgb(255, 111, 116);
+    private static readonly Color ThemeGreen = Color.FromArgb(82, 255, 139);
+    private static readonly Color ThemeAmber = Color.FromArgb(255, 218, 72);
+    private static readonly Color ThemeRed = Color.FromArgb(255, 82, 102);
 
     private readonly Panel setupPage = new();
     private readonly Panel profilerPage = new();
@@ -39,7 +40,7 @@ public sealed class MainForm : Form
     private readonly Label companionStatus = new();
     private readonly LinkLabel capFrameXLink = new();
 
-    private readonly Label status = new();
+    private readonly RichTextBox status = new();
     private readonly CheckBox coreOnly = new();
     private readonly GroupBox readyGroup = new();
     private readonly Label readyHeading = new();
@@ -119,7 +120,7 @@ public sealed class MainForm : Form
             Font = new Font("Segoe UI Semibold", 18F),
             AutoSize = true,
             ForeColor = ThemeCyan,
-            Location = new Point(72, 18)
+            Location = new Point(82, 18)
         };
         var subtitle = new Label
         {
@@ -195,7 +196,7 @@ public sealed class MainForm : Form
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                ShowThemedMessage(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         };
 
@@ -302,7 +303,7 @@ public sealed class MainForm : Form
             Font = new Font("Segoe UI Semibold", 18F),
             AutoSize = true,
             ForeColor = ThemeCyan,
-            Location = new Point(72, 18)
+            Location = new Point(82, 18)
         };
 
         var back = new Button { Text = "← SETUP", Width = 100, Height = 30, Left = 740, Top = 18 };
@@ -316,6 +317,12 @@ public sealed class MainForm : Form
         statusGroup.SetBounds(20, 66, 820, 306);
         status.SetBounds(18, 27, 775, 222);
         status.Font = new Font("Segoe UI", 9.5F);
+        status.ReadOnly = true;
+        status.BorderStyle = BorderStyle.None;
+        status.BackColor = ThemePanelAlt;
+        status.ForeColor = ThemeText;
+        status.ScrollBars = RichTextBoxScrollBars.None;
+        status.TabStop = false;
 
         coreOnly.Text = "Fallback: install CET core profiler only and leave 0-Engine completely untouched";
         coreOnly.SetBounds(18, 252, 610, 24);
@@ -375,7 +382,7 @@ public sealed class MainForm : Form
             suppressActivationRefresh = true;
             try
             {
-                answer = MessageBox.Show(
+                answer = ShowThemedMessage(
                     this,
                     "Restore the CET profiler-managed game state?\r\n\r\n" +
                     "Original CET / 0-Engine files and the previous CET binding state will be restored. " +
@@ -443,11 +450,11 @@ public sealed class MainForm : Form
         if (!LooksLikeGameRoot(root))
         {
             lastStatus = null;
-            status.Text =
+            SetStatusText(
                 "Game: NOT FOUND ❌\r\n" +
                 "CET Profiler: unavailable ❌\r\n" +
                 "CET Controls: unavailable ❌\r\n" +
-                "Live Files: -";
+                "Live Files: -");
             RenderSetupGameStatus();
             RenderCompatibility(null);
             RenderReadyState(null);
@@ -471,13 +478,13 @@ public sealed class MainForm : Form
         {
             lastStatus = null;
             SetBusy(false);
-            status.Text = "STATUS ERROR:\r\n" + FriendlyMessage(ex);
+            SetStatusText("STATUS ERROR: ❌\r\n" + FriendlyMessage(ex));
             RenderSetupGameStatus();
             RenderCompatibility(null);
             RenderReadyState(null);
             SetActionState(null);
             if (!silent)
-                MessageBox.Show(this, FriendlyMessage(ex), Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                ShowThemedMessage(this, FriendlyMessage(ex), Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
@@ -540,11 +547,11 @@ public sealed class MainForm : Form
     {
         if (snapshot is null)
         {
-            status.Text =
+            SetStatusText(
                 "Game: NOT FOUND ❌\r\n" +
                 "CET Profiler: unavailable ❌\r\n" +
                 "CET Controls: unavailable ❌\r\n" +
-                "Live Files: -";
+                "Live Files: -");
             SetActionState(null);
             return;
         }
@@ -661,7 +668,7 @@ public sealed class MainForm : Form
             ? "INSTALLED. ✅"
             : blocked ? "BLOCKED. ❌" : "NOT INSTALLED. ⚠️";
 
-        status.Text =
+        SetStatusText(
             "Game: Found ✅\r\n" +
             $"CET Profiler: {cetProfiler}\r\n" +
             $"CET Controls: {controls}\r\n" +
@@ -671,7 +678,7 @@ public sealed class MainForm : Form
             frameLine + "\r\n" +
             syncLines + "\r\n\r\n" +
             $"G-CET PROFILER IS {installState}\r\n" +
-            $"Live Files: {snapshot.LiveResultCount}";
+            $"Live Files: {snapshot.LiveResultCount}");
     }
 
     private bool IsProfilerReady(ProfilerStatus? snapshot) =>
@@ -702,11 +709,12 @@ public sealed class MainForm : Form
             ? ThemeGreen
             : blocked ? ThemeRed : ThemeAmber;
 
-        // Before installation, step 1 is the only active instruction.
-        // Once the managed profiler is fully ready, step 1 becomes completed/gray
-        // and the capture/collect/restore steps become active.
-        readyInstallInstruction.Enabled = snapshot?.Managed != true;
-        readyCaptureInstructions.Enabled = ready;
+        // Keep inactive instructions readable instead of relying on very dark
+        // native disabled-text rendering.
+        readyInstallInstruction.Enabled = true;
+        readyCaptureInstructions.Enabled = true;
+        readyInstallInstruction.ForeColor = snapshot?.Managed == true ? ThemeMuted : ThemeCyan;
+        readyCaptureInstructions.ForeColor = ready ? ThemeText : ThemeMuted;
 
         readyNotice.Text = GetReadyNotice(snapshot);
         readyNotice.ForeColor = blocked
@@ -778,6 +786,7 @@ public sealed class MainForm : Form
             startCompanion.Enabled = false;
             startGame.Enabled = false;
             coreOnly.Enabled = false;
+            ApplyButtonStateVisuals();
             return;
         }
 
@@ -796,6 +805,7 @@ public sealed class MainForm : Form
         var gameRunning = IsCyberpunkRunning();
         startGame.Enabled = !busy && File.Exists(gameExe) && !gameRunning;
         startGame.Text = gameRunning ? "CYBERPUNK RUNNING" : "START CYBERPUNK";
+        ApplyButtonStateVisuals();
     }
 
     private async Task InstallAsync()
@@ -816,7 +826,7 @@ public sealed class MainForm : Form
             var postInstallWarning = BuildPostInstallWarning(installedSnapshot);
             if (!string.IsNullOrWhiteSpace(postInstallWarning))
             {
-                MessageBox.Show(
+                ShowThemedMessage(
                     this,
                     postInstallWarning,
                     Text,
@@ -841,7 +851,7 @@ public sealed class MainForm : Form
             if (afterFailure?.ZeroEnginePresent == true || lastStatus?.ZeroEnginePresent == true)
                 fallbackVisible = true;
 
-            MessageBox.Show(
+            ShowThemedMessage(
                 this,
                 BuildInstallFailureMessage(ex, afterFailure),
                 Text,
@@ -1001,7 +1011,7 @@ public sealed class MainForm : Form
             if (reportRefreshError is not null)
                 companionText += "\r\nReport refresh: CapFrameX copy is safe, but the post-copy report refresh failed: " + reportRefreshError;
 
-            MessageBox.Show(
+            ShowThemedMessage(
                 this,
                 "CET results archived successfully and known live profiler output was cleared.\r\n\r\n" +
                 "CET_Report.html is the human-readable starting point. Full native data remains under Data\\.\r\n\r\n" +
@@ -1013,7 +1023,7 @@ public sealed class MainForm : Form
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, FriendlyMessage(ex), Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            ShowThemedMessage(this, FriendlyMessage(ex), Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
         {
@@ -1046,12 +1056,12 @@ public sealed class MainForm : Form
 
             lastStatus = verified;
             ShowRestoreOutcome(true, "RESTORE SUCCESSFUL — profiler removed and original state restored.");
-            MessageBox.Show(this, message, Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            ShowThemedMessage(this, message, Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)
         {
             ShowRestoreOutcome(false, "RESTORE NOT COMPLETED — recovery state/backups preserved.");
-            MessageBox.Show(
+            ShowThemedMessage(
                 this,
                 "Normal restore could not complete safely. The recovery state/backups were kept." +
                 Environment.NewLine + Environment.NewLine +
@@ -1115,7 +1125,7 @@ public sealed class MainForm : Form
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            ShowThemedMessage(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
@@ -1136,7 +1146,7 @@ public sealed class MainForm : Form
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            ShowThemedMessage(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
@@ -1167,7 +1177,7 @@ public sealed class MainForm : Form
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            ShowThemedMessage(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
@@ -1202,8 +1212,10 @@ public sealed class MainForm : Form
 
         readyGroup.BackColor = ThemePanelAlt;
         readyHeading.ForeColor = ThemeAmber;
+        status.BackColor = ThemePanelAlt;
         status.ForeColor = ThemeText;
         companionStatus.ForeColor = ThemeText;
+        ApplyButtonStateVisuals();
 
         capFrameXLink.LinkColor = ThemeCyan;
         capFrameXLink.ActiveLinkColor = ThemeMagenta;
@@ -1230,6 +1242,12 @@ public sealed class MainForm : Form
                     group.BackColor = ThemePanelAlt;
                     group.ForeColor = ThemeCyan;
                     group.FlatStyle = FlatStyle.Flat;
+                    break;
+
+                case RichTextBox richTextBox:
+                    richTextBox.BackColor = ThemePanelAlt;
+                    richTextBox.ForeColor = ThemeText;
+                    richTextBox.BorderStyle = BorderStyle.None;
                     break;
 
                 case TextBox textBox:
@@ -1287,8 +1305,8 @@ public sealed class MainForm : Form
     {
         var logo = new PictureBox
         {
-            Location = location,
-            Size = new Size(42, 42),
+            Location = new Point(location.X, 7),
+            Size = new Size(50, 50),
             BackColor = Color.Transparent,
             SizeMode = PictureBoxSizeMode.Zoom,
             TabStop = false
@@ -1303,7 +1321,7 @@ public sealed class MainForm : Form
         try
         {
             using var stream = Assembly.GetExecutingAssembly()
-                .GetManifestResourceStream("GCETRuntimeProfiler.GCetIcon.png");
+                .GetManifestResourceStream("GCETRuntimeProfiler.GCetAppIcon.png");
             if (stream is null)
                 return null;
 
@@ -1337,6 +1355,192 @@ public sealed class MainForm : Form
         page.Controls.Add(magenta);
         cyan.SendToBack();
         magenta.SendToBack();
+    }
+
+    private void SetStatusText(string text)
+    {
+        status.SuspendLayout();
+        status.Text = text;
+        status.SelectAll();
+        status.SelectionColor = ThemeText;
+
+        var start = 0;
+        while (start < status.TextLength)
+        {
+            var end = status.Text.IndexOf('\n', start);
+            if (end < 0)
+                end = status.TextLength;
+
+            var length = end - start;
+            var line = length > 0 ? status.Text.Substring(start, length).TrimEnd('\r') : "";
+            var color = line.Contains("❌", StringComparison.Ordinal)
+                ? ThemeRed
+                : line.Contains("⚠", StringComparison.Ordinal)
+                    ? ThemeAmber
+                    : line.Contains("✅", StringComparison.Ordinal)
+                        ? ThemeGreen
+                        : line.Equals("optional:", StringComparison.OrdinalIgnoreCase) ||
+                          line.StartsWith("Live Files:", StringComparison.OrdinalIgnoreCase)
+                            ? ThemeMuted
+                            : ThemeText;
+
+            if (length > 0)
+            {
+                status.Select(start, length);
+                status.SelectionColor = color;
+            }
+
+            start = end + 1;
+        }
+
+        status.Select(0, 0);
+        status.ResumeLayout();
+    }
+
+    private void ApplyButtonStateVisuals()
+    {
+        StyleButtonState(install, ThemeCyan);
+        StyleButtonState(collect, ThemeCyan);
+        StyleButtonState(startCompanion, ThemeCyan);
+        StyleButtonState(startGame, ThemeCyan);
+        StyleButtonState(restore, ThemeMagenta);
+        StyleButtonState(openResults, ThemeText);
+        StyleButtonState(refresh, ThemeText);
+    }
+
+    private static void StyleButtonState(Button button, Color enabledColor)
+    {
+        if (button.Enabled)
+        {
+            button.BackColor = ThemePanel;
+            button.ForeColor = enabledColor;
+            button.FlatAppearance.BorderColor = enabledColor == ThemeText ? ThemeBorder : enabledColor;
+        }
+        else
+        {
+            button.BackColor = ThemeDisabledBg;
+            button.ForeColor = ThemeMuted;
+            button.FlatAppearance.BorderColor = ThemeBorder;
+        }
+    }
+
+    private DialogResult ShowThemedMessage(
+        IWin32Window owner,
+        string message,
+        string caption,
+        MessageBoxButtons buttons,
+        MessageBoxIcon icon)
+    {
+        using var dialog = new Form
+        {
+            Text = caption,
+            StartPosition = FormStartPosition.CenterParent,
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            MaximizeBox = false,
+            MinimizeBox = false,
+            ShowInTaskbar = false,
+            BackColor = ThemeBg,
+            ForeColor = ThemeText,
+            Font = Font,
+            AutoScaleMode = AutoScaleMode.Font,
+            Icon = Icon,
+            ClientSize = new Size(600, 210)
+        };
+
+        var accent = icon switch
+        {
+            MessageBoxIcon.Error => ThemeRed,
+            MessageBoxIcon.Warning => ThemeAmber,
+            _ => ThemeCyan
+        };
+
+        var topRule = new Panel
+        {
+            BackColor = accent,
+            Left = 0,
+            Top = 0,
+            Width = dialog.ClientSize.Width,
+            Height = 2,
+            Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+        };
+
+        var picture = new PictureBox
+        {
+            Left = 22,
+            Top = 29,
+            Width = 42,
+            Height = 42,
+            SizeMode = PictureBoxSizeMode.CenterImage,
+            BackColor = Color.Transparent,
+            Image = icon switch
+            {
+                MessageBoxIcon.Error => SystemIcons.Error.ToBitmap(),
+                MessageBoxIcon.Warning => SystemIcons.Warning.ToBitmap(),
+                _ => SystemIcons.Information.ToBitmap()
+            }
+        };
+
+        var text = new Label
+        {
+            Left = 82,
+            Top = 25,
+            Width = 490,
+            MaximumSize = new Size(490, 0),
+            AutoSize = true,
+            ForeColor = ThemeText,
+            BackColor = Color.Transparent,
+            Text = message
+        };
+
+        dialog.Controls.Add(topRule);
+        dialog.Controls.Add(picture);
+        dialog.Controls.Add(text);
+
+        dialog.Shown += (_, _) =>
+        {
+            var required = Math.Max(170, Math.Min(520, text.Bottom + 72));
+            dialog.ClientSize = new Size(600, required);
+            var buttonTop = required - 48;
+
+            if (buttons == MessageBoxButtons.YesNo)
+            {
+                var yes = CreateDialogButton("Yes", DialogResult.Yes, accent);
+                var no = CreateDialogButton("No", DialogResult.No, ThemeBorder);
+                yes.SetBounds(420, buttonTop, 72, 30);
+                no.SetBounds(502, buttonTop, 72, 30);
+                dialog.Controls.AddRange([yes, no]);
+                dialog.AcceptButton = yes;
+                dialog.CancelButton = no;
+            }
+            else
+            {
+                var ok = CreateDialogButton("OK", DialogResult.OK, accent);
+                ok.SetBounds(502, buttonTop, 72, 30);
+                dialog.Controls.Add(ok);
+                dialog.AcceptButton = ok;
+                dialog.CancelButton = ok;
+            }
+        };
+
+        return dialog.ShowDialog(owner);
+    }
+
+    private static Button CreateDialogButton(string text, DialogResult result, Color accent)
+    {
+        var button = new Button
+        {
+            Text = text,
+            DialogResult = result,
+            UseVisualStyleBackColor = false,
+            BackColor = ThemePanel,
+            ForeColor = ThemeText,
+            FlatStyle = FlatStyle.Flat
+        };
+        button.FlatAppearance.BorderSize = 1;
+        button.FlatAppearance.BorderColor = accent;
+        button.FlatAppearance.MouseOverBackColor = Color.FromArgb(19, 35, 44);
+        button.FlatAppearance.MouseDownBackColor = Color.FromArgb(23, 43, 53);
+        return button;
     }
 
     private static string GetGameExe(string root) =>
