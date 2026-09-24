@@ -1,5 +1,3 @@
-#define UNICODE
-#define _UNICODE
 #include <windows.h>
 
 #define APP_RELATIVE_PATH L"\\app\\G-CET-Runtime-Profiler.App.exe"
