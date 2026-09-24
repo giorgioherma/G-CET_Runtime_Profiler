@@ -18,6 +18,9 @@ public sealed class MainForm : Form
     private static readonly Color ThemeBorder = Color.FromArgb(40, 71, 82);
     private static readonly Color ThemeText = Color.FromArgb(232, 243, 246);
     private static readonly Color ThemeMuted = Color.FromArgb(172, 188, 197);
+    private static readonly Color ThemeInactive = Color.FromArgb(104, 118, 126);
+    private static readonly Color ThemeDisabledSurface = Color.FromArgb(18, 25, 31);
+    private static readonly Color ThemeDisabledBorder = Color.FromArgb(49, 61, 68);
     private static readonly Color ThemeCyan = Color.FromArgb(54, 244, 244);
     private static readonly Color ThemeMagenta = Color.FromArgb(255, 63, 215);
     private static readonly Color ThemeGreen = Color.FromArgb(94, 255, 130);
@@ -760,8 +763,8 @@ public sealed class MainForm : Form
         // and the capture/collect/restore steps become active.
         readyInstallInstruction.Enabled = true;
         readyCaptureInstructions.Enabled = true;
-        readyInstallInstruction.ForeColor = snapshot?.Managed == true ? ThemeMuted : ThemeCyan;
-        readyCaptureInstructions.ForeColor = ready ? ThemeText : ThemeMuted;
+        readyInstallInstruction.ForeColor = snapshot?.Managed == true ? ThemeInactive : ThemeCyan;
+        readyCaptureInstructions.ForeColor = ready ? ThemeText : ThemeInactive;
 
         readyNotice.Text = GetReadyNotice(snapshot);
         readyNotice.ForeColor = blocked
@@ -1379,15 +1382,15 @@ public sealed class MainForm : Form
             if (button.Enabled)
                 return;
 
-            e.Graphics.Clear(ThemePanel);
-            using var border = new Pen(ThemeBorder);
+            e.Graphics.Clear(ThemeDisabledSurface);
+            using var border = new Pen(ThemeDisabledBorder);
             e.Graphics.DrawRectangle(border, 0, 0, Math.Max(0, button.Width - 1), Math.Max(0, button.Height - 1));
             TextRenderer.DrawText(
                 e.Graphics,
                 button.Text,
                 button.Font,
                 button.ClientRectangle,
-                ThemeMuted,
+                ThemeInactive,
                 TextFormatFlags.HorizontalCenter |
                 TextFormatFlags.VerticalCenter |
                 TextFormatFlags.SingleLine |
