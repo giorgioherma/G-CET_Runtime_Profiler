@@ -124,11 +124,10 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
         var syncClass = ft.SyncQuality == "GOOD" ? "syncgood" : ft.SyncQuality == "COARSE" ? "synccoarse" : "syncbad";
         sb.Append("<div class=\"card\"><h3>Synchronization</h3>")
             .Append("<div class=\"healthline\"><span class=\"muted\">Status</span><span class=\"").Append(syncClass).Append("\"><b>").Append(H(ft.SyncQuality)).Append("</b></span></div>")
-            .Append("<div class=\"healthline\"><span class=\"muted\">CapFrameX start</span><span>").Append(H(ft.CapFrameXStartUtc?.ToString("O") ?? "unknown")).Append("</span></div>")
-            .Append("<div class=\"healthline\"><span class=\"muted\">CET start</span><span>").Append(H(ft.CetStartUtc?.ToString("O") ?? "unknown")).Append("</span></div>");
+            .Append("<div class=\"healthline\"><span class=\"muted\">Method</span><span>").Append(H(ft.AlignmentMethod)).Append("</span></div>")
+            .Append("<div class=\"healthline\"><span class=\"muted\">CapFrameX record timestamp</span><span>").Append(H(ft.CapFrameXRecordUtc?.ToString("O") ?? "unknown")).Append("</span></div>")
+            .Append("<div class=\"healthline\"><span class=\"muted\">CET latest START marker</span><span>").Append(H(ft.CetStartUtc?.ToString("O") ?? "unknown")).Append("</span></div>");
 
-        if (double.IsFinite(ft.StartDeltaMs))
-            sb.Append("<div class=\"healthline\"><span class=\"muted\">Start delta</span><span>").Append(F(ft.StartDeltaMs, 1)).Append(" ms</span></div>");
         if (double.IsFinite(ft.DurationDeltaMs))
             sb.Append("<div class=\"healthline\"><span class=\"muted\">Duration delta</span><span>").Append(F(ft.DurationDeltaMs, 1)).Append(" ms</span></div>");
 
@@ -136,7 +135,7 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
 
         if (!ft.Correlated)
         {
-            sb.Append("<div class=\"note\"><b>CapFrameX frametime statistics are valid, but CET/frametime correlation is disabled for this capture.</b> The start clocks are too far apart or CET has no usable epoch marker. Raw CapFrameX data is still preserved under <span class=\"mono\">FrameTime/</span>.</div></div>");
+            sb.Append("<div class=\"note\"><b>CapFrameX frametime statistics are valid, but CET/frametime correlation is disabled for this capture.</b> A reliable shared-start match was not established. CapFrameX's record timestamp is not treated as its F11 start time. Raw CapFrameX data is still preserved under <span class=\"mono\">FrameTime/</span>.</div></div>");
             return;
         }
 
