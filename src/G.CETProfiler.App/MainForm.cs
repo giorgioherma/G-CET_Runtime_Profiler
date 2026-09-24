@@ -1381,13 +1381,19 @@ public sealed class MainForm : Form
     {
         try
         {
-            using var executableIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
-            if (executableIcon is not null)
-                return executableIcon.ToBitmap();
+            // Use the compact icon artwork directly in the UI header so the
+            // G-CET lettering stays legible at 52 px.
+            using var stream = Assembly.GetExecutingAssembly()
+                .GetManifestResourceStream("GCETRuntimeProfiler.GCetAppIcon.png");
+            if (stream is not null)
+            {
+                using var source = Image.FromStream(stream);
+                return new Bitmap(source);
+            }
         }
         catch
         {
-            // Fall through to the embedded PNG.
+            // Fall through to the larger report/README mark.
         }
 
         try
