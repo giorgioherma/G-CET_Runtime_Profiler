@@ -36,7 +36,7 @@ The root EXE is a small native launcher. The self-contained WinForms application
 
 Extract the ZIP to a normal writable folder and run `G-CET-Runtime-Profiler.exe`.
 
-The profiler is self-contained: users do **not** need to install .NET separately. `G-CET-Runtime-Profiler.settings.json` is created beside the root launcher on first use rather than being sent to Windows roaming/app-data folders. The launcher forwards both GUI and headless commands to the same application under `app\`.
+The profiler is self-contained: users do **not** need to install .NET separately. `G-CET-Runtime-Profiler.settings.json` is created beside the root launcher on first use rather than being sent to Windows roaming/app-data folders. The root launcher is intentionally GUI-only; headless/automation commands invoke the same managed application directly under `app\`.
 
 ## Requirements
 
@@ -130,8 +130,8 @@ If live CET profiler output exists, known profiler output is archived before res
 A strict headless emergency-recovery command is retained for advanced/manual recovery:
 
 ```text
-G-CET-Runtime-Profiler.exe --emergency-restore --game "..." --json
-G-CET-Runtime-Profiler.exe --report  --capture "RESULTS\<capture>" --json
+app\G-CET-Runtime-Profiler.App.exe --emergency-restore --game "..." --json
+app\G-CET-Runtime-Profiler.App.exe --report  --capture "RESULTS\<capture>" --json
 ```
 
 `--report` rebuilds `CET_Report.html` and `CET_Summary.json` from an already collected result. This is useful after a frame-time companion has been added/copied into `FrameTime\` and is also covered by CI.
@@ -166,12 +166,12 @@ External frame-time results follow the separate copy-only rule described above. 
 The same executable and the same C# core are used by higher-level orchestration:
 
 ```text
-G-CET-Runtime-Profiler.exe --status  --game "..." --json
-G-CET-Runtime-Profiler.exe --install --game "..." [--core-only] --json
-G-CET-Runtime-Profiler.exe --collect --game "..." --json
-G-CET-Runtime-Profiler.exe --reset   --game "..." --json
-G-CET-Runtime-Profiler.exe --restore --game "..." --json
-G-CET-Runtime-Profiler.exe --emergency-restore --game "..." --json
+app\G-CET-Runtime-Profiler.App.exe --status  --game "..." --json
+app\G-CET-Runtime-Profiler.App.exe --install --game "..." [--core-only] --json
+app\G-CET-Runtime-Profiler.App.exe --collect --game "..." --json
+app\G-CET-Runtime-Profiler.App.exe --reset   --game "..." --json
+app\G-CET-Runtime-Profiler.App.exe --restore --game "..." --json
+app\G-CET-Runtime-Profiler.App.exe --emergency-restore --game "..." --json
 ```
 
 ## TOTAL Profiler boundary
