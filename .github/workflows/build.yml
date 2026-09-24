@@ -145,8 +145,8 @@ jobs:
           }
 
           $importText = Get-Content -LiteralPath $imports -Raw
-          if ($importText -notmatch 'ShellExecuteExW') {
-            throw 'Launcher no longer imports ShellExecuteExW.'
+          if ($importText -notmatch 'ShellExecuteW') {
+            throw 'Launcher no longer imports ShellExecuteW.'
           }
           foreach ($forbiddenImport in @('CreateProcessW','SetEnvironmentVariableW')) {
             if ($importText -match $forbiddenImport) {
@@ -162,7 +162,7 @@ jobs:
             throw "Launcher FileDescription metadata mismatch: $($versionInfo.FileDescription)"
           }
 
-          Write-Host 'Launcher imports: standard ShellExecuteExW path; CreateProcessW and package-root environment injection absent.'
+          Write-Host 'Launcher imports: minimal ShellExecuteW GUI path; CreateProcessW and package-root environment injection absent.'
           Write-Host "Launcher metadata: $($versionInfo.ProductName) $($versionInfo.ProductVersion)"
 
       - name: Stage normal Windows app layout
@@ -356,8 +356,10 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $exe = (Resolve-Path 'publish\G-CET-Runtime-Profiler.exe').Path
+          $exe = (Resolve-Path 'publish\app\G-CET-Runtime-Profiler.App.exe').Path
 
+          # Headless/automation commands intentionally target the managed app
+          # directly; the root launcher is GUI-only to keep its AV surface tiny.
           # Status must remain safe before CET has created its own subdirectory.
           $missingCetFixture = Join-Path $env:RUNNER_TEMP 'gcet-missing-cet-fixture'
           if (Test-Path $missingCetFixture) { Remove-Item $missingCetFixture -Recurse -Force }
