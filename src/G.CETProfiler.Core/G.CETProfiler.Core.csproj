@@ -4,4 +4,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\assets\g-cet-icon.png">
+      <LogicalName>GCETRuntimeProfiler.GCetIcon.png</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
 </Project>

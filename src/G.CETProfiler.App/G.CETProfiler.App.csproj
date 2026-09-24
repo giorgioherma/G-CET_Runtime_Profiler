@@ -15,6 +15,9 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\G.CETProfiler.Core\G.CETProfiler.Core.csproj" />
+    <EmbeddedResource Include="..\..\assets\g-cet-icon.png">
+      <LogicalName>GCETRuntimeProfiler.GCetIcon.png</LogicalName>
+    </EmbeddedResource>
     <Content Include="..\..\payload\**\*">
       <Link>payload\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

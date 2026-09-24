@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Reflection;
 using GCETRuntimeProfiler.Core.Models;
 using GCETRuntimeProfiler.Core.Services;
 
@@ -8,6 +9,20 @@ public sealed class MainForm : Form
 {
     private readonly IProfilerService profiler = new ProfilerService();
     private readonly AppSettings appSettings = AppSettings.Load();
+
+    // Restrained G-CET visual language: dark diagnostic UI with cyan/magenta
+    // accents. The workflow and information hierarchy stay intentionally plain.
+    private static readonly Color ThemeBg = Color.FromArgb(8, 13, 18);
+    private static readonly Color ThemePanel = Color.FromArgb(14, 23, 31);
+    private static readonly Color ThemePanelAlt = Color.FromArgb(11, 18, 25);
+    private static readonly Color ThemeBorder = Color.FromArgb(40, 71, 82);
+    private static readonly Color ThemeText = Color.FromArgb(232, 243, 246);
+    private static readonly Color ThemeMuted = Color.FromArgb(137, 157, 166);
+    private static readonly Color ThemeCyan = Color.FromArgb(54, 232, 242);
+    private static readonly Color ThemeMagenta = Color.FromArgb(255, 63, 207);
+    private static readonly Color ThemeGreen = Color.FromArgb(126, 232, 151);
+    private static readonly Color ThemeAmber = Color.FromArgb(241, 193, 84);
+    private static readonly Color ThemeRed = Color.FromArgb(255, 111, 116);
 
     private readonly Panel setupPage = new();
     private readonly Panel profilerPage = new();
@@ -54,11 +69,14 @@ public sealed class MainForm : Form
         ClientSize = new Size(860, 690);
         MinimumSize = new Size(880, 730);
         Font = new Font("Segoe UI", 9F);
+        BackColor = ThemeBg;
+        ForeColor = ThemeText;
 
         BuildSetupPage();
         BuildProfilerPage();
         Controls.Add(profilerPage);
         Controls.Add(setupPage);
+        ApplyTheme();
 
         gameRoot.Text = !string.IsNullOrWhiteSpace(appSettings.GameRoot)
             ? appSettings.GameRoot
@@ -91,12 +109,14 @@ public sealed class MainForm : Form
     {
         setupPage.Dock = DockStyle.Fill;
 
+        var logo = CreateHeaderLogo(new Point(20, 12));
         var title = new Label
         {
             Text = "SETUP",
             Font = new Font("Segoe UI Semibold", 18F),
             AutoSize = true,
-            Location = new Point(20, 18)
+            ForeColor = ThemeCyan,
+            Location = new Point(72, 18)
         };
         var subtitle = new Label
         {
@@ -264,19 +284,22 @@ public sealed class MainForm : Form
                 ShowPage(1);
         };
 
-        setupPage.Controls.AddRange([title, subtitle, gameGroup, companionGroup, next]);
+        setupPage.Controls.AddRange([logo, title, subtitle, gameGroup, companionGroup, next]);
+        AddHeaderAccent(setupPage, 74);
     }
 
     private void BuildProfilerPage()
     {
         profilerPage.Dock = DockStyle.Fill;
 
+        var logo = CreateHeaderLogo(new Point(20, 12));
         var title = new Label
         {
             Text = "INSTALL -> CAPTURE -> RESTORE",
             Font = new Font("Segoe UI Semibold", 18F),
             AutoSize = true,
-            Location = new Point(20, 18)
+            ForeColor = ThemeCyan,
+            Location = new Point(72, 18)
         };
 
         var back = new Button { Text = "← SETUP", Width = 100, Height = 30, Left = 740, Top = 18 };
@@ -385,9 +408,10 @@ public sealed class MainForm : Form
         restoreOutcome.Visible = false;
 
         profilerPage.Controls.AddRange([
-            title, back, statusGroup, readyGroup,
+            logo, title, back, statusGroup, readyGroup,
             install, collect, restore, openResults, startCompanion, startGame, restoreOutcome
         ]);
+        AddHeaderAccent(profilerPage, 59);
     }
 
     private void ShowPage(int page)
@@ -459,12 +483,16 @@ public sealed class MainForm : Form
         if (!LooksLikeGameRoot(gameRoot.Text.Trim()))
         {
             setupGameStatus.Text = "Game: NOT FOUND";
+            setupGameStatus.ForeColor = ThemeRed;
             return;
         }
 
         setupGameStatus.Text = lastStatus is null
             ? "Game: FOUND"
             : $"Game: FOUND    CET: {lastStatus.CetState}";
+        setupGameStatus.ForeColor = lastStatus?.CetState is "MISSING" or "UNKNOWN"
+            ? ThemeAmber
+            : ThemeGreen;
     }
 
     private void RefreshCompanionStatus()
@@ -668,8 +696,8 @@ public sealed class MainForm : Form
             : "PROFILER IS NOT READY!";
 
         readyHeading.ForeColor = ready
-            ? Color.ForestGreen
-            : blocked ? Color.Firebrick : Color.DarkGoldenrod;
+            ? ThemeGreen
+            : blocked ? ThemeRed : ThemeAmber;
 
         // Before installation, step 1 is the only active instruction.
         // Once the managed profiler is fully ready, step 1 becomes completed/gray
@@ -679,10 +707,10 @@ public sealed class MainForm : Form
 
         readyNotice.Text = GetReadyNotice(snapshot);
         readyNotice.ForeColor = blocked
-            ? Color.Firebrick
+            ? ThemeRed
             : ready && (snapshot?.ZeroEnginePresent != true || snapshot.ManagedMode == "core-only")
-                ? Color.DarkGoldenrod
-                : SystemColors.GrayText;
+                ? ThemeAmber
+                : ThemeMuted;
     }
 
     private string GetReadyNotice(ProfilerStatus? snapshot)
@@ -1041,7 +1069,7 @@ public sealed class MainForm : Form
     private void ShowRestoreProgress(string message)
     {
         restoreOutcome.Text = "… " + message;
-        restoreOutcome.ForeColor = SystemColors.ControlText;
+        restoreOutcome.ForeColor = ThemeText;
         restoreOutcome.Visible = true;
         restoreOutcome.BringToFront();
     }
@@ -1049,7 +1077,7 @@ public sealed class MainForm : Form
     private void ShowRestoreOutcome(bool success, string message)
     {
         restoreOutcome.Text = (success ? "✓ " : "✗ ") + message;
-        restoreOutcome.ForeColor = success ? Color.ForestGreen : Color.Firebrick;
+        restoreOutcome.ForeColor = success ? ThemeGreen : ThemeRed;
         restoreOutcome.Visible = true;
         restoreOutcome.BringToFront();
     }
@@ -1152,6 +1180,160 @@ public sealed class MainForm : Form
     {
         SyncSettingsFromUi();
         appSettings.Save();
+    }
+
+    private void ApplyTheme()
+    {
+        ApplyThemeRecursive(this);
+
+        setupPage.BackColor = ThemeBg;
+        profilerPage.BackColor = ThemeBg;
+
+        // Functional emphasis only: actions remain conventional buttons, with
+        // accent color identifying the normal forward path and restore boundary.
+        AccentButton(install, ThemeCyan);
+        AccentButton(collect, ThemeCyan);
+        AccentButton(startGame, ThemeCyan);
+        AccentButton(startCompanion, ThemeCyan);
+        AccentButton(restore, ThemeMagenta);
+
+        readyGroup.BackColor = ThemePanelAlt;
+        readyHeading.ForeColor = ThemeAmber;
+        status.ForeColor = ThemeText;
+        companionStatus.ForeColor = ThemeText;
+
+        capFrameXLink.LinkColor = ThemeCyan;
+        capFrameXLink.ActiveLinkColor = ThemeMagenta;
+        capFrameXLink.VisitedLinkColor = ThemeCyan;
+    }
+
+    private static void ApplyThemeRecursive(Control root)
+    {
+        foreach (Control control in root.Controls)
+        {
+            switch (control)
+            {
+                case Panel panel:
+                    panel.BackColor = (panel.Tag as string) switch
+                    {
+                        "gcet-accent-cyan" => ThemeBorder,
+                        "gcet-accent-magenta" => ThemeMagenta,
+                        _ => ThemeBg
+                    };
+                    panel.ForeColor = ThemeText;
+                    break;
+
+                case GroupBox group:
+                    group.BackColor = ThemePanelAlt;
+                    group.ForeColor = ThemeCyan;
+                    group.FlatStyle = FlatStyle.Flat;
+                    break;
+
+                case TextBox textBox:
+                    textBox.BackColor = ThemePanel;
+                    textBox.ForeColor = ThemeText;
+                    textBox.BorderStyle = BorderStyle.FixedSingle;
+                    break;
+
+                case Button button:
+                    button.UseVisualStyleBackColor = false;
+                    button.BackColor = ThemePanel;
+                    button.ForeColor = ThemeText;
+                    button.FlatStyle = FlatStyle.Flat;
+                    button.FlatAppearance.BorderSize = 1;
+                    button.FlatAppearance.BorderColor = ThemeBorder;
+                    button.FlatAppearance.MouseOverBackColor = Color.FromArgb(19, 35, 44);
+                    button.FlatAppearance.MouseDownBackColor = Color.FromArgb(23, 43, 53);
+                    break;
+
+                case CheckBox checkBox:
+                    checkBox.BackColor = Color.Transparent;
+                    checkBox.ForeColor = ThemeText;
+                    break;
+
+                case LinkLabel link:
+                    link.BackColor = Color.Transparent;
+                    link.ForeColor = ThemeCyan;
+                    link.LinkColor = ThemeCyan;
+                    link.ActiveLinkColor = ThemeMagenta;
+                    break;
+
+                case Label label:
+                    label.BackColor = Color.Transparent;
+                    if (label.ForeColor == SystemColors.GrayText)
+                        label.ForeColor = ThemeMuted;
+                    else if (label.ForeColor == SystemColors.ControlText ||
+                             label.ForeColor == SystemColors.WindowText ||
+                             label.ForeColor == Color.Black)
+                        label.ForeColor = label.Font.Size >= 16F ? ThemeCyan : ThemeText;
+                    break;
+            }
+
+            if (control.HasChildren)
+                ApplyThemeRecursive(control);
+        }
+    }
+
+    private static void AccentButton(Button button, Color accent)
+    {
+        button.ForeColor = accent;
+        button.FlatAppearance.BorderColor = accent;
+    }
+
+    private static PictureBox CreateHeaderLogo(Point location)
+    {
+        var logo = new PictureBox
+        {
+            Location = location,
+            Size = new Size(42, 42),
+            BackColor = Color.Transparent,
+            SizeMode = PictureBoxSizeMode.Zoom,
+            TabStop = false
+        };
+
+        logo.Image = LoadBrandImage();
+        return logo;
+    }
+
+    private static Image? LoadBrandImage()
+    {
+        try
+        {
+            using var stream = Assembly.GetExecutingAssembly()
+                .GetManifestResourceStream("GCETRuntimeProfiler.GCetIcon.png");
+            if (stream is null)
+                return null;
+
+            using var source = Image.FromStream(stream);
+            return new Bitmap(source);
+        }
+        catch
+        {
+            // Branding must never prevent the profiler UI from starting.
+            return null;
+        }
+    }
+
+    private static void AddHeaderAccent(Control page, int y)
+    {
+        var cyan = new Panel
+        {
+            Tag = "gcet-accent-cyan",
+            BackColor = ThemeBorder,
+            Location = new Point(20, y),
+            Size = new Size(820, 1)
+        };
+        var magenta = new Panel
+        {
+            Tag = "gcet-accent-magenta",
+            BackColor = ThemeMagenta,
+            Location = new Point(20, y + 1),
+            Size = new Size(92, 1)
+        };
+        page.Controls.Add(cyan);
+        page.Controls.Add(magenta);
+        cyan.SendToBack();
+        magenta.SendToBack();
     }
 
     private static string GetGameExe(string root) =>
