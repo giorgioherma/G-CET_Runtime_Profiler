@@ -90,7 +90,7 @@ internal static class CompanionProfilerService
 
         var status = Inspect(settings);
         var candidate = status.Kind == "capframex"
-            ? FindBestCapFrameXCapture(sourceRoot, cetDestination)
+            ? FindNewestCapFrameXCapture(sourceRoot)
             : FindNewestTopLevelItem(sourceRoot);
 
         if (candidate is null)
@@ -238,117 +238,11 @@ internal static class CompanionProfilerService
         return false;
     }
 
-    private static string? FindBestCapFrameXCapture(string root, string cetDestination)
-    {
-        var candidates = Directory.EnumerateFiles(root, "*.json", SearchOption.AllDirectories)
+    private static string? FindNewestCapFrameXCapture(string root) =>
+        Directory.EnumerateFiles(root, "*.json", SearchOption.AllDirectories)
             .Where(path => !Path.GetFileName(path).Equals("portable.json", StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(File.GetLastWriteTimeUtc)
-            .Take(20)
-            .ToList();
-
-        if (candidates.Count == 0)
-            return null;
-
-        var cetSeconds = ReadCetCaptureSeconds(cetDestination);
-        if (cetSeconds <= 0)
-            return candidates[0];
-
-        var toleranceMs = Math.Clamp(cetSeconds * 1000.0 * 0.03, 750.0, 2500.0);
-        var scored = candidates
-            .Select(path => new
-            {
-                Path = path,
-                DurationMs = TryReadCapFrameXDurationMs(path),
-                Stamp = File.GetLastWriteTimeUtc(path)
-            })
-            .Where(x => x.DurationMs > 0)
-            .Select(x => new
-            {
-                x.Path,
-                x.Stamp,
-                DeltaMs = Math.Abs(x.DurationMs - cetSeconds * 1000.0)
-            })
-            .OrderBy(x => x.DeltaMs)
-            .ThenByDescending(x => x.Stamp)
-            .ToList();
-
-        var matched = scored.FirstOrDefault(x => x.DeltaMs <= toleranceMs);
-        return matched?.Path ?? candidates[0];
-    }
-
-    private static double ReadCetCaptureSeconds(string cetDestination)
-    {
-        try
-        {
-            var summaryPath = Path.Combine(cetDestination, "CET_Summary.json");
-            if (!File.Exists(summaryPath))
-                return 0;
-
-            using var doc = JsonDocument.Parse(File.ReadAllText(summaryPath));
-            if (doc.RootElement.TryGetProperty("capture", out var capture) &&
-                capture.TryGetProperty("elapsedSeconds", out var elapsed) &&
-                elapsed.TryGetDouble(out var seconds))
-                return seconds;
-        }
-        catch { }
-
-        return 0;
-    }
-
-    private static double TryReadCapFrameXDurationMs(string path)
-    {
-        try
-        {
-            using var doc = JsonDocument.Parse(File.ReadAllText(path));
-            var root = doc.RootElement;
-            if (!root.TryGetProperty("Info", out _) ||
-                !root.TryGetProperty("Runs", out var runs) ||
-                runs.ValueKind != JsonValueKind.Array)
-                return 0;
-
-            double best = 0;
-            foreach (var run in runs.EnumerateArray())
-            {
-                if (!run.TryGetProperty("CaptureData", out var data) ||
-                    data.ValueKind != JsonValueKind.Object ||
-                    !data.TryGetProperty("TimeInSeconds", out var times) ||
-                    times.ValueKind != JsonValueKind.Array)
-                    continue;
-
-                double lastSeconds = 0;
-                foreach (var item in times.EnumerateArray())
-                {
-                    if (item.ValueKind == JsonValueKind.Number &&
-                        item.TryGetDouble(out var value) &&
-                        double.IsFinite(value) &&
-                        value > lastSeconds)
-                        lastSeconds = value;
-                }
-
-                double lastFrameMs = 0;
-                if (data.TryGetProperty("MsBetweenPresents", out var frames) &&
-                    frames.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var item in frames.EnumerateArray())
-                    {
-                        if (item.ValueKind == JsonValueKind.Number &&
-                            item.TryGetDouble(out var value) &&
-                            double.IsFinite(value) &&
-                            value > 0)
-                            lastFrameMs = value;
-                    }
-                }
-
-                best = Math.Max(best, lastSeconds * 1000.0 + lastFrameMs);
-            }
-
-            return best;
-        }
-        catch
-        {
-            return 0;
-        }
-    }
+            .FirstOrDefault();
 
     private static string? FindNewestTopLevelItem(string root)
     {
