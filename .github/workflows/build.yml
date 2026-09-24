@@ -76,7 +76,7 @@ jobs:
 
           $source = [System.Drawing.Image]::FromFile($sourcePath)
           try {
-            $bitmap = New-Object System.Drawing.Bitmap 256, 256, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+            $bitmap = [System.Drawing.Bitmap]::new(256, 256, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
             try {
               $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
               try {
@@ -91,26 +91,13 @@ jobs:
               }
 
               $hIcon = $bitmap.GetHicon()
+              $icon = [System.Drawing.Icon]::FromHandle($hIcon)
+              $stream = [System.IO.File]::Create($iconPath)
               try {
-                $icon = [System.Drawing.Icon]::FromHandle($hIcon)
-                $stream = [System.IO.File]::Create($iconPath)
-                try {
-                  $icon.Save($stream)
-                }
-                finally {
-                  $stream.Dispose()
-                }
+                $icon.Save($stream)
               }
               finally {
-                Add-Type -TypeDefinition @'
-                using System;
-                using System.Runtime.InteropServices;
-                public static class GcetNativeIcon {
-                    [DllImport("user32.dll")]
-                    public static extern bool DestroyIcon(IntPtr handle);
-                }
-                '@ -ErrorAction SilentlyContinue
-                [GcetNativeIcon]::DestroyIcon($hIcon) | Out-Null
+                $stream.Dispose()
               }
             }
             finally {
