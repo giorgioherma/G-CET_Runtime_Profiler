@@ -166,6 +166,7 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
             .Append("<button onclick=\"gcetFtFull()\">Full capture</button>")
             .Append("<button onclick=\"gcetFtWorst()\">Around worst frame</button>")
             .Append("<label class=\"small\">Scale <select id=\"gcetFtScale\" onchange=\"gcetFtDraw()\"><option value=\"auto\">Auto</option><option value=\"50\">0–50 ms</option><option value=\"100\">0–100 ms</option><option value=\"250\">0–250 ms</option><option value=\"500\">0–500 ms</option></select></label>")
+            .Append("<span class=\"muted\">Shift + mouse wheel: zoom timeline</span>")
             .Append("</div><canvas id=\"gcetFtChart\"></canvas><div id=\"gcetFtTip\" class=\"charttip\"></div>")
             .Append("<div class=\"legend\"><span><i class=\"sw ft\"></i>Max frametime / CET 50 ms window</span><span><i class=\"sw cpu\"></i>CPU active max</span><span><i class=\"sw gpu\"></i>GPU active max</span><span><i class=\"sw cet\"></i>Measured CET work / 50 ms window</span></div></div>")
             .Append("<div class=\"note\"><b>Read the layers together; do not add or subtract them.</b> CapFrameX is actual rendered frametime. CET is observed script-side work aggregated into the same 50 ms clock windows.</div>");
@@ -257,6 +258,29 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
     tip.textContent=(p.t/1000).toFixed(3)+' s\nFrametime max: '+p.ft.toFixed(2)+' ms\nCPU active max: '+p.cpu.toFixed(2)+' ms\nGPU active max: '+p.gpu.toFixed(2)+' ms\nCET work: '+p.cet.toFixed(2)+' ms\nTop CET owner: '+(p.owner||'—')+'\n'+signal;
     tip.style.display='block';tip.style.left=Math.min(r.width-235,Math.max(8,ev.clientX-r.left+12))+'px';tip.style.top=Math.max(8,ev.clientY-r.top-115)+'px';
   });
+  canvas.addEventListener('wheel',ev=>{
+    if(!ev.shiftKey)return;
+    ev.preventDefault();
+    const fullMin=data[0].t,fullMax=data[data.length-1].e,fullSpan=fullMax-fullMin;
+    const currentSpan=xmax-xmin;
+    if(fullSpan<=0||currentSpan<=0)return;
+
+    const r=canvas.getBoundingClientRect(),padL=48,padR=18;
+    const plotWidth=Math.max(1,r.width-padL-padR);
+    const ratio=Math.max(0,Math.min(1,(ev.clientX-r.left-padL)/plotWidth));
+    const anchor=xmin+ratio*currentSpan;
+    const zoomFactor=ev.deltaY<0?0.72:1.38;
+    const minSpan=Math.min(fullSpan,Math.max(250,(data[0].e-data[0].t)*5));
+    const nextSpan=Math.max(minSpan,Math.min(fullSpan,currentSpan*zoomFactor));
+
+    let nextMin=anchor-ratio*nextSpan;
+    let nextMax=nextMin+nextSpan;
+    if(nextMin<fullMin){nextMax+=fullMin-nextMin;nextMin=fullMin;}
+    if(nextMax>fullMax){nextMin-=nextMax-fullMax;nextMax=fullMax;}
+    xmin=Math.max(fullMin,nextMin);xmax=Math.min(fullMax,nextMax);
+    tip.style.display='none';
+    gcetFtDraw();
+  },{passive:false});
   canvas.addEventListener('mouseleave',()=>tip.style.display='none');
   window.addEventListener('resize',resize);requestAnimationFrame(resize);
 })();
