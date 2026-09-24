@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using GCETRuntimeProfiler.Core.Models;
 using GCETRuntimeProfiler.Core.Services;
 
@@ -39,7 +40,7 @@ public sealed class MainForm : Form
     private readonly Label companionStatus = new();
     private readonly LinkLabel capFrameXLink = new();
 
-    private readonly RichTextBox status = new();
+    private readonly RichTextBox status = new StableThemeRichTextBox(ThemePanelAlt, ThemeText);
     private readonly CheckBox coreOnly = new();
     private readonly GroupBox readyGroup = new();
     private readonly Label readyHeading = new();
@@ -691,31 +692,15 @@ public sealed class MainForm : Form
         status.SuspendLayout();
         try
         {
+            // Status prose stays neutral/readable. Only the semantic markers carry
+            // success/warning/error color so the checklist does not become a wall
+            // of green/yellow/red text.
             status.SelectAll();
             status.SelectionColor = ThemeText;
 
-            for (var i = 0; i < status.Lines.Length; i++)
-            {
-                var line = status.Lines[i];
-                var start = status.GetFirstCharIndexFromLine(i);
-                if (start < 0)
-                    continue;
-
-                var color = line.Contains('❌') ||
-                            line.Contains("ERROR", StringComparison.OrdinalIgnoreCase) ||
-                            line.Contains("BLOCKED", StringComparison.OrdinalIgnoreCase)
-                    ? ThemeRed
-                    : line.Contains('✅')
-                        ? ThemeGreen
-                        : line.Contains('⚠')
-                            ? ThemeAmber
-                            : line.Trim().Equals("optional:", StringComparison.OrdinalIgnoreCase)
-                                ? ThemeMuted
-                                : ThemeText;
-
-                status.Select(start, line.Length);
-                status.SelectionColor = color;
-            }
+            ColorStatusMarkers('✅', ThemeGreen);
+            ColorStatusMarkers('⚠', ThemeAmber);
+            ColorStatusMarkers('❌', ThemeRed);
 
             status.Select(0, 0);
             status.SelectionLength = 0;
@@ -723,6 +708,24 @@ public sealed class MainForm : Form
         finally
         {
             status.ResumeLayout();
+        }
+    }
+
+    private void ColorStatusMarkers(char marker, Color color)
+    {
+        var text = status.Text;
+        for (var index = text.IndexOf(marker);
+             index >= 0;
+             index = text.IndexOf(marker, index + 1))
+        {
+            var length = 1;
+            // Warning signs often carry an emoji variation selector. Include it
+            // in the colored span without coloring any surrounding status text.
+            if (index + 1 < text.Length && text[index + 1] == '\uFE0F')
+                length = 2;
+
+            status.Select(index, length);
+            status.SelectionColor = color;
         }
     }
 
@@ -1307,6 +1310,7 @@ public sealed class MainForm : Form
                     button.FlatAppearance.BorderColor = ThemeBorder;
                     button.FlatAppearance.MouseOverBackColor = Color.FromArgb(19, 35, 44);
                     button.FlatAppearance.MouseDownBackColor = Color.FromArgb(23, 43, 53);
+                    button.Paint += PaintDisabledButton;
                     break;
 
                 case CheckBox checkBox:
@@ -1341,25 +1345,38 @@ public sealed class MainForm : Form
     {
         button.ForeColor = accent;
         button.FlatAppearance.BorderColor = accent;
-        button.Paint += (_, e) =>
-        {
-            if (button.Enabled)
-                return;
+    }
 
-            e.Graphics.Clear(ThemePanel);
-            using var border = new Pen(ThemeBorder);
-            e.Graphics.DrawRectangle(border, 0, 0, Math.Max(0, button.Width - 1), Math.Max(0, button.Height - 1));
-            TextRenderer.DrawText(
-                e.Graphics,
-                button.Text,
-                button.Font,
-                button.ClientRectangle,
-                ThemeMuted,
-                TextFormatFlags.HorizontalCenter |
-                TextFormatFlags.VerticalCenter |
-                TextFormatFlags.SingleLine |
-                TextFormatFlags.EndEllipsis);
-        };
+    private static void PaintDisabledButton(object? sender, PaintEventArgs e)
+    {
+        if (sender is not Button button || button.Enabled)
+            return;
+
+        // Keep unavailable actions readable, but visually subordinate enough that
+        // enabled cyan/magenta actions are obvious at a glance.
+        var disabledBack = Color.FromArgb(9, 15, 20);
+        var disabledBorder = Color.FromArgb(27, 44, 52);
+        var disabledText = Color.FromArgb(101, 118, 126);
+
+        e.Graphics.Clear(disabledBack);
+        using var border = new Pen(disabledBorder);
+        e.Graphics.DrawRectangle(
+            border,
+            0,
+            0,
+            Math.Max(0, button.Width - 1),
+            Math.Max(0, button.Height - 1));
+
+        TextRenderer.DrawText(
+            e.Graphics,
+            button.Text,
+            button.Font,
+            button.ClientRectangle,
+            disabledText,
+            TextFormatFlags.HorizontalCenter |
+            TextFormatFlags.VerticalCenter |
+            TextFormatFlags.SingleLine |
+            TextFormatFlags.EndEllipsis);
     }
 
     private static PictureBox CreateHeaderLogo(Point location)
@@ -1465,5 +1482,55 @@ public sealed class MainForm : Form
         if (ex is AggregateException aggregate)
             return string.Join(Environment.NewLine, aggregate.Flatten().InnerExceptions.Select(x => x.Message));
         return ex.Message;
+    }
+
+    private sealed class StableThemeRichTextBox : RichTextBox
+    {
+        private const int EmSetBackgroundColor = 0x0443;
+        private readonly Color stableBackColor;
+        private readonly Color stableForeColor;
+
+        public StableThemeRichTextBox(Color backColor, Color foreColor)
+        {
+            stableBackColor = backColor;
+            stableForeColor = foreColor;
+            BackColor = backColor;
+            ForeColor = foreColor;
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            ReapplyThemeColors();
+        }
+
+        protected override void OnEnabledChanged(EventArgs e)
+        {
+            base.OnEnabledChanged(e);
+            ReapplyThemeColors();
+        }
+
+        private void ReapplyThemeColors()
+        {
+            BackColor = stableBackColor;
+            ForeColor = stableForeColor;
+
+            if (!IsHandleCreated || IsDisposed)
+                return;
+
+            _ = SendMessage(
+                Handle,
+                EmSetBackgroundColor,
+                IntPtr.Zero,
+                (IntPtr)ColorTranslator.ToWin32(stableBackColor));
+            Invalidate();
+        }
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern IntPtr SendMessage(
+            IntPtr hWnd,
+            int msg,
+            IntPtr wParam,
+            IntPtr lParam);
     }
 }
