@@ -80,6 +80,8 @@ CapFrameX is the development/test reference. The manager can inspect recognized 
 
 External frame-time files are always **copied only** into the collected CET result. The source files belonging to the external profiler are never moved, deleted, or modified.
 
+When the copied companion is a recognized CapFrameX JSON capture, the standalone report automatically adds a second evidence layer: average/median/P95/P99/max frametime, slow-frame counts, CPU Active and GPU Active readings, F11 clock synchronization, CET 50 ms-window overlap, recorded callback-spike overlap, 0-Engine Scheduler-burst overlap, a synchronized CET/frametime timeline, and a table of the worst rendered-frame events. Other/custom profiler files remain preserved under `FrameTime\` even when their schema cannot be interpreted automatically.
+
 ## 0-Engine behavior
 
 0-Engine compatibility is resolved from the installed structure/capabilities rather than from an assumed version number.
@@ -116,7 +118,10 @@ A strict headless emergency-recovery command is retained for advanced/manual rec
 
 ```text
 G-CET-Runtime-Profiler.exe --emergency-restore --game "..." --json
+G-CET-Runtime-Profiler.exe --report  --capture "RESULTS\<capture>" --json
 ```
+
+`--report` rebuilds `CET_Report.html` and `CET_Summary.json` from an already collected result. This is useful after a frame-time companion has been added/copied into `FrameTime\` and is also covered by CI.
 
 ## Results
 
@@ -133,7 +138,7 @@ G-CET-Runtime-Profiler\RESULTS\<capture>\
 └─ FrameTime\              # only when a companion capture is copied
 ```
 
-**Open `CET_Report.html` first.** Collection now turns the existing native profiler data into a human-readable CET diagnosis: the bulk of measured CET work, call volume, callback hotspots shared across mods, heavy CET timeline windows, recorded callback spikes, and 0-Engine Scheduler pile-ups where Scheduler attribution is available.
+**Open `CET_Report.html` first.** Collection turns the existing native profiler data into a human-readable CET diagnosis: the bulk of measured CET work, call volume, callback hotspots shared across mods, heavy CET timeline windows, recorded callback spikes, and 0-Engine Scheduler pile-ups where Scheduler attribution is available. If a recognized CapFrameX capture was paired, the same report also shows actual rendered frametime and synchronized CET/stall evidence.
 
 The report is a presentation layer, not a replacement for the raw data. Every verified native profiler file is preserved under `Data\`, and `CET_Summary.json` exposes the same condensed findings for automation and future higher-level tooling.
 
@@ -141,7 +146,7 @@ The report is a presentation layer, not a replacement for the raw data. Every ve
 
 On collection, known live CET profiler output is copied and hash-verified before any live profiler file is removed. Report generation happens only after the raw capture is safe; if presentation fails, the verified native data remains archived and a `CET_Report_Error.txt` diagnostic is written.
 
-External frame-time results follow the separate copy-only rule described above. The standalone CET report stays scoped to CET/Lua evidence and does not claim REDscript, native-engine, GPU, or whole-frame causation.
+External frame-time results follow the separate copy-only rule described above. CapFrameX is treated as the rendered-frametime/CPU-GPU-active evidence layer; CET remains the script-side workload layer. The report never subtracts one measurement domain from another and does not turn timing overlap into automatic causation.
 
 ## Headless JSON interface
 
