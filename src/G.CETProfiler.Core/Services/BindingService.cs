@@ -32,9 +32,7 @@ internal sealed class BindingService
         {
             FileExistedBefore = fileExisted,
             HadNode = hadNode,
-            OriginalNodeJson = hadNode ? node!.ToJsonString() : "",
-            InstalledToggle = F11BindCode,
-            OriginalFileHash = originalFileHash
+            OriginalNodeJson = hadNode ? node!.ToJsonString() : ""
         };
     }
 
@@ -172,9 +170,7 @@ internal sealed class BindingService
             {
                 FileExistedBefore = existed,
                 HadNode = hadNode,
-                OriginalNodeJson = originalNode,
-                InstalledToggle = F11BindCode,
-                OriginalFileHash = null
+                OriginalNodeJson = originalNode
             };
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException)
