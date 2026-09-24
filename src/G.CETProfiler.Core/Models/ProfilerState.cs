@@ -82,9 +82,4 @@ public sealed class BindingTransactionState
     [JsonPropertyName("originalNodeJson")]
     public string OriginalNodeJson { get; set; } = "";
 
-    [JsonPropertyName("installedToggle")]
-    public long InstalledToggle { get; set; }
-
-    [JsonPropertyName("originalFileHash")]
-    public string? OriginalFileHash { get; set; }
 }
