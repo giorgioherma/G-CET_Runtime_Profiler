@@ -791,6 +791,7 @@ public sealed class MainForm : Form
 
             CompanionCollectResult? companion = null;
             string? companionError = null;
+            string? reportRefreshError = null;
             if (!string.IsNullOrWhiteSpace(destination) && HasConfiguredCompanion())
             {
                 try
@@ -803,8 +804,21 @@ public sealed class MainForm : Form
                 }
             }
 
+            // The core collection creates a CET-only report immediately after raw
+            // verification. Once the optional companion copy is complete, rebuild
+            // the same standalone report so CapFrameX can become a synchronized
+            // evidence layer without changing the native CET capture.
             if (!string.IsNullOrWhiteSpace(destination) && Directory.Exists(destination))
             {
+                try
+                {
+                    await Task.Run(() => ResultReportService.Generate(destination));
+                }
+                catch (Exception ex)
+                {
+                    reportRefreshError = ex.Message;
+                }
+
                 var report = Path.Combine(destination, ResultReportService.ReportFileName);
                 Process.Start(new ProcessStartInfo(File.Exists(report) ? report : destination) { UseShellExecute = true });
             }
@@ -815,6 +829,9 @@ public sealed class MainForm : Form
                     ? "Frame-time companion: CET collection succeeded, but companion copy failed: " + companionError
                     : "Frame-time companion: " + (companion?.Message ?? "not collected.");
 
+            if (reportRefreshError is not null)
+                companionText += "\r\nReport refresh: CapFrameX copy is safe, but the post-copy report refresh failed: " + reportRefreshError;
+
             MessageBox.Show(
                 this,
                 "CET results archived successfully and known live profiler output was cleared.\r\n\r\n" +
@@ -823,7 +840,7 @@ public sealed class MainForm : Form
                 companionText,
                 Text,
                 MessageBoxButtons.OK,
-                companionError is null ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+                companionError is null && reportRefreshError is null ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
         }
         catch (Exception ex)
         {
