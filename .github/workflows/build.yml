@@ -254,6 +254,66 @@ jobs:
           if ($reportText -notmatch 'Shared hot callback') { throw 'Report did not surface shared callback analysis.' }
           if ($reportText -notmatch 'Repeatable Cyberpsychos') { throw 'Report lost owner attribution.' }
 
+          # Add a real-shape CapFrameX JSON companion after CET collection, then
+          # exercise the standalone report rebuild contract. This proves that the
+          # optional companion becomes a presentation/correlation layer without
+          # changing the native CET capture.
+          $frameRoot = Join-Path $collected.destination 'FrameTime'
+          New-Item -ItemType Directory -Force $frameRoot | Out-Null
+          @'
+          {
+            "Hash":"test",
+            "Info":{
+              "AppVersion":"1.9.1.2",
+              "Id":"test",
+              "Processor":"AMD Ryzen 9 3900X",
+              "GameName":"Cyberpunk 2077",
+              "ProcessName":"Cyberpunk2077.exe",
+              "CreationDate":"2026-02-02T02:40:00.000Z",
+              "GPU":"AMD Radeon RX 6900 XT"
+            },
+            "Runs":[{
+              "Hash":"run",
+              "CaptureData":{
+                "TimeInSeconds":[0.0,0.016,0.032,0.048,0.064,0.080,0.096,0.112,0.128,0.144,0.199,5.000,9.950],
+                "MsBetweenPresents":[16,16,16,16,16,16,16,16,16,55,16,60,50],
+                "CpuActive":[11,11,12,12,13,12,12,13,14,48,13,52,42],
+                "GpuActive":[8,8,8,9,9,9,10,9,10,12,9,14,11],
+                "PcLatency":[45,45,46,46,47,46,46,47,48,78,46,82,70],
+                "Dropped":[false,false,false,false,false,false,false,false,false,false,false,false,false],
+                "FrameType":["Application","Application","Application","Application","Application","Application","Application","Application","Application","Application","Application","Application","Application"]
+              },
+              "SensorData":{},
+              "SensorData2":{},
+              "RTSSFrameTimes":null,
+              "PmdGpuPower":null,
+              "PmdCpuPower":null,
+              "PmdSystemPower":null,
+              "SampleTime":0
+            }]
+          }
+          '@ | Set-Content -LiteralPath (Join-Path $frameRoot 'CapFrameX-Cyberpunk2077.exe-test.json') -Encoding utf8
+
+          $rebuilt = (& $exe --report --capture $collected.destination --json | ConvertFrom-Json)
+          if (!$rebuilt.ok) { throw 'Standalone report rebuild failed.' }
+          if (!$rebuilt.hasFrameTimeData) { throw 'CapFrameX data was not detected by the result report.' }
+
+          $reportText = Get-Content -LiteralPath (Join-Path $collected.destination 'CET_Report.html') -Raw
+          if ($reportText -notmatch 'CET \+ CapFrameX capture report') { throw 'Report did not enter CET + CapFrameX presentation mode.' }
+          if ($reportText -notmatch 'Frametime &amp; CET overlap') { throw 'Report did not render the frametime correlation section.' }
+          if ($reportText -notmatch 'Worst frametime events') { throw 'Report did not render worst-frame evidence.' }
+          if ($reportText -notmatch 'CPU active') { throw 'Report did not expose CapFrameX CPU Active readings.' }
+          if ($reportText -notmatch 'GPU active') { throw 'Report did not expose CapFrameX GPU Active readings.' }
+          if ($reportText -notmatch 'Repeatable Cyberpsychos callback spike') { throw 'Worst-frame evidence did not correlate the exact CET callback spike.' }
+          if ($reportText -notmatch 'Scheduler burst') { throw 'Worst-frame evidence did not expose the aligned Scheduler burst.' }
+
+          $summary = Get-Content -LiteralPath (Join-Path $collected.destination 'CET_Summary.json') -Raw | ConvertFrom-Json
+          if ($null -eq $summary.frameTime) { throw 'CET_Summary.json contains no frameTime section.' }
+          if (!$summary.frameTime.sync.correlated) { throw 'Synthetic F11-aligned CapFrameX capture did not correlate.' }
+          if ($summary.frameTime.sync.quality -ne 'GOOD') { throw "Expected GOOD CapFrameX sync, got $($summary.frameTime.sync.quality)" }
+          if ([int]$summary.frameTime.correlation.slowFramesExactCallback -lt 1) { throw 'Exact callback/stall overlap was not counted.' }
+          if ([int]$summary.frameTime.correlation.slowFramesSchedulerBurst -lt 1) { throw 'Scheduler-burst/stall overlap was not counted.' }
+
           if (!(Test-Path -LiteralPath (Join-Path $cet 'keep_me.txt') -PathType Leaf)) { throw 'Unrelated CET-directory file was incorrectly deleted.' }
 
           $restore = (& $exe --restore --game $fixture --json | ConvertFrom-Json)
