@@ -1,7 +1,7 @@
 #include <windows.h>
+#include <shellapi.h>
 
 #define APP_RELATIVE_PATH L"\\app\\G-CET-Runtime-Profiler.App.exe"
-#define PACKAGE_ROOT_ENV L"G_CET_PROFILER_PACKAGE_ROOT"
 
 static const wchar_t* SkipExecutableToken(const wchar_t* commandLine)
 {
@@ -91,85 +91,40 @@ int WINAPI wWinMain(
             L"Re-extract the complete profiler package.");
     }
 
-    // The managed application also has a parent-directory fallback, but the
-    // explicit package-root environment variable makes launcher -> app intent
-    // unambiguous and is inherited by all headless invocations.
-    SetEnvironmentVariableW(PACKAGE_ROOT_ENV, packageRoot);
-
+    // The managed app already resolves the package root from its parent
+    // directory. Keep this launcher deliberately boring: ask the Windows shell
+    // to open the real application rather than manually constructing and
+    // injecting a CreateProcess command line/environment.
     const wchar_t* forwarded = SkipExecutableToken(GetCommandLineW());
     const BOOL headless = forwarded != NULL && *forwarded != L'\0';
 
-    const SIZE_T appChars = (SIZE_T)lstrlenW(appPath);
-    const SIZE_T forwardedChars = headless ? (SIZE_T)lstrlenW(forwarded) : 0;
-    const SIZE_T commandChars = appChars + forwardedChars + 5;
+    SHELLEXECUTEINFOW launch;
+    ZeroMemory(&launch, sizeof(launch));
+    launch.cbSize = sizeof(launch);
+    launch.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_FLAG_NO_UI;
+    launch.hwnd = NULL;
+    launch.lpVerb = L"open";
+    launch.lpFile = appPath;
+    launch.lpParameters = headless ? forwarded : NULL;
+    launch.lpDirectory = packageRoot;
+    launch.nShow = SW_SHOWNORMAL;
 
-    wchar_t* childCommandLine = (wchar_t*)HeapAlloc(
-        GetProcessHeap(),
-        HEAP_ZERO_MEMORY,
-        commandChars * sizeof(wchar_t));
-    if (childCommandLine == NULL)
-        return Fail(L"Could not allocate memory to start the profiler.");
-
-    SIZE_T pos = 0;
-    childCommandLine[pos++] = L'"';
-    CopyMemory(
-        childCommandLine + pos,
-        appPath,
-        appChars * sizeof(wchar_t));
-    pos += appChars;
-    childCommandLine[pos++] = L'"';
-
-    if (headless)
-    {
-        childCommandLine[pos++] = L' ';
-        CopyMemory(
-            childCommandLine + pos,
-            forwarded,
-            (forwardedChars + 1) * sizeof(wchar_t));
-    }
-    else
-    {
-        childCommandLine[pos] = L'\0';
-    }
-
-    STARTUPINFOW startup;
-    PROCESS_INFORMATION process;
-    ZeroMemory(&startup, sizeof(startup));
-    ZeroMemory(&process, sizeof(process));
-    startup.cb = sizeof(startup);
-
-    BOOL started = CreateProcessW(
-        appPath,
-        childCommandLine,
-        NULL,
-        NULL,
-        TRUE,
-        0,
-        NULL,
-        packageRoot,
-        &startup,
-        &process);
-
-    HeapFree(GetProcessHeap(), 0, childCommandLine);
-
-    if (!started)
+    if (!ShellExecuteExW(&launch) || launch.hProcess == NULL)
         return Fail(L"Windows could not start the internal profiler application.");
 
-    CloseHandle(process.hThread);
-
-    // GUI launch: do not keep a pointless launcher process alive for the whole
-    // session. CLI/headless launch: wait and propagate the actual app exit code.
+    // GUI launch: return immediately. CLI/headless launch: preserve the existing
+    // launcher contract by waiting and forwarding the managed app's exit code.
     if (!headless)
     {
-        CloseHandle(process.hProcess);
+        CloseHandle(launch.hProcess);
         return 0;
     }
 
-    WaitForSingleObject(process.hProcess, INFINITE);
+    WaitForSingleObject(launch.hProcess, INFINITE);
 
     DWORD exitCode = 1;
-    GetExitCodeProcess(process.hProcess, &exitCode);
-    CloseHandle(process.hProcess);
+    GetExitCodeProcess(launch.hProcess, &exitCode);
+    CloseHandle(launch.hProcess);
 
     return (int)exitCode;
 }
