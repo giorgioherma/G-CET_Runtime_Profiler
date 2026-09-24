@@ -520,6 +520,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: G-CET-Runtime-Profiler-v${{ steps.product_version.outputs.version }}
-          path: |
-            G-CET-Runtime-Profiler-v${{ steps.product_version.outputs.version }}.zip
-            G-CET-Runtime-Profiler-v${{ steps.product_version.outputs.version }}.zip.sha256.txt
+          path: portable/
+          if-no-files-found: error
