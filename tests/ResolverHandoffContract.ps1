@@ -6,11 +6,11 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $PublishedRoot = (Resolve-Path $PublishedRoot).Path
-$exe = Join-Path $PublishedRoot 'G-CET-Runtime-Profiler.exe'
+$exe = Join-Path $PublishedRoot 'app\G-CET-Runtime-Profiler.App.exe'
 $profilerAsi = Join-Path $PublishedRoot 'payload\cyber_engine_tweaks.PROFILER.asi'
 $awareScheduler = Join-Path $PublishedRoot 'payload\0-Engine\modules\Scheduler.lua'
 
-if (!(Test-Path -LiteralPath $exe -PathType Leaf)) { throw "Profiler executable not found: $exe" }
+if (!(Test-Path -LiteralPath $exe -PathType Leaf)) { throw "Managed profiler headless executable not found: $exe" }
 if (!(Test-Path -LiteralPath $profilerAsi -PathType Leaf)) { throw "Profiler ASI not found: $profilerAsi" }
 if (!(Test-Path -LiteralPath $awareScheduler -PathType Leaf)) { throw "Profiler-aware Scheduler payload not found: $awareScheduler" }
 
