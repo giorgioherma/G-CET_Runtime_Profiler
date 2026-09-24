@@ -11,9 +11,11 @@ src/
 ├─ G.CETProfiler.Core/
 │  ├─ Models/
 │  └─ Services/
-└─ G.CETProfiler.App/
-   ├─ Program.cs
-   └─ MainForm.cs
+├─ G.CETProfiler.App/
+│  ├─ Program.cs
+│  └─ MainForm.cs
+└─ G.CETProfiler.Launcher/
+   └─ launcher.c
 ```
 
 ### G.CETProfiler.Core
@@ -37,19 +39,27 @@ The core has no WinForms dependency.
 
 ## Public package layout
 
-The standalone manager is published self-contained and single-file. The public portable ZIP intentionally exposes only:
+The portable package uses a small native root launcher and keeps the self-contained .NET application/runtime in `app/`:
 
 ```text
 G-CET-Runtime-Profiler\
 ├─ G-CET-Runtime-Profiler.exe
 ├─ MANIFEST.json
 ├─ VERSION.txt
+├─ app\
+│  ├─ G-CET-Runtime-Profiler.App.exe
+│  ├─ G-CET-Runtime-Profiler.App.deps.json
+│  ├─ G-CET-Runtime-Profiler.App.runtimeconfig.json
+│  ├─ G.CETProfiler.Core.dll
+│  └─ .NET runtime files...
 ├─ payload\
 ├─ RESULTS\
 └─ docs\
 ```
 
-`G-CET-Runtime-Profiler.settings.json` is created beside the EXE on first use. Managed assemblies and the .NET runtime are bundled into the EXE; they are not public-root files. The external `payload/` directory is deliberate because lifecycle code validates and copies those exact bytes.
+The launcher forwards command-line arguments and, for headless calls, the managed application's exit code. GUI launch detaches the launcher after successfully starting the internal app. The launcher supplies the package root explicitly; the managed application also has a parent-directory fallback, so direct execution from `app/` still resolves the root package correctly.
+
+`G-CET-Runtime-Profiler.settings.json` is created beside the launcher on first use. `MANIFEST.json`, `payload/`, and `RESULTS/` remain rooted at the public package level. The external `payload/` directory is deliberate because lifecycle code validates and copies those exact bytes.
 
 
 ### G.CETProfiler.App
