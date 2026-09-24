@@ -122,20 +122,24 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
             .Append("<div class=\"healthline\"><span class=\"muted\">GPU active</span><span>").Append(F(ft.MeanGpuActiveMs)).Append(" ms mean · ").Append(F(ft.P95GpuActiveMs)).Append(" ms P95</span></div></div>");
 
         var syncClass = ft.SyncQuality == "GOOD" ? "syncgood" : ft.SyncQuality == "COARSE" ? "synccoarse" : "syncbad";
+        var capRecordLocal = ft.CapFrameXRecordUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fff zzz") ?? "unknown";
+        var cetStartLocal = ft.CetStartUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fff zzz") ?? "unknown";
         sb.Append("<div class=\"card\"><h3>Synchronization</h3>")
             .Append("<div class=\"healthline\"><span class=\"muted\">Status</span><span class=\"").Append(syncClass).Append("\"><b>").Append(H(ft.SyncQuality)).Append("</b></span></div>")
             .Append("<div class=\"healthline\"><span class=\"muted\">Method</span><span>").Append(H(ft.AlignmentMethod)).Append("</span></div>")
-            .Append("<div class=\"healthline\"><span class=\"muted\">CapFrameX record timestamp</span><span>").Append(H(ft.CapFrameXRecordUtc?.ToString("O") ?? "unknown")).Append("</span></div>")
-            .Append("<div class=\"healthline\"><span class=\"muted\">CET latest START marker</span><span>").Append(H(ft.CetStartUtc?.ToString("O") ?? "unknown")).Append("</span></div>");
+            .Append("<div class=\"healthline\"><span class=\"muted\">CET capture start</span><span>").Append(H(cetStartLocal)).Append(" <span class=\"muted\">(local)</span></span></div>")
+            .Append("<div class=\"healthline\"><span class=\"muted\">CapFrameX record/save time</span><span>").Append(H(capRecordLocal)).Append(" <span class=\"muted\">(local)</span></span></div>");
 
         if (double.IsFinite(ft.DurationDeltaMs))
-            sb.Append("<div class=\"healthline\"><span class=\"muted\">Duration delta</span><span>").Append(F(ft.DurationDeltaMs, 1)).Append(" ms</span></div>");
+            sb.Append("<div class=\"healthline\"><span class=\"muted\">Duration difference</span><span>").Append(F(ft.DurationDeltaMs, 1)).Append(" ms</span></div>");
+        if (double.IsFinite(ft.RecordLagMs))
+            sb.Append("<div class=\"healthline\"><span class=\"muted\">CapFrameX save after aligned end</span><span>").Append(F(ft.RecordLagMs, 1)).Append(" ms</span></div>");
 
         sb.Append("</div></div>");
 
         if (!ft.Correlated)
         {
-            sb.Append("<div class=\"note\"><b>CapFrameX frametime statistics are valid, but CET/frametime correlation is disabled for this capture.</b> A reliable shared-start match was not established. CapFrameX's record timestamp is not treated as its F11 start time. Raw CapFrameX data is still preserved under <span class=\"mono\">FrameTime/</span>.</div></div>");
+            sb.Append("<div class=\"note\"><b>CapFrameX frametime statistics are valid, but CET/frametime correlation is disabled for this capture.</b> A reliable shared-F11 capture match was not established. CapFrameX's record/save timestamp is metadata only and is never treated as its F11 start time. Raw CapFrameX data is still preserved under <span class=\"mono\">FrameTime/</span>.</div></div>");
             return;
         }
 
