@@ -65,6 +65,11 @@ jobs:
             }
           }
 
+      - name: Generate robust multi-size Windows icon
+        shell: pwsh
+        run: |
+          ./scripts/BuildWindowsIcon.ps1 -Source ./assets/g-cet-icon.png -Destination ./assets/g-cet-app-icon.ico
+
       - name: Build
         run: dotnet build G-CET-Runtime-Profiler.sln -c Release
 
@@ -180,6 +185,59 @@ jobs:
 
           Capture folders are created automatically by COLLECT RESULTS.
           '@ | Set-Content -LiteralPath publish\RESULTS\README.txt -Encoding utf8
+
+      - name: Verify embedded Windows icons
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Add-Type -AssemblyName System.Drawing
+
+          $sourceIconPath = (Resolve-Path 'assets\g-cet-app-icon.ico').Path
+          $expected = [System.Drawing.Icon]::new($sourceIconPath, 32, 32)
+
+          function Assert-EmbeddedIcon([string]$ExePath) {
+            $resolved = (Resolve-Path -LiteralPath $ExePath).Path
+            $actual = [System.Drawing.Icon]::ExtractAssociatedIcon($resolved)
+            if ($null -eq $actual) {
+              throw "No associated Windows icon could be extracted from $ExePath"
+            }
+
+            $expectedBitmap = $expected.ToBitmap()
+            $actualBitmap = $actual.ToBitmap()
+            try {
+              if ($actualBitmap.Width -ne 32 -or $actualBitmap.Height -ne 32) {
+                throw "Embedded icon in $ExePath extracted as $($actualBitmap.Width)x$($actualBitmap.Height), expected 32x32."
+              }
+
+              $mismatch = 0
+              for ($y = 0; $y -lt 32; $y++) {
+                for ($x = 0; $x -lt 32; $x++) {
+                  if ($expectedBitmap.GetPixel($x, $y).ToArgb() -ne $actualBitmap.GetPixel($x, $y).ToArgb()) {
+                    $mismatch++
+                  }
+                }
+              }
+
+              if ($mismatch -ne 0) {
+                throw "Embedded icon in $ExePath differs from the canonical G-CET 32px frame at $mismatch pixels."
+              }
+
+              Write-Host "Verified embedded G-CET icon: $ExePath"
+            }
+            finally {
+              $actualBitmap.Dispose()
+              $expectedBitmap.Dispose()
+              $actual.Dispose()
+            }
+          }
+
+          try {
+            Assert-EmbeddedIcon 'publish\G-CET-Runtime-Profiler.exe'
+            Assert-EmbeddedIcon 'publish\app\G-CET-Runtime-Profiler.App.exe'
+          }
+          finally {
+            $expected.Dispose()
+          }
 
       - name: Verify public package layout
         shell: pwsh
