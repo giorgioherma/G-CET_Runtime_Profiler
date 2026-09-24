@@ -35,6 +35,23 @@ The core is the authoritative implementation for:
 
 The core has no WinForms dependency.
 
+## Public package layout
+
+The standalone manager is published self-contained and single-file. The public portable ZIP intentionally exposes only:
+
+```text
+G-CET-Runtime-Profiler\
+├─ G-CET-Runtime-Profiler.exe
+├─ MANIFEST.json
+├─ VERSION.txt
+├─ payload\
+├─ RESULTS\
+└─ docs\
+```
+
+`G-CET-Runtime-Profiler.settings.json` is created beside the EXE on first use. Managed assemblies and the .NET runtime are bundled into the EXE; they are not public-root files. The external `payload/` directory is deliberate because lifecycle code validates and copies those exact bytes.
+
+
 ### G.CETProfiler.App
 
 The application contains two front ends over the same `IProfilerService`:
