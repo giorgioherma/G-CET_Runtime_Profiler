@@ -20,6 +20,7 @@ public static partial class ResultReportService
         public string AlignmentMethod { get; init; } = "none";
         public double StartDeltaMs { get; init; }
         public double DurationDeltaMs { get; init; }
+        public double RecordLagMs { get; init; }
         public int FrameCount { get; init; }
         public double DurationSeconds { get; init; }
         public double MeanFrameMs { get; init; }
@@ -141,6 +142,13 @@ public static partial class ResultReportService
             ? capDurationMs - cetCaptureSeconds * 1000.0
             : double.NaN;
 
+        // CreationDate is useful as a sanity/debug timestamp only. If the two
+        // relative timelines start together, this is how long after the inferred
+        // CapFrameX end the finished record was written.
+        var recordLagMs = parsed.RecordUtc is not null && cetStartUtc is not null
+            ? (parsed.RecordUtc.Value - cetStartUtc.Value).TotalMilliseconds - capDurationMs
+            : double.NaN;
+
         var absDuration = double.IsFinite(durationDeltaMs) ? Math.Abs(durationDeltaMs) : double.PositiveInfinity;
         var companion = ReadCompanionSyncInfo(captureRoot);
 
@@ -252,6 +260,7 @@ public static partial class ResultReportService
             AlignmentMethod = alignmentMethod,
             StartDeltaMs = startDeltaMs,
             DurationDeltaMs = durationDeltaMs,
+            RecordLagMs = recordLagMs,
             FrameCount = frameTimes.Count,
             DurationSeconds = capDurationMs / 1000.0,
             MeanFrameMs = frameTimes.Count == 0 ? 0 : frameTimes.Average(),
@@ -723,7 +732,9 @@ public static partial class ResultReportService
             findings.Insert(0, new Finding(
                 "CapFrameX capture available",
                 $"{frameTime.FrameCount:N0} frames · {F(frameTime.MeanFrameMs)} ms average · {F(frameTime.P99FrameMs)} ms P99",
-                "Frametime statistics are available, but CET and CapFrameX start clocks were not close enough for CET/stall attribution."));
+                frameTime.SyncQuality == "NO SHARED KEY"
+                    ? "Frametime statistics are available, but a shared capture key was not verified, so CET/stall attribution is disabled."
+                    : "Frametime statistics are available, but the CET and CapFrameX capture durations do not match closely enough to treat them as the same shared-F11 capture."));
             return;
         }
 
