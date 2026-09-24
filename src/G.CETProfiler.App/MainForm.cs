@@ -870,6 +870,7 @@ public sealed class MainForm : Form
             var postInstallWarning = BuildPostInstallWarning(installedSnapshot);
             if (!string.IsNullOrWhiteSpace(postInstallWarning))
             {
+                await SettleProfilerUiBeforeNotificationAsync(installedSnapshot);
                 ThemedDialog.Show(
                     this,
                     postInstallWarning,
@@ -1055,6 +1056,8 @@ public sealed class MainForm : Form
             if (reportRefreshError is not null)
                 companionText += "\r\nReport refresh: CapFrameX copy is safe, but the post-copy report refresh failed: " + reportRefreshError;
 
+            await SettleProfilerUiBeforeNotificationAsync();
+
             ThemedDialog.Show(
                 this,
                 "CET results archived successfully and known live profiler output was cleared.\r\n\r\n" +
@@ -1100,6 +1103,7 @@ public sealed class MainForm : Form
 
             lastStatus = verified;
             ShowRestoreOutcome(true, "RESTORE SUCCESSFUL — profiler removed and original state restored.");
+            await SettleProfilerUiBeforeNotificationAsync(verified);
             ThemedDialog.Show(this, message, Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)
@@ -1121,6 +1125,34 @@ public sealed class MainForm : Form
             SetBusy(false);
             await RefreshStatusAsync(silent: true);
         }
+    }
+
+    private async Task SettleProfilerUiBeforeNotificationAsync(ProfilerStatus? snapshot = null)
+    {
+        // Never open a modal while the entire profiler page is still disabled by
+        // the busy state. WinForms can briefly repaint that disabled parent with
+        // system colors, and a modal then freezes the flash underneath it.
+        SetBusy(false);
+
+        if (snapshot is null)
+        {
+            await RefreshStatusAsync(silent: true);
+        }
+        else
+        {
+            lastStatus = snapshot;
+            RenderStatus(snapshot);
+            RenderCompatibility(snapshot);
+            RenderReadyState(snapshot);
+            RenderSetupGameStatus();
+            SetActionState(snapshot);
+        }
+
+        // Give the final dark/neon state a full paint cycle and a short visual
+        // settle before the modal takes focus.
+        profilerPage.Refresh();
+        profilerPage.Update();
+        await Task.Delay(500);
     }
 
     private void ShowRestoreProgress(string message)
