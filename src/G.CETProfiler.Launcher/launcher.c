@@ -1,34 +1,7 @@
 #include <windows.h>
+#include <shellapi.h>
 
 #define APP_RELATIVE_PATH L"\\app\\G-CET-Runtime-Profiler.App.exe"
-#define PACKAGE_ROOT_ENV L"G_CET_PROFILER_PACKAGE_ROOT"
-
-static const wchar_t* SkipExecutableToken(const wchar_t* commandLine)
-{
-    const wchar_t* p = commandLine;
-
-    while (*p == L' ' || *p == L'\t')
-        ++p;
-
-    if (*p == L'"')
-    {
-        ++p;
-        while (*p && *p != L'"')
-            ++p;
-        if (*p == L'"')
-            ++p;
-    }
-    else
-    {
-        while (*p && *p != L' ' && *p != L'\t')
-            ++p;
-    }
-
-    while (*p == L' ' || *p == L'\t')
-        ++p;
-
-    return p;
-}
 
 static int Fail(const wchar_t* message)
 {
@@ -91,85 +64,31 @@ int WINAPI wWinMain(
             L"Re-extract the complete profiler package.");
     }
 
-    // The managed application also has a parent-directory fallback, but the
-    // explicit package-root environment variable makes launcher -> app intent
-    // unambiguous and is inherited by all headless invocations.
-    SetEnvironmentVariableW(PACKAGE_ROOT_ENV, packageRoot);
+    // Human-facing launcher only. Headless/automation entry points live on the
+    // managed executable under app\, keeping this root EXE as close as possible
+    // to a normal Windows shortcut without scripts, injection, or child-process
+    // command-line construction.
+    SHELLEXECUTEINFOW launch;
+    ZeroMemory(&launch, sizeof(launch));
+    launch.cbSize = sizeof(launch);
+    launch.fMask = SEE_MASK_NOCLOSEPROCESS |
+                   SEE_MASK_FLAG_NO_UI |
+                   SEE_MASK_NOZONECHECKS;
+    launch.hwnd = NULL;
+    launch.lpVerb = L"open";
+    launch.lpFile = appPath;
+    launch.lpParameters = NULL;
+    launch.lpDirectory = packageRoot;
+    launch.nShow = SW_SHOWNORMAL;
 
-    const wchar_t* forwarded = SkipExecutableToken(GetCommandLineW());
-    const BOOL headless = forwarded != NULL && *forwarded != L'\0';
-
-    const SIZE_T appChars = (SIZE_T)lstrlenW(appPath);
-    const SIZE_T forwardedChars = headless ? (SIZE_T)lstrlenW(forwarded) : 0;
-    const SIZE_T commandChars = appChars + forwardedChars + 5;
-
-    wchar_t* childCommandLine = (wchar_t*)HeapAlloc(
-        GetProcessHeap(),
-        HEAP_ZERO_MEMORY,
-        commandChars * sizeof(wchar_t));
-    if (childCommandLine == NULL)
-        return Fail(L"Could not allocate memory to start the profiler.");
-
-    SIZE_T pos = 0;
-    childCommandLine[pos++] = L'"';
-    CopyMemory(
-        childCommandLine + pos,
-        appPath,
-        appChars * sizeof(wchar_t));
-    pos += appChars;
-    childCommandLine[pos++] = L'"';
-
-    if (headless)
-    {
-        childCommandLine[pos++] = L' ';
-        CopyMemory(
-            childCommandLine + pos,
-            forwarded,
-            (forwardedChars + 1) * sizeof(wchar_t));
-    }
-    else
-    {
-        childCommandLine[pos] = L'\0';
-    }
-
-    STARTUPINFOW startup;
-    PROCESS_INFORMATION process;
-    ZeroMemory(&startup, sizeof(startup));
-    ZeroMemory(&process, sizeof(process));
-    startup.cb = sizeof(startup);
-
-    BOOL started = CreateProcessW(
-        appPath,
-        childCommandLine,
-        NULL,
-        NULL,
-        TRUE,
-        0,
-        NULL,
-        packageRoot,
-        &startup,
-        &process);
-
-    HeapFree(GetProcessHeap(), 0, childCommandLine);
-
-    if (!started)
+    // The user has already explicitly chosen to run the root G-CET application.
+    // Do not ask Windows Attachment Manager to present a second Unknown Publisher
+    // prompt for the bundled managed child executable.
+    if (!ShellExecuteExW(&launch))
         return Fail(L"Windows could not start the internal profiler application.");
 
-    CloseHandle(process.hThread);
+    if (launch.hProcess != NULL)
+        CloseHandle(launch.hProcess);
 
-    // GUI launch: do not keep a pointless launcher process alive for the whole
-    // session. CLI/headless launch: wait and propagate the actual app exit code.
-    if (!headless)
-    {
-        CloseHandle(process.hProcess);
-        return 0;
-    }
-
-    WaitForSingleObject(process.hProcess, INFINITE);
-
-    DWORD exitCode = 1;
-    GetExitCodeProcess(process.hProcess, &exitCode);
-    CloseHandle(process.hProcess);
-
-    return (int)exitCode;
+    return 0;
 }

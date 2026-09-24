@@ -20,7 +20,7 @@ jobs:
       - name: Set up .NET 8
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '8.0.425'
 
       - name: Load and verify product version
         id: product_version
@@ -65,11 +65,33 @@ jobs:
             }
           }
 
+      - name: Generate robust multi-size Windows icon
+        shell: pwsh
+        run: |
+          ./scripts/BuildWindowsIcon.ps1 -Source ./assets/g-cet-icon.png -Destination ./assets/g-cet-app-icon.ico
+
       - name: Build
         run: dotnet build G-CET-Runtime-Profiler.sln -c Release
 
       - name: Publish self-contained managed app
         run: dotnet publish src/G.CETProfiler.App/G.CETProfiler.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o publish-app
+
+      - name: Verify pinned self-contained runtime
+        shell: pwsh
+        run: |
+          $runtimeConfig = Get-Content 'publish-app\G-CET-Runtime-Profiler.App.runtimeconfig.json' -Raw | ConvertFrom-Json
+          $versions = @($runtimeConfig.runtimeOptions.includedFrameworks | ForEach-Object { [string]$_.version } | Sort-Object -Unique)
+          if ($versions.Count -ne 1 -or $versions[0] -ne '8.0.30') {
+            throw "Published runtime drifted from pinned 8.0.30: $($versions -join ', ')"
+          }
+
+          $deps = Get-Content 'publish-app\G-CET-Runtime-Profiler.App.deps.json' -Raw
+          if ($deps -notmatch 'runtimepack\.Microsoft\.NETCore\.App\.Runtime\.win-x64/8\.0\.30' -or
+              $deps -notmatch 'runtimepack\.Microsoft\.WindowsDesktop\.App\.Runtime\.win-x64/8\.0\.30') {
+            throw 'Published deps.json does not contain the pinned 8.0.30 runtime packs.'
+          }
+
+          Write-Host 'Pinned runtime verified: .NET / WindowsDesktop 8.0.30'
 
       - name: Build native root launcher
         shell: pwsh
@@ -99,6 +121,7 @@ jobs:
           $obj = Join-Path $buildDir 'launcher.obj'
           $res = Join-Path $buildDir 'launcher.res'
           $out = Join-Path $buildDir 'G-CET-Runtime-Profiler.exe'
+          $imports = Join-Path $buildDir 'launcher-imports.txt'
           $script = Join-Path $buildDir 'build-launcher.cmd'
 
           @"
@@ -107,7 +130,9 @@ jobs:
           if errorlevel 1 exit /b %errorlevel%
           rc.exe /nologo /fo"$res" "$rc"
           if errorlevel 1 exit /b %errorlevel%
-          cl.exe /nologo /O2 /MT /DUNICODE /D_UNICODE /Fo:"$obj" "$src" "$res" /link /SUBSYSTEM:WINDOWS user32.lib /OUT:"$out"
+          cl.exe /nologo /O2 /GS /guard:cf /MT /DUNICODE /D_UNICODE /Fo:"$obj" "$src" "$res" /link /SUBSYSTEM:WINDOWS /DYNAMICBASE /NXCOMPAT /HIGHENTROPYVA /guard:cf user32.lib shell32.lib /OUT:"$out"
+          if errorlevel 1 exit /b %errorlevel%
+          dumpbin.exe /imports "$out" > "$imports"
           exit /b %errorlevel%
           "@ | Set-Content -LiteralPath $script -Encoding ascii
 
@@ -118,6 +143,27 @@ jobs:
           if (!(Test-Path -LiteralPath $out -PathType Leaf)) {
             throw 'Native launcher output is missing.'
           }
+
+          $importText = Get-Content -LiteralPath $imports -Raw
+          if ($importText -notmatch 'ShellExecuteExW') {
+            throw 'Launcher no longer imports ShellExecuteExW.'
+          }
+          foreach ($forbiddenImport in @('CreateProcessW','SetEnvironmentVariableW')) {
+            if ($importText -match $forbiddenImport) {
+              throw "Launcher unexpectedly imports $forbiddenImport."
+            }
+          }
+
+          $versionInfo = (Get-Item -LiteralPath $out).VersionInfo
+          if ($versionInfo.ProductName -ne 'G-CET Runtime Profiler') {
+            throw "Launcher ProductName metadata mismatch: $($versionInfo.ProductName)"
+          }
+          if ($versionInfo.FileDescription -ne 'G-CET Runtime Profiler Launcher') {
+            throw "Launcher FileDescription metadata mismatch: $($versionInfo.FileDescription)"
+          }
+
+          Write-Host 'Launcher imports: minimal ShellExecuteExW GUI path; CreateProcessW and package-root environment injection absent.'
+          Write-Host "Launcher metadata: $($versionInfo.ProductName) $($versionInfo.ProductVersion)"
 
       - name: Stage normal Windows app layout
         shell: pwsh
@@ -163,6 +209,59 @@ jobs:
 
           Capture folders are created automatically by COLLECT RESULTS.
           '@ | Set-Content -LiteralPath publish\RESULTS\README.txt -Encoding utf8
+
+      - name: Verify embedded Windows icons
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Add-Type -AssemblyName System.Drawing
+
+          $sourceIconPath = (Resolve-Path 'assets\g-cet-app-icon.ico').Path
+          $expected = [System.Drawing.Icon]::new($sourceIconPath, 32, 32)
+
+          function Assert-EmbeddedIcon([string]$ExePath) {
+            $resolved = (Resolve-Path -LiteralPath $ExePath).Path
+            $actual = [System.Drawing.Icon]::ExtractAssociatedIcon($resolved)
+            if ($null -eq $actual) {
+              throw "No associated Windows icon could be extracted from $ExePath"
+            }
+
+            $expectedBitmap = $expected.ToBitmap()
+            $actualBitmap = $actual.ToBitmap()
+            try {
+              if ($actualBitmap.Width -ne 32 -or $actualBitmap.Height -ne 32) {
+                throw "Embedded icon in $ExePath extracted as $($actualBitmap.Width)x$($actualBitmap.Height), expected 32x32."
+              }
+
+              $mismatch = 0
+              for ($y = 0; $y -lt 32; $y++) {
+                for ($x = 0; $x -lt 32; $x++) {
+                  if ($expectedBitmap.GetPixel($x, $y).ToArgb() -ne $actualBitmap.GetPixel($x, $y).ToArgb()) {
+                    $mismatch++
+                  }
+                }
+              }
+
+              if ($mismatch -ne 0) {
+                throw "Embedded icon in $ExePath differs from the canonical G-CET 32px frame at $mismatch pixels."
+              }
+
+              Write-Host "Verified embedded G-CET icon: $ExePath"
+            }
+            finally {
+              $actualBitmap.Dispose()
+              $expectedBitmap.Dispose()
+              $actual.Dispose()
+            }
+          }
+
+          try {
+            Assert-EmbeddedIcon 'publish\G-CET-Runtime-Profiler.exe'
+            Assert-EmbeddedIcon 'publish\app\G-CET-Runtime-Profiler.App.exe'
+          }
+          finally {
+            $expected.Dispose()
+          }
 
       - name: Verify public package layout
         shell: pwsh
@@ -257,8 +356,10 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $exe = (Resolve-Path 'publish\G-CET-Runtime-Profiler.exe').Path
+          $exe = (Resolve-Path 'publish\app\G-CET-Runtime-Profiler.App.exe').Path
 
+          # Headless/automation commands intentionally target the managed app
+          # directly; the root launcher is GUI-only to keep its AV surface tiny.
           # Status must remain safe before CET has created its own subdirectory.
           $missingCetFixture = Join-Path $env:RUNNER_TEMP 'gcet-missing-cet-fixture'
           if (Test-Path $missingCetFixture) { Remove-Item $missingCetFixture -Recurse -Force }
