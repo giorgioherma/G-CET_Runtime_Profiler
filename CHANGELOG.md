@@ -12,7 +12,10 @@ All notable public changes to G-CET Runtime Profiler are recorded here.
 - Added direct CET-side findings for sustained workload, call volume, callback hotspots, shared callback boundaries, heavy timeline windows, recorded callback spikes, and recurring presence in the heaviest CET windows.
 - Added a dedicated 0-Engine Scheduler section that separates client-job attribution from the normal 0-Engine owner total and surfaces multi-job single-frame pile-ups plus common cadence groups.
 - Result interpretation is downstream of verified raw collection: a report failure cannot invalidate or discard the native capture.
-- The standalone report remains explicitly scoped to CET/Lua evidence; it does not infer REDscript, native-engine, GPU, or whole-frame causation.
+- Added recognized CapFrameX JSON interpretation directly to the standalone CET report: frametime distribution, ≥25/33.3/50/100 ms stall counts, CPU Active/GPU Active summaries, F11 start-clock synchronization, CET-window/stall overlap, exact recorded CET callback-spike overlap, exact Scheduler-burst overlap, and an interactive synchronized timeline.
+- Added worst-frame evidence that shows the aligned CET 50 ms window, largest CET owner, callback spike and Scheduler burst where available, while keeping CapFrameX frametime authoritative for the rendered-frame measurement.
+- Added `--report --capture <folder>` so an already collected result can be rebuilt after optional companion data is added.
+- CapFrameX interpretation remains correlation evidence only: CET and frame-time domains are not added/subtracted and overlap is not labeled as automatic causation.
 
 ## [1.0.0] - 2026-09-23
 
