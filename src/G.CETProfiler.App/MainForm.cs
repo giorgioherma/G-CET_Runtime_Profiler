@@ -17,12 +17,12 @@ public sealed class MainForm : Form
     private static readonly Color ThemePanelAlt = Color.FromArgb(11, 18, 25);
     private static readonly Color ThemeBorder = Color.FromArgb(40, 71, 82);
     private static readonly Color ThemeText = Color.FromArgb(232, 243, 246);
-    private static readonly Color ThemeMuted = Color.FromArgb(137, 157, 166);
-    private static readonly Color ThemeCyan = Color.FromArgb(54, 232, 242);
-    private static readonly Color ThemeMagenta = Color.FromArgb(255, 63, 207);
-    private static readonly Color ThemeGreen = Color.FromArgb(126, 232, 151);
-    private static readonly Color ThemeAmber = Color.FromArgb(241, 193, 84);
-    private static readonly Color ThemeRed = Color.FromArgb(255, 111, 116);
+    private static readonly Color ThemeMuted = Color.FromArgb(172, 188, 197);
+    private static readonly Color ThemeCyan = Color.FromArgb(54, 244, 244);
+    private static readonly Color ThemeMagenta = Color.FromArgb(255, 63, 215);
+    private static readonly Color ThemeGreen = Color.FromArgb(94, 255, 130);
+    private static readonly Color ThemeAmber = Color.FromArgb(255, 216, 64);
+    private static readonly Color ThemeRed = Color.FromArgb(255, 82, 100);
 
     private readonly Panel setupPage = new();
     private readonly Panel profilerPage = new();
@@ -39,7 +39,7 @@ public sealed class MainForm : Form
     private readonly Label companionStatus = new();
     private readonly LinkLabel capFrameXLink = new();
 
-    private readonly Label status = new();
+    private readonly RichTextBox status = new();
     private readonly CheckBox coreOnly = new();
     private readonly GroupBox readyGroup = new();
     private readonly Label readyHeading = new();
@@ -112,14 +112,14 @@ public sealed class MainForm : Form
     {
         setupPage.Dock = DockStyle.Fill;
 
-        var logo = CreateHeaderLogo(new Point(20, 12));
+        var logo = CreateHeaderLogo(new Point(20, 5));
         var title = new Label
         {
             Text = "SETUP",
             Font = new Font("Segoe UI Semibold", 18F),
             AutoSize = true,
             ForeColor = ThemeCyan,
-            Location = new Point(72, 18)
+            Location = new Point(84, 18)
         };
         var subtitle = new Label
         {
@@ -195,7 +195,7 @@ public sealed class MainForm : Form
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                ThemedDialog.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         };
 
@@ -295,14 +295,14 @@ public sealed class MainForm : Form
     {
         profilerPage.Dock = DockStyle.Fill;
 
-        var logo = CreateHeaderLogo(new Point(20, 12));
+        var logo = CreateHeaderLogo(new Point(20, 5));
         var title = new Label
         {
             Text = "INSTALL -> CAPTURE -> RESTORE",
             Font = new Font("Segoe UI Semibold", 18F),
             AutoSize = true,
             ForeColor = ThemeCyan,
-            Location = new Point(72, 18)
+            Location = new Point(84, 18)
         };
 
         var back = new Button { Text = "← SETUP", Width = 100, Height = 30, Left = 740, Top = 18 };
@@ -316,6 +316,13 @@ public sealed class MainForm : Form
         statusGroup.SetBounds(20, 66, 820, 306);
         status.SetBounds(18, 27, 775, 222);
         status.Font = new Font("Segoe UI", 9.5F);
+        status.ReadOnly = true;
+        status.BorderStyle = BorderStyle.None;
+        status.ScrollBars = RichTextBoxScrollBars.None;
+        status.DetectUrls = false;
+        status.TabStop = false;
+        status.BackColor = ThemePanelAlt;
+        status.ForeColor = ThemeText;
 
         coreOnly.Text = "Fallback: install CET core profiler only and leave 0-Engine completely untouched";
         coreOnly.SetBounds(18, 252, 610, 24);
@@ -375,7 +382,7 @@ public sealed class MainForm : Form
             suppressActivationRefresh = true;
             try
             {
-                answer = MessageBox.Show(
+                answer = ThemedDialog.Show(
                     this,
                     "Restore the CET profiler-managed game state?\r\n\r\n" +
                     "Original CET / 0-Engine files and the previous CET binding state will be restored. " +
@@ -448,6 +455,7 @@ public sealed class MainForm : Form
                 "CET Profiler: unavailable ❌\r\n" +
                 "CET Controls: unavailable ❌\r\n" +
                 "Live Files: -";
+            ColorizeStatusText();
             RenderSetupGameStatus();
             RenderCompatibility(null);
             RenderReadyState(null);
@@ -472,12 +480,13 @@ public sealed class MainForm : Form
             lastStatus = null;
             SetBusy(false);
             status.Text = "STATUS ERROR:\r\n" + FriendlyMessage(ex);
+            ColorizeStatusText();
             RenderSetupGameStatus();
             RenderCompatibility(null);
             RenderReadyState(null);
             SetActionState(null);
             if (!silent)
-                MessageBox.Show(this, FriendlyMessage(ex), Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                ThemedDialog.Show(this, FriendlyMessage(ex), Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
@@ -545,6 +554,7 @@ public sealed class MainForm : Form
                 "CET Profiler: unavailable ❌\r\n" +
                 "CET Controls: unavailable ❌\r\n" +
                 "Live Files: -";
+            ColorizeStatusText();
             SetActionState(null);
             return;
         }
@@ -672,6 +682,47 @@ public sealed class MainForm : Form
             syncLines + "\r\n\r\n" +
             $"G-CET PROFILER IS {installState}\r\n" +
             $"Live Files: {snapshot.LiveResultCount}";
+        ColorizeStatusText();
+    }
+
+    private void ColorizeStatusText()
+    {
+        status.SuspendLayout();
+        try
+        {
+            status.SelectAll();
+            status.SelectionColor = ThemeText;
+
+            for (var i = 0; i < status.Lines.Length; i++)
+            {
+                var line = status.Lines[i];
+                var start = status.GetFirstCharIndexFromLine(i);
+                if (start < 0)
+                    continue;
+
+                var color = line.Contains('❌') ||
+                            line.Contains("ERROR", StringComparison.OrdinalIgnoreCase) ||
+                            line.Contains("BLOCKED", StringComparison.OrdinalIgnoreCase)
+                    ? ThemeRed
+                    : line.Contains('✅')
+                        ? ThemeGreen
+                        : line.Contains('⚠')
+                            ? ThemeAmber
+                            : line.Trim().Equals("optional:", StringComparison.OrdinalIgnoreCase)
+                                ? ThemeMuted
+                                : ThemeText;
+
+                status.Select(start, line.Length);
+                status.SelectionColor = color;
+            }
+
+            status.Select(0, 0);
+            status.SelectionLength = 0;
+        }
+        finally
+        {
+            status.ResumeLayout();
+        }
     }
 
     private bool IsProfilerReady(ProfilerStatus? snapshot) =>
@@ -705,8 +756,10 @@ public sealed class MainForm : Form
         // Before installation, step 1 is the only active instruction.
         // Once the managed profiler is fully ready, step 1 becomes completed/gray
         // and the capture/collect/restore steps become active.
-        readyInstallInstruction.Enabled = snapshot?.Managed != true;
-        readyCaptureInstructions.Enabled = ready;
+        readyInstallInstruction.Enabled = true;
+        readyCaptureInstructions.Enabled = true;
+        readyInstallInstruction.ForeColor = snapshot?.Managed == true ? ThemeMuted : ThemeCyan;
+        readyCaptureInstructions.ForeColor = ready ? ThemeText : ThemeMuted;
 
         readyNotice.Text = GetReadyNotice(snapshot);
         readyNotice.ForeColor = blocked
@@ -816,7 +869,7 @@ public sealed class MainForm : Form
             var postInstallWarning = BuildPostInstallWarning(installedSnapshot);
             if (!string.IsNullOrWhiteSpace(postInstallWarning))
             {
-                MessageBox.Show(
+                ThemedDialog.Show(
                     this,
                     postInstallWarning,
                     Text,
@@ -841,7 +894,7 @@ public sealed class MainForm : Form
             if (afterFailure?.ZeroEnginePresent == true || lastStatus?.ZeroEnginePresent == true)
                 fallbackVisible = true;
 
-            MessageBox.Show(
+            ThemedDialog.Show(
                 this,
                 BuildInstallFailureMessage(ex, afterFailure),
                 Text,
@@ -1001,7 +1054,7 @@ public sealed class MainForm : Form
             if (reportRefreshError is not null)
                 companionText += "\r\nReport refresh: CapFrameX copy is safe, but the post-copy report refresh failed: " + reportRefreshError;
 
-            MessageBox.Show(
+            ThemedDialog.Show(
                 this,
                 "CET results archived successfully and known live profiler output was cleared.\r\n\r\n" +
                 "CET_Report.html is the human-readable starting point. Full native data remains under Data\\.\r\n\r\n" +
@@ -1013,7 +1066,7 @@ public sealed class MainForm : Form
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, FriendlyMessage(ex), Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            ThemedDialog.Show(this, FriendlyMessage(ex), Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
         {
@@ -1046,12 +1099,12 @@ public sealed class MainForm : Form
 
             lastStatus = verified;
             ShowRestoreOutcome(true, "RESTORE SUCCESSFUL — profiler removed and original state restored.");
-            MessageBox.Show(this, message, Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            ThemedDialog.Show(this, message, Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)
         {
             ShowRestoreOutcome(false, "RESTORE NOT COMPLETED — recovery state/backups preserved.");
-            MessageBox.Show(
+            ThemedDialog.Show(
                 this,
                 "Normal restore could not complete safely. The recovery state/backups were kept." +
                 Environment.NewLine + Environment.NewLine +
@@ -1115,7 +1168,7 @@ public sealed class MainForm : Form
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            ThemedDialog.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
@@ -1136,7 +1189,7 @@ public sealed class MainForm : Form
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            ThemedDialog.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
@@ -1167,7 +1220,7 @@ public sealed class MainForm : Form
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            ThemedDialog.Show(this, ex.Message, Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
@@ -1232,6 +1285,12 @@ public sealed class MainForm : Form
                     group.FlatStyle = FlatStyle.Flat;
                     break;
 
+                case RichTextBox richTextBox:
+                    richTextBox.BackColor = ThemePanelAlt;
+                    richTextBox.ForeColor = ThemeText;
+                    richTextBox.BorderStyle = BorderStyle.None;
+                    break;
+
                 case TextBox textBox:
                     textBox.BackColor = ThemePanel;
                     textBox.ForeColor = ThemeText;
@@ -1281,6 +1340,25 @@ public sealed class MainForm : Form
     {
         button.ForeColor = accent;
         button.FlatAppearance.BorderColor = accent;
+        button.Paint += (_, e) =>
+        {
+            if (button.Enabled)
+                return;
+
+            e.Graphics.Clear(ThemePanel);
+            using var border = new Pen(ThemeBorder);
+            e.Graphics.DrawRectangle(border, 0, 0, Math.Max(0, button.Width - 1), Math.Max(0, button.Height - 1));
+            TextRenderer.DrawText(
+                e.Graphics,
+                button.Text,
+                button.Font,
+                button.ClientRectangle,
+                ThemeMuted,
+                TextFormatFlags.HorizontalCenter |
+                TextFormatFlags.VerticalCenter |
+                TextFormatFlags.SingleLine |
+                TextFormatFlags.EndEllipsis);
+        };
     }
 
     private static PictureBox CreateHeaderLogo(Point location)
@@ -1288,7 +1366,7 @@ public sealed class MainForm : Form
         var logo = new PictureBox
         {
             Location = location,
-            Size = new Size(42, 42),
+            Size = new Size(52, 52),
             BackColor = Color.Transparent,
             SizeMode = PictureBoxSizeMode.Zoom,
             TabStop = false
