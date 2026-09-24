@@ -16,24 +16,24 @@ public static partial class ResultReportService
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>G-CET Runtime Profiler — Capture Report</title>
 <style>
-:root{color-scheme:dark;--bg:#0d1117;--panel:#141a22;--panel2:#10151c;--line:#29313d;--text:#edf2f7;--muted:#9aa7b5;--accent:#67d7ff;--accent2:#d2ff72}
+:root{color-scheme:dark;--bg:#080d12;--panel:#101820;--panel2:#0b1219;--line:#233845;--line2:#315968;--text:#e8f3f6;--muted:#8da0a9;--accent:#36e8f2;--accent2:#7ee897;--magenta:#ff3fcf;--amber:#f1c154;--red:#ff6f74}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 "Segoe UI",Arial,sans-serif}
-.wrap{max-width:1260px;margin:auto;padding:24px}.hero{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;margin-bottom:18px}
-.hero h1{margin:0 0 5px;font-size:29px}.sub,.muted{color:var(--muted)}.scope{max-width:760px;color:var(--muted);margin-top:8px}
-.badge{display:inline-block;border:1px solid var(--line);background:var(--panel);padding:5px 9px;border-radius:999px;color:var(--accent2);font-size:12px;font-weight:700}
-.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.card{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:14px}
+.wrap{max-width:1260px;margin:auto;padding:24px}.hero{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;margin-bottom:18px;padding:2px 0 16px;border-bottom:1px solid var(--line)}
+.brandblock{display:flex;gap:14px;align-items:flex-start}.brandmark{width:58px;height:58px;object-fit:contain;flex:0 0 auto}.hero h1{margin:0 0 5px;font-size:29px;color:var(--accent);text-shadow:0 0 14px #36e8f226}.sub,.muted{color:var(--muted)}.scope{max-width:760px;color:var(--muted);margin-top:8px}
+.badge{display:inline-block;border:1px solid var(--line2);background:var(--panel);padding:5px 9px;border-radius:999px;color:var(--accent2);font-size:12px;font-weight:700;box-shadow:0 0 12px #36e8f212}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.card{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:14px}.metric{border-color:var(--line2)}.metric .v{color:var(--accent);text-shadow:0 0 12px #36e8f21f}.metric:nth-child(4n) .v{color:#ff73dd;text-shadow:0 0 12px #ff3fcf1f}
 .k{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}.v{font-size:25px;font-weight:700;margin-top:4px}.s{font-size:12px;color:var(--muted);margin-top:3px}
-.section{margin-top:22px}.section h2{font-size:19px;margin:0 0 10px}.section h3{font-size:15px;margin:16px 0 8px;color:#dce7f1}
-.findings{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.finding{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:8px;padding:13px}
-.finding h3{margin:0 0 5px;font-size:15px}.evidence{font-weight:650}.why{color:var(--muted);margin-top:5px}
+.section{margin-top:22px}.section h2{font-size:19px;margin:0 0 10px;padding-bottom:6px;border-bottom:1px solid var(--line);color:#dffbff}.section h3{font-size:15px;margin:16px 0 8px;color:#dce7f1}
+.findings{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.finding{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;padding:13px}.finding:nth-child(even){border-left-color:var(--magenta)}
+.finding h3{margin:0 0 5px;font-size:15px;color:#dffbff}.evidence{font-weight:650}.why{color:var(--muted);margin-top:5px}
 .note{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:11px 13px;color:var(--muted);margin:10px 0}.note b{color:var(--text)}
 table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
-th,td{padding:8px 10px;border-bottom:1px solid #232b35;text-align:left;vertical-align:top}th{font-size:12px;color:#b7c3cf;background:#171e27;position:sticky;top:0}
-td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}.barwrap{width:130px;height:8px;background:#262f3a;border-radius:99px;overflow:hidden;margin-top:5px}.bar{height:100%;background:var(--accent);border-radius:99px}
-.mono{font-family:Consolas,"Courier New",monospace}.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}.healthline{display:grid;grid-template-columns:170px 1fr;gap:8px;padding:4px 0;border-bottom:1px solid #202832}.healthline:last-child{border-bottom:0}
-details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-top:10px}summary{cursor:pointer;font-weight:650}
-.links a{color:var(--accent);text-decoration:none}.links a:hover{text-decoration:underline}.footer{color:var(--muted);font-size:12px;margin:28px 0 8px}
-.chartbox{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:12px;margin-top:10px}.chartbox canvas{display:block;width:100%;height:330px;background:#0b1016;border-radius:6px}.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}.toolbar button,.toolbar select{background:#171e27;color:var(--text);border:1px solid #34404d;border-radius:6px;padding:6px 9px}.legend{display:flex;gap:14px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin-top:8px}.sw{display:inline-block;width:12px;height:3px;vertical-align:middle;margin-right:5px}.sw.ft{background:#67d7ff}.sw.cpu{background:#ffb86b}.sw.gpu{background:#7ee787}.sw.cet{background:#d9a6f5}.charttip{position:absolute;display:none;pointer-events:none;z-index:4;background:#080c10;border:1px solid #43505e;border-radius:6px;padding:7px 9px;white-space:pre-line;font-size:12px;box-shadow:0 6px 24px #0009}.syncgood{color:#9be564}.synccoarse{color:#ffd166}.syncbad{color:#ff7b72}
+th,td{padding:8px 10px;border-bottom:1px solid #1c2a33;text-align:left;vertical-align:top}th{font-size:12px;color:#bfeff4;background:#121d25;position:sticky;top:0}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}.barwrap{width:130px;height:8px;background:#1b2a33;border-radius:99px;overflow:hidden;margin-top:5px}.bar{height:100%;background:linear-gradient(90deg,var(--accent),var(--magenta));border-radius:99px}
+.mono{font-family:Consolas,"Courier New",monospace}.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}.healthline{display:grid;grid-template-columns:170px 1fr;gap:8px;padding:4px 0;border-bottom:1px solid #1c2a33}.healthline:last-child{border-bottom:0}
+details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-top:10px}summary{cursor:pointer;font-weight:650;color:#dffbff}
+.links a{color:var(--accent);text-decoration:none}.links a:hover{color:#ff73dd;text-decoration:none}.footer{color:var(--muted);font-size:12px;margin:28px 0 8px;padding-top:10px;border-top:1px solid var(--line)}
+.chartbox{position:relative;background:var(--panel);border:1px solid var(--line2);border-radius:9px;padding:12px;margin-top:10px;box-shadow:0 0 16px #36e8f20d}.chartbox canvas{display:block;width:100%;height:330px;background:#080f15;border-radius:6px}.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}.toolbar button,.toolbar select{background:#121d25;color:var(--text);border:1px solid var(--line2);border-radius:6px;padding:6px 9px}.toolbar button:hover,.toolbar select:hover{border-color:var(--accent)}.legend{display:flex;gap:14px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin-top:8px}.sw{display:inline-block;width:12px;height:3px;vertical-align:middle;margin-right:5px}.sw.ft{background:#36e8f2}.sw.cpu{background:#f1c154}.sw.gpu{background:#7ee897}.sw.cet{background:#ff55d7}.charttip{position:absolute;display:none;pointer-events:none;z-index:4;background:#070c11;border:1px solid var(--line2);border-radius:6px;padding:7px 9px;white-space:pre-line;font-size:12px;box-shadow:0 6px 24px #0009}.syncgood{color:#7ee897}.synccoarse{color:#f1c154}.syncbad{color:#ff6f74}
 @media(max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}.findings,.two{grid-template-columns:1fr}.wrap{padding:14px}}
 @media(max-width:520px){.grid{grid-template-columns:1fr}.hero{display:block}}
 </style>
@@ -41,13 +41,17 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
 <body><div class="wrap">
 """);
 
-        sb.Append("<div class=\"hero\"><div><h1>G-CET Runtime Profiler</h1><div class=\"sub\">")
+        var logoDataUri = GetEmbeddedLogoDataUri();
+        sb.Append("<div class=\"hero\"><div class=\"brandblock\">");
+        if (!string.IsNullOrWhiteSpace(logoDataUri))
+            sb.Append("<img class=\"brandmark\" src=\"").Append(logoDataUri).Append("\" alt=\"G-CET\">");
+        sb.Append("<div><h1>G-CET Runtime Profiler</h1><div class=\"sub\">")
             .Append(a.FrameTime is null ? "CET capture report" : "CET + CapFrameX capture report")
             .Append("</div>");
         sb.Append("<div class=\"scope\">What CET was doing during this capture: sustained workload, call volume, callback hotspots, heavy CET windows, recorded callback spikes and 0-Engine Scheduler activity.");
         if (a.FrameTime is not null)
             sb.Append(" CapFrameX adds actual frametime, CPU/GPU active readings and synchronized stall overlap.");
-        sb.Append("</div></div>");
+        sb.Append("</div></div></div>");
         sb.Append("<div><span class=\"badge\">")
             .Append(a.FrameTime is null ? "CET-SIDE MEASUREMENT" : "CET + CAPFRAMEX")
             .Append("</span></div></div>");
@@ -231,15 +235,15 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
     if(!ymax){for(const p of v)ymax=Math.max(ymax,p.ft,p.cpu,p.gpu,p.cet);ymax=Math.max(20,Math.ceil(ymax/10)*10);}
     const px=t=>padL+(t-xmin)/(xmax-xmin)*(w-padL-padR);
     const py=y=>padT+(1-Math.min(y,ymax)/ymax)*(h-padT-padB);
-    ctx.strokeStyle='#27313c';ctx.lineWidth=1;ctx.fillStyle='#8794a3';ctx.font='11px Segoe UI';
+    ctx.strokeStyle='#20343f';ctx.lineWidth=1;ctx.fillStyle='#8da0a9';ctx.font='11px Segoe UI';
     for(let i=0;i<=5;i++){const y=ymax*i/5,yy=py(y);ctx.beginPath();ctx.moveTo(padL,yy);ctx.lineTo(w-padR,yy);ctx.stroke();ctx.fillText(y.toFixed(0)+' ms',4,yy+4);}
     function line(key,color,width){
       ctx.strokeStyle=color;ctx.lineWidth=width;ctx.beginPath();let started=false;
       for(const p of v){const val=p[key];if(val<=0)continue;const x=px((p.t+p.e)/2),y=py(val);if(!started){ctx.moveTo(x,y);started=true;}else ctx.lineTo(x,y);}
       ctx.stroke();
     }
-    line('cpu','#ffb86b',1);line('gpu','#7ee787',1);line('cet','#d9a6f5',1.4);line('ft','#67d7ff',2);
-    ctx.fillStyle='#8794a3';ctx.textAlign='left';ctx.fillText((xmin/1000).toFixed(1)+' s',padL,h-8);ctx.textAlign='right';ctx.fillText((xmax/1000).toFixed(1)+' s',w-padR,h-8);ctx.textAlign='left';
+    line('cpu','#f1c154',1);line('gpu','#7ee897',1);line('cet','#ff55d7',1.4);line('ft','#36e8f2',2);
+    ctx.fillStyle='#8da0a9';ctx.textAlign='left';ctx.fillText((xmin/1000).toFixed(1)+' s',padL,h-8);ctx.textAlign='right';ctx.fillText((xmax/1000).toFixed(1)+' s',w-padR,h-8);ctx.textAlign='left';
   };
   canvas.addEventListener('mousemove',ev=>{
     const r=canvas.getBoundingClientRect(),padL=48,padR=18;
@@ -516,9 +520,29 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
             .Append("</a>.</p></div>");
     }
 
+    private static string? GetEmbeddedLogoDataUri()
+    {
+        try
+        {
+            using var stream = typeof(ResultReportService).Assembly
+                .GetManifestResourceStream("GCETRuntimeProfiler.GCetIcon.png");
+            if (stream is null)
+                return null;
+
+            using var buffer = new MemoryStream();
+            stream.CopyTo(buffer);
+            return "data:image/png;base64," + Convert.ToBase64String(buffer.ToArray());
+        }
+        catch
+        {
+            // Report generation must never fail because a branding asset is missing.
+            return null;
+        }
+    }
+
     private static void MetricCard(StringBuilder sb, string key, string value, string sub)
     {
-        sb.Append("<div class=\"card\"><div class=\"k\">").Append(H(key))
+        sb.Append("<div class=\"card metric\"><div class=\"k\">").Append(H(key))
             .Append("</div><div class=\"v\">").Append(value)
             .Append("</div><div class=\"s\">").Append(H(sub))
             .Append("</div></div>");
