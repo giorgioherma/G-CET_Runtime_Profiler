@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 
 namespace GCETRuntimeProfiler.Core.Services;
 
@@ -32,6 +33,7 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}.barwrap{width:
 .mono{font-family:Consolas,"Courier New",monospace}.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-top:10px}summary{cursor:pointer;font-weight:650}
 .links a{color:var(--accent);text-decoration:none}.links a:hover{text-decoration:underline}.footer{color:var(--muted);font-size:12px;margin:28px 0 8px}
+.chartbox{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:12px;margin-top:10px}.chartbox canvas{display:block;width:100%;height:330px;background:#0b1016;border-radius:6px}.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}.toolbar button,.toolbar select{background:#171e27;color:var(--text);border:1px solid #34404d;border-radius:6px;padding:6px 9px}.legend{display:flex;gap:14px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin-top:8px}.sw{display:inline-block;width:12px;height:3px;vertical-align:middle;margin-right:5px}.sw.ft{background:#67d7ff}.sw.cpu{background:#ffb86b}.sw.gpu{background:#7ee787}.sw.cet{background:#d9a6f5}.charttip{position:absolute;display:none;pointer-events:none;z-index:4;background:#080c10;border:1px solid #43505e;border-radius:6px;padding:7px 9px;white-space:pre-line;font-size:12px;box-shadow:0 6px 24px #0009}.syncgood{color:#9be564}.synccoarse{color:#ffd166}.syncbad{color:#ff7b72}
 @media(max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}.findings,.two{grid-template-columns:1fr}.wrap{padding:14px}}
 @media(max-width:520px){.grid{grid-template-columns:1fr}.hero{display:block}}
 </style>
@@ -39,9 +41,16 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
 <body><div class="wrap">
 """);
 
-        sb.Append("<div class=\"hero\"><div><h1>G-CET Runtime Profiler</h1><div class=\"sub\">CET capture report</div>");
-        sb.Append("<div class=\"scope\">What CET was doing during this capture: sustained workload, call volume, callback hotspots, heavy CET windows, recorded callback spikes and 0-Engine Scheduler activity where available.</div></div>");
-        sb.Append("<div><span class=\"badge\">CET-SIDE MEASUREMENT</span></div></div>");
+        sb.Append("<div class=\"hero\"><div><h1>G-CET Runtime Profiler</h1><div class=\"sub\">")
+            .Append(a.FrameTime is null ? "CET capture report" : "CET + CapFrameX capture report")
+            .Append("</div>");
+        sb.Append("<div class=\"scope\">What CET was doing during this capture: sustained workload, call volume, callback hotspots, heavy CET windows, recorded callback spikes and 0-Engine Scheduler activity.");
+        if (a.FrameTime is not null)
+            sb.Append(" CapFrameX adds actual frametime, CPU/GPU active readings and synchronized stall overlap.");
+        sb.Append("</div></div>");
+        sb.Append("<div><span class=\"badge\">")
+            .Append(a.FrameTime is null ? "CET-SIDE MEASUREMENT" : "CET + CAPFRAMEX")
+            .Append("</span></div></div>");
 
         sb.Append("<div class=\"grid\">");
         MetricCard(sb, "Capture", a.CaptureSeconds > 0 ? F(a.CaptureSeconds, 1) + " s" : "—", a.Owners.Count + " measured owners");
@@ -68,6 +77,9 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
         }
         sb.Append("</div>");
 
+        if (a.FrameTime is not null)
+            AppendFrameTime(sb, a.FrameTime);
+
         if (a.TopOwners.Count > 0)
             AppendOwnerWorkload(sb, a);
 
@@ -87,9 +99,164 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
             AppendScheduler(sb, a);
 
         AppendDataLinks(sb, captureRoot);
-        sb.Append("<div class=\"footer\">Measured CET/Lua runtime evidence only. This report does not make claims about REDscript, native engine, GPU or whole-frame causation.</div>");
+        sb.Append("<div class=\"footer\">CET measurements describe observed CET/Lua work. CapFrameX, when present, is the rendered-frametime layer. Synchronized overlap is evidence of timing coincidence, not a subtraction budget or automatic proof of causation.</div>");
         sb.Append("</div></body></html>");
         return sb.ToString();
+    }
+
+    private static void AppendFrameTime(StringBuilder sb, FrameTimeAnalysis ft)
+    {
+        sb.Append("<div class=\"section\"><h2>Frametime & CET overlap</h2>");
+        sb.Append("<div class=\"grid\">");
+        MetricCard(sb, "Average", F(ft.AverageFps, 1) + " FPS", F(ft.MeanFrameMs) + " ms mean · " + N(ft.FrameCount) + " frames");
+        MetricCard(sb, "P95 / P99", F(ft.P95FrameMs) + " / " + F(ft.P99FrameMs) + " ms", "Median " + F(ft.MedianFrameMs) + " ms");
+        MetricCard(sb, "Worst frame", F(ft.MaxFrameMs) + " ms", "≥50 ms " + N(ft.FramesOver50Ms) + " · ≥100 ms " + N(ft.FramesOver100Ms));
+        MetricCard(sb, "Frames ≥33.3 ms", N(ft.FramesOver33Ms), "≥25 ms " + N(ft.FramesOver25Ms));
+        sb.Append("</div>");
+
+        sb.Append("<div class=\"two\"><div class=\"card\"><h3>CapFrameX capture</h3>")
+            .Append("<div class=\"healthline\"><span class=\"muted\">Source</span><span>").Append(H(ft.SourceFile)).Append("</span></div>")
+            .Append("<div class=\"healthline\"><span class=\"muted\">Game</span><span>").Append(H(ft.GameName)).Append("</span></div>")
+            .Append("<div class=\"healthline\"><span class=\"muted\">GPU</span><span>").Append(H(ft.GPU)).Append("</span></div>")
+            .Append("<div class=\"healthline\"><span class=\"muted\">CPU active</span><span>").Append(F(ft.MeanCpuActiveMs)).Append(" ms mean · ").Append(F(ft.P95CpuActiveMs)).Append(" ms P95</span></div>")
+            .Append("<div class=\"healthline\"><span class=\"muted\">GPU active</span><span>").Append(F(ft.MeanGpuActiveMs)).Append(" ms mean · ").Append(F(ft.P95GpuActiveMs)).Append(" ms P95</span></div></div>");
+
+        var syncClass = ft.SyncQuality == "GOOD" ? "syncgood" : ft.SyncQuality == "COARSE" ? "synccoarse" : "syncbad";
+        sb.Append("<div class=\"card\"><h3>Synchronization</h3>")
+            .Append("<div class=\"healthline\"><span class=\"muted\">Status</span><span class=\"").Append(syncClass).Append("\"><b>").Append(H(ft.SyncQuality)).Append("</b></span></div>")
+            .Append("<div class=\"healthline\"><span class=\"muted\">CapFrameX start</span><span>").Append(H(ft.CapFrameXStartUtc?.ToString("O") ?? "unknown")).Append("</span></div>")
+            .Append("<div class=\"healthline\"><span class=\"muted\">CET start</span><span>").Append(H(ft.CetStartUtc?.ToString("O") ?? "unknown")).Append("</span></div>");
+
+        if (double.IsFinite(ft.StartDeltaMs))
+            sb.Append("<div class=\"healthline\"><span class=\"muted\">Start delta</span><span>").Append(F(ft.StartDeltaMs, 1)).Append(" ms</span></div>");
+        if (double.IsFinite(ft.DurationDeltaMs))
+            sb.Append("<div class=\"healthline\"><span class=\"muted\">Duration delta</span><span>").Append(F(ft.DurationDeltaMs, 1)).Append(" ms</span></div>");
+
+        sb.Append("</div></div>");
+
+        if (!ft.Correlated)
+        {
+            sb.Append("<div class=\"note\"><b>CapFrameX frametime statistics are valid, but CET/frametime correlation is disabled for this capture.</b> The start clocks are too far apart or CET has no usable epoch marker. Raw CapFrameX data is still preserved under <span class=\"mono\">FrameTime/</span>.</div></div>");
+            return;
+        }
+
+        sb.Append("<div class=\"grid\">");
+        MetricCard(sb, "Slow frames in high CET", ft.SlowFramesHighCet + " / " + ft.FramesOver33Ms, "High CET = top 10% of 50 ms CET windows");
+        MetricCard(sb, "Exact CET spike overlap", N(ft.SlowFramesExactCallback), ft.ExactAlignment ? "Frames ≥33.3 ms crossing a recorded CET callback spike" : "Exact overlap disabled at coarse sync");
+        MetricCard(sb, "Scheduler burst overlap", N(ft.SlowFramesSchedulerBurst), ft.ExactAlignment ? "Frames ≥33.3 ms crossing a recorded Scheduler burst" : "Exact overlap disabled at coarse sync");
+        MetricCard(sb, "CET-normal slow frames", N(ft.SlowFramesCetNormal), "No high CET window or exact recorded CET spike/burst");
+        sb.Append("</div>");
+
+        sb.Append("<div class=\"note\"><b>")
+            .Append(ft.TopCetWindowsWithSlowFrame).Append(" of the ").Append(ft.TopCetWindowCount)
+            .Append(" heaviest CET windows contained a frame ≥33.3 ms.</b> High-CET windows had slow frames in ")
+            .Append(F(ft.HighCetWindowSlowRatePct, 1)).Append("% of windows versus ")
+            .Append(F(ft.NormalCetWindowSlowRatePct, 1)).Append("% for the rest. ")
+            .Append("50 ms window correlation: Spearman <b>").Append(F(ft.SpearmanWindowCorrelation, 3))
+            .Append("</b>, Pearson ").Append(F(ft.PearsonWindowCorrelation, 3)).Append(".</div>");
+
+        sb.Append("<div class=\"chartbox\"><div class=\"toolbar\">")
+            .Append("<button onclick=\"gcetFtFull()\">Full capture</button>")
+            .Append("<button onclick=\"gcetFtWorst()\">Around worst frame</button>")
+            .Append("<label class=\"small\">Scale <select id=\"gcetFtScale\" onchange=\"gcetFtDraw()\"><option value=\"auto\">Auto</option><option value=\"50\">0–50 ms</option><option value=\"100\">0–100 ms</option><option value=\"250\">0–250 ms</option><option value=\"500\">0–500 ms</option></select></label>")
+            .Append("</div><canvas id=\"gcetFtChart\"></canvas><div id=\"gcetFtTip\" class=\"charttip\"></div>")
+            .Append("<div class=\"legend\"><span><i class=\"sw ft\"></i>Max frametime / CET 50 ms window</span><span><i class=\"sw cpu\"></i>CPU active max</span><span><i class=\"sw gpu\"></i>GPU active max</span><span><i class=\"sw cet\"></i>Measured CET work / 50 ms window</span></div></div>")
+            .Append("<div class=\"note\"><b>Read the layers together; do not add or subtract them.</b> CapFrameX is actual rendered frametime. CET is observed script-side work aggregated into the same 50 ms clock windows.</div>");
+
+        if (ft.WorstFrames.Count > 0)
+        {
+            sb.Append("<h3>Worst frametime events</h3><table><thead><tr><th>Time</th><th class=\"num\">Frame</th><th class=\"num\">CPU active</th><th class=\"num\">GPU active</th><th class=\"num\">CET window</th><th>Largest CET owner</th><th>Aligned CET evidence</th></tr></thead><tbody>");
+            foreach (var x in ft.WorstFrames.Take(20))
+            {
+                sb.Append("<tr><td>").Append(F(x.StartMs / 1000.0, 3)).Append(" s</td><td class=\"num\"><b>")
+                    .Append(F(x.FrameMs)).Append(" ms</b></td><td class=\"num\">").Append(F(x.CpuActiveMs))
+                    .Append(" ms</td><td class=\"num\">").Append(F(x.GpuActiveMs))
+                    .Append(" ms</td><td class=\"num\">").Append(F(x.CetWindowMs))
+                    .Append(" ms</td><td>").Append(H(x.TopCetOwner));
+                if (!string.IsNullOrWhiteSpace(x.TopCetOwner))
+                    sb.Append(" <span class=\"muted\">(").Append(F(x.TopCetOwnerMs)).Append(" ms)</span>");
+                sb.Append("</td><td>").Append(H(x.Evidence)).Append("</td></tr>");
+            }
+            sb.Append("</tbody></table>");
+        }
+
+        var timelineJson = JsonSerializer.Serialize(
+            ft.Timeline.Select(x => new
+            {
+                t = Round(x.StartMs, 3),
+                e = Round(x.EndMs, 3),
+                ft = Round(x.FrameMaxMs, 4),
+                cpu = Round(x.CpuActiveMaxMs, 4),
+                gpu = Round(x.GpuActiveMaxMs, 4),
+                cet = Round(x.CetMs, 4),
+                calls = x.CetCalls,
+                owner = x.TopOwner,
+                ownerMs = Round(x.TopOwnerCetMs, 4),
+                slow = x.SlowFrameCount,
+                callback = x.HasCallbackSpike,
+                scheduler = x.HasSchedulerBurst,
+                high = x.HighCet
+            }),
+            JsonOptions);
+        var worstTime = ft.WorstFrames.FirstOrDefault()?.StartMs ?? 0;
+
+        sb.Append("<script>window.__gcetFt=").Append(timelineJson)
+            .Append(";window.__gcetFtWorst=").Append(JsonSerializer.Serialize(worstTime))
+            .Append(";</script>");
+
+        sb.Append("""
+<script>
+(function(){
+  const data=window.__gcetFt||[];
+  const canvas=document.getElementById('gcetFtChart');
+  const tip=document.getElementById('gcetFtTip');
+  if(!canvas||!data.length)return;
+  let xmin=data[0].t, xmax=data[data.length-1].e;
+  function resize(){
+    const dpr=window.devicePixelRatio||1;
+    const w=Math.max(320,canvas.clientWidth),h=330;
+    canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);
+    const ctx=canvas.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);gcetFtDraw();
+  }
+  function visible(){return data.filter(p=>p.e>=xmin&&p.t<=xmax);}
+  window.gcetFtFull=function(){xmin=data[0].t;xmax=data[data.length-1].e;gcetFtDraw();};
+  window.gcetFtWorst=function(){const w=window.__gcetFtWorst||0;xmin=Math.max(data[0].t,w-5000);xmax=Math.min(data[data.length-1].e,w+5000);gcetFtDraw();};
+  window.gcetFtDraw=function(){
+    const ctx=canvas.getContext('2d'),w=canvas.clientWidth,h=330,padL=48,padR=18,padT=12,padB=30;
+    ctx.clearRect(0,0,w,h);const v=visible();if(!v.length)return;
+    const sel=document.getElementById('gcetFtScale');let ymax=sel&&sel.value!=='auto'?Number(sel.value):0;
+    if(!ymax){for(const p of v)ymax=Math.max(ymax,p.ft,p.cpu,p.gpu,p.cet);ymax=Math.max(20,Math.ceil(ymax/10)*10);}
+    const px=t=>padL+(t-xmin)/(xmax-xmin)*(w-padL-padR);
+    const py=y=>padT+(1-Math.min(y,ymax)/ymax)*(h-padT-padB);
+    ctx.strokeStyle='#27313c';ctx.lineWidth=1;ctx.fillStyle='#8794a3';ctx.font='11px Segoe UI';
+    for(let i=0;i<=5;i++){const y=ymax*i/5,yy=py(y);ctx.beginPath();ctx.moveTo(padL,yy);ctx.lineTo(w-padR,yy);ctx.stroke();ctx.fillText(y.toFixed(0)+' ms',4,yy+4);}
+    function line(key,color,width){
+      ctx.strokeStyle=color;ctx.lineWidth=width;ctx.beginPath();let started=false;
+      for(const p of v){const val=p[key];if(val<=0)continue;const x=px((p.t+p.e)/2),y=py(val);if(!started){ctx.moveTo(x,y);started=true;}else ctx.lineTo(x,y);}
+      ctx.stroke();
+    }
+    line('cpu','#ffb86b',1);line('gpu','#7ee787',1);line('cet','#d9a6f5',1.4);line('ft','#67d7ff',2);
+    ctx.fillStyle='#8794a3';ctx.textAlign='left';ctx.fillText((xmin/1000).toFixed(1)+' s',padL,h-8);ctx.textAlign='right';ctx.fillText((xmax/1000).toFixed(1)+' s',w-padR,h-8);ctx.textAlign='left';
+  };
+  canvas.addEventListener('mousemove',ev=>{
+    const r=canvas.getBoundingClientRect(),padL=48,padR=18;
+    const ratio=Math.max(0,Math.min(1,(ev.clientX-r.left-padL)/(r.width-padL-padR)));
+    const t=xmin+ratio*(xmax-xmin);
+    let lo=0,hi=data.length-1;
+    while(lo<hi){const m=(lo+hi)>>1;if(data[m].t<t)lo=m+1;else hi=m;}
+    const p=data[Math.max(0,lo-1)];
+    if(!p){tip.style.display='none';return;}
+    let signal=p.scheduler?'Scheduler burst':p.callback?'Callback spike':p.high?'High CET window':'CET normal';
+    tip.textContent=(p.t/1000).toFixed(3)+' s\nFrametime max: '+p.ft.toFixed(2)+' ms\nCPU active max: '+p.cpu.toFixed(2)+' ms\nGPU active max: '+p.gpu.toFixed(2)+' ms\nCET work: '+p.cet.toFixed(2)+' ms\nTop CET owner: '+(p.owner||'—')+'\n'+signal;
+    tip.style.display='block';tip.style.left=Math.min(r.width-235,Math.max(8,ev.clientX-r.left+12))+'px';tip.style.top=Math.max(8,ev.clientY-r.top-115)+'px';
+  });
+  canvas.addEventListener('mouseleave',()=>tip.style.display='none');
+  window.addEventListener('resize',resize);requestAnimationFrame(resize);
+})();
+</script>
+""");
+
+        sb.Append("</div>");
     }
 
     private static void AppendOwnerWorkload(StringBuilder sb, ResultAnalysis a)
