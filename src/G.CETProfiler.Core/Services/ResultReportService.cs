@@ -68,7 +68,7 @@ public static partial class ResultReportService
 
         var summary = new
         {
-            schemaVersion = "1.1",
+            schemaVersion = "1.2",
             generatedUtc = DateTime.UtcNow.ToString("O"),
             scope = a.FrameTime is null
                 ? "CET-side runtime workload only"
@@ -186,7 +186,8 @@ public static partial class ResultReportService
                         quality = a.FrameTime.SyncQuality,
                         correlated = a.FrameTime.Correlated,
                         exactAlignment = a.FrameTime.ExactAlignment,
-                        capFrameXStartUtc = a.FrameTime.CapFrameXStartUtc?.ToString("O"),
+                        alignmentMethod = a.FrameTime.AlignmentMethod,
+                        capFrameXRecordUtc = a.FrameTime.CapFrameXRecordUtc?.ToString("O"),
                         cetStartUtc = a.FrameTime.CetStartUtc?.ToString("O"),
                         startDeltaMs = double.IsFinite(a.FrameTime.StartDeltaMs) ? Round(a.FrameTime.StartDeltaMs, 3) : (double?)null,
                         durationDeltaMs = double.IsFinite(a.FrameTime.DurationDeltaMs) ? Round(a.FrameTime.DurationDeltaMs, 3) : (double?)null
