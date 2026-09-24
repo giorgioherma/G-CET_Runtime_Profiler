@@ -28,7 +28,9 @@ public sealed class MainForm : Form
     private readonly CheckBox coreOnly = new();
     private readonly GroupBox readyGroup = new();
     private readonly Label readyHeading = new();
-    private readonly Label readyInstructions = new();
+    private readonly Label readyInstallInstruction = new();
+    private readonly Label readyCaptureInstructions = new();
+    private readonly Label readyNotice = new();
 
     private readonly Button install = new();
     private readonly Button collect = new();
@@ -271,7 +273,7 @@ public sealed class MainForm : Form
 
         var title = new Label
         {
-            Text = "INSTALL, CAPTURE & RECOVERY",
+            Text = "INSTALL -> CAPTURE -> RESTORE",
             Font = new Font("Segoe UI Semibold", 18F),
             AutoSize = true,
             Location = new Point(20, 18)
@@ -303,33 +305,42 @@ public sealed class MainForm : Form
         statusGroup.Controls.AddRange([status, coreOnly, refresh]);
 
         readyGroup.Text = "";
-        readyGroup.SetBounds(20, 382, 820, 148);
+        readyGroup.SetBounds(20, 382, 820, 154);
 
-        readyHeading.SetBounds(18, 18, 775, 28);
+        readyHeading.SetBounds(18, 16, 775, 26);
         readyHeading.Font = new Font("Segoe UI Semibold", 11F);
         readyHeading.AutoSize = false;
 
-        readyInstructions.SetBounds(18, 48, 775, 90);
-        readyInstructions.Font = new Font("Segoe UI", 9.5F);
-        readyInstructions.AutoSize = false;
-        readyInstructions.Text =
-            "1. Run your Frame-time Capture Tool if you're using one and enter the game.\r\n" +
-            "2. To start measurement press your shared keybind (F11). To stop capture and prep the results press the same key again (F11).\r\n" +
-            "3. Return to installer and COLLECT RESULTS.\r\n" +
-            "4. After usage RESTORE ORIGINAL STATE to finish.";
+        readyInstallInstruction.SetBounds(18, 44, 775, 20);
+        readyInstallInstruction.Font = new Font("Segoe UI", 9.5F);
+        readyInstallInstruction.AutoSize = false;
+        readyInstallInstruction.Text = "1. Install G-CET Runtime Profiler.";
 
-        readyGroup.Controls.AddRange([readyHeading, readyInstructions]);
+        readyCaptureInstructions.SetBounds(18, 64, 775, 70);
+        readyCaptureInstructions.Font = new Font("Segoe UI", 9.5F);
+        readyCaptureInstructions.AutoSize = false;
+        readyCaptureInstructions.Text =
+            "2. Run your Frame-time Capture Tool if you're using one and enter the game.\r\n" +
+            "3. To start measurement press your shared keybind (F11). To stop capture and prep the results press the same key again (F11).\r\n" +
+            "4. Return to installer and COLLECT RESULTS.\r\n" +
+            "5. After usage RESTORE ORIGINAL STATE to finish.";
+
+        readyNotice.SetBounds(18, 134, 775, 18);
+        readyNotice.Font = new Font("Segoe UI Semibold", 8.5F);
+        readyNotice.AutoSize = false;
+
+        readyGroup.Controls.AddRange([readyHeading, readyInstallInstruction, readyCaptureInstructions, readyNotice]);
 
         install.Text = "INSTALL PROFILER";
-        install.SetBounds(20, 544, 230, 42);
+        install.SetBounds(20, 550, 230, 42);
         install.Click += async (_, _) => await InstallAsync();
 
         collect.Text = "COLLECT RESULTS / CLEAR LIVE";
-        collect.SetBounds(265, 544, 300, 42);
+        collect.SetBounds(265, 550, 300, 42);
         collect.Click += async (_, _) => await CollectAsync();
 
         restore.Text = "RESTORE ORIGINAL STATE";
-        restore.SetBounds(580, 544, 260, 42);
+        restore.SetBounds(580, 550, 260, 42);
         restore.Click += async (_, _) =>
         {
             if (busy) return;
@@ -357,18 +368,18 @@ public sealed class MainForm : Form
         };
 
         openResults.Text = "Open Results Folder";
-        openResults.SetBounds(20, 598, 230, 36);
+        openResults.SetBounds(20, 604, 230, 36);
         openResults.Click += (_, _) => OpenResultsFolder();
 
         startCompanion.Text = "START FRAME-TIME TOOL";
-        startCompanion.SetBounds(265, 598, 300, 36);
+        startCompanion.SetBounds(265, 604, 300, 36);
         startCompanion.Click += (_, _) => StartFrameTimeTool();
 
         startGame.Text = "START CYBERPUNK";
-        startGame.SetBounds(580, 598, 260, 36);
+        startGame.SetBounds(580, 604, 260, 36);
         startGame.Click += (_, _) => StartCyberpunk();
 
-        restoreOutcome.SetBounds(20, 642, 820, 28);
+        restoreOutcome.SetBounds(20, 648, 820, 28);
         restoreOutcome.Font = new Font("Segoe UI Semibold", 10F);
         restoreOutcome.TextAlign = ContentAlignment.MiddleLeft;
         restoreOutcome.Visible = false;
@@ -529,7 +540,7 @@ public sealed class MainForm : Form
                 ? "Present but not managed by this install ⚠️"
                 : snapshot.Managed ? "MISSING AFTER INSTALL ❌" : "Ready to deploy ⚠️";
 
-        var zeroLine = "0-Engine: Not installed · optional ⚠️";
+        var zeroLine = "0-Engine: Not installed · optional; extra 0-Engine features unavailable ⚠️";
         var schedulerLine = "Scheduler: Not applicable · optional ⚠️";
 
         if (snapshot.ZeroEnginePresent)
@@ -642,7 +653,10 @@ public sealed class MainForm : Form
     private static bool HasCriticalProfilerError(ProfilerStatus? snapshot) =>
         snapshot is null ||
         snapshot.CetState is "MISSING" or "UNKNOWN" ||
-        (snapshot.Managed && (!snapshot.ControlsPresent || !snapshot.F11Binding));
+        (snapshot.Managed &&
+         (snapshot.CetState != "PROFILER_ACTIVE" ||
+          !snapshot.ControlsPresent ||
+          !snapshot.F11Binding));
 
     private void RenderReadyState(ProfilerStatus? snapshot)
     {
@@ -657,7 +671,48 @@ public sealed class MainForm : Form
             ? Color.ForestGreen
             : blocked ? Color.Firebrick : Color.DarkGoldenrod;
 
-        readyInstructions.Enabled = ready;
+        // Before installation, step 1 is the only active instruction.
+        // Once the managed profiler is fully ready, step 1 becomes completed/gray
+        // and the capture/collect/restore steps become active.
+        readyInstallInstruction.Enabled = snapshot?.Managed != true;
+        readyCaptureInstructions.Enabled = ready;
+
+        readyNotice.Text = GetReadyNotice(snapshot);
+        readyNotice.ForeColor = blocked
+            ? Color.Firebrick
+            : ready && (snapshot?.ZeroEnginePresent != true || snapshot.ManagedMode == "core-only")
+                ? Color.DarkGoldenrod
+                : SystemColors.GrayText;
+    }
+
+    private string GetReadyNotice(ProfilerStatus? snapshot)
+    {
+        if (snapshot is null)
+            return "Select a valid Cyberpunk 2077 folder in SETUP before installing.";
+
+        if (snapshot.CetState == "MISSING")
+            return "CET is required. Install/repair the supported Cyber Engine Tweaks version, verify the game folder, then REFRESH.";
+
+        if (snapshot.CetState == "UNKNOWN")
+            return $"Unsupported CET ASI detected. Install/repair supported CET {snapshot.TargetCetVersion}, then REFRESH.";
+
+        if (snapshot.Managed && !IsProfilerReady(snapshot))
+            return "Managed install is incomplete. RESTORE ORIGINAL STATE first, then install again; do not start a capture yet.";
+
+        if (!snapshot.Managed && snapshot.LiveResultCount > 0)
+            return "Existing live profiler output must be COLLECTed/cleared before installation can continue.";
+
+        var unsafeZero = snapshot.ZeroEnginePresent && snapshot.ZeroEngineInitKind == "unsafe";
+        if (!snapshot.Managed && unsafeZero && !coreOnly.Checked)
+            return "0-Engine layout is not safely recognized. Enable the core-only fallback above to install without modifying 0-Engine.";
+
+        if (IsProfilerReady(snapshot) && !snapshot.ZeroEnginePresent)
+            return "0-Engine was not detected: core profiling is ready, but additional features are unavailable in no 0-Engine mode.";
+
+        if (IsProfilerReady(snapshot) && snapshot.ManagedMode == "core-only")
+            return "Core-only mode is ready: 0-Engine was left untouched, so additional 0-Engine integration features are unavailable.";
+
+        return "";
     }
 
     private void RenderCompatibility(ProfilerStatus? snapshot)
@@ -721,29 +776,145 @@ public sealed class MainForm : Form
         try
         {
             SetBusy(true);
-            await Task.Run(() => profiler.Install(gameRoot.Text.Trim(), coreOnly.Visible && coreOnly.Checked));
+            var installedSnapshot = await Task.Run(
+                () => profiler.Install(gameRoot.Text.Trim(), coreOnly.Visible && coreOnly.Checked));
+
+            lastStatus = installedSnapshot;
             fallbackVisible = false;
+
+            var postInstallWarning = BuildPostInstallWarning(installedSnapshot);
+            if (!string.IsNullOrWhiteSpace(postInstallWarning))
+            {
+                MessageBox.Show(
+                    this,
+                    postInstallWarning,
+                    Text,
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
         }
         catch (Exception ex)
         {
-            if (lastStatus?.ZeroEnginePresent == true)
+            ProfilerStatus? afterFailure = null;
+            try
+            {
+                afterFailure = await Task.Run(() => profiler.GetStatus(gameRoot.Text.Trim()));
+                lastStatus = afterFailure;
+            }
+            catch
+            {
+                // Keep the original install error authoritative if status inspection
+                // itself is impossible.
+            }
+
+            if (afterFailure?.ZeroEnginePresent == true || lastStatus?.ZeroEnginePresent == true)
                 fallbackVisible = true;
 
             MessageBox.Show(
                 this,
-                FriendlyMessage(ex) +
-                (lastStatus?.ZeroEnginePresent == true
-                    ? "\r\n\r\nIf Scheduler integration is the problem, the CET core-only fallback is now available. It leaves 0-Engine untouched."
-                    : ""),
+                BuildInstallFailureMessage(ex, afterFailure),
                 Text,
                 MessageBoxButtons.OK,
-                MessageBoxIcon.Error);
+                afterFailure?.Managed == true ? MessageBoxIcon.Warning : MessageBoxIcon.Error);
         }
         finally
         {
             SetBusy(false);
             await RefreshStatusAsync(silent: true);
         }
+    }
+
+    private string BuildPostInstallWarning(ProfilerStatus snapshot)
+    {
+        if (!IsProfilerReady(snapshot))
+        {
+            var problems = new List<string>();
+            if (snapshot.CetState != "PROFILER_ACTIVE")
+                problems.Add("- CET profiler ASI is not active.");
+            if (!snapshot.ControlsPresent)
+                problems.Add("- CETProfilerControls is missing.");
+            if (!snapshot.F11Binding)
+                problems.Add("- The CET F11 capture binding is not configured.");
+
+            return
+                "INSTALL COMPLETED, BUT THE PROFILER IS NOT READY.\r\n\r\n" +
+                (problems.Count > 0
+                    ? string.Join("\r\n", problems) + "\r\n\r\n"
+                    : "") +
+                "Suggested fix:\r\n" +
+                "1. Use RESTORE ORIGINAL STATE so the preserved recovery state can safely undo this install.\r\n" +
+                "2. Press REFRESH and correct any CET / controls issue shown above.\r\n" +
+                "3. Install again.\r\n\r\n" +
+                "Do not start a capture until the status says PROFILER IS READY.";
+        }
+
+        if (!snapshot.ZeroEnginePresent)
+        {
+            return
+                "G-CET Runtime Profiler installed successfully.\r\n\r\n" +
+                "0-Engine was not detected. Core profiling is fully ready, but additional features will not be available in no 0-Engine mode.";
+        }
+
+        if (snapshot.ManagedMode == "core-only")
+        {
+            return
+                "G-CET Runtime Profiler installed successfully in core-only mode.\r\n\r\n" +
+                "0-Engine was intentionally left untouched. Core profiling is ready, but additional 0-Engine integration features will not be available.";
+        }
+
+        return "";
+    }
+
+    private string BuildInstallFailureMessage(Exception ex, ProfilerStatus? afterFailure)
+    {
+        var lines = new List<string>
+        {
+            "INSTALL FAILED.",
+            "",
+            "Reason:",
+            FriendlyMessage(ex),
+            ""
+        };
+
+        if (afterFailure?.Managed == true)
+        {
+            lines.Add("The installation did not reach a verified ready state and managed recovery state is still present.");
+            lines.Add("Do not retry INSTALL over this state.");
+            lines.Add("");
+            lines.Add("Suggested fix:");
+            lines.Add("- Use RESTORE ORIGINAL STATE first.");
+            lines.Add("- Keep the .cet_runtime_profiler recovery folder/backups until restore succeeds.");
+            lines.Add("- Press REFRESH, correct the reported issue, then install again.");
+            return string.Join("\r\n", lines);
+        }
+
+        lines.Add("No managed profiler install remains; automatic rollback completed or no game files were changed.");
+        lines.Add("");
+        lines.Add("Suggested fixes:");
+
+        if (afterFailure is null)
+        {
+            lines.Add("- Verify the selected Cyberpunk 2077 folder and press REFRESH.");
+        }
+        else
+        {
+            if (afterFailure.CetState == "MISSING")
+                lines.Add("- Cyber Engine Tweaks (CET) is required. Install/repair the supported CET version, then press REFRESH.");
+            else if (afterFailure.CetState == "UNKNOWN")
+                lines.Add($"- The installed CET ASI is unsupported. Install/repair supported CET {afterFailure.TargetCetVersion}, then press REFRESH.");
+
+            if (afterFailure.ZeroEnginePresent && afterFailure.ZeroEngineInitKind == "unsafe")
+                lines.Add("- 0-Engine cannot be integrated safely in its current layout. Enable the core-only fallback and retry.");
+
+            if (afterFailure.LiveResultCount > 0)
+                lines.Add("- Existing live profiler output must be COLLECTed/cleared before installing.");
+        }
+
+        lines.Add("- Make sure Cyberpunk 2077 is closed and no program is locking CET profiler files.");
+        lines.Add("- If Windows reports access denied, run with sufficient permissions.");
+        lines.Add("- Press REFRESH after correcting the issue, then retry INSTALL.");
+
+        return string.Join("\r\n", lines);
     }
 
     private async Task CollectAsync()
