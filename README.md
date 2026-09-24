@@ -89,7 +89,7 @@ CapFrameX is the development/test reference. The manager can inspect recognized 
 
 External frame-time files are always **copied only** into the collected CET result. The source files belonging to the external profiler are never moved, deleted, or modified.
 
-When the copied companion is a recognized CapFrameX JSON capture, the standalone report automatically adds a second evidence layer: average/median/P95/P99/max frametime, slow-frame counts, CPU Active and GPU Active readings, F11 clock synchronization, CET 50 ms-window overlap, recorded callback-spike overlap, 0-Engine Scheduler-burst overlap, a synchronized CET/frametime timeline, and a table of the worst rendered-frame events. Other/custom profiler files remain preserved under `FrameTime\` even when their schema cannot be interpreted automatically.
+When the copied companion is a recognized CapFrameX JSON capture, the standalone report automatically adds a second evidence layer: average/median/P95/P99/max frametime, slow-frame counts, CPU Active and GPU Active readings, shared-F11 relative-timeline synchronization, CET 50 ms-window overlap, recorded callback-spike overlap, 0-Engine Scheduler-burst overlap, a synchronized CET/frametime timeline, and a table of the worst rendered-frame events. CapFrameX `Info.CreationDate` is treated as record/save metadata rather than a capture-start clock. Other/custom profiler files remain preserved under `FrameTime\` even when their schema cannot be interpreted automatically.
 
 ## 0-Engine behavior
 
