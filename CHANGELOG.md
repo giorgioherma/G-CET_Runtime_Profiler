@@ -6,9 +6,11 @@ All notable public changes to G-CET Runtime Profiler are recorded here.
 
 ### Packaging
 
-- Cleaned the portable ZIP root: the .NET runtime and managed assemblies are bundled into `G-CET-Runtime-Profiler.exe` instead of spilling dozens of runtime files beside it.
-- Public root is now intentionally limited to the EXE, `MANIFEST.json`, `VERSION.txt`, `payload/`, `RESULTS/`, and `docs/`; package-local settings are still created beside the EXE on first use.
-- CI now fails if DLL/runtime clutter or any unexpected file/directory leaks back into the public root.
+- Replaced the giant single-file bundle with a small native root launcher plus a normal self-contained .NET application under `app/`.
+- Public root is intentionally limited to the launcher, `MANIFEST.json`, `VERSION.txt`, `app/`, `payload/`, `RESULTS/`, and `docs/`; package-local settings are still created beside the launcher on first use.
+- Managed assemblies, native .NET runtime files and framework plumbing are isolated under `app/` instead of spilling into the product root.
+- Non-English .NET satellite resource folders and public PDBs are excluded from the portable package.
+- CI verifies both the launcher-forwarding/headless contract and the clean public-root layout.
 
 ### Result presentation
 
