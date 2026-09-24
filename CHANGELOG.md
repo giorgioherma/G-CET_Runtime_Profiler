@@ -32,7 +32,15 @@ All notable public changes to G-CET Runtime Profiler are recorded here.
 - Added `--report --capture <folder>` so an already collected result can be rebuilt after optional companion data is added.
 - CapFrameX interpretation remains correlation evidence only: CET and frame-time domains are not added/subtracted and overlap is not labeled as automatic causation.
 
-## [1.0.0] - 2026-09-23
+## [1.0.0]
+
+### Maintenance cleanup
+
+- Removed dead hidden UI remnants and obsolete internal companion-result fields.
+- Removed stale frametime start-delta plumbing now that CapFrameX synchronization uses shared-F11 relative clocks.
+- Consolidated duplicated relative frame-time fields into a single relative timestamp and removed unused locals/types.
+- Kept the legacy PowerShell manager only under `reference/` as non-compiled historical material; it is not part of the public package.
+ - 2026-09-23
 
 First stable public release.
 
