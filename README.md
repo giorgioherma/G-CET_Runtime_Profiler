@@ -14,9 +14,7 @@ The public release is a **portable ZIP**. No installer is required.
 
 **Canonical v1.0.0 download:** [G-CET-Runtime-Profiler-v1.0.0.zip](https://github.com/giorgioherma/G-CET_Runtime_Profiler/releases/download/v1.0.0/G-CET-Runtime-Profiler-v1.0.0.zip)
 
-**Frozen build:** source commit `ec0bfd0954ce10d39eebe86f38ef3f14e21f65f4` · SHA-256 `8f35cb5f2044ad9dc2ab8352d761b7fe689ac53c4894c8067e10fdf71a7a27d0`.
-
-GitHub **Releases** is the canonical download location for this frozen build.
+GitHub **Releases** is the canonical download location for v1.0.0.
 
 ```text
 G-CET-Runtime-Profiler-v1.0.0.zip
@@ -198,4 +196,4 @@ The native profiler payload remains version **2.11.0**, targeting the manifest-l
 
 The public manager is a C# / .NET 8 WinForms application shipped behind a small native launcher, with the self-contained managed app/runtime isolated under `app/`. Both Windows executables carry the final multi-size G-CET application icon. The retired PowerShell manager has been removed from the live tree; its history remains available through Git.
 
-CI validates the hash-locked payload, builds the self-contained Windows package, and exercises installation/collection/restore plus 0-Engine integration fixtures. The public **v1.0.0** release is frozen to the source commit and SHA-256 recorded in `FROZEN_RELEASE.json`; ordinary later `main` updates do not replace that canonical binary.
+CI validates the hash-locked payload, builds the self-contained Windows package, and exercises installation/collection/restore plus 0-Engine integration fixtures. Versioned GitHub Releases provide the public portable ZIP and matching SHA-256 file.
