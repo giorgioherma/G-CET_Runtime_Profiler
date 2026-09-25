@@ -35,4 +35,4 @@ If TOTAL needs a new CET lifecycle capability, that capability should first be e
 
 ## Recovery behavior
 
-TOTAL must expose the standalone manager's strict `--restore` and partial `--emergency-restore` semantics rather than recreating CET cleanup logic. A failed strict restore is not a dead end: Emergency Restore may recover independently safe CET-owned components while leaving ambiguous user changes untouched and reporting them for manual review.
+TOTAL must expose the standalone manager's authoritative `--restore` and `--emergency-restore` semantics rather than recreating CET cleanup logic. Normal restore uses verified original backups to restore G-CET-managed files even when profiler-owned live files changed during use; Emergency Restore remains the fallback for genuinely incomplete or damaged recovery material.
