@@ -924,7 +924,7 @@ public sealed class ProfilerService : IProfilerService
         else
             FileSystemService.DeleteDirectoryIfExists(paths.Controls);
 
-        bindings.Restore(paths, state.Binding);
+        // Bindings are user-controlled and are never part of rollback/restore.
         Directory.Delete(paths.StateRoot, true);
     }
 
