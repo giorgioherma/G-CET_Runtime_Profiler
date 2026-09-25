@@ -68,26 +68,38 @@ public static partial class ResultReportService
 
         var summary = new
         {
-            schemaVersion = "1.2",
+            schemaVersion = "1.3",
             generatedUtc = DateTime.UtcNow.ToString("O"),
+            interop = new
+            {
+                contractVersion = "1.0",
+                producer = "G-CET-Runtime-Profiler",
+                domain = "cet"
+            },
             scope = a.FrameTime is null
                 ? "CET-side runtime workload only"
                 : "CET-side runtime workload with optional CapFrameX frametime correlation",
             capture = new
             {
+                title = ReadCaptureTitle(captureRoot),
+                durationSeconds = Round(a.CaptureSeconds, 3),
                 elapsedSeconds = Round(a.CaptureSeconds, 3),
                 activeOwners = a.Owners.Count,
                 measuredCalls = a.TotalCalls,
+                callsPerSecond = Round(a.TotalCallsPerSecond, 3),
                 measuredCallsPerSecond = Round(a.TotalCallsPerSecond, 3),
+                exclusiveMsPerSecond = Round(a.TotalMsPerSecond, 6),
                 measuredExclusiveMsPerSecond = Round(a.TotalMsPerSecond, 6),
                 measuredOneCorePct = Round(a.TotalOneCorePct, 6)
             },
             topOwners = a.TopOwners.Select(x => new
             {
                 owner = x.Name,
+                infrastructure = IsInfrastructureOwner(x.Name),
                 calls = x.Calls,
                 callsPerSecond = Round(x.CallsPerSecond, 3),
                 exclusiveMsPerSecond = Round(x.ExclusiveMsPerSecond, 6),
+                measuredOneCorePct = Round(x.MeasuredOneCorePct, 6),
                 measuredSharePct = Round(EffectiveShare(x, a.TotalMsPerSecond), 3),
                 maxExclusiveMs = Round(x.MaxExclusiveMs, 6)
             }),
@@ -247,6 +259,7 @@ public static partial class ResultReportService
                 x.Evidence,
                 x.Explanation
             }),
+            dataIndex = BuildDataIndex(captureRoot),
             data = new
             {
                 runtime = RuntimeFiles
@@ -277,5 +290,64 @@ public static partial class ResultReportService
             a.Owners.Count > 0 || a.TopCallbacks.Count > 0,
             a.SchedulerJobs.Count > 0 || a.WorstSchedulerBurst is not null,
             a.FrameTime is not null);
+    }
+
+    private static string ReadCaptureTitle(string captureRoot)
+    {
+        var path = Path.Combine(captureRoot, "CaptureTitle.txt");
+        if (!File.Exists(path))
+            return "WORLD";
+
+        try
+        {
+            return File.ReadLines(path)
+                .Select(x => x.Trim())
+                .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x) && !x.StartsWith('#'))
+                ?? "WORLD";
+        }
+        catch
+        {
+            return "WORLD";
+        }
+    }
+
+    private static bool IsInfrastructureOwner(string owner) =>
+        string.Equals(owner, "0-Engine", StringComparison.OrdinalIgnoreCase);
+
+    private static object BuildDataIndex(string captureRoot)
+    {
+        var files = Directory.EnumerateFiles(captureRoot, "*", SearchOption.AllDirectories)
+            .Select(path => Path.GetRelativePath(captureRoot, path).Replace('\\', '/'))
+            .Where(x => !x.Equals(ReportFileName, StringComparison.OrdinalIgnoreCase) &&
+                        !x.Equals(SummaryFileName, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .Take(200)
+            .ToList();
+
+        static bool Starts(string value, string prefix) =>
+            value.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+
+        var runtime = files.Where(x => Starts(x, "Data/Runtime/")).ToArray();
+        var scheduler = files.Where(x => Starts(x, "Data/Scheduler/")).ToArray();
+        var developer = files.Where(x => Starts(x, "Data/Developer/")).ToArray();
+        var metadata = files.Where(x =>
+                Starts(x, "Data/Metadata/") ||
+                x.Equals("CaptureTitle.txt", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        var frameTime = files.Where(x => Starts(x, "FrameTime/")).ToArray();
+
+        var indexed = new HashSet<string>(
+            runtime.Concat(scheduler).Concat(developer).Concat(metadata).Concat(frameTime),
+            StringComparer.OrdinalIgnoreCase);
+
+        return new
+        {
+            runtime,
+            scheduler,
+            developer,
+            metadata,
+            frameTime,
+            other = files.Where(x => !indexed.Contains(x)).ToArray()
+        };
     }
 }
