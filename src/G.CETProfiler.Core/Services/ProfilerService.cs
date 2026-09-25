@@ -180,7 +180,9 @@ public sealed class ProfilerService : IProfilerService
             {
                 Mode = controlsPresentBefore ? "replaced" : "added"
             },
-            Binding = bindings.Snapshot(paths)
+            // CET owns the user's keybind. G-CET no longer snapshots or restores
+            // binding state; it only seeds F11 later if this input has no binding.
+            Binding = null
         };
 
         try
@@ -209,9 +211,7 @@ public sealed class ProfilerService : IProfilerService
             state.Controls.InstalledFingerprint = FileSystemService.DirectoryFingerprint(paths.Controls);
             SaveState(paths, state);
 
-            bindings.SetDefaultF11(paths);
-            if (!bindings.IsF11Configured(paths))
-                throw new InvalidOperationException("CETProfilerControls F11 binding verification failed.");
+            bindings.EnsureDefaultF11IfMissing(paths);
 
             SaveState(paths, state);
             return GetStatus(paths.Root);
@@ -292,8 +292,9 @@ public sealed class ProfilerService : IProfilerService
         RestoreAsi(paths, state);
         RestoreZeroEngine(paths, state);
         RestoreControls(paths, state);
-        bindings.Restore(paths, state.Binding);
 
+        // Leave bindings.json exactly as the user currently configured it.
+        // A custom capture key selected while profiling remains their choice.
         Directory.Delete(paths.StateRoot, true);
         return archived;
     }
@@ -378,11 +379,10 @@ public sealed class ProfilerService : IProfilerService
 
         if (state.Binding is not null || File.Exists(paths.LegacyTotalBindingState))
         {
-            TryStep(
+            NoChange(
                 "CET bindings",
                 paths.Bindings,
-                File.Exists(paths.BackupBindings) ? paths.BackupBindings : null,
-                () => bindings.Restore(paths, state.Binding));
+                "User-controlled binding state is intentionally preserved.");
         }
         else
         {
@@ -680,7 +680,6 @@ public sealed class ProfilerService : IProfilerService
             "CETProfilerScheduler.lua changed after profiler installation. Restore aborted to avoid overwriting user changes.");
 
         ValidateControlsRestore(paths, state.Controls);
-        bindings.ValidateRestore(paths, state.Binding);
     }
 
     private static void ValidateRestoreFile(
@@ -691,66 +690,38 @@ public sealed class ProfilerService : IProfilerService
         string badBackupMessage,
         string changedLiveMessage)
     {
+        // Restore is authoritative for files G-CET manages. The live file may
+        // legitimately change while the profiler is active; that must never trap
+        // the user in a managed state. Only the integrity of the saved original
+        // backup is a restore gate.
         if (transaction.Mode is "replaced" or "patched-adaptive")
         {
             RequireFile(backupPath, missingBackupMessage);
             RequireHash(backupPath, transaction.OriginalHash, badBackupMessage);
-
-            var current = FileSystemService.Sha256(livePath);
-            if (!HashEquals(current, transaction.InstalledHash) && !HashEquals(current, transaction.OriginalHash))
-                throw new InvalidOperationException(changedLiveMessage);
-        }
-        else if (transaction.Mode == "added" && File.Exists(livePath))
-        {
-            if (!HashEquals(FileSystemService.Sha256(livePath), transaction.InstalledHash))
-                throw new InvalidOperationException(
-                    $"Profiler-added {Path.GetFileName(livePath)} changed after installation. Restore aborted to avoid deleting user changes.");
         }
     }
 
     private static void ValidateControlsRestore(ProfilerPaths paths, DirectoryTransactionState controls)
     {
-        if (controls.Mode == "replaced")
-        {
-            if (!Directory.Exists(paths.BackupControlsRoot))
-                throw new InvalidOperationException("Original CETProfilerControls backup is missing. Restore aborted before changing anything.");
+        if (controls.Mode != "replaced")
+            return;
 
-            if (!string.IsNullOrWhiteSpace(controls.OriginalFingerprint) &&
-                !string.Equals(
-                    FileSystemService.DirectoryFingerprint(paths.BackupControlsRoot),
-                    controls.OriginalFingerprint,
-                    StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("Original CETProfilerControls backup fingerprint is wrong. Restore aborted.");
+        if (!Directory.Exists(paths.BackupControlsRoot))
+            throw new InvalidOperationException("Original CETProfilerControls backup is missing. Restore cannot reconstruct the original folder.");
 
-            if (Directory.Exists(paths.Controls) &&
-                !string.IsNullOrWhiteSpace(controls.InstalledFingerprint))
-            {
-                var live = FileSystemService.DirectoryFingerprint(paths.Controls);
-                var knownInstalled = string.Equals(live, controls.InstalledFingerprint, StringComparison.OrdinalIgnoreCase);
-                var alreadyOriginal = string.Equals(live, controls.OriginalFingerprint, StringComparison.OrdinalIgnoreCase);
-                if (!knownInstalled && !alreadyOriginal)
-                    throw new InvalidOperationException("CETProfilerControls changed after profiler installation. Restore aborted to avoid overwriting user changes.");
-            }
-        }
-        else if ((controls.Mode == "added" || controls.Mode == "profiler-owned") &&
-                 Directory.Exists(paths.Controls) &&
-                 !string.IsNullOrWhiteSpace(controls.InstalledFingerprint) &&
-                 !string.Equals(
-                     FileSystemService.DirectoryFingerprint(paths.Controls),
-                     controls.InstalledFingerprint,
-                     StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException("Profiler-owned CETProfilerControls changed after installation. Restore aborted to avoid deleting user changes.");
-        }
+        if (!string.IsNullOrWhiteSpace(controls.OriginalFingerprint) &&
+            !string.Equals(
+                FileSystemService.DirectoryFingerprint(paths.BackupControlsRoot),
+                controls.OriginalFingerprint,
+                StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Original CETProfilerControls backup fingerprint is wrong. Restore cannot trust the saved original folder.");
     }
 
     private static void RestoreAsi(ProfilerPaths paths, ProfilerState state)
     {
         if (state.Asi.Mode != "replaced") return;
 
-        if (HashEquals(FileSystemService.Sha256(paths.LiveAsi), state.Asi.InstalledHash))
-            FileSystemService.CopyFileVerified(paths.BackupAsi, paths.LiveAsi, state.Asi.OriginalHash);
-
+        FileSystemService.CopyFileVerified(paths.BackupAsi, paths.LiveAsi, state.Asi.OriginalHash);
         RequireHash(paths.LiveAsi, state.Asi.OriginalHash, "CET ASI restoration failed verification.");
     }
 
@@ -776,9 +747,7 @@ public sealed class ProfilerService : IProfilerService
     {
         if (transaction.Mode == "replaced" || transaction.Mode == "patched-adaptive")
         {
-            if (HashEquals(FileSystemService.Sha256(livePath), transaction.InstalledHash))
-                FileSystemService.CopyFileVerified(backupPath, livePath, transaction.OriginalHash);
-
+            FileSystemService.CopyFileVerified(backupPath, livePath, transaction.OriginalHash);
             RequireHash(livePath, transaction.OriginalHash, verifyMessage);
         }
         else if (transaction.Mode == "added")
@@ -811,10 +780,6 @@ public sealed class ProfilerService : IProfilerService
 
         RequireFile(paths.BackupAsi, "Original CET ASI backup is missing.");
         RequireHash(paths.BackupAsi, state.Asi.OriginalHash, "Original CET ASI backup hash is wrong.");
-
-        var current = FileSystemService.Sha256(paths.LiveAsi);
-        if (!HashEquals(current, state.Asi.InstalledHash) && !HashEquals(current, state.Asi.OriginalHash))
-            throw new InvalidOperationException("Live CET ASI changed after profiler installation; it was left untouched.");
     }
 
     private static void ValidateBypassedZeroRestore(ProfilerPaths paths, ProfilerState state)
@@ -827,17 +792,12 @@ public sealed class ProfilerService : IProfilerService
         var expected = state.ZeroEngine.Bypass.OriginalFingerprint;
         if (!string.Equals(FileSystemService.DirectoryFingerprint(paths.BackupZeroRoot), expected, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Full 0-Engine backup fingerprint is wrong.");
-
-        if (Directory.Exists(paths.ZeroRoot) &&
-            !string.Equals(FileSystemService.DirectoryFingerprint(paths.ZeroRoot), expected, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("0-Engine reappeared or changed while compatibility mode was active; it was left untouched.");
     }
 
     private static void RestoreBypassedZeroEngine(ProfilerPaths paths, ProfilerState state)
     {
         var expected = state.ZeroEngine.Bypass.OriginalFingerprint;
-        if (!Directory.Exists(paths.ZeroRoot))
-            FileSystemService.CopyDirectoryExact(paths.BackupZeroRoot, paths.ZeroRoot);
+        FileSystemService.CopyDirectoryExact(paths.BackupZeroRoot, paths.ZeroRoot);
 
         if (!string.Equals(FileSystemService.DirectoryFingerprint(paths.ZeroRoot), expected, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("0-Engine full-folder restoration failed verification.");
