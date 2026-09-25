@@ -324,7 +324,7 @@ public sealed class MainForm : Form
 
         var statusGroup = new GroupBox { Text = "Profiler status" };
         statusGroup.SetBounds(20, 66, 820, 286);
-        status.SetBounds(18, 27, 775, 190);
+        status.SetBounds(18, 27, 775, 214);
         status.Font = new Font("Segoe UI", 9.5F);
         status.ReadOnly = true;
         status.BorderStyle = BorderStyle.None;
@@ -335,7 +335,7 @@ public sealed class MainForm : Form
         status.ForeColor = ThemeText;
 
         coreOnly.Text = "Fallback: install CET core profiler only and leave 0-Engine completely untouched";
-        coreOnly.SetBounds(18, 220, 610, 24);
+        coreOnly.SetBounds(18, 246, 610, 24);
         coreOnly.CheckedChanged += (_, _) =>
         {
             SetActionState(lastStatus);
