@@ -148,24 +148,24 @@ public static partial class ResultReportService
         var absDuration = double.IsFinite(durationDeltaMs) ? Math.Abs(durationDeltaMs) : double.PositiveInfinity;
         var companion = ReadCompanionSyncInfo(captureRoot);
 
-        // Both profilers normalize their own capture timelines from zero. When the
-        // manager verified that both capture keys are F11, close duration agreement
-        // is evidence that the copied CapFrameX file belongs to this CET capture.
-        // Align the relative clocks directly instead of comparing unrelated wall-clock
-        // metadata. This is also resilient to CapFrameX save/processing latency.
+        // Both profilers normalize their own capture timelines from zero. G-CET no
+        // longer forces or validates a specific CET keybind: the user's CET binding
+        // is authoritative. When the companion exposes a capture key and the capture
+        // durations agree closely, treat the two relative timelines as the same
+        // user-synchronized capture. This works with F11 or any custom shared key.
         var durationToleranceMs = cetCaptureSeconds > 0
             ? Math.Clamp(cetCaptureSeconds * 1000.0 * 0.03, 750.0, 2500.0)
             : 750.0;
-        var sharedF11 = companion.StartKeyKnown && companion.StartKeyIsF11;
-        var correlated = sharedF11 && absDuration <= durationToleranceMs;
+        var sharedKeyAvailable = companion.StartKeyKnown;
+        var correlated = sharedKeyAvailable && absDuration <= durationToleranceMs;
         var exactAlignment = correlated && absDuration <= 1000.0;
         var syncQuality = correlated
             ? exactAlignment ? "GOOD" : "COARSE"
-            : !sharedF11
+            : !sharedKeyAvailable
                 ? "NO SHARED KEY"
                 : "DURATION MISMATCH";
         var alignmentMethod = correlated
-            ? "shared-F11 relative clocks"
+            ? "shared capture-key relative clocks"
             : "none";
 
         var alignedFrames = parsed.Frames;
@@ -557,13 +557,13 @@ public static partial class ResultReportService
         return epoch > 0 ? epoch : null;
     }
 
-    private sealed record CompanionSyncInfo(bool StartKeyKnown, bool StartKeyIsF11);
+    private sealed record CompanionSyncInfo(bool StartKeyKnown);
 
     private static CompanionSyncInfo ReadCompanionSyncInfo(string captureRoot)
     {
         var path = Path.Combine(captureRoot, "FrameTime", "CompanionManifest.json");
         if (!File.Exists(path))
-            return new(false, false);
+            return new(false);
 
         try
         {
@@ -572,14 +572,11 @@ public static partial class ResultReportService
             var known = root.TryGetProperty("startKeyKnown", out var knownValue) &&
                         knownValue.ValueKind is JsonValueKind.True or JsonValueKind.False &&
                         knownValue.GetBoolean();
-            var f11 = root.TryGetProperty("startKeyIsF11", out var f11Value) &&
-                      f11Value.ValueKind is JsonValueKind.True or JsonValueKind.False &&
-                      f11Value.GetBoolean();
-            return new(known, f11);
+            return new(known);
         }
         catch
         {
-            return new(false, false);
+            return new(false);
         }
     }
 
@@ -714,7 +711,7 @@ public static partial class ResultReportService
                 $"{frameTime.FrameCount:N0} frames · {F(frameTime.MeanFrameMs)} ms average · {F(frameTime.P99FrameMs)} ms P99",
                 frameTime.SyncQuality == "NO SHARED KEY"
                     ? "Frametime statistics are available, but a shared capture key was not verified, so CET/stall attribution is disabled."
-                    : "Frametime statistics are available, but the CET and CapFrameX capture durations do not match closely enough to treat them as the same shared-F11 capture."));
+                    : "Frametime statistics are available, but the CET and CapFrameX capture durations do not match closely enough to treat them as the same shared-key capture."));
             return;
         }
 
