@@ -43,7 +43,7 @@ local function toggleCapture()
 end
 
 registerForEvent("onInit", function()
-  say("loaded. One capture input: F11 START / F11 STOP + AUTO EXPORT.")
+  say("loaded. One capture input: START / STOP + AUTO EXPORT. Configure the key in CET bindings (F11 is the initial default).")
 end)
 
 registerInput("CETProfiler_Toggle", "Profiler: START / STOP + AUTO EXPORT", function(isKeyDown)
