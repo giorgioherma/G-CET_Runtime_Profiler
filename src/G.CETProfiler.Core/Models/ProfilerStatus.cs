@@ -55,9 +55,6 @@ public sealed class ProfilerStatus
     [JsonPropertyName("controlsPresent")]
     public bool ControlsPresent { get; init; }
 
-    [JsonPropertyName("f11Binding")]
-    public bool F11Binding { get; init; }
-
     [JsonPropertyName("captureTitlePresent")]
     public bool CaptureTitlePresent { get; init; }
 
@@ -75,5 +72,5 @@ public sealed class ProfilerStatus
 
     public override string ToString() =>
         $"CET {CetState} · managed {(Managed ? "YES" : "NO")} · 0-Engine {ZeroEngineInit} · " +
-        $"F11 {(F11Binding ? "READY" : "NOT CONFIGURED")} · live CSVs {LiveResultCount}";
+        $"live CSVs {LiveResultCount}";
 }
