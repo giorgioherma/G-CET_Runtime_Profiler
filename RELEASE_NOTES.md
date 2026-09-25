@@ -69,7 +69,9 @@ Extract to a writable folder and run `G-CET-Runtime-Profiler.exe`.
 - Original user state is preserved before managed mutation.
 - Core-only fallback leaves unsupported 0-Engine layouts untouched.
 - Known live result files are copied and verified before clearing.
-- Emergency restore preserves unresolved recovery state instead of guessing.
-- CI exercises launcher handoff, package layout, install/collect/restore, emergency restore, 0-Engine resolver/handoff, report generation, and release staging.
+- RESTORE ORIGINAL STATE authoritatively restores verified original CET/0-Engine files even if profiler-owned live files changed while profiling.
+- CET capture keybinds are user-controlled: F11 is only the initial default, custom bindings are preserved through install and restore.
+- Post-operation warning/error dialogs wait for the main UI to repaint and settle before opening.
+- CI exercises launcher handoff, package layout, install/collect/restore, authoritative-restore regression coverage, 0-Engine resolver/handoff, report generation, and release staging.
 
 The GitHub release publishes the exact portable ZIP produced from the final v1.0.0 source and a matching SHA-256 text file.
