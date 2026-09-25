@@ -110,6 +110,10 @@ public sealed class ProfilerService : IProfilerService
             ManagedMode = state?.ZeroEngine.Mode ?? "",
             ControlsPresent = Directory.Exists(paths.Controls),
             F11Binding = bindings.IsF11Configured(paths),
+            CaptureTitlePresent = File.Exists(paths.CaptureTitle),
+            CaptureTitle = File.Exists(paths.CaptureTitle)
+                ? ReadCaptureTitle(paths.CaptureTitle)
+                : "WORLD",
             LiveResultCount = GetLiveResults(paths).Count,
             ResultsRoot = resultsRoot,
             State = state
@@ -198,7 +202,8 @@ public sealed class ProfilerService : IProfilerService
             InstallZeroEngine(paths, state, coreProfilerOnly, schedulerSource, adaptiveSchedulerSource);
 
             FileSystemService.CopyDirectoryExact(controlsSource, paths.Controls);
-            if (!File.Exists(Path.Combine(paths.Controls, "init.lua")))
+            if (!File.Exists(Path.Combine(paths.Controls, "init.lua")) ||
+                !File.Exists(paths.CaptureTitle))
                 throw new InvalidOperationException("CETProfilerControls deployment verification failed.");
 
             state.Controls.InstalledFingerprint = FileSystemService.DirectoryFingerprint(paths.Controls);
@@ -224,6 +229,36 @@ public sealed class ProfilerService : IProfilerService
                     installError, rollbackError);
             }
 
+            throw;
+        }
+    }
+
+    public string SaveCaptureTitle(string gameRoot, string captureTitle)
+    {
+        var paths = GetValidatedPaths(gameRoot);
+        var state = ReadState(paths, allowMissing: false)
+            ?? throw new InvalidOperationException("No managed profiler installation state was found.");
+
+        if (!Directory.Exists(paths.Controls) || !File.Exists(paths.CaptureTitle))
+            throw new InvalidOperationException("CaptureTitle.txt is missing from the installed CETProfilerControls folder.");
+
+        var clean = SafeCaptureTitle(captureTitle);
+        var previousText = File.ReadAllText(paths.CaptureTitle);
+        var temp = paths.CaptureTitle + ".tmp";
+
+        try
+        {
+            File.WriteAllText(temp, clean + Environment.NewLine);
+            File.Move(temp, paths.CaptureTitle, true);
+
+            state.Controls.InstalledFingerprint = FileSystemService.DirectoryFingerprint(paths.Controls);
+            SaveState(paths, state);
+            return clean;
+        }
+        catch
+        {
+            FileSystemService.DeleteFileIfExists(temp);
+            File.WriteAllText(paths.CaptureTitle, previousText);
             throw;
         }
     }
@@ -967,7 +1002,13 @@ public sealed class ProfilerService : IProfilerService
         Directory.CreateDirectory(resultsRoot);
 
         var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
-        var destination = Path.Combine(resultsRoot, stamp);
+        var captureTitle = File.Exists(paths.CaptureTitle)
+            ? ReadCaptureTitle(paths.CaptureTitle)
+            : "WORLD";
+        if (captureTitle == "UNREADABLE")
+            captureTitle = "WORLD";
+
+        var destination = Path.Combine(resultsRoot, $"{stamp}_{captureTitle}");
         var suffix = 1;
         while (Directory.Exists(destination))
             destination = Path.Combine(resultsRoot, $"{stamp}-{suffix++}");
@@ -1121,6 +1162,38 @@ public sealed class ProfilerService : IProfilerService
         if (string.IsNullOrWhiteSpace(expectedHash) ||
             !HashEquals(FileSystemService.Sha256(path), expectedHash))
             throw new InvalidOperationException(message);
+    }
+
+    private static string SafeCaptureTitle(string value)
+    {
+        var chars = value.Trim().ToUpperInvariant()
+            .Take(48)
+            .Select(ch => char.IsLetterOrDigit(ch) || ch is '.' or '_' or '-' ? ch : '_')
+            .ToArray();
+
+        var clean = new string(chars).Trim('.', '_');
+        if (string.IsNullOrWhiteSpace(clean))
+            throw new ArgumentException("Capture title is empty.");
+
+        return clean;
+    }
+
+    private static string ReadCaptureTitle(string path)
+    {
+        try
+        {
+            var line = File.ReadLines(path)
+                .Select(x => x.Trim())
+                .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x) && !x.StartsWith('#'));
+
+            return string.IsNullOrWhiteSpace(line)
+                ? "WORLD"
+                : SafeCaptureTitle(line);
+        }
+        catch
+        {
+            return "UNREADABLE";
+        }
     }
 
     private static bool HashEquals(string? left, string? right) =>

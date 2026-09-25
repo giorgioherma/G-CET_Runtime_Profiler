@@ -1,0 +1,4 @@
+# G-CET Runtime Profiler capture title.
+# The first non-comment line is used when collected results are archived.
+# Examples: WORLD, DRIVING, COMBAT, WANTED, UI, IDLE
+WORLD

@@ -58,6 +58,12 @@ public sealed class ProfilerStatus
     [JsonPropertyName("f11Binding")]
     public bool F11Binding { get; init; }
 
+    [JsonPropertyName("captureTitlePresent")]
+    public bool CaptureTitlePresent { get; init; }
+
+    [JsonPropertyName("captureTitle")]
+    public string CaptureTitle { get; init; } = "";
+
     [JsonPropertyName("liveResultCount")]
     public int LiveResultCount { get; init; }
 

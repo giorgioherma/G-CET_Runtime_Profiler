@@ -43,6 +43,8 @@ public sealed class MainForm : Form
     private readonly LinkLabel capFrameXLink = new();
 
     private readonly RichTextBox status = new();
+    private readonly TextBox captureTitle = new();
+    private readonly Button saveCaptureTitle = new();
     private readonly CheckBox coreOnly = new();
     private readonly GroupBox readyGroup = new();
     private readonly Label readyHeading = new();
@@ -72,8 +74,8 @@ public sealed class MainForm : Form
         if (executableIcon is not null)
             Icon = executableIcon;
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(860, 690);
-        MinimumSize = new Size(880, 730);
+        ClientSize = new Size(860, 760);
+        MinimumSize = new Size(880, 800);
         Font = new Font("Segoe UI", 9F);
         BackColor = ThemeBg;
         ForeColor = ThemeText;
@@ -87,6 +89,9 @@ public sealed class MainForm : Form
         gameRoot.Text = !string.IsNullOrWhiteSpace(appSettings.GameRoot)
             ? appSettings.GameRoot
             : FindInitialGameRoot();
+        captureTitle.Text = string.IsNullOrWhiteSpace(appSettings.CaptureTitle)
+            ? "WORLD"
+            : appSettings.CaptureTitle;
         companionExe.Text = appSettings.ExternalProfilerExe;
         companionResults.Text = appSettings.ExternalResultsDirectory;
         pairFrameTime.Checked = appSettings.PairFrameTimeProfiler;
@@ -318,8 +323,8 @@ public sealed class MainForm : Form
         };
 
         var statusGroup = new GroupBox { Text = "Profiler status" };
-        statusGroup.SetBounds(20, 66, 820, 306);
-        status.SetBounds(18, 27, 775, 222);
+        statusGroup.SetBounds(20, 66, 820, 286);
+        status.SetBounds(18, 27, 775, 190);
         status.Font = new Font("Segoe UI", 9.5F);
         status.ReadOnly = true;
         status.BorderStyle = BorderStyle.None;
@@ -330,7 +335,7 @@ public sealed class MainForm : Form
         status.ForeColor = ThemeText;
 
         coreOnly.Text = "Fallback: install CET core profiler only and leave 0-Engine completely untouched";
-        coreOnly.SetBounds(18, 252, 610, 24);
+        coreOnly.SetBounds(18, 220, 610, 24);
         coreOnly.CheckedChanged += (_, _) =>
         {
             SetActionState(lastStatus);
@@ -338,12 +343,35 @@ public sealed class MainForm : Form
         };
 
         refresh.Text = "REFRESH";
-        refresh.SetBounds(694, 264, 100, 28);
+        refresh.SetBounds(694, 246, 100, 28);
         refresh.Click += async (_, _) => await RefreshStatusAsync();
         statusGroup.Controls.AddRange([status, coreOnly, refresh]);
 
+        var captureGroup = new GroupBox { Text = "Capture" };
+        captureGroup.SetBounds(20, 362, 820, 72);
+
+        var captureLabel = new Label
+        {
+            Text = "Capture title",
+            AutoSize = true,
+            ForeColor = ThemeText,
+            Location = new Point(18, 28)
+        };
+        captureTitle.SetBounds(110, 24, 420, 26);
+        captureTitle.TextChanged += (_, _) =>
+        {
+            if (!loadingSettings)
+                SaveSettingsFromUi();
+        };
+
+        saveCaptureTitle.Text = "SAVE TITLE";
+        saveCaptureTitle.SetBounds(544, 22, 120, 30);
+        saveCaptureTitle.Click += async (_, _) => await SaveCaptureTitleAsync();
+
+        captureGroup.Controls.AddRange([captureLabel, captureTitle, saveCaptureTitle]);
+
         readyGroup.Text = "";
-        readyGroup.SetBounds(20, 382, 820, 154);
+        readyGroup.SetBounds(20, 444, 820, 154);
 
         readyHeading.SetBounds(18, 16, 775, 26);
         readyHeading.Font = new Font("Segoe UI Semibold", 11F);
@@ -352,7 +380,7 @@ public sealed class MainForm : Form
         readyInstallInstruction.SetBounds(18, 44, 775, 20);
         readyInstallInstruction.Font = new Font("Segoe UI", 9.5F);
         readyInstallInstruction.AutoSize = false;
-        readyInstallInstruction.Text = "1. Install G-CET Runtime Profiler.";
+        readyInstallInstruction.Text = "1. Install G-CET Runtime Profiler and save a capture title.";
 
         readyCaptureInstructions.SetBounds(18, 64, 775, 70);
         readyCaptureInstructions.Font = new Font("Segoe UI", 9.5F);
@@ -370,15 +398,15 @@ public sealed class MainForm : Form
         readyGroup.Controls.AddRange([readyHeading, readyInstallInstruction, readyCaptureInstructions, readyNotice]);
 
         install.Text = "INSTALL PROFILER";
-        install.SetBounds(20, 550, 230, 42);
+        install.SetBounds(20, 608, 230, 42);
         install.Click += async (_, _) => await InstallAsync();
 
         collect.Text = "COLLECT RESULTS / CLEAR LIVE";
-        collect.SetBounds(265, 550, 300, 42);
+        collect.SetBounds(265, 608, 300, 42);
         collect.Click += async (_, _) => await CollectAsync();
 
         restore.Text = "RESTORE ORIGINAL STATE";
-        restore.SetBounds(580, 550, 260, 42);
+        restore.SetBounds(580, 608, 260, 42);
         restore.Click += async (_, _) =>
         {
             if (busy) return;
@@ -406,24 +434,24 @@ public sealed class MainForm : Form
         };
 
         openResults.Text = "Open Results Folder";
-        openResults.SetBounds(20, 604, 230, 36);
+        openResults.SetBounds(20, 662, 230, 36);
         openResults.Click += (_, _) => OpenResultsFolder();
 
         startCompanion.Text = "START FRAME-TIME TOOL";
-        startCompanion.SetBounds(265, 604, 300, 36);
+        startCompanion.SetBounds(265, 662, 300, 36);
         startCompanion.Click += (_, _) => StartFrameTimeTool();
 
         startGame.Text = "START CYBERPUNK";
-        startGame.SetBounds(580, 604, 260, 36);
-        startGame.Click += (_, _) => StartCyberpunk();
+        startGame.SetBounds(580, 662, 260, 36);
+        startGame.Click += async (_, _) => await StartCyberpunkAsync();
 
-        restoreOutcome.SetBounds(20, 648, 820, 28);
+        restoreOutcome.SetBounds(20, 706, 820, 34);
         restoreOutcome.Font = new Font("Segoe UI Semibold", 10F);
         restoreOutcome.TextAlign = ContentAlignment.MiddleLeft;
         restoreOutcome.Visible = false;
 
         profilerPage.Controls.AddRange([
-            logo, title, back, statusGroup, readyGroup,
+            logo, title, back, statusGroup, captureGroup, readyGroup,
             install, collect, restore, openResults, startCompanion, startGame, restoreOutcome
         ]);
         AddHeaderAccent(profilerPage, 59);
@@ -477,6 +505,15 @@ public sealed class MainForm : Form
             RenderCompatibility(snapshot);
             RenderReadyState(snapshot);
             RenderSetupGameStatus();
+
+            if (!captureTitle.Focused &&
+                snapshot.CaptureTitlePresent &&
+                !string.IsNullOrWhiteSpace(snapshot.CaptureTitle) &&
+                snapshot.CaptureTitle != "UNREADABLE")
+            {
+                captureTitle.Text = snapshot.CaptureTitle;
+            }
+
             SetBusy(false);
             SetActionState(snapshot);
         }
@@ -832,6 +869,7 @@ public sealed class MainForm : Form
             install.Enabled = false;
             collect.Enabled = false;
             restore.Enabled = false;
+            saveCaptureTitle.Enabled = false;
             startCompanion.Enabled = false;
             startGame.Enabled = false;
             coreOnly.Enabled = false;
@@ -845,6 +883,7 @@ public sealed class MainForm : Form
         install.Enabled = !busy && cetAllowed && !snapshot.Managed && snapshot.LiveResultCount == 0 && fallbackSatisfied;
         collect.Enabled = !busy && snapshot.LiveResultCount > 0;
         restore.Enabled = !busy && snapshot.Managed;
+        saveCaptureTitle.Enabled = !busy && snapshot.Managed && snapshot.ControlsPresent && snapshot.CaptureTitlePresent;
         coreOnly.Enabled = !busy && coreOnly.Visible && !snapshot.Managed;
 
         startCompanion.Enabled = !busy && HasConfiguredCompanion();
@@ -867,19 +906,33 @@ public sealed class MainForm : Form
             var installedSnapshot = await Task.Run(
                 () => profiler.Install(gameRoot.Text.Trim(), coreOnly.Visible && coreOnly.Checked));
 
+            if (!string.IsNullOrWhiteSpace(captureTitle.Text))
+            {
+                var saved = await Task.Run(() =>
+                    profiler.SaveCaptureTitle(gameRoot.Text.Trim(), captureTitle.Text));
+                captureTitle.Text = saved;
+                SaveSettingsFromUi();
+                installedSnapshot = await Task.Run(() => profiler.GetStatus(gameRoot.Text.Trim()));
+            }
+
             lastStatus = installedSnapshot;
             fallbackVisible = false;
 
-            var postInstallWarning = BuildPostInstallWarning(installedSnapshot);
-            if (!string.IsNullOrWhiteSpace(postInstallWarning))
+            // Successful operations are confirmed by the installer page. Keep a
+            // modal only when installation completed but did not reach a usable state.
+            if (!IsProfilerReady(installedSnapshot))
             {
-                await SettleProfilerUiBeforeNotificationAsync(installedSnapshot);
-                ThemedDialog.Show(
-                    this,
-                    postInstallWarning,
-                    Text,
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
+                var postInstallWarning = BuildPostInstallWarning(installedSnapshot);
+                if (!string.IsNullOrWhiteSpace(postInstallWarning))
+                {
+                    await SettleProfilerUiBeforeNotificationAsync(installedSnapshot);
+                    ThemedDialog.Show(
+                        this,
+                        postInstallWarning,
+                        Text,
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                }
             }
         }
         catch (Exception ex)
@@ -905,6 +958,29 @@ public sealed class MainForm : Form
                 Text,
                 MessageBoxButtons.OK,
                 afterFailure?.Managed == true ? MessageBoxIcon.Warning : MessageBoxIcon.Error);
+        }
+        finally
+        {
+            SetBusy(false);
+            await RefreshStatusAsync(silent: true);
+        }
+    }
+
+    private async Task SaveCaptureTitleAsync()
+    {
+        if (busy) return;
+
+        try
+        {
+            SetBusy(true);
+            var saved = await Task.Run(() =>
+                profiler.SaveCaptureTitle(gameRoot.Text.Trim(), captureTitle.Text));
+            captureTitle.Text = saved;
+            SaveSettingsFromUi();
+        }
+        catch (Exception ex)
+        {
+            ThemedDialog.Show(this, FriendlyMessage(ex), Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
         {
@@ -1059,17 +1135,24 @@ public sealed class MainForm : Form
             if (reportRefreshError is not null)
                 companionText += "\r\nReport refresh: CapFrameX copy is safe, but the post-copy report refresh failed: " + reportRefreshError;
 
-            await SettleProfilerUiBeforeNotificationAsync();
+            if (companionError is not null || reportRefreshError is not null)
+            {
+                var warnings = new List<string>();
+                if (companionError is not null)
+                    warnings.Add("Frame-time companion copy failed: " + companionError);
+                if (reportRefreshError is not null)
+                    warnings.Add("Report refresh failed: " + reportRefreshError);
 
-            ThemedDialog.Show(
-                this,
-                "CET results archived successfully and known live profiler output was cleared.\r\n\r\n" +
-                "CET_Report.html is the human-readable starting point. Full native data remains under Data\\.\r\n\r\n" +
-                "Archive folder:\r\n" + destination + "\r\n\r\n" +
-                companionText,
-                Text,
-                MessageBoxButtons.OK,
-                companionError is null && reportRefreshError is null ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
+                await SettleProfilerUiBeforeNotificationAsync();
+
+                ThemedDialog.Show(
+                    this,
+                    "CET collection completed, but part of the optional post-processing needs attention.\r\n\r\n" +
+                    string.Join("\r\n\r\n", warnings),
+                    Text,
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
         }
         catch (Exception ex)
         {
@@ -1092,13 +1175,7 @@ public sealed class MainForm : Form
             SetBusy(true);
             restoreOutcome.Refresh();
 
-            var archived = await Task.Run(() => profiler.Restore(gameRoot.Text.Trim()));
-
-            var message = string.IsNullOrWhiteSpace(archived)
-                ? "Original CET / 0-Engine files and the previous CET binding state were restored."
-                : "Original CET / 0-Engine files and the previous CET binding state were restored." +
-                  Environment.NewLine + Environment.NewLine +
-                  "Final live results were archived to:" + Environment.NewLine + archived;
+            _ = await Task.Run(() => profiler.Restore(gameRoot.Text.Trim()));
 
             var verified = await Task.Run(() => profiler.GetStatus(gameRoot.Text.Trim()));
             if (verified.Managed)
@@ -1106,8 +1183,6 @@ public sealed class MainForm : Form
 
             lastStatus = verified;
             ShowRestoreOutcome(true, "RESTORE SUCCESSFUL — profiler removed and original state restored.");
-            await SettleProfilerUiBeforeNotificationAsync(verified);
-            ThemedDialog.Show(this, message, Text, MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex)
         {
@@ -1229,10 +1304,18 @@ public sealed class MainForm : Form
         }
     }
 
-    private void StartCyberpunk()
+    private async Task StartCyberpunkAsync()
     {
         try
         {
+            if (lastStatus?.CaptureTitlePresent == true && !string.IsNullOrWhiteSpace(captureTitle.Text))
+            {
+                var saved = await Task.Run(() =>
+                    profiler.SaveCaptureTitle(gameRoot.Text.Trim(), captureTitle.Text));
+                captureTitle.Text = saved;
+                SaveSettingsFromUi();
+            }
+
             var exe = GetGameExe(gameRoot.Text.Trim());
             if (!File.Exists(exe))
                 throw new FileNotFoundException("Cyberpunk2077.exe was not found in the selected game folder.", exe);
@@ -1263,6 +1346,7 @@ public sealed class MainForm : Form
     private void SyncSettingsFromUi()
     {
         appSettings.GameRoot = gameRoot.Text.Trim();
+        appSettings.CaptureTitle = captureTitle.Text.Trim();
         appSettings.PairFrameTimeProfiler = pairFrameTime.Checked;
         appSettings.ExternalProfilerExe = companionExe.Text.Trim();
         appSettings.ExternalResultsDirectory = companionResults.Text.Trim();
@@ -1288,6 +1372,7 @@ public sealed class MainForm : Form
         AccentButton(openResults, ThemeCyan);
         AccentButton(startGame, ThemeCyan);
         AccentButton(startCompanion, ThemeCyan);
+        AccentButton(saveCaptureTitle, ThemeCyan);
         AccentButton(restore, ThemeMagenta);
 
         readyGroup.BackColor = ThemePanelAlt;

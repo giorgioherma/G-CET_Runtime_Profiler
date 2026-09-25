@@ -6,6 +6,7 @@ namespace GCETRuntimeProfiler;
 internal sealed class AppSettings
 {
     public string GameRoot { get; set; } = "";
+    public string CaptureTitle { get; set; } = "WORLD";
     public bool PairFrameTimeProfiler { get; set; } = true;
     public string ExternalProfilerExe { get; set; } = "";
     public string ExternalResultsDirectory { get; set; } = "";
