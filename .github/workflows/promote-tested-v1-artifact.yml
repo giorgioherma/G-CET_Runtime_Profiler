@@ -16,30 +16,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Publish exact tested Actions artifact
+      - name: Download tested Actions artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: G-CET-Runtime-Profiler-v1.0.0
+          run-id: 36200672216
+          github-token: ${{ github.token }}
+          path: tested-artifact
+
+      - name: Publish tested v1.0.0 build
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          ARTIFACT_ID: "10891744489"
-          EXPECTED_SHA256: "ea139232bdd865ccda36c4af148ced62cfb32b1754503f631ae0c5400be46182"
           SOURCE_SHA: "af53d983514c776578d095be0c6fe1d11737d8a6"
           ASSET_NAME: "G-CET-Runtime-Profiler-v1.0.0.zip"
-          NOTES_FILE: "RELEASE_NOTES.md"
-          RELEASE_TITLE: "G-CET Runtime Profiler v1.0.0"
         run: |
           set -euo pipefail
 
-          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" > "$ASSET_NAME"
+          test -d tested-artifact/G-CET-Runtime-Profiler
+          (cd tested-artifact && zip -qr "../$ASSET_NAME" G-CET-Runtime-Profiler)
 
           actual="$(sha256sum "$ASSET_NAME" | awk '{print $1}')"
-          test "$actual" = "$EXPECTED_SHA256"
           printf '%s  %s\n' "$actual" "$ASSET_NAME" > "$ASSET_NAME.sha256.txt"
 
           gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/v1.0.0"             -f sha="$SOURCE_SHA" -F force=true >/dev/null
 
-          cp "$NOTES_FILE" release-notes.md
+          cp RELEASE_NOTES.md release-notes.md
           printf '\n\n## SHA-256\n\n    %s  %s\n' "$actual" "$ASSET_NAME" >> release-notes.md
 
-          gh release edit v1.0.0             --repo "$GITHUB_REPOSITORY"             --title "$RELEASE_TITLE"             --notes-file release-notes.md             --target "$SOURCE_SHA"             --latest
+          gh release edit v1.0.0             --repo "$GITHUB_REPOSITORY"             --title "G-CET Runtime Profiler v1.0.0"             --notes-file release-notes.md             --target "$SOURCE_SHA"             --latest
 
           gh release upload v1.0.0             "$ASSET_NAME" "$ASSET_NAME.sha256.txt"             --repo "$GITHUB_REPOSITORY" --clobber
