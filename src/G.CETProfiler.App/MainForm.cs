@@ -1092,14 +1092,13 @@ public sealed class MainForm : Form
             SetBusy(true);
             var destination = await Task.Run(() => profiler.Collect(gameRoot.Text.Trim()));
 
-            string? companionMessage = null;
             string? companionError = null;
             string? reportRefreshError = null;
             if (!string.IsNullOrWhiteSpace(destination) && HasConfiguredCompanion())
             {
                 try
                 {
-                    companionMessage = await Task.Run(() => CompanionProfilerService.CollectLatest(appSettings, destination));
+                    _ = await Task.Run(() => CompanionProfilerService.CollectLatest(appSettings, destination));
                 }
                 catch (Exception ex)
                 {
@@ -1125,15 +1124,6 @@ public sealed class MainForm : Form
                 var report = Path.Combine(destination, ResultReportService.ReportFileName);
                 Process.Start(new ProcessStartInfo(File.Exists(report) ? report : destination) { UseShellExecute = true });
             }
-
-            var companionText = !HasConfiguredCompanion()
-                ? "Frame-time companion: not configured; CET results were collected normally."
-                : companionError is not null
-                    ? "Frame-time companion: CET collection succeeded, but companion copy failed: " + companionError
-                    : "Frame-time companion: " + (companionMessage ?? "not collected.");
-
-            if (reportRefreshError is not null)
-                companionText += "\r\nReport refresh: CapFrameX copy is safe, but the post-copy report refresh failed: " + reportRefreshError;
 
             if (companionError is not null || reportRefreshError is not null)
             {

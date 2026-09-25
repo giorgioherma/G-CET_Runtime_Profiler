@@ -1011,7 +1011,7 @@ public sealed class ProfilerService : IProfilerService
         var destination = Path.Combine(resultsRoot, $"{stamp}_{captureTitle}");
         var suffix = 1;
         while (Directory.Exists(destination))
-            destination = Path.Combine(resultsRoot, $"{stamp}-{suffix++}");
+            destination = Path.Combine(resultsRoot, $"{stamp}_{captureTitle}-{suffix++}");
 
         Directory.CreateDirectory(destination);
 
@@ -1032,6 +1032,12 @@ public sealed class ProfilerService : IProfilerService
             FileSystemService.DeleteDirectoryIfExists(destination);
             throw;
         }
+
+        // Keep the normalized capture title with the archived result so standalone
+        // review and TOTAL handoff do not have to infer it from the folder name.
+        File.WriteAllText(
+            Path.Combine(destination, "CaptureTitle.txt"),
+            captureTitle + Environment.NewLine);
 
         // Human presentation is deliberately downstream of verified raw collection.
         // A report failure must never discard a valid native capture or leave live
