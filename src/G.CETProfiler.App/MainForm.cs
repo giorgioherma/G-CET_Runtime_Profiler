@@ -721,7 +721,7 @@ public sealed class MainForm : Form
             zeroLine + "\r\n" +
             schedulerLine + "\r\n" +
             frameLine + "\r\n" +
-            syncLines + "\r\n\r\n" +
+            syncLines + "\r\n" +
             $"G-CET PROFILER IS {installState}\r\n" +
             $"Live Files: {snapshot.LiveResultCount}";
         ColorizeStatusText();
