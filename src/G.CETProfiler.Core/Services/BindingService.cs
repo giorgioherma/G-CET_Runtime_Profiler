@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using GCETRuntimeProfiler.Core.Models;
 
 namespace GCETRuntimeProfiler.Core.Services;
 
