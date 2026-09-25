@@ -61,7 +61,9 @@ First stable public release and the frozen standalone CET profiler baseline.
 
 - Installation and restore are transactional.
 - Restore confirmation/activation race fixed.
-- Strict restore preserves ambiguous/changed files instead of overwriting them.
+- Restore is authoritative for G-CET-managed files: verified original backups are restored even if profiler-owned live files changed while profiling, so normal runtime changes cannot trap the user in a managed state.
+- CET capture keybinds are user-controlled: F11 is seeded only when no existing binding exists, custom bindings are preserved, and restore never rolls them back.
+- All failure/warning dialogs shown after async profiler operations use the existing 500 ms UI-settle path so a disabled/white transition cannot be frozen beneath the modal.
 - Headless emergency recovery remains available for advanced/manual recovery.
 - Standalone/headless behavior is the same implementation consumed by TOTAL Profiler.
 - TOTAL integration contract requires the exact standalone release, not a TOTAL-specific variant.
@@ -74,7 +76,7 @@ First stable public release and the frozen standalone CET profiler baseline.
 - Non-English .NET satellite resources and public PDBs are excluded from the portable package.
 - Both Windows executables use the final multi-size G-CET application icon.
 - Removed retired PowerShell manager code and other dead/obsolete runtime/UI plumbing from the live tree.
-- Removed obsolete absolute frametime start-offset fields and consolidated relative CapFrameX/CET timing around the shared-F11 model.
+- Removed obsolete absolute frametime start-offset fields and consolidated relative CapFrameX/CET timing around the shared capture-key model.
 - CI verifies the payload hashes, package layout, launcher handoff, install/collect/restore lifecycle, emergency restore, 0-Engine resolver/handoff behavior, report generation, and portable artifact creation.
 - Main-branch CI refreshes the canonical GitHub release for the version declared in `VERSION.txt`, including the portable ZIP and SHA-256 file.
 
