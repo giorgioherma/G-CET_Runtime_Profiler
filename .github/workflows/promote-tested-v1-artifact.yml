@@ -28,7 +28,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          SOURCE_SHA: "af53d983514c776578d095be0c6fe1d11737d8a6"
+          SOURCE_SHA: "089d3f014704153d2f433e84e469252978ae3c87"
           ASSET_NAME: "G-CET-Runtime-Profiler-v1.0.0.zip"
         run: |
           set -euo pipefail
