@@ -1183,7 +1183,7 @@ public sealed class MainForm : Form
                 Environment.NewLine + Environment.NewLine +
                 "Reason:" + Environment.NewLine + FriendlyMessage(ex) +
                 Environment.NewLine + Environment.NewLine +
-                "G-CET now restores its managed files authoritatively even if they changed while profiling; only an invalid original backup can block that restoration.",
+                "The saved recovery state was kept so RESTORE ORIGINAL STATE can be retried after the backup or filesystem problem is corrected.",
                 Text,
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);

@@ -5,7 +5,7 @@ using GCETRuntimeProfiler.Core.Models;
 namespace GCETRuntimeProfiler.Core.Services;
 
 /// <summary>
-/// Authoritative C# lifecycle engine for the standalone CET Runtime Profiler.
+/// Primary C# lifecycle engine for the standalone CET Runtime Profiler.
 /// GUI and headless/TOTAL integration both call this service.
 /// </summary>
 public sealed class ProfilerService : IProfilerService
@@ -689,7 +689,7 @@ public sealed class ProfilerService : IProfilerService
         string badBackupMessage,
         string changedLiveMessage)
     {
-        // Restore is authoritative for files G-CET manages. The live file may
+        // Restore uses the saved original for files G-CET manages. The live file may
         // legitimately change while the profiler is active; that must never trap
         // the user in a managed state. Only the integrity of the saved original
         // backup is a restore gate.
