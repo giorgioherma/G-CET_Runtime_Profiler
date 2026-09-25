@@ -36,7 +36,7 @@ internal sealed class BindingService
         };
     }
 
-    public void SetDefaultF11(ProfilerPaths paths)
+    public void EnsureDefaultF11IfMissing(ProfilerPaths paths)
     {
         var root = ReadBindingsObject(paths);
 
@@ -46,6 +46,11 @@ internal sealed class BindingService
             node = new JsonObject();
             root["CETProfilerControls"] = node;
         }
+
+        // CET owns the user's binding choice. Seed F11 only for a brand-new
+        // profiler input; never overwrite a binding the user already selected.
+        if (node["CETProfiler_Toggle"] is not null)
+            return;
 
         node["CETProfiler_Toggle"] = F11BindCode;
         node.Remove("CETProfiler_Dump");
