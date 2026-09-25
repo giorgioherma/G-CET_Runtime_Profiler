@@ -73,13 +73,3 @@ Extract to a writable folder and run `G-CET-Runtime-Profiler.exe`.
 - CI exercises launcher handoff, package layout, install/collect/restore, emergency restore, 0-Engine resolver/handoff, report generation, and release staging.
 
 The GitHub release publishes the exact portable ZIP produced from the final v1.0.0 source and a matching SHA-256 text file.
-
-## Frozen canonical build
-
-- Source commit: `ec0bfd0954ce10d39eebe86f38ef3f14e21f65f4`
-- GitHub Actions run: `36169889066`
-- Frozen artifact ID: `10880038160`
-- Canonical release asset: `G-CET-Runtime-Profiler-v1.0.0.zip`
-- SHA-256: `8f35cb5f2044ad9dc2ab8352d761b7fe689ac53c4894c8067e10fdf71a7a27d0`
-
-This exact artifact is the frozen v1.0.0 public build. GitHub Releases is the canonical download surface; later repository-only documentation or metadata changes do not redefine the v1.0.0 binary.
