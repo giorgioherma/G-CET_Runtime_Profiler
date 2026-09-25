@@ -99,7 +99,7 @@ CapFrameX **1.9.1.2 Beta** is the development/test reference used for v1.0.0. Th
 
 External frame-time files are always **copied only** into the collected CET result. The source files belonging to the external profiler are never moved, deleted, or modified.
 
-When the copied companion is a recognized CapFrameX JSON capture, the standalone report automatically adds a second evidence layer: average/median/P95/P99/max frametime, slow-frame counts, CPU Active and GPU Active readings, shared-F11 relative-timeline synchronization, CET 50 ms-window overlap, recorded callback-spike overlap, 0-Engine Scheduler-burst overlap, a synchronized CET/frametime timeline, and a table of the worst rendered-frame events. Hold **Shift** and use the mouse wheel over the timeline to zoom in/out around the pointer; the existing Full capture / Around worst frame controls remain available. CapFrameX `Info.CreationDate` is treated as record/save metadata rather than a capture-start clock. Other/custom profiler files remain preserved under `FrameTime\` even when their schema cannot be interpreted automatically.
+When the copied companion is a recognized CapFrameX JSON capture, the standalone report automatically adds a second evidence layer: average/median/P95/P99/max frametime, slow-frame counts, CPU Active and GPU Active readings, shared capture-key relative-timeline synchronization, CET 50 ms-window overlap, recorded callback-spike overlap, 0-Engine Scheduler-burst overlap, a synchronized CET/frametime timeline, and a table of the worst rendered-frame events. Hold **Shift** and use the mouse wheel over the timeline to zoom in/out around the pointer; the existing Full capture / Around worst frame controls remain available. CapFrameX `Info.CreationDate` is treated as record/save metadata rather than a capture-start clock. Other/custom profiler files remain preserved under `FrameTime\` even when their schema cannot be interpreted automatically.
 
 ## 0-Engine behavior
 
@@ -129,11 +129,11 @@ Managed state is stored in:
 bin\x64\plugins\.cet_runtime_profiler\
 ```
 
-**RESTORE ORIGINAL STATE** restores the original CET/0-Engine/binding state and removes profiler-owned temporary integration files.
+**RESTORE ORIGINAL STATE** restores the original CET/0-Engine files managed by G-CET and removes profiler-owned temporary integration files. CET keybinds are user-controlled and are left exactly as currently configured.
 
 If live CET profiler output exists, known profiler output is archived before restore. Unrelated files in the CET directory remain untouched.
 
-A strict headless emergency-recovery command is retained for advanced/manual recovery:
+A headless emergency-recovery command is retained for advanced/manual recovery:
 
 ```text
 G-CET-Runtime-Profiler.exe --emergency-restore --game "..." --json
