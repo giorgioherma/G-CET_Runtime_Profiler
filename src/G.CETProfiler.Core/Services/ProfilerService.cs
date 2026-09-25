@@ -729,8 +729,7 @@ public sealed class ProfilerService : IProfilerService
         if (state.ZeroEngine.Mode == "bypassed")
         {
             var expected = state.ZeroEngine.Bypass.OriginalFingerprint;
-            if (!Directory.Exists(paths.ZeroRoot))
-                FileSystemService.CopyDirectoryExact(paths.BackupZeroRoot, paths.ZeroRoot);
+            FileSystemService.CopyDirectoryExact(paths.BackupZeroRoot, paths.ZeroRoot);
 
             if (!string.Equals(FileSystemService.DirectoryFingerprint(paths.ZeroRoot), expected, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("0-Engine full-folder restoration failed verification.");
@@ -944,8 +943,7 @@ public sealed class ProfilerService : IProfilerService
             File.Copy(paths.BackupZeroInit, paths.ZeroInit, true);
 
         if (state.ZeroEngine.Mode == "bypassed" &&
-            Directory.Exists(paths.BackupZeroRoot) &&
-            !Directory.Exists(paths.ZeroRoot))
+            Directory.Exists(paths.BackupZeroRoot))
             FileSystemService.CopyDirectoryExact(paths.BackupZeroRoot, paths.ZeroRoot);
     }
 
