@@ -31,7 +31,7 @@
     "CapFrameX 1.9.1.2 Beta is the tested frame-time reference build while frame-time pairing remains optional",
     "recognized CapFrameX report timeline supports Shift plus mouse-wheel zoom around the pointer",
     "native launcher and managed application use the final multi-size G-CET Windows icon",
-    "main-branch CI refreshes the canonical GitHub release notes, portable ZIP, and SHA-256 asset for VERSION.txt",
+    "v1.0.0 canonical release is frozen to the source commit and SHA-256 recorded in FROZEN_RELEASE.json; later main-branch metadata changes do not replace the frozen binary",
     "v1.0.0 stable standalone release uses a portable ZIP with package-local settings and RESULTS",
     "second-page readiness UI uses green confirmed states, warnings for optional/pending states, and red only for blocking errors",
     "restore confirmation suppresses activation refresh so clicking Yes cannot be swallowed by the automatic status refresh",
