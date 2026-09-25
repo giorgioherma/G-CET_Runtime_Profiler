@@ -1,6 +1,6 @@
 # TOTAL Profiler integration contract
 
-`G-CET-Runtime-Profiler` is a standalone product first. **v1.0.0 is the frozen standalone CET baseline.** TOTAL Profiler consumes the exact standalone release unchanged.
+`G-CET-Runtime-Profiler` is a standalone product first. **v1.0.0 is the standalone CET baseline used by TOTAL.** TOTAL Profiler consumes the exact standalone release unchanged.
 
 TOTAL must not:
 
