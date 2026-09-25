@@ -27,7 +27,7 @@ The core is the authoritative implementation for:
 - SHA-256 and directory fingerprints;
 - persistent install state;
 - CET ASI replacement/restore;
-- CET binding snapshot/F11 install/restore;
+- CET capture-key seeding without binding ownership (F11 only when no existing binding exists);
 - 0-Engine mode detection;
 - Scheduler and adaptive Scheduler deployment;
 - adaptive `init.lua` bridge injection;
@@ -143,7 +143,7 @@ Report generation is best-effort by design. If interpretation fails after raw ve
 
 Unrelated files in the CET directory are never swept. If the GUI has an optional frame-time companion configured, its selected/latest capture is copied under `FrameTime/` after CET collection; the external source is never modified or deleted.
 
-For recognized CapFrameX JSON, `Info.CreationDate` is treated as record/save metadata, not as the F11 capture start. When the companion manifest confirms F11 on both sides and the CET/CapFrameX capture durations agree closely, both already-normalized relative timelines are aligned at relative time zero. Duration agreement is used as a same-capture sanity check; `CreationDate` is retained only as a diagnostic record timestamp/save-lag value. Exact callback/Scheduler-event overlap is enabled only for a GOOD shared-F11 match; coarse matches keep window-level evidence without pretending to have exact event attribution. CapFrameX provides rendered frametime plus CPU Active/GPU Active; CET provides script-side workload. The two domains are synchronized evidence layers, not an additive/subtractive CPU budget.
+For recognized CapFrameX JSON, `Info.CreationDate` is treated as record/save metadata, not as the capture start. When the companion exposes a capture key and the CET/CapFrameX capture durations agree closely, both already-normalized relative timelines are aligned at relative time zero. Duration agreement is used as a same-capture sanity check; `CreationDate` is retained only as a diagnostic record timestamp/save-lag value. Exact callback/Scheduler-event overlap is enabled only for a GOOD shared-key match; coarse matches keep window-level evidence without pretending to have exact event attribution. CapFrameX provides rendered frametime plus CPU Active/GPU Active; CET provides script-side workload. The two domains are synchronized evidence layers, not an additive/subtractive CPU budget.
 
 TOTAL Profiler does not redirect CET's path. It consumes the completed standalone CET result after collection.
 
@@ -151,13 +151,13 @@ TOTAL Profiler does not redirect CET's path. It consumes the completed standalon
 
 The C# state model is deliberately tolerant of extra JSON fields so states produced by earlier development managers can be read.
 
-Legacy TOTAL Profiler 0.2.19 binding rollback state and pre-existing CETProfilerControls backups are supported during restore migration.
+Legacy TOTAL Profiler 0.2.19 state can still be read during migration, but current restore intentionally leaves CET bindings untouched. Pre-existing CETProfilerControls backups remain supported.
 
 
 ## Recovery invariant
 
 **Rule #1: before the profiler mutates any user-owned file or directory, preserve the original state first.**
 
-Replaced files are copied into the persistent recovery directory and hash-verified before the live copy is changed. Added profiler-owned files record that no original existed. `bindings.json` has both a full-file backup and a surgical CETProfilerControls-node snapshot so normal restore can preserve unrelated bindings changed later.
+Replaced files are copied into the persistent recovery directory and hash-verified before the live copy is changed. Added profiler-owned files record that no original existed. `bindings.json` is not part of the restore transaction: CET owns the user's current capture key, and G-CET seeds F11 only if the profiler input has no existing binding.
 
-Normal restore remains all-or-nothing and prevalidates every managed component before mutation. Emergency Restore is deliberately different: it validates and restores each component independently, skips anything ambiguous, preserves the recovery state when any item is unresolved, and writes a manual-review report.
+Normal restore prevalidates the integrity of every required original backup before mutation, then authoritatively restores G-CET-managed files regardless of live profiler-owned changes. Emergency Restore remains available for damaged/incomplete recovery state and works component-by-component.
