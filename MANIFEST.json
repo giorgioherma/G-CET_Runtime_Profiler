@@ -38,7 +38,6 @@
     "two-page setup keeps optional frame-time pairing separate from CET/0-Engine installation and recovery",
     "optional frame-time companion detection is read-only; CapFrameX start-key detection recognizes CaptureHotKey without modifying CapFrameX",
     "companion captures are copied into the CET archive under FrameTime and are never deleted from their source",
-    "single CETProfiler_Toggle input defaults to F11",
     "the single CETProfiler_Toggle input uses F11 only as an initial default; an existing or user-changed CET binding is preserved", 
     "the selected capture key starts a fresh measurement on first press and stops/exports on the second press",
     "known CET runtime output patterns are copied, verified, then removed from the live CET folder; unrelated files are never swept",

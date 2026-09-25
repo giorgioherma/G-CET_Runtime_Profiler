@@ -5,7 +5,7 @@ First stable release of the standalone G-CET Runtime Profiler.
 ## Highlights
 
 - Portable, self-contained Windows ZIP — extract and run.
-- CET F11 START / F11 STOP + automatic export.
+- Single CET capture input (**F11 by default**) for START / STOP + automatic export.
 - Transactional CET install and exact restore.
 - Optional 0-Engine Scheduler attribution with safe fallback.
 - Optional frame-time companion; CapFrameX **1.9.1.2 Beta** is the tested reference build, but frame-time pairing is not required.

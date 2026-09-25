@@ -58,11 +58,11 @@ Neither 0-Engine nor a frame-time profiler is required for a normal CET profiler
 
 ## Capture contract
 
-The profiler owns one CET input, defaulting to **F11**:
+The profiler owns one CET capture input. **F11 is the initial default**, while the current CET binding remains user-controlled:
 
 ```text
-F11 #1 -> START fresh capture
-F11 #2 -> STOP + AUTO EXPORT
+Configured capture key #1 -> START fresh capture
+Configured capture key #2 -> STOP + AUTO EXPORT
 ```
 
 There is no separate export key.
@@ -75,7 +75,7 @@ There is no separate export key.
 4. Continue to **INSTALL -> CAPTURE -> RESTORE**.
 5. Review the status list and use **INSTALL PROFILER**.
 6. When the page reports **PROFILER IS READY!**, optionally launch the frame-time tool and then start Cyberpunk.
-7. In game, press F11 to start and F11 again to stop/export.
+7. In game, press your configured capture key (**F11 by default**) to start and press the same key again to stop/export.
 8. Return to the manager and use **COLLECT RESULTS / CLEAR LIVE**.
 9. When finished profiling, use **RESTORE ORIGINAL STATE**.
 
