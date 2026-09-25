@@ -680,7 +680,7 @@ jobs:
           if-no-files-found: error
 
       - name: Publish canonical GitHub release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.sha == 'ec0bfd0954ce10d39eebe86f38ef3f14e21f65f4'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -699,14 +699,21 @@ jobs:
             throw "Release SHA-256 file is missing: $env:PUBLIC_ASSET.sha256.txt"
           }
 
-          # v1.0.0 existed during final stabilization. The canonical tag must point
-          # at the exact final main commit that produced the published assets.
-          & gh api --method PATCH "repos/$repo/git/refs/tags/$tag" -f sha="$sha" -F force=true *> $null
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "Tag $tag does not exist yet; creating it at $sha."
+          $tagRefJson = & gh api "repos/$repo/git/ref/tags/$tag" 2>$null
+          $tagExists = $LASTEXITCODE -eq 0
+          if ($tagExists) {
+            $tagRef = $tagRefJson | ConvertFrom-Json
+            $tagSha = [string]$tagRef.object.sha
+            if ($tagSha -ne $sha) {
+              Write-Host "Release tag $tag already exists at $tagSha; leaving it unchanged. Bump VERSION.txt for a new release."
+              exit 0
+            }
+          }
+          else {
+            Write-Host "Creating release tag $tag at $sha."
             & gh api --method POST "repos/$repo/git/refs" -f ref="refs/tags/$tag" -f sha="$sha" *> $null
             if ($LASTEXITCODE -ne 0) {
-              throw "Could not create or move tag $tag to $sha."
+              throw "Could not create tag $tag at $sha."
             }
           }
 
