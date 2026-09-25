@@ -198,4 +198,4 @@ The native profiler payload remains version **2.11.0**, targeting the manifest-l
 
 The public manager is a C# / .NET 8 WinForms application shipped behind a small native launcher, with the self-contained managed app/runtime isolated under `app/`. Both Windows executables carry the final multi-size G-CET application icon. The retired PowerShell manager has been removed from the live tree; its history remains available through Git.
 
-CI validates the hash-locked payload, builds the self-contained Windows package, exercises installation/collection/restore and 0-Engine integration fixtures, then produces the portable release ZIP. A successful push to `main` also refreshes the matching canonical GitHub release tag, notes, ZIP, and SHA-256 file for the version declared by `VERSION.txt`.
+CI validates the hash-locked payload, builds the self-contained Windows package, and exercises installation/collection/restore plus 0-Engine integration fixtures. The public **v1.0.0** release is frozen to the source commit and SHA-256 recorded in `FROZEN_RELEASE.json`; ordinary later `main` updates do not replace that canonical binary.
