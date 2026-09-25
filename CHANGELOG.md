@@ -61,7 +61,6 @@ First stable public release and the frozen standalone CET profiler baseline.
 
 - Installation and restore are transactional.
 - Restore confirmation/activation race fixed.
-- Restore is authoritative for G-CET-managed files: verified original backups are restored even if profiler-owned live files changed while profiling, so normal runtime changes cannot trap the user in a managed state.
 - CET capture keybinds are user-controlled: F11 is seeded only when no existing binding exists, custom bindings are preserved, and restore never rolls them back.
 - All failure/warning dialogs shown after async profiler operations use the existing 500 ms UI-settle path so a disabled/white transition cannot be frozen beneath the modal.
 - Headless emergency recovery remains available for advanced/manual recovery.

@@ -43,7 +43,6 @@
     "the selected capture key starts a fresh measurement on first press and stops/exports on the second press",
     "known CET runtime output patterns are copied, verified, then removed from the live CET folder; unrelated files are never swept",
     "CET keybinds are user-controlled and are never rolled back by profiler restore", 
-    "restore is authoritative for profiler-managed files and uses verified original backups even if live profiler-owned files changed during use",
     "standalone RESULTS remain package-local; TOTAL Profiler does not redirect profiler-owned output paths",
     "0-Engine core-only mode is presented as a fallback only when safe Scheduler integration is unavailable or fails",
     "Core profiler fallback leaves the user's 0-Engine folder and Scheduler completely untouched and loaded normally",

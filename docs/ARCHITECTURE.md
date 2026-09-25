@@ -160,4 +160,4 @@ Legacy TOTAL Profiler 0.2.19 state can still be read during migration, but curre
 
 Replaced files are copied into the persistent recovery directory and hash-verified before the live copy is changed. Added profiler-owned files record that no original existed. `bindings.json` is not part of the restore transaction: CET owns the user's current capture key, and G-CET seeds F11 only if the profiler input has no existing binding.
 
-Normal restore prevalidates the integrity of every required original backup before mutation, then authoritatively restores G-CET-managed files regardless of live profiler-owned changes. Emergency Restore remains available for damaged/incomplete recovery state and works component-by-component.
+Normal restore validates every required original backup before restoring the G-CET-managed files. Emergency Restore remains available for damaged/incomplete recovery state and works component-by-component.

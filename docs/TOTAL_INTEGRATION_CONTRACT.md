@@ -35,4 +35,4 @@ If TOTAL needs a new CET lifecycle capability, that capability should first be e
 
 ## Recovery behavior
 
-TOTAL must expose the standalone manager's authoritative `--restore` and `--emergency-restore` semantics rather than recreating CET cleanup logic. Normal restore uses verified original backups to restore G-CET-managed files even when profiler-owned live files changed during use; Emergency Restore remains the fallback for genuinely incomplete or damaged recovery material.
+TOTAL must call the standalone manager's `--restore` and `--emergency-restore` paths rather than recreating CET cleanup logic. Normal restore uses the standalone manager's verified recovery state; Emergency Restore remains the fallback for incomplete or damaged recovery material.
