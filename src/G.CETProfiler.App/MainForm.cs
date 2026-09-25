@@ -211,7 +211,7 @@ public sealed class MainForm : Form
 
         var syncHint = new Label
         {
-            Text = "For synchronized captures, use the same START key. G-CET presets its CET binding to F11 during install.",
+            Text = "For synchronized captures, use the same START key in CET and your frame-time tool. G-CET seeds F11 only when no CET binding exists.",
             AutoSize = true,
             ForeColor = ThemeText,
             Location = new Point(150, 118)
@@ -387,7 +387,7 @@ public sealed class MainForm : Form
         readyCaptureInstructions.AutoSize = false;
         readyCaptureInstructions.Text =
             "2. Run your Frame-time Capture Tool if you're using one and enter the game.\r\n" +
-            "3. To start measurement press your shared keybind (F11). To stop capture and prep the results press the same key again (F11).\r\n" +
+            "3. To start measurement press your shared capture key (F11 by default). To stop capture and prep the results press the same key again.\r\n" +
             "4. Return to installer and COLLECT RESULTS.\r\n" +
             "5. After usage RESTORE ORIGINAL STATE to finish.";
 
@@ -418,8 +418,8 @@ public sealed class MainForm : Form
                 answer = ThemedDialog.Show(
                     this,
                     "Restore the CET profiler-managed game state?\r\n\r\n" +
-                    "Original CET / 0-Engine files and the previous CET binding state will be restored. " +
-                    "Any current live CET profiler output is archived first.",
+                    "Original CET / 0-Engine files managed by G-CET will be restored. " +
+                    "Your current CET keybind choice is left alone, and any live profiler output is archived first.",
                     Text,
                     MessageBoxButtons.YesNo,
                     MessageBoxIcon.Warning);
@@ -558,7 +558,7 @@ public sealed class MainForm : Form
         if (!snapshot.Enabled)
         {
             companionStatus.Text =
-                "CET START:      F11 preset on install\r\n" +
+                "CET capture key: user-controlled (F11 default)\r\n" +
                 "Frame-time:     DISABLED";
             return;
         }
@@ -568,11 +568,11 @@ public sealed class MainForm : Form
             : Directory.Exists(companionResults.Text) ? "FOUND" : "NOT FOUND";
 
         var keyText = snapshot.StartKeyKnown
-            ? snapshot.StartKeyIsF11 ? "F11 ✓" : snapshot.StartKey + "  (use F11 to match CET)"
-            : "UNKNOWN — verify F11 manually";
+            ? snapshot.StartKey + " ✓"
+            : "UNKNOWN — verify manually";
 
         companionStatus.Text =
-            $"CET capture key:        {(lastStatus?.F11Binding == true ? "F11 ✓" : "F11 preset on install")}\r\n" +
+            "CET capture key:        user-controlled (F11 default)\r\n" +
             $"Frame-time config key:  {keyText}\r\n" +
             $"Results folder:         {results}";
     }
@@ -686,24 +686,17 @@ public sealed class MainForm : Form
         if (!companionConfigured)
         {
             syncLines =
-                "Capture key match: Need frame capture tool ⚠️\r\n" +
-                $"    - CET: {(snapshot.F11Binding ? "F11 ✅" : "F11 pending deployment ⚠️")}";
-        }
-        else if (companion.StartKeyKnown && companion.StartKeyIsF11 && snapshot.F11Binding)
-        {
-            syncLines =
-                "Capture key match: YES ✅\r\n" +
-                "    - CET: F11 ✅\r\n" +
-                $"    - {companion.DisplayName} config: F11 ✅";
+                "Capture key sync: Frame-time tool not configured ⚠️\r\n" +
+                "    - CET: user-controlled (F11 default)";
         }
         else
         {
             var externalKey = companion.StartKeyKnown
-                ? companion.StartKey + " ⚠️"
+                ? companion.StartKey + " ✅"
                 : "Unknown ⚠️";
             syncLines =
-                "Capture key match: NO ⚠️\r\n" +
-                $"    - CET: {(snapshot.F11Binding ? "F11 ✅" : "F11 pending deployment ⚠️")}\r\n" +
+                "Capture key sync: use the same key in CET and the frame-time tool\r\n" +
+                "    - CET: user-controlled (F11 default)\r\n" +
                 $"    - {companion.DisplayName} config: {externalKey}";
         }
 
@@ -771,8 +764,7 @@ public sealed class MainForm : Form
         snapshot.Managed &&
         snapshot.CetState == "PROFILER_ACTIVE" &&
         snapshot.ControlsPresent &&
-        snapshot.CaptureTitlePresent &&
-        snapshot.F11Binding;
+        snapshot.CaptureTitlePresent;
 
     private static bool HasCriticalProfilerError(ProfilerStatus? snapshot) =>
         snapshot is null ||
@@ -780,8 +772,7 @@ public sealed class MainForm : Form
         (snapshot.Managed &&
          (snapshot.CetState != "PROFILER_ACTIVE" ||
           !snapshot.ControlsPresent ||
-          !snapshot.CaptureTitlePresent ||
-          !snapshot.F11Binding));
+          !snapshot.CaptureTitlePresent));
 
     private void RenderReadyState(ProfilerStatus? snapshot)
     {
@@ -957,6 +948,7 @@ public sealed class MainForm : Form
             if (afterFailure?.ZeroEnginePresent == true || lastStatus?.ZeroEnginePresent == true)
                 fallbackVisible = true;
 
+            await SettleProfilerUiBeforeNotificationAsync(afterFailure ?? lastStatus);
             ThemedDialog.Show(
                 this,
                 BuildInstallFailureMessage(ex, afterFailure),
@@ -985,6 +977,7 @@ public sealed class MainForm : Form
         }
         catch (Exception ex)
         {
+            await SettleProfilerUiBeforeNotificationAsync();
             ThemedDialog.Show(this, FriendlyMessage(ex), Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
@@ -1005,8 +998,6 @@ public sealed class MainForm : Form
                 problems.Add("- CETProfilerControls is missing.");
             if (!snapshot.CaptureTitlePresent)
                 problems.Add("- CaptureTitle.txt is missing.");
-            if (!snapshot.F11Binding)
-                problems.Add("- The CET F11 capture binding is not configured.");
 
             return
                 "INSTALL COMPLETED, BUT THE PROFILER IS NOT READY.\r\n\r\n" +
@@ -1153,6 +1144,7 @@ public sealed class MainForm : Form
         }
         catch (Exception ex)
         {
+            await SettleProfilerUiBeforeNotificationAsync();
             ThemedDialog.Show(this, FriendlyMessage(ex), Text, MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
@@ -1184,13 +1176,14 @@ public sealed class MainForm : Form
         catch (Exception ex)
         {
             ShowRestoreOutcome(false, "RESTORE NOT COMPLETED — recovery state/backups preserved.");
+            await SettleProfilerUiBeforeNotificationAsync();
             ThemedDialog.Show(
                 this,
-                "Normal restore could not complete safely. The recovery state/backups were kept." +
+                "Restore could not complete because a required original backup is missing or failed verification." +
                 Environment.NewLine + Environment.NewLine +
                 "Reason:" + Environment.NewLine + FriendlyMessage(ex) +
                 Environment.NewLine + Environment.NewLine +
-                "No uncertain file was overwritten. The managed recovery state/backups were left in place for diagnosis or advanced recovery.",
+                "G-CET now restores its managed files authoritatively even if they changed while profiling; only an invalid original backup can block that restoration.",
                 Text,
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
@@ -1225,6 +1218,8 @@ public sealed class MainForm : Form
 
         // Give the final dark/neon state a full paint cycle and a short visual
         // settle before the modal takes focus.
+        Refresh();
+        Update();
         profilerPage.Refresh();
         profilerPage.Update();
         await Task.Delay(500);
