@@ -680,7 +680,7 @@ jobs:
           if-no-files-found: error
 
       - name: Publish canonical GitHub release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.sha == 'ec0bfd0954ce10d39eebe86f38ef3f14e21f65f4'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}

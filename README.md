@@ -12,6 +12,12 @@ A standalone Cyberpunk 2077 CET/Lua runtime profiler with transactional install/
 
 The public release is a **portable ZIP**. No installer is required.
 
+**Canonical v1.0.0 download:** [G-CET-Runtime-Profiler-v1.0.0.zip](https://github.com/giorgioherma/G-CET_Runtime_Profiler/releases/download/v1.0.0/G-CET-Runtime-Profiler-v1.0.0.zip)
+
+**Frozen build:** source commit `ec0bfd0954ce10d39eebe86f38ef3f14e21f65f4` · SHA-256 `8f35cb5f2044ad9dc2ab8352d761b7fe689ac53c4894c8067e10fdf71a7a27d0`.
+
+GitHub **Releases** is the canonical download location for this frozen build.
+
 ```text
 G-CET-Runtime-Profiler-v1.0.0.zip
 └─ G-CET-Runtime-Profiler\
