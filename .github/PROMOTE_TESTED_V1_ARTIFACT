@@ -1,2 +1,3 @@
 Publish the exact user-tested v1.0.0 Actions artifact.
 Retry tested artifact publication.
+Retry without moving the existing source tag.
