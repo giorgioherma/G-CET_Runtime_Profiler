@@ -23,8 +23,8 @@ Future changes should preserve these behavioral invariants unless the standalone
 - Existing Scheduler-integrated 0-Engine uses the known scheduler path.
 - Recognized unintegrated/custom 0-Engine gets the temporary profiler bridge + `CETProfilerScheduler.lua` path.
 - Core-only mode leaves 0-Engine completely untouched and is presented as a fallback only when normal Scheduler integration is unavailable or fails safely.
-- Restore refuses unsafe overwrites when live files changed unexpectedly.
-- Restore returns the previous CETProfilerControls binding state.
+- Restore uses verified original backups authoritatively for G-CET-managed files; changes inside profiler-owned live files do not block restoration.
+- CET keybinds are user-controlled. F11 is seeded only when no existing `CETProfiler_Toggle` binding exists, and restore leaves the current binding untouched.
 - Legacy TOTAL 0.2.19 binding/controls rollback state must remain recoverable during migration.
 - Standalone GUI and headless/CLI mode call the same C# core service.
 
@@ -47,4 +47,4 @@ The JSON contract should remain stable enough for TOTAL Profiler to consume with
 
 Every user-owned file or directory that the profiler replaces or edits must have recoverable original state recorded **before** the mutation. Added profiler-only files are tracked as additions rather than pretending an original existed.
 
-Strict restore prevalidates the whole transaction. Emergency restore is allowed to make partial progress, but only component-by-component after that component's own backup/ownership checks pass. Anything uncertain stays untouched and is listed for manual review.
+Normal restore prevalidates the integrity of all required original backups, then restores the managed transaction authoritatively. Emergency restore remains a component-by-component recovery path for genuinely missing/corrupt recovery material rather than ordinary runtime changes.
