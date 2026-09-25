@@ -109,7 +109,6 @@ public sealed class ProfilerService : IProfilerService
             Managed = state is not null,
             ManagedMode = state?.ZeroEngine.Mode ?? "",
             ControlsPresent = Directory.Exists(paths.Controls),
-            F11Binding = bindings.IsF11Configured(paths),
             CaptureTitlePresent = File.Exists(paths.CaptureTitle),
             CaptureTitle = File.Exists(paths.CaptureTitle)
                 ? ReadCaptureTitle(paths.CaptureTitle)
