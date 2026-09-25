@@ -771,6 +771,7 @@ public sealed class MainForm : Form
         snapshot.Managed &&
         snapshot.CetState == "PROFILER_ACTIVE" &&
         snapshot.ControlsPresent &&
+        snapshot.CaptureTitlePresent &&
         snapshot.F11Binding;
 
     private static bool HasCriticalProfilerError(ProfilerStatus? snapshot) =>
@@ -779,6 +780,7 @@ public sealed class MainForm : Form
         (snapshot.Managed &&
          (snapshot.CetState != "PROFILER_ACTIVE" ||
           !snapshot.ControlsPresent ||
+          !snapshot.CaptureTitlePresent ||
           !snapshot.F11Binding));
 
     private void RenderReadyState(ProfilerStatus? snapshot)
@@ -820,6 +822,9 @@ public sealed class MainForm : Form
 
         if (snapshot.CetState == "UNKNOWN")
             return $"Unsupported CET ASI detected. Install/repair supported CET {snapshot.TargetCetVersion}, then REFRESH.";
+
+        if (snapshot.Managed && !snapshot.CaptureTitlePresent)
+            return "CaptureTitle.txt is missing from CETProfilerControls. RESTORE ORIGINAL STATE first, then install again.";
 
         if (snapshot.Managed && !IsProfilerReady(snapshot))
             return "Managed install is incomplete. RESTORE ORIGINAL STATE first, then install again; do not start a capture yet.";
@@ -998,6 +1003,8 @@ public sealed class MainForm : Form
                 problems.Add("- CET profiler ASI is not active.");
             if (!snapshot.ControlsPresent)
                 problems.Add("- CETProfilerControls is missing.");
+            if (!snapshot.CaptureTitlePresent)
+                problems.Add("- CaptureTitle.txt is missing.");
             if (!snapshot.F11Binding)
                 problems.Add("- The CET F11 capture binding is not configured.");
 
