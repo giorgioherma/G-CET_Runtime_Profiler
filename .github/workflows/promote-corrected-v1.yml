@@ -1,0 +1,62 @@
+name: Promote corrected v1.0.0
+
+permissions:
+  actions: read
+  contents: write
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/PROMOTE_CORRECTED_V1'
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout release source metadata
+        uses: actions/checkout@v4
+        with:
+          ref: ac31361734747a47f2415b4f1c3789b059a3ad5b
+
+      - name: Download validated portable artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: G-CET-Runtime-Profiler-v1.0.0
+          run-id: 36198338678
+          github-token: ${{ github.token }}
+          path: artifact
+
+      - name: Publish corrected v1.0.0
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ac31361734747a47f2415b4f1c3789b059a3ad5b
+        run: |
+          set -euo pipefail
+          test -d artifact/G-CET-Runtime-Profiler
+
+          rm -f G-CET-Runtime-Profiler-v1.0.0.zip G-CET-Runtime-Profiler-v1.0.0.zip.sha256.txt
+          (cd artifact && zip -qr ../G-CET-Runtime-Profiler-v1.0.0.zip G-CET-Runtime-Profiler)
+          sha256sum G-CET-Runtime-Profiler-v1.0.0.zip > G-CET-Runtime-Profiler-v1.0.0.zip.sha256.txt
+
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/v1.0.0" \
+            -f sha="$SOURCE_SHA" -F force=true >/dev/null
+
+          {
+            cat RELEASE_NOTES.md
+            printf '\n\n## SHA-256\n\n    '
+            cat G-CET-Runtime-Profiler-v1.0.0.zip.sha256.txt
+          } > release-notes.md
+
+          gh release edit v1.0.0 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "G-CET Runtime Profiler v1.0.0" \
+            --notes-file release-notes.md \
+            --target "$SOURCE_SHA" \
+            --latest
+
+          gh release upload v1.0.0 \
+            G-CET-Runtime-Profiler-v1.0.0.zip \
+            G-CET-Runtime-Profiler-v1.0.0.zip.sha256.txt \
+            --repo "$GITHUB_REPOSITORY" --clobber
