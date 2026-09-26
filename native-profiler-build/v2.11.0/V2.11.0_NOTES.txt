@@ -1,0 +1,67 @@
+CET Native Runtime Profiler v2.11.0
+
+0-ENGINE SCHEDULER ATTRIBUTION
+==============================
+
+Problem
+-------
+PASS4/PASS4.1 centralizes many former mod callbacks beneath 0-Engine::onUpdate.
+The native profiler still measures the parent correctly, but the parent bucket
+cannot identify the scheduled child responsible for a spike.
+
+Solution
+--------
+v2.11.0 adds a small native Scheduler telemetry channel plus a one-file
+0-Engine Scheduler bridge.
+
+The normal v2.10.2 event / Observe / ObserveAfter / Override profiler is not
+replaced. Its ByMod, ByModKind, Detail, Spikes, Timeline and Markers outputs
+remain comparable with previous captures.
+
+New outputs
+-----------
+CET_Runtime_Profile_Scheduler_ByJob.csv
+    Aggregate inclusive wall time per Scheduler owner/job.
+
+CET_Runtime_Profile_Scheduler_Spikes.csv
+    Individual Scheduler jobs >= 2 ms by default.
+
+CET_Runtime_Profile_Scheduler_FrameBursts.csv
+    All jobs in Scheduler frames where combined measured child-job time >= 5 ms.
+
+Interpretation
+--------------
+Scheduler job timing is inclusive child wall time inside 0-Engine::onUpdate.
+It is deliberately NOT merged into normal exclusive callback totals. Adding it
+to ByMod would double-count work already inside the 0-Engine parent callback.
+
+A Scheduler job can also call a separately profiled CET callback. Its Scheduler
+duration includes that nested work; the normal native exclusive profiler keeps
+its own existing nested-child subtraction rules.
+
+Hot-path design
+---------------
+Job metadata is registered once and represented by a stable native handle.
+During an active capture:
+- FrameBegin once per Scheduler.Update
+- JobBegin / JobEnd once per executed Scheduler job
+- FrameEnd once per Scheduler.Update
+
+Aggregate job counters are atomic.
+Mutex/vector work happens only when:
+- an individual child crosses the 2 ms Scheduler spike threshold, or
+- combined measured Scheduler jobs cross the 5 ms frame-burst threshold.
+
+When capture is not running, the bridge does one CETProfilerIsRunning() check
+per Scheduler frame and skips individual job timing.
+
+Bridge compatibility
+--------------------
+The bundled bridge is based on:
+0-Engine PASS4.1 v0.18.9 Scheduler.lua (Scheduler 0.2.0).
+
+It does not alter Scheduler cadence, staggering, pause policy, catch-up policy,
+job callback bodies or client registration. It only adds profiler calls when
+the v2.11 native API is available.
+
+v2.10.2 Override downstream-attribution behavior is retained unchanged.
