@@ -337,6 +337,7 @@ public:
         m_accumulatedCapture = std::chrono::nanoseconds::zero();
         m_segmentStarted = Clock::now();
         PublishFastSegmentClockLocked(0);
+        ++m_captureGeneration;
         m_state.store(CaptureState::Running, std::memory_order_release);
         AddMarkerLocked("CAPTURE_START", m_segmentStarted);
     }
@@ -896,9 +897,18 @@ public:
         uint64_t droppedSchedulerFrameBursts{};
         double schedulerJobSpikeThresholdMs{};
         double schedulerFrameBurstThresholdMs{};
+        uint64_t dumpGeneration{};
 
         {
             std::lock_guard lock(m_mutex);
+
+            // A pre-capture or duplicate Dump must be a true no-op. Older builds
+            // could emit header-only CSV shells when Dump was reached without a
+            // real START. Those files confused the manager and could block install.
+            // Output is now strictly lazy: no capture generation, no files.
+            dumpGeneration = m_captureGeneration;
+            if (dumpGeneration == 0 || dumpGeneration == m_dumpedGeneration)
+                return;
 
             outputRoot = m_outputRoot;
             elapsedSec = CapturedSecondsLocked(Clock::now());
@@ -1493,6 +1503,19 @@ public:
                 }
             }
         }
+
+        // Normal controls pause before exporting. Mark that paused capture
+        // generation as exported so shutdown/duplicate Dump calls cannot recreate
+        // empty/header-only files. If a console caller dumps while still RUNNING,
+        // leave it eligible for the final STOP export.
+        {
+            std::lock_guard lock(m_mutex);
+            if (m_state.load(std::memory_order_relaxed) == CaptureState::Paused &&
+                m_captureGeneration == dumpGeneration)
+            {
+                m_dumpedGeneration = dumpGeneration;
+            }
+        }
     }
 
 private:
@@ -1839,6 +1862,8 @@ private:
     std::vector<SchedulerSpikeEvent> m_schedulerSpikeEvents;
     std::vector<SchedulerFrameBurstEvent> m_schedulerFrameBursts;
     std::filesystem::path m_outputRoot;
+    uint64_t m_captureGeneration{0};
+    uint64_t m_dumpedGeneration{0};
     std::atomic<CaptureState> m_state{CaptureState::Paused};
     std::atomic<uint64_t> m_spikeThresholdNs{DefaultSpikeThresholdNs};
     std::atomic<uint64_t> m_timelineBucketNs{DefaultTimelineBucketNs};
