@@ -411,6 +411,21 @@ public sealed class MainForm : Form
         {
             if (busy) return;
 
+            // Restore must always remain an exit path. The only intentional runtime
+            // gate is the game itself: managed profiler files cannot be replaced
+            // safely while Cyberpunk is running.
+            if (IsCyberpunkRunning())
+            {
+                ThemedDialog.Show(
+                    this,
+                    "Cyberpunk 2077 is still running.\r\n\r\n" +
+                    "Close Cyberpunk 2077, then click RESTORE ORIGINAL STATE again.",
+                    Text,
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
             DialogResult answer;
             suppressActivationRefresh = true;
             try
@@ -1209,18 +1224,33 @@ public sealed class MainForm : Form
         }
         catch (Exception ex)
         {
-            ShowRestoreOutcome(false, "RESTORE NOT COMPLETED — recovery state/backups preserved.");
-            await SettleProfilerUiBeforeNotificationAsync();
-            ThemedDialog.Show(
-                this,
-                "Restore could not complete because a required original backup is missing or failed verification." +
-                Environment.NewLine + Environment.NewLine +
-                "Reason:" + Environment.NewLine + FriendlyMessage(ex) +
-                Environment.NewLine + Environment.NewLine +
-                "The saved recovery state was kept so RESTORE ORIGINAL STATE can be retried after the backup or filesystem problem is corrected.",
-                Text,
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Warning);
+            if (IsCyberpunkRunning())
+            {
+                ShowRestoreOutcome(false, "RESTORE WAITING — close Cyberpunk 2077 and retry.");
+                await SettleProfilerUiBeforeNotificationAsync();
+                ThemedDialog.Show(
+                    this,
+                    "Cyberpunk 2077 is still running.\r\n\r\n" +
+                    "Close Cyberpunk 2077, then click RESTORE ORIGINAL STATE again.",
+                    Text,
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+            else
+            {
+                ShowRestoreOutcome(false, "RESTORE NOT COMPLETED — recovery state/backups preserved.");
+                await SettleProfilerUiBeforeNotificationAsync();
+                ThemedDialog.Show(
+                    this,
+                    "Restore could not complete because a required original backup is missing or failed verification." +
+                    Environment.NewLine + Environment.NewLine +
+                    "Reason:" + Environment.NewLine + FriendlyMessage(ex) +
+                    Environment.NewLine + Environment.NewLine +
+                    "The saved recovery state was kept so RESTORE ORIGINAL STATE can be retried after the backup or filesystem problem is corrected.",
+                    Text,
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
         }
         finally
         {
