@@ -7,11 +7,11 @@ $ErrorActionPreference = 'Stop'
 
 $PublishedRoot = (Resolve-Path $PublishedRoot).Path
 $exe = Join-Path $PublishedRoot 'G-CET-Runtime-Profiler.exe'
-$profilerAsi = Join-Path $PublishedRoot 'payload\cyber_engine_tweaks.PROFILER.asi'
+$profilerPayload = Join-Path $PublishedRoot 'payload\cyber_engine_tweaks.PROFILER.dll'
 $awareScheduler = Join-Path $PublishedRoot 'payload\0-Engine\modules\Scheduler.lua'
 
 if (!(Test-Path -LiteralPath $exe -PathType Leaf)) { throw "Profiler executable not found: $exe" }
-if (!(Test-Path -LiteralPath $profilerAsi -PathType Leaf)) { throw "Profiler ASI not found: $profilerAsi" }
+if (!(Test-Path -LiteralPath $profilerPayload -PathType Leaf)) { throw "Profiler payload not found: $profilerPayload" }
 if (!(Test-Path -LiteralPath $awareScheduler -PathType Leaf)) { throw "Profiler-aware Scheduler payload not found: $awareScheduler" }
 
 function New-ResolverFixture([string]$Name, [bool]$WithZeroEngine = $true) {
@@ -22,7 +22,7 @@ function New-ResolverFixture([string]$Name, [bool]$WithZeroEngine = $true) {
     $cet = Join-Path $plugins 'cyber_engine_tweaks'
     $mods = Join-Path $cet 'mods'
     New-Item -ItemType Directory -Force $mods | Out-Null
-    Copy-Item -LiteralPath $profilerAsi -Destination (Join-Path $plugins 'cyber_engine_tweaks.asi')
+    Copy-Item -LiteralPath $profilerPayload -Destination (Join-Path $plugins 'cyber_engine_tweaks.asi')
 
     $zero = Join-Path $mods '0-Engine'
     if ($WithZeroEngine) {
