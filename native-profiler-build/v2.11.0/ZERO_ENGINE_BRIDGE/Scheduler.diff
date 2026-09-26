@@ -1,0 +1,175 @@
+--- PASS4.1-v0.18.9/0-Engine/modules/Scheduler.lua
++++ v2.11-bridge/0-Engine/modules/Scheduler.lua
+@@ -10,6 +10,63 @@
+ local lastFrame = 0
+ local Health = nil
+ local Logger = nil
++
++-- Optional CET native-profiler bridge (v2.11+). If the profiler API is absent,
++-- this remains dormant and has no effect on Scheduler behavior.
++local Profiler = {
++    enabled = false,
++    isRunning = nil,
++    registerJob = nil,
++    frameBegin = nil,
++    frameEnd = nil,
++    jobBegin = nil,
++    jobEnd = nil
++}
++
++local function registerProfilerJob(job)
++    if not Profiler.enabled or not job or job.profilerHandle then return end
++
++    local handle = Profiler.registerJob(
++        job.owner or "unknown",
++        job.profilerKind or "unknown",
++        job.label or ("job_" .. tostring(job.id or 0)),
++        job.profilerInterval or 0,
++        job.profilerUnit or ""
++    )
++
++    if handle and handle ~= 0 then
++        job.profilerHandle = handle
++    end
++end
++
++local function initProfilerBridge()
++    Profiler.enabled =
++        type(CETProfilerIsRunning) == "function" and
++        type(CETProfilerSchedulerRegisterJob) == "function" and
++        type(CETProfilerSchedulerFrameBegin) == "function" and
++        type(CETProfilerSchedulerFrameEnd) == "function" and
++        type(CETProfilerSchedulerJobBegin) == "function" and
++        type(CETProfilerSchedulerJobEnd) == "function"
++
++    if not Profiler.enabled then return end
++
++    Profiler.isRunning = CETProfilerIsRunning
++    Profiler.registerJob = CETProfilerSchedulerRegisterJob
++    Profiler.frameBegin = CETProfilerSchedulerFrameBegin
++    Profiler.frameEnd = CETProfilerSchedulerFrameEnd
++    Profiler.jobBegin = CETProfilerSchedulerJobBegin
++    Profiler.jobEnd = CETProfilerSchedulerJobEnd
++
++    for _, interval in ipairs(frameIntervals) do
++        local bucket = frameBuckets[interval]
++        for _, job in ipairs(bucket) do
++            registerProfilerJob(job)
++        end
++    end
++    for _, job in ipairs(timedJobs) do
++        registerProfilerJob(job)
++    end
++end
+ 
+ local function noop() end
+ 
+@@ -63,13 +120,23 @@
+     return handle
+ end
+ 
+-local function safeInvoke(job, ctx)
++local function safeInvoke(job, ctx, profileActive)
++    local token = 0
++    if profileActive and job.profilerHandle then
++        token = Profiler.jobBegin(job.profilerHandle) or 0
++    end
++
+     local ok, err
+     if Health then
+         ok, err = Health.Invoke(job.owner, "schedule", job.label, job.fn, ctx.frame, ctx)
+     else
+         ok, err = pcall(job.fn, ctx)
+     end
++
++    if token ~= 0 then
++        Profiler.jobEnd(job.profilerHandle, token, ctx.frame)
++    end
++
+     if not ok and err ~= "quarantined" and Logger then
+         Logger.Log("0-Engine", "Scheduled callback error [" .. job.owner .. "/" .. job.label .. "]: " .. tostring(err), "error")
+     end
+@@ -78,6 +145,7 @@
+ function Scheduler.Init(logger, health)
+     Logger = logger
+     Health = health
++    initProfilerBridge()
+ end
+ 
+ function Scheduler.SetGeneration(value)
+@@ -105,7 +173,10 @@
+         active = options.active ~= false, cancelled = false,
+         pausePolicy = options.pause or "when_not_playing",
+         accumulated = 0, generation = generation,
+-        generationScoped = options.generationScoped == true
++        generationScoped = options.generationScoped == true,
++        profilerKind = "frame",
++        profilerInterval = interval,
++        profilerUnit = "frames"
+     }
+     local bucket = frameBuckets[interval]
+     if not bucket then
+@@ -115,6 +186,7 @@
+         table.sort(frameIntervals)
+     end
+     bucket[#bucket + 1] = job
++    registerProfilerJob(job)
+     return makeHandle(job)
+ end
+ 
+@@ -144,9 +216,13 @@
+         maxCatchUp = options.maxCatchUp or 3, elapsed = 0,
+         spreadOffset = spreadOffset,
+         spreadPending = repeating and spreadOffset > 0,
+-        generation = generation, generationScoped = options.generationScoped == true
++        generation = generation, generationScoped = options.generationScoped == true,
++        profilerKind = repeating and "timed" or "oneshot",
++        profilerInterval = delay,
++        profilerUnit = "seconds"
+     }
+     timedJobs[#timedJobs + 1] = job
++    registerProfilerJob(job)
+     return makeHandle(job)
+ end
+ 
+@@ -165,6 +241,11 @@
+ 
+ function Scheduler.Update(ctx)
+     lastFrame = ctx.frame
++
++    local profileActive = Profiler.enabled and Profiler.isRunning()
++    if profileActive then
++        Profiler.frameBegin(ctx.frame)
++    end
+     for _, interval in ipairs(frameIntervals) do
+         local bucket = frameBuckets[interval]
+         local dirty = false
+@@ -182,7 +263,7 @@
+                     }
+                     job.accumulated = 0
+                     job.nextFrame = ctx.frame + interval
+-                    safeInvoke(job, jobCtx)
++                    safeInvoke(job, jobCtx, profileActive)
+                 end
+             else dirty = true end
+         end
+@@ -218,7 +299,7 @@
+                         playing = ctx.playing, inMenu = ctx.inMenu,
+                         player = ctx.player, state = ctx.state
+                     }
+-                    safeInvoke(job, jobCtx)
++                    safeInvoke(job, jobCtx, profileActive)
+                     if job.cancelled then break end
+                 end
+                 job.elapsed = 0
+@@ -249,6 +330,10 @@
+         end
+         for i = write + 1, #timedJobs do timedJobs[i] = nil end
+     end
++
++    if profileActive then
++        Profiler.frameEnd(ctx.frame)
++    end
+ end
+ 
+ function Scheduler.GetInfo()
