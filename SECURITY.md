@@ -98,13 +98,9 @@ Canonical GitHub release ZIP:
 
 `G-CET-Runtime-Profiler-v1.0.0.zip`
 
-SHA-256:
+The canonical release publishes a matching `.sha256.txt` asset beside the ZIP. That release-side checksum is the authoritative identity for the current v1.0.0 maintenance build.
 
-```text
-0fb6adee34a689273bcb4be17b987656b395c5308dca487d2e425e58cf2d7b87
-```
-
-A scanner or moderation report for a different SHA-256 is reviewing different bytes and should not be treated as the identity of this canonical release.
+A scanner or moderation report should be matched against that published checksum before it is treated as a report for the current canonical release.
 
 ## Notes for Nexus Mods / security reviewers
 
