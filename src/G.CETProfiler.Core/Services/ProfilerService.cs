@@ -147,12 +147,12 @@ public sealed class ProfilerService : IProfilerService
             throw new InvalidOperationException(
                 $"Installed CET ASI is neither the exact supported official CET {manifest.TargetCet.Version} binary nor this profiler binary. No files were changed.");
 
-        var profilerSource = Path.Combine(payloadRoot, "cyber_engine_tweaks.PROFILER.asi");
+        var profilerSource = Path.Combine(payloadRoot, "cyber_engine_tweaks.PROFILER.dll");
         var schedulerSource = Path.Combine(payloadRoot, "0-Engine", "modules", "Scheduler.lua");
         var adaptiveSchedulerSource = Path.Combine(payloadRoot, "0-Engine", "modules", "CETProfilerScheduler.lua");
         var controlsSource = Path.Combine(payloadRoot, "CETProfilerControls");
 
-        VerifyPayload(profilerSource, profilerHash, "Bundled profiler ASI failed its manifest hash check.");
+        VerifyPayload(profilerSource, profilerHash, "Bundled native profiler payload failed its manifest hash check.");
         VerifyPayload(schedulerSource, manifest.ZeroEngine.ProfilerSchedulerSha256,
             "Bundled profiler-aware Scheduler.lua failed its manifest hash check.");
         VerifyPayload(adaptiveSchedulerSource, manifest.ZeroEngine.ProfilerAdaptiveSchedulerSha256,
