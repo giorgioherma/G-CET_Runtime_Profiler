@@ -25,7 +25,7 @@ These operations are part of the documented profiler lifecycle. The architecture
 | `app\G-CET-Runtime-Profiler.App.exe` | Built from `src/G.CETProfiler.App/` using .NET 8 |
 | `app\G.CETProfiler.Core.dll` | Built from `src/G.CETProfiler.Core/` using .NET 8 |
 | Lua integration payloads | Stored as source in `payload/` |
-| `payload\cyber_engine_tweaks.PROFILER.asi` | Custom-built native profiler created through a PowerShell-based reconstruction/build process; exact release bytes are version/hash locked by `MANIFEST.json` |
+| `payload\cyber_engine_tweaks.PROFILER.asi` | Custom source-built native profiler; recovered builder/source is published under `native-profiler-build/v2.11.0/` and exact release bytes are version/hash locked by `MANIFEST.json` |
 
 The complete manager/launcher build procedure is documented in [BUILDING.md](BUILDING.md).
 
@@ -52,7 +52,7 @@ That value matches `targetCET.officialSha256` in the current G-CET `MANIFEST.jso
 
 The public manager GitHub Actions workflow does not re-run this historical native reconstruction for every manager build. Instead, the completed ASI is committed as a release input, `MANIFEST.json` records its expected profiler SHA-256, and CI fails if the shipped bytes differ.
 
-The recovered builder contents and file hashes are documented in [docs/NATIVE_PROFILER_BUILD_PROVENANCE.md](docs/NATIVE_PROFILER_BUILD_PROVENANCE.md).
+The clean recovered builder/source is published directly under [`native-profiler-build/v2.11.0/`](native-profiler-build/v2.11.0/). Its provenance and recovered source hashes are documented in [docs/NATIVE_PROFILER_BUILD_PROVENANCE.md](docs/NATIVE_PROFILER_BUILD_PROVENANCE.md).
 
 ## Package controls
 
@@ -99,11 +99,12 @@ A scanner or moderation report for a different SHA-256 is reviewing different by
 For a compiled-code review, the relevant public material is:
 
 1. repository source under `src/`;
-2. [BUILDING.md](BUILDING.md);
-3. the canonical CI definition at `.github/workflows/build.yml`;
-4. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md);
-5. `MANIFEST.json`, which locks the native profiler/integration payload identities;
-6. the canonical GitHub release ZIP and its published SHA-256 file.
+2. native profiler build source under [`native-profiler-build/v2.11.0/`](native-profiler-build/v2.11.0/);
+3. [BUILDING.md](BUILDING.md);
+4. the canonical CI definition at `.github/workflows/build.yml`;
+5. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md);
+6. `MANIFEST.json`, which locks the native profiler/integration payload identities;
+7. the canonical GitHub release ZIP and its published SHA-256 file.
 
 The manager and launcher can be traced directly to source in this repository. The native profiler ASI should be reviewed as a custom source-built CET binary produced by the pinned historical reconstruction pipeline described above and in [docs/NATIVE_PROFILER_BUILD_PROVENANCE.md](docs/NATIVE_PROFILER_BUILD_PROVENANCE.md).
 
