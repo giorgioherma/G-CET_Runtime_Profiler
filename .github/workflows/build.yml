@@ -8,8 +8,6 @@ on:
   workflow_dispatch:
   push:
     branches: [ main ]
-    paths-ignore:
-      - '.github/PROMOTE_MANUAL_V1'
   pull_request:
 
 jobs:
