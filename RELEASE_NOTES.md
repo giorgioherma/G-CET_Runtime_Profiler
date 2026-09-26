@@ -5,6 +5,7 @@ First stable release of the standalone G-CET Runtime Profiler.
 ## Highlights
 
 - Portable, self-contained Windows ZIP — extract and run.
+- Includes a self-contained illustrated `Install_Instructions.html` beside the profiler folder.
 - Single CET capture input (**F11 by default**) for START / STOP + automatic export.
 - Transactional CET install and exact restore.
 - Optional 0-Engine Scheduler attribution with safe fallback.
