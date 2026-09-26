@@ -8,6 +8,8 @@ on:
   workflow_dispatch:
   push:
     branches: [ main ]
+    paths-ignore:
+      - '.github/PROMOTE_MANUAL_V1'
   pull_request:
 
 jobs:
@@ -654,9 +656,15 @@ jobs:
 
           Copy-Item publish\* $productRoot -Recurse -Force
 
+          $instructions = Join-Path $portableRoot 'Install_Instructions.html'
+          Copy-Item Install_Instructions.html $instructions -Force
+          if (!(Test-Path -LiteralPath $instructions -PathType Leaf)) {
+            throw 'Install_Instructions.html is missing from the portable release root.'
+          }
+
           $asset = "G-CET-Runtime-Profiler-v$env:PRODUCT_VERSION.zip"
           if (Test-Path $asset) { Remove-Item $asset -Force }
-          Compress-Archive -Path $productRoot -DestinationPath $asset -CompressionLevel Optimal
+          Compress-Archive -Path $productRoot,$instructions -DestinationPath $asset -CompressionLevel Optimal
 
           $hash = (Get-FileHash -LiteralPath $asset -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  $asset" | Set-Content -Encoding ASCII "$asset.sha256.txt"
