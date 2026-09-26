@@ -17,7 +17,7 @@ G-CET is source-visible for its public manager and launcher.
 - **Architecture / restore model:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - **Canonical build workflow:** [.github/workflows/build.yml](.github/workflows/build.yml)
 
-For review purposes, the .NET manager and native root launcher are built from source in this repository. The shipped `payload/cyber_engine_tweaks.PROFILER.asi` is documented separately as a **prebuilt, SHA-256-locked native profiler input**; this repository does not claim that the ASI is produced by the C# or launcher build.
+For review purposes, the .NET manager and native root launcher are built from source in this repository. The shipped `payload/cyber_engine_tweaks.PROFILER.asi` is a **custom-built native profiler** produced through a PowerShell-based reconstruction/build process using an earlier working profiler version as the reference. Its native builder/toolchain is not currently committed here, so the public CI does not rebuild the ASI; instead the exact shipped binary is SHA-256 locked and verified before release.
 
 Canonical GitHub **v1.0.0** release ZIP SHA-256:
 
