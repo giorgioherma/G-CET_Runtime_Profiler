@@ -132,13 +132,7 @@ Verify a downloaded release with PowerShell:
 Get-FileHash ".\G-CET-Runtime-Profiler-v1.0.0.zip" -Algorithm SHA256
 ```
 
-Canonical GitHub v1.0.0 release ZIP SHA-256:
-
-```text
-0fb6adee34a689273bcb4be17b987656b395c5308dca487d2e425e58cf2d7b87
-```
-
-The release also publishes a matching `.sha256.txt` asset.
+The canonical GitHub release publishes a matching `.sha256.txt` asset beside the ZIP. That release-side checksum is authoritative because a same-version maintenance refresh necessarily changes the ZIP bytes.
 
 ## Reproducibility and review
 
