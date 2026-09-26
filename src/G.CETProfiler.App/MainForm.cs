@@ -1199,6 +1199,12 @@ public sealed class MainForm : Form
                 throw new InvalidOperationException("Restore returned, but managed profiler state is still present.");
 
             lastStatus = verified;
+
+            // Match the REDscript manager lifecycle: a successful restore ends the
+            // profiling session and resets the next capture title to the default.
+            captureTitle.Text = "WORLD";
+            SaveSettingsFromUi();
+
             ShowRestoreOutcome(true, "RESTORE SUCCESSFUL — profiler removed and original state restored.");
         }
         catch (Exception ex)
