@@ -61,8 +61,20 @@ public sealed class ProfilerStatus
     [JsonPropertyName("captureTitle")]
     public string CaptureTitle { get; init; } = "";
 
+    [JsonPropertyName("captureKey")]
+    public string CaptureKey { get; init; } = "";
+
+    [JsonPropertyName("captureKeyIsDefaultF11")]
+    public bool CaptureKeyIsDefaultF11 { get; init; }
+
+    [JsonPropertyName("captureKeyCode")]
+    public long? CaptureKeyCode { get; init; }
+
     [JsonPropertyName("liveResultCount")]
     public int LiveResultCount { get; init; }
+
+    [JsonPropertyName("captureReadyForCollection")]
+    public bool CaptureReadyForCollection { get; init; }
 
     [JsonPropertyName("resultsRoot")]
     public string ResultsRoot { get; init; } = "";
@@ -72,5 +84,5 @@ public sealed class ProfilerStatus
 
     public override string ToString() =>
         $"CET {CetState} · managed {(Managed ? "YES" : "NO")} · 0-Engine {ZeroEngineInit} · " +
-        $"live CSVs {LiveResultCount}";
+        $"live CSVs {LiveResultCount} · capture ready {(CaptureReadyForCollection ? "YES" : "NO")}";
 }
