@@ -1,0 +1,140 @@
+name: Publish approved CET v1.0.0 package
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/publish-approved-cet-v1.yml"
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout current instructions
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Download exact approved Actions artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl -fL \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/10899035898/zip" \
+            -o approved-artifact.zip
+          echo "620e78ad8d15305dd91685886f8d1d423fd07c2fc153df68f663231436883f43  approved-artifact.zip" | sha256sum -c -
+          echo "31b22ecb440f81e69dd7644af0eeafc5c74c24d4cdba729f569310f959d5b7f8  Install_Instructions.html" | sha256sum -c -
+
+      - name: Rebuild the exact approved release ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import zipfile, hashlib
+
+          artifact = Path("approved-artifact.zip")
+          instructions = Path("Install_Instructions.html")
+          out = Path("G-CET-Runtime-Profiler-v1.0.0.zip")
+          sha_file = Path("G-CET-Runtime-Profiler-v1.0.0.zip.sha256.txt")
+
+          with zipfile.ZipFile(artifact, "r") as zin, zipfile.ZipFile(
+              out, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9
+          ) as zout:
+              for info in zin.infolist():
+                  if info.filename == "Install_Instructions.html":
+                      continue
+
+                  data = zin.read(info.filename)
+                  new_info = zipfile.ZipInfo(info.filename, date_time=info.date_time)
+                  new_info.external_attr = info.external_attr
+                  new_info.internal_attr = info.internal_attr
+                  new_info.create_system = info.create_system
+                  new_info.flag_bits = info.flag_bits
+                  new_info.comment = info.comment
+                  new_info.extra = info.extra
+                  new_info.compress_type = zipfile.ZIP_STORED if info.is_dir() else zipfile.ZIP_DEFLATED
+                  zout.writestr(new_info, data)
+
+              zout.writestr(
+                  "Install_Instructions.html",
+                  instructions.read_bytes(),
+                  compress_type=zipfile.ZIP_DEFLATED,
+                  compresslevel=9,
+              )
+
+          with zipfile.ZipFile(artifact, "r") as zin, zipfile.ZipFile(out, "r") as zout:
+              artifact_members = [n for n in zin.namelist() if n != "Install_Instructions.html"]
+              release_members = zout.namelist()
+              missing = [n for n in artifact_members if n not in release_members]
+              changed = [
+                  n for n in artifact_members
+                  if n in release_members
+                  and hashlib.sha256(zin.read(n)).digest() != hashlib.sha256(zout.read(n)).digest()
+              ]
+              if missing or changed:
+                  raise SystemExit(f"Approved artifact verification failed: missing={missing[:5]}, changed={changed[:5]}")
+              if zout.read("Install_Instructions.html") != instructions.read_bytes():
+                  raise SystemExit("Bundled instructions differ from the approved HTML.")
+              top = sorted({n.split("/", 1)[0] for n in release_members if n})
+              if top != ["G-CET-Runtime-Profiler", "Install_Instructions.html"]:
+                  raise SystemExit(f"Unexpected release structure: {top}")
+
+          digest = hashlib.sha256(out.read_bytes()).hexdigest()
+          expected = "cb2574cbe24c460955f4a33a364dd23c72bf76b75430f23b9b0a51eb249496d5"
+          if digest != expected:
+              raise SystemExit(f"Release ZIP byte hash mismatch: expected {expected}, got {digest}")
+
+          sha_file.write_text(f"{digest}  {out.name}\n", encoding="ascii")
+          print(f"Verified exact release ZIP: {digest}")
+          PY
+
+      - name: Replace v1.0.0 release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release upload v1.0.0 \
+            G-CET-Runtime-Profiler-v1.0.0.zip \
+            G-CET-Runtime-Profiler-v1.0.0.zip.sha256.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
+
+          python - <<'PY'
+          from pathlib import Path
+          notes = Path("RELEASE_NOTES.md").read_text(encoding="utf-8").rstrip()
+          sha = "cb2574cbe24c460955f4a33a364dd23c72bf76b75430f23b9b0a51eb249496d5"
+          Path("release-body.md").write_text(
+              notes + "\n\n## SHA-256\n\n    " + sha + "  G-CET-Runtime-Profiler-v1.0.0.zip\n",
+              encoding="utf-8"
+          )
+          PY
+          gh release edit v1.0.0 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "G-CET Runtime Profiler v1.0.0" \
+            --notes-file release-body.md \
+            --latest
+
+      - name: Verify published asset digest
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/v1.0.0")"
+          published_digest="$(printf '%s' "$release_json" | jq -r '.assets[] | select(.name=="G-CET-Runtime-Profiler-v1.0.0.zip") | .digest')"
+          test "$published_digest" = "sha256:cb2574cbe24c460955f4a33a364dd23c72bf76b75430f23b9b0a51eb249496d5"
+          echo "Published release asset verified: $published_digest"
