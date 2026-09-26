@@ -112,7 +112,7 @@ The current G-CET manifest records:
 ```text
 Native profiler version: 2.11.0
 Target CET version:      1.37.1
-Profiler ASI SHA-256:    011a9d3fc908e7cce3309ac5b4520ba9a3db5ad301edc6d2a465ca4c77486768
+Profiler ASI SHA-256:    3400a55fe6824519ec8882c924154b288aa43c969bb5a082bb4c8f8bc4071ddb
 ```
 
 G-CET CI verifies this hash before staging a public release.
