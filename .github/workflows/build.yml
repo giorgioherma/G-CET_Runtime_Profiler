@@ -52,7 +52,7 @@ jobs:
         run: |
           $manifest = Get-Content MANIFEST.json -Raw | ConvertFrom-Json
           $checks = @(
-            @{ Path = 'payload\cyber_engine_tweaks.PROFILER.asi'; Expected = [string]$manifest.targetCET.profilerSha256 },
+            @{ Path = 'payload\cyber_engine_tweaks.PROFILER.dll'; Expected = [string]$manifest.targetCET.profilerSha256 },
             @{ Path = 'payload\0-Engine\modules\Scheduler.lua'; Expected = [string]$manifest.zeroEngine.profilerSchedulerSha256 },
             @{ Path = 'payload\0-Engine\modules\CETProfilerScheduler.lua'; Expected = [string]$manifest.zeroEngine.profilerAdaptiveSchedulerSha256 }
           )
@@ -202,7 +202,7 @@ jobs:
             'publish\app\hostfxr.dll',
             'publish\app\hostpolicy.dll',
             'publish\app\coreclr.dll',
-            'publish\payload\cyber_engine_tweaks.PROFILER.asi',
+            'publish\payload\cyber_engine_tweaks.PROFILER.dll',
             'publish\docs\README.md',
             'publish\RESULTS\README.txt'
           )
@@ -282,7 +282,7 @@ jobs:
           $zero = Join-Path $mods '0-Engine'
           New-Item -ItemType Directory -Force (Join-Path $zero 'modules') | Out-Null
 
-          Copy-Item 'publish\payload\cyber_engine_tweaks.PROFILER.asi' (Join-Path $plugins 'cyber_engine_tweaks.asi')
+          Copy-Item 'publish\payload\cyber_engine_tweaks.PROFILER.dll' (Join-Path $plugins 'cyber_engine_tweaks.asi')
 
           @'
           local Engine = {}
@@ -519,7 +519,7 @@ jobs:
           $cet2 = Join-Path $plugins2 'cyber_engine_tweaks'
           $zero2 = Join-Path $cet2 'mods\0-Engine'
           New-Item -ItemType Directory -Force $zero2 | Out-Null
-          Copy-Item 'publish\payload\cyber_engine_tweaks.PROFILER.asi' (Join-Path $plugins2 'cyber_engine_tweaks.asi')
+          Copy-Item 'publish\payload\cyber_engine_tweaks.PROFILER.dll' (Join-Path $plugins2 'cyber_engine_tweaks.asi')
           '-- deliberately unsupported custom init' | Set-Content -LiteralPath (Join-Path $zero2 'init.lua') -Encoding utf8
           $coreHash = (Get-FileHash (Join-Path $zero2 'init.lua') -Algorithm SHA256).Hash
 
@@ -539,7 +539,7 @@ jobs:
           $mods3 = Join-Path $cet3 'mods'
           $zero3 = Join-Path $mods3 '0-Engine'
           New-Item -ItemType Directory -Force (Join-Path $zero3 'modules') | Out-Null
-          Copy-Item 'publish\payload\cyber_engine_tweaks.PROFILER.asi' (Join-Path $plugins3 'cyber_engine_tweaks.asi')
+          Copy-Item 'publish\payload\cyber_engine_tweaks.PROFILER.dll' (Join-Path $plugins3 'cyber_engine_tweaks.asi')
 
           @'
           local Engine = {}
@@ -600,7 +600,7 @@ jobs:
           $cet4 = Join-Path $plugins4 'cyber_engine_tweaks'
           $zero4 = Join-Path $cet4 'mods\0-Engine'
           New-Item -ItemType Directory -Force (Join-Path $zero4 'modules') | Out-Null
-          Copy-Item 'publish\payload\cyber_engine_tweaks.PROFILER.asi' (Join-Path $plugins4 'cyber_engine_tweaks.asi')
+          Copy-Item 'publish\payload\cyber_engine_tweaks.PROFILER.dll' (Join-Path $plugins4 'cyber_engine_tweaks.asi')
 
           @'
           local Engine = {}
@@ -641,7 +641,7 @@ jobs:
           $plugins5 = Join-Path $fixture5 'bin\x64\plugins'
           $cet5 = Join-Path $plugins5 'cyber_engine_tweaks'
           New-Item -ItemType Directory -Force $cet5 | Out-Null
-          Copy-Item 'publish\payload\cyber_engine_tweaks.PROFILER.asi' (Join-Path $plugins5 'cyber_engine_tweaks.asi')
+          Copy-Item 'publish\payload\cyber_engine_tweaks.PROFILER.dll' (Join-Path $plugins5 'cyber_engine_tweaks.asi')
 
           @{
             CETProfilerControls = @{ CETProfiler_Toggle = 34339947158700032 }
@@ -766,8 +766,11 @@ jobs:
             $tagRef = $tagRefJson | ConvertFrom-Json
             $tagSha = [string]$tagRef.object.sha
             if ($tagSha -ne $sha) {
-              Write-Host "Release tag $tag already exists at $tagSha; leaving it unchanged. Bump VERSION.txt for a new release."
-              exit 0
+              Write-Host "Refreshing existing release tag $tag from $tagSha to $sha without changing the product version."
+              & gh api --method PATCH "repos/$repo/git/refs/tags/$tag" -f sha="$sha" -F force=true *> $null
+              if ($LASTEXITCODE -ne 0) {
+                throw "Could not move existing release tag $tag to $sha."
+              }
             }
           }
           else {
