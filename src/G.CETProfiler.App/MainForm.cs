@@ -419,7 +419,8 @@ public sealed class MainForm : Form
                     this,
                     "Restore the CET profiler-managed game state?\r\n\r\n" +
                     "Original CET / 0-Engine files managed by G-CET will be restored. " +
-                    "Your current CET keybind choice is left alone, and any live profiler output is archived first.",
+                    "Your current CET keybind choice is left alone. A completed live capture is archived first; " +
+                    "profiler template files are simply cleared.",
                     Text,
                     MessageBoxButtons.YesNo,
                     MessageBoxIcon.Warning);
