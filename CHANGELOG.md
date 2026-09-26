@@ -6,6 +6,7 @@ All notable public changes to G-CET Runtime Profiler are recorded here.
 
 ### v1.0.0 maintenance refresh
 
+- INSTALL PROFILER now shows a high-visibility warning to close Vortex or any other mod manager/installer and keep it closed until RESTORE ORIGINAL STATE completes, preventing temporary profiler files from being picked up by external deployment tools.
 - Native CET profiler export is now lazy: a pre-capture or duplicate dump is a true no-op and cannot create header-only CSV shells.
 - **COLLECT RESULTS / CLEAR LIVE** can clear legacy template/scratch output even when there is no completed capture.
 - Template-only live output no longer blocks installation; INSTALL clears those profiler-owned scratch files automatically.

@@ -940,6 +940,16 @@ public sealed class MainForm : Form
     {
         if (busy) return;
 
+        var safetyAnswer = ThemedDialog.ShowImportantWarning(
+            this,
+            "CLOSE VORTEX OR ANY OTHER MOD MANAGER / INSTALLER WHILE USING THE PROFILER.\r\n\r\n" +
+            "KEEP IT CLOSED FROM INSTALL PROFILER UNTIL RESTORE ORIGINAL STATE IS COMPLETE.\r\n\r\n" +
+            "CONTINUE WITH INSTALLATION?",
+            Text);
+
+        if (safetyAnswer != DialogResult.Yes)
+            return;
+
         ClearRestoreOutcome();
 
         try

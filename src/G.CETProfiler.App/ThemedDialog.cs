@@ -26,21 +26,44 @@ internal static class ThemedDialog
         return owner is null ? dialog.ShowDialog() : dialog.ShowDialog(owner);
     }
 
+    public static DialogResult ShowImportantWarning(
+        IWin32Window? owner,
+        string text,
+        string caption,
+        MessageBoxButtons buttons = MessageBoxButtons.YesNo)
+    {
+        using var dialog = BuildDialog(
+            text,
+            caption,
+            buttons,
+            MessageBoxIcon.Warning,
+            important: true);
+        return owner is null ? dialog.ShowDialog() : dialog.ShowDialog(owner);
+    }
+
     private static Form BuildDialog(
         string text,
         string caption,
         MessageBoxButtons buttons,
-        MessageBoxIcon icon)
+        MessageBoxIcon icon,
+        bool important = false)
     {
-        using var measureFont = new Font("Segoe UI", 9.5F);
+        using var measureFont = new Font(
+            "Segoe UI",
+            important ? 14.5F : 9.5F,
+            important ? FontStyle.Bold : FontStyle.Regular);
         var measured = TextRenderer.MeasureText(
             text,
             measureFont,
             new Size(500, 0),
             TextFormatFlags.WordBreak | TextFormatFlags.NoPadding);
 
-        var clientWidth = Math.Clamp(measured.Width + 112, 430, 650);
-        var clientHeight = Math.Clamp(measured.Height + 116, 170, 520);
+        var clientWidth = important
+            ? Math.Clamp(measured.Width + 132, 560, 760)
+            : Math.Clamp(measured.Width + 112, 430, 650);
+        var clientHeight = important
+            ? Math.Clamp(measured.Height + 136, 230, 560)
+            : Math.Clamp(measured.Height + 116, 170, 520);
 
         var form = new Form
         {
@@ -104,8 +127,12 @@ internal static class ThemedDialog
             DetectUrls = false,
             TabStop = false,
             Text = text,
-            ForeColor = Text,
-            BackColor = Bg
+            ForeColor = important ? Amber : Text,
+            BackColor = Bg,
+            Font = new Font(
+                "Segoe UI",
+                important ? 14.5F : 9.5F,
+                important ? FontStyle.Bold : FontStyle.Regular)
         };
 
         var buttonPanel = new Panel
