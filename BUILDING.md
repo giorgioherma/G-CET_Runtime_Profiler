@@ -35,7 +35,7 @@ Profiler implementation:CETRuntimeProfiler.h
 
 The official CET SHA-256 above is the same `officialSha256` recorded by the current G-CET `MANIFEST.json`.
 
-The recovered builder source is documented in [docs/NATIVE_PROFILER_BUILD_PROVENANCE.md](docs/NATIVE_PROFILER_BUILD_PROVENANCE.md). The current public G-CET CI still treats the already-built ASI as a hash-locked release input rather than rebuilding the native ASI on every manager build.
+The recovered builder source is now published directly under [`native-profiler-build/v2.11.0/`](native-profiler-build/v2.11.0/) and documented in [docs/NATIVE_PROFILER_BUILD_PROVENANCE.md](docs/NATIVE_PROFILER_BUILD_PROVENANCE.md). The current public G-CET CI still treats the already-built ASI as a hash-locked release input rather than rebuilding the native ASI on every manager build.
 
 Current manifest identity:
 
@@ -144,6 +144,6 @@ The release also publishes a matching `.sha256.txt` asset.
 
 For the manager/launcher, the source and exact build workflow are public in this repository.
 
-For `cyber_engine_tweaks.PROFILER.asi`, the current repository provides the exact shipped binary, its version, its target CET version, and its locked SHA-256. The recovered builder establishes the exact upstream CET commit, historical toolchain, source patch and profiler implementation used to create the native profiler. The manager CI verifies the resulting ASI bytes rather than recompiling that native component on every release-manager build.
+For `cyber_engine_tweaks.PROFILER.asi`, the current repository provides the exact shipped binary, its version, its target CET version, and its locked SHA-256. The complete clean recovered build source is inspectable under [`native-profiler-build/v2.11.0/`](native-profiler-build/v2.11.0/). The recovered builder establishes the exact upstream CET commit, historical toolchain, source patch and profiler implementation used to create the native profiler. The manager CI verifies the resulting ASI bytes rather than recompiling that native component on every release-manager build.
 
 Security reviewers should therefore evaluate the manager/launcher source and CI build separately from the native profiler ASI provenance described in [SECURITY.md](SECURITY.md).
