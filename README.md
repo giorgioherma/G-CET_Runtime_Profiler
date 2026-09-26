@@ -8,6 +8,23 @@
 
 A standalone Cyberpunk 2077 CET/Lua runtime profiler with transactional install/restore, optional 0-Engine Scheduler attribution, optional frame-time pairing, and a headless interface for G's Cyberpunk 2077 TOTAL Profiler.
 
+## Source, build and security review
+
+G-CET is source-visible for its public manager and launcher.
+
+- **Build instructions:** [BUILDING.md](BUILDING.md)
+- **Security and binary provenance:** [SECURITY.md](SECURITY.md)
+- **Architecture / restore model:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- **Canonical build workflow:** [.github/workflows/build.yml](.github/workflows/build.yml)
+
+For review purposes, the .NET manager and native root launcher are built from source in this repository. The shipped `payload/cyber_engine_tweaks.PROFILER.asi` is documented separately as a **prebuilt, SHA-256-locked native profiler input**; this repository does not claim that the ASI is produced by the C# or launcher build.
+
+Canonical GitHub **v1.0.0** release ZIP SHA-256:
+
+```text
+0fb6adee34a689273bcb4be17b987656b395c5308dca487d2e425e58cf2d7b87
+```
+
 ## Download and run
 
 The public release is a **portable ZIP**. No installer is required.
