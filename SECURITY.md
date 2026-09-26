@@ -29,6 +29,18 @@ These operations are part of the documented profiler lifecycle. The architecture
 
 The complete manager/launcher build procedure is documented in [BUILDING.md](BUILDING.md).
 
+## Package filename vs. installed filename
+
+The native profiler is a DLL-format PE. To make that binary identity explicit to static scanners, the portable package stores it as:
+
+`payload\cyber_engine_tweaks.PROFILER.dll`
+
+During an explicit profiler installation, G-CET copies those **same hash-verified bytes** to the filename required by Cyber Engine Tweaks:
+
+`bin\x64\plugins\cyber_engine_tweaks.asi`
+
+This is a filename change only; the native profiler binary itself is unchanged.
+
 ## Native profiler ASI provenance
 
 The shipped native profiler payload is:
