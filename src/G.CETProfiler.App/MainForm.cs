@@ -758,7 +758,7 @@ public sealed class MainForm : Form
             (snapshot.CaptureReadyForCollection
                 ? $"Live Files: {snapshot.LiveResultCount} · completed capture ready ✅"
                 : snapshot.LiveResultCount > 0
-                    ? $"Live Files: {snapshot.LiveResultCount} · profiler templates only; COLLECT disabled"
+                    ? $"Live Files: {snapshot.LiveResultCount} · profiler scratch/templates only; CLEAR LIVE available ⚠️"
                     : "Live Files: 0 · no completed capture");
         ColorizeStatusText();
     }
@@ -863,8 +863,11 @@ public sealed class MainForm : Form
         if (snapshot.Managed && !IsProfilerReady(snapshot))
             return "Managed install is incomplete. RESTORE ORIGINAL STATE first, then install again; do not start a capture yet.";
 
+        if (!snapshot.Managed && snapshot.CaptureReadyForCollection)
+            return "A completed live profiler capture is waiting. COLLECT RESULTS / CLEAR LIVE before installing again.";
+
         if (!snapshot.Managed && snapshot.LiveResultCount > 0)
-            return "Existing live profiler output must be COLLECTed/cleared before installation can continue.";
+            return "Profiler scratch/template files were detected. INSTALL will clear them automatically, or use CLEAR LIVE.";
 
         var unsafeZero = snapshot.ZeroEnginePresent && snapshot.ZeroEngineInitKind == "unsafe";
         if (!snapshot.Managed && unsafeZero && !coreOnly.Checked)
@@ -919,8 +922,8 @@ public sealed class MainForm : Form
         var unsafeZero = snapshot.ZeroEnginePresent && snapshot.ZeroEngineInitKind == "unsafe";
         var fallbackSatisfied = !unsafeZero || coreOnly.Checked;
 
-        install.Enabled = !busy && cetAllowed && !snapshot.Managed && snapshot.LiveResultCount == 0 && fallbackSatisfied;
-        collect.Enabled = !busy && snapshot.CaptureReadyForCollection;
+        install.Enabled = !busy && cetAllowed && !snapshot.Managed && !snapshot.CaptureReadyForCollection && fallbackSatisfied;
+        collect.Enabled = !busy && snapshot.LiveResultCount > 0;
         restore.Enabled = !busy && snapshot.Managed;
         saveCaptureTitle.Enabled = !busy && snapshot.Managed && snapshot.ControlsPresent && snapshot.CaptureTitlePresent;
         coreOnly.Enabled = !busy && coreOnly.Visible && !snapshot.Managed;
@@ -1112,8 +1115,10 @@ public sealed class MainForm : Form
             if (afterFailure.ZeroEnginePresent && afterFailure.ZeroEngineInitKind == "unsafe")
                 lines.Add("- 0-Engine cannot be integrated safely in its current layout. Enable the core-only fallback and retry.");
 
-            if (afterFailure.LiveResultCount > 0)
-                lines.Add("- Existing live profiler output must be COLLECTed/cleared before installing.");
+            if (afterFailure.CaptureReadyForCollection)
+                lines.Add("- A completed live profiler capture must be COLLECTed before installing.");
+            else if (afterFailure.LiveResultCount > 0)
+                lines.Add("- Profiler scratch/template files can be cleared with CLEAR LIVE; INSTALL also clears them automatically.");
         }
 
         lines.Add("- Make sure Cyberpunk 2077 is closed and no program is locking CET profiler files.");
@@ -1131,7 +1136,12 @@ public sealed class MainForm : Form
         {
             SaveSettingsFromUi();
             SetBusy(true);
-            var destination = await Task.Run(() => profiler.Collect(gameRoot.Text.Trim()));
+
+            var root = gameRoot.Text.Trim();
+            var liveSnapshot = await Task.Run(() => profiler.GetStatus(root));
+            var destination = liveSnapshot.CaptureReadyForCollection
+                ? await Task.Run(() => profiler.Collect(root))
+                : await Task.Run(() => profiler.ResetLive(root));
 
             string? companionError = null;
             string? reportRefreshError = null;
