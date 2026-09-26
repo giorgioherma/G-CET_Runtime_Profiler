@@ -1,0 +1,75 @@
+name: Add illustrated instructions to v1.0.0 package
+
+permissions:
+  actions: read
+  contents: write
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/PROMOTE_MANUAL_V1'
+
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout current documentation
+        uses: actions/checkout@v4
+
+      - name: Download validated v1.0.0 profiler contents
+        uses: actions/download-artifact@v4
+        with:
+          name: G-CET-Runtime-Profiler-v1.0.0
+          run-id: 36200672216
+          github-token: ${{ github.token }}
+          path: portable
+
+      - name: Package profiler with illustrated instructions
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $productRoot = 'portable\G-CET-Runtime-Profiler'
+          if (!(Test-Path -LiteralPath $productRoot -PathType Container)) {
+            throw 'Validated profiler folder is missing.'
+          }
+          if (!(Test-Path -LiteralPath 'Install_Instructions.html' -PathType Leaf)) {
+            throw 'Install_Instructions.html is missing.'
+          }
+
+          Copy-Item 'Install_Instructions.html' 'portable\Install_Instructions.html' -Force
+
+          $asset = 'G-CET-Runtime-Profiler-v1.0.0.zip'
+          $checksum = "$asset.sha256.txt"
+          Remove-Item $asset,$checksum -Force -ErrorAction SilentlyContinue
+
+          Compress-Archive -Path $productRoot,'portable\Install_Instructions.html' -DestinationPath $asset -CompressionLevel Optimal
+
+          $hash = (Get-FileHash -LiteralPath $asset -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $asset" | Set-Content -LiteralPath $checksum -Encoding ASCII
+
+          $stage = Join-Path $env:RUNNER_TEMP 'verify-package'
+          Expand-Archive -LiteralPath $asset -DestinationPath $stage -Force
+          if (!(Test-Path -LiteralPath (Join-Path $stage 'Install_Instructions.html') -PathType Leaf)) {
+            throw 'Packaged instructions are missing from ZIP root.'
+          }
+          if (!(Test-Path -LiteralPath (Join-Path $stage 'G-CET-Runtime-Profiler\G-CET-Runtime-Profiler.exe') -PathType Leaf)) {
+            throw 'Packaged profiler executable is missing.'
+          }
+
+          $releaseNotes = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          $notes = (Get-Content -LiteralPath 'RELEASE_NOTES.md' -Raw).TrimEnd()
+          $body = $notes + "`r`n`r`n## SHA-256`r`n`r`n    $hash  $asset`r`n"
+          $body | Set-Content -LiteralPath $releaseNotes -Encoding utf8
+
+          gh release edit v1.0.0 --repo $env:GITHUB_REPOSITORY --title 'G-CET Runtime Profiler v1.0.0' --notes-file $releaseNotes --latest
+          if ($LASTEXITCODE -ne 0) { throw 'Could not update v1.0.0 release notes.' }
+
+          gh release upload v1.0.0 $asset $checksum --repo $env:GITHUB_REPOSITORY --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Could not upload packaged v1.0.0 assets.' }
+
+          Write-Host "Published $asset"
+          Write-Host "SHA256: $hash"
