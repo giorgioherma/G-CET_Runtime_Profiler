@@ -41,6 +41,7 @@ public sealed class ProfilerService : IProfilerService
 
         if (string.IsNullOrWhiteSpace(manifest.PackageVersion) ||
             string.IsNullOrWhiteSpace(manifest.TargetCet.ProfilerSha256) ||
+            string.IsNullOrWhiteSpace(manifest.TargetCet.ProfilerPackageFile) ||
             manifest.LiveResultFiles.Count == 0)
             throw new InvalidOperationException("MANIFEST.json is incomplete.");
 
@@ -147,7 +148,7 @@ public sealed class ProfilerService : IProfilerService
             throw new InvalidOperationException(
                 $"Installed CET ASI is neither the exact supported official CET {manifest.TargetCet.Version} binary nor this profiler binary. No files were changed.");
 
-        var profilerSource = Path.Combine(payloadRoot, "cyber_engine_tweaks.PROFILER.dll");
+        var profilerSource = Path.Combine(payloadRoot, manifest.TargetCet.ProfilerPackageFile);
         var schedulerSource = Path.Combine(payloadRoot, "0-Engine", "modules", "Scheduler.lua");
         var adaptiveSchedulerSource = Path.Combine(payloadRoot, "0-Engine", "modules", "CETProfilerScheduler.lua");
         var controlsSource = Path.Combine(payloadRoot, "CETProfilerControls");
