@@ -20,7 +20,7 @@ jobs:
       - name: Set up Python 3.13
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.13.5"
 
       - name: Download exact approved Actions artifact
         shell: bash
@@ -41,6 +41,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python - <<'PY'
+          import sys, zlib
+          print("Python:", sys.version)
+          print("zlib:", zlib.ZLIB_VERSION, zlib.ZLIB_RUNTIME_VERSION)
+          PY
           python - <<'PY'
           from pathlib import Path
           import zipfile, hashlib
