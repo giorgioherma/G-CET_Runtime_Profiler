@@ -41,6 +41,7 @@ Other frame-time profilers can still be used. Recognized CapFrameX JSON receives
 
 ```text
 G-CET-Runtime-Profiler-v1.0.0.zip
+├─ Install_Instructions.html
 └─ G-CET-Runtime-Profiler\
    ├─ G-CET-Runtime-Profiler.exe
    ├─ MANIFEST.json
@@ -61,7 +62,7 @@ G-CET-Runtime-Profiler-v1.0.0.zip
 
 The root EXE is a small native launcher. The managed application and self-contained .NET runtime live under `app\`; profiler payload, manifest, results, and documentation remain separate at the package root.
 
-Extract to a writable folder and run `G-CET-Runtime-Profiler.exe`.
+Extract the ZIP, open `Install_Instructions.html` for the illustrated workflow, then open the `G-CET-Runtime-Profiler` folder and run `G-CET-Runtime-Profiler.exe`.
 
 ## Safety and verification
 
@@ -74,4 +75,4 @@ Extract to a writable folder and run `G-CET-Runtime-Profiler.exe`.
 - Post-operation warning/error dialogs wait for the main UI to repaint and settle before opening.
 - CI exercises launcher handoff, package layout, install/collect/restore, 0-Engine resolver/handoff, report generation, and release staging.
 
-The GitHub release publishes the exact portable ZIP produced from the final v1.0.0 source and a matching SHA-256 text file.
+The GitHub release publishes the validated portable profiler together with the illustrated installation guide and a matching SHA-256 text file.
