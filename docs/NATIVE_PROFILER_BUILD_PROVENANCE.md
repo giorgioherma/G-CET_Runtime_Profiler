@@ -101,6 +101,10 @@ The recovered builder performs two phases.
 
 The source patch refuses to run when the checked-out CET revision differs from the pinned commit.
 
+## Distribution filename
+
+The compiled profiler remains the CET ASI payload, but the G-CET portable package stores the DLL-format PE as `payload/cyber_engine_tweaks.PROFILER.dll`. During installation the manager copies the same SHA-256-verified bytes to CET's required live filename, `cyber_engine_tweaks.asi`.
+
 ## Shipped profiler identity
 
 The current G-CET manifest records:
