@@ -753,6 +753,14 @@ jobs:
           $sha = $env:GITHUB_SHA
           $releaseNotes = Join-Path $env:RUNNER_TEMP "gcet-release-notes-$env:PRODUCT_VERSION.md"
 
+          # Several source/documentation commits can queue builds close together.
+          # Only the current main HEAD is allowed to refresh the canonical same-version release.
+          $mainSha = (& gh api "repos/$repo/commits/main" --jq .sha).Trim()
+          if ($mainSha -ne $sha) {
+            Write-Host "Skipping stale release publish for $sha; current main is $mainSha."
+            exit 0
+          }
+
           if (!(Test-Path -LiteralPath $env:PUBLIC_ASSET -PathType Leaf)) {
             throw "Release ZIP is missing: $env:PUBLIC_ASSET"
           }
