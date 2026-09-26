@@ -40,11 +40,19 @@ Target CET ver.:       1.37.1
 SHA-256:               011a9d3fc908e7cce3309ac5b4520ba9a3db5ad301edc6d2a465ca4c77486768
 ```
 
-The current ASI was custom-built through a **PowerShell-based native build/reconstruction process**. A previous working profiler version was used as the reference to recreate the native ASI builder and integrate the G-CET profiling changes.
+The v2.11.0 ASI was built through a recovered **PowerShell-based historical CET reconstruction pipeline**. The builder clones official Cyber Engine Tweaks source at commit `61bd6214f0f5f8748589c9e476538614a13908c0`, reconstructs the historical xmake package state, pins Xmake 3.0.3, MSVC 14.44 / compiler 19.44 and Windows SDK 10.0.26100.0, applies the profiler source patch, and compiles the resulting CET ASI.
 
-That historical native builder/toolchain is **not currently committed in this repository**, and the public GitHub Actions workflow therefore does not rebuild the ASI from source. Instead, the completed ASI is committed as a release input, `MANIFEST.json` records its expected SHA-256, and CI fails if the shipped bytes differ.
+The builder records the official CET v1.37.1 reference SHA-256 as:
 
-This is stated explicitly so reviewers can distinguish the source-built manager/launcher components from the separately built native profiler payload while still having an exact cryptographic identity for the shipped ASI.
+```text
+43a7b94698979703f9dfa2b0950607c9a88f53b84bbf09a8e593c7e218d41059
+```
+
+That value matches `targetCET.officialSha256` in the current G-CET `MANIFEST.json`.
+
+The public manager GitHub Actions workflow does not re-run this historical native reconstruction for every manager build. Instead, the completed ASI is committed as a release input, `MANIFEST.json` records its expected profiler SHA-256, and CI fails if the shipped bytes differ.
+
+The recovered builder contents and file hashes are documented in [docs/NATIVE_PROFILER_BUILD_PROVENANCE.md](docs/NATIVE_PROFILER_BUILD_PROVENANCE.md).
 
 ## Package controls
 
@@ -97,7 +105,7 @@ For a compiled-code review, the relevant public material is:
 5. `MANIFEST.json`, which locks the native profiler/integration payload identities;
 6. the canonical GitHub release ZIP and its published SHA-256 file.
 
-The manager and launcher can be traced directly to source in this repository. The native profiler ASI should be reviewed separately as the custom-built, hash-locked binary produced by the PowerShell/native reconstruction process described above.
+The manager and launcher can be traced directly to source in this repository. The native profiler ASI should be reviewed as a custom source-built CET binary produced by the pinned historical reconstruction pipeline described above and in [docs/NATIVE_PROFILER_BUILD_PROVENANCE.md](docs/NATIVE_PROFILER_BUILD_PROVENANCE.md).
 
 ## Reporting a security concern
 
