@@ -42,6 +42,46 @@ jobs:
           "$hash  cyber_engine_tweaks.PROFILER.dll" | Set-Content native-rebuild-artifact\SHA256.txt -Encoding ascii
           Write-Host "Rebuilt profiler SHA256: $hash"
 
+      - name: Commit rebuilt payload to fix branch
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $rebuilt = 'native-rebuild-artifact\cyber_engine_tweaks.PROFILER.dll'
+          if (!(Test-Path -LiteralPath $rebuilt -PathType Leaf)) {
+            throw "Rebuilt profiler payload is missing: $rebuilt"
+          }
+
+          Copy-Item $rebuilt 'payload\cyber_engine_tweaks.PROFILER.dll' -Force
+          $hash = (Get-FileHash 'payload\cyber_engine_tweaks.PROFILER.dll' -Algorithm SHA256).Hash.ToLowerInvariant()
+
+          $manifestPath = 'MANIFEST.json'
+          $manifest = Get-Content -LiteralPath $manifestPath -Raw
+          $updated = [regex]::Replace(
+            $manifest,
+            '"profilerSha256"\s*:\s*"[0-9a-fA-F]{64}"',
+            ('"profilerSha256": "' + $hash + '"'),
+            1)
+
+          if ($updated -eq $manifest) {
+            throw 'Could not update profilerSha256 in MANIFEST.json.'
+          }
+
+          Set-Content -LiteralPath $manifestPath -Value $updated -Encoding utf8 -NoNewline
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- payload/cyber_engine_tweaks.PROFILER.dll MANIFEST.json
+
+          git diff --cached --quiet
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host 'Rebuilt payload already matches the branch.'
+          }
+          else {
+            git commit -m "build: refresh lazy-output native profiler payload"
+            git push origin HEAD:fix/lazy-cet-output
+          }
+
       - name: Upload rebuilt native payload
         uses: actions/upload-artifact@v4
         with:
