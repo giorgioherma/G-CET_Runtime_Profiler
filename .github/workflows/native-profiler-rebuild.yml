@@ -1,0 +1,50 @@
+name: Rebuild G-CET native profiler
+
+permissions:
+  contents: write
+  actions: read
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ fix/lazy-cet-output ]
+    paths:
+      - 'native-profiler-build/**'
+      - '.github/workflows/native-profiler-rebuild.yml'
+
+jobs:
+  rebuild:
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rebuild native profiler from pinned CET source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./native-profiler-build/v2.11.0/Build-Profiler.ps1 -WorkRoot "$env:RUNNER_TEMP\gcet-native-rebuild"
+
+      - name: Stage rebuilt payload
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $source = 'native-profiler-build\v2.11.0\BUILD_OUTPUT\cyber_engine_tweaks.PROFILER.asi'
+          if (!(Test-Path -LiteralPath $source -PathType Leaf)) {
+            throw "Rebuilt profiler ASI was not found: $source"
+          }
+
+          New-Item -ItemType Directory -Force native-rebuild-artifact | Out-Null
+          Copy-Item $source native-rebuild-artifact\cyber_engine_tweaks.PROFILER.dll -Force
+
+          $hash = (Get-FileHash native-rebuild-artifact\cyber_engine_tweaks.PROFILER.dll -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  cyber_engine_tweaks.PROFILER.dll" | Set-Content native-rebuild-artifact\SHA256.txt -Encoding ascii
+          Write-Host "Rebuilt profiler SHA256: $hash"
+
+      - name: Upload rebuilt native payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: gcet-native-profiler-lazy-output
+          path: native-rebuild-artifact/
+          if-no-files-found: error
