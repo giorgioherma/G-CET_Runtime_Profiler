@@ -19,9 +19,23 @@ The repository also contains the custom native profiler payload:
 
 - `payload/cyber_engine_tweaks.PROFILER.asi`
 
-The current ASI was produced through a **PowerShell-based native build/reconstruction process**. An earlier working profiler version was used as the reference to recreate the native ASI builder and integrate the G-CET profiling changes. The resulting profiler binary is then treated as a versioned, SHA-256-locked release input by this repository.
+The current ASI was produced through a **PowerShell-based historical CET reconstruction/build pipeline**. The recovered v2.11.0 builder does not patch an opaque executable: it clones the official Cyber Engine Tweaks source, checks out the exact CET v1.37.1 source commit, reconstructs the historical package/toolchain environment, applies the profiler source patch, then compiles a new `cyber_engine_tweaks.PROFILER.asi`.
 
-That native build/reconstruction toolchain is **not currently committed in this repository**, so the ASI is not rebuilt by the public `.NET/launcher` GitHub Actions workflow described below. CI instead verifies the exact expected ASI bytes from `MANIFEST.json` before staging a release.
+Verified native build inputs from the recovered builder:
+
+```text
+CET source commit:      61bd6214f0f5f8748589c9e476538614a13908c0
+Official CET SHA-256:   43a7b94698979703f9dfa2b0950607c9a88f53b84bbf09a8e593c7e218d41059
+Xmake:                  3.0.3
+MSVC toolset:           14.44 / compiler 19.44
+Windows SDK:            10.0.26100.0
+Profiler source patch:  Patch-CET-v1.37.1.ps1
+Profiler implementation:CETRuntimeProfiler.h
+```
+
+The official CET SHA-256 above is the same `officialSha256` recorded by the current G-CET `MANIFEST.json`.
+
+The recovered builder source is documented in [docs/NATIVE_PROFILER_BUILD_PROVENANCE.md](docs/NATIVE_PROFILER_BUILD_PROVENANCE.md). The current public G-CET CI still treats the already-built ASI as a hash-locked release input rather than rebuilding the native ASI on every manager build.
 
 Current manifest identity:
 
@@ -31,7 +45,7 @@ Target CET version:      1.37.1
 Profiler ASI SHA-256:    011a9d3fc908e7cce3309ac5b4520ba9a3db5ad301edc6d2a465ca4c77486768
 ```
 
-This distinction is intentional and is stated explicitly for security/moderation review. The ASI is a custom-built profiler binary, but its historical PowerShell/native reconstruction toolchain is separate from the C# manager/launcher source currently published here.
+This distinction is intentional and is stated explicitly for security/moderation review. The ASI is a custom source-built CET binary produced by the recovered historical reconstruction pipeline; it is separate from the C# manager/launcher build.
 
 ## Prerequisites
 
@@ -130,6 +144,6 @@ The release also publishes a matching `.sha256.txt` asset.
 
 For the manager/launcher, the source and exact build workflow are public in this repository.
 
-For `cyber_engine_tweaks.PROFILER.asi`, the current repository provides the exact shipped binary, its version, its target CET version, and its locked SHA-256. The binary was custom-built through the PowerShell-based reconstruction process described above, but that native builder/toolchain is not currently part of this repository and therefore is not rebuilt by the public CI workflow.
+For `cyber_engine_tweaks.PROFILER.asi`, the current repository provides the exact shipped binary, its version, its target CET version, and its locked SHA-256. The recovered builder establishes the exact upstream CET commit, historical toolchain, source patch and profiler implementation used to create the native profiler. The manager CI verifies the resulting ASI bytes rather than recompiling that native component on every release-manager build.
 
 Security reviewers should therefore evaluate the manager/launcher source and CI build separately from the native profiler ASI provenance described in [SECURITY.md](SECURITY.md).
