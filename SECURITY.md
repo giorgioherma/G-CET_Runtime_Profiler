@@ -25,7 +25,7 @@ These operations are part of the documented profiler lifecycle. The architecture
 | `app\G-CET-Runtime-Profiler.App.exe` | Built from `src/G.CETProfiler.App/` using .NET 8 |
 | `app\G.CETProfiler.Core.dll` | Built from `src/G.CETProfiler.Core/` using .NET 8 |
 | Lua integration payloads | Stored as source in `payload/` |
-| `payload\cyber_engine_tweaks.PROFILER.asi` | Prebuilt native profiler input, version/hash locked by `MANIFEST.json` |
+| `payload\cyber_engine_tweaks.PROFILER.asi` | Custom-built native profiler created through a PowerShell-based reconstruction/build process; exact release bytes are version/hash locked by `MANIFEST.json` |
 
 The complete manager/launcher build procedure is documented in [BUILDING.md](BUILDING.md).
 
@@ -40,11 +40,11 @@ Target CET ver.:       1.37.1
 SHA-256:               011a9d3fc908e7cce3309ac5b4520ba9a3db5ad301edc6d2a465ca4c77486768
 ```
 
-The current repository **does not rebuild this ASI from the C# manager or native launcher source**.
+The current ASI was custom-built through a **PowerShell-based native build/reconstruction process**. A previous working profiler version was used as the reference to recreate the native ASI builder and integrate the G-CET profiling changes.
 
-It is committed as a prebuilt binary input. `MANIFEST.json` records the expected SHA-256 and the GitHub Actions workflow fails if the shipped bytes do not match that value.
+That historical native builder/toolchain is **not currently committed in this repository**, and the public GitHub Actions workflow therefore does not rebuild the ASI from source. Instead, the completed ASI is committed as a release input, `MANIFEST.json` records its expected SHA-256, and CI fails if the shipped bytes differ.
 
-This limitation is stated explicitly so that reviewers can distinguish reproducibly built application components from the prebuilt native profiler payload.
+This is stated explicitly so reviewers can distinguish the source-built manager/launcher components from the separately built native profiler payload while still having an exact cryptographic identity for the shipped ASI.
 
 ## Package controls
 
@@ -97,7 +97,7 @@ For a compiled-code review, the relevant public material is:
 5. `MANIFEST.json`, which locks the native profiler/integration payload identities;
 6. the canonical GitHub release ZIP and its published SHA-256 file.
 
-The manager and launcher can be traced directly to source in this repository. The native profiler ASI should be treated separately as the prebuilt, hash-locked binary input described above.
+The manager and launcher can be traced directly to source in this repository. The native profiler ASI should be reviewed separately as the custom-built, hash-locked binary produced by the PowerShell/native reconstruction process described above.
 
 ## Reporting a security concern
 
