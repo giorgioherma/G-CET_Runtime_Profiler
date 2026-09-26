@@ -978,6 +978,42 @@ public sealed class ProfilerService : IProfilerService
         return null;
     }
 
+    private static DateTime? GetCaptureStartLocalTime(ProfilerPaths paths)
+    {
+        var markers = Path.Combine(paths.CetRoot, "CET_Runtime_Profile_Markers.csv");
+        if (!File.Exists(markers))
+            return null;
+
+        try
+        {
+            foreach (var line in File.ReadLines(markers))
+            {
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
+
+                var fields = line.Split(',');
+                if (fields.Length < 4)
+                    continue;
+
+                var label = fields[3].Trim().Trim('"');
+                if (!label.Equals("START", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var rawEpoch = fields[2].Trim().Trim('"');
+                if (!long.TryParse(rawEpoch, out var epochMs) || epochMs <= 0)
+                    return null;
+
+                return DateTimeOffset.FromUnixTimeMilliseconds(epochMs).LocalDateTime;
+            }
+        }
+        catch
+        {
+            return null;
+        }
+
+        return null;
+    }
+
     private static bool HasCompletedCapture(ProfilerPaths paths)
     {
         var markers = Path.Combine(paths.CetRoot, "CET_Runtime_Profile_Markers.csv");
@@ -1026,17 +1062,19 @@ public sealed class ProfilerService : IProfilerService
 
         Directory.CreateDirectory(resultsRoot);
 
-        var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+        var captureTime = GetCaptureStartLocalTime(paths) ?? DateTime.Now;
+        var stamp = captureTime.ToString("yyyyMMdd-HHmmss");
         var captureTitle = File.Exists(paths.CaptureTitle)
             ? ReadCaptureTitle(paths.CaptureTitle)
             : "WORLD";
         if (captureTitle == "UNREADABLE")
             captureTitle = "WORLD";
 
-        var destination = Path.Combine(resultsRoot, $"{stamp}_{captureTitle}");
+        var baseName = $"CET-{stamp}_{captureTitle}";
+        var destination = Path.Combine(resultsRoot, baseName);
         var suffix = 1;
         while (Directory.Exists(destination))
-            destination = Path.Combine(resultsRoot, $"{stamp}_{captureTitle}-{suffix++}");
+            destination = Path.Combine(resultsRoot, $"{baseName}-{suffix++}");
 
         Directory.CreateDirectory(destination);
 
