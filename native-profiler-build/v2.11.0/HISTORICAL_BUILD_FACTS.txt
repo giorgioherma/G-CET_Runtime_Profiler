@@ -1,0 +1,28 @@
+CET v1.37.1 historical reconstruction facts
+
+Official reference SHA256:
+43a7b94698979703f9dfa2b0950607c9a88f53b84bbf09a8e593c7e218d41059
+
+Official reference length:
+7391744
+
+Official PE linker:
+14.44
+
+v2.6 CONTROL PE linker:
+14.51
+
+CET source commit:
+61bd6214f0f5f8748589c9e476538614a13908c0
+
+Successful GitHub Actions release run:
+18073224933
+
+Release workflow start:
+2025-09-28T10:48:33Z
+
+Xmake selected for reconstruction:
+3.0.3 (latest release available on that date)
+
+Windows SDK selected:
+10.0.26100.0
