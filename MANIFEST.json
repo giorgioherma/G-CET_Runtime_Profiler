@@ -4,7 +4,9 @@
   "targetCET": {
     "version": "1.37.1",
     "officialSha256": "43a7b94698979703f9dfa2b0950607c9a88f53b84bbf09a8e593c7e218d41059",
-    "profilerSha256": "011a9d3fc908e7cce3309ac5b4520ba9a3db5ad301edc6d2a465ca4c77486768"
+    "profilerSha256": "011a9d3fc908e7cce3309ac5b4520ba9a3db5ad301edc6d2a465ca4c77486768",
+    "profilerPackageFile": "cyber_engine_tweaks.PROFILER.dll",
+    "profilerInstallFile": "cyber_engine_tweaks.asi"
   },
   "zeroEngine": {
     "policy": "unverified-by-default; preserve existing integrated Scheduler; adaptively inject into recognized user init.lua; optional core-profiler fallback leaves 0-Engine completely untouched",
@@ -26,6 +28,8 @@
     "CET_Runtime_Profile_Scheduler_FrameBursts.csv"
   ],
   "managerChanges": [
+    "security-scan packaging: native profiler is distributed with a .dll extension matching its PE/DLL format and copied to CET's required cyber_engine_tweaks.asi name only during install",
+    "security-scan packaging: native launcher now carries standard Windows VERSIONINFO identity metadata; profiler functionality and native profiler bytes are unchanged",
     "final v1.0.0 UI keeps profiler-status prose white and colors only semantic status markers",
     "disabled actions render gray; available forward actions use cyan and available restore uses magenta",
     "CapFrameX 1.9.1.2 Beta is the tested frame-time reference build while frame-time pairing remains optional",
