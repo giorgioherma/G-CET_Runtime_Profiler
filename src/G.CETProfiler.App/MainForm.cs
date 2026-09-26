@@ -942,7 +942,7 @@ public sealed class MainForm : Form
 
         var safetyAnswer = ThemedDialog.ShowImportantWarning(
             this,
-            "Close Vortex or any other mod manager/installer before using the profiler.",
+            "Close Vortex or any other mod manager/installer before using the profiler.\r\n\r\nContinue?",
             Text);
 
         if (safetyAnswer != DialogResult.Yes)
