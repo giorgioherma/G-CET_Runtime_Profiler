@@ -14,6 +14,43 @@ internal sealed class BindingService
         PropertyNameCaseInsensitive = true
     };
 
+    public CaptureBindingInfo InspectCaptureBinding(ProfilerPaths paths)
+    {
+        if (!File.Exists(paths.Bindings))
+            return new CaptureBindingInfo("MISSING", false, null);
+
+        try
+        {
+            var root = ReadBindingsObject(paths);
+            var node = root["CETProfilerControls"] as JsonObject;
+            var value = node?["CETProfiler_Toggle"];
+            if (value is null)
+                return new CaptureBindingInfo("MISSING", false, null);
+
+            long? code = null;
+            if (value is JsonValue jsonValue)
+            {
+                if (jsonValue.TryGetValue<long>(out var numeric))
+                    code = numeric;
+                else if (jsonValue.TryGetValue<string>(out var text) && long.TryParse(text, out var parsed))
+                    code = parsed;
+            }
+
+            if (code == F11BindCode)
+                return new CaptureBindingInfo("F11", true, code);
+
+            return code.HasValue
+                ? new CaptureBindingInfo("CUSTOM", false, code)
+                : new CaptureBindingInfo("UNKNOWN", false, null);
+        }
+        catch
+        {
+            // Status inspection must never make the whole profiler UI unavailable
+            // because CET rewrote or temporarily locked its bindings file.
+            return new CaptureBindingInfo("UNKNOWN", false, null);
+        }
+    }
+
     public void EnsureDefaultF11IfMissing(ProfilerPaths paths)
     {
         var root = ReadBindingsObject(paths);
@@ -57,3 +94,5 @@ internal sealed class BindingService
         File.WriteAllText(paths.Bindings, root.ToJsonString(JsonOptions) + Environment.NewLine);
     }
 }
+
+internal sealed record CaptureBindingInfo(string Key, bool IsDefaultF11, long? Code);
