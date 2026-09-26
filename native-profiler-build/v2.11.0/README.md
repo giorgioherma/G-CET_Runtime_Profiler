@@ -13,9 +13,11 @@ This source tree intentionally excludes:
 - PDB/build outputs
 - end-user install/restore/collection helper scripts that are not required to reconstruct the native binary
 
-The G-CET release continues to ship the finished, hash-locked native profiler under:
+The G-CET release continues to ship the finished, hash-locked native profiler under the PE-accurate package filename:
 
-`payload/cyber_engine_tweaks.PROFILER.asi`
+`payload/cyber_engine_tweaks.PROFILER.dll`
+
+During installation those same verified bytes are copied to CET's required live filename `cyber_engine_tweaks.asi`.
 
 ## Pinned upstream and toolchain
 
