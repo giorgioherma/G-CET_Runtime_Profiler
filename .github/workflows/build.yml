@@ -628,6 +628,62 @@ jobs:
             throw 'Integrated Scheduler fixture did not restore its original Scheduler.lua.'
           }
 
+          # Regression: CET may create header/template CSVs merely by loading the
+          # profiler. Those files are not a completed capture and must not enable
+          # collection or create a result archive during restore. Also verify that
+          # an actual F11 binding is reported as F11 rather than generic/custom.
+          $fixture5 = Join-Path $env:RUNNER_TEMP 'gcet-template-output-fixture'
+          if (Test-Path $fixture5) { Remove-Item $fixture5 -Recurse -Force }
+          $plugins5 = Join-Path $fixture5 'bin\x64\plugins'
+          $cet5 = Join-Path $plugins5 'cyber_engine_tweaks'
+          New-Item -ItemType Directory -Force $cet5 | Out-Null
+          Copy-Item 'publish\payload\cyber_engine_tweaks.PROFILER.asi' (Join-Path $plugins5 'cyber_engine_tweaks.asi')
+
+          @{
+            CETProfilerControls = @{ CETProfiler_Toggle = 34339947158700032 }
+          } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $cet5 'bindings.json') -Encoding utf8
+
+          $templateInstall = (& $exe --install --game $fixture5 --json | ConvertFrom-Json)
+          if (!$templateInstall.managed) { throw 'Template-output fixture install failed.' }
+
+          $templateFiles = @{
+            'CET_Runtime_Profile_ByMod.csv' = 'Mod,Calls,CallsPerSecond'
+            'CET_Runtime_Profile_ByModKind.csv' = 'Mod,Kind,Calls'
+            'CET_Runtime_Profile_Detail.csv' = 'Mod,Kind,Target,Calls'
+            'CET_Runtime_Profile_Spikes.csv' = 'Sequence,CaptureStartMs,CaptureEndMs'
+            'CET_Runtime_Profile_Timeline.csv' = 'BucketIndex,BucketStartMs,BucketEndMs'
+            'CET_Runtime_Profile_Markers.csv' = 'Sequence,CaptureMs,UnixEpochMs,Label,DroppedMarkersAtDump'
+            'CET_Runtime_Profile_Scheduler_ByJob.csv' = 'Owner,JobType,Job'
+            'CET_Runtime_Profile_Scheduler_Spikes.csv' = 'Sequence,Frame,DurationMs'
+            'CET_Runtime_Profile_Scheduler_FrameBursts.csv' = 'Sequence,Frame,TotalJobMs'
+          }
+          foreach ($entry in $templateFiles.GetEnumerator()) {
+            $entry.Value | Set-Content -LiteralPath (Join-Path $cet5 $entry.Key) -Encoding utf8
+          }
+
+          $templateStatus = (& $exe --status --game $fixture5 --json | ConvertFrom-Json)
+          if ([int]$templateStatus.liveResultCount -ne 9) { throw "Expected 9 profiler template files, got $($templateStatus.liveResultCount)." }
+          if ($templateStatus.captureReadyForCollection) { throw 'Header-only profiler templates were incorrectly classified as a completed capture.' }
+          if ($templateStatus.captureKey -ne 'F11') { throw "Expected CET capture key F11, got $($templateStatus.captureKey)." }
+          if (!$templateStatus.captureKeyIsDefaultF11) { throw 'Exact F11 binding was not recognized as the default capture key.' }
+
+          $resultsBeforeTemplateRestore = @(Get-ChildItem 'publish\RESULTS' -Directory -ErrorAction SilentlyContinue).Count
+          $templateRestore = (& $exe --restore --game $fixture5 --json | ConvertFrom-Json)
+          if ($templateRestore.status.managed) { throw 'Template-output restore left managed state active.' }
+          if ([int]$templateRestore.status.liveResultCount -ne 0) { throw 'Template-output restore did not clear profiler-owned CSV shells.' }
+          if ($templateRestore.status.captureReadyForCollection) { throw 'Capture remained collectable after template-only restore.' }
+
+          foreach ($name in $templateFiles.Keys) {
+            if (Test-Path -LiteralPath (Join-Path $cet5 $name) -PathType Leaf) {
+              throw "Template-output restore left profiler-owned file behind: $name"
+            }
+          }
+
+          $resultsAfterTemplateRestore = @(Get-ChildItem 'publish\RESULTS' -Directory -ErrorAction SilentlyContinue).Count
+          if ($resultsAfterTemplateRestore -ne $resultsBeforeTemplateRestore) {
+            throw 'Template-only restore incorrectly created a collected result archive.'
+          }
+
           # Smoke tests use the package-local RESULTS path; do not ship their fixtures.
           Remove-Item publish\RESULTS -Recurse -Force
           New-Item -ItemType Directory -Force publish\RESULTS | Out-Null
