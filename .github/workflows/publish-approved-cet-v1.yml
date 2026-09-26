@@ -37,14 +37,27 @@ jobs:
           echo "620e78ad8d15305dd91685886f8d1d423fd07c2fc153df68f663231436883f43  approved-artifact.zip" | sha256sum -c -
           echo "31b22ecb440f81e69dd7644af0eeafc5c74c24d4cdba729f569310f959d5b7f8  Install_Instructions.html" | sha256sum -c -
 
+      - name: Match approved zlib 1.3.1 environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL "https://github.com/madler/zlib/archive/refs/tags/v1.3.1.tar.gz" -o zlib-1.3.1.tar.gz
+          tar -xzf zlib-1.3.1.tar.gz
+          cd zlib-1.3.1
+          ./configure --prefix="$RUNNER_TEMP/zlib131"
+          make -j2
+          make install
+
       - name: Rebuild the exact approved release ZIP
         shell: bash
         run: |
           set -euo pipefail
+          export LD_LIBRARY_PATH="$RUNNER_TEMP/zlib131/lib:${LD_LIBRARY_PATH:-}"
           python - <<'PY'
           import sys, zlib
           print("Python:", sys.version)
           print("zlib:", zlib.ZLIB_VERSION, zlib.ZLIB_RUNTIME_VERSION)
+          assert zlib.ZLIB_RUNTIME_VERSION == "1.3.1"
           PY
           python - <<'PY'
           from pathlib import Path
