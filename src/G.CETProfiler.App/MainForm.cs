@@ -554,11 +554,12 @@ public sealed class MainForm : Form
         if (!loadingSettings)
             SyncSettingsFromUi();
         var snapshot = CompanionProfilerService.Inspect(appSettings);
+        var cetKeyText = CetCaptureKeyText(lastStatus, "✓", includeDefaultHint: true);
 
         if (!snapshot.Enabled)
         {
             companionStatus.Text =
-                "CET capture key: user-controlled (F11 default)\r\n" +
+                $"CET capture key: {cetKeyText}\r\n" +
                 "Frame-time:     DISABLED";
             return;
         }
@@ -572,9 +573,30 @@ public sealed class MainForm : Form
             : "UNKNOWN — verify manually";
 
         companionStatus.Text =
-            "CET capture key:        user-controlled (F11 default)\r\n" +
+            $"CET capture key:        {cetKeyText}\r\n" +
             $"Frame-time config key:  {keyText}\r\n" +
             $"Results folder:         {results}";
+    }
+
+    private static string CetCaptureKeyText(
+        ProfilerStatus? snapshot,
+        string okMarker,
+        bool includeDefaultHint = false)
+    {
+        if (snapshot?.CaptureKeyIsDefaultF11 == true)
+            return $"F11 {okMarker}";
+
+        return snapshot?.CaptureKey switch
+        {
+            "CUSTOM" => "CUSTOM / user-controlled — verify in CET",
+            "MISSING" => includeDefaultHint
+                ? "not set yet — G-CET will seed F11 on install"
+                : "not set",
+            "UNKNOWN" => "UNKNOWN — verify in CET",
+            _ => includeDefaultHint
+                ? "F11 default — verifying CET binding"
+                : "unknown"
+        };
     }
 
     private void UpdateCompanionControls()
@@ -682,12 +704,13 @@ public sealed class MainForm : Form
             ? $"Frame-Time Profiler: {companion.DisplayName} configured ✅"
             : "Frame-Time Profiler: Not provided ⚠️";
 
+        var cetKey = CetCaptureKeyText(snapshot, "✅");
         string syncLines;
         if (!companionConfigured)
         {
             syncLines =
                 "Capture key sync: Frame-time tool not configured ⚠️\r\n" +
-                "    - CET: user-controlled (F11 default)";
+                $"    - CET: {cetKey}";
         }
         else
         {
@@ -696,7 +719,7 @@ public sealed class MainForm : Form
                 : "Unknown ⚠️";
             syncLines =
                 "Capture key sync: use the same key in CET and the frame-time tool\r\n" +
-                "    - CET: user-controlled (F11 default)\r\n" +
+                $"    - CET: {cetKey}\r\n" +
                 $"    - {companion.DisplayName} config: {externalKey}";
         }
 
@@ -716,7 +739,11 @@ public sealed class MainForm : Form
             frameLine + "\r\n" +
             syncLines + "\r\n" +
             $"G-CET PROFILER IS {installState}\r\n" +
-            $"Live Files: {snapshot.LiveResultCount}";
+            (snapshot.CaptureReadyForCollection
+                ? $"Live Files: {snapshot.LiveResultCount} · completed capture ready ✅"
+                : snapshot.LiveResultCount > 0
+                    ? $"Live Files: {snapshot.LiveResultCount} · profiler templates only; COLLECT disabled"
+                    : "Live Files: 0 · no completed capture");
         ColorizeStatusText();
     }
 
@@ -877,7 +904,7 @@ public sealed class MainForm : Form
         var fallbackSatisfied = !unsafeZero || coreOnly.Checked;
 
         install.Enabled = !busy && cetAllowed && !snapshot.Managed && snapshot.LiveResultCount == 0 && fallbackSatisfied;
-        collect.Enabled = !busy && snapshot.LiveResultCount > 0;
+        collect.Enabled = !busy && snapshot.CaptureReadyForCollection;
         restore.Enabled = !busy && snapshot.Managed;
         saveCaptureTitle.Enabled = !busy && snapshot.Managed && snapshot.ControlsPresent && snapshot.CaptureTitlePresent;
         coreOnly.Enabled = !busy && coreOnly.Visible && !snapshot.Managed;
