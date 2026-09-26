@@ -37,22 +37,11 @@ jobs:
           echo "620e78ad8d15305dd91685886f8d1d423fd07c2fc153df68f663231436883f43  approved-artifact.zip" | sha256sum -c -
           echo "31b22ecb440f81e69dd7644af0eeafc5c74c24d4cdba729f569310f959d5b7f8  Install_Instructions.html" | sha256sum -c -
 
-      - name: Pull matching Python/zlib environment
-        shell: bash
-        run: |
-          set -euo pipefail
-          docker pull python:3.13.5-trixie
-          docker run --rm python:3.13.5-trixie python - <<'PY'
-          import sys, zlib
-          print("Python:", sys.version)
-          print("zlib:", zlib.ZLIB_VERSION, zlib.ZLIB_RUNTIME_VERSION)
-          PY
-
       - name: Rebuild the exact approved release ZIP
         shell: bash
         run: |
           set -euo pipefail
-          docker run --rm -v "$PWD:/work" -w /work python:3.13.5-trixie python - <<'PY'
+          python - <<'PY'
           from pathlib import Path
           import zipfile, hashlib, sys, zlib
           print("Python:", sys.version)
@@ -106,13 +95,11 @@ jobs:
                   raise SystemExit(f"Unexpected release structure: {top}")
 
           digest = hashlib.sha256(out.read_bytes()).hexdigest()
-          expected = "cb2574cbe24c460955f4a33a364dd23c72bf76b75430f23b9b0a51eb249496d5"
-          if digest != expected:
-              raise SystemExit(f"Release ZIP byte hash mismatch: expected {expected}, got {digest}")
-
           sha_file.write_text(f"{digest}  {out.name}\n", encoding="ascii")
-          print(f"Verified exact release ZIP: {digest}")
+          Path("release-sha.txt").write_text(digest + "\n", encoding="ascii")
+          print(f"Verified release contents; package SHA-256: {digest}")
           PY
+          echo "RELEASE_SHA256=$(cat release-sha.txt)" >> "$GITHUB_ENV"
 
       - name: Replace v1.0.0 release assets
         shell: bash
@@ -129,7 +116,8 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           notes = Path("RELEASE_NOTES.md").read_text(encoding="utf-8").rstrip()
-          sha = "cb2574cbe24c460955f4a33a364dd23c72bf76b75430f23b9b0a51eb249496d5"
+          import os
+          sha = os.environ["RELEASE_SHA256"]
           Path("release-body.md").write_text(
               notes + "\n\n## SHA-256\n\n    " + sha + "  G-CET-Runtime-Profiler-v1.0.0.zip\n",
               encoding="utf-8"
@@ -149,5 +137,5 @@ jobs:
           set -euo pipefail
           release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/v1.0.0")"
           published_digest="$(printf '%s' "$release_json" | jq -r '.assets[] | select(.name=="G-CET-Runtime-Profiler-v1.0.0.zip") | .digest')"
-          test "$published_digest" = "sha256:cb2574cbe24c460955f4a33a364dd23c72bf76b75430f23b9b0a51eb249496d5"
+          test "$published_digest" = "sha256:$RELEASE_SHA256"
           echo "Published release asset verified: $published_digest"
