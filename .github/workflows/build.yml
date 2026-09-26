@@ -632,10 +632,10 @@ jobs:
             throw 'Integrated Scheduler fixture did not restore its original Scheduler.lua.'
           }
 
-          # Regression: CET may create header/template CSVs merely by loading the
-          # profiler. Those files are not a completed capture and must not enable
-          # collection or create a result archive during restore. Also verify that
-          # an actual F11 binding is reported as F11 rather than generic/custom.
+          # Regression: legacy/header-only profiler CSV shells are not a completed
+          # capture. CLEAR LIVE must remove them without archiving, INSTALL must
+          # auto-clear them instead of trapping the user, and a real F11 binding
+          # must still be reported as F11 rather than generic/custom.
           $fixture5 = Join-Path $env:RUNNER_TEMP 'gcet-template-output-fixture'
           if (Test-Path $fixture5) { Remove-Item $fixture5 -Recurse -Force }
           $plugins5 = Join-Path $fixture5 'bin\x64\plugins'
@@ -671,21 +671,49 @@ jobs:
           if ($templateStatus.captureKey -ne 'F11') { throw "Expected CET capture key F11, got $($templateStatus.captureKey)." }
           if (!$templateStatus.captureKeyIsDefaultF11) { throw 'Exact F11 binding was not recognized as the default capture key.' }
 
-          $resultsBeforeTemplateRestore = @(Get-ChildItem 'publish\RESULTS' -Directory -ErrorAction SilentlyContinue).Count
-          $templateRestore = (& $exe --restore --game $fixture5 --json | ConvertFrom-Json)
-          if ($templateRestore.status.managed) { throw 'Template-output restore left managed state active.' }
-          if ([int]$templateRestore.status.liveResultCount -ne 0) { throw 'Template-output restore did not clear profiler-owned CSV shells.' }
-          if ($templateRestore.status.captureReadyForCollection) { throw 'Capture remained collectable after template-only restore.' }
+          $resultsBeforeTemplateClear = @(Get-ChildItem 'publish\RESULTS' -Directory -ErrorAction SilentlyContinue).Count
+
+          # CLEAR LIVE must be available/useful even though these files are not a
+          # completed capture. It must delete them, not manufacture an archive.
+          $templateClear = (& $exe --reset --game $fixture5 --json | ConvertFrom-Json)
+          if ($null -ne $templateClear.archived) { throw 'Template-only CLEAR LIVE incorrectly archived scratch output.' }
+          if ([int]$templateClear.status.liveResultCount -ne 0) { throw 'Template-only CLEAR LIVE did not remove profiler-owned CSV shells.' }
+          if ($templateClear.status.captureReadyForCollection) { throw 'Template-only CLEAR LIVE left a capture collectable.' }
 
           foreach ($name in $templateFiles.Keys) {
             if (Test-Path -LiteralPath (Join-Path $cet5 $name) -PathType Leaf) {
-              throw "Template-output restore left profiler-owned file behind: $name"
+              throw "Template-only CLEAR LIVE left profiler-owned file behind: $name"
             }
           }
 
-          $resultsAfterTemplateRestore = @(Get-ChildItem 'publish\RESULTS' -Directory -ErrorAction SilentlyContinue).Count
-          if ($resultsAfterTemplateRestore -ne $resultsBeforeTemplateRestore) {
-            throw 'Template-only restore incorrectly created a collected result archive.'
+          if (@(Get-ChildItem 'publish\RESULTS' -Directory -ErrorAction SilentlyContinue).Count -ne $resultsBeforeTemplateClear) {
+            throw 'Template-only CLEAR LIVE incorrectly created a collected result archive.'
+          }
+
+          # Restore to an unmanaged state, then recreate legacy scratch shells.
+          $templateRestore = (& $exe --restore --game $fixture5 --json | ConvertFrom-Json)
+          if ($templateRestore.status.managed) { throw 'Template-output restore left managed state active.' }
+
+          foreach ($entry in $templateFiles.GetEnumerator()) {
+            $entry.Value | Set-Content -LiteralPath (Join-Path $cet5 $entry.Key) -Encoding utf8
+          }
+
+          # INSTALL must auto-clear template-only output. A completed capture would
+          # still block installation, but scratch shells must never trap the user.
+          $reinstallWithTemplates = (& $exe --install --game $fixture5 --json | ConvertFrom-Json)
+          if (!$reinstallWithTemplates.managed) { throw 'INSTALL did not proceed with template-only live output present.' }
+          if ([int]$reinstallWithTemplates.liveResultCount -ne 0) { throw 'INSTALL did not auto-clear template-only live output.' }
+          if ($reinstallWithTemplates.captureReadyForCollection) { throw 'Template-only reinstall incorrectly produced a completed capture.' }
+
+          foreach ($name in $templateFiles.Keys) {
+            if (Test-Path -LiteralPath (Join-Path $cet5 $name) -PathType Leaf) {
+              throw "INSTALL left template-only profiler file behind: $name"
+            }
+          }
+
+          & $exe --restore --game $fixture5 --json | Out-Null
+          if (@(Get-ChildItem 'publish\RESULTS' -Directory -ErrorAction SilentlyContinue).Count -ne $resultsBeforeTemplateClear) {
+            throw 'Template-only lifecycle incorrectly created a collected result archive.'
           }
 
           # Smoke tests use the package-local RESULTS path; do not ship their fixtures.
