@@ -17,7 +17,7 @@ The repository contains source for:
 
 The repository also contains the custom native profiler payload:
 
-- `payload/cyber_engine_tweaks.PROFILER.asi`
+- `payload/cyber_engine_tweaks.PROFILER.dll`
 
 The current ASI was produced through a **PowerShell-based historical CET reconstruction/build pipeline**. The recovered v2.11.0 builder does not patch an opaque executable: it clones the official Cyber Engine Tweaks source, checks out the exact CET v1.37.1 source commit, reconstructs the historical package/toolchain environment, applies the profiler source patch, then compiles a new `cyber_engine_tweaks.PROFILER.asi`.
 
