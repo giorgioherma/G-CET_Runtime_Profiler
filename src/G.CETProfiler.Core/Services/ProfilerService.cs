@@ -91,6 +91,10 @@ public sealed class ProfilerService : IProfilerService
             };
         }
 
+        var captureBinding = bindings.InspectCaptureBinding(paths);
+        var liveResults = GetLiveResults(paths);
+        var captureReadyForCollection = HasCompletedCapture(paths);
+
         return new ProfilerStatus
         {
             PackageVersion = manifest.PackageVersion,
@@ -113,7 +117,11 @@ public sealed class ProfilerService : IProfilerService
             CaptureTitle = File.Exists(paths.CaptureTitle)
                 ? ReadCaptureTitle(paths.CaptureTitle)
                 : "WORLD",
-            LiveResultCount = GetLiveResults(paths).Count,
+            CaptureKey = captureBinding.Key,
+            CaptureKeyIsDefaultF11 = captureBinding.IsDefaultF11,
+            CaptureKeyCode = captureBinding.Code,
+            LiveResultCount = liveResults.Count,
+            CaptureReadyForCollection = captureReadyForCollection,
             ResultsRoot = resultsRoot,
             State = state
         };
@@ -266,6 +274,11 @@ public sealed class ProfilerService : IProfilerService
     {
         AssertGameClosed();
         var paths = GetValidatedPaths(gameRoot);
+
+        if (!HasCompletedCapture(paths))
+            throw new InvalidOperationException(
+                "No completed CET capture is ready. Start the profiler in game, then stop/export it before collecting results.");
+
         return CollectResultsInternal(paths, allowEmpty: false);
     }
 
@@ -273,7 +286,7 @@ public sealed class ProfilerService : IProfilerService
     {
         AssertGameClosed();
         var paths = GetValidatedPaths(gameRoot);
-        return CollectResultsInternal(paths, allowEmpty: true);
+        return ArchiveCompletedCaptureOrClearTemplates(paths);
     }
 
     public string? Restore(string gameRoot)
@@ -285,8 +298,9 @@ public sealed class ProfilerService : IProfilerService
 
         ValidateRestore(paths, state);
 
-        // Preserve any final live result before touching the managed game files.
-        var archived = CollectResultsInternal(paths, allowEmpty: true);
+        // A real completed capture is archived. Header/template files created merely
+        // by loading the profiler are profiler-owned scratch output and are cleared.
+        var archived = ArchiveCompletedCaptureOrClearTemplates(paths);
 
         RestoreAsi(paths, state);
         RestoreZeroEngine(paths, state);
@@ -352,7 +366,7 @@ public sealed class ProfilerService : IProfilerService
 
         try
         {
-            archived = CollectResultsInternal(paths, allowEmpty: true);
+            archived = ArchiveCompletedCaptureOrClearTemplates(paths);
             actions.Add(new EmergencyRestoreAction
             {
                 Component = "Live CET results",
@@ -945,6 +959,60 @@ public sealed class ProfilerService : IProfilerService
         if (state.ZeroEngine.Mode == "bypassed" &&
             Directory.Exists(paths.BackupZeroRoot))
             FileSystemService.CopyDirectoryExact(paths.BackupZeroRoot, paths.ZeroRoot);
+    }
+
+    private string? ArchiveCompletedCaptureOrClearTemplates(ProfilerPaths paths)
+    {
+        var found = GetLiveResults(paths);
+        if (found.Count == 0)
+            return null;
+
+        if (HasCompletedCapture(paths))
+            return CollectResultsInternal(paths, allowEmpty: false);
+
+        // The native profiler creates its CSV shells when it loads. They are not a
+        // capture and must never produce a result archive or enable COLLECT.
+        foreach (var source in found)
+            FileSystemService.DeleteFileIfExists(source);
+
+        return null;
+    }
+
+    private static bool HasCompletedCapture(ProfilerPaths paths)
+    {
+        var markers = Path.Combine(paths.CetRoot, "CET_Runtime_Profile_Markers.csv");
+        if (!File.Exists(markers))
+            return false;
+
+        var sawStart = false;
+        var sawStop = false;
+
+        try
+        {
+            foreach (var line in File.ReadLines(markers))
+            {
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
+
+                foreach (var rawField in line.Split(','))
+                {
+                    var field = rawField.Trim().Trim('"');
+                    if (field.Equals("START", StringComparison.OrdinalIgnoreCase))
+                        sawStart = true;
+                    else if (field.Equals("STOP", StringComparison.OrdinalIgnoreCase))
+                        sawStop = true;
+                }
+
+                if (sawStart && sawStop)
+                    return true;
+            }
+        }
+        catch
+        {
+            return false;
+        }
+
+        return false;
     }
 
     private string? CollectResultsInternal(ProfilerPaths paths, bool allowEmpty)
