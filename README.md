@@ -145,10 +145,10 @@ G-CET-Runtime-Profiler.exe --report  --capture "RESULTS\<capture>" --json
 
 ## Results
 
-Standalone results remain package-local:
+Standalone results remain package-local. Collected capture folders use the shared human-readable naming format `CET-YYYYMMDD-HHMMSS_<TITLE>`:
 
 ```text
-G-CET-Runtime-Profiler\RESULTS\<capture>\
+G-CET-Runtime-Profiler\RESULTS\CET-YYYYMMDD-HHMMSS_<TITLE>\
 ├─ CET_Report.html
 ├─ CET_Summary.json
 ├─ Data\
