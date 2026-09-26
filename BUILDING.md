@@ -1,6 +1,6 @@
 # Building G-CET Runtime Profiler
 
-This document describes how the **public G-CET manager and launcher** are built from this repository and identifies the one native profiler payload that is currently consumed as a prebuilt, hash-locked binary input.
+This document describes how the **public G-CET manager and launcher** are built from this repository and documents the provenance of the native CET profiler payload.
 
 The canonical automated build is:
 
@@ -15,11 +15,13 @@ The repository contains source for:
 - `G.CETProfiler.Core.dll` — lifecycle, install/restore, collection, and report logic in `src/G.CETProfiler.Core/`
 - Lua integration payloads under `payload/0-Engine/` and `payload/CETProfilerControls/`
 
-The repository also contains this prebuilt native payload:
+The repository also contains the custom native profiler payload:
 
 - `payload/cyber_engine_tweaks.PROFILER.asi`
 
-That ASI is **not produced by the .NET/launcher build described below**. It is treated as a versioned binary input and is SHA-256 locked by `MANIFEST.json` and verified by CI before a release is staged.
+The current ASI was produced through a **PowerShell-based native build/reconstruction process**. An earlier working profiler version was used as the reference to recreate the native ASI builder and integrate the G-CET profiling changes. The resulting profiler binary is then treated as a versioned, SHA-256-locked release input by this repository.
+
+That native build/reconstruction toolchain is **not currently committed in this repository**, so the ASI is not rebuilt by the public `.NET/launcher` GitHub Actions workflow described below. CI instead verifies the exact expected ASI bytes from `MANIFEST.json` before staging a release.
 
 Current manifest identity:
 
@@ -29,7 +31,7 @@ Target CET version:      1.37.1
 Profiler ASI SHA-256:    011a9d3fc908e7cce3309ac5b4520ba9a3db5ad301edc6d2a465ca4c77486768
 ```
 
-This distinction is intentional and is stated explicitly for security/moderation review. This repository does not claim that the ASI is reproducibly built from the C# or launcher source.
+This distinction is intentional and is stated explicitly for security/moderation review. The ASI is a custom-built profiler binary, but its historical PowerShell/native reconstruction toolchain is separate from the C# manager/launcher source currently published here.
 
 ## Prerequisites
 
@@ -128,6 +130,6 @@ The release also publishes a matching `.sha256.txt` asset.
 
 For the manager/launcher, the source and exact build workflow are public in this repository.
 
-For `cyber_engine_tweaks.PROFILER.asi`, the current repository provides the exact shipped binary, its version, its target CET version, and its locked SHA-256. It is presently a prebuilt input rather than an artifact rebuilt by this repository.
+For `cyber_engine_tweaks.PROFILER.asi`, the current repository provides the exact shipped binary, its version, its target CET version, and its locked SHA-256. The binary was custom-built through the PowerShell-based reconstruction process described above, but that native builder/toolchain is not currently part of this repository and therefore is not rebuilt by the public CI workflow.
 
 Security reviewers should therefore evaluate the manager/launcher source and CI build separately from the native profiler ASI provenance described in [SECURITY.md](SECURITY.md).
