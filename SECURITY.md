@@ -25,7 +25,7 @@ These operations are part of the documented profiler lifecycle. The architecture
 | `app\G-CET-Runtime-Profiler.App.exe` | Built from `src/G.CETProfiler.App/` using .NET 8 |
 | `app\G.CETProfiler.Core.dll` | Built from `src/G.CETProfiler.Core/` using .NET 8 |
 | Lua integration payloads | Stored as source in `payload/` |
-| `payload\cyber_engine_tweaks.PROFILER.asi` | Custom source-built native profiler; recovered builder/source is published under `native-profiler-build/v2.11.0/` and exact release bytes are version/hash locked by `MANIFEST.json` |
+| `payload\cyber_engine_tweaks.PROFILER.dll` | Custom source-built native profiler; recovered builder/source is published under `native-profiler-build/v2.11.0/` and exact release bytes are version/hash locked by `MANIFEST.json` |
 
 The complete manager/launcher build procedure is documented in [BUILDING.md](BUILDING.md).
 
@@ -49,7 +49,7 @@ The shipped native profiler payload is:
 File:                  payload\cyber_engine_tweaks.PROFILER.asi
 Native profiler ver.:  2.11.0
 Target CET ver.:       1.37.1
-SHA-256:               011a9d3fc908e7cce3309ac5b4520ba9a3db5ad301edc6d2a465ca4c77486768
+SHA-256:               3400a55fe6824519ec8882c924154b288aa43c969bb5a082bb4c8f8bc4071ddb
 ```
 
 The v2.11.0 ASI was built through a recovered **PowerShell-based historical CET reconstruction pipeline**. The builder clones official Cyber Engine Tweaks source at commit `61bd6214f0f5f8748589c9e476538614a13908c0`, reconstructs the historical xmake package state, pins Xmake 3.0.3, MSVC 14.44 / compiler 19.44 and Windows SDK 10.0.26100.0, applies the profiler source patch, and compiles the resulting CET ASI.
@@ -98,13 +98,9 @@ Canonical GitHub release ZIP:
 
 `G-CET-Runtime-Profiler-v1.0.0.zip`
 
-SHA-256:
+The canonical release publishes a matching `.sha256.txt` asset beside the ZIP. That release-side checksum is the authoritative identity for the current v1.0.0 maintenance build.
 
-```text
-0fb6adee34a689273bcb4be17b987656b395c5308dca487d2e425e58cf2d7b87
-```
-
-A scanner or moderation report for a different SHA-256 is reviewing different bytes and should not be treated as the identity of this canonical release.
+A scanner or moderation report should be matched against that published checksum before it is treated as a report for the current canonical release.
 
 ## Notes for Nexus Mods / security reviewers
 

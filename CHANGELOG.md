@@ -4,7 +4,13 @@ All notable public changes to G-CET Runtime Profiler are recorded here.
 
 ## [Unreleased]
 
-No public changes after v1.0.0.
+### v1.0.0 maintenance refresh
+
+- Native CET profiler export is now lazy: a pre-capture or duplicate dump is a true no-op and cannot create header-only CSV shells.
+- **COLLECT RESULTS / CLEAR LIVE** can clear legacy template/scratch output even when there is no completed capture.
+- Template-only live output no longer blocks installation; INSTALL clears those profiler-owned scratch files automatically.
+- A real completed capture is still protected and must be collected before a new unmanaged install can proceed.
+- Release documentation now points to the published `.sha256.txt` asset as the authoritative ZIP checksum instead of embedding a self-staling ZIP hash.
 
 ## [1.0.0] - 2026-09-25
 

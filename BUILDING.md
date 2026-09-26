@@ -42,7 +42,7 @@ Current manifest identity:
 ```text
 Native profiler version: 2.11.0
 Target CET version:      1.37.1
-Profiler ASI SHA-256:    011a9d3fc908e7cce3309ac5b4520ba9a3db5ad301edc6d2a465ca4c77486768
+Profiler ASI SHA-256:    3400a55fe6824519ec8882c924154b288aa43c969bb5a082bb4c8f8bc4071ddb
 ```
 
 This distinction is intentional and is stated explicitly for security/moderation review. The ASI is a custom source-built CET binary produced by the recovered historical reconstruction pipeline; it is separate from the C# manager/launcher build.
@@ -132,13 +132,7 @@ Verify a downloaded release with PowerShell:
 Get-FileHash ".\G-CET-Runtime-Profiler-v1.0.0.zip" -Algorithm SHA256
 ```
 
-Canonical GitHub v1.0.0 release ZIP SHA-256:
-
-```text
-0fb6adee34a689273bcb4be17b987656b395c5308dca487d2e425e58cf2d7b87
-```
-
-The release also publishes a matching `.sha256.txt` asset.
+The canonical GitHub release publishes a matching `.sha256.txt` asset beside the ZIP. That release-side checksum is authoritative because a same-version maintenance refresh necessarily changes the ZIP bytes.
 
 ## Reproducibility and review
 

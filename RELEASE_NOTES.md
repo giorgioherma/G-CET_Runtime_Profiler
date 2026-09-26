@@ -4,6 +4,8 @@ First stable release of the standalone G-CET Runtime Profiler.
 
 ## Highlights
 
+- Maintenance refresh: pre-capture/duplicate native dumps no longer create header-only CET profiler CSV shells.
+- **COLLECT RESULTS / CLEAR LIVE** can clear legacy scratch/template output, and template-only output no longer blocks INSTALL.
 - Portable, self-contained Windows ZIP — extract and run.
 - Includes a self-contained illustrated `Install_Instructions.html` beside the profiler folder.
 - Single CET capture input (**F11 by default**) for START / STOP + automatic export.

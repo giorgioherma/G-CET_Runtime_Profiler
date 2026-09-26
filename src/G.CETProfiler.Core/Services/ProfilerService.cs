@@ -137,8 +137,18 @@ public sealed class ProfilerService : IProfilerService
         if (Directory.Exists(paths.StateRoot))
             throw new InvalidOperationException("Profiler manager state already exists. Restore/clean the previous managed install first.");
 
-        if (GetLiveResults(paths).Count > 0)
-            throw new InvalidOperationException("Live profiler output already exists in the CET folder. Use COLLECT RESULTS / CLEAR LIVE first.");
+        var preInstallLive = GetLiveResults(paths);
+        if (preInstallLive.Count > 0)
+        {
+            if (HasCompletedCapture(paths))
+                throw new InvalidOperationException(
+                    "A completed CET capture already exists in the live CET folder. Use COLLECT RESULTS / CLEAR LIVE before installing again.");
+
+            // Legacy/native scratch CSV shells are not a capture. Never let them trap
+            // the user outside INSTALL: clear only profiler-owned live-result patterns
+            // and continue with the normal transaction.
+            ArchiveCompletedCaptureOrClearTemplates(paths);
+        }
 
         var officialHash = manifest.TargetCet.OfficialSha256.ToLowerInvariant();
         var profilerHash = manifest.TargetCet.ProfilerSha256.ToLowerInvariant();
@@ -971,8 +981,8 @@ public sealed class ProfilerService : IProfilerService
         if (HasCompletedCapture(paths))
             return CollectResultsInternal(paths, allowEmpty: false);
 
-        // The native profiler creates its CSV shells when it loads. They are not a
-        // capture and must never produce a result archive or enable COLLECT.
+        // Legacy builds / stray pre-capture dumps can leave profiler-owned CSV shells.
+        // They are not a capture and must never produce a result archive.
         foreach (var source in found)
             FileSystemService.DeleteFileIfExists(source);
 
