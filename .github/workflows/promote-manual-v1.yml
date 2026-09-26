@@ -1,7 +1,6 @@
-name: Add illustrated instructions to v1.0.0 package
+name: Refresh v1.0.0 release notes
 
 permissions:
-  actions: read
   contents: write
 
 on:
@@ -11,65 +10,23 @@ on:
       - '.github/PROMOTE_MANUAL_V1'
 
 jobs:
-  package:
-    runs-on: windows-latest
+  notes:
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout current documentation
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Download validated v1.0.0 profiler contents
-        uses: actions/download-artifact@v4
-        with:
-          name: G-CET-Runtime-Profiler-v1.0.0
-          run-id: 36200672216
-          github-token: ${{ github.token }}
-          path: portable
-
-      - name: Package profiler with illustrated instructions
-        shell: pwsh
+      - name: Refresh release body without touching assets
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $ErrorActionPreference = 'Stop'
+          set -euo pipefail
+          asset="G-CET-Runtime-Profiler-v1.0.0.zip"
+          digest="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/v1.0.0" --jq '.assets[] | select(.name=="'"$asset"'") | .digest')"
+          hash="${digest#sha256:}"
+          test -n "$hash"
 
-          $productRoot = 'portable\G-CET-Runtime-Profiler'
-          if (!(Test-Path -LiteralPath $productRoot -PathType Container)) {
-            throw 'Validated profiler folder is missing.'
-          }
-          if (!(Test-Path -LiteralPath 'Install_Instructions.html' -PathType Leaf)) {
-            throw 'Install_Instructions.html is missing.'
-          }
+          cp RELEASE_NOTES.md release-notes.md
+          printf '\n\n## SHA-256\n\n    %s  %s\n' "$hash" "$asset" >> release-notes.md
 
-          Copy-Item 'Install_Instructions.html' 'portable\Install_Instructions.html' -Force
-
-          $asset = 'G-CET-Runtime-Profiler-v1.0.0.zip'
-          $checksum = "$asset.sha256.txt"
-          Remove-Item $asset,$checksum -Force -ErrorAction SilentlyContinue
-
-          Compress-Archive -Path $productRoot,'portable\Install_Instructions.html' -DestinationPath $asset -CompressionLevel Optimal
-
-          $hash = (Get-FileHash -LiteralPath $asset -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  $asset" | Set-Content -LiteralPath $checksum -Encoding ASCII
-
-          $stage = Join-Path $env:RUNNER_TEMP 'verify-package'
-          Expand-Archive -LiteralPath $asset -DestinationPath $stage -Force
-          if (!(Test-Path -LiteralPath (Join-Path $stage 'Install_Instructions.html') -PathType Leaf)) {
-            throw 'Packaged instructions are missing from ZIP root.'
-          }
-          if (!(Test-Path -LiteralPath (Join-Path $stage 'G-CET-Runtime-Profiler\G-CET-Runtime-Profiler.exe') -PathType Leaf)) {
-            throw 'Packaged profiler executable is missing.'
-          }
-
-          $releaseNotes = Join-Path $env:RUNNER_TEMP 'release-notes.md'
-          $notes = (Get-Content -LiteralPath 'RELEASE_NOTES.md' -Raw).TrimEnd()
-          $body = $notes + "`r`n`r`n## SHA-256`r`n`r`n    $hash  $asset`r`n"
-          $body | Set-Content -LiteralPath $releaseNotes -Encoding utf8
-
-          gh release edit v1.0.0 --repo $env:GITHUB_REPOSITORY --title 'G-CET Runtime Profiler v1.0.0' --notes-file $releaseNotes --latest
-          if ($LASTEXITCODE -ne 0) { throw 'Could not update v1.0.0 release notes.' }
-
-          gh release upload v1.0.0 $asset $checksum --repo $env:GITHUB_REPOSITORY --clobber
-          if ($LASTEXITCODE -ne 0) { throw 'Could not upload packaged v1.0.0 assets.' }
-
-          Write-Host "Published $asset"
-          Write-Host "SHA256: $hash"
+          gh release edit v1.0.0             --repo "$GITHUB_REPOSITORY"             --title "G-CET Runtime Profiler v1.0.0"             --notes-file release-notes.md             --latest
