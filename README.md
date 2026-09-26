@@ -18,6 +18,7 @@ GitHub **Releases** is the canonical download location for v1.0.0.
 
 ```text
 G-CET-Runtime-Profiler-v1.0.0.zip
+├─ Install_Instructions.html
 └─ G-CET-Runtime-Profiler\
    ├─ G-CET-Runtime-Profiler.exe
    ├─ MANIFEST.json
@@ -38,7 +39,7 @@ G-CET-Runtime-Profiler-v1.0.0.zip
 
 The root EXE is a small native launcher. The self-contained WinForms application and .NET runtime live under `app\`, keeping the public root readable without hiding the whole application inside one large opaque executable. `payload\` remains separate because those exact profiler/integration files are hash-verified before deployment.
 
-Extract the ZIP to a normal writable folder and run `G-CET-Runtime-Profiler.exe`.
+Extract the ZIP, open `Install_Instructions.html` for the illustrated workflow, then open the `G-CET-Runtime-Profiler` folder and run `G-CET-Runtime-Profiler.exe`.
 
 The profiler is self-contained: users do **not** need to install .NET separately. `G-CET-Runtime-Profiler.settings.json` is created beside the root launcher on first use rather than being sent to Windows roaming/app-data folders. The launcher forwards both GUI and headless commands to the same application under `app\`.
 
