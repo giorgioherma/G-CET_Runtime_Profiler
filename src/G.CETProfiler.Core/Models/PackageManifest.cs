@@ -31,6 +31,12 @@ public sealed class TargetCetManifest
 
     [JsonPropertyName("profilerSha256")]
     public string ProfilerSha256 { get; set; } = "";
+
+    [JsonPropertyName("profilerPackageFile")]
+    public string ProfilerPackageFile { get; set; } = "cyber_engine_tweaks.PROFILER.dll";
+
+    [JsonPropertyName("profilerInstallFile")]
+    public string ProfilerInstallFile { get; set; } = "cyber_engine_tweaks.asi";
 }
 
 public sealed class ZeroEngineManifest
