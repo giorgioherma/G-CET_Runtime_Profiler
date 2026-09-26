@@ -1,0 +1,26 @@
+CET Native Runtime Profiler v2.11.0 - validation record
+
+STATIC / PORTABLE VALIDATION PERFORMED
+--------------------------------------
+1. CETRuntimeProfiler.h compiles as C++20 in a standalone harness.
+2. Synthetic Scheduler telemetry test registered two jobs, timed ~3 ms each,
+   and produced:
+   - CET_Runtime_Profile_Scheduler_ByJob.csv
+   - CET_Runtime_Profile_Scheduler_Spikes.csv
+   - CET_Runtime_Profile_Scheduler_FrameBursts.csv
+3. The synthetic frame exceeded the 5 ms combined threshold and both child jobs
+   appeared under the same BurstSequence.
+4. Existing v2.10.2 callback profiler data structures and output paths are
+   retained.
+5. The 0-Engine bridge was generated from the exact PASS4.1 v0.18.9
+   Scheduler.lua supplied in this project.
+6. Scheduler cadence/stagger calculations are unchanged; instrumentation is
+   around safeInvoke only.
+
+NOT VALIDATED IN THIS LINUX BUILD ENVIRONMENT
+----------------------------------------------
+- Full Cyber Engine Tweaks v1.37.1 / MSVC 14.44 build.
+- In-game CET/Sol binding behavior.
+
+Run Build-Profiler.ps1 on the established Windows historical toolchain before
+installing the ASI. The build script remains the authoritative CET compile test.
