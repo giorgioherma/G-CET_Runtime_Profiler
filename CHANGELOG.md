@@ -6,6 +6,8 @@ All notable public changes to G-CET Runtime Profiler are recorded here.
 
 ### v1.0.0 maintenance refresh
 
+- Fixed completed-capture detection to match the native profiler's actual `CAPTURE_START` + `PAUSE` marker pair. Real captures now deploy into the profiler's package-local `RESULTS` folder instead of being mistaken for scratch/templates and cleared.
+- Added a CI regression capture that proves native marker output is recognized, archived exactly once, and preserved through restore.
 - INSTALL PROFILER now shows a high-visibility warning to close Vortex or any other mod manager/installer and keep it closed until RESTORE ORIGINAL STATE completes, preventing temporary profiler files from being picked up by external deployment tools.
 - Native CET profiler export is now lazy: a pre-capture or duplicate dump is a true no-op and cannot create header-only CSV shells.
 - **COLLECT RESULTS / CLEAR LIVE** can clear legacy template/scratch output even when there is no completed capture.
