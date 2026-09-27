@@ -711,9 +711,53 @@ jobs:
             }
           }
 
+          # Regression: a real native capture uses CAPTURE_START when started and
+          # PAUSE when CETProfilerControls stops it before Dump(). The manager must
+          # classify that pair as a completed capture and COLLECT it, never clear it
+          # through the template/scratch path.
+          $captureEpoch = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+          @"
+Sequence,CaptureMs,UnixEpochMs,Label,DroppedMarkersAtDump
+1,0.000000,$captureEpoch,"CAPTURE_START",0
+2,1000.000000,$($captureEpoch + 1000),"PAUSE",0
+"@ | Set-Content -LiteralPath (Join-Path $cet5 'CET_Runtime_Profile_Markers.csv') -Encoding utf8
+
+          @"
+Mod,Kind,Target,Calls,CallsPerSecond,InclusiveTotalMs,ExclusiveTotalMs,InclusiveMsPerSecond,ExclusiveMsPerSecond,MeasuredOneCorePct,AvgExclusiveUs,MaxInclusiveMs,MaxExclusiveMs,MeasuredExclusiveSharePct,ElapsedSeconds,Coverage
+FixtureMod,onUpdate,onUpdate,60,60,1,1,1,1,0.1,16.666667,0.1,0.1,100,1,native
+"@ | Set-Content -LiteralPath (Join-Path $cet5 'CET_Runtime_Profile_Detail.csv') -Encoding utf8
+
+          $realCaptureStatus = (& $exe --status --game $fixture5 --json | ConvertFrom-Json)
+          if (!$realCaptureStatus.captureReadyForCollection) {
+            throw 'CAPTURE_START + PAUSE native marker pair was not classified as a completed capture.'
+          }
+
+          $resultsBeforeRealCollect = @(Get-ChildItem 'publish\RESULTS' -Directory -ErrorAction SilentlyContinue).Count
+          $realCollect = (& $exe --collect --game $fixture5 --json | ConvertFrom-Json)
+          if ([string]::IsNullOrWhiteSpace([string]$realCollect.destination)) {
+            throw 'Real native capture COLLECT did not return a destination.'
+          }
+          if (!(Test-Path -LiteralPath $realCollect.destination -PathType Container)) {
+            throw "Real native capture destination was not created: $($realCollect.destination)"
+          }
+          if ([int]$realCollect.status.liveResultCount -ne 0) {
+            throw 'Real native capture COLLECT left live profiler output behind.'
+          }
+          if ($realCollect.status.captureReadyForCollection) {
+            throw 'Real native capture remained collectable after COLLECT.'
+          }
+          if (@(Get-ChildItem -LiteralPath $realCollect.destination -Recurse -Filter 'CET_Runtime_Profile_Markers.csv' -File).Count -ne 1) {
+            throw 'Collected result does not contain the verified native marker file.'
+          }
+
+          $resultsAfterRealCollect = @(Get-ChildItem 'publish\RESULTS' -Directory -ErrorAction SilentlyContinue).Count
+          if ($resultsAfterRealCollect -ne ($resultsBeforeRealCollect + 1)) {
+            throw 'Real native capture COLLECT did not create exactly one result archive.'
+          }
+
           & $exe --restore --game $fixture5 --json | Out-Null
-          if (@(Get-ChildItem 'publish\RESULTS' -Directory -ErrorAction SilentlyContinue).Count -ne $resultsBeforeTemplateClear) {
-            throw 'Template-only lifecycle incorrectly created a collected result archive.'
+          if (@(Get-ChildItem 'publish\RESULTS' -Directory -ErrorAction SilentlyContinue).Count -ne $resultsAfterRealCollect) {
+            throw 'Restore created an unexpected extra result archive after the real capture was already collected.'
           }
 
           # Smoke tests use the package-local RESULTS path; do not ship their fixtures.
