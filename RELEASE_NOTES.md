@@ -4,6 +4,8 @@ First stable release of the standalone G-CET Runtime Profiler.
 
 ## Highlights
 
+- Maintenance refresh: fixed completed-capture detection for the native profiler's `CAPTURE_START` + `PAUSE` markers, so real captures are collected into package-local `RESULTS` instead of being cleared as scratch/templates.
+- Added regression coverage proving a real native-style capture is archived exactly once before restore.
 - Maintenance refresh: pre-capture/duplicate native dumps no longer create header-only CET profiler CSV shells.
 - **COLLECT RESULTS / CLEAR LIVE** can clear legacy scratch/template output, and template-only output no longer blocks INSTALL.
 - Portable, self-contained Windows ZIP — extract and run.
