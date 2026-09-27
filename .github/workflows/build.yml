@@ -716,16 +716,16 @@ jobs:
           # classify that pair as a completed capture and COLLECT it, never clear it
           # through the template/scratch path.
           $captureEpoch = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
-          @"
-Sequence,CaptureMs,UnixEpochMs,Label,DroppedMarkersAtDump
-1,0.000000,$captureEpoch,"CAPTURE_START",0
-2,1000.000000,$($captureEpoch + 1000),"PAUSE",0
-"@ | Set-Content -LiteralPath (Join-Path $cet5 'CET_Runtime_Profile_Markers.csv') -Encoding utf8
+          @(
+            'Sequence,CaptureMs,UnixEpochMs,Label,DroppedMarkersAtDump'
+            "1,0.000000,$captureEpoch,`"CAPTURE_START`",0"
+            "2,1000.000000,$($captureEpoch + 1000),`"PAUSE`",0"
+          ) | Set-Content -LiteralPath (Join-Path $cet5 'CET_Runtime_Profile_Markers.csv') -Encoding utf8
 
-          @"
-Mod,Kind,Target,Calls,CallsPerSecond,InclusiveTotalMs,ExclusiveTotalMs,InclusiveMsPerSecond,ExclusiveMsPerSecond,MeasuredOneCorePct,AvgExclusiveUs,MaxInclusiveMs,MaxExclusiveMs,MeasuredExclusiveSharePct,ElapsedSeconds,Coverage
-FixtureMod,onUpdate,onUpdate,60,60,1,1,1,1,0.1,16.666667,0.1,0.1,100,1,native
-"@ | Set-Content -LiteralPath (Join-Path $cet5 'CET_Runtime_Profile_Detail.csv') -Encoding utf8
+          @(
+            'Mod,Kind,Target,Calls,CallsPerSecond,InclusiveTotalMs,ExclusiveTotalMs,InclusiveMsPerSecond,ExclusiveMsPerSecond,MeasuredOneCorePct,AvgExclusiveUs,MaxInclusiveMs,MaxExclusiveMs,MeasuredExclusiveSharePct,ElapsedSeconds,Coverage'
+            'FixtureMod,onUpdate,onUpdate,60,60,1,1,1,1,0.1,16.666667,0.1,0.1,100,1,native'
+          ) | Set-Content -LiteralPath (Join-Path $cet5 'CET_Runtime_Profile_Detail.csv') -Encoding utf8
 
           $realCaptureStatus = (& $exe --status --game $fixture5 --json | ConvertFrom-Json)
           if (!$realCaptureStatus.captureReadyForCollection) {
