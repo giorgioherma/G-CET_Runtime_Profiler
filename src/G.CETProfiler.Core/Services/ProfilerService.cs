@@ -1007,7 +1007,10 @@ public sealed class ProfilerService : IProfilerService
                     continue;
 
                 var label = fields[3].Trim().Trim('"');
-                if (!label.Equals("START", StringComparison.OrdinalIgnoreCase))
+                // Current native builds emit CAPTURE_START. Keep START accepted for
+                // older captures so same-version maintenance refreshes remain readable.
+                if (!label.Equals("CAPTURE_START", StringComparison.OrdinalIgnoreCase) &&
+                    !label.Equals("START", StringComparison.OrdinalIgnoreCase))
                     continue;
 
                 var rawEpoch = fields[2].Trim().Trim('"');
@@ -1044,9 +1047,15 @@ public sealed class ProfilerService : IProfilerService
                 foreach (var rawField in line.Split(','))
                 {
                     var field = rawField.Trim().Trim('"');
-                    if (field.Equals("START", StringComparison.OrdinalIgnoreCase))
+                    // Native CETProfilerControls starts with CETProfilerStart() and
+                    // stops by CETProfilerPause() followed by CETProfilerDump().
+                    // Therefore current captures contain CAPTURE_START + PAUSE.
+                    // START + STOP stays accepted for compatibility with older output.
+                    if (field.Equals("CAPTURE_START", StringComparison.OrdinalIgnoreCase) ||
+                        field.Equals("START", StringComparison.OrdinalIgnoreCase))
                         sawStart = true;
-                    else if (field.Equals("STOP", StringComparison.OrdinalIgnoreCase))
+                    else if (field.Equals("PAUSE", StringComparison.OrdinalIgnoreCase) ||
+                             field.Equals("STOP", StringComparison.OrdinalIgnoreCase))
                         sawStop = true;
                 }
 
