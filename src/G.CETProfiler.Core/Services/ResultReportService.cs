@@ -58,7 +58,7 @@ public static partial class ResultReportService
         return Path.Combine("Data", "Metadata", fileName);
     }
 
-    public static ResultReportBuildResult Generate(string captureRoot, string? modsRoot = null)
+    public static ResultReportBuildResult Generate(string captureRoot)
     {
         if (string.IsNullOrWhiteSpace(captureRoot))
             throw new ArgumentException("Capture folder is empty.", nameof(captureRoot));
@@ -69,8 +69,6 @@ public static partial class ResultReportService
         var a = Analyze(captureRoot);
         var summaryPath = Path.Combine(captureRoot, SummaryFileName);
         var resolverInputPath = Path.Combine(captureRoot, ResolverInputFileName);
-        var cadenceResolutionPath = Path.Combine(captureRoot, CadenceResolutionFileName);
-        var cadenceFinalPath = Path.Combine(captureRoot, CadenceFinalFileName);
         var reportPath = Path.Combine(captureRoot, ReportFileName);
 
         var summary = new
@@ -288,16 +286,6 @@ public static partial class ResultReportService
         File.WriteAllText(
             resolverInputPath,
             JsonSerializer.Serialize(BuildResolverInput(captureRoot, a), JsonOptions) + Environment.NewLine,
-            new UTF8Encoding(false));
-
-        File.WriteAllText(
-            cadenceResolutionPath,
-            JsonSerializer.Serialize(BuildCadenceResolution(captureRoot, a), JsonOptions) + Environment.NewLine,
-            new UTF8Encoding(false));
-
-        File.WriteAllText(
-            cadenceFinalPath,
-            JsonSerializer.Serialize(BuildSourceCadenceResolution(captureRoot, modsRoot), JsonOptions) + Environment.NewLine,
             new UTF8Encoding(false));
 
         File.WriteAllText(
