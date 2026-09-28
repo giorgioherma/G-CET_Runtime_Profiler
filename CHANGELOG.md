@@ -3,6 +3,7 @@
 All notable public changes to G-CET Runtime Profiler are recorded here.
 
 ## [Unreleased]
+- Added a measurement-only `CET_Resolver_Input.json` handoff for a future external resolver. It preserves all callback rows (not only top-N report rows) and adds global/family/owner shares, normalized spike rates and spike-time rates, owner timeline activity/burst metrics, and calls-per-frame when aligned CapFrameX data is available. The profiler still makes no optimization or pacing decisions.
 
 ### v1.0.0 maintenance refresh
 

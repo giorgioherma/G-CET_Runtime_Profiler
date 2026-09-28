@@ -3,6 +3,7 @@
 First stable release of the standalone G-CET Runtime Profiler.
 
 ## Highlights
+- Added `CET_Resolver_Input.json`, a measurement-only machine handoff for a future external resolver. It includes complete callback-level runtime rows plus relative work/call shares, normalized spike pressure, owner timeline activity/burst characteristics, and calls-per-frame when aligned CapFrameX data exists. No pacing or optimization decisions are made by the profiler.
 
 - Maintenance refresh: fixed completed-capture detection for the native profiler's `CAPTURE_START` + `PAUSE` markers, so real captures are collected into package-local `RESULTS` instead of being cleared as scratch/templates.
 - Added regression coverage proving a real native-style capture is archived exactly once before restore.

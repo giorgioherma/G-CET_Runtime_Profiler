@@ -20,6 +20,7 @@ public static partial class ResultReportService
 {
     public const string ReportFileName = "CET_Report.html";
     public const string SummaryFileName = "CET_Summary.json";
+    public const string ResolverInputFileName = "CET_Resolver_Input.json";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -64,6 +65,7 @@ public static partial class ResultReportService
 
         var a = Analyze(captureRoot);
         var summaryPath = Path.Combine(captureRoot, SummaryFileName);
+        var resolverInputPath = Path.Combine(captureRoot, ResolverInputFileName);
         var reportPath = Path.Combine(captureRoot, ReportFileName);
 
         var summary = new
@@ -279,6 +281,11 @@ public static partial class ResultReportService
             new UTF8Encoding(false));
 
         File.WriteAllText(
+            resolverInputPath,
+            JsonSerializer.Serialize(BuildResolverInput(captureRoot, a), JsonOptions) + Environment.NewLine,
+            new UTF8Encoding(false));
+
+        File.WriteAllText(
             reportPath,
             BuildHtml(a, captureRoot),
             new UTF8Encoding(false));
@@ -319,7 +326,8 @@ public static partial class ResultReportService
         var files = Directory.EnumerateFiles(captureRoot, "*", SearchOption.AllDirectories)
             .Select(path => Path.GetRelativePath(captureRoot, path).Replace('\\', '/'))
             .Where(x => !x.Equals(ReportFileName, StringComparison.OrdinalIgnoreCase) &&
-                        !x.Equals(SummaryFileName, StringComparison.OrdinalIgnoreCase))
+                        !x.Equals(SummaryFileName, StringComparison.OrdinalIgnoreCase) &&
+                        !x.Equals(ResolverInputFileName, StringComparison.OrdinalIgnoreCase))
             .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
             .Take(200)
             .ToList();

@@ -1,0 +1,432 @@
+using System.Globalization;
+
+namespace GCETRuntimeProfiler.Core.Services;
+
+public static partial class ResultReportService
+{
+    /// <summary>
+    /// Builds a measurement-only handoff for a future optimizer/resolver.
+    /// It deliberately makes no pacing or transformation decisions.
+    /// Everything here is derived from the already-captured profiler CSVs and
+    /// optional aligned frametime data, so the native profiler hot path remains
+    /// unchanged.
+    /// </summary>
+    private static object BuildResolverInput(string captureRoot, ResultAnalysis a)
+    {
+        var detail = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Detail.csv"));
+        var spikes = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Spikes.csv"));
+        var timeline = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Timeline.csv"));
+
+        var callbacks = detail
+            .Select(r => new ResolverCallbackMetric
+            {
+                Owner = S(r, "Mod", "Owner"),
+                Kind = S(r, "Kind"),
+                Target = S(r, "Target"),
+                Calls = L(r, "Calls"),
+                CallsPerSecond = D(r, "CallsPerSecond"),
+                ExclusiveMsPerSecond = D(r, "ExclusiveMsPerSecond", "MsPerSecond"),
+                AvgExclusiveUs = D(r, "AvgExclusiveUs", "AvgUs"),
+                MaxExclusiveMs = D(r, "MaxExclusiveMs", "MaxMs")
+            })
+            .Where(x => !string.IsNullOrWhiteSpace(x.Owner) &&
+                        !string.IsNullOrWhiteSpace(x.Target))
+            .ToList();
+
+        var spikeSamples = spikes
+            .Select(r => new ResolverSpikeSample
+            {
+                Owner = S(r, "Mod", "Owner"),
+                Kind = S(r, "Kind", "JobType"),
+                Target = S(r, "Target", "Job"),
+                ExclusiveMs = D(r, "ExclusiveMs", "DurationMs")
+            })
+            .Where(x => !string.IsNullOrWhiteSpace(x.Owner) || x.ExclusiveMs > 0)
+            .ToList();
+
+        var spikeByCallback = spikeSamples
+            .GroupBy(x => ResolverCallbackKey(x.Owner, x.Kind, x.Target), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => ResolverAggregateSpikes(g),
+                StringComparer.OrdinalIgnoreCase);
+
+        var spikeByFamily = spikeSamples
+            .GroupBy(x => ResolverFamilyKey(x.Kind, x.Target), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => ResolverAggregateSpikes(g),
+                StringComparer.OrdinalIgnoreCase);
+
+        var spikeByOwner = spikeSamples
+            .GroupBy(x => x.Owner, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => ResolverAggregateSpikes(g),
+                StringComparer.OrdinalIgnoreCase);
+
+        var ownerByName = a.Owners.ToDictionary(
+            x => x.Name,
+            x => x,
+            StringComparer.OrdinalIgnoreCase);
+
+        var activity = BuildResolverOwnerActivity(timeline)
+            .ToDictionary(x => x.Owner, x => x, StringComparer.OrdinalIgnoreCase);
+
+        var families = callbacks
+            .GroupBy(x => ResolverFamilyKey(x.Kind, x.Target), StringComparer.OrdinalIgnoreCase)
+            .Select(g =>
+            {
+                var rows = g.ToList();
+                var first = rows[0];
+                var familyMs = rows.Sum(x => x.ExclusiveMsPerSecond);
+                var familyCalls = rows.Sum(x => x.CallsPerSecond);
+                var familySpikes = spikeByFamily.GetValueOrDefault(g.Key) ?? new ResolverSpikeAggregate();
+
+                return new
+                {
+                    kind = first.Kind,
+                    target = first.Target,
+                    owners = rows.Select(x => x.Owner)
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .Count(),
+                    callsPerSecond = Round(familyCalls, 3),
+                    globalCallSharePct = Round(Percent(familyCalls, a.TotalCallsPerSecond), 3),
+                    exclusiveMsPerSecond = Round(familyMs, 6),
+                    globalWorkSharePct = Round(Percent(familyMs, a.TotalMsPerSecond), 3),
+                    maxExclusiveMs = Round(rows.Select(x => x.MaxExclusiveMs).DefaultIfEmpty(0).Max(), 6),
+                    spikeCount = familySpikes.Count,
+                    spikesPerSecond = Round(ResolverRate(familySpikes.Count, a.CaptureSeconds), 6),
+                    spikeExclusiveMsPerSecond = Round(ResolverRate(familySpikes.TotalExclusiveMs, a.CaptureSeconds), 6),
+                    maxSpikeExclusiveMs = Round(familySpikes.MaxExclusiveMs, 6),
+                    topOwner = rows.OrderByDescending(x => x.ExclusiveMsPerSecond).First().Owner
+                };
+            })
+            .OrderByDescending(x => x.exclusiveMsPerSecond)
+            .ThenByDescending(x => x.callsPerSecond)
+            .ToArray();
+
+        var familyTotals = callbacks
+            .GroupBy(x => ResolverFamilyKey(x.Kind, x.Target), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => new ResolverFamilyTotals
+                {
+                    OwnerCount = g.Select(x => x.Owner).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
+                    CallsPerSecond = g.Sum(x => x.CallsPerSecond),
+                    ExclusiveMsPerSecond = g.Sum(x => x.ExclusiveMsPerSecond)
+                },
+                StringComparer.OrdinalIgnoreCase);
+
+        var frameNormalizationAvailable =
+            a.FrameTime is not null &&
+            a.FrameTime.Correlated &&
+            a.FrameTime.AverageFps > 0;
+
+        var averageFps = frameNormalizationAvailable
+            ? (double?)a.FrameTime!.AverageFps
+            : null;
+
+        var callbackRows = callbacks
+            .OrderByDescending(x => x.ExclusiveMsPerSecond)
+            .ThenByDescending(x => x.CallsPerSecond)
+            .Select(x =>
+            {
+                var callbackKey = ResolverCallbackKey(x.Owner, x.Kind, x.Target);
+                var familyKey = ResolverFamilyKey(x.Kind, x.Target);
+                var callbackSpikes = spikeByCallback.GetValueOrDefault(callbackKey) ?? new ResolverSpikeAggregate();
+                var family = familyTotals.GetValueOrDefault(familyKey) ?? new ResolverFamilyTotals();
+                ownerByName.TryGetValue(x.Owner, out var owner);
+                activity.TryGetValue(x.Owner, out var ownerActivity);
+
+                return new
+                {
+                    owner = x.Owner,
+                    infrastructure = IsInfrastructureOwner(x.Owner),
+                    kind = x.Kind,
+                    target = x.Target,
+                    calls = x.Calls,
+                    callsPerSecond = Round(x.CallsPerSecond, 3),
+                    callsPerFrame = averageFps is double fps
+                        ? Round(x.CallsPerSecond / fps, 6)
+                        : (double?)null,
+                    globalCallSharePct = Round(Percent(x.CallsPerSecond, a.TotalCallsPerSecond), 3),
+                    familyCallSharePct = Round(Percent(x.CallsPerSecond, family.CallsPerSecond), 3),
+                    ownerCallSharePct = Round(Percent(x.CallsPerSecond, owner?.CallsPerSecond ?? 0), 3),
+                    exclusiveMsPerSecond = Round(x.ExclusiveMsPerSecond, 6),
+                    globalWorkSharePct = Round(Percent(x.ExclusiveMsPerSecond, a.TotalMsPerSecond), 3),
+                    familyWorkSharePct = Round(Percent(x.ExclusiveMsPerSecond, family.ExclusiveMsPerSecond), 3),
+                    ownerWorkSharePct = Round(Percent(x.ExclusiveMsPerSecond, owner?.ExclusiveMsPerSecond ?? 0), 3),
+                    avgExclusiveUs = Round(x.AvgExclusiveUs, 6),
+                    maxExclusiveMs = Round(x.MaxExclusiveMs, 6),
+                    familyOwnerCount = family.OwnerCount,
+                    spikeCount = callbackSpikes.Count,
+                    spikesPerSecond = Round(ResolverRate(callbackSpikes.Count, a.CaptureSeconds), 6),
+                    spikeExclusiveMsPerSecond = Round(ResolverRate(callbackSpikes.TotalExclusiveMs, a.CaptureSeconds), 6),
+                    maxSpikeExclusiveMs = Round(callbackSpikes.MaxExclusiveMs, 6),
+                    ownerActivityBucketPct = ownerActivity is null
+                        ? (double?)null
+                        : Round(ownerActivity.ActiveBucketPct, 3),
+                    ownerBurstRatio = ownerActivity is null
+                        ? (double?)null
+                        : Round(ownerActivity.BurstRatio, 6)
+                };
+            })
+            .ToArray();
+
+        var ownerRows = a.Owners
+            .Select(x =>
+            {
+                var ownerSpikes = spikeByOwner.GetValueOrDefault(x.Name) ?? new ResolverSpikeAggregate();
+                activity.TryGetValue(x.Name, out var ownerActivity);
+
+                return new
+                {
+                    owner = x.Name,
+                    infrastructure = IsInfrastructureOwner(x.Name),
+                    callbacks = callbacks.Count(c => string.Equals(c.Owner, x.Name, StringComparison.OrdinalIgnoreCase)),
+                    callsPerSecond = Round(x.CallsPerSecond, 3),
+                    globalCallSharePct = Round(Percent(x.CallsPerSecond, a.TotalCallsPerSecond), 3),
+                    exclusiveMsPerSecond = Round(x.ExclusiveMsPerSecond, 6),
+                    globalWorkSharePct = Round(EffectiveShare(x, a.TotalMsPerSecond), 3),
+                    avgExclusiveUs = Round(x.AvgExclusiveUs, 6),
+                    maxExclusiveMs = Round(x.MaxExclusiveMs, 6),
+                    spikeCount = ownerSpikes.Count,
+                    spikesPerSecond = Round(ResolverRate(ownerSpikes.Count, a.CaptureSeconds), 6),
+                    spikeExclusiveMsPerSecond = Round(ResolverRate(ownerSpikes.TotalExclusiveMs, a.CaptureSeconds), 6),
+                    maxSpikeExclusiveMs = Round(ownerSpikes.MaxExclusiveMs, 6),
+                    timeline = ownerActivity is null
+                        ? null
+                        : new
+                        {
+                            activeBuckets = ownerActivity.ActiveBuckets,
+                            observedBuckets = ownerActivity.ObservedBuckets,
+                            activeBucketPct = Round(ownerActivity.ActiveBucketPct, 3),
+                            meanCallsPerActiveBucket = Round(ownerActivity.MeanCallsPerActiveBucket, 6),
+                            meanExclusiveMsPerActiveBucket = Round(ownerActivity.MeanExclusiveMsPerActiveBucket, 6),
+                            p95ExclusiveMsPerActiveBucket = Round(ownerActivity.P95ExclusiveMsPerActiveBucket, 6),
+                            maxExclusiveMsPerBucket = Round(ownerActivity.MaxExclusiveMsPerBucket, 6),
+                            burstRatio = Round(ownerActivity.BurstRatio, 6)
+                        }
+                };
+            })
+            .ToArray();
+
+        var timelineBucketWidthMs = timeline
+            .Select(r => D(r, "BucketWidthMs"))
+            .FirstOrDefault(x => x > 0);
+
+        var droppedTimelineRows = timeline
+            .Select(r => L(r, "DroppedTimelineRowsAtDump"))
+            .DefaultIfEmpty(0)
+            .Max();
+
+        var droppedSpikeEvents = spikes
+            .Select(r => L(r, "DroppedEventsAtDump"))
+            .DefaultIfEmpty(0)
+            .Max();
+
+        var spikeThreshold = spikes
+            .Select(r => D(r, "ThresholdMs"))
+            .FirstOrDefault(x => x > 0);
+
+        return new
+        {
+            schemaVersion = "1.0",
+            generatedUtc = DateTime.UtcNow.ToString("O"),
+            interop = new
+            {
+                contractVersion = "1.0",
+                producer = "G-CET-Runtime-Profiler",
+                consumer = "resolver",
+                domain = "cet"
+            },
+            semantics = new
+            {
+                measurementOnly = true,
+                classificationIncluded = false,
+                pacingRecommendationIncluded = false,
+                note = "The profiler measures and normalizes runtime evidence. A separate resolver decides whether and how to transform a mod."
+            },
+            quality = new
+            {
+                frameNormalizationAvailable,
+                timelineAvailable = timeline.Count > 0,
+                spikesAvailable = spikes.Count > 0,
+                timelineBucketWidthMs = timelineBucketWidthMs > 0
+                    ? Round(timelineBucketWidthMs, 6)
+                    : (double?)null,
+                spikeThresholdMs = spikeThreshold > 0
+                    ? Round(spikeThreshold, 6)
+                    : (double?)null,
+                droppedTimelineRows,
+                droppedSpikeEvents
+            },
+            capture = new
+            {
+                title = ReadCaptureTitle(captureRoot),
+                durationSeconds = Round(a.CaptureSeconds, 3),
+                measuredCalls = a.TotalCalls,
+                callsPerSecond = Round(a.TotalCallsPerSecond, 3),
+                exclusiveMsPerSecond = Round(a.TotalMsPerSecond, 6),
+                measuredOneCorePct = Round(a.TotalOneCorePct, 6),
+                averageFps = averageFps is double fps ? Round(fps, 3) : (double?)null
+            },
+            families,
+            owners = ownerRows,
+            callbacks = callbackRows
+        };
+    }
+
+    private static List<ResolverOwnerActivityMetric> BuildResolverOwnerActivity(
+        IReadOnlyList<Dictionary<string, string>> timeline)
+    {
+        var observedBuckets = timeline
+            .Select(r => S(r, "BucketIndex"))
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+
+        if (observedBuckets == 0)
+            return [];
+
+        var ownerBuckets = timeline
+            .Where(r => !string.IsNullOrWhiteSpace(S(r, "Mod", "Owner")) &&
+                        !string.IsNullOrWhiteSpace(S(r, "BucketIndex")))
+            .GroupBy(
+                r => S(r, "Mod", "Owner") + "\u001f" + S(r, "BucketIndex"),
+                StringComparer.OrdinalIgnoreCase)
+            .Select(g =>
+            {
+                var first = g.First();
+                return new ResolverOwnerBucketMetric
+                {
+                    Owner = S(first, "Mod", "Owner"),
+                    BucketIndex = S(first, "BucketIndex"),
+                    Calls = g.Sum(r => L(r, "Calls")),
+                    ExclusiveMs = g.Sum(r => D(r, "ExclusiveMs"))
+                };
+            })
+            .ToList();
+
+        return ownerBuckets
+            .GroupBy(x => x.Owner, StringComparer.OrdinalIgnoreCase)
+            .Select(g =>
+            {
+                var buckets = g.ToList();
+                var work = buckets.Select(x => x.ExclusiveMs).OrderBy(x => x).ToArray();
+                var meanWork = work.Length > 0 ? work.Average() : 0;
+                var maxWork = work.Length > 0 ? work[^1] : 0;
+
+                return new ResolverOwnerActivityMetric
+                {
+                    Owner = g.Key,
+                    ActiveBuckets = buckets.Count,
+                    ObservedBuckets = observedBuckets,
+                    ActiveBucketPct = Percent(buckets.Count, observedBuckets),
+                    MeanCallsPerActiveBucket = buckets.Count > 0 ? buckets.Average(x => (double)x.Calls) : 0,
+                    MeanExclusiveMsPerActiveBucket = meanWork,
+                    P95ExclusiveMsPerActiveBucket = ResolverPercentile(work, 0.95),
+                    MaxExclusiveMsPerBucket = maxWork,
+                    BurstRatio = meanWork > 0 ? maxWork / meanWork : 0
+                };
+            })
+            .OrderByDescending(x => x.ActiveBucketPct)
+            .ThenByDescending(x => x.MeanExclusiveMsPerActiveBucket)
+            .ToList();
+    }
+
+    private static ResolverSpikeAggregate ResolverAggregateSpikes(IEnumerable<ResolverSpikeSample> spikes)
+    {
+        var list = spikes.ToList();
+        return new ResolverSpikeAggregate
+        {
+            Count = list.Count,
+            TotalExclusiveMs = list.Sum(x => x.ExclusiveMs),
+            MaxExclusiveMs = list.Select(x => x.ExclusiveMs).DefaultIfEmpty(0).Max()
+        };
+    }
+
+    private static double ResolverRate(double value, double seconds) =>
+        seconds > 0 ? value / seconds : 0;
+
+    private static double ResolverPercentile(IReadOnlyList<double> sortedValues, double percentile)
+    {
+        if (sortedValues.Count == 0)
+            return 0;
+
+        if (sortedValues.Count == 1)
+            return sortedValues[0];
+
+        var position = Math.Clamp(percentile, 0, 1) * (sortedValues.Count - 1);
+        var lower = (int)Math.Floor(position);
+        var upper = (int)Math.Ceiling(position);
+        if (lower == upper)
+            return sortedValues[lower];
+
+        var fraction = position - lower;
+        return sortedValues[lower] +
+               (sortedValues[upper] - sortedValues[lower]) * fraction;
+    }
+
+    private static string ResolverCallbackKey(string owner, string kind, string target) =>
+        owner + "\u001f" + kind + "\u001f" + target;
+
+    private static string ResolverFamilyKey(string kind, string target) =>
+        kind + "\u001f" + target;
+
+    private sealed class ResolverCallbackMetric
+    {
+        public string Owner { get; init; } = "";
+        public string Kind { get; init; } = "";
+        public string Target { get; init; } = "";
+        public long Calls { get; init; }
+        public double CallsPerSecond { get; init; }
+        public double ExclusiveMsPerSecond { get; init; }
+        public double AvgExclusiveUs { get; init; }
+        public double MaxExclusiveMs { get; init; }
+    }
+
+    private sealed class ResolverSpikeSample
+    {
+        public string Owner { get; init; } = "";
+        public string Kind { get; init; } = "";
+        public string Target { get; init; } = "";
+        public double ExclusiveMs { get; init; }
+    }
+
+    private sealed class ResolverSpikeAggregate
+    {
+        public int Count { get; init; }
+        public double TotalExclusiveMs { get; init; }
+        public double MaxExclusiveMs { get; init; }
+    }
+
+    private sealed class ResolverFamilyTotals
+    {
+        public int OwnerCount { get; init; }
+        public double CallsPerSecond { get; init; }
+        public double ExclusiveMsPerSecond { get; init; }
+    }
+
+    private sealed class ResolverOwnerBucketMetric
+    {
+        public string Owner { get; init; } = "";
+        public string BucketIndex { get; init; } = "";
+        public long Calls { get; init; }
+        public double ExclusiveMs { get; init; }
+    }
+
+    private sealed class ResolverOwnerActivityMetric
+    {
+        public string Owner { get; init; } = "";
+        public int ActiveBuckets { get; init; }
+        public int ObservedBuckets { get; init; }
+        public double ActiveBucketPct { get; init; }
+        public double MeanCallsPerActiveBucket { get; init; }
+        public double MeanExclusiveMsPerActiveBucket { get; init; }
+        public double P95ExclusiveMsPerActiveBucket { get; init; }
+        public double MaxExclusiveMsPerBucket { get; init; }
+        public double BurstRatio { get; init; }
+    }
+}

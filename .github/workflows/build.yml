@@ -406,6 +406,21 @@ jobs:
           if (!(Test-Path -LiteralPath (Join-Path $collected.destination 'Data\Metadata\CET_Runtime_Profile_Metadata.json') -PathType Leaf)) { throw 'Scripted metadata output was not archived under Data\Metadata.' }
           if (!(Test-Path -LiteralPath (Join-Path $collected.destination 'CET_Report.html') -PathType Leaf)) { throw 'Human-readable CET report was not generated.' }
           if (!(Test-Path -LiteralPath (Join-Path $collected.destination 'CET_Summary.json') -PathType Leaf)) { throw 'Machine-readable CET summary was not generated.' }
+          if (!(Test-Path -LiteralPath (Join-Path $collected.destination 'CET_Resolver_Input.json') -PathType Leaf)) { throw 'Resolver measurement handoff was not generated.' }
+
+          $resolverInput = Get-Content -LiteralPath (Join-Path $collected.destination 'CET_Resolver_Input.json') -Raw | ConvertFrom-Json
+          if ($resolverInput.schemaVersion -ne '1.0') { throw "Unexpected resolver input schema: $($resolverInput.schemaVersion)" }
+          if (!$resolverInput.semantics.measurementOnly) { throw 'Resolver input must remain measurement-only.' }
+          if ($resolverInput.semantics.classificationIncluded) { throw 'Profiler leaked resolver classification into the handoff.' }
+          if (@($resolverInput.callbacks).Count -lt 4) { throw 'Resolver input did not preserve full callback detail.' }
+          $psychoOnAction = @($resolverInput.callbacks | Where-Object { $_.owner -eq 'Repeatable Cyberpsychos' -and $_.target -eq 'PlayerPuppet::OnAction' }) | Select-Object -First 1
+          if ($null -eq $psychoOnAction) { throw 'Resolver input lost the Repeatable Cyberpsychos OnAction callback.' }
+          if ([double]$psychoOnAction.globalWorkSharePct -le 0) { throw 'Resolver input did not calculate global callback work share.' }
+          if ([double]$psychoOnAction.familyWorkSharePct -le 0) { throw 'Resolver input did not calculate callback-family work share.' }
+          if ([int]$psychoOnAction.spikeCount -lt 1) { throw 'Resolver input did not aggregate callback spikes.' }
+          $psychoOwner = @($resolverInput.owners | Where-Object { $_.owner -eq 'Repeatable Cyberpsychos' }) | Select-Object -First 1
+          if ($null -eq $psychoOwner.timeline) { throw 'Resolver input did not calculate owner timeline activity.' }
+          if ([double]$psychoOwner.timeline.activeBucketPct -le 0) { throw 'Resolver input owner activity percentage is invalid.' }
 
           $reportText = Get-Content -LiteralPath (Join-Path $collected.destination 'CET_Report.html') -Raw
           if ($reportText -notmatch 'CET Scheduler spike') { throw 'Report did not surface the Scheduler burst finding.' }
@@ -493,6 +508,11 @@ jobs:
           if ($reportText -notmatch 'CapFrameX record/save time') { throw 'Report did not label CapFrameX CreationDate as record/save metadata.' }
           if ([int]$summary.frameTime.correlation.slowFramesExactCallback -lt 1) { throw 'Exact callback/stall overlap was not counted.' }
           if ([int]$summary.frameTime.correlation.slowFramesSchedulerBurst -lt 1) { throw 'Scheduler-burst/stall overlap was not counted.' }
+
+          $resolverInput = Get-Content -LiteralPath (Join-Path $collected.destination 'CET_Resolver_Input.json') -Raw | ConvertFrom-Json
+          if (!$resolverInput.quality.frameNormalizationAvailable) { throw 'Resolver input did not enable frame normalization after aligned CapFrameX data was added.' }
+          $zeroUpdate = @($resolverInput.callbacks | Where-Object { $_.owner -eq '0-Engine' -and $_.target -eq 'onUpdate' }) | Select-Object -First 1
+          if ($null -eq $zeroUpdate -or $null -eq $zeroUpdate.callsPerFrame) { throw 'Resolver input did not emit callsPerFrame for aligned frame data.' }
 
           if (!(Test-Path -LiteralPath (Join-Path $cet 'keep_me.txt') -PathType Leaf)) { throw 'Unrelated CET-directory file was incorrectly deleted.' }
 
