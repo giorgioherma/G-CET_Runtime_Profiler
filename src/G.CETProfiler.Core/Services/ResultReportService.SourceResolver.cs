@@ -66,6 +66,7 @@ public static partial class ResultReportService
             foreach (var callback in callbacksElement.EnumerateArray())
             {
                 resolved.Add(SourceResolveCallback(
+                    captureRoot,
                     callback,
                     modFolders,
                     exactTimelineUsable,
@@ -149,6 +150,7 @@ public static partial class ResultReportService
     };
 
     private static SourceCadenceDecision SourceResolveCallback(
+        string captureRoot,
         JsonElement callback,
         IReadOnlyList<SourceModFolder> modFolders,
         bool exactTimelineUsable,
