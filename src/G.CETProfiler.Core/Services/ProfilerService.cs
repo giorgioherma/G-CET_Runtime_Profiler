@@ -1127,7 +1127,7 @@ public sealed class ProfilerService : IProfilerService
         // profiler output behind merely because presentation could not be built.
         try
         {
-            ResultReportService.Generate(destination, Path.Combine(paths.CetRoot, "mods"));
+            ResultReportService.Generate(destination);
         }
         catch (Exception ex)
         {
