@@ -145,8 +145,12 @@ public static partial class ResultReportService
         sourceAndRuntimeEvidenceRequired = true,
         directSourceMatchRequired = true,
         multipleOnUpdateRegistrationsMeanLeaveAlone = true,
-        changedSourceMustBeRejectedByFutureRewrite = true,
-        note = "This pass classifies callback structures, never named mods. Any ambiguous mapping, parse failure, weak runtime evidence, unsupported timer form, or unproven state boundary resolves to LEAVE_ALONE."
+        fullFileShaIsProvenanceOnly = true,
+        unrelatedFileChangesAllowed = true,
+        futureRewriteMustRevalidateCurrentTargetStructure = true,
+        structuralRecipeMatchCanSurviveFileUpdates = true,
+        staleResolverEvidenceNeverAuthorizesRewrite = true,
+        note = "This pass classifies callback structures, never named mods. Full-file SHA is provenance only. A future rewrite must re-read the current deployed source and prove the same finite recipe/preconditions again; if that proof fails, only that target resolves to LEAVE_ALONE."
     };
 
     private static SourceCadenceDecision SourceResolveCallback(
@@ -380,6 +384,7 @@ public static partial class ResultReportService
                     Parameters = match.Groups["parameters"].Value,
                     RelativeFile = Path.GetRelativePath(folder.Path, file).Replace('\\', '/'),
                     FileSha256 = SourceSha256(file),
+                    CallbackBodySha256 = SourceHashText(body),
                     RegistrationLine = SourceLineNumber(text, match.Index),
                     BodyStartLine = SourceLineNumber(text, bodyStart),
                     BodyEndLine = SourceLineNumber(text, endStart),
@@ -585,6 +590,8 @@ public static partial class ResultReportService
         return new SourceCallbackAnalysis
         {
             Patterns = evidence,
+            StructuralSignatureSha256 = SourceStructuralSignature(callback, evidence, meaningfulFrameWorkBeforeGate),
+            RecipeSignatureSha256 = SourceRecipeSignature(evidence, meaningfulFrameWorkBeforeGate, SourceHasSimpleStateGate(lines)),
             HasSupportedCadenceGate = evidence.Any(x => x.TransformSupported),
             SupportedCadenceGateCount = evidence.Count(x => x.TransformSupported),
             HasUnsupportedCadenceHint = evidence.Any(x => !x.TransformSupported),
@@ -835,6 +842,58 @@ public static partial class ResultReportService
         return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
     }
 
+    private static string SourceHashText(string value) =>
+        Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
+
+    private static string SourceStructuralSignature(
+        SourceCallbackMatch callback,
+        IReadOnlyList<SourcePatternEvidence> patterns,
+        bool meaningfulFrameWorkBeforeGate)
+    {
+        var normalizedParameters = string.Join(",",
+            callback.Parameters
+                .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                .Select((_, index) => $"arg{index}"));
+
+        var bodyShape = string.Join("\n",
+            callback.Body
+                .Replace("\r\n", "\n")
+                .Replace('\r', '\n')
+                .Split('\n')
+                .Select(line => Regex.Replace(line, @"--.*$", ""))
+                .Select(line => Regex.Replace(line, @"\s+", " ").Trim())
+                .Where(line => line.Length > 0));
+
+        var patternShape = string.Join("|",
+            patterns
+                .OrderBy(x => x.Line)
+                .Select(x => $"{x.Pattern}:{x.TransformSupported}:{x.IntervalMs?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "dynamic"}"));
+
+        return SourceHashText(
+            $"registrar={callback.Registrar.ToLowerInvariant()}\n" +
+            $"parameters={normalizedParameters}\n" +
+            $"frameBeforeGate={meaningfulFrameWorkBeforeGate}\n" +
+            $"patterns={patternShape}\n" +
+            $"body={bodyShape}");
+    }
+
+    private static string SourceRecipeSignature(
+        IReadOnlyList<SourcePatternEvidence> patterns,
+        bool meaningfulFrameWorkBeforeGate,
+        bool simpleStateGate)
+    {
+        var recipe = string.Join("|",
+            patterns
+                .OrderBy(x => x.Pattern, StringComparer.Ordinal)
+                .ThenBy(x => x.IntervalMs)
+                .Select(x => $"{x.Pattern}:{x.TransformSupported}:{x.IntervalMs?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "dynamic"}"));
+
+        return SourceHashText(
+            $"frameBeforeGate={meaningfulFrameWorkBeforeGate};" +
+            $"stateGate={simpleStateGate};" +
+            $"recipes={recipe}");
+    }
+
     private static bool SourceTryProperty(JsonElement element, string name, out JsonElement value)
     {
         if (element.ValueKind == JsonValueKind.Object)
@@ -933,6 +992,7 @@ public static partial class ResultReportService
         public string Parameters { get; init; } = "";
         public string RelativeFile { get; init; } = "";
         public string FileSha256 { get; init; } = "";
+        public string CallbackBodySha256 { get; init; } = "";
         public int RegistrationLine { get; init; }
         public int BodyStartLine { get; init; }
         public int BodyEndLine { get; init; }
@@ -956,6 +1016,8 @@ public static partial class ResultReportService
         public bool HasUnsupportedCadenceHint { get; init; }
         public bool HasMeaningfulFrameWorkBeforeCadenceGate { get; init; }
         public bool HasSimpleStateGate { get; init; }
+        public string StructuralSignatureSha256 { get; init; } = "";
+        public string RecipeSignatureSha256 { get; init; } = "";
         public List<double> SourceIntervalCandidatesMs { get; init; } = [];
     }
 
@@ -983,6 +1045,10 @@ public static partial class ResultReportService
         public int ParseErrors { get; init; }
         public string File { get; init; } = "";
         public string FileSha256 { get; init; } = "";
+        public string CallbackBodySha256 { get; init; } = "";
+        public string StructuralSignatureSha256 { get; init; } = "";
+        public string RecipeSignatureSha256 { get; init; } = "";
+        public string CompatibilityBasis { get; init; } = "";
         public string Registrar { get; init; } = "";
         public int RegistrationLine { get; init; }
         public int CallbackBodyStartLine { get; init; }
@@ -1016,6 +1082,10 @@ public static partial class ResultReportService
             ParseErrors = discovery.ParseErrors,
             File = callback.RelativeFile,
             FileSha256 = callback.FileSha256,
+            CallbackBodySha256 = callback.CallbackBodySha256,
+            StructuralSignatureSha256 = analysis.StructuralSignatureSha256,
+            RecipeSignatureSha256 = analysis.RecipeSignatureSha256,
+            CompatibilityBasis = "REVALIDATE_CURRENT_RECIPE_STRUCTURE",
             Registrar = callback.Registrar,
             RegistrationLine = callback.RegistrationLine,
             CallbackBodyStartLine = callback.BodyStartLine,
