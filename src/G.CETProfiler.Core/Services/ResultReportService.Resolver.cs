@@ -16,6 +16,7 @@ public static partial class ResultReportService
         var detail = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Detail.csv"));
         var spikes = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Spikes.csv"));
         var timeline = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Timeline.csv"));
+        var markers = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Markers.csv"));
 
         var callbacks = detail
             .Select(r => new ResolverCallbackMetric
@@ -39,6 +40,8 @@ public static partial class ResultReportService
                 Owner = S(r, "Mod", "Owner"),
                 Kind = S(r, "Kind", "JobType"),
                 Target = S(r, "Target", "Job"),
+                CaptureStartMs = D(r, "CaptureStartMs", "CaptureMs"),
+                CaptureEndMs = D(r, "CaptureEndMs", "CaptureMs"),
                 ExclusiveMs = D(r, "ExclusiveMs", "DurationMs")
             })
             .Where(x => !string.IsNullOrWhiteSpace(x.Owner) || x.ExclusiveMs > 0)
@@ -230,9 +233,16 @@ public static partial class ResultReportService
             .Select(r => D(r, "ThresholdMs"))
             .FirstOrDefault(x => x > 0);
 
+        var scenarioAnalysis = BuildResolverScenarios(
+            markers,
+            timeline,
+            spikeSamples,
+            a.FrameTime,
+            a.CaptureSeconds);
+
         return new
         {
-            schemaVersion = "1.0",
+            schemaVersion = "1.1",
             generatedUtc = DateTime.UtcNow.ToString("O"),
             interop = new
             {
@@ -253,6 +263,12 @@ public static partial class ResultReportService
                 frameNormalizationAvailable,
                 timelineAvailable = timeline.Count > 0,
                 spikesAvailable = spikes.Count > 0,
+                scenarioMarkersAvailable = scenarioAnalysis.RecognizedMarkers > 0,
+                scenarioMarkersComplete = scenarioAnalysis.RecognizedMarkers > 0 && scenarioAnalysis.UnmatchedMarkers == 0,
+                recognizedScenarioMarkers = scenarioAnalysis.RecognizedMarkers,
+                unmatchedScenarioMarkers = scenarioAnalysis.UnmatchedMarkers,
+                taggedScenarioSeconds = Round(scenarioAnalysis.TaggedSeconds, 3),
+                untaggedCaptureSeconds = Round(scenarioAnalysis.UntaggedSeconds, 3),
                 timelineBucketWidthMs = timelineBucketWidthMs > 0
                     ? Round(timelineBucketWidthMs, 6)
                     : (double?)null,
@@ -272,6 +288,7 @@ public static partial class ResultReportService
                 measuredOneCorePct = Round(a.TotalOneCorePct, 6),
                 averageFps = averageFps is double fps ? Round(fps, 3) : (double?)null
             },
+            scenarios = scenarioAnalysis.Scenarios,
             families,
             owners = ownerRows,
             callbacks = callbackRows
@@ -336,6 +353,265 @@ public static partial class ResultReportService
             .ToList();
     }
 
+    private static ResolverScenarioAnalysis BuildResolverScenarios(
+        IReadOnlyList<Dictionary<string, string>> markers,
+        IReadOnlyList<Dictionary<string, string>> timeline,
+        IReadOnlyList<ResolverSpikeSample> spikes,
+        FrameTimeAnalysis? frameTime,
+        double captureSeconds)
+    {
+        var definitions = new[]
+        {
+            new ResolverScenarioDefinition("WORLD", "WORLD / IDLE"),
+            new ResolverScenarioDefinition("DRIVING", "DRIVING"),
+            new ResolverScenarioDefinition("COMBAT", "COMBAT")
+        };
+
+        var segments = definitions.ToDictionary(
+            x => x.Name,
+            _ => new List<ResolverScenarioSegment>(),
+            StringComparer.OrdinalIgnoreCase);
+        var open = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+
+        var recognizedMarkers = 0;
+        var unmatchedMarkers = 0;
+
+        foreach (var marker in markers
+                     .Select(r => new
+                     {
+                         CaptureMs = D(r, "CaptureMs"),
+                         Label = S(r, "Label")
+                     })
+                     .OrderBy(x => x.CaptureMs))
+        {
+            foreach (var definition in definitions)
+            {
+                var startLabel = "SCENARIO_" + definition.Name + "_START";
+                var endLabel = "SCENARIO_" + definition.Name + "_END";
+
+                if (marker.Label.Equals(startLabel, StringComparison.OrdinalIgnoreCase))
+                {
+                    recognizedMarkers++;
+                    if (open.ContainsKey(definition.Name))
+                    {
+                        unmatchedMarkers++;
+                    }
+                    else
+                    {
+                        open[definition.Name] = marker.CaptureMs;
+                    }
+                    break;
+                }
+
+                if (marker.Label.Equals(endLabel, StringComparison.OrdinalIgnoreCase))
+                {
+                    recognizedMarkers++;
+                    if (!open.TryGetValue(definition.Name, out var startMs))
+                    {
+                        unmatchedMarkers++;
+                    }
+                    else
+                    {
+                        if (marker.CaptureMs > startMs)
+                        {
+                            segments[definition.Name].Add(new ResolverScenarioSegment
+                            {
+                                StartMs = startMs,
+                                EndMs = marker.CaptureMs
+                            });
+                        }
+                        else
+                        {
+                            unmatchedMarkers++;
+                        }
+
+                        open.Remove(definition.Name);
+                    }
+                    break;
+                }
+            }
+        }
+
+        unmatchedMarkers += open.Count;
+
+        var scenarioRows = new List<ResolverScenarioMetric>();
+        foreach (var definition in definitions)
+        {
+            var scenarioSegments = segments[definition.Name]
+                .OrderBy(x => x.StartMs)
+                .ToList();
+
+            if (scenarioSegments.Count == 0)
+                continue;
+
+            var durationMs = scenarioSegments.Sum(x => Math.Max(0, x.EndMs - x.StartMs));
+            var durationSeconds = durationMs / 1000.0;
+            if (durationSeconds <= 0)
+                continue;
+
+            var ownerWork = new Dictionary<string, ResolverScenarioOwnerAccumulator>(
+                StringComparer.OrdinalIgnoreCase);
+
+            foreach (var row in timeline)
+            {
+                var owner = S(row, "Mod", "Owner");
+                if (string.IsNullOrWhiteSpace(owner))
+                    continue;
+
+                var bucketStart = D(row, "BucketStartMs");
+                var bucketEnd = D(row, "BucketEndMs");
+                if (bucketEnd <= bucketStart)
+                {
+                    var width = D(row, "BucketWidthMs");
+                    if (width > 0)
+                        bucketEnd = bucketStart + width;
+                }
+
+                var bucketWidth = bucketEnd - bucketStart;
+                if (bucketWidth <= 0)
+                    continue;
+
+                var overlapMs = scenarioSegments.Sum(x =>
+                    ResolverOverlapMs(bucketStart, bucketEnd, x.StartMs, x.EndMs));
+                if (overlapMs <= 0)
+                    continue;
+
+                var fraction = Math.Clamp(overlapMs / bucketWidth, 0, 1);
+                if (!ownerWork.TryGetValue(owner, out var accumulator))
+                {
+                    accumulator = new ResolverScenarioOwnerAccumulator();
+                    ownerWork[owner] = accumulator;
+                }
+
+                accumulator.Calls += L(row, "Calls") * fraction;
+                accumulator.ExclusiveMs += D(row, "ExclusiveMs") * fraction;
+                accumulator.ActiveBucketTouches++;
+            }
+
+            var scenarioTotalMs = ownerWork.Values.Sum(x => x.ExclusiveMs);
+
+            var alignedFrames =
+                frameTime is not null &&
+                frameTime.Correlated &&
+                frameTime.ExactAlignment
+                    ? frameTime.Frames
+                        .Where(x => ResolverInSegments(
+                            x.RelativeStartMs + x.FrameMs * 0.5,
+                            scenarioSegments))
+                        .ToList()
+                    : [];
+
+            var frameTimes = alignedFrames
+                .Select(x => x.FrameMs)
+                .Where(x => x > 0 && double.IsFinite(x))
+                .OrderBy(x => x)
+                .ToList();
+
+            var meanFrameMs = frameTimes.Count > 0 ? frameTimes.Average() : 0;
+            var scenarioAverageFps = meanFrameMs > 0 ? 1000.0 / meanFrameMs : 0;
+
+            var ownerRows = ownerWork
+                .Select(kvp =>
+                {
+                    var callsPerSecond = kvp.Value.Calls / durationSeconds;
+                    return new ResolverScenarioOwnerMetric
+                    {
+                        Owner = kvp.Key,
+                        Infrastructure = IsInfrastructureOwner(kvp.Key),
+                        Calls = kvp.Value.Calls,
+                        CallsPerSecond = callsPerSecond,
+                        CallsPerFrame = scenarioAverageFps > 0
+                            ? callsPerSecond / scenarioAverageFps
+                            : null,
+                        ExclusiveMs = kvp.Value.ExclusiveMs,
+                        ExclusiveMsPerSecond = kvp.Value.ExclusiveMs / durationSeconds,
+                        WorkSharePct = Percent(kvp.Value.ExclusiveMs, scenarioTotalMs),
+                        ActiveBucketTouches = kvp.Value.ActiveBucketTouches
+                    };
+                })
+                .OrderByDescending(x => x.ExclusiveMsPerSecond)
+                .ThenByDescending(x => x.CallsPerSecond)
+                .ToList();
+
+            var scenarioSpikes = spikes
+                .Where(x => ResolverInSegments(
+                    x.CaptureStartMs + Math.Max(0, x.CaptureEndMs - x.CaptureStartMs) * 0.5,
+                    scenarioSegments))
+                .GroupBy(
+                    x => ResolverCallbackKey(x.Owner, x.Kind, x.Target),
+                    StringComparer.OrdinalIgnoreCase)
+                .Select(g =>
+                {
+                    var first = g.First();
+                    var aggregate = ResolverAggregateSpikes(g);
+                    return new ResolverScenarioSpikeMetric
+                    {
+                        Owner = first.Owner,
+                        Kind = first.Kind,
+                        Target = first.Target,
+                        Count = aggregate.Count,
+                        SpikesPerSecond = ResolverRate(aggregate.Count, durationSeconds),
+                        ExclusiveMsPerSecond = ResolverRate(aggregate.TotalExclusiveMs, durationSeconds),
+                        MaxExclusiveMs = aggregate.MaxExclusiveMs
+                    };
+                })
+                .OrderByDescending(x => x.ExclusiveMsPerSecond)
+                .ThenByDescending(x => x.Count)
+                .ToList();
+
+            scenarioRows.Add(new ResolverScenarioMetric
+            {
+                Name = definition.Name,
+                Label = definition.Label,
+                DurationSeconds = durationSeconds,
+                CaptureCoveragePct = Percent(durationSeconds, captureSeconds),
+                Segments = scenarioSegments,
+                Owners = ownerRows,
+                CallbackSpikes = scenarioSpikes,
+                FrameTime = frameTimes.Count == 0
+                    ? null
+                    : new ResolverScenarioFrameTimeMetric
+                    {
+                        FrameCount = frameTimes.Count,
+                        AverageFps = scenarioAverageFps,
+                        MeanMs = meanFrameMs,
+                        P95Ms = ResolverPercentile(frameTimes, 0.95),
+                        P99Ms = ResolverPercentile(frameTimes, 0.99),
+                        MaxMs = frameTimes[^1],
+                        FramesOver33Ms = frameTimes.Count(x => x >= 33.3),
+                        FramesOver50Ms = frameTimes.Count(x => x >= 50.0)
+                    }
+            });
+        }
+
+        var taggedSeconds = scenarioRows.Sum(x => x.DurationSeconds);
+
+        return new ResolverScenarioAnalysis
+        {
+            RecognizedMarkers = recognizedMarkers,
+            UnmatchedMarkers = unmatchedMarkers,
+            TaggedSeconds = taggedSeconds,
+            UntaggedSeconds = Math.Max(0, captureSeconds - taggedSeconds),
+            Scenarios = scenarioRows
+        };
+    }
+
+    private static double ResolverOverlapMs(
+        double aStart,
+        double aEnd,
+        double bStart,
+        double bEnd)
+    {
+        var start = Math.Max(aStart, bStart);
+        var end = Math.Min(aEnd, bEnd);
+        return Math.Max(0, end - start);
+    }
+
+    private static bool ResolverInSegments(
+        double captureMs,
+        IReadOnlyList<ResolverScenarioSegment> segments) =>
+        segments.Any(x => captureMs >= x.StartMs && captureMs < x.EndMs);
+
     private static ResolverSpikeAggregate ResolverAggregateSpikes(IEnumerable<ResolverSpikeSample> spikes)
     {
         var list = spikes.ToList();
@@ -392,7 +668,82 @@ public static partial class ResultReportService
         public string Owner { get; init; } = "";
         public string Kind { get; init; } = "";
         public string Target { get; init; } = "";
+        public double CaptureStartMs { get; init; }
+        public double CaptureEndMs { get; init; }
         public double ExclusiveMs { get; init; }
+    }
+
+    private sealed record ResolverScenarioDefinition(string Name, string Label);
+
+    private sealed class ResolverScenarioSegment
+    {
+        public double StartMs { get; init; }
+        public double EndMs { get; init; }
+        public double DurationSeconds => Math.Max(0, EndMs - StartMs) / 1000.0;
+    }
+
+    private sealed class ResolverScenarioOwnerAccumulator
+    {
+        public double Calls { get; set; }
+        public double ExclusiveMs { get; set; }
+        public int ActiveBucketTouches { get; set; }
+    }
+
+    private sealed class ResolverScenarioOwnerMetric
+    {
+        public string Owner { get; init; } = "";
+        public bool Infrastructure { get; init; }
+        public double Calls { get; init; }
+        public double CallsPerSecond { get; init; }
+        public double? CallsPerFrame { get; init; }
+        public double ExclusiveMs { get; init; }
+        public double ExclusiveMsPerSecond { get; init; }
+        public double WorkSharePct { get; init; }
+        public int ActiveBucketTouches { get; init; }
+    }
+
+    private sealed class ResolverScenarioSpikeMetric
+    {
+        public string Owner { get; init; } = "";
+        public string Kind { get; init; } = "";
+        public string Target { get; init; } = "";
+        public int Count { get; init; }
+        public double SpikesPerSecond { get; init; }
+        public double ExclusiveMsPerSecond { get; init; }
+        public double MaxExclusiveMs { get; init; }
+    }
+
+    private sealed class ResolverScenarioFrameTimeMetric
+    {
+        public int FrameCount { get; init; }
+        public double AverageFps { get; init; }
+        public double MeanMs { get; init; }
+        public double P95Ms { get; init; }
+        public double P99Ms { get; init; }
+        public double MaxMs { get; init; }
+        public int FramesOver33Ms { get; init; }
+        public int FramesOver50Ms { get; init; }
+    }
+
+    private sealed class ResolverScenarioMetric
+    {
+        public string Name { get; init; } = "";
+        public string Label { get; init; } = "";
+        public double DurationSeconds { get; init; }
+        public double CaptureCoveragePct { get; init; }
+        public List<ResolverScenarioSegment> Segments { get; init; } = [];
+        public List<ResolverScenarioOwnerMetric> Owners { get; init; } = [];
+        public List<ResolverScenarioSpikeMetric> CallbackSpikes { get; init; } = [];
+        public ResolverScenarioFrameTimeMetric? FrameTime { get; init; }
+    }
+
+    private sealed class ResolverScenarioAnalysis
+    {
+        public int RecognizedMarkers { get; init; }
+        public int UnmatchedMarkers { get; init; }
+        public double TaggedSeconds { get; init; }
+        public double UntaggedSeconds { get; init; }
+        public List<ResolverScenarioMetric> Scenarios { get; init; } = [];
     }
 
     private sealed class ResolverSpikeAggregate

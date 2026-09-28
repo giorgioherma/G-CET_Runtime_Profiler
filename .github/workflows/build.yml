@@ -7,7 +7,7 @@ permissions:
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [ main, 'dev/resolver-profiler-handoff' ]
   pull_request:
 
 jobs:
@@ -367,7 +367,13 @@ jobs:
           @(
             'Sequence,CaptureMs,UnixEpochMs,Label,DroppedMarkersAtDump',
             '1,0,1770000000000,START,0',
-            '2,10000,1770000010000,STOP,0'
+            '2,0,1770000000000,SCENARIO_WORLD_START,0',
+            '3,100,1770000000100,SCENARIO_WORLD_END,0',
+            '4,100,1770000000100,SCENARIO_DRIVING_START,0',
+            '5,150,1770000000150,SCENARIO_DRIVING_END,0',
+            '6,150,1770000000150,SCENARIO_COMBAT_START,0',
+            '7,200,1770000000200,SCENARIO_COMBAT_END,0',
+            '8,10000,1770000010000,STOP,0'
           ) | Set-Content -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_Markers.csv') -Encoding utf8
 
           @(
@@ -409,7 +415,7 @@ jobs:
           if (!(Test-Path -LiteralPath (Join-Path $collected.destination 'CET_Resolver_Input.json') -PathType Leaf)) { throw 'Resolver measurement handoff was not generated.' }
 
           $resolverInput = Get-Content -LiteralPath (Join-Path $collected.destination 'CET_Resolver_Input.json') -Raw | ConvertFrom-Json
-          if ($resolverInput.schemaVersion -ne '1.0') { throw "Unexpected resolver input schema: $($resolverInput.schemaVersion)" }
+          if ($resolverInput.schemaVersion -ne '1.1') { throw "Unexpected resolver input schema: $($resolverInput.schemaVersion)" }
           if (!$resolverInput.semantics.measurementOnly) { throw 'Resolver input must remain measurement-only.' }
           if ($resolverInput.semantics.classificationIncluded) { throw 'Profiler leaked resolver classification into the handoff.' }
           if (@($resolverInput.callbacks).Count -lt 4) { throw 'Resolver input did not preserve full callback detail.' }
@@ -421,6 +427,16 @@ jobs:
           $psychoOwner = @($resolverInput.owners | Where-Object { $_.owner -eq 'Repeatable Cyberpsychos' }) | Select-Object -First 1
           if ($null -eq $psychoOwner.timeline) { throw 'Resolver input did not calculate owner timeline activity.' }
           if ([double]$psychoOwner.timeline.activeBucketPct -le 0) { throw 'Resolver input owner activity percentage is invalid.' }
+          if (!$resolverInput.quality.scenarioMarkersAvailable) { throw 'Resolver input did not detect scenario markers.' }
+          if (!$resolverInput.quality.scenarioMarkersComplete) { throw 'Resolver input reported valid synthetic scenario markers as incomplete.' }
+          if (@($resolverInput.scenarios).Count -ne 3) { throw "Expected 3 resolver scenarios, got $(@($resolverInput.scenarios).Count)." }
+          $worldScenario = @($resolverInput.scenarios | Where-Object { $_.name -eq 'WORLD' }) | Select-Object -First 1
+          $drivingScenario = @($resolverInput.scenarios | Where-Object { $_.name -eq 'DRIVING' }) | Select-Object -First 1
+          $combatScenario = @($resolverInput.scenarios | Where-Object { $_.name -eq 'COMBAT' }) | Select-Object -First 1
+          if ($null -eq $worldScenario -or $null -eq $drivingScenario -or $null -eq $combatScenario) { throw 'Resolver input lost one or more scenario sections.' }
+          if ([math]::Abs([double]$worldScenario.durationSeconds - 0.1) -gt 0.001) { throw "WORLD scenario duration is wrong: $($worldScenario.durationSeconds)" }
+          if (@($worldScenario.owners).Count -lt 1) { throw 'WORLD scenario contains no owner metrics.' }
+          if (@($combatScenario.callbackSpikes).Count -lt 1) { throw 'COMBAT scenario did not receive the synthetic callback spike.' }
 
           $reportText = Get-Content -LiteralPath (Join-Path $collected.destination 'CET_Report.html') -Raw
           if ($reportText -notmatch 'CET Scheduler spike') { throw 'Report did not surface the Scheduler burst finding.' }
@@ -513,6 +529,10 @@ jobs:
           if (!$resolverInput.quality.frameNormalizationAvailable) { throw 'Resolver input did not enable frame normalization after aligned CapFrameX data was added.' }
           $zeroUpdate = @($resolverInput.callbacks | Where-Object { $_.owner -eq '0-Engine' -and $_.target -eq 'onUpdate' }) | Select-Object -First 1
           if ($null -eq $zeroUpdate -or $null -eq $zeroUpdate.callsPerFrame) { throw 'Resolver input did not emit callsPerFrame for aligned frame data.' }
+          $worldScenario = @($resolverInput.scenarios | Where-Object { $_.name -eq 'WORLD' }) | Select-Object -First 1
+          if ($null -eq $worldScenario.frameTime) { throw 'WORLD scenario did not receive aligned per-scenario frametime metrics.' }
+          $worldZero = @($worldScenario.owners | Where-Object { $_.owner -eq '0-Engine' }) | Select-Object -First 1
+          if ($null -eq $worldZero -or $null -eq $worldZero.callsPerFrame) { throw 'WORLD scenario owner did not receive per-scenario callsPerFrame.' }
 
           if (!(Test-Path -LiteralPath (Join-Path $cet 'keep_me.txt') -PathType Leaf)) { throw 'Unrelated CET-directory file was incorrectly deleted.' }
 

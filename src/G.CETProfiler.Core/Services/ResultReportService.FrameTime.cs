@@ -49,6 +49,7 @@ public static partial class ResultReportService
         public double SpearmanWindowCorrelation { get; init; }
         public List<FrameTimeBucketMetric> Timeline { get; init; } = [];
         public List<FrameStallMetric> WorstFrames { get; init; } = [];
+        public List<CapFrameMetric> Frames { get; init; } = [];
     }
 
     private sealed class CapFrameMetric
@@ -271,7 +272,8 @@ public static partial class ResultReportService
             PearsonWindowCorrelation = pearson,
             SpearmanWindowCorrelation = spearman,
             Timeline = timeline,
-            WorstFrames = worstFrames
+            WorstFrames = worstFrames,
+            Frames = alignedFrames.ToList()
         };
 
         int worstFrameCount(
