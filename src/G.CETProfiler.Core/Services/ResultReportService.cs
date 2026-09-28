@@ -21,6 +21,7 @@ public static partial class ResultReportService
     public const string ReportFileName = "CET_Report.html";
     public const string SummaryFileName = "CET_Summary.json";
     public const string ResolverInputFileName = "CET_Resolver_Input.json";
+    public const string CadenceResolutionFileName = "CET_Cadence_Resolution.json";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -67,6 +68,7 @@ public static partial class ResultReportService
         var a = Analyze(captureRoot);
         var summaryPath = Path.Combine(captureRoot, SummaryFileName);
         var resolverInputPath = Path.Combine(captureRoot, ResolverInputFileName);
+        var cadenceResolutionPath = Path.Combine(captureRoot, CadenceResolutionFileName);
         var reportPath = Path.Combine(captureRoot, ReportFileName);
 
         var summary = new
@@ -287,6 +289,11 @@ public static partial class ResultReportService
             new UTF8Encoding(false));
 
         File.WriteAllText(
+            cadenceResolutionPath,
+            JsonSerializer.Serialize(BuildCadenceResolution(captureRoot, a), JsonOptions) + Environment.NewLine,
+            new UTF8Encoding(false));
+
+        File.WriteAllText(
             reportPath,
             BuildHtml(a, captureRoot),
             new UTF8Encoding(false));
@@ -328,7 +335,8 @@ public static partial class ResultReportService
             .Select(path => Path.GetRelativePath(captureRoot, path).Replace('\\', '/'))
             .Where(x => !x.Equals(ReportFileName, StringComparison.OrdinalIgnoreCase) &&
                         !x.Equals(SummaryFileName, StringComparison.OrdinalIgnoreCase) &&
-                        !x.Equals(ResolverInputFileName, StringComparison.OrdinalIgnoreCase))
+                        !x.Equals(ResolverInputFileName, StringComparison.OrdinalIgnoreCase) &&
+                        !x.Equals(CadenceResolutionFileName, StringComparison.OrdinalIgnoreCase))
             .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
             .Take(200)
             .ToList();
