@@ -10,8 +10,16 @@ internal static class Program
         WriteIndented = false
     };
 
+    [STAThread]
     private static int Main(string[] args)
     {
+        if (args.Length == 0)
+        {
+            ApplicationConfiguration.Initialize();
+            Application.Run(new ResolverForm());
+            return 0;
+        }
+
         try
         {
             string? capture = null;
