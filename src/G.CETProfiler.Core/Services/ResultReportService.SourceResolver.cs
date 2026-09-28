@@ -17,7 +17,7 @@ public static partial class ResultReportService
         @"\b(?<registrar>registerForEvent|registerRuntimeEvent)\s*\(\s*(?<quote>['""])onUpdate\k<quote>\s*,\s*function\s*\((?<parameters>[^)]*)\)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    private static object BuildSourceCadenceResolution(string captureRoot, string? modsRoot)
+    internal static object BuildSourceCadenceResolution(string captureRoot, string? modsRoot)
     {
         var runtimePath = Path.Combine(captureRoot, CadenceResolutionFileName);
         if (!File.Exists(runtimePath))
@@ -49,7 +49,6 @@ public static partial class ResultReportService
         using var runtimeDocument = JsonDocument.Parse(File.ReadAllText(runtimePath));
         var runtimeRoot = runtimeDocument.RootElement;
         var exactTimelineUsable = SourceJsonNestedBool(runtimeRoot, "quality", "exactTimelineUsable");
-        var minimumImpact = SourceJsonNestedDouble(runtimeRoot, "thresholds", "minimumImpactMsPerSecond", 0.25);
         var stateRatioThreshold = SourceJsonNestedDouble(runtimeRoot, "thresholds", "scenarioSensitiveRatio", 1.80);
 
         var sourceRootAvailable =
@@ -70,15 +69,24 @@ public static partial class ResultReportService
                     callback,
                     modFolders,
                     exactTimelineUsable,
-                    minimumImpact,
                     stateRatioThreshold));
             }
         }
 
         var ordered = resolved
-            .OrderByDescending(x => x.Runtime.ExclusiveMsPerSecond)
+            .OrderByDescending(x => x.Runtime.FamilyWorkSharePct)
+            .ThenByDescending(x => x.Runtime.GlobalWorkSharePct)
+            .ThenByDescending(x => x.Runtime.ExclusiveMsPerSecond)
             .ThenBy(x => x.Owner, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+
+        var cumulativeFamilyShare = 0.0;
+        for (var i = 0; i < ordered.Length; i++)
+        {
+            cumulativeFamilyShare += ordered[i].Runtime.FamilyWorkSharePct;
+            ordered[i].PriorityRank = i + 1;
+            ordered[i].CumulativeFamilyWorkSharePct = Math.Min(100.0, cumulativeFamilyShare);
+        }
 
         return new
         {
@@ -92,12 +100,19 @@ public static partial class ResultReportService
                 domain = "cet/onUpdate"
             },
             policy = SourceResolverPolicy(),
+            ranking = new
+            {
+                basis = "relative-runtime-share",
+                fixedMillisecondsCutoff = false,
+                primary = "familyWorkSharePct",
+                secondary = "globalWorkSharePct",
+                note = "Safety classification is independent from cost. Relative shares only order proven candidates; they never make an unsafe transform safe."
+            },
             quality = new
             {
                 runtimeCadenceAvailable = true,
                 exactTimelineUsable,
                 sourceRootAvailable,
-                minimumImpactMsPerSecond = minimumImpact,
                 activeDormantScenarioRatio = stateRatioThreshold,
                 callbackCount = ordered.Length
             },
@@ -137,7 +152,6 @@ public static partial class ResultReportService
         JsonElement callback,
         IReadOnlyList<SourceModFolder> modFolders,
         bool exactTimelineUsable,
-        double minimumImpact,
         double stateRatioThreshold)
     {
         var owner = SourceJsonString(callback, "Owner", "owner");
@@ -152,12 +166,16 @@ public static partial class ResultReportService
         var runtimeIntervalMs = SourceJsonNullableDouble(callback, "ResolvedIntervalMs", "resolvedIntervalMs");
         var runtimeCadenceSupportPct = SourceJsonNullableDouble(callback, "CadenceSupportPct", "cadenceSupportPct");
 
+        var importance = SourceReadImportance(captureRoot, owner, kind, target);
         var runtime = new SourceRuntimeEvidence
         {
             Classification = runtimeClass,
             Recommendation = runtimeRecommendation,
             CallsPerSecond = callsPerSecond,
             ExclusiveMsPerSecond = exclusiveMsPerSecond,
+            GlobalWorkSharePct = importance.GlobalWorkSharePct,
+            FamilyWorkSharePct = importance.FamilyWorkSharePct,
+            OwnerWorkSharePct = importance.OwnerWorkSharePct,
             ScenarioCostRatio = scenarioCostRatio,
             ResolvedIntervalMs = runtimeIntervalMs,
             CadenceSupportPct = runtimeCadenceSupportPct,
@@ -186,9 +204,6 @@ public static partial class ResultReportService
 
         if (infrastructure || IsInfrastructureOwner(owner))
             return Leave("Profiler/scheduler infrastructure is intentionally excluded from cadence transformation.");
-
-        if (exclusiveMsPerSecond < minimumImpact)
-            return Leave("Measured callback cost is below the resolver impact floor.");
 
         var folderMatches = SourceMatchModFolder(owner, modFolders);
         if (folderMatches.Count != 1)
@@ -948,6 +963,9 @@ public static partial class ResultReportService
         public string Recommendation { get; init; } = "";
         public double CallsPerSecond { get; init; }
         public double ExclusiveMsPerSecond { get; init; }
+        public double GlobalWorkSharePct { get; init; }
+        public double FamilyWorkSharePct { get; init; }
+        public double OwnerWorkSharePct { get; init; }
         public double ScenarioCostRatio { get; init; }
         public double? ResolvedIntervalMs { get; init; }
         public double? CadenceSupportPct { get; init; }
@@ -1007,8 +1025,56 @@ public static partial class ResultReportService
         };
     }
 
+    private static SourceImportanceEvidence SourceReadImportance(
+        string captureRoot,
+        string owner,
+        string kind,
+        string target)
+    {
+        var path = Path.Combine(captureRoot, ResolverInputFileName);
+        if (!File.Exists(path))
+            return new SourceImportanceEvidence();
+
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(path));
+            if (!SourceTryProperty(document.RootElement, "callbacks", out var callbacks) ||
+                callbacks.ValueKind != JsonValueKind.Array)
+                return new SourceImportanceEvidence();
+
+            foreach (var row in callbacks.EnumerateArray())
+            {
+                if (!SourceJsonString(row, "owner", "Owner").Equals(owner, StringComparison.OrdinalIgnoreCase) ||
+                    !SourceJsonString(row, "kind", "Kind").Equals(kind, StringComparison.OrdinalIgnoreCase) ||
+                    !SourceJsonString(row, "target", "Target").Equals(target, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                return new SourceImportanceEvidence
+                {
+                    GlobalWorkSharePct = SourceJsonDouble(row, "globalWorkSharePct", "GlobalWorkSharePct"),
+                    FamilyWorkSharePct = SourceJsonDouble(row, "familyWorkSharePct", "FamilyWorkSharePct"),
+                    OwnerWorkSharePct = SourceJsonDouble(row, "ownerWorkSharePct", "OwnerWorkSharePct")
+                };
+            }
+        }
+        catch
+        {
+        }
+
+        return new SourceImportanceEvidence();
+    }
+
+    private sealed class SourceImportanceEvidence
+    {
+        public double GlobalWorkSharePct { get; init; }
+        public double FamilyWorkSharePct { get; init; }
+        public double OwnerWorkSharePct { get; init; }
+    }
+
     private sealed class SourceCadenceDecision
     {
+        public int PriorityRank { get; set; }
+        public double CumulativeFamilyWorkSharePct { get; set; }
         public string Owner { get; init; } = "";
         public string Kind { get; init; } = "";
         public string Target { get; init; } = "";
