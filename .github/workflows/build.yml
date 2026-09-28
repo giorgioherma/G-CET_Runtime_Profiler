@@ -831,6 +831,10 @@ jobs:
         shell: pwsh
         run: ./tests/ResolverHandoffContract.ps1 -PublishedRoot ./publish
 
+      - name: Stack-agnostic cadence source resolver contract
+        shell: pwsh
+        run: ./tests/CadenceSourceResolverContract.ps1 -PublishedRoot ./publish
+
       - name: Stage portable release ZIP
         shell: pwsh
         run: |
