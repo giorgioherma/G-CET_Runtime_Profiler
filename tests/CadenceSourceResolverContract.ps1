@@ -1,16 +1,22 @@
 param(
     [Parameter(Mandatory = $true)]
-    [string]$PublishedRoot
+    [string]$PublishedRoot,
+
+    [Parameter(Mandatory = $true)]
+    [string]$ResolverRoot
 )
 
 $ErrorActionPreference = 'Stop'
 
 $PublishedRoot = (Resolve-Path $PublishedRoot).Path
+$ResolverRoot = (Resolve-Path $ResolverRoot).Path
 $exe = Join-Path $PublishedRoot 'G-CET-Runtime-Profiler.exe'
+$resolverExe = Join-Path $ResolverRoot 'G-CET-Cadence-Resolver.exe'
 $profilerPayload = Join-Path $PublishedRoot 'payload\cyber_engine_tweaks.PROFILER.dll'
 
 if (!(Test-Path -LiteralPath $exe -PathType Leaf)) { throw "Profiler executable not found: $exe" }
 if (!(Test-Path -LiteralPath $profilerPayload -PathType Leaf)) { throw "Profiler payload not found: $profilerPayload" }
+if (!(Test-Path -LiteralPath $resolverExe -PathType Leaf)) { throw "Cadence resolver executable not found: $resolverExe" }
 
 $root = Join-Path $env:RUNNER_TEMP 'gcet-cadence-source-contract'
 if (Test-Path -LiteralPath $root) { Remove-Item -LiteralPath $root -Recurse -Force }
@@ -132,6 +138,12 @@ $result = (& $exe --collect --game $root --json | ConvertFrom-Json)
 if ([string]::IsNullOrWhiteSpace([string]$result.destination)) {
     throw 'Cadence source contract collection did not produce a destination.'
 }
+if (Test-Path -LiteralPath (Join-Path $result.destination 'CET_Cadence_Final.json')) {
+    throw 'Profiler collection incorrectly ran the resolver; measurement and interpretation must remain separate.'
+}
+
+$resolve = (& $resolverExe --capture $result.destination --mods $mods --json | ConvertFrom-Json)
+if (!$resolve.ok) { throw 'Explicit cadence resolver pass failed.' }
 
 $finalPath = Join-Path $result.destination 'CET_Cadence_Final.json'
 if (!(Test-Path -LiteralPath $finalPath -PathType Leaf)) {
