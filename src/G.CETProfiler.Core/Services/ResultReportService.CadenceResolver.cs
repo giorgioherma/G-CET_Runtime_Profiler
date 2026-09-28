@@ -6,14 +6,14 @@ public static partial class ResultReportService
     // or rewrite source yet. Its job is to turn the exact per-callback onUpdate
     // timeline into conservative, machine-readable cadence decisions for the
     // subsequent source pass.
-    private const double CadenceMinimumImpactMsPerSecond = 0.25;
     private const double CadenceScenarioSensitiveRatio = 1.80;
     private const double CadenceStrongSupport = 0.55;
     private const double CadenceScenarioSupport = 0.45;
     private const double CadenceMaxIntervalMs = 5000.0;
 
-    private static object BuildCadenceResolution(string captureRoot, ResultAnalysis a)
+    internal static object BuildCadenceResolution(string captureRoot)
     {
+        var a = Analyze(captureRoot);
         var timeline = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_OnUpdateTimeline.csv"));
         var markers = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Markers.csv"));
 
@@ -86,7 +86,6 @@ public static partial class ResultReportService
             },
             thresholds = new
             {
-                minimumImpactMsPerSecond = CadenceMinimumImpactMsPerSecond,
                 scenarioSensitiveRatio = CadenceScenarioSensitiveRatio,
                 strongCadenceSupportPct = CadenceStrongSupport * 100.0,
                 perScenarioCadenceSupportPct = CadenceScenarioSupport * 100.0,
@@ -275,7 +274,6 @@ public static partial class ResultReportService
             (cadence.SupportingScenarios >= 2 || cadence.SupportingGaps >= 10);
 
         var infrastructure = IsInfrastructureOwner(owner);
-        var lowImpact = exclusiveMsPerSecond < CadenceMinimumImpactMsPerSecond;
 
         string classification;
         string recommendation;
@@ -297,13 +295,6 @@ public static partial class ResultReportService
             recommendation = "KEEP_FRAME";
             reason = "Profiler/scheduler infrastructure is excluded from cadence rewriting.";
             confidence = 1;
-        }
-        else if (lowImpact)
-        {
-            classification = "FRAME";
-            recommendation = "KEEP_FRAME";
-            reason = "Measured callback cost is below the resolver impact floor.";
-            confidence = 0.95;
         }
         else if (strongCadence && baselineWorkShare <= 0.25)
         {
