@@ -360,6 +360,14 @@ jobs:
           ) | Set-Content -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_Timeline.csv') -Encoding utf8
 
           @(
+            'BucketIndex,BucketStartMs,BucketEndMs,Mod,Kind,Target,Calls,ExclusiveMs,MaxExclusiveMs,BucketWidthMs,DroppedTimelineRowsAtDump,Interpretation',
+            '1,0,50,0-Engine,event,onUpdate,5,2.0,0.5,50,0,continuous-onupdate-callback-correlation',
+            '2,50,100,0-Engine,event,onUpdate,5,3.0,0.7,50,0,continuous-onupdate-callback-correlation',
+            '3,100,150,0-Engine,event,onUpdate,5,4.0,0.9,50,0,continuous-onupdate-callback-correlation',
+            '4,150,200,0-Engine,event,onUpdate,5,5.0,1.1,50,0,continuous-onupdate-callback-correlation'
+          ) | Set-Content -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_OnUpdateTimeline.csv') -Encoding utf8
+
+          @(
             'Sequence,CaptureStartMs,CaptureEndMs,InclusiveMs,ExclusiveMs,ChildMs,Mod,Kind,Target,ThreadId,ThresholdMs,DroppedEventsAtDump,Interpretation',
             '1,155,160,5.5,4.8,0.7,Repeatable Cyberpsychos,Observe,PlayerPuppet::OnAction,1,1,0,callback-spike'
           ) | Set-Content -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_Spikes.csv') -Encoding utf8
@@ -408,6 +416,7 @@ jobs:
           if (Test-Path -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_Markers.csv')) { throw 'Verified live result was not cleared.' }
           if (Test-Path -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_Metadata.json')) { throw 'Scripted metadata output was not cleared.' }
           if (!(Test-Path -LiteralPath (Join-Path $collected.destination 'Data\Runtime\CET_Runtime_Profile_ByMod.csv') -PathType Leaf)) { throw 'Runtime profiler CSV was not organized under Data\Runtime.' }
+          if (!(Test-Path -LiteralPath (Join-Path $collected.destination 'Data\Runtime\CET_Runtime_Profile_OnUpdateTimeline.csv') -PathType Leaf)) { throw 'Exact onUpdate timeline was not organized under Data\Runtime.' }
           if (!(Test-Path -LiteralPath (Join-Path $collected.destination 'Data\Scheduler\CET_Runtime_Profile_Scheduler_ByJob.csv') -PathType Leaf)) { throw 'Scheduler profiler CSV was not organized under Data\Scheduler.' }
           if (!(Test-Path -LiteralPath (Join-Path $collected.destination 'Data\Metadata\CET_Runtime_Profile_Metadata.json') -PathType Leaf)) { throw 'Scripted metadata output was not archived under Data\Metadata.' }
           if (!(Test-Path -LiteralPath (Join-Path $collected.destination 'CET_Report.html') -PathType Leaf)) { throw 'Human-readable CET report was not generated.' }
@@ -415,7 +424,7 @@ jobs:
           if (!(Test-Path -LiteralPath (Join-Path $collected.destination 'CET_Resolver_Input.json') -PathType Leaf)) { throw 'Resolver measurement handoff was not generated.' }
 
           $resolverInput = Get-Content -LiteralPath (Join-Path $collected.destination 'CET_Resolver_Input.json') -Raw | ConvertFrom-Json
-          if ($resolverInput.schemaVersion -ne '1.1') { throw "Unexpected resolver input schema: $($resolverInput.schemaVersion)" }
+          if ($resolverInput.schemaVersion -ne '1.2') { throw "Unexpected resolver input schema: $($resolverInput.schemaVersion)" }
           if (!$resolverInput.semantics.measurementOnly) { throw 'Resolver input must remain measurement-only.' }
           if ($resolverInput.semantics.classificationIncluded) { throw 'Profiler leaked resolver classification into the handoff.' }
           if (@($resolverInput.callbacks).Count -lt 4) { throw 'Resolver input did not preserve full callback detail.' }
@@ -427,6 +436,8 @@ jobs:
           $psychoOwner = @($resolverInput.owners | Where-Object { $_.owner -eq 'Repeatable Cyberpsychos' }) | Select-Object -First 1
           if ($null -eq $psychoOwner.timeline) { throw 'Resolver input did not calculate owner timeline activity.' }
           if ([double]$psychoOwner.timeline.activeBucketPct -le 0) { throw 'Resolver input owner activity percentage is invalid.' }
+          if (!$resolverInput.quality.onUpdateTimelineAvailable) { throw 'Resolver input did not detect the exact onUpdate timeline.' }
+          if ([int]$resolverInput.quality.droppedOnUpdateTimelineRows -ne 0) { throw 'Synthetic exact onUpdate timeline unexpectedly reported dropped rows.' }
           if (!$resolverInput.quality.scenarioMarkersAvailable) { throw 'Resolver input did not detect scenario markers.' }
           if (!$resolverInput.quality.scenarioMarkersComplete) { throw 'Resolver input reported valid synthetic scenario markers as incomplete.' }
           if (@($resolverInput.scenarios).Count -ne 3) { throw "Expected 3 resolver scenarios, got $(@($resolverInput.scenarios).Count)." }
@@ -436,6 +447,10 @@ jobs:
           if ($null -eq $worldScenario -or $null -eq $drivingScenario -or $null -eq $combatScenario) { throw 'Resolver input lost one or more scenario sections.' }
           if ([math]::Abs([double]$worldScenario.durationSeconds - 0.1) -gt 0.001) { throw "WORLD scenario duration is wrong: $($worldScenario.durationSeconds)" }
           if (@($worldScenario.owners).Count -lt 1) { throw 'WORLD scenario contains no owner metrics.' }
+          $worldUpdate = @($worldScenario.onUpdateCallbacks | Where-Object { $_.owner -eq '0-Engine' -and $_.target -eq 'onUpdate' }) | Select-Object -First 1
+          if ($null -eq $worldUpdate) { throw 'WORLD scenario did not receive exact onUpdate callback metrics.' }
+          if ([math]::Abs([double]$worldUpdate.callsPerSecond - 100.0) -gt 0.001) { throw "WORLD exact onUpdate calls/s is wrong: $($worldUpdate.callsPerSecond)" }
+          if ([math]::Abs([double]$worldUpdate.exclusiveMsPerSecond - 50.0) -gt 0.001) { throw "WORLD exact onUpdate ms/s is wrong: $($worldUpdate.exclusiveMsPerSecond)" }
           if (@($combatScenario.callbackSpikes).Count -lt 1) { throw 'COMBAT scenario did not receive the synthetic callback spike.' }
 
           $reportText = Get-Content -LiteralPath (Join-Path $collected.destination 'CET_Report.html') -Raw
@@ -696,6 +711,7 @@ jobs:
             'CET_Runtime_Profile_Detail.csv' = 'Mod,Kind,Target,Calls'
             'CET_Runtime_Profile_Spikes.csv' = 'Sequence,CaptureStartMs,CaptureEndMs'
             'CET_Runtime_Profile_Timeline.csv' = 'BucketIndex,BucketStartMs,BucketEndMs'
+            'CET_Runtime_Profile_OnUpdateTimeline.csv' = 'BucketIndex,BucketStartMs,BucketEndMs,Mod,Kind,Target'
             'CET_Runtime_Profile_Markers.csv' = 'Sequence,CaptureMs,UnixEpochMs,Label,DroppedMarkersAtDump'
             'CET_Runtime_Profile_Scheduler_ByJob.csv' = 'Owner,JobType,Job'
             'CET_Runtime_Profile_Scheduler_Spikes.csv' = 'Sequence,Frame,DurationMs'
@@ -706,7 +722,7 @@ jobs:
           }
 
           $templateStatus = (& $exe --status --game $fixture5 --json | ConvertFrom-Json)
-          if ([int]$templateStatus.liveResultCount -ne 9) { throw "Expected 9 profiler template files, got $($templateStatus.liveResultCount)." }
+          if ([int]$templateStatus.liveResultCount -ne 10) { throw "Expected 10 profiler template files, got $($templateStatus.liveResultCount)." }
           if ($templateStatus.captureReadyForCollection) { throw 'Header-only profiler templates were incorrectly classified as a completed capture.' }
           if ($templateStatus.captureKey -ne 'F11') { throw "Expected CET capture key F11, got $($templateStatus.captureKey)." }
           if (!$templateStatus.captureKeyIsDefaultF11) { throw 'Exact F11 binding was not recognized as the default capture key.' }

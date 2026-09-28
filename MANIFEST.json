@@ -22,6 +22,7 @@
     "CET_Runtime_Profile_Detail.csv",
     "CET_Runtime_Profile_Spikes.csv",
     "CET_Runtime_Profile_Timeline.csv",
+    "CET_Runtime_Profile_OnUpdateTimeline.csv",
     "CET_Runtime_Profile_Markers.csv",
     "CET_Runtime_Profile_Scheduler_ByJob.csv",
     "CET_Runtime_Profile_Scheduler_Spikes.csv",

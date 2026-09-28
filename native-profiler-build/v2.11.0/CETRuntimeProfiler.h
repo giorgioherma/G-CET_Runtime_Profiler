@@ -21,6 +21,7 @@ class CETRuntimeProfiler
 {
 public:
     struct TimelineMod;
+    struct TimelineCallback;
 
     struct Counter
     {
@@ -34,11 +35,25 @@ public:
         std::atomic<uint64_t> MaxInclusiveNs{0};
         std::atomic<uint64_t> MaxExclusiveNs{0};
         TimelineMod* TimelineOwner{};
+        TimelineCallback* OnUpdateTimeline{};
     };
 
     struct TimelineMod
     {
         std::string Mod;
+        std::atomic<uint64_t> CurrentBucket{UINT64_MAX};
+        std::atomic<uint64_t> Calls{0};
+        std::atomic<uint64_t> ExclusiveNs{0};
+        std::atomic<uint64_t> MaxExclusiveNs{0};
+        std::atomic_flag RotateLock = ATOMIC_FLAG_INIT;
+    };
+
+    // Exact callback timeline is intentionally restricted to event::onUpdate.
+    // Generic callback timeline expansion would multiply capture volume and hot-path
+    // bookkeeping without helping the cadence resolver.
+    struct TimelineCallback
+    {
+        Counter* CounterPtr{};
         std::atomic<uint64_t> CurrentBucket{UINT64_MAX};
         std::atomic<uint64_t> Calls{0};
         std::atomic<uint64_t> ExclusiveNs{0};
@@ -70,6 +85,15 @@ public:
     struct TimelineEvent
     {
         TimelineMod* ModPtr{};
+        uint64_t Bucket{};
+        uint64_t Calls{};
+        uint64_t ExclusiveNs{};
+        uint64_t MaxExclusiveNs{};
+    };
+
+    struct OnUpdateTimelineEvent
+    {
+        TimelineCallback* CallbackPtr{};
         uint64_t Bucket{};
         uint64_t Calls{};
         uint64_t ExclusiveNs{};
@@ -141,6 +165,7 @@ public:
     static constexpr uint64_t DefaultSchedulerFrameBurstThresholdNs = 5'000'000;
     static constexpr size_t MaxSpikeEvents = 20'000;
     static constexpr size_t MaxTimelineEvents = 1'000'000;
+    static constexpr size_t MaxOnUpdateTimelineEvents = 500'000;
     static constexpr size_t MaxMarkerEvents = 1'000;
     static constexpr size_t MaxSchedulerSpikeEvents = 20'000;
     static constexpr size_t MaxSchedulerFrameBurstEvents = 20'000;
@@ -400,6 +425,8 @@ public:
             << "ms"
             << " | timelineRows=" << m_timelineEvents.size()
             << " | timelineDropped=" << m_droppedTimelineEvents
+            << " | onUpdateTimelineRows=" << m_onUpdateTimelineEvents.size()
+            << " | onUpdateTimelineDropped=" << m_droppedOnUpdateTimelineEvents
             << " | markers=" << m_markers.size()
             << " | schedulerJobs=" << m_schedulerJobs.size()
             << " | schedulerSpikes=" << m_schedulerSpikeEvents.size()
@@ -445,7 +472,8 @@ public:
         // A capture uses one bucket width from start to finish so its CSV has
         // a single unambiguous time scale. Configure while idle/before Start.
         if (m_state.load(std::memory_order_relaxed) == CaptureState::Running ||
-            !m_timelineEvents.empty())
+            !m_timelineEvents.empty() ||
+            !m_onUpdateTimelineEvents.empty())
         {
             return static_cast<double>(
                        m_timelineBucketNs.load(std::memory_order_relaxed)) /
@@ -707,7 +735,6 @@ public:
         if (!aCounter || !aCounter->TimelineOwner)
             return 0;
 
-        auto* owner = aCounter->TimelineOwner;
         const uint64_t bucketWidth =
             m_timelineBucketNs.load(std::memory_order_relaxed);
         if (!bucketWidth)
@@ -715,9 +742,11 @@ public:
 
         const uint64_t captureNs = FastCapturedNanoseconds(aEnd);
         const uint64_t bucket = captureNs / bucketWidth;
-        uint64_t current = owner->CurrentBucket.load(std::memory_order_relaxed);
-
         uint64_t rolloverBookkeepingNs = 0;
+
+        // Existing per-mod timeline remains the broad correlation stream.
+        auto* owner = aCounter->TimelineOwner;
+        uint64_t current = owner->CurrentBucket.load(std::memory_order_relaxed);
         if (current != bucket)
         {
             const auto bookkeepingStart = Clock::now();
@@ -751,7 +780,7 @@ public:
             }
 
             owner->RotateLock.clear(std::memory_order_release);
-            rolloverBookkeepingNs = static_cast<uint64_t>(
+            rolloverBookkeepingNs += static_cast<uint64_t>(
                 std::chrono::duration_cast<std::chrono::nanoseconds>(
                     Clock::now() - bookkeepingStart).count());
         }
@@ -759,6 +788,54 @@ public:
         owner->Calls.fetch_add(1, std::memory_order_relaxed);
         owner->ExclusiveNs.fetch_add(aExclusiveNs, std::memory_order_relaxed);
         UpdateMax(owner->MaxExclusiveNs, aExclusiveNs);
+
+        // Resolver-only exact timeline. Non-onUpdate callbacks pay only this
+        // null-pointer branch; onUpdate callbacks use the same 50 ms bucket model.
+        if (auto* callback = aCounter->OnUpdateTimeline)
+        {
+            current = callback->CurrentBucket.load(std::memory_order_relaxed);
+            if (current != bucket)
+            {
+                const auto bookkeepingStart = Clock::now();
+                while (callback->RotateLock.test_and_set(std::memory_order_acquire))
+                    std::this_thread::yield();
+
+                current = callback->CurrentBucket.load(std::memory_order_relaxed);
+                if (current != bucket)
+                {
+                    if (current != UINT64_MAX)
+                    {
+                        OnUpdateTimelineEvent event{
+                            callback,
+                            current,
+                            callback->Calls.exchange(0, std::memory_order_relaxed),
+                            callback->ExclusiveNs.exchange(0, std::memory_order_relaxed),
+                            callback->MaxExclusiveNs.exchange(0, std::memory_order_relaxed)
+                        };
+
+                        if (event.Calls)
+                        {
+                            std::lock_guard lock(m_mutex);
+                            if (m_onUpdateTimelineEvents.size() < MaxOnUpdateTimelineEvents)
+                                m_onUpdateTimelineEvents.push_back(event);
+                            else
+                                ++m_droppedOnUpdateTimelineEvents;
+                        }
+                    }
+
+                    callback->CurrentBucket.store(bucket, std::memory_order_relaxed);
+                }
+
+                callback->RotateLock.clear(std::memory_order_release);
+                rolloverBookkeepingNs += static_cast<uint64_t>(
+                    std::chrono::duration_cast<std::chrono::nanoseconds>(
+                        Clock::now() - bookkeepingStart).count());
+            }
+
+            callback->Calls.fetch_add(1, std::memory_order_relaxed);
+            callback->ExclusiveNs.fetch_add(aExclusiveNs, std::memory_order_relaxed);
+            UpdateMax(callback->MaxExclusiveNs, aExclusiveNs);
+        }
 
         return rolloverBookkeepingNs;
     }
@@ -834,6 +911,17 @@ public:
             std::string Mod;
         };
 
+        struct OnUpdateTimelineRow
+        {
+            uint64_t Bucket{};
+            uint64_t Calls{};
+            uint64_t ExclusiveNs{};
+            uint64_t MaxExclusiveNs{};
+            std::string Mod;
+            std::string Kind;
+            std::string Target;
+        };
+
         struct SchedulerJobRow
         {
             std::string Owner;
@@ -881,6 +969,7 @@ public:
         std::vector<Row> rows;
         std::vector<SpikeRow> spikeRows;
         std::vector<TimelineRow> timelineRows;
+        std::vector<OnUpdateTimelineRow> onUpdateTimelineRows;
         std::vector<MarkerEvent> markerRows;
         std::vector<SchedulerJobRow> schedulerJobRows;
         std::vector<SchedulerSpikeRow> schedulerSpikeRows;
@@ -892,6 +981,7 @@ public:
         double timelineBucketMs{};
         uint64_t timelineBucketNs{};
         uint64_t droppedTimelineEvents{};
+        uint64_t droppedOnUpdateTimelineEvents{};
         uint64_t droppedMarkerEvents{};
         uint64_t droppedSchedulerSpikeEvents{};
         uint64_t droppedSchedulerFrameBursts{};
@@ -977,6 +1067,36 @@ public:
                 });
             }
 
+            onUpdateTimelineRows.reserve(
+                m_onUpdateTimelineEvents.size() + m_onUpdateTimelineCallbacks.size());
+            for (const auto& event : m_onUpdateTimelineEvents)
+            {
+                if (!event.CallbackPtr || !event.CallbackPtr->CounterPtr || !event.Calls)
+                    continue;
+                const auto* counter = event.CallbackPtr->CounterPtr;
+                onUpdateTimelineRows.push_back({
+                    event.Bucket, event.Calls, event.ExclusiveNs,
+                    event.MaxExclusiveNs, counter->Mod, counter->Kind, counter->Target
+                });
+            }
+
+            // Include the currently open bucket for each onUpdate callback.
+            for (const auto& [_, callbackPtr] : m_onUpdateTimelineCallbacks)
+            {
+                const auto* callback = callbackPtr.get();
+                const auto* counter = callback->CounterPtr;
+                const uint64_t calls = callback->Calls.load(std::memory_order_relaxed);
+                const uint64_t bucket = callback->CurrentBucket.load(std::memory_order_relaxed);
+                if (!counter || !calls || bucket == UINT64_MAX)
+                    continue;
+                onUpdateTimelineRows.push_back({
+                    bucket, calls,
+                    callback->ExclusiveNs.load(std::memory_order_relaxed),
+                    callback->MaxExclusiveNs.load(std::memory_order_relaxed),
+                    counter->Mod, counter->Kind, counter->Target
+                });
+            }
+
             markerRows = m_markers;
 
             schedulerJobRows.reserve(m_schedulerJobs.size());
@@ -1057,6 +1177,7 @@ public:
                 1'000'000.0;
 
             droppedTimelineEvents = m_droppedTimelineEvents;
+            droppedOnUpdateTimelineEvents = m_droppedOnUpdateTimelineEvents;
             droppedMarkerEvents = m_droppedMarkerEvents;
             timelineBucketNs = m_timelineBucketNs.load(std::memory_order_relaxed);
             timelineBucketMs = static_cast<double>(timelineBucketNs) / 1'000'000.0;
@@ -1120,6 +1241,51 @@ public:
                       << timelineBucketMs << ','
                       << droppedTimelineEvents << ','
                       << "continuous-per-mod-correlation"
+                      << '\n';
+                }
+            }
+        }
+
+        // -----------------------------------------------------------------
+        // ONUPDATE TIMELINE: exact callback workload buckets for resolver
+        // cadence/state analysis. Deliberately excludes all other callbacks.
+        // -----------------------------------------------------------------
+        {
+            std::sort(onUpdateTimelineRows.begin(), onUpdateTimelineRows.end(),
+                      [](const OnUpdateTimelineRow& a, const OnUpdateTimelineRow& b)
+                      {
+                          if (a.Bucket != b.Bucket)
+                              return a.Bucket < b.Bucket;
+                          if (a.Mod != b.Mod)
+                              return a.Mod < b.Mod;
+                          return a.Target < b.Target;
+                      });
+
+            const auto path = outputRoot / "CET_Runtime_Profile_OnUpdateTimeline.csv";
+            std::ofstream f(path, std::ios::trunc);
+            if (f)
+            {
+                f << "BucketIndex,BucketStartMs,BucketEndMs,Mod,Kind,Target,Calls,"
+                     "ExclusiveMs,MaxExclusiveMs,"
+                     "BucketWidthMs,DroppedTimelineRowsAtDump,Interpretation\n";
+                f << std::fixed << std::setprecision(6);
+
+                for (const auto& row : onUpdateTimelineRows)
+                {
+                    const uint64_t startNs = row.Bucket * timelineBucketNs;
+                    const uint64_t endNs = startNs + timelineBucketNs;
+                    f << row.Bucket << ','
+                      << (static_cast<double>(startNs) / 1'000'000.0) << ','
+                      << (static_cast<double>(endNs) / 1'000'000.0) << ','
+                      << Csv(row.Mod) << ','
+                      << Csv(row.Kind) << ','
+                      << Csv(row.Target) << ','
+                      << row.Calls << ','
+                      << (static_cast<double>(row.ExclusiveNs) / 1'000'000.0) << ','
+                      << (static_cast<double>(row.MaxExclusiveNs) / 1'000'000.0) << ','
+                      << timelineBucketMs << ','
+                      << droppedOnUpdateTimelineEvents << ','
+                      << "continuous-onupdate-callback-correlation"
                       << '\n';
                 }
             }
@@ -1548,6 +1714,14 @@ private:
         counter->TimelineOwner = timelineFound->second.get();
 
         Counter* raw = counter.get();
+        if (aKind == "event" && aTarget == "onUpdate")
+        {
+            auto callbackTimeline = std::make_unique<TimelineCallback>();
+            callbackTimeline->CounterPtr = raw;
+            raw->OnUpdateTimeline = callbackTimeline.get();
+            m_onUpdateTimelineCallbacks.emplace(key, std::move(callbackTimeline));
+        }
+
         m_counters.emplace(key, std::move(counter));
         return raw;
     }
@@ -1559,6 +1733,7 @@ private:
         // capture is running. The hard cap also prevents accidental growth.
         m_spikeEvents.reserve(MaxSpikeEvents);
         m_timelineEvents.reserve(MaxTimelineEvents);
+        m_onUpdateTimelineEvents.reserve(MaxOnUpdateTimelineEvents);
         m_markers.reserve(MaxMarkerEvents);
         m_schedulerSpikeEvents.reserve(MaxSchedulerSpikeEvents);
         m_schedulerFrameBursts.reserve(MaxSchedulerFrameBurstEvents);
@@ -1595,6 +1770,18 @@ private:
             owner->ExclusiveNs.store(0, std::memory_order_relaxed);
             owner->MaxExclusiveNs.store(0, std::memory_order_relaxed);
             owner->RotateLock.clear(std::memory_order_relaxed);
+        }
+
+        m_onUpdateTimelineEvents.clear();
+        m_droppedOnUpdateTimelineEvents = 0;
+        for (auto& [_, callbackPtr] : m_onUpdateTimelineCallbacks)
+        {
+            auto* callback = callbackPtr.get();
+            callback->CurrentBucket.store(UINT64_MAX, std::memory_order_relaxed);
+            callback->Calls.store(0, std::memory_order_relaxed);
+            callback->ExclusiveNs.store(0, std::memory_order_relaxed);
+            callback->MaxExclusiveNs.store(0, std::memory_order_relaxed);
+            callback->RotateLock.clear(std::memory_order_relaxed);
         }
     }
 
@@ -1854,9 +2041,11 @@ private:
     std::mutex m_mutex;
     std::unordered_map<std::string, std::unique_ptr<Counter>> m_counters;
     std::unordered_map<std::string, std::unique_ptr<TimelineMod>> m_timelineMods;
+    std::unordered_map<std::string, std::unique_ptr<TimelineCallback>> m_onUpdateTimelineCallbacks;
     std::unordered_map<const void*, CallbackBinding> m_callbackBindings;
     std::vector<SpikeEvent> m_spikeEvents;
     std::vector<TimelineEvent> m_timelineEvents;
+    std::vector<OnUpdateTimelineEvent> m_onUpdateTimelineEvents;
     std::vector<MarkerEvent> m_markers;
     std::unordered_map<std::string, std::unique_ptr<SchedulerJobCounter>> m_schedulerJobs;
     std::vector<SchedulerSpikeEvent> m_schedulerSpikeEvents;
@@ -1876,6 +2065,7 @@ private:
     uint64_t m_nextSpikeSequence{};
     uint64_t m_droppedSpikeEvents{};
     uint64_t m_droppedTimelineEvents{};
+    uint64_t m_droppedOnUpdateTimelineEvents{};
     uint64_t m_nextMarkerSequence{};
     uint64_t m_droppedMarkerEvents{};
     uint64_t m_nextSchedulerSpikeSequence{};

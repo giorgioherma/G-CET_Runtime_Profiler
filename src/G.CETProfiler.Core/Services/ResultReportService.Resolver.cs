@@ -16,6 +16,7 @@ public static partial class ResultReportService
         var detail = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Detail.csv"));
         var spikes = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Spikes.csv"));
         var timeline = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Timeline.csv"));
+        var onUpdateTimeline = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_OnUpdateTimeline.csv"));
         var markers = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Markers.csv"));
 
         var callbacks = detail
@@ -224,6 +225,11 @@ public static partial class ResultReportService
             .DefaultIfEmpty(0)
             .Max();
 
+        var droppedOnUpdateTimelineRows = onUpdateTimeline
+            .Select(r => L(r, "DroppedTimelineRowsAtDump"))
+            .DefaultIfEmpty(0)
+            .Max();
+
         var droppedSpikeEvents = spikes
             .Select(r => L(r, "DroppedEventsAtDump"))
             .DefaultIfEmpty(0)
@@ -236,13 +242,14 @@ public static partial class ResultReportService
         var scenarioAnalysis = BuildResolverScenarios(
             markers,
             timeline,
+            onUpdateTimeline,
             spikeSamples,
             a.FrameTime,
             a.CaptureSeconds);
 
         return new
         {
-            schemaVersion = "1.1",
+            schemaVersion = "1.2",
             generatedUtc = DateTime.UtcNow.ToString("O"),
             interop = new
             {
@@ -262,6 +269,7 @@ public static partial class ResultReportService
             {
                 frameNormalizationAvailable,
                 timelineAvailable = timeline.Count > 0,
+                onUpdateTimelineAvailable = onUpdateTimeline.Count > 0,
                 spikesAvailable = spikes.Count > 0,
                 scenarioMarkersAvailable = scenarioAnalysis.RecognizedMarkers > 0,
                 scenarioMarkersComplete = scenarioAnalysis.RecognizedMarkers > 0 && scenarioAnalysis.UnmatchedMarkers == 0,
@@ -276,6 +284,7 @@ public static partial class ResultReportService
                     ? Round(spikeThreshold, 6)
                     : (double?)null,
                 droppedTimelineRows,
+                droppedOnUpdateTimelineRows,
                 droppedSpikeEvents
             },
             capture = new
@@ -356,6 +365,7 @@ public static partial class ResultReportService
     private static ResolverScenarioAnalysis BuildResolverScenarios(
         IReadOnlyList<Dictionary<string, string>> markers,
         IReadOnlyList<Dictionary<string, string>> timeline,
+        IReadOnlyList<Dictionary<string, string>> onUpdateTimeline,
         IReadOnlyList<ResolverSpikeSample> spikes,
         FrameTimeAnalysis? frameTime,
         double captureSeconds)
@@ -490,6 +500,55 @@ public static partial class ResultReportService
 
             var scenarioTotalMs = ownerWork.Values.Sum(x => x.ExclusiveMs);
 
+            var onUpdateWork = new Dictionary<string, ResolverScenarioCallbackAccumulator>(
+                StringComparer.OrdinalIgnoreCase);
+
+            foreach (var row in onUpdateTimeline)
+            {
+                var owner = S(row, "Mod", "Owner");
+                var kind = S(row, "Kind");
+                var target = S(row, "Target");
+                if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(target))
+                    continue;
+
+                var bucketStart = D(row, "BucketStartMs");
+                var bucketEnd = D(row, "BucketEndMs");
+                if (bucketEnd <= bucketStart)
+                {
+                    var width = D(row, "BucketWidthMs");
+                    if (width > 0)
+                        bucketEnd = bucketStart + width;
+                }
+
+                var bucketWidth = bucketEnd - bucketStart;
+                if (bucketWidth <= 0)
+                    continue;
+
+                var overlapMs = scenarioSegments.Sum(x =>
+                    ResolverOverlapMs(bucketStart, bucketEnd, x.StartMs, x.EndMs));
+                if (overlapMs <= 0)
+                    continue;
+
+                var fraction = Math.Clamp(overlapMs / bucketWidth, 0, 1);
+                var key = ResolverCallbackKey(owner, kind, target);
+                if (!onUpdateWork.TryGetValue(key, out var accumulator))
+                {
+                    accumulator = new ResolverScenarioCallbackAccumulator
+                    {
+                        Owner = owner,
+                        Kind = kind,
+                        Target = target
+                    };
+                    onUpdateWork[key] = accumulator;
+                }
+
+                accumulator.Calls += L(row, "Calls") * fraction;
+                accumulator.ExclusiveMs += D(row, "ExclusiveMs") * fraction;
+                accumulator.ActiveBucketTouches++;
+            }
+
+            var scenarioOnUpdateTotalMs = onUpdateWork.Values.Sum(x => x.ExclusiveMs);
+
             var alignedFrames =
                 frameTime is not null &&
                 frameTime.Correlated &&
@@ -533,6 +592,31 @@ public static partial class ResultReportService
                 .ThenByDescending(x => x.CallsPerSecond)
                 .ToList();
 
+            var onUpdateRows = onUpdateWork.Values
+                .Select(x =>
+                {
+                    var callsPerSecond = x.Calls / durationSeconds;
+                    return new ResolverScenarioCallbackMetric
+                    {
+                        Owner = x.Owner,
+                        Infrastructure = IsInfrastructureOwner(x.Owner),
+                        Kind = x.Kind,
+                        Target = x.Target,
+                        Calls = x.Calls,
+                        CallsPerSecond = callsPerSecond,
+                        CallsPerFrame = scenarioAverageFps > 0
+                            ? callsPerSecond / scenarioAverageFps
+                            : null,
+                        ExclusiveMs = x.ExclusiveMs,
+                        ExclusiveMsPerSecond = x.ExclusiveMs / durationSeconds,
+                        WorkSharePct = Percent(x.ExclusiveMs, scenarioOnUpdateTotalMs),
+                        ActiveBucketTouches = x.ActiveBucketTouches
+                    };
+                })
+                .OrderByDescending(x => x.ExclusiveMsPerSecond)
+                .ThenByDescending(x => x.CallsPerSecond)
+                .ToList();
+
             var scenarioSpikes = spikes
                 .Where(x => ResolverInSegments(
                     x.CaptureStartMs + Math.Max(0, x.CaptureEndMs - x.CaptureStartMs) * 0.5,
@@ -567,6 +651,7 @@ public static partial class ResultReportService
                 CaptureCoveragePct = Percent(durationSeconds, captureSeconds),
                 Segments = scenarioSegments,
                 Owners = ownerRows,
+                OnUpdateCallbacks = onUpdateRows,
                 CallbackSpikes = scenarioSpikes,
                 FrameTime = frameTimes.Count == 0
                     ? null
@@ -702,6 +787,31 @@ public static partial class ResultReportService
         public int ActiveBucketTouches { get; init; }
     }
 
+    private sealed class ResolverScenarioCallbackAccumulator
+    {
+        public string Owner { get; init; } = "";
+        public string Kind { get; init; } = "";
+        public string Target { get; init; } = "";
+        public double Calls { get; set; }
+        public double ExclusiveMs { get; set; }
+        public int ActiveBucketTouches { get; set; }
+    }
+
+    private sealed class ResolverScenarioCallbackMetric
+    {
+        public string Owner { get; init; } = "";
+        public bool Infrastructure { get; init; }
+        public string Kind { get; init; } = "";
+        public string Target { get; init; } = "";
+        public double Calls { get; init; }
+        public double CallsPerSecond { get; init; }
+        public double? CallsPerFrame { get; init; }
+        public double ExclusiveMs { get; init; }
+        public double ExclusiveMsPerSecond { get; init; }
+        public double WorkSharePct { get; init; }
+        public int ActiveBucketTouches { get; init; }
+    }
+
     private sealed class ResolverScenarioSpikeMetric
     {
         public string Owner { get; init; } = "";
@@ -733,6 +843,7 @@ public static partial class ResultReportService
         public double CaptureCoveragePct { get; init; }
         public List<ResolverScenarioSegment> Segments { get; init; } = [];
         public List<ResolverScenarioOwnerMetric> Owners { get; init; } = [];
+        public List<ResolverScenarioCallbackMetric> OnUpdateCallbacks { get; init; } = [];
         public List<ResolverScenarioSpikeMetric> CallbackSpikes { get; init; } = [];
         public ResolverScenarioFrameTimeMetric? FrameTime { get; init; }
     }
