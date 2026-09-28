@@ -22,6 +22,7 @@ public static partial class ResultReportService
     public const string SummaryFileName = "CET_Summary.json";
     public const string ResolverInputFileName = "CET_Resolver_Input.json";
     public const string CadenceResolutionFileName = "CET_Cadence_Resolution.json";
+    public const string CadenceFinalFileName = "CET_Cadence_Final.json";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -57,7 +58,7 @@ public static partial class ResultReportService
         return Path.Combine("Data", "Metadata", fileName);
     }
 
-    public static ResultReportBuildResult Generate(string captureRoot)
+    public static ResultReportBuildResult Generate(string captureRoot, string? modsRoot = null)
     {
         if (string.IsNullOrWhiteSpace(captureRoot))
             throw new ArgumentException("Capture folder is empty.", nameof(captureRoot));
@@ -69,6 +70,7 @@ public static partial class ResultReportService
         var summaryPath = Path.Combine(captureRoot, SummaryFileName);
         var resolverInputPath = Path.Combine(captureRoot, ResolverInputFileName);
         var cadenceResolutionPath = Path.Combine(captureRoot, CadenceResolutionFileName);
+        var cadenceFinalPath = Path.Combine(captureRoot, CadenceFinalFileName);
         var reportPath = Path.Combine(captureRoot, ReportFileName);
 
         var summary = new
@@ -294,6 +296,11 @@ public static partial class ResultReportService
             new UTF8Encoding(false));
 
         File.WriteAllText(
+            cadenceFinalPath,
+            JsonSerializer.Serialize(BuildSourceCadenceResolution(captureRoot, modsRoot), JsonOptions) + Environment.NewLine,
+            new UTF8Encoding(false));
+
+        File.WriteAllText(
             reportPath,
             BuildHtml(a, captureRoot),
             new UTF8Encoding(false));
@@ -336,7 +343,8 @@ public static partial class ResultReportService
             .Where(x => !x.Equals(ReportFileName, StringComparison.OrdinalIgnoreCase) &&
                         !x.Equals(SummaryFileName, StringComparison.OrdinalIgnoreCase) &&
                         !x.Equals(ResolverInputFileName, StringComparison.OrdinalIgnoreCase) &&
-                        !x.Equals(CadenceResolutionFileName, StringComparison.OrdinalIgnoreCase))
+                        !x.Equals(CadenceResolutionFileName, StringComparison.OrdinalIgnoreCase) &&
+                        !x.Equals(CadenceFinalFileName, StringComparison.OrdinalIgnoreCase))
             .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
             .Take(200)
             .ToList();
