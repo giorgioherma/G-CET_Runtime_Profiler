@@ -71,6 +71,9 @@ jobs:
       - name: Publish self-contained managed app
         run: dotnet publish src/G.CETProfiler.App/G.CETProfiler.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o publish-app
 
+      - name: Publish standalone cadence resolver
+        run: dotnet publish src/G.CETResolver.App/G.CETResolver.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o publish-resolver
+
       - name: Build native root launcher
         shell: pwsh
         run: |
@@ -833,7 +836,7 @@ jobs:
 
       - name: Stack-agnostic cadence source resolver contract
         shell: pwsh
-        run: ./tests/CadenceSourceResolverContract.ps1 -PublishedRoot ./publish
+        run: ./tests/CadenceSourceResolverContract.ps1 -PublishedRoot ./publish -ResolverRoot ./publish-resolver
 
       - name: Stage portable release ZIP
         shell: pwsh
@@ -870,6 +873,13 @@ jobs:
         with:
           name: G-CET-Runtime-Profiler-v${{ steps.product_version.outputs.version }}
           path: portable/
+          if-no-files-found: error
+
+      - name: Upload standalone cadence resolver artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: G-CET-Cadence-Resolver-v${{ steps.product_version.outputs.version }}
+          path: publish-resolver/
           if-no-files-found: error
 
       - name: Publish canonical GitHub release
