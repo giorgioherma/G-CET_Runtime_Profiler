@@ -140,25 +140,10 @@ local function toggleCapture()
   end
 end
 
-local function imguiFlag(name)
-  if not ImGuiWindowFlags then return 0 end
-  local value = ImGuiWindowFlags[name]
-  return type(value) == "number" and value or 0
-end
-
-local hudFlags =
-  imguiFlag("NoTitleBar") +
-  imguiFlag("NoResize") +
-  imguiFlag("NoMove") +
-  imguiFlag("NoScrollbar") +
-  imguiFlag("NoCollapse") +
-  imguiFlag("AlwaysAutoResize") +
-  imguiFlag("NoInputs") +
-  imguiFlag("NoNav")
+local hudDrawConfirmed = false
 
 local function drawCaptureHud()
   if not isRunning() then return end
-  if not ImGui or type(ImGui.Begin) ~= "function" then return end
 
   if captureStartedAt == nil then
     captureBaseSeconds = readCapturedSeconds()
@@ -173,21 +158,36 @@ local function drawCaptureHud()
   end
 
   local ok, err = pcall(function()
-    if type(ImGui.SetNextWindowPos) == "function" then
-      local cond = (ImGuiCond and ImGuiCond.Always) or 0
-      ImGui.SetNextWindowPos(20, 20, cond)
-    end
-    if type(ImGui.SetNextWindowBgAlpha) == "function" then
-      ImGui.SetNextWindowBgAlpha(0.62)
-    end
+    -- Use the same simple gameplay-ImGui pattern used by established CET HUD
+    -- examples: draw every onDraw, position directly, and use Begin(name, flags).
+    -- No dependency on the CET console/overlay being open.
+    ImGui.SetNextWindowPos(20, 20)
+    ImGui.PushStyleVar(ImGuiStyleVar.WindowRounding, 7)
+    ImGui.PushStyleVar(ImGuiStyleVar.WindowPadding, 10, 7)
+    ImGui.PushStyleColor(ImGuiCol.WindowBg, 0xd0000000)
+    ImGui.PushStyleColor(ImGuiCol.Border, 0x80ffffff)
 
-    ImGui.Begin("##GCETProfilerCaptureHUD", true, hudFlags)
-    if type(ImGui.TextUnformatted) == "function" then
+    local flags =
+      ImGuiWindowFlags.NoDecoration +
+      ImGuiWindowFlags.AlwaysAutoResize +
+      ImGuiWindowFlags.NoInputs +
+      ImGuiWindowFlags.NoSavedSettings +
+      ImGuiWindowFlags.NoFocusOnAppearing +
+      ImGuiWindowFlags.NoBringToFrontOnFocus
+
+    local shouldDraw = ImGui.Begin("G-CET Profiler Capture##GCETProfilerCaptureHUD", flags)
+    if shouldDraw then
       ImGui.TextUnformatted(text)
-    else
-      ImGui.Text(text)
     end
     ImGui.End()
+
+    ImGui.PopStyleColor(2)
+    ImGui.PopStyleVar(2)
+
+    if not hudDrawConfirmed then
+      hudDrawConfirmed = true
+      say("Capture HUD draw active.")
+    end
   end)
 
   if not ok and not hudErrorReported then
