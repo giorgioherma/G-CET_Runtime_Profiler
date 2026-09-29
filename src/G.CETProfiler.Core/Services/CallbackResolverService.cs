@@ -487,6 +487,27 @@ internal static class CallbackResolverService
                 $"and {downstreamActions.Length} finite action name(s).");
         }
 
+        var gatedWildcardResolved = false;
+        var dynamicGateExpression = "";
+
+        // Some callbacks genuinely need the full action stream, but only while
+        // a simple owner-local state gate is active. If every raw-action
+        // forward is enclosed by side-effect-free boolean member checks and all
+        // other callback work is either local decoding or already-proven exact
+        // action branches, keep wildcard semantics only behind that gate.
+        if (dynamicActionForward &&
+            TryResolveSimpleDynamicGate(
+                window,
+                nameVars,
+                out dynamicGateExpression))
+        {
+            dynamicActionForward = false;
+            gatedWildcardResolved = true;
+            stateGated = true;
+            evidence.Add(
+                $"Full-stream downstream action forwarding is bounded by a proven simple state gate: {dynamicGateExpression}.");
+        }
+
         if (dynamicActionForward)
         {
             blockers.Add("Raw action data is forwarded to downstream logic, so this callback alone does not prove a finite action set.");
@@ -504,6 +525,7 @@ internal static class CallbackResolverService
             evidence.Add("An early state gate is present before the callback's main work.");
 
         var hasActionFilter = actions.Count > 0 || patterns.Count > 0 || staticTables.Count > 0;
+        var hasRoutableInterest = hasActionFilter || gatedWildcardResolved;
         var prefilterSideEffect = hasActionFilter &&
             HasMeaningfulWorkBeforeFirstActionFilter(window, nameVars, downstreamMethods);
         if (prefilterSideEffect)
@@ -520,6 +542,8 @@ internal static class CallbackResolverService
             recipe = stateGated
                 ? "ACTION_ROUTING_STATE_GATED_DYNAMIC_DOWNSTREAM"
                 : "ACTION_ROUTING_DYNAMIC_DOWNSTREAM";
+        else if (gatedWildcardResolved)
+            recipe = "ACTION_ROUTING_GATED_WILDCARD";
         else if (downstreamExpanded && patterns.Count > 0)
             recipe = stateGated
                 ? "ACTION_ROUTING_STATE_GATED_DOWNSTREAM_STATIC_SET_WITH_PATTERN"
@@ -546,7 +570,7 @@ internal static class CallbackResolverService
             recipe = "ONACTION_FULL_STREAM_OR_UNRESOLVED";
 
         var automatable =
-            hasActionFilter &&
+            hasRoutableInterest &&
             !dynamicActionForward &&
             unresolvedActionSelectors.Count == 0 &&
             !prefilterSideEffect &&
@@ -560,6 +584,8 @@ internal static class CallbackResolverService
             stateGatePresent = stateGated,
             consumerMutation,
             dynamicActionForward,
+            gatedWildcardResolved,
+            dynamicGateExpression,
             downstreamExpanded,
             downstreamMethods,
             downstreamFiles,
@@ -574,10 +600,10 @@ internal static class CallbackResolverService
         {
             Status = automatable
                 ? "RESOLVED"
-                : hasActionFilter || dynamicActionForward ? "RECOGNIZED_WITH_BLOCKER" : "UNRESOLVED",
+                : hasRoutableInterest || dynamicActionForward ? "RECOGNIZED_WITH_BLOCKER" : "UNRESOLVED",
             Automatable = automatable,
             Pattern = recipe,
-            RecipeFamilies = hasActionFilter || dynamicActionForward
+            RecipeFamilies = hasRoutableInterest || dynamicActionForward
                 ? new[] { isOverride ? "ACTION_ROUTING_OVERRIDE" : recipe }
                 : Array.Empty<string>(),
             Facts = facts,
@@ -618,22 +644,169 @@ internal static class CallbackResolverService
             var line = raw.Trim();
             if (string.IsNullOrWhiteSpace(line) || line.StartsWith("--", StringComparison.Ordinal))
                 continue;
-            if (!Regex.IsMatch(line, @"\([^\r\n)]*\baction\b", RegexOptions.IgnoreCase))
-                continue;
-
-            if (line.Contains("GetName", StringComparison.OrdinalIgnoreCase) ||
-                line.Contains("GetType", StringComparison.OrdinalIgnoreCase) ||
-                line.Contains("GetValue", StringComparison.OrdinalIgnoreCase) ||
-                line.Contains("IsAction", StringComparison.OrdinalIgnoreCase) ||
-                line.Contains("NameToString", StringComparison.OrdinalIgnoreCase) ||
-                line.Contains("Observe(", StringComparison.OrdinalIgnoreCase) ||
-                line.Contains("Override(", StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            return true;
+            if (IsRawActionForwardLine(line))
+                return true;
         }
 
         return false;
+    }
+
+    private static bool TryResolveSimpleDynamicGate(
+        string window,
+        IReadOnlySet<string> nameVars,
+        out string gateExpression)
+    {
+        gateExpression = "";
+        var lines = window.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+
+        var dynamicLines = new List<int>();
+        for (var i = 0; i < lines.Length; i++)
+        {
+            if (IsRawActionForwardLine(lines[i]))
+                dynamicLines.Add(i);
+        }
+
+        if (dynamicLines.Count == 0)
+            return false;
+
+        var protectedRanges = new List<(int Start, int End)>();
+        var gateGroups = new List<string>();
+
+        foreach (var index in dynamicLines)
+        {
+            var enclosing = new List<(int Start, int End, string Expr)>();
+
+            for (var i = 0; i < index; i++)
+            {
+                var match = Regex.Match(
+                    lines[i],
+                    @"^\s*if\s+(?<expr>(?:not\s+)?[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s+then\s*$",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+                if (!match.Success)
+                    continue;
+
+                var end = FindIndentedBlockEnd(lines, i);
+                if (end >= index)
+                    enclosing.Add((i, end, match.Groups["expr"].Value.Trim()));
+            }
+
+            if (enclosing.Count == 0)
+                return false;
+
+            var ordered = enclosing.OrderBy(x => x.Start).ToList();
+            gateGroups.Add("(" + string.Join(" and ", ordered.Select(x => x.Expr)) + ")");
+
+            // Protect the outermost proven gate. Its complete body is only
+            // entered when the same generated prefilter evaluates true.
+            protectedRanges.Add((ordered[0].Start, ordered[0].End));
+        }
+
+        // Exact action branches outside the dynamic gate remain independently
+        // routable and are protected as complete blocks.
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var line = lines[i];
+            var isExactBranch = nameVars.Any(name =>
+                Regex.IsMatch(
+                    line,
+                    @"^\s*if\s+" + Regex.Escape(name) +
+                    @"\s*==\s*['""][^'""]+['""]\s+then\s*$",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant) ||
+                Regex.IsMatch(
+                    line,
+                    @"^\s*if\s+['""][^'""]+['""]\s*==\s*" +
+                    Regex.Escape(name) + @"\s+then\s*$",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant));
+
+            if (!isExactBranch)
+                continue;
+
+            var end = FindIndentedBlockEnd(lines, i);
+            if (end > i)
+                protectedRanges.Add((i, end));
+        }
+
+        bool IsProtected(int line) =>
+            protectedRanges.Any(range => line >= range.Start && line <= range.End);
+
+        // Outside proven exact/gated branches, permit only wrapper syntax and
+        // side-effect-free local decoding/reads. Any other call or write means
+        // we cannot move the callback behind a generated prefilter.
+        for (var i = 0; i < lines.Length; i++)
+        {
+            if (IsProtected(i))
+                continue;
+
+            var line = lines[i].Trim();
+            if (string.IsNullOrWhiteSpace(line) ||
+                line.StartsWith("--", StringComparison.Ordinal) ||
+                line.Contains("Observe(", StringComparison.OrdinalIgnoreCase) ||
+                line.Equals("end)", StringComparison.OrdinalIgnoreCase) ||
+                line.Equals("end", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (Regex.IsMatch(
+                    line,
+                    @"^local\s+[A-Za-z_]\w*\s*=\s*[^()]+$",
+                    RegexOptions.CultureInvariant))
+                continue;
+
+            if (Regex.IsMatch(
+                    line,
+                    @"^local\s+[A-Za-z_]\w*\s*=\s*.*(?:GetName|GetType|GetValue|NameToString)\s*\(",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+                continue;
+
+            return false;
+        }
+
+        gateExpression = string.Join(
+            " or ",
+            gateGroups
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(x => x, StringComparer.Ordinal));
+        return !string.IsNullOrWhiteSpace(gateExpression);
+    }
+
+    private static int FindIndentedBlockEnd(IReadOnlyList<string> lines, int start)
+    {
+        if (start < 0 || start >= lines.Count)
+            return -1;
+
+        var indent = lines[start].Length - lines[start].TrimStart().Length;
+        for (var i = start + 1; i < lines.Count; i++)
+        {
+            var trimmed = lines[i].Trim();
+            if (!Regex.IsMatch(
+                    trimmed,
+                    @"^end\s*(?:--.*)?$",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+                continue;
+
+            var candidateIndent = lines[i].Length - lines[i].TrimStart().Length;
+            if (candidateIndent == indent)
+                return i;
+        }
+
+        return -1;
+    }
+
+    private static bool IsRawActionForwardLine(string raw)
+    {
+        var line = raw.Trim();
+        if (string.IsNullOrWhiteSpace(line) || line.StartsWith("--", StringComparison.Ordinal))
+            return false;
+        if (!Regex.IsMatch(line, @"\([^\r\n)]*\baction\b", RegexOptions.IgnoreCase))
+            return false;
+
+        return
+            !line.Contains("GetName", StringComparison.OrdinalIgnoreCase) &&
+            !line.Contains("GetType", StringComparison.OrdinalIgnoreCase) &&
+            !line.Contains("GetValue", StringComparison.OrdinalIgnoreCase) &&
+            !line.Contains("IsAction", StringComparison.OrdinalIgnoreCase) &&
+            !line.Contains("NameToString", StringComparison.OrdinalIgnoreCase) &&
+            !line.Contains("Observe(", StringComparison.OrdinalIgnoreCase) &&
+            !line.Contains("Override(", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool TryResolveStaticDownstreamActionInterest(
