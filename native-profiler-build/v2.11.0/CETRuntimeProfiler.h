@@ -258,6 +258,7 @@ public:
         uint64_t ApproxOwnWallNs{};
         uint64_t HookEvents{};
         uint64_t LineEvents{};
+        uint64_t UnresolvedLineEvents{};
         uint64_t UniqueLines{};
         uint64_t PathTransitions{};
         uint64_t PathFingerprint{};
@@ -292,6 +293,7 @@ public:
         uint64_t RootNetNs{};
         uint64_t HookEvents{};
         uint64_t LineEvents{};
+        uint64_t UnresolvedLineEvents{};
         uint64_t PathTransitions{};
         uint64_t PathFingerprint{1469598103934665603ULL};
         uint64_t LastPathToken{UINT64_MAX};
@@ -813,6 +815,7 @@ public:
                     approxOwnWallNs,
                     state.HookEvents,
                     state.LineEvents,
+                    state.UnresolvedLineEvents,
                     static_cast<uint64_t>(state.Lines.size()),
                     state.PathTransitions,
                     state.PathFingerprint,
@@ -2054,7 +2057,7 @@ public:
             {
                 f << "SampleSequence,RegistrationId,ProfileEpoch,CaptureStartMs,"
                      "CaptureEndMs,Mode,ApproxOwnWallMs,HookEvents,LineEvents,"
-                     "UniqueLines,PathTransitions,PathFingerprint,"
+                     "UnresolvedLineEvents,UniqueLines,PathTransitions,PathFingerprint,"
                      "NestedRegistrationCount,NestedRegistrationMs,LineRowsTruncated,"
                      "DroppedSamplesAtDump,Interpretation\n";
                 f << std::fixed << std::setprecision(6);
@@ -2070,6 +2073,7 @@ public:
                       << (static_cast<double>(row.ApproxOwnWallNs) / 1'000'000.0) << ','
                       << row.HookEvents << ','
                       << row.LineEvents << ','
+                      << row.UnresolvedLineEvents << ','
                       << row.UniqueLines << ','
                       << row.PathTransitions << ','
                       << row.PathFingerprint << ','
@@ -2695,19 +2699,43 @@ private:
 
     static void RecordDeepLine(
         DeepThreadState& aState,
-        int aLine)
+        lua_State* aLuaState,
+        lua_Debug* aDebug)
     {
-        if (aLine <= 0 || aState.Frames.empty())
+        if (!aLuaState || !aDebug || aDebug->currentline <= 0)
             return;
 
-        const auto& frame = aState.Frames.back();
         ++aState.LineEvents;
 
+        // LINE hooks identify the currently executing Lua activation. Do not
+        // infer its source from our CALL/RETURN stack: LuaJIT can interleave C
+        // frames/metamethods in ways that leave the top tracked frame as =[C].
+        // Query the line event's own activation record instead.
+        std::string sourceFile;
+        if (lua_getinfo(aLuaState, "S", aDebug) != 0)
+        {
+            const char* source = aDebug->source ? aDebug->source : "";
+            if (source[0] == '@')
+                ++source;
+            sourceFile = source;
+        }
+
+        if (sourceFile.empty() || sourceFile == "=[C]")
+        {
+            ++aState.UnresolvedLineEvents;
+            if (!aState.Frames.empty())
+                sourceFile = aState.Frames.back().SourceFile;
+        }
+
+        if (sourceFile.empty())
+            sourceFile = "<unresolved>";
+
+        const int line = aDebug->currentline;
+        const uint64_t sourceHash = HashString64(sourceFile);
         const uint64_t token =
-            frame.SourceHash ^
-            (static_cast<uint64_t>(static_cast<uint32_t>(aLine)) *
-             0x9E3779B185EBCA87ULL) ^
-            frame.FunctionIdentity;
+            sourceHash ^
+            (static_cast<uint64_t>(static_cast<uint32_t>(line)) *
+             0x9E3779B185EBCA87ULL);
 
         if (token != aState.LastPathToken &&
             aState.PathTransitions < MaxDeepPathTransitions)
@@ -2719,7 +2747,7 @@ private:
         }
 
         const std::string key =
-            frame.SourceFile + "\x1f" + std::to_string(aLine);
+            sourceFile + "\x1f" + std::to_string(line);
         auto found = aState.Lines.find(key);
         if (found == aState.Lines.end())
         {
@@ -2730,8 +2758,8 @@ private:
             }
 
             DeepLineHit hit;
-            hit.SourceFile = frame.SourceFile;
-            hit.Line = aLine;
+            hit.SourceFile = sourceFile;
+            hit.Line = line;
             hit.Hits = 1;
             aState.Lines.emplace(key, std::move(hit));
         }
@@ -2825,7 +2853,7 @@ private:
 
         if (event == LUA_HOOKLINE)
         {
-            RecordDeepLine(deep, aDebug->currentline);
+            RecordDeepLine(deep, aState, aDebug);
         }
         else if (event == LUA_HOOKRET)
         {
