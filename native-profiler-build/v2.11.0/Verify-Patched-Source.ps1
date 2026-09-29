@@ -30,6 +30,8 @@ try {
         "DeepTraceScope",
         "DeepLuaHook",
         "LUA_MASKLINE",
+        "lua_getinfo(aLuaState, \"S\", aDebug)",
+        "UnresolvedLineEvents",
         "EnterDeepRegistrationBoundary",
         "CET_Runtime_Profile_Deep_Samples.csv",
         "CET_Runtime_Profile_Deep_Lines.csv",

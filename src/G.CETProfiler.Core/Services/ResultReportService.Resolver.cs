@@ -428,6 +428,7 @@ public static partial class ResultReportService
                             approxOwnWallMs = D(row, "ApproxOwnWallMs"),
                             hookEvents = L(row, "HookEvents"),
                             lineEvents = L(row, "LineEvents"),
+                            unresolvedLineEvents = L(row, "UnresolvedLineEvents"),
                             uniqueLines = L(row, "UniqueLines"),
                             pathTransitions = L(row, "PathTransitions"),
                             pathFingerprint = S(row, "PathFingerprint"),
@@ -533,6 +534,14 @@ public static partial class ResultReportService
                         .Where(value => !string.IsNullOrWhiteSpace(value))
                         .Distinct(StringComparer.OrdinalIgnoreCase)
                         .ToArray();
+                    var unresolvedLineEvents = samples.Sum(row =>
+                        L(row, "UnresolvedLineEvents"));
+                    var hasLegacyCLineRows = lineRows.Any(row =>
+                        S(row, "SourceFile").Equals("=[C]", StringComparison.OrdinalIgnoreCase));
+                    var lineSourceReliable =
+                        lineRows.Count > 0 &&
+                        unresolvedLineEvents == 0 &&
+                        !hasLegacyCLineRows;
 
                     return new
                     {
@@ -563,6 +572,8 @@ public static partial class ResultReportService
                                 .Count(),
                             distinctPathFingerprints = pathFingerprints.Length,
                             lineEvidenceRows = lineRows.Count,
+                            unresolvedLineEvents,
+                            lineSourceReliable,
                             nestedRegistrationsExcluded = samples.Sum(row =>
                                 L(row, "NestedRegistrationCount")),
                             hookConflicts = registration is null
@@ -575,7 +586,7 @@ public static partial class ResultReportService
                                 callback.source is not null &&
                                 samples.Any(row =>
                                     S(row, "Mode").Equals("HOTSET", StringComparison.OrdinalIgnoreCase)) &&
-                                lineRows.Count > 0,
+                                lineSourceReliable,
                             spikePathReady = samples.Any(row =>
                                 S(row, "Mode").Equals("SPIKE_CAPTURE", StringComparison.OrdinalIgnoreCase)),
                             multipleObservedPaths = pathFingerprints.Length > 1
