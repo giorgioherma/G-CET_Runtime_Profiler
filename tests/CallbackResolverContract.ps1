@@ -147,6 +147,34 @@ Observe("PlayerPuppet", "OnAction", function(_, action)
 end)
 '@
 
+Write-Mod 'FixtureDownstream' @'
+Observe("PlayerPuppet", "OnAction", function(_, action)
+    local actionName = Game.NameToString(action:GetName())
+    local actionType = action:GetType(action).value
+    if state.camera then
+        controller:HandleInput(actionName, actionType, action)
+    end
+    if actionName == "Jump" then
+        DoJump()
+    end
+end)
+'@
+
+$downstreamDir = Join-Path $mods 'FixtureDownstream'
+@'
+function Controller:HandleInput(actionName, actionType, action)
+    if not self.lock then
+        if actionName == "MoveX" or actionName == "PhotoMode_CameraMovementX" then
+            self.x = action:GetValue(action)
+        elseif actionName == "MoveY" then
+            self.y = action:GetValue(action)
+        end
+    end
+
+    self.isMoving = self.x ~= 0 or self.y ~= 0
+end
+'@ | Set-Content -LiteralPath (Join-Path $downstreamDir 'controller.lua') -Encoding utf8
+
 Write-Mod 'FixtureFrame' @'
 registerForEvent("onUpdate", function(delta)
     DoFrameWork(delta)
@@ -202,6 +230,7 @@ $handoff = @{
         (CallbackRow 110 'FixturePattern' 'observe' 'PlayerPuppet::OnAction' 575 7.5 11.0 'init.lua' 1 12),
         (CallbackRow 108 'FixtureNeighborOverride' 'observe' 'PlayerPuppet::OnAction' 550 7.0 10.0 'init.lua' 1 6),
         (CallbackRow 109 'FixtureDynamic' 'observe' 'PlayerPuppet::OnAction' 500 6.0 8.0 'init.lua' 1 9),
+        (CallbackRow 111 'FixtureDownstream' 'observe' 'PlayerPuppet::OnAction' 490 5.8 7.5 'init.lua' 1 11),
         (CallbackRow 102 'FixtureFrame' 'event' 'onUpdate' 60 5.0 1.0 'init.lua' 1 3),
         (CallbackRow 103 'FixtureUnknown' 'observe' 'PlayerPuppet::SomeOtherMethod' 60 4.0 1.0 'init.lua' 1 3)
     )
@@ -314,6 +343,25 @@ if (!$dynamic.generic.Facts.dynamicActionForward) {
     throw 'Dynamic downstream action-forward fact was not emitted.'
 }
 
+$downstream = Action-For 'FixtureDownstream'
+if (!$downstream.generic.Automatable) {
+    throw 'Finite owner-local downstream action handler was not resolved generically.'
+}
+if ($downstream.generic.Pattern -ne 'ACTION_ROUTING_DOWNSTREAM_STATIC_SET') {
+    throw "Unexpected downstream expansion recipe: $($downstream.generic.Pattern)"
+}
+if (!$downstream.generic.Facts.downstreamExpanded) {
+    throw 'Downstream expansion fact was not emitted.'
+}
+foreach ($expected in @('Jump','MoveX','MoveY','PhotoMode_CameraMovementX')) {
+    if (@($downstream.generic.Facts.actions) -notcontains $expected) {
+        throw "Downstream action expansion lost expected action: $expected"
+    }
+}
+if (@($downstream.generic.Facts.downstreamMethods) -notcontains 'HandleInput') {
+    throw 'Downstream method provenance was not emitted.'
+}
+
 $onUpdate = @($result.callbackFamilies | Where-Object { $_.resolverFamily -eq 'ONUPDATE' }) | Select-Object -First 1
 if ($null -eq $onUpdate) { throw 'onUpdate callback family was not resolved.' }
 $frame = @($onUpdate.topConsumers | Where-Object { $_.owner -eq 'FixtureFrame' }) | Select-Object -First 1
@@ -340,11 +388,11 @@ if ($unknown.registry.matched) {
 if ($null -eq $resolved.pass) {
     throw 'CLI --generate-pass did not return a pass result.'
 }
-if ([int]$resolved.pass.TransformCount -ne 8) {
-    throw "Expected 8 generated V1 transforms, got $($resolved.pass.TransformCount)."
+if ([int]$resolved.pass.TransformCount -ne 9) {
+    throw "Expected 9 generated V1 transforms, got $($resolved.pass.TransformCount)."
 }
-if ([int]$resolved.pass.FileCount -ne 12) {
-    throw "Expected 12 generated replacement files (8 callback + 4 fixed 0-Engine), got $($resolved.pass.FileCount)."
+if ([int]$resolved.pass.FileCount -ne 13) {
+    throw "Expected 13 generated replacement files (9 callback + 4 fixed 0-Engine), got $($resolved.pass.FileCount)."
 }
 if (!(Test-Path -LiteralPath $resolved.pass.ZipPath -PathType Leaf)) {
     throw "Generated pass ZIP is missing: $($resolved.pass.ZipPath)"
@@ -370,6 +418,7 @@ try {
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureAction/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureFrame/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixturePattern/init.lua',
+        'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDownstream/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/modules/ActionRouter.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/modules/Health.lua',
@@ -414,6 +463,13 @@ try {
         throw 'Generated mixed exact+pattern router did not preserve the resolver pattern.'
     }
 
+    $downstreamText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDownstream/init.lua'
+    foreach ($expectedAction in @('Jump','MoveX','MoveY','PhotoMode_CameraMovementX')) {
+        if ($downstreamText -notmatch [regex]::Escape($expectedAction)) {
+            throw "Generated downstream router lost expected action: $expectedAction"
+        }
+    }
+
     $manifest = (Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw) | ConvertFrom-Json
     if ($manifest.policy.selection -ne 'ONLY_AUTOMATABLE_CANDIDATES_FROM_G-CET_Resolver.json') {
         throw 'Generated pass manifest is not resolver-only.'
@@ -421,11 +477,11 @@ try {
     if ($manifest.policy.modNameRules) {
         throw 'Generated pass manifest unexpectedly allows mod-name rules.'
     }
-    if ([int]$manifest.summary.transforms -ne 8) {
+    if ([int]$manifest.summary.transforms -ne 9) {
         throw 'Generated pass manifest transform count is wrong.'
     }
-    if ([int]$manifest.summary.callbackFiles -ne 8) {
-        throw "Expected 8 callback replacement files, got $($manifest.summary.callbackFiles)."
+    if ([int]$manifest.summary.callbackFiles -ne 9) {
+        throw "Expected 9 callback replacement files, got $($manifest.summary.callbackFiles)."
     }
     if ([int]$manifest.summary.fixedRuntimeFiles -ne 4) {
         throw "Expected 4 fixed 0-Engine runtime files, got $($manifest.summary.fixedRuntimeFiles)."
