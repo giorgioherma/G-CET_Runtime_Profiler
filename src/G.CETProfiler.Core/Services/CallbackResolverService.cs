@@ -772,6 +772,25 @@ internal static class CallbackResolverService
             found.Add(match.Groups["action"].Value);
         }
 
+        var downstreamStaticTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (Match match in Regex.Matches(
+                     body,
+                     @"\b(?<table>[A-Za-z_]\w*)\s*\[\s*" + name + @"\s*\]",
+                     RegexOptions.CultureInvariant))
+        {
+            var table = match.Groups["table"].Value;
+            if (!TryReadStaticStringSet(body, table, out var tableActions, out var dynamicWrites) ||
+                dynamicWrites)
+            {
+                actions = Array.Empty<string>();
+                return false;
+            }
+
+            downstreamStaticTables.Add(table);
+            foreach (var action in tableActions)
+                found.Add(action);
+        }
+
         if (found.Count == 0)
         {
             actions = Array.Empty<string>();
@@ -816,6 +835,11 @@ internal static class CallbackResolverService
                     line,
                     @"['""][^'""]+['""]\s*==\s*\b" + name + @"\b",
                     RegexOptions.CultureInvariant) ||
+                downstreamStaticTables.Any(table =>
+                    Regex.IsMatch(
+                        line,
+                        @"\b" + Regex.Escape(table) + @"\s*\[\s*" + name + @"\s*\]",
+                        RegexOptions.CultureInvariant)) ||
                 Regex.IsMatch(
                     line,
                     @"^function\b.*\b" + name + @"\b",
