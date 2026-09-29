@@ -301,7 +301,7 @@ internal static class CallbackResolverService
                 callback,
                 cadenceDecision,
                 out var authorCadence,
-                out var cadenceBlocker))
+                out cadenceBlocker))
         {
             recipes.Add("AUTHOR_CADENCE_WHOLE_CALLBACK");
             evidence.Add(
