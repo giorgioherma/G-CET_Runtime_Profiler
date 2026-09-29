@@ -23,6 +23,8 @@ internal static class Program
             string? mods = null;
             string? game = null;
             string? registry = null;
+            string? passOutput = null;
+            var generatePass = false;
 
             for (var i = 0; i < args.Length; i++)
             {
@@ -32,6 +34,8 @@ internal static class Program
                     case "--mods" when i + 1 < args.Length: mods = args[++i]; break;
                     case "--game" when i + 1 < args.Length: game = args[++i]; break;
                     case "--registry" when i + 1 < args.Length: registry = args[++i]; break;
+                    case "--generate-pass": generatePass = true; break;
+                    case "--pass-output" when i + 1 < args.Length: passOutput = args[++i]; break;
                     case "--json": break;
                     case "--help":
                     case "-h":
@@ -40,6 +44,7 @@ internal static class Program
                             "G-CET Resolver\n\n" +
                             "  --capture <collected result folder> --mods <live CET mods folder> --json\n" +
                             "  --capture <collected result folder> --game <Cyberpunk 2077 root> --json\n" +
+                            "  [--generate-pass] [--pass-output <zip path>]\n" +
                             "  [--registry <high-impact exception knowledge json>]");
                         return 0;
                     default:
@@ -58,6 +63,10 @@ internal static class Program
             }
 
             var result = ResolverService.Resolve(capture, mods, registry);
+            PassBuildResult? pass = null;
+            if (generatePass)
+                pass = ResolverService.GeneratePass(capture, mods, passOutput);
+
             Console.WriteLine(JsonSerializer.Serialize(new
             {
                 ok = true,
@@ -68,7 +77,8 @@ internal static class Program
                 result.RankedCallbackCount,
                 result.GenericResolvedCount,
                 result.RegistryHintCount,
-                result.UnresolvedCount
+                result.UnresolvedCount,
+                pass
             }, JsonOptions));
             return 0;
         }
