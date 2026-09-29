@@ -32,6 +32,7 @@ public:
         std::string SourceFile;
         int SourceLineStart{};
         int SourceLineEnd{};
+        std::atomic<uint64_t> LuaFunctionIdentity{0};
 
         std::atomic<uint64_t> Calls{0};
         std::atomic<uint64_t> InclusiveNs{0};
@@ -40,6 +41,23 @@ public:
         std::atomic<uint64_t> MaxExclusiveNs{0};
         TimelineMod* TimelineOwner{};
         TimelineCallback* OnUpdateTimeline{};
+
+        // Adaptive deep-profiler state. Broad timing remains authoritative;
+        // these fields only control sampled call/return dissection.
+        std::atomic<bool> DeepSelected{false};
+        std::atomic<bool> DeepComplete{false};
+        std::atomic<uint32_t> DeepProfileEpoch{1};
+        std::atomic<uint64_t> DeepSamples{0};
+        std::atomic<uint64_t> DeepTargetSamples{0};
+        std::atomic<uint64_t> DeepSampleStride{1};
+        std::atomic<uint64_t> DeepSampleTicker{0};
+        std::atomic<uint64_t> DeepHookConflicts{0};
+        std::atomic<uint64_t> DeepReuseFromRegistrationId{0};
+        std::atomic<uint64_t> DeepEpochStartCalls{0};
+        std::atomic<uint64_t> DeepEpochStartExclusiveNs{0};
+        std::atomic<uint64_t> DeepBaselineAvgExclusiveNs{0};
+        std::atomic<uint64_t> DeepLastWindowCalls{0};
+        std::atomic<uint64_t> DeepLastWindowExclusiveNs{0};
     };
 
     struct TimelineMod
@@ -161,6 +179,66 @@ public:
         std::vector<SchedulerJobSample> Jobs;
     };
 
+    struct DeepFunctionAggregate
+    {
+        uint64_t RegistrationId{};
+        uint32_t ProfileEpoch{};
+        uint64_t FunctionIdentity{};
+        std::string FunctionKey;
+        std::string FunctionName;
+        std::string What;
+        std::string SourceFile;
+        int SourceLineStart{};
+        int SourceLineEnd{};
+        uint32_t MinDepth{UINT32_MAX};
+        uint64_t Calls{};
+        uint64_t InclusiveNs{};
+        uint64_t ExclusiveNs{};
+        uint64_t MaxInclusiveNs{};
+    };
+
+    struct DeepEdgeAggregate
+    {
+        uint64_t RegistrationId{};
+        uint32_t ProfileEpoch{};
+        std::string ParentFunctionKey;
+        std::string ChildFunctionKey;
+        uint64_t Calls{};
+        uint64_t ChildInclusiveNs{};
+    };
+
+    struct DeepFrame
+    {
+        uint64_t FunctionIdentity{};
+        std::string FunctionKey;
+        std::string FunctionName;
+        std::string What;
+        std::string SourceFile;
+        int SourceLineStart{};
+        int SourceLineEnd{};
+        uint32_t Depth{};
+        std::string ParentFunctionKey;
+        std::chrono::steady_clock::time_point Start{};
+        uint64_t ChildRawNs{};
+        uint64_t ProfilerNs{};
+    };
+
+    struct DeepThreadState
+    {
+        bool Active{false};
+        Counter* CounterPtr{};
+        uint32_t ProfileEpoch{};
+        lua_State* State{};
+        lua_Hook PreviousHook{};
+        int PreviousMask{};
+        int PreviousCount{};
+        uint64_t RootNetNs{};
+        uint64_t HookEvents{};
+        std::vector<DeepFrame> Frames;
+        std::unordered_map<std::string, DeepFunctionAggregate> Functions;
+        std::unordered_map<std::string, DeepEdgeAggregate> Edges;
+    };
+
     using Clock = std::chrono::steady_clock;
 
     static constexpr uint64_t DefaultSpikeThresholdNs = 5'000'000;
@@ -173,6 +251,15 @@ public:
     static constexpr size_t MaxMarkerEvents = 1'000;
     static constexpr size_t MaxSchedulerSpikeEvents = 20'000;
     static constexpr size_t MaxSchedulerFrameBurstEvents = 20'000;
+
+    // Adaptive deep profiling intentionally stays small. Broad profiling
+    // chooses the targets; deep tracing samples only enough future invocations
+    // to explain the hot callback without turning the whole Lua VM into a trace.
+    static constexpr uint64_t DeepWarmupNs = 2'000'000'000ULL;
+    static constexpr uint64_t DeepRebalanceNs = 1'000'000'000ULL;
+    static constexpr size_t MaxDeepHotRegistrations = 6;
+    static constexpr uint64_t DefaultDeepTargetSamples = 24;
+    static constexpr uint64_t ReusedDeepTargetSamples = 6;
 
     enum class CaptureState : uint8_t
     {
@@ -267,6 +354,53 @@ public:
         uint64_t m_childNs{0};
 
         inline static thread_local Scope* s_current = nullptr;
+
+    public:
+        static void ExcludeProfilerOverhead(uint64_t aNs)
+        {
+            if (s_current)
+                s_current->m_childNs += aNs;
+        }
+    };
+
+    class DeepTraceScope
+    {
+    public:
+        DeepTraceScope(Counter* aCounter, lua_State* aState)
+            : m_state(aState)
+        {
+            auto& profiler = CETRuntimeProfiler::Get();
+
+            // Do not query the clock on every callback merely to see whether
+            // the hot set needs refreshing. The cheap thread-local probe makes
+            // the expensive rebalance check sparse while still adapting within
+            // about a second on realistic CET workloads.
+            auto& probe = DeepProbeCounterForThread();
+            ++probe;
+            if (probe <= 8 || (probe & 0x1FFu) == 0)
+                profiler.MaybeRebalanceDeepHotset();
+
+            m_active = profiler.BeginDeepSample(aCounter, aState);
+        }
+
+        DeepTraceScope(const DeepTraceScope&) = delete;
+        DeepTraceScope& operator=(const DeepTraceScope&) = delete;
+
+        ~DeepTraceScope()
+        {
+            if (m_active)
+                CETRuntimeProfiler::Get().EndDeepSample(m_state);
+        }
+
+    private:
+        static uint32_t& DeepProbeCounterForThread()
+        {
+            static thread_local uint32_t value = 0;
+            return value;
+        }
+
+        lua_State* m_state{};
+        bool m_active{false};
     };
 
     static CETRuntimeProfiler& Get()
@@ -292,7 +426,8 @@ public:
     void AttachSource(Counter* aCounter,
                       const std::string& aSourceFile,
                       int aSourceLineStart,
-                      int aSourceLineEnd)
+                      int aSourceLineEnd,
+                      uint64_t aFunctionIdentity = 0)
     {
         if (!aCounter)
             return;
@@ -304,6 +439,176 @@ public:
             aCounter->SourceLineStart = aSourceLineStart;
         if (aSourceLineEnd > 0)
             aCounter->SourceLineEnd = aSourceLineEnd;
+        if (aFunctionIdentity)
+            aCounter->LuaFunctionIdentity.store(
+                aFunctionIdentity, std::memory_order_relaxed);
+    }
+
+    bool BeginDeepSample(Counter* aCounter, lua_State* aState)
+    {
+        if (!aCounter || !aState || !IsCapturing())
+            return false;
+
+        if (!aCounter->DeepSelected.load(std::memory_order_acquire) ||
+            aCounter->DeepComplete.load(std::memory_order_acquire))
+            return false;
+
+        auto& threadState = DeepStateForThread();
+        if (threadState.Active)
+            return false;
+
+        // Respect any debugger/third-party Lua hook. Deep profiling is optional;
+        // broad measurements must never steal or replace another hook.
+        if (lua_gethook(aState) != nullptr)
+        {
+            aCounter->DeepHookConflicts.fetch_add(1, std::memory_order_relaxed);
+            return false;
+        }
+
+        const uint64_t stride = std::max<uint64_t>(
+            1, aCounter->DeepSampleStride.load(std::memory_order_relaxed));
+        const uint64_t sampleTick =
+            aCounter->DeepSampleTicker.fetch_add(1, std::memory_order_relaxed);
+        if (((sampleTick + aCounter->RegistrationId) % stride) != 0)
+            return false;
+
+        const uint64_t target = std::max<uint64_t>(
+            1, aCounter->DeepTargetSamples.load(std::memory_order_relaxed));
+        if (aCounter->DeepSamples.load(std::memory_order_relaxed) >= target)
+            return false;
+
+        if (aCounter->DeepSamples.load(std::memory_order_relaxed) == 0 &&
+            aCounter->DeepEpochStartCalls.load(std::memory_order_relaxed) == 0)
+        {
+            aCounter->DeepEpochStartCalls.store(
+                aCounter->Calls.load(std::memory_order_relaxed),
+                std::memory_order_relaxed);
+            aCounter->DeepEpochStartExclusiveNs.store(
+                aCounter->ExclusiveNs.load(std::memory_order_relaxed),
+                std::memory_order_relaxed);
+        }
+
+        threadState = {};
+        threadState.Active = true;
+        threadState.CounterPtr = aCounter;
+        threadState.ProfileEpoch =
+            aCounter->DeepProfileEpoch.load(std::memory_order_relaxed);
+        threadState.State = aState;
+        threadState.PreviousHook = lua_gethook(aState);
+        threadState.PreviousMask = lua_gethookmask(aState);
+        threadState.PreviousCount = lua_gethookcount(aState);
+        threadState.Frames.reserve(32);
+        threadState.Functions.reserve(64);
+        threadState.Edges.reserve(96);
+
+        lua_sethook(
+            aState,
+            &CETRuntimeProfiler::DeepLuaHook,
+            LUA_MASKCALL | LUA_MASKRET,
+            0);
+        return true;
+    }
+
+    void EndDeepSample(lua_State* aState)
+    {
+        auto& state = DeepStateForThread();
+        if (!state.Active)
+            return;
+
+        lua_State* statePtr = state.State ? state.State : aState;
+        if (statePtr)
+        {
+            lua_sethook(
+                statePtr,
+                state.PreviousHook,
+                state.PreviousMask,
+                state.PreviousCount);
+        }
+
+        const auto end = Clock::now();
+        while (!state.Frames.empty())
+            CompleteDeepFrame(state, end);
+
+        Counter* counter = state.CounterPtr;
+
+        {
+            std::lock_guard lock(m_mutex);
+
+            for (auto& [functionKey, local] : state.Functions)
+            {
+                const std::string aggregateKey =
+                    std::to_string(local.RegistrationId) + "\x1f" +
+                    std::to_string(local.ProfileEpoch) + "\x1f" +
+                    functionKey;
+
+                auto& aggregate = m_deepFunctions[aggregateKey];
+                if (aggregate.FunctionKey.empty())
+                {
+                    aggregate = local;
+                }
+                else
+                {
+                    aggregate.Calls += local.Calls;
+                    aggregate.InclusiveNs += local.InclusiveNs;
+                    aggregate.ExclusiveNs += local.ExclusiveNs;
+                    aggregate.MaxInclusiveNs =
+                        std::max(aggregate.MaxInclusiveNs, local.MaxInclusiveNs);
+                    aggregate.MinDepth =
+                        std::min(aggregate.MinDepth, local.MinDepth);
+                }
+            }
+
+            for (auto& [edgeKey, local] : state.Edges)
+            {
+                const std::string aggregateKey =
+                    std::to_string(local.RegistrationId) + "\x1f" +
+                    std::to_string(local.ProfileEpoch) + "\x1f" +
+                    edgeKey;
+
+                auto& aggregate = m_deepEdges[aggregateKey];
+                if (aggregate.ParentFunctionKey.empty())
+                {
+                    aggregate = local;
+                }
+                else
+                {
+                    aggregate.Calls += local.Calls;
+                    aggregate.ChildInclusiveNs += local.ChildInclusiveNs;
+                }
+            }
+        }
+
+        if (counter)
+        {
+            const uint64_t samples =
+                counter->DeepSamples.fetch_add(1, std::memory_order_relaxed) + 1;
+            const uint64_t target = std::max<uint64_t>(
+                1, counter->DeepTargetSamples.load(std::memory_order_relaxed));
+
+            if (samples >= target)
+            {
+                const uint64_t nowCalls =
+                    counter->Calls.load(std::memory_order_relaxed);
+                const uint64_t nowExclusive =
+                    counter->ExclusiveNs.load(std::memory_order_relaxed);
+                const uint64_t startCalls =
+                    counter->DeepEpochStartCalls.load(std::memory_order_relaxed);
+                const uint64_t startExclusive =
+                    counter->DeepEpochStartExclusiveNs.load(std::memory_order_relaxed);
+
+                if (nowCalls > startCalls && nowExclusive >= startExclusive)
+                {
+                    counter->DeepBaselineAvgExclusiveNs.store(
+                        (nowExclusive - startExclusive) / (nowCalls - startCalls),
+                        std::memory_order_relaxed);
+                }
+
+                counter->DeepComplete.store(true, std::memory_order_release);
+                counter->DeepSelected.store(false, std::memory_order_release);
+            }
+        }
+
+        state = {};
     }
 
     // Registration-time binding: native data only. No sol::environment access,
@@ -367,6 +672,7 @@ public:
         ResetTimelineLocked();
         ResetMarkersLocked();
         ResetSchedulerLocked();
+        ResetDeepLocked();
         m_accumulatedCapture = std::chrono::nanoseconds::zero();
         if (m_state.load(std::memory_order_relaxed) == CaptureState::Running)
         {
@@ -384,6 +690,7 @@ public:
         ResetTimelineLocked();
         ResetMarkersLocked();
         ResetSchedulerLocked();
+        ResetDeepLocked();
         m_accumulatedCapture = std::chrono::nanoseconds::zero();
         m_segmentStarted = Clock::now();
         PublishFastSegmentClockLocked(0);
@@ -455,7 +762,9 @@ public:
             << " | markers=" << m_markers.size()
             << " | schedulerJobs=" << m_schedulerJobs.size()
             << " | schedulerSpikes=" << m_schedulerSpikeEvents.size()
-            << " | schedulerBursts=" << m_schedulerFrameBursts.size();
+            << " | schedulerBursts=" << m_schedulerFrameBursts.size()
+            << " | deepFunctions=" << m_deepFunctions.size()
+            << " | deepEdges=" << m_deepEdges.size();
         return oss.str();
     }
 
@@ -959,6 +1268,27 @@ public:
             int SourceLineEnd{};
         };
 
+        struct DeepRegistrationRow
+        {
+            uint64_t RegistrationId{};
+            std::string Mod;
+            std::string Kind;
+            std::string Target;
+            std::string SourceFile;
+            int SourceLineStart{};
+            int SourceLineEnd{};
+            uint64_t LuaFunctionIdentity{};
+            uint32_t ProfileEpoch{};
+            bool Selected{};
+            bool Complete{};
+            uint64_t ReusedFromRegistrationId{};
+            uint64_t Samples{};
+            uint64_t TargetSamples{};
+            uint64_t SampleStride{};
+            uint64_t HookConflicts{};
+            uint64_t BaselineAvgExclusiveNs{};
+        };
+
         struct SchedulerJobRow
         {
             std::string Owner;
@@ -1007,6 +1337,9 @@ public:
         std::vector<SpikeRow> spikeRows;
         std::vector<TimelineRow> timelineRows;
         std::vector<OnUpdateTimelineRow> onUpdateTimelineRows;
+        std::vector<DeepRegistrationRow> deepRegistrationRows;
+        std::vector<DeepFunctionAggregate> deepFunctionRows;
+        std::vector<DeepEdgeAggregate> deepEdgeRows;
         std::vector<MarkerEvent> markerRows;
         std::vector<SchedulerJobRow> schedulerJobRows;
         std::vector<SchedulerSpikeRow> schedulerSpikeRows;
@@ -1145,6 +1478,38 @@ public:
                     counter->SourceFile, counter->SourceLineStart, counter->SourceLineEnd
                 });
             }
+
+            deepRegistrationRows.reserve(m_counters.size());
+            for (const auto& [_, counter] : m_counters)
+            {
+                deepRegistrationRows.push_back({
+                    counter->RegistrationId,
+                    counter->Mod,
+                    counter->Kind,
+                    counter->Target,
+                    counter->SourceFile,
+                    counter->SourceLineStart,
+                    counter->SourceLineEnd,
+                    counter->LuaFunctionIdentity.load(std::memory_order_relaxed),
+                    counter->DeepProfileEpoch.load(std::memory_order_relaxed),
+                    counter->DeepSelected.load(std::memory_order_relaxed),
+                    counter->DeepComplete.load(std::memory_order_relaxed),
+                    counter->DeepReuseFromRegistrationId.load(std::memory_order_relaxed),
+                    counter->DeepSamples.load(std::memory_order_relaxed),
+                    counter->DeepTargetSamples.load(std::memory_order_relaxed),
+                    counter->DeepSampleStride.load(std::memory_order_relaxed),
+                    counter->DeepHookConflicts.load(std::memory_order_relaxed),
+                    counter->DeepBaselineAvgExclusiveNs.load(std::memory_order_relaxed)
+                });
+            }
+
+            deepFunctionRows.reserve(m_deepFunctions.size());
+            for (const auto& [_, row] : m_deepFunctions)
+                deepFunctionRows.push_back(row);
+
+            deepEdgeRows.reserve(m_deepEdges.size());
+            for (const auto& [_, row] : m_deepEdges)
+                deepEdgeRows.push_back(row);
 
             markerRows = m_markers;
 
@@ -1342,6 +1707,141 @@ public:
                       << timelineBucketMs << ','
                       << droppedOnUpdateTimelineEvents << ','
                       << "continuous-onupdate-callback-correlation"
+                      << '\n';
+                }
+            }
+        }
+
+        // -----------------------------------------------------------------
+        // ADAPTIVE DEEP PROFILER: sampled Lua call/return dissection for the
+        // registrations broad profiling promoted during this capture.
+        // These rows explain composition only; absolute callback timing remains
+        // CET_Runtime_Profile_Detail.csv.
+        // -----------------------------------------------------------------
+        {
+            std::sort(deepRegistrationRows.begin(), deepRegistrationRows.end(),
+                      [](const DeepRegistrationRow& a, const DeepRegistrationRow& b)
+                      {
+                          return a.RegistrationId < b.RegistrationId;
+                      });
+
+            const auto path =
+                outputRoot / "CET_Runtime_Profile_Deep_Registrations.csv";
+            std::ofstream f(path, std::ios::trunc);
+            if (f)
+            {
+                f << "RegistrationId,Mod,Kind,Target,SourceFile,SourceLineStart,"
+                     "SourceLineEnd,LuaFunctionIdentity,ProfileEpoch,Selected,"
+                     "Complete,ReusedFromRegistrationId,Samples,TargetSamples,"
+                     "SampleStride,HookConflicts,BaselineAvgExclusiveUs,Interpretation\n";
+                f << std::fixed << std::setprecision(6);
+
+                for (const auto& row : deepRegistrationRows)
+                {
+                    f << row.RegistrationId << ','
+                      << Csv(row.Mod) << ','
+                      << Csv(row.Kind) << ','
+                      << Csv(row.Target) << ','
+                      << Csv(row.SourceFile) << ','
+                      << row.SourceLineStart << ','
+                      << row.SourceLineEnd << ','
+                      << row.LuaFunctionIdentity << ','
+                      << row.ProfileEpoch << ','
+                      << (row.Selected ? 1 : 0) << ','
+                      << (row.Complete ? 1 : 0) << ','
+                      << row.ReusedFromRegistrationId << ','
+                      << row.Samples << ','
+                      << row.TargetSamples << ','
+                      << row.SampleStride << ','
+                      << row.HookConflicts << ','
+                      << (static_cast<double>(row.BaselineAvgExclusiveNs) / 1'000.0) << ','
+                      << "adaptive-hotset-sampled-call-return"
+                      << '\n';
+                }
+            }
+        }
+
+        {
+            std::sort(deepFunctionRows.begin(), deepFunctionRows.end(),
+                      [](const DeepFunctionAggregate& a, const DeepFunctionAggregate& b)
+                      {
+                          if (a.RegistrationId != b.RegistrationId)
+                              return a.RegistrationId < b.RegistrationId;
+                          if (a.ProfileEpoch != b.ProfileEpoch)
+                              return a.ProfileEpoch < b.ProfileEpoch;
+                          if (a.ExclusiveNs != b.ExclusiveNs)
+                              return a.ExclusiveNs > b.ExclusiveNs;
+                          return a.Calls > b.Calls;
+                      });
+
+            const auto path =
+                outputRoot / "CET_Runtime_Profile_Deep_Functions.csv";
+            std::ofstream f(path, std::ios::trunc);
+            if (f)
+            {
+                f << "RegistrationId,ProfileEpoch,FunctionIdentity,FunctionKey,"
+                     "FunctionName,What,SourceFile,SourceLineStart,SourceLineEnd,"
+                     "MinDepth,Calls,InclusiveMs,ExclusiveMs,AvgExclusiveUs,"
+                     "MaxInclusiveMs,Interpretation\n";
+                f << std::fixed << std::setprecision(6);
+
+                for (const auto& row : deepFunctionRows)
+                {
+                    const double avgExclusiveUs =
+                        row.Calls
+                            ? static_cast<double>(row.ExclusiveNs) /
+                                  1'000.0 / static_cast<double>(row.Calls)
+                            : 0.0;
+                    f << row.RegistrationId << ','
+                      << row.ProfileEpoch << ','
+                      << row.FunctionIdentity << ','
+                      << Csv(row.FunctionKey) << ','
+                      << Csv(row.FunctionName) << ','
+                      << Csv(row.What) << ','
+                      << Csv(row.SourceFile) << ','
+                      << row.SourceLineStart << ','
+                      << row.SourceLineEnd << ','
+                      << (row.MinDepth == UINT32_MAX ? 0 : row.MinDepth) << ','
+                      << row.Calls << ','
+                      << (static_cast<double>(row.InclusiveNs) / 1'000'000.0) << ','
+                      << (static_cast<double>(row.ExclusiveNs) / 1'000'000.0) << ','
+                      << avgExclusiveUs << ','
+                      << (static_cast<double>(row.MaxInclusiveNs) / 1'000'000.0) << ','
+                      << "sampled-relative-composition-not-absolute-runtime"
+                      << '\n';
+                }
+            }
+        }
+
+        {
+            std::sort(deepEdgeRows.begin(), deepEdgeRows.end(),
+                      [](const DeepEdgeAggregate& a, const DeepEdgeAggregate& b)
+                      {
+                          if (a.RegistrationId != b.RegistrationId)
+                              return a.RegistrationId < b.RegistrationId;
+                          if (a.ProfileEpoch != b.ProfileEpoch)
+                              return a.ProfileEpoch < b.ProfileEpoch;
+                          return a.ChildInclusiveNs > b.ChildInclusiveNs;
+                      });
+
+            const auto path =
+                outputRoot / "CET_Runtime_Profile_Deep_Edges.csv";
+            std::ofstream f(path, std::ios::trunc);
+            if (f)
+            {
+                f << "RegistrationId,ProfileEpoch,ParentFunctionKey,"
+                     "ChildFunctionKey,Calls,ChildInclusiveMs,Interpretation\n";
+                f << std::fixed << std::setprecision(6);
+
+                for (const auto& row : deepEdgeRows)
+                {
+                    f << row.RegistrationId << ','
+                      << row.ProfileEpoch << ','
+                      << Csv(row.ParentFunctionKey) << ','
+                      << Csv(row.ChildFunctionKey) << ','
+                      << row.Calls << ','
+                      << (static_cast<double>(row.ChildInclusiveNs) / 1'000'000.0) << ','
+                      << "sampled-call-edge"
                       << '\n';
                 }
             }
@@ -1747,6 +2247,484 @@ public:
     }
 
 private:
+    static DeepThreadState& DeepStateForThread()
+    {
+        static thread_local DeepThreadState state;
+        return state;
+    }
+
+    static std::string DeepFunctionKey(
+        uint64_t aIdentity,
+        const std::string& aSource,
+        int aStart,
+        int aEnd,
+        const std::string& aName,
+        const std::string& aWhat)
+    {
+        std::ostringstream oss;
+        oss << std::hex << aIdentity << std::dec
+            << '|' << aSource
+            << '|' << aStart
+            << '|' << aEnd
+            << '|' << aName
+            << '|' << aWhat;
+        return oss.str();
+    }
+
+    static DeepFrame DescribeDeepFrame(
+        lua_State* aState,
+        lua_Debug* aDebug,
+        uint32_t aDepth,
+        const std::string& aParentKey)
+    {
+        DeepFrame frame;
+        frame.Depth = aDepth;
+        frame.ParentFunctionKey = aParentKey;
+
+        if (!aState || !aDebug || lua_getinfo(aState, "nSf", aDebug) == 0)
+        {
+            frame.FunctionKey = "<unresolved>";
+            frame.FunctionName = "<unresolved>";
+            frame.What = "unknown";
+            return frame;
+        }
+
+        const void* identity = lua_topointer(aState, -1);
+        lua_pop(aState, 1);
+        frame.FunctionIdentity =
+            static_cast<uint64_t>(reinterpret_cast<uintptr_t>(identity));
+
+        const char* source = aDebug->source ? aDebug->source : "";
+        if (source[0] == '@')
+            ++source;
+
+        frame.SourceFile = source;
+        frame.SourceLineStart = aDebug->linedefined;
+        frame.SourceLineEnd = aDebug->lastlinedefined;
+        frame.FunctionName =
+            aDebug->name && aDebug->name[0] ? aDebug->name : "<anonymous>";
+        frame.What =
+            aDebug->what && aDebug->what[0] ? aDebug->what : "unknown";
+        frame.FunctionKey = DeepFunctionKey(
+            frame.FunctionIdentity,
+            frame.SourceFile,
+            frame.SourceLineStart,
+            frame.SourceLineEnd,
+            frame.FunctionName,
+            frame.What);
+        return frame;
+    }
+
+    static void CompleteDeepFrame(
+        DeepThreadState& aState,
+        Clock::time_point aEnd)
+    {
+        if (aState.Frames.empty())
+            return;
+
+        DeepFrame frame = std::move(aState.Frames.back());
+        aState.Frames.pop_back();
+
+        const uint64_t rawNs = static_cast<uint64_t>(
+            std::max<int64_t>(
+                0,
+                std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    aEnd - frame.Start).count()));
+
+        const uint64_t profilerNs =
+            std::min(rawNs, frame.ProfilerNs);
+        const uint64_t inclusiveNs = rawNs - profilerNs;
+
+        const uint64_t excludedNs =
+            std::min(rawNs, frame.ChildRawNs + profilerNs);
+        const uint64_t exclusiveNs = rawNs - excludedNs;
+
+        const std::string localKey = frame.FunctionKey;
+        auto& aggregate = aState.Functions[localKey];
+        if (aggregate.FunctionKey.empty())
+        {
+            aggregate.RegistrationId =
+                aState.CounterPtr ? aState.CounterPtr->RegistrationId : 0;
+            aggregate.ProfileEpoch = aState.ProfileEpoch;
+            aggregate.FunctionIdentity = frame.FunctionIdentity;
+            aggregate.FunctionKey = frame.FunctionKey;
+            aggregate.FunctionName = frame.FunctionName;
+            aggregate.What = frame.What;
+            aggregate.SourceFile = frame.SourceFile;
+            aggregate.SourceLineStart = frame.SourceLineStart;
+            aggregate.SourceLineEnd = frame.SourceLineEnd;
+            aggregate.MinDepth = frame.Depth;
+        }
+
+        ++aggregate.Calls;
+        aggregate.InclusiveNs += inclusiveNs;
+        aggregate.ExclusiveNs += exclusiveNs;
+        aggregate.MaxInclusiveNs =
+            std::max(aggregate.MaxInclusiveNs, inclusiveNs);
+        aggregate.MinDepth =
+            std::min(aggregate.MinDepth, frame.Depth);
+
+        if (frame.Depth == 0)
+            aState.RootNetNs += inclusiveNs;
+
+        if (!frame.ParentFunctionKey.empty())
+        {
+            const std::string edgeKey =
+                frame.ParentFunctionKey + "\x1f" + frame.FunctionKey;
+            auto& edge = aState.Edges[edgeKey];
+            if (edge.ParentFunctionKey.empty())
+            {
+                edge.RegistrationId =
+                    aState.CounterPtr ? aState.CounterPtr->RegistrationId : 0;
+                edge.ProfileEpoch = aState.ProfileEpoch;
+                edge.ParentFunctionKey = frame.ParentFunctionKey;
+                edge.ChildFunctionKey = frame.FunctionKey;
+            }
+            ++edge.Calls;
+            edge.ChildInclusiveNs += inclusiveNs;
+        }
+
+        if (!aState.Frames.empty())
+            aState.Frames.back().ChildRawNs += rawNs;
+    }
+
+    static void DeepLuaHook(lua_State* aState, lua_Debug* aDebug)
+    {
+        auto& deep = DeepStateForThread();
+        if (!deep.Active || deep.State != aState || !aDebug)
+            return;
+
+        const auto hookStart = Clock::now();
+
+        const int event = aDebug->event;
+        if (event == LUA_HOOKRET)
+        {
+            CompleteDeepFrame(deep, hookStart);
+        }
+#ifdef LUA_HOOKTAILCALL
+        else if (event == LUA_HOOKTAILCALL)
+        {
+            CompleteDeepFrame(deep, hookStart);
+
+            const std::string parentKey =
+                deep.Frames.empty()
+                    ? std::string()
+                    : deep.Frames.back().FunctionKey;
+            DeepFrame frame = DescribeDeepFrame(
+                aState,
+                aDebug,
+                static_cast<uint32_t>(deep.Frames.size()),
+                parentKey);
+            deep.Frames.push_back(std::move(frame));
+        }
+#endif
+        else if (event == LUA_HOOKCALL)
+        {
+            const std::string parentKey =
+                deep.Frames.empty()
+                    ? std::string()
+                    : deep.Frames.back().FunctionKey;
+            DeepFrame frame = DescribeDeepFrame(
+                aState,
+                aDebug,
+                static_cast<uint32_t>(deep.Frames.size()),
+                parentKey);
+            deep.Frames.push_back(std::move(frame));
+        }
+
+        const auto hookEnd = Clock::now();
+        const uint64_t hookNs = static_cast<uint64_t>(
+            std::max<int64_t>(
+                0,
+                std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    hookEnd - hookStart).count()));
+
+        if (event == LUA_HOOKCALL)
+        {
+            if (deep.Frames.size() >= 2)
+                deep.Frames[deep.Frames.size() - 2].ProfilerNs += hookNs;
+            if (!deep.Frames.empty())
+                deep.Frames.back().Start = hookEnd;
+        }
+#ifdef LUA_HOOKTAILCALL
+        else if (event == LUA_HOOKTAILCALL)
+        {
+            if (deep.Frames.size() >= 2)
+                deep.Frames[deep.Frames.size() - 2].ProfilerNs += hookNs;
+            if (!deep.Frames.empty())
+                deep.Frames.back().Start = hookEnd;
+        }
+#endif
+        else if (event == LUA_HOOKRET)
+        {
+            if (!deep.Frames.empty())
+                deep.Frames.back().ProfilerNs += hookNs;
+        }
+
+        ++deep.HookEvents;
+        Scope::ExcludeProfilerOverhead(hookNs);
+    }
+
+    void MaybeRebalanceDeepHotset()
+    {
+        if (!IsCapturing())
+            return;
+
+        const auto now = Clock::now();
+        const int64_t nowTicks = ClockTicksNs(now);
+        auto nextTicks =
+            m_nextDeepRebalanceTicksNs.load(std::memory_order_relaxed);
+        if (nowTicks < nextTicks)
+            return;
+
+        if (!m_nextDeepRebalanceTicksNs.compare_exchange_strong(
+                nextTicks,
+                nowTicks + static_cast<int64_t>(DeepRebalanceNs),
+                std::memory_order_acq_rel,
+                std::memory_order_relaxed))
+        {
+            return;
+        }
+
+        const uint64_t captureNs = FastCapturedNanoseconds(now);
+        if (captureNs < DeepWarmupNs)
+            return;
+
+        struct Candidate
+        {
+            Counter* CounterPtr{};
+            double Score{};
+            double WindowCallsPerSecond{};
+            double WindowMsPerSecond{};
+        };
+
+        std::vector<Candidate> candidates;
+
+        std::lock_guard lock(m_mutex);
+
+        const uint64_t previousCaptureNs = m_lastDeepRebalanceCaptureNs;
+        const uint64_t windowNs =
+            previousCaptureNs > 0 && captureNs > previousCaptureNs
+                ? captureNs - previousCaptureNs
+                : captureNs;
+        m_lastDeepRebalanceCaptureNs = captureNs;
+
+        const double windowSeconds =
+            std::max(0.001, static_cast<double>(windowNs) / 1'000'000'000.0);
+
+        for (auto& [_, counterPtr] : m_counters)
+        {
+            auto* counter = counterPtr.get();
+            counter->DeepSelected.store(false, std::memory_order_relaxed);
+
+            const uint64_t calls =
+                counter->Calls.load(std::memory_order_relaxed);
+            const uint64_t exclusive =
+                counter->ExclusiveNs.load(std::memory_order_relaxed);
+            const uint64_t previousCalls =
+                counter->DeepLastWindowCalls.exchange(
+                    calls, std::memory_order_relaxed);
+            const uint64_t previousExclusive =
+                counter->DeepLastWindowExclusiveNs.exchange(
+                    exclusive, std::memory_order_relaxed);
+
+            const uint64_t deltaCalls =
+                calls >= previousCalls ? calls - previousCalls : calls;
+            const uint64_t deltaExclusive =
+                exclusive >= previousExclusive
+                    ? exclusive - previousExclusive
+                    : exclusive;
+
+            const double callsPerSecond =
+                static_cast<double>(deltaCalls) / windowSeconds;
+            const double msPerSecond =
+                static_cast<double>(deltaExclusive) /
+                1'000'000.0 / windowSeconds;
+
+            if (counter->DeepComplete.load(std::memory_order_relaxed))
+            {
+                const uint64_t baseline =
+                    counter->DeepBaselineAvgExclusiveNs.load(
+                        std::memory_order_relaxed);
+                if (baseline > 0 && deltaCalls >= 5 && msPerSecond >= 0.5)
+                {
+                    const uint64_t windowAverage =
+                        deltaExclusive / std::max<uint64_t>(1, deltaCalls);
+                    const double ratio =
+                        static_cast<double>(windowAverage) /
+                        static_cast<double>(baseline);
+
+                    if (ratio >= 2.0 || ratio <= 0.50)
+                    {
+                        counter->DeepComplete.store(
+                            false, std::memory_order_relaxed);
+                        counter->DeepSamples.store(
+                            0, std::memory_order_relaxed);
+                        counter->DeepSampleTicker.store(
+                            0, std::memory_order_relaxed);
+                        counter->DeepTargetSamples.store(
+                            DefaultDeepTargetSamples,
+                            std::memory_order_relaxed);
+                        counter->DeepReuseFromRegistrationId.store(
+                            0, std::memory_order_relaxed);
+                        counter->DeepEpochStartCalls.store(
+                            0, std::memory_order_relaxed);
+                        counter->DeepEpochStartExclusiveNs.store(
+                            0, std::memory_order_relaxed);
+                        counter->DeepBaselineAvgExclusiveNs.store(
+                            0, std::memory_order_relaxed);
+                        counter->DeepProfileEpoch.fetch_add(
+                            1, std::memory_order_relaxed);
+                    }
+                }
+            }
+
+            if (counter->DeepComplete.load(std::memory_order_relaxed))
+                continue;
+
+            if (counter->Mod == "0-Engine" ||
+                counter->Mod == "CETProfilerControls" ||
+                calls < 2)
+            {
+                continue;
+            }
+
+            const double maxMs =
+                static_cast<double>(
+                    counter->MaxExclusiveNs.load(std::memory_order_relaxed)) /
+                1'000'000.0;
+
+            const bool sustained = msPerSecond >= 1.0;
+            const bool exceptionalSpike = maxMs >= 5.0;
+            const bool highTraffic =
+                callsPerSecond >= 500.0 && msPerSecond >= 0.5;
+
+            if (!sustained && !exceptionalSpike && !highTraffic)
+                continue;
+
+            double score = msPerSecond + std::min(maxMs, 100.0) * 0.35;
+            if (highTraffic)
+                score += msPerSecond * 0.20;
+
+            uint64_t stride = 1;
+            if (callsPerSecond >= 1000.0)
+                stride = 512;
+            else if (callsPerSecond >= 250.0)
+                stride = 128;
+            else if (callsPerSecond >= 60.0)
+                stride = 32;
+            else if (callsPerSecond >= 10.0)
+                stride = 8;
+
+            counter->DeepSampleStride.store(
+                stride, std::memory_order_relaxed);
+
+            uint64_t reusedFrom = 0;
+            const uint64_t identity =
+                counter->LuaFunctionIdentity.load(std::memory_order_relaxed);
+            if (identity)
+            {
+                for (const auto& [__, otherPtr] : m_counters)
+                {
+                    const auto* other = otherPtr.get();
+                    if (other == counter ||
+                        other->Mod != counter->Mod ||
+                        other->LuaFunctionIdentity.load(std::memory_order_relaxed) != identity ||
+                        !other->DeepComplete.load(std::memory_order_relaxed))
+                    {
+                        continue;
+                    }
+
+                    reusedFrom = other->RegistrationId;
+                    break;
+                }
+            }
+
+            if (reusedFrom)
+            {
+                counter->DeepReuseFromRegistrationId.store(
+                    reusedFrom, std::memory_order_relaxed);
+                counter->DeepTargetSamples.store(
+                    ReusedDeepTargetSamples, std::memory_order_relaxed);
+                score *= 0.35;
+            }
+            else
+            {
+                counter->DeepReuseFromRegistrationId.store(
+                    0, std::memory_order_relaxed);
+                counter->DeepTargetSamples.store(
+                    DefaultDeepTargetSamples, std::memory_order_relaxed);
+            }
+
+            candidates.push_back({
+                counter,
+                score,
+                callsPerSecond,
+                msPerSecond
+            });
+        }
+
+        std::sort(candidates.begin(), candidates.end(),
+                  [](const Candidate& a, const Candidate& b)
+                  {
+                      if (a.Score != b.Score)
+                          return a.Score > b.Score;
+                      if (a.WindowMsPerSecond != b.WindowMsPerSecond)
+                          return a.WindowMsPerSecond > b.WindowMsPerSecond;
+                      return a.WindowCallsPerSecond > b.WindowCallsPerSecond;
+                  });
+
+        const size_t selected =
+            std::min(MaxDeepHotRegistrations, candidates.size());
+        for (size_t i = 0; i < selected; ++i)
+        {
+            candidates[i].CounterPtr->DeepSelected.store(
+                true, std::memory_order_release);
+        }
+    }
+
+    void ResetDeepLocked()
+    {
+        m_deepFunctions.clear();
+        m_deepEdges.clear();
+        m_lastDeepRebalanceCaptureNs = 0;
+        m_nextDeepRebalanceTicksNs.store(0, std::memory_order_relaxed);
+
+        for (auto& [_, counter] : m_counters)
+        {
+            counter->DeepSelected.store(false, std::memory_order_relaxed);
+            counter->DeepComplete.store(false, std::memory_order_relaxed);
+            counter->DeepProfileEpoch.store(1, std::memory_order_relaxed);
+            counter->DeepSamples.store(0, std::memory_order_relaxed);
+            counter->DeepTargetSamples.store(
+                DefaultDeepTargetSamples, std::memory_order_relaxed);
+            counter->DeepSampleStride.store(1, std::memory_order_relaxed);
+            counter->DeepSampleTicker.store(0, std::memory_order_relaxed);
+            counter->DeepHookConflicts.store(0, std::memory_order_relaxed);
+            counter->DeepReuseFromRegistrationId.store(
+                0, std::memory_order_relaxed);
+            counter->DeepEpochStartCalls.store(0, std::memory_order_relaxed);
+            counter->DeepEpochStartExclusiveNs.store(
+                0, std::memory_order_relaxed);
+            counter->DeepBaselineAvgExclusiveNs.store(
+                0, std::memory_order_relaxed);
+            counter->DeepLastWindowCalls.store(0, std::memory_order_relaxed);
+            counter->DeepLastWindowExclusiveNs.store(
+                0, std::memory_order_relaxed);
+        }
+
+        auto& deep = DeepStateForThread();
+        if (deep.Active && deep.State)
+        {
+            lua_sethook(
+                deep.State,
+                deep.PreviousHook,
+                deep.PreviousMask,
+                deep.PreviousCount);
+        }
+        deep = {};
+    }
+
     Counter* RegisterLocked(const std::string& aMod,
                             const std::string& aKind,
                             const std::string& aTarget,
@@ -1768,6 +2746,8 @@ private:
         counter->Mod = normalizedMod;
         counter->Kind = aKind;
         counter->Target = aTarget;
+        counter->DeepTargetSamples.store(
+            DefaultDeepTargetSamples, std::memory_order_relaxed);
 
         auto timelineFound = m_timelineMods.find(normalizedMod);
         if (timelineFound == m_timelineMods.end())
@@ -2120,6 +3100,8 @@ private:
     std::unordered_map<std::string, std::unique_ptr<SchedulerJobCounter>> m_schedulerJobs;
     std::vector<SchedulerSpikeEvent> m_schedulerSpikeEvents;
     std::vector<SchedulerFrameBurstEvent> m_schedulerFrameBursts;
+    std::unordered_map<std::string, DeepFunctionAggregate> m_deepFunctions;
+    std::unordered_map<std::string, DeepEdgeAggregate> m_deepEdges;
     std::filesystem::path m_outputRoot;
     uint64_t m_captureGeneration{0};
     uint64_t m_dumpedGeneration{0};
@@ -2131,6 +3113,8 @@ private:
     std::atomic<uint64_t> m_schedulerFrameBurstThresholdNs{DefaultSchedulerFrameBurstThresholdNs};
     std::atomic<int64_t> m_fastSegmentStartedTicksNs{0};
     std::atomic<uint64_t> m_fastSegmentBaseCaptureNs{0};
+    std::atomic<int64_t> m_nextDeepRebalanceTicksNs{0};
+    uint64_t m_lastDeepRebalanceCaptureNs{0};
     Clock::time_point m_segmentStarted{};
     std::chrono::nanoseconds m_accumulatedCapture{};
     uint64_t m_nextSpikeSequence{};

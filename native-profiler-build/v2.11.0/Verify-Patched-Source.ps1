@@ -20,7 +20,17 @@ try {
     $scriptContext = Get-Content ".\src\scripting\ScriptContext.cpp" -Raw
     $functionOverride = Get-Content ".\src\scripting\FunctionOverride.cpp" -Raw
 
-    foreach ($marker in @("RegistrationId", "SourceFile", "SourceLineStart", "SourceLineEnd", "AttachSource")) {
+    foreach ($marker in @(
+        "RegistrationId",
+        "SourceFile",
+        "SourceLineStart",
+        "SourceLineEnd",
+        "LuaFunctionIdentity",
+        "AttachSource",
+        "DeepTraceScope",
+        "DeepLuaHook",
+        "CET_Runtime_Profile_Deep_Functions.csv"
+    )) {
         if (-not $profilerHeader.Contains($marker)) {
             throw "Profiler callback-identity marker missing from CETRuntimeProfiler.h: $marker"
         }
@@ -32,11 +42,12 @@ try {
     }
 
     if (-not $functionOverride.Contains("AttachSource") -or
-        -not $functionOverride.Contains("context@")) {
-        throw "FunctionOverride instance/source attribution was not patched."
+        -not $functionOverride.Contains("context@") -or
+        -not $functionOverride.Contains("DeepTraceScope")) {
+        throw "FunctionOverride instance/source/deep attribution was not patched."
     }
 
-    "Callback identity/source verification: PASS"
+    "Callback identity/source/deep verification: PASS"
 }
 finally {
     Pop-Location

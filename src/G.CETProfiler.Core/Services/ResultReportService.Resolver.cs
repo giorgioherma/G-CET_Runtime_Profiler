@@ -19,6 +19,9 @@ public static partial class ResultReportService
         var timeline = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Timeline.csv"));
         var onUpdateTimeline = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_OnUpdateTimeline.csv"));
         var markers = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Markers.csv"));
+        var deepRegistrations = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Deep_Registrations.csv"));
+        var deepFunctions = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Deep_Functions.csv"));
+        var deepEdges = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Deep_Edges.csv"));
 
         var callbacks = detail
             .Select(r => new ResolverCallbackMetric
@@ -269,7 +272,7 @@ public static partial class ResultReportService
 
         return new
         {
-            schemaVersion = "1.3",
+            schemaVersion = "1.4",
             generatedUtc = DateTime.UtcNow.ToString("O"),
             interop = new
             {
@@ -308,7 +311,10 @@ public static partial class ResultReportService
                 droppedSpikeEvents,
                 callbackRegistrationIdsAvailable = callbacks.Any(x => x.RegistrationId > 0),
                 callbackSourceLocationsAvailable = callbacks.Any(x => !string.IsNullOrWhiteSpace(x.SourceFile)),
-                callbackSourceLocationCount = callbacks.Count(x => !string.IsNullOrWhiteSpace(x.SourceFile))
+                callbackSourceLocationCount = callbacks.Count(x => !string.IsNullOrWhiteSpace(x.SourceFile)),
+                adaptiveDeepProfilingAvailable = deepRegistrations.Count > 0,
+                adaptiveDeepFunctionsAvailable = deepFunctions.Count > 0,
+                adaptiveDeepEdgesAvailable = deepEdges.Count > 0
             },
             capture = new
             {
@@ -321,6 +327,72 @@ public static partial class ResultReportService
                 averageFps = averageFps is double fps ? Round(fps, 3) : (double?)null
             },
             scenarios = scenarioAnalysis.Scenarios,
+            deepProfiling = new
+            {
+                available = deepRegistrations.Count > 0,
+                mode = "adaptive-runtime-hotset-sampled-lua-call-return",
+                note = "Broad callback timing remains authoritative. Deep timings are sampled composition evidence and must not be added to callback totals.",
+                registrations = deepRegistrations
+                    .Select(row => new
+                    {
+                        registrationId = L(row, "RegistrationId"),
+                        owner = S(row, "Mod", "Owner"),
+                        kind = S(row, "Kind"),
+                        target = S(row, "Target"),
+                        sourceFile = S(row, "SourceFile"),
+                        sourceLineStart = L(row, "SourceLineStart"),
+                        sourceLineEnd = L(row, "SourceLineEnd"),
+                        luaFunctionIdentity = L(row, "LuaFunctionIdentity"),
+                        profileEpoch = L(row, "ProfileEpoch"),
+                        selected = L(row, "Selected") != 0,
+                        complete = L(row, "Complete") != 0,
+                        reusedFromRegistrationId = L(row, "ReusedFromRegistrationId"),
+                        samples = L(row, "Samples"),
+                        targetSamples = L(row, "TargetSamples"),
+                        sampleStride = L(row, "SampleStride"),
+                        hookConflicts = L(row, "HookConflicts"),
+                        baselineAvgExclusiveUs = D(row, "BaselineAvgExclusiveUs")
+                    })
+                    .OrderBy(x => x.registrationId)
+                    .ToArray(),
+                functions = deepFunctions
+                    .Select(row => new
+                    {
+                        registrationId = L(row, "RegistrationId"),
+                        profileEpoch = L(row, "ProfileEpoch"),
+                        functionIdentity = L(row, "FunctionIdentity"),
+                        functionKey = S(row, "FunctionKey"),
+                        functionName = S(row, "FunctionName"),
+                        what = S(row, "What"),
+                        sourceFile = S(row, "SourceFile"),
+                        sourceLineStart = L(row, "SourceLineStart"),
+                        sourceLineEnd = L(row, "SourceLineEnd"),
+                        minDepth = L(row, "MinDepth"),
+                        calls = L(row, "Calls"),
+                        inclusiveMs = D(row, "InclusiveMs"),
+                        exclusiveMs = D(row, "ExclusiveMs"),
+                        avgExclusiveUs = D(row, "AvgExclusiveUs"),
+                        maxInclusiveMs = D(row, "MaxInclusiveMs")
+                    })
+                    .OrderBy(x => x.registrationId)
+                    .ThenBy(x => x.profileEpoch)
+                    .ThenByDescending(x => x.exclusiveMs)
+                    .ToArray(),
+                edges = deepEdges
+                    .Select(row => new
+                    {
+                        registrationId = L(row, "RegistrationId"),
+                        profileEpoch = L(row, "ProfileEpoch"),
+                        parentFunctionKey = S(row, "ParentFunctionKey"),
+                        childFunctionKey = S(row, "ChildFunctionKey"),
+                        calls = L(row, "Calls"),
+                        childInclusiveMs = D(row, "ChildInclusiveMs")
+                    })
+                    .OrderBy(x => x.registrationId)
+                    .ThenBy(x => x.profileEpoch)
+                    .ThenByDescending(x => x.childInclusiveMs)
+                    .ToArray()
+            },
             families,
             owners = ownerRows,
             callbacks = callbackRows

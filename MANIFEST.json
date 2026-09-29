@@ -26,7 +26,10 @@
     "CET_Runtime_Profile_Markers.csv",
     "CET_Runtime_Profile_Scheduler_ByJob.csv",
     "CET_Runtime_Profile_Scheduler_Spikes.csv",
-    "CET_Runtime_Profile_Scheduler_FrameBursts.csv"
+    "CET_Runtime_Profile_Scheduler_FrameBursts.csv",
+    "CET_Runtime_Profile_Deep_Registrations.csv",
+    "CET_Runtime_Profile_Deep_Functions.csv",
+    "CET_Runtime_Profile_Deep_Edges.csv"
   ],
   "managerChanges": [
     "security-scan packaging: native profiler is distributed with a .dll extension matching its PE/DLL format and copied to CET's required cyber_engine_tweaks.asi name only during install",
@@ -43,10 +46,10 @@
     "two-page setup keeps optional frame-time pairing separate from CET/0-Engine installation and recovery",
     "optional frame-time companion detection is read-only; CapFrameX start-key detection recognizes CaptureHotKey without modifying CapFrameX",
     "companion captures are copied into the CET archive under FrameTime and are never deleted from their source",
-    "the single CETProfiler_Toggle input uses F11 only as an initial default; an existing or user-changed CET binding is preserved", 
+    "the single CETProfiler_Toggle input uses F11 only as an initial default; an existing or user-changed CET binding is preserved",
     "the selected capture key starts a fresh measurement on first press and stops/exports on the second press",
     "known CET runtime output patterns are copied, verified, then removed from the live CET folder; unrelated files are never swept",
-    "CET keybinds are user-controlled and are never rolled back by profiler restore", 
+    "CET keybinds are user-controlled and are never rolled back by profiler restore",
     "standalone RESULTS remain package-local; TOTAL Profiler does not redirect profiler-owned output paths",
     "0-Engine core-only mode is presented as a fallback only when safe Scheduler integration is unavailable or fails",
     "Core profiler fallback leaves the user's 0-Engine folder and Scheduler completely untouched and loaded normally",

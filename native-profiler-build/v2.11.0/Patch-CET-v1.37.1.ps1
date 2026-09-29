@@ -160,6 +160,7 @@ struct ProfilerSourceInfo
     std::string File;
     int StartLine{};
     int EndLine{};
+    uint64_t FunctionIdentity{};
 };
 
 ProfilerSourceInfo ReadProfilerSourceInfo(const sol::function& aFunction)
@@ -170,6 +171,8 @@ ProfilerSourceInfo ReadProfilerSourceInfo(const sol::function& aFunction)
         return info;
 
     aFunction.push();
+    info.FunctionIdentity = static_cast<uint64_t>(
+        reinterpret_cast<uintptr_t>(lua_topointer(state, -1)));
     lua_Debug debugInfo{};
     if (lua_getinfo(state, ">S", &debugInfo) != 0)
     {
@@ -213,6 +216,7 @@ $eventPatches = @(
         Replacement = @'
 if (m_onHook)
     {
+        CETRuntimeProfiler::DeepTraceScope deepTrace(m_profOnHook, m_onHook.lua_state());
         CETRuntimeProfiler::Scope profileScope(m_profOnHook);
         TryLuaFunction(m_logger, m_onHook);
     }
@@ -224,6 +228,7 @@ if (m_onHook)
         Replacement = @'
 if (m_onTweak)
     {
+        CETRuntimeProfiler::DeepTraceScope deepTrace(m_profOnTweak, m_onTweak.lua_state());
         CETRuntimeProfiler::Scope profileScope(m_profOnTweak);
         TryLuaFunction(m_logger, m_onTweak);
     }
@@ -235,6 +240,7 @@ if (m_onTweak)
         Replacement = @'
 if (m_onInit)
     {
+        CETRuntimeProfiler::DeepTraceScope deepTrace(m_profOnInit, m_onInit.lua_state());
         CETRuntimeProfiler::Scope profileScope(m_profOnInit);
         TryLuaFunction(m_logger, m_onInit);
     }
@@ -246,6 +252,7 @@ if (m_onInit)
         Replacement = @'
 if (m_onUpdate)
     {
+        CETRuntimeProfiler::DeepTraceScope deepTrace(m_profOnUpdate, m_onUpdate.lua_state());
         CETRuntimeProfiler::Scope profileScope(m_profOnUpdate);
         TryLuaFunction(m_logger, m_onUpdate, aDeltaTime);
     }
@@ -257,6 +264,7 @@ if (m_onUpdate)
         Replacement = @'
 if (m_onDraw)
     {
+        CETRuntimeProfiler::DeepTraceScope deepTrace(m_profOnDraw, m_onDraw.lua_state());
         CETRuntimeProfiler::Scope profileScope(m_profOnDraw);
         TryLuaFunction(m_logger, m_onDraw);
     }
@@ -268,6 +276,7 @@ if (m_onDraw)
         Replacement = @'
 if (m_onOverlayOpen)
     {
+        CETRuntimeProfiler::DeepTraceScope deepTrace(m_profOnOverlayOpen, m_onOverlayOpen.lua_state());
         CETRuntimeProfiler::Scope profileScope(m_profOnOverlayOpen);
         TryLuaFunction(m_logger, m_onOverlayOpen);
     }
@@ -279,6 +288,7 @@ if (m_onOverlayOpen)
         Replacement = @'
 if (m_onOverlayClose)
     {
+        CETRuntimeProfiler::DeepTraceScope deepTrace(m_profOnOverlayClose, m_onOverlayClose.lua_state());
         CETRuntimeProfiler::Scope profileScope(m_profOnOverlayClose);
         TryLuaFunction(m_logger, m_onOverlayClose);
     }
@@ -290,6 +300,7 @@ if (m_onOverlayClose)
         Replacement = @'
 if (m_onShutdown)
     {
+        CETRuntimeProfiler::DeepTraceScope deepTrace(m_profOnShutdown, m_onShutdown.lua_state());
         CETRuntimeProfiler::Scope profileScope(m_profOnShutdown);
         TryLuaFunction(m_logger, m_onShutdown);
     }
@@ -331,7 +342,8 @@ $1
                 profilerCounter,
                 source.File,
                 source.StartLine,
-                source.EndLine);
+                source.EndLine,
+                source.FunctionIdentity);
         }
 '@ `
     -Label "ScriptContext event source metadata"
@@ -538,6 +550,8 @@ CETRuntimeProfiler::Counter* ResolveProfilerCounter(
         if (state && apContext->ScriptFunction != sol::nil)
         {
             apContext->ScriptFunction.push();
+            const uint64_t functionIdentity = static_cast<uint64_t>(
+                reinterpret_cast<uintptr_t>(lua_topointer(state, -1)));
             lua_Debug debugInfo{};
             if (lua_getinfo(state, ">S", &debugInfo) != 0)
             {
@@ -549,7 +563,8 @@ CETRuntimeProfiler::Counter* ResolveProfilerCounter(
                     counter,
                     source,
                     debugInfo.linedefined,
-                    debugInfo.lastlinedefined);
+                    debugInfo.lastlinedefined,
+                    functionIdentity);
             }
         }
     }
@@ -598,6 +613,8 @@ Replace-RegexOnce `
     -Pattern '([ \t]*for \(const auto& call : aChain\.Before\)\s*\r?\n[ \t]*\{\s*\r?\n)([ \t]*const auto result = call->ScriptFunction\(as_args\(\*apOrigArgs\)\);)' `
     -Replacement @'
 $1            auto* profilerCounter = ResolveProfilerCounter(call.get());
+            CETRuntimeProfiler::DeepTraceScope deepTrace(
+                profilerCounter, call->ScriptFunction.lua_state());
             CETRuntimeProfiler::Scope profileScope(profilerCounter);
 $2
 '@ `
@@ -609,6 +626,8 @@ Replace-RegexOnce `
     -Pattern '([ \t]*for \(const auto& call : aChain\.After\)\s*\r?\n[ \t]*\{\s*\r?\n)([ \t]*const auto result = call->ScriptFunction\(as_args\(\*apOrigArgs\)\);)' `
     -Replacement @'
 $1            auto* profilerCounter = ResolveProfilerCounter(call.get());
+            CETRuntimeProfiler::DeepTraceScope deepTrace(
+                profilerCounter, call->ScriptFunction.lua_state());
             CETRuntimeProfiler::Scope profileScope(profilerCounter);
 $2
 '@ `
@@ -656,6 +675,8 @@ Replace-RegexOnce `
     -Pattern '([ \t]*auto next = WrapNextOverride\(aChain, aStep \+ 1, aLuaState, aLuaContext, aLuaArgs, apRealFunction, apRealContext, aLock\);\s*\r?\n)([ \t]*auto result = aLuaContext == sol::nil \? call->ScriptFunction\(as_args\(aLuaArgs\), next\) : call->ScriptFunction\(aLuaContext, as_args\(aLuaArgs\), next\);)' `
     -Replacement @'
 $1            auto* profilerCounter = ResolveProfilerCounter(call);
+            CETRuntimeProfiler::DeepTraceScope deepTrace(
+                profilerCounter, call->ScriptFunction.lua_state());
             CETRuntimeProfiler::Scope profileScope(profilerCounter);
 $2
 '@ `
@@ -676,6 +697,7 @@ foreach ($marker in @(
     "AttachSource(",
     "ClearCallbackBindings",
     "CETRuntimeProfiler::Scope profileScope",
+    "CETRuntimeProfiler::DeepTraceScope",
     "profilerDownstreamBoundary"
 )) {
     if (-not $foCText.Contains($marker)) {
@@ -723,7 +745,8 @@ Write-Host "Coverage: events + Observe + ObserveAfter + Override" -ForegroundCol
 Write-Host "FunctionOverride::Context: VERIFIED UNCHANGED" -ForegroundColor Green
 Write-Host "Registration-time Lua/Sol access: NONE" -ForegroundColor Green
 Write-Host "Callback ownership: lazy resolution during valid locked execution" -ForegroundColor Green
-Write-Host "Callback identity/source: registration ID + Lua source line range" -ForegroundColor Green
+Write-Host "Callback identity/source: registration ID + Lua source line range + closure identity" -ForegroundColor Green
+Write-Host "Adaptive deep profiling: runtime hotset + sampled Lua call/return trees" -ForegroundColor Green
 Write-Host "Override downstream next()/native time: excluded from mod exclusive attribution" -ForegroundColor Green
 Write-Host "Capture control: Start / Pause / Resume / Stop / Reset / Dump / Status" -ForegroundColor Green
 Write-Host "CSV rates use captured time only (paused time excluded)" -ForegroundColor Green
