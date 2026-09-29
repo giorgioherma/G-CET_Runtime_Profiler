@@ -15,8 +15,9 @@ public sealed record PassBuildResult(
 
 /// <summary>
 /// Generates a reversible overlay ZIP from resolver decisions only.
-/// V1 intentionally supports only the two proven structural passes:
-/// ACTION_ROUTING_* and FRAME_DISPATCH_CONSOLIDATION.
+/// Generator supports only finite resolver-authorized recipes:
+/// ACTION_ROUTING_*, FRAME_DISPATCH_CONSOLIDATION, and source-proven
+/// AUTHOR_CADENCE_WHOLE_CALLBACK with measured payback.
 /// It never invents candidates from mod names or unclassified source.
 /// </summary>
 public static class PassGeneratorService
@@ -178,11 +179,13 @@ public static class PassGeneratorService
                 modNameRules = false,
                 sourceShaRequired = true,
                 fullFileOverlay = true,
-                cadenceTransforms = false,
+                cadenceTransforms = true,
+                cadencePolicy = "AUTHOR_RATE_ONLY_AND_MEASURED_PAYBACK_REQUIRED",
                 supportedPasses = new[]
                 {
                     "ACTION_ROUTING_*",
-                    "FRAME_DISPATCH_CONSOLIDATION"
+                    "FRAME_DISPATCH_CONSOLIDATION",
+                    "AUTHOR_CADENCE_WHOLE_CALLBACK"
                 },
                 fixedRuntimeException = "0-Engine",
                 note = "V1 target selection is capture/resolver-only. 0-Engine is the explicit fixed infrastructure exception and is always shipped so generic ActionRouter/frame registrar recipes have one known runtime."
@@ -290,6 +293,14 @@ public static class PassGeneratorService
                 }
                 else if (resolverFamily.Equals("ONUPDATE", StringComparison.OrdinalIgnoreCase) &&
                          recipes.Any(x =>
+                             x.Equals("AUTHOR_CADENCE_WHOLE_CALLBACK", StringComparison.OrdinalIgnoreCase)))
+                {
+                    // Author cadence supersedes plain frame consolidation for
+                    // this callback; never apply both transforms to one target.
+                    kind = CandidateKind.AuthorCadence;
+                }
+                else if (resolverFamily.Equals("ONUPDATE", StringComparison.OrdinalIgnoreCase) &&
+                         recipes.Any(x =>
                              x.Equals("FRAME_DISPATCH_CONSOLIDATION", StringComparison.OrdinalIgnoreCase)))
                 {
                     kind = CandidateKind.Frame;
@@ -333,7 +344,13 @@ public static class PassGeneratorService
                     ConsumerMutation = facts.ConsumerMutation,
                     StateGatePresent = facts.StateGatePresent,
                     DynamicGateResolved = facts.DynamicGateResolved,
-                    DynamicGateExpression = facts.DynamicGateExpression
+                    DynamicGateExpression = facts.DynamicGateExpression,
+                    AuthorCadenceWholeCallback = facts.AuthorCadenceWholeCallback,
+                    AuthorBaseIntervalSeconds = facts.AuthorBaseIntervalSeconds,
+                    AuthorDeltaParameter = facts.AuthorDeltaParameter,
+                    EstimatedAvoidablePollingMsPerSecond = facts.EstimatedAvoidablePollingMsPerSecond,
+                    EstimatedCallbackPaybackPct = facts.EstimatedCallbackPaybackPct,
+                    EstimatedGlobalPaybackPct = facts.EstimatedGlobalPaybackPct
                 });
             }
         }
@@ -358,7 +375,13 @@ public static class PassGeneratorService
             ConsumerMutation = JsonBool(facts, "consumerMutation"),
             StateGatePresent = JsonBool(facts, "stateGatePresent"),
             DynamicGateResolved = JsonBool(facts, "gatedWildcardResolved"),
-            DynamicGateExpression = JsonString(facts, "dynamicGateExpression")
+            DynamicGateExpression = JsonString(facts, "dynamicGateExpression"),
+            AuthorCadenceWholeCallback = JsonBool(facts, "authorCadenceWholeCallback"),
+            AuthorBaseIntervalSeconds = JsonDouble(facts, "baseIntervalSeconds"),
+            AuthorDeltaParameter = JsonString(facts, "deltaParameter"),
+            EstimatedAvoidablePollingMsPerSecond = JsonDouble(facts, "estimatedAvoidablePollingMsPerSecond"),
+            EstimatedCallbackPaybackPct = JsonDouble(facts, "estimatedCallbackPaybackPct"),
+            EstimatedGlobalPaybackPct = JsonDouble(facts, "estimatedGlobalPaybackPct")
         };
     }
 
@@ -394,6 +417,120 @@ public static class PassGeneratorService
             if (candidate.LineStart > lines.Count)
             {
                 skipped.Add(Skip(candidate, "Recorded source range is outside the current file."));
+                continue;
+            }
+
+            if (candidate.Kind == CandidateKind.AuthorCadence)
+            {
+                if (!candidate.AuthorCadenceWholeCallback ||
+                    candidate.AuthorBaseIntervalSeconds <= 0 ||
+                    string.IsNullOrWhiteSpace(candidate.AuthorDeltaParameter))
+                {
+                    skipped.Add(Skip(
+                        candidate,
+                        "Resolver did not emit a complete whole-callback author cadence handoff."));
+                    continue;
+                }
+
+                if (candidate.LineEnd > lines.Count)
+                {
+                    skipped.Add(Skip(candidate, "Recorded author-cadence source range is outside the current file."));
+                    continue;
+                }
+
+                var segmentLines = lines
+                    .Skip(candidate.LineStart - 1)
+                    .Take(candidate.LineEnd - candidate.LineStart + 1)
+                    .ToArray();
+                var segment = string.Join("\n", segmentLines);
+
+                var opening = Regex.Match(
+                    segment,
+                    @"(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*(['""])onUpdate\1\s*,\s*function\s*\((?<args>[^)]*)\)",
+                    RegexOptions.CultureInvariant | RegexOptions.Singleline);
+                if (!opening.Success)
+                {
+                    skipped.Add(Skip(
+                        candidate,
+                        "The source-proven author-cadence onUpdate opening could not be revalidated."));
+                    continue;
+                }
+
+                var parameters = opening.Groups["args"].Value
+                    .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+                if (parameters.Length != 1 ||
+                    !parameters[0].Equals(candidate.AuthorDeltaParameter, StringComparison.Ordinal))
+                {
+                    skipped.Add(Skip(
+                        candidate,
+                        "The author-cadence callback delta parameter no longer matches resolver evidence."));
+                    continue;
+                }
+
+                var closing = Regex.Match(
+                    segment,
+                    @"end\s*\)\s*;?\s*$",
+                    RegexOptions.CultureInvariant | RegexOptions.Singleline);
+                if (!closing.Success || closing.Index <= opening.Index)
+                {
+                    skipped.Add(Skip(
+                        candidate,
+                        "The source-proven author-cadence onUpdate closing could not be revalidated."));
+                    continue;
+                }
+
+                var functionName = $"__gcetAuthorCadence_{candidate.RegistrationId}";
+                var rewritten =
+                    segment[..opening.Index] +
+                    $"local function {functionName}({candidate.AuthorDeltaParameter})" +
+                    segment[(opening.Index + opening.Length)..];
+                var rewrittenClosing = Regex.Match(
+                    rewritten,
+                    @"end\s*\)\s*;?\s*$",
+                    RegexOptions.CultureInvariant | RegexOptions.Singleline);
+                if (!rewrittenClosing.Success)
+                {
+                    skipped.Add(Skip(
+                        candidate,
+                        "The author-cadence callback could not be converted to a named function."));
+                    continue;
+                }
+
+                rewritten =
+                    rewritten[..rewrittenClosing.Index] +
+                    "end" +
+                    rewritten[(rewrittenClosing.Index + rewrittenClosing.Length)..];
+
+                var indent = Regex.Match(segmentLines[0], @"^\s*").Value;
+                var registration = BuildAuthorCadenceRegistration(
+                    candidate,
+                    functionName,
+                    indent);
+                var replacementLines = (rewritten + "\n\n" + registration).Split('\n');
+
+                lines.RemoveRange(
+                    candidate.LineStart - 1,
+                    candidate.LineEnd - candidate.LineStart + 1);
+                lines.InsertRange(candidate.LineStart - 1, replacementLines);
+
+                transformManifest.Add(new
+                {
+                    registrationId = candidate.RegistrationId,
+                    owner = candidate.Owner,
+                    type = "AUTHOR_CADENCE_WHOLE_CALLBACK",
+                    file = candidate.RelativeFile,
+                    sourceLines = new[] { candidate.LineStart, candidate.LineEnd },
+                    facts = new
+                    {
+                        baseIntervalSeconds = candidate.AuthorBaseIntervalSeconds,
+                        deltaParameter = candidate.AuthorDeltaParameter,
+                        estimatedAvoidablePollingMsPerSecond = candidate.EstimatedAvoidablePollingMsPerSecond,
+                        estimatedCallbackPaybackPct = candidate.EstimatedCallbackPaybackPct,
+                        estimatedGlobalPaybackPct = candidate.EstimatedGlobalPaybackPct,
+                        semantics = "author rate preserved; spread disabled; no catch-up; original onUpdate fallback retained"
+                    }
+                });
+                applied++;
                 continue;
             }
 
@@ -568,6 +705,56 @@ public static class PassGeneratorService
         return new TransformResult(withBom, applied);
     }
 
+    private static string BuildAuthorCadenceRegistration(
+        PassCandidate candidate,
+        string functionName,
+        string indent)
+    {
+        var id = LuaQuote($"G-CET.AuthorCadence.{candidate.RegistrationId}");
+        var owner = LuaQuote(candidate.Owner);
+        var seconds = candidate.AuthorBaseIntervalSeconds.ToString(
+            "0.################",
+            System.Globalization.CultureInfo.InvariantCulture);
+        var handle = $"__gcetAuthorCadenceHandle_{candidate.RegistrationId}";
+        var scheduled = $"__gcetAuthorCadenceScheduled_{candidate.RegistrationId}";
+
+        var lines = new List<string>
+        {
+            $"{indent}local {handle} = nil",
+            $"{indent}local {scheduled} = false",
+            $"{indent}registerForEvent(\"onInit\", function()",
+            $"{indent}    local __gcetOk, __gcetEngine = pcall(GetMod, \"0-Engine\")",
+            $"{indent}    if __gcetOk and type(__gcetEngine) == \"table\" and type(__gcetEngine.Schedule) == \"table\" and type(__gcetEngine.Schedule.Every) == \"function\" then",
+            $"{indent}        local __gcetScheduleOk, __gcetScheduleHandle = pcall(function()",
+            $"{indent}            return __gcetEngine.Schedule.Every({seconds}, {{",
+            $"{indent}                id = {id},",
+            $"{indent}                owner = {owner},",
+            $"{indent}                pause = \"never\",",
+            $"{indent}                spread = false,",
+            $"{indent}                catchUp = false",
+            $"{indent}            }}, function(ctx)",
+            $"{indent}                {functionName}(ctx.elapsed)",
+            $"{indent}            end)",
+            $"{indent}        end)",
+            $"{indent}        if __gcetScheduleOk and type(__gcetScheduleHandle) == \"table\" then",
+            $"{indent}            {handle} = __gcetScheduleHandle",
+            $"{indent}            {scheduled} = true",
+            $"{indent}        end",
+            $"{indent}    end",
+            $"{indent}    if not {scheduled} then",
+            $"{indent}        registerForEvent(\"onUpdate\", {functionName})",
+            $"{indent}    end",
+            $"{indent}end)",
+            $"{indent}registerForEvent(\"onShutdown\", function()",
+            $"{indent}    if {handle} and type({handle}.Cancel) == \"function\" then pcall({handle}.Cancel) end",
+            $"{indent}    {handle} = nil",
+            $"{indent}    {scheduled} = false",
+            $"{indent}end)"
+        };
+
+        return string.Join("\n", lines);
+    }
+
     private static string BuildActionRegistration(
         PassCandidate candidate,
         string functionName,
@@ -727,6 +914,17 @@ public static class PassGeneratorService
         return false;
     }
 
+    private static double JsonDouble(JsonElement element, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (element.TryGetProperty(name, out var value) &&
+                value.TryGetDouble(out var number))
+                return number;
+        }
+        return 0;
+    }
+
     private static long? JsonNullableLong(JsonElement element, params string[] names)
     {
         foreach (var name in names)
@@ -756,7 +954,8 @@ public static class PassGeneratorService
     private enum CandidateKind
     {
         Action,
-        Frame
+        Frame,
+        AuthorCadence
     }
 
     private sealed class PassCandidate
@@ -777,6 +976,12 @@ public static class PassGeneratorService
         public bool StateGatePresent { get; init; }
         public bool DynamicGateResolved { get; init; }
         public string DynamicGateExpression { get; init; } = "";
+        public bool AuthorCadenceWholeCallback { get; init; }
+        public double AuthorBaseIntervalSeconds { get; init; }
+        public string AuthorDeltaParameter { get; init; } = "";
+        public double EstimatedAvoidablePollingMsPerSecond { get; init; }
+        public double EstimatedCallbackPaybackPct { get; init; }
+        public double EstimatedGlobalPaybackPct { get; init; }
     }
 
     private sealed class CandidateFacts
@@ -789,6 +994,12 @@ public static class PassGeneratorService
         public bool StateGatePresent { get; init; }
         public bool DynamicGateResolved { get; init; }
         public string DynamicGateExpression { get; init; } = "";
+        public bool AuthorCadenceWholeCallback { get; init; }
+        public double AuthorBaseIntervalSeconds { get; init; }
+        public string AuthorDeltaParameter { get; init; } = "";
+        public double EstimatedAvoidablePollingMsPerSecond { get; init; }
+        public double EstimatedCallbackPaybackPct { get; init; }
+        public double EstimatedGlobalPaybackPct { get; init; }
     }
 
     private sealed record TransformResult(byte[] Bytes, int AppliedTransforms);
