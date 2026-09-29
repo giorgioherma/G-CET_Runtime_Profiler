@@ -108,6 +108,7 @@ internal static class CallbackResolverService
                         generic.Automatable,
                         generic.Pattern,
                         generic.RecipeFamilies,
+                        generic.Facts,
                         generic.Evidence,
                         generic.Blockers
                     },
@@ -309,6 +310,7 @@ internal static class CallbackResolverService
                 Automatable = false,
                 Pattern = "ONACTION_SOURCE_UNRESOLVED",
                 RecipeFamilies = Array.Empty<string>(),
+                Facts = null,
                 Evidence = Array.Empty<string>(),
                 Blockers = new[] { "The current deployed OnAction callback source could not be mapped uniquely." },
                 Source = sourceEvidence
@@ -320,36 +322,78 @@ internal static class CallbackResolverService
         var evidence = new List<string>();
         var blockers = new List<string>();
         var actions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var patterns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var unresolvedActionSelectors = new HashSet<string>(StringComparer.Ordinal);
 
-        var orderSensitive =
-            Regex.IsMatch(window, @"\bconsumer\s*:\s*Consume\s*\(", RegexOptions.IgnoreCase) ||
-            Regex.IsMatch(window, @"\bConsume\s*\(", RegexOptions.IgnoreCase);
-        if (orderSensitive)
-            blockers.Add("Input consumer/order-sensitive behavior is present.");
+        var consumerMutation =
+            Regex.IsMatch(window, @"\bconsumer\s*[:.]\s*Consume(?:SingleAction)?\s*\(", RegexOptions.IgnoreCase) ||
+            Regex.IsMatch(window, @"\bListenerActionConsumer\s*\.\s*Consume\s*\(", RegexOptions.IgnoreCase);
+        if (consumerMutation)
+            evidence.Add("The callback mutates the original input consumer; generated routing must preserve the same consumer object and callback ordering.");
 
+        // Name decoding is structurally equivalent whether the callback uses
+        // action:GetName(), ListenerAction.GetName(action), a singleton receiver,
+        // or another wrapper. The assigned variable is what later filters use.
         var nameVars = new HashSet<string>(StringComparer.Ordinal);
         foreach (Match match in Regex.Matches(
                      window,
-                     @"(?<var>[A-Za-z_]\w*)\s*=\s*(?:Game\.NameToString\s*\(\s*)?(?<action>[A-Za-z_]\w*)\s*:\s*GetName\s*\(\s*\)\s*\)?",
+                     @"(?m)\b(?<var>[A-Za-z_]\w*)\s*=\s*[^\r\n;]*\bGetName\s*\(",
                      RegexOptions.CultureInvariant))
         {
             nameVars.Add(match.Groups["var"].Value);
         }
 
+        // Literal IsAction forms, including CET's common
+        // action:IsAction(action, "Name") shape.
         foreach (Match match in Regex.Matches(
                      window,
-                     @"[A-Za-z_]\w*\s*:\s*IsAction\s*\(\s*['""](?<action>[^'""]+)['""]\s*\)",
+                     @"\bIsAction\s*\(\s*(?:[A-Za-z_]\w*\s*,\s*)?['""](?<action>[^'""]+)['""]\s*\)",
                      RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
         {
             actions.Add(match.Groups["action"].Value);
         }
 
+        // Variable IsAction selectors are accepted only when all values assigned
+        // to the selector in current source are finite string/CName literals.
         foreach (Match match in Regex.Matches(
                      window,
-                     @"[A-Za-z_]\w*\s*:\s*GetName\s*\(\s*\)\s*==\s*(?:CName\.new\s*\(\s*)?['""](?<action>[^'""]+)['""]\s*\)?",
+                     @"\bIsAction\s*\(\s*(?:[A-Za-z_]\w*\s*,\s*)?(?<selector>[A-Za-z_]\w*)\s*\)",
+                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+        {
+            var selector = match.Groups["selector"].Value;
+            var values = ReadFiniteStringValues(full, selector);
+            if (values.Count == 0)
+            {
+                unresolvedActionSelectors.Add(selector);
+                continue;
+            }
+
+            foreach (var value in values)
+                actions.Add(value);
+            evidence.Add($"Finite action selector '{selector}' resolved to {values.Count} literal value(s).");
+        }
+
+        // Direct CName/string comparisons against GetName().
+        foreach (Match match in Regex.Matches(
+                     window,
+                     @"\bGetName\s*\(\s*\)\s*==\s*(?:CName\.new\s*\(\s*)?['""](?<action>[^'""]+)['""]\s*\)?",
                      RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
         {
             actions.Add(match.Groups["action"].Value);
+        }
+
+        // Early-return inverse comparison: if action:GetName() ~= turnX then return.
+        foreach (Match match in Regex.Matches(
+                     window,
+                     @"(?m)^\s*if\s+[^\r\n]*\bGetName\s*\(\s*\)\s*~=\s*(?<selector>[A-Za-z_]\w*)\s+then\s+return",
+                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+        {
+            var selector = match.Groups["selector"].Value;
+            var values = ReadFiniteStringValues(full, selector);
+            if (values.Count == 0)
+                unresolvedActionSelectors.Add(selector);
+            else
+                foreach (var value in values) actions.Add(value);
         }
 
         foreach (var variable in nameVars)
@@ -358,6 +402,14 @@ internal static class CallbackResolverService
                          window,
                          @"\b" + Regex.Escape(variable) + @"\s*==\s*['""](?<action>[^'""]+)['""]",
                          RegexOptions.CultureInvariant))
+            {
+                actions.Add(match.Groups["action"].Value);
+            }
+
+            foreach (Match match in Regex.Matches(
+                         window,
+                         @"(?m)^\s*if\s+" + Regex.Escape(variable) + @"\s*~=\s*['""](?<action>[^'""]+)['""]\s+then\s+return",
+                         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
             {
                 actions.Add(match.Groups["action"].Value);
             }
@@ -384,7 +436,6 @@ internal static class CallbackResolverService
             }
         }
 
-        var patterns = new List<string>();
         foreach (var variable in nameVars)
         {
             foreach (Match match in Regex.Matches(
@@ -406,6 +457,16 @@ internal static class CallbackResolverService
             @"\bif\s+(?:not\s+)?[A-Za-z_][\w.]*\s+then\s+(?:return|[^\n]*\n\s*return)",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
+        var dynamicActionForward = HasDynamicActionForward(window);
+        if (dynamicActionForward)
+        {
+            blockers.Add("Raw action data is forwarded to downstream logic, so this callback alone does not prove a finite action set.");
+            evidence.Add("A downstream handler receives the raw action; deeper source analysis is required before exact routing.");
+        }
+
+        if (unresolvedActionSelectors.Count > 0)
+            blockers.Add($"Action selector(s) could not be reduced to literals: {string.Join(", ", unresolvedActionSelectors.OrderBy(x => x))}.");
+
         if (actions.Count > 0)
             evidence.Add($"Finite action interest was proven from current source ({actions.Count} action name(s)).");
         if (patterns.Count > 0)
@@ -416,43 +477,122 @@ internal static class CallbackResolverService
         var hasActionFilter = actions.Count > 0 || patterns.Count > 0 || staticTables.Count > 0;
         var prefilterSideEffect = hasActionFilter && HasMeaningfulWorkBeforeFirstActionFilter(window, nameVars);
         if (prefilterSideEffect)
-            blockers.Add("Meaningful work occurs before the first proven action-interest filter.");
+            blockers.Add("Observable work occurs before the first proven action-interest filter.");
 
-        var isOverride =
-            callback.Kind.Contains("override", StringComparison.OrdinalIgnoreCase) ||
-            Regex.IsMatch(window, @"\bOverride\s*\(", RegexOptions.IgnoreCase);
-
+        // Callback kind is authoritative. A neighboring Override() elsewhere in
+        // the same source window must never poison an Observe classification.
+        var isOverride = callback.Kind.Contains("override", StringComparison.OrdinalIgnoreCase);
         if (isOverride)
             blockers.Add("Override semantics require the dedicated override routing template.");
 
-        var recipe = staticTables.Count > 0
-            ? stateGated ? "ACTION_ROUTING_STATE_GATED_STATIC_SET" : "ACTION_ROUTING_STATIC_SET"
-            : actions.Count > 0
-                ? stateGated ? "ACTION_ROUTING_STATE_GATED_EXACT_SET" : "ACTION_ROUTING_EXACT_SET"
-                : patterns.Count > 0
-                    ? stateGated ? "ACTION_ROUTING_STATE_GATED_PATTERN" : "ACTION_ROUTING_PATTERN"
-                    : "ONACTION_FULL_STREAM_OR_UNRESOLVED";
+        string recipe;
+        if (dynamicActionForward)
+            recipe = stateGated
+                ? "ACTION_ROUTING_STATE_GATED_DYNAMIC_DOWNSTREAM"
+                : "ACTION_ROUTING_DYNAMIC_DOWNSTREAM";
+        else if (staticTables.Count > 0 && patterns.Count > 0)
+            recipe = stateGated
+                ? "ACTION_ROUTING_STATE_GATED_STATIC_SET_WITH_PATTERN"
+                : "ACTION_ROUTING_STATIC_SET_WITH_PATTERN";
+        else if (staticTables.Count > 0)
+            recipe = stateGated ? "ACTION_ROUTING_STATE_GATED_STATIC_SET" : "ACTION_ROUTING_STATIC_SET";
+        else if (actions.Count > 0 && patterns.Count > 0)
+            recipe = stateGated
+                ? "ACTION_ROUTING_STATE_GATED_EXACT_SET_WITH_PATTERN"
+                : "ACTION_ROUTING_EXACT_SET_WITH_PATTERN";
+        else if (actions.Count > 0)
+            recipe = stateGated ? "ACTION_ROUTING_STATE_GATED_EXACT_SET" : "ACTION_ROUTING_EXACT_SET";
+        else if (patterns.Count > 0)
+            recipe = stateGated ? "ACTION_ROUTING_STATE_GATED_PATTERN" : "ACTION_ROUTING_PATTERN";
+        else
+            recipe = "ONACTION_FULL_STREAM_OR_UNRESOLVED";
 
         var automatable =
             hasActionFilter &&
-            !orderSensitive &&
+            !dynamicActionForward &&
+            unresolvedActionSelectors.Count == 0 &&
             !prefilterSideEffect &&
-            !isOverride;
+            !isOverride &&
+            blockers.All(x => !x.Contains("writes outside", StringComparison.OrdinalIgnoreCase));
+
+        var facts = new
+        {
+            actions = actions.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray(),
+            actionPatterns = patterns.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray(),
+            stateGatePresent = stateGated,
+            consumerMutation,
+            dynamicActionForward,
+            requiresActionType =
+                Regex.IsMatch(window, @"\bGetType\s*\(", RegexOptions.IgnoreCase),
+            requiresActionValue =
+                Regex.IsMatch(window, @"\bGetValue\s*\(", RegexOptions.IgnoreCase),
+            unresolvedActionSelectors = unresolvedActionSelectors.OrderBy(x => x).ToArray()
+        };
 
         return new GenericResolution
         {
             Status = automatable
                 ? "RESOLVED"
-                : hasActionFilter ? "RECOGNIZED_WITH_BLOCKER" : "UNRESOLVED",
+                : hasActionFilter || dynamicActionForward ? "RECOGNIZED_WITH_BLOCKER" : "UNRESOLVED",
             Automatable = automatable,
             Pattern = recipe,
-            RecipeFamilies = hasActionFilter
+            RecipeFamilies = hasActionFilter || dynamicActionForward
                 ? new[] { isOverride ? "ACTION_ROUTING_OVERRIDE" : recipe }
                 : Array.Empty<string>(),
+            Facts = facts,
             Evidence = evidence.ToArray(),
             Blockers = blockers.ToArray(),
             Source = sourceEvidence
         };
+    }
+
+    private static List<string> ReadFiniteStringValues(string fullText, string variable)
+    {
+        var values = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (Match match in Regex.Matches(
+                     fullText,
+                     @"\b" + Regex.Escape(variable) + @"\s*=\s*['""](?<value>[^'""]+)['""]",
+                     RegexOptions.CultureInvariant))
+        {
+            values.Add(match.Groups["value"].Value);
+        }
+
+        foreach (Match match in Regex.Matches(
+                     fullText,
+                     @"\b" + Regex.Escape(variable) + @"\s*=\s*CName\.new\s*\(\s*['""](?<value>[^'""]+)['""]\s*\)",
+                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+        {
+            values.Add(match.Groups["value"].Value);
+        }
+
+        return values.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private static bool HasDynamicActionForward(string window)
+    {
+        var lines = window.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+        foreach (var raw in lines)
+        {
+            var line = raw.Trim();
+            if (string.IsNullOrWhiteSpace(line) || line.StartsWith("--", StringComparison.Ordinal))
+                continue;
+            if (!Regex.IsMatch(line, @"\([^\r\n)]*\baction\b", RegexOptions.IgnoreCase))
+                continue;
+
+            if (line.Contains("GetName", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("GetType", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("GetValue", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("IsAction", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("NameToString", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("Observe(", StringComparison.OrdinalIgnoreCase) ||
+                line.Contains("Override(", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            return true;
+        }
+
+        return false;
     }
 
     private static bool HasMeaningfulWorkBeforeFirstActionFilter(
@@ -467,8 +607,11 @@ internal static class CallbackResolverService
             var line = lines[i];
             var isFilter =
                 line.Contains("IsAction(", StringComparison.OrdinalIgnoreCase) ||
-                line.Contains(":GetName()", StringComparison.OrdinalIgnoreCase) && line.Contains("==", StringComparison.Ordinal) ||
-                nameVars.Any(v => line.Contains(v + " ==", StringComparison.Ordinal)) ||
+                line.Contains("GetName()", StringComparison.OrdinalIgnoreCase) &&
+                    (line.Contains("==", StringComparison.Ordinal) || line.Contains("~=", StringComparison.Ordinal)) ||
+                nameVars.Any(v =>
+                    line.Contains(v + " ==", StringComparison.Ordinal) ||
+                    line.Contains(v + " ~=", StringComparison.Ordinal)) ||
                 line.Contains("string.find", StringComparison.OrdinalIgnoreCase) ||
                 line.Contains(":find(", StringComparison.OrdinalIgnoreCase) ||
                 nameVars.Any(v => Regex.IsMatch(line, @"\[[\s]*" + Regex.Escape(v) + @"[\s]*\]"));
@@ -493,8 +636,6 @@ internal static class CallbackResolverService
                 line.Contains("Override(", StringComparison.OrdinalIgnoreCase) ||
                 line.StartsWith("function", StringComparison.OrdinalIgnoreCase))
                 continue;
-            if (Regex.IsMatch(line, @"^local\s+[A-Za-z_]\w*\s*=\s*(?:Game\.NameToString\s*\()?\s*[A-Za-z_]\w*\s*:\s*(?:GetName|GetType)\s*\("))
-                continue;
             if (Regex.IsMatch(line, @"^if\s+.*\s+then\s+return(?:\s+.*)?\s+end\s*$", RegexOptions.IgnoreCase))
                 continue;
             if (Regex.IsMatch(line, @"^if\s+.*\s+then\s*$", RegexOptions.IgnoreCase) ||
@@ -502,9 +643,19 @@ internal static class CallbackResolverService
                 line.Equals("end", StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            // A function call or non-local assignment before the action filter is
-            // treated as observable work. This is intentionally stricter than the
-            // DEV policy used later by the patch generator.
+            // Local reads/decodes are allowed before the filter. They disappear
+            // for unrelated actions after routing but have no externally visible
+            // assignment target. Restrict call-shaped locals to getter/read names.
+            if (Regex.IsMatch(line, @"^local\s+[A-Za-z_]\w*\s*(?:,\s*[A-Za-z_]\w*)*\s*$"))
+                continue;
+            if (Regex.IsMatch(line, @"^local\s+[A-Za-z_]\w*\s*=\s*[^()]+$"))
+                continue;
+            if (Regex.IsMatch(
+                    line,
+                    @"^local\s+[A-Za-z_]\w*\s*=\s*(?:Game\.NameToString\s*\(|GetSingleton\s*\(|[A-Za-z_][\w.]*[.:](?:Get|get|Is|is|Has|has)[A-Za-z_\w]*\s*\()",
+                    RegexOptions.IgnoreCase))
+                continue;
+
             if (Regex.IsMatch(line, @"[A-Za-z_][\w.:]*\s*\(") ||
                 Regex.IsMatch(line, @"^(?!local\b)[A-Za-z_][\w.\[\]]*\s*="))
                 return true;
@@ -1049,6 +1200,7 @@ internal static class CallbackResolverService
         public bool Automatable { get; init; }
         public string Pattern { get; init; } = "";
         public string[] RecipeFamilies { get; init; } = Array.Empty<string>();
+        public object? Facts { get; init; }
         public string[] Evidence { get; init; } = Array.Empty<string>();
         public string[] Blockers { get; init; } = Array.Empty<string>();
         public SourceEvidence? Source { get; init; }
