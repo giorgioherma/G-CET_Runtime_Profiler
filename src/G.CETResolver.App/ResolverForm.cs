@@ -1,4 +1,3 @@
-using System.Text.Json;
 using GCETRuntimeProfiler.Core.Services;
 
 namespace GCETRuntimeProfiler.Resolver;
@@ -11,10 +10,10 @@ internal sealed class ResolverForm : Form
     private readonly Button _modsBrowse = new() { Text = "Browse..." };
     private readonly Button _analyze = new() { Text = "Analyze", Height = 36 };
     private readonly Label _status = new() { AutoSize = true, Text = "Select a profiler capture and the live CET mods folder." };
-    private readonly Label _leave = new() { AutoSize = true, Text = "LEAVE_ALONE: -" };
-    private readonly Label _exact = new() { AutoSize = true, Text = "EXACT_CADENCE: -" };
-    private readonly Label _mixed = new() { AutoSize = true, Text = "MIXED_SPLIT: -" };
-    private readonly Label _active = new() { AutoSize = true, Text = "ACTIVE_DORMANT: -" };
+    private readonly Label _families = new() { AutoSize = true, Text = "CALLBACK FAMILIES: -" };
+    private readonly Label _generic = new() { AutoSize = true, Text = "GENERIC RESOLVED: -" };
+    private readonly Label _registry = new() { AutoSize = true, Text = "SPECIAL HINTS: -" };
+    private readonly Label _unresolved = new() { AutoSize = true, Text = "UNRESOLVED: -" };
     private readonly TextBox _output = new()
     {
         Multiline = true,
@@ -25,7 +24,7 @@ internal sealed class ResolverForm : Form
 
     public ResolverForm()
     {
-        Text = "G-CET Cadence Resolver — Dev";
+        Text = "G-CET Resolver — Dev";
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(760, 520);
         Size = new Size(880, 620);
@@ -52,18 +51,8 @@ internal sealed class ResolverForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-        var captureLabel = new Label
-        {
-            Text = "Capture folder",
-            AutoSize = true,
-            Anchor = AnchorStyles.Left
-        };
-        var modsLabel = new Label
-        {
-            Text = "Live CET mods",
-            AutoSize = true,
-            Anchor = AnchorStyles.Left
-        };
+        var captureLabel = new Label { Text = "Capture folder", AutoSize = true, Anchor = AnchorStyles.Left };
+        var modsLabel = new Label { Text = "Live CET mods", AutoSize = true, Anchor = AnchorStyles.Left };
 
         _capture.Dock = DockStyle.Fill;
         _mods.Dock = DockStyle.Fill;
@@ -75,26 +64,21 @@ internal sealed class ResolverForm : Form
         root.Controls.Add(captureLabel, 0, 0);
         root.Controls.Add(_capture, 1, 0);
         root.Controls.Add(_captureBrowse, 2, 0);
-
         root.Controls.Add(modsLabel, 0, 1);
         root.Controls.Add(_mods, 1, 1);
         root.Controls.Add(_modsBrowse, 2, 1);
-
         root.Controls.Add(_analyze, 0, 2);
         root.SetColumnSpan(_analyze, 3);
-
         root.Controls.Add(_status, 0, 3);
         root.SetColumnSpan(_status, 3);
-
-        root.Controls.Add(_leave, 0, 4);
-        root.SetColumnSpan(_leave, 3);
-        root.Controls.Add(_exact, 0, 5);
-        root.SetColumnSpan(_exact, 3);
-        root.Controls.Add(_mixed, 0, 6);
-        root.SetColumnSpan(_mixed, 3);
-        root.Controls.Add(_active, 0, 7);
-        root.SetColumnSpan(_active, 3);
-
+        root.Controls.Add(_families, 0, 4);
+        root.SetColumnSpan(_families, 3);
+        root.Controls.Add(_generic, 0, 5);
+        root.SetColumnSpan(_generic, 3);
+        root.Controls.Add(_registry, 0, 6);
+        root.SetColumnSpan(_registry, 3);
+        root.Controls.Add(_unresolved, 0, 7);
+        root.SetColumnSpan(_unresolved, 3);
         root.Controls.Add(_output, 0, 8);
         root.SetColumnSpan(_output, 3);
         _output.Dock = DockStyle.Fill;
@@ -123,7 +107,7 @@ internal sealed class ResolverForm : Form
         try
         {
             _analyze.Enabled = false;
-            _status.Text = "Analyzing...";
+            _status.Text = "Analyzing callback families...";
             _output.Clear();
             Application.DoEvents();
 
@@ -135,45 +119,30 @@ internal sealed class ResolverForm : Form
             if (!Directory.Exists(mods))
                 throw new DirectoryNotFoundException("Select the live cyber_engine_tweaks\\mods folder.");
 
-            var result = CadenceResolverService.Resolve(capture, mods);
-            var finalJson = File.ReadAllText(result.FinalResolutionPath);
+            var result = ResolverService.Resolve(capture, mods);
 
-            using var doc = JsonDocument.Parse(finalJson);
-            var root = doc.RootElement;
-            var summary = root.GetProperty("summary");
+            _families.Text = $"CALLBACK FAMILIES: {result.FamilyCount}";
+            _generic.Text = $"GENERIC RESOLVED: {result.GenericResolvedCount}";
+            _registry.Text = $"SPECIAL HINTS: {result.RegistryHintCount}";
+            _unresolved.Text = $"UNRESOLVED: {result.UnresolvedCount}";
 
-            _leave.Text = $"LEAVE_ALONE: {GetInt(summary, "leaveAlone")}";
-            _exact.Text = $"EXACT_CADENCE: {GetInt(summary, "exactCadence")}";
-            _mixed.Text = $"MIXED_SPLIT: {GetInt(summary, "mixedSplit")}";
-            _active.Text = $"ACTIVE_DORMANT: {GetInt(summary, "activeDormant")}";
-
-            _status.Text = $"Complete — {result.CallbackCount} onUpdate callbacks analyzed.";
+            _status.Text = $"Complete — {result.RankedCallbackCount} high-impact callback consumers inspected.";
             _output.Text =
-                $"Runtime resolution:\r\n{result.RuntimeResolutionPath}\r\n\r\n" +
-                $"Final source-confirmed resolution:\r\n{result.FinalResolutionPath}\r\n\r\n" +
+                $"G-CET resolver output:\r\n{result.ResolverPath}\r\n\r\n" +
+                (result.CadenceFinalPath is null
+                    ? "Cadence subset: not available for this capture.\r\n\r\n"
+                    : $"Cadence subset:\r\n{result.CadenceFinalPath}\r\n\r\n") +
                 "Live CET sources were inspected read-only. No mod files were changed.";
         }
         catch (Exception ex)
         {
             _status.Text = "Analysis failed.";
             _output.Text = ex.ToString();
-            MessageBox.Show(
-                this,
-                ex.Message,
-                "G-CET Cadence Resolver",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Error);
+            MessageBox.Show(this, ex.Message, "G-CET Resolver", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         finally
         {
             _analyze.Enabled = true;
         }
-    }
-
-    private static int GetInt(JsonElement obj, string name)
-    {
-        return obj.TryGetProperty(name, out var value) && value.TryGetInt32(out var number)
-            ? number
-            : 0;
     }
 }
