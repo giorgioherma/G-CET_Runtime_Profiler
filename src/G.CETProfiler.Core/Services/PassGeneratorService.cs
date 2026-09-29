@@ -8,6 +8,7 @@ namespace GCETRuntimeProfiler.Core.Services;
 
 public sealed record PassBuildResult(
     string ZipPath,
+    string ManifestPath,
     int FileCount,
     int TransformCount,
     int SkippedCount);
@@ -213,9 +214,17 @@ public static class PassGeneratorService
             skipped
         };
 
-        Directory.CreateDirectory(Path.GetDirectoryName(outputZipPath)!);
+        var outputDirectory = Path.GetDirectoryName(outputZipPath)!;
+        Directory.CreateDirectory(outputDirectory);
+
+        var manifestPath = Path.Combine(
+            outputDirectory,
+            Path.GetFileNameWithoutExtension(outputZipPath) + ".json");
+
         if (File.Exists(outputZipPath))
             File.Delete(outputZipPath);
+        if (File.Exists(manifestPath))
+            File.Delete(manifestPath);
 
         using (var archive = ZipFile.Open(outputZipPath, ZipArchiveMode.Create))
         {
@@ -228,17 +237,16 @@ public static class PassGeneratorService
                 using var stream = entry.Open();
                 stream.Write(pair.Value, 0, pair.Value.Length);
             }
-
-            var manifestEntry = archive.CreateEntry("G-CET_Pass_Manifest.json", CompressionLevel.Optimal);
-            using var writer = new StreamWriter(
-                manifestEntry.Open(),
-                new UTF8Encoding(false));
-            writer.Write(JsonSerializer.Serialize(manifest, ManifestJson));
-            writer.WriteLine();
         }
+
+        File.WriteAllText(
+            manifestPath,
+            JsonSerializer.Serialize(manifest, ManifestJson) + Environment.NewLine,
+            new UTF8Encoding(false));
 
         return new PassBuildResult(
             outputZipPath,
+            manifestPath,
             staged.Count,
             transformManifest.Count,
             skipped.Count);
