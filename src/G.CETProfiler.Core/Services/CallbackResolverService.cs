@@ -264,7 +264,7 @@ internal static class CallbackResolverService
         var directOnUpdate = source is not null &&
             Regex.IsMatch(
                 source.CallbackText,
-                @"\b(?:registerForEvent|registerRuntimeEvent)\s*\(\s*['""]onUpdate['""]",
+                @"\b(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]",
                 RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
         if (directOnUpdate)
@@ -361,7 +361,7 @@ internal static class CallbackResolverService
 
         var match = Regex.Match(
             source.CallbackText,
-            @"(?s)^\s*(?:registerForEvent|registerRuntimeEvent)\s*\(\s*['""]onUpdate['""]\s*,\s*function\s*\(\s*(?<delta>[A-Za-z_]\w*)\s*\)\s*(?<body>.*)\bend\s*\)\s*;?\s*$",
+            @"(?s)^\s*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]\s*,\s*function\s*\(\s*(?<delta>[A-Za-z_]\w*)\s*\)\s*(?<body>.*)\bend\s*\)\s*;?\s*$",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         if (!match.Success)
         {
