@@ -287,6 +287,8 @@ internal static class CallbackResolverService
         var cadenceKey = CadenceKey(callback.Owner, callback.Kind, callback.Target);
         cadence.TryGetValue(cadenceKey, out var cadenceDecision);
 
+        var cadenceBlocker = "";
+
         // Highest-confidence cadence recipe: the callback itself contains only
         // author-written fixed timer accumulators and their gated work. Runtime
         // data decides whether eliminating the frame-rate entry is materially
@@ -440,8 +442,8 @@ internal static class CallbackResolverService
             var increment = incrementRegex.Match(lines[i]);
             if (increment.Success)
             {
-                var variable = increment.Groups["var"].Value;
-                increments[variable] = i;
+                var incrementVariable = increment.Groups["var"].Value;
+                increments[incrementVariable] = i;
                 continue;
             }
 
@@ -726,13 +728,11 @@ internal static class CallbackResolverService
             return false;
         }
 
-        var withoutInitializer = Regex.Replace(
-            outside,
+        var initializerRegex = new Regex(
             @"\b(?:local\s+)?" + Regex.Escape(variable) +
             @"\s*=\s*0(?:\.0+)?\b",
-            "",
-            1,
             RegexOptions.CultureInvariant);
+        var withoutInitializer = initializerRegex.Replace(outside, "", 1);
 
         return Regex.IsMatch(
             withoutInitializer,
