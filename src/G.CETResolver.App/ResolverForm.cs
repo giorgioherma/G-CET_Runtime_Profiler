@@ -8,7 +8,8 @@ internal sealed class ResolverForm : Form
     private readonly TextBox _mods = new() { Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
     private readonly Button _captureBrowse = new() { Text = "Browse..." };
     private readonly Button _modsBrowse = new() { Text = "Browse..." };
-    private readonly Button _analyze = new() { Text = "Analyze", Height = 36 };
+    private readonly Button _analyze = new() { Text = "ANALYZE", Height = 36 };
+    private readonly Button _generate = new() { Text = "GENERATE PASS ZIP", Height = 36 };
     private readonly Label _status = new() { AutoSize = true, Text = "Select RESULTS (or a capture folder) and the live CET mods folder." };
     private readonly Label _families = new() { AutoSize = true, Text = "CALLBACK FAMILIES: -" };
     private readonly Label _generic = new() { AutoSize = true, Text = "GENERIC RESOLVED: -" };
@@ -39,7 +40,7 @@ internal sealed class ResolverForm : Form
 
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 125));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 95));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 165));
 
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
@@ -59,6 +60,7 @@ internal sealed class ResolverForm : Form
         _captureBrowse.Dock = DockStyle.Fill;
         _modsBrowse.Dock = DockStyle.Fill;
         _analyze.Dock = DockStyle.Fill;
+        _generate.Dock = DockStyle.Fill;
         _status.Anchor = AnchorStyles.Left;
 
         root.Controls.Add(captureLabel, 0, 0);
@@ -68,7 +70,8 @@ internal sealed class ResolverForm : Form
         root.Controls.Add(_mods, 1, 1);
         root.Controls.Add(_modsBrowse, 2, 1);
         root.Controls.Add(_analyze, 0, 2);
-        root.SetColumnSpan(_analyze, 3);
+        root.SetColumnSpan(_analyze, 2);
+        root.Controls.Add(_generate, 2, 2);
         root.Controls.Add(_status, 0, 3);
         root.SetColumnSpan(_status, 3);
         root.Controls.Add(_families, 0, 4);
@@ -88,6 +91,7 @@ internal sealed class ResolverForm : Form
         _captureBrowse.Click += (_, _) => BrowseInto(_capture);
         _modsBrowse.Click += (_, _) => BrowseInto(_mods);
         _analyze.Click += (_, _) => Analyze();
+        _generate.Click += (_, _) => GeneratePass();
     }
 
     private static void BrowseInto(TextBox target)
@@ -107,6 +111,7 @@ internal sealed class ResolverForm : Form
         try
         {
             _analyze.Enabled = false;
+            _generate.Enabled = false;
             _status.Text = "Analyzing callback families...";
             _output.Clear();
             Application.DoEvents();
@@ -143,6 +148,58 @@ internal sealed class ResolverForm : Form
         finally
         {
             _analyze.Enabled = true;
+            _generate.Enabled = true;
+        }
+    }
+
+    private void GeneratePass()
+    {
+        try
+        {
+            _analyze.Enabled = false;
+            _generate.Enabled = false;
+            _status.Text = "Revalidating resolver decisions and generating overlay ZIP...";
+            _output.Clear();
+            Application.DoEvents();
+
+            var capture = _capture.Text.Trim();
+            var mods = _mods.Text.Trim();
+
+            if (!Directory.Exists(capture))
+                throw new DirectoryNotFoundException("Select a valid G-CET RESULTS folder or collected capture folder.");
+            if (!Directory.Exists(mods))
+                throw new DirectoryNotFoundException("Select the live cyber_engine_tweaks\\mods folder.");
+
+            // Always refresh the resolver against the current live stack before a
+            // pass is generated. The generator then consumes only that resolver
+            // output and refuses stale source hashes.
+            var resolved = ResolverService.Resolve(capture, mods);
+            var pass = ResolverService.GeneratePass(capture, mods);
+
+            _families.Text = $"CALLBACK FAMILIES: {resolved.FamilyCount}";
+            _generic.Text = $"GENERIC RESOLVED: {resolved.GenericResolvedCount}";
+            _registry.Text = $"SPECIAL HINTS: {resolved.RegistryHintCount}";
+            _unresolved.Text = $"UNRESOLVED: {resolved.UnresolvedCount}";
+
+            _status.Text = $"Pass ready — {pass.TransformCount} transforms across {pass.FileCount} files.";
+            _output.Text =
+                $"G-CET pass ZIP:\r\n{pass.ZipPath}\r\n\r\n" +
+                $"Applied transforms: {pass.TransformCount}\r\n" +
+                $"Changed files: {pass.FileCount}\r\n" +
+                $"Skipped after source revalidation: {pass.SkippedCount}\r\n\r\n" +
+                "The ZIP contains full replacement files only for resolver-authorized callbacks. " +
+                "No live mod files were changed by the resolver.";
+        }
+        catch (Exception ex)
+        {
+            _status.Text = "Pass generation failed.";
+            _output.Text = ex.ToString();
+            MessageBox.Show(this, ex.Message, "G-CET Resolver", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            _analyze.Enabled = true;
+            _generate.Enabled = true;
         }
     }
 }
