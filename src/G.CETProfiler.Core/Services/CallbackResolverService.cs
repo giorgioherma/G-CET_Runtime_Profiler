@@ -427,6 +427,9 @@ internal static class CallbackResolverService
         var gateRegex = new Regex(
             @"^\s*if\s+(?<var>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*(?:>=|>)\s*(?<seconds>\d+(?:\.\d+)?)\s+then\s*$",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        var earlyReturnGateRegex = new Regex(
+            @"^\s*if\s+(?<var>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*<\s*(?<seconds>\d+(?:\.\d+)?)\s+then\s+return\s+end\s*;?\s*$",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
         for (var i = 0; i < lines.Length; i++)
         {
@@ -445,6 +448,43 @@ internal static class CallbackResolverService
                 var incrementVariable = increment.Groups["var"].Value;
                 increments[incrementVariable] = i;
                 continue;
+            }
+
+            var earlyGate = earlyReturnGateRegex.Match(lines[i]);
+            if (earlyGate.Success)
+            {
+                if (gates.Count > 0)
+                {
+                    blocker = "Author cadence: mixed early-return and block timer gates are not yet a finite supported recipe.";
+                    return false;
+                }
+
+                var earlyVariable = earlyGate.Groups["var"].Value;
+                if (!double.TryParse(
+                        earlyGate.Groups["seconds"].Value,
+                        System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        out var earlySeconds) ||
+                    earlySeconds <= 0 ||
+                    !double.IsFinite(earlySeconds))
+                {
+                    blocker = "Author cadence: early-return timer threshold is not a positive fixed author rate.";
+                    return false;
+                }
+
+                var remainder = string.Join("\n", lines.Skip(i + 1));
+                if (!Regex.IsMatch(
+                        remainder,
+                        @"\b" + Regex.Escape(earlyVariable) + @"\s*=\s*0(?:\.0+)?\b",
+                        RegexOptions.CultureInvariant))
+                {
+                    blocker = $"Author cadence: timer '{earlyVariable}' is not reset after its early-return gate.";
+                    return false;
+                }
+
+                gates[earlyVariable] = earlySeconds;
+                gateRanges.Add((i, lines.Length - 1));
+                break;
             }
 
             var gate = gateRegex.Match(lines[i]);
