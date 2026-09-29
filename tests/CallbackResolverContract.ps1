@@ -141,8 +141,23 @@ Observe("PlayerPuppet", "OnAction", function(_, action)
     if actionName == "UI_Apply" then
         DoApply()
     end
-    if state.active then
-        game:handleInput(action)
+    game:handleInput(action)
+end)
+'@
+
+Write-Mod 'FixtureGatedDynamic' @'
+Observe("PlayerPuppet", "OnAction", function(_, action)
+    local actionName = Game.NameToString(action:GetName(action))
+    local actionType = action:GetType(action).value
+    if actionName == "UI_Apply" then
+        if actionType == "BUTTON_PRESSED" then
+            DoApply()
+        end
+    end
+    if state.session then
+        if state.session.active then
+            game:handleInput(action)
+        end
     end
 end)
 '@
@@ -237,7 +252,8 @@ $handoff = @{
         (CallbackRow 107 'FixtureConsumer' 'observe' 'PlayerPuppet::OnAction' 600 8.0 12.0 'init.lua' 1 7),
         (CallbackRow 110 'FixturePattern' 'observe' 'PlayerPuppet::OnAction' 575 7.5 11.0 'init.lua' 1 12),
         (CallbackRow 108 'FixtureNeighborOverride' 'observe' 'PlayerPuppet::OnAction' 550 7.0 10.0 'init.lua' 1 6),
-        (CallbackRow 109 'FixtureDynamic' 'observe' 'PlayerPuppet::OnAction' 500 6.0 8.0 'init.lua' 1 9),
+        (CallbackRow 109 'FixtureDynamic' 'observe' 'PlayerPuppet::OnAction' 500 6.0 8.0 'init.lua' 1 7),
+        (CallbackRow 112 'FixtureGatedDynamic' 'observe' 'PlayerPuppet::OnAction' 495 5.9 7.8 'init.lua' 1 14),
         (CallbackRow 111 'FixtureDownstream' 'observe' 'PlayerPuppet::OnAction' 490 5.8 7.5 'init.lua' 1 10),
         (CallbackRow 102 'FixtureFrame' 'event' 'onUpdate' 60 5.0 1.0 'init.lua' 1 3),
         (CallbackRow 103 'FixtureUnknown' 'observe' 'PlayerPuppet::SomeOtherMethod' 60 4.0 1.0 'init.lua' 1 3)
@@ -351,6 +367,23 @@ if (!$dynamic.generic.Facts.dynamicActionForward) {
     throw 'Dynamic downstream action-forward fact was not emitted.'
 }
 
+$gated = Action-For 'FixtureGatedDynamic'
+if (!$gated.generic.Automatable) {
+    throw 'Simple state-gated full-stream callback was not resolved.'
+}
+if ($gated.generic.Pattern -ne 'ACTION_ROUTING_GATED_WILDCARD') {
+    throw "Unexpected gated wildcard recipe: $($gated.generic.Pattern)"
+}
+if (!$gated.generic.Facts.gatedWildcardResolved) {
+    throw 'Gated wildcard fact was not emitted.'
+}
+if ($gated.generic.Facts.dynamicGateExpression -ne '(state.session and state.session.active)') {
+    throw "Unexpected gated wildcard expression: $($gated.generic.Facts.dynamicGateExpression)"
+}
+if (@($gated.generic.Facts.actions) -notcontains 'UI_Apply') {
+    throw 'Gated wildcard lost independently routed exact action.'
+}
+
 $downstream = Action-For 'FixtureDownstream'
 if (!$downstream.generic.Automatable) {
     throw 'Finite owner-local downstream action handler was not resolved generically.'
@@ -396,11 +429,11 @@ if ($unknown.registry.matched) {
 if ($null -eq $resolved.pass) {
     throw 'CLI --generate-pass did not return a pass result.'
 }
-if ([int]$resolved.pass.TransformCount -ne 9) {
-    throw "Expected 9 generated V1 transforms, got $($resolved.pass.TransformCount)."
+if ([int]$resolved.pass.TransformCount -ne 10) {
+    throw "Expected 10 generated V1 transforms, got $($resolved.pass.TransformCount)."
 }
-if ([int]$resolved.pass.FileCount -ne 13) {
-    throw "Expected 13 generated replacement files (9 callback + 4 fixed 0-Engine), got $($resolved.pass.FileCount)."
+if ([int]$resolved.pass.FileCount -ne 14) {
+    throw "Expected 14 generated replacement files (10 callback + 4 fixed 0-Engine), got $($resolved.pass.FileCount)."
 }
 if (!(Test-Path -LiteralPath $resolved.pass.ZipPath -PathType Leaf)) {
     throw "Generated pass ZIP is missing: $($resolved.pass.ZipPath)"
@@ -427,6 +460,7 @@ try {
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureFrame/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixturePattern/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDownstream/init.lua',
+        'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureGatedDynamic/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/modules/ActionRouter.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/modules/Health.lua',
@@ -478,6 +512,13 @@ try {
         }
     }
 
+    $gatedText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureGatedDynamic/init.lua'
+    foreach ($requiredGatedText in @('actions = "*"','UI_Apply','state.session and state.session.active','GatedWildcard')) {
+        if ($gatedText -notmatch [regex]::Escape($requiredGatedText)) {
+            throw "Generated gated wildcard router is missing: $requiredGatedText"
+        }
+    }
+
     $manifest = (Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw) | ConvertFrom-Json
     if ($manifest.policy.selection -ne 'ONLY_AUTOMATABLE_CANDIDATES_FROM_G-CET_Resolver.json') {
         throw 'Generated pass manifest is not resolver-only.'
@@ -485,11 +526,11 @@ try {
     if ($manifest.policy.modNameRules) {
         throw 'Generated pass manifest unexpectedly allows mod-name rules.'
     }
-    if ([int]$manifest.summary.transforms -ne 9) {
+    if ([int]$manifest.summary.transforms -ne 10) {
         throw 'Generated pass manifest transform count is wrong.'
     }
-    if ([int]$manifest.summary.callbackFiles -ne 9) {
-        throw "Expected 9 callback replacement files, got $($manifest.summary.callbackFiles)."
+    if ([int]$manifest.summary.callbackFiles -ne 10) {
+        throw "Expected 10 callback replacement files, got $($manifest.summary.callbackFiles)."
     }
     if ([int]$manifest.summary.fixedRuntimeFiles -ne 4) {
         throw "Expected 4 fixed 0-Engine runtime files, got $($manifest.summary.fixedRuntimeFiles)."
