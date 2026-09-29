@@ -15,7 +15,8 @@ if (Test-Path -LiteralPath $root) {
     Remove-Item -LiteralPath $root -Recurse -Force
 }
 
-$capture = Join-Path $root 'capture'
+$results = Join-Path $root 'RESULTS'
+$capture = Join-Path $results 'CET-20990101-010203_WORLD'
 $mods = Join-Path $root 'mods'
 New-Item -ItemType Directory -Force $capture,$mods | Out-Null
 
@@ -101,7 +102,9 @@ $handoff = @{
 
 $handoff | Set-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Encoding utf8
 
-$resolved = (& $resolverExe --capture $capture --mods $mods --json | ConvertFrom-Json)
+# Users naturally point the resolver at RESULTS. It must locate the newest
+# collected CET-* capture itself.
+$resolved = (& $resolverExe --capture $results --mods $mods --json | ConvertFrom-Json)
 if (!$resolved.ok) { throw 'G-CET callback resolver pass failed.' }
 
 $outPath = Join-Path $capture 'G-CET_Resolver.json'
