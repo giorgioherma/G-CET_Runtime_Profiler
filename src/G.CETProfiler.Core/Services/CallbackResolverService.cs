@@ -262,7 +262,7 @@ internal static class CallbackResolverService
 
         if (source is not null &&
             Regex.IsMatch(
-                source.Window,
+                source.CallbackText,
                 @"\b(?:registerForEvent|registerRuntimeEvent)\s*\(\s*['""]onUpdate['""]",
                 RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
         {
@@ -317,7 +317,7 @@ internal static class CallbackResolverService
             };
         }
 
-        var window = source.Window;
+        var window = source.CallbackText;
         var full = source.FullText;
         var evidence = new List<string>();
         var blockers = new List<string>();
@@ -1014,6 +1014,10 @@ internal static class CallbackResolverService
                     ? (int)Math.Min(callback.SourceLineEnd.Value, lines.Length)
                     : Math.Min(lines.Length, Math.Max(1, lineStart) + 140);
 
+                var callbackStart = Math.Max(1, lineStart);
+                var callbackEnd = Math.Min(lines.Length, Math.Max(lineEnd, callbackStart));
+                var callbackText = string.Join("\n", lines.Skip(callbackStart - 1).Take(callbackEnd - callbackStart + 1));
+
                 var windowStart = Math.Max(1, lineStart - 3);
                 var windowEnd = Math.Min(lines.Length, Math.Max(lineEnd + 3, windowStart + 40));
                 var window = string.Join("\n", lines.Skip(windowStart - 1).Take(windowEnd - windowStart + 1));
@@ -1024,6 +1028,7 @@ internal static class CallbackResolverService
                     RelativeFile = Path.GetRelativePath(_modsRoot, path).Replace('\\', '/'),
                     Sha256 = Sha256(path),
                     FullText = full,
+                    CallbackText = callbackText,
                     Window = window,
                     LineStart = lineStart > 0 ? lineStart : null,
                     LineEnd = lineEnd > 0 ? lineEnd : null,
@@ -1221,6 +1226,7 @@ internal static class CallbackResolverService
         public string RelativeFile { get; init; } = "";
         public string Sha256 { get; init; } = "";
         public string FullText { get; init; } = "";
+        public string CallbackText { get; init; } = "";
         public string Window { get; init; } = "";
         public int? LineStart { get; init; }
         public int? LineEnd { get; init; }
