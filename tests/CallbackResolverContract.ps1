@@ -19,6 +19,15 @@ $results = Join-Path $root 'RESULTS'
 $capture = Join-Path $results 'CET-20990101-010203_WORLD'
 $mods = Join-Path $root 'mods'
 New-Item -ItemType Directory -Force $capture,$mods | Out-Null
+$zeroDir = Join-Path $mods '0-Engine'
+New-Item -ItemType Directory -Force $zeroDir | Out-Null
+@'
+local Engine = {}
+function Engine.SubscribeAction(config, fn, owner) return { unsubscribe = function() end } end
+function Engine.MakeEventRegistrar(owner, fallback) return fallback end
+return Engine
+'@ | Set-Content -LiteralPath (Join-Path $zeroDir 'init.lua') -Encoding utf8
+
 
 function Write-Mod([string]$Name, [string]$Source) {
     $dir = Join-Path $mods $Name
@@ -180,7 +189,7 @@ $handoff | Set-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json
 
 # Users naturally point the resolver at RESULTS. It must locate the newest
 # collected CET-* capture itself.
-$resolved = (& $resolverExe --capture $results --mods $mods --json | ConvertFrom-Json)
+$resolved = (& $resolverExe --capture $results --mods $mods --generate-pass --json | ConvertFrom-Json)
 if (!$resolved.ok) { throw 'G-CET callback resolver pass failed.' }
 
 $outPath = Join-Path $capture 'G-CET_Resolver.json'
@@ -306,4 +315,82 @@ if ($unknown.registry.matched) {
     throw 'Empty high-impact exception registry unexpectedly matched a callback.'
 }
 
-Write-Host 'Callback-first G-CET resolver contract passed.'
+if ($null -eq $resolved.pass) {
+    throw 'CLI --generate-pass did not return a pass result.'
+}
+if ([int]$resolved.pass.TransformCount -ne 8) {
+    throw "Expected 8 generated V1 transforms, got $($resolved.pass.TransformCount)."
+}
+if ([int]$resolved.pass.FileCount -ne 8) {
+    throw "Expected 8 generated replacement files, got $($resolved.pass.FileCount)."
+}
+if (!(Test-Path -LiteralPath $resolved.pass.ZipPath -PathType Leaf)) {
+    throw "Generated pass ZIP is missing: $($resolved.pass.ZipPath)"
+}
+
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$zip = [System.IO.Compression.ZipFile]::OpenRead([string]$resolved.pass.ZipPath)
+try {
+    $names = @($zip.Entries | ForEach-Object FullName)
+
+    foreach ($requiredEntry in @(
+        'G-CET_Pass_Manifest.json',
+        'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureAction/init.lua',
+        'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureFrame/init.lua',
+        'bin/x64/plugins/cyber_engine_tweaks/mods/FixturePattern/init.lua'
+    )) {
+        if ($requiredEntry -notin $names) {
+            throw "Generated pass ZIP is missing expected entry: $requiredEntry"
+        }
+    }
+
+    if ('bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDynamic/init.lua' -in $names) {
+        throw 'Blocked dynamic OnAction callback leaked into the generated pass.'
+    }
+    if ('bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/init.lua' -in $names) {
+        throw 'V1 generator unexpectedly rewrote runtime infrastructure.'
+    }
+
+    function Read-ZipText([string]$EntryName) {
+        $entry = $zip.GetEntry($EntryName)
+        if ($null -eq $entry) { throw "ZIP entry not found: $EntryName" }
+        $reader = [System.IO.StreamReader]::new($entry.Open())
+        try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
+    }
+
+    $actionText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureAction/init.lua'
+    if ($actionText -notmatch 'SubscribeAction') {
+        throw 'Generated OnAction replacement does not use the action router.'
+    }
+    if ($actionText -notmatch 'Jump' -or $actionText -notmatch 'Dodge') {
+        throw 'Generated OnAction replacement lost resolver-emitted action facts.'
+    }
+
+    $frameText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureFrame/init.lua'
+    if ($frameText -notmatch 'MakeEventRegistrar' -or
+        $frameText -notmatch '__gcetRegisterEvent_102\("onUpdate"') {
+        throw 'Generated frame-dispatch replacement is incomplete.'
+    }
+
+    $patternText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixturePattern/init.lua'
+    if ($patternText -notmatch 'actions = "\*"' -or
+        $patternText -notmatch 'string\.find\(routedName, "Turn", 1, true\)') {
+        throw 'Generated mixed exact+pattern router did not preserve the resolver pattern.'
+    }
+
+    $manifest = (Read-ZipText 'G-CET_Pass_Manifest.json') | ConvertFrom-Json
+    if ($manifest.policy.selection -ne 'ONLY_AUTOMATABLE_CANDIDATES_FROM_G-CET_Resolver.json') {
+        throw 'Generated pass manifest is not resolver-only.'
+    }
+    if ($manifest.policy.modNameRules) {
+        throw 'Generated pass manifest unexpectedly allows mod-name rules.'
+    }
+    if ([int]$manifest.summary.transforms -ne 8) {
+        throw 'Generated pass manifest transform count is wrong.'
+    }
+}
+finally {
+    $zip.Dispose()
+}
+
+Write-Host 'Callback-first resolver + V1 pass generator contract passed.'
