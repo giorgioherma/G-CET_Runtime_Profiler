@@ -9,8 +9,8 @@ public static partial class ResultReportService
     /// It deliberately makes no pacing or transformation decisions.
     /// Everything here is derived from the already-captured profiler CSVs and
     /// optional aligned frametime data, so the native profiler hot path remains
-    /// unchanged. Native callback registration IDs and Lua source ranges are
-    /// preserved when the capture provides them.
+    /// unchanged. Native callback registration IDs, Lua source ranges, and
+    /// adaptive deep-profile evidence are preserved when the capture provides them.
     /// </summary>
     private static object BuildResolverInput(string captureRoot, ResultAnalysis a)
     {
