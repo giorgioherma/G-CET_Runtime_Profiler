@@ -842,6 +842,25 @@ jobs:
         shell: pwsh
         run: ./tests/CallbackResolverContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: Sanitize package-local RESULTS before packaging
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $results = 'publish\RESULTS'
+          if (!(Test-Path -LiteralPath $results -PathType Container)) {
+            New-Item -ItemType Directory -Force $results | Out-Null
+          }
+
+          Get-ChildItem -LiteralPath $results -Force |
+            Where-Object { $_.Name -ne 'README.txt' } |
+            Remove-Item -Recurse -Force
+
+          $unexpected = @(Get-ChildItem -LiteralPath $results -Force |
+            Where-Object { $_.Name -ne 'README.txt' })
+          if ($unexpected.Count -gt 0) {
+            throw 'Test capture data remains in publish\RESULTS before packaging.'
+          }
+
       - name: Stage portable release ZIP
         shell: pwsh
         run: |
