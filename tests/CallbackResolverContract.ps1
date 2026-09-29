@@ -21,12 +21,34 @@ $mods = Join-Path $root 'mods'
 New-Item -ItemType Directory -Force $capture,$mods | Out-Null
 $zeroDir = Join-Path $mods '0-Engine'
 New-Item -ItemType Directory -Force $zeroDir | Out-Null
-@'
-local Engine = {}
-function Engine.SubscribeAction(config, fn, owner) return { unsubscribe = function() end } end
-function Engine.MakeEventRegistrar(owner, fallback) return fallback end
-return Engine
-'@ | Set-Content -LiteralPath (Join-Path $zeroDir 'init.lua') -Encoding utf8
+
+# The generated pass always ships the fixed 0-Engine runtime. Use the exact
+# bundled fixed init as the live fixture so the contract exercises the same
+# hash gate as a real generated pass.
+$encodedInitPath = Join-Path $ResolverRoot 'runtime\0-Engine\fixed-init.lua.gz.b64'
+if (!(Test-Path -LiteralPath $encodedInitPath -PathType Leaf)) {
+    throw "Bundled fixed 0-Engine init payload is missing: $encodedInitPath"
+}
+
+Add-Type -AssemblyName System.IO.Compression
+$encodedInit = (Get-Content -LiteralPath $encodedInitPath -Raw).Trim()
+$compressedInit = [Convert]::FromBase64String($encodedInit)
+$input = [System.IO.MemoryStream]::new($compressedInit)
+$gzip = [System.IO.Compression.GZipStream]::new(
+    $input,
+    [System.IO.Compression.CompressionMode]::Decompress)
+$output = [System.IO.MemoryStream]::new()
+try {
+    $gzip.CopyTo($output)
+    [System.IO.File]::WriteAllBytes(
+        (Join-Path $zeroDir 'init.lua'),
+        $output.ToArray())
+}
+finally {
+    $output.Dispose()
+    $gzip.Dispose()
+    $input.Dispose()
+}
 
 
 function Write-Mod([string]$Name, [string]$Source) {
@@ -321,8 +343,8 @@ if ($null -eq $resolved.pass) {
 if ([int]$resolved.pass.TransformCount -ne 8) {
     throw "Expected 8 generated V1 transforms, got $($resolved.pass.TransformCount)."
 }
-if ([int]$resolved.pass.FileCount -ne 8) {
-    throw "Expected 8 generated replacement files, got $($resolved.pass.FileCount)."
+if ([int]$resolved.pass.FileCount -ne 12) {
+    throw "Expected 12 generated replacement files (8 callback + 4 fixed 0-Engine), got $($resolved.pass.FileCount)."
 }
 if (!(Test-Path -LiteralPath $resolved.pass.ZipPath -PathType Leaf)) {
     throw "Generated pass ZIP is missing: $($resolved.pass.ZipPath)"
@@ -337,7 +359,11 @@ try {
         'G-CET_Pass_Manifest.json',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureAction/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureFrame/init.lua',
-        'bin/x64/plugins/cyber_engine_tweaks/mods/FixturePattern/init.lua'
+        'bin/x64/plugins/cyber_engine_tweaks/mods/FixturePattern/init.lua',
+        'bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/init.lua',
+        'bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/modules/ActionRouter.lua',
+        'bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/modules/Health.lua',
+        'bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/modules/Scheduler.lua'
     )) {
         if ($requiredEntry -notin $names) {
             throw "Generated pass ZIP is missing expected entry: $requiredEntry"
@@ -346,9 +372,6 @@ try {
 
     if ('bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDynamic/init.lua' -in $names) {
         throw 'Blocked dynamic OnAction callback leaked into the generated pass.'
-    }
-    if ('bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/init.lua' -in $names) {
-        throw 'V1 generator unexpectedly rewrote runtime infrastructure.'
     }
 
     function Read-ZipText([string]$EntryName) {
@@ -387,6 +410,29 @@ try {
     }
     if ([int]$manifest.summary.transforms -ne 8) {
         throw 'Generated pass manifest transform count is wrong.'
+    }
+    if ([int]$manifest.summary.callbackFiles -ne 8) {
+        throw "Expected 8 callback replacement files, got $($manifest.summary.callbackFiles)."
+    }
+    if ([int]$manifest.summary.fixedRuntimeFiles -ne 4) {
+        throw "Expected 4 fixed 0-Engine runtime files, got $($manifest.summary.fixedRuntimeFiles)."
+    }
+    if (!$manifest.fixedRuntime.included -or !$manifest.fixedRuntime.exception) {
+        throw 'Generated pass did not mark 0-Engine as the fixed runtime exception.'
+    }
+    if ($manifest.fixedRuntime.FixedVersion -ne '0.18.11-PASS4.2.1-PHASE-CADENCE-FIX') {
+        throw "Unexpected fixed 0-Engine version: $($manifest.fixedRuntime.FixedVersion)"
+    }
+
+    $zeroText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/init.lua'
+    foreach ($requiredRuntimeSymbol in @(
+        'function Engine.MakeEventRegistrar',
+        'function Engine.SubscribeAction',
+        'ActionRouter.Dispatch'
+    )) {
+        if ($zeroText -notmatch [regex]::Escape($requiredRuntimeSymbol)) {
+            throw "Generated fixed 0-Engine init is missing runtime symbol: $requiredRuntimeSymbol"
+        }
     }
 }
 finally {
