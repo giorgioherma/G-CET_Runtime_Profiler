@@ -1,0 +1,313 @@
+--- init.lua.orig
++++ init.lua.fixed
+@@ -2,7 +2,7 @@
+ -- Centralized runtime service layer for CET mods (state caching + event bus).
+ -- API reference: README.md. Changelog: history.md.
+ 
+-local engineVersion = "0.18.6"
++local engineVersion = "0.18.11-PASS4.2.1-PHASE-CADENCE-FIX"
+ 
+ -- psiberx Libraries
+ local Cron = require('external/Cron')
+@@ -21,6 +21,9 @@
+ local Logger = require('modules/Logger')
+ local Proximity = require('modules/Proximity')
+ local SpatialHash = require('modules/SpatialHash')
++local Health = require('modules/Health')
++local ActionRouter = require('modules/ActionRouter')
++local Scheduler = require('modules/Scheduler')
+ local Engine = {}
+ 
+ --##########################################
+@@ -89,6 +92,16 @@
+ local isSessionLoaded = false
+ local currentFrame = 0
+ local frameEmitters = {}
++local lastRealClock = os.clock()
++
++-- PASS3 frame adoption: direct CET onUpdate/onDraw clients fan out through
++-- the two native 0-Engine callbacks while keeping their original callback bodies.
++local adoptedUpdateEmitter = EventEmitter.new()
++local adoptedDrawEmitter = EventEmitter.new()
++
++-- PASS2 Action-only: one PlayerPuppet::OnAction observer fans out to indexed clients.
++ActionRouter.Init(Logger, Health, function() return currentFrame end)
++Scheduler.Init(Logger, Health)
+ 
+ -- Cached TweakDB IDs (avoid per-call allocation)
+ local combatEffectId = nil
+@@ -303,6 +316,37 @@
+ 
+ function Engine.GetVersion()
+     return engineVersion
++end
++
++--##########################################
++-- PASS3 Frame Registrar
++--##########################################
++
++---Create a registerForEvent-compatible registrar for high-frequency frame events.
++---onUpdate is dispatched from 0-Engine's single native onUpdate with the exact CET delta.
++---onDraw is dispatched from 0-Engine's single native onDraw.
++---All other events fall back to the caller's original registerForEvent.
++---@param modName string
++---@param fallbackRegister function|nil
++---@return function
++function Engine.MakeEventRegistrar(modName, fallbackRegister)
++    local source = (type(modName) == "string" and modName ~= "") and modName or "unscoped"
++
++    return function(eventName, callback)
++        if eventName == "onUpdate" and type(callback) == "function" then
++            return adoptedUpdateEmitter:subscribe(callback, source)
++        end
++
++        if eventName == "onDraw" and type(callback) == "function" then
++            return adoptedDrawEmitter:subscribe(callback, source)
++        end
++
++        if type(fallbackRegister) == "function" then
++            return fallbackRegister(eventName, callback)
++        end
++
++        return nil
++    end
+ end
+ 
+ --##########################################
+@@ -418,6 +462,51 @@
+ end
+ 
+ --##########################################
++-- PASS4 Scheduler API
++--##########################################
++
++Engine.Schedule = {}
++
++local function unscopedScheduleArgs(options, fn)
++    if type(options) == "function" then
++        fn = options
++        options = {}
++    end
++
++    local copy = {}
++    for k, v in pairs(options or {}) do copy[k] = v end
++    copy.owner = copy.owner or "unscoped"
++    return copy, fn
++end
++
++function Engine.Schedule.EveryFrame(options, fn)
++    options, fn = unscopedScheduleArgs(options, fn)
++    return Scheduler.EveryFrame(options, fn)
++end
++
++function Engine.Schedule.EveryFrames(interval, options, fn)
++    options, fn = unscopedScheduleArgs(options, fn)
++    return Scheduler.EveryFrames(interval, options, fn)
++end
++
++function Engine.Schedule.Every(seconds, options, fn)
++    options, fn = unscopedScheduleArgs(options, fn)
++    return Scheduler.Every(seconds, options, fn)
++end
++
++function Engine.Schedule.After(seconds, options, fn)
++    options, fn = unscopedScheduleArgs(options, fn)
++    return Scheduler.After(seconds, options, fn)
++end
++
++function Engine.Schedule.NextTick(options, fn)
++    options, fn = unscopedScheduleArgs(options, fn)
++    return Scheduler.NextTick(options, fn)
++end
++
++Engine.Schedule.GetInfo = Scheduler.GetInfo
++
++--##########################################
+ -- Storage API
+ --##########################################
+ 
+@@ -460,6 +549,19 @@
+ function Engine.SetLogOverlay(enabled)
+     Logger.SetOverlay(enabled)
+ end
++
++--##########################################
++-- PASS2 Action Router
++--##########################################
++
++Engine.Input = {}
++
++function Engine.SubscribeAction(config, fn, source)
++    return ActionRouter.Subscribe(config, fn, source or "unscoped")
++end
++
++Engine.Input.Subscribe = Engine.SubscribeAction
++Engine.Input.GetInfo = ActionRouter.GetInfo
+ 
+ --##########################################
+ -- Proximity API
+@@ -604,6 +706,8 @@
+         spatials = {},   -- { handle }
+         frames = {},     -- { handle }
+         readySubs = {},  -- { handle }
++        actions = {},    -- { handle }
++        schedules = {},  -- { handle } PASS4 scheduler jobs
+         handle = nil     -- set below
+     }
+ 
+@@ -641,6 +745,60 @@
+         return handle
+     end
+ 
++    function Mod.SubscribeAction(config, fn)
++        local wrapped = wrapForMod(mod, fn)
++        local handle = ActionRouter.Subscribe(config, wrapped, name)
++        table.insert(mod.actions, handle)
++        return handle
++    end
++
++    Mod.Input = {}
++    Mod.Input.Subscribe = Mod.SubscribeAction
++
++    Mod.Schedule = {}
++
++    local function modScheduleArgs(options, fn)
++        if type(options) == "function" then
++            fn = options
++            options = {}
++        end
++
++        local copy = {}
++        for k, v in pairs(options or {}) do copy[k] = v end
++        copy.owner = name
++        return copy, fn
++    end
++
++    local function trackSchedule(handle)
++        table.insert(mod.schedules, handle)
++        return handle
++    end
++
++    function Mod.Schedule.EveryFrame(options, fn)
++        options, fn = modScheduleArgs(options, fn)
++        return trackSchedule(Scheduler.EveryFrame(options, wrapForMod(mod, fn)))
++    end
++
++    function Mod.Schedule.EveryFrames(interval, options, fn)
++        options, fn = modScheduleArgs(options, fn)
++        return trackSchedule(Scheduler.EveryFrames(interval, options, wrapForMod(mod, fn)))
++    end
++
++    function Mod.Schedule.Every(seconds, options, fn)
++        options, fn = modScheduleArgs(options, fn)
++        return trackSchedule(Scheduler.Every(seconds, options, wrapForMod(mod, fn)))
++    end
++
++    function Mod.Schedule.After(seconds, options, fn)
++        options, fn = modScheduleArgs(options, fn)
++        return trackSchedule(Scheduler.After(seconds, options, wrapForMod(mod, fn)))
++    end
++
++    function Mod.Schedule.NextTick(options, fn)
++        options, fn = modScheduleArgs(options, fn)
++        return trackSchedule(Scheduler.NextTick(options, wrapForMod(mod, fn)))
++    end
++
+     function Mod.WhenReady(fn, priority)
+         local wrapped = wrapForMod(mod, fn)
+         local handle = Engine.WhenReady(wrapped, name, priority)
+@@ -853,6 +1011,8 @@
+             spatials = #mod.spatials,
+             frames = #mod.frames,
+             readySubs = #mod.readySubs,
++            actions = #mod.actions,
++            schedules = #mod.schedules,
+             eventNames = eventNames
+         })
+     end
+@@ -997,9 +1157,14 @@
+     -- Player Action Observer
+     ------------------------------------------------
+ 
+-    Observe('PlayerPuppet', 'OnAction', function(_, action)
+-        if not isPlaying or State.inMenu then return end
+-        Events.PlayerAction:trigger(action)
++    Observe('PlayerPuppet', 'OnAction', function(player, action, consumer)
++        -- PASS2 Action-only: routed clients keep ordinary Observe semantics.
++        -- The legacy PlayerAction event keeps its original playing/not-in-menu gate.
++        if not isSessionLoaded then return end
++        ActionRouter.Dispatch(player, action, consumer)
++        if isPlaying and not State.inMenu then
++            Events.PlayerAction:trigger(action)
++        end
+     end)
+ 
+     ------------------------------------------------
+@@ -1063,8 +1228,30 @@
+ --##########################################
+ 
+ registerForEvent("onUpdate", function(delta)
++    local realClock = os.clock()
++    local realDelta = realClock - lastRealClock
++    lastRealClock = realClock
++
+     pcall(Cron.Update, delta)
+     pcall(UpdateFrame, delta)
++
++    local schedulerOk, schedulerErr = pcall(Scheduler.Update, {
++        frame = currentFrame,
++        dt = delta,
++        realDt = realDelta,
++        elapsed = delta,
++        now = State.time,
++        generation = 0,
++        playing = isPlaying,
++        inMenu = State.inMenu,
++        player = State.player(),
++        state = Engine.GetState()
++    })
++    if not schedulerOk then
++        Logger.Log("0-Engine", "Scheduler update error: " .. tostring(schedulerErr), "error")
++    end
++
++    adoptedUpdateEmitter:trigger(delta)
+ end)
+ 
+ registerForEvent("onShutdown", function()
+@@ -1086,11 +1273,18 @@
+ end)
+ 
+ registerForEvent("onDraw", function()
++    adoptedDrawEmitter:trigger()
++
+     if isOverlayOpen then
+         if ImGui.Begin("0-Engine") then
+             ImGui.Text("v" .. engineVersion)
+             ImGui.SameLine()
+             ImGui.TextColored(0.5, 0.5, 0.5, 1, isPlaying and "Playing" or "Not playing")
++            local schedulerInfo = Scheduler.GetInfo()
++            ImGui.Text(string.format("PASS4.2.1 Scheduler: %d frame + %d timed (%d active)",
++                schedulerInfo.frameJobs, schedulerInfo.timedJobs, schedulerInfo.activeJobs))
++            ImGui.Text(string.format("Absolute phased: %d/%d timed jobs",
++                schedulerInfo.absolutePhasedTimedJobs or 0, schedulerInfo.timedJobs))
+             ImGui.Separator()
+ 
+             ------------------------------------------------
+@@ -1271,7 +1465,7 @@
+                                 Engine.DisableMod(m.name)
+                             end
+                         end
+-                        local total = m.subs + m.timers + m.zones + m.spatials + m.frames
++                        local total = m.subs + m.timers + m.zones + m.spatials + m.frames + m.schedules
+                         ImGui.SameLine()
+                         ImGui.TextColored(0.5, 0.5, 0.5, 1, string.format("(%d callbacks)", total))
+                         if ImGui.IsItemHovered() then
+@@ -1287,6 +1481,8 @@
+                             if m.zones > 0 then ImGui.Text("Zones: " .. tostring(m.zones)) end
+                             if m.spatials > 0 then ImGui.Text("Spatial Sets: " .. tostring(m.spatials)) end
+                             if m.readySubs > 0 then ImGui.Text("WhenReady: " .. tostring(m.readySubs)) end
++                            if m.actions > 0 then ImGui.Text("Actions: " .. tostring(m.actions)) end
++                            if m.schedules > 0 then ImGui.Text("Scheduler jobs: " .. tostring(m.schedules)) end
+                             ImGui.EndTooltip()
+                         end
+                     end
