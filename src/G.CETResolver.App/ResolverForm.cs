@@ -184,10 +184,11 @@ internal sealed class ResolverForm : Form
             _status.Text = $"Pass ready — {pass.TransformCount} transforms across {pass.FileCount} files.";
             _output.Text =
                 $"G-CET pass ZIP:\r\n{pass.ZipPath}\r\n\r\n" +
+                $"Pass manifest:\r\n{pass.ManifestPath}\r\n\r\n" +
                 $"Applied transforms: {pass.TransformCount}\r\n" +
                 $"Changed files: {pass.FileCount}\r\n" +
                 $"Skipped after source revalidation: {pass.SkippedCount}\r\n\r\n" +
-                "The ZIP contains full replacement files only for resolver-authorized callbacks. " +
+                "The ZIP contains only deployable game files. The JSON manifest is kept beside it in RESULTS. " +
                 "No live mod files were changed by the resolver.";
         }
         catch (Exception ex)
