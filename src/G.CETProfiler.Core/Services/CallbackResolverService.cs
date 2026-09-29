@@ -773,76 +773,88 @@ internal static class CallbackResolverService
 
         public ResolvedSource? Resolve(CallbackMetric callback)
         {
-            var candidates = new List<(string Path, string Mode)>();
-            var source = (callback.SourceFile ?? "").Trim().TrimStart('@').Replace('/', Path.DirectorySeparatorChar);
+            var source = (callback.SourceFile ?? "").Trim().TrimStart('@')
+                .Replace('/', Path.DirectorySeparatorChar);
+            var ownerFolder = ResolveOwnerFolder(callback.Owner);
+
+            // Registration source frequently arrives as only "init.lua". That is
+            // ambiguous across the whole CET tree but unambiguous inside the
+            // measured owner. Prefer owner-relative provenance before any global
+            // suffix search.
+            if (!string.IsNullOrWhiteSpace(source) &&
+                !Path.IsPathRooted(source) &&
+                ownerFolder is not null)
+            {
+                var ownerRelative = Path.Combine(ownerFolder, source);
+                if (File.Exists(ownerRelative))
+                    return BuildResolvedSource(ownerRelative, "profiler-owner-relative", callback);
+            }
 
             if (!string.IsNullOrWhiteSpace(source))
             {
                 if (Path.IsPathRooted(source) && File.Exists(source) && IsInsideMods(source))
-                    candidates.Add((source, "profiler-absolute"));
-                else
+                    return BuildResolvedSource(source, "profiler-absolute", callback);
+
+                var normalized = source.Replace('\\', '/');
+                var modsIndex = normalized.IndexOf("/mods/", StringComparison.OrdinalIgnoreCase);
+                if (modsIndex >= 0)
                 {
-                    var normalized = source.Replace('\\', '/');
-                    var modsIndex = normalized.IndexOf("/mods/", StringComparison.OrdinalIgnoreCase);
-                    if (modsIndex >= 0)
-                    {
-                        var relative = normalized[(modsIndex + "/mods/".Length)..]
-                            .Replace('/', Path.DirectorySeparatorChar);
-                        var direct = Path.Combine(_modsRoot, relative);
-                        if (File.Exists(direct))
-                            candidates.Add((direct, "profiler-mods-relative"));
-                    }
-
-                    var combined = Path.Combine(_modsRoot, source);
-                    if (File.Exists(combined))
-                        candidates.Add((combined, "profiler-relative"));
-
-                    var suffix = normalized.TrimStart('/');
-                    candidates.AddRange(_luaFiles
-                        .Where(x => x.Replace('\\', '/').EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
-                        .Select(x => (x, "profiler-suffix")));
+                    var relative = normalized[(modsIndex + "/mods/".Length)..]
+                        .Replace('/', Path.DirectorySeparatorChar);
+                    var direct = Path.Combine(_modsRoot, relative);
+                    if (File.Exists(direct))
+                        return BuildResolvedSource(direct, "profiler-mods-relative", callback);
                 }
+
+                var combined = Path.Combine(_modsRoot, source);
+                if (File.Exists(combined))
+                    return BuildResolvedSource(combined, "profiler-relative", callback);
+
+                var suffix = normalized.TrimStart('/');
+                var suffixMatches = _luaFiles
+                    .Where(x => x.Replace('\\', '/').EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Take(3)
+                    .ToList();
+                if (suffixMatches.Count == 1)
+                    return BuildResolvedSource(suffixMatches[0], "profiler-suffix", callback);
             }
 
-            if (candidates.Select(x => x.Path).Distinct(StringComparer.OrdinalIgnoreCase).Count() == 0)
+            if (ownerFolder is not null)
             {
-                var ownerFolder = ResolveOwnerFolder(callback.Owner);
-                if (ownerFolder is not null)
-                {
-                    var token = ClassifyCallbackFamily(callback.Kind, callback.Target) == "ONACTION"
-                        ? "OnAction"
-                        : callback.Target;
-                    var matches = Directory.EnumerateFiles(ownerFolder, "*.lua", SearchOption.AllDirectories)
-                        .Where(path =>
+                var token = ClassifyCallbackFamily(callback.Kind, callback.Target) == "ONACTION"
+                    ? "OnAction"
+                    : callback.Target;
+                var matches = Directory.EnumerateFiles(ownerFolder, "*.lua", SearchOption.AllDirectories)
+                    .Where(path =>
+                    {
+                        try
                         {
-                            try
-                            {
-                                return File.ReadAllText(path).Contains(token, StringComparison.OrdinalIgnoreCase);
-                            }
-                            catch
-                            {
-                                return false;
-                            }
-                        })
-                        .Take(3)
-                        .ToList();
-                    if (matches.Count == 1)
-                        candidates.Add((matches[0], "owner-unique-token"));
-                }
+                            return File.ReadAllText(path).Contains(token, StringComparison.OrdinalIgnoreCase);
+                        }
+                        catch
+                        {
+                            return false;
+                        }
+                    })
+                    .Take(3)
+                    .ToList();
+
+                if (matches.Count == 1)
+                    return BuildResolvedSource(matches[0], "owner-unique-token", callback);
             }
 
-            var distinct = candidates
-                .GroupBy(x => Path.GetFullPath(x.Path), StringComparer.OrdinalIgnoreCase)
-                .Select(g => g.First())
-                .ToList();
+            return null;
+        }
 
-            if (distinct.Count != 1)
-                return null;
-
+        private ResolvedSource? BuildResolvedSource(
+            string path,
+            string mode,
+            CallbackMetric callback)
+        {
             try
             {
-                var chosen = distinct[0];
-                var full = File.ReadAllText(chosen.Path);
+                var full = File.ReadAllText(path);
                 var lines = full.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
                 var lineStart = callback.SourceLineStart is > 0
                     ? (int)Math.Min(callback.SourceLineStart.Value, lines.Length)
@@ -857,14 +869,14 @@ internal static class CallbackResolverService
 
                 return new ResolvedSource
                 {
-                    Path = chosen.Path,
-                    RelativeFile = Path.GetRelativePath(_modsRoot, chosen.Path).Replace('\\', '/'),
-                    Sha256 = Sha256(chosen.Path),
+                    Path = path,
+                    RelativeFile = Path.GetRelativePath(_modsRoot, path).Replace('\\', '/'),
+                    Sha256 = Sha256(path),
                     FullText = full,
                     Window = window,
                     LineStart = lineStart > 0 ? lineStart : null,
                     LineEnd = lineEnd > 0 ? lineEnd : null,
-                    MatchMode = chosen.Mode
+                    MatchMode = mode
                 };
             }
             catch
