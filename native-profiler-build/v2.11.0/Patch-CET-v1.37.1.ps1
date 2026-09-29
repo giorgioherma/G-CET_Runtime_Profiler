@@ -146,6 +146,48 @@ $1
 # ScriptContext.cpp
 # --------------------------------------------------------------------------
 
+Replace-LiteralOnce `
+    -Path $scC `
+    -Old @'
+namespace
+{
+'@ `
+    -New @'
+namespace
+{
+struct ProfilerSourceInfo
+{
+    std::string File;
+    int StartLine{};
+    int EndLine{};
+};
+
+ProfilerSourceInfo ReadProfilerSourceInfo(const sol::function& aFunction)
+{
+    ProfilerSourceInfo info;
+    auto* state = aFunction.lua_state();
+    if (!state || aFunction == sol::nil)
+        return info;
+
+    aFunction.push();
+    lua_Debug debugInfo{};
+    if (lua_getinfo(state, ">S", &debugInfo) != 0)
+    {
+        const char* source = debugInfo.source ? debugInfo.source : "";
+        if (source[0] == '@')
+            ++source;
+
+        info.File = source;
+        info.StartLine = debugInfo.linedefined;
+        info.EndLine = debugInfo.lastlinedefined;
+    }
+
+    return info;
+}
+
+'@ `
+    -Label "ScriptContext profiler source helper"
+
 Replace-RegexOnce `
     -Path $scC `
     -Pattern '(m_logger\s*=\s*env\["__logger"\]\.get<std::shared_ptr<spdlog::logger>>\(\);\s*\r?\n)' `
@@ -262,6 +304,37 @@ foreach ($p in $eventPatches) {
         -Replacement $p.Replacement `
         -Label $p.Label
 }
+
+
+# Capture the exact Lua source range registered for each CET event. This is
+# metadata only; callback timing semantics remain unchanged.
+Replace-RegexOnce `
+    -Path $scC `
+    -Pattern '(else\s*\r?\n\s*m_logger->error\("Tried to register an unknown event ''\{\}''!", acName\);)' `
+    -Replacement @'
+$1
+
+        CETRuntimeProfiler::Counter* profilerCounter = nullptr;
+        if (acName == "onHook") profilerCounter = m_profOnHook;
+        else if (acName == "onTweak") profilerCounter = m_profOnTweak;
+        else if (acName == "onInit") profilerCounter = m_profOnInit;
+        else if (acName == "onShutdown") profilerCounter = m_profOnShutdown;
+        else if (acName == "onUpdate") profilerCounter = m_profOnUpdate;
+        else if (acName == "onDraw") profilerCounter = m_profOnDraw;
+        else if (acName == "onOverlayOpen") profilerCounter = m_profOnOverlayOpen;
+        else if (acName == "onOverlayClose") profilerCounter = m_profOnOverlayClose;
+
+        if (profilerCounter)
+        {
+            const auto source = ReadProfilerSourceInfo(aCallback);
+            CETRuntimeProfiler::Get().AttachSource(
+                profilerCounter,
+                source.File,
+                source.StartLine,
+                source.EndLine);
+        }
+'@ `
+    -Label "ScriptContext event source metadata"
 
 # --------------------------------------------------------------------------
 # Scripting.cpp - global profiler control API available from CET console/mods
@@ -454,7 +527,34 @@ CETRuntimeProfiler::Counter* ResolveProfilerCounter(
     if (logger)
         modName = logger->name();
 
-    return CETRuntimeProfiler::Get().ResolveCallback(apContext, modName);
+    auto& profiler = CETRuntimeProfiler::Get();
+    auto* counter = profiler.ResolveCallback(apContext, modName);
+
+    // Source discovery is also lazy. Registration stays native-only and safe;
+    // the Lua function is inspected only on the first real callback execution.
+    if (counter && counter->SourceFile.empty())
+    {
+        auto* state = apContext->ScriptFunction.lua_state();
+        if (state && apContext->ScriptFunction != sol::nil)
+        {
+            apContext->ScriptFunction.push();
+            lua_Debug debugInfo{};
+            if (lua_getinfo(state, ">S", &debugInfo) != 0)
+            {
+                const char* source = debugInfo.source ? debugInfo.source : "";
+                if (source[0] == '@')
+                    ++source;
+
+                profiler.AttachSource(
+                    counter,
+                    source,
+                    debugInfo.linedefined,
+                    debugInfo.lastlinedefined);
+            }
+        }
+    }
+
+    return counter;
 }
 
 '@ `
@@ -573,6 +673,7 @@ foreach ($marker in @(
     "ResolveProfilerCounter",
     "BindCallback(",
     "ResolveCallback(",
+    "AttachSource(",
     "ClearCallbackBindings",
     "CETRuntimeProfiler::Scope profileScope",
     "profilerDownstreamBoundary"
@@ -622,6 +723,7 @@ Write-Host "Coverage: events + Observe + ObserveAfter + Override" -ForegroundCol
 Write-Host "FunctionOverride::Context: VERIFIED UNCHANGED" -ForegroundColor Green
 Write-Host "Registration-time Lua/Sol access: NONE" -ForegroundColor Green
 Write-Host "Callback ownership: lazy resolution during valid locked execution" -ForegroundColor Green
+Write-Host "Callback identity/source: registration ID + Lua source line range" -ForegroundColor Green
 Write-Host "Override downstream next()/native time: excluded from mod exclusive attribution" -ForegroundColor Green
 Write-Host "Capture control: Start / Pause / Resume / Stop / Reset / Dump / Status" -ForegroundColor Green
 Write-Host "CSV rates use captured time only (paused time excluded)" -ForegroundColor Green
