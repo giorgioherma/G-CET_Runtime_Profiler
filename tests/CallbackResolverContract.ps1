@@ -177,7 +177,7 @@ function Controller:HandleInput(actionName, actionType, action)
     end
 
     if relevantInputs[actionName] then
-        self.lastRelevant = actionName
+        self.lastRelevant = true
     end
     self.isMoving = self.x ~= 0 or self.y ~= 0
 end
