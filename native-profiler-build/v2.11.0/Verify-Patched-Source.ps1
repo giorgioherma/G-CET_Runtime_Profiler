@@ -15,6 +15,28 @@ try {
     Get-ChildItem ".\src\scripting" -File -Include *.h,*.cpp |
         Select-String -Pattern "CETRuntimeProfiler" |
         ForEach-Object { "$($_.Path):$($_.LineNumber): $($_.Line.Trim())" }
+
+    $profilerHeader = Get-Content ".\src\scripting\CETRuntimeProfiler.h" -Raw
+    $scriptContext = Get-Content ".\src\scripting\ScriptContext.cpp" -Raw
+    $functionOverride = Get-Content ".\src\scripting\FunctionOverride.cpp" -Raw
+
+    foreach ($marker in @("RegistrationId", "SourceFile", "SourceLineStart", "SourceLineEnd", "AttachSource")) {
+        if (-not $profilerHeader.Contains($marker)) {
+            throw "Profiler callback-identity marker missing from CETRuntimeProfiler.h: $marker"
+        }
+    }
+
+    if (-not $scriptContext.Contains("ReadProfilerSourceInfo") -or
+        -not $scriptContext.Contains("AttachSource")) {
+        throw "ScriptContext event source attribution was not patched."
+    }
+
+    if (-not $functionOverride.Contains("AttachSource") -or
+        -not $functionOverride.Contains("context@")) {
+        throw "FunctionOverride instance/source attribution was not patched."
+    }
+
+    "Callback identity/source verification: PASS"
 }
 finally {
     Pop-Location
