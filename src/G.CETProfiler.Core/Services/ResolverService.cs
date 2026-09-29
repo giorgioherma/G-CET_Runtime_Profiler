@@ -35,12 +35,10 @@ public static class ResolverService
         if (string.IsNullOrWhiteSpace(modsRoot))
             throw new ArgumentException("CET mods folder is empty.", nameof(modsRoot));
 
-        captureRoot = Path.GetFullPath(captureRoot);
+        captureRoot = ResolveCaptureRoot(Path.GetFullPath(captureRoot));
         modsRoot = Path.GetFullPath(modsRoot);
 
         var handoff = Path.Combine(captureRoot, ResultReportService.ResolverInputFileName);
-        if (!File.Exists(handoff))
-            throw new InvalidOperationException($"Measurement-only resolver handoff is missing: {handoff}");
         if (!Directory.Exists(modsRoot))
             throw new DirectoryNotFoundException($"CET mods folder was not found: {modsRoot}");
 
@@ -90,4 +88,40 @@ public static class ResolverService
             result.RegistryHintCount,
             result.UnresolvedCount);
     }
+    private static string ResolveCaptureRoot(string selectedPath)
+    {
+        if (!Directory.Exists(selectedPath))
+            throw new DirectoryNotFoundException($"Capture/results folder was not found: {selectedPath}");
+
+        var direct = Path.Combine(selectedPath, ResultReportService.ResolverInputFileName);
+        if (File.Exists(direct))
+            return selectedPath;
+
+        // Dummy-proof path: users naturally select the package RESULTS folder,
+        // not the timestamped capture inside it. Accept that and use the newest
+        // collected capture that actually contains the resolver handoff.
+        var candidates = Directory
+            .EnumerateDirectories(selectedPath)
+            .Select(path => new
+            {
+                Path = path,
+                Handoff = Path.Combine(path, ResultReportService.ResolverInputFileName)
+            })
+            .Where(x => File.Exists(x.Handoff))
+            .Select(x => new
+            {
+                x.Path,
+                LastWriteUtc = File.GetLastWriteTimeUtc(x.Handoff)
+            })
+            .OrderByDescending(x => x.LastWriteUtc)
+            .ToList();
+
+        if (candidates.Count > 0)
+            return candidates[0].Path;
+
+        throw new InvalidOperationException(
+            $"No collected G-CET capture was found in:\n{selectedPath}\n\n" +
+            $"Select either the RESULTS folder or a timestamped CET-* capture folder containing {ResultReportService.ResolverInputFileName}.");
+    }
+
 }
