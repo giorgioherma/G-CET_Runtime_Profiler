@@ -168,6 +168,13 @@ public static partial class ResultReportService
         var runtimeRecommendation = SourceJsonString(callback, "Recommendation", "recommendation");
         var callsPerSecond = SourceJsonDouble(callback, "CallsPerSecond", "callsPerSecond");
         var exclusiveMsPerSecond = SourceJsonDouble(callback, "ExclusiveMsPerSecond", "exclusiveMsPerSecond");
+        var meanUsPerCall = SourceJsonDouble(callback, "MeanUsPerCall", "meanUsPerCall");
+        var medianUsPerCall = SourceJsonDouble(callback, "MedianUsPerCall", "medianUsPerCall");
+        var baselineWorkSharePct = SourceJsonDouble(callback, "BaselineWorkSharePct", "baselineWorkSharePct");
+        var estimatedPeriodicWorkMsPerSecond = SourceJsonDouble(
+            callback,
+            "EstimatedPeriodicWorkMsPerSecond",
+            "estimatedPeriodicWorkMsPerSecond");
         var scenarioCostRatio = SourceJsonDouble(callback, "ScenarioCostRatio", "scenarioCostRatio", 1.0);
         var runtimeIntervalMs = SourceJsonNullableDouble(callback, "ResolvedIntervalMs", "resolvedIntervalMs");
         var runtimeCadenceSupportPct = SourceJsonNullableDouble(callback, "CadenceSupportPct", "cadenceSupportPct");
@@ -179,6 +186,10 @@ public static partial class ResultReportService
             Recommendation = runtimeRecommendation,
             CallsPerSecond = callsPerSecond,
             ExclusiveMsPerSecond = exclusiveMsPerSecond,
+            MeanUsPerCall = meanUsPerCall,
+            MedianUsPerCall = medianUsPerCall,
+            BaselineWorkSharePct = baselineWorkSharePct,
+            EstimatedPeriodicWorkMsPerSecond = estimatedPeriodicWorkMsPerSecond,
             GlobalWorkSharePct = importance.GlobalWorkSharePct,
             FamilyWorkSharePct = importance.FamilyWorkSharePct,
             OwnerWorkSharePct = importance.OwnerWorkSharePct,
@@ -1027,6 +1038,10 @@ public static partial class ResultReportService
         public string Recommendation { get; init; } = "";
         public double CallsPerSecond { get; init; }
         public double ExclusiveMsPerSecond { get; init; }
+        public double MeanUsPerCall { get; init; }
+        public double MedianUsPerCall { get; init; }
+        public double BaselineWorkSharePct { get; init; }
+        public double EstimatedPeriodicWorkMsPerSecond { get; init; }
         public double GlobalWorkSharePct { get; init; }
         public double FamilyWorkSharePct { get; init; }
         public double OwnerWorkSharePct { get; init; }
