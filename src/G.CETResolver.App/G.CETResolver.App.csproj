@@ -9,10 +9,14 @@
     <SelfContained>true</SelfContained>
     <PublishSingleFile>false</PublishSingleFile>
     <PublishTrimmed>false</PublishTrimmed>
-    <AssemblyName>G-CET-Cadence-Resolver</AssemblyName>
+    <AssemblyName>G-CET-Resolver</AssemblyName>
     <RootNamespace>GCETRuntimeProfiler.Resolver</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\G.CETProfiler.Core\G.CETProfiler.Core.csproj" />
+    <None Include="..\..\resolver-knowledge\high-impact-exceptions.json"
+          Link="knowledge\high-impact-exceptions.json"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
