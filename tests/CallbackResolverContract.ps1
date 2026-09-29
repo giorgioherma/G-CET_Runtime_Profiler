@@ -76,6 +76,21 @@ Observe("PlayerPuppet", "OnAction", function(_, action, consumer)
 end)
 '@
 
+Write-Mod 'FixturePattern' @'
+Observe("PlayerPuppet", "OnAction", function(this, action, consumer)
+    if not state.enabled then return end
+    local name = action:GetName() and action:GetName().value or "Unknown"
+    local value = action:GetValue()
+    if name == "CameraMouseX" then
+        consumer:ConsumeSingleAction()
+        DoCamera(value)
+    end
+    if name == "VehicleTurnLeft" or string.find(name, "Turn") then
+        DoTurn(value)
+    end
+end)
+'@
+
 Write-Mod 'FixtureNeighborOverride' @'
 Observe("PlayerPuppet", "OnAction", function(_, action)
     local actionName = Game.NameToString(action:GetName())
@@ -153,6 +168,7 @@ $handoff = @{
         (CallbackRow 105 'FixtureCName' 'observe' 'PlayerPuppet::OnAction' 700 10.0 16.0 'init.lua' 2 7),
         (CallbackRow 106 'FixtureSelector' 'observe' 'PlayerPuppet::OnAction' 650 9.0 14.0 'init.lua' 3 10),
         (CallbackRow 107 'FixtureConsumer' 'observe' 'PlayerPuppet::OnAction' 600 8.0 12.0 'init.lua' 1 7),
+        (CallbackRow 110 'FixturePattern' 'observe' 'PlayerPuppet::OnAction' 575 7.5 11.0 'init.lua' 1 12),
         (CallbackRow 108 'FixtureNeighborOverride' 'observe' 'PlayerPuppet::OnAction' 550 7.0 10.0 'init.lua' 1 6),
         (CallbackRow 109 'FixtureDynamic' 'observe' 'PlayerPuppet::OnAction' 500 6.0 8.0 'init.lua' 1 9),
         (CallbackRow 102 'FixtureFrame' 'event' 'onUpdate' 60 5.0 1.0 'init.lua' 1 3),
@@ -239,6 +255,21 @@ if (!$consumer.generic.Facts.consumerMutation) {
 $neighbor = Action-For 'FixtureNeighborOverride'
 if (!$neighbor.generic.Automatable) {
     throw 'Neighboring unrelated Override incorrectly poisoned an Observe callback.'
+}
+
+$pattern = Action-For 'FixturePattern'
+if (!$pattern.generic.Automatable) {
+    throw 'Exact + action-name pattern routing with an early state gate was not resolved.'
+}
+if ($pattern.generic.Pattern -ne 'ACTION_ROUTING_STATE_GATED_EXACT_SET_WITH_PATTERN') {
+    throw "Unexpected exact+pattern recipe: $($pattern.generic.Pattern)"
+}
+if (@($pattern.generic.Facts.actions) -notcontains 'CameraMouseX' -or
+    @($pattern.generic.Facts.actions) -notcontains 'VehicleTurnLeft') {
+    throw 'Exact actions were lost from the mixed exact+pattern recipe.'
+}
+if (@($pattern.generic.Facts.actionPatterns) -notcontains 'Turn') {
+    throw 'Action-name pattern was not emitted for the generator handoff.'
 }
 
 $dynamic = Action-For 'FixtureDynamic'
