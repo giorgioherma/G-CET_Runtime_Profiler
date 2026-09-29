@@ -22,9 +22,13 @@ public static partial class ResultReportService
         var callbacks = detail
             .Select(r => new ResolverCallbackMetric
             {
+                RegistrationId = L(r, "RegistrationId"),
                 Owner = S(r, "Mod", "Owner"),
                 Kind = S(r, "Kind"),
                 Target = S(r, "Target"),
+                SourceFile = S(r, "SourceFile"),
+                SourceLineStart = L(r, "SourceLineStart"),
+                SourceLineEnd = L(r, "SourceLineEnd"),
                 Calls = L(r, "Calls"),
                 CallsPerSecond = D(r, "CallsPerSecond"),
                 ExclusiveMsPerSecond = D(r, "ExclusiveMsPerSecond", "MsPerSecond"),
@@ -38,9 +42,13 @@ public static partial class ResultReportService
         var spikeSamples = spikes
             .Select(r => new ResolverSpikeSample
             {
+                RegistrationId = L(r, "RegistrationId"),
                 Owner = S(r, "Mod", "Owner"),
                 Kind = S(r, "Kind", "JobType"),
                 Target = S(r, "Target", "Job"),
+                SourceFile = S(r, "SourceFile"),
+                SourceLineStart = L(r, "SourceLineStart"),
+                SourceLineEnd = L(r, "SourceLineEnd"),
                 CaptureStartMs = D(r, "CaptureStartMs", "CaptureMs"),
                 CaptureEndMs = D(r, "CaptureEndMs", "CaptureMs"),
                 ExclusiveMs = D(r, "ExclusiveMs", "DurationMs")
@@ -49,7 +57,8 @@ public static partial class ResultReportService
             .ToList();
 
         var spikeByCallback = spikeSamples
-            .GroupBy(x => ResolverCallbackKey(x.Owner, x.Kind, x.Target), StringComparer.OrdinalIgnoreCase)
+            .GroupBy(x => ResolverCallbackInstanceKey(
+                x.RegistrationId, x.Owner, x.Kind, x.Target), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
                 g => g.Key,
                 g => ResolverAggregateSpikes(g),
@@ -136,7 +145,8 @@ public static partial class ResultReportService
             .ThenByDescending(x => x.CallsPerSecond)
             .Select(x =>
             {
-                var callbackKey = ResolverCallbackKey(x.Owner, x.Kind, x.Target);
+                var callbackKey = ResolverCallbackInstanceKey(
+                    x.RegistrationId, x.Owner, x.Kind, x.Target);
                 var familyKey = ResolverFamilyKey(x.Kind, x.Target);
                 var callbackSpikes = spikeByCallback.GetValueOrDefault(callbackKey) ?? new ResolverSpikeAggregate();
                 var family = familyTotals.GetValueOrDefault(familyKey) ?? new ResolverFamilyTotals();
@@ -145,10 +155,19 @@ public static partial class ResultReportService
 
                 return new
                 {
+                    registrationId = x.RegistrationId > 0 ? x.RegistrationId : (long?)null,
                     owner = x.Owner,
                     infrastructure = IsInfrastructureOwner(x.Owner),
                     kind = x.Kind,
                     target = x.Target,
+                    source = string.IsNullOrWhiteSpace(x.SourceFile)
+                        ? null
+                        : new
+                        {
+                            file = x.SourceFile,
+                            lineStart = x.SourceLineStart > 0 ? x.SourceLineStart : (long?)null,
+                            lineEnd = x.SourceLineEnd > 0 ? x.SourceLineEnd : (long?)null
+                        },
                     calls = x.Calls,
                     callsPerSecond = Round(x.CallsPerSecond, 3),
                     callsPerFrame = averageFps is double fps
@@ -249,7 +268,7 @@ public static partial class ResultReportService
 
         return new
         {
-            schemaVersion = "1.2",
+            schemaVersion = "1.3",
             generatedUtc = DateTime.UtcNow.ToString("O"),
             interop = new
             {
@@ -285,7 +304,10 @@ public static partial class ResultReportService
                     : (double?)null,
                 droppedTimelineRows,
                 droppedOnUpdateTimelineRows,
-                droppedSpikeEvents
+                droppedSpikeEvents,
+                callbackRegistrationIdsAvailable = callbacks.Any(x => x.RegistrationId > 0),
+                callbackSourceLocationsAvailable = callbacks.Any(x => !string.IsNullOrWhiteSpace(x.SourceFile)),
+                callbackSourceLocationCount = callbacks.Count(x => !string.IsNullOrWhiteSpace(x.SourceFile))
             },
             capture = new
             {
@@ -733,14 +755,27 @@ public static partial class ResultReportService
     private static string ResolverCallbackKey(string owner, string kind, string target) =>
         owner + "\u001f" + kind + "\u001f" + target;
 
+    private static string ResolverCallbackInstanceKey(
+        long registrationId,
+        string owner,
+        string kind,
+        string target) =>
+        registrationId > 0
+            ? "registration:" + registrationId.ToString(CultureInfo.InvariantCulture)
+            : ResolverCallbackKey(owner, kind, target);
+
     private static string ResolverFamilyKey(string kind, string target) =>
         kind + "\u001f" + target;
 
     private sealed class ResolverCallbackMetric
     {
+        public long RegistrationId { get; init; }
         public string Owner { get; init; } = "";
         public string Kind { get; init; } = "";
         public string Target { get; init; } = "";
+        public string SourceFile { get; init; } = "";
+        public long SourceLineStart { get; init; }
+        public long SourceLineEnd { get; init; }
         public long Calls { get; init; }
         public double CallsPerSecond { get; init; }
         public double ExclusiveMsPerSecond { get; init; }
@@ -750,9 +785,13 @@ public static partial class ResultReportService
 
     private sealed class ResolverSpikeSample
     {
+        public long RegistrationId { get; init; }
         public string Owner { get; init; } = "";
         public string Kind { get; init; } = "";
         public string Target { get; init; } = "";
+        public string SourceFile { get; init; } = "";
+        public long SourceLineStart { get; init; }
+        public long SourceLineEnd { get; init; }
         public double CaptureStartMs { get; init; }
         public double CaptureEndMs { get; init; }
         public double ExclusiveMs { get; init; }
