@@ -22,6 +22,8 @@ public static partial class ResultReportService
         var deepRegistrations = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Deep_Registrations.csv"));
         var deepFunctions = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Deep_Functions.csv"));
         var deepEdges = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Deep_Edges.csv"));
+        var deepSamples = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Deep_Samples.csv"));
+        var deepLines = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Deep_Lines.csv"));
 
         var callbacks = detail
             .Select(r => new ResolverCallbackMetric
@@ -272,7 +274,7 @@ public static partial class ResultReportService
 
         return new
         {
-            schemaVersion = "1.4",
+            schemaVersion = "1.5",
             generatedUtc = DateTime.UtcNow.ToString("O"),
             interop = new
             {
@@ -314,7 +316,17 @@ public static partial class ResultReportService
                 callbackSourceLocationCount = callbacks.Count(x => !string.IsNullOrWhiteSpace(x.SourceFile)),
                 adaptiveDeepProfilingAvailable = deepRegistrations.Count > 0,
                 adaptiveDeepFunctionsAvailable = deepFunctions.Count > 0,
-                adaptiveDeepEdgesAvailable = deepEdges.Count > 0
+                adaptiveDeepEdgesAvailable = deepEdges.Count > 0,
+                adaptiveDeepSamplesAvailable = deepSamples.Count > 0,
+                adaptiveDeepLinesAvailable = deepLines.Count > 0,
+                adaptiveDeepDroppedSamples = deepSamples
+                    .Select(row => L(row, "DroppedSamplesAtDump"))
+                    .DefaultIfEmpty(0)
+                    .Max(),
+                adaptiveDeepDroppedLineRows = deepLines
+                    .Select(row => L(row, "DroppedLineRowsAtDump"))
+                    .DefaultIfEmpty(0)
+                    .Max()
             },
             capture = new
             {
@@ -330,8 +342,8 @@ public static partial class ResultReportService
             deepProfiling = new
             {
                 available = deepRegistrations.Count > 0,
-                mode = "adaptive-runtime-hotset-sampled-lua-call-return",
-                note = "Broad callback timing remains authoritative. Deep timings are sampled composition evidence and must not be added to callback totals.",
+                mode = "adaptive-runtime-hotset-sampled-lua-call-return-line-path",
+                note = "Broad callback timing remains authoritative. Deep function timing is composition evidence only; timestamped sample paths and line hits are the primary structural evidence for source decisions.",
                 registrations = deepRegistrations
                     .Select(row => new
                     {
@@ -351,7 +363,13 @@ public static partial class ResultReportService
                         targetSamples = L(row, "TargetSamples"),
                         sampleStride = L(row, "SampleStride"),
                         hookConflicts = L(row, "HookConflicts"),
-                        baselineAvgExclusiveUs = D(row, "BaselineAvgExclusiveUs")
+                        baselineAvgExclusiveUs = D(row, "BaselineAvgExclusiveUs"),
+                        spikeArmed = L(row, "SpikeArmed") != 0,
+                        spikeProbeStride = L(row, "SpikeProbeStride"),
+                        spikeProbeSamples = L(row, "SpikeProbeSamples"),
+                        spikeCaptures = L(row, "SpikeCaptures"),
+                        driftWindows = L(row, "DriftWindows"),
+                        driftDirection = L(row, "DriftDirection")
                     })
                     .OrderBy(x => x.registrationId)
                     .ToArray(),
@@ -391,8 +409,163 @@ public static partial class ResultReportService
                     .OrderBy(x => x.registrationId)
                     .ThenBy(x => x.profileEpoch)
                     .ThenByDescending(x => x.childInclusiveMs)
+                    .ToArray(),
+                samples = deepSamples
+                    .Select(row =>
+                    {
+                        var midpointMs =
+                            D(row, "CaptureStartMs") +
+                            Math.Max(0, D(row, "CaptureEndMs") - D(row, "CaptureStartMs")) * 0.5;
+                        return new
+                        {
+                            sampleSequence = L(row, "SampleSequence"),
+                            registrationId = L(row, "RegistrationId"),
+                            profileEpoch = L(row, "ProfileEpoch"),
+                            captureStartMs = D(row, "CaptureStartMs"),
+                            captureEndMs = D(row, "CaptureEndMs"),
+                            scenario = ResolverScenarioAt(midpointMs, scenarioAnalysis),
+                            mode = S(row, "Mode"),
+                            approxOwnWallMs = D(row, "ApproxOwnWallMs"),
+                            hookEvents = L(row, "HookEvents"),
+                            lineEvents = L(row, "LineEvents"),
+                            uniqueLines = L(row, "UniqueLines"),
+                            pathTransitions = L(row, "PathTransitions"),
+                            pathFingerprint = S(row, "PathFingerprint"),
+                            nestedRegistrationCount = L(row, "NestedRegistrationCount"),
+                            nestedRegistrationMs = D(row, "NestedRegistrationMs"),
+                            lineRowsTruncated = L(row, "LineRowsTruncated") != 0
+                        };
+                    })
+                    .OrderBy(x => x.captureStartMs)
+                    .ThenBy(x => x.sampleSequence)
+                    .ToArray(),
+                epochs = deepSamples
+                    .GroupBy(
+                        row => L(row, "RegistrationId").ToString(CultureInfo.InvariantCulture)
+                               + "\u001f"
+                               + L(row, "ProfileEpoch").ToString(CultureInfo.InvariantCulture),
+                        StringComparer.OrdinalIgnoreCase)
+                    .Select(group =>
+                    {
+                        var rows = group
+                            .OrderBy(row => D(row, "CaptureStartMs"))
+                            .ToList();
+                        var first = rows[0];
+                        var startMs = rows.Min(row => D(row, "CaptureStartMs"));
+                        var endMs = rows.Max(row => D(row, "CaptureEndMs"));
+                        var fingerprints = rows
+                            .Select(row => S(row, "PathFingerprint"))
+                            .Where(value => !string.IsNullOrWhiteSpace(value))
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToArray();
+                        return new
+                        {
+                            registrationId = L(first, "RegistrationId"),
+                            profileEpoch = L(first, "ProfileEpoch"),
+                            captureStartMs = startMs,
+                            captureEndMs = endMs,
+                            scenarios = rows
+                                .Select(row =>
+                                    ResolverScenarioAt(
+                                        D(row, "CaptureStartMs") +
+                                        Math.Max(0, D(row, "CaptureEndMs") - D(row, "CaptureStartMs")) * 0.5,
+                                        scenarioAnalysis))
+                                .Distinct(StringComparer.OrdinalIgnoreCase)
+                                .ToArray(),
+                            hotsetSamples = rows.Count(row =>
+                                S(row, "Mode").Equals("HOTSET", StringComparison.OrdinalIgnoreCase)),
+                            spikeCaptures = rows.Count(row =>
+                                S(row, "Mode").Equals("SPIKE_CAPTURE", StringComparison.OrdinalIgnoreCase)),
+                            distinctPathFingerprints = fingerprints.Length,
+                            pathFingerprints = fingerprints
+                        };
+                    })
+                    .OrderBy(x => x.registrationId)
+                    .ThenBy(x => x.profileEpoch)
+                    .ToArray(),
+                lines = deepLines
+                    .Select(row => new
+                    {
+                        sampleSequence = L(row, "SampleSequence"),
+                        registrationId = L(row, "RegistrationId"),
+                        profileEpoch = L(row, "ProfileEpoch"),
+                        sourceFile = S(row, "SourceFile"),
+                        line = L(row, "Line"),
+                        hits = L(row, "Hits")
+                    })
+                    .OrderBy(x => x.sampleSequence)
+                    .ThenBy(x => x.sourceFile)
+                    .ThenBy(x => x.line)
                     .ToArray()
             },
+            optimizerEvidence = callbackRows
+                .Select(callback =>
+                {
+                    var registrationId = callback.registrationId ?? 0;
+                    var registration = deepRegistrations.FirstOrDefault(row =>
+                        L(row, "RegistrationId") == registrationId);
+                    var samples = deepSamples
+                        .Where(row => L(row, "RegistrationId") == registrationId)
+                        .ToList();
+                    var lineRows = deepLines
+                        .Where(row => L(row, "RegistrationId") == registrationId)
+                        .ToList();
+                    var pathFingerprints = samples
+                        .Select(row => S(row, "PathFingerprint"))
+                        .Where(value => !string.IsNullOrWhiteSpace(value))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToArray();
+
+                    return new
+                    {
+                        registrationId = callback.registrationId,
+                        owner = callback.owner,
+                        kind = callback.kind,
+                        target = callback.target,
+                        runtime = new
+                        {
+                            callback.exclusiveMsPerSecond,
+                            callback.globalWorkSharePct,
+                            callback.avgExclusiveUs,
+                            callback.maxExclusiveMs,
+                            callback.spikeCount,
+                            callback.maxSpikeExclusiveMs
+                        },
+                        deep = new
+                        {
+                            sourceMapped = callback.source is not null,
+                            complete = registration is not null && L(registration, "Complete") != 0,
+                            hotsetSamples = samples.Count(row =>
+                                S(row, "Mode").Equals("HOTSET", StringComparison.OrdinalIgnoreCase)),
+                            spikeCaptures = samples.Count(row =>
+                                S(row, "Mode").Equals("SPIKE_CAPTURE", StringComparison.OrdinalIgnoreCase)),
+                            distinctEpochs = samples
+                                .Select(row => L(row, "ProfileEpoch"))
+                                .Distinct()
+                                .Count(),
+                            distinctPathFingerprints = pathFingerprints.Length,
+                            lineEvidenceRows = lineRows.Count,
+                            nestedRegistrationsExcluded = samples.Sum(row =>
+                                L(row, "NestedRegistrationCount")),
+                            hookConflicts = registration is null
+                                ? 0
+                                : L(registration, "HookConflicts")
+                        },
+                        readiness = new
+                        {
+                            sourceDecisionReady =
+                                callback.source is not null &&
+                                samples.Any(row =>
+                                    S(row, "Mode").Equals("HOTSET", StringComparison.OrdinalIgnoreCase)) &&
+                                lineRows.Count > 0,
+                            spikePathReady = samples.Any(row =>
+                                S(row, "Mode").Equals("SPIKE_CAPTURE", StringComparison.OrdinalIgnoreCase)),
+                            multipleObservedPaths = pathFingerprints.Length > 1
+                        }
+                    };
+                })
+                .OrderByDescending(x => x.runtime.exclusiveMsPerSecond)
+                .ToArray(),
             families,
             owners = ownerRows,
             callbacks = callbackRows
@@ -774,6 +947,19 @@ public static partial class ResultReportService
             UntaggedSeconds = Math.Max(0, captureSeconds - taggedSeconds),
             Scenarios = scenarioRows
         };
+    }
+
+    private static string ResolverScenarioAt(
+        double captureMs,
+        ResolverScenarioAnalysis analysis)
+    {
+        foreach (var scenario in analysis.Scenarios)
+        {
+            if (ResolverInSegments(captureMs, scenario.Segments))
+                return scenario.Name;
+        }
+
+        return "UNTAGGED";
     }
 
     private static double ResolverOverlapMs(

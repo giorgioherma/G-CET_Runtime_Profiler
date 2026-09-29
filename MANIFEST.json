@@ -29,7 +29,9 @@
     "CET_Runtime_Profile_Scheduler_FrameBursts.csv",
     "CET_Runtime_Profile_Deep_Registrations.csv",
     "CET_Runtime_Profile_Deep_Functions.csv",
-    "CET_Runtime_Profile_Deep_Edges.csv"
+    "CET_Runtime_Profile_Deep_Edges.csv",
+    "CET_Runtime_Profile_Deep_Samples.csv",
+    "CET_Runtime_Profile_Deep_Lines.csv"
   ],
   "managerChanges": [
     "security-scan packaging: native profiler is distributed with a .dll extension matching its PE/DLL format and copied to CET's required cyber_engine_tweaks.asi name only during install",

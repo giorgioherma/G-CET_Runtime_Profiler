@@ -29,6 +29,10 @@ try {
         "AttachSource",
         "DeepTraceScope",
         "DeepLuaHook",
+        "LUA_MASKLINE",
+        "EnterDeepRegistrationBoundary",
+        "CET_Runtime_Profile_Deep_Samples.csv",
+        "CET_Runtime_Profile_Deep_Lines.csv",
         "CET_Runtime_Profile_Deep_Functions.csv"
     )) {
         if (-not $profilerHeader.Contains($marker)) {

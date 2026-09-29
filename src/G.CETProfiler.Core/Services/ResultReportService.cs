@@ -44,7 +44,12 @@ public static partial class ResultReportService
         "CET_Runtime_Profile_Spikes.csv",
         "CET_Runtime_Profile_Timeline.csv",
         "CET_Runtime_Profile_OnUpdateTimeline.csv",
-        "CET_Runtime_Profile_Markers.csv"
+        "CET_Runtime_Profile_Markers.csv",
+        "CET_Runtime_Profile_Deep_Registrations.csv",
+        "CET_Runtime_Profile_Deep_Functions.csv",
+        "CET_Runtime_Profile_Deep_Edges.csv",
+        "CET_Runtime_Profile_Deep_Samples.csv",
+        "CET_Runtime_Profile_Deep_Lines.csv"
     };
 
     public static string GetArchiveRelativePath(string fileName)
