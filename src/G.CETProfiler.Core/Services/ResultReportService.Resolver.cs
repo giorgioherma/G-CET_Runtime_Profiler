@@ -483,19 +483,37 @@ public static partial class ResultReportService
                     .OrderBy(x => x.registrationId)
                     .ThenBy(x => x.profileEpoch)
                     .ToArray(),
-                lines = deepLines
-                    .Select(row => new
+                lineSamples = deepLines
+                    .GroupBy(row => L(row, "SampleSequence"))
+                    .OrderBy(group => group.Key)
+                    .Select(group =>
                     {
-                        sampleSequence = L(row, "SampleSequence"),
-                        registrationId = L(row, "RegistrationId"),
-                        profileEpoch = L(row, "ProfileEpoch"),
-                        sourceFile = S(row, "SourceFile"),
-                        line = L(row, "Line"),
-                        hits = L(row, "Hits")
+                        var first = group.First();
+                        return new
+                        {
+                            sampleSequence = group.Key,
+                            registrationId = L(first, "RegistrationId"),
+                            profileEpoch = L(first, "ProfileEpoch"),
+                            files = group
+                                .GroupBy(
+                                    row => S(row, "SourceFile"),
+                                    StringComparer.OrdinalIgnoreCase)
+                                .OrderBy(file => file.Key, StringComparer.OrdinalIgnoreCase)
+                                .Select(file => new
+                                {
+                                    sourceFile = file.Key,
+                                    lines = file
+                                        .OrderBy(row => L(row, "Line"))
+                                        .Select(row => new
+                                        {
+                                            line = L(row, "Line"),
+                                            hits = L(row, "Hits")
+                                        })
+                                        .ToArray()
+                                })
+                                .ToArray()
+                        };
                     })
-                    .OrderBy(x => x.sampleSequence)
-                    .ThenBy(x => x.sourceFile)
-                    .ThenBy(x => x.line)
                     .ToArray()
             },
             optimizerEvidence = callbackRows
