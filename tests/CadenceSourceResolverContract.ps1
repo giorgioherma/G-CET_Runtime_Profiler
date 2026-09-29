@@ -180,4 +180,11 @@ if ($uncertain.TransformCandidate) {
     throw 'LEAVE_ALONE callback was incorrectly authorized as a transform candidate.'
 }
 
+# This contract collects through the published profiler, whose package root is
+# publish\RESULTS. Never leave the synthetic WORLD fixture in the distributable
+# package tree.
+if (Test-Path -LiteralPath $result.destination -PathType Container) {
+    Remove-Item -LiteralPath $result.destination -Recurse -Force
+}
+
 Write-Host 'Cadence source resolver generic four-group contract passed.'
