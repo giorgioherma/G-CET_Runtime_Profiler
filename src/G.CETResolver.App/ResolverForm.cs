@@ -9,7 +9,7 @@ internal sealed class ResolverForm : Form
     private readonly Button _captureBrowse = new() { Text = "Browse..." };
     private readonly Button _modsBrowse = new() { Text = "Browse..." };
     private readonly Button _analyze = new() { Text = "Analyze", Height = 36 };
-    private readonly Label _status = new() { AutoSize = true, Text = "Select a profiler capture and the live CET mods folder." };
+    private readonly Label _status = new() { AutoSize = true, Text = "Select RESULTS (or a capture folder) and the live CET mods folder." };
     private readonly Label _families = new() { AutoSize = true, Text = "CALLBACK FAMILIES: -" };
     private readonly Label _generic = new() { AutoSize = true, Text = "GENERIC RESOLVED: -" };
     private readonly Label _registry = new() { AutoSize = true, Text = "SPECIAL HINTS: -" };
@@ -51,7 +51,7 @@ internal sealed class ResolverForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-        var captureLabel = new Label { Text = "Capture folder", AutoSize = true, Anchor = AnchorStyles.Left };
+        var captureLabel = new Label { Text = "RESULTS / capture", AutoSize = true, Anchor = AnchorStyles.Left };
         var modsLabel = new Label { Text = "Live CET mods", AutoSize = true, Anchor = AnchorStyles.Left };
 
         _capture.Dock = DockStyle.Fill;
@@ -115,7 +115,7 @@ internal sealed class ResolverForm : Form
             var mods = _mods.Text.Trim();
 
             if (!Directory.Exists(capture))
-                throw new DirectoryNotFoundException("Select a valid collected profiler capture folder.");
+                throw new DirectoryNotFoundException("Select a valid G-CET RESULTS folder or collected capture folder.");
             if (!Directory.Exists(mods))
                 throw new DirectoryNotFoundException("Select the live cyber_engine_tweaks\\mods folder.");
 
