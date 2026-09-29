@@ -331,7 +331,9 @@ public static class PassGeneratorService
                     RequiresActionType = facts.RequiresActionType,
                     RequiresActionValue = facts.RequiresActionValue,
                     ConsumerMutation = facts.ConsumerMutation,
-                    StateGatePresent = facts.StateGatePresent
+                    StateGatePresent = facts.StateGatePresent,
+                    DynamicGateResolved = facts.DynamicGateResolved,
+                    DynamicGateExpression = facts.DynamicGateExpression
                 });
             }
         }
@@ -354,7 +356,9 @@ public static class PassGeneratorService
             RequiresActionType = JsonBool(facts, "requiresActionType"),
             RequiresActionValue = JsonBool(facts, "requiresActionValue"),
             ConsumerMutation = JsonBool(facts, "consumerMutation"),
-            StateGatePresent = JsonBool(facts, "stateGatePresent")
+            StateGatePresent = JsonBool(facts, "stateGatePresent"),
+            DynamicGateResolved = JsonBool(facts, "gatedWildcardResolved"),
+            DynamicGateExpression = JsonString(facts, "dynamicGateExpression")
         };
     }
 
@@ -456,9 +460,18 @@ public static class PassGeneratorService
                 continue;
             }
 
-            if (candidate.Actions.Length == 0 && candidate.ActionPatterns.Length == 0)
+            if (candidate.Actions.Length == 0 &&
+                candidate.ActionPatterns.Length == 0 &&
+                !candidate.DynamicGateResolved)
             {
-                skipped.Add(Skip(candidate, "No concrete action names or action-name patterns were emitted by the resolver."));
+                skipped.Add(Skip(candidate, "No concrete action names, patterns, or proven dynamic state gate were emitted by the resolver."));
+                continue;
+            }
+
+            if (candidate.DynamicGateResolved &&
+                string.IsNullOrWhiteSpace(candidate.DynamicGateExpression))
+            {
+                skipped.Add(Skip(candidate, "Resolver marked gated wildcard routing but did not emit a gate expression."));
                 continue;
             }
 
@@ -506,6 +519,8 @@ public static class PassGeneratorService
                     actions = candidate.Actions,
                     actionPatterns = candidate.ActionPatterns,
                     candidate.StateGatePresent,
+                    candidate.DynamicGateResolved,
+                    candidate.DynamicGateExpression,
                     candidate.ConsumerMutation,
                     candidate.RequiresActionType,
                     candidate.RequiresActionValue
@@ -568,38 +583,75 @@ public static class PassGeneratorService
         lines.Add($"{indent}if __gcetOk_{candidate.RegistrationId} and type(__gcetEngine_{candidate.RegistrationId}) == \"table\" and type(__gcetEngine_{candidate.RegistrationId}.SubscribeAction) == \"function\" then");
         lines.Add($"{indent}    __gcetRouted_{candidate.RegistrationId} = pcall(function()");
 
-        if (candidate.Actions.Length > 0)
-        {
-            var actions = string.Join(", ", candidate.Actions.Select(LuaQuote));
-            lines.Add($"{indent}        __gcetHandles_{candidate.RegistrationId}[#__gcetHandles_{candidate.RegistrationId} + 1] = __gcetEngine_{candidate.RegistrationId}.SubscribeAction({{");
-            lines.Add($"{indent}            id = {LuaQuote(idBase + ".Exact")},");
-            lines.Add($"{indent}            actions = {{ {actions} }}{(candidate.RequiresActionType ? "" : ",")}");
-            if (!candidate.RequiresActionType)
-                lines.Add($"{indent}            decodeType = false");
-            lines.Add($"{indent}        }}, {functionName}, {owner})");
-        }
-
-        if (candidate.ActionPatterns.Length > 0)
+        if (candidate.DynamicGateResolved)
         {
             lines.Add($"{indent}        local __gcetExact_{candidate.RegistrationId} = {{}}");
             foreach (var action in candidate.Actions)
                 lines.Add($"{indent}        __gcetExact_{candidate.RegistrationId}[{LuaQuote(action)}] = true");
 
             lines.Add($"{indent}        __gcetHandles_{candidate.RegistrationId}[#__gcetHandles_{candidate.RegistrationId} + 1] = __gcetEngine_{candidate.RegistrationId}.SubscribeAction({{");
-            lines.Add($"{indent}            id = {LuaQuote(idBase + ".Pattern")},");
+            lines.Add($"{indent}            id = {LuaQuote(idBase + ".GatedWildcard")},");
             lines.Add($"{indent}            actions = \"*\",");
             lines.Add($"{indent}            decodeType = false");
             lines.Add($"{indent}        }}, function(this, action, consumer, routedName)");
 
-            var conditions = string.Join(
-                " or ",
-                candidate.ActionPatterns.Select(x =>
-                    $"string.find(routedName, {LuaQuote(x)}, 1, true)"));
+            var routedConditions = new List<string>();
+            if (candidate.Actions.Length > 0)
+                routedConditions.Add($"(routedName and __gcetExact_{candidate.RegistrationId}[routedName])");
 
-            lines.Add($"{indent}            if routedName and not __gcetExact_{candidate.RegistrationId}[routedName] and ({conditions}) then");
+            if (candidate.ActionPatterns.Length > 0)
+            {
+                routedConditions.Add(
+                    "(routedName and (" +
+                    string.Join(
+                        " or ",
+                        candidate.ActionPatterns.Select(x =>
+                            $"string.find(routedName, {LuaQuote(x)}, 1, true)")) +
+                    "))");
+            }
+
+            routedConditions.Add($"({candidate.DynamicGateExpression})");
+
+            lines.Add($"{indent}            if {string.Join(" or ", routedConditions)} then");
             lines.Add($"{indent}                {functionName}(this, action, consumer)");
             lines.Add($"{indent}            end");
             lines.Add($"{indent}        end, {owner})");
+        }
+        else
+        {
+            if (candidate.Actions.Length > 0)
+            {
+                var actions = string.Join(", ", candidate.Actions.Select(LuaQuote));
+                lines.Add($"{indent}        __gcetHandles_{candidate.RegistrationId}[#__gcetHandles_{candidate.RegistrationId} + 1] = __gcetEngine_{candidate.RegistrationId}.SubscribeAction({{");
+                lines.Add($"{indent}            id = {LuaQuote(idBase + ".Exact")},");
+                lines.Add($"{indent}            actions = {{ {actions} }}{(candidate.RequiresActionType ? "" : ",")}");
+                if (!candidate.RequiresActionType)
+                    lines.Add($"{indent}            decodeType = false");
+                lines.Add($"{indent}        }}, {functionName}, {owner})");
+            }
+
+            if (candidate.ActionPatterns.Length > 0)
+            {
+                lines.Add($"{indent}        local __gcetExact_{candidate.RegistrationId} = {{}}");
+                foreach (var action in candidate.Actions)
+                    lines.Add($"{indent}        __gcetExact_{candidate.RegistrationId}[{LuaQuote(action)}] = true");
+
+                lines.Add($"{indent}        __gcetHandles_{candidate.RegistrationId}[#__gcetHandles_{candidate.RegistrationId} + 1] = __gcetEngine_{candidate.RegistrationId}.SubscribeAction({{");
+                lines.Add($"{indent}            id = {LuaQuote(idBase + ".Pattern")},");
+                lines.Add($"{indent}            actions = \"*\",");
+                lines.Add($"{indent}            decodeType = false");
+                lines.Add($"{indent}        }}, function(this, action, consumer, routedName)");
+
+                var conditions = string.Join(
+                    " or ",
+                    candidate.ActionPatterns.Select(x =>
+                        $"string.find(routedName, {LuaQuote(x)}, 1, true)"));
+
+                lines.Add($"{indent}            if routedName and not __gcetExact_{candidate.RegistrationId}[routedName] and ({conditions}) then");
+                lines.Add($"{indent}                {functionName}(this, action, consumer)");
+                lines.Add($"{indent}            end");
+                lines.Add($"{indent}        end, {owner})");
+            }
         }
 
         lines.Add($"{indent}    end)");
@@ -723,6 +775,8 @@ public static class PassGeneratorService
         public bool RequiresActionValue { get; init; }
         public bool ConsumerMutation { get; init; }
         public bool StateGatePresent { get; init; }
+        public bool DynamicGateResolved { get; init; }
+        public string DynamicGateExpression { get; init; } = "";
     }
 
     private sealed class CandidateFacts
@@ -733,6 +787,8 @@ public static class PassGeneratorService
         public bool RequiresActionValue { get; init; }
         public bool ConsumerMutation { get; init; }
         public bool StateGatePresent { get; init; }
+        public bool DynamicGateResolved { get; init; }
+        public string DynamicGateExpression { get; init; } = "";
     }
 
     private sealed record TransformResult(byte[] Bytes, int AppliedTransforms);
