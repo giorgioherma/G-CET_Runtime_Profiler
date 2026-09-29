@@ -212,7 +212,9 @@ function Consumer-For([string]$Owner) {
 
 $exactConsumer = Consumer-For 'FixtureExact'
 if (@($exactConsumer.generic.RecipeFamilies) -notcontains 'AUTHOR_CADENCE_WHOLE_CALLBACK') {
-    throw 'High-payback exact author cadence was not authorized.'
+    $exactBlockers = [string]::Join(' | ', @($exactConsumer.generic.Blockers))
+    $exactEvidence = [string]::Join(' | ', @($exactConsumer.generic.Evidence))
+    throw "High-payback exact author cadence was not authorized. Blockers: $exactBlockers Evidence: $exactEvidence"
 }
 if (!$exactConsumer.generic.Facts.authorCadenceWholeCallback) {
     throw 'Author cadence generator facts were not emitted.'
