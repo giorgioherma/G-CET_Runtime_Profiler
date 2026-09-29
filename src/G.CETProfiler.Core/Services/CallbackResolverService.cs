@@ -259,12 +259,15 @@ internal static class CallbackResolverService
         var recipes = new List<string>();
         var evidence = new List<string>();
         var blockers = new List<string>();
+        object? facts = null;
 
-        if (source is not null &&
+        var directOnUpdate = source is not null &&
             Regex.IsMatch(
                 source.CallbackText,
                 @"\b(?:registerForEvent|registerRuntimeEvent)\s*\(\s*['""]onUpdate['""]",
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+        if (directOnUpdate)
         {
             recipes.Add("FRAME_DISPATCH_CONSOLIDATION");
             evidence.Add("Direct onUpdate registration is present in the current deployed source.");
@@ -274,27 +277,456 @@ internal static class CallbackResolverService
             blockers.Add("Current deployed source could not prove the direct onUpdate registration.");
         }
 
+        // Highest-confidence cadence recipe: the callback itself contains only
+        // author-written fixed timer accumulators and their gated work. Runtime
+        // data decides whether eliminating the frame-rate entry is materially
+        // useful; source decides the cadence. No owner/mod-name knowledge is
+        // consulted.
+        if (source is not null &&
+            directOnUpdate &&
+            TryResolveWholeCallbackAuthorCadence(
+                source,
+                callback,
+                out var authorCadence,
+                out var cadenceBlocker))
+        {
+            recipes.Add("AUTHOR_CADENCE_WHOLE_CALLBACK");
+            evidence.Add(
+                $"Current source proves whole-callback author cadence at {authorCadence.BaseIntervalSeconds:0.######} s " +
+                $"with {authorCadence.TimerIntervalsSeconds.Length} fixed author timer(s).");
+            evidence.Add(
+                $"Measured callback entry rate is {callback.CallsPerSecond:0.###}/s versus " +
+                $"{authorCadence.ExpectedCallsPerSecond:0.###}/s at the preserved author base cadence.");
+            facts = new
+            {
+                authorCadenceWholeCallback = true,
+                baseIntervalSeconds = authorCadence.BaseIntervalSeconds,
+                timerIntervalsSeconds = authorCadence.TimerIntervalsSeconds,
+                accumulatorVariables = authorCadence.AccumulatorVariables,
+                expectedCallsPerSecond = authorCadence.ExpectedCallsPerSecond,
+                runtimeEntryReductionFactor = authorCadence.RuntimeEntryReductionFactor,
+                deltaParameter = authorCadence.DeltaParameter
+            };
+        }
+        else if (!string.IsNullOrWhiteSpace(cadenceBlocker))
+        {
+            blockers.Add(cadenceBlocker);
+        }
+
+        // Keep the broader cadence classifier visible as evidence, but do not
+        // let an inferred cadence authorize generation. Only finite generator
+        // recipes above are automatable.
         var cadenceKey = CadenceKey(callback.Owner, callback.Kind, callback.Target);
         if (cadence.TryGetValue(cadenceKey, out var cadenceDecision) &&
             cadenceDecision.TransformCandidate &&
             !cadenceDecision.Group.Equals("LEAVE_ALONE", StringComparison.OrdinalIgnoreCase))
         {
-            recipes.Add(cadenceDecision.Group);
-            evidence.Add($"Cadence subset source-confirmed {cadenceDecision.Group}.");
+            evidence.Add($"Cadence subset source-classified {cadenceDecision.Group}; generation still requires a finite author-cadence recipe.");
         }
+
+        var automatable = recipes.Contains(
+            "AUTHOR_CADENCE_WHOLE_CALLBACK",
+            StringComparer.OrdinalIgnoreCase) ||
+            recipes.Contains(
+                "FRAME_DISPATCH_CONSOLIDATION",
+                StringComparer.OrdinalIgnoreCase);
+
+        var pattern = recipes.Contains(
+                "AUTHOR_CADENCE_WHOLE_CALLBACK",
+                StringComparer.OrdinalIgnoreCase)
+            ? "AUTHOR_CADENCE_WHOLE_CALLBACK"
+            : recipes.FirstOrDefault() ?? "ONUPDATE_UNRESOLVED";
 
         return new GenericResolution
         {
             Status = recipes.Count > 0 ? "RESOLVED" : "SOURCE_UNRESOLVED",
-            Automatable = recipes.Count > 0,
-            Pattern = recipes.Count > 1
-                ? "FRAME_CALLBACK_WITH_PROVEN_SUBPATTERN"
-                : recipes.FirstOrDefault() ?? "ONUPDATE_UNRESOLVED",
+            Automatable = automatable,
+            Pattern = pattern,
             RecipeFamilies = recipes.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+            Facts = facts,
             Evidence = evidence.ToArray(),
             Blockers = blockers.ToArray(),
             Source = sourceEvidence
         };
+    }
+
+    private static bool TryResolveWholeCallbackAuthorCadence(
+        ResolvedSource source,
+        CallbackMetric callback,
+        out AuthorCadenceResolution resolution,
+        out string blocker)
+    {
+        resolution = new AuthorCadenceResolution();
+        blocker = "";
+
+        var match = Regex.Match(
+            source.CallbackText,
+            @"(?s)^\s*(?:registerForEvent|registerRuntimeEvent)\s*\(\s*['""]onUpdate['""]\s*,\s*function\s*\(\s*(?<delta>[A-Za-z_]\w*)\s*\)\s*(?<body>.*)\bend\s*\)\s*;?\s*$",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        if (!match.Success)
+        {
+            blocker = "Author cadence: exact single-parameter onUpdate callback shape was not proven.";
+            return false;
+        }
+
+        var deltaParameter = match.Groups["delta"].Value;
+        var body = match.Groups["body"].Value
+            .Replace("\r\n", "\n")
+            .Replace('\r', '\n');
+        var lines = body.Split('\n');
+
+        var significant = lines
+            .Select((text, index) => new
+            {
+                Text = text,
+                Trimmed = text.Trim(),
+                Index = index,
+                Indent = text.Length - text.TrimStart().Length
+            })
+            .Where(x => !string.IsNullOrWhiteSpace(x.Trimmed) &&
+                        !x.Trimmed.StartsWith("--", StringComparison.Ordinal))
+            .ToList();
+
+        if (significant.Count == 0)
+        {
+            blocker = "Author cadence: callback body is empty.";
+            return false;
+        }
+
+        var baseIndent = significant.Min(x => x.Indent);
+        var increments = new Dictionary<string, int>(StringComparer.Ordinal);
+        var gates = new Dictionary<string, double>(StringComparer.Ordinal);
+        var gateRanges = new List<(int Start, int End)>();
+
+        var escapedDelta = Regex.Escape(deltaParameter);
+        var incrementRegex = new Regex(
+            @"^\s*(?<var>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*(?:" +
+            @"=\s*\k<var>\s*\+\s*" + escapedDelta +
+            @"|\+=\s*" + escapedDelta + @")\s*;?\s*$",
+            RegexOptions.CultureInvariant);
+        var gateRegex = new Regex(
+            @"^\s*if\s+(?<var>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*(?:>=|>)\s*(?<seconds>\d+(?:\.\d+)?)\s+then\s*$",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var trimmed = lines[i].Trim();
+            if (string.IsNullOrWhiteSpace(trimmed) ||
+                trimmed.StartsWith("--", StringComparison.Ordinal))
+                continue;
+
+            var indent = lines[i].Length - lines[i].TrimStart().Length;
+            if (indent != baseIndent)
+                continue;
+
+            var increment = incrementRegex.Match(lines[i]);
+            if (increment.Success)
+            {
+                var variable = increment.Groups["var"].Value;
+                increments[variable] = i;
+                continue;
+            }
+
+            var gate = gateRegex.Match(lines[i]);
+            if (!gate.Success)
+            {
+                blocker = $"Author cadence: top-level frame work remains outside author timer gates (line {i + 1}).";
+                return false;
+            }
+
+            var variable = gate.Groups["var"].Value;
+            if (!double.TryParse(
+                    gate.Groups["seconds"].Value,
+                    System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var seconds) ||
+                seconds <= 0 ||
+                !double.IsFinite(seconds))
+            {
+                blocker = "Author cadence: timer threshold is not a positive fixed author rate.";
+                return false;
+            }
+
+            var end = FindSameIndentEnd(lines, i, baseIndent);
+            if (end <= i)
+            {
+                blocker = "Author cadence: timer gate block boundary could not be proven.";
+                return false;
+            }
+
+            var block = string.Join("\n", lines.Skip(i + 1).Take(end - i - 1));
+            if (!Regex.IsMatch(
+                    block,
+                    @"\b" + Regex.Escape(variable) + @"\s*=\s*0(?:\.0+)?\b",
+                    RegexOptions.CultureInvariant))
+            {
+                blocker = $"Author cadence: timer '{variable}' is not reset inside its author gate.";
+                return false;
+            }
+
+            gates[variable] = seconds;
+            gateRanges.Add((i, end));
+            i = end;
+        }
+
+        if (gates.Count == 0 || increments.Count == 0)
+        {
+            blocker = "Author cadence: no complete fixed accumulator timer was proven.";
+            return false;
+        }
+
+        if (increments.Keys.Except(gates.Keys, StringComparer.Ordinal).Any() ||
+            gates.Keys.Except(increments.Keys, StringComparer.Ordinal).Any())
+        {
+            blocker = "Author cadence: timer increments and author gates do not form a closed set.";
+            return false;
+        }
+
+        // The callback may use delta only to advance the proven accumulators.
+        for (var i = 0; i < lines.Length; i++)
+        {
+            if (!Regex.IsMatch(lines[i], @"\b" + escapedDelta + @"\b"))
+                continue;
+            if (incrementRegex.IsMatch(lines[i]))
+                continue;
+
+            blocker = "Author cadence: delta is consumed by work other than the proven timer accumulators.";
+            return false;
+        }
+
+        // Timer state must be private to the cadence mechanism. This avoids
+        // changing externally observed continuously-increasing timer values.
+        var callbackIndex = source.FullText.IndexOf(source.CallbackText, StringComparison.Ordinal);
+        var outside = callbackIndex >= 0
+            ? source.FullText.Remove(callbackIndex, source.CallbackText.Length)
+            : source.FullText;
+
+        foreach (var variable in gates.Keys)
+        {
+            if (!HasZeroAuthorTimerInitializer(outside, variable))
+            {
+                blocker = $"Author cadence: zero initialization for timer '{variable}' was not proven.";
+                return false;
+            }
+
+            if (HasExternalTimerReference(outside, variable))
+            {
+                blocker = $"Author cadence: timer '{variable}' is referenced outside the callback.";
+                return false;
+            }
+        }
+
+        var intervalsUs = gates.Values
+            .Select(x => checked((long)Math.Round(x * 1_000_000.0, MidpointRounding.AwayFromZero)))
+            .Where(x => x > 0)
+            .ToArray();
+        if (intervalsUs.Length != gates.Count)
+        {
+            blocker = "Author cadence: one or more author rates could not be represented safely.";
+            return false;
+        }
+
+        var baseUs = intervalsUs.Aggregate(GreatestCommonDivisor);
+        if (baseUs <= 0)
+        {
+            blocker = "Author cadence: common author cadence could not be resolved.";
+            return false;
+        }
+
+        var baseSeconds = baseUs / 1_000_000.0;
+        var expectedCallsPerSecond = 1.0 / baseSeconds;
+        var reductionFactor = expectedCallsPerSecond > 0
+            ? callback.CallsPerSecond / expectedCallsPerSecond
+            : 0;
+
+        // Runtime decides whether this structurally safe recipe is worthwhile.
+        // This is relative to the measured callback rate, not a mod identity or
+        // a fixed millisecond cost threshold.
+        if (reductionFactor < 2.0)
+        {
+            blocker =
+                $"Author cadence is source-proven, but measured entry reduction would be only {reductionFactor:0.##}x.";
+            return false;
+        }
+
+        resolution = new AuthorCadenceResolution
+        {
+            DeltaParameter = deltaParameter,
+            BaseIntervalSeconds = baseSeconds,
+            TimerIntervalsSeconds = gates.Values
+                .OrderBy(x => x)
+                .ToArray(),
+            AccumulatorVariables = gates.Keys
+                .OrderBy(x => x, StringComparer.Ordinal)
+                .ToArray(),
+            ExpectedCallsPerSecond = expectedCallsPerSecond,
+            RuntimeEntryReductionFactor = reductionFactor
+        };
+        return true;
+    }
+
+    private static int FindSameIndentEnd(
+        IReadOnlyList<string> lines,
+        int start,
+        int indent)
+    {
+        for (var i = start + 1; i < lines.Count; i++)
+        {
+            var trimmed = lines[i].Trim();
+            if (!Regex.IsMatch(
+                    trimmed,
+                    @"^end\s*;?\s*(?:--.*)?$",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+                continue;
+
+            var candidateIndent = lines[i].Length - lines[i].TrimStart().Length;
+            if (candidateIndent == indent)
+                return i;
+        }
+
+        return -1;
+    }
+
+    private static long GreatestCommonDivisor(long left, long right)
+    {
+        left = Math.Abs(left);
+        right = Math.Abs(right);
+        while (right != 0)
+        {
+            var t = left % right;
+            left = right;
+            right = t;
+        }
+        return left;
+    }
+
+    private static bool HasZeroAuthorTimerInitializer(
+        string outside,
+        string variable)
+    {
+        if (!variable.Contains('.', StringComparison.Ordinal))
+        {
+            return Regex.IsMatch(
+                outside,
+                @"\b(?:local\s+)?" + Regex.Escape(variable) +
+                @"\s*=\s*0(?:\.0+)?\b",
+                RegexOptions.CultureInvariant);
+        }
+
+        if (Regex.IsMatch(
+                outside,
+                @"\b" + Regex.Escape(variable) + @"\s*=\s*0(?:\.0+)?\b",
+                RegexOptions.CultureInvariant))
+            return true;
+
+        var pieces = variable.Split('.');
+        if (pieces.Length != 2)
+            return false;
+
+        var tableName = pieces[0];
+        var fieldName = pieces[1];
+        var declaration = Regex.Match(
+            outside,
+            @"\b(?:local\s+)?" + Regex.Escape(tableName) + @"\s*=\s*\{",
+            RegexOptions.CultureInvariant);
+        if (!declaration.Success)
+            return false;
+
+        var open = outside.IndexOf('{', declaration.Index);
+        if (open < 0)
+            return false;
+
+        var close = FindBalancedBraceEnd(outside, open);
+        if (close <= open)
+            return false;
+
+        var body = outside.Substring(open + 1, close - open - 1);
+        return Regex.IsMatch(
+            body,
+            @"\b" + Regex.Escape(fieldName) + @"\s*=\s*0(?:\.0+)?\b",
+            RegexOptions.CultureInvariant);
+    }
+
+    private static bool HasExternalTimerReference(
+        string outside,
+        string variable)
+    {
+        if (variable.Contains('.', StringComparison.Ordinal))
+        {
+            if (Regex.IsMatch(
+                    outside,
+                    @"\b" + Regex.Escape(variable) + @"\b",
+                    RegexOptions.CultureInvariant))
+                return true;
+
+            var pieces = variable.Split('.');
+            if (pieces.Length == 2 &&
+                Regex.IsMatch(
+                    outside,
+                    @"\b" + Regex.Escape(pieces[0]) +
+                    @"\s*\[\s*['""]" + Regex.Escape(pieces[1]) + @"['""]\s*\]",
+                    RegexOptions.CultureInvariant))
+                return true;
+
+            return false;
+        }
+
+        var withoutInitializer = Regex.Replace(
+            outside,
+            @"\b(?:local\s+)?" + Regex.Escape(variable) +
+            @"\s*=\s*0(?:\.0+)?\b",
+            "",
+            1,
+            RegexOptions.CultureInvariant);
+
+        return Regex.IsMatch(
+            withoutInitializer,
+            @"\b" + Regex.Escape(variable) + @"\b",
+            RegexOptions.CultureInvariant);
+    }
+
+    private static int FindBalancedBraceEnd(string text, int open)
+    {
+        var depth = 0;
+        var quote = '\0';
+        var escaped = false;
+
+        for (var i = open; i < text.Length; i++)
+        {
+            var c = text[i];
+            if (quote != '\0')
+            {
+                if (escaped)
+                {
+                    escaped = false;
+                    continue;
+                }
+                if (c == '\\')
+                {
+                    escaped = true;
+                    continue;
+                }
+                if (c == quote)
+                    quote = '\0';
+                continue;
+            }
+
+            if (c == '\'' || c == '"')
+            {
+                quote = c;
+                continue;
+            }
+
+            if (c == '{') depth++;
+            else if (c == '}')
+            {
+                depth--;
+                if (depth == 0)
+                    return i;
+            }
+        }
+
+        return -1;
     }
 
     private static GenericResolution ResolveOnAction(
@@ -1764,6 +2196,16 @@ internal static class CallbackResolverService
         public double maxExclusiveMs => Round(MaxExclusiveMs);
         public long spikeCount => SpikeCount;
         public double maxSpikeExclusiveMs => Round(MaxSpikeExclusiveMs);
+    }
+
+    private sealed class AuthorCadenceResolution
+    {
+        public string DeltaParameter { get; init; } = "delta";
+        public double BaseIntervalSeconds { get; init; }
+        public double[] TimerIntervalsSeconds { get; init; } = Array.Empty<double>();
+        public string[] AccumulatorVariables { get; init; } = Array.Empty<string>();
+        public double ExpectedCallsPerSecond { get; init; }
+        public double RuntimeEntryReductionFactor { get; init; }
     }
 
     private sealed record CadenceDecision(string Group, bool TransformCandidate);
