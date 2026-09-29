@@ -11,12 +11,12 @@ $ErrorActionPreference = 'Stop'
 $PublishedRoot = (Resolve-Path $PublishedRoot).Path
 $ResolverRoot = (Resolve-Path $ResolverRoot).Path
 $exe = Join-Path $PublishedRoot 'G-CET-Runtime-Profiler.exe'
-$resolverExe = Join-Path $ResolverRoot 'G-CET-Cadence-Resolver.exe'
+$resolverExe = Join-Path $ResolverRoot 'G-CET-Resolver.exe'
 $profilerPayload = Join-Path $PublishedRoot 'payload\cyber_engine_tweaks.PROFILER.dll'
 
 if (!(Test-Path -LiteralPath $exe -PathType Leaf)) { throw "Profiler executable not found: $exe" }
 if (!(Test-Path -LiteralPath $profilerPayload -PathType Leaf)) { throw "Profiler payload not found: $profilerPayload" }
-if (!(Test-Path -LiteralPath $resolverExe -PathType Leaf)) { throw "Cadence resolver executable not found: $resolverExe" }
+if (!(Test-Path -LiteralPath $resolverExe -PathType Leaf)) { throw "G-CET resolver executable not found: $resolverExe" }
 
 $root = Join-Path $env:RUNNER_TEMP 'gcet-cadence-source-contract'
 if (Test-Path -LiteralPath $root) { Remove-Item -LiteralPath $root -Recurse -Force }
@@ -143,7 +143,7 @@ if (Test-Path -LiteralPath (Join-Path $result.destination 'CET_Cadence_Final.jso
 }
 
 $resolve = (& $resolverExe --capture $result.destination --mods $mods --json | ConvertFrom-Json)
-if (!$resolve.ok) { throw 'Explicit cadence resolver pass failed.' }
+if (!$resolve.ok) { throw 'Explicit G-CET resolver pass failed.' }
 
 $finalPath = Join-Path $result.destination 'CET_Cadence_Final.json'
 if (!(Test-Path -LiteralPath $finalPath -PathType Leaf)) {
