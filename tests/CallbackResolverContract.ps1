@@ -349,6 +349,17 @@ if ([int]$resolved.pass.FileCount -ne 12) {
 if (!(Test-Path -LiteralPath $resolved.pass.ZipPath -PathType Leaf)) {
     throw "Generated pass ZIP is missing: $($resolved.pass.ZipPath)"
 }
+if (!(Test-Path -LiteralPath $resolved.pass.ManifestPath -PathType Leaf)) {
+    throw "Generated pass manifest is missing beside ZIP: $($resolved.pass.ManifestPath)"
+}
+if ([System.IO.Path]::GetDirectoryName([string]$resolved.pass.ManifestPath) -ne
+    [System.IO.Path]::GetDirectoryName([string]$resolved.pass.ZipPath)) {
+    throw 'Generated pass manifest is not beside the ZIP.'
+}
+if ([System.IO.Path]::GetFileNameWithoutExtension([string]$resolved.pass.ManifestPath) -ne
+    [System.IO.Path]::GetFileNameWithoutExtension([string]$resolved.pass.ZipPath)) {
+    throw 'Generated pass manifest does not share the ZIP basename.'
+}
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [System.IO.Compression.ZipFile]::OpenRead([string]$resolved.pass.ZipPath)
@@ -356,7 +367,6 @@ try {
     $names = @($zip.Entries | ForEach-Object FullName)
 
     foreach ($requiredEntry in @(
-        'G-CET_Pass_Manifest.json',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureAction/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureFrame/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixturePattern/init.lua',
@@ -370,6 +380,9 @@ try {
         }
     }
 
+    if ('G-CET_Pass_Manifest.json' -in $names) {
+        throw 'Documentation manifest leaked into the deployable ZIP.'
+    }
     if ('bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDynamic/init.lua' -in $names) {
         throw 'Blocked dynamic OnAction callback leaked into the generated pass.'
     }
@@ -401,7 +414,7 @@ try {
         throw 'Generated mixed exact+pattern router did not preserve the resolver pattern.'
     }
 
-    $manifest = (Read-ZipText 'G-CET_Pass_Manifest.json') | ConvertFrom-Json
+    $manifest = (Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw) | ConvertFrom-Json
     if ($manifest.policy.selection -ne 'ONLY_AUTOMATABLE_CANDIDATES_FROM_G-CET_Resolver.json') {
         throw 'Generated pass manifest is not resolver-only.'
     }
