@@ -163,6 +163,11 @@ end)
 $downstreamDir = Join-Path $mods 'FixtureDownstream'
 @'
 function Controller:HandleInput(actionName, actionType, action)
+    local relevantInputs = {
+        UI_MoveUp = true,
+        UI_MoveDown = true,
+    }
+
     if not self.lock then
         if actionName == "MoveX" or actionName == "PhotoMode_CameraMovementX" then
             self.x = action:GetValue(action)
@@ -171,6 +176,9 @@ function Controller:HandleInput(actionName, actionType, action)
         end
     end
 
+    if relevantInputs[actionName] then
+        self.lastRelevant = actionName
+    end
     self.isMoving = self.x ~= 0 or self.y ~= 0
 end
 '@ | Set-Content -LiteralPath (Join-Path $downstreamDir 'controller.lua') -Encoding utf8
@@ -353,7 +361,7 @@ if ($downstream.generic.Pattern -ne 'ACTION_ROUTING_DOWNSTREAM_STATIC_SET') {
 if (!$downstream.generic.Facts.downstreamExpanded) {
     throw 'Downstream expansion fact was not emitted.'
 }
-foreach ($expected in @('Jump','MoveX','MoveY','PhotoMode_CameraMovementX')) {
+foreach ($expected in @('Jump','MoveX','MoveY','PhotoMode_CameraMovementX','UI_MoveUp','UI_MoveDown')) {
     if (@($downstream.generic.Facts.actions) -notcontains $expected) {
         throw "Downstream action expansion lost expected action: $expected"
     }
@@ -464,7 +472,7 @@ try {
     }
 
     $downstreamText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDownstream/init.lua'
-    foreach ($expectedAction in @('Jump','MoveX','MoveY','PhotoMode_CameraMovementX')) {
+    foreach ($expectedAction in @('Jump','MoveX','MoveY','PhotoMode_CameraMovementX','UI_MoveUp','UI_MoveDown')) {
         if ($downstreamText -notmatch [regex]::Escape($expectedAction)) {
             throw "Generated downstream router lost expected action: $expectedAction"
         }
