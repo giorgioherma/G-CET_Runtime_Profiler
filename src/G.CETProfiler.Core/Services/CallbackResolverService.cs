@@ -531,7 +531,7 @@ internal static class CallbackResolverService
 
         if (gates.Count == 0 || increments.Count == 0)
         {
-            blocker = "Author cadence: no complete fixed accumulator timer was proven.";
+            blocker = $"Author cadence: no complete fixed accumulator timer was proven (increments={increments.Count}, gates={gates.Count}, baseIndent={baseIndent}).";
             return false;
         }
 
