@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "1.0",
+  "policy": {
+    "genericResolverFirst": true,
+    "highImpactOnly": true,
+    "patchCodeAllowed": false,
+    "currentSourceRevalidationRequired": true,
+    "admissionRule": "Add an identity-specific entry only when a material high-impact callback cannot be resolved by a reasonable generic recognizer and a small semantic hint unlocks a worthwhile generic recipe."
+  },
+  "entries": []
+}
