@@ -55,6 +55,16 @@ registerForEvent("onUpdate", function(delta)
 end)
 '@
 
+Write-Mod 'FixtureLowPayback' @'
+local lowTimer = 0.0
+registerForEvent("onUpdate", function(delta)
+    lowTimer = lowTimer + delta
+    if lowTimer < 1.0 then return end
+    lowTimer = 0.0
+    DoLowPaybackWork()
+end)
+'@
+
 Write-Mod 'FixtureState' @'
 local active = false
 registerForEvent("onUpdate", function(delta)
@@ -75,6 +85,7 @@ $elapsed = 30
 $owners = @(
     @{ Name='FixtureExact'; Ms=0.68 },
     @{ Name='FixtureMixed'; Ms=0.68 },
+    @{ Name='FixtureLowPayback'; Ms=0.519 },
     @{ Name='FixtureState'; Ms=0.60 },
     @{ Name='FixtureUncertain'; Ms=0.60 }
 )
@@ -109,6 +120,7 @@ for ($bucket = 0; $bucket -lt 600; $bucket++) {
 
     $exactMs = if (($bucket % 10) -eq 0) { 0.25 } else { 0.01 }
     $mixedMs = if (($bucket % 20) -eq 0) { 0.30 } else { 0.02 }
+    $lowPaybackMs = if (($bucket % 20) -eq 0) { 0.50 } else { 0.001 }
 
     if ($start -lt 10000) { $stateMs = 0.01 }
     elseif ($start -lt 20000) { $stateMs = 0.04 }
@@ -116,6 +128,7 @@ for ($bucket = 0; $bucket -lt 600; $bucket++) {
 
     $timeline.Add(('{0},{1},{2},FixtureExact,event,onUpdate,3,{3:F6},{3:F6},50,0,continuous-onupdate-callback-correlation' -f $bucket,$start,$end,$exactMs))
     $timeline.Add(('{0},{1},{2},FixtureMixed,event,onUpdate,3,{3:F6},{3:F6},50,0,continuous-onupdate-callback-correlation' -f $bucket,$start,$end,$mixedMs))
+    $timeline.Add(('{0},{1},{2},FixtureLowPayback,event,onUpdate,3,{3:F6},{3:F6},50,0,continuous-onupdate-callback-correlation' -f $bucket,$start,$end,$lowPaybackMs))
     $timeline.Add(('{0},{1},{2},FixtureState,event,onUpdate,3,{3:F6},{3:F6},50,0,continuous-onupdate-callback-correlation' -f $bucket,$start,$end,$stateMs))
     $timeline.Add(('{0},{1},{2},FixtureUncertain,event,onUpdate,3,0.030000,0.030000,50,0,continuous-onupdate-callback-correlation' -f $bucket,$start,$end))
 }
@@ -168,6 +181,9 @@ if ((Group-For 'FixtureExact') -ne 'EXACT_CADENCE') {
 if ((Group-For 'FixtureMixed') -ne 'MIXED_SPLIT') {
     throw 'Generic mixed frame/timer callback was not classified MIXED_SPLIT.'
 }
+if ((Group-For 'FixtureLowPayback') -ne 'EXACT_CADENCE') {
+    throw 'Low-payback author timer should still be recognized structurally as EXACT_CADENCE.'
+}
 if ((Group-For 'FixtureState') -ne 'ACTIVE_DORMANT') {
     throw 'Generic state-gated callback was not classified ACTIVE_DORMANT.'
 }
@@ -178,6 +194,81 @@ if ((Group-For 'FixtureUncertain') -ne 'LEAVE_ALONE') {
 $uncertain = @($final.callbacks | Where-Object { $_.Owner -eq 'FixtureUncertain' })[0]
 if ($uncertain.TransformCandidate) {
     throw 'LEAVE_ALONE callback was incorrectly authorized as a transform candidate.'
+}
+
+$resolverPath = Join-Path $result.destination 'G-CET_Resolver.json'
+if (!(Test-Path -LiteralPath $resolverPath -PathType Leaf)) {
+    throw "Callback resolver output is missing: $resolverPath"
+}
+$callbackResolver = Get-Content -LiteralPath $resolverPath -Raw | ConvertFrom-Json
+$onUpdateFamily = @($callbackResolver.callbackFamilies | Where-Object { $_.resolverFamily -eq 'ONUPDATE' }) | Select-Object -First 1
+if ($null -eq $onUpdateFamily) { throw 'Callback resolver did not emit ONUPDATE family.' }
+
+function Consumer-For([string]$Owner) {
+    $row = @($onUpdateFamily.topConsumers | Where-Object { $_.owner -eq $Owner }) | Select-Object -First 1
+    if ($null -eq $row) { throw "Callback resolver did not rank $Owner." }
+    return $row
+}
+
+$exactConsumer = Consumer-For 'FixtureExact'
+if (@($exactConsumer.generic.RecipeFamilies) -notcontains 'AUTHOR_CADENCE_WHOLE_CALLBACK') {
+    throw 'High-payback exact author cadence was not authorized.'
+}
+if (!$exactConsumer.generic.Facts.authorCadenceWholeCallback) {
+    throw 'Author cadence generator facts were not emitted.'
+}
+if ([double]$exactConsumer.generic.Facts.estimatedCallbackPaybackPct -lt 10.0) {
+    throw 'High-payback fixture did not clear the callback payback floor.'
+}
+
+$lowConsumer = Consumer-For 'FixtureLowPayback'
+if (@($lowConsumer.generic.RecipeFamilies) -contains 'AUTHOR_CADENCE_WHOLE_CALLBACK') {
+    throw 'Low-payback author cadence was incorrectly authorized for rewrite.'
+}
+$lowBlockers = [string]::Join(' | ', @($lowConsumer.generic.Blockers))
+if ($lowBlockers -notmatch 'low-payback') {
+    throw "Low-payback fixture was rejected for the wrong reason: $lowBlockers"
+}
+
+$generated = (& $resolverExe --capture $result.destination --mods $mods --generate-pass --json | ConvertFrom-Json)
+if (!$generated.ok) { throw 'Author cadence pass generation failed.' }
+$zipPath = [string]$generated.pass.ZipPath
+if (!(Test-Path -LiteralPath $zipPath -PathType Leaf)) {
+    throw "Generated author cadence ZIP is missing: $zipPath"
+}
+
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$zip = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
+try {
+    function Read-ZipText([string]$EntryName) {
+        $entry = @($zip.Entries | Where-Object { $_.FullName -eq $EntryName }) | Select-Object -First 1
+        if ($null -eq $entry) { throw "ZIP entry missing: $EntryName" }
+        $reader = New-Object System.IO.StreamReader($entry.Open())
+        try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
+    }
+
+    $exactText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureExact/init.lua'
+    foreach ($needle in @(
+        'AUTHOR',
+        'Schedule.Every(0.5',
+        'spread = false',
+        'catchUp = false',
+        'pause = "never"',
+        'ctx.elapsed',
+        'registerForEvent("onUpdate", __gcetAuthorCadence_'
+    )) {
+        if ($exactText -notmatch [regex]::Escape($needle)) {
+            throw "Generated exact author cadence is missing: $needle"
+        }
+    }
+
+    $lowText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureLowPayback/init.lua'
+    if ($lowText -match 'Schedule\.Every') {
+        throw 'Low-payback fixture was cadence-rewritten despite the payback gate.'
+    }
+}
+finally {
+    $zip.Dispose()
 }
 
 # This contract collects through the published profiler, whose package root is
