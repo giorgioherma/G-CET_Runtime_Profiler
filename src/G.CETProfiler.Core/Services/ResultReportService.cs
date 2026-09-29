@@ -21,6 +21,7 @@ public static partial class ResultReportService
     public const string ReportFileName = "CET_Report.html";
     public const string SummaryFileName = "CET_Summary.json";
     public const string ResolverInputFileName = "CET_Resolver_Input.json";
+    public const string ResolverResolutionFileName = "G-CET_Resolver.json";
     public const string CadenceResolutionFileName = "CET_Cadence_Resolution.json";
     public const string CadenceFinalFileName = "CET_Cadence_Final.json";
 
