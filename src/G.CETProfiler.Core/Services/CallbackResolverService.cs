@@ -233,7 +233,7 @@ internal static class CallbackResolverService
             };
 
         if (family == "ONACTION")
-            return ResolveOnAction(callback, source, sourceEvidence);
+            return ResolveOnAction(callback, source, sourceEvidence, sourceIndex);
 
         if (family == "ONUPDATE")
             return ResolveOnUpdate(callback, source, sourceEvidence, cadence);
@@ -300,7 +300,8 @@ internal static class CallbackResolverService
     private static GenericResolution ResolveOnAction(
         CallbackMetric callback,
         ResolvedSource? source,
-        SourceEvidence? sourceEvidence)
+        SourceEvidence? sourceEvidence,
+        LiveSourceIndex sourceIndex)
     {
         if (source is null)
         {
@@ -458,6 +459,34 @@ internal static class CallbackResolverService
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
         var dynamicActionForward = HasDynamicActionForward(window);
+        var downstreamExpanded = false;
+        var downstreamMethods = Array.Empty<string>();
+        var downstreamFiles = Array.Empty<string>();
+
+        // Raw action forwarding can still close over a finite exact set when
+        // the callback also forwards its decoded action-name value to an
+        // owner-local method whose implementations all use finite literal
+        // action selectors. This is source-structural, never a mod-name rule.
+        if (dynamicActionForward &&
+            TryResolveStaticDownstreamActionInterest(
+                window,
+                nameVars,
+                callback.Owner,
+                sourceIndex,
+                out var downstreamActions,
+                out downstreamMethods,
+                out downstreamFiles))
+        {
+            foreach (var action in downstreamActions)
+                actions.Add(action);
+
+            dynamicActionForward = false;
+            downstreamExpanded = true;
+            evidence.Add(
+                $"Raw action forwarding was closed over {downstreamMethods.Length} owner-local method name(s) " +
+                $"and {downstreamActions.Length} finite action name(s).");
+        }
+
         if (dynamicActionForward)
         {
             blockers.Add("Raw action data is forwarded to downstream logic, so this callback alone does not prove a finite action set.");
@@ -475,7 +504,8 @@ internal static class CallbackResolverService
             evidence.Add("An early state gate is present before the callback's main work.");
 
         var hasActionFilter = actions.Count > 0 || patterns.Count > 0 || staticTables.Count > 0;
-        var prefilterSideEffect = hasActionFilter && HasMeaningfulWorkBeforeFirstActionFilter(window, nameVars);
+        var prefilterSideEffect = hasActionFilter &&
+            HasMeaningfulWorkBeforeFirstActionFilter(window, nameVars, downstreamMethods);
         if (prefilterSideEffect)
             blockers.Add("Observable work occurs before the first proven action-interest filter.");
 
@@ -490,6 +520,14 @@ internal static class CallbackResolverService
             recipe = stateGated
                 ? "ACTION_ROUTING_STATE_GATED_DYNAMIC_DOWNSTREAM"
                 : "ACTION_ROUTING_DYNAMIC_DOWNSTREAM";
+        else if (downstreamExpanded && patterns.Count > 0)
+            recipe = stateGated
+                ? "ACTION_ROUTING_STATE_GATED_DOWNSTREAM_STATIC_SET_WITH_PATTERN"
+                : "ACTION_ROUTING_DOWNSTREAM_STATIC_SET_WITH_PATTERN";
+        else if (downstreamExpanded)
+            recipe = stateGated
+                ? "ACTION_ROUTING_STATE_GATED_DOWNSTREAM_STATIC_SET"
+                : "ACTION_ROUTING_DOWNSTREAM_STATIC_SET";
         else if (staticTables.Count > 0 && patterns.Count > 0)
             recipe = stateGated
                 ? "ACTION_ROUTING_STATE_GATED_STATIC_SET_WITH_PATTERN"
@@ -522,6 +560,9 @@ internal static class CallbackResolverService
             stateGatePresent = stateGated,
             consumerMutation,
             dynamicActionForward,
+            downstreamExpanded,
+            downstreamMethods,
+            downstreamFiles,
             requiresActionType =
                 Regex.IsMatch(window, @"\bGetType\s*\(", RegexOptions.IgnoreCase),
             requiresActionValue =
@@ -595,9 +636,238 @@ internal static class CallbackResolverService
         return false;
     }
 
+    private static bool TryResolveStaticDownstreamActionInterest(
+        string window,
+        IReadOnlySet<string> nameVars,
+        string owner,
+        LiveSourceIndex sourceIndex,
+        out string[] actions,
+        out string[] methods,
+        out string[] files)
+    {
+        actions = Array.Empty<string>();
+        methods = Array.Empty<string>();
+        files = Array.Empty<string>();
+
+        var forwards = new List<ForwardedActionCall>();
+
+        foreach (Match match in Regex.Matches(
+                     window,
+                     @"(?<method>[A-Za-z_]\w*)\s*\((?<args>[^()\r\n]*)\)",
+                     RegexOptions.CultureInvariant))
+        {
+            var method = match.Groups["method"].Value;
+            if (method.Equals("GetName", StringComparison.OrdinalIgnoreCase) ||
+                method.Equals("GetType", StringComparison.OrdinalIgnoreCase) ||
+                method.Equals("GetValue", StringComparison.OrdinalIgnoreCase) ||
+                method.Equals("IsAction", StringComparison.OrdinalIgnoreCase) ||
+                method.Equals("NameToString", StringComparison.OrdinalIgnoreCase) ||
+                method.Equals("Observe", StringComparison.OrdinalIgnoreCase) ||
+                method.Equals("ObserveAfter", StringComparison.OrdinalIgnoreCase) ||
+                method.Equals("Override", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var callArgs = match.Groups["args"].Value
+                .Split(',')
+                .Select(x => x.Trim())
+                .ToArray();
+
+            var rawActionIndex = Array.FindIndex(
+                callArgs,
+                x => x.Equals("action", StringComparison.Ordinal));
+            if (rawActionIndex < 0)
+                continue;
+
+            var nameIndex = Array.FindIndex(
+                callArgs,
+                x => nameVars.Contains(x));
+            if (nameIndex < 0)
+                continue;
+
+            forwards.Add(new ForwardedActionCall(method, nameIndex, rawActionIndex));
+        }
+
+        if (forwards.Count == 0)
+            return false;
+
+        var allActions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var methodNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var sourceFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var forward in forwards
+                     .DistinctBy(
+                         x => $"{x.Method}|{x.NameArgumentIndex}|{x.RawActionArgumentIndex}",
+                         StringComparer.OrdinalIgnoreCase))
+        {
+            var definitions = sourceIndex.FindOwnerMethodDefinitions(owner, forward.Method);
+            if (definitions.Count == 0)
+                return false;
+
+            methodNames.Add(forward.Method);
+
+            foreach (var definition in definitions)
+            {
+                if (forward.NameArgumentIndex >= definition.Parameters.Length ||
+                    forward.RawActionArgumentIndex >= definition.Parameters.Length)
+                    return false;
+
+                var nameParameter = definition.Parameters[forward.NameArgumentIndex];
+                var actionParameter = definition.Parameters[forward.RawActionArgumentIndex];
+                if (string.IsNullOrWhiteSpace(nameParameter) ||
+                    string.IsNullOrWhiteSpace(actionParameter))
+                    return false;
+
+                if (!TryReadFiniteDownstreamActionSet(
+                        definition.Body,
+                        nameParameter,
+                        actionParameter,
+                        out var definitionActions))
+                    return false;
+
+                foreach (var action in definitionActions)
+                    allActions.Add(action);
+                sourceFiles.Add(definition.RelativeFile);
+            }
+        }
+
+        if (allActions.Count == 0)
+            return false;
+
+        actions = allActions.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray();
+        methods = methodNames.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray();
+        files = sourceFiles.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray();
+        return true;
+    }
+
+    private static bool TryReadFiniteDownstreamActionSet(
+        string body,
+        string nameParameter,
+        string actionParameter,
+        out string[] actions)
+    {
+        var found = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var name = Regex.Escape(nameParameter);
+
+        foreach (Match match in Regex.Matches(
+                     body,
+                     @"\b" + name + @"\s*==\s*['""](?<action>[^'""]+)['""]",
+                     RegexOptions.CultureInvariant))
+        {
+            found.Add(match.Groups["action"].Value);
+        }
+
+        foreach (Match match in Regex.Matches(
+                     body,
+                     @"['""](?<action>[^'""]+)['""]\s*==\s*\b" + name + @"\b",
+                     RegexOptions.CultureInvariant))
+        {
+            found.Add(match.Groups["action"].Value);
+        }
+
+        foreach (Match match in Regex.Matches(
+                     body,
+                     @"(?m)^\s*if\s+" + name + @"\s*~=\s*['""](?<action>[^'""]+)['""]\s+then\s+return(?:\s+.*)?\s+end\s*$",
+                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+        {
+            found.Add(match.Groups["action"].Value);
+        }
+
+        if (found.Count == 0)
+        {
+            actions = Array.Empty<string>();
+            return false;
+        }
+
+        foreach (Match match in Regex.Matches(
+                     body,
+                     @"\b" + name + @"\s*~=\s*['""][^'""]+['""]",
+                     RegexOptions.CultureInvariant))
+        {
+            var lineStart = body.LastIndexOf('\n', Math.Max(0, match.Index - 1));
+            var lineEnd = body.IndexOf('\n', match.Index);
+            var lineOffset = lineStart < 0 ? 0 : lineStart + 1;
+            var line = body.Substring(
+                lineOffset,
+                (lineEnd < 0 ? body.Length : lineEnd) - lineOffset);
+
+            if (!Regex.IsMatch(
+                    line,
+                    @"^\s*if\s+.*~=.*\s+then\s+return(?:\s+.*)?\s+end\s*$",
+                    RegexOptions.IgnoreCase))
+            {
+                actions = Array.Empty<string>();
+                return false;
+            }
+        }
+
+        foreach (var rawLine in body.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'))
+        {
+            var line = rawLine.Trim();
+            if (string.IsNullOrWhiteSpace(line) ||
+                line.StartsWith("--", StringComparison.Ordinal) ||
+                !Regex.IsMatch(line, @"\b" + name + @"\b"))
+                continue;
+
+            if (Regex.IsMatch(
+                    line,
+                    @"\b" + name + @"\s*(?:==|~=)\s*['""]",
+                    RegexOptions.CultureInvariant) ||
+                Regex.IsMatch(
+                    line,
+                    @"['""][^'""]+['""]\s*==\s*\b" + name + @"\b",
+                    RegexOptions.CultureInvariant) ||
+                Regex.IsMatch(
+                    line,
+                    @"^function\b.*\b" + name + @"\b",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+                continue;
+
+            actions = Array.Empty<string>();
+            return false;
+        }
+
+        foreach (var rawLine in body.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'))
+        {
+            var line = rawLine.Trim();
+            var action = Regex.Escape(actionParameter);
+            if (string.IsNullOrWhiteSpace(line) ||
+                line.StartsWith("--", StringComparison.Ordinal) ||
+                !Regex.IsMatch(line, @"\b" + action + @"\b"))
+                continue;
+
+            if (Regex.IsMatch(
+                    line,
+                    @"^function\b.*\b" + action + @"\b",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant) ||
+                Regex.IsMatch(
+                    line,
+                    @"\b" + action + @"\s*[:.]\s*(?:GetName|GetType|GetValue|IsAction)\s*\(",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+                continue;
+
+            if (Regex.IsMatch(
+                    line,
+                    @"\([^\r\n)]*\b" + action + @"\b",
+                    RegexOptions.CultureInvariant))
+            {
+                actions = Array.Empty<string>();
+                return false;
+            }
+        }
+
+        actions = found.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray();
+        return true;
+    }
+
+    private sealed record ForwardedActionCall(
+        string Method,
+        int NameArgumentIndex,
+        int RawActionArgumentIndex);
+
     private static bool HasMeaningfulWorkBeforeFirstActionFilter(
         string window,
-        IReadOnlySet<string> nameVars)
+        IReadOnlySet<string> nameVars,
+        IReadOnlyCollection<string>? resolvedForwardMethods = null)
     {
         var lines = window.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
         var firstFilter = -1;
@@ -641,6 +911,16 @@ internal static class CallbackResolverService
             if (Regex.IsMatch(line, @"^if\s+.*\s+then\s*$", RegexOptions.IgnoreCase) ||
                 line.Equals("return", StringComparison.OrdinalIgnoreCase) ||
                 line.Equals("end", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            // A downstream call whose complete action interest was proven by
+            // owner-local source inspection is itself the expanded filter.
+            if (resolvedForwardMethods is not null &&
+                resolvedForwardMethods.Any(method =>
+                    Regex.IsMatch(
+                        line,
+                        @"[:.]\s*" + Regex.Escape(method) + @"\s*\(",
+                        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)))
                 continue;
 
             // Local reads/decodes are allowed before the filter. They disappear
@@ -998,6 +1278,98 @@ internal static class CallbackResolverService
             return null;
         }
 
+        public IReadOnlyList<OwnerMethodDefinition> FindOwnerMethodDefinitions(
+            string owner,
+            string methodName)
+        {
+            var result = new List<OwnerMethodDefinition>();
+            var ownerFolder = ResolveOwnerFolder(owner);
+            if (ownerFolder is null)
+                return result;
+
+            IEnumerable<string> files;
+            try
+            {
+                files = Directory.EnumerateFiles(ownerFolder, "*.lua", SearchOption.AllDirectories);
+            }
+            catch
+            {
+                return result;
+            }
+
+            var methodPattern =
+                @"^(?<indent>\s*)function\s+[A-Za-z_][\w.]*\s*[:.]\s*" +
+                Regex.Escape(methodName) +
+                @"\s*\((?<args>[^)]*)\)";
+
+            foreach (var file in files)
+            {
+                string text;
+                try
+                {
+                    text = File.ReadAllText(file)
+                        .Replace("\r\n", "\n")
+                        .Replace('\r', '\n');
+                }
+                catch
+                {
+                    continue;
+                }
+
+                var lines = text.Split('\n');
+                for (var i = 0; i < lines.Length; i++)
+                {
+                    var match = Regex.Match(
+                        lines[i],
+                        methodPattern,
+                        RegexOptions.CultureInvariant);
+                    if (!match.Success)
+                        continue;
+
+                    var indent = match.Groups["indent"].Value.Length;
+                    var endLine = -1;
+
+                    for (var j = i + 1; j < lines.Length; j++)
+                    {
+                        var candidate = lines[j];
+                        var trimmed = candidate.Trim();
+                        if (!Regex.IsMatch(
+                                trimmed,
+                                @"^end\s*(?:--.*)?$",
+                                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+                            continue;
+
+                        var candidateIndent = candidate.Length - candidate.TrimStart().Length;
+                        if (candidateIndent == indent)
+                        {
+                            endLine = j;
+                            break;
+                        }
+                    }
+
+                    if (endLine <= i)
+                        continue;
+
+                    var parameters = match.Groups["args"].Value
+                        .Split(',')
+                        .Select(x => x.Trim())
+                        .Where(x => !string.IsNullOrWhiteSpace(x))
+                        .ToArray();
+
+                    result.Add(new OwnerMethodDefinition
+                    {
+                        RelativeFile = Path.GetRelativePath(_modsRoot, file).Replace('\\', '/'),
+                        Parameters = parameters,
+                        Body = string.Join("\n", lines.Skip(i).Take(endLine - i + 1))
+                    });
+
+                    i = endLine;
+                }
+            }
+
+            return result;
+        }
+
         private ResolvedSource? BuildResolvedSource(
             string path,
             string mode,
@@ -1231,6 +1603,13 @@ internal static class CallbackResolverService
         public int? LineStart { get; init; }
         public int? LineEnd { get; init; }
         public string MatchMode { get; init; } = "";
+    }
+
+    private sealed class OwnerMethodDefinition
+    {
+        public string RelativeFile { get; init; } = "";
+        public string[] Parameters { get; init; } = Array.Empty<string>();
+        public string Body { get; init; } = "";
     }
 
     private sealed class ExceptionRegistryEntry
