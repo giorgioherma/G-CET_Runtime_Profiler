@@ -556,10 +556,17 @@ internal static class CallbackResolverService
 
         // Timer state must be private to the cadence mechanism. This avoids
         // changing externally observed continuously-increasing timer values.
-        var callbackIndex = source.FullText.IndexOf(source.CallbackText, StringComparison.Ordinal);
-        var outside = callbackIndex >= 0
-            ? source.FullText.Remove(callbackIndex, source.CallbackText.Length)
-            : source.FullText;
+        var normalizedFull = source.FullText
+            .Replace("\r\n", "\n")
+            .Replace('\r', '\n');
+        var callbackIndex = normalizedFull.IndexOf(source.CallbackText, StringComparison.Ordinal);
+        if (callbackIndex < 0)
+        {
+            blocker = "Author cadence: callback text could not be isolated from the current source file.";
+            return false;
+        }
+
+        var outside = normalizedFull.Remove(callbackIndex, source.CallbackText.Length);
 
         foreach (var variable in gates.Keys)
         {
