@@ -60,8 +60,6 @@ public static class PassGeneratorService
             throw new InvalidOperationException(
                 "The resolver produced no V1 pass candidates. No ZIP was generated.");
 
-        ValidateRuntimeInfrastructure(modsRoot, candidates);
-
         var groups = candidates
             .GroupBy(x => x.RelativeFile, StringComparer.OrdinalIgnoreCase)
             .OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
@@ -128,6 +126,37 @@ public static class PassGeneratorService
             throw new InvalidOperationException(
                 "All resolver candidates were rejected during current-source revalidation. No ZIP was generated.");
 
+        var callbackFileCount = staged.Count;
+
+        // 0-Engine is the one deliberate fixed-runtime exception. The target
+        // callbacks above are still selected strictly from capture/resolver
+        // evidence; the shared runtime needed to execute those generic recipes
+        // is shipped with every generated CET pass.
+        var fixedRuntime = FixedZeroEngineRuntime.Prepare(modsRoot);
+        foreach (var pair in fixedRuntime.Files)
+        {
+            if (staged.ContainsKey(pair.Key))
+                throw new InvalidOperationException(
+                    $"Resolver output unexpectedly targets fixed runtime file: {pair.Key}");
+
+            staged[pair.Key] = pair.Value;
+
+            var liveRuntimePath = ResolveInsideMods(modsRoot, pair.Key);
+            var liveRuntimeHash =
+                liveRuntimePath is not null && File.Exists(liveRuntimePath)
+                    ? Sha256(File.ReadAllBytes(liveRuntimePath))
+                    : null;
+
+            fileManifest.Add(new
+            {
+                path = pair.Key.Replace('\\', '/'),
+                sourceSha256 = liveRuntimeHash,
+                generatedSha256 = Sha256(pair.Value),
+                appliedTransforms = 0,
+                fixedInfrastructure = true
+            });
+        }
+
         var resolverBytes = File.ReadAllBytes(resolverPath);
         var captureName = new DirectoryInfo(captureRoot).Name;
         var generatedUtc = DateTime.UtcNow;
@@ -154,17 +183,28 @@ public static class PassGeneratorService
                     "ACTION_ROUTING_*",
                     "FRAME_DISPATCH_CONSOLIDATION"
                 },
-                note = "V1 pass generation does not infer extra targets. It applies only resolver-authorized callback transforms and revalidates the current source SHA before writing a full replacement file."
+                fixedRuntimeException = "0-Engine",
+                note = "V1 target selection is capture/resolver-only. 0-Engine is the explicit fixed infrastructure exception and is always shipped so generic ActionRouter/frame registrar recipes have one known runtime."
             },
-            runtimeRequirements = new
+            fixedRuntime = new
             {
-                zeroEngine = "0-Engine",
-                subscribeAction = candidates.Any(x => x.Kind == CandidateKind.Action),
-                makeEventRegistrar = candidates.Any(x => x.Kind == CandidateKind.Frame)
+                included = true,
+                name = "0-Engine",
+                exception = true,
+                baseVersion = FixedZeroEngineRuntime.BaseVersion,
+                fixedRuntime.FixedVersion,
+                fixedRuntime.LiveState,
+                fixedRuntime.LiveInitSha256,
+                fixedRuntime.FixedInitSha256,
+                files = fixedRuntime.Files.Keys
+                    .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+                    .ToArray()
             },
             summary = new
             {
                 files = staged.Count,
+                callbackFiles = callbackFileCount,
+                fixedRuntimeFiles = fixedRuntime.Files.Count,
                 transforms = transformManifest.Count,
                 skipped = skipped.Count
             },
@@ -308,32 +348,6 @@ public static class PassGeneratorService
             ConsumerMutation = JsonBool(facts, "consumerMutation"),
             StateGatePresent = JsonBool(facts, "stateGatePresent")
         };
-    }
-
-    private static void ValidateRuntimeInfrastructure(
-        string modsRoot,
-        IReadOnlyCollection<PassCandidate> candidates)
-    {
-        var zeroInit = Path.Combine(modsRoot, "0-Engine", "init.lua");
-        if (!File.Exists(zeroInit))
-            throw new InvalidOperationException(
-                "V1 pass generation requires the deployed 0-Engine runtime. 0-Engine/init.lua was not found.");
-
-        var source = File.ReadAllText(zeroInit);
-
-        if (candidates.Any(x => x.Kind == CandidateKind.Action) &&
-            !source.Contains("SubscribeAction", StringComparison.Ordinal))
-        {
-            throw new InvalidOperationException(
-                "This capture contains ACTION_ROUTING candidates, but the deployed 0-Engine does not expose SubscribeAction. V1 will not fabricate runtime infrastructure.");
-        }
-
-        if (candidates.Any(x => x.Kind == CandidateKind.Frame) &&
-            !source.Contains("MakeEventRegistrar", StringComparison.Ordinal))
-        {
-            throw new InvalidOperationException(
-                "This capture contains FRAME_DISPATCH_CONSOLIDATION candidates, but the deployed 0-Engine does not expose MakeEventRegistrar. V1 will not fabricate runtime infrastructure.");
-        }
     }
 
     private static TransformResult TransformFile(
