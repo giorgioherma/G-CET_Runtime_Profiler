@@ -25,9 +25,13 @@ public:
 
     struct Counter
     {
+        uint64_t RegistrationId{};
         std::string Mod;
         std::string Kind;
         std::string Target;
+        std::string SourceFile;
+        int SourceLineStart{};
+        int SourceLineEnd{};
 
         std::atomic<uint64_t> Calls{0};
         std::atomic<uint64_t> InclusiveNs{0};
@@ -285,6 +289,23 @@ public:
         return RegisterLocked(aMod, aKind, aTarget);
     }
 
+    void AttachSource(Counter* aCounter,
+                      const std::string& aSourceFile,
+                      int aSourceLineStart,
+                      int aSourceLineEnd)
+    {
+        if (!aCounter)
+            return;
+
+        std::lock_guard lock(m_mutex);
+        if (!aSourceFile.empty())
+            aCounter->SourceFile = aSourceFile;
+        if (aSourceLineStart > 0)
+            aCounter->SourceLineStart = aSourceLineStart;
+        if (aSourceLineEnd > 0)
+            aCounter->SourceLineEnd = aSourceLineEnd;
+    }
+
     // Registration-time binding: native data only. No sol::environment access,
     // no lua_State access, and no modification of CET's Context layout.
     void BindCallback(const void* aContext,
@@ -319,10 +340,14 @@ public:
         auto& binding = it->second;
         if (!binding.ResolvedCounter)
         {
+            std::ostringstream instanceKey;
+            instanceKey << "context@"
+                        << reinterpret_cast<uintptr_t>(aContext);
             binding.ResolvedCounter = RegisterLocked(
                 aMod.empty() ? "<unknown>" : aMod,
                 binding.Kind,
-                binding.Target);
+                binding.Target,
+                instanceKey.str());
         }
 
         return binding.ResolvedCounter;
@@ -878,9 +903,13 @@ public:
     {
         struct Row
         {
+            uint64_t RegistrationId{};
             std::string Mod;
             std::string Kind;
             std::string Target;
+            std::string SourceFile;
+            int SourceLineStart{};
+            int SourceLineEnd{};
             uint64_t Calls{};
             uint64_t InclusiveNs{};
             uint64_t ExclusiveNs{};
@@ -897,9 +926,13 @@ public:
             uint64_t ExclusiveNs{};
             uint64_t ChildNs{};
             uint64_t ThreadId{};
+            uint64_t RegistrationId{};
             std::string Mod;
             std::string Kind;
             std::string Target;
+            std::string SourceFile;
+            int SourceLineStart{};
+            int SourceLineEnd{};
         };
 
         struct TimelineRow
@@ -917,9 +950,13 @@ public:
             uint64_t Calls{};
             uint64_t ExclusiveNs{};
             uint64_t MaxExclusiveNs{};
+            uint64_t RegistrationId{};
             std::string Mod;
             std::string Kind;
             std::string Target;
+            std::string SourceFile;
+            int SourceLineStart{};
+            int SourceLineEnd{};
         };
 
         struct SchedulerJobRow
@@ -1007,9 +1044,13 @@ public:
             for (const auto& [_, counter] : m_counters)
             {
                 rows.push_back({
+                    counter->RegistrationId,
                     counter->Mod,
                     counter->Kind,
                     counter->Target,
+                    counter->SourceFile,
+                    counter->SourceLineStart,
+                    counter->SourceLineEnd,
                     counter->Calls.load(std::memory_order_relaxed),
                     counter->InclusiveNs.load(std::memory_order_relaxed),
                     counter->ExclusiveNs.load(std::memory_order_relaxed),
@@ -1032,9 +1073,13 @@ public:
                     spike.ExclusiveNs,
                     spike.ChildNs,
                     spike.ThreadId,
+                    spike.CounterPtr->RegistrationId,
                     spike.CounterPtr->Mod,
                     spike.CounterPtr->Kind,
-                    spike.CounterPtr->Target
+                    spike.CounterPtr->Target,
+                    spike.CounterPtr->SourceFile,
+                    spike.CounterPtr->SourceLineStart,
+                    spike.CounterPtr->SourceLineEnd
                 });
             }
 
@@ -1076,7 +1121,9 @@ public:
                 const auto* counter = event.CallbackPtr->CounterPtr;
                 onUpdateTimelineRows.push_back({
                     event.Bucket, event.Calls, event.ExclusiveNs,
-                    event.MaxExclusiveNs, counter->Mod, counter->Kind, counter->Target
+                    event.MaxExclusiveNs, counter->RegistrationId,
+                    counter->Mod, counter->Kind, counter->Target,
+                    counter->SourceFile, counter->SourceLineStart, counter->SourceLineEnd
                 });
             }
 
@@ -1093,7 +1140,9 @@ public:
                     bucket, calls,
                     callback->ExclusiveNs.load(std::memory_order_relaxed),
                     callback->MaxExclusiveNs.load(std::memory_order_relaxed),
-                    counter->Mod, counter->Kind, counter->Target
+                    counter->RegistrationId,
+                    counter->Mod, counter->Kind, counter->Target,
+                    counter->SourceFile, counter->SourceLineStart, counter->SourceLineEnd
                 });
             }
 
@@ -1258,14 +1307,17 @@ public:
                               return a.Bucket < b.Bucket;
                           if (a.Mod != b.Mod)
                               return a.Mod < b.Mod;
-                          return a.Target < b.Target;
+                          if (a.Target != b.Target)
+                              return a.Target < b.Target;
+                          return a.RegistrationId < b.RegistrationId;
                       });
 
             const auto path = outputRoot / "CET_Runtime_Profile_OnUpdateTimeline.csv";
             std::ofstream f(path, std::ios::trunc);
             if (f)
             {
-                f << "BucketIndex,BucketStartMs,BucketEndMs,Mod,Kind,Target,Calls,"
+                f << "BucketIndex,BucketStartMs,BucketEndMs,RegistrationId,Mod,Kind,Target,"
+                     "SourceFile,SourceLineStart,SourceLineEnd,Calls,"
                      "ExclusiveMs,MaxExclusiveMs,"
                      "BucketWidthMs,DroppedTimelineRowsAtDump,Interpretation\n";
                 f << std::fixed << std::setprecision(6);
@@ -1277,9 +1329,13 @@ public:
                     f << row.Bucket << ','
                       << (static_cast<double>(startNs) / 1'000'000.0) << ','
                       << (static_cast<double>(endNs) / 1'000'000.0) << ','
+                      << row.RegistrationId << ','
                       << Csv(row.Mod) << ','
                       << Csv(row.Kind) << ','
                       << Csv(row.Target) << ','
+                      << Csv(row.SourceFile) << ','
+                      << row.SourceLineStart << ','
+                      << row.SourceLineEnd << ','
                       << row.Calls << ','
                       << (static_cast<double>(row.ExclusiveNs) / 1'000'000.0) << ','
                       << (static_cast<double>(row.MaxExclusiveNs) / 1'000'000.0) << ','
@@ -1342,7 +1398,8 @@ public:
             if (f)
             {
                 f << "Sequence,CaptureStartMs,CaptureEndMs,InclusiveMs,"
-                     "ExclusiveMs,ChildMs,Mod,Kind,Target,ThreadId,"
+                     "ExclusiveMs,ChildMs,RegistrationId,Mod,Kind,Target,"
+                     "SourceFile,SourceLineStart,SourceLineEnd,ThreadId,"
                      "ThresholdMs,DroppedEventsAtDump,Interpretation\n";
                 f << std::fixed << std::setprecision(6);
 
@@ -1354,9 +1411,13 @@ public:
                       << (static_cast<double>(spike.InclusiveNs) / 1'000'000.0) << ','
                       << (static_cast<double>(spike.ExclusiveNs) / 1'000'000.0) << ','
                       << (static_cast<double>(spike.ChildNs) / 1'000'000.0) << ','
+                      << spike.RegistrationId << ','
                       << Csv(spike.Mod) << ','
                       << Csv(spike.Kind) << ','
                       << Csv(spike.Target) << ','
+                      << Csv(spike.SourceFile) << ','
+                      << spike.SourceLineStart << ','
+                      << spike.SourceLineEnd << ','
                       << spike.ThreadId << ','
                       << spikeThresholdMs << ','
                       << droppedSpikeEvents << ','
@@ -1537,7 +1598,8 @@ public:
 
             if (f)
             {
-                f << "Mod,Kind,Target,Calls,CallsPerSecond,"
+                f << "RegistrationId,Mod,Kind,Target,SourceFile,SourceLineStart,SourceLineEnd,"
+                     "Calls,CallsPerSecond,"
                      "InclusiveTotalMs,ExclusiveTotalMs,"
                      "InclusiveMsPerSecond,ExclusiveMsPerSecond,"
                      "MeasuredOneCorePct,AvgExclusiveUs,"
@@ -1687,18 +1749,22 @@ public:
 private:
     Counter* RegisterLocked(const std::string& aMod,
                             const std::string& aKind,
-                            const std::string& aTarget)
+                            const std::string& aTarget,
+                            const std::string& aInstanceKey = {})
     {
         const std::string normalizedMod =
             aMod.empty() ? "<unknown>" : aMod;
-        const std::string key =
+        std::string key =
             normalizedMod + "\x1f" + aKind + "\x1f" + aTarget;
+        if (!aInstanceKey.empty())
+            key += "\x1f" + aInstanceKey;
 
         const auto found = m_counters.find(key);
         if (found != m_counters.end())
             return found->second.get();
 
         auto counter = std::make_unique<Counter>();
+        counter->RegistrationId = ++m_nextRegistrationId;
         counter->Mod = normalizedMod;
         counter->Kind = aKind;
         counter->Target = aTarget;
@@ -1960,9 +2026,13 @@ private:
                       100.0
                 : 0.0;
 
-        f << Csv(row.Mod) << ','
+        f << row.RegistrationId << ','
+          << Csv(row.Mod) << ','
           << Csv(row.Kind) << ','
           << Csv(row.Target) << ','
+          << Csv(row.SourceFile) << ','
+          << row.SourceLineStart << ','
+          << row.SourceLineEnd << ','
           << row.Calls << ','
           << callsPerSec << ','
           << inclusiveMs << ','
@@ -2053,6 +2123,7 @@ private:
     std::filesystem::path m_outputRoot;
     uint64_t m_captureGeneration{0};
     uint64_t m_dumpedGeneration{0};
+    uint64_t m_nextRegistrationId{0};
     std::atomic<CaptureState> m_state{CaptureState::Paused};
     std::atomic<uint64_t> m_spikeThresholdNs{DefaultSpikeThresholdNs};
     std::atomic<uint64_t> m_timelineBucketNs{DefaultTimelineBucketNs};
