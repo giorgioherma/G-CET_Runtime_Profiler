@@ -438,17 +438,17 @@ public static class PassGeneratorService
                     continue;
                 }
 
-                var segmentLines = lines
+                var authorSegmentLines = lines
                     .Skip(candidate.LineStart - 1)
                     .Take(candidate.LineEnd - candidate.LineStart + 1)
                     .ToArray();
-                var segment = string.Join("\n", segmentLines);
+                var authorSegment = string.Join("\n", authorSegmentLines);
 
-                var opening = Regex.Match(
-                    segment,
+                var authorOpening = Regex.Match(
+                    authorSegment,
                     @"(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*(['""])onUpdate\1\s*,\s*function\s*\((?<args>[^)]*)\)",
                     RegexOptions.CultureInvariant | RegexOptions.Singleline);
-                if (!opening.Success)
+                if (!authorOpening.Success)
                 {
                     skipped.Add(Skip(
                         candidate,
@@ -456,7 +456,7 @@ public static class PassGeneratorService
                     continue;
                 }
 
-                var parameters = opening.Groups["args"].Value
+                var parameters = authorOpening.Groups["args"].Value
                     .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
                 if (parameters.Length != 1 ||
                     !parameters[0].Equals(candidate.AuthorDeltaParameter, StringComparison.Ordinal))
@@ -467,11 +467,11 @@ public static class PassGeneratorService
                     continue;
                 }
 
-                var closing = Regex.Match(
-                    segment,
+                var authorClosing = Regex.Match(
+                    authorSegment,
                     @"end\s*\)\s*;?\s*$",
                     RegexOptions.CultureInvariant | RegexOptions.Singleline);
-                if (!closing.Success || closing.Index <= opening.Index)
+                if (!authorClosing.Success || authorClosing.Index <= authorOpening.Index)
                 {
                     skipped.Add(Skip(
                         candidate,
@@ -479,11 +479,11 @@ public static class PassGeneratorService
                     continue;
                 }
 
-                var functionName = $"__gcetAuthorCadence_{candidate.RegistrationId}";
+                var authorFunctionName = $"__gcetAuthorCadence_{candidate.RegistrationId}";
                 var rewritten =
-                    segment[..opening.Index] +
-                    $"local function {functionName}({candidate.AuthorDeltaParameter})" +
-                    segment[(opening.Index + opening.Length)..];
+                    authorSegment[..authorOpening.Index] +
+                    $"local function {authorFunctionName}({candidate.AuthorDeltaParameter})" +
+                    authorSegment[(authorOpening.Index + authorOpening.Length)..];
                 var rewrittenClosing = Regex.Match(
                     rewritten,
                     @"end\s*\)\s*;?\s*$",
@@ -501,17 +501,17 @@ public static class PassGeneratorService
                     "end" +
                     rewritten[(rewrittenClosing.Index + rewrittenClosing.Length)..];
 
-                var indent = Regex.Match(segmentLines[0], @"^\s*").Value;
-                var registration = BuildAuthorCadenceRegistration(
+                var authorIndent = Regex.Match(authorSegmentLines[0], @"^\s*").Value;
+                var authorRegistration = BuildAuthorCadenceRegistration(
                     candidate,
-                    functionName,
-                    indent);
-                var replacementLines = (rewritten + "\n\n" + registration).Split('\n');
+                    authorFunctionName,
+                    authorIndent);
+                var authorReplacementLines = (rewritten + "\n\n" + authorRegistration).Split('\n');
 
                 lines.RemoveRange(
                     candidate.LineStart - 1,
                     candidate.LineEnd - candidate.LineStart + 1);
-                lines.InsertRange(candidate.LineStart - 1, replacementLines);
+                lines.InsertRange(candidate.LineStart - 1, authorReplacementLines);
 
                 transformManifest.Add(new
                 {
