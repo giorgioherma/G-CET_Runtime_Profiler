@@ -18,5 +18,9 @@
           Link="knowledge\high-impact-exceptions.json"
           CopyToOutputDirectory="PreserveNewest"
           CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\resolver-runtime\0-Engine\**\*"
+          Link="runtime\0-Engine\%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
