@@ -11,6 +11,8 @@ public static partial class ResultReportService
     /// optional aligned frametime data, so the native profiler hot path remains
     /// unchanged. Native callback registration IDs, Lua source ranges, and
     /// adaptive deep-profile evidence are preserved when the capture provides them.
+    /// Deep line evidence is considered source-decision-ready only when every
+    /// retained line event resolves to a real Lua source instead of a C frame.
     /// </summary>
     private static object BuildResolverInput(string captureRoot, ResultAnalysis a)
     {
