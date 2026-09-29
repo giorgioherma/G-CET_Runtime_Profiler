@@ -18,6 +18,13 @@ internal static class CallbackResolverService
     private const int TopConsumersPerFamily = 10;
     private const int TopFamilies = 12;
 
+    // A source-safe transform still does not justify touching user code unless
+    // the measured avoidable portion is meaningful. These are relative floors,
+    // so selection scales with the user's actual CET workload rather than CPU
+    // speed or an arbitrary fixed millisecond budget.
+    private const double AuthorCadenceMinCallbackPaybackPct = 10.0;
+    private const double AuthorCadenceMinGlobalPaybackPct = 0.05;
+
     private static readonly Regex NormalizeNonAlphaNumeric = new(
         @"[^a-z0-9]+",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -277,6 +284,9 @@ internal static class CallbackResolverService
             blockers.Add("Current deployed source could not prove the direct onUpdate registration.");
         }
 
+        var cadenceKey = CadenceKey(callback.Owner, callback.Kind, callback.Target);
+        cadence.TryGetValue(cadenceKey, out var cadenceDecision);
+
         // Highest-confidence cadence recipe: the callback itself contains only
         // author-written fixed timer accumulators and their gated work. Runtime
         // data decides whether eliminating the frame-rate entry is materially
@@ -287,6 +297,7 @@ internal static class CallbackResolverService
             TryResolveWholeCallbackAuthorCadence(
                 source,
                 callback,
+                cadenceDecision,
                 out var authorCadence,
                 out var cadenceBlocker))
         {
@@ -297,6 +308,10 @@ internal static class CallbackResolverService
             evidence.Add(
                 $"Measured callback entry rate is {callback.CallsPerSecond:0.###}/s versus " +
                 $"{authorCadence.ExpectedCallsPerSecond:0.###}/s at the preserved author base cadence.");
+            evidence.Add(
+                $"Estimated avoidable polling work is {authorCadence.EstimatedAvoidablePollingMsPerSecond:0.######} ms/s, " +
+                $"{authorCadence.EstimatedCallbackPaybackPct:0.###}% of this callback and " +
+                $"{authorCadence.EstimatedGlobalPaybackPct:0.###}% of measured CET work.");
             facts = new
             {
                 authorCadenceWholeCallback = true,
@@ -305,6 +320,9 @@ internal static class CallbackResolverService
                 accumulatorVariables = authorCadence.AccumulatorVariables,
                 expectedCallsPerSecond = authorCadence.ExpectedCallsPerSecond,
                 runtimeEntryReductionFactor = authorCadence.RuntimeEntryReductionFactor,
+                estimatedAvoidablePollingMsPerSecond = authorCadence.EstimatedAvoidablePollingMsPerSecond,
+                estimatedCallbackPaybackPct = authorCadence.EstimatedCallbackPaybackPct,
+                estimatedGlobalPaybackPct = authorCadence.EstimatedGlobalPaybackPct,
                 deltaParameter = authorCadence.DeltaParameter
             };
         }
@@ -316,8 +334,7 @@ internal static class CallbackResolverService
         // Keep the broader cadence classifier visible as evidence, but do not
         // let an inferred cadence authorize generation. Only finite generator
         // recipes above are automatable.
-        var cadenceKey = CadenceKey(callback.Owner, callback.Kind, callback.Target);
-        if (cadence.TryGetValue(cadenceKey, out var cadenceDecision) &&
+        if (cadenceDecision is not null &&
             cadenceDecision.TransformCandidate &&
             !cadenceDecision.Group.Equals("LEAVE_ALONE", StringComparison.OrdinalIgnoreCase))
         {
@@ -353,6 +370,7 @@ internal static class CallbackResolverService
     private static bool TryResolveWholeCallbackAuthorCadence(
         ResolvedSource source,
         CallbackMetric callback,
+        CadenceDecision? cadenceDecision,
         out AuthorCadenceResolution resolution,
         out string blocker)
     {
@@ -539,13 +557,47 @@ internal static class CallbackResolverService
             ? callback.CallsPerSecond / expectedCallsPerSecond
             : 0;
 
-        // Runtime decides whether this structurally safe recipe is worthwhile.
-        // This is relative to the measured callback rate, not a mod identity or
-        // a fixed millisecond cost threshold.
         if (reductionFactor < 2.0)
         {
             blocker =
                 $"Author cadence is source-proven, but measured entry reduction would be only {reductionFactor:0.##}x.";
+            return false;
+        }
+
+        if (cadenceDecision is null ||
+            cadenceDecision.MedianUsPerCall <= 0 ||
+            callback.ExclusiveMsPerSecond <= 0)
+        {
+            blocker =
+                "Author cadence is source-proven, but runtime baseline cost is unavailable, so payback cannot be established.";
+            return false;
+        }
+
+        var removableCallsPerSecond = Math.Max(
+            0,
+            callback.CallsPerSecond - expectedCallsPerSecond);
+        var estimatedAvoidableMsPerSecond =
+            cadenceDecision.MedianUsPerCall * removableCallsPerSecond / 1000.0;
+        estimatedAvoidableMsPerSecond = Math.Min(
+            estimatedAvoidableMsPerSecond,
+            callback.ExclusiveMsPerSecond);
+
+        var callbackPaybackPct =
+            100.0 * estimatedAvoidableMsPerSecond /
+            Math.Max(0.000001, callback.ExclusiveMsPerSecond);
+
+        var globalPaybackPct =
+            callback.GlobalWorkSharePct *
+            estimatedAvoidableMsPerSecond /
+            Math.Max(0.000001, callback.ExclusiveMsPerSecond);
+
+        if (callbackPaybackPct < AuthorCadenceMinCallbackPaybackPct ||
+            globalPaybackPct < AuthorCadenceMinGlobalPaybackPct)
+        {
+            blocker =
+                $"Author cadence is source-proven but low-payback: estimated avoidable polling is " +
+                $"{estimatedAvoidableMsPerSecond:0.######} ms/s " +
+                $"({callbackPaybackPct:0.###}% of callback, {globalPaybackPct:0.###}% of measured CET work).";
             return false;
         }
 
@@ -560,7 +612,10 @@ internal static class CallbackResolverService
                 .OrderBy(x => x, StringComparer.Ordinal)
                 .ToArray(),
             ExpectedCallsPerSecond = expectedCallsPerSecond,
-            RuntimeEntryReductionFactor = reductionFactor
+            RuntimeEntryReductionFactor = reductionFactor,
+            EstimatedAvoidablePollingMsPerSecond = estimatedAvoidableMsPerSecond,
+            EstimatedCallbackPaybackPct = callbackPaybackPct,
+            EstimatedGlobalPaybackPct = globalPaybackPct
         };
         return true;
     }
@@ -1689,8 +1744,26 @@ internal static class CallbackResolverService
                 var target = JsonString(row, "Target", "target");
                 var group = JsonString(row, "Group", "group");
                 var transform = JsonBool(row, "TransformCandidate", "transformCandidate");
+
+                var medianUsPerCall = 0.0;
+                var baselineWorkSharePct = 0.0;
+                if (row.TryGetProperty("Runtime", out var runtime) ||
+                    row.TryGetProperty("runtime", out runtime))
+                {
+                    if (runtime.ValueKind == JsonValueKind.Object)
+                    {
+                        medianUsPerCall = JsonDouble(runtime, "MedianUsPerCall", "medianUsPerCall");
+                        baselineWorkSharePct = JsonDouble(runtime, "BaselineWorkSharePct", "baselineWorkSharePct");
+                    }
+                }
+
                 if (!string.IsNullOrWhiteSpace(owner))
-                    result[CadenceKey(owner, kind, target)] = new CadenceDecision(group, transform);
+                    result[CadenceKey(owner, kind, target)] =
+                        new CadenceDecision(
+                            group,
+                            transform,
+                            medianUsPerCall,
+                            baselineWorkSharePct);
             }
         }
         catch
@@ -2206,9 +2279,16 @@ internal static class CallbackResolverService
         public string[] AccumulatorVariables { get; init; } = Array.Empty<string>();
         public double ExpectedCallsPerSecond { get; init; }
         public double RuntimeEntryReductionFactor { get; init; }
+        public double EstimatedAvoidablePollingMsPerSecond { get; init; }
+        public double EstimatedCallbackPaybackPct { get; init; }
+        public double EstimatedGlobalPaybackPct { get; init; }
     }
 
-    private sealed record CadenceDecision(string Group, bool TransformCandidate);
+    private sealed record CadenceDecision(
+        string Group,
+        bool TransformCandidate,
+        double MedianUsPerCall,
+        double BaselineWorkSharePct);
 
     private sealed class GenericResolution
     {
