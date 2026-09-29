@@ -88,7 +88,23 @@ public static class ResolverService
             result.RegistryHintCount,
             result.UnresolvedCount);
     }
-    private static string ResolveCaptureRoot(string selectedPath)
+    public static PassBuildResult GeneratePass(
+        string captureRoot,
+        string modsRoot,
+        string? outputZipPath = null)
+    {
+        if (string.IsNullOrWhiteSpace(captureRoot))
+            throw new ArgumentException("Capture folder is empty.", nameof(captureRoot));
+        if (string.IsNullOrWhiteSpace(modsRoot))
+            throw new ArgumentException("CET mods folder is empty.", nameof(modsRoot));
+
+        captureRoot = ResolveCaptureRoot(Path.GetFullPath(captureRoot));
+        modsRoot = Path.GetFullPath(modsRoot);
+
+        return PassGeneratorService.Generate(captureRoot, modsRoot, outputZipPath);
+    }
+
+    internal static string ResolveCaptureRoot(string selectedPath)
     {
         if (!Directory.Exists(selectedPath))
             throw new DirectoryNotFoundException($"Capture/results folder was not found: {selectedPath}");
