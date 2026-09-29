@@ -100,15 +100,15 @@ internal static class FixedZeroEngineRuntime
 
         foreach (var pair in FixedModuleHashes)
         {
-            var diskPath = Path.Combine(
+            var encodedPath = Path.Combine(
                 runtimeRoot,
-                pair.Key.Replace('/', Path.DirectorySeparatorChar));
+                (pair.Key + ".gz.b64").Replace('/', Path.DirectorySeparatorChar));
 
-            if (!File.Exists(diskPath))
+            if (!File.Exists(encodedPath))
                 throw new InvalidOperationException(
-                    $"Bundled fixed 0-Engine runtime file is missing: {diskPath}");
+                    $"Bundled fixed 0-Engine runtime payload is missing: {encodedPath}");
 
-            var bytes = File.ReadAllBytes(diskPath);
+            var bytes = DecodeGzipBase64(encodedPath);
             var hash = Sha256(bytes);
             if (!hash.Equals(pair.Value, StringComparison.OrdinalIgnoreCase))
             {
