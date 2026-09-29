@@ -85,7 +85,7 @@ internal static class FixedZeroEngineRuntime
                 $"Bundled fixed 0-Engine init payload is missing: {encodedInitPath}");
         }
 
-        var fixedInit = DecodeGzipBase64(encodedInitPath);
+        var fixedInit = DecodeGzipBase64(encodedInitPath, "init.lua");
         var fixedInitHash = Sha256(fixedInit);
         if (!fixedInitHash.Equals(FixedInitSha256, StringComparison.OrdinalIgnoreCase))
         {
@@ -108,7 +108,7 @@ internal static class FixedZeroEngineRuntime
                 throw new InvalidOperationException(
                     $"Bundled fixed 0-Engine runtime payload is missing: {encodedPath}");
 
-            var bytes = DecodeGzipBase64(encodedPath);
+            var bytes = DecodeGzipBase64(encodedPath, pair.Key);
             var hash = Sha256(bytes);
             if (!hash.Equals(pair.Value, StringComparison.OrdinalIgnoreCase))
             {
@@ -128,16 +128,25 @@ internal static class FixedZeroEngineRuntime
             FixedInitSha256);
     }
 
-    private static byte[] DecodeGzipBase64(string path)
+    private static byte[] DecodeGzipBase64(string path, string logicalName)
     {
-        var encoded = File.ReadAllText(path, Encoding.ASCII).Trim();
-        var compressed = Convert.FromBase64String(encoded);
+        try
+        {
+            var encoded = File.ReadAllText(path, Encoding.ASCII).Trim();
+            var compressed = Convert.FromBase64String(encoded);
 
-        using var input = new MemoryStream(compressed, writable: false);
-        using var gzip = new GZipStream(input, CompressionMode.Decompress);
-        using var output = new MemoryStream();
-        gzip.CopyTo(output);
-        return output.ToArray();
+            using var input = new MemoryStream(compressed, writable: false);
+            using var gzip = new GZipStream(input, CompressionMode.Decompress);
+            using var output = new MemoryStream();
+            gzip.CopyTo(output);
+            return output.ToArray();
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"Bundled fixed 0-Engine payload could not be decoded: {logicalName} ({path}). {ex.Message}",
+                ex);
+        }
     }
 
     internal static string Sha256(byte[] bytes) =>
