@@ -568,6 +568,37 @@ internal static class CallbackResolverService
                 sensitive.Length == 0;
         }
 
+        if (authorDiscoveryCadenceProven)
+        {
+            evidence.Add(
+                discoveryRegionSelfContained
+                    ? "The author-gated discovery region is source-contained and may be eligible for a future finite extraction recipe."
+                    : "The author-gated discovery region depends on callback-local/shared state and remains evidence-only.");
+            return new DormancyEvidence
+            {
+                Class = "DISCOVERY_DORMANT",
+                Confidence = discoveryRegionSelfContained ? 0.94 : 0.90,
+                EvidenceOnly = true,
+                ActiveSignals = active,
+                WakeSignals = wake,
+                DiscoverySignals = discovery,
+                BackgroundSignals = background,
+                SensitiveSignals = sensitive,
+                StateWriterSignals = stateWriterSignals,
+                CompleteWakePathProven = false,
+                AuthorDiscoveryCadenceProven = true,
+                AuthorDiscoveryIntervalSeconds = authorDiscoveryIntervalSeconds,
+                AuthorDiscoveryAccumulator = authorDiscoveryAccumulator,
+                AuthorDiscoveryGate = authorDiscoveryGate,
+                DiscoveryRegionSelfContained = discoveryRegionSelfContained,
+                AuthorDiscoveryBlocker = authorDiscoveryBlocker,
+                Evidence = evidence.ToArray(),
+                Blockers = discoveryRegionSelfContained
+                    ? new[] { "Evidence-only phase: finite discovery extraction has not yet been authorized for generation." }
+                    : new[] { "Discovery region captures callback-local/shared state; preserve it until an extraction-safe dependency proof exists." }
+            };
+        }
+
         if (!string.IsNullOrWhiteSpace(gate) && wake.Length > 0)
         {
             evidence.Add($"Current source exposes an explicit activity gate '{gate}' and independent wake/input signals.");
@@ -615,37 +646,6 @@ internal static class CallbackResolverService
                 CompleteWakePathProven = false,
                 Evidence = evidence.ToArray(),
                 Blockers = new[] { "Evidence classification only: inactive discovery work must be isolated before generation." }
-            };
-        }
-
-        if (authorDiscoveryCadenceProven)
-        {
-            evidence.Add(
-                discoveryRegionSelfContained
-                    ? "The author-gated discovery region is source-contained and may be eligible for a future finite extraction recipe."
-                    : "The author-gated discovery region depends on callback-local/shared state and remains evidence-only.");
-            return new DormancyEvidence
-            {
-                Class = "DISCOVERY_DORMANT",
-                Confidence = discoveryRegionSelfContained ? 0.94 : 0.90,
-                EvidenceOnly = true,
-                ActiveSignals = active,
-                WakeSignals = wake,
-                DiscoverySignals = discovery,
-                BackgroundSignals = background,
-                SensitiveSignals = sensitive,
-                StateWriterSignals = stateWriterSignals,
-                CompleteWakePathProven = false,
-                AuthorDiscoveryCadenceProven = true,
-                AuthorDiscoveryIntervalSeconds = authorDiscoveryIntervalSeconds,
-                AuthorDiscoveryAccumulator = authorDiscoveryAccumulator,
-                AuthorDiscoveryGate = authorDiscoveryGate,
-                DiscoveryRegionSelfContained = discoveryRegionSelfContained,
-                AuthorDiscoveryBlocker = authorDiscoveryBlocker,
-                Evidence = evidence.ToArray(),
-                Blockers = discoveryRegionSelfContained
-                    ? new[] { "Evidence-only phase: finite discovery extraction has not yet been authorized for generation." }
-                    : new[] { "Discovery region captures callback-local/shared state; preserve it until an extraction-safe dependency proof exists." }
             };
         }
 
