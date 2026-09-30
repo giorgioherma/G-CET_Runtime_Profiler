@@ -291,6 +291,12 @@ Observe("PlayerPuppet", "SomeOtherMethod", function(self)
 end)
 '@
 
+Write-Mod 'FixtureUnknownHot' @'
+Observe("PlayerPuppet", "AnotherUnknownMethod", function(self)
+    DoExpensiveUnknownWork()
+end)
+'@
+
 function CallbackRow(
     [int]$Id,
     [string]$Owner,
@@ -344,6 +350,7 @@ $handoff = @{
         (CallbackRow 123 'FixtureDormantNever' 'observe' 'PlayerPuppet::FixtureCameraTick' 60 6.0 1.2 'init.lua' 1 4),
         (CallbackRow 124 'FixtureDormantBackground' 'observe' 'PlayerPuppet::FixtureBackgroundTick' 60 6.0 1.2 'init.lua' 1 3),
         (CallbackRow 102 'FixtureFrame' 'event' 'onUpdate' 60 5.0 1.0 'init.lua' 1 3),
+        (CallbackRow 127 'FixtureUnknownHot' 'observe' 'PlayerPuppet::AnotherUnknownMethod' 60 20.0 5.0 'init.lua' 1 3),
         (CallbackRow 103 'FixtureUnknown' 'observe' 'PlayerPuppet::SomeOtherMethod' 60 4.0 1.0 'init.lua' 1 3)
     )
 } | ConvertTo-Json -Depth 30
@@ -539,6 +546,12 @@ if (!$discoveryAuthor.dormancy.DiscoveryRegionSelfContained) {
 if (!$discoveryAuthor.dormancy.EvidenceOnly) {
     throw 'Discovery dormancy must remain evidence-only in this phase.'
 }
+if (!$discoveryAuthor.advanced.Eligible -or [int]$discoveryAuthor.advanced.Difficulty -ne 4) {
+    throw 'Author-paced discovery candidate did not clear the Level-4 Advanced economics gate.'
+}
+if ($discoveryAuthor.advanced.NextEvidence -ne 'SOURCE_DEPENDENCY_PROOF_FOR_DISCOVERY_EXTRACTION') {
+    throw "Unexpected Advanced discovery next evidence: $($discoveryAuthor.advanced.NextEvidence)"
+}
 
 $hardUpdate = @($onUpdate.topConsumers | Where-Object { $_.owner -eq 'FixtureDormantOnUpdate' }) | Select-Object -First 1
 if ($null -eq $hardUpdate) { throw 'FixtureDormantOnUpdate was not ranked inside onUpdate.' }
@@ -581,6 +594,14 @@ $neverDormancy = Dormancy-For 'FixtureDormantNever'
 if ($neverDormancy.Class -ne 'NEVER_GATE' -or !$neverDormancy.EvidenceOnly) {
     throw "Expected evidence-only NEVER_GATE, got $($neverDormancy.Class)"
 }
+$neverRow = $null
+foreach ($family in @($result.callbackFamilies)) {
+    $candidateNever = @($family.topConsumers | Where-Object { $_.owner -eq 'FixtureDormantNever' }) | Select-Object -First 1
+    if ($null -ne $candidateNever) { $neverRow = $candidateNever; break }
+}
+if ($null -eq $neverRow -or $neverRow.advanced.Eligible) {
+    throw 'NEVER_GATE callback was incorrectly made eligible for Advanced dormancy.'
+}
 
 $backgroundDormancy = Dormancy-For 'FixtureDormantBackground'
 if ($backgroundDormancy.Class -ne 'BACKGROUND' -or !$backgroundDormancy.EvidenceOnly) {
@@ -602,6 +623,22 @@ if (!$unknown.registry.checkedAfterGenericExhausted) {
 }
 if ($unknown.registry.matched) {
     throw 'Empty high-impact exception registry unexpectedly matched a callback.'
+}
+if ($unknown.advanced.Eligible) {
+    throw 'Low-cost unknown callback should not bother the user in Advanced mode.'
+}
+
+$unknownHot = $null
+foreach ($otherFamily in @($result.callbackFamilies | Where-Object { $_.resolverFamily -eq 'OTHER' })) {
+    $candidateHot = @($otherFamily.topConsumers | Where-Object { $_.owner -eq 'FixtureUnknownHot' }) | Select-Object -First 1
+    if ($null -ne $candidateHot) { $unknownHot = $candidateHot; break }
+}
+if ($null -eq $unknownHot) { throw 'FixtureUnknownHot was not ranked.' }
+if (!$unknownHot.advanced.Eligible -or !$unknownHot.advanced.UserClassificationUseful) {
+    throw 'High-cost UNKNOWN callback should request user classification in Advanced mode.'
+}
+if ($unknownHot.advanced.NextEvidence -ne 'USER_CLASSIFICATION') {
+    throw "Unexpected high-cost UNKNOWN next evidence: $($unknownHot.advanced.NextEvidence)"
 }
 
 if ($null -eq $resolved.pass) {
