@@ -2515,8 +2515,23 @@ internal static class CallbackResolverService
         // Callback kind is authoritative. A neighboring Override() elsewhere in
         // the same source window must never poison an Observe classification.
         var isOverride = callback.Kind.Contains("override", StringComparison.OrdinalIgnoreCase);
-        if (isOverride)
+        var overridePrefilterProven =
+            isOverride &&
+            downstreamExpanded &&
+            actions.Count > 0 &&
+            patterns.Count == 0 &&
+            !consumerMutation &&
+            TryProveTransparentOverrideWrapper(
+                window,
+                downstreamMethods,
+                out var overrideWrappedMethodReturns);
+
+        if (isOverride && !overridePrefilterProven)
             blockers.Add("Override semantics require the dedicated override routing template.");
+        else if (overridePrefilterProven)
+            evidence.Add(
+                "Override is a transparent wrapper around source-proven finite downstream action handling; " +
+                "irrelevant actions can call wrappedMethod directly without changing relevant-action behavior.");
 
         string recipe;
         if (dynamicActionForward)
@@ -2558,6 +2573,12 @@ internal static class CallbackResolverService
             !isOverride &&
             blockers.All(x => !x.Contains("writes outside", StringComparison.OrdinalIgnoreCase));
 
+        var overridePrefilterAutomatable =
+            overridePrefilterProven &&
+            !dynamicActionForward &&
+            unresolvedActionSelectors.Count == 0 &&
+            blockers.All(x => !x.Contains("writes outside", StringComparison.OrdinalIgnoreCase));
+
         // Routing semantics and callback-local hotpath semantics are independent.
         // If action routing cannot be proven (notably Override or dynamic
         // downstream callbacks), still allow the same source-proven structural
@@ -2571,15 +2592,22 @@ internal static class CallbackResolverService
             evidence.AddRange(actionStructural.Evidence);
         }
 
-        var automatable = actionRouteAutomatable || structural is not null;
+        var automatable =
+            actionRouteAutomatable ||
+            overridePrefilterAutomatable ||
+            structural is not null;
         var effectivePattern = actionRouteAutomatable
             ? recipe
-            : structural is not null
-                ? "STRUCTURAL_HOTPATH_REWRITE"
-                : recipe;
+            : overridePrefilterAutomatable
+                ? "ACTION_OVERRIDE_EXACT_PREFILTER"
+                : structural is not null
+                    ? "STRUCTURAL_HOTPATH_REWRITE"
+                    : recipe;
 
         var recipeFamilies = new List<string>();
-        if (hasRoutableInterest || dynamicActionForward)
+        if (overridePrefilterAutomatable)
+            recipeFamilies.Add("ACTION_OVERRIDE_EXACT_PREFILTER");
+        else if (hasRoutableInterest || dynamicActionForward)
             recipeFamilies.Add(isOverride ? "ACTION_ROUTING_OVERRIDE" : recipe);
         if (structural is not null)
             recipeFamilies.Add("STRUCTURAL_HOTPATH_REWRITE");
@@ -2606,7 +2634,9 @@ internal static class CallbackResolverService
             literalConstructors = structural?.LiteralConstructors ?? Array.Empty<StructuralExpression>(),
             staticLiteralTables = structural?.StaticLiteralTables ?? Array.Empty<StaticLiteralTable>(),
             estimatedCallbackPaybackPct = structural?.EstimatedCallbackPaybackPct ?? 0,
-            estimatedGlobalPaybackPct = structural?.EstimatedGlobalPaybackPct ?? 0
+            estimatedGlobalPaybackPct = structural?.EstimatedGlobalPaybackPct ?? 0,
+            overridePrefilterProven,
+            overrideWrappedMethodReturns
         };
 
         return new GenericResolution
@@ -2622,6 +2652,71 @@ internal static class CallbackResolverService
             Blockers = blockers.ToArray(),
             Source = sourceEvidence
         };
+    }
+
+    private static bool TryProveTransparentOverrideWrapper(
+        string window,
+        IReadOnlyCollection<string> downstreamMethods,
+        out bool wrappedMethodReturns)
+    {
+        wrappedMethodReturns = false;
+        var lines = window.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+        var meaningful = lines
+            .Select((text, index) => new { Text = text.Trim(), Index = index })
+            .Where(x => !string.IsNullOrWhiteSpace(x.Text) && !x.Text.StartsWith("--", StringComparison.Ordinal))
+            .ToList();
+
+        var wrapped = meaningful
+            .Where(x => Regex.IsMatch(
+                x.Text,
+                @"^(?:return\s+)?wrappedMethod\s*\(\s*self\s*,\s*action\s*,\s*consumer\s*\)\s*;?\s*$",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+            .ToList();
+        if (wrapped.Count != 1)
+            return false;
+
+        var wrappedEntry = wrapped[0];
+        wrappedMethodReturns = wrappedEntry.Text.StartsWith("return ", StringComparison.OrdinalIgnoreCase);
+
+        // The original-game call must be the final meaningful statement before
+        // the Override's closing end). This guarantees the fast path preserves
+        // the original-game call count and ordering for irrelevant actions.
+        var after = meaningful
+            .Where(x => x.Index > wrappedEntry.Index)
+            .Select(x => x.Text)
+            .Where(x => !Regex.IsMatch(x, @"^end\s*\)\s*;?\s*$", RegexOptions.CultureInvariant))
+            .ToArray();
+        if (after.Length != 0)
+            return false;
+
+        foreach (var entry in meaningful)
+        {
+            if (entry.Index == wrappedEntry.Index ||
+                entry.Text.Contains("Override(", StringComparison.OrdinalIgnoreCase) ||
+                Regex.IsMatch(entry.Text, @"^end\s*\)\s*;?\s*$", RegexOptions.CultureInvariant) ||
+                Regex.IsMatch(entry.Text, @"^if\s+.+\s+then\s*$", RegexOptions.IgnoreCase) ||
+                entry.Text.Equals("end", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (downstreamMethods.Any(method =>
+                    Regex.IsMatch(
+                        entry.Text,
+                        @"(?:[:.]\s*)?" + Regex.Escape(method) + @"\s*\([^\r\n]*\baction\b",
+                        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)))
+                continue;
+
+            // Side-effect-free locals are allowed, though the Billiards-style
+            // wrapper normally has none.
+            if (Regex.IsMatch(
+                    entry.Text,
+                    @"^local\s+[A-Za-z_]\w*\s*=\s*[^=]+$",
+                    RegexOptions.CultureInvariant))
+                continue;
+
+            return false;
+        }
+
+        return true;
     }
 
     private static List<string> ReadFiniteStringValues(string fullText, string variable)
@@ -2865,8 +2960,6 @@ internal static class CallbackResolverService
             var nameIndex = Array.FindIndex(
                 callArgs,
                 x => nameVars.Contains(x));
-            if (nameIndex < 0)
-                continue;
 
             forwards.Add(new ForwardedActionCall(method, nameIndex, rawActionIndex));
         }
@@ -2891,22 +2984,35 @@ internal static class CallbackResolverService
 
             foreach (var definition in definitions)
             {
-                if (forward.NameArgumentIndex >= definition.Parameters.Length ||
-                    forward.RawActionArgumentIndex >= definition.Parameters.Length)
+                if (forward.RawActionArgumentIndex >= definition.Parameters.Length)
                     return false;
 
-                var nameParameter = definition.Parameters[forward.NameArgumentIndex];
                 var actionParameter = definition.Parameters[forward.RawActionArgumentIndex];
-                if (string.IsNullOrWhiteSpace(nameParameter) ||
-                    string.IsNullOrWhiteSpace(actionParameter))
+                if (string.IsNullOrWhiteSpace(actionParameter))
                     return false;
 
-                if (!TryReadFiniteDownstreamActionSet(
-                        definition.Body,
-                        nameParameter,
-                        actionParameter,
-                        out var definitionActions))
+                string[] definitionActions;
+                if (forward.NameArgumentIndex >= 0)
+                {
+                    if (forward.NameArgumentIndex >= definition.Parameters.Length)
+                        return false;
+
+                    var nameParameter = definition.Parameters[forward.NameArgumentIndex];
+                    if (string.IsNullOrWhiteSpace(nameParameter) ||
+                        !TryReadFiniteDownstreamActionSet(
+                            definition.Body,
+                            nameParameter,
+                            actionParameter,
+                            out definitionActions))
+                        return false;
+                }
+                else if (!TryReadFiniteRawActionDownstreamSet(
+                             definition.Body,
+                             actionParameter,
+                             out definitionActions))
+                {
                     return false;
+                }
 
                 foreach (var action in definitionActions)
                     allActions.Add(action);
@@ -2921,6 +3027,33 @@ internal static class CallbackResolverService
         methods = methodNames.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray();
         files = sourceFiles.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray();
         return true;
+    }
+
+    private static bool TryReadFiniteRawActionDownstreamSet(
+        string body,
+        string actionParameter,
+        out string[] actions)
+    {
+        actions = Array.Empty<string>();
+        var action = Regex.Escape(actionParameter);
+
+        foreach (Match match in Regex.Matches(
+                     body,
+                     @"(?m)\blocal\s+(?<name>[A-Za-z_]\w*)\s*=\s*(?:Game\.NameToString\s*\(\s*)?" +
+                     action +
+                     @"\s*[:.]\s*GetName\s*\(\s*\)\s*\)?",
+                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+        {
+            var nameVariable = match.Groups["name"].Value;
+            if (TryReadFiniteDownstreamActionSet(
+                    body,
+                    nameVariable,
+                    actionParameter,
+                    out actions))
+                return true;
+        }
+
+        return false;
     }
 
     private static bool TryReadFiniteDownstreamActionSet(
