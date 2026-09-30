@@ -162,6 +162,16 @@ Observe("PlayerPuppet", "OnAction", function(_, action)
 end)
 '@
 
+Write-Mod 'FixtureOverrideStructural' @'
+Override("PlayerPuppet", "OnAction", function(self, action, consumer, wrappedMethod)
+    local playerA = Game.GetPlayer()
+    local playerB = Game.GetPlayer()
+    local marker = CName.new("FixtureOverrideStructural")
+    game:handleInput(action)
+    return wrappedMethod(self, action, consumer)
+end)
+'@
+
 Write-Mod 'FixtureDownstream' @'
 Observe("PlayerPuppet", "OnAction", function(_, action)
     local actionName = Game.NameToString(action:GetName())
@@ -364,6 +374,7 @@ $handoff = @{
         (CallbackRow 108 'FixtureNeighborOverride' 'observe' 'PlayerPuppet::OnAction' 550 7.0 10.0 'init.lua' 1 6),
         (CallbackRow 109 'FixtureDynamic' 'observe' 'PlayerPuppet::OnAction' 500 6.0 8.0 'init.lua' 1 7),
         (CallbackRow 112 'FixtureGatedDynamic' 'observe' 'PlayerPuppet::OnAction' 495 5.9 7.8 'init.lua' 1 14),
+        (CallbackRow 130 'FixtureOverrideStructural' 'Override' 'PlayerPuppet::OnAction' 500 16.0 4.0 'init.lua' 1 8),
         (CallbackRow 111 'FixtureDownstream' 'observe' 'PlayerPuppet::OnAction' 490 5.8 7.5 'init.lua' 1 10),
         (CallbackRow 120 'FixtureStructural' 'event' 'onUpdate' 60 9.0 2.0 'init.lua' 1 8),
         (CallbackRow 126 'FixtureDiscoveryAuthorRate' 'event' 'onUpdate' 60 13.0 3.2 'init.lua' 6 18),
@@ -502,6 +513,21 @@ if ($gated.generic.Facts.dynamicGateExpression -ne '(state.session and state.ses
 }
 if (@($gated.generic.Facts.actions) -notcontains 'UI_Apply') {
     throw 'Gated wildcard lost independently routed exact action.'
+}
+
+$overrideStructural = Action-For 'FixtureOverrideStructural'
+if (!$overrideStructural.generic.Automatable) {
+    throw 'Blocked OnAction Override did not receive its independent structural fallback.'
+}
+if ($overrideStructural.generic.Pattern -ne 'STRUCTURAL_HOTPATH_REWRITE') {
+    throw "Override structural fallback exposed the wrong primary pattern: $($overrideStructural.generic.Pattern)"
+}
+if (@($overrideStructural.generic.RecipeFamilies) -notcontains 'ACTION_ROUTING_OVERRIDE' -or
+    @($overrideStructural.generic.RecipeFamilies) -notcontains 'STRUCTURAL_HOTPATH_REWRITE') {
+    throw 'Override structural fallback lost routing blocker evidence or structural recipe.'
+}
+if (@($overrideStructural.generic.Blockers) -notmatch 'Override semantics') {
+    throw 'Override routing blocker disappeared when structural fallback became automatable.'
 }
 
 $downstream = Action-For 'FixtureDownstream'
@@ -704,7 +730,7 @@ if ($unknownHot.advanced.NextEvidence -ne 'USER_CLASSIFICATION') {
 if ($null -eq $resolved.pass) {
     throw 'CLI --generate-pass did not return a pass result.'
 }
-if ([int]$resolved.pass.TransformCount -ne 15) {
+if ([int]$resolved.pass.TransformCount -ne 16) {
     if (Test-Path -LiteralPath $resolved.pass.ManifestPath -PathType Leaf) {
         $failedManifest = Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
         Write-Host "PASS DEBUG transforms=$($failedManifest.summary.transforms) skipped=$($failedManifest.summary.skipped)"
@@ -712,10 +738,10 @@ if ([int]$resolved.pass.TransformCount -ne 15) {
             Write-Host ("PASS DEBUG SKIP owner={0} type={1} file={2} reason={3}" -f $skip.owner,$skip.type,$skip.file,$skip.reason)
         }
     }
-    throw "Expected 15 generated transforms, got $($resolved.pass.TransformCount)."
+    throw "Expected 16 generated transforms, got $($resolved.pass.TransformCount)."
 }
-if ([int]$resolved.pass.FileCount -ne 19) {
-    throw "Expected 19 generated replacement files (15 callback + 4 fixed 0-Engine), got $($resolved.pass.FileCount)."
+if ([int]$resolved.pass.FileCount -ne 20) {
+    throw "Expected 20 generated replacement files (16 callback + 4 fixed 0-Engine), got $($resolved.pass.FileCount)."
 }
 if (!(Test-Path -LiteralPath $resolved.pass.ZipPath -PathType Leaf)) {
     throw "Generated pass ZIP is missing: $($resolved.pass.ZipPath)"
@@ -744,6 +770,7 @@ try {
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDiscoveryAuthorRate/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDormantOnUpdate/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureOtherStructural/init.lua',
+        'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureOverrideStructural/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixturePattern/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDownstream/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureGatedDynamic/init.lua',
@@ -847,6 +874,16 @@ try {
         throw 'Dormant guard was not moved ahead of the expensive pre-guard getter.'
     }
 
+    $overrideStructuralText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureOverrideStructural/init.lua'
+    if ($overrideStructuralText -notmatch 'Override\("PlayerPuppet", "OnAction"' -or
+        $overrideStructuralText -notmatch '__gcetReuse_130_' -or
+        $overrideStructuralText -notmatch '__gcetStatic_130_') {
+        throw 'Override structural fallback changed routing semantics or failed to apply structural reuse.'
+    }
+    if ($overrideStructuralText -match 'SubscribeAction') {
+        throw 'Override structural fallback incorrectly converted the Override into ActionRouter routing.'
+    }
+
     $patternText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixturePattern/init.lua'
     if ($patternText -notmatch 'actions = "\*"' -or
         $patternText -notmatch 'string\.find\(routedName, "Turn", 1, true\)') {
@@ -874,11 +911,11 @@ try {
     if ($manifest.policy.modNameRules) {
         throw 'Generated pass manifest unexpectedly allows mod-name rules.'
     }
-    if ([int]$manifest.summary.transforms -ne 15) {
+    if ([int]$manifest.summary.transforms -ne 16) {
         throw 'Generated pass manifest transform count is wrong.'
     }
-    if ([int]$manifest.summary.callbackFiles -ne 15) {
-        throw "Expected 15 callback replacement files, got $($manifest.summary.callbackFiles)."
+    if ([int]$manifest.summary.callbackFiles -ne 16) {
+        throw "Expected 16 callback replacement files, got $($manifest.summary.callbackFiles)."
     }
     if ([int]$manifest.summary.fixedRuntimeFiles -ne 4) {
         throw "Expected 4 fixed 0-Engine runtime files, got $($manifest.summary.fixedRuntimeFiles)."
