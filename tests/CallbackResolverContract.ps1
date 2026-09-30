@@ -309,8 +309,16 @@ ObserveAfter("PlayerPuppet", "FixtureStructuralObserve", function(self)
     local movingB = self:IsMovingHorizontally()
     local singletonA = GetSingleton("gameTargetingSystem")
     local singletonB = GetSingleton("gameTargetingSystem")
+    local staticValues = {
+        { 1, 2 },
+        { 3, 4 },
+    }
+    local total = 0
+    for _, pair in ipairs(staticValues) do
+        total = total + pair[1] + pair[2]
+    end
     local actionName = CName.new("FixtureOtherStructural")
-    DoOtherStructuralWork(playerA, playerB, movingA, movingB, singletonA, singletonB, actionName)
+    DoOtherStructuralWork(playerA, playerB, movingA, movingB, singletonA, singletonB, total, actionName)
 end)
 '@
 
@@ -386,7 +394,7 @@ $handoff = @{
         (CallbackRow 123 'FixtureDormantNever' 'observe' 'PlayerPuppet::FixtureCameraTick' 60 6.0 1.2 'init.lua' 1 4),
         (CallbackRow 128 'FixtureNeverGateUpdate' 'event' 'onUpdate' 60 18.0 4.0 'init.lua' 5 9),
         (CallbackRow 124 'FixtureDormantBackground' 'observe' 'PlayerPuppet::FixtureBackgroundTick' 60 6.0 1.2 'init.lua' 1 3),
-        (CallbackRow 129 'FixtureOtherStructural' 'ObserveAfter' 'PlayerPuppet::FixtureStructuralObserve' 120 12.0 3.0 'init.lua' 1 11),
+        (CallbackRow 129 'FixtureOtherStructural' 'ObserveAfter' 'PlayerPuppet::FixtureStructuralObserve' 120 12.0 3.0 'init.lua' 1 19),
         (CallbackRow 102 'FixtureFrame' 'event' 'onUpdate' 60 5.0 1.0 'init.lua' 1 3),
         (CallbackRow 127 'FixtureUnknownHot' 'observe' 'PlayerPuppet::AnotherUnknownMethod' 60 20.0 5.0 'init.lua' 1 3),
         (CallbackRow 103 'FixtureUnknown' 'observe' 'PlayerPuppet::SomeOtherMethod' 60 4.0 1.0 'init.lua' 1 3)
@@ -698,6 +706,9 @@ if (@($otherStructural.generic.Facts.identicalExpressions).Count -lt 1) {
 if (@($otherStructural.generic.Facts.literalConstructors).Count -lt 1) {
     throw 'Single literal constructor was not accepted for hot callback hoisting.'
 }
+if (@($otherStructural.generic.Facts.staticLiteralTables).Count -lt 1) {
+    throw 'Read-only static literal table was not accepted for callback hoisting.'
+}
 
 $unknown = $null
 foreach ($otherFamily in @($result.callbackFamilies | Where-Object { $_.resolverFamily -eq 'OTHER' })) {
@@ -868,6 +879,10 @@ try {
     }
     if ([regex]::Matches($otherStructuralText, [regex]::Escape('GetSingleton("gameTargetingSystem")')).Count -ne 1) {
         throw 'Non-onUpdate structural rewrite did not collapse repeated literal singleton lookups.'
+    }
+    if ($otherStructuralText -notmatch '__gcetStaticTable_129_' -or
+        $otherStructuralText -match 'local\s+staticValues\s*=') {
+        throw 'Read-only literal table was not hoisted out of the callback.'
     }
     if ([regex]::Matches($otherStructuralText, [regex]::Escape('CName.new("FixtureOtherStructural")')).Count -ne 1) {
         throw 'Single literal constructor was not hoisted exactly once.'
