@@ -372,6 +372,7 @@ public static class PassGeneratorService
                     EstimatedGlobalPaybackPct = facts.EstimatedGlobalPaybackPct,
                     StructuralExpressions = facts.StructuralExpressions,
                     StructuralConstructors = facts.StructuralConstructors,
+                    StructuralTables = facts.StructuralTables,
                     HardDormantGuardHoist = facts.HardDormantGuardHoist,
                     HardDormantGateExpression = facts.HardDormantGateExpression,
                     HardDormantPreGuardReadCount = facts.HardDormantPreGuardReadCount,
@@ -414,6 +415,7 @@ public static class PassGeneratorService
             EstimatedGlobalPaybackPct = JsonDouble(facts, "estimatedGlobalPaybackPct"),
             StructuralExpressions = ReadStructuralExpressions(facts, "identicalExpressions", 2),
             StructuralConstructors = ReadStructuralExpressions(facts, "literalConstructors", 1),
+            StructuralTables = ReadStructuralTables(facts, "staticLiteralTables"),
             HardDormantGuardHoist = JsonBool(facts, "hardDormantGuardHoist"),
             HardDormantGateExpression = JsonString(facts, "hardDormantGateExpression"),
             HardDormantPreGuardReadCount = (int)(JsonNullableLong(facts, "hardDormantPreGuardReadCount") ?? 0),
@@ -443,6 +445,40 @@ public static class PassGeneratorService
             var count = (int)(JsonNullableLong(row, "Count", "count") ?? 0);
             if (!string.IsNullOrWhiteSpace(expression) && count >= minimumCount)
                 result.Add(new StructuralExpressionFact(expression, count));
+        }
+
+        return result.ToArray();
+    }
+
+    private static StructuralTableFact[] ReadStructuralTables(
+        JsonElement facts,
+        string name)
+    {
+        if (!facts.TryGetProperty(name, out var array) ||
+            array.ValueKind != JsonValueKind.Array)
+            return Array.Empty<StructuralTableFact>();
+
+        var result = new List<StructuralTableFact>();
+        foreach (var row in array.EnumerateArray())
+        {
+            if (row.ValueKind != JsonValueKind.Object)
+                continue;
+
+            var variable = JsonString(row, "Variable", "variable");
+            var declaration = JsonString(row, "Declaration", "declaration");
+            var literal = JsonString(row, "Literal", "literal");
+            var elementCount = (int)(JsonNullableLong(row, "ElementCount", "elementCount") ?? 0);
+
+            if (!string.IsNullOrWhiteSpace(variable) &&
+                !string.IsNullOrWhiteSpace(declaration) &&
+                !string.IsNullOrWhiteSpace(literal))
+            {
+                result.Add(new StructuralTableFact(
+                    variable,
+                    declaration,
+                    literal,
+                    elementCount));
+            }
         }
 
         return result.ToArray();
@@ -730,6 +766,7 @@ public static class PassGeneratorService
                     (structuralOpening.Index + structuralOpening.Length)..];
                 var transformedExpressions = new List<string>();
                 var transformedConstructors = new List<string>();
+                var transformedTables = new List<string>();
                 var ordinal = 0;
 
                 // Resolver authorization is authoritative; generator still
@@ -781,8 +818,34 @@ public static class PassGeneratorService
                     transformedConstructors.Add(fact.Expression);
                 }
 
+                foreach (var fact in candidate.StructuralTables)
+                {
+                    var declarationIndex = rewrittenBody.IndexOf(
+                        fact.Declaration,
+                        StringComparison.Ordinal);
+                    if (declarationIndex < 0)
+                        continue;
+
+                    ordinal++;
+                    var localName = $"__gcetStaticTable_{candidate.RegistrationId}_{ordinal}";
+                    prefix.Add($"local {localName} = {fact.Literal}");
+
+                    rewrittenBody =
+                        rewrittenBody[..declarationIndex] +
+                        rewrittenBody[(declarationIndex + fact.Declaration.Length)..];
+
+                    rewrittenBody = Regex.Replace(
+                        rewrittenBody,
+                        @"\b" + Regex.Escape(fact.Variable) + @"\b",
+                        localName,
+                        RegexOptions.CultureInvariant);
+
+                    transformedTables.Add(fact.Variable);
+                }
+
                 if (transformedExpressions.Count == 0 &&
-                    transformedConstructors.Count == 0)
+                    transformedConstructors.Count == 0 &&
+                    transformedTables.Count == 0)
                 {
                     skipped.Add(Skip(candidate, "Resolver structural expressions no longer repeat in the current callback source."));
                     continue;
@@ -842,6 +905,7 @@ public static class PassGeneratorService
                     {
                         identicalExpressions = transformedExpressions,
                         literalConstructors = transformedConstructors,
+                        staticLiteralTables = transformedTables,
                         callbackLocalReuse = true,
                         literalConstructorHoist = true,
                         hardDormantGuardHoist = candidate.HardDormantGuardHoist,
@@ -1703,6 +1767,7 @@ public static class PassGeneratorService
         public double EstimatedGlobalPaybackPct { get; init; }
         public StructuralExpressionFact[] StructuralExpressions { get; init; } = Array.Empty<StructuralExpressionFact>();
         public StructuralExpressionFact[] StructuralConstructors { get; init; } = Array.Empty<StructuralExpressionFact>();
+        public StructuralTableFact[] StructuralTables { get; init; } = Array.Empty<StructuralTableFact>();
         public bool HardDormantGuardHoist { get; init; }
         public string HardDormantGateExpression { get; init; } = "";
         public int HardDormantPreGuardReadCount { get; init; }
@@ -1714,6 +1779,11 @@ public static class PassGeneratorService
     }
 
     private sealed record StructuralExpressionFact(string Expression, int Count);
+    private sealed record StructuralTableFact(
+        string Variable,
+        string Declaration,
+        string Literal,
+        int ElementCount);
 
     private sealed class CandidateFacts
     {
@@ -1733,6 +1803,7 @@ public static class PassGeneratorService
         public double EstimatedGlobalPaybackPct { get; init; }
         public StructuralExpressionFact[] StructuralExpressions { get; init; } = Array.Empty<StructuralExpressionFact>();
         public StructuralExpressionFact[] StructuralConstructors { get; init; } = Array.Empty<StructuralExpressionFact>();
+        public StructuralTableFact[] StructuralTables { get; init; } = Array.Empty<StructuralTableFact>();
         public bool HardDormantGuardHoist { get; init; }
         public string HardDormantGateExpression { get; init; } = "";
         public int HardDormantPreGuardReadCount { get; init; }
