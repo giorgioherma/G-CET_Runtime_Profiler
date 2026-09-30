@@ -38,7 +38,8 @@ internal static class CallbackResolverService
         string handoffPath,
         string modsRoot,
         string? cadenceFinalPath,
-        string? exceptionRegistryPath)
+        string? exceptionRegistryPath,
+        string? semanticLibraryPath)
     {
         using var handoff = JsonDocument.Parse(File.ReadAllText(handoffPath));
         var callbacks = ReadCallbacks(handoff.RootElement)
@@ -49,6 +50,7 @@ internal static class CallbackResolverService
 
         var cadence = ReadCadenceDecisions(cadenceFinalPath);
         var registry = ExceptionRegistry.Load(exceptionRegistryPath);
+        var semanticLibrary = SemanticLibraryService.Load(semanticLibraryPath, modsRoot);
         var advancedHints = AdvancedUserHints.Load(
             Path.Combine(
                 Path.GetDirectoryName(Path.GetFullPath(handoffPath))!,
@@ -79,6 +81,8 @@ internal static class CallbackResolverService
         var materialRemaining = 0;
         var belowThreshold = 0;
         var registryHints = 0;
+        var semanticMatches = 0;
+        var semanticSourceProven = 0;
         var unresolved = 0;
         var alreadySatisfied = 0;
 
@@ -91,6 +95,16 @@ internal static class CallbackResolverService
             {
                 rankedCount++;
                 var generic = ResolveGeneric(callback, sourceIndex, cadence);
+                var semantic = semanticLibrary.Match(
+                    callback.Owner,
+                    callback.Kind,
+                    callback.Target);
+                if (semantic.Matched)
+                {
+                    semanticMatches++;
+                    if (semantic.SourceProofSatisfied)
+                        semanticSourceProven++;
+                }
                 var dormancy = ResolveDormancyEvidence(callback, generic.Source, sourceIndex);
                 var userHint = advancedHints.Match(callback);
                 var advanced = EvaluateAdvancedCandidate(callback, generic, dormancy, userHint);
@@ -104,7 +118,7 @@ internal static class CallbackResolverService
                 // recognition always gets first attempt. A source state that is
                 // already at the generated target is neither unresolved nor a
                 // registry candidate.
-                if (!generic.Automatable && !isAlreadySatisfied)
+                if (!generic.Automatable && !isAlreadySatisfied && !semantic.Matched)
                     hint = registry.Match(callback);
 
                 if (generic.Automatable)
@@ -183,6 +197,24 @@ internal static class CallbackResolverService
                         dormancy.Evidence,
                         dormancy.Blockers
                     },
+                    semantic = new
+                    {
+                        semantic.Matched,
+                        semantic.SourceProofSatisfied,
+                        semantic.AlreadySatisfied,
+                        semantic.RuleId,
+                        semantic.PolicyClass,
+                        semantic.Handler,
+                        semantic.PatchStyle,
+                        semantic.GenerationEnabled,
+                        semantic.ShipReferenceOverride,
+                        semantic.MatchedAnchors,
+                        semantic.MissingAnchors,
+                        semantic.Graph,
+                        note = semantic.Matched
+                            ? "Identity selected a semantic candidate; current live mod source graph must prove the rule. The library contains behavior knowledge, not replacement mod files."
+                            : "No semantic-library rule matched this measured callback."
+                    },
                     advanced = new
                     {
                         advanced.Eligible,
@@ -213,9 +245,13 @@ internal static class CallbackResolverService
                         ? "GENERIC_PATTERN"
                         : isAlreadySatisfied
                             ? "ALREADY_SATISFIED"
-                            : hint is not null
-                                ? "SPECIAL_HINT_AVAILABLE"
-                                : "UNRESOLVED"
+                            : semantic.Matched
+                                ? semantic.SourceProofSatisfied
+                                    ? "SEMANTIC_RULE_PROVEN"
+                                    : "SEMANTIC_RULE_NEEDS_SOURCE_PROOF"
+                                : hint is not null
+                                    ? "SPECIAL_HINT_AVAILABLE"
+                                    : "UNRESOLVED"
                 });
             }
 
@@ -284,7 +320,16 @@ internal static class CallbackResolverService
                 path = exceptionRegistryPath,
                 loaded = registry.Loaded,
                 entryCount = registry.Entries.Count,
-                policy = "Exceptional high-impact semantic hints only. If a generic recognizer can solve the structure, no registry entry should exist."
+                policy = "Exceptional high-impact semantic hints only. If a generic recognizer or semantic rule can solve the structure, no registry entry should exist."
+            },
+            semanticLibrary = new
+            {
+                path = semanticLibraryPath,
+                loaded = semanticLibrary.Loaded,
+                entryCount = semanticLibrary.EntryCount,
+                matchedCallbacks = semanticMatches,
+                sourceProvenCallbacks = semanticSourceProven,
+                policy = "Only measured callbacks are considered. Mod identity selects a candidate; the live owner directory is then graphed and source anchors must prove the rule. Reference overrides are never shipped."
             },
             summary = new
             {
@@ -297,6 +342,8 @@ internal static class CallbackResolverService
                 belowThreshold,
                 materialThresholdMsPerSecond = MaterialRemainingMsPerSecond,
                 registryHints,
+                semanticMatches,
+                semanticSourceProven,
                 alreadySatisfied,
                 unresolved
             },
