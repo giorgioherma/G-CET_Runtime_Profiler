@@ -1010,10 +1010,17 @@ public static class PassGeneratorService
 
             var functionName = $"__gcetOnAction_{candidate.RegistrationId}";
             var callbackArgs = opening.Groups["args"].Value;
+            var routedCallbackArgs = string.IsNullOrWhiteSpace(callbackArgs)
+                ? "__gcetRoutedName"
+                : callbackArgs.TrimEnd() + ", __gcetRoutedName";
             var replaced =
                 segment[..opening.Index] +
-                $"local function {functionName}({callbackArgs})" +
+                $"local function {functionName}({routedCallbackArgs})" +
                 segment[(opening.Index + opening.Length)..];
+
+            var routedNameReused = TryRewriteActionNameDecode(
+                ref replaced,
+                "__gcetRoutedName");
 
             var closing = OnActionClosing.Match(replaced);
             if (!closing.Success)
@@ -1056,7 +1063,8 @@ public static class PassGeneratorService
                     candidate.DynamicGateExpression,
                     candidate.ConsumerMutation,
                     candidate.RequiresActionType,
-                    candidate.RequiresActionValue
+                    candidate.RequiresActionValue,
+                    routedNameReused
                 }
             });
             applied++;
@@ -1392,6 +1400,52 @@ public static class PassGeneratorService
         return string.Join("\n", lines);
     }
 
+    private static bool TryRewriteActionNameDecode(
+        ref string source,
+        string routedNameVariable)
+    {
+        // The router has already decoded the action name before dispatch. Reuse
+        // that value only for a simple local assignment whose RHS is a pure
+        // action-name decode. When the callback runs through the original
+        // Observe fallback the routed value is nil and the original expression
+        // executes unchanged.
+        var match = Regex.Match(
+            source,
+            @"(?m)^(?<indent>\s*)local\s+(?<var>[A-Za-z_]\w*)\s*=\s*(?<expr>[^\r\n;]*\b(?:GetName|NameToString)\b[^\r\n;]*)\s*;?\s*$",
+            RegexOptions.CultureInvariant);
+        if (!match.Success)
+            return false;
+
+        var expression = match.Groups["expr"].Value.Trim();
+        if (!Regex.IsMatch(
+                expression,
+                @"^(?:Game\.NameToString\s*\(\s*)?action\s*[:.]\s*GetName\s*\(",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+            return false;
+
+        if (Regex.IsMatch(
+                expression,
+                @"\b(?:Set|Consume|Write|Update|Send|Trigger|Call)\w*\s*\(",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+            return false;
+
+        var replacement =
+            match.Groups["indent"].Value +
+            "local " +
+            match.Groups["var"].Value +
+            " = (" +
+            routedNameVariable +
+            " or (" +
+            expression +
+            "))";
+
+        source =
+            source[..match.Index] +
+            replacement +
+            source[(match.Index + match.Length)..];
+        return true;
+    }
+
     private static string BuildActionRegistration(
         PassCandidate candidate,
         string functionName,
@@ -1475,7 +1529,7 @@ public static class PassGeneratorService
                         $"string.find(routedName, {LuaQuote(x)}, 1, true)"));
 
                 lines.Add($"{indent}            if routedName and not __gcetExact_{candidate.RegistrationId}[routedName] and ({conditions}) then");
-                lines.Add($"{indent}                {functionName}(this, action, consumer)");
+                lines.Add($"{indent}                {functionName}(this, action, consumer, routedName)");
                 lines.Add($"{indent}            end");
                 lines.Add($"{indent}        end, {owner})");
             }
