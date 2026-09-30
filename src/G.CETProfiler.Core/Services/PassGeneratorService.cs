@@ -1070,12 +1070,12 @@ public static class PassGeneratorService
                     frameSegment[..marker] +
                     token +
                     frameSegment[(marker + "registerForEvent".Length)..];
-                var replacementLines = rewrittenFrame.Split('\n');
+                var frameReplacementLines = rewrittenFrame.Split('\n');
 
                 lines.RemoveRange(
                     candidate.LineStart - 1,
                     effectiveLineEnd - candidate.LineStart + 1);
-                lines.InsertRange(candidate.LineStart - 1, replacementLines);
+                lines.InsertRange(candidate.LineStart - 1, frameReplacementLines);
 
                 frameHelpers.Add((candidate, token));
                 transformManifest.Add(new
