@@ -2960,7 +2960,8 @@ internal static class CallbackResolverService
                 method.Equals("NameToString", StringComparison.OrdinalIgnoreCase) ||
                 method.Equals("Observe", StringComparison.OrdinalIgnoreCase) ||
                 method.Equals("ObserveAfter", StringComparison.OrdinalIgnoreCase) ||
-                method.Equals("Override", StringComparison.OrdinalIgnoreCase))
+                method.Equals("Override", StringComparison.OrdinalIgnoreCase) ||
+                method.Equals("wrappedMethod", StringComparison.OrdinalIgnoreCase))
                 continue;
 
             var callArgs = match.Groups["args"].Value
