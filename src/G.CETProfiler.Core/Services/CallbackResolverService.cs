@@ -1714,7 +1714,7 @@ internal static class CallbackResolverService
         var stripped = Regex.Replace(
             literal,
             @"(['""])(?:\\.|(?!\1).)*\1",
-            """",
+            "\"\"",
             RegexOptions.Singleline | RegexOptions.CultureInvariant);
         stripped = Regex.Replace(
             stripped,
