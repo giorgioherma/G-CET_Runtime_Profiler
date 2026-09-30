@@ -155,6 +155,18 @@ if (Test-Path -LiteralPath (Join-Path $result.destination 'CET_Cadence_Final.jso
     throw 'Profiler collection incorrectly ran the resolver; measurement and interpretation must remain separate.'
 }
 
+# The synthetic CSV fixture has no native registration handles. Real profiler
+# captures do. Add deterministic synthetic handles so the pass generator path
+# is exercised without weakening its real-capture registration-id requirement.
+$handoffPath = Join-Path $result.destination 'CET_Resolver_Input.json'
+$handoffJson = Get-Content -LiteralPath $handoffPath -Raw | ConvertFrom-Json
+$nextRegistrationId = 700
+foreach ($callback in @($handoffJson.callbacks)) {
+    $callback | Add-Member -NotePropertyName registrationId -NotePropertyValue $nextRegistrationId -Force
+    $nextRegistrationId++
+}
+$handoffJson | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $handoffPath -Encoding utf8
+
 $resolve = (& $resolverExe --capture $result.destination --mods $mods --json | ConvertFrom-Json)
 if (!$resolve.ok) { throw 'Explicit G-CET resolver pass failed.' }
 
