@@ -200,7 +200,11 @@ internal static class CallbackResolverService
                 registryCanAuthorizeRewrite = false,
                 cadenceIsSubset = true,
                 liveSourcesReadOnly = true,
-                note = "Resolve proven callback/source patterns first. Only unresolved high-impact consumers are checked against the small curated exception registry. Registry knowledge is semantic guidance, never patch code."
+                dormancyClassification = true,
+                dormancyClassificationEvidenceOnly = true,
+                dormancyCanAuthorizeGeneration = false,
+                dormancyClasses = new[] { "NEVER_GATE", "HARD_DORMANT", "DISCOVERY_DORMANT", "BACKGROUND", "UNKNOWN" },
+                note = "Resolve proven callback/source patterns first. Dormancy classification is evidence-only and cannot authorize generation. Only unresolved high-impact consumers are checked against the small curated exception registry. Registry knowledge is semantic guidance, never patch code."
             },
             cadence = new
             {
