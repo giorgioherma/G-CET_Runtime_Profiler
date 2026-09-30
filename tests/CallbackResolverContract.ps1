@@ -899,14 +899,14 @@ try {
 
     $frameText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureFrame/init.lua'
     if ($frameText -notmatch 'MakeEventRegistrar' -or
-        $frameText -notmatch '__gcetRegisterEvent_102\s*\(\s*"onUpdate"' {
+        $frameText -notmatch '__gcetRegisterEvent_102\s*\(\s*"onUpdate"') {
         throw 'Generated frame-dispatch replacement is incomplete.'
     }
 
     $structuralText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureStructural/init.lua'
     if ($structuralText -notmatch '__gcetReuse_120_' -or
         $structuralText -notmatch '__gcetStatic_120_' -or
-        $structuralText -notmatch '__gcetRegisterEvent_120\s*\(\s*"onUpdate"' {
+        $structuralText -notmatch '__gcetRegisterEvent_120\s*\(\s*"onUpdate"') {
         throw 'Generated structural hotpath replacement is incomplete.'
     }
     if ([regex]::Matches($structuralText, [regex]::Escape('Game.GetPlayer()')).Count -ne 1) {
@@ -962,7 +962,7 @@ try {
     if ($hardUpdateText -notmatch 'if not active then return end -- G-CET dormant guard hoist') {
         throw 'Generated hard-dormant callback is missing the hoisted inactive guard.'
     }
-    if ($hardUpdateText -notmatch '__gcetRegisterEvent_125\s*\(\s*"onUpdate"' {
+    if ($hardUpdateText -notmatch '__gcetRegisterEvent_125\s*\(\s*"onUpdate"') {
         throw 'Generated hard-dormant callback did not retain frame-dispatch consolidation.'
     }
     $hoistedIndex = $hardUpdateText.IndexOf('if not active then return end -- G-CET dormant guard hoist')
