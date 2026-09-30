@@ -1026,6 +1026,7 @@ internal static class CallbackResolverService
                     structuralHotpath = true,
                     identicalExpressions = structural.IdenticalExpressions,
                     literalConstructors = structural.LiteralConstructors,
+                    staticLiteralTables = structural.StaticLiteralTables,
                     estimatedCallbackPaybackPct = structural.EstimatedCallbackPaybackPct,
                     estimatedGlobalPaybackPct = structural.EstimatedGlobalPaybackPct
                 },
@@ -1197,6 +1198,7 @@ internal static class CallbackResolverService
                 structuralHotpath = structuralResolution is not null,
                 identicalExpressions = structuralResolution?.IdenticalExpressions ?? Array.Empty<StructuralExpression>(),
                 literalConstructors = structuralResolution?.LiteralConstructors ?? Array.Empty<StructuralExpression>(),
+                staticLiteralTables = structuralResolution?.StaticLiteralTables ?? Array.Empty<StaticLiteralTable>(),
                 estimatedCallbackPaybackPct = structuralResolution?.EstimatedCallbackPaybackPct ?? 0,
                 estimatedGlobalPaybackPct = structuralResolution?.EstimatedGlobalPaybackPct ?? 0,
                 hardDormantGuardHoist = hardDormantResolution is not null,
@@ -1504,7 +1506,11 @@ internal static class CallbackResolverService
             });
         }
 
-        if (expressions.Count == 0 && constructors.Count == 0)
+        var staticTables = FindSafeStaticLiteralTables(text);
+
+        if (expressions.Count == 0 &&
+            constructors.Count == 0 &&
+            staticTables.Count == 0)
             return false;
 
         // Repeated callback-stable getters save occurrences beyond the first
@@ -1517,10 +1523,21 @@ internal static class CallbackResolverService
         var totalOccurrences =
             expressions.Sum(x => x.Count) +
             constructors.Sum(x => x.Count);
-        var localFraction = totalOccurrences > 0
+        var expressionFraction = totalOccurrences > 0
             ? Math.Min(0.75, (double)avoidableOccurrences / totalOccurrences)
             : 0.0;
 
+        // Literal-table allocation is harder to price from source alone. Only
+        // admit it as an automatic materiality contribution on genuinely hot,
+        // frequently-entered callbacks, and cap the estimate conservatively.
+        var tableFraction =
+            staticTables.Count > 0 &&
+            callback.CallsPerSecond >= 30.0 &&
+            callback.ExclusiveMsPerSecond >= 8.0
+                ? Math.Min(0.20, staticTables.Count * 0.05)
+                : 0.0;
+
+        var localFraction = Math.Min(0.75, expressionFraction + tableFraction);
         var estimatedCallbackPaybackPct = localFraction * 100.0;
         var estimatedGlobalPaybackPct =
             callback.GlobalWorkSharePct * localFraction;
@@ -1539,6 +1556,10 @@ internal static class CallbackResolverService
             evidence.Add(
                 $"Current source contains {constructors.Sum(x => x.Count)} calls across " +
                 $"{constructors.Count} literal constructor expression(s) hoistable out of the callback.");
+        if (staticTables.Count > 0)
+            evidence.Add(
+                $"Current source contains {staticTables.Count} callback-local literal table(s) " +
+                "whose uses are proven read-only and can be hoisted without sharing mutable state.");
         evidence.Add(
             $"Measured callback cost is {callback.ExclusiveMsPerSecond:0.###} ms/s " +
             $"({callback.GlobalWorkSharePct:0.###}% of measured CET work).");
@@ -1547,10 +1568,197 @@ internal static class CallbackResolverService
         {
             IdenticalExpressions = expressions.ToArray(),
             LiteralConstructors = constructors.ToArray(),
+            StaticLiteralTables = staticTables.ToArray(),
             EstimatedCallbackPaybackPct = estimatedCallbackPaybackPct,
             EstimatedGlobalPaybackPct = estimatedGlobalPaybackPct,
             Evidence = evidence.ToArray()
         };
+        return true;
+    }
+
+    private static List<StaticLiteralTable> FindSafeStaticLiteralTables(string text)
+    {
+        var result = new List<StaticLiteralTable>();
+        var declarationRegex = new Regex(
+            @"\blocal\s+(?<name>[A-Za-z_]\w*)\s*=\s*\{",
+            RegexOptions.CultureInvariant);
+
+        foreach (Match declaration in declarationRegex.Matches(text))
+        {
+            var name = declaration.Groups["name"].Value;
+            var braceStart = text.IndexOf('{', declaration.Index + declaration.Length - 1);
+            if (braceStart < 0 ||
+                !TryFindMatchingLuaBrace(text, braceStart, out var braceEnd))
+                continue;
+
+            var literal = text.Substring(braceStart, braceEnd - braceStart + 1);
+            if (!IsStaticLiteralTable(literal))
+                continue;
+
+            var declarationStart = declaration.Index;
+            var declarationText = text.Substring(
+                declarationStart,
+                braceEnd - declarationStart + 1);
+
+            var remainder =
+                text[..declarationStart] +
+                new string(' ', declarationText.Length) +
+                text[(braceEnd + 1)..];
+
+            if (!IsReadOnlyTableUse(remainder, name))
+                continue;
+
+            var elementCount = Regex.Matches(literal, @",", RegexOptions.CultureInvariant).Count + 1;
+            result.Add(new StaticLiteralTable
+            {
+                Variable = name,
+                Declaration = declarationText,
+                Literal = literal,
+                ElementCount = elementCount
+            });
+        }
+
+        return result;
+    }
+
+    private static bool TryFindMatchingLuaBrace(
+        string text,
+        int start,
+        out int end)
+    {
+        end = -1;
+        var depth = 0;
+        var quote = '\0';
+        var escaped = false;
+        var lineComment = false;
+
+        for (var i = start; i < text.Length; i++)
+        {
+            var ch = text[i];
+
+            if (lineComment)
+            {
+                if (ch == '\n')
+                    lineComment = false;
+                continue;
+            }
+
+            if (quote != '\0')
+            {
+                if (escaped)
+                {
+                    escaped = false;
+                    continue;
+                }
+                if (ch == '\\')
+                {
+                    escaped = true;
+                    continue;
+                }
+                if (ch == quote)
+                    quote = '\0';
+                continue;
+            }
+
+            if (ch == '\'' || ch == '"')
+            {
+                quote = ch;
+                continue;
+            }
+
+            if (ch == '-' && i + 1 < text.Length && text[i + 1] == '-')
+            {
+                lineComment = true;
+                i++;
+                continue;
+            }
+
+            if (ch == '{')
+                depth++;
+            else if (ch == '}')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    end = i;
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsStaticLiteralTable(string literal)
+    {
+        var stripped = Regex.Replace(
+            literal,
+            @"(['""])(?:\\.|(?!\1).)*\1",
+            """",
+            RegexOptions.Singleline | RegexOptions.CultureInvariant);
+        stripped = Regex.Replace(
+            stripped,
+            @"\b[A-Za-z_]\w*\s*=",
+            "=",
+            RegexOptions.CultureInvariant);
+        stripped = Regex.Replace(
+            stripped,
+            @"\b(?:true|false|nil)\b",
+            "0",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+        // After removing quoted values and named literal keys, no identifier or
+        // call expression may remain. This keeps the hoist to immutable scalar
+        // literal data only.
+        return !Regex.IsMatch(
+            stripped,
+            @"[A-Za-z_]|\(",
+            RegexOptions.CultureInvariant);
+    }
+
+    private static bool IsReadOnlyTableUse(string text, string variable)
+    {
+        var escaped = Regex.Escape(variable);
+        if (Regex.IsMatch(
+                text,
+                @"\b" + escaped + @"\s*(?:\[[^\]]*\]|\.[A-Za-z_]\w*)?\s*=",
+                RegexOptions.CultureInvariant))
+            return false;
+
+        if (Regex.IsMatch(
+                text,
+                @"\btable\s*\.\s*(?:insert|remove|sort|move|clear)\s*\(\s*" + escaped + @"\b",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+            return false;
+
+        foreach (Match use in Regex.Matches(
+                     text,
+                     @"\b" + escaped + @"\b",
+                     RegexOptions.CultureInvariant))
+        {
+            var lineStart = text.LastIndexOf('\n', Math.Max(0, use.Index - 1));
+            var lineEnd = text.IndexOf('\n', use.Index);
+            var start = lineStart < 0 ? 0 : lineStart + 1;
+            var end = lineEnd < 0 ? text.Length : lineEnd;
+            var line = text.Substring(start, end - start).Trim();
+
+            if (Regex.IsMatch(
+                    line,
+                    @"\b(?:i?pairs)\s*\(\s*" + escaped + @"\s*\)",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant) ||
+                Regex.IsMatch(
+                    line,
+                    @"#" + escaped + @"\b",
+                    RegexOptions.CultureInvariant) ||
+                Regex.IsMatch(
+                    line,
+                    @"\b" + escaped + @"\s*\[",
+                    RegexOptions.CultureInvariant))
+                continue;
+
+            return false;
+        }
+
         return true;
     }
 
@@ -2376,6 +2584,7 @@ internal static class CallbackResolverService
             structuralHotpath = structural is not null,
             identicalExpressions = structural?.IdenticalExpressions ?? Array.Empty<StructuralExpression>(),
             literalConstructors = structural?.LiteralConstructors ?? Array.Empty<StructuralExpression>(),
+            staticLiteralTables = structural?.StaticLiteralTables ?? Array.Empty<StaticLiteralTable>(),
             estimatedCallbackPaybackPct = structural?.EstimatedCallbackPaybackPct ?? 0,
             estimatedGlobalPaybackPct = structural?.EstimatedGlobalPaybackPct ?? 0
         };
@@ -3671,10 +3880,19 @@ internal static class CallbackResolverService
         public int Count { get; init; }
     }
 
+    private sealed class StaticLiteralTable
+    {
+        public string Variable { get; init; } = "";
+        public string Declaration { get; init; } = "";
+        public string Literal { get; init; } = "";
+        public int ElementCount { get; init; }
+    }
+
     private sealed class StructuralHotpathResolution
     {
         public StructuralExpression[] IdenticalExpressions { get; init; } = Array.Empty<StructuralExpression>();
         public StructuralExpression[] LiteralConstructors { get; init; } = Array.Empty<StructuralExpression>();
+        public StaticLiteralTable[] StaticLiteralTables { get; init; } = Array.Empty<StaticLiteralTable>();
         public double EstimatedCallbackPaybackPct { get; init; }
         public double EstimatedGlobalPaybackPct { get; init; }
         public string[] Evidence { get; init; } = Array.Empty<string>();
