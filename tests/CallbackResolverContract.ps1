@@ -673,7 +673,7 @@ if ($unknownHot.advanced.NextEvidence -ne 'USER_CLASSIFICATION') {
 if ($null -eq $resolved.pass) {
     throw 'CLI --generate-pass did not return a pass result.'
 }
-if ([int]$resolved.pass.TransformCount -ne 15) {
+if ([int]$resolved.pass.TransformCount -ne 14) {
     if (Test-Path -LiteralPath $resolved.pass.ManifestPath -PathType Leaf) {
         $failedManifest = Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
         Write-Host "PASS DEBUG transforms=$($failedManifest.summary.transforms) skipped=$($failedManifest.summary.skipped)"
@@ -681,10 +681,10 @@ if ([int]$resolved.pass.TransformCount -ne 15) {
             Write-Host ("PASS DEBUG SKIP owner={0} type={1} file={2} reason={3}" -f $skip.owner,$skip.type,$skip.file,$skip.reason)
         }
     }
-    throw "Expected 15 generated transforms, got $($resolved.pass.TransformCount)."
+    throw "Expected 14 generated transforms, got $($resolved.pass.TransformCount)."
 }
-if ([int]$resolved.pass.FileCount -ne 19) {
-    throw "Expected 19 generated replacement files (15 callback + 4 fixed 0-Engine), got $($resolved.pass.FileCount)."
+if ([int]$resolved.pass.FileCount -ne 18) {
+    throw "Expected 18 generated replacement files (14 callback + 4 fixed 0-Engine), got $($resolved.pass.FileCount)."
 }
 if (!(Test-Path -LiteralPath $resolved.pass.ZipPath -PathType Leaf)) {
     throw "Generated pass ZIP is missing: $($resolved.pass.ZipPath)"
@@ -827,11 +827,11 @@ try {
     if ($manifest.policy.modNameRules) {
         throw 'Generated pass manifest unexpectedly allows mod-name rules.'
     }
-    if ([int]$manifest.summary.transforms -ne 15) {
+    if ([int]$manifest.summary.transforms -ne 14) {
         throw 'Generated pass manifest transform count is wrong.'
     }
-    if ([int]$manifest.summary.callbackFiles -ne 15) {
-        throw "Expected 15 callback replacement files, got $($manifest.summary.callbackFiles)."
+    if ([int]$manifest.summary.callbackFiles -ne 14) {
+        throw "Expected 14 callback replacement files, got $($manifest.summary.callbackFiles)."
     }
     if ([int]$manifest.summary.fixedRuntimeFiles -ne 4) {
         throw "Expected 4 fixed 0-Engine runtime files, got $($manifest.summary.fixedRuntimeFiles)."
