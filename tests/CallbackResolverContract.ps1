@@ -409,13 +409,15 @@ if (!$result.policy.familyFirst) { throw 'Resolver is not marked callback-family
 if (!$result.policy.genericPatternsBeforeRegistry) { throw 'Registry is not gated behind generic pattern resolution.' }
 if ($result.policy.registryContainsPatchCode) { throw 'Registry unexpectedly allows patch code.' }
 
-$onAction = @($result.callbackFamilies | Where-Object { $_.resolverFamily -eq 'ONACTION' }) | Select-Object -First 1
-if ($null -eq $onAction) { throw 'OnAction callback family was not resolved.' }
+$onActionFamilies = @($result.callbackFamilies | Where-Object { $_.resolverFamily -eq 'ONACTION' })
+if ($onActionFamilies.Count -eq 0) { throw 'OnAction callback family was not resolved.' }
 
 function Action-For([string]$Owner) {
-    $row = @($onAction.topConsumers | Where-Object { $_.owner -eq $Owner }) | Select-Object -First 1
-    if ($null -eq $row) { throw "OnAction fixture was not ranked: $Owner" }
-    return $row
+    foreach ($family in $onActionFamilies) {
+        $row = @($family.topConsumers | Where-Object { $_.owner -eq $Owner }) | Select-Object -First 1
+        if ($null -ne $row) { return $row }
+    }
+    throw "OnAction fixture was not ranked: $Owner"
 }
 
 $action = Action-For 'FixtureAction'
