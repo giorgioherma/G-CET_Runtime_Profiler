@@ -18,6 +18,7 @@ try {
 
     $profilerHeader = Get-Content ".\src\scripting\CETRuntimeProfiler.h" -Raw
     $scriptContext = Get-Content ".\src\scripting\ScriptContext.cpp" -Raw
+    $scripting = Get-Content ".\src\scripting\Scripting.cpp" -Raw
     $functionOverride = Get-Content ".\src\scripting\FunctionOverride.cpp" -Raw
 
     foreach ($marker in @(
@@ -35,7 +36,11 @@ try {
         "EnterDeepRegistrationBoundary",
         "CET_Runtime_Profile_Deep_Samples.csv",
         "CET_Runtime_Profile_Deep_Lines.csv",
-        "CET_Runtime_Profile_Deep_Functions.csv"
+        "CET_Runtime_Profile_Deep_Functions.csv",
+        "CET_Runtime_Profile_Deep_Callsites.csv",
+        "CET_Runtime_Profile_FrameMultiplicity.csv",
+        "RecordFrameMultiplicity",
+        "CallsiteSourceFile"
     )) {
         if (-not $profilerHeader.Contains($marker)) {
             throw "Profiler callback-identity marker missing from CETRuntimeProfiler.h: $marker"
@@ -47,13 +52,17 @@ try {
         throw "ScriptContext event source attribution was not patched."
     }
 
+    if (-not $scripting.Contains("CETRuntimeProfiler::Get().BeginGameFrame()")) {
+        throw "Scripting exact rendered-frame boundary was not patched."
+    }
+
     if (-not $functionOverride.Contains("AttachSource") -or
         -not $functionOverride.Contains("context@") -or
         -not $functionOverride.Contains("DeepTraceScope")) {
         throw "FunctionOverride instance/source/deep attribution was not patched."
     }
 
-    "Callback identity/source/deep verification: PASS"
+    "Callback identity/source/deep/frame-multiplicity verification: PASS"
 }
 finally {
     Pop-Location
