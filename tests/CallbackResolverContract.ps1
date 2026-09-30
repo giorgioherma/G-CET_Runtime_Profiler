@@ -365,7 +365,8 @@ end)
 '@
 
 Write-Mod 'FixtureFrame' @'
-registerForEvent(
+local registerRuntimeEvent = registerForEvent
+registerRuntimeEvent(
     "onUpdate",
     function(delta)
         DoFrameWork(delta)
@@ -441,7 +442,7 @@ $handoff = @{
         (CallbackRow 128 'FixtureNeverGateUpdate' 'event' 'onUpdate' 60 18.0 4.0 'init.lua' 5 9),
         (CallbackRow 124 'FixtureDormantBackground' 'observe' 'PlayerPuppet::FixtureBackgroundTick' 60 6.0 1.2 'init.lua' 1 3),
         (CallbackRow 129 'FixtureOtherStructural' 'ObserveAfter' 'PlayerPuppet::FixtureStructuralObserve' 120 12.0 3.0 'init.lua' 1 19),
-        (CallbackRow 102 'FixtureFrame' 'event' 'onUpdate' 60 5.0 1.0 'init.lua' 1 6),
+        (CallbackRow 102 'FixtureFrame' 'event' 'onUpdate' 60 5.0 1.0 'init.lua' 2 7),
         (CallbackRow 127 'FixtureUnknownHot' 'observe' 'PlayerPuppet::AnotherUnknownMethod' 60 20.0 5.0 'init.lua' 1 3),
         (CallbackRow 103 'FixtureUnknown' 'observe' 'PlayerPuppet::SomeOtherMethod' 60 4.0 1.0 'init.lua' 1 3)
     )
@@ -901,6 +902,9 @@ try {
     if ($frameText -notmatch 'MakeEventRegistrar' -or
         $frameText -notmatch '__gcetRegisterEvent_102\s*\(\s*"onUpdate"') {
         throw 'Generated frame-dispatch replacement is incomplete.'
+    }
+    if ($frameText -match '(?m)^\s*registerRuntimeEvent\s*\(\s*"onUpdate"') {
+        throw 'Generated frame-dispatch replacement left the original runtime registrar call active.'
     }
 
     $structuralText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureStructural/init.lua'
