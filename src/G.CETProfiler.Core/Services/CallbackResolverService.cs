@@ -3163,6 +3163,12 @@ internal static class CallbackResolverService
 
             if (Regex.IsMatch(
                     line,
+                    @"^local\s+" + name + @"\s*=\s*(?:Game\.NameToString\s*\(\s*)?" +
+                    Regex.Escape(actionParameter) +
+                    @"\s*[:.]\s*GetName\s*\(\s*\)\s*\)?\s*;?\s*$",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant) ||
+                Regex.IsMatch(
+                    line,
                     @"\b" + name + @"\s*(?:==|~=)\s*['""]",
                     RegexOptions.CultureInvariant) ||
                 Regex.IsMatch(
