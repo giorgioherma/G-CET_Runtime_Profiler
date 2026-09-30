@@ -198,6 +198,53 @@ function Controller:HandleInput(actionName, actionType, action)
 end
 '@ | Set-Content -LiteralPath (Join-Path $downstreamDir 'controller.lua') -Encoding utf8
 
+Write-Mod 'FixtureStructural' @'
+registerForEvent("onUpdate", function(delta)
+    local playerA = Game.GetPlayer()
+    local playerB = Game.GetPlayer()
+    local nameA = CName.new("StructuralFixture")
+    local nameB = CName.new("StructuralFixture")
+    DoStructuralWork(playerA, playerB, nameA, nameB, delta)
+end)
+'@
+
+Write-Mod 'FixtureDormantHard' @'
+local active = false
+registerHotkey("fixture_dormant", "Fixture dormant", function()
+    active = not active
+end)
+Observe("PlayerPuppet", "FixtureTick", function(self)
+    if not active then return end
+    DoDormantWork(self)
+end)
+'@
+
+Write-Mod 'FixtureDormantDiscovery' @'
+local active = false
+registerInput("fixture_discovery", "Fixture discovery", function(pressed)
+    if pressed then active = true end
+end)
+Observe("PlayerPuppet", "FixtureDiscoveryTick", function(self)
+    if not active then return end
+    local player = Game.GetPlayer()
+    local distance = Vector4.Distance(player:GetWorldPosition(), targetPosition)
+    DoDiscoveryWork(distance)
+end)
+'@
+
+Write-Mod 'FixtureDormantNever' @'
+Observe("PlayerPuppet", "FixtureCameraTick", function(self)
+    local camera = Game.GetCameraSystem():GetActiveCameraData()
+    DoCameraWork(camera)
+end)
+'@
+
+Write-Mod 'FixtureDormantBackground' @'
+Observe("PlayerPuppet", "FixtureBackgroundTick", function(self)
+    processTaskQueue()
+end)
+'@
+
 Write-Mod 'FixtureFrame' @'
 registerForEvent("onUpdate", function(delta)
     DoFrameWork(delta)
@@ -255,6 +302,11 @@ $handoff = @{
         (CallbackRow 109 'FixtureDynamic' 'observe' 'PlayerPuppet::OnAction' 500 6.0 8.0 'init.lua' 1 7),
         (CallbackRow 112 'FixtureGatedDynamic' 'observe' 'PlayerPuppet::OnAction' 495 5.9 7.8 'init.lua' 1 14),
         (CallbackRow 111 'FixtureDownstream' 'observe' 'PlayerPuppet::OnAction' 490 5.8 7.5 'init.lua' 1 10),
+        (CallbackRow 120 'FixtureStructural' 'event' 'onUpdate' 60 9.0 2.0 'init.lua' 1 8),
+        (CallbackRow 121 'FixtureDormantHard' 'observe' 'PlayerPuppet::FixtureTick' 60 6.0 1.2 'init.lua' 5 8),
+        (CallbackRow 122 'FixtureDormantDiscovery' 'observe' 'PlayerPuppet::FixtureDiscoveryTick' 60 6.0 1.2 'init.lua' 5 10),
+        (CallbackRow 123 'FixtureDormantNever' 'observe' 'PlayerPuppet::FixtureCameraTick' 60 6.0 1.2 'init.lua' 1 4),
+        (CallbackRow 124 'FixtureDormantBackground' 'observe' 'PlayerPuppet::FixtureBackgroundTick' 60 6.0 1.2 'init.lua' 1 3),
         (CallbackRow 102 'FixtureFrame' 'event' 'onUpdate' 60 5.0 1.0 'init.lua' 1 3),
         (CallbackRow 103 'FixtureUnknown' 'observe' 'PlayerPuppet::SomeOtherMethod' 60 4.0 1.0 'init.lua' 1 3)
     )
@@ -415,6 +467,47 @@ if ($frame.source.MatchMode -ne 'profiler-owner-relative') {
     throw 'onUpdate bare init.lua did not use owner-relative source mapping.'
 }
 
+$structural = @($onUpdate.topConsumers | Where-Object { $_.owner -eq 'FixtureStructural' }) | Select-Object -First 1
+if ($null -eq $structural) { throw 'FixtureStructural was not ranked inside onUpdate.' }
+if (!$structural.generic.Automatable) { throw 'Hot structural fixture was not marked automatable.' }
+if (@($structural.generic.RecipeFamilies) -notcontains 'STRUCTURAL_HOTPATH_REWRITE') {
+    throw 'Structural hotpath recipe was not exposed.'
+}
+if (@($structural.generic.Facts.identicalExpressions).Count -lt 1) {
+    throw 'Repeated Game getter expression was not emitted as structural evidence.'
+}
+if (@($structural.generic.Facts.literalConstructors).Count -lt 1) {
+    throw 'Repeated literal constructor was not emitted as structural evidence.'
+}
+
+function Dormancy-For([string]$Owner) {
+    foreach ($family in @($result.callbackFamilies)) {
+        $row = @($family.topConsumers | Where-Object { $_.owner -eq $Owner }) | Select-Object -First 1
+        if ($null -ne $row) { return $row.dormancy }
+    }
+    throw "Dormancy fixture was not ranked: $Owner"
+}
+
+$hardDormancy = Dormancy-For 'FixtureDormantHard'
+if ($hardDormancy.Class -ne 'HARD_DORMANT' -or !$hardDormancy.EvidenceOnly) {
+    throw "Expected evidence-only HARD_DORMANT, got $($hardDormancy.Class)"
+}
+
+$discoveryDormancy = Dormancy-For 'FixtureDormantDiscovery'
+if ($discoveryDormancy.Class -ne 'DISCOVERY_DORMANT' -or !$discoveryDormancy.EvidenceOnly) {
+    throw "Expected evidence-only DISCOVERY_DORMANT, got $($discoveryDormancy.Class)"
+}
+
+$neverDormancy = Dormancy-For 'FixtureDormantNever'
+if ($neverDormancy.Class -ne 'NEVER_GATE' -or !$neverDormancy.EvidenceOnly) {
+    throw "Expected evidence-only NEVER_GATE, got $($neverDormancy.Class)"
+}
+
+$backgroundDormancy = Dormancy-For 'FixtureDormantBackground'
+if ($backgroundDormancy.Class -ne 'BACKGROUND' -or !$backgroundDormancy.EvidenceOnly) {
+    throw "Expected evidence-only BACKGROUND, got $($backgroundDormancy.Class)"
+}
+
 $other = @($result.callbackFamilies | Where-Object { $_.resolverFamily -eq 'OTHER' }) | Select-Object -First 1
 $unknown = @($other.topConsumers | Where-Object { $_.owner -eq 'FixtureUnknown' }) | Select-Object -First 1
 if ($null -eq $unknown) { throw 'FixtureUnknown was not ranked.' }
@@ -429,11 +522,11 @@ if ($unknown.registry.matched) {
 if ($null -eq $resolved.pass) {
     throw 'CLI --generate-pass did not return a pass result.'
 }
-if ([int]$resolved.pass.TransformCount -ne 10) {
-    throw "Expected 10 generated V1 transforms, got $($resolved.pass.TransformCount)."
+if ([int]$resolved.pass.TransformCount -ne 11) {
+    throw "Expected 11 generated transforms, got $($resolved.pass.TransformCount)."
 }
-if ([int]$resolved.pass.FileCount -ne 14) {
-    throw "Expected 14 generated replacement files (10 callback + 4 fixed 0-Engine), got $($resolved.pass.FileCount)."
+if ([int]$resolved.pass.FileCount -ne 15) {
+    throw "Expected 15 generated replacement files (11 callback + 4 fixed 0-Engine), got $($resolved.pass.FileCount)."
 }
 if (!(Test-Path -LiteralPath $resolved.pass.ZipPath -PathType Leaf)) {
     throw "Generated pass ZIP is missing: $($resolved.pass.ZipPath)"
@@ -458,6 +551,7 @@ try {
     foreach ($requiredEntry in @(
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureAction/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureFrame/init.lua',
+        'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureStructural/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixturePattern/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDownstream/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureGatedDynamic/init.lua',
@@ -499,6 +593,19 @@ try {
         throw 'Generated frame-dispatch replacement is incomplete.'
     }
 
+    $structuralText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureStructural/init.lua'
+    if ($structuralText -notmatch '__gcetReuse_120_' -or
+        $structuralText -notmatch '__gcetStatic_120_' -or
+        $structuralText -notmatch '__gcetRegisterEvent_120\("onUpdate"') {
+        throw 'Generated structural hotpath replacement is incomplete.'
+    }
+    if ([regex]::Matches($structuralText, [regex]::Escape('Game.GetPlayer()')).Count -ne 1) {
+        throw 'Structural hotpath did not collapse repeated Game.GetPlayer calls.'
+    }
+    if ([regex]::Matches($structuralText, [regex]::Escape('CName.new("StructuralFixture")')).Count -ne 1) {
+        throw 'Structural hotpath did not hoist repeated literal CName constructor.'
+    }
+
     $patternText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixturePattern/init.lua'
     if ($patternText -notmatch 'actions = "\*"' -or
         $patternText -notmatch 'string\.find\(routedName, "Turn", 1, true\)') {
@@ -526,11 +633,11 @@ try {
     if ($manifest.policy.modNameRules) {
         throw 'Generated pass manifest unexpectedly allows mod-name rules.'
     }
-    if ([int]$manifest.summary.transforms -ne 10) {
+    if ([int]$manifest.summary.transforms -ne 11) {
         throw 'Generated pass manifest transform count is wrong.'
     }
-    if ([int]$manifest.summary.callbackFiles -ne 10) {
-        throw "Expected 10 callback replacement files, got $($manifest.summary.callbackFiles)."
+    if ([int]$manifest.summary.callbackFiles -ne 11) {
+        throw "Expected 11 callback replacement files, got $($manifest.summary.callbackFiles)."
     }
     if ([int]$manifest.summary.fixedRuntimeFiles -ne 4) {
         throw "Expected 4 fixed 0-Engine runtime files, got $($manifest.summary.fixedRuntimeFiles)."
