@@ -20,17 +20,20 @@ public static partial class ResultReportService
         var spikes = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Spikes.csv"));
         var timeline = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Timeline.csv"));
         var onUpdateTimeline = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_OnUpdateTimeline.csv"));
+        var frameMultiplicity = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_FrameMultiplicity.csv"));
         var markers = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Markers.csv"));
         var deepRegistrations = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Deep_Registrations.csv"));
         var deepFunctions = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Deep_Functions.csv"));
         var deepEdges = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Deep_Edges.csv"));
         var deepSamples = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Deep_Samples.csv"));
         var deepLines = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Deep_Lines.csv"));
+        var deepCallsites = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Deep_Callsites.csv"));
 
         var callbacks = detail
             .Select(r => new ResolverCallbackMetric
             {
                 RegistrationId = L(r, "RegistrationId"),
+                Frame = L(r, "Frame"),
                 Owner = S(r, "Mod", "Owner"),
                 Kind = S(r, "Kind"),
                 Target = S(r, "Target"),
@@ -148,6 +151,13 @@ public static partial class ResultReportService
             ? (double?)a.FrameTime!.AverageFps
             : null;
 
+        var frameMultiplicityByRegistration = frameMultiplicity
+            .Where(row => L(row, "RegistrationId") > 0)
+            .GroupBy(row => L(row, "RegistrationId"))
+            .ToDictionary(
+                group => group.Key,
+                group => group.First());
+
         var callbackRows = callbacks
             .OrderByDescending(x => x.ExclusiveMsPerSecond)
             .ThenByDescending(x => x.CallsPerSecond)
@@ -200,7 +210,27 @@ public static partial class ResultReportService
                         : Round(ownerActivity.ActiveBucketPct, 3),
                     ownerBurstRatio = ownerActivity is null
                         ? (double?)null
-                        : Round(ownerActivity.BurstRatio, 6)
+                        : Round(ownerActivity.BurstRatio, 6),
+                    frameMultiplicity =
+                        x.RegistrationId > 0 &&
+                        frameMultiplicityByRegistration.TryGetValue(
+                            x.RegistrationId, out var multiplicity)
+                            ? new
+                            {
+                                totalFrames = L(multiplicity, "TotalFrames"),
+                                framesWithCalls = L(multiplicity, "FramesWithCalls"),
+                                zeroCallFrames = L(multiplicity, "ZeroCallFrames"),
+                                recordedCalls = L(multiplicity, "RecordedCalls"),
+                                oneCallFrames = L(multiplicity, "OneCallFrames"),
+                                twoCallFrames = L(multiplicity, "TwoCallFrames"),
+                                threeCallFrames = L(multiplicity, "ThreeCallFrames"),
+                                fourCallFrames = L(multiplicity, "FourCallFrames"),
+                                fivePlusCallFrames = L(multiplicity, "FivePlusCallFrames"),
+                                maxCallsInFrame = L(multiplicity, "MaxCallsInFrame"),
+                                meanCallsPerActiveFrame = D(multiplicity, "MeanCallsPerActiveFrame"),
+                                multiCallFramePct = D(multiplicity, "MultiCallFramePct")
+                            }
+                            : null
                 };
             })
             .ToArray();
@@ -276,7 +306,7 @@ public static partial class ResultReportService
 
         return new
         {
-            schemaVersion = "1.5",
+            schemaVersion = "1.6",
             generatedUtc = DateTime.UtcNow.ToString("O"),
             interop = new
             {
@@ -297,6 +327,7 @@ public static partial class ResultReportService
                 frameNormalizationAvailable,
                 timelineAvailable = timeline.Count > 0,
                 onUpdateTimelineAvailable = onUpdateTimeline.Count > 0,
+                frameMultiplicityAvailable = frameMultiplicity.Count > 0,
                 spikesAvailable = spikes.Count > 0,
                 scenarioMarkersAvailable = scenarioAnalysis.RecognizedMarkers > 0,
                 scenarioMarkersComplete = scenarioAnalysis.RecognizedMarkers > 0 && scenarioAnalysis.UnmatchedMarkers == 0,
@@ -321,12 +352,17 @@ public static partial class ResultReportService
                 adaptiveDeepEdgesAvailable = deepEdges.Count > 0,
                 adaptiveDeepSamplesAvailable = deepSamples.Count > 0,
                 adaptiveDeepLinesAvailable = deepLines.Count > 0,
+                adaptiveDeepCallsitesAvailable = deepCallsites.Count > 0,
                 adaptiveDeepDroppedSamples = deepSamples
                     .Select(row => L(row, "DroppedSamplesAtDump"))
                     .DefaultIfEmpty(0)
                     .Max(),
                 adaptiveDeepDroppedLineRows = deepLines
                     .Select(row => L(row, "DroppedLineRowsAtDump"))
+                    .DefaultIfEmpty(0)
+                    .Max(),
+                adaptiveDeepDroppedCallsiteRows = deepCallsites
+                    .Select(row => L(row, "DroppedCallsiteRowsAtDump"))
                     .DefaultIfEmpty(0)
                     .Max()
             },
@@ -344,8 +380,8 @@ public static partial class ResultReportService
             deepProfiling = new
             {
                 available = deepRegistrations.Count > 0,
-                mode = "adaptive-runtime-hotset-sampled-lua-call-return-line-path",
-                note = "Broad callback timing remains authoritative. Deep function timing is composition evidence only; timestamped sample paths and line hits are the primary structural evidence for source decisions.",
+                mode = "adaptive-runtime-hotset-sampled-lua-call-return-line-path-callsite",
+                note = "Broad callback timing remains authoritative. Deep function timing is composition evidence only; timestamped sample paths, line hits, exact frame ids, and sampled caller/callee callsites are structural evidence for source decisions.",
                 registrations = deepRegistrations
                     .Select(row => new
                     {
@@ -423,6 +459,7 @@ public static partial class ResultReportService
                             sampleSequence = L(row, "SampleSequence"),
                             registrationId = L(row, "RegistrationId"),
                             profileEpoch = L(row, "ProfileEpoch"),
+                            frame = L(row, "Frame"),
                             captureStartMs = D(row, "CaptureStartMs"),
                             captureEndMs = D(row, "CaptureEndMs"),
                             scenario = ResolverScenarioAt(midpointMs, scenarioAnalysis),
@@ -486,6 +523,23 @@ public static partial class ResultReportService
                     .OrderBy(x => x.registrationId)
                     .ThenBy(x => x.profileEpoch)
                     .ToArray(),
+                callsites = deepCallsites
+                    .Select(row => new
+                    {
+                        sampleSequence = L(row, "SampleSequence"),
+                        registrationId = L(row, "RegistrationId"),
+                        profileEpoch = L(row, "ProfileEpoch"),
+                        frame = L(row, "Frame"),
+                        callerSourceFile = S(row, "CallerSourceFile"),
+                        callerLine = L(row, "CallerLine"),
+                        parentFunctionKey = S(row, "ParentFunctionKey"),
+                        childFunctionKey = S(row, "ChildFunctionKey"),
+                        calls = L(row, "Calls"),
+                        childInclusiveMs = D(row, "ChildInclusiveMs")
+                    })
+                    .OrderBy(x => x.sampleSequence)
+                    .ThenByDescending(x => x.childInclusiveMs)
+                    .ToArray(),
                 lineSamples = deepLines
                     .GroupBy(row => L(row, "SampleSequence"))
                     .OrderBy(group => group.Key)
@@ -531,6 +585,9 @@ public static partial class ResultReportService
                     var lineRows = deepLines
                         .Where(row => L(row, "RegistrationId") == registrationId)
                         .ToList();
+                    var callsiteRows = deepCallsites
+                        .Where(row => L(row, "RegistrationId") == registrationId)
+                        .ToList();
                     var pathFingerprints = samples
                         .Select(row => S(row, "PathFingerprint"))
                         .Where(value => !string.IsNullOrWhiteSpace(value))
@@ -558,7 +615,8 @@ public static partial class ResultReportService
                             callback.avgExclusiveUs,
                             callback.maxExclusiveMs,
                             callback.spikeCount,
-                            callback.maxSpikeExclusiveMs
+                            callback.maxSpikeExclusiveMs,
+                            frameMultiplicity = callback.frameMultiplicity
                         },
                         deep = new
                         {
@@ -574,6 +632,15 @@ public static partial class ResultReportService
                                 .Count(),
                             distinctPathFingerprints = pathFingerprints.Length,
                             lineEvidenceRows = lineRows.Count,
+                            callsiteEvidenceRows = callsiteRows.Count,
+                            repeatedSameCallsiteRows = callsiteRows.Count(row => L(row, "Calls") > 1),
+                            repeatedCalleeSampleGroups = callsiteRows
+                                .GroupBy(row =>
+                                    L(row, "SampleSequence").ToString(CultureInfo.InvariantCulture)
+                                    + "\u001f"
+                                    + S(row, "ChildFunctionKey"),
+                                    StringComparer.OrdinalIgnoreCase)
+                                .Count(group => group.Sum(row => L(row, "Calls")) > 1),
                             unresolvedLineEvents,
                             lineSourceReliable,
                             nestedRegistrationsExcluded = samples.Sum(row =>
@@ -591,6 +658,8 @@ public static partial class ResultReportService
                                 lineSourceReliable,
                             spikePathReady = samples.Any(row =>
                                 S(row, "Mode").Equals("SPIKE_CAPTURE", StringComparison.OrdinalIgnoreCase)),
+                            frameMultiplicityReady = callback.frameMultiplicity is not null,
+                            callsiteEvidenceReady = callsiteRows.Count > 0,
                             multipleObservedPaths = pathFingerprints.Length > 1
                         }
                     };
@@ -1076,6 +1145,7 @@ public static partial class ResultReportService
     private sealed class ResolverSpikeSample
     {
         public long RegistrationId { get; init; }
+        public long Frame { get; init; }
         public string Owner { get; init; } = "";
         public string Kind { get; init; } = "";
         public string Target { get; init; } = "";
