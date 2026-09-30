@@ -1099,9 +1099,12 @@ public static class PassGeneratorService
                 var actions = string.Join(", ", candidate.Actions.Select(LuaQuote));
                 lines.Add($"{indent}        __gcetHandles_{candidate.RegistrationId}[#__gcetHandles_{candidate.RegistrationId} + 1] = __gcetEngine_{candidate.RegistrationId}.SubscribeAction({{");
                 lines.Add($"{indent}            id = {LuaQuote(idBase + ".Exact")},");
-                lines.Add($"{indent}            actions = {{ {actions} }}{(candidate.RequiresActionType ? "" : ",")}");
-                if (!candidate.RequiresActionType)
-                    lines.Add($"{indent}            decodeType = false");
+                lines.Add($"{indent}            actions = {{ {actions} }},");
+                // The generated router never consumes routed action type. The
+                // original callback still receives the raw action object and
+                // performs any source-required GetType() itself, so decoding
+                // type inside 0-Engine would be duplicate work.
+                lines.Add($"{indent}            decodeType = false");
                 lines.Add($"{indent}        }}, {functionName}, {owner})");
             }
 
