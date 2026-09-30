@@ -10,6 +10,8 @@ internal sealed class ResolverForm : Form
     private readonly Button _modsBrowse = new() { Text = "Browse..." };
     private readonly Button _analyze = new() { Text = "ANALYZE", Height = 36 };
     private readonly Button _generate = new() { Text = "GENERATE PASS ZIP", Height = 36 };
+    private readonly Button _advanced = new() { Text = "ADVANCED OPTIONS", Height = 34, Enabled = false };
+    private string? _lastResolverPath;
     private readonly Label _status = new() { AutoSize = true, Text = "Select RESULTS (or a capture folder) and the live CET mods folder." };
     private readonly Label _families = new() { AutoSize = true, Text = "CALLBACK FAMILIES: -" };
     private readonly Label _generic = new() { AutoSize = true, Text = "GENERIC RESOLVED: -" };
@@ -35,7 +37,7 @@ internal sealed class ResolverForm : Form
             Dock = DockStyle.Fill,
             Padding = new Padding(14),
             ColumnCount = 3,
-            RowCount = 9
+            RowCount = 10
         };
 
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 125));
@@ -45,6 +47,7 @@ internal sealed class ResolverForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
@@ -61,6 +64,7 @@ internal sealed class ResolverForm : Form
         _modsBrowse.Dock = DockStyle.Fill;
         _analyze.Dock = DockStyle.Fill;
         _generate.Dock = DockStyle.Fill;
+        _advanced.Dock = DockStyle.Fill;
         _status.Anchor = AnchorStyles.Left;
 
         root.Controls.Add(captureLabel, 0, 0);
@@ -72,17 +76,19 @@ internal sealed class ResolverForm : Form
         root.Controls.Add(_analyze, 0, 2);
         root.SetColumnSpan(_analyze, 2);
         root.Controls.Add(_generate, 2, 2);
-        root.Controls.Add(_status, 0, 3);
+        root.Controls.Add(_advanced, 0, 3);
+        root.SetColumnSpan(_advanced, 3);
+        root.Controls.Add(_status, 0, 4);
         root.SetColumnSpan(_status, 3);
-        root.Controls.Add(_families, 0, 4);
+        root.Controls.Add(_families, 0, 5);
         root.SetColumnSpan(_families, 3);
-        root.Controls.Add(_generic, 0, 5);
+        root.Controls.Add(_generic, 0, 6);
         root.SetColumnSpan(_generic, 3);
-        root.Controls.Add(_registry, 0, 6);
+        root.Controls.Add(_registry, 0, 7);
         root.SetColumnSpan(_registry, 3);
-        root.Controls.Add(_unresolved, 0, 7);
+        root.Controls.Add(_unresolved, 0, 8);
         root.SetColumnSpan(_unresolved, 3);
-        root.Controls.Add(_output, 0, 8);
+        root.Controls.Add(_output, 0, 9);
         root.SetColumnSpan(_output, 3);
         _output.Dock = DockStyle.Fill;
 
@@ -92,6 +98,7 @@ internal sealed class ResolverForm : Form
         _modsBrowse.Click += (_, _) => BrowseInto(_mods);
         _analyze.Click += (_, _) => Analyze();
         _generate.Click += (_, _) => GeneratePass();
+        _advanced.Click += (_, _) => ShowAdvancedOptions();
     }
 
     private static void BrowseInto(TextBox target)
@@ -112,6 +119,7 @@ internal sealed class ResolverForm : Form
         {
             _analyze.Enabled = false;
             _generate.Enabled = false;
+            _advanced.Enabled = false;
             _status.Text = "Analyzing callback families...";
             _output.Clear();
             Application.DoEvents();
@@ -125,6 +133,8 @@ internal sealed class ResolverForm : Form
                 throw new DirectoryNotFoundException("Select the live cyber_engine_tweaks\\mods folder.");
 
             var result = ResolverService.Resolve(capture, mods);
+            _lastResolverPath = result.ResolverPath;
+            _advanced.Enabled = true;
 
             _families.Text = $"CALLBACK FAMILIES: {result.FamilyCount}";
             _generic.Text = $"GENERIC RESOLVED: {result.GenericResolvedCount}";
@@ -149,6 +159,44 @@ internal sealed class ResolverForm : Form
         {
             _analyze.Enabled = true;
             _generate.Enabled = true;
+            _advanced.Enabled = !string.IsNullOrWhiteSpace(_lastResolverPath) &&
+                                File.Exists(_lastResolverPath);
+        }
+    }
+
+    private void ShowAdvancedOptions()
+    {
+        try
+        {
+            var capture = _capture.Text.Trim();
+            var mods = _mods.Text.Trim();
+
+            if (!Directory.Exists(capture))
+                throw new DirectoryNotFoundException("Select a valid G-CET RESULTS folder or collected capture folder.");
+            if (!Directory.Exists(mods))
+                throw new DirectoryNotFoundException("Select the live cyber_engine_tweaks\\mods folder.");
+
+            // Refresh first so Advanced always reflects the current live stack
+            // and any classification hints saved during the previous visit.
+            var resolved = ResolverService.Resolve(capture, mods);
+            _lastResolverPath = resolved.ResolverPath;
+
+            using var dialog = new AdvancedOptionsForm(resolved.ResolverPath);
+            dialog.ShowDialog(this);
+
+            _status.Text =
+                "Advanced options closed. Re-run ANALYZE after saving classification hints so the resolver can use them as evidence.";
+        }
+        catch (Exception ex)
+        {
+            _status.Text = "Advanced options failed.";
+            _output.Text = ex.ToString();
+            MessageBox.Show(this, ex.Message, "G-CET Resolver", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+        finally
+        {
+            _advanced.Enabled = !string.IsNullOrWhiteSpace(_lastResolverPath) &&
+                                File.Exists(_lastResolverPath);
         }
     }
 
@@ -158,6 +206,7 @@ internal sealed class ResolverForm : Form
         {
             _analyze.Enabled = false;
             _generate.Enabled = false;
+            _advanced.Enabled = false;
             _status.Text = "Revalidating resolver decisions and generating overlay ZIP...";
             _output.Clear();
             Application.DoEvents();
@@ -174,6 +223,8 @@ internal sealed class ResolverForm : Form
             // pass is generated. The generator then consumes only that resolver
             // output and refuses stale source hashes.
             var resolved = ResolverService.Resolve(capture, mods);
+            _lastResolverPath = resolved.ResolverPath;
+            _advanced.Enabled = true;
             var pass = ResolverService.GeneratePass(capture, mods);
 
             _families.Text = $"CALLBACK FAMILIES: {resolved.FamilyCount}";
@@ -201,6 +252,8 @@ internal sealed class ResolverForm : Form
         {
             _analyze.Enabled = true;
             _generate.Enabled = true;
+            _advanced.Enabled = !string.IsNullOrWhiteSpace(_lastResolverPath) &&
+                                File.Exists(_lastResolverPath);
         }
     }
 }
