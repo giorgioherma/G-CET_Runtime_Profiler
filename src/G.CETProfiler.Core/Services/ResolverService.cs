@@ -10,6 +10,8 @@ public sealed record ResolverBuildResult(
     int FamilyCount,
     int RankedCallbackCount,
     int GenericResolvedCount,
+    int NonFrameOnlyAutoCount,
+    int FrameOnlyAutoCount,
     int RegistryHintCount,
     int UnresolvedCount);
 
@@ -85,6 +87,8 @@ public static class ResolverService
             result.FamilyCount,
             result.RankedCallbackCount,
             result.GenericResolvedCount,
+            result.NonFrameOnlyAutoCount,
+            result.FrameOnlyAutoCount,
             result.RegistryHintCount,
             result.UnresolvedCount);
     }

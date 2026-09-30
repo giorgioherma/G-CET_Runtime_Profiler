@@ -14,7 +14,7 @@ internal sealed class ResolverForm : Form
     private string? _lastResolverPath;
     private readonly Label _status = new() { AutoSize = true, Text = "Select RESULTS (or a capture folder) and the live CET mods folder." };
     private readonly Label _families = new() { AutoSize = true, Text = "CALLBACK FAMILIES: -" };
-    private readonly Label _generic = new() { AutoSize = true, Text = "GENERIC RESOLVED: -" };
+    private readonly Label _generic = new() { AutoSize = true, Text = "AUTO PATCHABLE: -" };
     private readonly Label _registry = new() { AutoSize = true, Text = "SPECIAL HINTS: -" };
     private readonly Label _unresolved = new() { AutoSize = true, Text = "UNRESOLVED: -" };
     private readonly TextBox _output = new()
@@ -137,7 +137,10 @@ internal sealed class ResolverForm : Form
             _advanced.Enabled = true;
 
             _families.Text = $"CALLBACK FAMILIES: {result.FamilyCount}";
-            _generic.Text = $"GENERIC RESOLVED: {result.GenericResolvedCount}";
+            _generic.Text =
+                $"AUTO PATCHABLE: {result.GenericResolvedCount}   |   " +
+                $"NON-FRAME-ONLY: {result.NonFrameOnlyAutoCount}   |   " +
+                $"FRAME-ONLY: {result.FrameOnlyAutoCount}";
             _registry.Text = $"SPECIAL HINTS: {result.RegistryHintCount}";
             _unresolved.Text = $"UNRESOLVED: {result.UnresolvedCount}";
 
