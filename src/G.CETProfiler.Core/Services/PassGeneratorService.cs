@@ -308,6 +308,12 @@ public static class PassGeneratorService
                 }
                 else if (resolverFamily.Equals("ONUPDATE", StringComparison.OrdinalIgnoreCase) &&
                          recipes.Any(x =>
+                             x.Equals("HARD_DORMANT_GUARD_HOIST", StringComparison.OrdinalIgnoreCase)))
+                {
+                    kind = CandidateKind.HardDormant;
+                }
+                else if (resolverFamily.Equals("ONUPDATE", StringComparison.OrdinalIgnoreCase) &&
+                         recipes.Any(x =>
                              x.Equals("FRAME_DISPATCH_CONSOLIDATION", StringComparison.OrdinalIgnoreCase)))
                 {
                     kind = CandidateKind.Frame;
@@ -360,6 +366,9 @@ public static class PassGeneratorService
                     EstimatedGlobalPaybackPct = facts.EstimatedGlobalPaybackPct,
                     StructuralExpressions = facts.StructuralExpressions,
                     StructuralConstructors = facts.StructuralConstructors,
+                    HardDormantGuardHoist = facts.HardDormantGuardHoist,
+                    HardDormantGateExpression = facts.HardDormantGateExpression,
+                    HardDormantPreGuardReadCount = facts.HardDormantPreGuardReadCount,
                     AlsoFrameDispatch = recipes.Any(x =>
                         x.Equals("FRAME_DISPATCH_CONSOLIDATION", StringComparison.OrdinalIgnoreCase))
                 });
@@ -394,7 +403,10 @@ public static class PassGeneratorService
             EstimatedCallbackPaybackPct = JsonDouble(facts, "estimatedCallbackPaybackPct"),
             EstimatedGlobalPaybackPct = JsonDouble(facts, "estimatedGlobalPaybackPct"),
             StructuralExpressions = ReadStructuralExpressions(facts, "identicalExpressions"),
-            StructuralConstructors = ReadStructuralExpressions(facts, "literalConstructors")
+            StructuralConstructors = ReadStructuralExpressions(facts, "literalConstructors"),
+            HardDormantGuardHoist = JsonBool(facts, "hardDormantGuardHoist"),
+            HardDormantGateExpression = JsonString(facts, "hardDormantGateExpression"),
+            HardDormantPreGuardReadCount = (int)(JsonNullableLong(facts, "hardDormantPreGuardReadCount") ?? 0)
         };
     }
 
@@ -672,10 +684,15 @@ public static class PassGeneratorService
                     ..(structuralOpening.Index + structuralOpening.Length)];
                 var structuralIndent = Regex.Match(structuralLines[0], @"^\s*").Value;
                 var localIndent = structuralIndent + "    ";
+                var guardText =
+                    candidate.HardDormantGuardHoist &&
+                    !string.IsNullOrWhiteSpace(candidate.HardDormantGateExpression)
+                        ? $"\n{localIndent}if not {candidate.HardDormantGateExpression} then return end -- G-CET dormant guard hoist"
+                        : "";
                 var localText = callbackLocals.Count == 0
                     ? ""
                     : "\n" + string.Join("\n", callbackLocals.Select(x => localIndent + x));
-                var rewritten = openingText + localText + rewrittenBody;
+                var rewritten = openingText + guardText + localText + rewrittenBody;
 
                 if (candidate.AlsoFrameDispatch)
                 {
@@ -719,9 +736,86 @@ public static class PassGeneratorService
                         literalConstructors = transformedConstructors,
                         callbackLocalReuse = true,
                         literalConstructorHoist = true,
+                        hardDormantGuardHoist = candidate.HardDormantGuardHoist,
+                        hardDormantGateExpression = candidate.HardDormantGateExpression,
+                        hardDormantPreGuardReadCount = candidate.HardDormantPreGuardReadCount,
                         frameDispatchConsolidation = candidate.AlsoFrameDispatch,
                         estimatedCallbackPaybackPct = candidate.EstimatedCallbackPaybackPct,
                         estimatedGlobalPaybackPct = candidate.EstimatedGlobalPaybackPct
+                    }
+                });
+                applied++;
+                continue;
+            }
+
+            if (candidate.Kind == CandidateKind.HardDormant)
+            {
+                if (effectiveLineEnd > lines.Count ||
+                    !candidate.HardDormantGuardHoist ||
+                    string.IsNullOrWhiteSpace(candidate.HardDormantGateExpression))
+                {
+                    skipped.Add(Skip(candidate, "Dormant guard-hoist handoff is incomplete or outside the current source range."));
+                    continue;
+                }
+
+                var dormantLines = lines
+                    .Skip(candidate.LineStart - 1)
+                    .Take(effectiveLineEnd - candidate.LineStart + 1)
+                    .ToArray();
+                var dormantSegment = string.Join("\n", dormantLines);
+                var dormantOpening = Regex.Match(
+                    dormantSegment,
+                    @"(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*(['""])onUpdate\1\s*,\s*function\s*\((?<args>[^)]*)\)",
+                    RegexOptions.CultureInvariant | RegexOptions.Singleline);
+                if (!dormantOpening.Success)
+                {
+                    skipped.Add(Skip(candidate, "Dormant guard hoist could not revalidate the direct onUpdate callback opening."));
+                    continue;
+                }
+
+                var dormantIndent = Regex.Match(dormantLines[0], @"^\s*").Value;
+                var bodyIndent = dormantIndent + "    ";
+                var dormantRewritten =
+                    dormantSegment[..(dormantOpening.Index + dormantOpening.Length)] +
+                    $"\n{bodyIndent}if not {candidate.HardDormantGateExpression} then return end -- G-CET dormant guard hoist" +
+                    dormantSegment[(dormantOpening.Index + dormantOpening.Length)..];
+
+                if (candidate.AlsoFrameDispatch)
+                {
+                    var registrationMatch = Regex.Match(
+                        dormantRewritten,
+                        @"\bregisterForEvent\b",
+                        RegexOptions.CultureInvariant);
+                    if (registrationMatch.Success)
+                    {
+                        var token = $"__gcetRegisterEvent_{candidate.RegistrationId}";
+                        dormantRewritten =
+                            dormantRewritten[..registrationMatch.Index] +
+                            token +
+                            dormantRewritten[(registrationMatch.Index + "registerForEvent".Length)..];
+                        frameHelpers.Add((candidate, token));
+                    }
+                }
+
+                var dormantReplacementLines = dormantRewritten.Split('\n');
+                lines.RemoveRange(
+                    candidate.LineStart - 1,
+                    effectiveLineEnd - candidate.LineStart + 1);
+                lines.InsertRange(candidate.LineStart - 1, dormantReplacementLines);
+
+                transformManifest.Add(new
+                {
+                    registrationId = candidate.RegistrationId,
+                    owner = candidate.Owner,
+                    type = "HARD_DORMANT_GUARD_HOIST",
+                    file = candidate.RelativeFile,
+                    sourceLines = new[] { candidate.LineStart, candidate.LineEnd },
+                    facts = new
+                    {
+                        gateExpression = candidate.HardDormantGateExpression,
+                        preGuardReadCount = candidate.HardDormantPreGuardReadCount,
+                        frameDispatchConsolidation = candidate.AlsoFrameDispatch,
+                        semantics = "existing source-proven inactive guard duplicated at callback entry; original guard retained"
                     }
                 });
                 applied++;
@@ -1170,7 +1264,8 @@ public static class PassGeneratorService
         Action,
         Frame,
         AuthorCadence,
-        Structural
+        Structural,
+        HardDormant
     }
 
     private sealed class PassCandidate
@@ -1199,6 +1294,9 @@ public static class PassGeneratorService
         public double EstimatedGlobalPaybackPct { get; init; }
         public StructuralExpressionFact[] StructuralExpressions { get; init; } = Array.Empty<StructuralExpressionFact>();
         public StructuralExpressionFact[] StructuralConstructors { get; init; } = Array.Empty<StructuralExpressionFact>();
+        public bool HardDormantGuardHoist { get; init; }
+        public string HardDormantGateExpression { get; init; } = "";
+        public int HardDormantPreGuardReadCount { get; init; }
         public bool AlsoFrameDispatch { get; init; }
     }
 
@@ -1222,6 +1320,9 @@ public static class PassGeneratorService
         public double EstimatedGlobalPaybackPct { get; init; }
         public StructuralExpressionFact[] StructuralExpressions { get; init; } = Array.Empty<StructuralExpressionFact>();
         public StructuralExpressionFact[] StructuralConstructors { get; init; } = Array.Empty<StructuralExpressionFact>();
+        public bool HardDormantGuardHoist { get; init; }
+        public string HardDormantGateExpression { get; init; } = "";
+        public int HardDormantPreGuardReadCount { get; init; }
     }
 
     private sealed record TransformResult(byte[] Bytes, int AppliedTransforms);
