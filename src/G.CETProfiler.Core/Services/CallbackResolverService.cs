@@ -1009,6 +1009,32 @@ internal static class CallbackResolverService
         if (family == "ONUPDATE")
             return ResolveOnUpdate(callback, source, sourceEvidence, cadence);
 
+        // Structural callback-local rewrites do not depend on the callback
+        // delivery family. Unsupported cadence/routing families should still
+        // receive safe hotpath analysis instead of terminating immediately.
+        if (source is not null &&
+            TryResolveStructuralHotpath(source, callback, out var structural))
+        {
+            return new GenericResolution
+            {
+                Status = "RESOLVED",
+                Automatable = true,
+                Pattern = "STRUCTURAL_HOTPATH_REWRITE",
+                RecipeFamilies = new[] { "STRUCTURAL_HOTPATH_REWRITE" },
+                Facts = new
+                {
+                    structuralHotpath = true,
+                    identicalExpressions = structural.IdenticalExpressions,
+                    literalConstructors = structural.LiteralConstructors,
+                    estimatedCallbackPaybackPct = structural.EstimatedCallbackPaybackPct,
+                    estimatedGlobalPaybackPct = structural.EstimatedGlobalPaybackPct
+                },
+                Evidence = structural.Evidence,
+                Blockers = Array.Empty<string>(),
+                Source = sourceEvidence
+            };
+        }
+
         return new GenericResolution
         {
             Status = "NO_GENERIC_RESOLVER",
@@ -1016,7 +1042,7 @@ internal static class CallbackResolverService
             Pattern = "UNSUPPORTED_CALLBACK_FAMILY",
             RecipeFamilies = Array.Empty<string>(),
             Evidence = Array.Empty<string>(),
-            Blockers = new[] { "No proven generic recipe has been implemented for this callback family yet." },
+            Blockers = new[] { "No family-specific recipe or material source-proven structural hotpath rewrite was found." },
             Source = sourceEvidence
         };
     }
@@ -1443,7 +1469,7 @@ internal static class CallbackResolverService
                      .GroupBy(x => x.Value, StringComparer.Ordinal))
         {
             var count = group.Count();
-            if (count < 2)
+            if (count < 1)
                 continue;
 
             constructors.Add(new StructuralExpression
@@ -1456,18 +1482,18 @@ internal static class CallbackResolverService
         if (expressions.Count == 0 && constructors.Count == 0)
             return false;
 
-        // Conservative estimate: only repeated occurrences beyond the first are
-        // treated as avoidable. Runtime deep timing can refine this later; the
-        // current estimate is intentionally capped and only used as a materiality
-        // signal, never as semantic proof.
-        var redundantOccurrences =
+        // Repeated callback-stable getters save occurrences beyond the first
+        // within each invocation. Literal CName/TweakDBID construction is
+        // different: every callback-time construction is avoidable because the
+        // complete immutable input is source-literal and can be hoisted once.
+        var avoidableOccurrences =
             expressions.Sum(x => x.Count - 1) +
-            constructors.Sum(x => x.Count - 1);
+            constructors.Sum(x => x.Count);
         var totalOccurrences =
             expressions.Sum(x => x.Count) +
             constructors.Sum(x => x.Count);
         var localFraction = totalOccurrences > 0
-            ? Math.Min(0.75, (double)redundantOccurrences / totalOccurrences)
+            ? Math.Min(0.75, (double)avoidableOccurrences / totalOccurrences)
             : 0.0;
 
         var estimatedCallbackPaybackPct = localFraction * 100.0;
@@ -1487,7 +1513,7 @@ internal static class CallbackResolverService
         if (constructors.Count > 0)
             evidence.Add(
                 $"Current source contains {constructors.Sum(x => x.Count)} calls across " +
-                $"{constructors.Count} repeated literal constructor expression(s).");
+                $"{constructors.Count} literal constructor expression(s) hoistable out of the callback.");
         evidence.Add(
             $"Measured callback cost is {callback.ExclusiveMsPerSecond:0.###} ms/s " +
             $"({callback.GlobalWorkSharePct:0.###}% of measured CET work).");
