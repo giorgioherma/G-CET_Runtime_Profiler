@@ -1079,11 +1079,11 @@ public static class PassGeneratorService
 
                 var wrappedMatches = Regex.Matches(
                     overrideSegment,
-                    @"(?m)^\s*(?:return\s+)?wrappedMethod\s*\(\s*self\s*,\s*action\s*,\s*consumer\s*\)\s*;?\s*$",
+                    @"(?m)^\s*(?:return\s+)?wrappedMethod\s*\(\s*(?:[A-Za-z_]\w*\s*,\s*)?action\s*,\s*consumer\s*\)\s*;?\s*$",
                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
                 if (wrappedMatches.Count != 1)
                 {
-                    skipped.Add(Skip(candidate, "Transparent Override no longer contains exactly one wrappedMethod(self, action, consumer) call."));
+                    skipped.Add(Skip(candidate, "Transparent Override no longer contains exactly one supported wrappedMethod continuation call."));
                     continue;
                 }
 
