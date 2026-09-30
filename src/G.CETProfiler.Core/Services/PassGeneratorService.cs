@@ -649,7 +649,7 @@ public static class PassGeneratorService
 
                 var openingText = structuralSegment[
                     ..(structuralOpening.Index + structuralOpening.Length)];
-                var indent = Regex.Match(structuralLines[0], @"^\s*").Value;
+                var structuralIndent = Regex.Match(structuralLines[0], @"^\s*").Value;
                 var localIndent = structuralIndent + "    ";
                 var localText = callbackLocals.Count == 0
                     ? ""
