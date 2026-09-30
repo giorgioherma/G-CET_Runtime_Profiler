@@ -10,6 +10,8 @@ internal sealed record CallbackResolverDocumentResult(
     int FamilyCount,
     int RankedCallbackCount,
     int GenericResolvedCount,
+    int NonFrameOnlyAutoCount,
+    int FrameOnlyAutoCount,
     int RegistryHintCount,
     int UnresolvedCount);
 
@@ -69,6 +71,8 @@ internal static class CallbackResolverService
         var familyDocuments = new List<object>();
         var rankedCount = 0;
         var genericResolved = 0;
+        var nonFrameOnlyAuto = 0;
+        var frameOnlyAuto = 0;
         var registryHints = 0;
         var unresolved = 0;
 
@@ -92,7 +96,19 @@ internal static class CallbackResolverService
                     hint = registry.Match(callback);
 
                 if (generic.Automatable)
+                {
                     genericResolved++;
+                    var recipes = generic.RecipeFamilies;
+                    var frameOnly =
+                        recipes.Length == 1 &&
+                        recipes[0].Equals(
+                            "FRAME_DISPATCH_CONSOLIDATION",
+                            StringComparison.OrdinalIgnoreCase);
+                    if (frameOnly)
+                        frameOnlyAuto++;
+                    else
+                        nonFrameOnlyAuto++;
+                }
                 else if (hint is not null)
                     registryHints++;
                 else
@@ -253,6 +269,8 @@ internal static class CallbackResolverService
                 familyCount = familyGroups.Count,
                 rankedCallbackCount = rankedCount,
                 genericResolved,
+                nonFrameOnlyAuto,
+                frameOnlyAuto,
                 registryHints,
                 unresolved
             },
@@ -265,6 +283,8 @@ internal static class CallbackResolverService
             familyGroups.Count,
             rankedCount,
             genericResolved,
+            nonFrameOnlyAuto,
+            frameOnlyAuto,
             registryHints,
             unresolved);
     }
