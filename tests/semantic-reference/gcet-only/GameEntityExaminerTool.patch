@@ -1,0 +1,78 @@
+--- a/GameEntityExaminerTool/init.lua
++++ b/GameEntityExaminerTool/init.lua
+@@ -413,26 +413,52 @@
+ 
+ local scanning = nil or true or false
+ 
++-- G-CET semantic reference: remote-control motion remains EveryFrame; entity
++-- discovery/scanner work is dormant when the feature is unused and otherwise
++-- reconciles on a fast 30 Hz lane.
++local __gcetExaminerScanAccumulator = 0
++
+ __gcetRegisterEvent_125('onUpdate', function(delta)
+     Cron.Update(delta)
+-    if not GetGameInstance() or not Game.GetPlayer() then return end
+-    if Game.GetPlayer():GetChimeraHighlight() ~= nil and not defaultHighlight then
+-        defaultHighlight = Game.GetPlayer():GetChimeraHighlight()
++    local player = Game.GetPlayer()
++    if not GetGameInstance() or not player then return end
++    if player:GetChimeraHighlight() ~= nil and not defaultHighlight then
++        defaultHighlight = player:GetChimeraHighlight()
+     end
+-    if Game.GetPlayer():GetMountedVehicle() and not defaultHighlight then
+-        defaultHighlight = Game.GetPlayer():GetMountedVehicle():GetDefaultHighlight()
++    if player:GetMountedVehicle() and not defaultHighlight then
++        defaultHighlight = player:GetMountedVehicle():GetDefaultHighlight()
+     end
+     local tpFacility = GetSingleton('gameTeleportationFacility')
+     if tpFacility and rcEnt and rcEnt:IsVehicleRemoteControlled() then
+-        tpFacility:Teleport(Game.GetPlayer(), rcEnt:GetWorldPosition(), EulerAngles.new(0,0,10))
++        tpFacility:Teleport(player, rcEnt:GetWorldPosition(), EulerAngles.new(0,0,10))
+         GameOptions.SetBool('Traffic', 'StopSpawn', false)
+     end
+     if rcEnt and not rcEnt:IsVehicleRemoteControlled() then
+         rcEnt = nil
+     end
++
++    local scanActive =
++        settings.autoFreeze == true or
++        settings.buttonsOn == true or
++        settings.highlightEnts == true or
++        rcEnt ~= nil or
++        cetopen == true
++
++    if not scanActive then
++        __gcetExaminerScanAccumulator = 0
++        return
++    end
++
++    __gcetExaminerScanAccumulator = __gcetExaminerScanAccumulator + delta
++    if __gcetExaminerScanAccumulator < (1 / 30) then return end
++    __gcetExaminerScanAccumulator = 0
++
++    local targetingSystem = Game.GetTargetingSystem()
++    if not targetingSystem then return end
++
+     if settings.autoFreeze == true then
+-        if not Game.GetTargetingSystem() or not Game.GetTargetingSystem():GetComponentClosestToCrosshair(Game.GetPlayer(), nil) then return end
+-        freezeEnt = Game.GetTargetingSystem():GetComponentClosestToCrosshair(Game.GetPlayer(), nil):GetEntity() or nil
++        if not targetingSystem:GetComponentClosestToCrosshair(player, nil) then return end
++        freezeEnt = targetingSystem:GetComponentClosestToCrosshair(player, nil):GetEntity() or nil
+@@ -450,16 +476,16 @@
+-        scanning = Game.GetPlayer().focusModeActive or nil
++        scanning = player.focusModeActive or nil
+         if not scanning and noJumping == true then
+-            StatusEffectHelper.RemoveStatusEffect(Game.GetPlayer(), TweakDBID.new("GameplayRestriction.NoJump"), 1)
++            StatusEffectHelper.RemoveStatusEffect(player, TweakDBID.new("GameplayRestriction.NoJump"), 1)
+             noJumping = false
+         elseif scanning and noJumping == false then
+-            StatusEffectHelper.ApplyStatusEffect(Game.GetPlayer(), TweakDBID.new("GameplayRestriction.NoJump"), nil)
++            StatusEffectHelper.ApplyStatusEffect(player, TweakDBID.new("GameplayRestriction.NoJump"), nil)
+             noJumping = true
+         end
+     end
+     UpdateStuff()
+-    if Game.GetTargetingSystem():GetComponentClosestToCrosshair(Game.GetPlayer(), nil) ~= nil and not Game.GetSystemRequestsHandler():IsPreGame() then
+-        ent = Game.GetTargetingSystem():GetComponentClosestToCrosshair(Game.GetPlayer(), nil):GetEntity()
++    if targetingSystem:GetComponentClosestToCrosshair(player, nil) ~= nil and not Game.GetSystemRequestsHandler():IsPreGame() then
++        ent = targetingSystem:GetComponentClosestToCrosshair(player, nil):GetEntity()

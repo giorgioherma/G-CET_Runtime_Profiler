@@ -1,0 +1,43 @@
+--- a/OverclockedLynxPaws/init.lua
++++ b/OverclockedLynxPaws/init.lua
+@@ -242,8 +242,35 @@
+         self.loaded = false
+     end)
+ 
++    -- G-CET semantic reference: wall/air phases remain EveryFrame, while
++    -- grounded IDLE discovery runs on a fast 30 Hz lane.
++    local __gcetIdleAccumulator = 0
++
+     __gcetRegisterEvent_261("onUpdate", function(delta)
+         if self.loaded and self._Phases then
++            local phaseActive = self._wallState and self._wallState.phase ~= "IDLE"
++            local inputEdge =
++                self._input.jumpJustPressed or
++                self._input.crouchJustPressed or
++                self._input.backJustPressed or
++                self._input.meleeJustPressed or
++                self._input.weaponSwitchJustPressed or
++                self._input.reverseHangJustPressed or
++                self._input.dismountJustPressed or
++                self._input.safeRollJustPressed
++            local phaseDelta = delta
++
++            if not phaseActive and not inputEdge then
++                __gcetIdleAccumulator = __gcetIdleAccumulator + delta
++                if __gcetIdleAccumulator < (1 / 30) then
++                    if self._ShiftCompat then self._ShiftCompat.update(delta) end
++                    return
++                end
++                phaseDelta = __gcetIdleAccumulator
++                __gcetIdleAccumulator = 0
++            else
++                __gcetIdleAccumulator = 0
++            end
+             -- Sprint bridge (must run before Phases.update consumes it):
+@@ -266,7 +293,7 @@
+             -- pcall so a Lua error inside a phase handler can't starve the
+             -- Shift release below (Shift would otherwise stay frozen all session).
+-            local okUpd, err = pcall(self._Phases.update, delta, self._config.syncSettings, self._LynxPaw)
++            local okUpd, err = pcall(self._Phases.update, phaseDelta, self._config.syncSettings, self._LynxPaw)
+             if not okUpd then print("[OLP] Phases.update error: " .. tostring(err)) end
+             self._input.jumpJustPressed = false

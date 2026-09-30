@@ -1,0 +1,27 @@
+--- a/Shift/Modules/Lifecycle/UpdateLoop.lua
++++ b/Shift/Modules/Lifecycle/UpdateLoop.lua
+@@ -3,6 +3,11 @@
+ local CameraEngine = require("Modules/Camera/CameraEngine")
+ 
+ local UpdateLoop = {}
++
++-- G-CET semantic reference: state identity/reconciliation is fast-rate work;
++-- camera, shake, locomotion and speed interpolation remain EveryFrame.
++local __gcetStatePollAccumulator = 0
++local __gcetStatePollInterval = 0.05
+ local ctx = nil
+ 
+@@ -157,8 +162,13 @@
+         return
+     end
+ 
+-    VehicleState.update(delta)
+-    WeaponState.update(delta)
++    __gcetStatePollAccumulator = __gcetStatePollAccumulator + delta
++    if __gcetStatePollAccumulator >= __gcetStatePollInterval then
++        local stateDelta = __gcetStatePollAccumulator
++        __gcetStatePollAccumulator = 0
++        VehicleState.update(stateDelta)
++        WeaponState.update(stateDelta)
++    end
+     ShakeEngine.setFrameClock(frameClock)

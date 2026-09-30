@@ -1,0 +1,63 @@
+--- a/Combat/Modules/EnemyBase.lua
++++ b/Combat/Modules/EnemyBase.lua
+@@ -160,14 +160,28 @@
+ TweakDB:Update(EnemyBase.T4.Accuracy.id)
+ 
+ 
++-- G-CET semantic reference: combat + locomotion transition guard.
++local __gcetEnemyBaseState = nil
++
+ ---@param this PlayerPuppet
+ ObserveAfter("PlayerPuppet", "IsInCombat", function(this)
+-	if this.inCombat == true then
++    local inCombat = this.inCombat == true
++    local movingHorizontally = inCombat and this:IsMovingHorizontally() == true or false
++    local movingVertically = inCombat and this:IsMovingVertically() == true or false
++    local semanticState =
++        (inCombat and 4 or 0) +
++        (movingHorizontally and 1 or 0) +
++        (movingVertically and 2 or 0)
++
++    if semanticState == __gcetEnemyBaseState then return end
++    __gcetEnemyBaseState = semanticState
++
++	if inCombat then
+@@ -170,7 +184,7 @@
+-		if this:IsMovingHorizontally() == true then
++		if movingHorizontally then
+@@ -263,7 +277,7 @@
+-		if this:IsMovingVertically() == true then
++		if movingVertically then
+@@ -358,7 +372,7 @@
+-		if this:IsMovingHorizontally() == false and this:IsMovingVertically() == false then
++		if not movingHorizontally and not movingVertically then
+--- a/Combat/Modules/Immersive Effect.lua
++++ b/Combat/Modules/Immersive Effect.lua
+@@ -152,10 +152,22 @@
+ }
+ 
+ 
++-- G-CET semantic reference: combat transition-state guard.
++-- IsInCombat is queried hundreds of times per second by the game. This module
++-- only needs to rewrite its TweakDB locomotion profile when the relevant
++-- locomotion class changes.
++local __gcetImmersiveLocomotionState = nil
++
+ ---@param this PlayerPuppet
+ ObserveAfter("PlayerPuppet", "IsInCombat",function(this)
+-
+-    if this:IsMovingHorizontally() == true then
++    local movingHorizontally = this:IsMovingHorizontally() == true
++    local movingVertically = this:IsMovingVertically() == true
++    local locomotionState = (movingHorizontally and 1 or 0) + (movingVertically and 2 or 0)
++
++    if locomotionState == __gcetImmersiveLocomotionState then return end
++    __gcetImmersiveLocomotionState = locomotionState
++
++    if movingHorizontally then
+@@ -190,7 +202,7 @@
+-    if this:IsMovingVertically() == true then
++    if movingVertically then
+@@ -224,7 +236,7 @@
+-	if this:IsMovingHorizontally() == false and this:IsMovingVertically() == false then
++	if not movingHorizontally and not movingVertically then
