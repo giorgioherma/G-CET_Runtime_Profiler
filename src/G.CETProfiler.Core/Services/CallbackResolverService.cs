@@ -138,6 +138,7 @@ internal static class CallbackResolverService
                         dormancy.AuthorDiscoveryAccumulator,
                         dormancy.AuthorDiscoveryGate,
                         dormancy.DiscoveryRegionSelfContained,
+                        dormancy.AuthorDiscoveryBlocker,
                         dormancy.Evidence,
                         dormancy.Blockers
                     },
@@ -469,10 +470,12 @@ internal static class CallbackResolverService
         var authorDiscoveryAccumulator = "";
         var authorDiscoveryGate = "";
         var discoveryRegionSelfContained = false;
+        var authorDiscoveryBlocker = "";
 
         if (TryResolveAuthorDiscoveryCadence(
                 source,
-                out var discoveryCadence))
+                out var discoveryCadence,
+                out authorDiscoveryBlocker))
         {
             authorDiscoveryCadenceProven = true;
             authorDiscoveryIntervalSeconds = discoveryCadence.IntervalSeconds;
@@ -502,6 +505,7 @@ internal static class CallbackResolverService
                 AuthorDiscoveryAccumulator = authorDiscoveryAccumulator,
                 AuthorDiscoveryGate = authorDiscoveryGate,
                 DiscoveryRegionSelfContained = discoveryRegionSelfContained,
+                AuthorDiscoveryBlocker = authorDiscoveryBlocker,
                 Evidence = evidence.ToArray(),
                 Blockers = new[] { "Dormancy transforms are prohibited for this callback class; structural rewrites remain allowed." }
             };
@@ -525,6 +529,7 @@ internal static class CallbackResolverService
                 AuthorDiscoveryAccumulator = authorDiscoveryAccumulator,
                 AuthorDiscoveryGate = authorDiscoveryGate,
                 DiscoveryRegionSelfContained = discoveryRegionSelfContained,
+                AuthorDiscoveryBlocker = authorDiscoveryBlocker,
                 Evidence = evidence.ToArray(),
                 Blockers = new[] { "Whole-callback sleep is not proven; inspect queue-empty or no-pending-work guards instead." }
             };
@@ -583,6 +588,7 @@ internal static class CallbackResolverService
                     AuthorDiscoveryAccumulator = authorDiscoveryAccumulator,
                     AuthorDiscoveryGate = authorDiscoveryGate,
                     DiscoveryRegionSelfContained = discoveryRegionSelfContained,
+                    AuthorDiscoveryBlocker = authorDiscoveryBlocker,
                     StateWriterSignals = stateWriterSignals,
                     CompleteWakePathProven = completeWakePathProven,
                     Evidence = evidence.Concat(completeWakePathProven
@@ -635,6 +641,7 @@ internal static class CallbackResolverService
                 AuthorDiscoveryAccumulator = authorDiscoveryAccumulator,
                 AuthorDiscoveryGate = authorDiscoveryGate,
                 DiscoveryRegionSelfContained = discoveryRegionSelfContained,
+                AuthorDiscoveryBlocker = authorDiscoveryBlocker,
                 Evidence = evidence.ToArray(),
                 Blockers = discoveryRegionSelfContained
                     ? new[] { "Evidence-only phase: finite discovery extraction has not yet been authorized for generation." }
@@ -660,6 +667,7 @@ internal static class CallbackResolverService
                 AuthorDiscoveryAccumulator = authorDiscoveryAccumulator,
                 AuthorDiscoveryGate = authorDiscoveryGate,
                 DiscoveryRegionSelfContained = discoveryRegionSelfContained,
+                AuthorDiscoveryBlocker = authorDiscoveryBlocker,
                 Evidence = evidence.ToArray(),
                 Blockers = new[] { "No complete activity gate boundary was proven in the measured callback." }
             };
@@ -683,6 +691,7 @@ internal static class CallbackResolverService
                 AuthorDiscoveryAccumulator = authorDiscoveryAccumulator,
                 AuthorDiscoveryGate = authorDiscoveryGate,
                 DiscoveryRegionSelfContained = discoveryRegionSelfContained,
+                AuthorDiscoveryBlocker = authorDiscoveryBlocker,
                 Evidence = evidence.ToArray(),
                 Blockers = new[] { "No complete source-proven dormant boundary was found." }
             };
@@ -706,9 +715,11 @@ internal static class CallbackResolverService
 
     private static bool TryResolveAuthorDiscoveryCadence(
         ResolvedSource source,
-        out AuthorDiscoveryCadenceResolution resolution)
+        out AuthorDiscoveryCadenceResolution resolution,
+        out string blocker)
     {
         resolution = new AuthorDiscoveryCadenceResolution();
+        blocker = "NO_MATCH";
 
         var text = source.CallbackText
             .Replace("\r\n", "\n")
@@ -718,20 +729,27 @@ internal static class CallbackResolverService
                 text,
                 @"\b(?:AIAction|AIBehavior|CombatState|NPCPuppet|CameraSystem|GetActiveCameraData|\bFPP\b|\bTPP\b)",
                 RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+        {
+            blocker = "SENSITIVE_CALLBACK";
             return false;
+        }
 
         var opening = Regex.Match(
             text,
             @"(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*(['""])onUpdate\1\s*,\s*function\s*\(\s*(?<delta>[A-Za-z_]\w*)\s*\)",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Singleline);
         if (!opening.Success)
+        {
+            blocker = "NO_DIRECT_ONUPDATE";
             return false;
+        }
 
         var delta = opening.Groups["delta"].Value;
         var body = text[(opening.Index + opening.Length)..];
         var lines = body.Split('\n');
 
         // Finite V1 proof: explicit "if not ACTIVE then" block.
+        var sawInactiveBlock = false;
         for (var i = 0; i < lines.Length; i++)
         {
             var inactive = Regex.Match(
@@ -741,10 +759,15 @@ internal static class CallbackResolverService
             if (!inactive.Success)
                 continue;
 
+            sawInactiveBlock = true;
+            blocker = "INACTIVE_BLOCK_UNRESOLVED";
             var inactiveIndent = inactive.Groups["indent"].Value.Length;
             var inactiveEnd = FindSameIndentEnd(lines, i, inactiveIndent);
             if (inactiveEnd <= i)
+            {
+                blocker = "INACTIVE_BLOCK_BOUNDARY";
                 continue;
+            }
 
             var inactiveLines = lines.Skip(i + 1).Take(inactiveEnd - i - 1).ToArray();
 
@@ -784,7 +807,10 @@ internal static class CallbackResolverService
             }
 
             if (incrementLine < 0 || string.IsNullOrWhiteSpace(accumulator))
+            {
+                blocker = "NO_TIMER_INCREMENT";
                 continue;
+            }
 
             var thresholdLine = -1;
             var seconds = 0.0;
@@ -812,14 +838,20 @@ internal static class CallbackResolverService
             }
 
             if (thresholdLine < 0)
+            {
+                blocker = "NO_FIXED_THRESHOLD";
                 continue;
+            }
 
             var thresholdIndent =
                 inactiveLines[thresholdLine].Length -
                 inactiveLines[thresholdLine].TrimStart().Length;
             var thresholdEnd = FindSameIndentEnd(inactiveLines, thresholdLine, thresholdIndent);
             if (thresholdEnd <= thresholdLine)
+            {
+                blocker = "THRESHOLD_BLOCK_BOUNDARY";
                 continue;
+            }
 
             var gatedRegion = string.Join(
                 "\n",
@@ -829,28 +861,40 @@ internal static class CallbackResolverService
                     gatedRegion,
                     @"\b" + Regex.Escape(accumulator) + @"\s*=\s*0(?:\.0+)?\b",
                     RegexOptions.CultureInvariant))
+            {
+                blocker = "NO_TIMER_RESET";
                 continue;
+            }
 
             // Require actual discovery/world-query work, not an arbitrary timer.
             if (!Regex.IsMatch(
                     gatedRegion,
                     @"\b(?:Vector4\.Distance|GetWorldPosition|GetTargetingSystem|GetComponentClosestToCrosshair|FindEntityByID|mappin|nearby|proximity)\b",
                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+            {
+                blocker = "NO_DISCOVERY_WORK";
                 continue;
+            }
 
             var full = source.FullText
                 .Replace("\r\n", "\n")
                 .Replace('\r', '\n');
             var callbackIndex = full.IndexOf(text, StringComparison.Ordinal);
             if (callbackIndex < 0)
+            {
+                blocker = "CALLBACK_NOT_ISOLATED";
                 continue;
+            }
             var outside = full.Remove(callbackIndex, text.Length);
             var activeGate = inactive.Groups["active"].Value;
             if (!Regex.IsMatch(
                     outside,
                     @"(?m)^\s*" + Regex.Escape(activeGate) + @"\s*=\s*(?:true|false|[^=].*)$",
                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+            {
+                blocker = "NO_EXTERNAL_ACTIVE_WRITER";
                 continue;
+            }
 
             // A region is extraction-safe only when identifiers used by the
             // discovery block are not locals declared earlier in the callback.
@@ -870,6 +914,7 @@ internal static class CallbackResolverService
                     RegexOptions.CultureInvariant))
                 .ToArray();
 
+            blocker = "";
             resolution = new AuthorDiscoveryCadenceResolution
             {
                 ActiveGate = activeGate,
@@ -881,6 +926,8 @@ internal static class CallbackResolverService
             return true;
         }
 
+        if (!sawInactiveBlock)
+            blocker = "NO_INACTIVE_BLOCK";
         return false;
     }
 
@@ -3457,6 +3504,7 @@ internal static class CallbackResolverService
         public string AuthorDiscoveryAccumulator { get; init; } = "";
         public string AuthorDiscoveryGate { get; init; } = "";
         public bool DiscoveryRegionSelfContained { get; init; }
+        public string AuthorDiscoveryBlocker { get; init; } = "";
         public string[] Evidence { get; init; } = Array.Empty<string>();
         public string[] Blockers { get; init; } = Array.Empty<string>();
 
