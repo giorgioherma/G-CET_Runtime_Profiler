@@ -16,8 +16,8 @@ public sealed record PassBuildResult(
 /// <summary>
 /// Generates a reversible overlay ZIP from resolver decisions only.
 /// Generator supports only finite resolver-authorized recipes:
-/// ACTION_ROUTING_*, FRAME_DISPATCH_CONSOLIDATION, and source-proven
-/// AUTHOR_CADENCE_WHOLE_CALLBACK with measured payback.
+/// ACTION_ROUTING_*, FRAME_DISPATCH_CONSOLIDATION, source-proven
+/// AUTHOR_CADENCE_WHOLE_CALLBACK, and cost-gated STRUCTURAL_HOTPATH_REWRITE.
 /// It never invents candidates from mod names or unclassified source.
 /// </summary>
 public static class PassGeneratorService
@@ -185,7 +185,8 @@ public static class PassGeneratorService
                 {
                     "ACTION_ROUTING_*",
                     "FRAME_DISPATCH_CONSOLIDATION",
-                    "AUTHOR_CADENCE_WHOLE_CALLBACK"
+                    "AUTHOR_CADENCE_WHOLE_CALLBACK",
+                    "STRUCTURAL_HOTPATH_REWRITE"
                 },
                 fixedRuntimeException = "0-Engine",
                 note = "V1 target selection is capture/resolver-only. 0-Engine is the explicit fixed infrastructure exception and is always shipped so generic ActionRouter/frame registrar recipes have one known runtime."
@@ -301,6 +302,12 @@ public static class PassGeneratorService
                 }
                 else if (resolverFamily.Equals("ONUPDATE", StringComparison.OrdinalIgnoreCase) &&
                          recipes.Any(x =>
+                             x.Equals("STRUCTURAL_HOTPATH_REWRITE", StringComparison.OrdinalIgnoreCase)))
+                {
+                    kind = CandidateKind.Structural;
+                }
+                else if (resolverFamily.Equals("ONUPDATE", StringComparison.OrdinalIgnoreCase) &&
+                         recipes.Any(x =>
                              x.Equals("FRAME_DISPATCH_CONSOLIDATION", StringComparison.OrdinalIgnoreCase)))
                 {
                     kind = CandidateKind.Frame;
@@ -350,7 +357,11 @@ public static class PassGeneratorService
                     AuthorDeltaParameter = facts.AuthorDeltaParameter,
                     EstimatedAvoidablePollingMsPerSecond = facts.EstimatedAvoidablePollingMsPerSecond,
                     EstimatedCallbackPaybackPct = facts.EstimatedCallbackPaybackPct,
-                    EstimatedGlobalPaybackPct = facts.EstimatedGlobalPaybackPct
+                    EstimatedGlobalPaybackPct = facts.EstimatedGlobalPaybackPct,
+                    StructuralExpressions = facts.StructuralExpressions,
+                    StructuralConstructors = facts.StructuralConstructors,
+                    AlsoFrameDispatch = recipes.Any(x =>
+                        x.Equals("FRAME_DISPATCH_CONSOLIDATION", StringComparison.OrdinalIgnoreCase))
                 });
             }
         }
@@ -381,8 +392,33 @@ public static class PassGeneratorService
             AuthorDeltaParameter = JsonString(facts, "deltaParameter"),
             EstimatedAvoidablePollingMsPerSecond = JsonDouble(facts, "estimatedAvoidablePollingMsPerSecond"),
             EstimatedCallbackPaybackPct = JsonDouble(facts, "estimatedCallbackPaybackPct"),
-            EstimatedGlobalPaybackPct = JsonDouble(facts, "estimatedGlobalPaybackPct")
+            EstimatedGlobalPaybackPct = JsonDouble(facts, "estimatedGlobalPaybackPct"),
+            StructuralExpressions = ReadStructuralExpressions(facts, "identicalExpressions"),
+            StructuralConstructors = ReadStructuralExpressions(facts, "literalConstructors")
         };
+    }
+
+    private static StructuralExpressionFact[] ReadStructuralExpressions(
+        JsonElement facts,
+        string name)
+    {
+        if (!facts.TryGetProperty(name, out var array) ||
+            array.ValueKind != JsonValueKind.Array)
+            return Array.Empty<StructuralExpressionFact>();
+
+        var result = new List<StructuralExpressionFact>();
+        foreach (var row in array.EnumerateArray())
+        {
+            if (row.ValueKind != JsonValueKind.Object)
+                continue;
+
+            var expression = JsonString(row, "Expression", "expression");
+            var count = (int)(JsonNullableLong(row, "Count", "count") ?? 0);
+            if (!string.IsNullOrWhiteSpace(expression) && count >= 2)
+                result.Add(new StructuralExpressionFact(expression, count));
+        }
+
+        return result.ToArray();
     }
 
     private static TransformResult TransformFile(
@@ -528,6 +564,143 @@ public static class PassGeneratorService
                         estimatedCallbackPaybackPct = candidate.EstimatedCallbackPaybackPct,
                         estimatedGlobalPaybackPct = candidate.EstimatedGlobalPaybackPct,
                         semantics = "author rate preserved; spread disabled; no catch-up; original onUpdate fallback retained"
+                    }
+                });
+                applied++;
+                continue;
+            }
+
+            if (candidate.Kind == CandidateKind.Structural)
+            {
+                if (candidate.LineEnd > lines.Count)
+                {
+                    skipped.Add(Skip(candidate, "Recorded structural callback range is outside the current file."));
+                    continue;
+                }
+
+                var structuralLines = lines
+                    .Skip(candidate.LineStart - 1)
+                    .Take(candidate.LineEnd - candidate.LineStart + 1)
+                    .ToArray();
+                var structuralSegment = string.Join("\n", structuralLines);
+
+                var structuralOpening = Regex.Match(
+                    structuralSegment,
+                    @"(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*(['""])onUpdate\1\s*,\s*function\s*\((?<args>[^)]*)\)",
+                    RegexOptions.CultureInvariant | RegexOptions.Singleline);
+                if (!structuralOpening.Success)
+                {
+                    skipped.Add(Skip(candidate, "Structural rewrite could not revalidate the direct onUpdate callback opening."));
+                    continue;
+                }
+
+                var prefix = new List<string>();
+                var callbackLocals = new List<string>();
+                var rewrittenBody = structuralSegment[
+                    (structuralOpening.Index + structuralOpening.Length)..];
+                var transformedExpressions = new List<string>();
+                var transformedConstructors = new List<string>();
+                var ordinal = 0;
+
+                foreach (var fact in candidate.StructuralExpressions)
+                {
+                    var observed = Regex.Matches(
+                        rewrittenBody,
+                        Regex.Escape(fact.Expression),
+                        RegexOptions.CultureInvariant).Count;
+                    if (observed < 2)
+                        continue;
+
+                    ordinal++;
+                    var localName = $"__gcetReuse_{candidate.RegistrationId}_{ordinal}";
+                    callbackLocals.Add($"local {localName} = {fact.Expression}");
+                    rewrittenBody = rewrittenBody.Replace(
+                        fact.Expression,
+                        localName,
+                        StringComparison.Ordinal);
+                    transformedExpressions.Add(fact.Expression);
+                }
+
+                foreach (var fact in candidate.StructuralConstructors)
+                {
+                    var observed = Regex.Matches(
+                        rewrittenBody,
+                        Regex.Escape(fact.Expression),
+                        RegexOptions.CultureInvariant).Count;
+                    if (observed < 2)
+                        continue;
+
+                    ordinal++;
+                    var localName = $"__gcetStatic_{candidate.RegistrationId}_{ordinal}";
+                    prefix.Add($"local {localName} = {fact.Expression}");
+                    rewrittenBody = rewrittenBody.Replace(
+                        fact.Expression,
+                        localName,
+                        StringComparison.Ordinal);
+                    transformedConstructors.Add(fact.Expression);
+                }
+
+                if (transformedExpressions.Count == 0 &&
+                    transformedConstructors.Count == 0)
+                {
+                    skipped.Add(Skip(candidate, "Resolver structural expressions no longer repeat in the current callback source."));
+                    continue;
+                }
+
+                var openingText = structuralSegment[
+                    ..(structuralOpening.Index + structuralOpening.Length)];
+                var indent = Regex.Match(structuralLines[0], @"^\s*").Value;
+                var localIndent = indent + "    ";
+                var localText = callbackLocals.Count == 0
+                    ? ""
+                    : "\n" + string.Join("\n", callbackLocals.Select(x => localIndent + x));
+                var rewritten = openingText + localText + rewrittenBody;
+
+                if (candidate.AlsoFrameDispatch)
+                {
+                    var registrationMatch = Regex.Match(
+                        rewritten,
+                        @"\bregisterForEvent\b",
+                        RegexOptions.CultureInvariant);
+                    if (registrationMatch.Success)
+                    {
+                        var token = $"__gcetRegisterEvent_{candidate.RegistrationId}";
+                        rewritten =
+                            rewritten[..registrationMatch.Index] +
+                            token +
+                            rewritten[(registrationMatch.Index + "registerForEvent".Length)..];
+                        frameHelpers.Add((candidate, token));
+                    }
+                }
+
+                var replacementText =
+                    (prefix.Count == 0
+                        ? ""
+                        : string.Join("\n", prefix.Select(x => indent + x)) + "\n") +
+                    rewritten;
+                var replacementLines = replacementText.Split('\n');
+
+                lines.RemoveRange(
+                    candidate.LineStart - 1,
+                    candidate.LineEnd - candidate.LineStart + 1);
+                lines.InsertRange(candidate.LineStart - 1, replacementLines);
+
+                transformManifest.Add(new
+                {
+                    registrationId = candidate.RegistrationId,
+                    owner = candidate.Owner,
+                    type = "STRUCTURAL_HOTPATH_REWRITE",
+                    file = candidate.RelativeFile,
+                    sourceLines = new[] { candidate.LineStart, candidate.LineEnd },
+                    facts = new
+                    {
+                        identicalExpressions = transformedExpressions,
+                        literalConstructors = transformedConstructors,
+                        callbackLocalReuse = true,
+                        literalConstructorHoist = true,
+                        frameDispatchConsolidation = candidate.AlsoFrameDispatch,
+                        estimatedCallbackPaybackPct = candidate.EstimatedCallbackPaybackPct,
+                        estimatedGlobalPaybackPct = candidate.EstimatedGlobalPaybackPct
                     }
                 });
                 applied++;
@@ -955,7 +1128,8 @@ public static class PassGeneratorService
     {
         Action,
         Frame,
-        AuthorCadence
+        AuthorCadence,
+        Structural
     }
 
     private sealed class PassCandidate
@@ -982,7 +1156,12 @@ public static class PassGeneratorService
         public double EstimatedAvoidablePollingMsPerSecond { get; init; }
         public double EstimatedCallbackPaybackPct { get; init; }
         public double EstimatedGlobalPaybackPct { get; init; }
+        public StructuralExpressionFact[] StructuralExpressions { get; init; } = Array.Empty<StructuralExpressionFact>();
+        public StructuralExpressionFact[] StructuralConstructors { get; init; } = Array.Empty<StructuralExpressionFact>();
+        public bool AlsoFrameDispatch { get; init; }
     }
+
+    private sealed record StructuralExpressionFact(string Expression, int Count);
 
     private sealed class CandidateFacts
     {
@@ -1000,6 +1179,8 @@ public static class PassGeneratorService
         public double EstimatedAvoidablePollingMsPerSecond { get; init; }
         public double EstimatedCallbackPaybackPct { get; init; }
         public double EstimatedGlobalPaybackPct { get; init; }
+        public StructuralExpressionFact[] StructuralExpressions { get; init; } = Array.Empty<StructuralExpressionFact>();
+        public StructuralExpressionFact[] StructuralConstructors { get; init; } = Array.Empty<StructuralExpressionFact>();
     }
 
     private sealed record TransformResult(byte[] Bytes, int AppliedTransforms);
