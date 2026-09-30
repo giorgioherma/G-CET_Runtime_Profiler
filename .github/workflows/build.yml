@@ -74,17 +74,6 @@ jobs:
       - name: Publish standalone G-CET resolver
         run: dotnet publish src/G.CETResolver.App/G.CETResolver.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o publish-resolver
 
-      # DEV-ONLY AV diagnostics. These deliberately remove the bundled .NET
-      # runtime from the resolver package so browser/AV reputation can be
-      # isolated from our own app/core binaries.
-      - name: Publish framework-dependent resolver diagnostic
-        if: github.ref != 'refs/heads/main'
-        run: dotnet publish src/G.CETResolver.App/G.CETResolver.App.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=false -p:UseAppHost=true -p:DebugType=None -p:DebugSymbols=false -o publish-resolver-framework
-
-      - name: Publish DLL-only resolver diagnostic
-        if: github.ref != 'refs/heads/main'
-        run: dotnet publish src/G.CETResolver.App/G.CETResolver.App.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=false -p:UseAppHost=false -p:DebugType=None -p:DebugSymbols=false -o publish-resolver-dllonly
-
       - name: Build native root launcher
         shell: pwsh
         run: |
@@ -916,22 +905,6 @@ jobs:
         with:
           name: G-CET-Resolver-v${{ steps.product_version.outputs.version }}
           path: publish-resolver/
-          if-no-files-found: error
-
-      - name: Upload framework-dependent resolver AV diagnostic
-        if: github.ref != 'refs/heads/main'
-        uses: actions/upload-artifact@v4
-        with:
-          name: G-CET-Resolver-AVTEST-Framework-v${{ steps.product_version.outputs.version }}
-          path: publish-resolver-framework/
-          if-no-files-found: error
-
-      - name: Upload DLL-only resolver AV diagnostic
-        if: github.ref != 'refs/heads/main'
-        uses: actions/upload-artifact@v4
-        with:
-          name: G-CET-Resolver-AVTEST-DLLOnly-v${{ steps.product_version.outputs.version }}
-          path: publish-resolver-dllonly/
           if-no-files-found: error
 
       - name: Publish canonical GitHub release
