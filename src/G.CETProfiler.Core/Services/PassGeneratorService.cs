@@ -285,6 +285,7 @@ public static class PassGeneratorService
                     continue;
 
                 var recipes = JsonStringArray(generic, "RecipeFamilies");
+                var pattern = JsonString(generic, "Pattern", "pattern");
                 CandidateKind? kind = null;
 
                 if (resolverFamily.Equals("ONACTION", StringComparison.OrdinalIgnoreCase) &&
@@ -334,7 +335,6 @@ public static class PassGeneratorService
                 var sha = JsonString(source, "Sha256", "sha256");
                 var lineStart = (int)(JsonNullableLong(source, "LineStart", "lineStart") ?? 0);
                 var lineEnd = (int)(JsonNullableLong(source, "LineEnd", "lineEnd") ?? 0);
-                var pattern = JsonString(generic, "Pattern", "pattern");
 
                 if (registrationId is null ||
                     string.IsNullOrWhiteSpace(owner) ||
