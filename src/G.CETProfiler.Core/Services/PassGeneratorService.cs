@@ -308,8 +308,7 @@ public static class PassGeneratorService
                 {
                     kind = CandidateKind.DiscoveryDormant;
                 }
-                else if (resolverFamily.Equals("ONUPDATE", StringComparison.OrdinalIgnoreCase) &&
-                         recipes.Any(x =>
+                else if (recipes.Any(x =>
                              x.Equals("STRUCTURAL_HOTPATH_REWRITE", StringComparison.OrdinalIgnoreCase)))
                 {
                     kind = CandidateKind.Structural;
@@ -414,8 +413,8 @@ public static class PassGeneratorService
             EstimatedAvoidablePollingMsPerSecond = JsonDouble(facts, "estimatedAvoidablePollingMsPerSecond"),
             EstimatedCallbackPaybackPct = JsonDouble(facts, "estimatedCallbackPaybackPct"),
             EstimatedGlobalPaybackPct = JsonDouble(facts, "estimatedGlobalPaybackPct"),
-            StructuralExpressions = ReadStructuralExpressions(facts, "identicalExpressions"),
-            StructuralConstructors = ReadStructuralExpressions(facts, "literalConstructors"),
+            StructuralExpressions = ReadStructuralExpressions(facts, "identicalExpressions", 2),
+            StructuralConstructors = ReadStructuralExpressions(facts, "literalConstructors", 1),
             HardDormantGuardHoist = JsonBool(facts, "hardDormantGuardHoist"),
             HardDormantGateExpression = JsonString(facts, "hardDormantGateExpression"),
             HardDormantPreGuardReadCount = (int)(JsonNullableLong(facts, "hardDormantPreGuardReadCount") ?? 0),
@@ -428,7 +427,8 @@ public static class PassGeneratorService
 
     private static StructuralExpressionFact[] ReadStructuralExpressions(
         JsonElement facts,
-        string name)
+        string name,
+        int minimumCount)
     {
         if (!facts.TryGetProperty(name, out var array) ||
             array.ValueKind != JsonValueKind.Array)
@@ -442,7 +442,7 @@ public static class PassGeneratorService
 
             var expression = JsonString(row, "Expression", "expression");
             var count = (int)(JsonNullableLong(row, "Count", "count") ?? 0);
-            if (!string.IsNullOrWhiteSpace(expression) && count >= 2)
+            if (!string.IsNullOrWhiteSpace(expression) && count >= minimumCount)
                 result.Add(new StructuralExpressionFact(expression, count));
         }
 
@@ -717,11 +717,11 @@ public static class PassGeneratorService
 
                 var structuralOpening = Regex.Match(
                     structuralSegment,
-                    @"(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*(['""])onUpdate\1\s*,\s*function\s*\((?<args>[^)]*)\)",
+                    @"\bfunction\s*\((?<args>[^)]*)\)",
                     RegexOptions.CultureInvariant | RegexOptions.Singleline);
                 if (!structuralOpening.Success)
                 {
-                    skipped.Add(Skip(candidate, "Structural rewrite could not revalidate the direct onUpdate callback opening."));
+                    skipped.Add(Skip(candidate, "Structural rewrite could not revalidate the callback function opening."));
                     continue;
                 }
 
@@ -769,7 +769,7 @@ public static class PassGeneratorService
                         rewrittenBody,
                         Regex.Escape(fact.Expression),
                         RegexOptions.CultureInvariant).Count;
-                    if (observed < 2)
+                    if (observed < 1)
                         continue;
 
                     ordinal++;
@@ -1506,10 +1506,12 @@ public static class PassGeneratorService
                 @"\bGame\.(?:GetPlayer|GetTargetingSystem|GetBlackboardSystem|GetAllBlackboardDefs|GetQuestsSystem|GetTimeSystem|GetStatsSystem|GetStatPoolsSystem|GetSystemRequestsHandler|GetTeleportationFacility|GetCameraSystem)\s*\(\s*\)",
                 RegexOptions.CultureInvariant);
 
+        var minimumCount = constructors ? 1 : 2;
+
         return pattern.Matches(source)
             .Cast<Match>()
             .GroupBy(x => x.Value, StringComparer.Ordinal)
-            .Where(x => x.Count() >= 2)
+            .Where(x => x.Count() >= minimumCount)
             .Select(x => new StructuralExpressionFact(x.Key, x.Count()))
             .ToArray();
     }
