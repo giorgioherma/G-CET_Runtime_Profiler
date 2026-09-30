@@ -33,7 +33,6 @@ public static partial class ResultReportService
             .Select(r => new ResolverCallbackMetric
             {
                 RegistrationId = L(r, "RegistrationId"),
-                Frame = L(r, "Frame"),
                 Owner = S(r, "Mod", "Owner"),
                 Kind = S(r, "Kind"),
                 Target = S(r, "Target"),
@@ -54,6 +53,7 @@ public static partial class ResultReportService
             .Select(r => new ResolverSpikeSample
             {
                 RegistrationId = L(r, "RegistrationId"),
+                Frame = L(r, "Frame"),
                 Owner = S(r, "Mod", "Owner"),
                 Kind = S(r, "Kind", "JobType"),
                 Target = S(r, "Target", "Job"),
