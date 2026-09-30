@@ -340,6 +340,26 @@ internal static class CallbackResolverService
             @"(?m)^\s*if\s+(?<gate>[A-Za-z_][\w.\[\]:()]*)\s+then\s*$",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
+        var authorDiscoveryCadenceProven = false;
+        var authorDiscoveryIntervalSeconds = 0.0;
+        var authorDiscoveryAccumulator = "";
+        var authorDiscoveryGate = "";
+        var discoveryRegionSelfContained = false;
+
+        if (TryResolveAuthorDiscoveryCadence(
+                source,
+                out var discoveryCadence))
+        {
+            authorDiscoveryCadenceProven = true;
+            authorDiscoveryIntervalSeconds = discoveryCadence.IntervalSeconds;
+            authorDiscoveryAccumulator = discoveryCadence.Accumulator;
+            authorDiscoveryGate = discoveryCadence.ActiveGate;
+            discoveryRegionSelfContained = discoveryCadence.RegionSelfContained;
+            evidence.Add(
+                $"Author-written inactive discovery cadence was proven at {discoveryCadence.IntervalSeconds:0.######} s " +
+                $"using '{discoveryCadence.Accumulator}'.");
+        }
+
         if (sensitive.Length > 0)
         {
             evidence.Add("Latency-sensitive combat/camera/NPC source signals were found in the measured callback.");
@@ -391,26 +411,6 @@ internal static class CallbackResolverService
             : explicitPositiveGate.Success
                 ? explicitPositiveGate.Groups["gate"].Value
                 : "";
-
-        var authorDiscoveryCadenceProven = false;
-        var authorDiscoveryIntervalSeconds = 0.0;
-        var authorDiscoveryAccumulator = "";
-        var authorDiscoveryGate = "";
-        var discoveryRegionSelfContained = false;
-
-        if (TryResolveAuthorDiscoveryCadence(
-                source,
-                out var discoveryCadence))
-        {
-            authorDiscoveryCadenceProven = true;
-            authorDiscoveryIntervalSeconds = discoveryCadence.IntervalSeconds;
-            authorDiscoveryAccumulator = discoveryCadence.Accumulator;
-            authorDiscoveryGate = discoveryCadence.ActiveGate;
-            discoveryRegionSelfContained = discoveryCadence.RegionSelfContained;
-            evidence.Add(
-                $"Author-written inactive discovery cadence was proven at {discoveryCadence.IntervalSeconds:0.######} s " +
-                $"using '{discoveryCadence.Accumulator}'.");
-        }
 
         var stateWriterSignals = Array.Empty<string>();
         var completeWakePathProven = false;
