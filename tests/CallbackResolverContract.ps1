@@ -535,6 +535,13 @@ if ($null -eq $resolved.pass) {
     throw 'CLI --generate-pass did not return a pass result.'
 }
 if ([int]$resolved.pass.TransformCount -ne 11) {
+    if (Test-Path -LiteralPath $resolved.pass.ManifestPath -PathType Leaf) {
+        $failedManifest = Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
+        Write-Host "PASS DEBUG transforms=$($failedManifest.summary.transforms) skipped=$($failedManifest.summary.skipped)"
+        foreach ($skip in @($failedManifest.skipped)) {
+            Write-Host ("PASS DEBUG SKIP owner={0} type={1} file={2} reason={3}" -f $skip.owner,$skip.type,$skip.file,$skip.reason)
+        }
+    }
     throw "Expected 11 generated transforms, got $($resolved.pass.TransformCount)."
 }
 if ([int]$resolved.pass.FileCount -ne 15) {
