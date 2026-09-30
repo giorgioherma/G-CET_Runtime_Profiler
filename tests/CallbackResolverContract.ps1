@@ -832,4 +832,36 @@ finally {
     $zip.Dispose()
 }
 
+$hintPath = Join-Path $capture 'G-CET_Advanced_UserHints.json'
+@{
+    schemaVersion = '0.1'
+    entries = @(
+        @{
+            owner = 'FixtureUnknownHot'
+            kind = 'observe'
+            target = 'PlayerPuppet::AnotherUnknownMethod'
+            classification = 'HARD_DORMANT'
+        }
+    )
+} | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $hintPath -Encoding utf8
+
+$hinted = (& $resolverExe --capture $results --mods $mods --json | ConvertFrom-Json)
+if (!$hinted.ok) { throw 'Resolver failed after evidence-only Advanced user hint was saved.' }
+$hintDocument = Get-Content -LiteralPath $hinted.resolverPath -Raw | ConvertFrom-Json
+$hintedHot = $null
+foreach ($family in @($hintDocument.callbackFamilies)) {
+    $candidate = @($family.topConsumers | Where-Object { $_.owner -eq 'FixtureUnknownHot' }) | Select-Object -First 1
+    if ($null -ne $candidate) { $hintedHot = $candidate; break }
+}
+if ($null -eq $hintedHot) { throw 'Advanced user hint test lost FixtureUnknownHot.' }
+if ($hintedHot.generic.Automatable) {
+    throw 'User classification hint incorrectly authorized a source transform.'
+}
+if (!$hintedHot.advanced.UserHintAppliedAsEvidenceOnly -or $hintedHot.advanced.UserHint -ne 'HARD_DORMANT') {
+    throw 'Resolver did not preserve the saved Advanced user classification as evidence.'
+}
+if ($hintedHot.advanced.NextEvidence -ne 'SOURCE_ACTIVE_STATE_WAKE_PROOF') {
+    throw "User HARD_DORMANT hint did not steer the next proof request: $($hintedHot.advanced.NextEvidence)"
+}
+
 Write-Host 'Callback-first resolver + V1 pass generator contract passed.'
