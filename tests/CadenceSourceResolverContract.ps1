@@ -244,6 +244,33 @@ if ($lowBlockers -notmatch 'low-payback') {
     throw "Low-payback fixture was rejected for the wrong reason: $lowBlockers"
 }
 
+# Pass generation requires the supported fixed 0-Engine dependency. The
+# standalone resolver publish already carries the exact hash-locked fixed init;
+# materialize it into this synthetic live mods tree.
+$zeroDir = Join-Path $mods '0-Engine'
+New-Item -ItemType Directory -Force $zeroDir | Out-Null
+$encodedFixedInit = Join-Path $ResolverRoot 'runtime\0-Engine\fixed-init.lua.gz.b64'
+$encodedText = (Get-Content -LiteralPath $encodedFixedInit -Raw).Trim()
+$compressedBytes = [Convert]::FromBase64String($encodedText)
+$compressedStream = New-Object System.IO.MemoryStream(,$compressedBytes)
+$gzipStream = New-Object System.IO.Compression.GZipStream(
+    $compressedStream,
+    [System.IO.Compression.CompressionMode]::Decompress
+)
+$outputStream = New-Object System.IO.MemoryStream
+try {
+    $gzipStream.CopyTo($outputStream)
+    [System.IO.File]::WriteAllBytes(
+        (Join-Path $zeroDir 'init.lua'),
+        $outputStream.ToArray()
+    )
+}
+finally {
+    $gzipStream.Dispose()
+    $compressedStream.Dispose()
+    $outputStream.Dispose()
+}
+
 $generated = (& $resolverExe --capture $result.destination --mods $mods --generate-pass --json | ConvertFrom-Json)
 if (!$generated.ok) { throw 'Author cadence pass generation failed.' }
 $zipPath = [string]$generated.pass.ZipPath
