@@ -1458,6 +1458,31 @@ internal static class CallbackResolverService
             });
         }
 
+        // A narrow set of engine object reads is also stable for the duration
+        // of one callback invocation. Keep this whitelist semantic and finite;
+        // arbitrary Get*/Is* Lua methods are not assumed side-effect-free.
+        var stableMemberReadPattern = new Regex(
+            @"\b(?:[A-Za-z_]\w*|Game\.GetPlayer\(\))(?::|\.)(?:IsMovingHorizontally|IsMovingVertically|GetWorldPosition|GetEntityID)\s*\(\s*\)",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+        foreach (var group in stableMemberReadPattern.Matches(text)
+                     .Cast<Match>()
+                     .GroupBy(x => x.Value, StringComparer.Ordinal))
+        {
+            var count = group.Count();
+            if (count < 2)
+                continue;
+
+            if (expressions.Any(x => x.Expression.Equals(group.Key, StringComparison.Ordinal)))
+                continue;
+
+            expressions.Add(new StructuralExpression
+            {
+                Expression = group.Key,
+                Count = count
+            });
+        }
+
         // Literal value constructors are safe to reuse when their complete input
         // is embedded in source. Keep this list intentionally narrow.
         var constructorPattern = new Regex(
