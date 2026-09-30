@@ -3022,12 +3022,18 @@ internal static class CallbackResolverService
                             definition.Body,
                             nameParameter,
                             actionParameter,
+                            owner,
+                            definition.RelativeFile,
+                            sourceIndex,
                             out definitionActions))
                         return false;
                 }
                 else if (!TryReadFiniteRawActionDownstreamSet(
                              definition.Body,
                              actionParameter,
+                             owner,
+                             definition.RelativeFile,
+                             sourceIndex,
                              out definitionActions))
                 {
                     return false;
@@ -3051,11 +3057,18 @@ internal static class CallbackResolverService
     private static bool TryReadFiniteRawActionDownstreamSet(
         string body,
         string actionParameter,
+        string owner,
+        string relativeFile,
+        LiveSourceIndex sourceIndex,
         out string[] actions)
     {
         actions = Array.Empty<string>();
         var action = Regex.Escape(actionParameter);
 
+        var nameVariables = new HashSet<string>(StringComparer.Ordinal);
+
+        // Direct decode:
+        // local name = Game.NameToString(action:GetName())
         foreach (Match match in Regex.Matches(
                      body,
                      @"(?m)\blocal\s+(?<name>[A-Za-z_]\w*)\s*=\s*(?:Game\.NameToString\s*\(\s*)?" +
@@ -3063,11 +3076,30 @@ internal static class CallbackResolverService
                      @"\s*[:.]\s*GetName\s*\(\s*\)\s*\)?",
                      RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
         {
-            var nameVariable = match.Groups["name"].Value;
+            nameVariables.Add(match.Groups["name"].Value);
+        }
+
+        // Protected decode:
+        // local ok, name = pcall(function() return Game.NameToString(action:GetName()) end)
+        foreach (Match match in Regex.Matches(
+                     body,
+                     @"(?s)\blocal\s+(?<ok>[A-Za-z_]\w*)\s*,\s*(?<name>[A-Za-z_]\w*)\s*=\s*pcall\s*\(\s*function\s*\(\s*\)\s*return\s+(?:Game\.NameToString\s*\(\s*)?" +
+                     action +
+                     @"\s*[:.]\s*GetName\s*\(\s*\)\s*\)?\s*end\s*\)",
+                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+        {
+            nameVariables.Add(match.Groups["name"].Value);
+        }
+
+        foreach (var nameVariable in nameVariables)
+        {
             if (TryReadFiniteDownstreamActionSet(
                     body,
                     nameVariable,
                     actionParameter,
+                    owner,
+                    relativeFile,
+                    sourceIndex,
                     out actions))
                 return true;
         }
@@ -3079,6 +3111,9 @@ internal static class CallbackResolverService
         string body,
         string nameParameter,
         string actionParameter,
+        string owner,
+        string relativeFile,
+        LiveSourceIndex sourceIndex,
         out string[] actions)
     {
         var found = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -3115,8 +3150,19 @@ internal static class CallbackResolverService
                      RegexOptions.CultureInvariant))
         {
             var table = match.Groups["table"].Value;
-            if (!TryReadStaticStringSet(body, table, out var tableActions, out var dynamicWrites) ||
-                dynamicWrites)
+            List<string> tableActions;
+            bool dynamicWrites;
+
+            var resolvedLocal =
+                TryReadStaticStringSet(body, table, out tableActions, out dynamicWrites) &&
+                !dynamicWrites;
+
+            if (!resolvedLocal &&
+                !sourceIndex.TryResolveOwnerStaticStringSet(
+                    owner,
+                    relativeFile,
+                    table,
+                    out tableActions))
             {
                 actions = Array.Empty<string>();
                 return false;
@@ -3168,6 +3214,13 @@ internal static class CallbackResolverService
                     @"^local\s+" + name + @"\s*=\s*(?:Game\.NameToString\s*\(\s*)?" +
                     Regex.Escape(actionParameter) +
                     @"\s*[:.]\s*GetName\s*\(\s*\)\s*\)?\s*;?\s*$",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant) ||
+                Regex.IsMatch(
+                    line,
+                    @"^local\s+[A-Za-z_]\w*\s*,\s*" + name +
+                    @"\s*=\s*pcall\s*\(\s*function\s*\(\s*\)\s*return\s+(?:Game\.NameToString\s*\(\s*)?" +
+                    Regex.Escape(actionParameter) +
+                    @"\s*[:.]\s*GetName\s*\(",
                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant) ||
                 Regex.IsMatch(
                     line,
@@ -3775,6 +3828,95 @@ internal static class CallbackResolverService
             }
 
             return result;
+        }
+
+        public bool TryResolveOwnerStaticStringSet(
+            string owner,
+            string relativeFile,
+            string tableName,
+            out List<string> actions)
+        {
+            actions = new List<string>();
+            var ownerFolder = ResolveOwnerFolder(owner);
+            if (ownerFolder is null)
+                return false;
+
+            string sourceText;
+            try
+            {
+                var sourcePath = Path.Combine(_modsRoot, relativeFile.Replace('/', Path.DirectorySeparatorChar));
+                if (!File.Exists(sourcePath))
+                    return false;
+                sourceText = File.ReadAllText(sourcePath)
+                    .Replace("\r\n", "\n")
+                    .Replace('\r', '\n');
+            }
+            catch
+            {
+                return false;
+            }
+
+            if (TryReadStaticStringSet(sourceText, tableName, out var direct, out var directWrites) &&
+                !directWrites)
+            {
+                actions = direct;
+                return true;
+            }
+
+            // Follow a finite module alias such as:
+            // local HANDLED_ACTIONS = Input.HANDLED_ACTIONS
+            // local Input = needModule("runtime/input")
+            var alias = Regex.Match(
+                sourceText,
+                @"(?m)^\s*local\s+" + Regex.Escape(tableName) +
+                @"\s*=\s*(?<module>[A-Za-z_]\w*)\.(?<field>[A-Za-z_]\w*)\s*$",
+                RegexOptions.CultureInvariant);
+            if (!alias.Success)
+                return false;
+
+            var moduleName = alias.Groups["module"].Value;
+            var fieldName = alias.Groups["field"].Value;
+
+            var binding = Regex.Match(
+                sourceText,
+                @"(?m)^\s*local\s+" + Regex.Escape(moduleName) +
+                @"\s*=\s*(?:require|needModule)\s*\(\s*['""](?<path>[^'""]+)['""]\s*\)\s*$",
+                RegexOptions.CultureInvariant);
+            if (!binding.Success)
+                return false;
+
+            var moduleRelative = binding.Groups["path"].Value
+                .Replace('/', Path.DirectorySeparatorChar)
+                .Replace('\\', Path.DirectorySeparatorChar);
+            if (!moduleRelative.EndsWith(".lua", StringComparison.OrdinalIgnoreCase))
+                moduleRelative += ".lua";
+
+            var modulePath = Path.Combine(ownerFolder, moduleRelative);
+            if (!File.Exists(modulePath))
+                return false;
+
+            string moduleText;
+            try
+            {
+                moduleText = File.ReadAllText(modulePath)
+                    .Replace("\r\n", "\n")
+                    .Replace('\r', '\n');
+            }
+            catch
+            {
+                return false;
+            }
+
+            if (!TryReadStaticStringSet(
+                    moduleText,
+                    moduleName + "." + fieldName,
+                    out var resolved,
+                    out var writes) ||
+                writes)
+                return false;
+
+            actions = resolved;
+            return actions.Count > 0;
         }
 
         private ResolvedSource? BuildResolvedSource(
