@@ -307,8 +307,10 @@ ObserveAfter("PlayerPuppet", "FixtureStructuralObserve", function(self)
     local playerB = Game.GetPlayer()
     local movingA = self:IsMovingHorizontally()
     local movingB = self:IsMovingHorizontally()
+    local singletonA = GetSingleton("gameTargetingSystem")
+    local singletonB = GetSingleton("gameTargetingSystem")
     local actionName = CName.new("FixtureOtherStructural")
-    DoOtherStructuralWork(playerA, playerB, movingA, movingB, actionName)
+    DoOtherStructuralWork(playerA, playerB, movingA, movingB, singletonA, singletonB, actionName)
 end)
 '@
 
@@ -384,7 +386,7 @@ $handoff = @{
         (CallbackRow 123 'FixtureDormantNever' 'observe' 'PlayerPuppet::FixtureCameraTick' 60 6.0 1.2 'init.lua' 1 4),
         (CallbackRow 128 'FixtureNeverGateUpdate' 'event' 'onUpdate' 60 18.0 4.0 'init.lua' 5 9),
         (CallbackRow 124 'FixtureDormantBackground' 'observe' 'PlayerPuppet::FixtureBackgroundTick' 60 6.0 1.2 'init.lua' 1 3),
-        (CallbackRow 129 'FixtureOtherStructural' 'ObserveAfter' 'PlayerPuppet::FixtureStructuralObserve' 120 12.0 3.0 'init.lua' 1 9),
+        (CallbackRow 129 'FixtureOtherStructural' 'ObserveAfter' 'PlayerPuppet::FixtureStructuralObserve' 120 12.0 3.0 'init.lua' 1 11),
         (CallbackRow 102 'FixtureFrame' 'event' 'onUpdate' 60 5.0 1.0 'init.lua' 1 3),
         (CallbackRow 127 'FixtureUnknownHot' 'observe' 'PlayerPuppet::AnotherUnknownMethod' 60 20.0 5.0 'init.lua' 1 3),
         (CallbackRow 103 'FixtureUnknown' 'observe' 'PlayerPuppet::SomeOtherMethod' 60 4.0 1.0 'init.lua' 1 3)
@@ -863,6 +865,9 @@ try {
     }
     if ([regex]::Matches($otherStructuralText, [regex]::Escape('self:IsMovingHorizontally()')).Count -ne 1) {
         throw 'Non-onUpdate structural rewrite did not collapse repeated stable member reads.'
+    }
+    if ([regex]::Matches($otherStructuralText, [regex]::Escape('GetSingleton("gameTargetingSystem")')).Count -ne 1) {
+        throw 'Non-onUpdate structural rewrite did not collapse repeated literal singleton lookups.'
     }
     if ([regex]::Matches($otherStructuralText, [regex]::Escape('CName.new("FixtureOtherStructural")')).Count -ne 1) {
         throw 'Single literal constructor was not hoisted exactly once.'
