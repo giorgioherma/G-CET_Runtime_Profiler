@@ -243,6 +243,7 @@ public:
         uint64_t RegistrationId{};
         uint32_t ProfileEpoch{};
         uint64_t Frame{};
+        uint64_t FrameInvocationOrdinal{};
         std::string CallerSourceFile;
         int CallerLine{};
         std::string ParentFunctionKey;
@@ -283,6 +284,7 @@ public:
         uint64_t RegistrationId{};
         uint32_t ProfileEpoch{};
         uint64_t Frame{};
+        uint64_t FrameInvocationOrdinal{};
         uint64_t CaptureStartNs{};
         uint64_t CaptureEndNs{};
         std::string Mode;
@@ -316,6 +318,7 @@ public:
         DeepSampleMode Mode{DeepSampleMode::Hotset};
         uint64_t SampleSequence{};
         uint64_t Frame{};
+        uint64_t FrameInvocationOrdinal{};
         uint64_t SampleStartCaptureNs{};
         std::chrono::steady_clock::time_point SampleStartWall{};
         lua_State* State{};
@@ -706,6 +709,16 @@ public:
             m_nextDeepSampleSequence.fetch_add(1, std::memory_order_relaxed) + 1;
         threadState.Frame =
             m_currentGameFrame.load(std::memory_order_acquire);
+        if (threadState.Frame > 0 && aCounter)
+        {
+            const uint64_t current =
+                aCounter->FrameCurrent.load(std::memory_order_relaxed);
+            const uint64_t completedInFrame =
+                current == threadState.Frame
+                    ? aCounter->FrameCurrentCalls.load(std::memory_order_relaxed)
+                    : 0;
+            threadState.FrameInvocationOrdinal = completedInFrame + 1;
+        }
         threadState.SampleStartWall = now;
         threadState.SampleStartCaptureNs = FastCapturedNanoseconds(now);
         threadState.State = aState;
@@ -864,6 +877,7 @@ public:
                     counter ? counter->RegistrationId : 0,
                     state.ProfileEpoch,
                     state.Frame,
+                    state.FrameInvocationOrdinal,
                     state.SampleStartCaptureNs,
                     captureEndNs,
                     state.Mode == DeepSampleMode::Hotset
@@ -2327,7 +2341,7 @@ public:
             std::ofstream f(path, std::ios::trunc);
             if (f)
             {
-                f << "SampleSequence,RegistrationId,ProfileEpoch,Frame,CaptureStartMs,"
+                f << "SampleSequence,RegistrationId,ProfileEpoch,Frame,FrameInvocationOrdinal,CaptureStartMs,"
                      "CaptureEndMs,Mode,ApproxOwnWallMs,HookEvents,LineEvents,"
                      "UnresolvedLineEvents,UniqueLines,PathTransitions,PathFingerprint,"
                      "NestedRegistrationCount,NestedRegistrationMs,LineRowsTruncated,"
@@ -2340,6 +2354,7 @@ public:
                       << row.RegistrationId << ','
                       << row.ProfileEpoch << ','
                       << row.Frame << ','
+                      << row.FrameInvocationOrdinal << ','
                       << (static_cast<double>(row.CaptureStartNs) / 1'000'000.0) << ','
                       << (static_cast<double>(row.CaptureEndNs) / 1'000'000.0) << ','
                       << Csv(row.Mode) << ','
@@ -2499,7 +2514,7 @@ public:
             if (f)
             {
                 f << "SampleSequence,RegistrationId,ProfileEpoch,Frame,"
-                     "CallerSourceFile,CallerLine,ParentFunctionKey,"
+                     "FrameInvocationOrdinal,CallerSourceFile,CallerLine,ParentFunctionKey,"
                      "ChildFunctionKey,Calls,ChildInclusiveMs,"
                      "DroppedCallsiteRowsAtDump,Interpretation\n";
                 f << std::fixed << std::setprecision(6);
@@ -2510,6 +2525,7 @@ public:
                       << row.RegistrationId << ','
                       << row.ProfileEpoch << ','
                       << row.Frame << ','
+                      << row.FrameInvocationOrdinal << ','
                       << Csv(row.CallerSourceFile) << ','
                       << row.CallerLine << ','
                       << Csv(row.ParentFunctionKey) << ','
@@ -3183,6 +3199,7 @@ private:
                         aState.CounterPtr ? aState.CounterPtr->RegistrationId : 0;
                     callsite.ProfileEpoch = aState.ProfileEpoch;
                     callsite.Frame = aState.Frame;
+                    callsite.FrameInvocationOrdinal = aState.FrameInvocationOrdinal;
                     callsite.CallerSourceFile = frame.CallsiteSourceFile;
                     callsite.CallerLine = frame.CallsiteLine;
                     callsite.ParentFunctionKey = frame.ParentFunctionKey;
