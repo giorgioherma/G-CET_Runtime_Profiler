@@ -32,7 +32,8 @@ public static class ResolverService
     public static ResolverBuildResult Resolve(
         string captureRoot,
         string modsRoot,
-        string? exceptionRegistryPath = null)
+        string? exceptionRegistryPath = null,
+        string? semanticLibraryPath = null)
     {
         if (string.IsNullOrWhiteSpace(captureRoot))
             throw new ArgumentException("Capture folder is empty.", nameof(captureRoot));
@@ -69,12 +70,17 @@ public static class ResolverService
             AppContext.BaseDirectory,
             "knowledge",
             "high-impact-exceptions.json");
+        semanticLibraryPath ??= Path.Combine(
+            AppContext.BaseDirectory,
+            "knowledge",
+            "semantic-library.json");
 
         var result = CallbackResolverService.Build(
             handoff,
             modsRoot,
             cadence?.FinalResolutionPath,
-            exceptionRegistryPath);
+            exceptionRegistryPath,
+            semanticLibraryPath);
 
         var resolverPath = Path.Combine(captureRoot, ResultReportService.ResolverResolutionFileName);
         File.WriteAllText(
