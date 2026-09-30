@@ -746,47 +746,72 @@ internal static class CallbackResolverService
             if (inactiveEnd <= i)
                 continue;
 
-            var inactiveBody = string.Join(
-                "\n",
-                lines.Skip(i + 1).Take(inactiveEnd - i - 1));
+            var inactiveLines = lines.Skip(i + 1).Take(inactiveEnd - i - 1).ToArray();
 
             // Accumulator must advance by callback delta inside inactive state.
-            var increment = Regex.Match(
-                inactiveBody,
-                @"(?m)^\s*(?<acc>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*=\s*\k<acc>\s*\+\s*" +
-                Regex.Escape(delta) + @"\s*;?\s*$",
-                RegexOptions.CultureInvariant);
-            if (!increment.Success)
+            // Match line-by-line so nested inactive blocks and formatting do not
+            // depend on a multi-line backreference.
+            var accumulator = "";
+            var incrementLine = -1;
+            for (var j = 0; j < inactiveLines.Length; j++)
             {
-                increment = Regex.Match(
-                    inactiveBody,
-                    @"(?m)^\s*(?<acc>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*\+=\s*" +
+                var assignment = Regex.Match(
+                    inactiveLines[j],
+                    @"^\s*(?<lhs>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*=\s*(?<rhs>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*\+\s*" +
                     Regex.Escape(delta) + @"\s*;?\s*$",
                     RegexOptions.CultureInvariant);
+                if (assignment.Success &&
+                    assignment.Groups["lhs"].Value.Equals(
+                        assignment.Groups["rhs"].Value,
+                        StringComparison.Ordinal))
+                {
+                    accumulator = assignment.Groups["lhs"].Value;
+                    incrementLine = j;
+                    break;
+                }
+
+                var plusEquals = Regex.Match(
+                    inactiveLines[j],
+                    @"^\s*(?<acc>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*\+=\s*" +
+                    Regex.Escape(delta) + @"\s*;?\s*$",
+                    RegexOptions.CultureInvariant);
+                if (plusEquals.Success)
+                {
+                    accumulator = plusEquals.Groups["acc"].Value;
+                    incrementLine = j;
+                    break;
+                }
             }
-            if (!increment.Success)
+
+            if (incrementLine < 0 || string.IsNullOrWhiteSpace(accumulator))
                 continue;
 
-            var accumulator = increment.Groups["acc"].Value;
-            var threshold = Regex.Match(
-                inactiveBody,
-                @"(?m)^\s*if\s+" + Regex.Escape(accumulator) +
-                @"\s*(?:>=|>)\s*(?<seconds>\d+(?:\.\d+)?)\s+then\s*$",
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-            if (!threshold.Success ||
-                !double.TryParse(
-                    threshold.Groups["seconds"].Value,
-                    System.Globalization.NumberStyles.Float,
-                    System.Globalization.CultureInfo.InvariantCulture,
-                    out var seconds) ||
-                seconds <= 0 ||
-                !double.IsFinite(seconds))
-                continue;
+            var thresholdLine = -1;
+            var seconds = 0.0;
+            for (var j = incrementLine + 1; j < inactiveLines.Length; j++)
+            {
+                var threshold = Regex.Match(
+                    inactiveLines[j],
+                    @"^\s*if\s+" + Regex.Escape(accumulator) +
+                    @"\s*(?:>=|>)\s*(?<seconds>\d+(?:\.\d+)?)\s+then\s*$",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+                if (!threshold.Success)
+                    continue;
 
-            var thresholdLineOffset = inactiveBody[..threshold.Index].Count(c => c == '\n');
-            var inactiveLines = lines.Skip(i + 1).Take(inactiveEnd - i - 1).ToArray();
-            var thresholdLine = thresholdLineOffset;
-            if (thresholdLine < 0 || thresholdLine >= inactiveLines.Length)
+                if (!double.TryParse(
+                        threshold.Groups["seconds"].Value,
+                        System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        out seconds) ||
+                    seconds <= 0 ||
+                    !double.IsFinite(seconds))
+                    continue;
+
+                thresholdLine = j;
+                break;
+            }
+
+            if (thresholdLine < 0)
                 continue;
 
             var thresholdIndent =
