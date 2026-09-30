@@ -1917,6 +1917,7 @@ public static class PassGeneratorService
         public string DynamicGateExpression { get; init; } = "";
         public bool OverridePrefilterProven { get; init; }
         public bool OverrideWrappedMethodReturns { get; init; }
+        public bool OverrideWrappedMethodTakesSelf { get; init; }
         public bool AuthorCadenceWholeCallback { get; init; }
         public double AuthorBaseIntervalSeconds { get; init; }
         public string AuthorDeltaParameter { get; init; } = "";
