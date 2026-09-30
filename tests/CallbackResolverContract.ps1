@@ -899,14 +899,14 @@ try {
 
     $frameText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureFrame/init.lua'
     if ($frameText -notmatch 'MakeEventRegistrar' -or
-        $frameText -notmatch '__gcetRegisterEvent_102\("onUpdate"') {
+        $frameText -notmatch '__gcetRegisterEvent_102\s*\(\s*"onUpdate"' {
         throw 'Generated frame-dispatch replacement is incomplete.'
     }
 
     $structuralText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureStructural/init.lua'
     if ($structuralText -notmatch '__gcetReuse_120_' -or
         $structuralText -notmatch '__gcetStatic_120_' -or
-        $structuralText -notmatch '__gcetRegisterEvent_120\("onUpdate"') {
+        $structuralText -notmatch '__gcetRegisterEvent_120\s*\(\s*"onUpdate"' {
         throw 'Generated structural hotpath replacement is incomplete.'
     }
     if ([regex]::Matches($structuralText, [regex]::Escape('Game.GetPlayer()')).Count -ne 1) {
@@ -923,12 +923,14 @@ try {
         'Schedule.Every(1',
         'if active then return end',
         'if not __gcetDiscoveryScheduled_126 then',
-        'RunActiveActivity(delta)',
-        '__gcetRegisterEvent_126("onUpdate"'
+        'RunActiveActivity(delta)'
     )) {
         if ($discoveryText -notmatch [regex]::Escape($requiredDiscoveryText)) {
             throw "Generated discovery-dormant rewrite is missing: $requiredDiscoveryText"
         }
+    }
+    if ($discoveryText -notmatch '__gcetRegisterEvent_126\s*\(\s*"onUpdate"') {
+        throw 'Generated discovery-dormant rewrite did not retain frame-dispatch consolidation.'
     }
     if ([regex]::Matches($discoveryText, [regex]::Escape('CheckNearbyActivity(distance)')).Count -lt 2) {
         throw 'Discovery rewrite did not retain both scheduled discovery and original fallback discovery work.'
@@ -960,7 +962,7 @@ try {
     if ($hardUpdateText -notmatch 'if not active then return end -- G-CET dormant guard hoist') {
         throw 'Generated hard-dormant callback is missing the hoisted inactive guard.'
     }
-    if ($hardUpdateText -notmatch '__gcetRegisterEvent_125\("onUpdate"') {
+    if ($hardUpdateText -notmatch '__gcetRegisterEvent_125\s*\(\s*"onUpdate"' {
         throw 'Generated hard-dormant callback did not retain frame-dispatch consolidation.'
     }
     $hoistedIndex = $hardUpdateText.IndexOf('if not active then return end -- G-CET dormant guard hoist')
