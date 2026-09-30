@@ -808,6 +808,10 @@ try {
     if ($actionText -notmatch 'decodeType\s*=\s*false') {
         throw 'Generated exact action route is missing decodeType=false.'
     }
+    if ($actionText -notmatch '__gcetRoutedName' -or
+        $actionText -notmatch '__gcetRoutedName\s+or') {
+        throw 'Generated exact action route did not reuse the router-decoded action name.'
+    }
 
     $frameText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureFrame/init.lua'
     if ($frameText -notmatch 'MakeEventRegistrar' -or
@@ -889,6 +893,9 @@ try {
         $patternText -notmatch 'string\.find\(routedName, "Turn", 1, true\)') {
         throw 'Generated mixed exact+pattern router did not preserve the resolver pattern.'
     }
+    if ($patternText -notmatch '__gcetOnAction_110\(this, action, consumer, routedName\)') {
+        throw 'Pattern router did not pass its already-decoded action name into the original callback.'
+    }
 
     $downstreamText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDownstream/init.lua'
     foreach ($expectedAction in @('Jump','MoveX','MoveY','PhotoMode_CameraMovementX','UI_MoveUp','UI_MoveDown')) {
@@ -898,7 +905,7 @@ try {
     }
 
     $gatedText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureGatedDynamic/init.lua'
-    foreach ($requiredGatedText in @('actions = "*"','UI_Apply','state.session and state.session.active','GatedWildcard')) {
+    foreach ($requiredGatedText in @('actions = "*"','UI_Apply','state.session and state.session.active','GatedWildcard','__gcetOnAction_112(this, action, consumer, routedName)')) {
         if ($gatedText -notmatch [regex]::Escape($requiredGatedText)) {
             throw "Generated gated wildcard router is missing: $requiredGatedText"
         }
