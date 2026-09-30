@@ -1043,7 +1043,7 @@ public static class PassGeneratorService
                 // "onUpdate" to happen to share one physical source line.
                 var frameOpening = Regex.Match(
                     frameSegment,
-                    @"\bregisterForEvent\s*\(\s*(['""])onUpdate\1",
+                    @"\b(?<registrar>registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*(['""])onUpdate\2",
                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Singleline);
                 if (!frameOpening.Success)
                 {
@@ -1054,22 +1054,20 @@ public static class PassGeneratorService
                 }
 
                 var token = $"__gcetRegisterEvent_{candidate.RegistrationId}";
-                var marker = frameSegment.IndexOf(
-                    "registerForEvent",
-                    frameOpening.Index,
-                    StringComparison.Ordinal);
-                if (marker < 0)
+                var registrar = frameOpening.Groups["registrar"].Value;
+                var registrarOffset = frameOpening.Groups["registrar"].Index;
+                if (string.IsNullOrWhiteSpace(registrar) || registrarOffset < 0)
                 {
                     skipped.Add(Skip(
                         candidate,
-                        "Direct onUpdate registration token could not be revalidated."));
+                        "Direct onUpdate registrar token could not be revalidated."));
                     continue;
                 }
 
                 var rewrittenFrame =
-                    frameSegment[..marker] +
+                    frameSegment[..registrarOffset] +
                     token +
-                    frameSegment[(marker + "registerForEvent".Length)..];
+                    frameSegment[(registrarOffset + registrar.Length)..];
                 var frameReplacementLines = rewrittenFrame.Split('\n');
 
                 lines.RemoveRange(
