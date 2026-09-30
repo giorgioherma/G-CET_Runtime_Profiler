@@ -911,6 +911,15 @@ internal static class CallbackResolverService
                 continue;
             }
 
+            if (Regex.IsMatch(
+                    gatedRegion,
+                    @"\b" + Regex.Escape(delta) + @"\b",
+                    RegexOptions.CultureInvariant))
+            {
+                blocker = "DISCOVERY_REGION_USES_DELTA";
+                continue;
+            }
+
             // Require actual discovery/world-query work, not an arbitrary timer.
             if (!Regex.IsMatch(
                     gatedRegion,
