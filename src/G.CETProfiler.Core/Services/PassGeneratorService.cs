@@ -17,7 +17,8 @@ public sealed record PassBuildResult(
 /// Generates a reversible overlay ZIP from resolver decisions only.
 /// Generator supports only finite resolver-authorized recipes:
 /// ACTION_ROUTING_*, FRAME_DISPATCH_CONSOLIDATION, source-proven
-/// AUTHOR_CADENCE_WHOLE_CALLBACK, and cost-gated STRUCTURAL_HOTPATH_REWRITE.
+/// AUTHOR_CADENCE_WHOLE_CALLBACK, AUTHOR_DISCOVERY_DORMANT_SCHEDULE,
+/// and cost-gated STRUCTURAL_HOTPATH_REWRITE.
 /// It never invents candidates from mod names or unclassified source.
 /// </summary>
 public static class PassGeneratorService
@@ -186,6 +187,7 @@ public static class PassGeneratorService
                     "ACTION_ROUTING_*",
                     "FRAME_DISPATCH_CONSOLIDATION",
                     "AUTHOR_CADENCE_WHOLE_CALLBACK",
+                    "AUTHOR_DISCOVERY_DORMANT_SCHEDULE",
                     "STRUCTURAL_HOTPATH_REWRITE"
                 },
                 fixedRuntimeException = "0-Engine",
@@ -302,6 +304,12 @@ public static class PassGeneratorService
                 }
                 else if (resolverFamily.Equals("ONUPDATE", StringComparison.OrdinalIgnoreCase) &&
                          recipes.Any(x =>
+                             x.Equals("AUTHOR_DISCOVERY_DORMANT_SCHEDULE", StringComparison.OrdinalIgnoreCase)))
+                {
+                    kind = CandidateKind.DiscoveryDormant;
+                }
+                else if (resolverFamily.Equals("ONUPDATE", StringComparison.OrdinalIgnoreCase) &&
+                         recipes.Any(x =>
                              x.Equals("STRUCTURAL_HOTPATH_REWRITE", StringComparison.OrdinalIgnoreCase)))
                 {
                     kind = CandidateKind.Structural;
@@ -369,6 +377,10 @@ public static class PassGeneratorService
                     HardDormantGuardHoist = facts.HardDormantGuardHoist,
                     HardDormantGateExpression = facts.HardDormantGateExpression,
                     HardDormantPreGuardReadCount = facts.HardDormantPreGuardReadCount,
+                    AuthorDiscoveryDormantSchedule = facts.AuthorDiscoveryDormantSchedule,
+                    AuthorDiscoveryIntervalSeconds = facts.AuthorDiscoveryIntervalSeconds,
+                    AuthorDiscoveryAccumulator = facts.AuthorDiscoveryAccumulator,
+                    AuthorDiscoveryGate = facts.AuthorDiscoveryGate,
                     AlsoFrameDispatch = recipes.Any(x =>
                         x.Equals("FRAME_DISPATCH_CONSOLIDATION", StringComparison.OrdinalIgnoreCase))
                 });
@@ -406,7 +418,11 @@ public static class PassGeneratorService
             StructuralConstructors = ReadStructuralExpressions(facts, "literalConstructors"),
             HardDormantGuardHoist = JsonBool(facts, "hardDormantGuardHoist"),
             HardDormantGateExpression = JsonString(facts, "hardDormantGateExpression"),
-            HardDormantPreGuardReadCount = (int)(JsonNullableLong(facts, "hardDormantPreGuardReadCount") ?? 0)
+            HardDormantPreGuardReadCount = (int)(JsonNullableLong(facts, "hardDormantPreGuardReadCount") ?? 0),
+            AuthorDiscoveryDormantSchedule = JsonBool(facts, "authorDiscoveryDormantSchedule"),
+            AuthorDiscoveryIntervalSeconds = JsonDouble(facts, "authorDiscoveryIntervalSeconds"),
+            AuthorDiscoveryAccumulator = JsonString(facts, "authorDiscoveryAccumulator"),
+            AuthorDiscoveryGate = JsonString(facts, "authorDiscoveryGate")
         };
     }
 
@@ -586,6 +602,82 @@ public static class PassGeneratorService
                         estimatedCallbackPaybackPct = candidate.EstimatedCallbackPaybackPct,
                         estimatedGlobalPaybackPct = candidate.EstimatedGlobalPaybackPct,
                         semantics = "author rate preserved; spread disabled; no catch-up; original onUpdate fallback retained"
+                    }
+                });
+                applied++;
+                continue;
+            }
+
+            if (candidate.Kind == CandidateKind.DiscoveryDormant)
+            {
+                if (effectiveLineEnd > lines.Count ||
+                    !candidate.AuthorDiscoveryDormantSchedule ||
+                    candidate.AuthorDiscoveryIntervalSeconds <= 0 ||
+                    string.IsNullOrWhiteSpace(candidate.AuthorDiscoveryAccumulator) ||
+                    string.IsNullOrWhiteSpace(candidate.AuthorDiscoveryGate))
+                {
+                    skipped.Add(Skip(candidate, "Author discovery-dormant handoff is incomplete or outside the current source range."));
+                    continue;
+                }
+
+                var discoveryLines = lines
+                    .Skip(candidate.LineStart - 1)
+                    .Take(effectiveLineEnd - candidate.LineStart + 1)
+                    .ToArray();
+                var discoverySegment = string.Join("\n", discoveryLines);
+                var discoveryIndent = Regex.Match(discoveryLines[0], @"^\s*").Value;
+
+                if (!TryBuildDiscoveryDormantRewrite(
+                        candidate,
+                        discoverySegment,
+                        discoveryIndent,
+                        out var discoveryRewrite,
+                        out var discoveryBlocker))
+                {
+                    skipped.Add(Skip(candidate, discoveryBlocker));
+                    continue;
+                }
+
+                var discoveryCallback = discoveryRewrite.Callback;
+                if (candidate.AlsoFrameDispatch)
+                {
+                    var registrationMatch = Regex.Match(
+                        discoveryCallback,
+                        @"\bregisterForEvent\b",
+                        RegexOptions.CultureInvariant);
+                    if (registrationMatch.Success)
+                    {
+                        var token = $"__gcetRegisterEvent_{candidate.RegistrationId}";
+                        discoveryCallback =
+                            discoveryCallback[..registrationMatch.Index] +
+                            token +
+                            discoveryCallback[(registrationMatch.Index + "registerForEvent".Length)..];
+                        frameHelpers.Add((candidate, token));
+                    }
+                }
+
+                var discoveryReplacementLines =
+                    (discoveryRewrite.Prefix + "\n" + discoveryCallback).Split('\n');
+
+                lines.RemoveRange(
+                    candidate.LineStart - 1,
+                    effectiveLineEnd - candidate.LineStart + 1);
+                lines.InsertRange(candidate.LineStart - 1, discoveryReplacementLines);
+
+                transformManifest.Add(new
+                {
+                    registrationId = candidate.RegistrationId,
+                    owner = candidate.Owner,
+                    type = "AUTHOR_DISCOVERY_DORMANT_SCHEDULE",
+                    file = candidate.RelativeFile,
+                    sourceLines = new[] { candidate.LineStart, candidate.LineEnd },
+                    facts = new
+                    {
+                        intervalSeconds = candidate.AuthorDiscoveryIntervalSeconds,
+                        accumulator = candidate.AuthorDiscoveryAccumulator,
+                        activeGate = candidate.AuthorDiscoveryGate,
+                        frameDispatchConsolidation = candidate.AlsoFrameDispatch,
+                        semantics = "author inactive discovery interval preserved through 0-Engine; original frame-timer path retained as fallback"
                     }
                 });
                 applied++;
@@ -993,6 +1085,247 @@ public static class PassGeneratorService
         return new TransformResult(withBom, applied);
     }
 
+    private static bool TryBuildDiscoveryDormantRewrite(
+        PassCandidate candidate,
+        string segment,
+        string indent,
+        out DiscoveryRewriteParts rewrite,
+        out string blocker)
+    {
+        rewrite = new DiscoveryRewriteParts("", "");
+        blocker = "Discovery dormant rewrite could not be revalidated.";
+
+        var opening = Regex.Match(
+            segment,
+            @"(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*(['""])onUpdate\1\s*,\s*function\s*\(\s*(?<delta>[A-Za-z_]\w*)\s*\)",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Singleline);
+        var closing = Regex.Match(
+            segment,
+            @"end\s*\)\s*;?\s*$",
+            RegexOptions.CultureInvariant | RegexOptions.Singleline);
+        if (!opening.Success || !closing.Success || closing.Index <= opening.Index)
+        {
+            blocker = "Discovery dormant callback opening/closing could not be revalidated.";
+            return false;
+        }
+
+        var delta = opening.Groups["delta"].Value;
+        var body = segment.Substring(
+            opening.Index + opening.Length,
+            closing.Index - (opening.Index + opening.Length));
+        var bodyLines = body
+            .Replace("\r\n", "\n")
+            .Replace('\r', '\n')
+            .Split('\n')
+            .ToList();
+
+        var inactiveIndex = -1;
+        var inactiveIndent = 0;
+        var inactivePattern = new Regex(
+            @"^(?<indent>\s*)if\s+not\s+" +
+            Regex.Escape(candidate.AuthorDiscoveryGate) +
+            @"\s+then\s*$",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+        for (var i = 0; i < bodyLines.Count; i++)
+        {
+            var match = inactivePattern.Match(bodyLines[i]);
+            if (!match.Success)
+                continue;
+            inactiveIndex = i;
+            inactiveIndent = match.Groups["indent"].Value.Length;
+            break;
+        }
+
+        if (inactiveIndex < 0)
+        {
+            blocker = "Author inactive discovery gate no longer matches current source.";
+            return false;
+        }
+
+        var inactiveEnd = FindSameIndentEnd(bodyLines, inactiveIndex, inactiveIndent);
+        if (inactiveEnd <= inactiveIndex)
+        {
+            blocker = "Author inactive discovery block boundary could not be revalidated.";
+            return false;
+        }
+
+        var incrementFound = false;
+        var thresholdIndex = -1;
+        var thresholdEnd = -1;
+        var thresholdIndent = 0;
+        var intervalText = candidate.AuthorDiscoveryIntervalSeconds.ToString(
+            "0.################",
+            System.Globalization.CultureInfo.InvariantCulture);
+
+        for (var i = inactiveIndex + 1; i < inactiveEnd; i++)
+        {
+            var line = bodyLines[i];
+
+            if (Regex.IsMatch(
+                    line,
+                    @"^\s*" + Regex.Escape(candidate.AuthorDiscoveryAccumulator) +
+                    @"\s*(?:=\s*" + Regex.Escape(candidate.AuthorDiscoveryAccumulator) +
+                    @"\s*\+\s*" + Regex.Escape(delta) +
+                    @"|\+=\s*" + Regex.Escape(delta) + @")\s*;?\s*$",
+                    RegexOptions.CultureInvariant))
+            {
+                incrementFound = true;
+                continue;
+            }
+
+            var threshold = Regex.Match(
+                line,
+                @"^(?<indent>\s*)if\s+" +
+                Regex.Escape(candidate.AuthorDiscoveryAccumulator) +
+                @"\s*(?:>=|>)\s*(?<seconds>\d+(?:\.\d+)?)\s+then\s*$",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (!threshold.Success)
+                continue;
+
+            if (!double.TryParse(
+                    threshold.Groups["seconds"].Value,
+                    System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var currentSeconds) ||
+                Math.Abs(currentSeconds - candidate.AuthorDiscoveryIntervalSeconds) > 0.000001)
+            {
+                blocker = "Author discovery interval changed since resolver analysis.";
+                return false;
+            }
+
+            thresholdIndex = i;
+            thresholdIndent = threshold.Groups["indent"].Value.Length;
+            thresholdEnd = FindSameIndentEnd(bodyLines, i, thresholdIndent);
+            break;
+        }
+
+        if (!incrementFound || thresholdIndex < 0 || thresholdEnd <= thresholdIndex)
+        {
+            blocker = "Author discovery accumulator/threshold shape no longer matches resolver evidence.";
+            return false;
+        }
+
+        var discoveryRegion = bodyLines
+            .Skip(thresholdIndex + 1)
+            .Take(thresholdEnd - thresholdIndex - 1)
+            .ToArray();
+
+        var discoveryText = string.Join("\n", discoveryRegion);
+        if (!Regex.IsMatch(
+                discoveryText,
+                @"\b" + Regex.Escape(candidate.AuthorDiscoveryAccumulator) +
+                @"\s*=\s*0(?:\.0+)?\b",
+                RegexOptions.CultureInvariant) ||
+            Regex.IsMatch(
+                discoveryText,
+                @"\b" + Regex.Escape(delta) + @"\b",
+                RegexOptions.CultureInvariant))
+        {
+            blocker = "Discovery region reset/delta proof no longer matches resolver evidence.";
+            return false;
+        }
+
+        var commonIndent = discoveryRegion
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x.Length - x.TrimStart().Length)
+            .DefaultIfEmpty(0)
+            .Min();
+
+        var functionIndent = indent + "    ";
+        var discoveryBody = discoveryRegion
+            .Select(x =>
+                string.IsNullOrWhiteSpace(x)
+                    ? ""
+                    : functionIndent + x[Math.Min(commonIndent, x.Length)..])
+            .ToArray();
+
+        var functionName = $"__gcetDiscovery_{candidate.RegistrationId}";
+        var handleName = $"__gcetDiscoveryHandle_{candidate.RegistrationId}";
+        var scheduledName = $"__gcetDiscoveryScheduled_{candidate.RegistrationId}";
+        var owner = LuaQuote(candidate.Owner);
+        var id = LuaQuote($"G-CET.Discovery.{candidate.RegistrationId}");
+
+        var prefixLines = new List<string>
+        {
+            $"{indent}local {scheduledName} = false",
+            $"{indent}local {handleName} = nil",
+            $"{indent}local function {functionName}()",
+            $"{functionIndent}if {candidate.AuthorDiscoveryGate} then return end"
+        };
+        prefixLines.AddRange(discoveryBody);
+        prefixLines.Add($"{indent}end");
+        prefixLines.Add($"{indent}registerForEvent(\"onInit\", function()");
+        prefixLines.Add($"{functionIndent}local __gcetOk, __gcetEngine = pcall(GetMod, \"0-Engine\")");
+        prefixLines.Add($"{functionIndent}if __gcetOk and type(__gcetEngine) == \"table\" and type(__gcetEngine.Schedule) == \"table\" and type(__gcetEngine.Schedule.Every) == \"function\" then");
+        prefixLines.Add($"{functionIndent}    local __gcetScheduleOk, __gcetScheduleHandle = pcall(function()");
+        prefixLines.Add($"{functionIndent}        return __gcetEngine.Schedule.Every({intervalText}, {{");
+        prefixLines.Add($"{functionIndent}            id = {id},");
+        prefixLines.Add($"{functionIndent}            owner = {owner},");
+        prefixLines.Add($"{functionIndent}            pause = \"never\",");
+        prefixLines.Add($"{functionIndent}            spread = false,");
+        prefixLines.Add($"{functionIndent}            catchUp = false");
+        prefixLines.Add($"{functionIndent}        }}, function(ctx)");
+        prefixLines.Add($"{functionIndent}            {functionName}()");
+        prefixLines.Add($"{functionIndent}        end)");
+        prefixLines.Add($"{functionIndent}    end)");
+        prefixLines.Add($"{functionIndent}    if __gcetScheduleOk and type(__gcetScheduleHandle) == \"table\" then");
+        prefixLines.Add($"{functionIndent}        {handleName} = __gcetScheduleHandle");
+        prefixLines.Add($"{functionIndent}        {scheduledName} = true");
+        prefixLines.Add($"{functionIndent}    end");
+        prefixLines.Add($"{functionIndent}end");
+        prefixLines.Add($"{indent}end)");
+        prefixLines.Add($"{indent}registerForEvent(\"onShutdown\", function()");
+        prefixLines.Add($"{functionIndent}if {handleName} and type({handleName}.Cancel) == \"function\" then pcall({handleName}.Cancel) end");
+        prefixLines.Add($"{functionIndent}{handleName} = nil");
+        prefixLines.Add($"{functionIndent}{scheduledName} = false");
+        prefixLines.Add($"{indent}end)");
+
+        var wrappedInactive = new List<string>
+        {
+            new string(' ', inactiveIndent) + $"if not {scheduledName} then"
+        };
+        for (var i = inactiveIndex; i <= inactiveEnd; i++)
+            wrappedInactive.Add(new string(' ', 4) + bodyLines[i]);
+        wrappedInactive.Add(new string(' ', inactiveIndent) + "end");
+
+        bodyLines.RemoveRange(inactiveIndex, inactiveEnd - inactiveIndex + 1);
+        bodyLines.InsertRange(inactiveIndex, wrappedInactive);
+
+        var callback =
+            segment[..(opening.Index + opening.Length)] +
+            string.Join("\n", bodyLines) +
+            segment[closing.Index..];
+
+        rewrite = new DiscoveryRewriteParts(
+            string.Join("\n", prefixLines),
+            callback);
+        blocker = "";
+        return true;
+    }
+
+    private static int FindSameIndentEnd(
+        IReadOnlyList<string> lines,
+        int start,
+        int indent)
+    {
+        for (var i = start + 1; i < lines.Count; i++)
+        {
+            var trimmed = lines[i].Trim();
+            if (!Regex.IsMatch(
+                    trimmed,
+                    @"^end\s*(?:--.*)?$",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+                continue;
+
+            var candidateIndent = lines[i].Length - lines[i].TrimStart().Length;
+            if (candidateIndent == indent)
+                return i;
+        }
+
+        return -1;
+    }
+
     private static string BuildAuthorCadenceRegistration(
         PassCandidate candidate,
         string functionName,
@@ -1267,6 +1600,7 @@ public static class PassGeneratorService
         Action,
         Frame,
         AuthorCadence,
+        DiscoveryDormant,
         Structural,
         HardDormant
     }
@@ -1300,6 +1634,10 @@ public static class PassGeneratorService
         public bool HardDormantGuardHoist { get; init; }
         public string HardDormantGateExpression { get; init; } = "";
         public int HardDormantPreGuardReadCount { get; init; }
+        public bool AuthorDiscoveryDormantSchedule { get; init; }
+        public double AuthorDiscoveryIntervalSeconds { get; init; }
+        public string AuthorDiscoveryAccumulator { get; init; } = "";
+        public string AuthorDiscoveryGate { get; init; } = "";
         public bool AlsoFrameDispatch { get; init; }
     }
 
@@ -1326,7 +1664,13 @@ public static class PassGeneratorService
         public bool HardDormantGuardHoist { get; init; }
         public string HardDormantGateExpression { get; init; } = "";
         public int HardDormantPreGuardReadCount { get; init; }
+        public bool AuthorDiscoveryDormantSchedule { get; init; }
+        public double AuthorDiscoveryIntervalSeconds { get; init; }
+        public string AuthorDiscoveryAccumulator { get; init; } = "";
+        public string AuthorDiscoveryGate { get; init; } = "";
     }
+
+    private sealed record DiscoveryRewriteParts(string Prefix, string Callback);
 
     private sealed record TransformResult(byte[] Bytes, int AppliedTransforms);
 }
