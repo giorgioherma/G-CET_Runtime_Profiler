@@ -372,6 +372,7 @@ public static class PassGeneratorService
                     DynamicGateExpression = facts.DynamicGateExpression,
                     OverridePrefilterProven = facts.OverridePrefilterProven,
                     OverrideWrappedMethodReturns = facts.OverrideWrappedMethodReturns,
+                    OverrideWrappedMethodTakesSelf = facts.OverrideWrappedMethodTakesSelf,
                     AuthorCadenceWholeCallback = facts.AuthorCadenceWholeCallback,
                     AuthorBaseIntervalSeconds = facts.AuthorBaseIntervalSeconds,
                     AuthorDeltaParameter = facts.AuthorDeltaParameter,
@@ -417,6 +418,7 @@ public static class PassGeneratorService
             DynamicGateExpression = JsonString(facts, "dynamicGateExpression"),
             OverridePrefilterProven = JsonBool(facts, "overridePrefilterProven"),
             OverrideWrappedMethodReturns = JsonBool(facts, "overrideWrappedMethodReturns"),
+            OverrideWrappedMethodTakesSelf = JsonBool(facts, "overrideWrappedMethodTakesSelf"),
             AuthorCadenceWholeCallback = JsonBool(facts, "authorCadenceWholeCallback"),
             AuthorBaseIntervalSeconds = JsonDouble(facts, "baseIntervalSeconds"),
             AuthorDeltaParameter = JsonString(facts, "deltaParameter"),
@@ -1067,7 +1069,7 @@ public static class PassGeneratorService
                 var overrideSegment = string.Join("\n", overrideLines);
                 var overrideOpening = Regex.Match(
                     overrideSegment,
-                    @"Override\s*\(\s*(['""])PlayerPuppet\1\s*,\s*(['""])OnAction\2\s*,\s*function\s*\(\s*self\s*,\s*action\s*,\s*consumer\s*,\s*wrappedMethod\s*\)",
+                    @"Override\s*\(\s*(['""])PlayerPuppet\1\s*,\s*(['""])OnAction\2\s*,\s*function\s*\(\s*(?<receiver>[A-Za-z_]\w*)\s*,\s*action\s*,\s*consumer\s*,\s*wrappedMethod\s*\)",
                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Singleline);
                 if (!overrideOpening.Success)
                 {
@@ -1097,9 +1099,13 @@ public static class PassGeneratorService
                         .Select(x => $"[{LuaQuote(x)}] = true"));
                 var prefix = $"{overrideIndent}local {tableName} = {{ {entries} }}";
 
+                var receiver = overrideOpening.Groups["receiver"].Value;
+                var wrappedCall = candidate.OverrideWrappedMethodTakesSelf
+                    ? $"wrappedMethod({receiver}, action, consumer)"
+                    : "wrappedMethod(action, consumer)";
                 var earlyWrapped = candidate.OverrideWrappedMethodReturns
-                    ? $"return wrappedMethod(self, action, consumer)"
-                    : $"wrappedMethod(self, action, consumer)\n{bodyIndent}    return";
+                    ? $"return {wrappedCall}"
+                    : $"{wrappedCall}\n{bodyIndent}    return";
 
                 var injected =
                     $"\n{bodyIndent}local {cnameName} = action:GetName()" +
@@ -1872,6 +1878,7 @@ public static class PassGeneratorService
         public string DynamicGateExpression { get; init; } = "";
         public bool OverridePrefilterProven { get; init; }
         public bool OverrideWrappedMethodReturns { get; init; }
+        public bool OverrideWrappedMethodTakesSelf { get; init; }
         public bool AuthorCadenceWholeCallback { get; init; }
         public double AuthorBaseIntervalSeconds { get; init; }
         public string AuthorDeltaParameter { get; init; } = "";
