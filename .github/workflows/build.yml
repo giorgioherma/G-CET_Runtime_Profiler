@@ -427,7 +427,7 @@ jobs:
           if (!(Test-Path -LiteralPath (Join-Path $collected.destination 'CET_Resolver_Input.json') -PathType Leaf)) { throw 'Resolver measurement handoff was not generated.' }
 
           $resolverInput = Get-Content -LiteralPath (Join-Path $collected.destination 'CET_Resolver_Input.json') -Raw | ConvertFrom-Json
-          if ($resolverInput.schemaVersion -ne '1.5') { throw "Unexpected resolver input schema: $($resolverInput.schemaVersion)" }
+          if ($resolverInput.schemaVersion -ne '1.6') { throw "Unexpected resolver input schema: $($resolverInput.schemaVersion)" }
           if (!$resolverInput.semantics.measurementOnly) { throw 'Resolver input must remain measurement-only.' }
           if ($resolverInput.semantics.classificationIncluded) { throw 'Profiler leaked resolver classification into the handoff.' }
           if (@($resolverInput.callbacks).Count -lt 4) { throw 'Resolver input did not preserve full callback detail.' }
