@@ -741,6 +741,9 @@ try {
     if ($actionText -notmatch 'Jump' -or $actionText -notmatch 'Dodge') {
         throw 'Generated OnAction replacement lost resolver-emitted action facts.'
     }
+    if ($actionText -notmatch 'decodeType\s*=\s*false') {
+        throw 'Generated exact action route is missing decodeType=false.'
+    }
 
     $frameText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureFrame/init.lua'
     if ($frameText -notmatch 'MakeEventRegistrar' -or
