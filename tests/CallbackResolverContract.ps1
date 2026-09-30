@@ -208,6 +208,18 @@ registerForEvent("onUpdate", function(delta)
 end)
 '@
 
+Write-Mod 'FixtureDormantOnUpdate' @'
+local active = false
+registerHotkey("fixture_update_dormant", "Fixture update dormant", function()
+    active = not active
+end)
+registerForEvent("onUpdate", function(delta)
+    local player = Game.GetPlayer()
+    if not active then return end
+    DoActiveUpdate(player, delta)
+end)
+'@
+
 Write-Mod 'FixtureDormantHard' @'
 local active = false
 registerHotkey("fixture_dormant", "Fixture dormant", function()
@@ -303,6 +315,7 @@ $handoff = @{
         (CallbackRow 112 'FixtureGatedDynamic' 'observe' 'PlayerPuppet::OnAction' 495 5.9 7.8 'init.lua' 1 14),
         (CallbackRow 111 'FixtureDownstream' 'observe' 'PlayerPuppet::OnAction' 490 5.8 7.5 'init.lua' 1 10),
         (CallbackRow 120 'FixtureStructural' 'event' 'onUpdate' 60 9.0 2.0 'init.lua' 1 8),
+        (CallbackRow 125 'FixtureDormantOnUpdate' 'event' 'onUpdate' 60 12.0 3.0 'init.lua' 5 9),
         (CallbackRow 121 'FixtureDormantHard' 'observe' 'PlayerPuppet::FixtureTick' 60 6.0 1.2 'init.lua' 5 8),
         (CallbackRow 122 'FixtureDormantDiscovery' 'observe' 'PlayerPuppet::FixtureDiscoveryTick' 60 6.0 1.2 'init.lua' 5 10),
         (CallbackRow 123 'FixtureDormantNever' 'observe' 'PlayerPuppet::FixtureCameraTick' 60 6.0 1.2 'init.lua' 1 4),
@@ -480,6 +493,19 @@ if (@($structural.generic.Facts.literalConstructors).Count -lt 1) {
     throw 'Repeated literal constructor was not emitted as structural evidence.'
 }
 
+$hardUpdate = @($onUpdate.topConsumers | Where-Object { $_.owner -eq 'FixtureDormantOnUpdate' }) | Select-Object -First 1
+if ($null -eq $hardUpdate) { throw 'FixtureDormantOnUpdate was not ranked inside onUpdate.' }
+if (!$hardUpdate.generic.Automatable) { throw 'Source-proven dormant onUpdate was not marked automatable.' }
+if (@($hardUpdate.generic.RecipeFamilies) -notcontains 'HARD_DORMANT_GUARD_HOIST') {
+    throw 'Hard dormant guard-hoist recipe was not exposed.'
+}
+if ($hardUpdate.generic.Facts.hardDormantGateExpression -ne 'active') {
+    throw "Unexpected hard dormant gate: $($hardUpdate.generic.Facts.hardDormantGateExpression)"
+}
+if ([int]$hardUpdate.generic.Facts.hardDormantPreGuardReadCount -lt 1) {
+    throw 'Hard dormant proof did not record pre-guard read/setup work.'
+}
+
 function Dormancy-For([string]$Owner) {
     foreach ($family in @($result.callbackFamilies)) {
         $row = @($family.topConsumers | Where-Object { $_.owner -eq $Owner }) | Select-Object -First 1
@@ -534,7 +560,7 @@ if ($unknown.registry.matched) {
 if ($null -eq $resolved.pass) {
     throw 'CLI --generate-pass did not return a pass result.'
 }
-if ([int]$resolved.pass.TransformCount -ne 11) {
+if ([int]$resolved.pass.TransformCount -ne 12) {
     if (Test-Path -LiteralPath $resolved.pass.ManifestPath -PathType Leaf) {
         $failedManifest = Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
         Write-Host "PASS DEBUG transforms=$($failedManifest.summary.transforms) skipped=$($failedManifest.summary.skipped)"
@@ -542,10 +568,10 @@ if ([int]$resolved.pass.TransformCount -ne 11) {
             Write-Host ("PASS DEBUG SKIP owner={0} type={1} file={2} reason={3}" -f $skip.owner,$skip.type,$skip.file,$skip.reason)
         }
     }
-    throw "Expected 11 generated transforms, got $($resolved.pass.TransformCount)."
+    throw "Expected 12 generated transforms, got $($resolved.pass.TransformCount)."
 }
-if ([int]$resolved.pass.FileCount -ne 15) {
-    throw "Expected 15 generated replacement files (11 callback + 4 fixed 0-Engine), got $($resolved.pass.FileCount)."
+if ([int]$resolved.pass.FileCount -ne 16) {
+    throw "Expected 16 generated replacement files (12 callback + 4 fixed 0-Engine), got $($resolved.pass.FileCount)."
 }
 if (!(Test-Path -LiteralPath $resolved.pass.ZipPath -PathType Leaf)) {
     throw "Generated pass ZIP is missing: $($resolved.pass.ZipPath)"
@@ -571,6 +597,7 @@ try {
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureAction/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureFrame/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureStructural/init.lua',
+        'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDormantOnUpdate/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixturePattern/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDownstream/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureGatedDynamic/init.lua',
@@ -625,6 +652,19 @@ try {
         throw 'Structural hotpath did not hoist repeated literal CName constructor.'
     }
 
+    $hardUpdateText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDormantOnUpdate/init.lua'
+    if ($hardUpdateText -notmatch 'if not active then return end -- G-CET dormant guard hoist') {
+        throw 'Generated hard-dormant callback is missing the hoisted inactive guard.'
+    }
+    if ($hardUpdateText -notmatch '__gcetRegisterEvent_125\("onUpdate"') {
+        throw 'Generated hard-dormant callback did not retain frame-dispatch consolidation.'
+    }
+    $hoistedIndex = $hardUpdateText.IndexOf('if not active then return end -- G-CET dormant guard hoist')
+    $getterIndex = $hardUpdateText.IndexOf('local player = Game.GetPlayer()')
+    if ($hoistedIndex -lt 0 -or $getterIndex -lt 0 -or $hoistedIndex -gt $getterIndex) {
+        throw 'Dormant guard was not moved ahead of the expensive pre-guard getter.'
+    }
+
     $patternText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixturePattern/init.lua'
     if ($patternText -notmatch 'actions = "\*"' -or
         $patternText -notmatch 'string\.find\(routedName, "Turn", 1, true\)') {
@@ -652,11 +692,11 @@ try {
     if ($manifest.policy.modNameRules) {
         throw 'Generated pass manifest unexpectedly allows mod-name rules.'
     }
-    if ([int]$manifest.summary.transforms -ne 11) {
+    if ([int]$manifest.summary.transforms -ne 12) {
         throw 'Generated pass manifest transform count is wrong.'
     }
-    if ([int]$manifest.summary.callbackFiles -ne 11) {
-        throw "Expected 11 callback replacement files, got $($manifest.summary.callbackFiles)."
+    if ([int]$manifest.summary.callbackFiles -ne 12) {
+        throw "Expected 12 callback replacement files, got $($manifest.summary.callbackFiles)."
     }
     if ([int]$manifest.summary.fixedRuntimeFiles -ne 4) {
         throw "Expected 4 fixed 0-Engine runtime files, got $($manifest.summary.fixedRuntimeFiles)."
