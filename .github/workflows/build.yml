@@ -74,6 +74,17 @@ jobs:
       - name: Publish standalone G-CET resolver
         run: dotnet publish src/G.CETResolver.App/G.CETResolver.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o publish-resolver
 
+      # DEV-ONLY AV diagnostics. These deliberately remove the bundled .NET
+      # runtime from the resolver package so browser/AV reputation can be
+      # isolated from our own app/core binaries.
+      - name: Publish framework-dependent resolver diagnostic
+        if: github.ref != 'refs/heads/main'
+        run: dotnet publish src/G.CETResolver.App/G.CETResolver.App.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=false -p:UseAppHost=true -p:DebugType=None -p:DebugSymbols=false -o publish-resolver-framework
+
+      - name: Publish DLL-only resolver diagnostic
+        if: github.ref != 'refs/heads/main'
+        run: dotnet publish src/G.CETResolver.App/G.CETResolver.App.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=false -p:UseAppHost=false -p:DebugType=None -p:DebugSymbols=false -o publish-resolver-dllonly
+
       - name: Build native root launcher
         shell: pwsh
         run: |
@@ -907,6 +918,22 @@ jobs:
           path: publish-resolver/
           if-no-files-found: error
 
+      - name: Upload framework-dependent resolver AV diagnostic
+        if: github.ref != 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: G-CET-Resolver-AVTEST-Framework-v${{ steps.product_version.outputs.version }}
+          path: publish-resolver-framework/
+          if-no-files-found: error
+
+      - name: Upload DLL-only resolver AV diagnostic
+        if: github.ref != 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: G-CET-Resolver-AVTEST-DLLOnly-v${{ steps.product_version.outputs.version }}
+          path: publish-resolver-dllonly/
+          if-no-files-found: error
+
       - name: Publish canonical GitHub release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         shell: pwsh
@@ -921,7 +948,10 @@ jobs:
           $releaseNotes = Join-Path $env:RUNNER_TEMP "gcet-release-notes-$env:PRODUCT_VERSION.md"
 
           # Several source/documentation commits can queue builds close together.
-          # Only the current main HEAD is allowed to refresh the canonical same-version release.
+          # Only the current main HEAD may publish, and released product versions
+          # are immutable. Never move an existing version tag or clobber its asset:
+          # a new binary requires a new VERSION.txt value so reputation can accrue
+          # to one stable hash/version instead of being reset on every main build.
           $mainSha = (& gh api "repos/$repo/commits/main" --jq .sha).Trim()
           if ($mainSha -ne $sha) {
             Write-Host "Skipping stale release publish for $sha; current main is $mainSha."
@@ -935,21 +965,26 @@ jobs:
             throw "Release SHA-256 file is missing: $env:PUBLIC_ASSET.sha256.txt"
           }
 
+          & gh release view $tag --repo $repo *> $null
+          $releaseExists = $LASTEXITCODE -eq 0
+          if ($releaseExists) {
+            Write-Host "Canonical release $tag already exists. Leaving its tag and assets untouched."
+            Write-Host "Bump VERSION.txt before publishing a different binary."
+            exit 0
+          }
+
           $tagRefJson = & gh api "repos/$repo/git/ref/tags/$tag" 2>$null
           $tagExists = $LASTEXITCODE -eq 0
           if ($tagExists) {
             $tagRef = $tagRefJson | ConvertFrom-Json
             $tagSha = [string]$tagRef.object.sha
             if ($tagSha -ne $sha) {
-              Write-Host "Refreshing existing release tag $tag from $tagSha to $sha without changing the product version."
-              & gh api --method PATCH "repos/$repo/git/refs/tags/$tag" -f sha="$sha" -F force=true *> $null
-              if ($LASTEXITCODE -ne 0) {
-                throw "Could not move existing release tag $tag to $sha."
-              }
+              throw "Version $env:PRODUCT_VERSION is already tagged at $tagSha. Bump VERSION.txt; immutable release tags are never moved."
             }
+            Write-Host "Tag $tag already points at this commit; completing the missing release."
           }
           else {
-            Write-Host "Creating release tag $tag at $sha."
+            Write-Host "Creating immutable release tag $tag at $sha."
             & gh api --method POST "repos/$repo/git/refs" -f ref="refs/tags/$tag" -f sha="$sha" *> $null
             if ($LASTEXITCODE -ne 0) {
               throw "Could not create tag $tag at $sha."
@@ -963,20 +998,12 @@ jobs:
             "    $env:PUBLIC_SHA256  $env:PUBLIC_ASSET`r`n"
           $releaseBody | Set-Content -LiteralPath $releaseNotes -Encoding utf8
 
-          & gh release view $tag --repo $repo *> $null
-          $releaseExists = $LASTEXITCODE -eq 0
-
-          if ($releaseExists) {
-            & gh release edit $tag --repo $repo --title "G-CET Runtime Profiler v$env:PRODUCT_VERSION" --notes-file $releaseNotes --target $sha --latest
-          }
-          else {
-            & gh release create $tag --repo $repo --title "G-CET Runtime Profiler v$env:PRODUCT_VERSION" --notes-file $releaseNotes --target $sha --latest
-          }
+          & gh release create $tag --repo $repo --title "G-CET Runtime Profiler v$env:PRODUCT_VERSION" --notes-file $releaseNotes --target $sha --latest
           if ($LASTEXITCODE -ne 0) {
-            throw "Could not create/update GitHub release $tag."
+            throw "Could not create GitHub release $tag."
           }
 
-          & gh release upload $tag $env:PUBLIC_ASSET "$env:PUBLIC_ASSET.sha256.txt" --repo $repo --clobber
+          & gh release upload $tag $env:PUBLIC_ASSET "$env:PUBLIC_ASSET.sha256.txt" --repo $repo
           if ($LASTEXITCODE -ne 0) {
             throw "Could not upload canonical release assets for $tag."
           }
