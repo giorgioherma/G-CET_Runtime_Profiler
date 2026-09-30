@@ -350,6 +350,25 @@ internal static class CallbackResolverService
             blockers.Add(cadenceBlocker);
         }
 
+        // Structural hot-path recipes are source-proven and callback-local.
+        // They never change event cadence or callback delivery. Cost is the
+        // first gate: do not rewrite cheap callbacks just because the source is ugly.
+        if (!recipes.Contains("AUTHOR_CADENCE_WHOLE_CALLBACK", StringComparer.OrdinalIgnoreCase) &&
+            source is not null &&
+            TryResolveStructuralHotpath(source, callback, out var structural))
+        {
+            recipes.Add("STRUCTURAL_HOTPATH_REWRITE");
+            evidence.AddRange(structural.Evidence);
+            facts = new
+            {
+                structuralHotpath = true,
+                identicalExpressions = structural.IdenticalExpressions,
+                literalConstructors = structural.LiteralConstructors,
+                estimatedCallbackPaybackPct = structural.EstimatedCallbackPaybackPct,
+                estimatedGlobalPaybackPct = structural.EstimatedGlobalPaybackPct
+            };
+        }
+
         // Keep the broader cadence classifier visible as evidence, but do not
         // let an inferred cadence authorize generation. Only finite generator
         // recipes above are automatable.
@@ -365,6 +384,9 @@ internal static class CallbackResolverService
             StringComparer.OrdinalIgnoreCase) ||
             recipes.Contains(
                 "FRAME_DISPATCH_CONSOLIDATION",
+                StringComparer.OrdinalIgnoreCase) ||
+            recipes.Contains(
+                "STRUCTURAL_HOTPATH_REWRITE",
                 StringComparer.OrdinalIgnoreCase);
 
         var pattern = recipes.Contains(
@@ -384,6 +406,116 @@ internal static class CallbackResolverService
             Blockers = blockers.ToArray(),
             Source = effectiveSourceEvidence
         };
+    }
+
+    private static bool TryResolveStructuralHotpath(
+        ResolvedSource source,
+        CallbackMetric callback,
+        out StructuralHotpathResolution resolution)
+    {
+        resolution = new StructuralHotpathResolution();
+
+        // Relative gates deliberately scale with the measured CET workload.
+        // A structurally safe rewrite is still skipped when the callback is not
+        // a material consumer in this capture.
+        if (callback.ExclusiveMsPerSecond < 5.0 ||
+            callback.GlobalWorkSharePct < 0.5)
+            return false;
+
+        var text = source.CallbackText;
+        var expressions = new List<StructuralExpression>();
+        var constructors = new List<StructuralExpression>();
+
+        // Restrict automatic call-scope reuse to CET/Game singleton-style getters
+        // whose identity is expected to be stable for one Lua callback invocation.
+        var getterPattern = new Regex(
+            @"\bGame\.(?:GetPlayer|GetTargetingSystem|GetBlackboardSystem|GetAllBlackboardDefs|GetQuestsSystem|GetTimeSystem|GetStatsSystem|GetStatPoolsSystem|GetSystemRequestsHandler|GetTeleportationFacility|GetCameraSystem)\s*\(\s*\)",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+        foreach (var group in getterPattern.Matches(text)
+                     .Cast<Match>()
+                     .GroupBy(x => x.Value, StringComparer.Ordinal))
+        {
+            var count = group.Count();
+            if (count < 2)
+                continue;
+
+            expressions.Add(new StructuralExpression
+            {
+                Expression = group.Key,
+                Count = count
+            });
+        }
+
+        // Literal value constructors are safe to reuse when their complete input
+        // is embedded in source. Keep this list intentionally narrow.
+        var constructorPattern = new Regex(
+            @"\b(?:CName|TweakDBID)\.new\s*\(\s*(?<quote>['""])(?<value>(?:\\.|(?!\k<quote>).)*)\k<quote>\s*\)",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+        foreach (var group in constructorPattern.Matches(text)
+                     .Cast<Match>()
+                     .GroupBy(x => x.Value, StringComparer.Ordinal))
+        {
+            var count = group.Count();
+            if (count < 2)
+                continue;
+
+            constructors.Add(new StructuralExpression
+            {
+                Expression = group.Key,
+                Count = count
+            });
+        }
+
+        if (expressions.Count == 0 && constructors.Count == 0)
+            return false;
+
+        // Conservative estimate: only repeated occurrences beyond the first are
+        // treated as avoidable. Runtime deep timing can refine this later; the
+        // current estimate is intentionally capped and only used as a materiality
+        // signal, never as semantic proof.
+        var redundantOccurrences =
+            expressions.Sum(x => x.Count - 1) +
+            constructors.Sum(x => x.Count - 1);
+        var totalOccurrences =
+            expressions.Sum(x => x.Count) +
+            constructors.Sum(x => x.Count);
+        var localFraction = totalOccurrences > 0
+            ? Math.Min(0.75, (double)redundantOccurrences / totalOccurrences)
+            : 0.0;
+
+        var estimatedCallbackPaybackPct = localFraction * 100.0;
+        var estimatedGlobalPaybackPct =
+            callback.GlobalWorkSharePct * localFraction;
+
+        // Do not generate microscopic structural patches.
+        if (estimatedCallbackPaybackPct < 10.0 &&
+            estimatedGlobalPaybackPct < 0.25)
+            return false;
+
+        var evidence = new List<string>();
+        if (expressions.Count > 0)
+            evidence.Add(
+                $"Current source contains {expressions.Sum(x => x.Count)} calls across " +
+                $"{expressions.Count} repeated callback-stable Game getter expression(s).");
+        if (constructors.Count > 0)
+            evidence.Add(
+                $"Current source contains {constructors.Sum(x => x.Count)} calls across " +
+                $"{constructors.Count} repeated literal constructor expression(s).");
+        evidence.Add(
+            $"Measured callback cost is {callback.ExclusiveMsPerSecond:0.###} ms/s " +
+            $"({callback.GlobalWorkSharePct:0.###}% of measured CET work).");
+
+        resolution = new StructuralHotpathResolution
+        {
+            IdenticalExpressions = expressions.ToArray(),
+            LiteralConstructors = constructors.ToArray(),
+            EstimatedCallbackPaybackPct = estimatedCallbackPaybackPct,
+            EstimatedGlobalPaybackPct = estimatedGlobalPaybackPct,
+            Evidence = evidence.ToArray()
+        };
+        return true;
     }
 
     private static bool TryResolveWholeCallbackAuthorCadence(
@@ -2390,6 +2522,21 @@ internal static class CallbackResolverService
         public double maxExclusiveMs => Round(MaxExclusiveMs);
         public long spikeCount => SpikeCount;
         public double maxSpikeExclusiveMs => Round(MaxSpikeExclusiveMs);
+    }
+
+    private sealed class StructuralExpression
+    {
+        public string Expression { get; init; } = "";
+        public int Count { get; init; }
+    }
+
+    private sealed class StructuralHotpathResolution
+    {
+        public StructuralExpression[] IdenticalExpressions { get; init; } = Array.Empty<StructuralExpression>();
+        public StructuralExpression[] LiteralConstructors { get; init; } = Array.Empty<StructuralExpression>();
+        public double EstimatedCallbackPaybackPct { get; init; }
+        public double EstimatedGlobalPaybackPct { get; init; }
+        public string[] Evidence { get; init; } = Array.Empty<string>();
     }
 
     private sealed class AuthorCadenceResolution
