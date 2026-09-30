@@ -12,6 +12,8 @@ internal sealed record CallbackResolverDocumentResult(
     int GenericResolvedCount,
     int NonFrameOnlyAutoCount,
     int FrameOnlyAutoCount,
+    int MaterialRemainingCount,
+    int BelowThresholdCount,
     int RegistryHintCount,
     int UnresolvedCount);
 
@@ -26,6 +28,7 @@ internal static class CallbackResolverService
     // speed or an arbitrary fixed millisecond budget.
     private const double AuthorCadenceMinCallbackPaybackPct = 10.0;
     private const double AuthorCadenceMinGlobalPaybackPct = 0.05;
+    private const double MaterialRemainingMsPerSecond = 3.0;
 
     private static readonly Regex NormalizeNonAlphaNumeric = new(
         @"[^a-z0-9]+",
@@ -73,6 +76,8 @@ internal static class CallbackResolverService
         var genericResolved = 0;
         var nonFrameOnlyAuto = 0;
         var frameOnlyAuto = 0;
+        var materialRemaining = 0;
+        var belowThreshold = 0;
         var registryHints = 0;
         var unresolved = 0;
 
@@ -112,7 +117,13 @@ internal static class CallbackResolverService
                 else if (hint is not null)
                     registryHints++;
                 else
+                {
                     unresolved++;
+                    if (callback.ExclusiveMsPerSecond >= MaterialRemainingMsPerSecond)
+                        materialRemaining++;
+                    else
+                        belowThreshold++;
+                }
 
                 consumers.Add(new
                 {
@@ -271,6 +282,9 @@ internal static class CallbackResolverService
                 genericResolved,
                 nonFrameOnlyAuto,
                 frameOnlyAuto,
+                materialRemaining,
+                belowThreshold,
+                materialThresholdMsPerSecond = MaterialRemainingMsPerSecond,
                 registryHints,
                 unresolved
             },
@@ -285,6 +299,8 @@ internal static class CallbackResolverService
             genericResolved,
             nonFrameOnlyAuto,
             frameOnlyAuto,
+            materialRemaining,
+            belowThreshold,
             registryHints,
             unresolved);
     }
