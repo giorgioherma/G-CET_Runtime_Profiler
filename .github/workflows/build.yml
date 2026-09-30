@@ -715,17 +715,19 @@ jobs:
             'CET_Runtime_Profile_Spikes.csv' = 'Sequence,CaptureStartMs,CaptureEndMs'
             'CET_Runtime_Profile_Timeline.csv' = 'BucketIndex,BucketStartMs,BucketEndMs'
             'CET_Runtime_Profile_OnUpdateTimeline.csv' = 'BucketIndex,BucketStartMs,BucketEndMs,Mod,Kind,Target'
+            'CET_Runtime_Profile_FrameMultiplicity.csv' = 'RegistrationId,Mod,Kind,Target,TotalFrames,FramesWithCalls'
             'CET_Runtime_Profile_Markers.csv' = 'Sequence,CaptureMs,UnixEpochMs,Label,DroppedMarkersAtDump'
             'CET_Runtime_Profile_Scheduler_ByJob.csv' = 'Owner,JobType,Job'
             'CET_Runtime_Profile_Scheduler_Spikes.csv' = 'Sequence,Frame,DurationMs'
             'CET_Runtime_Profile_Scheduler_FrameBursts.csv' = 'Sequence,Frame,TotalJobMs'
+            'CET_Runtime_Profile_Deep_Callsites.csv' = 'SampleSequence,RegistrationId,ProfileEpoch,Frame,CallerSourceFile,CallerLine'
           }
           foreach ($entry in $templateFiles.GetEnumerator()) {
             $entry.Value | Set-Content -LiteralPath (Join-Path $cet5 $entry.Key) -Encoding utf8
           }
 
           $templateStatus = (& $exe --status --game $fixture5 --json | ConvertFrom-Json)
-          if ([int]$templateStatus.liveResultCount -ne 10) { throw "Expected 10 profiler template files, got $($templateStatus.liveResultCount)." }
+          if ([int]$templateStatus.liveResultCount -ne 12) { throw "Expected 12 profiler template files, got $($templateStatus.liveResultCount)." }
           if ($templateStatus.captureReadyForCollection) { throw 'Header-only profiler templates were incorrectly classified as a completed capture.' }
           if ($templateStatus.captureKey -ne 'F11') { throw "Expected CET capture key F11, got $($templateStatus.captureKey)." }
           if (!$templateStatus.captureKeyIsDefaultF11) { throw 'Exact F11 binding was not recognized as the default capture key.' }
