@@ -78,6 +78,7 @@ internal static class CallbackResolverService
                 rankedCount++;
                 var generic = ResolveGeneric(callback, sourceIndex, cadence);
                 var dormancy = ResolveDormancyEvidence(callback, generic.Source, sourceIndex);
+                var advanced = EvaluateAdvancedCandidate(callback, generic, dormancy);
                 ExceptionRegistryEntry? hint = null;
 
                 // Registry is deliberately a last resort. Generic source/runtime
@@ -139,6 +140,18 @@ internal static class CallbackResolverService
                         dormancy.DiscoveryRegionSelfContained,
                         dormancy.Evidence,
                         dormancy.Blockers
+                    },
+                    advanced = new
+                    {
+                        advanced.Eligible,
+                        advanced.Difficulty,
+                        advanced.DifficultyLabel,
+                        advanced.MeasuredCostMsPerSecond,
+                        advanced.MinimumCostToJustifyMsPerSecond,
+                        advanced.HeadroomMsPerSecond,
+                        advanced.Reason,
+                        advanced.NextEvidence,
+                        advanced.UserClassificationUseful
                     },
                     registry = new
                     {
@@ -244,6 +257,117 @@ internal static class CallbackResolverService
             genericResolved,
             registryHints,
             unresolved);
+    }
+
+    private static AdvancedCandidateAssessment EvaluateAdvancedCandidate(
+        CallbackMetric callback,
+        GenericResolution generic,
+        DormancyEvidence dormancy)
+    {
+        // Difficulty is semantic complexity, not implementation effort alone.
+        // Higher difficulty requires more measured cost on the table before
+        // Advanced mode is allowed to bother the user or request another run.
+        var difficulty = dormancy.Class switch
+        {
+            "HARD_DORMANT" => dormancy.CompleteWakePathProven ? 2 : 3,
+            "DISCOVERY_DORMANT" => dormancy.DiscoveryRegionSelfContained ? 4 : 5,
+            "BACKGROUND" => 4,
+            "UNKNOWN" => 5,
+            "NEVER_GATE" => 5,
+            _ => 5
+        };
+
+        var minimum = difficulty switch
+        {
+            1 => 0.5,
+            2 => 1.0,
+            3 => 3.0,
+            4 => 7.0,
+            _ => 15.0
+        };
+
+        var neverGate = dormancy.Class.Equals(
+            "NEVER_GATE",
+            StringComparison.OrdinalIgnoreCase);
+
+        var alreadyHasSemanticAutoRecipe =
+            generic.RecipeFamilies.Any(x =>
+                x.Equals("AUTHOR_CADENCE_WHOLE_CALLBACK", StringComparison.OrdinalIgnoreCase) ||
+                x.Equals("HARD_DORMANT_GUARD_HOIST", StringComparison.OrdinalIgnoreCase));
+
+        var semanticWorkRemains =
+            dormancy.Class is "HARD_DORMANT" or "DISCOVERY_DORMANT" or "BACKGROUND" or "UNKNOWN";
+
+        var eligible =
+            !neverGate &&
+            semanticWorkRemains &&
+            !alreadyHasSemanticAutoRecipe &&
+            callback.ExclusiveMsPerSecond >= minimum;
+
+        string nextEvidence;
+        var userClassificationUseful = false;
+
+        if (!eligible)
+        {
+            nextEvidence = neverGate
+                ? "NONE_NEVER_GATE"
+                : alreadyHasSemanticAutoRecipe
+                    ? "NONE_AUTO_RECIPE_AVAILABLE"
+                    : "NONE_BELOW_ECONOMIC_THRESHOLD";
+        }
+        else if (dormancy.Class == "DISCOVERY_DORMANT")
+        {
+            nextEvidence = dormancy.AuthorDiscoveryCadenceProven
+                ? dormancy.DiscoveryRegionSelfContained
+                    ? "SOURCE_DEPENDENCY_PROOF_FOR_DISCOVERY_EXTRACTION"
+                    : "TARGETED_INACTIVE_NEAR_ACTIVE_LEAVE_CAPTURE"
+                : "TARGETED_INACTIVE_NEAR_ACTIVE_LEAVE_CAPTURE";
+        }
+        else if (dormancy.Class == "HARD_DORMANT")
+        {
+            nextEvidence = dormancy.CompleteWakePathProven
+                ? "SOURCE_BOUNDARY_PROOF"
+                : "TARGETED_INACTIVE_ACTIVE_INACTIVE_CAPTURE";
+        }
+        else if (dormancy.Class == "BACKGROUND")
+        {
+            nextEvidence = "SOURCE_QUEUE_PENDING_RESOURCE_PROOF";
+        }
+        else
+        {
+            nextEvidence = "USER_CLASSIFICATION";
+            userClassificationUseful = true;
+        }
+
+        var label = difficulty switch
+        {
+            1 => "MECHANICAL",
+            2 => "EXISTING_STATE_GUARD",
+            3 => "ACTIVE_DORMANT_SPLIT",
+            4 => "DISCOVERY_OR_RESOURCE_SPLIT",
+            _ => "CROSS_STATE_OR_UNKNOWN"
+        };
+
+        var reason = eligible
+            ? $"Measured cost {callback.ExclusiveMsPerSecond:0.###} ms/s clears the {minimum:0.###} ms/s difficulty-{difficulty} Advanced threshold."
+            : neverGate
+                ? "Dormancy is prohibited for this latency-sensitive callback class."
+                : alreadyHasSemanticAutoRecipe
+                    ? "A finite semantic automatic recipe is already available; Advanced mode is not required for this callback."
+                    : $"Measured cost {callback.ExclusiveMsPerSecond:0.###} ms/s does not clear the {minimum:0.###} ms/s difficulty-{difficulty} Advanced threshold.";
+
+        return new AdvancedCandidateAssessment
+        {
+            Eligible = eligible,
+            Difficulty = difficulty,
+            DifficultyLabel = label,
+            MeasuredCostMsPerSecond = callback.ExclusiveMsPerSecond,
+            MinimumCostToJustifyMsPerSecond = minimum,
+            HeadroomMsPerSecond = Math.Max(0, callback.ExclusiveMsPerSecond - minimum),
+            Reason = reason,
+            NextEvidence = nextEvidence,
+            UserClassificationUseful = userClassificationUseful
+        };
     }
 
     private static DormancyEvidence ResolveDormancyEvidence(
@@ -3277,6 +3401,19 @@ internal static class CallbackResolverService
         string SourceFile,
         int RegistrationLine,
         int CallbackBodyEndLine);
+
+    private sealed class AdvancedCandidateAssessment
+    {
+        public bool Eligible { get; init; }
+        public int Difficulty { get; init; }
+        public string DifficultyLabel { get; init; } = "";
+        public double MeasuredCostMsPerSecond { get; init; }
+        public double MinimumCostToJustifyMsPerSecond { get; init; }
+        public double HeadroomMsPerSecond { get; init; }
+        public string Reason { get; init; } = "";
+        public string NextEvidence { get; init; } = "";
+        public bool UserClassificationUseful { get; init; }
+    }
 
     private sealed class DormancyEvidence
     {
