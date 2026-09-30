@@ -1043,7 +1043,7 @@ public static class PassGeneratorService
                 // "onUpdate" to happen to share one physical source line.
                 var frameOpening = Regex.Match(
                     frameSegment,
-                    @"\b(?<registrar>registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*(['""])onUpdate\2",
+                    @"\b(?<registrar>registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*(?<quote>['""])onUpdate\k<quote>",
                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Singleline);
                 if (!frameOpening.Success)
                 {
