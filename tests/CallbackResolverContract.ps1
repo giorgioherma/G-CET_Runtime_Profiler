@@ -185,6 +185,7 @@ FixtureOverrideRuntime = Runtime
 function Runtime:onAction(action, consumer, wrappedMethod)
     if self.ready and self.session and self.input then
         local named, name = pcall(function() return Game.NameToString(action:GetName()) end)
+        if named and self.traceActions then self:traceAction(name) end
         if named and HANDLED_ACTIONS[name] then
             self.input:onAction(name, action:GetType().value, action:GetValue())
         end
@@ -426,7 +427,7 @@ $handoff = @{
         (CallbackRow 109 'FixtureDynamic' 'observe' 'PlayerPuppet::OnAction' 500 6.0 8.0 'init.lua' 1 7),
         (CallbackRow 112 'FixtureGatedDynamic' 'observe' 'PlayerPuppet::OnAction' 495 5.9 7.8 'init.lua' 1 14),
         (CallbackRow 130 'FixtureOverrideStructural' 'Override' 'PlayerPuppet::OnAction' 500 16.0 4.0 'init.lua' 1 8),
-        (CallbackRow 131 'FixtureOverridePrefilter' 'Override' 'PlayerPuppet::OnAction' 1400 15.0 4.4 'init.lua' 20 24),
+        (CallbackRow 131 'FixtureOverridePrefilter' 'Override' 'PlayerPuppet::OnAction' 1400 15.0 4.4 'init.lua' 21 25),
         (CallbackRow 111 'FixtureDownstream' 'observe' 'PlayerPuppet::OnAction' 490 5.8 7.5 'init.lua' 1 10),
         (CallbackRow 120 'FixtureStructural' 'event' 'onUpdate' 60 9.0 2.0 'init.lua' 1 8),
         (CallbackRow 126 'FixtureDiscoveryAuthorRate' 'event' 'onUpdate' 60 13.0 3.2 'init.lua' 6 18),
@@ -595,6 +596,10 @@ if ($overridePrefilter.generic.Pattern -ne 'ACTION_OVERRIDE_EXACT_PREFILTER') {
 }
 if (!$overridePrefilter.generic.Facts.overridePrefilterProven) {
     throw 'Transparent Override proof fact was not emitted.'
+}
+if ($overridePrefilter.generic.Facts.overridePrefilterGateReceiver -ne 'current' -or
+    $overridePrefilter.generic.Facts.overridePrefilterGateMember -ne 'traceActions') {
+    throw "Override trace gate was not preserved: $($overridePrefilter.generic.Facts.overridePrefilterGateReceiver).$($overridePrefilter.generic.Facts.overridePrefilterGateMember)"
 }
 foreach ($expected in @('ChoiceScrollUp','ChoiceScrollDown','ChoiceApply')) {
     if (@($overridePrefilter.generic.Facts.actions) -notcontains $expected) {
@@ -978,7 +983,8 @@ try {
         'ChoiceScrollUp',
         'ChoiceScrollDown',
         'ChoiceApply',
-        'action:GetName()',
+        'pcall(function() return Game.NameToString(action:GetName()) end)',
+        'not current.traceActions',
         'wrappedMethod(action, consumer)',
         'G-CET finite Override prefilter'
     )) {

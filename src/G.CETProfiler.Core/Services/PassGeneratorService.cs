@@ -373,6 +373,8 @@ public static class PassGeneratorService
                     OverridePrefilterProven = facts.OverridePrefilterProven,
                     OverrideWrappedMethodReturns = facts.OverrideWrappedMethodReturns,
                     OverrideWrappedMethodTakesSelf = facts.OverrideWrappedMethodTakesSelf,
+                    OverridePrefilterGateReceiver = facts.OverridePrefilterGateReceiver,
+                    OverridePrefilterGateMember = facts.OverridePrefilterGateMember,
                     AuthorCadenceWholeCallback = facts.AuthorCadenceWholeCallback,
                     AuthorBaseIntervalSeconds = facts.AuthorBaseIntervalSeconds,
                     AuthorDeltaParameter = facts.AuthorDeltaParameter,
@@ -419,6 +421,8 @@ public static class PassGeneratorService
             OverridePrefilterProven = JsonBool(facts, "overridePrefilterProven"),
             OverrideWrappedMethodReturns = JsonBool(facts, "overrideWrappedMethodReturns"),
             OverrideWrappedMethodTakesSelf = JsonBool(facts, "overrideWrappedMethodTakesSelf"),
+            OverridePrefilterGateReceiver = JsonString(facts, "overridePrefilterGateReceiver"),
+            OverridePrefilterGateMember = JsonString(facts, "overridePrefilterGateMember"),
             AuthorCadenceWholeCallback = JsonBool(facts, "authorCadenceWholeCallback"),
             AuthorBaseIntervalSeconds = JsonDouble(facts, "baseIntervalSeconds"),
             AuthorDeltaParameter = JsonString(facts, "deltaParameter"),
@@ -1090,7 +1094,6 @@ public static class PassGeneratorService
                 var overrideIndent = Regex.Match(overrideLines[0], @"^\s*").Value;
                 var bodyIndent = overrideIndent + "    ";
                 var tableName = $"__gcetOverrideActions_{candidate.RegistrationId}";
-                var cnameName = $"__gcetOverrideCName_{candidate.RegistrationId}";
                 var actionName = $"__gcetOverrideName_{candidate.RegistrationId}";
                 var entries = string.Join(
                     ", ",
@@ -1107,17 +1110,50 @@ public static class PassGeneratorService
                     ? $"return {wrappedCall}"
                     : $"{wrappedCall}\n{bodyIndent}    return";
 
+                var namedName = $"__gcetOverrideNamed_{candidate.RegistrationId}";
+                var gateExpression = "";
+                var insertionIndex = overrideOpening.Index + overrideOpening.Length;
+
+                if (!string.IsNullOrWhiteSpace(candidate.OverridePrefilterGateMember))
+                {
+                    if (string.IsNullOrWhiteSpace(candidate.OverridePrefilterGateReceiver))
+                    {
+                        skipped.Add(Skip(candidate, "Override prefilter trace gate has no proven wrapper receiver."));
+                        continue;
+                    }
+
+                    var receiverDeclaration = Regex.Match(
+                        overrideSegment[(overrideOpening.Index + overrideOpening.Length)..],
+                        @"(?m)^\s*local\s+" + Regex.Escape(candidate.OverridePrefilterGateReceiver) +
+                        @"\s*=\s*[^\r\n]+$",
+                        RegexOptions.CultureInvariant);
+                    if (!receiverDeclaration.Success)
+                    {
+                        skipped.Add(Skip(candidate, "Override prefilter trace-gate receiver declaration could not be revalidated."));
+                        continue;
+                    }
+
+                    insertionIndex =
+                        overrideOpening.Index +
+                        overrideOpening.Length +
+                        receiverDeclaration.Index +
+                        receiverDeclaration.Length;
+
+                    gateExpression =
+                        $" and (not {candidate.OverridePrefilterGateReceiver} or " +
+                        $"not {candidate.OverridePrefilterGateReceiver}.{candidate.OverridePrefilterGateMember})";
+                }
+
                 var injected =
-                    $"\n{bodyIndent}local {cnameName} = action:GetName()" +
-                    $"\n{bodyIndent}local {actionName} = {cnameName}.value or Game.NameToString({cnameName})" +
-                    $"\n{bodyIndent}if not {tableName}[{actionName}] then" +
+                    $"\n{bodyIndent}local {namedName}, {actionName} = pcall(function() return Game.NameToString(action:GetName()) end)" +
+                    $"\n{bodyIndent}if {namedName}{gateExpression} and not {tableName}[{actionName}] then" +
                     $"\n{bodyIndent}    {earlyWrapped}" +
                     $"\n{bodyIndent}end -- G-CET finite Override prefilter";
 
                 var rewritten =
-                    overrideSegment[..(overrideOpening.Index + overrideOpening.Length)] +
+                    overrideSegment[..insertionIndex] +
                     injected +
-                    overrideSegment[(overrideOpening.Index + overrideOpening.Length)..];
+                    overrideSegment[insertionIndex..];
 
                 var overrideReplacementLines = (prefix + "\n" + rewritten).Split('\n');
                 lines.RemoveRange(
@@ -1137,7 +1173,10 @@ public static class PassGeneratorService
                         actions = candidate.Actions,
                         preservesOverride = true,
                         preservesWrappedMethod = true,
-                        semantics = "irrelevant actions bypass only source-proven finite custom downstream work and immediately execute the original wrappedMethod"
+                        protectedNameDecode = true,
+                        prefilterGateReceiver = candidate.OverridePrefilterGateReceiver,
+                        prefilterGateMember = candidate.OverridePrefilterGateMember,
+                        semantics = "irrelevant actions bypass only source-proven finite custom downstream work; optional diagnostic full-stream gates remain authoritative"
                     }
                 });
                 applied++;
@@ -1879,6 +1918,8 @@ public static class PassGeneratorService
         public bool OverridePrefilterProven { get; init; }
         public bool OverrideWrappedMethodReturns { get; init; }
         public bool OverrideWrappedMethodTakesSelf { get; init; }
+        public string OverridePrefilterGateReceiver { get; init; } = "";
+        public string OverridePrefilterGateMember { get; init; } = "";
         public bool AuthorCadenceWholeCallback { get; init; }
         public double AuthorBaseIntervalSeconds { get; init; }
         public string AuthorDeltaParameter { get; init; } = "";
@@ -1918,6 +1959,8 @@ public static class PassGeneratorService
         public bool OverridePrefilterProven { get; init; }
         public bool OverrideWrappedMethodReturns { get; init; }
         public bool OverrideWrappedMethodTakesSelf { get; init; }
+        public string OverridePrefilterGateReceiver { get; init; } = "";
+        public string OverridePrefilterGateMember { get; init; } = "";
         public bool AuthorCadenceWholeCallback { get; init; }
         public double AuthorBaseIntervalSeconds { get; init; }
         public string AuthorDeltaParameter { get; init; } = "";

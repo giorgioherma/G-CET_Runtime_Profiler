@@ -3041,6 +3041,7 @@ internal static class CallbackResolverService
                     return false;
 
                 string[] definitionActions;
+                var definitionPrefilterGateMember = "";
                 if (forward.NameArgumentIndex >= 0)
                 {
                     if (forward.NameArgumentIndex >= definition.Parameters.Length)
@@ -3066,7 +3067,7 @@ internal static class CallbackResolverService
                              definition.RelativeFile,
                              sourceIndex,
                              out definitionActions,
-                             out var definitionPrefilterGateMember))
+                             out definitionPrefilterGateMember))
                 {
                     return false;
                 }
