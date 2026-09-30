@@ -602,7 +602,18 @@ public static class PassGeneratorService
                 var transformedConstructors = new List<string>();
                 var ordinal = 0;
 
-                foreach (var fact in candidate.StructuralExpressions)
+                // Resolver authorization is authoritative; generator still
+                // revalidates the current source. If the serialized expression
+                // detail is absent, rediscover only the same narrow finite
+                // whitelist that the resolver is allowed to authorize.
+                var structuralExpressions = candidate.StructuralExpressions.Length > 0
+                    ? candidate.StructuralExpressions
+                    : DiscoverRepeatedStructuralExpressions(structuralSegment, constructors: false);
+                var structuralConstructors = candidate.StructuralConstructors.Length > 0
+                    ? candidate.StructuralConstructors
+                    : DiscoverRepeatedStructuralExpressions(structuralSegment, constructors: true);
+
+                foreach (var fact in structuralExpressions)
                 {
                     var observed = Regex.Matches(
                         rewrittenBody,
@@ -621,7 +632,7 @@ public static class PassGeneratorService
                     transformedExpressions.Add(fact.Expression);
                 }
 
-                foreach (var fact in candidate.StructuralConstructors)
+                foreach (var fact in structuralConstructors)
                 {
                     var observed = Regex.Matches(
                         rewrittenBody,
@@ -1024,6 +1035,26 @@ public static class PassGeneratorService
         lines.Add($"{indent}if not __gcetRouted_{candidate.RegistrationId} then Observe(\"PlayerPuppet\", \"OnAction\", {functionName}) end");
 
         return string.Join("\n", lines);
+    }
+
+    private static StructuralExpressionFact[] DiscoverRepeatedStructuralExpressions(
+        string source,
+        bool constructors)
+    {
+        var pattern = constructors
+            ? new Regex(
+                @"\b(?:CName|TweakDBID)\.new\s*\(\s*(?<quote>['""])(?<value>(?:\\.|(?!\k<quote>).)*)\k<quote>\s*\)",
+                RegexOptions.CultureInvariant)
+            : new Regex(
+                @"\bGame\.(?:GetPlayer|GetTargetingSystem|GetBlackboardSystem|GetAllBlackboardDefs|GetQuestsSystem|GetTimeSystem|GetStatsSystem|GetStatPoolsSystem|GetSystemRequestsHandler|GetTeleportationFacility|GetCameraSystem)\s*\(\s*\)",
+                RegexOptions.CultureInvariant);
+
+        return pattern.Matches(source)
+            .Cast<Match>()
+            .GroupBy(x => x.Value, StringComparer.Ordinal)
+            .Where(x => x.Count() >= 2)
+            .Select(x => new StructuralExpressionFact(x.Key, x.Count()))
+            .ToArray();
     }
 
     private static string? ResolveInsideMods(string modsRoot, string relativeFile)
