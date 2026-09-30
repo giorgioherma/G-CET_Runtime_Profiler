@@ -303,9 +303,15 @@ try {
         }
     }
 
-    $lowText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureLowPayback/init.lua'
-    if ($lowText -match 'Schedule\.Every') {
-        throw 'Low-payback fixture was cadence-rewritten despite the payback gate.'
+    $lowEntry = @($zip.Entries | Where-Object {
+        $_.FullName -eq 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureLowPayback/init.lua'
+    }) | Select-Object -First 1
+    if ($null -ne $lowEntry) {
+        $reader = New-Object System.IO.StreamReader($lowEntry.Open())
+        try { $lowText = $reader.ReadToEnd() } finally { $reader.Dispose() }
+        if ($lowText -match 'Schedule\.Every') {
+            throw 'Low-payback fixture was cadence-rewritten despite the payback gate.'
+        }
     }
 }
 finally {
