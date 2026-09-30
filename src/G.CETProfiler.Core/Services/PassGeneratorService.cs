@@ -288,9 +288,8 @@ public static class PassGeneratorService
                 CandidateKind? kind = null;
 
                 if (resolverFamily.Equals("ONACTION", StringComparison.OrdinalIgnoreCase) &&
-                    recipes.Any(x =>
-                        x.StartsWith("ACTION_ROUTING", StringComparison.OrdinalIgnoreCase) &&
-                        !x.Equals("ACTION_ROUTING_OVERRIDE", StringComparison.OrdinalIgnoreCase)))
+                    pattern.StartsWith("ACTION_ROUTING", StringComparison.OrdinalIgnoreCase) &&
+                    !pattern.Equals("ACTION_ROUTING_OVERRIDE", StringComparison.OrdinalIgnoreCase))
                 {
                     kind = CandidateKind.Action;
                 }
