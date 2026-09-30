@@ -208,6 +208,28 @@ registerForEvent("onUpdate", function(delta)
 end)
 '@
 
+Write-Mod 'FixtureDiscoveryAuthorRate' @'
+local active = false
+local discoveryTimer = 0
+registerHotkey("fixture_discovery_author", "Fixture discovery author", function()
+    active = true
+end)
+registerForEvent("onUpdate", function(delta)
+    if not active then
+        discoveryTimer = discoveryTimer + delta
+        if discoveryTimer >= 1.0 then
+            discoveryTimer = 0
+            local player = Game.GetPlayer()
+            local distance = Vector4.Distance(player:GetWorldPosition(), targetPosition)
+            CheckNearbyActivity(distance)
+        end
+    end
+    if active then
+        RunActiveActivity(delta)
+    end
+end)
+'@
+
 Write-Mod 'FixtureDormantOnUpdate' @'
 local active = false
 registerHotkey("fixture_update_dormant", "Fixture update dormant", function()
@@ -315,6 +337,7 @@ $handoff = @{
         (CallbackRow 112 'FixtureGatedDynamic' 'observe' 'PlayerPuppet::OnAction' 495 5.9 7.8 'init.lua' 1 14),
         (CallbackRow 111 'FixtureDownstream' 'observe' 'PlayerPuppet::OnAction' 490 5.8 7.5 'init.lua' 1 10),
         (CallbackRow 120 'FixtureStructural' 'event' 'onUpdate' 60 9.0 2.0 'init.lua' 1 8),
+        (CallbackRow 126 'FixtureDiscoveryAuthorRate' 'event' 'onUpdate' 60 13.0 3.2 'init.lua' 6 18),
         (CallbackRow 125 'FixtureDormantOnUpdate' 'event' 'onUpdate' 60 12.0 3.0 'init.lua' 5 9),
         (CallbackRow 121 'FixtureDormantHard' 'observe' 'PlayerPuppet::FixtureTick' 60 6.0 1.2 'init.lua' 5 8),
         (CallbackRow 122 'FixtureDormantDiscovery' 'observe' 'PlayerPuppet::FixtureDiscoveryTick' 60 6.0 1.2 'init.lua' 5 10),
@@ -493,6 +516,30 @@ if (@($structural.generic.Facts.literalConstructors).Count -lt 1) {
     throw 'Repeated literal constructor was not emitted as structural evidence.'
 }
 
+$discoveryAuthor = @($onUpdate.topConsumers | Where-Object { $_.owner -eq 'FixtureDiscoveryAuthorRate' }) | Select-Object -First 1
+if ($null -eq $discoveryAuthor) { throw 'FixtureDiscoveryAuthorRate was not ranked inside onUpdate.' }
+if ($discoveryAuthor.dormancy.Class -ne 'DISCOVERY_DORMANT') {
+    throw "Expected DISCOVERY_DORMANT author-rate classification, got $($discoveryAuthor.dormancy.Class)"
+}
+if (!$discoveryAuthor.dormancy.AuthorDiscoveryCadenceProven) {
+    throw 'Author-paced discovery cadence was not proven.'
+}
+if ([math]::Abs([double]$discoveryAuthor.dormancy.AuthorDiscoveryIntervalSeconds - 1.0) -gt 0.0001) {
+    throw "Unexpected discovery interval: $($discoveryAuthor.dormancy.AuthorDiscoveryIntervalSeconds)"
+}
+if ($discoveryAuthor.dormancy.AuthorDiscoveryAccumulator -ne 'discoveryTimer') {
+    throw "Unexpected discovery accumulator: $($discoveryAuthor.dormancy.AuthorDiscoveryAccumulator)"
+}
+if ($discoveryAuthor.dormancy.AuthorDiscoveryGate -ne 'active') {
+    throw "Unexpected discovery active gate: $($discoveryAuthor.dormancy.AuthorDiscoveryGate)"
+}
+if (!$discoveryAuthor.dormancy.DiscoveryRegionSelfContained) {
+    throw 'Self-contained author discovery region was not recognized.'
+}
+if (!$discoveryAuthor.dormancy.EvidenceOnly) {
+    throw 'Discovery dormancy must remain evidence-only in this phase.'
+}
+
 $hardUpdate = @($onUpdate.topConsumers | Where-Object { $_.owner -eq 'FixtureDormantOnUpdate' }) | Select-Object -First 1
 if ($null -eq $hardUpdate) { throw 'FixtureDormantOnUpdate was not ranked inside onUpdate.' }
 if (!$hardUpdate.generic.Automatable) { throw 'Source-proven dormant onUpdate was not marked automatable.' }
@@ -560,7 +607,7 @@ if ($unknown.registry.matched) {
 if ($null -eq $resolved.pass) {
     throw 'CLI --generate-pass did not return a pass result.'
 }
-if ([int]$resolved.pass.TransformCount -ne 12) {
+if ([int]$resolved.pass.TransformCount -ne 13) {
     if (Test-Path -LiteralPath $resolved.pass.ManifestPath -PathType Leaf) {
         $failedManifest = Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
         Write-Host "PASS DEBUG transforms=$($failedManifest.summary.transforms) skipped=$($failedManifest.summary.skipped)"
@@ -568,10 +615,10 @@ if ([int]$resolved.pass.TransformCount -ne 12) {
             Write-Host ("PASS DEBUG SKIP owner={0} type={1} file={2} reason={3}" -f $skip.owner,$skip.type,$skip.file,$skip.reason)
         }
     }
-    throw "Expected 12 generated transforms, got $($resolved.pass.TransformCount)."
+    throw "Expected 13 generated transforms, got $($resolved.pass.TransformCount)."
 }
-if ([int]$resolved.pass.FileCount -ne 16) {
-    throw "Expected 16 generated replacement files (12 callback + 4 fixed 0-Engine), got $($resolved.pass.FileCount)."
+if ([int]$resolved.pass.FileCount -ne 17) {
+    throw "Expected 17 generated replacement files (13 callback + 4 fixed 0-Engine), got $($resolved.pass.FileCount)."
 }
 if (!(Test-Path -LiteralPath $resolved.pass.ZipPath -PathType Leaf)) {
     throw "Generated pass ZIP is missing: $($resolved.pass.ZipPath)"
@@ -692,11 +739,11 @@ try {
     if ($manifest.policy.modNameRules) {
         throw 'Generated pass manifest unexpectedly allows mod-name rules.'
     }
-    if ([int]$manifest.summary.transforms -ne 12) {
+    if ([int]$manifest.summary.transforms -ne 13) {
         throw 'Generated pass manifest transform count is wrong.'
     }
-    if ([int]$manifest.summary.callbackFiles -ne 12) {
-        throw "Expected 12 callback replacement files, got $($manifest.summary.callbackFiles)."
+    if ([int]$manifest.summary.callbackFiles -ne 13) {
+        throw "Expected 13 callback replacement files, got $($manifest.summary.callbackFiles)."
     }
     if ([int]$manifest.summary.fixedRuntimeFiles -ne 4) {
         throw "Expected 4 fixed 0-Engine runtime files, got $($manifest.summary.fixedRuntimeFiles)."
