@@ -77,6 +77,7 @@ internal static class CallbackResolverService
             {
                 rankedCount++;
                 var generic = ResolveGeneric(callback, sourceIndex, cadence);
+                var dormancy = ResolveDormancyEvidence(callback, generic.Source, sourceIndex);
                 ExceptionRegistryEntry? hint = null;
 
                 // Registry is deliberately a last resort. Generic source/runtime
@@ -118,6 +119,19 @@ internal static class CallbackResolverService
                         generic.Facts,
                         generic.Evidence,
                         generic.Blockers
+                    },
+                    dormancy = new
+                    {
+                        dormancy.Class,
+                        dormancy.Confidence,
+                        dormancy.EvidenceOnly,
+                        dormancy.ActiveSignals,
+                        dormancy.WakeSignals,
+                        dormancy.DiscoverySignals,
+                        dormancy.BackgroundSignals,
+                        dormancy.SensitiveSignals,
+                        dormancy.Evidence,
+                        dormancy.Blockers
                     },
                     registry = new
                     {
@@ -219,6 +233,230 @@ internal static class CallbackResolverService
             genericResolved,
             registryHints,
             unresolved);
+    }
+
+    private static DormancyEvidence ResolveDormancyEvidence(
+        CallbackMetric callback,
+        SourceEvidence? sourceEvidence,
+        LiveSourceIndex sourceIndex)
+    {
+        if (sourceEvidence is null)
+            return DormancyEvidence.Unknown("Current deployed callback source was not resolved.");
+
+        var source = sourceIndex.Resolve(callback);
+        if (source is null)
+            return DormancyEvidence.Unknown("Current deployed callback source was not resolved.");
+
+        var text = source.CallbackText;
+        var full = source.FullText;
+        var evidence = new List<string>();
+        var blockers = new List<string>();
+
+        string[] MatchTokens(string input, params string[] tokens) =>
+            tokens.Where(token =>
+                    Regex.IsMatch(
+                        input,
+                        token,
+                        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+        var sensitive = MatchTokens(
+            text,
+            @"\bAIAction\b",
+            @"\bAIBehavior\b",
+            @"\bCombatState\b",
+            @"\bNPCPuppet\b",
+            @"\bCameraSystem\b",
+            @"\bGetActiveCameraData\b",
+            @"\bFPP\b",
+            @"\bTPP\b");
+
+        var active = MatchTokens(
+            full,
+            @"\b(?:is)?active\b",
+            @"\benabled\b",
+            @"\brunning\b",
+            @"\bscanning\b",
+            @"\bsession\b",
+            @"\bhandActive\b",
+            @"\binWorkspot\b",
+            @"\braceActive\b",
+            @"\binGame\b",
+            @"\bcurrentWorkspot\b",
+            @"\bcurrentTarget\b",
+            @"\bhubShown\b");
+
+        var wake = MatchTokens(
+            full,
+            @"registerHotkey\s*\(",
+            @"registerInput\s*\(",
+            @"registerForEvent\s*\(\s*['""]onInit",
+            @"\bOnAction\b",
+            @"\bInteract",
+            @"\bStart\w*\s*\(",
+            @"\bOpen\w*\s*\(",
+            @"\bToggle\w*\s*\(");
+
+        var discovery = MatchTokens(
+            text,
+            @"\bVector4\.Distance\b",
+            @"\bGetWorldPosition\b",
+            @"\bGetComponentClosestToCrosshair\b",
+            @"\bGetTargetingSystem\b",
+            @"\bFindEntityByID\b",
+            @"\bmappin\b",
+            @"\bproximity\b",
+            @"\bnearby\b");
+
+        var background = MatchTokens(
+            text,
+            @"\bqueue\b",
+            @"\bpending\b",
+            @"\bCron\.Update\b",
+            @"\bprocess\w*Queue\b",
+            @"\bupdate\w*Queue\b",
+            @"\bSMS\b",
+            @"\bsave\w*\b",
+            @"\bflush\w*\b");
+
+        var explicitEarlyGate = Regex.Match(
+            text,
+            @"(?m)^\s*if\s+not\s+(?<gate>[A-Za-z_][\w.\[\]:()]*)\s+then\s+return\s+end\s*;?\s*$",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        var explicitPositiveGate = Regex.Match(
+            text,
+            @"(?m)^\s*if\s+(?<gate>[A-Za-z_][\w.\[\]:()]*)\s+then\s*$",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+        if (sensitive.Length > 0)
+        {
+            evidence.Add("Latency-sensitive combat/camera/NPC source signals were found in the measured callback.");
+            return new DormancyEvidence
+            {
+                Class = "NEVER_GATE",
+                Confidence = 0.92,
+                EvidenceOnly = true,
+                ActiveSignals = active,
+                WakeSignals = wake,
+                DiscoverySignals = discovery,
+                BackgroundSignals = background,
+                SensitiveSignals = sensitive,
+                Evidence = evidence.ToArray(),
+                Blockers = new[] { "Dormancy transforms are prohibited for this callback class; structural rewrites remain allowed." }
+            };
+        }
+
+        if (background.Length > 0 && active.Length == 0)
+        {
+            evidence.Add("Queue/pending/background-service work is present without a proven single active-session state.");
+            return new DormancyEvidence
+            {
+                Class = "BACKGROUND",
+                Confidence = 0.78,
+                EvidenceOnly = true,
+                ActiveSignals = active,
+                WakeSignals = wake,
+                DiscoverySignals = discovery,
+                BackgroundSignals = background,
+                SensitiveSignals = sensitive,
+                Evidence = evidence.ToArray(),
+                Blockers = new[] { "Whole-callback sleep is not proven; inspect queue-empty or no-pending-work guards instead." }
+            };
+        }
+
+        var gate = explicitEarlyGate.Success
+            ? explicitEarlyGate.Groups["gate"].Value
+            : explicitPositiveGate.Success
+                ? explicitPositiveGate.Groups["gate"].Value
+                : "";
+
+        if (!string.IsNullOrWhiteSpace(gate) && wake.Length > 0)
+        {
+            evidence.Add($"Current source exposes an explicit activity gate '{gate}' and independent wake/input signals.");
+            if (discovery.Length == 0)
+            {
+                return new DormancyEvidence
+                {
+                    Class = "HARD_DORMANT",
+                    Confidence = 0.88,
+                    EvidenceOnly = true,
+                    ActiveSignals = active.Concat(new[] { gate }).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+                    WakeSignals = wake,
+                    DiscoverySignals = discovery,
+                    BackgroundSignals = background,
+                    SensitiveSignals = sensitive,
+                    Evidence = evidence.ToArray(),
+                    Blockers = new[] { "Evidence classification only: a complete state-writer/wake-path proof is still required before generation." }
+                };
+            }
+
+            evidence.Add("The same callback also contains world/discovery work that may be required while inactive.");
+            return new DormancyEvidence
+            {
+                Class = "DISCOVERY_DORMANT",
+                Confidence = 0.84,
+                EvidenceOnly = true,
+                ActiveSignals = active.Concat(new[] { gate }).Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+                WakeSignals = wake,
+                DiscoverySignals = discovery,
+                BackgroundSignals = background,
+                SensitiveSignals = sensitive,
+                Evidence = evidence.ToArray(),
+                Blockers = new[] { "Evidence classification only: inactive discovery work must be isolated before generation." }
+            };
+        }
+
+        if (active.Length > 0 && discovery.Length > 0)
+        {
+            evidence.Add("Explicit activity/session vocabulary and world/discovery work coexist in current source.");
+            return new DormancyEvidence
+            {
+                Class = "DISCOVERY_DORMANT",
+                Confidence = 0.68,
+                EvidenceOnly = true,
+                ActiveSignals = active,
+                WakeSignals = wake,
+                DiscoverySignals = discovery,
+                BackgroundSignals = background,
+                SensitiveSignals = sensitive,
+                Evidence = evidence.ToArray(),
+                Blockers = new[] { "No complete activity gate boundary was proven in the measured callback." }
+            };
+        }
+
+        if (active.Length > 0 && wake.Length > 0)
+        {
+            evidence.Add("Activity/session state and independent wake/input signals are present, but the measured callback boundary is not yet proven.");
+            return new DormancyEvidence
+            {
+                Class = "HARD_DORMANT",
+                Confidence = 0.62,
+                EvidenceOnly = true,
+                ActiveSignals = active,
+                WakeSignals = wake,
+                DiscoverySignals = discovery,
+                BackgroundSignals = background,
+                SensitiveSignals = sensitive,
+                Evidence = evidence.ToArray(),
+                Blockers = new[] { "No complete source-proven dormant boundary was found." }
+            };
+        }
+
+        blockers.Add("Source does not yet prove a useful dormant/background classification.");
+        return new DormancyEvidence
+        {
+            Class = "UNKNOWN",
+            Confidence = 0.0,
+            EvidenceOnly = true,
+            ActiveSignals = active,
+            WakeSignals = wake,
+            DiscoverySignals = discovery,
+            BackgroundSignals = background,
+            SensitiveSignals = sensitive,
+            Evidence = evidence.ToArray(),
+            Blockers = blockers.ToArray()
+        };
     }
 
     private static GenericResolution ResolveGeneric(
@@ -2560,6 +2798,28 @@ internal static class CallbackResolverService
         string SourceFile,
         int RegistrationLine,
         int CallbackBodyEndLine);
+
+    private sealed class DormancyEvidence
+    {
+        public string Class { get; init; } = "UNKNOWN";
+        public double Confidence { get; init; }
+        public bool EvidenceOnly { get; init; } = true;
+        public string[] ActiveSignals { get; init; } = Array.Empty<string>();
+        public string[] WakeSignals { get; init; } = Array.Empty<string>();
+        public string[] DiscoverySignals { get; init; } = Array.Empty<string>();
+        public string[] BackgroundSignals { get; init; } = Array.Empty<string>();
+        public string[] SensitiveSignals { get; init; } = Array.Empty<string>();
+        public string[] Evidence { get; init; } = Array.Empty<string>();
+        public string[] Blockers { get; init; } = Array.Empty<string>();
+
+        public static DormancyEvidence Unknown(string blocker) => new()
+        {
+            Class = "UNKNOWN",
+            Confidence = 0.0,
+            EvidenceOnly = true,
+            Blockers = new[] { blocker }
+        };
+    }
 
     private sealed class GenericResolution
     {
