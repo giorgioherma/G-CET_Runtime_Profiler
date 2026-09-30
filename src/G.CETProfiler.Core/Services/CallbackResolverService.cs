@@ -4492,8 +4492,8 @@ internal static class CallbackResolverService
     }
 
     private sealed class OwnerMethodDefinition
-        public string Receiver { get; init; } = "";
     {
+        public string Receiver { get; init; } = "";
         public string RelativeFile { get; init; } = "";
         public string[] Parameters { get; init; } = Array.Empty<string>();
         public string Body { get; init; } = "";
