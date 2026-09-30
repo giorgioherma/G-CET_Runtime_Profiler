@@ -2961,6 +2961,7 @@ internal static class CallbackResolverService
                 method.Equals("Observe", StringComparison.OrdinalIgnoreCase) ||
                 method.Equals("ObserveAfter", StringComparison.OrdinalIgnoreCase) ||
                 method.Equals("Override", StringComparison.OrdinalIgnoreCase) ||
+                method.Equals("function", StringComparison.OrdinalIgnoreCase) ||
                 method.Equals("wrappedMethod", StringComparison.OrdinalIgnoreCase))
                 continue;
 
