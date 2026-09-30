@@ -2322,13 +2322,39 @@ internal static class CallbackResolverService
         else
             recipe = "ONACTION_FULL_STREAM_OR_UNRESOLVED";
 
-        var automatable =
+        var actionRouteAutomatable =
             hasRoutableInterest &&
             !dynamicActionForward &&
             unresolvedActionSelectors.Count == 0 &&
             !prefilterSideEffect &&
             !isOverride &&
             blockers.All(x => !x.Contains("writes outside", StringComparison.OrdinalIgnoreCase));
+
+        // Routing semantics and callback-local hotpath semantics are independent.
+        // If action routing cannot be proven (notably Override or dynamic
+        // downstream callbacks), still allow the same source-proven structural
+        // rewrite used by other callback families. This never changes action
+        // delivery or Override behavior.
+        StructuralHotpathResolution? structural = null;
+        if (!actionRouteAutomatable &&
+            TryResolveStructuralHotpath(source, callback, out var actionStructural))
+        {
+            structural = actionStructural;
+            evidence.AddRange(actionStructural.Evidence);
+        }
+
+        var automatable = actionRouteAutomatable || structural is not null;
+        var effectivePattern = actionRouteAutomatable
+            ? recipe
+            : structural is not null
+                ? "STRUCTURAL_HOTPATH_REWRITE"
+                : recipe;
+
+        var recipeFamilies = new List<string>();
+        if (hasRoutableInterest || dynamicActionForward)
+            recipeFamilies.Add(isOverride ? "ACTION_ROUTING_OVERRIDE" : recipe);
+        if (structural is not null)
+            recipeFamilies.Add("STRUCTURAL_HOTPATH_REWRITE");
 
         var facts = new
         {
@@ -2346,7 +2372,12 @@ internal static class CallbackResolverService
                 Regex.IsMatch(window, @"\bGetType\s*\(", RegexOptions.IgnoreCase),
             requiresActionValue =
                 Regex.IsMatch(window, @"\bGetValue\s*\(", RegexOptions.IgnoreCase),
-            unresolvedActionSelectors = unresolvedActionSelectors.OrderBy(x => x).ToArray()
+            unresolvedActionSelectors = unresolvedActionSelectors.OrderBy(x => x).ToArray(),
+            structuralHotpath = structural is not null,
+            identicalExpressions = structural?.IdenticalExpressions ?? Array.Empty<StructuralExpression>(),
+            literalConstructors = structural?.LiteralConstructors ?? Array.Empty<StructuralExpression>(),
+            estimatedCallbackPaybackPct = structural?.EstimatedCallbackPaybackPct ?? 0,
+            estimatedGlobalPaybackPct = structural?.EstimatedGlobalPaybackPct ?? 0
         };
 
         return new GenericResolution
@@ -2355,10 +2386,8 @@ internal static class CallbackResolverService
                 ? "RESOLVED"
                 : hasRoutableInterest || dynamicActionForward ? "RECOGNIZED_WITH_BLOCKER" : "UNRESOLVED",
             Automatable = automatable,
-            Pattern = recipe,
-            RecipeFamilies = hasRoutableInterest || dynamicActionForward
-                ? new[] { isOverride ? "ACTION_ROUTING_OVERRIDE" : recipe }
-                : Array.Empty<string>(),
+            Pattern = effectivePattern,
+            RecipeFamilies = recipeFamilies.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
             Facts = facts,
             Evidence = evidence.ToArray(),
             Blockers = blockers.ToArray(),
