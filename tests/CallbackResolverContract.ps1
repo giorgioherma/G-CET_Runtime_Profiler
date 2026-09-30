@@ -528,7 +528,8 @@ if (@($overrideStructural.generic.RecipeFamilies) -notcontains 'ACTION_ROUTING_O
     @($overrideStructural.generic.RecipeFamilies) -notcontains 'STRUCTURAL_HOTPATH_REWRITE') {
     throw 'Override structural fallback lost routing blocker evidence or structural recipe.'
 }
-if (@($overrideStructural.generic.Blockers) -notmatch 'Override semantics') {
+$overrideBlockers = (@($overrideStructural.generic.Blockers) -join ' ')
+if ($overrideBlockers -notmatch 'Override semantics') {
     throw 'Override routing blocker disappeared when structural fallback became automatable.'
 }
 
