@@ -40,7 +40,8 @@ try {
         "CET_Runtime_Profile_Deep_Callsites.csv",
         "CET_Runtime_Profile_FrameMultiplicity.csv",
         "RecordFrameMultiplicity",
-        "CallsiteSourceFile"
+        "CallsiteSourceFile",
+        "FrameInvocationOrdinal"
     )) {
         if (-not $profilerHeader.Contains($marker)) {
             throw "Profiler callback-identity marker missing from CETRuntimeProfiler.h: $marker"
