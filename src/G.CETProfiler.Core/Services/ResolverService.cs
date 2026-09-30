@@ -12,6 +12,8 @@ public sealed record ResolverBuildResult(
     int GenericResolvedCount,
     int NonFrameOnlyAutoCount,
     int FrameOnlyAutoCount,
+    int MaterialRemainingCount,
+    int BelowThresholdCount,
     int RegistryHintCount,
     int UnresolvedCount);
 
@@ -89,6 +91,8 @@ public static class ResolverService
             result.GenericResolvedCount,
             result.NonFrameOnlyAutoCount,
             result.FrameOnlyAutoCount,
+            result.MaterialRemainingCount,
+            result.BelowThresholdCount,
             result.RegistryHintCount,
             result.UnresolvedCount);
     }

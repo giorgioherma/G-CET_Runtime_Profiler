@@ -16,7 +16,7 @@ internal sealed class ResolverForm : Form
     private readonly Label _families = new() { AutoSize = true, Text = "CALLBACK FAMILIES: -" };
     private readonly Label _generic = new() { AutoSize = true, Text = "AUTO PATCHABLE: -" };
     private readonly Label _registry = new() { AutoSize = true, Text = "SPECIAL HINTS: -" };
-    private readonly Label _unresolved = new() { AutoSize = true, Text = "UNRESOLVED: -" };
+    private readonly Label _unresolved = new() { AutoSize = true, Text = "MATERIAL REMAINING: -   |   BELOW 3 ms/s: -" };
     private readonly TextBox _output = new()
     {
         Multiline = true,
@@ -142,7 +142,9 @@ internal sealed class ResolverForm : Form
                 $"NON-FRAME-ONLY: {result.NonFrameOnlyAutoCount}   |   " +
                 $"FRAME-ONLY: {result.FrameOnlyAutoCount}";
             _registry.Text = $"SPECIAL HINTS: {result.RegistryHintCount}";
-            _unresolved.Text = $"UNRESOLVED: {result.UnresolvedCount}";
+            _unresolved.Text =
+                $"MATERIAL REMAINING: {result.MaterialRemainingCount}   |   " +
+                $"BELOW 3 ms/s: {result.BelowThresholdCount}";
 
             _status.Text = $"Complete — {result.RankedCallbackCount} high-impact callback consumers inspected.";
             _output.Text =
