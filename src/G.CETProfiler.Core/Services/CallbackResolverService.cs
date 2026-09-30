@@ -304,7 +304,8 @@ internal static class CallbackResolverService
         var alreadyHasSemanticAutoRecipe =
             generic.RecipeFamilies.Any(x =>
                 x.Equals("AUTHOR_CADENCE_WHOLE_CALLBACK", StringComparison.OrdinalIgnoreCase) ||
-                x.Equals("HARD_DORMANT_GUARD_HOIST", StringComparison.OrdinalIgnoreCase));
+                x.Equals("HARD_DORMANT_GUARD_HOIST", StringComparison.OrdinalIgnoreCase) ||
+                x.Equals("AUTHOR_DISCOVERY_DORMANT_SCHEDULE", StringComparison.OrdinalIgnoreCase));
 
         var semanticWorkRemains =
             dormancy.Class is "HARD_DORMANT" or "DISCOVERY_DORMANT" or "BACKGROUND" or "UNKNOWN";
@@ -1023,6 +1024,7 @@ internal static class CallbackResolverService
         object? facts = null;
         StructuralHotpathResolution? structuralResolution = null;
         HardDormantGuardResolution? hardDormantResolution = null;
+        AuthorDiscoveryCadenceResolution? discoveryScheduleResolution = null;
         var effectiveSourceEvidence = sourceEvidence;
 
         var directOnUpdate = source is not null &&
@@ -1129,7 +1131,31 @@ internal static class CallbackResolverService
         }
 
         if (!recipes.Contains("AUTHOR_CADENCE_WHOLE_CALLBACK", StringComparer.OrdinalIgnoreCase) &&
-            (structuralResolution is not null || hardDormantResolution is not null))
+            source is not null &&
+            directOnUpdate &&
+            callback.ExclusiveMsPerSecond >= 7.0 &&
+            callback.GlobalWorkSharePct >= 1.0 &&
+            TryResolveAuthorDiscoveryCadence(
+                source,
+                out var discoveryCadence,
+                out var discoveryScheduleBlocker) &&
+            discoveryCadence.RegionSelfContained &&
+            Regex.IsMatch(
+                source.CallbackText,
+                @"\bif\s+" + Regex.Escape(discoveryCadence.ActiveGate) + @"\s+then\b",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+        {
+            discoveryScheduleResolution = discoveryCadence;
+            recipes.Add("AUTHOR_DISCOVERY_DORMANT_SCHEDULE");
+            evidence.Add(
+                $"Author-written inactive discovery cadence at {discoveryCadence.IntervalSeconds:0.######} s " +
+                "is self-contained and can be moved off the frame loop without changing the active branch.");
+        }
+
+        if (!recipes.Contains("AUTHOR_CADENCE_WHOLE_CALLBACK", StringComparer.OrdinalIgnoreCase) &&
+            (structuralResolution is not null ||
+             hardDormantResolution is not null ||
+             discoveryScheduleResolution is not null))
         {
             facts = new
             {
@@ -1142,7 +1168,11 @@ internal static class CallbackResolverService
                 hardDormantGateExpression = hardDormantResolution?.GateExpression ?? "",
                 hardDormantPreGuardReadCount = hardDormantResolution?.PreGuardReadCount ?? 0,
                 hardDormantStateWriters = hardDormantResolution?.StateWriters ?? Array.Empty<string>(),
-                hardDormantWakeSignals = hardDormantResolution?.WakeSignals ?? Array.Empty<string>()
+                hardDormantWakeSignals = hardDormantResolution?.WakeSignals ?? Array.Empty<string>(),
+                authorDiscoveryDormantSchedule = discoveryScheduleResolution is not null,
+                authorDiscoveryIntervalSeconds = discoveryScheduleResolution?.IntervalSeconds ?? 0,
+                authorDiscoveryAccumulator = discoveryScheduleResolution?.Accumulator ?? "",
+                authorDiscoveryGate = discoveryScheduleResolution?.ActiveGate ?? ""
             };
         }
 
@@ -1167,6 +1197,9 @@ internal static class CallbackResolverService
                 StringComparer.OrdinalIgnoreCase) ||
             recipes.Contains(
                 "HARD_DORMANT_GUARD_HOIST",
+                StringComparer.OrdinalIgnoreCase) ||
+            recipes.Contains(
+                "AUTHOR_DISCOVERY_DORMANT_SCHEDULE",
                 StringComparer.OrdinalIgnoreCase);
 
         var pattern = recipes.Contains(
@@ -1174,14 +1207,18 @@ internal static class CallbackResolverService
                 StringComparer.OrdinalIgnoreCase)
             ? "AUTHOR_CADENCE_WHOLE_CALLBACK"
             : recipes.Contains(
-                "HARD_DORMANT_GUARD_HOIST",
+                "AUTHOR_DISCOVERY_DORMANT_SCHEDULE",
                 StringComparer.OrdinalIgnoreCase)
-                ? "HARD_DORMANT_GUARD_HOIST"
+                ? "AUTHOR_DISCOVERY_DORMANT_SCHEDULE"
                 : recipes.Contains(
-                    "STRUCTURAL_HOTPATH_REWRITE",
+                    "HARD_DORMANT_GUARD_HOIST",
                     StringComparer.OrdinalIgnoreCase)
-                    ? "STRUCTURAL_HOTPATH_REWRITE"
-                    : recipes.FirstOrDefault() ?? "ONUPDATE_UNRESOLVED";
+                    ? "HARD_DORMANT_GUARD_HOIST"
+                    : recipes.Contains(
+                        "STRUCTURAL_HOTPATH_REWRITE",
+                        StringComparer.OrdinalIgnoreCase)
+                        ? "STRUCTURAL_HOTPATH_REWRITE"
+                        : recipes.FirstOrDefault() ?? "ONUPDATE_UNRESOLVED";
 
         return new GenericResolution
         {
