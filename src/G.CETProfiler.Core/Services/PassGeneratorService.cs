@@ -1503,7 +1503,7 @@ public static class PassGeneratorService
                 @"\b(?:CName|TweakDBID)\.new\s*\(\s*(?<quote>['""])(?<value>(?:\\.|(?!\k<quote>).)*)\k<quote>\s*\)",
                 RegexOptions.CultureInvariant)
             : new Regex(
-                @"\bGame\.(?:GetPlayer|GetTargetingSystem|GetBlackboardSystem|GetAllBlackboardDefs|GetQuestsSystem|GetTimeSystem|GetStatsSystem|GetStatPoolsSystem|GetSystemRequestsHandler|GetTeleportationFacility|GetCameraSystem)\s*\(\s*\)",
+                @"(?:\bGame\.(?:GetPlayer|GetTargetingSystem|GetBlackboardSystem|GetAllBlackboardDefs|GetQuestsSystem|GetTimeSystem|GetStatsSystem|GetStatPoolsSystem|GetSystemRequestsHandler|GetTeleportationFacility|GetCameraSystem)\s*\(\s*\)|\b(?:[A-Za-z_]\w*|Game\.GetPlayer\(\))(?::|\.)(?:IsMovingHorizontally|IsMovingVertically|GetWorldPosition|GetEntityID)\s*\(\s*\))",
                 RegexOptions.CultureInvariant);
 
         var minimumCount = constructors ? 1 : 2;
