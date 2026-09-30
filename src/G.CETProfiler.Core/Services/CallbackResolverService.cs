@@ -2532,6 +2532,7 @@ internal static class CallbackResolverService
         // the same source window must never poison an Observe classification.
         var isOverride = callback.Kind.Contains("override", StringComparison.OrdinalIgnoreCase);
         var overrideWrappedMethodReturns = false;
+        var overrideWrappedMethodTakesSelf = false;
         var overridePrefilterProven =
             isOverride &&
             downstreamExpanded &&
@@ -2541,7 +2542,8 @@ internal static class CallbackResolverService
             TryProveTransparentOverrideWrapper(
                 window,
                 downstreamMethods,
-                out overrideWrappedMethodReturns);
+                out overrideWrappedMethodReturns,
+                out overrideWrappedMethodTakesSelf);
 
         if (isOverride && !overridePrefilterProven)
             blockers.Add("Override semantics require the dedicated override routing template.");
@@ -2653,7 +2655,8 @@ internal static class CallbackResolverService
             estimatedCallbackPaybackPct = structural?.EstimatedCallbackPaybackPct ?? 0,
             estimatedGlobalPaybackPct = structural?.EstimatedGlobalPaybackPct ?? 0,
             overridePrefilterProven,
-            overrideWrappedMethodReturns
+            overrideWrappedMethodReturns,
+            overrideWrappedMethodTakesSelf
         };
 
         return new GenericResolution
@@ -2674,9 +2677,11 @@ internal static class CallbackResolverService
     private static bool TryProveTransparentOverrideWrapper(
         string window,
         IReadOnlyCollection<string> downstreamMethods,
-        out bool wrappedMethodReturns)
+        out bool wrappedMethodReturns,
+        out bool wrappedMethodTakesSelf)
     {
         wrappedMethodReturns = false;
+        wrappedMethodTakesSelf = false;
         var lines = window.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
         var meaningful = lines
             .Select((text, index) => new { Text = text.Trim(), Index = index })
@@ -2686,7 +2691,7 @@ internal static class CallbackResolverService
         var wrapped = meaningful
             .Where(x => Regex.IsMatch(
                 x.Text,
-                @"^(?:return\s+)?wrappedMethod\s*\(\s*self\s*,\s*action\s*,\s*consumer\s*\)\s*;?\s*$",
+                @"^(?:return\s+)?wrappedMethod\s*\(\s*(?:self\s*,\s*)?action\s*,\s*consumer\s*\)\s*;?\s*$",
                 RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
             .ToList();
         if (wrapped.Count != 1)
@@ -2694,6 +2699,10 @@ internal static class CallbackResolverService
 
         var wrappedEntry = wrapped[0];
         wrappedMethodReturns = wrappedEntry.Text.StartsWith("return ", StringComparison.OrdinalIgnoreCase);
+        wrappedMethodTakesSelf = Regex.IsMatch(
+            wrappedEntry.Text,
+            @"wrappedMethod\s*\(\s*self\s*,",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
         // The original-game call must be the final meaningful statement before
         // the Override's closing end). This guarantees the fast path preserves
@@ -3173,6 +3182,25 @@ internal static class CallbackResolverService
                 found.Add(action);
         }
 
+        var guardedRanges = new List<(int Start, int End)>();
+        var bodyLines = body.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+        for (var i = 0; i < bodyLines.Length; i++)
+        {
+            var line = bodyLines[i];
+            if (!downstreamStaticTables.Any(table =>
+                    Regex.IsMatch(
+                        line,
+                        @"^\s*if\s+.*\b" + Regex.Escape(table) +
+                        @"\s*\[\s*" + name + @"\s*\].*\s+then\s*$",
+                        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)))
+                continue;
+
+            var indent = line.Length - line.TrimStart().Length;
+            var end = FindSameIndentEnd(bodyLines, i, indent);
+            if (end > i)
+                guardedRanges.Add((i, end));
+        }
+
         if (found.Count == 0)
         {
             actions = Array.Empty<string>();
@@ -3201,12 +3229,15 @@ internal static class CallbackResolverService
             }
         }
 
-        foreach (var rawLine in body.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'))
+        for (var lineIndex = 0; lineIndex < bodyLines.Length; lineIndex++)
         {
-            var line = rawLine.Trim();
+            var line = bodyLines[lineIndex].Trim();
             if (string.IsNullOrWhiteSpace(line) ||
                 line.StartsWith("--", StringComparison.Ordinal) ||
                 !Regex.IsMatch(line, @"\b" + name + @"\b"))
+                continue;
+
+            if (guardedRanges.Any(x => lineIndex >= x.Start && lineIndex <= x.End))
                 continue;
 
             if (Regex.IsMatch(
@@ -3245,13 +3276,23 @@ internal static class CallbackResolverService
             return false;
         }
 
-        foreach (var rawLine in body.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'))
+        for (var lineIndex = 0; lineIndex < bodyLines.Length; lineIndex++)
         {
-            var line = rawLine.Trim();
+            var line = bodyLines[lineIndex].Trim();
             var action = Regex.Escape(actionParameter);
             if (string.IsNullOrWhiteSpace(line) ||
                 line.StartsWith("--", StringComparison.Ordinal) ||
                 !Regex.IsMatch(line, @"\b" + action + @"\b"))
+                continue;
+
+            if (guardedRanges.Any(x => lineIndex >= x.Start && lineIndex <= x.End))
+                continue;
+
+            if (Regex.IsMatch(
+                    line,
+                    @"^(?:return\s+)?wrappedMethod\s*\(\s*" + action +
+                    @"\s*,\s*[A-Za-z_]\w*\s*\)\s*;?\s*$",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
                 continue;
 
             if (Regex.IsMatch(
