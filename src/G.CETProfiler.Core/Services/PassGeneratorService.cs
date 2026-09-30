@@ -1023,24 +1023,59 @@ public static class PassGeneratorService
 
             if (candidate.Kind == CandidateKind.Frame)
             {
-                var index = candidate.LineStart - 1;
-                var line = lines[index];
-
-                if (!line.Contains("registerForEvent", StringComparison.Ordinal) ||
-                    !line.Contains("onUpdate", StringComparison.OrdinalIgnoreCase))
+                if (effectiveLineEnd > lines.Count)
                 {
                     skipped.Add(Skip(
                         candidate,
-                        "Recorded source line is no longer a direct registerForEvent(onUpdate) registration."));
+                        "Recorded frame callback range is outside the current file."));
+                    continue;
+                }
+
+                var frameLines = lines
+                    .Skip(candidate.LineStart - 1)
+                    .Take(effectiveLineEnd - candidate.LineStart + 1)
+                    .ToArray();
+                var frameSegment = string.Join("\n", frameLines);
+
+                // Resolver authorizes a direct onUpdate registration from the
+                // complete callback source range. Revalidate the same semantic
+                // shape here instead of requiring registerForEvent and
+                // "onUpdate" to happen to share one physical source line.
+                var frameOpening = Regex.Match(
+                    frameSegment,
+                    @"\bregisterForEvent\s*\(\s*(['""])onUpdate\1",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Singleline);
+                if (!frameOpening.Success)
+                {
+                    skipped.Add(Skip(
+                        candidate,
+                        "Recorded callback range no longer contains the source-proven direct registerForEvent(onUpdate) registration."));
                     continue;
                 }
 
                 var token = $"__gcetRegisterEvent_{candidate.RegistrationId}";
-                var marker = line.IndexOf("registerForEvent", StringComparison.Ordinal);
-                lines[index] =
-                    line[..marker] +
+                var marker = frameSegment.IndexOf(
+                    "registerForEvent",
+                    frameOpening.Index,
+                    StringComparison.Ordinal);
+                if (marker < 0)
+                {
+                    skipped.Add(Skip(
+                        candidate,
+                        "Direct onUpdate registration token could not be revalidated."));
+                    continue;
+                }
+
+                var rewrittenFrame =
+                    frameSegment[..marker] +
                     token +
-                    line[(marker + "registerForEvent".Length)..];
+                    frameSegment[(marker + "registerForEvent".Length)..];
+                var replacementLines = rewrittenFrame.Split('\n');
+
+                lines.RemoveRange(
+                    candidate.LineStart - 1,
+                    effectiveLineEnd - candidate.LineStart + 1);
+                lines.InsertRange(candidate.LineStart - 1, replacementLines);
 
                 frameHelpers.Add((candidate, token));
                 transformManifest.Add(new

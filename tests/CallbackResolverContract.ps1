@@ -365,9 +365,12 @@ end)
 '@
 
 Write-Mod 'FixtureFrame' @'
-registerForEvent("onUpdate", function(delta)
-    DoFrameWork(delta)
-end)
+registerForEvent(
+    "onUpdate",
+    function(delta)
+        DoFrameWork(delta)
+    end
+)
 '@
 
 Write-Mod 'FixtureUnknown' @'
@@ -438,7 +441,7 @@ $handoff = @{
         (CallbackRow 128 'FixtureNeverGateUpdate' 'event' 'onUpdate' 60 18.0 4.0 'init.lua' 5 9),
         (CallbackRow 124 'FixtureDormantBackground' 'observe' 'PlayerPuppet::FixtureBackgroundTick' 60 6.0 1.2 'init.lua' 1 3),
         (CallbackRow 129 'FixtureOtherStructural' 'ObserveAfter' 'PlayerPuppet::FixtureStructuralObserve' 120 12.0 3.0 'init.lua' 1 19),
-        (CallbackRow 102 'FixtureFrame' 'event' 'onUpdate' 60 5.0 1.0 'init.lua' 1 3),
+        (CallbackRow 102 'FixtureFrame' 'event' 'onUpdate' 60 5.0 1.0 'init.lua' 1 6),
         (CallbackRow 127 'FixtureUnknownHot' 'observe' 'PlayerPuppet::AnotherUnknownMethod' 60 20.0 5.0 'init.lua' 1 3),
         (CallbackRow 103 'FixtureUnknown' 'observe' 'PlayerPuppet::SomeOtherMethod' 60 4.0 1.0 'init.lua' 1 3)
     )
