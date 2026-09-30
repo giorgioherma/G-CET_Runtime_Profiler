@@ -1462,7 +1462,7 @@ internal static class CallbackResolverService
         // of one callback invocation. Keep this whitelist semantic and finite;
         // arbitrary Get*/Is* Lua methods are not assumed side-effect-free.
         var stableMemberReadPattern = new Regex(
-            @"\b(?:[A-Za-z_]\w*|Game\.GetPlayer\(\))(?::|\.)(?:IsMovingHorizontally|IsMovingVertically|GetWorldPosition|GetEntityID)\s*\(\s*\)",
+            @"(?:\b(?:[A-Za-z_]\w*|Game\.GetPlayer\(\))(?::|\.)(?:IsMovingHorizontally|IsMovingVertically|GetWorldPosition|GetEntityID)\s*\(\s*\)|\bGetSingleton\s*\(\s*(['""])[^'""]+\1\s*\))",
             RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
         foreach (var group in stableMemberReadPattern.Matches(text)
