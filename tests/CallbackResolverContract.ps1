@@ -492,10 +492,16 @@ $hardDormancy = Dormancy-For 'FixtureDormantHard'
 if ($hardDormancy.Class -ne 'HARD_DORMANT' -or !$hardDormancy.EvidenceOnly) {
     throw "Expected evidence-only HARD_DORMANT, got $($hardDormancy.Class)"
 }
+if (!$hardDormancy.CompleteWakePathProven -or @($hardDormancy.StateWriterSignals).Count -lt 1) {
+    throw 'HARD_DORMANT fixture did not preserve its external gate-writer/wake proof.'
+}
 
 $discoveryDormancy = Dormancy-For 'FixtureDormantDiscovery'
 if ($discoveryDormancy.Class -ne 'DISCOVERY_DORMANT' -or !$discoveryDormancy.EvidenceOnly) {
     throw "Expected evidence-only DISCOVERY_DORMANT, got $($discoveryDormancy.Class)"
+}
+if ($discoveryDormancy.CompleteWakePathProven) {
+    throw 'DISCOVERY_DORMANT must not be considered a complete hard-dormant wake path.'
 }
 
 $neverDormancy = Dormancy-For 'FixtureDormantNever'
