@@ -130,6 +130,8 @@ internal static class CallbackResolverService
                         dormancy.DiscoverySignals,
                         dormancy.BackgroundSignals,
                         dormancy.SensitiveSignals,
+                        dormancy.StateWriterSignals,
+                        dormancy.CompleteWakePathProven,
                         dormancy.Evidence,
                         dormancy.Blockers
                     },
@@ -375,6 +377,33 @@ internal static class CallbackResolverService
                 ? explicitPositiveGate.Groups["gate"].Value
                 : "";
 
+        var stateWriterSignals = Array.Empty<string>();
+        var completeWakePathProven = false;
+        if (!string.IsNullOrWhiteSpace(gate))
+        {
+            var callbackIndex = full.IndexOf(text, StringComparison.Ordinal);
+            var outside = callbackIndex >= 0
+                ? full.Remove(callbackIndex, text.Length)
+                : full;
+
+            var escapedGate = Regex.Escape(gate);
+            stateWriterSignals = Regex.Matches(
+                    outside,
+                    @"(?m)^\s*" + escapedGate + @"\s*=\s*[^=].*$",
+                    RegexOptions.CultureInvariant)
+                .Cast<Match>()
+                .Select(x => x.Value.Trim())
+                .Distinct(StringComparer.Ordinal)
+                .Take(8)
+                .ToArray();
+
+            completeWakePathProven =
+                stateWriterSignals.Length > 0 &&
+                wake.Length > 0 &&
+                background.Length == 0 &&
+                sensitive.Length == 0;
+        }
+
         if (!string.IsNullOrWhiteSpace(gate) && wake.Length > 0)
         {
             evidence.Add($"Current source exposes an explicit activity gate '{gate}' and independent wake/input signals.");
@@ -390,8 +419,14 @@ internal static class CallbackResolverService
                     DiscoverySignals = discovery,
                     BackgroundSignals = background,
                     SensitiveSignals = sensitive,
-                    Evidence = evidence.ToArray(),
-                    Blockers = new[] { "Evidence classification only: a complete state-writer/wake-path proof is still required before generation." }
+                    StateWriterSignals = stateWriterSignals,
+                    CompleteWakePathProven = completeWakePathProven,
+                    Evidence = evidence.Concat(completeWakePathProven
+                        ? new[] { "The activity gate is written outside the hot callback and an independent wake/input registration exists." }
+                        : Array.Empty<string>()).ToArray(),
+                    Blockers = completeWakePathProven
+                        ? new[] { "Evidence-only phase: complete wake-path evidence is recorded but does not yet authorize generation." }
+                        : new[] { "Evidence classification only: a complete state-writer/wake-path proof is still required before generation." }
                 };
             }
 
@@ -406,6 +441,8 @@ internal static class CallbackResolverService
                 DiscoverySignals = discovery,
                 BackgroundSignals = background,
                 SensitiveSignals = sensitive,
+                StateWriterSignals = stateWriterSignals,
+                CompleteWakePathProven = false,
                 Evidence = evidence.ToArray(),
                 Blockers = new[] { "Evidence classification only: inactive discovery work must be isolated before generation." }
             };
@@ -2813,6 +2850,8 @@ internal static class CallbackResolverService
         public string[] DiscoverySignals { get; init; } = Array.Empty<string>();
         public string[] BackgroundSignals { get; init; } = Array.Empty<string>();
         public string[] SensitiveSignals { get; init; } = Array.Empty<string>();
+        public string[] StateWriterSignals { get; init; } = Array.Empty<string>();
+        public bool CompleteWakePathProven { get; init; }
         public string[] Evidence { get; init; } = Array.Empty<string>();
         public string[] Blockers { get; init; } = Array.Empty<string>();
 
