@@ -306,7 +306,7 @@ public static partial class ResultReportService
 
         return new
         {
-            schemaVersion = "1.6",
+            schemaVersion = "1.7",
             generatedUtc = DateTime.UtcNow.ToString("O"),
             interop = new
             {
@@ -604,6 +604,135 @@ public static partial class ResultReportService
                         unresolvedLineEvents == 0 &&
                         !hasLegacyCLineRows;
 
+                    var sampleCount = Math.Max(1, samples.Count);
+
+                    var pathClusters = samples
+                        .Where(row => !string.IsNullOrWhiteSpace(S(row, "PathFingerprint")))
+                        .GroupBy(
+                            row => S(row, "PathFingerprint"),
+                            StringComparer.OrdinalIgnoreCase)
+                        .Select(group => new
+                        {
+                            pathFingerprint = group.Key,
+                            samples = group.Count(),
+                            sampleSharePct = Round(
+                                Percent(group.Count(), sampleCount),
+                                3),
+                            avgApproxOwnWallMs = Round(
+                                group.Average(row => D(row, "ApproxOwnWallMs")),
+                                6),
+                            maxApproxOwnWallMs = Round(
+                                group.Select(row => D(row, "ApproxOwnWallMs"))
+                                    .DefaultIfEmpty(0)
+                                    .Max(),
+                                6),
+                            scenarios = group
+                                .Select(row =>
+                                {
+                                    var midpointMs =
+                                        D(row, "CaptureStartMs") +
+                                        Math.Max(
+                                            0,
+                                            D(row, "CaptureEndMs") -
+                                            D(row, "CaptureStartMs")) * 0.5;
+                                    return ResolverScenarioAt(midpointMs, scenarioAnalysis);
+                                })
+                                .Distinct(StringComparer.OrdinalIgnoreCase)
+                                .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+                                .ToArray()
+                        })
+                        .OrderByDescending(x => x.samples)
+                        .ThenByDescending(x => x.avgApproxOwnWallMs)
+                        .Take(12)
+                        .ToArray();
+
+                    var dominantPathSharePct =
+                        pathClusters.Length > 0
+                            ? pathClusters[0].sampleSharePct
+                            : 0.0;
+
+                    var hotCallees = callsiteRows
+                        .GroupBy(
+                            row => S(row, "ChildFunctionKey"),
+                            StringComparer.OrdinalIgnoreCase)
+                        .Where(group => !string.IsNullOrWhiteSpace(group.Key))
+                        .Select(group =>
+                        {
+                            var perSample = group
+                                .GroupBy(row => L(row, "SampleSequence"))
+                                .Select(sample => new
+                                {
+                                    calls = sample.Sum(row => L(row, "Calls")),
+                                    childInclusiveMs = sample.Sum(row => D(row, "ChildInclusiveMs")),
+                                    callsites = sample
+                                        .Select(row =>
+                                            S(row, "CallerSourceFile") + ":" +
+                                            L(row, "CallerLine").ToString(CultureInfo.InvariantCulture))
+                                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                                        .Count()
+                                })
+                                .ToArray();
+
+                            var distinctCallsites = group
+                                .Select(row =>
+                                    S(row, "CallerSourceFile") + ":" +
+                                    L(row, "CallerLine").ToString(CultureInfo.InvariantCulture))
+                                .Distinct(StringComparer.OrdinalIgnoreCase)
+                                .Count();
+
+                            return new
+                            {
+                                childFunctionKey = group.Key,
+                                sampledCalls = group.Sum(row => L(row, "Calls")),
+                                childInclusiveMs = Round(
+                                    group.Sum(row => D(row, "ChildInclusiveMs")),
+                                    6),
+                                samplesPresent = perSample.Length,
+                                meanCallsPerPresentSample = Round(
+                                    perSample.Length > 0
+                                        ? perSample.Average(x => (double)x.calls)
+                                        : 0,
+                                    3),
+                                maxCallsInSample = perSample
+                                    .Select(x => x.calls)
+                                    .DefaultIfEmpty(0)
+                                    .Max(),
+                                repeatedInSampleCount = perSample.Count(x => x.calls > 1),
+                                multiCallsiteSampleCount = perSample.Count(x => x.callsites > 1),
+                                distinctCallsites,
+                                callsites = group
+                                    .GroupBy(row => new
+                                    {
+                                        Source = S(row, "CallerSourceFile"),
+                                        Line = L(row, "CallerLine")
+                                    })
+                                    .Select(site => new
+                                    {
+                                        callerSourceFile = site.Key.Source,
+                                        callerLine = site.Key.Line,
+                                        sampledCalls = site.Sum(row => L(row, "Calls")),
+                                        childInclusiveMs = Round(
+                                            site.Sum(row => D(row, "ChildInclusiveMs")),
+                                            6)
+                                    })
+                                    .OrderByDescending(x => x.childInclusiveMs)
+                                    .ThenByDescending(x => x.sampledCalls)
+                                    .Take(8)
+                                    .ToArray()
+                            };
+                        })
+                        .OrderByDescending(x => x.childInclusiveMs)
+                        .ThenByDescending(x => x.sampledCalls)
+                        .Take(16)
+                        .ToArray();
+
+                    var duplicateCalleeCandidates = hotCallees
+                        .Where(x =>
+                            x.repeatedInSampleCount > 0 ||
+                            x.multiCallsiteSampleCount > 0)
+                        .Take(8)
+                        .ToArray();
+
                     return new
                     {
                         registrationId = callback.registrationId,
@@ -643,6 +772,10 @@ public static partial class ResultReportService
                                     + S(row, "ChildFunctionKey"),
                                     StringComparer.OrdinalIgnoreCase)
                                 .Count(group => group.Sum(row => L(row, "Calls")) > 1),
+                            dominantPathSharePct,
+                            pathClusters,
+                            hotCallees,
+                            duplicateCalleeCandidates,
                             unresolvedLineEvents,
                             lineSourceReliable,
                             nestedRegistrationsExcluded = samples.Sum(row =>
@@ -662,7 +795,13 @@ public static partial class ResultReportService
                                 S(row, "Mode").Equals("SPIKE_CAPTURE", StringComparison.OrdinalIgnoreCase)),
                             frameMultiplicityReady = callback.frameMultiplicity is not null,
                             callsiteEvidenceReady = callsiteRows.Count > 0,
-                            multipleObservedPaths = pathFingerprints.Length > 1
+                            multipleObservedPaths = pathFingerprints.Length > 1,
+                            pathClusteringReady = pathClusters.Length > 0,
+                            redundantSameInvocationCandidate =
+                                duplicateCalleeCandidates.Length > 0,
+                            multiInvocationFrameCandidate =
+                                callback.frameMultiplicity is not null &&
+                                callback.frameMultiplicity.multiCallFramePct > 0
                         }
                     };
                 })
