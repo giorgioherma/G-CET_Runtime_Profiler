@@ -2469,6 +2469,7 @@ internal static class CallbackResolverService
         if (dynamicActionForward &&
             TryResolveStaticDownstreamActionInterest(
                 window,
+                full,
                 nameVars,
                 callback.Owner,
                 sourceIndex,
@@ -2956,6 +2957,7 @@ internal static class CallbackResolverService
 
     private static bool TryResolveStaticDownstreamActionInterest(
         string window,
+        string fullSource,
         IReadOnlySet<string> nameVars,
         string owner,
         LiveSourceIndex sourceIndex,
@@ -3025,7 +3027,16 @@ internal static class CallbackResolverService
                          x => $"{x.Receiver}|{x.Method}|{x.NameArgumentIndex}|{x.RawActionArgumentIndex}",
                          StringComparer.OrdinalIgnoreCase))
         {
-            var definitions = sourceIndex.FindOwnerMethodDefinitions(owner, forward.Method);
+            var receiverType = TryResolveReceiverType(
+                window,
+                fullSource,
+                forward.Receiver);
+
+            var definitions = sourceIndex.FindOwnerMethodDefinitions(
+                owner,
+                forward.Method,
+                receiverType);
+
             if (definitions.Count == 0)
                 return false;
 
@@ -3102,6 +3113,38 @@ internal static class CallbackResolverService
         methods = methodNames.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray();
         files = sourceFiles.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray();
         return true;
+    }
+
+    private static string TryResolveReceiverType(
+        string callbackWindow,
+        string fullSource,
+        string receiver)
+    {
+        if (string.IsNullOrWhiteSpace(receiver))
+            return "";
+
+        // Example:
+        // local current = NightCityBilliardsRuntime
+        // NightCityBilliardsRuntime = Runtime
+        var localAlias = Regex.Match(
+            callbackWindow,
+            @"(?m)^\s*local\s+" + Regex.Escape(receiver) +
+            @"\s*=\s*(?<alias>[A-Za-z_]\w*)\s*$",
+            RegexOptions.CultureInvariant);
+        if (!localAlias.Success)
+            return "";
+
+        var alias = localAlias.Groups["alias"].Value;
+
+        var assignment = Regex.Match(
+            fullSource,
+            @"(?m)^\s*" + Regex.Escape(alias) +
+            @"\s*=\s*(?<type>[A-Za-z_]\w*)\s*$",
+            RegexOptions.CultureInvariant);
+        if (!assignment.Success)
+            return "";
+
+        return assignment.Groups["type"].Value;
     }
 
     private static bool TryReadFiniteRawActionDownstreamSet(
@@ -3862,7 +3905,8 @@ internal static class CallbackResolverService
 
         public IReadOnlyList<OwnerMethodDefinition> FindOwnerMethodDefinitions(
             string owner,
-            string methodName)
+            string methodName,
+            string receiverType = "")
         {
             var result = new List<OwnerMethodDefinition>();
             var ownerFolder = ResolveOwnerFolder(owner);
@@ -3880,7 +3924,7 @@ internal static class CallbackResolverService
             }
 
             var methodPattern =
-                @"^(?<indent>\s*)function\s+[A-Za-z_][\w.]*\s*[:.]\s*" +
+                @"^(?<indent>\s*)function\s+(?<receiver>[A-Za-z_][\w.]*)\s*[:.]\s*" +
                 Regex.Escape(methodName) +
                 @"\s*\((?<args>[^)]*)\)";
 
@@ -3906,6 +3950,11 @@ internal static class CallbackResolverService
                         methodPattern,
                         RegexOptions.CultureInvariant);
                     if (!match.Success)
+                        continue;
+
+                    var definitionReceiver = match.Groups["receiver"].Value;
+                    if (!string.IsNullOrWhiteSpace(receiverType) &&
+                        !definitionReceiver.Equals(receiverType, StringComparison.Ordinal))
                         continue;
 
                     var indent = match.Groups["indent"].Value.Length;
@@ -3940,6 +3989,7 @@ internal static class CallbackResolverService
 
                     result.Add(new OwnerMethodDefinition
                     {
+                        Receiver = definitionReceiver,
                         RelativeFile = Path.GetRelativePath(_modsRoot, file).Replace('\\', '/'),
                         Parameters = parameters,
                         Body = string.Join("\n", lines.Skip(i).Take(endLine - i + 1))
@@ -4442,6 +4492,7 @@ internal static class CallbackResolverService
     }
 
     private sealed class OwnerMethodDefinition
+        public string Receiver { get; init; } = "";
     {
         public string RelativeFile { get; init; } = "";
         public string[] Parameters { get; init; } = Array.Empty<string>();
