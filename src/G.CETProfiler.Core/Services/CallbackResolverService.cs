@@ -413,7 +413,6 @@ internal static class CallbackResolverService
             return false;
         }
 
-        var baseIndent = significant.Min(x => x.Indent);
         var increments = new Dictionary<string, int>(StringComparer.Ordinal);
         var gates = new Dictionary<string, double>(StringComparer.Ordinal);
         var gateRanges = new List<(int Start, int End)>();
@@ -430,6 +429,21 @@ internal static class CallbackResolverService
         var earlyReturnGateRegex = new Regex(
             @"^\s*if\s+(?<var>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*<\s*(?<seconds>\d+(?:\.\d+)?)\s+then\s+return\s+end\s*;?\s*$",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+        var incrementIndents = lines
+            .Where(line => incrementRegex.IsMatch(line))
+            .Select(line => line.Length - line.TrimStart().Length)
+            .ToArray();
+        if (incrementIndents.Length == 0)
+        {
+            blocker = "Author cadence: no fixed delta accumulator increment was proven.";
+            return false;
+        }
+
+        // Source ranges can include harmless neighboring lines. The author's
+        // accumulator statements define the callback-body indentation we care
+        // about; do not let a neighboring column-zero line poison the recipe.
+        var baseIndent = incrementIndents.Min();
 
         for (var i = 0; i < lines.Length; i++)
         {
