@@ -267,6 +267,7 @@ internal static class CallbackResolverService
         var evidence = new List<string>();
         var blockers = new List<string>();
         object? facts = null;
+        var effectiveSourceEvidence = sourceEvidence;
 
         var directOnUpdate = source is not null &&
             Regex.IsMatch(
@@ -304,6 +305,22 @@ internal static class CallbackResolverService
                 out cadenceBlocker))
         {
             recipes.Add("AUTHOR_CADENCE_WHOLE_CALLBACK");
+
+            if (source is not null &&
+                cadenceDecision is not null &&
+                cadenceDecision.RegistrationLine > 0 &&
+                cadenceDecision.CallbackBodyEndLine >= cadenceDecision.RegistrationLine)
+            {
+                effectiveSourceEvidence = new SourceEvidence
+                {
+                    RelativeFile = source.RelativeFile,
+                    Sha256 = source.Sha256,
+                    LineStart = cadenceDecision.RegistrationLine,
+                    LineEnd = cadenceDecision.CallbackBodyEndLine,
+                    MatchMode = "cadence-source-confirmed"
+                };
+            }
+
             evidence.Add(
                 $"Current source proves whole-callback author cadence at {authorCadence.BaseIntervalSeconds:0.######} s " +
                 $"with {authorCadence.TimerIntervalsSeconds.Length} fixed author timer(s).");
@@ -365,7 +382,7 @@ internal static class CallbackResolverService
             Facts = facts,
             Evidence = evidence.ToArray(),
             Blockers = blockers.ToArray(),
-            Source = sourceEvidence
+            Source = effectiveSourceEvidence
         };
     }
 
@@ -379,8 +396,31 @@ internal static class CallbackResolverService
         resolution = new AuthorCadenceResolution();
         blocker = "";
 
+        var normalizedFull = source.FullText
+            .Replace("\r\n", "\n")
+            .Replace('\r', '\n');
+        var callbackText = source.CallbackText;
+
+        if (cadenceDecision is not null &&
+            cadenceDecision.RegistrationLine > 0 &&
+            cadenceDecision.CallbackBodyEndLine >= cadenceDecision.RegistrationLine)
+        {
+            var fullLines = normalizedFull.Split('\n');
+            if (cadenceDecision.RegistrationLine <= fullLines.Length)
+            {
+                var endLine = Math.Min(
+                    cadenceDecision.CallbackBodyEndLine,
+                    fullLines.Length);
+                callbackText = string.Join(
+                    "\n",
+                    fullLines
+                        .Skip(cadenceDecision.RegistrationLine - 1)
+                        .Take(endLine - cadenceDecision.RegistrationLine + 1));
+            }
+        }
+
         var match = Regex.Match(
-            source.CallbackText,
+            callbackText,
             @"(?s)^\s*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]\s*,\s*function\s*\(\s*(?<delta>[A-Za-z_]\w*)\s*\)\s*(?<body>.*)\bend\s*\)\s*;?\s*$",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         if (!match.Success)
@@ -570,17 +610,14 @@ internal static class CallbackResolverService
 
         // Timer state must be private to the cadence mechanism. This avoids
         // changing externally observed continuously-increasing timer values.
-        var normalizedFull = source.FullText
-            .Replace("\r\n", "\n")
-            .Replace('\r', '\n');
-        var callbackIndex = normalizedFull.IndexOf(source.CallbackText, StringComparison.Ordinal);
+        var callbackIndex = normalizedFull.IndexOf(callbackText, StringComparison.Ordinal);
         if (callbackIndex < 0)
         {
             blocker = "Author cadence: callback text could not be isolated from the current source file.";
             return false;
         }
 
-        var outside = normalizedFull.Remove(callbackIndex, source.CallbackText.Length);
+        var outside = normalizedFull.Remove(callbackIndex, callbackText.Length);
 
         foreach (var variable in gates.Keys)
         {
@@ -1818,13 +1855,36 @@ internal static class CallbackResolverService
                     }
                 }
 
+                var sourceFile = "";
+                var registrationLine = 0;
+                var callbackBodyEndLine = 0;
+                if (row.TryGetProperty("Source", out var source) ||
+                    row.TryGetProperty("source", out source))
+                {
+                    if (source.ValueKind == JsonValueKind.Object)
+                    {
+                        sourceFile = JsonString(source, "File", "file");
+                        registrationLine = (int)(JsonNullableLong(
+                            source,
+                            "RegistrationLine",
+                            "registrationLine") ?? 0);
+                        callbackBodyEndLine = (int)(JsonNullableLong(
+                            source,
+                            "CallbackBodyEndLine",
+                            "callbackBodyEndLine") ?? 0);
+                    }
+                }
+
                 if (!string.IsNullOrWhiteSpace(owner))
                     result[CadenceKey(owner, kind, target)] =
                         new CadenceDecision(
                             group,
                             transform,
                             medianUsPerCall,
-                            baselineWorkSharePct);
+                            baselineWorkSharePct,
+                            sourceFile,
+                            registrationLine,
+                            callbackBodyEndLine);
             }
         }
         catch
@@ -2349,7 +2409,10 @@ internal static class CallbackResolverService
         string Group,
         bool TransformCandidate,
         double MedianUsPerCall,
-        double BaselineWorkSharePct);
+        double BaselineWorkSharePct,
+        string SourceFile,
+        int RegistrationLine,
+        int CallbackBodyEndLine);
 
     private sealed class GenericResolution
     {
