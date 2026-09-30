@@ -42,6 +42,19 @@ public:
         TimelineMod* TimelineOwner{};
         TimelineCallback* OnUpdateTimeline{};
 
+        // Exact rendered-frame multiplicity, rotated lazily per callback.
+        std::atomic<uint64_t> FrameCurrent{0};
+        std::atomic<uint64_t> FrameCurrentCalls{0};
+        std::atomic<uint64_t> FrameRecordedCalls{0};
+        std::atomic<uint64_t> FrameActiveFrames{0};
+        std::atomic<uint64_t> FrameOneCallFrames{0};
+        std::atomic<uint64_t> FrameTwoCallFrames{0};
+        std::atomic<uint64_t> FrameThreeCallFrames{0};
+        std::atomic<uint64_t> FrameFourCallFrames{0};
+        std::atomic<uint64_t> FrameFivePlusCallFrames{0};
+        std::atomic<uint64_t> FrameMaxCalls{0};
+        std::atomic_flag FrameRotateLock = ATOMIC_FLAG_INIT;
+
         // Adaptive deep-profiler state. Broad timing remains authoritative;
         // these fields only control sampled call/return dissection.
         std::atomic<bool> DeepSelected{false};
@@ -106,6 +119,7 @@ public:
     {
         Counter* CounterPtr{};
         uint64_t Sequence{};
+        uint64_t Frame{};
         uint64_t CaptureStartNs{};
         uint64_t CaptureEndNs{};
         uint64_t InclusiveNs{};
@@ -223,6 +237,20 @@ public:
         uint64_t ChildInclusiveNs{};
     };
 
+    struct DeepCallsiteAggregate
+    {
+        uint64_t SampleSequence{};
+        uint64_t RegistrationId{};
+        uint32_t ProfileEpoch{};
+        uint64_t Frame{};
+        std::string CallerSourceFile;
+        int CallerLine{};
+        std::string ParentFunctionKey;
+        std::string ChildFunctionKey;
+        uint64_t Calls{};
+        uint64_t ChildInclusiveNs{};
+    };
+
     struct DeepFrame
     {
         uint64_t FunctionIdentity{};
@@ -235,6 +263,8 @@ public:
         int SourceLineEnd{};
         uint32_t Depth{};
         std::string ParentFunctionKey;
+        std::string CallsiteSourceFile;
+        int CallsiteLine{};
         std::chrono::steady_clock::time_point Start{};
         uint64_t ChildRawNs{};
         uint64_t ProfilerNs{};
@@ -252,6 +282,7 @@ public:
         uint64_t Sequence{};
         uint64_t RegistrationId{};
         uint32_t ProfileEpoch{};
+        uint64_t Frame{};
         uint64_t CaptureStartNs{};
         uint64_t CaptureEndNs{};
         std::string Mode;
@@ -284,6 +315,7 @@ public:
         uint32_t ProfileEpoch{};
         DeepSampleMode Mode{DeepSampleMode::Hotset};
         uint64_t SampleSequence{};
+        uint64_t Frame{};
         uint64_t SampleStartCaptureNs{};
         std::chrono::steady_clock::time_point SampleStartWall{};
         lua_State* State{};
@@ -305,6 +337,7 @@ public:
         std::vector<DeepFrame> Frames;
         std::unordered_map<std::string, DeepFunctionAggregate> Functions;
         std::unordered_map<std::string, DeepEdgeAggregate> Edges;
+        std::unordered_map<std::string, DeepCallsiteAggregate> Callsites;
         std::unordered_map<std::string, DeepLineHit> Lines;
     };
 
@@ -334,6 +367,7 @@ public:
     static constexpr uint32_t DeepDriftWindowsRequired = 3;
     static constexpr size_t MaxDeepSampleEvents = 20'000;
     static constexpr size_t MaxDeepLineEvents = 500'000;
+    static constexpr size_t MaxDeepCallsiteEvents = 250'000;
     static constexpr size_t MaxDeepUniqueLinesPerSample = 2'048;
     static constexpr uint64_t MaxDeepPathTransitions = 4'096;
 
@@ -385,6 +419,14 @@ public:
                 auto& profiler = CETRuntimeProfiler::Get();
                 CETRuntimeProfiler::Record(m_counter, elapsed, exclusive);
 
+                const auto frameBookkeepingStart = Clock::now();
+                profiler.RecordFrameMultiplicity(m_counter);
+                const uint64_t frameBookkeepingNs = static_cast<uint64_t>(
+                    std::max<int64_t>(
+                        0,
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            Clock::now() - frameBookkeepingStart).count()));
+
                 // Continuous per-mod timeline accumulation. The common path
                 // is only relaxed atomics. A vector/mutex flush occurs at most
                 // once per active mod per timeline bucket. Any rollover
@@ -412,7 +454,8 @@ public:
                 // a false parent spike.
                 if (m_parent)
                     m_parent->m_childNs +=
-                        elapsed + timelineBookkeepingNs + spikeBookkeepingNs;
+                        elapsed + frameBookkeepingNs +
+                        timelineBookkeepingNs + spikeBookkeepingNs;
             }
             else if (m_parent)
             {
@@ -661,6 +704,8 @@ public:
             spikeProbe ? DeepSampleMode::SpikeProbe : DeepSampleMode::Hotset;
         threadState.SampleSequence =
             m_nextDeepSampleSequence.fetch_add(1, std::memory_order_relaxed) + 1;
+        threadState.Frame =
+            m_currentGameFrame.load(std::memory_order_acquire);
         threadState.SampleStartWall = now;
         threadState.SampleStartCaptureNs = FastCapturedNanoseconds(now);
         threadState.State = aState;
@@ -670,6 +715,7 @@ public:
         threadState.Frames.reserve(32);
         threadState.Functions.reserve(64);
         threadState.Edges.reserve(96);
+        threadState.Callsites.reserve(128);
         threadState.Lines.reserve(128);
 
         lua_sethook(
@@ -784,6 +830,16 @@ public:
             }
             else
             {
+                for (const auto& [_, callsite] : state.Callsites)
+                {
+                    if (m_deepCallsites.size() >= MaxDeepCallsiteEvents)
+                    {
+                        ++m_droppedDeepCallsites;
+                        continue;
+                    }
+                    m_deepCallsites.push_back(callsite);
+                }
+
                 for (const auto& [_, line] : state.Lines)
                 {
                     if (m_deepLines.size() >= MaxDeepLineEvents)
@@ -807,6 +863,7 @@ public:
                     state.SampleSequence,
                     counter ? counter->RegistrationId : 0,
                     state.ProfileEpoch,
+                    state.Frame,
                     state.SampleStartCaptureNs,
                     captureEndNs,
                     state.Mode == DeepSampleMode::Hotset
@@ -1014,11 +1071,69 @@ public:
             << " | schedulerJobs=" << m_schedulerJobs.size()
             << " | schedulerSpikes=" << m_schedulerSpikeEvents.size()
             << " | schedulerBursts=" << m_schedulerFrameBursts.size()
+            << " | captureFrames=" << m_captureFrameCount.load(std::memory_order_relaxed)
             << " | deepFunctions=" << m_deepFunctions.size()
             << " | deepEdges=" << m_deepEdges.size()
             << " | deepSamples=" << m_deepSamples.size()
+            << " | deepCallsites=" << m_deepCallsites.size()
             << " | deepLines=" << m_deepLines.size();
         return oss.str();
+    }
+
+    uint64_t BeginGameFrame()
+    {
+        if (!IsCapturing())
+        {
+            m_currentGameFrame.store(0, std::memory_order_release);
+            return 0;
+        }
+
+        const uint64_t frame =
+            m_captureFrameCount.fetch_add(1, std::memory_order_relaxed) + 1;
+        m_currentGameFrame.store(frame, std::memory_order_release);
+        return frame;
+    }
+
+    uint64_t CurrentGameFrame() const
+    {
+        return m_currentGameFrame.load(std::memory_order_acquire);
+    }
+
+    void RecordFrameMultiplicity(Counter* aCounter)
+    {
+        if (!aCounter)
+            return;
+
+        const uint64_t frame =
+            m_currentGameFrame.load(std::memory_order_acquire);
+        if (frame == 0 ||
+            m_state.load(std::memory_order_relaxed) != CaptureState::Running)
+            return;
+
+        uint64_t current =
+            aCounter->FrameCurrent.load(std::memory_order_relaxed);
+        if (current != frame)
+        {
+            while (aCounter->FrameRotateLock.test_and_set(
+                       std::memory_order_acquire))
+                std::this_thread::yield();
+
+            current = aCounter->FrameCurrent.load(std::memory_order_relaxed);
+            if (current != frame)
+            {
+                const uint64_t previousCalls =
+                    aCounter->FrameCurrentCalls.exchange(
+                        0, std::memory_order_relaxed);
+                if (current != 0 && previousCalls > 0)
+                    CommitFrameMultiplicity(aCounter, previousCalls);
+
+                aCounter->FrameCurrent.store(frame, std::memory_order_relaxed);
+            }
+
+            aCounter->FrameRotateLock.clear(std::memory_order_release);
+        }
+
+        aCounter->FrameCurrentCalls.fetch_add(1, std::memory_order_relaxed);
     }
 
     double SetSpikeThresholdMs(double aThresholdMs)
@@ -1451,6 +1566,7 @@ public:
         m_spikeEvents.push_back({
             aCounter,
             ++m_nextSpikeSequence,
+            m_currentGameFrame.load(std::memory_order_relaxed),
             captureStartNs,
             captureEndNs,
             aInclusiveNs,
@@ -1482,6 +1598,7 @@ public:
         struct SpikeRow
         {
             uint64_t Sequence{};
+            uint64_t Frame{};
             uint64_t CaptureStartNs{};
             uint64_t CaptureEndNs{};
             uint64_t InclusiveNs{};
@@ -1519,6 +1636,26 @@ public:
             std::string SourceFile;
             int SourceLineStart{};
             int SourceLineEnd{};
+        };
+
+        struct FrameMultiplicityRow
+        {
+            uint64_t RegistrationId{};
+            std::string Mod;
+            std::string Kind;
+            std::string Target;
+            std::string SourceFile;
+            int SourceLineStart{};
+            int SourceLineEnd{};
+            uint64_t TotalFrames{};
+            uint64_t FramesWithCalls{};
+            uint64_t RecordedCalls{};
+            uint64_t OneCallFrames{};
+            uint64_t TwoCallFrames{};
+            uint64_t ThreeCallFrames{};
+            uint64_t FourCallFrames{};
+            uint64_t FivePlusCallFrames{};
+            uint64_t MaxCallsInFrame{};
         };
 
         struct DeepRegistrationRow
@@ -1596,9 +1733,11 @@ public:
         std::vector<SpikeRow> spikeRows;
         std::vector<TimelineRow> timelineRows;
         std::vector<OnUpdateTimelineRow> onUpdateTimelineRows;
+        std::vector<FrameMultiplicityRow> frameMultiplicityRows;
         std::vector<DeepRegistrationRow> deepRegistrationRows;
         std::vector<DeepFunctionAggregate> deepFunctionRows;
         std::vector<DeepEdgeAggregate> deepEdgeRows;
+        std::vector<DeepCallsiteAggregate> deepCallsiteRows;
         std::vector<DeepSampleEvent> deepSampleRows;
         std::vector<DeepLineEvent> deepLineRows;
         std::vector<MarkerEvent> markerRows;
@@ -1618,6 +1757,8 @@ public:
         uint64_t droppedSchedulerFrameBursts{};
         uint64_t droppedDeepSamples{};
         uint64_t droppedDeepLines{};
+        uint64_t droppedDeepCallsites{};
+        uint64_t captureFrames{};
         double schedulerJobSpikeThresholdMs{};
         double schedulerFrameBurstThresholdMs{};
         uint64_t dumpGeneration{};
@@ -1655,6 +1796,63 @@ public:
                 });
             }
 
+            captureFrames =
+                m_captureFrameCount.load(std::memory_order_relaxed);
+
+            frameMultiplicityRows.reserve(m_counters.size());
+            for (const auto& [_, counter] : m_counters)
+            {
+                uint64_t activeFrames =
+                    counter->FrameActiveFrames.load(std::memory_order_relaxed);
+                uint64_t recordedCalls =
+                    counter->FrameRecordedCalls.load(std::memory_order_relaxed);
+                uint64_t one =
+                    counter->FrameOneCallFrames.load(std::memory_order_relaxed);
+                uint64_t two =
+                    counter->FrameTwoCallFrames.load(std::memory_order_relaxed);
+                uint64_t three =
+                    counter->FrameThreeCallFrames.load(std::memory_order_relaxed);
+                uint64_t four =
+                    counter->FrameFourCallFrames.load(std::memory_order_relaxed);
+                uint64_t fivePlus =
+                    counter->FrameFivePlusCallFrames.load(std::memory_order_relaxed);
+                uint64_t maxCalls =
+                    counter->FrameMaxCalls.load(std::memory_order_relaxed);
+
+                const uint64_t openCalls =
+                    counter->FrameCurrentCalls.load(std::memory_order_relaxed);
+                if (openCalls > 0)
+                {
+                    ++activeFrames;
+                    recordedCalls += openCalls;
+                    if (openCalls == 1) ++one;
+                    else if (openCalls == 2) ++two;
+                    else if (openCalls == 3) ++three;
+                    else if (openCalls == 4) ++four;
+                    else ++fivePlus;
+                    maxCalls = std::max(maxCalls, openCalls);
+                }
+
+                frameMultiplicityRows.push_back({
+                    counter->RegistrationId,
+                    counter->Mod,
+                    counter->Kind,
+                    counter->Target,
+                    counter->SourceFile,
+                    counter->SourceLineStart,
+                    counter->SourceLineEnd,
+                    captureFrames,
+                    activeFrames,
+                    recordedCalls,
+                    one,
+                    two,
+                    three,
+                    four,
+                    fivePlus,
+                    maxCalls
+                });
+            }
+
             spikeRows.reserve(m_spikeEvents.size());
             for (const auto& spike : m_spikeEvents)
             {
@@ -1663,6 +1861,7 @@ public:
 
                 spikeRows.push_back({
                     spike.Sequence,
+                    spike.Frame,
                     spike.CaptureStartNs,
                     spike.CaptureEndNs,
                     spike.InclusiveNs,
@@ -1780,10 +1979,12 @@ public:
             for (const auto& [_, row] : m_deepEdges)
                 deepEdgeRows.push_back(row);
 
+            deepCallsiteRows = m_deepCallsites;
             deepSampleRows = m_deepSamples;
             deepLineRows = m_deepLines;
             droppedDeepSamples = m_droppedDeepSamples;
             droppedDeepLines = m_droppedDeepLines;
+            droppedDeepCallsites = m_droppedDeepCallsites;
 
             markerRows = m_markers;
 
@@ -1993,6 +2194,77 @@ public:
         // CET_Runtime_Profile_Detail.csv.
         // -----------------------------------------------------------------
         {
+            std::sort(
+                frameMultiplicityRows.begin(),
+                frameMultiplicityRows.end(),
+                [](const FrameMultiplicityRow& a, const FrameMultiplicityRow& b)
+                {
+                    if (a.MaxCallsInFrame != b.MaxCallsInFrame)
+                        return a.MaxCallsInFrame > b.MaxCallsInFrame;
+                    if (a.FramesWithCalls != b.FramesWithCalls)
+                        return a.FramesWithCalls > b.FramesWithCalls;
+                    return a.RegistrationId < b.RegistrationId;
+                });
+
+            const auto path =
+                outputRoot / "CET_Runtime_Profile_FrameMultiplicity.csv";
+            std::ofstream f(path, std::ios::trunc);
+            if (f)
+            {
+                f << "RegistrationId,Mod,Kind,Target,SourceFile,"
+                     "SourceLineStart,SourceLineEnd,TotalFrames,FramesWithCalls,"
+                     "ZeroCallFrames,RecordedCalls,OneCallFrames,TwoCallFrames,"
+                     "ThreeCallFrames,FourCallFrames,FivePlusCallFrames,"
+                     "MaxCallsInFrame,MeanCallsPerActiveFrame,MultiCallFramePct,"
+                     "Interpretation\n";
+                f << std::fixed << std::setprecision(6);
+
+                for (const auto& row : frameMultiplicityRows)
+                {
+                    const uint64_t zeroFrames =
+                        row.TotalFrames > row.FramesWithCalls
+                            ? row.TotalFrames - row.FramesWithCalls
+                            : 0;
+                    const uint64_t multiFrames =
+                        row.TwoCallFrames + row.ThreeCallFrames +
+                        row.FourCallFrames + row.FivePlusCallFrames;
+                    const double meanCalls =
+                        row.FramesWithCalls
+                            ? static_cast<double>(row.RecordedCalls) /
+                                  static_cast<double>(row.FramesWithCalls)
+                            : 0.0;
+                    const double multiPct =
+                        row.FramesWithCalls
+                            ? static_cast<double>(multiFrames) /
+                                  static_cast<double>(row.FramesWithCalls) * 100.0
+                            : 0.0;
+
+                    f << row.RegistrationId << ','
+                      << Csv(row.Mod) << ','
+                      << Csv(row.Kind) << ','
+                      << Csv(row.Target) << ','
+                      << Csv(row.SourceFile) << ','
+                      << row.SourceLineStart << ','
+                      << row.SourceLineEnd << ','
+                      << row.TotalFrames << ','
+                      << row.FramesWithCalls << ','
+                      << zeroFrames << ','
+                      << row.RecordedCalls << ','
+                      << row.OneCallFrames << ','
+                      << row.TwoCallFrames << ','
+                      << row.ThreeCallFrames << ','
+                      << row.FourCallFrames << ','
+                      << row.FivePlusCallFrames << ','
+                      << row.MaxCallsInFrame << ','
+                      << meanCalls << ','
+                      << multiPct << ','
+                      << "exact-native-frame-callback-multiplicity"
+                      << '\n';
+                }
+            }
+        }
+
+        {
             std::sort(deepRegistrationRows.begin(), deepRegistrationRows.end(),
                       [](const DeepRegistrationRow& a, const DeepRegistrationRow& b)
                       {
@@ -2055,7 +2327,7 @@ public:
             std::ofstream f(path, std::ios::trunc);
             if (f)
             {
-                f << "SampleSequence,RegistrationId,ProfileEpoch,CaptureStartMs,"
+                f << "SampleSequence,RegistrationId,ProfileEpoch,Frame,CaptureStartMs,"
                      "CaptureEndMs,Mode,ApproxOwnWallMs,HookEvents,LineEvents,"
                      "UnresolvedLineEvents,UniqueLines,PathTransitions,PathFingerprint,"
                      "NestedRegistrationCount,NestedRegistrationMs,LineRowsTruncated,"
@@ -2067,6 +2339,7 @@ public:
                     f << row.Sequence << ','
                       << row.RegistrationId << ','
                       << row.ProfileEpoch << ','
+                      << row.Frame << ','
                       << (static_cast<double>(row.CaptureStartNs) / 1'000'000.0) << ','
                       << (static_cast<double>(row.CaptureEndNs) / 1'000'000.0) << ','
                       << Csv(row.Mode) << ','
@@ -2207,6 +2480,49 @@ public:
             }
         }
 
+        {
+            std::sort(
+                deepCallsiteRows.begin(),
+                deepCallsiteRows.end(),
+                [](const DeepCallsiteAggregate& a, const DeepCallsiteAggregate& b)
+                {
+                    if (a.SampleSequence != b.SampleSequence)
+                        return a.SampleSequence < b.SampleSequence;
+                    if (a.ChildInclusiveNs != b.ChildInclusiveNs)
+                        return a.ChildInclusiveNs > b.ChildInclusiveNs;
+                    return a.CallerLine < b.CallerLine;
+                });
+
+            const auto path =
+                outputRoot / "CET_Runtime_Profile_Deep_Callsites.csv";
+            std::ofstream f(path, std::ios::trunc);
+            if (f)
+            {
+                f << "SampleSequence,RegistrationId,ProfileEpoch,Frame,"
+                     "CallerSourceFile,CallerLine,ParentFunctionKey,"
+                     "ChildFunctionKey,Calls,ChildInclusiveMs,"
+                     "DroppedCallsiteRowsAtDump,Interpretation\n";
+                f << std::fixed << std::setprecision(6);
+
+                for (const auto& row : deepCallsiteRows)
+                {
+                    f << row.SampleSequence << ','
+                      << row.RegistrationId << ','
+                      << row.ProfileEpoch << ','
+                      << row.Frame << ','
+                      << Csv(row.CallerSourceFile) << ','
+                      << row.CallerLine << ','
+                      << Csv(row.ParentFunctionKey) << ','
+                      << Csv(row.ChildFunctionKey) << ','
+                      << row.Calls << ','
+                      << (static_cast<double>(row.ChildInclusiveNs) / 1'000'000.0) << ','
+                      << droppedDeepCallsites << ','
+                      << "sampled-per-invocation-callsite-callee-evidence"
+                      << '\n';
+                }
+            }
+        }
+
         // -----------------------------------------------------------------
         // MARKERS: capture-relative + wall-clock anchors for phase boundaries
         // and easier external timeline alignment.
@@ -2257,7 +2573,7 @@ public:
 
             if (f)
             {
-                f << "Sequence,CaptureStartMs,CaptureEndMs,InclusiveMs,"
+                f << "Sequence,Frame,CaptureStartMs,CaptureEndMs,InclusiveMs,"
                      "ExclusiveMs,ChildMs,RegistrationId,Mod,Kind,Target,"
                      "SourceFile,SourceLineStart,SourceLineEnd,ThreadId,"
                      "ThresholdMs,DroppedEventsAtDump,Interpretation\n";
@@ -2266,6 +2582,7 @@ public:
                 for (const auto& spike : spikeRows)
                 {
                     f << spike.Sequence << ','
+                      << spike.Frame << ','
                       << (static_cast<double>(spike.CaptureStartNs) / 1'000'000.0) << ','
                       << (static_cast<double>(spike.CaptureEndNs) / 1'000'000.0) << ','
                       << (static_cast<double>(spike.InclusiveNs) / 1'000'000.0) << ','
@@ -2694,6 +3011,18 @@ private:
             frame.SourceLineEnd,
             frame.FunctionName,
             frame.What);
+
+        lua_Debug caller{};
+        if (lua_getstack(aState, 1, &caller) != 0 &&
+            lua_getinfo(aState, "Sl", &caller) != 0)
+        {
+            const char* callerSource = caller.source ? caller.source : "";
+            if (callerSource[0] == '@')
+                ++callerSource;
+            frame.CallsiteSourceFile = callerSource;
+            frame.CallsiteLine = caller.currentline;
+        }
+
         return frame;
     }
 
@@ -2836,6 +3165,32 @@ private:
             }
             ++edge.Calls;
             edge.ChildInclusiveNs += inclusiveNs;
+
+            if (frame.CallsiteLine > 0 &&
+                !frame.CallsiteSourceFile.empty() &&
+                frame.CallsiteSourceFile != "=[C]")
+            {
+                const std::string callsiteKey =
+                    frame.ParentFunctionKey + "\x1f" +
+                    frame.FunctionKey + "\x1f" +
+                    frame.CallsiteSourceFile + "\x1f" +
+                    std::to_string(frame.CallsiteLine);
+                auto& callsite = aState.Callsites[callsiteKey];
+                if (callsite.ChildFunctionKey.empty())
+                {
+                    callsite.SampleSequence = aState.SampleSequence;
+                    callsite.RegistrationId =
+                        aState.CounterPtr ? aState.CounterPtr->RegistrationId : 0;
+                    callsite.ProfileEpoch = aState.ProfileEpoch;
+                    callsite.Frame = aState.Frame;
+                    callsite.CallerSourceFile = frame.CallsiteSourceFile;
+                    callsite.CallerLine = frame.CallsiteLine;
+                    callsite.ParentFunctionKey = frame.ParentFunctionKey;
+                    callsite.ChildFunctionKey = frame.FunctionKey;
+                }
+                ++callsite.Calls;
+                callsite.ChildInclusiveNs += inclusiveNs;
+            }
         }
 
         if (!aState.Frames.empty())
@@ -3194,9 +3549,11 @@ private:
         m_deepFunctions.clear();
         m_deepEdges.clear();
         m_deepSamples.clear();
+        m_deepCallsites.clear();
         m_deepLines.clear();
         m_droppedDeepSamples = 0;
         m_droppedDeepLines = 0;
+        m_droppedDeepCallsites = 0;
         m_nextDeepSampleSequence.store(0, std::memory_order_relaxed);
         m_lastDeepRebalanceCaptureNs = 0;
         m_nextDeepRebalanceTicksNs.store(0, std::memory_order_relaxed);
@@ -3304,6 +3661,7 @@ private:
         m_schedulerSpikeEvents.reserve(MaxSchedulerSpikeEvents);
         m_schedulerFrameBursts.reserve(MaxSchedulerFrameBurstEvents);
         m_deepSamples.reserve(MaxDeepSampleEvents);
+        m_deepCallsites.reserve(MaxDeepCallsiteEvents);
         m_deepLines.reserve(MaxDeepLineEvents);
     }
 
@@ -3316,7 +3674,20 @@ private:
             counter->ExclusiveNs.store(0, std::memory_order_relaxed);
             counter->MaxInclusiveNs.store(0, std::memory_order_relaxed);
             counter->MaxExclusiveNs.store(0, std::memory_order_relaxed);
+            counter->FrameCurrent.store(0, std::memory_order_relaxed);
+            counter->FrameCurrentCalls.store(0, std::memory_order_relaxed);
+            counter->FrameRecordedCalls.store(0, std::memory_order_relaxed);
+            counter->FrameActiveFrames.store(0, std::memory_order_relaxed);
+            counter->FrameOneCallFrames.store(0, std::memory_order_relaxed);
+            counter->FrameTwoCallFrames.store(0, std::memory_order_relaxed);
+            counter->FrameThreeCallFrames.store(0, std::memory_order_relaxed);
+            counter->FrameFourCallFrames.store(0, std::memory_order_relaxed);
+            counter->FrameFivePlusCallFrames.store(0, std::memory_order_relaxed);
+            counter->FrameMaxCalls.store(0, std::memory_order_relaxed);
+            counter->FrameRotateLock.clear(std::memory_order_relaxed);
         }
+        m_currentGameFrame.store(0, std::memory_order_relaxed);
+        m_captureFrameCount.store(0, std::memory_order_relaxed);
     }
 
     void ResetSpikesLocked()
@@ -3431,6 +3802,23 @@ private:
         });
     }
 
+    static void CommitFrameMultiplicity(Counter* aCounter, uint64_t aCalls)
+    {
+        if (!aCounter || aCalls == 0)
+            return;
+
+        aCounter->FrameRecordedCalls.fetch_add(aCalls, std::memory_order_relaxed);
+        aCounter->FrameActiveFrames.fetch_add(1, std::memory_order_relaxed);
+
+        if (aCalls == 1) aCounter->FrameOneCallFrames.fetch_add(1, std::memory_order_relaxed);
+        else if (aCalls == 2) aCounter->FrameTwoCallFrames.fetch_add(1, std::memory_order_relaxed);
+        else if (aCalls == 3) aCounter->FrameThreeCallFrames.fetch_add(1, std::memory_order_relaxed);
+        else if (aCalls == 4) aCounter->FrameFourCallFrames.fetch_add(1, std::memory_order_relaxed);
+        else aCounter->FrameFivePlusCallFrames.fetch_add(1, std::memory_order_relaxed);
+
+        UpdateMax(aCounter->FrameMaxCalls, aCalls);
+    }
+
     void PauseLocked(Clock::time_point aNow)
     {
         if (m_state.load(std::memory_order_relaxed) != CaptureState::Running)
@@ -3440,6 +3828,7 @@ private:
             std::chrono::duration_cast<std::chrono::nanoseconds>(
                 aNow - m_segmentStarted);
         m_state.store(CaptureState::Paused, std::memory_order_release);
+        m_currentGameFrame.store(0, std::memory_order_release);
         AddMarkerLocked("PAUSE", aNow);
     }
 
@@ -3624,6 +4013,7 @@ private:
     std::vector<SchedulerFrameBurstEvent> m_schedulerFrameBursts;
     std::unordered_map<std::string, DeepFunctionAggregate> m_deepFunctions;
     std::unordered_map<std::string, DeepEdgeAggregate> m_deepEdges;
+    std::vector<DeepCallsiteAggregate> m_deepCallsites;
     std::vector<DeepSampleEvent> m_deepSamples;
     std::vector<DeepLineEvent> m_deepLines;
     std::filesystem::path m_outputRoot;
@@ -3635,6 +4025,8 @@ private:
     std::atomic<uint64_t> m_timelineBucketNs{DefaultTimelineBucketNs};
     std::atomic<uint64_t> m_schedulerJobSpikeThresholdNs{DefaultSchedulerJobSpikeThresholdNs};
     std::atomic<uint64_t> m_schedulerFrameBurstThresholdNs{DefaultSchedulerFrameBurstThresholdNs};
+    std::atomic<uint64_t> m_currentGameFrame{0};
+    std::atomic<uint64_t> m_captureFrameCount{0};
     std::atomic<int64_t> m_fastSegmentStartedTicksNs{0};
     std::atomic<uint64_t> m_fastSegmentBaseCaptureNs{0};
     std::atomic<int64_t> m_nextDeepRebalanceTicksNs{0};
@@ -3642,6 +4034,7 @@ private:
     uint64_t m_lastDeepRebalanceCaptureNs{0};
     uint64_t m_droppedDeepSamples{};
     uint64_t m_droppedDeepLines{};
+    uint64_t m_droppedDeepCallsites{};
     Clock::time_point m_segmentStarted{};
     std::chrono::nanoseconds m_accumulatedCapture{};
     uint64_t m_nextSpikeSequence{};
