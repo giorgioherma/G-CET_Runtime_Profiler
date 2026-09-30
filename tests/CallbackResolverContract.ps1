@@ -172,6 +172,26 @@ Override("PlayerPuppet", "OnAction", function(self, action, consumer, wrappedMet
 end)
 '@
 
+Write-Mod 'FixtureOverridePrefilter' @'
+Override("PlayerPuppet", "OnAction", function(self, action, consumer, wrappedMethod)
+    if runtime.session.active then
+        runtime:HandleAction(action)
+    end
+    wrappedMethod(self, action, consumer)
+end)
+'@
+$overridePrefilterDir = Join-Path $mods 'FixtureOverridePrefilter'
+@'
+function Runtime:HandleAction(action)
+    local actionName = Game.NameToString(action:GetName())
+    if actionName == "ChoiceScrollUp" then
+        self:MoveUp()
+    elseif actionName == "ChoiceScrollDown" then
+        self:MoveDown()
+    end
+end
+'@ | Set-Content -LiteralPath (Join-Path $overridePrefilterDir 'runtime.lua') -Encoding utf8
+
 Write-Mod 'FixtureDownstream' @'
 Observe("PlayerPuppet", "OnAction", function(_, action)
     local actionName = Game.NameToString(action:GetName())
@@ -385,6 +405,7 @@ $handoff = @{
         (CallbackRow 109 'FixtureDynamic' 'observe' 'PlayerPuppet::OnAction' 500 6.0 8.0 'init.lua' 1 7),
         (CallbackRow 112 'FixtureGatedDynamic' 'observe' 'PlayerPuppet::OnAction' 495 5.9 7.8 'init.lua' 1 14),
         (CallbackRow 130 'FixtureOverrideStructural' 'Override' 'PlayerPuppet::OnAction' 500 16.0 4.0 'init.lua' 1 8),
+        (CallbackRow 131 'FixtureOverridePrefilter' 'Override' 'PlayerPuppet::OnAction' 1400 15.0 4.4 'init.lua' 1 7),
         (CallbackRow 111 'FixtureDownstream' 'observe' 'PlayerPuppet::OnAction' 490 5.8 7.5 'init.lua' 1 10),
         (CallbackRow 120 'FixtureStructural' 'event' 'onUpdate' 60 9.0 2.0 'init.lua' 1 8),
         (CallbackRow 126 'FixtureDiscoveryAuthorRate' 'event' 'onUpdate' 60 13.0 3.2 'init.lua' 6 18),
@@ -541,6 +562,22 @@ if (@($overrideStructural.generic.RecipeFamilies) -notcontains 'ACTION_ROUTING_O
 $overrideBlockers = (@($overrideStructural.generic.Blockers) -join ' ')
 if ($overrideBlockers -notmatch 'Override semantics') {
     throw 'Override routing blocker disappeared when structural fallback became automatable.'
+}
+
+$overridePrefilter = Action-For 'FixtureOverridePrefilter'
+if (!$overridePrefilter.generic.Automatable) {
+    throw 'Transparent finite OnAction Override was not made auto-patchable.'
+}
+if ($overridePrefilter.generic.Pattern -ne 'ACTION_OVERRIDE_EXACT_PREFILTER') {
+    throw "Unexpected Override prefilter recipe: $($overridePrefilter.generic.Pattern)"
+}
+if (!$overridePrefilter.generic.Facts.overridePrefilterProven) {
+    throw 'Transparent Override proof fact was not emitted.'
+}
+foreach ($expected in @('ChoiceScrollUp','ChoiceScrollDown')) {
+    if (@($overridePrefilter.generic.Facts.actions) -notcontains $expected) {
+        throw "Override downstream expansion lost expected action: $expected"
+    }
 }
 
 $downstream = Action-For 'FixtureDownstream'
@@ -746,7 +783,7 @@ if ($unknownHot.advanced.NextEvidence -ne 'USER_CLASSIFICATION') {
 if ($null -eq $resolved.pass) {
     throw 'CLI --generate-pass did not return a pass result.'
 }
-if ([int]$resolved.pass.TransformCount -ne 16) {
+if ([int]$resolved.pass.TransformCount -ne 17) {
     if (Test-Path -LiteralPath $resolved.pass.ManifestPath -PathType Leaf) {
         $failedManifest = Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
         Write-Host "PASS DEBUG transforms=$($failedManifest.summary.transforms) skipped=$($failedManifest.summary.skipped)"
@@ -754,10 +791,10 @@ if ([int]$resolved.pass.TransformCount -ne 16) {
             Write-Host ("PASS DEBUG SKIP owner={0} type={1} file={2} reason={3}" -f $skip.owner,$skip.type,$skip.file,$skip.reason)
         }
     }
-    throw "Expected 16 generated transforms, got $($resolved.pass.TransformCount)."
+    throw "Expected 17 generated transforms, got $($resolved.pass.TransformCount)."
 }
-if ([int]$resolved.pass.FileCount -ne 20) {
-    throw "Expected 20 generated replacement files (16 callback + 4 fixed 0-Engine), got $($resolved.pass.FileCount)."
+if ([int]$resolved.pass.FileCount -ne 21) {
+    throw "Expected 21 generated replacement files (17 callback + 4 fixed 0-Engine), got $($resolved.pass.FileCount)."
 }
 if (!(Test-Path -LiteralPath $resolved.pass.ZipPath -PathType Leaf)) {
     throw "Generated pass ZIP is missing: $($resolved.pass.ZipPath)"
@@ -787,6 +824,7 @@ try {
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDormantOnUpdate/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureOtherStructural/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureOverrideStructural/init.lua',
+        'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureOverridePrefilter/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixturePattern/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDownstream/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureGatedDynamic/init.lua',
@@ -911,6 +949,24 @@ try {
         throw 'Override structural fallback incorrectly converted the Override into ActionRouter routing.'
     }
 
+    $overridePrefilterText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureOverridePrefilter/init.lua'
+    foreach ($requiredOverrideText in @(
+        'Override("PlayerPuppet", "OnAction"',
+        '__gcetOverrideActions_131',
+        'ChoiceScrollUp',
+        'ChoiceScrollDown',
+        'action:GetName()',
+        'wrappedMethod(self, action, consumer)',
+        'G-CET finite Override prefilter'
+    )) {
+        if ($overridePrefilterText -notmatch [regex]::Escape($requiredOverrideText)) {
+            throw "Generated Override prefilter is missing: $requiredOverrideText"
+        }
+    }
+    if ($overridePrefilterText -match 'SubscribeAction') {
+        throw 'Override prefilter incorrectly converted the Override to ActionRouter routing.'
+    }
+
     $patternText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixturePattern/init.lua'
     if ($patternText -notmatch 'actions = "\*"' -or
         $patternText -notmatch 'string\.find\(routedName, "Turn", 1, true\)') {
@@ -941,11 +997,11 @@ try {
     if ($manifest.policy.modNameRules) {
         throw 'Generated pass manifest unexpectedly allows mod-name rules.'
     }
-    if ([int]$manifest.summary.transforms -ne 16) {
+    if ([int]$manifest.summary.transforms -ne 17) {
         throw 'Generated pass manifest transform count is wrong.'
     }
-    if ([int]$manifest.summary.callbackFiles -ne 16) {
-        throw "Expected 16 callback replacement files, got $($manifest.summary.callbackFiles)."
+    if ([int]$manifest.summary.callbackFiles -ne 17) {
+        throw "Expected 17 callback replacement files, got $($manifest.summary.callbackFiles)."
     }
     if ([int]$manifest.summary.fixedRuntimeFiles -ne 4) {
         throw "Expected 4 fixed 0-Engine runtime files, got $($manifest.summary.fixedRuntimeFiles)."
