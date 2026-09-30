@@ -542,7 +542,7 @@ if ($discoveryAuthor.dormancy.Class -ne 'DISCOVERY_DORMANT') {
     throw "Expected DISCOVERY_DORMANT author-rate classification, got $($discoveryAuthor.dormancy.Class)"
 }
 if (!$discoveryAuthor.dormancy.AuthorDiscoveryCadenceProven) {
-    throw 'Author-paced discovery cadence was not proven.'
+    throw "Author-paced discovery cadence was not proven. Blocker=$($discoveryAuthor.dormancy.AuthorDiscoveryBlocker)"
 }
 if ([math]::Abs([double]$discoveryAuthor.dormancy.AuthorDiscoveryIntervalSeconds - 1.0) -gt 0.0001) {
     throw "Unexpected discovery interval: $($discoveryAuthor.dormancy.AuthorDiscoveryIntervalSeconds)"
