@@ -557,13 +557,17 @@ if (!$discoveryAuthor.dormancy.DiscoveryRegionSelfContained) {
     throw 'Self-contained author discovery region was not recognized.'
 }
 if (!$discoveryAuthor.dormancy.EvidenceOnly) {
-    throw 'Discovery dormancy must remain evidence-only in this phase.'
+    throw 'Dormancy classification evidence should remain visible even when a finite generic recipe is available.'
 }
-if (!$discoveryAuthor.advanced.Eligible -or [int]$discoveryAuthor.advanced.Difficulty -ne 4) {
-    throw 'Author-paced discovery candidate did not clear the Level-4 Advanced economics gate.'
+if (!$discoveryAuthor.generic.Automatable -or
+    @($discoveryAuthor.generic.RecipeFamilies) -notcontains 'AUTHOR_DISCOVERY_DORMANT_SCHEDULE') {
+    throw 'Source-proven author-paced discovery dormancy was not promoted to the finite automatic recipe.'
 }
-if ($discoveryAuthor.advanced.NextEvidence -ne 'SOURCE_DEPENDENCY_PROOF_FOR_DISCOVERY_EXTRACTION') {
-    throw "Unexpected Advanced discovery next evidence: $($discoveryAuthor.advanced.NextEvidence)"
+if ($discoveryAuthor.advanced.Eligible) {
+    throw 'Author-paced discovery callback should not bother Advanced mode once an automatic semantic recipe is available.'
+}
+if ($discoveryAuthor.advanced.NextEvidence -ne 'NONE_AUTO_RECIPE_AVAILABLE') {
+    throw "Unexpected Advanced discovery next evidence after automatic recipe: $($discoveryAuthor.advanced.NextEvidence)"
 }
 
 $neverUpdate = @($onUpdate.topConsumers | Where-Object { $_.owner -eq 'FixtureNeverGateUpdate' }) | Select-Object -First 1
@@ -669,7 +673,7 @@ if ($unknownHot.advanced.NextEvidence -ne 'USER_CLASSIFICATION') {
 if ($null -eq $resolved.pass) {
     throw 'CLI --generate-pass did not return a pass result.'
 }
-if ([int]$resolved.pass.TransformCount -ne 14) {
+if ([int]$resolved.pass.TransformCount -ne 15) {
     if (Test-Path -LiteralPath $resolved.pass.ManifestPath -PathType Leaf) {
         $failedManifest = Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
         Write-Host "PASS DEBUG transforms=$($failedManifest.summary.transforms) skipped=$($failedManifest.summary.skipped)"
@@ -677,10 +681,10 @@ if ([int]$resolved.pass.TransformCount -ne 14) {
             Write-Host ("PASS DEBUG SKIP owner={0} type={1} file={2} reason={3}" -f $skip.owner,$skip.type,$skip.file,$skip.reason)
         }
     }
-    throw "Expected 14 generated transforms, got $($resolved.pass.TransformCount)."
+    throw "Expected 15 generated transforms, got $($resolved.pass.TransformCount)."
 }
-if ([int]$resolved.pass.FileCount -ne 18) {
-    throw "Expected 18 generated replacement files (14 callback + 4 fixed 0-Engine), got $($resolved.pass.FileCount)."
+if ([int]$resolved.pass.FileCount -ne 19) {
+    throw "Expected 19 generated replacement files (15 callback + 4 fixed 0-Engine), got $($resolved.pass.FileCount)."
 }
 if (!(Test-Path -LiteralPath $resolved.pass.ZipPath -PathType Leaf)) {
     throw "Generated pass ZIP is missing: $($resolved.pass.ZipPath)"
@@ -706,6 +710,7 @@ try {
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureAction/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureFrame/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureStructural/init.lua',
+        'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDiscoveryAuthorRate/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDormantOnUpdate/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixturePattern/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDownstream/init.lua',
@@ -764,6 +769,24 @@ try {
         throw 'Structural hotpath did not hoist repeated literal CName constructor.'
     }
 
+    $discoveryText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDiscoveryAuthorRate/init.lua'
+    foreach ($requiredDiscoveryText in @(
+        '__gcetDiscovery_126',
+        '__gcetDiscoveryScheduled_126',
+        'Schedule.Every(1',
+        'if active then return end',
+        'if not __gcetDiscoveryScheduled_126 then',
+        'RunActiveActivity(delta)',
+        '__gcetRegisterEvent_126("onUpdate"'
+    )) {
+        if ($discoveryText -notmatch [regex]::Escape($requiredDiscoveryText)) {
+            throw "Generated discovery-dormant rewrite is missing: $requiredDiscoveryText"
+        }
+    }
+    if ([regex]::Matches($discoveryText, [regex]::Escape('CheckNearbyActivity(distance)')).Count -lt 2) {
+        throw 'Discovery rewrite did not retain both scheduled discovery and original fallback discovery work.'
+    }
+
     $hardUpdateText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDormantOnUpdate/init.lua'
     if ($hardUpdateText -notmatch 'if not active then return end -- G-CET dormant guard hoist') {
         throw 'Generated hard-dormant callback is missing the hoisted inactive guard.'
@@ -804,11 +827,11 @@ try {
     if ($manifest.policy.modNameRules) {
         throw 'Generated pass manifest unexpectedly allows mod-name rules.'
     }
-    if ([int]$manifest.summary.transforms -ne 14) {
+    if ([int]$manifest.summary.transforms -ne 15) {
         throw 'Generated pass manifest transform count is wrong.'
     }
-    if ([int]$manifest.summary.callbackFiles -ne 14) {
-        throw "Expected 14 callback replacement files, got $($manifest.summary.callbackFiles)."
+    if ([int]$manifest.summary.callbackFiles -ne 15) {
+        throw "Expected 15 callback replacement files, got $($manifest.summary.callbackFiles)."
     }
     if ([int]$manifest.summary.fixedRuntimeFiles -ne 4) {
         throw "Expected 4 fixed 0-Engine runtime files, got $($manifest.summary.fixedRuntimeFiles)."
