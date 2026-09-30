@@ -291,6 +291,15 @@ Observe("PlayerPuppet", "FixtureBackgroundTick", function(self)
 end)
 '@
 
+Write-Mod 'FixtureOtherStructural' @'
+ObserveAfter("PlayerPuppet", "FixtureStructuralObserve", function(self)
+    local playerA = Game.GetPlayer()
+    local playerB = Game.GetPlayer()
+    local actionName = CName.new("FixtureOtherStructural")
+    DoOtherStructuralWork(playerA, playerB, actionName)
+end)
+'@
+
 Write-Mod 'FixtureFrame' @'
 registerForEvent("onUpdate", function(delta)
     DoFrameWork(delta)
@@ -362,6 +371,7 @@ $handoff = @{
         (CallbackRow 123 'FixtureDormantNever' 'observe' 'PlayerPuppet::FixtureCameraTick' 60 6.0 1.2 'init.lua' 1 4),
         (CallbackRow 128 'FixtureNeverGateUpdate' 'event' 'onUpdate' 60 18.0 4.0 'init.lua' 5 9),
         (CallbackRow 124 'FixtureDormantBackground' 'observe' 'PlayerPuppet::FixtureBackgroundTick' 60 6.0 1.2 'init.lua' 1 3),
+        (CallbackRow 129 'FixtureOtherStructural' 'ObserveAfter' 'PlayerPuppet::FixtureStructuralObserve' 120 12.0 3.0 'init.lua' 1 7),
         (CallbackRow 102 'FixtureFrame' 'event' 'onUpdate' 60 5.0 1.0 'init.lua' 1 3),
         (CallbackRow 127 'FixtureUnknownHot' 'observe' 'PlayerPuppet::AnotherUnknownMethod' 60 20.0 5.0 'init.lua' 1 3),
         (CallbackRow 103 'FixtureUnknown' 'observe' 'PlayerPuppet::SomeOtherMethod' 60 4.0 1.0 'init.lua' 1 3)
@@ -637,6 +647,25 @@ if ($backgroundDormancy.Class -ne 'BACKGROUND' -or !$backgroundDormancy.Evidence
     throw "Expected evidence-only BACKGROUND, got $($backgroundDormancy.Class)"
 }
 
+$otherStructural = $null
+foreach ($family in @($result.callbackFamilies)) {
+    $candidateOther = @($family.topConsumers | Where-Object { $_.owner -eq 'FixtureOtherStructural' }) | Select-Object -First 1
+    if ($null -ne $candidateOther) { $otherStructural = $candidateOther; break }
+}
+if ($null -eq $otherStructural) { throw 'FixtureOtherStructural was not ranked.' }
+if (!$otherStructural.generic.Automatable) {
+    throw 'Hot non-onUpdate structural callback was not marked automatable.'
+}
+if (@($otherStructural.generic.RecipeFamilies) -notcontains 'STRUCTURAL_HOTPATH_REWRITE') {
+    throw 'Hot non-onUpdate callback did not receive structural hotpath analysis.'
+}
+if (@($otherStructural.generic.Facts.identicalExpressions).Count -lt 1) {
+    throw 'Non-onUpdate structural callback lost repeated getter evidence.'
+}
+if (@($otherStructural.generic.Facts.literalConstructors).Count -lt 1) {
+    throw 'Single literal constructor was not accepted for hot callback hoisting.'
+}
+
 $unknown = $null
 foreach ($otherFamily in @($result.callbackFamilies | Where-Object { $_.resolverFamily -eq 'OTHER' })) {
     $candidateUnknown = @($otherFamily.topConsumers | Where-Object { $_.owner -eq 'FixtureUnknown' }) | Select-Object -First 1
@@ -673,7 +702,7 @@ if ($unknownHot.advanced.NextEvidence -ne 'USER_CLASSIFICATION') {
 if ($null -eq $resolved.pass) {
     throw 'CLI --generate-pass did not return a pass result.'
 }
-if ([int]$resolved.pass.TransformCount -ne 14) {
+if ([int]$resolved.pass.TransformCount -ne 15) {
     if (Test-Path -LiteralPath $resolved.pass.ManifestPath -PathType Leaf) {
         $failedManifest = Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
         Write-Host "PASS DEBUG transforms=$($failedManifest.summary.transforms) skipped=$($failedManifest.summary.skipped)"
@@ -681,10 +710,10 @@ if ([int]$resolved.pass.TransformCount -ne 14) {
             Write-Host ("PASS DEBUG SKIP owner={0} type={1} file={2} reason={3}" -f $skip.owner,$skip.type,$skip.file,$skip.reason)
         }
     }
-    throw "Expected 14 generated transforms, got $($resolved.pass.TransformCount)."
+    throw "Expected 15 generated transforms, got $($resolved.pass.TransformCount)."
 }
-if ([int]$resolved.pass.FileCount -ne 18) {
-    throw "Expected 18 generated replacement files (14 callback + 4 fixed 0-Engine), got $($resolved.pass.FileCount)."
+if ([int]$resolved.pass.FileCount -ne 19) {
+    throw "Expected 19 generated replacement files (15 callback + 4 fixed 0-Engine), got $($resolved.pass.FileCount)."
 }
 if (!(Test-Path -LiteralPath $resolved.pass.ZipPath -PathType Leaf)) {
     throw "Generated pass ZIP is missing: $($resolved.pass.ZipPath)"
@@ -712,6 +741,7 @@ try {
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureStructural/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDiscoveryAuthorRate/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDormantOnUpdate/init.lua',
+        'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureOtherStructural/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixturePattern/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDownstream/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureGatedDynamic/init.lua',
@@ -787,6 +817,18 @@ try {
         throw 'Discovery rewrite did not retain both scheduled discovery and original fallback discovery work.'
     }
 
+    $otherStructuralText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureOtherStructural/init.lua'
+    if ($otherStructuralText -notmatch '__gcetReuse_129_' -or
+        $otherStructuralText -notmatch '__gcetStatic_129_') {
+        throw 'Generated non-onUpdate structural rewrite is incomplete.'
+    }
+    if ([regex]::Matches($otherStructuralText, [regex]::Escape('Game.GetPlayer()')).Count -ne 1) {
+        throw 'Non-onUpdate structural rewrite did not collapse repeated Game.GetPlayer calls.'
+    }
+    if ([regex]::Matches($otherStructuralText, [regex]::Escape('CName.new("FixtureOtherStructural")')).Count -ne 1) {
+        throw 'Single literal constructor was not hoisted exactly once.'
+    }
+
     $hardUpdateText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDormantOnUpdate/init.lua'
     if ($hardUpdateText -notmatch 'if not active then return end -- G-CET dormant guard hoist') {
         throw 'Generated hard-dormant callback is missing the hoisted inactive guard.'
@@ -827,11 +869,11 @@ try {
     if ($manifest.policy.modNameRules) {
         throw 'Generated pass manifest unexpectedly allows mod-name rules.'
     }
-    if ([int]$manifest.summary.transforms -ne 14) {
+    if ([int]$manifest.summary.transforms -ne 15) {
         throw 'Generated pass manifest transform count is wrong.'
     }
-    if ([int]$manifest.summary.callbackFiles -ne 14) {
-        throw "Expected 14 callback replacement files, got $($manifest.summary.callbackFiles)."
+    if ([int]$manifest.summary.callbackFiles -ne 15) {
+        throw "Expected 15 callback replacement files, got $($manifest.summary.callbackFiles)."
     }
     if ([int]$manifest.summary.fixedRuntimeFiles -ne 4) {
         throw "Expected 4 fixed 0-Engine runtime files, got $($manifest.summary.fixedRuntimeFiles)."
