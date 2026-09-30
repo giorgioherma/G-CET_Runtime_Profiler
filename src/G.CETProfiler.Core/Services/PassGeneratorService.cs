@@ -16,7 +16,7 @@ public sealed record PassBuildResult(
 /// <summary>
 /// Generates a reversible overlay ZIP from resolver decisions only.
 /// Generator supports only finite resolver-authorized recipes:
-/// ACTION_ROUTING_*, FRAME_DISPATCH_CONSOLIDATION, source-proven
+/// ACTION_ROUTING_*, ACTION_OVERRIDE_EXACT_PREFILTER, FRAME_DISPATCH_CONSOLIDATION, source-proven
 /// AUTHOR_CADENCE_WHOLE_CALLBACK, AUTHOR_DISCOVERY_DORMANT_SCHEDULE,
 /// and cost-gated STRUCTURAL_HOTPATH_REWRITE.
 /// It never invents candidates from mod names or unclassified source.
@@ -185,6 +185,7 @@ public static class PassGeneratorService
                 supportedPasses = new[]
                 {
                     "ACTION_ROUTING_*",
+                    "ACTION_OVERRIDE_EXACT_PREFILTER",
                     "FRAME_DISPATCH_CONSOLIDATION",
                     "AUTHOR_CADENCE_WHOLE_CALLBACK",
                     "AUTHOR_DISCOVERY_DORMANT_SCHEDULE",
@@ -289,6 +290,11 @@ public static class PassGeneratorService
                 CandidateKind? kind = null;
 
                 if (resolverFamily.Equals("ONACTION", StringComparison.OrdinalIgnoreCase) &&
+                    pattern.Equals("ACTION_OVERRIDE_EXACT_PREFILTER", StringComparison.OrdinalIgnoreCase))
+                {
+                    kind = CandidateKind.OverridePrefilter;
+                }
+                else if (resolverFamily.Equals("ONACTION", StringComparison.OrdinalIgnoreCase) &&
                     pattern.StartsWith("ACTION_ROUTING", StringComparison.OrdinalIgnoreCase) &&
                     !pattern.Equals("ACTION_ROUTING_OVERRIDE", StringComparison.OrdinalIgnoreCase))
                 {
@@ -364,6 +370,8 @@ public static class PassGeneratorService
                     StateGatePresent = facts.StateGatePresent,
                     DynamicGateResolved = facts.DynamicGateResolved,
                     DynamicGateExpression = facts.DynamicGateExpression,
+                    OverridePrefilterProven = facts.OverridePrefilterProven,
+                    OverrideWrappedMethodReturns = facts.OverrideWrappedMethodReturns,
                     AuthorCadenceWholeCallback = facts.AuthorCadenceWholeCallback,
                     AuthorBaseIntervalSeconds = facts.AuthorBaseIntervalSeconds,
                     AuthorDeltaParameter = facts.AuthorDeltaParameter,
@@ -407,6 +415,8 @@ public static class PassGeneratorService
             StateGatePresent = JsonBool(facts, "stateGatePresent"),
             DynamicGateResolved = JsonBool(facts, "gatedWildcardResolved"),
             DynamicGateExpression = JsonString(facts, "dynamicGateExpression"),
+            OverridePrefilterProven = JsonBool(facts, "overridePrefilterProven"),
+            OverrideWrappedMethodReturns = JsonBool(facts, "overrideWrappedMethodReturns"),
             AuthorCadenceWholeCallback = JsonBool(facts, "authorCadenceWholeCallback"),
             AuthorBaseIntervalSeconds = JsonDouble(facts, "baseIntervalSeconds"),
             AuthorDeltaParameter = JsonString(facts, "deltaParameter"),
@@ -1034,6 +1044,95 @@ public static class PassGeneratorService
                     type = "FRAME_DISPATCH_CONSOLIDATION",
                     file = candidate.RelativeFile,
                     sourceLines = new[] { candidate.LineStart, candidate.LineEnd }
+                });
+                applied++;
+                continue;
+            }
+
+            if (candidate.Kind == CandidateKind.OverridePrefilter)
+            {
+                if (effectiveLineEnd > lines.Count ||
+                    !candidate.OverridePrefilterProven ||
+                    candidate.Actions.Length == 0 ||
+                    candidate.ActionPatterns.Length != 0)
+                {
+                    skipped.Add(Skip(candidate, "Override prefilter handoff is incomplete or outside the current source range."));
+                    continue;
+                }
+
+                var overrideLines = lines
+                    .Skip(candidate.LineStart - 1)
+                    .Take(effectiveLineEnd - candidate.LineStart + 1)
+                    .ToArray();
+                var overrideSegment = string.Join("\n", overrideLines);
+                var overrideOpening = Regex.Match(
+                    overrideSegment,
+                    @"Override\s*\(\s*(['""])PlayerPuppet\1\s*,\s*(['""])OnAction\2\s*,\s*function\s*\(\s*self\s*,\s*action\s*,\s*consumer\s*,\s*wrappedMethod\s*\)",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Singleline);
+                if (!overrideOpening.Success)
+                {
+                    skipped.Add(Skip(candidate, "Transparent OnAction Override opening could not be revalidated."));
+                    continue;
+                }
+
+                var wrappedMatches = Regex.Matches(
+                    overrideSegment,
+                    @"(?m)^\s*(?:return\s+)?wrappedMethod\s*\(\s*self\s*,\s*action\s*,\s*consumer\s*\)\s*;?\s*$",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+                if (wrappedMatches.Count != 1)
+                {
+                    skipped.Add(Skip(candidate, "Transparent Override no longer contains exactly one wrappedMethod(self, action, consumer) call."));
+                    continue;
+                }
+
+                var overrideIndent = Regex.Match(overrideLines[0], @"^\s*").Value;
+                var bodyIndent = overrideIndent + "    ";
+                var tableName = $"__gcetOverrideActions_{candidate.RegistrationId}";
+                var cnameName = $"__gcetOverrideCName_{candidate.RegistrationId}";
+                var actionName = $"__gcetOverrideName_{candidate.RegistrationId}";
+                var entries = string.Join(
+                    ", ",
+                    candidate.Actions
+                        .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+                        .Select(x => $"[{LuaQuote(x)}] = true"));
+                var prefix = $"{overrideIndent}local {tableName} = {{ {entries} }}";
+
+                var earlyWrapped = candidate.OverrideWrappedMethodReturns
+                    ? $"return wrappedMethod(self, action, consumer)"
+                    : $"wrappedMethod(self, action, consumer)\n{bodyIndent}    return";
+
+                var injected =
+                    $"\n{bodyIndent}local {cnameName} = action:GetName()" +
+                    $"\n{bodyIndent}local {actionName} = {cnameName}.value or Game.NameToString({cnameName})" +
+                    $"\n{bodyIndent}if not {tableName}[{actionName}] then" +
+                    $"\n{bodyIndent}    {earlyWrapped}" +
+                    $"\n{bodyIndent}end -- G-CET finite Override prefilter";
+
+                var rewritten =
+                    overrideSegment[..(overrideOpening.Index + overrideOpening.Length)] +
+                    injected +
+                    overrideSegment[(overrideOpening.Index + overrideOpening.Length)..];
+
+                var replacementLines = (prefix + "\n" + rewritten).Split('\n');
+                lines.RemoveRange(
+                    candidate.LineStart - 1,
+                    effectiveLineEnd - candidate.LineStart + 1);
+                lines.InsertRange(candidate.LineStart - 1, replacementLines);
+
+                transformManifest.Add(new
+                {
+                    registrationId = candidate.RegistrationId,
+                    owner = candidate.Owner,
+                    type = "ACTION_OVERRIDE_EXACT_PREFILTER",
+                    file = candidate.RelativeFile,
+                    sourceLines = new[] { candidate.LineStart, candidate.LineEnd },
+                    facts = new
+                    {
+                        actions = candidate.Actions,
+                        preservesOverride = true,
+                        preservesWrappedMethod = true,
+                        semantics = "irrelevant actions bypass only source-proven finite custom downstream work and immediately execute the original wrappedMethod"
+                    }
                 });
                 applied++;
                 continue;
@@ -1745,6 +1844,7 @@ public static class PassGeneratorService
     private enum CandidateKind
     {
         Action,
+        OverridePrefilter,
         Frame,
         AuthorCadence,
         DiscoveryDormant,
@@ -1770,6 +1870,8 @@ public static class PassGeneratorService
         public bool StateGatePresent { get; init; }
         public bool DynamicGateResolved { get; init; }
         public string DynamicGateExpression { get; init; } = "";
+        public bool OverridePrefilterProven { get; init; }
+        public bool OverrideWrappedMethodReturns { get; init; }
         public bool AuthorCadenceWholeCallback { get; init; }
         public double AuthorBaseIntervalSeconds { get; init; }
         public string AuthorDeltaParameter { get; init; } = "";
@@ -1806,6 +1908,8 @@ public static class PassGeneratorService
         public bool StateGatePresent { get; init; }
         public bool DynamicGateResolved { get; init; }
         public string DynamicGateExpression { get; init; } = "";
+        public bool OverridePrefilterProven { get; init; }
+        public bool OverrideWrappedMethodReturns { get; init; }
         public bool AuthorCadenceWholeCallback { get; init; }
         public double AuthorBaseIntervalSeconds { get; init; }
         public string AuthorDeltaParameter { get; init; } = "";
