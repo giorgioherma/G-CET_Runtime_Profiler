@@ -2722,7 +2722,7 @@ internal static class CallbackResolverService
             recipeFamilies.Add(recipe);
 
         if (structural is not null)
-            blockers.Add("Structural hotpath analysis is evidence-only until a semantic per-mod rule authorizes the rewrite.");
+            blockers.Add("Structural hotpath rewrite is analysis-only until a semantic per-mod rule authorizes it.");
 
         var facts = new
         {
