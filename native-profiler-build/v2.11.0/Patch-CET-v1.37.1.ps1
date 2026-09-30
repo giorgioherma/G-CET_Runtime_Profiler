@@ -453,6 +453,32 @@ $1
     -Label "Profiler global control API"
 
 # --------------------------------------------------------------------------
+# Exact rendered-frame boundary.
+#
+# Scripting::TriggerOnUpdate is entered once per game/render update before
+# ScriptStore fans onUpdate out to individual mods. Keep one native frame id
+# alive until the next update so Observe/Override/event callbacks can report
+# exact per-frame invocation multiplicity without per-frame global scans.
+# --------------------------------------------------------------------------
+
+Replace-LiteralOnce `
+    -Path $scriptingC `
+    -Old @'
+void Scripting::TriggerOnUpdate(float aDeltaTime) const
+{
+    m_store.TriggerOnUpdate(aDeltaTime);
+}
+'@ `
+    -New @'
+void Scripting::TriggerOnUpdate(float aDeltaTime) const
+{
+    CETRuntimeProfiler::Get().BeginGameFrame();
+    m_store.TriggerOnUpdate(aDeltaTime);
+}
+'@ `
+    -Label "Exact profiler rendered-frame boundary"
+
+# --------------------------------------------------------------------------
 # ScriptStore.cpp
 # --------------------------------------------------------------------------
 
@@ -731,7 +757,8 @@ foreach ($marker in @(
     "CETProfilerSetSchedulerJobSpikeThresholdMs",
     "CETProfilerGetSchedulerJobSpikeThresholdMs",
     "CETProfilerSetSchedulerFrameBurstThresholdMs",
-    "CETProfilerGetSchedulerFrameBurstThresholdMs"
+    "CETProfilerGetSchedulerFrameBurstThresholdMs",
+    "CETRuntimeProfiler::Get().BeginGameFrame()"
 )) {
     if (-not $scriptingText.Contains($marker)) {
         throw "v2.10.0 control API marker missing after patch: $marker"
@@ -746,7 +773,8 @@ Write-Host "FunctionOverride::Context: VERIFIED UNCHANGED" -ForegroundColor Gree
 Write-Host "Registration-time Lua/Sol access: NONE" -ForegroundColor Green
 Write-Host "Callback ownership: lazy resolution during valid locked execution" -ForegroundColor Green
 Write-Host "Callback identity/source: registration ID + Lua source line range + closure identity" -ForegroundColor Green
-Write-Host "Adaptive deep profiling: runtime hotset + sampled Lua call/return trees" -ForegroundColor Green
+Write-Host "Adaptive deep profiling: runtime hotset + sampled Lua call/return trees + callsites" -ForegroundColor Green
+Write-Host "Exact frame telemetry: per-callback multiplicity from Scripting::TriggerOnUpdate" -ForegroundColor Green
 Write-Host "Override downstream next()/native time: excluded from mod exclusive attribution" -ForegroundColor Green
 Write-Host "Capture control: Start / Pause / Resume / Stop / Reset / Dump / Status" -ForegroundColor Green
 Write-Host "CSV rates use captured time only (paused time excluded)" -ForegroundColor Green
