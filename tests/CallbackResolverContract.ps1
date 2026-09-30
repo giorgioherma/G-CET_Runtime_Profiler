@@ -464,9 +464,34 @@ $handoff = @{
 
 $handoff | Set-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Encoding utf8
 
+$semanticLibrary = Join-Path $root 'semantic-library.json'
+@{
+    schemaVersion = '0.1-test'
+    entries = @(
+        @{
+            id = 'fixture-structural'
+            identityHints = @('FixtureStructural')
+            policyClass = 'TEST_FAST'
+            callbacks = @(
+                @{ kind = 'event'; target = 'onUpdate'; role = 'hot-path' }
+            )
+            sourceProof = @{
+                ownerAll = @('DoStructuralWork', 'StructuralFixture')
+                alreadySatisfiedMarker = 'G-CET semantic:fixture-structural'
+            }
+            behavior = @{ handler = 'SEMANTIC_TEST_FAST' }
+            generation = @{
+                enabled = $false
+                patchStyle = 'source-injection'
+                shipReferenceOverride = $false
+            }
+        }
+    )
+} | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $semanticLibrary -Encoding utf8
+
 # Users naturally point the resolver at RESULTS. It must locate the newest
 # collected CET-* capture itself.
-$resolved = (& $resolverExe --capture $results --mods $mods --generate-pass --json | ConvertFrom-Json)
+$resolved = (& $resolverExe --capture $results --mods $mods --semantic-library $semanticLibrary --generate-pass --json | ConvertFrom-Json)
 if (!$resolved.ok) { throw 'G-CET callback resolver pass failed.' }
 
 $outPath = Join-Path $capture 'G-CET_Resolver.json'
@@ -684,6 +709,29 @@ if (!$structural.generic.Facts.structuralHotpath -or
     @($structural.generic.Facts.identicalExpressions).Count -lt 1 -or
     @($structural.generic.Facts.literalConstructors).Count -lt 1) {
     throw 'Structural opportunity was not retained as analysis evidence.'
+}
+
+if (!$result.semanticLibrary.loaded -or [int]$result.semanticLibrary.entryCount -ne 1) {
+    throw 'Semantic library fixture was not loaded.'
+}
+if (!$structural.semantic.Matched) {
+    throw 'Measured FixtureStructural callback did not match its semantic rule.'
+}
+if (!$structural.semantic.SourceProofSatisfied) {
+    $semanticDebug = $structural.semantic | ConvertTo-Json -Depth 10 -Compress
+    throw "Semantic source graph did not prove FixtureStructural: $semanticDebug"
+}
+if ($structural.semantic.RuleId -ne 'fixture-structural') {
+    throw "Wrong semantic rule selected: $($structural.semantic.RuleId)"
+}
+if ($structural.semantic.GenerationEnabled) {
+    throw 'Analysis-only semantic fixture unexpectedly authorized generation.'
+}
+if ($structural.semantic.PatchStyle -ne 'source-injection' -or $structural.semantic.ShipReferenceOverride) {
+    throw 'Semantic fixture violated source-injection/no-override policy.'
+}
+if ([int]$structural.semantic.Graph.luaFileCount -lt 1) {
+    throw 'Semantic mod graph did not enumerate the live owner folder.'
 }
 
 $discoveryAuthor = @($onUpdate.topConsumers | Where-Object { $_.owner -eq 'FixtureDiscoveryAuthorRate' }) | Select-Object -First 1
