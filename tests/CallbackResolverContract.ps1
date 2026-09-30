@@ -374,6 +374,19 @@ registerRuntimeEvent(
 )
 '@
 
+Write-Mod 'FixtureAlreadyFrame' @'
+local __gcetRegisterEvent_132 = registerForEvent
+do
+    local __gcetOk, __gcetEngine = pcall(GetMod, "0-Engine")
+    if __gcetOk and type(__gcetEngine) == "table" and type(__gcetEngine.MakeEventRegistrar) == "function" then
+        __gcetRegisterEvent_132 = __gcetEngine.MakeEventRegistrar("FixtureAlreadyFrame", registerForEvent)
+    end
+end
+__gcetRegisterEvent_132("onUpdate", function(delta)
+    DoAlreadyFrameWork(delta)
+end)
+'@
+
 Write-Mod 'FixtureUnknown' @'
 Observe("PlayerPuppet", "SomeOtherMethod", function(self)
     DoUnknownWork()
@@ -443,6 +456,7 @@ $handoff = @{
         (CallbackRow 124 'FixtureDormantBackground' 'observe' 'PlayerPuppet::FixtureBackgroundTick' 60 6.0 1.2 'init.lua' 1 3),
         (CallbackRow 129 'FixtureOtherStructural' 'ObserveAfter' 'PlayerPuppet::FixtureStructuralObserve' 120 12.0 3.0 'init.lua' 1 19),
         (CallbackRow 102 'FixtureFrame' 'event' 'onUpdate' 60 5.0 1.0 'init.lua' 2 7),
+        (CallbackRow 132 'FixtureAlreadyFrame' 'event' 'onUpdate' 60 5.5 1.1 'init.lua' 8 10),
         (CallbackRow 127 'FixtureUnknownHot' 'observe' 'PlayerPuppet::AnotherUnknownMethod' 60 20.0 5.0 'init.lua' 1 3),
         (CallbackRow 103 'FixtureUnknown' 'observe' 'PlayerPuppet::SomeOtherMethod' 60 4.0 1.0 'init.lua' 1 3)
     )
@@ -575,19 +589,21 @@ if (@($gated.generic.Facts.actions) -notcontains 'UI_Apply') {
 }
 
 $overrideStructural = Action-For 'FixtureOverrideStructural'
-if (!$overrideStructural.generic.Automatable) {
-    throw 'Blocked OnAction Override did not receive its independent structural fallback.'
+if ($overrideStructural.generic.Automatable) {
+    throw 'Structural fallback must not authorize generic AUTO for an Override.'
 }
-if ($overrideStructural.generic.Pattern -ne 'STRUCTURAL_HOTPATH_REWRITE') {
-    throw "Override structural fallback exposed the wrong primary pattern: $($overrideStructural.generic.Pattern)"
+if ($overrideStructural.generic.Pattern -ne 'STRUCTURAL_HOTPATH_EVIDENCE') {
+    throw "Override structural evidence exposed the wrong pattern: $($overrideStructural.generic.Pattern)"
 }
-if (@($overrideStructural.generic.RecipeFamilies) -notcontains 'ACTION_ROUTING_OVERRIDE' -or
-    @($overrideStructural.generic.RecipeFamilies) -notcontains 'STRUCTURAL_HOTPATH_REWRITE') {
-    throw 'Override structural fallback lost routing blocker evidence or structural recipe.'
+if (@($overrideStructural.generic.RecipeFamilies).Count -ne 0) {
+    throw 'Analysis-only Override structural evidence leaked an automatic recipe.'
+}
+if (!$overrideStructural.generic.Facts.structuralHotpath) {
+    throw 'Override structural opportunity was not retained as analysis evidence.'
 }
 $overrideBlockers = (@($overrideStructural.generic.Blockers) -join ' ')
-if ($overrideBlockers -notmatch 'Override semantics') {
-    throw 'Override routing blocker disappeared when structural fallback became automatable.'
+if ($overrideBlockers -notmatch 'Override semantics' -or $overrideBlockers -notmatch 'analysis-only') {
+    throw 'Override structural blockers no longer explain routing and semantic-rule requirements.'
 }
 
 $overridePrefilter = Action-For 'FixtureOverridePrefilter'
@@ -642,17 +658,32 @@ if ($frame.source.MatchMode -ne 'profiler-owner-relative') {
     throw 'onUpdate bare init.lua did not use owner-relative source mapping.'
 }
 
+$alreadyFrame = @($onUpdate.topConsumers | Where-Object { $_.owner -eq 'FixtureAlreadyFrame' }) | Select-Object -First 1
+if ($null -eq $alreadyFrame) { throw 'FixtureAlreadyFrame was not ranked inside onUpdate.' }
+if ($alreadyFrame.generic.Automatable) { throw 'Already-consolidated frame callback was incorrectly re-authorized.' }
+if ($alreadyFrame.generic.Status -ne 'ALREADY_SATISFIED') {
+    throw "Already-consolidated frame state was not recognized: $($alreadyFrame.generic.Status)"
+}
+if ($alreadyFrame.disposition -ne 'ALREADY_SATISFIED') {
+    throw "Already-consolidated callback received wrong disposition: $($alreadyFrame.disposition)"
+}
+if (@($alreadyFrame.generic.RecipeFamilies) -contains 'FRAME_DISPATCH_CONSOLIDATION') {
+    throw 'Already-consolidated callback exposed another frame transform.'
+}
+
 $structural = @($onUpdate.topConsumers | Where-Object { $_.owner -eq 'FixtureStructural' }) | Select-Object -First 1
 if ($null -eq $structural) { throw 'FixtureStructural was not ranked inside onUpdate.' }
-if (!$structural.generic.Automatable) { throw 'Hot structural fixture was not marked automatable.' }
-if (@($structural.generic.RecipeFamilies) -notcontains 'STRUCTURAL_HOTPATH_REWRITE') {
-    throw 'Structural hotpath recipe was not exposed.'
+if (!$structural.generic.Automatable) { throw 'Raw structural onUpdate should still receive safe frame consolidation.' }
+if (@($structural.generic.RecipeFamilies) -notcontains 'FRAME_DISPATCH_CONSOLIDATION') {
+    throw 'Safe frame consolidation disappeared from the structural fixture.'
 }
-if (@($structural.generic.Facts.identicalExpressions).Count -lt 1) {
-    throw 'Repeated Game getter expression was not emitted as structural evidence.'
+if (@($structural.generic.RecipeFamilies) -contains 'STRUCTURAL_HOTPATH_REWRITE') {
+    throw 'Structural hotpath rewrite leaked back into generic AUTO.'
 }
-if (@($structural.generic.Facts.literalConstructors).Count -lt 1) {
-    throw 'Repeated literal constructor was not emitted as structural evidence.'
+if (!$structural.generic.Facts.structuralHotpath -or
+    @($structural.generic.Facts.identicalExpressions).Count -lt 1 -or
+    @($structural.generic.Facts.literalConstructors).Count -lt 1) {
+    throw 'Structural opportunity was not retained as analysis evidence.'
 }
 
 $discoveryAuthor = @($onUpdate.topConsumers | Where-Object { $_.owner -eq 'FixtureDiscoveryAuthorRate' }) | Select-Object -First 1
@@ -679,14 +710,15 @@ if (!$discoveryAuthor.dormancy.EvidenceOnly) {
     throw 'Dormancy classification evidence should remain visible even when a finite generic recipe is available.'
 }
 if (!$discoveryAuthor.generic.Automatable -or
-    @($discoveryAuthor.generic.RecipeFamilies) -notcontains 'AUTHOR_DISCOVERY_DORMANT_SCHEDULE') {
-    throw 'Source-proven author-paced discovery dormancy was not promoted to the finite automatic recipe.'
+    @($discoveryAuthor.generic.RecipeFamilies) -notcontains 'FRAME_DISPATCH_CONSOLIDATION') {
+    throw 'Discovery fixture lost the safe frame-dispatch transform.'
 }
-if ($discoveryAuthor.advanced.Eligible) {
-    throw 'Author-paced discovery callback should not bother Advanced mode once an automatic semantic recipe is available.'
+if (@($discoveryAuthor.generic.RecipeFamilies) -contains 'AUTHOR_DISCOVERY_DORMANT_SCHEDULE') {
+    throw 'Discovery dormancy leaked into generic AUTO.'
 }
-if ($discoveryAuthor.advanced.NextEvidence -ne 'NONE_AUTO_RECIPE_AVAILABLE') {
-    throw "Unexpected Advanced discovery next evidence after automatic recipe: $($discoveryAuthor.advanced.NextEvidence)"
+$discoveryBlockers = (@($discoveryAuthor.generic.Blockers) -join ' ')
+if ($discoveryBlockers -notmatch 'analysis-only') {
+    throw 'Discovery semantic opportunity is missing the analysis-only blocker.'
 }
 
 $neverUpdate = @($onUpdate.topConsumers | Where-Object { $_.owner -eq 'FixtureNeverGateUpdate' }) | Select-Object -First 1
@@ -703,9 +735,12 @@ if ($neverUpdate.advanced.Eligible) {
 
 $hardUpdate = @($onUpdate.topConsumers | Where-Object { $_.owner -eq 'FixtureDormantOnUpdate' }) | Select-Object -First 1
 if ($null -eq $hardUpdate) { throw 'FixtureDormantOnUpdate was not ranked inside onUpdate.' }
-if (!$hardUpdate.generic.Automatable) { throw 'Source-proven dormant onUpdate was not marked automatable.' }
-if (@($hardUpdate.generic.RecipeFamilies) -notcontains 'HARD_DORMANT_GUARD_HOIST') {
-    throw 'Hard dormant guard-hoist recipe was not exposed.'
+if (!$hardUpdate.generic.Automatable) { throw 'Dormant onUpdate should still receive safe frame consolidation.' }
+if (@($hardUpdate.generic.RecipeFamilies) -notcontains 'FRAME_DISPATCH_CONSOLIDATION') {
+    throw 'Dormant fixture lost the safe frame-dispatch transform.'
+}
+if (@($hardUpdate.generic.RecipeFamilies) -contains 'HARD_DORMANT_GUARD_HOIST') {
+    throw 'Hard dormant guard-hoist leaked into generic AUTO.'
 }
 if ($hardUpdate.generic.Facts.hardDormantGateExpression -ne 'active') {
     throw "Unexpected hard dormant gate: $($hardUpdate.generic.Facts.hardDormantGateExpression)"
@@ -762,20 +797,19 @@ foreach ($family in @($result.callbackFamilies)) {
     if ($null -ne $candidateOther) { $otherStructural = $candidateOther; break }
 }
 if ($null -eq $otherStructural) { throw 'FixtureOtherStructural was not ranked.' }
-if (!$otherStructural.generic.Automatable) {
-    throw 'Hot non-onUpdate structural callback was not marked automatable.'
+if ($otherStructural.generic.Automatable) {
+    throw 'Hot non-onUpdate structural callback must remain analysis-only.'
 }
-if (@($otherStructural.generic.RecipeFamilies) -notcontains 'STRUCTURAL_HOTPATH_REWRITE') {
-    throw 'Hot non-onUpdate callback did not receive structural hotpath analysis.'
+if ($otherStructural.generic.Pattern -ne 'STRUCTURAL_HOTPATH_EVIDENCE') {
+    throw "Unexpected structural evidence pattern: $($otherStructural.generic.Pattern)"
 }
-if (@($otherStructural.generic.Facts.identicalExpressions).Count -lt 1) {
-    throw 'Non-onUpdate structural callback lost repeated getter evidence.'
+if (@($otherStructural.generic.RecipeFamilies).Count -ne 0) {
+    throw 'Non-onUpdate structural evidence leaked an automatic recipe.'
 }
-if (@($otherStructural.generic.Facts.literalConstructors).Count -lt 1) {
-    throw 'Single literal constructor was not accepted for hot callback hoisting.'
-}
-if (@($otherStructural.generic.Facts.staticLiteralTables).Count -lt 1) {
-    throw 'Read-only static literal table was not accepted for callback hoisting.'
+if (@($otherStructural.generic.Facts.identicalExpressions).Count -lt 1 -or
+    @($otherStructural.generic.Facts.literalConstructors).Count -lt 1 -or
+    @($otherStructural.generic.Facts.staticLiteralTables).Count -lt 1) {
+    throw 'Non-onUpdate structural analysis facts were lost.'
 }
 
 $unknown = $null
@@ -814,7 +848,7 @@ if ($unknownHot.advanced.NextEvidence -ne 'USER_CLASSIFICATION') {
 if ($null -eq $resolved.pass) {
     throw 'CLI --generate-pass did not return a pass result.'
 }
-if ([int]$resolved.pass.TransformCount -ne 17) {
+if ([int]$resolved.pass.TransformCount -ne 15) {
     if (Test-Path -LiteralPath $resolved.pass.ManifestPath -PathType Leaf) {
         $failedManifest = Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
         Write-Host "PASS DEBUG transforms=$($failedManifest.summary.transforms) skipped=$($failedManifest.summary.skipped)"
@@ -822,10 +856,10 @@ if ([int]$resolved.pass.TransformCount -ne 17) {
             Write-Host ("PASS DEBUG SKIP owner={0} type={1} file={2} reason={3}" -f $skip.owner,$skip.type,$skip.file,$skip.reason)
         }
     }
-    throw "Expected 17 generated transforms, got $($resolved.pass.TransformCount)."
+    throw "Expected 15 generated transforms, got $($resolved.pass.TransformCount)."
 }
-if ([int]$resolved.pass.FileCount -ne 21) {
-    throw "Expected 21 generated replacement files (17 callback + 4 fixed 0-Engine), got $($resolved.pass.FileCount)."
+if ([int]$resolved.pass.FileCount -ne 19) {
+    throw "Expected 19 generated replacement files (15 callback + 4 fixed 0-Engine), got $($resolved.pass.FileCount)."
 }
 if (!(Test-Path -LiteralPath $resolved.pass.ZipPath -PathType Leaf)) {
     throw "Generated pass ZIP is missing: $($resolved.pass.ZipPath)"
@@ -853,8 +887,6 @@ try {
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureStructural/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDiscoveryAuthorRate/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDormantOnUpdate/init.lua',
-        'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureOtherStructural/init.lua',
-        'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureOverrideStructural/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureOverridePrefilter/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixturePattern/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDownstream/init.lua',
@@ -874,6 +906,15 @@ try {
     }
     if ('bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDynamic/init.lua' -in $names) {
         throw 'Blocked dynamic OnAction callback leaked into the generated pass.'
+    }
+    foreach ($parkedEntry in @(
+        'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureOtherStructural/init.lua',
+        'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureOverrideStructural/init.lua',
+        'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureAlreadyFrame/init.lua'
+    )) {
+        if ($parkedEntry -in $names) {
+            throw "Analysis-only/already-satisfied callback leaked into generated pass: $parkedEntry"
+        }
     }
 
     function Read-ZipText([string]$EntryName) {
@@ -908,81 +949,39 @@ try {
     }
 
     $structuralText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureStructural/init.lua'
-    if ($structuralText -notmatch '__gcetReuse_120_' -or
-        $structuralText -notmatch '__gcetStatic_120_' -or
-        $structuralText -notmatch '__gcetRegisterEvent_120\s*\(\s*"onUpdate"') {
-        throw 'Generated structural hotpath replacement is incomplete.'
+    if ($structuralText -notmatch '__gcetRegisterEvent_120\s*\(\s*"onUpdate"') {
+        throw 'Structural fixture lost safe frame-dispatch consolidation.'
     }
-    if ([regex]::Matches($structuralText, [regex]::Escape('Game.GetPlayer()')).Count -ne 1) {
-        throw 'Structural hotpath did not collapse repeated Game.GetPlayer calls.'
+    if ($structuralText -match '__gcetReuse_120_' -or $structuralText -match '__gcetStatic_120_') {
+        throw 'Structural hotpath rewrite leaked into the safe generic pass.'
     }
-    if ([regex]::Matches($structuralText, [regex]::Escape('CName.new("StructuralFixture")')).Count -ne 1) {
-        throw 'Structural hotpath did not hoist repeated literal CName constructor.'
+    if ([regex]::Matches($structuralText, [regex]::Escape('Game.GetPlayer()')).Count -ne 2 -or
+        [regex]::Matches($structuralText, [regex]::Escape('CName.new("StructuralFixture")')).Count -ne 2) {
+        throw 'Analysis-only structural expressions were modified by generic AUTO.'
     }
 
     $discoveryText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDiscoveryAuthorRate/init.lua'
-    foreach ($requiredDiscoveryText in @(
-        '__gcetDiscovery_126',
-        '__gcetDiscoveryScheduled_126',
-        'Schedule.Every(1',
-        'if active then return end',
-        'if not __gcetDiscoveryScheduled_126 then',
-        'RunActiveActivity(delta)'
-    )) {
-        if ($discoveryText -notmatch [regex]::Escape($requiredDiscoveryText)) {
-            throw "Generated discovery-dormant rewrite is missing: $requiredDiscoveryText"
-        }
-    }
     if ($discoveryText -notmatch '__gcetRegisterEvent_126\s*\(\s*"onUpdate"') {
-        throw 'Generated discovery-dormant rewrite did not retain frame-dispatch consolidation.'
+        throw 'Discovery fixture lost safe frame-dispatch consolidation.'
     }
-    if ([regex]::Matches($discoveryText, [regex]::Escape('CheckNearbyActivity(distance)')).Count -lt 2) {
-        throw 'Discovery rewrite did not retain both scheduled discovery and original fallback discovery work.'
+    if ($discoveryText -match 'Schedule\.Every' -or $discoveryText -match '__gcetDiscovery_126') {
+        throw 'Discovery dormancy rewrite leaked into generic AUTO.'
     }
-
-    $otherStructuralText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureOtherStructural/init.lua'
-    if ($otherStructuralText -notmatch '__gcetReuse_129_' -or
-        $otherStructuralText -notmatch '__gcetStatic_129_') {
-        throw 'Generated non-onUpdate structural rewrite is incomplete.'
-    }
-    if ([regex]::Matches($otherStructuralText, [regex]::Escape('Game.GetPlayer()')).Count -ne 1) {
-        throw 'Non-onUpdate structural rewrite did not collapse repeated Game.GetPlayer calls.'
-    }
-    if ([regex]::Matches($otherStructuralText, [regex]::Escape('self:IsMovingHorizontally()')).Count -ne 1) {
-        throw 'Non-onUpdate structural rewrite did not collapse repeated stable member reads.'
-    }
-    if ([regex]::Matches($otherStructuralText, [regex]::Escape('GetSingleton("gameTargetingSystem")')).Count -ne 1) {
-        throw 'Non-onUpdate structural rewrite did not collapse repeated literal singleton lookups.'
-    }
-    if ($otherStructuralText -notmatch '__gcetStaticTable_129_' -or
-        $otherStructuralText -match 'local\s+staticValues\s*=') {
-        throw 'Read-only literal table was not hoisted out of the callback.'
-    }
-    if ([regex]::Matches($otherStructuralText, [regex]::Escape('CName.new("FixtureOtherStructural")')).Count -ne 1) {
-        throw 'Single literal constructor was not hoisted exactly once.'
+    if ([regex]::Matches($discoveryText, [regex]::Escape('CheckNearbyActivity(distance)')).Count -ne 1) {
+        throw 'Generic AUTO changed the author discovery body.'
     }
 
     $hardUpdateText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDormantOnUpdate/init.lua'
-    if ($hardUpdateText -notmatch 'if not active then return end -- G-CET dormant guard hoist') {
-        throw 'Generated hard-dormant callback is missing the hoisted inactive guard.'
-    }
     if ($hardUpdateText -notmatch '__gcetRegisterEvent_125\s*\(\s*"onUpdate"') {
-        throw 'Generated hard-dormant callback did not retain frame-dispatch consolidation.'
+        throw 'Dormant fixture lost safe frame-dispatch consolidation.'
     }
-    $hoistedIndex = $hardUpdateText.IndexOf('if not active then return end -- G-CET dormant guard hoist')
-    $getterIndex = $hardUpdateText.IndexOf('local player = Game.GetPlayer()')
-    if ($hoistedIndex -lt 0 -or $getterIndex -lt 0 -or $hoistedIndex -gt $getterIndex) {
-        throw 'Dormant guard was not moved ahead of the expensive pre-guard getter.'
+    if ($hardUpdateText -match 'G-CET dormant guard hoist') {
+        throw 'Dormant guard-hoist leaked into generic AUTO.'
     }
-
-    $overrideStructuralText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureOverrideStructural/init.lua'
-    if ($overrideStructuralText -notmatch 'Override\("PlayerPuppet", "OnAction"' -or
-        $overrideStructuralText -notmatch '__gcetReuse_130_' -or
-        $overrideStructuralText -notmatch '__gcetStatic_130_') {
-        throw 'Override structural fallback changed routing semantics or failed to apply structural reuse.'
-    }
-    if ($overrideStructuralText -match 'SubscribeAction') {
-        throw 'Override structural fallback incorrectly converted the Override into ActionRouter routing.'
+    $originalGetterIndex = $hardUpdateText.IndexOf('local player = Game.GetPlayer()')
+    $originalGuardIndex = $hardUpdateText.IndexOf('if not active then return end')
+    if ($originalGetterIndex -lt 0 -or $originalGuardIndex -lt 0 -or $originalGetterIndex -gt $originalGuardIndex) {
+        throw 'Generic AUTO changed the dormant callback execution order.'
     }
 
     $overridePrefilterText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureOverridePrefilter/init.lua'
@@ -1035,11 +1034,24 @@ try {
     if ($manifest.policy.modNameRules) {
         throw 'Generated pass manifest unexpectedly allows mod-name rules.'
     }
-    if ([int]$manifest.summary.transforms -ne 17) {
+    if ($manifest.policy.cadenceTransforms) {
+        throw 'Generic pass manifest unexpectedly authorizes cadence transforms.'
+    }
+    foreach ($forbiddenType in @(
+        'STRUCTURAL_HOTPATH_REWRITE',
+        'HARD_DORMANT_GUARD_HOIST',
+        'AUTHOR_DISCOVERY_DORMANT_SCHEDULE',
+        'AUTHOR_CADENCE_WHOLE_CALLBACK'
+    )) {
+        if (@($manifest.transforms | Where-Object { $_.type -eq $forbiddenType }).Count -ne 0) {
+            throw "Parked semantic transform leaked into the manifest: $forbiddenType"
+        }
+    }
+    if ([int]$manifest.summary.transforms -ne 15) {
         throw 'Generated pass manifest transform count is wrong.'
     }
-    if ([int]$manifest.summary.callbackFiles -ne 17) {
-        throw "Expected 17 callback replacement files, got $($manifest.summary.callbackFiles)."
+    if ([int]$manifest.summary.callbackFiles -ne 15) {
+        throw "Expected 15 callback replacement files, got $($manifest.summary.callbackFiles)."
     }
     if ([int]$manifest.summary.fixedRuntimeFiles -ne 4) {
         throw "Expected 4 fixed 0-Engine runtime files, got $($manifest.summary.fixedRuntimeFiles)."

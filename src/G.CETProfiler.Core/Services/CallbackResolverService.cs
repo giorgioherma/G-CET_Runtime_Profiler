@@ -80,6 +80,7 @@ internal static class CallbackResolverService
         var belowThreshold = 0;
         var registryHints = 0;
         var unresolved = 0;
+        var alreadySatisfied = 0;
 
         foreach (var family in familyGroups)
         {
@@ -95,9 +96,15 @@ internal static class CallbackResolverService
                 var advanced = EvaluateAdvancedCandidate(callback, generic, dormancy, userHint);
                 ExceptionRegistryEntry? hint = null;
 
+                var isAlreadySatisfied = generic.Status.Equals(
+                    "ALREADY_SATISFIED",
+                    StringComparison.OrdinalIgnoreCase);
+
                 // Registry is deliberately a last resort. Generic source/runtime
-                // recognition always gets first attempt.
-                if (!generic.Automatable)
+                // recognition always gets first attempt. A source state that is
+                // already at the generated target is neither unresolved nor a
+                // registry candidate.
+                if (!generic.Automatable && !isAlreadySatisfied)
                     hint = registry.Match(callback);
 
                 if (generic.Automatable)
@@ -114,6 +121,8 @@ internal static class CallbackResolverService
                     else
                         nonFrameOnlyAuto++;
                 }
+                else if (isAlreadySatisfied)
+                    alreadySatisfied++;
                 else if (hint is not null)
                     registryHints++;
                 else
@@ -190,7 +199,7 @@ internal static class CallbackResolverService
                     },
                     registry = new
                     {
-                        checkedAfterGenericExhausted = !generic.Automatable,
+                        checkedAfterGenericExhausted = !generic.Automatable && !isAlreadySatisfied,
                         matched = hint is not null,
                         entryId = hint?.Id,
                         category = hint?.Category,
@@ -202,9 +211,11 @@ internal static class CallbackResolverService
                     },
                     disposition = generic.Automatable
                         ? "GENERIC_PATTERN"
-                        : hint is not null
-                            ? "SPECIAL_HINT_AVAILABLE"
-                            : "UNRESOLVED"
+                        : isAlreadySatisfied
+                            ? "ALREADY_SATISFIED"
+                            : hint is not null
+                                ? "SPECIAL_HINT_AVAILABLE"
+                                : "UNRESOLVED"
                 });
             }
 
@@ -261,7 +272,7 @@ internal static class CallbackResolverService
                 advancedUserHintsSupported = true,
                 advancedUserHintsCanAuthorizeGeneration = false,
                 dormancyClasses = new[] { "NEVER_GATE", "HARD_DORMANT", "DISCOVERY_DORMANT", "BACKGROUND", "UNKNOWN" },
-                note = "Resolve proven callback/source patterns first. Dormancy classification is evidence-only and cannot authorize generation. Only unresolved high-impact consumers are checked against the small curated exception registry. Registry knowledge is semantic guidance, never patch code."
+                note = "Generic AUTO is restricted to mechanically source-proven action routing, exact Override prefiltering, and frame-dispatch consolidation. Structural, cadence, and dormancy recognizers remain analysis evidence until a semantic per-mod rule authorizes them. Already-satisfied generated states are not re-applied."
             },
             cadence = new
             {
@@ -286,6 +297,7 @@ internal static class CallbackResolverService
                 belowThreshold,
                 materialThresholdMsPerSecond = MaterialRemainingMsPerSecond,
                 registryHints,
+                alreadySatisfied,
                 unresolved
             },
             globalTopCallbacks = globalTop,
@@ -1053,10 +1065,10 @@ internal static class CallbackResolverService
         {
             return new GenericResolution
             {
-                Status = "RESOLVED",
-                Automatable = true,
-                Pattern = "STRUCTURAL_HOTPATH_REWRITE",
-                RecipeFamilies = new[] { "STRUCTURAL_HOTPATH_REWRITE" },
+                Status = "ANALYSIS_ONLY",
+                Automatable = false,
+                Pattern = "STRUCTURAL_HOTPATH_EVIDENCE",
+                RecipeFamilies = Array.Empty<string>(),
                 Facts = new
                 {
                     structuralHotpath = true,
@@ -1067,7 +1079,10 @@ internal static class CallbackResolverService
                     estimatedGlobalPaybackPct = structural.EstimatedGlobalPaybackPct
                 },
                 Evidence = structural.Evidence,
-                Blockers = Array.Empty<string>(),
+                Blockers = new[]
+                {
+                    "Cross-mod structural rewrites are analysis-only. A semantic per-mod rule must authorize any aggressive rewrite."
+                },
                 Source = sourceEvidence
             };
         }
@@ -1099,16 +1114,43 @@ internal static class CallbackResolverService
         AuthorDiscoveryCadenceResolution? discoveryScheduleResolution = null;
         var effectiveSourceEvidence = sourceEvidence;
 
-        var directOnUpdate = source is not null &&
+        var rawDirectOnUpdate = source is not null &&
             Regex.IsMatch(
                 source.CallbackText,
-                @"\b(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]",
+                @"\b(?:registerForEvent|registerRuntimeEvent)\s*\(\s*['""]onUpdate['""]",
                 RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
-        if (directOnUpdate)
+        var generatedRegistrarMatch = source is null
+            ? Match.Empty
+            : Regex.Match(
+                source.CallbackText,
+                @"\b(?<registrar>__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        var generatedRegistrarPresent = generatedRegistrarMatch.Success;
+        var alreadyFrameConsolidated =
+            source is not null &&
+            generatedRegistrarPresent &&
+            HasGeneratedFrameRegistrar(
+                source.FullText,
+                generatedRegistrarMatch.Groups["registrar"].Value);
+
+        // Semantic analyzers may inspect either raw or already-consolidated
+        // onUpdate source. Only a raw registrar authorizes the generic frame
+        // transform; the generated registrar is an already-satisfied state.
+        var directOnUpdate = rawDirectOnUpdate || generatedRegistrarPresent;
+
+        if (rawDirectOnUpdate)
         {
             recipes.Add("FRAME_DISPATCH_CONSOLIDATION");
-            evidence.Add("Direct onUpdate registration is present in the current deployed source.");
+            evidence.Add("Raw direct onUpdate registration is present in the current deployed source.");
+        }
+        else if (alreadyFrameConsolidated)
+        {
+            evidence.Add("Frame dispatch is already consolidated by a source-proven G-CET registrar; no frame transform is required.");
+        }
+        else if (generatedRegistrarPresent)
+        {
+            blockers.Add("A G-CET frame registrar token is present, but its generated helper could not be proven in the current file. Leave the partial state untouched.");
         }
         else
         {
@@ -1259,51 +1301,90 @@ internal static class CallbackResolverService
             evidence.Add($"Cadence subset source-classified {cadenceDecision.Group}; generation still requires a finite author-cadence recipe.");
         }
 
-        var automatable = recipes.Contains(
-            "AUTHOR_CADENCE_WHOLE_CALLBACK",
-            StringComparer.OrdinalIgnoreCase) ||
-            recipes.Contains(
+        var automaticRecipes = recipes
+            .Where(x => x.Equals(
                 "FRAME_DISPATCH_CONSOLIDATION",
-                StringComparer.OrdinalIgnoreCase) ||
-            recipes.Contains(
-                "STRUCTURAL_HOTPATH_REWRITE",
-                StringComparer.OrdinalIgnoreCase) ||
-            recipes.Contains(
-                "HARD_DORMANT_GUARD_HOIST",
-                StringComparer.OrdinalIgnoreCase) ||
-            recipes.Contains(
-                "AUTHOR_DISCOVERY_DORMANT_SCHEDULE",
-                StringComparer.OrdinalIgnoreCase);
+                StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var parkedRecipes = recipes
+            .Where(x => !x.Equals(
+                "FRAME_DISPATCH_CONSOLIDATION",
+                StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 
-        var pattern = recipes.Contains(
+        if (parkedRecipes.Length > 0)
+        {
+            blockers.Add(
+                "Analysis-only semantic recipe(s) parked from generic AUTO: " +
+                string.Join(", ", parkedRecipes) +
+                ". Re-authorize only through a source-validated per-mod semantic rule.");
+        }
+
+        var automatable = automaticRecipes.Length > 0;
+        var pattern = automatable
+            ? "FRAME_DISPATCH_CONSOLIDATION"
+            : parkedRecipes.Contains(
                 "AUTHOR_CADENCE_WHOLE_CALLBACK",
                 StringComparer.OrdinalIgnoreCase)
-            ? "AUTHOR_CADENCE_WHOLE_CALLBACK"
-            : recipes.Contains(
-                "AUTHOR_DISCOVERY_DORMANT_SCHEDULE",
-                StringComparer.OrdinalIgnoreCase)
-                ? "AUTHOR_DISCOVERY_DORMANT_SCHEDULE"
-                : recipes.Contains(
-                    "HARD_DORMANT_GUARD_HOIST",
+                ? "AUTHOR_CADENCE_EVIDENCE"
+                : parkedRecipes.Contains(
+                    "AUTHOR_DISCOVERY_DORMANT_SCHEDULE",
                     StringComparer.OrdinalIgnoreCase)
-                    ? "HARD_DORMANT_GUARD_HOIST"
-                    : recipes.Contains(
-                        "STRUCTURAL_HOTPATH_REWRITE",
+                    ? "AUTHOR_DISCOVERY_DORMANT_EVIDENCE"
+                    : parkedRecipes.Contains(
+                        "HARD_DORMANT_GUARD_HOIST",
                         StringComparer.OrdinalIgnoreCase)
-                        ? "STRUCTURAL_HOTPATH_REWRITE"
-                        : recipes.FirstOrDefault() ?? "ONUPDATE_UNRESOLVED";
+                        ? "HARD_DORMANT_EVIDENCE"
+                        : parkedRecipes.Contains(
+                            "STRUCTURAL_HOTPATH_REWRITE",
+                            StringComparer.OrdinalIgnoreCase)
+                            ? "STRUCTURAL_HOTPATH_EVIDENCE"
+                            : alreadyFrameConsolidated
+                                ? "FRAME_DISPATCH_ALREADY_SATISFIED"
+                                : "ONUPDATE_UNRESOLVED";
+
+        var status = automatable
+            ? "RESOLVED"
+            : parkedRecipes.Length > 0
+                ? "ANALYSIS_ONLY"
+                : alreadyFrameConsolidated
+                    ? "ALREADY_SATISFIED"
+                    : "SOURCE_UNRESOLVED";
 
         return new GenericResolution
         {
-            Status = recipes.Count > 0 ? "RESOLVED" : "SOURCE_UNRESOLVED",
+            Status = status,
             Automatable = automatable,
             Pattern = pattern,
-            RecipeFamilies = recipes.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+            RecipeFamilies = automaticRecipes,
             Facts = facts,
             Evidence = evidence.ToArray(),
             Blockers = blockers.ToArray(),
             Source = effectiveSourceEvidence
         };
+    }
+
+    private static bool HasGeneratedFrameRegistrar(
+        string fullText,
+        string registrar)
+    {
+        if (string.IsNullOrWhiteSpace(registrar))
+            return false;
+
+        var escaped = Regex.Escape(registrar);
+        var hasFallback = Regex.IsMatch(
+            fullText,
+            @"\blocal\s+" + escaped + @"\s*=\s*registerForEvent\b",
+            RegexOptions.CultureInvariant);
+        var hasEngineRegistrar = Regex.IsMatch(
+            fullText,
+            @"\b" + escaped +
+            @"\s*=\s*__gcetEngine\.MakeEventRegistrar\s*\(",
+            RegexOptions.CultureInvariant);
+
+        return hasFallback && hasEngineRegistrar;
     }
 
     private static bool TryResolveHardDormantGuardHoist(
@@ -2625,23 +2706,23 @@ internal static class CallbackResolverService
 
         var automatable =
             actionRouteAutomatable ||
-            overridePrefilterAutomatable ||
-            structural is not null;
+            overridePrefilterAutomatable;
         var effectivePattern = actionRouteAutomatable
             ? recipe
             : overridePrefilterAutomatable
                 ? "ACTION_OVERRIDE_EXACT_PREFILTER"
                 : structural is not null
-                    ? "STRUCTURAL_HOTPATH_REWRITE"
+                    ? "STRUCTURAL_HOTPATH_EVIDENCE"
                     : recipe;
 
         var recipeFamilies = new List<string>();
         if (overridePrefilterAutomatable)
             recipeFamilies.Add("ACTION_OVERRIDE_EXACT_PREFILTER");
-        else if (hasRoutableInterest || dynamicActionForward)
-            recipeFamilies.Add(isOverride ? "ACTION_ROUTING_OVERRIDE" : recipe);
+        else if (actionRouteAutomatable)
+            recipeFamilies.Add(recipe);
+
         if (structural is not null)
-            recipeFamilies.Add("STRUCTURAL_HOTPATH_REWRITE");
+            blockers.Add("Structural hotpath analysis is evidence-only until a semantic per-mod rule authorizes the rewrite.");
 
         var facts = new
         {
@@ -2677,7 +2758,9 @@ internal static class CallbackResolverService
         {
             Status = automatable
                 ? "RESOLVED"
-                : hasRoutableInterest || dynamicActionForward ? "RECOGNIZED_WITH_BLOCKER" : "UNRESOLVED",
+                : structural is not null
+                    ? "ANALYSIS_ONLY"
+                    : hasRoutableInterest || dynamicActionForward ? "RECOGNIZED_WITH_BLOCKER" : "UNRESOLVED",
             Automatable = automatable,
             Pattern = effectivePattern,
             RecipeFamilies = recipeFamilies.Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),

@@ -223,10 +223,11 @@ function Consumer-For([string]$Owner) {
 }
 
 $exactConsumer = Consumer-For 'FixtureExact'
-if (@($exactConsumer.generic.RecipeFamilies) -notcontains 'AUTHOR_CADENCE_WHOLE_CALLBACK') {
-    $exactBlockers = [string]::Join(' | ', @($exactConsumer.generic.Blockers))
-    $exactEvidence = [string]::Join(' | ', @($exactConsumer.generic.Evidence))
-    throw "High-payback exact author cadence was not authorized. Blockers: $exactBlockers Evidence: $exactEvidence"
+if (@($exactConsumer.generic.RecipeFamilies) -contains 'AUTHOR_CADENCE_WHOLE_CALLBACK') {
+    throw 'Author cadence must remain analysis-only until a semantic per-mod rule authorizes it.'
+}
+if (@($exactConsumer.generic.RecipeFamilies) -notcontains 'FRAME_DISPATCH_CONSOLIDATION') {
+    throw 'Exact cadence fixture lost the safe frame-dispatch optimization.'
 }
 if (!$exactConsumer.generic.Facts.authorCadenceWholeCallback) {
     throw 'Author cadence generator facts were not emitted.'
@@ -289,18 +290,12 @@ try {
     }
 
     $exactText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureExact/init.lua'
-    foreach ($needle in @(
-        'AUTHOR',
-        'Schedule.Every(0.5',
-        'spread = false',
-        'catchUp = false',
-        'pause = "never"',
-        'ctx.elapsed',
-        'registerForEvent("onUpdate", __gcetAuthorCadence_'
-    )) {
-        if ($exactText -notmatch [regex]::Escape($needle)) {
-            throw "Generated exact author cadence is missing: $needle"
-        }
+    if ($exactText -notmatch 'MakeEventRegistrar' -or
+        $exactText -notmatch '__gcetRegisterEvent_700\s*\(\s*"onUpdate"') {
+        throw 'Exact cadence fixture did not receive safe frame-dispatch consolidation.'
+    }
+    if ($exactText -match 'Schedule\.Every' -or $exactText -match '__gcetAuthorCadence_') {
+        throw 'Analysis-only author cadence leaked into the generated pass.'
     }
 
     $lowEntry = @($zip.Entries | Where-Object {
@@ -325,4 +320,4 @@ if (Test-Path -LiteralPath $result.destination -PathType Container) {
     Remove-Item -LiteralPath $result.destination -Recurse -Force
 }
 
-Write-Host 'Cadence source resolver generic four-group contract passed.'
+Write-Host 'Cadence source analysis contract passed; semantic cadence generation remains parked.'

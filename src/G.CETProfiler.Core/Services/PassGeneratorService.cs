@@ -15,11 +15,10 @@ public sealed record PassBuildResult(
 
 /// <summary>
 /// Generates a reversible overlay ZIP from resolver decisions only.
-/// Generator supports only finite resolver-authorized recipes:
-/// ACTION_ROUTING_*, ACTION_OVERRIDE_EXACT_PREFILTER, FRAME_DISPATCH_CONSOLIDATION, source-proven
-/// AUTHOR_CADENCE_WHOLE_CALLBACK, AUTHOR_DISCOVERY_DORMANT_SCHEDULE,
-/// and cost-gated STRUCTURAL_HOTPATH_REWRITE.
-/// It never invents candidates from mod names or unclassified source.
+/// Generic AUTO is deliberately restricted to mechanically source-proven recipes:
+/// ACTION_ROUTING_*, ACTION_OVERRIDE_EXACT_PREFILTER, and FRAME_DISPATCH_CONSOLIDATION.
+/// Structural, cadence, and dormancy analyzers may still emit evidence, but they
+/// require semantic per-mod authorization before this generator may rewrite them.
 /// </summary>
 public static class PassGeneratorService
 {
@@ -180,19 +179,16 @@ public static class PassGeneratorService
                 modNameRules = false,
                 sourceShaRequired = true,
                 fullFileOverlay = true,
-                cadenceTransforms = true,
-                cadencePolicy = "AUTHOR_RATE_ONLY_AND_MEASURED_PAYBACK_REQUIRED",
+                cadenceTransforms = false,
+                cadencePolicy = "ANALYSIS_ONLY_UNTIL_SEMANTIC_RULE_AUTHORIZATION",
                 supportedPasses = new[]
                 {
                     "ACTION_ROUTING_*",
                     "ACTION_OVERRIDE_EXACT_PREFILTER",
-                    "FRAME_DISPATCH_CONSOLIDATION",
-                    "AUTHOR_CADENCE_WHOLE_CALLBACK",
-                    "AUTHOR_DISCOVERY_DORMANT_SCHEDULE",
-                    "STRUCTURAL_HOTPATH_REWRITE"
+                    "FRAME_DISPATCH_CONSOLIDATION"
                 },
                 fixedRuntimeException = "0-Engine",
-                note = "V1 target selection is capture/resolver-only. 0-Engine is the explicit fixed infrastructure exception and is always shipped so generic ActionRouter/frame registrar recipes have one known runtime."
+                note = "Generic AUTO emits only the mechanically proven routing/prefilter/frame core. Structural, cadence, and dormancy opportunities remain analysis-only until a semantic per-mod rule authorizes them. 0-Engine remains the fixed infrastructure exception."
             },
             fixedRuntime = new
             {
@@ -299,31 +295,6 @@ public static class PassGeneratorService
                     !pattern.Equals("ACTION_ROUTING_OVERRIDE", StringComparison.OrdinalIgnoreCase))
                 {
                     kind = CandidateKind.Action;
-                }
-                else if (resolverFamily.Equals("ONUPDATE", StringComparison.OrdinalIgnoreCase) &&
-                         recipes.Any(x =>
-                             x.Equals("AUTHOR_CADENCE_WHOLE_CALLBACK", StringComparison.OrdinalIgnoreCase)))
-                {
-                    // Author cadence supersedes plain frame consolidation for
-                    // this callback; never apply both transforms to one target.
-                    kind = CandidateKind.AuthorCadence;
-                }
-                else if (resolverFamily.Equals("ONUPDATE", StringComparison.OrdinalIgnoreCase) &&
-                         recipes.Any(x =>
-                             x.Equals("AUTHOR_DISCOVERY_DORMANT_SCHEDULE", StringComparison.OrdinalIgnoreCase)))
-                {
-                    kind = CandidateKind.DiscoveryDormant;
-                }
-                else if (recipes.Any(x =>
-                             x.Equals("STRUCTURAL_HOTPATH_REWRITE", StringComparison.OrdinalIgnoreCase)))
-                {
-                    kind = CandidateKind.Structural;
-                }
-                else if (resolverFamily.Equals("ONUPDATE", StringComparison.OrdinalIgnoreCase) &&
-                         recipes.Any(x =>
-                             x.Equals("HARD_DORMANT_GUARD_HOIST", StringComparison.OrdinalIgnoreCase)))
-                {
-                    kind = CandidateKind.HardDormant;
                 }
                 else if (resolverFamily.Equals("ONUPDATE", StringComparison.OrdinalIgnoreCase) &&
                          recipes.Any(x =>
@@ -1043,13 +1014,13 @@ public static class PassGeneratorService
                 // "onUpdate" to happen to share one physical source line.
                 var frameOpening = Regex.Match(
                     frameSegment,
-                    @"\b(?<registrar>registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*(?<quote>['""])onUpdate\k<quote>",
+                    @"\b(?<registrar>registerForEvent|registerRuntimeEvent)\s*\(\s*(?<quote>['""])onUpdate\k<quote>",
                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Singleline);
                 if (!frameOpening.Success)
                 {
                     skipped.Add(Skip(
                         candidate,
-                        "Recorded callback range no longer contains the source-proven direct registerForEvent(onUpdate) registration."));
+                        "Recorded callback range no longer contains a raw source-proven onUpdate registrar, or the frame dispatch is already consolidated."));
                     continue;
                 }
 
@@ -1331,6 +1302,9 @@ public static class PassGeneratorService
 
             foreach (var item in frameHelpers.OrderBy(x => x.Candidate.RegistrationId))
             {
+                if (HasExistingFrameHelper(text, item.Token, item.Candidate.Owner))
+                    continue;
+
                 var owner = LuaQuote(item.Candidate.Owner);
                 header.Add($"local {item.Token} = registerForEvent");
                 header.Add("do");
@@ -1359,6 +1333,29 @@ public static class PassGeneratorService
         withBom[2] = 0xBF;
         Buffer.BlockCopy(body, 0, withBom, 3, body.Length);
         return new TransformResult(withBom, applied);
+    }
+
+    private static bool HasExistingFrameHelper(
+        string text,
+        string token,
+        string owner)
+    {
+        var escapedToken = Regex.Escape(token);
+        var hasFallback = Regex.IsMatch(
+            text,
+            @"\blocal\s+" + escapedToken + @"\s*=\s*registerForEvent\b",
+            RegexOptions.CultureInvariant);
+        if (!hasFallback)
+            return false;
+
+        var escapedOwner = Regex.Escape(LuaQuote(owner));
+        return Regex.IsMatch(
+            text,
+            @"\b" + escapedToken +
+            @"\s*=\s*__gcetEngine\.MakeEventRegistrar\s*\(\s*" +
+            escapedOwner +
+            @"\s*,\s*registerForEvent\s*\)",
+            RegexOptions.CultureInvariant);
     }
 
     private static bool TryBuildDiscoveryDormantRewrite(
