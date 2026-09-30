@@ -620,9 +620,26 @@ public static class PassGeneratorService
                     continue;
                 }
 
+                // Profiler ranges can stop at the callback body's final inner
+                // end while leaving the registration's closing end) on the next
+                // line. Complete only that syntactic boundary; do not broaden
+                // the semantic source window.
+                var discoveryLineEnd = effectiveLineEnd;
+                for (var i = effectiveLineEnd; i < Math.Min(lines.Count, effectiveLineEnd + 3); i++)
+                {
+                    if (!Regex.IsMatch(
+                            lines[i].Trim(),
+                            @"^end\s*\)\s*;?\s*$",
+                            RegexOptions.CultureInvariant))
+                        continue;
+
+                    discoveryLineEnd = i + 1;
+                    break;
+                }
+
                 var discoveryLines = lines
                     .Skip(candidate.LineStart - 1)
-                    .Take(effectiveLineEnd - candidate.LineStart + 1)
+                    .Take(discoveryLineEnd - candidate.LineStart + 1)
                     .ToArray();
                 var discoverySegment = string.Join("\n", discoveryLines);
                 var discoveryIndent = Regex.Match(discoveryLines[0], @"^\s*").Value;
@@ -661,7 +678,7 @@ public static class PassGeneratorService
 
                 lines.RemoveRange(
                     candidate.LineStart - 1,
-                    effectiveLineEnd - candidate.LineStart + 1);
+                    discoveryLineEnd - candidate.LineStart + 1);
                 lines.InsertRange(candidate.LineStart - 1, discoveryReplacementLines);
 
                 transformManifest.Add(new
