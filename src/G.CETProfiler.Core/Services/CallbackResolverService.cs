@@ -44,6 +44,10 @@ internal static class CallbackResolverService
 
         var cadence = ReadCadenceDecisions(cadenceFinalPath);
         var registry = ExceptionRegistry.Load(exceptionRegistryPath);
+        var advancedHints = AdvancedUserHints.Load(
+            Path.Combine(
+                Path.GetDirectoryName(Path.GetFullPath(handoffPath))!,
+                "G-CET_Advanced_UserHints.json"));
         var sourceIndex = new LiveSourceIndex(modsRoot);
 
         var familyGroups = callbacks
@@ -78,7 +82,8 @@ internal static class CallbackResolverService
                 rankedCount++;
                 var generic = ResolveGeneric(callback, sourceIndex, cadence);
                 var dormancy = ResolveDormancyEvidence(callback, generic.Source, sourceIndex);
-                var advanced = EvaluateAdvancedCandidate(callback, generic, dormancy);
+                var userHint = advancedHints.Match(callback);
+                var advanced = EvaluateAdvancedCandidate(callback, generic, dormancy, userHint);
                 ExceptionRegistryEntry? hint = null;
 
                 // Registry is deliberately a last resort. Generic source/runtime
@@ -152,7 +157,9 @@ internal static class CallbackResolverService
                         advanced.HeadroomMsPerSecond,
                         advanced.Reason,
                         advanced.NextEvidence,
-                        advanced.UserClassificationUseful
+                        advanced.UserClassificationUseful,
+                        advanced.UserHint,
+                        advanced.UserHintAppliedAsEvidenceOnly
                     },
                     registry = new
                     {
@@ -224,6 +231,8 @@ internal static class CallbackResolverService
                 dormancyClassification = true,
                 dormancyClassificationEvidenceOnly = true,
                 dormancyCanAuthorizeGeneration = false,
+                advancedUserHintsSupported = true,
+                advancedUserHintsCanAuthorizeGeneration = false,
                 dormancyClasses = new[] { "NEVER_GATE", "HARD_DORMANT", "DISCOVERY_DORMANT", "BACKGROUND", "UNKNOWN" },
                 note = "Resolve proven callback/source patterns first. Dormancy classification is evidence-only and cannot authorize generation. Only unresolved high-impact consumers are checked against the small curated exception registry. Registry knowledge is semantic guidance, never patch code."
             },
@@ -263,7 +272,8 @@ internal static class CallbackResolverService
     private static AdvancedCandidateAssessment EvaluateAdvancedCandidate(
         CallbackMetric callback,
         GenericResolution generic,
-        DormancyEvidence dormancy)
+        DormancyEvidence dormancy,
+        AdvancedUserHint? userHint)
     {
         // Difficulty is semantic complexity, not implementation effort alone.
         // Higher difficulty requires more measured cost on the table before
@@ -336,8 +346,33 @@ internal static class CallbackResolverService
         }
         else
         {
-            nextEvidence = "USER_CLASSIFICATION";
-            userClassificationUseful = true;
+            var classification = userHint?.Classification ?? "";
+            if (classification.Equals("CONTINUOUS", StringComparison.OrdinalIgnoreCase))
+            {
+                eligible = false;
+                nextEvidence = "NONE_USER_MARKED_CONTINUOUS";
+            }
+            else if (classification.Equals("HARD_DORMANT", StringComparison.OrdinalIgnoreCase))
+            {
+                nextEvidence = "SOURCE_ACTIVE_STATE_WAKE_PROOF";
+            }
+            else if (classification.Equals("DISCOVERY_DORMANT", StringComparison.OrdinalIgnoreCase))
+            {
+                nextEvidence = "TARGETED_INACTIVE_NEAR_ACTIVE_LEAVE_CAPTURE";
+            }
+            else if (classification.Equals("BACKGROUND", StringComparison.OrdinalIgnoreCase))
+            {
+                nextEvidence = "SOURCE_QUEUE_PENDING_RESOURCE_PROOF";
+            }
+            else if (classification.Equals("I_DONT_KNOW", StringComparison.OrdinalIgnoreCase))
+            {
+                nextEvidence = "TARGETED_INACTIVE_ACTIVE_INACTIVE_CAPTURE";
+            }
+            else
+            {
+                nextEvidence = "USER_CLASSIFICATION";
+                userClassificationUseful = true;
+            }
         }
 
         var label = difficulty switch
@@ -349,13 +384,20 @@ internal static class CallbackResolverService
             _ => "CROSS_STATE_OR_UNKNOWN"
         };
 
+        var userMarkedContinuous =
+            userHint?.Classification.Equals(
+                "CONTINUOUS",
+                StringComparison.OrdinalIgnoreCase) == true;
+
         var reason = eligible
             ? $"Measured cost {callback.ExclusiveMsPerSecond:0.###} ms/s clears the {minimum:0.###} ms/s difficulty-{difficulty} Advanced threshold."
             : neverGate
                 ? "Dormancy is prohibited for this latency-sensitive callback class."
-                : alreadyHasSemanticAutoRecipe
-                    ? "A finite semantic automatic recipe is already available; Advanced mode is not required for this callback."
-                    : $"Measured cost {callback.ExclusiveMsPerSecond:0.###} ms/s does not clear the {minimum:0.###} ms/s difficulty-{difficulty} Advanced threshold.";
+                : userMarkedContinuous
+                    ? "User semantic hint says this feature is continuous/latency-sensitive. The hint blocks dormancy exploration but does not block structural rewrites."
+                    : alreadyHasSemanticAutoRecipe
+                        ? "A finite semantic automatic recipe is already available; Advanced mode is not required for this callback."
+                        : $"Measured cost {callback.ExclusiveMsPerSecond:0.###} ms/s does not clear the {minimum:0.###} ms/s difficulty-{difficulty} Advanced threshold.";
 
         return new AdvancedCandidateAssessment
         {
@@ -367,7 +409,9 @@ internal static class CallbackResolverService
             HeadroomMsPerSecond = Math.Max(0, callback.ExclusiveMsPerSecond - minimum),
             Reason = reason,
             NextEvidence = nextEvidence,
-            UserClassificationUseful = userClassificationUseful
+            UserClassificationUseful = userClassificationUseful,
+            UserHint = userHint?.Classification ?? "",
+            UserHintAppliedAsEvidenceOnly = userHint is not null
         };
     }
 
@@ -3308,6 +3352,64 @@ internal static class CallbackResolverService
         }
     }
 
+    private sealed record AdvancedUserHint(
+        string Owner,
+        string Kind,
+        string Target,
+        string Classification);
+
+    private sealed class AdvancedUserHints
+    {
+        private readonly List<AdvancedUserHint> _entries = new();
+
+        public static AdvancedUserHints Load(string path)
+        {
+            var result = new AdvancedUserHints();
+            if (!File.Exists(path))
+                return result;
+
+            try
+            {
+                using var doc = JsonDocument.Parse(File.ReadAllText(path));
+                if (!doc.RootElement.TryGetProperty("entries", out var entries) ||
+                    entries.ValueKind != JsonValueKind.Array)
+                    return result;
+
+                foreach (var row in entries.EnumerateArray())
+                {
+                    var owner = JsonString(row, "owner", "Owner");
+                    var kind = JsonString(row, "kind", "Kind");
+                    var target = JsonString(row, "target", "Target");
+                    var classification = JsonString(row, "classification", "Classification");
+                    if (string.IsNullOrWhiteSpace(owner) ||
+                        string.IsNullOrWhiteSpace(target) ||
+                        string.IsNullOrWhiteSpace(classification))
+                        continue;
+
+                    result._entries.Add(new AdvancedUserHint(
+                        owner,
+                        kind,
+                        target,
+                        classification));
+                }
+            }
+            catch
+            {
+                // Hints are optional semantic context. Invalid hint files must
+                // never prevent the automatic resolver from running.
+            }
+
+            return result;
+        }
+
+        public AdvancedUserHint? Match(CallbackMetric callback) =>
+            _entries.LastOrDefault(x =>
+                x.Owner.Equals(callback.Owner, StringComparison.OrdinalIgnoreCase) &&
+                (string.IsNullOrWhiteSpace(x.Kind) ||
+                 x.Kind.Equals(callback.Kind, StringComparison.OrdinalIgnoreCase)) &&
+                x.Target.Equals(callback.Target, StringComparison.OrdinalIgnoreCase));
+    }
+
     private sealed class ExceptionRegistry
     {
         public bool Loaded { get; init; }
@@ -3485,6 +3587,8 @@ internal static class CallbackResolverService
         public string Reason { get; init; } = "";
         public string NextEvidence { get; init; } = "";
         public bool UserClassificationUseful { get; init; }
+        public string UserHint { get; init; } = "";
+        public bool UserHintAppliedAsEvidenceOnly { get; init; }
     }
 
     private sealed class DormancyEvidence
