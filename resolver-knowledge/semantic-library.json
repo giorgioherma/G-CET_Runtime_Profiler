@@ -9,7 +9,10 @@
     "exactShaRequiredForRuleMatch": false,
     "generationStyle": "source-injection",
     "generationDefaultEnabled": false,
-    "failClosed": true
+    "failClosed": true,
+    "runtimeAdmissionThresholdMsPerSecond": 3,
+    "runtimeEvidenceRequired": true,
+    "referencePatchesShipWithResolver": false
   },
   "entries": [
     {
@@ -42,7 +45,14 @@
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
         "requiresIdempotenceMarker": true
-      }
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 120.08282,
+        "evidenceStack": "OVERLAP",
+        "admitted": true
+      },
+      "cadenceGroup": "DORMANT_IDLE_5S_ACTIVE_10HZ_FRAME_SENTINEL"
     },
     {
       "id": "combat",
@@ -73,6 +83,18 @@
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
         "requiresIdempotenceMarker": true
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 113.602375,
+        "evidenceStack": "G-CET_ONLY",
+        "admitted": true
+      },
+      "cadenceGroup": "TRANSITION_ON_STATE_CHANGE",
+      "developmentReference": {
+        "patch": "tests/semantic-reference/gcet-only/Combat.patch",
+        "purpose": "behavior-concept guide only",
+        "shipped": false
       }
     },
     {
@@ -104,7 +126,14 @@
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
         "requiresIdempotenceMarker": true
-      }
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 110.725731,
+        "evidenceStack": "OVERLAP",
+        "admitted": true
+      },
+      "cadenceGroup": "MULTI_RATE_DORMANT"
     },
     {
       "id": "cybertrials",
@@ -135,7 +164,14 @@
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
         "requiresIdempotenceMarker": true
-      }
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 42.899196,
+        "evidenceStack": "OVERLAP",
+        "admitted": true
+      },
+      "cadenceGroup": "REALTIME_PLUS_FAST_10HZ_PLUS_SLOW_1HZ"
     },
     {
       "id": "dualsense-support",
@@ -166,6 +202,18 @@
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
         "requiresIdempotenceMarker": true
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 40.546702,
+        "evidenceStack": "G-CET_ONLY",
+        "admitted": true
+      },
+      "cadenceGroup": "FRAME_CLOCKS_PLUS_FAST_30HZ_OUTPUT",
+      "developmentReference": {
+        "patch": "tests/semantic-reference/gcet-only/DualSense_Support.patch",
+        "purpose": "behavior-concept guide only",
+        "shipped": false
       }
     },
     {
@@ -197,7 +245,14 @@
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
         "requiresIdempotenceMarker": true
-      }
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 32.890335,
+        "evidenceStack": "OVERLAP",
+        "admitted": true
+      },
+      "cadenceGroup": "DISTANCE_1HZ_5HZ_10HZ_PLUS_REALTIME"
     },
     {
       "id": "immersive-third-person",
@@ -228,7 +283,14 @@
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
         "requiresIdempotenceMarker": true
-      }
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 19.88678,
+        "evidenceStack": "MOD_COLLECTION_ONLY",
+        "admitted": true
+      },
+      "cadenceGroup": "REALTIME_CAMERA_PLUS_10HZ_ACTIVE_2HZ_IDLE"
     },
     {
       "id": "nativeinteractions",
@@ -259,7 +321,14 @@
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
         "requiresIdempotenceMarker": true
-      }
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 16.538865,
+        "evidenceStack": "MOD_COLLECTION_ONLY",
+        "admitted": true
+      },
+      "cadenceGroup": "REALTIME_ACTIVE_PLUS_30HZ_12HZ_DORMANT"
     },
     {
       "id": "overclockedlynxpaws",
@@ -290,6 +359,18 @@
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
         "requiresIdempotenceMarker": true
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 16.13062,
+        "evidenceStack": "G-CET_ONLY",
+        "admitted": true
+      },
+      "cadenceGroup": "REALTIME_ACTIVE_PLUS_FAST_30HZ_IDLE",
+      "developmentReference": {
+        "patch": "tests/semantic-reference/gcet-only/OverclockedLynxPaws.patch",
+        "purpose": "behavior-concept guide only",
+        "shipped": false
       }
     },
     {
@@ -321,7 +402,14 @@
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
         "requiresIdempotenceMarker": true
-      }
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 14.249755,
+        "evidenceStack": "OVERLAP",
+        "admitted": true
+      },
+      "cadenceGroup": "REALTIME_ACTIVE_PLUS_IDLE_5HZ_PLUS_DIAGNOSTICS_0_2HZ"
     },
     {
       "id": "immersivefirstperson",
@@ -352,7 +440,14 @@
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
         "requiresIdempotenceMarker": true
-      }
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 11.236497,
+        "evidenceStack": "MOD_COLLECTION_ONLY",
+        "admitted": true
+      },
+      "cadenceGroup": "REALTIME_WHEN_ACTIVE_DORMANT_OTHERWISE"
     },
     {
       "id": "npcd-hotline",
@@ -383,6 +478,18 @@
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
         "requiresIdempotenceMarker": true
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 10.593801,
+        "evidenceStack": "G-CET_ONLY",
+        "admitted": true
+      },
+      "cadenceGroup": "EVENT_PENDING_REALTIME_PLUS_CORE_2HZ",
+      "developmentReference": {
+        "patch": "tests/semantic-reference/gcet-only/NPCD_Hotline.patch",
+        "purpose": "behavior-concept guide only",
+        "shipped": false
       }
     },
     {
@@ -414,6 +521,18 @@
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
         "requiresIdempotenceMarker": true
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 10.067884,
+        "evidenceStack": "G-CET_ONLY",
+        "admitted": true
+      },
+      "cadenceGroup": "DORMANT_PLUS_FAST_30HZ_SCAN",
+      "developmentReference": {
+        "patch": "tests/semantic-reference/gcet-only/GameEntityExaminerTool.patch",
+        "purpose": "behavior-concept guide only",
+        "shipped": false
       }
     },
     {
@@ -445,7 +564,14 @@
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
         "requiresIdempotenceMarker": true
-      }
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 8.225706,
+        "evidenceStack": "MOD_COLLECTION_ONLY",
+        "admitted": true
+      },
+      "cadenceGroup": "FAST_5HZ_PLUS_SLOW_1HZ_PLUS_PREFILTER"
     },
     {
       "id": "sitanywhere",
@@ -476,7 +602,14 @@
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
         "requiresIdempotenceMarker": true
-      }
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 7.221978,
+        "evidenceStack": "MOD_COLLECTION_ONLY",
+        "admitted": true
+      },
+      "cadenceGroup": "DORMANT_IDLE_REALTIME_ACTIVE"
     },
     {
       "id": "repeatable-increased-criminal-activity",
@@ -507,7 +640,14 @@
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
         "requiresIdempotenceMarker": true
-      }
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 6.565717,
+        "evidenceStack": "MOD_COLLECTION_ONLY",
+        "admitted": true
+      },
+      "cadenceGroup": "MULTI_RATE_4HZ_1HZ_0_2HZ_0_1HZ"
     },
     {
       "id": "givemeeverything",
@@ -538,7 +678,14 @@
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
         "requiresIdempotenceMarker": true
-      }
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 5.603808,
+        "evidenceStack": "MOD_COLLECTION_ONLY",
+        "admitted": true
+      },
+      "cadenceGroup": "PREFILTER_ONLY"
     },
     {
       "id": "roulette",
@@ -569,7 +716,14 @@
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
         "requiresIdempotenceMarker": true
-      }
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 5.26109,
+        "evidenceStack": "MOD_COLLECTION_ONLY",
+        "admitted": true
+      },
+      "cadenceGroup": "REALTIME_ACTIVE_PLUS_IDLE_10HZ_PLUS_PREFILTER"
     },
     {
       "id": "driveaerialvehicle",
@@ -600,7 +754,14 @@
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
         "requiresIdempotenceMarker": true
-      }
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 4.671151,
+        "evidenceStack": "MOD_COLLECTION_ONLY",
+        "admitted": true
+      },
+      "cadenceGroup": "REALTIME_ACTIVE_DORMANT_NORMAL"
     },
     {
       "id": "illegal-mechanic",
@@ -631,7 +792,14 @@
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
         "requiresIdempotenceMarker": true
-      }
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 4.224649,
+        "evidenceStack": "MOD_COLLECTION_ONLY",
+        "admitted": true
+      },
+      "cadenceGroup": "REALTIME_ACTIVE_PLUS_IDLE_5HZ"
     },
     {
       "id": "shift",
@@ -662,6 +830,18 @@
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
         "requiresIdempotenceMarker": true
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 4.14578,
+        "evidenceStack": "G-CET_ONLY",
+        "admitted": true
+      },
+      "cadenceGroup": "REALTIME_CAMERA_PLUS_STATE_20HZ",
+      "developmentReference": {
+        "patch": "tests/semantic-reference/gcet-only/Shift.patch",
+        "purpose": "behavior-concept guide only",
+        "shipped": false
       }
     },
     {
@@ -693,7 +873,14 @@
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
         "requiresIdempotenceMarker": true
-      }
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 3.645908,
+        "evidenceStack": "MOD_COLLECTION_ONLY",
+        "admitted": true
+      },
+      "cadenceGroup": "REALTIME_ACTIVE_PLUS_IDLE_20HZ_PLUS_PREFILTER"
     },
     {
       "id": "questrunner",
@@ -724,7 +911,14 @@
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
         "requiresIdempotenceMarker": true
-      }
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 3.474305,
+        "evidenceStack": "MOD_COLLECTION_ONLY",
+        "admitted": true
+      },
+      "cadenceGroup": "REALTIME_ACTIVE_PLUS_IDLE_5HZ_4HZ"
     }
   ]
 }
