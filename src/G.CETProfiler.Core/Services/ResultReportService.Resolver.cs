@@ -651,6 +651,16 @@ public static partial class ResultReportService
                             ? pathClusters[0].sampleSharePct
                             : 0.0;
 
+                    var functionByKey = deepFunctions
+                        .Where(row => !string.IsNullOrWhiteSpace(S(row, "FunctionKey")))
+                        .GroupBy(
+                            row => S(row, "FunctionKey"),
+                            StringComparer.OrdinalIgnoreCase)
+                        .ToDictionary(
+                            group => group.Key,
+                            group => group.First(),
+                            StringComparer.OrdinalIgnoreCase);
+
                     var hotCallees = callsiteRows
                         .GroupBy(
                             row => S(row, "ChildFunctionKey"),
@@ -680,9 +690,28 @@ public static partial class ResultReportService
                                 .Distinct(StringComparer.OrdinalIgnoreCase)
                                 .Count();
 
+                            functionByKey.TryGetValue(group.Key, out var functionRow);
+                            var functionName = functionRow is null
+                                ? ""
+                                : S(functionRow, "FunctionName");
+                            var functionWhat = functionRow is null
+                                ? ""
+                                : S(functionRow, "What");
+                            var functionSource = functionRow is null
+                                ? ""
+                                : S(functionRow, "SourceFile");
+
                             return new
                             {
                                 childFunctionKey = group.Key,
+                                functionName,
+                                what = functionWhat,
+                                sourceFile = functionSource,
+                                telemetryClass = ResolverClassifyHotCallee(
+                                    functionName,
+                                    functionWhat,
+                                    functionSource,
+                                    group.Key),
                                 sampledCalls = group.Sum(row => L(row, "Calls")),
                                 childInclusiveMs = Round(
                                     group.Sum(row => D(row, "ChildInclusiveMs")),
@@ -811,6 +840,55 @@ public static partial class ResultReportService
             owners = ownerRows,
             callbacks = callbackRows
         };
+    }
+
+    private static string ResolverClassifyHotCallee(
+        string functionName,
+        string what,
+        string sourceFile,
+        string functionKey)
+    {
+        var name = functionName ?? "";
+        var source = sourceFile ?? "";
+        var key = functionKey ?? "";
+        var joined = (name + "\n" + source + "\n" + key).ToLowerInvariant();
+
+        if (joined.Contains("cron.lua", StringComparison.Ordinal) &&
+            joined.Contains("update", StringComparison.Ordinal))
+            return "CRON_PUMP";
+
+        if (joined.Contains("vector4.distance", StringComparison.Ordinal) ||
+            joined.Contains("|distance|", StringComparison.Ordinal) ||
+            name.Equals("Distance", StringComparison.OrdinalIgnoreCase))
+            return "DISTANCE_QUERY";
+
+        if (name.Equals("new", StringComparison.OrdinalIgnoreCase) ||
+            joined.Contains(".new", StringComparison.Ordinal) ||
+            joined.Contains("|new|", StringComparison.Ordinal))
+            return "CONSTRUCTOR_OR_ALLOCATION_LIKE";
+
+        if (name.StartsWith("Get", StringComparison.OrdinalIgnoreCase) ||
+            joined.Contains("getplayer", StringComparison.Ordinal) ||
+            Regex.IsMatch(
+                name,
+                @"^Get[A-Za-z0-9_]*System$",
+                RegexOptions.CultureInvariant))
+            return "LOOKUP_OR_GETTER";
+
+        if (name.StartsWith("Set", StringComparison.OrdinalIgnoreCase) ||
+            joined.Contains("setflat", StringComparison.Ordinal))
+            return "WRITE_OR_SETTER";
+
+        if (name.Equals("open", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("write", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("close", StringComparison.OrdinalIgnoreCase) ||
+            joined.Contains("io.", StringComparison.Ordinal))
+            return "FILE_IO";
+
+        if (what.Equals("C", StringComparison.OrdinalIgnoreCase))
+            return "NATIVE_OR_C_CALL";
+
+        return "GENERAL_CALL";
     }
 
     private static List<ResolverOwnerActivityMetric> BuildResolverOwnerActivity(
