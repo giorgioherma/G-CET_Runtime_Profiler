@@ -566,7 +566,8 @@ if ($overrideBlockers -notmatch 'Override semantics') {
 
 $overridePrefilter = Action-For 'FixtureOverridePrefilter'
 if (!$overridePrefilter.generic.Automatable) {
-    throw 'Transparent finite OnAction Override was not made auto-patchable.'
+    $overrideDebug = $overridePrefilter.generic | ConvertTo-Json -Depth 10 -Compress
+    throw "Transparent finite OnAction Override was not made auto-patchable. Resolver: $overrideDebug"
 }
 if ($overridePrefilter.generic.Pattern -ne 'ACTION_OVERRIDE_EXACT_PREFILTER') {
     throw "Unexpected Override prefilter recipe: $($overridePrefilter.generic.Pattern)"
