@@ -450,6 +450,16 @@ public static class PassGeneratorService
 
         foreach (var candidate in candidates)
         {
+            // Resolver source ranges are based on Split('\n') semantics and may
+            // include the terminal empty logical line of a newline-terminated
+            // file. TransformFile removes that empty element above, so accept
+            // exactly that one-line difference rather than rejecting a valid
+            // callback as stale/out-of-range.
+            var effectiveLineEnd =
+                hadTerminalNewline && candidate.LineEnd == lines.Count + 1
+                    ? lines.Count
+                    : candidate.LineEnd;
+
             if (candidate.LineStart > lines.Count)
             {
                 skipped.Add(Skip(candidate, "Recorded source range is outside the current file."));
@@ -468,7 +478,7 @@ public static class PassGeneratorService
                     continue;
                 }
 
-                if (candidate.LineEnd > lines.Count)
+                if (effectiveLineEnd > lines.Count)
                 {
                     skipped.Add(Skip(candidate, "Recorded author-cadence source range is outside the current file."));
                     continue;
@@ -476,7 +486,7 @@ public static class PassGeneratorService
 
                 var authorSegmentLines = lines
                     .Skip(candidate.LineStart - 1)
-                    .Take(candidate.LineEnd - candidate.LineStart + 1)
+                    .Take(effectiveLineEnd - candidate.LineStart + 1)
                     .ToArray();
                 var authorSegment = string.Join("\n", authorSegmentLines);
 
@@ -546,7 +556,7 @@ public static class PassGeneratorService
 
                 lines.RemoveRange(
                     candidate.LineStart - 1,
-                    candidate.LineEnd - candidate.LineStart + 1);
+                    effectiveLineEnd - candidate.LineStart + 1);
                 lines.InsertRange(candidate.LineStart - 1, authorReplacementLines);
 
                 transformManifest.Add(new
@@ -572,7 +582,7 @@ public static class PassGeneratorService
 
             if (candidate.Kind == CandidateKind.Structural)
             {
-                if (candidate.LineEnd > lines.Count)
+                if (effectiveLineEnd > lines.Count)
                 {
                     skipped.Add(Skip(candidate, "Recorded structural callback range is outside the current file."));
                     continue;
@@ -580,7 +590,7 @@ public static class PassGeneratorService
 
                 var structuralLines = lines
                     .Skip(candidate.LineStart - 1)
-                    .Take(candidate.LineEnd - candidate.LineStart + 1)
+                    .Take(effectiveLineEnd - candidate.LineStart + 1)
                     .ToArray();
                 var structuralSegment = string.Join("\n", structuralLines);
 
@@ -693,7 +703,7 @@ public static class PassGeneratorService
 
                 lines.RemoveRange(
                     candidate.LineStart - 1,
-                    candidate.LineEnd - candidate.LineStart + 1);
+                    effectiveLineEnd - candidate.LineStart + 1);
                 lines.InsertRange(candidate.LineStart - 1, structuralReplacementLines);
 
                 transformManifest.Add(new
@@ -752,7 +762,7 @@ public static class PassGeneratorService
                 continue;
             }
 
-            if (candidate.LineEnd > lines.Count)
+            if (effectiveLineEnd > lines.Count)
             {
                 skipped.Add(Skip(candidate, "Recorded OnAction source range is outside the current file."));
                 continue;
@@ -760,7 +770,7 @@ public static class PassGeneratorService
 
             var segmentLines = lines
                 .Skip(candidate.LineStart - 1)
-                .Take(candidate.LineEnd - candidate.LineStart + 1)
+                .Take(effectiveLineEnd - candidate.LineStart + 1)
                 .ToArray();
             var segment = string.Join("\n", segmentLines);
 
@@ -825,7 +835,7 @@ public static class PassGeneratorService
 
             lines.RemoveRange(
                 candidate.LineStart - 1,
-                candidate.LineEnd - candidate.LineStart + 1);
+                effectiveLineEnd - candidate.LineStart + 1);
             lines.InsertRange(candidate.LineStart - 1, replacementLines);
 
             transformManifest.Add(new
