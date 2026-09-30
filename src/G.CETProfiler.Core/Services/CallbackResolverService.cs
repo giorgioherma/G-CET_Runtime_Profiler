@@ -2531,6 +2531,7 @@ internal static class CallbackResolverService
         // Callback kind is authoritative. A neighboring Override() elsewhere in
         // the same source window must never poison an Observe classification.
         var isOverride = callback.Kind.Contains("override", StringComparison.OrdinalIgnoreCase);
+        var overrideWrappedMethodReturns = false;
         var overridePrefilterProven =
             isOverride &&
             downstreamExpanded &&
@@ -2540,7 +2541,7 @@ internal static class CallbackResolverService
             TryProveTransparentOverrideWrapper(
                 window,
                 downstreamMethods,
-                out var overrideWrappedMethodReturns);
+                out overrideWrappedMethodReturns);
 
         if (isOverride && !overridePrefilterProven)
             blockers.Add("Override semantics require the dedicated override routing template.");

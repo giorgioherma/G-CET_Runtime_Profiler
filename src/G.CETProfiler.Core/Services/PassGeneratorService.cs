@@ -1113,11 +1113,11 @@ public static class PassGeneratorService
                     injected +
                     overrideSegment[(overrideOpening.Index + overrideOpening.Length)..];
 
-                var replacementLines = (prefix + "\n" + rewritten).Split('\n');
+                var overrideReplacementLines = (prefix + "\n" + rewritten).Split('\n');
                 lines.RemoveRange(
                     candidate.LineStart - 1,
                     effectiveLineEnd - candidate.LineStart + 1);
-                lines.InsertRange(candidate.LineStart - 1, replacementLines);
+                lines.InsertRange(candidate.LineStart - 1, overrideReplacementLines);
 
                 transformManifest.Add(new
                 {
