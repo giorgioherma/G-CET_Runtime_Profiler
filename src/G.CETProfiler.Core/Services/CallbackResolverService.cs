@@ -421,7 +421,7 @@ internal static class CallbackResolverService
 
         var match = Regex.Match(
             callbackText,
-            @"(?s)^\s*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]\s*,\s*function\s*\(\s*(?<delta>[A-Za-z_]\w*)\s*\)\s*(?<body>.*)\bend\s*\)\s*;?\s*$",
+            @"(?s)^\s*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]\s*,\s*function\s*\(\s*(?<delta>[A-Za-z_]\w*)\s*\)[ \t]*(?:\n)?(?<body>.*)\bend\s*\)\s*;?\s*$",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         if (!match.Success)
         {
