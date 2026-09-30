@@ -650,7 +650,7 @@ public static class PassGeneratorService
                 var openingText = structuralSegment[
                     ..(structuralOpening.Index + structuralOpening.Length)];
                 var indent = Regex.Match(structuralLines[0], @"^\s*").Value;
-                var localIndent = indent + "    ";
+                var localIndent = structuralIndent + "    ";
                 var localText = callbackLocals.Count == 0
                     ? ""
                     : "\n" + string.Join("\n", callbackLocals.Select(x => localIndent + x));
@@ -676,14 +676,14 @@ public static class PassGeneratorService
                 var replacementText =
                     (prefix.Count == 0
                         ? ""
-                        : string.Join("\n", prefix.Select(x => indent + x)) + "\n") +
+                        : string.Join("\n", prefix.Select(x => structuralIndent + x)) + "\n") +
                     rewritten;
-                var replacementLines = replacementText.Split('\n');
+                var structuralReplacementLines = replacementText.Split('\n');
 
                 lines.RemoveRange(
                     candidate.LineStart - 1,
                     candidate.LineEnd - candidate.LineStart + 1);
-                lines.InsertRange(candidate.LineStart - 1, replacementLines);
+                lines.InsertRange(candidate.LineStart - 1, structuralReplacementLines);
 
                 transformManifest.Add(new
                 {
