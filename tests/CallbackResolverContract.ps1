@@ -173,24 +173,45 @@ end)
 '@
 
 Write-Mod 'FixtureOverridePrefilter' @'
-Override("PlayerPuppet", "OnAction", function(self, action, consumer, wrappedMethod)
-    if runtime.session.active then
-        runtime:HandleAction(action)
+local function needModule(path)
+    return require(path)
+end
+
+local Input = needModule("runtime/input")
+local Runtime = { ready = true, session = {}, input = {} }
+local HANDLED_ACTIONS = Input.HANDLED_ACTIONS
+FixtureOverrideRuntime = Runtime
+
+function Runtime:onAction(action, consumer, wrappedMethod)
+    if self.ready and self.session and self.input then
+        local named, name = pcall(function() return Game.NameToString(action:GetName()) end)
+        if named and HANDLED_ACTIONS[name] then
+            self.input:onAction(name, action:GetType().value, action:GetValue())
+        end
     end
-    wrappedMethod(self, action, consumer)
+    return wrappedMethod(action, consumer)
+end
+
+Override("PlayerPuppet", "OnAction", function(_, action, consumer, wrappedMethod)
+    local current = FixtureOverrideRuntime
+    if current then return current:onAction(action, consumer, wrappedMethod) end
+    return wrappedMethod(action, consumer)
 end)
 '@
 $overridePrefilterDir = Join-Path $mods 'FixtureOverridePrefilter'
+$overridePrefilterRuntime = Join-Path $overridePrefilterDir 'runtime'
+New-Item -ItemType Directory -Force -Path $overridePrefilterRuntime | Out-Null
 @'
-function Runtime:HandleAction(action)
-    local actionName = Game.NameToString(action:GetName())
-    if actionName == "ChoiceScrollUp" then
-        self:MoveUp()
-    elseif actionName == "ChoiceScrollDown" then
-        self:MoveDown()
-    end
-end
-'@ | Set-Content -LiteralPath (Join-Path $overridePrefilterDir 'runtime.lua') -Encoding utf8
+local Input = {}
+
+Input.HANDLED_ACTIONS = {
+    ChoiceScrollUp = true,
+    ChoiceScrollDown = true,
+    ChoiceApply = true,
+}
+
+return Input
+'@ | Set-Content -LiteralPath (Join-Path $overridePrefilterRuntime 'input.lua') -Encoding utf8
 
 Write-Mod 'FixtureDownstream' @'
 Observe("PlayerPuppet", "OnAction", function(_, action)
@@ -405,7 +426,7 @@ $handoff = @{
         (CallbackRow 109 'FixtureDynamic' 'observe' 'PlayerPuppet::OnAction' 500 6.0 8.0 'init.lua' 1 7),
         (CallbackRow 112 'FixtureGatedDynamic' 'observe' 'PlayerPuppet::OnAction' 495 5.9 7.8 'init.lua' 1 14),
         (CallbackRow 130 'FixtureOverrideStructural' 'Override' 'PlayerPuppet::OnAction' 500 16.0 4.0 'init.lua' 1 8),
-        (CallbackRow 131 'FixtureOverridePrefilter' 'Override' 'PlayerPuppet::OnAction' 1400 15.0 4.4 'init.lua' 1 7),
+        (CallbackRow 131 'FixtureOverridePrefilter' 'Override' 'PlayerPuppet::OnAction' 1400 15.0 4.4 'init.lua' 20 24),
         (CallbackRow 111 'FixtureDownstream' 'observe' 'PlayerPuppet::OnAction' 490 5.8 7.5 'init.lua' 1 10),
         (CallbackRow 120 'FixtureStructural' 'event' 'onUpdate' 60 9.0 2.0 'init.lua' 1 8),
         (CallbackRow 126 'FixtureDiscoveryAuthorRate' 'event' 'onUpdate' 60 13.0 3.2 'init.lua' 6 18),
@@ -575,7 +596,7 @@ if ($overridePrefilter.generic.Pattern -ne 'ACTION_OVERRIDE_EXACT_PREFILTER') {
 if (!$overridePrefilter.generic.Facts.overridePrefilterProven) {
     throw 'Transparent Override proof fact was not emitted.'
 }
-foreach ($expected in @('ChoiceScrollUp','ChoiceScrollDown')) {
+foreach ($expected in @('ChoiceScrollUp','ChoiceScrollDown','ChoiceApply')) {
     if (@($overridePrefilter.generic.Facts.actions) -notcontains $expected) {
         throw "Override downstream expansion lost expected action: $expected"
     }
@@ -956,6 +977,7 @@ try {
         '__gcetOverrideActions_131',
         'ChoiceScrollUp',
         'ChoiceScrollDown',
+        'ChoiceApply',
         'action:GetName()',
         'wrappedMethod(self, action, consumer)',
         'G-CET finite Override prefilter'
