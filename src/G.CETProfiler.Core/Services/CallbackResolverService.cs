@@ -546,6 +546,8 @@ internal static class CallbackResolverService
         var evidence = new List<string>();
         var blockers = new List<string>();
         object? facts = null;
+        StructuralHotpathResolution? structuralResolution = null;
+        HardDormantGuardResolution? hardDormantResolution = null;
         var effectiveSourceEvidence = sourceEvidence;
 
         var directOnUpdate = source is not null &&
@@ -636,15 +638,36 @@ internal static class CallbackResolverService
             source is not null &&
             TryResolveStructuralHotpath(source, callback, out var structural))
         {
+            structuralResolution = structural;
             recipes.Add("STRUCTURAL_HOTPATH_REWRITE");
             evidence.AddRange(structural.Evidence);
+        }
+
+        if (!recipes.Contains("AUTHOR_CADENCE_WHOLE_CALLBACK", StringComparer.OrdinalIgnoreCase) &&
+            source is not null &&
+            directOnUpdate &&
+            TryResolveHardDormantGuardHoist(source, callback, out var hardDormant))
+        {
+            hardDormantResolution = hardDormant;
+            recipes.Add("HARD_DORMANT_GUARD_HOIST");
+            evidence.AddRange(hardDormant.Evidence);
+        }
+
+        if (!recipes.Contains("AUTHOR_CADENCE_WHOLE_CALLBACK", StringComparer.OrdinalIgnoreCase) &&
+            (structuralResolution is not null || hardDormantResolution is not null))
+        {
             facts = new
             {
-                structuralHotpath = true,
-                identicalExpressions = structural.IdenticalExpressions,
-                literalConstructors = structural.LiteralConstructors,
-                estimatedCallbackPaybackPct = structural.EstimatedCallbackPaybackPct,
-                estimatedGlobalPaybackPct = structural.EstimatedGlobalPaybackPct
+                structuralHotpath = structuralResolution is not null,
+                identicalExpressions = structuralResolution?.IdenticalExpressions ?? Array.Empty<StructuralExpression>(),
+                literalConstructors = structuralResolution?.LiteralConstructors ?? Array.Empty<StructuralExpression>(),
+                estimatedCallbackPaybackPct = structuralResolution?.EstimatedCallbackPaybackPct ?? 0,
+                estimatedGlobalPaybackPct = structuralResolution?.EstimatedGlobalPaybackPct ?? 0,
+                hardDormantGuardHoist = hardDormantResolution is not null,
+                hardDormantGateExpression = hardDormantResolution?.GateExpression ?? "",
+                hardDormantPreGuardReadCount = hardDormantResolution?.PreGuardReadCount ?? 0,
+                hardDormantStateWriters = hardDormantResolution?.StateWriters ?? Array.Empty<string>(),
+                hardDormantWakeSignals = hardDormantResolution?.WakeSignals ?? Array.Empty<string>()
             };
         }
 
@@ -666,13 +689,24 @@ internal static class CallbackResolverService
                 StringComparer.OrdinalIgnoreCase) ||
             recipes.Contains(
                 "STRUCTURAL_HOTPATH_REWRITE",
+                StringComparer.OrdinalIgnoreCase) ||
+            recipes.Contains(
+                "HARD_DORMANT_GUARD_HOIST",
                 StringComparer.OrdinalIgnoreCase);
 
         var pattern = recipes.Contains(
                 "AUTHOR_CADENCE_WHOLE_CALLBACK",
                 StringComparer.OrdinalIgnoreCase)
             ? "AUTHOR_CADENCE_WHOLE_CALLBACK"
-            : recipes.FirstOrDefault() ?? "ONUPDATE_UNRESOLVED";
+            : recipes.Contains(
+                "HARD_DORMANT_GUARD_HOIST",
+                StringComparer.OrdinalIgnoreCase)
+                ? "HARD_DORMANT_GUARD_HOIST"
+                : recipes.Contains(
+                    "STRUCTURAL_HOTPATH_REWRITE",
+                    StringComparer.OrdinalIgnoreCase)
+                    ? "STRUCTURAL_HOTPATH_REWRITE"
+                    : recipes.FirstOrDefault() ?? "ONUPDATE_UNRESOLVED";
 
         return new GenericResolution
         {
@@ -685,6 +719,157 @@ internal static class CallbackResolverService
             Blockers = blockers.ToArray(),
             Source = effectiveSourceEvidence
         };
+    }
+
+    private static bool TryResolveHardDormantGuardHoist(
+        ResolvedSource source,
+        CallbackMetric callback,
+        out HardDormantGuardResolution resolution)
+    {
+        resolution = new HardDormantGuardResolution();
+
+        // Guard-hoist is only worth the semantic proof cost on material callbacks.
+        if (callback.ExclusiveMsPerSecond < 8.0 ||
+            callback.GlobalWorkSharePct < 1.0)
+            return false;
+
+        var callbackText = source.CallbackText
+            .Replace("\r\n", "\n")
+            .Replace('\r', '\n');
+
+        if (Regex.IsMatch(
+                callbackText,
+                @"\b(?:AIAction|AIBehavior|CombatState|NPCPuppet|CameraSystem|GetActiveCameraData|\bFPP\b|\bTPP\b)",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+            return false;
+
+        if (Regex.IsMatch(
+                callbackText,
+                @"\b(?:process\w*Queue|update\w*Queue|Cron\.Update|pending|queue)\b",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+            return false;
+
+        var opening = Regex.Match(
+            callbackText,
+            @"(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*(['""])onUpdate\1\s*,\s*function\s*\((?<args>[^)]*)\)",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Singleline);
+        if (!opening.Success)
+            return false;
+
+        var body = callbackText[(opening.Index + opening.Length)..];
+        var lines = body.Split('\n');
+        var gateIndex = -1;
+        var gateExpression = "";
+
+        var gateRegex = new Regex(
+            @"^\s*if\s+not\s+(?<gate>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s+then\s+return\s+end\s*;?\s*$",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var match = gateRegex.Match(lines[i]);
+            if (!match.Success)
+                continue;
+
+            gateIndex = i;
+            gateExpression = match.Groups["gate"].Value;
+            break;
+        }
+
+        if (gateIndex <= 0 || string.IsNullOrWhiteSpace(gateExpression))
+            return false;
+
+        var preGuardReadCount = 0;
+        var meaningfulBeforeGuard = 0;
+        var gateRoot = gateExpression.Split('.')[0];
+
+        for (var i = 0; i < gateIndex; i++)
+        {
+            var line = lines[i].Trim();
+            if (string.IsNullOrWhiteSpace(line) || line.StartsWith("--", StringComparison.Ordinal))
+                continue;
+
+            meaningfulBeforeGuard++;
+
+            if (Regex.IsMatch(
+                    line,
+                    @"^local\s+" + Regex.Escape(gateRoot) + @"\b",
+                    RegexOptions.CultureInvariant))
+                return false;
+
+            // Only local setup/read statements may be bypassed while dormant.
+            if (!Regex.IsMatch(
+                    line,
+                    @"^local\s+[A-Za-z_]\w*(?:\s*,\s*[A-Za-z_]\w*)*\s*=\s*.+$",
+                    RegexOptions.CultureInvariant))
+                return false;
+
+            if (!Regex.IsMatch(line, @"[A-Za-z_][\w.:]*\s*\("))
+                continue;
+
+            // Any call before the guard must be recognizably read-only.
+            if (!Regex.IsMatch(
+                    line,
+                    @"(?:\bGame\.Get[A-Za-z_]\w*\s*\(|\bGetSingleton\s*\(|[:.]\s*(?:Get|Is|Has)[A-Za-z_]\w*\s*\()",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+                return false;
+
+            preGuardReadCount++;
+        }
+
+        if (meaningfulBeforeGuard == 0 || preGuardReadCount == 0)
+            return false;
+
+        var full = source.FullText
+            .Replace("\r\n", "\n")
+            .Replace('\r', '\n');
+        var callbackIndex = full.IndexOf(callbackText, StringComparison.Ordinal);
+        if (callbackIndex < 0)
+            return false;
+
+        var outside = full.Remove(callbackIndex, callbackText.Length);
+        var escapedGate = Regex.Escape(gateExpression);
+        var writers = Regex.Matches(
+                outside,
+                @"(?m)^\s*" + escapedGate + @"\s*=\s*[^=].*$",
+                RegexOptions.CultureInvariant)
+            .Cast<Match>()
+            .Select(x => x.Value.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .Take(8)
+            .ToArray();
+        if (writers.Length == 0)
+            return false;
+
+        var wakeSignals = new List<string>();
+        foreach (var token in new[] { "registerHotkey", "registerInput" })
+        {
+            if (Regex.IsMatch(
+                    outside,
+                    @"\b" + token + @"\s*\([\s\S]{0,1600}?\b" + escapedGate + @"\s*=",
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+            {
+                wakeSignals.Add(token);
+            }
+        }
+
+        if (wakeSignals.Count == 0)
+            return false;
+
+        resolution = new HardDormantGuardResolution
+        {
+            GateExpression = gateExpression,
+            PreGuardReadCount = preGuardReadCount,
+            StateWriters = writers,
+            WakeSignals = wakeSignals.ToArray(),
+            Evidence = new[]
+            {
+                $"Current source proves inactive guard 'if not {gateExpression} then return end' after {preGuardReadCount} read/setup call(s).",
+                $"The same state is written outside the hot callback and is reachable from {string.Join("/", wakeSignals)}.",
+                $"Measured callback cost is {callback.ExclusiveMsPerSecond:0.###} ms/s ({callback.GlobalWorkSharePct:0.###}% of measured CET work)."
+            }
+        };
+        return true;
     }
 
     private static bool TryResolveStructuralHotpath(
@@ -2801,6 +2986,15 @@ internal static class CallbackResolverService
         public double maxExclusiveMs => Round(MaxExclusiveMs);
         public long spikeCount => SpikeCount;
         public double maxSpikeExclusiveMs => Round(MaxSpikeExclusiveMs);
+    }
+
+    private sealed class HardDormantGuardResolution
+    {
+        public string GateExpression { get; init; } = "";
+        public int PreGuardReadCount { get; init; }
+        public string[] StateWriters { get; init; } = Array.Empty<string>();
+        public string[] WakeSignals { get; init; } = Array.Empty<string>();
+        public string[] Evidence { get; init; } = Array.Empty<string>();
     }
 
     private sealed class StructuralExpression
