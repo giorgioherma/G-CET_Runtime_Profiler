@@ -1,0 +1,730 @@
+{
+  "schemaVersion": "0.1",
+  "policy": {
+    "patchCodeAllowed": false,
+    "referenceOverridesShipped": false,
+    "identityOnlySelectsCandidate": true,
+    "currentSourceProofRequired": true,
+    "exactVersionRequired": false,
+    "exactShaRequiredForRuleMatch": false,
+    "generationStyle": "source-injection",
+    "generationDefaultEnabled": false,
+    "failClosed": true
+  },
+  "entries": [
+    {
+      "id": "gta-joyride",
+      "identityHints": [
+        "GTA - JoyRide"
+      ],
+      "policyClass": "DORMANT_SPLIT",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "SESSION",
+          "Cron.Update",
+          "SESSION.active"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:gta-joyride"
+      },
+      "behavior": {
+        "handler": "SEMANTIC_ACTIVE_IDLE_SPLIT"
+      },
+      "generation": {
+        "enabled": false,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true
+      }
+    },
+    {
+      "id": "combat",
+      "identityHints": [
+        "Combat"
+      ],
+      "policyClass": "TRANSITION_STATE_DIFF",
+      "callbacks": [
+        {
+          "kind": "ObserveAfter",
+          "target": "PlayerPuppet::IsInCombat",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "IsInCombat",
+          "TweakDB:SetFlat"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:combat"
+      },
+      "behavior": {
+        "handler": "SEMANTIC_TRANSITION_GUARD"
+      },
+      "generation": {
+        "enabled": false,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true
+      }
+    },
+    {
+      "id": "repeatable-cyberpsychos",
+      "identityHints": [
+        "repeatable_cyberpsychos"
+      ],
+      "policyClass": "MULTI_RATE_DORMANT",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "Sites.list",
+          "Diagnostics"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:repeatable-cyberpsychos"
+      },
+      "behavior": {
+        "handler": "SEMANTIC_MULTI_RATE_SPLIT"
+      },
+      "generation": {
+        "enabled": false,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true
+      }
+    },
+    {
+      "id": "cybertrials",
+      "identityHints": [
+        "CyberTrials"
+      ],
+      "policyClass": "MULTI_RATE_PLUS_PREFILTER",
+      "callbacks": [
+        {
+          "kind": "*",
+          "target": "*",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "BaseMappinBaseController",
+          "Race"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:cybertrials"
+      },
+      "behavior": {
+        "handler": "SEMANTIC_MULTI_RATE_WITH_PREFILTER"
+      },
+      "generation": {
+        "enabled": false,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true
+      }
+    },
+    {
+      "id": "dualsense-support",
+      "identityHints": [
+        "DualSense Support"
+      ],
+      "policyClass": "REALTIME_PROTECTED_INTERNAL_SPLIT",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "GameSession",
+          "Cron"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:dualsense-support"
+      },
+      "behavior": {
+        "handler": "SEMANTIC_REALTIME_INTERNAL_SPLIT"
+      },
+      "generation": {
+        "enabled": false,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true
+      }
+    },
+    {
+      "id": "streetgamespoker",
+      "identityHints": [
+        "StreetGamesPoker"
+      ],
+      "policyClass": "DISTANCE_ACTIVITY_SPLIT",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "StreetTables",
+          "PokerHUD"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:streetgamespoker"
+      },
+      "behavior": {
+        "handler": "SEMANTIC_DISTANCE_ACTIVITY_SPLIT"
+      },
+      "generation": {
+        "enabled": false,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true
+      }
+    },
+    {
+      "id": "immersive-third-person",
+      "identityHints": [
+        "immersive_third_person"
+      ],
+      "policyClass": "REALTIME_PROTECTED_MULTI_RATE",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "Camera",
+          "GameSession"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:immersive-third-person"
+      },
+      "behavior": {
+        "handler": "SEMANTIC_REALTIME_MULTI_RATE"
+      },
+      "generation": {
+        "enabled": false,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true
+      }
+    },
+    {
+      "id": "nativeinteractions",
+      "identityHints": [
+        "nativeInteractions"
+      ],
+      "policyClass": "ACTIVE_FRAME_DORMANT_FAST",
+      "callbacks": [
+        {
+          "kind": "*",
+          "target": "*",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "worldInteraction",
+          "projectsManager"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:nativeinteractions"
+      },
+      "behavior": {
+        "handler": "SEMANTIC_ACTIVE_IDLE_SPLIT"
+      },
+      "generation": {
+        "enabled": false,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true
+      }
+    },
+    {
+      "id": "overclockedlynxpaws",
+      "identityHints": [
+        "OverclockedLynxPaws"
+      ],
+      "policyClass": "REALTIME_MOVEMENT_WITH_DORMANCY",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "WallDetect",
+          "LynxPaw"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:overclockedlynxpaws"
+      },
+      "behavior": {
+        "handler": "SEMANTIC_REALTIME_ACTIVITY_GATE"
+      },
+      "generation": {
+        "enabled": false,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true
+      }
+    },
+    {
+      "id": "nightcitybilliards",
+      "identityHints": [
+        "NightCityBilliards"
+      ],
+      "policyClass": "ACTIVE_FRAME_IDLE_FAST",
+      "callbacks": [
+        {
+          "kind": "*",
+          "target": "*",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "NightCityBilliardsRuntime",
+          "ChoiceHub"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:nightcitybilliards"
+      },
+      "behavior": {
+        "handler": "SEMANTIC_ACTIVE_IDLE_SPLIT"
+      },
+      "generation": {
+        "enabled": false,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true
+      }
+    },
+    {
+      "id": "immersivefirstperson",
+      "identityHints": [
+        "ImmersiveFirstPerson"
+      ],
+      "policyClass": "REALTIME_PROTECTED",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "CameraCore",
+          "GameSession"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:immersivefirstperson"
+      },
+      "behavior": {
+        "handler": "SEMANTIC_REALTIME_ACTIVITY_GATE"
+      },
+      "generation": {
+        "enabled": false,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true
+      }
+    },
+    {
+      "id": "npcd-hotline",
+      "identityHints": [
+        "NPCD_Hotline"
+      ],
+      "policyClass": "HYBRID_QUEUE_PLUS_SLOW_CORE",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "queueTask",
+          "questsSystem"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:npcd-hotline"
+      },
+      "behavior": {
+        "handler": "SEMANTIC_QUEUE_ACTIVITY_SPLIT"
+      },
+      "generation": {
+        "enabled": false,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true
+      }
+    },
+    {
+      "id": "gameentityexaminertool",
+      "identityHints": [
+        "GameEntityExaminerTool"
+      ],
+      "policyClass": "DORMANT_SCAN_FAST",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "GetTargetingSystem",
+          "GetComponentClosestToCrosshair"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:gameentityexaminertool"
+      },
+      "behavior": {
+        "handler": "SEMANTIC_SCAN_ACTIVITY_SPLIT"
+      },
+      "generation": {
+        "enabled": false,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true
+      }
+    },
+    {
+      "id": "minimap-widgets",
+      "identityHints": [
+        "Minimap Widgets"
+      ],
+      "policyClass": "MULTI_RATE_PLUS_PREFILTER",
+      "callbacks": [
+        {
+          "kind": "*",
+          "target": "*",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "MinimapWidgets",
+          "MinimapStealthMappinController"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:minimap-widgets"
+      },
+      "behavior": {
+        "handler": "SEMANTIC_MULTI_RATE_WITH_PREFILTER"
+      },
+      "generation": {
+        "enabled": false,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true
+      }
+    },
+    {
+      "id": "sitanywhere",
+      "identityHints": [
+        "sitAnywhere"
+      ],
+      "policyClass": "HARD_IDLE_GATE",
+      "callbacks": [
+        {
+          "kind": "*",
+          "target": "*",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "runSitAnywhereFrame",
+          "Workspot"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:sitanywhere"
+      },
+      "behavior": {
+        "handler": "SEMANTIC_ACTIVITY_GATE"
+      },
+      "generation": {
+        "enabled": false,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true
+      }
+    },
+    {
+      "id": "repeatable-increased-criminal-activity",
+      "identityHints": [
+        "repeatable_increased_criminal_activity"
+      ],
+      "policyClass": "MULTI_RATE_DORMANT",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "runtimeStateTick",
+          "rewardTick"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:repeatable-increased-criminal-activity"
+      },
+      "behavior": {
+        "handler": "SEMANTIC_MULTI_RATE_SPLIT"
+      },
+      "generation": {
+        "enabled": false,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true
+      }
+    },
+    {
+      "id": "givemeeverything",
+      "identityHints": [
+        "GiveMeEverything"
+      ],
+      "policyClass": "GLOBAL_CALLBACK_PREFILTER",
+      "callbacks": [
+        {
+          "kind": "Observe",
+          "target": "BaseMappinBaseController::UpdateRootState",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "CustomPositionVariant",
+          "UpdateRootState"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:givemeeverything"
+      },
+      "behavior": {
+        "handler": "SEMANTIC_GLOBAL_CALLBACK_PREFILTER"
+      },
+      "generation": {
+        "enabled": false,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true
+      }
+    },
+    {
+      "id": "roulette",
+      "identityHints": [
+        "Gambling System - Roulette"
+      ],
+      "policyClass": "ACTIVE_FRAME_IDLE_FAST_PLUS_PREFILTER",
+      "callbacks": [
+        {
+          "kind": "*",
+          "target": "*",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "SpotManager",
+          "UpdateRootState"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:roulette"
+      },
+      "behavior": {
+        "handler": "SEMANTIC_ACTIVE_IDLE_WITH_PREFILTER"
+      },
+      "generation": {
+        "enabled": false,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true
+      }
+    },
+    {
+      "id": "driveaerialvehicle",
+      "identityHints": [
+        "DriveAerialVehicle"
+      ],
+      "policyClass": "ACTIVE_STATE_GATE",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "VehicleSystem",
+          "Core:Update"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:driveaerialvehicle"
+      },
+      "behavior": {
+        "handler": "SEMANTIC_ACTIVITY_GATE"
+      },
+      "generation": {
+        "enabled": false,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true
+      }
+    },
+    {
+      "id": "illegal-mechanic",
+      "identityHints": [
+        "illegal_mechanic_phase1a"
+      ],
+      "policyClass": "ACTIVE_FRAME_IDLE_FAST",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "IllegalMechanicPhase1A",
+          "interactionUI"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:illegal-mechanic"
+      },
+      "behavior": {
+        "handler": "SEMANTIC_ACTIVE_IDLE_SPLIT"
+      },
+      "generation": {
+        "enabled": false,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true
+      }
+    },
+    {
+      "id": "shift",
+      "identityHints": [
+        "Shift"
+      ],
+      "policyClass": "REALTIME_PROTECTED",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "CameraEngine.update",
+          "SpeedEffects.update"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:shift"
+      },
+      "behavior": {
+        "handler": "SEMANTIC_REALTIME_ACTIVITY_GATE"
+      },
+      "generation": {
+        "enabled": false,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true
+      }
+    },
+    {
+      "id": "blackjack",
+      "identityHints": [
+        "gambling-system-blackjack"
+      ],
+      "policyClass": "ACTIVE_FRAME_IDLE_FAST_PLUS_PREFILTER",
+      "callbacks": [
+        {
+          "kind": "*",
+          "target": "*",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "SpotManager",
+          "UpdateRootState"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:blackjack"
+      },
+      "behavior": {
+        "handler": "SEMANTIC_ACTIVE_IDLE_WITH_PREFILTER"
+      },
+      "generation": {
+        "enabled": false,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true
+      }
+    },
+    {
+      "id": "questrunner",
+      "identityHints": [
+        "QuestRunner"
+      ],
+      "policyClass": "ACTIVE_FRAME_IDLE_FAST",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "Runner",
+          "Manager"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:questrunner"
+      },
+      "behavior": {
+        "handler": "SEMANTIC_ACTIVE_IDLE_SPLIT"
+      },
+      "generation": {
+        "enabled": false,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true
+      }
+    }
+  ]
+}
