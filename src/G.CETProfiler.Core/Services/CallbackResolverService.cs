@@ -2459,6 +2459,8 @@ internal static class CallbackResolverService
         var downstreamExpanded = false;
         var downstreamMethods = Array.Empty<string>();
         var downstreamFiles = Array.Empty<string>();
+        var downstreamPrefilterGateReceiver = "";
+        var downstreamPrefilterGateMember = "";
 
         // Raw action forwarding can still close over a finite exact set when
         // the callback also forwards its decoded action-name value to an
@@ -2472,7 +2474,9 @@ internal static class CallbackResolverService
                 sourceIndex,
                 out var downstreamActions,
                 out downstreamMethods,
-                out downstreamFiles))
+                out downstreamFiles,
+                out downstreamPrefilterGateReceiver,
+                out downstreamPrefilterGateMember))
         {
             foreach (var action in downstreamActions)
                 actions.Add(action);
@@ -2525,6 +2529,13 @@ internal static class CallbackResolverService
         var hasRoutableInterest = hasActionFilter || gatedWildcardResolved;
         var prefilterSideEffect = hasActionFilter &&
             HasMeaningfulWorkBeforeFirstActionFilter(window, nameVars, downstreamMethods);
+
+        // A downstream source-proven optional diagnostic gate is preserved by
+        // disabling the Override fast-path whenever that flag is active.
+        if (callback.Kind.Contains("override", StringComparison.OrdinalIgnoreCase) &&
+            downstreamExpanded &&
+            !string.IsNullOrWhiteSpace(downstreamPrefilterGateMember))
+            prefilterSideEffect = false;
         if (prefilterSideEffect)
             blockers.Add("Observable work occurs before the first proven action-interest filter.");
 
@@ -2656,7 +2667,9 @@ internal static class CallbackResolverService
             estimatedGlobalPaybackPct = structural?.EstimatedGlobalPaybackPct ?? 0,
             overridePrefilterProven,
             overrideWrappedMethodReturns,
-            overrideWrappedMethodTakesSelf
+            overrideWrappedMethodTakesSelf,
+            overridePrefilterGateReceiver = downstreamPrefilterGateReceiver,
+            overridePrefilterGateMember = downstreamPrefilterGateMember
         };
 
         return new GenericResolution
@@ -2948,17 +2961,21 @@ internal static class CallbackResolverService
         LiveSourceIndex sourceIndex,
         out string[] actions,
         out string[] methods,
-        out string[] files)
+        out string[] files,
+        out string prefilterGateReceiver,
+        out string prefilterGateMember)
     {
         actions = Array.Empty<string>();
         methods = Array.Empty<string>();
         files = Array.Empty<string>();
+        prefilterGateReceiver = "";
+        prefilterGateMember = "";
 
         var forwards = new List<ForwardedActionCall>();
 
         foreach (Match match in Regex.Matches(
                      window,
-                     @"(?<method>[A-Za-z_]\w*)\s*\((?<args>[^()\r\n]*)\)",
+                     @"(?:(?<receiver>[A-Za-z_]\w*)\s*[:.]\s*)?(?<method>[A-Za-z_]\w*)\s*\((?<args>[^()\r\n]*)\)",
                      RegexOptions.CultureInvariant))
         {
             var method = match.Groups["method"].Value;
@@ -2989,7 +3006,11 @@ internal static class CallbackResolverService
                 callArgs,
                 x => nameVars.Contains(x));
 
-            forwards.Add(new ForwardedActionCall(method, nameIndex, rawActionIndex));
+            forwards.Add(new ForwardedActionCall(
+                method,
+                nameIndex,
+                rawActionIndex,
+                match.Groups["receiver"].Value));
         }
 
         if (forwards.Count == 0)
@@ -3001,7 +3022,7 @@ internal static class CallbackResolverService
 
         foreach (var forward in forwards
                      .DistinctBy(
-                         x => $"{x.Method}|{x.NameArgumentIndex}|{x.RawActionArgumentIndex}",
+                         x => $"{x.Receiver}|{x.Method}|{x.NameArgumentIndex}|{x.RawActionArgumentIndex}",
                          StringComparer.OrdinalIgnoreCase))
         {
             var definitions = sourceIndex.FindOwnerMethodDefinitions(owner, forward.Method);
@@ -3034,6 +3055,7 @@ internal static class CallbackResolverService
                             owner,
                             definition.RelativeFile,
                             sourceIndex,
+                            "",
                             out definitionActions))
                         return false;
                 }
@@ -3043,14 +3065,32 @@ internal static class CallbackResolverService
                              owner,
                              definition.RelativeFile,
                              sourceIndex,
-                             out definitionActions))
+                             out definitionActions,
+                             out var definitionPrefilterGateMember))
                 {
                     return false;
                 }
 
+                if (!string.IsNullOrWhiteSpace(definitionPrefilterGateMember))
+                    forward.PrefilterGateMember = definitionPrefilterGateMember;
+
                 foreach (var action in definitionActions)
                     allActions.Add(action);
                 sourceFiles.Add(definition.RelativeFile);
+
+                if (!string.IsNullOrWhiteSpace(forward.PrefilterGateMember))
+                {
+                    if (string.IsNullOrWhiteSpace(forward.Receiver))
+                        return false;
+
+                    if (!string.IsNullOrWhiteSpace(prefilterGateMember) &&
+                        (!prefilterGateMember.Equals(forward.PrefilterGateMember, StringComparison.Ordinal) ||
+                         !prefilterGateReceiver.Equals(forward.Receiver, StringComparison.Ordinal)))
+                        return false;
+
+                    prefilterGateMember = forward.PrefilterGateMember;
+                    prefilterGateReceiver = forward.Receiver;
+                }
             }
         }
 
@@ -3069,9 +3109,11 @@ internal static class CallbackResolverService
         string owner,
         string relativeFile,
         LiveSourceIndex sourceIndex,
-        out string[] actions)
+        out string[] actions,
+        out string prefilterGateMember)
     {
         actions = Array.Empty<string>();
+        prefilterGateMember = "";
         var action = Regex.Escape(actionParameter);
 
         var nameVariables = new HashSet<string>(StringComparer.Ordinal);
@@ -3102,6 +3144,16 @@ internal static class CallbackResolverService
 
         foreach (var nameVariable in nameVariables)
         {
+            var gateMember = "";
+            var diagnosticGate = Regex.Match(
+                body,
+                @"(?m)^\s*if\s+[A-Za-z_]\w*\s+and\s+self\.(?<member>[A-Za-z_]\w*)\s+then\s+self:[A-Za-z_]\w*\s*\(\s*" +
+                Regex.Escape(nameVariable) +
+                @"\s*\)\s*end\s*$",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (diagnosticGate.Success)
+                gateMember = diagnosticGate.Groups["member"].Value;
+
             if (TryReadFiniteDownstreamActionSet(
                     body,
                     nameVariable,
@@ -3109,8 +3161,12 @@ internal static class CallbackResolverService
                     owner,
                     relativeFile,
                     sourceIndex,
+                    gateMember,
                     out actions))
+            {
+                prefilterGateMember = gateMember;
                 return true;
+            }
         }
 
         return false;
@@ -3123,6 +3179,7 @@ internal static class CallbackResolverService
         string owner,
         string relativeFile,
         LiveSourceIndex sourceIndex,
+        string allowedPrefilterGateMember,
         out string[] actions)
     {
         var found = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -3261,6 +3318,13 @@ internal static class CallbackResolverService
                     line,
                     @"['""][^'""]+['""]\s*==\s*\b" + name + @"\b",
                     RegexOptions.CultureInvariant) ||
+                (!string.IsNullOrWhiteSpace(allowedPrefilterGateMember) &&
+                 Regex.IsMatch(
+                     line,
+                     @"^if\s+[A-Za-z_]\w*\s+and\s+self\." +
+                     Regex.Escape(allowedPrefilterGateMember) +
+                     @"\s+then\s+self:[A-Za-z_]\w*\s*\(\s*" + name + @"\s*\)\s*end\s*$",
+                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)) ||
                 downstreamStaticTables.Any(table =>
                     Regex.IsMatch(
                         line,
@@ -3319,10 +3383,26 @@ internal static class CallbackResolverService
         return true;
     }
 
-    private sealed record ForwardedActionCall(
-        string Method,
-        int NameArgumentIndex,
-        int RawActionArgumentIndex);
+    private sealed class ForwardedActionCall
+    {
+        public ForwardedActionCall(
+            string method,
+            int nameArgumentIndex,
+            int rawActionArgumentIndex,
+            string receiver)
+        {
+            Method = method;
+            NameArgumentIndex = nameArgumentIndex;
+            RawActionArgumentIndex = rawActionArgumentIndex;
+            Receiver = receiver;
+        }
+
+        public string Method { get; }
+        public int NameArgumentIndex { get; }
+        public int RawActionArgumentIndex { get; }
+        public string Receiver { get; }
+        public string PrefilterGateMember { get; set; } = "";
+    }
 
     private static bool HasMeaningfulWorkBeforeFirstActionFilter(
         string window,
