@@ -1491,7 +1491,7 @@ public static class PassGeneratorService
             routedConditions.Add($"({candidate.DynamicGateExpression})");
 
             lines.Add($"{indent}            if {string.Join(" or ", routedConditions)} then");
-            lines.Add($"{indent}                {functionName}(this, action, consumer)");
+            lines.Add($"{indent}                {functionName}(this, action, consumer, routedName)");
             lines.Add($"{indent}            end");
             lines.Add($"{indent}        end, {owner})");
         }
