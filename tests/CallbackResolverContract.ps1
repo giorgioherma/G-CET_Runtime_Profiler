@@ -979,7 +979,7 @@ try {
         'ChoiceScrollDown',
         'ChoiceApply',
         'action:GetName()',
-        'wrappedMethod(self, action, consumer)',
+        'wrappedMethod(action, consumer)',
         'G-CET finite Override prefilter'
     )) {
         if ($overridePrefilterText -notmatch [regex]::Escape($requiredOverrideText)) {
