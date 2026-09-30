@@ -508,8 +508,14 @@ if ($backgroundDormancy.Class -ne 'BACKGROUND' -or !$backgroundDormancy.Evidence
     throw "Expected evidence-only BACKGROUND, got $($backgroundDormancy.Class)"
 }
 
-$other = @($result.callbackFamilies | Where-Object { $_.resolverFamily -eq 'OTHER' }) | Select-Object -First 1
-$unknown = @($other.topConsumers | Where-Object { $_.owner -eq 'FixtureUnknown' }) | Select-Object -First 1
+$unknown = $null
+foreach ($otherFamily in @($result.callbackFamilies | Where-Object { $_.resolverFamily -eq 'OTHER' })) {
+    $candidateUnknown = @($otherFamily.topConsumers | Where-Object { $_.owner -eq 'FixtureUnknown' }) | Select-Object -First 1
+    if ($null -ne $candidateUnknown) {
+        $unknown = $candidateUnknown
+        break
+    }
+}
 if ($null -eq $unknown) { throw 'FixtureUnknown was not ranked.' }
 if ($unknown.generic.Automatable) { throw 'Unsupported callback family was incorrectly marked automatable.' }
 if (!$unknown.registry.checkedAfterGenericExhausted) {
