@@ -834,10 +834,21 @@ public static class PassGeneratorService
                         rewrittenBody[..declarationIndex] +
                         rewrittenBody[(declarationIndex + fact.Declaration.Length)..];
 
+                    var escapedVariable = Regex.Escape(fact.Variable);
                     rewrittenBody = Regex.Replace(
                         rewrittenBody,
-                        @"\b" + Regex.Escape(fact.Variable) + @"\b",
-                        localName,
+                        @"\b(?<fn>i?pairs)\s*\(\s*" + escapedVariable + @"\s*\)",
+                        m => m.Groups["fn"].Value + "(" + localName + ")",
+                        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+                    rewrittenBody = Regex.Replace(
+                        rewrittenBody,
+                        @"#" + escapedVariable + @"\b",
+                        "#" + localName,
+                        RegexOptions.CultureInvariant);
+                    rewrittenBody = Regex.Replace(
+                        rewrittenBody,
+                        @"\b" + escapedVariable + @"(?<space>\s*)\[",
+                        m => localName + m.Groups["space"].Value + "[",
                         RegexOptions.CultureInvariant);
 
                     transformedTables.Add(fact.Variable);
