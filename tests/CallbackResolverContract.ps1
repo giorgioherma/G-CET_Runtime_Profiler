@@ -273,6 +273,18 @@ Observe("PlayerPuppet", "FixtureCameraTick", function(self)
 end)
 '@
 
+Write-Mod 'FixtureNeverGateUpdate' @'
+local active = false
+registerHotkey("fixture_never_gate", "Fixture never gate", function()
+    active = not active
+end)
+registerForEvent("onUpdate", function(delta)
+    local camera = Game.GetCameraSystem():GetActiveCameraData()
+    if not active then return end
+    DoCameraUpdate(camera, delta)
+end)
+'@
+
 Write-Mod 'FixtureDormantBackground' @'
 Observe("PlayerPuppet", "FixtureBackgroundTick", function(self)
     processTaskQueue()
@@ -348,6 +360,7 @@ $handoff = @{
         (CallbackRow 121 'FixtureDormantHard' 'observe' 'PlayerPuppet::FixtureTick' 60 6.0 1.2 'init.lua' 5 8),
         (CallbackRow 122 'FixtureDormantDiscovery' 'observe' 'PlayerPuppet::FixtureDiscoveryTick' 60 6.0 1.2 'init.lua' 5 10),
         (CallbackRow 123 'FixtureDormantNever' 'observe' 'PlayerPuppet::FixtureCameraTick' 60 6.0 1.2 'init.lua' 1 4),
+        (CallbackRow 128 'FixtureNeverGateUpdate' 'event' 'onUpdate' 60 18.0 4.0 'init.lua' 5 9),
         (CallbackRow 124 'FixtureDormantBackground' 'observe' 'PlayerPuppet::FixtureBackgroundTick' 60 6.0 1.2 'init.lua' 1 3),
         (CallbackRow 102 'FixtureFrame' 'event' 'onUpdate' 60 5.0 1.0 'init.lua' 1 3),
         (CallbackRow 127 'FixtureUnknownHot' 'observe' 'PlayerPuppet::AnotherUnknownMethod' 60 20.0 5.0 'init.lua' 1 3),
@@ -553,6 +566,18 @@ if ($discoveryAuthor.advanced.NextEvidence -ne 'SOURCE_DEPENDENCY_PROOF_FOR_DISC
     throw "Unexpected Advanced discovery next evidence: $($discoveryAuthor.advanced.NextEvidence)"
 }
 
+$neverUpdate = @($onUpdate.topConsumers | Where-Object { $_.owner -eq 'FixtureNeverGateUpdate' }) | Select-Object -First 1
+if ($null -eq $neverUpdate) { throw 'FixtureNeverGateUpdate was not ranked inside onUpdate.' }
+if ($neverUpdate.dormancy.Class -ne 'NEVER_GATE') {
+    throw "Sensitive onUpdate was not classified NEVER_GATE: $($neverUpdate.dormancy.Class)"
+}
+if (@($neverUpdate.generic.RecipeFamilies) -contains 'HARD_DORMANT_GUARD_HOIST') {
+    throw 'Sensitive camera onUpdate incorrectly received HARD_DORMANT_GUARD_HOIST.'
+}
+if ($neverUpdate.advanced.Eligible) {
+    throw 'Sensitive camera onUpdate incorrectly became Advanced dormancy eligible.'
+}
+
 $hardUpdate = @($onUpdate.topConsumers | Where-Object { $_.owner -eq 'FixtureDormantOnUpdate' }) | Select-Object -First 1
 if ($null -eq $hardUpdate) { throw 'FixtureDormantOnUpdate was not ranked inside onUpdate.' }
 if (!$hardUpdate.generic.Automatable) { throw 'Source-proven dormant onUpdate was not marked automatable.' }
@@ -644,7 +669,7 @@ if ($unknownHot.advanced.NextEvidence -ne 'USER_CLASSIFICATION') {
 if ($null -eq $resolved.pass) {
     throw 'CLI --generate-pass did not return a pass result.'
 }
-if ([int]$resolved.pass.TransformCount -ne 13) {
+if ([int]$resolved.pass.TransformCount -ne 14) {
     if (Test-Path -LiteralPath $resolved.pass.ManifestPath -PathType Leaf) {
         $failedManifest = Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
         Write-Host "PASS DEBUG transforms=$($failedManifest.summary.transforms) skipped=$($failedManifest.summary.skipped)"
@@ -652,10 +677,10 @@ if ([int]$resolved.pass.TransformCount -ne 13) {
             Write-Host ("PASS DEBUG SKIP owner={0} type={1} file={2} reason={3}" -f $skip.owner,$skip.type,$skip.file,$skip.reason)
         }
     }
-    throw "Expected 13 generated transforms, got $($resolved.pass.TransformCount)."
+    throw "Expected 14 generated transforms, got $($resolved.pass.TransformCount)."
 }
-if ([int]$resolved.pass.FileCount -ne 17) {
-    throw "Expected 17 generated replacement files (13 callback + 4 fixed 0-Engine), got $($resolved.pass.FileCount)."
+if ([int]$resolved.pass.FileCount -ne 18) {
+    throw "Expected 18 generated replacement files (14 callback + 4 fixed 0-Engine), got $($resolved.pass.FileCount)."
 }
 if (!(Test-Path -LiteralPath $resolved.pass.ZipPath -PathType Leaf)) {
     throw "Generated pass ZIP is missing: $($resolved.pass.ZipPath)"
@@ -776,11 +801,11 @@ try {
     if ($manifest.policy.modNameRules) {
         throw 'Generated pass manifest unexpectedly allows mod-name rules.'
     }
-    if ([int]$manifest.summary.transforms -ne 13) {
+    if ([int]$manifest.summary.transforms -ne 14) {
         throw 'Generated pass manifest transform count is wrong.'
     }
-    if ([int]$manifest.summary.callbackFiles -ne 13) {
-        throw "Expected 13 callback replacement files, got $($manifest.summary.callbackFiles)."
+    if ([int]$manifest.summary.callbackFiles -ne 14) {
+        throw "Expected 14 callback replacement files, got $($manifest.summary.callbackFiles)."
     }
     if ([int]$manifest.summary.fixedRuntimeFiles -ne 4) {
         throw "Expected 4 fixed 0-Engine runtime files, got $($manifest.summary.fixedRuntimeFiles)."
