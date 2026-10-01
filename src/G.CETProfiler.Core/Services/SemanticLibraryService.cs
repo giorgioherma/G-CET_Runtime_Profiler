@@ -54,8 +54,13 @@ internal sealed class SemanticLibraryService
         string? path,
         string modsRoot)
     {
-        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
-            return new SemanticLibraryService(modsRoot, false, new List<SemanticRule>());
+        if (string.IsNullOrWhiteSpace(path))
+            throw new InvalidOperationException(
+                "Semantic production library path is empty.");
+        if (!File.Exists(path))
+            throw new FileNotFoundException(
+                "Semantic production library is missing. Resolver AUTO will not silently continue without it.",
+                path);
 
         try
         {
@@ -136,11 +141,17 @@ internal sealed class SemanticLibraryService
                 }
             }
 
+            if (entries.Count == 0)
+                throw new InvalidOperationException(
+                    "Semantic production library contains no usable rules.");
+
             return new SemanticLibraryService(modsRoot, true, entries);
         }
-        catch
+        catch (Exception ex) when (ex is not FileNotFoundException)
         {
-            return new SemanticLibraryService(modsRoot, false, new List<SemanticRule>());
+            throw new InvalidOperationException(
+                $"Semantic production library could not be loaded: {path}. {ex.Message}",
+                ex);
         }
     }
 
