@@ -607,7 +607,7 @@ $positionProvider = @($result.sharedProviderOpportunities | Where-Object { $_.pr
 if ($null -eq $positionProvider) {
     throw 'PLAYER_POSITION shared-provider opportunity was not detected.'
 }
-if ([int]$positionProvider.sourceProvenOccurrences -lt 1) {
+if ([int]$positionProvider.sourceRecognizedOccurrences -lt 1) {
     throw 'PLAYER_POSITION did not prove a local receiver sourced from Game.GetPlayer().'
 }
 if ([int]$positionProvider.deepObservedCallbackCount -lt 1) {

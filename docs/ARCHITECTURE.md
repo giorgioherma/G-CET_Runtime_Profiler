@@ -168,9 +168,9 @@ numbers describe the measured callback territory in which a provider appears; th
 provider-cost or savings estimates and provider totals are not additive.
 
 Current-source recognition is intentionally conservative. Direct known getters are exact source
-matches. Player-derived reads are marked source-proven only when the receiver is locally established
-from `Game.GetPlayer()`; otherwise the occurrence is retained as an unproven opportunity rather than
-being silently treated as replaceable.
+matches. Player-derived reads are marked source-recognized only when the receiver is locally established
+from `Game.GetPlayer()`; otherwise the occurrence is retained as unresolved evidence. Recognition
+at this stage proves the source shape/receiver provenance only; it does not yet authorize substitution.
 
 This stage exists to answer which shared-provider families are actually worth implementing before
 adding new 0-Engine provider/generator machinery. Provider generation remains disabled.

@@ -72,7 +72,7 @@ internal static class CallbackResolverService
         var materialRemaining = 0;
         var belowThreshold = 0;
         var semanticMatches = 0;
-        var semanticSourceProven = 0;
+        var semanticSourceRecognized = 0;
         var semanticReadyRules = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var unresolved = 0;
         var alreadySatisfied = 0;
@@ -267,7 +267,7 @@ internal static class CallbackResolverService
 
         var document = new
         {
-            schemaVersion = "0.1",
+            schemaVersion = "0.2",
             generatedUtc = DateTime.UtcNow.ToString("O"),
             interop = new
             {
@@ -337,8 +337,8 @@ internal static class CallbackResolverService
                 measuredOwnerCount = x.MeasuredOwnerCount,
                 measuredCallbackCount = x.MeasuredCallbackCount,
                 sourceOccurrences = x.SourceOccurrences,
-                sourceProvenOccurrences = x.SourceProvenOccurrences,
-                sourceUnprovenOccurrences = x.SourceUnprovenOccurrences,
+                sourceRecognizedOccurrences = x.SourceRecognizedOccurrences,
+                sourceUnresolvedOccurrences = x.SourceUnresolvedOccurrences,
                 callbacksWithRepeatedSourceReads = x.CallbacksWithRepeatedSourceReads,
                 deepObservedCallbackCount = x.DeepObservedCallbackCount,
                 deepSampledCalls = x.DeepSampledCalls,
@@ -360,8 +360,8 @@ internal static class CallbackResolverService
                     target = cb.Target,
                     sourceFile = cb.SourceFile,
                     sourceOccurrences = cb.SourceOccurrences,
-                    sourceProvenOccurrences = cb.SourceProvenOccurrences,
-                    sourceUnprovenOccurrences = cb.SourceUnprovenOccurrences,
+                    sourceRecognizedOccurrences = cb.SourceRecognizedOccurrences,
+                    sourceUnresolvedOccurrences = cb.SourceUnresolvedOccurrences,
                     sourceCallsites = cb.SourceCallsites,
                     deepObserved = cb.DeepObserved,
                     deepSampledCalls = cb.DeepSampledCalls,
@@ -487,8 +487,8 @@ internal static class CallbackResolverService
                 var definition = SharedProviderDefinitions.First(x =>
                     x.Provider.Equals(providerGroup.Key, StringComparison.OrdinalIgnoreCase));
                 var providerMatches = providerGroup.ToArray();
-                var proven = providerMatches.Count(x => x.SourceProven);
-                var unproven = providerMatches.Length - proven;
+                var recognized = providerMatches.Count(x => x.SourceRecognized);
+                var unresolved = providerMatches.Length - recognized;
                 callbackDeep.ByProvider.TryGetValue(
                     definition.Provider,
                     out var deepForProvider);
@@ -507,8 +507,8 @@ internal static class CallbackResolverService
                     Target = callback.Target,
                     SourceFile = source.RelativeFile,
                     SourceOccurrences = providerMatches.Length,
-                    SourceProvenOccurrences = proven,
-                    SourceUnprovenOccurrences = unproven,
+                    SourceRecognizedOccurrences = recognized,
+                    SourceUnresolvedOccurrences = unresolved,
                     SourceCallsites = providerMatches
                         .Select(x => new SharedProviderSourceCallsite
                         {
@@ -551,8 +551,8 @@ internal static class CallbackResolverService
                         .Count(),
                     MeasuredCallbackCount = rows.Length,
                     SourceOccurrences = rows.Sum(x => x.SourceOccurrences),
-                    SourceProvenOccurrences = rows.Sum(x => x.SourceProvenOccurrences),
-                    SourceUnprovenOccurrences = rows.Sum(x => x.SourceUnprovenOccurrences),
+                    SourceRecognizedOccurrences = rows.Sum(x => x.SourceRecognizedOccurrences),
+                    SourceUnresolvedOccurrences = rows.Sum(x => x.SourceUnresolvedOccurrences),
                     CallbacksWithRepeatedSourceReads =
                         rows.Count(x => x.SourceOccurrences > 1),
                     DeepObservedCallbackCount = rows.Count(x => x.DeepObserved),
@@ -600,7 +600,7 @@ internal static class CallbackResolverService
                     {
                         Provider = definition.Provider,
                         Line = SharedProviderLine(source, match.Index),
-                        SourceProven = true,
+                        SourceRecognized = true,
                         Proof = "EXACT_KNOWN_GETTER"
                     });
                 }
@@ -629,7 +629,7 @@ internal static class CallbackResolverService
                 {
                     Provider = definition.Provider,
                     Line = SharedProviderLine(source, match.Index),
-                    SourceProven = proven,
+                    SourceRecognized = proven,
                     Proof = proven
                         ? "LOCAL_RECEIVER_FROM_GAME_GETPLAYER"
                         : "RECEIVER_NOT_PROVEN_AS_CURRENT_PLAYER"
@@ -4563,7 +4563,7 @@ internal static class CallbackResolverService
     {
         public string Provider { get; init; } = "";
         public int Line { get; init; }
-        public bool SourceProven { get; init; }
+        public bool SourceRecognized { get; init; }
         public string Proof { get; init; } = "";
     }
 
@@ -4597,8 +4597,8 @@ internal static class CallbackResolverService
         public string Target { get; init; } = "";
         public string SourceFile { get; init; } = "";
         public int SourceOccurrences { get; init; }
-        public int SourceProvenOccurrences { get; init; }
-        public int SourceUnprovenOccurrences { get; init; }
+        public int SourceRecognizedOccurrences { get; init; }
+        public int SourceUnresolvedOccurrences { get; init; }
         public SharedProviderSourceCallsite[] SourceCallsites { get; init; } =
             Array.Empty<SharedProviderSourceCallsite>();
         public bool DeepObserved { get; init; }
@@ -4618,8 +4618,8 @@ internal static class CallbackResolverService
         public int MeasuredOwnerCount { get; init; }
         public int MeasuredCallbackCount { get; init; }
         public int SourceOccurrences { get; init; }
-        public int SourceProvenOccurrences { get; init; }
-        public int SourceUnprovenOccurrences { get; init; }
+        public int SourceRecognizedOccurrences { get; init; }
+        public int SourceUnresolvedOccurrences { get; init; }
         public int CallbacksWithRepeatedSourceReads { get; init; }
         public int DeepObservedCallbackCount { get; init; }
         public long DeepSampledCalls { get; init; }
