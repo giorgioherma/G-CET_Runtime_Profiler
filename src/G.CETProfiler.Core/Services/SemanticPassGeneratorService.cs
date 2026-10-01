@@ -52,6 +52,18 @@ internal static class SemanticPassGeneratorService
                     continue;
                 }
 
+                if (context.Changes.Count == 0)
+                    throw new InvalidOperationException(
+                        "Semantic injector reported success without changing any live source file.");
+
+                if (candidate.ExpectedMarkerFileCount > 0 &&
+                    context.Changes.Count != candidate.ExpectedMarkerFileCount)
+                {
+                    throw new InvalidOperationException(
+                        $"Semantic injector changed {context.Changes.Count} file(s), but rule " +
+                        $"expects {candidate.ExpectedMarkerFileCount} complete marker file(s).");
+                }
+
                 foreach (var change in context.Changes)
                 {
                     var relative = change.RelativeFile.Replace('\\', '/');
@@ -149,6 +161,9 @@ internal static class SemanticPassGeneratorService
                 var handler = JsonString(semantic, "Handler");
                 var policyClass = JsonString(semantic, "PolicyClass");
                 var patchStyle = JsonString(semantic, "PatchStyle");
+                var expectedMarkerFileCount = (int)JsonLong(
+                    semantic,
+                    "ExpectedMarkerFileCount");
 
                 if (string.IsNullOrWhiteSpace(ruleId) ||
                     string.IsNullOrWhiteSpace(owner) ||
@@ -161,7 +176,8 @@ internal static class SemanticPassGeneratorService
                     handler,
                     policyClass,
                     patchStyle,
-                    runtimeMs));
+                    runtimeMs,
+                    expectedMarkerFileCount));
             }
         }
 
@@ -193,6 +209,15 @@ internal static class SemanticPassGeneratorService
         return 0;
     }
 
+    private static long JsonLong(JsonElement element, string name)
+    {
+        if (!element.TryGetProperty(name, out var value) ||
+            value.ValueKind != JsonValueKind.Number ||
+            !value.TryGetInt64(out var number))
+            return 0;
+        return number;
+    }
+
     private static string Sha256(byte[] bytes) =>
         Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
 }
@@ -203,7 +228,8 @@ internal sealed record SemanticCandidate(
     string Handler,
     string PolicyClass,
     string PatchStyle,
-    double RuntimeMsPerSecond);
+    double RuntimeMsPerSecond,
+    int ExpectedMarkerFileCount);
 
 internal sealed record SemanticInjectionResult(
     bool Applied,
