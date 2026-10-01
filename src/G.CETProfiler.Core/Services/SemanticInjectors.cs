@@ -25,6 +25,12 @@ internal static class SemanticInjectors
             "npcd-hotline" => ApplyNpcdHotline(context),
             "gameentityexaminertool" => ApplyGameEntityExaminer(context),
             "shift" => ApplyShift(context),
+            "immersivefirstperson" => ApplyImmersiveFirstPerson(context),
+            "givemeeverything" => ApplyGiveMeEverything(context),
+            "questrunner" => ApplyQuestRunner(context),
+            "driveaerialvehicle" => ApplyDriveAerialVehicle(context),
+            "roulette" => ApplyRoulette(context),
+            "blackjack" => ApplyBlackjack(context),
             _ => SemanticInjectionResult.Skip(
                 $"No semantic source injector is implemented for rule '{candidate.RuleId}'.")
         };
@@ -720,6 +726,291 @@ internal static class SemanticInjectors
             "Kept Cron and remote-control vehicle following frame-responsive; scanner/entity examination reconciles at 30 Hz while active and retains a 5 Hz dormant target-refresh lane for hotkey correctness.");
     }
 
+
+    private static SemanticInjectionResult ApplyImmersiveFirstPerson(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "init.lua",
+            "CameraCore.Update",
+            "RuntimeHeight.Update",
+            "isDisabledByApi");
+
+        var opening = FindOnUpdateOpening(file.Text, "delta");
+        var guard =
+            opening +
+            "        -- G-CET semantic activity gate: when the feature is not initialized,\n" +
+            "        -- not attached to a live session, disabled, or API-disabled, none of\n" +
+            "        -- the camera/height frame work can produce a visible result.\n" +
+            "        if not initialized or not isLoaded or not isEnabled or isDisabledByApi then return end\n";
+
+        var text = ReplaceOnce(
+            file.Text,
+            opening,
+            guard,
+            "ImmersiveFirstPerson active-session onUpdate gate");
+        context.Write(file, text);
+
+        return SemanticInjectionResult.Success(
+            "Injected an activity/session gate before Immersive First Person camera and runtime-height work; active camera behavior remains every-frame.");
+    }
+
+    private static SemanticInjectionResult ApplyGiveMeEverything(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "tabs/teleport.lua",
+            "BaseMappinBaseController",
+            "UpdateRootState",
+            "CustomPositionVariant",
+            "GetWorldPosition");
+
+        var pattern =
+            @"(?m)^(?<opening>\s*Observe\s*\(\s*[""']BaseMappinBaseController[""']\s*,\s*[""']UpdateRootState[""']\s*,\s*function\s*\(\s*self\s*\)\s*)$";
+
+        var replacement =
+            "${opening}\n" +
+            "        -- G-CET semantic ownership prefilter: this observer is global but\n" +
+            "        -- GiveMeEverything only owns the custom waypoint variant.\n" +
+            "        local __gcetMappin = self:GetMappin()\n" +
+            "        if not __gcetMappin or __gcetMappin:GetVariant() ~= gamedataMappinVariant.CustomPositionVariant then return end";
+
+        var text = RegexReplaceOnce(
+            file.Text,
+            pattern,
+            replacement,
+            "GiveMeEverything custom waypoint mappin prefilter");
+        context.Write(file, text);
+
+        return SemanticInjectionResult.Success(
+            "Rejected unrelated BaseMappin UpdateRootState callbacks before GiveMeEverything performs custom-waypoint world/native work.");
+    }
+
+    private static SemanticInjectionResult ApplyQuestRunner(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "init.lua",
+            "Manager:update(dt)",
+            "Spawner.Update(dt)",
+            "Cron.Update(dt)",
+            "Runner.gameState");
+
+        var opening = FindOnUpdateOpening(file.Text, "dt");
+        var text = ReplaceOnce(
+            file.Text,
+            opening,
+            "local __gcetQuestRunnerManagerElapsed = 0.0\n" +
+            "local __gcetQuestRunnerSpawnerElapsed = 0.0\n\n" +
+            opening,
+            "QuestRunner cadence declarations");
+
+        text = RegexReplaceOnce(
+            text,
+            @"(?m)^(?<indent>\s*)Manager:update\(dt\)\s*$",
+            "${indent}if Manager.current then\n" +
+            "${indent}\t__gcetQuestRunnerManagerElapsed = 0.0\n" +
+            "${indent}\tManager:update(dt)\n" +
+            "${indent}else\n" +
+            "${indent}\t__gcetQuestRunnerManagerElapsed = __gcetQuestRunnerManagerElapsed + (tonumber(dt) or 0)\n" +
+            "${indent}\tif __gcetQuestRunnerManagerElapsed >= 0.20 then\n" +
+            "${indent}\t\tlocal __gcetElapsed = __gcetQuestRunnerManagerElapsed\n" +
+            "${indent}\t\t__gcetQuestRunnerManagerElapsed = 0.0\n" +
+            "${indent}\t\tManager:update(__gcetElapsed)\n" +
+            "${indent}\tend\n" +
+            "${indent}end",
+            "QuestRunner active/idle Manager lane");
+
+        text = RegexReplaceOnce(
+            text,
+            @"(?m)^(?<indent>\s*)Spawner\.Update\(dt\)\s*$",
+            "${indent}__gcetQuestRunnerSpawnerElapsed = __gcetQuestRunnerSpawnerElapsed + (tonumber(dt) or 0)\n" +
+            "${indent}if __gcetQuestRunnerSpawnerElapsed >= 0.25 then\n" +
+            "${indent}\tlocal __gcetElapsed = __gcetQuestRunnerSpawnerElapsed\n" +
+            "${indent}\t__gcetQuestRunnerSpawnerElapsed = 0.0\n" +
+            "${indent}\tSpawner.Update(__gcetElapsed)\n" +
+            "${indent}end",
+            "QuestRunner Spawner feed lane");
+
+        context.Write(file, text);
+
+        return SemanticInjectionResult.Success(
+            "Preserved active QuestRunner Manager frame cadence, moved idle Manager refresh to 5 Hz, and fed Spawner at 4 Hz with accumulated delta.");
+    }
+
+    private static SemanticInjectionResult ApplyDriveAerialVehicle(
+        SemanticPatchContext context)
+    {
+        var init = context.FindFile(
+            "init.lua",
+            "DAV.core_obj.av_obj.engine_obj:Update(delta)",
+            "Def.Situation.Idle",
+            "Cron.Update(delta)");
+
+        var initText = RegexReplaceOnce(
+            init.Text,
+            @"(?m)^(?<indent>\s*)DAV\.core_obj\.av_obj\.engine_obj:Update\(delta\)\s*$",
+            "${indent}local __gcetEvent = DAV.core_obj.event_obj\n" +
+            "${indent}local __gcetSituation = __gcetEvent and __gcetEvent.current_situation or Def.Situation.Idle\n" +
+            "${indent}if __gcetSituation ~= Def.Situation.Idle and __gcetSituation ~= Def.Situation.Normal then\n" +
+            "${indent}\tDAV.core_obj.av_obj.engine_obj:Update(delta)\n" +
+            "${indent}end",
+            "DriveAerialVehicle realtime physics state gate");
+        context.Write(init, initText);
+
+        var core = context.FindFile(
+            "Modules/core.lua",
+            "Cron.Every(DAV.time_resolution",
+            "self.event_obj:CheckAllEvents()",
+            "self:GetActions()",
+            "Def.Situation.Normal");
+
+        var pattern =
+            @"Cron\.Every\(DAV\.time_resolution\s*,\s*function\s*\(\s*\)\s*" +
+            @"self\.event_obj:CheckAllEvents\(\)\s*" +
+            @"self:GetActions\(\)\s*" +
+            @"end\s*\)";
+
+        var replacement =
+            "local __gcetIdleEventTick = 0\n" +
+            "    Cron.Every(DAV.time_resolution, function()\n" +
+            "        local __gcetSituation = self.event_obj.current_situation\n" +
+            "        local __gcetActiveVehicleState = __gcetSituation ~= Def.Situation.Idle and __gcetSituation ~= Def.Situation.Normal\n" +
+            "        if __gcetActiveVehicleState then\n" +
+            "            __gcetIdleEventTick = 0\n" +
+            "            self.event_obj:CheckAllEvents()\n" +
+            "        elseif __gcetSituation == Def.Situation.Normal then\n" +
+            "            __gcetIdleEventTick = __gcetIdleEventTick + 1\n" +
+            "            if __gcetIdleEventTick >= 8 then\n" +
+            "                __gcetIdleEventTick = 0\n" +
+            "                self.event_obj:CheckAllEvents()\n" +
+            "            end\n" +
+            "        end\n" +
+            "        if __gcetActiveVehicleState or not self.queue_obj:IsEmpty() then\n" +
+            "            self:GetActions()\n" +
+            "        end\n" +
+            "    end)";
+
+        var coreText = RegexReplaceOnce(
+            core.Text,
+            pattern,
+            replacement,
+            "DriveAerialVehicle active/normal event cadence");
+        context.Write(core, coreText);
+
+        return SemanticInjectionResult.Success(
+            "Kept flight/landing/waiting/takeoff physics and event checks realtime, stopped physics in Normal/Idle, slowed Normal reconciliation, and preserved immediate queued actions.");
+    }
+
+    private static SemanticInjectionResult ApplyRoulette(
+        SemanticPatchContext context)
+    {
+        var init = context.FindFile(
+            "init.lua",
+            "SpotManager.update",
+            "Cron.Update",
+            "TableManager.GetActiveTable",
+            "RouletteMainMenu.Update");
+
+        var opening = FindOnUpdateOpening(init.Text, "dt");
+        var initText = ReplaceOnce(
+            init.Text,
+            opening,
+            "local __gcetRouletteIdleElapsed = 0.0\n\n" +
+            opening +
+            "    local __gcetFrameDt = math.max(tonumber(dt) or 0.0, 0.0)\n" +
+            "    local __gcetRealtime = SpotManager.IsPlayerInSpot() or TableManager.GetActiveTable() ~= nil\n" +
+            "    if not __gcetRealtime then\n" +
+            "        __gcetRouletteIdleElapsed = __gcetRouletteIdleElapsed + __gcetFrameDt\n" +
+            "        if __gcetRouletteIdleElapsed < 0.10 then return end\n" +
+            "        dt = __gcetRouletteIdleElapsed\n" +
+            "        __gcetRouletteIdleElapsed = 0.0\n" +
+            "    else\n" +
+            "        __gcetRouletteIdleElapsed = 0.0\n" +
+            "    end\n",
+            "Roulette active/idle runtime gate");
+        context.Write(init, initText);
+
+        ApplyVisibleSpotMappinPrefilter(
+            context,
+            "SpotManager.lua",
+            "roulette");
+
+        return SemanticInjectionResult.Success(
+            "Restored frame cadence while a roulette table is active, reduced far/idle runtime to 10 Hz with accumulated delta, and rejected global mappin callbacks when no roulette prompt is visible.");
+    }
+
+    private static SemanticInjectionResult ApplyBlackjack(
+        SemanticPatchContext context)
+    {
+        var init = context.FindFile(
+            "init.lua",
+            "SpotManager.update",
+            "Cron.Update",
+            "BlackjackMainMenu.Update",
+            "SpotManager.IsPlayerInSpot");
+
+        var opening = FindOnUpdateOpening(init.Text, "dt");
+        var initText = ReplaceOnce(
+            init.Text,
+            opening,
+            "local __gcetBlackjackIdleElapsed = 0.0\n\n" +
+            opening +
+            "    local __gcetFrameDt = math.max(tonumber(dt) or 0.0, 0.0)\n" +
+            "    if not SpotManager.IsPlayerInSpot() then\n" +
+            "        __gcetBlackjackIdleElapsed = __gcetBlackjackIdleElapsed + __gcetFrameDt\n" +
+            "        if __gcetBlackjackIdleElapsed < 0.05 then return end\n" +
+            "        dt = __gcetBlackjackIdleElapsed\n" +
+            "        __gcetBlackjackIdleElapsed = 0.0\n" +
+            "    else\n" +
+            "        __gcetBlackjackIdleElapsed = 0.0\n" +
+            "    end\n",
+            "Blackjack active/idle runtime gate");
+        context.Write(init, initText);
+
+        ApplyVisibleSpotMappinPrefilter(
+            context,
+            "SpotManager.lua",
+            "blackjack");
+
+        return SemanticInjectionResult.Success(
+            "Preserved frame cadence while seated at blackjack, reduced idle/proximity runtime to 20 Hz with accumulated delta, and rejected global mappin callbacks when no blackjack prompt is visible.");
+    }
+
+    private static void ApplyVisibleSpotMappinPrefilter(
+        SemanticPatchContext context,
+        string preferredFile,
+        string label)
+    {
+        var file = context.FindFile(
+            preferredFile,
+            "BaseMappinBaseController",
+            "UpdateRootState",
+            "SpotManager.spots",
+            "spot_showingInteractUI");
+
+        var pattern =
+            @"(?m)^(?<opening>\s*ObserveAfter\s*\(\s*[""']BaseMappinBaseController[""']\s*,\s*[""']UpdateRootState[""']\s*,\s*function\s*\(\s*this\s*\)[^\r\n]*)$";
+
+        var replacement =
+            "${opening}\n" +
+            "        local __gcetVisiblePrompt = false\n" +
+            "        for _, __gcetSpotTable in pairs(SpotManager.spots) do\n" +
+            "            if __gcetSpotTable.spotObject and __gcetSpotTable.spotObject.spot_showingInteractUI then\n" +
+            "                __gcetVisiblePrompt = true\n" +
+            "                break\n" +
+            "            end\n" +
+            "        end\n" +
+            "        if not __gcetVisiblePrompt then return end";
+
+        var text = RegexReplaceOnce(
+            file.Text,
+            pattern,
+            replacement,
+            label + " visible-prompt mappin prefilter");
+        context.Write(file, text);
+    }
+
     private static SemanticInjectionResult ApplyShift(
         SemanticPatchContext context)
     {
@@ -783,6 +1074,31 @@ internal static class SemanticInjectors
                 $"More than one onUpdate({parameter}) opening matched.");
 
         return match.Groups["opening"].Value + "\n";
+    }
+
+
+    private static string RegexReplaceOnce(
+        string text,
+        string pattern,
+        string replacement,
+        string label)
+    {
+        var regex = new Regex(
+            pattern,
+            RegexOptions.CultureInvariant);
+
+        var matches = regex.Matches(text);
+        if (matches.Count == 0)
+            throw new InvalidOperationException(
+                $"Current source no longer matches semantic anchor: {label}.");
+        if (matches.Count != 1)
+            throw new InvalidOperationException(
+                $"Semantic anchor is ambiguous in current source: {label}.");
+
+        return regex.Replace(
+            text,
+            replacement,
+            1);
     }
 
     private static string ReplaceOnce(
