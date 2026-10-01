@@ -288,10 +288,11 @@ internal static class CallbackResolverService
                 dormancyCanAuthorizeGeneration = false,
                 dormancyClasses = new[] { "NEVER_GATE", "HARD_DORMANT", "DISCOVERY_DORMANT", "BACKGROUND", "UNKNOWN" },
                 sharedProviderOpportunityAnalysis = true,
-                sharedProviderGenerationEnabled = false,
+                sharedProviderGenerationEnabled = true,
+                sharedProviderGenerationFamilies = new[] { "PLAYER" },
                 sharedProviderScope = "MEASURED_CALLBACKS_ONLY",
                 sharedProviderDeepEvidence = "UNTRUNCATED_KNOWN_PROVIDER_CALLEES_WITH_LEGACY_HOTCALLEES_FALLBACK",
-                note = "Generic AUTO is restricted to mechanically source-proven action routing, exact Override prefiltering, and frame-dispatch consolidation. Structural, cadence, dormancy, and shared-provider recognizers remain analysis evidence only; identity-specific automatic behavior lives exclusively in the source-proven semantic library. Shared-provider opportunity totals describe measured callback territory, not estimated savings. Shared-provider deep evidence is aggregated across the measured stack without a per-callback hot-callee top-N gate. Already-satisfied generated states are not re-applied."
+                note = "Generic AUTO is restricted to mechanically source-proven action routing, exact Override prefiltering, and frame-dispatch consolidation. Structural, cadence, and dormancy recognizers remain analysis evidence only; shared-provider generation is restricted to the explicitly enabled PLAYER family with exact current-source proof; identity-specific automatic behavior lives exclusively in the source-proven semantic library. Shared-provider opportunity totals describe measured callback territory, not estimated savings. Shared-provider deep evidence is aggregated across the measured stack without a per-callback hot-callee top-N gate. Already-satisfied generated states are not re-applied."
             },
             cadence = new
             {
@@ -349,8 +350,14 @@ internal static class CallbackResolverService
                 affectedCallbackCallsPerSecond = Round(x.AffectedCallbackCallsPerSecond),
                 affectedSpikeCount = x.AffectedSpikeCount,
                 maxAffectedSpikeExclusiveMs = Round(x.MaxAffectedSpikeExclusiveMs),
-                analysisOnly = true,
-                generationEnabled = false,
+                analysisOnly = !x.Provider.Equals("PLAYER", StringComparison.OrdinalIgnoreCase),
+                generationEnabled = x.Provider.Equals("PLAYER", StringComparison.OrdinalIgnoreCase),
+                generationRecipe = x.Provider.Equals("PLAYER", StringComparison.OrdinalIgnoreCase)
+                    ? "SHARED_PROVIDER_READ"
+                    : null,
+                providerApi = x.Provider.Equals("PLAYER", StringComparison.OrdinalIgnoreCase)
+                    ? "0-Engine.GetPlayer"
+                    : null,
                 metricMeaning = "Affected callback work is the measured workload of callbacks containing this provider candidate; it is not an estimate of provider savings and provider totals are not additive.",
                 owners = x.Owners,
                 callbacks = x.Callbacks.Select(cb => new
@@ -360,6 +367,16 @@ internal static class CallbackResolverService
                     kind = cb.Kind,
                     target = cb.Target,
                     sourceFile = cb.SourceFile,
+                    sourceSha256 = cb.SourceSha256,
+                    lineStart = cb.LineStart,
+                    lineEnd = cb.LineEnd,
+                    substitutionEligible =
+                        x.Provider.Equals("PLAYER", StringComparison.OrdinalIgnoreCase) &&
+                        cb.SourceRecognizedOccurrences > 0 &&
+                        cb.SourceUnresolvedOccurrences == 0 &&
+                        !string.IsNullOrWhiteSpace(cb.SourceSha256) &&
+                        cb.LineStart.GetValueOrDefault() > 0 &&
+                        cb.LineEnd.GetValueOrDefault() >= cb.LineStart.GetValueOrDefault(),
                     sourceOccurrences = cb.SourceOccurrences,
                     sourceRecognizedOccurrences = cb.SourceRecognizedOccurrences,
                     sourceUnresolvedOccurrences = cb.SourceUnresolvedOccurrences,
@@ -507,6 +524,9 @@ internal static class CallbackResolverService
                     Kind = callback.Kind,
                     Target = callback.Target,
                     SourceFile = source.RelativeFile,
+                    SourceSha256 = source.Sha256,
+                    LineStart = source.LineStart,
+                    LineEnd = source.LineEnd,
                     SourceOccurrences = providerMatches.Length,
                     SourceRecognizedOccurrences = recognized,
                     SourceUnresolvedOccurrences = unresolved,
@@ -4615,6 +4635,9 @@ internal static class CallbackResolverService
         public string Kind { get; init; } = "";
         public string Target { get; init; } = "";
         public string SourceFile { get; init; } = "";
+        public string SourceSha256 { get; init; } = "";
+        public int? LineStart { get; init; }
+        public int? LineEnd { get; init; }
         public int SourceOccurrences { get; init; }
         public int SourceRecognizedOccurrences { get; init; }
         public int SourceUnresolvedOccurrences { get; init; }
