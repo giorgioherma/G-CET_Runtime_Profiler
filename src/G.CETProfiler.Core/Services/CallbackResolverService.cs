@@ -15,6 +15,8 @@ internal sealed record CallbackResolverDocumentResult(
     int MaterialRemainingCount,
     int BelowThresholdCount,
     int SemanticReadyRuleCount,
+    int SharedProviderReadyCallbackCount,
+    int SharedProviderReadyReadCount,
     int AlreadySatisfiedCount,
     int UnresolvedCount);
 
@@ -265,6 +267,20 @@ internal static class CallbackResolverService
             sourceIndex,
             handoff.RootElement);
 
+        var sharedProviderReadyCallbacks = sharedProviderOpportunities
+            .Where(x => x.Provider.Equals("PLAYER", StringComparison.OrdinalIgnoreCase))
+            .SelectMany(x => x.Callbacks)
+            .Where(cb =>
+                cb.SourceRecognizedOccurrences > 0 &&
+                cb.SourceUnresolvedOccurrences == 0 &&
+                !string.IsNullOrWhiteSpace(cb.SourceSha256) &&
+                cb.LineStart.GetValueOrDefault() > 0 &&
+                cb.LineEnd.GetValueOrDefault() >= cb.LineStart.GetValueOrDefault())
+            .ToArray();
+        var sharedProviderReadyCallbackCount = sharedProviderReadyCallbacks.Length;
+        var sharedProviderReadyReadCount = sharedProviderReadyCallbacks
+            .Sum(cb => cb.SourceRecognizedOccurrences);
+
         var document = new
         {
             schemaVersion = "0.2",
@@ -321,6 +337,8 @@ internal static class CallbackResolverService
                 semanticMatches,
                 semanticSourceProven,
                 semanticReadyRules = semanticReadyRules.Count,
+                sharedProviderReadyCallbacks = sharedProviderReadyCallbackCount,
+                sharedProviderReadyReads = sharedProviderReadyReadCount,
                 alreadySatisfied,
                 unresolved,
                 sharedProviderFamilies = sharedProviderOpportunities.Length,
@@ -404,6 +422,8 @@ internal static class CallbackResolverService
             materialRemaining,
             belowThreshold,
             semanticReadyRules.Count,
+            sharedProviderReadyCallbackCount,
+            sharedProviderReadyReadCount,
             alreadySatisfied,
             unresolved);
     }
