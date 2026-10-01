@@ -49,8 +49,8 @@ internal static class SemanticInjectors
             "local __gcetCombatEnemyBaseLastState = nil\n\n" +
             enemyOpening +
             "\tlocal __gcetInCombat = this.inCombat == true\n" +
-            "\tlocal __gcetMovingHorizontally = this:IsMovingHorizontally() == true\n" +
-            "\tlocal __gcetMovingVertically = this:IsMovingVertically() == true\n" +
+            "\tlocal __gcetMovingHorizontally = __gcetInCombat and this:IsMovingHorizontally() == true or false\n" +
+            "\tlocal __gcetMovingVertically = __gcetInCombat and this:IsMovingVertically() == true or false\n" +
             "\tlocal __gcetState = (__gcetInCombat and 4 or 0) + (__gcetMovingHorizontally and 1 or 0) + (__gcetMovingVertically and 2 or 0)\n" +
             "\tif __gcetState == __gcetCombatEnemyBaseLastState then return end\n" +
             "\t__gcetCombatEnemyBaseLastState = __gcetState\n";
@@ -421,7 +421,7 @@ internal static class SemanticInjectors
         var newUpdate =
             "    Mod.tickElapsed = Mod.tickElapsed + delta\n" +
             "    Mod.schedulerElapsed = Mod.schedulerElapsed + delta\n" +
-            "    Mod.presentationElapsed = (Mod.presentationElapsed or 0.0) + delta\n" +
+            "    Mod.presentationElapsed = (Mod.presentationElapsed or 5.0) + delta\n" +
             "    if Mod.tickElapsed >= 1.0 then\n" +
             "        Mod.tickElapsed = 0.0\n" +
             "        local includePresentation = Mod.presentationElapsed >= 5.0\n" +
@@ -477,7 +477,7 @@ internal static class SemanticInjectors
             opening +
             "    local __gcetRaceMappinState = raceLogic.raceInProgress == true\n" +
             "    local __gcetTrackCount = #timeTrials.availableRaces\n" +
-            "    if __gcetRaceMappinState ~= __gcetCyberTrialsLastRaceMappinState or __gcetTrackCount ~= __gcetCyberTrialsLastTrackCount then\n" +
+            "    if timeTrials.runtimeData.inGame and (__gcetRaceMappinState ~= __gcetCyberTrialsLastRaceMappinState or __gcetTrackCount ~= __gcetCyberTrialsLastTrackCount) then\n" +
             "        hubs.setupMappins(timeTrials.availableRaces)\n" +
             "        __gcetCyberTrialsLastRaceMappinState = __gcetRaceMappinState\n" +
             "        __gcetCyberTrialsLastTrackCount = __gcetTrackCount\n" +
