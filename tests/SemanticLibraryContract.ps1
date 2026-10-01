@@ -115,9 +115,9 @@ if (![string]::IsNullOrWhiteSpace($ResolverRoot)) {
     $runtimeRoot = Join-Path $resolvedRoot 'runtime\0-Engine'
     $requiredRuntime = @(
         'fixed-init.lua.gz.b64',
-        'modules\ActionRouter.lua.gz.b64',
-        'modules\Health.lua.gz.b64',
-        'modules\Scheduler.lua.gz.b64'
+        'modules\ActionRouter.lua.b64',
+        'modules\Health.lua.b64',
+        'modules\Scheduler.lua.b64'
     )
     foreach ($relative in $requiredRuntime) {
         $runtimeFile = Join-Path $runtimeRoot $relative
@@ -130,7 +130,7 @@ if (![string]::IsNullOrWhiteSpace($ResolverRoot)) {
         Get-ChildItem -LiteralPath $runtimeRoot -File -Recurse |
         Where-Object {
             $_.Name -in @('manifest.json', 'init.patch') -or
-            ($_.Name -like '*.b64' -and $_.Name -notlike '*.gz.b64')
+            ($_.Name -like '*.gz.b64' -and $_.Name -ne 'fixed-init.lua.gz.b64')
         }
     )
     if ($unexpectedRuntime.Count -gt 0) {

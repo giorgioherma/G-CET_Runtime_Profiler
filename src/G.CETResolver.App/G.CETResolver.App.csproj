@@ -22,7 +22,7 @@
           Link="runtime\0-Engine\fixed-init.lua.gz.b64"
           CopyToOutputDirectory="PreserveNewest"
           CopyToPublishDirectory="PreserveNewest" />
-    <None Include="..\..\resolver-runtime\0-Engine\modules\*.lua.gz.b64"
+    <None Include="..\..\resolver-runtime\0-Engine\modules\*.lua.b64"
           Link="runtime\0-Engine\modules\%(Filename)%(Extension)"
           CopyToOutputDirectory="PreserveNewest"
           CopyToPublishDirectory="PreserveNewest" />

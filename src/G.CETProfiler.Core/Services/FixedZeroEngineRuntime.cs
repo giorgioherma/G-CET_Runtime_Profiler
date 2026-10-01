@@ -102,14 +102,14 @@ internal static class FixedZeroEngineRuntime
         {
             var encodedPath = Path.Combine(
                 runtimeRoot,
-                (pair.Key + ".gz.b64").Replace('/', Path.DirectorySeparatorChar));
+                (pair.Key + ".b64").Replace('/', Path.DirectorySeparatorChar));
             if (!File.Exists(encodedPath))
             {
                 throw new InvalidOperationException(
                     $"Bundled fixed 0-Engine runtime payload is missing for {pair.Key}: {encodedPath}");
             }
 
-            var bytes = DecodeGzipBase64(encodedPath, pair.Key);
+            var bytes = DecodeBase64(encodedPath, pair.Key);
             var hash = Sha256(bytes);
             if (!hash.Equals(pair.Value, StringComparison.OrdinalIgnoreCase))
             {
@@ -129,6 +129,21 @@ internal static class FixedZeroEngineRuntime
             FixedInitSha256);
     }
 
+
+    private static byte[] DecodeBase64(string path, string logicalName)
+    {
+        try
+        {
+            var encoded = File.ReadAllText(path, Encoding.ASCII).Trim();
+            return Convert.FromBase64String(encoded);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"Bundled fixed 0-Engine payload could not be decoded: {logicalName} ({path}). {ex.Message}",
+                ex);
+        }
+    }
 
     private static byte[] DecodeGzipBase64(string path, string logicalName)
     {
