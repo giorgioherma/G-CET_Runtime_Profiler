@@ -295,6 +295,19 @@ internal sealed class SemanticPatchContext
         if (text == file.Text)
             return;
 
+        // Semantic rules may only rewrite a file that already belongs to the
+        // user's live mod (or was already staged from that same live file by a
+        // generic transform). The semantic catalog is knowledge, never a source
+        // template capable of creating an absent mod/file.
+        var livePath = Path.Combine(
+            _modsRoot,
+            file.RelativeFile.Replace('/', Path.DirectorySeparatorChar));
+        if (!File.Exists(livePath) && !_staged.ContainsKey(file.RelativeFile))
+        {
+            throw new InvalidOperationException(
+                $"Semantic injection refused to create non-live file: {file.RelativeFile}");
+        }
+
         var marker = $"G-CET semantic:{RuleId}";
         if (!text.Contains(marker, StringComparison.OrdinalIgnoreCase))
         {

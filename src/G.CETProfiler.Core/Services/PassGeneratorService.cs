@@ -199,6 +199,8 @@ public static class PassGeneratorService
                 sourceShaRequiredForGeneric = true,
                 semanticRuntimeThresholdMsPerSecond = SemanticPassGeneratorService.MaterialThresholdMsPerSecond,
                 semanticCurrentSourceProofRequired = true,
+                semanticExistingLiveFilesOnly = true,
+                semanticCreatesNewModFiles = false,
                 semanticReferenceOverridesShipped = false,
                 fullFileOverlay = true,
                 cadenceTransforms = true,
