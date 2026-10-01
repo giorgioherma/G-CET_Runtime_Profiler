@@ -1126,6 +1126,14 @@ try {
         try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
     }
 
+    function Count-SharedPlayerReads([string]$Text) {
+        $allCalls = [regex]::Matches($Text, [regex]::Escape('__gcetGetPlayer()')).Count
+        $helperDeclarations = [regex]::Matches(
+            $Text,
+            [regex]::Escape('local function __gcetGetPlayer()')).Count
+        return $allCalls - $helperDeclarations
+    }
+
     $actionText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureAction/init.lua'
     if ($actionText -notmatch 'SubscribeAction') {
         throw 'Generated OnAction replacement does not use the action router.'
@@ -1158,7 +1166,7 @@ try {
         throw 'Structural hotpath rewrite leaked into the safe generic pass.'
     }
     if ($structuralText -notmatch [regex]::Escape('-- G-CET shared provider: PLAYER') -or
-        [regex]::Matches($structuralText, [regex]::Escape('__gcetGetPlayer()')).Count -ne 2 -or
+        (Count-SharedPlayerReads $structuralText) -ne 2 -or
         [regex]::Matches($structuralText, [regex]::Escape('CName.new("StructuralFixture")')).Count -ne 2) {
         throw 'PLAYER shared-provider substitution or structural isolation is incomplete.'
     }
@@ -1188,21 +1196,21 @@ try {
     }
 
     $dormantDiscoveryText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDormantDiscovery/init.lua'
-    if ([regex]::Matches($dormantDiscoveryText, [regex]::Escape('__gcetGetPlayer()')).Count -ne 1 -or
+    if ((Count-SharedPlayerReads $dormantDiscoveryText) -ne 1 -or
         $dormantDiscoveryText -match 'G-CET dormant guard hoist' -or
         $dormantDiscoveryText -match 'Schedule\.Every') {
         throw 'PLAYER provider-only pass changed discovery/dormancy semantics.'
     }
 
     $otherStructuralText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureOtherStructural/init.lua'
-    if ([regex]::Matches($otherStructuralText, [regex]::Escape('__gcetGetPlayer()')).Count -ne 2 -or
+    if ((Count-SharedPlayerReads $otherStructuralText) -ne 2 -or
         $otherStructuralText -match '__gcetReuse_129_' -or
         $otherStructuralText -match '__gcetStatic_129_') {
         throw 'PLAYER provider-only pass leaked structural rewrites into FixtureOtherStructural.'
     }
 
     $overrideStructuralText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureOverrideStructural/init.lua'
-    if ([regex]::Matches($overrideStructuralText, [regex]::Escape('__gcetGetPlayer()')).Count -ne 2 -or
+    if ((Count-SharedPlayerReads $overrideStructuralText) -ne 2 -or
         $overrideStructuralText -match 'SubscribeAction' -or
         $overrideStructuralText -match '__gcetOverrideActions_130') {
         throw 'PLAYER provider-only pass changed Override semantics.'
