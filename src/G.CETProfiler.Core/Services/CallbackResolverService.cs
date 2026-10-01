@@ -72,7 +72,7 @@ internal static class CallbackResolverService
         var materialRemaining = 0;
         var belowThreshold = 0;
         var semanticMatches = 0;
-        var semanticSourceRecognized = 0;
+        var semanticSourceProven = 0;
         var semanticReadyRules = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var unresolved = 0;
         var alreadySatisfied = 0;
