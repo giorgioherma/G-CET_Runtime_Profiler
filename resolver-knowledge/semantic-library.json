@@ -14,7 +14,9 @@
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
     "fullPassRule": "A semantic injector can run only when the current capture contains a >=3.0 ms/s measured callback, the library rule matches, and the current live mod source graph proves its anchors.",
-    "enabledInjectorCount": 11
+    "enabledInjectorCount": 17,
+    "profileOnlyRuleCount": 6,
+    "note": "Catalog membership, runtime admission, source proof, and injector implementation are separate gates. A PROFILE_ONLY rule can classify/report a hot mod but cannot emit files."
   },
   "entries": [
     {
@@ -69,7 +71,8 @@
         "patchStyle": "source-injection",
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
-        "requiresIdempotenceMarker": true
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
@@ -115,7 +118,8 @@
         "patchStyle": "source-injection",
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
-        "requiresIdempotenceMarker": true
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
@@ -193,7 +197,8 @@
         "patchStyle": "source-injection",
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
-        "requiresIdempotenceMarker": true
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
@@ -268,7 +273,8 @@
         "patchStyle": "source-injection",
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
-        "requiresIdempotenceMarker": true
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
@@ -314,7 +320,8 @@
         "patchStyle": "source-injection",
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
-        "requiresIdempotenceMarker": true
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
@@ -393,7 +400,8 @@
         "patchStyle": "source-injection",
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
-        "requiresIdempotenceMarker": true
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
@@ -468,7 +476,8 @@
         "patchStyle": "source-injection",
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
-        "requiresIdempotenceMarker": true
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "PROFILE_ONLY"
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
@@ -537,7 +546,8 @@
         "patchStyle": "source-injection",
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
-        "requiresIdempotenceMarker": true
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "PROFILE_ONLY"
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
@@ -582,7 +592,8 @@
         "patchStyle": "source-injection",
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
-        "requiresIdempotenceMarker": true
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
@@ -654,7 +665,8 @@
         "patchStyle": "source-injection",
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
-        "requiresIdempotenceMarker": true
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
@@ -716,11 +728,12 @@
         ]
       },
       "generation": {
-        "enabled": false,
+        "enabled": true,
         "patchStyle": "source-injection",
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
-        "requiresIdempotenceMarker": true
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
@@ -765,7 +778,8 @@
         "patchStyle": "source-injection",
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
-        "requiresIdempotenceMarker": true
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
@@ -816,7 +830,8 @@
         "patchStyle": "source-injection",
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
-        "requiresIdempotenceMarker": true
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
@@ -895,7 +910,8 @@
         "patchStyle": "source-injection",
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
-        "requiresIdempotenceMarker": true
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "PROFILE_ONLY"
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
@@ -963,7 +979,8 @@
         "patchStyle": "source-injection",
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
-        "requiresIdempotenceMarker": true
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "PROFILE_ONLY"
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
@@ -1042,7 +1059,8 @@
         "patchStyle": "source-injection",
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
-        "requiresIdempotenceMarker": true
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "PROFILE_ONLY"
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
@@ -1093,11 +1111,12 @@
         ]
       },
       "generation": {
-        "enabled": false,
+        "enabled": true,
         "patchStyle": "source-injection",
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
-        "requiresIdempotenceMarker": true
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
@@ -1161,11 +1180,12 @@
         ]
       },
       "generation": {
-        "enabled": false,
+        "enabled": true,
         "patchStyle": "source-injection",
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
-        "requiresIdempotenceMarker": true
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
@@ -1229,11 +1249,12 @@
         ]
       },
       "generation": {
-        "enabled": false,
+        "enabled": true,
         "patchStyle": "source-injection",
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
-        "requiresIdempotenceMarker": true
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
@@ -1296,7 +1317,8 @@
         "patchStyle": "source-injection",
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
-        "requiresIdempotenceMarker": true
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "PROFILE_ONLY"
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
@@ -1341,7 +1363,8 @@
         "patchStyle": "source-injection",
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
-        "requiresIdempotenceMarker": true
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
@@ -1421,11 +1444,12 @@
         ]
       },
       "generation": {
-        "enabled": false,
+        "enabled": true,
         "patchStyle": "source-injection",
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
-        "requiresIdempotenceMarker": true
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
@@ -1489,11 +1513,12 @@
         ]
       },
       "generation": {
-        "enabled": false,
+        "enabled": true,
         "patchStyle": "source-injection",
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
-        "requiresIdempotenceMarker": true
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
