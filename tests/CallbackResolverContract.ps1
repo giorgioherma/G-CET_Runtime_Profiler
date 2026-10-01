@@ -260,6 +260,14 @@ registerForEvent("onUpdate", function(delta)
 end)
 '@
 
+Write-Mod 'FixtureColdProvider' @'
+registerForEvent("onUpdate", function(delta)
+    local player = Game.GetPlayer()
+    local pos = player:GetWorldPosition()
+    DoColdWork(player, pos, delta)
+end)
+'@
+
 Write-Mod 'FixtureDiscoveryAuthorRate' @'
 local active = false
 local discoveryTimer = 0
@@ -600,6 +608,9 @@ if ([double]$playerProvider.affectedCallbackWorkMsPerSecond -le 0) {
 }
 if ($playerProvider.generationEnabled) {
     throw 'Shared-provider opportunity evidence must remain analysis-only.'
+}
+if (@($playerProvider.owners) -contains 'FixtureColdProvider') {
+    throw 'Shared-provider analysis scanned an unmeasured/cold mod into the opportunity set.'
 }
 
 $positionProvider = @($result.sharedProviderOpportunities | Where-Object { $_.provider -eq 'PLAYER_POSITION' }) |

@@ -678,7 +678,8 @@ internal static class CallbackResolverService
             foreach (var callee in hotCallees.EnumerateArray())
             {
                 var functionName = JsonString(callee, "functionName");
-                var provider = SharedProviderForDeepFunction(functionName);
+                var functionKey = JsonString(callee, "childFunctionKey");
+                var provider = SharedProviderForDeepFunction(functionName, functionKey);
                 if (provider is null)
                     continue;
 
@@ -707,15 +708,16 @@ internal static class CallbackResolverService
         return result;
     }
 
-    private static string? SharedProviderForDeepFunction(string functionName)
+    private static string? SharedProviderForDeepFunction(
+        string functionName,
+        string functionKey)
     {
-        if (string.IsNullOrWhiteSpace(functionName))
-            return null;
-
         foreach (var definition in SharedProviderDefinitions)
         {
             if (definition.DeepFunctionNames.Any(name =>
-                    name.Equals(functionName, StringComparison.OrdinalIgnoreCase)))
+                    name.Equals(functionName, StringComparison.OrdinalIgnoreCase) ||
+                    (!string.IsNullOrWhiteSpace(functionKey) &&
+                     functionKey.Contains(name, StringComparison.OrdinalIgnoreCase))))
                 return definition.Provider;
         }
 
