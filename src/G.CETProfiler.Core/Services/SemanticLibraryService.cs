@@ -167,6 +167,9 @@ internal sealed class SemanticLibraryService
                 true,
                 false,
                 false,
+                false,
+                0,
+                0,
                 string.Join(",", candidates.Select(x => x.Id).OrderBy(x => x)),
                 "AMBIGUOUS",
                 "",
@@ -186,6 +189,9 @@ internal sealed class SemanticLibraryService
                 true,
                 false,
                 false,
+                false,
+                0,
+                Math.Max(1, rule.Proof.ExpectedMarkerFileCount),
                 rule.Id,
                 rule.PolicyClass,
                 rule.Handler,
@@ -220,7 +226,8 @@ internal sealed class SemanticLibraryService
         var markerCount =
             string.IsNullOrWhiteSpace(rule.Proof.AlreadySatisfiedMarker)
                 ? 0
-                : CountOccurrences(graph.Corpus, rule.Proof.AlreadySatisfiedMarker);
+                : graph.FileTexts.Count(text =>
+                    Contains(text, rule.Proof.AlreadySatisfiedMarker));
         var expectedMarkerFileCount = Math.Max(1, rule.Proof.ExpectedMarkerFileCount);
         var alreadySatisfied = markerCount >= expectedMarkerFileCount;
         var partialState = markerCount > 0 && markerCount < expectedMarkerFileCount;
@@ -268,6 +275,7 @@ internal sealed class SemanticLibraryService
         }
 
         var files = new List<string>();
+        var fileTexts = new List<string>();
         var moduleEdges = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var callbackRegistrations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var corpus = new StringBuilder();
@@ -289,6 +297,7 @@ internal sealed class SemanticLibraryService
                 }
 
                 files.Add(Path.GetRelativePath(folder, file).Replace('\\', '/'));
+                fileTexts.Add(text);
                 corpus.AppendLine(text);
 
                 foreach (Match match in Regex.Matches(
@@ -328,6 +337,7 @@ internal sealed class SemanticLibraryService
             files.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray(),
             moduleEdges.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray(),
             callbackRegistrations.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray(),
+            fileTexts.ToArray(),
             corpus.ToString());
 
         _graphs[owner] = graph;
@@ -363,25 +373,6 @@ internal sealed class SemanticLibraryService
         string.IsNullOrWhiteSpace(expected) ||
         expected == "*" ||
         expected.Equals(actual, StringComparison.OrdinalIgnoreCase);
-
-    private static int CountOccurrences(string text, string value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return 0;
-
-        var count = 0;
-        var offset = 0;
-        while (offset < text.Length)
-        {
-            var index = text.IndexOf(value, offset, StringComparison.OrdinalIgnoreCase);
-            if (index < 0)
-                break;
-            count++;
-            offset = index + value.Length;
-        }
-
-        return count;
-    }
 
     private static bool Contains(string text, string value) =>
         !string.IsNullOrWhiteSpace(value) &&
@@ -480,5 +471,6 @@ internal sealed class SemanticLibraryService
         string[] Files,
         string[] ModuleEdges,
         string[] CallbackRegistrations,
+        string[] FileTexts,
         string Corpus);
 }
