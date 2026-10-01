@@ -254,9 +254,10 @@ Write-Mod 'FixtureStructural' @'
 registerForEvent("onUpdate", function(delta)
     local playerA = Game.GetPlayer()
     local playerB = Game.GetPlayer()
+    local timeSystem = Game.GetTimeSystem()
     local nameA = CName.new("StructuralFixture")
     local nameB = CName.new("StructuralFixture")
-    DoStructuralWork(playerA, playerB, nameA, nameB, delta)
+    DoStructuralWork(playerA, playerB, timeSystem, nameA, nameB, delta)
 end)
 '@
 
@@ -485,6 +486,25 @@ $handoff = @{
                         multiCallsiteSampleCount = 8
                     }
                 )
+                # GetTimeSystem is deliberately absent from hotCallees. It must
+                # still reach shared-provider analysis through the untruncated
+                # known-provider stream.
+                sharedProviderCallees = @(
+                    @{
+                        functionName = 'GetPlayer'
+                        childFunctionKey = 'fixture|GetPlayer|120'
+                        sampledCalls = 24
+                        repeatedInSampleCount = 8
+                        multiCallsiteSampleCount = 8
+                    }
+                    @{
+                        functionName = 'GetTimeSystem'
+                        childFunctionKey = 'fixture|GetTimeSystem|120'
+                        sampledCalls = 24
+                        repeatedInSampleCount = 0
+                        multiCallsiteSampleCount = 0
+                    }
+                )
             }
         }
         @{
@@ -611,6 +631,16 @@ if ($playerProvider.generationEnabled) {
 }
 if (@($playerProvider.owners) -contains 'FixtureColdProvider') {
     throw 'Shared-provider analysis scanned an unmeasured/cold mod into the opportunity set.'
+}
+
+$timeProvider = @($result.sharedProviderOpportunities | Where-Object { $_.provider -eq 'TIME_SYSTEM' }) |
+    Select-Object -First 1
+if ($null -eq $timeProvider) {
+    throw 'TIME_SYSTEM shared-provider opportunity was not detected.'
+}
+if ([int]$timeProvider.deepObservedCallbackCount -lt 1 -or
+    [int]$timeProvider.deepSampledCalls -lt 24) {
+    throw 'Shared-provider deep evidence is still gated by the per-callback hotCallees shortlist.'
 }
 
 $positionProvider = @($result.sharedProviderOpportunities | Where-Object { $_.provider -eq 'PLAYER_POSITION' }) |
