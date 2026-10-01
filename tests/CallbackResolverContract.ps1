@@ -1043,7 +1043,7 @@ if ($unknownHot.generic.Automatable) {
 if ($null -eq $resolved.pass) {
     throw 'CLI --generate-pass did not return a pass result.'
 }
-if ([int]$resolved.pass.TransformCount -ne 15) {
+if ([int]$resolved.pass.TransformCount -ne 21) {
     if (Test-Path -LiteralPath $resolved.pass.ManifestPath -PathType Leaf) {
         $failedManifest = Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
         Write-Host "PASS DEBUG transforms=$($failedManifest.summary.transforms) skipped=$($failedManifest.summary.skipped)"
@@ -1051,10 +1051,10 @@ if ([int]$resolved.pass.TransformCount -ne 15) {
             Write-Host ("PASS DEBUG SKIP owner={0} type={1} file={2} reason={3}" -f $skip.owner,$skip.type,$skip.file,$skip.reason)
         }
     }
-    throw "Expected 15 generated transforms, got $($resolved.pass.TransformCount)."
+    throw "Expected 21 generated transforms (15 existing + 6 PLAYER provider reads), got $($resolved.pass.TransformCount)."
 }
-if ([int]$resolved.pass.FileCount -ne 19) {
-    throw "Expected 19 generated replacement files (15 callback + 4 fixed 0-Engine), got $($resolved.pass.FileCount)."
+if ([int]$resolved.pass.FileCount -ne 21) {
+    throw "Expected 21 generated replacement files (17 callback + 4 fixed 0-Engine), got $($resolved.pass.FileCount)."
 }
 if (!(Test-Path -LiteralPath $resolved.pass.ZipPath -PathType Leaf)) {
     throw "Generated pass ZIP is missing: $($resolved.pass.ZipPath)"
