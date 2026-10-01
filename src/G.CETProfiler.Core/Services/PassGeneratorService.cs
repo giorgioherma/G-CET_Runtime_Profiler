@@ -58,17 +58,15 @@ public static class PassGeneratorService
         using var resolver = JsonDocument.Parse(File.ReadAllText(resolverPath));
         var candidates = ReadCandidates(resolver.RootElement);
 
-        if (candidates.Count == 0)
-            throw new InvalidOperationException(
-                "The resolver produced no V1 pass candidates. No ZIP was generated.");
-
         var groups = candidates
             .GroupBy(x => x.RelativeFile, StringComparer.OrdinalIgnoreCase)
             .OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         var staged = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
-        var fileManifest = new List<object>();
+        var liveSourceHashes = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        var appliedTransformsByFile = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var fixedInfrastructurePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var transformManifest = new List<object>();
         var skipped = new List<object>();
 
@@ -114,19 +112,27 @@ public static class PassGeneratorService
             if (transformed.AppliedTransforms == 0)
                 continue;
 
-            staged[group.Key] = transformed.Bytes;
-            fileManifest.Add(new
-            {
-                path = group.Key.Replace('\\', '/'),
-                sourceSha256 = liveHash,
-                generatedSha256 = Sha256(transformed.Bytes),
-                appliedTransforms = transformed.AppliedTransforms
-            });
+            var relative = group.Key.Replace('\\', '/');
+            staged[relative] = transformed.Bytes;
+            liveSourceHashes[relative] = liveHash;
+            appliedTransformsByFile[relative] =
+                appliedTransformsByFile.TryGetValue(relative, out var priorCount)
+                    ? priorCount + transformed.AppliedTransforms
+                    : transformed.AppliedTransforms;
         }
+
+        var semanticTransformCount = SemanticPassGeneratorService.Apply(
+            resolver.RootElement,
+            modsRoot,
+            staged,
+            liveSourceHashes,
+            appliedTransformsByFile,
+            transformManifest,
+            skipped);
 
         if (staged.Count == 0)
             throw new InvalidOperationException(
-                "All resolver candidates were rejected during current-source revalidation. No ZIP was generated.");
+                "The resolver produced no applicable generic or source-proven semantic transforms. No ZIP was generated.");
 
         var callbackFileCount = staged.Count;
 
@@ -141,23 +147,35 @@ public static class PassGeneratorService
                 throw new InvalidOperationException(
                     $"Resolver output unexpectedly targets fixed runtime file: {pair.Key}");
 
-            staged[pair.Key] = pair.Value;
+            var relative = pair.Key.Replace('\\', '/');
+            staged[relative] = pair.Value;
 
-            var liveRuntimePath = ResolveInsideMods(modsRoot, pair.Key);
+            var liveRuntimePath = ResolveInsideMods(modsRoot, relative);
             var liveRuntimeHash =
                 liveRuntimePath is not null && File.Exists(liveRuntimePath)
                     ? Sha256(File.ReadAllBytes(liveRuntimePath))
                     : null;
 
-            fileManifest.Add(new
+            liveSourceHashes[relative] = liveRuntimeHash;
+            appliedTransformsByFile[relative] = 0;
+            fixedInfrastructurePaths.Add(relative);
+        }
+
+        var fileManifest = staged
+            .OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(pair => (object)new
             {
                 path = pair.Key.Replace('\\', '/'),
-                sourceSha256 = liveRuntimeHash,
+                sourceSha256 = liveSourceHashes.TryGetValue(pair.Key, out var sourceHash)
+                    ? sourceHash
+                    : null,
                 generatedSha256 = Sha256(pair.Value),
-                appliedTransforms = 0,
-                fixedInfrastructure = true
-            });
-        }
+                appliedTransforms = appliedTransformsByFile.TryGetValue(pair.Key, out var transformCount)
+                    ? transformCount
+                    : 0,
+                fixedInfrastructure = fixedInfrastructurePaths.Contains(pair.Key)
+            })
+            .ToList();
 
         var resolverBytes = File.ReadAllBytes(resolverPath);
         var captureName = new DirectoryInfo(captureRoot).Name;
@@ -175,20 +193,25 @@ public static class PassGeneratorService
             resolverSha256 = Sha256(resolverBytes),
             policy = new
             {
-                selection = "ONLY_AUTOMATABLE_CANDIDATES_FROM_G-CET_Resolver.json",
+                selection = "MEASURED_GENERIC_PLUS_SOURCE_PROVEN_SEMANTIC_CANDIDATES_FROM_G-CET_Resolver.json",
                 modNameRules = false,
                 sourceShaRequired = true,
+                sourceShaRequiredForGeneric = true,
+                semanticRuntimeThresholdMsPerSecond = SemanticPassGeneratorService.MaterialThresholdMsPerSecond,
+                semanticCurrentSourceProofRequired = true,
+                semanticReferenceOverridesShipped = false,
                 fullFileOverlay = true,
-                cadenceTransforms = false,
-                cadencePolicy = "ANALYSIS_ONLY_UNTIL_SEMANTIC_RULE_AUTHORIZATION",
+                cadenceTransforms = true,
+                cadencePolicy = "SEMANTIC_RULES_ONLY_AFTER_CURRENT_SOURCE_GRAPH_PROOF",
                 supportedPasses = new[]
                 {
                     "ACTION_ROUTING_*",
                     "ACTION_OVERRIDE_EXACT_PREFILTER",
-                    "FRAME_DISPATCH_CONSOLIDATION"
+                    "FRAME_DISPATCH_CONSOLIDATION",
+                    "SEMANTIC_RULE_SOURCE_INJECTION"
                 },
                 fixedRuntimeException = "0-Engine",
-                note = "Generic AUTO emits only the mechanically proven routing/prefilter/frame core. Structural, cadence, and dormancy opportunities remain analysis-only until a semantic per-mod rule authorizes them. 0-Engine remains the fixed infrastructure exception."
+                note = "The same overlay generator now composes generic AUTO and measured semantic source injections. Semantic rules are admitted only for >=3 ms/s measured callbacks, must re-prove the current live mod source, and inject into that source; development reference patches are never copied into the ZIP."
             },
             fixedRuntime = new
             {
@@ -209,6 +232,8 @@ public static class PassGeneratorService
                 files = staged.Count,
                 callbackFiles = callbackFileCount,
                 fixedRuntimeFiles = fixedRuntime.Files.Count,
+                genericTransforms = transformManifest.Count - semanticTransformCount,
+                semanticTransforms = semanticTransformCount,
                 transforms = transformManifest.Count,
                 skipped = skipped.Count
             },

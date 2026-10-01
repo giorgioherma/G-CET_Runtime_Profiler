@@ -1076,14 +1076,23 @@ try {
     }
 
     $manifest = (Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw) | ConvertFrom-Json
-    if ($manifest.policy.selection -ne 'ONLY_AUTOMATABLE_CANDIDATES_FROM_G-CET_Resolver.json') {
-        throw 'Generated pass manifest is not resolver-only.'
+    if ($manifest.policy.selection -ne 'MEASURED_GENERIC_PLUS_SOURCE_PROVEN_SEMANTIC_CANDIDATES_FROM_G-CET_Resolver.json') {
+        throw 'Generated pass manifest is not using the combined generic + semantic resolver selection model.'
     }
     if ($manifest.policy.modNameRules) {
         throw 'Generated pass manifest unexpectedly allows mod-name rules.'
     }
-    if ($manifest.policy.cadenceTransforms) {
-        throw 'Generic pass manifest unexpectedly authorizes cadence transforms.'
+    if (!$manifest.policy.cadenceTransforms) {
+        throw 'Generated pass manifest did not advertise semantic cadence/source-injection support.'
+    }
+    if ([double]$manifest.policy.semanticRuntimeThresholdMsPerSecond -ne 3.0) {
+        throw 'Semantic runtime admission threshold changed unexpectedly.'
+    }
+    if (!$manifest.policy.semanticCurrentSourceProofRequired) {
+        throw 'Semantic generation no longer requires current-source proof.'
+    }
+    if ($manifest.policy.semanticReferenceOverridesShipped) {
+        throw 'Semantic development reference overrides leaked into the deployable pass policy.'
     }
     foreach ($forbiddenType in @(
         'STRUCTURAL_HOTPATH_REWRITE',
@@ -1097,6 +1106,9 @@ try {
     }
     if ([int]$manifest.summary.transforms -ne 15) {
         throw 'Generated pass manifest transform count is wrong.'
+    }
+    if ([int]$manifest.summary.genericTransforms -ne 15 -or [int]$manifest.summary.semanticTransforms -ne 0) {
+        throw 'Analysis-only semantic fixture unexpectedly changed transform accounting.'
     }
     if ([int]$manifest.summary.callbackFiles -ne 15) {
         throw "Expected 15 callback replacement files, got $($manifest.summary.callbackFiles)."
