@@ -16,7 +16,7 @@
     "fullPassRule": "A semantic injector can run only when the current capture contains a >=3.0 ms/s measured callback, the library rule matches, and the current live mod source graph proves its anchors.",
     "enabledInjectorCount": 15,
     "profileOnlyRuleCount": 0,
-    "note": "The production semantic base contains only active automatic rules. Hot/reviewed/profile-only candidates stay in development evidence. Complete idempotence requires the expected per-rule marker file count; partial semantic states fail closed and remain visible instead of being treated as satisfied.",
+    "note": "The production semantic base is intentionally compact and callback-specific. Runtime cost only earns review; automatic rules require a small, provable state model, exact known callback families, and no bespoke timing.",
     "admissionPolicy": {
       "runtimeThresholdMsPerSecond": 3,
       "requiresGenericExhausted": true,
@@ -258,9 +258,14 @@
       "policyClass": "MULTI_RATE_PLUS_PREFILTER",
       "callbacks": [
         {
-          "kind": "*",
-          "target": "*",
+          "kind": "event",
+          "target": "onUpdate",
           "role": "hot-path"
+        },
+        {
+          "kind": "ObserveAfter",
+          "target": "BaseMappinBaseController::UpdateRootState",
+          "role": "owned-global-hot-path"
         }
       ],
       "sourceProof": {
@@ -412,8 +417,8 @@
       "policyClass": "ACTIVE_FRAME_IDLE_FAST",
       "callbacks": [
         {
-          "kind": "*",
-          "target": "*",
+          "kind": "event",
+          "target": "onUpdate",
           "role": "hot-path"
         }
       ],
@@ -650,9 +655,14 @@
       "policyClass": "ACTIVE_FRAME_IDLE_FAST_PLUS_PREFILTER",
       "callbacks": [
         {
-          "kind": "*",
-          "target": "*",
+          "kind": "event",
+          "target": "onUpdate",
           "role": "hot-path"
+        },
+        {
+          "kind": "ObserveAfter",
+          "target": "BaseMappinBaseController::UpdateRootState",
+          "role": "owned-global-hot-path"
         }
       ],
       "sourceProof": {
@@ -909,9 +919,14 @@
       "policyClass": "ACTIVE_FRAME_IDLE_FAST_PLUS_PREFILTER",
       "callbacks": [
         {
-          "kind": "*",
-          "target": "*",
+          "kind": "event",
+          "target": "onUpdate",
           "role": "hot-path"
+        },
+        {
+          "kind": "ObserveAfter",
+          "target": "BaseMappinBaseController::UpdateRootState",
+          "role": "owned-global-hot-path"
         }
       ],
       "sourceProof": {

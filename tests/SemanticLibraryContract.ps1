@@ -44,6 +44,11 @@ foreach ($entry in $entries) {
     if ([int]$entry.sourceProof.expectedMarkerFileCount -lt 1) {
         throw "Production semantic rule does not define complete-state marker coverage: $($entry.id)"
     }
+    foreach ($selector in @($entry.callbacks)) {
+        if ([string]$selector.kind -eq '*' -or [string]$selector.target -eq '*') {
+            throw "Production semantic rule contains a wildcard callback selector: $($entry.id)"
+        }
+    }
 }
 
 if (!$library.policy.productionEntriesMustGenerate) {
