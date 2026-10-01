@@ -290,7 +290,8 @@ internal static class CallbackResolverService
                 sharedProviderOpportunityAnalysis = true,
                 sharedProviderGenerationEnabled = false,
                 sharedProviderScope = "MEASURED_CALLBACKS_ONLY",
-                note = "Generic AUTO is restricted to mechanically source-proven action routing, exact Override prefiltering, and frame-dispatch consolidation. Structural, cadence, dormancy, and shared-provider recognizers remain analysis evidence only; identity-specific automatic behavior lives exclusively in the source-proven semantic library. Shared-provider opportunity totals describe measured callback territory, not estimated savings. Already-satisfied generated states are not re-applied."
+                sharedProviderDeepEvidence = "UNTRUNCATED_KNOWN_PROVIDER_CALLEES_WITH_LEGACY_HOTCALLEES_FALLBACK",
+                note = "Generic AUTO is restricted to mechanically source-proven action routing, exact Override prefiltering, and frame-dispatch consolidation. Structural, cadence, dormancy, and shared-provider recognizers remain analysis evidence only; identity-specific automatic behavior lives exclusively in the source-proven semantic library. Shared-provider opportunity totals describe measured callback territory, not estimated savings. Shared-provider deep evidence is aggregated across the measured stack without a per-callback hot-callee top-N gate. Already-satisfied generated states are not re-applied."
             },
             cadence = new
             {
@@ -667,15 +668,31 @@ internal static class CallbackResolverService
                 continue;
 
             if (!row.TryGetProperty("deep", out var deep) ||
-                deep.ValueKind != JsonValueKind.Object ||
-                !deep.TryGetProperty("hotCallees", out var hotCallees) ||
-                hotCallees.ValueKind != JsonValueKind.Array)
+                deep.ValueKind != JsonValueKind.Object)
                 continue;
+
+            JsonElement providerCallees;
+            if (deep.TryGetProperty("sharedProviderCallees", out var untruncated) &&
+                untruncated.ValueKind == JsonValueKind.Array)
+            {
+                providerCallees = untruncated;
+            }
+            else if (deep.TryGetProperty("hotCallees", out var legacyHotCallees) &&
+                     legacyHotCallees.ValueKind == JsonValueKind.Array)
+            {
+                // Backward compatibility for captures produced before the dedicated
+                // untruncated provider evidence field existed.
+                providerCallees = legacyHotCallees;
+            }
+            else
+            {
+                continue;
+            }
 
             var byProvider = new Dictionary<string, SharedProviderDeepEvidence>(
                 StringComparer.OrdinalIgnoreCase);
 
-            foreach (var callee in hotCallees.EnumerateArray())
+            foreach (var callee in providerCallees.EnumerateArray())
             {
                 var functionName = JsonString(callee, "functionName");
                 var functionKey = JsonString(callee, "childFunctionKey");
