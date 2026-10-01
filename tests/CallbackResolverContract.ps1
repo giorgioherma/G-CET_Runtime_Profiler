@@ -1166,9 +1166,11 @@ try {
         throw 'Structural hotpath rewrite leaked into the safe generic pass.'
     }
     if ($structuralText -notmatch [regex]::Escape('-- G-CET shared provider: PLAYER') -or
+        $structuralText -notmatch [regex]::Escape('__gcetEngine.GetPlayer') -or
+        $structuralText -notmatch [regex]::Escape('return Game.GetPlayer()') -or
         (Count-SharedPlayerReads $structuralText) -ne 2 -or
         [regex]::Matches($structuralText, [regex]::Escape('CName.new("StructuralFixture")')).Count -ne 2) {
-        throw 'PLAYER shared-provider substitution or structural isolation is incomplete.'
+        throw 'PLAYER shared-provider substitution, fallback, or structural isolation is incomplete.'
     }
 
     $discoveryText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDiscoveryAuthorRate/init.lua'
@@ -1318,6 +1320,7 @@ try {
     foreach ($requiredRuntimeSymbol in @(
         'function Engine.MakeEventRegistrar',
         'function Engine.SubscribeAction',
+        'function Engine.GetPlayer',
         'ActionRouter.Dispatch'
     )) {
         if ($zeroText -notmatch [regex]::Escape($requiredRuntimeSymbol)) {
