@@ -455,7 +455,7 @@ $handoff = @{
         (CallbackRow 130 'FixtureOverrideStructural' 'Override' 'PlayerPuppet::OnAction' 500 16.0 4.0 'init.lua' 1 8),
         (CallbackRow 131 'FixtureOverridePrefilter' 'Override' 'PlayerPuppet::OnAction' 1400 15.0 4.4 'init.lua' 21 25),
         (CallbackRow 111 'FixtureDownstream' 'observe' 'PlayerPuppet::OnAction' 490 5.8 7.5 'init.lua' 1 10),
-        (CallbackRow 120 'FixtureStructural' 'event' 'onUpdate' 60 9.0 2.0 'init.lua' 1 8),
+        (CallbackRow 120 'FixtureStructural' 'event' 'onUpdate' 60 9.0 2.0 'init.lua' 1 9),
         (CallbackRow 126 'FixtureDiscoveryAuthorRate' 'event' 'onUpdate' 60 13.0 3.2 'init.lua' 6 18),
         (CallbackRow 125 'FixtureDormantOnUpdate' 'event' 'onUpdate' 60 12.0 3.0 'init.lua' 5 9),
         (CallbackRow 121 'FixtureDormantHard' 'observe' 'PlayerPuppet::FixtureTick' 60 6.0 1.2 'init.lua' 5 8),
