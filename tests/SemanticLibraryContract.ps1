@@ -41,6 +41,9 @@ foreach ($entry in $entries) {
     if ([double]$entry.runtimeAdmission.thresholdMsPerSecond -lt 3.0) {
         throw "Production semantic rule bypasses the 3 ms/s runtime admission floor: $($entry.id)"
     }
+    if ([int]$entry.sourceProof.expectedMarkerFileCount -lt 1) {
+        throw "Production semantic rule does not define complete-state marker coverage: $($entry.id)"
+    }
 }
 
 if (!$library.policy.productionEntriesMustGenerate) {

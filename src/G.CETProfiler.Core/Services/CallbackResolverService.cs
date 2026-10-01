@@ -101,6 +101,7 @@ internal static class CallbackResolverService
                     semantic.SourceProofSatisfied &&
                     semantic.GenerationEnabled &&
                     !semantic.AlreadySatisfied &&
+                    !semantic.PartialState &&
                     callback.ExclusiveMsPerSecond >= MaterialRemainingMsPerSecond &&
                     !string.IsNullOrWhiteSpace(semantic.RuleId);
                 if (semanticGenerationReady)
@@ -108,9 +109,11 @@ internal static class CallbackResolverService
 
                 var dormancy = ResolveDormancyEvidence(callback, generic.Source, sourceIndex);
 
-                var isAlreadySatisfied = generic.Status.Equals(
-                    "ALREADY_SATISFIED",
-                    StringComparison.OrdinalIgnoreCase);
+                var isAlreadySatisfied =
+                    generic.Status.Equals(
+                        "ALREADY_SATISFIED",
+                        StringComparison.OrdinalIgnoreCase) ||
+                    semantic.AlreadySatisfied;
 
                 if (generic.Automatable)
                 {
@@ -196,6 +199,9 @@ internal static class CallbackResolverService
                         semantic.Matched,
                         semantic.SourceProofSatisfied,
                         semantic.AlreadySatisfied,
+                        semantic.PartialState,
+                        semantic.MarkerFileCount,
+                        semantic.ExpectedMarkerFileCount,
                         semantic.RuleId,
                         semantic.PolicyClass,
                         semantic.Handler,
@@ -206,19 +212,25 @@ internal static class CallbackResolverService
                         semantic.MatchedAnchors,
                         semantic.MissingAnchors,
                         semantic.Graph,
-                        note = semantic.Matched
-                            ? "Identity selected a semantic candidate; current live mod source graph must prove the rule. The library contains behavior knowledge, not replacement mod files."
-                            : "No semantic-library rule matched this measured callback."
+                        note = semantic.PartialState
+                            ? "A partial G-CET semantic marker state was detected. AUTO fails closed instead of treating the rule as complete or attempting a blind repair."
+                            : semantic.AlreadySatisfied
+                                ? "The complete expected semantic marker state is already present; AUTO will not re-apply the rule."
+                                : semantic.Matched
+                                    ? "Identity selected a semantic candidate; current live mod source graph must prove the rule. The library contains behavior knowledge, not replacement mod files."
+                                    : "No semantic-library rule matched this measured callback."
                     },
                     disposition = generic.Automatable
                         ? "GENERIC_PATTERN"
                         : isAlreadySatisfied
                             ? "ALREADY_SATISFIED"
-                            : semantic.Matched
-                                ? semantic.SourceProofSatisfied
-                                    ? "SEMANTIC_RULE_PROVEN"
-                                    : "SEMANTIC_RULE_NEEDS_SOURCE_PROOF"
-                                : "UNRESOLVED"
+                            : semantic.PartialState
+                                ? "SEMANTIC_RULE_PARTIAL_STATE"
+                                : semantic.Matched
+                                    ? semantic.SourceProofSatisfied
+                                        ? "SEMANTIC_RULE_PROVEN"
+                                        : "SEMANTIC_RULE_NEEDS_SOURCE_PROOF"
+                                    : "UNRESOLVED"
                 });
             }
 

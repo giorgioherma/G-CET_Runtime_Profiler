@@ -140,6 +140,7 @@ internal static class SemanticPassGeneratorService
                 if (!JsonBool(semantic, "Matched") ||
                     !JsonBool(semantic, "SourceProofSatisfied") ||
                     JsonBool(semantic, "AlreadySatisfied") ||
+                    JsonBool(semantic, "PartialState") ||
                     !JsonBool(semantic, "GenerationEnabled"))
                     continue;
 

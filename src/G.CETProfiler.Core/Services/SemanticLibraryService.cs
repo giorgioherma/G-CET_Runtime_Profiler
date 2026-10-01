@@ -8,6 +8,9 @@ internal sealed record SemanticRuleMatch(
     bool Matched,
     bool SourceProofSatisfied,
     bool AlreadySatisfied,
+    bool PartialState,
+    int MarkerFileCount,
+    int ExpectedMarkerFileCount,
     string RuleId,
     string PolicyClass,
     string Handler,
@@ -19,7 +22,7 @@ internal sealed record SemanticRuleMatch(
     object? Graph)
 {
     internal static SemanticRuleMatch None { get; } = new(
-        false, false, false, "", "", "", "", false, false,
+        false, false, false, false, 0, 0, "", "", "", "", false, false,
         Array.Empty<string>(), Array.Empty<string>(), null);
 }
 
@@ -92,7 +95,10 @@ internal sealed class SemanticLibraryService
                             OwnerAnyGroups = JsonStringGroups(proofRow, "ownerAnyGroups"),
                             AlreadySatisfiedMarker = JsonString(
                                 proofRow,
-                                "alreadySatisfiedMarker")
+                                "alreadySatisfiedMarker"),
+                            ExpectedMarkerFileCount = (int)Math.Max(
+                                1,
+                                JsonLong(proofRow, "expectedMarkerFileCount"))
                         };
                     }
 
@@ -211,9 +217,13 @@ internal sealed class SemanticLibraryService
                 missing.Add("(" + string.Join(" | ", group) + ")");
         }
 
-        var alreadySatisfied =
-            !string.IsNullOrWhiteSpace(rule.Proof.AlreadySatisfiedMarker) &&
-            Contains(graph.Corpus, rule.Proof.AlreadySatisfiedMarker);
+        var markerCount =
+            string.IsNullOrWhiteSpace(rule.Proof.AlreadySatisfiedMarker)
+                ? 0
+                : CountOccurrences(graph.Corpus, rule.Proof.AlreadySatisfiedMarker);
+        var expectedMarkerFileCount = Math.Max(1, rule.Proof.ExpectedMarkerFileCount);
+        var alreadySatisfied = markerCount >= expectedMarkerFileCount;
+        var partialState = markerCount > 0 && markerCount < expectedMarkerFileCount;
 
         var graphSummary = new
         {
@@ -221,6 +231,8 @@ internal sealed class SemanticLibraryService
             luaFileCount = graph.Files.Length,
             moduleEdgeCount = graph.ModuleEdges.Length,
             callbackRegistrationCount = graph.CallbackRegistrations.Length,
+            markerFileCount = markerCount,
+            expectedMarkerFileCount,
             graph.ModuleEdges,
             graph.CallbackRegistrations
         };
@@ -229,6 +241,9 @@ internal sealed class SemanticLibraryService
             true,
             missing.Count == 0,
             alreadySatisfied,
+            partialState,
+            markerCount,
+            expectedMarkerFileCount,
             rule.Id,
             rule.PolicyClass,
             rule.Handler,
@@ -349,6 +364,25 @@ internal sealed class SemanticLibraryService
         expected == "*" ||
         expected.Equals(actual, StringComparison.OrdinalIgnoreCase);
 
+    private static int CountOccurrences(string text, string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return 0;
+
+        var count = 0;
+        var offset = 0;
+        while (offset < text.Length)
+        {
+            var index = text.IndexOf(value, offset, StringComparison.OrdinalIgnoreCase);
+            if (index < 0)
+                break;
+            count++;
+            offset = index + value.Length;
+        }
+
+        return count;
+    }
+
     private static bool Contains(string text, string value) =>
         !string.IsNullOrWhiteSpace(value) &&
         text.IndexOf(value, StringComparison.OrdinalIgnoreCase) >= 0;
@@ -362,6 +396,15 @@ internal sealed class SemanticLibraryService
             value.ValueKind != JsonValueKind.String)
             return "";
         return value.GetString() ?? "";
+    }
+
+    private static long JsonLong(JsonElement element, string name)
+    {
+        if (!element.TryGetProperty(name, out var value) ||
+            value.ValueKind != JsonValueKind.Number ||
+            !value.TryGetInt64(out var number))
+            return 0;
+        return number;
     }
 
     private static bool JsonBool(JsonElement element, string name)
@@ -422,6 +465,7 @@ internal sealed class SemanticLibraryService
         internal string[] OwnerAll { get; init; } = Array.Empty<string>();
         internal string[][] OwnerAnyGroups { get; init; } = Array.Empty<string[]>();
         internal string AlreadySatisfiedMarker { get; init; } = "";
+        internal int ExpectedMarkerFileCount { get; init; } = 1;
     }
 
     private sealed class GenerationPolicy

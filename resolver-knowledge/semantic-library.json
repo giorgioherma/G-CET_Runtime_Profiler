@@ -16,7 +16,7 @@
     "fullPassRule": "A semantic injector can run only when the current capture contains a >=3.0 ms/s measured callback, the library rule matches, and the current live mod source graph proves its anchors.",
     "enabledInjectorCount": 15,
     "profileOnlyRuleCount": 0,
-    "note": "The production semantic base contains only active automatic rules. Hot/reviewed/profile-only candidates stay in development evidence so catalog membership always means potentially generatable after runtime + live-source proof.",
+    "note": "The production semantic base contains only active automatic rules. Hot/reviewed/profile-only candidates stay in development evidence. Complete idempotence requires the expected per-rule marker file count; partial semantic states fail closed and remain visible instead of being treated as satisfied.",
     "admissionPolicy": {
       "runtimeThresholdMsPerSecond": 3,
       "requiresGenericExhausted": true,
@@ -46,7 +46,8 @@
       ],
       "note": "Hot means review-worthy, not semantic-library-worthy. The base catalog is reserved for high-cost features with a provable inactive state and complete safe wake path."
     },
-    "productionEntriesMustGenerate": true
+    "productionEntriesMustGenerate": true,
+    "partialSemanticStatePolicy": "FAIL_CLOSED_NOT_ALREADY_SATISFIED"
   },
   "entries": [
     {
@@ -68,7 +69,8 @@
           "Cron.Update",
           "SESSION.active"
         ],
-        "alreadySatisfiedMarker": "G-CET semantic:gta-joyride"
+        "alreadySatisfiedMarker": "G-CET semantic:gta-joyride",
+        "expectedMarkerFileCount": 1
       },
       "behavior": {
         "handler": "SEMANTIC_ACTIVE_IDLE_SPLIT",
@@ -138,7 +140,8 @@
           "IsInCombat",
           "TweakDB:SetFlat"
         ],
-        "alreadySatisfiedMarker": "G-CET semantic:combat"
+        "alreadySatisfiedMarker": "G-CET semantic:combat",
+        "expectedMarkerFileCount": 2
       },
       "behavior": {
         "handler": "SEMANTIC_TRANSITION_GUARD"
@@ -189,7 +192,8 @@
           "Sites.list",
           "Diagnostics"
         ],
-        "alreadySatisfiedMarker": "G-CET semantic:repeatable-cyberpsychos"
+        "alreadySatisfiedMarker": "G-CET semantic:repeatable-cyberpsychos",
+        "expectedMarkerFileCount": 1
       },
       "behavior": {
         "handler": "SEMANTIC_MULTI_RATE_SPLIT",
@@ -264,7 +268,8 @@
           "BaseMappinBaseController",
           "Race"
         ],
-        "alreadySatisfiedMarker": "G-CET semantic:cybertrials"
+        "alreadySatisfiedMarker": "G-CET semantic:cybertrials",
+        "expectedMarkerFileCount": 3
       },
       "behavior": {
         "handler": "SEMANTIC_MULTI_RATE_WITH_PREFILTER",
@@ -340,7 +345,8 @@
           "StreetTables",
           "PokerHUD"
         ],
-        "alreadySatisfiedMarker": "G-CET semantic:streetgamespoker"
+        "alreadySatisfiedMarker": "G-CET semantic:streetgamespoker",
+        "expectedMarkerFileCount": 1
       },
       "behavior": {
         "handler": "SEMANTIC_DISTANCE_ACTIVITY_SPLIT",
@@ -416,7 +422,8 @@
           "NightCityBilliardsRuntime",
           "ChoiceHub"
         ],
-        "alreadySatisfiedMarker": "G-CET semantic:nightcitybilliards"
+        "alreadySatisfiedMarker": "G-CET semantic:nightcitybilliards",
+        "expectedMarkerFileCount": 1
       },
       "behavior": {
         "handler": "SEMANTIC_ACTIVE_IDLE_SPLIT",
@@ -486,7 +493,8 @@
           "sms.processSmsQueue",
           "smsQueue"
         ],
-        "alreadySatisfiedMarker": "G-CET semantic:npcd-hotline"
+        "alreadySatisfiedMarker": "G-CET semantic:npcd-hotline",
+        "expectedMarkerFileCount": 2
       },
       "behavior": {
         "handler": "SEMANTIC_PENDING_QUEUE_GATES",
@@ -542,7 +550,8 @@
           "GetTargetingSystem",
           "GetComponentClosestToCrosshair"
         ],
-        "alreadySatisfiedMarker": "G-CET semantic:gameentityexaminertool"
+        "alreadySatisfiedMarker": "G-CET semantic:gameentityexaminertool",
+        "expectedMarkerFileCount": 1
       },
       "behavior": {
         "handler": "SEMANTIC_SCAN_ACTIVITY_SPLIT",
@@ -594,7 +603,8 @@
           "CustomPositionVariant",
           "UpdateRootState"
         ],
-        "alreadySatisfiedMarker": "G-CET semantic:givemeeverything"
+        "alreadySatisfiedMarker": "G-CET semantic:givemeeverything",
+        "expectedMarkerFileCount": 1
       },
       "behavior": {
         "handler": "SEMANTIC_GLOBAL_CALLBACK_PREFILTER",
@@ -650,7 +660,8 @@
           "SpotManager",
           "UpdateRootState"
         ],
-        "alreadySatisfiedMarker": "G-CET semantic:roulette"
+        "alreadySatisfiedMarker": "G-CET semantic:roulette",
+        "expectedMarkerFileCount": 2
       },
       "behavior": {
         "handler": "SEMANTIC_ACTIVE_IDLE_WITH_PREFILTER",
@@ -719,7 +730,8 @@
           "VehicleSystem",
           "Core:Update"
         ],
-        "alreadySatisfiedMarker": "G-CET semantic:driveaerialvehicle"
+        "alreadySatisfiedMarker": "G-CET semantic:driveaerialvehicle",
+        "expectedMarkerFileCount": 2
       },
       "behavior": {
         "handler": "SEMANTIC_ACTIVITY_GATE",
@@ -790,7 +802,8 @@
           "updatePulseVisual",
           "interactionUI.update"
         ],
-        "alreadySatisfiedMarker": "G-CET semantic:illegal-mechanic"
+        "alreadySatisfiedMarker": "G-CET semantic:illegal-mechanic",
+        "expectedMarkerFileCount": 1
       },
       "behavior": {
         "handler": "SEMANTIC_ACTIVE_IDLE_SPLIT",
@@ -854,7 +867,8 @@
           "CameraEngine.update",
           "SpeedEffects.update"
         ],
-        "alreadySatisfiedMarker": "G-CET semantic:shift"
+        "alreadySatisfiedMarker": "G-CET semantic:shift",
+        "expectedMarkerFileCount": 1
       },
       "behavior": {
         "handler": "SEMANTIC_REALTIME_ACTIVITY_GATE"
@@ -905,7 +919,8 @@
           "SpotManager",
           "UpdateRootState"
         ],
-        "alreadySatisfiedMarker": "G-CET semantic:blackjack"
+        "alreadySatisfiedMarker": "G-CET semantic:blackjack",
+        "expectedMarkerFileCount": 2
       },
       "behavior": {
         "handler": "SEMANTIC_ACTIVE_IDLE_WITH_PREFILTER",
@@ -985,7 +1000,8 @@
           "Runner",
           "Manager"
         ],
-        "alreadySatisfiedMarker": "G-CET semantic:questrunner"
+        "alreadySatisfiedMarker": "G-CET semantic:questrunner",
+        "expectedMarkerFileCount": 1
       },
       "behavior": {
         "handler": "SEMANTIC_ACTIVE_IDLE_SPLIT",
