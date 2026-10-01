@@ -15,8 +15,8 @@
     "referencePatchesShipWithResolver": false,
     "fullPassRule": "A semantic injector can run only when the current capture contains a >=3.0 ms/s measured callback, the library rule matches, and the current live mod source graph proves its anchors.",
     "enabledInjectorCount": 15,
-    "profileOnlyRuleCount": 1,
-    "note": "The production semantic base is intentionally compact. Runtime cost only earns review; automatic rules require a small, provable state model and must avoid bespoke timing. Rejected hot mods remain evidence only.",
+    "profileOnlyRuleCount": 0,
+    "note": "The production semantic base contains only active automatic rules. Hot/reviewed/profile-only candidates stay in development evidence so catalog membership always means potentially generatable after runtime + live-source proof.",
     "admissionPolicy": {
       "runtimeThresholdMsPerSecond": 3,
       "requiresGenericExhausted": true,
@@ -45,7 +45,8 @@
         "DualSense Support (until its author handleUpdates lifecycle is fully proven)"
       ],
       "note": "Hot means review-worthy, not semantic-library-worthy. The base catalog is reserved for high-cost features with a provable inactive state and complete safe wake path."
-    }
+    },
+    "productionEntriesMustGenerate": true
   },
   "entries": [
     {
@@ -576,86 +577,6 @@
       ]
     },
     {
-      "id": "repeatable-increased-criminal-activity",
-      "identityHints": [
-        "repeatable_increased_criminal_activity"
-      ],
-      "policyClass": "MULTI_RATE_DORMANT",
-      "callbacks": [
-        {
-          "kind": "event",
-          "target": "onUpdate",
-          "role": "hot-path"
-        }
-      ],
-      "sourceProof": {
-        "ownerAll": [
-          "runtimeStateTick",
-          "rewardTick"
-        ],
-        "alreadySatisfiedMarker": "G-CET semantic:repeatable-increased-criminal-activity"
-      },
-      "behavior": {
-        "handler": "SEMANTIC_MULTI_RATE_SPLIT",
-        "concepts": [
-          "reward",
-          "runtimeState",
-          "mappinState",
-          "diagnostics",
-          "systemMaintenance"
-        ],
-        "lanes": [
-          {
-            "role": "REWARD",
-            "cadence": "FIXED_SECONDS",
-            "seconds": 0.25
-          },
-          {
-            "role": "RUNTIME_STATE",
-            "cadence": "FIXED_SECONDS",
-            "seconds": 1
-          },
-          {
-            "role": "MAPPINS",
-            "cadence": "FIXED_SECONDS",
-            "seconds": 1
-          },
-          {
-            "role": "DIAGNOSTICS",
-            "cadence": "FIXED_SECONDS",
-            "seconds": 5
-          },
-          {
-            "role": "SYSTEM",
-            "cadence": "FIXED_SECONDS",
-            "seconds": 10
-          }
-        ]
-      },
-      "generation": {
-        "enabled": false,
-        "patchStyle": "source-injection",
-        "shipReferenceOverride": false,
-        "requiresCurrentSourceProof": true,
-        "requiresIdempotenceMarker": true,
-        "implementationStatus": "PROFILE_ONLY"
-      },
-      "runtimeAdmission": {
-        "thresholdMsPerSecond": 3,
-        "measuredPeakExclusiveMsPerSecond": 6.565717,
-        "evidenceStack": "MOD_COLLECTION_ONLY",
-        "admitted": true
-      },
-      "cadenceGroup": "MULTI_RATE_4HZ_1HZ_0_2HZ_0_1HZ",
-      "catalogRole": "SEMANTIC_HOT_MOD",
-      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
-      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
-      "referenceOverrideAllowed": false,
-      "evidenceMembership": [
-        "G_MOD_COLLECTION_20260926"
-      ]
-    },
-    {
       "id": "givemeeverything",
       "identityHints": [
         "GiveMeEverything"
@@ -1118,7 +1039,7 @@
   ],
   "catalog": {
     "kind": "BASE_SEMANTIC_RULE_CATALOG",
-    "entryMeaning": "Behavior knowledge for measured hot mods. Entries are not files, patches, or install payloads.",
+    "entryMeaning": "Production AUTO behavior rules only. Every entry has an enabled source injector; reviewed/rejected candidates live in evidence ledgers instead.",
     "activation": "CAPTURED_HOT_CALLBACK + LIVE_MOD_PRESENT + CURRENT_SOURCE_PROOF + IMPLEMENTED_INJECTOR",
     "absentModBehavior": "NO_MATCH_NO_OUTPUT",
     "referenceFilesShipped": false,
@@ -1134,7 +1055,6 @@
         "cybertrials",
         "streetgamespoker",
         "nightcitybilliards",
-        "repeatable-increased-criminal-activity",
         "givemeeverything",
         "roulette",
         "driveaerialvehicle",
@@ -1162,6 +1082,13 @@
         {
           "owner": "Dedrapanamgoondate",
           "reason": "UI_DRAW_ALREADY_VISIBILITY_GATED_LOW_PRIORITY"
+        }
+      ],
+      "reviewedExcluded": [
+        {
+          "owner": "repeatable_increased_criminal_activity",
+          "reason": "PROFILE_ONLY_NOT_AUTO_RECIPE",
+          "note": "Measured and behavior-classified, but no production AUTO injector is authorized. Keep as evidence only until a compact safe rule exists."
         }
       ]
     },

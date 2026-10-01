@@ -21,9 +21,6 @@ internal sealed record CallbackResolverDocumentResult(
 
 internal static class CallbackResolverService
 {
-    private const int TopConsumersPerFamily = 10;
-    private const int TopFamilies = 12;
-
     // A source-safe transform still does not justify touching user code unless
     // the measured avoidable portion is meaningful. These are relative floors,
     // so selection scales with the user's actual CET workload rather than CPU
@@ -72,7 +69,6 @@ internal static class CallbackResolverService
             })
             .OrderByDescending(x => x.Work)
             .ThenByDescending(x => x.Calls)
-            .Take(TopFamilies)
             .ToList();
 
         var familyDocuments = new List<object>();
@@ -94,7 +90,7 @@ internal static class CallbackResolverService
             var first = family.Rows[0];
             var consumers = new List<object>();
 
-            foreach (var callback in family.Rows.Take(TopConsumersPerFamily))
+            foreach (var callback in family.Rows)
             {
                 rankedCount++;
                 var generic = ResolveGeneric(callback, sourceIndex, cadence);
@@ -314,8 +310,7 @@ internal static class CallbackResolverService
             {
                 callbackOriented = true,
                 familyFirst = true,
-                topFamilies = TopFamilies,
-                topConsumersPerFamily = TopConsumersPerFamily,
+                exhaustiveMeasuredCallbacks = true,
                 genericPatternsBeforeRegistry = true,
                 registryContainsPatchCode = false,
                 registryCanAuthorizeRewrite = false,

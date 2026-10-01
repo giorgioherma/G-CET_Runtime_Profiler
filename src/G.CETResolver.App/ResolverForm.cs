@@ -149,7 +149,7 @@ internal sealed class ResolverForm : Form
                 $"MATERIAL REMAINING: {result.MaterialRemainingCount}   |   " +
                 $"BELOW 3 ms/s: {result.BelowThresholdCount}";
 
-            _status.Text = $"Complete — {result.RankedCallbackCount} high-impact callback consumers inspected.";
+            _status.Text = $"Complete — {result.RankedCallbackCount} measured callback consumers inspected.";
             _output.Text =
                 $"G-CET resolver output:\r\n{result.ResolverPath}\r\n\r\n" +
                 (result.CadenceFinalPath is null

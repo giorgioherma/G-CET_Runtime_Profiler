@@ -18,7 +18,6 @@ These are the collection mods that passed both filters: material runtime cost **
 | cybertrials | CyberTrials | 42.899 | realtime + fast/slow discovery + owned-mappin prefilter |
 | streetgamespoker | StreetGamesPoker | 23.071 | active frame + 10/5/1 Hz distance/activity lanes |
 | nightcitybilliards | NightCityBilliards | 14.250 | active frame + idle 5 Hz |
-| repeatable-increased-criminal-activity | repeatable_increased_criminal_activity | 6.566 | 4/1/0.2/0.1 Hz multi-rate lanes |
 | givemeeverything | GiveMeEverything | 5.604 | global mappin ownership prefilter |
 | roulette | Gambling System - Roulette | 5.261 | active frame / idle 10 Hz + prompt-mappin prefilter |
 | driveaerialvehicle | DriveAerialVehicle | 4.671 | active vehicle realtime, normal/idle reduced work |
@@ -38,6 +37,7 @@ GTA - JoyRide, repeatable_cyberpsychos, CyberTrials, StreetGamesPoker, and Night
 - nativeInteractions — interaction framework must continuously discover proximity/state/input transitions; keep semantic cadence control out of the framework.
 - Minimap Widgets — continuous HUD/presentation work with reasonable different refresh rates; not a true dormant feature.
 - sitAnywhere — conceptually inactive most of the time, but safe dormancy requires a complete wake/discovery proof. Keep as research evidence until that is proven.
+- repeatable_increased_criminal_activity — measured and behavior-classified, but it remains profile/research evidence only; no production AUTO injector is authorized.
 
 The same admission policy excludes continuous world-discovery classes such as loot-marker systems and AutoLoot-style mods unless a future capture/source proof demonstrates a complete cheap wake path. Hot alone is not sufficient.
 
