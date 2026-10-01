@@ -592,7 +592,7 @@ internal static class CallbackResolverService
 
         foreach (var definition in SharedProviderDefinitions)
         {
-            if (!definition.PlayerDerived)
+            if (!definition.RequiresPlayerReceiver)
             {
                 foreach (Match match in definition.SourceRegex.Matches(text))
                 {
@@ -4527,7 +4527,7 @@ internal static class CallbackResolverService
         public string Category { get; init; } = "";
         public Regex SourceRegex { get; init; } = null!;
         public string[] DeepFunctionNames { get; init; } = Array.Empty<string>();
-        public bool PlayerDerived { get; init; }
+        public bool RequiresPlayerReceiver { get; init; }
 
         public static SharedProviderDefinition Direct(
             string provider,
@@ -4541,7 +4541,7 @@ internal static class CallbackResolverService
                 sourcePattern,
                 RegexOptions.Compiled | RegexOptions.CultureInvariant),
             DeepFunctionNames = deepFunctionNames,
-            PlayerDerived = false
+            RequiresPlayerReceiver = false
         };
 
         public static SharedProviderDefinition PlayerDerived(
@@ -4555,7 +4555,7 @@ internal static class CallbackResolverService
                 @"\b[A-Za-z_]\w*\s*:\s*" + Regex.Escape(functionName) + @"\s*\(\s*\)",
                 RegexOptions.Compiled | RegexOptions.CultureInvariant),
             DeepFunctionNames = new[] { functionName },
-            PlayerDerived = true
+            RequiresPlayerReceiver = true
         };
     }
 
