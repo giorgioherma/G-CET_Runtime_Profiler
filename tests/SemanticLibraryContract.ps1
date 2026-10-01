@@ -1,4 +1,6 @@
-param()
+param(
+    [string]$ResolverRoot = ''
+)
 
 $ErrorActionPreference = 'Stop'
 
@@ -82,6 +84,25 @@ $rejectedAuto = @(
 $leaked = @($rejectedAuto | Where-Object { $_ -in $ids -or $_ -in $injectorIds })
 if ($leaked.Count -gt 0) {
     throw "Reviewed/rejected rules leaked back into production AUTO: $($leaked -join ', ')"
+}
+
+if (![string]::IsNullOrWhiteSpace($ResolverRoot)) {
+    $resolvedRoot = (Resolve-Path $ResolverRoot).Path
+    $publishedLibrary = Join-Path $resolvedRoot 'knowledge\semantic-library.json'
+    if (!(Test-Path -LiteralPath $publishedLibrary -PathType Leaf)) {
+        throw "Published standalone Resolver is missing its semantic library: $publishedLibrary"
+    }
+
+    $sourceHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $libraryPath).Hash
+    $publishedHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $publishedLibrary).Hash
+    if ($sourceHash -ne $publishedHash) {
+        throw 'Published standalone Resolver semantic library does not match the repository production catalog.'
+    }
+
+    $retiredRegistry = Join-Path $resolvedRoot 'knowledge\high-impact-exceptions.json'
+    if (Test-Path -LiteralPath $retiredRegistry) {
+        throw 'Retired high-impact exception registry leaked into the standalone Resolver package.'
+    }
 }
 
 Write-Host "Semantic production contract passed: $($entries.Count) active rules, exact injector parity, no profile-only/rejected rules."
