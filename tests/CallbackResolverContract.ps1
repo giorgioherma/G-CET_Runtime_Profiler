@@ -462,6 +462,46 @@ $handoff = @{
         (CallbackRow 127 'FixtureUnknownHot' 'observe' 'PlayerPuppet::AnotherUnknownMethod' 60 20.0 5.0 'init.lua' 1 3),
         (CallbackRow 103 'FixtureUnknown' 'observe' 'PlayerPuppet::SomeOtherMethod' 60 4.0 1.0 'init.lua' 1 3)
     )
+    optimizerEvidence = @(
+        @{
+            registrationId = 120
+            owner = 'FixtureStructural'
+            kind = 'event'
+            target = 'onUpdate'
+            deep = @{
+                hotCallees = @(
+                    @{
+                        functionName = 'GetPlayer'
+                        sampledCalls = 24
+                        repeatedInSampleCount = 8
+                        multiCallsiteSampleCount = 8
+                    }
+                )
+            }
+        }
+        @{
+            registrationId = 126
+            owner = 'FixtureDiscoveryAuthorRate'
+            kind = 'event'
+            target = 'onUpdate'
+            deep = @{
+                hotCallees = @(
+                    @{
+                        functionName = 'GetPlayer'
+                        sampledCalls = 12
+                        repeatedInSampleCount = 0
+                        multiCallsiteSampleCount = 0
+                    }
+                    @{
+                        functionName = 'GetWorldPosition'
+                        sampledCalls = 12
+                        repeatedInSampleCount = 0
+                        multiCallsiteSampleCount = 0
+                    }
+                )
+            }
+        }
+    )
 } | ConvertTo-Json -Depth 30
 
 $handoff | Set-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Encoding utf8
@@ -527,6 +567,51 @@ if (!$result.policy.exhaustiveMeasuredCallbacks) { throw 'Resolver is not marked
 $expectedMeasuredCallbacks = @(($handoff | ConvertFrom-Json).callbacks | Where-Object { !$_.infrastructure -and [double]$_.exclusiveMsPerSecond -gt 0 }).Count
 if ([int]$result.summary.rankedCallbackCount -ne $expectedMeasuredCallbacks) {
     throw "Resolver did not inspect every measured callback: expected $expectedMeasuredCallbacks, got $($result.summary.rankedCallbackCount)."
+}
+
+if (!$result.policy.sharedProviderOpportunityAnalysis) {
+    throw 'Shared-provider opportunity analysis is not enabled.'
+}
+if ($result.policy.sharedProviderGenerationEnabled) {
+    throw 'Shared-provider opportunity analysis unexpectedly authorizes generation.'
+}
+if ($result.policy.sharedProviderScope -ne 'MEASURED_CALLBACKS_ONLY') {
+    throw "Shared-provider analysis escaped measured callbacks: $($result.policy.sharedProviderScope)"
+}
+
+$playerProvider = @($result.sharedProviderOpportunities | Where-Object { $_.provider -eq 'PLAYER' }) |
+    Select-Object -First 1
+if ($null -eq $playerProvider) {
+    throw 'PLAYER shared-provider opportunity was not detected.'
+}
+if ([int]$playerProvider.sourceOccurrences -lt 5) {
+    throw "PLAYER provider did not aggregate repeated measured source reads: $($playerProvider.sourceOccurrences)"
+}
+if ([int]$playerProvider.callbacksWithRepeatedSourceReads -lt 1) {
+    throw 'PLAYER provider did not retain same-callback duplicate-read evidence.'
+}
+if ([int]$playerProvider.deepObservedCallbackCount -lt 2 -or
+    [int]$playerProvider.deepSampledCalls -lt 36 -or
+    [int]$playerProvider.deepRepeatedSameInvocationCount -lt 8) {
+    throw 'PLAYER provider did not join existing adaptive deep evidence.'
+}
+if ([double]$playerProvider.affectedCallbackWorkMsPerSecond -le 0) {
+    throw 'PLAYER provider lost measured callback workload context.'
+}
+if ($playerProvider.generationEnabled) {
+    throw 'Shared-provider opportunity evidence must remain analysis-only.'
+}
+
+$positionProvider = @($result.sharedProviderOpportunities | Where-Object { $_.provider -eq 'PLAYER_POSITION' }) |
+    Select-Object -First 1
+if ($null -eq $positionProvider) {
+    throw 'PLAYER_POSITION shared-provider opportunity was not detected.'
+}
+if ([int]$positionProvider.sourceProvenOccurrences -lt 1) {
+    throw 'PLAYER_POSITION did not prove a local receiver sourced from Game.GetPlayer().'
+}
+if ([int]$positionProvider.deepObservedCallbackCount -lt 1) {
+    throw 'PLAYER_POSITION did not join its existing deep call evidence.'
 }
 
 $onActionFamilies = @($result.callbackFamilies | Where-Object { $_.resolverFamily -eq 'ONACTION' })
