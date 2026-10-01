@@ -14,8 +14,8 @@
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
     "fullPassRule": "A semantic injector can run only when the current capture contains a >=3.0 ms/s measured callback, the library rule matches, and the current live mod source graph proves its anchors.",
-    "enabledInjectorCount": 17,
-    "profileOnlyRuleCount": 6,
+    "enabledInjectorCount": 18,
+    "profileOnlyRuleCount": 5,
     "note": "Catalog membership, runtime admission, source proof, and injector implementation are separate gates. A PROFILE_ONLY rule can classify/report a hot mod but cannot emit files."
   },
   "entries": [
@@ -1286,8 +1286,10 @@
       ],
       "sourceProof": {
         "ownerAll": [
-          "IllegalMechanicPhase1A",
-          "interactionUI"
+          "HackSignalInteraction.Update",
+          "state.nextInteractionUpdateAt",
+          "updatePulseVisual",
+          "interactionUI.update"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:illegal-mechanic"
       },
@@ -1295,30 +1297,30 @@
         "handler": "SEMANTIC_ACTIVE_IDLE_SPLIT",
         "concepts": [
           "hackPulseRealtime",
-          "interactionPolling",
-          "mechanicInteraction",
-          "hackSignalInteraction"
+          "hubVisible",
+          "interactionPollingDeadline",
+          "scriptableSystemLookup"
         ],
         "lanes": [
           {
-            "role": "HACK_PULSE",
+            "role": "HACK_PULSE_OR_VISIBLE_HUB",
             "cadence": "EVERY_FRAME",
             "seconds": 0
           },
           {
             "role": "DORMANT_INTERACTION",
-            "cadence": "FIXED_SECONDS",
+            "cadence": "AUTHOR_DEADLINE",
             "seconds": 0.2
           }
         ]
       },
       "generation": {
-        "enabled": false,
+        "enabled": true,
         "patchStyle": "source-injection",
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
         "requiresIdempotenceMarker": true,
-        "implementationStatus": "PROFILE_ONLY"
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
