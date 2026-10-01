@@ -15,6 +15,8 @@ public sealed record ResolverBuildResult(
     int MaterialRemainingCount,
     int BelowThresholdCount,
     int RegistryHintCount,
+    int SemanticReadyRuleCount,
+    int AlreadySatisfiedCount,
     int UnresolvedCount);
 
 /// <summary>
@@ -100,6 +102,8 @@ public static class ResolverService
             result.MaterialRemainingCount,
             result.BelowThresholdCount,
             result.RegistryHintCount,
+            result.SemanticReadyRuleCount,
+            result.AlreadySatisfiedCount,
             result.UnresolvedCount);
     }
     public static PassBuildResult GeneratePass(

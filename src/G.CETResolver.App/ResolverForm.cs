@@ -15,7 +15,7 @@ internal sealed class ResolverForm : Form
     private readonly Label _status = new() { AutoSize = true, Text = "Select RESULTS (or a capture folder) and the live CET mods folder." };
     private readonly Label _families = new() { AutoSize = true, Text = "CALLBACK FAMILIES: -" };
     private readonly Label _generic = new() { AutoSize = true, Text = "AUTO PATCHABLE: -" };
-    private readonly Label _registry = new() { AutoSize = true, Text = "SPECIAL HINTS: -" };
+    private readonly Label _registry = new() { AutoSize = true, Text = "SEMANTIC READY: -   |   ALREADY SATISFIED: -   |   SPECIAL HINTS: -" };
     private readonly Label _unresolved = new() { AutoSize = true, Text = "MATERIAL REMAINING: -   |   BELOW 3 ms/s: -" };
     private readonly TextBox _output = new()
     {
@@ -141,7 +141,10 @@ internal sealed class ResolverForm : Form
                 $"AUTO PATCHABLE: {result.GenericResolvedCount}   |   " +
                 $"NON-FRAME-ONLY: {result.NonFrameOnlyAutoCount}   |   " +
                 $"FRAME-ONLY: {result.FrameOnlyAutoCount}";
-            _registry.Text = $"SPECIAL HINTS: {result.RegistryHintCount}";
+            _registry.Text =
+                $"SEMANTIC READY: {result.SemanticReadyRuleCount}   |   " +
+                $"ALREADY SATISFIED: {result.AlreadySatisfiedCount}   |   " +
+                $"SPECIAL HINTS: {result.RegistryHintCount}";
             _unresolved.Text =
                 $"MATERIAL REMAINING: {result.MaterialRemainingCount}   |   " +
                 $"BELOW 3 ms/s: {result.BelowThresholdCount}";
@@ -233,9 +236,15 @@ internal sealed class ResolverForm : Form
             var pass = ResolverService.GeneratePass(capture, mods);
 
             _families.Text = $"CALLBACK FAMILIES: {resolved.FamilyCount}";
-            _generic.Text = $"GENERIC RESOLVED: {resolved.GenericResolvedCount}";
-            _registry.Text = $"SPECIAL HINTS: {resolved.RegistryHintCount}";
-            _unresolved.Text = $"UNRESOLVED: {resolved.UnresolvedCount}";
+            _generic.Text =
+                $"GENERIC READY: {resolved.GenericResolvedCount}   |   " +
+                $"SEMANTIC READY: {resolved.SemanticReadyRuleCount}";
+            _registry.Text =
+                $"ALREADY SATISFIED: {resolved.AlreadySatisfiedCount}   |   " +
+                $"SPECIAL HINTS: {resolved.RegistryHintCount}";
+            _unresolved.Text =
+                $"MATERIAL REMAINING: {resolved.MaterialRemainingCount}   |   " +
+                $"BELOW 3 ms/s: {resolved.BelowThresholdCount}";
 
             _status.Text = $"Pass ready — {pass.TransformCount} transforms across {pass.FileCount} files.";
             _output.Text =

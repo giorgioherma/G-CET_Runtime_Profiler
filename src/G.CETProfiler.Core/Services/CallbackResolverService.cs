@@ -15,6 +15,8 @@ internal sealed record CallbackResolverDocumentResult(
     int MaterialRemainingCount,
     int BelowThresholdCount,
     int RegistryHintCount,
+    int SemanticReadyRuleCount,
+    int AlreadySatisfiedCount,
     int UnresolvedCount);
 
 internal static class CallbackResolverService
@@ -83,6 +85,7 @@ internal static class CallbackResolverService
         var registryHints = 0;
         var semanticMatches = 0;
         var semanticSourceProven = 0;
+        var semanticReadyRules = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var unresolved = 0;
         var alreadySatisfied = 0;
 
@@ -105,6 +108,16 @@ internal static class CallbackResolverService
                     if (semantic.SourceProofSatisfied)
                         semanticSourceProven++;
                 }
+                var semanticGenerationReady =
+                    semantic.Matched &&
+                    semantic.SourceProofSatisfied &&
+                    semantic.GenerationEnabled &&
+                    !semantic.AlreadySatisfied &&
+                    callback.ExclusiveMsPerSecond >= MaterialRemainingMsPerSecond &&
+                    !string.IsNullOrWhiteSpace(semantic.RuleId);
+                if (semanticGenerationReady)
+                    semanticReadyRules.Add(semantic.RuleId);
+
                 var dormancy = ResolveDormancyEvidence(callback, generic.Source, sourceIndex);
                 var userHint = advancedHints.Match(callback);
                 var advanced = EvaluateAdvancedCandidate(callback, generic, dormancy, userHint);
@@ -139,6 +152,11 @@ internal static class CallbackResolverService
                     alreadySatisfied++;
                 else if (hint is not null)
                     registryHints++;
+                else if (semanticGenerationReady)
+                {
+                    // This measured callback is accounted for by a source-proven
+                    // semantic rule and must not be presented as unresolved work.
+                }
                 else
                 {
                     unresolved++;
@@ -207,6 +225,7 @@ internal static class CallbackResolverService
                         semantic.Handler,
                         semantic.PatchStyle,
                         semantic.GenerationEnabled,
+                        generationReady = semanticGenerationReady,
                         semantic.ShipReferenceOverride,
                         semantic.MatchedAnchors,
                         semantic.MissingAnchors,
@@ -344,6 +363,7 @@ internal static class CallbackResolverService
                 registryHints,
                 semanticMatches,
                 semanticSourceProven,
+                semanticReadyRules = semanticReadyRules.Count,
                 alreadySatisfied,
                 unresolved
             },
@@ -361,6 +381,8 @@ internal static class CallbackResolverService
             materialRemaining,
             belowThreshold,
             registryHints,
+            semanticReadyRules.Count,
+            alreadySatisfied,
             unresolved);
     }
 
