@@ -600,8 +600,11 @@ if ([int]$result.summary.rankedCallbackCount -ne $expectedMeasuredCallbacks) {
 if (!$result.policy.sharedProviderOpportunityAnalysis) {
     throw 'Shared-provider opportunity analysis is not enabled.'
 }
-if ($result.policy.sharedProviderGenerationEnabled) {
-    throw 'Shared-provider opportunity analysis unexpectedly authorizes generation.'
+if (!$result.policy.sharedProviderGenerationEnabled) {
+    throw 'Source-proven shared-provider generation is not enabled.'
+}
+if (@($result.policy.sharedProviderGenerationFamilies) -notcontains 'PLAYER') {
+    throw 'PLAYER is not the explicitly enabled shared-provider generation family.'
 }
 if ($result.policy.sharedProviderScope -ne 'MEASURED_CALLBACKS_ONLY') {
     throw "Shared-provider analysis escaped measured callbacks: $($result.policy.sharedProviderScope)"
@@ -626,8 +629,11 @@ if ([int]$playerProvider.deepObservedCallbackCount -lt 2 -or
 if ([double]$playerProvider.affectedCallbackWorkMsPerSecond -le 0) {
     throw 'PLAYER provider lost measured callback workload context.'
 }
-if ($playerProvider.generationEnabled) {
-    throw 'Shared-provider opportunity evidence must remain analysis-only.'
+if (!$playerProvider.generationEnabled -or $playerProvider.generationRecipe -ne 'SHARED_PROVIDER_READ') {
+    throw 'PLAYER shared-provider opportunity was not promoted to SHARED_PROVIDER_READ generation.'
+}
+if (@($playerProvider.callbacks | Where-Object { $_.substitutionEligible }).Count -lt 1) {
+    throw 'PLAYER shared-provider opportunity emitted no source-proven substitution candidates.'
 }
 if (@($playerProvider.owners) -contains 'FixtureColdProvider') {
     throw 'Shared-provider analysis scanned an unmeasured/cold mod into the opportunity set.'
@@ -1076,6 +1082,8 @@ try {
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureStructural/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDiscoveryAuthorRate/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDormantOnUpdate/init.lua',
+        'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureOtherStructural/init.lua',
+        'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureOverrideStructural/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureOverridePrefilter/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixturePattern/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDownstream/init.lua',
@@ -1099,9 +1107,10 @@ try {
     if ('bin/x64/plugins/cyber_engine_tweaks/mods/FixtureAbsentSemantic/init.lua' -in $names) {
         throw 'Semantic catalog created a file for a mod that is not installed.'
     }
+    if ('bin/x64/plugins/cyber_engine_tweaks/mods/FixtureColdProvider/init.lua' -in $names) {
+        throw 'Shared-provider generation escaped the measured callback set.'
+    }
     foreach ($parkedEntry in @(
-        'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureOtherStructural/init.lua',
-        'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureOverrideStructural/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureAlreadyFrame/init.lua'
     )) {
         if ($parkedEntry -in $names) {
@@ -1147,9 +1156,10 @@ try {
     if ($structuralText -match '__gcetReuse_120_' -or $structuralText -match '__gcetStatic_120_') {
         throw 'Structural hotpath rewrite leaked into the safe generic pass.'
     }
-    if ([regex]::Matches($structuralText, [regex]::Escape('Game.GetPlayer()')).Count -ne 2 -or
+    if ($structuralText -notmatch [regex]::Escape('-- G-CET shared provider: PLAYER') -or
+        [regex]::Matches($structuralText, [regex]::Escape('__gcetGetPlayer()')).Count -ne 2 -or
         [regex]::Matches($structuralText, [regex]::Escape('CName.new("StructuralFixture")')).Count -ne 2) {
-        throw 'Analysis-only structural expressions were modified by generic AUTO.'
+        throw 'PLAYER shared-provider substitution or structural isolation is incomplete.'
     }
 
     $discoveryText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDiscoveryAuthorRate/init.lua'
@@ -1170,10 +1180,24 @@ try {
     if ($hardUpdateText -match 'G-CET dormant guard hoist') {
         throw 'Dormant guard-hoist leaked into generic AUTO.'
     }
-    $originalGetterIndex = $hardUpdateText.IndexOf('local player = Game.GetPlayer()')
+    $originalGetterIndex = $hardUpdateText.IndexOf('local player = __gcetGetPlayer()')
     $originalGuardIndex = $hardUpdateText.IndexOf('if not active then return end')
     if ($originalGetterIndex -lt 0 -or $originalGuardIndex -lt 0 -or $originalGetterIndex -gt $originalGuardIndex) {
-        throw 'Generic AUTO changed the dormant callback execution order.'
+        throw 'Shared-provider AUTO changed the dormant callback execution order.'
+    }
+
+    $otherStructuralText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureOtherStructural/init.lua'
+    if ([regex]::Matches($otherStructuralText, [regex]::Escape('__gcetGetPlayer()')).Count -ne 2 -or
+        $otherStructuralText -match '__gcetReuse_129_' -or
+        $otherStructuralText -match '__gcetStatic_129_') {
+        throw 'PLAYER provider-only pass leaked structural rewrites into FixtureOtherStructural.'
+    }
+
+    $overrideStructuralText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureOverrideStructural/init.lua'
+    if ([regex]::Matches($overrideStructuralText, [regex]::Escape('__gcetGetPlayer()')).Count -ne 2 -or
+        $overrideStructuralText -match 'SubscribeAction' -or
+        $overrideStructuralText -match '__gcetOverrideActions_130') {
+        throw 'PLAYER provider-only pass changed Override semantics.'
     }
 
     $overridePrefilterText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureOverridePrefilter/init.lua'
@@ -1228,6 +1252,10 @@ try {
     }
     if (!$manifest.policy.cadenceTransforms) {
         throw 'Generated pass manifest did not advertise semantic cadence/source-injection support.'
+    }
+    if (@($manifest.policy.sharedProviderFamilies) -notcontains 'PLAYER' -or
+        @($manifest.policy.supportedPasses) -notcontains 'SHARED_PROVIDER_READ') {
+        throw 'Generated pass manifest does not advertise PLAYER shared-provider generation.'
     }
     if ([double]$manifest.policy.semanticRuntimeThresholdMsPerSecond -ne 3.0) {
         throw 'Semantic runtime admission threshold changed unexpectedly.'
