@@ -260,6 +260,11 @@ internal static class CallbackResolverService
             })
             .ToArray();
 
+        var sharedProviderOpportunities = BuildSharedProviderOpportunities(
+            callbacks,
+            sourceIndex,
+            handoff.RootElement);
+
         var document = new
         {
             schemaVersion = "0.1",
@@ -282,7 +287,10 @@ internal static class CallbackResolverService
                 dormancyClassificationEvidenceOnly = true,
                 dormancyCanAuthorizeGeneration = false,
                 dormancyClasses = new[] { "NEVER_GATE", "HARD_DORMANT", "DISCOVERY_DORMANT", "BACKGROUND", "UNKNOWN" },
-                note = "Generic AUTO is restricted to mechanically source-proven action routing, exact Override prefiltering, and frame-dispatch consolidation. Structural, cadence, and dormancy recognizers remain analysis evidence only; identity-specific automatic behavior lives exclusively in the source-proven semantic library. Already-satisfied generated states are not re-applied."
+                sharedProviderOpportunityAnalysis = true,
+                sharedProviderGenerationEnabled = false,
+                sharedProviderScope = "MEASURED_CALLBACKS_ONLY",
+                note = "Generic AUTO is restricted to mechanically source-proven action routing, exact Override prefiltering, and frame-dispatch consolidation. Structural, cadence, dormancy, and shared-provider recognizers remain analysis evidence only; identity-specific automatic behavior lives exclusively in the source-proven semantic library. Shared-provider opportunity totals describe measured callback territory, not estimated savings. Already-satisfied generated states are not re-applied."
             },
             cadence = new
             {
@@ -312,9 +320,59 @@ internal static class CallbackResolverService
                 semanticSourceProven,
                 semanticReadyRules = semanticReadyRules.Count,
                 alreadySatisfied,
-                unresolved
+                unresolved,
+                sharedProviderFamilies = sharedProviderOpportunities.Length,
+                sharedProviderMeasuredCallbacks = sharedProviderOpportunities
+                    .SelectMany(x => x.Callbacks)
+                    .Select(x => x.RegistrationId ?? 0)
+                    .Where(x => x > 0)
+                    .Distinct()
+                    .Count()
             },
             globalTopCallbacks = globalTop,
+            sharedProviderOpportunities = sharedProviderOpportunities.Select(x => new
+            {
+                provider = x.Provider,
+                category = x.Category,
+                measuredOwnerCount = x.MeasuredOwnerCount,
+                measuredCallbackCount = x.MeasuredCallbackCount,
+                sourceOccurrences = x.SourceOccurrences,
+                sourceProvenOccurrences = x.SourceProvenOccurrences,
+                sourceUnprovenOccurrences = x.SourceUnprovenOccurrences,
+                callbacksWithRepeatedSourceReads = x.CallbacksWithRepeatedSourceReads,
+                deepObservedCallbackCount = x.DeepObservedCallbackCount,
+                deepSampledCalls = x.DeepSampledCalls,
+                deepRepeatedSameInvocationCount = x.DeepRepeatedSameInvocationCount,
+                deepMultiCallsiteSampleCount = x.DeepMultiCallsiteSampleCount,
+                affectedCallbackWorkMsPerSecond = Round(x.AffectedCallbackWorkMsPerSecond),
+                affectedCallbackCallsPerSecond = Round(x.AffectedCallbackCallsPerSecond),
+                affectedSpikeCount = x.AffectedSpikeCount,
+                maxAffectedSpikeExclusiveMs = Round(x.MaxAffectedSpikeExclusiveMs),
+                analysisOnly = true,
+                generationEnabled = false,
+                metricMeaning = "Affected callback work is the measured workload of callbacks containing this provider candidate; it is not an estimate of provider savings and provider totals are not additive.",
+                owners = x.Owners,
+                callbacks = x.Callbacks.Select(cb => new
+                {
+                    registrationId = cb.RegistrationId,
+                    owner = cb.Owner,
+                    kind = cb.Kind,
+                    target = cb.Target,
+                    sourceFile = cb.SourceFile,
+                    sourceOccurrences = cb.SourceOccurrences,
+                    sourceProvenOccurrences = cb.SourceProvenOccurrences,
+                    sourceUnprovenOccurrences = cb.SourceUnprovenOccurrences,
+                    sourceCallsites = cb.SourceCallsites,
+                    deepObserved = cb.DeepObserved,
+                    deepSampledCalls = cb.DeepSampledCalls,
+                    deepRepeatedSameInvocationCount = cb.DeepRepeatedSameInvocationCount,
+                    deepMultiCallsiteSampleCount = cb.DeepMultiCallsiteSampleCount,
+                    callsPerSecond = Round(cb.CallsPerSecond),
+                    exclusiveMsPerSecond = Round(cb.ExclusiveMsPerSecond),
+                    spikeCount = cb.SpikeCount,
+                    maxSpikeExclusiveMs = Round(cb.MaxSpikeExclusiveMs)
+                }).ToArray()
+            }).ToArray(),
             callbackFamilies = familyDocuments
         };
 
@@ -330,6 +388,338 @@ internal static class CallbackResolverService
             semanticReadyRules.Count,
             alreadySatisfied,
             unresolved);
+    }
+
+
+    private static readonly SharedProviderDefinition[] SharedProviderDefinitions =
+    [
+        SharedProviderDefinition.Direct(
+            "PLAYER",
+            "ENTITY_REFERENCE",
+            @"\bGame\s*\.\s*GetPlayer\s*\(\s*\)",
+            "GetPlayer"),
+        SharedProviderDefinition.Direct(
+            "QUESTS_SYSTEM",
+            "SYSTEM_HANDLE",
+            @"\bGame\s*\.\s*GetQuestsSystem\s*\(\s*\)",
+            "GetQuestsSystem"),
+        SharedProviderDefinition.Direct(
+            "STATS_SYSTEM",
+            "SYSTEM_HANDLE",
+            @"\bGame\s*\.\s*GetStatsSystem\s*\(\s*\)",
+            "GetStatsSystem"),
+        SharedProviderDefinition.Direct(
+            "TRANSACTION_SYSTEM",
+            "SYSTEM_HANDLE",
+            @"\bGame\s*\.\s*GetTransactionSystem\s*\(\s*\)",
+            "GetTransactionSystem"),
+        SharedProviderDefinition.Direct(
+            "BLACKBOARD_SYSTEM",
+            "SYSTEM_HANDLE",
+            @"\bGame\s*\.\s*GetBlackboardSystem\s*\(\s*\)",
+            "GetBlackboardSystem"),
+        SharedProviderDefinition.Direct(
+            "TARGETING_SYSTEM",
+            "SYSTEM_HANDLE",
+            @"\bGame\s*\.\s*GetTargetingSystem\s*\(\s*\)",
+            "GetTargetingSystem"),
+        SharedProviderDefinition.Direct(
+            "CAMERA_SYSTEM",
+            "SYSTEM_HANDLE",
+            @"\bGame\s*\.\s*GetCameraSystem\s*\(\s*\)",
+            "GetCameraSystem"),
+        SharedProviderDefinition.Direct(
+            "TIME_SYSTEM",
+            "SYSTEM_HANDLE",
+            @"\bGame\s*\.\s*GetTimeSystem\s*\(\s*\)",
+            "GetTimeSystem"),
+        SharedProviderDefinition.Direct(
+            "PREVENTION_SYSTEM",
+            "SYSTEM_HANDLE",
+            @"\bGame\s*\.\s*GetPreventionSystem\s*\(\s*\)",
+            "GetPreventionSystem"),
+        SharedProviderDefinition.Direct(
+            "SCRIPTABLE_SYSTEMS_CONTAINER",
+            "SYSTEM_HANDLE",
+            @"\bGame\s*\.\s*GetScriptableSystemsContainer\s*\(\s*\)",
+            "GetScriptableSystemsContainer"),
+        SharedProviderDefinition.PlayerDerived(
+            "PLAYER_POSITION",
+            "DYNAMIC_STATE",
+            "GetWorldPosition"),
+        SharedProviderDefinition.PlayerDerived(
+            "PLAYER_ORIENTATION",
+            "DYNAMIC_STATE",
+            "GetWorldOrientation"),
+        SharedProviderDefinition.PlayerDerived(
+            "PLAYER_COMBAT_STATE",
+            "DYNAMIC_STATE",
+            "IsInCombat")
+    ];
+
+    private static SharedProviderOpportunity[] BuildSharedProviderOpportunities(
+        IReadOnlyList<CallbackMetric> callbacks,
+        LiveSourceIndex sourceIndex,
+        JsonElement handoffRoot)
+    {
+        var deepEvidence = ReadSharedProviderDeepEvidence(handoffRoot);
+        var byProvider = new Dictionary<string, List<SharedProviderCallbackEvidence>>(
+            StringComparer.OrdinalIgnoreCase);
+
+        foreach (var callback in callbacks)
+        {
+            var source = sourceIndex.Resolve(callback);
+            if (source is null)
+                continue;
+
+            var matches = DetectSharedProviderSourceMatches(source);
+            if (matches.Count == 0)
+                continue;
+
+            var callbackDeep = callback.RegistrationId is long registrationId &&
+                               deepEvidence.TryGetValue(registrationId, out var foundDeep)
+                ? foundDeep
+                : SharedProviderDeepCallbackEvidence.Empty;
+
+            foreach (var providerGroup in matches
+                         .GroupBy(x => x.Provider, StringComparer.OrdinalIgnoreCase))
+            {
+                var definition = SharedProviderDefinitions.First(x =>
+                    x.Provider.Equals(providerGroup.Key, StringComparison.OrdinalIgnoreCase));
+                var providerMatches = providerGroup.ToArray();
+                var proven = providerMatches.Count(x => x.SourceProven);
+                var unproven = providerMatches.Length - proven;
+                callbackDeep.ByProvider.TryGetValue(
+                    definition.Provider,
+                    out var deepForProvider);
+
+                if (!byProvider.TryGetValue(definition.Provider, out var rows))
+                {
+                    rows = [];
+                    byProvider[definition.Provider] = rows;
+                }
+
+                rows.Add(new SharedProviderCallbackEvidence
+                {
+                    RegistrationId = callback.RegistrationId,
+                    Owner = callback.Owner,
+                    Kind = callback.Kind,
+                    Target = callback.Target,
+                    SourceFile = source.RelativeFile,
+                    SourceOccurrences = providerMatches.Length,
+                    SourceProvenOccurrences = proven,
+                    SourceUnprovenOccurrences = unproven,
+                    SourceCallsites = providerMatches
+                        .Select(x => new SharedProviderSourceCallsite
+                        {
+                            Line = x.Line,
+                            Proof = x.Proof
+                        })
+                        .OrderBy(x => x.Line)
+                        .ToArray(),
+                    DeepObserved = deepForProvider is not null,
+                    DeepSampledCalls = deepForProvider?.SampledCalls ?? 0,
+                    DeepRepeatedSameInvocationCount =
+                        deepForProvider?.RepeatedSameInvocationCount ?? 0,
+                    DeepMultiCallsiteSampleCount =
+                        deepForProvider?.MultiCallsiteSampleCount ?? 0,
+                    CallsPerSecond = callback.CallsPerSecond,
+                    ExclusiveMsPerSecond = callback.ExclusiveMsPerSecond,
+                    SpikeCount = callback.SpikeCount,
+                    MaxSpikeExclusiveMs = callback.MaxSpikeExclusiveMs
+                });
+            }
+        }
+
+        return byProvider
+            .Select(pair =>
+            {
+                var definition = SharedProviderDefinitions.First(x =>
+                    x.Provider.Equals(pair.Key, StringComparison.OrdinalIgnoreCase));
+                var rows = pair.Value
+                    .OrderByDescending(x => x.ExclusiveMsPerSecond)
+                    .ThenByDescending(x => x.CallsPerSecond)
+                    .ToArray();
+
+                return new SharedProviderOpportunity
+                {
+                    Provider = definition.Provider,
+                    Category = definition.Category,
+                    MeasuredOwnerCount = rows
+                        .Select(x => x.Owner)
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .Count(),
+                    MeasuredCallbackCount = rows.Length,
+                    SourceOccurrences = rows.Sum(x => x.SourceOccurrences),
+                    SourceProvenOccurrences = rows.Sum(x => x.SourceProvenOccurrences),
+                    SourceUnprovenOccurrences = rows.Sum(x => x.SourceUnprovenOccurrences),
+                    CallbacksWithRepeatedSourceReads =
+                        rows.Count(x => x.SourceOccurrences > 1),
+                    DeepObservedCallbackCount = rows.Count(x => x.DeepObserved),
+                    DeepSampledCalls = rows.Sum(x => x.DeepSampledCalls),
+                    DeepRepeatedSameInvocationCount =
+                        rows.Sum(x => x.DeepRepeatedSameInvocationCount),
+                    DeepMultiCallsiteSampleCount =
+                        rows.Sum(x => x.DeepMultiCallsiteSampleCount),
+                    AffectedCallbackWorkMsPerSecond =
+                        rows.Sum(x => x.ExclusiveMsPerSecond),
+                    AffectedCallbackCallsPerSecond =
+                        rows.Sum(x => x.CallsPerSecond),
+                    AffectedSpikeCount = rows.Sum(x => x.SpikeCount),
+                    MaxAffectedSpikeExclusiveMs = rows
+                        .Select(x => x.MaxSpikeExclusiveMs)
+                        .DefaultIfEmpty(0)
+                        .Max(),
+                    Owners = rows
+                        .Select(x => x.Owner)
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+                        .ToArray(),
+                    Callbacks = rows
+                };
+            })
+            .OrderByDescending(x => x.AffectedCallbackWorkMsPerSecond)
+            .ThenByDescending(x => x.SourceOccurrences)
+            .ThenBy(x => x.Provider, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static List<SharedProviderSourceMatch> DetectSharedProviderSourceMatches(
+        ResolvedSource source)
+    {
+        var result = new List<SharedProviderSourceMatch>();
+        var text = source.CallbackText;
+
+        foreach (var definition in SharedProviderDefinitions)
+        {
+            if (!definition.PlayerDerived)
+            {
+                foreach (Match match in definition.SourceRegex.Matches(text))
+                {
+                    result.Add(new SharedProviderSourceMatch
+                    {
+                        Provider = definition.Provider,
+                        Line = SharedProviderLine(source, match.Index),
+                        SourceProven = true,
+                        Proof = "EXACT_KNOWN_GETTER"
+                    });
+                }
+                continue;
+            }
+
+            var playerVariables = Regex.Matches(
+                    text,
+                    @"(?m)\b(?:local\s+)?(?<name>[A-Za-z_]\w*)\s*=\s*Game\s*\.\s*GetPlayer\s*\(\s*\)")
+                .Cast<Match>()
+                .Select(x => x.Groups["name"].Value)
+                .Distinct(StringComparer.Ordinal)
+                .ToHashSet(StringComparer.Ordinal);
+
+            var derivedRegex = new Regex(
+                @"\b(?<receiver>[A-Za-z_]\w*)\s*:\s*" +
+                Regex.Escape(definition.DeepFunctionNames[0]) +
+                @"\s*\(\s*\)",
+                RegexOptions.CultureInvariant);
+
+            foreach (Match match in derivedRegex.Matches(text))
+            {
+                var receiver = match.Groups["receiver"].Value;
+                var proven = playerVariables.Contains(receiver);
+                result.Add(new SharedProviderSourceMatch
+                {
+                    Provider = definition.Provider,
+                    Line = SharedProviderLine(source, match.Index),
+                    SourceProven = proven,
+                    Proof = proven
+                        ? "LOCAL_RECEIVER_FROM_GAME_GETPLAYER"
+                        : "RECEIVER_NOT_PROVEN_AS_CURRENT_PLAYER"
+                });
+            }
+        }
+
+        return result;
+    }
+
+    private static int SharedProviderLine(ResolvedSource source, int callbackOffset)
+    {
+        var baseLine = source.LineStart.GetValueOrDefault(1);
+        var text = source.CallbackText;
+        var limit = Math.Clamp(callbackOffset, 0, text.Length);
+        var lineOffset = 0;
+        for (var i = 0; i < limit; i++)
+            if (text[i] == '\n') lineOffset++;
+        return Math.Max(1, baseLine + lineOffset);
+    }
+
+    private static IReadOnlyDictionary<long, SharedProviderDeepCallbackEvidence>
+        ReadSharedProviderDeepEvidence(JsonElement root)
+    {
+        var result = new Dictionary<long, SharedProviderDeepCallbackEvidence>();
+
+        if (!root.TryGetProperty("optimizerEvidence", out var optimizerEvidence) ||
+            optimizerEvidence.ValueKind != JsonValueKind.Array)
+            return result;
+
+        foreach (var row in optimizerEvidence.EnumerateArray())
+        {
+            var registrationId = JsonNullableLong(row, "registrationId");
+            if (registrationId is null || registrationId <= 0)
+                continue;
+
+            if (!row.TryGetProperty("deep", out var deep) ||
+                deep.ValueKind != JsonValueKind.Object ||
+                !deep.TryGetProperty("hotCallees", out var hotCallees) ||
+                hotCallees.ValueKind != JsonValueKind.Array)
+                continue;
+
+            var byProvider = new Dictionary<string, SharedProviderDeepEvidence>(
+                StringComparer.OrdinalIgnoreCase);
+
+            foreach (var callee in hotCallees.EnumerateArray())
+            {
+                var functionName = JsonString(callee, "functionName");
+                var provider = SharedProviderForDeepFunction(functionName);
+                if (provider is null)
+                    continue;
+
+                if (!byProvider.TryGetValue(provider, out var aggregate))
+                {
+                    aggregate = new SharedProviderDeepEvidence();
+                    byProvider[provider] = aggregate;
+                }
+
+                aggregate.SampledCalls += (long)JsonDouble(callee, "sampledCalls");
+                aggregate.RepeatedSameInvocationCount +=
+                    (long)JsonDouble(callee, "repeatedInSampleCount");
+                aggregate.MultiCallsiteSampleCount +=
+                    (long)JsonDouble(callee, "multiCallsiteSampleCount");
+            }
+
+            if (byProvider.Count > 0)
+            {
+                result[registrationId.Value] = new SharedProviderDeepCallbackEvidence
+                {
+                    ByProvider = byProvider
+                };
+            }
+        }
+
+        return result;
+    }
+
+    private static string? SharedProviderForDeepFunction(string functionName)
+    {
+        if (string.IsNullOrWhiteSpace(functionName))
+            return null;
+
+        foreach (var definition in SharedProviderDefinitions)
+        {
+            if (definition.DeepFunctionNames.Any(name =>
+                    name.Equals(functionName, StringComparison.OrdinalIgnoreCase)))
+                return definition.Provider;
+        }
+
+        return null;
     }
 
     private static DormancyEvidence ResolveDormancyEvidence(
@@ -4128,6 +4518,120 @@ internal static class CallbackResolverService
             using var stream = File.OpenRead(path);
             return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
         }
+    }
+
+
+    private sealed class SharedProviderDefinition
+    {
+        public string Provider { get; init; } = "";
+        public string Category { get; init; } = "";
+        public Regex SourceRegex { get; init; } = null!;
+        public string[] DeepFunctionNames { get; init; } = Array.Empty<string>();
+        public bool PlayerDerived { get; init; }
+
+        public static SharedProviderDefinition Direct(
+            string provider,
+            string category,
+            string sourcePattern,
+            params string[] deepFunctionNames) => new()
+        {
+            Provider = provider,
+            Category = category,
+            SourceRegex = new Regex(
+                sourcePattern,
+                RegexOptions.Compiled | RegexOptions.CultureInvariant),
+            DeepFunctionNames = deepFunctionNames,
+            PlayerDerived = false
+        };
+
+        public static SharedProviderDefinition PlayerDerived(
+            string provider,
+            string category,
+            string functionName) => new()
+        {
+            Provider = provider,
+            Category = category,
+            SourceRegex = new Regex(
+                @"\b[A-Za-z_]\w*\s*:\s*" + Regex.Escape(functionName) + @"\s*\(\s*\)",
+                RegexOptions.Compiled | RegexOptions.CultureInvariant),
+            DeepFunctionNames = new[] { functionName },
+            PlayerDerived = true
+        };
+    }
+
+    private sealed class SharedProviderSourceMatch
+    {
+        public string Provider { get; init; } = "";
+        public int Line { get; init; }
+        public bool SourceProven { get; init; }
+        public string Proof { get; init; } = "";
+    }
+
+    private sealed class SharedProviderSourceCallsite
+    {
+        public int Line { get; init; }
+        public string Proof { get; init; } = "";
+    }
+
+    private sealed class SharedProviderDeepEvidence
+    {
+        public long SampledCalls { get; set; }
+        public long RepeatedSameInvocationCount { get; set; }
+        public long MultiCallsiteSampleCount { get; set; }
+    }
+
+    private sealed class SharedProviderDeepCallbackEvidence
+    {
+        public static SharedProviderDeepCallbackEvidence Empty { get; } = new();
+
+        public IReadOnlyDictionary<string, SharedProviderDeepEvidence> ByProvider { get; init; } =
+            new Dictionary<string, SharedProviderDeepEvidence>(
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    private sealed class SharedProviderCallbackEvidence
+    {
+        public long? RegistrationId { get; init; }
+        public string Owner { get; init; } = "";
+        public string Kind { get; init; } = "";
+        public string Target { get; init; } = "";
+        public string SourceFile { get; init; } = "";
+        public int SourceOccurrences { get; init; }
+        public int SourceProvenOccurrences { get; init; }
+        public int SourceUnprovenOccurrences { get; init; }
+        public SharedProviderSourceCallsite[] SourceCallsites { get; init; } =
+            Array.Empty<SharedProviderSourceCallsite>();
+        public bool DeepObserved { get; init; }
+        public long DeepSampledCalls { get; init; }
+        public long DeepRepeatedSameInvocationCount { get; init; }
+        public long DeepMultiCallsiteSampleCount { get; init; }
+        public double CallsPerSecond { get; init; }
+        public double ExclusiveMsPerSecond { get; init; }
+        public long SpikeCount { get; init; }
+        public double MaxSpikeExclusiveMs { get; init; }
+    }
+
+    private sealed class SharedProviderOpportunity
+    {
+        public string Provider { get; init; } = "";
+        public string Category { get; init; } = "";
+        public int MeasuredOwnerCount { get; init; }
+        public int MeasuredCallbackCount { get; init; }
+        public int SourceOccurrences { get; init; }
+        public int SourceProvenOccurrences { get; init; }
+        public int SourceUnprovenOccurrences { get; init; }
+        public int CallbacksWithRepeatedSourceReads { get; init; }
+        public int DeepObservedCallbackCount { get; init; }
+        public long DeepSampledCalls { get; init; }
+        public long DeepRepeatedSameInvocationCount { get; init; }
+        public long DeepMultiCallsiteSampleCount { get; init; }
+        public double AffectedCallbackWorkMsPerSecond { get; init; }
+        public double AffectedCallbackCallsPerSecond { get; init; }
+        public long AffectedSpikeCount { get; init; }
+        public double MaxAffectedSpikeExclusiveMs { get; init; }
+        public string[] Owners { get; init; } = Array.Empty<string>();
+        public SharedProviderCallbackEvidence[] Callbacks { get; init; } =
+            Array.Empty<SharedProviderCallbackEvidence>();
     }
 
     private sealed class CallbackMetric
