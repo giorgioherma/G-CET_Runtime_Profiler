@@ -108,6 +108,15 @@ Generic AUTO is deliberately narrow: finite `OnAction` routing, exact transparen
 prefiltering, and frame-dispatch consolidation. Structural/cadence/dormancy analysis may describe
 opportunities but cannot authorize generic generation.
 
+Frame-dispatch consolidation is a **performance optimization in its own right**, not merely plumbing.
+The client callback bodies may still execute the same logical work at the same cadence, so aggregate
+script work is not expected to disappear solely from consolidation. However, replacing many separate
+CET-facing `onUpdate` / `onDraw` registrations with one shared 0-Engine dispatch path materially
+reduces callback-dispatch fragmentation. In live testing this reduced the **frequency and severity of
+CET runtime spikes**, improving frame-time consistency even when the logical callback bodies remained
+unchanged. Resolver work must therefore evaluate frame consolidation on both average cost and
+**spike/frame-pacing pressure**; it must not be dismissed because the client body still runs.
+
 The production semantic catalog contains **automatic rules only**. A semantic transform is eligible
 only when the current capture measured it at the material runtime threshold, the matching live mod
 folder exists, the current source graph proves the rule, and that rule has an active source injector.
