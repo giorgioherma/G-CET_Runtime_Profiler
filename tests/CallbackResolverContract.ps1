@@ -1295,14 +1295,14 @@ try {
             throw "Parked semantic transform leaked into the manifest: $forbiddenType"
         }
     }
-    if ([int]$manifest.summary.transforms -ne 15) {
+    if ([int]$manifest.summary.transforms -ne 21) {
         throw 'Generated pass manifest transform count is wrong.'
     }
-    if ([int]$manifest.summary.genericTransforms -ne 15 -or [int]$manifest.summary.semanticTransforms -ne 0) {
-        throw 'Analysis-only semantic fixture unexpectedly changed transform accounting.'
+    if ([int]$manifest.summary.genericTransforms -ne 21 -or [int]$manifest.summary.semanticTransforms -ne 0) {
+        throw 'PLAYER shared-provider transforms were not composed into generic transform accounting.'
     }
-    if ([int]$manifest.summary.callbackFiles -ne 15) {
-        throw "Expected 15 callback replacement files, got $($manifest.summary.callbackFiles)."
+    if ([int]$manifest.summary.callbackFiles -ne 18) {
+        throw "Expected 18 callback replacement files, got $($manifest.summary.callbackFiles)."
     }
     if ([int]$manifest.summary.fixedRuntimeFiles -ne 4) {
         throw "Expected 4 fixed 0-Engine runtime files, got $($manifest.summary.fixedRuntimeFiles)."
