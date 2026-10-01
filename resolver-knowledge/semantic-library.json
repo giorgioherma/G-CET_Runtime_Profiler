@@ -14,9 +14,34 @@
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
     "fullPassRule": "A semantic injector can run only when the current capture contains a >=3.0 ms/s measured callback, the library rule matches, and the current live mod source graph proves its anchors.",
-    "enabledInjectorCount": 18,
-    "profileOnlyRuleCount": 5,
-    "note": "Catalog membership, runtime admission, source proof, and injector implementation are separate gates. A PROFILE_ONLY rule can classify/report a hot mod but cannot emit files."
+    "enabledInjectorCount": 17,
+    "profileOnlyRuleCount": 1,
+    "note": "The production semantic base is intentionally compact. Catalog membership requires more than runtime cost: the expensive work must have a provable inactive state and safe wake path. Rejected/risky hot mods stay in development evidence only.",
+    "admissionPolicy": {
+      "runtimeThresholdMsPerSecond": 3,
+      "requiresGenericExhausted": true,
+      "requiresMeaningfulInactiveState": true,
+      "requiresExpensiveWorkUnnecessaryWhileInactive": true,
+      "requiresCompleteWakePath": true,
+      "preserveRealtimeResponsiveness": true,
+      "excludedArchetypes": [
+        "REALTIME_CAMERA_SYSTEM",
+        "GENERAL_INTERACTION_FRAMEWORK",
+        "CONTINUOUS_HUD_PRESENTATION",
+        "CONTINUOUS_WORLD_DISCOVERY",
+        "UNCERTAIN_WAKE_DISCOVERY"
+      ],
+      "examplesNotForSemanticBase": [
+        "immersive_third_person",
+        "ImmersiveFirstPerson",
+        "nativeInteractions",
+        "Minimap Widgets",
+        "sitAnywhere",
+        "loot-marker systems",
+        "AutoLoot-style world discovery"
+      ],
+      "note": "Hot means review-worthy, not semantic-library-worthy. The base catalog is reserved for high-cost features with a provable inactive state and complete safe wake path."
+    }
   },
   "entries": [
     {
@@ -420,151 +445,6 @@
       ]
     },
     {
-      "id": "immersive-third-person",
-      "identityHints": [
-        "immersive_third_person"
-      ],
-      "policyClass": "REALTIME_PROTECTED_MULTI_RATE",
-      "callbacks": [
-        {
-          "kind": "event",
-          "target": "onUpdate",
-          "role": "hot-path"
-        }
-      ],
-      "sourceProof": {
-        "ownerAll": [
-          "Camera",
-          "GameSession"
-        ],
-        "alreadySatisfiedMarker": "G-CET semantic:immersive-third-person"
-      },
-      "behavior": {
-        "handler": "SEMANTIC_REALTIME_MULTI_RATE",
-        "concepts": [
-          "realtimeCamera",
-          "fastSupervisor",
-          "idleSupervisor",
-          "activeMaintenance",
-          "transitionPending"
-        ],
-        "lanes": [
-          {
-            "role": "REALTIME_CAMERA",
-            "cadence": "EVERY_FRAME",
-            "seconds": 0
-          },
-          {
-            "role": "FAST_SUPERVISOR",
-            "cadence": "FIXED_SECONDS",
-            "seconds": 0.1
-          },
-          {
-            "role": "ACTIVE_MAINTENANCE",
-            "cadence": "FIXED_SECONDS",
-            "seconds": 0.25
-          },
-          {
-            "role": "IDLE_SUPERVISOR",
-            "cadence": "FIXED_SECONDS",
-            "seconds": 0.5
-          }
-        ]
-      },
-      "generation": {
-        "enabled": false,
-        "patchStyle": "source-injection",
-        "shipReferenceOverride": false,
-        "requiresCurrentSourceProof": true,
-        "requiresIdempotenceMarker": true,
-        "implementationStatus": "PROFILE_ONLY"
-      },
-      "runtimeAdmission": {
-        "thresholdMsPerSecond": 3,
-        "measuredPeakExclusiveMsPerSecond": 19.88678,
-        "evidenceStack": "MOD_COLLECTION_ONLY",
-        "admitted": true
-      },
-      "cadenceGroup": "REALTIME_CAMERA_PLUS_10HZ_ACTIVE_2HZ_IDLE",
-      "catalogRole": "SEMANTIC_HOT_MOD",
-      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
-      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
-      "referenceOverrideAllowed": false,
-      "evidenceMembership": [
-        "G_MOD_COLLECTION_20260926"
-      ]
-    },
-    {
-      "id": "nativeinteractions",
-      "identityHints": [
-        "nativeInteractions"
-      ],
-      "policyClass": "ACTIVE_FRAME_DORMANT_FAST",
-      "callbacks": [
-        {
-          "kind": "*",
-          "target": "*",
-          "role": "hot-path"
-        }
-      ],
-      "sourceProof": {
-        "ownerAll": [
-          "worldInteraction",
-          "projectsManager"
-        ],
-        "alreadySatisfiedMarker": "G-CET semantic:nativeinteractions"
-      },
-      "behavior": {
-        "handler": "SEMANTIC_ACTIVE_IDLE_SPLIT",
-        "concepts": [
-          "sceneRealtime",
-          "interactionRealtime",
-          "worldDormant",
-          "managerDormant",
-          "ownedMappin"
-        ],
-        "lanes": [
-          {
-            "role": "ACTIVE_SCENE_INTERACTION",
-            "cadence": "EVERY_FRAME",
-            "seconds": 0
-          },
-          {
-            "role": "DORMANT_WORLD",
-            "cadence": "FIXED_SECONDS",
-            "seconds": 0.033333
-          },
-          {
-            "role": "DORMANT_MANAGER",
-            "cadence": "FIXED_SECONDS",
-            "seconds": 0.083333
-          }
-        ]
-      },
-      "generation": {
-        "enabled": false,
-        "patchStyle": "source-injection",
-        "shipReferenceOverride": false,
-        "requiresCurrentSourceProof": true,
-        "requiresIdempotenceMarker": true,
-        "implementationStatus": "PROFILE_ONLY"
-      },
-      "runtimeAdmission": {
-        "thresholdMsPerSecond": 3,
-        "measuredPeakExclusiveMsPerSecond": 16.538865,
-        "evidenceStack": "MOD_COLLECTION_ONLY",
-        "admitted": true
-      },
-      "cadenceGroup": "REALTIME_ACTIVE_PLUS_30HZ_12HZ_DORMANT",
-      "catalogRole": "SEMANTIC_HOT_MOD",
-      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
-      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
-      "referenceOverrideAllowed": false,
-      "evidenceMembership": [
-        "G_MOD_COLLECTION_20260926"
-      ]
-    },
-    {
       "id": "overclockedlynxpaws",
       "identityHints": [
         "OverclockedLynxPaws"
@@ -685,72 +565,6 @@
       ]
     },
     {
-      "id": "immersivefirstperson",
-      "identityHints": [
-        "ImmersiveFirstPerson"
-      ],
-      "policyClass": "REALTIME_PROTECTED",
-      "callbacks": [
-        {
-          "kind": "event",
-          "target": "onUpdate",
-          "role": "hot-path"
-        }
-      ],
-      "sourceProof": {
-        "ownerAll": [
-          "CameraCore",
-          "GameSession"
-        ],
-        "alreadySatisfiedMarker": "G-CET semantic:immersivefirstperson"
-      },
-      "behavior": {
-        "handler": "SEMANTIC_REALTIME_ACTIVITY_GATE",
-        "concepts": [
-          "initialized",
-          "sessionLoaded",
-          "enabled",
-          "apiDisabled",
-          "cameraRealtime",
-          "heightRealtime"
-        ],
-        "lanes": [
-          {
-            "role": "ACTIVE_CAMERA_HEIGHT",
-            "cadence": "EVERY_FRAME",
-            "seconds": 0
-          },
-          {
-            "role": "DISABLED_OR_UNLOADED",
-            "cadence": "DORMANT",
-            "seconds": 0
-          }
-        ]
-      },
-      "generation": {
-        "enabled": true,
-        "patchStyle": "source-injection",
-        "shipReferenceOverride": false,
-        "requiresCurrentSourceProof": true,
-        "requiresIdempotenceMarker": true,
-        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
-      },
-      "runtimeAdmission": {
-        "thresholdMsPerSecond": 3,
-        "measuredPeakExclusiveMsPerSecond": 11.236497,
-        "evidenceStack": "MOD_COLLECTION_ONLY",
-        "admitted": true
-      },
-      "cadenceGroup": "REALTIME_WHEN_ACTIVE_DORMANT_OTHERWISE",
-      "catalogRole": "SEMANTIC_HOT_MOD",
-      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
-      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
-      "referenceOverrideAllowed": false,
-      "evidenceMembership": [
-        "G_MOD_COLLECTION_20260926"
-      ]
-    },
-    {
       "id": "npcd-hotline",
       "identityHints": [
         "NPCD_Hotline"
@@ -851,150 +665,6 @@
       "referenceOverrideAllowed": false,
       "evidenceMembership": [
         "G_CET_MOTHERLOAD_20260930"
-      ]
-    },
-    {
-      "id": "minimap-widgets",
-      "identityHints": [
-        "Minimap Widgets"
-      ],
-      "policyClass": "MULTI_RATE_PLUS_PREFILTER",
-      "callbacks": [
-        {
-          "kind": "*",
-          "target": "*",
-          "role": "hot-path"
-        }
-      ],
-      "sourceProof": {
-        "ownerAll": [
-          "MinimapWidgets",
-          "MinimapStealthMappinController"
-        ],
-        "alreadySatisfiedMarker": "G-CET semantic:minimap-widgets"
-      },
-      "behavior": {
-        "handler": "SEMANTIC_MULTI_RATE_WITH_PREFILTER",
-        "concepts": [
-          "fpsSample",
-          "fastWidgets",
-          "slowWidgets",
-          "coordinates",
-          "stealthMappinVisibility"
-        ],
-        "lanes": [
-          {
-            "role": "FPS",
-            "cadence": "ON_DEMAND_FRAME",
-            "seconds": 0
-          },
-          {
-            "role": "FAST_WIDGETS",
-            "cadence": "FIXED_SECONDS",
-            "seconds": 0.2
-          },
-          {
-            "role": "SLOW_WIDGETS",
-            "cadence": "FIXED_SECONDS",
-            "seconds": 1
-          },
-          {
-            "role": "COORDINATES",
-            "cadence": "CONFIGURED_SECONDS",
-            "seconds": -1
-          }
-        ]
-      },
-      "generation": {
-        "enabled": false,
-        "patchStyle": "source-injection",
-        "shipReferenceOverride": false,
-        "requiresCurrentSourceProof": true,
-        "requiresIdempotenceMarker": true,
-        "implementationStatus": "PROFILE_ONLY"
-      },
-      "runtimeAdmission": {
-        "thresholdMsPerSecond": 3,
-        "measuredPeakExclusiveMsPerSecond": 8.225706,
-        "evidenceStack": "MOD_COLLECTION_ONLY",
-        "admitted": true
-      },
-      "cadenceGroup": "FAST_5HZ_PLUS_SLOW_1HZ_PLUS_PREFILTER",
-      "catalogRole": "SEMANTIC_HOT_MOD",
-      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
-      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
-      "referenceOverrideAllowed": false,
-      "evidenceMembership": [
-        "G_MOD_COLLECTION_20260926"
-      ]
-    },
-    {
-      "id": "sitanywhere",
-      "identityHints": [
-        "sitAnywhere"
-      ],
-      "policyClass": "HARD_IDLE_GATE",
-      "callbacks": [
-        {
-          "kind": "*",
-          "target": "*",
-          "role": "hot-path"
-        }
-      ],
-      "sourceProof": {
-        "ownerAll": [
-          "self.logic:onUpdate",
-          "world.update",
-          "interaction.update",
-          "workspot"
-        ],
-        "alreadySatisfiedMarker": "G-CET semantic:sitanywhere"
-      },
-      "behavior": {
-        "handler": "SEMANTIC_ACTIVITY_GATE",
-        "concepts": [
-          "scannerActive",
-          "workspotActive",
-          "transitionActive",
-          "timerPending",
-          "hubVisible",
-          "worldVisibleState",
-          "cameraWork"
-        ],
-        "lanes": [
-          {
-            "role": "ACTIVE_STATE",
-            "cadence": "EVERY_FRAME",
-            "seconds": 0
-          },
-          {
-            "role": "FULLY_IDLE",
-            "cadence": "DORMANT",
-            "seconds": 0
-          }
-        ]
-      },
-      "generation": {
-        "enabled": false,
-        "patchStyle": "source-injection",
-        "shipReferenceOverride": false,
-        "requiresCurrentSourceProof": true,
-        "requiresIdempotenceMarker": true,
-        "implementationStatus": "PROFILE_ONLY"
-      },
-      "runtimeAdmission": {
-        "thresholdMsPerSecond": 3,
-        "measuredPeakExclusiveMsPerSecond": 7.221978,
-        "evidenceStack": "MOD_COLLECTION_ONLY",
-        "admitted": true
-      },
-      "cadenceGroup": "DORMANT_IDLE_REALTIME_ACTIVE",
-      "catalogRole": "SEMANTIC_HOT_MOD",
-      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
-      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
-      "referenceOverrideAllowed": false,
-      "evidenceMembership": [
-        "G_MOD_COLLECTION_20260926"
       ]
     },
     {
@@ -1555,12 +1225,7 @@
         "repeatable-cyberpsychos",
         "cybertrials",
         "streetgamespoker",
-        "immersive-third-person",
-        "nativeinteractions",
         "nightcitybilliards",
-        "immersivefirstperson",
-        "minimap-widgets",
-        "sitanywhere",
         "repeatable-increased-criminal-activity",
         "givemeeverything",
         "roulette",

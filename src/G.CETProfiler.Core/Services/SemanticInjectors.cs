@@ -25,7 +25,6 @@ internal static class SemanticInjectors
             "npcd-hotline" => ApplyNpcdHotline(context),
             "gameentityexaminertool" => ApplyGameEntityExaminer(context),
             "shift" => ApplyShift(context),
-            "immersivefirstperson" => ApplyImmersiveFirstPerson(context),
             "givemeeverything" => ApplyGiveMeEverything(context),
             "questrunner" => ApplyQuestRunner(context),
             "driveaerialvehicle" => ApplyDriveAerialVehicle(context),
@@ -727,34 +726,6 @@ internal static class SemanticInjectors
             "Kept Cron and remote-control vehicle following frame-responsive; scanner/entity examination reconciles at 30 Hz while active and retains a 5 Hz dormant target-refresh lane for hotkey correctness.");
     }
 
-
-    private static SemanticInjectionResult ApplyImmersiveFirstPerson(
-        SemanticPatchContext context)
-    {
-        var file = context.FindFile(
-            "init.lua",
-            "CameraCore.Update",
-            "RuntimeHeight.Update",
-            "isDisabledByApi");
-
-        var opening = FindOnUpdateOpening(file.Text, "delta");
-        var guard =
-            opening +
-            "        -- G-CET semantic activity gate: when the feature is not initialized,\n" +
-            "        -- not attached to a live session, disabled, or API-disabled, none of\n" +
-            "        -- the camera/height frame work can produce a visible result.\n" +
-            "        if not initialized or not isLoaded or not isEnabled or isDisabledByApi then return end\n";
-
-        var text = ReplaceOnce(
-            file.Text,
-            opening,
-            guard,
-            "ImmersiveFirstPerson active-session onUpdate gate");
-        context.Write(file, text);
-
-        return SemanticInjectionResult.Success(
-            "Injected an activity/session gate before Immersive First Person camera and runtime-height work; active camera behavior remains every-frame.");
-    }
 
     private static SemanticInjectionResult ApplyGiveMeEverything(
         SemanticPatchContext context)
