@@ -127,7 +127,7 @@ The public package owns the payload under:
 
 ```text
 payload/
-├─ cyber_engine_tweaks.PROFILER.asi
+├─ cyber_engine_tweaks.PROFILER.dll
 ├─ CETProfilerControls/init.lua
 └─ 0-Engine/modules/
    ├─ Scheduler.lua

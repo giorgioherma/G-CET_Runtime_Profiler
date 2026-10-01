@@ -18,8 +18,12 @@
           Link="knowledge\semantic-library.json"
           CopyToOutputDirectory="PreserveNewest"
           CopyToPublishDirectory="PreserveNewest" />
-    <None Include="..\..\resolver-runtime\0-Engine\**\*"
-          Link="runtime\0-Engine\%(RecursiveDir)%(Filename)%(Extension)"
+    <None Include="..\..\resolver-runtime\0-Engine\fixed-init.lua.gz.b64"
+          Link="runtime\0-Engine\fixed-init.lua.gz.b64"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\resolver-runtime\0-Engine\modules\*.lua.gz.b64"
+          Link="runtime\0-Engine\modules\%(Filename)%(Extension)"
           CopyToOutputDirectory="PreserveNewest"
           CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>

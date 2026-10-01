@@ -185,8 +185,9 @@ internal sealed class ResolverForm : Form
 
             _families.Text = $"CALLBACK FAMILIES: {resolved.FamilyCount}";
             _generic.Text =
-                $"GENERIC READY: {resolved.GenericResolvedCount}   |   " +
-                $"SEMANTIC READY: {resolved.SemanticReadyRuleCount}";
+                $"AUTO PATCHABLE: {resolved.GenericResolvedCount}   |   " +
+                $"NON-FRAME-ONLY: {resolved.NonFrameOnlyAutoCount}   |   " +
+                $"FRAME-ONLY: {resolved.FrameOnlyAutoCount}";
             _semantic.Text =
                 $"SEMANTIC READY: {resolved.SemanticReadyRuleCount}   |   " +
                 $"ALREADY SATISFIED: {resolved.AlreadySatisfiedCount}";
