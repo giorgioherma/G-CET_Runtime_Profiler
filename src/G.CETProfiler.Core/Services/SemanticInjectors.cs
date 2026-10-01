@@ -699,12 +699,12 @@ internal static class SemanticInjectors
             "        or settings.buttonsOn == true\n" +
             "        or settings.highlightEnts == true\n" +
             "        or cetopen == true\n" +
-            "    if not __gcetScanActive then\n" +
-            "        __gcetExaminerScanElapsed = 0.0\n" +
-            "        return\n" +
-            "    end\n" +
+            "    -- Entity-target hotkeys consume the cached ent/entID even with the\n" +
+            "    -- overlay/scanner hidden, so the dormant lane must keep a low-rate\n" +
+            "    -- target refresh instead of going fully asleep.\n" +
             "    __gcetExaminerScanElapsed = __gcetExaminerScanElapsed + delta\n" +
-            "    if __gcetExaminerScanElapsed < (1 / 30) then return end\n" +
+            "    local __gcetScanInterval = __gcetScanActive and (1 / 30) or 0.20\n" +
+            "    if __gcetExaminerScanElapsed < __gcetScanInterval then return end\n" +
             "    delta = __gcetExaminerScanElapsed\n" +
             "    __gcetExaminerScanElapsed = 0.0\n" +
             "    if settings.autoFreeze == true then\n";
@@ -717,7 +717,7 @@ internal static class SemanticInjectors
         context.Write(file, text);
 
         return SemanticInjectionResult.Success(
-            "Kept Cron and remote-control vehicle following frame-responsive; scanner/entity examination sleeps when unused and reconciles at 30 Hz while active.");
+            "Kept Cron and remote-control vehicle following frame-responsive; scanner/entity examination reconciles at 30 Hz while active and retains a 5 Hz dormant target-refresh lane for hotkey correctness.");
     }
 
     private static SemanticInjectionResult ApplyShift(
