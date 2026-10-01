@@ -3,10 +3,14 @@
 All notable public changes to G-CET Runtime Profiler are recorded here.
 
 ## [Unreleased]
+- Added the standalone G-CET Resolver and deployable pass generator. It inspects every measured non-infrastructure callback, applies only mechanically proven generic AUTO recipes plus source-proven production semantic rules, and emits one game-root overlay ZIP without modifying the live CET tree.
+- Generic AUTO is restricted to finite OnAction routing/prefiltering and frame-dispatch consolidation. Retired structural/cadence/dormancy generator branches were removed; those recognizers may remain analysis evidence but cannot generate code.
+- The production semantic catalog is active-only and intentionally compact: every catalog entry has a corresponding source injector, requires >=3 ms/s measured runtime plus current live-source proof, and can rewrite only files that already exist in the user's installed mod. Reviewed camera, interaction-framework, HUD/world-discovery and bespoke-timing candidates remain outside AUTO.
+- Removed the abandoned Advanced/manual-classification and empty exception-registry paths from the Resolver so identity-specific AUTO behavior has one authoritative home: the semantic library.
 - Added optional WORLD / IDLE, DRIVING and COMBAT scenario tag inputs to the profiler control mod. Tags write start/end markers into the same F11 capture timeline, allowing preparation gaps between scenarios while keeping CET and CapFrameX on one shared capture clock.
 - Added an in-game capture HUD that always shows the total capture timer while profiling and appends the currently active scenario tag. Scenario tags do not pause profiling; untagged transition/preparation time remains in the raw capture but is excluded from scenario windows.
 - Resolver handoff schema 1.1 now emits per-scenario owner workload/call rates, per-scenario callback spike pressure, tagged/untagged duration, and aligned per-scenario frametime statistics/calls-per-frame when CapFrameX correlation is exact.
-- Added a measurement-only `CET_Resolver_Input.json` handoff for a future external resolver. It preserves all callback rows (not only top-N report rows) and adds global/family/owner shares, normalized spike rates and spike-time rates, owner timeline activity/burst metrics, and calls-per-frame when aligned CapFrameX data is available. The profiler still makes no optimization or pacing decisions.
+- Added the measurement-only `CET_Resolver_Input.json` handoff consumed by the standalone G-CET Resolver. It preserves all callback rows and adds global/family/owner shares, normalized spike pressure, owner timeline activity/burst metrics, and calls-per-frame when aligned CapFrameX data is available. The profiler remains measurement-only; optimization decisions are made by the Resolver against the collected capture plus the current live CET source.
 
 ### v1.0.0 maintenance refresh
 

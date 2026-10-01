@@ -14,6 +14,9 @@ src/
 ├─ G.CETProfiler.App/
 │  ├─ Program.cs
 │  └─ MainForm.cs
+├─ G.CETResolver.App/
+│  ├─ Program.cs
+│  └─ ResolverForm.cs
 └─ G.CETProfiler.Launcher/
    └─ launcher.c
 ```
@@ -76,6 +79,47 @@ There is no separate TOTAL-specific backend.
 The WinForms app may also provide **optional companion conveniences** that do not belong to the CET lifecycle core: read-only detection of an external frame-time profiler, read-only start-key reporting where a known adapter exists, explicit user-triggered launch of the configured executable, and copy-only bundling of the latest external capture beside the CET archive. This does not make any external profiler a dependency.
 
 The result-analysis core itself can interpret a recognized CapFrameX JSON already present under a collected result's `FrameTime/` folder. The GUI therefore performs CET collection first, copies the optional companion second, and rebuilds the report third. The same rebuild path is exposed headlessly through `--report --capture <folder>`.
+
+
+### G.CETResolver.App
+
+The Resolver is a separate portable front end over the same core assembly. It consumes a collected
+`CET_Resolver_Input.json` plus the user's **current live CET mod source read-only**.
+
+Its production pipeline is:
+
+```text
+all measured non-infrastructure callbacks
+        ↓
+mechanically proven generic AUTO
+        +
+production semantic catalog candidate
+        ↓
+current live-source proof
+        ↓
+current-source injection only
+        ↓
+fixed G-CET 0-Engine runtime
+        ↓
+one deployable game-root overlay ZIP
+```
+
+Generic AUTO is deliberately narrow: finite `OnAction` routing, exact transparent-Override
+prefiltering, and frame-dispatch consolidation. Structural/cadence/dormancy analysis may describe
+opportunities but cannot authorize generic generation.
+
+The production semantic catalog contains **automatic rules only**. A semantic transform is eligible
+only when the current capture measured it at the material runtime threshold, the matching live mod
+folder exists, the current source graph proves the rule, and that rule has an active source injector.
+The generator may rewrite an existing live/staged file but cannot create an absent mod or copy a
+development reference patch.
+
+Reviewed candidates that require bespoke camera/input/presentation/discovery timing remain evidence
+outside the production catalog. There is no manual classification/Advanced path and no separate
+identity-exception registry.
+
+Pass generation always refreshes resolver decisions against the current live source. The Resolver
+never edits the live CET tree itself; the user explicitly applies the generated ZIP.
 
 ## Package-owned files
 

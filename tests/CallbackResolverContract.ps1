@@ -523,6 +523,11 @@ $result = Get-Content -LiteralPath $outPath -Raw | ConvertFrom-Json
 if (!$result.policy.callbackOriented) { throw 'Resolver is not marked callback-oriented.' }
 if (!$result.policy.familyFirst) { throw 'Resolver is not marked callback-family-first.' }
 if (!$result.policy.genericPatternsBeforeSemanticLibrary) { throw 'Semantic library is not gated behind generic pattern resolution.' }
+if (!$result.policy.exhaustiveMeasuredCallbacks) { throw 'Resolver is not marked exhaustive over measured callbacks.' }
+$expectedMeasuredCallbacks = @(($handoff | ConvertFrom-Json).callbacks | Where-Object { !$_.infrastructure -and [double]$_.exclusiveMsPerSecond -gt 0 }).Count
+if ([int]$result.summary.rankedCallbackCount -ne $expectedMeasuredCallbacks) {
+    throw "Resolver did not inspect every measured callback: expected $expectedMeasuredCallbacks, got $($result.summary.rankedCallbackCount)."
+}
 
 $onActionFamilies = @($result.callbackFamilies | Where-Object { $_.resolverFamily -eq 'ONACTION' })
 if ($onActionFamilies.Count -eq 0) { throw 'OnAction callback family was not resolved.' }
