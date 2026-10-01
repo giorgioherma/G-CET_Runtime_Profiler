@@ -1053,8 +1053,8 @@ if ([int]$resolved.pass.TransformCount -ne 21) {
     }
     throw "Expected 21 generated transforms (15 existing + 6 PLAYER provider reads), got $($resolved.pass.TransformCount)."
 }
-if ([int]$resolved.pass.FileCount -ne 21) {
-    throw "Expected 21 generated replacement files (17 callback + 4 fixed 0-Engine), got $($resolved.pass.FileCount)."
+if ([int]$resolved.pass.FileCount -ne 22) {
+    throw "Expected 22 generated replacement files (18 callback + 4 fixed 0-Engine), got $($resolved.pass.FileCount)."
 }
 if (!(Test-Path -LiteralPath $resolved.pass.ZipPath -PathType Leaf)) {
     throw "Generated pass ZIP is missing: $($resolved.pass.ZipPath)"
@@ -1082,6 +1082,7 @@ try {
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureStructural/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDiscoveryAuthorRate/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDormantOnUpdate/init.lua',
+        'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDormantDiscovery/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureOtherStructural/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureOverrideStructural/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureOverridePrefilter/init.lua',
@@ -1184,6 +1185,13 @@ try {
     $originalGuardIndex = $hardUpdateText.IndexOf('if not active then return end')
     if ($originalGetterIndex -lt 0 -or $originalGuardIndex -lt 0 -or $originalGetterIndex -gt $originalGuardIndex) {
         throw 'Shared-provider AUTO changed the dormant callback execution order.'
+    }
+
+    $dormantDiscoveryText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDormantDiscovery/init.lua'
+    if ([regex]::Matches($dormantDiscoveryText, [regex]::Escape('__gcetGetPlayer()')).Count -ne 1 -or
+        $dormantDiscoveryText -match 'G-CET dormant guard hoist' -or
+        $dormantDiscoveryText -match 'Schedule\.Every') {
+        throw 'PLAYER provider-only pass changed discovery/dormancy semantics.'
     }
 
     $otherStructuralText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureOtherStructural/init.lua'
