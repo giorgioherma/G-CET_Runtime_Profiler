@@ -457,6 +457,8 @@ $handoff = @{
         (CallbackRow 129 'FixtureOtherStructural' 'ObserveAfter' 'PlayerPuppet::FixtureStructuralObserve' 120 12.0 3.0 'init.lua' 1 19),
         (CallbackRow 102 'FixtureFrame' 'event' 'onUpdate' 60 5.0 1.0 'init.lua' 2 7),
         (CallbackRow 132 'FixtureAlreadyFrame' 'event' 'onUpdate' 60 5.5 1.1 'init.lua' 8 10),
+        # Deliberately no FixtureAbsentSemantic folder exists under $mods.
+        (CallbackRow 133 'FixtureAbsentSemantic' 'event' 'onUpdate' 60 7.7 1.4 'init.lua' 1 4),
         (CallbackRow 127 'FixtureUnknownHot' 'observe' 'PlayerPuppet::AnotherUnknownMethod' 60 20.0 5.0 'init.lua' 1 3),
         (CallbackRow 103 'FixtureUnknown' 'observe' 'PlayerPuppet::SomeOtherMethod' 60 4.0 1.0 'init.lua' 1 3)
     )
@@ -482,6 +484,24 @@ $semanticLibrary = Join-Path $root 'semantic-library.json'
             behavior = @{ handler = 'SEMANTIC_TEST_FAST' }
             generation = @{
                 enabled = $false
+                patchStyle = 'source-injection'
+                shipReferenceOverride = $false
+            }
+        },
+        @{
+            id = 'fixture-absent'
+            identityHints = @('FixtureAbsentSemantic')
+            policyClass = 'TEST_ABSENT'
+            callbacks = @(
+                @{ kind = 'event'; target = 'onUpdate'; role = 'hot-path' }
+            )
+            sourceProof = @{
+                ownerAll = @('NeverCreateThisFile')
+                alreadySatisfiedMarker = 'G-CET semantic:fixture-absent'
+            }
+            behavior = @{ handler = 'SEMANTIC_TEST_ABSENT' }
+            generation = @{
+                enabled = $true
                 patchStyle = 'source-injection'
                 shipReferenceOverride = $false
             }
@@ -711,8 +731,8 @@ if (!$structural.generic.Facts.structuralHotpath -or
     throw 'Structural opportunity was not retained as analysis evidence.'
 }
 
-if (!$result.semanticLibrary.loaded -or [int]$result.semanticLibrary.entryCount -ne 1) {
-    throw 'Semantic library fixture was not loaded.'
+if (!$result.semanticLibrary.loaded -or [int]$result.semanticLibrary.entryCount -ne 2) {
+    throw 'Semantic library fixtures were not loaded.'
 }
 if (!$structural.semantic.Matched) {
     throw 'Measured FixtureStructural callback did not match its semantic rule.'
@@ -732,6 +752,23 @@ if ($structural.semantic.PatchStyle -ne 'source-injection' -or $structural.seman
 }
 if ([int]$structural.semantic.Graph.luaFileCount -lt 1) {
     throw 'Semantic mod graph did not enumerate the live owner folder.'
+}
+
+$absentSemantic = @($onUpdate.topConsumers | Where-Object { $_.owner -eq 'FixtureAbsentSemantic' }) | Select-Object -First 1
+if ($null -eq $absentSemantic) {
+    throw 'Absent semantic fixture was not ranked inside onUpdate.'
+}
+if (!$absentSemantic.semantic.Matched) {
+    throw 'Absent semantic fixture did not match the catalog identity/callback selector.'
+}
+if ($absentSemantic.semantic.SourceProofSatisfied) {
+    throw 'A semantic rule passed source proof even though its live mod folder does not exist.'
+}
+if ($absentSemantic.semantic.GenerationReady) {
+    throw 'An absent live mod was incorrectly marked semantic-generation ready.'
+}
+if ($absentSemantic.disposition -ne 'SEMANTIC_RULE_NEEDS_SOURCE_PROOF') {
+    throw "Absent semantic fixture received wrong disposition: $($absentSemantic.disposition)"
 }
 
 $discoveryAuthor = @($onUpdate.topConsumers | Where-Object { $_.owner -eq 'FixtureDiscoveryAuthorRate' }) | Select-Object -First 1
@@ -954,6 +991,9 @@ try {
     }
     if ('bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDynamic/init.lua' -in $names) {
         throw 'Blocked dynamic OnAction callback leaked into the generated pass.'
+    }
+    if ('bin/x64/plugins/cyber_engine_tweaks/mods/FixtureAbsentSemantic/init.lua' -in $names) {
+        throw 'Semantic catalog created a file for a mod that is not installed.'
     }
     foreach ($parkedEntry in @(
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureOtherStructural/init.lua',
