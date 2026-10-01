@@ -12,7 +12,8 @@ internal sealed class ResolverForm : Form
     private readonly Button _generate = new() { Text = "GENERATE PASS ZIP", Height = 36 };
     private readonly Label _status = new() { AutoSize = true, Text = "Select RESULTS (or a capture folder) and the Game Folder." };
     private readonly Label _families = new() { AutoSize = true, Text = "CALLBACK FAMILIES: -" };
-    private readonly Label _generic = new() { AutoSize = true, Text = "AUTO PATCHABLE: -" };
+    private readonly Label _generic = new() { AutoSize = true, Text = "GENERIC READY: -" };
+    private readonly Label _shared = new() { AutoSize = true, Text = "SHARED STATE READY: PLAYER - callbacks / - reads" };
     private readonly Label _semantic = new() { AutoSize = true, Text = "SEMANTIC READY: -   |   ALREADY SATISFIED: -" };
     private readonly Label _unresolved = new() { AutoSize = true, Text = "MATERIAL REMAINING: -   |   BELOW 3 ms/s: -" };
     private readonly TextBox _output = new()
@@ -35,7 +36,7 @@ internal sealed class ResolverForm : Form
             Dock = DockStyle.Fill,
             Padding = new Padding(14),
             ColumnCount = 3,
-            RowCount = 9
+            RowCount = 10
         };
 
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 125));
@@ -46,6 +47,7 @@ internal sealed class ResolverForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
@@ -78,11 +80,13 @@ internal sealed class ResolverForm : Form
         root.SetColumnSpan(_families, 3);
         root.Controls.Add(_generic, 0, 5);
         root.SetColumnSpan(_generic, 3);
-        root.Controls.Add(_semantic, 0, 6);
+        root.Controls.Add(_shared, 0, 6);
+        root.SetColumnSpan(_shared, 3);
+        root.Controls.Add(_semantic, 0, 7);
         root.SetColumnSpan(_semantic, 3);
-        root.Controls.Add(_unresolved, 0, 7);
+        root.Controls.Add(_unresolved, 0, 8);
         root.SetColumnSpan(_unresolved, 3);
-        root.Controls.Add(_output, 0, 8);
+        root.Controls.Add(_output, 0, 9);
         root.SetColumnSpan(_output, 3);
         _output.Dock = DockStyle.Fill;
 
@@ -150,9 +154,12 @@ internal sealed class ResolverForm : Form
 
             _families.Text = $"CALLBACK FAMILIES: {result.FamilyCount}";
             _generic.Text =
-                $"AUTO PATCHABLE: {result.GenericResolvedCount}   |   " +
-                $"NON-FRAME-ONLY: {result.NonFrameOnlyAutoCount}   |   " +
-                $"FRAME-ONLY: {result.FrameOnlyAutoCount}";
+                $"GENERIC READY: {result.GenericResolvedCount}   |   " +
+                $"NON-FRAME: {result.NonFrameOnlyAutoCount}   |   " +
+                $"FRAME: {result.FrameOnlyAutoCount}";
+            _shared.Text =
+                $"SHARED STATE READY: PLAYER — {result.SharedProviderReadyCallbackCount} callbacks / " +
+                $"{result.SharedProviderReadyReadCount} reads";
             _semantic.Text =
                 $"SEMANTIC READY: {result.SemanticReadyRuleCount}   |   " +
                 $"ALREADY SATISFIED: {result.AlreadySatisfiedCount}";
@@ -205,9 +212,12 @@ internal sealed class ResolverForm : Form
 
             _families.Text = $"CALLBACK FAMILIES: {resolved.FamilyCount}";
             _generic.Text =
-                $"AUTO PATCHABLE: {resolved.GenericResolvedCount}   |   " +
-                $"NON-FRAME-ONLY: {resolved.NonFrameOnlyAutoCount}   |   " +
-                $"FRAME-ONLY: {resolved.FrameOnlyAutoCount}";
+                $"GENERIC READY: {resolved.GenericResolvedCount}   |   " +
+                $"NON-FRAME: {resolved.NonFrameOnlyAutoCount}   |   " +
+                $"FRAME: {resolved.FrameOnlyAutoCount}";
+            _shared.Text =
+                $"SHARED STATE READY: PLAYER — {resolved.SharedProviderReadyCallbackCount} callbacks / " +
+                $"{resolved.SharedProviderReadyReadCount} reads";
             _semantic.Text =
                 $"SEMANTIC READY: {resolved.SemanticReadyRuleCount}   |   " +
                 $"ALREADY SATISFIED: {resolved.AlreadySatisfiedCount}";
