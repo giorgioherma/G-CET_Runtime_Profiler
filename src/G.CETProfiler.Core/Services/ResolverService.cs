@@ -15,6 +15,8 @@ public sealed record ResolverBuildResult(
     int MaterialRemainingCount,
     int BelowThresholdCount,
     int SemanticReadyRuleCount,
+    int SharedProviderReadyCallbackCount,
+    int SharedProviderReadyReadCount,
     int AlreadySatisfiedCount,
     int UnresolvedCount);
 
@@ -95,6 +97,8 @@ public static class ResolverService
             result.MaterialRemainingCount,
             result.BelowThresholdCount,
             result.SemanticReadyRuleCount,
+            result.SharedProviderReadyCallbackCount,
+            result.SharedProviderReadyReadCount,
             result.AlreadySatisfiedCount,
             result.UnresolvedCount);
     }
