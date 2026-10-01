@@ -5,12 +5,12 @@ namespace GCETRuntimeProfiler.Resolver;
 internal sealed class ResolverForm : Form
 {
     private readonly TextBox _capture = new() { Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
-    private readonly TextBox _mods = new() { Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+    private readonly TextBox _game = new() { Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
     private readonly Button _captureBrowse = new() { Text = "Browse..." };
-    private readonly Button _modsBrowse = new() { Text = "Browse..." };
+    private readonly Button _gameBrowse = new() { Text = "Browse..." };
     private readonly Button _analyze = new() { Text = "ANALYZE", Height = 36 };
     private readonly Button _generate = new() { Text = "GENERATE PASS ZIP", Height = 36 };
-    private readonly Label _status = new() { AutoSize = true, Text = "Select RESULTS (or a capture folder) and the live CET mods folder." };
+    private readonly Label _status = new() { AutoSize = true, Text = "Select RESULTS (or a capture folder) and the Game Folder." };
     private readonly Label _families = new() { AutoSize = true, Text = "CALLBACK FAMILIES: -" };
     private readonly Label _generic = new() { AutoSize = true, Text = "AUTO PATCHABLE: -" };
     private readonly Label _semantic = new() { AutoSize = true, Text = "SEMANTIC READY: -   |   ALREADY SATISFIED: -" };
@@ -53,12 +53,12 @@ internal sealed class ResolverForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         var captureLabel = new Label { Text = "RESULTS / capture", AutoSize = true, Anchor = AnchorStyles.Left };
-        var modsLabel = new Label { Text = "Live CET mods", AutoSize = true, Anchor = AnchorStyles.Left };
+        var gameLabel = new Label { Text = "Game Folder", AutoSize = true, Anchor = AnchorStyles.Left };
 
         _capture.Dock = DockStyle.Fill;
-        _mods.Dock = DockStyle.Fill;
+        _game.Dock = DockStyle.Fill;
         _captureBrowse.Dock = DockStyle.Fill;
-        _modsBrowse.Dock = DockStyle.Fill;
+        _gameBrowse.Dock = DockStyle.Fill;
         _analyze.Dock = DockStyle.Fill;
         _generate.Dock = DockStyle.Fill;
         _status.Anchor = AnchorStyles.Left;
@@ -66,9 +66,9 @@ internal sealed class ResolverForm : Form
         root.Controls.Add(captureLabel, 0, 0);
         root.Controls.Add(_capture, 1, 0);
         root.Controls.Add(_captureBrowse, 2, 0);
-        root.Controls.Add(modsLabel, 0, 1);
-        root.Controls.Add(_mods, 1, 1);
-        root.Controls.Add(_modsBrowse, 2, 1);
+        root.Controls.Add(gameLabel, 0, 1);
+        root.Controls.Add(_game, 1, 1);
+        root.Controls.Add(_gameBrowse, 2, 1);
         root.Controls.Add(_analyze, 0, 2);
         root.SetColumnSpan(_analyze, 2);
         root.Controls.Add(_generate, 2, 2);
@@ -89,7 +89,7 @@ internal sealed class ResolverForm : Form
         Controls.Add(root);
 
         _captureBrowse.Click += (_, _) => BrowseInto(_capture);
-        _modsBrowse.Click += (_, _) => BrowseInto(_mods);
+        _gameBrowse.Click += (_, _) => BrowseInto(_game);
         _analyze.Click += (_, _) => Analyze();
         _generate.Click += (_, _) => GeneratePass();
     }
@@ -106,6 +106,30 @@ internal sealed class ResolverForm : Form
             target.Text = dialog.SelectedPath;
     }
 
+    private static string ResolveModsFolder(string gameFolder)
+    {
+        gameFolder = gameFolder.Trim();
+        if (!Directory.Exists(gameFolder))
+            throw new DirectoryNotFoundException("Select a valid Game Folder.");
+
+        var mods = Path.Combine(
+            Path.GetFullPath(gameFolder),
+            "bin",
+            "x64",
+            "plugins",
+            "cyber_engine_tweaks",
+            "mods");
+
+        if (!Directory.Exists(mods))
+        {
+            throw new DirectoryNotFoundException(
+                "Could not find the live CET mods folder under the selected Game Folder. " +
+                "Expected: bin\\x64\\plugins\\cyber_engine_tweaks\\mods");
+        }
+
+        return mods;
+    }
+
     private void Analyze()
     {
         try
@@ -117,12 +141,10 @@ internal sealed class ResolverForm : Form
             Application.DoEvents();
 
             var capture = _capture.Text.Trim();
-            var mods = _mods.Text.Trim();
+            var mods = ResolveModsFolder(_game.Text);
 
             if (!Directory.Exists(capture))
                 throw new DirectoryNotFoundException("Select a valid G-CET RESULTS folder or collected capture folder.");
-            if (!Directory.Exists(mods))
-                throw new DirectoryNotFoundException("Select the live cyber_engine_tweaks\\mods folder.");
 
             var result = ResolverService.Resolve(capture, mods);
 
@@ -170,12 +192,10 @@ internal sealed class ResolverForm : Form
             Application.DoEvents();
 
             var capture = _capture.Text.Trim();
-            var mods = _mods.Text.Trim();
+            var mods = ResolveModsFolder(_game.Text);
 
             if (!Directory.Exists(capture))
                 throw new DirectoryNotFoundException("Select a valid G-CET RESULTS folder or collected capture folder.");
-            if (!Directory.Exists(mods))
-                throw new DirectoryNotFoundException("Select the live cyber_engine_tweaks\\mods folder.");
 
             // Always refresh the resolver against the current live stack before a
             // pass is generated. The generator then consumes only that resolver
