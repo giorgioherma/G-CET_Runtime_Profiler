@@ -316,7 +316,7 @@ internal static class SemanticInjectors
             "        __gcetPokerWorldElapsed = 0.0\n" +
             "    end\n\n" +
             "    if InteractionMenu.visible then InteractionMenu.update() end\n" +
-            "    if next(CardRenderer.motions) ~= nil or next(CardRenderer.flips) ~= nil then\n" +
+            "    if CardRenderer.shuffleActive == true or next(CardRenderer.motions) ~= nil or next(CardRenderer.flips) ~= nil then\n" +
             "        CardRenderer.update(dt)\n" +
             "    end\n" +
             "    if TableTalk.active or (TableTalk.clock or 0) > 0 then TableTalk.update(dt) end\n";
@@ -530,6 +530,61 @@ internal static class SemanticInjectors
 
         context.Write(init, initText);
 
+        var hubsFile = context.FindFile(
+            "modules/utils/interactionHubs.lua",
+            "function interactionHubs.setupMappins(tracks)",
+            "gamedataMappinVariant.Zzz18_RacingVariant",
+            "mappinIDs");
+
+        var oldHubsSetup =
+            "function interactionHubs.setupMappins(tracks)\n" +
+            "    if not raceLogic.raceInProgress then\n" +
+            "        local data = MappinData.new({ mappinType = 'Mappins.QuestDynamicMappinDefinition', variant = gamedataMappinVariant.Zzz18_RacingVariant, visibleThroughWalls = false, active = true}) -- WorldMap Pin\n" +
+            "        for i, track in ipairs(tracks) do\n" +
+            "            local hubdata = track.startInteraction\n" +
+            "            local mappinID = Game.GetMappinSystem():RegisterMappin(data, Vector4.new(hubdata.position.x, hubdata.position.y,hubdata.position.z+1))\n" +
+            "            table.insert(mappinIDs, mappinID)\n" +
+            "        end\n" +
+            "    else\n" +
+            "        for index, mappin in ipairs(mappinIDs) do\n" +
+            "            Game.GetMappinSystem():UnregisterMappin(mappin)\n" +
+            "            table.remove(mappinIDs, index)\n" +
+            "        end\n" +
+            "    end\n" +
+            "end\n";
+
+        var newHubsSetup =
+            "function interactionHubs.setupMappins(tracks)\n" +
+            "    tracks = tracks or {}\n\n" +
+            "    local function clearMappins()\n" +
+            "        for index = #mappinIDs, 1, -1 do\n" +
+            "            local mappin = mappinIDs[index]\n" +
+            "            if mappin then Game.GetMappinSystem():UnregisterMappin(mappin) end\n" +
+            "            mappinIDs[index] = nil\n" +
+            "        end\n" +
+            "    end\n\n" +
+            "    if raceLogic.raceInProgress then\n" +
+            "        if #mappinIDs > 0 then clearMappins() end\n" +
+            "        return\n" +
+            "    end\n\n" +
+            "    if #mappinIDs == #tracks and #tracks > 0 then return end\n" +
+            "    if #mappinIDs > 0 then clearMappins() end\n" +
+            "    if #tracks == 0 then return end\n\n" +
+            "    local data = MappinData.new({ mappinType = 'Mappins.QuestDynamicMappinDefinition', variant = gamedataMappinVariant.Zzz18_RacingVariant, visibleThroughWalls = false, active = true})\n" +
+            "    for _, track in ipairs(tracks) do\n" +
+            "        local hubdata = track.startInteraction\n" +
+            "        local mappinID = Game.GetMappinSystem():RegisterMappin(data, Vector4.new(hubdata.position.x, hubdata.position.y, hubdata.position.z + 1))\n" +
+            "        table.insert(mappinIDs, mappinID)\n" +
+            "    end\n" +
+            "end\n";
+
+        var hubsText = ReplaceOnce(
+            hubsFile.Text,
+            oldHubsSetup,
+            newHubsSetup,
+            "CyberTrials idempotent state-driven mappin registry");
+        context.Write(hubsFile, hubsText);
+
         var world = context.FindFile(
             "modules/external/world.lua",
             "BaseMappinBaseController",
@@ -571,7 +626,7 @@ internal static class SemanticInjectors
         context.Write(world, worldText);
 
         return SemanticInjectionResult.Success(
-            "Removed global mappin-driven hub refresh, made hub mappins state-driven, gated world scans to 10 Hz outside realtime placement/race state, and added an owned-variant mappin prefilter.");
+            "Removed global mappin-driven hub refresh, made hub mappins state-driven and idempotent, gated world scans to 10 Hz outside realtime placement/race state, and added an owned-variant mappin prefilter.");
     }
 
     private static SemanticInjectionResult ApplyNpcdHotline(
