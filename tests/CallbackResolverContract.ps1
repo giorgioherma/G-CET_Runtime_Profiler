@@ -635,6 +635,15 @@ if (!$playerProvider.generationEnabled -or $playerProvider.generationRecipe -ne 
 if (@($playerProvider.callbacks | Where-Object { $_.substitutionEligible }).Count -lt 1) {
     throw 'PLAYER shared-provider opportunity emitted no source-proven substitution candidates.'
 }
+
+$eligiblePlayerCallbacks = @($playerProvider.callbacks | Where-Object { $_.substitutionEligible })
+$eligiblePlayerReads = ($eligiblePlayerCallbacks | Measure-Object -Property sourceRecognizedOccurrences -Sum).Sum
+if ([int]$result.summary.sharedProviderReadyCallbacks -ne $eligiblePlayerCallbacks.Count) {
+    throw "Resolver summary lost PLAYER-ready callback count: expected $($eligiblePlayerCallbacks.Count), got $($result.summary.sharedProviderReadyCallbacks)."
+}
+if ([int]$result.summary.sharedProviderReadyReads -ne [int]$eligiblePlayerReads) {
+    throw "Resolver summary lost PLAYER-ready read count: expected $eligiblePlayerReads, got $($result.summary.sharedProviderReadyReads)."
+}
 if (@($playerProvider.owners) -contains 'FixtureColdProvider') {
     throw 'Shared-provider analysis scanned an unmeasured/cold mod into the opportunity set.'
 }
