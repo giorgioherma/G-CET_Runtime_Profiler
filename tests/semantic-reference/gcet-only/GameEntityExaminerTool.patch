@@ -5,8 +5,8 @@
  local scanning = nil or true or false
  
 +-- G-CET semantic reference: remote-control motion remains EveryFrame; entity
-+-- discovery/scanner work is dormant when the feature is unused and otherwise
-+-- reconciles on a fast 30 Hz lane.
++-- discovery/scanner work keeps a 5 Hz dormant target-refresh lane because
++-- hotkeys consume cached ent/entID, and uses a fast 30 Hz active scan lane.
 +local __gcetExaminerScanAccumulator = 0
 +
  __gcetRegisterEvent_125('onUpdate', function(delta)
@@ -41,13 +41,9 @@
 +        rcEnt ~= nil or
 +        cetopen == true
 +
-+    if not scanActive then
-+        __gcetExaminerScanAccumulator = 0
-+        return
-+    end
-+
 +    __gcetExaminerScanAccumulator = __gcetExaminerScanAccumulator + delta
-+    if __gcetExaminerScanAccumulator < (1 / 30) then return end
++    local scanInterval = scanActive and (1 / 30) or 0.20
++    if __gcetExaminerScanAccumulator < scanInterval then return end
 +    __gcetExaminerScanAccumulator = 0
 +
 +    local targetingSystem = Game.GetTargetingSystem()

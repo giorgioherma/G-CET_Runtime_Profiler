@@ -515,7 +515,8 @@
         "alreadySatisfiedMarker": "G-CET semantic:gameentityexaminertool"
       },
       "behavior": {
-        "handler": "SEMANTIC_SCAN_ACTIVITY_SPLIT"
+        "handler": "SEMANTIC_SCAN_ACTIVITY_SPLIT",
+        "note": "Keep remote-control following and Cron frame-responsive. Refresh cached crosshair target at 5 Hz while UI/scanner features are dormant because hotkeys consume ent/entID; use 30 Hz while active."
       },
       "generation": {
         "enabled": true,
@@ -530,7 +531,7 @@
         "evidenceStack": "G-CET_ONLY",
         "admitted": true
       },
-      "cadenceGroup": "DORMANT_PLUS_FAST_30HZ_SCAN",
+      "cadenceGroup": "IDLE_5HZ_PLUS_ACTIVE_30HZ_SCAN",
       "developmentReference": {
         "patch": "tests/semantic-reference/gcet-only/GameEntityExaminerTool.patch",
         "purpose": "behavior-concept guide only",
