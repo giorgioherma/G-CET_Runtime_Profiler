@@ -522,8 +522,7 @@ if (!(Test-Path -LiteralPath $outPath -PathType Leaf)) {
 $result = Get-Content -LiteralPath $outPath -Raw | ConvertFrom-Json
 if (!$result.policy.callbackOriented) { throw 'Resolver is not marked callback-oriented.' }
 if (!$result.policy.familyFirst) { throw 'Resolver is not marked callback-family-first.' }
-if (!$result.policy.genericPatternsBeforeRegistry) { throw 'Registry is not gated behind generic pattern resolution.' }
-if ($result.policy.registryContainsPatchCode) { throw 'Registry unexpectedly allows patch code.' }
+if (!$result.policy.genericPatternsBeforeSemanticLibrary) { throw 'Semantic library is not gated behind generic pattern resolution.' }
 
 $onActionFamilies = @($result.callbackFamilies | Where-Object { $_.resolverFamily -eq 'ONACTION' })
 if ($onActionFamilies.Count -eq 0) { throw 'OnAction callback family was not resolved.' }
@@ -546,9 +545,6 @@ if ($action.source.MatchMode -ne 'profiler-owner-relative') {
 }
 if (@($action.generic.Facts.actions).Count -ne 2) {
     throw 'Concrete action facts were not emitted for the generator handoff.'
-}
-if ($action.registry.checkedAfterGenericExhausted) {
-    throw 'Registry was consulted even though generic OnAction resolution succeeded.'
 }
 
 $singleton = Action-For 'FixtureSingleton'
@@ -814,9 +810,6 @@ if ($neverUpdate.dormancy.Class -ne 'NEVER_GATE') {
 if (@($neverUpdate.generic.RecipeFamilies) -contains 'HARD_DORMANT_GUARD_HOIST') {
     throw 'Sensitive camera onUpdate incorrectly received HARD_DORMANT_GUARD_HOIST.'
 }
-if ($neverUpdate.advanced.Eligible) {
-    throw 'Sensitive camera onUpdate incorrectly became Advanced dormancy eligible.'
-}
 
 $hardUpdate = @($onUpdate.topConsumers | Where-Object { $_.owner -eq 'FixtureDormantOnUpdate' }) | Select-Object -First 1
 if ($null -eq $hardUpdate) { throw 'FixtureDormantOnUpdate was not ranked inside onUpdate.' }
@@ -862,14 +855,6 @@ $neverDormancy = Dormancy-For 'FixtureDormantNever'
 if ($neverDormancy.Class -ne 'NEVER_GATE' -or !$neverDormancy.EvidenceOnly) {
     throw "Expected evidence-only NEVER_GATE, got $($neverDormancy.Class)"
 }
-$neverRow = $null
-foreach ($family in @($result.callbackFamilies)) {
-    $candidateNever = @($family.topConsumers | Where-Object { $_.owner -eq 'FixtureDormantNever' }) | Select-Object -First 1
-    if ($null -ne $candidateNever) { $neverRow = $candidateNever; break }
-}
-if ($null -eq $neverRow -or $neverRow.advanced.Eligible) {
-    throw 'NEVER_GATE callback was incorrectly made eligible for Advanced dormancy.'
-}
 
 $backgroundDormancy = Dormancy-For 'FixtureDormantBackground'
 if ($backgroundDormancy.Class -ne 'BACKGROUND' -or !$backgroundDormancy.EvidenceOnly) {
@@ -907,15 +892,6 @@ foreach ($otherFamily in @($result.callbackFamilies | Where-Object { $_.resolver
 }
 if ($null -eq $unknown) { throw 'FixtureUnknown was not ranked.' }
 if ($unknown.generic.Automatable) { throw 'Unsupported callback family was incorrectly marked automatable.' }
-if (!$unknown.registry.checkedAfterGenericExhausted) {
-    throw 'Unresolved high-impact callback did not reach the registry fallback stage.'
-}
-if ($unknown.registry.matched) {
-    throw 'Empty high-impact exception registry unexpectedly matched a callback.'
-}
-if ($unknown.advanced.Eligible) {
-    throw 'Low-cost unknown callback should not bother the user in Advanced mode.'
-}
 
 $unknownHot = $null
 foreach ($otherFamily in @($result.callbackFamilies | Where-Object { $_.resolverFamily -eq 'OTHER' })) {
@@ -923,11 +899,8 @@ foreach ($otherFamily in @($result.callbackFamilies | Where-Object { $_.resolver
     if ($null -ne $candidateHot) { $unknownHot = $candidateHot; break }
 }
 if ($null -eq $unknownHot) { throw 'FixtureUnknownHot was not ranked.' }
-if (!$unknownHot.advanced.Eligible -or !$unknownHot.advanced.UserClassificationUseful) {
-    throw 'High-cost UNKNOWN callback should request user classification in Advanced mode.'
-}
-if ($unknownHot.advanced.NextEvidence -ne 'USER_CLASSIFICATION') {
-    throw "Unexpected high-cost UNKNOWN next evidence: $($unknownHot.advanced.NextEvidence)"
+if ($unknownHot.generic.Automatable) {
+    throw 'High-cost unknown callback was incorrectly promoted to generic AUTO.'
 }
 
 if ($null -eq $resolved.pass) {
@@ -1179,38 +1152,6 @@ try {
 }
 finally {
     $zip.Dispose()
-}
-
-$hintPath = Join-Path $capture 'G-CET_Advanced_UserHints.json'
-@{
-    schemaVersion = '0.1'
-    entries = @(
-        @{
-            owner = 'FixtureUnknownHot'
-            kind = 'observe'
-            target = 'PlayerPuppet::AnotherUnknownMethod'
-            classification = 'HARD_DORMANT'
-        }
-    )
-} | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $hintPath -Encoding utf8
-
-$hinted = (& $resolverExe --capture $results --mods $mods --json | ConvertFrom-Json)
-if (!$hinted.ok) { throw 'Resolver failed after evidence-only Advanced user hint was saved.' }
-$hintDocument = Get-Content -LiteralPath $hinted.resolverPath -Raw | ConvertFrom-Json
-$hintedHot = $null
-foreach ($family in @($hintDocument.callbackFamilies)) {
-    $candidate = @($family.topConsumers | Where-Object { $_.owner -eq 'FixtureUnknownHot' }) | Select-Object -First 1
-    if ($null -ne $candidate) { $hintedHot = $candidate; break }
-}
-if ($null -eq $hintedHot) { throw 'Advanced user hint test lost FixtureUnknownHot.' }
-if ($hintedHot.generic.Automatable) {
-    throw 'User classification hint incorrectly authorized a source transform.'
-}
-if (!$hintedHot.advanced.UserHintAppliedAsEvidenceOnly -or $hintedHot.advanced.UserHint -ne 'HARD_DORMANT') {
-    throw 'Resolver did not preserve the saved Advanced user classification as evidence.'
-}
-if ($hintedHot.advanced.NextEvidence -ne 'SOURCE_ACTIVE_STATE_WAKE_PROOF') {
-    throw "User HARD_DORMANT hint did not steer the next proof request: $($hintedHot.advanced.NextEvidence)"
 }
 
 Write-Host 'Callback-first resolver + V1 pass generator contract passed.'

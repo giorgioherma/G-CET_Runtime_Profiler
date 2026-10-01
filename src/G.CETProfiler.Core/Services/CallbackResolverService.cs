@@ -14,7 +14,6 @@ internal sealed record CallbackResolverDocumentResult(
     int FrameOnlyAutoCount,
     int MaterialRemainingCount,
     int BelowThresholdCount,
-    int RegistryHintCount,
     int SemanticReadyRuleCount,
     int AlreadySatisfiedCount,
     int UnresolvedCount);
@@ -37,7 +36,6 @@ internal static class CallbackResolverService
         string handoffPath,
         string modsRoot,
         string? cadenceFinalPath,
-        string? exceptionRegistryPath,
         string? semanticLibraryPath)
     {
         using var handoff = JsonDocument.Parse(File.ReadAllText(handoffPath));
@@ -48,12 +46,7 @@ internal static class CallbackResolverService
             .ToList();
 
         var cadence = ReadCadenceDecisions(cadenceFinalPath);
-        var registry = ExceptionRegistry.Load(exceptionRegistryPath);
         var semanticLibrary = SemanticLibraryService.Load(semanticLibraryPath, modsRoot);
-        var advancedHints = AdvancedUserHints.Load(
-            Path.Combine(
-                Path.GetDirectoryName(Path.GetFullPath(handoffPath))!,
-                "G-CET_Advanced_UserHints.json"));
         var sourceIndex = new LiveSourceIndex(modsRoot);
 
         var familyGroups = callbacks
@@ -78,7 +71,6 @@ internal static class CallbackResolverService
         var frameOnlyAuto = 0;
         var materialRemaining = 0;
         var belowThreshold = 0;
-        var registryHints = 0;
         var semanticMatches = 0;
         var semanticSourceProven = 0;
         var semanticReadyRules = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -115,20 +107,10 @@ internal static class CallbackResolverService
                     semanticReadyRules.Add(semantic.RuleId);
 
                 var dormancy = ResolveDormancyEvidence(callback, generic.Source, sourceIndex);
-                var userHint = advancedHints.Match(callback);
-                var advanced = EvaluateAdvancedCandidate(callback, generic, dormancy, userHint);
-                ExceptionRegistryEntry? hint = null;
 
                 var isAlreadySatisfied = generic.Status.Equals(
                     "ALREADY_SATISFIED",
                     StringComparison.OrdinalIgnoreCase);
-
-                // Registry is deliberately a last resort. Generic source/runtime
-                // recognition always gets first attempt. A source state that is
-                // already at the generated target is neither unresolved nor a
-                // registry candidate.
-                if (!generic.Automatable && !isAlreadySatisfied && !semantic.Matched)
-                    hint = registry.Match(callback);
 
                 if (generic.Automatable)
                 {
@@ -146,8 +128,6 @@ internal static class CallbackResolverService
                 }
                 else if (isAlreadySatisfied)
                     alreadySatisfied++;
-                else if (hint is not null)
-                    registryHints++;
                 else if (semanticGenerationReady)
                 {
                     // This measured callback is accounted for by a source-proven
@@ -230,32 +210,6 @@ internal static class CallbackResolverService
                             ? "Identity selected a semantic candidate; current live mod source graph must prove the rule. The library contains behavior knowledge, not replacement mod files."
                             : "No semantic-library rule matched this measured callback."
                     },
-                    advanced = new
-                    {
-                        advanced.Eligible,
-                        advanced.Difficulty,
-                        advanced.DifficultyLabel,
-                        advanced.MeasuredCostMsPerSecond,
-                        advanced.MinimumCostToJustifyMsPerSecond,
-                        advanced.HeadroomMsPerSecond,
-                        advanced.Reason,
-                        advanced.NextEvidence,
-                        advanced.UserClassificationUseful,
-                        advanced.UserHint,
-                        advanced.UserHintAppliedAsEvidenceOnly
-                    },
-                    registry = new
-                    {
-                        checkedAfterGenericExhausted = !generic.Automatable && !isAlreadySatisfied,
-                        matched = hint is not null,
-                        entryId = hint?.Id,
-                        category = hint?.Category,
-                        semanticHints = hint?.SemanticHints ?? Array.Empty<string>(),
-                        suggestedRecipeFamilies = hint?.SuggestedRecipeFamilies ?? Array.Empty<string>(),
-                        note = hint is null
-                            ? "No curated exception knowledge was used."
-                            : "Registry supplies semantic hints only. Current deployed source must still be analyzed; registry entries never contain or authorize patch code."
-                    },
                     disposition = generic.Automatable
                         ? "GENERIC_PATTERN"
                         : isAlreadySatisfied
@@ -264,9 +218,7 @@ internal static class CallbackResolverService
                                 ? semantic.SourceProofSatisfied
                                     ? "SEMANTIC_RULE_PROVEN"
                                     : "SEMANTIC_RULE_NEEDS_SOURCE_PROOF"
-                                : hint is not null
-                                    ? "SPECIAL_HINT_AVAILABLE"
-                                    : "UNRESOLVED"
+                                : "UNRESOLVED"
                 });
             }
 
@@ -311,30 +263,19 @@ internal static class CallbackResolverService
                 callbackOriented = true,
                 familyFirst = true,
                 exhaustiveMeasuredCallbacks = true,
-                genericPatternsBeforeRegistry = true,
-                registryContainsPatchCode = false,
-                registryCanAuthorizeRewrite = false,
+                genericPatternsBeforeSemanticLibrary = true,
                 cadenceIsSubset = true,
                 liveSourcesReadOnly = true,
                 dormancyClassification = true,
                 dormancyClassificationEvidenceOnly = true,
                 dormancyCanAuthorizeGeneration = false,
-                advancedUserHintsSupported = true,
-                advancedUserHintsCanAuthorizeGeneration = false,
                 dormancyClasses = new[] { "NEVER_GATE", "HARD_DORMANT", "DISCOVERY_DORMANT", "BACKGROUND", "UNKNOWN" },
-                note = "Generic AUTO is restricted to mechanically source-proven action routing, exact Override prefiltering, and frame-dispatch consolidation. Structural, cadence, and dormancy recognizers remain analysis evidence until a semantic per-mod rule authorizes them. Already-satisfied generated states are not re-applied."
+                note = "Generic AUTO is restricted to mechanically source-proven action routing, exact Override prefiltering, and frame-dispatch consolidation. Structural, cadence, and dormancy recognizers remain analysis evidence only; identity-specific automatic behavior lives exclusively in the source-proven semantic library. Already-satisfied generated states are not re-applied."
             },
             cadence = new
             {
                 available = !string.IsNullOrWhiteSpace(cadenceFinalPath) && File.Exists(cadenceFinalPath),
                 sourceConfirmedOutput = cadenceFinalPath is null ? null : Path.GetFileName(cadenceFinalPath)
-            },
-            registry = new
-            {
-                path = exceptionRegistryPath,
-                loaded = registry.Loaded,
-                entryCount = registry.Entries.Count,
-                policy = "Exceptional high-impact semantic hints only. If a generic recognizer or semantic rule can solve the structure, no registry entry should exist."
             },
             semanticLibrary = new
             {
@@ -355,7 +296,6 @@ internal static class CallbackResolverService
                 materialRemaining,
                 belowThreshold,
                 materialThresholdMsPerSecond = MaterialRemainingMsPerSecond,
-                registryHints,
                 semanticMatches,
                 semanticSourceProven,
                 semanticReadyRules = semanticReadyRules.Count,
@@ -375,157 +315,9 @@ internal static class CallbackResolverService
             frameOnlyAuto,
             materialRemaining,
             belowThreshold,
-            registryHints,
             semanticReadyRules.Count,
             alreadySatisfied,
             unresolved);
-    }
-
-    private static AdvancedCandidateAssessment EvaluateAdvancedCandidate(
-        CallbackMetric callback,
-        GenericResolution generic,
-        DormancyEvidence dormancy,
-        AdvancedUserHint? userHint)
-    {
-        // Difficulty is semantic complexity, not implementation effort alone.
-        // Higher difficulty requires more measured cost on the table before
-        // Advanced mode is allowed to bother the user or request another run.
-        var difficulty = dormancy.Class switch
-        {
-            "HARD_DORMANT" => dormancy.CompleteWakePathProven ? 2 : 3,
-            "DISCOVERY_DORMANT" => dormancy.DiscoveryRegionSelfContained ? 4 : 5,
-            "BACKGROUND" => 4,
-            "UNKNOWN" => 5,
-            "NEVER_GATE" => 5,
-            _ => 5
-        };
-
-        var minimum = difficulty switch
-        {
-            1 => 0.5,
-            2 => 1.0,
-            3 => 3.0,
-            4 => 7.0,
-            _ => 15.0
-        };
-
-        var neverGate = dormancy.Class.Equals(
-            "NEVER_GATE",
-            StringComparison.OrdinalIgnoreCase);
-
-        var alreadyHasSemanticAutoRecipe =
-            generic.RecipeFamilies.Any(x =>
-                x.Equals("AUTHOR_CADENCE_WHOLE_CALLBACK", StringComparison.OrdinalIgnoreCase) ||
-                x.Equals("HARD_DORMANT_GUARD_HOIST", StringComparison.OrdinalIgnoreCase) ||
-                x.Equals("AUTHOR_DISCOVERY_DORMANT_SCHEDULE", StringComparison.OrdinalIgnoreCase));
-
-        var semanticWorkRemains =
-            dormancy.Class is "HARD_DORMANT" or "DISCOVERY_DORMANT" or "BACKGROUND" or "UNKNOWN";
-
-        var eligible =
-            !neverGate &&
-            semanticWorkRemains &&
-            !alreadyHasSemanticAutoRecipe &&
-            callback.ExclusiveMsPerSecond >= minimum;
-
-        string nextEvidence;
-        var userClassificationUseful = false;
-
-        if (!eligible)
-        {
-            nextEvidence = neverGate
-                ? "NONE_NEVER_GATE"
-                : alreadyHasSemanticAutoRecipe
-                    ? "NONE_AUTO_RECIPE_AVAILABLE"
-                    : "NONE_BELOW_ECONOMIC_THRESHOLD";
-        }
-        else if (dormancy.Class == "DISCOVERY_DORMANT")
-        {
-            nextEvidence = dormancy.AuthorDiscoveryCadenceProven
-                ? dormancy.DiscoveryRegionSelfContained
-                    ? "SOURCE_DEPENDENCY_PROOF_FOR_DISCOVERY_EXTRACTION"
-                    : "TARGETED_INACTIVE_NEAR_ACTIVE_LEAVE_CAPTURE"
-                : "TARGETED_INACTIVE_NEAR_ACTIVE_LEAVE_CAPTURE";
-        }
-        else if (dormancy.Class == "HARD_DORMANT")
-        {
-            nextEvidence = dormancy.CompleteWakePathProven
-                ? "SOURCE_BOUNDARY_PROOF"
-                : "TARGETED_INACTIVE_ACTIVE_INACTIVE_CAPTURE";
-        }
-        else if (dormancy.Class == "BACKGROUND")
-        {
-            nextEvidence = "SOURCE_QUEUE_PENDING_RESOURCE_PROOF";
-        }
-        else
-        {
-            var classification = userHint?.Classification ?? "";
-            if (classification.Equals("CONTINUOUS", StringComparison.OrdinalIgnoreCase))
-            {
-                eligible = false;
-                nextEvidence = "NONE_USER_MARKED_CONTINUOUS";
-            }
-            else if (classification.Equals("HARD_DORMANT", StringComparison.OrdinalIgnoreCase))
-            {
-                nextEvidence = "SOURCE_ACTIVE_STATE_WAKE_PROOF";
-            }
-            else if (classification.Equals("DISCOVERY_DORMANT", StringComparison.OrdinalIgnoreCase))
-            {
-                nextEvidence = "TARGETED_INACTIVE_NEAR_ACTIVE_LEAVE_CAPTURE";
-            }
-            else if (classification.Equals("BACKGROUND", StringComparison.OrdinalIgnoreCase))
-            {
-                nextEvidence = "SOURCE_QUEUE_PENDING_RESOURCE_PROOF";
-            }
-            else if (classification.Equals("I_DONT_KNOW", StringComparison.OrdinalIgnoreCase))
-            {
-                nextEvidence = "TARGETED_INACTIVE_ACTIVE_INACTIVE_CAPTURE";
-            }
-            else
-            {
-                nextEvidence = "USER_CLASSIFICATION";
-                userClassificationUseful = true;
-            }
-        }
-
-        var label = difficulty switch
-        {
-            1 => "MECHANICAL",
-            2 => "EXISTING_STATE_GUARD",
-            3 => "ACTIVE_DORMANT_SPLIT",
-            4 => "DISCOVERY_OR_RESOURCE_SPLIT",
-            _ => "CROSS_STATE_OR_UNKNOWN"
-        };
-
-        var userMarkedContinuous =
-            userHint?.Classification.Equals(
-                "CONTINUOUS",
-                StringComparison.OrdinalIgnoreCase) == true;
-
-        var reason = eligible
-            ? $"Measured cost {callback.ExclusiveMsPerSecond:0.###} ms/s clears the {minimum:0.###} ms/s difficulty-{difficulty} Advanced threshold."
-            : neverGate
-                ? "Dormancy is prohibited for this latency-sensitive callback class."
-                : userMarkedContinuous
-                    ? "User semantic hint says this feature is continuous/latency-sensitive. The hint blocks dormancy exploration but does not block structural rewrites."
-                    : alreadyHasSemanticAutoRecipe
-                        ? "A finite semantic automatic recipe is already available; Advanced mode is not required for this callback."
-                        : $"Measured cost {callback.ExclusiveMsPerSecond:0.###} ms/s does not clear the {minimum:0.###} ms/s difficulty-{difficulty} Advanced threshold.";
-
-        return new AdvancedCandidateAssessment
-        {
-            Eligible = eligible,
-            Difficulty = difficulty,
-            DifficultyLabel = label,
-            MeasuredCostMsPerSecond = callback.ExclusiveMsPerSecond,
-            MinimumCostToJustifyMsPerSecond = minimum,
-            HeadroomMsPerSecond = Math.Max(0, callback.ExclusiveMsPerSecond - minimum),
-            Reason = reason,
-            NextEvidence = nextEvidence,
-            UserClassificationUseful = userClassificationUseful,
-            UserHint = userHint?.Classification ?? "",
-            UserHintAppliedAsEvidenceOnly = userHint is not null
-        };
     }
 
     private static DormancyEvidence ResolveDormancyEvidence(
@@ -4326,142 +4118,6 @@ internal static class CallbackResolverService
         }
     }
 
-    private sealed record AdvancedUserHint(
-        string Owner,
-        string Kind,
-        string Target,
-        string Classification);
-
-    private sealed class AdvancedUserHints
-    {
-        private readonly List<AdvancedUserHint> _entries = new();
-
-        public static AdvancedUserHints Load(string path)
-        {
-            var result = new AdvancedUserHints();
-            if (!File.Exists(path))
-                return result;
-
-            try
-            {
-                using var doc = JsonDocument.Parse(File.ReadAllText(path));
-                if (!doc.RootElement.TryGetProperty("entries", out var entries) ||
-                    entries.ValueKind != JsonValueKind.Array)
-                    return result;
-
-                foreach (var row in entries.EnumerateArray())
-                {
-                    var owner = JsonString(row, "owner", "Owner");
-                    var kind = JsonString(row, "kind", "Kind");
-                    var target = JsonString(row, "target", "Target");
-                    var classification = JsonString(row, "classification", "Classification");
-                    if (string.IsNullOrWhiteSpace(owner) ||
-                        string.IsNullOrWhiteSpace(target) ||
-                        string.IsNullOrWhiteSpace(classification))
-                        continue;
-
-                    result._entries.Add(new AdvancedUserHint(
-                        owner,
-                        kind,
-                        target,
-                        classification));
-                }
-            }
-            catch
-            {
-                // Hints are optional semantic context. Invalid hint files must
-                // never prevent the automatic resolver from running.
-            }
-
-            return result;
-        }
-
-        public AdvancedUserHint? Match(CallbackMetric callback) =>
-            _entries.LastOrDefault(x =>
-                x.Owner.Equals(callback.Owner, StringComparison.OrdinalIgnoreCase) &&
-                (string.IsNullOrWhiteSpace(x.Kind) ||
-                 x.Kind.Equals(callback.Kind, StringComparison.OrdinalIgnoreCase)) &&
-                x.Target.Equals(callback.Target, StringComparison.OrdinalIgnoreCase));
-    }
-
-    private sealed class ExceptionRegistry
-    {
-        public bool Loaded { get; init; }
-        public List<ExceptionRegistryEntry> Entries { get; init; } = new();
-
-        public static ExceptionRegistry Load(string? path)
-        {
-            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
-                return new ExceptionRegistry();
-
-            try
-            {
-                using var doc = JsonDocument.Parse(File.ReadAllText(path));
-                var entries = new List<ExceptionRegistryEntry>();
-                if (doc.RootElement.TryGetProperty("entries", out var rows) &&
-                    rows.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var row in rows.EnumerateArray())
-                    {
-                        var hints = JsonStringArray(row, "identityHints");
-                        var callbackKind = "";
-                        var callbackTarget = "";
-                        if (row.TryGetProperty("callback", out var callback) &&
-                            callback.ValueKind == JsonValueKind.Object)
-                        {
-                            callbackKind = JsonString(callback, "kind");
-                            callbackTarget = JsonString(callback, "target");
-                        }
-
-                        entries.Add(new ExceptionRegistryEntry
-                        {
-                            Id = JsonString(row, "id"),
-                            Category = JsonString(row, "category"),
-                            IdentityHints = hints,
-                            CallbackKind = callbackKind,
-                            CallbackTarget = callbackTarget,
-                            SemanticHints = JsonStringArray(row, "semanticHints"),
-                            SuggestedRecipeFamilies = JsonStringArray(row, "suggestedRecipeFamilies")
-                        });
-                    }
-                }
-
-                return new ExceptionRegistry { Loaded = true, Entries = entries };
-            }
-            catch
-            {
-                return new ExceptionRegistry();
-            }
-        }
-
-        public ExceptionRegistryEntry? Match(CallbackMetric callback)
-        {
-            var owner = Normalize(callback.Owner);
-            return Entries.FirstOrDefault(entry =>
-                entry.IdentityHints.Any(h => Normalize(h) == owner) &&
-                (string.IsNullOrWhiteSpace(entry.CallbackKind) ||
-                 entry.CallbackKind.Equals(callback.Kind, StringComparison.OrdinalIgnoreCase)) &&
-                (string.IsNullOrWhiteSpace(entry.CallbackTarget) ||
-                 entry.CallbackTarget.Equals(callback.Target, StringComparison.OrdinalIgnoreCase)));
-        }
-
-        private static string Normalize(string value) =>
-            NormalizeNonAlphaNumeric.Replace(value.ToLowerInvariant(), "");
-
-        private static string[] JsonStringArray(JsonElement element, string name)
-        {
-            if (!element.TryGetProperty(name, out var array) ||
-                array.ValueKind != JsonValueKind.Array)
-                return Array.Empty<string>();
-
-            return array.EnumerateArray()
-                .Where(x => x.ValueKind == JsonValueKind.String)
-                .Select(x => x.GetString() ?? "")
-                .Where(x => !string.IsNullOrWhiteSpace(x))
-                .ToArray();
-        }
-    }
-
     private sealed class CallbackMetric
     {
         public long? RegistrationId { get; init; }
@@ -4559,21 +4215,6 @@ internal static class CallbackResolverService
         int RegistrationLine,
         int CallbackBodyEndLine);
 
-    private sealed class AdvancedCandidateAssessment
-    {
-        public bool Eligible { get; init; }
-        public int Difficulty { get; init; }
-        public string DifficultyLabel { get; init; } = "";
-        public double MeasuredCostMsPerSecond { get; init; }
-        public double MinimumCostToJustifyMsPerSecond { get; init; }
-        public double HeadroomMsPerSecond { get; init; }
-        public string Reason { get; init; } = "";
-        public string NextEvidence { get; init; } = "";
-        public bool UserClassificationUseful { get; init; }
-        public string UserHint { get; init; } = "";
-        public bool UserHintAppliedAsEvidenceOnly { get; init; }
-    }
-
     private sealed class DormancyEvidence
     {
         public string Class { get; init; } = "UNKNOWN";
@@ -4646,14 +4287,4 @@ internal static class CallbackResolverService
         public string Body { get; init; } = "";
     }
 
-    private sealed class ExceptionRegistryEntry
-    {
-        public string Id { get; init; } = "";
-        public string Category { get; init; } = "";
-        public string[] IdentityHints { get; init; } = Array.Empty<string>();
-        public string CallbackKind { get; init; } = "";
-        public string CallbackTarget { get; init; } = "";
-        public string[] SemanticHints { get; init; } = Array.Empty<string>();
-        public string[] SuggestedRecipeFamilies { get; init; } = Array.Empty<string>();
-    }
 }

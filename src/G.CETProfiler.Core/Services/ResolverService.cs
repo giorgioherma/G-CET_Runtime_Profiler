@@ -14,7 +14,6 @@ public sealed record ResolverBuildResult(
     int FrameOnlyAutoCount,
     int MaterialRemainingCount,
     int BelowThresholdCount,
-    int RegistryHintCount,
     int SemanticReadyRuleCount,
     int AlreadySatisfiedCount,
     int UnresolvedCount);
@@ -34,7 +33,6 @@ public static class ResolverService
     public static ResolverBuildResult Resolve(
         string captureRoot,
         string modsRoot,
-        string? exceptionRegistryPath = null,
         string? semanticLibraryPath = null)
     {
         if (string.IsNullOrWhiteSpace(captureRoot))
@@ -68,10 +66,6 @@ public static class ResolverService
             }
         }
 
-        exceptionRegistryPath ??= Path.Combine(
-            AppContext.BaseDirectory,
-            "knowledge",
-            "high-impact-exceptions.json");
         semanticLibraryPath ??= Path.Combine(
             AppContext.BaseDirectory,
             "knowledge",
@@ -81,7 +75,6 @@ public static class ResolverService
             handoff,
             modsRoot,
             cadence?.FinalResolutionPath,
-            exceptionRegistryPath,
             semanticLibraryPath);
 
         var resolverPath = Path.Combine(captureRoot, ResultReportService.ResolverResolutionFileName);
@@ -101,7 +94,6 @@ public static class ResolverService
             result.FrameOnlyAutoCount,
             result.MaterialRemainingCount,
             result.BelowThresholdCount,
-            result.RegistryHintCount,
             result.SemanticReadyRuleCount,
             result.AlreadySatisfiedCount,
             result.UnresolvedCount);

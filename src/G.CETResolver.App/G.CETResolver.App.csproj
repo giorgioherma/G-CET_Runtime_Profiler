@@ -14,10 +14,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\G.CETProfiler.Core\G.CETProfiler.Core.csproj" />
-    <None Include="..\..\resolver-knowledge\high-impact-exceptions.json"
-          Link="knowledge\high-impact-exceptions.json"
-          CopyToOutputDirectory="PreserveNewest"
-          CopyToPublishDirectory="PreserveNewest" />
     <None Include="..\..\resolver-knowledge\semantic-library.json"
           Link="knowledge\semantic-library.json"
           CopyToOutputDirectory="PreserveNewest"

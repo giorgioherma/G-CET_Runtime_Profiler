@@ -22,7 +22,6 @@ internal static class Program
             string? capture = null;
             string? mods = null;
             string? game = null;
-            string? registry = null;
             string? semanticLibrary = null;
             string? passOutput = null;
             var generatePass = false;
@@ -34,7 +33,6 @@ internal static class Program
                     case "--capture" when i + 1 < args.Length: capture = args[++i]; break;
                     case "--mods" when i + 1 < args.Length: mods = args[++i]; break;
                     case "--game" when i + 1 < args.Length: game = args[++i]; break;
-                    case "--registry" when i + 1 < args.Length: registry = args[++i]; break;
                     case "--semantic-library" when i + 1 < args.Length: semanticLibrary = args[++i]; break;
                     case "--generate-pass": generatePass = true; break;
                     case "--pass-output" when i + 1 < args.Length: passOutput = args[++i]; break;
@@ -47,7 +45,6 @@ internal static class Program
                             "  --capture <collected result folder> --mods <live CET mods folder> --json\n" +
                             "  --capture <collected result folder> --game <Cyberpunk 2077 root> --json\n" +
                             "  [--generate-pass] [--pass-output <zip path>]\n" +
-                            "  [--registry <high-impact exception knowledge json>]\n" +
                             "  [--semantic-library <semantic rule library json>]");
                         return 0;
                     default:
@@ -65,7 +62,7 @@ internal static class Program
                 mods = Path.Combine(Path.GetFullPath(game), "bin", "x64", "plugins", "cyber_engine_tweaks", "mods");
             }
 
-            var result = ResolverService.Resolve(capture, mods, registry, semanticLibrary);
+            var result = ResolverService.Resolve(capture, mods, semanticLibrary);
             PassBuildResult? pass = null;
             if (generatePass)
                 pass = ResolverService.GeneratePass(capture, mods, passOutput);
@@ -79,7 +76,12 @@ internal static class Program
                 result.FamilyCount,
                 result.RankedCallbackCount,
                 result.GenericResolvedCount,
-                result.RegistryHintCount,
+                result.NonFrameOnlyAutoCount,
+                result.FrameOnlyAutoCount,
+                result.SemanticReadyRuleCount,
+                result.AlreadySatisfiedCount,
+                result.MaterialRemainingCount,
+                result.BelowThresholdCount,
                 result.UnresolvedCount,
                 pass
             }, JsonOptions));
