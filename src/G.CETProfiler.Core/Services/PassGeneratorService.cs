@@ -16,7 +16,8 @@ public sealed record PassBuildResult(
 /// <summary>
 /// Generates a reversible overlay ZIP from resolver decisions only.
 /// Generic AUTO is deliberately restricted to mechanically source-proven recipes:
-/// ACTION_ROUTING_*, ACTION_OVERRIDE_EXACT_PREFILTER, and FRAME_DISPATCH_CONSOLIDATION.
+/// ACTION_ROUTING_*, ACTION_OVERRIDE_EXACT_PREFILTER, FRAME_DISPATCH_CONSOLIDATION,
+/// and explicitly enabled finite shared-provider reads such as PLAYER.
 /// Structural, cadence, and dormancy analyzers may still emit evidence, but they
 /// require semantic per-mod authorization before this generator may rewrite them.
 /// </summary>
@@ -37,6 +38,12 @@ public static class PassGeneratorService
 
     private static readonly Regex UnsafeLuaPatternChars = new(
         @"[%^$()%.\[\]*+\-?]",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private const string SharedPlayerMarker = "-- G-CET shared provider: PLAYER";
+
+    private static readonly Regex GameGetPlayerCall = new(
+        @"\bGame\s*\.\s*GetPlayer\s*\(\s*\)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     public static PassBuildResult Generate(
@@ -202,6 +209,8 @@ public static class PassGeneratorService
                 semanticExistingLiveFilesOnly = true,
                 semanticCreatesNewModFiles = false,
                 semanticReferenceOverridesShipped = false,
+                sharedProviderFamilies = new[] { "PLAYER" },
+                sharedProviderPolicy = "MEASURED_CALLBACKS_ONLY; EXACT_CURRENT_SOURCE_GETTER; 0-Engine.GetPlayer WITH Game.GetPlayer FALLBACK",
                 fullFileOverlay = true,
                 cadenceTransforms = true,
                 cadencePolicy = "SEMANTIC_RULES_ONLY_AFTER_CURRENT_SOURCE_GRAPH_PROOF",
@@ -210,6 +219,7 @@ public static class PassGeneratorService
                     "ACTION_ROUTING_*",
                     "ACTION_OVERRIDE_EXACT_PREFILTER",
                     "FRAME_DISPATCH_CONSOLIDATION",
+                    "SHARED_PROVIDER_READ",
                     "SEMANTIC_RULE_SOURCE_INJECTION"
                 },
                 fixedRuntimeException = "0-Engine",
@@ -379,6 +389,54 @@ public static class PassGeneratorService
             }
         }
 
+        if (root.TryGetProperty("sharedProviderOpportunities", out var providers) &&
+            providers.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var provider in providers.EnumerateArray())
+            {
+                if (!JsonString(provider, "provider").Equals(
+                        "PLAYER",
+                        StringComparison.OrdinalIgnoreCase) ||
+                    !JsonBool(provider, "generationEnabled") ||
+                    !provider.TryGetProperty("callbacks", out var callbacks) ||
+                    callbacks.ValueKind != JsonValueKind.Array)
+                    continue;
+
+                foreach (var callback in callbacks.EnumerateArray())
+                {
+                    if (!JsonBool(callback, "substitutionEligible"))
+                        continue;
+
+                    var registrationId = JsonNullableLong(callback, "registrationId");
+                    var owner = JsonString(callback, "owner");
+                    var relativeFile = JsonString(callback, "sourceFile");
+                    var sha = JsonString(callback, "sourceSha256");
+                    var lineStart = (int)(JsonNullableLong(callback, "lineStart") ?? 0);
+                    var lineEnd = (int)(JsonNullableLong(callback, "lineEnd") ?? 0);
+
+                    if (registrationId is null ||
+                        string.IsNullOrWhiteSpace(owner) ||
+                        string.IsNullOrWhiteSpace(relativeFile) ||
+                        string.IsNullOrWhiteSpace(sha) ||
+                        lineStart <= 0 ||
+                        lineEnd < lineStart)
+                        continue;
+
+                    result.Add(new PassCandidate
+                    {
+                        Kind = CandidateKind.SharedProviderPlayer,
+                        RegistrationId = registrationId.Value,
+                        Owner = owner,
+                        RelativeFile = relativeFile.Replace('\\', '/'),
+                        SourceSha256 = sha,
+                        LineStart = lineStart,
+                        LineEnd = lineEnd,
+                        Pattern = "SHARED_PROVIDER_READ"
+                    });
+                }
+            }
+        }
+
         return result;
     }
 
@@ -434,8 +492,90 @@ public static class PassGeneratorService
 
         var applied = 0;
         var frameHelpers = new List<(PassCandidate Candidate, string Token)>();
+        var sharedPlayerApplied = false;
+        var sharedPlayerHelperAlreadyPresent =
+            text.Contains(SharedPlayerMarker, StringComparison.Ordinal);
+        var sharedPlayerNameCollision =
+            !sharedPlayerHelperAlreadyPresent &&
+            Regex.IsMatch(
+                text,
+                @"\b__gcetGetPlayer\b",
+                RegexOptions.CultureInvariant);
 
-        foreach (var candidate in candidates)
+        // Shared-provider substitutions are expression-only and preserve line
+        // counts. Apply them first so later structural transforms can keep using
+        // the resolver's original callback ranges.
+        foreach (var candidate in candidates.Where(x =>
+                     x.Kind == CandidateKind.SharedProviderPlayer))
+        {
+            if (sharedPlayerNameCollision)
+            {
+                skipped.Add(Skip(
+                    candidate,
+                    "Current file already defines __gcetGetPlayer without the G-CET provider marker."));
+                continue;
+            }
+
+            var effectiveLineEnd =
+                hadTerminalNewline && candidate.LineEnd == lines.Count + 1
+                    ? lines.Count
+                    : candidate.LineEnd;
+
+            if (candidate.LineStart > lines.Count || effectiveLineEnd > lines.Count)
+            {
+                skipped.Add(Skip(
+                    candidate,
+                    "Recorded shared-provider callback range is outside the current file."));
+                continue;
+            }
+
+            var sourceLines = lines
+                .Skip(candidate.LineStart - 1)
+                .Take(effectiveLineEnd - candidate.LineStart + 1)
+                .ToArray();
+            var segment = string.Join("\n", sourceLines);
+            var matches = GameGetPlayerCall.Matches(segment).Count;
+            if (matches == 0)
+            {
+                skipped.Add(Skip(
+                    candidate,
+                    "Exact Game.GetPlayer() provider read could not be revalidated in the recorded source range."));
+                continue;
+            }
+
+            var replaced = GameGetPlayerCall.Replace(segment, "__gcetGetPlayer()");
+            var replacementLines = replaced.Split('\n').ToList();
+            if (replacementLines.Count != sourceLines.Length)
+            {
+                skipped.Add(Skip(
+                    candidate,
+                    "Shared-provider substitution unexpectedly changed source line count."));
+                continue;
+            }
+
+            lines.RemoveRange(
+                candidate.LineStart - 1,
+                effectiveLineEnd - candidate.LineStart + 1);
+            lines.InsertRange(candidate.LineStart - 1, replacementLines);
+
+            transformManifest.Add(new
+            {
+                registrationId = candidate.RegistrationId,
+                owner = candidate.Owner,
+                type = "SHARED_PROVIDER_READ",
+                provider = "PLAYER",
+                providerApi = "0-Engine.GetPlayer",
+                file = candidate.RelativeFile,
+                sourceLines = new[] { candidate.LineStart, candidate.LineEnd },
+                replacedOccurrences = matches,
+                fallback = "Game.GetPlayer"
+            });
+            applied++;
+            sharedPlayerApplied = true;
+        }
+
+        foreach (var candidate in candidates.Where(x =>
+                     x.Kind != CandidateKind.SharedProviderPlayer))
         {
             // Resolver source ranges are based on Split('\n') semantics and may
             // include the terminal empty logical line of a newline-terminated
@@ -754,6 +894,30 @@ public static class PassGeneratorService
             applied++;
         }
 
+        if (sharedPlayerApplied && !sharedPlayerHelperAlreadyPresent)
+        {
+            var sharedHeader = new[]
+            {
+                SharedPlayerMarker,
+                "local __gcetSharedPlayerProvider = nil",
+                "local function __gcetGetPlayer()",
+                "    if __gcetSharedPlayerProvider == nil then",
+                "        local __gcetOk, __gcetEngine = pcall(GetMod, \"0-Engine\")",
+                "        if __gcetOk and type(__gcetEngine) == \"table\" and type(__gcetEngine.GetPlayer) == \"function\" then",
+                "            __gcetSharedPlayerProvider = __gcetEngine.GetPlayer",
+                "        end",
+                "    end",
+                "    if __gcetSharedPlayerProvider ~= nil then",
+                "        local __gcetPlayer = __gcetSharedPlayerProvider()",
+                "        if __gcetPlayer ~= nil then return __gcetPlayer end",
+                "    end",
+                "    return Game.GetPlayer()",
+                "end",
+                ""
+            };
+            lines.InsertRange(0, sharedHeader);
+        }
+
         if (frameHelpers.Count > 0)
         {
             var header = new List<string>
@@ -1057,7 +1221,8 @@ public static class PassGeneratorService
     {
         Action,
         OverridePrefilter,
-        Frame
+        Frame,
+        SharedProviderPlayer
     }
 
     private sealed class PassCandidate
