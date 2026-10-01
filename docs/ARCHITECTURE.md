@@ -108,6 +108,22 @@ Generic AUTO is deliberately narrow: finite `OnAction` routing, exact transparen
 prefiltering, and frame-dispatch consolidation. Structural/cadence/dormancy analysis may describe
 opportunities but cannot authorize generic generation.
 
+### Optimizer Rule #1 — meaningful measured payback first
+
+A transform is not justified merely because source proof says it is safe. **AUTO only changes code when
+the profiler shows a meaningful performance opportunity.** Runtime evidence is the admission gate;
+source analysis exists to prove and implement a transformation after that gate has been crossed.
+
+The Resolver must not invent optimization systems for cold or negligible work. A provider/cache,
+callback consolidation, cadence change, semantic rule, or other transformation that would save only
+trivial measured work is excluded even when technically possible. For frame-dispatch consolidation,
+meaningful payback may be demonstrated by spike/burst/frame-pacing pressure rather than average
+ms/s alone.
+
+Source scanning may inspect the current source of a measured candidate to prove the recipe, but it
+must not turn unmeasured/cold code into an optimization candidate merely because a recognizable
+pattern exists.
+
 Frame-dispatch consolidation is a **performance optimization in its own right**, not merely plumbing.
 The client callback bodies may still execute the same logical work at the same cadence, so aggregate
 script work is not expected to disappear solely from consolidation. However, replacing many separate
@@ -209,7 +225,7 @@ Legacy TOTAL Profiler 0.2.19 state can still be read during migration, but curre
 
 ## Recovery invariant
 
-**Rule #1: before the profiler mutates any user-owned file or directory, preserve the original state first.**
+**Recovery rule: before the profiler mutates any user-owned file or directory, preserve the original state first.**
 
 Replaced files are copied into the persistent recovery directory and hash-verified before the live copy is changed. Added profiler-owned files record that no original existed. `bindings.json` is not part of the restore transaction: CET owns the user's current capture key, and G-CET seeds F11 only if the profiler input has no existing binding.
 
