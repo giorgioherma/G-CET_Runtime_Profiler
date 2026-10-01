@@ -151,16 +151,22 @@ folder exists, the current source graph proves the rule, and that rule has an ac
 The generator may rewrite an existing live/staged file but cannot create an absent mod or copy a
 development reference patch.
 
-### Shared-provider opportunity analysis
+### Shared-provider opportunity analysis and generation
 
-The Resolver now performs an **analysis-only shared-provider census** over measured callbacks. It does
-not scan cold/unmeasured mods looking for work and it does not yet generate shared-state rewrites.
+The Resolver performs a **measured-callback-only shared-provider census**. It does not scan cold or
+unmeasured mods looking for getters to rewrite.
 
 For each measured callback whose current live source resolves, the Resolver recognizes a deliberately
 small catalogue of repeated state/system reads such as `Game.GetPlayer()`, player
 `GetWorldPosition()` / `GetWorldOrientation()`, `IsInCombat()`, and common
 `Game.Get*System()` handles. It aggregates those occurrences across the measured stack and joins
 existing adaptive-deep callee evidence when available.
+
+The profiler handoff keeps `hotCallees` as a top-N per-callback presentation view, but shared-provider
+analysis no longer consumes that shortlist as its primary input. Known provider callees are emitted
+through a separate untruncated provider stream derived from the already-collected deep callsite rows.
+This allows many individually small reads to become significant only after they are aggregated at the
+provider/system level. Older captures remain readable through a `hotCallees` compatibility fallback.
 
 The output records affected measured owners/callbacks, source occurrence counts, same-callback
 duplication, deep sampled calls/repetition, callback workload/call rate, and spike context. These
@@ -170,10 +176,18 @@ provider-cost or savings estimates and provider totals are not additive.
 Current-source recognition is intentionally conservative. Direct known getters are exact source
 matches. Player-derived reads are marked source-recognized only when the receiver is locally established
 from `Game.GetPlayer()`; otherwise the occurrence is retained as unresolved evidence. Recognition
-at this stage proves the source shape/receiver provenance only; it does not yet authorize substitution.
+proves the source shape/receiver provenance; substitution still requires an explicitly enabled finite
+provider family and current-source proof.
 
-This stage exists to answer which shared-provider families are actually worth implementing before
-adding new 0-Engine provider/generator machinery. Provider generation remains disabled.
+`PLAYER` is the first generation-enabled family. For measured callbacks with exact
+`Game.GetPlayer()` reads, `SHARED_PROVIDER_READ` substitutes a file-local helper that reads
+0-Engine's existing lifecycle-managed `Engine.GetPlayer()` cache. If that cache is unavailable or
+temporarily nil, the helper falls back to the original `Game.GetPlayer()` call. The replacement is
+expression-only, preserves source line counts, composes before structural transforms, and does not
+authorize any other structural/cadence/dormancy rewrite in the callback.
+
+Other provider families remain analysis-only until real-stack evidence and a safe substitution contract
+justify enabling them.
 
 Reviewed candidates that require bespoke camera/input/presentation/discovery timing remain evidence
 outside the production catalog. There is no manual classification/Advanced path and no separate
