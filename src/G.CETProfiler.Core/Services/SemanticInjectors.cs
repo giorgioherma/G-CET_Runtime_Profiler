@@ -341,21 +341,16 @@ internal static class SemanticInjectors
             "world.update()",
             "raceLogic.raceInProgress");
 
-        var globalObserver =
-            "        ObserveAfter(\"BaseMappinBaseController\", \"UpdateRootState\", function(this)\n" +
-            "            if rootStateUpdateCount == 0 then\n" +
-            "                hubs.setupMappins(timeTrials.availableRaces)\n" +
-            "                rootStateUpdateCount = rootStateUpdateCount + 1\n" +
-            "            else\n" +
-            "                rootStateUpdateCount = 0\n" +
-            "            end\n" +
-            "        end)\n\n";
-
-        var initText = ReplaceOnce(
+        var initText = ReplaceSemanticObserverBlockOnce(
             init.Text,
-            globalObserver,
+            "ObserveAfter",
+            "BaseMappinBaseController",
+            "UpdateRootState",
+            "this",
             "",
-            "CyberTrials global mappin refresh observer");
+            "CyberTrials global mappin refresh observer",
+            "hubs.setupMappins(timeTrials.availableRaces)",
+            "rootStateUpdateCount");
 
         var opening = "__gcetRegisterEvent_93(\"onUpdate\", function(dt)\n";
         if (!initText.Contains(opening, StringComparison.Ordinal))
@@ -378,12 +373,6 @@ internal static class SemanticInjectors
             "    __gcetCyberTrialsWorldElapsed = __gcetCyberTrialsWorldElapsed + dt\n",
             "CyberTrials onUpdate semantic state");
 
-        var earlyWorld =
-            "    if #timeTrials.availableRaces > 0 and #world.interactions > 0 then\n" +
-            "        interactionUI.update()\n" +
-            "        world.update()\n" +
-            "    end\n";
-
         var earlyWorldReplacement =
             "    if (timeTrials.runtimeData.inMenu or not timeTrials.runtimeData.inGame)\n" +
             "        and #timeTrials.availableRaces > 0 and #world.interactions > 0\n" +
@@ -391,19 +380,18 @@ internal static class SemanticInjectors
             "        interactionUI.update()\n" +
             "        world.update()\n" +
             "        __gcetCyberTrialsWorldElapsed = 0.0\n" +
-            "    end\n";
+            "    end";
 
-        initText = ReplaceOnce(
+        initText = RegexReplaceOnce(
             initText,
-            earlyWorld,
+            @"(?m)^[ \t]*if\s+#timeTrials\.availableRaces\s*>\s*0\s+and\s+#world\.interactions\s*>\s*0\s+then[ \t]*(?:--[^\r\n]*)?\r?\n" +
+            @"(?:^[ \t]*(?:--[^\r\n]*)?\r?\n)*" +
+            @"^[ \t]*interactionUI\.update\s*\(\s*\)\s*(?:--[^\r\n]*)?\r?\n" +
+            @"(?:^[ \t]*(?:--[^\r\n]*)?\r?\n)*" +
+            @"^[ \t]*world\.update\s*\(\s*\)\s*(?:--[^\r\n]*)?\r?\n" +
+            @"^[ \t]*end\s*(?:--[^\r\n]*)?$",
             earlyWorldReplacement,
             "CyberTrials duplicated world/UI update");
-
-        var gameplayWorld =
-            "        Cron.Update(dt)\n" +
-            "        interactionUI.update()\n" +
-            "        world.update()\n" +
-            "        if raceLogic.raceInProgress == true then\n";
 
         var gameplayWorldReplacement =
             "        Cron.Update(dt)\n" +
@@ -413,11 +401,17 @@ internal static class SemanticInjectors
             "            world.update()\n" +
             "            __gcetCyberTrialsWorldElapsed = 0.0\n" +
             "        end\n" +
-            "        if raceLogic.raceInProgress == true then\n";
+            "        if raceLogic.raceInProgress == true then";
 
-        initText = ReplaceOnce(
+        initText = RegexReplaceOnce(
             initText,
-            gameplayWorld,
+            @"(?m)^[ \t]*Cron\.Update\s*\(\s*dt\s*\)\s*(?:--[^\r\n]*)?\r?\n" +
+            @"(?:^[ \t]*(?:--[^\r\n]*)?\r?\n)*" +
+            @"^[ \t]*interactionUI\.update\s*\(\s*\)\s*(?:--[^\r\n]*)?\r?\n" +
+            @"(?:^[ \t]*(?:--[^\r\n]*)?\r?\n)*" +
+            @"^[ \t]*world\.update\s*\(\s*\)\s*(?:--[^\r\n]*)?\r?\n" +
+            @"(?:^[ \t]*(?:--[^\r\n]*)?\r?\n)*" +
+            @"^[ \t]*if\s+raceLogic\.raceInProgress\s*==\s*true\s+then\s*(?:--[^\r\n]*)?$",
             gameplayWorldReplacement,
             "CyberTrials gameplay world cadence");
 
@@ -425,56 +419,32 @@ internal static class SemanticInjectors
 
         var hubsFile = context.FindFile(
             "modules/utils/interactionHubs.lua",
-            "function interactionHubs.setupMappins(tracks)",
+            "interactionHubs.setupMappins",
             "gamedataMappinVariant.Zzz18_RacingVariant",
-            "mappinIDs");
+            "mappinIDs",
+            "raceLogic.raceInProgress",
+            "RegisterMappin",
+            "UnregisterMappin");
 
-        var oldHubsSetup =
-            "function interactionHubs.setupMappins(tracks)\n" +
-            "    if not raceLogic.raceInProgress then\n" +
-            "        local data = MappinData.new({ mappinType = 'Mappins.QuestDynamicMappinDefinition', variant = gamedataMappinVariant.Zzz18_RacingVariant, visibleThroughWalls = false, active = true}) -- WorldMap Pin\n" +
-            "        for i, track in ipairs(tracks) do\n" +
-            "            local hubdata = track.startInteraction\n" +
-            "            local mappinID = Game.GetMappinSystem():RegisterMappin(data, Vector4.new(hubdata.position.x, hubdata.position.y,hubdata.position.z+1))\n" +
-            "            table.insert(mappinIDs, mappinID)\n" +
-            "        end\n" +
-            "    else\n" +
-            "        for index, mappin in ipairs(mappinIDs) do\n" +
-            "            Game.GetMappinSystem():UnregisterMappin(mappin)\n" +
-            "            table.remove(mappinIDs, index)\n" +
-            "        end\n" +
-            "    end\n" +
-            "end\n";
-
-        var newHubsSetup =
-            "function interactionHubs.setupMappins(tracks)\n" +
-            "    tracks = tracks or {}\n\n" +
-            "    local function clearMappins()\n" +
-            "        for index = #mappinIDs, 1, -1 do\n" +
-            "            local mappin = mappinIDs[index]\n" +
-            "            if mappin then Game.GetMappinSystem():UnregisterMappin(mappin) end\n" +
-            "            mappinIDs[index] = nil\n" +
-            "        end\n" +
-            "    end\n\n" +
-            "    if raceLogic.raceInProgress then\n" +
-            "        if #mappinIDs > 0 then clearMappins() end\n" +
-            "        return\n" +
-            "    end\n\n" +
-            "    if #mappinIDs == #tracks and #tracks > 0 then return end\n" +
-            "    if #mappinIDs > 0 then clearMappins() end\n" +
-            "    if #tracks == 0 then return end\n\n" +
-            "    local data = MappinData.new({ mappinType = 'Mappins.QuestDynamicMappinDefinition', variant = gamedataMappinVariant.Zzz18_RacingVariant, visibleThroughWalls = false, active = true})\n" +
-            "    for _, track in ipairs(tracks) do\n" +
-            "        local hubdata = track.startInteraction\n" +
-            "        local mappinID = Game.GetMappinSystem():RegisterMappin(data, Vector4.new(hubdata.position.x, hubdata.position.y, hubdata.position.z + 1))\n" +
-            "        table.insert(mappinIDs, mappinID)\n" +
-            "    end\n" +
-            "end\n";
-
-        var hubsText = ReplaceOnce(
+        var hubsText = RegexReplaceOnce(
             hubsFile.Text,
-            oldHubsSetup,
-            newHubsSetup,
+            @"(?m)^(?<indent>[ \t]*)(?<opening>function\s+interactionHubs\.setupMappins\s*\(\s*(?<tracks>[A-Za-z_]\w*)\s*\)\s*(?:--[^\r\n]*)?)$",
+            "${indent}${opening}\n" +
+            "${indent}    ${tracks} = ${tracks} or {}\n\n" +
+            "${indent}    local function clearMappins()\n" +
+            "${indent}        for index = #mappinIDs, 1, -1 do\n" +
+            "${indent}            local mappin = mappinIDs[index]\n" +
+            "${indent}            if mappin then Game.GetMappinSystem():UnregisterMappin(mappin) end\n" +
+            "${indent}            mappinIDs[index] = nil\n" +
+            "${indent}        end\n" +
+            "${indent}    end\n\n" +
+            "${indent}    if raceLogic.raceInProgress then\n" +
+            "${indent}        if #mappinIDs > 0 then clearMappins() end\n" +
+            "${indent}        return\n" +
+            "${indent}    end\n\n" +
+            "${indent}    if #mappinIDs == #${tracks} and #${tracks} > 0 then return end\n" +
+            "${indent}    if #mappinIDs > 0 then clearMappins() end\n" +
+            "${indent}    if #${tracks} == 0 then return end",
             "CyberTrials idempotent state-driven mappin registry");
         context.Write(hubsFile, hubsText);
 
@@ -483,23 +453,6 @@ internal static class SemanticInjectors
             "BaseMappinBaseController",
             "UpdateRootState",
             "world.interactions");
-
-        var oldObserver =
-            "    ObserveAfter(\"BaseMappinBaseController\", \"UpdateRootState\", function(this) -- Custom pin texture\n" +
-            "        if not Game.GetPlayer() then return end\n" +
-            "        if Game.GetPlayer().mountedVehicle then return end\n" +
-            "        local mappin = this:GetMappin()\n" +
-            "        if not mappin then return end\n" +
-            "        local pos = mappin:GetWorldPosition()\n" +
-            "        for _, interaction in pairs(world.interactions) do\n" +
-            "            if Vector4.Distance(pos, interaction.pos) < 0.05 then\n" +
-            "                local record = TweakDBInterface.GetUIIconRecord(interaction.icon)\n" +
-            "                this.iconWidget:SetAtlasResource(record:AtlasResourcePath())\n" +
-            "                this.iconWidget:SetTexturePart(record:AtlasPartName())\n" +
-            "                this.iconWidget:SetTintColor(interaction.iconColor or HDRColor.new({ Red = 0.15829999744892, Green = 1.3033000230789, Blue = 1.4141999483109, Alpha = 1.0 }))\n" +
-            "            end\n" +
-            "        end\n" +
-            "    end)\n";
 
         var newObserver =
             "    ObserveAfter(\"BaseMappinBaseController\", \"UpdateRootState\", function(this) -- Custom race pin texture\n" +
@@ -511,11 +464,19 @@ internal static class SemanticInjectors
             "        this.iconWidget:SetTintColor(HDRColor.new({ Red = 1, Green = 219 / 255, Blue = 78 / 255 }))\n" +
             "    end)\n";
 
-        var worldText = ReplaceOnce(
+        var worldText = ReplaceSemanticObserverBlockOnce(
             world.Text,
-            oldObserver,
+            "ObserveAfter",
+            "BaseMappinBaseController",
+            "UpdateRootState",
+            "this",
             newObserver,
-            "CyberTrials owned-mappin prefilter");
+            "CyberTrials owned-mappin prefilter",
+            "GetMappin",
+            "GetWorldPosition",
+            "world.interactions",
+            "Vector4.Distance",
+            "iconWidget");
         context.Write(world, worldText);
 
         return SemanticInjectionResult.Success(
@@ -970,6 +931,55 @@ internal static class SemanticInjectors
                 $"More than one onUpdate({parameter}) opening matched.");
 
         return match.Groups["opening"].Value + "\n";
+    }
+
+
+    private static string ReplaceSemanticObserverBlockOnce(
+        string text,
+        string observerFunction,
+        string typeName,
+        string methodName,
+        string parameter,
+        string replacement,
+        string label,
+        params string[] requiredTokens)
+    {
+        var pattern =
+            @"^[ \t]*" + Regex.Escape(observerFunction) +
+            @"\s*\(\s*['""]" + Regex.Escape(typeName) + @"['""]\s*,\s*['""]" +
+            Regex.Escape(methodName) + @"['""]\s*,\s*function\s*\(\s*" +
+            Regex.Escape(parameter) +
+            @"\s*\)[^\r\n]*\r?\n.*?^[ \t]*end\s*\)\s*(?:--[^\r\n]*)?(?:\r?\n|$)";
+
+        var regex = new Regex(
+            pattern,
+            RegexOptions.CultureInvariant |
+            RegexOptions.Multiline |
+            RegexOptions.Singleline);
+
+        var candidates = new List<Match>();
+        foreach (Match match in regex.Matches(text))
+        {
+            if (requiredTokens.All(token =>
+                    match.Value.IndexOf(
+                        token,
+                        StringComparison.OrdinalIgnoreCase) >= 0))
+            {
+                candidates.Add(match);
+            }
+        }
+
+        if (candidates.Count == 0)
+            throw new InvalidOperationException(
+                $"Current source no longer proves semantic observer structure: {label}.");
+        if (candidates.Count != 1)
+            throw new InvalidOperationException(
+                $"Semantic observer structure is ambiguous in current source: {label}.");
+
+        var selected = candidates[0];
+        return text[..selected.Index] +
+            replacement +
+            text[(selected.Index + selected.Length)..];
     }
 
 
