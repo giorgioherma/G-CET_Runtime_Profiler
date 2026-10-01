@@ -662,7 +662,7 @@ public static partial class ResultReportService
                             group => group.First(),
                             StringComparer.OrdinalIgnoreCase);
 
-                    var hotCallees = callsiteRows
+                    var rankedCallees = callsiteRows
                         .GroupBy(
                             row => S(row, "ChildFunctionKey"),
                             StringComparer.OrdinalIgnoreCase)
@@ -753,7 +753,20 @@ public static partial class ResultReportService
                         })
                         .OrderByDescending(x => x.childInclusiveMs)
                         .ThenByDescending(x => x.sampledCalls)
+                        .ToArray();
+
+                    // hotCallees stays intentionally presentation-focused. Shared-provider
+                    // analysis must not inherit this per-callback top-N gate: a getter can
+                    // be individually cheap while still mattering when aggregated across
+                    // the measured stack.
+                    var hotCallees = rankedCallees
                         .Take(16)
+                        .ToArray();
+
+                    var sharedProviderCallees = rankedCallees
+                        .Where(x => ResolverIsKnownSharedProviderCallee(
+                            x.functionName,
+                            x.childFunctionKey))
                         .ToArray();
 
                     var duplicateCalleeCandidates = hotCallees
@@ -805,6 +818,7 @@ public static partial class ResultReportService
                             dominantPathSharePct,
                             pathClusters,
                             hotCallees,
+                            sharedProviderCallees,
                             duplicateCalleeCandidates,
                             unresolvedLineEvents,
                             lineSourceReliable,
@@ -890,6 +904,33 @@ public static partial class ResultReportService
             return "NATIVE_OR_C_CALL";
 
         return "GENERAL_CALL";
+    }
+
+    private static bool ResolverIsKnownSharedProviderCallee(
+        string functionName,
+        string functionKey)
+    {
+        var names = new[]
+        {
+            "GetPlayer",
+            "GetQuestsSystem",
+            "GetStatsSystem",
+            "GetTransactionSystem",
+            "GetBlackboardSystem",
+            "GetTargetingSystem",
+            "GetCameraSystem",
+            "GetTimeSystem",
+            "GetPreventionSystem",
+            "GetScriptableSystemsContainer",
+            "GetWorldPosition",
+            "GetWorldOrientation",
+            "IsInCombat"
+        };
+
+        return names.Any(name =>
+            name.Equals(functionName, StringComparison.OrdinalIgnoreCase) ||
+            (!string.IsNullOrWhiteSpace(functionKey) &&
+             functionKey.Contains(name, StringComparison.OrdinalIgnoreCase)));
     }
 
     private static List<ResolverOwnerActivityMetric> BuildResolverOwnerActivity(
