@@ -1091,6 +1091,9 @@ try {
     if (!$manifest.policy.semanticCurrentSourceProofRequired) {
         throw 'Semantic generation no longer requires current-source proof.'
     }
+    if (!$manifest.policy.semanticExistingLiveFilesOnly -or $manifest.policy.semanticCreatesNewModFiles) {
+        throw 'Semantic pass policy no longer guarantees existing-live-file-only output.'
+    }
     if ($manifest.policy.semanticReferenceOverridesShipped) {
         throw 'Semantic development reference overrides leaked into the deployable pass policy.'
     }
