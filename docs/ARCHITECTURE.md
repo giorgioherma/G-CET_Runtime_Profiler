@@ -151,6 +151,30 @@ folder exists, the current source graph proves the rule, and that rule has an ac
 The generator may rewrite an existing live/staged file but cannot create an absent mod or copy a
 development reference patch.
 
+### Shared-provider opportunity analysis
+
+The Resolver now performs an **analysis-only shared-provider census** over measured callbacks. It does
+not scan cold/unmeasured mods looking for work and it does not yet generate shared-state rewrites.
+
+For each measured callback whose current live source resolves, the Resolver recognizes a deliberately
+small catalogue of repeated state/system reads such as `Game.GetPlayer()`, player
+`GetWorldPosition()` / `GetWorldOrientation()`, `IsInCombat()`, and common
+`Game.Get*System()` handles. It aggregates those occurrences across the measured stack and joins
+existing adaptive-deep callee evidence when available.
+
+The output records affected measured owners/callbacks, source occurrence counts, same-callback
+duplication, deep sampled calls/repetition, callback workload/call rate, and spike context. These
+numbers describe the measured callback territory in which a provider appears; they are **not**
+provider-cost or savings estimates and provider totals are not additive.
+
+Current-source recognition is intentionally conservative. Direct known getters are exact source
+matches. Player-derived reads are marked source-proven only when the receiver is locally established
+from `Game.GetPlayer()`; otherwise the occurrence is retained as an unproven opportunity rather than
+being silently treated as replaceable.
+
+This stage exists to answer which shared-provider families are actually worth implementing before
+adding new 0-Engine provider/generator machinery. Provider generation remains disabled.
+
 Reviewed candidates that require bespoke camera/input/presentation/discovery timing remain evidence
 outside the production catalog. There is no manual classification/Advanced path and no separate
 identity-exception registry.
