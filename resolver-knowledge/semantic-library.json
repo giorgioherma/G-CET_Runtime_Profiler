@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "0.1",
+  "schemaVersion": "0.2",
   "policy": {
     "patchCodeAllowed": false,
     "referenceOverridesShipped": false,
@@ -39,7 +39,30 @@
         "alreadySatisfiedMarker": "G-CET semantic:gta-joyride"
       },
       "behavior": {
-        "handler": "SEMANTIC_ACTIVE_IDLE_SPLIT"
+        "handler": "SEMANTIC_ACTIVE_IDLE_SPLIT",
+        "concepts": [
+          "frameClock",
+          "sessionActivity",
+          "pendingSpawnOrMountWork",
+          "idleRuntime"
+        ],
+        "lanes": [
+          {
+            "role": "FRAME_CLOCK",
+            "cadence": "EVERY_FRAME",
+            "seconds": 0
+          },
+          {
+            "role": "ACTIVE_RUNTIME",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.1
+          },
+          {
+            "role": "IDLE_RUNTIME",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 5
+          }
+        ]
       },
       "generation": {
         "enabled": true,
@@ -54,7 +77,15 @@
         "evidenceStack": "OVERLAP",
         "admitted": true
       },
-      "cadenceGroup": "DORMANT_IDLE_5S_ACTIVE_10HZ_FRAME_SENTINEL"
+      "cadenceGroup": "DORMANT_IDLE_5S_ACTIVE_10HZ_FRAME_SENTINEL",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G_MOD_COLLECTION_20260926",
+        "G_CET_MOTHERLOAD_20260930"
+      ]
     },
     {
       "id": "combat",
@@ -97,7 +128,14 @@
         "patch": "tests/semantic-reference/gcet-only/Combat.patch",
         "purpose": "behavior-concept guide only",
         "shipped": false
-      }
+      },
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G_CET_MOTHERLOAD_20260930"
+      ]
     },
     {
       "id": "repeatable-cyberpsychos",
@@ -120,7 +158,35 @@
         "alreadySatisfiedMarker": "G-CET semantic:repeatable-cyberpsychos"
       },
       "behavior": {
-        "handler": "SEMANTIC_MULTI_RATE_SPLIT"
+        "handler": "SEMANTIC_MULTI_RATE_SPLIT",
+        "concepts": [
+          "combatRewardWatchdog",
+          "runtimeState",
+          "presentation",
+          "scheduler"
+        ],
+        "lanes": [
+          {
+            "role": "COMBAT_REWARD_WATCHDOG",
+            "cadence": "ALTERNATING_FRAMES",
+            "seconds": 0
+          },
+          {
+            "role": "RUNTIME",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 1
+          },
+          {
+            "role": "PRESENTATION",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 5
+          },
+          {
+            "role": "SCHEDULER",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 10
+          }
+        ]
       },
       "generation": {
         "enabled": true,
@@ -135,7 +201,15 @@
         "evidenceStack": "OVERLAP",
         "admitted": true
       },
-      "cadenceGroup": "MULTI_RATE_DORMANT"
+      "cadenceGroup": "MULTI_RATE_DORMANT",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G_MOD_COLLECTION_20260926",
+        "G_CET_MOTHERLOAD_20260930"
+      ]
     },
     {
       "id": "cybertrials",
@@ -158,7 +232,36 @@
         "alreadySatisfiedMarker": "G-CET semantic:cybertrials"
       },
       "behavior": {
-        "handler": "SEMANTIC_MULTI_RATE_WITH_PREFILTER"
+        "handler": "SEMANTIC_MULTI_RATE_WITH_PREFILTER",
+        "concepts": [
+          "raceRealtime",
+          "nearWorld",
+          "farDiscovery",
+          "systemState",
+          "ownedRaceMappin"
+        ],
+        "lanes": [
+          {
+            "role": "REALTIME_RACE",
+            "cadence": "EVERY_FRAME",
+            "seconds": 0
+          },
+          {
+            "role": "NEAR_WORLD",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.1
+          },
+          {
+            "role": "SYSTEM_STATE",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.25
+          },
+          {
+            "role": "FAR_DISCOVERY",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 1
+          }
+        ]
       },
       "generation": {
         "enabled": true,
@@ -173,7 +276,15 @@
         "evidenceStack": "OVERLAP",
         "admitted": true
       },
-      "cadenceGroup": "REALTIME_PLUS_FAST_10HZ_PLUS_SLOW_1HZ"
+      "cadenceGroup": "REALTIME_PLUS_FAST_10HZ_PLUS_SLOW_1HZ",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G_MOD_COLLECTION_20260926",
+        "G_CET_MOTHERLOAD_20260930"
+      ]
     },
     {
       "id": "dualsense-support",
@@ -216,7 +327,14 @@
         "patch": "tests/semantic-reference/gcet-only/DualSense_Support.patch",
         "purpose": "behavior-concept guide only",
         "shipped": false
-      }
+      },
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G_CET_MOTHERLOAD_20260930"
+      ]
     },
     {
       "id": "streetgamespoker",
@@ -239,7 +357,36 @@
         "alreadySatisfiedMarker": "G-CET semantic:streetgamespoker"
       },
       "behavior": {
-        "handler": "SEMANTIC_DISTANCE_ACTIVITY_SPLIT"
+        "handler": "SEMANTIC_DISTANCE_ACTIVITY_SPLIT",
+        "concepts": [
+          "activeGameplay",
+          "nearSeat",
+          "nearWorld",
+          "farWorld",
+          "rendererActivity"
+        ],
+        "lanes": [
+          {
+            "role": "ACTIVE_GAMEPLAY",
+            "cadence": "EVERY_FRAME",
+            "seconds": 0
+          },
+          {
+            "role": "NEAR_SEAT",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.1
+          },
+          {
+            "role": "NEAR_WORLD",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.2
+          },
+          {
+            "role": "FAR_WORLD",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 1
+          }
+        ]
       },
       "generation": {
         "enabled": true,
@@ -254,7 +401,15 @@
         "evidenceStack": "OVERLAP",
         "admitted": true
       },
-      "cadenceGroup": "DISTANCE_1HZ_5HZ_10HZ_PLUS_REALTIME"
+      "cadenceGroup": "DISTANCE_1HZ_5HZ_10HZ_PLUS_REALTIME",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G_MOD_COLLECTION_20260926",
+        "G_CET_MOTHERLOAD_20260930"
+      ]
     },
     {
       "id": "immersive-third-person",
@@ -277,7 +432,36 @@
         "alreadySatisfiedMarker": "G-CET semantic:immersive-third-person"
       },
       "behavior": {
-        "handler": "SEMANTIC_REALTIME_MULTI_RATE"
+        "handler": "SEMANTIC_REALTIME_MULTI_RATE",
+        "concepts": [
+          "realtimeCamera",
+          "fastSupervisor",
+          "idleSupervisor",
+          "activeMaintenance",
+          "transitionPending"
+        ],
+        "lanes": [
+          {
+            "role": "REALTIME_CAMERA",
+            "cadence": "EVERY_FRAME",
+            "seconds": 0
+          },
+          {
+            "role": "FAST_SUPERVISOR",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.1
+          },
+          {
+            "role": "ACTIVE_MAINTENANCE",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.25
+          },
+          {
+            "role": "IDLE_SUPERVISOR",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.5
+          }
+        ]
       },
       "generation": {
         "enabled": false,
@@ -292,7 +476,14 @@
         "evidenceStack": "MOD_COLLECTION_ONLY",
         "admitted": true
       },
-      "cadenceGroup": "REALTIME_CAMERA_PLUS_10HZ_ACTIVE_2HZ_IDLE"
+      "cadenceGroup": "REALTIME_CAMERA_PLUS_10HZ_ACTIVE_2HZ_IDLE",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G_MOD_COLLECTION_20260926"
+      ]
     },
     {
       "id": "nativeinteractions",
@@ -315,7 +506,31 @@
         "alreadySatisfiedMarker": "G-CET semantic:nativeinteractions"
       },
       "behavior": {
-        "handler": "SEMANTIC_ACTIVE_IDLE_SPLIT"
+        "handler": "SEMANTIC_ACTIVE_IDLE_SPLIT",
+        "concepts": [
+          "sceneRealtime",
+          "interactionRealtime",
+          "worldDormant",
+          "managerDormant",
+          "ownedMappin"
+        ],
+        "lanes": [
+          {
+            "role": "ACTIVE_SCENE_INTERACTION",
+            "cadence": "EVERY_FRAME",
+            "seconds": 0
+          },
+          {
+            "role": "DORMANT_WORLD",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.033333
+          },
+          {
+            "role": "DORMANT_MANAGER",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.083333
+          }
+        ]
       },
       "generation": {
         "enabled": false,
@@ -330,7 +545,14 @@
         "evidenceStack": "MOD_COLLECTION_ONLY",
         "admitted": true
       },
-      "cadenceGroup": "REALTIME_ACTIVE_PLUS_30HZ_12HZ_DORMANT"
+      "cadenceGroup": "REALTIME_ACTIVE_PLUS_30HZ_12HZ_DORMANT",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G_MOD_COLLECTION_20260926"
+      ]
     },
     {
       "id": "overclockedlynxpaws",
@@ -373,7 +595,14 @@
         "patch": "tests/semantic-reference/gcet-only/OverclockedLynxPaws.patch",
         "purpose": "behavior-concept guide only",
         "shipped": false
-      }
+      },
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G_CET_MOTHERLOAD_20260930"
+      ]
     },
     {
       "id": "nightcitybilliards",
@@ -396,7 +625,29 @@
         "alreadySatisfiedMarker": "G-CET semantic:nightcitybilliards"
       },
       "behavior": {
-        "handler": "SEMANTIC_ACTIVE_IDLE_SPLIT"
+        "handler": "SEMANTIC_ACTIVE_IDLE_SPLIT",
+        "concepts": [
+          "activeSession",
+          "idleDiscovery",
+          "diagnostics"
+        ],
+        "lanes": [
+          {
+            "role": "ACTIVE_GAMEPLAY",
+            "cadence": "EVERY_FRAME",
+            "seconds": 0
+          },
+          {
+            "role": "IDLE_DISCOVERY",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.2
+          },
+          {
+            "role": "DIAGNOSTICS",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 5
+          }
+        ]
       },
       "generation": {
         "enabled": true,
@@ -411,7 +662,15 @@
         "evidenceStack": "OVERLAP",
         "admitted": true
       },
-      "cadenceGroup": "REALTIME_ACTIVE_PLUS_IDLE_5HZ_PLUS_DIAGNOSTICS_0_2HZ"
+      "cadenceGroup": "REALTIME_ACTIVE_PLUS_IDLE_5HZ_PLUS_DIAGNOSTICS_0_2HZ",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G_MOD_COLLECTION_20260926",
+        "G_CET_MOTHERLOAD_20260930"
+      ]
     },
     {
       "id": "immersivefirstperson",
@@ -434,7 +693,27 @@
         "alreadySatisfiedMarker": "G-CET semantic:immersivefirstperson"
       },
       "behavior": {
-        "handler": "SEMANTIC_REALTIME_ACTIVITY_GATE"
+        "handler": "SEMANTIC_REALTIME_ACTIVITY_GATE",
+        "concepts": [
+          "initialized",
+          "sessionLoaded",
+          "enabled",
+          "apiDisabled",
+          "cameraRealtime",
+          "heightRealtime"
+        ],
+        "lanes": [
+          {
+            "role": "ACTIVE_CAMERA_HEIGHT",
+            "cadence": "EVERY_FRAME",
+            "seconds": 0
+          },
+          {
+            "role": "DISABLED_OR_UNLOADED",
+            "cadence": "DORMANT",
+            "seconds": 0
+          }
+        ]
       },
       "generation": {
         "enabled": false,
@@ -449,7 +728,14 @@
         "evidenceStack": "MOD_COLLECTION_ONLY",
         "admitted": true
       },
-      "cadenceGroup": "REALTIME_WHEN_ACTIVE_DORMANT_OTHERWISE"
+      "cadenceGroup": "REALTIME_WHEN_ACTIVE_DORMANT_OTHERWISE",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G_MOD_COLLECTION_20260926"
+      ]
     },
     {
       "id": "npcd-hotline",
@@ -492,7 +778,14 @@
         "patch": "tests/semantic-reference/gcet-only/NPCD_Hotline.patch",
         "purpose": "behavior-concept guide only",
         "shipped": false
-      }
+      },
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G_CET_MOTHERLOAD_20260930"
+      ]
     },
     {
       "id": "gameentityexaminertool",
@@ -536,7 +829,14 @@
         "patch": "tests/semantic-reference/gcet-only/GameEntityExaminerTool.patch",
         "purpose": "behavior-concept guide only",
         "shipped": false
-      }
+      },
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G_CET_MOTHERLOAD_20260930"
+      ]
     },
     {
       "id": "minimap-widgets",
@@ -559,7 +859,36 @@
         "alreadySatisfiedMarker": "G-CET semantic:minimap-widgets"
       },
       "behavior": {
-        "handler": "SEMANTIC_MULTI_RATE_WITH_PREFILTER"
+        "handler": "SEMANTIC_MULTI_RATE_WITH_PREFILTER",
+        "concepts": [
+          "fpsSample",
+          "fastWidgets",
+          "slowWidgets",
+          "coordinates",
+          "stealthMappinVisibility"
+        ],
+        "lanes": [
+          {
+            "role": "FPS",
+            "cadence": "ON_DEMAND_FRAME",
+            "seconds": 0
+          },
+          {
+            "role": "FAST_WIDGETS",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.2
+          },
+          {
+            "role": "SLOW_WIDGETS",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 1
+          },
+          {
+            "role": "COORDINATES",
+            "cadence": "CONFIGURED_SECONDS",
+            "seconds": -1
+          }
+        ]
       },
       "generation": {
         "enabled": false,
@@ -574,7 +903,14 @@
         "evidenceStack": "MOD_COLLECTION_ONLY",
         "admitted": true
       },
-      "cadenceGroup": "FAST_5HZ_PLUS_SLOW_1HZ_PLUS_PREFILTER"
+      "cadenceGroup": "FAST_5HZ_PLUS_SLOW_1HZ_PLUS_PREFILTER",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G_MOD_COLLECTION_20260926"
+      ]
     },
     {
       "id": "sitanywhere",
@@ -591,13 +927,36 @@
       ],
       "sourceProof": {
         "ownerAll": [
-          "runSitAnywhereFrame",
-          "Workspot"
+          "self.logic:onUpdate",
+          "world.update",
+          "interaction.update",
+          "workspot"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:sitanywhere"
       },
       "behavior": {
-        "handler": "SEMANTIC_ACTIVITY_GATE"
+        "handler": "SEMANTIC_ACTIVITY_GATE",
+        "concepts": [
+          "scannerActive",
+          "workspotActive",
+          "transitionActive",
+          "timerPending",
+          "hubVisible",
+          "worldVisibleState",
+          "cameraWork"
+        ],
+        "lanes": [
+          {
+            "role": "ACTIVE_STATE",
+            "cadence": "EVERY_FRAME",
+            "seconds": 0
+          },
+          {
+            "role": "FULLY_IDLE",
+            "cadence": "DORMANT",
+            "seconds": 0
+          }
+        ]
       },
       "generation": {
         "enabled": false,
@@ -612,7 +971,14 @@
         "evidenceStack": "MOD_COLLECTION_ONLY",
         "admitted": true
       },
-      "cadenceGroup": "DORMANT_IDLE_REALTIME_ACTIVE"
+      "cadenceGroup": "DORMANT_IDLE_REALTIME_ACTIVE",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G_MOD_COLLECTION_20260926"
+      ]
     },
     {
       "id": "repeatable-increased-criminal-activity",
@@ -635,7 +1001,41 @@
         "alreadySatisfiedMarker": "G-CET semantic:repeatable-increased-criminal-activity"
       },
       "behavior": {
-        "handler": "SEMANTIC_MULTI_RATE_SPLIT"
+        "handler": "SEMANTIC_MULTI_RATE_SPLIT",
+        "concepts": [
+          "reward",
+          "runtimeState",
+          "mappinState",
+          "diagnostics",
+          "systemMaintenance"
+        ],
+        "lanes": [
+          {
+            "role": "REWARD",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.25
+          },
+          {
+            "role": "RUNTIME_STATE",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 1
+          },
+          {
+            "role": "MAPPINS",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 1
+          },
+          {
+            "role": "DIAGNOSTICS",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 5
+          },
+          {
+            "role": "SYSTEM",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 10
+          }
+        ]
       },
       "generation": {
         "enabled": false,
@@ -650,7 +1050,14 @@
         "evidenceStack": "MOD_COLLECTION_ONLY",
         "admitted": true
       },
-      "cadenceGroup": "MULTI_RATE_4HZ_1HZ_0_2HZ_0_1HZ"
+      "cadenceGroup": "MULTI_RATE_4HZ_1HZ_0_2HZ_0_1HZ",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G_MOD_COLLECTION_20260926"
+      ]
     },
     {
       "id": "givemeeverything",
@@ -673,7 +1080,17 @@
         "alreadySatisfiedMarker": "G-CET semantic:givemeeverything"
       },
       "behavior": {
-        "handler": "SEMANTIC_GLOBAL_CALLBACK_PREFILTER"
+        "handler": "SEMANTIC_GLOBAL_CALLBACK_PREFILTER",
+        "concepts": [
+          "ownedWaypointMappin"
+        ],
+        "lanes": [
+          {
+            "role": "GLOBAL_MAPPIN",
+            "cadence": "PREFILTER_ONLY",
+            "seconds": 0
+          }
+        ]
       },
       "generation": {
         "enabled": false,
@@ -688,7 +1105,14 @@
         "evidenceStack": "MOD_COLLECTION_ONLY",
         "admitted": true
       },
-      "cadenceGroup": "PREFILTER_ONLY"
+      "cadenceGroup": "PREFILTER_ONLY",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G_MOD_COLLECTION_20260926"
+      ]
     },
     {
       "id": "roulette",
@@ -711,7 +1135,30 @@
         "alreadySatisfiedMarker": "G-CET semantic:roulette"
       },
       "behavior": {
-        "handler": "SEMANTIC_ACTIVE_IDLE_WITH_PREFILTER"
+        "handler": "SEMANTIC_ACTIVE_IDLE_WITH_PREFILTER",
+        "concepts": [
+          "activeTable",
+          "playerInSpot",
+          "idleRuntime",
+          "visiblePromptMappin"
+        ],
+        "lanes": [
+          {
+            "role": "ACTIVE_TABLE",
+            "cadence": "EVERY_FRAME",
+            "seconds": 0
+          },
+          {
+            "role": "IDLE_RUNTIME",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.1
+          },
+          {
+            "role": "GLOBAL_MAPPIN",
+            "cadence": "PREFILTER_ONLY",
+            "seconds": 0
+          }
+        ]
       },
       "generation": {
         "enabled": false,
@@ -726,7 +1173,14 @@
         "evidenceStack": "MOD_COLLECTION_ONLY",
         "admitted": true
       },
-      "cadenceGroup": "REALTIME_ACTIVE_PLUS_IDLE_10HZ_PLUS_PREFILTER"
+      "cadenceGroup": "REALTIME_ACTIVE_PLUS_IDLE_10HZ_PLUS_PREFILTER",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G_MOD_COLLECTION_20260926"
+      ]
     },
     {
       "id": "driveaerialvehicle",
@@ -749,7 +1203,30 @@
         "alreadySatisfiedMarker": "G-CET semantic:driveaerialvehicle"
       },
       "behavior": {
-        "handler": "SEMANTIC_ACTIVITY_GATE"
+        "handler": "SEMANTIC_ACTIVITY_GATE",
+        "concepts": [
+          "vehicleActiveState",
+          "normalOnFoot",
+          "queuedAction",
+          "physicsRealtime"
+        ],
+        "lanes": [
+          {
+            "role": "FLIGHT_LANDING_WAITING_TAKEOFF",
+            "cadence": "EVERY_FRAME",
+            "seconds": 0
+          },
+          {
+            "role": "NORMAL_RECONCILIATION",
+            "cadence": "REDUCED_RATE",
+            "seconds": -1
+          },
+          {
+            "role": "IDLE",
+            "cadence": "DORMANT",
+            "seconds": 0
+          }
+        ]
       },
       "generation": {
         "enabled": false,
@@ -764,7 +1241,14 @@
         "evidenceStack": "MOD_COLLECTION_ONLY",
         "admitted": true
       },
-      "cadenceGroup": "REALTIME_ACTIVE_DORMANT_NORMAL"
+      "cadenceGroup": "REALTIME_ACTIVE_DORMANT_NORMAL",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G_MOD_COLLECTION_20260926"
+      ]
     },
     {
       "id": "illegal-mechanic",
@@ -787,7 +1271,25 @@
         "alreadySatisfiedMarker": "G-CET semantic:illegal-mechanic"
       },
       "behavior": {
-        "handler": "SEMANTIC_ACTIVE_IDLE_SPLIT"
+        "handler": "SEMANTIC_ACTIVE_IDLE_SPLIT",
+        "concepts": [
+          "hackPulseRealtime",
+          "interactionPolling",
+          "mechanicInteraction",
+          "hackSignalInteraction"
+        ],
+        "lanes": [
+          {
+            "role": "HACK_PULSE",
+            "cadence": "EVERY_FRAME",
+            "seconds": 0
+          },
+          {
+            "role": "DORMANT_INTERACTION",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.2
+          }
+        ]
       },
       "generation": {
         "enabled": false,
@@ -802,7 +1304,14 @@
         "evidenceStack": "MOD_COLLECTION_ONLY",
         "admitted": true
       },
-      "cadenceGroup": "REALTIME_ACTIVE_PLUS_IDLE_5HZ"
+      "cadenceGroup": "REALTIME_ACTIVE_PLUS_IDLE_5HZ",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G_MOD_COLLECTION_20260926"
+      ]
     },
     {
       "id": "shift",
@@ -845,7 +1354,14 @@
         "patch": "tests/semantic-reference/gcet-only/Shift.patch",
         "purpose": "behavior-concept guide only",
         "shipped": false
-      }
+      },
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G_CET_MOTHERLOAD_20260930"
+      ]
     },
     {
       "id": "blackjack",
@@ -868,7 +1384,41 @@
         "alreadySatisfiedMarker": "G-CET semantic:blackjack"
       },
       "behavior": {
-        "handler": "SEMANTIC_ACTIVE_IDLE_WITH_PREFILTER"
+        "handler": "SEMANTIC_ACTIVE_IDLE_WITH_PREFILTER",
+        "concepts": [
+          "activeTablePlay",
+          "idleRuntime",
+          "passiveTableState",
+          "dealerDiscovery",
+          "visiblePromptMappin"
+        ],
+        "lanes": [
+          {
+            "role": "ACTIVE_TABLE",
+            "cadence": "EVERY_FRAME",
+            "seconds": 0
+          },
+          {
+            "role": "IDLE_RUNTIME",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.05
+          },
+          {
+            "role": "PASSIVE_STATE",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.1
+          },
+          {
+            "role": "DEALER_SCAN",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.25
+          },
+          {
+            "role": "GLOBAL_MAPPIN",
+            "cadence": "PREFILTER_ONLY",
+            "seconds": 0
+          }
+        ]
       },
       "generation": {
         "enabled": false,
@@ -883,7 +1433,14 @@
         "evidenceStack": "MOD_COLLECTION_ONLY",
         "admitted": true
       },
-      "cadenceGroup": "REALTIME_ACTIVE_PLUS_IDLE_20HZ_PLUS_PREFILTER"
+      "cadenceGroup": "REALTIME_ACTIVE_PLUS_IDLE_20HZ_PLUS_PREFILTER",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G_MOD_COLLECTION_20260926"
+      ]
     },
     {
       "id": "questrunner",
@@ -906,7 +1463,30 @@
         "alreadySatisfiedMarker": "G-CET semantic:questrunner"
       },
       "behavior": {
-        "handler": "SEMANTIC_ACTIVE_IDLE_SPLIT"
+        "handler": "SEMANTIC_ACTIVE_IDLE_SPLIT",
+        "concepts": [
+          "activeQuest",
+          "idleManager",
+          "spawner",
+          "cron"
+        ],
+        "lanes": [
+          {
+            "role": "ACTIVE_MANAGER",
+            "cadence": "EVERY_FRAME",
+            "seconds": 0
+          },
+          {
+            "role": "IDLE_MANAGER",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.2
+          },
+          {
+            "role": "SPAWNER_FEED",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.25
+          }
+        ]
       },
       "generation": {
         "enabled": false,
@@ -921,7 +1501,86 @@
         "evidenceStack": "MOD_COLLECTION_ONLY",
         "admitted": true
       },
-      "cadenceGroup": "REALTIME_ACTIVE_PLUS_IDLE_5HZ_4HZ"
+      "cadenceGroup": "REALTIME_ACTIVE_PLUS_IDLE_5HZ_4HZ",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G_MOD_COLLECTION_20260926"
+      ]
+    }
+  ],
+  "catalog": {
+    "kind": "BASE_SEMANTIC_RULE_CATALOG",
+    "entryMeaning": "Behavior knowledge for measured hot mods. Entries are not files, patches, or install payloads.",
+    "activation": "CAPTURED_HOT_CALLBACK + LIVE_MOD_PRESENT + CURRENT_SOURCE_PROOF + IMPLEMENTED_INJECTOR",
+    "absentModBehavior": "NO_MATCH_NO_OUTPUT",
+    "referenceFilesShipped": false,
+    "note": "Evidence sets record where a rule was learned. They do not install a collection or cause unrelated mods to be emitted."
+  },
+  "evidenceSets": [
+    {
+      "id": "G_MOD_COLLECTION_20260926",
+      "thresholdExclusiveMsPerSecond": 3,
+      "ruleIds": [
+        "gta-joyride",
+        "repeatable-cyberpsychos",
+        "cybertrials",
+        "streetgamespoker",
+        "immersive-third-person",
+        "nativeinteractions",
+        "nightcitybilliards",
+        "immersivefirstperson",
+        "minimap-widgets",
+        "sitanywhere",
+        "repeatable-increased-criminal-activity",
+        "givemeeverything",
+        "roulette",
+        "driveaerialvehicle",
+        "illegal-mechanic",
+        "blackjack",
+        "questrunner"
+      ],
+      "excludedMeasuredHotMods": [
+        {
+          "owner": "marmurbank",
+          "reason": "GENERIC_ACTION_ROUTING"
+        },
+        {
+          "owner": "DriveBus",
+          "reason": "GENERIC_ACTION_ROUTING"
+        },
+        {
+          "owner": "freefly",
+          "reason": "GENERIC_ACTION_ROUTING"
+        },
+        {
+          "owner": "QuestTrackingToggle",
+          "reason": "GENERIC_ACTION_ROUTING"
+        },
+        {
+          "owner": "Dedrapanamgoondate",
+          "reason": "UI_DRAW_ALREADY_VISIBILITY_GATED_LOW_PRIORITY"
+        }
+      ]
+    },
+    {
+      "id": "G_CET_MOTHERLOAD_20260930",
+      "thresholdExclusiveMsPerSecond": 3,
+      "ruleIds": [
+        "gta-joyride",
+        "combat",
+        "repeatable-cyberpsychos",
+        "cybertrials",
+        "dualsense-support",
+        "streetgamespoker",
+        "overclockedlynxpaws",
+        "nightcitybilliards",
+        "npcd-hotline",
+        "gameentityexaminertool",
+        "shift"
+      ]
     }
   ]
 }
