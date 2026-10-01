@@ -7,19 +7,11 @@
 -	processTaskQueue()
 -	sms.processSmsQueue(delta)
 +	-- G-CET semantic reference: pending work remains EveryFrame, but the
-+	-- idle path no longer enters queue/SMS/UI workers that have nothing to do.
++	-- idle path no longer enters queue/SMS workers that have nothing to do.
 +	if queuedTasks.isTaskQueued then processTaskQueue() end
 +	if sms.hasPending and sms.hasPending() then sms.processSmsQueue(delta) end
  
  	if interaction then
-@@ -1492,7 +1494,8 @@
- 			end
- 		end
- 
--		if shouldUpdateInteractions then
-+		if shouldUpdateInteractions and
-+		   (interaction.hubShown or interaction.input or shouldStopVisualEffectOnTimeout) then
- 			if shouldStopVisualEffectOnTimeout then
 --- a/NPCD_Hotline/sms.lua
 +++ b/NPCD_Hotline/sms.lua
 @@ -53,6 +53,11 @@

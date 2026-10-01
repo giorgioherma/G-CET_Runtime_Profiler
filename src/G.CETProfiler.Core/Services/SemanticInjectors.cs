@@ -18,9 +18,7 @@ internal static class SemanticInjectors
             "gta-joyride" => ApplyJoyRide(context),
             "repeatable-cyberpsychos" => ApplyRepeatableCyberpsychos(context),
             "cybertrials" => ApplyCyberTrials(context),
-            "dualsense-support" => ApplyDualSense(context),
             "streetgamespoker" => ApplyStreetGamesPoker(context),
-            "overclockedlynxpaws" => ApplyOverclockedLynxPaws(context),
             "nightcitybilliards" => ApplyNightCityBilliards(context),
             "npcd-hotline" => ApplyNpcdHotline(context),
             "gameentityexaminertool" => ApplyGameEntityExaminer(context),
@@ -156,117 +154,6 @@ internal static class SemanticInjectors
 
         return SemanticInjectionResult.Success(
             "Kept Cron frame-fed, added immediate idle-to-busy wake, 10 Hz active runtime and 0.2 Hz fully-idle runtime.");
-    }
-
-    private static SemanticInjectionResult ApplyDualSense(
-        SemanticPatchContext context)
-    {
-        var file = context.FindFile(
-            "init.lua",
-            "Cron.Update(delta)",
-            "HandleBlockingBullet()",
-            "HandleSmartWeaponLock()");
-
-        var opening = "__gcetRegisterEvent_101('onUpdate', function(delta)\n";
-        if (!file.Text.Contains(opening, StringComparison.Ordinal))
-            opening = FindOnUpdateOpening(file.Text, "delta");
-
-        var text = ReplaceOnce(
-            file.Text,
-            opening,
-            "local __gcetDualSenseHeavyElapsed = 0.0\n\n" + opening,
-            "DualSense onUpdate opening");
-
-        var boundary =
-            "    HandleSmartWeaponLock()\n\n" +
-            "    local isInScene = GameUI.IsScene()";
-
-        var replacement =
-            "    HandleSmartWeaponLock()\n\n" +
-            "    -- Keep Cron and edge/event handlers frame-responsive. The expensive\n" +
-            "    -- controller-state reconstruction/output lane reconciles at 30 Hz.\n" +
-            "    __gcetDualSenseHeavyElapsed = __gcetDualSenseHeavyElapsed + delta\n" +
-            "    if __gcetDualSenseHeavyElapsed < (1 / 30) then return end\n" +
-            "    delta = __gcetDualSenseHeavyElapsed\n" +
-            "    Delta = delta\n" +
-            "    __gcetDualSenseHeavyElapsed = 0.0\n\n" +
-            "    local isInScene = GameUI.IsScene()";
-
-        text = ReplaceOnce(
-            text,
-            boundary,
-            replacement,
-            "DualSense realtime/heavy boundary");
-        context.Write(file, text);
-
-        return SemanticInjectionResult.Success(
-            "Preserved Cron and event-edge handlers every frame; gated expensive controller-state/output reconstruction to 30 Hz with accumulated delta.");
-    }
-
-    private static SemanticInjectionResult ApplyOverclockedLynxPaws(
-        SemanticPatchContext context)
-    {
-        var file = context.FindFile(
-            "init.lua",
-            "self._Phases.update",
-            "self._ShiftCompat.update",
-            "self._wallState.phase");
-
-        var opening = "__gcetRegisterEvent_261(\"onUpdate\", function(delta)\n";
-        if (!file.Text.Contains(opening, StringComparison.Ordinal))
-            opening = FindOnUpdateOpening(file.Text, "delta");
-
-        var text = ReplaceOnce(
-            file.Text,
-            opening,
-            "local __gcetOlpIdleElapsed = 0.0\n\n" + opening,
-            "OverclockedLynxPaws onUpdate opening");
-
-        var branch =
-            "        if self.loaded and self._Phases then\n" +
-            "            -- Sprint bridge (must run before Phases.update consumes it):";
-
-        var gatedBranch =
-            "        if self.loaded and self._Phases then\n" +
-            "            local __gcetPhaseActive = self._wallState and self._wallState.phase ~= \"IDLE\"\n" +
-            "            local __gcetInputEdge = self._input.jumpJustPressed\n" +
-            "                or self._input.crouchJustPressed\n" +
-            "                or self._input.backJustPressed\n" +
-            "                or self._input.meleeJustPressed\n" +
-            "                or self._input.weaponSwitchJustPressed\n" +
-            "                or self._input.reverseHangJustPressed\n" +
-            "                or self._input.dismountJustPressed\n" +
-            "                or self._input.safeRollJustPressed\n" +
-            "            local __gcetPhaseDelta = delta\n" +
-            "            if not __gcetPhaseActive and not __gcetInputEdge then\n" +
-            "                __gcetOlpIdleElapsed = __gcetOlpIdleElapsed + delta\n" +
-            "                if __gcetOlpIdleElapsed < (1 / 30) then\n" +
-            "                    if self._ShiftCompat then self._ShiftCompat.update(delta) end\n" +
-            "                    return\n" +
-            "                end\n" +
-            "                __gcetPhaseDelta = __gcetOlpIdleElapsed\n" +
-            "                __gcetOlpIdleElapsed = 0.0\n" +
-            "            else\n" +
-            "                __gcetOlpIdleElapsed = 0.0\n" +
-            "            end\n\n" +
-            "            -- Sprint bridge (must run before Phases.update consumes it):";
-
-        text = ReplaceOnce(
-            text,
-            branch,
-            gatedBranch,
-            "OverclockedLynxPaws active/idle phase boundary");
-
-        text = ReplaceOnce(
-            text,
-            "pcall(self._Phases.update, delta, self._config.syncSettings, self._LynxPaw)",
-            "pcall(self._Phases.update, __gcetPhaseDelta, self._config.syncSettings, self._LynxPaw)",
-            "OverclockedLynxPaws accumulated phase delta");
-
-        context.Write(file, text);
-
-        return SemanticInjectionResult.Success(
-            "Preserved active wall/air phases and Shift camera hand-off at frame rate; gated grounded IDLE phase discovery to 30 Hz.");
     }
 
     private static SemanticInjectionResult ApplyStreetGamesPoker(
@@ -641,15 +528,14 @@ internal static class SemanticInjectors
         var init = context.FindFile(
             "init.lua",
             "processTaskQueue()",
-            "sms.processSmsQueue(delta)",
-            "nextTime = currTime + 0.5");
+            "sms.processSmsQueue(delta)");
 
         var initText = ReplaceOnce(
             init.Text,
             "\tprocessTaskQueue()\n\tsms.processSmsQueue(delta)\n",
             "\tif queuedTasks.isTaskQueued then processTaskQueue() end\n" +
             "\tif sms.hasPending and sms.hasPending() then sms.processSmsQueue(delta) end\n",
-            "NPCD queue/SMS pending gates");
+            "NPCD exact pending-work gates");
         context.Write(init, initText);
 
         var sms = context.FindFile(
@@ -669,7 +555,7 @@ internal static class SemanticInjectors
         context.Write(sms, smsText);
 
         return SemanticInjectionResult.Success(
-            "Skipped task/SMS workers completely when their queues are empty; preserved the author's existing 0.5 s police/subscription core and frame-sensitive interaction UI.");
+            "Skipped only the task/SMS workers when their queues are empty; all interaction/UI timing and the author's existing 0.5 s police/subscription core remain untouched.");
     }
 
     private static SemanticInjectionResult ApplyGameEntityExaminer(

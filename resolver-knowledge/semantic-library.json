@@ -14,9 +14,9 @@
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
     "fullPassRule": "A semantic injector can run only when the current capture contains a >=3.0 ms/s measured callback, the library rule matches, and the current live mod source graph proves its anchors.",
-    "enabledInjectorCount": 17,
+    "enabledInjectorCount": 15,
     "profileOnlyRuleCount": 1,
-    "note": "The production semantic base is intentionally compact. Catalog membership requires more than runtime cost: the expensive work must have a provable inactive state and safe wake path. Rejected/risky hot mods stay in development evidence only.",
+    "note": "The production semantic base is intentionally compact. Runtime cost only earns review; automatic rules require a small, provable state model and must avoid bespoke timing. Rejected hot mods remain evidence only.",
     "admissionPolicy": {
       "runtimeThresholdMsPerSecond": 3,
       "requiresGenericExhausted": true,
@@ -29,7 +29,9 @@
         "GENERAL_INTERACTION_FRAMEWORK",
         "CONTINUOUS_HUD_PRESENTATION",
         "CONTINUOUS_WORLD_DISCOVERY",
-        "UNCERTAIN_WAKE_DISCOVERY"
+        "UNCERTAIN_WAKE_DISCOVERY",
+        "REALTIME_MOVEMENT_INPUT_SYSTEM",
+        "CONTROLLER_OUTPUT_WITH_UNPROVEN_DORMANCY"
       ],
       "examplesNotForSemanticBase": [
         "immersive_third_person",
@@ -38,7 +40,9 @@
         "Minimap Widgets",
         "sitAnywhere",
         "loot-marker systems",
-        "AutoLoot-style world discovery"
+        "AutoLoot-style world discovery",
+        "OverclockedLynxPaws",
+        "DualSense Support (until its author handleUpdates lifecycle is fully proven)"
       ],
       "note": "Hot means review-worthy, not semantic-library-worthy. The base catalog is reserved for high-cost features with a provable inactive state and complete safe wake path."
     }
@@ -318,57 +322,6 @@
       ]
     },
     {
-      "id": "dualsense-support",
-      "identityHints": [
-        "DualSense Support"
-      ],
-      "policyClass": "REALTIME_PROTECTED_INTERNAL_SPLIT",
-      "callbacks": [
-        {
-          "kind": "event",
-          "target": "onUpdate",
-          "role": "hot-path"
-        }
-      ],
-      "sourceProof": {
-        "ownerAll": [
-          "GameSession",
-          "Cron"
-        ],
-        "alreadySatisfiedMarker": "G-CET semantic:dualsense-support"
-      },
-      "behavior": {
-        "handler": "SEMANTIC_REALTIME_INTERNAL_SPLIT"
-      },
-      "generation": {
-        "enabled": true,
-        "patchStyle": "source-injection",
-        "shipReferenceOverride": false,
-        "requiresCurrentSourceProof": true,
-        "requiresIdempotenceMarker": true,
-        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
-      },
-      "runtimeAdmission": {
-        "thresholdMsPerSecond": 3,
-        "measuredPeakExclusiveMsPerSecond": 40.546702,
-        "evidenceStack": "G-CET_ONLY",
-        "admitted": true
-      },
-      "cadenceGroup": "FRAME_CLOCKS_PLUS_FAST_30HZ_OUTPUT",
-      "developmentReference": {
-        "patch": "tests/semantic-reference/gcet-only/DualSense_Support.patch",
-        "purpose": "behavior-concept guide only",
-        "shipped": false
-      },
-      "catalogRole": "SEMANTIC_HOT_MOD",
-      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
-      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
-      "referenceOverrideAllowed": false,
-      "evidenceMembership": [
-        "G_CET_MOTHERLOAD_20260930"
-      ]
-    },
-    {
       "id": "streetgamespoker",
       "identityHints": [
         "StreetGamesPoker"
@@ -441,57 +394,6 @@
       "referenceOverrideAllowed": false,
       "evidenceMembership": [
         "G_MOD_COLLECTION_20260926",
-        "G_CET_MOTHERLOAD_20260930"
-      ]
-    },
-    {
-      "id": "overclockedlynxpaws",
-      "identityHints": [
-        "OverclockedLynxPaws"
-      ],
-      "policyClass": "REALTIME_MOVEMENT_WITH_DORMANCY",
-      "callbacks": [
-        {
-          "kind": "event",
-          "target": "onUpdate",
-          "role": "hot-path"
-        }
-      ],
-      "sourceProof": {
-        "ownerAll": [
-          "WallDetect",
-          "LynxPaw"
-        ],
-        "alreadySatisfiedMarker": "G-CET semantic:overclockedlynxpaws"
-      },
-      "behavior": {
-        "handler": "SEMANTIC_REALTIME_ACTIVITY_GATE"
-      },
-      "generation": {
-        "enabled": true,
-        "patchStyle": "source-injection",
-        "shipReferenceOverride": false,
-        "requiresCurrentSourceProof": true,
-        "requiresIdempotenceMarker": true,
-        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
-      },
-      "runtimeAdmission": {
-        "thresholdMsPerSecond": 3,
-        "measuredPeakExclusiveMsPerSecond": 16.13062,
-        "evidenceStack": "G-CET_ONLY",
-        "admitted": true
-      },
-      "cadenceGroup": "REALTIME_ACTIVE_PLUS_FAST_30HZ_IDLE",
-      "developmentReference": {
-        "patch": "tests/semantic-reference/gcet-only/OverclockedLynxPaws.patch",
-        "purpose": "behavior-concept guide only",
-        "shipped": false
-      },
-      "catalogRole": "SEMANTIC_HOT_MOD",
-      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
-      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
-      "referenceOverrideAllowed": false,
-      "evidenceMembership": [
         "G_CET_MOTHERLOAD_20260930"
       ]
     },
@@ -569,7 +471,7 @@
       "identityHints": [
         "NPCD_Hotline"
       ],
-      "policyClass": "HYBRID_QUEUE_PLUS_SLOW_CORE",
+      "policyClass": "PENDING_WORK_GATE",
       "callbacks": [
         {
           "kind": "event",
@@ -579,13 +481,19 @@
       ],
       "sourceProof": {
         "ownerAll": [
-          "queueTask",
-          "questsSystem"
+          "processTaskQueue",
+          "sms.processSmsQueue",
+          "smsQueue"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:npcd-hotline"
       },
       "behavior": {
-        "handler": "SEMANTIC_QUEUE_ACTIVITY_SPLIT"
+        "handler": "SEMANTIC_PENDING_QUEUE_GATES",
+        "concepts": [
+          "taskQueuePending",
+          "smsQueuePending"
+        ],
+        "note": "Only skip queue workers when their queues are empty. Do not alter interaction/UI cadence or the author's 0.5 s police/subscription core."
       },
       "generation": {
         "enabled": true,
@@ -601,7 +509,7 @@
         "evidenceStack": "G-CET_ONLY",
         "admitted": true
       },
-      "cadenceGroup": "EVENT_PENDING_REALTIME_PLUS_CORE_2HZ",
+      "cadenceGroup": "QUEUE_PENDING_GATES_NO_TIMING_OVERRIDE",
       "developmentReference": {
         "patch": "tests/semantic-reference/gcet-only/NPCD_Hotline.patch",
         "purpose": "behavior-concept guide only",
@@ -1265,13 +1173,23 @@
         "combat",
         "repeatable-cyberpsychos",
         "cybertrials",
-        "dualsense-support",
         "streetgamespoker",
-        "overclockedlynxpaws",
         "nightcitybilliards",
         "npcd-hotline",
         "gameentityexaminertool",
         "shift"
+      ],
+      "reviewedExcluded": [
+        {
+          "owner": "DualSense Support",
+          "reason": "BESPOKE_CONTROLLER_TIMING_UNPROVEN_DORMANCY",
+          "note": "Author handleUpdates gate exists, but current evidence does not prove a safe automatic inactive/wake lifecycle. Do not substitute a handcrafted 30 Hz output cadence."
+        },
+        {
+          "owner": "OverclockedLynxPaws",
+          "reason": "REALTIME_MOVEMENT_INPUT_SYSTEM",
+          "note": "Grounded IDLE still waits on realtime movement/input transitions; a 30 Hz idle lane is bespoke tuning, not a general dormant rule."
+        }
       ]
     }
   ]
