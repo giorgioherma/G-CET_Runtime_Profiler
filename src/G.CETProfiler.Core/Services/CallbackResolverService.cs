@@ -938,10 +938,19 @@ internal static class CallbackResolverService
 
     private static string SharedProviderKeyForGameGetter(string getter)
     {
+        var explicitDefinition = SharedProviderDefinitions.FirstOrDefault(x =>
+            x.DeepFunctionNames.Any(name =>
+                name.Equals(getter, StringComparison.OrdinalIgnoreCase)));
+        if (explicitDefinition is not null)
+            return explicitDefinition.Provider;
+
         var stem = getter;
         if (stem.StartsWith("Get", StringComparison.OrdinalIgnoreCase))
             stem = stem[3..];
-        if (stem.EndsWith("System", StringComparison.OrdinalIgnoreCase))
+
+        var isSystemGetter =
+            stem.EndsWith("System", StringComparison.OrdinalIgnoreCase);
+        if (isSystemGetter)
             stem = stem[..^6];
 
         var acronymSplit = Regex.Replace(
@@ -955,7 +964,8 @@ internal static class CallbackResolverService
             "$1_$2",
             RegexOptions.CultureInvariant);
 
-        return wordSplit.ToUpperInvariant() + "_SYSTEM";
+        var key = wordSplit.ToUpperInvariant();
+        return isSystemGetter ? key + "_SYSTEM" : key;
     }
 
     private static string SharedProviderCategory(string provider)
