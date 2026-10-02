@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using GCETRuntimeProfiler.Core.Services;
 
 namespace GCETRuntimeProfiler.Resolver;
@@ -10,6 +11,7 @@ internal sealed class ResolverForm : Form
     private readonly Button _gameBrowse = new() { Text = "Browse..." };
     private readonly Button _analyze = new() { Text = "ANALYZE", Height = 36 };
     private readonly Button _generate = new() { Text = "GENERATE PASS ZIP", Height = 36, Enabled = false };
+    private readonly Button _openResults = new() { Text = "OPEN RESULTS FOLDER", Enabled = false };
     private readonly Label _status = new() { AutoSize = true, Text = "Select RESULTS (or a capture folder) and the Game Folder." };
     private readonly Label _families = new() { AutoSize = true, Text = "CALLBACK FAMILIES: -" };
     private readonly Label _generic = new() { AutoSize = true, Text = "GENERIC READY: -" };
@@ -17,6 +19,7 @@ internal sealed class ResolverForm : Form
     private readonly Label _semantic = new() { AutoSize = true, Text = "SEMANTIC READY: -   |   ALREADY SATISFIED: -" };
     private readonly Label _unresolved = new() { AutoSize = true, Text = "MATERIAL REMAINING: -   |   BELOW 3 ms/s: -" };
     private bool _passReady;
+    private string? _resolvedResultsFolder;
 
     private readonly TextBox _output = new()
     {
@@ -65,6 +68,7 @@ internal sealed class ResolverForm : Form
         _gameBrowse.Dock = DockStyle.Fill;
         _analyze.Dock = DockStyle.Fill;
         _generate.Dock = DockStyle.Fill;
+        _openResults.Dock = DockStyle.Fill;
         _status.Anchor = AnchorStyles.Left;
 
         root.Controls.Add(captureLabel, 0, 0);
@@ -77,7 +81,8 @@ internal sealed class ResolverForm : Form
         root.SetColumnSpan(_analyze, 2);
         root.Controls.Add(_generate, 2, 2);
         root.Controls.Add(_status, 0, 3);
-        root.SetColumnSpan(_status, 3);
+        root.SetColumnSpan(_status, 2);
+        root.Controls.Add(_openResults, 2, 3);
         root.Controls.Add(_families, 0, 4);
         root.SetColumnSpan(_families, 3);
         root.Controls.Add(_generic, 0, 5);
@@ -96,10 +101,16 @@ internal sealed class ResolverForm : Form
 
         _captureBrowse.Click += (_, _) => BrowseInto(_capture);
         _gameBrowse.Click += (_, _) => BrowseInto(_game);
-        _capture.TextChanged += (_, _) => InvalidatePassReadiness();
+        _capture.TextChanged += (_, _) =>
+        {
+            InvalidatePassReadiness();
+            _resolvedResultsFolder = null;
+            UpdateOpenResultsState();
+        };
         _game.TextChanged += (_, _) => InvalidatePassReadiness();
         _analyze.Click += (_, _) => Analyze();
         _generate.Click += (_, _) => GeneratePass();
+        _openResults.Click += (_, _) => OpenResultsFolder();
     }
 
     private static void BrowseInto(TextBox target)
@@ -118,6 +129,55 @@ internal sealed class ResolverForm : Form
     {
         _passReady = false;
         _generate.Enabled = false;
+    }
+
+    private void UpdateOpenResultsState()
+    {
+        var selected = _capture.Text.Trim();
+        _openResults.Enabled =
+            (!string.IsNullOrWhiteSpace(_resolvedResultsFolder) &&
+             Directory.Exists(_resolvedResultsFolder)) ||
+            Directory.Exists(selected);
+    }
+
+    private void OpenResultsFolder()
+    {
+        var selected = _capture.Text.Trim();
+        var folder =
+            !string.IsNullOrWhiteSpace(_resolvedResultsFolder) &&
+            Directory.Exists(_resolvedResultsFolder)
+                ? _resolvedResultsFolder
+                : selected;
+
+        if (string.IsNullOrWhiteSpace(folder) || !Directory.Exists(folder))
+        {
+            _openResults.Enabled = false;
+            MessageBox.Show(
+                this,
+                "Select a valid RESULTS or capture folder first.",
+                "G-CET Resolver",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = Path.GetFullPath(folder),
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                this,
+                ex.Message,
+                "G-CET Resolver",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        }
     }
 
     private static bool HasApplicablePass(ResolverBuildResult result)
@@ -190,6 +250,8 @@ internal sealed class ResolverForm : Form
                 throw new DirectoryNotFoundException("Select a valid G-CET RESULTS folder or collected capture folder.");
 
             var result = ResolverService.Resolve(capture, mods);
+            _resolvedResultsFolder = Path.GetDirectoryName(result.ResolverPath);
+            UpdateOpenResultsState();
 
             UpdateSummary(result);
             _passReady = HasApplicablePass(result);
@@ -253,6 +315,8 @@ internal sealed class ResolverForm : Form
             }
 
             var pass = ResolverService.GeneratePass(capture, mods);
+            _resolvedResultsFolder = Path.GetDirectoryName(pass.ZipPath);
+            UpdateOpenResultsState();
 
             _status.Text = $"Pass ready — {pass.TransformCount} transforms across {pass.FileCount} files.";
             _output.Text =
