@@ -41,20 +41,12 @@ public static class PassGeneratorService
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly IReadOnlyDictionary<string, SharedProviderRecipe> SharedProviderRecipes =
-        new[]
-        {
-            SharedProviderRecipe.Create("PLAYER", "GetPlayer", "__gcetGetPlayer"),
-            SharedProviderRecipe.Create("QUESTS_SYSTEM", "GetQuestsSystem", "__gcetGetQuestsSystem"),
-            SharedProviderRecipe.Create("STATS_SYSTEM", "GetStatsSystem", "__gcetGetStatsSystem"),
-            SharedProviderRecipe.Create("TRANSACTION_SYSTEM", "GetTransactionSystem", "__gcetGetTransactionSystem"),
-            SharedProviderRecipe.Create("BLACKBOARD_SYSTEM", "GetBlackboardSystem", "__gcetGetBlackboardSystem"),
-            SharedProviderRecipe.Create("TARGETING_SYSTEM", "GetTargetingSystem", "__gcetGetTargetingSystem"),
-            SharedProviderRecipe.Create("CAMERA_SYSTEM", "GetCameraSystem", "__gcetGetCameraSystem"),
-            SharedProviderRecipe.Create("TIME_SYSTEM", "GetTimeSystem", "__gcetGetTimeSystem"),
-            SharedProviderRecipe.Create("PREVENTION_SYSTEM", "GetPreventionSystem", "__gcetGetPreventionSystem"),
-            SharedProviderRecipe.Create("SCRIPTABLE_SYSTEMS_CONTAINER", "GetScriptableSystemsContainer", "__gcetGetScriptableSystemsContainer")
-        }
-        .ToDictionary(x => x.Provider, StringComparer.OrdinalIgnoreCase);
+        SharedProviderCatalog.Authorized
+            .Select(x => SharedProviderRecipe.Create(
+                x.Provider,
+                x.Getter,
+                "__gcet" + x.Getter))
+            .ToDictionary(x => x.Provider, StringComparer.OrdinalIgnoreCase);
 
     public static PassBuildResult Generate(
         string captureRoot,
