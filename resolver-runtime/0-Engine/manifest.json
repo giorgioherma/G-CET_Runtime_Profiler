@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "1.0",
+  "schemaVersion": "1.1",
   "role": "fixed-runtime-exception",
   "base": {
     "name": "0-Engine",
@@ -7,8 +7,21 @@
     "initSha256": "c2113cabc10b7f270f7be5542cfa9a8fcc87734913c0f17510eddd1037bca46f"
   },
   "fixed": {
-    "version": "0.18.11-PASS4.2.1-PHASE-CADENCE-FIX",
-    "initSha256": "a0e6480c9404e968e30e573a36fd92b5a87310ba91bfac305a80aad04938e2ef",
+    "version": "0.18.12-SHARED-SYSTEM-HANDLES",
+    "bundledBaselineVersion": "0.18.11-PASS4.2.1-PHASE-CADENCE-FIX",
+    "bundledBaselineInitSha256": "a0e6480c9404e968e30e573a36fd92b5a87310ba91bfac305a80aad04938e2ef",
+    "initConstruction": "Deterministically inject lifecycle-aware shared system-handle accessors into the proven bundled baseline at pass generation time.",
+    "sharedProviderFamilies": [
+      "QUESTS_SYSTEM",
+      "STATS_SYSTEM",
+      "TRANSACTION_SYSTEM",
+      "BLACKBOARD_SYSTEM",
+      "TARGETING_SYSTEM",
+      "CAMERA_SYSTEM",
+      "TIME_SYSTEM",
+      "PREVENTION_SYSTEM",
+      "SCRIPTABLE_SYSTEMS_CONTAINER"
+    ],
     "files": {
       "modules/ActionRouter.lua": "4c5ad5f6925b9cb9b2f24ab359eaadc5d54fcf890d661682307ce8cbe09c955c",
       "modules/Health.lua": "85b2c6402e54c64f83c1f55e35b5bfee0dc5ebabcdd079c3c8aebb06b010620f",
@@ -18,10 +31,11 @@
   "policy": {
     "alwaysShipWithGeneratedCetPass": true,
     "modSpecificOptimizationRule": false,
-    "reason": "Runtime infrastructure required by generic callback transforms. This is the explicit fixed-runtime exception; it is not a target-specific patch rule.",
+    "reason": "Runtime infrastructure required by generic callback transforms. Shared system handles cache the original Game.Get...System() objects and invalidate on player/session epoch changes; dynamic player-derived state is not generically substituted.",
     "acceptLiveInitStates": [
       "base",
-      "fixed"
+      "legacy-fixed",
+      "current-shared-system-fixed"
     ]
   }
 }
