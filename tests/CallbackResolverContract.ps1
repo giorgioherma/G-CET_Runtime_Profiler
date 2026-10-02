@@ -257,9 +257,10 @@ registerForEvent("onUpdate", function(delta)
     local timeSystem = Game.GetTimeSystem()
     local navigationSystem = Game.GetNavigationSystem()
     local allBlackboardDefs = Game.GetAllBlackboardDefs()
+    local futureProvider = Game.GetTotallyNewSharedThing()
     local nameA = CName.new("StructuralFixture")
     local nameB = CName.new("StructuralFixture")
-    DoStructuralWork(playerA, playerB, timeSystem, navigationSystem, allBlackboardDefs, nameA, nameB, delta)
+    DoStructuralWork(playerA, playerB, timeSystem, navigationSystem, allBlackboardDefs, futureProvider, nameA, nameB, delta)
 end)
 '@
 
@@ -457,7 +458,7 @@ $handoff = @{
         (CallbackRow 130 'FixtureOverrideStructural' 'Override' 'PlayerPuppet::OnAction' 500 16.0 4.0 'init.lua' 1 8),
         (CallbackRow 131 'FixtureOverridePrefilter' 'Override' 'PlayerPuppet::OnAction' 1400 15.0 4.4 'init.lua' 21 25),
         (CallbackRow 111 'FixtureDownstream' 'observe' 'PlayerPuppet::OnAction' 490 5.8 7.5 'init.lua' 1 10),
-        (CallbackRow 120 'FixtureStructural' 'event' 'onUpdate' 60 9.0 2.0 'init.lua' 1 10),
+        (CallbackRow 120 'FixtureStructural' 'event' 'onUpdate' 60 9.0 2.0 'init.lua' 1 11),
         (CallbackRow 126 'FixtureDiscoveryAuthorRate' 'event' 'onUpdate' 60 13.0 3.2 'init.lua' 6 18),
         (CallbackRow 125 'FixtureDormantOnUpdate' 'event' 'onUpdate' 60 12.0 3.0 'init.lua' 5 9),
         (CallbackRow 121 'FixtureDormantHard' 'observe' 'PlayerPuppet::FixtureTick' 60 6.0 1.2 'init.lua' 5 8),
@@ -529,6 +530,13 @@ $handoff = @{
                         sampledCalls = 31
                         repeatedInSampleCount = 7
                         multiCallsiteSampleCount = 4
+                    }
+                    @{
+                        functionName = 'GetTotallyNewSharedThing'
+                        childFunctionKey = 'fixture|GetTotallyNewSharedThing|120'
+                        sampledCalls = 17
+                        repeatedInSampleCount = 2
+                        multiCallsiteSampleCount = 1
                     }
                 )
             }
@@ -757,6 +765,23 @@ if (!$blackboardDefsProvider.analysisOnly -or $blackboardDefsProvider.generation
 }
 if ($blackboardDefsProvider.category -ne 'LOOKUP_RESULT_CANDIDATE') {
     throw "Unexpected ALL_BLACKBOARD_DEFS category: $($blackboardDefsProvider.category)"
+}
+
+$futureProvider = @($result.sharedProviderOpportunities | Where-Object { $_.provider -eq 'TOTALLY_NEW_SHARED_THING' }) |
+    Select-Object -First 1
+if ($null -eq $futureProvider) {
+    throw 'Arbitrary zero-argument Game.Get...() provider was hidden by a discovery shortlist.'
+}
+if ([int]$futureProvider.sourceRecognizedOccurrences -ne 1 -or
+    [int]$futureProvider.sourceUnresolvedOccurrences -ne 0 -or
+    [int]$futureProvider.deepSampledCalls -ne 17) {
+    throw 'Arbitrary getter did not preserve exact source/deep evidence.'
+}
+if (!$futureProvider.analysisOnly -or $futureProvider.generationEnabled) {
+    throw 'Unknown arbitrary getter was incorrectly promoted to generation.'
+}
+if ($futureProvider.category -ne 'GAME_GETTER_CANDIDATE') {
+    throw "Unexpected arbitrary getter category: $($futureProvider.category)"
 }
 
 $workspotProvider = @($result.sharedProviderOpportunities | Where-Object { $_.provider -eq 'WORKSPOT_SYSTEM' }) |
