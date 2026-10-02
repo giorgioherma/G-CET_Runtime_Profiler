@@ -1,6 +1,6 @@
 {
   "packageVersion": "1.1.2",
-  "profilerNativeVersion": "2.11.0",
+  "profilerNativeVersion": "2.11.1",
   "targetCET": {
     "version": "1.37.1",
     "officialSha256": "43a7b94698979703f9dfa2b0950607c9a88f53b84bbf09a8e593c7e218d41059",
@@ -37,7 +37,7 @@
   ],
   "managerChanges": [
     "security-scan packaging: native profiler is distributed with a .dll extension matching its PE/DLL format and copied to CET's required cyber_engine_tweaks.asi name only during install",
-    "security-scan packaging: native launcher now carries standard Windows VERSIONINFO identity metadata; profiler functionality and native profiler bytes are unchanged",
+    "native profiler 2.11.1 adds two dedicated adaptive-deep audit slots for 0-Engine without consuming the six normal client-mod hotset slots; Resolver generation continues to exclude infrastructure",
     "final v1.0.0 UI keeps profiler-status prose white and colors only semantic status markers",
     "disabled actions render gray; available forward actions use cyan and available restore uses magenta",
     "CapFrameX 1.9.1.2 Beta is the tested frame-time reference build while frame-time pairing remains optional",
