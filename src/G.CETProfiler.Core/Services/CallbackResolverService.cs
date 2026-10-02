@@ -17,6 +17,7 @@ internal sealed record CallbackResolverDocumentResult(
     int SemanticReadyRuleCount,
     int SharedProviderReadyCallbackCount,
     int SharedProviderReadyReadCount,
+    string[] SharedProviderReadyFamilies,
     int AlreadySatisfiedCount,
     int UnresolvedCount);
 
@@ -29,6 +30,21 @@ internal static class CallbackResolverService
     private const double AuthorCadenceMinCallbackPaybackPct = 10.0;
     private const double AuthorCadenceMinGlobalPaybackPct = 0.05;
     private const double MaterialRemainingMsPerSecond = 3.0;
+
+    private static readonly HashSet<string> SharedProviderGenerationFamilies = new(
+        StringComparer.OrdinalIgnoreCase)
+    {
+        "PLAYER",
+        "QUESTS_SYSTEM",
+        "STATS_SYSTEM",
+        "TRANSACTION_SYSTEM",
+        "BLACKBOARD_SYSTEM",
+        "TARGETING_SYSTEM",
+        "CAMERA_SYSTEM",
+        "TIME_SYSTEM",
+        "PREVENTION_SYSTEM",
+        "SCRIPTABLE_SYSTEMS_CONTAINER"
+    };
 
     private static readonly Regex NormalizeNonAlphaNumeric = new(
         @"[^a-z0-9]+",
@@ -267,19 +283,32 @@ internal static class CallbackResolverService
             sourceIndex,
             handoff.RootElement);
 
-        var sharedProviderReadyCallbacks = sharedProviderOpportunities
-            .Where(x => x.Provider.Equals("PLAYER", StringComparison.OrdinalIgnoreCase))
-            .SelectMany(x => x.Callbacks)
-            .Where(cb =>
-                cb.SourceRecognizedOccurrences > 0 &&
-                cb.SourceUnresolvedOccurrences == 0 &&
-                !string.IsNullOrWhiteSpace(cb.SourceSha256) &&
-                cb.LineStart.GetValueOrDefault() > 0 &&
-                cb.LineEnd.GetValueOrDefault() >= cb.LineStart.GetValueOrDefault())
+        var sharedProviderReadyOpportunities = sharedProviderOpportunities
+            .Where(x => SharedProviderGenerationFamilies.Contains(x.Provider))
+            .Select(x => new
+            {
+                Opportunity = x,
+                EligibleCallbacks = x.Callbacks
+                    .Where(IsSharedProviderSubstitutionEligible)
+                    .ToArray()
+            })
+            .Where(x => x.EligibleCallbacks.Length > 0)
             .ToArray();
-        var sharedProviderReadyCallbackCount = sharedProviderReadyCallbacks.Length;
+
+        var sharedProviderReadyCallbacks = sharedProviderReadyOpportunities
+            .SelectMany(x => x.EligibleCallbacks)
+            .ToArray();
+        var sharedProviderReadyCallbackCount = sharedProviderReadyCallbacks
+            .Select(cb => cb.RegistrationId ?? 0)
+            .Where(id => id > 0)
+            .Distinct()
+            .Count();
         var sharedProviderReadyReadCount = sharedProviderReadyCallbacks
             .Sum(cb => cb.SourceRecognizedOccurrences);
+        var sharedProviderReadyFamilies = sharedProviderReadyOpportunities
+            .Select(x => x.Opportunity.Provider)
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 
         var document = new
         {
@@ -305,10 +334,12 @@ internal static class CallbackResolverService
                 dormancyClasses = new[] { "NEVER_GATE", "HARD_DORMANT", "DISCOVERY_DORMANT", "BACKGROUND", "UNKNOWN" },
                 sharedProviderOpportunityAnalysis = true,
                 sharedProviderGenerationEnabled = true,
-                sharedProviderGenerationFamilies = new[] { "PLAYER" },
+                sharedProviderGenerationFamilies = SharedProviderGenerationFamilies
+                    .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+                    .ToArray(),
                 sharedProviderScope = "MEASURED_CALLBACKS_ONLY",
                 sharedProviderDeepEvidence = "UNTRUNCATED_KNOWN_PROVIDER_CALLEES_WITH_LEGACY_HOTCALLEES_FALLBACK",
-                note = "Generic AUTO is restricted to mechanically source-proven action routing, exact Override prefiltering, and frame-dispatch consolidation. Structural, cadence, and dormancy recognizers remain analysis evidence only; shared-provider generation is restricted to the explicitly enabled PLAYER family with exact current-source proof; identity-specific automatic behavior lives exclusively in the source-proven semantic library. Shared-provider opportunity totals describe measured callback territory, not estimated savings. Shared-provider deep evidence is aggregated across the measured stack without a per-callback hot-callee top-N gate. Already-satisfied generated states are not re-applied."
+                note = "Generic AUTO is restricted to mechanically source-proven action routing, exact Override prefiltering, frame-dispatch consolidation, and explicitly enabled shared-provider reads with exact current-source proof. Dynamic player-derived state remains analysis-only. Identity-specific automatic behavior lives exclusively in the source-proven semantic library. Shared-provider opportunity totals describe measured callback territory, not estimated savings. Shared-provider deep evidence is aggregated across the measured stack without a per-callback hot-callee top-N gate. Already-satisfied generated states are not re-applied."
             },
             cadence = new
             {
@@ -339,6 +370,7 @@ internal static class CallbackResolverService
                 semanticReadyRules = semanticReadyRules.Count,
                 sharedProviderReadyCallbacks = sharedProviderReadyCallbackCount,
                 sharedProviderReadyReads = sharedProviderReadyReadCount,
+                sharedProviderReadyFamilies,
                 alreadySatisfied,
                 unresolved,
                 sharedProviderFamilies = sharedProviderOpportunities.Length,
@@ -368,13 +400,15 @@ internal static class CallbackResolverService
                 affectedCallbackCallsPerSecond = Round(x.AffectedCallbackCallsPerSecond),
                 affectedSpikeCount = x.AffectedSpikeCount,
                 maxAffectedSpikeExclusiveMs = Round(x.MaxAffectedSpikeExclusiveMs),
-                analysisOnly = !x.Provider.Equals("PLAYER", StringComparison.OrdinalIgnoreCase),
-                generationEnabled = x.Provider.Equals("PLAYER", StringComparison.OrdinalIgnoreCase),
-                generationRecipe = x.Provider.Equals("PLAYER", StringComparison.OrdinalIgnoreCase)
+                analysisOnly = !SharedProviderGenerationFamilies.Contains(x.Provider),
+                generationEnabled = SharedProviderGenerationFamilies.Contains(x.Provider),
+                generationRecipe = SharedProviderGenerationFamilies.Contains(x.Provider)
                     ? "SHARED_PROVIDER_READ"
                     : null,
-                providerApi = x.Provider.Equals("PLAYER", StringComparison.OrdinalIgnoreCase)
-                    ? "0-Engine.GetPlayer"
+                providerApi = SharedProviderGenerationFamilies.Contains(x.Provider)
+                    ? "0-Engine." + SharedProviderDefinitions
+                        .First(d => d.Provider.Equals(x.Provider, StringComparison.OrdinalIgnoreCase))
+                        .DeepFunctionNames.First()
                     : null,
                 metricMeaning = "Affected callback work is the measured workload of callbacks containing this provider candidate; it is not an estimate of provider savings and provider totals are not additive.",
                 owners = x.Owners,
@@ -389,12 +423,8 @@ internal static class CallbackResolverService
                     lineStart = cb.LineStart,
                     lineEnd = cb.LineEnd,
                     substitutionEligible =
-                        x.Provider.Equals("PLAYER", StringComparison.OrdinalIgnoreCase) &&
-                        cb.SourceRecognizedOccurrences > 0 &&
-                        cb.SourceUnresolvedOccurrences == 0 &&
-                        !string.IsNullOrWhiteSpace(cb.SourceSha256) &&
-                        cb.LineStart.GetValueOrDefault() > 0 &&
-                        cb.LineEnd.GetValueOrDefault() >= cb.LineStart.GetValueOrDefault(),
+                        SharedProviderGenerationFamilies.Contains(x.Provider) &&
+                        IsSharedProviderSubstitutionEligible(cb),
                     sourceOccurrences = cb.SourceOccurrences,
                     sourceRecognizedOccurrences = cb.SourceRecognizedOccurrences,
                     sourceUnresolvedOccurrences = cb.SourceUnresolvedOccurrences,
@@ -424,10 +454,19 @@ internal static class CallbackResolverService
             semanticReadyRules.Count,
             sharedProviderReadyCallbackCount,
             sharedProviderReadyReadCount,
+            sharedProviderReadyFamilies,
             alreadySatisfied,
             unresolved);
     }
 
+
+    private static bool IsSharedProviderSubstitutionEligible(
+        SharedProviderCallbackEvidence cb) =>
+        cb.SourceRecognizedOccurrences > 0 &&
+        cb.SourceUnresolvedOccurrences == 0 &&
+        !string.IsNullOrWhiteSpace(cb.SourceSha256) &&
+        cb.LineStart.GetValueOrDefault() > 0 &&
+        cb.LineEnd.GetValueOrDefault() >= cb.LineStart.GetValueOrDefault();
 
     private static readonly SharedProviderDefinition[] SharedProviderDefinitions =
     [
