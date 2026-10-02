@@ -17,6 +17,7 @@ public sealed record ResolverBuildResult(
     int SemanticReadyRuleCount,
     int SharedProviderReadyCallbackCount,
     int SharedProviderReadyReadCount,
+    string[] SharedProviderReadyFamilies,
     int AlreadySatisfiedCount,
     int UnresolvedCount);
 
@@ -99,6 +100,7 @@ public static class ResolverService
             result.SemanticReadyRuleCount,
             result.SharedProviderReadyCallbackCount,
             result.SharedProviderReadyReadCount,
+            result.SharedProviderReadyFamilies,
             result.AlreadySatisfiedCount,
             result.UnresolvedCount);
     }
