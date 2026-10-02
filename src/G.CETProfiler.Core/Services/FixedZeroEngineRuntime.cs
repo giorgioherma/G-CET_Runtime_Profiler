@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace GCETRuntimeProfiler.Core.Services;
 
@@ -26,13 +27,20 @@ internal sealed record FixedZeroEngineBuild(
 internal static class FixedZeroEngineRuntime
 {
     internal const string BaseVersion = "0.18.6";
-    internal const string FixedVersion = "0.18.11-PASS4.2.1-PHASE-CADENCE-FIX";
+    internal const string FixedVersion = "0.18.12-SHARED-SYSTEM-HANDLES";
 
     internal const string BaseInitSha256 =
         "c2113cabc10b7f270f7be5542cfa9a8fcc87734913c0f17510eddd1037bca46f";
 
-    internal const string FixedInitSha256 =
+    // The repository keeps the last proven fixed init compressed as the baseline.
+    // The shared-system layer is injected deterministically at pass generation
+    // time so existing PASS4 installs can be upgraded without replacing the
+    // entire opaque payload by hand.
+    internal const string LegacyFixedInitSha256 =
         "a0e6480c9404e968e30e573a36fd92b5a87310ba91bfac305a80aad04938e2ef";
+
+    private const string SharedSystemMarker =
+        "-- G-CET shared system handles v1";
 
     private static readonly IReadOnlyDictionary<string, string> FixedModuleHashes =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -60,22 +68,6 @@ internal static class FixedZeroEngineRuntime
 
         var liveInitBytes = File.ReadAllBytes(liveInit);
         var liveHash = Sha256(liveInitBytes);
-        var liveState =
-            liveHash.Equals(BaseInitSha256, StringComparison.OrdinalIgnoreCase)
-                ? "BASE_0.18.6"
-                : liveHash.Equals(FixedInitSha256, StringComparison.OrdinalIgnoreCase)
-                    ? "ALREADY_FIXED"
-                    : "UNSUPPORTED";
-
-        if (liveState == "UNSUPPORTED")
-        {
-            throw new InvalidOperationException(
-                "The installed 0-Engine init.lua is not the exact supported base or fixed runtime. " +
-                $"Supported base: {BaseVersion} ({BaseInitSha256}). " +
-                $"Supported fixed runtime: {FixedVersion} ({FixedInitSha256}). " +
-                $"Installed SHA256: {liveHash}. " +
-                "G-CET will not overwrite an unknown 0-Engine revision.");
-        }
 
         var runtimeRoot = Path.Combine(AppContext.BaseDirectory, "runtime", "0-Engine");
         var encodedInitPath = Path.Combine(runtimeRoot, "fixed-init.lua.gz.b64");
@@ -87,15 +79,38 @@ internal static class FixedZeroEngineRuntime
 
         var fixedInit = DecodeGzipBase64(encodedInitPath, "init.lua");
         var fixedInitHash = Sha256(fixedInit);
-        if (!fixedInitHash.Equals(FixedInitSha256, StringComparison.OrdinalIgnoreCase))
+        if (!fixedInitHash.Equals(LegacyFixedInitSha256, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException(
                 "Bundled fixed 0-Engine init payload failed its SHA256 integrity check.");
         }
 
+        var sharedInit = AddSharedSystemAccessors(fixedInit);
+        var sharedInitHash = Sha256(sharedInit);
+
+        var liveState =
+            liveHash.Equals(BaseInitSha256, StringComparison.OrdinalIgnoreCase)
+                ? "BASE_0.18.6"
+                : liveHash.Equals(LegacyFixedInitSha256, StringComparison.OrdinalIgnoreCase)
+                    ? "LEGACY_FIXED"
+                    : liveHash.Equals(sharedInitHash, StringComparison.OrdinalIgnoreCase)
+                        ? "ALREADY_FIXED"
+                        : "UNSUPPORTED";
+
+        if (liveState == "UNSUPPORTED")
+        {
+            throw new InvalidOperationException(
+                "The installed 0-Engine init.lua is not the supported base, prior fixed runtime, or current shared-state runtime. " +
+                $"Supported base: {BaseVersion} ({BaseInitSha256}). " +
+                $"Prior fixed runtime: {LegacyFixedInitSha256}. " +
+                $"Current fixed runtime: {FixedVersion} ({sharedInitHash}). " +
+                $"Installed SHA256: {liveHash}. " +
+                "G-CET will not overwrite an unknown 0-Engine revision.");
+        }
+
         var files = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase)
         {
-            ["0-Engine/init.lua"] = fixedInit
+            ["0-Engine/init.lua"] = sharedInit
         };
 
         foreach (var pair in FixedModuleHashes)
@@ -126,9 +141,113 @@ internal static class FixedZeroEngineRuntime
             liveState,
             liveHash,
             FixedVersion,
-            FixedInitSha256);
+            sharedInitHash);
     }
 
+
+    private static byte[] AddSharedSystemAccessors(byte[] baseline)
+    {
+        var text = Encoding.UTF8.GetString(baseline);
+        if (text.Contains(SharedSystemMarker, StringComparison.Ordinal))
+            return baseline;
+
+        var playerAccessor = Regex.Match(
+            text,
+            @"function\s+Engine\.GetPlayer\s*\(\s*\)\s*\r?\n\s*return\s+GetPlayer\s*\(\s*\)\s*\r?\nend",
+            RegexOptions.CultureInvariant);
+
+        if (!playerAccessor.Success)
+        {
+            throw new InvalidOperationException(
+                "Bundled fixed 0-Engine init does not expose the expected Engine.GetPlayer accessor anchor.");
+        }
+
+        var newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        var block = string.Join(
+            newline,
+            new[]
+            {
+                "",
+                SharedSystemMarker,
+                "local __gcetSharedSystemHandles = {}",
+                "local __gcetSharedSystemEpoch = nil",
+                "local __gcetSharedSystemGetters = {",
+                "    QUESTS_SYSTEM = function() return Game.GetQuestsSystem() end,",
+                "    STATS_SYSTEM = function() return Game.GetStatsSystem() end,",
+                "    TRANSACTION_SYSTEM = function() return Game.GetTransactionSystem() end,",
+                "    BLACKBOARD_SYSTEM = function() return Game.GetBlackboardSystem() end,",
+                "    TARGETING_SYSTEM = function() return Game.GetTargetingSystem() end,",
+                "    CAMERA_SYSTEM = function() return Game.GetCameraSystem() end,",
+                "    TIME_SYSTEM = function() return Game.GetTimeSystem() end,",
+                "    PREVENTION_SYSTEM = function() return Game.GetPreventionSystem() end,",
+                "    SCRIPTABLE_SYSTEMS_CONTAINER = function() return Game.GetScriptableSystemsContainer() end",
+                "}",
+                "",
+                "local function __gcetSyncSharedSystemEpoch()",
+                "    local player = GetPlayer()",
+                "    if __gcetSharedSystemEpoch ~= player then",
+                "        __gcetSharedSystemEpoch = player",
+                "        __gcetSharedSystemHandles = {}",
+                "    end",
+                "end",
+                "",
+                "local function __gcetGetSharedSystemHandle(key)",
+                "    __gcetSyncSharedSystemEpoch()",
+                "    local handle = __gcetSharedSystemHandles[key]",
+                "    if handle == nil then",
+                "        local getter = __gcetSharedSystemGetters[key]",
+                "        if getter ~= nil then",
+                "            handle = getter()",
+                "            if handle ~= nil then",
+                "                __gcetSharedSystemHandles[key] = handle",
+                "            end",
+                "        end",
+                "    end",
+                "    return handle",
+                "end",
+                "",
+                "function Engine.GetQuestsSystem()",
+                "    return __gcetGetSharedSystemHandle(\"QUESTS_SYSTEM\")",
+                "end",
+                "",
+                "function Engine.GetStatsSystem()",
+                "    return __gcetGetSharedSystemHandle(\"STATS_SYSTEM\")",
+                "end",
+                "",
+                "function Engine.GetTransactionSystem()",
+                "    return __gcetGetSharedSystemHandle(\"TRANSACTION_SYSTEM\")",
+                "end",
+                "",
+                "function Engine.GetBlackboardSystem()",
+                "    return __gcetGetSharedSystemHandle(\"BLACKBOARD_SYSTEM\")",
+                "end",
+                "",
+                "function Engine.GetTargetingSystem()",
+                "    return __gcetGetSharedSystemHandle(\"TARGETING_SYSTEM\")",
+                "end",
+                "",
+                "function Engine.GetCameraSystem()",
+                "    return __gcetGetSharedSystemHandle(\"CAMERA_SYSTEM\")",
+                "end",
+                "",
+                "function Engine.GetTimeSystem()",
+                "    return __gcetGetSharedSystemHandle(\"TIME_SYSTEM\")",
+                "end",
+                "",
+                "function Engine.GetPreventionSystem()",
+                "    return __gcetGetSharedSystemHandle(\"PREVENTION_SYSTEM\")",
+                "end",
+                "",
+                "function Engine.GetScriptableSystemsContainer()",
+                "    return __gcetGetSharedSystemHandle(\"SCRIPTABLE_SYSTEMS_CONTAINER\")",
+                "end",
+                ""
+            });
+
+        var insertAt = playerAccessor.Index + playerAccessor.Length;
+        var augmented = text.Insert(insertAt, block);
+        return Encoding.UTF8.GetBytes(augmented);
+    }
 
     private static byte[] DecodeBase64(string path, string logicalName)
     {
