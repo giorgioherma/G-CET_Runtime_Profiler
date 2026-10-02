@@ -520,6 +520,16 @@ $handoff = @{
                         repeatedInSampleCount = 1
                         multiCallsiteSampleCount = 1
                     }
+                    @{
+                        # Deliberately no matching Game.GetWorkspotSystem() call in
+                        # the callback block. This must survive as deep-only
+                        # discovery evidence and remain non-generatable.
+                        functionName = 'GetWorkspotSystem'
+                        childFunctionKey = 'fixture-helper|GetWorkspotSystem|120'
+                        sampledCalls = 31
+                        repeatedInSampleCount = 7
+                        multiCallsiteSampleCount = 4
+                    }
                 )
             }
         }
@@ -747,6 +757,24 @@ if (!$blackboardDefsProvider.analysisOnly -or $blackboardDefsProvider.generation
 }
 if ($blackboardDefsProvider.category -ne 'LOOKUP_RESULT_CANDIDATE') {
     throw "Unexpected ALL_BLACKBOARD_DEFS category: $($blackboardDefsProvider.category)"
+}
+
+$workspotProvider = @($result.sharedProviderOpportunities | Where-Object { $_.provider -eq 'WORKSPOT_SYSTEM' }) |
+    Select-Object -First 1
+if ($null -eq $workspotProvider) {
+    throw 'Deep-only GetWorkspotSystem discovery evidence was dropped.'
+}
+if ([int]$workspotProvider.sourceOccurrences -ne 0 -or
+    [int]$workspotProvider.deepSampledCalls -ne 31 -or
+    [int]$workspotProvider.deepObservedCallbackCount -ne 1) {
+    throw 'WORKSPOT_SYSTEM deep-only evidence was not preserved correctly.'
+}
+if (!$workspotProvider.analysisOnly -or $workspotProvider.generationEnabled) {
+    throw 'Deep-only WORKSPOT_SYSTEM was incorrectly marked generatable.'
+}
+$workspotCallback = @($workspotProvider.callbacks) | Select-Object -First 1
+if ($null -eq $workspotCallback -or !$workspotCallback.deepOnly -or $workspotCallback.substitutionEligible) {
+    throw 'WORKSPOT_SYSTEM callback did not expose deepOnly/non-eligible state.'
 }
 
 $positionProvider = @($result.sharedProviderOpportunities | Where-Object { $_.provider -eq 'PLAYER_POSITION' }) |
