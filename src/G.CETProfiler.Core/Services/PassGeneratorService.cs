@@ -17,7 +17,7 @@ public sealed record PassBuildResult(
 /// Generates a reversible overlay ZIP from resolver decisions only.
 /// Generic AUTO is deliberately restricted to mechanically source-proven recipes:
 /// ACTION_ROUTING_*, ACTION_OVERRIDE_EXACT_PREFILTER, FRAME_DISPATCH_CONSOLIDATION,
-/// and explicitly enabled finite shared-provider reads such as PLAYER.
+/// and explicitly enabled finite shared-provider reads backed by 0-Engine.
 /// Structural, cadence, and dormancy analyzers may still emit evidence, but they
 /// require semantic per-mod authorization before this generator may rewrite them.
 /// </summary>
@@ -40,11 +40,21 @@ public static class PassGeneratorService
         @"[%^$()%.\[\]*+\-?]",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    private const string SharedPlayerMarker = "-- G-CET shared provider: PLAYER";
-
-    private static readonly Regex GameGetPlayerCall = new(
-        @"\bGame\s*\.\s*GetPlayer\s*\(\s*\)",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly IReadOnlyDictionary<string, SharedProviderRecipe> SharedProviderRecipes =
+        new[]
+        {
+            SharedProviderRecipe.Create("PLAYER", "GetPlayer", "__gcetGetPlayer"),
+            SharedProviderRecipe.Create("QUESTS_SYSTEM", "GetQuestsSystem", "__gcetGetQuestsSystem"),
+            SharedProviderRecipe.Create("STATS_SYSTEM", "GetStatsSystem", "__gcetGetStatsSystem"),
+            SharedProviderRecipe.Create("TRANSACTION_SYSTEM", "GetTransactionSystem", "__gcetGetTransactionSystem"),
+            SharedProviderRecipe.Create("BLACKBOARD_SYSTEM", "GetBlackboardSystem", "__gcetGetBlackboardSystem"),
+            SharedProviderRecipe.Create("TARGETING_SYSTEM", "GetTargetingSystem", "__gcetGetTargetingSystem"),
+            SharedProviderRecipe.Create("CAMERA_SYSTEM", "GetCameraSystem", "__gcetGetCameraSystem"),
+            SharedProviderRecipe.Create("TIME_SYSTEM", "GetTimeSystem", "__gcetGetTimeSystem"),
+            SharedProviderRecipe.Create("PREVENTION_SYSTEM", "GetPreventionSystem", "__gcetGetPreventionSystem"),
+            SharedProviderRecipe.Create("SCRIPTABLE_SYSTEMS_CONTAINER", "GetScriptableSystemsContainer", "__gcetGetScriptableSystemsContainer")
+        }
+        .ToDictionary(x => x.Provider, StringComparer.OrdinalIgnoreCase);
 
     public static PassBuildResult Generate(
         string captureRoot,
@@ -209,8 +219,10 @@ public static class PassGeneratorService
                 semanticExistingLiveFilesOnly = true,
                 semanticCreatesNewModFiles = false,
                 semanticReferenceOverridesShipped = false,
-                sharedProviderFamilies = new[] { "PLAYER" },
-                sharedProviderPolicy = "MEASURED_CALLBACKS_ONLY; EXACT_CURRENT_SOURCE_GETTER; 0-Engine.GetPlayer WITH Game.GetPlayer FALLBACK",
+                sharedProviderFamilies = SharedProviderRecipes.Keys
+                    .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+                    .ToArray(),
+                sharedProviderPolicy = "MEASURED_CALLBACKS_ONLY; EXACT_CURRENT_SOURCE_GETTER; 0-Engine accessor WITH original Game getter fallback",
                 fullFileOverlay = true,
                 cadenceTransforms = true,
                 cadencePolicy = "SEMANTIC_RULES_ONLY_AFTER_CURRENT_SOURCE_GRAPH_PROOF",
@@ -394,10 +406,9 @@ public static class PassGeneratorService
         {
             foreach (var provider in providers.EnumerateArray())
             {
-                if (!JsonString(provider, "provider").Equals(
-                        "PLAYER",
-                        StringComparison.OrdinalIgnoreCase) ||
-                    !JsonBool(provider, "generationEnabled") ||
+                var providerName = JsonString(provider, "provider");
+                if (!JsonBool(provider, "generationEnabled") ||
+                    !SharedProviderRecipes.ContainsKey(providerName) ||
                     !provider.TryGetProperty("callbacks", out var callbacks) ||
                     callbacks.ValueKind != JsonValueKind.Array)
                     continue;
@@ -424,7 +435,8 @@ public static class PassGeneratorService
 
                     result.Add(new PassCandidate
                     {
-                        Kind = CandidateKind.SharedProviderPlayer,
+                        Kind = CandidateKind.SharedProvider,
+                        Provider = providerName,
                         RegistrationId = registrationId.Value,
                         Owner = owner,
                         RelativeFile = relativeFile.Replace('\\', '/'),
@@ -492,27 +504,34 @@ public static class PassGeneratorService
 
         var applied = 0;
         var frameHelpers = new List<(PassCandidate Candidate, string Token)>();
-        var sharedPlayerApplied = false;
-        var sharedPlayerHelperAlreadyPresent =
-            text.Contains(SharedPlayerMarker, StringComparison.Ordinal);
-        var sharedPlayerNameCollision =
-            !sharedPlayerHelperAlreadyPresent &&
-            Regex.IsMatch(
-                text,
-                @"\b__gcetGetPlayer\b",
-                RegexOptions.CultureInvariant);
+        var sharedProvidersApplied = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         // Shared-provider substitutions are expression-only and preserve line
         // counts. Apply them first so later structural transforms can keep using
         // the resolver's original callback ranges.
         foreach (var candidate in candidates.Where(x =>
-                     x.Kind == CandidateKind.SharedProviderPlayer))
+                     x.Kind == CandidateKind.SharedProvider))
         {
-            if (sharedPlayerNameCollision)
+            if (!SharedProviderRecipes.TryGetValue(candidate.Provider, out var providerRecipe))
+            {
+                skipped.Add(Skip(candidate, $"Unsupported shared provider: {candidate.Provider}."));
+                continue;
+            }
+
+            var helperAlreadyPresent =
+                text.Contains(providerRecipe.Marker, StringComparison.Ordinal);
+            var helperNameCollision =
+                !helperAlreadyPresent &&
+                Regex.IsMatch(
+                    text,
+                    @"\b" + Regex.Escape(providerRecipe.HelperName) + @"\b",
+                    RegexOptions.CultureInvariant);
+
+            if (helperNameCollision)
             {
                 skipped.Add(Skip(
                     candidate,
-                    "Current file already defines __gcetGetPlayer without the G-CET provider marker."));
+                    $"Current file already defines {providerRecipe.HelperName} without the G-CET provider marker."));
                 continue;
             }
 
@@ -534,16 +553,18 @@ public static class PassGeneratorService
                 .Take(effectiveLineEnd - candidate.LineStart + 1)
                 .ToArray();
             var segment = string.Join("\n", sourceLines);
-            var matches = GameGetPlayerCall.Matches(segment).Count;
+            var matches = providerRecipe.SourceRegex.Matches(segment).Count;
             if (matches == 0)
             {
                 skipped.Add(Skip(
                     candidate,
-                    "Exact Game.GetPlayer() provider read could not be revalidated in the recorded source range."));
+                    $"Exact Game.{providerRecipe.GameGetter}() provider read could not be revalidated in the recorded source range."));
                 continue;
             }
 
-            var replaced = GameGetPlayerCall.Replace(segment, "__gcetGetPlayer()");
+            var replaced = providerRecipe.SourceRegex.Replace(
+                segment,
+                providerRecipe.HelperName + "()");
             var replacementLines = replaced.Split('\n').ToList();
             if (replacementLines.Count != sourceLines.Length)
             {
@@ -563,19 +584,19 @@ public static class PassGeneratorService
                 registrationId = candidate.RegistrationId,
                 owner = candidate.Owner,
                 type = "SHARED_PROVIDER_READ",
-                provider = "PLAYER",
-                providerApi = "0-Engine.GetPlayer",
+                provider = providerRecipe.Provider,
+                providerApi = "0-Engine." + providerRecipe.EngineGetter,
                 file = candidate.RelativeFile,
                 sourceLines = new[] { candidate.LineStart, candidate.LineEnd },
                 replacedOccurrences = matches,
-                fallback = "Game.GetPlayer"
+                fallback = "Game." + providerRecipe.GameGetter
             });
             applied++;
-            sharedPlayerApplied = true;
+            sharedProvidersApplied.Add(providerRecipe.Provider);
         }
 
         foreach (var candidate in candidates.Where(x =>
-                     x.Kind != CandidateKind.SharedProviderPlayer))
+                     x.Kind != CandidateKind.SharedProvider))
         {
             // Resolver source ranges are based on Split('\n') semantics and may
             // include the terminal empty logical line of a newline-terminated
@@ -894,29 +915,19 @@ public static class PassGeneratorService
             applied++;
         }
 
-        if (sharedPlayerApplied && !sharedPlayerHelperAlreadyPresent)
+        var sharedHeaders = new List<string>();
+        foreach (var providerName in sharedProvidersApplied
+                     .OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
         {
-            var sharedHeader = new[]
-            {
-                SharedPlayerMarker,
-                "local __gcetSharedPlayerProvider = nil",
-                "local function __gcetGetPlayer()",
-                "    if __gcetSharedPlayerProvider == nil then",
-                "        local __gcetOk, __gcetEngine = pcall(GetMod, \"0-Engine\")",
-                "        if __gcetOk and type(__gcetEngine) == \"table\" and type(__gcetEngine.GetPlayer) == \"function\" then",
-                "            __gcetSharedPlayerProvider = __gcetEngine.GetPlayer",
-                "        end",
-                "    end",
-                "    if __gcetSharedPlayerProvider ~= nil then",
-                "        local __gcetPlayer = __gcetSharedPlayerProvider()",
-                "        if __gcetPlayer ~= nil then return __gcetPlayer end",
-                "    end",
-                "    return Game.GetPlayer()",
-                "end",
-                ""
-            };
-            lines.InsertRange(0, sharedHeader);
+            var providerRecipe = SharedProviderRecipes[providerName];
+            if (text.Contains(providerRecipe.Marker, StringComparison.Ordinal))
+                continue;
+
+            sharedHeaders.AddRange(BuildSharedProviderHeader(providerRecipe));
         }
+
+        if (sharedHeaders.Count > 0)
+            lines.InsertRange(0, sharedHeaders);
 
         if (frameHelpers.Count > 0)
         {
@@ -1217,17 +1228,97 @@ public static class PassGeneratorService
             .ToArray();
     }
 
+    private static IEnumerable<string> BuildSharedProviderHeader(
+        SharedProviderRecipe recipe)
+    {
+        if (recipe.Provider.Equals("PLAYER", StringComparison.OrdinalIgnoreCase))
+        {
+            return new[]
+            {
+                recipe.Marker,
+                "local __gcetSharedPlayerProvider = nil",
+                "local function __gcetGetPlayer()",
+                "    if __gcetSharedPlayerProvider == nil then",
+                "        local __gcetOk, __gcetEngine = pcall(GetMod, \"0-Engine\")",
+                "        if __gcetOk and type(__gcetEngine) == \"table\" and type(__gcetEngine.GetPlayer) == \"function\" then",
+                "            __gcetSharedPlayerProvider = __gcetEngine.GetPlayer",
+                "        end",
+                "    end",
+                "    if __gcetSharedPlayerProvider ~= nil then",
+                "        local __gcetPlayer = __gcetSharedPlayerProvider()",
+                "        if __gcetPlayer ~= nil then return __gcetPlayer end",
+                "    end",
+                "    return Game.GetPlayer()",
+                "end",
+                ""
+            };
+        }
+
+        var providerVariable = "__gcetProvider_" + recipe.EngineGetter;
+        return new[]
+        {
+            recipe.Marker,
+            $"local {providerVariable} = nil",
+            $"local function {recipe.HelperName}()",
+            $"    if {providerVariable} == nil then",
+            "        local __gcetOk, __gcetEngine = pcall(GetMod, \"0-Engine\")",
+            $"        if __gcetOk and type(__gcetEngine) == \"table\" and type(__gcetEngine.{recipe.EngineGetter}) == \"function\" then",
+            $"            {providerVariable} = __gcetEngine.{recipe.EngineGetter}",
+            "        end",
+            "    end",
+            $"    if {providerVariable} ~= nil then",
+            $"        local __gcetValue = {providerVariable}()",
+            "        if __gcetValue ~= nil then return __gcetValue end",
+            "    end",
+            $"    return Game.{recipe.GameGetter}()",
+            "end",
+            ""
+        };
+    }
+
+    private sealed class SharedProviderRecipe
+    {
+        private SharedProviderRecipe(
+            string provider,
+            string gameGetter,
+            string helperName)
+        {
+            Provider = provider;
+            GameGetter = gameGetter;
+            EngineGetter = gameGetter;
+            HelperName = helperName;
+            Marker = "-- G-CET shared provider: " + provider;
+            SourceRegex = new Regex(
+                @"\bGame\s*\.\s*" + Regex.Escape(gameGetter) + @"\s*\(\s*\)",
+                RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        }
+
+        public string Provider { get; }
+        public string GameGetter { get; }
+        public string EngineGetter { get; }
+        public string HelperName { get; }
+        public string Marker { get; }
+        public Regex SourceRegex { get; }
+
+        public static SharedProviderRecipe Create(
+            string provider,
+            string gameGetter,
+            string helperName) =>
+            new(provider, gameGetter, helperName);
+    }
+
     private enum CandidateKind
     {
         Action,
         OverridePrefilter,
         Frame,
-        SharedProviderPlayer
+        SharedProvider
     }
 
     private sealed class PassCandidate
     {
         public CandidateKind Kind { get; init; }
+        public string Provider { get; init; } = "";
         public long RegistrationId { get; init; }
         public string Owner { get; init; } = "";
         public string RelativeFile { get; init; } = "";
