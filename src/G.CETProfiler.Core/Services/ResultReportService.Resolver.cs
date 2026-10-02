@@ -910,27 +910,38 @@ public static partial class ResultReportService
         string functionName,
         string functionKey)
     {
+        // Keep the untruncated shared-provider stream broad enough to discover
+        // new stable system handles on unfamiliar mod stacks. Generation remains
+        // separately gated by the Resolver's explicit allow-list.
         var names = new[]
         {
             "GetPlayer",
-            "GetQuestsSystem",
-            "GetStatsSystem",
-            "GetTransactionSystem",
-            "GetBlackboardSystem",
-            "GetTargetingSystem",
-            "GetCameraSystem",
-            "GetTimeSystem",
-            "GetPreventionSystem",
+            "GetAllBlackboardDefs",
+            "GetSystemRequestsHandler",
+            "GetTeleportationFacility",
             "GetScriptableSystemsContainer",
             "GetWorldPosition",
             "GetWorldOrientation",
             "IsInCombat"
         };
 
-        return names.Any(name =>
-            name.Equals(functionName, StringComparison.OrdinalIgnoreCase) ||
-            (!string.IsNullOrWhiteSpace(functionKey) &&
-             functionKey.Contains(name, StringComparison.OrdinalIgnoreCase)));
+        if (names.Any(name =>
+                name.Equals(functionName, StringComparison.OrdinalIgnoreCase) ||
+                (!string.IsNullOrWhiteSpace(functionKey) &&
+                 functionKey.Contains(name, StringComparison.OrdinalIgnoreCase))))
+            return true;
+
+        if (Regex.IsMatch(
+                functionName ?? "",
+                @"^Get[A-Za-z0-9_]*System$",
+                RegexOptions.CultureInvariant))
+            return true;
+
+        return !string.IsNullOrWhiteSpace(functionKey) &&
+               Regex.IsMatch(
+                   functionKey,
+                   @"(?:^|[^A-Za-z0-9_])Get[A-Za-z0-9_]*System(?:$|[^A-Za-z0-9_])",
+                   RegexOptions.CultureInvariant);
     }
 
     private static List<ResolverOwnerActivityMetric> BuildResolverOwnerActivity(
