@@ -764,7 +764,7 @@ public static partial class ResultReportService
                         .ToArray();
 
                     var sharedProviderCallees = rankedCallees
-                        .Where(x => ResolverIsKnownSharedProviderCallee(
+                        .Where(x => ResolverIsSharedProviderDiscoveryCallee(
                             x.functionName,
                             x.childFunctionKey))
                         .ToArray();
