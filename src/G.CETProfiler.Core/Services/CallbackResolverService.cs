@@ -401,12 +401,16 @@ internal static class CallbackResolverService
                 affectedCallbackCallsPerSecond = Round(x.AffectedCallbackCallsPerSecond),
                 affectedSpikeCount = x.AffectedSpikeCount,
                 maxAffectedSpikeExclusiveMs = Round(x.MaxAffectedSpikeExclusiveMs),
-                analysisOnly = !SharedProviderGenerationFamilies.Contains(x.Provider),
-                generationEnabled = SharedProviderGenerationFamilies.Contains(x.Provider),
-                generationRecipe = SharedProviderGenerationFamilies.Contains(x.Provider)
+                analysisOnly = !(SharedProviderGenerationFamilies.Contains(x.Provider) &&
+                    x.Callbacks.Any(IsSharedProviderSubstitutionEligible)),
+                generationEnabled = SharedProviderGenerationFamilies.Contains(x.Provider) &&
+                    x.Callbacks.Any(IsSharedProviderSubstitutionEligible),
+                generationRecipe = SharedProviderGenerationFamilies.Contains(x.Provider) &&
+                    x.Callbacks.Any(IsSharedProviderSubstitutionEligible)
                     ? "SHARED_PROVIDER_READ"
                     : null,
-                providerApi = SharedProviderGenerationFamilies.Contains(x.Provider)
+                providerApi = SharedProviderGenerationFamilies.Contains(x.Provider) &&
+                    x.Callbacks.Any(IsSharedProviderSubstitutionEligible)
                     ? "0-Engine." + SharedProviderDefinitions
                         .First(d => d.Provider.Equals(x.Provider, StringComparison.OrdinalIgnoreCase))
                         .DeepFunctionNames.First()
