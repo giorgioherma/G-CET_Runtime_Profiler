@@ -365,6 +365,9 @@ public:
     static constexpr uint64_t DeepWarmupNs = 2'000'000'000ULL;
     static constexpr uint64_t DeepRebalanceNs = 1'000'000'000ULL;
     static constexpr size_t MaxDeepHotRegistrations = 6;
+    // Infrastructure audit runs beside the normal hotset so framework tracing
+    // never steals deep-profile coverage from client mods.
+    static constexpr size_t MaxDeepInfrastructureRegistrations = 2;
     static constexpr uint64_t DefaultDeepTargetSamples = 24;
     static constexpr uint64_t ReusedDeepTargetSamples = 6;
     static constexpr uint32_t DeepDriftWindowsRequired = 3;
@@ -3329,6 +3332,7 @@ private:
         };
 
         std::vector<Candidate> candidates;
+        std::vector<Candidate> infrastructureCandidates;
         std::lock_guard lock(m_mutex);
 
         const uint64_t previousCaptureNs = m_lastDeepRebalanceCaptureNs;
@@ -3460,8 +3464,10 @@ private:
             if (counter->DeepComplete.load(std::memory_order_relaxed))
                 continue;
 
-            if (counter->Mod == "0-Engine" ||
-                counter->Mod == "CETProfilerControls" ||
+            const bool infrastructureAudit =
+                counter->Mod == "0-Engine";
+
+            if (counter->Mod == "CETProfilerControls" ||
                 calls < 2)
             {
                 continue;
@@ -3534,29 +3540,50 @@ private:
                     DefaultDeepTargetSamples, std::memory_order_relaxed);
             }
 
-            candidates.push_back({
+            auto candidate = Candidate{
                 counter,
                 score,
                 callsPerSecond,
                 msPerSecond
-            });
+            };
+
+            if (infrastructureAudit)
+                infrastructureCandidates.push_back(candidate);
+            else
+                candidates.push_back(candidate);
         }
 
-        std::sort(candidates.begin(), candidates.end(),
-                  [](const Candidate& a, const Candidate& b)
-                  {
-                      if (a.Score != b.Score)
-                          return a.Score > b.Score;
-                      if (a.WindowMsPerSecond != b.WindowMsPerSecond)
-                          return a.WindowMsPerSecond > b.WindowMsPerSecond;
-                      return a.WindowCallsPerSecond > b.WindowCallsPerSecond;
-                  });
+        const auto rankCandidates = [](std::vector<Candidate>& rows)
+        {
+            std::sort(rows.begin(), rows.end(),
+                      [](const Candidate& a, const Candidate& b)
+                      {
+                          if (a.Score != b.Score)
+                              return a.Score > b.Score;
+                          if (a.WindowMsPerSecond != b.WindowMsPerSecond)
+                              return a.WindowMsPerSecond > b.WindowMsPerSecond;
+                          return a.WindowCallsPerSecond > b.WindowCallsPerSecond;
+                      });
+        };
+
+        rankCandidates(candidates);
+        rankCandidates(infrastructureCandidates);
 
         const size_t selected =
             std::min(MaxDeepHotRegistrations, candidates.size());
         for (size_t i = 0; i < selected; ++i)
         {
             candidates[i].CounterPtr->DeepSelected.store(
+                true, std::memory_order_release);
+        }
+
+        const size_t infrastructureSelected =
+            std::min(
+                MaxDeepInfrastructureRegistrations,
+                infrastructureCandidates.size());
+        for (size_t i = 0; i < infrastructureSelected; ++i)
+        {
+            infrastructureCandidates[i].CounterPtr->DeepSelected.store(
                 true, std::memory_order_release);
         }
     }
