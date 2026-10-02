@@ -906,7 +906,7 @@ public static partial class ResultReportService
         return "GENERAL_CALL";
     }
 
-    private static bool ResolverIsKnownSharedProviderCallee(
+    private static bool ResolverIsSharedProviderDiscoveryCallee(
         string functionName,
         string functionKey)
     {
@@ -920,11 +920,18 @@ public static partial class ResultReportService
                 RegexOptions.CultureInvariant))
             return true;
 
-        return !string.IsNullOrWhiteSpace(functionKey) &&
-               Regex.IsMatch(
-                   functionKey,
-                   @"(?:^|[^A-Za-z0-9_])Get[A-Za-z0-9_]+(?:$|[^A-Za-z0-9_])",
-                   RegexOptions.CultureInvariant);
+        if (!string.IsNullOrWhiteSpace(functionKey) &&
+            Regex.IsMatch(
+                functionKey,
+                @"(?:^|[^A-Za-z0-9_])Get[A-Za-z0-9_]+(?:$|[^A-Za-z0-9_])",
+                RegexOptions.CultureInvariant))
+            return true;
+
+        // Additive semantic evidence for the non-Get player-derived state family
+        // currently modeled by the Resolver. This never limits generic getters.
+        return functionName.Equals("IsInCombat", StringComparison.OrdinalIgnoreCase) ||
+               (!string.IsNullOrWhiteSpace(functionKey) &&
+                functionKey.Contains("IsInCombat", StringComparison.OrdinalIgnoreCase));
     }
 
     private static List<ResolverOwnerActivityMetric> BuildResolverOwnerActivity(
