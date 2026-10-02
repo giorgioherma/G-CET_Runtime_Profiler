@@ -910,37 +910,20 @@ public static partial class ResultReportService
         string functionName,
         string functionKey)
     {
-        // Keep the untruncated shared-provider stream broad enough to discover
-        // new stable system handles on unfamiliar mod stacks. Generation remains
-        // separately gated by the Resolver's explicit allow-list.
-        var names = new[]
-        {
-            "GetPlayer",
-            "GetAllBlackboardDefs",
-            "GetSystemRequestsHandler",
-            "GetTeleportationFacility",
-            "GetScriptableSystemsContainer",
-            "GetWorldPosition",
-            "GetWorldOrientation",
-            "IsInCombat"
-        };
-
-        if (names.Any(name =>
-                name.Equals(functionName, StringComparison.OrdinalIgnoreCase) ||
-                (!string.IsNullOrWhiteSpace(functionKey) &&
-                 functionKey.Contains(name, StringComparison.OrdinalIgnoreCase))))
-            return true;
-
+        // Discovery is intentionally open-ended. Preserve every getter-shaped
+        // callee in the untruncated optimizer stream; the Resolver decides
+        // whether it maps to an exact Game.Get...() source call and generation
+        // remains separately gated by an explicit authorization list.
         if (Regex.IsMatch(
                 functionName ?? "",
-                @"^Get[A-Za-z0-9_]*System$",
+                @"^Get[A-Za-z0-9_]+$",
                 RegexOptions.CultureInvariant))
             return true;
 
         return !string.IsNullOrWhiteSpace(functionKey) &&
                Regex.IsMatch(
                    functionKey,
-                   @"(?:^|[^A-Za-z0-9_])Get[A-Za-z0-9_]*System(?:$|[^A-Za-z0-9_])",
+                   @"(?:^|[^A-Za-z0-9_])Get[A-Za-z0-9_]+(?:$|[^A-Za-z0-9_])",
                    RegexOptions.CultureInvariant);
     }
 
