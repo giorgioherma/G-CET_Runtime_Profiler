@@ -9,13 +9,15 @@ internal sealed class ResolverForm : Form
     private readonly Button _captureBrowse = new() { Text = "Browse..." };
     private readonly Button _gameBrowse = new() { Text = "Browse..." };
     private readonly Button _analyze = new() { Text = "ANALYZE", Height = 36 };
-    private readonly Button _generate = new() { Text = "GENERATE PASS ZIP", Height = 36 };
+    private readonly Button _generate = new() { Text = "GENERATE PASS ZIP", Height = 36, Enabled = false };
     private readonly Label _status = new() { AutoSize = true, Text = "Select RESULTS (or a capture folder) and the Game Folder." };
     private readonly Label _families = new() { AutoSize = true, Text = "CALLBACK FAMILIES: -" };
     private readonly Label _generic = new() { AutoSize = true, Text = "GENERIC READY: -" };
     private readonly Label _shared = new() { AutoSize = true, Text = "SHARED STATE READY: PLAYER - callbacks / - reads" };
     private readonly Label _semantic = new() { AutoSize = true, Text = "SEMANTIC READY: -   |   ALREADY SATISFIED: -" };
     private readonly Label _unresolved = new() { AutoSize = true, Text = "MATERIAL REMAINING: -   |   BELOW 3 ms/s: -" };
+    private bool _passReady;
+
     private readonly TextBox _output = new()
     {
         Multiline = true,
@@ -94,6 +96,8 @@ internal sealed class ResolverForm : Form
 
         _captureBrowse.Click += (_, _) => BrowseInto(_capture);
         _gameBrowse.Click += (_, _) => BrowseInto(_game);
+        _capture.TextChanged += (_, _) => InvalidatePassReadiness();
+        _game.TextChanged += (_, _) => InvalidatePassReadiness();
         _analyze.Click += (_, _) => Analyze();
         _generate.Click += (_, _) => GeneratePass();
     }
@@ -108,6 +112,37 @@ internal sealed class ResolverForm : Form
 
         if (dialog.ShowDialog() == DialogResult.OK)
             target.Text = dialog.SelectedPath;
+    }
+
+    private void InvalidatePassReadiness()
+    {
+        _passReady = false;
+        _generate.Enabled = false;
+    }
+
+    private static bool HasApplicablePass(ResolverBuildResult result)
+    {
+        return result.GenericResolvedCount > 0 ||
+               result.SemanticReadyRuleCount > 0 ||
+               result.SharedProviderReadyCallbackCount > 0;
+    }
+
+    private void UpdateSummary(ResolverBuildResult result)
+    {
+        _families.Text = $"CALLBACK FAMILIES: {result.FamilyCount}";
+        _generic.Text =
+            $"GENERIC READY: {result.GenericResolvedCount}   |   " +
+            $"NON-FRAME: {result.NonFrameOnlyAutoCount}   |   " +
+            $"FRAME: {result.FrameOnlyAutoCount}";
+        _shared.Text =
+            $"SHARED STATE READY: PLAYER — {result.SharedProviderReadyCallbackCount} callbacks / " +
+            $"{result.SharedProviderReadyReadCount} reads";
+        _semantic.Text =
+            $"SEMANTIC READY: {result.SemanticReadyRuleCount}   |   " +
+            $"ALREADY SATISFIED: {result.AlreadySatisfiedCount}";
+        _unresolved.Text =
+            $"MATERIAL REMAINING: {result.MaterialRemainingCount}   |   " +
+            $"BELOW 3 ms/s: {result.BelowThresholdCount}";
     }
 
     private static string ResolveModsFolder(string gameFolder)
@@ -152,22 +187,13 @@ internal sealed class ResolverForm : Form
 
             var result = ResolverService.Resolve(capture, mods);
 
-            _families.Text = $"CALLBACK FAMILIES: {result.FamilyCount}";
-            _generic.Text =
-                $"GENERIC READY: {result.GenericResolvedCount}   |   " +
-                $"NON-FRAME: {result.NonFrameOnlyAutoCount}   |   " +
-                $"FRAME: {result.FrameOnlyAutoCount}";
-            _shared.Text =
-                $"SHARED STATE READY: PLAYER — {result.SharedProviderReadyCallbackCount} callbacks / " +
-                $"{result.SharedProviderReadyReadCount} reads";
-            _semantic.Text =
-                $"SEMANTIC READY: {result.SemanticReadyRuleCount}   |   " +
-                $"ALREADY SATISFIED: {result.AlreadySatisfiedCount}";
-            _unresolved.Text =
-                $"MATERIAL REMAINING: {result.MaterialRemainingCount}   |   " +
-                $"BELOW 3 ms/s: {result.BelowThresholdCount}";
+            UpdateSummary(result);
+            _passReady = HasApplicablePass(result);
+            _generate.Enabled = _passReady;
 
-            _status.Text = $"Complete — {result.RankedCallbackCount} measured callback consumers inspected.";
+            _status.Text = _passReady
+                ? $"Complete — {result.RankedCallbackCount} measured callback consumers inspected. Pass ready."
+                : $"Complete — {result.RankedCallbackCount} measured callback consumers inspected. No applicable pass changes.";
             _output.Text =
                 $"G-CET resolver output:\r\n{result.ResolverPath}\r\n\r\n" +
                 (result.CadenceFinalPath is null
@@ -177,6 +203,8 @@ internal sealed class ResolverForm : Form
         }
         catch (Exception ex)
         {
+            _passReady = false;
+            _generate.Enabled = false;
             _status.Text = "Analysis failed.";
             _output.Text = ex.ToString();
             MessageBox.Show(this, ex.Message, "G-CET Resolver", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -184,7 +212,7 @@ internal sealed class ResolverForm : Form
         finally
         {
             _analyze.Enabled = true;
-            _generate.Enabled = true;
+            _generate.Enabled = _passReady;
         }
     }
 
@@ -208,22 +236,19 @@ internal sealed class ResolverForm : Form
             // pass is generated. The generator then consumes only that resolver
             // output and refuses stale source hashes.
             var resolved = ResolverService.Resolve(capture, mods);
-            var pass = ResolverService.GeneratePass(capture, mods);
+            UpdateSummary(resolved);
+            _passReady = HasApplicablePass(resolved);
 
-            _families.Text = $"CALLBACK FAMILIES: {resolved.FamilyCount}";
-            _generic.Text =
-                $"GENERIC READY: {resolved.GenericResolvedCount}   |   " +
-                $"NON-FRAME: {resolved.NonFrameOnlyAutoCount}   |   " +
-                $"FRAME: {resolved.FrameOnlyAutoCount}";
-            _shared.Text =
-                $"SHARED STATE READY: PLAYER — {resolved.SharedProviderReadyCallbackCount} callbacks / " +
-                $"{resolved.SharedProviderReadyReadCount} reads";
-            _semantic.Text =
-                $"SEMANTIC READY: {resolved.SemanticReadyRuleCount}   |   " +
-                $"ALREADY SATISFIED: {resolved.AlreadySatisfiedCount}";
-            _unresolved.Text =
-                $"MATERIAL REMAINING: {resolved.MaterialRemainingCount}   |   " +
-                $"BELOW 3 ms/s: {resolved.BelowThresholdCount}";
+            if (!_passReady)
+            {
+                _status.Text = "No applicable pass changes remain after live-source revalidation.";
+                _output.Text =
+                    $"G-CET resolver output:\r\n{resolved.ResolverPath}\r\n\r\n" +
+                    "No pass ZIP was generated because the current live stack has no applicable changes.";
+                return;
+            }
+
+            var pass = ResolverService.GeneratePass(capture, mods);
 
             _status.Text = $"Pass ready — {pass.TransformCount} transforms across {pass.FileCount} files.";
             _output.Text =
@@ -237,6 +262,8 @@ internal sealed class ResolverForm : Form
         }
         catch (Exception ex)
         {
+            _passReady = false;
+            _generate.Enabled = false;
             _status.Text = "Pass generation failed.";
             _output.Text = ex.ToString();
             MessageBox.Show(this, ex.Message, "G-CET Resolver", MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -244,7 +271,7 @@ internal sealed class ResolverForm : Form
         finally
         {
             _analyze.Enabled = true;
-            _generate.Enabled = true;
+            _generate.Enabled = _passReady;
         }
     }
 }
