@@ -13,7 +13,7 @@ internal sealed class ResolverForm : Form
     private readonly Label _status = new() { AutoSize = true, Text = "Select RESULTS (or a capture folder) and the Game Folder." };
     private readonly Label _families = new() { AutoSize = true, Text = "CALLBACK FAMILIES: -" };
     private readonly Label _generic = new() { AutoSize = true, Text = "GENERIC READY: -" };
-    private readonly Label _shared = new() { AutoSize = true, Text = "SHARED STATE READY: PLAYER - callbacks / - reads" };
+    private readonly Label _shared = new() { AutoSize = true, Text = "SHARED STATE READY: - families / - callbacks / - reads" };
     private readonly Label _semantic = new() { AutoSize = true, Text = "SEMANTIC READY: -   |   ALREADY SATISFIED: -" };
     private readonly Label _unresolved = new() { AutoSize = true, Text = "MATERIAL REMAINING: -   |   BELOW 3 ms/s: -" };
     private bool _passReady;
@@ -134,9 +134,13 @@ internal sealed class ResolverForm : Form
             $"GENERIC READY: {result.GenericResolvedCount}   |   " +
             $"NON-FRAME: {result.NonFrameOnlyAutoCount}   |   " +
             $"FRAME: {result.FrameOnlyAutoCount}";
+        var sharedFamilies = result.SharedProviderReadyFamilies.Length == 0
+            ? "none"
+            : string.Join(", ", result.SharedProviderReadyFamilies);
         _shared.Text =
-            $"SHARED STATE READY: PLAYER — {result.SharedProviderReadyCallbackCount} callbacks / " +
-            $"{result.SharedProviderReadyReadCount} reads";
+            $"SHARED STATE READY: {result.SharedProviderReadyFamilies.Length} families / " +
+            $"{result.SharedProviderReadyCallbackCount} callbacks / {result.SharedProviderReadyReadCount} reads";
+        _shared.AccessibleDescription = sharedFamilies;
         _semantic.Text =
             $"SEMANTIC READY: {result.SemanticReadyRuleCount}   |   " +
             $"ALREADY SATISFIED: {result.AlreadySatisfiedCount}";
