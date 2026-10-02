@@ -339,7 +339,7 @@ internal static class CallbackResolverService
                     .ToArray(),
                 sharedProviderScope = "MEASURED_CALLBACKS_ONLY",
                 sharedProviderDeepEvidence = "UNTRUNCATED_KNOWN_PROVIDER_CALLEES_WITH_LEGACY_HOTCALLEES_FALLBACK",
-                sharedProviderDiscovery = "ALL_GET_STAR_SYSTEM_PLUS_EXPLICIT_SPECIALS; DEEP_ONLY_EVIDENCE_IS_ANALYSIS_ONLY_UNTIL_CURRENT_SOURCE_IS_PROVEN",
+                sharedProviderDiscovery = "ALL_ZERO_ARG_GAME_GETTERS_PLUS_ALL_DEEP_GETTER_CALLEES; DEEP_ONLY_EVIDENCE_IS_ANALYSIS_ONLY_UNTIL_CURRENT_SOURCE_IS_PROVEN",
                 note = "Generic AUTO is restricted to mechanically source-proven action routing, exact Override prefiltering, frame-dispatch consolidation, and explicitly enabled shared-provider reads with exact current-source proof. Dynamic player-derived state remains analysis-only. Identity-specific automatic behavior lives exclusively in the source-proven semantic library. Shared-provider opportunity totals describe measured callback territory, not estimated savings. Shared-provider deep evidence is aggregated across the measured stack without a per-callback hot-callee top-N gate. Already-satisfied generated states are not re-applied."
             },
             cadence = new
@@ -474,12 +474,12 @@ internal static class CallbackResolverService
         cb.LineStart.GetValueOrDefault() > 0 &&
         cb.LineEnd.GetValueOrDefault() >= cb.LineStart.GetValueOrDefault();
 
-    private static readonly Regex GenericSharedSystemGetterSourceRegex = new(
-        @"\bGame\s*\.\s*(?<getter>Get[A-Za-z0-9_]+System)\s*\(\s*\)",
+    private static readonly Regex GenericGameGetterSourceRegex = new(
+        @"\bGame\s*\.\s*(?<getter>Get[A-Za-z0-9_]+)\s*\(\s*\)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    private static readonly Regex GenericSharedSystemGetterNameRegex = new(
-        @"\b(?<getter>Get[A-Za-z0-9_]+System)\b",
+    private static readonly Regex GenericGetterNameRegex = new(
+        @"\b(?<getter>Get[A-Za-z0-9_]+)\b",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly SharedProviderDefinition[] SharedProviderDefinitions =
@@ -785,10 +785,10 @@ internal static class CallbackResolverService
             }
         }
 
-        foreach (Match match in GenericSharedSystemGetterSourceRegex.Matches(text))
+        foreach (Match match in GenericGameGetterSourceRegex.Matches(text))
         {
             var getter = match.Groups["getter"].Value;
-            var provider = SharedProviderKeyForSystemGetter(getter);
+            var provider = SharedProviderKeyForGameGetter(getter);
 
             // Explicit definitions already emitted this exact family above.
             if (SharedProviderDefinitions.Any(x =>
@@ -904,18 +904,18 @@ internal static class CallbackResolverService
                 return definition.Provider;
         }
 
-        if (TryFindSharedSystemGetter(functionName, functionKey, out var getter))
-            return SharedProviderKeyForSystemGetter(getter);
+        if (TryFindGetter(functionName, functionKey, out var getter))
+            return SharedProviderKeyForGameGetter(getter);
 
         return null;
     }
 
-    private static bool TryFindSharedSystemGetter(
+    private static bool TryFindGetter(
         string functionName,
         string functionKey,
         out string getter)
     {
-        var direct = GenericSharedSystemGetterNameRegex.Match(functionName ?? "");
+        var direct = GenericGetterNameRegex.Match(functionName ?? "");
         if (direct.Success)
         {
             getter = direct.Groups["getter"].Value;
@@ -924,7 +924,7 @@ internal static class CallbackResolverService
 
         if (!string.IsNullOrWhiteSpace(functionKey))
         {
-            var keyed = GenericSharedSystemGetterNameRegex.Match(functionKey);
+            var keyed = GenericGetterNameRegex.Match(functionKey);
             if (keyed.Success)
             {
                 getter = keyed.Groups["getter"].Value;
@@ -936,7 +936,7 @@ internal static class CallbackResolverService
         return false;
     }
 
-    private static string SharedProviderKeyForSystemGetter(string getter)
+    private static string SharedProviderKeyForGameGetter(string getter)
     {
         var stem = getter;
         if (stem.StartsWith("Get", StringComparison.OrdinalIgnoreCase))
@@ -963,7 +963,12 @@ internal static class CallbackResolverService
         var explicitDefinition = SharedProviderDefinitions.FirstOrDefault(x =>
             x.Provider.Equals(provider, StringComparison.OrdinalIgnoreCase));
 
-        return explicitDefinition?.Category ?? "SYSTEM_HANDLE_CANDIDATE";
+        if (explicitDefinition is not null)
+            return explicitDefinition.Category;
+
+        return provider.EndsWith("_SYSTEM", StringComparison.OrdinalIgnoreCase)
+            ? "SYSTEM_HANDLE_CANDIDATE"
+            : "GAME_GETTER_CANDIDATE";
     }
 
     private static DormancyEvidence ResolveDormancyEvidence(
@@ -2058,11 +2063,10 @@ internal static class CallbackResolverService
         var expressions = new List<StructuralExpression>();
         var constructors = new List<StructuralExpression>();
 
-        // Restrict automatic call-scope reuse to CET/Game singleton-style getters
-        // whose identity is expected to be stable for one Lua callback invocation.
-        var getterPattern = new Regex(
-            @"\bGame\.(?:GetPlayer|GetTargetingSystem|GetBlackboardSystem|GetAllBlackboardDefs|GetQuestsSystem|GetTimeSystem|GetStatsSystem|GetStatPoolsSystem|GetSystemRequestsHandler|GetTeleportationFacility|GetCameraSystem)\s*\(\s*\)",
-            RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        // Structural discovery is open-ended: repeated zero-argument Game.Get...()
+        // calls are evidence worth surfacing. This analyzer is analysis-only;
+        // no arbitrary getter is authorized for rewriting here.
+        var getterPattern = GenericGameGetterSourceRegex;
 
         foreach (var group in getterPattern.Matches(text)
                      .Cast<Match>()
