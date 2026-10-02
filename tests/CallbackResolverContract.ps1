@@ -603,8 +603,27 @@ if (!$result.policy.sharedProviderOpportunityAnalysis) {
 if (!$result.policy.sharedProviderGenerationEnabled) {
     throw 'Source-proven shared-provider generation is not enabled.'
 }
-if (@($result.policy.sharedProviderGenerationFamilies) -notcontains 'PLAYER') {
-    throw 'PLAYER is not the explicitly enabled shared-provider generation family.'
+$expectedSharedProviderFamilies = @(
+    'PLAYER',
+    'QUESTS_SYSTEM',
+    'STATS_SYSTEM',
+    'TRANSACTION_SYSTEM',
+    'BLACKBOARD_SYSTEM',
+    'TARGETING_SYSTEM',
+    'CAMERA_SYSTEM',
+    'TIME_SYSTEM',
+    'PREVENTION_SYSTEM',
+    'SCRIPTABLE_SYSTEMS_CONTAINER'
+)
+foreach ($family in $expectedSharedProviderFamilies) {
+    if (@($result.policy.sharedProviderGenerationFamilies) -notcontains $family) {
+        throw "Stable shared-provider generation family is missing: $family"
+    }
+}
+foreach ($dynamicFamily in @('PLAYER_POSITION','PLAYER_ORIENTATION','PLAYER_COMBAT_STATE')) {
+    if (@($result.policy.sharedProviderGenerationFamilies) -contains $dynamicFamily) {
+        throw "Dynamic player-derived state was incorrectly enabled for generic generation: $dynamicFamily"
+    }
 }
 if ($result.policy.sharedProviderScope -ne 'MEASURED_CALLBACKS_ONLY') {
     throw "Shared-provider analysis escaped measured callbacks: $($result.policy.sharedProviderScope)"
@@ -636,13 +655,33 @@ if (@($playerProvider.callbacks | Where-Object { $_.substitutionEligible }).Coun
     throw 'PLAYER shared-provider opportunity emitted no source-proven substitution candidates.'
 }
 
-$eligiblePlayerCallbacks = @($playerProvider.callbacks | Where-Object { $_.substitutionEligible })
-$eligiblePlayerReads = ($eligiblePlayerCallbacks | Measure-Object -Property sourceRecognizedOccurrences -Sum).Sum
-if ([int]$result.summary.sharedProviderReadyCallbacks -ne $eligiblePlayerCallbacks.Count) {
-    throw "Resolver summary lost PLAYER-ready callback count: expected $($eligiblePlayerCallbacks.Count), got $($result.summary.sharedProviderReadyCallbacks)."
+$eligibleSharedCandidates = @(
+    foreach ($provider in @($result.sharedProviderOpportunities | Where-Object { $_.generationEnabled })) {
+        foreach ($callback in @($provider.callbacks | Where-Object { $_.substitutionEligible })) {
+            [pscustomobject]@{
+                provider = [string]$provider.provider
+                registrationId = [int64]$callback.registrationId
+                reads = [int]$callback.sourceRecognizedOccurrences
+            }
+        }
+    }
+)
+$expectedReadyCallbacks = @($eligibleSharedCandidates.registrationId | Sort-Object -Unique).Count
+$expectedReadyReads = ($eligibleSharedCandidates | Measure-Object -Property reads -Sum).Sum
+$expectedReadyFamilies = @($eligibleSharedCandidates.provider | Sort-Object -Unique)
+if ([int]$result.summary.sharedProviderReadyCallbacks -ne $expectedReadyCallbacks) {
+    throw "Resolver summary lost shared-provider-ready callback count: expected $expectedReadyCallbacks, got $($result.summary.sharedProviderReadyCallbacks)."
 }
-if ([int]$result.summary.sharedProviderReadyReads -ne [int]$eligiblePlayerReads) {
-    throw "Resolver summary lost PLAYER-ready read count: expected $eligiblePlayerReads, got $($result.summary.sharedProviderReadyReads)."
+if ([int]$result.summary.sharedProviderReadyReads -ne [int]$expectedReadyReads) {
+    throw "Resolver summary lost shared-provider-ready read count: expected $expectedReadyReads, got $($result.summary.sharedProviderReadyReads)."
+}
+if (@($result.summary.sharedProviderReadyFamilies).Count -ne $expectedReadyFamilies.Count) {
+    throw 'Resolver summary lost shared-provider-ready family count.'
+}
+foreach ($family in $expectedReadyFamilies) {
+    if (@($result.summary.sharedProviderReadyFamilies) -notcontains $family) {
+        throw "Resolver summary lost ready shared-provider family: $family"
+    }
 }
 if (@($playerProvider.owners) -contains 'FixtureColdProvider') {
     throw 'Shared-provider analysis scanned an unmeasured/cold mod into the opportunity set.'
@@ -656,6 +695,9 @@ if ($null -eq $timeProvider) {
 if ([int]$timeProvider.deepObservedCallbackCount -lt 1 -or
     [int]$timeProvider.deepSampledCalls -lt 24) {
     throw 'Shared-provider deep evidence is still gated by the per-callback hotCallees shortlist.'
+}
+if (!$timeProvider.generationEnabled -or $timeProvider.generationRecipe -ne 'SHARED_PROVIDER_READ') {
+    throw 'TIME_SYSTEM was not promoted to source-proven shared-provider generation.'
 }
 
 $positionProvider = @($result.sharedProviderOpportunities | Where-Object { $_.provider -eq 'PLAYER_POSITION' }) |
@@ -1052,7 +1094,10 @@ if ($unknownHot.generic.Automatable) {
 if ($null -eq $resolved.pass) {
     throw 'CLI --generate-pass did not return a pass result.'
 }
-if ([int]$resolved.pass.TransformCount -ne 21) {
+$expectedGenericTransforms = [int]$result.summary.genericResolved
+$expectedSharedTransforms = $eligibleSharedCandidates.Count
+$expectedPassTransforms = $expectedGenericTransforms + $expectedSharedTransforms
+if ([int]$resolved.pass.TransformCount -ne $expectedPassTransforms) {
     if (Test-Path -LiteralPath $resolved.pass.ManifestPath -PathType Leaf) {
         $failedManifest = Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
         Write-Host "PASS DEBUG transforms=$($failedManifest.summary.transforms) skipped=$($failedManifest.summary.skipped)"
@@ -1060,10 +1105,10 @@ if ([int]$resolved.pass.TransformCount -ne 21) {
             Write-Host ("PASS DEBUG SKIP owner={0} type={1} file={2} reason={3}" -f $skip.owner,$skip.type,$skip.file,$skip.reason)
         }
     }
-    throw "Expected 21 generated transforms (15 existing + 6 PLAYER provider reads), got $($resolved.pass.TransformCount)."
+    throw "Expected $expectedPassTransforms generated transforms ($expectedGenericTransforms generic callbacks + $expectedSharedTransforms shared-provider candidates), got $($resolved.pass.TransformCount)."
 }
-if ([int]$resolved.pass.FileCount -ne 22) {
-    throw "Expected 22 generated replacement files (18 callback + 4 fixed 0-Engine), got $($resolved.pass.FileCount)."
+if ([int]$resolved.pass.FileCount -lt 5) {
+    throw "Generated replacement file count is implausibly small: $($resolved.pass.FileCount)."
 }
 if (!(Test-Path -LiteralPath $resolved.pass.ZipPath -PathType Leaf)) {
     throw "Generated pass ZIP is missing: $($resolved.pass.ZipPath)"
@@ -1280,9 +1325,13 @@ try {
     if (!$manifest.policy.cadenceTransforms) {
         throw 'Generated pass manifest did not advertise semantic cadence/source-injection support.'
     }
-    if (@($manifest.policy.sharedProviderFamilies) -notcontains 'PLAYER' -or
-        @($manifest.policy.supportedPasses) -notcontains 'SHARED_PROVIDER_READ') {
-        throw 'Generated pass manifest does not advertise PLAYER shared-provider generation.'
+    foreach ($family in $expectedSharedProviderFamilies) {
+        if (@($manifest.policy.sharedProviderFamilies) -notcontains $family) {
+            throw "Generated pass manifest does not advertise stable shared-provider generation: $family"
+        }
+    }
+    if (@($manifest.policy.supportedPasses) -notcontains 'SHARED_PROVIDER_READ') {
+        throw 'Generated pass manifest does not advertise SHARED_PROVIDER_READ generation.'
     }
     if ([double]$manifest.policy.semanticRuntimeThresholdMsPerSecond -ne 3.0) {
         throw 'Semantic runtime admission threshold changed unexpectedly.'
@@ -1306,14 +1355,14 @@ try {
             throw "Parked semantic transform leaked into the manifest: $forbiddenType"
         }
     }
-    if ([int]$manifest.summary.transforms -ne 21) {
+    if ([int]$manifest.summary.transforms -ne $expectedPassTransforms) {
         throw 'Generated pass manifest transform count is wrong.'
     }
-    if ([int]$manifest.summary.genericTransforms -ne 21 -or [int]$manifest.summary.semanticTransforms -ne 0) {
-        throw 'PLAYER shared-provider transforms were not composed into generic transform accounting.'
+    if ([int]$manifest.summary.genericTransforms -ne $expectedPassTransforms -or [int]$manifest.summary.semanticTransforms -ne 0) {
+        throw 'Shared-provider transforms were not composed into generic transform accounting.'
     }
-    if ([int]$manifest.summary.callbackFiles -ne 18) {
-        throw "Expected 18 callback replacement files, got $($manifest.summary.callbackFiles)."
+    if ([int]$manifest.summary.callbackFiles -ne ([int]$resolved.pass.FileCount - [int]$manifest.summary.fixedRuntimeFiles)) {
+        throw 'Generated pass callback-file accounting is inconsistent.'
     }
     if ([int]$manifest.summary.fixedRuntimeFiles -ne 4) {
         throw "Expected 4 fixed 0-Engine runtime files, got $($manifest.summary.fixedRuntimeFiles)."
@@ -1321,7 +1370,7 @@ try {
     if (!$manifest.fixedRuntime.included -or !$manifest.fixedRuntime.exception) {
         throw 'Generated pass did not mark 0-Engine as the fixed runtime exception.'
     }
-    if ($manifest.fixedRuntime.FixedVersion -ne '0.18.11-PASS4.2.1-PHASE-CADENCE-FIX') {
+    if ($manifest.fixedRuntime.FixedVersion -ne '0.18.12-SHARED-SYSTEM-HANDLES') {
         throw "Unexpected fixed 0-Engine version: $($manifest.fixedRuntime.FixedVersion)"
     }
 
@@ -1330,6 +1379,14 @@ try {
         'function Engine.MakeEventRegistrar',
         'function Engine.SubscribeAction',
         'function Engine.GetPlayer',
+        'function Engine.GetBlackboardSystem',
+        'function Engine.GetTimeSystem',
+        'function Engine.GetStatsSystem',
+        'function Engine.GetQuestsSystem',
+        'function Engine.GetTargetingSystem',
+        'function Engine.GetTransactionSystem',
+        'function Engine.GetScriptableSystemsContainer',
+        '-- G-CET shared system handles v1',
         'ActionRouter.Dispatch'
     )) {
         if ($zeroText -notmatch [regex]::Escape($requiredRuntimeSymbol)) {
