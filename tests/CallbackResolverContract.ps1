@@ -647,7 +647,23 @@ $expectedSharedProviderFamilies = @(
     'CAMERA_SYSTEM',
     'TIME_SYSTEM',
     'PREVENTION_SYSTEM',
-    'SCRIPTABLE_SYSTEMS_CONTAINER'
+    'SCRIPTABLE_SYSTEMS_CONTAINER',
+    'ALL_BLACKBOARD_DEFS',
+    'WORKSPOT_SYSTEM',
+    'GAME_EFFECT_SYSTEM',
+    'NAVIGATION_SYSTEM',
+    'TELEPORTATION_FACILITY',
+    'SYSTEM_REQUESTS_HANDLER',
+    'MAPPIN_SYSTEM',
+    'VEHICLE_SYSTEM',
+    'AUDIO_SYSTEM',
+    'UI_SYSTEM',
+    'FADE_SYSTEM',
+    'DYNAMIC_ENTITY_SYSTEM',
+    'STAT_POOLS_SYSTEM',
+    'STATUS_EFFECT_SYSTEM',
+    'AI_NAVIGATION_SYSTEM',
+    'JOURNAL_MANAGER'
 )
 foreach ($family in $expectedSharedProviderFamilies) {
     if (@($result.policy.sharedProviderGenerationFamilies) -notcontains $family) {
@@ -744,10 +760,11 @@ if ([int]$navigationProvider.sourceRecognizedOccurrences -ne 1 -or
     [int]$navigationProvider.deepSampledCalls -ne 19) {
     throw 'NAVIGATION_SYSTEM did not preserve exact source/deep discovery evidence.'
 }
-if (!$navigationProvider.analysisOnly -or $navigationProvider.generationEnabled) {
-    throw 'Newly discovered NAVIGATION_SYSTEM was incorrectly promoted to generation.'
+if ($navigationProvider.analysisOnly -or !$navigationProvider.generationEnabled -or
+    $navigationProvider.generationRecipe -ne 'SHARED_PROVIDER_READ') {
+    throw 'NAVIGATION_SYSTEM was not promoted to source-proven shared-provider generation.'
 }
-if ($navigationProvider.category -ne 'SYSTEM_HANDLE_CANDIDATE') {
+if ($navigationProvider.category -ne 'SYSTEM_HANDLE') {
     throw "Unexpected NAVIGATION_SYSTEM category: $($navigationProvider.category)"
 }
 
@@ -760,10 +777,11 @@ if ([int]$blackboardDefsProvider.sourceRecognizedOccurrences -ne 1 -or
     [int]$blackboardDefsProvider.deepSampledCalls -ne 13) {
     throw 'ALL_BLACKBOARD_DEFS did not preserve exact source/deep discovery evidence.'
 }
-if (!$blackboardDefsProvider.analysisOnly -or $blackboardDefsProvider.generationEnabled) {
-    throw 'ALL_BLACKBOARD_DEFS was incorrectly promoted to generation.'
+if ($blackboardDefsProvider.analysisOnly -or !$blackboardDefsProvider.generationEnabled -or
+    $blackboardDefsProvider.generationRecipe -ne 'SHARED_PROVIDER_READ') {
+    throw 'ALL_BLACKBOARD_DEFS was not promoted to source-proven shared-provider generation.'
 }
-if ($blackboardDefsProvider.category -ne 'GAME_GETTER_CANDIDATE') {
+if ($blackboardDefsProvider.category -ne 'SHARED_LOOKUP') {
     throw "Unexpected ALL_BLACKBOARD_DEFS category: $($blackboardDefsProvider.category)"
 }
 
@@ -1329,6 +1347,20 @@ try {
         throw 'PLAYER shared-provider substitution, fallback, or structural isolation is incomplete.'
     }
 
+    foreach ($sharedProviderCheck in @(
+        @{ marker = '-- G-CET shared provider: NAVIGATION_SYSTEM'; helper = '__gcetGetNavigationSystem()'; fallback = 'return Game.GetNavigationSystem()' },
+        @{ marker = '-- G-CET shared provider: ALL_BLACKBOARD_DEFS'; helper = '__gcetGetAllBlackboardDefs()'; fallback = 'return Game.GetAllBlackboardDefs()' }
+    )) {
+        if ($structuralText -notmatch [regex]::Escape($sharedProviderCheck.marker) -or
+            $structuralText -notmatch [regex]::Escape($sharedProviderCheck.helper) -or
+            $structuralText -notmatch [regex]::Escape($sharedProviderCheck.fallback)) {
+            throw "Expanded shared-provider substitution is incomplete: $($sharedProviderCheck.marker)"
+        }
+    }
+    if ($structuralText -notmatch [regex]::Escape('Game.GetTotallyNewSharedThing()')) {
+        throw 'Unknown arbitrary getter was incorrectly rewritten.'
+    }
+
     $discoveryText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDiscoveryAuthorRate/init.lua'
     if ($discoveryText -notmatch '__gcetRegisterEvent_126\s*\(\s*"onUpdate"') {
         throw 'Discovery fixture lost safe frame-dispatch consolidation.'
@@ -1472,7 +1504,7 @@ try {
     if (!$manifest.fixedRuntime.included -or !$manifest.fixedRuntime.exception) {
         throw 'Generated pass did not mark 0-Engine as the fixed runtime exception.'
     }
-    if ($manifest.fixedRuntime.FixedVersion -ne '0.18.12-SHARED-SYSTEM-HANDLES') {
+    if ($manifest.fixedRuntime.FixedVersion -ne '0.18.13-EXPANDED-SHARED-PROVIDERS') {
         throw "Unexpected fixed 0-Engine version: $($manifest.fixedRuntime.FixedVersion)"
     }
 
@@ -1488,7 +1520,17 @@ try {
         'function Engine.GetTargetingSystem',
         'function Engine.GetTransactionSystem',
         'function Engine.GetScriptableSystemsContainer',
-        '-- G-CET shared system handles v1',
+        'function Engine.GetAllBlackboardDefs',
+        'function Engine.GetWorkspotSystem',
+        'function Engine.GetNavigationSystem',
+        'function Engine.GetTeleportationFacility',
+        'function Engine.GetSystemRequestsHandler',
+        'function Engine.GetVehicleSystem',
+        'function Engine.GetAudioSystem',
+        'function Engine.GetUISystem',
+        'function Engine.GetStatPoolsSystem',
+        'function Engine.GetJournalManager',
+        '-- G-CET shared providers v2',
         'ActionRouter.Dispatch'
     )) {
         if ($zeroText -notmatch [regex]::Escape($requiredRuntimeSymbol)) {
