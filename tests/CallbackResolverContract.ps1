@@ -255,9 +255,11 @@ registerForEvent("onUpdate", function(delta)
     local playerA = Game.GetPlayer()
     local playerB = Game.GetPlayer()
     local timeSystem = Game.GetTimeSystem()
+    local navigationSystem = Game.GetNavigationSystem()
+    local allBlackboardDefs = Game.GetAllBlackboardDefs()
     local nameA = CName.new("StructuralFixture")
     local nameB = CName.new("StructuralFixture")
-    DoStructuralWork(playerA, playerB, timeSystem, nameA, nameB, delta)
+    DoStructuralWork(playerA, playerB, timeSystem, navigationSystem, allBlackboardDefs, nameA, nameB, delta)
 end)
 '@
 
@@ -455,7 +457,7 @@ $handoff = @{
         (CallbackRow 130 'FixtureOverrideStructural' 'Override' 'PlayerPuppet::OnAction' 500 16.0 4.0 'init.lua' 1 8),
         (CallbackRow 131 'FixtureOverridePrefilter' 'Override' 'PlayerPuppet::OnAction' 1400 15.0 4.4 'init.lua' 21 25),
         (CallbackRow 111 'FixtureDownstream' 'observe' 'PlayerPuppet::OnAction' 490 5.8 7.5 'init.lua' 1 10),
-        (CallbackRow 120 'FixtureStructural' 'event' 'onUpdate' 60 9.0 2.0 'init.lua' 1 9),
+        (CallbackRow 120 'FixtureStructural' 'event' 'onUpdate' 60 9.0 2.0 'init.lua' 1 10),
         (CallbackRow 126 'FixtureDiscoveryAuthorRate' 'event' 'onUpdate' 60 13.0 3.2 'init.lua' 6 18),
         (CallbackRow 125 'FixtureDormantOnUpdate' 'event' 'onUpdate' 60 12.0 3.0 'init.lua' 5 9),
         (CallbackRow 121 'FixtureDormantHard' 'observe' 'PlayerPuppet::FixtureTick' 60 6.0 1.2 'init.lua' 5 8),
@@ -503,6 +505,20 @@ $handoff = @{
                         sampledCalls = 24
                         repeatedInSampleCount = 0
                         multiCallsiteSampleCount = 0
+                    }
+                    @{
+                        functionName = 'GetNavigationSystem'
+                        childFunctionKey = 'fixture|GetNavigationSystem|120'
+                        sampledCalls = 19
+                        repeatedInSampleCount = 3
+                        multiCallsiteSampleCount = 2
+                    }
+                    @{
+                        functionName = 'GetAllBlackboardDefs'
+                        childFunctionKey = 'fixture|GetAllBlackboardDefs|120'
+                        sampledCalls = 13
+                        repeatedInSampleCount = 1
+                        multiCallsiteSampleCount = 1
                     }
                 )
             }
@@ -698,6 +714,39 @@ if ([int]$timeProvider.deepObservedCallbackCount -lt 1 -or
 }
 if (!$timeProvider.generationEnabled -or $timeProvider.generationRecipe -ne 'SHARED_PROVIDER_READ') {
     throw 'TIME_SYSTEM was not promoted to source-proven shared-provider generation.'
+}
+
+$navigationProvider = @($result.sharedProviderOpportunities | Where-Object { $_.provider -eq 'NAVIGATION_SYSTEM' }) |
+    Select-Object -First 1
+if ($null -eq $navigationProvider) {
+    throw 'Arbitrary GetNavigationSystem discovery candidate was not surfaced.'
+}
+if ([int]$navigationProvider.sourceRecognizedOccurrences -ne 1 -or
+    [int]$navigationProvider.sourceUnresolvedOccurrences -ne 0 -or
+    [int]$navigationProvider.deepSampledCalls -ne 19) {
+    throw 'NAVIGATION_SYSTEM did not preserve exact source/deep discovery evidence.'
+}
+if (!$navigationProvider.analysisOnly -or $navigationProvider.generationEnabled) {
+    throw 'Newly discovered NAVIGATION_SYSTEM was incorrectly promoted to generation.'
+}
+if ($navigationProvider.category -ne 'SYSTEM_HANDLE_CANDIDATE') {
+    throw "Unexpected NAVIGATION_SYSTEM category: $($navigationProvider.category)"
+}
+
+$blackboardDefsProvider = @($result.sharedProviderOpportunities | Where-Object { $_.provider -eq 'ALL_BLACKBOARD_DEFS' }) |
+    Select-Object -First 1
+if ($null -eq $blackboardDefsProvider) {
+    throw 'GetAllBlackboardDefs discovery candidate was not surfaced.'
+}
+if ([int]$blackboardDefsProvider.sourceRecognizedOccurrences -ne 1 -or
+    [int]$blackboardDefsProvider.deepSampledCalls -ne 13) {
+    throw 'ALL_BLACKBOARD_DEFS did not preserve exact source/deep discovery evidence.'
+}
+if (!$blackboardDefsProvider.analysisOnly -or $blackboardDefsProvider.generationEnabled) {
+    throw 'ALL_BLACKBOARD_DEFS was incorrectly promoted to generation.'
+}
+if ($blackboardDefsProvider.category -ne 'LOOKUP_RESULT_CANDIDATE') {
+    throw "Unexpected ALL_BLACKBOARD_DEFS category: $($blackboardDefsProvider.category)"
 }
 
 $positionProvider = @($result.sharedProviderOpportunities | Where-Object { $_.provider -eq 'PLAYER_POSITION' }) |
