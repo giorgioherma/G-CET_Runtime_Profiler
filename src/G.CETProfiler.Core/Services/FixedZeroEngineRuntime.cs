@@ -27,7 +27,7 @@ internal sealed record FixedZeroEngineBuild(
 internal static class FixedZeroEngineRuntime
 {
     internal const string BaseVersion = "0.18.6";
-    internal const string FixedVersion = "0.18.12-SHARED-SYSTEM-HANDLES";
+    internal const string FixedVersion = "0.18.13-EXPANDED-SHARED-PROVIDERS";
 
     internal const string BaseInitSha256 =
         "c2113cabc10b7f270f7be5542cfa9a8fcc87734913c0f17510eddd1037bca46f";
@@ -39,8 +39,11 @@ internal static class FixedZeroEngineRuntime
     internal const string LegacyFixedInitSha256 =
         "a0e6480c9404e968e30e573a36fd92b5a87310ba91bfac305a80aad04938e2ef";
 
+    internal const string PreviousSharedInitSha256 =
+        "8e746ff2e4959b17e1c7616a3e5fa05381913b8d8df0095f3ef6aca46a035c1d";
+
     private const string SharedSystemMarker =
-        "-- G-CET shared system handles v1";
+        "-- G-CET shared providers v2";
 
     private static readonly IReadOnlyDictionary<string, string> FixedModuleHashes =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
@@ -93,16 +96,19 @@ internal static class FixedZeroEngineRuntime
                 ? "BASE_0.18.6"
                 : liveHash.Equals(LegacyFixedInitSha256, StringComparison.OrdinalIgnoreCase)
                     ? "LEGACY_FIXED"
-                    : liveHash.Equals(sharedInitHash, StringComparison.OrdinalIgnoreCase)
-                        ? "ALREADY_FIXED"
-                        : "UNSUPPORTED";
+                    : liveHash.Equals(PreviousSharedInitSha256, StringComparison.OrdinalIgnoreCase)
+                        ? "PREVIOUS_SHARED_FIXED"
+                        : liveHash.Equals(sharedInitHash, StringComparison.OrdinalIgnoreCase)
+                            ? "ALREADY_FIXED"
+                            : "UNSUPPORTED";
 
         if (liveState == "UNSUPPORTED")
         {
             throw new InvalidOperationException(
-                "The installed 0-Engine init.lua is not the supported base, prior fixed runtime, or current shared-state runtime. " +
+                "The installed 0-Engine init.lua is not the supported base or a recognized G-CET fixed runtime. " +
                 $"Supported base: {BaseVersion} ({BaseInitSha256}). " +
                 $"Prior fixed runtime: {LegacyFixedInitSha256}. " +
+                $"Previous shared-state runtime: {PreviousSharedInitSha256}. " +
                 $"Current fixed runtime: {FixedVersion} ({sharedInitHash}). " +
                 $"Installed SHA256: {liveHash}. " +
                 "G-CET will not overwrite an unknown 0-Engine revision.");
@@ -163,87 +169,59 @@ internal static class FixedZeroEngineRuntime
         }
 
         var newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
-        var block = string.Join(
-            newline,
-            new[]
-            {
-                "",
-                SharedSystemMarker,
-                "local __gcetSharedSystemHandles = {}",
-                "local __gcetSharedSystemEpoch = nil",
-                "local __gcetSharedSystemGetters = {",
-                "    QUESTS_SYSTEM = function() return Game.GetQuestsSystem() end,",
-                "    STATS_SYSTEM = function() return Game.GetStatsSystem() end,",
-                "    TRANSACTION_SYSTEM = function() return Game.GetTransactionSystem() end,",
-                "    BLACKBOARD_SYSTEM = function() return Game.GetBlackboardSystem() end,",
-                "    TARGETING_SYSTEM = function() return Game.GetTargetingSystem() end,",
-                "    CAMERA_SYSTEM = function() return Game.GetCameraSystem() end,",
-                "    TIME_SYSTEM = function() return Game.GetTimeSystem() end,",
-                "    PREVENTION_SYSTEM = function() return Game.GetPreventionSystem() end,",
-                "    SCRIPTABLE_SYSTEMS_CONTAINER = function() return Game.GetScriptableSystemsContainer() end",
-                "}",
-                "",
-                "local function __gcetSyncSharedSystemEpoch()",
-                "    local player = GetPlayer()",
-                "    if __gcetSharedSystemEpoch ~= player then",
-                "        __gcetSharedSystemEpoch = player",
-                "        __gcetSharedSystemHandles = {}",
-                "    end",
-                "end",
-                "",
-                "local function __gcetGetSharedSystemHandle(key)",
-                "    __gcetSyncSharedSystemEpoch()",
-                "    local handle = __gcetSharedSystemHandles[key]",
-                "    if handle == nil then",
-                "        local getter = __gcetSharedSystemGetters[key]",
-                "        if getter ~= nil then",
-                "            handle = getter()",
-                "            if handle ~= nil then",
-                "                __gcetSharedSystemHandles[key] = handle",
-                "            end",
-                "        end",
-                "    end",
-                "    return handle",
-                "end",
-                "",
-                "function Engine.GetQuestsSystem()",
-                "    return __gcetGetSharedSystemHandle(\"QUESTS_SYSTEM\")",
-                "end",
-                "",
-                "function Engine.GetStatsSystem()",
-                "    return __gcetGetSharedSystemHandle(\"STATS_SYSTEM\")",
-                "end",
-                "",
-                "function Engine.GetTransactionSystem()",
-                "    return __gcetGetSharedSystemHandle(\"TRANSACTION_SYSTEM\")",
-                "end",
-                "",
-                "function Engine.GetBlackboardSystem()",
-                "    return __gcetGetSharedSystemHandle(\"BLACKBOARD_SYSTEM\")",
-                "end",
-                "",
-                "function Engine.GetTargetingSystem()",
-                "    return __gcetGetSharedSystemHandle(\"TARGETING_SYSTEM\")",
-                "end",
-                "",
-                "function Engine.GetCameraSystem()",
-                "    return __gcetGetSharedSystemHandle(\"CAMERA_SYSTEM\")",
-                "end",
-                "",
-                "function Engine.GetTimeSystem()",
-                "    return __gcetGetSharedSystemHandle(\"TIME_SYSTEM\")",
-                "end",
-                "",
-                "function Engine.GetPreventionSystem()",
-                "    return __gcetGetSharedSystemHandle(\"PREVENTION_SYSTEM\")",
-                "end",
-                "",
-                "function Engine.GetScriptableSystemsContainer()",
-                "    return __gcetGetSharedSystemHandle(\"SCRIPTABLE_SYSTEMS_CONTAINER\")",
-                "end",
-                ""
-            });
+        var lines = new List<string>
+        {
+            "",
+            SharedSystemMarker,
+            "local __gcetSharedProviderValues = {}",
+            "local __gcetSharedProviderEpoch = nil",
+            "local __gcetSharedProviderGetters = {"
+        };
 
+        foreach (var provider in SharedProviderCatalog.RuntimeProviders)
+        {
+            lines.Add(
+                $"    {provider.Provider} = function() return Game.{provider.Getter}() end,");
+        }
+
+        lines.AddRange(
+        [
+            "}",
+            "",
+            "local function __gcetSyncSharedProviderEpoch()",
+            "    local player = GetPlayer()",
+            "    if __gcetSharedProviderEpoch ~= player then",
+            "        __gcetSharedProviderEpoch = player",
+            "        __gcetSharedProviderValues = {}",
+            "    end",
+            "end",
+            "",
+            "local function __gcetGetSharedProvider(key)",
+            "    __gcetSyncSharedProviderEpoch()",
+            "    local value = __gcetSharedProviderValues[key]",
+            "    if value == nil then",
+            "        local getter = __gcetSharedProviderGetters[key]",
+            "        if getter ~= nil then",
+            "            value = getter()",
+            "            if value ~= nil then",
+            "                __gcetSharedProviderValues[key] = value",
+            "            end",
+            "        end",
+            "    end",
+            "    return value",
+            "end",
+            ""
+        ]);
+
+        foreach (var provider in SharedProviderCatalog.RuntimeProviders)
+        {
+            lines.Add($"function Engine.{provider.Getter}()");
+            lines.Add($"    return __gcetGetSharedProvider(\"{provider.Provider}\")");
+            lines.Add("end");
+            lines.Add("");
+        }
+
+        var block = string.Join(newline, lines);
         var insertAt = playerAccessor.Index + playerAccessor.Length;
         var augmented = text.Insert(insertAt, block);
         return Encoding.UTF8.GetBytes(augmented);
