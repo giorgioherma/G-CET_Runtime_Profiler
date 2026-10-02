@@ -339,6 +339,7 @@ internal static class CallbackResolverService
                     .ToArray(),
                 sharedProviderScope = "MEASURED_CALLBACKS_ONLY",
                 sharedProviderDeepEvidence = "UNTRUNCATED_KNOWN_PROVIDER_CALLEES_WITH_LEGACY_HOTCALLEES_FALLBACK",
+                sharedProviderDiscovery = "ALL_GET_STAR_SYSTEM_PLUS_EXPLICIT_SPECIALS; DEEP_ONLY_EVIDENCE_IS_ANALYSIS_ONLY_UNTIL_CURRENT_SOURCE_IS_PROVEN",
                 note = "Generic AUTO is restricted to mechanically source-proven action routing, exact Override prefiltering, frame-dispatch consolidation, and explicitly enabled shared-provider reads with exact current-source proof. Dynamic player-derived state remains analysis-only. Identity-specific automatic behavior lives exclusively in the source-proven semantic library. Shared-provider opportunity totals describe measured callback territory, not estimated savings. Shared-provider deep evidence is aggregated across the measured stack without a per-callback hot-callee top-N gate. Already-satisfied generated states are not re-applied."
             },
             cadence = new
@@ -429,6 +430,7 @@ internal static class CallbackResolverService
                     sourceRecognizedOccurrences = cb.SourceRecognizedOccurrences,
                     sourceUnresolvedOccurrences = cb.SourceUnresolvedOccurrences,
                     sourceCallsites = cb.SourceCallsites,
+                    deepOnly = cb.DeepObserved && cb.SourceOccurrences == 0,
                     deepObserved = cb.DeepObserved,
                     deepSampledCalls = cb.DeepSampledCalls,
                     deepRepeatedSameInvocationCount = cb.DeepRepeatedSameInvocationCount,
@@ -568,18 +570,19 @@ internal static class CallbackResolverService
 
         foreach (var callback in callbacks)
         {
-            var source = sourceIndex.Resolve(callback);
-            if (source is null)
-                continue;
-
-            var matches = DetectSharedProviderSourceMatches(source);
-            if (matches.Count == 0)
-                continue;
-
             var callbackDeep = callback.RegistrationId is long registrationId &&
                                deepEvidence.TryGetValue(registrationId, out var foundDeep)
                 ? foundDeep
                 : SharedProviderDeepCallbackEvidence.Empty;
+
+            var source = sourceIndex.Resolve(callback);
+            var matches = source is null
+                ? new List<SharedProviderSourceMatch>()
+                : DetectSharedProviderSourceMatches(source);
+
+            var sourceProviders = matches
+                .Select(x => x.Provider)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             foreach (var providerGroup in matches
                          .GroupBy(x => x.Provider, StringComparer.OrdinalIgnoreCase))
@@ -604,10 +607,10 @@ internal static class CallbackResolverService
                     Owner = callback.Owner,
                     Kind = callback.Kind,
                     Target = callback.Target,
-                    SourceFile = source.RelativeFile,
-                    SourceSha256 = source.Sha256,
-                    LineStart = source.LineStart,
-                    LineEnd = source.LineEnd,
+                    SourceFile = source?.RelativeFile ?? "",
+                    SourceSha256 = source?.Sha256 ?? "",
+                    LineStart = source?.LineStart,
+                    LineEnd = source?.LineEnd,
                     SourceOccurrences = providerMatches.Length,
                     SourceRecognizedOccurrences = recognized,
                     SourceUnresolvedOccurrences = unresolved,
@@ -625,6 +628,47 @@ internal static class CallbackResolverService
                         deepForProvider?.RepeatedSameInvocationCount ?? 0,
                     DeepMultiCallsiteSampleCount =
                         deepForProvider?.MultiCallsiteSampleCount ?? 0,
+                    CallsPerSecond = callback.CallsPerSecond,
+                    ExclusiveMsPerSecond = callback.ExclusiveMsPerSecond,
+                    SpikeCount = callback.SpikeCount,
+                    MaxSpikeExclusiveMs = callback.MaxSpikeExclusiveMs
+                });
+            }
+
+            // Discovery must not lose a provider just because the measured
+            // callback reaches it through an owned helper outside the callback
+            // block. Preserve that deep evidence as analysis-only territory;
+            // without exact source proof it can never become substitutionEligible.
+            foreach (var deepPair in callbackDeep.ByProvider)
+            {
+                if (sourceProviders.Contains(deepPair.Key))
+                    continue;
+
+                if (!byProvider.TryGetValue(deepPair.Key, out var rows))
+                {
+                    rows = [];
+                    byProvider[deepPair.Key] = rows;
+                }
+
+                rows.Add(new SharedProviderCallbackEvidence
+                {
+                    RegistrationId = callback.RegistrationId,
+                    Owner = callback.Owner,
+                    Kind = callback.Kind,
+                    Target = callback.Target,
+                    SourceFile = source?.RelativeFile ?? "",
+                    SourceSha256 = source?.Sha256 ?? "",
+                    LineStart = source?.LineStart,
+                    LineEnd = source?.LineEnd,
+                    SourceOccurrences = 0,
+                    SourceRecognizedOccurrences = 0,
+                    SourceUnresolvedOccurrences = 0,
+                    DeepObserved = true,
+                    DeepSampledCalls = deepPair.Value.SampledCalls,
+                    DeepRepeatedSameInvocationCount =
+                        deepPair.Value.RepeatedSameInvocationCount,
+                    DeepMultiCallsiteSampleCount =
+                        deepPair.Value.MultiCallsiteSampleCount,
                     CallsPerSecond = callback.CallsPerSecond,
                     ExclusiveMsPerSecond = callback.ExclusiveMsPerSecond,
                     SpikeCount = callback.SpikeCount,
