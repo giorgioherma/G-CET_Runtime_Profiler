@@ -31,20 +31,24 @@ internal static class CallbackResolverService
     private const double AuthorCadenceMinGlobalPaybackPct = 0.05;
     private const double MaterialRemainingMsPerSecond = 3.0;
 
+    private static readonly IReadOnlyDictionary<string, string> SharedProviderAuthorizedGetters =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["PLAYER"] = "GetPlayer",
+            ["QUESTS_SYSTEM"] = "GetQuestsSystem",
+            ["STATS_SYSTEM"] = "GetStatsSystem",
+            ["TRANSACTION_SYSTEM"] = "GetTransactionSystem",
+            ["BLACKBOARD_SYSTEM"] = "GetBlackboardSystem",
+            ["TARGETING_SYSTEM"] = "GetTargetingSystem",
+            ["CAMERA_SYSTEM"] = "GetCameraSystem",
+            ["TIME_SYSTEM"] = "GetTimeSystem",
+            ["PREVENTION_SYSTEM"] = "GetPreventionSystem",
+            ["SCRIPTABLE_SYSTEMS_CONTAINER"] = "GetScriptableSystemsContainer"
+        };
+
     private static readonly HashSet<string> SharedProviderGenerationFamilies = new(
-        StringComparer.OrdinalIgnoreCase)
-    {
-        "PLAYER",
-        "QUESTS_SYSTEM",
-        "STATS_SYSTEM",
-        "TRANSACTION_SYSTEM",
-        "BLACKBOARD_SYSTEM",
-        "TARGETING_SYSTEM",
-        "CAMERA_SYSTEM",
-        "TIME_SYSTEM",
-        "PREVENTION_SYSTEM",
-        "SCRIPTABLE_SYSTEMS_CONTAINER"
-    };
+        SharedProviderAuthorizedGetters.Keys,
+        StringComparer.OrdinalIgnoreCase);
 
     private static readonly Regex NormalizeNonAlphaNumeric = new(
         @"[^a-z0-9]+",
@@ -338,7 +342,7 @@ internal static class CallbackResolverService
                     .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
                     .ToArray(),
                 sharedProviderScope = "MEASURED_CALLBACKS_ONLY",
-                sharedProviderDeepEvidence = "UNTRUNCATED_KNOWN_PROVIDER_CALLEES_WITH_LEGACY_HOTCALLEES_FALLBACK",
+                sharedProviderDeepEvidence = "UNTRUNCATED_GETTER_CALLEES_WITH_LEGACY_HOTCALLEES_FALLBACK",
                 sharedProviderDiscovery = "ALL_ZERO_ARG_GAME_GETTERS_PLUS_ALL_DEEP_GETTER_CALLEES; DEEP_ONLY_EVIDENCE_IS_ANALYSIS_ONLY_UNTIL_CURRENT_SOURCE_IS_PROVEN",
                 note = "Generic AUTO is restricted to mechanically source-proven action routing, exact Override prefiltering, frame-dispatch consolidation, and explicitly enabled shared-provider reads with exact current-source proof. Dynamic player-derived state remains analysis-only. Identity-specific automatic behavior lives exclusively in the source-proven semantic library. Shared-provider opportunity totals describe measured callback territory, not estimated savings. Shared-provider deep evidence is aggregated across the measured stack without a per-callback hot-callee top-N gate. Already-satisfied generated states are not re-applied."
             },
@@ -411,9 +415,7 @@ internal static class CallbackResolverService
                     : null,
                 providerApi = SharedProviderGenerationFamilies.Contains(x.Provider) &&
                     x.Callbacks.Any(IsSharedProviderSubstitutionEligible)
-                    ? "0-Engine." + SharedProviderDefinitions
-                        .First(d => d.Provider.Equals(x.Provider, StringComparison.OrdinalIgnoreCase))
-                        .DeepFunctionNames.First()
+                    ? "0-Engine." + SharedProviderAuthorizedGetters[x.Provider]
                     : null,
                 metricMeaning = "Affected callback work is the measured workload of callbacks containing this provider candidate; it is not an estimate of provider savings and provider totals are not additive.",
                 owners = x.Owners,
@@ -482,73 +484,10 @@ internal static class CallbackResolverService
         @"\b(?<getter>Get[A-Za-z0-9_]+)\b",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    private static readonly SharedProviderDefinition[] SharedProviderDefinitions =
+    // Additive semantic recognizers for player-derived state that is not a
+    // direct Game.Get...() call. These do not gate ordinary getter discovery.
+    private static readonly SharedProviderDefinition[] PlayerDerivedProviderDefinitions =
     [
-        SharedProviderDefinition.Direct(
-            "PLAYER",
-            "ENTITY_REFERENCE",
-            @"\bGame\s*\.\s*GetPlayer\s*\(\s*\)",
-            "GetPlayer"),
-        SharedProviderDefinition.Direct(
-            "QUESTS_SYSTEM",
-            "SYSTEM_HANDLE",
-            @"\bGame\s*\.\s*GetQuestsSystem\s*\(\s*\)",
-            "GetQuestsSystem"),
-        SharedProviderDefinition.Direct(
-            "STATS_SYSTEM",
-            "SYSTEM_HANDLE",
-            @"\bGame\s*\.\s*GetStatsSystem\s*\(\s*\)",
-            "GetStatsSystem"),
-        SharedProviderDefinition.Direct(
-            "TRANSACTION_SYSTEM",
-            "SYSTEM_HANDLE",
-            @"\bGame\s*\.\s*GetTransactionSystem\s*\(\s*\)",
-            "GetTransactionSystem"),
-        SharedProviderDefinition.Direct(
-            "BLACKBOARD_SYSTEM",
-            "SYSTEM_HANDLE",
-            @"\bGame\s*\.\s*GetBlackboardSystem\s*\(\s*\)",
-            "GetBlackboardSystem"),
-        SharedProviderDefinition.Direct(
-            "TARGETING_SYSTEM",
-            "SYSTEM_HANDLE",
-            @"\bGame\s*\.\s*GetTargetingSystem\s*\(\s*\)",
-            "GetTargetingSystem"),
-        SharedProviderDefinition.Direct(
-            "CAMERA_SYSTEM",
-            "SYSTEM_HANDLE",
-            @"\bGame\s*\.\s*GetCameraSystem\s*\(\s*\)",
-            "GetCameraSystem"),
-        SharedProviderDefinition.Direct(
-            "TIME_SYSTEM",
-            "SYSTEM_HANDLE",
-            @"\bGame\s*\.\s*GetTimeSystem\s*\(\s*\)",
-            "GetTimeSystem"),
-        SharedProviderDefinition.Direct(
-            "PREVENTION_SYSTEM",
-            "SYSTEM_HANDLE",
-            @"\bGame\s*\.\s*GetPreventionSystem\s*\(\s*\)",
-            "GetPreventionSystem"),
-        SharedProviderDefinition.Direct(
-            "SCRIPTABLE_SYSTEMS_CONTAINER",
-            "SYSTEM_HANDLE",
-            @"\bGame\s*\.\s*GetScriptableSystemsContainer\s*\(\s*\)",
-            "GetScriptableSystemsContainer"),
-        SharedProviderDefinition.Direct(
-            "ALL_BLACKBOARD_DEFS",
-            "LOOKUP_RESULT_CANDIDATE",
-            @"\bGame\s*\.\s*GetAllBlackboardDefs\s*\(\s*\)",
-            "GetAllBlackboardDefs"),
-        SharedProviderDefinition.Direct(
-            "SYSTEM_REQUESTS_HANDLER",
-            "SYSTEM_HANDLE_CANDIDATE",
-            @"\bGame\s*\.\s*GetSystemRequestsHandler\s*\(\s*\)",
-            "GetSystemRequestsHandler"),
-        SharedProviderDefinition.Direct(
-            "TELEPORTATION_FACILITY",
-            "SYSTEM_HANDLE_CANDIDATE",
-            @"\bGame\s*\.\s*GetTeleportationFacility\s*\(\s*\)",
-            "GetTeleportationFacility"),
         SharedProviderDefinition.PlayerDerived(
             "PLAYER_POSITION",
             "DYNAMIC_STATE",
@@ -738,7 +677,7 @@ internal static class CallbackResolverService
         var result = new List<SharedProviderSourceMatch>();
         var text = source.CallbackText;
 
-        foreach (var definition in SharedProviderDefinitions)
+        foreach (var definition in PlayerDerivedProviderDefinitions)
         {
             if (!definition.RequiresPlayerReceiver)
             {
@@ -789,11 +728,6 @@ internal static class CallbackResolverService
         {
             var getter = match.Groups["getter"].Value;
             var provider = SharedProviderKeyForGameGetter(getter);
-
-            // Explicit definitions already emitted this exact family above.
-            if (SharedProviderDefinitions.Any(x =>
-                    x.Provider.Equals(provider, StringComparison.OrdinalIgnoreCase)))
-                continue;
 
             result.Add(new SharedProviderSourceMatch
             {
@@ -895,7 +829,7 @@ internal static class CallbackResolverService
         string functionName,
         string functionKey)
     {
-        foreach (var definition in SharedProviderDefinitions)
+        foreach (var definition in PlayerDerivedProviderDefinitions)
         {
             if (definition.DeepFunctionNames.Any(name =>
                     name.Equals(functionName, StringComparison.OrdinalIgnoreCase) ||
@@ -938,11 +872,10 @@ internal static class CallbackResolverService
 
     private static string SharedProviderKeyForGameGetter(string getter)
     {
-        var explicitDefinition = SharedProviderDefinitions.FirstOrDefault(x =>
-            x.DeepFunctionNames.Any(name =>
-                name.Equals(getter, StringComparison.OrdinalIgnoreCase)));
-        if (explicitDefinition is not null)
-            return explicitDefinition.Provider;
+        var authorized = SharedProviderAuthorizedGetters.FirstOrDefault(x =>
+            x.Value.Equals(getter, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(authorized.Key))
+            return authorized.Key;
 
         var stem = getter;
         if (stem.StartsWith("Get", StringComparison.OrdinalIgnoreCase))
@@ -970,11 +903,16 @@ internal static class CallbackResolverService
 
     private static string SharedProviderCategory(string provider)
     {
-        var explicitDefinition = SharedProviderDefinitions.FirstOrDefault(x =>
-            x.Provider.Equals(provider, StringComparison.OrdinalIgnoreCase));
+        if (provider.Equals("PLAYER", StringComparison.OrdinalIgnoreCase))
+            return "ENTITY_REFERENCE";
 
-        if (explicitDefinition is not null)
-            return explicitDefinition.Category;
+        if (SharedProviderGenerationFamilies.Contains(provider))
+            return "SYSTEM_HANDLE";
+
+        var derived = PlayerDerivedProviderDefinitions.FirstOrDefault(x =>
+            x.Provider.Equals(provider, StringComparison.OrdinalIgnoreCase));
+        if (derived is not null)
+            return derived.Category;
 
         return provider.EndsWith("_SYSTEM", StringComparison.OrdinalIgnoreCase)
             ? "SYSTEM_HANDLE_CANDIDATE"
@@ -4786,21 +4724,6 @@ internal static class CallbackResolverService
         public Regex SourceRegex { get; init; } = null!;
         public string[] DeepFunctionNames { get; init; } = Array.Empty<string>();
         public bool RequiresPlayerReceiver { get; init; }
-
-        public static SharedProviderDefinition Direct(
-            string provider,
-            string category,
-            string sourcePattern,
-            params string[] deepFunctionNames) => new()
-        {
-            Provider = provider,
-            Category = category,
-            SourceRegex = new Regex(
-                sourcePattern,
-                RegexOptions.Compiled | RegexOptions.CultureInvariant),
-            DeepFunctionNames = deepFunctionNames,
-            RequiresPlayerReceiver = false
-        };
 
         public static SharedProviderDefinition PlayerDerived(
             string provider,
