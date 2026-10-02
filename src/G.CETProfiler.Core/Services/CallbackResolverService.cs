@@ -468,6 +468,14 @@ internal static class CallbackResolverService
         cb.LineStart.GetValueOrDefault() > 0 &&
         cb.LineEnd.GetValueOrDefault() >= cb.LineStart.GetValueOrDefault();
 
+    private static readonly Regex GenericSharedSystemGetterSourceRegex = new(
+        @"\bGame\s*\.\s*(?<getter>Get[A-Za-z0-9_]+System)\s*\(\s*\)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex GenericSharedSystemGetterNameRegex = new(
+        @"\b(?<getter>Get[A-Za-z0-9_]+System)\b",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     private static readonly SharedProviderDefinition[] SharedProviderDefinitions =
     [
         SharedProviderDefinition.Direct(
@@ -520,6 +528,21 @@ internal static class CallbackResolverService
             "SYSTEM_HANDLE",
             @"\bGame\s*\.\s*GetScriptableSystemsContainer\s*\(\s*\)",
             "GetScriptableSystemsContainer"),
+        SharedProviderDefinition.Direct(
+            "ALL_BLACKBOARD_DEFS",
+            "LOOKUP_RESULT_CANDIDATE",
+            @"\bGame\s*\.\s*GetAllBlackboardDefs\s*\(\s*\)",
+            "GetAllBlackboardDefs"),
+        SharedProviderDefinition.Direct(
+            "SYSTEM_REQUESTS_HANDLER",
+            "SYSTEM_HANDLE_CANDIDATE",
+            @"\bGame\s*\.\s*GetSystemRequestsHandler\s*\(\s*\)",
+            "GetSystemRequestsHandler"),
+        SharedProviderDefinition.Direct(
+            "TELEPORTATION_FACILITY",
+            "SYSTEM_HANDLE_CANDIDATE",
+            @"\bGame\s*\.\s*GetTeleportationFacility\s*\(\s*\)",
+            "GetTeleportationFacility"),
         SharedProviderDefinition.PlayerDerived(
             "PLAYER_POSITION",
             "DYNAMIC_STATE",
@@ -561,19 +584,18 @@ internal static class CallbackResolverService
             foreach (var providerGroup in matches
                          .GroupBy(x => x.Provider, StringComparer.OrdinalIgnoreCase))
             {
-                var definition = SharedProviderDefinitions.First(x =>
-                    x.Provider.Equals(providerGroup.Key, StringComparison.OrdinalIgnoreCase));
+                var providerName = providerGroup.Key;
                 var providerMatches = providerGroup.ToArray();
                 var recognized = providerMatches.Count(x => x.SourceRecognized);
                 var unresolved = providerMatches.Length - recognized;
                 callbackDeep.ByProvider.TryGetValue(
-                    definition.Provider,
+                    providerName,
                     out var deepForProvider);
 
-                if (!byProvider.TryGetValue(definition.Provider, out var rows))
+                if (!byProvider.TryGetValue(providerName, out var rows))
                 {
                     rows = [];
-                    byProvider[definition.Provider] = rows;
+                    byProvider[providerName] = rows;
                 }
 
                 rows.Add(new SharedProviderCallbackEvidence
@@ -614,8 +636,6 @@ internal static class CallbackResolverService
         return byProvider
             .Select(pair =>
             {
-                var definition = SharedProviderDefinitions.First(x =>
-                    x.Provider.Equals(pair.Key, StringComparison.OrdinalIgnoreCase));
                 var rows = pair.Value
                     .OrderByDescending(x => x.ExclusiveMsPerSecond)
                     .ThenByDescending(x => x.CallsPerSecond)
@@ -623,8 +643,8 @@ internal static class CallbackResolverService
 
                 return new SharedProviderOpportunity
                 {
-                    Provider = definition.Provider,
-                    Category = definition.Category,
+                    Provider = pair.Key,
+                    Category = SharedProviderCategory(pair.Key),
                     MeasuredOwnerCount = rows
                         .Select(x => x.Owner)
                         .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -715,6 +735,25 @@ internal static class CallbackResolverService
                         : "RECEIVER_NOT_PROVEN_AS_CURRENT_PLAYER"
                 });
             }
+        }
+
+        foreach (Match match in GenericSharedSystemGetterSourceRegex.Matches(text))
+        {
+            var getter = match.Groups["getter"].Value;
+            var provider = SharedProviderKeyForSystemGetter(getter);
+
+            // Explicit definitions already emitted this exact family above.
+            if (SharedProviderDefinitions.Any(x =>
+                    x.Provider.Equals(provider, StringComparison.OrdinalIgnoreCase)))
+                continue;
+
+            result.Add(new SharedProviderSourceMatch
+            {
+                Provider = provider,
+                Line = SharedProviderLine(source, match.Index),
+                SourceRecognized = true,
+                Proof = "EXACT_DISCOVERED_SYSTEM_GETTER"
+            });
         }
 
         return result;
@@ -817,7 +856,66 @@ internal static class CallbackResolverService
                 return definition.Provider;
         }
 
+        if (TryFindSharedSystemGetter(functionName, functionKey, out var getter))
+            return SharedProviderKeyForSystemGetter(getter);
+
         return null;
+    }
+
+    private static bool TryFindSharedSystemGetter(
+        string functionName,
+        string functionKey,
+        out string getter)
+    {
+        var direct = GenericSharedSystemGetterNameRegex.Match(functionName ?? "");
+        if (direct.Success)
+        {
+            getter = direct.Groups["getter"].Value;
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(functionKey))
+        {
+            var keyed = GenericSharedSystemGetterNameRegex.Match(functionKey);
+            if (keyed.Success)
+            {
+                getter = keyed.Groups["getter"].Value;
+                return true;
+            }
+        }
+
+        getter = "";
+        return false;
+    }
+
+    private static string SharedProviderKeyForSystemGetter(string getter)
+    {
+        var stem = getter;
+        if (stem.StartsWith("Get", StringComparison.OrdinalIgnoreCase))
+            stem = stem[3..];
+        if (stem.EndsWith("System", StringComparison.OrdinalIgnoreCase))
+            stem = stem[..^6];
+
+        var acronymSplit = Regex.Replace(
+            stem,
+            @"([A-Z]+)([A-Z][a-z])",
+            "$1_$2",
+            RegexOptions.CultureInvariant);
+        var wordSplit = Regex.Replace(
+            acronymSplit,
+            @"([a-z0-9])([A-Z])",
+            "$1_$2",
+            RegexOptions.CultureInvariant);
+
+        return wordSplit.ToUpperInvariant() + "_SYSTEM";
+    }
+
+    private static string SharedProviderCategory(string provider)
+    {
+        var explicitDefinition = SharedProviderDefinitions.FirstOrDefault(x =>
+            x.Provider.Equals(provider, StringComparison.OrdinalIgnoreCase));
+
+        return explicitDefinition?.Category ?? "SYSTEM_HANDLE_CANDIDATE";
     }
 
     private static DormancyEvidence ResolveDormancyEvidence(
