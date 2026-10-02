@@ -31,25 +31,6 @@ internal static class CallbackResolverService
     private const double AuthorCadenceMinGlobalPaybackPct = 0.05;
     private const double MaterialRemainingMsPerSecond = 3.0;
 
-    private static readonly IReadOnlyDictionary<string, string> SharedProviderAuthorizedGetters =
-        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["PLAYER"] = "GetPlayer",
-            ["QUESTS_SYSTEM"] = "GetQuestsSystem",
-            ["STATS_SYSTEM"] = "GetStatsSystem",
-            ["TRANSACTION_SYSTEM"] = "GetTransactionSystem",
-            ["BLACKBOARD_SYSTEM"] = "GetBlackboardSystem",
-            ["TARGETING_SYSTEM"] = "GetTargetingSystem",
-            ["CAMERA_SYSTEM"] = "GetCameraSystem",
-            ["TIME_SYSTEM"] = "GetTimeSystem",
-            ["PREVENTION_SYSTEM"] = "GetPreventionSystem",
-            ["SCRIPTABLE_SYSTEMS_CONTAINER"] = "GetScriptableSystemsContainer"
-        };
-
-    private static readonly HashSet<string> SharedProviderGenerationFamilies = new(
-        SharedProviderAuthorizedGetters.Keys,
-        StringComparer.OrdinalIgnoreCase);
-
     private static readonly Regex NormalizeNonAlphaNumeric = new(
         @"[^a-z0-9]+",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -288,7 +269,7 @@ internal static class CallbackResolverService
             handoff.RootElement);
 
         var sharedProviderReadyOpportunities = sharedProviderOpportunities
-            .Where(x => SharedProviderGenerationFamilies.Contains(x.Provider))
+            .Where(x => SharedProviderCatalog.GenerationFamilies.Contains(x.Provider))
             .Select(x => new
             {
                 Opportunity = x,
@@ -338,7 +319,7 @@ internal static class CallbackResolverService
                 dormancyClasses = new[] { "NEVER_GATE", "HARD_DORMANT", "DISCOVERY_DORMANT", "BACKGROUND", "UNKNOWN" },
                 sharedProviderOpportunityAnalysis = true,
                 sharedProviderGenerationEnabled = true,
-                sharedProviderGenerationFamilies = SharedProviderGenerationFamilies
+                sharedProviderGenerationFamilies = SharedProviderCatalog.GenerationFamilies
                     .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
                     .ToArray(),
                 sharedProviderScope = "MEASURED_CALLBACKS_ONLY",
@@ -405,17 +386,17 @@ internal static class CallbackResolverService
                 affectedCallbackCallsPerSecond = Round(x.AffectedCallbackCallsPerSecond),
                 affectedSpikeCount = x.AffectedSpikeCount,
                 maxAffectedSpikeExclusiveMs = Round(x.MaxAffectedSpikeExclusiveMs),
-                analysisOnly = !(SharedProviderGenerationFamilies.Contains(x.Provider) &&
+                analysisOnly = !(SharedProviderCatalog.GenerationFamilies.Contains(x.Provider) &&
                     x.Callbacks.Any(IsSharedProviderSubstitutionEligible)),
-                generationEnabled = SharedProviderGenerationFamilies.Contains(x.Provider) &&
+                generationEnabled = SharedProviderCatalog.GenerationFamilies.Contains(x.Provider) &&
                     x.Callbacks.Any(IsSharedProviderSubstitutionEligible),
-                generationRecipe = SharedProviderGenerationFamilies.Contains(x.Provider) &&
+                generationRecipe = SharedProviderCatalog.GenerationFamilies.Contains(x.Provider) &&
                     x.Callbacks.Any(IsSharedProviderSubstitutionEligible)
                     ? "SHARED_PROVIDER_READ"
                     : null,
-                providerApi = SharedProviderGenerationFamilies.Contains(x.Provider) &&
+                providerApi = SharedProviderCatalog.GenerationFamilies.Contains(x.Provider) &&
                     x.Callbacks.Any(IsSharedProviderSubstitutionEligible)
-                    ? "0-Engine." + SharedProviderAuthorizedGetters[x.Provider]
+                    ? "0-Engine." + SharedProviderCatalog.ByProvider[x.Provider].Getter
                     : null,
                 metricMeaning = "Affected callback work is the measured workload of callbacks containing this provider candidate; it is not an estimate of provider savings and provider totals are not additive.",
                 owners = x.Owners,
@@ -430,7 +411,7 @@ internal static class CallbackResolverService
                     lineStart = cb.LineStart,
                     lineEnd = cb.LineEnd,
                     substitutionEligible =
-                        SharedProviderGenerationFamilies.Contains(x.Provider) &&
+                        SharedProviderCatalog.GenerationFamilies.Contains(x.Provider) &&
                         IsSharedProviderSubstitutionEligible(cb),
                     sourceOccurrences = cb.SourceOccurrences,
                     sourceRecognizedOccurrences = cb.SourceRecognizedOccurrences,
@@ -872,10 +853,8 @@ internal static class CallbackResolverService
 
     private static string SharedProviderKeyForGameGetter(string getter)
     {
-        var authorized = SharedProviderAuthorizedGetters.FirstOrDefault(x =>
-            x.Value.Equals(getter, StringComparison.OrdinalIgnoreCase));
-        if (!string.IsNullOrWhiteSpace(authorized.Key))
-            return authorized.Key;
+        if (SharedProviderCatalog.ByGetter.TryGetValue(getter, out var authorized))
+            return authorized.Provider;
 
         var stem = getter;
         if (stem.StartsWith("Get", StringComparison.OrdinalIgnoreCase))
@@ -903,11 +882,8 @@ internal static class CallbackResolverService
 
     private static string SharedProviderCategory(string provider)
     {
-        if (provider.Equals("PLAYER", StringComparison.OrdinalIgnoreCase))
-            return "ENTITY_REFERENCE";
-
-        if (SharedProviderGenerationFamilies.Contains(provider))
-            return "SYSTEM_HANDLE";
+        if (SharedProviderCatalog.ByProvider.TryGetValue(provider, out var authorized))
+            return authorized.Category;
 
         var derived = PlayerDerivedProviderDefinitions.FirstOrDefault(x =>
             x.Provider.Equals(provider, StringComparison.OrdinalIgnoreCase));
