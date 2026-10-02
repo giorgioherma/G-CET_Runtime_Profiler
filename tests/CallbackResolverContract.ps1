@@ -763,7 +763,7 @@ if ([int]$blackboardDefsProvider.sourceRecognizedOccurrences -ne 1 -or
 if (!$blackboardDefsProvider.analysisOnly -or $blackboardDefsProvider.generationEnabled) {
     throw 'ALL_BLACKBOARD_DEFS was incorrectly promoted to generation.'
 }
-if ($blackboardDefsProvider.category -ne 'LOOKUP_RESULT_CANDIDATE') {
+if ($blackboardDefsProvider.category -ne 'GAME_GETTER_CANDIDATE') {
     throw "Unexpected ALL_BLACKBOARD_DEFS category: $($blackboardDefsProvider.category)"
 }
 
