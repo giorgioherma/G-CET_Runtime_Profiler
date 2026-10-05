@@ -409,6 +409,19 @@ $1
         return CETRuntimeProfiler::Get().Mark(aLabel);
     };
 
+    globals["CETProfilerRegionRegister"] =
+        [](const std::string& aOwner,
+           const std::string& aRegion) -> uint64_t {
+            return CETRuntimeProfiler::Get().RegisterRegion(aOwner, aRegion);
+        };
+    globals["CETProfilerRegionBegin"] = [](uint64_t aHandle) -> uint64_t {
+        return CETRuntimeProfiler::Get().RegionBegin(aHandle);
+    };
+    globals["CETProfilerRegionEnd"] =
+        [](uint64_t aHandle, uint64_t aStartTicksNs) {
+            CETRuntimeProfiler::Get().RegionEnd(aHandle, aStartTicksNs);
+        };
+
     globals["CETProfilerSchedulerRegisterJob"] =
         [](const std::string& aOwner,
            const std::string& aJobType,
@@ -749,6 +762,9 @@ foreach ($marker in @(
     "CETProfilerSetTimelineBucketMs",
     "CETProfilerGetTimelineBucketMs",
     "CETProfilerMark",
+    "CETProfilerRegionRegister",
+    "CETProfilerRegionBegin",
+    "CETProfilerRegionEnd",
     "CETProfilerSchedulerRegisterJob",
     "CETProfilerSchedulerFrameBegin",
     "CETProfilerSchedulerFrameEnd",
@@ -766,7 +782,7 @@ foreach ($marker in @(
 }
 
 Write-Host ""
-Write-Host "CET v1.37.1 FULL CALLBACK profiler v2.11.0 patch applied successfully." -ForegroundColor Green
+Write-Host "CET v1.37.1 FULL CALLBACK profiler v2.11.1 region-timer patch applied successfully." -ForegroundColor Green
 Write-Host "Validated source commit: $expectedHead"
 Write-Host "Coverage: events + Observe + ObserveAfter + Override" -ForegroundColor Green
 Write-Host "FunctionOverride::Context: VERIFIED UNCHANGED" -ForegroundColor Green
