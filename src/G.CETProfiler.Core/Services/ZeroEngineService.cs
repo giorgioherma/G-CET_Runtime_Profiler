@@ -90,9 +90,12 @@ internal sealed class ZeroEngineService
     public bool AddProfilerRegionAudit(string initPath)
     {
         var text = File.ReadAllText(initPath);
-        const string marker = "-- CET_RUNTIME_PROFILER_REGION_AUDIT_BEGIN v1";
+        const string marker = "-- CET_RUNTIME_PROFILER_REGION_AUDIT_BEGIN v2";
+        const string previousMarker = "-- CET_RUNTIME_PROFILER_REGION_AUDIT_BEGIN v1";
         if (text.Contains(marker, StringComparison.Ordinal))
             return true;
+        if (text.Contains(previousMarker, StringComparison.Ordinal))
+            return false;
 
         try
         {
@@ -107,7 +110,7 @@ internal sealed class ZeroEngineService
         }
 
         const string helper = """
--- CET_RUNTIME_PROFILER_REGION_AUDIT_BEGIN v1
+-- CET_RUNTIME_PROFILER_REGION_AUDIT_BEGIN v2
 -- Temporary low-overhead framework timing. Profiler Manager restores init.lua exactly.
 local __CETRP_RegionRegister = CETProfilerRegionRegister
 local __CETRP_RegionBeginNative = CETProfilerRegionBegin
@@ -137,7 +140,23 @@ local function __CETRP_EndRegion(token, name)
         end
     end
 end
--- CET_RUNTIME_PROFILER_REGION_AUDIT_END v1
+
+-- ACTION_ROUTER_DISPATCH includes client callback time. Wrap Health.Invoke only
+-- for routed action subscribers so parent-minus-child is router/framework cost.
+local __CETRP_HealthInvoke = Health and Health.Invoke
+if type(__CETRP_HealthInvoke) == "function" then
+    Health.Invoke = function(owner, kind, label, fn, frame, ...)
+        if kind ~= "action" then
+            return __CETRP_HealthInvoke(owner, kind, label, fn, frame, ...)
+        end
+
+        local token = __CETRP_BeginRegion("ACTION_SUBSCRIBER_EXECUTION")
+        local ok, result = __CETRP_HealthInvoke(owner, kind, label, fn, frame, ...)
+        __CETRP_EndRegion(token, "ACTION_SUBSCRIBER_EXECUTION")
+        return ok, result
+    end
+end
+-- CET_RUNTIME_PROFILER_REGION_AUDIT_END v2
 
 """;
 
@@ -153,6 +172,90 @@ end
         }
 
         text = text.Insert(engineAnchor.Index + engineAnchor.Length, Environment.NewLine + helper);
+
+        // UPDATE_STATE remains the authoritative parent. Child regions are
+        // non-overlapping so parent-minus-child residuals expose framework cost.
+        text = ReplaceExactlyOnce(
+            text,
+            "    local pcOk, pc = pcall(Game.GetPlayer)\n" +
+            "    if pcOk and pc then\n" +
+            "        pcall(BlackboardCache.Update, pc)\n" +
+            "        State.blackboard = BlackboardCache.Get()\n" +
+            "        State.inVehicle = State.blackboard.vehicle.isMounted or State.blackboard.psm.mountedToVehicle\n" +
+            "    end",
+            "    local __cetrpBlackboard = __CETRP_BeginRegion(\"STATE_BLACKBOARD\")\n" +
+            "    local pcOk, pc = pcall(Game.GetPlayer)\n" +
+            "    if pcOk and pc then\n" +
+            "        pcall(BlackboardCache.Update, pc)\n" +
+            "        State.blackboard = BlackboardCache.Get()\n" +
+            "        State.inVehicle = State.blackboard.vehicle.isMounted or State.blackboard.psm.mountedToVehicle\n" +
+            "    end\n" +
+            "    __CETRP_EndRegion(__cetrpBlackboard, \"STATE_BLACKBOARD\")",
+            "UpdateFrame blackboard");
+
+        text = ReplaceExactlyOnce(
+            text,
+            "    DrainReadyQueue()",
+            "    local __cetrpReady = __CETRP_BeginRegion(\"STATE_READY_DISPATCH\")\n" +
+            "    DrainReadyQueue()\n" +
+            "    __CETRP_EndRegion(__cetrpReady, \"STATE_READY_DISPATCH\")",
+            "UpdateFrame ready queue");
+
+        text = ReplaceExactlyOnce(
+            text,
+            "    local posOriOk, pos, orientation, yaw = pcall(function()\n" +
+            "        local p = player:GetWorldPosition()\n" +
+            "        local o = player:GetWorldOrientation()\n" +
+            "        return p, o, o:ToEulerAngles().yaw\n" +
+            "    end)",
+            "    local __cetrpTransform = __CETRP_BeginRegion(\"STATE_PLAYER_TRANSFORM\")\n" +
+            "    local posOriOk, pos, orientation, yaw = pcall(function()\n" +
+            "        local p = player:GetWorldPosition()\n" +
+            "        local o = player:GetWorldOrientation()\n" +
+            "        return p, o, o:ToEulerAngles().yaw\n" +
+            "    end)\n" +
+            "    __CETRP_EndRegion(__cetrpTransform, \"STATE_PLAYER_TRANSFORM\")",
+            "UpdateFrame player transform");
+
+        text = ReplaceExactlyOnce(
+            text,
+            "    local stateOk = pcall(DerivedState.Update, player)",
+            "    local __cetrpDerived = __CETRP_BeginRegion(\"STATE_DERIVED\")\n" +
+            "    local stateOk = pcall(DerivedState.Update, player)\n" +
+            "    __CETRP_EndRegion(__cetrpDerived, \"STATE_DERIVED\")",
+            "UpdateFrame derived state");
+
+        text = ReplaceExactlyOnce(
+            text,
+            "    Proximity.SetPlayerPos(pos)\n" +
+            "    pcall(Proximity.Update, currentFrame)\n\n" +
+            "    -- Spatial Hash\n" +
+            "    SpatialHash.SetPlayerPos(pos)\n" +
+            "    pcall(SpatialHash.Update, currentFrame)",
+            "    local __cetrpSpatial = __CETRP_BeginRegion(\"STATE_PROXIMITY_SPATIAL\")\n" +
+            "    Proximity.SetPlayerPos(pos)\n" +
+            "    pcall(Proximity.Update, currentFrame)\n\n" +
+            "    -- Spatial Hash\n" +
+            "    SpatialHash.SetPlayerPos(pos)\n" +
+            "    pcall(SpatialHash.Update, currentFrame)\n" +
+            "    __CETRP_EndRegion(__cetrpSpatial, \"STATE_PROXIMITY_SPATIAL\")",
+            "UpdateFrame proximity/spatial");
+
+        text = ReplaceExactlyOnce(
+            text,
+            "    for interval, emitter in pairs(frameEmitters) do\n" +
+            "        if currentFrame % interval == 0 then\n" +
+            "            emitter:trigger(currentFrame)\n" +
+            "        end\n" +
+            "    end",
+            "    local __cetrpFrameDispatch = __CETRP_BeginRegion(\"STATE_FRAME_DISPATCH\")\n" +
+            "    for interval, emitter in pairs(frameEmitters) do\n" +
+            "        if currentFrame % interval == 0 then\n" +
+            "            emitter:trigger(currentFrame)\n" +
+            "        end\n" +
+            "    end\n" +
+            "    __CETRP_EndRegion(__cetrpFrameDispatch, \"STATE_FRAME_DISPATCH\")",
+            "UpdateFrame frame dispatch");
 
         text = ReplaceExactlyOnce(
             text,
@@ -219,7 +322,14 @@ end
                      "SCHEDULER_TOTAL",
                      "ADOPTED_UPDATE_DISPATCH",
                      "ACTION_ROUTER_DISPATCH",
-                     "LEGACY_PLAYER_ACTION_DISPATCH"
+                     "ACTION_SUBSCRIBER_EXECUTION",
+                     "LEGACY_PLAYER_ACTION_DISPATCH",
+                     "STATE_BLACKBOARD",
+                     "STATE_READY_DISPATCH",
+                     "STATE_PLAYER_TRANSFORM",
+                     "STATE_DERIVED",
+                     "STATE_PROXIMITY_SPATIAL",
+                     "STATE_FRAME_DISPATCH"
                  })
         {
             if (!verify.Contains(required, StringComparison.Ordinal))
