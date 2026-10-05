@@ -547,7 +547,8 @@ Replace-RegexOnce `
     -Replacement @'
 $1
 CETRuntimeProfiler::Counter* ResolveProfilerCounter(
-    const FunctionOverride::Context* apContext)
+    const FunctionOverride::Context* apContext,
+    bool aAttachSource = true)
 {
     if (!apContext)
         return nullptr;
@@ -570,7 +571,7 @@ CETRuntimeProfiler::Counter* ResolveProfilerCounter(
 
     // Source discovery is also lazy. Registration stays native-only and safe;
     // the Lua function is inspected only on the first real callback execution.
-    if (counter && counter->SourceFile.empty())
+    if (aAttachSource && counter && counter->SourceFile.empty())
     {
         auto* state = apContext->ScriptFunction.lua_state();
         if (state && apContext->ScriptFunction != sol::nil)
@@ -661,32 +662,30 @@ $2
 
 # Override safety policy.
 #
-# Do not install a transparent RAII Scope around next()/wrappedMethod().
-# Overrides can intentionally/legitimately reach CET's luaL_error path, which
-# LuaJIT forwards through Windows SEH. Keeping profiler RAII objects alive across
-# that unwind is unsafe. Override callbacks remain registered, source-resolved,
-# deep-traced and timed; downstream native next() time is conservatively left in
-# their exclusive attribution. The resolver does not auto-patch generic Override
-# bodies, so stability is more important than downstream-exclusive correction.
+# Generic Override bodies are not auto-patched by the resolver. Keep the broad
+# data that remains useful (owner, registration target, calls, timing, spikes)
+# but do not run raw Lua source discovery or adaptive DeepTrace hooks on Override
+# callbacks. Those Lua-introspection layers are retained for Observe/ObserveAfter.
 #
-# Override ownership still resolves under CET's valid locked Lua execution path.
-# DeepTraceScope and Scope are confined to the protected ScriptFunction call so
-# both are destroyed before CET's invalid-result path can call luaL_error.
+# Also do not install a transparent RAII Scope around next()/wrappedMethod().
+# Downstream native next() time is therefore conservatively included in Override
+# exclusive attribution. The basic timing scope is still confined to the
+# protected ScriptFunction call and is destroyed before CET can call luaL_error.
 Replace-RegexOnce `
     -Path $foC `
     -Pattern '([ \t]*auto next = WrapNextOverride\(aChain, aStep \+ 1, aLuaState, aLuaContext, aLuaArgs, apRealFunction, apRealContext, aLock\);\s*\r?\n)([ \t]*auto result = aLuaContext == sol::nil \? call->ScriptFunction\(as_args\(aLuaArgs\), next\) : call->ScriptFunction\(aLuaContext, as_args\(aLuaArgs\), next\);)' `
     -Replacement @'
 $1            auto result = [&]() {
-                auto* profilerCounter = ResolveProfilerCounter(call);
-                CETRuntimeProfiler::DeepTraceScope deepTrace(
-                    profilerCounter, call->ScriptFunction.lua_state());
+                // Override-safe broad profiling: no raw source discovery and no
+                // adaptive Lua hook. Resolver does not rewrite generic Overrides.
+                auto* profilerCounter = ResolveProfilerCounter(call, false);
                 CETRuntimeProfiler::Scope profileScope(profilerCounter);
                 return aLuaContext == sol::nil
                     ? call->ScriptFunction(as_args(aLuaArgs), next)
                     : call->ScriptFunction(aLuaContext, as_args(aLuaArgs), next);
             }();
 '@ `
-    -Label "Override callback timing with error-safe scope lifetime"
+    -Label "Override-safe broad callback timing without source/deep tracing"
 
 # Hard safety checks.
 $foHHashAfter = (Get-FileHash -Algorithm SHA256 $foH).Hash
@@ -754,6 +753,7 @@ Write-Host "Callback ownership: lazy resolution during valid locked execution" -
 Write-Host "Callback identity/source: registration ID + Lua source line range + closure identity" -ForegroundColor Green
 Write-Host "Adaptive deep profiling: runtime hotset + sampled Lua call/return trees + callsites" -ForegroundColor Green
 Write-Host "Exact frame telemetry: per-callback multiplicity from Scripting::TriggerOnUpdate" -ForegroundColor Green
+Write-Host "Override profiling: broad owner/target/timing only; source/deep trace disabled" -ForegroundColor Yellow
 Write-Host "Override downstream next()/native time: conservatively included; no RAII downstream boundary" -ForegroundColor Yellow
 Write-Host "Capture control: Start / Pause / Resume / Stop / Reset / Dump / Status" -ForegroundColor Green
 Write-Host "CSV rates use captured time only (paused time excluded)" -ForegroundColor Green
