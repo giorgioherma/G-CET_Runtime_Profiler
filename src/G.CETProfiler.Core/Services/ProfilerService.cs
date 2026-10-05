@@ -574,7 +574,16 @@ public sealed class ProfilerService : IProfilerService
         if (initState.Kind == "integrated")
         {
             state.ZeroEngine.Mode = "integrated";
-            state.ZeroEngine.Init.Mode = "preexisting-compatible";
+
+            FileSystemService.CopyFileVerified(
+                paths.ZeroInit,
+                paths.BackupZeroInit,
+                state.ZeroEngine.Init.OriginalHash);
+
+            state.ZeroEngine.Init.Mode = "patched-regions";
+            SaveState(paths, state);
+
+            zeroEngine.AddProfilerRegionAudit(paths.ZeroInit);
             state.ZeroEngine.Init.InstalledHash = FileSystemService.Sha256(paths.ZeroInit);
             SaveState(paths, state);
 
@@ -612,6 +621,7 @@ public sealed class ProfilerService : IProfilerService
                 SaveState(paths, state);
 
                 zeroEngine.AddAdaptiveProfilerSchedulerBridge(paths.ZeroInit);
+                zeroEngine.AddProfilerRegionAudit(paths.ZeroInit);
                 state.ZeroEngine.Init.InstalledHash = FileSystemService.Sha256(paths.ZeroInit);
                 SaveState(paths, state);
             }
@@ -718,7 +728,7 @@ public sealed class ProfilerService : IProfilerService
         // legitimately change while the profiler is active; that must never trap
         // the user in a managed state. Only the integrity of the saved original
         // backup is a restore gate.
-        if (transaction.Mode is "replaced" or "patched-adaptive")
+        if (transaction.Mode is "replaced" or "patched-adaptive" or "patched-regions")
         {
             RequireFile(backupPath, missingBackupMessage);
             RequireHash(backupPath, transaction.OriginalHash, badBackupMessage);
@@ -768,7 +778,7 @@ public sealed class ProfilerService : IProfilerService
 
     private static void RestoreFile(string livePath, string backupPath, FileTransactionState transaction, string verifyMessage)
     {
-        if (transaction.Mode == "replaced" || transaction.Mode == "patched-adaptive")
+        if (transaction.Mode == "replaced" || transaction.Mode == "patched-adaptive" || transaction.Mode == "patched-regions")
         {
             FileSystemService.CopyFileVerified(backupPath, livePath, transaction.OriginalHash);
             RequireHash(livePath, transaction.OriginalHash, verifyMessage);
@@ -964,7 +974,7 @@ public sealed class ProfilerService : IProfilerService
         else if (state.ZeroEngine.Scheduler.Mode == "added")
             FileSystemService.DeleteFileIfExists(paths.ZeroScheduler);
 
-        if (state.ZeroEngine.Init.Mode == "patched-adaptive" && File.Exists(paths.BackupZeroInit))
+        if (state.ZeroEngine.Init.Mode is "patched-adaptive" or "patched-regions" && File.Exists(paths.BackupZeroInit))
             File.Copy(paths.BackupZeroInit, paths.ZeroInit, true);
 
         if (state.ZeroEngine.Mode == "bypassed" &&
