@@ -4,6 +4,14 @@ All notable public changes to G-CET Runtime Profiler are recorded here.
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-10-06
+
+### Stability
+
+- Fixed a world-load crash that could occur on mod stacks with CET Observe/ObserveAfter/Override callbacks even before a profiler capture was started.
+- FunctionOverride callback ownership resolution and timing are now bypassed while capture is OFF, so normal gameplay stays on CET's unprofiled callback path until the user explicitly starts a capture.
+- Main keeps its existing lightweight active-capture model; this release does not import the dev resolver profiler's deeper tracing features.
+
 ## [1.0.1] - 2026-10-05
 
 ### Maintenance refresh
