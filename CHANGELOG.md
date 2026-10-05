@@ -3,6 +3,7 @@
 All notable public changes to G-CET Runtime Profiler are recorded here.
 
 ## [Unreleased]
+- Restored the dev profiler's full pre-debug FunctionOverride tracing/attribution path and retained only the proven capture-off safety gate: when capture is OFF, Observe/ObserveAfter/Override execute without profiler ownership/source/timing resolution; once capture starts, full source discovery, adaptive DeepTrace and original Override downstream attribution remain available.
 - Added the standalone G-CET Resolver and deployable pass generator. It inspects every measured non-infrastructure callback, applies only mechanically proven generic AUTO recipes plus source-proven production semantic rules, and emits one game-root overlay ZIP without modifying the live CET tree.
 - Generic AUTO is restricted to finite OnAction routing/prefiltering and frame-dispatch consolidation. Retired structural/cadence/dormancy generator branches were removed; those recognizers may remain analysis evidence but cannot generate code.
 - Refined **Optimizer Rule #1** to a risk-adjusted, system-level payback model. AUTO evaluates benefit at the level where an optimization operates (callback family/shared provider/routing layer/affected mod set), not only per individual callback. Trivial mechanically proven transforms may take small per-client wins when their aggregate measured benefit is worthwhile; bespoke semantic/timing-sensitive rewrites require substantially stronger payback. Spike/burst/frame-pacing improvements count alongside average ms/s.
