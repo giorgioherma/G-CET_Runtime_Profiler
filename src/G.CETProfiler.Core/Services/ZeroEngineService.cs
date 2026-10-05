@@ -87,12 +87,15 @@ internal sealed class ZeroEngineService
         return hasReturn && hasEngineTable;
     }
 
-    public void AddProfilerRegionAudit(string initPath)
+    public bool AddProfilerRegionAudit(string initPath)
     {
         var text = File.ReadAllText(initPath);
         const string marker = "-- CET_RUNTIME_PROFILER_REGION_AUDIT_BEGIN v1";
         if (text.Contains(marker, StringComparison.Ordinal))
-            return;
+            return true;
+
+        try
+        {
 
         static string ReplaceExactlyOnce(string source, string oldValue, string newValue, string label)
         {
@@ -222,6 +225,15 @@ end
             if (!verify.Contains(required, StringComparison.Ordinal))
                 throw new InvalidOperationException(
                     $"0-Engine region audit verification failed: {required}");
+        }
+
+        return true;
+        }
+        catch (InvalidOperationException)
+        {
+            // Region instrumentation is diagnostic only. Unknown/older framework
+            // shapes keep ordinary profiling rather than blocking installation.
+            return false;
         }
     }
 
