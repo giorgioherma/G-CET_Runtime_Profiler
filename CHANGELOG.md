@@ -4,7 +4,9 @@ All notable public changes to G-CET Runtime Profiler are recorded here.
 
 ## [Unreleased]
 
-### v1.0.0 maintenance refresh
+## [1.0.1] - 2026-10-05
+
+### Maintenance refresh
 
 - Fixed completed-capture detection to match the native profiler's actual `CAPTURE_START` + `PAUSE` marker pair. Real captures now deploy into the profiler's package-local `RESULTS` folder instead of being mistaken for scratch/templates and cleared.
 - Added a CI regression capture that proves native marker output is recognized, archived exactly once, and preserved through restore.

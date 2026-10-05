@@ -129,7 +129,7 @@ The workflow also verifies that the public package does not contain `.ps1`, `.vb
 Verify a downloaded release with PowerShell:
 
 ```powershell
-Get-FileHash ".\G-CET-Runtime-Profiler-v1.0.0.zip" -Algorithm SHA256
+Get-FileHash ".\G-CET-Runtime-Profiler-v1.0.1.zip" -Algorithm SHA256
 ```
 
 The canonical GitHub release publishes a matching `.sha256.txt` asset beside the ZIP. That release-side checksum is authoritative because a same-version maintenance refresh necessarily changes the ZIP bytes.

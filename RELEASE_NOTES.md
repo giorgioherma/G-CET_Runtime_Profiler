@@ -1,6 +1,6 @@
-# G-CET Runtime Profiler v1.0.0
+# G-CET Runtime Profiler v1.0.1
 
-First stable release of the standalone G-CET Runtime Profiler.
+Stable maintenance release of the standalone G-CET Runtime Profiler.
 
 ## Highlights
 
@@ -37,14 +37,14 @@ Unavailable action buttons are gray. Available normal actions are cyan. **RESTOR
 
 G-CET works standalone.
 
-CapFrameX **1.9.1.2 Beta** is the exact development/test reference for v1.0.0. The application links to the upstream CapFrameX releases page without treating the upstream page's displayed version label as authoritative for the tested executable build.
+CapFrameX **1.9.1.2 Beta** is the exact development/test reference for v1.0.1. The application links to the upstream CapFrameX releases page without treating the upstream page's displayed version label as authoritative for the tested executable build.
 
 Other frame-time profilers can still be used. Recognized CapFrameX JSON receives the full synchronized analysis layer; unrecognized companion files are still preserved safely under `FrameTime\`.
 
 ## Portable package
 
 ```text
-G-CET-Runtime-Profiler-v1.0.0.zip
+G-CET-Runtime-Profiler-v1.0.1.zip
 ├─ Install_Instructions.html
 └─ G-CET-Runtime-Profiler\
    ├─ G-CET-Runtime-Profiler.exe

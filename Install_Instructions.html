@@ -19,11 +19,11 @@ a{color:var(--cyan);font-weight:700}.buttonlink{display:inline-block;margin-top:
 @media(max-width:760px){.recommended{grid-template-columns:1fr}.wrap{padding:18px 10px 40px}.hero,.step{padding:18px}h1{font-size:28px}}
 </style></head><body><div class="wrap">
 <section class="hero">
-<h1>G-CET Runtime Profiler</h1><p class="subtitle">v1.0.0 — Installation, capture and restore guide</p>
+<h1>G-CET Runtime Profiler</h1><p class="subtitle">v1.0.1 — Installation, capture and restore guide</p>
 <div class="progress"><b>KEYBIND</b> → <b>SETUP</b> → <b>INSTALL</b> → <b>CAPTURE</b> → <b>COLLECT</b> → <b>RESTORE</b></div>
 <div class="recommended">
 <div class="rec"><h3>0-Engine — heavily recommended</h3><p>G-CET works without 0-Engine, but a compatible installation adds deeper Scheduler analysis: jobs, bursts and Scheduler attribution. Supported integration is intended for <b>Pure CET releases v0.17.2 and newer</b>.</p><a class="buttonlink" href="https://www.nexusmods.com/cyberpunk2077/mods/27967" target="_blank">Download DigitalVixen's 0-Engine on Nexus Mods</a></div>
-<div class="rec"><h3>Frame-time profiler — heavily recommended</h3><p>Pairing G-CET with a frame-time capture lets the report compare CET/Lua activity with actual rendered-frame behavior. G-CET v1.0.0 was tested with <b>CapFrameX Pre-release v1.9.1 Beta (build 1.9.1.2)</b>.</p><a class="buttonlink" href="https://github.com/CXWorld/CapFrameX/releases" target="_blank">Click to download CapFrameX on GitHub</a></div>
+<div class="rec"><h3>Frame-time profiler — heavily recommended</h3><p>Pairing G-CET with a frame-time capture lets the report compare CET/Lua activity with actual rendered-frame behavior. G-CET v1.0.1 was tested with <b>CapFrameX Pre-release v1.9.1 Beta (build 1.9.1.2)</b>.</p><a class="buttonlink" href="https://github.com/CXWorld/CapFrameX/releases" target="_blank">Click to download CapFrameX on GitHub</a></div>
 </div>
 <div class="important"><b>Capture-key check:</b> Before installing the profiler, complete <b>Step 0</b> below. G-CET uses <b>F11 as the initial default</b>, but existing or user-changed CET bindings are left alone. If you pair G-CET with a frame-time tool, both tools must use the <b>same capture key</b>.</div>
 </section>
@@ -97,5 +97,5 @@ a{color:var(--cyan);font-weight:700}.buttonlink{display:inline-block;margin-top:
 <div class="instructions"><p>Wait for the green confirmation:</p><div class="success"><b>✓ RESTORE SUCCESSFUL — profiler removed and original state restored.</b></div><p>Once this message is shown, the profiling session is complete. You can close G-CET and review the collected report from the results folder.</p></div></section>
 
 <section class="vortex"><h3>Vortex users</h3><p>Because G-CET temporarily replaces/restores managed CET or compatible 0-Engine files during profiling, Vortex may occasionally report <b>External Changes</b> afterwards.</p><p>If that happens after a successful G-CET restore, use <b>Revert all changes</b> / the staged Vortex files so Vortex redeploys its managed copies. Do <b>not</b> use <b>Save all changes</b> to copy the temporary game-folder state back into Vortex staging.</p></section>
-<div class="footer">G-CET Runtime Profiler v1.0.0 — Quick installation and capture guide</div>
+<div class="footer">G-CET Runtime Profiler v1.0.1 — Quick installation and capture guide</div>
 </div></body></html>

@@ -2,7 +2,7 @@
 
 The retired PowerShell alpha6c implementation is preserved only in Git history; the live tree and public package use the C# manager exclusively.
 
-**v1.0.0 implements this contract in C#/.NET 8.** The reference scripts are no longer part of the public runtime package.
+**v1.0.1 implements this contract in C#/.NET 8.** The reference scripts are no longer part of the public runtime package.
 
 Future changes should preserve these behavioral invariants unless the standalone profiler contract is intentionally versioned.
 

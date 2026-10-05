@@ -92,13 +92,13 @@ External frame-time captures are copy-only; the source capture owned by the exte
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the detailed transaction and recovery model.
 
-## v1.0.0 canonical release identity
+## v1.0.1 canonical release identity
 
 Canonical GitHub release ZIP:
 
-`G-CET-Runtime-Profiler-v1.0.0.zip`
+`G-CET-Runtime-Profiler-v1.0.1.zip`
 
-The canonical release publishes a matching `.sha256.txt` asset beside the ZIP. That release-side checksum is the authoritative identity for the current v1.0.0 maintenance build.
+The canonical release publishes a matching `.sha256.txt` asset beside the ZIP. That release-side checksum is the authoritative identity for the current v1.0.1 maintenance build.
 
 A scanner or moderation report should be matched against that published checksum before it is treated as a report for the current canonical release.
 

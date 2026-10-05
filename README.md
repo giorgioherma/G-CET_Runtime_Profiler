@@ -4,7 +4,7 @@
 
 # G-CET Runtime Profiler
 
-**v1.0.0 — first stable release**
+**v1.0.1 — stable maintenance release**
 
 A standalone Cyberpunk 2077 CET/Lua runtime profiler with transactional install/restore, optional 0-Engine Scheduler attribution, optional frame-time pairing, and a headless interface for G's Cyberpunk 2077 TOTAL Profiler.
 
@@ -26,12 +26,12 @@ The canonical GitHub release publishes a matching `.sha256.txt` asset beside the
 
 The public release is a **portable ZIP**. No installer is required.
 
-**Canonical v1.0.0 download:** [G-CET-Runtime-Profiler-v1.0.0.zip](https://github.com/giorgioherma/G-CET_Runtime_Profiler/releases/download/v1.0.0/G-CET-Runtime-Profiler-v1.0.0.zip)
+**Canonical v1.0.1 download:** [G-CET-Runtime-Profiler-v1.0.1.zip](https://github.com/giorgioherma/G-CET_Runtime_Profiler/releases/download/v1.0.1/G-CET-Runtime-Profiler-v1.0.1.zip)
 
-GitHub **Releases** is the canonical download location for v1.0.0.
+GitHub **Releases** is the canonical download location for v1.0.1.
 
 ```text
-G-CET-Runtime-Profiler-v1.0.0.zip
+G-CET-Runtime-Profiler-v1.0.1.zip
 ├─ Install_Instructions.html
 └─ G-CET-Runtime-Profiler\
    ├─ G-CET-Runtime-Profiler.exe
@@ -104,13 +104,13 @@ The second page uses one shared status convention:
 
 Optional components never make the core CET profiler unavailable by themselves.
 
-The final v1.0.0 UI keeps status prose white and colors only the semantic markers themselves. Disabled actions are visibly gray; enabled forward actions use the cyan G-CET accent, while **RESTORE ORIGINAL STATE** uses magenta when available.
+The final v1.0.1 UI keeps status prose white and colors only the semantic markers themselves. Disabled actions are visibly gray; enabled forward actions use the cyan G-CET accent, while **RESTORE ORIGINAL STATE** uses magenta when available.
 
 ## Optional frame-time companion
 
 Frame-time pairing is convenience-only and is **not a dependency**.
 
-CapFrameX **1.9.1.2 Beta** is the development/test reference used for v1.0.0. The manager can inspect recognized CapFrameX configuration read-only to report its capture key and suggest its capture directory. The CapFrameX releases link intentionally points to the upstream release page rather than claiming that the upstream release-page label matches the executable's internal version. Other profilers are accepted; if their key cannot be identified the UI reports it as unknown and asks the user to verify synchronization manually.
+CapFrameX **1.9.1.2 Beta** is the development/test reference used for v1.0.1. The manager can inspect recognized CapFrameX configuration read-only to report its capture key and suggest its capture directory. The CapFrameX releases link intentionally points to the upstream release page rather than claiming that the upstream release-page label matches the executable's internal version. Other profilers are accepted; if their key cannot be identified the UI reports it as unknown and asks the user to verify synchronization manually.
 
 External frame-time files are always **copied only** into the collected CET result. The source files belonging to the external profiler are never moved, deleted, or modified.
 
