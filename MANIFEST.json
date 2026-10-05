@@ -1,10 +1,10 @@
 {
-  "packageVersion": "1.1.4",
-  "profilerNativeVersion": "2.11.2",
+  "packageVersion": "1.1.5",
+  "profilerNativeVersion": "2.11.0",
   "targetCET": {
     "version": "1.37.1",
     "officialSha256": "43a7b94698979703f9dfa2b0950607c9a88f53b84bbf09a8e593c7e218d41059",
-    "profilerSha256": "449dd19ccb2030b25a155b06330f884aa66acf68b5fa34f871db193e3d0b775f",
+    "profilerSha256": "2ada69f9604792f639309abd97c468b793590dd84b4011f0278f029cea26280d",
     "profilerPackageFile": "cyber_engine_tweaks.PROFILER.dll",
     "profilerInstallFile": "cyber_engine_tweaks.asi"
   },
@@ -25,7 +25,6 @@
     "CET_Runtime_Profile_OnUpdateTimeline.csv",
     "CET_Runtime_Profile_FrameMultiplicity.csv",
     "CET_Runtime_Profile_Markers.csv",
-    "CET_Runtime_Profile_Regions.csv",
     "CET_Runtime_Profile_Scheduler_ByJob.csv",
     "CET_Runtime_Profile_Scheduler_Spikes.csv",
     "CET_Runtime_Profile_Scheduler_FrameBursts.csv",
@@ -38,8 +37,7 @@
   ],
   "managerChanges": [
     "security-scan packaging: native profiler is distributed with a .dll extension matching its PE/DLL format and copied to CET's required cyber_engine_tweaks.asi name only during install",
-    "native profiler 2.11.2 keeps 0-Engine excluded from adaptive Lua deep hooks and writes aggregate begin/end framework diagnostics to CET_Runtime_Profile_Regions.csv; audit v2 separates routed action-subscriber execution and major UpdateFrame subregions while retaining parent totals",
-    "profiler install temporarily instruments recognized 0-Engine update/action boundaries and restores the exact original init.lua; region evidence is diagnostic only and never authorizes Resolver generation",
+    "security-scan packaging: native launcher now carries standard Windows VERSIONINFO identity metadata; profiler functionality and native profiler bytes are unchanged",
     "final v1.0.0 UI keeps profiler-status prose white and colors only semantic status markers",
     "disabled actions render gray; available forward actions use cyan and available restore uses magenta",
     "CapFrameX 1.9.1.2 Beta is the tested frame-time reference build while frame-time pairing remains optional",

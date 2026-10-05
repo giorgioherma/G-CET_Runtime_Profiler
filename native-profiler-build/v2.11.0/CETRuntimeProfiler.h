@@ -167,15 +167,6 @@ public:
         std::atomic<uint64_t> MaxNs{0};
     };
 
-    struct RegionCounter
-    {
-        std::string Owner;
-        std::string Region;
-        std::atomic<uint64_t> Calls{0};
-        std::atomic<uint64_t> TotalNs{0};
-        std::atomic<uint64_t> MaxNs{0};
-    };
-
     struct SchedulerJobSample
     {
         SchedulerJobCounter* CounterPtr{};
@@ -1002,7 +993,6 @@ public:
         ResetSpikesLocked();
         ResetTimelineLocked();
         ResetMarkersLocked();
-        ResetRegionsLocked();
         ResetSchedulerLocked();
         ResetDeepLocked();
         m_accumulatedCapture = std::chrono::nanoseconds::zero();
@@ -1021,7 +1011,6 @@ public:
         ResetSpikesLocked();
         ResetTimelineLocked();
         ResetMarkersLocked();
-        ResetRegionsLocked();
         ResetSchedulerLocked();
         ResetDeepLocked();
         m_accumulatedCapture = std::chrono::nanoseconds::zero();
@@ -1236,55 +1225,6 @@ public:
             << (static_cast<double>(CapturedNanosecondsLocked(now)) / 1'000'000.0)
             << " ms";
         return oss.str();
-    }
-
-    uint64_t RegisterRegion(const std::string& aOwner,
-                            const std::string& aRegion)
-    {
-        std::lock_guard lock(m_mutex);
-        const std::string owner = aOwner.empty() ? "<unknown>" : aOwner;
-        const std::string region = aRegion.empty() ? "<unnamed>" : aRegion;
-        const std::string key = owner + "\x1f" + region;
-
-        const auto found = m_regions.find(key);
-        if (found != m_regions.end())
-            return static_cast<uint64_t>(
-                reinterpret_cast<uintptr_t>(found->second.get()));
-
-        auto counter = std::make_unique<RegionCounter>();
-        counter->Owner = owner;
-        counter->Region = region;
-        auto* raw = counter.get();
-        m_regions.emplace(key, std::move(counter));
-        return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(raw));
-    }
-
-    uint64_t RegionBegin(uint64_t aHandle) const
-    {
-        if (!aHandle || !IsCapturing())
-            return 0;
-        return static_cast<uint64_t>(ClockTicksNs(Clock::now()));
-    }
-
-    void RegionEnd(uint64_t aHandle, uint64_t aStartTicksNs)
-    {
-        if (!aHandle || !aStartTicksNs || !IsCapturing())
-            return;
-
-        auto* counter = reinterpret_cast<RegionCounter*>(
-            static_cast<uintptr_t>(aHandle));
-        if (!counter)
-            return;
-
-        const int64_t endTicks = ClockTicksNs(Clock::now());
-        if (endTicks <= 0 || static_cast<uint64_t>(endTicks) <= aStartTicksNs)
-            return;
-
-        const uint64_t elapsed =
-            static_cast<uint64_t>(endTicks) - aStartTicksNs;
-        counter->Calls.fetch_add(1, std::memory_order_relaxed);
-        counter->TotalNs.fetch_add(elapsed, std::memory_order_relaxed);
-        UpdateMax(counter->MaxNs, elapsed);
     }
 
     uint64_t RegisterSchedulerJob(const std::string& aOwner,
@@ -1759,15 +1699,6 @@ public:
             int32_t DriftDirection{};
         };
 
-        struct RegionRow
-        {
-            std::string Owner;
-            std::string Region;
-            uint64_t Calls{};
-            uint64_t TotalNs{};
-            uint64_t MaxNs{};
-        };
-
         struct SchedulerJobRow
         {
             std::string Owner;
@@ -1824,7 +1755,6 @@ public:
         std::vector<DeepSampleEvent> deepSampleRows;
         std::vector<DeepLineEvent> deepLineRows;
         std::vector<MarkerEvent> markerRows;
-        std::vector<RegionRow> regionRows;
         std::vector<SchedulerJobRow> schedulerJobRows;
         std::vector<SchedulerSpikeRow> schedulerSpikeRows;
         std::vector<SchedulerBurstRow> schedulerBurstRows;
@@ -2072,18 +2002,6 @@ public:
 
             markerRows = m_markers;
 
-            regionRows.reserve(m_regions.size());
-            for (const auto& [_, counter] : m_regions)
-            {
-                regionRows.push_back({
-                    counter->Owner,
-                    counter->Region,
-                    counter->Calls.load(std::memory_order_relaxed),
-                    counter->TotalNs.load(std::memory_order_relaxed),
-                    counter->MaxNs.load(std::memory_order_relaxed)
-                });
-            }
-
             schedulerJobRows.reserve(m_schedulerJobs.size());
             for (const auto& [_, counter] : m_schedulerJobs)
             {
@@ -2278,61 +2196,6 @@ public:
                       << timelineBucketMs << ','
                       << droppedOnUpdateTimelineEvents << ','
                       << "continuous-onupdate-callback-correlation"
-                      << '\n';
-                }
-            }
-        }
-
-        // -----------------------------------------------------------------
-        // LIGHTWEIGHT REGIONS: explicit framework boundaries. These are
-        // aggregate begin/end timers only; no Lua debug hooks are involved.
-        // -----------------------------------------------------------------
-        {
-            std::sort(regionRows.begin(), regionRows.end(),
-                      [](const RegionRow& a, const RegionRow& b)
-                      {
-                          if (a.TotalNs != b.TotalNs)
-                              return a.TotalNs > b.TotalNs;
-                          if (a.Owner != b.Owner)
-                              return a.Owner < b.Owner;
-                          return a.Region < b.Region;
-                      });
-
-            const auto path =
-                outputRoot / "CET_Runtime_Profile_Regions.csv";
-            std::ofstream f(path, std::ios::trunc);
-            if (f)
-            {
-                f << "Owner,Region,Calls,CallsPerSecond,TotalMs,MsPerSecond,"
-                     "AverageUs,MaxMs,Interpretation\n";
-                f << std::fixed << std::setprecision(6);
-                for (const auto& row : regionRows)
-                {
-                    const double callsPerSecond =
-                        elapsedSec > 0.0
-                            ? static_cast<double>(row.Calls) / elapsedSec
-                            : 0.0;
-                    const double totalMs =
-                        static_cast<double>(row.TotalNs) / 1'000'000.0;
-                    const double msPerSecond =
-                        elapsedSec > 0.0 ? totalMs / elapsedSec : 0.0;
-                    const double averageUs =
-                        row.Calls
-                            ? static_cast<double>(row.TotalNs) /
-                                  static_cast<double>(row.Calls) / 1'000.0
-                            : 0.0;
-                    const double maxMs =
-                        static_cast<double>(row.MaxNs) / 1'000'000.0;
-
-                    f << Csv(row.Owner) << ','
-                      << Csv(row.Region) << ','
-                      << row.Calls << ','
-                      << callsPerSecond << ','
-                      << totalMs << ','
-                      << msPerSecond << ','
-                      << averageUs << ','
-                      << maxMs << ','
-                      << "explicit-low-overhead-region-timer"
                       << '\n';
                 }
             }
@@ -3885,16 +3748,6 @@ private:
         m_nextMarkerSequence = 0;
     }
 
-    void ResetRegionsLocked()
-    {
-        for (auto& [_, counter] : m_regions)
-        {
-            counter->Calls.store(0, std::memory_order_relaxed);
-            counter->TotalNs.store(0, std::memory_order_relaxed);
-            counter->MaxNs.store(0, std::memory_order_relaxed);
-        }
-    }
-
     void ResetSchedulerLocked()
     {
         for (auto& [_, counter] : m_schedulerJobs)
@@ -4172,7 +4025,6 @@ private:
     std::vector<TimelineEvent> m_timelineEvents;
     std::vector<OnUpdateTimelineEvent> m_onUpdateTimelineEvents;
     std::vector<MarkerEvent> m_markers;
-    std::unordered_map<std::string, std::unique_ptr<RegionCounter>> m_regions;
     std::unordered_map<std::string, std::unique_ptr<SchedulerJobCounter>> m_schedulerJobs;
     std::vector<SchedulerSpikeEvent> m_schedulerSpikeEvents;
     std::vector<SchedulerFrameBurstEvent> m_schedulerFrameBursts;

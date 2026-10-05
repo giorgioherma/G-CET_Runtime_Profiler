@@ -47,7 +47,6 @@ public static partial class ResultReportService
         "CET_Runtime_Profile_OnUpdateTimeline.csv",
         "CET_Runtime_Profile_FrameMultiplicity.csv",
         "CET_Runtime_Profile_Markers.csv",
-        "CET_Runtime_Profile_Regions.csv",
         "CET_Runtime_Profile_Deep_Registrations.csv",
         "CET_Runtime_Profile_Deep_Functions.csv",
         "CET_Runtime_Profile_Deep_Edges.csv",
