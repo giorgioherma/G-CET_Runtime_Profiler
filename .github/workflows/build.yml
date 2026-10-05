@@ -8,6 +8,9 @@ on:
   workflow_dispatch:
   push:
     branches: [ main, 'dev/resolver-profiler-handoff' ]
+    paths-ignore:
+      - 'native-profiler-build/**'
+      - '.github/workflows/native-profiler-rebuild.yml'
   pull_request:
 
 jobs:
