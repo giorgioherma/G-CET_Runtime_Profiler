@@ -445,6 +445,7 @@ CETRuntimeProfiler::Counter* ResolveProfilerCounter(
 
     // Main profiler stays lightweight: while capture is OFF, do not touch
     // callback ownership/Lua environment state at all.
+    // v1.0.2 release invariant: capture-off callback execution stays unprofiled.
     if (!profiler.IsCapturing())
         return nullptr;
 
