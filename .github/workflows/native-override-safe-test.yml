@@ -1,0 +1,44 @@
+name: Build Override-safe native profiler test
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - test/override-safe-profiler
+
+permissions:
+  contents: read
+
+jobs:
+  build-native:
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rebuild profiler CET with historical toolchain
+        shell: pwsh
+        run: |
+          $work = Join-Path $env:RUNNER_TEMP 'gcet-native-rebuild'
+          & .\native-profiler-build\v2.11.0\Build-Profiler.ps1 -WorkRoot $work
+
+      - name: Show output hashes
+        shell: pwsh
+        run: |
+          $out = '.\native-profiler-build\v2.11.0\BUILD_OUTPUT'
+          Get-ChildItem $out -File | ForEach-Object {
+            $sha = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLowerInvariant()
+            Write-Host "$($_.Name)  $sha"
+          }
+
+      - name: Upload native profiler test build
+        uses: actions/upload-artifact@v4
+        with:
+          name: G-CET-Override-Safe-Native-Test
+          path: |
+            native-profiler-build/v2.11.0/BUILD_OUTPUT/cyber_engine_tweaks.PROFILER.asi
+            native-profiler-build/v2.11.0/BUILD_OUTPUT/cyber_engine_tweaks.PROFILER.pdb
+            native-profiler-build/v2.11.0/BUILD_OUTPUT/HISTORICAL_BUILD.txt
+          if-no-files-found: error
+          retention-days: 7
