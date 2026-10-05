@@ -580,10 +580,12 @@ public sealed class ProfilerService : IProfilerService
                 paths.BackupZeroInit,
                 state.ZeroEngine.Init.OriginalHash);
 
-            state.ZeroEngine.Init.Mode = "patched-regions";
+            state.ZeroEngine.Init.Mode = "preexisting-compatible";
             SaveState(paths, state);
 
-            zeroEngine.AddProfilerRegionAudit(paths.ZeroInit);
+            if (zeroEngine.AddProfilerRegionAudit(paths.ZeroInit))
+                state.ZeroEngine.Init.Mode = "patched-regions";
+
             state.ZeroEngine.Init.InstalledHash = FileSystemService.Sha256(paths.ZeroInit);
             SaveState(paths, state);
 
@@ -621,7 +623,7 @@ public sealed class ProfilerService : IProfilerService
                 SaveState(paths, state);
 
                 zeroEngine.AddAdaptiveProfilerSchedulerBridge(paths.ZeroInit);
-                zeroEngine.AddProfilerRegionAudit(paths.ZeroInit);
+                _ = zeroEngine.AddProfilerRegionAudit(paths.ZeroInit);
                 state.ZeroEngine.Init.InstalledHash = FileSystemService.Sha256(paths.ZeroInit);
                 SaveState(paths, state);
             }
