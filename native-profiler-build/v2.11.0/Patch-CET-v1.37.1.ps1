@@ -782,7 +782,7 @@ foreach ($marker in @(
 }
 
 Write-Host ""
-Write-Host "CET v1.37.1 FULL CALLBACK profiler v2.11.1 region-timer patch applied successfully." -ForegroundColor Green
+Write-Host "CET v1.37.1 FULL CALLBACK profiler v2.11.2 region-timer patch applied successfully." -ForegroundColor Green
 Write-Host "Validated source commit: $expectedHead"
 Write-Host "Coverage: events + Observe + ObserveAfter + Override" -ForegroundColor Green
 Write-Host "FunctionOverride::Context: VERIFIED UNCHANGED" -ForegroundColor Green
