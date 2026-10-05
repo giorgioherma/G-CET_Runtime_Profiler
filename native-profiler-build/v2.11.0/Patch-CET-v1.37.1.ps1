@@ -558,6 +558,7 @@ CETRuntimeProfiler::Counter* ResolveProfilerCounter(
     // Capture OFF must be completely inert on callback execution. Do not touch
     // the Lua environment, function object, source metadata, or ownership state
     // until the user has actually started a profiler capture.
+    // This also keeps world-load callbacks on the stock CET execution path.
     if (!profiler.IsCapturing())
         return nullptr;
 
