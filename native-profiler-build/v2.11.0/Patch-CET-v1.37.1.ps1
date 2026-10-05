@@ -553,6 +553,14 @@ CETRuntimeProfiler::Counter* ResolveProfilerCounter(
     if (!apContext)
         return nullptr;
 
+    auto& profiler = CETRuntimeProfiler::Get();
+
+    // Capture OFF must be completely inert on callback execution. Do not touch
+    // the Lua environment, function object, source metadata, or ownership state
+    // until the user has actually started a profiler capture.
+    if (!profiler.IsCapturing())
+        return nullptr;
+
     // Never push an environment whose reference has no Lua state.
     if (!apContext->Environment.lua_state())
         return nullptr;
@@ -565,8 +573,6 @@ CETRuntimeProfiler::Counter* ResolveProfilerCounter(
         apContext->Environment["__logger"].get<std::shared_ptr<spdlog::logger>>();
     if (logger)
         modName = logger->name();
-
-    auto& profiler = CETRuntimeProfiler::Get();
     auto* counter = profiler.ResolveCallback(apContext, modName);
 
     // Source discovery is also lazy. Registration stays native-only and safe;
@@ -639,26 +645,36 @@ Replace-RegexOnce `
     -Path $foC `
     -Pattern '([ \t]*for \(const auto& call : aChain\.Before\)\s*\r?\n[ \t]*\{\s*\r?\n)([ \t]*const auto result = call->ScriptFunction\(as_args\(\*apOrigArgs\)\);)' `
     -Replacement @'
-$1            auto* profilerCounter = ResolveProfilerCounter(call.get());
-            CETRuntimeProfiler::DeepTraceScope deepTrace(
-                profilerCounter, call->ScriptFunction.lua_state());
-            CETRuntimeProfiler::Scope profileScope(profilerCounter);
-$2
+$1            const auto result = [&]() {
+                if (!CETRuntimeProfiler::Get().IsCapturing())
+                    return call->ScriptFunction(as_args(*apOrigArgs));
+
+                auto* profilerCounter = ResolveProfilerCounter(call.get());
+                CETRuntimeProfiler::DeepTraceScope deepTrace(
+                    profilerCounter, call->ScriptFunction.lua_state());
+                CETRuntimeProfiler::Scope profileScope(profilerCounter);
+                return call->ScriptFunction(as_args(*apOrigArgs));
+            }();
 '@ `
-    -Label "Observe callback timing"
+    -Label "Observe capture-gated callback timing"
 
 # ObserveAfter.
 Replace-RegexOnce `
     -Path $foC `
     -Pattern '([ \t]*for \(const auto& call : aChain\.After\)\s*\r?\n[ \t]*\{\s*\r?\n)([ \t]*const auto result = call->ScriptFunction\(as_args\(\*apOrigArgs\)\);)' `
     -Replacement @'
-$1            auto* profilerCounter = ResolveProfilerCounter(call.get());
-            CETRuntimeProfiler::DeepTraceScope deepTrace(
-                profilerCounter, call->ScriptFunction.lua_state());
-            CETRuntimeProfiler::Scope profileScope(profilerCounter);
-$2
+$1            const auto result = [&]() {
+                if (!CETRuntimeProfiler::Get().IsCapturing())
+                    return call->ScriptFunction(as_args(*apOrigArgs));
+
+                auto* profilerCounter = ResolveProfilerCounter(call.get());
+                CETRuntimeProfiler::DeepTraceScope deepTrace(
+                    profilerCounter, call->ScriptFunction.lua_state());
+                CETRuntimeProfiler::Scope profileScope(profilerCounter);
+                return call->ScriptFunction(as_args(*apOrigArgs));
+            }();
 '@ `
-    -Label "ObserveAfter callback timing"
+    -Label "ObserveAfter capture-gated callback timing"
 
 # Override safety policy.
 #
@@ -676,6 +692,13 @@ Replace-RegexOnce `
     -Pattern '([ \t]*auto next = WrapNextOverride\(aChain, aStep \+ 1, aLuaState, aLuaContext, aLuaArgs, apRealFunction, apRealContext, aLock\);\s*\r?\n)([ \t]*auto result = aLuaContext == sol::nil \? call->ScriptFunction\(as_args\(aLuaArgs\), next\) : call->ScriptFunction\(aLuaContext, as_args\(aLuaArgs\), next\);)' `
     -Replacement @'
 $1            auto result = [&]() {
+                if (!CETRuntimeProfiler::Get().IsCapturing())
+                {
+                    return aLuaContext == sol::nil
+                        ? call->ScriptFunction(as_args(aLuaArgs), next)
+                        : call->ScriptFunction(aLuaContext, as_args(aLuaArgs), next);
+                }
+
                 // Override-safe broad profiling: no raw source discovery and no
                 // adaptive Lua hook. Resolver does not rewrite generic Overrides.
                 auto* profilerCounter = ResolveProfilerCounter(call, false);
@@ -697,6 +720,8 @@ $foCText = Read-Utf8 $foC
 
 foreach ($marker in @(
     "ResolveProfilerCounter",
+    "if (!profiler.IsCapturing())",
+    "if (!CETRuntimeProfiler::Get().IsCapturing())",
     "BindCallback(",
     "ResolveCallback(",
     "AttachSource(",
