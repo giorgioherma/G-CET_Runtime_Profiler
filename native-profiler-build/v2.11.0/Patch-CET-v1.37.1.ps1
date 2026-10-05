@@ -441,6 +441,13 @@ CETRuntimeProfiler::Counter* ResolveProfilerCounter(
     if (!apContext)
         return nullptr;
 
+    auto& profiler = CETRuntimeProfiler::Get();
+
+    // Main profiler stays lightweight: while capture is OFF, do not touch
+    // callback ownership/Lua environment state at all.
+    if (!profiler.IsCapturing())
+        return nullptr;
+
     // Never push an environment whose reference has no Lua state.
     if (!apContext->Environment.lua_state())
         return nullptr;
@@ -454,7 +461,7 @@ CETRuntimeProfiler::Counter* ResolveProfilerCounter(
     if (logger)
         modName = logger->name();
 
-    return CETRuntimeProfiler::Get().ResolveCallback(apContext, modName);
+    return profiler.ResolveCallback(apContext, modName);
 }
 
 '@ `
@@ -497,22 +504,32 @@ Replace-RegexOnce `
     -Path $foC `
     -Pattern '([ \t]*for \(const auto& call : aChain\.Before\)\s*\r?\n[ \t]*\{\s*\r?\n)([ \t]*const auto result = call->ScriptFunction\(as_args\(\*apOrigArgs\)\);)' `
     -Replacement @'
-$1            auto* profilerCounter = ResolveProfilerCounter(call.get());
-            CETRuntimeProfiler::Scope profileScope(profilerCounter);
-$2
+$1            const auto result = [&]() {
+                if (!CETRuntimeProfiler::Get().IsCapturing())
+                    return call->ScriptFunction(as_args(*apOrigArgs));
+
+                auto* profilerCounter = ResolveProfilerCounter(call.get());
+                CETRuntimeProfiler::Scope profileScope(profilerCounter);
+                return call->ScriptFunction(as_args(*apOrigArgs));
+            }();
 '@ `
-    -Label "Observe callback timing"
+    -Label "Observe capture-gated callback timing"
 
 # ObserveAfter.
 Replace-RegexOnce `
     -Path $foC `
     -Pattern '([ \t]*for \(const auto& call : aChain\.After\)\s*\r?\n[ \t]*\{\s*\r?\n)([ \t]*const auto result = call->ScriptFunction\(as_args\(\*apOrigArgs\)\);)' `
     -Replacement @'
-$1            auto* profilerCounter = ResolveProfilerCounter(call.get());
-            CETRuntimeProfiler::Scope profileScope(profilerCounter);
-$2
+$1            const auto result = [&]() {
+                if (!CETRuntimeProfiler::Get().IsCapturing())
+                    return call->ScriptFunction(as_args(*apOrigArgs));
+
+                auto* profilerCounter = ResolveProfilerCounter(call.get());
+                CETRuntimeProfiler::Scope profileScope(profilerCounter);
+                return call->ScriptFunction(as_args(*apOrigArgs));
+            }();
 '@ `
-    -Label "ObserveAfter callback timing"
+    -Label "ObserveAfter capture-gated callback timing"
 
 # v2.11.0 OVERRIDE ATTRIBUTION FIX.
 #
@@ -555,11 +572,22 @@ Replace-RegexOnce `
     -Path $foC `
     -Pattern '([ \t]*auto next = WrapNextOverride\(aChain, aStep \+ 1, aLuaState, aLuaContext, aLuaArgs, apRealFunction, apRealContext, aLock\);\s*\r?\n)([ \t]*auto result = aLuaContext == sol::nil \? call->ScriptFunction\(as_args\(aLuaArgs\), next\) : call->ScriptFunction\(aLuaContext, as_args\(aLuaArgs\), next\);)' `
     -Replacement @'
-$1            auto* profilerCounter = ResolveProfilerCounter(call);
-            CETRuntimeProfiler::Scope profileScope(profilerCounter);
-$2
+$1            auto result = [&]() {
+                if (!CETRuntimeProfiler::Get().IsCapturing())
+                {
+                    return aLuaContext == sol::nil
+                        ? call->ScriptFunction(as_args(aLuaArgs), next)
+                        : call->ScriptFunction(aLuaContext, as_args(aLuaArgs), next);
+                }
+
+                auto* profilerCounter = ResolveProfilerCounter(call);
+                CETRuntimeProfiler::Scope profileScope(profilerCounter);
+                return aLuaContext == sol::nil
+                    ? call->ScriptFunction(as_args(aLuaArgs), next)
+                    : call->ScriptFunction(aLuaContext, as_args(aLuaArgs), next);
+            }();
 '@ `
-    -Label "Override callback timing"
+    -Label "Override capture-gated callback timing"
 
 # Hard safety checks.
 $foHHashAfter = (Get-FileHash -Algorithm SHA256 $foH).Hash
@@ -571,6 +599,8 @@ $foCText = Read-Utf8 $foC
 
 foreach ($marker in @(
     "ResolveProfilerCounter",
+    "if (!profiler.IsCapturing())",
+    "if (!CETRuntimeProfiler::Get().IsCapturing())",
     "BindCallback(",
     "ResolveCallback(",
     "ClearCallbackBindings",
@@ -622,6 +652,7 @@ Write-Host "Coverage: events + Observe + ObserveAfter + Override" -ForegroundCol
 Write-Host "FunctionOverride::Context: VERIFIED UNCHANGED" -ForegroundColor Green
 Write-Host "Registration-time Lua/Sol access: NONE" -ForegroundColor Green
 Write-Host "Callback ownership: lazy resolution during valid locked execution" -ForegroundColor Green
+Write-Host "Capture OFF: FunctionOverride ownership/timing resolver bypassed" -ForegroundColor Green
 Write-Host "Override downstream next()/native time: excluded from mod exclusive attribution" -ForegroundColor Green
 Write-Host "Capture control: Start / Pause / Resume / Stop / Reset / Dump / Status" -ForegroundColor Green
 Write-Host "CSV rates use captured time only (paused time excluded)" -ForegroundColor Green
