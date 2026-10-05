@@ -5,8 +5,6 @@ namespace GCETRuntimeProfiler.Core.Services;
 
 public sealed record ResolverBuildResult(
     string ResolverPath,
-    string? CadenceRuntimePath,
-    string? CadenceFinalPath,
     int FamilyCount,
     int RankedCallbackCount,
     int GenericResolvedCount,
@@ -23,8 +21,8 @@ public sealed record ResolverBuildResult(
 
 /// <summary>
 /// Top-level G-CET resolver. Callback families are the primary unit of work.
-/// Cadence is one optional subset. The resolver reads the deployed CET stack
-/// and capture data but never mutates a mod.
+/// Behavior-changing cadence decisions live exclusively in source-proven semantic
+/// rules. The resolver reads the deployed CET stack and capture data but never mutates a mod.
 /// </summary>
 public static class ResolverService
 {
@@ -50,25 +48,6 @@ public static class ResolverService
         if (!Directory.Exists(modsRoot))
             throw new DirectoryNotFoundException($"CET mods folder was not found: {modsRoot}");
 
-        CadenceResolverBuildResult? cadence = null;
-        var onUpdateTimeline = Directory
-            .EnumerateFiles(captureRoot, "CET_Runtime_Profile_OnUpdateTimeline.csv", SearchOption.AllDirectories)
-            .FirstOrDefault();
-
-        if (!string.IsNullOrWhiteSpace(onUpdateTimeline))
-        {
-            try
-            {
-                cadence = CadenceResolverService.Resolve(captureRoot, modsRoot);
-            }
-            catch
-            {
-                // Cadence is a subset. Failure or absence of its exact timeline
-                // must not prevent callback-family resolution.
-                cadence = null;
-            }
-        }
-
         semanticLibraryPath ??= Path.Combine(
             AppContext.BaseDirectory,
             "knowledge",
@@ -77,7 +56,6 @@ public static class ResolverService
         var result = CallbackResolverService.Build(
             handoff,
             modsRoot,
-            cadence?.FinalResolutionPath,
             semanticLibraryPath);
 
         var resolverPath = Path.Combine(captureRoot, ResultReportService.ResolverResolutionFileName);
@@ -88,8 +66,6 @@ public static class ResolverService
 
         return new ResolverBuildResult(
             resolverPath,
-            cadence?.RuntimeResolutionPath,
-            cadence?.FinalResolutionPath,
             result.FamilyCount,
             result.RankedCallbackCount,
             result.GenericResolvedCount,

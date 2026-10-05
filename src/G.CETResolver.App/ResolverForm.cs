@@ -262,9 +262,6 @@ internal sealed class ResolverForm : Form
                 : $"Complete — {result.RankedCallbackCount} measured callback consumers inspected. No applicable pass changes.";
             _output.Text =
                 $"G-CET resolver output:\r\n{result.ResolverPath}\r\n\r\n" +
-                (result.CadenceFinalPath is null
-                    ? "Cadence subset: not available for this capture.\r\n\r\n"
-                    : $"Cadence subset:\r\n{result.CadenceFinalPath}\r\n\r\n") +
                 "Live CET sources were inspected read-only. No mod files were changed.";
         }
         catch (Exception ex)

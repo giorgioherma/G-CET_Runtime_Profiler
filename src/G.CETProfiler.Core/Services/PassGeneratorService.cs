@@ -18,8 +18,8 @@ public sealed record PassBuildResult(
 /// Generic AUTO is deliberately restricted to mechanically source-proven recipes:
 /// ACTION_ROUTING_*, ACTION_OVERRIDE_EXACT_PREFILTER, FRAME_DISPATCH_CONSOLIDATION,
 /// and explicitly enabled finite shared-provider reads backed by 0-Engine.
-/// Structural, cadence, and dormancy analyzers may still emit evidence, but they
-/// require semantic per-mod authorization before this generator may rewrite them.
+/// Structural and dormancy analyzers may still emit evidence, but behavior-changing
+/// cadence is authorized only by source-proven semantic per-mod rules.
 /// </summary>
 public static class PassGeneratorService
 {

@@ -22,8 +22,6 @@ public static partial class ResultReportService
     public const string SummaryFileName = "CET_Summary.json";
     public const string ResolverInputFileName = "CET_Resolver_Input.json";
     public const string ResolverResolutionFileName = "G-CET_Resolver.json";
-    public const string CadenceResolutionFileName = "CET_Cadence_Resolution.json";
-    public const string CadenceFinalFileName = "CET_Cadence_Final.json";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -44,7 +42,6 @@ public static partial class ResultReportService
         "CET_Runtime_Profile_Detail.csv",
         "CET_Runtime_Profile_Spikes.csv",
         "CET_Runtime_Profile_Timeline.csv",
-        "CET_Runtime_Profile_OnUpdateTimeline.csv",
         "CET_Runtime_Profile_FrameMultiplicity.csv",
         "CET_Runtime_Profile_Markers.csv",
         "CET_Runtime_Profile_Deep_Registrations.csv",
@@ -338,9 +335,7 @@ public static partial class ResultReportService
             .Select(path => Path.GetRelativePath(captureRoot, path).Replace('\\', '/'))
             .Where(x => !x.Equals(ReportFileName, StringComparison.OrdinalIgnoreCase) &&
                         !x.Equals(SummaryFileName, StringComparison.OrdinalIgnoreCase) &&
-                        !x.Equals(ResolverInputFileName, StringComparison.OrdinalIgnoreCase) &&
-                        !x.Equals(CadenceResolutionFileName, StringComparison.OrdinalIgnoreCase) &&
-                        !x.Equals(CadenceFinalFileName, StringComparison.OrdinalIgnoreCase))
+                        !x.Equals(ResolverInputFileName, StringComparison.OrdinalIgnoreCase))
             .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
             .Take(200)
             .ToList();

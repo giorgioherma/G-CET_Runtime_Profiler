@@ -38,7 +38,6 @@ internal static class CallbackResolverService
     internal static CallbackResolverDocumentResult Build(
         string handoffPath,
         string modsRoot,
-        string? cadenceFinalPath,
         string? semanticLibraryPath)
     {
         using var handoff = JsonDocument.Parse(File.ReadAllText(handoffPath));
@@ -48,7 +47,6 @@ internal static class CallbackResolverService
             .ThenByDescending(x => x.CallsPerSecond)
             .ToList();
 
-        var cadence = ReadCadenceDecisions(cadenceFinalPath);
         var semanticLibrary = SemanticLibraryService.Load(semanticLibraryPath, modsRoot);
         var sourceIndex = new LiveSourceIndex(modsRoot);
 
@@ -88,7 +86,7 @@ internal static class CallbackResolverService
             foreach (var callback in family.Rows)
             {
                 rankedCount++;
-                var generic = ResolveGeneric(callback, sourceIndex, cadence);
+                var generic = ResolveGeneric(callback, sourceIndex);
                 var semantic = semanticLibrary.Match(
                     callback.Owner,
                     callback.Kind,
@@ -311,7 +309,7 @@ internal static class CallbackResolverService
                 familyFirst = true,
                 exhaustiveMeasuredCallbacks = true,
                 genericPatternsBeforeSemanticLibrary = true,
-                cadenceIsSubset = true,
+                behaviorChangingCadenceRequiresSemanticRule = true,
                 liveSourcesReadOnly = true,
                 dormancyClassification = true,
                 dormancyClassificationEvidenceOnly = true,
@@ -326,11 +324,6 @@ internal static class CallbackResolverService
                 sharedProviderDeepEvidence = "UNTRUNCATED_GETTER_CALLEES_WITH_LEGACY_HOTCALLEES_FALLBACK",
                 sharedProviderDiscovery = "ALL_ZERO_ARG_GAME_GETTERS_PLUS_ALL_DEEP_GETTER_CALLEES; DEEP_ONLY_EVIDENCE_IS_ANALYSIS_ONLY_UNTIL_CURRENT_SOURCE_IS_PROVEN",
                 note = "Generic AUTO is restricted to mechanically source-proven action routing, exact Override prefiltering, frame-dispatch consolidation, and explicitly enabled shared-provider reads with exact current-source proof. Dynamic player-derived state remains analysis-only. Identity-specific automatic behavior lives exclusively in the source-proven semantic library. Shared-provider opportunity totals describe measured callback territory, not estimated savings. Shared-provider deep evidence is aggregated across the measured stack without a per-callback hot-callee top-N gate. Already-satisfied generated states are not re-applied."
-            },
-            cadence = new
-            {
-                available = !string.IsNullOrWhiteSpace(cadenceFinalPath) && File.Exists(cadenceFinalPath),
-                sourceConfirmedOutput = cadenceFinalPath is null ? null : Path.GetFileName(cadenceFinalPath)
             },
             semanticLibrary = new
             {
@@ -1466,8 +1459,7 @@ internal static class CallbackResolverService
 
     private static GenericResolution ResolveGeneric(
         CallbackMetric callback,
-        LiveSourceIndex sourceIndex,
-        IReadOnlyDictionary<string, CadenceDecision> cadence)
+        LiveSourceIndex sourceIndex)
     {
         var family = ClassifyCallbackFamily(callback.Kind, callback.Target);
         var source = sourceIndex.Resolve(callback);
@@ -1486,7 +1478,7 @@ internal static class CallbackResolverService
             return ResolveOnAction(callback, source, sourceEvidence, sourceIndex);
 
         if (family == "ONUPDATE")
-            return ResolveOnUpdate(callback, source, sourceEvidence, cadence);
+            return ResolveOnUpdate(callback, source, sourceEvidence);
 
         // Structural callback-local rewrites do not depend on the callback
         // delivery family. Unsupported cadence/routing families should still
@@ -1533,8 +1525,7 @@ internal static class CallbackResolverService
     private static GenericResolution ResolveOnUpdate(
         CallbackMetric callback,
         ResolvedSource? source,
-        SourceEvidence? sourceEvidence,
-        IReadOnlyDictionary<string, CadenceDecision> cadence)
+        SourceEvidence? sourceEvidence)
     {
         var recipes = new List<string>();
         var evidence = new List<string>();
@@ -1588,76 +1579,10 @@ internal static class CallbackResolverService
             blockers.Add("Current deployed source could not prove the direct onUpdate registration.");
         }
 
-        var cadenceKey = CadenceKey(callback.Owner, callback.Kind, callback.Target);
-        cadence.TryGetValue(cadenceKey, out var cadenceDecision);
-
-        var cadenceBlocker = "";
-
-        // Highest-confidence cadence recipe: the callback itself contains only
-        // author-written fixed timer accumulators and their gated work. Runtime
-        // data decides whether eliminating the frame-rate entry is materially
-        // useful; source decides the cadence. No owner/mod-name knowledge is
-        // consulted.
-        if (source is not null &&
-            directOnUpdate &&
-            TryResolveWholeCallbackAuthorCadence(
-                source,
-                callback,
-                cadenceDecision,
-                out var authorCadence,
-                out cadenceBlocker))
-        {
-            recipes.Add("AUTHOR_CADENCE_WHOLE_CALLBACK");
-
-            if (source is not null &&
-                cadenceDecision is not null &&
-                cadenceDecision.RegistrationLine > 0 &&
-                cadenceDecision.CallbackBodyEndLine >= cadenceDecision.RegistrationLine)
-            {
-                effectiveSourceEvidence = new SourceEvidence
-                {
-                    RelativeFile = source.RelativeFile,
-                    Sha256 = source.Sha256,
-                    LineStart = cadenceDecision.RegistrationLine,
-                    LineEnd = cadenceDecision.CallbackBodyEndLine,
-                    MatchMode = "cadence-source-confirmed"
-                };
-            }
-
-            evidence.Add(
-                $"Current source proves whole-callback author cadence at {authorCadence.BaseIntervalSeconds:0.######} s " +
-                $"with {authorCadence.TimerIntervalsSeconds.Length} fixed author timer(s).");
-            evidence.Add(
-                $"Measured callback entry rate is {callback.CallsPerSecond:0.###}/s versus " +
-                $"{authorCadence.ExpectedCallsPerSecond:0.###}/s at the preserved author base cadence.");
-            evidence.Add(
-                $"Estimated avoidable polling work is {authorCadence.EstimatedAvoidablePollingMsPerSecond:0.######} ms/s, " +
-                $"{authorCadence.EstimatedCallbackPaybackPct:0.###}% of this callback and " +
-                $"{authorCadence.EstimatedGlobalPaybackPct:0.###}% of measured CET work.");
-            facts = new
-            {
-                authorCadenceWholeCallback = true,
-                baseIntervalSeconds = authorCadence.BaseIntervalSeconds,
-                timerIntervalsSeconds = authorCadence.TimerIntervalsSeconds,
-                accumulatorVariables = authorCadence.AccumulatorVariables,
-                expectedCallsPerSecond = authorCadence.ExpectedCallsPerSecond,
-                runtimeEntryReductionFactor = authorCadence.RuntimeEntryReductionFactor,
-                estimatedAvoidablePollingMsPerSecond = authorCadence.EstimatedAvoidablePollingMsPerSecond,
-                estimatedCallbackPaybackPct = authorCadence.EstimatedCallbackPaybackPct,
-                estimatedGlobalPaybackPct = authorCadence.EstimatedGlobalPaybackPct,
-                deltaParameter = authorCadence.DeltaParameter
-            };
-        }
-        else if (!string.IsNullOrWhiteSpace(cadenceBlocker))
-        {
-            blockers.Add(cadenceBlocker);
-        }
-
         // Structural hot-path recipes are source-proven and callback-local.
         // They never change event cadence or callback delivery. Cost is the
         // first gate: do not rewrite cheap callbacks just because the source is ugly.
-        if (!recipes.Contains("AUTHOR_CADENCE_WHOLE_CALLBACK", StringComparer.OrdinalIgnoreCase) &&
-            source is not null &&
+        if (source is not null &&
             TryResolveStructuralHotpath(source, callback, out var structural))
         {
             structuralResolution = structural;
@@ -1665,8 +1590,7 @@ internal static class CallbackResolverService
             evidence.AddRange(structural.Evidence);
         }
 
-        if (!recipes.Contains("AUTHOR_CADENCE_WHOLE_CALLBACK", StringComparer.OrdinalIgnoreCase) &&
-            source is not null &&
+        if (source is not null &&
             directOnUpdate &&
             TryResolveHardDormantGuardHoist(source, callback, out var hardDormant))
         {
@@ -1675,8 +1599,7 @@ internal static class CallbackResolverService
             evidence.AddRange(hardDormant.Evidence);
         }
 
-        if (!recipes.Contains("AUTHOR_CADENCE_WHOLE_CALLBACK", StringComparer.OrdinalIgnoreCase) &&
-            source is not null &&
+        if (source is not null &&
             directOnUpdate &&
             callback.ExclusiveMsPerSecond >= 7.0 &&
             callback.GlobalWorkSharePct >= 1.0 &&
@@ -1697,10 +1620,9 @@ internal static class CallbackResolverService
                 "is self-contained and can be moved off the frame loop without changing the active branch.");
         }
 
-        if (!recipes.Contains("AUTHOR_CADENCE_WHOLE_CALLBACK", StringComparer.OrdinalIgnoreCase) &&
-            (structuralResolution is not null ||
-             hardDormantResolution is not null ||
-             discoveryScheduleResolution is not null))
+        if (structuralResolution is not null ||
+            hardDormantResolution is not null ||
+            discoveryScheduleResolution is not null)
         {
             facts = new
             {
@@ -1720,16 +1642,6 @@ internal static class CallbackResolverService
                 authorDiscoveryAccumulator = discoveryScheduleResolution?.Accumulator ?? "",
                 authorDiscoveryGate = discoveryScheduleResolution?.ActiveGate ?? ""
             };
-        }
-
-        // Keep the broader cadence classifier visible as evidence, but do not
-        // let an inferred cadence authorize generation. Only finite generator
-        // recipes above are automatable.
-        if (cadenceDecision is not null &&
-            cadenceDecision.TransformCandidate &&
-            !cadenceDecision.Group.Equals("LEAVE_ALONE", StringComparison.OrdinalIgnoreCase))
-        {
-            evidence.Add($"Cadence subset source-classified {cadenceDecision.Group}; generation still requires a finite author-cadence recipe.");
         }
 
         var automaticRecipes = recipes
@@ -1757,10 +1669,6 @@ internal static class CallbackResolverService
         var pattern = automatable
             ? "FRAME_DISPATCH_CONSOLIDATION"
             : parkedRecipes.Contains(
-                "AUTHOR_CADENCE_WHOLE_CALLBACK",
-                StringComparer.OrdinalIgnoreCase)
-                ? "AUTHOR_CADENCE_EVIDENCE"
-                : parkedRecipes.Contains(
                     "AUTHOR_DISCOVERY_DORMANT_SCHEDULE",
                     StringComparer.OrdinalIgnoreCase)
                     ? "AUTHOR_DISCOVERY_DORMANT_EVIDENCE"

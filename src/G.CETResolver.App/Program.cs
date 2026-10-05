@@ -71,8 +71,6 @@ internal static class Program
             {
                 ok = true,
                 result.ResolverPath,
-                result.CadenceRuntimePath,
-                result.CadenceFinalPath,
                 result.FamilyCount,
                 result.RankedCallbackCount,
                 result.GenericResolvedCount,
