@@ -87,6 +87,144 @@ internal sealed class ZeroEngineService
         return hasReturn && hasEngineTable;
     }
 
+    public void AddProfilerRegionAudit(string initPath)
+    {
+        var text = File.ReadAllText(initPath);
+        const string marker = "-- CET_RUNTIME_PROFILER_REGION_AUDIT_BEGIN v1";
+        if (text.Contains(marker, StringComparison.Ordinal))
+            return;
+
+        static string ReplaceExactlyOnce(string source, string oldValue, string newValue, string label)
+        {
+            var first = source.IndexOf(oldValue, StringComparison.Ordinal);
+            if (first < 0 || source.IndexOf(oldValue, first + oldValue.Length, StringComparison.Ordinal) >= 0)
+                throw new InvalidOperationException(
+                    $"0-Engine region audit anchor is not uniquely proven: {label}. No partial audit patch is allowed.");
+            return source[..first] + newValue + source[(first + oldValue.Length)..];
+        }
+
+        const string helper = """
+-- CET_RUNTIME_PROFILER_REGION_AUDIT_BEGIN v1
+-- Temporary low-overhead framework timing. Profiler Manager restores init.lua exactly.
+local __CETRP_RegionRegister = CETProfilerRegionRegister
+local __CETRP_RegionBeginNative = CETProfilerRegionBegin
+local __CETRP_RegionEndNative = CETProfilerRegionEnd
+local __CETRP_RegionEnabled =
+    type(__CETRP_RegionRegister) == "function" and
+    type(__CETRP_RegionBeginNative) == "function" and
+    type(__CETRP_RegionEndNative) == "function"
+local __CETRP_RegionHandles = {}
+
+local function __CETRP_BeginRegion(name)
+    if not __CETRP_RegionEnabled then return 0 end
+    local handle = __CETRP_RegionHandles[name]
+    if handle == nil then
+        handle = __CETRP_RegionRegister("0-Engine", name) or 0
+        __CETRP_RegionHandles[name] = handle
+    end
+    if handle == 0 then return 0 end
+    return __CETRP_RegionBeginNative(handle) or 0
+end
+
+local function __CETRP_EndRegion(token, name)
+    if token ~= 0 then
+        local handle = __CETRP_RegionHandles[name] or 0
+        if handle ~= 0 then
+            __CETRP_RegionEndNative(handle, token)
+        end
+    end
+end
+-- CET_RUNTIME_PROFILER_REGION_AUDIT_END v1
+
+""";
+
+        var engineAnchor = Regex.Match(
+            text,
+            @"(?m)^(?<indent>[ \t]*)local Engine = \{\}[ \t]*\r?$",
+            RegexOptions.CultureInvariant);
+        if (!engineAnchor.Success ||
+            Regex.Matches(text, @"(?m)^[ \t]*local Engine = \{\}[ \t]*\r?$").Count != 1)
+        {
+            throw new InvalidOperationException(
+                "0-Engine region audit could not prove the unique Engine table anchor.");
+        }
+
+        text = text.Insert(engineAnchor.Index + engineAnchor.Length, Environment.NewLine + helper);
+
+        text = ReplaceExactlyOnce(
+            text,
+            "    pcall(Cron.Update, delta)",
+            "    local __cetrpCron = __CETRP_BeginRegion(\"UPDATE_CRON\")\n" +
+            "    pcall(Cron.Update, delta)\n" +
+            "    __CETRP_EndRegion(__cetrpCron, \"UPDATE_CRON\")",
+            "Cron.Update");
+
+        text = ReplaceExactlyOnce(
+            text,
+            "    pcall(UpdateFrame, delta)",
+            "    local __cetrpState = __CETRP_BeginRegion(\"UPDATE_STATE\")\n" +
+            "    pcall(UpdateFrame, delta)\n" +
+            "    __CETRP_EndRegion(__cetrpState, \"UPDATE_STATE\")",
+            "UpdateFrame");
+
+        text = ReplaceExactlyOnce(
+            text,
+            "    local schedulerOk, schedulerErr = pcall(Scheduler.Update, {",
+            "    local __cetrpScheduler = __CETRP_BeginRegion(\"SCHEDULER_TOTAL\")\n" +
+            "    local schedulerOk, schedulerErr = pcall(Scheduler.Update, {",
+            "Scheduler.Update begin");
+
+        text = ReplaceExactlyOnce(
+            text,
+            "    if not schedulerOk then\n        Logger.Log(\"0-Engine\", \"Scheduler update error: \" .. tostring(schedulerErr), \"error\")\n    end",
+            "    __CETRP_EndRegion(__cetrpScheduler, \"SCHEDULER_TOTAL\")\n" +
+            "    if not schedulerOk then\n        Logger.Log(\"0-Engine\", \"Scheduler update error: \" .. tostring(schedulerErr), \"error\")\n    end",
+            "Scheduler.Update end");
+
+        text = ReplaceExactlyOnce(
+            text,
+            "    adoptedUpdateEmitter:trigger(delta)",
+            "    local __cetrpAdopted = __CETRP_BeginRegion(\"ADOPTED_UPDATE_DISPATCH\")\n" +
+            "    adoptedUpdateEmitter:trigger(delta)\n" +
+            "    __CETRP_EndRegion(__cetrpAdopted, \"ADOPTED_UPDATE_DISPATCH\")",
+            "adopted update dispatch");
+
+        text = ReplaceExactlyOnce(
+            text,
+            "        ActionRouter.Dispatch(player, action, consumer)",
+            "        local __cetrpActionRouter = __CETRP_BeginRegion(\"ACTION_ROUTER_DISPATCH\")\n" +
+            "        ActionRouter.Dispatch(player, action, consumer)\n" +
+            "        __CETRP_EndRegion(__cetrpActionRouter, \"ACTION_ROUTER_DISPATCH\")",
+            "ActionRouter.Dispatch");
+
+        text = ReplaceExactlyOnce(
+            text,
+            "            Events.PlayerAction:trigger(action)",
+            "            local __cetrpLegacyAction = __CETRP_BeginRegion(\"LEGACY_PLAYER_ACTION_DISPATCH\")\n" +
+            "            Events.PlayerAction:trigger(action)\n" +
+            "            __CETRP_EndRegion(__cetrpLegacyAction, \"LEGACY_PLAYER_ACTION_DISPATCH\")",
+            "legacy PlayerAction dispatch");
+
+        File.WriteAllText(initPath, text, new UTF8Encoding(false));
+
+        var verify = File.ReadAllText(initPath);
+        foreach (var required in new[]
+                 {
+                     marker,
+                     "UPDATE_CRON",
+                     "UPDATE_STATE",
+                     "SCHEDULER_TOTAL",
+                     "ADOPTED_UPDATE_DISPATCH",
+                     "ACTION_ROUTER_DISPATCH",
+                     "LEGACY_PLAYER_ACTION_DISPATCH"
+                 })
+        {
+            if (!verify.Contains(required, StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    $"0-Engine region audit verification failed: {required}");
+        }
+    }
+
     public void AddAdaptiveProfilerSchedulerBridge(string initPath)
     {
         var text = File.ReadAllText(initPath);
