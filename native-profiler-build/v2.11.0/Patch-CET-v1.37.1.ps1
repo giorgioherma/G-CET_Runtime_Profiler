@@ -521,10 +521,10 @@ $2
 # those scopes are still alive. Override callbacks remain registered and timed;
 # their exclusive time is conservative and may include downstream native work.
 #
-# Override. The resolver runs after CET has already entered the valid locked
-# Lua execution path. v2.11.0 downstream boundaries make exclusive time mean
-# the mod callback itself: chained Overrides and the original game function
-# reached through next()/wrappedMethod() are excluded.
+# Override ownership still resolves under CET's valid locked Lua execution path.
+# The callback itself is timed, but downstream next()/native work is deliberately
+# not separated in this safety build. The timing scope is destroyed before CET's
+# invalid-result path can forward a Lua error with luaL_error/SEH.
 Replace-RegexOnce `
     -Path $foC `
     -Pattern '([ \t]*auto next = WrapNextOverride\(aChain, aStep \+ 1, aLuaState, aLuaContext, aLuaArgs, apRealFunction, apRealContext, aLock\);\s*\r?\n)([ \t]*auto result = aLuaContext == sol::nil \? call->ScriptFunction\(as_args\(aLuaArgs\), next\) : call->ScriptFunction\(aLuaContext, as_args\(aLuaArgs\), next\);)' `
