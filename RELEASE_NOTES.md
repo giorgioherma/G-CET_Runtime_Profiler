@@ -1,9 +1,10 @@
-# G-CET Runtime Profiler v1.0.1
+# G-CET Runtime Profiler v1.0.2
 
 Stable maintenance release of the standalone G-CET Runtime Profiler.
 
 ## Highlights
 
+- **World-load stability fix:** CET Observe/ObserveAfter/Override callback ownership/timing instrumentation is bypassed while capture is OFF. This prevents profiler-side Lua environment access before a capture begins while preserving the main profiler's existing lightweight active-capture behavior.
 - Maintenance refresh: fixed completed-capture detection for the native profiler's `CAPTURE_START` + `PAUSE` markers, so real captures are collected into package-local `RESULTS` instead of being cleared as scratch/templates.
 - Added regression coverage proving a real native-style capture is archived exactly once before restore.
 - Maintenance refresh: pre-capture/duplicate native dumps no longer create header-only CET profiler CSV shells.
@@ -37,14 +38,14 @@ Unavailable action buttons are gray. Available normal actions are cyan. **RESTOR
 
 G-CET works standalone.
 
-CapFrameX **1.9.1.2 Beta** is the exact development/test reference for v1.0.1. The application links to the upstream CapFrameX releases page without treating the upstream page's displayed version label as authoritative for the tested executable build.
+CapFrameX **1.9.1.2 Beta** is the exact development/test reference for v1.0.2. The application links to the upstream CapFrameX releases page without treating the upstream page's displayed version label as authoritative for the tested executable build.
 
 Other frame-time profilers can still be used. Recognized CapFrameX JSON receives the full synchronized analysis layer; unrecognized companion files are still preserved safely under `FrameTime\`.
 
 ## Portable package
 
 ```text
-G-CET-Runtime-Profiler-v1.0.1.zip
+G-CET-Runtime-Profiler-v1.0.2.zip
 ├─ Install_Instructions.html
 └─ G-CET-Runtime-Profiler\
    ├─ G-CET-Runtime-Profiler.exe
