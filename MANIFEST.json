@@ -38,7 +38,7 @@
   ],
   "managerChanges": [
     "security-scan packaging: native profiler is distributed with a .dll extension matching its PE/DLL format and copied to CET's required cyber_engine_tweaks.asi name only during install",
-    "native profiler 2.11.2 keeps 0-Engine excluded from adaptive Lua deep hooks and adds aggregate begin/end region timers for temporary framework diagnostics",
+    "native profiler 2.11.2 keeps 0-Engine excluded from adaptive Lua deep hooks and writes aggregate begin/end framework diagnostics to CET_Runtime_Profile_Regions.csv",
     "profiler install temporarily instruments recognized 0-Engine update/action boundaries and restores the exact original init.lua; region evidence is diagnostic only and never authorizes Resolver generation",
     "final v1.0.0 UI keeps profiler-status prose white and colors only semantic status markers",
     "disabled actions render gray; available forward actions use cyan and available restore uses magenta",
