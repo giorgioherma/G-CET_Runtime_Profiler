@@ -77,3 +77,20 @@ v2.11.2 lightweight 0-Engine audit
 - Unknown framework layouts skip region instrumentation without blocking ordinary profiling.
 - The original 0-Engine init.lua is backed up and restored byte-for-byte.
 - Region data is diagnostic only; it never authorizes Resolver generation or dynamic 0-Engine rewriting.
+
+
+v2 region split for final 0-Engine audit
+----------------------------------------
+- Keeps the existing parent regions unchanged for direct before/after comparison.
+- ACTION_SUBSCRIBER_EXECUTION measures routed action subscriber work through
+  Health.Invoke, so ACTION_ROUTER_DISPATCH minus this child is the approximate
+  router/framework residual.
+- UPDATE_STATE now exposes non-overlapping child regions for STATE_BLACKBOARD,
+  STATE_READY_DISPATCH, STATE_PLAYER_TRANSFORM, STATE_DERIVED,
+  STATE_PROXIMITY_SPATIAL, and STATE_FRAME_DISPATCH.
+- UPDATE_STATE minus those child totals leaves session/lifecycle/base bookkeeping
+  as the approximate framework residual.
+- All additions remain aggregate begin/end timers only. 0-Engine stays excluded
+  from adaptive Lua CALL/RET/LINE deep hooks.
+- Region instrumentation remains temporary, source-proven, fail-soft, and is
+  restored with the original init.lua after profiling.
