@@ -547,18 +547,15 @@ Replace-RegexOnce `
     -Replacement @'
 $1
 CETRuntimeProfiler::Counter* ResolveProfilerCounter(
-    const FunctionOverride::Context* apContext,
-    bool aAttachSource = true)
+    const FunctionOverride::Context* apContext)
 {
     if (!apContext)
         return nullptr;
 
     auto& profiler = CETRuntimeProfiler::Get();
 
-    // Capture OFF must be completely inert on callback execution. Do not touch
-    // the Lua environment, function object, source metadata, or ownership state
-    // until the user has actually started a profiler capture.
-    // This also keeps world-load callbacks on the stock CET execution path.
+    // Capture OFF must be inert: do not touch callback ownership, Lua
+    // environment state, or source metadata until a capture is active.
     if (!profiler.IsCapturing())
         return nullptr;
 
@@ -574,11 +571,12 @@ CETRuntimeProfiler::Counter* ResolveProfilerCounter(
         apContext->Environment["__logger"].get<std::shared_ptr<spdlog::logger>>();
     if (logger)
         modName = logger->name();
+
     auto* counter = profiler.ResolveCallback(apContext, modName);
 
     // Source discovery is also lazy. Registration stays native-only and safe;
     // the Lua function is inspected only on the first real callback execution.
-    if (aAttachSource && counter && counter->SourceFile.empty())
+    if (counter && counter->SourceFile.empty())
     {
         auto* state = apContext->ScriptFunction.lua_state();
         if (state && apContext->ScriptFunction != sol::nil)
@@ -657,7 +655,7 @@ $1            const auto result = [&]() {
                 return call->ScriptFunction(as_args(*apOrigArgs));
             }();
 '@ `
-    -Label "Observe capture-gated callback timing"
+    -Label "Observe capture-gated full callback timing"
 
 # ObserveAfter.
 Replace-RegexOnce `
@@ -675,19 +673,45 @@ $1            const auto result = [&]() {
                 return call->ScriptFunction(as_args(*apOrigArgs));
             }();
 '@ `
-    -Label "ObserveAfter capture-gated callback timing"
+    -Label "ObserveAfter capture-gated full callback timing"
 
-# Override safety policy.
+# v2.11.0 OVERRIDE ATTRIBUTION FIX.
 #
-# Generic Override bodies are not auto-patched by the resolver. Keep the broad
-# data that remains useful (owner, registration target, calls, timing, spikes)
-# but do not run raw Lua source discovery or adaptive DeepTrace hooks on Override
-# callbacks. Those Lua-introspection layers are retained for Observe/ObserveAfter.
+# A mod Override receives a Lua `next` function. Time spent after the mod calls
+# next() is downstream work: another Override or the original RED/native game
+# function. v2.10.1 only subtracted nested *profiled callbacks*, so the final
+# original/native function had no profiler scope and was incorrectly charged
+# to the calling mod's Override.
 #
-# Also do not install a transparent RAII Scope around next()/wrappedMethod().
-# Downstream native next() time is therefore conservatively included in Override
-# exclusive attribution. The basic timing scope is still confined to the
-# protected ScriptFunction call and is destroyed before CET can call luaL_error.
+# Scope(nullptr) is intentionally used as a transparent timing boundary. It
+# records no row of its own, but its full elapsed duration is added as child
+# time to the currently active mod callback. Nested profiler scopes remain
+# children of this boundary, avoiding double subtraction.
+#
+# The root CET invocation also enters one of these lambdas, but with no active
+# mod callback parent, so it contributes nothing to attribution.
+Replace-RegexOnce `
+    -Path $foC `
+    -Pattern '(\[&\]\(sol::variadic_args aWrapArgs, sol::this_state aState\) -> sol::variadic_results\s*\r?\n[ \t]*\{\s*\r?\n)([ \t]*std::string errorMessage;)' `
+    -Replacement @'
+$1            CETRuntimeProfiler::Scope profilerDownstreamBoundary(nullptr);
+$2
+'@ `
+    -Label "Override terminal next()/real-function attribution boundary"
+
+Replace-RegexOnce `
+    -Path $foC `
+    -Pattern '(\[&, aStep\]\(sol::variadic_args aWrapArgs, sol::this_state aState\) -> sol::variadic_results\s*\r?\n[ \t]*\{\s*\r?\n)([ \t]*const auto call = \(aChain\.Overrides\.rbegin\(\) \+ aStep\)->get\(\);)' `
+    -Replacement @'
+$1            CETRuntimeProfiler::Scope profilerDownstreamBoundary(nullptr);
+$2
+'@ `
+    -Label "Override chained next() attribution boundary"
+
+# Override. The resolver runs after CET has already entered the valid locked
+# Lua execution path. v2.11.0 downstream boundaries make exclusive time mean
+# the mod callback itself: chained Overrides and the original game function
+# reached through next()/wrappedMethod() are excluded.
 Replace-RegexOnce `
     -Path $foC `
     -Pattern '([ \t]*auto next = WrapNextOverride\(aChain, aStep \+ 1, aLuaState, aLuaContext, aLuaArgs, apRealFunction, apRealContext, aLock\);\s*\r?\n)([ \t]*auto result = aLuaContext == sol::nil \? call->ScriptFunction\(as_args\(aLuaArgs\), next\) : call->ScriptFunction\(aLuaContext, as_args\(aLuaArgs\), next\);)' `
@@ -700,16 +724,16 @@ $1            auto result = [&]() {
                         : call->ScriptFunction(aLuaContext, as_args(aLuaArgs), next);
                 }
 
-                // Override-safe broad profiling: no raw source discovery and no
-                // adaptive Lua hook. Resolver does not rewrite generic Overrides.
-                auto* profilerCounter = ResolveProfilerCounter(call, false);
+                auto* profilerCounter = ResolveProfilerCounter(call);
+                CETRuntimeProfiler::DeepTraceScope deepTrace(
+                    profilerCounter, call->ScriptFunction.lua_state());
                 CETRuntimeProfiler::Scope profileScope(profilerCounter);
                 return aLuaContext == sol::nil
                     ? call->ScriptFunction(as_args(aLuaArgs), next)
                     : call->ScriptFunction(aLuaContext, as_args(aLuaArgs), next);
             }();
 '@ `
-    -Label "Override-safe broad callback timing without source/deep tracing"
+    -Label "Override capture-gated full callback timing"
 
 # Hard safety checks.
 $foHHashAfter = (Get-FileHash -Algorithm SHA256 $foH).Hash
@@ -728,7 +752,8 @@ foreach ($marker in @(
     "AttachSource(",
     "ClearCallbackBindings",
     "CETRuntimeProfiler::Scope profileScope",
-    "CETRuntimeProfiler::DeepTraceScope"
+    "CETRuntimeProfiler::DeepTraceScope",
+    "profilerDownstreamBoundary"
 )) {
     if (-not $foCText.Contains($marker)) {
         throw "FunctionOverride v2.10.0 profiler marker missing after patch: $marker"
@@ -776,11 +801,11 @@ Write-Host "Coverage: events + Observe + ObserveAfter + Override" -ForegroundCol
 Write-Host "FunctionOverride::Context: VERIFIED UNCHANGED" -ForegroundColor Green
 Write-Host "Registration-time Lua/Sol access: NONE" -ForegroundColor Green
 Write-Host "Callback ownership: lazy resolution during valid locked execution" -ForegroundColor Green
+Write-Host "Capture OFF: FunctionOverride profiling fully bypassed" -ForegroundColor Green
 Write-Host "Callback identity/source: registration ID + Lua source line range + closure identity" -ForegroundColor Green
 Write-Host "Adaptive deep profiling: runtime hotset + sampled Lua call/return trees + callsites" -ForegroundColor Green
 Write-Host "Exact frame telemetry: per-callback multiplicity from Scripting::TriggerOnUpdate" -ForegroundColor Green
-Write-Host "Override profiling: broad owner/target/timing only; source/deep trace disabled" -ForegroundColor Yellow
-Write-Host "Override downstream next()/native time: conservatively included; no RAII downstream boundary" -ForegroundColor Yellow
+Write-Host "Override downstream next()/native time: excluded from mod exclusive attribution" -ForegroundColor Green
 Write-Host "Capture control: Start / Pause / Resume / Stop / Reset / Dump / Status" -ForegroundColor Green
 Write-Host "CSV rates use captured time only (paused time excluded)" -ForegroundColor Green
 Write-Host "Scheduler bridge API: per-job timing + individual spikes + combined frame bursts" -ForegroundColor Green
