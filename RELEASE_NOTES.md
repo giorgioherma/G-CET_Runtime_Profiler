@@ -2,6 +2,8 @@
 
 Stable maintenance release of the standalone G-CET Runtime Profiler.
 
+Release build: v1.0.2.
+
 ## Highlights
 
 - **World-load stability fix:** CET Observe/ObserveAfter/Override callback ownership/timing instrumentation is bypassed while capture is OFF. This prevents profiler-side Lua environment access before a capture begins while preserving the main profiler's existing lightweight active-capture behavior.
