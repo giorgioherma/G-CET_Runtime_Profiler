@@ -58,7 +58,7 @@ foreach ($entry in $entries) {
         }
         $hasSourceShapedAnchor = @(
             $identityAnchors | Where-Object {
-                [string]$_ -match '[.:()=[]]'
+                [regex]::IsMatch([string]$_, '[.:()=\[\]]')
             }
         ).Count -gt 0
         if (!$hasSourceShapedAnchor) {
