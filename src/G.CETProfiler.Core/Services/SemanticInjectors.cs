@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace GCETRuntimeProfiler.Core.Services;
@@ -2121,18 +2122,77 @@ internal static class SemanticInjectors
         string label)
     {
         var first = text.IndexOf(oldValue, StringComparison.Ordinal);
-        if (first < 0)
+        if (first >= 0)
+        {
+            var second = text.IndexOf(
+                oldValue,
+                first + oldValue.Length,
+                StringComparison.Ordinal);
+            if (second >= 0)
+                throw new InvalidOperationException(
+                    $"Semantic anchor is ambiguous in current source: {label}.");
+
+            return text[..first] + newValue + text[(first + oldValue.Length)..];
+        }
+
+        // Updated mod versions often change indentation, line wrapping, or
+        // single/double quote style without changing behavior. Fall back to a
+        // token-preserving literal match: whitespace is flexible, quotes may
+        // differ, but identifiers/operators/punctuation must remain identical.
+        var pattern = BuildFlexibleLiteralPattern(oldValue);
+        var regex = new Regex(
+            pattern,
+            RegexOptions.CultureInvariant | RegexOptions.Singleline);
+        var matches = regex.Matches(text);
+        if (matches.Count == 0)
             throw new InvalidOperationException(
                 $"Current source no longer matches semantic anchor: {label}.");
-
-        var second = text.IndexOf(
-            oldValue,
-            first + oldValue.Length,
-            StringComparison.Ordinal);
-        if (second >= 0)
+        if (matches.Count != 1)
             throw new InvalidOperationException(
                 $"Semantic anchor is ambiguous in current source: {label}.");
 
-        return text[..first] + newValue + text[(first + oldValue.Length)..];
+        var match = matches[0];
+        return text[..match.Index] +
+            newValue +
+            text[(match.Index + match.Length)..];
     }
+
+    private static string BuildFlexibleLiteralPattern(string literal)
+    {
+        var pattern = new StringBuilder(literal.Length * 2);
+        var i = 0;
+        while (i < literal.Length)
+        {
+            var ch = literal[i];
+            if (char.IsWhiteSpace(ch))
+            {
+                var start = i;
+                while (i < literal.Length && char.IsWhiteSpace(literal[i]))
+                    i++;
+
+                var previous = start > 0 ? literal[start - 1] : '\0';
+                var next = i < literal.Length ? literal[i] : '\0';
+                var requiresSeparator =
+                    IsIdentifierChar(previous) &&
+                    IsIdentifierChar(next);
+                pattern.Append(requiresSeparator ? @"\s+" : @"\s*");
+                continue;
+            }
+
+            if (ch == '\'' || ch == '"')
+            {
+                pattern.Append(@"['""]");
+                i++;
+                continue;
+            }
+
+            pattern.Append(Regex.Escape(ch.ToString()));
+            i++;
+        }
+
+        return pattern.ToString();
+    }
+
+    private static bool IsIdentifierChar(char ch) =>
+        char.IsLetterOrDigit(ch) || ch == '_';
 }
