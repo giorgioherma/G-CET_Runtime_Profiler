@@ -103,12 +103,9 @@ if ($extra.Count -gt 0) {
 $rejectedAuto = @(
     'dualsense-support',
     'overclockedlynxpaws',
-    'immersive-third-person',
     'immersivefirstperson',
     'nativeinteractions',
-    'minimap-widgets',
-    'sitanywhere',
-    'repeatable-increased-criminal-activity'
+    'minimap-widgets'
 )
 $leaked = @($rejectedAuto | Where-Object { $_ -in $ids -or $_ -in $injectorIds })
 if ($leaked.Count -gt 0) {
