@@ -1754,7 +1754,8 @@
           ]
         ],
         "alreadySatisfiedMarker": "G-CET semantic:easytrainer",
-        "expectedMarkerFileCount": 9
+        "expectedMarkerFileCount": 9,
+        "allowIdentityFallback": true
       },
       "behavior": {
         "handler": "SEMANTIC_ROUTED_ACTION_PLUS_DORMANT_FEATURE_GATES",
@@ -1837,7 +1838,8 @@
           "senseGWCheck = false"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:teleport-gateway-system",
-        "expectedMarkerFileCount": 1
+        "expectedMarkerFileCount": 1,
+        "allowIdentityFallback": true
       },
       "behavior": {
         "handler": "SEMANTIC_GATEWAY_POSITION_REUSE_PLUS_HIDDEN_DRAW",
@@ -1914,7 +1916,8 @@
           ]
         ],
         "alreadySatisfiedMarker": "G-CET semantic:discard-ammo-on-reload",
-        "expectedMarkerFileCount": 1
+        "expectedMarkerFileCount": 1,
+        "allowIdentityFallback": true
       },
       "behavior": {
         "handler": "SEMANTIC_EXACT_ACTION_ROUTING",
@@ -1980,7 +1983,8 @@
           "draw = true"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:advanced-settings",
-        "expectedMarkerFileCount": 1
+        "expectedMarkerFileCount": 1,
+        "allowIdentityFallback": true
       },
       "behavior": {
         "handler": "SEMANTIC_OVERLAY_VISIBILITY_GATE",
@@ -2057,7 +2061,8 @@
           ]
         ],
         "alreadySatisfiedMarker": "G-CET semantic:auto-ammo-crafting",
-        "expectedMarkerFileCount": 1
+        "expectedMarkerFileCount": 1,
+        "allowIdentityFallback": true
       },
       "behavior": {
         "handler": "SEMANTIC_AUTHOR_CADENCE_DEFERRED_ACQUISITION",
