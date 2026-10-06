@@ -200,6 +200,8 @@ internal static class CallbackResolverService
                         semantic.Matched,
                         semantic.SourceProofSatisfied,
                         semantic.AlreadySatisfied,
+                        semantic.SatisfiedBySourcePostcondition,
+                        semantic.AlreadySatisfiedMode,
                         semantic.PartialState,
                         semantic.MarkerFileCount,
                         semantic.ExpectedMarkerFileCount,
@@ -216,7 +218,9 @@ internal static class CallbackResolverService
                         note = semantic.PartialState
                             ? "A partial G-CET semantic marker state was detected. AUTO fails closed instead of treating the rule as complete or attempting a blind repair."
                             : semantic.AlreadySatisfied
-                                ? "The complete expected semantic marker state is already present; AUTO will not re-apply the rule."
+                                ? semantic.SatisfiedBySourcePostcondition
+                                    ? "Current live source already proves the semantic rule's resulting behavior; AUTO will not re-apply an equivalent manual/foreign optimization."
+                                    : "The complete expected semantic marker state is already present; AUTO will not re-apply the rule."
                                 : semantic.Matched
                                     ? "Identity selected a semantic candidate; current live mod source graph must prove the rule. The library contains behavior knowledge, not replacement mod files."
                                     : "No semantic-library rule matched this measured callback."
