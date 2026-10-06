@@ -1545,6 +1545,12 @@ internal static class CallbackResolverService
                 sourceEvidence,
                 schedulerIntegration);
 
+        if (family == "ONDRAW")
+            return ResolveOnDraw(
+                callback,
+                source,
+                sourceEvidence);
+
         // Structural callback-local rewrites do not depend on the callback
         // delivery family. Unsupported cadence/routing families should still
         // receive safe hotpath analysis instead of terminating immediately.
@@ -1583,6 +1589,90 @@ internal static class CallbackResolverService
             RecipeFamilies = Array.Empty<string>(),
             Evidence = Array.Empty<string>(),
             Blockers = new[] { "No family-specific recipe or material source-proven structural hotpath rewrite was found." },
+            Source = sourceEvidence
+        };
+    }
+
+    private static GenericResolution ResolveOnDraw(
+        CallbackMetric callback,
+        ResolvedSource? source,
+        SourceEvidence? sourceEvidence)
+    {
+        var evidence = new List<string>();
+        var blockers = new List<string>();
+
+        var rawRegistrarMatch = source is null
+            ? Match.Empty
+            : Regex.Match(
+                source.CallbackText,
+                @"(?m)^[ \t]*(?<registrar>registerForEvent|registerRuntimeEvent)\s*\(\s*['""]onDraw['""]",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        var rawDirectOnDraw = rawRegistrarMatch.Success;
+        var ownerRegistrarAlreadyConsolidated =
+            source is not null &&
+            rawRegistrarMatch.Success &&
+            HasOwnerFrameRegistrar(
+                source.FullText,
+                rawRegistrarMatch.Groups["registrar"].Value,
+                callback.Owner);
+
+        var generatedRegistrarMatch = source is null
+            ? Match.Empty
+            : Regex.Match(
+                source.CallbackText,
+                @"\b(?<registrar>__gcetRegisterEvent_\d+)\s*\(\s*['""]onDraw['""]",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        var generatedRegistrarPresent = generatedRegistrarMatch.Success;
+        var generatedFrameConsolidated =
+            source is not null &&
+            generatedRegistrarPresent &&
+            HasGeneratedFrameRegistrar(
+                source.FullText,
+                generatedRegistrarMatch.Groups["registrar"].Value);
+        var alreadyFrameConsolidated =
+            generatedFrameConsolidated ||
+            ownerRegistrarAlreadyConsolidated;
+
+        if (alreadyFrameConsolidated)
+        {
+            evidence.Add(
+                ownerRegistrarAlreadyConsolidated
+                    ? "Current source already routes this owner onDraw through 0-Engine MakeEventRegistrar; no duplicate frame transform is required."
+                    : "Draw dispatch is already consolidated by a source-proven G-CET registrar; no frame transform is required.");
+        }
+        else if (rawDirectOnDraw)
+        {
+            evidence.Add("Raw direct onDraw registration is present in the current deployed source.");
+        }
+        else if (generatedRegistrarPresent)
+        {
+            blockers.Add("A G-CET frame registrar token is present for onDraw, but its generated helper could not be proven in the current file. Leave the partial state untouched.");
+        }
+        else
+        {
+            blockers.Add("Current deployed source could not prove the direct onDraw registration.");
+        }
+
+        var automatable = rawDirectOnDraw && !alreadyFrameConsolidated;
+        return new GenericResolution
+        {
+            Status = automatable
+                ? "RESOLVED"
+                : alreadyFrameConsolidated
+                    ? "ALREADY_SATISFIED"
+                    : "SOURCE_UNRESOLVED",
+            Automatable = automatable,
+            Pattern = automatable
+                ? "FRAME_DISPATCH_CONSOLIDATION"
+                : alreadyFrameConsolidated
+                    ? "FRAME_DISPATCH_ALREADY_SATISFIED"
+                    : "ONDRAW_UNRESOLVED",
+            RecipeFamilies = automatable
+                ? new[] { "FRAME_DISPATCH_CONSOLIDATION" }
+                : Array.Empty<string>(),
+            Facts = null,
+            Evidence = evidence.ToArray(),
+            Blockers = blockers.ToArray(),
             Source = sourceEvidence
         };
     }
@@ -3359,6 +3449,17 @@ internal static class CallbackResolverService
             values.Add(match.Groups["value"].Value);
         }
 
+        // CET Lua commonly uses the CName literal shorthand n"ActionName".
+        // Treat it exactly like CName.new("ActionName") when resolving finite
+        // action selectors; this is a literal source fact, not an inference.
+        foreach (Match match in Regex.Matches(
+                     fullText,
+                     @"\b" + Regex.Escape(variable) + @"\s*=\s*n\s*['""](?<value>[^'""]+)['""]",
+                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+        {
+            values.Add(match.Groups["value"].Value);
+        }
+
         return values.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
@@ -4442,6 +4543,8 @@ internal static class CallbackResolverService
     {
         if (target.Equals("onUpdate", StringComparison.OrdinalIgnoreCase))
             return "ONUPDATE";
+        if (target.Equals("onDraw", StringComparison.OrdinalIgnoreCase))
+            return "ONDRAW";
         if (target.EndsWith("::OnAction", StringComparison.OrdinalIgnoreCase) ||
             target.Equals("OnAction", StringComparison.OrdinalIgnoreCase) ||
             target.Contains("OnAction", StringComparison.OrdinalIgnoreCase))
