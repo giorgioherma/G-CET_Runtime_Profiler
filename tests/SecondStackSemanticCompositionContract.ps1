@@ -459,6 +459,9 @@ try {
         $midairOut -notmatch 'function __gcetMidairOnAction\(_, action, __gcetConsumer, __gcetRoutedName\)' -or
         $midairOut -notmatch '__gcetMidairWakeTail' -or
         $midairOut -notmatch '__gcetMidairIdleElapsed' -or
+        $midairOut -notmatch 'if not player\.maxRunSet or not player\.maxSprintSet then' -or
+        $midairOut -match 'or not player\.maxRunSet' -or
+        $midairOut -match 'or not player\.maxSprintSet' -or
         $midairOut -notmatch 'OnLocomotionStateChanged') {
         throw 'Alternative Midair Movement generic + semantic composition is incomplete.'
     }

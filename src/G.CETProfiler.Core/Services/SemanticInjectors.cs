@@ -943,8 +943,6 @@ internal static class SemanticInjectors
             "                or (player and player.canWallbounce == true)\n" +
             "                or __gcetSimpleState == gamePSMLocomotionStates.Jump\n" +
             "                or __gcetSimpleState == gamePSMLocomotionStates.Kereznikov\n" +
-            "                or not player.maxRunSet\n" +
-            "                or not player.maxSprintSet\n" +
             "            if __gcetRealtime then\n" +
             "                __gcetMidairIdleElapsed = 0.0\n" +
             "            else\n" +
