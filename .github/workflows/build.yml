@@ -840,6 +840,10 @@ jobs:
         shell: pwsh
         run: ./tests/ThirdStackSemanticCompositionContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: Fourth-stack semantic composition contract
+        shell: pwsh
+        run: ./tests/FourthStackSemanticCompositionContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: Semantic production library contract
         shell: pwsh
         run: ./tests/SemanticLibraryContract.ps1 -ResolverRoot ./publish-resolver
