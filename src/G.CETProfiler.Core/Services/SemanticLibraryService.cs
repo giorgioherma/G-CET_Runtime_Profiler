@@ -103,7 +103,10 @@ internal sealed class SemanticLibraryService
                                 "alreadySatisfiedMarker"),
                             ExpectedMarkerFileCount = (int)Math.Max(
                                 1,
-                                JsonLong(proofRow, "expectedMarkerFileCount"))
+                                JsonLong(proofRow, "expectedMarkerFileCount")),
+                            AllowIdentityFallback = JsonBool(
+                                proofRow,
+                                "allowIdentityFallback")
                         };
                     }
 
@@ -183,8 +186,9 @@ internal sealed class SemanticLibraryService
         {
             candidates = callbackCandidates
                 .Where(entry =>
-                    SourceProofSatisfied(entry, graph) ||
-                    MarkerPresent(entry, graph))
+                    MarkerPresent(entry, graph) ||
+                    (entry.Proof.AllowIdentityFallback &&
+                     SourceProofSatisfied(entry, graph)))
                 .Take(3)
                 .ToList();
             sourceFingerprintFallback = candidates.Count > 0;
@@ -570,6 +574,7 @@ internal sealed class SemanticLibraryService
         internal string[][] OwnerAnyGroups { get; init; } = Array.Empty<string[]>();
         internal string AlreadySatisfiedMarker { get; init; } = "";
         internal int ExpectedMarkerFileCount { get; init; } = 1;
+        internal bool AllowIdentityFallback { get; init; }
     }
 
     private sealed class GenerationPolicy
