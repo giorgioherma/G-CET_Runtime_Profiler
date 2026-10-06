@@ -1720,7 +1720,7 @@
       "identityHints": [
         "EasyTrainer"
       ],
-      "policyClass": "WRAPPED_ACTION_SOURCE_SPLIT",
+      "policyClass": "ROUTED_ACTION_PLUS_DORMANT_FEATURE_GATES",
       "callbacks": [
         {
           "kind": "Observe",
@@ -1734,7 +1734,13 @@
           "SelfFeature.NoClip.HandleMouseLook(action)",
           "Utils.Weapon.HandleInputAction(action)",
           "function Weapon.HandleInputAction(action)",
-          "function Noclip.HandleMouseLook(action)"
+          "function Noclip.HandleMouseLook(action)",
+          "function Event.Observe(class, method, fn)",
+          "function OptionRegistry.UpdateHotkeys()",
+          "function Restrictions.Update()",
+          "function AdvancedMobility.Tick()",
+          "function SuperSpeed.Tick()",
+          "function AirThrusterBoots.Tick()"
         ],
         "ownerAnyGroups": [
           [
@@ -1747,31 +1753,39 @@
           ]
         ],
         "alreadySatisfiedMarker": "G-CET semantic:easytrainer",
-        "expectedMarkerFileCount": 3
+        "expectedMarkerFileCount": 8
       },
       "behavior": {
-        "handler": "SEMANTIC_WRAPPED_ACTION_SOURCE_SPLIT",
+        "handler": "SEMANTIC_ROUTED_ACTION_PLUS_DORMANT_FEATURE_GATES",
         "concepts": [
-          "preserveEventWrapper",
-          "singleActionNameDecode",
-          "cameraMouseOnlyNoClip",
-          "rangedAttackOnlyWeaponInput",
+          "transparentEventObserveWrapperProof",
+          "twoAction0EngineRoute",
+          "directObserveFallback",
+          "cachedHotkeyActionIds",
+          "cachedBindingsModule",
+          "closedMenuInputDormancy",
+          "disabledFeatureNativeCallGuards",
           "frameAimState"
         ],
         "lanes": [
           {
-            "role": "CAMERA_MOUSE_X",
-            "cadence": "ORIGINAL_WRAPPED_OBSERVE",
-            "seconds": 0
-          },
-          {
-            "role": "RANGED_ATTACK",
-            "cadence": "ORIGINAL_WRAPPED_OBSERVE",
+            "role": "CAMERA_MOUSE_AND_RANGED_ATTACK",
+            "cadence": "ACTION_ROUTED",
             "seconds": 0
           },
           {
             "role": "OTHER_ACTIONS",
-            "cadence": "EARLY_RETURN_AFTER_NAME",
+            "cadence": "NO_EASYTRAINER_CALLBACK",
+            "seconds": 0
+          },
+          {
+            "role": "DISABLED_NATIVE_HEAVY_FEATURES",
+            "cadence": "EARLY_RETURN",
+            "seconds": 0
+          },
+          {
+            "role": "MENU_CLOSED_RESTRICTIONS",
+            "cadence": "EARLY_RETURN",
             "seconds": 0
           }
         ]
@@ -1790,7 +1804,7 @@
         "evidenceStack": "FOURTH_STACK_GENERIC",
         "admitted": true
       },
-      "cadenceGroup": "NO_CADENCE_CHANGE_WRAPPED_ACTION_SPLIT",
+      "cadenceGroup": "EXACT_ACTION_ROUTE_PLUS_DISABLED_FEATURE_DORMANCY",
       "catalogRole": "SEMANTIC_HOT_MOD",
       "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
       "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
@@ -1804,7 +1818,7 @@
       "identityHints": [
         "TeleportGatewaySystem"
       ],
-      "policyClass": "PER_FRAME_POSITION_REUSE",
+      "policyClass": "PROXIMITY_SENTINEL_DORMANT_SPLIT",
       "callbacks": [
         {
           "kind": "event",
@@ -1817,22 +1831,37 @@
           "playerPos = TGS.player:GetWorldPosition()",
           "GWDist = math.sqrt",
           "TGS.player:GetWorldPosition().x-gatewayDB[index].gwx",
-          "TGS.teleportFac:Teleport"
+          "TGS.teleportFac:Teleport",
+          "TGS.showMainWindow",
+          "senseGWCheck = false"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:teleport-gateway-system",
         "expectedMarkerFileCount": 1
       },
       "behavior": {
-        "handler": "SEMANTIC_GATEWAY_POSITION_REUSE",
+        "handler": "SEMANTIC_PROXIMITY_SENTINEL_DORMANT_SPLIT",
         "concepts": [
-          "onePlayerPositionPerFrame",
-          "preserveGatewayCadence",
-          "preserveRadiusSemantics"
+          "frameFedStateMachine",
+          "frameFedCooldown",
+          "farGatewaySentinel",
+          "nearGatewayRealtime",
+          "singlePlayerPositionPerScan",
+          "hiddenWindowDrawDormancy"
         ],
         "lanes": [
           {
-            "role": "GATEWAY_SCAN",
-            "cadence": "UNCHANGED",
+            "role": "NEAR_GATEWAY_OR_WINDOW_OPEN",
+            "cadence": "EVERY_FRAME",
+            "seconds": 0
+          },
+          {
+            "role": "FAR_GATEWAY_SCAN",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.1
+          },
+          {
+            "role": "HIDDEN_WINDOW_DRAW",
+            "cadence": "EARLY_RETURN",
             "seconds": 0
           }
         ]
@@ -1851,7 +1880,7 @@
         "evidenceStack": "FOURTH_STACK_GENERIC",
         "admitted": true
       },
-      "cadenceGroup": "NO_CADENCE_CHANGE_POSITION_REUSE",
+      "cadenceGroup": "FAR_10HZ_NEAR_REALTIME_HIDDEN_DRAW_DORMANT",
       "catalogRole": "SEMANTIC_HOT_MOD",
       "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
       "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
@@ -2007,7 +2036,7 @@
       "identityHints": [
         "Auto Ammo Crafting (I need more bullets)"
       ],
-      "policyClass": "AUTHOR_CADENCE_DEFERRED_ACQUISITION",
+      "policyClass": "READY_SENTINEL_PLUS_AUTHOR_CADENCE",
       "callbacks": [
         {
           "kind": "event",
@@ -2021,7 +2050,7 @@
           "scriptInterval = scriptInterval + deltaTime",
           "function notReady()",
           "function playerInMenu()",
-          "__gcetGetTransactionSystem"
+          "settings.combatCheck and inCombat"
         ],
         "ownerAnyGroups": [
           [
@@ -2037,8 +2066,11 @@
         "expectedMarkerFileCount": 1
       },
       "behavior": {
-        "handler": "SEMANTIC_AUTHOR_CADENCE_DEFERRED_ACQUISITION",
+        "handler": "SEMANTIC_READY_SENTINEL_PLUS_AUTHOR_CADENCE",
         "concepts": [
+          "combatPausePreserved",
+          "readinessMenuSentinel10Hz",
+          "freshReadinessAtCraftBoundary",
           "preserveAutoConvertTime",
           "deferPlayerAcquisition",
           "deferTransactionAcquisition",
@@ -2047,9 +2079,14 @@
         ],
         "lanes": [
           {
-            "role": "READY_CHECKS",
-            "cadence": "UNCHANGED",
+            "role": "COMBAT_BLOCK",
+            "cadence": "EVERY_FRAME_BOOLEAN_ONLY",
             "seconds": 0
+          },
+          {
+            "role": "READINESS_SENTINEL",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.1
           },
           {
             "role": "CRAFT_SCAN",
@@ -2072,7 +2109,7 @@
         "evidenceStack": "FOURTH_STACK_GENERIC",
         "admitted": true
       },
-      "cadenceGroup": "AUTHOR_CADENCE_DEFERRED_ACQUISITION",
+      "cadenceGroup": "READY_10HZ_PLUS_AUTHOR_CRAFT_CADENCE",
       "catalogRole": "SEMANTIC_HOT_MOD",
       "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
       "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",

@@ -1472,6 +1472,12 @@ internal static class SemanticInjectors
             "Utils.Weapon.HandleInputAction(action)",
             "Event.RegisterUpdate(function(dt)");
 
+        _ = context.FindFile(
+            "Core/Event.lua",
+            "function Event.Observe(class, method, fn)",
+            "Observe(class, method, fn)",
+            "Logger.Log(string.format(\"Event: Observing %s.%s\"");
+
         var noClip = context.FindFile(
             "Features/Self/Abilities/NoClip.lua",
             "function Noclip.HandleMouseLook(action)",
@@ -1485,20 +1491,89 @@ internal static class SemanticInjectors
             "function Weapon.Tick(deltaTime)",
             "ReadEquippedRightHand");
 
-        var initText = ReplaceOnce(
-            init.Text,
+        var registry = context.FindFile(
+            "UI/Registry/OptionRegistry.lua",
+            "local function HotkeyAction(id)",
+            "function OptionRegistry.RegisterHotkeyActions()",
+            "function OptionRegistry.UpdateHotkeys()");
+
+        var restrictions = context.FindFile(
+            "Controls/Restrictions.lua",
+            "function Restrictions.Update()",
+            "Input.UpdateDevice()",
+            "if not menuOpen then return end");
+
+        var mobility = context.FindFile(
+            "Features/Self/Abilities/AdvancedMobility.lua",
+            "function AdvancedMobility.Tick()",
+            "toggleDoubleJump",
+            "doubleJumpApplied");
+
+        var superSpeed = context.FindFile(
+            "Features/Self/Abilities/SuperSpeed.lua",
+            "function SuperSpeed.Tick()",
+            "SuperSpeed.enabled.value",
+            "local applied = false");
+
+        var thrusters = context.FindFile(
+            "Features/Self/Abilities/AirThrusterBoots.lua",
+            "function AirThrusterBoots.Tick()",
+            "AirThrusterBoots.enabled.value",
+            "local applied = false");
+
+        var oldAction =
+            "    Event.Observe(\"PlayerPuppet\", \"OnAction\", function(_, action)\n" +
+            "        if modulesLoaded then\n" +
             "            SelfFeature.NoClip.HandleMouseLook(action)\n" +
             "            if Utils then\n" +
             "                Utils.Weapon.HandleInputAction(action)\n" +
-            "            end",
-            "            local __gcetActionName = Game.NameToString(action:GetName(action))\n" +
-            "            if __gcetActionName == \"CameraMouseX\" then\n" +
-            "                SelfFeature.NoClip.HandleMouseLook(action, __gcetActionName)\n" +
             "            end\n" +
-            "            if Utils and __gcetActionName == \"RangedAttack\" then\n" +
-            "                Utils.Weapon.HandleInputAction(action, __gcetActionName)\n" +
-            "            end",
-            "EasyTrainer source-proven action split");
+            "        end\n" +
+            "    end)";
+
+        var newAction =
+            "    local function __gcetEasyTrainerOnAction(self, action, __gcetConsumer, __gcetRoutedName)\n" +
+            "        if not modulesLoaded then return end\n" +
+            "        local __gcetActionName = __gcetRoutedName or Game.NameToString(action:GetName(action))\n" +
+            "        if __gcetActionName == \"CameraMouseX\" then\n" +
+            "            SelfFeature.NoClip.HandleMouseLook(action, __gcetActionName)\n" +
+            "        end\n" +
+            "        if Utils and __gcetActionName == \"RangedAttack\" then\n" +
+            "            Utils.Weapon.HandleInputAction(action, __gcetActionName)\n" +
+            "        end\n" +
+            "    end\n\n" +
+            "    local __gcetEasyTrainerRouted = false\n" +
+            "    local __gcetEasyTrainerHandles = {}\n" +
+            "    local __gcetEasyTrainerOk, __gcetEasyTrainerEngine = pcall(GetMod, \"0-Engine\")\n" +
+            "    local __gcetEasyTrainerApi = __gcetEasyTrainerEngine\n" +
+            "    if __gcetEasyTrainerOk and type(__gcetEasyTrainerEngine) == \"table\" and type(__gcetEasyTrainerEngine.GCET) == \"table\" then\n" +
+            "        __gcetEasyTrainerApi = __gcetEasyTrainerEngine.GCET\n" +
+            "    end\n" +
+            "    if __gcetEasyTrainerOk and type(__gcetEasyTrainerApi) == \"table\" and type(__gcetEasyTrainerApi.SubscribeAction) == \"function\" then\n" +
+            "        __gcetEasyTrainerRouted = pcall(function()\n" +
+            "            __gcetEasyTrainerHandles[#__gcetEasyTrainerHandles + 1] = __gcetEasyTrainerApi.SubscribeAction({\n" +
+            "                id = \"G-CET.Semantic.EasyTrainer\",\n" +
+            "                actions = { \"CameraMouseX\", \"RangedAttack\" },\n" +
+            "                decodeType = false\n" +
+            "            }, __gcetEasyTrainerOnAction, \"EasyTrainer\")\n" +
+            "        end)\n" +
+            "        if not __gcetEasyTrainerRouted then\n" +
+            "            for _, __gcetHandle in ipairs(__gcetEasyTrainerHandles) do\n" +
+            "                if __gcetHandle and type(__gcetHandle.unsubscribe) == \"function\" then pcall(__gcetHandle.unsubscribe) end\n" +
+            "            end\n" +
+            "        end\n" +
+            "    end\n" +
+            "    if not __gcetEasyTrainerRouted then\n" +
+            "        Event.Observe(\"PlayerPuppet\", \"OnAction\", function(self, action)\n" +
+            "            __gcetEasyTrainerOnAction(self, action, nil, nil)\n" +
+            "        end)\n" +
+            "    end";
+
+        var initText = ReplaceOnce(
+            init.Text,
+            oldAction,
+            newAction,
+            "EasyTrainer source-proven routed OnAction");
         context.Write(init, initText);
 
         var noClipText = ReplaceOnce(
@@ -1562,8 +1637,106 @@ internal static class SemanticInjectors
             "EasyTrainer frame aim-state maintenance");
         context.Write(weapon, weaponText);
 
+        var registryText = ReplaceOnce(
+            registry.Text,
+            "local RefIndex = setmetatable({}, { __mode = \"k\" })\n" +
+            "local HotkeyDown = {}\n",
+            "local RefIndex = setmetatable({}, { __mode = \"k\" })\n" +
+            "local HotkeyDown = {}\n" +
+            "local __gcetBindings = nil\n" +
+            "local function __gcetGetBindings()\n" +
+            "    if __gcetBindings == nil then __gcetBindings = require(\"Controls/Bindings\") end\n" +
+            "    return __gcetBindings\n" +
+            "end\n",
+            "EasyTrainer cached bindings module");
+
+        for (var i = 0; i < 3; i++)
+        {
+            registryText = ReplaceOnce(
+                registryText,
+                "    local Bindings = require(\"Controls/Bindings\")\n",
+                "    local Bindings = __gcetGetBindings()\n",
+                $"EasyTrainer cached bindings lookup {i + 1}");
+        }
+
+        registryText = ReplaceOnce(
+            registryText,
+            "            local action = HotkeyAction(entry.Id)\n",
+            "            local action = entry.Hotkey or HotkeyAction(entry.Id)\n",
+            "EasyTrainer cached hotkey action id");
+        context.Write(registry, registryText);
+
+        var restrictionsText = ReplaceOnce(
+            restrictions.Text,
+            "function Restrictions.Update()\n" +
+            "    local menuOpen = State.IsMenuOpen()\n" +
+            "    Input.UpdateDevice()\n" +
+            "\n" +
+            "    local usingController = Input.IsController()\n" +
+            "    local mouseEnabled = State.mouseEnabled\n" +
+            "    local typingEnabled = State.typingEnabled\n" +
+            "\n" +
+            "    if not menuOpen and lastMenuOpen then\n" +
+            "        Restrictions.Clear()\n" +
+            "        lastMenuOpen, lastWasController, lastMouseEnabled, lastTypingEnabled = false, false, false, false\n" +
+            "        return\n" +
+            "    end\n" +
+            "\n" +
+            "    if not menuOpen then return end",
+            "function Restrictions.Update()\n" +
+            "    local menuOpen = State.IsMenuOpen()\n" +
+            "    if not menuOpen then\n" +
+            "        if lastMenuOpen then\n" +
+            "            Restrictions.Clear()\n" +
+            "            lastMenuOpen, lastWasController, lastMouseEnabled, lastTypingEnabled = false, false, false, false\n" +
+            "        end\n" +
+            "        return\n" +
+            "    end\n" +
+            "\n" +
+            "    Input.UpdateDevice()\n" +
+            "    local usingController = Input.IsController()\n" +
+            "    local mouseEnabled = State.mouseEnabled\n" +
+            "    local typingEnabled = State.typingEnabled",
+            "EasyTrainer closed-menu input dormancy");
+        context.Write(restrictions, restrictionsText);
+
+        var mobilityText = ReplaceOnce(
+            mobility.Text,
+            "function AdvancedMobility.Tick()\n" +
+            "    HandleStatToggle(AdvancedMobility.toggleDoubleJump, \"HasDoubleJump\", \"doubleJumpApplied\", \"Double Jump\")",
+            "function AdvancedMobility.Tick()\n" +
+            "    if not AdvancedMobility.toggleDoubleJump.value\n" +
+            "        and not AdvancedMobility.toggleAirHover.value\n" +
+            "        and not AdvancedMobility.toggleChargeJump.value\n" +
+            "        and not state.doubleJumpApplied\n" +
+            "        and not state.airHoverApplied\n" +
+            "        and not state.chargeJumpApplied then return end\n" +
+            "    HandleStatToggle(AdvancedMobility.toggleDoubleJump, \"HasDoubleJump\", \"doubleJumpApplied\", \"Double Jump\")",
+            "EasyTrainer AdvancedMobility dormant guard");
+        context.Write(mobility, mobilityText);
+
+        var superSpeedText = ReplaceOnce(
+            superSpeed.Text,
+            "function SuperSpeed.Tick()\n" +
+            "    local timeSystem = Game.GetTimeSystem()",
+            "function SuperSpeed.Tick()\n" +
+            "    if not SuperSpeed.enabled.value and not applied then return end\n" +
+            "    local timeSystem = Game.GetTimeSystem()",
+            "EasyTrainer SuperSpeed dormant guard");
+        context.Write(superSpeed, superSpeedText);
+
+        var thrusterText = ReplaceOnce(
+            thrusters.Text,
+            "function AirThrusterBoots.Tick()\n" +
+            "    local stats = Game.GetStatsSystem()",
+            "function AirThrusterBoots.Tick()\n" +
+            "    if not AirThrusterBoots.enabled.value and not applied then return end\n" +
+            "    local stats = Game.GetStatsSystem()",
+            "EasyTrainer AirThrusterBoots dormant guard");
+        context.Write(thrusters, thrusterText);
+
         return SemanticInjectionResult.Success(
-            "Preserved EasyTrainer's Event.Observe wrapper, decoded OnAction once, dispatched only CameraMouseX and RangedAttack into the source-proven consumers, moved aim-state sampling onto the existing per-frame weapon snapshot, and removed per-action GetPlayer/GetType work for unrelated input.");
+            "Proved EasyTrainer's Event.Observe wrapper is transparent, routed only CameraMouseX/RangedAttack through 0-Engine with wrapper fallback, cached hotkey IDs/bindings, stopped closed-menu input-device polling, and added transition-safe dormant guards around three measured native-heavy disabled features.");
     }
 
     private static SemanticInjectionResult ApplyTeleportGatewaySystem(
@@ -1575,17 +1748,99 @@ internal static class SemanticInjectors
             "playerPos = TGS.player:GetWorldPosition()",
             "GWDist = math.sqrt",
             "TGS.player:GetWorldPosition().x-gatewayDB[index].gwx",
-            "TGS.teleportFac:Teleport");
+            "TGS.teleportFac:Teleport",
+            "TGS.showMainWindow");
+
+        var opening = Regex.Match(
+            file.Text,
+            @"(?m)^(?<opening>[ \t]*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*[""']onUpdate[""']\s*,\s*function\s*\(\s*deltaTime\s*\)\s*)$");
+        if (!opening.Success)
+            throw new InvalidOperationException("Teleport Gateway onUpdate opening was not found.");
 
         var text = ReplaceOnce(
             file.Text,
-            "GWDist = math.sqrt(((TGS.player:GetWorldPosition().x-gatewayDB[index].gwx)^2)+((TGS.player:GetWorldPosition().y-gatewayDB[index].gwy)^2)+((TGS.player:GetWorldPosition().z-gatewayDB[index].gwz)^2))",
-            "GWDist = math.sqrt(((playerPos.x-gatewayDB[index].gwx)^2)+((playerPos.y-gatewayDB[index].gwy)^2)+((playerPos.z-gatewayDB[index].gwz)^2))",
-            "Teleport Gateway per-gateway position reuse");
+            opening.Value,
+            "local __gcetGatewayScanElapsed = 0.0\n" +
+            "local __gcetGatewayNear = true\n" +
+            "local __gcetGatewayFarInterval = 0.10\n" +
+            "local __gcetGatewayNearMargin = 30.0\n\n" +
+            opening.Value,
+            "Teleport Gateway adaptive scan state");
+
+        var oldScan =
+            "\tif (TGS.activated) then\n" +
+            "\t\tplayerPos = TGS.player:GetWorldPosition()\n" +
+            "\t\tplayerAng = TGS.cameraSys:GetActiveCameraForward()\n" +
+            "\t\tplayerYaw = TGS.player:GetWorldYaw()\n" +
+            "\t\t\n" +
+            "\t\tsenseGWCheck = false\n" +
+            "\t\t\n" +
+            "\t\tif (#gatewayDB > 0) then\n" +
+            "\t\t\tfor index = 1, #gatewayDB, 1 do\n" +
+            "\t\t\t\tGWDist = math.sqrt(((TGS.player:GetWorldPosition().x-gatewayDB[index].gwx)^2)+((TGS.player:GetWorldPosition().y-gatewayDB[index].gwy)^2)+((TGS.player:GetWorldPosition().z-gatewayDB[index].gwz)^2))\n" +
+            "\t\t\t\tif (TGS.senseInhibited or senseSystemOff) then\n" +
+            "\t\t\t\t\tif (GWDist <= gatewayDB[index].gwr) then\n" +
+            "\t\t\t\t\t\tsenseGWCheck = true\n" +
+            "\t\t\t\t\tend\n" +
+            "\t\t\t\telseif (GWDist <= gatewayDB[index].gwr) then\n" +
+            "\t\t\t\t\tprint(\"TeleportGatewaySystem: Teleport TGS.activated -\",gatewayDB[index].name)\n" +
+            "\t\t\t\t\t\n" +
+            "\t\t\t\t\tTGS.teleportFac:Teleport(TGS.player, Vector4.new(gatewayDB[index].spx, gatewayDB[index].spy, gatewayDB[index].spz, 1), EulerAngles.new(playerAng.x, playerAng.y, gatewayDB[index].yaw))\n" +
+            "\t\t\t\t\tTGS.senseInhibited = true\n" +
+            "\t\t\t\tend\n" +
+            "\t\t\tend\n" +
+            "\t\tend\n" +
+            "\tend";
+
+        var newScan =
+            "\tif (TGS.activated) then\n" +
+            "\t\t__gcetGatewayScanElapsed = __gcetGatewayScanElapsed + deltaTime\n" +
+            "\t\tlocal __gcetGatewayRealtime = TGS.showMainWindow == true or ((not senseSystemOff) and __gcetGatewayNear)\n" +
+            "\t\tif __gcetGatewayRealtime or __gcetGatewayScanElapsed >= __gcetGatewayFarInterval then\n" +
+            "\t\t\t__gcetGatewayScanElapsed = 0.0\n" +
+            "\t\t\tplayerPos = TGS.player:GetWorldPosition()\n" +
+            "\t\t\tplayerAng = TGS.cameraSys:GetActiveCameraForward()\n" +
+            "\t\t\tplayerYaw = TGS.player:GetWorldYaw()\n" +
+            "\t\t\tsenseGWCheck = false\n" +
+            "\t\t\tlocal __gcetGatewayNearNow = false\n" +
+            "\t\t\tif (#gatewayDB > 0) then\n" +
+            "\t\t\t\tfor index = 1, #gatewayDB, 1 do\n" +
+            "\t\t\t\t\tlocal __gcetDx = playerPos.x - gatewayDB[index].gwx\n" +
+            "\t\t\t\t\tlocal __gcetDy = playerPos.y - gatewayDB[index].gwy\n" +
+            "\t\t\t\t\tlocal __gcetDz = playerPos.z - gatewayDB[index].gwz\n" +
+            "\t\t\t\t\tGWDist = math.sqrt((__gcetDx * __gcetDx) + (__gcetDy * __gcetDy) + (__gcetDz * __gcetDz))\n" +
+            "\t\t\t\t\tif GWDist <= gatewayDB[index].gwr + __gcetGatewayNearMargin then __gcetGatewayNearNow = true end\n" +
+            "\t\t\t\t\tif (TGS.senseInhibited or senseSystemOff) then\n" +
+            "\t\t\t\t\t\tif (GWDist <= gatewayDB[index].gwr) then\n" +
+            "\t\t\t\t\t\t\tsenseGWCheck = true\n" +
+            "\t\t\t\t\t\tend\n" +
+            "\t\t\t\t\telseif (GWDist <= gatewayDB[index].gwr) then\n" +
+            "\t\t\t\t\t\tprint(\"TeleportGatewaySystem: Teleport TGS.activated -\",gatewayDB[index].name)\n" +
+            "\t\t\t\t\t\tTGS.teleportFac:Teleport(TGS.player, Vector4.new(gatewayDB[index].spx, gatewayDB[index].spy, gatewayDB[index].spz, 1), EulerAngles.new(playerAng.x, playerAng.y, gatewayDB[index].yaw))\n" +
+            "\t\t\t\t\t\tTGS.senseInhibited = true\n" +
+            "\t\t\t\t\tend\n" +
+            "\t\t\t\tend\n" +
+            "\t\t\tend\n" +
+            "\t\t\t__gcetGatewayNear = __gcetGatewayNearNow\n" +
+            "\t\tend\n" +
+            "\tend";
+
+        text = ReplaceOnce(
+            text,
+            oldScan,
+            newScan,
+            "Teleport Gateway far-idle / near-realtime scan split");
+
+        text = RegexReplaceOnce(
+            text,
+            @"(?m)^(?<opening>[ \t]*registerForEvent\s*\(\s*[""']onDraw[""']\s*,\s*function\s*\(\s*\)\s*)$",
+            "$" + "{opening}\n\tif not TGS.showMainWindow then return end",
+            "Teleport Gateway hidden-window draw gate");
+
         context.Write(file, text);
 
         return SemanticInjectionResult.Success(
-            "Reused the already-read per-frame playerPos inside the gateway scan instead of calling GetWorldPosition three times for every gateway; sensing cadence, radius checks, cooldowns, and teleport behavior are unchanged.");
+            "Kept the gateway state machine/cooldown frame-fed, but reduced the expensive world scan to 10 Hz while farther than 30 m, automatically restored full-rate sensing near a gateway or while its window is open, reused one player position per scan, and skipped hidden-window ImGui work.");
     }
 
     private static SemanticInjectionResult ApplyDiscardAmmoOnReload(
@@ -1677,20 +1932,58 @@ internal static class SemanticInjectors
             "autoConvertTime = 6",
             "scriptInterval = scriptInterval + deltaTime",
             "function notReady()",
-            "function playerInMenu()");
+            "function playerInMenu()",
+            "settings.combatCheck and inCombat");
 
-        var text = RegexReplaceOnce(
+        var text = ReplaceOnce(
             file.Text,
-            @"(?ms)^(?<indent>[ \t]*)player\s*=\s*Game\.GetPlayerSystem\(\):GetLocalPlayerMainGameObject\(\)\s*\r?\n[ \t]*if\s+not\s+ts\s+then\s+ts\s*=\s*__gcetGetTransactionSystem\(\)\s+end\s*\r?\n(?<ready>------------------------------------------------\r?\n-- Ready for take off\.\r?\n------------------------------------------------\r?\n)[ \t]*scriptInterval\s*=\s*scriptInterval\s*\+\s*deltaTime\s*\r?\n[ \t]*if\s+scriptInterval\s*<\s*settings\.autoConvertTime\s+then\s*\r?\n[ \t]*return\s*\r?\n[ \t]*else\s*\r?\n[ \t]*scriptInterval\s*=\s*0\s*\r?\n[ \t]*end\s*$",
-            "${ready}${indent}scriptInterval = scriptInterval + deltaTime\n" +
-            "${indent}if scriptInterval < settings.autoConvertTime then\n" +
+            "scriptInterval = 0\n" +
+            "combatMagsCrafted = 0",
+            "scriptInterval = 0\n" +
+            "local __gcetAutoAmmoReadyProbeElapsed = 0.10\n" +
+            "local __gcetAutoAmmoReadyCached = false\n" +
+            "combatMagsCrafted = 0",
+            "Auto Ammo readiness sentinel state");
+
+        text = RegexReplaceOnce(
+            text,
+            @"(?ms)^(?<indent>[ \t]*)if\s+pauseTime\s*>\s*os\.time\(\)\s*then\s*\r?\n[ \t]*return\s*\r?\n[ \t]*end\s*\r?\n[ \t]*if\s+settings\.combatCheck\s+and\s+inCombat\s+then\s*\r?\n[ \t]*pauseTime\s*=\s*os\.time\(\)\s*\+\s*3\s*\r?\n[ \t]*return\s*\r?\n[ \t]*end\s*\r?\n[ \t]*if\s+notReady\(\)\s*then\s*\r?\n[ \t]*pauseTime\s*=\s*os\.time\(\)\s*\+\s*3\s*\r?\n[ \t]*return\s*\r?\n[ \t]*end\s*\r?\n[ \t]*if\s+playerInMenu\(\)\s*then\s*\r?\n[ \t]*pauseTime\s*=\s*os\.time\(\)\s*\+\s*3\s*\r?\n[ \t]*return\s*\r?\n[ \t]*end\s*$",
+            "${indent}if pauseTime > os.time() then\n" +
             "${indent}\treturn\n" +
-            "${indent}else\n" +
-            "${indent}\tscriptInterval = 0\n" +
             "${indent}end\n" +
+            "${indent}if settings.combatCheck and inCombat then\n" +
+            "${indent}\t__gcetAutoAmmoReadyCached = false\n" +
+            "${indent}\t__gcetAutoAmmoReadyProbeElapsed = 0.10\n" +
+            "${indent}\tpauseTime = os.time() + 3\n" +
+            "${indent}\treturn\n" +
+            "${indent}end\n" +
+            "${indent}scriptInterval = scriptInterval + deltaTime\n" +
+            "${indent}__gcetAutoAmmoReadyProbeElapsed = __gcetAutoAmmoReadyProbeElapsed + deltaTime\n" +
+            "${indent}local __gcetAutoAmmoCraftDue = scriptInterval >= settings.autoConvertTime\n" +
+            "${indent}local __gcetAutoAmmoProbeDue = (not __gcetAutoAmmoReadyCached)\n" +
+            "${indent}\tor __gcetAutoAmmoReadyProbeElapsed >= 0.10\n" +
+            "${indent}\tor __gcetAutoAmmoCraftDue\n" +
+            "${indent}if __gcetAutoAmmoProbeDue then\n" +
+            "${indent}\t__gcetAutoAmmoReadyProbeElapsed = 0.0\n" +
+            "${indent}\tif notReady() or playerInMenu() then\n" +
+            "${indent}\t\t__gcetAutoAmmoReadyCached = false\n" +
+            "${indent}\t\tpauseTime = os.time() + 3\n" +
+            "${indent}\t\treturn\n" +
+            "${indent}\tend\n" +
+            "${indent}\t__gcetAutoAmmoReadyCached = true\n" +
+            "${indent}end",
+            "Auto Ammo 10 Hz readiness sentinel");
+
+        text = RegexReplaceOnce(
+            text,
+            @"(?ms)^(?<indent>[ \t]*)player\s*=\s*Game\.GetPlayerSystem\(\):GetLocalPlayerMainGameObject\(\)\s*\r?\n[ \t]*if\s+not\s+ts\s+then\s+ts\s*=\s*__gcetGetTransactionSystem\(\)\s+end\s*\r?\n(?<ready>------------------------------------------------\r?\n-- Ready for take off\.\r?\n------------------------------------------------\r?\n)[ \t]*scriptInterval\s*=\s*scriptInterval\s*\+\s*deltaTime\s*\r?\n[ \t]*if\s+scriptInterval\s*<\s*settings\.autoConvertTime\s+then\s*\r?\n[ \t]*return\s*\r?\n[ \t]*else\s*\r?\n[ \t]*scriptInterval\s*=\s*0\s*\r?\n[ \t]*end\s*$",
+            "${ready}${indent}if not __gcetAutoAmmoCraftDue then\n" +
+            "${indent}\treturn\n" +
+            "${indent}end\n" +
+            "${indent}scriptInterval = 0\n" +
             "${indent}player = Game.GetPlayerSystem():GetLocalPlayerMainGameObject()\n" +
             "${indent}if not ts then ts = __gcetGetTransactionSystem() end",
-            "Auto Ammo defer player/system acquisition until author cadence");
+            "Auto Ammo full work only when author cadence is due");
 
         text = RegexReplaceOnce(
             text,
@@ -1725,11 +2018,11 @@ internal static class SemanticInjectors
             "\treturn(blackboard:GetBool(uiSystemBB.IsInMenu));\n" +
             "end",
             "Auto Ammo UI blackboard definition reuse");
+
         context.Write(file, text);
         return SemanticInjectionResult.Success(
-            "Preserved the author's autoConvertTime cadence and readiness/menu semantics, but deferred player/transaction acquisition until that existing cadence fires and collapsed duplicate PlayerSystem/Player/UI blackboard reads in the per-frame readiness path.");
+            "Kept the author's combat pause and autoConvertTime craft cadence, replaced per-frame readiness/menu probing with a 10 Hz sentinel plus a mandatory fresh probe before every craft pass, deferred player/transaction acquisition until the craft pass is due, and collapsed duplicate PlayerSystem/Player/UI blackboard reads.");
     }
-
 
     private static SemanticInjectionResult ApplyIllegalMechanic(
         SemanticPatchContext context)
