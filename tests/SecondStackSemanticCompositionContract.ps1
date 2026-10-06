@@ -460,7 +460,8 @@ try {
         $midairOut -notmatch '__gcetMidairWakeTail' -or
         $midairOut -notmatch '__gcetMidairIdleElapsed' -or
         $midairOut -notmatch 'if not player\.maxRunSet or not player\.maxSprintSet then' -or
-        $midairOut -match '(?m)^\s*or not player\.maxRunSet\s*
+        [regex]::IsMatch($midairOut, '(?m)^\s*or not player\.maxRunSet\s*$') -or
+        [regex]::IsMatch($midairOut, '(?m)^\s*or not player\.maxSprintSet\s*$') -or
         $midairOut -notmatch 'OnLocomotionStateChanged') {
         throw 'Alternative Midair Movement generic + semantic composition is incomplete.'
     }
