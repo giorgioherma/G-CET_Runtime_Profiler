@@ -342,7 +342,8 @@ public static class PassGeneratorService
                 {
                     kind = CandidateKind.Action;
                 }
-                else if (resolverFamily.Equals("ONUPDATE", StringComparison.OrdinalIgnoreCase) &&
+                else if ((resolverFamily.Equals("ONUPDATE", StringComparison.OrdinalIgnoreCase) ||
+                          resolverFamily.Equals("ONDRAW", StringComparison.OrdinalIgnoreCase)) &&
                          recipes.Any(x =>
                              x.Equals("FRAME_DISPATCH_CONSOLIDATION", StringComparison.OrdinalIgnoreCase)))
                 {
@@ -379,6 +380,9 @@ public static class PassGeneratorService
                     LineStart = lineStart,
                     LineEnd = lineEnd,
                     Pattern = pattern,
+                    FrameEvent = resolverFamily.Equals("ONDRAW", StringComparison.OrdinalIgnoreCase)
+                        ? "onDraw"
+                        : "onUpdate",
                     Actions = facts.Actions,
                     ActionPatterns = facts.ActionPatterns,
                     RequiresActionType = facts.RequiresActionType,
@@ -633,14 +637,16 @@ public static class PassGeneratorService
                 // "onUpdate" to happen to share one physical source line.
                 var frameOpening = Regex.Match(
                     frameSegment,
-                    @"\b(?<registrar>registerForEvent|registerRuntimeEvent)\s*\(\s*(?<quote>['""])onUpdate\k<quote>",
+                    @"\b(?<registrar>registerForEvent|registerRuntimeEvent)\s*\(\s*(?<quote>['""])" +
+                    Regex.Escape(candidate.FrameEvent) +
+                    @"\k<quote>",
                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Singleline);
                 if (!frameOpening.Success ||
                     !IsBareRegistrarStatement(frameSegment, frameOpening.Groups["registrar"].Index))
                 {
                     skipped.Add(Skip(
                         candidate,
-                        "Recorded callback range no longer contains a bare source-proven onUpdate registrar, or the registrar is wrapped/aliased by an owner abstraction."));
+                        $"Recorded callback range no longer contains a bare source-proven {candidate.FrameEvent} registrar, or the registrar is wrapped/aliased by an owner abstraction."));
                     continue;
                 }
 
@@ -672,6 +678,7 @@ public static class PassGeneratorService
                     registrationId = candidate.RegistrationId,
                     owner = candidate.Owner,
                     type = "FRAME_DISPATCH_CONSOLIDATION",
+                    eventTarget = candidate.FrameEvent,
                     file = candidate.RelativeFile,
                     sourceLines = new[] { candidate.LineStart, candidate.LineEnd }
                 });
@@ -1354,6 +1361,7 @@ public static class PassGeneratorService
         public int LineStart { get; init; }
         public int LineEnd { get; init; }
         public string Pattern { get; init; } = "";
+        public string FrameEvent { get; init; } = "onUpdate";
         public string[] Actions { get; init; } = Array.Empty<string>();
         public string[] ActionPatterns { get; init; } = Array.Empty<string>();
         public bool RequiresActionType { get; init; }
