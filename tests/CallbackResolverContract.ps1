@@ -1594,6 +1594,9 @@ if ([string]$foreignManifest.fixedRuntime.LiveState -ne 'STRUCTURAL_COMPAT') {
 if ([string]$foreignManifest.fixedRuntime.FixedVersion -ne 'HOST-COMPAT-v1') {
     throw "Foreign 0-Engine did not use the host-preserving compatibility runtime: $($foreignManifest.fixedRuntime.FixedVersion)"
 }
+if ([string]$foreignManifest.fixedRuntime.mode -ne 'HOST_PRESERVING_ADAPTER' -or !$foreignManifest.fixedRuntime.hostPreserving) {
+    throw 'Foreign 0-Engine manifest did not report host-preserving adapter mode.'
+}
 if ([int]$foreignManifest.summary.fixedRuntimeFiles -ne 2) {
     throw "Foreign 0-Engine compatibility should ship exactly init.lua + private ActionRouter, got $($foreignManifest.summary.fixedRuntimeFiles)."
 }

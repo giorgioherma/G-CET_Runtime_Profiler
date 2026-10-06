@@ -227,13 +227,18 @@ public static class PassGeneratorService
                     "SEMANTIC_RULE_SOURCE_INJECTION"
                 },
                 fixedRuntimeException = "0-Engine",
-                note = "The same overlay generator now composes generic AUTO and measured semantic source injections. Semantic rules are admitted only for >=3 ms/s measured callbacks, must re-prove the current live mod source, and inject into that source; development reference patches are never copied into the ZIP."
+                zeroEngineCompatibilityPolicy = "KNOWN_GCET_FIXED_RUNTIME_OR_STRUCTURALLY_PROVEN_HOST_PRESERVING_ADAPTER",
+                note = "The overlay generator composes generic AUTO and measured semantic source injections. 0-Engine uses the exact proven G-CET runtime for known states; unknown versions are preserved and receive only a namespaced Engine.GCET adapter when a safe final exported-table structure is proven. Semantic rules are admitted only for >=3 ms/s measured callbacks and must re-prove current live source."
             },
             fixedRuntime = new
             {
                 included = true,
                 name = "0-Engine",
                 exception = true,
+                mode = fixedRuntime.LiveState.Contains("STRUCTURAL_COMPAT", StringComparison.OrdinalIgnoreCase)
+                    ? "HOST_PRESERVING_ADAPTER"
+                    : "KNOWN_FIXED_RUNTIME",
+                hostPreserving = fixedRuntime.LiveState.Contains("STRUCTURAL_COMPAT", StringComparison.OrdinalIgnoreCase),
                 baseVersion = FixedZeroEngineRuntime.BaseVersion,
                 fixedRuntime.FixedVersion,
                 fixedRuntime.LiveState,

@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "1.2",
-  "role": "fixed-runtime-exception",
+  "schemaVersion": "1.3",
+  "role": "runtime-compatibility-exception",
   "base": {
     "name": "0-Engine",
     "version": "0.18.6",
@@ -45,15 +45,31 @@
       "modules/Scheduler.lua": "60529e3a1eb1db9e01f88ad44ff223ebe1d538bc55039ec8bb1f8dbed7f6e5b5"
     }
   },
+  "hostCompatibility": {
+    "version": "HOST-COMPAT-v1",
+    "strategy": "Preserve the user's unknown 0-Engine source and inject an additive Engine.GCET bridge immediately before its proven final exported runtime table.",
+    "structuralRequirements": [
+      "source-visible assignment for the final exported identifier",
+      "simple final return of that identifier",
+      "no executable source after the export"
+    ],
+    "privateFiles": [
+      "modules/G-CET/ActionRouter.lua"
+    ],
+    "collisionPolicy": "Never overwrite a foreign file at the private G-CET support-module path.",
+    "lazyRuntimePolicy": "Frame and action hooks are registered only when a generated client actually subscribes."
+  },
   "policy": {
     "alwaysShipWithGeneratedCetPass": true,
     "modSpecificOptimizationRule": false,
-    "reason": "Runtime infrastructure required by generic callback transforms. Authorized stable service handles and static lookup results are cached behind their original Game.Get...() semantics and invalidated on player/session epoch changes. Dynamic player-derived values and GetEngineTime remain analysis-only.",
+    "reason": "Generated callback transforms need a small shared runtime API. Known G-CET 0-Engine states use the proven fixed runtime; other structurally compatible versions keep their own APIs and receive only the namespaced Engine.GCET compatibility bridge. Shared provider caches retain original Game.Get...() fallbacks and invalidate on player/session epoch changes.",
     "acceptLiveInitStates": [
       "base",
       "legacy-fixed",
       "previous-shared-fixed",
-      "current-expanded-shared-fixed"
+      "current-expanded-shared-fixed",
+      "structurally-compatible-final-export",
+      "profiler-managed-original-of-any-state-above"
     ]
   }
 }
