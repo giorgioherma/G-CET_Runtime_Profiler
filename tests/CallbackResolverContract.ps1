@@ -1340,7 +1340,7 @@ try {
         throw 'Structural hotpath rewrite leaked into the safe generic pass.'
     }
     if ($structuralText -notmatch [regex]::Escape('-- G-CET shared provider: PLAYER') -or
-        $structuralText -notmatch [regex]::Escape('__gcetEngine.GetPlayer') -or
+        $structuralText -notmatch [regex]::Escape('__gcetApi.GetPlayer') -or
         $structuralText -notmatch [regex]::Escape('return Game.GetPlayer()') -or
         (Count-SharedPlayerReads $structuralText) -ne 2 -or
         [regex]::Matches($structuralText, [regex]::Escape('CName.new("StructuralFixture")')).Count -ne 2) {
