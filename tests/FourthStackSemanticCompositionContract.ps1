@@ -229,6 +229,25 @@ function AirThrusterBoots.Tick()
 end
 return AirThrusterBoots
 '@
+Write-ModFile 'EasyTrainer' 'Features/Self/Abilities/Invisibility.lua' @'
+local Invisibility = {}
+Invisibility.enabled = { value = false }
+local wasApplied = false
+function Invisibility.Tick()
+    local player = Game.GetPlayer()
+    local statusSystem = Game.GetStatusEffectSystem()
+    if Invisibility.enabled.value then
+        if not wasApplied then
+            player:SetInvisible(true)
+            wasApplied = true
+        end
+    elseif wasApplied then
+        player:SetInvisible(false)
+        wasApplied = false
+    end
+end
+return Invisibility
+'@
 
 Write-ModFile 'TeleportGatewaySystem' 'init.lua' @'
 local TGS = {
@@ -483,6 +502,7 @@ try {
     $easyMobility=Read-ZipText ($base+'EasyTrainer/Features/Self/Abilities/AdvancedMobility.lua')
     $easySuperSpeed=Read-ZipText ($base+'EasyTrainer/Features/Self/Abilities/SuperSpeed.lua')
     $easyThrusters=Read-ZipText ($base+'EasyTrainer/Features/Self/Abilities/AirThrusterBoots.lua')
+    $easyInvisibility=Read-ZipText ($base+'EasyTrainer/Features/Self/Abilities/Invisibility.lua')
     if($easyInit -notmatch 'SubscribeAction' -or
        $easyInit -notmatch 'CameraMouseX' -or
        $easyInit -notmatch 'RangedAttack' -or
@@ -494,20 +514,21 @@ try {
        $easyRegistry -notmatch 'local __gcetBindings = nil' -or
        $easyRegistry -notmatch 'entry\.Hotkey or HotkeyAction\(entry\.Id\)' -or
        $easyRestrictions -notmatch 'if not menuOpen then' -or
-       $easyMobility -notmatch 'and not state\.chargeJumpApplied then return end' -or
-       $easySuperSpeed -notmatch 'if not SuperSpeed\.enabled\.value and not applied then return end' -or
-       $easyThrusters -notmatch 'if not AirThrusterBoots\.enabled\.value and not applied then return end') {
-        throw 'EasyTrainer routed-action/dormancy semantic composition is incomplete.'
+       $easyMobility -notmatch 'if toggle\.value == state\[appliedFlag\] then return end' -or
+       $easySuperSpeed -notmatch 'if SuperSpeed\.enabled\.value == applied then return end' -or
+       $easyThrusters -notmatch 'if AirThrusterBoots\.enabled\.value == applied then return end' -or
+       $easyInvisibility -notmatch 'if Invisibility\.enabled\.value == wasApplied then return end' -or
+       $easyInvisibility -match 'GetStatusEffectSystem') {
+        throw 'EasyTrainer routed-action/transition-dormancy semantic composition is incomplete.'
     }
 
     $tele=Read-ZipText ($base+'TeleportGatewaySystem/init.lua')
     if($tele -match [regex]::Escape('TGS.player:GetWorldPosition().x-gatewayDB[index].gwx') -or
-       $tele -notmatch '__gcetGatewayFarInterval = 0\.10' -or
-       $tele -notmatch '__gcetGatewayNearMargin = 30\.0' -or
-       $tele -notmatch 'local __gcetDx = playerPos\.x - gatewayDB\[index\]\.gwx' -or
-       $tele -notmatch 'TGS\.showMainWindow == true' -or
+       $tele -notmatch [regex]::Escape('playerPos.x-gatewayDB[index].gwx') -or
+       $tele -match '__gcetGatewayScanElapsed' -or
+       $tele -match '__gcetGatewayFarInterval' -or
        $tele -notmatch 'if not TGS\.showMainWindow then return end') {
-        throw 'Teleport Gateway proximity-sentinel semantic composition is incomplete.'
+        throw 'Teleport Gateway functionality-preserving semantic composition is incomplete.'
     }
 
     $discard=Read-ZipText ($base+'DiscardAmmoOnReload/init.lua')
@@ -524,14 +545,17 @@ try {
     }
 
     $ammo=Read-ZipText ($base+'Auto Ammo Crafting (I need more bullets)/init.lua')
-    if($ammo -notmatch '__gcetAutoAmmoReadyProbeElapsed = 0\.10' -or
-       $ammo -notmatch '__gcetAutoAmmoProbeDue' -or
-       $ammo -notmatch 'or __gcetAutoAmmoCraftDue' -or
-       $ammo -notmatch 'if not __gcetAutoAmmoCraftDue then' -or
+    $interval=$ammo.IndexOf('scriptInterval = scriptInterval + deltaTime')
+    $player=$ammo.IndexOf('player = Game.GetPlayerSystem():GetLocalPlayerMainGameObject()',$interval)
+    $readyCheck=$ammo.IndexOf('if notReady() then')
+    if($ammo -match '__gcetAutoAmmoReadyProbeElapsed' -or
+       $ammo -match '__gcetAutoAmmoProbeDue' -or
+       $readyCheck -lt 0 -or $interval -lt 0 -or $player -lt 0 -or
+       $readyCheck -gt $interval -or $interval -gt $player -or
        $ammo -notmatch 'local __gcetPlayerSystem = Game\.GetPlayerSystem\(\)' -or
        $ammo -notmatch 'local __gcetPlayer = Game\.GetPlayer\(\)' -or
        $ammo -notmatch 'local __gcetUIBB = Game\.GetAllBlackboardDefs\(\)\.UI_System') {
-        throw 'Auto Ammo readiness-sentinel/author-cadence semantic composition is incomplete.'
+        throw 'Auto Ammo functionality-preserving author-cadence semantic composition is incomplete.'
     }
 }
 finally { $zip.Dispose() }
