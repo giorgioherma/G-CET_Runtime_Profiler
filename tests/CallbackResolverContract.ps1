@@ -629,6 +629,7 @@ $semanticLibrary = Join-Path $root 'semantic-library.json'
             )
             sourceProof = @{
                 ownerAll = @('DoStructuralWork', 'StructuralFixture')
+                satisfiedAll = @('DoStructuralWork', 'StructuralFixture')
                 alreadySatisfiedMarker = 'G-CET semantic:fixture-structural'
             }
             behavior = @{ handler = 'SEMANTIC_TEST_FAST' }
@@ -1143,6 +1144,13 @@ if ($structural.semantic.PatchStyle -ne 'source-injection' -or $structural.seman
 }
 if ([int]$structural.semantic.Graph.luaFileCount -lt 1) {
     throw 'Semantic mod graph did not enumerate the live owner folder.'
+}
+
+if (!$structural.semantic.AlreadySatisfied -or
+    !$structural.semantic.SatisfiedBySourcePostcondition -or
+    $structural.semantic.AlreadySatisfiedMode -ne 'SOURCE_POSTCONDITION') {
+    $semanticDebug = $structural.semantic | ConvertTo-Json -Depth 10 -Compress
+    throw "Equivalent manual semantic result was not recognized from source postconditions: $semanticDebug"
 }
 
 $absentSemantic = @($onUpdate.topConsumers | Where-Object { $_.owner -eq 'FixtureAbsentSemantic' }) | Select-Object -First 1
