@@ -160,14 +160,35 @@ internal sealed class SemanticLibraryService
         string kind,
         string target)
     {
-        var normalizedOwner = Normalize(owner);
-        var candidates = _entries
+        var callbackCandidates = _entries
             .Where(entry =>
-                entry.IdentityHints.Any(h => Normalize(h) == normalizedOwner) &&
                 entry.Callbacks.Any(selector =>
                     WildcardEquals(selector.Kind, kind) &&
                     WildcardEquals(selector.Target, target)))
             .ToList();
+
+        var candidates = callbackCandidates
+            .Where(entry =>
+                entry.IdentityHints.Any(h => OwnerHintMatches(h, owner)))
+            .ToList();
+
+        var graph = GetGraph(owner);
+        var sourceFingerprintFallback = false;
+
+        // Mod names and folder names are only hints. Updated releases and forks
+        // frequently append versions or rename the folder while retaining the
+        // same behavior. If identity does not select a rule, admit a semantic
+        // candidate only when exactly one current-source fingerprint proves it.
+        if (candidates.Count == 0 && graph is not null)
+        {
+            candidates = callbackCandidates
+                .Where(entry =>
+                    SourceProofSatisfied(entry, graph) ||
+                    MarkerPresent(entry, graph))
+                .Take(3)
+                .ToList();
+            sourceFingerprintFallback = candidates.Count > 0;
+        }
 
         if (candidates.Count == 0)
             return SemanticRuleMatch.None;
@@ -188,12 +209,11 @@ internal sealed class SemanticLibraryService
                 false,
                 false,
                 Array.Empty<string>(),
-                new[] { "Multiple semantic rules matched the same owner/callback." },
-                null);
+                new[] { "Multiple semantic rules matched the same owner/callback; Resolver refused to guess across mod variants." },
+                graph is null ? null : GraphSummary(graph, 0, 0, sourceFingerprintFallback));
         }
 
         var rule = candidates[0];
-        var graph = GetGraph(owner);
         if (graph is null)
         {
             return new SemanticRuleMatch(
@@ -214,25 +234,7 @@ internal sealed class SemanticLibraryService
                 null);
         }
 
-        var matched = new List<string>();
-        var missing = new List<string>();
-
-        foreach (var anchor in rule.Proof.OwnerAll)
-        {
-            if (Contains(graph.Corpus, anchor))
-                matched.Add(anchor);
-            else
-                missing.Add(anchor);
-        }
-
-        foreach (var group in rule.Proof.OwnerAnyGroups)
-        {
-            var hit = group.FirstOrDefault(anchor => Contains(graph.Corpus, anchor));
-            if (!string.IsNullOrWhiteSpace(hit))
-                matched.Add("(" + string.Join(" | ", group) + ") => " + hit);
-            else
-                missing.Add("(" + string.Join(" | ", group) + ")");
-        }
+        EvaluateProof(rule, graph, out var matched, out var missing);
 
         var markerCount =
             string.IsNullOrWhiteSpace(rule.Proof.AlreadySatisfiedMarker)
@@ -242,18 +244,6 @@ internal sealed class SemanticLibraryService
         var expectedMarkerFileCount = Math.Max(1, rule.Proof.ExpectedMarkerFileCount);
         var alreadySatisfied = markerCount >= expectedMarkerFileCount;
         var partialState = markerCount > 0 && markerCount < expectedMarkerFileCount;
-
-        var graphSummary = new
-        {
-            ownerFolder = Path.GetFileName(graph.OwnerFolder),
-            luaFileCount = graph.Files.Length,
-            moduleEdgeCount = graph.ModuleEdges.Length,
-            callbackRegistrationCount = graph.CallbackRegistrations.Length,
-            markerFileCount = markerCount,
-            expectedMarkerFileCount,
-            graph.ModuleEdges,
-            graph.CallbackRegistrations
-        };
 
         return new SemanticRuleMatch(
             true,
@@ -270,8 +260,74 @@ internal sealed class SemanticLibraryService
             rule.Generation.ShipReferenceOverride,
             matched.ToArray(),
             missing.ToArray(),
-            graphSummary);
+            GraphSummary(
+                graph,
+                markerCount,
+                expectedMarkerFileCount,
+                sourceFingerprintFallback));
     }
+
+    private static void EvaluateProof(
+        SemanticRule rule,
+        ModSourceGraph graph,
+        out List<string> matched,
+        out List<string> missing)
+    {
+        matched = new List<string>();
+        missing = new List<string>();
+
+        foreach (var anchor in rule.Proof.OwnerAll)
+        {
+            if (ContainsProof(graph.ProofCorpus, anchor))
+                matched.Add(anchor);
+            else
+                missing.Add(anchor);
+        }
+
+        foreach (var group in rule.Proof.OwnerAnyGroups)
+        {
+            var hit = group.FirstOrDefault(anchor =>
+                ContainsProof(graph.ProofCorpus, anchor));
+            if (!string.IsNullOrWhiteSpace(hit))
+                matched.Add("(" + string.Join(" | ", group) + ") => " + hit);
+            else
+                missing.Add("(" + string.Join(" | ", group) + ")");
+        }
+    }
+
+    private static bool SourceProofSatisfied(
+        SemanticRule rule,
+        ModSourceGraph graph)
+    {
+        EvaluateProof(rule, graph, out _, out var missing);
+        return missing.Count == 0;
+    }
+
+    private static bool MarkerPresent(
+        SemanticRule rule,
+        ModSourceGraph graph) =>
+        !string.IsNullOrWhiteSpace(rule.Proof.AlreadySatisfiedMarker) &&
+        graph.FileTexts.Any(text =>
+            Contains(text, rule.Proof.AlreadySatisfiedMarker));
+
+    private static object GraphSummary(
+        ModSourceGraph graph,
+        int markerCount,
+        int expectedMarkerFileCount,
+        bool sourceFingerprintFallback) => new
+    {
+        ownerFolder = Path.GetFileName(graph.OwnerFolder),
+        luaFileCount = graph.Files.Length,
+        moduleEdgeCount = graph.ModuleEdges.Length,
+        callbackRegistrationCount = graph.CallbackRegistrations.Length,
+        markerFileCount = markerCount,
+        expectedMarkerFileCount,
+        identityMode = sourceFingerprintFallback
+            ? "SOURCE_FINGERPRINT"
+            : "NAME_HINT_PLUS_SOURCE_PROOF",
+        graph.ModuleEdges,
+        graph.CallbackRegistrations
+    };
 
     private ModSourceGraph? GetGraph(string owner)
     {
@@ -290,6 +346,7 @@ internal sealed class SemanticLibraryService
         var moduleEdges = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var callbackRegistrations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var corpus = new StringBuilder();
+        var proofCorpus = new StringBuilder();
 
         try
         {
@@ -310,6 +367,7 @@ internal sealed class SemanticLibraryService
                 files.Add(Path.GetRelativePath(folder, file).Replace('\\', '/'));
                 fileTexts.Add(text);
                 corpus.AppendLine(text);
+                proofCorpus.AppendLine(NormalizeProof(text));
 
                 foreach (Match match in Regex.Matches(
                     text,
@@ -349,7 +407,8 @@ internal sealed class SemanticLibraryService
             moduleEdges.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray(),
             callbackRegistrations.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray(),
             fileTexts.ToArray(),
-            corpus.ToString());
+            corpus.ToString(),
+            proofCorpus.ToString());
 
         _graphs[owner] = graph;
         return graph;
@@ -385,9 +444,52 @@ internal sealed class SemanticLibraryService
         expected == "*" ||
         expected.Equals(actual, StringComparison.OrdinalIgnoreCase);
 
+    private static bool OwnerHintMatches(string hint, string owner)
+    {
+        var normalizedHint = Normalize(hint);
+        var normalizedOwner = Normalize(owner);
+        if (normalizedHint == normalizedOwner)
+            return true;
+
+        // Accept only a version-like suffix after the known identity. This
+        // handles folders such as EasyTrainer-v2.4 or advanced_settings_1.9
+        // without turning a short hint into a broad prefix match.
+        if (!normalizedOwner.StartsWith(normalizedHint, StringComparison.Ordinal) ||
+            normalizedOwner.Length <= normalizedHint.Length)
+            return false;
+
+        var suffix = normalizedOwner[normalizedHint.Length..];
+        if (suffix.StartsWith("v", StringComparison.Ordinal))
+            suffix = suffix[1..];
+        return suffix.Length > 0 && suffix.All(char.IsDigit);
+    }
+
     private static bool Contains(string text, string value) =>
         !string.IsNullOrWhiteSpace(value) &&
         text.IndexOf(value, StringComparison.OrdinalIgnoreCase) >= 0;
+
+    private static bool ContainsProof(string normalizedCorpus, string anchor)
+    {
+        if (string.IsNullOrWhiteSpace(anchor))
+            return false;
+        var normalizedAnchor = NormalizeProof(anchor);
+        return normalizedAnchor.Length > 0 &&
+            normalizedCorpus.Contains(
+                normalizedAnchor,
+                StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeProof(string value)
+    {
+        var sb = new StringBuilder(value.Length);
+        foreach (var ch in value)
+        {
+            if (char.IsWhiteSpace(ch) || ch == '\'' || ch == '"')
+                continue;
+            sb.Append(char.ToLowerInvariant(ch));
+        }
+        return sb.ToString();
+    }
 
     private static string Normalize(string value) =>
         NormalizeNonAlphaNumeric.Replace(value.ToLowerInvariant(), "");
@@ -483,5 +585,6 @@ internal sealed class SemanticLibraryService
         string[] ModuleEdges,
         string[] CallbackRegistrations,
         string[] FileTexts,
-        string Corpus);
+        string Corpus,
+        string ProofCorpus);
 }
