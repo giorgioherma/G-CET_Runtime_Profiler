@@ -888,7 +888,7 @@ internal static class SemanticInjectors
             "${indent}    MoveX = true, MoveY = true, Jump = true,\n" +
             "${indent}    Left = true, Right = true, Forward = true, Back = true\n" +
             "${indent}}\n" +
-            "${indent}local function __gcetMidairOnAction(_, action, __gcetRoutedName)\n" +
+            "${indent}local function __gcetMidairOnAction(_, action, __gcetConsumer, __gcetRoutedName)\n" +
             "${indent}    local __gcetActionName = __gcetRoutedName or Game.NameToString(action:GetName())\n" +
             "${indent}    if not __gcetMidairActionSet[__gcetActionName] then return end\n" +
             "${indent}    input:SetInputData(action, __gcetActionName)\n" +

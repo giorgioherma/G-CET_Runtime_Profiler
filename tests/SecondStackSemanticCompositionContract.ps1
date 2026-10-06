@@ -456,6 +456,7 @@ try {
     }
     if ($midairOut -notmatch 'MakeEventRegistrar' -or
         $midairOut -notmatch 'G-CET\.Semantic\.AlternativeMidairMovement' -or
+        $midairOut -notmatch 'function __gcetMidairOnAction\(_, action, __gcetConsumer, __gcetRoutedName\)' -or
         $midairOut -notmatch '__gcetMidairWakeTail' -or
         $midairOut -notmatch '__gcetMidairIdleElapsed' -or
         $midairOut -notmatch 'OnLocomotionStateChanged') {
