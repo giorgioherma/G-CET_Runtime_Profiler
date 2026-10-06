@@ -44,6 +44,13 @@ internal static class SemanticInjectors
             "discard-ammo-on-reload" => ApplyDiscardAmmoOnReload(context),
             "advanced-settings" => ApplyAdvancedSettings(context),
             "auto-ammo-crafting" => ApplyAutoAmmoCrafting(context),
+            "drivebus" => ApplyDriveBus(context),
+            "quest-tracking-toggle" => ApplyQuestTrackingToggle(context),
+            "sitanywhere" => ApplySitAnywhere(context),
+            "repeatable-increased-criminal-activity" => ApplyRepeatableIncreasedCriminalActivity(context),
+            "dedka-auto-shop" => ApplyDedkaAutoShop(context),
+            "marmurbank" => ApplyMarmurBank(context),
+            "immersive-third-person" => ApplyImmersiveThirdPerson(context),
             _ => SemanticInjectionResult.Skip(
                 $"No semantic source injector is implemented for rule '{candidate.RuleId}'.")
         };
@@ -2175,6 +2182,531 @@ internal static class SemanticInjectors
 
         return SemanticInjectionResult.Success(
             "Preserved camera, shake, locomotion, Cron and speed interpolation every frame; moved vehicle/weapon state reconciliation to 20 Hz.");
+    }
+
+
+    private static SemanticInjectionResult ApplyDriveBus(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "Modules/core.lua",
+            "function Core:SetObserve()",
+            "exception_in_choice_list",
+            "exception_in_mount_list",
+            "self:ChoiceAction(action_name");
+
+        var text = RouteExactOnActionObserver(
+            file.Text,
+            "gcetDriveBusOnAction",
+            "DriveBus",
+            new[]
+            {
+                "QuickExit",
+                "NextWeapon",
+                "PreviousWeapon",
+                "ChoiceApply",
+                "ChoiceScrollUp",
+                "ChoiceScrollDown"
+            },
+            "DriveBus PlayerPuppet OnAction",
+            "exception_in_choice_list",
+            "exception_in_mount_list",
+            "self:ChoiceAction(action_name");
+
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Routed only DriveBus's six source/proven choice, mount and hub actions through 0-Engine while preserving the original callback body and Consume behavior.");
+    }
+
+    private static SemanticInjectionResult ApplyQuestTrackingToggle(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "init.lua",
+            "n_ToggleSprint",
+            "handlePadAction",
+            "handlePadLongPressTrigger",
+            "toggleTrackedQuest");
+
+        var text = RouteExactOnActionObserver(
+            file.Text,
+            "questTrackingOnAction",
+            "QuestTrackingToggle",
+            new[]
+            {
+                "LeanFB",
+                "ToggleSprint",
+                "CameraAim",
+                "world_map_menu_rotate_mouse",
+                "world_map_menu_zoom_to_mappin",
+                "PhoneInteract",
+                "Jump",
+                "Handbrake",
+                "world_map_filter_navigation_down",
+                "world_map_menu_track_waypoint"
+            },
+            "QuestTrackingToggle PlayerPuppet OnAction",
+            "handlePadAction",
+            "handlePadLongPressTrigger",
+            "toggleTrackedQuest");
+
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Routed QuestTrackingToggle's ten finite source-proven actions through 0-Engine; the original callback body, Consume calls, hold/release handling and LeanFB axis behavior remain intact.");
+    }
+
+    private static SemanticInjectionResult ApplyDedkaAutoShop(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "init.lua",
+            "ui.update()",
+            "state.showing",
+            "onDraw");
+
+        var regex = new Regex(
+            @"(?m)^(?<indent>[ \t]*)(?<registrar>registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onDraw['""]\s*,\s*function\s*\(\s*\)\s*pcall\s*\(\s*function\s*\(\s*\)\s*ui\.update\s*\(\s*\)\s*end\s*\)\s*end\s*\)\s*$",
+            RegexOptions.CultureInvariant);
+        var matches = regex.Matches(file.Text);
+        if (matches.Count != 1)
+            throw new InvalidOperationException(
+                "Dedka Auto Shop onDraw source no longer uniquely matches the visibility-gate injector.");
+
+        var match = matches[0];
+        var indent = match.Groups["indent"].Value;
+        var registrar = match.Groups["registrar"].Value;
+        var replacement =
+            indent + registrar + "(\"onDraw\", function()\n" +
+            indent + "  if state.showing then\n" +
+            indent + "    pcall(function() ui.update() end)\n" +
+            indent + "  end\n" +
+            indent + "end)";
+
+        var text = file.Text[..match.Index] +
+            replacement +
+            file.Text[(match.Index + match.Length)..];
+
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Skipped Dedka Auto Shop ImGui/UI reconciliation while its interaction hub is hidden; visible shop UI remains draw-responsive.");
+    }
+
+    private static SemanticInjectionResult ApplyRepeatableIncreasedCriminalActivity(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "init.lua",
+            "processBodyRewards(system)",
+            "processCompletionRewards(system)",
+            "Mappins.sync(system, Sites)",
+            "Diagnostics.snapshot(system, Sites, Mod.settings, Mappins)");
+
+        var text = ReplaceOnce(
+            file.Text,
+            "    tickElapsed = 0.0,\n    schedulerElapsed = 0.0,\n",
+            "    tickElapsed = 0.0,\n    diagnosticsElapsed = 0.0,\n    schedulerElapsed = 0.0,\n",
+            "RICA diagnostic cadence state");
+
+        text = ReplaceOnce(
+            text,
+            "local function runtimeTick()\n",
+            "local function runtimeTick(includeDiagnostics)\n",
+            "RICA runtimeTick signature");
+
+        text = ReplaceOnce(
+            text,
+            "    Mappins.sync(system, Sites)\n    Diagnostics.snapshot(system, Sites, Mod.settings, Mappins)\nend\n",
+            "    Mappins.sync(system, Sites)\n" +
+            "    if includeDiagnostics then\n" +
+            "        Diagnostics.snapshot(system, Sites, Mod.settings, Mappins)\n" +
+            "    end\n" +
+            "end\n",
+            "RICA runtime diagnostics boundary");
+
+        var opening = FindOnUpdateOpening(text, "delta");
+        text = ReplaceOnce(
+            text,
+            opening +
+            "    Mod.tickElapsed = Mod.tickElapsed + delta\n" +
+            "    Mod.schedulerElapsed = Mod.schedulerElapsed + delta\n",
+            opening +
+            "    Mod.tickElapsed = Mod.tickElapsed + delta\n" +
+            "    Mod.diagnosticsElapsed = Mod.diagnosticsElapsed + delta\n" +
+            "    Mod.schedulerElapsed = Mod.schedulerElapsed + delta\n",
+            "RICA onUpdate accumulators");
+
+        text = ReplaceOnce(
+            text,
+            "        local ok, err = pcall(runtimeTick)\n",
+            "        local __gcetRunDiagnostics = Mod.diagnosticsElapsed >= 5.0\n" +
+            "        if __gcetRunDiagnostics then Mod.diagnosticsElapsed = 0.0 end\n" +
+            "        local ok, err = pcall(runtimeTick, __gcetRunDiagnostics)\n",
+            "RICA runtimeTick invocation");
+
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Preserved RICA's 1 Hz gameplay/reward/mappin reconciliation and 10 s scheduler cadence, while reducing observational diagnostics snapshots from 1 Hz to 0.2 Hz.");
+    }
+
+    private static SemanticInjectionResult ApplySitAnywhere(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "init.lua",
+            "Cron.Update(dt)",
+            "interaction.update()",
+            "world.update()",
+            "self.logic:onUpdate()");
+
+        var opening = FindOnUpdateOpening(file.Text, "dt");
+        var prefix =
+            "    local __gcetSitIdleElapsed = 0.0\n\n" +
+            opening;
+        var text = ReplaceOnce(
+            file.Text,
+            opening,
+            prefix,
+            "sitAnywhere onUpdate cadence state");
+
+        var oldBody =
+            "        if not self.runtimeData.inMenu and self.runtimeData.inGame then\n" +
+            "            Cron.Update(dt)\n" +
+            "            interaction.update()\n" +
+            "            world.update()\n" +
+            "            self.logic:onUpdate()\n" +
+            "            for _, spot in pairs(self.logic.sittables) do\n" +
+            "                spot.workspot.yaw = self.yaw\n" +
+            "                spot.workspot.pitch = self.pitch\n" +
+            "                spot:update(dt)\n" +
+            "            end\n" +
+            "        end\n";
+
+        var newBody =
+            "        if not self.runtimeData.inMenu and self.runtimeData.inGame then\n" +
+            "            -- Cron remains frame-fed so delayed workspot/camera/audio tasks keep exact timing.\n" +
+            "            Cron.Update(dt)\n" +
+            "            local __gcetRealtime = self.logic.isScanning == true\n" +
+            "                or self.runtimeData.forceScan == true\n" +
+            "                or self.logic:inWorkspot() == true\n" +
+            "                or self.logic:inTransition() == true\n" +
+            "            if not __gcetRealtime then\n" +
+            "                __gcetSitIdleElapsed = __gcetSitIdleElapsed + dt\n" +
+            "                if __gcetSitIdleElapsed < 0.10 then return end\n" +
+            "                dt = __gcetSitIdleElapsed\n" +
+            "                __gcetSitIdleElapsed = 0.0\n" +
+            "            else\n" +
+            "                __gcetSitIdleElapsed = 0.0\n" +
+            "            end\n" +
+            "            if interaction.hubShown then interaction.update() end\n" +
+            "            world.update()\n" +
+            "            self.logic:onUpdate()\n" +
+            "            for _, spot in pairs(self.logic.sittables) do\n" +
+            "                local workspot = spot.workspot\n" +
+            "                if workspot.enableCamera or workspot.camTransition or workspot.slide then\n" +
+            "                    workspot.yaw = self.yaw\n" +
+            "                    workspot.pitch = self.pitch\n" +
+            "                    spot:update(dt)\n" +
+            "                end\n" +
+            "            end\n" +
+            "        end\n";
+
+        text = ReplaceOnce(
+            text,
+            oldBody,
+            newBody,
+            "sitAnywhere active/idle onUpdate body");
+
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Kept Cron frame-fed and scanner/workspot transitions realtime, reduced inactive world/logic reconciliation to 10 Hz, skipped hidden interaction UI updates, and avoided idle workspot camera updates.");
+    }
+
+    private static SemanticInjectionResult ApplyMarmurBank(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "external/InteractionUI.lua",
+            "WORLD_INTERACTION_ACTIONS",
+            "shouldBlockWorldAction",
+            "Override(\"PlayerPuppet\", \"OnAction\"",
+            "Observe('PlayerPuppet', 'OnAction'");
+
+        var helperAnchor =
+            "local function isPressed(actionType)\n";
+        var helper =
+            "local function __gcetMarmurActionRelevant(actionName)\n" +
+            "    local name = tostring(actionName or \"\")\n" +
+            "    return WORLD_INTERACTION_ACTIONS[name] == true\n" +
+            "        or name == \"ChoiceScrollUp\"\n" +
+            "        or name == \"ChoiceScrollDown\"\n" +
+            "        or name == \"ChoiceApply\"\n" +
+            "end\n\n";
+
+        var text = ReplaceOnce(
+            file.Text,
+            helperAnchor,
+            helper + helperAnchor,
+            "MarmurBank finite action-interest helper");
+
+        var overrideAnchor =
+            "\t\t\tif action then\n" +
+            "\t\t\t\tlocal actionName, actionType = getActionDetails(action)\n";
+        var overridePrefilter =
+            "\t\t\tif action then\n" +
+            "\t\t\t\tlocal __gcetActionName = \"\"\n" +
+            "\t\t\t\tpcall(function() __gcetActionName = Game.NameToString(action:GetName(action)) or \"\" end)\n" +
+            "\t\t\t\tif not __gcetMarmurActionRelevant(__gcetActionName) then\n" +
+            "\t\t\t\t\tif wrapped then\n" +
+            "\t\t\t\t\t\tif wrappedConsumer ~= nil then return wrapped(action, wrappedConsumer) end\n" +
+            "\t\t\t\t\t\treturn wrapped(action)\n" +
+            "\t\t\t\t\tend\n" +
+            "\t\t\t\t\treturn false\n" +
+            "\t\t\t\tend\n" +
+            "\t\t\t\tlocal actionName, actionType = getActionDetails(action)\n";
+        text = ReplaceOnce(
+            text,
+            overrideAnchor,
+            overridePrefilter,
+            "MarmurBank Override finite prefilter");
+
+        var observeAnchor =
+            "\tObserve('PlayerPuppet', 'OnAction', function(_, action)\n" +
+            "\t\tif shouldBlockWorldAction(getActionDetails(action)) then\n";
+        var observePrefilter =
+            "\tObserve('PlayerPuppet', 'OnAction', function(_, action)\n" +
+            "\t\tlocal __gcetActionName = Game.NameToString(action:GetName(action))\n" +
+            "\t\tif not __gcetMarmurActionRelevant(__gcetActionName) then return end\n" +
+            "\t\tif shouldBlockWorldAction(getActionDetails(action)) then\n";
+        text = ReplaceOnce(
+            text,
+            observeAnchor,
+            observePrefilter,
+            "MarmurBank Observe finite prefilter");
+
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Preserved MarmurBank ATM/tradepost interaction semantics but bypassed its suppression/UI OnAction logic for actions that cannot affect the bank. Physical banking remains available; no ATM/tradepost feature is removed.");
+    }
+
+    private static SemanticInjectionResult ApplyImmersiveThirdPerson(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "init.lua",
+            "updateTppMaintenance",
+            "updateThirdPersonCamera",
+            "updateAutoPerspective",
+            "mod.headLookTick");
+
+        var opening = FindOnUpdateOpening(file.Text, "delta");
+
+        var helpers =
+            "local __gcetItppSupervisorElapsed = 0.0\n" +
+            "local __gcetItppMaintenanceElapsed = 0.0\n\n" +
+            "local function __gcetItppHasStandbyWork()\n" +
+            "  local ap = state.autoPerspective or {}\n" +
+            "  return (ap.userWantsTpp == true and ap.override ~= \"none\")\n" +
+            "    or state.quickFppEngaged == true\n" +
+            "    or state.pendingSessionTppRestore ~= nil\n" +
+            "    or state.pendingSceneTppReapply ~= nil\n" +
+            "    or state.pendingFppCleanup ~= nil\n" +
+            "    or state.pendingFppRestore == true\n" +
+            "    or state.fppRestoreWatchdog ~= nil\n" +
+            "    or state.pendingTppRepReassert ~= nil\n" +
+            "    or state.pendingMirrorHeadVerify ~= nil\n" +
+            "    or state.pendingFacialMute ~= nil\n" +
+            "    or state.pendingTppAnimPoke ~= nil\n" +
+            "    or state.photoModeWasActive == true\n" +
+            "    or state.photoModeHeadRestore ~= nil\n" +
+            "    or state.pickupPulseUntil ~= nil\n" +
+            "    or state.consumableIdleUntil ~= nil\n" +
+            "    or state.consumableGateUntil ~= nil\n" +
+            "    or state.consumableGraceUntil ~= nil\n" +
+            "end\n\n" +
+            opening;
+
+        var text = ReplaceOnce(
+            file.Text,
+            opening,
+            helpers,
+            "immersive_third_person cadence declarations");
+
+        var supervisorStart =
+            "  local inMenuNow = isPlayerInAnyMenu()\n";
+        var supervisorGate =
+            "  __gcetItppSupervisorElapsed = __gcetItppSupervisorElapsed + math.max(delta or 0, 0)\n" +
+            "  local __gcetItppSupervisorInterval = (state.enabled or __gcetItppHasStandbyWork()) and 0.10 or 0.50\n" +
+            "  local __gcetItppRunSupervisor = __gcetItppSupervisorElapsed >= __gcetItppSupervisorInterval\n" +
+            "  local __gcetItppSupervisorDelta = __gcetItppSupervisorElapsed\n" +
+            "  if __gcetItppRunSupervisor then __gcetItppSupervisorElapsed = 0.0 end\n" +
+            "  local inMenuNow = isPlayerInAnyMenu()\n";
+        text = ReplaceOnce(
+            text,
+            supervisorStart,
+            supervisorGate,
+            "immersive_third_person supervisor cadence");
+
+        var supervisorCalls =
+            "  pcall(mod.nativeSettingsSaveTick, delta)\n" +
+            "  pcall(mod.pollNativeToggle, delta)\n" +
+            "  if (state.frameSeq % 6) == 0 then\n" +
+            "    pcall(mod.nativeSettingsComboTick)\n" +
+            "  end\n" +
+            "  pcall(mod.headLookTick, delta)\n";
+        var gatedSupervisorCalls =
+            "  if __gcetItppRunSupervisor then\n" +
+            "    pcall(mod.nativeSettingsSaveTick, __gcetItppSupervisorDelta)\n" +
+            "    pcall(mod.pollNativeToggle, __gcetItppSupervisorDelta)\n" +
+            "    pcall(mod.nativeSettingsComboTick)\n" +
+            "    pcall(mod.headLookTick, __gcetItppSupervisorDelta)\n" +
+            "  end\n";
+        text = ReplaceOnce(
+            text,
+            supervisorCalls,
+            gatedSupervisorCalls,
+            "immersive_third_person supervisor calls");
+
+        text = ReplaceOnce(
+            text,
+            "  safeCallQuiet(function() updateSessionGuard(delta) end)\n" +
+            "  safeCallQuiet(function() updateAutoPerspective(delta) end)\n",
+            "  if __gcetItppRunSupervisor then\n" +
+            "    safeCallQuiet(function() updateSessionGuard(__gcetItppSupervisorDelta) end)\n" +
+            "    safeCallQuiet(function() updateAutoPerspective(__gcetItppSupervisorDelta) end)\n" +
+            "    guardStep(\"updateDependencyGuard\", updateDependencyGuard, __gcetItppSupervisorDelta)\n" +
+            "  end\n",
+            "immersive_third_person supervisor state calls");
+
+        text = ReplaceOnce(
+            text,
+            "  guardStep(\"updateDependencyGuard\", updateDependencyGuard, delta)\n\n" +
+            "  if state.enabled then\n" +
+            "    guardStep(\"tppMaintenance\", updateTppMaintenance, delta)\n" +
+            "  end\n",
+            "  if state.enabled then\n" +
+            "    __gcetItppMaintenanceElapsed = __gcetItppMaintenanceElapsed + math.max(delta or 0, 0)\n" +
+            "    if __gcetItppMaintenanceElapsed >= 0.25 then\n" +
+            "      local __gcetMaintenanceDelta = __gcetItppMaintenanceElapsed\n" +
+            "      __gcetItppMaintenanceElapsed = 0.0\n" +
+            "      guardStep(\"tppMaintenance\", updateTppMaintenance, __gcetMaintenanceDelta)\n" +
+            "    end\n" +
+            "  else\n" +
+            "    __gcetItppMaintenanceElapsed = 0.0\n" +
+            "  end\n",
+            "immersive_third_person maintenance cadence");
+
+        // Realtime camera/transition work remains frame-cadence, but dormant
+        // pending-state handlers should not run when their state is absent.
+        text = ReplaceOnce(
+            text,
+            "  pcall(mod.fallCommitTick, delta)\n",
+            "  if state.enabled or state.fallCommitSet or state.stepHoldSet or state.stepHoldUntil then\n" +
+            "    pcall(mod.fallCommitTick, delta)\n" +
+            "  end\n",
+            "immersive_third_person fall commit gate");
+
+        var pendingGates = new Dictionary<string, string>
+        {
+            ["updateHeadGuard"] = "state.enabled or state.headGuardApplied",
+            ["updatePendingFppCleanup"] = "state.pendingFppCleanup",
+            ["updateFppRestoreWatchdog"] = "state.fppRestoreWatchdog",
+            ["updateTppRepReassert"] = "state.pendingTppRepReassert",
+            ["updateMirrorHeadVerify"] = "state.pendingMirrorHeadVerify",
+            ["updatePostSceneTppReapply"] = "state.pendingSceneTppReapply",
+            ["updateFacialMute"] = "state.pendingFacialMute",
+            ["updatePendingTppAnimPoke"] = "state.pendingTppAnimPoke",
+            ["updateItemPickupPulse"] = "state.enabled or state.pickupPulseUntil",
+            ["updateConsumableIdle"] = "state.enabled or state.consumableIdleUntil or state.consumableGateUntil or state.consumableGraceUntil"
+        };
+
+        foreach (var pair in pendingGates)
+        {
+            var call = pair.Key == "updateHeadGuard"
+                ? "  guardStep(\"updateHeadGuard\", mod.updateHeadGuard)\n"
+                : pair.Key == "updateConsumableIdle"
+                    ? "  guardStep(\"updateConsumableIdle\", mod.updateConsumableIdle, delta)\n"
+                    : "  guardStep(\"" + pair.Key + "\", " + pair.Key + ", delta)\n";
+            var gated =
+                "  if " + pair.Value + " then\n" +
+                "    " + call.TrimStart() +
+                "  end\n";
+            text = ReplaceOnce(
+                text,
+                call,
+                gated,
+                "immersive_third_person " + pair.Key + " gate");
+        }
+
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Kept active camera/transition work at rendered-frame cadence, reduced supervisory polling to 10 Hz active/standby and 2 Hz idle, reduced maintenance to 4 Hz, and gated pending-state handlers when their state is absent.");
+    }
+
+    private static string RouteExactOnActionObserver(
+        string text,
+        string functionName,
+        string owner,
+        IReadOnlyList<string> actions,
+        string label,
+        params string[] requiredTokens)
+    {
+        var regex = new Regex(
+            @"(?ms)^(?<indent>[ \t]*)Observe\s*\(\s*['""]PlayerPuppet['""]\s*,\s*['""]OnAction['""]\s*,\s*function\s*\((?<args>[^)]*)\)\s*\r?\n(?<body>.*?)(?<close>^\k<indent>end\s*\)\s*;?\s*(?:--[^\r\n]*)?$)",
+            RegexOptions.CultureInvariant | RegexOptions.Multiline | RegexOptions.Singleline);
+
+        var candidates = regex.Matches(text)
+            .Cast<Match>()
+            .Where(match => requiredTokens.All(token =>
+                match.Value.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0))
+            .ToList();
+
+        if (candidates.Count == 0)
+            throw new InvalidOperationException(
+                $"Current source no longer proves semantic OnAction structure: {label}.");
+        if (candidates.Count != 1)
+            throw new InvalidOperationException(
+                $"Semantic OnAction structure is ambiguous in current source: {label}.");
+
+        var selected = candidates[0];
+        var indent = selected.Groups["indent"].Value;
+        var args = selected.Groups["args"].Value.Trim();
+        var body = selected.Groups["body"].Value;
+        var actionValues = string.Join(
+            ", ",
+            actions.Select(action => "\"" + action.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\""));
+
+        var stem = Regex.Replace(
+            functionName,
+            @"[^A-Za-z0-9_]+",
+            "_",
+            RegexOptions.CultureInvariant);
+        var tableName = "__gcetActions_" + stem;
+        var okName = "__gcetOk_" + stem;
+        var engineName = "__gcetEngine_" + stem;
+        var clientName = "__gcetClient_" + stem;
+        var routedName = "__gcetRouted_" + stem;
+
+        var replacement =
+            indent + "local function " + functionName + "(" + args + ")\n" +
+            body +
+            indent + "end\n\n" +
+            indent + "local " + tableName + " = { " + actionValues + " }\n" +
+            indent + "local " + okName + ", " + engineName + " = pcall(GetMod, \"0-Engine\")\n" +
+            indent + "local " + clientName + " = nil\n" +
+            indent + "if " + okName + " and type(" + engineName + ") == \"table\" and type(" + engineName + ".Register) == \"function\" then\n" +
+            indent + "    " + clientName + " = " + engineName + ".Register(\"" + owner + "\")\n" +
+            indent + "end\n" +
+            indent + "local " + routedName + " = false\n" +
+            indent + "if type(" + clientName + ") == \"table\" and type(" + clientName + ".SubscribeAction) == \"function\" then\n" +
+            indent + "    " + routedName + " = pcall(function() " + clientName + ".SubscribeAction({ actions = " + tableName + " }, " + functionName + ") end)\n" +
+            indent + "elseif " + okName + " and type(" + engineName + ") == \"table\" and type(" + engineName + ".SubscribeAction) == \"function\" then\n" +
+            indent + "    " + routedName + " = pcall(function() " + engineName + ".SubscribeAction({ actions = " + tableName + " }, " + functionName + ", \"" + owner + "\") end)\n" +
+            indent + "end\n" +
+            indent + "if not " + routedName + " then Observe(\"PlayerPuppet\", \"OnAction\", " + functionName + ") end";
+
+        return text[..selected.Index] +
+            replacement +
+            text[(selected.Index + selected.Length)..];
     }
 
     private static string FindOnUpdateOpening(
