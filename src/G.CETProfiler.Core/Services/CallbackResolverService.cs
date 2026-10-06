@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -49,7 +50,7 @@ internal static class CallbackResolverService
 
         var semanticLibrary = SemanticLibraryService.Load(semanticLibraryPath, modsRoot);
         var sourceIndex = new LiveSourceIndex(modsRoot);
-        var schedulerJobs = ReadSchedulerJobs(handoff.RootElement);
+        var schedulerJobs = ReadSchedulerJobs(handoff.RootElement, handoffPath);
         var schedulerByOwner = callbacks
             .Select(callback => callback.Owner)
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -4197,30 +4198,83 @@ internal static class CallbackResolverService
         return result;
     }
 
-    private static List<SchedulerJobMetric> ReadSchedulerJobs(JsonElement root)
+    private static List<SchedulerJobMetric> ReadSchedulerJobs(
+        JsonElement root,
+        string handoffPath)
     {
         var result = new List<SchedulerJobMetric>();
-        if (!root.TryGetProperty("scheduler", out var scheduler) ||
-            scheduler.ValueKind != JsonValueKind.Object ||
-            !scheduler.TryGetProperty("jobs", out var jobs) ||
-            jobs.ValueKind != JsonValueKind.Array)
+
+        if (root.TryGetProperty("scheduler", out var scheduler) &&
+            scheduler.ValueKind == JsonValueKind.Object &&
+            scheduler.TryGetProperty("jobs", out var jobs) &&
+            jobs.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var row in jobs.EnumerateArray())
+            {
+                var job = JsonString(row, "job", "Job");
+                if (string.IsNullOrWhiteSpace(job))
+                    continue;
+
+                result.Add(new SchedulerJobMetric
+                {
+                    Owner = JsonString(row, "owner", "Owner"),
+                    JobType = JsonString(row, "jobType", "JobType"),
+                    Job = job,
+                    IntervalValue = JsonDouble(row, "intervalValue", "IntervalValue"),
+                    IntervalUnit = JsonString(row, "intervalUnit", "IntervalUnit"),
+                    CallsPerSecond = JsonDouble(row, "callsPerSecond", "CallsPerSecond"),
+                    MsPerSecond = JsonDouble(row, "msPerSecond", "MsPerSecond")
+                });
+            }
+        }
+
+        if (result.Count > 0)
             return result;
 
-        foreach (var row in jobs.EnumerateArray())
+        // Backward compatibility for pre-1.9 captures. The profiler already
+        // archived Scheduler evidence, but older resolver handoffs did not copy
+        // it into CET_Resolver_Input.json. Consume the archived CSV read-only so
+        // those captures still gain existing-integration recognition.
+        var captureRoot = Path.GetDirectoryName(Path.GetFullPath(handoffPath));
+        if (string.IsNullOrWhiteSpace(captureRoot))
+            return result;
+
+        var schedulerPath = ResultReportService.FindProfilerFile(
+            captureRoot,
+            "CET_Runtime_Profile_Scheduler_ByJob.csv");
+        foreach (var row in ResultReportService.ReadCsv(schedulerPath))
         {
-            var job = JsonString(row, "job", "Job");
+            string Csv(string name) =>
+                row.TryGetValue(name, out var value)
+                    ? value?.Trim() ?? ""
+                    : "";
+
+            double CsvDouble(string name)
+            {
+                var value = Csv(name);
+                return double.TryParse(
+                    value,
+                    NumberStyles.Float | NumberStyles.AllowThousands,
+                    CultureInfo.InvariantCulture,
+                    out var parsed) &&
+                    double.IsFinite(parsed)
+                        ? parsed
+                        : 0;
+            }
+
+            var job = Csv("Job");
             if (string.IsNullOrWhiteSpace(job))
                 continue;
 
             result.Add(new SchedulerJobMetric
             {
-                Owner = JsonString(row, "owner", "Owner"),
-                JobType = JsonString(row, "jobType", "JobType"),
+                Owner = Csv("Owner"),
+                JobType = Csv("JobType"),
                 Job = job,
-                IntervalValue = JsonDouble(row, "intervalValue", "IntervalValue"),
-                IntervalUnit = JsonString(row, "intervalUnit", "IntervalUnit"),
-                CallsPerSecond = JsonDouble(row, "callsPerSecond", "CallsPerSecond"),
-                MsPerSecond = JsonDouble(row, "msPerSecond", "MsPerSecond")
+                IntervalValue = CsvDouble("IntervalValue"),
+                IntervalUnit = Csv("IntervalUnit"),
+                CallsPerSecond = CsvDouble("CallsPerSecond"),
+                MsPerSecond = CsvDouble("MsPerSecond")
             });
         }
 
