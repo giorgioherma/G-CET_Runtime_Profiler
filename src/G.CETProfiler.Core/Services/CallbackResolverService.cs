@@ -79,6 +79,8 @@ internal static class CallbackResolverService
         var genericResolved = 0;
         var nonFrameOnlyAuto = 0;
         var frameOnlyAuto = 0;
+        var frameDispatchOnlyMaterialResidual = 0;
+        var frameDispatchOnlyMaterialResidualMsPerSecond = 0.0;
         var materialRemaining = 0;
         var belowThreshold = 0;
         var semanticMatches = 0;
@@ -144,16 +146,28 @@ internal static class CallbackResolverService
                         StringComparison.OrdinalIgnoreCase) ||
                     semantic.AlreadySatisfied;
 
+                var frameDispatchOnly =
+                    generic.Automatable &&
+                    generic.RecipeFamilies.Length == 1 &&
+                    generic.RecipeFamilies[0].Equals(
+                        "FRAME_DISPATCH_CONSOLIDATION",
+                        StringComparison.OrdinalIgnoreCase);
+                var materialBodyResidualAfterFrameDispatch =
+                    frameDispatchOnly &&
+                    callback.ExclusiveMsPerSecond >= MaterialRemainingMsPerSecond &&
+                    !semanticGenerationReady &&
+                    !semantic.AlreadySatisfied;
+                if (materialBodyResidualAfterFrameDispatch)
+                {
+                    frameDispatchOnlyMaterialResidual++;
+                    frameDispatchOnlyMaterialResidualMsPerSecond +=
+                        callback.ExclusiveMsPerSecond;
+                }
+
                 if (generic.Automatable)
                 {
                     genericResolved++;
-                    var recipes = generic.RecipeFamilies;
-                    var frameOnly =
-                        recipes.Length == 1 &&
-                        recipes[0].Equals(
-                            "FRAME_DISPATCH_CONSOLIDATION",
-                            StringComparison.OrdinalIgnoreCase);
-                    if (frameOnly)
+                    if (frameDispatchOnly)
                         frameOnlyAuto++;
                     else
                         nonFrameOnlyAuto++;
@@ -198,6 +212,12 @@ internal static class CallbackResolverService
                         generic.Automatable,
                         generic.Pattern,
                         generic.RecipeFamilies,
+                        optimizationScope = frameDispatchOnly
+                            ? "REGISTRATION_DISPATCH_ONLY"
+                            : generic.Automatable
+                                ? "CALLBACK_LOCAL_OR_ROUTING"
+                                : "NONE",
+                        materialBodyResidualAfterFrameDispatch,
                         generic.Facts,
                         generic.Evidence,
                         generic.Blockers
@@ -399,6 +419,9 @@ internal static class CallbackResolverService
                 genericResolved,
                 nonFrameOnlyAuto,
                 frameOnlyAuto,
+                frameDispatchOnlyMaterialResidual,
+                frameDispatchOnlyMaterialResidualMsPerSecond = Round(
+                    frameDispatchOnlyMaterialResidualMsPerSecond),
                 materialRemaining,
                 belowThreshold,
                 materialThresholdMsPerSecond = MaterialRemainingMsPerSecond,
