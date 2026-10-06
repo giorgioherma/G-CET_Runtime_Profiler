@@ -188,6 +188,7 @@ internal sealed class SemanticLibraryService
                 .Where(entry =>
                     MarkerPresent(entry, graph) ||
                     (entry.Proof.AllowIdentityFallback &&
+                     HasStrongIdentityFingerprint(entry) &&
                      SourceProofSatisfied(entry, graph)))
                 .Take(3)
                 .ToList();
@@ -297,6 +298,30 @@ internal sealed class SemanticLibraryService
             else
                 missing.Add("(" + string.Join(" | ", group) + ")");
         }
+    }
+
+    private static bool HasStrongIdentityFingerprint(
+        SemanticRule rule)
+    {
+        // Name-independent identification is deliberately harder than normal
+        // source proof. A couple of generic words (e.g. Runner + Manager) are
+        // enough to describe behavior but nowhere near enough to establish mod
+        // identity across a 60-100+ mod CET stack.
+        var points =
+            rule.Proof.OwnerAll.Length +
+            rule.Proof.OwnerAnyGroups.Length;
+        if (points < 4)
+            return false;
+
+        var anchors = rule.Proof.OwnerAll
+            .Concat(rule.Proof.OwnerAnyGroups.SelectMany(group => group))
+            .Where(anchor => !string.IsNullOrWhiteSpace(anchor))
+            .ToArray();
+
+        // Require at least one source-shaped anchor as well as breadth. This
+        // keeps four generic English identifiers from becoming an identity.
+        return anchors.Any(anchor =>
+            anchor.IndexOfAny(new[] { '.', ':', '(', ')', '=', '[', ']' }) >= 0);
     }
 
     private static bool SourceProofSatisfied(
