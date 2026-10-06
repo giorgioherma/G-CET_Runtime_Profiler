@@ -424,6 +424,33 @@ __gcetRegisterEvent_132("onUpdate", function(delta)
     DoAlreadyFrameWork(delta)
 end)
 '@
+Write-Mod 'FixtureOwnerRegistrar' @'
+local registerRuntimeEvent = registerForEvent
+do
+    local ok, engine = pcall(GetMod, "0-Engine")
+    if ok and type(engine) == "table" and type(engine.MakeEventRegistrar) == "function" then
+        registerRuntimeEvent = engine.MakeEventRegistrar("FixtureOwnerRegistrar", registerForEvent)
+    end
+end
+registerRuntimeEvent("onUpdate", function(delta)
+    DoOwnerRegistrarWork(delta)
+end)
+'@
+
+Write-Mod 'FixtureSchedulerBootstrap' @'
+local pass4Attached = false
+local function TryAttachFixtureSchedulerBootstrap()
+    local jobId = "fixture.bootstrap.scheduled"
+    pass4Attached = true
+    return jobId
+end
+registerForEvent("onUpdate", function(delta)
+    if pass4Attached then return end
+    if TryAttachFixtureSchedulerBootstrap then
+        TryAttachFixtureSchedulerBootstrap()
+    end
+end)
+'@
 
 Write-Mod 'FixtureUnknown' @'
 Observe("PlayerPuppet", "SomeOtherMethod", function(self)
@@ -471,7 +498,8 @@ $schedulerDir = Join-Path $capture 'Data\Scheduler'
 New-Item -ItemType Directory -Force $schedulerDir | Out-Null
 @(
     'Owner,JobType,Job,IntervalValue,IntervalUnit,Calls,CallsPerSecond,TotalMs,MsPerSecond,MeasuredOneCorePct,AvgUs,MaxMs,ElapsedSeconds,Interpretation',
-    'ManualAlias,timed,fixture.frame.scheduled,0.500000,seconds,20,2.000000,4.000000,0.400000,0.040000,200.000000,0.800000,10.000000,inclusive-inside-0-engine-do-not-add-to-mod-totals'
+    'ManualAlias,timed,fixture.frame.scheduled,0.500000,seconds,20,2.000000,4.000000,0.400000,0.040000,200.000000,0.800000,10.000000,inclusive-inside-0-engine-do-not-add-to-mod-totals',
+    'ManualBootstrap,timed,fixture.bootstrap.scheduled,0.500000,seconds,20,2.000000,4.000000,0.400000,0.040000,200.000000,0.800000,10.000000,inclusive-inside-0-engine-do-not-add-to-mod-totals'
 ) | Set-Content -LiteralPath (Join-Path $schedulerDir 'CET_Runtime_Profile_Scheduler_ByJob.csv') -Encoding utf8
 
 $handoff = @{
@@ -505,6 +533,8 @@ $handoff = @{
         (CallbackRow 102 'FixtureFrame' 'event' 'onUpdate' 60 5.0 1.0 'init.lua' 2 7),
         (CallbackRow 136 'FixtureWrappedFrame' 'event' 'onUpdate' 60 5.2 1.0 'init.lua' 2 4),
         (CallbackRow 132 'FixtureAlreadyFrame' 'event' 'onUpdate' 60 5.5 1.1 'init.lua' 8 10),
+        (CallbackRow 137 'FixtureOwnerRegistrar' 'event' 'onUpdate' 60 6.2 1.2 'init.lua' 8 10),
+        (CallbackRow 138 'FixtureSchedulerBootstrap' 'event' 'onUpdate' 60 0.05 0.01 'init.lua' 7 12),
         # Deliberately no FixtureAbsentSemantic folder exists under $mods.
         (CallbackRow 133 'FixtureAbsentSemantic' 'event' 'onUpdate' 60 7.7 1.4 'init.lua' 1 4),
         (CallbackRow 127 'FixtureUnknownHot' 'observe' 'PlayerPuppet::AnotherUnknownMethod' 60 20.0 5.0 'init.lua' 1 3),
@@ -1094,6 +1124,28 @@ if ($alreadyFrame.disposition -ne 'ALREADY_SATISFIED') {
 }
 if (@($alreadyFrame.generic.RecipeFamilies) -contains 'FRAME_DISPATCH_CONSOLIDATION') {
     throw 'Already-consolidated callback exposed another frame transform.'
+}
+
+$ownerRegistrar = @($onUpdate.topConsumers | Where-Object { $_.owner -eq 'FixtureOwnerRegistrar' }) | Select-Object -First 1
+if ($null -eq $ownerRegistrar) { throw 'FixtureOwnerRegistrar was not ranked inside onUpdate.' }
+if ($ownerRegistrar.generic.Automatable -or $ownerRegistrar.generic.Status -ne 'ALREADY_SATISFIED') {
+    throw 'Owner-specific MakeEventRegistrar integration was not recognized as already satisfied.'
+}
+if ((@($ownerRegistrar.generic.Evidence) -join ' ') -notmatch 'MakeEventRegistrar') {
+    throw 'Owner-specific registrar recognition did not expose its source evidence.'
+}
+
+$schedulerBootstrap = @($onUpdate.topConsumers | Where-Object { $_.owner -eq 'FixtureSchedulerBootstrap' }) | Select-Object -First 1
+if ($null -eq $schedulerBootstrap) { throw 'FixtureSchedulerBootstrap was not ranked inside onUpdate.' }
+if (!$schedulerBootstrap.existingOptimization.zeroEngineSchedulerDetected -or
+    !$schedulerBootstrap.existingOptimization.sourceProven) {
+    throw 'Scheduler bootstrap fixture did not prove its existing Scheduler ownership.'
+}
+if ($schedulerBootstrap.generic.Automatable -or $schedulerBootstrap.generic.Status -ne 'ALREADY_SATISFIED') {
+    throw 'Residual Scheduler bootstrap was incorrectly re-authorized for frame consolidation.'
+}
+if ((@($schedulerBootstrap.generic.Evidence) -join ' ') -notmatch 'residual bootstrap') {
+    throw 'Residual Scheduler bootstrap recognition did not expose its source evidence.'
 }
 
 $structural = @($onUpdate.topConsumers | Where-Object { $_.owner -eq 'FixtureStructural' }) | Select-Object -First 1
