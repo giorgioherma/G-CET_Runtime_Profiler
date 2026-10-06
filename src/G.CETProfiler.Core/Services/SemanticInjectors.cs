@@ -2531,51 +2531,85 @@ internal static class SemanticInjectors
             helpers,
             "immersive_third_person cadence declarations");
 
-        var supervisorStart =
-            "  local inMenuNow = isPlayerInAnyMenu()\n";
-        var supervisorGate =
-            "  __gcetItppSupervisorElapsed = __gcetItppSupervisorElapsed + math.max(delta or 0, 0)\n" +
-            "  local __gcetItppSupervisorInterval = (state.enabled or __gcetItppHasStandbyWork()) and 0.10 or 0.50\n" +
-            "  local __gcetItppRunSupervisor = __gcetItppSupervisorElapsed >= __gcetItppSupervisorInterval\n" +
-            "  local __gcetItppSupervisorDelta = __gcetItppSupervisorElapsed\n" +
-            "  if __gcetItppRunSupervisor then __gcetItppSupervisorElapsed = 0.0 end\n" +
-            "  local inMenuNow = isPlayerInAnyMenu()\n";
-        text = ReplaceOnce(
-            text,
-            supervisorStart,
-            supervisorGate,
-            "immersive_third_person supervisor cadence");
-
-        var supervisorCalls =
+        var supervisorBlock =
+            "  local inMenuNow = isPlayerInAnyMenu()\n" +
+            "  if state.menuWasOpen and not inMenuNow then\n" +
+            "    mod.clearDigitalMoveLatches(\"menu close\")\n" +
+            "  end\n" +
+            "  state.menuWasOpen = inMenuNow\n" +
             "  pcall(mod.nativeSettingsSaveTick, delta)\n" +
             "  pcall(mod.pollNativeToggle, delta)\n" +
             "  if (state.frameSeq % 6) == 0 then\n" +
             "    pcall(mod.nativeSettingsComboTick)\n" +
             "  end\n" +
-            "  pcall(mod.headLookTick, delta)\n";
-        var gatedSupervisorCalls =
-            "  if __gcetItppRunSupervisor then\n" +
+            "  pcall(mod.headLookTick, delta)\n" +
+            "  pcall(mod.fallCommitTick, delta)\n" +
+            "  if state.pendingFaultNotice then\n" +
+            "    state.faultNotifyTimer = (state.faultNotifyTimer or 0) + (delta or 0)\n" +
+            "    if state.faultNotifyTimer >= 5.0 then\n" +
+            "      state.faultNotifyTimer = 0\n" +
+            "      pcall(mod.notifyFaultTick)\n" +
+            "    end\n" +
+            "  end\n" +
+            "  if state.enabled or state.photoModeWasActive then\n" +
+            "    state.photoModePollTimer = (state.photoModePollTimer or 0) + (delta or 0)\n" +
+            "    if state.photoModePollTimer >= 0.15 then\n" +
+            "      state.photoModePollTimer = 0\n" +
+            "      local photoModeNow = autoReadPhotoMode()\n" +
+            "      if state.photoModeWasActive and not photoModeNow and state.enabled then\n" +
+            "        state.photoModeHeadRestore = { at = (state.modClock or 0) + 0.10, passes = 0 }\n" +
+            "      end\n" +
+            "      state.photoModeWasActive = photoModeNow\n" +
+            "    end\n" +
+            "  end\n" +
+            "  mod.updatePhotoModeHeadRestore()\n\n" +
+            "  safeCallQuiet(function() updateSessionGuard(delta) end)\n" +
+            "  safeCallQuiet(function() updateAutoPerspective(delta) end)\n";
+
+        var gatedSupervisorBlock =
+            "  __gcetItppSupervisorElapsed = __gcetItppSupervisorElapsed + math.max(delta or 0, 0)\n" +
+            "  local __gcetItppSupervisorInterval = (state.enabled or __gcetItppHasStandbyWork()) and 0.10 or 0.50\n" +
+            "  if __gcetItppSupervisorElapsed >= __gcetItppSupervisorInterval then\n" +
+            "    local __gcetItppSupervisorDelta = __gcetItppSupervisorElapsed\n" +
+            "    __gcetItppSupervisorElapsed = 0.0\n" +
+            "    local inMenuNow = isPlayerInAnyMenu()\n" +
+            "    if state.menuWasOpen and not inMenuNow then\n" +
+            "      mod.clearDigitalMoveLatches(\"menu close\")\n" +
+            "    end\n" +
+            "    state.menuWasOpen = inMenuNow\n" +
             "    pcall(mod.nativeSettingsSaveTick, __gcetItppSupervisorDelta)\n" +
             "    pcall(mod.pollNativeToggle, __gcetItppSupervisorDelta)\n" +
             "    pcall(mod.nativeSettingsComboTick)\n" +
             "    pcall(mod.headLookTick, __gcetItppSupervisorDelta)\n" +
-            "  end\n";
-        text = ReplaceOnce(
-            text,
-            supervisorCalls,
-            gatedSupervisorCalls,
-            "immersive_third_person supervisor calls");
-
-        text = ReplaceOnce(
-            text,
-            "  safeCallQuiet(function() updateSessionGuard(delta) end)\n" +
-            "  safeCallQuiet(function() updateAutoPerspective(delta) end)\n",
-            "  if __gcetItppRunSupervisor then\n" +
+            "    if state.pendingFaultNotice then\n" +
+            "      state.faultNotifyTimer = (state.faultNotifyTimer or 0) + __gcetItppSupervisorDelta\n" +
+            "      if state.faultNotifyTimer >= 5.0 then\n" +
+            "        state.faultNotifyTimer = 0\n" +
+            "        pcall(mod.notifyFaultTick)\n" +
+            "      end\n" +
+            "    end\n" +
+            "    if state.enabled or state.photoModeWasActive then\n" +
+            "      state.photoModePollTimer = (state.photoModePollTimer or 0) + __gcetItppSupervisorDelta\n" +
+            "      if state.photoModePollTimer >= 0.15 then\n" +
+            "        state.photoModePollTimer = 0\n" +
+            "        local photoModeNow = autoReadPhotoMode()\n" +
+            "        if state.photoModeWasActive and not photoModeNow and state.enabled then\n" +
+            "          state.photoModeHeadRestore = { at = (state.modClock or 0) + 0.10, passes = 0 }\n" +
+            "        end\n" +
+            "        state.photoModeWasActive = photoModeNow\n" +
+            "      end\n" +
+            "    end\n" +
+            "    mod.updatePhotoModeHeadRestore()\n" +
             "    safeCallQuiet(function() updateSessionGuard(__gcetItppSupervisorDelta) end)\n" +
             "    safeCallQuiet(function() updateAutoPerspective(__gcetItppSupervisorDelta) end)\n" +
             "    guardStep(\"updateDependencyGuard\", updateDependencyGuard, __gcetItppSupervisorDelta)\n" +
-            "  end\n",
-            "immersive_third_person supervisor state calls");
+            "  end\n";
+
+        text = ReplaceOnce(
+            text,
+            supervisorBlock,
+            gatedSupervisorBlock,
+            "immersive_third_person supervisor lane");
 
         text = ReplaceOnce(
             text,
