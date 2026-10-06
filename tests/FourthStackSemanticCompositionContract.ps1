@@ -46,9 +46,21 @@ $ammoMod = 'Auto Ammo Crafting (I need more bullets)-v4.2'
 
 Write-ModFile $easyMod 'init.lua' @'
 local Event = require("Core/Event")
+local State = require("Controls/State")
+local Cron = { Update=function() end }
+local Notification = { Render=function() end }
+local Vehicle = { VehicleSpeedometer = { Render=function() end } }
 local Utils = {}
-local SelfFeature = { NoClip = require("Features/Self/Abilities/NoClip") }
+local SelfFeature = {
+    NoClip = require("Features/Self/Abilities/NoClip"),
+    GodMode = { DisableFallFX=function() end },
+    InfiniteAirDash = { HandleAirDash=function(_,_,_,wrapped) return wrapped() end }
+}
 local modulesLoaded = true
+
+registerForEvent("onOverlayOpen", function() State.overlayOpen = true end)
+registerForEvent("onOverlayClose", function() State.overlayOpen = false end)
+
     Event.Observe("PlayerPuppet", "OnAction", function(_, action)
         if modulesLoaded then
             SelfFeature.NoClip.HandleMouseLook(action)
@@ -57,9 +69,49 @@ local modulesLoaded = true
             end
         end
     end)
-    Event.RegisterUpdate(function(dt)
-        if Utils and Utils.Weapon then Utils.Weapon.Tick(dt) end
+
+    Event.Observe("BaseProjectile", "ProjectileHit", function(self, eventData)
+        if modulesLoaded then
+            if Utils and Utils.Weapon then Utils.Weapon.HandleProjectileHit(self, eventData) end
+        end
     end)
+
+    Event.ObserveAfter("LocomotionAirEvents", "OnEnter", function(self, context, result)
+        if modulesLoaded then
+            SelfFeature.GodMode.DisableFallFX(self, context, result)
+        end
+    end)
+
+    Event.ObserveAfter("MinimapContainerController", "OnCountdownTimerActiveUpdated", function(_, _)
+        if modulesLoaded then
+            if Vehicle and Vehicle.FreezeQuestTimer then Vehicle.FreezeQuestTimer.HandleCountdownTimer(_, _) end
+        end
+    end)
+
+    Event.Override("LocomotionTransition", "WantsToDodge", function(transition, stateContext, scriptInterface, wrappedFunc)
+        if modulesLoaded then
+            return SelfFeature.InfiniteAirDash.HandleAirDash(transition, stateContext, scriptInterface, wrappedFunc)
+        end
+        return wrappedFunc(stateContext, scriptInterface)
+    end)
+
+    Event.Override("scannerDetailsGameController", "ShouldDisplayTwintoneTab", function(this, wrappedMethod)
+        if not modulesLoaded then return wrappedMethod() end
+        return wrappedMethod()
+    end)
+
+Event.RegisterUpdate(function(dt)
+    Cron.Update(dt)
+    if Utils and Utils.Weapon then Utils.Weapon.Tick(dt) end
+end)
+
+local function RenderMainMenu() end
+
+Event.RegisterDraw(function()
+    Notification.Render()
+    if modulesLoaded then Vehicle.VehicleSpeedometer.Render() end
+    RenderMainMenu()
+end)
 '@
 Write-ModFile $easyMod 'Features/Self/Abilities/NoClip.lua' @'
 local Noclip = {}
@@ -193,6 +245,35 @@ function Restrictions.Update()
     lastTypingEnabled = typingEnabled
 end
 return Restrictions
+'@
+Write-ModFile $easyMod 'Controls/State.lua' @'
+local State = {}
+State.menuOpen = true
+State.mouseEnabled = false
+State.overlayOpen = false
+State.typingEnabled = false
+
+function State.IsMenuOpen()
+    return State.menuOpen
+end
+
+function State.ToggleMenu()
+    State.menuOpen = not State.menuOpen
+    State.SyncTracking()
+    return State.menuOpen
+end
+
+function State.SyncTracking() end
+
+return State
+'@
+Write-ModFile $easyMod 'View/Settings/SettingsView.lua' @'
+local Buttons = require("UI").Buttons
+local function DrawSettings()
+    Buttons.Break("Configuration", "")
+    Buttons.Option(L("settingsmenu.saveall.label"), tip("settingsmenu.saveall.tip"), function() end)
+end
+return { title = "settingsmenu.title", view = DrawSettings }
 '@
 Write-ModFile $easyMod 'Features/Self/Abilities/AdvancedMobility.lua' @'
 local AdvancedMobility = {}
@@ -453,6 +534,7 @@ function CallbackRow([int]$Id,[string]$Owner,[string]$Kind,[string]$Target,[stri
 }
 
 $easyRange = Find-CallbackRange (Join-Path $mods "$easyMod\init.lua") 'Event\.Observe\("PlayerPuppet",\s*"OnAction"'
+$easyDrawRange = Find-CallbackRange (Join-Path $mods "$easyMod\init.lua") 'Event\.RegisterDraw\(function\(\)'
 $teleRange = Find-CallbackRange (Join-Path $mods "$teleMod\init.lua") 'registerForEvent\("onUpdate"'
 $discardRange = Find-CallbackRange (Join-Path $mods "$discardMod\init.lua") "Observe\('PlayerPuppet','OnAction'"
 $advancedRange = Find-CallbackRange (Join-Path $mods "$advancedMod\init.lua") 'registerForEvent\("onUpdate"'
@@ -461,6 +543,7 @@ $ammoRange = Find-CallbackRange (Join-Path $mods "$ammoMod\init.lua") 'registerF
 $handoff=@{
  schemaVersion='1.8'
  callbacks=@(
+    (CallbackRow 166 $easyMod 'event' 'onDraw' 'init.lua' $easyDrawRange.Start $easyDrawRange.End 78.30 60),
     (CallbackRow 458 $easyMod 'Observe' 'PlayerPuppet::OnAction' 'init.lua' $easyRange.Start $easyRange.End 35.64 1485),
     (CallbackRow 429 $teleMod 'event' 'onUpdate' 'init.lua' $teleRange.Start $teleRange.End 17.16 60),
     (CallbackRow 457 $discardMod 'Observe' 'PlayerPuppet::OnAction' 'init.lua' $discardRange.Start $discardRange.End 15.30 1485),
@@ -475,7 +558,7 @@ $resolved = (& $resolverExe --capture $capture --mods $mods --generate-pass --js
 if (!$resolved.ok -or $null -eq $resolved.pass) { throw 'Fourth-stack semantic pass generation failed.' }
 
 $resolver = Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
-$rules=@('easytrainer','teleport-gateway-system','discard-ammo-on-reload','advanced-settings','auto-ammo-crafting')
+$rules=@('easytrainer-background-dormancy','easytrainer','teleport-gateway-system','discard-ammo-on-reload','advanced-settings','auto-ammo-crafting')
 foreach($rule in $rules) {
     $matches=@()
     foreach($family in @($resolver.callbackFamilies)) {
@@ -525,6 +608,8 @@ try {
     $easyWeapon=Read-ZipText ($base+$easyMod+'/Utils/Weapon.lua')
     $easyRegistry=Read-ZipText ($base+$easyMod+'/UI/Registry/OptionRegistry.lua')
     $easyRestrictions=Read-ZipText ($base+$easyMod+'/Controls/Restrictions.lua')
+    $easyState=Read-ZipText ($base+$easyMod+'/Controls/State.lua')
+    $easySettings=Read-ZipText ($base+$easyMod+'/View/Settings/SettingsView.lua')
     $easyMobility=Read-ZipText ($base+$easyMod+'/Features/Self/Abilities/AdvancedMobility.lua')
     $easySuperSpeed=Read-ZipText ($base+$easyMod+'/Features/Self/Abilities/SuperSpeed.lua')
     $easyThrusters=Read-ZipText ($base+$easyMod+'/Features/Self/Abilities/AirThrusterBoots.lua')
@@ -540,6 +625,12 @@ try {
        $easyRegistry -notmatch 'local __gcetBindings = nil' -or
        $easyRegistry -notmatch 'entry\.Hotkey or HotkeyAction\(entry\.Id\)' -or
        $easyRestrictions -notmatch 'if not menuOpen then' -or
+       $easyState -notmatch 'function State\.IsGCETDormant\(\)' -or
+       $easyState -notmatch 'function State\.SetGCETDormant\(value\)' -or
+       $easySettings -notmatch 'Send EasyTrainer to Background' -or
+       $easyInit -notmatch 'if State\.IsGCETDormant\(\) then return end' -or
+       $easyInit -notmatch 'Wake EasyTrainer' -or
+       $easyInit -notmatch 'State\.IsGCETDormant\(\) then return wrappedFunc' -or
        $easyMobility -notmatch 'if toggle\.value == state\[appliedFlag\] then return end' -or
        $easySuperSpeed -notmatch 'if SuperSpeed\.enabled\.value == applied then return end' -or
        $easyThrusters -notmatch 'if AirThrusterBoots\.enabled\.value == applied then return end' -or
@@ -586,4 +677,4 @@ try {
 }
 finally { $zip.Dispose() }
 
-Write-Host 'Fourth-stack semantic composition contract passed: EasyTrainer + TeleportGatewaySystem + DiscardAmmoOnReload + advanced_settings + Auto Ammo Crafting.'
+Write-Host 'Fourth-stack semantic composition contract passed: EasyTrainer routing + explicit background dormancy + TeleportGatewaySystem + DiscardAmmoOnReload + advanced_settings + Auto Ammo Crafting.'
