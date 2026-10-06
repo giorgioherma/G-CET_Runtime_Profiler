@@ -303,14 +303,16 @@ internal static class FixedZeroEngineRuntime
             @"(?m)^[ \t]*return[ \t]+(?<name>[A-Za-z_][A-Za-z0-9_]*)[ \t]*;?[ \t]*(?:--[^\r\n]*)?\r?$",
             RegexOptions.CultureInvariant);
 
-        if (exportMatches.Count != 1)
+        if (exportMatches.Count == 0)
         {
-            reason =
-                $"expected exactly one simple final runtime-table export, found {exportMatches.Count}";
+            reason = "no simple runtime-table export was found";
             return false;
         }
 
-        var export = exportMatches[0];
+        // Functions inside 0-Engine commonly return identifiers of their own.
+        // The host contract concerns only the final exported mod table, so use
+        // the last simple return and prove below that nothing executable follows it.
+        var export = exportMatches[^1];
         var exportName = export.Groups["name"].Value;
 
         var tail = text[(export.Index + export.Length)..];
