@@ -899,9 +899,11 @@ internal static class SemanticInjectors
             "${indent}local __gcetMidairRouted = false\n" +
             "${indent}local __gcetMidairHandles = {}\n" +
             "${indent}local __gcetMidairOk, __gcetMidairEngine = pcall(GetMod, \"0-Engine\")\n" +
-            "${indent}if __gcetMidairOk and type(__gcetMidairEngine) == \"table\" and type(__gcetMidairEngine.SubscribeAction) == \"function\" then\n" +
+            "${indent}local __gcetMidairApi = __gcetMidairEngine\n" +
+            "${indent}if __gcetMidairOk and type(__gcetMidairEngine) == \"table\" and type(__gcetMidairEngine.GCET) == \"table\" then __gcetMidairApi = __gcetMidairEngine.GCET end\n" +
+            "${indent}if __gcetMidairOk and type(__gcetMidairApi) == \"table\" and type(__gcetMidairApi.SubscribeAction) == \"function\" then\n" +
             "${indent}    __gcetMidairRouted = pcall(function()\n" +
-            "${indent}        __gcetMidairHandles[#__gcetMidairHandles + 1] = __gcetMidairEngine.SubscribeAction({\n" +
+            "${indent}        __gcetMidairHandles[#__gcetMidairHandles + 1] = __gcetMidairApi.SubscribeAction({\n" +
             "${indent}            id = \"G-CET.Semantic.AlternativeMidairMovement\",\n" +
             "${indent}            actions = { \"MoveX\", \"MoveY\", \"Jump\", \"Left\", \"Right\", \"Forward\", \"Back\" },\n" +
             "${indent}            decodeType = false\n" +
