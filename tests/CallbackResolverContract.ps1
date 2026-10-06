@@ -94,6 +94,15 @@ Observe("PlayerPuppet", "OnAction", function(this, action)
 end)
 '@
 
+Write-Mod 'FixtureNamedCName' @'
+local n_ToggleSprint = n"ToggleSprint"
+Observe("PlayerPuppet", "OnAction", function(this, action)
+    if action:IsAction(action, n_ToggleSprint) then
+        DoNamedCNameWork()
+    end
+end)
+'@
+
 Write-Mod 'FixtureSelector' @'
 local openAction = "OpenHubMenu"
 if gameVer < 1.5 then openAction = "context_help" end
@@ -405,6 +414,25 @@ registerRuntimeEvent(
 local existingSchedulerJobId = "fixture.frame.scheduled"
 '@
 
+Write-Mod 'FixtureDraw' @'
+registerForEvent("onDraw", function()
+    DrawFixture()
+end)
+'@
+
+Write-Mod 'FixtureAlreadyDraw' @'
+local registerRuntimeEvent = registerForEvent
+do
+    local ok, engine = pcall(GetMod, "0-Engine")
+    if ok and type(engine) == "table" and type(engine.MakeEventRegistrar) == "function" then
+        registerRuntimeEvent = engine.MakeEventRegistrar("FixtureAlreadyDraw", registerForEvent)
+    end
+end
+registerRuntimeEvent("onDraw", function()
+    DrawAlreadyIntegratedFixture()
+end)
+'@
+
 Write-Mod 'FixtureWrappedFrame' @'
 local Event = {}
 Event.registerForEvent("onUpdate", function(delta)
@@ -511,6 +539,7 @@ $handoff = @{
         (CallbackRow 134 'FixtureWrappedAction' 'observe' 'PlayerPuppet::OnAction' 880 11.5 19.0 'init.lua' 2 6),
         (CallbackRow 104 'FixtureSingleton' 'observe' 'PlayerPuppet::OnAction' 800 11.0 18.0 'init.lua' 1 7),
         (CallbackRow 105 'FixtureCName' 'observe' 'PlayerPuppet::OnAction' 700 10.0 16.0 'init.lua' 2 6),
+        (CallbackRow 139 'FixtureNamedCName' 'observe' 'PlayerPuppet::OnAction' 690 9.5 15.0 'init.lua' 2 6),
         (CallbackRow 106 'FixtureSelector' 'observe' 'PlayerPuppet::OnAction' 650 9.0 14.0 'init.lua' 3 9),
         (CallbackRow 107 'FixtureConsumer' 'observe' 'PlayerPuppet::OnAction' 600 8.0 12.0 'init.lua' 1 7),
         (CallbackRow 110 'FixturePattern' 'observe' 'PlayerPuppet::OnAction' 575 7.5 11.0 'init.lua' 1 12),
@@ -531,6 +560,8 @@ $handoff = @{
         (CallbackRow 124 'FixtureDormantBackground' 'observe' 'PlayerPuppet::FixtureBackgroundTick' 60 6.0 1.2 'init.lua' 1 3),
         (CallbackRow 129 'FixtureOtherStructural' 'ObserveAfter' 'PlayerPuppet::FixtureStructuralObserve' 120 12.0 3.0 'init.lua' 1 19),
         (CallbackRow 102 'FixtureFrame' 'event' 'onUpdate' 60 5.0 1.0 'init.lua' 2 7),
+        (CallbackRow 140 'FixtureDraw' 'event' 'onDraw' 60 4.8 0.9 'init.lua' 1 3),
+        (CallbackRow 141 'FixtureAlreadyDraw' 'event' 'onDraw' 60 4.7 0.8 'init.lua' 8 10),
         (CallbackRow 136 'FixtureWrappedFrame' 'event' 'onUpdate' 60 5.2 1.0 'init.lua' 2 4),
         (CallbackRow 132 'FixtureAlreadyFrame' 'event' 'onUpdate' 60 5.5 1.1 'init.lua' 8 10),
         (CallbackRow 137 'FixtureOwnerRegistrar' 'event' 'onUpdate' 60 6.2 1.2 'init.lua' 8 10),
@@ -938,6 +969,14 @@ if (@($cname.generic.Facts.actions) -notcontains 'TurnX') {
     throw 'CName alias action was not emitted.'
 }
 
+$namedCName = Action-For 'FixtureNamedCName'
+if (!$namedCName.generic.Automatable) {
+    throw 'n"ActionName" CName literal selector was not resolved.'
+}
+if (@($namedCName.generic.Facts.actions) -notcontains 'ToggleSprint') {
+    throw 'n"ActionName" literal was not emitted as a finite action.'
+}
+
 $selector = Action-For 'FixtureSelector'
 if (!$selector.generic.Automatable) {
     throw 'Finite variable IsAction selector was not resolved.'
@@ -1076,6 +1115,20 @@ foreach ($expected in @('Jump','MoveX','MoveY','PhotoMode_CameraMovementX','UI_M
 }
 if (@($downstream.generic.Facts.downstreamMethods) -notcontains 'HandleInput') {
     throw 'Downstream method provenance was not emitted.'
+}
+
+$onDraw = @($result.callbackFamilies | Where-Object { $_.resolverFamily -eq 'ONDRAW' }) | Select-Object -First 1
+if ($null -eq $onDraw) { throw 'onDraw callback family was not resolved.' }
+$draw = @($onDraw.topConsumers | Where-Object { $_.owner -eq 'FixtureDraw' }) | Select-Object -First 1
+if ($null -eq $draw) { throw 'FixtureDraw was not ranked inside onDraw.' }
+if (!$draw.generic.Automatable -or
+    @($draw.generic.RecipeFamilies) -notcontains 'FRAME_DISPATCH_CONSOLIDATION') {
+    throw 'Raw onDraw registration was not authorized for frame dispatch consolidation.'
+}
+$alreadyDraw = @($onDraw.topConsumers | Where-Object { $_.owner -eq 'FixtureAlreadyDraw' }) | Select-Object -First 1
+if ($null -eq $alreadyDraw) { throw 'FixtureAlreadyDraw was not ranked inside onDraw.' }
+if ($alreadyDraw.generic.Automatable -or $alreadyDraw.generic.Status -ne 'ALREADY_SATISFIED') {
+    throw 'Existing owner-specific onDraw MakeEventRegistrar integration was not recognized.'
 }
 
 $onUpdate = @($result.callbackFamilies | Where-Object { $_.resolverFamily -eq 'ONUPDATE' }) | Select-Object -First 1
