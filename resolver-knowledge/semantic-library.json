@@ -1740,7 +1740,8 @@
           "function Restrictions.Update()",
           "function AdvancedMobility.Tick()",
           "function SuperSpeed.Tick()",
-          "function AirThrusterBoots.Tick()"
+          "function AirThrusterBoots.Tick()",
+          "function Invisibility.Tick()"
         ],
         "ownerAnyGroups": [
           [
@@ -1753,7 +1754,7 @@
           ]
         ],
         "alreadySatisfiedMarker": "G-CET semantic:easytrainer",
-        "expectedMarkerFileCount": 8
+        "expectedMarkerFileCount": 9
       },
       "behavior": {
         "handler": "SEMANTIC_ROUTED_ACTION_PLUS_DORMANT_FEATURE_GATES",
@@ -1764,7 +1765,7 @@
           "cachedHotkeyActionIds",
           "cachedBindingsModule",
           "closedMenuInputDormancy",
-          "disabledFeatureNativeCallGuards",
+          "transitionOnlyNativeHeavyFeatures",
           "frameAimState"
         ],
         "lanes": [
@@ -1779,7 +1780,7 @@
             "seconds": 0
           },
           {
-            "role": "DISABLED_NATIVE_HEAVY_FEATURES",
+            "role": "STABLE_NATIVE_HEAVY_FEATURE_STATE",
             "cadence": "EARLY_RETURN",
             "seconds": 0
           },
@@ -1818,7 +1819,7 @@
       "identityHints": [
         "TeleportGatewaySystem"
       ],
-      "policyClass": "PROXIMITY_SENTINEL_DORMANT_SPLIT",
+      "policyClass": "PER_FRAME_POSITION_REUSE_PLUS_HIDDEN_DRAW_GATE",
       "callbacks": [
         {
           "kind": "event",
@@ -1839,25 +1840,18 @@
         "expectedMarkerFileCount": 1
       },
       "behavior": {
-        "handler": "SEMANTIC_PROXIMITY_SENTINEL_DORMANT_SPLIT",
+        "handler": "SEMANTIC_GATEWAY_POSITION_REUSE_PLUS_HIDDEN_DRAW",
         "concepts": [
-          "frameFedStateMachine",
-          "frameFedCooldown",
-          "farGatewaySentinel",
-          "nearGatewayRealtime",
-          "singlePlayerPositionPerScan",
+          "preserveEveryFrameGatewayDetection",
+          "singlePlayerPositionPerFrame",
+          "preserveStateMachineAndCooldown",
           "hiddenWindowDrawDormancy"
         ],
         "lanes": [
           {
-            "role": "NEAR_GATEWAY_OR_WINDOW_OPEN",
+            "role": "GATEWAY_SCAN",
             "cadence": "EVERY_FRAME",
             "seconds": 0
-          },
-          {
-            "role": "FAR_GATEWAY_SCAN",
-            "cadence": "FIXED_SECONDS",
-            "seconds": 0.1
           },
           {
             "role": "HIDDEN_WINDOW_DRAW",
@@ -1880,7 +1874,7 @@
         "evidenceStack": "FOURTH_STACK_GENERIC",
         "admitted": true
       },
-      "cadenceGroup": "FAR_10HZ_NEAR_REALTIME_HIDDEN_DRAW_DORMANT",
+      "cadenceGroup": "NO_CADENCE_CHANGE_POSITION_REUSE_PLUS_HIDDEN_DRAW",
       "catalogRole": "SEMANTIC_HOT_MOD",
       "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
       "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
@@ -2036,7 +2030,7 @@
       "identityHints": [
         "Auto Ammo Crafting (I need more bullets)"
       ],
-      "policyClass": "READY_SENTINEL_PLUS_AUTHOR_CADENCE",
+      "policyClass": "AUTHOR_CADENCE_DEFERRED_ACQUISITION",
       "callbacks": [
         {
           "kind": "event",
@@ -2066,11 +2060,11 @@
         "expectedMarkerFileCount": 1
       },
       "behavior": {
-        "handler": "SEMANTIC_READY_SENTINEL_PLUS_AUTHOR_CADENCE",
+        "handler": "SEMANTIC_AUTHOR_CADENCE_DEFERRED_ACQUISITION",
         "concepts": [
-          "combatPausePreserved",
-          "readinessMenuSentinel10Hz",
-          "freshReadinessAtCraftBoundary",
+          "preserveCombatPause",
+          "preserveReadinessCadence",
+          "preserveMenuCadence",
           "preserveAutoConvertTime",
           "deferPlayerAcquisition",
           "deferTransactionAcquisition",
@@ -2079,14 +2073,9 @@
         ],
         "lanes": [
           {
-            "role": "COMBAT_BLOCK",
-            "cadence": "EVERY_FRAME_BOOLEAN_ONLY",
+            "role": "READINESS_AND_MENU_CHECKS",
+            "cadence": "UNCHANGED",
             "seconds": 0
-          },
-          {
-            "role": "READINESS_SENTINEL",
-            "cadence": "FIXED_SECONDS",
-            "seconds": 0.1
           },
           {
             "role": "CRAFT_SCAN",
@@ -2109,7 +2098,7 @@
         "evidenceStack": "FOURTH_STACK_GENERIC",
         "admitted": true
       },
-      "cadenceGroup": "READY_10HZ_PLUS_AUTHOR_CRAFT_CADENCE",
+      "cadenceGroup": "AUTHOR_CADENCE_DEFERRED_ACQUISITION",
       "catalogRole": "SEMANTIC_HOT_MOD",
       "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
       "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
