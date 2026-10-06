@@ -37,6 +37,11 @@ internal static class SemanticInjectors
             "dynamic-outfits-judy" => ApplyDynamicOutfitsJudy(context),
             "fov-sentinel" => ApplyFovSentinel(context),
             "fenix-mantis-blade" => ApplyFenixMantisBlade(context),
+            "easytrainer" => ApplyEasyTrainer(context),
+            "teleport-gateway-system" => ApplyTeleportGatewaySystem(context),
+            "discard-ammo-on-reload" => ApplyDiscardAmmoOnReload(context),
+            "advanced-settings" => ApplyAdvancedSettings(context),
+            "auto-ammo-crafting" => ApplyAutoAmmoCrafting(context),
             _ => SemanticInjectionResult.Skip(
                 $"No semantic source injector is implemented for rule '{candidate.RuleId}'.")
         };
@@ -1453,6 +1458,316 @@ internal static class SemanticInjectors
 
         return SemanticInjectionResult.Success(
             "Hoisted the existing isHangPressed/isStuck guard ahead of player acquisition and IsHighEnough raycasting. Active wall-hang behavior is unchanged, and the existing Jump OnAction ground check still resets jumpCount before a new wall-jump sequence.");
+    }
+
+
+
+    private static SemanticInjectionResult ApplyEasyTrainer(
+        SemanticPatchContext context)
+    {
+        var init = context.FindFile(
+            "init.lua",
+            "Event.Observe(\"PlayerPuppet\", \"OnAction\"",
+            "SelfFeature.NoClip.HandleMouseLook(action)",
+            "Utils.Weapon.HandleInputAction(action)",
+            "Event.RegisterUpdate(function(dt)");
+
+        var noClip = context.FindFile(
+            "Features/Self/Abilities/NoClip.lua",
+            "function Noclip.HandleMouseLook(action)",
+            "CameraMouseX",
+            "Game.GetSettingsSystem()");
+
+        var weapon = context.FindFile(
+            "Utils/Weapon.lua",
+            "function Weapon.HandleInputAction(action)",
+            "Weapon.isAiming = player.isAiming",
+            "function Weapon.Tick(deltaTime)",
+            "ReadEquippedRightHand");
+
+        var initText = ReplaceOnce(
+            init.Text,
+            "            SelfFeature.NoClip.HandleMouseLook(action)\n" +
+            "            if Utils then\n" +
+            "                Utils.Weapon.HandleInputAction(action)\n" +
+            "            end",
+            "            local __gcetActionName = Game.NameToString(action:GetName(action))\n" +
+            "            if __gcetActionName == \"CameraMouseX\" then\n" +
+            "                SelfFeature.NoClip.HandleMouseLook(action, __gcetActionName)\n" +
+            "            end\n" +
+            "            if Utils and __gcetActionName == \"RangedAttack\" then\n" +
+            "                Utils.Weapon.HandleInputAction(action, __gcetActionName)\n" +
+            "            end",
+            "EasyTrainer source-proven action split");
+        context.Write(init, initText);
+
+        var noClipText = ReplaceOnce(
+            noClip.Text,
+            "function Noclip.HandleMouseLook(action)\n" +
+            "    local actionName = Game.NameToString(action:GetName(action))",
+            "function Noclip.HandleMouseLook(action, routedName)\n" +
+            "    local actionName = routedName or Game.NameToString(action:GetName(action))",
+            "EasyTrainer NoClip routed action name");
+        context.Write(noClip, noClipText);
+
+        var weaponText = ReplaceOnce(
+            weapon.Text,
+            "function Weapon.HandleInputAction(action)\n" +
+            "    local player = Game.GetPlayer()\n" +
+            "    if not player then return end\n" +
+            "\n" +
+            "    Weapon.isAiming = player.isAiming\n" +
+            "\n" +
+            "    local actionName = Game.NameToString(action:GetName(action))\n" +
+            "    local actionType = action:GetType(action).value\n" +
+            "\n" +
+            "    if actionName == \"RangedAttack\" then",
+            "function Weapon.HandleInputAction(action, routedName)\n" +
+            "    local actionName = routedName or Game.NameToString(action:GetName(action))\n" +
+            "    if actionName ~= \"RangedAttack\" then return end\n" +
+            "    local actionType = action:GetType(action).value\n" +
+            "\n" +
+            "    if actionName == \"RangedAttack\" then",
+            "EasyTrainer ranged-action hot path");
+
+        weaponText = ReplaceOnce(
+            weaponText,
+            "    if not player or not ts then return nil, nil, nil end\n" +
+            "\n" +
+            "    local item = ts:GetItemInSlot(player, \"AttachmentSlots.WeaponRight\")\n" +
+            "    if not item then return nil, nil, nil end\n" +
+            "\n" +
+            "    local itemData = item:GetItemData()\n" +
+            "    if not itemData then return item, nil, item:GetItemID() end\n" +
+            "\n" +
+            "    return item, itemData, item:GetItemID()",
+            "    if not player or not ts then return nil, nil, nil, player end\n" +
+            "\n" +
+            "    local item = ts:GetItemInSlot(player, \"AttachmentSlots.WeaponRight\")\n" +
+            "    if not item then return nil, nil, nil, player end\n" +
+            "\n" +
+            "    local itemData = item:GetItemData()\n" +
+            "    if not itemData then return item, nil, item:GetItemID(), player end\n" +
+            "\n" +
+            "    return item, itemData, item:GetItemID(), player",
+            "EasyTrainer weapon snapshot player handoff");
+
+        weaponText = ReplaceOnce(
+            weaponText,
+            "        local item, itemData, itemID = ReadEquippedRightHand()\n" +
+            "        Weapon.currentItem = item",
+            "        local item, itemData, itemID, player = ReadEquippedRightHand()\n" +
+            "        Weapon.isAiming = player and player.isAiming or false\n" +
+            "        Weapon.currentItem = item",
+            "EasyTrainer frame aim-state maintenance");
+        context.Write(weapon, weaponText);
+
+        return SemanticInjectionResult.Success(
+            "Preserved EasyTrainer's Event.Observe wrapper, decoded OnAction once, dispatched only CameraMouseX and RangedAttack into the source-proven consumers, moved aim-state sampling onto the existing per-frame weapon snapshot, and removed per-action GetPlayer/GetType work for unrelated input.");
+    }
+
+    private static SemanticInjectionResult ApplyTeleportGatewaySystem(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "init.lua",
+            "TeleportGatewaySystem",
+            "playerPos = TGS.player:GetWorldPosition()",
+            "GWDist = math.sqrt",
+            "TGS.player:GetWorldPosition().x-gatewayDB[index].gwx",
+            "TGS.teleportFac:Teleport");
+
+        var text = ReplaceOnce(
+            file.Text,
+            "GWDist = math.sqrt(((TGS.player:GetWorldPosition().x-gatewayDB[index].gwx)^2)+((TGS.player:GetWorldPosition().y-gatewayDB[index].gwy)^2)+((TGS.player:GetWorldPosition().z-gatewayDB[index].gwz)^2))",
+            "GWDist = math.sqrt(((playerPos.x-gatewayDB[index].gwx)^2)+((playerPos.y-gatewayDB[index].gwy)^2)+((playerPos.z-gatewayDB[index].gwz)^2))",
+            "Teleport Gateway per-gateway position reuse");
+        context.Write(file, text);
+
+        return SemanticInjectionResult.Success(
+            "Reused the already-read per-frame playerPos inside the gateway scan instead of calling GetWorldPosition three times for every gateway; sensing cadence, radius checks, cooldowns, and teleport behavior are unchanged.");
+    }
+
+    private static SemanticInjectionResult ApplyDiscardAmmoOnReload(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "init.lua",
+            "local swapActions",
+            "local nonSwapActions",
+            "Observe('PlayerPuppet','OnAction'",
+            "ReloadSystem.weaponSwap");
+
+        var text = RegexReplaceOnce(
+            file.Text,
+            @"(?ms)^(?<indent>[ \t]*)Observe\s*\(\s*['""]PlayerPuppet['""]\s*,\s*['""]OnAction['""]\s*,\s*function\s*\(\s*self\s*,\s*action\s*\)\s*\r?\n\s*local\s+actionName\s*=\s*Game\.NameToString\s*\(\s*action:GetName\s*\(\s*\)\s*\)\s*\r?\n\s*if\s*\(\s*ReloadSystem\.weaponSwap\s*\)\s*then\s*\r?\n\s*if\s*\(\s*Utility\.filter\s*\(\s*nonSwapActions\s*,\s*actionName\s*\)\s*\)\s*then\s*\r?\n\s*ReloadSystem\.weaponSwap\s*=\s*false\s*\r?\n\s*end\s*\r?\n\s*elseif\s*\(\s*Utility\.filter\s*\(\s*swapActions\s*,\s*actionName\s*\)\s*\)\s*then\s*\r?\n\s*ReloadSystem\.weaponSwap\s*=\s*true\s*\r?\n\s*end\s*\r?\n\s*end\s*\)\s*$",
+            "${indent}local function __gcetDiscardAmmoOnAction(self, action, __gcetConsumer, __gcetRoutedName)\n" +
+            "${indent}    local actionName = __gcetRoutedName or Game.NameToString(action:GetName())\n" +
+            "${indent}    if ReloadSystem.weaponSwap then\n" +
+            "${indent}        if Utility.filter(nonSwapActions, actionName) then\n" +
+            "${indent}            ReloadSystem.weaponSwap = false\n" +
+            "${indent}        end\n" +
+            "${indent}    elseif Utility.filter(swapActions, actionName) then\n" +
+            "${indent}        ReloadSystem.weaponSwap = true\n" +
+            "${indent}    end\n" +
+            "${indent}end\n\n" +
+            "${indent}local __gcetDiscardAmmoRouted = false\n" +
+            "${indent}local __gcetDiscardAmmoHandles = {}\n" +
+            "${indent}local __gcetDiscardAmmoOk, __gcetDiscardAmmoEngine = pcall(GetMod, \"0-Engine\")\n" +
+            "${indent}local __gcetDiscardAmmoApi = __gcetDiscardAmmoEngine\n" +
+            "${indent}if __gcetDiscardAmmoOk and type(__gcetDiscardAmmoEngine) == \"table\" and type(__gcetDiscardAmmoEngine.GCET) == \"table\" then __gcetDiscardAmmoApi = __gcetDiscardAmmoEngine.GCET end\n" +
+            "${indent}if __gcetDiscardAmmoOk and type(__gcetDiscardAmmoApi) == \"table\" and type(__gcetDiscardAmmoApi.SubscribeAction) == \"function\" then\n" +
+            "${indent}    __gcetDiscardAmmoRouted = pcall(function()\n" +
+            "${indent}        __gcetDiscardAmmoHandles[#__gcetDiscardAmmoHandles + 1] = __gcetDiscardAmmoApi.SubscribeAction({\n" +
+            "${indent}            id = \"G-CET.Semantic.DiscardAmmoOnReload\",\n" +
+            "${indent}            actions = { \"PreviousWeapon\", \"NextWeapon\", \"WeaponSlot1\", \"WeaponSlot2\", \"WeaponSlot3\", \"WeaponWheel\", \"RangedAttack\", \"MeleeAttack\" },\n" +
+            "${indent}            decodeType = false\n" +
+            "${indent}        }, __gcetDiscardAmmoOnAction, \"DiscardAmmoOnReload\")\n" +
+            "${indent}    end)\n" +
+            "${indent}    if not __gcetDiscardAmmoRouted then\n" +
+            "${indent}        for _, __gcetHandle in ipairs(__gcetDiscardAmmoHandles) do\n" +
+            "${indent}            if __gcetHandle and type(__gcetHandle.unsubscribe) == \"function\" then pcall(__gcetHandle.unsubscribe) end\n" +
+            "${indent}        end\n" +
+            "${indent}    end\n" +
+            "${indent}end\n" +
+            "${indent}if not __gcetDiscardAmmoRouted then Observe('PlayerPuppet','OnAction', function(self, action) __gcetDiscardAmmoOnAction(self, action, nil, nil) end) end",
+            "Discard Ammo exact action routing");
+        context.Write(file, text);
+
+        return SemanticInjectionResult.Success(
+            "Routed only the eight source-proven weapon-swap/reset actions through 0-Engine while preserving the original ReloadSystem state transitions and direct Observe fallback.");
+    }
+
+    private static SemanticInjectionResult ApplyAdvancedSettings(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "init.lua",
+            "ConfigSystem:OnUpdate()",
+            "CPS:setThemeBegin()",
+            "registerForEvent(\"onOverlayOpen\"",
+            "draw = true");
+
+        var text = ReplaceOnce(
+            file.Text,
+            "registerForEvent(\"onUpdate\", function()\n" +
+            "  ConfigSystem:OnUpdate()\n" +
+            "end)",
+            "registerForEvent(\"onUpdate\", function()\n" +
+            "  if not draw then return end\n" +
+            "  ConfigSystem:OnUpdate()\n" +
+            "end)",
+            "Advanced Settings closed update gate");
+
+        text = ReplaceOnce(
+            text,
+            "registerForEvent(\"onDraw\", function()\n" +
+            "  CPS:setThemeBegin()",
+            "registerForEvent(\"onDraw\", function()\n" +
+            "  if not draw then return end\n" +
+            "  CPS:setThemeBegin()",
+            "Advanced Settings closed draw gate");
+        context.Write(file, text);
+
+        return SemanticInjectionResult.Success(
+            "Skipped option-table scans and CPStyling theme setup while the Advanced Settings overlay is closed; overlay-open behavior and live option editing remain frame-responsive.");
+    }
+
+    private static SemanticInjectionResult ApplyAutoAmmoCrafting(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "init.lua",
+            "autoConvertTime = 6",
+            "scriptInterval = scriptInterval + deltaTime",
+            "function notReady()",
+            "function playerInMenu()");
+
+        var text = ReplaceOnce(
+            file.Text,
+            "\tplayer = Game.GetPlayerSystem():GetLocalPlayerMainGameObject()\n" +
+            "\tif not ts then ts = __gcetGetTransactionSystem() end\n" +
+            "------------------------------------------------\n" +
+            "-- Ready for take off.\n" +
+            "------------------------------------------------\n" +
+            "\tscriptInterval = scriptInterval + deltaTime\n" +
+            "\tif scriptInterval < settings.autoConvertTime then\n" +
+            "\t\treturn\n" +
+            "\telse\n" +
+            "\t\tscriptInterval = 0\n" +
+            "\tend",
+            "------------------------------------------------\n" +
+            "-- Ready for take off.\n" +
+            "------------------------------------------------\n" +
+            "\tscriptInterval = scriptInterval + deltaTime\n" +
+            "\tif scriptInterval < settings.autoConvertTime then\n" +
+            "\t\treturn\n" +
+            "\telse\n" +
+            "\t\tscriptInterval = 0\n" +
+            "\tend\n" +
+            "\tplayer = Game.GetPlayerSystem():GetLocalPlayerMainGameObject()\n" +
+            "\tif not ts then ts = __gcetGetTransactionSystem() end",
+            "Auto Ammo defer player/system acquisition until author cadence");
+
+        text = ReplaceOnce(
+            text,
+            "function notReady()\n" +
+            "\tinkMenuScenario = GetSingleton('inkMenuScenario'):GetSystemRequestsHandler()\n" +
+            "\tif inkMenuScenario:IsGamePaused() or inkMenuScenario:IsPreGame() then\n" +
+            "\t\treturn true\n" +
+            "\tend\n" +
+            "\tif Game.GetPlayerSystem() == nil then\n" +
+            "\t\treturn true\n" +
+            "\tend\n" +
+            "\tif Game.GetPlayerSystem():GetLocalPlayerMainGameObject() == nil then\n" +
+            "\t\treturn true\n" +
+            "\tend\n" +
+            "\tif Game.GetPlayer() == nil then\n" +
+            "\t\treturn true\n" +
+            "\tend\n" +
+            "\tif not Game.GetPlayer():IsAttached() then\n" +
+            "\t\treturn true\n" +
+            "\tend\n" +
+            "\treturn false\n" +
+            "end",
+            "function notReady()\n" +
+            "\tinkMenuScenario = GetSingleton('inkMenuScenario'):GetSystemRequestsHandler()\n" +
+            "\tif inkMenuScenario:IsGamePaused() or inkMenuScenario:IsPreGame() then\n" +
+            "\t\treturn true\n" +
+            "\tend\n" +
+            "\tlocal __gcetPlayerSystem = Game.GetPlayerSystem()\n" +
+            "\tif __gcetPlayerSystem == nil then\n" +
+            "\t\treturn true\n" +
+            "\tend\n" +
+            "\tif __gcetPlayerSystem:GetLocalPlayerMainGameObject() == nil then\n" +
+            "\t\treturn true\n" +
+            "\tend\n" +
+            "\tlocal __gcetPlayer = Game.GetPlayer()\n" +
+            "\tif __gcetPlayer == nil or not __gcetPlayer:IsAttached() then\n" +
+            "\t\treturn true\n" +
+            "\tend\n" +
+            "\treturn false\n" +
+            "end",
+            "Auto Ammo readiness duplicate lookup collapse");
+
+        text = ReplaceOnce(
+            text,
+            "function playerInMenu()\n" +
+            "\tblackboard = Game.GetBlackboardSystem():Get(Game.GetAllBlackboardDefs().UI_System);\n" +
+            "\tuiSystemBB = (Game.GetAllBlackboardDefs().UI_System);\n" +
+            "\treturn(blackboard:GetBool(uiSystemBB.IsInMenu));\n" +
+            "end",
+            "function playerInMenu()\n" +
+            "\tlocal __gcetUIBB = Game.GetAllBlackboardDefs().UI_System\n" +
+            "\tblackboard = Game.GetBlackboardSystem():Get(__gcetUIBB);\n" +
+            "\tuiSystemBB = __gcetUIBB;\n" +
+            "\treturn(blackboard:GetBool(uiSystemBB.IsInMenu));\n" +
+            "end",
+            "Auto Ammo UI blackboard definition reuse");
+        context.Write(file, text);
+
+        return SemanticInjectionResult.Success(
+            "Preserved the author's autoConvertTime cadence and readiness/menu semantics, but deferred player/transaction acquisition until that existing cadence fires and collapsed duplicate PlayerSystem/Player/UI blackboard reads in the per-frame readiness path.");
     }
 
 

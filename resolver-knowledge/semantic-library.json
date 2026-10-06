@@ -14,7 +14,7 @@
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
     "fullPassRule": "A semantic injector can run only when the current capture contains a >=3.0 ms/s measured callback, the library rule matches, and the current live mod source graph proves its anchors.",
-    "enabledInjectorCount": 23,
+    "enabledInjectorCount": 28,
     "profileOnlyRuleCount": 0,
     "note": "The production semantic base is intentionally compact and callback-specific. Runtime cost only earns review; automatic rules require a small, provable state model, exact known callback families, and no bespoke timing.",
     "admissionPolicy": {
@@ -1713,6 +1713,372 @@
       "referenceOverrideAllowed": false,
       "evidenceMembership": [
         "THIRD_MODSTACK_20261006"
+      ]
+    },
+    {
+      "id": "easytrainer",
+      "identityHints": [
+        "EasyTrainer"
+      ],
+      "policyClass": "WRAPPED_ACTION_SOURCE_SPLIT",
+      "callbacks": [
+        {
+          "kind": "Observe",
+          "target": "PlayerPuppet::OnAction",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "Event.Observe(\"PlayerPuppet\", \"OnAction\"",
+          "SelfFeature.NoClip.HandleMouseLook(action)",
+          "Utils.Weapon.HandleInputAction(action)",
+          "function Weapon.HandleInputAction(action)",
+          "function Noclip.HandleMouseLook(action)"
+        ],
+        "ownerAnyGroups": [
+          [
+            "CameraMouseX",
+            "RangedAttack"
+          ],
+          [
+            "function Weapon.Tick(deltaTime)",
+            "ReadEquippedRightHand"
+          ]
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:easytrainer",
+        "expectedMarkerFileCount": 3
+      },
+      "behavior": {
+        "handler": "SEMANTIC_WRAPPED_ACTION_SOURCE_SPLIT",
+        "concepts": [
+          "preserveEventWrapper",
+          "singleActionNameDecode",
+          "cameraMouseOnlyNoClip",
+          "rangedAttackOnlyWeaponInput",
+          "frameAimState"
+        ],
+        "lanes": [
+          {
+            "role": "CAMERA_MOUSE_X",
+            "cadence": "ORIGINAL_WRAPPED_OBSERVE",
+            "seconds": 0
+          },
+          {
+            "role": "RANGED_ATTACK",
+            "cadence": "ORIGINAL_WRAPPED_OBSERVE",
+            "seconds": 0
+          },
+          {
+            "role": "OTHER_ACTIONS",
+            "cadence": "EARLY_RETURN_AFTER_NAME",
+            "seconds": 0
+          }
+        ]
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 35.641524,
+        "evidenceStack": "FOURTH_STACK_GENERIC",
+        "admitted": true
+      },
+      "cadenceGroup": "NO_CADENCE_CHANGE_WRAPPED_ACTION_SPLIT",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "FOURTH_STACK_20261006"
+      ]
+    },
+    {
+      "id": "teleport-gateway-system",
+      "identityHints": [
+        "TeleportGatewaySystem"
+      ],
+      "policyClass": "PER_FRAME_POSITION_REUSE",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "playerPos = TGS.player:GetWorldPosition()",
+          "GWDist = math.sqrt",
+          "TGS.player:GetWorldPosition().x-gatewayDB[index].gwx",
+          "TGS.teleportFac:Teleport"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:teleport-gateway-system",
+        "expectedMarkerFileCount": 1
+      },
+      "behavior": {
+        "handler": "SEMANTIC_GATEWAY_POSITION_REUSE",
+        "concepts": [
+          "onePlayerPositionPerFrame",
+          "preserveGatewayCadence",
+          "preserveRadiusSemantics"
+        ],
+        "lanes": [
+          {
+            "role": "GATEWAY_SCAN",
+            "cadence": "UNCHANGED",
+            "seconds": 0
+          }
+        ]
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 17.165257,
+        "evidenceStack": "FOURTH_STACK_GENERIC",
+        "admitted": true
+      },
+      "cadenceGroup": "NO_CADENCE_CHANGE_POSITION_REUSE",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "FOURTH_STACK_20261006"
+      ]
+    },
+    {
+      "id": "discard-ammo-on-reload",
+      "identityHints": [
+        "DiscardAmmoOnReload"
+      ],
+      "policyClass": "EXACT_ACTION_ROUTING",
+      "callbacks": [
+        {
+          "kind": "Observe",
+          "target": "PlayerPuppet::OnAction",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "local swapActions",
+          "local nonSwapActions",
+          "Observe('PlayerPuppet','OnAction'",
+          "ReloadSystem.weaponSwap"
+        ],
+        "ownerAnyGroups": [
+          [
+            "PreviousWeapon",
+            "WeaponWheel"
+          ],
+          [
+            "RangedAttack",
+            "MeleeAttack"
+          ]
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:discard-ammo-on-reload",
+        "expectedMarkerFileCount": 1
+      },
+      "behavior": {
+        "handler": "SEMANTIC_EXACT_ACTION_ROUTING",
+        "concepts": [
+          "eightActionDomain",
+          "preserveWeaponSwapState",
+          "directObserveFallback"
+        ],
+        "lanes": [
+          {
+            "role": "SWAP_AND_RESET_ACTIONS",
+            "cadence": "ACTION_ROUTED",
+            "seconds": 0
+          }
+        ]
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 15.303115,
+        "evidenceStack": "FOURTH_STACK_GENERIC",
+        "admitted": true
+      },
+      "cadenceGroup": "EXACT_ACTION_SET",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "FOURTH_STACK_20261006"
+      ]
+    },
+    {
+      "id": "advanced-settings",
+      "identityHints": [
+        "advanced_settings"
+      ],
+      "policyClass": "OVERLAY_VISIBILITY_GATE",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        },
+        {
+          "kind": "event",
+          "target": "onDraw",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "ConfigSystem:OnUpdate()",
+          "CPS:setThemeBegin()",
+          "registerForEvent(\"onOverlayOpen\"",
+          "draw = true"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:advanced-settings",
+        "expectedMarkerFileCount": 1
+      },
+      "behavior": {
+        "handler": "SEMANTIC_OVERLAY_VISIBILITY_GATE",
+        "concepts": [
+          "closedUpdateEarlyReturn",
+          "closedDrawEarlyReturn",
+          "openOverlayRealtime"
+        ],
+        "lanes": [
+          {
+            "role": "OVERLAY_OPEN",
+            "cadence": "EVERY_FRAME",
+            "seconds": 0
+          },
+          {
+            "role": "OVERLAY_CLOSED",
+            "cadence": "EARLY_RETURN",
+            "seconds": 0
+          }
+        ]
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 9.473942,
+        "evidenceStack": "FOURTH_STACK_GENERIC",
+        "admitted": true
+      },
+      "cadenceGroup": "OVERLAY_OPEN_ONLY",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "FOURTH_STACK_20261006"
+      ]
+    },
+    {
+      "id": "auto-ammo-crafting",
+      "identityHints": [
+        "Auto Ammo Crafting (I need more bullets)"
+      ],
+      "policyClass": "AUTHOR_CADENCE_DEFERRED_ACQUISITION",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "autoConvertTime = 6",
+          "scriptInterval = scriptInterval + deltaTime",
+          "function notReady()",
+          "function playerInMenu()",
+          "__gcetGetTransactionSystem"
+        ],
+        "ownerAnyGroups": [
+          [
+            "Game.GetPlayerSystem()",
+            "GetLocalPlayerMainGameObject"
+          ],
+          [
+            "GetAllBlackboardDefs().UI_System",
+            "GetBlackboardSystem"
+          ]
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:auto-ammo-crafting",
+        "expectedMarkerFileCount": 1
+      },
+      "behavior": {
+        "handler": "SEMANTIC_AUTHOR_CADENCE_DEFERRED_ACQUISITION",
+        "concepts": [
+          "preserveAutoConvertTime",
+          "deferPlayerAcquisition",
+          "deferTransactionAcquisition",
+          "deduplicateReadiness",
+          "deduplicateUiBlackboard"
+        ],
+        "lanes": [
+          {
+            "role": "READY_CHECKS",
+            "cadence": "UNCHANGED",
+            "seconds": 0
+          },
+          {
+            "role": "CRAFT_SCAN",
+            "cadence": "AUTHOR_AUTO_CONVERT_TIME",
+            "seconds": 6
+          }
+        ]
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 5.315258,
+        "evidenceStack": "FOURTH_STACK_GENERIC",
+        "admitted": true
+      },
+      "cadenceGroup": "AUTHOR_CADENCE_DEFERRED_ACQUISITION",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "FOURTH_STACK_20261006"
       ]
     }
   ],
