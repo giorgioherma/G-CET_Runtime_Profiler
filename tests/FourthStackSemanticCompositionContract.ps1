@@ -481,7 +481,9 @@ foreach($rule in $rules) {
 $manifest=Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
 foreach($rule in $rules) {
     if(@($manifest.transforms | Where-Object { $_.type -eq 'SEMANTIC_RULE' -and $_.RuleId -eq $rule }).Count -ne 1) {
-        throw "Fourth-stack semantic transform missing/duplicated: $rule"
+        $semanticSkips = @($manifest.skipped | Where-Object { $_.type -eq 'SEMANTIC_RULE' -and $_.RuleId -eq $rule })
+        $skipText = if($semanticSkips.Count -gt 0) { ($semanticSkips | ConvertTo-Json -Depth 10 -Compress) } else { '<no semantic skip recorded>' }
+        throw "Fourth-stack semantic transform missing/duplicated: $rule; $skipText"
     }
 }
 
