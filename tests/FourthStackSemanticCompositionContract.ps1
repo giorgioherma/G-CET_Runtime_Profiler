@@ -41,17 +41,17 @@ local Event = require("Core/Event")
 local Utils = {}
 local SelfFeature = { NoClip = require("Features/Self/Abilities/NoClip") }
 local modulesLoaded = true
-Event.Observe("PlayerPuppet", "OnAction", function(_, action)
-    if modulesLoaded then
-        SelfFeature.NoClip.HandleMouseLook(action)
-        if Utils then
-            Utils.Weapon.HandleInputAction(action)
+    Event.Observe("PlayerPuppet", "OnAction", function(_, action)
+        if modulesLoaded then
+            SelfFeature.NoClip.HandleMouseLook(action)
+            if Utils then
+                Utils.Weapon.HandleInputAction(action)
+            end
         end
-    end
-end)
-Event.RegisterUpdate(function(dt)
-    if Utils and Utils.Weapon then Utils.Weapon.Tick(dt) end
-end)
+    end)
+    Event.RegisterUpdate(function(dt)
+        if Utils and Utils.Weapon then Utils.Weapon.Tick(dt) end
+    end)
 '@
 Write-ModFile 'EasyTrainer' 'Features/Self/Abilities/NoClip.lua' @'
 local Noclip = {}
