@@ -494,6 +494,14 @@ if($teleSemantic.Count -lt 1 -or @($teleSemantic | Where-Object { $_.semantic.Gr
     throw 'Renamed Teleport variant was not admitted through unique source-fingerprint identity.'
 }
 
+$falseQuestRunner = @()
+foreach($family in @($resolver.callbackFamilies)) {
+    $falseQuestRunner += @($family.topConsumers | Where-Object { $_.owner -eq $easyMod -and $_.semantic.RuleId -eq 'questrunner' })
+}
+if($falseQuestRunner.Count -ne 0) {
+    throw 'Weak QuestRunner source proof falsely identified the EasyTrainer variant.'
+}
+
 $manifest=Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
 foreach($rule in $rules) {
     if(@($manifest.transforms | Where-Object { $_.type -eq 'SEMANTIC_RULE' -and $_.RuleId -eq $rule }).Count -ne 1) {
