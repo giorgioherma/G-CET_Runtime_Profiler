@@ -2630,6 +2630,18 @@ internal static class SemanticInjectors
             "  end\n",
             "immersive_third_person maintenance cadence");
 
+        text = ReplaceOnce(
+            text,
+            "  guardStep(\"updateCameraTransition\", updateCameraTransition, delta)\n" +
+            "  guardStep(\"updateLootAssist\", updateLootAssist, delta)\n" +
+            "  guardStep(\"updateThirdPersonCamera\", updateThirdPersonCamera, delta)\n",
+            "  if state.enabled or state.cameraTransition then\n" +
+            "    guardStep(\"updateCameraTransition\", updateCameraTransition, delta)\n" +
+            "    guardStep(\"updateLootAssist\", updateLootAssist, delta)\n" +
+            "    guardStep(\"updateThirdPersonCamera\", updateThirdPersonCamera, delta)\n" +
+            "  end\n",
+            "immersive_third_person camera realtime gate");
+
         // Realtime camera/transition work remains frame-cadence, but dormant
         // pending-state handlers should not run when their state is absent.
         text = ReplaceOnce(
