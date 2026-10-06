@@ -2250,6 +2250,508 @@
       "evidenceMembership": [
         "FOURTH_STACK_20261006"
       ]
+    },
+    {
+      "id": "drivebus",
+      "identityHints": [
+        "DriveBus"
+      ],
+      "policyClass": "EXACT_ACTION_ROUTING",
+      "callbacks": [
+        {
+          "kind": "Observe",
+          "target": "PlayerPuppet::OnAction",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "function Core:SetObserve()",
+          "exception_in_choice_list",
+          "exception_in_mount_list",
+          "self:ChoiceAction(action_name"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:drivebus",
+        "expectedMarkerFileCount": 1,
+        "satisfiedAll": [
+          "zeroEngineOnAction",
+          "SubscribeAction",
+          "QuickExit",
+          "ChoiceScrollDown"
+        ]
+      },
+      "behavior": {
+        "handler": "SEMANTIC_EXACT_ACTION_ROUTING",
+        "concepts": [
+          "choiceInput",
+          "mountInput",
+          "consumerSemantics"
+        ],
+        "actions": [
+          "QuickExit",
+          "NextWeapon",
+          "PreviousWeapon",
+          "ChoiceApply",
+          "ChoiceScrollUp",
+          "ChoiceScrollDown"
+        ]
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 17.824739,
+        "evidenceStack": "G_COLLECTION_RAW",
+        "admitted": true
+      },
+      "cadenceGroup": "EXACT_ACTION_ROUTING",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G_COLLECTION_RAW"
+      ]
+    },
+    {
+      "id": "quest-tracking-toggle",
+      "identityHints": [
+        "QuestTrackingToggle"
+      ],
+      "policyClass": "EXACT_ACTION_ROUTING",
+      "callbacks": [
+        {
+          "kind": "Observe",
+          "target": "PlayerPuppet::OnAction",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "n_ToggleSprint",
+          "handlePadAction",
+          "handlePadLongPressTrigger",
+          "toggleTrackedQuest"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:quest-tracking-toggle",
+        "expectedMarkerFileCount": 1,
+        "satisfiedAll": [
+          "questTrackingOnAction",
+          "questTrackingActions",
+          "SubscribeAction",
+          "world_map_menu_track_waypoint"
+        ]
+      },
+      "behavior": {
+        "handler": "SEMANTIC_EXACT_ACTION_ROUTING",
+        "concepts": [
+          "padInput",
+          "mouseToggle",
+          "consumerSemantics",
+          "axisInput"
+        ]
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 11.651205,
+        "evidenceStack": "G_COLLECTION_RAW",
+        "admitted": true
+      },
+      "cadenceGroup": "EXACT_ACTION_ROUTING",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G_COLLECTION_RAW"
+      ]
+    },
+    {
+      "id": "sitanywhere",
+      "identityHints": [
+        "sitAnywhere"
+      ],
+      "policyClass": "ACTIVE_REALTIME_IDLE_10HZ",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "Cron.Update(dt)",
+          "interaction.update()",
+          "world.update()",
+          "self.logic:onUpdate()"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:sitanywhere",
+        "expectedMarkerFileCount": 1,
+        "satisfiedAnyGroups": [
+          [
+            "__gcetSitIdleElapsed",
+            "sitanywhere.realtime"
+          ],
+          [
+            "interaction.hubShown"
+          ]
+        ]
+      },
+      "behavior": {
+        "handler": "SEMANTIC_ACTIVE_IDLE_SPLIT",
+        "concepts": [
+          "cronRealtime",
+          "scannerRealtime",
+          "workspotRealtime",
+          "idleWorldReconcile"
+        ],
+        "lanes": [
+          {
+            "role": "CRON",
+            "cadence": "EVERY_FRAME",
+            "seconds": 0
+          },
+          {
+            "role": "ACTIVE",
+            "cadence": "EVERY_FRAME",
+            "seconds": 0
+          },
+          {
+            "role": "IDLE_WORLD",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.1
+          }
+        ]
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 7.811849,
+        "evidenceStack": "G_COLLECTION_RAW",
+        "admitted": true
+      },
+      "cadenceGroup": "REALTIME_ACTIVE_PLUS_IDLE_10HZ",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G_COLLECTION_RAW"
+      ]
+    },
+    {
+      "id": "repeatable-increased-criminal-activity",
+      "identityHints": [
+        "repeatable_increased_criminal_activity"
+      ],
+      "policyClass": "OBSERVATIONAL_DIAGNOSTICS_CADENCE",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "processBodyRewards(system)",
+          "processCompletionRewards(system)",
+          "Mappins.sync(system, Sites)",
+          "Diagnostics.snapshot(system, Sites, Mod.settings, Mappins)"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:repeatable-increased-criminal-activity",
+        "expectedMarkerFileCount": 1,
+        "satisfiedAnyGroups": [
+          [
+            "diagnosticsElapsed",
+            "rica.diagnostics"
+          ],
+          [
+            "runtimeTick(includeDiagnostics)",
+            "scheduledDiagnosticsTick"
+          ]
+        ]
+      },
+      "behavior": {
+        "handler": "SEMANTIC_DIAGNOSTICS_CADENCE",
+        "concepts": [
+          "runtimeState",
+          "rewards",
+          "mappins",
+          "diagnostics",
+          "scheduler"
+        ],
+        "lanes": [
+          {
+            "role": "RUNTIME",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 1
+          },
+          {
+            "role": "DIAGNOSTICS",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 5
+          },
+          {
+            "role": "SYSTEM",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 10
+          }
+        ]
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 4.720445,
+        "evidenceStack": "G_COLLECTION_RAW",
+        "admitted": true
+      },
+      "cadenceGroup": "1HZ_RUNTIME_0_2HZ_DIAGNOSTICS_0_1HZ_SYSTEM",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G_COLLECTION_RAW"
+      ]
+    },
+    {
+      "id": "dedka-auto-shop",
+      "identityHints": [
+        "Dedka Auto Shop"
+      ],
+      "policyClass": "OVERLAY_VISIBILITY_GATE",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onDraw",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "ui.update()",
+          "state.showing",
+          "showRootHub"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:dedka-auto-shop",
+        "expectedMarkerFileCount": 1,
+        "satisfiedAll": [
+          "if state.showing then pcall(function() ui.update() end) end"
+        ]
+      },
+      "behavior": {
+        "handler": "SEMANTIC_OVERLAY_VISIBILITY_GATE",
+        "concepts": [
+          "shopHubVisible",
+          "drawUI"
+        ]
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 3.342296,
+        "evidenceStack": "G_COLLECTION_RAW",
+        "admitted": true
+      },
+      "cadenceGroup": "VISIBLE_ONLY_DRAW",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G_COLLECTION_RAW"
+      ]
+    },
+    {
+      "id": "marmurbank",
+      "identityHints": [
+        "marmurbank"
+      ],
+      "policyClass": "FINITE_ACTION_PREFILTER",
+      "callbacks": [
+        {
+          "kind": "Observe",
+          "target": "PlayerPuppet::OnAction",
+          "role": "hot-path"
+        },
+        {
+          "kind": "Override",
+          "target": "PlayerPuppet::OnAction",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "WORLD_INTERACTION_ACTIONS",
+          "shouldBlockWorldAction",
+          "Override(\"PlayerPuppet\", \"OnAction\"",
+          "Observe('PlayerPuppet', 'OnAction'"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:marmurbank",
+        "expectedMarkerFileCount": 1,
+        "satisfiedAll": [
+          "__gcetMarmurActionRelevant",
+          "WORLD_INTERACTION_ACTIONS[name] == true"
+        ]
+      },
+      "behavior": {
+        "handler": "SEMANTIC_FINITE_ACTION_PREFILTER",
+        "concepts": [
+          "worldInteractionSuppression",
+          "bankChoiceInput",
+          "wrappedMethodPassThrough"
+        ]
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 23.298888,
+        "evidenceStack": "G_COLLECTION_RAW",
+        "admitted": true
+      },
+      "cadenceGroup": "FINITE_WORLD_INTERACTION_ACTIONS",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G_COLLECTION_RAW"
+      ]
+    },
+    {
+      "id": "immersive-third-person",
+      "identityHints": [
+        "immersive_third_person"
+      ],
+      "policyClass": "REALTIME_PLUS_ADAPTIVE_SUPERVISOR",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "updateTppMaintenance",
+          "updateThirdPersonCamera",
+          "updateAutoPerspective",
+          "mod.headLookTick"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:immersive-third-person",
+        "expectedMarkerFileCount": 1,
+        "satisfiedAnyGroups": [
+          [
+            "__gcetItppSupervisorElapsed",
+            "itpp.supervisor_fast"
+          ],
+          [
+            "__gcetItppMaintenanceElapsed",
+            "itpp.maintenance"
+          ],
+          [
+            "__gcetItppHasStandbyWork",
+            "itpp.realtime"
+          ]
+        ]
+      },
+      "behavior": {
+        "handler": "SEMANTIC_REALTIME_ADAPTIVE_SUPERVISOR",
+        "concepts": [
+          "cameraRealtime",
+          "pendingStateRealtime",
+          "supervisor",
+          "maintenance"
+        ],
+        "lanes": [
+          {
+            "role": "REALTIME",
+            "cadence": "EVERY_FRAME",
+            "seconds": 0
+          },
+          {
+            "role": "SUPERVISOR_ACTIVE",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.1
+          },
+          {
+            "role": "SUPERVISOR_IDLE",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.5
+          },
+          {
+            "role": "MAINTENANCE",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.25
+          }
+        ]
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 26.339013,
+        "evidenceStack": "G_COLLECTION_RAW",
+        "admitted": true
+      },
+      "cadenceGroup": "REALTIME_PLUS_10HZ_2HZ_SUPERVISOR_4HZ_MAINTENANCE",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G_COLLECTION_RAW"
+      ]
     }
   ],
   "catalog": {
