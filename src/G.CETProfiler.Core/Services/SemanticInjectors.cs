@@ -1657,14 +1657,23 @@ internal static class SemanticInjectors
             "end\n",
             "EasyTrainer cached bindings module");
 
-        for (var i = 0; i < 3; i++)
-        {
-            registryText = ReplaceOnce(
-                registryText,
-                "    local Bindings = require(\"Controls/Bindings\")\n",
-                "    local Bindings = __gcetGetBindings()\n",
-                $"EasyTrainer cached bindings lookup {i + 1}");
-        }
+        registryText = RegexReplaceOnce(
+            registryText,
+            @"(?ms)^(?<prefix>function\s+OptionRegistry\.SetHotkey\s*\([^\r\n]*\)\s*\r?\n.*?)^(?<indent>[ \t]*)local\s+Bindings\s*=\s*require\(\""Controls/Bindings\""\)\s*$",
+            "$" + "{prefix}$" + "{indent}local Bindings = __gcetGetBindings()",
+            "EasyTrainer SetHotkey cached bindings");
+
+        registryText = RegexReplaceOnce(
+            registryText,
+            @"(?ms)^(?<prefix>function\s+OptionRegistry\.RegisterHotkeyActions\s*\(\s*\)\s*\r?\n.*?)^(?<indent>[ \t]*)local\s+Bindings\s*=\s*require\(\""Controls/Bindings\""\)\s*$",
+            "$" + "{prefix}$" + "{indent}local Bindings = __gcetGetBindings()",
+            "EasyTrainer RegisterHotkeyActions cached bindings");
+
+        registryText = RegexReplaceOnce(
+            registryText,
+            @"(?ms)^(?<prefix>function\s+OptionRegistry\.UpdateHotkeys\s*\(\s*\)\s*\r?\n.*?)^(?<indent>[ \t]*)local\s+Bindings\s*=\s*require\(\""Controls/Bindings\""\)\s*$",
+            "$" + "{prefix}$" + "{indent}local Bindings = __gcetGetBindings()",
+            "EasyTrainer UpdateHotkeys cached bindings");
 
         registryText = ReplaceOnce(
             registryText,
