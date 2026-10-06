@@ -44,6 +44,27 @@ foreach ($entry in $entries) {
     if ([int]$entry.sourceProof.expectedMarkerFileCount -lt 1) {
         throw "Production semantic rule does not define complete-state marker coverage: $($entry.id)"
     }
+    if ($entry.sourceProof.allowIdentityFallback) {
+        $ownerAll = @($entry.sourceProof.ownerAll)
+        $ownerAnyGroups = @($entry.sourceProof.ownerAnyGroups)
+        $identityPoints = $ownerAll.Count + $ownerAnyGroups.Count
+        if ($identityPoints -lt 4) {
+            throw "Name-independent semantic identity has fewer than four independent proof points: $($entry.id)"
+        }
+
+        $identityAnchors = @($ownerAll)
+        foreach ($group in $ownerAnyGroups) {
+            $identityAnchors += @($group)
+        }
+        $hasSourceShapedAnchor = @(
+            $identityAnchors | Where-Object {
+                [string]$_ -match '[.:()=[]]'
+            }
+        ).Count -gt 0
+        if (!$hasSourceShapedAnchor) {
+            throw "Name-independent semantic identity lacks a source-shaped anchor: $($entry.id)"
+        }
+    }
     foreach ($selector in @($entry.callbacks)) {
         if ([string]$selector.kind -eq '*' -or [string]$selector.target -eq '*') {
             throw "Production semantic rule contains a wildcard callback selector: $($entry.id)"
