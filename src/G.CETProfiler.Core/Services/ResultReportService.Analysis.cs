@@ -385,7 +385,7 @@ public static partial class ResultReportService
             .ToList();
     }
 
-    private static List<Dictionary<string, string>> ReadCsv(string? path)
+    internal static List<Dictionary<string, string>> ReadCsv(string? path)
     {
         var rows = new List<Dictionary<string, string>>();
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
@@ -457,7 +457,7 @@ public static partial class ResultReportService
         return values;
     }
 
-    private static string? FindProfilerFile(string root, string fileName)
+    internal static string? FindProfilerFile(string root, string fileName)
     {
         var candidates = new[]
         {
