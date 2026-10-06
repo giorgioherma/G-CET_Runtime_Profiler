@@ -402,6 +402,7 @@ registerRuntimeEvent(
         DoFrameWork(delta)
     end
 )
+local existingSchedulerJobId = "fixture.frame.scheduled"
 '@
 
 Write-Mod 'FixtureWrappedFrame' @'
@@ -502,6 +503,25 @@ $handoff = @{
         (CallbackRow 127 'FixtureUnknownHot' 'observe' 'PlayerPuppet::AnotherUnknownMethod' 60 20.0 5.0 'init.lua' 1 3),
         (CallbackRow 103 'FixtureUnknown' 'observe' 'PlayerPuppet::SomeOtherMethod' 60 4.0 1.0 'init.lua' 1 3)
     )
+    scheduler = @{
+        available = $true
+        jobCount = 1
+        measuredMsPerSecond = 0.4
+        jobs = @(
+            @{
+                owner = 'ManualAlias'
+                jobType = 'timed'
+                job = 'fixture.frame.scheduled'
+                intervalValue = 0.5
+                intervalUnit = 'seconds'
+                calls = 20
+                callsPerSecond = 2.0
+                msPerSecond = 0.4
+                avgUs = 200.0
+                maxMs = 0.8
+            }
+        )
+    }
     optimizerEvidence = @(
         @{
             registrationId = 120
@@ -1049,6 +1069,20 @@ if (@($frame.generic.RecipeFamilies) -notcontains 'FRAME_DISPATCH_CONSOLIDATION'
 }
 if ($frame.source.MatchMode -ne 'profiler-owner-relative') {
     throw 'onUpdate bare init.lua did not use owner-relative source mapping.'
+}
+
+if (!$frame.existingOptimization.zeroEngineSchedulerDetected -or
+    !$frame.existingOptimization.sourceProven) {
+    throw 'Captured 0-Engine Scheduler work present in live source was not recognized.'
+}
+if (!$frame.existingOptimization.residualNativeOnUpdate) {
+    throw 'Scheduler-integrated raw onUpdate was not identified as a residual native callback.'
+}
+if (@($frame.existingOptimization.jobs | Where-Object { $_.job -eq 'fixture.frame.scheduled' }).Count -ne 1) {
+    throw 'Resolver lost the source-proven Scheduler job identity.'
+}
+if (@($frame.existingOptimization.capturedSchedulerOwners) -notcontains 'ManualAlias') {
+    throw 'Resolver incorrectly required Scheduler owner text to equal the CET mod folder.'
 }
 
 $wrappedFrame = @($onUpdate.topConsumers | Where-Object { $_.owner -eq 'FixtureWrappedFrame' }) | Select-Object -First 1
