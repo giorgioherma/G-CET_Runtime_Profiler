@@ -534,8 +534,6 @@ try {
         throw 'Auto Ammo readiness-sentinel/author-cadence semantic composition is incomplete.'
     }
 }
-
-}
 finally { $zip.Dispose() }
 
 Write-Host 'Fourth-stack semantic composition contract passed: EasyTrainer + TeleportGatewaySystem + DiscardAmmoOnReload + advanced_settings + Auto Ammo Crafting.'
