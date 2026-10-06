@@ -1582,6 +1582,7 @@ try {
 if ($unsupportedAccepted) {
     throw 'Profiler bridge marker incorrectly authorized an unsupported backed-up 0-Engine revision.'
 }
+$global:LASTEXITCODE = 0
 Write-Host 'Profiler-managed 0-Engine bridge contract passed.'
 
 Write-Host 'Callback-first resolver + V1 pass generator contract passed.'
