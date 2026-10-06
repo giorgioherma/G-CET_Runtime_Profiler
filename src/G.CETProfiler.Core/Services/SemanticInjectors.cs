@@ -39,6 +39,7 @@ internal static class SemanticInjectors
             "fov-sentinel" => ApplyFovSentinel(context),
             "fenix-mantis-blade" => ApplyFenixMantisBlade(context),
             "easytrainer" => ApplyEasyTrainer(context),
+            "easytrainer-background-dormancy" => ApplyEasyTrainerBackgroundDormancy(context),
             "teleport-gateway-system" => ApplyTeleportGatewaySystem(context),
             "discard-ammo-on-reload" => ApplyDiscardAmmoOnReload(context),
             "advanced-settings" => ApplyAdvancedSettings(context),
@@ -1541,6 +1542,7 @@ internal static class SemanticInjectors
 
         var newAction =
             "    local function __gcetEasyTrainerOnAction(self, action, __gcetConsumer, __gcetRoutedName)\n" +
+            "        if type(State.IsGCETDormant) == \"function\" and State.IsGCETDormant() then return end\n" +
             "        if not modulesLoaded then return end\n" +
             "        local __gcetActionName = __gcetRoutedName or Game.NameToString(action:GetName(action))\n" +
             "        if __gcetActionName == \"CameraMouseX\" then\n" +
@@ -1762,6 +1764,163 @@ internal static class SemanticInjectors
             "Proved EasyTrainer's Event.Observe wrapper is transparent, routed only CameraMouseX/RangedAttack through 0-Engine with wrapper fallback, cached hotkey IDs/bindings, stopped closed-menu device polling, and reduced four native-heavy feature ticks to transition-only work without changing active behavior.");
     }
 
+
+    private static SemanticInjectionResult ApplyEasyTrainerBackgroundDormancy(
+        SemanticPatchContext context)
+    {
+        var init = context.FindFile(
+            "init.lua",
+            "Event.RegisterUpdate(function(dt)",
+            "Event.RegisterDraw(function()",
+            "registerForEvent(\\"onOverlayOpen\\", function() State.overlayOpen = true end)",
+            "RenderMainMenu()");
+
+        var state = context.FindFile(
+            "Controls/State.lua",
+            "State.overlayOpen = false",
+            "function State.ToggleMenu()",
+            "function State.SyncTracking()");
+
+        var settings = context.FindFile(
+            "View/Settings/SettingsView.lua",
+            "local Buttons = require(\\"UI\\").Buttons",
+            "Buttons.Option(L(\\"settingsmenu.saveall.label\\")",
+            "return { title = \\"settingsmenu.title\\", view = DrawSettings }");
+
+        var stateText = ReplaceOnce(
+            state.Text,
+            "State.overlayOpen = false\\n" +
+            "State.typingEnabled = false",
+            "State.overlayOpen = false\\n" +
+            "State.typingEnabled = false\\n" +
+            "State.gCETDormant = false\\n\\n" +
+            "function State.IsGCETDormant()\\n" +
+            "    return State.gCETDormant == true\\n" +
+            "end\\n\\n" +
+            "function State.SetGCETDormant(value)\\n" +
+            "    State.gCETDormant = value == true\\n" +
+            "    State.typingEnabled = false\\n" +
+            "    if State.gCETDormant then\\n" +
+            "        State.menuOpen = false\\n" +
+            "        State.mouseEnabled = false\\n" +
+            "    else\\n" +
+            "        State.menuOpen = true\\n" +
+            "    end\\n" +
+            "end",
+            "EasyTrainer explicit G-CET dormant state");
+        context.Write(state, stateText);
+
+        var settingsText = ReplaceOnce(
+            settings.Text,
+            "local Buttons = require(\\"UI\\").Buttons\\n",
+            "local Buttons = require(\\"UI\\").Buttons\\n" +
+            "local State = require(\\"Controls/State\\")\\n" +
+            "local Restrictions = require(\\"Controls/Restrictions\\")\\n",
+            "EasyTrainer dormant settings dependencies");
+
+        settingsText = ReplaceOnce(
+            settingsText,
+            "    Buttons.Break(\\"Configuration\\", \\"\\")\\n",
+            "    Buttons.Break(\\"G-CET Runtime\\", \\"\\")\\n" +
+            "    Buttons.Option(\\"Send EasyTrainer to Background\\", \\"Suspend EasyTrainer frame-driven UI and features until you wake it from the CET overlay. Existing one-shot or persistent game changes are not reverted.\\", function()\\n" +
+            "        Restrictions.Clear()\\n" +
+            "        State.SetGCETDormant(true)\\n" +
+            "    end)\\n\\n" +
+            "    Buttons.Break(\\"Configuration\\", \\"\\")\\n",
+            "EasyTrainer explicit background button");
+        context.Write(settings, settingsText);
+
+        var initText = ReplaceOnce(
+            init.Text,
+            "Event.RegisterUpdate(function(dt)\\n" +
+            "    Cron.Update(dt)",
+            "Event.RegisterUpdate(function(dt)\\n" +
+            "    if State.IsGCETDormant() then return end\\n" +
+            "    Cron.Update(dt)",
+            "EasyTrainer dormant update fast return");
+
+        initText = ReplaceOnce(
+            initText,
+            "Event.RegisterDraw(function()\\n" +
+            "    Notification.Render()",
+            "Event.RegisterDraw(function()\\n" +
+            "    if State.IsGCETDormant() then\\n" +
+            "        if not State.overlayOpen then return end\\n" +
+            "        ImGui.SetNextWindowSize(360, 110, ImGuiCond.FirstUseEver)\\n" +
+            "        if ImGui.Begin(\\"EasyTrainer - Background###GCETEasyTrainerDormant\\") then\\n" +
+            "            ImGui.Text(\\"EasyTrainer is dormant.\\")\\n" +
+            "            ImGui.Text(\\"Wake it to restore trainer UI and runtime features.\\")\\n" +
+            "            if ImGui.Button(\\"Wake EasyTrainer\\") then\\n" +
+            "                State.SetGCETDormant(false)\\n" +
+            "            end\\n" +
+            "        end\\n" +
+            "        ImGui.End()\\n" +
+            "        return\\n" +
+            "    end\\n" +
+            "    Notification.Render()",
+            "EasyTrainer CET-overlay wake control");
+
+        if (initText.Contains(
+                "    local function __gcetEasyTrainerOnAction(self, action, __gcetConsumer, __gcetRoutedName)\\n" +
+                "        if not modulesLoaded then return end",
+                StringComparison.Ordinal))
+        {
+            initText = ReplaceOnce(
+                initText,
+                "    local function __gcetEasyTrainerOnAction(self, action, __gcetConsumer, __gcetRoutedName)\\n" +
+                "        if not modulesLoaded then return end",
+                "    local function __gcetEasyTrainerOnAction(self, action, __gcetConsumer, __gcetRoutedName)\\n" +
+                "        if State.IsGCETDormant() then return end\\n" +
+                "        if not modulesLoaded then return end",
+                "EasyTrainer dormant routed-action guard");
+        }
+
+        initText = ReplaceOnce(
+            initText,
+            "    Event.Observe(\\"BaseProjectile\\", \\"ProjectileHit\\", function(self, eventData)\\n" +
+            "        if modulesLoaded then",
+            "    Event.Observe(\\"BaseProjectile\\", \\"ProjectileHit\\", function(self, eventData)\\n" +
+            "        if not State.IsGCETDormant() and modulesLoaded then",
+            "EasyTrainer dormant projectile guard");
+
+        initText = ReplaceOnce(
+            initText,
+            "    Event.ObserveAfter(\\"LocomotionAirEvents\\", \\"OnEnter\\", function(self, context, result)\\n" +
+            "        if modulesLoaded then",
+            "    Event.ObserveAfter(\\"LocomotionAirEvents\\", \\"OnEnter\\", function(self, context, result)\\n" +
+            "        if not State.IsGCETDormant() and modulesLoaded then",
+            "EasyTrainer dormant locomotion-air guard");
+
+        initText = ReplaceOnce(
+            initText,
+            "    Event.ObserveAfter(\\"MinimapContainerController\\", \\"OnCountdownTimerActiveUpdated\\", function(_, _)\\n" +
+            "        if modulesLoaded then",
+            "    Event.ObserveAfter(\\"MinimapContainerController\\", \\"OnCountdownTimerActiveUpdated\\", function(_, _)\\n" +
+            "        if not State.IsGCETDormant() and modulesLoaded then",
+            "EasyTrainer dormant vehicle-timer guard");
+
+        initText = ReplaceOnce(
+            initText,
+            "    Event.Override(\\"LocomotionTransition\\", \\"WantsToDodge\\", function(transition, stateContext, scriptInterface, wrappedFunc)\\n" +
+            "        if modulesLoaded then",
+            "    Event.Override(\\"LocomotionTransition\\", \\"WantsToDodge\\", function(transition, stateContext, scriptInterface, wrappedFunc)\\n" +
+            "        if State.IsGCETDormant() then return wrappedFunc(stateContext, scriptInterface) end\\n" +
+            "        if modulesLoaded then",
+            "EasyTrainer dormant dodge override bypass");
+
+        initText = ReplaceOnce(
+            initText,
+            "    Event.Override(\\"scannerDetailsGameController\\", \\"ShouldDisplayTwintoneTab\\", function(this, wrappedMethod)\\n" +
+            "        if not modulesLoaded then return wrappedMethod() end",
+            "    Event.Override(\\"scannerDetailsGameController\\", \\"ShouldDisplayTwintoneTab\\", function(this, wrappedMethod)\\n" +
+            "        if State.IsGCETDormant() or not modulesLoaded then return wrappedMethod() end",
+            "EasyTrainer dormant scanner override bypass");
+
+        context.Write(init, initText);
+
+        return SemanticInjectionResult.Success(
+            "Added an explicit user-controlled EasyTrainer hard-dormancy mode: frame update/draw lanes stop while backgrounded, gameplay hooks bypass trainer behavior, and the CET overlay exposes only a tiny wake control. Normal EasyTrainer behavior is unchanged until the user presses the background button.");
+    }
 
     private static SemanticInjectionResult ApplyTeleportGatewaySystem(
         SemanticPatchContext context)
