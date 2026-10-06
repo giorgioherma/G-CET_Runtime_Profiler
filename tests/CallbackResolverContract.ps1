@@ -1339,12 +1339,14 @@ try {
     if ($structuralText -match '__gcetReuse_120_' -or $structuralText -match '__gcetStatic_120_') {
         throw 'Structural hotpath rewrite leaked into the safe generic pass.'
     }
-    if ($structuralText -notmatch [regex]::Escape('-- G-CET shared provider: PLAYER') -or
-        $structuralText -notmatch [regex]::Escape('__gcetApi.GetPlayer') -or
-        $structuralText -notmatch [regex]::Escape('return Game.GetPlayer()') -or
-        (Count-SharedPlayerReads $structuralText) -ne 2 -or
-        [regex]::Matches($structuralText, [regex]::Escape('CName.new("StructuralFixture")')).Count -ne 2) {
-        throw 'PLAYER shared-provider substitution, fallback, or structural isolation is incomplete.'
+    $playerMarkerOk = $structuralText -match [regex]::Escape('-- G-CET shared provider: PLAYER')
+    $playerApiOk = $structuralText -match [regex]::Escape('__gcetApi.GetPlayer')
+    $playerFallbackOk = $structuralText -match [regex]::Escape('return Game.GetPlayer()')
+    $playerReadCount = Count-SharedPlayerReads $structuralText
+    $structuralCNameCount = [regex]::Matches($structuralText, [regex]::Escape('CName.new("StructuralFixture")')).Count
+    if (!$playerMarkerOk -or !$playerApiOk -or !$playerFallbackOk -or
+        $playerReadCount -ne 2 -or $structuralCNameCount -ne 2) {
+        throw "PLAYER shared-provider substitution/fallback/isolation incomplete: marker=$playerMarkerOk api=$playerApiOk fallback=$playerFallbackOk reads=$playerReadCount cnames=$structuralCNameCount"
     }
 
     foreach ($sharedProviderCheck in @(
