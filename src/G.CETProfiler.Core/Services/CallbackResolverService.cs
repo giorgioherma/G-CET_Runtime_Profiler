@@ -130,9 +130,10 @@ internal static class CallbackResolverService
                 var residualSchedulerBootstrap =
                     schedulerIntegration.Detected &&
                     callback.Target.Equals("onUpdate", StringComparison.OrdinalIgnoreCase) &&
-                    generic.Evidence.Any(item =>
-                        item.Contains(
-                            "residual bootstrap",
+                    generic.Automatable &&
+                    generic.RecipeFamilies.Any(recipe =>
+                        recipe.Equals(
+                            "FRAME_DISPATCH_CONSOLIDATION",
                             StringComparison.OrdinalIgnoreCase));
                 if (residualSchedulerBootstrap)
                     residualSchedulerBootstrapCallbacks++;
@@ -222,7 +223,7 @@ internal static class CallbackResolverService
                         note = !schedulerIntegration.Detected
                             ? "No source-proven captured 0-Engine Scheduler job was found for this owner."
                             : residualSchedulerBootstrap
-                                ? "Existing 0-Engine Scheduler work is source-proven. This callback is a residual native bootstrap and is already satisfied; AUTO will not wrap it again."
+                                ? "Existing 0-Engine Scheduler work is source-proven. This callback is a residual native onUpdate; frame consolidation only folds that remaining callback into the shared dispatcher and does not recreate the scheduled lanes."
                                 : "Existing 0-Engine Scheduler work is source-proven from captured job IDs that are present in the current live owner source."
                     },
                     dormancy = new
@@ -371,7 +372,7 @@ internal static class CallbackResolverService
                 dormancyCanAuthorizeGeneration = false,
                 dormancyClasses = new[] { "NEVER_GATE", "HARD_DORMANT", "DISCOVERY_DORMANT", "BACKGROUND", "UNKNOWN" },
                 existingSchedulerRecognition = true,
-                existingSchedulerRecognitionPolicy = "Captured Scheduler job IDs must also exist as quoted literals in the current live owner source. Source-proven residual bootstrap callbacks and owner-specific MakeEventRegistrar integrations are treated as already satisfied and are not wrapped again.",
+                existingSchedulerRecognitionPolicy = "Captured Scheduler job IDs must also exist as quoted literals in the current live owner source. Recognition is evidence/reporting only and does not suppress an independently safe generic transform.",
                 sharedProviderOpportunityAnalysis = true,
                 sharedProviderGenerationEnabled = true,
                 sharedProviderGenerationFamilies = SharedProviderCatalog.GenerationFamilies
