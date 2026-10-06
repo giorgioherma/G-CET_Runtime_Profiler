@@ -2603,7 +2603,8 @@ internal static class SemanticInjectors
             "    safeCallQuiet(function() updateSessionGuard(__gcetItppSupervisorDelta) end)\n" +
             "    safeCallQuiet(function() updateAutoPerspective(__gcetItppSupervisorDelta) end)\n" +
             "    guardStep(\"updateDependencyGuard\", updateDependencyGuard, __gcetItppSupervisorDelta)\n" +
-            "  end\n";
+            "  end\n" +
+            "  pcall(mod.fallCommitTick, delta)\n";
 
         text = ReplaceOnce(
             text,
