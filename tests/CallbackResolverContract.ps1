@@ -467,6 +467,13 @@ function CallbackRow(
     }
 }
 
+$schedulerDir = Join-Path $capture 'Data\Scheduler'
+New-Item -ItemType Directory -Force $schedulerDir | Out-Null
+@(
+    'Owner,JobType,Job,IntervalValue,IntervalUnit,Calls,CallsPerSecond,TotalMs,MsPerSecond,MeasuredOneCorePct,AvgUs,MaxMs,ElapsedSeconds,Interpretation',
+    'ManualAlias,timed,fixture.frame.scheduled,0.500000,seconds,20,2.000000,4.000000,0.400000,0.040000,200.000000,0.800000,10.000000,inclusive-inside-0-engine-do-not-add-to-mod-totals'
+) | Set-Content -LiteralPath (Join-Path $schedulerDir 'CET_Runtime_Profile_Scheduler_ByJob.csv') -Encoding utf8
+
 $handoff = @{
     schemaVersion = '1.5'
     callbacks = @(
@@ -503,25 +510,6 @@ $handoff = @{
         (CallbackRow 127 'FixtureUnknownHot' 'observe' 'PlayerPuppet::AnotherUnknownMethod' 60 20.0 5.0 'init.lua' 1 3),
         (CallbackRow 103 'FixtureUnknown' 'observe' 'PlayerPuppet::SomeOtherMethod' 60 4.0 1.0 'init.lua' 1 3)
     )
-    scheduler = @{
-        available = $true
-        jobCount = 1
-        measuredMsPerSecond = 0.4
-        jobs = @(
-            @{
-                owner = 'ManualAlias'
-                jobType = 'timed'
-                job = 'fixture.frame.scheduled'
-                intervalValue = 0.5
-                intervalUnit = 'seconds'
-                calls = 20
-                callsPerSecond = 2.0
-                msPerSecond = 0.4
-                avgUs = 200.0
-                maxMs = 0.8
-            }
-        )
-    }
     optimizerEvidence = @(
         @{
             registrationId = 120
