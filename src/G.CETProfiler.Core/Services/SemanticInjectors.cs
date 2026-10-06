@@ -1833,7 +1833,7 @@ internal static class SemanticInjectors
 
         text = RegexReplaceOnce(
             text,
-            @"(?m)^(?<opening>[ \t]*registerForEvent\s*\(\s*[""']onDraw[""']\s*,\s*function\s*\(\s*\)\s*)$",
+            @"(?m)^(?<opening>[ \t]*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*[""']onDraw[""']\s*,\s*function\s*\(\s*\)\s*)$",
             "$" + "{opening}\n\tif not TGS.showMainWindow then return end",
             "Teleport Gateway hidden-window draw gate");
 

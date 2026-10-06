@@ -103,20 +103,184 @@ end
 return Weapon
 '@
 
+Write-ModFile 'EasyTrainer' 'Core/Event.lua' @'
+local Logger = { Log=function() end }
+local Event = {}
+function Event.Observe(class, method, fn)
+    Observe(class, method, fn)
+    Logger.Log(string.format("Event: Observing %s.%s", tostring(class), tostring(method)))
+end
+return Event
+'@
+Write-ModFile 'EasyTrainer' 'UI/Registry/OptionRegistry.lua' @'
+local OptionRegistry = { Ordered = {} }
+OptionRegistry.Kind = { Toggle = "toggle" }
+local RefIndex = setmetatable({}, { __mode = "k" })
+local HotkeyDown = {}
+
+local function HotkeyAction(id)
+    return "OPTION_" .. tostring(id or ""):upper():gsub("[^A-Z0-9]+", "_")
+end
+
+function OptionRegistry.SetHotkey(id, hotkey)
+    local Bindings = require("Controls/Bindings")
+    local entry = { Id=id, Hotkey=HotkeyAction(id) }
+    Bindings.Rebind(entry.Hotkey, hotkey)
+end
+
+function OptionRegistry.RegisterHotkeyActions()
+    local Bindings = require("Controls/Bindings")
+    local count = 0
+    for _, entry in ipairs(OptionRegistry.Ordered) do
+        if entry.Kind == OptionRegistry.Kind.Toggle then
+            Bindings.EnsureAction(OptionRegistry.GetHotkeyAction(entry))
+            count = count + 1
+        end
+    end
+    return count
+end
+
+function OptionRegistry.UpdateHotkeys()
+    local Bindings = require("Controls/Bindings")
+    local changed = false
+    for _, entry in ipairs(OptionRegistry.Ordered) do
+        if entry.Kind == OptionRegistry.Kind.Toggle and entry.Ref then
+            local action = HotkeyAction(entry.Id)
+            local down = Bindings.IsActionDown(action)
+            if down and not HotkeyDown[action] then changed = true end
+            HotkeyDown[action] = down
+        end
+    end
+    return changed
+end
+return OptionRegistry
+'@
+Write-ModFile 'EasyTrainer' 'Controls/Restrictions.lua' @'
+local Input = require("Core/Input")
+local State = require("Controls/State")
+local Restrictions = {}
+local lastMenuOpen = false
+local lastWasController = false
+local lastMouseEnabled = false
+local lastTypingEnabled = false
+function Restrictions.Clear() end
+function Restrictions.Update()
+    local menuOpen = State.IsMenuOpen()
+    Input.UpdateDevice()
+
+    local usingController = Input.IsController()
+    local mouseEnabled = State.mouseEnabled
+    local typingEnabled = State.typingEnabled
+
+    if not menuOpen and lastMenuOpen then
+        Restrictions.Clear()
+        lastMenuOpen, lastWasController, lastMouseEnabled, lastTypingEnabled = false, false, false, false
+        return
+    end
+
+    if not menuOpen then return end
+    lastMenuOpen = menuOpen
+    lastWasController = usingController
+    lastMouseEnabled = mouseEnabled
+    lastTypingEnabled = typingEnabled
+end
+return Restrictions
+'@
+Write-ModFile 'EasyTrainer' 'Features/Self/Abilities/AdvancedMobility.lua' @'
+local AdvancedMobility = {}
+AdvancedMobility.toggleDoubleJump = { value = false }
+AdvancedMobility.toggleAirHover = { value = false }
+AdvancedMobility.toggleChargeJump = { value = false }
+local state = { doubleJumpApplied=false, airHoverApplied=false, chargeJumpApplied=false }
+local function HandleStatToggle(toggle, statName, appliedFlag, label)
+    local stats = Game.GetStatsSystem()
+    local player = Game.GetPlayer()
+    local entityID = player:GetEntityID()
+end
+function AdvancedMobility.Tick()
+    HandleStatToggle(AdvancedMobility.toggleDoubleJump, "HasDoubleJump", "doubleJumpApplied", "Double Jump")
+    HandleStatToggle(AdvancedMobility.toggleAirHover, "HasAirHover", "airHoverApplied", "Air Hover")
+    HandleStatToggle(AdvancedMobility.toggleChargeJump, "HasChargeJump", "chargeJumpApplied", "Charge Jump")
+end
+return AdvancedMobility
+'@
+Write-ModFile 'EasyTrainer' 'Features/Self/Abilities/SuperSpeed.lua' @'
+local SuperSpeed = {}
+SuperSpeed.enabled = { value = false }
+local applied = false
+function SuperSpeed.Tick()
+    local timeSystem = Game.GetTimeSystem()
+    local isActive = timeSystem:IsTimeDilationActive()
+    if SuperSpeed.enabled.value and not applied then applied = true
+    elseif not SuperSpeed.enabled.value and applied then applied = false end
+end
+return SuperSpeed
+'@
+Write-ModFile 'EasyTrainer' 'Features/Self/Abilities/AirThrusterBoots.lua' @'
+local AirThrusterBoots = {}
+AirThrusterBoots.enabled = { value = false }
+local applied = false
+function AirThrusterBoots.Tick()
+    local stats = Game.GetStatsSystem()
+    local player = Game.GetPlayer()
+    local entityID = player:GetEntityID()
+    if AirThrusterBoots.enabled.value and not applied then applied = true
+    elseif not AirThrusterBoots.enabled.value and applied then applied = false end
+end
+return AirThrusterBoots
+'@
+
 Write-ModFile 'TeleportGatewaySystem' 'init.lua' @'
-local TGS = { activated=true, player=Game.GetPlayer(), teleportFac=Game.GetTeleportationFacility() }
-local gatewayDB = { {gwx=1,gwy=2,gwz=3,gwr=0.1,spx=4,spy=5,spz=6,yaw=0} }
+local TGS = {
+    activated=true,
+    player=Game.GetPlayer(),
+    cameraSys=Game.GetCameraSystem(),
+    teleportFac=Game.GetTeleportationFacility(),
+    showMainWindow=false,
+    senseInhibited=false
+}
+local gatewayDB = { {name="fixture",gwx=1,gwy=2,gwz=3,gwr=0.1,spx=4,spy=5,spz=6,yaw=0} }
+local senseSystemOff = false
+local senseGWCheck = false
+local scratchpadPin, scratchpadPinPrev = false, false
+local scratchpadPinVis, scratchpadPinVisPrev = false, false
+local scratchpadChanged = false
 registerForEvent("onUpdate", function(deltaTime)
-    if TGS.activated then
+    if (TGS.activated) then
         playerPos = TGS.player:GetWorldPosition()
-        playerAng = Game.GetCameraSystem():GetActiveCameraForward()
-        for index = 1, #gatewayDB, 1 do
-            GWDist = math.sqrt(((TGS.player:GetWorldPosition().x-gatewayDB[index].gwx)^2)+((TGS.player:GetWorldPosition().y-gatewayDB[index].gwy)^2)+((TGS.player:GetWorldPosition().z-gatewayDB[index].gwz)^2))
-            if GWDist <= gatewayDB[index].gwr then
-                TGS.teleportFac:Teleport(TGS.player, Vector4.new(gatewayDB[index].spx, gatewayDB[index].spy, gatewayDB[index].spz, 1), EulerAngles.new(playerAng.x, playerAng.y, gatewayDB[index].yaw))
+        playerAng = TGS.cameraSys:GetActiveCameraForward()
+        playerYaw = TGS.player:GetWorldYaw()
+        
+        senseGWCheck = false
+        
+        if (#gatewayDB > 0) then
+            for index = 1, #gatewayDB, 1 do
+                GWDist = math.sqrt(((TGS.player:GetWorldPosition().x-gatewayDB[index].gwx)^2)+((TGS.player:GetWorldPosition().y-gatewayDB[index].gwy)^2)+((TGS.player:GetWorldPosition().z-gatewayDB[index].gwz)^2))
+                if (TGS.senseInhibited or senseSystemOff) then
+                    if (GWDist <= gatewayDB[index].gwr) then
+                        senseGWCheck = true
+                    end
+                elseif (GWDist <= gatewayDB[index].gwr) then
+                    print("TeleportGatewaySystem: Teleport TGS.activated -",gatewayDB[index].name)
+                    
+                    TGS.teleportFac:Teleport(TGS.player, Vector4.new(gatewayDB[index].spx, gatewayDB[index].spy, gatewayDB[index].spz, 1), EulerAngles.new(playerAng.x, playerAng.y, gatewayDB[index].yaw))
+                    TGS.senseInhibited = true
+                end
             end
         end
     end
+    
+    if scratchpadPin ~= scratchpadPinPrev then
+        scratchpadChanged = true
+        scratchpadPinPrev = scratchpadPin
+    end
+end)
+registerForEvent("onDraw", function()
+    ImGui.SetNextWindowPos(0, 0, ImGuiCond.FirstUseEver)
+    if ImGui.Begin("Teleport Gateway System", TGS.showMainWindow) then
+        ImGui.Text("fixture")
+    end
+    ImGui.End()
 end)
 '@
 
@@ -169,15 +333,35 @@ end)
 
 Write-ModFile 'Auto Ammo Crafting (I need more bullets)' 'init.lua' @'
 local defaultSettings = { autoConvertTime = 6 }
-local settings = { autoConvertTime = 6 }
-local scriptInterval = 0
+local settings = { autoConvertTime = 6, combatCheck = true }
 local firstRun = false
 local ts = nil
 local function __gcetGetTransactionSystem() return Game.GetTransactionSystem() end
+firstRun = true
+pauseTime = os.time()
+scriptInterval = 0
+combatMagsCrafted = 0
+lastCraftPos = nil
+inCombat = false
 registerForEvent("onUpdate", function(deltaTime)
-    if notReady() then return end
-    if playerInMenu() then return end
-    if firstRun then firstRun = false end
+    if pauseTime > os.time() then
+        return
+    end
+    if settings.combatCheck and inCombat then
+        pauseTime = os.time() + 3
+        return
+    end
+    if notReady() then
+        pauseTime = os.time() + 3
+        return
+    end
+    if playerInMenu() then
+        pauseTime = os.time() + 3
+        return
+    end
+    if firstRun then
+        firstRun = false
+    end
     player = Game.GetPlayerSystem():GetLocalPlayerMainGameObject()
     if not ts then ts = __gcetGetTransactionSystem() end
 ------------------------------------------------
@@ -294,20 +478,36 @@ try {
     $easyInit=Read-ZipText ($base+'EasyTrainer/init.lua')
     $easyNoClip=Read-ZipText ($base+'EasyTrainer/Features/Self/Abilities/NoClip.lua')
     $easyWeapon=Read-ZipText ($base+'EasyTrainer/Utils/Weapon.lua')
-    if($easyInit -notmatch [regex]::Escape('Event.Observe("PlayerPuppet", "OnAction"') -or
-       $easyInit -match 'SubscribeAction' -or
-       $easyInit -notmatch '__gcetActionName == "CameraMouseX"' -or
-       $easyInit -notmatch '__gcetActionName == "RangedAttack"' -or
+    $easyRegistry=Read-ZipText ($base+'EasyTrainer/UI/Registry/OptionRegistry.lua')
+    $easyRestrictions=Read-ZipText ($base+'EasyTrainer/Controls/Restrictions.lua')
+    $easyMobility=Read-ZipText ($base+'EasyTrainer/Features/Self/Abilities/AdvancedMobility.lua')
+    $easySuperSpeed=Read-ZipText ($base+'EasyTrainer/Features/Self/Abilities/SuperSpeed.lua')
+    $easyThrusters=Read-ZipText ($base+'EasyTrainer/Features/Self/Abilities/AirThrusterBoots.lua')
+    if($easyInit -notmatch 'SubscribeAction' -or
+       $easyInit -notmatch 'CameraMouseX' -or
+       $easyInit -notmatch 'RangedAttack' -or
+       $easyInit -notmatch 'decodeType = false' -or
+       $easyInit -notmatch [regex]::Escape('Event.Observe("PlayerPuppet", "OnAction"') -or
        $easyNoClip -notmatch 'HandleMouseLook\(action, routedName\)' -or
        $easyWeapon -notmatch 'HandleInputAction\(action, routedName\)' -or
-       $easyWeapon -notmatch 'Weapon\.isAiming = player and player\.isAiming or false') {
-        throw 'EasyTrainer wrapped-action semantic composition is incomplete.'
+       $easyWeapon -notmatch 'Weapon\.isAiming = player and player\.isAiming or false' -or
+       $easyRegistry -notmatch 'local __gcetBindings = nil' -or
+       $easyRegistry -notmatch 'entry\.Hotkey or HotkeyAction\(entry\.Id\)' -or
+       $easyRestrictions -notmatch 'if not menuOpen then' -or
+       $easyMobility -notmatch 'and not state\.chargeJumpApplied then return end' -or
+       $easySuperSpeed -notmatch 'if not SuperSpeed\.enabled\.value and not applied then return end' -or
+       $easyThrusters -notmatch 'if not AirThrusterBoots\.enabled\.value and not applied then return end') {
+        throw 'EasyTrainer routed-action/dormancy semantic composition is incomplete.'
     }
 
     $tele=Read-ZipText ($base+'TeleportGatewaySystem/init.lua')
     if($tele -match [regex]::Escape('TGS.player:GetWorldPosition().x-gatewayDB[index].gwx') -or
-       $tele -notmatch [regex]::Escape('playerPos.x-gatewayDB[index].gwx')) {
-        throw 'Teleport Gateway did not reuse the per-frame player position.'
+       $tele -notmatch '__gcetGatewayFarInterval = 0\.10' -or
+       $tele -notmatch '__gcetGatewayNearMargin = 30\.0' -or
+       $tele -notmatch 'local __gcetDx = playerPos\.x - gatewayDB\[index\]\.gwx' -or
+       $tele -notmatch 'TGS\.showMainWindow == true' -or
+       $tele -notmatch 'if not TGS\.showMainWindow then return end') {
+        throw 'Teleport Gateway proximity-sentinel semantic composition is incomplete.'
     }
 
     $discard=Read-ZipText ($base+'DiscardAmmoOnReload/init.lua')
@@ -324,14 +524,17 @@ try {
     }
 
     $ammo=Read-ZipText ($base+'Auto Ammo Crafting (I need more bullets)/init.lua')
-    $interval=$ammo.IndexOf('scriptInterval = scriptInterval + deltaTime')
-    $player=$ammo.IndexOf('player = Game.GetPlayerSystem():GetLocalPlayerMainGameObject()',$interval)
-    if($interval -lt 0 -or $player -lt 0 -or $interval -gt $player -or
+    if($ammo -notmatch '__gcetAutoAmmoReadyProbeElapsed = 0\.10' -or
+       $ammo -notmatch '__gcetAutoAmmoProbeDue' -or
+       $ammo -notmatch 'or __gcetAutoAmmoCraftDue' -or
+       $ammo -notmatch 'if not __gcetAutoAmmoCraftDue then' -or
        $ammo -notmatch 'local __gcetPlayerSystem = Game\.GetPlayerSystem\(\)' -or
        $ammo -notmatch 'local __gcetPlayer = Game\.GetPlayer\(\)' -or
        $ammo -notmatch 'local __gcetUIBB = Game\.GetAllBlackboardDefs\(\)\.UI_System') {
-        throw 'Auto Ammo author-cadence/deferred-acquisition semantic composition is incomplete.'
+        throw 'Auto Ammo readiness-sentinel/author-cadence semantic composition is incomplete.'
     }
+}
+
 }
 finally { $zip.Dispose() }
 
