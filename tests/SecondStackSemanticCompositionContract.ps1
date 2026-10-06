@@ -460,8 +460,118 @@ try {
         $midairOut -notmatch '__gcetMidairWakeTail' -or
         $midairOut -notmatch '__gcetMidairIdleElapsed' -or
         $midairOut -notmatch 'if not player\.maxRunSet or not player\.maxSprintSet then' -or
-        $midairOut -match 'or not player\.maxRunSet' -or
-        $midairOut -match 'or not player\.maxSprintSet' -or
+        $midairOut -match '(?m)^\s*or not player\.maxRunSet\s*
+        $midairOut -notmatch 'OnLocomotionStateChanged') {
+        throw 'Alternative Midair Movement generic + semantic composition is incomplete.'
+    }
+    foreach ($action in @('MoveX','MoveY','Jump','Left','Right','Forward','Back')) {
+        if ($midairOut -notmatch [regex]::Escape('"' + $action + '"')) {
+            throw "Alternative Midair Movement routed action missing: $action"
+        }
+    }
+    if ($midairInputOut -notmatch 'SetInputData\(action,\s*__gcetRoutedName\)' -or
+        $midairInputOut -notmatch 'if actionName == "MoveX" or actionName == "MoveY" then' -or
+        $midairInputOut -notmatch '__gcetRoutedName or Game\.NameToString') {
+        throw 'Alternative Midair Movement input prefilter/rotation rewrite is incomplete.'
+    }
+
+    $metroOut = Read-ZipText ($base + 'trainSystem/init.lua')
+    $metroEntryOut = Read-ZipText ($base + 'trainSystem/modules/entrySystem.lua')
+    $metroHudOut = Read-ZipText ($base + 'trainSystem/modules/ui/hud.lua')
+    foreach ($text in @($metroOut,$metroEntryOut,$metroHudOut)) {
+        if ($text -notmatch [regex]::Escape('G-CET semantic:metro-system')) {
+            throw 'Metro semantic marker did not cover all three changed files.'
+        }
+    }
+    if ($metroOut -notmatch 'MakeEventRegistrar' -or
+        $metroOut -notmatch '__gcetMetroIdleElapsed' -or
+        $metroOut -notmatch '< 0\.20 then return' -or
+        $metroOut -notmatch 'ts\.stationSys:update\(deltaTime\)') {
+        throw 'Metro active/idle cadence did not compose with generic frame dispatch.'
+    }
+    if ($metroEntryOut -notmatch '__gcetPlayerPos' -or
+        $metroEntryOut -match 'distanceVector\(GetPlayer\(\):GetWorldPosition\(\),\s*v\.center\)') {
+        throw 'Metro entry sweep did not cache one player position.'
+    }
+    if ($metroHudOut -notmatch 'destinationWasVisible' -or
+        $metroHudOut -notmatch 'observers\.nextStationPoint = nil' -or
+        $metroHudOut -notmatch 'UnregisterMappin\(observers\.nextStationPoint\)') {
+        throw 'Metro destination cleanup was not converted to transition-driven teardown.'
+    }
+
+    $pizzaOut = Read-ZipText ($base + 'NightCityPizza/init.lua')
+    if ($pizzaOut -notmatch [regex]::Escape('G-CET semantic:nightcitypizza') -or
+        $pizzaOut -notmatch 'MakeEventRegistrar' -or
+        $pizzaOut -notmatch '__gcetPizzaMaintenanceElapsed' -or
+        $pizzaOut -notmatch '< 0\.40 then return' -or
+        $pizzaOut -notmatch 'tickBossTexts\(__gcetPizzaElapsed\)' -or
+        $pizzaOut -notmatch 'if Pizza\.ctx then return end' -or
+        $pizzaOut -notmatch 'ctx:onUpdate\(function\(dt\)') {
+        throw 'NightCityPizza off-shift semantic cadence did not preserve the active ctx runtime.'
+    }
+}
+finally {
+    $zip.Dispose()
+}
+
+Write-Host 'Second-stack semantic composition contract passed: Midair + Metro + Pizza compose after generic AUTO and retain fail-closed structural proof.'
+ -or
+        $midairOut -match '(?m)^\s*or not player\.maxSprintSet\s*
+        $midairOut -notmatch 'OnLocomotionStateChanged') {
+        throw 'Alternative Midair Movement generic + semantic composition is incomplete.'
+    }
+    foreach ($action in @('MoveX','MoveY','Jump','Left','Right','Forward','Back')) {
+        if ($midairOut -notmatch [regex]::Escape('"' + $action + '"')) {
+            throw "Alternative Midair Movement routed action missing: $action"
+        }
+    }
+    if ($midairInputOut -notmatch 'SetInputData\(action,\s*__gcetRoutedName\)' -or
+        $midairInputOut -notmatch 'if actionName == "MoveX" or actionName == "MoveY" then' -or
+        $midairInputOut -notmatch '__gcetRoutedName or Game\.NameToString') {
+        throw 'Alternative Midair Movement input prefilter/rotation rewrite is incomplete.'
+    }
+
+    $metroOut = Read-ZipText ($base + 'trainSystem/init.lua')
+    $metroEntryOut = Read-ZipText ($base + 'trainSystem/modules/entrySystem.lua')
+    $metroHudOut = Read-ZipText ($base + 'trainSystem/modules/ui/hud.lua')
+    foreach ($text in @($metroOut,$metroEntryOut,$metroHudOut)) {
+        if ($text -notmatch [regex]::Escape('G-CET semantic:metro-system')) {
+            throw 'Metro semantic marker did not cover all three changed files.'
+        }
+    }
+    if ($metroOut -notmatch 'MakeEventRegistrar' -or
+        $metroOut -notmatch '__gcetMetroIdleElapsed' -or
+        $metroOut -notmatch '< 0\.20 then return' -or
+        $metroOut -notmatch 'ts\.stationSys:update\(deltaTime\)') {
+        throw 'Metro active/idle cadence did not compose with generic frame dispatch.'
+    }
+    if ($metroEntryOut -notmatch '__gcetPlayerPos' -or
+        $metroEntryOut -match 'distanceVector\(GetPlayer\(\):GetWorldPosition\(\),\s*v\.center\)') {
+        throw 'Metro entry sweep did not cache one player position.'
+    }
+    if ($metroHudOut -notmatch 'destinationWasVisible' -or
+        $metroHudOut -notmatch 'observers\.nextStationPoint = nil' -or
+        $metroHudOut -notmatch 'UnregisterMappin\(observers\.nextStationPoint\)') {
+        throw 'Metro destination cleanup was not converted to transition-driven teardown.'
+    }
+
+    $pizzaOut = Read-ZipText ($base + 'NightCityPizza/init.lua')
+    if ($pizzaOut -notmatch [regex]::Escape('G-CET semantic:nightcitypizza') -or
+        $pizzaOut -notmatch 'MakeEventRegistrar' -or
+        $pizzaOut -notmatch '__gcetPizzaMaintenanceElapsed' -or
+        $pizzaOut -notmatch '< 0\.40 then return' -or
+        $pizzaOut -notmatch 'tickBossTexts\(__gcetPizzaElapsed\)' -or
+        $pizzaOut -notmatch 'if Pizza\.ctx then return end' -or
+        $pizzaOut -notmatch 'ctx:onUpdate\(function\(dt\)') {
+        throw 'NightCityPizza off-shift semantic cadence did not preserve the active ctx runtime.'
+    }
+}
+finally {
+    $zip.Dispose()
+}
+
+Write-Host 'Second-stack semantic composition contract passed: Midair + Metro + Pizza compose after generic AUTO and retain fail-closed structural proof.'
+ -or
         $midairOut -notmatch 'OnLocomotionStateChanged') {
         throw 'Alternative Midair Movement generic + semantic composition is incomplete.'
     }
