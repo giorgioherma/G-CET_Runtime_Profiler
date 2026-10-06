@@ -8,6 +8,8 @@ internal sealed record SemanticRuleMatch(
     bool Matched,
     bool SourceProofSatisfied,
     bool AlreadySatisfied,
+    bool SatisfiedBySourcePostcondition,
+    string AlreadySatisfiedMode,
     bool PartialState,
     int MarkerFileCount,
     int ExpectedMarkerFileCount,
@@ -22,7 +24,7 @@ internal sealed record SemanticRuleMatch(
     object? Graph)
 {
     internal static SemanticRuleMatch None { get; } = new(
-        false, false, false, false, 0, 0, "", "", "", "", false, false,
+        false, false, false, false, "", false, 0, 0, "", "", "", "", false, false,
         Array.Empty<string>(), Array.Empty<string>(), null);
 }
 
@@ -98,6 +100,8 @@ internal sealed class SemanticLibraryService
                         {
                             OwnerAll = JsonStringArray(proofRow, "ownerAll"),
                             OwnerAnyGroups = JsonStringGroups(proofRow, "ownerAnyGroups"),
+                            SatisfiedAll = JsonStringArray(proofRow, "satisfiedAll"),
+                            SatisfiedAnyGroups = JsonStringGroups(proofRow, "satisfiedAnyGroups"),
                             AlreadySatisfiedMarker = JsonString(
                                 proofRow,
                                 "alreadySatisfiedMarker"),
@@ -205,6 +209,8 @@ internal sealed class SemanticLibraryService
                 false,
                 false,
                 false,
+                "",
+                false,
                 0,
                 0,
                 string.Join(",", candidates.Select(x => x.Id).OrderBy(x => x)),
@@ -225,6 +231,8 @@ internal sealed class SemanticLibraryService
                 true,
                 false,
                 false,
+                false,
+                "",
                 false,
                 0,
                 Math.Max(1, rule.Proof.ExpectedMarkerFileCount),
@@ -247,13 +255,41 @@ internal sealed class SemanticLibraryService
                 : graph.FileTexts.Count(text =>
                     HasMarkerLine(text, rule.Proof.AlreadySatisfiedMarker));
         var expectedMarkerFileCount = Math.Max(1, rule.Proof.ExpectedMarkerFileCount);
-        var alreadySatisfied = markerCount >= expectedMarkerFileCount;
-        var partialState = markerCount > 0 && markerCount < expectedMarkerFileCount;
+        var markerSatisfied = markerCount >= expectedMarkerFileCount;
+
+        var postconditionConfigured =
+            rule.Proof.SatisfiedAll.Length > 0 ||
+            rule.Proof.SatisfiedAnyGroups.Length > 0;
+        EvaluateAnchors(
+            rule.Proof.SatisfiedAll,
+            rule.Proof.SatisfiedAnyGroups,
+            graph,
+            out _,
+            out var postconditionMissing);
+        var satisfiedBySourcePostcondition =
+            postconditionConfigured &&
+            postconditionMissing.Count == 0;
+
+        var alreadySatisfied =
+            markerSatisfied ||
+            satisfiedBySourcePostcondition;
+        var alreadySatisfiedMode =
+            markerSatisfied
+                ? "MARKER"
+                : satisfiedBySourcePostcondition
+                    ? "SOURCE_POSTCONDITION"
+                    : "";
+        var partialState =
+            !alreadySatisfied &&
+            markerCount > 0 &&
+            markerCount < expectedMarkerFileCount;
 
         return new SemanticRuleMatch(
             true,
             missing.Count == 0,
             alreadySatisfied,
+            satisfiedBySourcePostcondition,
+            alreadySatisfiedMode,
             partialState,
             markerCount,
             expectedMarkerFileCount,
@@ -276,12 +312,25 @@ internal sealed class SemanticLibraryService
         SemanticRule rule,
         ModSourceGraph graph,
         out List<string> matched,
+        out List<string> missing) =>
+        EvaluateAnchors(
+            rule.Proof.OwnerAll,
+            rule.Proof.OwnerAnyGroups,
+            graph,
+            out matched,
+            out missing);
+
+    private static void EvaluateAnchors(
+        string[] all,
+        string[][] anyGroups,
+        ModSourceGraph graph,
+        out List<string> matched,
         out List<string> missing)
     {
         matched = new List<string>();
         missing = new List<string>();
 
-        foreach (var anchor in rule.Proof.OwnerAll)
+        foreach (var anchor in all)
         {
             if (ContainsProof(graph.ProofCorpus, anchor))
                 matched.Add(anchor);
@@ -289,7 +338,7 @@ internal sealed class SemanticLibraryService
                 missing.Add(anchor);
         }
 
-        foreach (var group in rule.Proof.OwnerAnyGroups)
+        foreach (var group in anyGroups)
         {
             var hit = group.FirstOrDefault(anchor =>
                 ContainsProof(graph.ProofCorpus, anchor));
@@ -618,6 +667,8 @@ internal sealed class SemanticLibraryService
     {
         internal string[] OwnerAll { get; init; } = Array.Empty<string>();
         internal string[][] OwnerAnyGroups { get; init; } = Array.Empty<string[]>();
+        internal string[] SatisfiedAll { get; init; } = Array.Empty<string>();
+        internal string[][] SatisfiedAnyGroups { get; init; } = Array.Empty<string[]>();
         internal string AlreadySatisfiedMarker { get; init; } = "";
         internal int ExpectedMarkerFileCount { get; init; } = 1;
         internal bool AllowIdentityFallback { get; init; }
