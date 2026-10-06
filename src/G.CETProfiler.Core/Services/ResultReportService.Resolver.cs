@@ -300,7 +300,7 @@ public static partial class ResultReportService
 
         return new
         {
-            schemaVersion = "1.8",
+            schemaVersion = "1.9",
             generatedUtc = DateTime.UtcNow.ToString("O"),
             interop = new
             {
@@ -321,6 +321,7 @@ public static partial class ResultReportService
                 frameNormalizationAvailable,
                 timelineAvailable = timeline.Count > 0,
                 frameMultiplicityAvailable = frameMultiplicity.Count > 0,
+                schedulerJobsAvailable = a.SchedulerJobs.Count > 0,
                 spikesAvailable = spikes.Count > 0,
                 scenarioMarkersAvailable = scenarioAnalysis.RecognizedMarkers > 0,
                 scenarioMarkersComplete = scenarioAnalysis.RecognizedMarkers > 0 && scenarioAnalysis.UnmatchedMarkers == 0,
@@ -842,6 +843,28 @@ public static partial class ResultReportService
                 })
                 .OrderByDescending(x => x.runtime.exclusiveMsPerSecond)
                 .ToArray(),
+            scheduler = new
+            {
+                available = a.SchedulerJobs.Count > 0,
+                jobCount = a.SchedulerJobs.Count,
+                measuredMsPerSecond = Round(a.SchedulerTotalMsPerSecond, 6),
+                note = "Scheduler job timing is inclusive inside 0-Engine and is existing-integration evidence; do not add it to owner totals.",
+                jobs = a.SchedulerJobs
+                    .Select(job => new
+                    {
+                        owner = job.Owner,
+                        jobType = job.JobType,
+                        job = job.Job,
+                        intervalValue = job.IntervalValue,
+                        intervalUnit = job.IntervalUnit,
+                        calls = job.Calls,
+                        callsPerSecond = Round(job.CallsPerSecond, 6),
+                        msPerSecond = Round(job.MsPerSecond, 6),
+                        avgUs = Round(job.AvgUs, 6),
+                        maxMs = Round(job.MaxMs, 6)
+                    })
+                    .ToArray()
+            },
             families,
             owners = ownerRows,
             callbacks = callbackRows
