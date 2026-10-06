@@ -340,7 +340,7 @@ internal static class FixedZeroEngineRuntime
         {
             var required = new[]
             {
-                $"{exportName}.GCET",
+                "__gcetHost.GCET",
                 "MakeEventRegistrar",
                 "SubscribeAction",
                 "G-CET host compatibility bridge v1"
