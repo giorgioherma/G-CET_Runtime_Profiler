@@ -36,7 +36,15 @@ function Write-ModFile([string]$Mod,[string]$Relative,[string]$Source) {
     $Source | Set-Content -LiteralPath $path -Encoding utf8
 }
 
-Write-ModFile 'EasyTrainer' 'init.lua' @'
+# Deliberately use version-decorated/renamed owner folders. Semantic rules
+# must identify compatible live source, not depend on one Nexus release name.
+$easyMod = 'EasyTrainer-v9.9'
+$teleMod = 'GatewayFork-v2.0'
+$discardMod = 'DiscardAmmoOnReload-v5'
+$advancedMod = 'advanced_settings-v2.1'
+$ammoMod = 'Auto Ammo Crafting (I need more bullets)-v4.2'
+
+Write-ModFile $easyMod 'init.lua' @'
 local Event = require("Core/Event")
 local Utils = {}
 local SelfFeature = { NoClip = require("Features/Self/Abilities/NoClip") }
@@ -53,7 +61,7 @@ local modulesLoaded = true
         if Utils and Utils.Weapon then Utils.Weapon.Tick(dt) end
     end)
 '@
-Write-ModFile 'EasyTrainer' 'Features/Self/Abilities/NoClip.lua' @'
+Write-ModFile $easyMod 'Features/Self/Abilities/NoClip.lua' @'
 local Noclip = {}
 function Noclip.HandleMouseLook(action)
     local actionName = Game.NameToString(action:GetName(action))
@@ -63,7 +71,7 @@ function Noclip.HandleMouseLook(action)
 end
 return Noclip
 '@
-Write-ModFile 'EasyTrainer' 'Utils/Weapon.lua' @'
+Write-ModFile $easyMod 'Utils/Weapon.lua' @'
 local Weapon = { isAiming=false, snapshotValid=false }
 function Weapon.HandleInputAction(action)
     local player = Game.GetPlayer()
@@ -103,7 +111,7 @@ end
 return Weapon
 '@
 
-Write-ModFile 'EasyTrainer' 'Core/Event.lua' @'
+Write-ModFile $easyMod 'Core/Event.lua' @'
 local Logger = { Log=function() end }
 local Event = {}
 function Event.Observe(class, method, fn)
@@ -112,7 +120,7 @@ function Event.Observe(class, method, fn)
 end
 return Event
 '@
-Write-ModFile 'EasyTrainer' 'UI/Registry/OptionRegistry.lua' @'
+Write-ModFile $easyMod 'UI/Registry/OptionRegistry.lua' @'
 local OptionRegistry = { Ordered = {} }
 OptionRegistry.Kind = { Toggle = "toggle" }
 local RefIndex = setmetatable({}, { __mode = "k" })
@@ -155,7 +163,7 @@ function OptionRegistry.UpdateHotkeys()
 end
 return OptionRegistry
 '@
-Write-ModFile 'EasyTrainer' 'Controls/Restrictions.lua' @'
+Write-ModFile $easyMod 'Controls/Restrictions.lua' @'
 local Input = require("Core/Input")
 local State = require("Controls/State")
 local Restrictions = {}
@@ -186,7 +194,7 @@ function Restrictions.Update()
 end
 return Restrictions
 '@
-Write-ModFile 'EasyTrainer' 'Features/Self/Abilities/AdvancedMobility.lua' @'
+Write-ModFile $easyMod 'Features/Self/Abilities/AdvancedMobility.lua' @'
 local AdvancedMobility = {}
 AdvancedMobility.toggleDoubleJump = { value = false }
 AdvancedMobility.toggleAirHover = { value = false }
@@ -204,7 +212,7 @@ function AdvancedMobility.Tick()
 end
 return AdvancedMobility
 '@
-Write-ModFile 'EasyTrainer' 'Features/Self/Abilities/SuperSpeed.lua' @'
+Write-ModFile $easyMod 'Features/Self/Abilities/SuperSpeed.lua' @'
 local SuperSpeed = {}
 SuperSpeed.enabled = { value = false }
 local applied = false
@@ -216,7 +224,7 @@ function SuperSpeed.Tick()
 end
 return SuperSpeed
 '@
-Write-ModFile 'EasyTrainer' 'Features/Self/Abilities/AirThrusterBoots.lua' @'
+Write-ModFile $easyMod 'Features/Self/Abilities/AirThrusterBoots.lua' @'
 local AirThrusterBoots = {}
 AirThrusterBoots.enabled = { value = false }
 local applied = false
@@ -229,7 +237,7 @@ function AirThrusterBoots.Tick()
 end
 return AirThrusterBoots
 '@
-Write-ModFile 'EasyTrainer' 'Features/Self/Abilities/Invisibility.lua' @'
+Write-ModFile $easyMod 'Features/Self/Abilities/Invisibility.lua' @'
 local Invisibility = {}
 Invisibility.enabled = { value = false }
 local wasApplied = false
@@ -249,7 +257,7 @@ end
 return Invisibility
 '@
 
-Write-ModFile 'TeleportGatewaySystem' 'init.lua' @'
+Write-ModFile $teleMod 'init.lua' @'
 local TGS = {
     activated=true,
     player=Game.GetPlayer(),
@@ -303,7 +311,7 @@ registerForEvent("onDraw", function()
 end)
 '@
 
-Write-ModFile 'DiscardAmmoOnReload' 'init.lua' @'
+Write-ModFile $discardMod 'init.lua' @'
 local Config = { Init=function() end }
 local UI = {}
 local ReloadSystem = { weaponSwap=false }
@@ -326,7 +334,7 @@ registerForEvent('onInit', function()
 end)
 '@
 
-Write-ModFile 'advanced_settings' 'init.lua' @'
+Write-ModFile $advancedMod 'init.lua' @'
 registerForEvent("onInit", function()
   ConfigSystem = { OnUpdate=function() end }
   CPS = { setThemeBegin=function() end, setThemeEnd=function() end }
@@ -350,7 +358,7 @@ registerForEvent("onOverlayClose", function()
 end)
 '@
 
-Write-ModFile 'Auto Ammo Crafting (I need more bullets)' 'init.lua' @'
+Write-ModFile $ammoMod 'init.lua' @'
 local defaultSettings = { autoConvertTime = 6 }
 local settings = { autoConvertTime = 6, combatCheck = true }
 local firstRun = false
@@ -444,20 +452,20 @@ function CallbackRow([int]$Id,[string]$Owner,[string]$Kind,[string]$Target,[stri
     }
 }
 
-$easyRange = Find-CallbackRange (Join-Path $mods 'EasyTrainer\init.lua') 'Event\.Observe\("PlayerPuppet",\s*"OnAction"'
-$teleRange = Find-CallbackRange (Join-Path $mods 'TeleportGatewaySystem\init.lua') 'registerForEvent\("onUpdate"'
-$discardRange = Find-CallbackRange (Join-Path $mods 'DiscardAmmoOnReload\init.lua') "Observe\('PlayerPuppet','OnAction'"
-$advancedRange = Find-CallbackRange (Join-Path $mods 'advanced_settings\init.lua') 'registerForEvent\("onUpdate"'
-$ammoRange = Find-CallbackRange (Join-Path $mods 'Auto Ammo Crafting (I need more bullets)\init.lua') 'registerForEvent\("onUpdate"'
+$easyRange = Find-CallbackRange (Join-Path $mods "$easyMod\init.lua") 'Event\.Observe\("PlayerPuppet",\s*"OnAction"'
+$teleRange = Find-CallbackRange (Join-Path $mods "$teleMod\init.lua") 'registerForEvent\("onUpdate"'
+$discardRange = Find-CallbackRange (Join-Path $mods "$discardMod\init.lua") "Observe\('PlayerPuppet','OnAction'"
+$advancedRange = Find-CallbackRange (Join-Path $mods "$advancedMod\init.lua") 'registerForEvent\("onUpdate"'
+$ammoRange = Find-CallbackRange (Join-Path $mods "$ammoMod\init.lua") 'registerForEvent\("onUpdate"'
 
 $handoff=@{
  schemaVersion='1.8'
  callbacks=@(
-    (CallbackRow 458 'EasyTrainer' 'Observe' 'PlayerPuppet::OnAction' 'init.lua' $easyRange.Start $easyRange.End 35.64 1485),
-    (CallbackRow 429 'TeleportGatewaySystem' 'event' 'onUpdate' 'init.lua' $teleRange.Start $teleRange.End 17.16 60),
-    (CallbackRow 457 'DiscardAmmoOnReload' 'Observe' 'PlayerPuppet::OnAction' 'init.lua' $discardRange.Start $discardRange.End 15.30 1485),
-    (CallbackRow 21 'advanced_settings' 'event' 'onUpdate' 'init.lua' $advancedRange.Start $advancedRange.End 5.56 60),
-    (CallbackRow 61 'Auto Ammo Crafting (I need more bullets)' 'event' 'onUpdate' 'init.lua' $ammoRange.Start $ammoRange.End 5.31 60)
+    (CallbackRow 458 $easyMod 'Observe' 'PlayerPuppet::OnAction' 'init.lua' $easyRange.Start $easyRange.End 35.64 1485),
+    (CallbackRow 429 $teleMod 'event' 'onUpdate' 'init.lua' $teleRange.Start $teleRange.End 17.16 60),
+    (CallbackRow 457 $discardMod 'Observe' 'PlayerPuppet::OnAction' 'init.lua' $discardRange.Start $discardRange.End 15.30 1485),
+    (CallbackRow 21 $advancedMod 'event' 'onUpdate' 'init.lua' $advancedRange.Start $advancedRange.End 5.56 60),
+    (CallbackRow 61 $ammoMod 'event' 'onUpdate' 'init.lua' $ammoRange.Start $ammoRange.End 5.31 60)
  )
  optimizerEvidence=@()
 } | ConvertTo-Json -Depth 30
@@ -478,6 +486,14 @@ foreach($rule in $rules) {
     }
 }
 
+$teleSemantic = @()
+foreach($family in @($resolver.callbackFamilies)) {
+    $teleSemantic += @($family.topConsumers | Where-Object { $_.owner -eq $teleMod -and $_.semantic.RuleId -eq 'teleport-gateway-system' })
+}
+if($teleSemantic.Count -lt 1 -or @($teleSemantic | Where-Object { $_.semantic.Graph.identityMode -eq 'SOURCE_FINGERPRINT' }).Count -lt 1) {
+    throw 'Renamed Teleport variant was not admitted through unique source-fingerprint identity.'
+}
+
 $manifest=Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
 foreach($rule in $rules) {
     if(@($manifest.transforms | Where-Object { $_.type -eq 'SEMANTIC_RULE' -and $_.RuleId -eq $rule }).Count -ne 1) {
@@ -496,15 +512,15 @@ try {
     }
     $base='bin/x64/plugins/cyber_engine_tweaks/mods/'
 
-    $easyInit=Read-ZipText ($base+'EasyTrainer/init.lua')
-    $easyNoClip=Read-ZipText ($base+'EasyTrainer/Features/Self/Abilities/NoClip.lua')
-    $easyWeapon=Read-ZipText ($base+'EasyTrainer/Utils/Weapon.lua')
-    $easyRegistry=Read-ZipText ($base+'EasyTrainer/UI/Registry/OptionRegistry.lua')
-    $easyRestrictions=Read-ZipText ($base+'EasyTrainer/Controls/Restrictions.lua')
-    $easyMobility=Read-ZipText ($base+'EasyTrainer/Features/Self/Abilities/AdvancedMobility.lua')
-    $easySuperSpeed=Read-ZipText ($base+'EasyTrainer/Features/Self/Abilities/SuperSpeed.lua')
-    $easyThrusters=Read-ZipText ($base+'EasyTrainer/Features/Self/Abilities/AirThrusterBoots.lua')
-    $easyInvisibility=Read-ZipText ($base+'EasyTrainer/Features/Self/Abilities/Invisibility.lua')
+    $easyInit=Read-ZipText ($base+$easyMod+'/init.lua')
+    $easyNoClip=Read-ZipText ($base+$easyMod+'/Features/Self/Abilities/NoClip.lua')
+    $easyWeapon=Read-ZipText ($base+$easyMod+'/Utils/Weapon.lua')
+    $easyRegistry=Read-ZipText ($base+$easyMod+'/UI/Registry/OptionRegistry.lua')
+    $easyRestrictions=Read-ZipText ($base+$easyMod+'/Controls/Restrictions.lua')
+    $easyMobility=Read-ZipText ($base+$easyMod+'/Features/Self/Abilities/AdvancedMobility.lua')
+    $easySuperSpeed=Read-ZipText ($base+$easyMod+'/Features/Self/Abilities/SuperSpeed.lua')
+    $easyThrusters=Read-ZipText ($base+$easyMod+'/Features/Self/Abilities/AirThrusterBoots.lua')
+    $easyInvisibility=Read-ZipText ($base+$easyMod+'/Features/Self/Abilities/Invisibility.lua')
     if($easyInit -notmatch 'SubscribeAction' -or
        $easyInit -notmatch 'CameraMouseX' -or
        $easyInit -notmatch 'RangedAttack' -or
@@ -524,7 +540,7 @@ try {
         throw 'EasyTrainer routed-action/transition-dormancy semantic composition is incomplete.'
     }
 
-    $tele=Read-ZipText ($base+'TeleportGatewaySystem/init.lua')
+    $tele=Read-ZipText ($base+$teleMod+'/init.lua')
     if($tele -match [regex]::Escape('TGS.player:GetWorldPosition().x-gatewayDB[index].gwx') -or
        $tele -notmatch [regex]::Escape('playerPos.x-gatewayDB[index].gwx') -or
        $tele -match '__gcetGatewayScanElapsed' -or
@@ -533,7 +549,7 @@ try {
         throw 'Teleport Gateway functionality-preserving semantic composition is incomplete.'
     }
 
-    $discard=Read-ZipText ($base+'DiscardAmmoOnReload/init.lua')
+    $discard=Read-ZipText ($base+$discardMod+'/init.lua')
     if($discard -notmatch 'SubscribeAction' -or
        $discard -notmatch 'PreviousWeapon' -or
        $discard -notmatch 'MeleeAttack' -or
@@ -541,12 +557,12 @@ try {
         throw 'Discard Ammo exact action routing is incomplete.'
     }
 
-    $advanced=Read-ZipText ($base+'advanced_settings/init.lua')
+    $advanced=Read-ZipText ($base+$advancedMod+'/init.lua')
     if([regex]::Matches($advanced,[regex]::Escape('if not draw then return end')).Count -ne 2) {
         throw 'Advanced Settings overlay-closed gates were not applied to update and draw.'
     }
 
-    $ammo=Read-ZipText ($base+'Auto Ammo Crafting (I need more bullets)/init.lua')
+    $ammo=Read-ZipText ($base+$ammoMod+'/init.lua')
     $interval=$ammo.IndexOf('scriptInterval = scriptInterval + deltaTime')
     $player=$ammo.IndexOf('player = Game.GetPlayerSystem():GetLocalPlayerMainGameObject()',$interval)
     $readyCheck=$ammo.IndexOf('if notReady() then')
