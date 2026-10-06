@@ -408,8 +408,33 @@ internal sealed class SemanticPatchContext
         return _ownerFolder = matches.Count == 1 ? matches[0] : null;
     }
 
-    private static bool Contains(string text, string token) =>
-        text.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0;
+    private static bool Contains(string text, string token)
+    {
+        if (text.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0)
+            return true;
+
+        // File discovery for semantic injectors should survive harmless source
+        // formatting changes. Ignore whitespace and quote style, but keep every
+        // identifier/operator/punctuation token intact.
+        var normalizedText = NormalizeProof(text);
+        var normalizedToken = NormalizeProof(token);
+        return normalizedToken.Length > 0 &&
+            normalizedText.Contains(
+                normalizedToken,
+                StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeProof(string value)
+    {
+        var sb = new StringBuilder(value.Length);
+        foreach (var ch in value)
+        {
+            if (char.IsWhiteSpace(ch) || ch == '\'' || ch == '"')
+                continue;
+            sb.Append(char.ToLowerInvariant(ch));
+        }
+        return sb.ToString();
+    }
 
     private static string Normalize(string value) =>
         NormalizeNonAlphaNumeric.Replace(value.ToLowerInvariant(), "");
