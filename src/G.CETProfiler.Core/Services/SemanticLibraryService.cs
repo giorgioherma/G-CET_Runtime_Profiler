@@ -245,7 +245,7 @@ internal sealed class SemanticLibraryService
             string.IsNullOrWhiteSpace(rule.Proof.AlreadySatisfiedMarker)
                 ? 0
                 : graph.FileTexts.Count(text =>
-                    Contains(text, rule.Proof.AlreadySatisfiedMarker));
+                    HasMarkerLine(text, rule.Proof.AlreadySatisfiedMarker));
         var expectedMarkerFileCount = Math.Max(1, rule.Proof.ExpectedMarkerFileCount);
         var alreadySatisfied = markerCount >= expectedMarkerFileCount;
         var partialState = markerCount > 0 && markerCount < expectedMarkerFileCount;
@@ -337,7 +337,28 @@ internal sealed class SemanticLibraryService
         ModSourceGraph graph) =>
         !string.IsNullOrWhiteSpace(rule.Proof.AlreadySatisfiedMarker) &&
         graph.FileTexts.Any(text =>
-            Contains(text, rule.Proof.AlreadySatisfiedMarker));
+            HasMarkerLine(text, rule.Proof.AlreadySatisfiedMarker));
+
+    private static bool HasMarkerLine(
+        string text,
+        string marker)
+    {
+        if (string.IsNullOrWhiteSpace(marker))
+            return false;
+
+        var expectedComment = "-- " + marker.Trim();
+        foreach (var line in text.Replace("\r\n", "\n", StringComparison.Ordinal)
+                                 .Replace('\r', '\n')
+                                 .Split('\n'))
+        {
+            var trimmed = line.Trim();
+            if (trimmed.Equals(marker.Trim(), StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Equals(expectedComment, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
 
     private static object GraphSummary(
         ModSourceGraph graph,
