@@ -48,7 +48,8 @@
     },
     "productionEntriesMustGenerate": true,
     "partialSemanticStatePolicy": "FAIL_CLOSED_NOT_ALREADY_SATISFIED",
-    "semanticIdentityPolicy": "Mod/folder identity is a hint. Version-decorated names may match directly. Name-independent source identity is opt-in per rule and requires at least four independent proof points plus a source-shaped anchor; ambiguous or weak fingerprints fail closed."
+    "semanticIdentityPolicy": "Mod/folder identity is a hint. Version-decorated names may match directly. Name-independent source identity is opt-in per rule and requires at least four independent proof points plus a source-shaped anchor; ambiguous or weak fingerprints fail closed.",
+    "semanticSatisfactionPolicy": "G-CET markers are authoritative when present, but equivalent manual/foreign implementations may also satisfy a semantic rule when its explicit source postconditions are all proven in the current live owner tree."
   },
   "entries": [
     {
@@ -194,7 +195,15 @@
           "Diagnostics"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:repeatable-cyberpsychos",
-        "expectedMarkerFileCount": 1
+        "expectedMarkerFileCount": 1,
+        "satisfiedAll": [
+          "cyberpsychos.runtime_combat_reward",
+          "cyberpsychos.runtime_watchdog",
+          "cyberpsychos.presentation_worker",
+          "cyberpsychos.runtime",
+          "cyberpsychos.presentation",
+          "cyberpsychos.scheduler"
+        ]
       },
       "behavior": {
         "handler": "SEMANTIC_MULTI_RATE_SPLIT",
@@ -275,7 +284,15 @@
           "Race"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:cybertrials",
-        "expectedMarkerFileCount": 3
+        "expectedMarkerFileCount": 3,
+        "satisfiedAll": [
+          "cybertrials.world_far",
+          "cybertrials.world_near",
+          "cybertrials.system_state",
+          "cybertrials.realtime",
+          "mappin:GetVariant() ~= gamedataMappinVariant.Zzz18_RacingVariant",
+          "if #mappinIDs == #tracks and #tracks > 0 then return end"
+        ]
       },
       "behavior": {
         "handler": "SEMANTIC_MULTI_RATE_WITH_PREFILTER",
@@ -352,7 +369,13 @@
           "PokerHUD"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:streetgamespoker",
-        "expectedMarkerFileCount": 1
+        "expectedMarkerFileCount": 1,
+        "satisfiedAll": [
+          "poker.realtime",
+          "poker.world_far",
+          "poker.world_near",
+          "poker.seat_near"
+        ]
       },
       "behavior": {
         "handler": "SEMANTIC_DISTANCE_ACTIVITY_SPLIT",
@@ -742,7 +765,14 @@
           "Core:Update"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:driveaerialvehicle",
-        "expectedMarkerFileCount": 2
+        "expectedMarkerFileCount": 2,
+        "satisfiedAll": [
+          "local idleEventTick = 0",
+          "if activeVehicleState then",
+          "elseif situation == Def.Situation.Normal then",
+          "if idleEventTick >= 8 then",
+          "if situation ~= Def.Situation.Idle and situation ~= Def.Situation.Normal then"
+        ]
       },
       "behavior": {
         "handler": "SEMANTIC_ACTIVITY_GATE",
@@ -814,7 +844,13 @@
           "interactionUI.update"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:illegal-mechanic",
-        "expectedMarkerFileCount": 1
+        "expectedMarkerFileCount": 1,
+        "satisfiedAll": [
+          "interactionUpdateInterval = 0.20",
+          "if not state.pulseActive and not state.hubVisible and currentTime < state.nextInteractionUpdateAt then",
+          "state.nextInteractionUpdateAt = currentTime + cfg.interactionUpdateInterval",
+          "updatePulseVisual(system, currentTime)"
+        ]
       },
       "behavior": {
         "handler": "SEMANTIC_ACTIVE_IDLE_SPLIT",
@@ -1017,7 +1053,15 @@
           "Manager"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:questrunner",
-        "expectedMarkerFileCount": 1
+        "expectedMarkerFileCount": 1,
+        "satisfiedAll": [
+          "local pass5ManagerIdleAccumulator = 0.0",
+          "local pass5SpawnerAccumulator = 0.0",
+          "if Manager.current then",
+          "if pass5ManagerIdleAccumulator >= 0.20 then",
+          "if pass5SpawnerAccumulator >= 0.25 then",
+          "Spawner.Update(elapsed)"
+        ]
       },
       "behavior": {
         "handler": "SEMANTIC_ACTIVE_IDLE_SPLIT",
