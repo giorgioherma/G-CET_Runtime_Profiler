@@ -49,6 +49,14 @@ internal static class CallbackResolverService
 
         var semanticLibrary = SemanticLibraryService.Load(semanticLibraryPath, modsRoot);
         var sourceIndex = new LiveSourceIndex(modsRoot);
+        var schedulerJobs = ReadSchedulerJobs(handoff.RootElement);
+        var schedulerByOwner = callbacks
+            .Select(callback => callback.Owner)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                owner => owner,
+                owner => ResolveSchedulerIntegration(owner, schedulerJobs, sourceIndex),
+                StringComparer.OrdinalIgnoreCase);
 
         var familyGroups = callbacks
             .GroupBy(x => FamilyKey(x.Kind, x.Target), StringComparer.OrdinalIgnoreCase)
@@ -77,6 +85,7 @@ internal static class CallbackResolverService
         var semanticReadyRules = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var unresolved = 0;
         var alreadySatisfied = 0;
+        var residualSchedulerBootstrapCallbacks = 0;
 
         foreach (var family in familyGroups)
         {
@@ -109,6 +118,20 @@ internal static class CallbackResolverService
                     semanticReadyRules.Add(semantic.RuleId);
 
                 var dormancy = ResolveDormancyEvidence(callback, generic.Source, sourceIndex);
+                schedulerByOwner.TryGetValue(
+                    callback.Owner,
+                    out var schedulerIntegration);
+                schedulerIntegration ??= SchedulerIntegration.None;
+                var residualSchedulerBootstrap =
+                    schedulerIntegration.Detected &&
+                    callback.Target.Equals("onUpdate", StringComparison.OrdinalIgnoreCase) &&
+                    generic.Automatable &&
+                    generic.RecipeFamilies.Any(recipe =>
+                        recipe.Equals(
+                            "FRAME_DISPATCH_CONSOLIDATION",
+                            StringComparison.OrdinalIgnoreCase));
+                if (residualSchedulerBootstrap)
+                    residualSchedulerBootstrapCallbacks++;
 
                 var isAlreadySatisfied =
                     generic.Status.Equals(
@@ -173,6 +196,30 @@ internal static class CallbackResolverService
                         generic.Facts,
                         generic.Evidence,
                         generic.Blockers
+                    },
+                    existingOptimization = new
+                    {
+                        zeroEngineSchedulerDetected = schedulerIntegration.Detected,
+                        sourceProven = schedulerIntegration.SourceProven,
+                        residualNativeOnUpdate = residualSchedulerBootstrap,
+                        schedulerJobCount = schedulerIntegration.Jobs.Length,
+                        schedulerMsPerSecond = Round(schedulerIntegration.TotalMsPerSecond),
+                        capturedSchedulerOwners = schedulerIntegration.CapturedOwners,
+                        jobs = schedulerIntegration.Jobs.Select(job => new
+                        {
+                            job.Owner,
+                            job.JobType,
+                            job.Job,
+                            job.IntervalValue,
+                            job.IntervalUnit,
+                            callsPerSecond = Round(job.CallsPerSecond),
+                            msPerSecond = Round(job.MsPerSecond)
+                        }).ToArray(),
+                        note = !schedulerIntegration.Detected
+                            ? "No source-proven captured 0-Engine Scheduler job was found for this owner."
+                            : residualSchedulerBootstrap
+                                ? "Existing 0-Engine Scheduler work is source-proven. This callback is a residual native onUpdate; frame consolidation only folds that remaining callback into the shared dispatcher and does not recreate the scheduled lanes."
+                                : "Existing 0-Engine Scheduler work is source-proven from captured job IDs that are present in the current live owner source."
                     },
                     dormancy = new
                     {
@@ -319,6 +366,8 @@ internal static class CallbackResolverService
                 dormancyClassificationEvidenceOnly = true,
                 dormancyCanAuthorizeGeneration = false,
                 dormancyClasses = new[] { "NEVER_GATE", "HARD_DORMANT", "DISCOVERY_DORMANT", "BACKGROUND", "UNKNOWN" },
+                existingSchedulerRecognition = true,
+                existingSchedulerRecognitionPolicy = "Captured Scheduler job IDs must also exist as quoted literals in the current live owner source. Recognition is evidence/reporting only and does not suppress an independently safe generic transform.",
                 sharedProviderOpportunityAnalysis = true,
                 sharedProviderGenerationEnabled = true,
                 sharedProviderGenerationFamilies = SharedProviderCatalog.GenerationFamilies
@@ -355,6 +404,8 @@ internal static class CallbackResolverService
                 sharedProviderReadyReads = sharedProviderReadyReadCount,
                 sharedProviderReadyFamilies,
                 alreadySatisfied,
+                schedulerIntegratedOwners = schedulerByOwner.Values.Count(value => value.Detected),
+                residualSchedulerBootstrapCallbacks,
                 unresolved,
                 sharedProviderFamilies = sharedProviderOpportunities.Length,
                 sharedProviderMeasuredCallbacks = sharedProviderOpportunities
@@ -4146,6 +4197,71 @@ internal static class CallbackResolverService
         return result;
     }
 
+    private static List<SchedulerJobMetric> ReadSchedulerJobs(JsonElement root)
+    {
+        var result = new List<SchedulerJobMetric>();
+        if (!root.TryGetProperty("scheduler", out var scheduler) ||
+            scheduler.ValueKind != JsonValueKind.Object ||
+            !scheduler.TryGetProperty("jobs", out var jobs) ||
+            jobs.ValueKind != JsonValueKind.Array)
+            return result;
+
+        foreach (var row in jobs.EnumerateArray())
+        {
+            var job = JsonString(row, "job", "Job");
+            if (string.IsNullOrWhiteSpace(job))
+                continue;
+
+            result.Add(new SchedulerJobMetric
+            {
+                Owner = JsonString(row, "owner", "Owner"),
+                JobType = JsonString(row, "jobType", "JobType"),
+                Job = job,
+                IntervalValue = JsonDouble(row, "intervalValue", "IntervalValue"),
+                IntervalUnit = JsonString(row, "intervalUnit", "IntervalUnit"),
+                CallsPerSecond = JsonDouble(row, "callsPerSecond", "CallsPerSecond"),
+                MsPerSecond = JsonDouble(row, "msPerSecond", "MsPerSecond")
+            });
+        }
+
+        return result;
+    }
+
+    private static SchedulerIntegration ResolveSchedulerIntegration(
+        string callbackOwner,
+        IReadOnlyList<SchedulerJobMetric> schedulerJobs,
+        LiveSourceIndex sourceIndex)
+    {
+        if (schedulerJobs.Count == 0 ||
+            string.IsNullOrWhiteSpace(callbackOwner))
+            return SchedulerIntegration.None;
+
+        var matched = schedulerJobs
+            .Where(job =>
+                !string.IsNullOrWhiteSpace(job.Job) &&
+                sourceIndex.OwnerContainsQuotedToken(callbackOwner, job.Job))
+            .OrderByDescending(job => job.MsPerSecond)
+            .ThenBy(job => job.Job, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (matched.Length == 0)
+            return SchedulerIntegration.None;
+
+        return new SchedulerIntegration
+        {
+            Detected = true,
+            SourceProven = true,
+            Jobs = matched,
+            CapturedOwners = matched
+                .Select(job => job.Owner)
+                .Where(owner => !string.IsNullOrWhiteSpace(owner))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(owner => owner, StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
+            TotalMsPerSecond = matched.Sum(job => job.MsPerSecond)
+        };
+    }
+
     private static List<CallbackMetric> ReadCallbacks(JsonElement root)
     {
         var result = new List<CallbackMetric>();
@@ -4275,6 +4391,54 @@ internal static class CallbackResolverService
             {
                 _luaFiles = new List<string>();
             }
+        }
+
+        public bool OwnerContainsQuotedToken(
+            string owner,
+            string token)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+                return false;
+
+            var ownerFolder = ResolveOwnerFolder(owner);
+            if (ownerFolder is null)
+                return false;
+
+            var pattern =
+                @"['""]" +
+                Regex.Escape(token) +
+                @"['""]";
+
+            try
+            {
+                foreach (var path in Directory.EnumerateFiles(
+                             ownerFolder,
+                             "*.lua",
+                             SearchOption.AllDirectories))
+                {
+                    string text;
+                    try
+                    {
+                        text = File.ReadAllText(path);
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+
+                    if (Regex.IsMatch(
+                            text,
+                            pattern,
+                            RegexOptions.CultureInvariant))
+                        return true;
+                }
+            }
+            catch
+            {
+                return false;
+            }
+
+            return false;
         }
 
         public ResolvedSource? Resolve(CallbackMetric callback)
@@ -4729,6 +4893,27 @@ internal static class CallbackResolverService
         public string[] Owners { get; init; } = Array.Empty<string>();
         public SharedProviderCallbackEvidence[] Callbacks { get; init; } =
             Array.Empty<SharedProviderCallbackEvidence>();
+    }
+
+    private sealed class SchedulerJobMetric
+    {
+        public string Owner { get; init; } = "";
+        public string JobType { get; init; } = "";
+        public string Job { get; init; } = "";
+        public double IntervalValue { get; init; }
+        public string IntervalUnit { get; init; } = "";
+        public double CallsPerSecond { get; init; }
+        public double MsPerSecond { get; init; }
+    }
+
+    private sealed class SchedulerIntegration
+    {
+        public static SchedulerIntegration None { get; } = new();
+        public bool Detected { get; init; }
+        public bool SourceProven { get; init; }
+        public SchedulerJobMetric[] Jobs { get; init; } = Array.Empty<SchedulerJobMetric>();
+        public string[] CapturedOwners { get; init; } = Array.Empty<string>();
+        public double TotalMsPerSecond { get; init; }
     }
 
     private sealed class CallbackMetric
