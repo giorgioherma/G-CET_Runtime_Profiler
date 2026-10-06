@@ -3,6 +3,9 @@
 All notable public changes to G-CET Runtime Profiler are recorded here.
 
 ## [Unreleased]
+- Resolver accuracy pass: generic frame-dispatch consolidation now covers source-proven `onDraw` registrations as well as `onUpdate`, recognizes existing owner-specific 0-Engine draw registrars, and resolves CET `n"ActionName"` CName literals as finite action selectors.
+- Added source-proven semantic AUTO rules for DriveBus, QuestTrackingToggle, sitAnywhere, Repeatable Increased Criminal Activity, Dedka Auto Shop, MarmurBank, and Immersive Third Person. The rules preserve installed gameplay behavior while recovering exact-action routing, active/idle cadence splits, visible-only draw work, finite Bank action prefiltering, and adaptive ITP supervisor/maintenance lanes.
+- Frame-only AUTO now reports its scope explicitly as registration-dispatch-only and surfaces material callback-body work that remains after consolidation, preventing a hot callback from appearing fully optimized merely because its CET-facing registrar was consolidated.
 - Restored the dev profiler's full pre-debug FunctionOverride tracing/attribution path and retained only the proven capture-off safety gate: when capture is OFF, Observe/ObserveAfter/Override execute without profiler ownership/source/timing resolution; once capture starts, full source discovery, adaptive DeepTrace and original Override downstream attribution remain available.
 - Added the standalone G-CET Resolver and deployable pass generator. It inspects every measured non-infrastructure callback, applies only mechanically proven generic AUTO recipes plus source-proven production semantic rules, and emits one game-root overlay ZIP without modifying the live CET tree.
 - Generic AUTO is restricted to finite OnAction routing/prefiltering and frame-dispatch consolidation. Retired structural/cadence/dormancy generator branches were removed; those recognizers may remain analysis evidence but cannot generate code.
