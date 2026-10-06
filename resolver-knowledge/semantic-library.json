@@ -14,7 +14,7 @@
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
     "fullPassRule": "A semantic injector can run only when the current capture contains a >=3.0 ms/s measured callback, the library rule matches, and the current live mod source graph proves its anchors.",
-    "enabledInjectorCount": 18,
+    "enabledInjectorCount": 23,
     "profileOnlyRuleCount": 0,
     "note": "The production semantic base is intentionally compact and callback-specific. Runtime cost only earns review; automatic rules require a small, provable state model, exact known callback families, and no bespoke timing.",
     "admissionPolicy": {
@@ -1317,6 +1317,402 @@
       "referenceOverrideAllowed": false,
       "evidenceMembership": [
         "SECOND_MODSTACK_20261006"
+      ]
+    },
+    {
+      "id": "overclocked-jenkins-tendons",
+      "identityHints": [
+        "OverclockedJenkinsTendons"
+      ],
+      "policyClass": "IGNITION_ACTIVITY_GATE_PLUS_ACTION_ROUTING",
+      "callbacks": [
+        {
+          "kind": "Observe",
+          "target": "PlayerPuppet::OnAction",
+          "role": "hot-path"
+        },
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "Input.handleAction",
+          "function Ignition.update",
+          "function Swim.update",
+          "Helpers.isSprinting",
+          "Helpers.isSliding",
+          "Helpers.isInWater",
+          "tickSmokeVisionStrips"
+        ],
+        "ownerAnyGroups": [
+          [
+            "Sprint",
+            "ToggleSprint"
+          ],
+          [
+            "DodgeForward",
+            "dashedThisCycle"
+          ],
+          [
+            "state.phase",
+            "IGNITION"
+          ]
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:overclocked-jenkins-tendons",
+        "expectedMarkerFileCount": 4
+      },
+      "behavior": {
+        "handler": "SEMANTIC_IGNITION_ACTIVITY_SPLIT",
+        "concepts": [
+          "wildcardActionRouterWithLocalPrefilter",
+          "inputWake",
+          "ignitionRealtime",
+          "stableIdleMaintenance",
+          "locomotionSnapshot"
+        ],
+        "lanes": [
+          {
+            "role": "IGNITION_BURN_SWIM_AND_TRANSITIONS",
+            "cadence": "EVERY_FRAME",
+            "seconds": 0
+          },
+          {
+            "role": "STABLE_IDLE_MAINTENANCE",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.1
+          },
+          {
+            "role": "RELEVANT_INPUT_WAKE",
+            "cadence": "ACTION_ROUTED",
+            "seconds": 0
+          }
+        ]
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 40.6,
+        "evidenceStack": "THIRD_MODSTACK_POST_GENERIC",
+        "admitted": true
+      },
+      "cadenceGroup": "IGNITION_REALTIME_IDLE_10HZ",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "THIRD_MODSTACK_20261006"
+      ]
+    },
+    {
+      "id": "songsdeck",
+      "identityHints": [
+        "songsdeck",
+        "SongsDeck"
+      ],
+      "policyClass": "OVERRIDE_EXACT_SEMANTIC_PREFILTER",
+      "callbacks": [
+        {
+          "kind": "Override",
+          "target": "PlayerPuppet::OnAction",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "Override(\"PlayerPuppet\", \"OnAction\"",
+          "StopDeviceControl",
+          "VisionHold",
+          "IconicCyberware",
+          "BlackwallUpload.Execute"
+        ],
+        "ownerAnyGroups": [
+          [
+            "MeleeBlock",
+            "RangedAttack"
+          ],
+          [
+            "MeleeAttack",
+            "overdriveOccuring"
+          ]
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:songsdeck",
+        "expectedMarkerFileCount": 1
+      },
+      "behavior": {
+        "handler": "SEMANTIC_OVERRIDE_EXACT_PREFILTER",
+        "concepts": [
+          "preserveOverride",
+          "preserveConsumeSemantics",
+          "sixActionDomain",
+          "debugAllActionMode"
+        ],
+        "lanes": [
+          {
+            "role": "RELEVANT_OVERRIDE_ACTIONS",
+            "cadence": "ORIGINAL_OVERRIDE",
+            "seconds": 0
+          },
+          {
+            "role": "IRRELEVANT_ACTIONS",
+            "cadence": "DIRECT_WRAPPED_METHOD",
+            "seconds": 0
+          }
+        ]
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 19.9,
+        "evidenceStack": "THIRD_MODSTACK_POST_GENERIC",
+        "admitted": true
+      },
+      "cadenceGroup": "EXACT_OVERRIDE_PREFILTER",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "THIRD_MODSTACK_20261006"
+      ]
+    },
+    {
+      "id": "dynamic-outfits-judy",
+      "identityHints": [
+        "DynamicOutfitsJudy"
+      ],
+      "policyClass": "EVENT_WOKEN_SPAWN_ACTIVITY_SPLIT",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "DynamicFramework.isGameLoaded",
+          "PrefetchAppearanceChange",
+          "ScheduleAppearanceChange",
+          "GetActiveShieldInfo",
+          "DynamicFramework.timer"
+        ],
+        "ownerAnyGroups": [
+          [
+            "ScriptedPuppet",
+            "OnGameAttached"
+          ],
+          [
+            "is_spawned",
+            "npc_entity"
+          ]
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:dynamic-outfits-judy",
+        "expectedMarkerFileCount": 1
+      },
+      "behavior": {
+        "handler": "SEMANTIC_EVENT_WOKEN_IDLE_SPLIT",
+        "concepts": [
+          "spawnedNpcRealtime",
+          "attachDetachWake",
+          "unspawnedQuestMaintenance",
+          "accumulatedDelta"
+        ],
+        "lanes": [
+          {
+            "role": "MANAGED_NPC_SPAWNED",
+            "cadence": "EVERY_FRAME",
+            "seconds": 0
+          },
+          {
+            "role": "UNSPAWNED_MISSION_MAINTENANCE",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.25
+          },
+          {
+            "role": "SESSION_REINITIALIZATION",
+            "cadence": "IMMEDIATE",
+            "seconds": 0
+          }
+        ]
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 16.9,
+        "evidenceStack": "THIRD_MODSTACK_POST_GENERIC",
+        "admitted": true
+      },
+      "cadenceGroup": "SPAWNED_REALTIME_UNSPAWNED_4HZ",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "THIRD_MODSTACK_20261006"
+      ]
+    },
+    {
+      "id": "fov-sentinel",
+      "identityHints": [
+        "FovSentinel"
+      ],
+      "policyClass": "DUPLICATE_CAMERA_QUERY_ELIMINATION",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onDraw",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "FindVehicleCameraManager",
+          "##FakeWidget",
+          "local ac=a9()",
+          "ad(a9(),true,0)"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:fov-sentinel",
+        "expectedMarkerFileCount": 1
+      },
+      "behavior": {
+        "handler": "SEMANTIC_DUPLICATE_QUERY_REUSE",
+        "concepts": [
+          "cameraStateReuse",
+          "noCadenceChange",
+          "minifiedFailClosedAnchor"
+        ],
+        "lanes": [
+          {
+            "role": "ON_DRAW",
+            "cadence": "UNCHANGED",
+            "seconds": 0
+          }
+        ]
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 8.7,
+        "evidenceStack": "THIRD_MODSTACK_POST_GENERIC",
+        "admitted": true
+      },
+      "cadenceGroup": "NO_CADENCE_CHANGE_QUERY_REUSE",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "THIRD_MODSTACK_20261006"
+      ]
+    },
+    {
+      "id": "fenix-mantis-blade",
+      "identityHints": [
+        "FenixMantisBlade"
+      ],
+      "policyClass": "EXPENSIVE_WORK_GUARD_HOIST",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "function wallhang.Update",
+          "isHangPressed",
+          "isStuck",
+          "IsHighEnough",
+          "MeleeBlock"
+        ],
+        "ownerAnyGroups": [
+          [
+            "CameraMouseX",
+            "Jump"
+          ],
+          [
+            "physics.RayCast",
+            "wallhang_physics"
+          ]
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:fenix-mantis-blade",
+        "expectedMarkerFileCount": 1
+      },
+      "behavior": {
+        "handler": "SEMANTIC_IDLE_GUARD_HOIST",
+        "concepts": [
+          "inactiveWallhang",
+          "raycastAvoidance",
+          "inputWake",
+          "jumpCountResetPreserved"
+        ],
+        "lanes": [
+          {
+            "role": "INACTIVE",
+            "cadence": "EARLY_RETURN",
+            "seconds": 0
+          },
+          {
+            "role": "HANG_OR_STUCK",
+            "cadence": "EVERY_FRAME",
+            "seconds": 0
+          }
+        ]
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 5,
+        "evidenceStack": "THIRD_MODSTACK_POST_GENERIC",
+        "admitted": true
+      },
+      "cadenceGroup": "ACTIVE_ONLY_EXPENSIVE_WORK",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "THIRD_MODSTACK_20261006"
       ]
     }
   ],
