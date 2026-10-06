@@ -14,7 +14,7 @@
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
     "fullPassRule": "A semantic injector can run only when the current capture contains a >=3.0 ms/s measured callback, the library rule matches, and the current live mod source graph proves its anchors.",
-    "enabledInjectorCount": 28,
+    "enabledInjectorCount": 29,
     "profileOnlyRuleCount": 0,
     "note": "The production semantic base is intentionally compact and callback-specific. Runtime cost only earns review; automatic rules require a small, provable state model, exact known callback families, and no bespoke timing.",
     "admissionPolicy": {
@@ -1814,6 +1814,100 @@
       "referenceOverrideAllowed": false,
       "evidenceMembership": [
         "FOURTH_STACK_20261006"
+      ]
+    },
+    {
+      "id": "easytrainer-background-dormancy",
+      "identityHints": [
+        "EasyTrainer"
+      ],
+      "policyClass": "EXPLICIT_USER_HARD_DORMANCY",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onDraw",
+          "role": "explicit-dormancy-control"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "Event.RegisterUpdate(function(dt)",
+          "Event.RegisterDraw(function()",
+          "Notification.Render()",
+          "Vehicle.VehicleSpeedometer.Render()",
+          "RenderMainMenu()",
+          "registerForEvent(\"onOverlayOpen\", function() State.overlayOpen = true end)",
+          "function State.ToggleMenu()",
+          "Buttons.Option(L(\"settingsmenu.saveall.label\")"
+        ],
+        "ownerAnyGroups": [
+          [
+            "State.overlayOpen = false",
+            "State.IsMenuOpen()"
+          ],
+          [
+            "Buttons.Break(\"Configuration\", \"\")",
+            "return { title = \"settingsmenu.title\", view = DrawSettings }"
+          ]
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:easytrainer-background-dormancy",
+        "expectedMarkerFileCount": 3,
+        "allowIdentityFallback": true
+      },
+      "behavior": {
+        "handler": "SEMANTIC_EXPLICIT_BACKGROUND_DORMANCY",
+        "concepts": [
+          "explicitUserDormancy",
+          "zeroPollingWake",
+          "cetOverlayWakeControl",
+          "frameLaneSuspension",
+          "gameplayHookBypass",
+          "nonPersistentSafeDefault"
+        ],
+        "lanes": [
+          {
+            "role": "ACTIVE_EASYTRAINER",
+            "cadence": "UNCHANGED",
+            "seconds": 0
+          },
+          {
+            "role": "DORMANT_UPDATE",
+            "cadence": "EARLY_RETURN",
+            "seconds": 0
+          },
+          {
+            "role": "DORMANT_DRAW_OVERLAY_CLOSED",
+            "cadence": "EARLY_RETURN",
+            "seconds": 0
+          },
+          {
+            "role": "DORMANT_CET_WAKE_UI",
+            "cadence": "ON_CET_OVERLAY_DRAW_ONLY",
+            "seconds": 0
+          }
+        ]
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 78.306963,
+        "evidenceStack": "FOURTH_STACK_FINAL",
+        "admitted": true
+      },
+      "cadenceGroup": "USER_CONTROLLED_HARD_DORMANCY_WITH_CET_WAKE",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "FOURTH_STACK_20261006_FINAL"
       ]
     },
     {
