@@ -327,7 +327,7 @@ if(@($manifest.transforms|Where-Object{$_.type-eq'FRAME_DISPATCH_CONSOLIDATION' 
  throw 'Generic onDraw consolidation did not compose before Dedka semantic.'
 }
 
-Add-Type -AssemblyName IO.Compression.FileSystem
+Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip=[IO.Compression.ZipFile]::OpenRead([string]$resolved.pass.ZipPath)
 try{
  function Z($n){$e=$zip.GetEntry($n);if(!$e){throw "ZIP entry missing: $n"};$r=[IO.StreamReader]::new($e.Open());try{$r.ReadToEnd()}finally{$r.Dispose()}}
@@ -338,6 +338,6 @@ try{
  $x=Z($b+'repeatable_increased_criminal_activity/init.lua');if($x-notmatch'diagnosticsElapsed' -or $x-notmatch'runtimeTick\(includeDiagnostics\)' -or $x-notmatch'__gcetRunDiagnostics = Mod\.diagnosticsElapsed >= 5\.0'){throw 'RICA split incomplete.'}
  $x=Z($b+'Dedka Auto Shop/init.lua');if($x-notmatch'if state\.showing then' -or $x-notmatch'__gcetRegisterEvent_\d+\("onDraw"'){throw 'Dedka draw composition incomplete.'}
  $x=Z($b+'marmurbank/external/InteractionUI.lua');if($x-notmatch'__gcetMarmurActionRelevant' -or $x-notmatch'WORLD_INTERACTION_ACTIONS\[name\] == true' -or $x-notmatch'wrapped\(action, wrappedConsumer\)'){throw 'MarmurBank prefilter incomplete.'}
- $x=Z($b+'immersive_third_person/init.lua');if($x-notmatch'__gcetItppSupervisorElapsed' -or $x-notmatch'__gcetItppMaintenanceElapsed' -or $x-notmatch'if state\.pendingFppCleanup then' -or $x-notmatch'pcall\(mod\.fallCommitTick, delta\)'){throw 'ITP split incomplete.'}
+ $x=Z($b+'immersive_third_person/init.lua');if($x-notmatch'__gcetItppSupervisorElapsed' -or $x-notmatch'__gcetItppMaintenanceElapsed' -or $x-notmatch'if state\.enabled or state\.cameraTransition then' -or $x-notmatch'if state\.pendingFppCleanup then' -or $x-notmatch'pcall\(mod\.fallCommitTick, delta\)'){throw 'ITP split incomplete.'}
 }finally{$zip.Dispose()}
 Write-Host 'Resolver-accuracy semantic composition contract passed.'
