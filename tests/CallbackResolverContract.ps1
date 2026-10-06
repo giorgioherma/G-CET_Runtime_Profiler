@@ -1139,6 +1139,14 @@ if (!$frame.generic.Automatable) { throw 'Direct onUpdate registration was not m
 if (@($frame.generic.RecipeFamilies) -notcontains 'FRAME_DISPATCH_CONSOLIDATION') {
     throw 'Frame dispatch consolidation recipe was not exposed.'
 }
+if ($frame.generic.optimizationScope -ne 'REGISTRATION_DISPATCH_ONLY' -or
+    !$frame.generic.materialBodyResidualAfterFrameDispatch) {
+    throw 'Frame-only AUTO did not report its material callback-body residual.'
+}
+if ([int]$result.summary.frameDispatchOnlyMaterialResidual -lt 1 -or
+    [double]$result.summary.frameDispatchOnlyMaterialResidualMsPerSecond -lt 5.0) {
+    throw 'Resolver summary hid material work behind frame-dispatch-only AUTO.'
+}
 if ($frame.source.MatchMode -ne 'profiler-owner-relative') {
     throw 'onUpdate bare init.lua did not use owner-relative source mapping.'
 }
