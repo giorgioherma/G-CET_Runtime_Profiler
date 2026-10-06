@@ -937,8 +937,10 @@ public static class PassGeneratorService
                 header.Add($"local {item.Token} = registerForEvent");
                 header.Add("do");
                 header.Add("    local __gcetOk, __gcetEngine = pcall(GetMod, \"0-Engine\")");
-                header.Add("    if __gcetOk and type(__gcetEngine) == \"table\" and type(__gcetEngine.MakeEventRegistrar) == \"function\" then");
-                header.Add($"        {item.Token} = __gcetEngine.MakeEventRegistrar({owner}, registerForEvent)");
+                header.Add("    local __gcetApi = __gcetEngine");
+                header.Add("    if __gcetOk and type(__gcetEngine) == \"table\" and type(__gcetEngine.GCET) == \"table\" then __gcetApi = __gcetEngine.GCET end");
+                header.Add("    if __gcetOk and type(__gcetApi) == \"table\" and type(__gcetApi.MakeEventRegistrar) == \"function\" then");
+                header.Add($"        {item.Token} = __gcetApi.MakeEventRegistrar({owner}, registerForEvent)");
                 header.Add("    end");
                 header.Add("end");
                 header.Add("");
@@ -980,7 +982,7 @@ public static class PassGeneratorService
         return Regex.IsMatch(
             text,
             @"\b" + escapedToken +
-            @"\s*=\s*__gcetEngine\.MakeEventRegistrar\s*\(\s*" +
+            @"\s*=\s*__gcet(?:Engine|Api)\.MakeEventRegistrar\s*\(\s*" +
             escapedOwner +
             @"\s*,\s*registerForEvent\s*\)",
             RegexOptions.CultureInvariant);
@@ -1044,7 +1046,9 @@ public static class PassGeneratorService
         lines.Add($"{indent}local __gcetRouted_{candidate.RegistrationId} = false");
         lines.Add($"{indent}local __gcetHandles_{candidate.RegistrationId} = {{}}");
         lines.Add($"{indent}local __gcetOk_{candidate.RegistrationId}, __gcetEngine_{candidate.RegistrationId} = pcall(GetMod, \"0-Engine\")");
-        lines.Add($"{indent}if __gcetOk_{candidate.RegistrationId} and type(__gcetEngine_{candidate.RegistrationId}) == \"table\" and type(__gcetEngine_{candidate.RegistrationId}.SubscribeAction) == \"function\" then");
+        lines.Add($"{indent}local __gcetApi_{candidate.RegistrationId} = __gcetEngine_{candidate.RegistrationId}");
+        lines.Add($"{indent}if __gcetOk_{candidate.RegistrationId} and type(__gcetEngine_{candidate.RegistrationId}) == \"table\" and type(__gcetEngine_{candidate.RegistrationId}.GCET) == \"table\" then __gcetApi_{candidate.RegistrationId} = __gcetEngine_{candidate.RegistrationId}.GCET end");
+        lines.Add($"{indent}if __gcetOk_{candidate.RegistrationId} and type(__gcetApi_{candidate.RegistrationId}) == \"table\" and type(__gcetApi_{candidate.RegistrationId}.SubscribeAction) == \"function\" then");
         lines.Add($"{indent}    __gcetRouted_{candidate.RegistrationId} = pcall(function()");
 
         if (candidate.DynamicGateResolved)
@@ -1053,7 +1057,7 @@ public static class PassGeneratorService
             foreach (var action in candidate.Actions)
                 lines.Add($"{indent}        __gcetExact_{candidate.RegistrationId}[{LuaQuote(action)}] = true");
 
-            lines.Add($"{indent}        __gcetHandles_{candidate.RegistrationId}[#__gcetHandles_{candidate.RegistrationId} + 1] = __gcetEngine_{candidate.RegistrationId}.SubscribeAction({{");
+            lines.Add($"{indent}        __gcetHandles_{candidate.RegistrationId}[#__gcetHandles_{candidate.RegistrationId} + 1] = __gcetApi_{candidate.RegistrationId}.SubscribeAction({{");
             lines.Add($"{indent}            id = {LuaQuote(idBase + ".GatedWildcard")},");
             lines.Add($"{indent}            actions = \"*\",");
             lines.Add($"{indent}            decodeType = false");
@@ -1086,7 +1090,7 @@ public static class PassGeneratorService
             if (candidate.Actions.Length > 0)
             {
                 var actions = string.Join(", ", candidate.Actions.Select(LuaQuote));
-                lines.Add($"{indent}        __gcetHandles_{candidate.RegistrationId}[#__gcetHandles_{candidate.RegistrationId} + 1] = __gcetEngine_{candidate.RegistrationId}.SubscribeAction({{");
+                lines.Add($"{indent}        __gcetHandles_{candidate.RegistrationId}[#__gcetHandles_{candidate.RegistrationId} + 1] = __gcetApi_{candidate.RegistrationId}.SubscribeAction({{");
                 lines.Add($"{indent}            id = {LuaQuote(idBase + ".Exact")},");
                 lines.Add($"{indent}            actions = {{ {actions} }},");
                 // The generated router never consumes routed action type. The
@@ -1103,7 +1107,7 @@ public static class PassGeneratorService
                 foreach (var action in candidate.Actions)
                     lines.Add($"{indent}        __gcetExact_{candidate.RegistrationId}[{LuaQuote(action)}] = true");
 
-                lines.Add($"{indent}        __gcetHandles_{candidate.RegistrationId}[#__gcetHandles_{candidate.RegistrationId} + 1] = __gcetEngine_{candidate.RegistrationId}.SubscribeAction({{");
+                lines.Add($"{indent}        __gcetHandles_{candidate.RegistrationId}[#__gcetHandles_{candidate.RegistrationId} + 1] = __gcetApi_{candidate.RegistrationId}.SubscribeAction({{");
                 lines.Add($"{indent}            id = {LuaQuote(idBase + ".Pattern")},");
                 lines.Add($"{indent}            actions = \"*\",");
                 lines.Add($"{indent}            decodeType = false");
@@ -1232,8 +1236,9 @@ public static class PassGeneratorService
                 "local function __gcetGetPlayer()",
                 "    if __gcetSharedPlayerProvider == nil then",
                 "        local __gcetOk, __gcetEngine = pcall(GetMod, \"0-Engine\")",
-                "        if __gcetOk and type(__gcetEngine) == \"table\" and type(__gcetEngine.GetPlayer) == \"function\" then",
-                "            __gcetSharedPlayerProvider = __gcetEngine.GetPlayer",
+                "        if __gcetOk and type(__gcetEngine) == \"table\" then",
+                "            local __gcetApi = type(__gcetEngine.GCET) == \"table\" and __gcetEngine.GCET or __gcetEngine",
+                "            if type(__gcetApi.GetPlayer) == \"function\" then __gcetSharedPlayerProvider = __gcetApi.GetPlayer end",
                 "        end",
                 "    end",
                 "    if __gcetSharedPlayerProvider ~= nil then",
@@ -1254,8 +1259,9 @@ public static class PassGeneratorService
             $"local function {recipe.HelperName}()",
             $"    if {providerVariable} == nil then",
             "        local __gcetOk, __gcetEngine = pcall(GetMod, \"0-Engine\")",
-            $"        if __gcetOk and type(__gcetEngine) == \"table\" and type(__gcetEngine.{recipe.EngineGetter}) == \"function\" then",
-            $"            {providerVariable} = __gcetEngine.{recipe.EngineGetter}",
+            "        if __gcetOk and type(__gcetEngine) == \"table\" then",
+            "            local __gcetApi = type(__gcetEngine.GCET) == \"table\" and __gcetEngine.GCET or __gcetEngine",
+            $"            if type(__gcetApi.{recipe.EngineGetter}) == \"function\" then {providerVariable} = __gcetApi.{recipe.EngineGetter} end",
             "        end",
             "    end",
             $"    if {providerVariable} ~= nil then",
