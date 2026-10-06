@@ -1725,6 +1725,7 @@ internal static class SemanticInjectors
             "\treturn(blackboard:GetBool(uiSystemBB.IsInMenu));\n" +
             "end",
             "Auto Ammo UI blackboard definition reuse");
+        context.Write(file, text);
         return SemanticInjectionResult.Success(
             "Preserved the author's autoConvertTime cadence and readiness/menu semantics, but deferred player/transaction acquisition until that existing cadence fires and collapsed duplicate PlayerSystem/Player/UI blackboard reads in the per-frame readiness path.");
     }
