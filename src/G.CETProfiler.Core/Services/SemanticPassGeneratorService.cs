@@ -364,7 +364,25 @@ internal sealed class SemanticPatchContext
             else
                 text = File.ReadAllText(path);
 
-            if (text.Contains(marker, StringComparison.OrdinalIgnoreCase))
+            if (HasMarkerLine(text, marker))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool HasMarkerLine(
+        string text,
+        string marker)
+    {
+        var expectedComment = "-- " + marker.Trim();
+        foreach (var line in text.Replace("\r\n", "\n", StringComparison.Ordinal)
+                                 .Replace('\r', '\n')
+                                 .Split('\n'))
+        {
+            var trimmed = line.Trim();
+            if (trimmed.Equals(marker.Trim(), StringComparison.OrdinalIgnoreCase) ||
+                trimmed.Equals(expectedComment, StringComparison.OrdinalIgnoreCase))
                 return true;
         }
 
