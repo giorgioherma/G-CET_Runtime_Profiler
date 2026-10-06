@@ -29,6 +29,9 @@ internal static class SemanticInjectors
             "roulette" => ApplyRoulette(context),
             "blackjack" => ApplyBlackjack(context),
             "illegal-mechanic" => ApplyIllegalMechanic(context),
+            "alternative-midair-movement" => ApplyAlternativeMidairMovement(context),
+            "metro-system" => ApplyMetroSystem(context),
+            "nightcitypizza" => ApplyNightCityPizza(context),
             _ => SemanticInjectionResult.Skip(
                 $"No semantic source injector is implemented for rule '{candidate.RuleId}'.")
         };
@@ -828,6 +831,283 @@ internal static class SemanticInjectors
             replacement,
             label + " visible-prompt mappin prefilter");
         context.Write(file, text);
+    }
+
+
+
+    private static SemanticInjectionResult ApplyAlternativeMidairMovement(
+        SemanticPatchContext context)
+    {
+        var init = context.FindFile(
+            "init.lua",
+            "input:SetInputData(action)",
+            "OnLocomotionStateChanged",
+            "SetDetailedLocomotionStates",
+            "MidairMovementProcessor");
+
+        var input = context.FindFile(
+            "input.lua",
+            "function Input:SetInputData",
+            "MoveX",
+            "MoveY",
+            "Vector4.ToRotation");
+
+        var inputText = RegexReplaceOnce(
+            input.Text,
+            @"(?m)^function\s+Input:SetInputData\s*\(\s*action\s*\)\s*$",
+            "function Input:SetInputData(action, __gcetRoutedName)",
+            "Alternative Midair Movement input signature");
+
+        inputText = RegexReplaceOnce(
+            inputText,
+            @"(?m)^(?<indent>\s*)local\s+actionName\s*=\s*Game\.NameToString\s*\(\s*action:GetName\s*\(\s*(?:action\s*)?\)\s*\)\s*$",
+            "${indent}local actionName = __gcetRoutedName or Game.NameToString(action:GetName())",
+            "Alternative Midair Movement routed action name");
+
+        inputText = RegexReplaceOnce(
+            inputText,
+            @"(?m)^(?<indent>\s*)self\.analogRotation\s*=\s*Vector4\.ToRotation\s*\(\s*Vector4\.new\s*\(\s*self\.analogX\s*,\s*self\.analogY\s*,\s*0\s*,\s*1\s*\)\s*\)\s*$",
+            "${indent}if actionName == \"MoveX\" or actionName == \"MoveY\" then\n" +
+            "${indent}    self.analogRotation = Vector4.ToRotation(Vector4.new(self.analogX, self.analogY, 0, 1))\n" +
+            "${indent}end",
+            "Alternative Midair Movement analog rotation gate");
+        context.Write(input, inputText);
+
+        var initText = RegexReplaceOnce(
+            init.Text,
+            @"(?m)^(?<opening>\s*function\s+AltJump:new\s*\(\s*\)\s*)$",
+            "local __gcetMidairWakeTail = 0.0\n" +
+            "local __gcetMidairIdleElapsed = 0.0\n\n" +
+            "${opening}",
+            "Alternative Midair Movement semantic state");
+
+        initText = RegexReplaceOnce(
+            initText,
+            @"(?ms)^(?<indent>[ \t]*)Observe\s*\(\s*[""']PlayerPuppet[""']\s*,\s*[""']OnAction[""']\s*,\s*function\s*\(\s*_\s*,\s*action\s*\)\s*\r?\n\s*input:SetInputData\s*\(\s*action\s*\)\s*\r?\n\s*end\s*\)\s*$",
+            "${indent}local __gcetMidairActionSet = {\n" +
+            "${indent}    MoveX = true, MoveY = true, Jump = true,\n" +
+            "${indent}    Left = true, Right = true, Forward = true, Back = true\n" +
+            "${indent}}\n" +
+            "${indent}local function __gcetMidairOnAction(_, action, __gcetRoutedName)\n" +
+            "${indent}    local __gcetActionName = __gcetRoutedName or Game.NameToString(action:GetName())\n" +
+            "${indent}    if not __gcetMidairActionSet[__gcetActionName] then return end\n" +
+            "${indent}    input:SetInputData(action, __gcetActionName)\n" +
+            "${indent}    if __gcetActionName == \"Jump\" then\n" +
+            "${indent}        __gcetMidairWakeTail = math.max(__gcetMidairWakeTail, 0.90)\n" +
+            "${indent}    end\n" +
+            "${indent}end\n\n" +
+            "${indent}local __gcetMidairRouted = false\n" +
+            "${indent}local __gcetMidairHandles = {}\n" +
+            "${indent}local __gcetMidairOk, __gcetMidairEngine = pcall(GetMod, \"0-Engine\")\n" +
+            "${indent}if __gcetMidairOk and type(__gcetMidairEngine) == \"table\" and type(__gcetMidairEngine.SubscribeAction) == \"function\" then\n" +
+            "${indent}    __gcetMidairRouted = pcall(function()\n" +
+            "${indent}        __gcetMidairHandles[#__gcetMidairHandles + 1] = __gcetMidairEngine.SubscribeAction({\n" +
+            "${indent}            id = \"G-CET.Semantic.AlternativeMidairMovement\",\n" +
+            "${indent}            actions = { \"MoveX\", \"MoveY\", \"Jump\", \"Left\", \"Right\", \"Forward\", \"Back\" },\n" +
+            "${indent}            decodeType = false\n" +
+            "${indent}        }, __gcetMidairOnAction, \"Alternative Midair Movement\")\n" +
+            "${indent}    end)\n" +
+            "${indent}    if not __gcetMidairRouted then\n" +
+            "${indent}        for _, __gcetHandle in ipairs(__gcetMidairHandles) do\n" +
+            "${indent}            if __gcetHandle and type(__gcetHandle.unsubscribe) == \"function\" then pcall(__gcetHandle.unsubscribe) end\n" +
+            "${indent}        end\n" +
+            "${indent}    end\n" +
+            "${indent}end\n" +
+            "${indent}if not __gcetMidairRouted then Observe(\"PlayerPuppet\", \"OnAction\", __gcetMidairOnAction) end",
+            "Alternative Midair Movement exact action routing");
+
+        initText = RegexReplaceOnce(
+            initText,
+            @"(?m)^(?<indent>\s*)loc:SetLocomotionStates\s*\(\s*player\.object\s*\)\s*$",
+            "${indent}local __gcetTail = 0.90\n" +
+            "${indent}if config and config.lowersprintaccel and config.lowersprintaccel.enabled then\n" +
+            "${indent}    __gcetTail = math.max(__gcetTail, (tonumber(config.lowersprintaccel.duration) or 0.0) + 0.10)\n" +
+            "${indent}end\n" +
+            "${indent}__gcetMidairWakeTail = math.max(__gcetMidairWakeTail, __gcetTail)\n" +
+            "${indent}loc:SetLocomotionStates(player.object)",
+            "Alternative Midair Movement locomotion wake");
+
+        var midairOpening = FindOnUpdateOpening(initText, "delta");
+        var midairStart = midairOpening + "        if AltJump.loaded then\n";
+        var midairGate =
+            midairOpening +
+            "        if AltJump.loaded then\n" +
+            "            local __gcetFrameDelta = math.max(tonumber(delta) or 0.0, 0.0)\n" +
+            "            if __gcetMidairWakeTail > 0.0 then\n" +
+            "                __gcetMidairWakeTail = math.max(0.0, __gcetMidairWakeTail - __gcetFrameDelta)\n" +
+            "            end\n" +
+            "            local __gcetSimpleState = loc and loc.currentState or nil\n" +
+            "            local __gcetRealtime = __gcetMidairWakeTail > 0.0\n" +
+            "                or AltJump.inFlight == true\n" +
+            "                or (loc and loc.isWallbouncing == true)\n" +
+            "                or (player and player.canWallbounce == true)\n" +
+            "                or __gcetSimpleState == gamePSMLocomotionStates.Jump\n" +
+            "                or __gcetSimpleState == gamePSMLocomotionStates.Kereznikov\n" +
+            "                or not player.maxRunSet\n" +
+            "                or not player.maxSprintSet\n" +
+            "            if __gcetRealtime then\n" +
+            "                __gcetMidairIdleElapsed = 0.0\n" +
+            "            else\n" +
+            "                __gcetMidairIdleElapsed = __gcetMidairIdleElapsed + __gcetFrameDelta\n" +
+            "                if __gcetMidairIdleElapsed < 0.10 then return end\n" +
+            "                delta = __gcetMidairIdleElapsed\n" +
+            "                __gcetMidairIdleElapsed = 0.0\n" +
+            "            end\n";
+        initText = ReplaceOnce(
+            initText,
+            midairStart,
+            midairGate,
+            "Alternative Midair Movement active/idle update gate");
+        context.Write(init, initText);
+
+        return SemanticInjectionResult.Success(
+            "Routed only the seven action names consumed by Input:SetInputData, avoided non-axis rotation work, kept airborne/transition-sensitive runtime frame-responsive, and reduced stable-ground maintenance to 10 Hz with accumulated delta.");
+    }
+
+    private static SemanticInjectionResult ApplyMetroSystem(
+        SemanticPatchContext context)
+    {
+        var init = context.FindFile(
+            "init.lua",
+            "ts.entrySys:update()",
+            "ts.stationSys:update(deltaTime)",
+            "ts.Cron.Update(deltaTime)",
+            "ts.hud.draw(ts)");
+
+        var entry = context.FindFile(
+            "modules/entrySystem.lua",
+            "function entrySys:getClosestEntry",
+            "self.entries",
+            "looksAtEntry",
+            "waypointPosition");
+
+        var hud = context.FindFile(
+            "modules/ui/hud.lua",
+            "function hud.draw(ts)",
+            "hud.destVisible",
+            "observers.nextStationPoint",
+            "drawDestinations");
+
+        var metroOpening = FindOnUpdateOpening(init.Text, "deltaTime");
+        var initText = ReplaceOnce(
+            init.Text,
+            metroOpening,
+            "local __gcetMetroIdleElapsed = 0.0\n\n" + metroOpening,
+            "Metro System idle cadence state");
+
+        initText = RegexReplaceOnce(
+            initText,
+            @"(?m)^(?<indent>\s*)if\s+\(not\s+ts\.runtimeData\.inMenu\)\s+and\s+ts\.runtimeData\.inGame\s+and\s+\(math\.floor\(observers\.timeDilation\)\s*~=\s*0\).*then\s*$",
+            "${indent}if (not ts.runtimeData.inMenu) and ts.runtimeData.inGame and (math.floor(observers.timeDilation) ~= 0) and ts.archiveInstalled and ts.axlInstalled and ts.cwInstalled then\n" +
+            "${indent}    local __gcetMetroActive = ts.runtimeData.cetOpen == true\n" +
+            "${indent}        or ts.entrySys.forceRunCron == true\n" +
+            "${indent}        or ts.stationSys.currentStation ~= nil\n" +
+            "${indent}        or ts.stationSys.activeTrain ~= nil\n" +
+            "${indent}        or ts.observers.noSave == true\n" +
+            "${indent}        or ts.observers.noTrains == true\n" +
+            "${indent}        or ts.input.interactKey == true\n" +
+            "${indent}    if __gcetMetroActive then\n" +
+            "${indent}        __gcetMetroIdleElapsed = 0.0\n" +
+            "${indent}    else\n" +
+            "${indent}        __gcetMetroIdleElapsed = __gcetMetroIdleElapsed + math.max(tonumber(deltaTime) or 0.0, 0.0)\n" +
+            "${indent}        if __gcetMetroIdleElapsed < 0.20 then return end\n" +
+            "${indent}        deltaTime = __gcetMetroIdleElapsed\n" +
+            "${indent}        __gcetMetroIdleElapsed = 0.0\n" +
+            "${indent}    end",
+            "Metro System active/idle world cadence");
+        context.Write(init, initText);
+
+        var entryText = RegexReplaceOnce(
+            entry.Text,
+            @"(?m)^(?<opening>\s*function\s+entrySys:getClosestEntry\s*\(\s*\)\s*)$",
+            "${opening}\n" +
+            "    local __gcetPlayer = GetPlayer()\n" +
+            "    if __gcetPlayer == nil then return nil end\n" +
+            "    local __gcetPlayerPos = __gcetPlayer:GetWorldPosition()",
+            "Metro System closest entry player cache");
+
+        entryText = RegexReplaceOnce(
+            entryText,
+            @"utils\.distanceVector\s*\(\s*GetPlayer\(\):GetWorldPosition\(\)\s*,\s*v\.center\s*\)",
+            "utils.distanceVector(__gcetPlayerPos, v.center)",
+            "Metro System entry sweep cached player position");
+        context.Write(entry, entryText);
+
+        var hudText = RegexReplaceOnce(
+            hud.Text,
+            @"(?m)^(?<indent>\s*)destVisible\s*=\s*false\s*,\s*$",
+            "${indent}destVisible = false,\n" +
+            "${indent}destinationWasVisible = false,",
+            "Metro System destination visibility state");
+
+        hudText = RegexReplaceOnce(
+            hudText,
+            @"(?ms)^(?<indent>\s*)if\s+hud\.destVisible\s+then\s*\r?\n\s*hud\.drawDestinations\s*\(\s*ts\.stationSys\s*\)\s*\r?\n\s*hud\.destVisible\s*=\s*false\s*\r?\n\s*else\s*\r?\n\s*observers\.nextStationText\s*=\s*[""'][""']\s*\r?\n\s*Game\.GetMappinSystem\(\):UnregisterMappin\s*\(\s*observers\.nextStationPoint\s*\)\s*\r?\n\s*if\s+ts\.observers\.hudText\s+then\s*\r?\n\s*ts\.observers\.hudText:SetVisible\s*\(\s*false\s*\)\s*\r?\n\s*end\s*\r?\n\s*end\s*$",
+            "${indent}if hud.destVisible then\n" +
+            "${indent}    hud.drawDestinations(ts.stationSys)\n" +
+            "${indent}    hud.destVisible = false\n" +
+            "${indent}    hud.destinationWasVisible = true\n" +
+            "${indent}elseif hud.destinationWasVisible or observers.nextStationPoint ~= nil or observers.nextStationText ~= \"\" then\n" +
+            "${indent}    observers.nextStationText = \"\"\n" +
+            "${indent}    if observers.nextStationPoint ~= nil then\n" +
+            "${indent}        Game.GetMappinSystem():UnregisterMappin(observers.nextStationPoint)\n" +
+            "${indent}        observers.nextStationPoint = nil\n" +
+            "${indent}    end\n" +
+            "${indent}    if ts.observers.hudText then\n" +
+            "${indent}        ts.observers.hudText:SetVisible(false)\n" +
+            "${indent}    end\n" +
+            "${indent}    hud.destinationWasVisible = false\n" +
+            "${indent}end",
+            "Metro System destination cleanup transition");
+        context.Write(hud, hudText);
+
+        return SemanticInjectionResult.Success(
+            "Kept station/train/elevator activity frame-responsive, reduced idle world discovery to 5 Hz with accumulated delta, cached one player position per entry sweep, and made destination mappin teardown transition-driven.");
+    }
+
+    private static SemanticInjectionResult ApplyNightCityPizza(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "init.lua",
+            "tickBossTexts",
+            "Pizza.ctx",
+            "clockPhoneAcc",
+            "TakeClockIn");
+
+        var opening = FindOnUpdateOpening(file.Text, "delta");
+        var text = ReplaceOnce(
+            file.Text,
+            opening,
+            "local __gcetPizzaMaintenanceElapsed = 0.0\n\n" + opening,
+            "NightCityPizza maintenance cadence state");
+
+        text = RegexReplaceOnce(
+            text,
+            @"(?m)^(?<indent>\s*)tickBossTexts\s*\(\s*delta\s*\).*$",
+            "${indent}__gcetPizzaMaintenanceElapsed = __gcetPizzaMaintenanceElapsed + math.max(tonumber(delta) or 0.0, 0.0)\n" +
+            "${indent}if __gcetPizzaMaintenanceElapsed < 0.40 then return end\n" +
+            "${indent}local __gcetPizzaElapsed = __gcetPizzaMaintenanceElapsed\n" +
+            "${indent}__gcetPizzaMaintenanceElapsed = 0.0\n" +
+            "${indent}tickBossTexts(__gcetPizzaElapsed)",
+            "NightCityPizza global maintenance gate");
+
+        text = RegexReplaceOnce(
+            text,
+            @"(?m)^(?<indent>\s*)Pizza\.clockPhoneAcc\s*=\s*\(Pizza\.clockPhoneAcc\s+or\s+0\)\s*\+\s*\(delta\s+or\s+0\)\s*$",
+            "${indent}Pizza.clockPhoneAcc = 0",
+            "NightCityPizza retired frame accumulator");
+
+        text = RegexReplaceOnce(
+            text,
+            @"(?m)^(?<indent>\s*)if\s+Pizza\.clockPhoneAcc\s*>=\s*0\.4\s+then\s*$",
+            "${indent}do",
+            "NightCityPizza 0.4 second maintenance body");
+
+        context.Write(file, text);
+
+        return SemanticInjectionResult.Success(
+            "Collapsed the global/off-shift maintenance loop to the author's existing 0.4 s phone cadence, feeding accumulated delta to long-period Boss texts while leaving the active delivery ctx:onUpdate state machine untouched.");
     }
 
 

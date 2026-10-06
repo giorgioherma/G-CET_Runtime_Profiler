@@ -14,7 +14,7 @@
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
     "fullPassRule": "A semantic injector can run only when the current capture contains a >=3.0 ms/s measured callback, the library rule matches, and the current live mod source graph proves its anchors.",
-    "enabledInjectorCount": 15,
+    "enabledInjectorCount": 18,
     "profileOnlyRuleCount": 0,
     "note": "The production semantic base is intentionally compact and callback-specific. Runtime cost only earns review; automatic rules require a small, provable state model, exact known callback families, and no bespoke timing.",
     "admissionPolicy": {
@@ -1065,6 +1065,258 @@
       "referenceOverrideAllowed": false,
       "evidenceMembership": [
         "G_MOD_COLLECTION_20260926"
+      ]
+    },
+    {
+      "id": "alternative-midair-movement",
+      "identityHints": [
+        "Alternative Midair Movement"
+      ],
+      "policyClass": "AIRBORNE_ACTIVITY_GATE_PLUS_ACTION_PREFILTER",
+      "callbacks": [
+        {
+          "kind": "Observe",
+          "target": "PlayerPuppet::OnAction",
+          "role": "hot-path"
+        },
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "Input:SetInputData",
+          "OnLocomotionStateChanged",
+          "SetDetailedLocomotionStates",
+          "MidairMovementProcessor"
+        ],
+        "ownerAnyGroups": [
+          [
+            "Vector4.ToRotation",
+            "analogRotation"
+          ],
+          [
+            "gamePSMLocomotionStates.Jump",
+            "IsJumpingOrDoubleJumpingOrFalling"
+          ]
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:alternative-midair-movement",
+        "expectedMarkerFileCount": 2
+      },
+      "behavior": {
+        "handler": "SEMANTIC_MIDAIR_ACTIVITY_SPLIT",
+        "concepts": [
+          "finiteActionSet",
+          "airborneWake",
+          "locomotionTransitionTail",
+          "stableGroundMaintenance"
+        ],
+        "lanes": [
+          {
+            "role": "AIRBORNE_AND_TRANSITIONS",
+            "cadence": "EVERY_FRAME",
+            "seconds": 0
+          },
+          {
+            "role": "STABLE_GROUND_MAINTENANCE",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.1
+          },
+          {
+            "role": "INPUT_WAKE",
+            "cadence": "ACTION_ROUTED",
+            "seconds": 0
+          }
+        ]
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 42.011545,
+        "evidenceStack": "SECOND_MODSTACK_POST_GENERIC",
+        "admitted": true
+      },
+      "cadenceGroup": "AIRBORNE_REALTIME_GROUND_10HZ",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "SECOND_MODSTACK_20261006"
+      ]
+    },
+    {
+      "id": "metro-system",
+      "identityHints": [
+        "trainSystem"
+      ],
+      "policyClass": "ACTIVE_METRO_IDLE_DISCOVERY",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        },
+        {
+          "kind": "event",
+          "target": "onDraw",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "entrySys:getClosestEntry",
+          "ts.stationSys:update",
+          "ts.hud.draw",
+          "observers.nextStationPoint",
+          "forceRunCron"
+        ],
+        "ownerAnyGroups": [
+          [
+            "currentStation",
+            "activeTrain"
+          ],
+          [
+            "drawDestinations",
+            "destVisible"
+          ]
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:metro-system",
+        "expectedMarkerFileCount": 3
+      },
+      "behavior": {
+        "handler": "SEMANTIC_METRO_IDLE_SPLIT",
+        "concepts": [
+          "activeTransit",
+          "idleEntryDiscovery",
+          "playerPositionCache",
+          "destinationCleanupTransition"
+        ],
+        "lanes": [
+          {
+            "role": "ACTIVE_METRO",
+            "cadence": "EVERY_FRAME",
+            "seconds": 0
+          },
+          {
+            "role": "IDLE_ENTRY_DISCOVERY",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.2
+          },
+          {
+            "role": "HUD_TEARDOWN",
+            "cadence": "ON_TRANSITION",
+            "seconds": 0
+          }
+        ]
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 22.289362,
+        "evidenceStack": "SECOND_MODSTACK_POST_GENERIC",
+        "admitted": true
+      },
+      "cadenceGroup": "ACTIVE_FRAME_IDLE_DISCOVERY_5HZ",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "SECOND_MODSTACK_20261006"
+      ]
+    },
+    {
+      "id": "nightcitypizza",
+      "identityHints": [
+        "NightCityPizza"
+      ],
+      "policyClass": "OFF_SHIFT_MAINTENANCE_CADENCE",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "tickBossTexts",
+          "Pizza.ctx",
+          "clockPhoneAcc",
+          "TakeClockIn"
+        ],
+        "ownerAnyGroups": [
+          [
+            "phoneBridge",
+            "SetClockedIn"
+          ],
+          [
+            "GigCore.Bus.requestClockIn",
+            "GIG_ID"
+          ]
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:nightcitypizza",
+        "expectedMarkerFileCount": 1
+      },
+      "behavior": {
+        "handler": "SEMANTIC_OFFSHIFT_MAINTENANCE",
+        "concepts": [
+          "globalMaintenance",
+          "bossTextTimer",
+          "phoneClockInBridge",
+          "activeDeliveryIsolation"
+        ],
+        "lanes": [
+          {
+            "role": "GLOBAL_MAINTENANCE",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.4
+          },
+          {
+            "role": "ACTIVE_DELIVERY",
+            "cadence": "UNCHANGED_CTX_RUNTIME",
+            "seconds": 0
+          }
+        ]
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 6.639757,
+        "evidenceStack": "SECOND_MODSTACK_POST_GENERIC",
+        "admitted": true
+      },
+      "cadenceGroup": "OFFSHIFT_MAINTENANCE_2_5HZ",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "SECOND_MODSTACK_20261006"
       ]
     }
   ],
