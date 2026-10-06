@@ -14,7 +14,7 @@
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
     "fullPassRule": "A semantic injector can run only when the current capture contains a >=3.0 ms/s measured callback, the library rule matches, and the current live mod source graph proves its anchors.",
-    "enabledInjectorCount": 29,
+    "enabledInjectorCount": 36,
     "profileOnlyRuleCount": 0,
     "note": "The production semantic base is intentionally compact and callback-specific. Runtime cost only earns review; automatic rules require a small, provable state model, exact known callback families, and no bespoke timing.",
     "admissionPolicy": {
@@ -34,11 +34,9 @@
         "CONTROLLER_OUTPUT_WITH_UNPROVEN_DORMANCY"
       ],
       "examplesNotForSemanticBase": [
-        "immersive_third_person",
         "ImmersiveFirstPerson",
         "nativeInteractions",
         "Minimap Widgets",
-        "sitAnywhere",
         "loot-marker systems",
         "AutoLoot-style world discovery",
         "OverclockedLynxPaws",
@@ -2781,19 +2779,7 @@
       ],
       "excludedMeasuredHotMods": [
         {
-          "owner": "marmurbank",
-          "reason": "GENERIC_ACTION_ROUTING"
-        },
-        {
-          "owner": "DriveBus",
-          "reason": "GENERIC_ACTION_ROUTING"
-        },
-        {
           "owner": "freefly",
-          "reason": "GENERIC_ACTION_ROUTING"
-        },
-        {
-          "owner": "QuestTrackingToggle",
           "reason": "GENERIC_ACTION_ROUTING"
         },
         {
@@ -2801,13 +2787,7 @@
           "reason": "UI_DRAW_ALREADY_VISIBILITY_GATED_LOW_PRIORITY"
         }
       ],
-      "reviewedExcluded": [
-        {
-          "owner": "repeatable_increased_criminal_activity",
-          "reason": "PROFILE_ONLY_NOT_AUTO_RECIPE",
-          "note": "Measured and behavior-classified, but no production AUTO injector is authorized. Keep as evidence only until a compact safe rule exists."
-        }
-      ]
+      "reviewedExcluded": []
     },
     {
       "id": "G_CET_MOTHERLOAD_20260930",
@@ -2835,6 +2815,20 @@
           "note": "Grounded IDLE still waits on realtime movement/input transitions; a 30 Hz idle lane is bespoke tuning, not a general dormant rule."
         }
       ]
+    },
+    {
+      "id": "G_COLLECTION_RAW",
+      "thresholdExclusiveMsPerSecond": 3,
+      "ruleIds": [
+        "immersive-third-person",
+        "drivebus",
+        "quest-tracking-toggle",
+        "sitanywhere",
+        "repeatable-increased-criminal-activity",
+        "dedka-auto-shop",
+        "marmurbank"
+      ],
+      "note": "Mixed/raw collection used to close behavior-preserving gaps between the automatic resolver and the established manual 0-Engine reference stack."
     }
   ]
 }
