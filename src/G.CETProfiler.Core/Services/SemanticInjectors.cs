@@ -1648,24 +1648,20 @@ internal static class SemanticInjectors
             "registerForEvent(\"onOverlayOpen\"",
             "draw = true");
 
-        var text = ReplaceOnce(
+        var text = RegexReplaceOnce(
             file.Text,
-            "registerForEvent(\"onUpdate\", function()\n" +
-            "  ConfigSystem:OnUpdate()\n" +
-            "end)",
-            "registerForEvent(\"onUpdate\", function()\n" +
-            "  if not draw then return end\n" +
-            "  ConfigSystem:OnUpdate()\n" +
-            "end)",
+            @"(?m)^(?<opening>\s*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*[""']onUpdate[""']\s*,\s*function\s*\(\s*\)\s*)\r?\n(?<indent>[ \t]*)ConfigSystem:OnUpdate\s*\(\s*\)\s*$",
+            "${opening}\n" +
+            "${indent}if not draw then return end\n" +
+            "${indent}ConfigSystem:OnUpdate()",
             "Advanced Settings closed update gate");
 
-        text = ReplaceOnce(
+        text = RegexReplaceOnce(
             text,
-            "registerForEvent(\"onDraw\", function()\n" +
-            "  CPS:setThemeBegin()",
-            "registerForEvent(\"onDraw\", function()\n" +
-            "  if not draw then return end\n" +
-            "  CPS:setThemeBegin()",
+            @"(?m)^(?<opening>\s*registerForEvent\s*\(\s*[""']onDraw[""']\s*,\s*function\s*\(\s*\)\s*)\r?\n(?<indent>[ \t]*)CPS:setThemeBegin\s*\(\s*\)\s*$",
+            "${opening}\n" +
+            "${indent}if not draw then return end\n" +
+            "${indent}CPS:setThemeBegin()",
             "Advanced Settings closed draw gate");
         context.Write(file, text);
 
@@ -1683,53 +1679,22 @@ internal static class SemanticInjectors
             "function notReady()",
             "function playerInMenu()");
 
-        var text = ReplaceOnce(
+        var text = RegexReplaceOnce(
             file.Text,
-            "\tplayer = Game.GetPlayerSystem():GetLocalPlayerMainGameObject()\n" +
-            "\tif not ts then ts = __gcetGetTransactionSystem() end\n" +
-            "------------------------------------------------\n" +
-            "-- Ready for take off.\n" +
-            "------------------------------------------------\n" +
-            "\tscriptInterval = scriptInterval + deltaTime\n" +
-            "\tif scriptInterval < settings.autoConvertTime then\n" +
-            "\t\treturn\n" +
-            "\telse\n" +
-            "\t\tscriptInterval = 0\n" +
-            "\tend",
-            "------------------------------------------------\n" +
-            "-- Ready for take off.\n" +
-            "------------------------------------------------\n" +
-            "\tscriptInterval = scriptInterval + deltaTime\n" +
-            "\tif scriptInterval < settings.autoConvertTime then\n" +
-            "\t\treturn\n" +
-            "\telse\n" +
-            "\t\tscriptInterval = 0\n" +
-            "\tend\n" +
-            "\tplayer = Game.GetPlayerSystem():GetLocalPlayerMainGameObject()\n" +
-            "\tif not ts then ts = __gcetGetTransactionSystem() end",
+            @"(?ms)^(?<indent>[ \t]*)player\s*=\s*Game\.GetPlayerSystem\(\):GetLocalPlayerMainGameObject\(\)\s*\r?\n[ \t]*if\s+not\s+ts\s+then\s+ts\s*=\s*__gcetGetTransactionSystem\(\)\s+end\s*\r?\n(?<ready>------------------------------------------------\r?\n-- Ready for take off\.\r?\n------------------------------------------------\r?\n)[ \t]*scriptInterval\s*=\s*scriptInterval\s*\+\s*deltaTime\s*\r?\n[ \t]*if\s+scriptInterval\s*<\s*settings\.autoConvertTime\s+then\s*\r?\n[ \t]*return\s*\r?\n[ \t]*else\s*\r?\n[ \t]*scriptInterval\s*=\s*0\s*\r?\n[ \t]*end\s*$",
+            "${ready}${indent}scriptInterval = scriptInterval + deltaTime\n" +
+            "${indent}if scriptInterval < settings.autoConvertTime then\n" +
+            "${indent}\treturn\n" +
+            "${indent}else\n" +
+            "${indent}\tscriptInterval = 0\n" +
+            "${indent}end\n" +
+            "${indent}player = Game.GetPlayerSystem():GetLocalPlayerMainGameObject()\n" +
+            "${indent}if not ts then ts = __gcetGetTransactionSystem() end",
             "Auto Ammo defer player/system acquisition until author cadence");
 
-        text = ReplaceOnce(
+        text = RegexReplaceOnce(
             text,
-            "function notReady()\n" +
-            "\tinkMenuScenario = GetSingleton('inkMenuScenario'):GetSystemRequestsHandler()\n" +
-            "\tif inkMenuScenario:IsGamePaused() or inkMenuScenario:IsPreGame() then\n" +
-            "\t\treturn true\n" +
-            "\tend\n" +
-            "\tif Game.GetPlayerSystem() == nil then\n" +
-            "\t\treturn true\n" +
-            "\tend\n" +
-            "\tif Game.GetPlayerSystem():GetLocalPlayerMainGameObject() == nil then\n" +
-            "\t\treturn true\n" +
-            "\tend\n" +
-            "\tif Game.GetPlayer() == nil then\n" +
-            "\t\treturn true\n" +
-            "\tend\n" +
-            "\tif not Game.GetPlayer():IsAttached() then\n" +
-            "\t\treturn true\n" +
-            "\tend\n" +
-            "\treturn false\n" +
-            "end",
+            @"(?ms)^function\s+notReady\s*\(\s*\)\s*\r?\n.*?^end\s*$",
             "function notReady()\n" +
             "\tinkMenuScenario = GetSingleton('inkMenuScenario'):GetSystemRequestsHandler()\n" +
             "\tif inkMenuScenario:IsGamePaused() or inkMenuScenario:IsPreGame() then\n" +
@@ -1750,13 +1715,9 @@ internal static class SemanticInjectors
             "end",
             "Auto Ammo readiness duplicate lookup collapse");
 
-        text = ReplaceOnce(
+        text = RegexReplaceOnce(
             text,
-            "function playerInMenu()\n" +
-            "\tblackboard = Game.GetBlackboardSystem():Get(Game.GetAllBlackboardDefs().UI_System);\n" +
-            "\tuiSystemBB = (Game.GetAllBlackboardDefs().UI_System);\n" +
-            "\treturn(blackboard:GetBool(uiSystemBB.IsInMenu));\n" +
-            "end",
+            @"(?ms)^function\s+playerInMenu\s*\(\s*\)\s*\r?\n[ \t]*blackboard\s*=\s*Game\.GetBlackboardSystem\(\):Get\(Game\.GetAllBlackboardDefs\(\)\.UI_System\);\s*\r?\n[ \t]*uiSystemBB\s*=\s*\(Game\.GetAllBlackboardDefs\(\)\.UI_System\);\s*\r?\n[ \t]*return\s*\(blackboard:GetBool\(uiSystemBB\.IsInMenu\)\);\s*\r?\nend\s*$",
             "function playerInMenu()\n" +
             "\tlocal __gcetUIBB = Game.GetAllBlackboardDefs().UI_System\n" +
             "\tblackboard = Game.GetBlackboardSystem():Get(__gcetUIBB);\n" +
@@ -1764,8 +1725,6 @@ internal static class SemanticInjectors
             "\treturn(blackboard:GetBool(uiSystemBB.IsInMenu));\n" +
             "end",
             "Auto Ammo UI blackboard definition reuse");
-        context.Write(file, text);
-
         return SemanticInjectionResult.Success(
             "Preserved the author's autoConvertTime cadence and readiness/menu semantics, but deferred player/transaction acquisition until that existing cadence fires and collapsed duplicate PlayerSystem/Player/UI blackboard reads in the per-frame readiness path.");
     }
