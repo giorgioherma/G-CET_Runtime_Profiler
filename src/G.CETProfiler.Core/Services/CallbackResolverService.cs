@@ -96,7 +96,15 @@ internal static class CallbackResolverService
             foreach (var callback in family.Rows)
             {
                 rankedCount++;
-                var generic = ResolveGeneric(callback, sourceIndex);
+                schedulerByOwner.TryGetValue(
+                    callback.Owner,
+                    out var schedulerIntegration);
+                schedulerIntegration ??= SchedulerIntegration.None;
+
+                var generic = ResolveGeneric(
+                    callback,
+                    sourceIndex,
+                    schedulerIntegration);
                 var semantic = semanticLibrary.Match(
                     callback.Owner,
                     callback.Kind,
@@ -119,10 +127,6 @@ internal static class CallbackResolverService
                     semanticReadyRules.Add(semantic.RuleId);
 
                 var dormancy = ResolveDormancyEvidence(callback, generic.Source, sourceIndex);
-                schedulerByOwner.TryGetValue(
-                    callback.Owner,
-                    out var schedulerIntegration);
-                schedulerIntegration ??= SchedulerIntegration.None;
                 var residualSchedulerBootstrap =
                     schedulerIntegration.Detected &&
                     callback.Target.Equals("onUpdate", StringComparison.OrdinalIgnoreCase) &&
@@ -1515,7 +1519,8 @@ internal static class CallbackResolverService
 
     private static GenericResolution ResolveGeneric(
         CallbackMetric callback,
-        LiveSourceIndex sourceIndex)
+        LiveSourceIndex sourceIndex,
+        SchedulerIntegration schedulerIntegration)
     {
         var family = ClassifyCallbackFamily(callback.Kind, callback.Target);
         var source = sourceIndex.Resolve(callback);
@@ -1534,7 +1539,11 @@ internal static class CallbackResolverService
             return ResolveOnAction(callback, source, sourceEvidence, sourceIndex);
 
         if (family == "ONUPDATE")
-            return ResolveOnUpdate(callback, source, sourceEvidence);
+            return ResolveOnUpdate(
+                callback,
+                source,
+                sourceEvidence,
+                schedulerIntegration);
 
         // Structural callback-local rewrites do not depend on the callback
         // delivery family. Unsupported cadence/routing families should still
@@ -1581,7 +1590,8 @@ internal static class CallbackResolverService
     private static GenericResolution ResolveOnUpdate(
         CallbackMetric callback,
         ResolvedSource? source,
-        SourceEvidence? sourceEvidence)
+        SourceEvidence? sourceEvidence,
+        SchedulerIntegration schedulerIntegration)
     {
         var recipes = new List<string>();
         var evidence = new List<string>();
@@ -1592,11 +1602,25 @@ internal static class CallbackResolverService
         AuthorDiscoveryCadenceResolution? discoveryScheduleResolution = null;
         var effectiveSourceEvidence = sourceEvidence;
 
-        var rawDirectOnUpdate = source is not null &&
-            Regex.IsMatch(
+        var rawRegistrarMatch = source is null
+            ? Match.Empty
+            : Regex.Match(
                 source.CallbackText,
-                @"(?m)^[ \t]*(?:registerForEvent|registerRuntimeEvent)\s*\(\s*['""]onUpdate['""]",
+                @"(?m)^[ \t]*(?<registrar>registerForEvent|registerRuntimeEvent)\s*\(\s*['""]onUpdate['""]",
                 RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        var rawDirectOnUpdate = rawRegistrarMatch.Success;
+        var ownerRegistrarAlreadyConsolidated =
+            source is not null &&
+            rawRegistrarMatch.Success &&
+            HasOwnerFrameRegistrar(
+                source.FullText,
+                rawRegistrarMatch.Groups["registrar"].Value,
+                callback.Owner);
+        var schedulerBootstrapAlreadyIntegrated =
+            source is not null &&
+            rawDirectOnUpdate &&
+            schedulerIntegration.Detected &&
+            HasSchedulerBootstrapGuard(source.CallbackText);
 
         var generatedRegistrarMatch = source is null
             ? Match.Empty
@@ -1605,26 +1629,35 @@ internal static class CallbackResolverService
                 @"\b(?<registrar>__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]",
                 RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         var generatedRegistrarPresent = generatedRegistrarMatch.Success;
-        var alreadyFrameConsolidated =
+        var generatedFrameConsolidated =
             source is not null &&
             generatedRegistrarPresent &&
             HasGeneratedFrameRegistrar(
                 source.FullText,
                 generatedRegistrarMatch.Groups["registrar"].Value);
+        var alreadyFrameConsolidated =
+            generatedFrameConsolidated ||
+            ownerRegistrarAlreadyConsolidated ||
+            schedulerBootstrapAlreadyIntegrated;
 
         // Semantic analyzers may inspect either raw or already-consolidated
         // onUpdate source. Only a raw registrar authorizes the generic frame
         // transform; the generated registrar is an already-satisfied state.
         var directOnUpdate = rawDirectOnUpdate || generatedRegistrarPresent;
 
-        if (rawDirectOnUpdate)
+        if (alreadyFrameConsolidated)
+        {
+            if (ownerRegistrarAlreadyConsolidated)
+                evidence.Add("Current source already routes this owner onUpdate through 0-Engine MakeEventRegistrar; no duplicate frame transform is required.");
+            else if (schedulerBootstrapAlreadyIntegrated)
+                evidence.Add("Current source proves this onUpdate is only a residual bootstrap for source-proven 0-Engine Scheduler jobs; no duplicate frame transform is required.");
+            else
+                evidence.Add("Frame dispatch is already consolidated by a source-proven G-CET registrar; no frame transform is required.");
+        }
+        else if (rawDirectOnUpdate)
         {
             recipes.Add("FRAME_DISPATCH_CONSOLIDATION");
             evidence.Add("Raw direct onUpdate registration is present in the current deployed source.");
-        }
-        else if (alreadyFrameConsolidated)
-        {
-            evidence.Add("Frame dispatch is already consolidated by a source-proven G-CET registrar; no frame transform is required.");
         }
         else if (generatedRegistrarPresent)
         {
@@ -1780,6 +1813,51 @@ internal static class CallbackResolverService
             RegexOptions.CultureInvariant);
 
         return hasFallback && hasEngineRegistrar;
+    }
+
+    private static bool HasOwnerFrameRegistrar(
+        string fullText,
+        string registrar,
+        string owner)
+    {
+        if (string.IsNullOrWhiteSpace(registrar) ||
+            registrar.Equals("registerForEvent", StringComparison.OrdinalIgnoreCase) ||
+            string.IsNullOrWhiteSpace(owner))
+            return false;
+
+        var escapedRegistrar = Regex.Escape(registrar);
+        var escapedOwner = Regex.Escape(owner);
+        var hasFallback = Regex.IsMatch(
+            fullText,
+            @"\blocal\s+" + escapedRegistrar + @"\s*=\s*registerForEvent\b",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        if (!hasFallback)
+            return false;
+
+        return Regex.IsMatch(
+            fullText,
+            @"\b" + escapedRegistrar +
+            @"\s*=\s*[A-Za-z_]\w*(?:\.GCET)?\.MakeEventRegistrar\s*\(\s*['""]" +
+            escapedOwner +
+            @"['""]\s*,\s*registerForEvent\s*\)",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    }
+
+    private static bool HasSchedulerBootstrapGuard(string callbackText)
+    {
+        if (string.IsNullOrWhiteSpace(callbackText))
+            return false;
+
+        var hasAttachedEarlyReturn = Regex.IsMatch(
+            callbackText,
+            @"\bif\s+[A-Za-z_]\w*Attached\s+then\s+return\s+end\b",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        var hasAttachRetry = Regex.IsMatch(
+            callbackText,
+            @"\bTryAttach[A-Za-z_]\w*\s*\(",
+            RegexOptions.CultureInvariant);
+
+        return hasAttachedEarlyReturn && hasAttachRetry;
     }
 
     private static bool TryResolveHardDormantGuardHoist(
