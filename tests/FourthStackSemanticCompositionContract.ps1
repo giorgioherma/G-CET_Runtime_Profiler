@@ -225,7 +225,37 @@ function Find-CallbackRange([string]$Path,[string]$OpeningPattern) {
     }
     if ($start -lt 0) { throw "Opening not found: $OpeningPattern in $Path" }
     for ($i=$start+1; $i -lt $lines.Count; $i++) {
-        if ($lines[$i] -match '^\s*end\s*\)\s*
+        if ($lines[$i] -match '^\s*end\s*\)\s*$') {
+            return @{ Start=$start+1; End=$i+1 }
+        }
+    }
+    throw "Callback closing not found: $OpeningPattern in $Path"
+}
+
+function CallbackRow([int]$Id,[string]$Owner,[string]$Kind,[string]$Target,[string]$File,[int]$Start,[int]$End,[double]$Ms,[double]$Calls=60) {
+    @{
+        registrationId=$Id; owner=$Owner; infrastructure=$false; kind=$Kind; target=$Target
+        source=@{file=$File;lineStart=$Start;lineEnd=$End}
+        callsPerSecond=$Calls; exclusiveMsPerSecond=$Ms; globalWorkSharePct=5
+        familyWorkSharePct=40; avgExclusiveUs=100; maxExclusiveMs=2; spikeCount=0; maxSpikeExclusiveMs=0
+    }
+}
+
+$easyRange = Find-CallbackRange (Join-Path $mods 'EasyTrainer\init.lua') 'Event\.Observe\("PlayerPuppet",\s*"OnAction"'
+$teleRange = Find-CallbackRange (Join-Path $mods 'TeleportGatewaySystem\init.lua') 'registerForEvent\("onUpdate"'
+$discardRange = Find-CallbackRange (Join-Path $mods 'DiscardAmmoOnReload\init.lua') "Observe\('PlayerPuppet','OnAction'"
+$advancedRange = Find-CallbackRange (Join-Path $mods 'advanced_settings\init.lua') 'registerForEvent\("onUpdate"'
+$ammoRange = Find-CallbackRange (Join-Path $mods 'Auto Ammo Crafting (I need more bullets)\init.lua') 'registerForEvent\("onUpdate"'
+
+$handoff=@{
+ schemaVersion='1.8'
+ callbacks=@(
+    (CallbackRow 458 'EasyTrainer' 'Observe' 'PlayerPuppet::OnAction' 'init.lua' $easyRange.Start $easyRange.End 35.64 1485),
+    (CallbackRow 429 'TeleportGatewaySystem' 'event' 'onUpdate' 'init.lua' $teleRange.Start $teleRange.End 17.16 60),
+    (CallbackRow 457 'DiscardAmmoOnReload' 'Observe' 'PlayerPuppet::OnAction' 'init.lua' $discardRange.Start $discardRange.End 15.30 1485),
+    (CallbackRow 21 'advanced_settings' 'event' 'onUpdate' 'init.lua' $advancedRange.Start $advancedRange.End 5.56 60),
+    (CallbackRow 61 'Auto Ammo Crafting (I need more bullets)' 'event' 'onUpdate' 'init.lua' $ammoRange.Start $ammoRange.End 5.31 60)
+ )
  optimizerEvidence=@()
 } | ConvertTo-Json -Depth 30
 $handoff | Set-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Encoding utf8
