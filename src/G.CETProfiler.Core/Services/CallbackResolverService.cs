@@ -1539,7 +1539,7 @@ internal static class CallbackResolverService
         var rawDirectOnUpdate = source is not null &&
             Regex.IsMatch(
                 source.CallbackText,
-                @"\b(?:registerForEvent|registerRuntimeEvent)\s*\(\s*['""]onUpdate['""]",
+                @"(?m)^[ \t]*(?:registerForEvent|registerRuntimeEvent)\s*\(\s*['""]onUpdate['""]",
                 RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
         var generatedRegistrarMatch = source is null
@@ -2961,11 +2961,35 @@ internal static class CallbackResolverService
 
         // Callback kind is authoritative. A neighboring Override() elsewhere in
         // the same source window must never poison an Observe classification.
+        //
+        // Generic rewriting is intentionally limited to bare CET registrar
+        // statements. Member wrappers such as Event.Observe/Event.Override may
+        // perform owner bookkeeping, cleanup, or other lifecycle work that the
+        // runtime callback kind alone cannot prove safe to bypass.
         var isOverride = callback.Kind.Contains("override", StringComparison.OrdinalIgnoreCase);
+        var directObserveRegistration =
+            !isOverride &&
+            Regex.IsMatch(
+                window,
+                @"(?m)^[ \t]*Observe\s*\(\s*(['""])PlayerPuppet\1\s*,\s*(['""])OnAction\2\s*,",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        var directOverrideRegistration =
+            isOverride &&
+            Regex.IsMatch(
+                window,
+                @"(?m)^[ \t]*Override\s*\(\s*(['""])PlayerPuppet\1\s*,\s*(['""])OnAction\2\s*,",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+        if (!isOverride && !directObserveRegistration)
+            blockers.Add("OnAction source uses a wrapper/alias instead of a bare global Observe registrar; wrapper lifecycle semantics are not generically patchable.");
+        if (isOverride && !directOverrideRegistration)
+            blockers.Add("OnAction source uses a wrapper/alias instead of a bare global Override registrar; wrapper lifecycle semantics are not generically patchable.");
+
         var overrideWrappedMethodReturns = false;
         var overrideWrappedMethodTakesSelf = false;
         var overridePrefilterProven =
             isOverride &&
+            directOverrideRegistration &&
             downstreamExpanded &&
             actions.Count > 0 &&
             patterns.Count == 0 &&
@@ -3017,6 +3041,7 @@ internal static class CallbackResolverService
 
         var actionRouteAutomatable =
             hasRoutableInterest &&
+            directObserveRegistration &&
             !dynamicActionForward &&
             unresolvedActionSelectors.Count == 0 &&
             !prefilterSideEffect &&

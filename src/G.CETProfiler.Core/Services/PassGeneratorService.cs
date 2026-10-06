@@ -635,11 +635,12 @@ public static class PassGeneratorService
                     frameSegment,
                     @"\b(?<registrar>registerForEvent|registerRuntimeEvent)\s*\(\s*(?<quote>['""])onUpdate\k<quote>",
                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Singleline);
-                if (!frameOpening.Success)
+                if (!frameOpening.Success ||
+                    !IsBareRegistrarStatement(frameSegment, frameOpening.Groups["registrar"].Index))
                 {
                     skipped.Add(Skip(
                         candidate,
-                        "Recorded callback range no longer contains a raw source-proven onUpdate registrar, or the frame dispatch is already consolidated."));
+                        "Recorded callback range no longer contains a bare source-proven onUpdate registrar, or the registrar is wrapped/aliased by an owner abstraction."));
                     continue;
                 }
 
@@ -698,9 +699,12 @@ public static class PassGeneratorService
                     overrideSegment,
                     @"Override\s*\(\s*(['""])PlayerPuppet\1\s*,\s*(['""])OnAction\2\s*,\s*function\s*\(\s*(?<receiver>[A-Za-z_]\w*)\s*,\s*action\s*,\s*consumer\s*,\s*wrappedMethod\s*\)",
                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Singleline);
-                if (!overrideOpening.Success)
+                if (!overrideOpening.Success ||
+                    !IsBareRegistrarStatement(overrideSegment, overrideOpening.Index))
                 {
-                    skipped.Add(Skip(candidate, "Transparent OnAction Override opening could not be revalidated."));
+                    skipped.Add(Skip(
+                        candidate,
+                        "Transparent OnAction Override is not a bare global registrar; wrapper/alias semantics are left untouched."));
                     continue;
                 }
 
@@ -819,11 +823,12 @@ public static class PassGeneratorService
             var segment = string.Join("\n", segmentLines);
 
             var opening = OnActionOpening.Match(segment);
-            if (!opening.Success)
+            if (!opening.Success ||
+                !IsBareRegistrarStatement(segment, opening.Index))
             {
                 skipped.Add(Skip(
                     candidate,
-                    "The analyzed OnAction Observe opening could not be revalidated in the recorded source range."));
+                    "The analyzed OnAction registration is not a bare global Observe statement; wrapper/alias lifecycle semantics are left untouched."));
                 continue;
             }
 
@@ -968,6 +973,26 @@ public static class PassGeneratorService
         withBom[2] = 0xBF;
         Buffer.BlockCopy(body, 0, withBom, 3, body.Length);
         return new TransformResult(withBom, applied);
+    }
+
+    private static bool IsBareRegistrarStatement(
+        string source,
+        int tokenIndex)
+    {
+        if (tokenIndex < 0 || tokenIndex > source.Length)
+            return false;
+
+        var lineStart = tokenIndex == 0
+            ? 0
+            : source.LastIndexOf('\n', Math.Max(0, tokenIndex - 1)) + 1;
+
+        for (var i = lineStart; i < tokenIndex; i++)
+        {
+            if (!char.IsWhiteSpace(source[i]))
+                return false;
+        }
+
+        return true;
     }
 
     private static bool HasExistingFrameHelper(

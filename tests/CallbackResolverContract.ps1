@@ -66,6 +66,15 @@ Observe("PlayerPuppet", "OnAction", function(self, action, consumer)
 end)
 '@
 
+Write-Mod 'FixtureWrappedAction' @'
+local Event = {}
+Event.Observe("PlayerPuppet", "OnAction", function(_, action)
+    if modulesLoaded then
+        game:handleInput(action)
+    end
+end)
+'@
+
 Write-Mod 'FixtureSingleton' @'
 Observe("PlayerPuppet", "OnAction", function(_, action)
     local ListenerAction = GetSingleton("gameinputScriptListenerAction")
@@ -169,6 +178,15 @@ Override("PlayerPuppet", "OnAction", function(self, action, consumer, wrappedMet
     local marker = CName.new("FixtureOverrideStructural")
     game:handleInput(action)
     return wrappedMethod(self, action, consumer)
+end)
+'@
+
+Write-Mod 'FixtureWrappedOverride' @'
+local Event = {}
+Event.Override("PlayerPuppet", "OnAction", function(self, action, consumer, wrappedMethod)
+    local name = Game.NameToString(action:GetName())
+    if name == "Jump" then DoWrappedOverrideWork() end
+    return wrappedMethod(action, consumer)
 end)
 '@
 
@@ -386,6 +404,13 @@ registerRuntimeEvent(
 )
 '@
 
+Write-Mod 'FixtureWrappedFrame' @'
+local Event = {}
+Event.registerForEvent("onUpdate", function(delta)
+    DoWrappedFrameWork(delta)
+end)
+'@
+
 Write-Mod 'FixtureAlreadyFrame' @'
 local __gcetRegisterEvent_132 = registerForEvent
 do
@@ -447,6 +472,7 @@ $handoff = @{
         # Deliberately use bare init.lua for most rows. The resolver must scope
         # this otherwise-ambiguous source filename to the measured owner first.
         (CallbackRow 101 'FixtureAction' 'observe' 'PlayerPuppet::OnAction' 900 12.0 20.0 'init.lua' 1 6),
+        (CallbackRow 134 'FixtureWrappedAction' 'observe' 'PlayerPuppet::OnAction' 880 11.5 19.0 'init.lua' 2 6),
         (CallbackRow 104 'FixtureSingleton' 'observe' 'PlayerPuppet::OnAction' 800 11.0 18.0 'init.lua' 1 7),
         (CallbackRow 105 'FixtureCName' 'observe' 'PlayerPuppet::OnAction' 700 10.0 16.0 'init.lua' 2 6),
         (CallbackRow 106 'FixtureSelector' 'observe' 'PlayerPuppet::OnAction' 650 9.0 14.0 'init.lua' 3 9),
@@ -456,6 +482,7 @@ $handoff = @{
         (CallbackRow 109 'FixtureDynamic' 'observe' 'PlayerPuppet::OnAction' 500 6.0 8.0 'init.lua' 1 7),
         (CallbackRow 112 'FixtureGatedDynamic' 'observe' 'PlayerPuppet::OnAction' 495 5.9 7.8 'init.lua' 1 14),
         (CallbackRow 130 'FixtureOverrideStructural' 'Override' 'PlayerPuppet::OnAction' 500 16.0 4.0 'init.lua' 1 8),
+        (CallbackRow 135 'FixtureWrappedOverride' 'Override' 'PlayerPuppet::OnAction' 500 14.0 3.8 'init.lua' 2 7),
         (CallbackRow 131 'FixtureOverridePrefilter' 'Override' 'PlayerPuppet::OnAction' 1400 15.0 4.4 'init.lua' 21 25),
         (CallbackRow 111 'FixtureDownstream' 'observe' 'PlayerPuppet::OnAction' 490 5.8 7.5 'init.lua' 1 10),
         (CallbackRow 120 'FixtureStructural' 'event' 'onUpdate' 60 9.0 2.0 'init.lua' 1 11),
@@ -468,6 +495,7 @@ $handoff = @{
         (CallbackRow 124 'FixtureDormantBackground' 'observe' 'PlayerPuppet::FixtureBackgroundTick' 60 6.0 1.2 'init.lua' 1 3),
         (CallbackRow 129 'FixtureOtherStructural' 'ObserveAfter' 'PlayerPuppet::FixtureStructuralObserve' 120 12.0 3.0 'init.lua' 1 19),
         (CallbackRow 102 'FixtureFrame' 'event' 'onUpdate' 60 5.0 1.0 'init.lua' 2 7),
+        (CallbackRow 136 'FixtureWrappedFrame' 'event' 'onUpdate' 60 5.2 1.0 'init.lua' 2 4),
         (CallbackRow 132 'FixtureAlreadyFrame' 'event' 'onUpdate' 60 5.5 1.1 'init.lua' 8 10),
         # Deliberately no FixtureAbsentSemantic folder exists under $mods.
         (CallbackRow 133 'FixtureAbsentSemantic' 'event' 'onUpdate' 60 7.7 1.4 'init.lua' 1 4),
@@ -937,6 +965,14 @@ if (@($gated.generic.Facts.actions) -notcontains 'UI_Apply') {
     throw 'Gated wildcard lost independently routed exact action.'
 }
 
+$wrappedAction = Action-For 'FixtureWrappedAction'
+if ($wrappedAction.generic.Automatable) {
+    throw 'Member-wrapped Event.Observe was incorrectly authorized for generic action routing.'
+}
+if ((@($wrappedAction.generic.Blockers) -join ' ') -notmatch 'wrapper/alias') {
+    throw 'Wrapped Observe rejection did not explain the wrapper/alias safety boundary.'
+}
+
 $overrideStructural = Action-For 'FixtureOverrideStructural'
 if ($overrideStructural.generic.Automatable) {
     throw 'Structural fallback must not authorize generic AUTO for an Override.'
@@ -976,6 +1012,14 @@ foreach ($expected in @('ChoiceScrollUp','ChoiceScrollDown','ChoiceApply')) {
     }
 }
 
+$wrappedOverride = Action-For 'FixtureWrappedOverride'
+if ($wrappedOverride.generic.Automatable) {
+    throw 'Member-wrapped Event.Override was incorrectly authorized for generic Override rewriting.'
+}
+if ((@($wrappedOverride.generic.Blockers) -join ' ') -notmatch 'wrapper/alias') {
+    throw 'Wrapped Override rejection did not explain the wrapper/alias safety boundary.'
+}
+
 $downstream = Action-For 'FixtureDownstream'
 if (!$downstream.generic.Automatable) {
     throw 'Finite owner-local downstream action handler was not resolved generically.'
@@ -1005,6 +1049,15 @@ if (@($frame.generic.RecipeFamilies) -notcontains 'FRAME_DISPATCH_CONSOLIDATION'
 }
 if ($frame.source.MatchMode -ne 'profiler-owner-relative') {
     throw 'onUpdate bare init.lua did not use owner-relative source mapping.'
+}
+
+$wrappedFrame = @($onUpdate.topConsumers | Where-Object { $_.owner -eq 'FixtureWrappedFrame' }) | Select-Object -First 1
+if ($null -eq $wrappedFrame) { throw 'FixtureWrappedFrame was not ranked inside onUpdate.' }
+if ($wrappedFrame.generic.Automatable) {
+    throw 'Member-wrapped Event.registerForEvent was incorrectly authorized for frame consolidation.'
+}
+if (@($wrappedFrame.generic.RecipeFamilies) -contains 'FRAME_DISPATCH_CONSOLIDATION') {
+    throw 'Wrapped frame registrar leaked FRAME_DISPATCH_CONSOLIDATION.'
 }
 
 $alreadyFrame = @($onUpdate.topConsumers | Where-Object { $_.owner -eq 'FixtureAlreadyFrame' }) | Select-Object -First 1
@@ -1286,7 +1339,10 @@ try {
         throw 'Shared-provider generation escaped the measured callback set.'
     }
     foreach ($parkedEntry in @(
-        'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureAlreadyFrame/init.lua'
+        'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureAlreadyFrame/init.lua',
+        'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureWrappedAction/init.lua',
+        'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureWrappedOverride/init.lua',
+        'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureWrappedFrame/init.lua'
     )) {
         if ($parkedEntry -in $names) {
             throw "Analysis-only/already-satisfied callback leaked into generated pass: $parkedEntry"
