@@ -47,7 +47,8 @@
       "note": "Hot means review-worthy, not semantic-library-worthy. The base catalog is reserved for high-cost features with a provable inactive state and complete safe wake path."
     },
     "productionEntriesMustGenerate": true,
-    "partialSemanticStatePolicy": "FAIL_CLOSED_NOT_ALREADY_SATISFIED"
+    "partialSemanticStatePolicy": "FAIL_CLOSED_NOT_ALREADY_SATISFIED",
+    "semanticIdentityPolicy": "Mod/folder identity is a hint. Version-decorated names may match directly. Name-independent source identity is opt-in per rule and requires at least four independent proof points plus a source-shaped anchor; ambiguous or weak fingerprints fail closed."
   },
   "entries": [
     {
