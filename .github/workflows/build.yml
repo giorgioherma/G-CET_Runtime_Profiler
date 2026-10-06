@@ -836,6 +836,10 @@ jobs:
         shell: pwsh
         run: ./tests/SecondStackSemanticCompositionContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: Third-stack semantic composition contract
+        shell: pwsh
+        run: ./tests/ThirdStackSemanticCompositionContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: Semantic production library contract
         shell: pwsh
         run: ./tests/SemanticLibraryContract.ps1 -ResolverRoot ./publish-resolver
