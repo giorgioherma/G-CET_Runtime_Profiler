@@ -1543,35 +1543,162 @@ finally {
 }
 
 
-# Profiler-managed 0-Engine bridge contract.
+# Structurally compatible foreign 0-Engine contract.
+# Unknown versions keep their own runtime and receive only the additive
+# Engine.GCET bridge + private G-CET ActionRouter support module.
+$foreignRoot = Join-Path $root 'foreign-game'
+$foreignPlugins = Join-Path $foreignRoot 'bin\x64\plugins'
+$foreignMods = Join-Path $foreignPlugins 'cyber_engine_tweaks\mods'
+New-Item -ItemType Directory -Force $foreignMods | Out-Null
+Copy-Item -Path (Join-Path $mods '*') -Destination $foreignMods -Recurse -Force
+
+$foreignInit = Join-Path $foreignMods '0-Engine\init.lua'
+@'
+local engineVersion = "99.4-custom"
+local Engine = {}
+
+function Engine.GetVersion()
+    return engineVersion
+end
+
+function Engine.Register(name)
+    return { name = name }
+end
+
+function Engine.RegisterZone(config)
+    return "foreign-zone-api"
+end
+
+function Engine.RegisterSpatialSet(config)
+    return "foreign-spatial-api"
+end
+
+function Engine.SetTimeout(seconds, fn)
+    return "foreign-timeout-api"
+end
+
+return Engine
+'@ | Set-Content -LiteralPath $foreignInit -Encoding utf8
+
+$foreignResolved = (& $resolverExe --capture $capture --mods $foreignMods --generate-pass --json | ConvertFrom-Json)
+if (!$foreignResolved.ok -or $null -eq $foreignResolved.pass) {
+    throw 'Resolver rejected a structurally compatible foreign 0-Engine.'
+}
+
+$foreignManifest = Get-Content -LiteralPath $foreignResolved.pass.ManifestPath -Raw | ConvertFrom-Json
+if ([string]$foreignManifest.fixedRuntime.LiveState -ne 'STRUCTURAL_COMPAT') {
+    throw "Foreign 0-Engine was not admitted through STRUCTURAL_COMPAT: $($foreignManifest.fixedRuntime.LiveState)"
+}
+if ([string]$foreignManifest.fixedRuntime.FixedVersion -ne 'HOST-COMPAT-v1') {
+    throw "Foreign 0-Engine did not use the host-preserving compatibility runtime: $($foreignManifest.fixedRuntime.FixedVersion)"
+}
+if ([int]$foreignManifest.summary.fixedRuntimeFiles -ne 2) {
+    throw "Foreign 0-Engine compatibility should ship exactly init.lua + private ActionRouter, got $($foreignManifest.summary.fixedRuntimeFiles)."
+}
+
+$foreignZip = [System.IO.Compression.ZipFile]::OpenRead([string]$foreignResolved.pass.ZipPath)
+try {
+    function Read-ForeignZipText([string]$EntryName) {
+        $entry = $foreignZip.GetEntry($EntryName)
+        if ($null -eq $entry) { throw "Foreign ZIP entry not found: $EntryName" }
+        $reader = [System.IO.StreamReader]::new($entry.Open())
+        try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
+    }
+
+    $base = 'bin/x64/plugins/cyber_engine_tweaks/mods/'
+    $foreignZeroText = Read-ForeignZipText ($base + '0-Engine/init.lua')
+    foreach ($required in @(
+        '99.4-custom',
+        'function Engine.RegisterZone',
+        'foreign-zone-api',
+        'function Engine.RegisterSpatialSet',
+        'foreign-spatial-api',
+        'function Engine.SetTimeout',
+        'foreign-timeout-api',
+        '-- G-CET host compatibility bridge v1',
+        '__gcetHost.GCET',
+        'function __gcetApi.MakeEventRegistrar',
+        'function __gcetApi.SubscribeAction',
+        'modules/G-CET/ActionRouter'
+    )) {
+        if ($foreignZeroText -notmatch [regex]::Escape($required)) {
+            throw "Host-preserving 0-Engine adapter lost required source/API: $required"
+        }
+    }
+
+    if ($null -eq $foreignZip.GetEntry($base + '0-Engine/modules/G-CET/ActionRouter.lua')) {
+        throw 'Host-preserving 0-Engine adapter did not ship its private ActionRouter.'
+    }
+    foreach ($forbidden in @(
+        '0-Engine/modules/ActionRouter.lua',
+        '0-Engine/modules/Health.lua',
+        '0-Engine/modules/Scheduler.lua'
+    )) {
+        if ($null -ne $foreignZip.GetEntry($base + $forbidden)) {
+            throw "Host-preserving compatibility incorrectly overwrote host module: $forbidden"
+        }
+    }
+
+    $foreignActionText = Read-ForeignZipText ($base + 'FixtureAction/init.lua')
+    if ($foreignActionText -notmatch '\.GCET' -or
+        $foreignActionText -notmatch '__gcetApi_\d+\.SubscribeAction') {
+        throw 'Generated action routing does not prefer the namespaced Engine.GCET API.'
+    }
+
+    $foreignFrameText = Read-ForeignZipText ($base + 'FixtureStructural/init.lua')
+    if ($foreignFrameText -notmatch 'type\(__gcetEngine\.GCET\) == "table"' -or
+        $foreignFrameText -notmatch '__gcetApi\.MakeEventRegistrar') {
+        throw 'Generated frame routing does not prefer the namespaced Engine.GCET API.'
+    }
+}
+finally {
+    $foreignZip.Dispose()
+}
+
+Write-Host 'Foreign 0-Engine structural compatibility contract passed.'
+
+# Profiler-managed foreign 0-Engine contract.
+# Resolver must analyze the exact pre-profiler backup, not the temporary live
+# bridge, and still use the structural compatibility path.
 $profiledRoot = Join-Path $root 'profiled-game'
-$pluginsRoot = Join-Path $profiledRoot 'bin\x64\plugins'
-$profiledMods = Join-Path $pluginsRoot 'cyber_engine_tweaks\mods'
-$profiledState = Join-Path $pluginsRoot '.cet_runtime_profiler'
+$profiledPlugins = Join-Path $profiledRoot 'bin\x64\plugins'
+$profiledMods = Join-Path $profiledPlugins 'cyber_engine_tweaks\mods'
+$profiledState = Join-Path $profiledPlugins '.cet_runtime_profiler'
 New-Item -ItemType Directory -Force $profiledMods,$profiledState | Out-Null
-Copy-Item -Path (Join-Path $mods '*') -Destination $profiledMods -Recurse -Force
+Copy-Item -Path (Join-Path $foreignMods '*') -Destination $profiledMods -Recurse -Force
+
 $copiedInit = Join-Path $profiledMods '0-Engine\init.lua'
 $originalInit = [System.IO.File]::ReadAllBytes($copiedInit)
-[System.IO.File]::WriteAllBytes((Join-Path $profiledState '0-Engine.init.ORIGINAL.lua'), $originalInit)
+[System.IO.File]::WriteAllBytes(
+    (Join-Path $profiledState '0-Engine.init.ORIGINAL.lua'),
+    $originalInit)
+
 $bridgeText = [System.Text.Encoding]::UTF8.GetString($originalInit)
 $bridgeText += [Environment]::NewLine + '-- CET_RUNTIME_PROFILER_ADAPTIVE_SCHEDULER_BEGIN v2' + [Environment]::NewLine
 $bridgeText += '-- test-only profiler bridge shell' + [Environment]::NewLine
 $bridgeText += '-- CET_RUNTIME_PROFILER_ADAPTIVE_SCHEDULER_END v2' + [Environment]::NewLine
-[System.IO.File]::WriteAllText($copiedInit, $bridgeText, [System.Text.UTF8Encoding]::new($false))
+[System.IO.File]::WriteAllText(
+    $copiedInit,
+    $bridgeText,
+    [System.Text.UTF8Encoding]::new($false))
+
 $profiledResolved = (& $resolverExe --capture $capture --mods $profiledMods --generate-pass --json | ConvertFrom-Json)
 if (!$profiledResolved.ok -or $null -eq $profiledResolved.pass) {
-    throw 'Resolver rejected a profiler-managed temporary 0-Engine init even though its original backup is supported.'
-}
-$profiledManifest = Get-Content -LiteralPath $profiledResolved.pass.ManifestPath -Raw | ConvertFrom-Json
-if ([string]$profiledManifest.fixedRuntime.LiveState -notlike 'PROFILER_MANAGED_*') {
-    throw "Profiler-managed 0-Engine compatibility was not reported: $($profiledManifest.fixedRuntime.LiveState)"
+    throw 'Resolver rejected a profiler-managed foreign 0-Engine even though its original backup is structurally compatible.'
 }
 
-# The profiler marker must not authorize an unsupported original backup.
+$profiledManifest = Get-Content -LiteralPath $profiledResolved.pass.ManifestPath -Raw | ConvertFrom-Json
+if ([string]$profiledManifest.fixedRuntime.LiveState -ne 'PROFILER_MANAGED_STRUCTURAL_COMPAT') {
+    throw "Profiler-managed foreign 0-Engine did not use its backed-up structural source: $($profiledManifest.fixedRuntime.LiveState)"
+}
+
+# A profiler marker is not enough: an original that cannot prove a simple
+# exported runtime table must still be rejected.
 [System.IO.File]::WriteAllText(
     (Join-Path $profiledState '0-Engine.init.ORIGINAL.lua'),
-    ('local Engine = {}' + [Environment]::NewLine + 'return Engine' + [Environment]::NewLine),
+    ('local internal = {}' + [Environment]::NewLine + 'return function() return internal end' + [Environment]::NewLine),
     [System.Text.UTF8Encoding]::new($false))
+
 $unsupportedAccepted = $false
 try {
     $unsupportedResult = (& $resolverExe --capture $capture --mods $profiledMods --generate-pass --json 2>$null | ConvertFrom-Json)
@@ -1580,9 +1707,10 @@ try {
     $unsupportedAccepted = $false
 }
 if ($unsupportedAccepted) {
-    throw 'Profiler bridge marker incorrectly authorized an unsupported backed-up 0-Engine revision.'
+    throw 'Profiler bridge marker incorrectly authorized a non-structural 0-Engine backup.'
 }
 $global:LASTEXITCODE = 0
-Write-Host 'Profiler-managed 0-Engine bridge contract passed.'
+
+Write-Host 'Profiler-managed foreign 0-Engine contract passed.'
 
 Write-Host 'Callback-first resolver + V1 pass generator contract passed.'
