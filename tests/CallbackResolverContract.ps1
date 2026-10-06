@@ -1542,4 +1542,46 @@ finally {
     $zip.Dispose()
 }
 
+
+# Profiler-managed 0-Engine bridge contract.
+$profiledRoot = Join-Path $root 'profiled-game'
+$pluginsRoot = Join-Path $profiledRoot 'bin\x64\plugins'
+$profiledMods = Join-Path $pluginsRoot 'cyber_engine_tweaks\mods'
+$profiledState = Join-Path $pluginsRoot '.cet_runtime_profiler'
+New-Item -ItemType Directory -Force $profiledMods,$profiledState | Out-Null
+Copy-Item -Path (Join-Path $mods '*') -Destination $profiledMods -Recurse -Force
+$copiedInit = Join-Path $profiledMods '0-Engine\init.lua'
+$originalInit = [System.IO.File]::ReadAllBytes($copiedInit)
+[System.IO.File]::WriteAllBytes((Join-Path $profiledState '0-Engine.init.ORIGINAL.lua'), $originalInit)
+$bridgeText = [System.Text.Encoding]::UTF8.GetString($originalInit)
+$bridgeText += [Environment]::NewLine + '-- CET_RUNTIME_PROFILER_ADAPTIVE_SCHEDULER_BEGIN v2' + [Environment]::NewLine
+$bridgeText += '-- test-only profiler bridge shell' + [Environment]::NewLine
+$bridgeText += '-- CET_RUNTIME_PROFILER_ADAPTIVE_SCHEDULER_END v2' + [Environment]::NewLine
+[System.IO.File]::WriteAllText($copiedInit, $bridgeText, [System.Text.UTF8Encoding]::new($false))
+$profiledResolved = (& $resolverExe --capture $capture --mods $profiledMods --generate-pass --json | ConvertFrom-Json)
+if (!$profiledResolved.ok -or $null -eq $profiledResolved.pass) {
+    throw 'Resolver rejected a profiler-managed temporary 0-Engine init even though its original backup is supported.'
+}
+$profiledManifest = Get-Content -LiteralPath $profiledResolved.pass.ManifestPath -Raw | ConvertFrom-Json
+if ([string]$profiledManifest.fixedRuntime.LiveState -notlike 'PROFILER_MANAGED_*') {
+    throw "Profiler-managed 0-Engine compatibility was not reported: $($profiledManifest.fixedRuntime.LiveState)"
+}
+
+# The profiler marker must not authorize an unsupported original backup.
+[System.IO.File]::WriteAllText(
+    (Join-Path $profiledState '0-Engine.init.ORIGINAL.lua'),
+    ('local Engine = {}' + [Environment]::NewLine + 'return Engine' + [Environment]::NewLine),
+    [System.Text.UTF8Encoding]::new($false))
+$unsupportedAccepted = $false
+try {
+    $unsupportedResult = (& $resolverExe --capture $capture --mods $profiledMods --generate-pass --json 2>$null | ConvertFrom-Json)
+    if ($LASTEXITCODE -eq 0 -and $unsupportedResult.ok) { $unsupportedAccepted = $true }
+} catch {
+    $unsupportedAccepted = $false
+}
+if ($unsupportedAccepted) {
+    throw 'Profiler bridge marker incorrectly authorized an unsupported backed-up 0-Engine revision.'
+}
+Write-Host 'Profiler-managed 0-Engine bridge contract passed.'
+
 Write-Host 'Callback-first resolver + V1 pass generator contract passed.'

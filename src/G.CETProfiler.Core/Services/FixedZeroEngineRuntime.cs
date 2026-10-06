@@ -45,6 +45,9 @@ internal static class FixedZeroEngineRuntime
     private const string SharedSystemMarker =
         "-- G-CET shared providers v2";
 
+    private const string ProfilerBridgeMarker =
+        "CET_RUNTIME_PROFILER_ADAPTIVE_SCHEDULER_BEGIN v2";
+
     private static readonly IReadOnlyDictionary<string, string> FixedModuleHashes =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -71,6 +74,7 @@ internal static class FixedZeroEngineRuntime
 
         var liveInitBytes = File.ReadAllBytes(liveInit);
         var liveHash = Sha256(liveInitBytes);
+        var compatibilityHash = liveHash;
 
         var runtimeRoot = Path.Combine(AppContext.BaseDirectory, "runtime", "0-Engine");
         var encodedInitPath = Path.Combine(runtimeRoot, "fixed-init.lua.gz.b64");
@@ -91,16 +95,41 @@ internal static class FixedZeroEngineRuntime
         var sharedInit = AddSharedSystemAccessors(fixedInit);
         var sharedInitHash = Sha256(sharedInit);
 
-        var liveState =
-            liveHash.Equals(BaseInitSha256, StringComparison.OrdinalIgnoreCase)
-                ? "BASE_0.18.6"
-                : liveHash.Equals(LegacyFixedInitSha256, StringComparison.OrdinalIgnoreCase)
-                    ? "LEGACY_FIXED"
-                    : liveHash.Equals(PreviousSharedInitSha256, StringComparison.OrdinalIgnoreCase)
-                        ? "PREVIOUS_SHARED_FIXED"
-                        : liveHash.Equals(sharedInitHash, StringComparison.OrdinalIgnoreCase)
-                            ? "ALREADY_FIXED"
-                            : "UNSUPPORTED";
+        var liveState = ClassifyCompatibleInit(compatibilityHash, sharedInitHash);
+
+        if (liveState == "UNSUPPORTED" &&
+            Encoding.UTF8.GetString(liveInitBytes).Contains(
+                ProfilerBridgeMarker,
+                StringComparison.Ordinal))
+        {
+            var profilerBackup = ResolveProfilerBackupInit(modsRoot);
+            if (profilerBackup is null || !File.Exists(profilerBackup))
+            {
+                throw new InvalidOperationException(
+                    "The installed 0-Engine init.lua contains the G-CET profiler bridge, but the profiler-managed original init.lua backup could not be found. " +
+                    "Restore the profiler's original state before generating a pass. " +
+                    $"Installed SHA256: {liveHash}.");
+            }
+
+            var backupBytes = File.ReadAllBytes(profilerBackup);
+            compatibilityHash = Sha256(backupBytes);
+            var backupState = ClassifyCompatibleInit(compatibilityHash, sharedInitHash);
+
+            if (backupState == "UNSUPPORTED")
+            {
+                throw new InvalidOperationException(
+                    "The live 0-Engine init.lua is temporarily modified by the G-CET profiler, but its backed-up original is not a supported 0-Engine base or recognized G-CET fixed runtime. " +
+                    $"Supported base: {BaseVersion} ({BaseInitSha256}). " +
+                    $"Prior fixed runtime: {LegacyFixedInitSha256}. " +
+                    $"Previous shared-state runtime: {PreviousSharedInitSha256}. " +
+                    $"Current fixed runtime: {FixedVersion} ({sharedInitHash}). " +
+                    $"Profiler-adjusted live SHA256: {liveHash}. " +
+                    $"Backed-up original SHA256: {compatibilityHash}. " +
+                    "G-CET will not overwrite an unknown 0-Engine revision.");
+            }
+
+            liveState = "PROFILER_MANAGED_" + backupState;
+        }
 
         if (liveState == "UNSUPPORTED")
         {
@@ -150,6 +179,37 @@ internal static class FixedZeroEngineRuntime
             sharedInitHash);
     }
 
+
+    private static string ClassifyCompatibleInit(
+        string hash,
+        string currentSharedHash)
+    {
+        if (hash.Equals(BaseInitSha256, StringComparison.OrdinalIgnoreCase))
+            return "BASE_0.18.6";
+        if (hash.Equals(LegacyFixedInitSha256, StringComparison.OrdinalIgnoreCase))
+            return "LEGACY_FIXED";
+        if (hash.Equals(PreviousSharedInitSha256, StringComparison.OrdinalIgnoreCase))
+            return "PREVIOUS_SHARED_FIXED";
+        if (hash.Equals(currentSharedHash, StringComparison.OrdinalIgnoreCase))
+            return "ALREADY_FIXED";
+        return "UNSUPPORTED";
+    }
+
+    private static string? ResolveProfilerBackupInit(string modsRoot)
+    {
+        var cetRoot = Directory.GetParent(modsRoot)?.FullName;
+        var pluginsRoot = cetRoot is null
+            ? null
+            : Directory.GetParent(cetRoot)?.FullName;
+
+        if (string.IsNullOrWhiteSpace(pluginsRoot))
+            return null;
+
+        return Path.Combine(
+            pluginsRoot,
+            ".cet_runtime_profiler",
+            "0-Engine.init.ORIGINAL.lua");
+    }
 
     private static byte[] AddSharedSystemAccessors(byte[] baseline)
     {
