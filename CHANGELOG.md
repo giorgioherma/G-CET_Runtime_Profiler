@@ -3,6 +3,7 @@
 All notable public changes to G-CET Runtime Profiler are recorded here.
 
 ## [Unreleased]
+- Added read-only sampled Lua-heap consequence telemetry to adaptive deep profiling. Hot callback samples now record heap before/after/net delta, while deep-registration summaries aggregate positive, reclaimed, net, and peak sampled deltas without changing Lua GC behavior.
 - Resolver accuracy pass: generic frame-dispatch consolidation now covers source-proven `onDraw` registrations as well as `onUpdate`, recognizes existing owner-specific 0-Engine draw registrars, and resolves CET `n"ActionName"` CName literals as finite action selectors.
 - Added source-proven semantic AUTO rules for DriveBus, QuestTrackingToggle, sitAnywhere, Repeatable Increased Criminal Activity, Dedka Auto Shop, MarmurBank, and Immersive Third Person. The rules preserve installed gameplay behavior while recovering exact-action routing, active/idle cadence splits, visible-only draw work, finite Bank action prefiltering, and adaptive ITP supervisor/maintenance lanes.
 - Frame-only AUTO now reports its scope explicitly as registration-dispatch-only and surfaces material callback-body work that remains after consolidation, preventing a hot callback from appearing fully optimized merely because its CET-facing registrar was consolidated.
