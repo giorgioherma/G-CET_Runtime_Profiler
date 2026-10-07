@@ -2520,7 +2520,7 @@
       "identityHints": [
         "repeatable_increased_criminal_activity"
       ],
-      "policyClass": "OBSERVATIONAL_DIAGNOSTICS_CADENCE",
+      "policyClass": "VALIDATED_MULTI_RATE_RUNTIME",
       "callbacks": [
         {
           "kind": "event",
@@ -2539,27 +2539,50 @@
         "expectedMarkerFileCount": 1,
         "satisfiedAnyGroups": [
           [
-            "diagnosticsElapsed",
-            "rica.diagnostics"
+            "rewardElapsed",
+            "rica.rewards"
           ],
           [
-            "runtimeTick(includeDiagnostics)",
+            "mappinElapsed",
+            "rica.mappins"
+          ],
+          [
+            "diagnosticsElapsed",
             "scheduledDiagnosticsTick"
+          ],
+          [
+            "processBodyRewards(system, 4)",
+            "processBodyRewards(system, bodyLimit"
+          ],
+          [
+            "processCompletionRewards(system, 1)",
+            "processCompletionRewards(system, completionLimit"
           ]
-        ]
+        ],
+        "allowIdentityFallback": true
       },
       "behavior": {
-        "handler": "SEMANTIC_DIAGNOSTICS_CADENCE",
+        "handler": "SEMANTIC_VALIDATED_MULTI_RATE_RUNTIME",
         "concepts": [
+          "boundedRewards",
           "runtimeState",
-          "rewards",
           "mappins",
           "diagnostics",
-          "scheduler"
+          "scriptableSystem"
         ],
         "lanes": [
           {
-            "role": "RUNTIME",
+            "role": "REWARDS",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.25
+          },
+          {
+            "role": "RUNTIME_STATE",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 1
+          },
+          {
+            "role": "MAPPINS",
             "cadence": "FIXED_SECONDS",
             "seconds": 1
           },
@@ -2573,7 +2596,12 @@
             "cadence": "FIXED_SECONDS",
             "seconds": 10
           }
-        ]
+        ],
+        "genericResponsibilities": [
+          "FRAME_DISPATCH_CONSOLIDATION",
+          "SHARED_PROVIDER_READ"
+        ],
+        "note": "Cadences come from the validated manual end state. Production injection intentionally keeps simple accumulator lanes instead of version-locking the old 0-Engine Scheduler/diagnostic-worker implementation."
       },
       "generation": {
         "enabled": true,
@@ -2589,13 +2617,14 @@
         "evidenceStack": "G_COLLECTION_RAW",
         "admitted": true
       },
-      "cadenceGroup": "1HZ_RUNTIME_0_2HZ_DIAGNOSTICS_0_1HZ_SYSTEM",
+      "cadenceGroup": "4HZ_REWARDS_1HZ_RUNTIME_1HZ_MAPPINS_0_2HZ_DIAGNOSTICS_0_1HZ_SYSTEM",
       "catalogRole": "SEMANTIC_HOT_MOD",
       "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
       "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
       "referenceOverrideAllowed": false,
       "evidenceMembership": [
-        "G_COLLECTION_RAW"
+        "G_COLLECTION_RAW",
+        "G-CET_0-Engine_Manual+Automatic"
       ]
     },
     {
