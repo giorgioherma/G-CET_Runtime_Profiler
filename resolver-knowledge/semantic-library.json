@@ -2768,7 +2768,7 @@
       "identityHints": [
         "marmurbank"
       ],
-      "policyClass": "FINITE_ACTION_PREFILTER",
+      "policyClass": "POST_VENDOR_BANK_WAKE",
       "callbacks": [
         {
           "kind": "Observe",
@@ -2786,21 +2786,53 @@
           "WORLD_INTERACTION_ACTIONS",
           "shouldBlockWorldAction",
           "Override(\"PlayerPuppet\", \"OnAction\"",
-          "Observe('PlayerPuppet', 'OnAction'"
+          "Observe('PlayerPuppet', 'OnAction'",
+          "bank:distanceListener()",
+          "bankTimerFirstRun",
+          "GameUI.Event.MenuClose"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:marmurbank",
-        "expectedMarkerFileCount": 1,
+        "expectedMarkerFileCount": 2,
         "satisfiedAll": [
           "__gcetMarmurActionRelevant",
-          "WORLD_INTERACTION_ACTIONS[name] == true"
+          "__gcetMarmurQueueAfterDropPoint",
+          "GameUI.Event.MenuClose",
+          "state.lastMenu ~= \"Vendor\"",
+          "location.type ~= \"atm\"",
+          "Mod.SetTimeout(0.35",
+          "marmurbank.active-atm"
         ]
       },
       "behavior": {
-        "handler": "SEMANTIC_FINITE_ACTION_PREFILTER",
+        "handler": "SEMANTIC_POST_VENDOR_BANK_WAKE",
         "concepts": [
-          "worldInteractionSuppression",
-          "bankChoiceInput",
-          "wrappedMethodPassThrough"
+          "vanillaDropPointFirst",
+          "postVendorBankPrompt",
+          "eventDrivenDormancy",
+          "finiteActionPrefilter",
+          "temporaryActiveExitZone"
+        ],
+        "lanes": [
+          {
+            "role": "DORMANT_ATM",
+            "cadence": "EVENT_DRIVEN",
+            "seconds": 0
+          },
+          {
+            "role": "POST_VENDOR_WAKE",
+            "cadence": "ONE_SHOT_DELAY",
+            "seconds": 0.35
+          },
+          {
+            "role": "ACTIVE_HUB_UI",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.5
+          },
+          {
+            "role": "INTEREST_MAINTENANCE",
+            "cadence": "AUTHOR_EXISTING_LONG_INTERVAL",
+            "seconds": 300
+          }
         ]
       },
       "generation": {
@@ -2817,7 +2849,7 @@
         "evidenceStack": "G_COLLECTION_RAW",
         "admitted": true
       },
-      "cadenceGroup": "FINITE_WORLD_INTERACTION_ACTIONS",
+      "cadenceGroup": "POST_VENDOR_EVENT_WAKE_PLUS_ACTIVE_HUB",
       "catalogRole": "SEMANTIC_HOT_MOD",
       "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
       "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
