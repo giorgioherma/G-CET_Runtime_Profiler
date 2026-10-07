@@ -289,6 +289,270 @@ registerForEvent('onUpdate', function(delta)
 end)
 '@
 
+
+Write-ModFile 'ImmersiveFirstPerson' 'init.lua' @'
+local Helpers=require("Modules/Helpers")
+local CameraCore={Update=function() end}
+local cachedPlayerState={}
+local function collectPlayerState()
+    return Helpers.RefreshPlayerState(cachedPlayerState)
+end
+registerForEvent("onUpdate", function(delta)
+        local isPaused=false
+        local playerState = isPaused and nil or collectPlayerState()
+        CameraCore.Update(delta, playerState)
+end)
+'@
+
+Write-ModFile 'ImmersiveFirstPerson' 'Modules/Helpers.lua' @'
+local Helpers={}
+local session = {
+    player = nil,
+    blackboard = nil,
+    definition = nil,
+    workspotSystem = nil,
+    transactionSystem = nil,
+    weaponSlot = nil,
+}
+local function resetSession()
+    session.player = nil
+    session.weaponSlot = nil
+end
+local function refreshPlayerState(target)
+    local player=Game.GetPlayer()
+    local vehicleState=0
+    local detailedLocomotion=0
+    local landingState=0
+    local inspectionComponent = player:GetInspectionComponent()
+    local playerState = player:GetPS()
+    local mountedVehicle = vehicleState == 0
+        and Game['GetMountedVehicle;GameObject'](player)
+        or nil
+    local knockedDown = detailedLocomotion == 29
+        or detailedLocomotion == 31
+        or landingState > 1
+        or StatusEffectSystem.ObjectHasStatusEffectOfType(player, "VehicleKnockdown")
+        or StatusEffectSystem.ObjectHasStatusEffectOfType(player, "BikeKnockdown")
+    target.inVehicle = vehicleState ~= 0 or mountedVehicle ~= nil
+    target.knockedDown = knockedDown
+    target.inspecting = inspectionComponent ~= nil
+        and inspectionComponent:GetIsPlayerInspecting() == true
+    target.inWorkspot = session.workspotSystem ~= nil
+        and session.workspotSystem:IsActorInWorkspot(player) == true
+    target.crouching = playerState ~= nil and playerState:IsCrouch() == true
+    return target
+end
+function Helpers.RefreshPlayerState(target)
+    target = target or {}
+    local ok, refreshed = pcall(refreshPlayerState, target)
+    return ok and refreshed or target
+end
+return Helpers
+'@
+
+Write-ModFile 'nativeInteractions' 'init.lua' @'
+local Cron={Update=function() end}
+local manager=require("modules/projectsManager")
+local world=require("modules/utils/worldInteraction")
+local resourceHelper={sceneQueue={},onUpdate=function() end}
+local self={runtimeData={inGame=true,inMenu=false}}
+registerForEvent("onUpdate", function (dt)
+        if self.runtimeData.inGame and not self.runtimeData.inMenu then
+            Cron.Update(dt)
+            manager.update()
+            world.update()
+            resourceHelper.onUpdate()
+        end
+end)
+'@
+
+Write-ModFile 'nativeInteractions' 'modules/projectsManager.lua' @'
+local manager={projects={},updateList={}}
+local function rebuild()
+ for _, project in pairs(manager.projects) do
+  if project.enabled then
+   for _, interaction in pairs(project.interactions) do
+    if interaction.needsUpdate then table.insert(manager.updateList,interaction) end
+   end
+  end
+ end
+end
+local playerPosition = { x = 0, y = 0, z = 0 }
+
+function manager.update()
+ for i=1,#manager.updateList do
+  local interaction=manager.updateList[i]
+ end
+end
+return manager
+'@
+
+Write-ModFile 'nativeInteractions' 'modules/utils/worldInteraction.lua' @'
+local ref={Weak=function(x)return x end}
+local world = {
+    interactions = {},
+    searchGrid = {},
+    interactionCounter = 0,
+    activeInteractions = {},
+    pinnedInteractions = {},
+    cellSize = 12
+}
+local function getGridKey(position)
+    return tostring(position.x) .. "_" .. tostring(position.y)
+end
+function world.getGridInteractions(origin, singleCell, roundRobin) return {} end
+function world.removeInteraction(key)
+    if world.interactions[key] then
+        local data = world.interactions[key]
+        if world.interactions[key].pinID then
+            Game.GetMappinSystem():UnregisterMappin(world.interactions[key].pinID)
+        end
+        world.pinnedInteractions[data] = nil
+    end
+end
+function world.init()
+    local _ = "WorldMappinUIProfile.nif"
+    ObserveAfter("BaseMappinBaseController", "UpdateRootState", function(this)
+        local mappin = this:GetMappin()
+        if not mappin or this:GetProfile():GetID().value ~= "WorldMappinUIProfile.nif" then return end
+        local pos = mappin:GetWorldPosition()
+        for _, interaction in pairs(world.getGridInteractions(pos, true)) do
+            if interaction.pinID and interaction.pinID.value == this:GetMappin():GetNewMappinID().value then
+                local record = TweakDBInterface.GetUIIconRecord(interaction.icon)
+                this.iconWidget:SetAtlasResource(record:AtlasResourcePath())
+                this.iconWidget:SetTexturePart(record:AtlasPartName())
+                if interaction.iconColor then
+                    this.iconWidget:SetTintColor(HDRColor.new(interaction.iconColor))
+                else
+                    this.iconWidget.widget:BindProperty("tintColor", "MainColors.Blue")
+                end
+                interaction.pinController = ref.Weak(this)
+                return
+            end
+        end
+    end)
+    Override("NativeInteractions", "IsCustomMappin", function (_, mappin)
+        if mappin then
+            local pos = mappin:GetWorldPosition()
+            for _, interaction in pairs(world.getGridInteractions(pos, true)) do
+                if interaction.pinID and interaction.pinID.value == mappin:GetNewMappinID().value then
+                    return true
+                end
+            end
+        end
+
+        return false
+    end)
+end
+function world.forceIcons()
+    for interaction, _ in pairs(world.pinnedInteractions) do
+        if interaction.pinID then
+            Game.GetMappinSystem():UnregisterMappin(interaction.pinID)
+            local data = MappinData.new({})
+            interaction.pinID = Game.GetMappinSystem():RegisterMappin(data, interaction.pos)
+        end
+    end
+end
+
+function world.togglePin(interaction, state)
+    if not interaction.icon then return end
+    if not state and interaction.pinID then
+        Game.GetMappinSystem():UnregisterMappin(interaction.pinID)
+        interaction.pinID = nil
+        interaction.pinController = nil
+        world.pinnedInteractions[interaction] = nil
+    elseif not interaction.pinID and state then
+        local data = MappinData.new({})
+        interaction.pinID = Game.GetMappinSystem():RegisterMappin(data, interaction.pos)
+        world.pinnedInteractions[interaction] = true
+    end
+end
+function world.onSessionStart() -- Save loaded, all pins are gone
+    world.activeInteractions = {}
+    world.pinnedInteractions = {}
+end
+function world.shutdown()
+    for _, interaction in pairs(world.interactions) do
+        if interaction.pinID then
+            Game.GetMappinSystem():UnregisterMappin(interaction.pinID)
+        end
+    end
+end
+
+return world
+'@
+
+Write-ModFile 'Minimap Widgets' 'init.lua' @'
+local MinimapWidgetsConfig={
+ FPS=true,CoordInterv=1,ShowElevationArrow=true,
+ ShowEnemies=true,ShowNCPD=true,ShowLoot=true,ShowDevices=true}
+local shouldCountFPS=true
+local shouldForceUpdate=true
+local isGameLoading=false
+local isPreGameState=false
+local isInitialized=true
+local timerFast,timerSlow,timerCoord=0,0,0
+local function updateFpsCounter() end
+local function updateFastWidgets() end
+local function updateSlowWidgets() end
+local function updateCoordinatesOnly() end
+registerForEvent("onUpdate", function(deltaTime)
+    -- EMERGENCY STOP:
+    if isGameLoading or isPreGameState or not isInitialized then return end
+    if not shouldForceUpdate then return end
+
+    -- FIREWALL
+    local player = Game.GetPlayer()
+    if not player or not IsDefined(player) then return end
+    if not Game.GetTimeSystem() or not Game.GetCameraSystem() or not Game.GetTransactionSystem() then return end
+    if not Game.GetScriptableSystemsContainer() then return end
+
+    -- 1. FPS
+    if MinimapWidgetsConfig.FPS == true and shouldCountFPS == true then
+        updateFpsCounter()
+    end
+
+    -- 2. Fast Widgets (0.2s)
+    timerFast = timerFast + deltaTime
+    if timerFast >= 0.2 then
+        updateFastWidgets()
+        timerFast = 0
+    end
+    timerSlow = timerSlow + deltaTime
+    if timerSlow >= 1.0 then
+        updateSlowWidgets()
+        timerSlow = 0
+    end
+    timerCoord = timerCoord + deltaTime
+    if timerCoord >= MinimapWidgetsConfig.CoordInterv then
+        updateCoordinatesOnly()
+        timerCoord = 0
+    end
+end)
+
+ObserveAfter("MinimapStealthMappinController", "UpdateAboveBelowVerticalRelation", function(this)
+			local vertRelation = this:GetVerticalRelationToPlayer()
+			local shouldShow = this:GetRootWidget():IsVisible() and not this:IsClamped()
+			local isAbove = vertRelation == gamemappinsVerticalPositioning.Above
+			local isBelow = vertRelation == gamemappinsVerticalPositioning.Below
+			if this:IsClamped() then 
+				if this.aboveWidget then this.aboveWidget:SetVisible(false) end
+			else 
+				if this.aboveWidget then this.aboveWidget:SetVisible(isAbove) end
+				if this.belowWidget then this.belowWidget:SetVisible(isBelow) end
+			end
+end)
+
+ObserveAfter("MinimapStealthMappinController", "Intro", function(this)
+		if not IsDefined(this) then return end
+		local attitude = this.stealthMappin:GetAttitudeTowardsPlayer()
+end)
+ObserveAfter("MinimapStealthMappinController", "Update", function(this)
+		if not IsDefined(this) then return end
+		local attitude = this.stealthMappin:GetAttitudeTowardsPlayer()
+end)
+'@
+
 $drive=Join-Path $mods 'DriveBus\Modules\core.lua'
 $qtt=Join-Path $mods 'QuestTrackingToggle\init.lua'
 $sit=Join-Path $mods 'sitAnywhere\init.lua'
@@ -296,6 +560,9 @@ $rica=Join-Path $mods 'repeatable_increased_criminal_activity\init.lua'
 $dedka=Join-Path $mods 'Dedka Auto Shop\init.lua'
 $bank=Join-Path $mods 'marmurbank\external\InteractionUI.lua'
 $itp=Join-Path $mods 'immersive_third_person\init.lua'
+$ifp=Join-Path $mods 'ImmersiveFirstPerson\init.lua'
+$nif=Join-Path $mods 'nativeInteractions\init.lua'
+$minimap=Join-Path $mods 'Minimap Widgets\init.lua'
 $handoff=@{schemaVersion='1.9';callbacks=@(
  (Row 1 'DriveBus' 'Observe' 'PlayerPuppet::OnAction' 'Modules/core.lua' (Find-CallbackRange $drive 'Observe\("PlayerPuppet"') 17.82 1485),
  (Row 2 'QuestTrackingToggle' 'Observe' 'PlayerPuppet::OnAction' 'init.lua' (Find-CallbackRange $qtt "Observe\('PlayerPuppet'") 11.65 1485),
@@ -303,14 +570,17 @@ $handoff=@{schemaVersion='1.9';callbacks=@(
  (Row 4 'repeatable_increased_criminal_activity' 'event' 'onUpdate' 'init.lua' (Find-CallbackRange $rica 'registerForEvent\("onUpdate"') 4.72 60),
  (Row 5 'Dedka Auto Shop' 'event' 'onDraw' 'init.lua' (Find-CallbackRange $dedka 'registerForEvent\("onDraw"') 3.34 60),
  (Row 6 'marmurbank' 'Observe' 'PlayerPuppet::OnAction' 'external/InteractionUI.lua' (Find-CallbackRange $bank "Observe\('PlayerPuppet'") 23.30 1485),
- (Row 7 'immersive_third_person' 'event' 'onUpdate' 'init.lua' (Find-CallbackRange $itp "registerForEvent\('onUpdate'") 26.34 60)
+ (Row 7 'immersive_third_person' 'event' 'onUpdate' 'init.lua' (Find-CallbackRange $itp "registerForEvent\('onUpdate'") 26.34 60),
+ (Row 8 'ImmersiveFirstPerson' 'event' 'onUpdate' 'init.lua' (Find-CallbackRange $ifp 'registerForEvent\("onUpdate"') 11.24 60),
+ (Row 9 'nativeInteractions' 'event' 'onUpdate' 'init.lua' (Find-CallbackRange $nif 'registerForEvent\("onUpdate"') 16.54 60),
+ (Row 10 'Minimap Widgets' 'event' 'onUpdate' 'init.lua' (Find-CallbackRange $minimap 'registerForEvent\("onUpdate"') 8.23 60)
 );optimizerEvidence=@()}|ConvertTo-Json -Depth 30
 $handoff|Set-Content (Join-Path $capture 'CET_Resolver_Input.json') -Encoding utf8
 
 $resolved=(& $resolverExe --capture $capture --mods $mods --generate-pass --json|ConvertFrom-Json)
 if(!$resolved.ok -or $null-eq$resolved.pass){throw 'Resolver-accuracy semantic pass generation failed.'}
 $resolver=Get-Content (Join-Path $capture 'G-CET_Resolver.json') -Raw|ConvertFrom-Json
-$rules=@('drivebus','quest-tracking-toggle','sitanywhere','repeatable-increased-criminal-activity','dedka-auto-shop','marmurbank','immersive-third-person')
+$rules=@('drivebus','quest-tracking-toggle','sitanywhere','repeatable-increased-criminal-activity','dedka-auto-shop','marmurbank','immersive-third-person','immersivefirstperson','nativeinteractions','minimap-widgets')
 foreach($rule in $rules){
  $m=@();foreach($family in @($resolver.callbackFamilies)){$m+=@($family.topConsumers|Where-Object{$_.semantic.RuleId-eq$rule})}
  if($m.Count-lt1 -or @($m|Where-Object{$_.semantic.SourceProofSatisfied}).Count-lt1){throw "Semantic source proof failed: $rule"}
@@ -339,5 +609,11 @@ try{
  $x=Z($b+'Dedka Auto Shop/init.lua');if($x-notmatch'if state\.showing then' -or $x-notmatch'__gcetRegisterEvent_\d+\("onDraw"'){throw 'Dedka draw composition incomplete.'}
  $x=Z($b+'marmurbank/external/InteractionUI.lua');if($x-notmatch'__gcetMarmurActionRelevant' -or $x-notmatch'WORLD_INTERACTION_ACTIONS\[name\] == true' -or $x-notmatch'wrapped\(action, wrappedConsumer\)'){throw 'MarmurBank prefilter incomplete.'}
  $x=Z($b+'immersive_third_person/init.lua');if($x-notmatch'__gcetItppSupervisorElapsed' -or $x-notmatch'__gcetItppMaintenanceElapsed' -or $x-notmatch'if state\.enabled or state\.cameraTransition then' -or $x-notmatch'if state\.pendingFppCleanup then' -or $x-notmatch'pcall\(mod\.fallCommitTick, delta\)'){throw 'ITP split incomplete.'}
+ $x=Z($b+'ImmersiveFirstPerson/Modules/Helpers.lua');if($x-notmatch'slowProbeElapsed' -or $x-notmatch'session\.slowProbe\.inWorkspot' -or $x-notmatch'Helpers\.RefreshPlayerState\(target, delta\)'){throw 'ImmersiveFirstPerson slow probe incomplete.'}
+ $x=Z($b+'ImmersiveFirstPerson/init.lua');if($x-notmatch'collectPlayerState\(delta\)'){throw 'ImmersiveFirstPerson delta propagation incomplete.'}
+ $x=Z($b+'nativeInteractions/init.lua');if($x-notmatch'__gcetNifIdleWorldInterval' -or $x-notmatch'manager\.hasRealtimeWork'){throw 'nativeInteractions cadence split incomplete.'}
+ $x=Z($b+'nativeInteractions/modules/projectsManager.lua');if($x-notmatch'function manager\.hasRealtimeWork\(\)'){throw 'nativeInteractions realtime sentinel missing.'}
+ $x=Z($b+'nativeInteractions/modules/utils/worldInteraction.lua');if($x-notmatch'pinInteractions' -or $x-notmatch'findPinInteraction' -or $x-notmatch'indexPin\(interaction\)'){throw 'nativeInteractions pin index incomplete.'}
+ $x=Z($b+'Minimap Widgets/init.lua');if($x-notmatch'__gcetMinimapFastDue' -or $x-notmatch'local isClamped = this:IsClamped\(\)' -or $x-notmatch'local hideEnemies = not MinimapWidgetsConfig\.ShowEnemies'){throw 'Minimap Widgets semantic optimization incomplete.'}
 }finally{$zip.Dispose()}
 Write-Host 'Resolver-accuracy semantic composition contract passed.'
