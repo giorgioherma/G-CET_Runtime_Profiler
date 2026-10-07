@@ -188,6 +188,41 @@ ProfilerSourceInfo ReadProfilerSourceInfo(const sol::function& aFunction)
     return info;
 }
 
+template <typename... Args>
+sol::protected_function_result TryProfiledLuaFunction(
+    const std::shared_ptr<spdlog::logger>& acpLogger,
+    CETRuntimeProfiler::Counter* aCounter,
+    const sol::function& aFunc,
+    Args... aArgs)
+{
+    sol::protected_function_result result{};
+    if (aFunc)
+    {
+        try
+        {
+            {
+                CETRuntimeProfiler::DeepTraceScope deepTrace(
+                    aCounter, aFunc.lua_state());
+                CETRuntimeProfiler::Scope profileScope(aCounter);
+                result = aFunc(aArgs...);
+            }
+        }
+        catch (std::exception& e)
+        {
+            acpLogger->error(e.what());
+        }
+
+        // The profiler scopes are already gone here. Error conversion/logging
+        // therefore runs with CET's original Lua hook restored.
+        if (!result.valid())
+        {
+            const sol::error cError = result;
+            acpLogger->error(cError.what());
+        }
+    }
+    return result;
+}
+
 '@ `
     -Label "ScriptContext profiler source helper"
 
@@ -214,96 +249,56 @@ $eventPatches = @(
         Label = "TriggerOnHook timing"
         Pattern = 'TryLuaFunction\(m_logger,\s*m_onHook\);'
         Replacement = @'
-if (m_onHook)
-    {
-        CETRuntimeProfiler::DeepTraceScope deepTrace(m_profOnHook, m_onHook.lua_state());
-        CETRuntimeProfiler::Scope profileScope(m_profOnHook);
-        TryLuaFunction(m_logger, m_onHook);
-    }
+TryProfiledLuaFunction(m_logger, m_profOnHook, m_onHook);
 '@
     },
     @{
         Label = "TriggerOnTweak timing"
         Pattern = 'TryLuaFunction\(m_logger,\s*m_onTweak\);'
         Replacement = @'
-if (m_onTweak)
-    {
-        CETRuntimeProfiler::DeepTraceScope deepTrace(m_profOnTweak, m_onTweak.lua_state());
-        CETRuntimeProfiler::Scope profileScope(m_profOnTweak);
-        TryLuaFunction(m_logger, m_onTweak);
-    }
+TryProfiledLuaFunction(m_logger, m_profOnTweak, m_onTweak);
 '@
     },
     @{
         Label = "TriggerOnInit timing"
         Pattern = 'TryLuaFunction\(m_logger,\s*m_onInit\);'
         Replacement = @'
-if (m_onInit)
-    {
-        CETRuntimeProfiler::DeepTraceScope deepTrace(m_profOnInit, m_onInit.lua_state());
-        CETRuntimeProfiler::Scope profileScope(m_profOnInit);
-        TryLuaFunction(m_logger, m_onInit);
-    }
+TryProfiledLuaFunction(m_logger, m_profOnInit, m_onInit);
 '@
     },
     @{
         Label = "TriggerOnUpdate timing"
         Pattern = 'TryLuaFunction\(m_logger,\s*m_onUpdate,\s*aDeltaTime\);'
         Replacement = @'
-if (m_onUpdate)
-    {
-        CETRuntimeProfiler::DeepTraceScope deepTrace(m_profOnUpdate, m_onUpdate.lua_state());
-        CETRuntimeProfiler::Scope profileScope(m_profOnUpdate);
-        TryLuaFunction(m_logger, m_onUpdate, aDeltaTime);
-    }
+TryProfiledLuaFunction(m_logger, m_profOnUpdate, m_onUpdate, aDeltaTime);
 '@
     },
     @{
         Label = "TriggerOnDraw timing"
         Pattern = 'TryLuaFunction\(m_logger,\s*m_onDraw\);'
         Replacement = @'
-if (m_onDraw)
-    {
-        CETRuntimeProfiler::DeepTraceScope deepTrace(m_profOnDraw, m_onDraw.lua_state());
-        CETRuntimeProfiler::Scope profileScope(m_profOnDraw);
-        TryLuaFunction(m_logger, m_onDraw);
-    }
+TryProfiledLuaFunction(m_logger, m_profOnDraw, m_onDraw);
 '@
     },
     @{
         Label = "TriggerOnOverlayOpen timing"
         Pattern = 'TryLuaFunction\(m_logger,\s*m_onOverlayOpen\);'
         Replacement = @'
-if (m_onOverlayOpen)
-    {
-        CETRuntimeProfiler::DeepTraceScope deepTrace(m_profOnOverlayOpen, m_onOverlayOpen.lua_state());
-        CETRuntimeProfiler::Scope profileScope(m_profOnOverlayOpen);
-        TryLuaFunction(m_logger, m_onOverlayOpen);
-    }
+TryProfiledLuaFunction(m_logger, m_profOnOverlayOpen, m_onOverlayOpen);
 '@
     },
     @{
         Label = "TriggerOnOverlayClose timing"
         Pattern = 'TryLuaFunction\(m_logger,\s*m_onOverlayClose\);'
         Replacement = @'
-if (m_onOverlayClose)
-    {
-        CETRuntimeProfiler::DeepTraceScope deepTrace(m_profOnOverlayClose, m_onOverlayClose.lua_state());
-        CETRuntimeProfiler::Scope profileScope(m_profOnOverlayClose);
-        TryLuaFunction(m_logger, m_onOverlayClose);
-    }
+TryProfiledLuaFunction(m_logger, m_profOnOverlayClose, m_onOverlayClose);
 '@
     },
     @{
         Label = "TriggerOnShutdown timing"
         Pattern = 'TryLuaFunction\(m_logger,\s*m_onShutdown\);'
         Replacement = @'
-if (m_onShutdown)
-    {
-        CETRuntimeProfiler::DeepTraceScope deepTrace(m_profOnShutdown, m_onShutdown.lua_state());
-        CETRuntimeProfiler::Scope profileScope(m_profOnShutdown);
-        TryLuaFunction(m_logger, m_onShutdown);
-    }
+TryProfiledLuaFunction(m_logger, m_profOnShutdown, m_onShutdown);
 '@
     }
 )
@@ -347,6 +342,30 @@ $1
         }
 '@ `
     -Label "ScriptContext event source metadata"
+
+# Event failure-isolation contract: the deep hook may exist only while the
+# user's Lua function is executing. CET/sol error conversion and logging must
+# happen after DeepTraceScope has restored the prior hook.
+$scCText = Read-Utf8 $scC
+foreach ($marker in @(
+    "TryProfiledLuaFunction",
+    "TryProfiledLuaFunction(m_logger, m_profOnHook, m_onHook)",
+    "TryProfiledLuaFunction(m_logger, m_profOnTweak, m_onTweak)",
+    "TryProfiledLuaFunction(m_logger, m_profOnInit, m_onInit)",
+    "TryProfiledLuaFunction(m_logger, m_profOnUpdate, m_onUpdate, aDeltaTime)",
+    "TryProfiledLuaFunction(m_logger, m_profOnDraw, m_onDraw)",
+    "TryProfiledLuaFunction(m_logger, m_profOnOverlayOpen, m_onOverlayOpen)",
+    "TryProfiledLuaFunction(m_logger, m_profOnOverlayClose, m_onOverlayClose)",
+    "TryProfiledLuaFunction(m_logger, m_profOnShutdown, m_onShutdown)",
+    "original Lua hook restored"
+)) {
+    if (-not $scCText.Contains($marker)) {
+        throw "ScriptContext profiler failure-isolation marker missing after patch: $marker"
+    }
+}
+if ($scCText -match 'DeepTraceScope\s+deepTrace\(m_profOn') {
+    throw "Event failure-isolation regression: a ScriptContext event still owns DeepTraceScope across CET error handling."
+}
 
 # --------------------------------------------------------------------------
 # Scripting.cpp - global profiler control API available from CET console/mods
