@@ -112,7 +112,9 @@ if ($leaked.Count -gt 0) {
 $restoredReferenceRules = @(
     'immersivefirstperson',
     'nativeinteractions',
-    'minimap-widgets'
+    'minimap-widgets',
+    'autoloot',
+    'better-loot-markers'
 )
 $missingRestored = @($restoredReferenceRules | Where-Object { $_ -notin $ids -or $_ -notin $injectorIds })
 if ($missingRestored.Count -gt 0) {
