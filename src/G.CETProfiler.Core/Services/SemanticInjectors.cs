@@ -2849,7 +2849,7 @@ internal static class SemanticInjectors
             "resourceHelper.onUpdate()",
             "manager.update()",
             "world.update()",
-            "world.activeInteractions");
+            "self.runtimeData.inGame");
 
         var manager = context.FindFile(
             "modules/projectsManager.lua",
@@ -3143,10 +3143,14 @@ internal static class SemanticInjectors
             "updateSlowWidgets",
             "timerCoord");
 
-        var text = ReplaceOnce(
+        _ = FindOnUpdateOpening(file.Text, "deltaTime");
+        var text = RegexReplaceOnce(
             file.Text,
-            "    if not shouldForceUpdate then return end\n",
-            "    if not shouldForceUpdate then return end\n\n" +
+            @"(?m)^(?<opening>\\s*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\\d+)\\s*\\(\\s*['""]onUpdate['""]\\s*,\\s*function\\s*\\(\\s*deltaTime\\s*\\)\\s*)\\r?\\n" +
+            @"(?<comments>(?:[ \\t]*--[^\\r\\n]*\\r?\\n)*)" +
+            @"(?<game>[ \\t]*if\\s+isGameLoading\\s+or\\s+isPreGameState\\s+or\\s+not\\s+isInitialized\\s+then\\s+return\\s+end\\s*\\r?\\n)" +
+            @"(?<force>[ \\t]*if\\s+not\\s+shouldForceUpdate\\s+then\\s+return\\s+end\\s*\\r?\\n)",
+            "${opening}\n${comments}${game}${force}\n" +
             "    local __gcetMinimapDt = math.max(tonumber(deltaTime) or 0.0, 0.0)\n" +
             "    timerFast = timerFast + __gcetMinimapDt\n" +
             "    timerSlow = timerSlow + __gcetMinimapDt\n" +
@@ -3158,12 +3162,13 @@ internal static class SemanticInjectors
             "    if not __gcetMinimapFpsDue and not __gcetMinimapFastDue and not __gcetMinimapSlowDue and not __gcetMinimapCoordDue then return end\n",
             "Minimap Widgets timer-first gate");
 
-        text = ReplaceOnce(
+        text = RegexReplaceOnce(
             text,
-            "    if MinimapWidgetsConfig.FPS == true and shouldCountFPS == true then \n" +
-            "        updateFpsCounter() \n" +
-            "    end\n",
-            "    if __gcetMinimapFpsDue then updateFpsCounter() end\n",
+            @"(?m)^(?<indent>[ \\t]*)--\\s*1\\.\\s*FPS[^\\r\\n]*\\r?\\n" +
+            @"\\k<indent>if\\s+MinimapWidgetsConfig\\.FPS\\s*==\\s*true\\s+and\\s+shouldCountFPS\\s*==\\s*true\\s+then\\s*\\r?\\n" +
+            @"\\k<indent>[ \\t]+updateFpsCounter\\(\\)\\s*\\r?\\n" +
+            @"\\k<indent>end\\s*\\r?\\n",
+            "${indent}-- 1. FPS\n${indent}if __gcetMinimapFpsDue then updateFpsCounter() end\n",
             "Minimap Widgets FPS due gate");
 
         text = ReplaceOnce(
