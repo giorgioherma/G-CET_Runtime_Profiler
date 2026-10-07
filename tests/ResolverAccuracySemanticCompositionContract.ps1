@@ -108,6 +108,9 @@ end)
 registerForEvent("onUpdate",function(dt)
  BetterLootMarkers.ImmersiveMode.Tick(dt)
 end)
+local function blmFixtureSettingProbe()
+ return BetterLootMarkers.Settings.immersiveMode
+end)
 '@
 
 Write-ModFile 'QuestTrackingToggle' 'init.lua' @'
@@ -141,13 +144,71 @@ Observe('PlayerPuppet','OnAction',function(this,action,consumer)
 end)
 '@
 
+Write-ModFile 'sitAnywhere' 'modules/external/Cron.lua' @'
+local Cron={}
+local timers={}
+function Cron.Every(timeout,callback,data) end
+function Cron.Update(delta)
+ for _,timer in ipairs(timers) do
+  if timer.active then timer.delay=(timer.delay or 0)-delta end
+ end
+end
+function Cron.Halt(timerId) end
+return Cron
+'@
+
+Write-ModFile 'sitAnywhere' 'modules/worldInteraction.lua' @'
+local world={interactions={}}
+function world.update() end
+function world.togglePin(interaction,state) end
+function world.onSessionStart()
+ for _,interaction in pairs(world.interactions) do
+  interaction.shown=false
+  interaction.pinID=nil
+ end
+end
+return world
+'@
+
+Write-ModFile 'sitAnywhere' 'modules/logic.lua' @'
+local world=require("modules/worldInteraction")
+local logic={}
+function logic:new(mod)
+ local o={}
+ o.isScanning=false
+ o.mod=mod
+ o.sittables={}
+ self.__index=self
+ return setmetatable(o,self)
+end
+function logic:inWorkspot() return false end
+function logic:inTransition() return false end
+function logic:hideAllWorkspots()
+ for key,_ in pairs(self.sittables) do
+  world.interactions[key].pos=Vector4.new(0,0,0,0)
+ end
+end
+function logic:onUpdate()
+ local position=nil
+ if position then
+  world.interactions[0].pos=position
+ else
+  self:hideAllWorkspots()
+ end
+end
+return logic
+'@
+
 Write-ModFile 'sitAnywhere' 'init.lua' @'
-local Cron={Update=function() end}
+local Cron=require("modules/external/Cron")
 local interaction={hubShown=false,update=function() end}
-local world={update=function() end}
-local self={runtimeData={inMenu=false,inGame=true,forceScan=false},logic={
- isScanning=false,sittables={},onUpdate=function() end,
- inWorkspot=function() return false end,inTransition=function() return false end},yaw=0,pitch=0}
+local world=require("modules/worldInteraction")
+local Logic=require("modules/logic")
+local self={runtimeData={inMenu=false,inGame=true,forceScan=false},logic=Logic:new(nil),yaw=0,pitch=0}
+self.logic.mod=self
+self.logic.sittables={
+ [0]={workspot={enableCamera=false,camTransition=false,slide=false},update=function() end}
+}
 registerForEvent("onUpdate", function(dt)
         if not self.runtimeData.inMenu and self.runtimeData.inGame then
             Cron.Update(dt)
@@ -670,7 +731,10 @@ try{
  $x=Z($b+'AutoLoot/init.lua');foreach($t in @('gcetAutoLootOnAction','SubscribeAction','UI_DPadWeapons')){if($x-notmatch[regex]::Escape($t)){throw "AutoLoot missing $t"}}
  $x=Z($b+'BetterLootMarkers/init.lua');if($x-notmatch'if BetterLootMarkers\.Settings\.immersiveMode then' -or $x-notmatch'BetterLootMarkers\.ImmersiveMode\.Tick\(dt\)'){throw 'BetterLootMarkers off-state gate incomplete.'}
  $x=Z($b+'QuestTrackingToggle/init.lua');foreach($t in @('questTrackingOnAction','SubscribeAction','ToggleSprint','world_map_menu_track_waypoint')){if($x-notmatch[regex]::Escape($t)){throw "QTT missing $t"}}
- $x=Z($b+'sitAnywhere/init.lua');if($x-notmatch'__gcetSitIdleElapsed' -or $x-notmatch'interaction\.hubShown' -or $x-notmatch'self\.logic\.isScanning'){throw 'sitAnywhere split incomplete.'}
+ $x=Z($b+'sitAnywhere/init.lua');if($x-notmatch'Cron\.HasActiveTimers\(\)' -or $x-notmatch'world\.hasVisibleState\(\)' -or $x-notmatch'if interaction\.hubShown then interaction\.update\(\) end'){throw 'sitAnywhere hard dormancy incomplete.'}
+ $x=Z($b+'sitAnywhere/modules/external/Cron.lua');if($x-notmatch'function Cron\.HasActiveTimers\(\)'){throw 'sitAnywhere timer wake probe missing.'}
+ $x=Z($b+'sitAnywhere/modules/worldInteraction.lua');if($x-notmatch'function world\.hasVisibleState\(\)'){throw 'sitAnywhere visible-world wake probe missing.'}
+ $x=Z($b+'sitAnywhere/modules/logic.lua');if($x-notmatch'workspotsHidden' -or $x-notmatch'if self\.workspotsHidden then return end'){throw 'sitAnywhere parked-workspot state missing.'}
  $x=Z($b+'repeatable_increased_criminal_activity/init.lua');if($x-notmatch'diagnosticsElapsed' -or $x-notmatch'runtimeTick\(includeDiagnostics\)' -or $x-notmatch'__gcetRunDiagnostics = Mod\.diagnosticsElapsed >= 5\.0'){throw 'RICA split incomplete.'}
  $x=Z($b+'Dedka Auto Shop/init.lua');if($x-notmatch'if state\.showing then' -or $x-notmatch'__gcetRegisterEvent_\d+\("onDraw"'){throw 'Dedka draw composition incomplete.'}
  $x=Z($b+'marmurbank/external/InteractionUI.lua');if($x-notmatch'__gcetMarmurActionRelevant' -or $x-notmatch'WORLD_INTERACTION_ACTIONS\[name\] == true' -or $x-notmatch'wrapped\(action, wrappedConsumer\)'){throw 'MarmurBank prefilter incomplete.'}
