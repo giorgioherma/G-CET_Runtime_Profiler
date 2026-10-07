@@ -189,6 +189,7 @@ function logic:hideAllWorkspots()
  end
 end
 function logic:onUpdate()
+ if not self.isScanning and not self.mod.runtimeData.forceScan then self:hideAllWorkspots();return end
  local position=nil
  if position then
   world.interactions[0].pos=position
