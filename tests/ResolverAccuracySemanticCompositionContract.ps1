@@ -76,6 +76,40 @@ end)
 registerForEvent("onDraw", function() end)
 '@
 
+Write-ModFile 'AutoLoot' 'init.lua' @'
+local autoLoot={settings={useDefaultActionKey=true},isContinuousLooting=false}
+local n_UI_DPadWeapons=n"UI_DPadWeapons"
+local n_TogglePhotoMode=n"TogglePhotoMode"
+local function handleButtonPressed(this,action)
+ if action:IsAction(action,'UI_Apply') or action:IsAction(action,'TogglePhotoMode') then autoLoot.isContinuousLooting=true end
+end
+local function handleButtonReleased(this,action)
+ if action:IsAction(action,'Choice1') or action:IsAction(action,'UI_DPadWeapons') then autoLoot.isContinuousLooting=false end
+end
+local actionType=nil
+Observe('PlayerPuppet','OnAction',function(this,action)
+ if not autoLoot.settings.useDefaultActionKey then return end
+ actionType=action:GetType(action)
+ if actionType==gameinputActionType.BUTTON_PRESSED then handleButtonPressed(this,action);return end
+ if actionType==gameinputActionType.BUTTON_RELEASED then handleButtonReleased(this,action);return end
+end)
+registerForEvent("onUpdate",function(delta) end)
+'@
+
+Write-ModFile 'BetterLootMarkers' 'init.lua' @'
+local BetterLootMarkers={
+ Settings={immersiveMode=false},
+ ImmersiveMode={Init=function() end,Tick=function(dt) end}
+}
+function BetterLootMarkers.HandleLootMarkersForController(ctrl) end
+registerForEvent("onInit",function()
+ BetterLootMarkers.ImmersiveMode.Init()
+end)
+registerForEvent("onUpdate",function(dt)
+ BetterLootMarkers.ImmersiveMode.Tick(dt)
+end)
+'@
+
 Write-ModFile 'QuestTrackingToggle' 'init.lua' @'
 local n_ToggleSprint=n"ToggleSprint"
 local n_CameraAim=n"CameraAim"
@@ -574,6 +608,8 @@ ObserveAfter("MinimapStealthMappinController", "Update", function(this)
 end)
 '@
 
+$autoloot=Join-Path $mods 'AutoLoot\init.lua'
+$blm=Join-Path $mods 'BetterLootMarkers\init.lua'
 $drive=Join-Path $mods 'DriveBus\Modules\core.lua'
 $qtt=Join-Path $mods 'QuestTrackingToggle\init.lua'
 $sit=Join-Path $mods 'sitAnywhere\init.lua'
@@ -601,7 +637,7 @@ $handoff|Set-Content (Join-Path $capture 'CET_Resolver_Input.json') -Encoding ut
 $resolved=(& $resolverExe --capture $capture --mods $mods --generate-pass --json|ConvertFrom-Json)
 if(!$resolved.ok -or $null-eq$resolved.pass){throw 'Resolver-accuracy semantic pass generation failed.'}
 $resolver=Get-Content (Join-Path $capture 'G-CET_Resolver.json') -Raw|ConvertFrom-Json
-$rules=@('drivebus','quest-tracking-toggle','sitanywhere','repeatable-increased-criminal-activity','dedka-auto-shop','marmurbank','immersive-third-person','immersivefirstperson','nativeinteractions','minimap-widgets')
+$rules=@('drivebus','quest-tracking-toggle','sitanywhere','repeatable-increased-criminal-activity','dedka-auto-shop','marmurbank','immersive-third-person','immersivefirstperson','nativeinteractions','minimap-widgets','autoloot','better-loot-markers')
 foreach($rule in $rules){
  $m=@();foreach($family in @($resolver.callbackFamilies)){$m+=@($family.topConsumers|Where-Object{$_.semantic.RuleId-eq$rule})}
  if($m.Count-lt1 -or @($m|Where-Object{$_.semantic.SourceProofSatisfied}).Count-lt1){throw "Semantic source proof failed: $rule"}
@@ -626,6 +662,8 @@ try{
  $x=Z($b+'DriveBus/Modules/core.lua');foreach($t in @('gcetDriveBusOnAction','SubscribeAction','QuickExit','ChoiceScrollDown')){if($x-notmatch[regex]::Escape($t)){throw "DriveBus missing $t"}}
  $x=Z($b+'DriveBus/External/Cron.lua');if($x-notmatch'function Cron\.HasActiveTimers\(\)'){throw 'DriveBus active-timer probe missing.'}
  $x=Z($b+'DriveBus/init.lua');if($x-notmatch'if Cron\.HasActiveTimers\(\) then Cron\.Update\(delta\) end'){throw 'DriveBus idle Cron gate missing.'}
+ $x=Z($b+'AutoLoot/init.lua');foreach($t in @('gcetAutoLootOnAction','SubscribeAction','UI_DPadWeapons')){if($x-notmatch[regex]::Escape($t)){throw "AutoLoot missing $t"}}
+ $x=Z($b+'BetterLootMarkers/init.lua');if($x-notmatch'if BetterLootMarkers\.Settings\.immersiveMode then' -or $x-notmatch'BetterLootMarkers\.ImmersiveMode\.Tick\(dt\)'){throw 'BetterLootMarkers off-state gate incomplete.'}
  $x=Z($b+'QuestTrackingToggle/init.lua');foreach($t in @('questTrackingOnAction','SubscribeAction','ToggleSprint','world_map_menu_track_waypoint')){if($x-notmatch[regex]::Escape($t)){throw "QTT missing $t"}}
  $x=Z($b+'sitAnywhere/init.lua');if($x-notmatch'__gcetSitIdleElapsed' -or $x-notmatch'interaction\.hubShown' -or $x-notmatch'self\.logic\.isScanning'){throw 'sitAnywhere split incomplete.'}
  $x=Z($b+'repeatable_increased_criminal_activity/init.lua');if($x-notmatch'diagnosticsElapsed' -or $x-notmatch'runtimeTick\(includeDiagnostics\)' -or $x-notmatch'__gcetRunDiagnostics = Mod\.diagnosticsElapsed >= 5\.0'){throw 'RICA split incomplete.'}
