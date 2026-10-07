@@ -2855,8 +2855,8 @@ internal static class SemanticInjectors
             "modules/projectsManager.lua",
             "function manager.update()",
             "manager.updateList",
-            "sceneRunning",
-            "transitionActive");
+            "project.interactions",
+            "interaction.needsUpdate");
 
         var world = context.FindFile(
             "modules/utils/worldInteraction.lua",
