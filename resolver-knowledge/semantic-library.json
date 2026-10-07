@@ -2418,7 +2418,7 @@
       "identityHints": [
         "sitAnywhere"
       ],
-      "policyClass": "ACTIVE_REALTIME_IDLE_10HZ",
+      "policyClass": "HARD_DORMANT_ACTIVITY_GATE",
       "callbacks": [
         {
           "kind": "event",
@@ -2434,42 +2434,63 @@
           "self.logic:onUpdate()"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:sitanywhere",
-        "expectedMarkerFileCount": 1,
-        "satisfiedAnyGroups": [
+        "expectedMarkerFileCount": 4,
+        "ownerAnyGroups": [
           [
-            "__gcetSitIdleElapsed",
-            "sitanywhere.realtime"
+            "function Cron.Halt",
+            "function Cron.Update"
           ],
           [
-            "interaction.hubShown"
+            "function logic:hideAllWorkspots",
+            "logic:hideAllWorkspots()"
+          ],
+          [
+            "function world.onSessionStart",
+            "world.interactions"
+          ],
+          [
+            "self.logic.isScanning",
+            "runtimeData.forceScan"
           ]
+        ],
+        "allowIdentityFallback": true,
+        "satisfiedAll": [
+          "Cron.HasActiveTimers",
+          "world.hasVisibleState",
+          "workspotsHidden",
+          "if hasTimers then Cron.Update(dt) end",
+          "if interaction.hubShown then interaction.update() end"
         ]
       },
       "behavior": {
-        "handler": "SEMANTIC_ACTIVE_IDLE_SPLIT",
+        "handler": "SEMANTIC_HARD_DORMANT_ACTIVITY_GATE",
         "concepts": [
-          "cronRealtime",
-          "scannerRealtime",
-          "workspotRealtime",
-          "idleWorldReconcile"
+          "scannerWake",
+          "workspotWake",
+          "transitionWake",
+          "timerWake",
+          "hubWake",
+          "visibleWorldWake",
+          "parkedWorkspotState"
         ],
         "lanes": [
           {
-            "role": "CRON",
+            "role": "ACTIVE_STATE",
             "cadence": "EVERY_FRAME",
             "seconds": 0
           },
           {
-            "role": "ACTIVE",
-            "cadence": "EVERY_FRAME",
+            "role": "IDLE",
+            "cadence": "HARD_DORMANT",
             "seconds": 0
-          },
-          {
-            "role": "IDLE_WORLD",
-            "cadence": "FIXED_SECONDS",
-            "seconds": 0.1
           }
-        ]
+        ],
+        "genericResponsibilities": [
+          "FRAME_DISPATCH_CONSOLIDATION",
+          "ACTION_ROUTING_*",
+          "SHARED_PROVIDER_READ"
+        ],
+        "note": "Frame ownership remains generic Resolver territory. The semantic rule supplies only the proven Sit Anywhere wake/dormancy state machine."
       },
       "generation": {
         "enabled": true,
@@ -2485,7 +2506,7 @@
         "evidenceStack": "G_COLLECTION_RAW",
         "admitted": true
       },
-      "cadenceGroup": "REALTIME_ACTIVE_PLUS_IDLE_10HZ",
+      "cadenceGroup": "ACTIVE_FRAME_IDLE_HARD_DORMANT",
       "catalogRole": "SEMANTIC_HOT_MOD",
       "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
       "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
