@@ -53,6 +53,27 @@ try {
         throw "ScriptContext event source attribution was not patched."
     }
 
+    foreach ($marker in @(
+        "TryProfiledLuaFunction",
+        "TryProfiledLuaFunction(m_logger, m_profOnHook, m_onHook)",
+        "TryProfiledLuaFunction(m_logger, m_profOnTweak, m_onTweak)",
+        "TryProfiledLuaFunction(m_logger, m_profOnInit, m_onInit)",
+        "TryProfiledLuaFunction(m_logger, m_profOnUpdate, m_onUpdate, aDeltaTime)",
+        "TryProfiledLuaFunction(m_logger, m_profOnDraw, m_onDraw)",
+        "TryProfiledLuaFunction(m_logger, m_profOnOverlayOpen, m_onOverlayOpen)",
+        "TryProfiledLuaFunction(m_logger, m_profOnOverlayClose, m_onOverlayClose)",
+        "TryProfiledLuaFunction(m_logger, m_profOnShutdown, m_onShutdown)",
+        "original Lua hook restored"
+    )) {
+        if (-not $scriptContext.Contains($marker)) {
+            throw "ScriptContext event failure-isolation marker missing: $marker"
+        }
+    }
+
+    if ($scriptContext -match 'DeepTraceScope\s+deepTrace\(m_profOn') {
+        throw "ScriptContext event failure isolation regressed: deep hook spans CET error handling."
+    }
+
     if (-not $scripting.Contains("CETRuntimeProfiler::Get().BeginGameFrame()")) {
         throw "Scripting exact rendered-frame boundary was not patched."
     }
