@@ -398,6 +398,99 @@ end
 return ui
 '@
 
+Write-ModFile 'marmurbank' 'external/GameUI.lua' @'
+local GameUI={}
+GameUI.Event={MenuClose='MenuClose'}
+function GameUI.Observe(event,callback) end
+return GameUI
+'@
+
+Write-ModFile 'marmurbank' 'module/Bank.lua' @'
+local Lang={getText=function(key)return key end}
+local bank={}
+function bank:getMenu()
+ return {
+  {text=Lang.getText("hub_Bank_Deposit"),menu="dep10"},
+  {text=Lang.getText("hub_Bank_Deposit"),menu="dep100"},
+  {text=Lang.getText("hub_Bank_Withdraw"),menu="drw10"},
+  {text=Lang.getText("hub_Bank_Withdraw"),menu="drw100"},
+ }
+end
+function bank:showHub()
+ local choices=self:getMenu()
+ return choices
+end
+return bank
+'@
+
+Write-ModFile 'marmurbank' 'init.lua' @'
+local GameSettings = require("external/GameSettings")
+local bank = require("module/Bank")
+local engine=nil
+local Mod=nil
+local atmTimer=nil
+local uiTimer=nil
+local bankTimer=nil
+local bankTimerFirstRun=true
+
+local function stopTimers()
+ if atmTimer then engine.ClearTimer(atmTimer);atmTimer=nil end
+ if uiTimer then engine.ClearTimer(uiTimer);uiTimer=nil end
+ if bankTimer then engine.ClearTimer(bankTimer);bankTimer=nil end
+ bank:hideHub()
+end
+
+local function startTimers()
+ if atmTimer then return end
+
+ atmTimer = Mod.SetInterval(0.3, function()
+  if not engine.IsPlaying() then return end
+  local state=engine.GetState()
+  if state.inMenu then return end
+  if state.inVehicle or state.inCombat then bank:hideHub();return end
+  local num = bank:distanceListener()
+  if num > 0 then bank:showHub() else bank:hideHub() end
+  bank:checkSubTitle()
+ end)
+
+ uiTimer = Mod.SetInterval(0.5, function()
+  if not engine.IsPlaying() then return end
+  local state=engine.GetState()
+  if state.inMenu then return end
+  if bank.interactionUI then bank.interactionUI.update() end
+ end)
+
+ local firstInterval = 10.0
+ bankTimer = Mod.SetInterval(firstInterval, function()
+  if not engine.IsPlaying() then return end
+  bank:updateTimers(0)
+  if bankTimerFirstRun then
+   bankTimerFirstRun=false
+   if bankTimer then engine.ClearTimer(bankTimer) end
+   bankTimer=Mod.SetInterval(300.0,function()
+    if not engine.IsPlaying() then return end
+    bank:updateTimers(0)
+   end)
+  end
+ end)
+end
+
+registerForEvent("onInit",function()
+ engine=GetMod("0-Engine")
+ Mod=engine.Register("Marmurbank")
+ bank:initialize(engine)
+ if engine.IsPlaying() then startTimers() end
+ Mod.Subscribe("PlayerReady",startTimers)
+ Mod.Subscribe("PlayerInvalidated",function()
+  stopTimers()
+  bankTimerFirstRun=true
+ end)
+ Mod.Subscribe("MenuOpen", function()
+  bank:hideHub()
+ end)
+end)
+'@
+
 Write-ModFile 'immersive_third_person' 'init.lua' @'
 local state={autoPerspective={},enabled=false,frameSeq=0,menuWasOpen=false}
 local mod={}
@@ -822,6 +915,8 @@ try{
  $x=Z($b+'repeatable_increased_criminal_activity/init.lua');foreach($t in @('rewardElapsed','mappinElapsed','diagnosticsElapsed','processBodyRewards(system, 4)','processCompletionRewards(system, 1)','Mod.rewardElapsed >= 0.25','Mod.mappinElapsed >= 1.0','Mod.diagnosticsElapsed >= 5.0','Mod.schedulerElapsed >= 10.0')){if($x-notmatch[regex]::Escape($t)){throw "RICA multi-rate semantic missing $t"}}
  $x=Z($b+'Dedka Auto Shop/init.lua');foreach($t in @('__gcetDedkaSemanticReady','RegisterZone','SetInterval(0.2','VehicleMount','VehicleUnmount','PlayerInvalidated','if not __gcetDedkaNearby then return end','if state.showing then')){if($x-notmatch[regex]::Escape($t)){throw "Dedka semantic missing $t"}}
  $x=Z($b+'marmurbank/external/InteractionUI.lua');if($x-notmatch'__gcetMarmurActionRelevant' -or $x-notmatch'WORLD_INTERACTION_ACTIONS\[name\] == true' -or $x-notmatch'wrapped\(action, wrappedConsumer\)'){throw 'MarmurBank prefilter incomplete.'}
+ $x=Z($b+'marmurbank/init.lua');foreach($t in @('__gcetMarmurQueueAfterDropPoint','GameUI.Event.MenuClose','state.lastMenu ~= "Vendor"','Mod.SetTimeout(0.35','bank:showHub()')){if($x-notmatch[regex]::Escape($t)){throw "MarmurBank post-vendor wake missing $t"}}
+ $x=Z($b+'marmurbank/module/Bank.lua');if($x-notmatch'hub_Bank_Deposit' -or $x-notmatch'hub_Bank_Withdraw'){throw 'MarmurBank fixture no longer proves full deposit/withdraw hub.'}
  $x=Z($b+'immersive_third_person/init.lua');if($x-notmatch'__gcetItppSupervisorElapsed' -or $x-notmatch'__gcetItppMaintenanceElapsed' -or $x-notmatch'if state\.enabled or state\.cameraTransition then' -or $x-notmatch'if state\.pendingFppCleanup then' -or $x-notmatch'pcall\(mod\.fallCommitTick, delta\)'){throw 'ITP split incomplete.'}
  $x=Z($b+'ImmersiveFirstPerson/Modules/Helpers.lua');if($x-notmatch'slowProbeElapsed' -or $x-notmatch'session\.slowProbe\.inWorkspot' -or $x-notmatch'Helpers\.RefreshPlayerState\(target, delta\)'){throw 'ImmersiveFirstPerson slow probe incomplete.'}
  $x=Z($b+'ImmersiveFirstPerson/init.lua');if($x-notmatch'collectPlayerState\(delta\)'){throw 'ImmersiveFirstPerson delta propagation incomplete.'}
