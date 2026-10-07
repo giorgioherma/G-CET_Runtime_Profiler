@@ -630,7 +630,9 @@ $handoff=@{schemaVersion='1.9';callbacks=@(
  (Row 7 'immersive_third_person' 'event' 'onUpdate' 'init.lua' (Find-CallbackRange $itp "registerForEvent\('onUpdate'") 26.34 60),
  (Row 8 'ImmersiveFirstPerson' 'event' 'onUpdate' 'init.lua' (Find-CallbackRange $ifp 'registerForEvent\("onUpdate"') 11.24 60),
  (Row 9 'nativeInteractions' 'event' 'onUpdate' 'init.lua' (Find-CallbackRange $nif 'registerForEvent\("onUpdate"') 16.54 60),
- (Row 10 'Minimap Widgets' 'event' 'onUpdate' 'init.lua' (Find-CallbackRange $minimap 'registerForEvent\("onUpdate"') 8.23 60)
+ (Row 10 'Minimap Widgets' 'event' 'onUpdate' 'init.lua' (Find-CallbackRange $minimap 'registerForEvent\("onUpdate"') 8.23 60),
+ (Row 11 'AutoLoot' 'Observe' 'PlayerPuppet::OnAction' 'init.lua' (Find-CallbackRange $autoloot "Observe\('PlayerPuppet'") 4.10 600),
+ (Row 12 'BetterLootMarkers' 'event' 'onUpdate' 'init.lua' (Find-CallbackRange $blm 'registerForEvent\("onUpdate"') 3.20 60)
 );optimizerEvidence=@()}|ConvertTo-Json -Depth 30
 $handoff|Set-Content (Join-Path $capture 'CET_Resolver_Input.json') -Encoding utf8
 
