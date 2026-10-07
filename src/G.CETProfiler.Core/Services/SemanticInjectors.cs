@@ -2967,7 +2967,7 @@ internal static class SemanticInjectors
         {
             interactionText = RegexReplaceOnce(
                 interactionText,
-                @"(?m)^([ \t]*)local\s+function\s+isPressed\s*\(\s*actionType\s*\)\s*$",
+                @"(?m)^([ \t]*)(local\s+function\s+isPressed\s*\(\s*actionType\s*\)[^\r\n]*)$",
                 "$1local function __gcetMarmurActionRelevant(actionName)\n" +
                 "$1    local name = tostring(actionName or \"\")\n" +
                 "$1    return WORLD_INTERACTION_ACTIONS[name] == true\n" +
@@ -2975,7 +2975,7 @@ internal static class SemanticInjectors
                 "$1        or name == \"ChoiceScrollDown\"\n" +
                 "$1        or name == \"ChoiceApply\"\n" +
                 "$1end\n\n" +
-                "$1local function isPressed(actionType)",
+                "$1$2",
                 "MarmurBank finite action-interest helper");
 
             interactionText = RegexReplaceOnce(
