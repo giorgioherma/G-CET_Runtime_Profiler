@@ -486,6 +486,7 @@ Write-ModFile 'Minimap Widgets' 'init.lua' @'
 local MinimapWidgetsConfig={
  FPS=true,CoordInterv=1,ShowElevationArrow=true,
  ShowEnemies=true,ShowNCPD=true,ShowLoot=true,ShowDevices=true}
+local elevationEnabled=MinimapWidgetsConfig.ShowElevationArrow
 local shouldCountFPS=true
 local shouldForceUpdate=true
 local isGameLoading=false
