@@ -56,6 +56,26 @@ end
 return Core
 '@
 
+Write-ModFile 'DriveBus' 'External/Cron.lua' @'
+local timers = {}
+function Cron.After(timeout, callback, data) end
+function Cron.Every(timeout, callback, data) end
+function Cron.Update(delta)
+ for _, timer in ipairs(timers) do
+  if timer.active then timer.delay = (timer.delay or 0) - delta end
+ end
+end
+return Cron
+'@
+
+Write-ModFile 'DriveBus' 'init.lua' @'
+Cron = require("External/Cron.lua")
+registerForEvent("onUpdate", function(delta)
+    Cron.Update(delta)
+end)
+registerForEvent("onDraw", function() end)
+'@
+
 Write-ModFile 'QuestTrackingToggle' 'init.lua' @'
 local n_ToggleSprint=n"ToggleSprint"
 local n_CameraAim=n"CameraAim"
@@ -604,6 +624,8 @@ try{
  function Z($n){$e=$zip.GetEntry($n);if(!$e){throw "ZIP entry missing: $n"};$r=[IO.StreamReader]::new($e.Open());try{$r.ReadToEnd()}finally{$r.Dispose()}}
  $b='bin/x64/plugins/cyber_engine_tweaks/mods/'
  $x=Z($b+'DriveBus/Modules/core.lua');foreach($t in @('gcetDriveBusOnAction','SubscribeAction','QuickExit','ChoiceScrollDown')){if($x-notmatch[regex]::Escape($t)){throw "DriveBus missing $t"}}
+ $x=Z($b+'DriveBus/External/Cron.lua');if($x-notmatch'function Cron\.HasActiveTimers\(\)'){throw 'DriveBus active-timer probe missing.'}
+ $x=Z($b+'DriveBus/init.lua');if($x-notmatch'if Cron\.HasActiveTimers\(\) then Cron\.Update\(delta\) end'){throw 'DriveBus idle Cron gate missing.'}
  $x=Z($b+'QuestTrackingToggle/init.lua');foreach($t in @('questTrackingOnAction','SubscribeAction','ToggleSprint','world_map_menu_track_waypoint')){if($x-notmatch[regex]::Escape($t)){throw "QTT missing $t"}}
  $x=Z($b+'sitAnywhere/init.lua');if($x-notmatch'__gcetSitIdleElapsed' -or $x-notmatch'interaction\.hubShown' -or $x-notmatch'self\.logic\.isScanning'){throw 'sitAnywhere split incomplete.'}
  $x=Z($b+'repeatable_increased_criminal_activity/init.lua');if($x-notmatch'diagnosticsElapsed' -or $x-notmatch'runtimeTick\(includeDiagnostics\)' -or $x-notmatch'__gcetRunDiagnostics = Mod\.diagnosticsElapsed >= 5\.0'){throw 'RICA split incomplete.'}
