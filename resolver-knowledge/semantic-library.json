@@ -2603,8 +2603,13 @@
       "identityHints": [
         "Dedka Auto Shop"
       ],
-      "policyClass": "OVERLAY_VISIBILITY_GATE",
+      "policyClass": "COARSE_ZONE_PLUS_NEARBY_DETAIL_DORMANCY",
       "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        },
         {
           "kind": "event",
           "target": "onDraw",
@@ -2613,22 +2618,98 @@
       ],
       "sourceProof": {
         "ownerAll": [
-          "ui.update()",
-          "state.showing",
-          "showRootHub"
+          "runDueTasks()",
+          "checkPlayerVehicleEntry()",
+          "showEntranceHub()",
+          "showShopExitHub()",
+          "ui.update()"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:dedka-auto-shop",
         "expectedMarkerFileCount": 1,
-        "satisfiedAll": [
-          "if state.showing then pcall(function() ui.update() end) end"
+        "ownerAnyGroups": [
+          [
+            "ENTRANCE_POS",
+            "entrancePos"
+          ],
+          [
+            "SELLER_POS",
+            "sellerPos"
+          ],
+          [
+            "SHOP_EXIT_POS",
+            "shopExitPos"
+          ],
+          [
+            "activeSpawns",
+            "toggleSystem.active"
+          ]
+        ],
+        "allowIdentityFallback": true,
+        "satisfiedAnyGroups": [
+          [
+            "__gcetDedkaSemanticReady",
+            "engine.RegisterZone"
+          ],
+          [
+            "SetInterval(0.2",
+            "Mod.SetInterval(0.2"
+          ],
+          [
+            "Subscribe(\"VehicleMount\"",
+            "Subscribe('VehicleMount'"
+          ],
+          [
+            "if not __gcetDedkaNearby then return end",
+            "if not isNearby then return end"
+          ],
+          [
+            "if state.showing then pcall(function() ui.update() end) end",
+            "if state.showing then"
+          ]
         ]
       },
       "behavior": {
-        "handler": "SEMANTIC_OVERLAY_VISIBILITY_GATE",
+        "handler": "SEMANTIC_COARSE_ZONE_PLUS_NEARBY_DETAIL_DORMANCY",
         "concepts": [
-          "shopHubVisible",
-          "drawUI"
-        ]
+          "coarseProximityWake",
+          "nearbyDetail",
+          "vehicleLifecycleEvents",
+          "farAwayDormancy",
+          "visibleOnlyDraw",
+          "activeToggleFrameWork"
+        ],
+        "lanes": [
+          {
+            "role": "FAR_AWAY",
+            "cadence": "HARD_DORMANT",
+            "seconds": 0
+          },
+          {
+            "role": "COARSE_ZONE",
+            "cadence": "0_ENGINE_PROXIMITY",
+            "seconds": 0
+          },
+          {
+            "role": "NEARBY_DETAIL",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.2
+          },
+          {
+            "role": "ACTIVE_TOGGLE_SPAWN",
+            "cadence": "EVERY_FRAME_WHILE_NEARBY",
+            "seconds": 0
+          },
+          {
+            "role": "DRAW",
+            "cadence": "VISIBLE_ONLY",
+            "seconds": 0
+          }
+        ],
+        "genericResponsibilities": [
+          "FRAME_DISPATCH_CONSOLIDATION",
+          "SHARED_PROVIDER_READ"
+        ],
+        "note": "The semantic answer comes from the validated manual end state. Future versions may move code, but must still prove the same entrance/seller/exit state machine before this cadence is injected."
       },
       "generation": {
         "enabled": true,
@@ -2644,7 +2725,7 @@
         "evidenceStack": "G_COLLECTION_RAW",
         "admitted": true
       },
-      "cadenceGroup": "VISIBLE_ONLY_DRAW",
+      "cadenceGroup": "FAR_DORMANT_5HZ_NEARBY_ACTIVE_FRAME",
       "catalogRole": "SEMANTIC_HOT_MOD",
       "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
       "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
