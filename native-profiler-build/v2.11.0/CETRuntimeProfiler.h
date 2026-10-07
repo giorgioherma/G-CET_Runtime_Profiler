@@ -80,6 +80,15 @@ public:
         std::atomic<uint64_t> DeepSpikeCaptures{0};
         std::atomic<uint32_t> DeepDriftWindows{0};
         std::atomic<int32_t> DeepDriftDirection{0};
+
+        // Heap consequence telemetry is sampled only when adaptive deep
+        // profiling already selected this callback. It never changes GC state.
+        std::atomic<uint64_t> DeepHeapSamples{0};
+        std::atomic<uint64_t> DeepHeapPositiveDeltaBytes{0};
+        std::atomic<uint64_t> DeepHeapReclaimedDeltaBytes{0};
+        std::atomic<int64_t> DeepHeapNetDeltaBytes{0};
+        std::atomic<uint64_t> DeepHeapMaxPositiveDeltaBytes{0};
+        std::atomic<uint64_t> DeepHeapMaxReclaimedDeltaBytes{0};
     };
 
     struct TimelineMod
@@ -274,6 +283,9 @@ public:
         uint64_t PathFingerprint{};
         uint64_t NestedRegistrationCount{};
         uint64_t NestedRegistrationNs{};
+        uint64_t LuaHeapBeforeBytes{};
+        uint64_t LuaHeapAfterBytes{};
+        int64_t LuaHeapDeltaBytes{};
         bool LineRowsTruncated{};
     };
 
@@ -299,6 +311,8 @@ public:
         uint64_t SampleStartCaptureNs{};
         std::chrono::steady_clock::time_point SampleStartWall{};
         lua_State* State{};
+        uint64_t LuaHeapBeforeBytes{};
+        bool LuaHeapSampleValid{false};
         lua_Hook PreviousHook{};
         int PreviousMask{};
         int PreviousCount{};
@@ -608,6 +622,23 @@ public:
                     Clock::now() - bookkeepingStart).count())));
     }
 
+    static uint64_t ReadLuaHeapBytes(lua_State* aState)
+    {
+        if (!aState)
+            return 0;
+
+        // Lua 5.1/LuaJIT exposes heap usage as whole KiB plus a byte
+        // remainder. These are observation-only queries; they do not request
+        // or advance collection.
+        const int kib = lua_gc(aState, LUA_GCCOUNT, 0);
+        const int rem = lua_gc(aState, LUA_GCCOUNTB, 0);
+        if (kib < 0 || rem < 0)
+            return 0;
+
+        return static_cast<uint64_t>(kib) * 1024ULL +
+               static_cast<uint64_t>(rem);
+    }
+
     bool BeginDeepSample(Counter* aCounter, lua_State* aState)
     {
         if (!aCounter || !aState || !IsCapturing())
@@ -698,6 +729,8 @@ public:
         threadState.SampleStartWall = now;
         threadState.SampleStartCaptureNs = FastCapturedNanoseconds(now);
         threadState.State = aState;
+        threadState.LuaHeapBeforeBytes = ReadLuaHeapBytes(aState);
+        threadState.LuaHeapSampleValid = threadState.LuaHeapBeforeBytes > 0;
         threadState.PreviousHook = lua_gethook(aState);
         threadState.PreviousMask = lua_gethookmask(aState);
         threadState.PreviousCount = lua_gethookcount(aState);
@@ -731,6 +764,15 @@ public:
                 state.PreviousCount);
         }
 
+        const uint64_t luaHeapAfterBytes = ReadLuaHeapBytes(statePtr);
+        const bool luaHeapSampleValid =
+            state.LuaHeapSampleValid && luaHeapAfterBytes > 0;
+        const int64_t luaHeapDeltaBytes =
+            luaHeapSampleValid
+                ? static_cast<int64_t>(luaHeapAfterBytes) -
+                      static_cast<int64_t>(state.LuaHeapBeforeBytes)
+                : 0;
+
         const auto end = Clock::now();
         while (!state.Frames.empty())
             CompleteDeepFrame(state, end);
@@ -761,6 +803,30 @@ public:
             if (keepSample)
             {
                 counter->DeepSpikeCaptures.fetch_add(1, std::memory_order_relaxed);
+            }
+        }
+
+        if (keepSample && counter && luaHeapSampleValid)
+        {
+            counter->DeepHeapSamples.fetch_add(1, std::memory_order_relaxed);
+            counter->DeepHeapNetDeltaBytes.fetch_add(
+                luaHeapDeltaBytes, std::memory_order_relaxed);
+
+            if (luaHeapDeltaBytes > 0)
+            {
+                const uint64_t positive =
+                    static_cast<uint64_t>(luaHeapDeltaBytes);
+                counter->DeepHeapPositiveDeltaBytes.fetch_add(
+                    positive, std::memory_order_relaxed);
+                UpdateMax(counter->DeepHeapMaxPositiveDeltaBytes, positive);
+            }
+            else if (luaHeapDeltaBytes < 0)
+            {
+                const uint64_t reclaimed =
+                    static_cast<uint64_t>(-luaHeapDeltaBytes);
+                counter->DeepHeapReclaimedDeltaBytes.fetch_add(
+                    reclaimed, std::memory_order_relaxed);
+                UpdateMax(counter->DeepHeapMaxReclaimedDeltaBytes, reclaimed);
             }
         }
 
@@ -868,6 +934,9 @@ public:
                     state.PathFingerprint,
                     state.NestedRegistrationCount,
                     state.NestedRegistrationNs,
+                    luaHeapSampleValid ? state.LuaHeapBeforeBytes : 0,
+                    luaHeapSampleValid ? luaHeapAfterBytes : 0,
+                    luaHeapSampleValid ? luaHeapDeltaBytes : 0,
                     lineRowsTruncated
                 });
             }
@@ -1607,6 +1676,12 @@ public:
             uint64_t SpikeCaptures{};
             uint32_t DriftWindows{};
             int32_t DriftDirection{};
+            uint64_t HeapSamples{};
+            uint64_t HeapPositiveDeltaBytes{};
+            uint64_t HeapReclaimedDeltaBytes{};
+            int64_t HeapNetDeltaBytes{};
+            uint64_t HeapMaxPositiveDeltaBytes{};
+            uint64_t HeapMaxReclaimedDeltaBytes{};
         };
 
         struct SchedulerJobRow
@@ -1855,7 +1930,13 @@ public:
                     counter->DeepSpikeProbeSamples.load(std::memory_order_relaxed),
                     counter->DeepSpikeCaptures.load(std::memory_order_relaxed),
                     counter->DeepDriftWindows.load(std::memory_order_relaxed),
-                    counter->DeepDriftDirection.load(std::memory_order_relaxed)
+                    counter->DeepDriftDirection.load(std::memory_order_relaxed),
+                    counter->DeepHeapSamples.load(std::memory_order_relaxed),
+                    counter->DeepHeapPositiveDeltaBytes.load(std::memory_order_relaxed),
+                    counter->DeepHeapReclaimedDeltaBytes.load(std::memory_order_relaxed),
+                    counter->DeepHeapNetDeltaBytes.load(std::memory_order_relaxed),
+                    counter->DeepHeapMaxPositiveDeltaBytes.load(std::memory_order_relaxed),
+                    counter->DeepHeapMaxReclaimedDeltaBytes.load(std::memory_order_relaxed)
                 });
             }
 
@@ -2116,7 +2197,9 @@ public:
                      "Complete,ReusedFromRegistrationId,Samples,TargetSamples,"
                      "SampleStride,HookConflicts,BaselineAvgExclusiveUs,SpikeArmed,"
                      "SpikeProbeStride,SpikeProbeSamples,SpikeCaptures,DriftWindows,"
-                     "DriftDirection,Interpretation\n";
+                     "DriftDirection,HeapSamples,SampledHeapPositiveDeltaKB,"
+                     "SampledHeapReclaimedDeltaKB,SampledHeapNetDeltaKB,"
+                     "MaxPositiveHeapDeltaKB,MaxReclaimedHeapDeltaKB,Interpretation\n";
                 f << std::fixed << std::setprecision(6);
 
                 for (const auto& row : deepRegistrationRows)
@@ -2144,7 +2227,13 @@ public:
                       << row.SpikeCaptures << ','
                       << row.DriftWindows << ','
                       << row.DriftDirection << ','
-                      << "adaptive-hotset-sampled-call-return-line-path"
+                      << row.HeapSamples << ','
+                      << (static_cast<double>(row.HeapPositiveDeltaBytes) / 1024.0) << ','
+                      << (static_cast<double>(row.HeapReclaimedDeltaBytes) / 1024.0) << ','
+                      << (static_cast<double>(row.HeapNetDeltaBytes) / 1024.0) << ','
+                      << (static_cast<double>(row.HeapMaxPositiveDeltaBytes) / 1024.0) << ','
+                      << (static_cast<double>(row.HeapMaxReclaimedDeltaBytes) / 1024.0) << ','
+                      << "adaptive-hotset-sampled-path-plus-readonly-lua-heap-delta"
                       << '\n';
                 }
             }
@@ -2165,7 +2254,8 @@ public:
                 f << "SampleSequence,RegistrationId,ProfileEpoch,Frame,FrameInvocationOrdinal,CaptureStartMs,"
                      "CaptureEndMs,Mode,ApproxOwnWallMs,HookEvents,LineEvents,"
                      "UnresolvedLineEvents,UniqueLines,PathTransitions,PathFingerprint,"
-                     "NestedRegistrationCount,NestedRegistrationMs,LineRowsTruncated,"
+                     "NestedRegistrationCount,NestedRegistrationMs,LuaHeapBeforeMB,"
+                     "LuaHeapAfterMB,LuaHeapDeltaKB,LineRowsTruncated,"
                      "DroppedSamplesAtDump,Interpretation\n";
                 f << std::fixed << std::setprecision(6);
 
@@ -2188,9 +2278,12 @@ public:
                       << row.PathFingerprint << ','
                       << row.NestedRegistrationCount << ','
                       << (static_cast<double>(row.NestedRegistrationNs) / 1'000'000.0) << ','
+                      << (static_cast<double>(row.LuaHeapBeforeBytes) / (1024.0 * 1024.0)) << ','
+                      << (static_cast<double>(row.LuaHeapAfterBytes) / (1024.0 * 1024.0)) << ','
+                      << (static_cast<double>(row.LuaHeapDeltaBytes) / 1024.0) << ','
                       << (row.LineRowsTruncated ? 1 : 0) << ','
                       << droppedDeepSamples << ','
-                      << "timestamped-hotpath-path-fingerprint"
+                      << "timestamped-hotpath-path-fingerprint-plus-readonly-lua-heap-delta"
                       << '\n';
                 }
             }
@@ -3424,6 +3517,12 @@ private:
             counter->DeepSpikeCaptures.store(0, std::memory_order_relaxed);
             counter->DeepDriftWindows.store(0, std::memory_order_relaxed);
             counter->DeepDriftDirection.store(0, std::memory_order_relaxed);
+            counter->DeepHeapSamples.store(0, std::memory_order_relaxed);
+            counter->DeepHeapPositiveDeltaBytes.store(0, std::memory_order_relaxed);
+            counter->DeepHeapReclaimedDeltaBytes.store(0, std::memory_order_relaxed);
+            counter->DeepHeapNetDeltaBytes.store(0, std::memory_order_relaxed);
+            counter->DeepHeapMaxPositiveDeltaBytes.store(0, std::memory_order_relaxed);
+            counter->DeepHeapMaxReclaimedDeltaBytes.store(0, std::memory_order_relaxed);
         }
 
         auto& deep = DeepStateForThread();
