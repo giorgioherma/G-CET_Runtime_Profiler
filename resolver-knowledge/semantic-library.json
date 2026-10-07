@@ -2789,7 +2789,10 @@
           "Observe('PlayerPuppet', 'OnAction'",
           "bank:distanceListener()",
           "bankTimerFirstRun",
-          "GameUI.Event.MenuClose"
+          "GameUI.Event.MenuClose",
+          "function bank:showHub()",
+          "hub_Bank_Deposit",
+          "hub_Bank_Withdraw"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:marmurbank",
         "expectedMarkerFileCount": 2,
