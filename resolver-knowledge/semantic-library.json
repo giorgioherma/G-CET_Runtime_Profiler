@@ -2842,10 +2842,10 @@
       ],
       "sourceProof": {
         "ownerAll": [
-          "resourceHelper.sceneQueue",
-          "world.activeInteractions",
+          "resourceHelper.onUpdate()",
           "function manager.update()",
-          "WorldMappinUIProfile.nif"
+          "WorldMappinUIProfile.nif",
+          "world.getGridInteractions"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:nativeinteractions",
         "expectedMarkerFileCount": 3,
