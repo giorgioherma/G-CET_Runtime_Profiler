@@ -100,16 +100,23 @@ if ($extra.Count -gt 0) {
     throw "Semantic injector(s) have no production library rule: $($extra -join ', ')"
 }
 
-$rejectedAuto = @(
+$sourceOnlyUnproven = @(
     'dualsense-support',
-    'overclockedlynxpaws',
+    'overclockedlynxpaws'
+)
+$leaked = @($sourceOnlyUnproven | Where-Object { $_ -in $ids -or $_ -in $injectorIds })
+if ($leaked.Count -gt 0) {
+    throw "Source-only semantic seed(s) leaked into production AUTO without a validated optimized reference: $($leaked -join ', ')"
+}
+
+$restoredReferenceRules = @(
     'immersivefirstperson',
     'nativeinteractions',
     'minimap-widgets'
 )
-$leaked = @($rejectedAuto | Where-Object { $_ -in $ids -or $_ -in $injectorIds })
-if ($leaked.Count -gt 0) {
-    throw "Reviewed/rejected rules leaked back into production AUTO: $($leaked -join ', ')"
+$missingRestored = @($restoredReferenceRules | Where-Object { $_ -notin $ids -or $_ -notin $injectorIds })
+if ($missingRestored.Count -gt 0) {
+    throw "Validated optimized-reference semantic rule(s) are missing from production AUTO: $($missingRestored -join ', ')"
 }
 
 if (![string]::IsNullOrWhiteSpace($ResolverRoot)) {
