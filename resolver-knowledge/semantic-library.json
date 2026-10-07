@@ -2852,6 +2852,8 @@
         "satisfiedAnyGroups": [
           [
             "__gcetNifIdleWorldInterval",
+            "IDLE_WORLD_INTERVAL",
+            "idleWorldElapsed",
             "nativeinteractions.world_idle"
           ],
           [
@@ -2954,11 +2956,21 @@
         ],
         "alreadySatisfiedMarker": "G-CET semantic:minimap-widgets",
         "expectedMarkerFileCount": 1,
-        "satisfiedAll": [
-          "__gcetMinimapFastDue",
-          "__gcetMinimapSlowDue",
-          "local isClamped = this:IsClamped()",
-          "local hideEnemies = not MinimapWidgetsConfig.ShowEnemies"
+        "satisfiedAnyGroups": [
+          [
+            "__gcetMinimapFastDue",
+            "local fastDue = timerFast >= 0.2"
+          ],
+          [
+            "__gcetMinimapSlowDue",
+            "local slowDue = timerSlow >= 1.0"
+          ],
+          [
+            "local isClamped = this:IsClamped()"
+          ],
+          [
+            "local hideEnemies = not MinimapWidgetsConfig.ShowEnemies"
+          ]
         ]
       },
       "behavior": {
