@@ -14,35 +14,28 @@
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
     "fullPassRule": "A semantic injector can run only when the current capture contains a >=3.0 ms/s measured callback, the library rule matches, and the current live mod source graph proves its anchors.",
-    "enabledInjectorCount": 36,
+    "enabledInjectorCount": 39,
     "profileOnlyRuleCount": 0,
-    "note": "The production semantic base is intentionally compact and callback-specific. Runtime cost only earns review; automatic rules require a small, provable state model, exact known callback families, and no bespoke timing.",
+    "note": "The production semantic base contains source-proven, behavior-aware optimizations learned from validated references and measured hot callbacks. Generic/mechanical transforms stay in the Resolver; semantic rules cover state/cadence/hotpath knowledge that generic inference cannot safely own.",
     "admissionPolicy": {
       "runtimeThresholdMsPerSecond": 3,
       "requiresGenericExhausted": true,
-      "requiresMeaningfulInactiveState": true,
-      "requiresExpensiveWorkUnnecessaryWhileInactive": true,
-      "requiresCompleteWakePath": true,
+      "requiresMeaningfulInactiveState": false,
+      "requiresExpensiveWorkUnnecessaryWhileInactive": false,
+      "requiresCompleteWakePath": false,
       "preserveRealtimeResponsiveness": true,
       "excludedArchetypes": [
-        "REALTIME_CAMERA_SYSTEM",
-        "GENERAL_INTERACTION_FRAMEWORK",
-        "CONTINUOUS_HUD_PRESENTATION",
-        "CONTINUOUS_WORLD_DISCOVERY",
+        "UNPROVEN_REALTIME_INPUT_OR_OUTPUT_SYSTEM",
         "UNCERTAIN_WAKE_DISCOVERY",
-        "REALTIME_MOVEMENT_INPUT_SYSTEM",
-        "CONTROLLER_OUTPUT_WITH_UNPROVEN_DORMANCY"
+        "SEMANTICS_NOT_RECOVERABLE_FROM_CURRENT_SOURCE"
       ],
       "examplesNotForSemanticBase": [
-        "ImmersiveFirstPerson",
-        "nativeInteractions",
-        "Minimap Widgets",
-        "loot-marker systems",
-        "AutoLoot-style world discovery",
-        "OverclockedLynxPaws",
-        "DualSense Support (until its author handleUpdates lifecycle is fully proven)"
+        "OverclockedLynxPaws (source-only seed; no validated optimized reference yet)",
+        "DualSense Support (source-only seed; no validated optimized reference yet)"
       ],
-      "note": "Hot means review-worthy, not semantic-library-worthy. The base catalog is reserved for high-cost features with a provable inactive state and complete safe wake path."
+      "note": "A semantic rule does not require a sleep state. It may encode a validated behavior-preserving hotpath, prefilter, state cache, or multi-rate split when the current source proves the same semantic shape. Rules fail closed when that proof is incomplete.",
+      "allowsSourceProvenHotpathRestructure": true,
+      "allowsRealtimePreservingMultiRateSplit": true
     },
     "productionEntriesMustGenerate": true,
     "partialSemanticStatePolicy": "FAIL_CLOSED_NOT_ALREADY_SATISFIED",
@@ -2749,6 +2742,279 @@
       "referenceOverrideAllowed": false,
       "evidenceMembership": [
         "G_COLLECTION_RAW"
+      ]
+    },
+    {
+      "id": "immersivefirstperson",
+      "identityHints": [
+        "ImmersiveFirstPerson"
+      ],
+      "policyClass": "REALTIME_WITH_SLOW_STATE_PROBE",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "Helpers.RefreshPlayerState",
+          "GetInspectionComponent",
+          "IsActorInWorkspot",
+          "StatusEffectSystem.ObjectHasStatusEffectOfType"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:immersivefirstperson",
+        "expectedMarkerFileCount": 2,
+        "satisfiedAll": [
+          "slowProbeElapsed",
+          "slowProbe = {",
+          "Helpers.RefreshPlayerState(target, delta)",
+          "collectPlayerState(delta)"
+        ]
+      },
+      "behavior": {
+        "handler": "SEMANTIC_REALTIME_WITH_SLOW_STATE_PROBE",
+        "concepts": [
+          "cameraRealtime",
+          "heightRealtime",
+          "stablePlayerStateProbe"
+        ],
+        "lanes": [
+          {
+            "role": "CAMERA_HEIGHT",
+            "cadence": "EVERY_FRAME",
+            "seconds": 0
+          },
+          {
+            "role": "SLOW_PLAYER_STATE",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.05
+          }
+        ],
+        "genericResponsibilities": [
+          "FRAME_DISPATCH_CONSOLIDATION",
+          "ACTION_ROUTING_*",
+          "SHARED_PROVIDER_READ"
+        ]
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 11.236497,
+        "evidenceStack": "MOD_COLLECTION_PRE_OPT",
+        "admitted": true
+      },
+      "cadenceGroup": "REALTIME_PLUS_20HZ_STABLE_STATE",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G-CET_SEMANTIC_LIBRARY_WORKSET",
+        "MOD_COLLECTION_PRE_OPT"
+      ]
+    },
+    {
+      "id": "nativeinteractions",
+      "identityHints": [
+        "nativeInteractions"
+      ],
+      "policyClass": "ACTIVE_FRAME_DORMANT_MULTI_RATE_INDEXED_MAPPINS",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        },
+        {
+          "kind": "ObserveAfter",
+          "target": "BaseMappinBaseController::UpdateRootState",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "resourceHelper.sceneQueue",
+          "world.activeInteractions",
+          "function manager.update()",
+          "WorldMappinUIProfile.nif"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:nativeinteractions",
+        "expectedMarkerFileCount": 3,
+        "satisfiedAnyGroups": [
+          [
+            "__gcetNifIdleWorldInterval",
+            "nativeinteractions.world_idle"
+          ],
+          [
+            "manager.hasRealtimeWork",
+            "nativeinteractions.manager_realtime"
+          ],
+          [
+            "pinInteractions",
+            "nativeinteractions.pin_index"
+          ]
+        ]
+      },
+      "behavior": {
+        "handler": "SEMANTIC_ACTIVE_DORMANT_MULTI_RATE_INDEXED_MAPPINS",
+        "concepts": [
+          "sceneRealtime",
+          "interactionRealtime",
+          "worldDiscovery",
+          "managerMaintenance",
+          "mappinIdentity"
+        ],
+        "lanes": [
+          {
+            "role": "ACTIVE",
+            "cadence": "EVERY_FRAME",
+            "seconds": 0
+          },
+          {
+            "role": "IDLE_WORLD",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.0333333333
+          },
+          {
+            "role": "IDLE_MANAGER",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.0833333333
+          }
+        ],
+        "transitionPolicy": "ONE_IMMEDIATE_RECONCILIATION_TICK_ON_ACTIVE_TO_IDLE",
+        "mappinPolicy": "DIRECT_ID_INDEX_WITH_COLD_SPATIAL_FALLBACK",
+        "genericResponsibilities": [
+          "FRAME_DISPATCH_CONSOLIDATION",
+          "SHARED_PROVIDER_READ"
+        ]
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 16.538865,
+        "evidenceStack": "MOD_COLLECTION_PRE_OPT",
+        "admitted": true
+      },
+      "cadenceGroup": "ACTIVE_FRAME_IDLE_30HZ_WORLD_12HZ_MANAGER",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G-CET_SEMANTIC_LIBRARY_WORKSET",
+        "MOD_COLLECTION_PRE_OPT"
+      ]
+    },
+    {
+      "id": "minimap-widgets",
+      "identityHints": [
+        "Minimap Widgets"
+      ],
+      "policyClass": "TIMER_FIRST_PLUS_MAPPIN_PREFILTER",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        },
+        {
+          "kind": "ObserveAfter",
+          "target": "MinimapStealthMappinController::UpdateAboveBelowVerticalRelation",
+          "role": "hot-path"
+        },
+        {
+          "kind": "ObserveAfter",
+          "target": "MinimapStealthMappinController::Update",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "MinimapWidgetsConfig.ShowElevationArrow",
+          "UpdateAboveBelowVerticalRelation",
+          "updateFastWidgets",
+          "updateSlowWidgets",
+          "timerCoord"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:minimap-widgets",
+        "expectedMarkerFileCount": 1,
+        "satisfiedAll": [
+          "__gcetMinimapFastDue",
+          "__gcetMinimapSlowDue",
+          "local isClamped = this:IsClamped()",
+          "local hideEnemies = not MinimapWidgetsConfig.ShowEnemies"
+        ]
+      },
+      "behavior": {
+        "handler": "SEMANTIC_TIMER_FIRST_PLUS_MAPPIN_PREFILTER",
+        "concepts": [
+          "timerFirstExit",
+          "nativeGetterDeferral",
+          "elevationPrefilter",
+          "visibilityPrefilter"
+        ],
+        "lanes": [
+          {
+            "role": "FPS_WHEN_REQUESTED",
+            "cadence": "EVERY_FRAME_WHEN_ENABLED",
+            "seconds": 0
+          },
+          {
+            "role": "FAST_WIDGETS",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.2
+          },
+          {
+            "role": "SLOW_WIDGETS",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 1
+          },
+          {
+            "role": "COORDINATES",
+            "cadence": "CONFIGURED_SECONDS",
+            "seconds": 0
+          }
+        ],
+        "updateTolerance": "Preserve original hide-option behavior; when any hide option is active, fall back to original observer logic rather than deleting queries aggressively."
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 8.225706,
+        "evidenceStack": "MOD_COLLECTION_PRE_OPT_STRESS",
+        "admitted": true
+      },
+      "cadenceGroup": "TIMER_FIRST_5HZ_1HZ_PLUS_MAPPIN_PREFILTER",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G-CET_SEMANTIC_LIBRARY_WORKSET",
+        "MOD_COLLECTION_PRE_OPT_STRESS"
       ]
     }
   ],
