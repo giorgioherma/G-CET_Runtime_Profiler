@@ -236,8 +236,20 @@ local Sites={list={}}
 local Mappins={sync=function() end}
 local Diagnostics={setEnabled=function() end,configuration=function() end,event=function() end,snapshot=function() end}
 local Bridge={system=function() return {Tick=function() end} end}
-local function processBodyRewards(system) end
-local function processCompletionRewards(system) end
+local function processBodyRewards(system)
+    local processed = 0
+    while processed < 64 do
+        processed = processed + 1
+        break
+    end
+end
+local function processCompletionRewards(system)
+    local processed = 0
+    while processed < 5 do
+        processed = processed + 1
+        break
+    end
+end
 function Mod.applyRuntimeSettings() end
 local function runtimeTick()
     local system = Bridge.system()
