@@ -640,7 +640,10 @@ $resolver=Get-Content (Join-Path $capture 'G-CET_Resolver.json') -Raw|ConvertFro
 $rules=@('drivebus','quest-tracking-toggle','sitanywhere','repeatable-increased-criminal-activity','dedka-auto-shop','marmurbank','immersive-third-person','immersivefirstperson','nativeinteractions','minimap-widgets','autoloot','better-loot-markers')
 foreach($rule in $rules){
  $m=@();foreach($family in @($resolver.callbackFamilies)){$m+=@($family.topConsumers|Where-Object{$_.semantic.RuleId-eq$rule})}
- if($m.Count-lt1 -or @($m|Where-Object{$_.semantic.SourceProofSatisfied}).Count-lt1){throw "Semantic source proof failed: $rule"}
+ if($m.Count-lt1 -or @($m|Where-Object{$_.semantic.SourceProofSatisfied}).Count-lt1){
+ $proof=@($m|ForEach-Object{@{owner=$_.owner;matched=$_.semantic.MatchedAnchors;missing=$_.semantic.MissingAnchors;graph=$_.semantic.Graph}})
+ throw "Semantic source proof failed: $rule; $($proof|ConvertTo-Json -Depth 8 -Compress)"
+}
 }
 $manifest=Get-Content $resolved.pass.ManifestPath -Raw|ConvertFrom-Json
 foreach($rule in $rules){
