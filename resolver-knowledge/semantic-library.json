@@ -14,7 +14,7 @@
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
     "fullPassRule": "A semantic injector can run only when the current capture contains a >=3.0 ms/s measured callback, the library rule matches, and the current live mod source graph proves its anchors.",
-    "enabledInjectorCount": 39,
+    "enabledInjectorCount": 41,
     "profileOnlyRuleCount": 0,
     "note": "The production semantic base contains source-proven, behavior-aware optimizations learned from validated references and measured hot callbacks. Generic/mechanical transforms stay in the Resolver; semantic rules cover state/cadence/hotpath knowledge that generic inference cannot safely own.",
     "admissionPolicy": {
@@ -2247,11 +2247,16 @@
       "identityHints": [
         "DriveBus"
       ],
-      "policyClass": "EXACT_ACTION_ROUTING",
+      "policyClass": "EXACT_ACTION_ROUTING_PLUS_TIMER_DORMANCY",
       "callbacks": [
         {
           "kind": "Observe",
           "target": "PlayerPuppet::OnAction",
+          "role": "hot-path"
+        },
+        {
+          "kind": "event",
+          "target": "onUpdate",
           "role": "hot-path"
         }
       ],
@@ -2260,23 +2265,43 @@
           "function Core:SetObserve()",
           "exception_in_choice_list",
           "exception_in_mount_list",
-          "self:ChoiceAction(action_name"
+          "Cron.Update(delta)"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:drivebus",
-        "expectedMarkerFileCount": 1,
-        "satisfiedAll": [
-          "zeroEngineOnAction",
-          "SubscribeAction",
-          "QuickExit",
-          "ChoiceScrollDown"
+        "expectedMarkerFileCount": 3,
+        "ownerAnyGroups": [
+          [
+            "self:ChoiceAction(action_name",
+            "ChoiceScrollDown"
+          ],
+          [
+            "function Cron.Update",
+            "local timers = {}"
+          ]
+        ],
+        "satisfiedAnyGroups": [
+          [
+            "gcetDriveBusOnAction",
+            "zeroEngineOnAction"
+          ],
+          [
+            "SubscribeAction"
+          ],
+          [
+            "Cron.HasActiveTimers"
+          ],
+          [
+            "if Cron.HasActiveTimers() then Cron.Update(delta) end"
+          ]
         ]
       },
       "behavior": {
-        "handler": "SEMANTIC_EXACT_ACTION_ROUTING",
+        "handler": "SEMANTIC_EXACT_ACTION_ROUTING_PLUS_TIMER_DORMANCY",
         "concepts": [
           "choiceInput",
           "mountInput",
-          "consumerSemantics"
+          "consumerSemantics",
+          "timerDormancy"
         ],
         "actions": [
           "QuickExit",
@@ -2285,6 +2310,23 @@
           "ChoiceApply",
           "ChoiceScrollUp",
           "ChoiceScrollDown"
+        ],
+        "lanes": [
+          {
+            "role": "ACTION_INPUT",
+            "cadence": "EVENT_ROUTED",
+            "seconds": 0
+          },
+          {
+            "role": "CRON",
+            "cadence": "EVERY_FRAME_WHILE_ACTIVE_TIMER_EXISTS",
+            "seconds": 0
+          },
+          {
+            "role": "IDLE",
+            "cadence": "HARD_DORMANT",
+            "seconds": 0
+          }
         ]
       },
       "generation": {
@@ -2301,7 +2343,7 @@
         "evidenceStack": "G_COLLECTION_RAW",
         "admitted": true
       },
-      "cadenceGroup": "EXACT_ACTION_ROUTING",
+      "cadenceGroup": "ROUTED_ACTIONS_PLUS_ACTIVE_TIMER_ONLY_CRON",
       "catalogRole": "SEMANTIC_HOT_MOD",
       "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
       "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
@@ -3027,6 +3069,200 @@
       "evidenceMembership": [
         "G-CET_SEMANTIC_LIBRARY_WORKSET",
         "MOD_COLLECTION_PRE_OPT_STRESS"
+      ]
+    },
+    {
+      "id": "autoloot",
+      "identityHints": [
+        "AutoLoot"
+      ],
+      "policyClass": "EXACT_ACTION_ROUTING",
+      "callbacks": [
+        {
+          "kind": "Observe",
+          "target": "PlayerPuppet::OnAction",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "handleButtonPressed",
+          "handleButtonReleased",
+          "useDefaultActionKey",
+          "action:GetType(action)"
+        ],
+        "ownerAnyGroups": [
+          [
+            "autoLoot.isContinuousLooting",
+            "continuousLootingNextAction"
+          ],
+          [
+            "UI_DPadWeapons",
+            "TogglePhotoMode"
+          ]
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:autoloot",
+        "expectedMarkerFileCount": 1,
+        "allowIdentityFallback": true,
+        "satisfiedAnyGroups": [
+          [
+            "gcetAutoLootOnAction",
+            "zeroEngineOnAction"
+          ],
+          [
+            "SubscribeAction"
+          ],
+          [
+            "UI_DPadWeapons"
+          ]
+        ]
+      },
+      "behavior": {
+        "handler": "SEMANTIC_EXACT_ACTION_ROUTING",
+        "concepts": [
+          "defaultActionKey",
+          "pressReleaseSemantics",
+          "continuousLooting",
+          "consumerIndependentInput"
+        ],
+        "actions": [
+          "Pause",
+          "OpenPauseMenu",
+          "OpenMapMenu",
+          "OpenCraftingMenu",
+          "OpenJournalMenu",
+          "OpenPerksMenu",
+          "OpenInventoryMenu",
+          "OpenHubMenu",
+          "TogglePhotoMode",
+          "UI_Apply",
+          "Choice1",
+          "click",
+          "Ping",
+          "Forward",
+          "Back",
+          "Left",
+          "Right",
+          "Jump",
+          "ToggleCrouch",
+          "MeleeAttack",
+          "UI_DPadWeapons"
+        ],
+        "genericResponsibilities": [
+          "FRAME_DISPATCH_CONSOLIDATION",
+          "SHARED_PROVIDER_READ"
+        ],
+        "note": "PASS4K cadence experiment was discarded; preserve AutoLoot's proven runtime cadence and only route the finite input set."
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 4.938033,
+        "evidenceStack": "G_COLLECTION_OPTIMIZED_REFERENCE",
+        "admitted": true
+      },
+      "cadenceGroup": "EXACT_ACTION_ROUTING_NO_CADENCE_CHANGE",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G-CET_0-Engine_Manual+Automatic",
+        "PASS5_R3_AUDIT"
+      ]
+    },
+    {
+      "id": "better-loot-markers",
+      "identityHints": [
+        "BetterLootMarkers",
+        "Better Loot Markers"
+      ],
+      "policyClass": "IMMERSIVE_MODE_OFF_STATE_GATE",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "BetterLootMarkers.ImmersiveMode.Tick(dt)",
+          "BetterLootMarkers.ImmersiveMode.Init()",
+          "BetterLootMarkers.Settings"
+        ],
+        "ownerAnyGroups": [
+          [
+            "GameplayMappinController",
+            "HandleLootMarkersForController"
+          ],
+          [
+            "immersiveMode",
+            "ShowScanner"
+          ]
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:better-loot-markers",
+        "expectedMarkerFileCount": 1,
+        "allowIdentityFallback": true,
+        "satisfiedAll": [
+          "if BetterLootMarkers.Settings.immersiveMode then",
+          "BetterLootMarkers.ImmersiveMode.Tick(dt)"
+        ]
+      },
+      "behavior": {
+        "handler": "SEMANTIC_IMMERSIVE_MODE_OFF_STATE_GATE",
+        "concepts": [
+          "immersiveMode",
+          "scannerState",
+          "offStateDormancy"
+        ],
+        "lanes": [
+          {
+            "role": "IMMERSIVE_ENABLED",
+            "cadence": "PRESERVE_AUTHOR_BEHAVIOR",
+            "seconds": 0
+          },
+          {
+            "role": "IMMERSIVE_DISABLED",
+            "cadence": "HARD_DORMANT_WRAPPER",
+            "seconds": 0
+          }
+        ],
+        "genericResponsibilities": [
+          "FRAME_DISPATCH_CONSOLIDATION",
+          "SHARED_PROVIDER_READ"
+        ],
+        "note": "PASS4L cadence experiment was discarded. The production rule only removes the redundant Tick call while immersive mode is disabled."
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 1.493784,
+        "evidenceStack": "G_COLLECTION_OPTIMIZED_REFERENCE",
+        "admitted": true
+      },
+      "cadenceGroup": "AUTHOR_CADENCE_WHEN_ENABLED_OFF_STATE_DORMANT",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G-CET_0-Engine_Manual+Automatic",
+        "PASS5_R3_AUDIT"
       ]
     }
   ],
