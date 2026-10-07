@@ -3641,6 +3641,13 @@ private:
 
     }
 
+    void ResetMarkersLocked()
+    {
+        m_markers.clear();
+        m_nextMarkerSequence = 0;
+        m_droppedMarkerEvents = 0;
+    }
+
     void ResetSchedulerLocked()
     {
         for (auto& [_, counter] : m_schedulerJobs)
