@@ -265,11 +265,82 @@ end)
 '@
 
 Write-ModFile 'Dedka Auto Shop' 'init.lua' @'
-local state={showing=false}
 local ui={update=function() end}
-local function showRootHub() state.showing=true end
+local state={showing=false,atEntrance=false,atEntrance2=false,atShopExit=false,phase="root"}
+local ENTRANCE_POS={x=0,y=0,z=0}
+local ENTRANCE_POS_2={x=10,y=0,z=0}
+local SELLER_POS={x=10,y=2,z=0}
+local SHOP_EXIT_POS={x=10,y=4,z=0}
+local OPEN_RADIUS_M,CLOSE_RADIUS_M=4.0,5.5
+local CATALOG_DIR="cars"
+local activeSpawns={}
+local toggleSystem={active=false,currentIteration=0}
+local playerVehicleState={wasInVehicle=false,currentVehicle=nil,lastCheckedVehicle=nil,monitoringActive=false}
+local function isNear(pos,tgt,r) return false end
+local function hideHub() state.showing=false end
+local function showEntranceHub() state.showing=true;state.atEntrance=true end
+local function showEntrance2Hub() state.showing=true;state.atEntrance2=true end
+local function showShopExitHub() state.showing=true;state.atShopExit=true end
+local function showRootHub() state.showing=true;state.phase="root" end
+local function showBuyHub() state.showing=true;state.phase="buy" end
+local function despawnAll() end
+local function executeToggleCommand() end
+local function checkPlayerVehicleEntry()
+ if toggleSystem.active then executeToggleCommand() end
+ local player=Game.GetPlayer();if not player then return end
+ local currentVehicle=Game['GetMountedVehicle;GameObject'](player)
+ playerVehicleState.wasInVehicle=currentVehicle~=nil
+ playerVehicleState.currentVehicle=currentVehicle
+ playerVehicleState.lastCheckedVehicle=currentVehicle
+end
+local function load_catalog_from_json_dir(dir) end
+-- --- tiny scheduler ---
+local __tasks={}
+local function later(delay,fn)
+ __tasks[#__tasks+1]={t=os.clock()+(delay or 0),fn=fn}
+end
+local function runDueTasks()
+ local now=os.clock()
+ local i=1
+ while i<=#__tasks do
+  if __tasks[i].t<=now then local task=table.remove(__tasks,i);pcall(task.fn) else i=i+1 end
+ end
+end
+registerForEvent("onInit", function()
+ ui.init=function() end
+ load_catalog_from_json_dir(CATALOG_DIR)
+end)
 registerForEvent("onDraw", function() pcall(function() ui.update() end) end)
-registerForEvent("onUpdate", function(_) end)
+registerForEvent("onUpdate", function(_)
+ runDueTasks()
+ local p=Game.GetPlayer();if not p then return end
+ local pos=p:GetWorldPosition()
+ checkPlayerVehicleEntry()
+ for i=#activeSpawns,1,-1 do
+  local spawn=activeSpawns[i]
+  if type(spawn)=="table" and spawn.type=="timer" and spawn.check then
+   if spawn.check() then table.remove(activeSpawns,i) end
+  end
+ end
+ local nearEntrance=isNear(pos,ENTRANCE_POS,OPEN_RADIUS_M)
+ local farFromEntrance=not isNear(pos,ENTRANCE_POS,CLOSE_RADIUS_M)
+ local nearEntrance2=isNear(pos,ENTRANCE_POS_2,OPEN_RADIUS_M)
+ local farFromEntrance2=not isNear(pos,ENTRANCE_POS_2,CLOSE_RADIUS_M)
+ local nearSeller=isNear(pos,SELLER_POS,OPEN_RADIUS_M)
+ local farFromSeller=not isNear(pos,SELLER_POS,CLOSE_RADIUS_M)
+ local nearShopExit=isNear(pos,SHOP_EXIT_POS,OPEN_RADIUS_M)
+ local farFromShopExit=not isNear(pos,SHOP_EXIT_POS,CLOSE_RADIUS_M)
+ if nearEntrance and not state.showing and not state.atEntrance then showEntranceHub()
+ elseif state.atEntrance and farFromEntrance then hideHub();state.atEntrance=false
+ elseif nearEntrance2 and not state.showing and not state.atEntrance2 then showEntrance2Hub()
+ elseif state.atEntrance2 and farFromEntrance2 then hideHub();state.atEntrance2=false
+ elseif nearShopExit and not state.showing and not state.atShopExit then showShopExitHub()
+ elseif state.atShopExit and farFromShopExit then hideHub();state.atShopExit=false
+ elseif state.phase=="root" and not state.showing and nearSeller then showRootHub()
+ elseif state.showing and farFromSeller then hideHub()
+ elseif not state.showing and nearSeller and state.phase~="root" then showBuyHub()
+ end
+end)
 '@
 
 Write-ModFile 'marmurbank' 'external/InteractionUI.lua' @'
@@ -736,7 +807,7 @@ try{
  $x=Z($b+'sitAnywhere/modules/worldInteraction.lua');if($x-notmatch'function world\.hasVisibleState\(\)'){throw 'sitAnywhere visible-world wake probe missing.'}
  $x=Z($b+'sitAnywhere/modules/logic.lua');if($x-notmatch'workspotsHidden' -or $x-notmatch'if self\.workspotsHidden then return end'){throw 'sitAnywhere parked-workspot state missing.'}
  $x=Z($b+'repeatable_increased_criminal_activity/init.lua');if($x-notmatch'diagnosticsElapsed' -or $x-notmatch'runtimeTick\(includeDiagnostics\)' -or $x-notmatch'__gcetRunDiagnostics = Mod\.diagnosticsElapsed >= 5\.0'){throw 'RICA split incomplete.'}
- $x=Z($b+'Dedka Auto Shop/init.lua');if($x-notmatch'if state\.showing then' -or $x-notmatch'__gcetRegisterEvent_\d+\("onDraw"'){throw 'Dedka draw composition incomplete.'}
+ $x=Z($b+'Dedka Auto Shop/init.lua');foreach($t in @('__gcetDedkaSemanticReady','RegisterZone','SetInterval(0.2','VehicleMount','VehicleUnmount','PlayerInvalidated','if not __gcetDedkaNearby then return end','if state.showing then')){if($x-notmatch[regex]::Escape($t)){throw "Dedka semantic missing $t"}}
  $x=Z($b+'marmurbank/external/InteractionUI.lua');if($x-notmatch'__gcetMarmurActionRelevant' -or $x-notmatch'WORLD_INTERACTION_ACTIONS\[name\] == true' -or $x-notmatch'wrapped\(action, wrappedConsumer\)'){throw 'MarmurBank prefilter incomplete.'}
  $x=Z($b+'immersive_third_person/init.lua');if($x-notmatch'__gcetItppSupervisorElapsed' -or $x-notmatch'__gcetItppMaintenanceElapsed' -or $x-notmatch'if state\.enabled or state\.cameraTransition then' -or $x-notmatch'if state\.pendingFppCleanup then' -or $x-notmatch'pcall\(mod\.fallCommitTick, delta\)'){throw 'ITP split incomplete.'}
  $x=Z($b+'ImmersiveFirstPerson/Modules/Helpers.lua');if($x-notmatch'slowProbeElapsed' -or $x-notmatch'session\.slowProbe\.inWorkspot' -or $x-notmatch'Helpers\.RefreshPlayerState\(target, delta\)'){throw 'ImmersiveFirstPerson slow probe incomplete.'}
