@@ -401,6 +401,7 @@ return ui
 Write-ModFile 'marmurbank' 'external/GameUI.lua' @'
 local GameUI={}
 GameUI.Event={MenuClose='MenuClose'}
+local menuCloseEvent=GameUI.Event.MenuClose
 function GameUI.Observe(event,callback) end
 return GameUI
 '@
