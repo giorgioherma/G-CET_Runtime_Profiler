@@ -17,7 +17,7 @@ public sealed record PassBuildResult(
 /// Generates a reversible overlay ZIP from resolver decisions only.
 /// Generic AUTO is deliberately restricted to mechanically source-proven recipes:
 /// ACTION_ROUTING_*, ACTION_OVERRIDE_EXACT_PREFILTER, FRAME_DISPATCH_CONSOLIDATION,
-/// and explicitly enabled finite shared-provider reads backed by 0-Engine.
+/// INTERACTION_UI_IDLE_GUARD, and explicitly enabled finite shared-provider reads backed by 0-Engine.
 /// Structural and dormancy analyzers may still emit evidence, but behavior-changing
 /// cadence is authorized only by source-proven semantic per-mod rules.
 /// </summary>
@@ -223,6 +223,7 @@ public static class PassGeneratorService
                     "ACTION_ROUTING_*",
                     "ACTION_OVERRIDE_EXACT_PREFILTER",
                     "FRAME_DISPATCH_CONSOLIDATION",
+                    "INTERACTION_UI_IDLE_GUARD",
                     "SHARED_PROVIDER_READ",
                     "SEMANTIC_RULE_SOURCE_INJECTION"
                 },
@@ -342,10 +343,16 @@ public static class PassGeneratorService
                 {
                     kind = CandidateKind.Action;
                 }
-                else if ((resolverFamily.Equals("ONUPDATE", StringComparison.OrdinalIgnoreCase) ||
-                          resolverFamily.Equals("ONDRAW", StringComparison.OrdinalIgnoreCase)) &&
+                else if (resolverFamily.Equals("ONUPDATE", StringComparison.OrdinalIgnoreCase) &&
                          recipes.Any(x =>
                              x.Equals("FRAME_DISPATCH_CONSOLIDATION", StringComparison.OrdinalIgnoreCase)))
+                {
+                    kind = CandidateKind.Frame;
+                }
+                else if (resolverFamily.Equals("ONDRAW", StringComparison.OrdinalIgnoreCase) &&
+                         recipes.Any(x =>
+                             x.Equals("FRAME_DISPATCH_CONSOLIDATION", StringComparison.OrdinalIgnoreCase) ||
+                             x.Equals("INTERACTION_UI_IDLE_GUARD", StringComparison.OrdinalIgnoreCase)))
                 {
                     kind = CandidateKind.Frame;
                 }
@@ -397,7 +404,15 @@ public static class PassGeneratorService
                     OverridePrefilterGateReceiver = facts.OverridePrefilterGateReceiver,
                     OverridePrefilterGateMember = facts.OverridePrefilterGateMember,
                     AlsoFrameDispatch = recipes.Any(x =>
-                        x.Equals("FRAME_DISPATCH_CONSOLIDATION", StringComparison.OrdinalIgnoreCase))
+                        x.Equals("FRAME_DISPATCH_CONSOLIDATION", StringComparison.OrdinalIgnoreCase)),
+                    ApplyFrameDispatch = recipes.Any(x =>
+                        x.Equals("FRAME_DISPATCH_CONSOLIDATION", StringComparison.OrdinalIgnoreCase)),
+                    ApplyInteractionUiIdleGuard = recipes.Any(x =>
+                        x.Equals("INTERACTION_UI_IDLE_GUARD", StringComparison.OrdinalIgnoreCase)),
+                    InteractionUiFunction = facts.InteractionUiFunction,
+                    InteractionUiGate = facts.InteractionUiGate,
+                    InteractionUiIdleReset = facts.InteractionUiIdleReset,
+                    InteractionUiHubVariable = facts.InteractionUiHubVariable
                 });
             }
         }
@@ -475,7 +490,11 @@ public static class PassGeneratorService
             OverrideWrappedMethodReturns = JsonBool(facts, "overrideWrappedMethodReturns"),
             OverrideWrappedMethodTakesSelf = JsonBool(facts, "overrideWrappedMethodTakesSelf"),
             OverridePrefilterGateReceiver = JsonString(facts, "overridePrefilterGateReceiver"),
-            OverridePrefilterGateMember = JsonString(facts, "overridePrefilterGateMember")
+            OverridePrefilterGateMember = JsonString(facts, "overridePrefilterGateMember"),
+            InteractionUiFunction = JsonString(facts, "interactionUiFunction"),
+            InteractionUiGate = JsonString(facts, "interactionUiGate"),
+            InteractionUiIdleReset = JsonString(facts, "interactionUiIdleReset"),
+            InteractionUiHubVariable = JsonString(facts, "interactionUiHubVariable")
         };
     }
 
@@ -617,72 +636,114 @@ public static class PassGeneratorService
 
             if (candidate.Kind == CandidateKind.Frame)
             {
-                if (effectiveLineEnd > lines.Count)
+                if (candidate.ApplyFrameDispatch)
                 {
-                    skipped.Add(Skip(
-                        candidate,
-                        "Recorded frame callback range is outside the current file."));
-                    continue;
+                    if (effectiveLineEnd > lines.Count)
+                    {
+                        skipped.Add(Skip(
+                            candidate,
+                            "Recorded frame callback range is outside the current file."));
+                    }
+                    else
+                    {
+                        var frameLines = lines
+                            .Skip(candidate.LineStart - 1)
+                            .Take(effectiveLineEnd - candidate.LineStart + 1)
+                            .ToArray();
+                        var frameSegment = string.Join("\n", frameLines);
+
+                        // Resolver authorizes a direct onUpdate/onDraw registration from the
+                        // complete callback source range. Revalidate the same semantic
+                        // shape here instead of requiring the registrar and event name
+                        // to happen to share one physical source line.
+                        var frameOpening = Regex.Match(
+                            frameSegment,
+                            @"\b(?<registrar>registerForEvent|registerRuntimeEvent)\s*\(\s*(?<quote>['""])" +
+                            Regex.Escape(candidate.FrameEvent) +
+                            @"\k<quote>",
+                            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Singleline);
+                        if (!frameOpening.Success ||
+                            !IsBareRegistrarStatement(frameSegment, frameOpening.Groups["registrar"].Index))
+                        {
+                            skipped.Add(Skip(
+                                candidate,
+                                $"Recorded callback range no longer contains a bare source-proven {candidate.FrameEvent} registrar, or the registrar is wrapped/aliased by an owner abstraction."));
+                        }
+                        else
+                        {
+                            var token = $"__gcetRegisterEvent_{candidate.RegistrationId}";
+                            var registrar = frameOpening.Groups["registrar"].Value;
+                            var registrarOffset = frameOpening.Groups["registrar"].Index;
+                            if (string.IsNullOrWhiteSpace(registrar) || registrarOffset < 0)
+                            {
+                                skipped.Add(Skip(
+                                    candidate,
+                                    $"Direct {candidate.FrameEvent} registrar token could not be revalidated."));
+                            }
+                            else
+                            {
+                                var rewrittenFrame =
+                                    frameSegment[..registrarOffset] +
+                                    token +
+                                    frameSegment[(registrarOffset + registrar.Length)..];
+                                var frameReplacementLines = rewrittenFrame.Split('\n');
+
+                                lines.RemoveRange(
+                                    candidate.LineStart - 1,
+                                    effectiveLineEnd - candidate.LineStart + 1);
+                                lines.InsertRange(candidate.LineStart - 1, frameReplacementLines);
+
+                                frameHelpers.Add((candidate, token));
+                                transformManifest.Add(new
+                                {
+                                    registrationId = candidate.RegistrationId,
+                                    owner = candidate.Owner,
+                                    type = "FRAME_DISPATCH_CONSOLIDATION",
+                                    eventTarget = candidate.FrameEvent,
+                                    file = candidate.RelativeFile,
+                                    sourceLines = new[] { candidate.LineStart, candidate.LineEnd }
+                                });
+                                applied++;
+                            }
+                        }
+                    }
                 }
 
-                var frameLines = lines
-                    .Skip(candidate.LineStart - 1)
-                    .Take(effectiveLineEnd - candidate.LineStart + 1)
-                    .ToArray();
-                var frameSegment = string.Join("\n", frameLines);
-
-                // Resolver authorizes a direct onUpdate registration from the
-                // complete callback source range. Revalidate the same semantic
-                // shape here instead of requiring registerForEvent and
-                // "onUpdate" to happen to share one physical source line.
-                var frameOpening = Regex.Match(
-                    frameSegment,
-                    @"\b(?<registrar>registerForEvent|registerRuntimeEvent)\s*\(\s*(?<quote>['""])" +
-                    Regex.Escape(candidate.FrameEvent) +
-                    @"\k<quote>",
-                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Singleline);
-                if (!frameOpening.Success ||
-                    !IsBareRegistrarStatement(frameSegment, frameOpening.Groups["registrar"].Index))
+                if (candidate.ApplyInteractionUiIdleGuard)
                 {
-                    skipped.Add(Skip(
-                        candidate,
-                        $"Recorded callback range no longer contains a bare source-proven {candidate.FrameEvent} registrar, or the registrar is wrapped/aliased by an owner abstraction."));
-                    continue;
+                    var expectedProof = new InteractionUiIdleGuardProof(
+                        candidate.InteractionUiFunction,
+                        candidate.InteractionUiGate,
+                        candidate.InteractionUiIdleReset,
+                        candidate.InteractionUiHubVariable);
+                    var currentText = string.Join("\n", lines);
+                    if (GenericInteractionUiTransform.TryApply(
+                            currentText,
+                            expectedProof,
+                            out var rewrittenInteractionUi))
+                    {
+                        lines = rewrittenInteractionUi.Split('\n').ToList();
+                        transformManifest.Add(new
+                        {
+                            registrationId = candidate.RegistrationId,
+                            owner = candidate.Owner,
+                            type = "INTERACTION_UI_IDLE_GUARD",
+                            file = candidate.RelativeFile,
+                            function = candidate.InteractionUiFunction,
+                            gate = candidate.InteractionUiGate,
+                            preservedIdleReset = candidate.InteractionUiIdleReset,
+                            proof = "getDialogChoiceHubs read is dominated by the visible hub gate; hidden path retains only the original false-state reset"
+                        });
+                        applied++;
+                    }
+                    else
+                    {
+                        skipped.Add(Skip(
+                            candidate,
+                            "Interaction-UI idle guard could not be revalidated after earlier generic transforms; leave the function unchanged."));
+                    }
                 }
 
-                var token = $"__gcetRegisterEvent_{candidate.RegistrationId}";
-                var registrar = frameOpening.Groups["registrar"].Value;
-                var registrarOffset = frameOpening.Groups["registrar"].Index;
-                if (string.IsNullOrWhiteSpace(registrar) || registrarOffset < 0)
-                {
-                    skipped.Add(Skip(
-                        candidate,
-                        "Direct onUpdate registrar token could not be revalidated."));
-                    continue;
-                }
-
-                var rewrittenFrame =
-                    frameSegment[..registrarOffset] +
-                    token +
-                    frameSegment[(registrarOffset + registrar.Length)..];
-                var frameReplacementLines = rewrittenFrame.Split('\n');
-
-                lines.RemoveRange(
-                    candidate.LineStart - 1,
-                    effectiveLineEnd - candidate.LineStart + 1);
-                lines.InsertRange(candidate.LineStart - 1, frameReplacementLines);
-
-                frameHelpers.Add((candidate, token));
-                transformManifest.Add(new
-                {
-                    registrationId = candidate.RegistrationId,
-                    owner = candidate.Owner,
-                    type = "FRAME_DISPATCH_CONSOLIDATION",
-                    eventTarget = candidate.FrameEvent,
-                    file = candidate.RelativeFile,
-                    sourceLines = new[] { candidate.LineStart, candidate.LineEnd }
-                });
-                applied++;
                 continue;
             }
 
@@ -1376,6 +1437,12 @@ public static class PassGeneratorService
         public string OverridePrefilterGateReceiver { get; init; } = "";
         public string OverridePrefilterGateMember { get; init; } = "";
         public bool AlsoFrameDispatch { get; init; }
+        public bool ApplyFrameDispatch { get; init; }
+        public bool ApplyInteractionUiIdleGuard { get; init; }
+        public string InteractionUiFunction { get; init; } = "";
+        public string InteractionUiGate { get; init; } = "";
+        public string InteractionUiIdleReset { get; init; } = "";
+        public string InteractionUiHubVariable { get; init; } = "";
     }
 
 
@@ -1394,6 +1461,10 @@ public static class PassGeneratorService
         public bool OverrideWrappedMethodTakesSelf { get; init; }
         public string OverridePrefilterGateReceiver { get; init; } = "";
         public string OverridePrefilterGateMember { get; init; } = "";
+        public string InteractionUiFunction { get; init; } = "";
+        public string InteractionUiGate { get; init; } = "";
+        public string InteractionUiIdleReset { get; init; } = "";
+        public string InteractionUiHubVariable { get; init; } = "";
     }
 
 

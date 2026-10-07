@@ -420,6 +420,45 @@ registerForEvent("onDraw", function()
 end)
 '@
 
+Write-Mod 'FixtureInteractionUi' @'
+local ui = { hubShown = false, input = false }
+
+function ui.update()
+    local hubs = getDialogChoiceHubs()
+
+    if ui.hubShown and #hubs > 0 then
+        DrawInteraction(hubs)
+    elseif ui.hubShown then
+        DrawEmptyInteraction()
+    end
+
+    ui.input = false
+end
+
+registerForEvent("onDraw", function()
+    ui.update()
+end)
+'@
+
+Write-Mod 'FixtureInteractionUiUnsafe' @'
+local ui = { hubShown = false, input = false }
+
+function ui.update()
+    local hubs = getDialogChoiceHubs()
+    RefreshUiState()
+
+    if ui.hubShown and #hubs > 0 then
+        DrawInteraction(hubs)
+    end
+
+    ui.input = false
+end
+
+registerForEvent("onDraw", function()
+    ui.update()
+end)
+'@
+
 Write-Mod 'FixtureAlreadyDraw' @'
 local registerRuntimeEvent = registerForEvent
 do
@@ -561,6 +600,8 @@ $handoff = @{
         (CallbackRow 129 'FixtureOtherStructural' 'ObserveAfter' 'PlayerPuppet::FixtureStructuralObserve' 120 12.0 3.0 'init.lua' 1 19),
         (CallbackRow 102 'FixtureFrame' 'event' 'onUpdate' 60 5.0 1.0 'init.lua' 2 7),
         (CallbackRow 140 'FixtureDraw' 'event' 'onDraw' 60 4.8 0.9 'init.lua' 1 3),
+        (CallbackRow 142 'FixtureInteractionUi' 'event' 'onDraw' 60 4.0 0.8 'init.lua' 15 17),
+        (CallbackRow 143 'FixtureInteractionUiUnsafe' 'event' 'onDraw' 60 4.0 0.8 'init.lua' 14 16),
         (CallbackRow 141 'FixtureAlreadyDraw' 'event' 'onDraw' 60 4.7 0.8 'init.lua' 8 10),
         (CallbackRow 136 'FixtureWrappedFrame' 'event' 'onUpdate' 60 5.2 1.0 'init.lua' 2 4),
         (CallbackRow 132 'FixtureAlreadyFrame' 'event' 'onUpdate' 60 5.5 1.1 'init.lua' 8 10),
@@ -1125,6 +1166,26 @@ if (!$draw.generic.Automatable -or
     @($draw.generic.RecipeFamilies) -notcontains 'FRAME_DISPATCH_CONSOLIDATION') {
     throw 'Raw onDraw registration was not authorized for frame dispatch consolidation.'
 }
+
+$interactionDraw = @($onDraw.topConsumers | Where-Object { $_.owner -eq 'FixtureInteractionUi' }) | Select-Object -First 1
+if ($null -eq $interactionDraw) { throw 'FixtureInteractionUi was not ranked inside onDraw.' }
+if (!$interactionDraw.generic.Automatable -or
+    @($interactionDraw.generic.RecipeFamilies) -notcontains 'FRAME_DISPATCH_CONSOLIDATION' -or
+    @($interactionDraw.generic.RecipeFamilies) -notcontains 'INTERACTION_UI_IDLE_GUARD') {
+    throw 'Safe interaction UI shape did not compose frame consolidation with the generic idle guard.'
+}
+if ($interactionDraw.generic.Facts.interactionUiFunction -ne 'ui.update' -or
+    $interactionDraw.generic.Facts.interactionUiGate -ne 'ui.hubShown' -or
+    $interactionDraw.generic.Facts.interactionUiIdleReset -ne 'ui.input = false' -or
+    $interactionDraw.generic.Facts.interactionUiHubVariable -ne 'hubs') {
+    throw 'Interaction UI proof facts were not emitted exactly.'
+}
+
+$interactionUnsafe = @($onDraw.topConsumers | Where-Object { $_.owner -eq 'FixtureInteractionUiUnsafe' }) | Select-Object -First 1
+if ($null -eq $interactionUnsafe) { throw 'FixtureInteractionUiUnsafe was not ranked inside onDraw.' }
+if (@($interactionUnsafe.generic.RecipeFamilies) -contains 'INTERACTION_UI_IDLE_GUARD') {
+    throw 'Interaction UI idle guard ignored unconditional work outside the hubShown branch.'
+}
 $alreadyDraw = @($onDraw.topConsumers | Where-Object { $_.owner -eq 'FixtureAlreadyDraw' }) | Select-Object -First 1
 if ($null -eq $alreadyDraw) { throw 'FixtureAlreadyDraw was not ranked inside onDraw.' }
 if ($alreadyDraw.generic.Automatable -or $alreadyDraw.generic.Status -ne 'ALREADY_SATISFIED') {
@@ -1410,7 +1471,12 @@ if ($unknownHot.generic.Automatable) {
 if ($null -eq $resolved.pass) {
     throw 'CLI --generate-pass did not return a pass result.'
 }
-$expectedGenericTransforms = [int]$result.summary.genericResolved
+$expectedGenericTransforms = 0
+foreach ($family in @($result.callbackFamilies)) {
+    foreach ($consumer in @($family.topConsumers | Where-Object { $_.generic.Automatable })) {
+        $expectedGenericTransforms += @($consumer.generic.RecipeFamilies).Count
+    }
+}
 $expectedSharedTransforms = $eligibleSharedCandidates.Count
 $expectedPassTransforms = $expectedGenericTransforms + $expectedSharedTransforms
 if ([int]$resolved.pass.TransformCount -ne $expectedPassTransforms) {
@@ -1529,6 +1595,31 @@ try {
     }
     if ($frameText -match '(?m)^\s*registerRuntimeEvent\s*\(\s*"onUpdate"') {
         throw 'Generated frame-dispatch replacement left the original runtime registrar call active.'
+    }
+
+    $interactionText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureInteractionUi/init.lua'
+    foreach ($requiredInteractionText in @(
+        'G-CET interaction UI idle guard',
+        'if not ui.hubShown then',
+        'ui.input = false',
+        'return',
+        'local hubs = getDialogChoiceHubs()',
+        '__gcetRegisterEvent_142("onDraw"'
+    )) {
+        if ($interactionText -notmatch [regex]::Escape($requiredInteractionText)) {
+            throw "Generated interaction UI generic guard is missing: $requiredInteractionText"
+        }
+    }
+    if ($interactionText.IndexOf('if not ui.hubShown then') -gt $interactionText.IndexOf('local hubs = getDialogChoiceHubs()')) {
+        throw 'Interaction UI idle guard was inserted after the expensive hub read.'
+    }
+    if ([regex]::Matches($interactionText, [regex]::Escape('getDialogChoiceHubs()')).Count -ne 1) {
+        throw 'Interaction UI idle guard duplicated or removed the original hub read.'
+    }
+
+    $interactionUnsafeText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureInteractionUiUnsafe/init.lua'
+    if ($interactionUnsafeText -match 'G-CET interaction UI idle guard') {
+        throw 'Unsafe interaction UI shape received the generic hidden-state rewrite.'
     }
 
     $structuralText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureStructural/init.lua'
@@ -1667,6 +1758,9 @@ try {
     }
     if (@($manifest.policy.supportedPasses) -notcontains 'SHARED_PROVIDER_READ') {
         throw 'Generated pass manifest does not advertise SHARED_PROVIDER_READ generation.'
+    }
+    if (@($manifest.policy.supportedPasses) -notcontains 'INTERACTION_UI_IDLE_GUARD') {
+        throw 'Generated pass manifest does not advertise INTERACTION_UI_IDLE_GUARD generation.'
     }
     if ([double]$manifest.policy.semanticRuntimeThresholdMsPerSecond -ne 3.0) {
         throw 'Semantic runtime admission threshold changed unexpectedly.'

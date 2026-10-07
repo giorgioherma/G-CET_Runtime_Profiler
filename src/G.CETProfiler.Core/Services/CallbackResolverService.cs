@@ -401,7 +401,7 @@ internal static class CallbackResolverService
                 sharedProviderScope = "MEASURED_CALLBACKS_ONLY",
                 sharedProviderDeepEvidence = "UNTRUNCATED_GETTER_CALLEES_WITH_LEGACY_HOTCALLEES_FALLBACK",
                 sharedProviderDiscovery = "ALL_ZERO_ARG_GAME_GETTERS_PLUS_ALL_DEEP_GETTER_CALLEES; DEEP_ONLY_EVIDENCE_IS_ANALYSIS_ONLY_UNTIL_CURRENT_SOURCE_IS_PROVEN",
-                note = "Generic AUTO is restricted to mechanically source-proven action routing, exact Override prefiltering, frame-dispatch consolidation, and explicitly enabled shared-provider reads with exact current-source proof. Dynamic player-derived state remains analysis-only. Identity-specific automatic behavior lives exclusively in the source-proven semantic library. Shared-provider opportunity totals describe measured callback territory, not estimated savings. Shared-provider deep evidence is aggregated across the measured stack without a per-callback hot-callee top-N gate. Already-satisfied generated states are not re-applied."
+                note = "Generic AUTO is restricted to mechanically source-proven action routing, exact Override prefiltering, frame-dispatch consolidation, interaction-UI hidden-state early guards, and explicitly enabled shared-provider reads with exact current-source proof. Dynamic player-derived state remains analysis-only. Identity-specific automatic behavior lives exclusively in the source-proven semantic library. Shared-provider opportunity totals describe measured callback territory, not estimated savings. Shared-provider deep evidence is aggregated across the measured stack without a per-callback hot-callee top-N gate. Already-satisfied generated states are not re-applied."
             },
             semanticLibrary = new
             {
@@ -1623,6 +1623,7 @@ internal static class CallbackResolverService
     {
         var evidence = new List<string>();
         var blockers = new List<string>();
+        var recipes = new List<string>();
 
         var rawRegistrarMatch = source is null
             ? Match.Empty
@@ -1656,6 +1657,7 @@ internal static class CallbackResolverService
             generatedFrameConsolidated ||
             ownerRegistrarAlreadyConsolidated;
 
+        var frameAutomatable = rawDirectOnDraw && !alreadyFrameConsolidated;
         if (alreadyFrameConsolidated)
         {
             evidence.Add(
@@ -1665,18 +1667,54 @@ internal static class CallbackResolverService
         }
         else if (rawDirectOnDraw)
         {
+            recipes.Add("FRAME_DISPATCH_CONSOLIDATION");
             evidence.Add("Raw direct onDraw registration is present in the current deployed source.");
         }
         else if (generatedRegistrarPresent)
         {
-            blockers.Add("A G-CET frame registrar token is present for onDraw, but its generated helper could not be proven in the current file. Leave the partial state untouched.");
+            blockers.Add("Frame-dispatch consolidation found a G-CET registrar token for onDraw, but its generated helper could not be proven in the current file. Leave that partial state untouched.");
         }
         else
         {
-            blockers.Add("Current deployed source could not prove the direct onDraw registration.");
+            blockers.Add("Frame-dispatch consolidation could not prove a direct onDraw registration in the current deployed source.");
         }
 
-        var automatable = rawDirectOnDraw && !alreadyFrameConsolidated;
+        InteractionUiIdleGuardProof? interactionUiGuard = null;
+        if (source is not null &&
+            GenericInteractionUiTransform.TryProveForCallback(
+                source.FullText,
+                source.CallbackText,
+                out var guard))
+        {
+            interactionUiGuard = guard;
+            recipes.Add("INTERACTION_UI_IDLE_GUARD");
+            evidence.Add(
+                $"Source proves {guard.FunctionName} reads getDialogChoiceHubs() only for the visible '{guard.GateExpression}' branch; " +
+                "the hidden path has no work except the preserved false-state reset.");
+        }
+
+        var automatable = recipes.Count > 0;
+        var pattern = frameAutomatable && interactionUiGuard is not null
+            ? "FRAME_DISPATCH_PLUS_INTERACTION_UI_IDLE_GUARD"
+            : frameAutomatable
+                ? "FRAME_DISPATCH_CONSOLIDATION"
+                : interactionUiGuard is not null
+                    ? "INTERACTION_UI_IDLE_GUARD"
+                    : alreadyFrameConsolidated
+                        ? "FRAME_DISPATCH_ALREADY_SATISFIED"
+                        : "ONDRAW_UNRESOLVED";
+
+        var facts = interactionUiGuard is null
+            ? null
+            : new
+            {
+                interactionUiIdleGuard = true,
+                interactionUiFunction = interactionUiGuard.FunctionName,
+                interactionUiGate = interactionUiGuard.GateExpression,
+                interactionUiIdleReset = interactionUiGuard.IdleResetStatement,
+                interactionUiHubVariable = interactionUiGuard.HubVariable
+            };
+
         return new GenericResolution
         {
             Status = automatable
@@ -1685,15 +1723,11 @@ internal static class CallbackResolverService
                     ? "ALREADY_SATISFIED"
                     : "SOURCE_UNRESOLVED",
             Automatable = automatable,
-            Pattern = automatable
-                ? "FRAME_DISPATCH_CONSOLIDATION"
-                : alreadyFrameConsolidated
-                    ? "FRAME_DISPATCH_ALREADY_SATISFIED"
-                    : "ONDRAW_UNRESOLVED",
-            RecipeFamilies = automatable
-                ? new[] { "FRAME_DISPATCH_CONSOLIDATION" }
-                : Array.Empty<string>(),
-            Facts = null,
+            Pattern = pattern,
+            RecipeFamilies = recipes
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
+            Facts = facts,
             Evidence = evidence.ToArray(),
             Blockers = blockers.ToArray(),
             Source = sourceEvidence
