@@ -44,6 +44,8 @@ internal static class SemanticInjectors
             "discard-ammo-on-reload" => ApplyDiscardAmmoOnReload(context),
             "advanced-settings" => ApplyAdvancedSettings(context),
             "auto-ammo-crafting" => ApplyAutoAmmoCrafting(context),
+            "autoloot" => ApplyAutoLoot(context),
+            "better-loot-markers" => ApplyBetterLootMarkers(context),
             "drivebus" => ApplyDriveBus(context),
             "quest-tracking-toggle" => ApplyQuestTrackingToggle(context),
             "sitanywhere" => ApplySitAnywhere(context),
@@ -2188,18 +2190,101 @@ internal static class SemanticInjectors
     }
 
 
-    private static SemanticInjectionResult ApplyDriveBus(
+    private static SemanticInjectionResult ApplyAutoLoot(
         SemanticPatchContext context)
     {
         var file = context.FindFile(
+            "init.lua",
+            "handleButtonPressed",
+            "handleButtonReleased",
+            "useDefaultActionKey",
+            "isContinuousLooting");
+
+        var text = RouteExactOnActionObserver(
+            file.Text,
+            "gcetAutoLootOnAction",
+            "AutoLoot",
+            new[]
+            {
+                "Pause",
+                "OpenPauseMenu",
+                "OpenMapMenu",
+                "OpenCraftingMenu",
+                "OpenJournalMenu",
+                "OpenPerksMenu",
+                "OpenInventoryMenu",
+                "OpenHubMenu",
+                "TogglePhotoMode",
+                "UI_Apply",
+                "Choice1",
+                "click",
+                "Ping",
+                "Forward",
+                "Back",
+                "Left",
+                "Right",
+                "Jump",
+                "ToggleCrouch",
+                "MeleeAttack",
+                "UI_DPadWeapons"
+            },
+            "AutoLoot PlayerPuppet OnAction",
+            "useDefaultActionKey",
+            "handleButtonPressed",
+            "handleButtonReleased",
+            "action:GetType");
+
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Applied AutoLoot's known-good finite action routing without changing its looting cadence or trigger state machine.");
+    }
+
+    private static SemanticInjectionResult ApplyBetterLootMarkers(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "init.lua",
+            "BetterLootMarkers.ImmersiveMode.Tick",
+            "BetterLootMarkers.ImmersiveMode.Init",
+            "BetterLootMarkers.Settings");
+
+        var regex = new Regex(
+            @"(?ms)^(?<indent>[ \t]*)(?<registrar>registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]\s*,\s*function\s*\(\s*dt\s*\)\s*\r?\n\k<indent>[ \t]+BetterLootMarkers\.ImmersiveMode\.Tick\s*\(\s*dt\s*\)\s*\r?\n\k<indent>end\s*\)\s*$",
+            RegexOptions.CultureInvariant | RegexOptions.Multiline);
+
+        var matches = regex.Matches(file.Text);
+        if (matches.Count != 1)
+            throw new InvalidOperationException(
+                "BetterLootMarkers onUpdate wrapper no longer uniquely matches the semantic off-state gate.");
+
+        var match = matches[0];
+        var indent = match.Groups["indent"].Value;
+        var registrar = match.Groups["registrar"].Value;
+        var text = file.Text[..match.Index] +
+            indent + registrar + "(\"onUpdate\", function(dt)\n" +
+            indent + "    if BetterLootMarkers.Settings.immersiveMode then\n" +
+            indent + "        BetterLootMarkers.ImmersiveMode.Tick(dt)\n" +
+            indent + "    end\n" +
+            indent + "end)" +
+            file.Text[(match.Index + match.Length)..];
+
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Kept BetterLootMarkers' proven frame behavior, but bypassed ImmersiveMode.Tick entirely while immersive mode is disabled; no discarded PASS4L cadence was restored.");
+    }
+
+    private static SemanticInjectionResult ApplyDriveBus(
+        SemanticPatchContext context)
+    {
+        var core = context.FindFile(
             "Modules/core.lua",
             "function Core:SetObserve()",
             "exception_in_choice_list",
             "exception_in_mount_list",
             "self:ChoiceAction(action_name");
 
-        var text = RouteExactOnActionObserver(
-            file.Text,
+        var coreText = RouteExactOnActionObserver(
+            core.Text,
             "gcetDriveBusOnAction",
             "DriveBus",
             new[]
@@ -2216,9 +2301,60 @@ internal static class SemanticInjectors
             "exception_in_mount_list",
             "self:ChoiceAction(action_name");
 
-        context.Write(file, text);
+        var cron = context.FindFile(
+            "External/Cron.lua",
+            "local timers = {}",
+            "function Cron.Update",
+            "function Cron.Every");
+
+        var cronText = cron.Text;
+        if (!Regex.IsMatch(
+                cronText,
+                @"(?m)^\s*function\s+Cron\.HasActiveTimers\s*\(",
+                RegexOptions.CultureInvariant))
+        {
+            cronText = RegexReplaceOnce(
+                cronText,
+                @"(?m)^(?<indent>[ \t]*)function\s+Cron\.Update\s*\(\s*delta\s*\)",
+                "${indent}function Cron.HasActiveTimers()\n" +
+                "${indent}\tfor _, timer in ipairs(timers) do\n" +
+                "${indent}\t\tif timer.active then return true end\n" +
+                "${indent}\tend\n" +
+                "${indent}\treturn false\n" +
+                "${indent}end\n\n" +
+                "${indent}function Cron.Update(delta)",
+                "DriveBus Cron active-timer probe");
+        }
+
+        var init = context.FindFile(
+            "init.lua",
+            "Cron = require",
+            "Cron.Update(delta)",
+            "onUpdate");
+
+        var updateRegex = new Regex(
+            @"(?ms)^(?<indent>[ \t]*)(?<registrar>registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]\s*,\s*function\s*\(\s*delta\s*\)\s*\r?\n\k<indent>[ \t]+Cron\.Update\s*\(\s*delta\s*\)\s*\r?\n\k<indent>end\s*\)\s*$",
+            RegexOptions.CultureInvariant | RegexOptions.Multiline);
+
+        var updateMatches = updateRegex.Matches(init.Text);
+        if (updateMatches.Count != 1)
+            throw new InvalidOperationException(
+                "DriveBus Cron onUpdate source no longer uniquely matches the dormant-timer gate.");
+
+        var update = updateMatches[0];
+        var updateIndent = update.Groups["indent"].Value;
+        var registrar = update.Groups["registrar"].Value;
+        var initText = init.Text[..update.Index] +
+            updateIndent + registrar + "(\"onUpdate\", function(delta)\n" +
+            updateIndent + "    if Cron.HasActiveTimers() then Cron.Update(delta) end\n" +
+            updateIndent + "end)" +
+            init.Text[(update.Index + update.Length)..];
+
+        context.Write(core, coreText);
+        context.Write(cron, cronText);
+        context.Write(init, initText);
         return SemanticInjectionResult.Success(
-            "Routed only DriveBus's six source/proven choice, mount and hub actions through 0-Engine while preserving the original callback body and Consume behavior.");
+            "Routed DriveBus's six source-proven actions through 0-Engine and made its Cron frame callback hard-dormant whenever no active timer exists.");
     }
 
     private static SemanticInjectionResult ApplyQuestTrackingToggle(
