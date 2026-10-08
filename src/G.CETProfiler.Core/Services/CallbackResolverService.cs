@@ -1680,6 +1680,7 @@ internal static class CallbackResolverService
         }
 
         InteractionUiIdleGuardProof? interactionUiGuard = null;
+        UiVisibilityDormancyProof? uiVisibilityDormancy = null;
         if (source is not null &&
             GenericInteractionUiTransform.TryProveForCallback(
                 source.FullText,
@@ -1693,27 +1694,40 @@ internal static class CallbackResolverService
                 "the hidden path has no work except the preserved false-state reset.");
         }
 
-        var automatable = recipes.Count > 0;
-        var pattern = frameAutomatable && interactionUiGuard is not null
-            ? "FRAME_DISPATCH_PLUS_INTERACTION_UI_IDLE_GUARD"
-            : frameAutomatable
-                ? "FRAME_DISPATCH_CONSOLIDATION"
-                : interactionUiGuard is not null
-                    ? "INTERACTION_UI_IDLE_GUARD"
-                    : alreadyFrameConsolidated
-                        ? "FRAME_DISPATCH_ALREADY_SATISFIED"
-                        : "ONDRAW_UNRESOLVED";
+        if (source is not null &&
+            GenericUiVisibilityTransform.TryProveForCallback(
+                source.FullText,
+                source.CallbackText,
+                out var uiGuard))
+        {
+            uiVisibilityDormancy = uiGuard;
+            recipes.Add("UI_VISIBILITY_DORMANCY");
+            evidence.Add(
+                $"Entire onDraw body is dominated by the simple visibility gate '{uiGuard.GateExpression}', " +
+                $"and an independent {uiGuard.WakeKind} writer can wake it outside onDraw.");
+        }
 
-        var facts = interactionUiGuard is null
-            ? null
-            : new
-            {
-                interactionUiIdleGuard = true,
-                interactionUiFunction = interactionUiGuard.FunctionName,
-                interactionUiGate = interactionUiGuard.GateExpression,
-                interactionUiIdleReset = interactionUiGuard.IdleResetStatement,
-                interactionUiHubVariable = interactionUiGuard.HubVariable
-            };
+        var automatable = recipes.Count > 0;
+        var pattern = automatable
+            ? string.Join("_PLUS_", recipes.Distinct(StringComparer.OrdinalIgnoreCase))
+            : alreadyFrameConsolidated
+                ? "FRAME_DISPATCH_ALREADY_SATISFIED"
+                : "ONDRAW_UNRESOLVED";
+
+        var facts =
+            interactionUiGuard is null && uiVisibilityDormancy is null
+                ? null
+                : new
+                {
+                    interactionUiIdleGuard = interactionUiGuard is not null,
+                    interactionUiFunction = interactionUiGuard?.FunctionName ?? "",
+                    interactionUiGate = interactionUiGuard?.GateExpression ?? "",
+                    interactionUiIdleReset = interactionUiGuard?.IdleResetStatement ?? "",
+                    interactionUiHubVariable = interactionUiGuard?.HubVariable ?? "",
+                    uiVisibilityDormancy = uiVisibilityDormancy is not null,
+                    uiVisibilityGate = uiVisibilityDormancy?.GateExpression ?? "",
+                    uiVisibilityWakeKind = uiVisibilityDormancy?.WakeKind ?? ""
+                };
 
         return new GenericResolution
         {
@@ -1747,6 +1761,7 @@ internal static class CallbackResolverService
         StructuralHotpathResolution? structuralResolution = null;
         HardDormantGuardResolution? hardDormantResolution = null;
         AuthorDiscoveryCadenceResolution? discoveryScheduleResolution = null;
+        SequencePollingProof? sequencePollingResolution = null;
         var effectiveSourceEvidence = sourceEvidence;
 
         var rawRegistrarMatch = source is null
@@ -1856,9 +1871,24 @@ internal static class CallbackResolverService
                 "is self-contained and can be moved off the frame loop without changing the active branch.");
         }
 
+        if (source is not null &&
+            directOnUpdate &&
+            GenericSequencePollingTransform.TryProveForCallback(
+                source.CallbackText,
+                out var sequencePolling))
+        {
+            sequencePollingResolution = sequencePolling;
+            recipes.Add("SEQUENCE_FIRST_SCRIPTABLE_SYSTEM_POLL");
+            evidence.Add(
+                $"Source proves literal ScriptableSystem '{sequencePolling.SystemName}' is read only to compare " +
+                $"{sequencePolling.SequenceMember} against {sequencePolling.LastVariable} before later work; " +
+                "the literal bridge can be cached without changing the sequence gate.");
+        }
+
         if (structuralResolution is not null ||
             hardDormantResolution is not null ||
-            discoveryScheduleResolution is not null)
+            discoveryScheduleResolution is not null ||
+            sequencePollingResolution is not null)
         {
             facts = new
             {
@@ -1877,19 +1907,35 @@ internal static class CallbackResolverService
                 authorDiscoveryIntervalSeconds = discoveryScheduleResolution?.IntervalSeconds ?? 0,
                 authorDiscoveryAccumulator = discoveryScheduleResolution?.Accumulator ?? "",
                 authorDiscoveryGate = discoveryScheduleResolution?.ActiveGate ?? ""
+,
+                sequenceFirstScriptableSystemPoll = sequencePollingResolution is not null,
+                sequenceSystemName = sequencePollingResolution?.SystemName ?? "",
+                sequenceBridgeVariable = sequencePollingResolution?.BridgeVariable ?? "",
+                sequenceVariable = sequencePollingResolution?.SequenceVariable ?? "",
+                sequenceMember = sequencePollingResolution?.SequenceMember ?? "",
+                sequenceLastVariable = sequencePollingResolution?.LastVariable ?? "",
+                sequenceWrappedPcall = sequencePollingResolution?.WrappedPcall ?? false
             };
         }
 
         var automaticRecipes = recipes
-            .Where(x => x.Equals(
-                "FRAME_DISPATCH_CONSOLIDATION",
-                StringComparison.OrdinalIgnoreCase))
+            .Where(x =>
+                x.Equals(
+                    "FRAME_DISPATCH_CONSOLIDATION",
+                    StringComparison.OrdinalIgnoreCase) ||
+                x.Equals(
+                    "SEQUENCE_FIRST_SCRIPTABLE_SYSTEM_POLL",
+                    StringComparison.OrdinalIgnoreCase))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
         var parkedRecipes = recipes
-            .Where(x => !x.Equals(
-                "FRAME_DISPATCH_CONSOLIDATION",
-                StringComparison.OrdinalIgnoreCase))
+            .Where(x =>
+                !x.Equals(
+                    "FRAME_DISPATCH_CONSOLIDATION",
+                    StringComparison.OrdinalIgnoreCase) &&
+                !x.Equals(
+                    "SEQUENCE_FIRST_SCRIPTABLE_SYSTEM_POLL",
+                    StringComparison.OrdinalIgnoreCase))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
@@ -1903,7 +1949,7 @@ internal static class CallbackResolverService
 
         var automatable = automaticRecipes.Length > 0;
         var pattern = automatable
-            ? "FRAME_DISPATCH_CONSOLIDATION"
+            ? string.Join("_PLUS_", automaticRecipes)
             : parkedRecipes.Contains(
                     "AUTHOR_DISCOVERY_DORMANT_SCHEDULE",
                     StringComparer.OrdinalIgnoreCase)
