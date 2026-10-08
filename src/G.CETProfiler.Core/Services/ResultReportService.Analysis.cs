@@ -28,6 +28,14 @@ public static partial class ResultReportService
         public long TotalCalls { get; init; }
         public double TotalCallsPerSecond { get; init; }
         public double SchedulerTotalMsPerSecond { get; init; }
+
+        // These CSVs are required by both the human report analysis and the
+        // resolver handoff. Keep the already-parsed rows alive for this one
+        // Generate() call instead of reopening/reparsing the same files.
+        public List<Dictionary<string, string>> DetailRows { get; init; } = [];
+        public List<Dictionary<string, string>> TimelineRows { get; init; } = [];
+        public List<Dictionary<string, string>> MarkerRows { get; init; } = [];
+        public List<Dictionary<string, string>> SpikeRows { get; init; } = [];
     }
 
     private static ResultAnalysis Analyze(string captureRoot)
@@ -212,7 +220,11 @@ public static partial class ResultReportService
             TotalOneCorePct = totalOneCorePct,
             TotalCalls = totalCalls,
             TotalCallsPerSecond = totalCallsPerSecond,
-            SchedulerTotalMsPerSecond = schedulerTotalMsPerSecond
+            SchedulerTotalMsPerSecond = schedulerTotalMsPerSecond,
+            DetailRows = detail,
+            TimelineRows = timeline,
+            MarkerRows = markers,
+            SpikeRows = spikes
         };
     }
 
