@@ -3611,7 +3611,8 @@
           "getActionType",
           "getActionValue",
           "BUTTON_PRESSED",
-          "MoveY"
+          "actionName == \"movey\"",
+          "actionName == \"movex\""
         ],
         "satisfiedAll": [
           "gcetBackStepDuoOnAction",

@@ -2139,7 +2139,8 @@ internal static class SemanticInjectors
             "getActionType",
             "getActionValue",
             "BUTTON_PRESSED",
-            "MoveY");
+            "movey",
+            "movex");
 
         var text = RouteExactOnActionObserver(
             file.Text,
