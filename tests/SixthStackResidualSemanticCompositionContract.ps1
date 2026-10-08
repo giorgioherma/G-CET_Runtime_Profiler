@@ -810,7 +810,7 @@ try {
     if($tunnel -notmatch 'G-CET semantic:tunnel-rescue' -or
        $tunnel -notmatch '__gcetTunnelOutsideAcc' -or
        $tunnel -notmatch 'if __gcetTunnelOutsideAcc < \.15 then return end' -or
-       $tunnel -notmatch "if ok and H\.phase=='inside' then" -or
+       $tunnel -notmatch "if ok and H\.phase~='outside' then" -or
        $tunnel -notmatch "H\.phase~='outside'.*Timer\.draw") {
         throw 'Tunnel rescue quest-session dormancy is incomplete.'
     }
