@@ -649,6 +649,7 @@ function CallbackRow([int]$Id,[string]$Owner,[string]$Kind,[string]$Target,[stri
 }
 
 $goodLine=Find-Line (Join-Path $mods 'GoodFeelings\init.lua') 'Event\.Observe\("PlayerPuppet", "OnAction"'
+$goodDrawLine=Find-Line (Join-Path $mods 'GoodFeelings\init.lua') 'Event\.RegisterDraw\(function'
 $airLine=Find-Line (Join-Path $mods 'AirBackFlip\init.lua') 'Observe\("PlayerPuppet", "OnAction"'
 $autoLine=Find-Line (Join-Path $mods 'AutoDropWeaponOnPickupEquip\init.lua') 'Observe\("PlayerPuppet", "OnAction"'
 $droneLine=Find-Line (Join-Path $mods 'Drone Companions (Revamp)\DroneLogic\Drone AI - Mech.lua') "Override\('TweakAIActionAbstract', 'Update'"
@@ -660,6 +661,7 @@ $handoff=@{
  schemaVersion='1.8'
  callbacks=@(
    (CallbackRow 1 'GoodFeelings' 'Observe' 'PlayerPuppet::OnAction' 'init.lua' $goodLine 30.940503 1244),
+   (CallbackRow 8 'GoodFeelings' 'event' 'onDraw' 'init.lua' $goodDrawLine 86.449583 60),
    (CallbackRow 2 'AirBackFlip' 'Observe' 'PlayerPuppet::OnAction' 'init.lua' $airLine 12.077188 1244),
    (CallbackRow 3 'AutoDropWeaponOnPickupEquip' 'Observe' 'PlayerPuppet::OnAction' 'init.lua' $autoLine 9.888169 1244),
    (CallbackRow 4 'Drone Companions (Revamp)' 'Override' 'TweakAIActionAbstract::Update' 'DroneLogic/Drone AI - Mech.lua' $droneLine 8.51844 117),
@@ -676,8 +678,8 @@ if (!$resolved.ok -or $null -eq $resolved.pass) { throw 'Residual semantic pass 
 
 $resolver = Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
 $rules=@(
- 'good-feelings','air-backflip','auto-drop-weapon-on-pickup-equip',
- 'drone-companions-revamp','ghost-void-system','straight-edged-controls',
+ 'good-feelings','good-feelings-hard-draw','air-backflip','auto-drop-weapon-on-pickup-equip',
+ 'drone-companions-revamp','ghost-void-system','straight-edged-controls-input-dormancy',
  'immersive-head-inertia'
 )
 foreach($rule in $rules) {
