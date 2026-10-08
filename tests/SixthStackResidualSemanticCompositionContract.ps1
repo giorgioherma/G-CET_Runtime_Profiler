@@ -187,40 +187,44 @@ end)
 '@
 
 Write-ModFile 'AutoDropWeaponOnPickupEquip' 'init.lua' @'
-local cfg = { swapWindow=0.90, debugPrint=false }
+local cfg = { swapWindow=0.90, dropDelay=0.10, debugPrint=false }
 local t, pendingUntil, dropAt = 0.0, 0.0, 0.0
 local pending, oldItemID, oldKey = false, nil, nil
 local triggerActions = { Reload=true, Interaction=true, Interact=true, Use=true, ContextualAction=true, Loot=true, PickUp=true, Pickup=true, Take=true }
+local function log(msg) print("[ADWOP] "..msg) end
 local function getActionName(action) return Game.NameToString(action:GetName()) end
 local function getActiveWeaponItemID(player) return player:GetActiveWeapon():GetItemID() end
 local function itemKey(itemID) return tostring(itemID) end
 local function isUnarmedItemID(itemID) return false end
-local captureArmed, captureStart = false, 0.0
+local captureArmed = false
+local captureStart = 0.0
+
 registerInput("ADWOP_CaptureNextAction", "capture", function(isDown)
   if not isDown then return end
   captureArmed = true
   captureStart = t + 0.15
+  log("Capture armed.")
 end)
+
 registerInput("ADWOP_ToggleDebug", "debug", function(isDown)
   if not isDown then return end
   cfg.debugPrint = not cfg.debugPrint
+  log("debugPrint = " .. tostring(cfg.debugPrint))
 end)
+
 registerForEvent("onInit", function()
   Observe("PlayerPuppet", "OnAction", function(_, action)
     if not action then return end
-
     local aType = action:GetType()
     if aType ~= gameinputActionType.BUTTON_PRESSED then return end
-
     local name = getActionName(action)
-
     if captureArmed and t >= captureStart then
       captureArmed = false
       triggerActions[name] = true
+      log("CAPTURED action name: " .. tostring(name) .. "  (added as trigger)")
     end
-    if cfg.debugPrint then print(name) end
+    if cfg.debugPrint then print(string.format("[ADWOP] Action=%s", tostring(name))) end
     if not triggerActions[name] then return end
-
     local player = GetPlayer()
     if not player then return end
     local curID = getActiveWeaponItemID(player)
@@ -231,6 +235,25 @@ registerForEvent("onInit", function()
     pendingUntil = t + cfg.swapWindow
     dropAt = 0.0
   end)
+
+  log("Loaded. (Optional) bind ADWOP inputs in CET -> Bindings -> Inputs.")
+end)
+
+registerForEvent("onUpdate", function(dt)
+  t = t + (dt or 0)
+  if not pending then return end
+  if t > pendingUntil then
+    pending = false
+    return
+  end
+  local player = GetPlayer()
+  if not player then return end
+  local newID = getActiveWeaponItemID(player)
+  local newKey = itemKey(newID)
+  if not oldKey or not newKey or newKey == oldKey then return end
+  if dropAt == 0.0 then dropAt = t + cfg.dropDelay; return end
+  if t < dropAt then return end
+  pending = false
 end)
 '@
 
