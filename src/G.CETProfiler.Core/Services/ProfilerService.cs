@@ -326,7 +326,7 @@ public sealed class ProfilerService : IProfilerService
         }
     }
 
-    public string? Collect(string gameRoot)
+    public string? Collect(string gameRoot, bool generateReport = true)
     {
         AssertGameClosed();
         var paths = GetValidatedPaths(gameRoot);
@@ -335,7 +335,7 @@ public sealed class ProfilerService : IProfilerService
             throw new InvalidOperationException(
                 "No completed CET capture is ready. Start the profiler in game, then stop/export it before collecting results.");
 
-        return CollectResultsInternal(paths, allowEmpty: false);
+        return CollectResultsInternal(paths, allowEmpty: false, generateReport);
     }
 
     public string? ResetLive(string gameRoot)
@@ -1116,7 +1116,10 @@ public sealed class ProfilerService : IProfilerService
         return false;
     }
 
-    private string? CollectResultsInternal(ProfilerPaths paths, bool allowEmpty)
+    private string? CollectResultsInternal(
+        ProfilerPaths paths,
+        bool allowEmpty,
+        bool generateReport = true)
     {
         var found = GetLiveResults(paths);
         if (found.Count == 0)
@@ -1168,19 +1171,23 @@ public sealed class ProfilerService : IProfilerService
             captureTitle + Environment.NewLine);
 
         // Human presentation is deliberately downstream of verified raw collection.
-        // A report failure must never discard a valid native capture or leave live
-        // profiler output behind merely because presentation could not be built.
-        try
+        // GUI collection can defer this one expensive pass until after the optional
+        // frame-time companion has been copied, avoiding a redundant CET-only report
+        // that would immediately be thrown away and rebuilt.
+        if (generateReport)
         {
-            ResultReportService.Generate(destination);
-        }
-        catch (Exception ex)
-        {
-            File.WriteAllText(
-                Path.Combine(destination, "CET_Report_Error.txt"),
-                "The native CET profiler data was archived successfully, but the human-readable report could not be generated."
-                + Environment.NewLine + Environment.NewLine
-                + ex);
+            try
+            {
+                ResultReportService.Generate(destination);
+            }
+            catch (Exception ex)
+            {
+                File.WriteAllText(
+                    Path.Combine(destination, "CET_Report_Error.txt"),
+                    "The native CET profiler data was archived successfully, but the human-readable report could not be generated."
+                    + Environment.NewLine + Environment.NewLine
+                    + ex);
+            }
         }
 
         foreach (var source in found)
