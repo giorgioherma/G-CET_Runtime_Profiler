@@ -16,7 +16,7 @@ internal static class GenericSequencePollingTransform
 {
     private static readonly Regex PcallShape = new(
         @"(?ms)(?<indent>^[ \t]*)local\s+(?<ok>[A-Za-z_]\w*)\s*,\s*(?<bridge>[A-Za-z_]\w*)\s*=\s*pcall\s*\(\s*function\s*\(\s*\)\s*\r?\n" +
-        @"[ \t]*local\s+(?<container>[A-Za-z_]\w*)\s*=\s*Game\.GetScriptableSystemsContainer\s*\(\s*\)\s*\r?\n" +
+        @"[ \t]*local\s+(?<container>[A-Za-z_]\w*)\s*=\s*(?:Game\.GetScriptableSystemsContainer|__gcetGetScriptableSystemsContainer)\s*\(\s*\)\s*\r?\n" +
         @"[ \t]*if\s+not\s+\k<container>\s+then\s+return\s+nil\s+end\s*\r?\n" +
         @"[ \t]*return\s+\k<container>:Get\s*\(\s*CName\.new\s*\(\s*[""'](?<system>[^""']+)[""']\s*\)\s*\)\s*\r?\n" +
         @"[ \t]*end\s*\)\s*\r?\n" +
@@ -30,7 +30,7 @@ internal static class GenericSequencePollingTransform
         RegexOptions.Singleline);
 
     private static readonly Regex DirectShape = new(
-        @"(?ms)(?<indent>^[ \t]*)local\s+(?<bridge>[A-Za-z_]\w*)\s*=\s*Game\.GetScriptableSystemsContainer\s*\(\s*\):Get\s*\(\s*CName\.new\s*\(\s*[""'](?<system>[^""']+)[""']\s*\)\s*\)\s*\r?\n" +
+        @"(?ms)(?<indent>^[ \t]*)local\s+(?<bridge>[A-Za-z_]\w*)\s*=\s*(?:Game\.GetScriptableSystemsContainer|__gcetGetScriptableSystemsContainer)\s*\(\s*\):Get\s*\(\s*CName\.new\s*\(\s*[""'](?<system>[^""']+)[""']\s*\)\s*\)\s*\r?\n" +
         @"[ \t]*if\s+not\s+\k<bridge>\s+then\s+return\s+end\s*\r?\n" +
         @"[ \t]*local\s+(?<seq>[A-Za-z_]\w*)\s*=\s*\k<bridge>\.(?<member>[A-Za-z_]\w*)\s*\r?\n" +
         @"[ \t]*if\s+\k<seq>\s*==\s*(?<last>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s+then\s+return\s+end\s*\r?\n" +
