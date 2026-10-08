@@ -851,6 +851,10 @@ $eligibleSharedCandidates = @(
                 provider = [string]$provider.provider
                 registrationId = [int64]$callback.registrationId
                 reads = [int]$callback.sourceRecognizedOccurrences
+                file = [string]$callback.sourceFile
+                sha = [string]$callback.sourceSha256
+                lineStart = [int]$callback.lineStart
+                lineEnd = [int]$callback.lineEnd
             }
         }
     }
@@ -1477,7 +1481,13 @@ foreach ($family in @($result.callbackFamilies)) {
         $expectedGenericTransforms += @($consumer.generic.RecipeFamilies).Count
     }
 }
-$expectedSharedTransforms = $eligibleSharedCandidates.Count
+$expectedSharedTransforms = @(
+    $eligibleSharedCandidates |
+        ForEach-Object {
+            "$($_.provider)|$($_.file)|$($_.sha)|$($_.lineStart)|$($_.lineEnd)"
+        } |
+        Sort-Object -Unique
+).Count
 $expectedPassTransforms = $expectedGenericTransforms + $expectedSharedTransforms
 if ([int]$resolved.pass.TransformCount -ne $expectedPassTransforms) {
     if (Test-Path -LiteralPath $resolved.pass.ManifestPath -PathType Leaf) {

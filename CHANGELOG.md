@@ -3,6 +3,7 @@
 All notable public changes to G-CET Runtime Profiler are recorded here.
 
 ## [Unreleased]
+- PASS generation now coalesces duplicate shared-provider candidates that resolve to the same physical provider/file/SHA/source range. This fixes false revalidation failures on minified one-line mods where several measured callbacks share line 1; the already-applied provider rewrite remains unchanged and no optimization is lost.
 - Native rebuild #38 completed successfully and refreshed the packaged profiler payload with restored adaptive deep profiling plus the PunkyCam conflict policy; this commit exists only to route those rebuilt bytes through the normal portable-profiler CI package.
 - Added PunkyCam / Punk yCam to the known profiler-conflict list after reproducing a mouse-movement-triggered crash only while its native camera/input hooks and G-CET capture were active. The manager reports the conflict and CETProfilerControls blocks START while PunkyCam is loaded; the profiler itself is not globally reduced for one incompatible mod.
 - Restored adaptive deep Lua profiling after the no-hook isolation build reproduced the crash unchanged. Deep tracing is therefore no longer treated as causal for the PunkyCam conflict; the ScriptContext failure-isolation hardening remains.

@@ -459,13 +459,47 @@ public static class PassGeneratorService
                         SourceSha256 = sha,
                         LineStart = lineStart,
                         LineEnd = lineEnd,
-                        Pattern = "SHARED_PROVIDER_READ"
+                        Pattern = "SHARED_PROVIDER_READ",
+                        MeasuredExclusiveMsPerSecond = JsonDouble(callback, "exclusiveMsPerSecond"),
+                        DeepObserved = JsonBool(callback, "deepObserved")
                     });
                 }
             }
         }
 
-        return result;
+        // Minified/packed Lua can map several measured callbacks to the same
+        // physical source range (for example line 1..1 for an entire one-line
+        // file). A shared-provider substitution replaces every exact getter in
+        // that range, so emitting another candidate for the same provider/site
+        // can only revalidate against text already rewritten by the first one.
+        //
+        // Coalesce those duplicate physical sites before generation. Prefer a
+        // callback with direct deep evidence, then the highest measured work,
+        // so the manifest attribution stays attached to the strongest evidence.
+        var nonShared = result
+            .Where(x => x.Kind != CandidateKind.SharedProvider)
+            .ToList();
+
+        var shared = result
+            .Where(x => x.Kind == CandidateKind.SharedProvider)
+            .GroupBy(
+                x => string.Join(
+                    "|",
+                    x.Provider,
+                    x.RelativeFile,
+                    x.SourceSha256,
+                    x.LineStart.ToString(),
+                    x.LineEnd.ToString()),
+                StringComparer.OrdinalIgnoreCase)
+            .Select(group => group
+                .OrderByDescending(x => x.DeepObserved)
+                .ThenByDescending(x => x.MeasuredExclusiveMsPerSecond)
+                .ThenBy(x => x.RegistrationId)
+                .First())
+            .ToList();
+
+        nonShared.AddRange(shared);
+        return nonShared;
     }
 
     private static CandidateFacts ReadFacts(JsonElement generic)
@@ -1422,6 +1456,8 @@ public static class PassGeneratorService
         public int LineStart { get; init; }
         public int LineEnd { get; init; }
         public string Pattern { get; init; } = "";
+        public double MeasuredExclusiveMsPerSecond { get; init; }
+        public bool DeepObserved { get; init; }
         public string FrameEvent { get; init; } = "onUpdate";
         public string[] Actions { get; init; } = Array.Empty<string>();
         public string[] ActionPatterns { get; init; } = Array.Empty<string>();
