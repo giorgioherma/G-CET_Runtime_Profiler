@@ -553,6 +553,7 @@ internal static class FixedZeroEngineRuntime
         [
             "",
             "        local __gcetSharedProviderValues = {}",
+            "        local __gcetScriptableSystemValues = {}",
             "        local __gcetSharedProviderEpoch = nil",
             "        local __gcetSharedProviderGetters = {"
         ]);
@@ -572,6 +573,7 @@ internal static class FixedZeroEngineRuntime
             "            if __gcetSharedProviderEpoch ~= player then",
             "                __gcetSharedProviderEpoch = player",
             "                __gcetSharedProviderValues = {}",
+            "                __gcetScriptableSystemValues = {}",
             "            end",
             "        end",
             "",
@@ -606,6 +608,29 @@ internal static class FixedZeroEngineRuntime
             lines.Add("");
         }
 
+        lines.AddRange(
+        [
+            "        function __gcetApi.GetScriptableSystem(name)",
+            "            __gcetSyncSharedProviderEpoch()",
+            "            local key = tostring(name or \"\")",
+            "            if key == \"\" then return nil end",
+            "            local value = __gcetScriptableSystemValues[key]",
+            "            if value ~= nil then return value end",
+            "            local container = __gcetApi.GetScriptableSystemsContainer()",
+            "            if container == nil then return nil end",
+            "            local ok, resolved = pcall(function() return container:Get(CName.new(key)) end)",
+            "            if ok and resolved ~= nil then",
+            "                __gcetScriptableSystemValues[key] = resolved",
+            "                return resolved",
+            "            end",
+            "            return nil",
+            "        end",
+            "        if type(__gcetHost.GetScriptableSystem) ~= \"function\" then",
+            "            __gcetHost.GetScriptableSystem = __gcetApi.GetScriptableSystem",
+            "        end",
+            ""
+        ]);
+
         lines.Add("    end");
         lines.Add("end");
         lines.Add("");
@@ -636,6 +661,7 @@ internal static class FixedZeroEngineRuntime
             "",
             SharedSystemMarker,
             "local __gcetSharedProviderValues = {}",
+            "local __gcetScriptableSystemValues = {}",
             "local __gcetSharedProviderEpoch = nil",
             "local __gcetSharedProviderGetters = {"
         };
@@ -655,6 +681,7 @@ internal static class FixedZeroEngineRuntime
             "    if __gcetSharedProviderEpoch ~= player then",
             "        __gcetSharedProviderEpoch = player",
             "        __gcetSharedProviderValues = {}",
+            "        __gcetScriptableSystemValues = {}",
             "    end",
             "end",
             "",
@@ -682,6 +709,26 @@ internal static class FixedZeroEngineRuntime
             lines.Add("end");
             lines.Add("");
         }
+
+        lines.AddRange(
+        [
+            "function Engine.GetScriptableSystem(name)",
+            "    __gcetSyncSharedProviderEpoch()",
+            "    local key = tostring(name or \"\")",
+            "    if key == \"\" then return nil end",
+            "    local value = __gcetScriptableSystemValues[key]",
+            "    if value ~= nil then return value end",
+            "    local container = Engine.GetScriptableSystemsContainer()",
+            "    if container == nil then return nil end",
+            "    local ok, resolved = pcall(function() return container:Get(CName.new(key)) end)",
+            "    if ok and resolved ~= nil then",
+            "        __gcetScriptableSystemValues[key] = resolved",
+            "        return resolved",
+            "    end",
+            "    return nil",
+            "end",
+            ""
+        ]);
 
         var block = string.Join(newline, lines);
         var insertAt = playerAccessor.Index + playerAccessor.Length;
