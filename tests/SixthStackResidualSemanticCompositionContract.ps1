@@ -320,6 +320,52 @@ end
 end)
 '@
 
+Write-ModFile 'tunnel_rescue' 'init.lua' @'
+local Timer={draw=function() end}
+local Swimming={frame=function() end,clear=function() end}
+local Life={frame=function() end,clear=function() end}
+local Street={frame=function() end,clear=function() end}
+local Rescue={surface=function() return false end,journal=function() end,weather=function() end,outside=function() end,dispose=function() end}
+local JournalOffer={update=function() end}
+local H={phase='outside',tick=0,session=true,overlay=false,error=nil,blocked=nil,hooks={generation=1,inputReady=true,TickPresentation=function() end,NextInput=function() end,NextInteract=function() end,NextChoice=function() end,NextTorch=function() end,QuietTunnel=function() end}}
+local L={}
+local function fact(k)return 0 end
+local function set(k,v)end
+local function active()return fact('visit')==1 end
+local function valid(x)return x~=nil end
+local function status()end
+local function leave(reason)H.phase='outside'end
+local function update(dt)
+ H.tick=H.tick+dt
+ if H.tick<.15 then return end
+ dt=math.min(H.tick,.5);H.tick=0
+ local can=true
+ H.hooks:TickPresentation(dt,can and not H.overlay)
+ if H.phase=='outside'then Rescue.outside(dt,H,L,can,nil)end
+ JournalOffer.update(dt,H,can,fact,set,Rescue.journal)
+ if H.phase=='outside'and H.questArmed and Rescue.surface(H,L,can,nil,nil)then end
+end
+registerForEvent('onUpdate',function(dt)
+ local ok,e=pcall(update,dt)
+ if ok and not H.lifeError then
+  local lifeOK,lifeError=pcall(Life.frame,dt,H,L)
+  if not lifeOK then H.lifeError=tostring(lifeError);pcall(Life.clear,H.hooks)end
+ end
+ if ok and valid(H.hooks)then ok,e=pcall(Swimming.frame,dt,H.hooks,H.session and H.phase=='inside'and H.blocked==nil and not H.overlay)end
+ if ok and not H.streetError then
+  local streetOK,streetError=pcall(Street.frame,dt,H,L)
+  if not streetOK then H.streetError=tostring(streetError);pcall(Street.clear)end
+ end
+ if valid(H.hooks)then H.hooks:QuietTunnel(ok and H.session and not H.error and not H.overlay and H.blocked~='Close the game menu'and (H.phase=='arriving'or H.phase=='inside'))end
+ if not ok then
+  H.error=tostring(e);H.auto=false;H.manual=false
+  if H.session and H.phase~='outside'then pcall(leave,'Tunnel interrupted. Returning to the saved departure.')end
+  pcall(status)
+ end
+end)
+registerForEvent('onDraw',function()if H.session and not H.overlay and not H.error then Timer.draw()end end)
+'@
+
 Write-ModFile 'Straight Edged Controls' 'init.lua' @'
 local UIBlocking = require('modules/ui_blocking')
 local Lean = require('modules/lean')
@@ -654,6 +700,8 @@ $airLine=Find-Line (Join-Path $mods 'AirBackFlip\init.lua') 'Observe\("PlayerPup
 $autoLine=Find-Line (Join-Path $mods 'AutoDropWeaponOnPickupEquip\init.lua') 'Observe\("PlayerPuppet", "OnAction"'
 $droneLine=Find-Line (Join-Path $mods 'Drone Companions (Revamp)\DroneLogic\Drone AI - Mech.lua') "Override\('TweakAIActionAbstract', 'Update'"
 $ghostLine=Find-Line (Join-Path $mods 'GhostVoidSystem\init.lua') 'registerForEvent\("onUpdate"'
+$tunnelLine=Find-Line (Join-Path $mods 'tunnel_rescue\init.lua') "registerForEvent\('onUpdate'"
+$tunnelDrawLine=Find-Line (Join-Path $mods 'tunnel_rescue\init.lua') "registerForEvent\('onDraw'"
 $straightLine=Find-Line (Join-Path $mods 'Straight Edged Controls\init.lua') "registerForEvent\('onUpdate'"
 $inertiaLine=Find-Line (Join-Path $mods 'ImmersiveHeadInertia\init.lua') 'Observe\("PlayerPuppet", "OnAction"'
 
@@ -667,6 +715,8 @@ $handoff=@{
    (CallbackRow 4 'Drone Companions (Revamp)' 'Override' 'TweakAIActionAbstract::Update' 'DroneLogic/Drone AI - Mech.lua' $droneLine 8.51844 117),
    (CallbackRow 5 'GhostVoidSystem' 'event' 'onUpdate' 'init.lua' $ghostLine 3.452751 52),
    (CallbackRow 6 'Straight Edged Controls' 'event' 'onUpdate' 'init.lua' $straightLine 19.950931 52),
+   (CallbackRow 9 'tunnel_rescue' 'event' 'onUpdate' 'init.lua' $tunnelLine 7.170041 60),
+   (CallbackRow 10 'tunnel_rescue' 'event' 'onDraw' 'init.lua' $tunnelDrawLine 3.100000 60),
    (CallbackRow 7 'ImmersiveHeadInertia' 'Observe' 'PlayerPuppet::OnAction' 'init.lua' $inertiaLine 9.873854 1244)
  )
  optimizerEvidence=@()
@@ -679,7 +729,7 @@ if (!$resolved.ok -or $null -eq $resolved.pass) { throw 'Residual semantic pass 
 $resolver = Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
 $rules=@(
  'good-feelings','good-feelings-hard-draw','air-backflip','auto-drop-weapon-on-pickup-equip',
- 'drone-companions-revamp','ghost-void-system','straight-edged-controls-input-dormancy',
+ 'drone-companions-revamp','ghost-void-system','straight-edged-controls-input-dormancy','tunnel-rescue',
  'immersive-head-inertia'
 )
 foreach($rule in $rules) {
@@ -732,10 +782,13 @@ try {
     }
 
     $auto=Read-ZipText ($base+'AutoDropWeaponOnPickupEquip/init.lua')
-    if($auto -notmatch 'G-CET semantic:auto-drop-weapon-on-pickup-equip' -or
-       $auto -notmatch '__gcetRawName' -or
-       $auto -notmatch 'not captureArmed and not cfg\.debugPrint and not triggerActions\[name\]') {
-        throw 'AutoDrop action-name prefilter is incomplete.'
+    if($auto -notmatch 'G-CET semantic:auto-drop-weapon-dynamic-routing' -or
+       $auto -notmatch '__gcetAutoDropSubscribeExact' -or
+       $auto -notmatch '__gcetAutoDropRefreshWildcard' -or
+       $auto -notmatch 'actions = "\*"' -or
+       $auto -notmatch 'decodeType = false' -or
+       $auto -notmatch 'if not pending and not captureArmed then return end') {
+        throw 'AutoDrop exact routing / temporary wildcard dormancy is incomplete.'
     }
 
     $drone=Read-ZipText ($base+'Drone Companions (Revamp)/DroneLogic/Drone AI - Mech.lua')
@@ -751,6 +804,15 @@ try {
        $ghost -notmatch 'addVoidEnergy\(amount, state\)' -or
        $ghost -notmatch 'addStability\(amount, state\)') {
         throw 'Ghost Void state reuse is incomplete.'
+    }
+
+    $tunnel=Read-ZipText ($base+'tunnel_rescue/init.lua')
+    if($tunnel -notmatch 'G-CET semantic:tunnel-rescue' -or
+       $tunnel -notmatch '__gcetTunnelOutsideAcc' -or
+       $tunnel -notmatch 'if __gcetTunnelOutsideAcc < \.15 then return end' -or
+       $tunnel -notmatch "if ok and H\.phase=='inside' then" -or
+       $tunnel -notmatch "H\.phase~='outside'.*Timer\.draw") {
+        throw 'Tunnel rescue quest-session dormancy is incomplete.'
     }
 
     $straight=Read-ZipText ($base+'Straight Edged Controls/init.lua')
@@ -803,4 +865,4 @@ try {
 }
 finally { $zip.Dispose() }
 
-Write-Host 'Residual sixth-stack semantic composition contract passed: GoodFeelings hard draw + AirBackFlip + AutoDrop + Drone Companions + GhostVoid + Straight sequence dormancy + ImmersiveHeadInertia.'
+Write-Host 'Residual sixth-stack semantic composition contract passed: GoodFeelings hard draw + AirBackFlip + AutoDrop exact routing + tunnel quest dormancy + Drone Companions + GhostVoid + Straight sequence dormancy + ImmersiveHeadInertia.'
