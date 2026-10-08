@@ -3,6 +3,7 @@
 All notable public changes to G-CET Runtime Profiler are recorded here.
 
 ## [Unreleased]
+- Diagnostic isolation: removed the transparent `Scope(nullptr)` RAII boundaries from Override `next()` / real-function execution. Those boundaries had previously been identified as unsafe across LuaJIT `luaL_error` / Windows SEH, but were later restored for downstream attribution. Override timing now stays inside the protected Lua callback call while deep hooks remain disabled.
 - Diagnostic safety mode: disabled adaptive deep Lua debug-hook tracing while retaining broad callback timing, source attribution, frame multiplicity, timeline, spike, and scheduler telemetry. The rebuilt native payload leaves `DeepTraceScope` as a no-op, isolating `lua_sethook` / deep-hook behavior without changing the live mod stack or repairing the GoodFeelings reproducer.
 - Hardened ScriptContext event profiling so adaptive deep Lua hooks exist only while the user callback itself executes. CET/sol protected-result validation and error logging now run after the prior Lua hook is restored, allowing malformed event callbacks to fail through CET's normal error path instead of keeping the deep hook active during failure handling.
 - Added read-only sampled Lua-heap consequence telemetry to adaptive deep profiling. Hot callback samples now record heap before/after/net delta, while deep-registration summaries aggregate positive, reclaimed, net, and peak sampled deltas without changing Lua GC behavior.
