@@ -47,6 +47,13 @@ internal static class SemanticInjectors
             "dedra-palmjet-quickslot" => ApplyDedraPalmjetQuickslot(context),
             "backstep-duo" => ApplyBackStepDuo(context),
             "nightcity-allies-missions" => ApplyNightCityAlliesMissions(context),
+            "good-feelings" => ApplyGoodFeelings(context),
+            "air-backflip" => ApplyAirBackFlip(context),
+            "auto-drop-weapon-on-pickup-equip" => ApplyAutoDropWeaponOnPickupEquip(context),
+            "drone-companions-revamp" => ApplyDroneCompanionsRevamp(context),
+            "ghost-void-system" => ApplyGhostVoidSystem(context),
+            "straight-edged-controls" => ApplyStraightEdgedControls(context),
+            "immersive-head-inertia" => ApplyImmersiveHeadInertia(context),
             "advanced-settings" => ApplyAdvancedSettings(context),
             "auto-ammo-crafting" => ApplyAutoAmmoCrafting(context),
             "autoloot" => ApplyAutoLoot(context),
@@ -912,7 +919,7 @@ internal static class SemanticInjectors
 
         initText = RegexReplaceOnce(
             initText,
-            @"(?ms)^(?<indent>[ \t]*)Observe\s*\(\s*[""']PlayerPuppet[""']\s*,\s*[""']OnAction[""']\s*,\s*function\s*\(\s*_\s*,\s*action\s*\)\s*\r?\n\s*input:SetInputData\s*\(\s*action\s*\)\s*\r?\n\s*end\s*\)\s*$",
+            @"(?ms)^(?<indent>[ \t]*)(?<observer>(?:Event\.)?Observe)\s*\(\s*[""']PlayerPuppet[""']\s*,\s*[""']OnAction[""']\s*,\s*function\s*\(\s*_\s*,\s*action\s*\)\s*\r?\n\s*input:SetInputData\s*\(\s*action\s*\)\s*\r?\n\s*end\s*\)\s*$",
             "${indent}local __gcetMidairActionSet = {\n" +
             "${indent}    MoveX = true, MoveY = true, Jump = true,\n" +
             "${indent}    Left = true, Right = true, Forward = true, Back = true\n" +
@@ -2191,6 +2198,382 @@ internal static class SemanticInjectors
         context.Write(file, text);
         return SemanticInjectionResult.Success(
             "Kept Cargo Heist, bounty and mission timers at the author's original cadence while making the already-global mission table authoritative between explicit loads/saves, removing the per-frame JSON disk round-trip.");
+    }
+
+
+    private static SemanticInjectionResult ApplyGoodFeelings(
+        SemanticPatchContext context)
+    {
+        var init = context.FindFile(
+            "init.lua",
+            "Event.Observe(\"PlayerPuppet\", \"OnAction\"",
+            "SelfFeature.NoClip.HandleMouseLook",
+            "Utils.Weapon.HandleInputAction",
+            "Handler.Update()");
+
+        var initText = RouteExactOnActionObserver(
+            init.Text,
+            "gcetGoodFeelingsOnAction",
+            "GoodFeelings",
+            new[] { "CameraMouseX", "RangedAttack" },
+            "GoodFeelings PlayerPuppet OnAction",
+            "modulesLoaded",
+            "SelfFeature.NoClip.HandleMouseLook",
+            "Utils.Weapon.HandleInputAction");
+        context.Write(init, initText);
+
+        var handler = context.FindFile(
+            "Controls/Handler.lua",
+            "function Handler.Update()",
+            "State.InitializeTracking()",
+            "BindManager.Update()",
+            "Bindings.IsActionDown(\"TOGGLE\")",
+            "Restrictions.Update()",
+            "Cursor.Update()");
+
+        var handlerText = RegexReplaceOnce(
+            handler.Text,
+            @"(?ms)^function\s+Handler\.Update\s*\(\s*\)\s*\r?\n.*?^[ \t]*if\s+not\s+State\.menuOpen\s+then\s*\r?\n[ \t]*holdStart\.up\s*,\s*holdStart\.down\s*,\s*holdStart\.left\s*,\s*holdStart\.right\s*=\s*0\s*,\s*0\s*,\s*0\s*,\s*0\s*\r?\n[ \t]*return\s*\r?\n[ \t]*end\s*\r?\n",
+            "function Handler.Update()\n" +
+            "    local now = os.clock() * 1000\n" +
+            "    State.upPressed, State.downPressed = false, false\n" +
+            "    State.leftPressed, State.rightPressed = false, false\n" +
+            "    State.selectPressed, State.backPressed = false, false\n" +
+            "    State.miscPressed = false\n\n" +
+            "    if not initialized then\n" +
+            "        State.InitializeTracking()\n" +
+            "        BindManager.Initialize()\n" +
+            "        initialized = true\n" +
+            "    end\n\n" +
+            "    BindManager.Update()\n\n" +
+            "    if State.bindingKey then\n" +
+            "        Restrictions.Update()\n" +
+            "        Cursor.Update()\n" +
+            "        __gcetHandlerLastMenuOpen = State.menuOpen\n" +
+            "        return\n" +
+            "    end\n\n" +
+            "    if Bindings.IsActionDown(\"TOGGLE\") and now - lastTick.toggle > Handler.scrollDelayBase then\n" +
+            "        State.ToggleMenu()\n" +
+            "        Logger.Log(\"Controls: Menu toggled \" .. tostring(State.menuOpen))\n" +
+            "        lastTick.toggle = now\n" +
+            "    end\n\n" +
+            "    local __gcetMenuChanged = __gcetHandlerLastMenuOpen ~= nil and __gcetHandlerLastMenuOpen ~= State.menuOpen\n" +
+            "    if State.menuOpen or __gcetMenuChanged then\n" +
+            "        Restrictions.Update()\n" +
+            "        Cursor.Update()\n" +
+            "    end\n" +
+            "    __gcetHandlerLastMenuOpen = State.menuOpen\n\n" +
+            "    if not State.menuOpen then\n" +
+            "        holdStart.up, holdStart.down, holdStart.left, holdStart.right = 0, 0, 0, 0\n" +
+            "        return\n" +
+            "    end\n",
+            "GoodFeelings closed-menu Handler gate");
+
+        handlerText = ReplaceOnce(
+            handlerText,
+            "local initialized = false",
+            "local initialized = false\nlocal __gcetHandlerLastMenuOpen = nil",
+            "GoodFeelings Handler menu-state cache");
+
+        context.Write(handler, handlerText);
+        return SemanticInjectionResult.Success(
+            "Routed GoodFeelings' two source-proven PlayerPuppet actions through 0-Engine and made menu-only restriction/cursor/navigation work dormant while the cheat menu is closed; BindManager hotkeys, the toggle wake path, and the configured status overlay remain live.");
+    }
+
+    private static SemanticInjectionResult ApplyAirBackFlip(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "init.lua",
+            "GAME_ACTIONS",
+            "AirBackflip_Backflip",
+            "AirBackflip_SwingOver",
+            "MoveY",
+            "BUTTON_PRESSED");
+
+        var text = RouteExactOnActionObserver(
+            file.Text,
+            "gcetAirBackFlipOnAction",
+            "AirBackFlip",
+            new[] {
+                "MoveY",
+                "AirBackflip_Backflip",
+                "AirBackflip_Frontflip",
+                "AirBackflip_SideflipLeft",
+                "AirBackflip_SideflipRight",
+                "AirBackflip_SwingOver"
+            },
+            "AirBackFlip PlayerPuppet OnAction",
+            "GAME_ACTIONS",
+            "MoveY",
+            "BUTTON_PRESSED");
+
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Routed only MoveY and AirBackFlip's five game actions through 0-Engine. Airborne eligibility, press/release semantics, flip counters and active-flip frame cadence are unchanged.");
+    }
+
+    private static SemanticInjectionResult ApplyAutoDropWeaponOnPickupEquip(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "init.lua",
+            "ADWOP_CaptureNextAction",
+            "ADWOP_ToggleDebug",
+            "triggerActions",
+            "captureArmed",
+            "cfg.debugPrint",
+            "Observe(\"PlayerPuppet\", \"OnAction\"");
+
+        var text = RegexReplaceOnce(
+            file.Text,
+            @"(?ms)^(?<indent>[ \t]*)if\s+not\s+action\s+then\s+return\s+end\s*\r?\n\s*local\s+aType\s*=\s*action:GetType\(\)\s*\r?\n\s*if\s+aType\s*~=\s*gameinputActionType\.BUTTON_PRESSED\s+then\s+return\s+end\s*\r?\n\s*local\s+name\s*=\s*getActionName\(action\)\s*$",
+            "    if not action then return end\n" +
+            "    local __gcetRawName = action:GetName(action)\n" +
+            "    local name = __gcetRawName and __gcetRawName.value or nil\n" +
+            "    if name == nil or name == \"\" then name = getActionName(action) end\n" +
+            "    -- G-CET: normal gameplay rejects unrelated actions before type decoding,\n" +
+            "    -- pcall/name conversion, player lookup or weapon inspection. Capture/debug\n" +
+            "    -- explicitly re-open the broad path, and captured names remain dynamic.\n" +
+            "    if not captureArmed and not cfg.debugPrint and not triggerActions[name] then return end\n" +
+            "    local aType = action:GetType()\n" +
+            "    if aType ~= gameinputActionType.BUTTON_PRESSED then return end",
+            "AutoDrop action-name hot prefilter");
+
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Moved AutoDrop's source-proven trigger-name rejection ahead of action-type decoding, string conversion, player acquisition and weapon inspection. Capture/debug modes and dynamically learned trigger names retain the original broad behavior.");
+    }
+
+    private static SemanticInjectionResult ApplyDroneCompanionsRevamp(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "DroneLogic/Drone AI - Mech.lua",
+            "Override('TweakAIActionAbstract', 'Update'",
+            "MinotaurMech.AimAttackHMG",
+            "MinotaurMech.RotateToTargetNoLimit",
+            "DroneOctantActions.ShootDefault",
+            "DroneBombusActions.FollowTargetFast",
+            "TagsContains(CName.new(\"Robot\"))");
+
+        var text = ReplaceOnce(
+            file.Text,
+            "    local mechcount, mechcount2, octantcount, bombuscount = 0, 0, 0, 0\n" +
+            "    Override('TweakAIActionAbstract', 'Update', function(self, context, wrappedMethod)\n" +
+            "        local owner = ScriptExecutionContext.GetOwner(context)\n",
+            "    local mechcount, mechcount2, octantcount, bombuscount = 0, 0, 0, 0\n" +
+            "    local __gcetDcoAimHmg = TweakDBID.new(\"MinotaurMech.AimAttackHMG\")\n" +
+            "    local __gcetDcoRotate = TweakDBID.new(\"MinotaurMech.RotateToTargetNoLimit\")\n" +
+            "    local __gcetDcoOctantShoot = TweakDBID.new(\"DroneOctantActions.ShootDefault\")\n" +
+            "    local __gcetDcoBombusFollow = TweakDBID.new(\"DroneBombusActions.FollowTargetFast\")\n" +
+            "    Override('TweakAIActionAbstract', 'Update', function(self, context, wrappedMethod)\n" +
+            "        local recordID = (self.actionRecord and self.actionRecord:GetID()) or TweakDBID.new(\"\")\n" +
+            "        if recordID ~= __gcetDcoAimHmg and recordID ~= __gcetDcoRotate\n" +
+            "           and recordID ~= __gcetDcoOctantShoot and recordID ~= __gcetDcoBombusFollow then\n" +
+            "            return wrappedMethod(context)\n" +
+            "        end\n" +
+            "        local owner = ScriptExecutionContext.GetOwner(context)\n",
+            "Drone Companions exact AI action-record prefilter");
+
+        text = ReplaceOnce(
+            text,
+            "            local recordID = (self.actionRecord and self.actionRecord:GetID()) or TweakDBID.new(\"\")\n" +
+            "            if recordID == TweakDBID.new(\"MinotaurMech.AimAttackHMG\") then",
+            "            if recordID == __gcetDcoAimHmg then",
+            "Drone Companions cached first record ID");
+
+        text = ReplaceOnce(
+            text,
+            "            elseif recordID == TweakDBID.new(\"MinotaurMech.RotateToTargetNoLimit\") then",
+            "            elseif recordID == __gcetDcoRotate then",
+            "Drone Companions cached rotate record ID");
+        text = ReplaceOnce(
+            text,
+            "            elseif recordID == TweakDBID.new(\"DroneOctantActions.ShootDefault\") then",
+            "            elseif recordID == __gcetDcoOctantShoot then",
+            "Drone Companions cached octant record ID");
+        text = ReplaceOnce(
+            text,
+            "            elseif recordID == TweakDBID.new(\"DroneBombusActions.FollowTargetFast\") then",
+            "            elseif recordID == __gcetDcoBombusFollow then",
+            "Drone Companions cached bombus record ID");
+
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Prefiltered the global TweakAIActionAbstract::Update override by the only four action records it can modify, before owner/tag/player work. Robot/FistFight behavior for those records remains unchanged.");
+    }
+
+    private static SemanticInjectionResult ApplyGhostVoidSystem(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "init.lua",
+            "GVS.GhostVoid.GVSStateSystem",
+            "local function addVoidEnergy",
+            "local function addStability",
+            "corruptionGlitchTimer",
+            "corruptionDrainTimer",
+            "voidEnergyRegenPerSecond",
+            "stabilityRegenPerSecond");
+
+        var text = ReplaceOnce(
+            file.Text,
+            "local function addVoidEnergy(amount)\n  local state = getState()",
+            "local function addVoidEnergy(amount, state)\n  state = state or getState()",
+            "Ghost Void optional state reuse for void energy");
+
+        text = ReplaceOnce(
+            text,
+            "local function addStability(amount)\n  local state = getState()",
+            "local function addStability(amount, state)\n  state = state or getState()",
+            "Ghost Void optional state reuse for stability");
+
+        text = ReplaceOnce(
+            text,
+            "  local corruptionState = getState()\n",
+            "  local __gcetGvsState = getState()\n  local corruptionState = __gcetGvsState\n",
+            "Ghost Void frame state acquisition");
+
+        text = ReplaceOnce(
+            text,
+            "  local drainState = getState()\n",
+            "  local drainState = __gcetGvsState\n",
+            "Ghost Void drain state reuse");
+
+        text = ReplaceOnce(
+            text,
+            "    addVoidEnergy(gvs.voidEnergyRegenPerSecond * deltaTime)\n",
+            "    addVoidEnergy(gvs.voidEnergyRegenPerSecond * deltaTime, __gcetGvsState)\n",
+            "Ghost Void energy regeneration state reuse");
+
+        text = ReplaceOnce(
+            text,
+            "  local stabilityState = getState()\n",
+            "  local stabilityState = __gcetGvsState\n",
+            "Ghost Void stability state reuse");
+
+        text = ReplaceOnce(
+            text,
+            "      addStability(\n" +
+            "        gvs.stabilityRegenPerSecond * deltaTime\n" +
+            "      )",
+            "      addStability(\n" +
+            "        gvs.stabilityRegenPerSecond * deltaTime,\n" +
+            "        __gcetGvsState\n" +
+            "      )",
+            "Ghost Void stability regeneration state reuse");
+
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Resolved Ghost Void's ScriptableSystem once per update and reused that authoritative object for corruption/drain/regen work. Timers, delta-time amounts, HUD and visual-effect cadence are unchanged.");
+    }
+
+    private static SemanticInjectionResult ApplyStraightEdgedControls(
+        SemanticPatchContext context)
+    {
+        var init = context.FindFile(
+            "init.lua",
+            "UIBlocking = require('modules/ui_blocking')",
+            "Lean.update(deltaTime)",
+            "Inspection.update(deltaTime)",
+            "ScrollWalk.tick()",
+            "Attachments.update(deltaTime)");
+
+        var initText = ReplaceOnce(
+            init.Text,
+            "__gcetRegisterEvent_1093('onUpdate', function(deltaTime)\n" +
+            "    Lean.update(deltaTime)",
+            "__gcetRegisterEvent_1093('onUpdate', function(deltaTime)\n" +
+            "    UIBlocking.beginFrame()\n" +
+            "    Lean.update(deltaTime)",
+            "Straight Edged Controls per-frame UI-blocking snapshot");
+        context.Write(init, initText);
+
+        var ui = context.FindFile(
+            "modules/ui_blocking.lua",
+            "function UIBlocking.isBlocked()",
+            "isInMenuFlag()",
+            "isPhoneActive()",
+            "isDeviceUIActive()",
+            "isScannerActive()",
+            "isPhotoModeActive()");
+
+        var uiText = ReplaceOnce(
+            ui.Text,
+            "local hooksReady = false",
+            "local hooksReady = false\nlocal __gcetFrameBlocked = false\nlocal __gcetFrameCacheReady = false",
+            "Straight Edged Controls UI-blocking frame cache state");
+
+        uiText = ReplaceOnce(
+            uiText,
+            "function UIBlocking.isBlocked()\n" +
+            "    if shardReading or codexPopupOpen then\n" +
+            "        return true\n" +
+            "    end\n" +
+            "    if isInMenuFlag() then\n" +
+            "        return true\n" +
+            "    end\n" +
+            "    if isPhoneActive() then\n" +
+            "        return true\n" +
+            "    end\n" +
+            "    if isDeviceUIActive() then\n" +
+            "        return true\n" +
+            "    end\n" +
+            "    if isScannerActive() then\n" +
+            "        return true\n" +
+            "    end\n" +
+            "    if isPhotoModeActive() then\n" +
+            "        return true\n" +
+            "    end\n" +
+            "    return false\n" +
+            "end",
+            "local function __gcetComputeBlocked()\n" +
+            "    if shardReading or codexPopupOpen then return true end\n" +
+            "    if isInMenuFlag() then return true end\n" +
+            "    if isPhoneActive() then return true end\n" +
+            "    if isDeviceUIActive() then return true end\n" +
+            "    if isScannerActive() then return true end\n" +
+            "    if isPhotoModeActive() then return true end\n" +
+            "    return false\n" +
+            "end\n\n" +
+            "function UIBlocking.beginFrame()\n" +
+            "    __gcetFrameBlocked = __gcetComputeBlocked()\n" +
+            "    __gcetFrameCacheReady = true\n" +
+            "    return __gcetFrameBlocked\n" +
+            "end\n\n" +
+            "function UIBlocking.isBlocked()\n" +
+            "    if __gcetFrameCacheReady then return __gcetFrameBlocked end\n" +
+            "    return __gcetComputeBlocked()\n" +
+            "end",
+            "Straight Edged Controls shared UI-blocking frame cache");
+
+        context.Write(ui, uiText);
+        return SemanticInjectionResult.Success(
+            "Computed Straight Edged Controls' expensive UI-blocking blackboard state once at the start of each update and reused it across the feature modules. All input/update callbacks still run at the author's original cadence.");
+    }
+
+    private static SemanticInjectionResult ApplyImmersiveHeadInertia(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "init.lua",
+            "Inertia.onAction",
+            "ConsumeSingleAction",
+            "Observe(\"PlayerPuppet\", \"OnAction\"");
+
+        var text = RouteExactOnActionObserver(
+            file.Text,
+            "gcetImmersiveHeadInertiaOnAction",
+            "ImmersiveHeadInertia",
+            new[] { "CameraMouseX", "CameraMouseY" },
+            "ImmersiveHeadInertia PlayerPuppet OnAction",
+            "Inertia.onAction",
+            "ConsumeSingleAction");
+
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Routed ImmersiveHeadInertia's only two source-proven PlayerPuppet actions, CameraMouseX/Y, through 0-Engine while retaining action consumption and all inertia timing.");
     }
 
     private static SemanticInjectionResult ApplyAdvancedSettings(
@@ -4155,7 +4538,7 @@ internal static class SemanticInjectors
             indent + "elseif " + okName + " and type(" + engineName + ") == \"table\" and type(" + engineName + ".SubscribeAction) == \"function\" then\n" +
             indent + "    " + routedName + " = pcall(function() " + engineName + ".SubscribeAction({ actions = " + tableName + " }, " + functionName + ", \"" + owner + "\") end)\n" +
             indent + "end\n" +
-            indent + "if not " + routedName + " then Observe(\"PlayerPuppet\", \"OnAction\", " + functionName + ") end";
+            indent + "if not " + routedName + " then " + selected.Groups["observer"].Value + "(\"PlayerPuppet\", \"OnAction\", " + functionName + ") end";
 
         return text[..selected.Index] +
             replacement +
