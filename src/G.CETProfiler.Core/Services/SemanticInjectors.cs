@@ -48,11 +48,12 @@ internal static class SemanticInjectors
             "backstep-duo" => ApplyBackStepDuo(context),
             "nightcity-allies-missions" => ApplyNightCityAlliesMissions(context),
             "good-feelings" => ApplyGoodFeelings(context),
+            "good-feelings-hard-draw" => ApplyGoodFeelingsHardDraw(context),
             "air-backflip" => ApplyAirBackFlip(context),
             "auto-drop-weapon-on-pickup-equip" => ApplyAutoDropWeaponOnPickupEquip(context),
             "drone-companions-revamp" => ApplyDroneCompanionsRevamp(context),
             "ghost-void-system" => ApplyGhostVoidSystem(context),
-            "straight-edged-controls" => ApplyStraightEdgedControls(context),
+            "straight-edged-controls-input-dormancy" => ApplyStraightEdgedControls(context),
             "immersive-head-inertia" => ApplyImmersiveHeadInertia(context),
             "advanced-settings" => ApplyAdvancedSettings(context),
             "auto-ammo-crafting" => ApplyAutoAmmoCrafting(context),
@@ -4574,9 +4575,9 @@ internal static class SemanticInjectors
             indent + "end\n" +
             indent + "local " + routedName + " = false\n" +
             indent + "if type(" + clientName + ") == \"table\" and type(" + clientName + ".SubscribeAction) == \"function\" then\n" +
-            indent + "    " + routedName + " = pcall(function() " + clientName + ".SubscribeAction({ actions = " + tableName + " }, " + functionName + ") end)\n" +
+            indent + "    " + routedName + " = pcall(function() " + clientName + ".SubscribeAction({ actions = " + tableName + ", decodeType = false }, " + functionName + ") end)\n" +
             indent + "elseif " + okName + " and type(" + engineName + ") == \"table\" and type(" + engineName + ".SubscribeAction) == \"function\" then\n" +
-            indent + "    " + routedName + " = pcall(function() " + engineName + ".SubscribeAction({ actions = " + tableName + " }, " + functionName + ", \"" + owner + "\") end)\n" +
+            indent + "    " + routedName + " = pcall(function() " + engineName + ".SubscribeAction({ actions = " + tableName + ", decodeType = false }, " + functionName + ", \"" + owner + "\") end)\n" +
             indent + "end\n" +
             indent + "if not " + routedName + " then " + selected.Groups["observer"].Value + "(\"PlayerPuppet\", \"OnAction\", " + functionName + ") end";
 
