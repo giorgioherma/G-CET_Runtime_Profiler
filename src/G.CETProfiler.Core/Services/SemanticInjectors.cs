@@ -2209,10 +2209,9 @@ internal static class SemanticInjectors
             "init.lua",
             "Event.Observe(\"PlayerPuppet\", \"OnAction\"",
             "SelfFeature.NoClip.HandleMouseLook",
-            "Utils.Weapon.HandleInputAction",
-            "Handler.Update()");
+            "Utils.Weapon.HandleInputAction");
 
-        var initText = RouteExactOnActionObserver(
+        var text = RouteExactOnActionObserver(
             init.Text,
             "gcetGoodFeelingsOnAction",
             "GoodFeelings",
@@ -2221,103 +2220,50 @@ internal static class SemanticInjectors
             "modulesLoaded",
             "SelfFeature.NoClip.HandleMouseLook",
             "Utils.Weapon.HandleInputAction");
-        context.Write(init, initText);
 
-        var handler = context.FindFile(
-            "Controls/Handler.lua",
-            "function Handler.Update()",
-            "State.InitializeTracking()",
-            "BindManager.Update()",
-            "Bindings.IsActionDown(\"TOGGLE\")",
-            "Restrictions.Update()",
-            "Cursor.Update()");
-
-        var handlerText = RegexReplaceOnce(
-            handler.Text,
-            @"(?ms)^function\s+Handler\.Update\s*\(\s*\)\s*\r?\n.*?^[ \t]*if\s+not\s+State\.menuOpen\s+then\s*\r?\n[ \t]*holdStart\.up\s*,\s*holdStart\.down\s*,\s*holdStart\.left\s*,\s*holdStart\.right\s*=\s*0\s*,\s*0\s*,\s*0\s*,\s*0\s*\r?\n[ \t]*return\s*\r?\n[ \t]*end\s*\r?\n",
-            "function Handler.Update()\n" +
-            "    local now = os.clock() * 1000\n" +
-            "    State.upPressed, State.downPressed = false, false\n" +
-            "    State.leftPressed, State.rightPressed = false, false\n" +
-            "    State.selectPressed, State.backPressed = false, false\n" +
-            "    State.miscPressed = false\n\n" +
-            "    if not initialized then\n" +
-            "        State.InitializeTracking()\n" +
-            "        BindManager.Initialize()\n" +
-            "        initialized = true\n" +
-            "    end\n\n" +
-            "    BindManager.Update()\n\n" +
-            "    if State.bindingKey then\n" +
-            "        Restrictions.Update()\n" +
-            "        Cursor.Update()\n" +
-            "        __gcetHandlerLastMenuOpen = State.menuOpen\n" +
-            "        return\n" +
-            "    end\n\n" +
-            "    if Bindings.IsActionDown(\"TOGGLE\") and now - lastTick.toggle > Handler.scrollDelayBase then\n" +
-            "        State.ToggleMenu()\n" +
-            "        Logger.Log(\"Controls: Menu toggled \" .. tostring(State.menuOpen))\n" +
-            "        lastTick.toggle = now\n" +
-            "    end\n\n" +
-            "    local __gcetMenuChanged = __gcetHandlerLastMenuOpen ~= nil and __gcetHandlerLastMenuOpen ~= State.menuOpen\n" +
-            "    if State.menuOpen or __gcetMenuChanged then\n" +
-            "        Restrictions.Update()\n" +
-            "        Cursor.Update()\n" +
-            "    end\n" +
-            "    __gcetHandlerLastMenuOpen = State.menuOpen\n\n" +
-            "    if not State.menuOpen then\n" +
-            "        holdStart.up, holdStart.down, holdStart.left, holdStart.right = 0, 0, 0, 0\n" +
-            "        return\n" +
-            "    end\n",
-            "GoodFeelings closed-menu Handler gate");
-
-        handlerText = ReplaceOnce(
-            handlerText,
-            "local initialized = false",
-            "local initialized = false\nlocal __gcetHandlerLastMenuOpen = nil",
-            "GoodFeelings Handler menu-state cache");
-
-        context.Write(handler, handlerText);
-
-        var overlay = context.FindFile(
-            "UI/Elements/Overlay.lua",
-            "function Overlay.Render()",
-            "ImGui.CalcTextSize",
-            "overlayShowWatermark",
-            "overlayShowGameVersion");
-
-        var overlayText = overlay.Text.Replace(
-            "ImGui.CalcTextSize(",
-            "__gcetMeasureText(",
-            StringComparison.Ordinal);
-
-        overlayText = ReplaceOnce(
-            overlayText,
-            "local Overlay = {}",
-            "local Overlay = {}\n" +
-            "local __gcetMeasureCache = {}\n" +
-            "local __gcetMeasureFontSize = nil\n" +
-            "local function __gcetMeasureText(text)\n" +
-            "    local cached = __gcetMeasureCache[text]\n" +
-            "    if cached then return cached[1], cached[2] end\n" +
-            "    local w, h = ImGui.CalcTextSize(text)\n" +
-            "    __gcetMeasureCache[text] = { w, h }\n" +
-            "    return w, h\n" +
-            "end",
-            "GoodFeelings overlay text-measure cache");
-
-        overlayText = ReplaceOnce(
-            overlayText,
-            "    local baseFontSize = ImGui.GetFontSize() or 18\n",
-            "    local baseFontSize = ImGui.GetFontSize() or 18\n" +
-            "    if __gcetMeasureFontSize ~= baseFontSize then\n" +
-            "        __gcetMeasureCache = {}\n" +
-            "        __gcetMeasureFontSize = baseFontSize\n" +
-            "    end\n",
-            "GoodFeelings overlay font-cache invalidation");
-
-        context.Write(overlay, overlayText);
+        context.Write(init, text);
         return SemanticInjectionResult.Success(
-            "Routed GoodFeelings' two source-proven PlayerPuppet actions through 0-Engine, made menu-only restriction/cursor/navigation work dormant while the cheat menu is closed, and cached repeated status-overlay text measurements. BindManager hotkeys, the toggle wake path and visible overlay draw cadence remain live.");
+            "Routed GoodFeelings' two source-proven PlayerPuppet actions through 0-Engine with routed action-type decoding disabled; UI draw dormancy is handled independently.");
+    }
+
+    private static SemanticInjectionResult ApplyGoodFeelingsHardDraw(
+        SemanticPatchContext context)
+    {
+        var init = context.FindFile(
+            "init.lua",
+            "Event.RegisterUpdate(function(dt)",
+            "Event.RegisterDraw(function()",
+            "Handler.Update()",
+            "State.menuOpen",
+            "UI.Notification.Render()",
+            "UI.Overlay.Render()");
+
+        var text = init.Text;
+
+        // F4/controller wake currently lives in Handler.Update(), which the author
+        // calls from onDraw. Move that tiny input/menu handler to onUpdate so a
+        // closed draw callback can sleep completely without losing its wake path.
+        text = RegexReplaceOnce(
+            text,
+            @"(?m)^[ \t]*Handler\.Update\s*\(\s*\)\s*$",
+            "",
+            "GoodFeelings remove Handler.Update from onDraw");
+
+        text = RegexReplaceOnce(
+            text,
+            @"(?ms)(Event\.RegisterUpdate\s*\(\s*function\s*\(\s*dt\s*\)\s*\r?\n[ \t]*Cron\.Update\s*\(\s*dt\s*\)\s*\r?\n\s*[ \t]*if\s+not\s+modulesLoaded\s+then\s+return\s+end\s*\r?\n)",
+            "$1    Handler.Update()\n",
+            "GoodFeelings F4 wake onUpdate");
+
+        text = RegexReplaceOnce(
+            text,
+            @"(?m)^(?<opening>[ \t]*Event\.RegisterDraw\s*\(\s*function\s*\(\s*\)\s*)\r?\n",
+            "${opening}\n    if not modulesLoaded or not State.menuOpen then return end\n",
+            "GoodFeelings hard closed draw gate");
+
+        context.Write(init, text);
+        return SemanticInjectionResult.Success(
+            "Moved GoodFeelings' F4/controller menu wake to onUpdate and hard-gated the entire onDraw callback on State.menuOpen. Notifications, welcome UI, status overlay, debug draw and cheat menu now do zero draw work while the F4 UI is closed.");
     }
 
     private static SemanticInjectionResult ApplyAirBackFlip(
