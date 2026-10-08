@@ -2413,11 +2413,9 @@ registerForEvent("onInit", function()
     end
 
     if __gcetAutoDropApi and type(__gcetAutoDropApi.SubscribeAction) == "function" then
-        local defaults = {
-            "Reload", "Interaction", "Interact", "Use", "ContextualAction",
-            "Loot", "PickUp", "Pickup", "Take"
-        }
-        for _, name in ipairs(defaults) do __gcetAutoDropSubscribeExact(name) end
+        for name, enabled in pairs(triggerActions) do
+            if enabled then __gcetAutoDropSubscribeExact(name) end
+        end
         __gcetAutoDropRefreshWildcard()
     else
         __gcetAutoDropFallbackBroad = true
