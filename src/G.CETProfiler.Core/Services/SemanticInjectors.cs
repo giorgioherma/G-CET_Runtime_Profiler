@@ -2523,7 +2523,7 @@ internal static class SemanticInjectors
 
         var initText = RegexReplaceOnce(
             init.Text,
-            @"(?m)^(?<opening>[ \\t]*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\\d+)\\s*\\(\\s*[""']onUpdate[""']\\s*,\\s*function\\s*\\(\\s*deltaTime\\s*\\)\\s*)\\r?\\n(?<indent>[ \\t]*)Lean\\.update\\(deltaTime\\)\\s*$",
+            @"(?m)^(?<opening>[ \t]*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*[""']onUpdate[""']\s*,\s*function\s*\(\s*deltaTime\s*\)\s*)\r?\n(?<indent>[ \t]*)Lean\.update\(deltaTime\)\s*$",
             "${opening}\n" +
             "${indent}UIBlocking.beginFrame()\n" +
             "${indent}Lean.update(deltaTime)",
