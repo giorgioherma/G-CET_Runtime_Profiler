@@ -49,7 +49,7 @@ internal static class GenericUiVisibilityTransform
         var outside = Normalize(fullText).Replace(normalized, "", StringComparison.Ordinal);
         var escapedGate = Regex.Escape(gate);
         var writer = new Regex(
-            @"(?ms)(?<wake>registerInput|registerHotkey|onOverlayOpen|onOverlayClose).{0,800}?\b" +
+            @"(?ms)(?<wake>registerInput|registerHotkey|onOverlayOpen|onOverlayClose|ObserveAfter|Observe|Override|registerForEvent).{0,800}?\b" +
             escapedGate +
             @"\s*=\s*(?:true|not\s+" +
             escapedGate +
