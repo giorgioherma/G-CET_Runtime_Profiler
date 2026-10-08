@@ -4489,7 +4489,7 @@ internal static class SemanticInjectors
         params string[] requiredTokens)
     {
         var regex = new Regex(
-            @"(?ms)^(?<indent>[ \t]*)Observe\s*\(\s*['""]PlayerPuppet['""]\s*,\s*['""]OnAction['""]\s*,\s*function\s*\((?<args>[^)]*)\)\s*\r?\n(?<body>.*?)(?<close>^\k<indent>end\s*\)\s*;?\s*(?:--[^\r\n]*)?$)",
+            @"(?ms)^(?<indent>[ \t]*)(?<observer>(?:Event\.)?Observe)\s*\(\s*['""]PlayerPuppet['""]\s*,\s*['""]OnAction['""]\s*,\s*function\s*\((?<args>[^)]*)\)\s*\r?\n(?<body>.*?)(?<close>^\k<indent>end\s*\)\s*;?\s*(?:--[^\r\n]*)?$)",
             RegexOptions.CultureInvariant | RegexOptions.Multiline | RegexOptions.Singleline);
 
         var candidates = regex.Matches(text)
