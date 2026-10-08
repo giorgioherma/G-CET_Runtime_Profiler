@@ -4347,6 +4347,22 @@ internal static class CallbackResolverService
                 actions.Add(value);
         }
 
+        // A common finite-dispatch shape uses a literal table whose keys are
+        // action names and whose values are one-line callback functions:
+        //
+        // local ACTIONS = {
+        //     JumpFoo = function(down) ... end,
+        //     JumpBar = function(down) ... end,
+        // }
+        //
+        // Those keys are just as static as "Foo = true", but the older reader
+        // ignored them and therefore misclassified ACTIONS[actionName] as
+        // dynamic downstream dispatch. Keep this intentionally strict: only
+        // one-line function fields at the table body's shallowest indentation
+        // are accepted. Multi-line/ambiguous shapes still fail closed.
+        foreach (var action in ReadInlineFunctionTableKeys(body))
+            actions.Add(action);
+
         if (actions.Count == 0)
             return false;
 
@@ -4360,6 +4376,53 @@ internal static class CallbackResolverService
             .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
             .ToList();
         return true;
+    }
+
+    private static IReadOnlyList<string> ReadInlineFunctionTableKeys(string body)
+    {
+        var normalized = body
+            .Replace("\r\n", "\n")
+            .Replace('\r', '\n');
+        var lines = normalized.Split('\n');
+
+        var shallowestIndent = int.MaxValue;
+        foreach (var raw in lines)
+        {
+            var trimmed = raw.Trim();
+            if (string.IsNullOrWhiteSpace(trimmed) ||
+                trimmed.StartsWith("--", StringComparison.Ordinal))
+                continue;
+
+            var indent = raw.Length - raw.TrimStart().Length;
+            shallowestIndent = Math.Min(shallowestIndent, indent);
+        }
+
+        if (shallowestIndent == int.MaxValue)
+            return Array.Empty<string>();
+
+        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var field = new Regex(
+            @"^(?<indent>[ \t]*)(?<key>[A-Za-z_]\w*)\s*=\s*function\s*\([^)]*\).*\bend\s*,?\s*(?:--.*)?$",
+            RegexOptions.CultureInvariant);
+
+        foreach (var raw in lines)
+        {
+            var indent = raw.Length - raw.TrimStart().Length;
+            if (indent != shallowestIndent)
+                continue;
+
+            var match = field.Match(raw);
+            if (!match.Success)
+                continue;
+
+            var key = match.Groups["key"].Value;
+            if (!string.IsNullOrWhiteSpace(key))
+                result.Add(key);
+        }
+
+        return result
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     private static IReadOnlyDictionary<string, CadenceDecision> ReadCadenceDecisions(string? path)
