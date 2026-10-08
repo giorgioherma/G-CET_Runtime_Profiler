@@ -28,6 +28,13 @@ public static partial class ResultReportService
         WriteIndented = true
     };
 
+    private static readonly JsonSerializerOptions ResolverJsonOptions = new()
+    {
+        // CET_Resolver_Input.json is a machine handoff and can exceed tens of MB
+        // on deep/heavy stacks. Pretty-printing only adds I/O and allocation.
+        WriteIndented = false
+    };
+
     private static readonly HashSet<string> SchedulerFiles = new(StringComparer.OrdinalIgnoreCase)
     {
         "CET_Runtime_Profile_Scheduler_ByJob.csv",
@@ -288,10 +295,16 @@ public static partial class ResultReportService
             JsonSerializer.Serialize(summary, JsonOptions) + Environment.NewLine,
             new UTF8Encoding(false));
 
-        File.WriteAllText(
-            resolverInputPath,
-            JsonSerializer.Serialize(BuildResolverInput(captureRoot, a), JsonOptions) + Environment.NewLine,
-            new UTF8Encoding(false));
+        // Stream the large machine handoff directly to disk. This avoids building
+        // another giant formatted JSON string in memory and cuts needless write volume.
+        using (var resolverStream = File.Create(resolverInputPath))
+        {
+            JsonSerializer.Serialize(
+                resolverStream,
+                BuildResolverInput(captureRoot, a),
+                ResolverJsonOptions);
+            resolverStream.WriteByte((byte)'\n');
+        }
 
         File.WriteAllText(
             reportPath,
