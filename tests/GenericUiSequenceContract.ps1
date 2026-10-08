@@ -40,8 +40,12 @@ function Write-ModFile([string]$Mod,[string]$Relative,[string]$Source) {
 Write-ModFile 'GenericUiDormancyFixture' 'init.lua' @'
 local visible = false
 
-registerHotkey("GenericUiDormancyFixture_Toggle", "Toggle fixture", function()
-    visible = not visible
+registerForEvent("onOverlayOpen", function()
+    visible = true
+end)
+
+registerForEvent("onOverlayClose", function()
+    visible = false
 end)
 
 registerForEvent("onDraw", function()
