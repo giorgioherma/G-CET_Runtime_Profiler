@@ -3680,6 +3680,17 @@ internal static class CallbackResolverService
         var line = raw.Trim();
         if (string.IsNullOrWhiteSpace(line) || line.StartsWith("--", StringComparison.Ordinal))
             return false;
+
+        // An anonymous/named function declaration may legitimately contain an
+        // argument named "action". It declares the callback boundary; it does
+        // not forward raw action data anywhere. Multi-line CET registrations
+        // commonly put "function(_, action)" on its own line.
+        if (Regex.IsMatch(
+                line,
+                @"^(?:local\s+[A-Za-z_]\w*\s*=\s*)?function(?:\s+[A-Za-z_][\w.:]*)?\s*\([^)]*\)\s*$",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+            return false;
+
         if (!Regex.IsMatch(line, @"\([^\r\n)]*\baction\b", RegexOptions.IgnoreCase))
             return false;
 
