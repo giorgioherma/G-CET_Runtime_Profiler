@@ -3,6 +3,7 @@
 All notable public changes to G-CET Runtime Profiler are recorded here.
 
 ## [Unreleased]
+- Fixed a false dynamic-action-forward classification for multi-line CET registrations where `function(_, action)` appears on its own line. Function declarations are now treated as callback boundaries rather than raw action forwarding, allowing finite action-map callbacks such as AirBackFlip to remain generically routable.
 - Generic OnAction analysis now recognizes strict one-line function-valued literal dispatch maps (for example `ACTION_NAME = function(...) ... end`) at the table's shallowest indentation. This closes the AirBackFlip-style finite action-map gap without relaxing dynamic-downstream safety; ambiguous or multi-line function maps still fail closed.
 - Result generation now reuses the already-parsed Detail, Timeline, Markers, and Spikes rows when building CET_Resolver_Input.json. Heavy captures no longer reopen and parse those CSVs a second time inside the same report pass; native capture content and resolver evidence are unchanged.
 - Reduced COLLECT RESULTS latency without dropping any profiler data: GUI collection now verifies/archives raw CET output, copies the optional frame-time companion, then builds the report/resolver handoff exactly once instead of generating a CET-only report and immediately rebuilding it. The large machine-only CET_Resolver_Input.json is also streamed as compact JSON to reduce allocation and disk I/O.
