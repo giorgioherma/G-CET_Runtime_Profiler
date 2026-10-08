@@ -322,11 +322,23 @@ end)
 
 Write-ModFile 'Straight Edged Controls' 'init.lua' @'
 local UIBlocking = require('modules/ui_blocking')
-local Lean = { update=function() end, pollInput=function() end }
-local Inspection = { update=function() end, pollInput=function() end }
-local ScrollWalk = { tick=function() end }
-local SettingsPoll = { poll=function() end }
-local Attachments = { update=function() end }
+local Lean = require('modules/lean')
+local Inspection = require('modules/inspection')
+local SettingsPoll = require('modules/settings_poll')
+local ScrollWalk = { tick=function() end, reset=function() end }
+local ToggleADS = { reset=function() end }
+local CycleGrenades = { reset=function() end }
+local Attachments = require('modules/attachments')
+registerForEvent('onInit', function()
+    Observe('PlayerPuppet', 'OnGameAttached', function()
+        Lean.onSessionReset()
+        SettingsPoll.invalidateZoom()
+        ScrollWalk.reset()
+        ToggleADS.reset()
+        CycleGrenades.reset()
+        Attachments.reset()
+    end)
+end)
 registerForEvent('onUpdate', function(deltaTime)
     Lean.update(deltaTime)
     Lean.pollInput()
