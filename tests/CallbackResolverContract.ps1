@@ -66,6 +66,24 @@ Observe("PlayerPuppet", "OnAction", function(self, action, consumer)
 end)
 '@
 
+Write-Mod 'FixtureFunctionActionMap' @'
+local GAME_ACTIONS = {
+    AirBackflip_Backflip = function(down) if down then DoBackflip() end end,
+    AirBackflip_SwingOver = function(down) if down then DoSwing() else ReleaseSwing() end end,
+}
+
+Observe("PlayerPuppet", "OnAction", function(_, action)
+    local name = Game.NameToString(action:GetName())
+    if name == "MoveY" then
+        moveY = action:GetValue()
+        return
+    end
+    local fn = GAME_ACTIONS[name]
+    if not fn then return end
+    fn(true)
+end)
+'@
+
 Write-Mod 'FixtureWrappedAction' @'
 local Event = {}
 Event.Observe("PlayerPuppet", "OnAction", function(_, action)
@@ -575,6 +593,7 @@ $handoff = @{
         # Deliberately use bare init.lua for most rows. The resolver must scope
         # this otherwise-ambiguous source filename to the measured owner first.
         (CallbackRow 101 'FixtureAction' 'observe' 'PlayerPuppet::OnAction' 900 12.0 20.0 'init.lua' 1 6),
+        (CallbackRow 144 'FixtureFunctionActionMap' 'observe' 'PlayerPuppet::OnAction' 890 11.8 19.5 'init.lua' 6 15),
         (CallbackRow 134 'FixtureWrappedAction' 'observe' 'PlayerPuppet::OnAction' 880 11.5 19.0 'init.lua' 2 6),
         (CallbackRow 104 'FixtureSingleton' 'observe' 'PlayerPuppet::OnAction' 800 11.0 18.0 'init.lua' 1 7),
         (CallbackRow 105 'FixtureCName' 'observe' 'PlayerPuppet::OnAction' 700 10.0 16.0 'init.lua' 2 6),
@@ -1088,6 +1107,20 @@ if (@($gated.generic.Facts.actions) -notcontains 'UI_Apply') {
     throw 'Gated wildcard lost independently routed exact action.'
 }
 
+$functionMap = Action-For 'FixtureFunctionActionMap'
+if (!$functionMap.generic.Automatable) {
+    $functionMapDebug = $functionMap.generic | ConvertTo-Json -Depth 10 -Compress
+    throw "Literal function-valued action map was not reduced to a finite action set. Resolver: $functionMapDebug"
+}
+if ($functionMap.generic.Pattern -ne 'ACTION_ROUTING_EXACT_SET') {
+    throw "Unexpected function-map routing recipe: $($functionMap.generic.Pattern)"
+}
+foreach ($expected in @('MoveY','AirBackflip_Backflip','AirBackflip_SwingOver')) {
+    if (@($functionMap.generic.Facts.actions) -notcontains $expected) {
+        throw "Function-valued action table lost expected literal key: $expected"
+    }
+}
+
 $wrappedAction = Action-For 'FixtureWrappedAction'
 if ($wrappedAction.generic.Automatable) {
     throw 'Member-wrapped Event.Observe was incorrectly authorized for generic action routing.'
@@ -1596,6 +1629,16 @@ try {
     if ($actionText -notmatch '__gcetRoutedName' -or
         $actionText -notmatch '__gcetRoutedName\s+or') {
         throw 'Generated exact action route did not reuse the router-decoded action name.'
+    }
+
+    $functionMapText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureFunctionActionMap/init.lua'
+    foreach ($expectedFunctionMapAction in @('MoveY','AirBackflip_Backflip','AirBackflip_SwingOver')) {
+        if ($functionMapText -notmatch [regex]::Escape($expectedFunctionMapAction)) {
+            throw "Generated function-map routing lost action: $expectedFunctionMapAction"
+        }
+    }
+    if ($functionMapText -notmatch 'SubscribeAction') {
+        throw 'Function-valued action-map fixture was not emitted through generic action routing.'
     }
 
     $frameText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureFrame/init.lua'
