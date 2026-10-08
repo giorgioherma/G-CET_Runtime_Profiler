@@ -2530,7 +2530,7 @@ __CLOSE__",
 
         text = RegexReplaceOnce(
             text,
-            @"(?m)^(?<opening>[ \t]*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*[""']onDraw[""']\s*,\s*function\s*\(\s*\)\s*)if\s+H\.session\s+and\s+not\s+H\.overlay\s+and\s+not\s+H\.error\s+then\s+Timer\.draw\s*\(\s*\)\s+end\s+end\s*\)\s*$",
+            @"(?m)^(?<opening>[ \t]*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*[""']onDraw[""']\s*,\s*function\s*\(\s*\)\s*)if\s+H\.session\s+and\s+not\s+H\.overlay\s+and\s+not\s+H\.error\s+then\s+Timer\.draw\s*\(\s*\)\s*end\s+end\s*\)\s*$",
             "__DRAWOPEN__if H.session and H.phase~='outside' and not H.overlay and not H.error then Timer.draw() end end)",
             "Tunnel draw outside-phase gate");
         text = text.Replace("__DRAWOPEN__", "$" + "{opening}", StringComparison.Ordinal);
