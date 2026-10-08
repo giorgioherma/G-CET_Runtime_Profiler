@@ -14,7 +14,7 @@
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
     "fullPassRule": "A semantic injector can run only when the current capture contains a >=3.0 ms/s measured callback, the library rule matches, and the current live mod source graph proves its anchors.",
-    "enabledInjectorCount": 46,
+    "enabledInjectorCount": 53,
     "profileOnlyRuleCount": 0,
     "note": "The production semantic base contains source-proven, behavior-aware optimizations learned from validated references and measured hot callbacks. Generic/mechanical transforms stay in the Resolver; semantic rules cover state/cadence/hotpath knowledge that generic inference cannot safely own.",
     "admissionPolicy": {
@@ -3700,6 +3700,405 @@
       "referenceOverrideAllowed": false,
       "evidenceMembership": [
         "SIXTH_STACK_20261008"
+      ]
+    },
+    {
+      "id": "good-feelings",
+      "identityHints": [
+        "GoodFeelings"
+      ],
+      "policyClass": "UI_DORMANCY_PLUS_EXACT_ACTION_ROUTING",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onDraw",
+          "role": "closed-ui-hot-path"
+        },
+        {
+          "kind": "Observe",
+          "target": "PlayerPuppet::OnAction",
+          "role": "broad-input-hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "Handler.Update()",
+          "State.menuOpen",
+          "Bindings.IsActionDown(\"TOGGLE\")",
+          "Event.Observe(\"PlayerPuppet\", \"OnAction\"",
+          "SelfFeature.NoClip.HandleMouseLook",
+          "Utils.Weapon.HandleInputAction"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:good-feelings",
+        "expectedMarkerFileCount": 2
+      },
+      "behavior": {
+        "handler": "SEMANTIC_CLOSED_UI_PLUS_EXACT_ACTION_ROUTING",
+        "concepts": [
+          "closedMenuDormancy",
+          "exactInputRouting",
+          "featureHotkeysRemainLive",
+          "persistentOverlayPreserved"
+        ],
+        "note": "Keep the configured status overlay and feature hotkeys live. When the cheat menu is closed, skip menu-only restriction/cursor/navigation work while still polling the F4/controller wake binding and BindManager hotkeys. Route the only two source-proven PlayerPuppet actions (CameraMouseX and RangedAttack) through 0-Engine."
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 83.03762,
+        "evidenceStack": "SIXTH_STACK_POST_SEMANTIC",
+        "admitted": true
+      },
+      "cadenceGroup": "NO_VISIBLE_OVERLAY_CADENCE_CHANGE_CLOSED_MENU_WORK_GATE_EXACT_INPUT",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "SIXTH_STACK_POST_SEMANTIC_20261008"
+      ]
+    },
+    {
+      "id": "air-backflip",
+      "identityHints": [
+        "AirBackFlip"
+      ],
+      "policyClass": "EXACT_ACTION_ROUTING",
+      "callbacks": [
+        {
+          "kind": "Observe",
+          "target": "PlayerPuppet::OnAction",
+          "role": "broad-input-hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "GAME_ACTIONS",
+          "AirBackflip_Backflip",
+          "AirBackflip_SwingOver",
+          "MoveY",
+          "BUTTON_PRESSED"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:air-backflip",
+        "expectedMarkerFileCount": 1
+      },
+      "behavior": {
+        "handler": "SEMANTIC_EXACT_ACTION_ROUTING",
+        "concepts": [
+          "movementActionRouting",
+          "flipInput",
+          "moveYSpeedControl"
+        ],
+        "note": "Route only MoveY and the five AirBackFlip game actions through 0-Engine. Preserve the original press/release handling, airborne eligibility, flip counters and frame cadence during an active flip."
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 12.077188,
+        "evidenceStack": "SIXTH_STACK_POST_SEMANTIC",
+        "admitted": true
+      },
+      "cadenceGroup": "EXACT_INPUT_ROUTING_NO_FLIP_TIMING_CHANGE",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "SIXTH_STACK_POST_SEMANTIC_20261008"
+      ]
+    },
+    {
+      "id": "auto-drop-weapon-on-pickup-equip",
+      "identityHints": [
+        "AutoDropWeaponOnPickupEquip"
+      ],
+      "policyClass": "DYNAMIC_EXACT_ACTION_ROUTING",
+      "callbacks": [
+        {
+          "kind": "Observe",
+          "target": "PlayerPuppet::OnAction",
+          "role": "broad-input-hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "triggerActions",
+          "ADWOP_CaptureNextAction",
+          "ADWOP_ToggleDebug",
+          "captureArmed",
+          "debugPrint",
+          "swapWindow"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:auto-drop-weapon-on-pickup-equip",
+        "expectedMarkerFileCount": 1
+      },
+      "behavior": {
+        "handler": "SEMANTIC_DYNAMIC_ACTION_ROUTING",
+        "concepts": [
+          "fixedPickupActions",
+          "temporaryWildcardCapture",
+          "temporaryWildcardDebug",
+          "dynamicCapturedActionSubscription"
+        ],
+        "note": "Keep the normal pickup/equip path on exact routed actions. A wildcard 0-Engine subscription is active only while capture/debug mode explicitly needs all actions; newly captured action names are subscribed exactly so future pickups remain dormant otherwise."
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 9.888169,
+        "evidenceStack": "SIXTH_STACK_POST_SEMANTIC",
+        "admitted": true
+      },
+      "cadenceGroup": "EXACT_INPUT_PLUS_ON_DEMAND_WILDCARD_DEBUG_CAPTURE",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "SIXTH_STACK_POST_SEMANTIC_20261008"
+      ]
+    },
+    {
+      "id": "drone-companions-revamp",
+      "identityHints": [
+        "Drone Companions (Revamp)"
+      ],
+      "policyClass": "OVERRIDE_EXACT_PREFILTER",
+      "callbacks": [
+        {
+          "kind": "Override",
+          "target": "TweakAIActionAbstract::Update",
+          "role": "global-hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "MinotaurMech.AimAttackHMG",
+          "MinotaurMech.RotateToTargetNoLimit",
+          "DroneOctantActions.ShootDefault",
+          "DroneBombusActions.FollowTargetFast",
+          "TagsContains(CName.new(\"Robot\"))"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:drone-companions-revamp",
+        "expectedMarkerFileCount": 1
+      },
+      "behavior": {
+        "handler": "SEMANTIC_EXACT_OVERRIDE_PREFILTER",
+        "concepts": [
+          "actionRecordPrefilter",
+          "robotSemanticsPreserved",
+          "fistfightBypassPreserved"
+        ],
+        "note": "Reject unrelated TweakAIActionAbstract::Update calls before owner/tag/player work. The four action records the original override can modify retain the author's Robot and FistFight logic exactly."
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 8.51844,
+        "evidenceStack": "SIXTH_STACK_POST_SEMANTIC",
+        "admitted": true
+      },
+      "cadenceGroup": "NO_AI_CADENCE_CHANGE_EXACT_OVERRIDE_RECORD_PREFILTER",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "SIXTH_STACK_POST_SEMANTIC_20261008"
+      ]
+    },
+    {
+      "id": "ghost-void-system",
+      "identityHints": [
+        "GhostVoidSystem"
+      ],
+      "policyClass": "HOT_LOOP_STATE_CACHE",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "GVS.GhostVoid.GVSStateSystem",
+          "corruptionGlitchTimer",
+          "corruptionDrainTimer",
+          "voidEnergyRegenPerSecond",
+          "stabilityRegenPerSecond"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:ghost-void-system",
+        "expectedMarkerFileCount": 1
+      },
+      "behavior": {
+        "handler": "SEMANTIC_HOT_LOOP_STATE_CACHE",
+        "concepts": [
+          "singleFrameStateRead",
+          "regenSemantics",
+          "corruptionTimers"
+        ],
+        "note": "Resolve the Ghost Void state once per update and reuse it for glitch, drain and regeneration work. Preserve every timer, HUD/effect draw cadence and exact delta-time regeneration amount."
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 3.452751,
+        "evidenceStack": "SIXTH_STACK_POST_SEMANTIC",
+        "admitted": true
+      },
+      "cadenceGroup": "NO_CADENCE_CHANGE_AUTHORITATIVE_STATE_CACHE",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "SIXTH_STACK_POST_SEMANTIC_20261008"
+      ]
+    },
+    {
+      "id": "straight-edged-controls",
+      "identityHints": [
+        "Straight Edged Controls"
+      ],
+      "policyClass": "FRAME_STATE_CACHE",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "UIBlocking.isBlocked()",
+          "Lean.pollInput()",
+          "Inspection.pollInput()",
+          "ScrollWalk.tick()",
+          "Attachments.update(deltaTime)"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:straight-edged-controls",
+        "expectedMarkerFileCount": 2
+      },
+      "behavior": {
+        "handler": "SEMANTIC_FRAME_STATE_CACHE",
+        "concepts": [
+          "uiBlockingOncePerFrame",
+          "sharedBlockingState",
+          "realtimeInputPreserved"
+        ],
+        "note": "Compute the expensive UI-blocking blackboard state once at the start of each rendered update and reuse it across Lean, Inspection, ScrollWalk, CycleGrenades and Attachments. No input or gameplay callback cadence is reduced."
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 19.950931,
+        "evidenceStack": "SIXTH_STACK_POST_SEMANTIC",
+        "admitted": true
+      },
+      "cadenceGroup": "EVERY_FRAME_SHARED_STATE_CACHE",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "SIXTH_STACK_POST_SEMANTIC_20261008"
+      ]
+    },
+    {
+      "id": "immersive-head-inertia",
+      "identityHints": [
+        "ImmersiveHeadInertia"
+      ],
+      "policyClass": "EXACT_ACTION_ROUTING",
+      "callbacks": [
+        {
+          "kind": "Observe",
+          "target": "PlayerPuppet::OnAction",
+          "role": "broad-input-hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "Inertia.onAction",
+          "CameraMouseX",
+          "CameraMouseY",
+          "ConsumeSingleAction"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:immersive-head-inertia",
+        "expectedMarkerFileCount": 1
+      },
+      "behavior": {
+        "handler": "SEMANTIC_EXACT_ACTION_ROUTING",
+        "concepts": [
+          "cameraMouseRouting",
+          "lookAroundConsumption"
+        ],
+        "note": "Route only CameraMouseX and CameraMouseY through 0-Engine; preserve the original Inertia.onAction result and consumer:ConsumeSingleAction behavior."
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 9.873854,
+        "evidenceStack": "SIXTH_STACK_POST_SEMANTIC",
+        "admitted": true
+      },
+      "cadenceGroup": "EXACT_INPUT_ROUTING_NO_INERTIA_TIMING_CHANGE",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "SIXTH_STACK_POST_SEMANTIC_20261008"
       ]
     }
   ],
