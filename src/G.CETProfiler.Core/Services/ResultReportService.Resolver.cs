@@ -17,11 +17,14 @@ public static partial class ResultReportService
     /// </summary>
     private static object BuildResolverInput(string captureRoot, ResultAnalysis a)
     {
-        var detail = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Detail.csv"));
-        var spikes = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Spikes.csv"));
-        var timeline = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Timeline.csv"));
+        // Analyze() already parsed these shared inputs for the human report.
+        // Reuse them: on heavy stacks Timeline alone can be hundreds of thousands
+        // of rows, so reparsing it here was pure duplicate collection work.
+        var detail = a.DetailRows;
+        var spikes = a.SpikeRows;
+        var timeline = a.TimelineRows;
         var frameMultiplicity = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_FrameMultiplicity.csv"));
-        var markers = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Markers.csv"));
+        var markers = a.MarkerRows;
         var deepRegistrations = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Deep_Registrations.csv"));
         var deepFunctions = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Deep_Functions.csv"));
         var deepEdges = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Deep_Edges.csv"));
