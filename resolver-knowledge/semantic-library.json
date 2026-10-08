@@ -14,7 +14,7 @@
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
     "fullPassRule": "A semantic injector can run only when the current capture contains a >=3.0 ms/s measured callback, the library rule matches, and the current live mod source graph proves its anchors.",
-    "enabledInjectorCount": 53,
+    "enabledInjectorCount": 54,
     "profileOnlyRuleCount": 0,
     "note": "The production semantic base contains source-proven, behavior-aware optimizations learned from validated references and measured hot callbacks. Generic/mechanical transforms stay in the Resolver; semantic rules cover state/cadence/hotpath knowledge that generic inference cannot safely own.",
     "admissionPolicy": {
@@ -3707,13 +3707,8 @@
       "identityHints": [
         "GoodFeelings"
       ],
-      "policyClass": "UI_DORMANCY_PLUS_EXACT_ACTION_ROUTING",
+      "policyClass": "EXACT_ACTION_ROUTING",
       "callbacks": [
-        {
-          "kind": "event",
-          "target": "onDraw",
-          "role": "closed-ui-hot-path"
-        },
         {
           "kind": "Observe",
           "target": "PlayerPuppet::OnAction",
@@ -3722,29 +3717,20 @@
       ],
       "sourceProof": {
         "ownerAll": [
-          "Handler.Update()",
-          "State.menuOpen",
-          "Bindings.IsActionDown(\"TOGGLE\")",
           "Event.Observe(\"PlayerPuppet\", \"OnAction\"",
           "SelfFeature.NoClip.HandleMouseLook",
-          "Utils.Weapon.HandleInputAction",
-          "overlayShowWatermark",
-          "overlayShowGameVersion",
-          "ImGui.CalcTextSize"
+          "Utils.Weapon.HandleInputAction"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:good-feelings",
-        "expectedMarkerFileCount": 3
+        "expectedMarkerFileCount": 1
       },
       "behavior": {
-        "handler": "SEMANTIC_CLOSED_UI_PLUS_EXACT_ACTION_ROUTING",
+        "handler": "SEMANTIC_EXACT_ACTION_ROUTING",
         "concepts": [
-          "closedMenuDormancy",
           "exactInputRouting",
-          "featureHotkeysRemainLive",
-          "persistentOverlayPreserved",
-          "overlayTextMeasurementCache"
+          "featureHotkeysRemainLive"
         ],
-        "note": "Keep the configured status overlay and feature hotkeys live. When the cheat menu is closed, skip menu-only restriction/cursor/navigation work while still polling the F4/controller wake binding and BindManager hotkeys. Route the only two source-proven PlayerPuppet actions (CameraMouseX and RangedAttack) through 0-Engine, and cache repeated status-overlay text measurements without changing draw cadence."
+        "note": "Route GoodFeelings' only source-proven PlayerPuppet actions through 0-Engine. UI draw dormancy is owned by the separate good-feelings-hard-draw rule so an already-routed action callback never suppresses later UI optimization revisions."
       },
       "generation": {
         "enabled": true,
@@ -3760,13 +3746,71 @@
         "evidenceStack": "SIXTH_STACK_POST_SEMANTIC",
         "admitted": true
       },
-      "cadenceGroup": "NO_VISIBLE_OVERLAY_CADENCE_CHANGE_CLOSED_MENU_WORK_GATE_EXACT_INPUT",
+      "cadenceGroup": "EXACT_INPUT_ROUTING_NO_FEATURE_TIMING_CHANGE",
       "catalogRole": "SEMANTIC_HOT_MOD",
       "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
       "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
       "referenceOverrideAllowed": false,
       "evidenceMembership": [
         "SIXTH_STACK_POST_SEMANTIC_20261008"
+      ]
+    },
+    {
+      "id": "good-feelings-hard-draw",
+      "identityHints": [
+        "GoodFeelings"
+      ],
+      "policyClass": "HARD_UI_DRAW_DORMANCY",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onDraw",
+          "role": "closed-ui-hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "Event.RegisterUpdate(function(dt)",
+          "Event.RegisterDraw(function()",
+          "Handler.Update()",
+          "State.menuOpen",
+          "UI.Notification.Render()",
+          "UI.Overlay.Render()",
+          "Bindings.IsActionDown(\"TOGGLE\")"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:good-feelings-hard-draw",
+        "expectedMarkerFileCount": 1
+      },
+      "behavior": {
+        "handler": "SEMANTIC_HARD_UI_DRAW_DORMANCY",
+        "concepts": [
+          "f4WakeOnUpdate",
+          "closedDrawZero",
+          "openUiFrameDraw"
+        ],
+        "note": "Move the GoodFeelings keybind/menu handler to onUpdate, remove it from onDraw, and hard-return from onDraw while State.menuOpen is false. F4/controller wake remains frame-responsive; every draw-only notification, welcome, overlay/debug and menu renderer sleeps while the cheat UI is closed."
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 86.449583,
+        "evidenceStack": "SIXTH_STACK_SECOND_SEMANTIC_PASS",
+        "admitted": true
+      },
+      "cadenceGroup": "CLOSED_DRAW_HARD_DORMANT_F4_WAKE_ONUPDATE",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "SIXTH_STACK_SECOND_SEMANTIC_20261009"
       ]
     },
     {
@@ -3997,37 +4041,41 @@
       ]
     },
     {
-      "id": "straight-edged-controls",
+      "id": "straight-edged-controls-input-dormancy",
       "identityHints": [
         "Straight Edged Controls"
       ],
-      "policyClass": "FRAME_STATE_CACHE",
+      "policyClass": "INPUT_SEQUENCE_DORMANCY",
       "callbacks": [
         {
           "kind": "event",
           "target": "onUpdate",
-          "role": "hot-path"
+          "role": "idle-input-sentinel"
         }
       ],
       "sourceProof": {
         "ownerAll": [
-          "UIBlocking.isBlocked()",
           "Lean.pollInput()",
           "Inspection.pollInput()",
-          "ScrollWalk.tick()",
-          "Attachments.update(deltaTime)"
+          "SettingsPoll.poll",
+          "Attachments.update(deltaTime)",
+          "StraightEdgedControls.SECInputState",
+          "StraightEdgedControls.SECSettings",
+          "StraightEdgedControls.SECAttachments"
         ],
-        "alreadySatisfiedMarker": "G-CET semantic:straight-edged-controls",
-        "expectedMarkerFileCount": 2
+        "alreadySatisfiedMarker": "G-CET semantic:straight-edged-controls-input-dormancy",
+        "expectedMarkerFileCount": 6
       },
       "behavior": {
-        "handler": "SEMANTIC_FRAME_STATE_CACHE",
+        "handler": "SEMANTIC_INPUT_SEQUENCE_DORMANCY",
         "concepts": [
-          "uiBlockingOncePerFrame",
-          "sharedBlockingState",
-          "realtimeInputPreserved"
+          "inputSequenceFastReject",
+          "cachedScriptableSystemBridges",
+          "activeHoldRealtime",
+          "lowRateSettingsMaintenance",
+          "uiBlockingOnlyOnRelevantInput"
         ],
-        "note": "Compute the expensive UI-blocking blackboard state once at the start of each rendered update and reuse it across Lean, Inspection, ScrollWalk, CycleGrenades and Attachments. No input or gameplay callback cadence is reduced."
+        "note": "Make the idle Straight Edged Controls frame path a cached sequence check. Lean/inspection/attachment UI and gameplay checks execute only when their redscript bridge sequence changes or an active hold/pending action needs realtime work. Settings are polled at low cadence while FasterAiming retains frame maintenance only when actually enabled."
       },
       "generation": {
         "enabled": true,
@@ -4039,17 +4087,17 @@
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
-        "measuredPeakExclusiveMsPerSecond": 19.950931,
-        "evidenceStack": "SIXTH_STACK_POST_SEMANTIC",
+        "measuredPeakExclusiveMsPerSecond": 15.562835,
+        "evidenceStack": "SIXTH_STACK_SECOND_SEMANTIC_PASS",
         "admitted": true
       },
-      "cadenceGroup": "EVERY_FRAME_SHARED_STATE_CACHE",
+      "cadenceGroup": "INPUT_SEQUENCE_WAKE_PLUS_ACTIVE_HOLD_REALTIME_SETTINGS_2HZ",
       "catalogRole": "SEMANTIC_HOT_MOD",
       "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
       "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
       "referenceOverrideAllowed": false,
       "evidenceMembership": [
-        "SIXTH_STACK_POST_SEMANTIC_20261008"
+        "SIXTH_STACK_SECOND_SEMANTIC_20261009"
       ]
     },
     {
