@@ -2478,8 +2478,8 @@ end)
             @"local __gcetTunnelOutsideAcc = 0.0
 local __gcetTunnelWasInside = false
 __OPENING__
- local __gcetTunnelInside = H.phase == 'inside'
- if not __gcetTunnelInside then
+ local __gcetTunnelActive = H.phase ~= 'outside'
+ if not __gcetTunnelActive then
   __gcetTunnelOutsideAcc = __gcetTunnelOutsideAcc + (dt or 0)
   if __gcetTunnelOutsideAcc < .15 then return end
   dt = math.min(__gcetTunnelOutsideAcc, .5)
@@ -2490,12 +2490,12 @@ __OPENING__
 
  local ok,e=pcall(update,dt)
 
- if ok and H.phase=='inside' then
+ if ok and H.phase~='outside' then
   if not H.lifeError then
    local lifeOK,lifeError=pcall(Life.frame,dt,H,L)
    if not lifeOK then H.lifeError=tostring(lifeError);pcall(Life.clear,H.hooks);print('[Below the Surface] Life layer: '..H.lifeError)end
   end
-  if ok and valid(H.hooks)then ok,e=pcall(Swimming.frame,dt,H.hooks,H.blocked==nil and not H.overlay)end
+  if ok and valid(H.hooks)then ok,e=pcall(Swimming.frame,dt,H.hooks,H.session and H.phase=='inside'and H.blocked==nil and not H.overlay)end
   if ok and not H.streetError then
    local streetOK,streetError=pcall(Street.frame,dt,H,L)
    if not streetOK then H.streetError=tostring(streetError);pcall(Street.clear);print('[Below the Surface] Street layer: '..H.streetError)end
@@ -2509,7 +2509,7 @@ __OPENING__
  local __gcetTunnelQuiet = ok and H.session and not H.error and not H.overlay
   and H.blocked~='Close the game menu' and (H.phase=='arriving' or H.phase=='inside')
  if valid(H.hooks)then H.hooks:QuietTunnel(__gcetTunnelQuiet)end
- __gcetTunnelWasInside = H.phase=='inside'
+ __gcetTunnelWasInside = H.phase~='outside'
 
  if not ok then
   H.error=tostring(e);if H.error~=H.lastError then print('[Below the Surface] '..H.error);H.lastError=H.error end
