@@ -3,6 +3,7 @@
 All notable public changes to G-CET Runtime Profiler are recorded here.
 
 ## [Unreleased]
+- Result generation now reuses the already-parsed Detail, Timeline, Markers, and Spikes rows when building CET_Resolver_Input.json. Heavy captures no longer reopen and parse those CSVs a second time inside the same report pass; native capture content and resolver evidence are unchanged.
 - Reduced COLLECT RESULTS latency without dropping any profiler data: GUI collection now verifies/archives raw CET output, copies the optional frame-time companion, then builds the report/resolver handoff exactly once instead of generating a CET-only report and immediately rebuilding it. The large machine-only CET_Resolver_Input.json is also streamed as compact JSON to reduce allocation and disk I/O.
 - PASS generation now coalesces duplicate shared-provider candidates that resolve to the same physical provider/file/SHA/source range. This fixes false revalidation failures on minified one-line mods where several measured callbacks share line 1; the already-applied provider rewrite remains unchanged and no optimization is lost.
 - Native rebuild #38 completed successfully and refreshed the packaged profiler payload with restored adaptive deep profiling plus the PunkyCam conflict policy; this commit exists only to route those rebuilt bytes through the normal portable-profiler CI package.
