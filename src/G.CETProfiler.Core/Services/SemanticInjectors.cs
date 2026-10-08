@@ -3991,7 +3991,7 @@ internal static class SemanticInjectors
             text,
             @"(?m)^(?<opening>\s*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]\s*,\s*function\s*\(\s*" +
             Regex.Escape(parameter) +
-            @"\s*\)\s*$)",
+            @"\s*\)\s*(?:--[^\r\n]*)?$)",
             RegexOptions.CultureInvariant);
 
         if (!match.Success)
