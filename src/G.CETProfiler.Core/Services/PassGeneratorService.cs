@@ -1330,6 +1330,17 @@ public static class PassGeneratorService
         return false;
     }
 
+    private static double JsonDouble(JsonElement element, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (element.TryGetProperty(name, out var value) &&
+                value.TryGetDouble(out var number))
+                return number;
+        }
+        return 0;
+    }
+
     private static long? JsonNullableLong(JsonElement element, params string[] names)
     {
         foreach (var name in names)
