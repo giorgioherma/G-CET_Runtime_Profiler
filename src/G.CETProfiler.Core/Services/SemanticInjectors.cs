@@ -2276,8 +2276,47 @@ internal static class SemanticInjectors
             "GoodFeelings Handler menu-state cache");
 
         context.Write(handler, handlerText);
+
+        var overlay = context.FindFile(
+            "UI/Elements/Overlay.lua",
+            "function Overlay.Render()",
+            "ImGui.CalcTextSize",
+            "overlayShowWatermark",
+            "overlayShowGameVersion");
+
+        var overlayText = overlay.Text.Replace(
+            "ImGui.CalcTextSize(",
+            "__gcetMeasureText(",
+            StringComparison.Ordinal);
+
+        overlayText = ReplaceOnce(
+            overlayText,
+            "local Overlay = {}",
+            "local Overlay = {}\n" +
+            "local __gcetMeasureCache = {}\n" +
+            "local __gcetMeasureFontSize = nil\n" +
+            "local function __gcetMeasureText(text)\n" +
+            "    local cached = __gcetMeasureCache[text]\n" +
+            "    if cached then return cached[1], cached[2] end\n" +
+            "    local w, h = ImGui.CalcTextSize(text)\n" +
+            "    __gcetMeasureCache[text] = { w, h }\n" +
+            "    return w, h\n" +
+            "end",
+            "GoodFeelings overlay text-measure cache");
+
+        overlayText = ReplaceOnce(
+            overlayText,
+            "    local baseFontSize = ImGui.GetFontSize() or 18\n",
+            "    local baseFontSize = ImGui.GetFontSize() or 18\n" +
+            "    if __gcetMeasureFontSize ~= baseFontSize then\n" +
+            "        __gcetMeasureCache = {}\n" +
+            "        __gcetMeasureFontSize = baseFontSize\n" +
+            "    end\n",
+            "GoodFeelings overlay font-cache invalidation");
+
+        context.Write(overlay, overlayText);
         return SemanticInjectionResult.Success(
-            "Routed GoodFeelings' two source-proven PlayerPuppet actions through 0-Engine and made menu-only restriction/cursor/navigation work dormant while the cheat menu is closed; BindManager hotkeys, the toggle wake path, and the configured status overlay remain live.");
+            "Routed GoodFeelings' two source-proven PlayerPuppet actions through 0-Engine, made menu-only restriction/cursor/navigation work dormant while the cheat menu is closed, and cached repeated status-overlay text measurements. BindManager hotkeys, the toggle wake path and visible overlay draw cadence remain live.");
     }
 
     private static SemanticInjectionResult ApplyAirBackFlip(
@@ -2482,13 +2521,12 @@ internal static class SemanticInjectors
             "ScrollWalk.tick()",
             "Attachments.update(deltaTime)");
 
-        var initText = ReplaceOnce(
+        var initText = RegexReplaceOnce(
             init.Text,
-            "__gcetRegisterEvent_1093('onUpdate', function(deltaTime)\n" +
-            "    Lean.update(deltaTime)",
-            "__gcetRegisterEvent_1093('onUpdate', function(deltaTime)\n" +
-            "    UIBlocking.beginFrame()\n" +
-            "    Lean.update(deltaTime)",
+            @"(?m)^(?<opening>[ \\t]*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\\d+)\\s*\\(\\s*[""']onUpdate[""']\\s*,\\s*function\\s*\\(\\s*deltaTime\\s*\\)\\s*)\\r?\\n(?<indent>[ \\t]*)Lean\\.update\\(deltaTime\\)\\s*$",
+            "${opening}\n" +
+            "${indent}UIBlocking.beginFrame()\n" +
+            "${indent}Lean.update(deltaTime)",
             "Straight Edged Controls per-frame UI-blocking snapshot");
         context.Write(init, initText);
 
