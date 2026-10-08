@@ -2319,7 +2319,8 @@ internal static class SemanticInjectors
         text = RegexReplaceOnce(
             text,
             @"(?ms)^[ \t]*registerForEvent\s*\(\s*[""']onInit[""']\s*,\s*function\s*\(\s*\)\s*\r?\n[ \t]*Observe\s*\(\s*[""']PlayerPuppet[""']\s*,\s*[""']OnAction[""']\s*,\s*function\s*\(\s*_\s*,\s*action\s*\)\s*\r?\n(?<body>.*?)[ \t]*end\s*\)\s*\r?\n[ \t]*\r?\n[ \t]*log\s*\(\s*[""']Loaded\.[^\r\n]*\r?\n[ \t]*end\s*\)\s*",
-            @"local __gcetAutoDropApi = nil
+            """
+local __gcetAutoDropApi = nil
 local __gcetAutoDropExactHandles = {}
 local __gcetAutoDropExactNames = {}
 local __gcetAutoDropWildcardHandle = nil
@@ -2425,7 +2426,7 @@ registerForEvent("onInit", function()
 
     log("Loaded. (Optional) bind ADWOP inputs in CET -> Bindings -> Inputs.")
 end)
-",
+""",
             "AutoDrop exact + temporary wildcard routing");
 
         text = ReplaceOnce(
