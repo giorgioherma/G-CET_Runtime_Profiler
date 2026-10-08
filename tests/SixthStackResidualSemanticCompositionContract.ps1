@@ -711,21 +711,18 @@ try {
     $base='bin/x64/plugins/cyber_engine_tweaks/mods/'
 
     $good=Read-ZipText ($base+'GoodFeelings/init.lua')
-    $handler=Read-ZipText ($base+'GoodFeelings/Controls/Handler.lua')
-    $overlay=Read-ZipText ($base+'GoodFeelings/UI/Elements/Overlay.lua')
-    if($good -notmatch 'G-CET semantic:good-feelings' -or $good -notmatch 'gcetGoodFeelingsOnAction' -or
-       $good -notmatch 'CameraMouseX' -or $good -notmatch 'RangedAttack' -or $good -notmatch 'SubscribeAction') {
-        throw 'GoodFeelings exact action routing is incomplete.'
+    if($good -notmatch 'G-CET semantic:good-feelings' -or
+       $good -notmatch 'G-CET semantic:good-feelings-hard-draw' -or
+       $good -notmatch 'gcetGoodFeelingsOnAction' -or
+       $good -notmatch 'CameraMouseX' -or $good -notmatch 'RangedAttack' -or
+       $good -notmatch 'decodeType = false' -or
+       $good -notmatch 'if not modulesLoaded or not State\.menuOpen then return end') {
+        throw 'GoodFeelings exact routing + hard draw dormancy is incomplete.'
     }
-    if($handler -notmatch 'G-CET semantic:good-feelings' -or
-       $handler -notmatch '__gcetHandlerLastMenuOpen' -or
-       $handler -notmatch 'if State\.menuOpen or __gcetMenuChanged then') {
-        throw 'GoodFeelings closed-menu gate is incomplete.'
-    }
-    if($overlay -notmatch 'G-CET semantic:good-feelings' -or
-       $overlay -notmatch '__gcetMeasureText' -or $overlay -notmatch '__gcetMeasureCache' -or
-       $overlay -match 'local textW, textH = ImGui\.CalcTextSize') {
-        throw 'GoodFeelings overlay measurement cache is incomplete.'
+    if(([regex]::Matches($good,'Handler\.Update\(\)')).Count -ne 1 -or
+       $good -notmatch '(?s)Event\.RegisterUpdate\(function\(dt\).*?Handler\.Update\(\)' -or
+       $good -notmatch '(?s)Event\.RegisterDraw\(function\(\)\s+if not modulesLoaded or not State\.menuOpen then return end') {
+        throw 'GoodFeelings F4 wake was not moved cleanly from onDraw to onUpdate.'
     }
 
     $air=Read-ZipText ($base+'AirBackFlip/init.lua')
@@ -758,14 +755,42 @@ try {
 
     $straight=Read-ZipText ($base+'Straight Edged Controls/init.lua')
     $blocking=Read-ZipText ($base+'Straight Edged Controls/modules/ui_blocking.lua')
-    if($straight -notmatch 'G-CET semantic:straight-edged-controls' -or
-       $straight -notmatch 'UIBlocking\.beginFrame\(\)') {
-        throw 'Straight Edged Controls frame snapshot is incomplete.'
+    $lean=Read-ZipText ($base+'Straight Edged Controls/modules/lean.lua')
+    $inspection=Read-ZipText ($base+'Straight Edged Controls/modules/inspection.lua')
+    $settings=Read-ZipText ($base+'Straight Edged Controls/modules/settings_poll.lua')
+    $attachments=Read-ZipText ($base+'Straight Edged Controls/modules/attachments.lua')
+    $straightMarker='G-CET semantic:straight-edged-controls-input-dormancy'
+    foreach($text in @($straight,$blocking,$lean,$inspection,$settings,$attachments)) {
+        if($text -notmatch [regex]::Escape($straightMarker)) {
+            throw 'Straight Edged Controls sequence-dormancy marker missing from a transformed file.'
+        }
     }
-    if($blocking -notmatch 'G-CET semantic:straight-edged-controls' -or
-       $blocking -notmatch '__gcetComputeBlocked' -or
-       $blocking -notmatch '__gcetFrameCacheReady') {
-        throw 'Straight Edged Controls UI-blocking cache is incomplete.'
+    if($straight -match 'UIBlocking\.beginFrame\(\)' -or
+       $straight -notmatch 'SettingsPoll\.poll\(deltaTime\)' -or
+       $straight -notmatch 'Inspection\.onSessionReset\(\)') {
+        throw 'Straight Edged Controls entry-point dormancy composition is incomplete.'
+    }
+    if($lean -notmatch '__gcetGetInputState' -or
+       $lean -notmatch 'if seq == lastSeq then return end' -or
+       $lean -notmatch 'local inMenu = UIBlocking\.beginFrame\(\)') {
+        throw 'Straight Edged Controls lean sequence wake is incomplete.'
+    }
+    if($inspection -notmatch '__gcetGetInputState' -or
+       $inspection -notmatch 'if seq == state\.lastInspectSeq then return end' -or
+       $inspection -notmatch 'function Inspection\.onSessionReset') {
+        throw 'Straight Edged Controls inspection sequence wake is incomplete.'
+    }
+    if($settings -notmatch '__gcetPollInterval = 0\.5' -or
+       $settings -notmatch 'function Settings\.poll\(deltaTime\)' -or
+       $settings -notmatch 'lastMasterEnabled and lastFasterAiming') {
+        throw 'Straight Edged Controls low-rate settings maintenance is incomplete.'
+    }
+    if($attachments -notmatch '__gcetAttachmentsBridge' -or
+       $attachments -notmatch 'if not suppressorChanged and not sightChanged and not holdActive and not state\.pending then return end') {
+        throw 'Straight Edged Controls attachment sequence gate is incomplete.'
+    }
+    if($blocking -notmatch 'function UIBlocking\.beginFrame\(\)' ) {
+        throw 'Straight Edged Controls explicit UI snapshot compatibility is missing.'
     }
 
     $inertia=Read-ZipText ($base+'ImmersiveHeadInertia/init.lua')
@@ -778,4 +803,4 @@ try {
 }
 finally { $zip.Dispose() }
 
-Write-Host 'Residual sixth-stack semantic composition contract passed: GoodFeelings + AirBackFlip + AutoDrop + Drone Companions + GhostVoid + Straight Edged Controls + ImmersiveHeadInertia.'
+Write-Host 'Residual sixth-stack semantic composition contract passed: GoodFeelings hard draw + AirBackFlip + AutoDrop + Drone Companions + GhostVoid + Straight sequence dormancy + ImmersiveHeadInertia.'
