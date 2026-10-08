@@ -42,6 +42,11 @@ internal static class SemanticInjectors
             "easytrainer-background-dormancy" => ApplyEasyTrainerBackgroundDormancy(context),
             "teleport-gateway-system" => ApplyTeleportGatewaySystem(context),
             "discard-ammo-on-reload" => ApplyDiscardAmmoOnReload(context),
+            "give-craft-mat" => ApplyGiveCraftMat(context),
+            "simple-notepad-cet" => ApplySimpleNotepadCet(context),
+            "dedra-palmjet-quickslot" => ApplyDedraPalmjetQuickslot(context),
+            "backstep-duo" => ApplyBackStepDuo(context),
+            "nightcity-allies-missions" => ApplyNightCityAlliesMissions(context),
             "advanced-settings" => ApplyAdvancedSettings(context),
             "auto-ammo-crafting" => ApplyAutoAmmoCrafting(context),
             "autoloot" => ApplyAutoLoot(context),
@@ -2012,6 +2017,179 @@ internal static class SemanticInjectors
 
         return SemanticInjectionResult.Success(
             "Routed only the eight source-proven weapon-swap/reset actions through 0-Engine while preserving the original ReloadSystem state transitions and direct Observe fallback.");
+    }
+
+    private static SemanticInjectionResult ApplyGiveCraftMat(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "init.lua",
+            "function SaveWindowState",
+            "function DrawButtons",
+            "WindowHiderTool",
+            "cetopen");
+
+        var text = RegexReplaceOnce(
+            file.Text,
+            @"(?ms)^(?<indent>[ \t]*)(?<registrar>registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onDraw['""]\s*,\s*function\s*\(\s*\)\s*\r?\n" +
+            @"[ \t]*DrawButtons\s*\(\s*\)\s*\r?\n" +
+            @"[ \t]*local\s+WindowHiderTool\s*=\s*GetMod\s*\(\s*['""]WindowHiderTool['""]\s*\)\s*\r?\n" +
+            @"[ \t]*if\s+WindowHiderTool\s+and\s+cetopen\s+then\s*\r?\n" +
+            @"[ \t]*DrawWindowHider\s*\(\s*\)\s*\r?\n" +
+            @"[ \t]*elseif\s+not\s+WindowHiderTool\s+then\s*\r?\n" +
+            @"[ \t]*windowstate\.Current\.mywindowhidden\s*=\s*false\s*\r?\n" +
+            @"[ \t]*SaveWindowState\s*\(\s*\)\s*\r?\n" +
+            @"[ \t]*end\s*\r?\n" +
+            @"[ \t]*end\s*\)\s*;?\s*$",
+            "${indent}${registrar}(\"onDraw\", function()\n" +
+            "${indent}    if not cetopen then return end\n" +
+            "${indent}    DrawButtons()\n" +
+            "${indent}    local WindowHiderTool = GetMod(\"WindowHiderTool\")\n" +
+            "${indent}    if WindowHiderTool then\n" +
+            "${indent}        DrawWindowHider()\n" +
+            "${indent}    elseif not WindowHiderTool and windowstate.Current.mywindowhidden then\n" +
+            "${indent}        windowstate.Current.mywindowhidden = false\n" +
+            "${indent}        SaveWindowState()\n" +
+            "${indent}    end\n" +
+            "${indent}end)",
+            "GiveCraftMat closed-overlay draw gate");
+
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Made GiveCraftMat onDraw hard-dormant while CET is closed and changed WindowHiderTool absence persistence from every-frame disk writes to the actual hidden-to-visible transition.");
+    }
+
+    private static SemanticInjectionResult ApplySimpleNotepadCet(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "init.lua",
+            "function saveWindowState",
+            "Buttons.Draw3",
+            "WindowHiderTool",
+            "state.open");
+
+        var text = RegexReplaceOnce(
+            file.Text,
+            @"(?ms)^(?<indent>[ \t]*)(?<registrar>registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onDraw['""]\s*,\s*function\s*\(\s*\)\s*\r?\n" +
+            @"[ \t]*local\s+WindowHiderTool\s*=\s*GetMod\s*\(\s*['""]WindowHiderTool['""]\s*\)\s*\r?\n" +
+            @"[ \t]*if\s+WindowHiderTool\s+and\s+state\.open\s+then\s*\r?\n" +
+            @"[ \t]*Buttons\.DrawWindowHider\s*\(\s*\)\s*\r?\n" +
+            @"[ \t]*elseif\s+not\s+WindowHiderTool\s+then\s*\r?\n" +
+            @"[ \t]*windowhidden\s*=\s*false\s*\r?\n" +
+            @"[ \t]*saveWindowState\s*\(\s*\)\s*\r?\n" +
+            @"[ \t]*end\s*\r?\n" +
+            @"[ \t]*Buttons\.Draw3\s*\(\s*\)\s*\r?\n" +
+            @"[ \t]*Buttons\.Draw2\s*\(\s*\)\s*\r?\n" +
+            @"[ \t]*Buttons\.Draw\s*\(\s*\)\s*\r?\n" +
+            @"[ \t]*end\s*\)\s*;?\s*$",
+            "${indent}${registrar}(\"onDraw\", function()\n" +
+            "${indent}    if not state.open then return end\n" +
+            "${indent}    local WindowHiderTool = GetMod(\"WindowHiderTool\")\n" +
+            "${indent}    if WindowHiderTool then\n" +
+            "${indent}        Buttons.DrawWindowHider()\n" +
+            "${indent}    elseif not WindowHiderTool and windowhidden then\n" +
+            "${indent}        windowhidden = false\n" +
+            "${indent}        saveWindowState()\n" +
+            "${indent}    end\n" +
+            "${indent}    Buttons.Draw3()\n" +
+            "${indent}    Buttons.Draw2()\n" +
+            "${indent}    Buttons.Draw()\n" +
+            "${indent}end)",
+            "Simple Notepad closed-overlay draw gate");
+
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Made Simple Notepad onDraw hard-dormant while CET is closed and persisted WindowHiderTool absence only when the hidden state actually changes.");
+    }
+
+    private static SemanticInjectionResult ApplyDedraPalmjetQuickslot(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "init.lua",
+            "function installPalmjetHooks",
+            "isUseCombatGadgetPress",
+            "UseCombatGadget",
+            "BUTTON_PRESSED",
+            "activateSelectedPalmjet");
+
+        var text = RouteExactOnActionObserver(
+            file.Text,
+            "gcetDedraPalmjetOnAction",
+            "DedraPalmjetQuickslot",
+            new[] { "UseCombatGadget" },
+            "DedraPalmjetQuickslot PlayerPuppet OnAction",
+            "isUseCombatGadgetPress",
+            "getActivePalmjetVariant",
+            "activateSelectedPalmjet");
+
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Routed Dedra Palmjet's single source-proven UseCombatGadget action through 0-Engine while retaining the original BUTTON_PRESSED and active-variant gates.");
+    }
+
+    private static SemanticInjectionResult ApplyBackStepDuo(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "init.lua",
+            "processDirectionAction",
+            "getActionName",
+            "getActionType",
+            "getActionValue",
+            "BUTTON_PRESSED",
+            "MoveY");
+
+        var text = RouteExactOnActionObserver(
+            file.Text,
+            "gcetBackStepDuoOnAction",
+            "BackStepDuo",
+            new[] { "Forward", "Back", "Left", "Right", "MoveY", "MoveX" },
+            "BackStepDuo PlayerPuppet OnAction",
+            "settings.EnableDash",
+            "getActionName",
+            "getActionType",
+            "getActionValue",
+            "processDirectionAction");
+
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Routed BackStepDuo's six source-proven movement actions through 0-Engine; ability, BUTTON_PRESSED, value and double-tap semantics remain in the original callback body.");
+    }
+
+    private static SemanticInjectionResult ApplyNightCityAlliesMissions(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "init.lua",
+            "function NCA_Missions:SaveMissions",
+            "function NCA_Missions:LoadMissions",
+            "CargoHeist.Update(dt, db)",
+            "BountySystem.UpdateRadar(db)",
+            "NCA_MissionDB");
+
+        var text = RegexReplaceOnce(
+            file.Text,
+            @"(?m)^(?<opening>[ \t]*function\s+NCA_Missions:SaveMissions\s*\(\s*db\s*\)\s*)\r?\n",
+            "${opening}\n    NCA_MissionDB = db\n",
+            "NCA Missions SaveMissions cache synchronization");
+
+        text = RegexReplaceOnce(
+            text,
+            @"(?m)^[ \t]*db\.bmi\s*=\s*db\.bmi\s*or\s*0\s*\r?\n(?:[ \t]*\r?\n)?[ \t]*return\s+db\s*$",
+            "    db.bmi = db.bmi or 0\n    NCA_MissionDB = db\n    return db",
+            "NCA Missions LoadMissions cache synchronization");
+
+        text = RegexReplaceOnce(
+            text,
+            @"(?m)^(?<header>[ \t]*--\s*2\.[^\r\n]*\r?\n)(?<comment>[ \t]*--[^\r\n]*\r?\n)(?<indent>[ \t]*)local\s+db\s*=\s*NCA_Missions:LoadMissions\s*\(\s*\)\s*$",
+            "${header}${comment}${indent}local db = NCA_MissionDB or NCA_Missions:LoadMissions()",
+            "NCA Missions per-frame mission database load");
+
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Kept Cargo Heist, bounty and mission timers at the author's original cadence while making the already-global mission table authoritative between explicit loads/saves, removing the per-frame JSON disk round-trip.");
     }
 
     private static SemanticInjectionResult ApplyAdvancedSettings(

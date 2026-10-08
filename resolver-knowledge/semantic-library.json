@@ -14,7 +14,7 @@
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
     "fullPassRule": "A semantic injector can run only when the current capture contains a >=3.0 ms/s measured callback, the library rule matches, and the current live mod source graph proves its anchors.",
-    "enabledInjectorCount": 41,
+    "enabledInjectorCount": 46,
     "profileOnlyRuleCount": 0,
     "note": "The production semantic base contains source-proven, behavior-aware optimizations learned from validated references and measured hot callbacks. Generic/mechanical transforms stay in the Resolver; semantic rules cover state/cadence/hotpath knowledge that generic inference cannot safely own.",
     "admissionPolicy": {
@@ -3428,6 +3428,277 @@
       "evidenceMembership": [
         "G-CET_0-Engine_Manual+Automatic",
         "PASS5_R3_AUDIT"
+      ]
+    },
+    {
+      "id": "give-craft-mat",
+      "identityHints": [
+        "GiveCraftMat"
+      ],
+      "policyClass": "OVERLAY_VISIBILITY_GATE",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onDraw",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "function SaveWindowState",
+          "function DrawButtons",
+          "WindowHiderTool",
+          "cetopen"
+        ],
+        "satisfiedAll": [
+          "if not cetopen then return end",
+          "elseif not WindowHiderTool and windowstate.Current.mywindowhidden then"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:give-craft-mat",
+        "expectedMarkerFileCount": 1
+      },
+      "behavior": {
+        "handler": "SEMANTIC_OVERLAY_VISIBILITY_GATE"
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 20.998509,
+        "evidenceStack": "SIXTH_STACK_POST_FIRST_PASS",
+        "admitted": true
+      },
+      "cadenceGroup": "OVERLAY_OPEN_ONLY_TRANSITION_PERSISTENCE",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "SIXTH_STACK_20261008"
+      ]
+    },
+    {
+      "id": "simple-notepad-cet",
+      "identityHints": [
+        "Simple Notepad - CET"
+      ],
+      "policyClass": "OVERLAY_VISIBILITY_GATE",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onDraw",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "function saveWindowState",
+          "Buttons.Draw3",
+          "WindowHiderTool",
+          "state.open"
+        ],
+        "satisfiedAll": [
+          "if not state.open then return end",
+          "elseif not WindowHiderTool and windowhidden then"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:simple-notepad-cet",
+        "expectedMarkerFileCount": 1
+      },
+      "behavior": {
+        "handler": "SEMANTIC_OVERLAY_VISIBILITY_GATE"
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 17.0653,
+        "evidenceStack": "SIXTH_STACK_POST_FIRST_PASS",
+        "admitted": true
+      },
+      "cadenceGroup": "OVERLAY_OPEN_ONLY_TRANSITION_PERSISTENCE",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "SIXTH_STACK_20261008"
+      ]
+    },
+    {
+      "id": "dedra-palmjet-quickslot",
+      "identityHints": [
+        "DedraPalmjetQuickslot"
+      ],
+      "policyClass": "EXACT_ACTION_ROUTING",
+      "callbacks": [
+        {
+          "kind": "Observe",
+          "target": "PlayerPuppet::OnAction",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "function installPalmjetHooks",
+          "isUseCombatGadgetPress",
+          "UseCombatGadget",
+          "BUTTON_PRESSED",
+          "activateSelectedPalmjet"
+        ],
+        "satisfiedAll": [
+          "gcetDedraPalmjetOnAction",
+          "SubscribeAction",
+          "UseCombatGadget"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:dedra-palmjet-quickslot",
+        "expectedMarkerFileCount": 1
+      },
+      "behavior": {
+        "handler": "SEMANTIC_EXACT_ACTION_ROUTING"
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 17.523339,
+        "evidenceStack": "SIXTH_STACK_POST_FIRST_PASS",
+        "admitted": true
+      },
+      "cadenceGroup": "EXACT_ACTION_ROUTING",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "SIXTH_STACK_20261008"
+      ]
+    },
+    {
+      "id": "backstep-duo",
+      "identityHints": [
+        "BackStepDuo"
+      ],
+      "policyClass": "EXACT_ACTION_ROUTING",
+      "callbacks": [
+        {
+          "kind": "Observe",
+          "target": "PlayerPuppet::OnAction",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "processDirectionAction",
+          "getActionName",
+          "getActionType",
+          "getActionValue",
+          "BUTTON_PRESSED",
+          "MoveY"
+        ],
+        "satisfiedAll": [
+          "gcetBackStepDuoOnAction",
+          "SubscribeAction",
+          "MoveY",
+          "MoveX"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:backstep-duo",
+        "expectedMarkerFileCount": 1
+      },
+      "behavior": {
+        "handler": "SEMANTIC_EXACT_ACTION_ROUTING"
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 12.899766,
+        "evidenceStack": "SIXTH_STACK_POST_FIRST_PASS",
+        "admitted": true
+      },
+      "cadenceGroup": "EXACT_ACTION_ROUTING",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "SIXTH_STACK_20261008"
+      ]
+    },
+    {
+      "id": "nightcity-allies-missions",
+      "identityHints": [
+        "NightCityAlliesMissions"
+      ],
+      "policyClass": "HOT_LOOP_STATE_CACHE",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "function NCA_Missions:SaveMissions",
+          "function NCA_Missions:LoadMissions",
+          "CargoHeist.Update(dt, db)",
+          "BountySystem.UpdateRadar(db)",
+          "NCA_MissionDB"
+        ],
+        "satisfiedAll": [
+          "local db = NCA_MissionDB or NCA_Missions:LoadMissions()"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:nightcity-allies-missions",
+        "expectedMarkerFileCount": 1
+      },
+      "behavior": {
+        "handler": "SEMANTIC_HOT_LOOP_STATE_CACHE"
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 19.318309,
+        "evidenceStack": "SIXTH_STACK_POST_FIRST_PASS",
+        "admitted": true
+      },
+      "cadenceGroup": "NO_CADENCE_CHANGE_AUTHORITATIVE_STATE_CACHE",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "SIXTH_STACK_20261008"
       ]
     }
   ],
