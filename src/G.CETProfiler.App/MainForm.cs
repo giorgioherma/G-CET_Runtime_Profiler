@@ -1162,8 +1162,11 @@ public sealed class MainForm : Form
 
             var root = gameRoot.Text.Trim();
             var liveSnapshot = await Task.Run(() => profiler.GetStatus(root));
+            // The UI always performs final report generation after the optional
+            // frame-time copy below. Defer core report generation here so a heavy
+            // capture is parsed/serialized once rather than twice.
             var destination = liveSnapshot.CaptureReadyForCollection
-                ? await Task.Run(() => profiler.Collect(root))
+                ? await Task.Run(() => profiler.Collect(root, generateReport: false))
                 : await Task.Run(() => profiler.ResetLive(root));
 
             string? companionError = null;
@@ -1180,10 +1183,9 @@ public sealed class MainForm : Form
                 }
             }
 
-            // The core collection creates a CET-only report immediately after raw
-            // verification. Once the optional companion copy is complete, rebuild
-            // the same standalone report so CapFrameX can become a synchronized
-            // evidence layer without changing the native CET capture.
+            // Raw CET data is already verified and archived. Generate the report
+            // exactly once, after the optional companion copy, so the same heavy
+            // CSV/deep-evidence set is not parsed twice.
             if (!string.IsNullOrWhiteSpace(destination) && Directory.Exists(destination))
             {
                 try
