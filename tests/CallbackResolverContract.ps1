@@ -1112,7 +1112,7 @@ if (!$functionMap.generic.Automatable) {
     $functionMapDebug = $functionMap.generic | ConvertTo-Json -Depth 10 -Compress
     throw "Literal function-valued action map was not reduced to a finite action set. Resolver: $functionMapDebug"
 }
-if ($functionMap.generic.Pattern -ne 'ACTION_ROUTING_EXACT_SET') {
+if ($functionMap.generic.Pattern -ne 'ACTION_ROUTING_STATE_GATED_STATIC_SET') {
     throw "Unexpected function-map routing recipe: $($functionMap.generic.Pattern)"
 }
 foreach ($expected in @('MoveY','AirBackflip_Backflip','AirBackflip_SwingOver')) {
