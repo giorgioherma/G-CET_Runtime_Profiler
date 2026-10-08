@@ -71,6 +71,12 @@ Optional:
 
 Neither 0-Engine nor a frame-time profiler is required for a normal CET profiler run.
 
+## Known profiler conflicts
+
+- **PunkyCam / Punk yCam** — confirmed with **v0.3.7.7**. With G-CET capture active, PunkyCam's native mouse/camera input path can terminate the game when mouse movement begins. G-CET does **not** disable global profiling features to accommodate this single mod. Disable PunkyCam and restart Cyberpunk before profiling. The bundled CET capture controls refuse to start a capture while PunkyCam is detected.
+
+This is a compatibility exclusion, not an optimizer rule. A future PunkyCam build can be removed from the conflict list after explicit retesting.
+
 ## Capture contract
 
 The profiler owns one CET capture input. **F11 is the initial default**, while the current CET binding remains user-controlled:

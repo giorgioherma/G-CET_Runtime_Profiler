@@ -95,6 +95,7 @@ public sealed class ProfilerService : IProfilerService
         var captureBinding = bindings.InspectCaptureBinding(paths);
         var liveResults = GetLiveResults(paths);
         var captureReadyForCollection = HasCompletedCapture(paths);
+        var knownConflicts = DetectKnownConflicts(paths);
 
         return new ProfilerStatus
         {
@@ -124,6 +125,7 @@ public sealed class ProfilerService : IProfilerService
             LiveResultCount = liveResults.Count,
             CaptureReadyForCollection = captureReadyForCollection,
             ResultsRoot = resultsRoot,
+            KnownConflicts = knownConflicts,
             State = state
         };
     }
@@ -249,6 +251,49 @@ public sealed class ProfilerService : IProfilerService
 
             throw;
         }
+    }
+
+    private static List<string> DetectKnownConflicts(ProfilerPaths paths)
+    {
+        var conflicts = new List<string>();
+
+        // PunkyCam / Punk yCam 0.3.7.7 was reproduced as a hard profiling
+        // conflict: capture is stable while the mod is absent, but moving the
+        // mouse with its native camera/input hooks active can terminate the game.
+        // Keep G-CET feature-complete and treat this one mod as incompatible
+        // until a future PunkyCam build is explicitly re-tested.
+        var punkyLua = Path.Combine(
+            paths.CetRoot, "mods", "PunkyCam", "init.lua");
+        var punkyNative = Path.Combine(
+            paths.Root, "red4ext", "plugins", "PunkyCam", "PunkyCamNative.dll");
+
+        if (File.Exists(punkyLua) || File.Exists(punkyNative))
+        {
+            var version = "";
+            var packageManifest = Path.Combine(
+                paths.Root, "red4ext", "plugins", "PunkyCam", "package-manifest.json");
+
+            try
+            {
+                if (File.Exists(packageManifest))
+                {
+                    using var document = JsonDocument.Parse(File.ReadAllText(packageManifest));
+                    if (document.RootElement.TryGetProperty("version", out var value))
+                        version = value.GetString() ?? "";
+                }
+            }
+            catch
+            {
+                // Conflict detection must remain fail-soft. The folder/native
+                // marker is enough to warn even if upstream metadata is malformed.
+            }
+
+            conflicts.Add(string.IsNullOrWhiteSpace(version)
+                ? "PunkyCam / Punk yCam"
+                : $"PunkyCam / Punk yCam {version}");
+        }
+
+        return conflicts;
     }
 
     public string SaveCaptureTitle(string gameRoot, string captureTitle)

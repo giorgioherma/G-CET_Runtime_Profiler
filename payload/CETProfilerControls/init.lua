@@ -24,6 +24,24 @@ local function isRunning()
   return ok and running == true
 end
 
+local function activeKnownConflict()
+  -- PunkyCam / Punk yCam is intentionally treated as incompatible instead of
+  -- weakening G-CET globally. Both its CET loader and native camera/input plugin
+  -- are recognized so the normal capture key cannot start an unsafe session.
+  if type(PunkyCamNative) ~= "nil" then
+    return "PunkyCam / Punk yCam"
+  end
+
+  if type(GetMod) == "function" then
+    local ok, mod = pcall(GetMod, "PunkyCam")
+    if ok and mod ~= nil then
+      return "PunkyCam / Punk yCam"
+    end
+  end
+
+  return nil
+end
+
 local scenarios = {
   WORLD = { label = "WORLD / IDLE", marker = "WORLD" },
   DRIVING = { label = "DRIVING", marker = "DRIVING" },
@@ -128,6 +146,13 @@ local function toggleCapture()
     captureStartedAt = nil
     captureBaseSeconds = 0
     activeScenario = nil
+    return
+  end
+
+  local conflict = activeKnownConflict()
+  if conflict then
+    say("Capture blocked: known profiler conflict detected (" .. conflict ..
+        "). Disable it and restart Cyberpunk before profiling.")
     return
   end
 

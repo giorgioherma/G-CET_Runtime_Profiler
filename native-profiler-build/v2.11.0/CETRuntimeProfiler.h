@@ -478,17 +478,47 @@ public:
     class DeepTraceScope
     {
     public:
-        // Diagnostic safety mode: keep broad callback timing/source attribution
-        // intact, but do not install or manipulate any Lua debug hooks.
-        // GoodFeelings remains intentionally unmodified as the reproducer.
-        DeepTraceScope(Counter* /*aCounter*/, lua_State* /*aState*/)
+        DeepTraceScope(Counter* aCounter, lua_State* aState)
+            : m_state(aState)
         {
+            auto& profiler = CETRuntimeProfiler::Get();
+
+            // A nested profiled registration is a structural boundary, not part
+            // of the parent's Lua body. Temporarily silence the parent's hook
+            // and subtract that nested registration from the parent's deep tree.
+            m_boundary = profiler.EnterDeepRegistrationBoundary(aCounter, aState);
+            if (m_boundary)
+                return;
+
+            auto& probe = DeepProbeCounterForThread();
+            ++probe;
+            if (probe <= 8 || (probe & 0x1FFu) == 0)
+                profiler.MaybeRebalanceDeepHotset();
+
+            m_active = profiler.BeginDeepSample(aCounter, aState);
         }
 
         DeepTraceScope(const DeepTraceScope&) = delete;
         DeepTraceScope& operator=(const DeepTraceScope&) = delete;
 
-        ~DeepTraceScope() = default;
+        ~DeepTraceScope()
+        {
+            if (m_active)
+                CETRuntimeProfiler::Get().EndDeepSample(m_state);
+            if (m_boundary)
+                CETRuntimeProfiler::Get().ExitDeepRegistrationBoundary(m_state);
+        }
+
+    private:
+        static uint32_t& DeepProbeCounterForThread()
+        {
+            static thread_local uint32_t value = 0;
+            return value;
+        }
+
+        lua_State* m_state{};
+        bool m_active{false};
+        bool m_boundary{false};
     };
 
     static CETRuntimeProfiler& Get()

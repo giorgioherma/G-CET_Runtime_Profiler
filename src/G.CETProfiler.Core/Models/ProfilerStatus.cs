@@ -79,6 +79,9 @@ public sealed class ProfilerStatus
     [JsonPropertyName("resultsRoot")]
     public string ResultsRoot { get; init; } = "";
 
+    [JsonPropertyName("knownConflicts")]
+    public List<string> KnownConflicts { get; init; } = new();
+
     [JsonPropertyName("state")]
     public ProfilerState? State { get; init; }
 

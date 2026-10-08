@@ -3,6 +3,8 @@
 All notable public changes to G-CET Runtime Profiler are recorded here.
 
 ## [Unreleased]
+- Added PunkyCam / Punk yCam to the known profiler-conflict list after reproducing a mouse-movement-triggered crash only while its native camera/input hooks and G-CET capture were active. The manager reports the conflict and CETProfilerControls blocks START while PunkyCam is loaded; the profiler itself is not globally reduced for one incompatible mod.
+- Restored adaptive deep Lua profiling after the no-hook isolation build reproduced the crash unchanged. Deep tracing is therefore no longer treated as causal for the PunkyCam conflict; the ScriptContext failure-isolation hardening remains.
 - Rebuilt and packaged the native profiler payload for the Override downstream-RAII isolation test; deep Lua hooks remain disabled for this diagnostic line.
 - Diagnostic isolation: removed the transparent `Scope(nullptr)` RAII boundaries from Override `next()` / real-function execution. Those boundaries had previously been identified as unsafe across LuaJIT `luaL_error` / Windows SEH, but were later restored for downstream attribution. Override timing now stays inside the protected Lua callback call while deep hooks remain disabled.
 - Diagnostic safety mode: disabled adaptive deep Lua debug-hook tracing while retaining broad callback timing, source attribution, frame multiplicity, timeline, spike, and scheduler telemetry. The rebuilt native payload leaves `DeepTraceScope` as a no-op, isolating `lua_sethook` / deep-hook behavior without changing the live mod stack or repairing the GoodFeelings reproducer.

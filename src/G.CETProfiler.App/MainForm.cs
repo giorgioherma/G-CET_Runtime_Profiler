@@ -720,6 +720,12 @@ public sealed class MainForm : Form
             ? $"Frame-Time Profiler: {companion.DisplayName} configured ✅"
             : "Frame-Time Profiler: Not provided ⚠️";
 
+        var conflictLine = snapshot.KnownConflicts.Count == 0
+            ? "Known profiler conflicts: None detected ✅"
+            : "Known profiler conflicts: " +
+              string.Join(", ", snapshot.KnownConflicts) +
+              " · disable before capture ⚠️";
+
         var cetKey = CetCaptureKeyText(snapshot, "✅");
         string syncLines;
         if (!companionConfigured)
@@ -753,6 +759,7 @@ public sealed class MainForm : Form
             zeroLine + "\r\n" +
             schedulerLine + "\r\n" +
             frameLine + "\r\n" +
+            conflictLine + "\r\n" +
             syncLines + "\r\n" +
             $"G-CET PROFILER IS {installState}\r\n" +
             (snapshot.CaptureReadyForCollection
@@ -839,11 +846,14 @@ public sealed class MainForm : Form
         readyCaptureInstructions.ForeColor = ready ? ThemeText : ThemeInactive;
 
         readyNotice.Text = GetReadyNotice(snapshot);
+        var hasKnownConflicts = snapshot?.KnownConflicts.Count > 0;
         readyNotice.ForeColor = blocked
             ? ThemeRed
-            : ready && (snapshot?.ZeroEnginePresent != true || snapshot.ManagedMode == "core-only")
+            : hasKnownConflicts
                 ? ThemeAmber
-                : ThemeMuted;
+                : ready && (snapshot?.ZeroEnginePresent != true || snapshot.ManagedMode == "core-only")
+                    ? ThemeAmber
+                    : ThemeMuted;
     }
 
     private string GetReadyNotice(ProfilerStatus? snapshot)
@@ -868,6 +878,11 @@ public sealed class MainForm : Form
 
         if (!snapshot.Managed && snapshot.LiveResultCount > 0)
             return "Profiler scratch/template files were detected. INSTALL will clear them automatically, or use CLEAR LIVE.";
+
+        if (snapshot.KnownConflicts.Count > 0)
+            return "Known profiler conflict detected: " +
+                   string.Join(", ", snapshot.KnownConflicts) +
+                   ". Disable the conflicting mod and restart Cyberpunk before starting a capture. G-CET profiling features remain enabled.";
 
         var unsafeZero = snapshot.ZeroEnginePresent && snapshot.ZeroEngineInitKind == "unsafe";
         if (!snapshot.Managed && unsafeZero && !coreOnly.Checked)
