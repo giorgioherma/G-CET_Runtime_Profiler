@@ -2289,7 +2289,8 @@ internal static class SemanticInjectors
             "AirBackflip_Backflip",
             "AirBackflip_SwingOver",
             "MoveY",
-            "BUTTON_PRESSED");
+            "ListenerAction.IsButtonJustPressed",
+            "ListenerAction.IsButtonJustReleased");
 
         var text = RouteExactOnActionObserver(
             file.Text,
@@ -2306,7 +2307,8 @@ internal static class SemanticInjectors
             "AirBackFlip PlayerPuppet OnAction",
             "GAME_ACTIONS",
             "MoveY",
-            "BUTTON_PRESSED");
+            "ListenerAction.IsButtonJustPressed",
+            "ListenerAction.IsButtonJustReleased");
 
         context.Write(file, text);
         return SemanticInjectionResult.Success(
