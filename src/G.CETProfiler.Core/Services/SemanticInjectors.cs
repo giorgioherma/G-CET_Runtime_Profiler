@@ -2532,7 +2532,7 @@ __CLOSE__",
 
         context.Write(file, text);
         return SemanticInjectionResult.Success(
-            "Moved Below the Surface's outside phase onto the author's existing 0.15 s decision cadence, kept Life/Swimming/Street frame work only while actually inside the tunnel, performed one-shot transition cleanup, and disabled tunnel Timer.draw while outside.");
+            "Moved Below the Surface's outside phase onto the author's existing 0.15 s decision cadence while preserving the original frame-rate outer layers throughout every active quest phase, with one-shot cleanup on return to outside and no tunnel Timer.draw while outside.");
     }
 
     private static SemanticInjectionResult ApplyDroneCompanionsRevamp(
