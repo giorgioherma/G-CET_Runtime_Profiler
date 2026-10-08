@@ -385,6 +385,243 @@ function UIBlocking.init() hooksReady = true end
 return UIBlocking
 '@
 
+
+Write-ModFile 'Straight Edged Controls' 'modules/lean.lua' @'
+local UIBlocking = require('modules/ui_blocking')
+local Lean = {}
+local state = { currentDirection='none', leftHeld=false, rightHeld=false }
+local lastSeq = -1
+local wasInMenu = false
+local function isUiBlocking() return UIBlocking.isBlocked() end
+function Lean.reset()
+    state.currentDirection='none'
+    state.leftHeld=false
+    state.rightHeld=false
+end
+function Lean.update(deltaTime)
+    if state.currentDirection ~= 'none' then return end
+end
+function Lean.onSessionReset()
+    Lean.reset()
+    lastSeq = -1
+    wasInMenu = false
+end
+function Lean.onKeyEvent(side, pressed, mode, switchSidesInstantly)
+    state.currentDirection = side or 'none'
+end
+function Lean.pollInput()
+    local inMenu = isUiBlocking()
+    if wasInMenu and not inMenu then
+        state.leftHeld = false
+        state.rightHeld = false
+        local okSeq, inputStateExit = pcall(function()
+            local container = Game.GetScriptableSystemsContainer()
+            if not container then return nil end
+            return container:Get(CName.new('StraightEdgedControls.SECInputState'))
+        end)
+        if okSeq and inputStateExit then
+            lastSeq = inputStateExit.seq
+        end
+    end
+    wasInMenu = inMenu
+
+    if inMenu then
+        local ok, inputState = pcall(function()
+            local container = Game.GetScriptableSystemsContainer()
+            if not container then return nil end
+            return container:Get(CName.new('StraightEdgedControls.SECInputState'))
+        end)
+        if ok and inputState then
+            lastSeq = inputState.seq
+        end
+        return
+    end
+
+    local ok, inputState = pcall(function()
+        local container = Game.GetScriptableSystemsContainer()
+        if not container then return nil end
+        return container:Get(CName.new('StraightEdgedControls.SECInputState'))
+    end)
+
+    if not ok or not inputState then
+        return
+    end
+
+    local seq = inputState.seq
+    if seq == lastSeq then
+        return
+    end
+    lastSeq = seq
+
+    Lean.onKeyEvent(inputState.side, inputState.pressed, inputState.mode, inputState.switchSidesInstantly)
+end
+return Lean
+'@
+
+Write-ModFile 'Straight Edged Controls' 'modules/inspection.lua' @'
+local UIBlocking = require('modules/ui_blocking')
+local Inspection = {}
+local state = {
+    keyDown=false,
+    phase='idle',
+    holdTime=0.0,
+    lastInspectSeq=0,
+}
+local function getSettings()
+    local ok, settings = pcall(function()
+        local container = Game.GetScriptableSystemsContainer()
+        if not container then return nil end
+        return container:Get(CName.new('StraightEdgedControls.SECSettings'))
+    end)
+    if ok then return settings end
+    return nil
+end
+function Inspection.onKey(pressed, released)
+    if pressed then state.keyDown=true end
+    if released then state.keyDown=false end
+end
+function Inspection.update(deltaTime)
+    if not state.keyDown then return end
+    state.holdTime = state.holdTime + deltaTime
+end
+function Inspection.pollInput()
+    local ok, inputState = pcall(function()
+        local container = Game.GetScriptableSystemsContainer()
+        if not container then return nil end
+        return container:Get(CName.new('StraightEdgedControls.SECInputState'))
+    end)
+
+    if not ok or not inputState then return end
+
+    local seq = inputState.inspectSeq
+    if seq == state.lastInspectSeq then return end
+    state.lastInspectSeq = seq
+
+    Inspection.onKey(inputState.inspectPressed, inputState.inspectReleased)
+end
+return Inspection
+'@
+
+Write-ModFile 'Straight Edged Controls' 'modules/settings_poll.lua' @'
+local FasterAiming = { tick=function() end, invalidate=function() end }
+local ScrollWalk = { tick=function() end, reset=function() end, setEnabled=function() end }
+local Lean = { reset=function() end, setDisableAutoCover=function() end, setAdsOnly=function() end, setFasterLeaning=function() end }
+local Settings = {}
+local lastMasterEnabled = nil
+local lastWeaponSwayDisabled = nil
+local lastFasterAiming = nil
+local lastToggleADS = nil
+local lastWheelMode = nil
+local lastZoomDisabled = nil
+local zoomReady = false
+local function getSettings()
+    local ok, settings = pcall(function()
+        local container = Game.GetScriptableSystemsContainer()
+        if not container then return nil end
+        return container:Get(CName.new('StraightEdgedControls.SECSettings'))
+    end)
+    if ok then return settings end
+    return nil
+end
+function Settings.invalidateZoom()
+    zoomReady = false
+    lastZoomDisabled = nil
+    FasterAiming.invalidate()
+    lastFasterAiming = nil
+    ScrollWalk.reset()
+    lastWheelMode = nil
+end
+function Settings.poll()
+    local settings = getSettings()
+    if not settings then return end
+    local masterEnabled = settings.masterEnabled
+    local fasterAiming = settings.fasterAiming
+    if masterEnabled ~= lastMasterEnabled then
+        lastMasterEnabled = masterEnabled
+    end
+    if masterEnabled then
+        FasterAiming.tick(fasterAiming and true or false)
+        lastFasterAiming = fasterAiming
+        ScrollWalk.tick()
+    end
+end
+return Settings
+'@
+
+Write-ModFile 'Straight Edged Controls' 'modules/attachments.lua' @'
+local UIBlocking = require('modules/ui_blocking')
+local Attachments = {}
+local state = {
+    lastSuppressorSeq = 0,
+    lastSightSeq = 0,
+    pending = nil,
+    holdArmed = { suppressor = false, sight = false },
+    holdTime = { suppressor = 0, sight = 0 },
+    holdFired = { suppressor = false, sight = false },
+}
+local function getSettings()
+    local ok, settings = pcall(function()
+        local container = Game.GetScriptableSystemsContainer()
+        if not container then return nil end
+        return container:Get(CName.new("StraightEdgedControls.SECSettings"))
+    end)
+    if ok then return settings end
+    return nil
+end
+local function featureAllowed()
+    local settings = getSettings()
+    if not settings then return false end
+    if not settings.masterEnabled then return false end
+    if UIBlocking.isBlocked() then return false end
+    return true
+end
+local function getAttachmentsBridge()
+    local ok, bridge = pcall(function()
+        local container = Game.GetScriptableSystemsContainer()
+        if not container then return nil end
+        return container:Get(CName.new("StraightEdgedControls.SECAttachments"))
+    end)
+    if ok then return bridge end
+    return nil
+end
+local function abortPending() state.pending=nil end
+local function startSwap(kind) state.pending={kind=kind,timer=1} end
+function Attachments.update(deltaTime)
+    if not featureAllowed() then
+        abortPending()
+        return
+    end
+
+    local bridge = getAttachmentsBridge()
+    if bridge then
+        if bridge.suppressorSeq ~= state.lastSuppressorSeq then
+            state.lastSuppressorSeq = bridge.suppressorSeq
+            if bridge.suppressorPressed then startSwap("suppressor") end
+        end
+
+        if bridge.sightSeq ~= state.lastSightSeq then
+            state.lastSightSeq = bridge.sightSeq
+            if bridge.sightPressed then startSwap("sight") end
+        end
+
+        for _, kind in ipairs({ "suppressor", "sight" }) do
+            if state.holdArmed[kind] and not state.holdFired[kind] then
+                state.holdTime[kind] = state.holdTime[kind] + deltaTime
+            end
+        end
+    end
+
+    if not state.pending then return end
+    state.pending.timer = state.pending.timer - deltaTime
+end
+function Attachments.reset()
+    abortPending()
+    state.lastSuppressorSeq = 0
+    state.lastSightSeq = 0
+end
+return Attachments
+'@
+
 Write-ModFile 'ImmersiveHeadInertia' 'init.lua' @'
 local Inertia = { onAction=function(name,value) return name == "CameraMouseX" or name == "CameraMouseY" end }
 registerForEvent("onInit", function()
