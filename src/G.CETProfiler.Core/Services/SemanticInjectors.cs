@@ -51,6 +51,7 @@ internal static class SemanticInjectors
             "good-feelings-hard-draw" => ApplyGoodFeelingsHardDraw(context),
             "air-backflip" => ApplyAirBackFlip(context),
             "auto-drop-weapon-on-pickup-equip" => ApplyAutoDropWeaponOnPickupEquip(context),
+            "tunnel-rescue" => ApplyTunnelRescue(context),
             "drone-companions-revamp" => ApplyDroneCompanionsRevamp(context),
             "ghost-void-system" => ApplyGhostVoidSystem(context),
             "straight-edged-controls-input-dormancy" => ApplyStraightEdgedControls(context),
@@ -2313,24 +2314,224 @@ internal static class SemanticInjectors
             "cfg.debugPrint",
             "Observe(\"PlayerPuppet\", \"OnAction\"");
 
-        var text = RegexReplaceOnce(
-            file.Text,
-            @"(?ms)^(?<indent>[ \t]*)if\s+not\s+action\s+then\s+return\s+end\s*\r?\n\s*local\s+aType\s*=\s*action:GetType\(\)\s*\r?\n\s*if\s+aType\s*~=\s*gameinputActionType\.BUTTON_PRESSED\s+then\s+return\s+end\s*\r?\n\s*local\s+name\s*=\s*getActionName\(action\)\s*$",
-            "    if not action then return end\n" +
-            "    local __gcetRawName = action:GetName(action)\n" +
-            "    local name = __gcetRawName and __gcetRawName.value or nil\n" +
-            "    if name == nil or name == \"\" then name = getActionName(action) end\n" +
-            "    -- G-CET: normal gameplay rejects unrelated actions before type decoding,\n" +
-            "    -- pcall/name conversion, player lookup or weapon inspection. Capture/debug\n" +
-            "    -- explicitly re-open the broad path, and captured names remain dynamic.\n" +
-            "    if not captureArmed and not cfg.debugPrint and not triggerActions[name] then return end\n" +
-            "    local aType = action:GetType()\n" +
-            "    if aType ~= gameinputActionType.BUTTON_PRESSED then return end",
-            "AutoDrop action-name hot prefilter");
+        var text = file.Text;
+
+        text = RegexReplaceOnce(
+            text,
+            @"(?ms)^[ \t]*registerForEvent\s*\(\s*[""']onInit[""']\s*,\s*function\s*\(\s*\)\s*\r?\n[ \t]*Observe\s*\(\s*[""']PlayerPuppet[""']\s*,\s*[""']OnAction[""']\s*,\s*function\s*\(\s*_\s*,\s*action\s*\)\s*\r?\n(?<body>.*?)[ \t]*end\s*\)\s*\r?\n[ \t]*\r?\n[ \t]*log\s*\(\s*[""']Loaded\.[^\r\n]*\r?\n[ \t]*end\s*\)\s*",
+            @"local __gcetAutoDropApi = nil
+local __gcetAutoDropExactHandles = {}
+local __gcetAutoDropExactNames = {}
+local __gcetAutoDropWildcardHandle = nil
+local __gcetAutoDropFallbackBroad = false
+local __gcetAutoDropRefreshWildcard
+local __gcetAutoDropSubscribeExact
+
+local function __gcetAutoDropHandleAction(_, action, consumer, routedName)
+    if not action then return end
+    local name = routedName
+    if name == nil or name == "" then
+        local raw = action:GetName(action)
+        name = raw and raw.value or nil
+        if name == nil or name == "" then name = getActionName(action) end
+    end
+
+    local aType = action:GetType()
+    if aType ~= gameinputActionType.BUTTON_PRESSED then return end
+
+    if captureArmed and t >= captureStart then
+        captureArmed = false
+        if not triggerActions[name] then
+            triggerActions[name] = true
+            if __gcetAutoDropSubscribeExact then __gcetAutoDropSubscribeExact(name) end
+        end
+        log("CAPTURED action name: " .. tostring(name) .. "  (added as trigger)")
+        if __gcetAutoDropRefreshWildcard then __gcetAutoDropRefreshWildcard() end
+    end
+
+    if cfg.debugPrint then
+        print(string.format("[ADWOP] Action=%s", tostring(name)))
+    end
+
+    if not triggerActions[name] then return end
+
+    local player = GetPlayer()
+    if not player then return end
+    local curID = getActiveWeaponItemID(player)
+    if not curID or isUnarmedItemID(curID) then return end
+
+    oldItemID = curID
+    oldKey = itemKey(curID)
+    pending = true
+    pendingUntil = t + cfg.swapWindow
+    dropAt = 0.0
+end
+
+__gcetAutoDropSubscribeExact = function(name)
+    if __gcetAutoDropFallbackBroad or not __gcetAutoDropApi or __gcetAutoDropExactNames[name] then return end
+    local ok, handle = pcall(function()
+        return __gcetAutoDropApi.SubscribeAction({
+            id = "G-CET.AutoDrop.Exact." .. tostring(name),
+            actions = { name },
+            decodeType = false
+        }, __gcetAutoDropHandleAction, "AutoDropWeaponOnPickupEquip")
+    end)
+    if ok and handle then
+        __gcetAutoDropExactNames[name] = true
+        __gcetAutoDropExactHandles[#__gcetAutoDropExactHandles + 1] = handle
+    end
+end
+
+__gcetAutoDropRefreshWildcard = function()
+    if __gcetAutoDropFallbackBroad or not __gcetAutoDropApi then return end
+    local wanted = captureArmed or cfg.debugPrint
+    if wanted and not __gcetAutoDropWildcardHandle then
+        local ok, handle = pcall(function()
+            return __gcetAutoDropApi.SubscribeAction({
+                id = "G-CET.AutoDrop.Wildcard",
+                actions = "*",
+                decodeType = false
+            }, function(this, action, consumer, routedName)
+                if routedName and triggerActions[routedName] then return end
+                __gcetAutoDropHandleAction(this, action, consumer, routedName)
+            end, "AutoDropWeaponOnPickupEquip")
+        end)
+        if ok then __gcetAutoDropWildcardHandle = handle end
+    elseif not wanted and __gcetAutoDropWildcardHandle then
+        if type(__gcetAutoDropWildcardHandle.unsubscribe) == "function" then
+            pcall(__gcetAutoDropWildcardHandle.unsubscribe)
+        end
+        __gcetAutoDropWildcardHandle = nil
+    end
+end
+
+registerForEvent("onInit", function()
+    local ok, engine = pcall(GetMod, "0-Engine")
+    if ok and type(engine) == "table" then
+        __gcetAutoDropApi = type(engine.GCET) == "table" and engine.GCET or engine
+    end
+
+    if __gcetAutoDropApi and type(__gcetAutoDropApi.SubscribeAction) == "function" then
+        local defaults = {
+            "Reload", "Interaction", "Interact", "Use", "ContextualAction",
+            "Loot", "PickUp", "Pickup", "Take"
+        }
+        for _, name in ipairs(defaults) do __gcetAutoDropSubscribeExact(name) end
+        __gcetAutoDropRefreshWildcard()
+    else
+        __gcetAutoDropFallbackBroad = true
+        Observe("PlayerPuppet", "OnAction", __gcetAutoDropHandleAction)
+    end
+
+    log("Loaded. (Optional) bind ADWOP inputs in CET -> Bindings -> Inputs.")
+end)
+",
+            "AutoDrop exact + temporary wildcard routing");
+
+        text = ReplaceOnce(
+            text,
+            "  captureArmed = true\n  captureStart = t + 0.15",
+            "  captureArmed = true\n  captureStart = t + 0.15\n  if __gcetAutoDropRefreshWildcard then __gcetAutoDropRefreshWildcard() end",
+            "AutoDrop capture wildcard wake");
+
+        text = ReplaceOnce(
+            text,
+            "  cfg.debugPrint = not cfg.debugPrint\n  log(\"debugPrint = \" .. tostring(cfg.debugPrint))",
+            "  cfg.debugPrint = not cfg.debugPrint\n  if __gcetAutoDropRefreshWildcard then __gcetAutoDropRefreshWildcard() end\n  log(\"debugPrint = \" .. tostring(cfg.debugPrint))",
+            "AutoDrop debug wildcard wake");
+
+        text = RegexReplaceOnce(
+            text,
+            @"(?m)^(?<opening>[ \t]*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*[""']onUpdate[""']\s*,\s*function\s*\(\s*dt\s*\)\s*)\r?\n(?<indent>[ \t]*)t\s*=\s*t\s*\+\s*\(dt\s+or\s+0\)\s*$",
+            "__OPENING__\n" +
+            "__INDENT__if not pending and not captureArmed then return end\n" +
+            "__INDENT__t = t + (dt or 0)",
+            "AutoDrop pending/capture-only update gate");
+
+        text = text.Replace("__OPENING__", "$" + "{opening}", StringComparison.Ordinal)
+                   .Replace("__INDENT__", "$" + "{indent}", StringComparison.Ordinal);
 
         context.Write(file, text);
         return SemanticInjectionResult.Success(
-            "Moved AutoDrop's source-proven trigger-name rejection ahead of action-type decoding, string conversion, player acquisition and weapon inspection. Capture/debug modes and dynamically learned trigger names retain the original broad behavior.");
+            "Replaced AutoDrop's global PlayerPuppet action observer with exact pickup/equip routes. Wildcard delivery exists only while capture/debug mode is explicitly active, newly captured names get exact subscriptions, and onUpdate sleeps unless capture timing or a pending swap needs it.");
+    }
+
+    private static SemanticInjectionResult ApplyTunnelRescue(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "init.lua",
+            "local function active()return fact('visit')==1 end",
+            "local function update(dt)",
+            "if H.tick<.15 then return end",
+            "JournalOffer.update",
+            "Rescue.surface",
+            "Life.frame",
+            "Swimming.frame",
+            "Street.frame",
+            "H.hooks:QuietTunnel");
+
+        var text = RegexReplaceOnce(
+            file.Text,
+            @"(?ms)^(?<opening>[ \t]*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*[""']onUpdate[""']\s*,\s*function\s*\(\s*dt\s*\)\s*)\r?\n(?<body>.*?)(?<close>^[ \t]*end\s*\)\s*$)",
+            @"local __gcetTunnelOutsideAcc = 0.0
+local __gcetTunnelWasInside = false
+__OPENING__
+ local __gcetTunnelInside = H.phase == 'inside'
+ if not __gcetTunnelInside then
+  __gcetTunnelOutsideAcc = __gcetTunnelOutsideAcc + (dt or 0)
+  if __gcetTunnelOutsideAcc < .15 then return end
+  dt = math.min(__gcetTunnelOutsideAcc, .5)
+  __gcetTunnelOutsideAcc = 0.0
+ else
+  __gcetTunnelOutsideAcc = 0.0
+ end
+
+ local ok,e=pcall(update,dt)
+
+ if ok and H.phase=='inside' then
+  if not H.lifeError then
+   local lifeOK,lifeError=pcall(Life.frame,dt,H,L)
+   if not lifeOK then H.lifeError=tostring(lifeError);pcall(Life.clear,H.hooks);print('[Below the Surface] Life layer: '..H.lifeError)end
+  end
+  if ok and valid(H.hooks)then ok,e=pcall(Swimming.frame,dt,H.hooks,H.blocked==nil and not H.overlay)end
+  if ok and not H.streetError then
+   local streetOK,streetError=pcall(Street.frame,dt,H,L)
+   if not streetOK then H.streetError=tostring(streetError);pcall(Street.clear);print('[Below the Surface] Street layer: '..H.streetError)end
+  end
+ elseif __gcetTunnelWasInside then
+  pcall(Life.clear,H.hooks)
+  pcall(Swimming.clear,H.hooks)
+  pcall(Street.clear)
+ end
+
+ local __gcetTunnelQuiet = ok and H.session and not H.error and not H.overlay
+  and H.blocked~='Close the game menu' and (H.phase=='arriving' or H.phase=='inside')
+ if valid(H.hooks)then H.hooks:QuietTunnel(__gcetTunnelQuiet)end
+ __gcetTunnelWasInside = H.phase=='inside'
+
+ if not ok then
+  H.error=tostring(e);if H.error~=H.lastError then print('[Below the Surface] '..H.error);H.lastError=H.error end
+  H.auto=false;H.manual=false
+  if H.session and H.phase~='outside'then pcall(leave,'Tunnel interrupted. Returning to the saved departure.')end
+  pcall(status)
+ end
+__CLOSE__",
+            "Tunnel quest-session outer dormancy");
+
+        text = text.Replace("__OPENING__", "$" + "{opening}", StringComparison.Ordinal)
+                   .Replace("__CLOSE__", "$" + "{close}", StringComparison.Ordinal);
+
+        text = RegexReplaceOnce(
+            text,
+            @"(?m)^(?<opening>[ \t]*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*[""']onDraw[""']\s*,\s*function\s*\(\s*\)\s*)if\s+H\.session\s+and\s+not\s+H\.overlay\s+and\s+not\s+H\.error\s+then\s+Timer\.draw\s*\(\s*\)\s+end\s+end\s*\)\s*$",
+            "__DRAWOPEN__if H.session and H.phase~='outside' and not H.overlay and not H.error then Timer.draw() end end)",
+            "Tunnel draw outside-phase gate");
+        text = text.Replace("__DRAWOPEN__", "$" + "{opening}", StringComparison.Ordinal);
+
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Moved Below the Surface's outside phase onto the author's existing 0.15 s decision cadence, kept Life/Swimming/Street frame work only while actually inside the tunnel, performed one-shot transition cleanup, and disabled tunnel Timer.draw while outside.");
     }
 
     private static SemanticInjectionResult ApplyDroneCompanionsRevamp(
