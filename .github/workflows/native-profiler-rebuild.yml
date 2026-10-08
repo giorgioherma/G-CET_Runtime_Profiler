@@ -52,6 +52,13 @@ jobs:
             throw "Rebuilt profiler payload is missing: $rebuilt"
           }
 
+          # Native compilation takes several minutes. The branch may advance
+          # meanwhile, so rebase onto its latest tip before staging generated
+          # files. This avoids unrelated docs/test commits causing a rejected
+          # non-fast-forward push after a successful native build.
+          git fetch origin dev/resolver-profiler-handoff
+          git rebase origin/dev/resolver-profiler-handoff
+
           Copy-Item $rebuilt 'payload\cyber_engine_tweaks.PROFILER.dll' -Force
           $hash = (Get-FileHash 'payload\cyber_engine_tweaks.PROFILER.dll' -Algorithm SHA256).Hash.ToLowerInvariant()
 
