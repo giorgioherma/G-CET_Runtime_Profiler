@@ -328,7 +328,7 @@ public sealed class MainForm : Form
         status.Font = new Font("Segoe UI", 9.5F);
         status.ReadOnly = true;
         status.BorderStyle = BorderStyle.None;
-        status.ScrollBars = RichTextBoxScrollBars.None;
+        status.ScrollBars = RichTextBoxScrollBars.Vertical;
         status.DetectUrls = false;
         status.TabStop = false;
         status.BackColor = ThemePanelAlt;
@@ -721,7 +721,7 @@ public sealed class MainForm : Form
             : "Frame-Time Profiler: Not provided ⚠️";
 
         var conflictLine = snapshot.KnownConflicts.Count == 0
-            ? "Known profiler conflicts: None detected ✅"
+            ? ""
             : "Known profiler conflicts: " +
               string.Join(", ", snapshot.KnownConflicts) +
               " · disable before capture ⚠️";
@@ -759,7 +759,7 @@ public sealed class MainForm : Form
             zeroLine + "\r\n" +
             schedulerLine + "\r\n" +
             frameLine + "\r\n" +
-            conflictLine + "\r\n" +
+            (string.IsNullOrWhiteSpace(conflictLine) ? "" : conflictLine + "\r\n") +
             syncLines + "\r\n" +
             $"G-CET PROFILER IS {installState}\r\n" +
             (snapshot.CaptureReadyForCollection
