@@ -3784,7 +3784,8 @@
           "AirBackflip_Backflip",
           "AirBackflip_SwingOver",
           "MoveY",
-          "BUTTON_PRESSED"
+          "ListenerAction.IsButtonJustPressed",
+          "ListenerAction.IsButtonJustReleased"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:air-backflip",
         "expectedMarkerFileCount": 1
@@ -3796,7 +3797,7 @@
           "flipInput",
           "moveYSpeedControl"
         ],
-        "note": "Route only MoveY and the five AirBackFlip game actions through 0-Engine. Preserve the original press/release handling, airborne eligibility, flip counters and frame cadence during an active flip."
+        "note": "Route only MoveY and the five AirBackFlip game actions through 0-Engine. Preserve the original ListenerAction press/release handling, airborne eligibility, flip counters and frame cadence during an active flip."
       },
       "generation": {
         "enabled": true,
@@ -3826,7 +3827,7 @@
       "identityHints": [
         "AutoDropWeaponOnPickupEquip"
       ],
-      "policyClass": "DYNAMIC_EXACT_ACTION_ROUTING",
+      "policyClass": "ACTION_NAME_PREFILTER_WITH_DYNAMIC_CAPTURE",
       "callbacks": [
         {
           "kind": "Observe",
@@ -3847,14 +3848,14 @@
         "expectedMarkerFileCount": 1
       },
       "behavior": {
-        "handler": "SEMANTIC_DYNAMIC_ACTION_ROUTING",
+        "handler": "SEMANTIC_ACTION_NAME_PREFILTER",
         "concepts": [
-          "fixedPickupActions",
-          "temporaryWildcardCapture",
-          "temporaryWildcardDebug",
-          "dynamicCapturedActionSubscription"
+          "triggerNameFastReject",
+          "captureMode",
+          "debugMode",
+          "dynamicCapturedTriggers"
         ],
-        "note": "Keep the normal pickup/equip path on exact routed actions. A wildcard 0-Engine subscription is active only while capture/debug mode explicitly needs all actions; newly captured action names are subscribed exactly so future pickups remain dormant otherwise."
+        "note": "Reject unrelated PlayerPuppet actions from the normal path using the native CName value before action-type decoding, string conversion, player lookup or weapon inspection. Capture/debug modes explicitly reopen the broad path and dynamically learned trigger names continue to work."
       },
       "generation": {
         "enabled": true,
@@ -3870,7 +3871,7 @@
         "evidenceStack": "SIXTH_STACK_POST_SEMANTIC",
         "admitted": true
       },
-      "cadenceGroup": "EXACT_INPUT_PLUS_ON_DEMAND_WILDCARD_DEBUG_CAPTURE",
+      "cadenceGroup": "BROAD_OBSERVER_CHEAP_NAME_PREFILTER_DYNAMIC_CAPTURE_PRESERVED",
       "catalogRole": "SEMANTIC_HOT_MOD",
       "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
       "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
