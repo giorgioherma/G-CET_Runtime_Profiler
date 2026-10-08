@@ -3727,10 +3727,13 @@
           "Bindings.IsActionDown(\"TOGGLE\")",
           "Event.Observe(\"PlayerPuppet\", \"OnAction\"",
           "SelfFeature.NoClip.HandleMouseLook",
-          "Utils.Weapon.HandleInputAction"
+          "Utils.Weapon.HandleInputAction",
+          "overlayShowWatermark",
+          "overlayShowGameVersion",
+          "ImGui.CalcTextSize"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:good-feelings",
-        "expectedMarkerFileCount": 2
+        "expectedMarkerFileCount": 3
       },
       "behavior": {
         "handler": "SEMANTIC_CLOSED_UI_PLUS_EXACT_ACTION_ROUTING",
@@ -3738,9 +3741,10 @@
           "closedMenuDormancy",
           "exactInputRouting",
           "featureHotkeysRemainLive",
-          "persistentOverlayPreserved"
+          "persistentOverlayPreserved",
+          "overlayTextMeasurementCache"
         ],
-        "note": "Keep the configured status overlay and feature hotkeys live. When the cheat menu is closed, skip menu-only restriction/cursor/navigation work while still polling the F4/controller wake binding and BindManager hotkeys. Route the only two source-proven PlayerPuppet actions (CameraMouseX and RangedAttack) through 0-Engine."
+        "note": "Keep the configured status overlay and feature hotkeys live. When the cheat menu is closed, skip menu-only restriction/cursor/navigation work while still polling the F4/controller wake binding and BindManager hotkeys. Route the only two source-proven PlayerPuppet actions (CameraMouseX and RangedAttack) through 0-Engine, and cache repeated status-overlay text measurements without changing draw cadence."
       },
       "generation": {
         "enabled": true,
