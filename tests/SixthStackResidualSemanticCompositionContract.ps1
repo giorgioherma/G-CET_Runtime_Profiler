@@ -31,12 +31,26 @@ function Write-ModFile([string]$Mod,[string]$Relative,[string]$Source) {
 }
 
 Write-ModFile 'GoodFeelings' 'init.lua' @'
-local Event = { Observe = Observe }
+local Event = {
+    Observe = Observe,
+    RegisterUpdate = function(fn) registerForEvent("onUpdate", fn) end,
+    RegisterDraw = function(fn) registerForEvent("onDraw", fn) end,
+}
 local modulesLoaded = true
+local Cron = { Update = function() end }
 local SelfFeature = { NoClip = { HandleMouseLook = function(action) end } }
-local Utils = { Weapon = { HandleInputAction = function(action) end } }
+local Utils = {
+    Weapon = { HandleInputAction = function(action) end },
+    StatModifiers = { UpdateSessionWatcher = function() end }
+}
 local Handler = { Update = function() end }
-local UI = { Overlay = { Render = function() end } }
+local State = { menuOpen = false }
+local UI = {
+    Notification = { Render = function() end },
+    Overlay = { Render = function() end }
+}
+local WelcomeWindow = { Render = function() end }
+local MainMenu = { Initialize = function() end }
 registerForEvent("onInit", function()
     Event.Observe("PlayerPuppet", "OnAction", function(_, action)
         if modulesLoaded then
@@ -47,10 +61,21 @@ registerForEvent("onInit", function()
         end
     end)
 end)
-registerForEvent("onDraw", function()
+Event.RegisterUpdate(function(dt)
+    Cron.Update(dt)
+    if not modulesLoaded then return end
+    Utils.StatModifiers.UpdateSessionWatcher()
+end)
+Event.RegisterDraw(function()
+    UI.Notification.Render()
+    WelcomeWindow.Render()
     UI.Overlay.Render()
     if not modulesLoaded then return end
+    MainMenu.Initialize()
     Handler.Update()
+    if State.menuOpen then
+        MainMenu.Initialize()
+    end
 end)
 '@
 
