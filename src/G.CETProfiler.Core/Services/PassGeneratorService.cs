@@ -17,7 +17,8 @@ public sealed record PassBuildResult(
 /// Generates a reversible overlay ZIP from resolver decisions only.
 /// Generic AUTO is deliberately restricted to mechanically source-proven recipes:
 /// ACTION_ROUTING_*, ACTION_OVERRIDE_EXACT_PREFILTER, FRAME_DISPATCH_CONSOLIDATION,
-/// INTERACTION_UI_IDLE_GUARD, and explicitly enabled finite shared-provider reads backed by 0-Engine.
+/// INTERACTION_UI_IDLE_GUARD, UI_VISIBILITY_DORMANCY, SEQUENCE_FIRST_SCRIPTABLE_SYSTEM_POLL,
+/// and explicitly enabled finite shared-provider reads backed by 0-Engine.
 /// Structural and dormancy analyzers may still emit evidence, but behavior-changing
 /// cadence is authorized only by source-proven semantic per-mod rules.
 /// </summary>
@@ -345,14 +346,16 @@ public static class PassGeneratorService
                 }
                 else if (resolverFamily.Equals("ONUPDATE", StringComparison.OrdinalIgnoreCase) &&
                          recipes.Any(x =>
-                             x.Equals("FRAME_DISPATCH_CONSOLIDATION", StringComparison.OrdinalIgnoreCase)))
+                             x.Equals("FRAME_DISPATCH_CONSOLIDATION", StringComparison.OrdinalIgnoreCase) ||
+                             x.Equals("SEQUENCE_FIRST_SCRIPTABLE_SYSTEM_POLL", StringComparison.OrdinalIgnoreCase)))
                 {
                     kind = CandidateKind.Frame;
                 }
                 else if (resolverFamily.Equals("ONDRAW", StringComparison.OrdinalIgnoreCase) &&
                          recipes.Any(x =>
                              x.Equals("FRAME_DISPATCH_CONSOLIDATION", StringComparison.OrdinalIgnoreCase) ||
-                             x.Equals("INTERACTION_UI_IDLE_GUARD", StringComparison.OrdinalIgnoreCase)))
+                             x.Equals("INTERACTION_UI_IDLE_GUARD", StringComparison.OrdinalIgnoreCase) ||
+                             x.Equals("UI_VISIBILITY_DORMANCY", StringComparison.OrdinalIgnoreCase)))
                 {
                     kind = CandidateKind.Frame;
                 }
@@ -409,10 +412,22 @@ public static class PassGeneratorService
                         x.Equals("FRAME_DISPATCH_CONSOLIDATION", StringComparison.OrdinalIgnoreCase)),
                     ApplyInteractionUiIdleGuard = recipes.Any(x =>
                         x.Equals("INTERACTION_UI_IDLE_GUARD", StringComparison.OrdinalIgnoreCase)),
+                    ApplyUiVisibilityDormancy = recipes.Any(x =>
+                        x.Equals("UI_VISIBILITY_DORMANCY", StringComparison.OrdinalIgnoreCase)),
+                    ApplySequenceFirstPolling = recipes.Any(x =>
+                        x.Equals("SEQUENCE_FIRST_SCRIPTABLE_SYSTEM_POLL", StringComparison.OrdinalIgnoreCase)),
                     InteractionUiFunction = facts.InteractionUiFunction,
                     InteractionUiGate = facts.InteractionUiGate,
                     InteractionUiIdleReset = facts.InteractionUiIdleReset,
-                    InteractionUiHubVariable = facts.InteractionUiHubVariable
+                    InteractionUiHubVariable = facts.InteractionUiHubVariable,
+                    UiVisibilityGate = facts.UiVisibilityGate,
+                    UiVisibilityWakeKind = facts.UiVisibilityWakeKind,
+                    SequenceSystemName = facts.SequenceSystemName,
+                    SequenceBridgeVariable = facts.SequenceBridgeVariable,
+                    SequenceVariable = facts.SequenceVariable,
+                    SequenceMember = facts.SequenceMember,
+                    SequenceLastVariable = facts.SequenceLastVariable,
+                    SequenceWrappedPcall = facts.SequenceWrappedPcall
                 });
             }
         }
@@ -528,7 +543,15 @@ public static class PassGeneratorService
             InteractionUiFunction = JsonString(facts, "interactionUiFunction"),
             InteractionUiGate = JsonString(facts, "interactionUiGate"),
             InteractionUiIdleReset = JsonString(facts, "interactionUiIdleReset"),
-            InteractionUiHubVariable = JsonString(facts, "interactionUiHubVariable")
+            InteractionUiHubVariable = JsonString(facts, "interactionUiHubVariable"),
+            UiVisibilityGate = JsonString(facts, "uiVisibilityGate"),
+            UiVisibilityWakeKind = JsonString(facts, "uiVisibilityWakeKind"),
+            SequenceSystemName = JsonString(facts, "sequenceSystemName"),
+            SequenceBridgeVariable = JsonString(facts, "sequenceBridgeVariable"),
+            SequenceVariable = JsonString(facts, "sequenceVariable"),
+            SequenceMember = JsonString(facts, "sequenceMember"),
+            SequenceLastVariable = JsonString(facts, "sequenceLastVariable"),
+            SequenceWrappedPcall = JsonBool(facts, "sequenceWrappedPcall")
         };
     }
 
@@ -775,6 +798,75 @@ public static class PassGeneratorService
                         skipped.Add(Skip(
                             candidate,
                             "Interaction-UI idle guard could not be revalidated after earlier generic transforms; leave the function unchanged."));
+                    }
+                }
+
+                if (candidate.ApplyUiVisibilityDormancy)
+                {
+                    var expectedProof = new UiVisibilityDormancyProof(
+                        candidate.UiVisibilityGate,
+                        candidate.UiVisibilityWakeKind);
+                    var currentText = string.Join("\n", lines);
+                    if (GenericUiVisibilityTransform.TryApply(
+                            currentText,
+                            expectedProof,
+                            out var rewrittenUiVisibility))
+                    {
+                        lines = rewrittenUiVisibility.Split('\n').ToList();
+                        transformManifest.Add(new
+                        {
+                            registrationId = candidate.RegistrationId,
+                            owner = candidate.Owner,
+                            type = "UI_VISIBILITY_DORMANCY",
+                            file = candidate.RelativeFile,
+                            gate = candidate.UiVisibilityGate,
+                            wake = candidate.UiVisibilityWakeKind,
+                            proof = "entire onDraw body is source-proven under one simple visibility gate with an independent wake writer"
+                        });
+                        applied++;
+                    }
+                    else
+                    {
+                        skipped.Add(Skip(
+                            candidate,
+                            "UI visibility dormancy proof could not be revalidated after earlier generic transforms; leave onDraw unchanged."));
+                    }
+                }
+
+                if (candidate.ApplySequenceFirstPolling)
+                {
+                    var expectedProof = new SequencePollingProof(
+                        candidate.SequenceSystemName,
+                        candidate.SequenceBridgeVariable,
+                        candidate.SequenceVariable,
+                        candidate.SequenceMember,
+                        candidate.SequenceLastVariable,
+                        candidate.SequenceWrappedPcall);
+                    var currentText = string.Join("\n", lines);
+                    if (GenericSequencePollingTransform.TryApply(
+                            currentText,
+                            expectedProof,
+                            out var rewrittenSequence))
+                    {
+                        lines = rewrittenSequence.Split('\n').ToList();
+                        transformManifest.Add(new
+                        {
+                            registrationId = candidate.RegistrationId,
+                            owner = candidate.Owner,
+                            type = "SEQUENCE_FIRST_SCRIPTABLE_SYSTEM_POLL",
+                            file = candidate.RelativeFile,
+                            system = candidate.SequenceSystemName,
+                            sequence = candidate.SequenceMember,
+                            last = candidate.SequenceLastVariable,
+                            proof = "literal ScriptableSystem bridge feeds an unchanged-sequence early return before later callback work"
+                        });
+                        applied++;
+                    }
+                    else
+                    {
+                        skipped.Add(Skip(
+                            candidate,
+                            "Sequence-first ScriptableSystem polling proof could not be revalidated after earlier generic transforms; leave callback unchanged."));
                     }
                 }
 
@@ -1486,10 +1578,28 @@ public static class PassGeneratorService
         public bool AlsoFrameDispatch { get; init; }
         public bool ApplyFrameDispatch { get; init; }
         public bool ApplyInteractionUiIdleGuard { get; init; }
+        public bool ApplyUiVisibilityDormancy { get; init; }
+        public bool ApplySequenceFirstPolling { get; init; }
         public string InteractionUiFunction { get; init; } = "";
         public string InteractionUiGate { get; init; } = "";
         public string InteractionUiIdleReset { get; init; } = "";
         public string InteractionUiHubVariable { get; init; } = "";
+        public string UiVisibilityGate { get; init; } = "";
+        public string UiVisibilityWakeKind { get; init; } = "";
+        public string SequenceSystemName { get; init; } = "";
+        public string SequenceBridgeVariable { get; init; } = "";
+        public string SequenceVariable { get; init; } = "";
+        public string SequenceMember { get; init; } = "";
+        public string SequenceLastVariable { get; init; } = "";
+        public bool SequenceWrappedPcall { get; init; }
+        public string UiVisibilityGate { get; init; } = "";
+        public string UiVisibilityWakeKind { get; init; } = "";
+        public string SequenceSystemName { get; init; } = "";
+        public string SequenceBridgeVariable { get; init; } = "";
+        public string SequenceVariable { get; init; } = "";
+        public string SequenceMember { get; init; } = "";
+        public string SequenceLastVariable { get; init; } = "";
+        public bool SequenceWrappedPcall { get; init; }
     }
 
 
