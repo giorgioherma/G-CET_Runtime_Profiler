@@ -4,7 +4,7 @@
   "targetCET": {
     "version": "1.37.1",
     "officialSha256": "43a7b94698979703f9dfa2b0950607c9a88f53b84bbf09a8e593c7e218d41059",
-    "profilerSha256": "df7c262c40ce33cf1fbfc46d65124df93c81ab24ab453967b13e90a1b2651d9b",
+    "profilerSha256": "cef9167d65ef564c5d58718f56b20757c1e4aa4ae1fc803f2d2b0ad130f08fcc",
     "profilerPackageFile": "cyber_engine_tweaks.PROFILER.dll",
     "profilerInstallFile": "cyber_engine_tweaks.asi"
   },
