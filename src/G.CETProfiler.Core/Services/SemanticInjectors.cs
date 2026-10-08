@@ -2314,20 +2314,25 @@ internal static class SemanticInjectors
             "cfg.debugPrint",
             "Observe(\"PlayerPuppet\", \"OnAction\"");
 
-        var text = file.Text;
+        var text = ReplaceOnce(
+            file.Text,
+            "local captureArmed = false\nlocal captureStart = 0.0",
+            "local __gcetAutoDropApi = nil\n" +
+            "local __gcetAutoDropExactHandles = {}\n" +
+            "local __gcetAutoDropExactNames = {}\n" +
+            "local __gcetAutoDropWildcardHandle = nil\n" +
+            "local __gcetAutoDropFallbackBroad = false\n" +
+            "local __gcetAutoDropWildcardDirty = false\n" +
+            "local __gcetAutoDropRefreshWildcard\n" +
+            "local __gcetAutoDropSubscribeExact\n\n" +
+            "local captureArmed = false\n" +
+            "local captureStart = 0.0",
+            "AutoDrop routing forward declarations");
 
         text = RegexReplaceOnce(
             text,
             @"(?ms)^[ \t]*registerForEvent\s*\(\s*[""']onInit[""']\s*,\s*function\s*\(\s*\)\s*\r?\n[ \t]*Observe\s*\(\s*[""']PlayerPuppet[""']\s*,\s*[""']OnAction[""']\s*,\s*function\s*\(\s*_\s*,\s*action\s*\)\s*\r?\n(?<body>.*?)[ \t]*end\s*\)\s*\r?\n[ \t]*\r?\n[ \t]*log\s*\(\s*[""']Loaded\.[^\r\n]*\r?\n[ \t]*end\s*\)\s*",
             """
-local __gcetAutoDropApi = nil
-local __gcetAutoDropExactHandles = {}
-local __gcetAutoDropExactNames = {}
-local __gcetAutoDropWildcardHandle = nil
-local __gcetAutoDropFallbackBroad = false
-local __gcetAutoDropRefreshWildcard
-local __gcetAutoDropSubscribeExact
-
 local function __gcetAutoDropHandleAction(_, action, consumer, routedName)
     if not action then return end
     local name = routedName
@@ -2347,7 +2352,7 @@ local function __gcetAutoDropHandleAction(_, action, consumer, routedName)
             if __gcetAutoDropSubscribeExact then __gcetAutoDropSubscribeExact(name) end
         end
         log("CAPTURED action name: " .. tostring(name) .. "  (added as trigger)")
-        if __gcetAutoDropRefreshWildcard then __gcetAutoDropRefreshWildcard() end
+        __gcetAutoDropWildcardDirty = true
     end
 
     if cfg.debugPrint then
@@ -2384,6 +2389,7 @@ __gcetAutoDropSubscribeExact = function(name)
 end
 
 __gcetAutoDropRefreshWildcard = function()
+    __gcetAutoDropWildcardDirty = false
     if __gcetAutoDropFallbackBroad or not __gcetAutoDropApi then return end
     local wanted = captureArmed or cfg.debugPrint
     if wanted and not __gcetAutoDropWildcardHandle then
@@ -2443,6 +2449,7 @@ end)
             text,
             @"(?m)^(?<opening>[ \t]*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*[""']onUpdate[""']\s*,\s*function\s*\(\s*dt\s*\)\s*)\r?\n(?<indent>[ \t]*)t\s*=\s*t\s*\+\s*\(dt\s+or\s+0\)\s*$",
             "__OPENING__\n" +
+            "__INDENT__if __gcetAutoDropWildcardDirty and __gcetAutoDropRefreshWildcard then __gcetAutoDropRefreshWildcard() end\n" +
             "__INDENT__if not pending and not captureArmed then return end\n" +
             "__INDENT__t = t + (dt or 0)",
             "AutoDrop pending/capture-only update gate");
