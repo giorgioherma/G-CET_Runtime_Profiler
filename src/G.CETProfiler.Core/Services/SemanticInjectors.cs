@@ -52,7 +52,6 @@ internal static class SemanticInjectors
             "air-backflip" => ApplyAirBackFlip(context),
             "auto-drop-weapon-dynamic-routing" => ApplyAutoDropWeaponOnPickupEquip(context),
             "tunnel-rescue" => ApplyTunnelRescue(context),
-            "dedra-judy-date-ui-dormancy" => ApplyDedraJudyDateUiDormancy(context),
             "fpv-drone-idle-dormancy" => ApplyFpvDroneIdleDormancy(context),
             "aerial-race-active-idle-split" => ApplyAerialRaceActiveIdleSplit(context),
             "appearance-menu-mod-squeeze" => ApplyAppearanceMenuModSqueeze(context),
@@ -2544,26 +2543,6 @@ __CLOSE__" + "\n",
             "Moved Below the Surface's outside phase onto the author's existing 0.15 s decision cadence while preserving the original frame-rate outer layers throughout every active quest phase, with one-shot cleanup on return to outside and no tunnel Timer.draw while outside.");
     }
 
-
-    private static SemanticInjectionResult ApplyDedraJudyDateUiDormancy(
-        SemanticPatchContext context)
-    {
-        var file = context.FindFile(
-            "init.lua",
-            "registerJudyDebugHotkeys",
-            "JudyDateSMS:onInit",
-            "if ui and ui.update then ui.update() end");
-
-        var text = RegexReplaceOnce(
-            file.Text,
-            @"(?m)^(?<opening>[ \t]*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*[""']onDraw[""']\s*,\s*function\s*\(\s*\)\s*)\r?\n[ \t]*if\s+ui\s+and\s+ui\.update\s+then\s+ui\.update\s*\(\s*\)\s+end\s*\r?\n(?<close>[ \t]*end\s*\)\s*)$",
-            "${opening}\n  if ui and ui.update and (ui.hubShown or ui.input) then ui.update() end\n${close}",
-            "Dedra Judy Date hidden interaction UI draw gate");
-
-        context.Write(file, text);
-        return SemanticInjectionResult.Success(
-            "Stopped the Judy-date interaction UI helper from polling dialog blackboards every rendered frame while its custom hub is hidden; a pending input-reset still gets one update, and visible hub behavior remains frame-rate.");
-    }
 
     private static SemanticInjectionResult ApplyFpvDroneIdleDormancy(
         SemanticPatchContext context)
