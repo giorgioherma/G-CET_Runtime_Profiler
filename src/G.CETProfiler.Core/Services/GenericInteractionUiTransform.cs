@@ -8,6 +8,15 @@ internal sealed record InteractionUiIdleGuardProof(
     string IdleResetStatement,
     string HubVariable);
 
+internal sealed record CrossFileInteractionUiCallProof(
+    string FunctionName,
+    string Receiver,
+    string GateExpression,
+    string PendingExpression,
+    string IdleResetStatement,
+    string ModuleRelativeFile,
+    string ModuleSha256);
+
 internal static class GenericInteractionUiTransform
 {
     private static readonly Regex CallbackCall = new(
@@ -21,6 +30,15 @@ internal static class GenericInteractionUiTransform
     private static readonly Regex FalseReset = new(
         @"^(?<lhs>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+)\s*=\s*false\s*;?\s*(?:--.*)?$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex CallOnlyOnDraw = new(
+        @"(?ms)^(?<opening>[ \t]*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*[""']onDraw[""']\s*,\s*function\s*\(\s*\)\s*\r?\n)" +
+        @"(?<indent>[ \t]*)if\s+(?<receiver>[A-Za-z_]\w*)\s+and\s+\k<receiver>\.(?<method>[A-Za-z_]\w*)\s+then\s+\k<receiver>\.\k<method>\s*\(\s*\)\s+end\s*\r?\n" +
+        @"(?<close>[ \t]*end\s*\)\s*;?\s*(?:--[^\r\n]*)?$)",
+        RegexOptions.Compiled |
+        RegexOptions.CultureInvariant |
+        RegexOptions.Multiline |
+        RegexOptions.Singleline);
 
     internal static bool TryProveForCallback(
         string fullText,
@@ -47,6 +65,130 @@ internal static class GenericInteractionUiTransform
         }
 
         return false;
+    }
+
+    internal static bool TryProveNamedFunction(
+        string fullText,
+        string functionName,
+        out InteractionUiIdleGuardProof proof)
+    {
+        proof = new InteractionUiIdleGuardProof("", "", "", "");
+        if (!TryProveFunction(fullText, functionName, out var shape))
+            return false;
+
+        proof = shape.Proof;
+        return true;
+    }
+
+    internal static bool TryProveCrossFileCall(
+        string callbackText,
+        string moduleText,
+        string moduleRelativeFile,
+        string moduleSha256,
+        out CrossFileInteractionUiCallProof proof)
+    {
+        proof = new CrossFileInteractionUiCallProof(
+            "", "", "", "", "", "", "");
+
+        var normalizedCallback = Normalize(callbackText);
+        var match = CallOnlyOnDraw.Match(normalizedCallback);
+        if (!match.Success ||
+            match.Index != 0 ||
+            match.Length != normalizedCallback.Length)
+            return false;
+
+        var receiver = match.Groups["receiver"].Value;
+        var method = match.Groups["method"].Value;
+        var functionName = receiver + "." + method;
+
+        if (!TryProveNamedFunction(moduleText, functionName, out var functionProof))
+            return false;
+
+        if (!functionProof.GateExpression.StartsWith(
+                receiver + ".",
+                StringComparison.Ordinal) ||
+            !functionProof.IdleResetStatement.StartsWith(
+                receiver + ".",
+                StringComparison.Ordinal))
+            return false;
+
+        var equals = functionProof.IdleResetStatement.IndexOf(
+            '=',
+            StringComparison.Ordinal);
+        if (equals <= 0)
+            return false;
+        var pendingExpression =
+            functionProof.IdleResetStatement[..equals].Trim();
+
+        var normalizedModule = Normalize(moduleText);
+        if (!Regex.IsMatch(
+                normalizedModule,
+                @"(?m)^[ \t]*return\s+" + Regex.Escape(receiver) + @"\s*(?:--.*)?$",
+                RegexOptions.CultureInvariant))
+            return false;
+
+        // A hidden callback can only be skipped if the visible state can be
+        // changed independently of that callback. The proved update body never
+        // writes the gate true, so this writer necessarily lives elsewhere in
+        // the module.
+        if (!Regex.IsMatch(
+                normalizedModule,
+                @"\b" + Regex.Escape(functionProof.GateExpression) +
+                @"\s*=\s*true\b",
+                RegexOptions.CultureInvariant))
+            return false;
+
+        proof = new CrossFileInteractionUiCallProof(
+            functionName,
+            receiver,
+            functionProof.GateExpression,
+            pendingExpression,
+            functionProof.IdleResetStatement,
+            moduleRelativeFile,
+            moduleSha256);
+        return true;
+    }
+
+    internal static bool TryApplyCrossFileCallGuard(
+        string fullText,
+        CrossFileInteractionUiCallProof expected,
+        out string transformed)
+    {
+        transformed = fullText;
+        var normalized = Normalize(fullText);
+        var method = expected.FunctionName[
+            (expected.FunctionName.LastIndexOf('.') + 1)..];
+
+        var matches = CallOnlyOnDraw.Matches(normalized)
+            .Cast<Match>()
+            .Where(m =>
+                m.Groups["receiver"].Value.Equals(
+                    expected.Receiver,
+                    StringComparison.Ordinal) &&
+                m.Groups["method"].Value.Equals(
+                    method,
+                    StringComparison.Ordinal))
+            .ToList();
+
+        if (matches.Count != 1)
+            return false;
+
+        var match = matches[0];
+        var guarded =
+            match.Groups["opening"].Value +
+            match.Groups["indent"].Value +
+            "if " + expected.Receiver +
+            " and " + expected.FunctionName +
+            " and (" + expected.GateExpression +
+            " or " + expected.PendingExpression +
+            ") then " + expected.FunctionName + "() end\n" +
+            match.Groups["close"].Value;
+
+        transformed =
+            normalized[..match.Index] +
+            guarded +
+            normalized[(match.Index + match.Length)..];
+        return true;
     }
 
     internal static bool TryApply(
