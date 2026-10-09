@@ -286,7 +286,6 @@ try {
         'G-CET semantic:appearance-menu-mod-squeeze',
         'if not drawWindow and not AMM.Props.buildMode then return end',
         'function AMM:GetTarget()',
-        'local targetingSystem = Game.GetTargetingSystem()',
         'local target = targetingSystem and (targetingSystem:GetLookAtObject(player, true, false) or targetingSystem:GetLookAtObject(player, false, false)) or nil',
         'AMM.currentTarget = AMM:GetTarget()',
         'Cron.After(1, function()',
@@ -298,6 +297,10 @@ try {
     )
     foreach($token in $required) {
         if(-not $txt.Contains($token)) { throw "Generated AMM source missing preserved/optimized token: $token" }
+    }
+
+    if($txt -notmatch 'local targetingSystem = (?:Game\.GetTargetingSystem|__gcetGetTargetingSystem)\(\)') {
+        throw 'AMM GetTarget did not collapse targeting-system acquisition to one local provider handle.'
     }
 
     $forbidden=@(
