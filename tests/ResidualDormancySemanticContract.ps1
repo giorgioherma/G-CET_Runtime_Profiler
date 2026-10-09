@@ -210,9 +210,9 @@ try {
   $aerial=Read-ZipText ($base+'AerialRace/init.lua')
   if($aerial -notmatch '__gcetAerialIdleElapsed' -or $aerial -notmatch '< 0\.20') { throw 'Aerial idle discovery split incomplete.' }
   $aerialCron=$aerial.IndexOf('Cron.Update(dt)')
-  $aerialPlatforms=$aerial.IndexOf('updatePlatforms()')
-  $aerialGate=$aerial.IndexOf('__gcetAerialBusy')
-  $aerialDiscovery=$aerial.IndexOf('if checkpointsSpawned == false')
+  $aerialPlatforms=$aerial.IndexOf('updatePlatforms()',$aerialCron)
+  $aerialGate=$aerial.IndexOf('__gcetAerialBusy',$aerialCron)
+  $aerialDiscovery=$aerial.IndexOf('if checkpointsSpawned == false',$aerialCron)
   if($aerialCron -lt 0 -or $aerialPlatforms -lt 0 -or $aerialGate -lt 0 -or $aerialDiscovery -lt 0 -or
      $aerialCron -gt $aerialPlatforms -or $aerialPlatforms -gt $aerialGate -or $aerialGate -gt $aerialDiscovery) {
     throw 'Aerial lane ordering is wrong: Cron/platforms must stay realtime before the idle race-discovery gate.'
