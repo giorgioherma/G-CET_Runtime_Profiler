@@ -507,4 +507,25 @@ finally {
     $zip.Dispose()
 }
 
+# Install only the already-generated composed callback output and resolve again.
+# The second pass must recognize the frame registrar as satisfied and must not
+# rediscover the call guard or emit a duplicate transform.
+[System.IO.File]::WriteAllText(
+    (Join-Path $mods 'GenericCrossFileUiComposedFixture\init.lua'),
+    $composedCrossUi,
+    [System.Text.UTF8Encoding]::new($false))
+$rerun = (& $resolverExe --capture $capture --mods $mods --json | ConvertFrom-Json)
+if(!$rerun.ok) { throw 'Idempotence resolver rerun failed.' }
+$rerunResolver = Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
+$composedRerun = @($rerunResolver.callbackFamilies |
+    Where-Object { $_.target -eq 'onDraw' } |
+    ForEach-Object { $_.topConsumers } |
+    Where-Object { $_.owner -eq 'GenericCrossFileUiComposedFixture' })[0]
+if($null -eq $composedRerun -or
+   $composedRerun.generic.Status -ne 'ALREADY_SATISFIED' -or
+   $composedRerun.generic.Automatable -or
+   @($composedRerun.generic.RecipeFamilies).Count -ne 0) {
+    throw "Composed cross-file UI transform is not resolver-idempotent. Status=$($composedRerun.generic.Status) Pattern=$($composedRerun.generic.Pattern)"
+}
+
 Write-Host 'Generic UI visibility + cross-file interaction UI + sequence-first ScriptableSystem polling contract passed.'
