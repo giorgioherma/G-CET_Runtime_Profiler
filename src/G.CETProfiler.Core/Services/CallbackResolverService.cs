@@ -1573,7 +1573,8 @@ internal static class CallbackResolverService
             return ResolveOnDraw(
                 callback,
                 source,
-                sourceEvidence);
+                sourceEvidence,
+                sourceIndex);
 
         // Structural callback-local rewrites do not depend on the callback
         // delivery family. Unsupported cadence/routing families should still
@@ -1620,7 +1621,8 @@ internal static class CallbackResolverService
     private static GenericResolution ResolveOnDraw(
         CallbackMetric callback,
         ResolvedSource? source,
-        SourceEvidence? sourceEvidence)
+        SourceEvidence? sourceEvidence,
+        LiveSourceIndex sourceIndex)
     {
         var evidence = new List<string>();
         var blockers = new List<string>();
@@ -1681,6 +1683,7 @@ internal static class CallbackResolverService
         }
 
         InteractionUiIdleGuardProof? interactionUiGuard = null;
+        CrossFileInteractionUiCallProof? crossFileInteractionUi = null;
         UiVisibilityDormancyProof? uiVisibilityDormancy = null;
         if (source is not null &&
             GenericInteractionUiTransform.TryProveForCallback(
@@ -1693,6 +1696,20 @@ internal static class CallbackResolverService
             evidence.Add(
                 $"Source proves {guard.FunctionName} reads getDialogChoiceHubs() only for the visible '{guard.GateExpression}' branch; " +
                 "the hidden path has no work except the preserved false-state reset.");
+        }
+
+        if (source is not null &&
+            sourceIndex.TryResolveCrossFileInteractionUi(
+                callback.Owner,
+                source,
+                out var crossFileUi))
+        {
+            crossFileInteractionUi = crossFileUi;
+            recipes.Add("CROSS_FILE_INTERACTION_UI_IDLE_CALL_GUARD");
+            evidence.Add(
+                $"Call-only onDraw delegates to {crossFileUi.FunctionName} in {crossFileUi.ModuleRelativeFile}; " +
+                $"that module proves hidden work is only '{crossFileUi.IdleResetStatement}', so the call can sleep until " +
+                $"'{crossFileUi.GateExpression}' or '{crossFileUi.PendingExpression}' becomes true.");
         }
 
         if (source is not null &&
@@ -1716,7 +1733,9 @@ internal static class CallbackResolverService
                 : "ONDRAW_UNRESOLVED";
 
         var facts =
-            interactionUiGuard is null && uiVisibilityDormancy is null
+            interactionUiGuard is null &&
+            crossFileInteractionUi is null &&
+            uiVisibilityDormancy is null
                 ? null
                 : new
                 {
@@ -1725,6 +1744,14 @@ internal static class CallbackResolverService
                     interactionUiGate = interactionUiGuard?.GateExpression ?? "",
                     interactionUiIdleReset = interactionUiGuard?.IdleResetStatement ?? "",
                     interactionUiHubVariable = interactionUiGuard?.HubVariable ?? "",
+                    crossFileInteractionUiIdleCallGuard = crossFileInteractionUi is not null,
+                    crossFileInteractionUiFunction = crossFileInteractionUi?.FunctionName ?? "",
+                    crossFileInteractionUiReceiver = crossFileInteractionUi?.Receiver ?? "",
+                    crossFileInteractionUiGate = crossFileInteractionUi?.GateExpression ?? "",
+                    crossFileInteractionUiPending = crossFileInteractionUi?.PendingExpression ?? "",
+                    crossFileInteractionUiIdleReset = crossFileInteractionUi?.IdleResetStatement ?? "",
+                    crossFileInteractionUiModuleFile = crossFileInteractionUi?.ModuleRelativeFile ?? "",
+                    crossFileInteractionUiModuleSha256 = crossFileInteractionUi?.ModuleSha256 ?? "",
                     uiVisibilityDormancy = uiVisibilityDormancy is not null,
                     uiVisibilityGate = uiVisibilityDormancy?.GateExpression ?? "",
                     uiVisibilityWakeKind = uiVisibilityDormancy?.WakeKind ?? ""
@@ -4950,6 +4977,78 @@ internal static class CallbackResolverService
             }
 
             return null;
+        }
+
+        public bool TryResolveCrossFileInteractionUi(
+            string owner,
+            ResolvedSource callbackSource,
+            out CrossFileInteractionUiCallProof proof)
+        {
+            proof = new CrossFileInteractionUiCallProof(
+                "", "", "", "", "", "", "");
+
+            var callback = callbackSource.CallbackText
+                .Replace("\r\n", "\n", StringComparison.Ordinal)
+                .Replace('\r', '\n');
+            var call = Regex.Match(
+                callback,
+                @"(?ms)^[ \t]*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*[""']onDraw[""']\s*,\s*function\s*\(\s*\)\s*\r?\n" +
+                @"[ \t]*if\s+(?<receiver>[A-Za-z_]\w*)\s+and\s+\k<receiver>\.(?<method>[A-Za-z_]\w*)\s+then\s+\k<receiver>\.\k<method>\s*\(\s*\)\s+end\s*\r?\n" +
+                @"[ \t]*end\s*\)\s*;?\s*(?:--[^\r\n]*)?$",
+                RegexOptions.CultureInvariant);
+            if (!call.Success ||
+                call.Index != 0 ||
+                call.Length != callback.Length)
+                return false;
+
+            var receiver = call.Groups["receiver"].Value;
+            var bindingMatches = Regex.Matches(
+                    callbackSource.FullText,
+                    @"(?m)^[ \t]*local\s+" + Regex.Escape(receiver) +
+                    @"\s*=\s*require\s*\(\s*[""'](?<path>[^""']+)[""']\s*\)\s*(?:--.*)?$",
+                    RegexOptions.CultureInvariant)
+                .Cast<Match>()
+                .ToList();
+            if (bindingMatches.Count != 1)
+                return false;
+
+            var moduleName = bindingMatches[0].Groups["path"].Value;
+            if (string.IsNullOrWhiteSpace(moduleName) ||
+                Path.IsPathRooted(moduleName) ||
+                moduleName.Contains("..", StringComparison.Ordinal))
+                return false;
+
+            var ownerFolder = ResolveOwnerFolder(owner);
+            if (ownerFolder is null)
+                return false;
+
+            var relativeBase = moduleName.Replace(
+                '/',
+                Path.DirectorySeparatorChar);
+            var moduleCandidates = new[]
+                {
+                    Path.Combine(ownerFolder, relativeBase + ".lua"),
+                    Path.Combine(ownerFolder, relativeBase, "init.lua")
+                }
+                .Where(File.Exists)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (moduleCandidates.Count != 1)
+                return false;
+
+            var modulePath = moduleCandidates[0];
+            var moduleText = File.ReadAllText(modulePath);
+            var moduleRelative = Path.GetRelativePath(
+                    _modsRoot,
+                    modulePath)
+                .Replace('\\', '/');
+
+            return GenericInteractionUiTransform.TryProveCrossFileCall(
+                callbackSource.CallbackText,
+                moduleText,
+                moduleRelative,
+                Sha256(modulePath),
+                out proof);
         }
 
         public IReadOnlyList<OwnerMethodDefinition> FindOwnerMethodDefinitions(
