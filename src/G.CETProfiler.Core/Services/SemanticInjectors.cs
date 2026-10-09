@@ -2430,7 +2430,7 @@ registerForEvent("onInit", function()
 
     log("Loaded. (Optional) bind ADWOP inputs in CET -> Bindings -> Inputs.")
 end)
-""",
+""" + "\n",
             "AutoDrop exact + temporary wildcard routing");
 
         text = ReplaceOnce(
@@ -2522,7 +2522,7 @@ __OPENING__
   if H.session and H.phase~='outside'then pcall(leave,'Tunnel interrupted. Returning to the saved departure.')end
   pcall(status)
  end
-__CLOSE__",
+__CLOSE__" + "\n",
             "Tunnel quest-session outer dormancy");
 
         text = text.Replace("__OPENING__", "$" + "{opening}", StringComparison.Ordinal)
@@ -2531,7 +2531,7 @@ __CLOSE__",
         text = RegexReplaceOnce(
             text,
             @"(?m)^(?<opening>[ \t]*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*[""']onDraw[""']\s*,\s*function\s*\(\s*\)\s*)if\s+H\.session\s+and\s+not\s+H\.overlay\s+and\s+not\s+H\.error\s+then\s+Timer\.draw\s*\(\s*\)\s*end\s+end\s*\)\s*$",
-            "__DRAWOPEN__if H.session and H.phase~='outside' and not H.overlay and not H.error then Timer.draw() end end)",
+            "__DRAWOPEN__if H.session and H.phase~='outside' and not H.overlay and not H.error then Timer.draw() end end)\n",
             "Tunnel draw outside-phase gate");
         text = text.Replace("__DRAWOPEN__", "$" + "{opening}", StringComparison.Ordinal);
 
