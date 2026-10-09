@@ -141,12 +141,17 @@ internal static class SemanticPassGeneratorService
                     runtime.ValueKind != JsonValueKind.Object)
                     continue;
 
-                var runtimeMs = JsonDouble(runtime, "exclusiveMsPerSecond");
-                if (runtimeMs < MaterialThresholdMsPerSecond)
-                    continue;
-
                 if (!consumer.TryGetProperty("semantic", out var semantic) ||
                     semantic.ValueKind != JsonValueKind.Object)
+                    continue;
+
+                var runtimeMs = JsonDouble(runtime, "exclusiveMsPerSecond");
+                var runtimeThresholdMs = JsonDouble(
+                    semantic,
+                    "RuntimeThresholdMsPerSecond");
+                if (runtimeThresholdMs <= 0.0)
+                    runtimeThresholdMs = MaterialThresholdMsPerSecond;
+                if (runtimeMs < runtimeThresholdMs)
                     continue;
 
                 if (!JsonBool(semantic, "Matched") ||
