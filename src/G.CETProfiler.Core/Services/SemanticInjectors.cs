@@ -52,6 +52,9 @@ internal static class SemanticInjectors
             "air-backflip" => ApplyAirBackFlip(context),
             "auto-drop-weapon-dynamic-routing" => ApplyAutoDropWeaponOnPickupEquip(context),
             "tunnel-rescue" => ApplyTunnelRescue(context),
+            "dedra-judy-date-ui-dormancy" => ApplyDedraJudyDateUiDormancy(context),
+            "fpv-drone-idle-dormancy" => ApplyFpvDroneIdleDormancy(context),
+            "aerial-race-active-idle-split" => ApplyAerialRaceActiveIdleSplit(context),
             "drone-companions-revamp" => ApplyDroneCompanionsRevamp(context),
             "ghost-void-system" => ApplyGhostVoidSystem(context),
             "straight-edged-controls-input-dormancy" => ApplyStraightEdgedControls(context),
@@ -2538,6 +2541,113 @@ __CLOSE__" + "\n",
         context.Write(file, text);
         return SemanticInjectionResult.Success(
             "Moved Below the Surface's outside phase onto the author's existing 0.15 s decision cadence while preserving the original frame-rate outer layers throughout every active quest phase, with one-shot cleanup on return to outside and no tunnel Timer.draw while outside.");
+    }
+
+
+    private static SemanticInjectionResult ApplyDedraJudyDateUiDormancy(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "init.lua",
+            "registerJudyDebugHotkeys",
+            "JudyDateSMS:onInit",
+            "if ui and ui.update then ui.update() end");
+
+        var text = RegexReplaceOnce(
+            file.Text,
+            @"(?m)^(?<opening>[ \t]*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*[""']onDraw[""']\s*,\s*function\s*\(\s*\)\s*)\r?\n[ \t]*if\s+ui\s+and\s+ui\.update\s+then\s+ui\.update\s*\(\s*\)\s+end\s*\r?\n(?<close>[ \t]*end\s*\)\s*)$",
+            "${opening}\n  if ui and ui.update and (ui.hubShown or ui.input) then ui.update() end\n${close}",
+            "Dedra Judy Date hidden interaction UI draw gate");
+
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Stopped the Judy-date interaction UI helper from polling dialog blackboards every rendered frame while its custom hub is hidden; a pending input-reset still gets one update, and visible hub behavior remains frame-rate.");
+    }
+
+    private static SemanticInjectionResult ApplyFpvDroneIdleDormancy(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "fpv/bindings.lua",
+            "updateFPVController(deltaTime)",
+            "updateFPVDroneDeathTransitionGuard()",
+            "updatePendingDroneDespawn(deltaTime)",
+            "playerProtection.active",
+            "updateIncrementalGarbageCollection(deltaTime)");
+
+        var opening = FindOnUpdateOpening(file.Text, "deltaTime");
+        var replacement =
+            "local __gcetFpvIdleElapsed = 0.0\n\n" +
+            opening +
+            "    local __gcetFpvBusy = droneEnabled\n" +
+            "        or droneViewActive\n" +
+            "        or pendingDroneViewEntry\n" +
+            "        or pendingDroneDespawnID ~= nil\n" +
+            "        or playerProtection.active\n" +
+            "        or playerProtectionReleaseTimer > 0.0\n" +
+            "        or playerCameraRestoreTimer > 0.0\n" +
+            "        or droneViewSaveLockActive\n" +
+            "        or droneAudioStarted\n" +
+            "        or FPVDroneAutoSaveGuard.desiredLocked == true\n" +
+            "    if not __gcetFpvBusy then\n" +
+            "        __gcetFpvIdleElapsed = __gcetFpvIdleElapsed + math.max(0.0, deltaTime or 0.0)\n" +
+            "        if __gcetFpvIdleElapsed < 0.50 then return end\n" +
+            "        deltaTime = __gcetFpvIdleElapsed\n" +
+            "        __gcetFpvIdleElapsed = 0.0\n" +
+            "    else\n" +
+            "        __gcetFpvIdleElapsed = 0.0\n" +
+            "    end\n\n";
+
+        var text = ReplaceOnce(
+            file.Text,
+            opening,
+            replacement,
+            "FPV Drone active/cleanup versus fully-idle update split");
+
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Kept active flight and every cleanup/pending state on the rendered-frame path, while a fully idle FPVDrone falls to a 2 Hz controller/maintenance heartbeat. The toggle hotkey sets droneEnabled outside onUpdate, so activation wakes on the very next frame.");
+    }
+
+    private static SemanticInjectionResult ApplyAerialRaceActiveIdleSplit(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "init.lua",
+            "Cron.Update(dt)",
+            "settings.usePlatforms",
+            "checkpointsSpawned",
+            "nc1.Update()");
+
+        var opening = FindOnUpdateOpening(file.Text, "dt");
+        var text = ReplaceOnce(
+            file.Text,
+            opening,
+            "local __gcetAerialIdleElapsed = 0.0\n\n" + opening,
+            "AerialRace idle accumulator");
+
+        var cron = "    Cron.Update(dt)\n";
+        var split =
+            cron +
+            "\n" +
+            "    local __gcetAerialBusy = nc1.raceActive == true or nc1.resetTimeTarget ~= nil\n" +
+            "    if not __gcetAerialBusy then\n" +
+            "        __gcetAerialIdleElapsed = __gcetAerialIdleElapsed + math.max(0.0, dt or 0.0)\n" +
+            "        if __gcetAerialIdleElapsed < 0.20 then return end\n" +
+            "        __gcetAerialIdleElapsed = 0.0\n" +
+            "    else\n" +
+            "        __gcetAerialIdleElapsed = 0.0\n" +
+            "    end\n";
+
+        text = ReplaceOnce(
+            text,
+            cron,
+            split,
+            "AerialRace frame-fed Cron boundary");
+
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Kept Cron frame-fed and active race/reset-grace work realtime; inactive checkpoint/platform discovery runs at 5 Hz, preserving proximity-based race wake with at most a 200 ms discovery delay.");
     }
 
     private static SemanticInjectionResult ApplyDroneCompanionsRevamp(
