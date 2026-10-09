@@ -3871,7 +3871,7 @@
       ]
     },
     {
-      "id": "auto-drop-weapon-on-pickup-equip",
+      "id": "auto-drop-weapon-dynamic-routing",
       "identityHints": [
         "AutoDropWeaponOnPickupEquip"
       ],
