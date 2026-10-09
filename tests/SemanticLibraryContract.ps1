@@ -38,8 +38,18 @@ foreach ($entry in $entries) {
     if ($entry.generation.shipReferenceOverride -or $entry.referenceOverrideAllowed) {
         throw "Production semantic rule can ship a reference override: $($entry.id)"
     }
-    if ([double]$entry.runtimeAdmission.thresholdMsPerSecond -lt 3.0) {
-        throw "Production semantic rule bypasses the 3 ms/s runtime admission floor: $($entry.id)"
+    $runtimeThreshold = [double]$entry.runtimeAdmission.thresholdMsPerSecond
+    if ($runtimeThreshold -le 0.0 -or $runtimeThreshold -gt 3.0) {
+        throw "Production semantic rule has an invalid runtime admission threshold: $($entry.id) = $runtimeThreshold"
+    }
+    if ($runtimeThreshold -lt 3.0) {
+        if ([string]::IsNullOrWhiteSpace([string]$entry.runtimeAdmission.rationale)) {
+            throw "Rule-local semantic threshold has no explicit rationale: $($entry.id)"
+        }
+        if (!$entry.runtimeAdmission.admitted -or
+            [double]$entry.runtimeAdmission.measuredPeakExclusiveMsPerSecond -lt $runtimeThreshold) {
+            throw "Rule-local semantic threshold lacks measured admission evidence: $($entry.id)"
+        }
     }
     if ([int]$entry.sourceProof.expectedMarkerFileCount -lt 1) {
         throw "Production semantic rule does not define complete-state marker coverage: $($entry.id)"
@@ -72,6 +82,9 @@ foreach ($entry in $entries) {
     }
 }
 
+if ([double]$library.policy.admissionPolicy.runtimeThresholdMsPerSecond -ne 3.0) {
+    throw 'Default semantic admission floor is no longer 3 ms/s.'
+}
 if (!$library.policy.productionEntriesMustGenerate) {
     throw 'Semantic library policy no longer requires production entries to generate.'
 }
