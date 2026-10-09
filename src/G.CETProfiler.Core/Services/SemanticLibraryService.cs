@@ -18,13 +18,14 @@ internal sealed record SemanticRuleMatch(
     string Handler,
     string PatchStyle,
     bool GenerationEnabled,
+    double RuntimeThresholdMsPerSecond,
     bool ShipReferenceOverride,
     string[] MatchedAnchors,
     string[] MissingAnchors,
     object? Graph)
 {
     internal static SemanticRuleMatch None { get; } = new(
-        false, false, false, false, "", false, 0, 0, "", "", "", "", false, false,
+        false, false, false, false, "", false, 0, 0, "", "", "", "", false, 3.0, false,
         Array.Empty<string>(), Array.Empty<string>(), null);
 }
 
@@ -121,6 +122,21 @@ internal sealed class SemanticLibraryService
                         handler = JsonString(behavior, "handler");
                     }
 
+                    var runtimeThresholdMsPerSecond = 3.0;
+                    if (row.TryGetProperty("runtimeAdmission", out var runtimeAdmissionRow) &&
+                        runtimeAdmissionRow.ValueKind == JsonValueKind.Object)
+                    {
+                        var configuredThreshold = JsonDouble(
+                            runtimeAdmissionRow,
+                            "thresholdMsPerSecond",
+                            3.0);
+                        if (configuredThreshold > 0.0 &&
+                            configuredThreshold <= 3.0)
+                        {
+                            runtimeThresholdMsPerSecond = configuredThreshold;
+                        }
+                    }
+
                     var generation = new GenerationPolicy();
                     if (row.TryGetProperty("generation", out var generationRow) &&
                         generationRow.ValueKind == JsonValueKind.Object)
@@ -143,6 +159,7 @@ internal sealed class SemanticLibraryService
                         Callbacks = callbacks.ToArray(),
                         Proof = proof,
                         Handler = handler,
+                        RuntimeThresholdMsPerSecond = runtimeThresholdMsPerSecond,
                         Generation = generation
                     });
                 }
@@ -218,6 +235,7 @@ internal sealed class SemanticLibraryService
                 "",
                 "",
                 false,
+                3.0,
                 false,
                 Array.Empty<string>(),
                 new[] { "Multiple semantic rules matched the same owner/callback; Resolver refused to guess across mod variants." },
@@ -241,6 +259,7 @@ internal sealed class SemanticLibraryService
                 rule.Handler,
                 rule.Generation.PatchStyle,
                 rule.Generation.Enabled,
+                rule.RuntimeThresholdMsPerSecond,
                 rule.Generation.ShipReferenceOverride,
                 Array.Empty<string>(),
                 new[] { "Live mod folder could not be resolved." },
@@ -298,6 +317,7 @@ internal sealed class SemanticLibraryService
             rule.Handler,
             rule.Generation.PatchStyle,
             rule.Generation.Enabled,
+            rule.RuntimeThresholdMsPerSecond,
             rule.Generation.ShipReferenceOverride,
             matched.ToArray(),
             missing.ToArray(),
@@ -601,6 +621,18 @@ internal sealed class SemanticLibraryService
         return value.GetString() ?? "";
     }
 
+    private static double JsonDouble(
+        JsonElement element,
+        string name,
+        double fallback)
+    {
+        if (!element.TryGetProperty(name, out var value) ||
+            value.ValueKind != JsonValueKind.Number ||
+            !value.TryGetDouble(out var number))
+            return fallback;
+        return number;
+    }
+
     private static long JsonLong(JsonElement element, string name)
     {
         if (!element.TryGetProperty(name, out var value) ||
@@ -655,6 +687,7 @@ internal sealed class SemanticLibraryService
         internal CallbackSelector[] Callbacks { get; init; } = Array.Empty<CallbackSelector>();
         internal SourceProof Proof { get; init; } = new();
         internal string Handler { get; init; } = "";
+        internal double RuntimeThresholdMsPerSecond { get; init; } = 3.0;
         internal GenerationPolicy Generation { get; init; } = new();
     }
 
