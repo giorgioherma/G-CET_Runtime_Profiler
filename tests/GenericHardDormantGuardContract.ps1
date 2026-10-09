@@ -96,6 +96,29 @@ registerForEvent("onUpdate", function(dt)
 end)
 '@
 
+# REJECT 2: a Get*-looking member call is not proof of purity.
+# This one mutates state, so generic AUTO must refuse to move the guard.
+Write-ModFile 'HardDormantRejectDeceptiveGetter' 'init.lua' @'
+local enabled = false
+local counter = 0
+local reader = {}
+
+function reader:GetAndConsume()
+    counter = counter + 1
+    return counter
+end
+
+registerHotkey("hard_dormant_reject_deceptive_toggle", "Toggle", function()
+    enabled = not enabled
+end)
+
+registerForEvent("onUpdate", function(dt)
+    local token = reader:GetAndConsume()
+    if not enabled then return end
+    if token > 0 then Game.GetPlayer():GetWorldPosition() end
+end)
+'@
+
 # REJECT 2: pre-guard work is read-only, but no independent registerHotkey /
 # registerInput path writes the gate. The resolver must not infer that an
 # ordinary function will necessarily be called while the callback is asleep.
@@ -116,6 +139,7 @@ end)
 
 $positiveLine=Find-Line (Join-Path $mods 'HardDormantPositive\init.lua') 'registerForEvent\("onUpdate"'
 $sideEffectLine=Find-Line (Join-Path $mods 'HardDormantRejectSideEffect\init.lua') 'registerForEvent\("onUpdate"'
+$deceptiveLine=Find-Line (Join-Path $mods 'HardDormantRejectDeceptiveGetter\init.lua') 'registerForEvent\("onUpdate"'
 $wakeLine=Find-Line (Join-Path $mods 'HardDormantRejectWake\init.lua') 'registerForEvent\("onUpdate"'
 
 $handoff=@{
@@ -123,7 +147,8 @@ $handoff=@{
     callbacks=@(
         (CallbackRow 9201 'HardDormantPositive' 'init.lua' $positiveLine 6.0),
         (CallbackRow 9202 'HardDormantRejectSideEffect' 'init.lua' $sideEffectLine 6.0),
-        (CallbackRow 9203 'HardDormantRejectWake' 'init.lua' $wakeLine 6.0)
+        (CallbackRow 9203 'HardDormantRejectWake' 'init.lua' $wakeLine 6.0),
+        (CallbackRow 9204 'HardDormantRejectDeceptiveGetter' 'init.lua' $deceptiveLine 6.0)
     )
     optimizerEvidence=@()
 } | ConvertTo-Json -Depth 30
@@ -143,6 +168,7 @@ function Consumer([string]$Owner) {
 $positive=Consumer 'HardDormantPositive'
 $rejectSideEffect=Consumer 'HardDormantRejectSideEffect'
 $rejectWake=Consumer 'HardDormantRejectWake'
+$rejectDeceptive=Consumer 'HardDormantRejectDeceptiveGetter'
 
 if($null -eq $positive) { throw 'Positive hard-dormant fixture missing from resolver.' }
 if(-not @($positive.generic.RecipeFamilies | Where-Object { $_ -eq 'HARD_DORMANT_GUARD_HOIST' })) {
@@ -153,7 +179,7 @@ if($positive.generic.Facts.hardDormantGateExpression -ne 'enabled' -or
     throw 'Positive hard-dormant source proof facts are incomplete.'
 }
 
-foreach($reject in @($rejectSideEffect,$rejectWake)) {
+foreach($reject in @($rejectSideEffect,$rejectWake,$rejectDeceptive)) {
     if($null -eq $reject) { throw 'Hard-dormant reject fixture missing from resolver.' }
     if(@($reject.generic.RecipeFamilies | Where-Object { $_ -eq 'HARD_DORMANT_GUARD_HOIST' }).Count -ne 0) {
         throw "Unsafe fixture was admitted to HARD_DORMANT_GUARD_HOIST: $($reject.owner)"
@@ -189,7 +215,7 @@ try {
 
     # Rejects may still receive mechanical frame-dispatch consolidation. If
     # present in the ZIP, their author guard must stay below the pre-guard work.
-    foreach($name in @('HardDormantRejectSideEffect','HardDormantRejectWake')) {
+    foreach($name in @('HardDormantRejectSideEffect','HardDormantRejectWake','HardDormantRejectDeceptiveGetter')) {
         $entry=$zip.GetEntry($base+$name+'/init.lua')
         if($null -eq $entry){continue}
         $reader=[System.IO.StreamReader]::new($entry.Open())
@@ -197,6 +223,8 @@ try {
         $g=$txt.IndexOf('if not enabled then return end')
         if($name -eq 'HardDormantRejectSideEffect') {
             $pre=$txt.IndexOf('local token = mutateWorld()')
+        } elseif($name -eq 'HardDormantRejectDeceptiveGetter') {
+            $pre=$txt.IndexOf('local token = reader:GetAndConsume()')
         } else {
             $pre=$txt.IndexOf('local player =')
         }
