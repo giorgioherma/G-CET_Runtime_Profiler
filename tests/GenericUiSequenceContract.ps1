@@ -56,6 +56,99 @@ registerForEvent("onDraw", function()
 end)
 '@
 
+Write-ModFile 'GenericCrossFileUiFixture' 'init.lua' @'
+local ui = require("modules/interactionUI")
+
+registerForEvent("onDraw", function()
+    if ui and ui.update then ui.update() end
+end)
+'@
+
+Write-ModFile 'GenericCrossFileUiFixture' 'modules/interactionUI.lua' @'
+local ui = {
+    hubShown = false,
+    customHubSelected = false,
+    input = false,
+    selectedIndex = 0,
+    hub = { id = 1 }
+}
+
+local function getDialogChoiceHubs()
+    return {}
+end
+
+local function updateSelectedHub(id) end
+local function updateSelectedIndex(index) end
+local function getActiveChoiceHubID() return 0 end
+
+function ui.showHub()
+    ui.hubShown = true
+end
+
+function ui.update()
+    local hubs = getDialogChoiceHubs()
+
+    if ui.hubShown and ui.customHubSelected and #hubs == 0 then
+        updateSelectedHub(ui.hub.id)
+        updateSelectedIndex(ui.selectedIndex)
+    elseif ui.hubShown then
+        ui.customHubSelected = getActiveChoiceHubID() == ui.hub.id
+        local hubs = getDialogChoiceHubs()
+        if #hubs == 0 then
+            updateSelectedHub(ui.hub.id)
+            updateSelectedIndex(0)
+            ui.customHubSelected = true
+            ui.selectedIndex = 0
+        end
+    end
+    ui.input = false
+end
+
+return ui
+'@
+
+Write-ModFile 'GenericCrossFileUiRejectFixture' 'init.lua' @'
+local ui = require("modules/interactionUI")
+
+registerForEvent("onDraw", function()
+    if ui and ui.update then ui.update() end
+end)
+'@
+
+Write-ModFile 'GenericCrossFileUiRejectFixture' 'modules/interactionUI.lua' @'
+local ui = {
+    hubShown = false,
+    customHubSelected = false,
+    input = false,
+    hiddenMaintenance = 0,
+    hub = { id = 1 }
+}
+
+local function getDialogChoiceHubs()
+    return {}
+end
+
+function ui.showHub()
+    ui.hubShown = true
+end
+
+function ui.update()
+    local hubs = getDialogChoiceHubs()
+
+    if ui.hubShown and #hubs == 0 then
+        ui.customHubSelected = true
+    elseif ui.hubShown then
+        ui.customHubSelected = false
+    end
+
+    -- This hidden-path side effect makes call-site dormancy unsafe.
+    ui.hiddenMaintenance = ui.hiddenMaintenance + 1
+    ui.input = false
+end
+
+return ui
+'@
+
 Write-ModFile 'GenericSequenceFixture' 'init.lua' @'
 local lastSeq = -1
 
@@ -104,13 +197,17 @@ function CallbackRow(
 }
 
 $uiLine=Find-Line (Join-Path $mods 'GenericUiDormancyFixture\init.lua') 'registerForEvent\("onDraw"'
+$crossUiLine=Find-Line (Join-Path $mods 'GenericCrossFileUiFixture\init.lua') 'registerForEvent\("onDraw"'
+$crossUiRejectLine=Find-Line (Join-Path $mods 'GenericCrossFileUiRejectFixture\init.lua') 'registerForEvent\("onDraw"'
 $seqLine=Find-Line (Join-Path $mods 'GenericSequenceFixture\init.lua') 'registerForEvent\("onUpdate"'
 
 $handoff=@{
     schemaVersion='1.8'
     callbacks=@(
         (CallbackRow 9001 'GenericUiDormancyFixture' 'event' 'onDraw' 'init.lua' $uiLine 6.0 60),
-        (CallbackRow 9002 'GenericSequenceFixture' 'event' 'onUpdate' 'init.lua' $seqLine 6.0 60)
+        (CallbackRow 9002 'GenericSequenceFixture' 'event' 'onUpdate' 'init.lua' $seqLine 6.0 60),
+        (CallbackRow 9003 'GenericCrossFileUiFixture' 'event' 'onDraw' 'init.lua' $crossUiLine 6.0 60),
+        (CallbackRow 9004 'GenericCrossFileUiRejectFixture' 'event' 'onDraw' 'init.lua' $crossUiRejectLine 6.0 60)
     )
     optimizerEvidence=@()
 } | ConvertTo-Json -Depth 30
@@ -133,6 +230,33 @@ if(-not @($uiConsumer.generic.RecipeFamilies | Where-Object { $_ -eq 'UI_VISIBIL
 }
 if($uiConsumer.generic.Facts.uiVisibilityGate -ne 'visible') {
     throw "Generic UI gate proof mismatch: $($uiConsumer.generic.Facts.uiVisibilityGate)"
+}
+
+$crossUiConsumer = @($resolver.callbackFamilies |
+    Where-Object { $_.target -eq 'onDraw' } |
+    ForEach-Object { $_.topConsumers } |
+    Where-Object { $_.owner -eq 'GenericCrossFileUiFixture' })[0]
+if($null -eq $crossUiConsumer) { throw 'Cross-file UI fixture was not resolved.' }
+if(-not @($crossUiConsumer.generic.RecipeFamilies | Where-Object {
+    $_ -eq 'CROSS_FILE_INTERACTION_UI_IDLE_CALL_GUARD'
+})) {
+    throw "Cross-file UI fixture did not receive the call-guard recipe. Pattern=$($crossUiConsumer.generic.Pattern)"
+}
+if($crossUiConsumer.generic.Facts.crossFileInteractionUiGate -ne 'ui.hubShown' -or
+   $crossUiConsumer.generic.Facts.crossFileInteractionUiPending -ne 'ui.input' -or
+   $crossUiConsumer.generic.Facts.crossFileInteractionUiModuleFile -ne 'GenericCrossFileUiFixture/modules/interactionUI.lua') {
+    throw 'Cross-file UI proof facts are incomplete.'
+}
+
+$crossUiReject = @($resolver.callbackFamilies |
+    Where-Object { $_.target -eq 'onDraw' } |
+    ForEach-Object { $_.topConsumers } |
+    Where-Object { $_.owner -eq 'GenericCrossFileUiRejectFixture' })[0]
+if($null -eq $crossUiReject) { throw 'Cross-file UI reject fixture was not resolved.' }
+if(@($crossUiReject.generic.RecipeFamilies | Where-Object {
+    $_ -eq 'CROSS_FILE_INTERACTION_UI_IDLE_CALL_GUARD'
+}).Count -ne 0) {
+    throw 'Cross-file UI AUTO accepted a helper with hidden-path side effects.'
 }
 
 $seqConsumer = @($resolver.callbackFamilies |
@@ -159,6 +283,16 @@ if(@($manifest.transforms | Where-Object {
 }).Count -ne 1) {
     throw 'Generated pass is missing SEQUENCE_FIRST_SCRIPTABLE_SYSTEM_POLL.'
 }
+if(@($manifest.transforms | Where-Object {
+    $_.type -eq 'CROSS_FILE_INTERACTION_UI_IDLE_CALL_GUARD' -and $_.owner -eq 'GenericCrossFileUiFixture'
+}).Count -ne 1) {
+    throw 'Generated pass is missing CROSS_FILE_INTERACTION_UI_IDLE_CALL_GUARD.'
+}
+if(@($manifest.transforms | Where-Object {
+    $_.type -eq 'CROSS_FILE_INTERACTION_UI_IDLE_CALL_GUARD' -and $_.owner -eq 'GenericCrossFileUiRejectFixture'
+}).Count -ne 0) {
+    throw 'Generated pass incorrectly emitted a cross-file UI guard for the reject fixture.'
+}
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip=[System.IO.Compression.ZipFile]::OpenRead([string]$resolved.pass.ZipPath)
@@ -175,6 +309,17 @@ try {
     if($ui -notmatch 'if not visible then return end' -or
        $ui -match 'if visible then') {
         throw 'Generated UI dormancy rewrite did not hoist the visibility gate.'
+    }
+
+    $crossUi=Read-ZipText ($base+'GenericCrossFileUiFixture/init.lua')
+    if($crossUi -notmatch 'ui\.hubShown or ui\.input' -or
+       $crossUi -notmatch 'if ui and ui\.update and') {
+        throw 'Generated cross-file UI call guard is incomplete.'
+    }
+
+    $crossUiReject=Read-ZipText ($base+'GenericCrossFileUiRejectFixture/init.lua')
+    if($crossUiReject -match 'ui\.hubShown or ui\.input') {
+        throw 'Reject fixture received the cross-file UI call guard.'
     }
 
     $seq=Read-ZipText ($base+'GenericSequenceFixture/init.lua')
@@ -194,4 +339,4 @@ finally {
     $zip.Dispose()
 }
 
-Write-Host 'Generic UI visibility dormancy + sequence-first ScriptableSystem polling contract passed.'
+Write-Host 'Generic UI visibility + cross-file interaction UI + sequence-first ScriptableSystem polling contract passed.'
