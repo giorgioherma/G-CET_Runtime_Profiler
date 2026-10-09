@@ -285,12 +285,12 @@ try {
     $required=@(
         'G-CET semantic:appearance-menu-mod-squeeze',
         'if not drawWindow and not AMM.Props.buildMode then return end',
-        'function AMM:GetTarget(prefetchedTarget, targetWasPrefetched)',
-        'local __gcetAmmLastPeriodicHandle = nil',
-        'local function __gcetAmmRefreshPeriodicTarget()',
-        'AMM.currentTarget = __gcetAmmRefreshPeriodicTarget()',
-        '__gcetAmmTargetRefreshElapsed < 5.0',
-        '__gcetAmmSavedAppearanceWakePending',
+        'function AMM:GetTarget()',
+        'local targetingSystem = Game.GetTargetingSystem()',
+        'local target = targetingSystem and (targetingSystem:GetLookAtObject(player, true, false) or targetingSystem:GetLookAtObject(player, false, false)) or nil',
+        'AMM.currentTarget = AMM:GetTarget()',
+        'Cron.After(1, function()',
+        'if not AMM.shouldCheckSavedAppearance then',
         'AMM.Director:SenseTriggers()',
         'AMM.Scan:SenseSavedDespawns()',
         'AMM.Tools.currentTarget:Move()',
@@ -298,6 +298,19 @@ try {
     )
     foreach($token in $required) {
         if(-not $txt.Contains($token)) { throw "Generated AMM source missing preserved/optimized token: $token" }
+    }
+
+    $forbidden=@(
+        'prefetchedTarget',
+        'targetWasPrefetched',
+        '__gcetAmmLastPeriodicHandle',
+        '__gcetAmmLastPeriodicKnown',
+        '__gcetAmmTargetRefreshElapsed',
+        '__gcetAmmRefreshPeriodicTarget',
+        '__gcetAmmSavedAppearanceWakePending'
+    )
+    foreach($token in $forbidden) {
+        if($txt.Contains($token)) { throw "Generated AMM source retains unsafe cross-frame cache token: $token" }
     }
 
     if(([regex]::Matches($txt,'Game\.GetTargetingSystem\(\):GetLookAtObject\(player').Count) -gt 0) {
@@ -312,7 +325,7 @@ try {
     }
 
     $cron=$txt.IndexOf('Cron.Update(deltaTime)')
-    $periodic=$txt.IndexOf('AMM.currentTarget = __gcetAmmRefreshPeriodicTarget()')
+    $periodic=$txt.IndexOf('AMM.currentTarget = AMM:GetTarget()')
     if($cron -lt 0 -or $periodic -lt 0 -or $cron -gt $periodic) {
         throw 'AMM Cron frame lane was moved behind periodic target sensing.'
     }

@@ -2668,104 +2668,21 @@ __CLOSE__" + "\n",
             "${opening}\n${indent}if not drawWindow and not AMM.Props.buildMode then return end\n${blank}${indent}ImGui.SetNextWindowPos(",
             "AMM hidden UI draw dormancy");
 
-        // Keep every existing caller valid while allowing the periodic sensing
-        // lane to pass the already-probed look-at handle into GetTarget.
-        text = ReplaceOnce(
-            text,
-            "function AMM:GetTarget()\n",
-            "function AMM:GetTarget(prefetchedTarget, targetWasPrefetched)\n",
-            "AMM GetTarget optional prefetched target signature");
-
-        // GetTarget itself also stops asking the targeting system twice. The
-        // periodic helper can bypass this lookup completely when it already has
-        // the handle; ordinary input/API callers retain original behavior.
+        // Safe local squeeze only: acquire the targeting-system handle once
+        // inside the current GetTarget invocation. Do not retain target/entity
+        // handles, weak references, or native object identity across frames.
         text = RegexReplaceOnce(
             text,
             @"(?m)^(?<indent>[ \t]*)local\s+target\s*=\s*(?<getter>(?:Game\.GetTargetingSystem|__gcetGetTargetingSystem))\s*\(\s*\)\s*:\s*GetLookAtObject\s*\(\s*player\s*,\s*true\s*,\s*false\s*\)\s+or\s+\k<getter>\s*\(\s*\)\s*:\s*GetLookAtObject\s*\(\s*player\s*,\s*false\s*,\s*false\s*\)\s*$",
-            "${indent}local target = prefetchedTarget\n" +
-            "${indent}if not targetWasPrefetched then\n" +
-            "${indent}\tlocal targetingSystem = ${getter}()\n" +
-            "${indent}\ttarget = targetingSystem and (targetingSystem:GetLookAtObject(player, true, false) or targetingSystem:GetLookAtObject(player, false, false)) or nil\n" +
-            "${indent}end",
-            "AMM GetTarget single/prefetched targeting-system lookup");
-
-        var frameCounterAnchor = "\t local frameCounter = 0\n";
-        if (!text.Contains(frameCounterAnchor, StringComparison.Ordinal))
-        {
-            frameCounterAnchor = "local frameCounter = 0\n";
-        }
-
-        var targetLane =
-            frameCounterAnchor +
-            "\t local __gcetAmmLastPeriodicHandle = nil\n" +
-            "\t local __gcetAmmLastPeriodicKnown = false\n" +
-            "\t local __gcetAmmTargetRefreshElapsed = 5.0\n" +
-            "\t local __gcetAmmSavedAppearanceWakePending = false\n\n" +
-            "\t local function __gcetAmmRefreshPeriodicTarget()\n" +
-            "\t\t local player = type(__gcetGetPlayer) == \"function\" and __gcetGetPlayer() or Game.GetPlayer()\n" +
-            "\t\t if not player then\n" +
-            "\t\t\t __gcetAmmLastPeriodicHandle = nil\n" +
-            "\t\t\t __gcetAmmLastPeriodicKnown = true\n" +
-            "\t\t\t __gcetAmmTargetRefreshElapsed = 0.0\n" +
-            "\t\t\t return AMM:GetTarget(nil, true)\n" +
-            "\t\t end\n\n" +
-            "\t\t local targetingSystem = type(__gcetGetTargetingSystem) == \"function\" and __gcetGetTargetingSystem() or Game.GetTargetingSystem()\n" +
-            "\t\t if not targetingSystem then return AMM:GetTarget() end\n" +
-            "\t\t local handle = targetingSystem:GetLookAtObject(player, true, false) or targetingSystem:GetLookAtObject(player, false, false)\n" +
-            "\t\t local sameHandle = __gcetAmmLastPeriodicKnown and handle == __gcetAmmLastPeriodicHandle\n" +
-            "\t\t local cached = AMM.currentTarget\n" +
-            "\t\t local cachedMatches = handle ~= nil and cached ~= nil and cached ~= '' and cached.handle == handle\n" +
-            "\t\t local uiActive = drawWindow or (AMM.Props and AMM.Props.buildMode)\n\n" +
-            "\t\t if sameHandle and not uiActive and __gcetAmmTargetRefreshElapsed < 5.0 then\n" +
-            "\t\t\t if handle == nil then\n" +
-            "\t\t\t\t if AMM.displayInteractionPrompt then return AMM:GetTarget(nil, true) end\n" +
-            "\t\t\t\t return nil\n" +
-            "\t\t\t end\n" +
-            "\t\t\t if cachedMatches then return cached end\n" +
-            "\t\t end\n\n" +
-            "\t\t __gcetAmmLastPeriodicHandle = handle\n" +
-            "\t\t __gcetAmmLastPeriodicKnown = true\n" +
-            "\t\t __gcetAmmTargetRefreshElapsed = 0.0\n" +
-            "\t\t return AMM:GetTarget(handle, true)\n" +
-            "\t end\n";
-
-        text = ReplaceOnce(
-            text,
-            frameCounterAnchor,
-            targetLane,
-            "AMM periodic target identity cache state");
-
-        text = ReplaceOnce(
-            text,
-            "\t\t AMM.deltaTime = deltaTime\n",
-            "\t\t AMM.deltaTime = deltaTime\n" +
-            "\t\t __gcetAmmTargetRefreshElapsed = math.min(5.0, __gcetAmmTargetRefreshElapsed + math.max(0.0, deltaTime or 0.0))\n",
-            "AMM periodic target fallback refresh clock");
-
-        text = ReplaceOnce(
-            text,
-            "AMM.currentTarget = AMM:GetTarget()",
-            "AMM.currentTarget = __gcetAmmRefreshPeriodicTarget()",
-            "AMM periodic full target rebuild substitution");
-
-        // Do not enqueue another one-second wake while the saved-appearance
-        // state is already armed or a wake is already pending.
-        text = RegexReplaceOnce(
-            text,
-            @"(?ms)^(?<indent>[ \t]*)Cron\.After\s*\(\s*1\s*,\s*function\s*\(\s*\)\s*\r?\n[ \t]*if\s+not\s+AMM\.shouldCheckSavedAppearance\s+then\s*\r?\n[ \t]*AMM\.shouldCheckSavedAppearance\s*=\s*true\s*\r?\n[ \t]*end\s*\r?\n[ \t]*end\s*\)\s*$",
-            "${indent}if not AMM.shouldCheckSavedAppearance and not __gcetAmmSavedAppearanceWakePending then\n" +
-            "${indent}\t__gcetAmmSavedAppearanceWakePending = true\n" +
-            "${indent}\tCron.After(1, function()\n" +
-            "${indent}\t\tAMM.shouldCheckSavedAppearance = true\n" +
-            "${indent}\t\t__gcetAmmSavedAppearanceWakePending = false\n" +
-            "${indent}\tend)\n" +
-            "${indent}end",
-            "AMM deduplicated saved-appearance wake timer");
+            "${indent}local targetingSystem = ${getter}()\n" +
+            "${indent}local target = targetingSystem and (targetingSystem:GetLookAtObject(player, true, false) or targetingSystem:GetLookAtObject(player, false, false)) or nil",
+            "AMM GetTarget single targeting-system acquisition");
 
         context.Write(file, text);
         return SemanticInjectionResult.Success(
-            "Split AMM's UI lane from world runtime, reused the unchanged periodic look-at target with a 5 s safety refresh, reduced GetTarget to one targeting-system acquisition, and deduplicated saved-appearance wake timers while preserving Cron, trigger sensing, saved-appearance checks, active camera/light/direct-mode movement and all input/API GetTarget callers.");
+            "Kept AMM's hidden UI draw lane dormant and collapsed the duplicated targeting-system acquisition inside each GetTarget call. The author's periodic target refresh, Cron/timers, world sensing, saved-appearance behavior, active camera/light/direct-mode movement and API/input callers remain unchanged; no native target/entity reference is cached across frames.");
     }
+
 
     private static SemanticInjectionResult ApplyDroneCompanionsRevamp(
         SemanticPatchContext context)

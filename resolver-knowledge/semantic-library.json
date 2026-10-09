@@ -4406,25 +4406,15 @@
         "handler": "SEMANTIC_TARGET_IDENTITY_UI_LANE_SPLIT",
         "concepts": [
           "hiddenUiDormancy",
-          "cheapLookAtIdentity",
-          "reuseUnchangedTarget",
+          "singleInvocationTargetingSystemReuse",
+          "preserveAuthorTargetRefresh",
           "preserveWorldSensing",
-          "deduplicateSavedAppearanceWake"
+          "noCrossFrameNativeTargetCache"
         ],
         "lanes": [
           {
             "role": "UI",
             "cadence": "VISIBLE_OR_BUILD_MODE_ONLY",
-            "seconds": 0
-          },
-          {
-            "role": "TARGET_IDENTITY_PROBE",
-            "cadence": "AUTHOR_EXISTING_PERIODIC",
-            "seconds": 0
-          },
-          {
-            "role": "TARGET_REBUILD",
-            "cadence": "ON_TARGET_IDENTITY_CHANGE",
             "seconds": 0
           },
           {
@@ -4457,9 +4447,9 @@
         "measuredPeakExclusiveMsPerSecond": 1.266711,
         "evidenceStack": "SIXTH_STACK_LAST_CET",
         "admitted": true,
-        "rationale": "Ubiquitous framework rule with a multi-lane source-proven optimization; the lower threshold is rule-local and does not lower the default semantic admission floor."
+        "rationale": "Ubiquitous framework rule with source-proven hidden-UI dormancy and same-invocation targeting-system reuse; no native target/entity reference is retained across frames. The lower threshold is rule-local and does not lower the default semantic admission floor."
       },
-      "cadenceGroup": "UI_DORMANT_TARGET_IDENTITY_CHANGE_WORLD_PERIODIC_ACTIVE_FRAME",
+      "cadenceGroup": "UI_DORMANT_AUTHOR_TARGET_REFRESH_WORLD_PERIODIC_ACTIVE_FRAME",
       "catalogRole": "SEMANTIC_FRAMEWORK_HOT_MOD",
       "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
       "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
