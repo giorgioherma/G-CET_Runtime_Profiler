@@ -1655,10 +1655,28 @@ internal static class CallbackResolverService
             generatedRegistrarPresent &&
             HasGeneratedFrameRegistrar(
                 source.FullText,
-                generatedRegistrarMatch.Groups["registrar"].Value);
+                generatedRegistrarMatch.Groups["registrar"].Value,
+                callback.Owner);
         var alreadyFrameConsolidated =
             generatedFrameConsolidated ||
             ownerRegistrarAlreadyConsolidated;
+
+        if (generatedRegistrarPresent && !generatedFrameConsolidated)
+        {
+            return new GenericResolution
+            {
+                Status = "SOURCE_UNRESOLVED",
+                Automatable = false,
+                Pattern = "ONDRAW_UNRESOLVED",
+                RecipeFamilies = Array.Empty<string>(),
+                Evidence = Array.Empty<string>(),
+                Blockers = new[]
+                {
+                    "Frame-dispatch consolidation found a G-CET registrar token for onDraw, but its generated helper could not be structurally proven. Leave that partial state untouched."
+                },
+                Source = sourceEvidence
+            };
+        }
 
         var frameAutomatable = rawDirectOnDraw && !alreadyFrameConsolidated;
         if (alreadyFrameConsolidated)
@@ -1824,11 +1842,29 @@ internal static class CallbackResolverService
             generatedRegistrarPresent &&
             HasGeneratedFrameRegistrar(
                 source.FullText,
-                generatedRegistrarMatch.Groups["registrar"].Value);
+                generatedRegistrarMatch.Groups["registrar"].Value,
+                callback.Owner);
         var alreadyFrameConsolidated =
             generatedFrameConsolidated ||
             ownerRegistrarAlreadyConsolidated ||
             schedulerBootstrapAlreadyIntegrated;
+
+        if (generatedRegistrarPresent && !generatedFrameConsolidated)
+        {
+            return new GenericResolution
+            {
+                Status = "SOURCE_UNRESOLVED",
+                Automatable = false,
+                Pattern = "ONUPDATE_UNRESOLVED",
+                RecipeFamilies = Array.Empty<string>(),
+                Evidence = Array.Empty<string>(),
+                Blockers = new[]
+                {
+                    "A G-CET frame registrar token is present, but its generated helper could not be structurally proven. Leave the partial state untouched."
+                },
+                Source = sourceEvidence
+            };
+        }
 
         // Semantic analyzers may inspect either raw or already-consolidated
         // onUpdate source. Only a raw registrar authorizes the generic frame
@@ -2023,23 +2059,125 @@ internal static class CallbackResolverService
 
     private static bool HasGeneratedFrameRegistrar(
         string fullText,
-        string registrar)
+        string registrar,
+        string owner)
     {
-        if (string.IsNullOrWhiteSpace(registrar))
+        if (string.IsNullOrWhiteSpace(fullText) ||
+            string.IsNullOrWhiteSpace(registrar) ||
+            string.IsNullOrWhiteSpace(owner))
             return false;
 
-        var escaped = Regex.Escape(registrar);
-        var hasFallback = Regex.IsMatch(
-            fullText,
-            @"\blocal\s+" + escaped + @"\s*=\s*registerForEvent\b",
+        var escapedRegistrar = Regex.Escape(registrar);
+        var fallbacks = Regex.Matches(
+                fullText,
+                @"(?m)^[ \t]*local\s+" + escapedRegistrar +
+                @"\s*=\s*registerForEvent\b",
+                RegexOptions.CultureInvariant)
+            .Cast<Match>()
+            .ToList();
+        if (fallbacks.Count != 1)
+            return false;
+
+        var fallback = fallbacks[0];
+        var nextSearchStart = fallback.Index + fallback.Length;
+        var regionEnd = fullText.Length;
+
+        if (nextSearchStart < fullText.Length)
+        {
+            var nextGeneratedFallback = Regex.Match(
+                fullText[nextSearchStart..],
+                @"(?m)^[ \t]*local\s+__gcetRegisterEvent_\d+\s*=\s*registerForEvent\b",
+                RegexOptions.CultureInvariant);
+            if (nextGeneratedFallback.Success)
+                regionEnd = Math.Min(regionEnd, nextSearchStart + nextGeneratedFallback.Index);
+        }
+
+        var registrarCall = fullText.IndexOf(
+            registrar + "(",
+            nextSearchStart,
+            StringComparison.Ordinal);
+        if (registrarCall >= 0)
+            regionEnd = Math.Min(regionEnd, registrarCall);
+
+        if (regionEnd <= nextSearchStart)
+            return false;
+
+        var region = fullText[fallback.Index..regionEnd];
+        var bootstrap = Regex.Match(
+            region,
+            @"\blocal\s+(?<ok>[A-Za-z_]\w*)\s*,\s*(?<engine>[A-Za-z_]\w*)\s*=\s*" +
+            @"pcall\s*\(\s*GetMod\s*,\s*['""]0-Engine['""]\s*\)",
             RegexOptions.CultureInvariant);
-        var hasEngineRegistrar = Regex.IsMatch(
-            fullText,
-            @"\b" + escaped +
-            @"\s*=\s*__gcetEngine\.MakeEventRegistrar\s*\(",
+        if (!bootstrap.Success)
+            return false;
+
+        var ok = Regex.Escape(bootstrap.Groups["ok"].Value);
+        var engine = Regex.Escape(bootstrap.Groups["engine"].Value);
+        var escapedOwner = Regex.Escape(owner);
+
+        var hasOkGuard = Regex.IsMatch(
+            region,
+            @"\bif\s+" + ok + @"\s+and\b",
+            RegexOptions.CultureInvariant);
+        var hasEngineTableProof = Regex.IsMatch(
+            region,
+            @"\btype\s*\(\s*" + engine + @"\s*\)\s*==\s*['""]table['""]",
+            RegexOptions.CultureInvariant);
+        if (!hasOkGuard || !hasEngineTableProof)
+            return false;
+
+        var hasDirectRegistrarTypeProof = Regex.IsMatch(
+            region,
+            @"\btype\s*\(\s*" + engine +
+            @"\.MakeEventRegistrar\s*\)\s*==\s*['""]function['""]",
+            RegexOptions.CultureInvariant);
+        var hasDirectAssignment = Regex.IsMatch(
+            region,
+            @"\b" + escapedRegistrar + @"\s*=\s*" + engine +
+            @"\.MakeEventRegistrar\s*\(\s*['""]" + escapedOwner +
+            @"['""]\s*,\s*registerForEvent\s*\)",
+            RegexOptions.CultureInvariant);
+        if (hasDirectRegistrarTypeProof && hasDirectAssignment)
+            return true;
+
+        var apiInitialization = Regex.Match(
+            region,
+            @"\blocal\s+(?<api>[A-Za-z_]\w*)\s*=\s*" + engine + @"\b",
+            RegexOptions.CultureInvariant);
+        if (!apiInitialization.Success)
+            return false;
+
+        var api = Regex.Escape(apiInitialization.Groups["api"].Value);
+        var hasNamespaceProof = Regex.IsMatch(
+            region,
+            @"\btype\s*\(\s*" + engine +
+            @"\.GCET\s*\)\s*==\s*['""]table['""]",
+            RegexOptions.CultureInvariant);
+        var hasNamespaceAssignment = Regex.IsMatch(
+            region,
+            @"\b" + api + @"\s*=\s*" + engine + @"\.GCET\b",
+            RegexOptions.CultureInvariant);
+        var hasApiTableProof = Regex.IsMatch(
+            region,
+            @"\btype\s*\(\s*" + api + @"\s*\)\s*==\s*['""]table['""]",
+            RegexOptions.CultureInvariant);
+        var hasApiRegistrarTypeProof = Regex.IsMatch(
+            region,
+            @"\btype\s*\(\s*" + api +
+            @"\.MakeEventRegistrar\s*\)\s*==\s*['""]function['""]",
+            RegexOptions.CultureInvariant);
+        var hasApiAssignment = Regex.IsMatch(
+            region,
+            @"\b" + escapedRegistrar + @"\s*=\s*" + api +
+            @"\.MakeEventRegistrar\s*\(\s*['""]" + escapedOwner +
+            @"['""]\s*,\s*registerForEvent\s*\)",
             RegexOptions.CultureInvariant);
 
-        return hasFallback && hasEngineRegistrar;
+        return hasNamespaceProof &&
+               hasNamespaceAssignment &&
+               hasApiTableProof &&
+               hasApiRegistrarTypeProof &&
+               hasApiAssignment;
     }
 
     private static bool HasOwnerFrameRegistrar(
@@ -5002,17 +5140,12 @@ internal static class CallbackResolverService
                 return false;
 
             var receiver = call.Groups["receiver"].Value;
-            var bindingMatches = Regex.Matches(
+            if (!TryResolveRequiredModuleBinding(
                     callbackSource.FullText,
-                    @"(?m)^[ \t]*local\s+" + Regex.Escape(receiver) +
-                    @"\s*=\s*require\s*\(\s*[""'](?<path>[^""']+)[""']\s*\)\s*(?:--.*)?$",
-                    RegexOptions.CultureInvariant)
-                .Cast<Match>()
-                .ToList();
-            if (bindingMatches.Count != 1)
+                    receiver,
+                    out var moduleName))
                 return false;
 
-            var moduleName = bindingMatches[0].Groups["path"].Value;
             if (string.IsNullOrWhiteSpace(moduleName) ||
                 Path.IsPathRooted(moduleName) ||
                 moduleName.Contains("..", StringComparison.Ordinal))
@@ -5049,6 +5182,56 @@ internal static class CallbackResolverService
                 moduleRelative,
                 Sha256(modulePath),
                 out proof);
+        }
+
+        private static bool TryResolveRequiredModuleBinding(
+            string fullText,
+            string receiver,
+            out string moduleName)
+        {
+            moduleName = "";
+            if (string.IsNullOrWhiteSpace(fullText) ||
+                string.IsNullOrWhiteSpace(receiver))
+                return false;
+
+            var escapedReceiver = Regex.Escape(receiver);
+            var candidates = new List<string>();
+
+            foreach (Match direct in Regex.Matches(
+                         fullText,
+                         @"(?m)^[ \t]*local\s+" + escapedReceiver +
+                         @"\s*=\s*require\s*\(\s*[""'](?<path>[^""']+)[""']\s*\)\s*(?:--.*)?$",
+                         RegexOptions.CultureInvariant))
+            {
+                candidates.Add(direct.Groups["path"].Value);
+            }
+
+            var guardedPattern =
+                @"(?ms)^[ \t]*local\s+" + escapedReceiver + @"\s*(?:--[^\r\n]*)?\r?\n" +
+                @"[ \t]*do\s*(?:--[^\r\n]*)?\r?\n" +
+                @"(?<indent>[ \t]+)local\s+(?<ok>[A-Za-z_]\w*)\s*,\s*(?<module>[A-Za-z_]\w*)\s*=\s*" +
+                @"pcall\s*\(\s*require\s*,\s*[""'](?<path>[^""']+)[""']\s*\)\s*(?:--[^\r\n]*)?\r?\n" +
+                @"\k<indent>if\s+\k<ok>\s+and\s+\k<module>\s+then\s+" +
+                escapedReceiver + @"\s*=\s*\k<module>\s+end\s*(?:--[^\r\n]*)?\r?\n" +
+                @"[ \t]*end\s*(?:--[^\r\n]*)?$";
+
+            foreach (Match guarded in Regex.Matches(
+                         fullText,
+                         guardedPattern,
+                         RegexOptions.CultureInvariant))
+            {
+                candidates.Add(guarded.Groups["path"].Value);
+            }
+
+            candidates = candidates
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+            if (candidates.Count != 1)
+                return false;
+
+            moduleName = candidates[0];
+            return true;
         }
 
         public IReadOnlyList<OwnerMethodDefinition> FindOwnerMethodDefinitions(

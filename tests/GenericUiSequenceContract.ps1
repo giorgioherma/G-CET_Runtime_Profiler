@@ -149,6 +149,110 @@ end
 return ui
 '@
 
+Write-ModFile 'GenericCrossFileUiComposedFixture' 'init.lua' @'
+local __gcetRegisterEvent_9005 = registerForEvent
+do
+    local __gcetOk, __gcetEngine = pcall(GetMod, "0-Engine")
+    local __gcetApi = __gcetEngine
+    if __gcetOk and type(__gcetEngine) == "table" and type(__gcetEngine.GCET) == "table" then __gcetApi = __gcetEngine.GCET end
+    if __gcetOk and type(__gcetApi) == "table" and type(__gcetApi.MakeEventRegistrar) == "function" then
+        __gcetRegisterEvent_9005 = __gcetApi.MakeEventRegistrar("GenericCrossFileUiComposedFixture", registerForEvent)
+    end
+end
+
+local ui
+do
+    local ok, m = pcall(require, "modules/interactionUI")
+    if ok and m then ui = m end
+end
+
+__gcetRegisterEvent_9005("onDraw", function()
+    if ui and ui.update then ui.update() end
+end)
+'@
+Write-ModFile 'GenericCrossFileUiComposedFixture' 'modules/interactionUI.lua' @'
+local ui = { hubShown = false, customHubSelected = false, input = false, selectedIndex = 0, hub = { id = 1 } }
+local function getDialogChoiceHubs() return {} end
+local function updateSelectedHub(id) end
+local function updateSelectedIndex(index) end
+local function getActiveChoiceHubID() return 0 end
+function ui.showHub() ui.hubShown = true end
+function ui.update()
+    local hubs = getDialogChoiceHubs()
+    if ui.hubShown and ui.customHubSelected and #hubs == 0 then
+        updateSelectedHub(ui.hub.id)
+        updateSelectedIndex(ui.selectedIndex)
+    elseif ui.hubShown then
+        ui.customHubSelected = getActiveChoiceHubID() == ui.hub.id
+    end
+    ui.input = false
+end
+return ui
+'@
+
+Write-ModFile 'GenericCrossFileUiPartialRegistrarFixture' 'init.lua' @'
+local __gcetRegisterEvent_9006 = registerForEvent
+local ui
+do
+    local ok, m = pcall(require, "modules/interactionUI")
+    if ok and m then ui = m end
+end
+__gcetRegisterEvent_9006("onDraw", function()
+    if ui and ui.update then ui.update() end
+end)
+'@
+Write-ModFile 'GenericCrossFileUiPartialRegistrarFixture' 'modules/interactionUI.lua' @'
+local ui = { hubShown = false, input = false }
+local function getDialogChoiceHubs() return {} end
+function ui.showHub() ui.hubShown = true end
+function ui.update()
+    local hubs = getDialogChoiceHubs()
+    if ui.hubShown and #hubs > 0 then
+        DrawInteraction(hubs)
+    elseif ui.hubShown then
+        DrawEmptyInteraction()
+    end
+    ui.input = false
+end
+return ui
+'@
+
+Write-ModFile 'GenericCrossFileUiGeneratedUnsafeFixture' 'init.lua' @'
+local __gcetRegisterEvent_9007 = registerForEvent
+do
+    local __gcetOk, __gcetEngine = pcall(GetMod, "0-Engine")
+    local __gcetApi = __gcetEngine
+    if __gcetOk and type(__gcetEngine) == "table" and type(__gcetEngine.GCET) == "table" then __gcetApi = __gcetEngine.GCET end
+    if __gcetOk and type(__gcetApi) == "table" and type(__gcetApi.MakeEventRegistrar) == "function" then
+        __gcetRegisterEvent_9007 = __gcetApi.MakeEventRegistrar("GenericCrossFileUiGeneratedUnsafeFixture", registerForEvent)
+    end
+end
+local ui
+do
+    local ok, m = pcall(require, "modules/interactionUI")
+    if ok and m then ui = m end
+end
+__gcetRegisterEvent_9007("onDraw", function()
+    if ui and ui.update then ui.update() end
+end)
+'@
+Write-ModFile 'GenericCrossFileUiGeneratedUnsafeFixture' 'modules/interactionUI.lua' @'
+local ui = { hubShown = false, input = false, hiddenMaintenance = 0 }
+local function getDialogChoiceHubs() return {} end
+function ui.showHub() ui.hubShown = true end
+function ui.update()
+    local hubs = getDialogChoiceHubs()
+    if ui.hubShown and #hubs > 0 then
+        DrawInteraction(hubs)
+    elseif ui.hubShown then
+        DrawEmptyInteraction()
+    end
+    ui.hiddenMaintenance = ui.hiddenMaintenance + 1
+    ui.input = false
+end
+return ui
+'@
+
 Write-ModFile 'GenericSequenceFixture' 'init.lua' @'
 local lastSeq = -1
 
@@ -200,6 +304,9 @@ $uiLine=Find-Line (Join-Path $mods 'GenericUiDormancyFixture\init.lua') 'registe
 $crossUiLine=Find-Line (Join-Path $mods 'GenericCrossFileUiFixture\init.lua') 'registerForEvent\("onDraw"'
 $crossUiRejectLine=Find-Line (Join-Path $mods 'GenericCrossFileUiRejectFixture\init.lua') 'registerForEvent\("onDraw"'
 $seqLine=Find-Line (Join-Path $mods 'GenericSequenceFixture\init.lua') 'registerForEvent\("onUpdate"'
+$composedCrossUiLine=Find-Line (Join-Path $mods 'GenericCrossFileUiComposedFixture\init.lua') '__gcetRegisterEvent_9005\("onDraw"'
+$partialCrossUiLine=Find-Line (Join-Path $mods 'GenericCrossFileUiPartialRegistrarFixture\init.lua') '__gcetRegisterEvent_9006\("onDraw"'
+$generatedUnsafeCrossUiLine=Find-Line (Join-Path $mods 'GenericCrossFileUiGeneratedUnsafeFixture\init.lua') '__gcetRegisterEvent_9007\("onDraw"'
 
 $handoff=@{
     schemaVersion='1.8'
@@ -207,7 +314,10 @@ $handoff=@{
         (CallbackRow 9001 'GenericUiDormancyFixture' 'event' 'onDraw' 'init.lua' $uiLine 6.0 60),
         (CallbackRow 9002 'GenericSequenceFixture' 'event' 'onUpdate' 'init.lua' $seqLine 6.0 60),
         (CallbackRow 9003 'GenericCrossFileUiFixture' 'event' 'onDraw' 'init.lua' $crossUiLine 6.0 60),
-        (CallbackRow 9004 'GenericCrossFileUiRejectFixture' 'event' 'onDraw' 'init.lua' $crossUiRejectLine 6.0 60)
+        (CallbackRow 9004 'GenericCrossFileUiRejectFixture' 'event' 'onDraw' 'init.lua' $crossUiRejectLine 6.0 60),
+        (CallbackRow 9005 'GenericCrossFileUiComposedFixture' 'event' 'onDraw' 'init.lua' $composedCrossUiLine 6.0 60),
+        (CallbackRow 9006 'GenericCrossFileUiPartialRegistrarFixture' 'event' 'onDraw' 'init.lua' $partialCrossUiLine 6.0 60),
+        (CallbackRow 9007 'GenericCrossFileUiGeneratedUnsafeFixture' 'event' 'onDraw' 'init.lua' $generatedUnsafeCrossUiLine 6.0 60)
     )
     optimizerEvidence=@()
 } | ConvertTo-Json -Depth 30
@@ -259,6 +369,39 @@ if(@($crossUiReject.generic.RecipeFamilies | Where-Object {
     throw 'Cross-file UI AUTO accepted a helper with hidden-path side effects.'
 }
 
+$composedCrossUi = @($resolver.callbackFamilies |
+    Where-Object { $_.target -eq 'onDraw' } |
+    ForEach-Object { $_.topConsumers } |
+    Where-Object { $_.owner -eq 'GenericCrossFileUiComposedFixture' })[0]
+if($null -eq $composedCrossUi) { throw 'Generated-registrar composition fixture was not resolved.' }
+if($composedCrossUi.generic.Status -ne 'RESOLVED' -or
+   -not $composedCrossUi.generic.Automatable -or
+   @($composedCrossUi.generic.RecipeFamilies | Where-Object { $_ -eq 'CROSS_FILE_INTERACTION_UI_IDLE_CALL_GUARD' }).Count -ne 1 -or
+   @($composedCrossUi.generic.RecipeFamilies | Where-Object { $_ -eq 'FRAME_DISPATCH_CONSOLIDATION' }).Count -ne 0) {
+    throw "Valid generated registrar did not compose with cross-file UI AUTO. Status=$($composedCrossUi.generic.Status) Pattern=$($composedCrossUi.generic.Pattern)"
+}
+$partialCrossUi = @($resolver.callbackFamilies |
+    Where-Object { $_.target -eq 'onDraw' } |
+    ForEach-Object { $_.topConsumers } |
+    Where-Object { $_.owner -eq 'GenericCrossFileUiPartialRegistrarFixture' })[0]
+if($null -eq $partialCrossUi) { throw 'Partial generated-registrar fixture was not resolved.' }
+if($partialCrossUi.generic.Status -ne 'SOURCE_UNRESOLVED' -or
+   $partialCrossUi.generic.Automatable -or
+   @($partialCrossUi.generic.RecipeFamilies).Count -ne 0) {
+    throw "Incomplete generated registrar did not fail closed. Status=$($partialCrossUi.generic.Status) Pattern=$($partialCrossUi.generic.Pattern)"
+}
+$generatedUnsafeCrossUi = @($resolver.callbackFamilies |
+    Where-Object { $_.target -eq 'onDraw' } |
+    ForEach-Object { $_.topConsumers } |
+    Where-Object { $_.owner -eq 'GenericCrossFileUiGeneratedUnsafeFixture' })[0]
+if($null -eq $generatedUnsafeCrossUi) { throw 'Generated-registrar unsafe UI fixture was not resolved.' }
+if(@($generatedUnsafeCrossUi.generic.RecipeFamilies | Where-Object { $_ -eq 'CROSS_FILE_INTERACTION_UI_IDLE_CALL_GUARD' }).Count -ne 0) {
+    throw 'Valid generated registrar incorrectly authorized an unsafe cross-file UI helper.'
+}
+if($generatedUnsafeCrossUi.generic.Status -ne 'ALREADY_SATISFIED') {
+    throw "Valid frame registrar was not recognized independently of unsafe UI rejection. Status=$($generatedUnsafeCrossUi.generic.Status)"
+}
+
 $seqConsumer = @($resolver.callbackFamilies |
     Where-Object { $_.target -eq 'onUpdate' } |
     ForEach-Object { $_.topConsumers } |
@@ -293,6 +436,21 @@ if(@($manifest.transforms | Where-Object {
 }).Count -ne 0) {
     throw 'Generated pass incorrectly emitted a cross-file UI guard for the reject fixture.'
 }
+if(@($manifest.transforms | Where-Object {
+    $_.type -eq 'CROSS_FILE_INTERACTION_UI_IDLE_CALL_GUARD' -and $_.owner -eq 'GenericCrossFileUiComposedFixture'
+}).Count -ne 1) {
+    throw 'Generated pass is missing composed cross-file UI guard.'
+}
+if(@($manifest.transforms | Where-Object {
+    $_.type -eq 'FRAME_DISPATCH_CONSOLIDATION' -and $_.owner -eq 'GenericCrossFileUiComposedFixture'
+}).Count -ne 0) {
+    throw 'Generated pass duplicated an already-proven frame registrar.'
+}
+foreach($rejectOwner in @('GenericCrossFileUiPartialRegistrarFixture','GenericCrossFileUiGeneratedUnsafeFixture')) {
+    if(@($manifest.transforms | Where-Object { $_.owner -eq $rejectOwner }).Count -ne 0) {
+        throw "Generated pass emitted a transform for rejected composition fixture: $rejectOwner"
+    }
+}
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip=[System.IO.Compression.ZipFile]::OpenRead([string]$resolved.pass.ZipPath)
@@ -320,6 +478,16 @@ try {
     $crossUiReject=Read-ZipText ($base+'GenericCrossFileUiRejectFixture/init.lua')
     if($crossUiReject -match 'ui\.hubShown or ui\.input') {
         throw 'Reject fixture received the cross-file UI call guard.'
+    }
+
+    $composedCrossUi=Read-ZipText ($base+'GenericCrossFileUiComposedFixture/init.lua')
+    if($composedCrossUi -notmatch 'ui\.hubShown or ui\.input' -or
+       $composedCrossUi -notmatch 'if ui and ui\.update and') {
+        throw 'Composed generated-registrar UI guard is incomplete.'
+    }
+    if([regex]::Matches($composedCrossUi, '__gcetRegisterEvent_9005\s*=\s*__gcetApi\.MakeEventRegistrar').Count -ne 1 -or
+       [regex]::Matches($composedCrossUi, '__gcetRegisterEvent_9005\s*\(\s*"onDraw"').Count -ne 1) {
+        throw 'Composed pass duplicated or lost the existing generated registrar scaffold.'
     }
 
     $seq=Read-ZipText ($base+'GenericSequenceFixture/init.lua')
