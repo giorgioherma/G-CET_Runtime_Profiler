@@ -82,10 +82,23 @@ internal static class GenericHardDormantGuardTransform
                     RegexOptions.CultureInvariant))
                 return false;
 
-            if (!Regex.IsMatch(line, @"[A-Za-z_][\w.:]*\s*\("))
+            var callCount = Regex.Matches(
+                    line,
+                    @"[A-Za-z_][\w.:]*\s*\(",
+                    RegexOptions.CultureInvariant)
+                .Count;
+            if (callCount == 0)
+            {
+                if (!Regex.IsMatch(
+                        line,
+                        @"^local\s+[A-Za-z_]\w*\s*=\s*(?:nil|true|false|[-+]?\d+(?:\.\d+)?|['""][^'""]*['""]|[A-Za-z_]\w*)\s*;?$",
+                        RegexOptions.CultureInvariant))
+                    return false;
                 continue;
+            }
 
-            if (!Regex.IsMatch(
+            if (callCount != 1 ||
+                !Regex.IsMatch(
                     line,
                     @"(?:\bGame\.Get[A-Za-z_]\w*\s*\(|\b__gcetGet[A-Za-z_]\w*\s*\(|\bGetSingleton\s*\()",
                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
