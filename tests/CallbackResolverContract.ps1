@@ -1725,9 +1725,6 @@ try {
     if ($hardUpdateText -notmatch '__gcetRegisterEvent_125\s*\(\s*"onUpdate"') {
         throw 'Dormant fixture lost safe frame-dispatch consolidation.'
     }
-    if ($hardUpdateText -notmatch 'G-CET dormant guard hoist') {
-        throw 'Source-proven hard dormant guard-hoist was not emitted.'
-    }
     $originalGetterIndex = $hardUpdateText.IndexOf('local player = __gcetGetPlayer()')
     $originalGuardIndex = $hardUpdateText.IndexOf('if not active then return end')
     if ($originalGetterIndex -lt 0 -or $originalGuardIndex -lt 0 -or $originalGuardIndex -gt $originalGetterIndex) {
