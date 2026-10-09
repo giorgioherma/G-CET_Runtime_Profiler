@@ -2151,7 +2151,7 @@ internal static class CallbackResolverService
             // Any call before the guard must be recognizably read-only.
             if (!Regex.IsMatch(
                     line,
-                    @"(?:\bGame\.Get[A-Za-z_]\w*\s*\(|\b__gcetGet[A-Za-z_]\w*\s*\(|\bGetSingleton\s*\(|[:.]\s*(?:Get|Is|Has)[A-Za-z_]\w*\s*\()",
+                    @"(?:\bGame\.Get[A-Za-z_]\w*\s*\(|\b__gcetGet[A-Za-z_]\w*\s*\(|\bGetSingleton\s*\()",
                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
                 return false;
 
