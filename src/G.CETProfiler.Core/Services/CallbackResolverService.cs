@@ -401,7 +401,7 @@ internal static class CallbackResolverService
                 sharedProviderScope = "MEASURED_CALLBACKS_ONLY",
                 sharedProviderDeepEvidence = "UNTRUNCATED_GETTER_CALLEES_WITH_LEGACY_HOTCALLEES_FALLBACK",
                 sharedProviderDiscovery = "ALL_ZERO_ARG_GAME_GETTERS_PLUS_ALL_DEEP_GETTER_CALLEES; DEEP_ONLY_EVIDENCE_IS_ANALYSIS_ONLY_UNTIL_CURRENT_SOURCE_IS_PROVEN",
-                note = "Generic AUTO is restricted to mechanically source-proven action routing, exact Override prefiltering, frame-dispatch consolidation, interaction-UI hidden-state early guards, complete-draw UI visibility dormancy with an independent wake writer, canonical sequence-first literal ScriptableSystem polling, and explicitly enabled shared-provider reads with exact current-source proof. Dynamic player-derived state remains analysis-only. Identity-specific automatic behavior lives exclusively in the source-proven semantic library. Shared-provider opportunity totals describe measured callback territory, not estimated savings. Shared-provider deep evidence is aggregated across the measured stack without a per-callback hot-callee top-N gate. Already-satisfied generated states are not re-applied."
+                note = "Generic AUTO is restricted to mechanically source-proven action routing, exact Override prefiltering, frame-dispatch consolidation, interaction-UI hidden-state early guards, complete-draw UI visibility dormancy with an independent wake writer, canonical sequence-first literal ScriptableSystem polling, complete-wake hard-dormant guard hoists that bypass only read-only setup, and explicitly enabled shared-provider reads with exact current-source proof. Dynamic player-derived state remains analysis-only. Identity-specific automatic behavior lives exclusively in the source-proven semantic library. Shared-provider opportunity totals describe measured callback territory, not estimated savings. Shared-provider deep evidence is aggregated across the measured stack without a per-callback hot-callee top-N gate. Already-satisfied generated states are not re-applied."
             },
             semanticLibrary = new
             {
@@ -1925,6 +1925,9 @@ internal static class CallbackResolverService
                     StringComparison.OrdinalIgnoreCase) ||
                 x.Equals(
                     "SEQUENCE_FIRST_SCRIPTABLE_SYSTEM_POLL",
+                    StringComparison.OrdinalIgnoreCase) ||
+                x.Equals(
+                    "HARD_DORMANT_GUARD_HOIST",
                     StringComparison.OrdinalIgnoreCase))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -1935,6 +1938,9 @@ internal static class CallbackResolverService
                     StringComparison.OrdinalIgnoreCase) &&
                 !x.Equals(
                     "SEQUENCE_FIRST_SCRIPTABLE_SYSTEM_POLL",
+                    StringComparison.OrdinalIgnoreCase) &&
+                !x.Equals(
+                    "HARD_DORMANT_GUARD_HOIST",
                     StringComparison.OrdinalIgnoreCase))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -2060,9 +2066,11 @@ internal static class CallbackResolverService
     {
         resolution = new HardDormantGuardResolution();
 
-        // Guard-hoist is only worth the semantic proof cost on material callbacks.
-        if (callback.ExclusiveMsPerSecond < 8.0 ||
-            callback.GlobalWorkSharePct < 1.0)
+        // This transform changes no cadence and only moves an already-author-written
+        // early return ahead of source-proven read-only setup. Admit material callbacks,
+        // but keep a small relative floor so AUTO does not rewrite microscopic code.
+        if (callback.ExclusiveMsPerSecond < MaterialRemainingMsPerSecond ||
+            callback.GlobalWorkSharePct < 0.25)
             return false;
 
         var callbackText = source.CallbackText
@@ -2142,7 +2150,7 @@ internal static class CallbackResolverService
             // Any call before the guard must be recognizably read-only.
             if (!Regex.IsMatch(
                     line,
-                    @"(?:\bGame\.Get[A-Za-z_]\w*\s*\(|\bGetSingleton\s*\(|[:.]\s*(?:Get|Is|Has)[A-Za-z_]\w*\s*\()",
+                    @"(?:\bGame\.Get[A-Za-z_]\w*\s*\(|\b__gcetGet[A-Za-z_]\w*\s*\(|\bGetSingleton\s*\(|[:.]\s*(?:Get|Is|Has)[A-Za-z_]\w*\s*\()",
                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
                 return false;
 
