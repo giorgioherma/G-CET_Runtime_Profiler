@@ -867,11 +867,11 @@ public static class PassGeneratorService
                                 expectedProof,
                                 out var rewrittenHardDormant))
                         {
-                            var replacementLines = rewrittenHardDormant.Split('\n');
+                            var hardDormantReplacementLines = rewrittenHardDormant.Split('\n');
                             lines.RemoveRange(
                                 candidate.LineStart - 1,
                                 effectiveLineEnd - candidate.LineStart + 1);
-                            lines.InsertRange(candidate.LineStart - 1, replacementLines);
+                            lines.InsertRange(candidate.LineStart - 1, hardDormantReplacementLines);
 
                             transformManifest.Add(new
                             {
