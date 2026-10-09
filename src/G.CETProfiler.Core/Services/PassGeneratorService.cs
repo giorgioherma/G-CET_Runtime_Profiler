@@ -227,13 +227,15 @@ public static class PassGeneratorService
                     "ACTION_OVERRIDE_EXACT_PREFILTER",
                     "FRAME_DISPATCH_CONSOLIDATION",
                     "INTERACTION_UI_IDLE_GUARD",
+                    "UI_VISIBILITY_DORMANCY",
                     "HARD_DORMANT_GUARD_HOIST",
+                    "SEQUENCE_FIRST_SCRIPTABLE_SYSTEM_POLL",
                     "SHARED_PROVIDER_READ",
                     "SEMANTIC_RULE_SOURCE_INJECTION"
                 },
                 fixedRuntimeException = "0-Engine",
                 zeroEngineCompatibilityPolicy = "KNOWN_GCET_FIXED_RUNTIME_OR_STRUCTURALLY_PROVEN_HOST_PRESERVING_ADAPTER",
-                note = "The overlay generator composes generic AUTO and measured semantic source injections. 0-Engine uses the exact proven G-CET runtime for known states; unknown versions are preserved and receive only a namespaced Engine.GCET adapter when a safe final exported-table structure is proven. Semantic rules are admitted only for >=3 ms/s measured callbacks and must re-prove current live source."
+                note = "The overlay generator composes generic AUTO and measured semantic source injections. 0-Engine uses the exact proven G-CET runtime for known states; unknown versions are preserved and receive only a namespaced Engine.GCET adapter when a safe final exported-table structure is proven. Semantic rules use a 3 ms/s default admission threshold; an explicit production rule may declare a lower positive threshold when justified by source-proven framework value. Every semantic still re-proves current live source."
             },
             fixedRuntime = new
             {
