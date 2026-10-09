@@ -1650,8 +1650,6 @@ public static class PassGeneratorService
         public string InteractionUiHubVariable { get; init; } = "";
         public string UiVisibilityGate { get; init; } = "";
         public string UiVisibilityWakeKind { get; init; } = "";
-        public string HardDormantGateExpression { get; init; } = "";
-        public int HardDormantPreGuardReadCount { get; init; }
         public string SequenceSystemName { get; init; } = "";
         public string SequenceBridgeVariable { get; init; } = "";
         public string SequenceVariable { get; init; } = "";
@@ -1682,6 +1680,8 @@ public static class PassGeneratorService
         public string InteractionUiHubVariable { get; init; } = "";
         public string UiVisibilityGate { get; init; } = "";
         public string UiVisibilityWakeKind { get; init; } = "";
+        public string HardDormantGateExpression { get; init; } = "";
+        public int HardDormantPreGuardReadCount { get; init; }
         public string SequenceSystemName { get; init; } = "";
         public string SequenceBridgeVariable { get; init; } = "";
         public string SequenceVariable { get; init; } = "";
