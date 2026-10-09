@@ -117,6 +117,7 @@ public static class PassGeneratorService
             var transformed = TransformFile(
                 originalBytes,
                 group.OrderByDescending(x => x.LineStart).ToList(),
+                modsRoot,
                 transformManifest,
                 skipped);
 
@@ -227,6 +228,7 @@ public static class PassGeneratorService
                     "ACTION_OVERRIDE_EXACT_PREFILTER",
                     "FRAME_DISPATCH_CONSOLIDATION",
                     "INTERACTION_UI_IDLE_GUARD",
+                    "CROSS_FILE_INTERACTION_UI_IDLE_CALL_GUARD",
                     "UI_VISIBILITY_DORMANCY",
                     "HARD_DORMANT_GUARD_HOIST",
                     "SEQUENCE_FIRST_SCRIPTABLE_SYSTEM_POLL",
@@ -361,6 +363,7 @@ public static class PassGeneratorService
                          recipes.Any(x =>
                              x.Equals("FRAME_DISPATCH_CONSOLIDATION", StringComparison.OrdinalIgnoreCase) ||
                              x.Equals("INTERACTION_UI_IDLE_GUARD", StringComparison.OrdinalIgnoreCase) ||
+                             x.Equals("CROSS_FILE_INTERACTION_UI_IDLE_CALL_GUARD", StringComparison.OrdinalIgnoreCase) ||
                              x.Equals("UI_VISIBILITY_DORMANCY", StringComparison.OrdinalIgnoreCase)))
                 {
                     kind = CandidateKind.Frame;
@@ -418,6 +421,8 @@ public static class PassGeneratorService
                         x.Equals("FRAME_DISPATCH_CONSOLIDATION", StringComparison.OrdinalIgnoreCase)),
                     ApplyInteractionUiIdleGuard = recipes.Any(x =>
                         x.Equals("INTERACTION_UI_IDLE_GUARD", StringComparison.OrdinalIgnoreCase)),
+                    ApplyCrossFileInteractionUiIdleCallGuard = recipes.Any(x =>
+                        x.Equals("CROSS_FILE_INTERACTION_UI_IDLE_CALL_GUARD", StringComparison.OrdinalIgnoreCase)),
                     ApplyUiVisibilityDormancy = recipes.Any(x =>
                         x.Equals("UI_VISIBILITY_DORMANCY", StringComparison.OrdinalIgnoreCase)),
                     ApplySequenceFirstPolling = recipes.Any(x =>
@@ -430,6 +435,13 @@ public static class PassGeneratorService
                     InteractionUiGate = facts.InteractionUiGate,
                     InteractionUiIdleReset = facts.InteractionUiIdleReset,
                     InteractionUiHubVariable = facts.InteractionUiHubVariable,
+                    CrossFileInteractionUiFunction = facts.CrossFileInteractionUiFunction,
+                    CrossFileInteractionUiReceiver = facts.CrossFileInteractionUiReceiver,
+                    CrossFileInteractionUiGate = facts.CrossFileInteractionUiGate,
+                    CrossFileInteractionUiPending = facts.CrossFileInteractionUiPending,
+                    CrossFileInteractionUiIdleReset = facts.CrossFileInteractionUiIdleReset,
+                    CrossFileInteractionUiModuleFile = facts.CrossFileInteractionUiModuleFile,
+                    CrossFileInteractionUiModuleSha256 = facts.CrossFileInteractionUiModuleSha256,
                     UiVisibilityGate = facts.UiVisibilityGate,
                     UiVisibilityWakeKind = facts.UiVisibilityWakeKind,
                     SequenceSystemName = facts.SequenceSystemName,
@@ -554,6 +566,13 @@ public static class PassGeneratorService
             InteractionUiGate = JsonString(facts, "interactionUiGate"),
             InteractionUiIdleReset = JsonString(facts, "interactionUiIdleReset"),
             InteractionUiHubVariable = JsonString(facts, "interactionUiHubVariable"),
+            CrossFileInteractionUiFunction = JsonString(facts, "crossFileInteractionUiFunction"),
+            CrossFileInteractionUiReceiver = JsonString(facts, "crossFileInteractionUiReceiver"),
+            CrossFileInteractionUiGate = JsonString(facts, "crossFileInteractionUiGate"),
+            CrossFileInteractionUiPending = JsonString(facts, "crossFileInteractionUiPending"),
+            CrossFileInteractionUiIdleReset = JsonString(facts, "crossFileInteractionUiIdleReset"),
+            CrossFileInteractionUiModuleFile = JsonString(facts, "crossFileInteractionUiModuleFile"),
+            CrossFileInteractionUiModuleSha256 = JsonString(facts, "crossFileInteractionUiModuleSha256"),
             UiVisibilityGate = JsonString(facts, "uiVisibilityGate"),
             UiVisibilityWakeKind = JsonString(facts, "uiVisibilityWakeKind"),
             HardDormantGateExpression = JsonString(facts, "hardDormantGateExpression"),
@@ -570,6 +589,7 @@ public static class PassGeneratorService
     private static TransformResult TransformFile(
         byte[] originalBytes,
         IReadOnlyList<PassCandidate> candidates,
+        string modsRoot,
         List<object> transformManifest,
         List<object> skipped)
     {
@@ -810,6 +830,109 @@ public static class PassGeneratorService
                         skipped.Add(Skip(
                             candidate,
                             "Interaction-UI idle guard could not be revalidated after earlier generic transforms; leave the function unchanged."));
+                    }
+                }
+
+                if (candidate.ApplyCrossFileInteractionUiIdleCallGuard)
+                {
+                    var modulePath = ResolveInsideMods(
+                        modsRoot,
+                        candidate.CrossFileInteractionUiModuleFile);
+                    if (modulePath is null ||
+                        !File.Exists(modulePath) ||
+                        string.IsNullOrWhiteSpace(candidate.CrossFileInteractionUiModuleSha256))
+                    {
+                        skipped.Add(Skip(
+                            candidate,
+                            "Cross-file interaction UI module is missing or its proof hash is incomplete."));
+                    }
+                    else
+                    {
+                        var moduleBytes = File.ReadAllBytes(modulePath);
+                        var moduleHash = Sha256(moduleBytes);
+                        if (!moduleHash.Equals(
+                                candidate.CrossFileInteractionUiModuleSha256,
+                                StringComparison.OrdinalIgnoreCase))
+                        {
+                            skipped.Add(Skip(
+                                candidate,
+                                "Cross-file interaction UI module changed after analysis; leave onDraw unchanged."));
+                        }
+                        else if (effectiveLineEnd > lines.Count)
+                        {
+                            skipped.Add(Skip(
+                                candidate,
+                                "Recorded cross-file interaction UI callback range is outside the current file."));
+                        }
+                        else
+                        {
+                            var callbackLines = lines
+                                .Skip(candidate.LineStart - 1)
+                                .Take(effectiveLineEnd - candidate.LineStart + 1)
+                                .ToArray();
+                            var callbackSegment = string.Join("\n", callbackLines);
+                            var moduleText = Encoding.UTF8.GetString(moduleBytes)
+                                .TrimStart('\uFEFF');
+
+                            if (!GenericInteractionUiTransform.TryProveCrossFileCall(
+                                    callbackSegment,
+                                    moduleText,
+                                    candidate.CrossFileInteractionUiModuleFile,
+                                    moduleHash,
+                                    out var currentProof))
+                            {
+                                skipped.Add(Skip(
+                                    candidate,
+                                    "Cross-file interaction UI proof could not be revalidated; leave onDraw unchanged."));
+                            }
+                            else
+                            {
+                                var expectedProof = new CrossFileInteractionUiCallProof(
+                                    candidate.CrossFileInteractionUiFunction,
+                                    candidate.CrossFileInteractionUiReceiver,
+                                    candidate.CrossFileInteractionUiGate,
+                                    candidate.CrossFileInteractionUiPending,
+                                    candidate.CrossFileInteractionUiIdleReset,
+                                    candidate.CrossFileInteractionUiModuleFile,
+                                    candidate.CrossFileInteractionUiModuleSha256);
+
+                                if (currentProof != expectedProof ||
+                                    !GenericInteractionUiTransform.TryApplyCrossFileCallGuard(
+                                        callbackSegment,
+                                        expectedProof,
+                                        out var rewrittenCrossFileUi))
+                                {
+                                    skipped.Add(Skip(
+                                        candidate,
+                                        "Cross-file interaction UI call guard no longer matches the analyzed proof."));
+                                }
+                                else
+                                {
+                                    var replacementLines = rewrittenCrossFileUi.Split('\n');
+                                    lines.RemoveRange(
+                                        candidate.LineStart - 1,
+                                        effectiveLineEnd - candidate.LineStart + 1);
+                                    lines.InsertRange(
+                                        candidate.LineStart - 1,
+                                        replacementLines);
+
+                                    transformManifest.Add(new
+                                    {
+                                        registrationId = candidate.RegistrationId,
+                                        owner = candidate.Owner,
+                                        type = "CROSS_FILE_INTERACTION_UI_IDLE_CALL_GUARD",
+                                        file = candidate.RelativeFile,
+                                        function = candidate.CrossFileInteractionUiFunction,
+                                        gate = candidate.CrossFileInteractionUiGate,
+                                        pending = candidate.CrossFileInteractionUiPending,
+                                        moduleFile = candidate.CrossFileInteractionUiModuleFile,
+                                        moduleSha256 = candidate.CrossFileInteractionUiModuleSha256,
+                                        proof = "call-only onDraw delegates to a required module whose hidden path is source-proven to perform only the preserved false-state reset"
+                                    });
+                                    applied++;
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -1641,6 +1764,7 @@ public static class PassGeneratorService
         public bool AlsoFrameDispatch { get; init; }
         public bool ApplyFrameDispatch { get; init; }
         public bool ApplyInteractionUiIdleGuard { get; init; }
+        public bool ApplyCrossFileInteractionUiIdleCallGuard { get; init; }
         public bool ApplyUiVisibilityDormancy { get; init; }
         public bool ApplySequenceFirstPolling { get; init; }
         public bool ApplyHardDormantGuardHoist { get; init; }
@@ -1650,6 +1774,13 @@ public static class PassGeneratorService
         public string InteractionUiGate { get; init; } = "";
         public string InteractionUiIdleReset { get; init; } = "";
         public string InteractionUiHubVariable { get; init; } = "";
+        public string CrossFileInteractionUiFunction { get; init; } = "";
+        public string CrossFileInteractionUiReceiver { get; init; } = "";
+        public string CrossFileInteractionUiGate { get; init; } = "";
+        public string CrossFileInteractionUiPending { get; init; } = "";
+        public string CrossFileInteractionUiIdleReset { get; init; } = "";
+        public string CrossFileInteractionUiModuleFile { get; init; } = "";
+        public string CrossFileInteractionUiModuleSha256 { get; init; } = "";
         public string UiVisibilityGate { get; init; } = "";
         public string UiVisibilityWakeKind { get; init; } = "";
         public string SequenceSystemName { get; init; } = "";
@@ -1680,6 +1811,13 @@ public static class PassGeneratorService
         public string InteractionUiGate { get; init; } = "";
         public string InteractionUiIdleReset { get; init; } = "";
         public string InteractionUiHubVariable { get; init; } = "";
+        public string CrossFileInteractionUiFunction { get; init; } = "";
+        public string CrossFileInteractionUiReceiver { get; init; } = "";
+        public string CrossFileInteractionUiGate { get; init; } = "";
+        public string CrossFileInteractionUiPending { get; init; } = "";
+        public string CrossFileInteractionUiIdleReset { get; init; } = "";
+        public string CrossFileInteractionUiModuleFile { get; init; } = "";
+        public string CrossFileInteractionUiModuleSha256 { get; init; } = "";
         public string UiVisibilityGate { get; init; } = "";
         public string UiVisibilityWakeKind { get; init; } = "";
         public string HardDormantGateExpression { get; init; } = "";
