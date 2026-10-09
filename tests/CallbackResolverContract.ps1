@@ -1816,8 +1816,14 @@ try {
     if (@($manifest.policy.supportedPasses) -notcontains 'INTERACTION_UI_IDLE_GUARD') {
         throw 'Generated pass manifest does not advertise INTERACTION_UI_IDLE_GUARD generation.'
     }
-    if ([double]$manifest.policy.semanticRuntimeThresholdMsPerSecond -ne 3.0) {
-        throw 'Semantic runtime admission threshold changed unexpectedly.'
+    if (@($manifest.policy.supportedPasses) -notcontains 'HARD_DORMANT_GUARD_HOIST') {
+        throw 'Generated pass manifest does not advertise source-proven HARD_DORMANT_GUARD_HOIST generation.'
+    }
+    if ([double]$manifest.policy.semanticDefaultRuntimeThresholdMsPerSecond -ne 3.0) {
+        throw 'Default semantic runtime admission threshold changed unexpectedly.'
+    }
+    if (!$manifest.policy.semanticRuleLocalRuntimeThresholds) {
+        throw 'Manifest does not advertise explicit rule-local semantic thresholds.'
     }
     if (!$manifest.policy.semanticCurrentSourceProofRequired) {
         throw 'Semantic generation no longer requires current-source proof.'
@@ -1830,7 +1836,6 @@ try {
     }
     foreach ($forbiddenType in @(
         'STRUCTURAL_HOTPATH_REWRITE',
-        'HARD_DORMANT_GUARD_HOIST',
         'AUTHOR_DISCOVERY_DORMANT_SCHEDULE',
         'AUTHOR_CADENCE_WHOLE_CALLBACK'
     )) {
