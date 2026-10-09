@@ -1976,6 +1976,10 @@ try {
         '__gcetHost.GCET',
         'function __gcetApi.MakeEventRegistrar',
         'function __gcetApi.SubscribeAction',
+        'local __gcetHostMakeEventRegistrar = __gcetHost.MakeEventRegistrar',
+        'local __gcetHostSubscribeAction = __gcetHost.SubscribeAction',
+        'pcall(__gcetHostMakeEventRegistrar, modName, fallbackRegister)',
+        'pcall(__gcetHostSubscribeAction, config, fn, source)',
         'modules/G-CET/ActionRouter'
     )) {
         if ($foreignZeroText -notmatch [regex]::Escape($required)) {
@@ -1994,6 +1998,20 @@ try {
         if ($null -ne $foreignZip.GetEntry($base + $forbidden)) {
             throw "Host-preserving compatibility incorrectly overwrote host module: $forbidden"
         }
+    }
+
+    $hostFrameCapture=$foreignZeroText.IndexOf('local __gcetHostMakeEventRegistrar = __gcetHost.MakeEventRegistrar')
+    $hostFrameCall=$foreignZeroText.IndexOf('pcall(__gcetHostMakeEventRegistrar, modName, fallbackRegister)')
+    $localFrameFallback=$foreignZeroText.IndexOf('return __gcetLocalMakeEventRegistrar(modName, fallbackRegister)')
+    if($hostFrameCapture -lt 0 -or $hostFrameCall -lt $hostFrameCapture -or $localFrameFallback -lt $hostFrameCall) {
+        throw 'Host compatibility bridge no longer prefers an existing host MakeEventRegistrar before its local fallback.'
+    }
+
+    $hostActionCapture=$foreignZeroText.IndexOf('local __gcetHostSubscribeAction = __gcetHost.SubscribeAction')
+    $hostActionCall=$foreignZeroText.IndexOf('pcall(__gcetHostSubscribeAction, config, fn, source)')
+    $localActionFallback=$foreignZeroText.IndexOf('if not __gcetEnsureActionRouter() then')
+    if($hostActionCapture -lt 0 -or $hostActionCall -lt $hostActionCapture -or $localActionFallback -lt $hostActionCall) {
+        throw 'Host compatibility bridge no longer prefers an existing host SubscribeAction before its private ActionRouter fallback.'
     }
 
     $foreignActionText = Read-ForeignZipText ($base + 'FixtureAction/init.lua')

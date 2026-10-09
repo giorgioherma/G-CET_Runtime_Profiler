@@ -47,7 +47,7 @@
   },
   "hostCompatibility": {
     "version": "HOST-COMPAT-v1",
-    "strategy": "Preserve the user's unknown 0-Engine source and inject an additive Engine.GCET bridge immediately before its proven final exported runtime table.",
+    "strategy": "Preserve the user's unknown 0-Engine source and inject an additive Engine.GCET bridge immediately before its proven final exported runtime table. The bridge delegates existing host MakeEventRegistrar and SubscribeAction APIs before using its private fallback dispatchers.",
     "structuralRequirements": [
       "source-visible assignment for the final exported identifier",
       "simple final return of that identifier",
