@@ -174,10 +174,21 @@ $resolved = (& $resolverExe --capture $capture --mods $mods --generate-pass --js
 if (!$resolved.ok -or $null -eq $resolved.pass) { throw 'Residual dormancy semantic pass generation failed.' }
 
 $resolver = Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
-$expected=@('dedra-judy-date-ui-dormancy','fpv-drone-idle-dormancy','aerial-race-active-idle-split')
+$expected=@('fpv-drone-idle-dormancy','aerial-race-active-idle-split')
 foreach($rule in $expected) {
   $hit=@($resolver.callbackFamilies | ForEach-Object {$_.topConsumers} | Where-Object {$_.semantic.RuleId -eq $rule})[0]
   if($null -eq $hit -or -not $hit.semantic.generationReady) { throw "Semantic rule not generation-ready: $rule" }
+}
+
+$dedra=@($resolver.callbackFamilies |
+  ForEach-Object {$_.topConsumers} |
+  Where-Object {$_.owner -eq 'Dedrajudygoonadate' -and $_.target -eq 'onDraw'})[0]
+if($null -eq $dedra -or
+   @($dedra.generic.RecipeFamilies | Where-Object {$_ -eq 'CROSS_FILE_INTERACTION_UI_IDLE_CALL_GUARD'}).Count -ne 1) {
+  throw 'Dedra UI helper was not promoted to cross-file generic AUTO.'
+}
+if($dedra.semantic.Matched) {
+  throw 'Dedra still matched a semantic rule after generic promotion.'
 }
 
 $manifest = Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
@@ -185,6 +196,11 @@ foreach($rule in $expected) {
   if(@($manifest.transforms | Where-Object {$_.type -eq 'SEMANTIC_RULE' -and $_.RuleId -eq $rule}).Count -ne 1) {
     throw "Generated pass missing semantic rule: $rule"
   }
+}
+if(@($manifest.transforms | Where-Object {
+  $_.type -eq 'CROSS_FILE_INTERACTION_UI_IDLE_CALL_GUARD' -and $_.owner -eq 'Dedrajudygoonadate'
+}).Count -ne 1) {
+  throw 'Generated pass missing promoted Dedra cross-file generic guard.'
 }
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -220,4 +236,4 @@ try {
 }
 finally { $zip.Dispose() }
 
-Write-Host 'Residual dormancy semantic contract passed.'
+Write-Host 'Residual dormancy contract passed: Dedra generic AUTO + FPV/Aerial semantic lanes.'
