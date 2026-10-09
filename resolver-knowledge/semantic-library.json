@@ -14,7 +14,7 @@
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
     "fullPassRule": "A semantic injector can run only when the current capture meets that rule's runtime admission threshold (3.0 ms/s by default; lower only when explicitly declared by a production rule), the library rule matches, and the current live mod source graph proves its anchors.",
-    "enabledInjectorCount": 58,
+    "enabledInjectorCount": 57,
     "profileOnlyRuleCount": 0,
     "note": "The production semantic base contains source-proven, behavior-aware optimizations learned from validated references and measured hot callbacks. Generic/mechanical transforms stay in the Resolver; semantic rules cover state/cadence/hotpath knowledge that generic inference cannot safely own.",
     "admissionPolicy": {
@@ -4220,78 +4220,6 @@
       "referenceOverrideAllowed": false,
       "evidenceMembership": [
         "SIXTH_STACK_SECOND_SEMANTIC_20261009"
-      ]
-    },
-    {
-      "id": "fpv-drone-idle-dormancy",
-      "identityHints": [
-        "FPVDrone"
-      ],
-      "policyClass": "ACTIVE_IDLE_RUNTIME_SPLIT",
-      "callbacks": [
-        {
-          "kind": "event",
-          "target": "onUpdate",
-          "role": "hot-path"
-        }
-      ],
-      "sourceProof": {
-        "ownerAll": [
-          "updateFPVController(deltaTime)",
-          "updateFPVDroneDeathTransitionGuard()",
-          "pendingDroneDespawnID",
-          "playerProtection.active",
-          "playerCameraRestoreTimer",
-          "droneViewSaveLockActive",
-          "previousValueCaptured",
-          "visualResetPending",
-          "function toggleDrone()"
-        ],
-        "alreadySatisfiedMarker": "G-CET semantic:fpv-drone-idle-dormancy",
-        "expectedMarkerFileCount": 1
-      },
-      "behavior": {
-        "handler": "SEMANTIC_ACTIVE_IDLE_SPLIT",
-        "concepts": [
-          "hotkeyWake",
-          "activeFlight",
-          "pendingCleanup",
-          "idleControllerHeartbeat"
-        ],
-        "lanes": [
-          {
-            "role": "ACTIVE_OR_CLEANUP",
-            "cadence": "EVERY_FRAME",
-            "seconds": 0
-          },
-          {
-            "role": "FULLY_IDLE",
-            "cadence": "FIXED_SECONDS",
-            "seconds": 0.5
-          }
-        ]
-      },
-      "generation": {
-        "enabled": true,
-        "patchStyle": "source-injection",
-        "shipReferenceOverride": false,
-        "requiresCurrentSourceProof": true,
-        "requiresIdempotenceMarker": true,
-        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
-      },
-      "runtimeAdmission": {
-        "thresholdMsPerSecond": 3,
-        "measuredPeakExclusiveMsPerSecond": 3.851359,
-        "evidenceStack": "SIXTH_STACK_LAST_CET",
-        "admitted": true
-      },
-      "cadenceGroup": "ACTIVE_FRAME_IDLE_2HZ",
-      "catalogRole": "SEMANTIC_HOT_MOD",
-      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
-      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
-      "referenceOverrideAllowed": false,
-      "evidenceMembership": [
-        "G_CET_SIXTH_STACK_20261009"
       ]
     },
     {

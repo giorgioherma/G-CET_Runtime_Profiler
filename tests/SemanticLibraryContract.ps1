@@ -122,6 +122,14 @@ if ($leaked.Count -gt 0) {
     throw "Source-only semantic seed(s) leaked into production AUTO without a validated optimized reference: $($leaked -join ', ')"
 }
 
+$retiredUnsafeRules = @(
+    'fpv-drone-idle-dormancy'
+)
+$retiredLeak = @($retiredUnsafeRules | Where-Object { $_ -in $ids -or $_ -in $injectorIds })
+if ($retiredLeak.Count -gt 0) {
+    throw "Retired crash-reproducing semantic rule leaked back into production AUTO: $($retiredLeak -join ', ')"
+}
+
 $restoredReferenceRules = @(
     'immersivefirstperson',
     'nativeinteractions',

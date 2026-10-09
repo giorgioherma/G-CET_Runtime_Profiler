@@ -174,10 +174,19 @@ $resolved = (& $resolverExe --capture $capture --mods $mods --generate-pass --js
 if (!$resolved.ok -or $null -eq $resolved.pass) { throw 'Residual dormancy semantic pass generation failed.' }
 
 $resolver = Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
-$expected=@('fpv-drone-idle-dormancy','aerial-race-active-idle-split')
+$expected=@('aerial-race-active-idle-split')
 foreach($rule in $expected) {
   $hit=@($resolver.callbackFamilies | ForEach-Object {$_.topConsumers} | Where-Object {$_.semantic.RuleId -eq $rule})[0]
   if($null -eq $hit -or -not $hit.semantic.generationReady) { throw "Semantic rule not generation-ready: $rule" }
+}
+
+$fpv=@($resolver.callbackFamilies |
+  ForEach-Object {$_.topConsumers} |
+  Where-Object {$_.owner -eq 'FPVDrone' -and $_.target -eq 'onUpdate'})[0]
+if($null -eq $fpv) { throw 'FPVDrone measured callback missing from resolver contract.' }
+if($fpv.semantic.Matched -or $fpv.semantic.generationReady -or
+   [string]$fpv.semantic.RuleId -eq 'fpv-drone-idle-dormancy') {
+  throw 'FPVDrone unsafe idle-dormancy semantic leaked back into AUTO.'
 }
 
 $dedra=@($resolver.callbackFamilies |
@@ -198,6 +207,11 @@ foreach($rule in $expected) {
   }
 }
 if(@($manifest.transforms | Where-Object {
+  $_.type -eq 'SEMANTIC_RULE' -and ($_.RuleId -eq 'fpv-drone-idle-dormancy' -or $_.owner -eq 'FPVDrone')
+}).Count -ne 0) {
+  throw 'Generated pass contains a forbidden FPVDrone semantic transform.'
+}
+if(@($manifest.transforms | Where-Object {
   $_.type -eq 'CROSS_FILE_INTERACTION_UI_IDLE_CALL_GUARD' -and $_.owner -eq 'Dedrajudygoonadate'
 }).Count -ne 1) {
   throw 'Generated pass missing promoted Dedra cross-file generic guard.'
@@ -214,13 +228,14 @@ try {
   $dedra=Read-ZipText ($base+'Dedrajudygoonadate/init.lua')
   if($dedra -notmatch 'ui\.hubShown or ui\.input') { throw 'Dedra hidden UI gate missing.' }
 
-  $fpv=Read-ZipText ($base+'FPVDrone/fpv/bindings.lua')
-  if($fpv -notmatch '__gcetFpvIdleElapsed' -or
-     $fpv -notmatch 'pendingDroneDespawnID ~= nil' -or
-     $fpv -notmatch 'previousValueCaptured == true' -or
-     $fpv -notmatch 'visualResetPending == true' -or
-     $fpv -notmatch '< 0\.50') {
-    throw 'FPV active/idle split or pending-cleanup wake set is incomplete.'
+  $fpvEntry=$zip.GetEntry($base+'FPVDrone/fpv/bindings.lua')
+  if($null -ne $fpvEntry) {
+    $fpvReader=[System.IO.StreamReader]::new($fpvEntry.Open())
+    try{$fpv=$fpvReader.ReadToEnd()} finally{$fpvReader.Dispose()}
+    if($fpv -match '__gcetFpvIdleElapsed' -or
+       $fpv -match 'G-CET semantic:fpv-drone-idle-dormancy') {
+      throw 'Generated FPVDrone source contains the retired idle-dormancy semantic.'
+    }
   }
 
   $aerial=Read-ZipText ($base+'AerialRace/init.lua')
@@ -236,4 +251,4 @@ try {
 }
 finally { $zip.Dispose() }
 
-Write-Host 'Residual dormancy contract passed: Dedra generic AUTO + FPV/Aerial semantic lanes.'
+Write-Host 'Residual dormancy contract passed: Dedra generic AUTO + Aerial semantic; FPVDrone semantic retired.'
