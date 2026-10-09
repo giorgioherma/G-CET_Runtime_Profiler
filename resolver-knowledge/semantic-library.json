@@ -13,8 +13,8 @@
     "runtimeAdmissionThresholdMsPerSecond": 3,
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
-    "fullPassRule": "A semantic injector can run only when the current capture contains a >=3.0 ms/s measured callback, the library rule matches, and the current live mod source graph proves its anchors.",
-    "enabledInjectorCount": 58,
+    "fullPassRule": "A semantic injector can run only when the current capture meets that rule's runtime admission threshold (3.0 ms/s by default; lower only when explicitly declared by a production rule), the library rule matches, and the current live mod source graph proves its anchors.",
+    "enabledInjectorCount": 59,
     "profileOnlyRuleCount": 0,
     "note": "The production semantic base contains source-proven, behavior-aware optimizations learned from validated references and measured hot callbacks. Generic/mechanical transforms stay in the Resolver; semantic rules cover state/cadence/hotpath knowledge that generic inference cannot safely own.",
     "admissionPolicy": {
@@ -33,7 +33,7 @@
         "OverclockedLynxPaws (source-only seed; no validated optimized reference yet)",
         "DualSense Support (source-only seed; no validated optimized reference yet)"
       ],
-      "note": "A semantic rule does not require a sleep state. It may encode a validated behavior-preserving hotpath, prefilter, state cache, or multi-rate split when the current source proves the same semantic shape. Rules fail closed when that proof is incomplete.",
+      "note": "The production default is 3 ms/s. A rule may declare a lower positive threshold only for a deliberately admitted source-proven framework optimization; this does not lower generic AUTO or material-remaining thresholds. A semantic rule does not require a sleep state and may encode a validated behavior-preserving hotpath, prefilter, state cache, or multi-rate split when the current source proves the same semantic shape. Rules fail closed when that proof is incomplete.",
       "allowsSourceProvenHotpathRestructure": true,
       "allowsRealtimePreservingMultiRateSplit": true
     },
@@ -4428,6 +4428,105 @@
       },
       "cadenceGroup": "CRON_FRAME_ACTIVE_FRAME_IDLE_DISCOVERY_5HZ",
       "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G_CET_SIXTH_STACK_20261009"
+      ]
+    },
+    {
+      "id": "appearance-menu-mod-squeeze",
+      "identityHints": [
+        "AppearanceMenuMod"
+      ],
+      "policyClass": "TARGET_IDENTITY_UI_LANE_SPLIT",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "periodic-world-hot-path"
+        },
+        {
+          "kind": "event",
+          "target": "onDraw",
+          "role": "ui-hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "AMM.currentTarget = AMM:GetTarget()",
+          "function AMM:GetTarget()",
+          "AMM:CheckCustomDefaults(target)",
+          "AMM:CheckSavedAppearance(target)",
+          "AMM.Director:SenseTriggers()",
+          "AMM.Scan:SenseSavedDespawns()",
+          "Cron.Update(deltaTime)",
+          "drawWindow or AMM.Props.buildMode",
+          "AMM.Tools.currentTarget:Move()"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:appearance-menu-mod-squeeze",
+        "expectedMarkerFileCount": 1
+      },
+      "behavior": {
+        "handler": "SEMANTIC_TARGET_IDENTITY_UI_LANE_SPLIT",
+        "concepts": [
+          "hiddenUiDormancy",
+          "cheapLookAtIdentity",
+          "reuseUnchangedTarget",
+          "preserveWorldSensing",
+          "deduplicateSavedAppearanceWake"
+        ],
+        "lanes": [
+          {
+            "role": "UI",
+            "cadence": "VISIBLE_OR_BUILD_MODE_ONLY",
+            "seconds": 0
+          },
+          {
+            "role": "TARGET_IDENTITY_PROBE",
+            "cadence": "AUTHOR_EXISTING_PERIODIC",
+            "seconds": 0
+          },
+          {
+            "role": "TARGET_REBUILD",
+            "cadence": "ON_TARGET_IDENTITY_CHANGE",
+            "seconds": 0
+          },
+          {
+            "role": "WORLD_SENSING",
+            "cadence": "AUTHOR_EXISTING_PERIODIC",
+            "seconds": 0
+          },
+          {
+            "role": "ACTIVE_CAMERA_LIGHT_DIRECT_MODE",
+            "cadence": "EVERY_FRAME_WHILE_ACTIVE",
+            "seconds": 0
+          },
+          {
+            "role": "CRON",
+            "cadence": "EVERY_FRAME",
+            "seconds": 0
+          }
+        ]
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 1,
+        "measuredPeakExclusiveMsPerSecond": 1.266711,
+        "evidenceStack": "SIXTH_STACK_LAST_CET",
+        "admitted": true,
+        "rationale": "Ubiquitous framework rule with a multi-lane source-proven optimization; the lower threshold is rule-local and does not lower the default semantic admission floor."
+      },
+      "cadenceGroup": "UI_DORMANT_TARGET_IDENTITY_CHANGE_WORLD_PERIODIC_ACTIVE_FRAME",
+      "catalogRole": "SEMANTIC_FRAMEWORK_HOT_MOD",
       "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
       "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
       "referenceOverrideAllowed": false,
