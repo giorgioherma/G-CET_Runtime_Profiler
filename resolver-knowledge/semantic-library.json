@@ -4311,6 +4311,8 @@
           "playerProtection.active",
           "playerCameraRestoreTimer",
           "droneViewSaveLockActive",
+          "previousValueCaptured",
+          "visualResetPending",
           "function toggleDrone()"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:fpv-drone-idle-dormancy",

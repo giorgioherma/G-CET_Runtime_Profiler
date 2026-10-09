@@ -2590,6 +2590,8 @@ __CLOSE__" + "\n",
             "        or droneViewSaveLockActive\n" +
             "        or droneAudioStarted\n" +
             "        or FPVDroneAutoSaveGuard.desiredLocked == true\n" +
+            "        or FPVDroneAutoSaveGuard.previousValueCaptured == true\n" +
+            "        or FPVDroneSignalNoiseState.visualResetPending == true\n" +
             "    if not __gcetFpvBusy then\n" +
             "        __gcetFpvIdleElapsed = __gcetFpvIdleElapsed + math.max(0.0, deltaTime or 0.0)\n" +
             "        if __gcetFpvIdleElapsed < 0.50 then return end\n" +

@@ -107,7 +107,8 @@ playerProtectionReleaseTimer=0.0
 playerCameraRestoreTimer=0.0
 droneViewSaveLockActive=false
 droneAudioStarted=false
-FPVDroneAutoSaveGuard={desiredLocked=false,Update=function() end}
+FPVDroneAutoSaveGuard={desiredLocked=false,previousValueCaptured=false,Update=function() end}
+FPVDroneSignalNoiseState={visualResetPending=false}
 FPVDroneFlightTimer={Update=function() end}
 '@
 Write-ModFile 'FPVDrone' 'fpv/lifecycle.lua' @'
@@ -198,8 +199,12 @@ try {
   if($dedra -notmatch 'ui\.hubShown or ui\.input') { throw 'Dedra hidden UI gate missing.' }
 
   $fpv=Read-ZipText ($base+'FPVDrone/fpv/bindings.lua')
-  if($fpv -notmatch '__gcetFpvIdleElapsed' -or $fpv -notmatch 'pendingDroneDespawnID ~= nil' -or $fpv -notmatch '< 0\.50') {
-    throw 'FPV active/idle split incomplete.'
+  if($fpv -notmatch '__gcetFpvIdleElapsed' -or
+     $fpv -notmatch 'pendingDroneDespawnID ~= nil' -or
+     $fpv -notmatch 'previousValueCaptured == true' -or
+     $fpv -notmatch 'visualResetPending == true' -or
+     $fpv -notmatch '< 0\.50') {
+    throw 'FPV active/idle split or pending-cleanup wake set is incomplete.'
   }
 
   $aerial=Read-ZipText ($base+'AerialRace/init.lua')
