@@ -908,13 +908,13 @@ public static class PassGeneratorService
                                 }
                                 else
                                 {
-                                    var replacementLines = rewrittenCrossFileUi.Split('\n');
+                                    var crossFileReplacementLines = rewrittenCrossFileUi.Split('\n');
                                     lines.RemoveRange(
                                         candidate.LineStart - 1,
                                         effectiveLineEnd - candidate.LineStart + 1);
                                     lines.InsertRange(
                                         candidate.LineStart - 1,
-                                        replacementLines);
+                                        crossFileReplacementLines);
 
                                     transformManifest.Add(new
                                     {
