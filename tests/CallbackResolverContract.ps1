@@ -442,6 +442,26 @@ registerForEvent("onDraw", function()
 end)
 '@
 
+$limit199 = @(
+    1..199 | ForEach-Object { "local gcet_limit_exact_$($_) = $($_)" }
+)
+$limit199 += @(
+    'registerForEvent("onDraw", function()',
+    '    DrawLocalLimitExact()',
+    'end)'
+)
+Write-Mod 'FixtureLocalLimitExact' ($limit199 -join [Environment]::NewLine)
+
+$limit200 = @(
+    1..200 | ForEach-Object { "local gcet_limit_over_$($_) = $($_)" }
+)
+$limit200 += @(
+    'registerForEvent("onDraw", function()',
+    '    DrawLocalLimitOverflow()',
+    'end)'
+)
+Write-Mod 'FixtureLocalLimitOverflow' ($limit200 -join [Environment]::NewLine)
+
 Write-Mod 'FixtureInteractionUi' @'
 local ui = { hubShown = false, input = false }
 
@@ -623,6 +643,8 @@ $handoff = @{
         (CallbackRow 129 'FixtureOtherStructural' 'ObserveAfter' 'PlayerPuppet::FixtureStructuralObserve' 120 12.0 3.0 'init.lua' 1 19),
         (CallbackRow 102 'FixtureFrame' 'event' 'onUpdate' 60 5.0 1.0 'init.lua' 2 7),
         (CallbackRow 140 'FixtureDraw' 'event' 'onDraw' 60 4.8 0.9 'init.lua' 1 3),
+        (CallbackRow 145 'FixtureLocalLimitExact' 'event' 'onDraw' 60 4.6 0.85 'init.lua' 200 202),
+        (CallbackRow 146 'FixtureLocalLimitOverflow' 'event' 'onDraw' 60 4.5 0.84 'init.lua' 201 203),
         (CallbackRow 142 'FixtureInteractionUi' 'event' 'onDraw' 60 4.0 0.8 'init.lua' 15 17),
         (CallbackRow 143 'FixtureInteractionUiUnsafe' 'event' 'onDraw' 60 4.0 0.8 'init.lua' 14 16),
         (CallbackRow 141 'FixtureAlreadyDraw' 'event' 'onDraw' 60 4.7 0.8 'init.lua' 8 10),
@@ -1208,6 +1230,15 @@ if (!$draw.generic.Automatable -or
     throw 'Raw onDraw registration was not authorized for frame dispatch consolidation.'
 }
 
+$localLimitExact = @($onDraw.topConsumers | Where-Object { $_.owner -eq 'FixtureLocalLimitExact' }) | Select-Object -First 1
+if ($null -eq $localLimitExact -or !$localLimitExact.generic.Automatable) {
+    throw '199-local boundary fixture was not authorized before PASS local-budget validation.'
+}
+$localLimitOverflow = @($onDraw.topConsumers | Where-Object { $_.owner -eq 'FixtureLocalLimitOverflow' }) | Select-Object -First 1
+if ($null -eq $localLimitOverflow -or !$localLimitOverflow.generic.Automatable) {
+    throw '200-local overflow fixture was not authorized before PASS local-budget validation.'
+}
+
 $interactionDraw = @($onDraw.topConsumers | Where-Object { $_.owner -eq 'FixtureInteractionUi' }) | Select-Object -First 1
 if ($null -eq $interactionDraw) { throw 'FixtureInteractionUi was not ranked inside onDraw.' }
 if (!$interactionDraw.generic.Automatable -or
@@ -1525,7 +1556,7 @@ $expectedSharedTransforms = @(
         } |
         Sort-Object -Unique
 ).Count
-$expectedPassTransforms = $expectedGenericTransforms + $expectedSharedTransforms
+$expectedPassTransforms = $expectedGenericTransforms + $expectedSharedTransforms - 1
 if ([int]$resolved.pass.TransformCount -ne $expectedPassTransforms) {
     if (Test-Path -LiteralPath $resolved.pass.ManifestPath -PathType Leaf) {
         $failedManifest = Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
@@ -1562,6 +1593,7 @@ try {
     foreach ($requiredEntry in @(
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureAction/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureFrame/init.lua',
+        'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureLocalLimitExact/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureStructural/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDiscoveryAuthorRate/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDormantOnUpdate/init.lua',
@@ -1584,6 +1616,9 @@ try {
 
     if ('G-CET_Pass_Manifest.json' -in $names) {
         throw 'Documentation manifest leaked into the deployable ZIP.'
+    }
+    if ('bin/x64/plugins/cyber_engine_tweaks/mods/FixtureLocalLimitOverflow/init.lua' -in $names) {
+        throw 'Lua-local overflow fixture was emitted even though generation exceeds the 200-local compiler limit.'
     }
     if ('bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDynamic/init.lua' -in $names) {
         throw 'Blocked dynamic OnAction callback leaked into the generated pass.'
@@ -1833,6 +1868,31 @@ try {
     }
     if ($manifest.policy.semanticReferenceOverridesShipped) {
         throw 'Semantic development reference overrides leaked into the deployable pass policy.'
+    }
+    if ([int]$manifest.policy.luaLocalVariableLimit -ne 200) {
+        throw "Generated pass no longer advertises Lua's exact 200-local compiler ceiling."
+    }
+    if ([string]$manifest.policy.luaLocalBudgetPolicy -notmatch 'ALLOW_UP_TO_200_ACTIVE_LOCALS_PER_FUNCTION') {
+        throw 'Generated pass no longer advertises exact-boundary Lua local-budget refusal.'
+    }
+
+    $localLimitSkip = @($manifest.skipped | Where-Object {
+        $_.type -eq 'LUA_LOCAL_LIMIT' -and
+        $_.file -eq 'FixtureLocalLimitOverflow/init.lua'
+    }) | Select-Object -First 1
+    if ($null -eq $localLimitSkip) {
+        throw 'PASS did not report why the 200-local fixture was refused.'
+    }
+    if ([int]$localLimitSkip.limit -ne 200 -or
+        [int]$localLimitSkip.sourceMaxActiveLocals -ne 200 -or
+        [int]$localLimitSkip.generatedMaxActiveLocals -ne 201) {
+        $localLimitDebug = $localLimitSkip | ConvertTo-Json -Depth 8 -Compress
+        throw "Unexpected Lua local-budget report: $localLimitDebug"
+    }
+    if ([string]$localLimitSkip.reason -notmatch '201' -or
+        [string]$localLimitSkip.reason -notmatch '200' -or
+        [string]$localLimitSkip.reason -notmatch 'Author code was not deleted') {
+        throw 'Lua local-budget refusal did not explain the exact cause and non-deletion policy.'
     }
     foreach ($forbiddenType in @(
         'STRUCTURAL_HOTPATH_REWRITE',

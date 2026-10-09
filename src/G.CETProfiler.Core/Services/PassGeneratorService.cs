@@ -215,6 +215,8 @@ public static class PassGeneratorService
                 semanticExistingLiveFilesOnly = true,
                 semanticCreatesNewModFiles = false,
                 semanticReferenceOverridesShipped = false,
+                luaLocalVariableLimit = LuaLocalBudgetAnalyzer.Limit,
+                luaLocalBudgetPolicy = "ALLOW_UP_TO_200_ACTIVE_LOCALS_PER_FUNCTION; REFUSE_G-CET_FILE_TRANSFORM_IF_GENERATED_SOURCE_EXCEEDS_LIMIT; NEVER_DELETE_AUTHOR_CODE_TO_MAKE_ROOM",
                 sharedProviderFamilies = SharedProviderRecipes.Keys
                     .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
                     .ToArray(),
@@ -593,6 +595,7 @@ public static class PassGeneratorService
         List<object> transformManifest,
         List<object> skipped)
     {
+        var transformManifestStart = transformManifest.Count;
         var hasBom =
             originalBytes.Length >= 3 &&
             originalBytes[0] == 0xEF &&
@@ -1342,6 +1345,42 @@ public static class PassGeneratorService
         var outputText = string.Join(newline, lines);
         if (hadTerminalNewline)
             outputText += newline;
+
+        var generatedBudget = LuaLocalBudgetAnalyzer.Analyze(outputText);
+        if (generatedBudget.MaxActiveLocals > LuaLocalBudgetAnalyzer.Limit)
+        {
+            var sourceBudget = LuaLocalBudgetAnalyzer.Analyze(text);
+            if (transformManifest.Count > transformManifestStart)
+            {
+                transformManifest.RemoveRange(
+                    transformManifestStart,
+                    transformManifest.Count - transformManifestStart);
+            }
+
+            var relativeFile = candidates.FirstOrDefault()?.RelativeFile ?? "";
+            var owners = candidates
+                .Select(x => x.Owner)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            skipped.Add(new
+            {
+                type = "LUA_LOCAL_LIMIT",
+                file = relativeFile,
+                owner = string.Join(", ", owners),
+                limit = LuaLocalBudgetAnalyzer.Limit,
+                sourceMaxActiveLocals = sourceBudget.MaxActiveLocals,
+                generatedMaxActiveLocals = generatedBudget.MaxActiveLocals,
+                generatedPeakLine = generatedBudget.Line,
+                generatedPeakScope = generatedBudget.Scope,
+                reason =
+                    $"G-CET refused all generated optimization for this Lua file because the transformed source would require {generatedBudget.MaxActiveLocals} simultaneously active local variables in {generatedBudget.Scope} at line {generatedBudget.Line}; Lua's hard per-function limit is {LuaLocalBudgetAnalyzer.Limit}. The live source peaks at {sourceBudget.MaxActiveLocals}. Author code was not deleted or rewritten to make room."
+            });
+
+            return new TransformResult(originalBytes, 0);
+        }
 
         var body = Encoding.UTF8.GetBytes(outputText);
         if (!hasBom)

@@ -64,6 +64,34 @@ internal static class SemanticPassGeneratorService
                         $"expects {candidate.ExpectedMarkerFileCount} complete marker file(s).");
                 }
 
+                var localLimitFailure = context.Changes
+                    .Select(change => new
+                    {
+                        Change = change,
+                        Budget = LuaLocalBudgetAnalyzer.Analyze(change.Bytes)
+                    })
+                    .FirstOrDefault(x =>
+                        x.Budget.MaxActiveLocals > LuaLocalBudgetAnalyzer.Limit);
+
+                if (localLimitFailure is not null)
+                {
+                    skipped.Add(new
+                    {
+                        type = "LUA_LOCAL_LIMIT",
+                        candidate.RuleId,
+                        candidate.Owner,
+                        candidate.Handler,
+                        file = localLimitFailure.Change.RelativeFile.Replace('\\', '/'),
+                        limit = LuaLocalBudgetAnalyzer.Limit,
+                        generatedMaxActiveLocals = localLimitFailure.Budget.MaxActiveLocals,
+                        generatedPeakLine = localLimitFailure.Budget.Line,
+                        generatedPeakScope = localLimitFailure.Budget.Scope,
+                        reason =
+                            $"G-CET refused semantic optimization because the transformed Lua source would require {localLimitFailure.Budget.MaxActiveLocals} simultaneously active local variables in {localLimitFailure.Budget.Scope} at line {localLimitFailure.Budget.Line}; Lua's hard per-function limit is {LuaLocalBudgetAnalyzer.Limit}. Author code was not deleted or rewritten to make room."
+                    });
+                    continue;
+                }
+
                 foreach (var change in context.Changes)
                 {
                     var relative = change.RelativeFile.Replace('\\', '/');
