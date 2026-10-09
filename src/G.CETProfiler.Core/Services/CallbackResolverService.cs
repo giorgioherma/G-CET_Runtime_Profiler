@@ -123,7 +123,7 @@ internal static class CallbackResolverService
                     semantic.GenerationEnabled &&
                     !semantic.AlreadySatisfied &&
                     !semantic.PartialState &&
-                    callback.ExclusiveMsPerSecond >= MaterialRemainingMsPerSecond &&
+                    callback.ExclusiveMsPerSecond >= semantic.RuntimeThresholdMsPerSecond &&
                     !string.IsNullOrWhiteSpace(semantic.RuleId);
                 if (semanticGenerationReady)
                     semanticReadyRules.Add(semantic.RuleId);
@@ -282,6 +282,7 @@ internal static class CallbackResolverService
                         semantic.Handler,
                         semantic.PatchStyle,
                         semantic.GenerationEnabled,
+                        semantic.RuntimeThresholdMsPerSecond,
                         generationReady = semanticGenerationReady,
                         semantic.ShipReferenceOverride,
                         semantic.MatchedAnchors,
@@ -410,7 +411,7 @@ internal static class CallbackResolverService
                 entryCount = semanticLibrary.EntryCount,
                 matchedCallbacks = semanticMatches,
                 sourceProvenCallbacks = semanticSourceProven,
-                policy = "Only measured callbacks are considered. Mod identity selects a candidate; the live owner directory is then graphed and source anchors must prove the rule. Reference overrides are never shipped."
+                policy = "Only measured callbacks are considered. Mod identity selects a candidate; the live owner directory is then graphed and source anchors must prove the rule. Default semantic admission remains 3 ms/s; an individual production rule may declare a lower positive threshold only when its source-proven framework optimization justifies it. Reference overrides are never shipped."
             },
             summary = new
             {
