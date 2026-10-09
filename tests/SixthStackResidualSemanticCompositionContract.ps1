@@ -751,7 +751,7 @@ if (!$resolved.ok -or $null -eq $resolved.pass) { throw 'Residual semantic pass 
 
 $resolver = Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
 $rules=@(
- 'good-feelings','good-feelings-hard-draw','air-backflip','auto-drop-weapon-on-pickup-equip',
+ 'good-feelings','good-feelings-hard-draw','air-backflip','auto-drop-weapon-dynamic-routing',
  'drone-companions-revamp','ghost-void-system','straight-edged-controls-input-dormancy','tunnel-rescue',
  'immersive-head-inertia'
 )
