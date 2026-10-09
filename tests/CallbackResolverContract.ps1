@@ -1423,8 +1423,8 @@ if (!$hardUpdate.generic.Automatable) { throw 'Dormant onUpdate should still rec
 if (@($hardUpdate.generic.RecipeFamilies) -notcontains 'FRAME_DISPATCH_CONSOLIDATION') {
     throw 'Dormant fixture lost the safe frame-dispatch transform.'
 }
-if (@($hardUpdate.generic.RecipeFamilies) -contains 'HARD_DORMANT_GUARD_HOIST') {
-    throw 'Hard dormant guard-hoist leaked into generic AUTO.'
+if (@($hardUpdate.generic.RecipeFamilies) -notcontains 'HARD_DORMANT_GUARD_HOIST') {
+    throw 'Source-proven hard dormant guard-hoist was not admitted to generic AUTO.'
 }
 if ($hardUpdate.generic.Facts.hardDormantGateExpression -ne 'active') {
     throw "Unexpected hard dormant gate: $($hardUpdate.generic.Facts.hardDormantGateExpression)"
@@ -1725,13 +1725,13 @@ try {
     if ($hardUpdateText -notmatch '__gcetRegisterEvent_125\s*\(\s*"onUpdate"') {
         throw 'Dormant fixture lost safe frame-dispatch consolidation.'
     }
-    if ($hardUpdateText -match 'G-CET dormant guard hoist') {
-        throw 'Dormant guard-hoist leaked into generic AUTO.'
+    if ($hardUpdateText -notmatch 'G-CET dormant guard hoist') {
+        throw 'Source-proven hard dormant guard-hoist was not emitted.'
     }
     $originalGetterIndex = $hardUpdateText.IndexOf('local player = __gcetGetPlayer()')
     $originalGuardIndex = $hardUpdateText.IndexOf('if not active then return end')
-    if ($originalGetterIndex -lt 0 -or $originalGuardIndex -lt 0 -or $originalGetterIndex -gt $originalGuardIndex) {
-        throw 'Shared-provider AUTO changed the dormant callback execution order.'
+    if ($originalGetterIndex -lt 0 -or $originalGuardIndex -lt 0 -or $originalGuardIndex -gt $originalGetterIndex) {
+        throw 'Hard dormant guard was not hoisted ahead of the read-only provider setup.'
     }
 
     $dormantDiscoveryText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDormantDiscovery/init.lua'
