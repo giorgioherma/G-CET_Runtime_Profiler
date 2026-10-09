@@ -17,7 +17,8 @@ public sealed record PassBuildResult(
 /// Generates a reversible overlay ZIP from resolver decisions only.
 /// Generic AUTO is deliberately restricted to mechanically source-proven recipes:
 /// ACTION_ROUTING_*, ACTION_OVERRIDE_EXACT_PREFILTER, FRAME_DISPATCH_CONSOLIDATION,
-/// INTERACTION_UI_IDLE_GUARD, UI_VISIBILITY_DORMANCY, SEQUENCE_FIRST_SCRIPTABLE_SYSTEM_POLL,
+/// INTERACTION_UI_IDLE_GUARD, UI_VISIBILITY_DORMANCY, HARD_DORMANT_GUARD_HOIST,
+/// SEQUENCE_FIRST_SCRIPTABLE_SYSTEM_POLL,
 /// and explicitly enabled finite shared-provider reads backed by 0-Engine.
 /// Structural and dormancy analyzers may still emit evidence, but behavior-changing
 /// cadence is authorized only by source-proven semantic per-mod rules.
@@ -225,6 +226,7 @@ public static class PassGeneratorService
                     "ACTION_OVERRIDE_EXACT_PREFILTER",
                     "FRAME_DISPATCH_CONSOLIDATION",
                     "INTERACTION_UI_IDLE_GUARD",
+                    "HARD_DORMANT_GUARD_HOIST",
                     "SHARED_PROVIDER_READ",
                     "SEMANTIC_RULE_SOURCE_INJECTION"
                 },
@@ -347,7 +349,8 @@ public static class PassGeneratorService
                 else if (resolverFamily.Equals("ONUPDATE", StringComparison.OrdinalIgnoreCase) &&
                          recipes.Any(x =>
                              x.Equals("FRAME_DISPATCH_CONSOLIDATION", StringComparison.OrdinalIgnoreCase) ||
-                             x.Equals("SEQUENCE_FIRST_SCRIPTABLE_SYSTEM_POLL", StringComparison.OrdinalIgnoreCase)))
+                             x.Equals("SEQUENCE_FIRST_SCRIPTABLE_SYSTEM_POLL", StringComparison.OrdinalIgnoreCase) ||
+                             x.Equals("HARD_DORMANT_GUARD_HOIST", StringComparison.OrdinalIgnoreCase)))
                 {
                     kind = CandidateKind.Frame;
                 }
@@ -416,6 +419,10 @@ public static class PassGeneratorService
                         x.Equals("UI_VISIBILITY_DORMANCY", StringComparison.OrdinalIgnoreCase)),
                     ApplySequenceFirstPolling = recipes.Any(x =>
                         x.Equals("SEQUENCE_FIRST_SCRIPTABLE_SYSTEM_POLL", StringComparison.OrdinalIgnoreCase)),
+                    ApplyHardDormantGuardHoist = recipes.Any(x =>
+                        x.Equals("HARD_DORMANT_GUARD_HOIST", StringComparison.OrdinalIgnoreCase)),
+                    HardDormantGateExpression = facts.HardDormantGateExpression,
+                    HardDormantPreGuardReadCount = facts.HardDormantPreGuardReadCount,
                     InteractionUiFunction = facts.InteractionUiFunction,
                     InteractionUiGate = facts.InteractionUiGate,
                     InteractionUiIdleReset = facts.InteractionUiIdleReset,
@@ -546,6 +553,8 @@ public static class PassGeneratorService
             InteractionUiHubVariable = JsonString(facts, "interactionUiHubVariable"),
             UiVisibilityGate = JsonString(facts, "uiVisibilityGate"),
             UiVisibilityWakeKind = JsonString(facts, "uiVisibilityWakeKind"),
+            HardDormantGateExpression = JsonString(facts, "hardDormantGateExpression"),
+            HardDormantPreGuardReadCount = (int)(JsonNullableLong(facts, "hardDormantPreGuardReadCount") ?? 0),
             SequenceSystemName = JsonString(facts, "sequenceSystemName"),
             SequenceBridgeVariable = JsonString(facts, "sequenceBridgeVariable"),
             SequenceVariable = JsonString(facts, "sequenceVariable"),
@@ -830,6 +839,57 @@ public static class PassGeneratorService
                         skipped.Add(Skip(
                             candidate,
                             "UI visibility dormancy proof could not be revalidated after earlier generic transforms; leave onDraw unchanged."));
+                    }
+                }
+
+                if (candidate.ApplyHardDormantGuardHoist)
+                {
+                    if (effectiveLineEnd > lines.Count)
+                    {
+                        skipped.Add(Skip(
+                            candidate,
+                            "Recorded hard-dormant callback range is outside the current file."));
+                    }
+                    else
+                    {
+                        var callbackLines = lines
+                            .Skip(candidate.LineStart - 1)
+                            .Take(effectiveLineEnd - candidate.LineStart + 1)
+                            .ToArray();
+                        var callbackSegment = string.Join("\n", callbackLines);
+                        var expectedProof = new HardDormantGuardProof(
+                            candidate.HardDormantGateExpression,
+                            candidate.HardDormantPreGuardReadCount);
+
+                        if (GenericHardDormantGuardTransform.TryApply(
+                                callbackSegment,
+                                expectedProof,
+                                out var rewrittenHardDormant))
+                        {
+                            var replacementLines = rewrittenHardDormant.Split('\n');
+                            lines.RemoveRange(
+                                candidate.LineStart - 1,
+                                effectiveLineEnd - candidate.LineStart + 1);
+                            lines.InsertRange(candidate.LineStart - 1, replacementLines);
+
+                            transformManifest.Add(new
+                            {
+                                registrationId = candidate.RegistrationId,
+                                owner = candidate.Owner,
+                                type = "HARD_DORMANT_GUARD_HOIST",
+                                file = candidate.RelativeFile,
+                                gate = candidate.HardDormantGateExpression,
+                                bypassedReadCount = candidate.HardDormantPreGuardReadCount,
+                                proof = "existing inactive early-return moved ahead of read-only setup; source-proven hotkey/input wake remains outside callback"
+                            });
+                            applied++;
+                        }
+                        else
+                        {
+                            skipped.Add(Skip(
+                                candidate,
+                                "Hard-dormant guard hoist could not be revalidated after earlier generic transforms; leave callback unchanged."));
+                        }
                     }
                 }
 
@@ -1580,12 +1640,17 @@ public static class PassGeneratorService
         public bool ApplyInteractionUiIdleGuard { get; init; }
         public bool ApplyUiVisibilityDormancy { get; init; }
         public bool ApplySequenceFirstPolling { get; init; }
+        public bool ApplyHardDormantGuardHoist { get; init; }
+        public string HardDormantGateExpression { get; init; } = "";
+        public int HardDormantPreGuardReadCount { get; init; }
         public string InteractionUiFunction { get; init; } = "";
         public string InteractionUiGate { get; init; } = "";
         public string InteractionUiIdleReset { get; init; } = "";
         public string InteractionUiHubVariable { get; init; } = "";
         public string UiVisibilityGate { get; init; } = "";
         public string UiVisibilityWakeKind { get; init; } = "";
+        public string HardDormantGateExpression { get; init; } = "";
+        public int HardDormantPreGuardReadCount { get; init; }
         public string SequenceSystemName { get; init; } = "";
         public string SequenceBridgeVariable { get; init; } = "";
         public string SequenceVariable { get; init; } = "";
