@@ -50,7 +50,7 @@ internal static class SemanticInjectors
             "good-feelings" => ApplyGoodFeelings(context),
             "good-feelings-hard-draw" => ApplyGoodFeelingsHardDraw(context),
             "air-backflip" => ApplyAirBackFlip(context),
-            "auto-drop-weapon-on-pickup-equip" => ApplyAutoDropWeaponOnPickupEquip(context),
+            "auto-drop-weapon-dynamic-routing" => ApplyAutoDropWeaponOnPickupEquip(context),
             "tunnel-rescue" => ApplyTunnelRescue(context),
             "drone-companions-revamp" => ApplyDroneCompanionsRevamp(context),
             "ghost-void-system" => ApplyGhostVoidSystem(context),
