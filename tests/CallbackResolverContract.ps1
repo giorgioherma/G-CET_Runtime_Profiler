@@ -1972,11 +1972,15 @@ finally {
 $legacyWorkQueueFixture = Join-Path $PSScriptRoot 'fixtures\0Engine-legacy-GCETWorkQueue.lua'
 $legacyWorkQueuePath = Join-Path $mods '0-Engine\modules\GCETWorkQueue.lua'
 New-Item -ItemType Directory -Force (Split-Path $legacyWorkQueuePath) | Out-Null
-$oldHash = (Get-FileHash -LiteralPath $legacyWorkQueueFixture -Algorithm SHA256).Hash.ToLowerInvariant()
+# Windows Git checkouts may convert test-fixture LF to CRLF. Normalize the
+# fixture back to its original source bytes before validating the known hash.
+$legacySource = [IO.File]::ReadAllText($legacyWorkQueueFixture).Replace("`r`n", "`n")
+$legacyBytes = [Text.UTF8Encoding]::new($false).GetBytes($legacySource)
+$oldHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($legacyBytes)).ToLowerInvariant()
 if ($oldHash -ne '63f752dcab1377bfc73757133034d938e2bb2580684dff40d2274eebc3bb46b6') {
     throw 'Legacy G-CET WorkQueue fixture does not match its whitelisted version.'
 }
-Copy-Item -LiteralPath $legacyWorkQueueFixture -Destination $legacyWorkQueuePath -Force
+[IO.File]::WriteAllBytes($legacyWorkQueuePath, $legacyBytes)
 
 $upgradeZip = Join-Path $root 'legacy-workqueue-normal-pass.zip'
 $legacyUpgrade = (& $resolverExe --capture $capture --mods $mods --semantic-library $semanticLibrary --generate-pass --pass-output $upgradeZip --json | ConvertFrom-Json)
