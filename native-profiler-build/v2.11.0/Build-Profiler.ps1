@@ -257,6 +257,27 @@ try {
     Write-Host "PHASE B: FULL CALLBACK PROFILER CET v2.11.0" -ForegroundColor Cyan
     Write-Host "============================================================" -ForegroundColor Cyan
 
+    # Rebuild the pinned LuaJIT dependency with a capture-gated internal
+    # collector probe. The official CONTROL was compiled unmodified above.
+    # No ambient package cache / globally installed LuaJIT is used.
+    $recipe = Join-Path $histRepo 'packages\o\openrestry-luajit\xmake.lua'
+    if (!(Test-Path -LiteralPath $recipe)) {
+        throw "Pinned OpenResty LuaJIT recipe missing: $recipe"
+    }
+    $recipeText = [IO.File]::ReadAllText($recipe)
+    $recipeAnchor = '        os.cp(path.join(package:scriptdir(), "port", "xmake.lua"), "xmake.lua")'
+    if ($recipeText.Split(@($recipeAnchor), [StringSplitOptions]::None).Length -ne 2) {
+        throw 'Pinned OpenResty LuaJIT install recipe changed; refusing GC patch.'
+    }
+    $patchScript = (Join-Path $PSScriptRoot 'Patch-LuaJIT-GC-Source.ps1').Replace('\','/')
+    $installHook = '        os.execv("pwsh", {"-NoProfile", "-NonInteractive", "-File", "' + $patchScript + '", "-SourceRoot", os.curdir()})'
+    $recipeText = $recipeText.Replace($recipeAnchor, $installHook + [Environment]::NewLine + $recipeAnchor)
+    [IO.File]::WriteAllText($recipe, $recipeText, [Text.UTF8Encoding]::new($false))
+
+    Write-Host "Rebuilding profiler-only OpenResty LuaJIT with collector instrumentation."
+    & $xmake require --force openrestry-luajit
+    if ($LASTEXITCODE -ne 0) { throw 'collector-probed LuaJIT package rebuild failed' }
+
     & (Join-Path $PSScriptRoot "Patch-CET-v1.37.1.ps1") -SourceRoot $repo
     if ($LASTEXITCODE -ne 0) { throw "profiler source patch failed" }
 
