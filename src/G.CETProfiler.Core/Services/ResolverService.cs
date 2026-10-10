@@ -80,6 +80,11 @@ public static class ResolverService
             result.AlreadySatisfiedCount,
             result.UnresolvedCount);
     }
+    public static PassBuildResult GenerateFrameworkUpdate(
+        string modsRoot,
+        string? outputZipPath = null) =>
+        FrameworkUpdateService.Generate(modsRoot, outputZipPath);
+
     public static PassBuildResult GeneratePass(
         string captureRoot,
         string modsRoot,
