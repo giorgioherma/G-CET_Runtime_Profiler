@@ -19,8 +19,20 @@ public static partial class ResultReportService
         int OverlappingFrameBuckets, double LargestOverlappingBucketMs,
         bool PotentiallyConfounded);
 
+    private sealed record GcPhaseRow(string Phase, long Operations, double WallMs);
+    private sealed record GcSlowRow(double CaptureStartMs, double DurationMs,
+        string PhaseBefore, string PhaseAfter, long RegistrationId,
+        string Callback, double HeapBeforeMiB, double HeapAfterMiB,
+        double ThresholdMiB, double DebtKiB, long Pause, long StepMul);
+    private sealed record GcAllocationRow(string Callback, double MiB, double MiBPerSecond);
+
     private sealed class GcCollectorTelemetry
     {
+        public List<GcPhaseRow> Phases { get; init; } = [];
+        public List<GcSlowRow> SlowSteps { get; init; } = [];
+        public List<GcAllocationRow> AllocationOwners { get; init; } = [];
+        public long SlowDropped { get; init; }
+
         public List<GcCollectorFrame> Frames { get; init; } = [];
         public List<GcSpikeCoincidence> SpikeCoincidences { get; init; } = [];
         public int PotentiallyConfoundedSpikes => SpikeCoincidences.Count(x => x.PotentiallyConfounded);
@@ -41,7 +53,11 @@ public static partial class ResultReportService
     private static GcCollectorTelemetry AnalyzeGcCollector(
         IReadOnlyList<Dictionary<string, string>> rows,
         IReadOnlyList<Dictionary<string, string>> spikes,
-        FrameTimeAnalysis? frameTime)
+        FrameTimeAnalysis? frameTime,
+        IReadOnlyList<Dictionary<string, string>> phaseRows,
+        IReadOnlyList<Dictionary<string, string>> slowRows,
+        IReadOnlyList<Dictionary<string, string>> allocationRows,
+        IReadOnlyList<Dictionary<string, string>> detailRows)
     {
         var intervals = spikes.Select(x => (
                 Start: D(x, "CaptureStartMs"),
@@ -113,8 +129,34 @@ public static partial class ResultReportService
             hitchOverlap = frames.Count(f => frameTime.HitchPressure.Episodes.Any(
                 h => h.StartMs <= f.EndMs && h.EndMs >= f.StartMs));
         }
+        var callbackNames = detailRows
+            .Where(r => L(r, "RegistrationId") > 0)
+            .GroupBy(r => L(r, "RegistrationId"))
+            .ToDictionary(g => g.Key, g => S(g.First(), "Mod") + " · " +
+                S(g.First(), "Kind") + " " + S(g.First(), "Target"));
+        string Callback(long id, string fallback) =>
+            callbackNames.TryGetValue(id, out var name) ? name : fallback;
         return new GcCollectorTelemetry {
             Frames = frames,
+            Phases = phaseRows.Select(r => new GcPhaseRow(S(r, "Phase"),
+                L(r, "Operations"), D(r, "WallMs")))
+                .Where(x => x.WallMs >= 0 && double.IsFinite(x.WallMs))
+                .OrderByDescending(x => x.WallMs).ToList(),
+            SlowSteps = slowRows.Select(r => new GcSlowRow(
+                D(r, "CaptureStartMs"), D(r, "DurationMs"),
+                S(r, "PhaseBefore"), S(r, "PhaseAfter"),
+                L(r, "RegistrationId"), Callback(L(r, "RegistrationId"), "unattributed"),
+                D(r, "HeapBeforeMiB"), D(r, "HeapAfterMiB"),
+                D(r, "ThresholdMiB"), D(r, "DebtKiB"),
+                L(r, "Pause"), L(r, "StepMul")))
+                .Where(x => x.DurationMs >= 2 && double.IsFinite(x.DurationMs))
+                .OrderByDescending(x => x.DurationMs).Take(2048).ToList(),
+            AllocationOwners = allocationRows.Select(r => new GcAllocationRow(
+                S(r, "Mod") + " · " + S(r, "Kind") + " " + S(r, "Target"),
+                D(r, "GrossAllocatedMiB"), D(r, "GrossAllocatedMiBPerSecond")))
+                .Where(x => double.IsFinite(x.MiB) && x.MiB > 0)
+                .OrderByDescending(x => x.MiB).Take(50).ToList(),
+            SlowDropped = slowRows.Count > 0 ? slowRows.Max(r => L(r, "DroppedEventsAtDump")) : 0,
             SpikeCoincidences = coincidences,
             MaxStepToDateMs = rows.Count > 0 ? rows.Max(r => D(r, "MaxStepToDateMs")) : 0,
             MaxFullToDateMs = rows.Count > 0 ? rows.Max(r => D(r, "MaxFullToDateMs")) : 0,
@@ -149,6 +191,42 @@ public static partial class ResultReportService
         sb.Append("Separate explicit collectgarbage timings are nested in these collector measurements, not additional work. ");
         sb.Append("Collector costs can also be nested inside CET callback and Scheduler time. ");
         sb.Append("Frame overlap identifies temporal coincidence only, not precise GC onset or causation.");
+        if (gc.Phases.Count > 0)
+        {
+            sb.Append("<h3>Collector phase execution</h3><table><thead><tr>")
+                .Append("<th>Phase</th><th>Operations</th><th>Measured ms</th></tr></thead><tbody>");
+            foreach (var x in gc.Phases)
+                sb.Append("<tr><td>").Append(H(x.Phase)).Append("</td><td>")
+                  .Append(x.Operations).Append("</td><td>").Append(F(x.WallMs, 3)).Append("</td></tr>");
+            sb.Append("</tbody></table>");
+        }
+        if (gc.SlowSteps.Count > 0)
+        {
+            sb.Append("<h3>Slow internal GC operations (at least 2 ms)</h3>");
+            sb.Append("<div class=\"note\">The displayed registration was executing at the time; this is not allocation ownership. Phase timing is wall-clock and may include thread preemption. Slow operations are bounded to 2048 events; dropped: ")
+                .Append(gc.SlowDropped).Append(".</div>");
+            sb.Append("<table><thead><tr><th>Capture</th><th>Duration</th><th>Phase</th>")
+                .Append("<th>Callback</th><th>Heap before → after</th><th>Pause / stepmul</th></tr></thead><tbody>");
+            foreach (var x in gc.SlowSteps.Take(30))
+                sb.Append("<tr><td>").Append(F(x.CaptureStartMs / 1000, 3)).Append(" s</td><td>")
+                  .Append(F(x.DurationMs, 3)).Append(" ms</td><td>").Append(H(x.PhaseBefore))
+                  .Append(" → ").Append(H(x.PhaseAfter)).Append("</td><td>").Append(H(x.Callback))
+                  .Append("</td><td>").Append(F(x.HeapBeforeMiB, 1)).Append(" → ")
+                  .Append(F(x.HeapAfterMiB, 1)).Append(" MiB</td><td>").Append(x.Pause)
+                  .Append(" / ").Append(x.StepMul).Append("</td></tr>");
+            sb.Append("</tbody></table>");
+        }
+        if (gc.AllocationOwners.Count > 0)
+        {
+            sb.Append("<h3>Observed positive LuaJIT allocations by callback</h3>")
+                .Append("<div class=\"note\">These are positive allocation-site growth totals, exclusive of nested measured callbacks. Not native allocations or net heap growth; allocation ownership does not imply a particular GC pause.</div>")
+                .Append("<table><thead><tr><th>Callback</th><th>Allocated MiB</th><th>MiB/s</th></tr></thead><tbody>");
+            foreach (var x in gc.AllocationOwners.Take(25))
+                sb.Append("<tr><td>").Append(H(x.Callback)).Append("</td><td>")
+                  .Append(F(x.MiB, 2)).Append("</td><td>").Append(F(x.MiBPerSecond, 3))
+                  .Append("</td></tr>");
+            sb.Append("</tbody></table>");
+        }
         sb.Append("</div><table><thead><tr><th>Capture</th><th>Frame</th><th>GC ms</th>");
         sb.Append("<th>Incremental calls</th><th>Full calls</th><th>Callback spike</th></tr></thead><tbody>");
         foreach (var f in gc.Frames.OrderByDescending(x => x.TotalMs).Take(25))

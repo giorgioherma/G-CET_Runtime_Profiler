@@ -53,6 +53,9 @@ public static partial class ResultReportService
         var explicitGc = ReadCsv(explicitGcFile);
         var collectorGcFile = FindProfilerFile(captureRoot, "CET_Runtime_Profile_GC_Collector.csv");
         var collectorGc = ReadCsv(collectorGcFile);
+        var gcPhases = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_GC_Phases.csv"));
+        var gcSlow = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_GC_SlowSteps.csv"));
+        var luaAllocations = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Lua_Allocations.csv"));
         var spikes = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Spikes.csv"));
         var schedulerJobs = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Scheduler_ByJob.csv"));
         var schedulerSpikes = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Scheduler_Spikes.csv"));
@@ -245,7 +248,7 @@ public static partial class ResultReportService
             SpikeRows = spikes,
             LuaHeap = AnalyzeLuaHeap(markers, spikes),
             ExplicitGc = explicitGcFile is null ? null : AnalyzeExplicitGc(explicitGc, spikes),
-            CollectorGc = collectorGcFile is null ? null : AnalyzeGcCollector(collectorGc, spikes, frameTime),
+            CollectorGc = collectorGcFile is null ? null : AnalyzeGcCollector(collectorGc, spikes, frameTime, gcPhases, gcSlow, luaAllocations, detail),
             WorkloadServices = AnalyzeWorkload(markers, schedulerJobMetrics)
         };
     }

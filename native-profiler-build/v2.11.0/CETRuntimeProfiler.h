@@ -26,6 +26,17 @@ struct GCETGCStats
 };
 void gcet_gc_stats_set(int enable, int reset);
 void gcet_gc_stats_read(GCETGCStats* out);
+struct GCETGCSlowEvent {
+    uint64_t startNs, endNs, threadId, registrationId;
+    uint64_t heapBefore, heapAfter, threshold, debt;
+    uint32_t phaseBefore, phaseAfter, pause, stepmul;
+};
+struct GCETGCPhaseStats { uint64_t calls[6], ticks[6]; };
+void gcet_gc_trace_segment(uint64_t captureOffsetNs);
+uint64_t gcet_gc_scope_set(uint64_t registration);
+uint64_t gcet_gc_alloc_bytes();
+int gcet_gc_slow_read(GCETGCSlowEvent* out, int capacity, int* dropped);
+void gcet_gc_phase_read(GCETGCPhaseStats* out);
 }
 
 class CETRuntimeProfiler
@@ -50,6 +61,7 @@ public:
         std::atomic<uint64_t> ExclusiveNs{0};
         std::atomic<uint64_t> MaxInclusiveNs{0};
         std::atomic<uint64_t> MaxExclusiveNs{0};
+        std::atomic<uint64_t> GrossAllocatedBytes{0};
         TimelineMod* TimelineOwner{};
 
         // Exact rendered-frame multiplicity, rotated lazily per callback.
@@ -415,6 +427,8 @@ public:
                 return;
 
             m_parent = s_current;
+            m_allocStart = gcet_gc_alloc_bytes();
+            m_priorRegistration = gcet_gc_scope_set(m_counter ? m_counter->RegistrationId : 0);
             m_start = Clock::now();
             s_current = this;
         }
@@ -434,6 +448,13 @@ public:
 
             const uint64_t exclusive =
                 elapsed > m_childNs ? elapsed - m_childNs : 0;
+            const uint64_t inclusiveAlloc = gcet_gc_alloc_bytes() - m_allocStart;
+            const uint64_t ownAlloc = inclusiveAlloc > m_childAllocated
+                ? inclusiveAlloc - m_childAllocated : 0;
+            if (m_parent) m_parent->m_childAllocated += inclusiveAlloc;
+            gcet_gc_scope_set(m_priorRegistration);
+            if (m_counter) m_counter->GrossAllocatedBytes.fetch_add(
+                ownAlloc, std::memory_order_relaxed);
 
             if (m_counter)
             {
@@ -492,6 +513,9 @@ public:
         Scope* m_parent{};
         Clock::time_point m_start{};
         uint64_t m_childNs{0};
+        uint64_t m_childAllocated{0};
+        uint64_t m_allocStart{0};
+        uint64_t m_priorRegistration{0};
 
         inline static thread_local Scope* s_current = nullptr;
 
@@ -1071,6 +1095,7 @@ public:
         ResetSchedulerLocked();
         ResetDeepLocked();
         m_accumulatedCapture = std::chrono::nanoseconds::zero();
+        gcet_gc_trace_segment(0);
         gcet_gc_stats_set(
             m_state.load(std::memory_order_relaxed) == CaptureState::Running ? 1 : 0,
             1);
@@ -1097,6 +1122,7 @@ public:
         ResetDeepLocked();
         m_accumulatedCapture = std::chrono::nanoseconds::zero();
         // Disabled during all prior work. Activate atomics only for capture.
+        gcet_gc_trace_segment(0);
         gcet_gc_stats_set(1, 1);
         m_gcCollectorPrevious = {};
         m_gcCollectorLastBoundaryNs = 0;
@@ -1122,6 +1148,8 @@ public:
         m_segmentStarted = Clock::now();
         PublishFastSegmentClockLocked(
             static_cast<uint64_t>(std::max<int64_t>(0, m_accumulatedCapture.count())));
+        gcet_gc_trace_segment(static_cast<uint64_t>(
+            std::max<int64_t>(0, m_accumulatedCapture.count())));
         gcet_gc_stats_set(1, 0);
         m_state.store(CaptureState::Running, std::memory_order_release);
         AddMarkerLocked("RESUME", m_segmentStarted);
@@ -1729,6 +1757,7 @@ public:
             uint64_t ExclusiveNs{};
             uint64_t MaxInclusiveNs{};
             uint64_t MaxExclusiveNs{};
+            uint64_t GrossAllocatedBytes{};
         };
 
         struct SpikeRow
@@ -1921,7 +1950,8 @@ public:
                     counter->InclusiveNs.load(std::memory_order_relaxed),
                     counter->ExclusiveNs.load(std::memory_order_relaxed),
                     counter->MaxInclusiveNs.load(std::memory_order_relaxed),
-                    counter->MaxExclusiveNs.load(std::memory_order_relaxed)
+                    counter->MaxExclusiveNs.load(std::memory_order_relaxed),
+                    counter->GrossAllocatedBytes.load(std::memory_order_relaxed)
                 });
             }
 
@@ -2646,6 +2676,77 @@ public:
                       << gc.MaxIncrementalMs << ',' << gc.MaxFullMs << ','
                       << droppedGcCollectorFrames << ','
                       << "exact-internal-collector-time-frame-bucketed-nested\n";
+                }
+            }
+        }
+
+
+        // Positive growth at LuaJIT allocation sites, attributed to innermost
+        // measured CET registration (not native allocations or pause ownership).
+        {
+            auto allocations = rows;
+            std::sort(allocations.begin(), allocations.end(),
+                [](const Row& a, const Row& b) {
+                    return a.GrossAllocatedBytes > b.GrossAllocatedBytes;
+                });
+            std::ofstream f(outputRoot / "CET_Runtime_Profile_Lua_Allocations.csv", std::ios::trunc);
+            if (f) {
+                f << "RegistrationId,Mod,Kind,Target,SourceFile,Calls,GrossAllocatedMiB,"
+                     "GrossAllocatedMiBPerSecond,Interpretation\n";
+                f << std::fixed << std::setprecision(6);
+                for (const auto& row : allocations) {
+                    const double mib = static_cast<double>(row.GrossAllocatedBytes) / 1048576.0;
+                    f << row.RegistrationId << ',' << Csv(row.Mod) << ',' << Csv(row.Kind)
+                      << ',' << Csv(row.Target) << ',' << Csv(row.SourceFile)
+                      << ',' << row.Calls << ',' << mib << ',' << mib / elapsedSec
+                      << ",capture-gated-positive-LuaJIT-allocation-growth-own-callback\n";
+                }
+            }
+        }
+
+        // Phase state-machine timing and exceptional >2 ms individual operations.
+        {
+            static const char* names[] = {
+                "pause", "propagate", "atomic", "sweepstring", "sweep", "finalize"
+            };
+            GCETGCStats collector{};
+            GCETGCPhaseStats phases{};
+            gcet_gc_stats_read(&collector);
+            gcet_gc_phase_read(&phases);
+            const double ticksToMs = collector.frequency
+                ? 1000.0 / static_cast<double>(collector.frequency) : 0.0;
+            std::ofstream f(outputRoot / "CET_Runtime_Profile_GC_Phases.csv", std::ios::trunc);
+            if (f) {
+                f << "Phase,Operations,WallMs,Interpretation\n";
+                f << std::fixed << std::setprecision(6);
+                for (size_t i = 0; i < 6; ++i)
+                    f << names[i] << ',' << phases.calls[i] << ','
+                      << phases.ticks[i] * ticksToMs
+                      << ",internal-state-operation-wall-time-nested-in-collector\n";
+            }
+            std::vector<GCETGCSlowEvent> events(2048);
+            int dropped = 0;
+            const int found = gcet_gc_slow_read(events.data(),
+                static_cast<int>(events.size()), &dropped);
+            std::ofstream slow(outputRoot / "CET_Runtime_Profile_GC_SlowSteps.csv", std::ios::trunc);
+            if (slow) {
+                slow << "CaptureStartMs,CaptureEndMs,DurationMs,ThreadId,RegistrationId,"
+                        "PhaseBefore,PhaseAfter,HeapBeforeMiB,HeapAfterMiB,ThresholdMiB,"
+                        "DebtKiB,Pause,StepMul,DroppedEventsAtDump,Interpretation\n";
+                slow << std::fixed << std::setprecision(6);
+                for (int i = 0; i < found; ++i) {
+                    const auto& e = events[static_cast<size_t>(i)];
+                    const char* before = e.phaseBefore < 6 ? names[e.phaseBefore] : "unknown";
+                    const char* after = e.phaseAfter < 6 ? names[e.phaseAfter] : "unknown";
+                    slow << e.startNs / 1'000'000.0 << ',' << e.endNs / 1'000'000.0
+                         << ',' << (e.endNs - e.startNs) / 1'000'000.0 << ','
+                         << e.threadId << ',' << e.registrationId << ','
+                         << before << ',' << after << ','
+                         << e.heapBefore / 1048576.0 << ',' << e.heapAfter / 1048576.0
+                         << ',' << e.threshold / 1048576.0 << ','
+                         << e.debt / 1024.0 << ',' << e.pause << ',' << e.stepmul
+                         << ',' << dropped
+                         << ",exact-internal-phase-wall-time-trigger-site-not-allocator-owner\n";
                 }
             }
         }
@@ -3800,6 +3901,7 @@ private:
             counter->ExclusiveNs.store(0, std::memory_order_relaxed);
             counter->MaxInclusiveNs.store(0, std::memory_order_relaxed);
             counter->MaxExclusiveNs.store(0, std::memory_order_relaxed);
+            counter->GrossAllocatedBytes.store(0, std::memory_order_relaxed);
             counter->FrameCurrent.store(0, std::memory_order_relaxed);
             counter->FrameCurrentCalls.store(0, std::memory_order_relaxed);
             counter->FrameRecordedCalls.store(0, std::memory_order_relaxed);
