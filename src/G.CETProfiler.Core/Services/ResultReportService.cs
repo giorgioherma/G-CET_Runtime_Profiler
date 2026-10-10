@@ -87,7 +87,7 @@ public static partial class ResultReportService
 
         var summary = new
         {
-            schemaVersion = "1.4",
+            schemaVersion = "1.5",
             generatedUtc = DateTime.UtcNow.ToString("O"),
             interop = new
             {

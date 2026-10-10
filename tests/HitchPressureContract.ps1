@@ -47,6 +47,12 @@ $elapsedSeconds = $cursor / 1000.0
 '2,90,1500,1500.3,0.3,step,360,359,1,mods/other/init.lua,99,0,exact-explicit-call-wall-time-nested-within-callback'
 ) | Set-Content -LiteralPath (Join-Path $capture 'CET_Runtime_Profile_GC_Explicit.csv') -Encoding utf8
 
+@(
+'Frame,CaptureStartMs,CaptureEndMs,IncrementalCalls,IncrementalMs,CompletedCycles,FullCalls,FullMs,CollectorTotalMs,MaxStepToDateMs,MaxFullToDateMs,DroppedFramesAtDump,Interpretation',
+'60,999.0,1010.0,3,3.5,1,0,0,3.5,2.0,0,0,exact-internal-collector-time-frame-bucketed-nested',
+'90,1498.0,1502.0,1,1.3,0,0,0,1.3,2.0,0,0,exact-internal-collector-time-frame-bucketed-nested'
+) | Set-Content -LiteralPath (Join-Path $capture 'CET_Runtime_Profile_GC_Collector.csv') -Encoding utf8
+
 $starts = @($timeSeconds | ForEach-Object { $_ * 1000.0 })
 $spikeA = $starts[60] + 1.0
 $spikeB = $starts[150] + 1.0
@@ -100,8 +106,24 @@ $result = (& $profilerExe --report --capture $capture --json | ConvertFrom-Json)
 if (!$result.ok) { throw 'Profiler report generation failed.' }
 
 $summary = Get-Content -LiteralPath (Join-Path $capture 'CET_Summary.json') -Raw | ConvertFrom-Json
+$collector = $summary.collectorGc
+if ($null -eq $collector -or
+    $collector.measurement -ne 'EXACT_INTERNAL_LUAJIT_GC_EXECUTION_FRAME_BUCKETED' -or
+    $collector.automaticVsExplicitOriginSeparatelyIdentified -or
+    [int]$collector.incrementalCalls -ne 4 -or
+    [int]$collector.completedCycles -ne 1 -or
+    [math]::Abs([double]$collector.totalMeasuredMs - 4.8) -gt 0.01 -or
+    [math]::Abs([double]$collector.maximumFrameBucketMs - 3.5) -gt 0.01 -or
+    [int]$collector.callbackSpikeOverlapFrames -ne 1) {
+    throw 'LuaJIT collector instrumentation or correlation contract failed.'
+}
 $hp = $summary.frameTime.hitchPressure
 $resolverInput=Get-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Raw | ConvertFrom-Json
+if (-not $resolverInput.garbageCollection.automaticLuaJitTiming -or
+    $resolverInput.garbageCollection.automaticVsExplicitOriginSeparated -or
+    [math]::Abs([double]$resolverInput.garbageCollection.internalCollectorTotalMs - 4.8) -gt 0.01) {
+    throw 'Resolver handoff failed collector cost evidence or origin classification.'
+}
 if($resolverInput.garbageCollection.attributionPolicy -ne 'MEASUREMENT_ONLY_NO_AUTOMATIC_OPTIMIZATION' -or
    [math]::Abs([double]$resolverInput.garbageCollection.totalExplicitMs-4.8) -gt 0.01 -or
    @($resolverInput.garbageCollection.operations).Count -ne 2) {
