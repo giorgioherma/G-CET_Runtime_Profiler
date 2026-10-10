@@ -39,6 +39,7 @@ public static partial class ResultReportService
         public List<Dictionary<string, string>> SpikeRows { get; init; } = [];
         public LuaHeapTelemetry? LuaHeap { get; init; }
         public ExplicitGcTelemetry? ExplicitGc { get; init; }
+        public GcCollectorTelemetry? CollectorGc { get; init; }
     }
 
     private static ResultAnalysis Analyze(string captureRoot)
@@ -49,6 +50,8 @@ public static partial class ResultReportService
         var markers = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Markers.csv"));
         var explicitGcFile = FindProfilerFile(captureRoot, "CET_Runtime_Profile_GC_Explicit.csv");
         var explicitGc = ReadCsv(explicitGcFile);
+        var collectorGcFile = FindProfilerFile(captureRoot, "CET_Runtime_Profile_GC_Collector.csv");
+        var collectorGc = ReadCsv(collectorGcFile);
         var spikes = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Spikes.csv"));
         var schedulerJobs = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Scheduler_ByJob.csv"));
         var schedulerSpikes = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Scheduler_Spikes.csv"));
@@ -238,7 +241,8 @@ public static partial class ResultReportService
             MarkerRows = markers,
             SpikeRows = spikes,
             LuaHeap = AnalyzeLuaHeap(markers, spikes),
-            ExplicitGc = explicitGcFile is null ? null : AnalyzeExplicitGc(explicitGc, spikes)
+            ExplicitGc = explicitGcFile is null ? null : AnalyzeExplicitGc(explicitGc, spikes),
+            CollectorGc = collectorGcFile is null ? null : AnalyzeGcCollector(collectorGc, spikes, frameTime)
         };
     }
 

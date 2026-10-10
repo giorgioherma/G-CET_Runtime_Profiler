@@ -25,6 +25,7 @@
     "CET_Runtime_Profile_FrameMultiplicity.csv",
     "CET_Runtime_Profile_Markers.csv",
     "CET_Runtime_Profile_GC_Explicit.csv",
+    "CET_Runtime_Profile_GC_Collector.csv",
     "CET_Runtime_Profile_Scheduler_ByJob.csv",
     "CET_Runtime_Profile_Scheduler_Spikes.csv",
     "CET_Runtime_Profile_Scheduler_FrameBursts.csv",

@@ -361,13 +361,30 @@ public static partial class ResultReportService
                 consumer = "resolver",
                 domain = "cet"
             },
-            garbageCollection = a.ExplicitGc is null ? null : new
+            garbageCollection = a.ExplicitGc is null && a.CollectorGc is null ? null : new
             {
                 attributionPolicy = "MEASUREMENT_ONLY_NO_AUTOMATIC_OPTIMIZATION",
-                exactExplicitTiming = true,
-                automaticLuaJitTiming = false,
-                totalExplicitMs = Round(a.ExplicitGc.TotalDurationMs, 3),
-                operations = a.ExplicitGc.Events
+                exactExplicitTiming = a.ExplicitGc is not null,
+                automaticLuaJitTiming = a.CollectorGc is not null,
+                internalCollectorTotalMs = a.CollectorGc is null ? (double?)null
+                    : Round(a.CollectorGc.TotalMs, 3),
+                internalCollectorStepCalls = a.CollectorGc?.StepCalls,
+                internalCollectorFullCalls = a.CollectorGc?.FullCalls,
+                internalCollectorMaxFrameMs = a.CollectorGc is null ? (double?)null
+                    : Round(a.CollectorGc.MaxObservedFrameMs, 3),
+                automaticVsExplicitOriginSeparated = false,
+                collectorFrameBuckets = a.CollectorGc?.Frames
+                    .OrderByDescending(x => x.TotalMs).Take(100)
+                    .Select(x => new {
+                        x.Frame, captureStartMs = Round(x.StartMs, 3),
+                        captureEndMs = Round(x.EndMs, 3),
+                        durationMs = Round(x.TotalMs, 3),
+                        x.IncrementalCalls, x.FullCalls,
+                        x.CallbackSpikeOverlap
+                    }),
+                totalExplicitMs = a.ExplicitGc is null ? 0
+                    : Round(a.ExplicitGc.TotalDurationMs, 3),
+                operations = (a.ExplicitGc?.Events ?? []).OrderByDescending(x => x.DurationMs)
                     .OrderByDescending(x => x.DurationMs).Take(100)
                     .Select(x => new
                     {

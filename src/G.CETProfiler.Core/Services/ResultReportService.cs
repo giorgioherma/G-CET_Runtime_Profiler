@@ -52,6 +52,7 @@ public static partial class ResultReportService
         "CET_Runtime_Profile_FrameMultiplicity.csv",
         "CET_Runtime_Profile_Markers.csv",
         "CET_Runtime_Profile_GC_Explicit.csv",
+        "CET_Runtime_Profile_GC_Collector.csv",
         "CET_Runtime_Profile_Deep_Registrations.csv",
         "CET_Runtime_Profile_Deep_Functions.csv",
         "CET_Runtime_Profile_Deep_Edges.csv",
@@ -121,6 +122,33 @@ public static partial class ResultReportService
                 measuredSharePct = Round(EffectiveShare(x, a.TotalMsPerSecond), 3),
                 maxExclusiveMs = Round(x.MaxExclusiveMs, 6)
             }),
+            collectorGc = a.CollectorGc is null ? null : new
+            {
+                measurement = "EXACT_INTERNAL_LUAJIT_GC_EXECUTION_FRAME_BUCKETED",
+                automaticVsExplicitOriginSeparatelyIdentified = false,
+                collectionPolicyChanged = false,
+                measuredFrames = a.CollectorGc.Frames.Count,
+                totalMeasuredMs = Round(a.CollectorGc.TotalMs, 3),
+                incrementalCalls = a.CollectorGc.StepCalls,
+                incrementalMs = Round(a.CollectorGc.StepMs, 3),
+                completedCycles = a.CollectorGc.CompletedCycles,
+                fullCollections = a.CollectorGc.FullCalls,
+                fullCollectionMs = Round(a.CollectorGc.FullMs, 3),
+                maxIncrementalStepMs = Round(a.CollectorGc.MaxStepToDateMs, 3),
+                maxFullCollectionMs = Round(a.CollectorGc.MaxFullToDateMs, 3),
+                maximumFrameBucketMs = Round(a.CollectorGc.MaxObservedFrameMs, 3),
+                callbackSpikeOverlapFrames = a.CollectorGc.SpikeOverlapFrames,
+                alignedHitchEpisodeOverlapFrames = a.CollectorGc.AlignedHitchEpisodeOverlap,
+                droppedFrameBuckets = a.CollectorGc.DroppedFramesAtDump,
+                slowestFrameBuckets = a.CollectorGc.Frames
+                    .OrderByDescending(f => f.TotalMs).Take(30)
+                    .Select(f => new {
+                        f.Frame, f.StartMs, f.EndMs,
+                        collectorMs = Round(f.TotalMs, 3),
+                        f.IncrementalCalls, f.FullCalls,
+                        f.CallbackSpikeOverlap
+                    })
+            },
             explicitGc = a.ExplicitGc is null ? null : new
             {
                 measurement = "EXACT_EXPLICIT_COLLECTGARBAGE_CALLS_ONLY",
