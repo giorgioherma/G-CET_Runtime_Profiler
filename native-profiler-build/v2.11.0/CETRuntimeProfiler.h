@@ -132,6 +132,14 @@ public:
         uint64_t MaxExclusiveNs{};
     };
 
+    struct GcExplicitEvent
+    {
+        uint64_t Sequence{}, Frame{}, StartNs{}, EndNs{}, DurationNs{};
+        uint64_t BeforeBytes{}, AfterBytes{};
+        std::string Action, SourceFile;
+        int SourceLine{};
+    };
+
     struct MarkerEvent
     {
         uint64_t Sequence{};
@@ -346,6 +354,7 @@ public:
     static constexpr size_t MaxSpikeEvents = 20'000;
     static constexpr size_t MaxTimelineEvents = 1'000'000;
     static constexpr size_t MaxMarkerEvents = 1'000;
+    static constexpr size_t MaxGcExplicitEvents = 4'096;
     static constexpr size_t MaxSchedulerSpikeEvents = 20'000;
     static constexpr size_t MaxSchedulerFrameBurstEvents = 20'000;
 
@@ -1038,6 +1047,7 @@ public:
         ResetSpikesLocked();
         ResetTimelineLocked();
         ResetMarkersLocked();
+        ResetGcExplicitLocked();
         ResetSchedulerLocked();
         ResetDeepLocked();
         m_accumulatedCapture = std::chrono::nanoseconds::zero();
@@ -1056,6 +1066,7 @@ public:
         ResetSpikesLocked();
         ResetTimelineLocked();
         ResetMarkersLocked();
+        ResetGcExplicitLocked();
         ResetSchedulerLocked();
         ResetDeepLocked();
         m_accumulatedCapture = std::chrono::nanoseconds::zero();
@@ -1247,6 +1258,37 @@ public:
         return static_cast<double>(
                    m_timelineBucketNs.load(std::memory_order_acquire)) /
                1'000'000.0;
+    }
+
+    // Exact explicit Lua collect/step call timing only; automatic incremental
+    // LuaJIT GC requires internal instrumentation and is not claimed here.
+    void RecordGcExplicit(const char* action, Clock::time_point start,
+                          Clock::time_point end, uint64_t beforeBytes,
+                          uint64_t afterBytes, const char* sourceFile,
+                          int sourceLine)
+    {
+        if (!IsCapturing()) return;
+        std::lock_guard lock(m_mutex);
+        if (m_state.load(std::memory_order_relaxed) != CaptureState::Running)
+            return;
+        if (m_gcExplicitEvents.size() >= MaxGcExplicitEvents)
+        {
+            ++m_droppedGcExplicitEvents;
+            return;
+        }
+        const auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            end - start).count();
+        m_gcExplicitEvents.push_back({
+            ++m_nextGcExplicitSequence,
+            m_currentGameFrame.load(std::memory_order_relaxed),
+            CapturedNanosecondsLocked(start),
+            CapturedNanosecondsLocked(end),
+            static_cast<uint64_t>(std::max<int64_t>(0, duration)),
+            beforeBytes, afterBytes,
+            action ? action : "unknown",
+            sourceFile ? sourceFile : "",
+            sourceLine
+        });
     }
 
     std::string Mark(const std::string& aLabel)
@@ -1739,6 +1781,7 @@ public:
         std::vector<DeepSampleEvent> deepSampleRows;
         std::vector<DeepLineEvent> deepLineRows;
         std::vector<MarkerEvent> markerRows;
+        std::vector<GcExplicitEvent> gcExplicitRows;
         std::vector<SchedulerJobRow> schedulerJobRows;
         std::vector<SchedulerSpikeRow> schedulerSpikeRows;
         std::vector<SchedulerBurstRow> schedulerBurstRows;
@@ -1750,6 +1793,7 @@ public:
         uint64_t timelineBucketNs{};
         uint64_t droppedTimelineEvents{};
         uint64_t droppedMarkerEvents{};
+        uint64_t droppedGcExplicitEvents{};
         uint64_t droppedSchedulerSpikeEvents{};
         uint64_t droppedSchedulerFrameBursts{};
         uint64_t droppedDeepSamples{};
@@ -1956,6 +2000,8 @@ public:
             droppedDeepCallsites = m_droppedDeepCallsites;
 
             markerRows = m_markers;
+            gcExplicitRows = m_gcExplicitEvents;
+            droppedGcExplicitEvents = m_droppedGcExplicitEvents;
 
             schedulerJobRows.reserve(m_schedulerJobs.size());
             for (const auto& [_, counter] : m_schedulerJobs)
@@ -2449,6 +2495,36 @@ public:
                       << droppedDeepCallsites << ','
                       << "sampled-per-invocation-callsite-callee-evidence"
                       << '\n';
+                }
+            }
+        }
+
+        // Exact explicit GC calls are included inside their containing CET
+        // callback durations. Do not sum these durations with callback totals.
+        {
+            const auto path = outputRoot / "CET_Runtime_Profile_GC_Explicit.csv";
+            std::ofstream f(path, std::ios::trunc);
+            if (f)
+            {
+                f << "Sequence,Frame,CaptureStartMs,CaptureEndMs,DurationMs,"
+                     "Action,BeforeMiB,AfterMiB,ReleasedMiB,SourceFile,"
+                     "SourceLine,DroppedEventsAtDump,Interpretation\n";
+                f << std::fixed << std::setprecision(6);
+                for (const auto& gc : gcExplicitRows)
+                {
+                    const double before = static_cast<double>(gc.BeforeBytes) /
+                        (1024.0 * 1024.0);
+                    const double after = static_cast<double>(gc.AfterBytes) /
+                        (1024.0 * 1024.0);
+                    f << gc.Sequence << ',' << gc.Frame << ','
+                      << (static_cast<double>(gc.StartNs) / 1'000'000.0) << ','
+                      << (static_cast<double>(gc.EndNs) / 1'000'000.0) << ','
+                      << (static_cast<double>(gc.DurationNs) / 1'000'000.0) << ','
+                      << Csv(gc.Action) << ',' << before << ',' << after << ','
+                      << std::max(0.0, before - after) << ','
+                      << Csv(gc.SourceFile) << ',' << gc.SourceLine << ','
+                      << droppedGcExplicitEvents << ','
+                      << "exact-explicit-call-wall-time-nested-within-callback\n";
                 }
             }
         }
@@ -3586,6 +3662,7 @@ private:
         m_spikeEvents.reserve(MaxSpikeEvents);
         m_timelineEvents.reserve(MaxTimelineEvents);
         m_markers.reserve(MaxMarkerEvents);
+        m_gcExplicitEvents.reserve(MaxGcExplicitEvents);
         m_schedulerSpikeEvents.reserve(MaxSchedulerSpikeEvents);
         m_schedulerFrameBursts.reserve(MaxSchedulerFrameBurstEvents);
         m_deepSamples.reserve(MaxDeepSampleEvents);
@@ -3646,6 +3723,13 @@ private:
         m_markers.clear();
         m_nextMarkerSequence = 0;
         m_droppedMarkerEvents = 0;
+    }
+
+    void ResetGcExplicitLocked()
+    {
+        m_gcExplicitEvents.clear();
+        m_nextGcExplicitSequence = 0;
+        m_droppedGcExplicitEvents = 0;
     }
 
     void ResetSchedulerLocked()
@@ -3923,6 +4007,7 @@ private:
     std::vector<SpikeEvent> m_spikeEvents;
     std::vector<TimelineEvent> m_timelineEvents;
     std::vector<MarkerEvent> m_markers;
+    std::vector<GcExplicitEvent> m_gcExplicitEvents;
     std::unordered_map<std::string, std::unique_ptr<SchedulerJobCounter>> m_schedulerJobs;
     std::vector<SchedulerSpikeEvent> m_schedulerSpikeEvents;
     std::vector<SchedulerFrameBurstEvent> m_schedulerFrameBursts;
@@ -3957,6 +4042,8 @@ private:
     uint64_t m_droppedTimelineEvents{};
     uint64_t m_nextMarkerSequence{};
     uint64_t m_droppedMarkerEvents{};
+    uint64_t m_nextGcExplicitSequence{};
+    uint64_t m_droppedGcExplicitEvents{};
     uint64_t m_nextSchedulerSpikeSequence{};
     uint64_t m_nextSchedulerBurstSequence{};
     uint64_t m_droppedSchedulerSpikeEvents{};

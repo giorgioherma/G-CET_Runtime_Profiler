@@ -377,6 +377,94 @@ Replace-LiteralOnce `
     -New "#include `"FunctionOverride.h`"`n#include `"CETRuntimeProfiler.h`"" `
     -Label "Scripting profiler include"
 
+Replace-LiteralOnce `
+    -Path $scriptingC `
+    -Old 'static constexpr bool s_cThrowLuaErrors = true;' `
+    -New @'
+#include <cstring>
+
+namespace
+{
+int ProfiledCollectgarbage(lua_State* state)
+{
+    const int args = lua_gettop(state);
+    const char* operation = args > 0 && lua_type(state, 1) == LUA_TSTRING
+        ? lua_tostring(state, 1) : nullptr;
+    const char* action =
+        (!operation || std::strcmp(operation, "collect") == 0) ? "collect" :
+        std::strcmp(operation, "step") == 0 ? "step" : nullptr;
+    auto& profiler = CETRuntimeProfiler::Get();
+    const bool measure = action && profiler.IsCapturing();
+    char caller[384]{};
+    int line = 0;
+    uint64_t before = 0;
+    std::chrono::steady_clock::time_point start{};
+    if (measure)
+    {
+        lua_Debug debug{};
+        if (lua_getstack(state, 1, &debug) &&
+            lua_getinfo(state, "Sl", &debug))
+        {
+            const char* source = debug.source ? debug.source : "";
+            if (source[0] == '@') ++source;
+            std::strncpy(caller, source, sizeof(caller) - 1);
+            line = debug.currentline;
+        }
+        before = CETRuntimeProfiler::ReadLuaHeapBytes(state);
+        start = std::chrono::steady_clock::now();
+    }
+
+    // Preserve exact original Lua C-function results and pcall error behavior.
+    lua_pushvalue(state, lua_upvalueindex(1));
+    lua_insert(state, 1);
+    lua_call(state, args, LUA_MULTRET);
+    const int results = lua_gettop(state);
+    if (measure)
+    {
+        const auto end = std::chrono::steady_clock::now();
+        const uint64_t after = CETRuntimeProfiler::ReadLuaHeapBytes(state);
+        profiler.RecordGcExplicit(
+            action, start, end, before, after, caller, line);
+    }
+    return results;
+}
+}
+
+static constexpr bool s_cThrowLuaErrors = true;
+'@ `
+    -Label "Profiler timed collectgarbage original-function trampoline"
+
+Replace-LiteralOnce `
+    -Path $scriptingC `
+    -Old @'
+    // initialize sandbox
+    m_sandbox.Initialize();
+
+    auto& globals = m_sandbox.GetGlobals();
+'@ `
+    -New @'
+    // initialize sandbox
+    m_sandbox.Initialize();
+
+    auto& globals = m_sandbox.GetGlobals();
+    // Every CET mod sandbox inherits this shared whitelisted table.
+    // Wrapping once covers CMB without touching mod files.
+    {
+        lua_State* state = luaVm.lua_state();
+        globals.push();
+        lua_getfield(state, -1, "collectgarbage");
+        if (lua_isfunction(state, -1))
+        {
+            lua_pushcclosure(state, &ProfiledCollectgarbage, 1);
+            lua_setfield(state, -2, "collectgarbage");
+        }
+        else lua_pop(state, 1);
+        lua_pop(state, 1);
+    }
+'@ `
+    -Label "Shared CET sandbox collectgarbage timing"
+
+
 Replace-RegexOnce `
     -Path $scriptingC `
     -Pattern '(globals\["GetVersion"\]\s*=\s*\[\]\(\)\s*->\s*std::string\s*\{\s*return CET_GIT_TAG;\s*\};\s*\r?\n)' `
