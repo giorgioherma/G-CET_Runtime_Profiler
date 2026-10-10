@@ -4333,7 +4333,7 @@
       ]
     },
     {
-      "id": "ziggy-last-play-navigation-sentinel",
+      "id": "ziggy-last-play-navigation-sentinel-v2",
       "identityHints": [
         "ziggy_last_play"
       ],
@@ -4354,25 +4354,31 @@
           "hooks:SyncJournalPins(path",
           "navigation-status.json"
         ],
-        "alreadySatisfiedMarker": "G-CET semantic:ziggy-last-play-navigation-sentinel",
+        "ownerAnyGroups": [[
+          "local N={age=0,retries=0}",
+          "local N={age=0,retries=0,scanKey=nil,lastMappins={}}"
+        ]],
+        "alreadySatisfiedMarker": "G-CET semantic:ziggy-last-play-navigation-sentinel-v2",
         "expectedMarkerFileCount": 1,
         "satisfiedAll": [
-          "scanKey=nil,lastMappins={}",
-          "if not found or N.scanKey ~= scanKey then",
-          "report.mappins=N.lastMappins or {}"
+          "scanKey=nil,lastMappins={},missingScanAge=0",
+          "if N.scanKey ~= scanKey or (not found and N.missingScanAge >= 12) then",
+          "N.missingScanAge=0"
         ]
       },
       "behavior": {
         "handler": "SEMANTIC_DIAGNOSTIC_MAPPIN_SENTINEL_CACHE",
         "concepts": [
           "authorTwoSecondCadencePreserved",
+          "v1SourceUpgradeSupported",
+          "resetInvalidatesDiagnosticCache",
           "targetedQuestMappinSentinel",
           "boundedRecoveryPreserved",
           "plainLuaDiagnosticCache",
-          "fullMappinEnumerationOnStateChangeOrFailure",
+          "fullMappinEnumerationOnStateChangeOrBoundedMissingRetry",
           "noNativeHandleCache"
         ],
-        "note": "Keep the author's 2 s navigation cadence, targeted GetQuestMappinPosition probe, journal repair and bounded retries unchanged. Cache only the plain-Lua diagnostic mappin rows and rerun GetAllMappins when the objective/phase/generation/found/tracked/retry signature changes or the targeted destination is missing."
+        "note": "Keep targeted 2 s lookup, journal repair and bounded retry unchanged. Original and G-CET v1 navigation source upgrade to a 12 s unchanged-missing-pin diagnostic refresh with immediate scan on signature change. No native mappin caching."
       },
       "generation": {
         "enabled": true,
@@ -4389,7 +4395,7 @@
         "evidenceStack": "BURST_RECOGNITION_20261010",
         "admitted": true
       },
-      "cadenceGroup": "AUTHOR_2S_TARGETED_SENTINEL_FULL_SCAN_ON_CHANGE",
+      "cadenceGroup": "AUTHOR_2S_TARGETED_SENTINEL_BOUNDED_MISSING_SCAN_12S",
       "catalogRole": "SEMANTIC_HOT_MOD",
       "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
       "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",

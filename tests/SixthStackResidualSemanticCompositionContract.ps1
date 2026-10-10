@@ -845,7 +845,7 @@ $resolver = Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') 
 $rules=@(
  'good-feelings','good-feelings-hard-draw','air-backflip','auto-drop-weapon-dynamic-routing',
  'drone-companions-revamp','ghost-void-system','straight-edged-controls-input-dormancy','tunnel-rescue-v2',
- 'ziggy-last-play-navigation-sentinel','immersive-head-inertia'
+ 'ziggy-last-play-navigation-sentinel-v2','immersive-head-inertia'
 )
 foreach($rule in $rules) {
     $matches=@()
@@ -934,11 +934,14 @@ try {
     }
 
     $ziggy=Read-ZipText ($base+'ziggy_last_play/navigation.lua')
-    if($ziggy -notmatch 'G-CET semantic:ziggy-last-play-navigation-sentinel' -or
-       $ziggy -notmatch 'scanKey=nil,lastMappins=\{\}' -or
-       $ziggy -notmatch 'if not found or N\.scanKey ~= scanKey then' -or
+    if($ziggy -notmatch 'G-CET semantic:ziggy-last-play-navigation-sentinel-v2' -or
+       $ziggy -notmatch 'scanKey=nil,lastMappins=\{\},missingScanAge=0' -or
+       $ziggy -notmatch 'N\.scanKey ~= scanKey or \(not found and N\.missingScanAge >= 12\)' -or
+       $ziggy -notmatch 'N\.missingScanAge=0' -or
+       $ziggy -notmatch 'GetQuestMappinPosition\(hash\)' -or
+       $ziggy -notmatch 'N\.retries<3' -or
        $ziggy -notmatch 'report\.mappins=N\.lastMappins or \{\}') {
-        throw 'Ziggy navigation targeted-sentinel diagnostic cache is incomplete.'
+        throw 'Ziggy v2 bounded missing-pin diagnostic sentinel is incomplete.'
     }
 
     $straight=Read-ZipText ($base+'Straight Edged Controls/init.lua')

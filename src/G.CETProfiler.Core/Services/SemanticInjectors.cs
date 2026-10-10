@@ -53,7 +53,7 @@ internal static class SemanticInjectors
             "auto-drop-weapon-dynamic-routing" => ApplyAutoDropWeaponOnPickupEquip(context),
             "joytoys-of-night-city-bridge-active-split" => ApplyJoytoysOfNightCity(context),
             "tunnel-rescue-v2" => ApplyTunnelRescue(context),
-            "ziggy-last-play-navigation-sentinel" => ApplyZiggyLastPlayNavigation(context),
+            "ziggy-last-play-navigation-sentinel-v2" => ApplyZiggyLastPlayNavigation(context),
             "aerial-race-active-idle-split" => ApplyAerialRaceActiveIdleSplit(context),
             "appearance-menu-mod-squeeze" => ApplyAppearanceMenuModSqueeze(context),
             "drone-companions-revamp" => ApplyDroneCompanionsRevamp(context),
@@ -2734,11 +2734,20 @@ __CLOSE__" + "\n",
 
         var text = file.Text;
 
-        text = ReplaceOnce(
-            text,
-            "local N={age=0,retries=0}\n",
-            "local N={age=0,retries=0,scanKey=nil,lastMappins={}}\n",
-            "Ziggy navigation diagnostic cache state");
+        var originalState = "local N={age=0,retries=0}\n";
+        var v1State = "local N={age=0,retries=0,scanKey=nil,lastMappins={}}\n";
+        var isOriginal = text.Contains(originalState, StringComparison.Ordinal);
+        if (isOriginal)
+        {
+            text = ReplaceOnce(
+                text, originalState, v1State,
+                "Ziggy original diagnostic cache state");
+        }
+        else if (!text.Contains(v1State, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "Ziggy v2 requires the exact original or v1 navigation cache source shape.");
+        }
 
         var fullScan =
             "  report.mappins={}\n" +
@@ -2762,15 +2771,70 @@ __CLOSE__" + "\n",
             "  end\n" +
             "  report.mappins=N.lastMappins or {}\n";
 
+        // Original source first receives the v1 sentinel shape. Existing v1
+        // installations are upgraded directly, without double-injecting the scan.
+        if (isOriginal)
+        {
+            text = ReplaceOnce(
+                text, fullScan, gatedScan,
+                "Ziggy original global diagnostic mappin scan");
+        }
+
+        text = ReplaceOnce(
+            text, v1State,
+            "local N={age=0,retries=0,scanKey=nil,lastMappins={},missingScanAge=0}\n",
+            "Ziggy v2 missing-pin diagnostic clock");
+
         text = ReplaceOnce(
             text,
-            fullScan,
-            gatedScan,
-            "Ziggy global diagnostic mappin scan");
+            "N.age=N.age+dt;if N.age<2 then return end;N.age=0",
+            "N.age=N.age+dt;if N.age<2 then return end;N.missingScanAge=N.missingScanAge+N.age;N.age=0",
+            "Ziggy v2 preserve 2-second probe and accumulate diagnostic age");
+
+        if (text.Contains("function N.reset()N.age=0;N.path=nil;N.retries=0 end", StringComparison.Ordinal))
+            text = ReplaceOnce(
+                text,
+                "function N.reset()N.age=0;N.path=nil;N.retries=0 end",
+                "function N.reset()N.age=0;N.path=nil;N.retries=0;N.scanKey=nil;N.lastMappins={};N.missingScanAge=0 end",
+                "Ziggy v2 reset diagnostic cache");
+
+        text = ReplaceOnce(
+            text,
+            "  local scanKey=table.concat({tostring(path or ''),tostring(phase or ''),tostring(generation or ''),tostring(found==true),tostring(report.tracked==true),tostring(N.retries)},'|')\n",
+            "  local scanKey=table.concat({tostring(path or ''),tostring(phase or ''),tostring(generation or ''),tostring(report.pinId),tostring(hash),tostring(report.objectiveState),tostring(found==true),tostring(report.tracked==true),tostring(N.retries)},'|')\n",
+            "Ziggy v2 pin identity/objective signature");
+
+        text = ReplaceOnce(
+            text,
+            "  if not found or N.scanKey ~= scanKey then\n",
+            "  if N.scanKey ~= scanKey or (not found and N.missingScanAge >= 12) then\n",
+            "Ziggy v2 bound repeated missing-pin global scans");
+
+        text = ReplaceOnce(
+            text,
+            "   N.lastMappins=mappins\n",
+            "   N.lastMappins=mappins\n   N.missingScanAge=0\n",
+            "Ziggy v2 reset diagnostic clock after scan");
+
+        // Early exits cannot affect the gameplay navigation path. Invalidate
+        // cached diagnostic rows so restoring the same pin forces fresh status.
+        if (text.Contains("  if not path then return end", StringComparison.Ordinal))
+            text = ReplaceOnce(
+                text,
+                "  if not path then return end",
+                "  if not path then N.scanKey=nil;N.lastMappins={};N.missingScanAge=0;return end",
+                "Ziggy v2 absent objective cache invalidation");
+
+        if (text.Contains("  if not valid(objective)or not valid(pin)then return end", StringComparison.Ordinal))
+            text = ReplaceOnce(
+                text,
+                "  if not valid(objective)or not valid(pin)then return end",
+                "  if not valid(objective)or not valid(pin)then N.scanKey=nil;N.lastMappins={};N.missingScanAge=0;return end",
+                "Ziggy v2 missing journal pin cache invalidation");
 
         context.Write(file, text);
         return SemanticInjectionResult.Success(
-            "Preserved Ziggy's 2 s navigation cadence, targeted destination lookup and bounded journal recovery. The full GetAllMappins diagnostic scan now runs only when the objective state signature changes or the targeted destination is missing; cached rows contain plain Lua values only.");
+            "Preserved 2-second targeted lookup, journal repair and bounded retries. Global diagnostic scans now occur on pin/objective state change or once per 12 seconds while the same missing-pin state persists; only plain Lua values are cached. Supports original and G-CET v1 source.");
     }
 
 
