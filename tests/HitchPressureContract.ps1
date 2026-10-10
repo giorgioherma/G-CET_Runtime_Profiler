@@ -101,6 +101,12 @@ if (!$result.ok) { throw 'Profiler report generation failed.' }
 
 $summary = Get-Content -LiteralPath (Join-Path $capture 'CET_Summary.json') -Raw | ConvertFrom-Json
 $hp = $summary.frameTime.hitchPressure
+$resolverInput=Get-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Raw | ConvertFrom-Json
+if($resolverInput.garbageCollection.attributionPolicy -ne 'MEASUREMENT_ONLY_NO_AUTOMATIC_OPTIMIZATION' -or
+   [math]::Abs([double]$resolverInput.garbageCollection.totalExplicitMs-4.8) -gt 0.01 -or
+   @($resolverInput.garbageCollection.operations).Count -ne 2) {
+ throw 'Resolver handoff lost measured GC evidence or confused timing with optimization.'
+}
 $explicit=$summary.explicitGc
 if($null -eq $explicit -or
    $explicit.measurement -ne 'EXACT_EXPLICIT_COLLECTGARBAGE_CALLS_ONLY' -or

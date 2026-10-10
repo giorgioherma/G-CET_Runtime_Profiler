@@ -361,6 +361,23 @@ public static partial class ResultReportService
                 consumer = "resolver",
                 domain = "cet"
             },
+            garbageCollection = a.ExplicitGc is null ? null : new
+            {
+                attributionPolicy = "MEASUREMENT_ONLY_NO_AUTOMATIC_OPTIMIZATION",
+                exactExplicitTiming = true,
+                automaticLuaJitTiming = false,
+                totalExplicitMs = Round(a.ExplicitGc.TotalDurationMs, 3),
+                operations = a.ExplicitGc.Events
+                    .OrderByDescending(x => x.DurationMs).Take(100)
+                    .Select(x => new
+                    {
+                        captureStartMs = Round(x.StartMs, 3),
+                        captureEndMs = Round(x.EndMs, 3),
+                        durationMs = Round(x.DurationMs, 3),
+                        x.Action, x.SourceFile, x.SourceLine,
+                        callbackSpikeOverlap = x.NearRecordedSpike
+                    })
+            },
             semantics = new
             {
                 measurementOnly = true,
