@@ -53,7 +53,10 @@ $spikeB = $starts[150] + 1.0
 @(
 'Sequence,CaptureMs,UnixEpochMs,Label,DroppedMarkersAtDump',
 '1,0,4102444800000,CAPTURE_START,0',
-("2,{0},4102444800000,PAUSE,0" -f $cursor)
+'2,100,4102444800100,GC_HEAP_V1_KIB_400000_BASE,0',
+'3,1010,4102444801010,GC_HEAP_V1_KIB_370000_DROP_30000,0',
+'4,2000,4102444802000,GC_HEAP_V1_KIB_375000_BASE,0',
+("5,{0},4102444800000,PAUSE,0" -f $cursor)
 ) | Set-Content -LiteralPath (Join-Path $capture 'CET_Runtime_Profile_Markers.csv') -Encoding utf8
 
 @('BucketIndex,BucketStartMs,BucketEndMs,BucketWidthMs,Mod,Calls,InclusiveMs,ExclusiveMs,DroppedTimelineRowsAtDump,Interpretation') |
@@ -92,6 +95,35 @@ if (!$result.ok) { throw 'Profiler report generation failed.' }
 
 $summary = Get-Content -LiteralPath (Join-Path $capture 'CET_Summary.json') -Raw | ConvertFrom-Json
 $hp = $summary.frameTime.hitchPressure
+$heap=$summary.luaHeap
+if($null -eq $heap -or $heap.mode -ne 'PASSIVE_HEAP_COUNT_NO_COLLECTION_CONTROL') {
+    throw 'Passive Lua heap summary missing from report.'
+}
+if([int]$heap.recordedCheckpoints -ne 3 -or [int]$heap.observedShrinkEvents -ne 1) {
+    throw "Incorrect Lua heap sample/drop counts: $($heap | ConvertTo-Json -Compress)"
+}
+if([math]::Abs([double]$heap.maxSingleSampleShrinkMiB - (30000.0/1024.0)) -gt 0.005) {
+    throw 'Lua heap substantial drop magnitude was not preserved in MiB.'
+}
+if([int]$heap.shrinkEventsNearRecordedSpikes -ne 1) {
+    throw 'Lua heap drop / measured runtime spike coincidence missing.'
+}
+if($heap.gcPauseAttribution -ne 'NOT_MEASURED') {
+    throw 'Passive heap evidence was misreported as measured GC pauses.'
+}
+$html=Get-Content -LiteralPath (Join-Path $capture 'CET_Report.html') -Raw
+if($html -notmatch 'Lua heap &amp; GC indicators' -or
+   $html -notmatch 'not proof of GC') {
+    throw 'Human report did not explain passive heap telemetry limitations.'
+}
+$controls = Get-Content -LiteralPath 'payload\CETProfilerControls\init.lua' -Raw
+if($controls -notmatch 'pcall\(collectgarbage, "count"\)' -or
+   $controls -notmatch 'GC_MAX_MARKERS = 480' -or
+   $controls -match 'collectgarbage\("collect"\)' -or
+   $controls -match 'collectgarbage\("step"\)') {
+    throw 'Runtime controls GC observer was changed into active GC maintenance.'
+}
+
 if ($null -eq $hp) { throw 'Hitch pressure block missing.' }
 if ([string]$hp.vocabularyVersion -ne '1.0') { throw 'Hitch pressure vocabulary version missing.' }
 if ([math]::Abs([double]$hp.tolerance.thresholdFrameMs - 25.0) -gt 0.01) {

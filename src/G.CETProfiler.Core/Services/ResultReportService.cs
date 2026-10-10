@@ -120,6 +120,35 @@ public static partial class ResultReportService
                 measuredSharePct = Round(EffectiveShare(x, a.TotalMsPerSecond), 3),
                 maxExclusiveMs = Round(x.MaxExclusiveMs, 6)
             }),
+            luaHeap = a.LuaHeap is null ? null : new
+            {
+                mode = "PASSIVE_HEAP_COUNT_NO_COLLECTION_CONTROL",
+                cadenceSeconds = 0.5,
+                checkpointSeconds = 10,
+                significantShrinkMiB = 8,
+                // Only measured heap-size changes; GC activity is not proven.
+                gcPauseAttribution = "NOT_MEASURED",
+                recordedCheckpoints = a.LuaHeap.SampleCount,
+                firstHeapMiB = Round(a.LuaHeap.FirstMiB, 3),
+                lastHeapMiB = Round(a.LuaHeap.LastMiB, 3),
+                minHeapMiB = Round(a.LuaHeap.MinMiB, 3),
+                maxHeapMiB = Round(a.LuaHeap.MaxMiB, 3),
+                observedShrinkEvents = a.LuaHeap.DropCount,
+                maxSingleSampleShrinkMiB = Round(a.LuaHeap.MaxDropMiB, 3),
+                shrinkEventsNearRecordedSpikes = a.LuaHeap.DropsNearSpikes,
+                maxMarkerBudget = 480,
+                markerBudgetExhausted = a.LuaHeap.SampleCount >= 480,
+                significantShrinks = a.LuaHeap.Samples
+                    .Where(x => x.IsDrop)
+                    .Take(80)
+                    .Select(x => new
+                    {
+                        captureMs = Round(x.CaptureMs, 3),
+                        heapMiB = Round(x.HeapMiB, 3),
+                        shrinkMiB = Round(x.DropMiB, 3),
+                        x.NearRecordedSpike
+                    })
+            },
             callVolume = a.CallVolume.Select(x => new
             {
                 owner = x.Name,

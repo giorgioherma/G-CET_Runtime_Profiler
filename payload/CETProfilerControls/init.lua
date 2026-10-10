@@ -232,6 +232,78 @@ registerForEvent("onInit", function()
       "WORLD / IDLE, DRIVING and COMBAT.")
 end)
 
+
+-- Passive whole-session Lua heap observer. collectgarbage("count") only reads
+-- the current Lua heap; it never starts, stops, steps or tunes collection.
+-- Sample twice per second, but reserve scarce native marker slots: record one
+-- baseline checkpoint every 10 seconds and any >=8 MiB single-sample shrink.
+-- Only 480 of the native profiler's 1000 markers may belong to this observer.
+local gcSampleAge = 0
+local gcHeartbeatAge = 10
+local gcPreviousKiB = nil
+local gcMarked = 0
+local gcWasCapturing = false
+local gcMarkersUnavailable = false
+local GC_MAX_MARKERS = 480
+
+local function observeLuaHeap(dt)
+  gcSampleAge = gcSampleAge + math.max(0, tonumber(dt) or 0)
+  if gcSampleAge < 0.5 then return end
+  local elapsed = gcSampleAge
+  gcSampleAge = 0
+
+  local capturing = isRunning()
+  if not capturing then
+    gcWasCapturing = false
+    gcPreviousKiB = nil
+    gcHeartbeatAge = 10
+    gcMarked = 0
+    gcMarkersUnavailable = false
+    return
+  end
+
+  if not gcWasCapturing then
+    gcWasCapturing = true
+    gcHeartbeatAge = 10
+    gcPreviousKiB = nil
+    gcMarked = 0
+    gcMarkersUnavailable = false
+  end
+
+  if gcMarkersUnavailable or type(collectgarbage) ~= "function"
+      or type(CETProfilerMark) ~= "function" then return end
+
+  local ok, kib = pcall(collectgarbage, "count")
+  if not ok or type(kib) ~= "number" or kib ~= kib or kib < 0 then
+    gcMarkersUnavailable = true
+    return
+  end
+
+  local rounded = math.floor(kib + 0.5)
+  local drop = gcPreviousKiB and math.max(0, math.floor(gcPreviousKiB - kib + 0.5)) or 0
+  gcPreviousKiB = kib
+  gcHeartbeatAge = gcHeartbeatAge + elapsed
+  if gcMarked >= GC_MAX_MARKERS then return end
+
+  local label = nil
+  if drop >= 8192 then
+    label = "GC_HEAP_V1_KIB_" .. rounded .. "_DROP_" .. drop
+  elseif gcHeartbeatAge >= 10 then
+    label = "GC_HEAP_V1_KIB_" .. rounded .. "_BASE"
+  end
+  if not label then return end
+
+  gcHeartbeatAge = 0
+  local marked, result = pcall(CETProfilerMark, label)
+  if not marked or (type(result) == "string" and result:find("buffer full", 1, true)) then
+    gcMarkersUnavailable = true
+    return
+  end
+  gcMarked = gcMarked + 1
+end
+
+registerForEvent("onUpdate", observeLuaHeap)
+
 registerForEvent("onDraw", drawCaptureHud)
 
 registerInput("CETProfiler_Toggle", "Profiler: START / STOP + AUTO EXPORT", function(isKeyDown)

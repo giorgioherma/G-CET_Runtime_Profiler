@@ -37,6 +37,7 @@ public static partial class ResultReportService
         public List<Dictionary<string, string>> TimelineRows { get; init; } = [];
         public List<Dictionary<string, string>> MarkerRows { get; init; } = [];
         public List<Dictionary<string, string>> SpikeRows { get; init; } = [];
+        public LuaHeapTelemetry? LuaHeap { get; init; }
     }
 
     private static ResultAnalysis Analyze(string captureRoot)
@@ -232,7 +233,8 @@ public static partial class ResultReportService
             DetailRows = detail,
             TimelineRows = timeline,
             MarkerRows = markers,
-            SpikeRows = spikes
+            SpikeRows = spikes,
+            LuaHeap = AnalyzeLuaHeap(markers, spikes)
         };
     }
 
