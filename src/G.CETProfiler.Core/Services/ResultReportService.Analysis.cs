@@ -40,6 +40,7 @@ public static partial class ResultReportService
         public LuaHeapTelemetry? LuaHeap { get; init; }
         public ExplicitGcTelemetry? ExplicitGc { get; init; }
         public GcCollectorTelemetry? CollectorGc { get; init; }
+        public WorkloadTelemetry? WorkloadServices { get; init; }
     }
 
     private static ResultAnalysis Analyze(string captureRoot)
@@ -175,7 +176,9 @@ public static partial class ResultReportService
         var worstSchedulerBurst = schedulerBurstMetrics
             .OrderByDescending(x => x.TotalJobMs)
             .FirstOrDefault();
-        var schedulerTotalMsPerSecond = schedulerJobMetrics.Sum(x => x.MsPerSecond);
+        var schedulerTotalMsPerSecond = schedulerJobMetrics
+            .Where(x => !x.JobType.StartsWith("gcet-", StringComparison.Ordinal))
+            .Sum(x => x.MsPerSecond);
         var zeroEngine = owners.FirstOrDefault(x =>
             string.Equals(x.Name, "0-Engine", StringComparison.OrdinalIgnoreCase));
 
@@ -242,7 +245,8 @@ public static partial class ResultReportService
             SpikeRows = spikes,
             LuaHeap = AnalyzeLuaHeap(markers, spikes),
             ExplicitGc = explicitGcFile is null ? null : AnalyzeExplicitGc(explicitGc, spikes),
-            CollectorGc = collectorGcFile is null ? null : AnalyzeGcCollector(collectorGc, spikes, frameTime)
+            CollectorGc = collectorGcFile is null ? null : AnalyzeGcCollector(collectorGc, spikes, frameTime),
+            WorkloadServices = AnalyzeWorkload(markers, schedulerJobMetrics)
         };
     }
 

@@ -87,6 +87,9 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
         if (a.CollectorGc is not null)
             AppendGcCollector(sb, a.CollectorGc);
 
+        if (a.WorkloadServices is not null)
+            AppendWorkloadTelemetry(sb, a.WorkloadServices);
+
         if (a.ExplicitGc is not null)
             AppendExplicitGc(sb, a.ExplicitGc, a.FrameTime);
 

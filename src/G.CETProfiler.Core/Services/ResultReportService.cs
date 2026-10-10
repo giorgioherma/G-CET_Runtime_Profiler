@@ -122,6 +122,24 @@ public static partial class ResultReportService
                 measuredSharePct = Round(EffectiveShare(x, a.TotalMsPerSecond), 3),
                 maxExclusiveMs = Round(x.MaxExclusiveMs, 6)
             }),
+            workloadServices = a.WorkloadServices is null || !a.WorkloadServices.HasEvidence ? null : new
+            {
+                measurement = "NESTED_0_ENGINE_CLIENT_WORK_AND_15_SECOND_HEALTH_CHECKPOINTS",
+                additiveToSchedulerOrCallbackTime = false,
+                instrumentedClients = a.WorkloadServices.MeasuredClients.Count,
+                measuredCalls = a.WorkloadServices.MeasuredCalls,
+                measuredNestedMsPerSecond = Round(a.WorkloadServices.MeasuredNestedMsPerSecond, 3),
+                healthCheckpoints = a.WorkloadServices.Statuses.Count,
+                peakObservedQueue = a.WorkloadServices.PeakQueue,
+                peakObservedPhasePending = a.WorkloadServices.PeakPhasePending,
+                latestHealth = a.WorkloadServices.Latest,
+                clients = a.WorkloadServices.MeasuredClients
+                    .Take(50).Select(x => new {
+                        x.Owner, x.JobType, x.Job, x.Calls,
+                        msPerSecond = Round(x.MsPerSecond, 3),
+                        maxMs = Round(x.MaxMs, 3)
+                    })
+            },
             collectorGc = a.CollectorGc is null ? null : new
             {
                 measurement = "EXACT_INTERNAL_LUAJIT_GC_EXECUTION_FRAME_BUCKETED",

@@ -361,6 +361,23 @@ public static partial class ResultReportService
                 consumer = "resolver",
                 domain = "cet"
             },
+            workloadServices = a.WorkloadServices is null || !a.WorkloadServices.HasEvidence ? null : new
+            {
+                policy = "MEASURE_ONLY_OPT_IN_NO_AUTHOR_REWRITES",
+                nestedIntoParent = true,
+                measuredCalls = a.WorkloadServices.MeasuredCalls,
+                nestedMsPerSecond = Round(a.WorkloadServices.MeasuredNestedMsPerSecond, 3),
+                queuePeakObserved = a.WorkloadServices.PeakQueue,
+                phasePendingPeakObserved = a.WorkloadServices.PeakPhasePending,
+                latestHealth = a.WorkloadServices.Latest,
+                measuredClients = a.WorkloadServices.MeasuredClients
+                    .OrderByDescending(x => x.MsPerSecond)
+                    .Take(100).Select(x => new {
+                        x.Owner, x.JobType, x.Job, x.Calls,
+                        msPerSecond = Round(x.MsPerSecond, 3),
+                        maxMs = Round(x.MaxMs, 3)
+                    })
+            },
             garbageCollection = a.ExplicitGc is null && a.CollectorGc is null ? null : new
             {
                 attributionPolicy = "MEASUREMENT_ONLY_NO_AUTOMATIC_OPTIMIZATION",
