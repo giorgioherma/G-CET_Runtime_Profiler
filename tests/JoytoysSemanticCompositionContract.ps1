@@ -25,9 +25,13 @@ try{$gzip.CopyTo($output);[IO.File]::WriteAllBytes((Join-Path $zeroDir 'init.lua
 finally{$output.Dispose();$gzip.Dispose();$input.Dispose()}
 
 @'
-local Joytoys={
- _lastRequestSequence=0,_lastStartRequest=0,_lastCompleteRequest=0,_readyWritten=false,
- _nifIdleTimer=2.0,_sceneFactTimer=0.0
+local Joytoys = {
+  _lastRequestSequence = 0,
+  _lastStartRequest = 0,
+  _lastCompleteRequest = 0,
+  _readyWritten = false,
+  _nifIdleTimer = 2.0,
+  _sceneFactTimer = 0.0,
 }
 local Shift={stage=0}
 local FACT={}
