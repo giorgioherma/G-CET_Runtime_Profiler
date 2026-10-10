@@ -31,7 +31,7 @@ public static partial class ResultReportService
             var label = S(marker, "Label");
             if (!label.StartsWith("WORKLOAD_V1_", StringComparison.Ordinal)) continue;
             var parts = label.Split('_');
-            if (parts.Length != 21 || parts[0] != "WORKLOAD" || parts[1] != "V1")
+            if (parts.Length != 20 || parts[0] != "WORKLOAD" || parts[1] != "V1")
                 continue;
             var map = new Dictionary<string,long>(StringComparer.Ordinal);
             var valid = true;
