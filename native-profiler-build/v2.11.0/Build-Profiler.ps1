@@ -275,7 +275,7 @@ try {
     [IO.File]::WriteAllText($recipe, $recipeText, [Text.UTF8Encoding]::new($false))
 
     Write-Host "Rebuilding profiler-only OpenResty LuaJIT with collector instrumentation."
-    & $xmake require --force openrestry-luajit
+    & $xmake require -y --force openrestry-luajit
     if ($LASTEXITCODE -ne 0) { throw 'collector-probed LuaJIT package rebuild failed' }
 
     & (Join-Path $PSScriptRoot "Patch-CET-v1.37.1.ps1") -SourceRoot $repo
