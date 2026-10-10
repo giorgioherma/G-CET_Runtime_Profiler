@@ -985,6 +985,17 @@ jobs:
           path: publish-resolver/
           if-no-files-found: error
 
+      - name: Stage ready-to-copy 0-Engine folder
+        shell: pwsh
+        run: ./tests/BuildReadyZeroEngine.ps1 -ResolverRoot ./publish-resolver -Destination ./ready-0-engine
+
+      - name: Upload ready-to-copy 0-Engine folder
+        uses: actions/upload-artifact@v4
+        with:
+          name: 0-Engine-READY-TO-COPY-v${{ steps.product_version.outputs.version }}
+          path: ready-0-engine/
+          if-no-files-found: error
+
       - name: Publish canonical GitHub release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         shell: pwsh
