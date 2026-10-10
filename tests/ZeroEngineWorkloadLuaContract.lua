@@ -8,6 +8,20 @@ local Phase = require("GCETPhasePlanner")
 local Frames = require("GCETFrameListeners")
 local Signals = require("GCETStateSignals")
 local nativeRegistrationCount, frame, fakeClock = 0, 0, 0
+local timedKinds, nativeFinishCount, profilerRunning = {}, 0, true
+CETProfilerIsRunning = function() return profilerRunning end
+CETProfilerSchedulerRegisterJob = function(_, kind)
+    timedKinds[kind] = true
+    return 1
+end
+CETProfilerSchedulerJobBegin = function(handle)
+    assert(handle == 1, "registered native handle")
+    return 123
+end
+CETProfilerSchedulerJobEnd = function(handle, token, _)
+    assert(handle == 1 and token == 123, "native timed scope balance")
+    nativeFinishCount = nativeFinishCount + 1
+end
 local originalClock = os.clock
 os.clock = function() fakeClock = fakeClock + 0.00025; return fakeClock end
 local playing = true
@@ -147,5 +161,10 @@ watcher.Cancel()
 emit("MountedToVehicleChanged", true)
 assert(#seen == 3, "cancelled watchers must stay dormant")
 assert(nativeRegistrationCount == 0, "no native CET hooks should be registered")
+for _, kind in ipairs({ "gcet-work", "gcet-phase", "gcet-listener", "gcet-signal" }) do
+    assert(timedKinds[kind], "missing capture-gated nested timer: " .. kind)
+end
+assert(nativeFinishCount > 0, "native workload scopes were never completed")
+profilerRunning = false
 os.clock = originalClock
 print("0-Engine additive workload Lua runtime contract PASSED")
