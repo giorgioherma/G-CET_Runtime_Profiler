@@ -4356,7 +4356,8 @@
         ],
         "ownerAnyGroups": [[
           "local N={age=0,retries=0}",
-          "local N={age=0,retries=0,scanKey=nil,lastMappins={}}"
+          "local N={age=0,retries=0,scanKey=nil,lastMappins={}}",
+          "local N={age=0,retries=0,scanKey=nil,lastMappins={},missingScanAge=0}"
         ]],
         "alreadySatisfiedMarker": "G-CET semantic:ziggy-last-play-navigation-sentinel-v2",
         "expectedMarkerFileCount": 1,

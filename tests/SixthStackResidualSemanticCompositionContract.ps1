@@ -994,4 +994,49 @@ try {
 }
 finally { $zip.Dispose() }
 
-Write-Host 'Residual sixth-stack semantic composition contract passed: existing residual rules + tunnel v2 diagnostic sentinel + Ziggy targeted mappin sentinel.'
+# Upgrade regression: the deployed G-CET v1 source must not be treated as
+# already satisfied by the v2 marker, and the v2 output must be idempotent.
+$ziggyLive = Join-Path $mods 'ziggy_last_play\navigation.lua'
+$ziggyV1Reference = Join-Path (Get-Location) 'tests\semantic-reference\ziggy-navigation-v1.lua'
+if (!(Test-Path -LiteralPath $ziggyV1Reference)) { throw 'Ziggy v1 reference fixture missing.' }
+Copy-Item -LiteralPath $ziggyV1Reference -Destination $ziggyLive -Force
+$legacyRun = (& $resolverExe --capture $capture --mods $mods --generate-pass --json | ConvertFrom-Json)
+if(!$legacyRun.ok -or !$legacyRun.pass) { throw 'Ziggy v1-to-v2 semantic pass generation failed.' }
+$legacyManifest = Get-Content -LiteralPath $legacyRun.pass.ManifestPath -Raw | ConvertFrom-Json
+$legacyTransforms = @($legacyManifest.transforms | Where-Object {
+    $_.type -eq 'SEMANTIC_RULE' -and $_.RuleId -eq 'ziggy-last-play-navigation-sentinel-v2'
+})
+if($legacyTransforms.Count -ne 1) { throw 'Ziggy v1 source did not generate exactly one v2 migration.' }
+$legacyZip = [System.IO.Compression.ZipFile]::OpenRead([string]$legacyRun.pass.ZipPath)
+try {
+    $legacyEntry = $legacyZip.GetEntry('bin/x64/plugins/cyber_engine_tweaks/mods/ziggy_last_play/navigation.lua')
+    if(!$legacyEntry) { throw 'Ziggy v1 upgrade missing from pass ZIP.' }
+    $legacyReader=[System.IO.StreamReader]::new($legacyEntry.Open())
+    try { $upgradedZiggy=$legacyReader.ReadToEnd() }
+    finally { $legacyReader.Dispose() }
+}
+finally { $legacyZip.Dispose() }
+if($upgradedZiggy -notmatch 'G-CET semantic:ziggy-last-play-navigation-sentinel-v2' -or
+   $upgradedZiggy -notmatch 'N\.missingScanAge >= 12' -or
+   $upgradedZiggy -notmatch 'function N\.reset\(\).*N\.scanKey=nil' -or
+   $upgradedZiggy -notmatch 'GetQuestMappinPosition\(hash\)' -or
+   $upgradedZiggy -notmatch 'N\.retries<3' -or
+   ([regex]::Matches($upgradedZiggy, 'for _,m in ipairs\(system:GetAllMappins\(\)\)do')).Count -ne 1) {
+    throw 'Ziggy v1 migration lost navigation behavior or duplicated its global scan.'
+}
+
+$upgradedZiggy | Set-Content -LiteralPath $ziggyLive -Encoding utf8
+$repeat = (& $resolverExe --capture $capture --mods $mods --generate-pass --json | ConvertFrom-Json)
+if(!$repeat.ok -or !$repeat.pass) { throw 'Ziggy v2 idempotence pass failed.' }
+$repeatResolver = Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
+$repeatZiggy=@($repeatResolver.callbackFamilies | ForEach-Object {$_.topConsumers} |
+    Where-Object { $_.owner -eq 'ziggy_last_play' -and $_.semantic.RuleId -eq 'ziggy-last-play-navigation-sentinel-v2' })
+if($repeatZiggy.Count -lt 1 -or !@($repeatZiggy | Where-Object {$_.semantic.AlreadySatisfied}).Count) {
+    throw 'Ziggy transformed v2 source is not recognized as already satisfied.'
+}
+$repeatManifest=Get-Content -LiteralPath $repeat.pass.ManifestPath -Raw | ConvertFrom-Json
+if(@($repeatManifest.transforms | Where-Object {$_.RuleId -eq 'ziggy-last-play-navigation-sentinel-v2'}).Count -ne 0) {
+    throw 'Ziggy v2 semantic reapplied to an already transformed source.'
+}
+
+Write-Host 'Residual sixth-stack semantic composition contract passed: existing residual rules + tunnel v2 diagnostic sentinel + Ziggy bounded diagnostic v2 with v1 upgrade/idempotence.'
