@@ -875,6 +875,10 @@ jobs:
         shell: pwsh
         run: ./tests/SixthStackResidualSemanticCompositionContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: Joytoys bridge semantic contract
+        shell: pwsh
+        run: ./tests/JoytoysSemanticCompositionContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: Residual dormancy semantic contract
         shell: pwsh
         run: ./tests/ResidualDormancySemanticContract.ps1 -ResolverRoot ./publish-resolver

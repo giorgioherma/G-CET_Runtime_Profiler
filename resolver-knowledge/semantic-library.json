@@ -14,7 +14,7 @@
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
     "fullPassRule": "A semantic injector can run only when the current capture meets that rule's runtime admission threshold (3.0 ms/s by default; lower only when explicitly declared by a production rule), the library rule matches, and the current live mod source graph proves its anchors.",
-    "enabledInjectorCount": 58,
+    "enabledInjectorCount": 59,
     "profileOnlyRuleCount": 0,
     "note": "The production semantic base contains source-proven, behavior-aware optimizations learned from validated references and measured hot callbacks, including burst-discovered diagnostic sentinels that preserve author cadence while gating globally expensive fallback scans. Generic/mechanical transforms stay in the Resolver; semantic rules cover state/cadence/hotpath knowledge that generic inference cannot safely own.",
     "admissionPolicy": {
@@ -4153,6 +4153,103 @@
       "referenceOverrideAllowed": false,
       "evidenceMembership": [
         "SIXTH_STACK_POST_SEMANTIC_20261008"
+      ]
+    },
+    {
+      "id": "joytoys-of-night-city-bridge-active-split",
+      "identityHints": [
+        "JoytoysOfNightCity"
+      ],
+      "policyClass": "BRIDGE_SENTINEL_ACTIVE_SCENE_SPLIT",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "bridge-and-scene-hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "writeReadyState(quests)",
+          "processLocationRequest(quests)",
+          "processJobRequests(quests)",
+          "if Joytoys.NPCScenes then Joytoys.NPCScenes.update(dt) end",
+          "if Joytoys.SceneDirector then Joytoys.SceneDirector.update(dt) end",
+          "if Shift.stage == 0 then",
+          "ensureOffer()",
+          "Joytoys._nifIdleTimer >= 2.0",
+          "function controller.update(deltaTime)",
+          "controller.activeRequest",
+          "isRunning()"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:joytoys-of-night-city-bridge-active-split",
+        "expectedMarkerFileCount": 2,
+        "satisfiedAll": [
+          "_bridgePollTimer = 0.10",
+          "_offerPollTimer = 0.50",
+          "if Joytoys._bridgePollTimer >= 0.10 then",
+          "if Joytoys._offerPollTimer >= 0.50 then",
+          "if not controller.activeRequest then return end"
+        ]
+      },
+      "behavior": {
+        "handler": "SEMANTIC_BRIDGE_SENTINEL_ACTIVE_SCENE_SPLIT",
+        "concepts": [
+          "bridgeSequenceSentinel",
+          "websiteRequestPolling10Hz",
+          "activeImmersiveRealtime",
+          "activeNpcSceneRealtime",
+          "sceneDirectorInternalSessionDormancy",
+          "idleOfferRefresh2Hz",
+          "jobStartImmediateOfferRefresh",
+          "nifIdleCleanupUnchanged"
+        ],
+        "lanes": [
+          {
+            "role": "BRIDGE_READY_LOCATION_JOB_SENTINEL",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.1
+          },
+          {
+            "role": "IDLE_OFFER_SETTINGS_REFRESH",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.5
+          },
+          {
+            "role": "ACTIVE_IMMERSIVE_AND_SCENE_RUNTIME",
+            "cadence": "EVERY_FRAME",
+            "seconds": 0
+          },
+          {
+            "role": "NIF_IDLE_CLEANUP",
+            "cadence": "AUTHOR_FIXED_SECONDS",
+            "seconds": 2
+          }
+        ],
+        "note": "The computer/website bridge is explicitly sequence-driven through quest facts, so ready/location/job polling is reduced from render rate to 10 Hz while full handlers remain unchanged when a new sequence arrives. Idle creator-offer/settings maintenance runs at 2 Hz; a job-start sequence still calls ensureOffer immediately. Immersive proof, active NPC scene work and SceneDirector update remain frame-fed. NPCScenes.update becomes dormant only when there is no controller.activeRequest."
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 8.735067,
+        "measuredMaxExclusiveMs": 133.0526,
+        "evidenceStack": "BURST_RECOGNITION_20261010",
+        "admitted": true
+      },
+      "cadenceGroup": "BRIDGE_10HZ_OFFER_2HZ_ACTIVE_SCENE_FRAME",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "BURST_RECOGNITION_20261010"
       ]
     },
     {

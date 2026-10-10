@@ -51,6 +51,7 @@ internal static class SemanticInjectors
             "good-feelings-hard-draw" => ApplyGoodFeelingsHardDraw(context),
             "air-backflip" => ApplyAirBackFlip(context),
             "auto-drop-weapon-dynamic-routing" => ApplyAutoDropWeaponOnPickupEquip(context),
+            "joytoys-of-night-city-bridge-active-split" => ApplyJoytoysOfNightCity(context),
             "tunnel-rescue-v2" => ApplyTunnelRescue(context),
             "ziggy-last-play-navigation-sentinel" => ApplyZiggyLastPlayNavigation(context),
             "aerial-race-active-idle-split" => ApplyAerialRaceActiveIdleSplit(context),
@@ -2464,6 +2465,109 @@ end)
         return SemanticInjectionResult.Success(
             "Replaced AutoDrop's global PlayerPuppet action observer with exact pickup/equip routes. Wildcard delivery exists only while capture/debug mode is explicitly active, newly captured names get exact subscriptions, and onUpdate sleeps unless capture timing or a pending swap needs it.");
     }
+
+    private static SemanticInjectionResult ApplyJoytoysOfNightCity(
+        SemanticPatchContext context)
+    {
+        var init = context.FindFile(
+            "init.lua",
+            "writeReadyState(quests)",
+            "processLocationRequest(quests)",
+            "processJobRequests(quests)",
+            "if Joytoys.NPCScenes then Joytoys.NPCScenes.update(dt) end",
+            "if Joytoys.SceneDirector then Joytoys.SceneDirector.update(dt) end",
+            "if Shift.stage == 0 then",
+            "ensureOffer()",
+            "Joytoys._nifIdleTimer >= 2.0");
+
+        var scenes = context.FindFile(
+            "npc_scenes.lua",
+            "function controller.update(deltaTime)",
+            "controller.activeRequest",
+            "isRunning()");
+
+        var initText = ReplaceOnce(
+            init.Text,
+            "  _sceneFactTimer = 0.0,\n}",
+            "  _sceneFactTimer = 0.0,\n" +
+            "  _bridgePollTimer = 0.10,\n" +
+            "  _offerPollTimer = 0.50,\n}",
+            "Joytoys bridge/offer sentinel state");
+
+        var oldUpdate =
+            "  writeReadyState(quests)\n" +
+            "  processLocationRequest(quests)\n" +
+            "  processJobRequests(quests)\n" +
+            "  updateImmersiveProof(dt)\n" +
+            "  if Joytoys.NPCScenes then Joytoys.NPCScenes.update(dt) end\n" +
+            "  if Joytoys.SceneDirector then Joytoys.SceneDirector.update(dt) end\n" +
+            "  Joytoys._sceneFactTimer = Joytoys._sceneFactTimer + (tonumber(dt) or 0.0)\n" +
+            "  if Joytoys.SceneDirector and Joytoys._sceneFactTimer >= 0.5 then\n" +
+            "    Joytoys._sceneFactTimer = 0.0\n" +
+            "    writeSceneDirectorFacts(Joytoys.SceneDirector.status())\n" +
+            "  end\n\n" +
+            "  if Shift.stage == 0 then\n" +
+            "    ensureOffer()\n" +
+            "    Joytoys._nifIdleTimer = Joytoys._nifIdleTimer + (tonumber(dt) or 0.0)\n" +
+            "    if Joytoys._nifIdleTimer >= 2.0 then\n" +
+            "      Joytoys._nifIdleTimer = 0.0\n" +
+            "      setNifProject(false)\n" +
+            "    end\n" +
+            "  end\n";
+
+        var newUpdate =
+            "  local __gcetJncDt = math.max(0.0, tonumber(dt) or 0.0)\n" +
+            "  Joytoys._bridgePollTimer = Joytoys._bridgePollTimer + __gcetJncDt\n" +
+            "  if Joytoys._bridgePollTimer >= 0.10 then\n" +
+            "    Joytoys._bridgePollTimer = 0.0\n" +
+            "    writeReadyState(quests)\n" +
+            "    processLocationRequest(quests)\n" +
+            "    processJobRequests(quests)\n" +
+            "  end\n\n" +
+            "  updateImmersiveProof(dt)\n" +
+            "  if Joytoys.NPCScenes then Joytoys.NPCScenes.update(dt) end\n" +
+            "  if Joytoys.SceneDirector then Joytoys.SceneDirector.update(dt) end\n" +
+            "  Joytoys._sceneFactTimer = Joytoys._sceneFactTimer + __gcetJncDt\n" +
+            "  if Joytoys.SceneDirector and Joytoys._sceneFactTimer >= 0.5 then\n" +
+            "    Joytoys._sceneFactTimer = 0.0\n" +
+            "    writeSceneDirectorFacts(Joytoys.SceneDirector.status())\n" +
+            "  end\n\n" +
+            "  if Shift.stage == 0 then\n" +
+            "    Joytoys._offerPollTimer = Joytoys._offerPollTimer + __gcetJncDt\n" +
+            "    if Joytoys._offerPollTimer >= 0.50 then\n" +
+            "      Joytoys._offerPollTimer = 0.0\n" +
+            "      ensureOffer()\n" +
+            "    end\n" +
+            "    Joytoys._nifIdleTimer = Joytoys._nifIdleTimer + __gcetJncDt\n" +
+            "    if Joytoys._nifIdleTimer >= 2.0 then\n" +
+            "      Joytoys._nifIdleTimer = 0.0\n" +
+            "      setNifProject(false)\n" +
+            "    end\n" +
+            "  else\n" +
+            "    Joytoys._offerPollTimer = 0.50\n" +
+            "  end\n";
+
+        initText = ReplaceOnce(
+            initText,
+            oldUpdate,
+            newUpdate,
+            "Joytoys bridge/offer active split");
+        context.Write(init, initText);
+
+        var sceneText = ReplaceOnce(
+            scenes.Text,
+            "  function controller.update(deltaTime)\n" +
+            "    local api = controller.provider and controller.provider.api or nil\n",
+            "  function controller.update(deltaTime)\n" +
+            "    if not controller.activeRequest then return end\n" +
+            "    local api = controller.provider and controller.provider.api or nil\n",
+            "Joytoys inactive NPC scene dormancy");
+        context.Write(scenes, sceneText);
+
+        return SemanticInjectionResult.Success(
+            "Moved the sequence-driven computer/website bridge to a 10 Hz sentinel and idle offer/settings maintenance to 2 Hz, while preserving immediate job-start offer resolution, frame-rate immersive/active scene work, the author's 0.5 s scene-fact and 2 s NIF cleanup cadences, and making NPCScenes.update dormant only with no active scene request.");
+    }
+
 
     private static SemanticInjectionResult ApplyTunnelRescue(
         SemanticPatchContext context)
