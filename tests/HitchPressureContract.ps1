@@ -68,11 +68,18 @@ $spikeB = $starts[150] + 1.0
 '2,100,4102444800100,GC_HEAP_V1_KIB_400000_BASE,0',
 '3,1010,4102444801010,GC_HEAP_V1_KIB_370000_DROP_30000,0',
 '4,2000,4102444802000,GC_HEAP_V1_KIB_375000_BASE,0',
+'6,2100,4102444802100,WORKLOAD_V1_Q_9_A_4_D_2_P_3_H_5_E_0_F_6_Z_2_S_7,0',
 ("5,{0},4102444800000,PAUSE,0" -f $cursor)
 ) | Set-Content -LiteralPath (Join-Path $capture 'CET_Runtime_Profile_Markers.csv') -Encoding utf8
 
 @('BucketIndex,BucketStartMs,BucketEndMs,BucketWidthMs,Mod,Calls,InclusiveMs,ExclusiveMs,DroppedTimelineRowsAtDump,Interpretation') |
     Set-Content -LiteralPath (Join-Path $capture 'CET_Runtime_Profile_Timeline.csv') -Encoding utf8
+
+@(
+'Owner,JobType,Job,IntervalValue,IntervalUnit,Calls,CallsPerSecond,TotalMs,MsPerSecond,AvgUs,MaxMs,ElapsedSeconds',
+'0-Engine,frame,scheduler_worker,1,frames,10,3,4,1.2,400,1.0,3.5',
+'ExampleMod,gcet-work,scan,0,cooperative,10,3,5,1.5,500,1.3,3.5'
+) | Set-Content -LiteralPath (Join-Path $capture 'CET_Runtime_Profile_Scheduler_ByJob.csv') -Encoding utf8
 
 $zeros = @(0..($frameMs.Count-1) | ForEach-Object { 0.0 })
 $falses = @(0..($frameMs.Count-1) | ForEach-Object { $false })
@@ -106,6 +113,16 @@ $result = (& $profilerExe --report --capture $capture --json | ConvertFrom-Json)
 if (!$result.ok) { throw 'Profiler report generation failed.' }
 
 $summary = Get-Content -LiteralPath (Join-Path $capture 'CET_Summary.json') -Raw | ConvertFrom-Json
+$workload = $summary.workloadServices
+if ($null -eq $workload -or
+    $workload.additiveToSchedulerOrCallbackTime -or
+    [int]$workload.peakObservedQueue -ne 9 -or
+    [int]$workload.peakObservedPhasePending -ne 3 -or
+    [int]$workload.latestHealth.FramePaused -ne 2 -or
+    [int]$workload.measuredCalls -ne 10 -or
+    [math]::Abs([double]$workload.measuredNestedMsPerSecond-1.5) -gt 0.01) {
+    throw '0-Engine workload instrumented cost/status regression.'
+}
 $collector = $summary.collectorGc
 if ($null -eq $collector -or
     $collector.measurement -ne 'EXACT_INTERNAL_LUAJIT_GC_EXECUTION_FRAME_BUCKETED' -or
@@ -119,6 +136,10 @@ if ($null -eq $collector -or
 }
 $hp = $summary.frameTime.hitchPressure
 $resolverInput=Get-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Raw | ConvertFrom-Json
+if ($resolverInput.workloadServices.policy -ne 'MEASURE_ONLY_OPT_IN_NO_AUTHOR_REWRITES' -or
+    -not $resolverInput.workloadServices.nestedIntoParent) {
+    throw 'Resolver misclassified nested 0-Engine workload measurements.'
+}
 if (-not $resolverInput.garbageCollection.automaticLuaJitTiming -or
     $resolverInput.garbageCollection.automaticVsExplicitOriginSeparated -or
     [math]::Abs([double]$resolverInput.garbageCollection.internalCollectorTotalMs - 4.8) -gt 0.01) {

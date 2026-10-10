@@ -69,3 +69,26 @@ These modules are automatically included by Resolver when it prepares the 0-Engi
 The new modules **do not automatically optimize any existing mod**. For measured 29–59 ms spikes, inspect the exact author source first. Use WorkQueue only for separable work, PhasePlanner only for delay-tolerant work, FrameListeners only when dormant state is proven, and StateSignals only when the required state transitions are already emitted. Validate before/after captures and user-visible behavior. Do not merge measurements of native callbacks and nested maintenance operations as additive time.
 
 Generated overlays refuse to overwrite a foreign file at any new GCET-prefixed path. That collision safeguard protects stock updates and preexisting user modifications.
+
+
+## Profiling and interpretation (v1.1.9)
+
+The native Scheduler bridge now also measures opted-in workload clients:
+`gcet-work`, `gcet-phase`, `gcet-listener`, and `gcet-signal`.
+These timings are **nested inside their containing stock 0-Engine/CET callbacks**.
+The profiler excludes `gcet-*` client counters from stock Scheduler
+frame-burst accumulation and Scheduler totals, preventing artificial spikes.
+Client execution durations and maxima remain visible in the existing
+`CET_Runtime_Profile_Scheduler_ByJob.csv` / spikes tables.
+
+The existing CET profiler-controls update callback additionally captures
+bounded `WORKLOAD_V1` checkpoints every 15 seconds (no extra callback,
+native Observer, or active-game polling service). They capture WorkQueue
+backlog, activity and deferred frames; PhasePlanner backlog and deferrals;
+active/paused adopted frame listeners; and StateSignals watcher count.
+Reports expose `workloadServices`, and the resolver handoff carries the
+same measurement-only evidence. A checkpoint is **sampled state**, not an
+instantaneous peak or permission to rewrite mod code.
+
+The LuaJIT collector instrument and workload telemetry remain completely
+independent from Choom Memory Booster.
