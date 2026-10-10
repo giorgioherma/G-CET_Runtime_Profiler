@@ -51,7 +51,7 @@ internal static class SemanticInjectors
             "good-feelings-hard-draw" => ApplyGoodFeelingsHardDraw(context),
             "air-backflip" => ApplyAirBackFlip(context),
             "auto-drop-weapon-dynamic-routing" => ApplyAutoDropWeaponOnPickupEquip(context),
-            "joytoys-of-night-city-bridge-active-split" => ApplyJoytoysOfNightCity(context),
+            "joytoys-of-night-city-bridge-active-split-idle-facts-v2" => ApplyJoytoysOfNightCity(context),
             "tunnel-rescue-v2" => ApplyTunnelRescue(context),
             "ziggy-last-play-navigation-sentinel-v2" => ApplyZiggyLastPlayNavigation(context),
             "aerial-race-active-idle-split" => ApplyAerialRaceActiveIdleSplit(context),
@@ -2486,8 +2486,26 @@ end)
             "controller.activeRequest",
             "isRunning()");
 
-        var initText = ReplaceOnce(
-            init.Text,
+        var director = context.FindFile(
+            "scene_director.lua",
+            "local function statusSnapshot()",
+            "local runtimeStatus = runtime and runtime.status()",
+            "STATE_CODE[director.phase]",
+            "OUTCOME_CODE[",
+            "function director.status()");
+
+        // Upgrade both the unmodified author source and a previously applied
+        // G-CET v1 bridge split. Do not slow or modify active scene updates.
+        var alreadyBridgeSplit = init.Text.Contains(
+            "if Joytoys._bridgePollTimer >= 0.10 then",
+            StringComparison.Ordinal);
+
+
+        var initText = init.Text;
+        if (!alreadyBridgeSplit)
+        {
+            initText = ReplaceOnce(
+            initText,
             "  _sceneFactTimer = 0.0,\n}",
             "  _sceneFactTimer = 0.0,\n" +
             "  _bridgePollTimer = 0.10,\n" +
@@ -2552,9 +2570,16 @@ end)
             oldUpdate,
             newUpdate,
             "Joytoys bridge/offer active split");
+        }
+
+        initText = ReplaceOnce(
+            initText,
+            "writeSceneDirectorFacts(Joytoys.SceneDirector.status())",
+            "writeSceneDirectorFacts(Joytoys.SceneDirector.factStatus())",
+            "Joytoys idle scene-fact mirror avoids full runtime status");
         context.Write(init, initText);
 
-        var sceneText = ReplaceOnce(
+        var sceneText = alreadyBridgeSplit ? scenes.Text : ReplaceOnce(
             scenes.Text,
             "  function controller.update(deltaTime)\n" +
             "    local api = controller.provider and controller.provider.api or nil\n",
@@ -2562,10 +2587,45 @@ end)
             "    if not controller.activeRequest then return end\n" +
             "    local api = controller.provider and controller.provider.api or nil\n",
             "Joytoys inactive NPC scene dormancy");
+        if (alreadyBridgeSplit)
+        {
+            if (!sceneText.Contains(
+                "if not controller.activeRequest then return end",
+                StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "Joytoys v1 NPC scene dormancy missing; refusing partial upgrade.");
+            // Keep all three files on the v2 marker so already-satisfied and
+            // partial-state checks describe the complete composed semantic.
+            sceneText += "\n-- G-CET v2 preserves existing active-request NPC scene gate\n";
+        }
         context.Write(scenes, sceneText);
 
+        var directorText = ReplaceOnce(
+            director.Text,
+            "  function director.status()\n" +
+            "    return statusSnapshot()\n" +
+            "  end\n",
+            "  function director.status()\n" +
+            "    return statusSnapshot()\n" +
+            "  end\n" +
+            "\n" +
+            "  -- G-CET: only the seven scene facts are needed by idle mirroring.\n" +
+            "  -- Full diagnostics and all active sessions keep statusSnapshot().\n" +
+            "  function director.factStatus()\n" +
+            "    if director.session then return statusSnapshot() end\n" +
+            "    local outcome = director.lastSession and director.lastSession.outcome or 'none'\n" +
+            "    return {\n" +
+            "      stateCode = STATE_CODE[director.phase] or -1,\n" +
+            "      sessionSequence = 0, definitionId = 0, profileId = 0,\n" +
+            "      locationId = 0, cameraIndex = 0,\n" +
+            "      outcomeCode = OUTCOME_CODE[outcome] or 0,\n" +
+            "    }\n" +
+            "  end\n",
+            "Joytoys idle fact-only status without FreeFly/player discovery");
+        context.Write(director, directorText);
+
         return SemanticInjectionResult.Success(
-            "Moved the sequence-driven computer/website bridge to a 10 Hz sentinel and idle offer/settings maintenance to 2 Hz, while preserving immediate job-start offer resolution, frame-rate immersive/active scene work, the author's 0.5 s scene-fact and 2 s NIF cleanup cadences, and making NPCScenes.update dormant only with no active scene request.");
+            "Preserves the v1 bridge sentinel, real-time scene paths and all author cadences. The 0.5 s scene-fact mirror now uses exact seven-field idle facts without invoking runtime.status/FreeFly discovery; active scenes still call full statusSnapshot(). Upgrades original or G-CET v1 source.");
     }
 
 

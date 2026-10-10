@@ -99,6 +99,38 @@ end
 return M
 '@ | Set-Content -LiteralPath (Join-Path $joy 'npc_scenes.lua') -Encoding utf8
 
+
+@'
+local M={}
+local STATE_CODE={idle=0,running=2,failed=-1}
+local OUTCOME_CODE={none=0,stopped=1,failed=-1}
+function M.new()
+  local director={
+    session=nil, lastSession=nil, phase="idle",
+    dependencies={runtime={status=function() return {cameraIndex=0,phase="idle"} end}}
+  }
+  local function statusSnapshot()
+    local session = director.session
+    local runtime = director.dependencies and director.dependencies.runtime or nil
+    local runtimeStatus = runtime and runtime.status() or { phase = "unavailable" }
+    return {
+      stateCode=STATE_CODE[director.phase] or -1,
+      sessionSequence=session and session.sequence or 0,
+      definitionId=session and session.definitionId or 0,
+      profileId=session and session.profileId or 0,
+      locationId=session and session.locationId or 0,
+      cameraIndex=runtimeStatus.cameraIndex or 0,
+      outcomeCode=OUTCOME_CODE[session and session.outcome or (director.lastSession and director.lastSession.outcome) or "none"] or 0,
+    }
+  end
+  function director.status()
+    return statusSnapshot()
+  end
+  return director
+end
+return M
+'@ | Set-Content -LiteralPath (Join-Path $joy 'scene_director.lua') -Encoding utf8
+
 $line=1
 $lines=@(Get-Content (Join-Path $joy 'init.lua'))
 for($i=0;$i -lt $lines.Count;$i++){if($lines[$i] -match 'registerForEvent\("onUpdate"'){ $line=$i+1;break }}
@@ -120,21 +152,147 @@ $resolved=(& $resolverExe --capture $capture --mods $mods --generate-pass --json
 if(!$resolved.ok -or $null -eq $resolved.pass){throw 'Joytoys semantic pass generation failed.'}
 $result=Get-Content (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
 $hit=@($result.callbackFamilies|ForEach-Object {$_.topConsumers}|Where-Object {$_.owner -eq 'JoytoysOfNightCity'})[0]
-if($null -eq $hit -or $hit.semantic.RuleId -ne 'joytoys-of-night-city-bridge-active-split' -or
+if($null -eq $hit -or $hit.semantic.RuleId -ne 'joytoys-of-night-city-bridge-active-split-idle-facts-v2' -or
    -not $hit.semantic.SourceProofSatisfied -or -not $hit.semantic.generationReady){
  throw 'Joytoys semantic rule was not source-proven/generation-ready.'
 }
 
 $manifest=Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
 $transform=@($manifest.transforms | Where-Object {
- $_.type -eq 'SEMANTIC_RULE' -and $_.RuleId -eq 'joytoys-of-night-city-bridge-active-split'
+ $_.type -eq 'SEMANTIC_RULE' -and $_.RuleId -eq 'joytoys-of-night-city-bridge-active-split-idle-facts-v2'
 }) | Select-Object -First 1
 if($null -eq $transform){throw 'Joytoys semantic transform missing from manifest.'}
 $files=@($transform.files)
-if($files.Count -ne 2){throw "Joytoys semantic must change exactly 2 files; got $($files.Count): $($files -join ', ')"}
-$initRel=@($files | Where-Object { $_.Replace('\','/') -match '(?i)(^|/)init\.lua$' }) | Select-Object -First 1
-$scenesRel=@($files | Where-Object { $_.Replace('\','/') -match '(?i)(^|/)npc_scenes\.lua$' }) | Select-Object -First 1
-if(!$initRel -or !$scenesRel){throw "Joytoys manifest does not identify init.lua + npc_scenes.lua: $($files -join ', ')"}
+if($files.Count -ne 3){throw "Joytoys semantic v2 must change exactly 3 files; got $($files.Count): $($files -join ', ')"}
+$initRel=@($files | Where-Object { $_.Replace('\','/') -match '(?i)(^|/)init\.lua
+
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$zip=[System.IO.Compression.ZipFile]::OpenRead([string]$resolved.pass.ZipPath)
+try{
+ function Read-ZipRelative([string]$relative){
+  $normalized=$relative.Replace('\','/')
+  $entry=@($zip.Entries | Where-Object {
+    $_.FullName.Replace('\','/').EndsWith($normalized,[StringComparison]::OrdinalIgnoreCase)
+  }) | Select-Object -First 1
+  if($null -eq $entry){throw "Missing ZIP entry ending with: $normalized"}
+  $reader=[IO.StreamReader]::new($entry.Open())
+  try{return $reader.ReadToEnd()}finally{$reader.Dispose()}
+ }
+ $init=Read-ZipRelative $initRel
+ $scenes=Read-ZipRelative $scenesRel
+ $director=Read-ZipRelative $directorRel
+ $required=@(
+  'G-CET semantic:joytoys-of-night-city-bridge-active-split-idle-facts-v2',
+  '_bridgePollTimer = 0.10',
+  '_offerPollTimer = 0.50',
+  'if Joytoys._bridgePollTimer >= 0.10 then',
+  'processLocationRequest(quests)',
+  'processJobRequests(quests)',
+  'updateImmersiveProof(dt)',
+  'if Joytoys.NPCScenes then Joytoys.NPCScenes.update(dt) end',
+  'if Joytoys.SceneDirector then Joytoys.SceneDirector.update(dt) end',
+  'Joytoys._sceneFactTimer >= 0.5',
+  'Joytoys._nifIdleTimer >= 2.0',
+  'writeSceneDirectorFacts(Joytoys.SceneDirector.factStatus())',
+  'if Joytoys._offerPollTimer >= 0.50 then'
+ )
+ foreach($token in $required){if(-not $init.Contains($token)){throw "Joytoys init missing: $token"}}
+ if(-not $scenes.Contains('G-CET semantic:joytoys-of-night-city-bridge-active-split-idle-facts-v2') -or
+    -not $scenes.Contains('if not controller.activeRequest then return end')){
+  throw 'Joytoys NPCScenes inactive-request dormancy missing.'
+ }
+ if(-not $director.Contains('G-CET semantic:joytoys-of-night-city-bridge-active-split-idle-facts-v2') -or
+    -not $director.Contains('function director.factStatus()') -or
+    -not $director.Contains('if director.session then return statusSnapshot() end') -or
+    -not $director.Contains('local outcome = director.lastSession and director.lastSession.outcome or') -or
+    -not $director.Contains('function director.status()') -or
+    -not $director.Contains('return statusSnapshot()')) {
+  throw 'Joytoys idle fact-only status must preserve public/active full status.'
+ }
+ foreach($field in @('stateCode','sessionSequence','definitionId','profileId','locationId','cameraIndex','outcomeCode')) {
+   if(-not $director.Contains($field)) {throw "Joytoys fact-only status omitted $field"}
+ }
+ $bridge=$init.IndexOf('if Joytoys._bridgePollTimer >= 0.10 then')
+ $immersive=$init.IndexOf('  updateImmersiveProof(dt)', [Math]::Max(0,$bridge))
+ if($bridge -lt 0 -or $immersive -lt 0 -or $immersive -lt $bridge){throw 'Joytoys active runtime ordering changed unexpectedly.'}
+}
+finally{$zip.Dispose()}
+
+
+# Exercise migration of a pre-existing G-CET v1 install, which already has
+# the bridge split but must acquire the new fact-only idle mirror.
+$legacyInit=$init.Replace(
+ 'G-CET semantic:joytoys-of-night-city-bridge-active-split-idle-facts-v2',
+ 'G-CET semantic:joytoys-of-night-city-bridge-active-split'
+).Replace('Joytoys.SceneDirector.factStatus()', 'Joytoys.SceneDirector.status()')
+$legacyScenes=$scenes.Replace(
+ 'G-CET semantic:joytoys-of-night-city-bridge-active-split-idle-facts-v2',
+ 'G-CET semantic:joytoys-of-night-city-bridge-active-split'
+)
+$legacyDirector=@'
+local M={}
+local STATE_CODE={idle=0,running=2,failed=-1}
+local OUTCOME_CODE={none=0,stopped=1,failed=-1}
+function M.new()
+  local director={
+    session=nil, lastSession=nil, phase="idle",
+    dependencies={runtime={status=function() return {cameraIndex=0,phase="idle"} end}}
+  }
+  local function statusSnapshot()
+    local session = director.session
+    local runtime = director.dependencies and director.dependencies.runtime or nil
+    local runtimeStatus = runtime and runtime.status() or { phase = "unavailable" }
+    return {
+      stateCode=STATE_CODE[director.phase] or -1,
+      sessionSequence=session and session.sequence or 0,
+      definitionId=session and session.definitionId or 0,
+      profileId=session and session.profileId or 0,
+      locationId=session and session.locationId or 0,
+      cameraIndex=runtimeStatus.cameraIndex or 0,
+      outcomeCode=OUTCOME_CODE[session and session.outcome or (director.lastSession and director.lastSession.outcome) or "none"] or 0,
+    }
+  end
+  function director.status()
+    return statusSnapshot()
+  end
+  return director
+end
+return M
+'@
+$legacyInit | Set-Content -LiteralPath (Join-Path $joy 'init.lua') -Encoding utf8
+$legacyScenes | Set-Content -LiteralPath (Join-Path $joy 'npc_scenes.lua') -Encoding utf8
+$legacyDirector | Set-Content -LiteralPath (Join-Path $joy 'scene_director.lua') -Encoding utf8
+$upgrade=(& $resolverExe --capture $capture --mods $mods --generate-pass --json | ConvertFrom-Json)
+if(!$upgrade.ok -or !$upgrade.pass){throw 'Joytoys v1-to-v2 migration failed.'}
+$upgradeManifest=Get-Content -LiteralPath $upgrade.pass.ManifestPath -Raw | ConvertFrom-Json
+$upgradeRules=@($upgradeManifest.transforms | Where-Object {$_.type -eq 'SEMANTIC_RULE' -and $_.RuleId -eq 'joytoys-of-night-city-bridge-active-split-idle-facts-v2'})
+if($upgradeRules.Count -ne 1 -or @($upgradeRules[0].files).Count -ne 3) {
+ throw 'Joytoys previously optimized v1 did not generate full v2 upgrade.'
+}
+$upgradeZip=[System.IO.Compression.ZipFile]::OpenRead([string]$upgrade.pass.ZipPath)
+try {
+  foreach($relative in @('init.lua','npc_scenes.lua','scene_director.lua')) {
+    $entry=@($upgradeZip.Entries | Where-Object {$_.FullName.EndsWith('JoytoysOfNightCity/'+$relative,[StringComparison]::OrdinalIgnoreCase)}) | Select-Object -First 1
+    if(!$entry){throw "Joytoys migration missing $relative"}
+    $reader=[IO.StreamReader]::new($entry.Open())
+    try { $text=$reader.ReadToEnd() } finally { $reader.Dispose() }
+    if(-not $text.Contains('G-CET semantic:joytoys-of-night-city-bridge-active-split-idle-facts-v2')) {
+      throw "Joytoys migration marker missing in $relative"
+    }
+    $text | Set-Content -LiteralPath (Join-Path $joy $relative) -Encoding utf8
+  }
+}
+finally{$upgradeZip.Dispose()}
+$repeat=(& $resolverExe --capture $capture --mods $mods --generate-pass --json | ConvertFrom-Json)
+if(!$repeat.ok -or !$repeat.pass){throw 'Joytoys v2 repeat/idempotence failed.'}
+$repeatManifest=Get-Content -LiteralPath $repeat.pass.ManifestPath -Raw | ConvertFrom-Json
+if(@($repeatManifest.transforms | Where-Object {$_.RuleId -eq 'joytoys-of-night-city-bridge-active-split-idle-facts-v2'}).Count -ne 0) {
+ throw 'Joytoys v2 was reapplied after its complete three-file marker.'
+}
+
+Write-Host 'Joytoys v2 original-source, v1-upgrade and idempotence contract passed.'
+ }) | Select-Object -First 1
+$scenesRel=@($files | Where-Object { $_.Replace('\','/') -match '(?i)(^|/)npc_scenes\.lua
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip=[System.IO.Compression.ZipFile]::OpenRead([string]$resolved.pass.ZipPath)
@@ -151,7 +309,7 @@ try{
  $init=Read-ZipRelative $initRel
  $scenes=Read-ZipRelative $scenesRel
  $required=@(
-  'G-CET semantic:joytoys-of-night-city-bridge-active-split',
+  'G-CET semantic:joytoys-of-night-city-bridge-active-split-idle-facts-v2',
   '_bridgePollTimer = 0.10',
   '_offerPollTimer = 0.50',
   'if Joytoys._bridgePollTimer >= 0.10 then',
@@ -165,7 +323,93 @@ try{
   'if Joytoys._offerPollTimer >= 0.50 then'
  )
  foreach($token in $required){if(-not $init.Contains($token)){throw "Joytoys init missing: $token"}}
- if(-not $scenes.Contains('G-CET semantic:joytoys-of-night-city-bridge-active-split') -or
+ if(-not $scenes.Contains('G-CET semantic:joytoys-of-night-city-bridge-active-split-idle-facts-v2') -or
+    -not $scenes.Contains('if not controller.activeRequest then return end')){
+  throw 'Joytoys NPCScenes inactive-request dormancy missing.'
+ }
+ $bridge=$init.IndexOf('if Joytoys._bridgePollTimer >= 0.10 then')
+ $immersive=$init.IndexOf('  updateImmersiveProof(dt)', [Math]::Max(0,$bridge))
+ if($bridge -lt 0 -or $immersive -lt 0 -or $immersive -lt $bridge){throw 'Joytoys active runtime ordering changed unexpectedly.'}
+}
+finally{$zip.Dispose()}
+
+Write-Host 'Joytoys bridge sentinel + active-scene split contract passed.'
+ }) | Select-Object -First 1
+$directorRel=@($files | Where-Object { $_.Replace('\','/') -match '(?i)(^|/)scene_director\.lua
+
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$zip=[System.IO.Compression.ZipFile]::OpenRead([string]$resolved.pass.ZipPath)
+try{
+ function Read-ZipRelative([string]$relative){
+  $normalized=$relative.Replace('\','/')
+  $entry=@($zip.Entries | Where-Object {
+    $_.FullName.Replace('\','/').EndsWith($normalized,[StringComparison]::OrdinalIgnoreCase)
+  }) | Select-Object -First 1
+  if($null -eq $entry){throw "Missing ZIP entry ending with: $normalized"}
+  $reader=[IO.StreamReader]::new($entry.Open())
+  try{return $reader.ReadToEnd()}finally{$reader.Dispose()}
+ }
+ $init=Read-ZipRelative $initRel
+ $scenes=Read-ZipRelative $scenesRel
+ $required=@(
+  'G-CET semantic:joytoys-of-night-city-bridge-active-split-idle-facts-v2',
+  '_bridgePollTimer = 0.10',
+  '_offerPollTimer = 0.50',
+  'if Joytoys._bridgePollTimer >= 0.10 then',
+  'processLocationRequest(quests)',
+  'processJobRequests(quests)',
+  'updateImmersiveProof(dt)',
+  'if Joytoys.NPCScenes then Joytoys.NPCScenes.update(dt) end',
+  'if Joytoys.SceneDirector then Joytoys.SceneDirector.update(dt) end',
+  'Joytoys._sceneFactTimer >= 0.5',
+  'Joytoys._nifIdleTimer >= 2.0',
+  'if Joytoys._offerPollTimer >= 0.50 then'
+ )
+ foreach($token in $required){if(-not $init.Contains($token)){throw "Joytoys init missing: $token"}}
+ if(-not $scenes.Contains('G-CET semantic:joytoys-of-night-city-bridge-active-split-idle-facts-v2') -or
+    -not $scenes.Contains('if not controller.activeRequest then return end')){
+  throw 'Joytoys NPCScenes inactive-request dormancy missing.'
+ }
+ $bridge=$init.IndexOf('if Joytoys._bridgePollTimer >= 0.10 then')
+ $immersive=$init.IndexOf('  updateImmersiveProof(dt)', [Math]::Max(0,$bridge))
+ if($bridge -lt 0 -or $immersive -lt 0 -or $immersive -lt $bridge){throw 'Joytoys active runtime ordering changed unexpectedly.'}
+}
+finally{$zip.Dispose()}
+
+Write-Host 'Joytoys bridge sentinel + active-scene split contract passed.'
+ }) | Select-Object -First 1
+if(!$initRel -or !$scenesRel -or !$directorRel){throw "Joytoys manifest does not identify all three source files: $($files -join ', ')"}
+
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$zip=[System.IO.Compression.ZipFile]::OpenRead([string]$resolved.pass.ZipPath)
+try{
+ function Read-ZipRelative([string]$relative){
+  $normalized=$relative.Replace('\','/')
+  $entry=@($zip.Entries | Where-Object {
+    $_.FullName.Replace('\','/').EndsWith($normalized,[StringComparison]::OrdinalIgnoreCase)
+  }) | Select-Object -First 1
+  if($null -eq $entry){throw "Missing ZIP entry ending with: $normalized"}
+  $reader=[IO.StreamReader]::new($entry.Open())
+  try{return $reader.ReadToEnd()}finally{$reader.Dispose()}
+ }
+ $init=Read-ZipRelative $initRel
+ $scenes=Read-ZipRelative $scenesRel
+ $required=@(
+  'G-CET semantic:joytoys-of-night-city-bridge-active-split-idle-facts-v2',
+  '_bridgePollTimer = 0.10',
+  '_offerPollTimer = 0.50',
+  'if Joytoys._bridgePollTimer >= 0.10 then',
+  'processLocationRequest(quests)',
+  'processJobRequests(quests)',
+  'updateImmersiveProof(dt)',
+  'if Joytoys.NPCScenes then Joytoys.NPCScenes.update(dt) end',
+  'if Joytoys.SceneDirector then Joytoys.SceneDirector.update(dt) end',
+  'Joytoys._sceneFactTimer >= 0.5',
+  'Joytoys._nifIdleTimer >= 2.0',
+  'if Joytoys._offerPollTimer >= 0.50 then'
+ )
+ foreach($token in $required){if(-not $init.Contains($token)){throw "Joytoys init missing: $token"}}
+ if(-not $scenes.Contains('G-CET semantic:joytoys-of-night-city-bridge-active-split-idle-facts-v2') -or
     -not $scenes.Contains('if not controller.activeRequest then return end')){
   throw 'Joytoys NPCScenes inactive-request dormancy missing.'
  }

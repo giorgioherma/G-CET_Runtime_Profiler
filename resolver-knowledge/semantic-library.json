@@ -4156,7 +4156,7 @@
       ]
     },
     {
-      "id": "joytoys-of-night-city-bridge-active-split",
+      "id": "joytoys-of-night-city-bridge-active-split-idle-facts-v2",
       "identityHints": [
         "JoytoysOfNightCity"
       ],
@@ -4180,16 +4180,21 @@
           "Joytoys._nifIdleTimer >= 2.0",
           "function controller.update(deltaTime)",
           "controller.activeRequest",
-          "isRunning()"
+          "isRunning()",
+          "function director.status()",
+          "local runtimeStatus = runtime and runtime.status()",
+          "STATE_CODE[director.phase]",
+          "OUTCOME_CODE["
         ],
-        "alreadySatisfiedMarker": "G-CET semantic:joytoys-of-night-city-bridge-active-split",
-        "expectedMarkerFileCount": 2,
+        "alreadySatisfiedMarker": "G-CET semantic:joytoys-of-night-city-bridge-active-split-idle-facts-v2",
+        "expectedMarkerFileCount": 3,
         "satisfiedAll": [
-          "_bridgePollTimer = 0.10",
-          "_offerPollTimer = 0.50",
           "if Joytoys._bridgePollTimer >= 0.10 then",
           "if Joytoys._offerPollTimer >= 0.50 then",
-          "if not controller.activeRequest then return end"
+          "if not controller.activeRequest then return end",
+          "writeSceneDirectorFacts(Joytoys.SceneDirector.factStatus())",
+          "function director.factStatus()",
+          "if director.session then return statusSnapshot() end"
         ]
       },
       "behavior": {
@@ -4202,7 +4207,10 @@
           "sceneDirectorInternalSessionDormancy",
           "idleOfferRefresh2Hz",
           "jobStartImmediateOfferRefresh",
-          "nifIdleCleanupUnchanged"
+          "nifIdleCleanupUnchanged",
+          "idleSceneFactOnlySnapshot",
+          "activeSceneFullStatusUnchanged",
+          "v1SourceUpgradeSupported"
         ],
         "lanes": [
           {
@@ -4226,7 +4234,7 @@
             "seconds": 2
           }
         ],
-        "note": "The computer/website bridge is explicitly sequence-driven through quest facts, so ready/location/job polling is reduced from render rate to 10 Hz while full handlers remain unchanged when a new sequence arrives. Idle creator-offer/settings maintenance runs at 2 Hz; a job-start sequence still calls ensureOffer immediately. Immersive proof, active NPC scene work and SceneDirector update remain frame-fed. NPCScenes.update becomes dormant only when there is no controller.activeRequest."
+        "note": "Preserve existing bridge, offer, active-scene and cleanup lanes. The half-second scene-fact mirror now uses a seven-field idle status path without traversing runtime.status/FreeFly/player position when no scene session exists. Public status and active session full diagnostics remain unchanged; accept original and deployed v1 source."
       },
       "generation": {
         "enabled": true,
