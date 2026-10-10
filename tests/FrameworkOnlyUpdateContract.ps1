@@ -1,7 +1,6 @@
 param([Parameter(Mandatory=$true)][string]$ResolverRoot)
 $ErrorActionPreference = 'Stop'
-$exe = Join-Path (Resolve-Path $ResolverRoot).Path 'G-CET-Resolver.App.exe'
-if (!(Test-Path $exe)) { $exe = Join-Path (Resolve-Path $ResolverRoot).Path 'app\G-CET-Resolver.App.exe' }
+$exe = Join-Path (Resolve-Path $ResolverRoot).Path 'G-CET-Resolver.exe'
 if (!(Test-Path $exe)) { throw "Resolver executable not found in $ResolverRoot" }
 $root = Join-Path $env:RUNNER_TEMP 'gcet-framework-only-contract'
 if (Test-Path $root) { Remove-Item $root -Force -Recurse }
