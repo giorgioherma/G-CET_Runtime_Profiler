@@ -12,7 +12,6 @@ internal sealed class ResolverForm : Form
     private readonly Button _analyze = new() { Text = "ANALYZE", Height = 36 };
     private readonly Button _generate = new() { Text = "GENERATE PASS ZIP", Height = 36, Enabled = false };
     private readonly Button _openResults = new() { Text = "OPEN RESULTS FOLDER", Enabled = false };
-    private readonly Button _updateFramework = new() { Text = "UPDATE 0-ENGINE ONLY", Height = 32 };
     private readonly Label _status = new() { AutoSize = true, Text = "Select RESULTS (or a capture folder) and the Game Folder." };
     private readonly Label _families = new() { AutoSize = true, Text = "CALLBACK FAMILIES: -" };
     private readonly Label _generic = new() { AutoSize = true, Text = "GENERIC READY: -" };
@@ -42,7 +41,7 @@ internal sealed class ResolverForm : Form
             Dock = DockStyle.Fill,
             Padding = new Padding(14),
             ColumnCount = 3,
-            RowCount = 11
+            RowCount = 10
         };
 
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 125));
@@ -52,7 +51,6 @@ internal sealed class ResolverForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
@@ -70,7 +68,6 @@ internal sealed class ResolverForm : Form
         _gameBrowse.Dock = DockStyle.Fill;
         _analyze.Dock = DockStyle.Fill;
         _generate.Dock = DockStyle.Fill;
-        _updateFramework.Dock = DockStyle.Fill;
         _openResults.Dock = DockStyle.Fill;
         _status.Anchor = AnchorStyles.Left;
 
@@ -83,22 +80,20 @@ internal sealed class ResolverForm : Form
         root.Controls.Add(_analyze, 0, 2);
         root.SetColumnSpan(_analyze, 2);
         root.Controls.Add(_generate, 2, 2);
-        root.Controls.Add(_updateFramework, 0, 3);
-        root.SetColumnSpan(_updateFramework, 3);
-        root.Controls.Add(_status, 0, 4);
+        root.Controls.Add(_status, 0, 3);
         root.SetColumnSpan(_status, 2);
-        root.Controls.Add(_openResults, 2, 4);
-        root.Controls.Add(_families, 0, 5);
+        root.Controls.Add(_openResults, 2, 3);
+        root.Controls.Add(_families, 0, 4);
         root.SetColumnSpan(_families, 3);
-        root.Controls.Add(_generic, 0, 6);
+        root.Controls.Add(_generic, 0, 5);
         root.SetColumnSpan(_generic, 3);
-        root.Controls.Add(_shared, 0, 7);
+        root.Controls.Add(_shared, 0, 6);
         root.SetColumnSpan(_shared, 3);
-        root.Controls.Add(_semantic, 0, 8);
+        root.Controls.Add(_semantic, 0, 7);
         root.SetColumnSpan(_semantic, 3);
-        root.Controls.Add(_unresolved, 0, 9);
+        root.Controls.Add(_unresolved, 0, 8);
         root.SetColumnSpan(_unresolved, 3);
-        root.Controls.Add(_output, 0, 10);
+        root.Controls.Add(_output, 0, 9);
         root.SetColumnSpan(_output, 3);
         _output.Dock = DockStyle.Fill;
 
@@ -115,7 +110,6 @@ internal sealed class ResolverForm : Form
         _game.TextChanged += (_, _) => InvalidatePassReadiness();
         _analyze.Click += (_, _) => Analyze();
         _generate.Click += (_, _) => GeneratePass();
-        _updateFramework.Click += (_, _) => UpdateFrameworkOnly();
         _openResults.Click += (_, _) => OpenResultsFolder();
     }
 
@@ -283,35 +277,6 @@ internal sealed class ResolverForm : Form
             _analyze.Enabled = true;
             _generate.Enabled = _passReady;
         }
-    }
-
-    private void UpdateFrameworkOnly()
-    {
-        try
-        {
-            _updateFramework.Enabled = false;
-            _status.Text = "Checking 0-Engine and preparing framework-only overlay...";
-            Application.DoEvents();
-
-            var mods = ResolveModsFolder(_game.Text);
-            var result = ResolverService.GenerateFrameworkUpdate(mods);
-            _resolvedResultsFolder = Path.GetDirectoryName(result.ZipPath);
-            UpdateOpenResultsState();
-            _status.Text = $"0-Engine-only update ready — {result.FileCount} changed framework files.";
-            _output.Text =
-                $"Framework-only ZIP:\r\n{result.ZipPath}\r\n\r\n" +
-                $"Update manifest:\r\n{result.ManifestPath}\r\n\r\n" +
-                "No capture or mod optimization candidates required. " +
-                "Only changed 0-Engine runtime files are staged; no installed files were edited.";
-        }
-        catch (Exception ex)
-        {
-            _status.Text = "Framework update not generated.";
-            _output.Text = ex.Message;
-            if (!ex.Message.Contains("already up to date", StringComparison.OrdinalIgnoreCase))
-                MessageBox.Show(this, ex.Message, "G-CET Resolver", MessageBoxButtons.OK, MessageBoxIcon.Error);
-        }
-        finally { _updateFramework.Enabled = true; }
     }
 
     private void GeneratePass()

@@ -65,17 +65,6 @@ internal static class FixedZeroEngineRuntime
         "modules/GCETWorkloadProbe.lua"
     ];
 
-    // First shipped workload modules are recognized as G-CET-owned files.
-    // Allow exact-hash upgrades, but never overwrite a foreign modification.
-    private static readonly IReadOnlyDictionary<string, string> PriorWorkloadModuleHashes =
-        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-        ["modules/GCETWorkQueue.lua"] = "63f752dcab1377bfc73757133034d938e2bb2580684dff40d2274eebc3bb46b6",
-        ["modules/GCETPhasePlanner.lua"] = "841228f306efb275c638fbd22c631667eeb5ac0bf7a2d8f2c9d34570b71fab31",
-        ["modules/GCETFrameListeners.lua"] = "a90142464846dec29958f7a70a4507787103e60c591a8797372bc2f989802c3e",
-        ["modules/GCETStateSignals.lua"] = "3b8074fbf6397c4c71212b9fd6fccb4fb590a7b9c115112ac05bdaca55dc2b34",
-        };
-
     private const string HostActionRouterModule =
         "modules/G-CET/ActionRouter.lua";
 
@@ -386,13 +375,6 @@ internal static class FixedZeroEngineRuntime
 
         var existingHash = Sha256(File.ReadAllBytes(livePath));
         var intendedHash = Sha256(intendedBytes);
-        if (existingHash.Equals(intendedHash, StringComparison.OrdinalIgnoreCase))
-            return;
-
-        if (PriorWorkloadModuleHashes.TryGetValue(relativeModule, out var previousHash) &&
-            existingHash.Equals(previousHash, StringComparison.OrdinalIgnoreCase))
-            return;
-
         if (!existingHash.Equals(intendedHash, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException(

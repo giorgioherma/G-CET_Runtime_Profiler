@@ -866,10 +866,6 @@ jobs:
         shell: pwsh
         run: ./tests/CallbackResolverContract.ps1 -ResolverRoot ./publish-resolver
 
-      - name: Capture-free 0-Engine-only update contract
-        shell: pwsh
-        run: ./tests/FrameworkOnlyUpdateContract.ps1 -ResolverRoot ./publish-resolver
-
       - name: Generic UI + sequence polling contract
         shell: pwsh
         run: ./tests/GenericUiSequenceContract.ps1 -ResolverRoot ./publish-resolver
@@ -983,17 +979,6 @@ jobs:
         with:
           name: G-CET-Resolver-v${{ steps.product_version.outputs.version }}
           path: publish-resolver/
-          if-no-files-found: error
-
-      - name: Stage ready-to-copy 0-Engine folder
-        shell: pwsh
-        run: ./tests/BuildReadyZeroEngine.ps1 -ResolverRoot ./publish-resolver -Destination ./ready-0-engine
-
-      - name: Upload ready-to-copy 0-Engine folder
-        uses: actions/upload-artifact@v4
-        with:
-          name: 0-Engine-READY-TO-COPY-v${{ steps.product_version.outputs.version }}
-          path: ready-0-engine/
           if-no-files-found: error
 
       - name: Publish canonical GitHub release

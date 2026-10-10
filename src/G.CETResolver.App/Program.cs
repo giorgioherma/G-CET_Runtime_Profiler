@@ -25,7 +25,6 @@ internal static class Program
             string? semanticLibrary = null;
             string? passOutput = null;
             var generatePass = false;
-            var updateFramework = false;
 
             for (var i = 0; i < args.Length; i++)
             {
@@ -36,7 +35,6 @@ internal static class Program
                     case "--game" when i + 1 < args.Length: game = args[++i]; break;
                     case "--semantic-library" when i + 1 < args.Length: semanticLibrary = args[++i]; break;
                     case "--generate-pass": generatePass = true; break;
-                    case "--update-framework": updateFramework = true; break;
                     case "--pass-output" when i + 1 < args.Length: passOutput = args[++i]; break;
                     case "--json": break;
                     case "--help":
@@ -47,7 +45,6 @@ internal static class Program
                             "  --capture <collected result folder> --mods <live CET mods folder> --json\n" +
                             "  --capture <collected result folder> --game <Cyberpunk 2077 root> --json\n" +
                             "  [--generate-pass] [--pass-output <zip path>]\n" +
-                            "  --update-framework --mods <live CET mods folder> [--pass-output <zip path>]\n" +
                             "  [--semantic-library <semantic rule library json>]");
                         return 0;
                     default:
@@ -55,10 +52,7 @@ internal static class Program
                 }
             }
 
-            if (updateFramework && generatePass)
-                throw new ArgumentException("--update-framework cannot be combined with --generate-pass.");
-
-            if (!updateFramework && string.IsNullOrWhiteSpace(capture))
+            if (string.IsNullOrWhiteSpace(capture))
                 throw new ArgumentException("Specify --capture <collected CET result folder>.");
 
             if (string.IsNullOrWhiteSpace(mods))
@@ -68,18 +62,7 @@ internal static class Program
                 mods = Path.Combine(Path.GetFullPath(game), "bin", "x64", "plugins", "cyber_engine_tweaks", "mods");
             }
 
-            if (updateFramework)
-            {
-                var updated = ResolverService.GenerateFrameworkUpdate(mods, passOutput);
-                Console.WriteLine(JsonSerializer.Serialize(new {
-                    ok = true,
-                    mode = "ZERO_ENGINE_ONLY",
-                    pass = updated
-                }, JsonOptions));
-                return 0;
-            }
-
-            var result = ResolverService.Resolve(capture!, mods, semanticLibrary);
+            var result = ResolverService.Resolve(capture, mods, semanticLibrary);
             PassBuildResult? pass = null;
             if (generatePass)
                 pass = ResolverService.GeneratePass(capture, mods, passOutput);

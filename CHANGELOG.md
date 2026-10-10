@@ -3,7 +3,6 @@
 All notable public changes to G-CET Runtime Profiler are recorded here.
 
 ## [Unreleased]
-- Resolver now generates a capture-independent, changed-files-only 0-Engine framework update using **UPDATE 0-ENGINE ONLY** or CLI **--update-framework**. Old G-CET-owned workload modules are exact-hash upgradeable, while foreign edits remain protected.
 - **v1.1.9 (native rebuild #45, SHA-locked)** instruments internal LuaJIT GC execution (capture-gated incremental steps/full collections), keeps exact per-frame collector buckets distinct from explicit Lua GC API timing, and marks all measurements as nested/non-additive. Collector readout never advances or tunes GC.
 - Captures GCET WorkQueue, PhasePlanner, adopted listener and state-signal nested client durations through the existing Scheduler native bridge; adds low-rate bounded 0-Engine workload-health checkpoints, report and resolver measurement-only evidence.
 - **v1.1.8 native GC evidence (native build #39 verified):** instrument CET's shared sandbox `collectgarbage` entrypoint to record real wall-clock durations of explicit `collect`/`step` operations (including Choom Memory Booster), source line when available, Lua heap before/after, rendered-frame index, and capture-relative timing. Original Lua argument, return, and error semantics are preserved; measurement is fully bypassed when no capture runs.
