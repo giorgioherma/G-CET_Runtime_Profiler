@@ -145,7 +145,7 @@ public:
 
     struct GcCollectorFrame
     {
-        uint64_t Frame{}, CaptureNs{}, IncrementalCalls{}, CompletedCycles{};
+        uint64_t Frame{}, StartNs{}, CaptureNs{}, IncrementalCalls{}, CompletedCycles{};
         uint64_t FullCalls{};
         double IncrementalMs{}, FullMs{}, MaxIncrementalMs{}, MaxFullMs{};
     };
@@ -1075,6 +1075,7 @@ public:
             m_state.load(std::memory_order_relaxed) == CaptureState::Running ? 1 : 0,
             1);
         m_gcCollectorPrevious = {};
+        m_gcCollectorLastBoundaryNs = 0;
         if (m_state.load(std::memory_order_relaxed) == CaptureState::Running)
         {
             m_segmentStarted = Clock::now();
@@ -1098,6 +1099,7 @@ public:
         // Disabled during all prior work. Activate atomics only for capture.
         gcet_gc_stats_set(1, 1);
         m_gcCollectorPrevious = {};
+        m_gcCollectorLastBoundaryNs = 0;
         m_segmentStarted = Clock::now();
         PublishFastSegmentClockLocked(0);
         ++m_captureGeneration;
@@ -1187,6 +1189,9 @@ public:
         if (!current.frequency) return;
         const auto previous = m_gcCollectorPrevious;
         m_gcCollectorPrevious = current;
+        const uint64_t atNs = CapturedNanosecondsLocked(now);
+        const uint64_t startNs = m_gcCollectorLastBoundaryNs;
+        m_gcCollectorLastBoundaryNs = atNs;
         if (current.stepCalls < previous.stepCalls ||
             current.fullCalls < previous.fullCalls ||
             current.stepTicks < previous.stepTicks ||
@@ -1206,7 +1211,8 @@ public:
             static_cast<double>(current.frequency);
         m_gcCollectorFrames.push_back({
             frame,
-            CapturedNanosecondsLocked(now),
+            startNs,
+            atNs,
             steps,
             current.completedCycles >= previous.completedCycles
                 ? current.completedCycles - previous.completedCycles : 0,
@@ -2617,7 +2623,7 @@ public:
                 std::ios::trunc);
             if (f)
             {
-                f << "Frame,CaptureEndMs,IncrementalCalls,IncrementalMs,"
+                f << "Frame,CaptureStartMs,CaptureEndMs,IncrementalCalls,IncrementalMs,"
                      "CompletedCycles,FullCalls,FullMs,CollectorTotalMs,"
                      "MaxStepToDateMs,MaxFullToDateMs,DroppedFramesAtDump,"
                      "Interpretation\n";
@@ -2625,6 +2631,7 @@ public:
                 for (const auto& gc : gcCollectorRows)
                 {
                     f << gc.Frame << ','
+                      << (static_cast<double>(gc.StartNs) / 1'000'000.0) << ','
                       << (static_cast<double>(gc.CaptureNs) / 1'000'000.0) << ','
                       << gc.IncrementalCalls << ',' << gc.IncrementalMs << ','
                       << gc.CompletedCycles << ',' << gc.FullCalls << ','
@@ -3838,6 +3845,7 @@ private:
         m_gcCollectorFrames.clear();
         m_droppedGcCollectorFrames = 0;
         m_gcCollectorPrevious = {};
+        m_gcCollectorLastBoundaryNs = 0;
     }
 
     void ResetGcExplicitLocked()
@@ -4127,6 +4135,7 @@ private:
     std::vector<GcExplicitEvent> m_gcExplicitEvents;
     std::vector<GcCollectorFrame> m_gcCollectorFrames;
     GCETGCStats m_gcCollectorPrevious{};
+    uint64_t m_gcCollectorLastBoundaryNs{};
     std::unordered_map<std::string, std::unique_ptr<SchedulerJobCounter>> m_schedulerJobs;
     std::vector<SchedulerSpikeEvent> m_schedulerSpikeEvents;
     std::vector<SchedulerFrameBurstEvent> m_schedulerFrameBursts;
