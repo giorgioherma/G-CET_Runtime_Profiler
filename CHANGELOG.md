@@ -3,7 +3,7 @@
 All notable public changes to G-CET Runtime Profiler are recorded here.
 
 ## [Unreleased]
-- **v1.1.9** instruments internal LuaJIT GC execution (capture-gated incremental steps/full collections), keeps exact per-frame collector buckets distinct from explicit Lua GC API timing, and marks all measurements as nested/non-additive. Collector readout never advances or tunes GC.
+- **v1.1.9 (native rebuild #45, SHA-locked)** instruments internal LuaJIT GC execution (capture-gated incremental steps/full collections), keeps exact per-frame collector buckets distinct from explicit Lua GC API timing, and marks all measurements as nested/non-additive. Collector readout never advances or tunes GC.
 - Captures GCET WorkQueue, PhasePlanner, adopted listener and state-signal nested client durations through the existing Scheduler native bridge; adds low-rate bounded 0-Engine workload-health checkpoints, report and resolver measurement-only evidence.
 - **v1.1.8 native GC evidence (native build #39 verified):** instrument CET's shared sandbox `collectgarbage` entrypoint to record real wall-clock durations of explicit `collect`/`step` operations (including Choom Memory Booster), source line when available, Lua heap before/after, rendered-frame index, and capture-relative timing. Original Lua argument, return, and error semantics are preserved; measurement is fully bypassed when no capture runs.
 - Preserve the low-rate passive heap observer for automatic LuaJIT GC indicators. Explicit operations are distinguished from unmeasured automatic collection; reports must never attribute an automatic GC pause from a heap decrease alone.
