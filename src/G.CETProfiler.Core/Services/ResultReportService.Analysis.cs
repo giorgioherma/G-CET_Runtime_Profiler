@@ -47,7 +47,8 @@ public static partial class ResultReportService
         var detail = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Detail.csv"));
         var timeline = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Timeline.csv"));
         var markers = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Markers.csv"));
-        var explicitGc = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_GC_Explicit.csv"));
+        var explicitGcFile = FindProfilerFile(captureRoot, "CET_Runtime_Profile_GC_Explicit.csv");
+        var explicitGc = ReadCsv(explicitGcFile);
         var spikes = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Spikes.csv"));
         var schedulerJobs = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Scheduler_ByJob.csv"));
         var schedulerSpikes = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Scheduler_Spikes.csv"));
@@ -237,7 +238,7 @@ public static partial class ResultReportService
             MarkerRows = markers,
             SpikeRows = spikes,
             LuaHeap = AnalyzeLuaHeap(markers, spikes),
-            ExplicitGc = AnalyzeExplicitGc(explicitGc, spikes)
+            ExplicitGc = explicitGcFile is null ? null : AnalyzeExplicitGc(explicitGc, spikes)
         };
     }
 

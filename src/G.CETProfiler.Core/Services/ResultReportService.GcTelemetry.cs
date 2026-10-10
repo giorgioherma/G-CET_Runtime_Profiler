@@ -14,7 +14,7 @@ public static partial class ResultReportService
     {
         public List<ExplicitGcEvent> Events { get; init; } = [];
         public double TotalDurationMs => Events.Sum(x => x.DurationMs);
-        public double MaximumDurationMs => Events.Max(x => x.DurationMs);
+        public double MaximumDurationMs => Events.Count == 0 ? 0 : Events.Max(x => x.DurationMs);
         public int SpikeOverlapCount => Events.Count(x => x.NearRecordedSpike);
     }
 
@@ -22,7 +22,6 @@ public static partial class ResultReportService
         IReadOnlyList<Dictionary<string, string>> rows,
         IReadOnlyList<Dictionary<string, string>> spikes)
     {
-        if (rows.Count == 0) return null;
         var ranges = spikes.Select(x => (
             Start: D(x, "CaptureStartMs"), End: D(x, "CaptureEndMs")))
             .Where(x => double.IsFinite(x.Start) && double.IsFinite(x.End))
@@ -45,7 +44,7 @@ public static partial class ResultReportService
                 start, end, duration, action, S(row, "SourceFile"),
                 sourceLine, overlap));
         }
-        return events.Count == 0 ? null : new ExplicitGcTelemetry { Events = events };
+        return new ExplicitGcTelemetry { Events = events };
     }
 
     private static void AppendExplicitGc(StringBuilder sb, ExplicitGcTelemetry gc)
