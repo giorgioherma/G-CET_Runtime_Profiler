@@ -356,7 +356,43 @@ local function fact(k)return 0 end
 local function set(k,v)end
 local function active()return fact('visit')==1 end
 local function valid(x)return x~=nil end
-local function status()end
+local function point(v)return v end
+local function navigationStatus()
+ local result={stages={},mappins={}}
+ local ok,why=pcall(function()
+  local manager=Game.GetJournalManager();local system=Game.GetMappinSystem()
+  local tracked=manager:GetTrackedEntry()
+  if valid(tracked)then result.trackedId=tostring(tracked:GetId());result.trackedHash=manager:GetEntryHash(tracked)end
+  local owned={}
+  for _,stage in ipairs({'start','enter','find','flood','convince','escape','reunion'})do
+   local path='quests/side_quests/trq_adam/rescue/'..stage
+   local entry=manager:GetEntryByString(path,'gameJournalQuestObjective')
+   local pin=manager:GetEntryByString(path..'/destination','gameJournalQuestMultiMapPin')
+   local row={stage=stage,objectiveExists=valid(entry),pinExists=valid(pin)}
+   result.stages[#result.stages+1]=row
+   if valid(entry)then row.state=tostring(manager:GetEntryState(entry));row.tracked=manager:IsEntryTracked(entry)end
+   if valid(pin)then
+    local hash=manager:GetEntryHash(pin);if hash<0 then hash=hash+4294967296 end
+    owned[hash]=stage;row.hash=hash;row.enableGPS=pin.enableGPS
+    row.referenceCount=#pin.references;row.offset=point(pin.offset)
+    local found,pos=system:GetQuestMappinPosition(hash)
+    row.targetFound=found;if found and pos then row.position=point(pos)end
+   end
+  end
+  for _,pin in ipairs(system:GetAllMappins())do
+   if pin:IsQuestMappin()then
+    local hash=pin:GetJournalPathHash()
+    if owned[hash]then
+     result.mappins[#result.mappins+1]={stage=owned[hash],hash=hash,position=point(pin:GetWorldPosition()),
+      active=pin:IsActive(),visible=pin:IsVisible(),playerTracked=pin:IsPlayerTracked(),questImportant=pin:IsQuestImportant(),variant=tostring(pin:GetVariant())}
+    end
+   end
+  end
+ end)
+ if not ok then result.error=tostring(why)end
+ return result
+end
+local function status()local d={};d.navigation=navigationStatus()end
 local function leave(reason)H.phase='outside'end
 local function update(dt)
  H.tick=H.tick+dt
@@ -387,6 +423,60 @@ registerForEvent('onUpdate',function(dt)
  end
 end)
 registerForEvent('onDraw',function()if H.session and not H.overlay and not H.error then Timer.draw()end end)
+'@
+
+Write-ModFile 'ziggy_last_play' 'navigation.lua' @'
+local json={encode=function()return "{}"end}
+local N={age=0,retries=0}
+local function valid(x)return x~=nil end
+local function point(v)return v end
+local function unsigned(v)if v<0 then return v+4294967296 end return v end
+function N.update(dt,path,phase,playerKey,generation,hooks,pinId,runtime,gameplay)
+ N.age=N.age+dt;if N.age<2 then return end;N.age=0
+ if N.path~=path then N.path=path;N.retries=0 end
+ local report={at=os.time(),phase=phase,objective=path,playerKey=playerKey,generation=generation,retries=N.retries,markerType='gameJournalQuestMultiMapPin'}
+ report.runtime=runtime;report.pinId=pinId or'destination_v6'
+ local ok,why=pcall(function()
+  if gameplay~=false then hooks:SyncJournalPins(path or'',report.pinId)end
+  report.retiredPins=hooks.retiredPins;report.activePins=hooks.activePins
+  if not path then return end
+  local manager=Game.GetJournalManager();local system=Game.GetMappinSystem()
+  local objective=manager:GetEntryByString(path,'gameJournalQuestObjective')
+  local pin=manager:GetEntryByString(path..'/'..report.pinId,'gameJournalQuestMultiMapPin')
+  report.objectiveExists=valid(objective);report.pinExists=valid(pin)
+  if not valid(objective)or not valid(pin)then return end
+  report.tracked=manager:IsEntryTracked(objective);report.objectiveState=tostring(manager:GetEntryState(objective))
+  report.enableGPS=pin.enableGPS;report.offset=point(pin.offset);report.referenceCount=#pin.references
+  local hash=unsigned(manager:GetEntryHash(pin));report.hash=hash
+  local found,pos=system:GetQuestMappinPosition(hash)
+  report.destinationFound=found;if found then report.position=point(pos)end
+  if gameplay~=false and not found and report.tracked and N.retries<3 then
+   N.retries=N.retries+1
+   hooks:Journal(path,'gameJournalQuestObjective',0,true)
+   hooks:Journal(path,'gameJournalQuestObjective',1,true)
+   hooks:Track(path)
+   hooks:SyncJournalPins(path,report.pinId)
+   report.refreshed=true
+  end
+  report.mappins={}
+  for _,m in ipairs(system:GetAllMappins())do
+   if m:IsQuestMappin()and unsigned(m:GetJournalPathHash())==hash then
+    report.mappins[#report.mappins+1]={active=m:IsActive(),visible=m:IsVisible(),tracked=m:IsPlayerTracked(),position=point(m:GetWorldPosition())}
+   end
+  end
+ end)
+ if not ok then report.error=tostring(why)end
+ local f=io.open('navigation-status.json','w');if f then f:write(json.encode(report));f:close()end
+end
+return N
+'@
+
+Write-ModFile 'ziggy_last_play' 'init.lua' @'
+local Navigation=require('navigation')
+local H={objective='quest/test',s={phase='active'},playerKey='p',generation=1,hooks={},runtime={}}
+registerForEvent('onUpdate',function(dt)
+ Navigation.update(dt,H.objective,H.s.phase,H.playerKey,H.generation,H.hooks,'destination_v6',H.runtime,true)
+end)
 '@
 
 Write-ModFile 'Straight Edged Controls' 'init.lua' @'
@@ -725,6 +815,7 @@ $droneLine=Find-Line (Join-Path $mods 'Drone Companions (Revamp)\DroneLogic\Dron
 $ghostLine=Find-Line (Join-Path $mods 'GhostVoidSystem\init.lua') 'registerForEvent\("onUpdate"'
 $tunnelLine=Find-Line (Join-Path $mods 'tunnel_rescue\init.lua') "registerForEvent\('onUpdate'"
 $tunnelDrawLine=Find-Line (Join-Path $mods 'tunnel_rescue\init.lua') "registerForEvent\('onDraw'"
+$ziggyLine=Find-Line (Join-Path $mods 'ziggy_last_play\init.lua') "registerForEvent\('onUpdate'"
 $straightLine=Find-Line (Join-Path $mods 'Straight Edged Controls\init.lua') "registerForEvent\('onUpdate'"
 $inertiaLine=Find-Line (Join-Path $mods 'ImmersiveHeadInertia\init.lua') 'Observe\("PlayerPuppet", "OnAction"'
 
@@ -740,6 +831,7 @@ $handoff=@{
    (CallbackRow 6 'Straight Edged Controls' 'event' 'onUpdate' 'init.lua' $straightLine 19.950931 52),
    (CallbackRow 9 'tunnel_rescue' 'event' 'onUpdate' 'init.lua' $tunnelLine 7.170041 60),
    (CallbackRow 10 'tunnel_rescue' 'event' 'onDraw' 'init.lua' $tunnelDrawLine 3.100000 60),
+   (CallbackRow 11 'ziggy_last_play' 'event' 'onUpdate' 'init.lua' $ziggyLine 15.627934 60),
    (CallbackRow 7 'ImmersiveHeadInertia' 'Observe' 'PlayerPuppet::OnAction' 'init.lua' $inertiaLine 9.873854 1244)
  )
  optimizerEvidence=@()
@@ -752,8 +844,8 @@ if (!$resolved.ok -or $null -eq $resolved.pass) { throw 'Residual semantic pass 
 $resolver = Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
 $rules=@(
  'good-feelings','good-feelings-hard-draw','air-backflip','auto-drop-weapon-dynamic-routing',
- 'drone-companions-revamp','ghost-void-system','straight-edged-controls-input-dormancy','tunnel-rescue',
- 'immersive-head-inertia'
+ 'drone-companions-revamp','ghost-void-system','straight-edged-controls-input-dormancy','tunnel-rescue-v2',
+ 'ziggy-last-play-navigation-sentinel','immersive-head-inertia'
 )
 foreach($rule in $rules) {
     $matches=@()
@@ -830,12 +922,23 @@ try {
     }
 
     $tunnel=Read-ZipText ($base+'tunnel_rescue/init.lua')
-    if($tunnel -notmatch 'G-CET semantic:tunnel-rescue' -or
+    if($tunnel -notmatch 'G-CET semantic:tunnel-rescue-v2' -or
        $tunnel -notmatch '__gcetTunnelOutsideAcc' -or
        $tunnel -notmatch 'if __gcetTunnelOutsideAcc < \.15 then return end' -or
        $tunnel -notmatch "if ok and H\.phase~='outside' then" -or
-       $tunnel -notmatch "H\.phase~='outside'.*Timer\.draw") {
-        throw 'Tunnel rescue quest-session dormancy is incomplete.'
+       $tunnel -notmatch "H\.phase~='outside'.*Timer\.draw" -or
+       $tunnel -notmatch '__gcetTunnelNavCache' -or
+       $tunnel -notmatch '__gcetTunnelNeedsFullScan' -or
+       $tunnel -notmatch 'result\.mappins=__gcetTunnelNavCache\.mappins or \{\}') {
+        throw 'Tunnel rescue quest-session dormancy + diagnostic sentinel is incomplete.'
+    }
+
+    $ziggy=Read-ZipText ($base+'ziggy_last_play/navigation.lua')
+    if($ziggy -notmatch 'G-CET semantic:ziggy-last-play-navigation-sentinel' -or
+       $ziggy -notmatch 'scanKey=nil,lastMappins=\{\}' -or
+       $ziggy -notmatch 'if not found or N\.scanKey ~= scanKey then' -or
+       $ziggy -notmatch 'report\.mappins=N\.lastMappins or \{\}') {
+        throw 'Ziggy navigation targeted-sentinel diagnostic cache is incomplete.'
     }
 
     $straight=Read-ZipText ($base+'Straight Edged Controls/init.lua')
@@ -888,4 +991,4 @@ try {
 }
 finally { $zip.Dispose() }
 
-Write-Host 'Residual sixth-stack semantic composition contract passed: GoodFeelings hard draw + AirBackFlip + AutoDrop exact routing + tunnel quest dormancy + Drone Companions + GhostVoid + Straight sequence dormancy + ImmersiveHeadInertia.'
+Write-Host 'Residual sixth-stack semantic composition contract passed: existing residual rules + tunnel v2 diagnostic sentinel + Ziggy targeted mappin sentinel.'

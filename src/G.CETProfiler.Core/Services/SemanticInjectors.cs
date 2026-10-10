@@ -51,7 +51,8 @@ internal static class SemanticInjectors
             "good-feelings-hard-draw" => ApplyGoodFeelingsHardDraw(context),
             "air-backflip" => ApplyAirBackFlip(context),
             "auto-drop-weapon-dynamic-routing" => ApplyAutoDropWeaponOnPickupEquip(context),
-            "tunnel-rescue" => ApplyTunnelRescue(context),
+            "tunnel-rescue-v2" => ApplyTunnelRescue(context),
+            "ziggy-last-play-navigation-sentinel" => ApplyZiggyLastPlayNavigation(context),
             "aerial-race-active-idle-split" => ApplyAerialRaceActiveIdleSplit(context),
             "appearance-menu-mod-squeeze" => ApplyAppearanceMenuModSqueeze(context),
             "drone-companions-revamp" => ApplyDroneCompanionsRevamp(context),
@@ -2477,12 +2478,22 @@ end)
             "Life.frame",
             "Swimming.frame",
             "Street.frame",
-            "H.hooks:QuietTunnel");
+            "H.hooks:QuietTunnel",
+            "local function navigationStatus()",
+            "GetQuestMappinPosition(hash)",
+            "system:GetAllMappins()");
 
-        var text = RegexReplaceOnce(
-            file.Text,
-            @"(?ms)^(?<opening>[ \t]*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*[""']onUpdate[""']\s*,\s*function\s*\(\s*dt\s*\)\s*)\r?\n(?<body>.*?)(?<close>^[ \t]*end\s*\)\s*$)",
-            @"local __gcetTunnelOutsideAcc = 0.0
+        var text = file.Text;
+
+        // v2 is deliberately upgrade-safe over the earlier tunnel semantic.
+        // If the quest-session outer split is already present, retain it and
+        // add only the newly proven diagnostic sentinel.
+        if (!text.Contains("__gcetTunnelOutsideAcc", StringComparison.Ordinal))
+        {
+            text = RegexReplaceOnce(
+                text,
+                @"(?ms)^(?<opening>[ \t]*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*[""']onUpdate[""']\s*,\s*function\s*\(\s*dt\s*\)\s*)\r?\n(?<body>.*?)(?<close>^[ \t]*end\s*\)\s*$)",
+                @"local __gcetTunnelOutsideAcc = 0.0
 local __gcetTunnelWasInside = false
 __OPENING__
  local __gcetTunnelActive = H.phase ~= 'outside'
@@ -2525,21 +2536,137 @@ __OPENING__
   pcall(status)
  end
 __CLOSE__" + "\n",
-            "Tunnel quest-session outer dormancy");
+                "Tunnel quest-session outer dormancy");
 
-        text = text.Replace("__OPENING__", "$" + "{opening}", StringComparison.Ordinal)
-                   .Replace("__CLOSE__", "$" + "{close}", StringComparison.Ordinal);
+            text = text.Replace("__OPENING__", "$" + "{opening}", StringComparison.Ordinal)
+                       .Replace("__CLOSE__", "$" + "{close}", StringComparison.Ordinal);
 
-        text = RegexReplaceOnce(
-            text,
-            @"(?m)^(?<opening>[ \t]*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*[""']onDraw[""']\s*,\s*function\s*\(\s*\)\s*)if\s+H\.session\s+and\s+not\s+H\.overlay\s+and\s+not\s+H\.error\s+then\s+Timer\.draw\s*\(\s*\)\s*end\s+end\s*\)\s*$",
-            "__DRAWOPEN__if H.session and H.phase~='outside' and not H.overlay and not H.error then Timer.draw() end end)\n",
-            "Tunnel draw outside-phase gate");
-        text = text.Replace("__DRAWOPEN__", "$" + "{opening}", StringComparison.Ordinal);
+            text = RegexReplaceOnce(
+                text,
+                @"(?m)^(?<opening>[ \t]*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*[""']onDraw[""']\s*,\s*function\s*\(\s*\)\s*)if\s+H\.session\s+and\s+not\s+H\.overlay\s+and\s+not\s+H\.error\s+then\s+Timer\.draw\s*\(\s*\)\s*end\s+end\s*\)\s*$",
+                "__DRAWOPEN__if H.session and H.phase~='outside' and not H.overlay and not H.error then Timer.draw() end end)\n",
+                "Tunnel draw outside-phase gate");
+            text = text.Replace("__DRAWOPEN__", "$" + "{opening}", StringComparison.Ordinal);
+        }
+
+        if (!text.Contains("__gcetTunnelNavCache", StringComparison.Ordinal))
+        {
+            text = ReplaceOnce(
+                text,
+                "local function navigationStatus()\n",
+                "local __gcetTunnelNavCache={key=nil,mappins={}}\n" +
+                "local function navigationStatus()\n",
+                "Tunnel diagnostic cache state");
+
+            text = ReplaceOnce(
+                text,
+                "  local owned={}\n",
+                "  local owned={}\n" +
+                "  local __gcetTunnelScanKey={tostring(H.phase or ''),tostring(H.generation or ''),tostring(result.trackedHash or '')}\n" +
+                "  local __gcetTunnelNeedsFullScan=false\n",
+                "Tunnel targeted diagnostic sentinel");
+
+            text = ReplaceOnce(
+                text,
+                "    row.targetFound=found;if found and pos then row.position=point(pos)end\n",
+                "    row.targetFound=found;if found and pos then row.position=point(pos)end\n" +
+                "    __gcetTunnelScanKey[#__gcetTunnelScanKey+1]=table.concat({stage,tostring(hash),tostring(found==true),tostring(row.tracked==true)},':')\n" +
+                "    if not found then __gcetTunnelNeedsFullScan=true end\n",
+                "Tunnel targeted mappin state signature");
+
+            var fullScan =
+                "  for _,pin in ipairs(system:GetAllMappins())do\n" +
+                "   if pin:IsQuestMappin()then\n" +
+                "    local hash=pin:GetJournalPathHash()\n" +
+                "    if owned[hash]then\n" +
+                "     result.mappins[#result.mappins+1]={stage=owned[hash],hash=hash,position=point(pin:GetWorldPosition()),\n" +
+                "      active=pin:IsActive(),visible=pin:IsVisible(),playerTracked=pin:IsPlayerTracked(),questImportant=pin:IsQuestImportant(),variant=tostring(pin:GetVariant())}\n" +
+                "    end\n" +
+                "   end\n" +
+                "  end\n";
+
+            var gatedScan =
+                "  local __gcetTunnelKey=table.concat(__gcetTunnelScanKey,'|')\n" +
+                "  if __gcetTunnelNeedsFullScan or __gcetTunnelNavCache.key~=__gcetTunnelKey then\n" +
+                "   local __gcetTunnelMappins={}\n" +
+                "   for _,pin in ipairs(system:GetAllMappins())do\n" +
+                "    if pin:IsQuestMappin()then\n" +
+                "     local hash=pin:GetJournalPathHash()\n" +
+                "     if owned[hash]then\n" +
+                "      __gcetTunnelMappins[#__gcetTunnelMappins+1]={stage=owned[hash],hash=hash,position=point(pin:GetWorldPosition()),\n" +
+                "       active=pin:IsActive(),visible=pin:IsVisible(),playerTracked=pin:IsPlayerTracked(),questImportant=pin:IsQuestImportant(),variant=tostring(pin:GetVariant())}\n" +
+                "     end\n" +
+                "    end\n" +
+                "   end\n" +
+                "   __gcetTunnelNavCache.key=__gcetTunnelKey\n" +
+                "   __gcetTunnelNavCache.mappins=__gcetTunnelMappins\n" +
+                "  end\n" +
+                "  result.mappins=__gcetTunnelNavCache.mappins or {}\n";
+
+            text = ReplaceOnce(
+                text,
+                fullScan,
+                gatedScan,
+                "Tunnel global diagnostic mappin scan");
+        }
 
         context.Write(file, text);
         return SemanticInjectionResult.Success(
-            "Moved Below the Surface's outside phase onto the author's existing 0.15 s decision cadence while preserving the original frame-rate outer layers throughout every active quest phase, with one-shot cleanup on return to outside and no tunnel Timer.draw while outside.");
+            "Preserved tunnel quest-session realtime behavior and the author's 0.15 s outside cadence. The 2 s diagnostics path keeps targeted quest-mappin probes, but globally enumerates mappins only when the cheap state signature changes or a target is missing; only plain Lua diagnostic rows are cached.");
+    }
+
+
+    private static SemanticInjectionResult ApplyZiggyLastPlayNavigation(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "navigation.lua",
+            "function N.update(dt,path,phase,playerKey,generation,hooks,pinId,runtime,gameplay)",
+            "N.age=N.age+dt;if N.age<2 then return end",
+            "GetQuestMappinPosition(hash)",
+            "system:GetAllMappins()",
+            "hooks:SyncJournalPins(path",
+            "navigation-status.json");
+
+        var text = file.Text;
+
+        text = ReplaceOnce(
+            text,
+            "local N={age=0,retries=0}\n",
+            "local N={age=0,retries=0,scanKey=nil,lastMappins={}}\n",
+            "Ziggy navigation diagnostic cache state");
+
+        var fullScan =
+            "  report.mappins={}\n" +
+            "  for _,m in ipairs(system:GetAllMappins())do\n" +
+            "   if m:IsQuestMappin()and unsigned(m:GetJournalPathHash())==hash then\n" +
+            "    report.mappins[#report.mappins+1]={active=m:IsActive(),visible=m:IsVisible(),tracked=m:IsPlayerTracked(),position=point(m:GetWorldPosition())}\n" +
+            "   end\n" +
+            "  end\n";
+
+        var gatedScan =
+            "  local scanKey=table.concat({tostring(path or ''),tostring(phase or ''),tostring(generation or ''),tostring(found==true),tostring(report.tracked==true),tostring(N.retries)},'|')\n" +
+            "  if not found or N.scanKey ~= scanKey then\n" +
+            "   local mappins={}\n" +
+            "   for _,m in ipairs(system:GetAllMappins())do\n" +
+            "    if m:IsQuestMappin()and unsigned(m:GetJournalPathHash())==hash then\n" +
+            "     mappins[#mappins+1]={active=m:IsActive(),visible=m:IsVisible(),tracked=m:IsPlayerTracked(),position=point(m:GetWorldPosition())}\n" +
+            "    end\n" +
+            "   end\n" +
+            "   N.scanKey=scanKey\n" +
+            "   N.lastMappins=mappins\n" +
+            "  end\n" +
+            "  report.mappins=N.lastMappins or {}\n";
+
+        text = ReplaceOnce(
+            text,
+            fullScan,
+            gatedScan,
+            "Ziggy global diagnostic mappin scan");
+
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Preserved Ziggy's 2 s navigation cadence, targeted destination lookup and bounded journal recovery. The full GetAllMappins diagnostic scan now runs only when the objective state signature changes or the targeted destination is missing; cached rows contain plain Lua values only.");
     }
 
 

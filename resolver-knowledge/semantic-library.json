@@ -14,9 +14,9 @@
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
     "fullPassRule": "A semantic injector can run only when the current capture meets that rule's runtime admission threshold (3.0 ms/s by default; lower only when explicitly declared by a production rule), the library rule matches, and the current live mod source graph proves its anchors.",
-    "enabledInjectorCount": 57,
+    "enabledInjectorCount": 58,
     "profileOnlyRuleCount": 0,
-    "note": "The production semantic base contains source-proven, behavior-aware optimizations learned from validated references and measured hot callbacks. Generic/mechanical transforms stay in the Resolver; semantic rules cover state/cadence/hotpath knowledge that generic inference cannot safely own.",
+    "note": "The production semantic base contains source-proven, behavior-aware optimizations learned from validated references and measured hot callbacks, including burst-discovered diagnostic sentinels that preserve author cadence while gating globally expensive fallback scans. Generic/mechanical transforms stay in the Resolver; semantic rules cover state/cadence/hotpath knowledge that generic inference cannot safely own.",
     "admissionPolicy": {
       "runtimeThresholdMsPerSecond": 3,
       "requiresGenericExhausted": true,
@@ -4156,11 +4156,11 @@
       ]
     },
     {
-      "id": "tunnel-rescue",
+      "id": "tunnel-rescue-v2",
       "identityHints": [
         "tunnel_rescue"
       ],
-      "policyClass": "QUEST_SESSION_DORMANCY",
+      "policyClass": "QUEST_SESSION_DORMANCY_PLUS_DIAGNOSTIC_SENTINEL",
       "callbacks": [
         {
           "kind": "event",
@@ -4183,21 +4183,32 @@
           "Life.frame",
           "Swimming.frame",
           "Street.frame",
-          "H.hooks:QuietTunnel"
+          "H.hooks:QuietTunnel",
+          "local function navigationStatus()",
+          "GetQuestMappinPosition(hash)",
+          "system:GetAllMappins()"
         ],
-        "alreadySatisfiedMarker": "G-CET semantic:tunnel-rescue",
-        "expectedMarkerFileCount": 1
+        "alreadySatisfiedMarker": "G-CET semantic:tunnel-rescue-v2",
+        "expectedMarkerFileCount": 1,
+        "satisfiedAll": [
+          "__gcetTunnelNavCache",
+          "__gcetTunnelNeedsFullScan",
+          "result.mappins=__gcetTunnelNavCache.mappins or {}"
+        ]
       },
       "behavior": {
-        "handler": "SEMANTIC_QUEST_SESSION_DORMANCY",
+        "handler": "SEMANTIC_QUEST_SESSION_DORMANCY_DIAGNOSTIC_SENTINEL",
         "concepts": [
           "authorOutsideCadence",
           "insideRealtime",
           "transitionCleanup",
           "questDiscoveryPreserved",
-          "drawOnlyDuringSession"
+          "drawOnlyDuringSession",
+          "targetedQuestMappinSentinel",
+          "plainLuaDiagnosticCache",
+          "fullMappinEnumerationOnStateChangeOrFailure"
         ],
-        "note": "Outside the tunnel quest runtime, invoke the controller only at the author's existing 0.15 s decision cadence and skip frame-rate Life/Swimming/Street/QuietTunnel layers. During preload/arrival/inside/returning, preserve render-frame simulation. Quest offer, surface interaction and recovery remain available on the existing author cadence."
+        "note": "Preserve the existing quest-session split: outside runs only at the author's 0.15 s decision cadence and active tunnel phases keep rendered-frame simulation. The 2 s diagnostics path keeps its targeted GetQuestMappinPosition probes, but the global GetAllMappins scan now refreshes only when the quest-mappin state signature changes or a targeted pin is missing. Cached diagnostic rows are plain Lua values; no native mappin handle survives across calls."
       },
       "generation": {
         "enabled": true,
@@ -4209,17 +4220,85 @@
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
-        "measuredPeakExclusiveMsPerSecond": 7.170041,
-        "evidenceStack": "SIXTH_STACK_SECOND_SEMANTIC_PASS",
-        "admitted": true
+        "measuredPeakExclusiveMsPerSecond": 8.372957,
+        "evidenceStack": "BURST_RECOGNITION_20261010",
+        "admitted": true,
+        "measuredMaxExclusiveMs": 58.0256
       },
-      "cadenceGroup": "OUTSIDE_AUTHOR_150MS_INSIDE_REALTIME",
+      "cadenceGroup": "OUTSIDE_150MS_ACTIVE_REALTIME_DIAGNOSTIC_SENTINEL",
       "catalogRole": "SEMANTIC_HOT_MOD",
       "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
       "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
       "referenceOverrideAllowed": false,
       "evidenceMembership": [
-        "SIXTH_STACK_SECOND_SEMANTIC_20261009"
+        "SIXTH_STACK_SECOND_SEMANTIC_20261009",
+        "BURST_RECOGNITION_20261010"
+      ]
+    },
+    {
+      "id": "ziggy-last-play-navigation-sentinel",
+      "identityHints": [
+        "ziggy_last_play"
+      ],
+      "policyClass": "DIAGNOSTIC_MAPPIN_SENTINEL_CACHE",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "periodic-navigation-diagnostics"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "Navigation.update(dt",
+          "N.age=N.age+dt;if N.age<2 then return end",
+          "GetQuestMappinPosition(hash)",
+          "system:GetAllMappins()",
+          "hooks:SyncJournalPins(path",
+          "navigation-status.json"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:ziggy-last-play-navigation-sentinel",
+        "expectedMarkerFileCount": 1,
+        "satisfiedAll": [
+          "scanKey=nil,lastMappins={}",
+          "if not found or N.scanKey ~= scanKey then",
+          "report.mappins=N.lastMappins or {}"
+        ]
+      },
+      "behavior": {
+        "handler": "SEMANTIC_DIAGNOSTIC_MAPPIN_SENTINEL_CACHE",
+        "concepts": [
+          "authorTwoSecondCadencePreserved",
+          "targetedQuestMappinSentinel",
+          "boundedRecoveryPreserved",
+          "plainLuaDiagnosticCache",
+          "fullMappinEnumerationOnStateChangeOrFailure",
+          "noNativeHandleCache"
+        ],
+        "note": "Keep the author's 2 s navigation cadence, targeted GetQuestMappinPosition probe, journal repair and bounded retries unchanged. Cache only the plain-Lua diagnostic mappin rows and rerun GetAllMappins when the objective/phase/generation/found/tracked/retry signature changes or the targeted destination is missing."
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 15.627934,
+        "measuredMaxExclusiveMs": 69.6589,
+        "evidenceStack": "BURST_RECOGNITION_20261010",
+        "admitted": true
+      },
+      "cadenceGroup": "AUTHOR_2S_TARGETED_SENTINEL_FULL_SCAN_ON_CHANGE",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "BURST_RECOGNITION_20261010"
       ]
     },
     {
