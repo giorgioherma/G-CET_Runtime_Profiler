@@ -1521,8 +1521,14 @@ public:
         counter->TotalNs.fetch_add(elapsed, std::memory_order_relaxed);
         UpdateMax(counter->MaxNs, elapsed);
 
+        // GCET WorkQueue/PhasePlanner/StateSignals/FrameListeners are
+        // nested client measurements, not additional Scheduler wall time.
+        // Preserve per-client counters and spikes, but never inflate the
+        // stock 0-Engine frame-burst accumulator.
         auto& state = SchedulerFrameStateForThread();
-        if (state.Active && state.Frame == aFrame)
+        const bool nestedWorkload =
+            counter->JobType.rfind("gcet-", 0) == 0;
+        if (!nestedWorkload && state.Active && state.Frame == aFrame)
         {
             state.TotalJobNs += elapsed;
             state.Jobs.push_back({counter, elapsed});
