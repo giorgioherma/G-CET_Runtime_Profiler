@@ -58,3 +58,6 @@ if ($LASTEXITCODE -eq 0 -or ($raw2 -join ' ') -notmatch 'already up to date' -or
     throw "Already-current framework should not generate a redundant pass: $($raw2 -join ' ')"
 }
 Write-Host 'Framework-only upgrade, isolated ZIP, and idempotent no-op contracts PASSED.'
+# The intentional negative idempotence test set LASTEXITCODE=1.
+$global:LASTEXITCODE = 0
+
