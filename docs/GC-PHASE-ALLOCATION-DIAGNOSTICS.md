@@ -1,5 +1,9 @@
 # LuaJIT GC phase and allocator diagnostics (capture-only)
 
+Native v2.14.0 must be hash-locked and verified for all three diagnostics
+before the normal Windows package can be published. This intentionally
+rejects stale profiler binaries after source-only changes.
+
 GCET_COLLECTOR_PROBE_V2 records internal GC states, slow collector operations
 and positive allocation growth. It never changes collector parameters,
 scheduling, game hooks or any mod behavior.
