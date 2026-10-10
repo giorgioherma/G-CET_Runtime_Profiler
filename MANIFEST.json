@@ -1,6 +1,6 @@
 {
   "packageVersion": "1.1.9",
-  "profilerNativeVersion": "2.13.0",
+  "profilerNativeVersion": "2.14.0",
   "targetCET": {
     "version": "1.37.1",
     "officialSha256": "43a7b94698979703f9dfa2b0950607c9a88f53b84bbf09a8e593c7e218d41059",
@@ -26,6 +26,9 @@
     "CET_Runtime_Profile_Markers.csv",
     "CET_Runtime_Profile_GC_Explicit.csv",
     "CET_Runtime_Profile_GC_Collector.csv",
+    "CET_Runtime_Profile_GC_Phases.csv",
+    "CET_Runtime_Profile_GC_SlowSteps.csv",
+    "CET_Runtime_Profile_Lua_Allocations.csv",
     "CET_Runtime_Profile_Scheduler_ByJob.csv",
     "CET_Runtime_Profile_Scheduler_Spikes.csv",
     "CET_Runtime_Profile_Scheduler_FrameBursts.csv",
