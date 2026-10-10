@@ -51,6 +51,7 @@ internal static class CallbackResolverService
         var semanticLibrary = SemanticLibraryService.Load(semanticLibraryPath, modsRoot);
         var sourceIndex = new LiveSourceIndex(modsRoot);
         var schedulerJobs = ReadSchedulerJobs(handoff.RootElement, handoffPath);
+        var collectorSpikeEvidence = ReadCollectorSpikeEvidence(handoff.RootElement);
         var schedulerByOwner = callbacks
             .Select(callback => callback.Owner)
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -102,6 +103,9 @@ internal static class CallbackResolverService
             foreach (var callback in family.Rows)
             {
                 rankedCount++;
+                var gcCoincidence = callback.RegistrationId is long nativeId &&
+                    collectorSpikeEvidence.TryGetValue(nativeId, out var evidence)
+                    ? evidence : GcSpikeReviewEvidence.Empty;
                 schedulerByOwner.TryGetValue(
                     callback.Owner,
                     out var schedulerIntegration);
@@ -225,6 +229,15 @@ internal static class CallbackResolverService
                         callback.maxExclusiveMs,
                         callback.spikeCount,
                         callback.maxSpikeExclusiveMs,
+                        collectorReview = new
+                        {
+                            gcCoincidence.FrameBucketOverlapSpikes,
+                            gcCoincidence.PotentiallyConfoundedSpikes,
+                            largestCoincidentBucketMs = Round(gcCoincidence.MaxBucketMs, 3),
+                            attribution = "BUCKET_COINCIDENCE_REVIEW_ONLY_NOT_CALLBACK_GC_COST",
+                            canSubtractFromCallback = false,
+                            authorizesRewrite = false
+                        },
                         burst = new
                         {
                             vocabularyVersion = callback.BurstVocabularyVersion,
@@ -5020,6 +5033,39 @@ internal static class CallbackResolverService
             if (value.ValueKind == JsonValueKind.False) return false;
         }
         return false;
+    }
+
+    private sealed record GcSpikeReviewEvidence(
+        int FrameBucketOverlapSpikes, int PotentiallyConfoundedSpikes, double MaxBucketMs)
+    {
+        public static GcSpikeReviewEvidence Empty { get; } = new(0, 0, 0);
+    }
+
+    // Interpret bounded collector coincidences separately from burst materiality.
+    // Do not equate frame-bucket GC with the collector cost of a callback.
+    private static Dictionary<long, GcSpikeReviewEvidence> ReadCollectorSpikeEvidence(JsonElement root)
+    {
+        var result = new Dictionary<long, GcSpikeReviewEvidence>();
+        if (!root.TryGetProperty("garbageCollection", out var gc) ||
+            gc.ValueKind != JsonValueKind.Object ||
+            !gc.TryGetProperty("spikeCoincidences", out var samples) ||
+            samples.ValueKind != JsonValueKind.Array)
+            return result;
+        foreach (var row in samples.EnumerateArray())
+        {
+            if (row.ValueKind != JsonValueKind.Object) continue;
+            var id = JsonNullableLong(row, "registrationId");
+            if (id is null || id <= 0) continue;
+            result.TryGetValue(id.Value, out var previous);
+            previous ??= GcSpikeReviewEvidence.Empty;
+            result[id.Value] = new GcSpikeReviewEvidence(
+                previous.FrameBucketOverlapSpikes + 1,
+                previous.PotentiallyConfoundedSpikes +
+                    (JsonBool(row, "PotentiallyConfounded", "potentiallyConfounded") ? 1 : 0),
+                Math.Max(previous.MaxBucketMs,
+                    JsonDouble(row, "largestGcFrameBucketMs")));
+        }
+        return result;
     }
 
     private static double JsonDouble(JsonElement element, params string[] names)

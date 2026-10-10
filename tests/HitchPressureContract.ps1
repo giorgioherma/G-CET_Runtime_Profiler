@@ -227,4 +227,29 @@ if ($null -eq $handoff.hitchPressure -or [bool]$handoff.hitchPressure.authorizes
     throw 'Resolver handoff lost safe hitch-pressure semantics.'
 }
 
+# Repeat with a collector-heavy bucket overlapping a long callback.
+# This exercises the positive review path independently of the earlier zero
+# confirmation, without treating bucket timing as caller-owned GC time.
+$gcReviewCapture = Join-Path $root 'gc-review'
+Copy-Item -LiteralPath $capture -Destination $gcReviewCapture -Recurse -Force
+@(
+'Frame,CaptureStartMs,CaptureEndMs,IncrementalCalls,IncrementalMs,CompletedCycles,FullCalls,FullMs,CollectorTotalMs,MaxStepToDateMs,MaxFullToDateMs,DroppedFramesAtDump,Interpretation',
+'60,999.0,1039.0,3,18.0,1,0,0,18.0,17.5,0,0,exact-internal-collector-time-frame-bucketed-nested'
+) | Set-Content -LiteralPath (Join-Path $gcReviewCapture 'CET_Runtime_Profile_GC_Collector.csv') -Encoding utf8
+$reviewResult = (& $profilerExe --report --capture $gcReviewCapture --json | ConvertFrom-Json)
+if (!$reviewResult.ok) { throw 'GC review scenario report generation failed.' }
+$reviewSummary = Get-Content -LiteralPath (Join-Path $gcReviewCapture 'CET_Summary.json') -Raw | ConvertFrom-Json
+$reviewHandoff = Get-Content -LiteralPath (Join-Path $gcReviewCapture 'CET_Resolver_Input.json') -Raw | ConvertFrom-Json
+if ([int]$reviewSummary.collectorGc.potentiallyConfoundedSpikeCount -ne 1 -or
+    -not [bool]$reviewSummary.collectorGc.spikeCoincidences[0].PotentiallyConfounded -or
+    [int]$reviewHandoff.garbageCollection.potentiallyConfoundedSpikeCount -ne 1 -or
+    [math]::Abs([double]$reviewHandoff.garbageCollection.spikeCoincidences[0].largestGcFrameBucketMs - 18.0) -gt 0.01) {
+    throw 'Collector-heavy bucket was not conservatively associated with overlapping callback.'
+}
+$reviewHtml = Get-Content -LiteralPath (Join-Path $gcReviewCapture 'CET_Report.html') -Raw
+if ($reviewHtml -notmatch 'Callback spikes near collector-heavy frame buckets' -or
+    $reviewHtml -notmatch 'No GC-free cost can be obtained by subtracting') {
+    throw 'GC coincidence safety explanation missing from human report.'
+}
+
 Write-Host 'Hitch-pressure frametime tolerance + episode attribution contract passed.'
