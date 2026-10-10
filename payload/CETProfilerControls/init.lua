@@ -246,6 +246,49 @@ local gcWasCapturing = false
 local gcMarkersUnavailable = false
 local GC_MAX_MARKERS = 480
 
+-- Lightweight health snapshots of the four additive 0-Engine services.
+-- Uses the *existing* 0.5-second heap observer, without registering another
+-- onUpdate and without causing new Scheduler/StateSignals subscriptions.
+local workloadAge, workloadMarks = 15, 0
+local WORKLOAD_MAX_MARKERS = 160
+
+local function observeWorkload()
+  if workloadMarks >= WORKLOAD_MAX_MARKERS or
+      type(CETProfilerMark) ~= "function" or
+      type(GetMod) ~= "function" then return end
+  local ok, engine = pcall(GetMod, "0-Engine")
+  if not ok or type(engine) ~= "table" then return end
+
+  local function status(name)
+    local service = engine[name]
+    if type(service) ~= "table" or type(service.GetInfo) ~= "function" then return nil end
+    local yes, info = pcall(service.GetInfo)
+    return yes and type(info) == "table" and info or nil
+  end
+  local w = status("WorkQueue")
+  local p = status("PhasePlanner")
+  local f = status("FrameListeners")
+  local s = status("StateSignals")
+  if not (w and p and f and s) then return end
+
+  local function n(value)
+    value = tonumber(value) or 0
+    return math.max(0, math.floor(value))
+  end
+  local label = string.format(
+    "WORKLOAD_V1_Q_%d_A_%d_D_%d_P_%d_H_%d_E_%d_F_%d_Z_%d_S_%d",
+    n(w.queued), n(w.active), n(w.deferredFrames),
+    n(p.pending), n(p.postponed),
+    n(w.errors) + n(p.errors), n(f.active), n(f.paused),
+    n(s.watchers))
+  local marked, result = pcall(CETProfilerMark, label)
+  if marked and not (type(result) == "string" and result:find("buffer full", 1, true)) then
+    workloadMarks = workloadMarks + 1
+  else
+    workloadMarks = WORKLOAD_MAX_MARKERS
+  end
+end
+
 local function observeLuaHeap(dt)
   gcSampleAge = gcSampleAge + math.max(0, tonumber(dt) or 0)
   if gcSampleAge < 0.5 then return end
@@ -259,7 +302,14 @@ local function observeLuaHeap(dt)
     gcHeartbeatAge = 10
     gcMarked = 0
     gcMarkersUnavailable = false
+    workloadAge, workloadMarks = 15, 0
     return
+  end
+
+  workloadAge = workloadAge + elapsed
+  if workloadAge >= 15 then
+    workloadAge = 0
+    observeWorkload()
   end
 
   if not gcWasCapturing then
