@@ -250,6 +250,7 @@ public static partial class ResultReportService
                         medianIntervalMs = Round(burst.MedianIntervalMs, 6),
                         intervalMadMs = Round(burst.IntervalMadMs, 6),
                         intervalJitterPct = Round(burst.IntervalJitterPct, 6),
+                        periodicSupportPct = Round(burst.PeriodicSupportPct, 6),
                         sustainedHot = burst.SustainedHot,
                         periodicStutter = burst.PeriodicStutter,
                         burstHot = burst.BurstHot,
@@ -393,7 +394,9 @@ public static partial class ResultReportService
                     periodicMinimumSpikes = BurstAnalysisService.PeriodicMinimumSpikes,
                     periodicMinimumIntervalMs = BurstAnalysisService.PeriodicMinimumIntervalMs,
                     periodicMaximumIntervalMs = BurstAnalysisService.PeriodicMaximumIntervalMs,
-                    periodicMaximumJitterPct = BurstAnalysisService.PeriodicMaximumJitterPct
+                    periodicMaximumJitterPct = BurstAnalysisService.PeriodicMaximumJitterPct,
+                    periodicIntervalTolerancePct = BurstAnalysisService.PeriodicIntervalTolerancePct,
+                    periodicMinimumSupportPct = BurstAnalysisService.PeriodicMinimumSupportPct
                 },
                 note = "Periodicity is derived only from recorded callback spikes. With the default native threshold, those are callbacks whose exclusive time crossed 5 ms. A higher configured spike threshold makes this evidence correspondingly less complete."
             },

@@ -239,7 +239,8 @@ internal static class CallbackResolverService
                             maxExclusiveMs = callback.BurstMaxExclusiveMs,
                             medianIntervalMs = callback.BurstMedianIntervalMs,
                             intervalMadMs = callback.BurstIntervalMadMs,
-                            intervalJitterPct = callback.BurstIntervalJitterPct
+                            intervalJitterPct = callback.BurstIntervalJitterPct,
+                            periodicSupportPct = callback.BurstPeriodicSupportPct
                         },
                         materiality = new
                         {
@@ -4968,7 +4969,8 @@ internal static class CallbackResolverService
                 BurstMaxExclusiveMs = hasBurst ? JsonDouble(burst, "maxExclusiveMs") : 0,
                 BurstMedianIntervalMs = hasBurst ? JsonDouble(burst, "medianIntervalMs") : 0,
                 BurstIntervalMadMs = hasBurst ? JsonDouble(burst, "intervalMadMs") : 0,
-                BurstIntervalJitterPct = hasBurst ? JsonDouble(burst, "intervalJitterPct") : 0
+                BurstIntervalJitterPct = hasBurst ? JsonDouble(burst, "intervalJitterPct") : 0,
+                BurstPeriodicSupportPct = hasBurst ? JsonDouble(burst, "periodicSupportPct") : 0
             });
         }
 
@@ -5748,6 +5750,7 @@ internal static class CallbackResolverService
         public double BurstMedianIntervalMs { get; init; }
         public double BurstIntervalMadMs { get; init; }
         public double BurstIntervalJitterPct { get; init; }
+        public double BurstPeriodicSupportPct { get; init; }
 
         public long? registrationId => RegistrationId;
         public string owner => Owner;

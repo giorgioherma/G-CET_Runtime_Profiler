@@ -380,7 +380,7 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
     {
         sb.Append("<div class=\"section\"><h2>Burst &amp; stutter candidates</h2>");
         sb.Append("<div class=\"note\"><b>This is pacing evidence, not an uninstall list.</b> A callback can be cheap on average and still be material when it repeatedly lands 5–10+ ms on one invocation. Detection is broader than AUTO authorization.</div>");
-        sb.Append("<table><thead><tr><th>Owner</th><th>Callback</th><th>Classes</th><th class=\"num\">ms/s</th><th class=\"num\">Spikes</th><th class=\"num\">Median / P95 / Max</th><th class=\"num\">Median interval</th><th class=\"num\">Jitter</th></tr></thead><tbody>");
+        sb.Append("<table><thead><tr><th>Owner</th><th>Callback</th><th>Classes</th><th class=\"num\">ms/s</th><th class=\"num\">Spikes</th><th class=\"num\">Median / P95 / Max</th><th class=\"num\">Median interval</th><th class=\"num\">Jitter</th><th class=\"num\">Period support</th></tr></thead><tbody>");
 
         foreach (var x in a.BurstCallbacks.Take(30))
         {
@@ -395,6 +395,8 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
                 .Append(x.Profile.MedianIntervalMs > 0 ? F(x.Profile.MedianIntervalMs, 0) + " ms" : "—")
                 .Append("</td><td class=\"num\">")
                 .Append(x.Profile.MedianIntervalMs > 0 ? F(x.Profile.IntervalJitterPct, 1) + "%" : "—")
+                .Append("</td><td class=\"num\">")
+                .Append(x.Profile.MedianIntervalMs > 0 ? F(x.Profile.PeriodicSupportPct, 1) + "%" : "—")
                 .Append("</td></tr>");
         }
 

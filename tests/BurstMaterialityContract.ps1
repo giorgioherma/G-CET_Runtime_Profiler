@@ -33,13 +33,15 @@ Write-Mod 'FixturePeriodic' 'FixturePeriodicTick'
 Write-Mod 'FixtureCatastrophic' 'FixtureCatastrophicTick'
 Write-Mod 'FixtureSustained' 'FixtureSustainedTick'
 Write-Mod 'FixtureNoise' 'FixtureNoiseTick'
+Write-Mod 'FixtureCluster' 'FixtureClusterTick'
 
 @(
 'Mod,Calls,CallsPerSecond,ExclusiveTotalMs,ExclusiveMsPerSecond,MeasuredOneCorePct,AvgExclusiveUs,MaxExclusiveMs,MeasuredExclusiveSharePct,ElapsedSeconds,Coverage',
 'FixturePeriodic,600,60,10,1.0,0.1,16.667,6.4,14.2857,10,native',
 'FixtureCatastrophic,100,10,5,0.5,0.05,50,45.0,7.1429,10,native',
 'FixtureSustained,600,60,40,4.0,0.4,66.667,0.3,57.1429,10,native',
-'FixtureNoise,100,10,5,0.5,0.05,50,5.5,7.1429,10,native'
+'FixtureNoise,100,10,5,0.5,0.05,50,5.5,7.1429,10,native',
+'FixtureCluster,100,10,6,0.6,0.06,60,6.0,8.5714,10,native'
 ) | Set-Content -LiteralPath (Join-Path $capture 'CET_Runtime_Profile_ByMod.csv') -Encoding utf8
 
 @(
@@ -47,7 +49,8 @@ Write-Mod 'FixtureNoise' 'FixtureNoiseTick'
 '1,FixturePeriodic,observe,PlayerPuppet::FixturePeriodicTick,init.lua,1,3,600,60,10,10,1,1,0.1,16.667,6.4,6.4,14.2857,10,native',
 '2,FixtureCatastrophic,observe,PlayerPuppet::FixtureCatastrophicTick,init.lua,1,3,100,10,5,5,0.5,0.5,0.05,50,45,45,7.1429,10,native',
 '3,FixtureSustained,observe,PlayerPuppet::FixtureSustainedTick,init.lua,1,3,600,60,40,40,4,4,0.4,66.667,0.3,0.3,57.1429,10,native',
-'4,FixtureNoise,observe,PlayerPuppet::FixtureNoiseTick,init.lua,1,3,100,10,5,5,0.5,0.5,0.05,50,5.5,5.5,7.1429,10,native'
+'4,FixtureNoise,observe,PlayerPuppet::FixtureNoiseTick,init.lua,1,3,100,10,5,5,0.5,0.5,0.05,50,5.5,5.5,7.1429,10,native',
+'5,FixtureCluster,observe,PlayerPuppet::FixtureClusterTick,init.lua,1,3,100,10,6,6,0.6,0.6,0.06,60,6.0,6.0,8.5714,10,native'
 ) | Set-Content -LiteralPath (Join-Path $capture 'CET_Runtime_Profile_Detail.csv') -Encoding utf8
 
 @(
@@ -58,7 +61,12 @@ Write-Mod 'FixtureNoise' 'FixtureNoiseTick'
 '4,420,7000,7006.1,6.1,6.1,0,1,FixturePeriodic,observe,PlayerPuppet::FixturePeriodicTick,init.lua,1,3,1,5,0,correlation-only-not-causation',
 '5,240,4000,4045,45,45,0,2,FixtureCatastrophic,observe,PlayerPuppet::FixtureCatastrophicTick,init.lua,1,3,1,5,0,correlation-only-not-causation',
 '6,120,2000,2005.5,5.5,5.5,0,4,FixtureNoise,observe,PlayerPuppet::FixtureNoiseTick,init.lua,1,3,1,5,0,correlation-only-not-causation',
-'7,510,8500,8505.4,5.4,5.4,0,4,FixtureNoise,observe,PlayerPuppet::FixtureNoiseTick,init.lua,1,3,1,5,0,correlation-only-not-causation'
+'7,510,8500,8505.4,5.4,5.4,0,4,FixtureNoise,observe,PlayerPuppet::FixtureNoiseTick,init.lua,1,3,1,5,0,correlation-only-not-causation',
+'8,60,1000,1006,6,6,0,5,FixtureCluster,observe,PlayerPuppet::FixtureClusterTick,init.lua,1,3,1,5,0,correlation-only-not-causation',
+'9,86,1435,1441,6,6,0,5,FixtureCluster,observe,PlayerPuppet::FixtureClusterTick,init.lua,1,3,1,5,0,correlation-only-not-causation',
+'10,108,1803,1809,6,6,0,5,FixtureCluster,observe,PlayerPuppet::FixtureClusterTick,init.lua,1,3,1,5,0,correlation-only-not-causation',
+'11,126,2104,2110,6,6,0,5,FixtureCluster,observe,PlayerPuppet::FixtureClusterTick,init.lua,1,3,1,5,0,correlation-only-not-causation',
+'12,1711,28513,28519,6,6,0,5,FixtureCluster,observe,PlayerPuppet::FixtureClusterTick,init.lua,1,3,1,5,0,correlation-only-not-causation'
 ) | Set-Content -LiteralPath (Join-Path $capture 'CET_Runtime_Profile_Spikes.csv') -Encoding utf8
 
 @(
@@ -82,6 +90,9 @@ if ([math]::Abs([double]$periodicSummary.medianIntervalMs - 2000.0) -gt 0.001) {
     throw "Periodic median interval is wrong: $($periodicSummary.medianIntervalMs)"
 }
 if (![bool]$periodicSummary.stutterMaterial) { throw 'Periodic callback was not marked stutter-material.' }
+if ([double]$periodicSummary.periodicSupportPct -lt 99.9) {
+    throw "Exact periodic fixture reported weak interval support: $($periodicSummary.periodicSupportPct)%"
+}
 
 $catSummary = @($summary.burstAnalysis.candidates | Where-Object owner -eq 'FixtureCatastrophic') | Select-Object -First 1
 if ($null -eq $catSummary -or @($catSummary.classes) -notcontains 'CATASTROPHIC_BURST') {
@@ -90,6 +101,9 @@ if ($null -eq $catSummary -or @($catSummary.classes) -notcontains 'CATASTROPHIC_
 
 if (@($summary.burstAnalysis.candidates | Where-Object owner -eq 'FixtureNoise').Count -ne 0) {
     throw 'Two irregular ~5 ms samples were incorrectly promoted to stutter-material.'
+}
+if (@($summary.burstAnalysis.candidates | Where-Object owner -eq 'FixtureCluster').Count -ne 0) {
+    throw 'A short burst train plus a distant event was incorrectly classified as periodic stutter.'
 }
 
 $handoff = Get-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Raw | ConvertFrom-Json
@@ -115,8 +129,8 @@ if ([int]$result.summary.sustainedMaterialRemaining -ne 1) {
 if ([int]$result.summary.burstMaterialRemaining -ne 2) {
     throw "Expected two burst-material unresolved callbacks; got $($result.summary.burstMaterialRemaining)."
 }
-if ([int]$result.summary.belowThreshold -ne 1) {
-    throw "Expected only irregular noise below materiality; got $($result.summary.belowThreshold)."
+if ([int]$result.summary.belowThreshold -ne 2) {
+    throw "Expected irregular noise and transient cluster below materiality; got $($result.summary.belowThreshold)."
 }
 
 $other = @($result.callbackFamilies | Where-Object resolverFamily -eq 'OTHER')

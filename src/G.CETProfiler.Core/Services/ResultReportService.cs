@@ -151,7 +151,9 @@ public static partial class ResultReportService
                     periodicMinimumSpikes = BurstAnalysisService.PeriodicMinimumSpikes,
                     periodicMinimumIntervalMs = BurstAnalysisService.PeriodicMinimumIntervalMs,
                     periodicMaximumIntervalMs = BurstAnalysisService.PeriodicMaximumIntervalMs,
-                    periodicMaximumJitterPct = BurstAnalysisService.PeriodicMaximumJitterPct
+                    periodicMaximumJitterPct = BurstAnalysisService.PeriodicMaximumJitterPct,
+                    periodicIntervalTolerancePct = BurstAnalysisService.PeriodicIntervalTolerancePct,
+                    periodicMinimumSupportPct = BurstAnalysisService.PeriodicMinimumSupportPct
                 },
                 stutterMaterialCandidates = a.BurstCallbacks.Count,
                 candidates = a.BurstCallbacks.Take(30).Select(x => new
@@ -171,6 +173,7 @@ public static partial class ResultReportService
                     medianIntervalMs = Round(x.Profile.MedianIntervalMs, 6),
                     intervalMadMs = Round(x.Profile.IntervalMadMs, 6),
                     intervalJitterPct = Round(x.Profile.IntervalJitterPct, 6),
+                    periodicSupportPct = Round(x.Profile.PeriodicSupportPct, 6),
                     stutterMaterial = x.Profile.StutterMaterial
                 })
             },

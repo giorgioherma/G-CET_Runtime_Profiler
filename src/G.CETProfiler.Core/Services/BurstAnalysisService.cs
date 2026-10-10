@@ -11,6 +11,7 @@ internal sealed record BurstProfile(
     double MedianIntervalMs,
     double IntervalMadMs,
     double IntervalJitterPct,
+    double PeriodicSupportPct,
     bool SustainedHot,
     bool PeriodicStutter,
     bool BurstHot,
@@ -28,6 +29,8 @@ internal static class BurstAnalysisService
     internal const double PeriodicMinimumIntervalMs = 250.0;
     internal const double PeriodicMaximumIntervalMs = 10_000.0;
     internal const double PeriodicMaximumJitterPct = 20.0;
+    internal const double PeriodicIntervalTolerancePct = 20.0;
+    internal const double PeriodicMinimumSupportPct = 75.0;
 
     internal static BurstProfile Analyze(
         IEnumerable<BurstSample> samples,
@@ -68,6 +71,14 @@ internal static class BurstAnalysisService
         var intervalJitterPct = medianInterval > 0
             ? intervalMad / medianInterval * 100.0
             : 0.0;
+        var intervalTolerance =
+            medianInterval * PeriodicIntervalTolerancePct / 100.0;
+        var periodicSupportPct =
+            intervals.Length > 0 && medianInterval > 0
+                ? intervals.Count(x =>
+                    Math.Abs(x - medianInterval) <= intervalTolerance) *
+                  100.0 / intervals.Length
+                : 0.0;
 
         var sustainedHot =
             sustainedMsPerSecond >= SustainedHotThresholdMsPerSecond;
@@ -77,7 +88,8 @@ internal static class BurstAnalysisService
             intervals.Length >= PeriodicMinimumSpikes - 1 &&
             medianInterval >= PeriodicMinimumIntervalMs &&
             medianInterval <= PeriodicMaximumIntervalMs &&
-            intervalJitterPct <= PeriodicMaximumJitterPct;
+            intervalJitterPct <= PeriodicMaximumJitterPct &&
+            periodicSupportPct >= PeriodicMinimumSupportPct;
 
         var burstHot =
             ordered.Length >= 3 &&
@@ -116,6 +128,7 @@ internal static class BurstAnalysisService
             medianInterval,
             intervalMad,
             intervalJitterPct,
+            periodicSupportPct,
             sustainedHot,
             periodicStutter,
             burstHot,
