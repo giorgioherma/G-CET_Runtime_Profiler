@@ -3,7 +3,7 @@
 All notable public changes to G-CET Runtime Profiler are recorded here.
 
 ## [Unreleased]
-- **v1.1.8 native GC evidence:** instrument CET's shared sandbox `collectgarbage` entrypoint to record real wall-clock durations of explicit `collect`/`step` operations (including Choom Memory Booster), source line when available, Lua heap before/after, rendered-frame index, and capture-relative timing. Original Lua argument, return, and error semantics are preserved; measurement is fully bypassed when no capture runs.
+- **v1.1.8 native GC evidence (native build #39 verified):** instrument CET's shared sandbox `collectgarbage` entrypoint to record real wall-clock durations of explicit `collect`/`step` operations (including Choom Memory Booster), source line when available, Lua heap before/after, rendered-frame index, and capture-relative timing. Original Lua argument, return, and error semantics are preserved; measurement is fully bypassed when no capture runs.
 - Preserve the low-rate passive heap observer for automatic LuaJIT GC indicators. Explicit operations are distinguished from unmeasured automatic collection; reports must never attribute an automatic GC pause from a heap decrease alone.
 - Include `CET_Runtime_Profile_GC_Explicit.csv`, exact callback-spike intersection, optionally synchronized CapFrameX hitch episode overlap, a dedicated `explicitGc` summary and human report. GC time is already nested inside measured callback work and is not added to totals.
 - Refuse release packaging with v2.12 source changes until a matching rebuilt and hash-locked native profiler binary exists. Synthetic native GC data and no-op/legacy reports receive regression coverage.
