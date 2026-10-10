@@ -18,7 +18,7 @@ function M.Begin(owner, kind, label, frame)
     if not handle then
         ok, handle = pcall(CETProfilerSchedulerRegisterJob,
             tostring(owner or "unscoped"), kind, label, 0, "cooperative")
-        if not ok or type(handle) ~= "number" or handle == 0 then
+        if not ok or handle == nil or handle == 0 then
             disabled = true
             return nil
         end
