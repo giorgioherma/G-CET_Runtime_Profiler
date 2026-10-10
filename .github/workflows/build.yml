@@ -866,6 +866,10 @@ jobs:
         shell: pwsh
         run: ./tests/CallbackResolverContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: Capture-free 0-Engine-only update contract
+        shell: pwsh
+        run: ./tests/FrameworkOnlyUpdateContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: Generic UI + sequence polling contract
         shell: pwsh
         run: ./tests/GenericUiSequenceContract.ps1 -ResolverRoot ./publish-resolver
