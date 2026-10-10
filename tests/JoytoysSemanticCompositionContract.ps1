@@ -304,4 +304,8 @@ if($repeat.ok -and $repeat.pass) {
  if($repeat.pass) {throw 'Joytoys repeat returned an unexpected pass.'}
 }
 
+# A fully-satisfied --generate-pass CLI intentionally returns exit 1 with no ZIP.
+# We verified its source proof and no-op result; do not propagate that expected
+# native exit code as the PowerShell test step's final status.
+$global:LASTEXITCODE = 0
 Write-Host 'Joytoys v2: original, v1 upgrade, idempotence contracts passed.'
