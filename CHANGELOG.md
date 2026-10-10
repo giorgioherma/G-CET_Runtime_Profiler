@@ -3,6 +3,10 @@
 All notable public changes to G-CET Runtime Profiler are recorded here.
 
 ## [Unreleased]
+- **v1.1.8 native GC evidence:** instrument CET's shared sandbox `collectgarbage` entrypoint to record real wall-clock durations of explicit `collect`/`step` operations (including Choom Memory Booster), source line when available, Lua heap before/after, rendered-frame index, and capture-relative timing. Original Lua argument, return, and error semantics are preserved; measurement is fully bypassed when no capture runs.
+- Preserve the low-rate passive heap observer for automatic LuaJIT GC indicators. Explicit operations are distinguished from unmeasured automatic collection; reports must never attribute an automatic GC pause from a heap decrease alone.
+- Include `CET_Runtime_Profile_GC_Explicit.csv`, exact callback-spike intersection, optionally synchronized CapFrameX hitch episode overlap, a dedicated `explicitGc` summary and human report. GC time is already nested inside measured callback work and is not added to totals.
+- Refuse release packaging with v2.12 source changes until a matching rebuilt and hash-locked native profiler binary exists. Synthetic native GC data and no-op/legacy reports receive regression coverage.
 - Semantic onUpdate injection now accepts harmless trailing source comments on the registration opening (for example Roulette's `function(dt) --runs every frame`), including already-consolidated `__gcetRegisterEvent_*` openings. Source proof remains exact otherwise.
 - Fixed a false dynamic-action-forward classification for multi-line CET registrations where `function(_, action)` appears on its own line. Function declarations are now treated as callback boundaries rather than raw action forwarding, allowing finite action-map callbacks such as AirBackFlip to remain generically routable.
 - Generic OnAction analysis now recognizes strict one-line function-valued literal dispatch maps (for example `ACTION_NAME = function(...) ... end`) at the table's shallowest indentation. This closes the AirBackFlip-style finite action-map gap without relaxing dynamic-downstream safety; ambiguous or multi-line function maps still fail closed.
