@@ -148,6 +148,28 @@ public static partial class ResultReportService
                 measurement = "EXACT_INTERNAL_LUAJIT_GC_EXECUTION_FRAME_BUCKETED",
                 automaticVsExplicitOriginSeparatelyIdentified = false,
                 collectionPolicyChanged = false,
+                phaseMeasurement = "CAPTURE_GATED_INDIVISIBLE_GC_STATES_WALL_TIME",
+                slowOperationThresholdMs = 2.0,
+                slowOperationTriggerIsNotAllocationOwner = true,
+                phaseRows = a.CollectorGc.Phases.Take(6).Select(x => new {
+                    x.Phase, x.Operations, wallMs = Round(x.WallMs, 3)
+                }),
+                slowSteps = a.CollectorGc.SlowSteps.Take(100).Select(x => new {
+                    captureStartMs = Round(x.CaptureStartMs, 3),
+                    durationMs = Round(x.DurationMs, 3),
+                    x.PhaseBefore, x.PhaseAfter, x.RegistrationId,
+                    x.Callback, x.Pause, x.StepMul,
+                    heapBeforeMiB = Round(x.HeapBeforeMiB, 3),
+                    heapAfterMiB = Round(x.HeapAfterMiB, 3),
+                    thresholdMiB = Round(x.ThresholdMiB, 3),
+                    debtKiB = Round(x.DebtKiB, 3)
+                }),
+                slowDropped = a.CollectorGc.SlowDropped,
+                allocationCandidates = a.CollectorGc.AllocationOwners.Take(50).Select(x => new {
+                    x.Callback, allocatedMiB = Round(x.MiB, 3),
+                    allocatedMiBPerSecond = Round(x.MiBPerSecond, 3),
+                    authorizesRewrite = false
+                }),
                 measuredFrames = a.CollectorGc.Frames.Count,
                 totalMeasuredMs = Round(a.CollectorGc.TotalMs, 3),
                 incrementalCalls = a.CollectorGc.StepCalls,

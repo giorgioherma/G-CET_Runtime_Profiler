@@ -144,17 +144,17 @@ if ($null -eq $workload -or
 }
 
 $phaseEvidence = $summary.collectorGc
-if (@($phaseEvidence.Phases).Count -ne 3 -or
-    $phaseEvidence.Phases[0].Phase -ne 'atomic' -or
-    [math]::Abs([double]$phaseEvidence.Phases[0].WallMs - 49.75) -gt 0.01 -or
-    @($phaseEvidence.SlowSteps).Count -ne 1 -or
-    $phaseEvidence.SlowSteps[0].PhaseBefore -ne 'atomic' -or
-    $phaseEvidence.SlowSteps[0].Callback -notmatch 'OwnerA' -or
-    [int]$phaseEvidence.SlowSteps[0].Pause -ne 150 -or
-    [int]$phaseEvidence.SlowSteps[0].StepMul -ne 200 -or
-    @($phaseEvidence.AllocationOwners).Count -ne 2 -or
-    $phaseEvidence.AllocationOwners[0].Callback -notmatch 'OwnerB' -or
-    [math]::Abs([double]$phaseEvidence.AllocationOwners[0].MiB - 125.5) -gt 0.01) {
+if (@($phaseEvidence.phaseRows).Count -ne 3 -or
+    $phaseEvidence.phaseRows[0].Phase -ne 'atomic' -or
+    [math]::Abs([double]$phaseEvidence.phaseRows[0].wallMs - 49.75) -gt 0.01 -or
+    @($phaseEvidence.slowSteps).Count -ne 1 -or
+    $phaseEvidence.slowSteps[0].PhaseBefore -ne 'atomic' -or
+    $phaseEvidence.slowSteps[0].Callback -notmatch 'OwnerA' -or
+    [int]$phaseEvidence.slowSteps[0].Pause -ne 150 -or
+    [int]$phaseEvidence.slowSteps[0].StepMul -ne 200 -or
+    @($phaseEvidence.allocationCandidates).Count -ne 2 -or
+    $phaseEvidence.allocationCandidates[0].Callback -notmatch 'OwnerB' -or
+    [math]::Abs([double]$phaseEvidence.allocationCandidates[0].allocatedMiB - 125.5) -gt 0.01) {
     throw 'Native phase/slow-step/gross-allocation report attribution contract failed.'
 }
 $diagnosticHtml = Get-Content -LiteralPath (Join-Path $capture 'CET_Report.html') -Raw
