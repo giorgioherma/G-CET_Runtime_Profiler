@@ -17,6 +17,17 @@
 #include <utility>
 #include <vector>
 
+// ABI shared with the embedded, statically linked LuaJIT collector probe.
+extern "C" {
+struct GCETGCStats
+{
+    uint64_t stepCalls, stepTicks, maxStepTicks, completedCycles;
+    uint64_t fullCalls, fullTicks, maxFullTicks, frequency;
+};
+void gcet_gc_stats_set(int enable, int reset);
+void gcet_gc_stats_read(GCETGCStats* out);
+}
+
 class CETRuntimeProfiler
 {
 public:
@@ -130,6 +141,13 @@ public:
         uint64_t Calls{};
         uint64_t ExclusiveNs{};
         uint64_t MaxExclusiveNs{};
+    };
+
+    struct GcCollectorFrame
+    {
+        uint64_t Frame{}, CaptureNs{}, IncrementalCalls{}, CompletedCycles{};
+        uint64_t FullCalls{};
+        double IncrementalMs{}, FullMs{}, MaxIncrementalMs{}, MaxFullMs{};
     };
 
     struct GcExplicitEvent
@@ -355,6 +373,7 @@ public:
     static constexpr size_t MaxTimelineEvents = 1'000'000;
     static constexpr size_t MaxMarkerEvents = 1'000;
     static constexpr size_t MaxGcExplicitEvents = 4'096;
+    static constexpr size_t MaxGcCollectorFrames = 40'000;
     static constexpr size_t MaxSchedulerSpikeEvents = 20'000;
     static constexpr size_t MaxSchedulerFrameBurstEvents = 20'000;
 
@@ -1048,9 +1067,14 @@ public:
         ResetTimelineLocked();
         ResetMarkersLocked();
         ResetGcExplicitLocked();
+        ResetGcCollectorLocked();
         ResetSchedulerLocked();
         ResetDeepLocked();
         m_accumulatedCapture = std::chrono::nanoseconds::zero();
+        gcet_gc_stats_set(
+            m_state.load(std::memory_order_relaxed) == CaptureState::Running ? 1 : 0,
+            1);
+        m_gcCollectorPrevious = {};
         if (m_state.load(std::memory_order_relaxed) == CaptureState::Running)
         {
             m_segmentStarted = Clock::now();
@@ -1067,9 +1091,13 @@ public:
         ResetTimelineLocked();
         ResetMarkersLocked();
         ResetGcExplicitLocked();
+        ResetGcCollectorLocked();
         ResetSchedulerLocked();
         ResetDeepLocked();
         m_accumulatedCapture = std::chrono::nanoseconds::zero();
+        // Disabled during all prior work. Activate atomics only for capture.
+        gcet_gc_stats_set(1, 1);
+        m_gcCollectorPrevious = {};
         m_segmentStarted = Clock::now();
         PublishFastSegmentClockLocked(0);
         ++m_captureGeneration;
@@ -1092,6 +1120,7 @@ public:
         m_segmentStarted = Clock::now();
         PublishFastSegmentClockLocked(
             static_cast<uint64_t>(std::max<int64_t>(0, m_accumulatedCapture.count())));
+        gcet_gc_stats_set(1, 0);
         m_state.store(CaptureState::Running, std::memory_order_release);
         AddMarkerLocked("RESUME", m_segmentStarted);
     }
@@ -1148,6 +1177,47 @@ public:
         return oss.str();
     }
 
+    // Frame-bucketed exact internal collector time, read from LuaJIT's
+    // own instrumentation. Includes allocator and explicit API GC paths.
+    // A row is emitted only if GC ran in the preceding observed frame.
+    void SnapshotCollectorLocked(Clock::time_point now, uint64_t frame)
+    {
+        GCETGCStats current{};
+        gcet_gc_stats_read(&current);
+        if (!current.frequency) return;
+        const auto previous = m_gcCollectorPrevious;
+        m_gcCollectorPrevious = current;
+        if (current.stepCalls < previous.stepCalls ||
+            current.fullCalls < previous.fullCalls ||
+            current.stepTicks < previous.stepTicks ||
+            current.fullTicks < previous.fullTicks)
+            return;
+
+        const auto steps = current.stepCalls - previous.stepCalls;
+        const auto fulls = current.fullCalls - previous.fullCalls;
+        if (!steps && !fulls) return;
+        if (m_gcCollectorFrames.size() >= MaxGcCollectorFrames)
+        {
+            ++m_droppedGcCollectorFrames;
+            return;
+        }
+
+        const double msPerTick = 1'000.0 /
+            static_cast<double>(current.frequency);
+        m_gcCollectorFrames.push_back({
+            frame,
+            CapturedNanosecondsLocked(now),
+            steps,
+            current.completedCycles >= previous.completedCycles
+                ? current.completedCycles - previous.completedCycles : 0,
+            fulls,
+            (current.stepTicks - previous.stepTicks) * msPerTick,
+            (current.fullTicks - previous.fullTicks) * msPerTick,
+            current.maxStepTicks * msPerTick,
+            current.maxFullTicks * msPerTick
+        });
+    }
+
     uint64_t BeginGameFrame()
     {
         if (!IsCapturing())
@@ -1158,6 +1228,10 @@ public:
 
         const uint64_t frame =
             m_captureFrameCount.fetch_add(1, std::memory_order_relaxed) + 1;
+        {
+            std::lock_guard lock(m_mutex);
+            SnapshotCollectorLocked(Clock::now(), frame - 1);
+        }
         m_currentGameFrame.store(frame, std::memory_order_release);
         return frame;
     }
@@ -1782,6 +1856,7 @@ public:
         std::vector<DeepLineEvent> deepLineRows;
         std::vector<MarkerEvent> markerRows;
         std::vector<GcExplicitEvent> gcExplicitRows;
+        std::vector<GcCollectorFrame> gcCollectorRows;
         std::vector<SchedulerJobRow> schedulerJobRows;
         std::vector<SchedulerSpikeRow> schedulerSpikeRows;
         std::vector<SchedulerBurstRow> schedulerBurstRows;
@@ -1794,6 +1869,7 @@ public:
         uint64_t droppedTimelineEvents{};
         uint64_t droppedMarkerEvents{};
         uint64_t droppedGcExplicitEvents{};
+        uint64_t droppedGcCollectorFrames{};
         uint64_t droppedSchedulerSpikeEvents{};
         uint64_t droppedSchedulerFrameBursts{};
         uint64_t droppedDeepSamples{};
@@ -2002,6 +2078,8 @@ public:
             markerRows = m_markers;
             gcExplicitRows = m_gcExplicitEvents;
             droppedGcExplicitEvents = m_droppedGcExplicitEvents;
+            gcCollectorRows = m_gcCollectorFrames;
+            droppedGcCollectorFrames = m_droppedGcCollectorFrames;
 
             schedulerJobRows.reserve(m_schedulerJobs.size());
             for (const auto& [_, counter] : m_schedulerJobs)
@@ -2530,6 +2608,35 @@ public:
         }
 
         // -----------------------------------------------------------------
+        // Exact internal GC execution time bucketed by native rendered frame.
+        // Includes both automatically triggered and explicitly requested steps.
+        // Child time may already be inside mod callback and Scheduler totals.
+        {
+            std::ofstream f(
+                outputRoot / "CET_Runtime_Profile_GC_Collector.csv",
+                std::ios::trunc);
+            if (f)
+            {
+                f << "Frame,CaptureEndMs,IncrementalCalls,IncrementalMs,"
+                     "CompletedCycles,FullCalls,FullMs,CollectorTotalMs,"
+                     "MaxStepToDateMs,MaxFullToDateMs,DroppedFramesAtDump,"
+                     "Interpretation\n";
+                f << std::fixed << std::setprecision(6);
+                for (const auto& gc : gcCollectorRows)
+                {
+                    f << gc.Frame << ','
+                      << (static_cast<double>(gc.CaptureNs) / 1'000'000.0) << ','
+                      << gc.IncrementalCalls << ',' << gc.IncrementalMs << ','
+                      << gc.CompletedCycles << ',' << gc.FullCalls << ','
+                      << gc.FullMs << ','
+                      << (gc.IncrementalMs + gc.FullMs) << ','
+                      << gc.MaxIncrementalMs << ',' << gc.MaxFullMs << ','
+                      << droppedGcCollectorFrames << ','
+                      << "exact-internal-collector-time-frame-bucketed-nested\n";
+                }
+            }
+        }
+
         // MARKERS: capture-relative + wall-clock anchors for phase boundaries
         // and easier external timeline alignment.
         // -----------------------------------------------------------------
@@ -3663,6 +3770,7 @@ private:
         m_timelineEvents.reserve(MaxTimelineEvents);
         m_markers.reserve(MaxMarkerEvents);
         m_gcExplicitEvents.reserve(MaxGcExplicitEvents);
+        m_gcCollectorFrames.reserve(MaxGcCollectorFrames);
         m_schedulerSpikeEvents.reserve(MaxSchedulerSpikeEvents);
         m_schedulerFrameBursts.reserve(MaxSchedulerFrameBurstEvents);
         m_deepSamples.reserve(MaxDeepSampleEvents);
@@ -3723,6 +3831,13 @@ private:
         m_markers.clear();
         m_nextMarkerSequence = 0;
         m_droppedMarkerEvents = 0;
+    }
+
+    void ResetGcCollectorLocked()
+    {
+        m_gcCollectorFrames.clear();
+        m_droppedGcCollectorFrames = 0;
+        m_gcCollectorPrevious = {};
     }
 
     void ResetGcExplicitLocked()
@@ -3825,6 +3940,8 @@ private:
         if (m_state.load(std::memory_order_relaxed) != CaptureState::Running)
             return;
 
+        SnapshotCollectorLocked(aNow, m_currentGameFrame.load(std::memory_order_relaxed));
+        gcet_gc_stats_set(0, 0);
         m_accumulatedCapture +=
             std::chrono::duration_cast<std::chrono::nanoseconds>(
                 aNow - m_segmentStarted);
@@ -4008,6 +4125,8 @@ private:
     std::vector<TimelineEvent> m_timelineEvents;
     std::vector<MarkerEvent> m_markers;
     std::vector<GcExplicitEvent> m_gcExplicitEvents;
+    std::vector<GcCollectorFrame> m_gcCollectorFrames;
+    GCETGCStats m_gcCollectorPrevious{};
     std::unordered_map<std::string, std::unique_ptr<SchedulerJobCounter>> m_schedulerJobs;
     std::vector<SchedulerSpikeEvent> m_schedulerSpikeEvents;
     std::vector<SchedulerFrameBurstEvent> m_schedulerFrameBursts;
@@ -4044,6 +4163,7 @@ private:
     uint64_t m_droppedMarkerEvents{};
     uint64_t m_nextGcExplicitSequence{};
     uint64_t m_droppedGcExplicitEvents{};
+    uint64_t m_droppedGcCollectorFrames{};
     uint64_t m_nextSchedulerSpikeSequence{};
     uint64_t m_nextSchedulerBurstSequence{};
     uint64_t m_droppedSchedulerSpikeEvents{};
