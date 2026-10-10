@@ -319,11 +319,12 @@ internal static class FixedZeroEngineRuntime
             WorkloadMarker,
             "do",
             $"    local runtime = {id}",
-            "    if type(runtime) ~= 'table' then error('0-Engine workload host is not a table') end",
-            "    if runtime.WorkQueue == nil then runtime.WorkQueue = require('modules/GCETWorkQueue').New(runtime) end",
-            "    if runtime.PhasePlanner == nil then runtime.PhasePlanner = require('modules/GCETPhasePlanner').New(runtime) end",
-            "    if runtime.FrameListeners == nil then runtime.FrameListeners = require('modules/GCETFrameListeners').New(runtime) end",
-            "    if runtime.StateSignals == nil then runtime.StateSignals = require('modules/GCETStateSignals').New(runtime) end",
+            "    if type(runtime) == 'table' then",
+            "        if runtime.WorkQueue == nil then runtime.WorkQueue = require('modules/GCETWorkQueue').New(runtime) end",
+            "        if runtime.PhasePlanner == nil then runtime.PhasePlanner = require('modules/GCETPhasePlanner').New(runtime) end",
+            "        if runtime.FrameListeners == nil then runtime.FrameListeners = require('modules/GCETFrameListeners').New(runtime) end",
+            "        if runtime.StateSignals == nil then runtime.StateSignals = require('modules/GCETStateSignals').New(runtime) end",
+            "    end",
             "end",
             ""
         });
