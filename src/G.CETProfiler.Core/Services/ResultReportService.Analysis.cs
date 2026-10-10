@@ -38,6 +38,7 @@ public static partial class ResultReportService
         public List<Dictionary<string, string>> MarkerRows { get; init; } = [];
         public List<Dictionary<string, string>> SpikeRows { get; init; } = [];
         public LuaHeapTelemetry? LuaHeap { get; init; }
+        public ExplicitGcTelemetry? ExplicitGc { get; init; }
     }
 
     private static ResultAnalysis Analyze(string captureRoot)
@@ -46,6 +47,7 @@ public static partial class ResultReportService
         var detail = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Detail.csv"));
         var timeline = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Timeline.csv"));
         var markers = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Markers.csv"));
+        var explicitGc = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_GC_Explicit.csv"));
         var spikes = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Spikes.csv"));
         var schedulerJobs = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Scheduler_ByJob.csv"));
         var schedulerSpikes = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Scheduler_Spikes.csv"));
@@ -234,7 +236,8 @@ public static partial class ResultReportService
             TimelineRows = timeline,
             MarkerRows = markers,
             SpikeRows = spikes,
-            LuaHeap = AnalyzeLuaHeap(markers, spikes)
+            LuaHeap = AnalyzeLuaHeap(markers, spikes),
+            ExplicitGc = AnalyzeExplicitGc(explicitGc, spikes)
         };
     }
 

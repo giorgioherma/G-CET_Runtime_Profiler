@@ -6,6 +6,79 @@ namespace GCETRuntimeProfiler.Core.Services;
 
 public static partial class ResultReportService
 {
+    private sealed record ExplicitGcEvent(
+        double StartMs, double EndMs, double DurationMs, string Action,
+        string SourceFile, int SourceLine, bool NearRecordedSpike);
+
+    private sealed class ExplicitGcTelemetry
+    {
+        public List<ExplicitGcEvent> Events { get; init; } = [];
+        public double TotalDurationMs => Events.Sum(x => x.DurationMs);
+        public double MaximumDurationMs => Events.Max(x => x.DurationMs);
+        public int SpikeOverlapCount => Events.Count(x => x.NearRecordedSpike);
+    }
+
+    private static ExplicitGcTelemetry? AnalyzeExplicitGc(
+        IReadOnlyList<Dictionary<string, string>> rows,
+        IReadOnlyList<Dictionary<string, string>> spikes)
+    {
+        if (rows.Count == 0) return null;
+        var ranges = spikes.Select(x => (
+            Start: D(x, "CaptureStartMs"), End: D(x, "CaptureEndMs")))
+            .Where(x => double.IsFinite(x.Start) && double.IsFinite(x.End))
+            .ToArray();
+        var events = new List<ExplicitGcEvent>();
+        foreach (var row in rows)
+        {
+            var start = D(row, "CaptureStartMs");
+            var end = D(row, "CaptureEndMs");
+            var duration = D(row, "DurationMs");
+            var action = S(row, "Action");
+            if (!double.IsFinite(start) || !double.IsFinite(end) ||
+                !double.IsFinite(duration) || start < 0 || end < start ||
+                duration < 0 || (action != "collect" && action != "step"))
+                continue;
+            var overlap = ranges.Any(x => x.Start <= end && x.End >= start);
+            var sourceLine = int.TryParse(S(row, "SourceLine"), out var line)
+                ? line : 0;
+            events.Add(new ExplicitGcEvent(
+                start, end, duration, action, S(row, "SourceFile"),
+                sourceLine, overlap));
+        }
+        return events.Count == 0 ? null : new ExplicitGcTelemetry { Events = events };
+    }
+
+    private static void AppendExplicitGc(StringBuilder sb, ExplicitGcTelemetry gc)
+    {
+        sb.Append("<div class=\"section\"><h2>Explicit Lua garbage collection timing</h2>");
+        sb.Append("<div class=\"grid\">");
+        MetricCard(sb, "Measured GC operations", N(gc.Events.Count),
+            "Full " + N(gc.Events.Count(x => x.Action == "collect")) +
+            " / step " + N(gc.Events.Count(x => x.Action == "step")));
+        MetricCard(sb, "Explicit GC wall time", F(gc.TotalDurationMs, 3) + " ms",
+            "Nested inside CET callback measurements; never add twice");
+        MetricCard(sb, "Longest explicit call", F(gc.MaximumDurationMs, 3) + " ms",
+            "Exact native call duration");
+        MetricCard(sb, "Overlaps recorded spikes", N(gc.SpikeOverlapCount),
+            "Exact capture-time interval overlap");
+        sb.Append("</div><div class=\"note\">");
+        sb.Append("Measured events are explicit collectgarbage('collect'/'step') calls from CET sandboxed Lua mods. ");
+        sb.Append("CMB calls are included if invoked through CET's shared collectgarbage global. ");
+        sb.Append("Automatic LuaJIT allocator-driven GC is not independently timed. ");
+        sb.Append("A GC operation overlapping a slow callback does not prove it caused an external frametime hitch.");
+        sb.Append("</div><table><thead><tr><th>Capture time</th><th>Action</th><th>Duration</th><th>Caller</th><th>Callback spike</th></tr></thead><tbody>");
+        foreach (var e in gc.Events.OrderByDescending(x => x.DurationMs).Take(30))
+        {
+            sb.Append("<tr><td>").Append(F(e.StartMs / 1000, 3)).Append(" s</td><td>")
+                .Append(H(e.Action)).Append("</td><td>").Append(F(e.DurationMs, 3))
+                .Append(" ms</td><td>").Append(H(e.SourceFile))
+                .Append(":").Append(e.SourceLine)
+                .Append("</td><td>").Append(e.NearRecordedSpike ? "Yes" : "No")
+                .Append("</td></tr>");
+        }
+        sb.Append("</tbody></table></div>");
+    }
+
     private sealed record LuaHeapSample(
         double CaptureMs, double HeapMiB, bool IsDrop, double DropMiB,
         bool NearRecordedSpike);

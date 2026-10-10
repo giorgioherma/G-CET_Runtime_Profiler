@@ -41,6 +41,12 @@ $elapsedSeconds = $cursor / 1000.0
 ("2,OwnerB,event,onUpdate,init.lua,1,3,100,30,30,30,1,1,0.1,300,30,30,50,{0},native" -f $elapsedSeconds.ToString([Globalization.CultureInfo]::InvariantCulture))
 ) | Set-Content -LiteralPath (Join-Path $capture 'CET_Runtime_Profile_Detail.csv') -Encoding utf8
 
+@(
+'Sequence,Frame,CaptureStartMs,CaptureEndMs,DurationMs,Action,BeforeMiB,AfterMiB,ReleasedMiB,SourceFile,SourceLine,DroppedEventsAtDump,Interpretation',
+'1,60,1000.5,1005.0,4.5,collect,390,360,30,mods/choom_memory_booster/init.lua,713,0,exact-explicit-call-wall-time-nested-within-callback',
+'2,90,1500,1500.3,0.3,step,360,359,1,mods/other/init.lua,99,0,exact-explicit-call-wall-time-nested-within-callback'
+) | Set-Content -LiteralPath (Join-Path $capture 'CET_Runtime_Profile_GC_Explicit.csv') -Encoding utf8
+
 $starts = @($timeSeconds | ForEach-Object { $_ * 1000.0 })
 $spikeA = $starts[60] + 1.0
 $spikeB = $starts[150] + 1.0
@@ -95,6 +101,20 @@ if (!$result.ok) { throw 'Profiler report generation failed.' }
 
 $summary = Get-Content -LiteralPath (Join-Path $capture 'CET_Summary.json') -Raw | ConvertFrom-Json
 $hp = $summary.frameTime.hitchPressure
+$explicit=$summary.explicitGc
+if($null -eq $explicit -or
+   $explicit.measurement -ne 'EXACT_EXPLICIT_COLLECTGARBAGE_CALLS_ONLY' -or
+   [int]$explicit.count -ne 2 -or [int]$explicit.fullCollections -ne 1 -or
+   [int]$explicit.steps -ne 1 -or
+   [math]::Abs([double]$explicit.totalDurationMs - 4.8) -gt 0.01 -or
+   [int]$explicit.callbacksNearRecordedSpikes -ne 1 -or
+   $explicit.automaticLuaJitGcTimingAvailable) {
+ throw 'Explicit GC duration / callback-spike correlation test failed.'
+}
+if((Get-Content -LiteralPath (Join-Path $capture 'CET_Report.html') -Raw) -notmatch
+   'Explicit Lua garbage collection timing') {
+ throw 'Explicit GC not included in human report.'
+}
 $heap=$summary.luaHeap
 if($null -eq $heap -or $heap.mode -ne 'PASSIVE_HEAP_COUNT_NO_COLLECTION_CONTROL') {
     throw 'Passive Lua heap summary missing from report.'

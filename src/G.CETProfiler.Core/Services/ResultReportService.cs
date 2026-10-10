@@ -51,6 +51,7 @@ public static partial class ResultReportService
         "CET_Runtime_Profile_Timeline.csv",
         "CET_Runtime_Profile_FrameMultiplicity.csv",
         "CET_Runtime_Profile_Markers.csv",
+        "CET_Runtime_Profile_GC_Explicit.csv",
         "CET_Runtime_Profile_Deep_Registrations.csv",
         "CET_Runtime_Profile_Deep_Functions.csv",
         "CET_Runtime_Profile_Deep_Edges.csv",
@@ -120,6 +121,25 @@ public static partial class ResultReportService
                 measuredSharePct = Round(EffectiveShare(x, a.TotalMsPerSecond), 3),
                 maxExclusiveMs = Round(x.MaxExclusiveMs, 6)
             }),
+            explicitGc = a.ExplicitGc is null ? null : new
+            {
+                measurement = "EXACT_EXPLICIT_COLLECTGARBAGE_CALLS_ONLY",
+                automaticLuaJitGcTimingAvailable = false,
+                count = a.ExplicitGc.Events.Count,
+                totalDurationMs = Round(a.ExplicitGc.TotalDurationMs, 3),
+                maximumDurationMs = Round(a.ExplicitGc.MaximumDurationMs, 3),
+                callbacksNearRecordedSpikes = a.ExplicitGc.SpikeOverlapCount,
+                fullCollections = a.ExplicitGc.Events.Count(x => x.Action == "collect"),
+                steps = a.ExplicitGc.Events.Count(x => x.Action == "step"),
+                slowest = a.ExplicitGc.Events
+                    .OrderByDescending(x => x.DurationMs).Take(30)
+                    .Select(x => new {
+                        captureStartMs = Round(x.StartMs, 3),
+                        durationMs = Round(x.DurationMs, 3),
+                        x.Action, x.SourceFile, x.SourceLine,
+                        x.NearRecordedSpike
+                    })
+            },
             luaHeap = a.LuaHeap is null ? null : new
             {
                 mode = "PASSIVE_HEAP_COUNT_NO_COLLECTION_CONTROL",
