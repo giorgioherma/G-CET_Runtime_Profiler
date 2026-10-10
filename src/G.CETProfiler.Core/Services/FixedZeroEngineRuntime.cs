@@ -348,8 +348,12 @@ internal static class FixedZeroEngineRuntime
                 throw new InvalidOperationException(
                     "Bundled 0-Engine workload module missing: " + relative);
             var data = File.ReadAllBytes(path);
+            var moduleText = Encoding.UTF8.GetString(data);
+            var requiredFactory = relative.EndsWith("GCETWorkloadProbe.lua", StringComparison.Ordinal)
+                ? "function M.Begin("
+                : "function M.New(";
             if (data.Length < 100 ||
-                !Encoding.UTF8.GetString(data).Contains("function M.New(", StringComparison.Ordinal))
+                !moduleText.Contains(requiredFactory, StringComparison.Ordinal))
                 throw new InvalidOperationException(
                     "Invalid bundled workload module: " + relative);
             EnsureHostModuleCollisionSafe(liveRoot, relative, data);
