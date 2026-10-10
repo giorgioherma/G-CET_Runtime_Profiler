@@ -9,6 +9,7 @@ function M.New(engine)
     local invoking, generation = false, 0
     local completed, cancelled, errors, deferred = 0, 0, 0, 0
     local ensurePulse, stopPulse
+    local pulseStopQueued = false
 
     local function alive(job)
         return not job.cancelled and job.active
@@ -35,9 +36,14 @@ function M.New(engine)
     end
 
     stopPulse = function()
-        if pulse then
-            pulse.unsubscribe()
-            pulse = nil
+        if not pulse or pulseStopQueued then return end
+        -- Never unsubscribe from stock EventEmitter during dispatch.
+        if engine.Schedule and type(engine.Schedule.NextTick) == "function" then
+            pulseStopQueued = true
+            engine.Schedule.NextTick({ pause = "never", id = "gcet_work_detach" }, function()
+                pulseStopQueued = false
+                if not anyRunnable() and pulse then pulse.unsubscribe(); pulse = nil end
+            end)
         end
     end
 

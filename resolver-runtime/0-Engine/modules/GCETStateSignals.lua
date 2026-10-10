@@ -89,12 +89,9 @@ function M.New(engine)
             if not item.active and item.cancelled then return end
             item.active, item.cancelled = false, true
             removeListener(bucket, item)
-            if #bucket.listeners == 0 then
-                for _, h in ipairs(bucket.sources) do
-                    if h and h.unsubscribe then h.unsubscribe() end
-                end
-                keys[key] = nil
-            end
+            -- Retain the one event-driven observer and cache. Removing it
+            -- from inside EventEmitter:trigger would mutate the active array.
+            -- This does not add any per-frame work.
         end
         handle.unsubscribe = handle.Cancel
         return handle
@@ -109,7 +106,7 @@ function M.New(engine)
     function api.GetInfo()
         local active, watcherCount = 0, 0
         for _, bucket in pairs(keys) do
-            active = active + 1
+            if #bucket.listeners > 0 then active = active + 1 end
             watcherCount = watcherCount + #bucket.listeners
         end
         return { keys = active, watchers = watcherCount, generation = epoch }

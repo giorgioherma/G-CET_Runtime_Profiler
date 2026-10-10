@@ -66,15 +66,15 @@ function M.New(engine)
                 enabled = false
                 activeCount = math.max(0, activeCount - 1)
                 pausedCount = pausedCount + 1
-                if inside then deferDetach()
-                else detach() end
+                deferDetach()
             end
             function handle.Resume()
                 if cancelled or enabled then return end
                 enabled = true
                 pausedCount = math.max(0, pausedCount - 1)
                 if deferred and deferred.Cancel then deferred.Cancel(); deferred = nil end
-                ensureAttached()
+                if subscription then activeCount = activeCount + 1
+                else ensureAttached() end
             end
             function handle.SetActive(value)
                 if value then handle.Resume() else handle.Pause() end
@@ -85,8 +85,7 @@ function M.New(engine)
                 if enabled then activeCount = math.max(0, activeCount - 1)
                 else pausedCount = math.max(0, pausedCount - 1) end
                 cancelled, enabled = true, false
-                if inside then deferDetach()
-                else detach() end
+                deferDetach()
             end
             handle.unsubscribe = handle.Cancel
             return handle

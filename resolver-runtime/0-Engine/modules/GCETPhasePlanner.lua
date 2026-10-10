@@ -4,6 +4,8 @@ local M = { version = "1.0.0" }
 
 function M.New(engine)
     local api, waiting, wake = {}, {}, nil
+    local tracked = {}
+    local wakeStopQueued = false
     local budgetMs, generation, usedMs, lastFrame = 1.50, 0, 0, -1
     local completed, postponed, coalesced, failures = 0, 0, 0, 0
     local serial = 0
@@ -63,7 +65,14 @@ function M.New(engine)
             end
         end
         compact()
-        if #waiting == 0 and wake then wake.unsubscribe(); wake = nil end
+        if #waiting == 0 and wake and not wakeStopQueued and
+            engine.Schedule and type(engine.Schedule.NextTick) == "function" then
+            wakeStopQueued = true
+            engine.Schedule.NextTick({ pause = "never", id = "gcet_phase_detach" }, function()
+                wakeStopQueued = false
+                if #waiting == 0 and wake then wake.unsubscribe(); wake = nil end
+            end)
+        end
     end
     ensureWake = function()
         if wake then return end
@@ -125,8 +134,21 @@ function M.New(engine)
             ensureWake()
         end
         local handle = engine.Schedule.Every(seconds, stockOptions, onDue)
+        task.stock = handle
+        tracked[#tracked + 1] = task
+        if #tracked >= 128 then
+            local n = 0
+            for i = 1, #tracked do
+                if not tracked[i].cancelled then
+                    n = n + 1
+                    tracked[n] = tracked[i]
+                end
+            end
+            for i = n + 1, #tracked do tracked[i] = nil end
+        end
         local out = {}
         function out.Cancel()
+            if task.cancelled then return end
             task.cancelled, task.pending = true, false
             if handle and handle.Cancel then handle.Cancel() end
         end
@@ -150,12 +172,22 @@ function M.New(engine)
     end
     function api.InvalidateGeneration()
         generation = generation + 1
-        for i = 1, #waiting do
-            local task = waiting[i]
-            if task.generationScoped then task.pending = false end
+        for i = 1, #tracked do
+            local task = tracked[i]
+            if task.generationScoped and not task.cancelled then
+                task.pending, task.cancelled = false, true
+                if task.stock and task.stock.Cancel then task.stock.Cancel() end
+            end
         end
         compact()
-        if #waiting == 0 and wake then wake.unsubscribe(); wake = nil end
+        if #waiting == 0 and wake and not wakeStopQueued and
+            engine.Schedule and type(engine.Schedule.NextTick) == "function" then
+            wakeStopQueued = true
+            engine.Schedule.NextTick({ pause = "never", id = "gcet_phase_detach" }, function()
+                wakeStopQueued = false
+                if #waiting == 0 and wake then wake.unsubscribe(); wake = nil end
+            end)
+        end
     end
     function api.GetInfo()
         return { pending = #waiting, completed = completed, postponed = postponed,

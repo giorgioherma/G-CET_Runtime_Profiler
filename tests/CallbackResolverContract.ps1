@@ -1922,6 +1922,11 @@ try {
         throw "Unexpected fixed 0-Engine version: $($manifest.fixedRuntime.FixedVersion)"
     }
 
+    foreach ($service in @('GCETWorkQueue','GCETPhasePlanner','GCETFrameListeners','GCETStateSignals')) {
+        if ($null -eq $zip.GetEntry('bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/modules/' + $service + '.lua')) {
+            throw "Fixed runtime pass missing service: $service"
+        }
+    }
     $zeroText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/init.lua'
     foreach ($requiredRuntimeSymbol in @(
         'function Engine.MakeEventRegistrar',
@@ -2014,8 +2019,8 @@ if ([string]$foreignManifest.fixedRuntime.FixedVersion -ne 'HOST-COMPAT-v1') {
 if ([string]$foreignManifest.fixedRuntime.mode -ne 'HOST_PRESERVING_ADAPTER' -or !$foreignManifest.fixedRuntime.hostPreserving) {
     throw 'Foreign 0-Engine manifest did not report host-preserving adapter mode.'
 }
-if ([int]$foreignManifest.summary.fixedRuntimeFiles -ne 2) {
-    throw "Foreign 0-Engine compatibility should ship exactly init.lua + private ActionRouter, got $($foreignManifest.summary.fixedRuntimeFiles)."
+if ([int]$foreignManifest.summary.fixedRuntimeFiles -ne 6) {
+    throw "Foreign 0-Engine compatibility should ship init, private ActionRouter and 4 additive services, got $($foreignManifest.summary.fixedRuntimeFiles)."
 }
 
 $foreignZip = [System.IO.Compression.ZipFile]::OpenRead([string]$foreignResolved.pass.ZipPath)
@@ -2045,13 +2050,23 @@ try {
         'local __gcetHostSubscribeAction = __gcetHost.SubscribeAction',
         'pcall(__gcetHostMakeEventRegistrar, modName, fallbackRegister)',
         'pcall(__gcetHostSubscribeAction, config, fn, source)',
-        'modules/G-CET/ActionRouter'
+        'modules/G-CET/ActionRouter',
+        '-- G-CET additive 0-Engine workload services v1',
+        'modules/GCETWorkQueue',
+        'modules/GCETPhasePlanner',
+        'modules/GCETFrameListeners',
+        'modules/GCETStateSignals'
     )) {
         if ($foreignZeroText -notmatch [regex]::Escape($required)) {
             throw "Host-preserving 0-Engine adapter lost required source/API: $required"
         }
     }
 
+    foreach ($service in @('GCETWorkQueue','GCETPhasePlanner','GCETFrameListeners','GCETStateSignals')) {
+        if ($null -eq $foreignZip.GetEntry($base + '0-Engine/modules/' + $service + '.lua')) {
+            throw "Host-preserving pass missing new service module: $service"
+        }
+    }
     if ($null -eq $foreignZip.GetEntry($base + '0-Engine/modules/G-CET/ActionRouter.lua')) {
         throw 'Host-preserving 0-Engine adapter did not ship its private ActionRouter.'
     }
