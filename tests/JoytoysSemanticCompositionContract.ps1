@@ -121,16 +121,82 @@ if($null -eq $hit -or $hit.semantic.RuleId -ne 'joytoys-of-night-city-bridge-act
  throw 'Joytoys semantic rule was not source-proven/generation-ready.'
 }
 
+$manifest=Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
+$transform=@($manifest.transforms | Where-Object {
+ $_.type -eq 'SEMANTIC_RULE' -and $_.RuleId -eq 'joytoys-of-night-city-bridge-active-split'
+}) | Select-Object -First 1
+if($null -eq $transform){throw 'Joytoys semantic transform missing from manifest.'}
+$files=@($transform.files)
+if($files.Count -ne 2){throw "Joytoys semantic must change exactly 2 files; got $($files.Count): $($files -join ', ')"}
+$initRel=@($files | Where-Object { $_ -match '(?i)(^|/)init\.lua $required=@(
+  'G-CET semantic:joytoys-of-night-city-bridge-active-split',
+  '_bridgePollTimer = 0.10',
+  '_offerPollTimer = 0.50',
+  'if Joytoys._bridgePollTimer >= 0.10 then',
+  'processLocationRequest(quests)',
+  'processJobRequests(quests)',
+  'updateImmersiveProof(dt)',
+  'if Joytoys.NPCScenes then Joytoys.NPCScenes.update(dt) end',
+  'if Joytoys.SceneDirector then Joytoys.SceneDirector.update(dt) end',
+  'Joytoys._sceneFactTimer >= 0.5',
+  'Joytoys._nifIdleTimer >= 2.0',
+  'if Joytoys._offerPollTimer >= 0.50 then'
+ )
+ foreach($token in $required){if(-not $init.Contains($token)){throw "Joytoys init missing: $token"}}
+ if(-not $scenes.Contains('if not controller.activeRequest then return end')){
+  throw 'Joytoys NPCScenes inactive-request dormancy missing.'
+ }
+ $bridge=$init.IndexOf('if Joytoys._bridgePollTimer >= 0.10 then')
+ $immersive=$init.IndexOf('updateImmersiveProof(dt)')
+ if($bridge -lt 0 -or $immersive -lt 0 -or $immersive -lt $bridge){throw 'Joytoys active runtime ordering changed unexpectedly.'}
+}
+finally{$zip.Dispose()}
+
+Write-Host 'Joytoys bridge sentinel + active-scene split contract passed.'
+ }) | Select-Object -First 1
+$scenesRel=@($files | Where-Object { $_ -match '(?i)(^|/)npc_scenes\.lua $required=@(
+  'G-CET semantic:joytoys-of-night-city-bridge-active-split',
+  '_bridgePollTimer = 0.10',
+  '_offerPollTimer = 0.50',
+  'if Joytoys._bridgePollTimer >= 0.10 then',
+  'processLocationRequest(quests)',
+  'processJobRequests(quests)',
+  'updateImmersiveProof(dt)',
+  'if Joytoys.NPCScenes then Joytoys.NPCScenes.update(dt) end',
+  'if Joytoys.SceneDirector then Joytoys.SceneDirector.update(dt) end',
+  'Joytoys._sceneFactTimer >= 0.5',
+  'Joytoys._nifIdleTimer >= 2.0',
+  'if Joytoys._offerPollTimer >= 0.50 then'
+ )
+ foreach($token in $required){if(-not $init.Contains($token)){throw "Joytoys init missing: $token"}}
+ if(-not $scenes.Contains('if not controller.activeRequest then return end')){
+  throw 'Joytoys NPCScenes inactive-request dormancy missing.'
+ }
+ $bridge=$init.IndexOf('if Joytoys._bridgePollTimer >= 0.10 then')
+ $immersive=$init.IndexOf('updateImmersiveProof(dt)')
+ if($bridge -lt 0 -or $immersive -lt 0 -or $immersive -lt $bridge){throw 'Joytoys active runtime ordering changed unexpectedly.'}
+}
+finally{$zip.Dispose()}
+
+Write-Host 'Joytoys bridge sentinel + active-scene split contract passed.'
+ }) | Select-Object -First 1
+if(!$initRel -or !$scenesRel){throw "Joytoys manifest does not identify init.lua + npc_scenes.lua: $($files -join ', ')"}
+
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip=[System.IO.Compression.ZipFile]::OpenRead([string]$resolved.pass.ZipPath)
 try{
  function Read-Zip([string]$name){
-  $e=$zip.GetEntry($name);if($null -eq $e){throw "Missing ZIP entry: $name"}
+  $normalized=$name.Replace('\\','/')
+  $e=$zip.GetEntry($normalized)
+  if($null -eq $e){
+   $e=@($zip.Entries | Where-Object { $_.FullName.Replace('\\','/').EndsWith($normalized,[StringComparison]::OrdinalIgnoreCase) }) | Select-Object -First 1
+  }
+  if($null -eq $e){throw "Missing ZIP entry ending with: $normalized"}
   $r=[IO.StreamReader]::new($e.Open());try{return $r.ReadToEnd()}finally{$r.Dispose()}
  }
- $base='bin/x64/plugins/cyber_engine_tweaks/mods/JoytoysOfNightCity/'
- $init=Read-Zip ($base+'init.lua')
- $scenes=Read-Zip ($base+'npc_scenes.lua')
+ $base='bin/x64/plugins/cyber_engine_tweaks/mods/'
+ $init=Read-Zip ($base+$initRel)
+ $scenes=Read-Zip ($base+$scenesRel)
  $required=@(
   'G-CET semantic:joytoys-of-night-city-bridge-active-split',
   '_bridgePollTimer = 0.10',
