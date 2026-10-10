@@ -284,10 +284,21 @@ try {
  }
 }finally{$upgradeZip.Dispose()}
 $repeat=(& $resolverExe --capture $capture --mods $mods --generate-pass --json | ConvertFrom-Json)
-if(!$repeat.ok -or !$repeat.pass){throw 'Joytoys v2 idempotence run failed.'}
-$repeatManifest=Get-Content -LiteralPath $repeat.pass.ManifestPath -Raw | ConvertFrom-Json
-if(@($repeatManifest.transforms | Where-Object { $_.RuleId -eq 'joytoys-of-night-city-bridge-active-split-idle-facts-v2' }).Count -gt 0) {
- throw 'Joytoys fully-upgraded v2 was applied twice.'
+$repeatReport=Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
+$repeatMatches=@($repeatReport.callbackFamilies | ForEach-Object {$_.topConsumers} |
+ Where-Object {$_.owner -eq 'JoytoysOfNightCity' -and
+               $_.semantic.RuleId -eq 'joytoys-of-night-city-bridge-active-split-idle-facts-v2'})
+if($repeatMatches.Count -lt 1 -or
+   @($repeatMatches | Where-Object {$_.semantic.AlreadySatisfied}).Count -lt 1) {
+ throw 'Joytoys v2 does not report already-satisfied source on repeat.'
+}
+if($repeat.ok -and $repeat.pass) {
+ $repeatManifest=Get-Content -LiteralPath $repeat.pass.ManifestPath -Raw | ConvertFrom-Json
+ if(@($repeatManifest.transforms | Where-Object { $_.RuleId -eq 'joytoys-of-night-city-bridge-active-split-idle-facts-v2' }).Count -gt 0) {
+  throw 'Joytoys fully-upgraded v2 was applied twice.'
+ }
+} elseif(-not ([string]$repeat.error -match 'no applicable generic or source-proven semantic transforms')) {
+ throw "Joytoys repeat failed unexpectedly: $($repeat.error)"
 }
 
 Write-Host 'Joytoys v2: original, v1 upgrade, idempotence contracts passed.'
