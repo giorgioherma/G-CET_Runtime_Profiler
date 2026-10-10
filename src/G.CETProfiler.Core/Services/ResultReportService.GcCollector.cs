@@ -10,9 +10,20 @@ public static partial class ResultReportService
         double IncrementalMs, double FullMs, double TotalMs,
         bool CallbackSpikeOverlap);
 
+    // Bucket boundaries are precise, but a bucket does not locate individual
+    // collector steps within the frame. Coincidence never supplies a GC-free
+    // callback duration, a causal owner, or permission for a rewrite.
+    private sealed record GcSpikeCoincidence(
+        long RegistrationId, string Owner, string Kind, string Target,
+        double CaptureStartMs, double CaptureEndMs, double ExclusiveMs,
+        int OverlappingFrameBuckets, double LargestOverlappingBucketMs,
+        bool PotentiallyConfounded);
+
     private sealed class GcCollectorTelemetry
     {
         public List<GcCollectorFrame> Frames { get; init; } = [];
+        public List<GcSpikeCoincidence> SpikeCoincidences { get; init; } = [];
+        public int PotentiallyConfoundedSpikes => SpikeCoincidences.Count(x => x.PotentiallyConfounded);
         public double TotalMs => Frames.Sum(x => x.TotalMs);
         public double StepMs => Frames.Sum(x => x.IncrementalMs);
         public double FullMs => Frames.Sum(x => x.FullMs);
@@ -58,6 +69,44 @@ public static partial class ResultReportService
                 L(r, "CompletedCycles"), fullCount,
                 stepMs, fullMs, stepMs + fullMs, overlap));
         }
+        // Use binary search over sorted frame buckets rather than a quadratic
+        // spike x frame scan (large CET captures can contain both in volume).
+        frames.Sort((a, b) => a.StartMs.CompareTo(b.StartMs));
+        var coincidences = new List<GcSpikeCoincidence>();
+        foreach (var spike in spikes)
+        {
+            var start = D(spike, "CaptureStartMs");
+            var end = D(spike, "CaptureEndMs");
+            var exclusive = D(spike, "ExclusiveMs", "DurationMs");
+            if (!double.IsFinite(start) || !double.IsFinite(end) ||
+                !double.IsFinite(exclusive) || start < 0 || end < start || exclusive <= 0)
+                continue;
+            var lo = 0;
+            var hi = frames.Count;
+            while (lo < hi)
+            {
+                var mid = lo + (hi - lo) / 2;
+                if (frames[mid].EndMs < start) lo = mid + 1;
+                else hi = mid;
+            }
+            var overlaps = 0;
+            var largestBucket = 0.0;
+            for (var i = lo; i < frames.Count && frames[i].StartMs <= end; i++)
+            {
+                if (frames[i].EndMs < start) continue;
+                overlaps++;
+                largestBucket = Math.Max(largestBucket, frames[i].TotalMs);
+            }
+            if (overlaps == 0) continue;
+            // This is explicitly a review flag, NOT inferred ownership.
+            // We cannot subtract frame-bucket GC time from an individual spike.
+            var review = exclusive >= 20.0 &&
+                largestBucket >= Math.Max(15.0, exclusive * 0.70);
+            coincidences.Add(new GcSpikeCoincidence(
+                L(spike, "RegistrationId"), S(spike, "Mod", "Owner"),
+                S(spike, "Kind"), S(spike, "Target"), start, end, exclusive,
+                overlaps, largestBucket, review));
+        }
         int? hitchOverlap = null;
         if (frameTime?.Correlated == true && frameTime.HitchPressure is not null)
         {
@@ -66,6 +115,7 @@ public static partial class ResultReportService
         }
         return new GcCollectorTelemetry {
             Frames = frames,
+            SpikeCoincidences = coincidences,
             MaxStepToDateMs = rows.Count > 0 ? rows.Max(r => D(r, "MaxStepToDateMs")) : 0,
             MaxFullToDateMs = rows.Count > 0 ? rows.Max(r => D(r, "MaxFullToDateMs")) : 0,
             DroppedFramesAtDump = rows.Count > 0 ? rows.Max(r => L(r, "DroppedFramesAtDump")) : 0,
@@ -86,6 +136,8 @@ public static partial class ResultReportService
             "GC work occurring between two native frame boundaries");
         MetricCard(sb, "Overlaps callback spike intervals", N(gc.SpikeOverlapFrames),
             "Frame-level temporal overlap, not GC blame");
+        MetricCard(sb, "Spikes requiring GC review", N(gc.PotentiallyConfoundedSpikes),
+            "Conservative bucket-coincidence review flags; not confirmed GC attribution");
         if (gc.AlignedHitchEpisodeOverlap is int count)
             MetricCard(sb, "Overlaps aligned hitch episodes", N(count),
                 "Temporal coincidence, not proof of causation");
@@ -108,6 +160,29 @@ public static partial class ResultReportService
                 .Append("</td><td>").Append(f.CallbackSpikeOverlap ? "Yes" : "No")
                 .Append("</td></tr>");
         }
-        sb.Append("</tbody></table></div>");
+        sb.Append("</tbody></table>");
+        if (gc.SpikeCoincidences.Count > 0)
+        {
+            sb.Append("<h3>Callback spikes near collector-heavy frame buckets</h3>");
+            sb.Append("<div class=\\"note\\">These are time coincidences, not per-callback GC durations. ");
+            sb.Append("A large collector bucket may overlap only a small portion of the callback. ");
+            sb.Append("No GC-free cost can be obtained by subtracting the bucket from the callback.</div>");
+            sb.Append("<table><thead><tr><th>Capture</th><th>Callback</th><th>Spike ms</th>");
+            sb.Append("<th>Largest GC bucket ms</th><th>Review?</th></tr></thead><tbody>");
+            foreach (var x in gc.SpikeCoincidences
+                .OrderByDescending(x => x.PotentiallyConfounded)
+                .ThenByDescending(x => x.ExclusiveMs).Take(30))
+            {
+                sb.Append("<tr><td>").Append(F(x.CaptureStartMs / 1000, 3))
+                    .Append(" s</td><td>").Append(H(x.Owner)).Append(" · ")
+                    .Append(H(x.Kind)).Append(" ").Append(H(x.Target))
+                    .Append("</td><td>").Append(F(x.ExclusiveMs, 3))
+                    .Append("</td><td>").Append(F(x.LargestOverlappingBucketMs, 3))
+                    .Append("</td><td>").Append(x.PotentiallyConfounded ? "Review" : "Overlap only")
+                    .Append("</td></tr>");
+            }
+            sb.Append("</tbody></table>");
+        }
+        sb.Append("</div>");
     }
 }

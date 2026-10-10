@@ -156,6 +156,21 @@ public static partial class ResultReportService
                 maxFullCollectionMs = Round(a.CollectorGc.MaxFullToDateMs, 3),
                 maximumFrameBucketMs = Round(a.CollectorGc.MaxObservedFrameMs, 3),
                 callbackSpikeOverlapFrames = a.CollectorGc.SpikeOverlapFrames,
+                spikeCoincidencePolicy = "FRAME_BUCKET_COINCIDENCE_NOT_CALLER_ATTRIBUTION",
+                potentiallyConfoundedSpikeCount = a.CollectorGc.PotentiallyConfoundedSpikes,
+                spikeCoincidences = a.CollectorGc.SpikeCoincidences
+                    .OrderByDescending(x => x.PotentiallyConfounded)
+                    .ThenByDescending(x => x.ExclusiveMs).Take(100)
+                    .Select(x => new {
+                        registrationId = x.RegistrationId,
+                        owner = x.Owner, kind = x.Kind, target = x.Target,
+                        captureStartMs = Round(x.CaptureStartMs, 3),
+                        captureEndMs = Round(x.CaptureEndMs, 3),
+                        callbackExclusiveMs = Round(x.ExclusiveMs, 3),
+                        x.OverlappingFrameBuckets,
+                        largestGcFrameBucketMs = Round(x.LargestOverlappingBucketMs, 3),
+                        x.PotentiallyConfounded
+                    }),
                 alignedHitchEpisodeOverlapFrames = a.CollectorGc.AlignedHitchEpisodeOverlap,
                 droppedFrameBuckets = a.CollectorGc.DroppedFramesAtDump,
                 slowestFrameBuckets = a.CollectorGc.Frames

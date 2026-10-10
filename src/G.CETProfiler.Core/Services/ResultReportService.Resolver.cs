@@ -381,6 +381,20 @@ public static partial class ResultReportService
             garbageCollection = a.ExplicitGc is null && a.CollectorGc is null ? null : new
             {
                 attributionPolicy = "MEASUREMENT_ONLY_NO_AUTOMATIC_OPTIMIZATION",
+                collectorSpikeCoincidencePolicy = "REVIEW_ONLY_NO_GC_SUBTRACTION_NO_AUTOMATIC_REWRITE",
+                potentiallyConfoundedSpikeCount = a.CollectorGc?.PotentiallyConfoundedSpikes ?? 0,
+                spikeCoincidences = a.CollectorGc?.SpikeCoincidences
+                    .OrderByDescending(x => x.PotentiallyConfounded)
+                    .ThenByDescending(x => x.ExclusiveMs).Take(100)
+                    .Select(x => new {
+                        registrationId = x.RegistrationId,
+                        owner = x.Owner, kind = x.Kind, target = x.Target,
+                        captureStartMs = Round(x.CaptureStartMs, 3),
+                        captureEndMs = Round(x.CaptureEndMs, 3),
+                        callbackExclusiveMs = Round(x.ExclusiveMs, 3),
+                        largestGcFrameBucketMs = Round(x.LargestOverlappingBucketMs, 3),
+                        x.OverlappingFrameBuckets, x.PotentiallyConfounded
+                    }),
                 exactExplicitTiming = a.ExplicitGc is not null,
                 automaticLuaJitTiming = a.CollectorGc is not null,
                 internalCollectorTotalMs = a.CollectorGc is null ? (double?)null

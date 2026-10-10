@@ -92,3 +92,27 @@ instantaneous peak or permission to rewrite mod code.
 
 The LuaJIT collector instrument and workload telemetry remain completely
 independent from Choom Memory Booster.
+
+## GC-confounded callbacks and candidate selection
+
+Real-game validation after CI #908 showed large collector buckets near multiple
+slow CET callbacks. The collector is measured exactly *per native frame bucket*;
+individual collector step timestamps/owners are **not** captured. A callback
+which temporally overlaps a 100 ms GC frame does not automatically own that
+100 ms. The report and resolver handoff therefore provide bounded
+`spikeCoincidences` and conservative `potentiallyConfounded` review flags.
+They are not GC-free callback durations, subtraction budgets, or authorization
+to modify the offending callback.
+
+The cooperative WorkQueue cannot preempt any single Lua call or native collector
+step. It only helps when an author-proven independent operation can safely be
+split into repeatable steps *without* changing deadlines, quest ordering,
+synchronous UI updates or gameplay state transitions. The PhasePlanner similarly
+requires explicitly delay-tolerant maintenance. Until an actual mod opts in,
+zero instrumented queue activity is **expected** rather than a failed install.
+
+When selecting new queue clients, require: (1) exact deployed source and a
+separable unit-of-work boundary, (2) no observable intermediate-state hazard,
+(3) stable cancellation/session semantics, and (4) before/after gameplay and
+frame-time confirmation. The resolver's existing pass-only packaging remains
+unchanged; no standalone framework updater is introduced.

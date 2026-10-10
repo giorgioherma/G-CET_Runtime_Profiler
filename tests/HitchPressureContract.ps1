@@ -131,7 +131,10 @@ if ($null -eq $collector -or
     [int]$collector.completedCycles -ne 1 -or
     [math]::Abs([double]$collector.totalMeasuredMs - 4.8) -gt 0.01 -or
     [math]::Abs([double]$collector.maximumFrameBucketMs - 3.5) -gt 0.01 -or
-    [int]$collector.callbackSpikeOverlapFrames -ne 1) {
+    [int]$collector.callbackSpikeOverlapFrames -ne 1 -or
+    [int]$collector.potentiallyConfoundedSpikeCount -ne 0 -or
+    @($collector.spikeCoincidences).Count -ne 1 -or
+    [math]::Abs([double]$collector.spikeCoincidences[0].largestGcFrameBucketMs - 3.5) -gt 0.01) {
     throw 'LuaJIT collector instrumentation or correlation contract failed.'
 }
 $hp = $summary.frameTime.hitchPressure
@@ -144,6 +147,10 @@ if (-not $resolverInput.garbageCollection.automaticLuaJitTiming -or
     $resolverInput.garbageCollection.automaticVsExplicitOriginSeparated -or
     [math]::Abs([double]$resolverInput.garbageCollection.internalCollectorTotalMs - 4.8) -gt 0.01) {
     throw 'Resolver handoff failed collector cost evidence or origin classification.'
+}
+if($resolverInput.garbageCollection.collectorSpikeCoincidencePolicy -ne 'REVIEW_ONLY_NO_GC_SUBTRACTION_NO_AUTOMATIC_REWRITE' -or
+   @($resolverInput.garbageCollection.spikeCoincidences).Count -ne 1) {
+ throw 'Resolver handoff lost collector/callback coincidence review flags.'
 }
 if($resolverInput.garbageCollection.attributionPolicy -ne 'MEASUREMENT_ONLY_NO_AUTOMATIC_OPTIMIZATION' -or
    [math]::Abs([double]$resolverInput.garbageCollection.totalExplicitMs-4.8) -gt 0.01 -or
