@@ -47,6 +47,7 @@ public static partial class ResultReportService
         public double NormalCetWindowSlowRatePct { get; init; }
         public double PearsonWindowCorrelation { get; init; }
         public double SpearmanWindowCorrelation { get; init; }
+        public HitchPressureAnalysis? HitchPressure { get; init; }
         public List<FrameTimeBucketMetric> Timeline { get; init; } = [];
         public List<FrameStallMetric> WorstFrames { get; init; } = [];
         public List<CapFrameMetric> Frames { get; init; } = [];
@@ -229,6 +230,11 @@ public static partial class ResultReportService
             ? Spearman(paired.Select(x => x.CetMs).ToArray(), paired.Select(x => x.FrameMaxMs).ToArray())
             : 0;
 
+        var hitchPressure = BuildHitchPressure(
+            alignedFrames,
+            allSpikes,
+            exactAlignment);
+
         return new FrameTimeAnalysis
         {
             SourceFile = parsed.SourceFile,
@@ -271,6 +277,7 @@ public static partial class ResultReportService
             NormalCetWindowSlowRatePct = normalSlowRate,
             PearsonWindowCorrelation = pearson,
             SpearmanWindowCorrelation = spearman,
+            HitchPressure = hitchPressure,
             Timeline = timeline,
             WorstFrames = worstFrames,
             Frames = alignedFrames.ToList()
@@ -731,6 +738,16 @@ public static partial class ResultReportService
                 "Worst frametime event",
                 $"{F(worst.FrameMs)} ms frame at {F(worst.StartMs / 1000.0, 3)} s; {cet}.{owner}",
                 worst.Evidence));
+        }
+
+        if (frameTime.HitchPressure is not null &&
+            frameTime.HitchPressure.EpisodeCount > 0)
+        {
+            var hp = frameTime.HitchPressure;
+            findings.Insert(Math.Min(1, findings.Count), new Finding(
+                "Hitch pressure",
+                $"{hp.EpisodeCount} adaptive-tolerance hitch episodes ({F(hp.EpisodesPerMinute, 1)}/min); median start spacing {F(hp.MedianEpisodeStartGapMs / 1000.0, 2)} s; longest quiet {F(hp.LongestQuietMs / 1000.0, 2)} s",
+                $"{F(hp.HitchTollMs)} ms of total frametime exceeded the {F(hp.ToleranceFrameMs)} ms adaptive tolerance. Runtime overlap is correlation evidence only."));
         }
 
         if (frameTime.FramesOver33Ms > 0)

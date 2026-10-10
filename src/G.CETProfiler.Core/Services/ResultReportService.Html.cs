@@ -150,6 +150,37 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
             return;
         }
 
+        if (ft.HitchPressure is not null)
+        {
+            var hp = ft.HitchPressure;
+            sb.Append("<h3>Hitch pressure</h3><div class=\"grid\">");
+            MetricCard(sb, "Adaptive tolerance", F(hp.ToleranceFrameMs) + " ms", "Baseline " + F(hp.BaselineFrameMs) + " ms · max(25 ms, 1.5× baseline)");
+            MetricCard(sb, "Hitch episodes", N(hp.EpisodeCount), F(hp.EpisodesPerMinute, 1) + " / minute · " + N(hp.SevereEpisodeCount) + " major+");
+            MetricCard(sb, "Median hitch spacing", hp.MedianEpisodeStartGapMs > 0 ? F(hp.MedianEpisodeStartGapMs / 1000.0, 2) + " s" : "—", "Longest quiet " + F(hp.LongestQuietMs / 1000.0, 2) + " s");
+            MetricCard(sb, "Hitch toll", F(hp.HitchTollMs) + " ms", "Total frametime above the adaptive tolerance");
+            sb.Append("</div>");
+
+            if (hp.Owners.Count > 0)
+            {
+                sb.Append("<h3>CET signals on hitch episodes</h3><table><thead><tr><th>Owner</th><th class=\"num\">Episodes</th><th class=\"num\">Sole signal</th><th class=\"num\">Episode share</th><th class=\"num\">Recorded exclusive</th><th class=\"num\">Max spike</th></tr></thead><tbody>");
+                foreach (var x in hp.Owners.Take(15))
+                {
+                    sb.Append("<tr><td><b>").Append(H(x.Owner)).Append("</b></td><td class=\"num\">")
+                        .Append(N(x.EpisodeCount)).Append("</td><td class=\"num\">").Append(N(x.SoleSignalEpisodes))
+                        .Append("</td><td class=\"num\">").Append(F(x.EpisodeSharePct, 1)).Append("%</td><td class=\"num\">")
+                        .Append(F(x.RecordedExclusiveMs)).Append(" ms</td><td class=\"num\">")
+                        .Append(F(x.MaxRecordedExclusiveMs)).Append(" ms</td></tr>");
+                }
+                sb.Append("</tbody></table>");
+            }
+
+            sb.Append("<div class=\"note\"><b>")
+                .Append(hp.RuntimeSignalEpisodes).Append(" of ").Append(hp.EpisodeCount)
+                .Append(" hitch episodes overlap a recorded CET callback spike; ")
+                .Append(hp.NoRecordedRuntimeSignalEpisodes)
+                .Append(" currently have no recorded CET spike signal.</b> This is a correlation map and prioritization layer. It does not authorize a resolver transform and owner rows are not additive causation budgets.</div>");
+        }
+
         sb.Append("<div class=\"grid\">");
         MetricCard(sb, "Slow frames in high CET", ft.SlowFramesHighCet + " / " + ft.FramesOver33Ms, "High CET = top 10% of 50 ms CET windows");
         MetricCard(sb, "Exact CET spike overlap", N(ft.SlowFramesExactCallback), ft.ExactAlignment ? "Frames ≥33.3 ms crossing a recorded CET callback spike" : "Exact overlap disabled at coarse sync");

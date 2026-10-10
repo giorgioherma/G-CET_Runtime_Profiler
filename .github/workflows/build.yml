@@ -835,6 +835,10 @@ jobs:
         shell: pwsh
         run: ./tests/BurstMaterialityContract.ps1 -PublishedRoot ./publish -ResolverRoot ./publish-resolver
 
+      - name: Hitch-pressure frametime contract
+        shell: pwsh
+        run: ./tests/HitchPressureContract.ps1 -PublishedRoot ./publish
+
       - name: Callback-first resolver contract
         shell: pwsh
         run: ./tests/CallbackResolverContract.ps1 -ResolverRoot ./publish-resolver

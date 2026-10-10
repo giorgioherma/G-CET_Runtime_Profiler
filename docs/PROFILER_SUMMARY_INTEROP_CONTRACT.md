@@ -117,3 +117,17 @@ The cadence calculation is based only on events present in the profiler's spike 
 Standalone profilers should expose, when available, the common fields `primaryClass`, `classes`, `spikeCount`, `medianExclusiveMs`, `p95ExclusiveMs`, `maxExclusiveMs`, `medianIntervalMs`, `intervalMadMs`, `intervalJitterPct`, and `stutterMaterial`.
 
 Combined tooling may add cross-runtime or transition-cluster labels later, but standalone CET/RED profiling must not infer a world-transition cause from timing alone.
+
+
+## Hitch-pressure vocabulary 1.0
+
+When an aligned CapFrameX capture is available, CET now emits an optional `hitchPressure` block that is deliberately domain-neutral so REDscript can emit the same shape later.
+
+- Baseline frametime is the capture median.
+- Adaptive hitch tolerance is `max(25 ms, baseline × 1.5)`.
+- Consecutive/nearby over-tolerance frames whose episode gap is at most 250 ms are grouped into one perceptual hitch episode.
+- `hitchTollMs` is actual rendered frametime above the adaptive tolerance: the sum of `max(0, frameMs - toleranceMs)`. It is a frame-layer metric and must never be built by adding CET and RED runtime milliseconds.
+- Frequency fields expose episode count, episodes/minute, median/P90 start spacing, and longest quiet interval.
+- Exact runtime attribution maps recorded runtime spikes onto hitch frames and reports owner episode overlap, sole-signal episodes, and recorded exclusive time.
+- Runtime overlap is correlation evidence, not causation. `authorizesTransform` is always false. The Resolver still requires its existing source/generic/semantic proof before changing code.
+- CET-only attribution is intentionally incomplete. A future combined CET+RED layer can reuse the same frame tolerance/episode IDs and add RED runtime signals without changing the hitch-pressure vocabulary.

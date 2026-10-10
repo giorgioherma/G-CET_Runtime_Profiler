@@ -457,6 +457,39 @@ public static partial class ResultReportService
                 measuredOneCorePct = Round(a.TotalOneCorePct, 6),
                 averageFps = averageFps is double fps ? Round(fps, 3) : (double?)null
             },
+            hitchPressure = a.FrameTime?.HitchPressure is null
+                ? null
+                : new
+                {
+                    vocabularyVersion = a.FrameTime.HitchPressure.VocabularyVersion,
+                    semantics = "FRAME_EXCESS_OVER_ADAPTIVE_TOLERANCE; RUNTIME_OVERLAP_IS_CORRELATION_NOT_CAUSATION",
+                    toleranceFrameMs = Round(a.FrameTime.HitchPressure.ToleranceFrameMs, 6),
+                    baselineFrameMs = Round(a.FrameTime.HitchPressure.BaselineFrameMs, 6),
+                    episodeMergeGapMs = a.FrameTime.HitchPressure.EpisodeMergeGapMs,
+                    episodes = a.FrameTime.HitchPressure.EpisodeCount,
+                    severeEpisodes = a.FrameTime.HitchPressure.SevereEpisodeCount,
+                    catastrophicEpisodes = a.FrameTime.HitchPressure.CatastrophicEpisodeCount,
+                    episodesPerMinute = Round(a.FrameTime.HitchPressure.EpisodesPerMinute, 6),
+                    medianEpisodeStartGapMs = Round(a.FrameTime.HitchPressure.MedianEpisodeStartGapMs, 6),
+                    p90EpisodeStartGapMs = Round(a.FrameTime.HitchPressure.P90EpisodeStartGapMs, 6),
+                    longestQuietMs = Round(a.FrameTime.HitchPressure.LongestQuietMs, 6),
+                    hitchTollMs = Round(a.FrameTime.HitchPressure.HitchTollMs, 6),
+                    exactRuntimeAttribution = a.FrameTime.HitchPressure.ExactRuntimeAttribution,
+                    runtimeSignalEpisodes = a.FrameTime.HitchPressure.RuntimeSignalEpisodes,
+                    noRecordedRuntimeSignalEpisodes = a.FrameTime.HitchPressure.NoRecordedRuntimeSignalEpisodes,
+                    authorizesTransform = false,
+                    owners = a.FrameTime.HitchPressure.Owners.Take(30).Select(x => new
+                    {
+                        owner = x.Owner,
+                        episodes = x.EpisodeCount,
+                        hitchFrames = x.HitchFrameCount,
+                        recordedSpikes = x.SpikeCount,
+                        soleSignalEpisodes = x.SoleSignalEpisodes,
+                        episodeSharePct = Round(x.EpisodeSharePct, 6),
+                        recordedExclusiveMs = Round(x.RecordedExclusiveMs, 6),
+                        maxRecordedExclusiveMs = Round(x.MaxRecordedExclusiveMs, 6)
+                    }).ToArray()
+                },
             scenarios = scenarioAnalysis.Scenarios,
             deepProfiling = new
             {

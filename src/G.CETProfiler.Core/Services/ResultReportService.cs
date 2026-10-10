@@ -278,6 +278,64 @@ public static partial class ResultReportService
                         meanGpuActiveMs = Round(a.FrameTime.MeanGpuActiveMs, 6),
                         p95GpuActiveMs = Round(a.FrameTime.P95GpuActiveMs, 6)
                     },
+                    hitchPressure = a.FrameTime.HitchPressure is null
+                        ? null
+                        : new
+                        {
+                            vocabularyVersion = a.FrameTime.HitchPressure.VocabularyVersion,
+                            semantics = "FRAME_EXCESS_OVER_ADAPTIVE_TOLERANCE; RUNTIME_OVERLAP_IS_CORRELATION_NOT_CAUSATION",
+                            tolerance = new
+                            {
+                                baselineFrameMs = Round(a.FrameTime.HitchPressure.BaselineFrameMs, 6),
+                                thresholdFrameMs = Round(a.FrameTime.HitchPressure.ToleranceFrameMs, 6),
+                                baselineMultiplier = a.FrameTime.HitchPressure.BaselineMultiplier,
+                                minimumAbsoluteThresholdMs = a.FrameTime.HitchPressure.MinimumAbsoluteThresholdMs,
+                                episodeMergeGapMs = a.FrameTime.HitchPressure.EpisodeMergeGapMs
+                            },
+                            frequency = new
+                            {
+                                hitchFrames = a.FrameTime.HitchPressure.HitchFrameCount,
+                                episodes = a.FrameTime.HitchPressure.EpisodeCount,
+                                severeEpisodes = a.FrameTime.HitchPressure.SevereEpisodeCount,
+                                catastrophicEpisodes = a.FrameTime.HitchPressure.CatastrophicEpisodeCount,
+                                episodesPerMinute = Round(a.FrameTime.HitchPressure.EpisodesPerMinute, 6),
+                                medianEpisodeStartGapMs = Round(a.FrameTime.HitchPressure.MedianEpisodeStartGapMs, 6),
+                                p90EpisodeStartGapMs = Round(a.FrameTime.HitchPressure.P90EpisodeStartGapMs, 6),
+                                longestQuietMs = Round(a.FrameTime.HitchPressure.LongestQuietMs, 6),
+                                hitchTollMs = Round(a.FrameTime.HitchPressure.HitchTollMs, 6)
+                            },
+                            attribution = new
+                            {
+                                exact = a.FrameTime.HitchPressure.ExactRuntimeAttribution,
+                                runtimeSignalEpisodes = a.FrameTime.HitchPressure.RuntimeSignalEpisodes,
+                                noRecordedRuntimeSignalEpisodes = a.FrameTime.HitchPressure.NoRecordedRuntimeSignalEpisodes,
+                                authorizesTransform = false,
+                                owners = a.FrameTime.HitchPressure.Owners.Take(20).Select(x => new
+                                {
+                                    owner = x.Owner,
+                                    episodes = x.EpisodeCount,
+                                    hitchFrames = x.HitchFrameCount,
+                                    recordedSpikes = x.SpikeCount,
+                                    soleSignalEpisodes = x.SoleSignalEpisodes,
+                                    episodeSharePct = Round(x.EpisodeSharePct, 6),
+                                    recordedExclusiveMs = Round(x.RecordedExclusiveMs, 6),
+                                    maxRecordedExclusiveMs = Round(x.MaxRecordedExclusiveMs, 6)
+                                })
+                            },
+                            episodes = a.FrameTime.HitchPressure.Episodes.Take(250).Select(x => new
+                            {
+                                x.Index,
+                                startMs = Round(x.StartMs, 3),
+                                endMs = Round(x.EndMs, 3),
+                                frames = x.FrameCount,
+                                peakFrameMs = Round(x.PeakFrameMs, 6),
+                                tollMs = Round(x.TollMs, 6),
+                                severity = x.Severity,
+                                runtimeOwners = x.RuntimeOwners,
+                                topRuntimeOwner = x.TopRuntimeOwner,
+                                topRuntimeExclusiveMs = Round(x.TopRuntimeExclusiveMs, 6)
+                            })
+                        },
                     correlation = new
                     {
                         highCetThresholdMsPer50msWindow = Round(a.FrameTime.HighCetThresholdMs, 6),
