@@ -26,5 +26,9 @@
           Link="runtime\0-Engine\modules\%(Filename)%(Extension)"
           CopyToOutputDirectory="PreserveNewest"
           CopyToPublishDirectory="PreserveNewest" />
+    <None Include="..\..\resolver-runtime\0-Engine\modules\GCET*.lua"
+          Link="runtime\0-Engine\modules\%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

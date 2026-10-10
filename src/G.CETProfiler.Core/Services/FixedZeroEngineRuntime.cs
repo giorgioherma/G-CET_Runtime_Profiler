@@ -27,7 +27,7 @@ internal sealed record FixedZeroEngineBuild(
 internal static class FixedZeroEngineRuntime
 {
     internal const string BaseVersion = "0.18.6";
-    internal const string FixedVersion = "0.18.13-EXPANDED-SHARED-PROVIDERS";
+    internal const string FixedVersion = "0.18.14-ADDITIVE-WORKLOAD-SERVICES";
 
     internal const string BaseInitSha256 =
         "c2113cabc10b7f270f7be5542cfa9a8fcc87734913c0f17510eddd1037bca46f";
@@ -53,6 +53,16 @@ internal static class FixedZeroEngineRuntime
 
     private const string HostCompatibilityVersion =
         "HOST-COMPAT-v1";
+
+    private const string WorkloadMarker = "-- G-CET additive 0-Engine workload services v1";
+
+    private static readonly string[] WorkloadModules =
+    [
+        "modules/GCETWorkQueue.lua",
+        "modules/GCETPhasePlanner.lua",
+        "modules/GCETFrameListeners.lua",
+        "modules/GCETStateSignals.lua"
+    ];
 
     private const string HostActionRouterModule =
         "modules/G-CET/ActionRouter.lua";
@@ -128,17 +138,19 @@ internal static class FixedZeroEngineRuntime
 
         var sharedInit = AddSharedSystemAccessors(fixedInit);
         var sharedInitHash = Sha256(sharedInit);
-        var knownState = ClassifyCompatibleInit(sourceHash, sharedInitHash);
+        var extendedInit = AddWorkloadServices(sharedInit);
+        var extendedInitHash = Sha256(extendedInit);
+        var knownState = ClassifyCompatibleInit(sourceHash, sharedInitHash, extendedInitHash);
 
         if (knownState != "UNSUPPORTED")
         {
-            var files = BuildKnownFixedRuntime(runtimeRoot, sharedInit);
+            var files = BuildKnownFixedRuntime(runtimeRoot, liveRoot, extendedInit);
             return new FixedZeroEngineBuild(
                 files,
                 statePrefix + knownState,
                 liveHash,
                 FixedVersion,
-                sharedInitHash);
+                extendedInitHash);
         }
 
         if (!TryBuildHostCompatibilityInit(
@@ -163,11 +175,13 @@ internal static class FixedZeroEngineRuntime
             HostActionRouterModule,
             actionRouter);
 
+        compatibleInit = AddWorkloadServices(compatibleInit);
         var hostFiles = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase)
         {
             ["0-Engine/init.lua"] = compatibleInit,
             ["0-Engine/" + HostActionRouterModule] = actionRouter
         };
+        AddWorkloadModules(runtimeRoot, liveRoot, hostFiles);
 
         return new FixedZeroEngineBuild(
             hostFiles,
@@ -180,7 +194,8 @@ internal static class FixedZeroEngineRuntime
 
     private static string ClassifyCompatibleInit(
         string hash,
-        string currentSharedHash)
+        string currentSharedHash,
+        string extendedInitHash)
     {
         if (hash.Equals(BaseInitSha256, StringComparison.OrdinalIgnoreCase))
             return "BASE_0.18.6";
@@ -190,6 +205,8 @@ internal static class FixedZeroEngineRuntime
             return "PREVIOUS_SHARED_FIXED";
         if (hash.Equals(currentSharedHash, StringComparison.OrdinalIgnoreCase))
             return "ALREADY_FIXED";
+        if (hash.Equals(extendedInitHash, StringComparison.OrdinalIgnoreCase))
+            return "ALREADY_WORKLOAD_EXTENDED";
         return "UNSUPPORTED";
     }
 
@@ -211,6 +228,7 @@ internal static class FixedZeroEngineRuntime
 
     private static IReadOnlyDictionary<string, byte[]> BuildKnownFixedRuntime(
         string runtimeRoot,
+        string liveRoot,
         byte[] sharedInit)
     {
         var files = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase)
@@ -224,6 +242,7 @@ internal static class FixedZeroEngineRuntime
                 LoadVerifiedFixedModule(runtimeRoot, pair.Key);
         }
 
+        AddWorkloadModules(runtimeRoot, liveRoot, files);
         return files;
     }
 
@@ -256,6 +275,84 @@ internal static class FixedZeroEngineRuntime
         }
 
         return bytes;
+    }
+
+
+    // Additive, namespaced 0-Engine services. No stock runtime module is
+    // replaced. No frame listener starts until a client opts into a service.
+    private static byte[] AddWorkloadServices(byte[] source)
+    {
+        var hasBom = source.Length >= 3 &&
+            source[0] == 0xEF && source[1] == 0xBB && source[2] == 0xBF;
+        var text = hasBom
+            ? Encoding.UTF8.GetString(source, 3, source.Length - 3)
+            : Encoding.UTF8.GetString(source);
+
+        if (text.Contains(WorkloadMarker, StringComparison.Ordinal))
+        {
+            foreach (var name in new[] {
+                "GCETWorkQueue", "GCETPhasePlanner", "GCETFrameListeners",
+                "GCETStateSignals" })
+            {
+                if (!text.Contains("modules/" + name, StringComparison.Ordinal))
+                    throw new InvalidOperationException(
+                        "0-Engine contains a partial or foreign workload-service bridge.");
+            }
+            return source;
+        }
+
+        var exports = Regex.Matches(text,
+            @"(?m)^[ \t]*return[ \t]+(?<name>[A-Za-z_][A-Za-z0-9_]*)[ \t]*;?[ \t]*(?:--[^\r\n]*)?\r?$",
+            RegexOptions.CultureInvariant);
+        if (exports.Count == 0)
+            throw new InvalidOperationException(
+                "Cannot add 0-Engine workload services: no final runtime export.");
+        var last = exports[^1];
+        var id = last.Groups["name"].Value;
+        if (!Regex.IsMatch(text[(last.Index + last.Length)..],
+                @"\A(?:\s|--[^\r\n]*)*\z", RegexOptions.CultureInvariant))
+            throw new InvalidOperationException(
+                "Cannot add 0-Engine workload services after executable statements.");
+        var nl = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        var injection = string.Join(nl, new[] {
+            "",
+            WorkloadMarker,
+            "do",
+            $"    local runtime = {id}",
+            "    if type(runtime) ~= 'table' then error('0-Engine workload host is not a table') end",
+            "    if runtime.WorkQueue == nil then runtime.WorkQueue = require('modules/GCETWorkQueue').New(runtime) end",
+            "    if runtime.PhasePlanner == nil then runtime.PhasePlanner = require('modules/GCETPhasePlanner').New(runtime) end",
+            "    if runtime.FrameListeners == nil then runtime.FrameListeners = require('modules/GCETFrameListeners').New(runtime) end",
+            "    if runtime.StateSignals == nil then runtime.StateSignals = require('modules/GCETStateSignals').New(runtime) end",
+            "end",
+            ""
+        });
+        var output = Encoding.UTF8.GetBytes(text.Insert(last.Index, injection));
+        if (!hasBom) return output;
+        var withBom = new byte[output.Length + 3];
+        withBom[0] = 0xEF; withBom[1] = 0xBB; withBom[2] = 0xBF;
+        Buffer.BlockCopy(output, 0, withBom, 3, output.Length);
+        return withBom;
+    }
+
+    private static void AddWorkloadModules(
+        string runtimeRoot, string liveRoot, Dictionary<string, byte[]> files)
+    {
+        foreach (var relative in WorkloadModules)
+        {
+            var path = Path.Combine(runtimeRoot,
+                relative.Replace('/', Path.DirectorySeparatorChar));
+            if (!File.Exists(path))
+                throw new InvalidOperationException(
+                    "Bundled 0-Engine workload module missing: " + relative);
+            var data = File.ReadAllBytes(path);
+            if (data.Length < 100 ||
+                !Encoding.UTF8.GetString(data).Contains("function M.New(", StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "Invalid bundled workload module: " + relative);
+            EnsureHostModuleCollisionSafe(liveRoot, relative, data);
+            files["0-Engine/" + relative] = data;
+        }
     }
 
     private static void EnsureHostModuleCollisionSafe(

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "1.3",
+  "schemaVersion": "1.4",
   "role": "runtime-compatibility-exception",
   "base": {
     "name": "0-Engine",
@@ -7,7 +7,7 @@
     "initSha256": "c2113cabc10b7f270f7be5542cfa9a8fcc87734913c0f17510eddd1037bca46f"
   },
   "fixed": {
-    "version": "0.18.13-EXPANDED-SHARED-PROVIDERS",
+    "version": "0.18.14-ADDITIVE-WORKLOAD-SERVICES",
     "bundledBaselineVersion": "0.18.11-PASS4.2.1-PHASE-CADENCE-FIX",
     "bundledBaselineInitSha256": "a0e6480c9404e968e30e573a36fd92b5a87310ba91bfac305a80aad04938e2ef",
     "previousSharedInitSha256": "8e746ff2e4959b17e1c7616a3e5fa05381913b8d8df0095f3ef6aca46a035c1d",
@@ -39,6 +39,13 @@
       "AI_NAVIGATION_SYSTEM",
       "JOURNAL_MANAGER"
     ],
+    "additiveWorkloadServices": [
+      "modules/GCETWorkQueue.lua",
+      "modules/GCETPhasePlanner.lua",
+      "modules/GCETFrameListeners.lua",
+      "modules/GCETStateSignals.lua"
+    ],
+    "additivePolicy": "Opt-in only: no stock callback or Scheduler behavior is changed, no new native event hooks, and no arbitrary Lua preemption.",
     "files": {
       "modules/ActionRouter.lua": "4c5ad5f6925b9cb9b2f24ab359eaadc5d54fcf890d661682307ce8cbe09c955c",
       "modules/Health.lua": "85b2c6402e54c64f83c1f55e35b5bfee0dc5ebabcdd079c3c8aebb06b010620f",
@@ -54,7 +61,11 @@
       "no executable source after the export"
     ],
     "privateFiles": [
-      "modules/G-CET/ActionRouter.lua"
+      "modules/G-CET/ActionRouter.lua",
+      "modules/GCETWorkQueue.lua",
+      "modules/GCETPhasePlanner.lua",
+      "modules/GCETFrameListeners.lua",
+      "modules/GCETStateSignals.lua"
     ],
     "collisionPolicy": "Never overwrite a foreign file at the private G-CET support-module path.",
     "lazyRuntimePolicy": "Frame and action hooks are registered only when a generated client actually subscribes."

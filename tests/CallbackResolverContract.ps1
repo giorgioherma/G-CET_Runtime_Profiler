@@ -1912,13 +1912,13 @@ try {
     if ([int]$manifest.summary.callbackFiles -ne ([int]$resolved.pass.FileCount - [int]$manifest.summary.fixedRuntimeFiles)) {
         throw 'Generated pass callback-file accounting is inconsistent.'
     }
-    if ([int]$manifest.summary.fixedRuntimeFiles -ne 4) {
-        throw "Expected 4 fixed 0-Engine runtime files, got $($manifest.summary.fixedRuntimeFiles)."
+    if ([int]$manifest.summary.fixedRuntimeFiles -ne 8) {
+        throw "Expected 8 fixed 0-Engine runtime files, got $($manifest.summary.fixedRuntimeFiles)."
     }
     if (!$manifest.fixedRuntime.included -or !$manifest.fixedRuntime.exception) {
         throw 'Generated pass did not mark 0-Engine as the fixed runtime exception.'
     }
-    if ($manifest.fixedRuntime.FixedVersion -ne '0.18.13-EXPANDED-SHARED-PROVIDERS') {
+    if ($manifest.fixedRuntime.FixedVersion -ne '0.18.14-ADDITIVE-WORKLOAD-SERVICES') {
         throw "Unexpected fixed 0-Engine version: $($manifest.fixedRuntime.FixedVersion)"
     }
 
@@ -1945,6 +1945,11 @@ try {
         'function Engine.GetStatPoolsSystem',
         'function Engine.GetJournalManager',
         '-- G-CET shared providers v2',
+        '-- G-CET additive 0-Engine workload services v1',
+        'runtime.WorkQueue',
+        'runtime.PhasePlanner',
+        'runtime.FrameListeners',
+        'runtime.StateSignals',
         'ActionRouter.Dispatch'
     )) {
         if ($zeroText -notmatch [regex]::Escape($requiredRuntimeSymbol)) {
