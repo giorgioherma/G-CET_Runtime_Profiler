@@ -170,7 +170,7 @@ try{
   throw 'Joytoys NPCScenes inactive-request dormancy missing.'
  }
  $bridge=$init.IndexOf('if Joytoys._bridgePollTimer >= 0.10 then')
- $immersive=$init.IndexOf('updateImmersiveProof(dt)')
+ $immersive=$init.IndexOf('  updateImmersiveProof(dt)', [Math]::Max(0,$bridge))
  if($bridge -lt 0 -or $immersive -lt 0 -or $immersive -lt $bridge){throw 'Joytoys active runtime ordering changed unexpectedly.'}
 }
 finally{$zip.Dispose()}
