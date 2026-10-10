@@ -68,6 +68,17 @@ jobs:
             }
           }
 
+          # A source-only native change is not a distributable feature. Refuse
+          # to ship v2.12 with an old, hash-valid v2.11 profiler payload.
+          if ([string]$manifest.profilerNativeVersion -eq '2.12.0') {
+            $payload = [IO.File]::ReadAllBytes((Resolve-Path 'payload\cyber_engine_tweaks.PROFILER.dll').Path)
+            $signature = 'CET_Runtime_Profile_GC_Explicit.csv'
+            $binaryText = [Text.Encoding]::Latin1.GetString($payload)
+            if (-not $binaryText.Contains($signature)) {
+              throw 'Native 2.12 GC timing payload has not been rebuilt and hash-locked. Refusing incomplete release.'
+            }
+          }
+
       - name: Build
         run: dotnet build G-CET-Runtime-Profiler.sln -c Release
 
