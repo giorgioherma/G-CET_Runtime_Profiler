@@ -14,6 +14,16 @@ $mods=Join-Path $root 'mods'
 $joy=Join-Path $mods 'JoytoysOfNightCity'
 New-Item -ItemType Directory -Force $capture,$joy | Out-Null
 
+$zeroDir=Join-Path $mods '0-Engine'
+New-Item -ItemType Directory -Force $zeroDir | Out-Null
+$encodedInit=(Get-Content -LiteralPath (Join-Path $ResolverRoot 'runtime\0-Engine\fixed-init.lua.gz.b64') -Raw).Trim()
+$compressed=[Convert]::FromBase64String($encodedInit)
+$input=[IO.MemoryStream]::new($compressed)
+$gzip=[IO.Compression.GZipStream]::new($input,[IO.Compression.CompressionMode]::Decompress)
+$output=[IO.MemoryStream]::new()
+try{$gzip.CopyTo($output);[IO.File]::WriteAllBytes((Join-Path $zeroDir 'init.lua'),$output.ToArray())}
+finally{$output.Dispose();$gzip.Dispose();$input.Dispose()}
+
 @'
 local Joytoys={
  _lastRequestSequence=0,_lastStartRequest=0,_lastCompleteRequest=0,_readyWritten=false,
