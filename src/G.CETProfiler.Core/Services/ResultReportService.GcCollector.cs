@@ -164,7 +164,7 @@ public static partial class ResultReportService
         if (gc.SpikeCoincidences.Count > 0)
         {
             sb.Append("<h3>Callback spikes near collector-heavy frame buckets</h3>");
-            sb.Append("<div class=\\"note\\">These are time coincidences, not per-callback GC durations. ");
+            sb.Append("<div class=\"note\">These are time coincidences, not per-callback GC durations. ");
             sb.Append("A large collector bucket may overlap only a small portion of the callback. ");
             sb.Append("No GC-free cost can be obtained by subtracting the bucket from the callback.</div>");
             sb.Append("<table><thead><tr><th>Capture</th><th>Callback</th><th>Spike ms</th>");
