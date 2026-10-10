@@ -181,6 +181,14 @@ if ($null -eq $collector -or
 }
 $hp = $summary.frameTime.hitchPressure
 $resolverInput=Get-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Raw | ConvertFrom-Json
+if ($resolverInput.garbageCollection.phaseAndAllocatorPolicy -ne 'OBSERVATIONAL_REVIEW_ONLY_NO_AUTOMATIC_REWRITE' -or
+    $resolverInput.garbageCollection.phaseTotals[0].Phase -ne 'atomic' -or
+    $resolverInput.garbageCollection.slowOperations[0].Callback -notmatch 'OwnerA' -or
+    [bool]$resolverInput.garbageCollection.slowOperations[0].authorizesRewrite -or
+    $resolverInput.garbageCollection.allocationCandidates[0].Callback -notmatch 'OwnerB' -or
+    [bool]$resolverInput.garbageCollection.allocationCandidates[0].authorizesRewrite) {
+    throw 'Resolver diagnostic handoff must preserve evidence without granting rewrite authority.'
+}
 if ($resolverInput.workloadServices.policy -ne 'MEASURE_ONLY_OPT_IN_NO_AUTHOR_REWRITES' -or
     -not $resolverInput.workloadServices.nestedIntoParent) {
     throw 'Resolver misclassified nested 0-Engine workload measurements.'

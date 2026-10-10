@@ -382,6 +382,25 @@ public static partial class ResultReportService
             {
                 attributionPolicy = "MEASUREMENT_ONLY_NO_AUTOMATIC_OPTIMIZATION",
                 collectorSpikeCoincidencePolicy = "REVIEW_ONLY_NO_GC_SUBTRACTION_NO_AUTOMATIC_REWRITE",
+                phaseAndAllocatorPolicy = "OBSERVATIONAL_REVIEW_ONLY_NO_AUTOMATIC_REWRITE",
+                phaseTotals = a.CollectorGc?.Phases.OrderByDescending(x => x.WallMs).Take(6)
+                    .Select(x => new { x.Phase, x.Operations, wallMs = Round(x.WallMs, 3) }),
+                slowOperations = a.CollectorGc?.SlowSteps.Take(100).Select(x => new {
+                    startMs = Round(x.CaptureStartMs, 3),
+                    wallMs = Round(x.DurationMs, 3),
+                    x.PhaseBefore, x.PhaseAfter,
+                    x.RegistrationId, x.Callback, x.Pause, x.StepMul,
+                    heapBeforeMiB = Round(x.HeapBeforeMiB, 3),
+                    heapAfterMiB = Round(x.HeapAfterMiB, 3),
+                    authorizesRewrite = false
+                }),
+                allocationCandidates = a.CollectorGc?.AllocationOwners.Take(50).Select(x => new {
+                    x.Callback,
+                    observedPositiveMiB = Round(x.MiB, 3),
+                    observedPositiveMiBPerSecond = Round(x.MiBPerSecond, 3),
+                    authorizesRewrite = false
+                }),
+                slowOperationDropped = a.CollectorGc?.SlowDropped ?? 0,
                 potentiallyConfoundedSpikeCount = a.CollectorGc?.PotentiallyConfoundedSpikes ?? 0,
                 spikeCoincidences = a.CollectorGc?.SpikeCoincidences
                     .OrderByDescending(x => x.PotentiallyConfounded)
