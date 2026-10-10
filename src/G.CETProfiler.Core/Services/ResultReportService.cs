@@ -85,11 +85,11 @@ public static partial class ResultReportService
 
         var summary = new
         {
-            schemaVersion = "1.3",
+            schemaVersion = "1.4",
             generatedUtc = DateTime.UtcNow.ToString("O"),
             interop = new
             {
-                contractVersion = "1.0",
+                contractVersion = "1.1",
                 producer = "G-CET-Runtime-Profiler",
                 domain = "cet"
             },
@@ -139,6 +139,41 @@ public static partial class ResultReportService
                 maxExclusiveMs = Round(x.MaxExclusiveMs, 6),
                 topOwner = x.TopOwner
             }),
+            burstAnalysis = new
+            {
+                vocabularyVersion = "1.0",
+                spikeThresholdSemantics = "RECORDED_SPIKES_ONLY; DEFAULT_NATIVE_THRESHOLD_5_MS",
+                thresholds = new
+                {
+                    sustainedHotMsPerSecond = BurstAnalysisService.SustainedHotThresholdMsPerSecond,
+                    burstHotP95Ms = BurstAnalysisService.BurstHotP95ThresholdMs,
+                    catastrophicBurstMs = BurstAnalysisService.CatastrophicBurstThresholdMs,
+                    periodicMinimumSpikes = BurstAnalysisService.PeriodicMinimumSpikes,
+                    periodicMinimumIntervalMs = BurstAnalysisService.PeriodicMinimumIntervalMs,
+                    periodicMaximumIntervalMs = BurstAnalysisService.PeriodicMaximumIntervalMs,
+                    periodicMaximumJitterPct = BurstAnalysisService.PeriodicMaximumJitterPct
+                },
+                stutterMaterialCandidates = a.BurstCallbacks.Count,
+                candidates = a.BurstCallbacks.Take(30).Select(x => new
+                {
+                    registrationId = x.RegistrationId > 0 ? x.RegistrationId : (long?)null,
+                    owner = x.Owner,
+                    kind = x.Kind,
+                    target = x.Target,
+                    exclusiveMsPerSecond = Round(x.ExclusiveMsPerSecond, 6),
+                    primaryClass = x.Profile.PrimaryClass,
+                    classes = x.Profile.Classes,
+                    spikeCount = x.Profile.SpikeCount,
+                    spikeRatePct = Round(x.Profile.SpikeRatePct, 6),
+                    medianExclusiveMs = Round(x.Profile.MedianExclusiveMs, 6),
+                    p95ExclusiveMs = Round(x.Profile.P95ExclusiveMs, 6),
+                    maxExclusiveMs = Round(x.Profile.MaxExclusiveMs, 6),
+                    medianIntervalMs = Round(x.Profile.MedianIntervalMs, 6),
+                    intervalMadMs = Round(x.Profile.IntervalMadMs, 6),
+                    intervalJitterPct = Round(x.Profile.IntervalJitterPct, 6),
+                    stutterMaterial = x.Profile.StutterMaterial
+                })
+            },
             heavyCetWindows = a.TopWindows.Take(10).Select(x => new
             {
                 bucketIndex = x.BucketIndex,

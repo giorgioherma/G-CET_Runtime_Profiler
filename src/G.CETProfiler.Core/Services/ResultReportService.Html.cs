@@ -93,6 +93,9 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
         if (a.TopCallbacks.Count > 0)
             AppendCallbacks(sb, a);
 
+        if (a.BurstCallbacks.Count > 0)
+            AppendBurstAnalysis(sb, a);
+
         if (a.TopWindows.Count > 0)
             AppendHeavyWindows(sb, a);
 
@@ -371,6 +374,31 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
         }
 
         sb.Append("</div>");
+    }
+
+    private static void AppendBurstAnalysis(StringBuilder sb, ResultAnalysis a)
+    {
+        sb.Append("<div class=\"section\"><h2>Burst &amp; stutter candidates</h2>");
+        sb.Append("<div class=\"note\"><b>This is pacing evidence, not an uninstall list.</b> A callback can be cheap on average and still be material when it repeatedly lands 5–10+ ms on one invocation. Detection is broader than AUTO authorization.</div>");
+        sb.Append("<table><thead><tr><th>Owner</th><th>Callback</th><th>Classes</th><th class=\"num\">ms/s</th><th class=\"num\">Spikes</th><th class=\"num\">Median / P95 / Max</th><th class=\"num\">Median interval</th><th class=\"num\">Jitter</th></tr></thead><tbody>");
+
+        foreach (var x in a.BurstCallbacks.Take(30))
+        {
+            sb.Append("<tr><td><b>").Append(H(x.Owner)).Append("</b></td><td><span class=\"mono\">")
+                .Append(H(JoinCallback(x.Kind, x.Target))).Append("</span></td><td>")
+                .Append(H(string.Join(" · ", x.Profile.Classes))).Append("</td><td class=\"num\">")
+                .Append(F(x.ExclusiveMsPerSecond)).Append("</td><td class=\"num\">")
+                .Append(x.Profile.SpikeCount).Append("</td><td class=\"num\">")
+                .Append(F(x.Profile.MedianExclusiveMs)).Append(" / ")
+                .Append(F(x.Profile.P95ExclusiveMs)).Append(" / ")
+                .Append(F(x.Profile.MaxExclusiveMs)).Append(" ms</td><td class=\"num\">")
+                .Append(x.Profile.MedianIntervalMs > 0 ? F(x.Profile.MedianIntervalMs, 0) + " ms" : "—")
+                .Append("</td><td class=\"num\">")
+                .Append(x.Profile.MedianIntervalMs > 0 ? F(x.Profile.IntervalJitterPct, 1) + "%" : "—")
+                .Append("</td></tr>");
+        }
+
+        sb.Append("</tbody></table></div>");
     }
 
     private static void AppendHeavyWindows(StringBuilder sb, ResultAnalysis a)

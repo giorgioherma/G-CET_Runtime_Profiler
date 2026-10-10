@@ -1,6 +1,6 @@
 # Profiler Summary Interop Contract
 
-Contract version: **1.0**
+Contract version: **1.1**
 
 This contract defines the small common surface shared by G-REDscript Profiler and G-CET Runtime Profiler for combined consumers such as G's Cyberpunk 2077 TOTAL Profiler.
 
@@ -97,3 +97,23 @@ In particular:
 - use the raw timeline/marker CSVs for precise cross-profiler synchronization and hitch correlation.
 
 The JSON summaries are the normalized summary/metadata surface. Raw profiler data remains the authoritative fine-grained correlation source.
+
+
+## Burst / pacing evidence (contract 1.1)
+
+Both profilers may expose the same burst vocabulary for callback or script-method pacing evidence:
+
+- `STEADY` — no sustained-hot or recorded burst signal.
+- `RECORDED_SPIKES` — threshold-crossing events were recorded, but they do not yet meet a stutter-material class.
+- `SUSTAINED_HOT` — average measured exclusive work is at least 3 ms/s.
+- `PERIODIC_STUTTER` — at least four recorded spikes recur with a 250 ms–10 s median interval and at most 20% median-absolute-deviation jitter.
+- `BURST_HOT` — at least three recorded spikes have a P95 exclusive duration of at least 8 ms.
+- `CATASTROPHIC_BURST` — at least one recorded spike reaches 33.3 ms exclusive.
+
+`stutterMaterial` is true for `PERIODIC_STUTTER`, `BURST_HOT`, or `CATASTROPHIC_BURST`. This is an analysis/materiality signal only. It does not authorize source transformation, cadence changes, or semantic-rule generation.
+
+The cadence calculation is based only on events present in the profiler's spike stream. For G-CET the native default callback-spike threshold is 5 ms, so sub-threshold invocations are intentionally absent. A user-configured higher threshold makes periodicity evidence less complete.
+
+Standalone profilers should expose, when available, the common fields `primaryClass`, `classes`, `spikeCount`, `medianExclusiveMs`, `p95ExclusiveMs`, `maxExclusiveMs`, `medianIntervalMs`, `intervalMadMs`, `intervalJitterPct`, and `stutterMaterial`.
+
+Combined tooling may add cross-runtime or transition-cluster labels later, but standalone CET/RED profiling must not infer a world-transition cause from timing alone.

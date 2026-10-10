@@ -14,6 +14,7 @@ public static partial class ResultReportService
         public List<CallbackMetric> TopCallbacks { get; init; } = [];
         public List<CallbackMetric> SharedCallbacks { get; init; } = [];
         public List<SpikeMetric> Spikes { get; init; } = [];
+        public List<CallbackBurstMetric> BurstCallbacks { get; init; } = [];
         public List<WindowMetric> TopWindows { get; init; } = [];
         public List<WindowOwnerMetric> HeavyWindowOwners { get; init; } = [];
         public List<SchedulerJobMetric> SchedulerJobs { get; init; } = [];
@@ -102,6 +103,8 @@ public static partial class ResultReportService
             .Select(r => new SpikeMetric
             {
                 Sequence = L(r, "Sequence"),
+                Frame = L(r, "Frame"),
+                RegistrationId = L(r, "RegistrationId"),
                 CaptureStartMs = D(r, "CaptureStartMs", "CaptureMs"),
                 CaptureEndMs = D(r, "CaptureEndMs", "CaptureMs"),
                 InclusiveMs = D(r, "InclusiveMs", "DurationMs"),
@@ -114,6 +117,9 @@ public static partial class ResultReportService
             .OrderByDescending(x => x.ExclusiveMs)
             .ToList();
         var spikeMetrics = allSpikeMetrics.Take(12).ToList();
+        var burstCallbacks = BuildCallbackBurstMetrics(
+            detail,
+            allSpikeMetrics);
 
         var allWindows = BuildHeavyWindows(timeline)
             .OrderBy(x => x.StartMs)
@@ -194,6 +200,7 @@ public static partial class ResultReportService
             topWindows,
             heavyWindowOwners,
             spikeMetrics,
+            burstCallbacks,
             sharedCallbacks,
             worstSchedulerBurst);
 
@@ -207,6 +214,7 @@ public static partial class ResultReportService
             TopCallbacks = topCallbacks,
             SharedCallbacks = sharedCallbacks,
             Spikes = spikeMetrics,
+            BurstCallbacks = burstCallbacks,
             TopWindows = topWindows,
             HeavyWindowOwners = heavyWindowOwners,
             SchedulerJobs = schedulerJobMetrics,
@@ -235,6 +243,7 @@ public static partial class ResultReportService
         IReadOnlyList<WindowMetric> topWindows,
         IReadOnlyList<WindowOwnerMetric> heavyWindowOwners,
         IReadOnlyList<SpikeMetric> spikes,
+        IReadOnlyList<CallbackBurstMetric> burstCallbacks,
         IReadOnlyList<CallbackMetric> sharedCallbacks,
         SchedulerBurstMetric? worstSchedulerBurst)
     {
@@ -284,6 +293,31 @@ public static partial class ResultReportService
                 "This is the largest individual CET callback spike recorded above the profiler threshold."));
         }
 
+        var periodic = burstCallbacks
+            .Where(x => x.Profile.PeriodicStutter)
+            .OrderByDescending(x => x.Profile.P95ExclusiveMs)
+            .ThenByDescending(x => x.Profile.SpikeCount)
+            .FirstOrDefault();
+        if (periodic is not null)
+        {
+            findings.Add(new(
+                "Periodic CET stutter candidate",
+                $"{periodic.Owner} · {JoinCallback(periodic.Kind, periodic.Target)} · {periodic.Profile.SpikeCount} recorded spikes · median interval {F(periodic.Profile.MedianIntervalMs, 0)} ms · P95 burst {F(periodic.Profile.P95ExclusiveMs)} ms",
+                "This callback repeatedly crosses the native spike threshold at a stable cadence. It is material for pacing even when its sustained ms/s is modest."));
+        }
+
+        var catastrophic = burstCallbacks
+            .Where(x => x.Profile.CatastrophicBurst)
+            .OrderByDescending(x => x.Profile.MaxExclusiveMs)
+            .FirstOrDefault();
+        if (catastrophic is not null)
+        {
+            findings.Add(new(
+                "Catastrophic CET burst candidate",
+                $"{catastrophic.Owner} · {JoinCallback(catastrophic.Kind, catastrophic.Target)} · max {F(catastrophic.Profile.MaxExclusiveMs)} ms exclusive",
+                "A rare or irregular callback can still be stutter-material even when its average ms/s is below the sustained-work threshold."));
+        }
+
         var shared = sharedCallbacks.FirstOrDefault();
         if (shared is not null)
         {
@@ -305,6 +339,55 @@ public static partial class ResultReportService
         }
 
         return findings.Take(6).ToList();
+    }
+
+    private static List<CallbackBurstMetric> BuildCallbackBurstMetrics(
+        IReadOnlyList<Dictionary<string, string>> detail,
+        IReadOnlyList<SpikeMetric> spikes)
+    {
+        return detail
+            .Select(row =>
+            {
+                var registrationId = L(row, "RegistrationId");
+                var owner = S(row, "Mod", "Owner");
+                var kind = S(row, "Kind");
+                var target = S(row, "Target");
+                var sustainedMsPerSecond =
+                    D(row, "ExclusiveMsPerSecond", "MsPerSecond");
+                var totalCalls = L(row, "Calls");
+
+                var callbackSpikes = spikes.Where(spike =>
+                    registrationId > 0 && spike.RegistrationId > 0
+                        ? spike.RegistrationId == registrationId
+                        : string.Equals(spike.Mod, owner, StringComparison.OrdinalIgnoreCase) &&
+                          string.Equals(spike.Kind, kind, StringComparison.OrdinalIgnoreCase) &&
+                          string.Equals(spike.Target, target, StringComparison.OrdinalIgnoreCase));
+
+                var profile = BurstAnalysisService.Analyze(
+                    callbackSpikes.Select(x =>
+                        new BurstSample(x.CaptureStartMs, x.ExclusiveMs)),
+                    sustainedMsPerSecond,
+                    totalCalls);
+
+                return new CallbackBurstMetric
+                {
+                    RegistrationId = registrationId,
+                    Owner = owner,
+                    Kind = kind,
+                    Target = target,
+                    ExclusiveMsPerSecond = sustainedMsPerSecond,
+                    Profile = profile
+                };
+            })
+            .Where(x =>
+                !string.IsNullOrWhiteSpace(x.Owner) &&
+                !string.IsNullOrWhiteSpace(x.Target) &&
+                x.Profile.StutterMaterial)
+            .OrderByDescending(x => x.Profile.CatastrophicBurst)
+            .ThenByDescending(x => x.Profile.PeriodicStutter)
+            .ThenByDescending(x => x.Profile.P95ExclusiveMs)
+            .ThenByDescending(x => x.ExclusiveMsPerSecond)
+            .ToList();
     }
 
     private static List<WindowMetric> BuildHeavyWindows(IReadOnlyList<Dictionary<string, string>> timeline)
@@ -597,9 +680,22 @@ public static partial class ResultReportService
         public string TopOwner { get; init; } = "";
     }
 
+    private sealed class CallbackBurstMetric
+    {
+        public long RegistrationId { get; init; }
+        public string Owner { get; init; } = "";
+        public string Kind { get; init; } = "";
+        public string Target { get; init; } = "";
+        public double ExclusiveMsPerSecond { get; init; }
+        public BurstProfile Profile { get; init; } = BurstAnalysisService.Analyze(
+            Array.Empty<BurstSample>(), 0, 0);
+    }
+
     private sealed class SpikeMetric
     {
         public long Sequence { get; init; }
+        public long Frame { get; init; }
+        public long RegistrationId { get; init; }
         public double CaptureStartMs { get; init; }
         public double CaptureEndMs { get; init; }
         public double InclusiveMs { get; init; }

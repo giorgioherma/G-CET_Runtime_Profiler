@@ -78,6 +78,33 @@ public static partial class ResultReportService
                 g => ResolverAggregateSpikes(g),
                 StringComparer.OrdinalIgnoreCase);
 
+        var burstByCallback = callbacks
+            .GroupBy(x => ResolverCallbackInstanceKey(
+                x.RegistrationId, x.Owner, x.Kind, x.Target),
+                StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g =>
+                {
+                    var callback = g.First();
+                    var samples = spikeSamples
+                        .Where(x =>
+                            ResolverCallbackInstanceKey(
+                                x.RegistrationId,
+                                x.Owner,
+                                x.Kind,
+                                x.Target)
+                            .Equals(g.Key, StringComparison.OrdinalIgnoreCase))
+                        .Select(x => new BurstSample(
+                            x.CaptureStartMs,
+                            x.ExclusiveMs));
+                    return BurstAnalysisService.Analyze(
+                        samples,
+                        callback.ExclusiveMsPerSecond,
+                        callback.Calls);
+                },
+                StringComparer.OrdinalIgnoreCase);
+
         var spikeByFamily = spikeSamples
             .GroupBy(x => ResolverFamilyKey(x.Kind, x.Target), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
@@ -170,6 +197,8 @@ public static partial class ResultReportService
                     x.RegistrationId, x.Owner, x.Kind, x.Target);
                 var familyKey = ResolverFamilyKey(x.Kind, x.Target);
                 var callbackSpikes = spikeByCallback.GetValueOrDefault(callbackKey) ?? new ResolverSpikeAggregate();
+                var burst = burstByCallback.GetValueOrDefault(callbackKey) ??
+                    BurstAnalysisService.Analyze(Array.Empty<BurstSample>(), x.ExclusiveMsPerSecond, x.Calls);
                 var family = familyTotals.GetValueOrDefault(familyKey) ?? new ResolverFamilyTotals();
                 ownerByName.TryGetValue(x.Owner, out var owner);
                 activity.TryGetValue(x.Owner, out var ownerActivity);
@@ -208,6 +237,25 @@ public static partial class ResultReportService
                     spikesPerSecond = Round(ResolverRate(callbackSpikes.Count, a.CaptureSeconds), 6),
                     spikeExclusiveMsPerSecond = Round(ResolverRate(callbackSpikes.TotalExclusiveMs, a.CaptureSeconds), 6),
                     maxSpikeExclusiveMs = Round(callbackSpikes.MaxExclusiveMs, 6),
+                    burst = new
+                    {
+                        vocabularyVersion = "1.0",
+                        primaryClass = burst.PrimaryClass,
+                        classes = burst.Classes,
+                        spikeCount = burst.SpikeCount,
+                        spikeRatePct = Round(burst.SpikeRatePct, 6),
+                        medianExclusiveMs = Round(burst.MedianExclusiveMs, 6),
+                        p95ExclusiveMs = Round(burst.P95ExclusiveMs, 6),
+                        maxExclusiveMs = Round(burst.MaxExclusiveMs, 6),
+                        medianIntervalMs = Round(burst.MedianIntervalMs, 6),
+                        intervalMadMs = Round(burst.IntervalMadMs, 6),
+                        intervalJitterPct = Round(burst.IntervalJitterPct, 6),
+                        sustainedHot = burst.SustainedHot,
+                        periodicStutter = burst.PeriodicStutter,
+                        burstHot = burst.BurstHot,
+                        catastrophicBurst = burst.CatastrophicBurst,
+                        stutterMaterial = burst.StutterMaterial
+                    },
                     ownerActivityBucketPct = ownerActivity is null
                         ? (double?)null
                         : Round(ownerActivity.ActiveBucketPct, 3),
@@ -303,11 +351,11 @@ public static partial class ResultReportService
 
         return new
         {
-            schemaVersion = "1.9",
+            schemaVersion = "2.0",
             generatedUtc = DateTime.UtcNow.ToString("O"),
             interop = new
             {
-                contractVersion = "1.0",
+                contractVersion = "1.1",
                 producer = "G-CET-Runtime-Profiler",
                 consumer = "resolver",
                 domain = "cet"
@@ -315,9 +363,39 @@ public static partial class ResultReportService
             semantics = new
             {
                 measurementOnly = true,
-                classificationIncluded = false,
+                classificationIncluded = true,
                 pacingRecommendationIncluded = false,
-                note = "The profiler measures and normalizes runtime evidence. A separate resolver decides whether and how to transform a mod."
+                note = "The profiler measures and normalizes runtime evidence and classifies sustained/burst pacing patterns. A separate resolver decides whether and how to transform a mod; burst classification never authorizes AUTO by itself."
+            },
+            burstVocabulary = new
+            {
+                version = "1.0",
+                classes = new[]
+                {
+                    "STEADY",
+                    "RECORDED_SPIKES",
+                    "SUSTAINED_HOT",
+                    "PERIODIC_STUTTER",
+                    "BURST_HOT",
+                    "CATASTROPHIC_BURST"
+                },
+                stutterMaterialClasses = new[]
+                {
+                    "PERIODIC_STUTTER",
+                    "BURST_HOT",
+                    "CATASTROPHIC_BURST"
+                },
+                thresholds = new
+                {
+                    sustainedHotMsPerSecond = BurstAnalysisService.SustainedHotThresholdMsPerSecond,
+                    burstHotP95Ms = BurstAnalysisService.BurstHotP95ThresholdMs,
+                    catastrophicBurstMs = BurstAnalysisService.CatastrophicBurstThresholdMs,
+                    periodicMinimumSpikes = BurstAnalysisService.PeriodicMinimumSpikes,
+                    periodicMinimumIntervalMs = BurstAnalysisService.PeriodicMinimumIntervalMs,
+                    periodicMaximumIntervalMs = BurstAnalysisService.PeriodicMaximumIntervalMs,
+                    periodicMaximumJitterPct = BurstAnalysisService.PeriodicMaximumJitterPct
+                },
+                note = "Periodicity is derived only from recorded callback spikes. With the default native threshold, those are callbacks whose exclusive time crossed 5 ms. A higher configured spike threshold makes this evidence correspondingly less complete."
             },
             quality = new
             {
@@ -326,6 +404,10 @@ public static partial class ResultReportService
                 frameMultiplicityAvailable = frameMultiplicity.Count > 0,
                 schedulerJobsAvailable = a.SchedulerJobs.Count > 0,
                 spikesAvailable = spikes.Count > 0,
+                burstAnalysisAvailable = callbacks.Count > 0,
+                burstMaterialCallbackCount = burstByCallback.Values.Count(x => x.StutterMaterial),
+                periodicStutterCallbackCount = burstByCallback.Values.Count(x => x.PeriodicStutter),
+                catastrophicBurstCallbackCount = burstByCallback.Values.Count(x => x.CatastrophicBurst),
                 scenarioMarkersAvailable = scenarioAnalysis.RecognizedMarkers > 0,
                 scenarioMarkersComplete = scenarioAnalysis.RecognizedMarkers > 0 && scenarioAnalysis.UnmatchedMarkers == 0,
                 recognizedScenarioMarkers = scenarioAnalysis.RecognizedMarkers,

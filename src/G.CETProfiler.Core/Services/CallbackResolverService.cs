@@ -82,6 +82,10 @@ internal static class CallbackResolverService
         var frameDispatchOnlyMaterialResidual = 0;
         var frameDispatchOnlyMaterialResidualMsPerSecond = 0.0;
         var materialRemaining = 0;
+        var sustainedMaterialRemaining = 0;
+        var burstMaterialRemaining = 0;
+        var periodicStutterCallbacks = 0;
+        var catastrophicBurstCallbacks = 0;
         var belowThreshold = 0;
         var semanticMatches = 0;
         var semanticSourceProven = 0;
@@ -146,6 +150,15 @@ internal static class CallbackResolverService
                         StringComparison.OrdinalIgnoreCase) ||
                     semantic.AlreadySatisfied;
 
+                var sustainedMaterial =
+                    callback.ExclusiveMsPerSecond >= MaterialRemainingMsPerSecond;
+                var burstMaterial = callback.BurstStutterMaterial;
+                var measuredMaterial = sustainedMaterial || burstMaterial;
+                if (callback.BurstPeriodicStutter)
+                    periodicStutterCallbacks++;
+                if (callback.BurstCatastrophic)
+                    catastrophicBurstCallbacks++;
+
                 var frameDispatchOnly =
                     generic.Automatable &&
                     generic.RecipeFamilies.Length == 1 &&
@@ -154,7 +167,7 @@ internal static class CallbackResolverService
                         StringComparison.OrdinalIgnoreCase);
                 var materialBodyResidualAfterFrameDispatch =
                     frameDispatchOnly &&
-                    callback.ExclusiveMsPerSecond >= MaterialRemainingMsPerSecond &&
+                    measuredMaterial &&
                     !semanticGenerationReady &&
                     !semantic.AlreadySatisfied;
                 if (materialBodyResidualAfterFrameDispatch)
@@ -182,10 +195,18 @@ internal static class CallbackResolverService
                 else
                 {
                     unresolved++;
-                    if (callback.ExclusiveMsPerSecond >= MaterialRemainingMsPerSecond)
+                    if (measuredMaterial)
+                    {
                         materialRemaining++;
+                        if (sustainedMaterial)
+                            sustainedMaterialRemaining++;
+                        if (burstMaterial)
+                            burstMaterialRemaining++;
+                    }
                     else
+                    {
                         belowThreshold++;
+                    }
                 }
 
                 consumers.Add(new
@@ -203,7 +224,31 @@ internal static class CallbackResolverService
                         callback.avgExclusiveUs,
                         callback.maxExclusiveMs,
                         callback.spikeCount,
-                        callback.maxSpikeExclusiveMs
+                        callback.maxSpikeExclusiveMs,
+                        burst = new
+                        {
+                            vocabularyVersion = callback.BurstVocabularyVersion,
+                            primaryClass = callback.BurstPrimaryClass,
+                            classes = callback.BurstClasses,
+                            stutterMaterial = callback.BurstStutterMaterial,
+                            periodicStutter = callback.BurstPeriodicStutter,
+                            burstHot = callback.BurstHot,
+                            catastrophicBurst = callback.BurstCatastrophic,
+                            medianExclusiveMs = callback.BurstMedianExclusiveMs,
+                            p95ExclusiveMs = callback.BurstP95ExclusiveMs,
+                            maxExclusiveMs = callback.BurstMaxExclusiveMs,
+                            medianIntervalMs = callback.BurstMedianIntervalMs,
+                            intervalMadMs = callback.BurstIntervalMadMs,
+                            intervalJitterPct = callback.BurstIntervalJitterPct
+                        },
+                        materiality = new
+                        {
+                            sustained = sustainedMaterial,
+                            burst = burstMaterial,
+                            material = measuredMaterial,
+                            sustainedThresholdMsPerSecond = MaterialRemainingMsPerSecond,
+                            burstClassificationAuthorizesAuto = false
+                        }
                     },
                     source = generic.Source,
                     generic = new
@@ -394,6 +439,10 @@ internal static class CallbackResolverService
                 dormancyClasses = new[] { "NEVER_GATE", "HARD_DORMANT", "DISCOVERY_DORMANT", "BACKGROUND", "UNKNOWN" },
                 existingSchedulerRecognition = true,
                 existingSchedulerRecognitionPolicy = "Captured Scheduler job IDs must also exist as quoted literals in the current live owner source. Recognition is evidence/reporting only and does not suppress an independently safe generic transform.",
+                burstAwareMateriality = true,
+                burstAwareMaterialityPolicy = "SUSTAINED_3_MS_PER_SECOND_OR_STUTTER_MATERIAL_BURST; BURST_EVIDENCE_DOES_NOT_AUTHORIZE_AUTO_OR_LOWER_SEMANTIC_THRESHOLDS",
+                burstVocabularyVersion = "1.0",
+                burstClasses = new[] { "STEADY", "RECORDED_SPIKES", "SUSTAINED_HOT", "PERIODIC_STUTTER", "BURST_HOT", "CATASTROPHIC_BURST" },
                 sharedProviderOpportunityAnalysis = true,
                 sharedProviderGenerationEnabled = true,
                 sharedProviderGenerationFamilies = SharedProviderCatalog.GenerationFamilies
@@ -424,8 +473,13 @@ internal static class CallbackResolverService
                 frameDispatchOnlyMaterialResidualMsPerSecond = Round(
                     frameDispatchOnlyMaterialResidualMsPerSecond),
                 materialRemaining,
+                sustainedMaterialRemaining,
+                burstMaterialRemaining,
+                periodicStutterCallbacks,
+                catastrophicBurstCallbacks,
                 belowThreshold,
                 materialThresholdMsPerSecond = MaterialRemainingMsPerSecond,
+                materialityRule = "exclusiveMsPerSecond >= 3.0 OR profiler burst.stutterMaterial == true",
                 semanticMatches,
                 semanticSourceProven,
                 semanticReadyRules = semanticReadyRules.Count,
@@ -4872,6 +4926,10 @@ internal static class CallbackResolverService
             var sourceFile = "";
             long? lineStart = null;
             long? lineEnd = null;
+            JsonElement burst = default;
+            var hasBurst =
+                row.TryGetProperty("burst", out burst) &&
+                burst.ValueKind == JsonValueKind.Object;
             if (row.TryGetProperty("source", out var source) &&
                 source.ValueKind == JsonValueKind.Object)
             {
@@ -4897,7 +4955,20 @@ internal static class CallbackResolverService
                 AvgExclusiveUs = JsonDouble(row, "avgExclusiveUs", "AvgExclusiveUs"),
                 MaxExclusiveMs = JsonDouble(row, "maxExclusiveMs", "MaxExclusiveMs"),
                 SpikeCount = (long)JsonDouble(row, "spikeCount", "SpikeCount"),
-                MaxSpikeExclusiveMs = JsonDouble(row, "maxSpikeExclusiveMs", "MaxSpikeExclusiveMs")
+                MaxSpikeExclusiveMs = JsonDouble(row, "maxSpikeExclusiveMs", "MaxSpikeExclusiveMs"),
+                BurstVocabularyVersion = hasBurst ? JsonString(burst, "vocabularyVersion") : "",
+                BurstPrimaryClass = hasBurst ? JsonString(burst, "primaryClass") : "",
+                BurstClasses = hasBurst ? JsonStringArray(burst, "classes") : Array.Empty<string>(),
+                BurstStutterMaterial = hasBurst && JsonBool(burst, "stutterMaterial"),
+                BurstPeriodicStutter = hasBurst && JsonBool(burst, "periodicStutter"),
+                BurstHot = hasBurst && JsonBool(burst, "burstHot"),
+                BurstCatastrophic = hasBurst && JsonBool(burst, "catastrophicBurst"),
+                BurstMedianExclusiveMs = hasBurst ? JsonDouble(burst, "medianExclusiveMs") : 0,
+                BurstP95ExclusiveMs = hasBurst ? JsonDouble(burst, "p95ExclusiveMs") : 0,
+                BurstMaxExclusiveMs = hasBurst ? JsonDouble(burst, "maxExclusiveMs") : 0,
+                BurstMedianIntervalMs = hasBurst ? JsonDouble(burst, "medianIntervalMs") : 0,
+                BurstIntervalMadMs = hasBurst ? JsonDouble(burst, "intervalMadMs") : 0,
+                BurstIntervalJitterPct = hasBurst ? JsonDouble(burst, "intervalJitterPct") : 0
             });
         }
 
@@ -4958,6 +5029,19 @@ internal static class CallbackResolverService
                 return number;
         }
         return 0;
+    }
+
+    private static string[] JsonStringArray(JsonElement element, string name)
+    {
+        if (!element.TryGetProperty(name, out var array) ||
+            array.ValueKind != JsonValueKind.Array)
+            return Array.Empty<string>();
+
+        return array.EnumerateArray()
+            .Where(x => x.ValueKind == JsonValueKind.String)
+            .Select(x => x.GetString() ?? "")
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToArray();
     }
 
     private static long? JsonNullableLong(JsonElement element, params string[] names)
@@ -5651,6 +5735,19 @@ internal static class CallbackResolverService
         public double MaxExclusiveMs { get; init; }
         public long SpikeCount { get; init; }
         public double MaxSpikeExclusiveMs { get; init; }
+        public string BurstVocabularyVersion { get; init; } = "";
+        public string BurstPrimaryClass { get; init; } = "";
+        public string[] BurstClasses { get; init; } = Array.Empty<string>();
+        public bool BurstStutterMaterial { get; init; }
+        public bool BurstPeriodicStutter { get; init; }
+        public bool BurstHot { get; init; }
+        public bool BurstCatastrophic { get; init; }
+        public double BurstMedianExclusiveMs { get; init; }
+        public double BurstP95ExclusiveMs { get; init; }
+        public double BurstMaxExclusiveMs { get; init; }
+        public double BurstMedianIntervalMs { get; init; }
+        public double BurstIntervalMadMs { get; init; }
+        public double BurstIntervalJitterPct { get; init; }
 
         public long? registrationId => RegistrationId;
         public string owner => Owner;
