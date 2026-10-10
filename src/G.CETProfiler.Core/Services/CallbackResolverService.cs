@@ -233,7 +233,7 @@ internal static class CallbackResolverService
                         {
                             gcCoincidence.FrameBucketOverlapSpikes,
                             gcCoincidence.PotentiallyConfoundedSpikes,
-                            largestCoincidentBucketMs = Round(gcCoincidence.MaxBucketMs, 3),
+                            largestCoincidentBucketMs = Math.Round(gcCoincidence.MaxBucketMs, 3),
                             attribution = "BUCKET_COINCIDENCE_REVIEW_ONLY_NOT_CALLBACK_GC_COST",
                             canSubtractFromCallback = false,
                             authorizesRewrite = false
