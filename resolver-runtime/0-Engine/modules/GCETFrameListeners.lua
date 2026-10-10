@@ -1,7 +1,8 @@
 -- GCETFrameListeners.lua: opt-in pausable adopted CET onUpdate/onDraw handles.
 -- Does not change stock EventEmitter or registration/consumption ordering for
 -- existing mods. Re-enabling a paused listener appends it to dispatch order.
-local M = { version = "1.0.0" }
+local M = { version = "1.1.0" }
+local Probe = require("modules/GCETWorkloadProbe")
 
 function M.New(engine)
     local api, activeCount, pausedCount = {}, 0, 0
@@ -48,7 +49,9 @@ function M.New(engine)
             wrapper = function(...)
                 if not enabled or cancelled then return end
                 inside = true
+                local trace = Probe.Begin(owner, "gcet-listener", event, 0)
                 local ok, result = pcall(callback, ...)
+                Probe.End(trace)
                 inside = false
                 if not enabled or cancelled then deferDetach() end
                 if not ok then error(result) end

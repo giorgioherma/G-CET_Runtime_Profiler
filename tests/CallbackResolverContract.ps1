@@ -1912,7 +1912,7 @@ try {
     if ([int]$manifest.summary.callbackFiles -ne ([int]$resolved.pass.FileCount - [int]$manifest.summary.fixedRuntimeFiles)) {
         throw 'Generated pass callback-file accounting is inconsistent.'
     }
-    if ([int]$manifest.summary.fixedRuntimeFiles -ne 8) {
+    if ([int]$manifest.summary.fixedRuntimeFiles -ne 9) {
         throw "Expected 8 fixed 0-Engine runtime files, got $($manifest.summary.fixedRuntimeFiles)."
     }
     if (!$manifest.fixedRuntime.included -or !$manifest.fixedRuntime.exception) {
@@ -1922,7 +1922,7 @@ try {
         throw "Unexpected fixed 0-Engine version: $($manifest.fixedRuntime.FixedVersion)"
     }
 
-    foreach ($service in @('GCETWorkQueue','GCETPhasePlanner','GCETFrameListeners','GCETStateSignals')) {
+    foreach ($service in @('GCETWorkQueue','GCETPhasePlanner','GCETFrameListeners','GCETStateSignals','GCETWorkloadProbe')) {
         if ($null -eq $zip.GetEntry('bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/modules/' + $service + '.lua')) {
             throw "Fixed runtime pass missing service: $service"
         }
@@ -2019,7 +2019,7 @@ if ([string]$foreignManifest.fixedRuntime.FixedVersion -ne 'HOST-COMPAT-v1') {
 if ([string]$foreignManifest.fixedRuntime.mode -ne 'HOST_PRESERVING_ADAPTER' -or !$foreignManifest.fixedRuntime.hostPreserving) {
     throw 'Foreign 0-Engine manifest did not report host-preserving adapter mode.'
 }
-if ([int]$foreignManifest.summary.fixedRuntimeFiles -ne 6) {
+if ([int]$foreignManifest.summary.fixedRuntimeFiles -ne 7) {
     throw "Foreign 0-Engine compatibility should ship init, private ActionRouter and 4 additive services, got $($foreignManifest.summary.fixedRuntimeFiles)."
 }
 
@@ -2062,7 +2062,7 @@ try {
         }
     }
 
-    foreach ($service in @('GCETWorkQueue','GCETPhasePlanner','GCETFrameListeners','GCETStateSignals')) {
+    foreach ($service in @('GCETWorkQueue','GCETPhasePlanner','GCETFrameListeners','GCETStateSignals','GCETWorkloadProbe')) {
         if ($null -eq $foreignZip.GetEntry($base + '0-Engine/modules/' + $service + '.lua')) {
             throw "Host-preserving pass missing new service module: $service"
         }

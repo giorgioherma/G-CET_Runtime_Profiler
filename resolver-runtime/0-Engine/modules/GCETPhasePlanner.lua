@@ -1,6 +1,7 @@
 -- GCETPhasePlanner.lua: opt-in best-effort maintenance deadline/slack.
 -- Delegates cadence to stock 0-Engine Scheduler; never changes existing jobs.
-local M = { version = "1.0.0" }
+local M = { version = "1.1.0" }
+local Probe = require("modules/GCETWorkloadProbe")
 
 function M.New(engine)
     local api, waiting, wake = {}, {}, nil
@@ -35,7 +36,9 @@ function M.New(engine)
     local function invoke(task, ctx)
         task.pending = false
         local start = os.clock() * 1000
+        local trace = Probe.Begin(task.owner, "gcet-phase", tostring(task.label), lastFrame)
         local ok, err = pcall(task.fn, ctx)
+        Probe.End(trace)
         local duration = math.max(0, os.clock() * 1000 - start)
         usedMs = usedMs + duration
         task.estimateMs = 0.7 * task.estimateMs + 0.3 * duration
@@ -99,6 +102,7 @@ function M.New(engine)
         serial = serial + 1
         local task = {
             label = options.id or ("maintenance_" .. serial),
+            owner = options.owner or "unscoped",
             fn = fn, cancelled = false, active = options.active ~= false,
             pending = false, generationScoped = options.generationScoped == true,
             generation = generation,

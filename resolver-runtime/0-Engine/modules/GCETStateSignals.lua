@@ -1,6 +1,7 @@
 -- GCETStateSignals.lua: reuse 0-Engine's existing state-transition emitters.
 -- No polling or additional Observe hooks. Subscribers opt into specific keys.
-local M = { version = "1.0.0" }
+local M = { version = "1.1.0" }
+local Probe = require("modules/GCETWorkloadProbe")
 
 function M.New(engine)
     local api, keys, epoch = {}, {}, 0
@@ -34,7 +35,9 @@ function M.New(engine)
         for i = 1, #snapshot do
             local item = snapshot[i]
             if item.active then
+                local trace = Probe.Begin("0-Engine", "gcet-signal", bucket.key, 0)
                 pcall(item.fn, newValue, oldValue, bucket.version, epoch)
+                Probe.End(trace)
             end
         end
     end
@@ -70,7 +73,7 @@ function M.New(engine)
         if type(fn) ~= "function" then error("StateSignals.Watch requires function") end
         local bucket = keys[key]
         if not bucket then
-            bucket = { value = readCurrent(key), known = true,
+            bucket = { key = key, value = readCurrent(key), known = true,
                 version = 0, listeners = {}, sources = {} }
             keys[key] = bucket
         end

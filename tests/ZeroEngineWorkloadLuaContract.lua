@@ -1,7 +1,7 @@
 -- Standalone execution contract for additive 0-Engine Lua modules.
 -- Uses a fake stock Engine; no Cyberpunk, CMB or real CET installation required.
 local root = assert(arg[1], "module source directory required")
-package.path = root .. "/?.lua;" .. package.path
+package.path = root .. "/../?.lua;" .. root .. "/?.lua;" .. package.path
 
 local Work = require("GCETWorkQueue")
 local Phase = require("GCETPhasePlanner")

@@ -1,6 +1,7 @@
 -- GCETWorkQueue.lua: explicit cooperative per-item work, never preempts Lua.
 -- Installed as an additive 0-Engine module; no per-frame hook until work exists.
-local M = { version = "1.0.0" }
+local M = { version = "1.1.0" }
+local Probe = require("modules/GCETWorkloadProbe")
 
 function M.New(engine)
     local api, jobs, pulse = {}, {}, nil
@@ -73,7 +74,9 @@ function M.New(engine)
                     operations = operations + 1
                     -- Each invocation is ONE author-defined safe incremental unit.
                     -- A long individual invocation cannot be interrupted.
+                    local trace = Probe.Begin(job.owner, "gcet-work", tostring(job.label), frame)
                     local ok, finished = pcall(job.step, job.context)
+                    Probe.End(trace)
                     job.steps = job.steps + 1
                     if not ok then
                         job.lastError = tostring(finished)

@@ -61,7 +61,8 @@ internal static class FixedZeroEngineRuntime
         "modules/GCETWorkQueue.lua",
         "modules/GCETPhasePlanner.lua",
         "modules/GCETFrameListeners.lua",
-        "modules/GCETStateSignals.lua"
+        "modules/GCETStateSignals.lua",
+        "modules/GCETWorkloadProbe.lua"
     ];
 
     private const string HostActionRouterModule =
