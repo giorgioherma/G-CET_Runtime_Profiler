@@ -1967,6 +1967,45 @@ finally {
 }
 
 
+# Verify an earlier G-CET-owned WorkQueue module can be upgraded by a
+# NORMAL optimization pass. This does not create a framework-only path.
+$legacyWorkQueueFixture = Join-Path $PSScriptRoot 'fixtures\0Engine-legacy-GCETWorkQueue.lua'
+$legacyWorkQueuePath = Join-Path $mods '0-Engine\modules\GCETWorkQueue.lua'
+New-Item -ItemType Directory -Force (Split-Path $legacyWorkQueuePath) | Out-Null
+$oldHash = (Get-FileHash -LiteralPath $legacyWorkQueueFixture -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($oldHash -ne '63f752dcab1377bfc73757133034d938e2bb2580684dff40d2274eebc3bb46b6') {
+    throw 'Legacy G-CET WorkQueue fixture does not match its whitelisted version.'
+}
+Copy-Item -LiteralPath $legacyWorkQueueFixture -Destination $legacyWorkQueuePath -Force
+
+$upgradeZip = Join-Path $root 'legacy-workqueue-normal-pass.zip'
+$legacyUpgrade = (& $resolverExe --capture $capture --mods $mods --semantic-library $semanticLibrary --generate-pass --pass-output $upgradeZip --json | ConvertFrom-Json)
+if (!$legacyUpgrade.ok -or $null -eq $legacyUpgrade.pass -or !(Test-Path $upgradeZip)) {
+    throw 'Ordinary resolver pass rejected exact known old G-CET WorkQueue module.'
+}
+$upgrade = [System.IO.Compression.ZipFile]::OpenRead($upgradeZip)
+try {
+    $entry = $upgrade.GetEntry('bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/modules/GCETWorkQueue.lua')
+    if ($null -eq $entry) { throw 'Normal optimization pass omitted upgraded 0-Engine WorkQueue.' }
+} finally { $upgrade.Dispose() }
+
+# A user-modified file at that same path is NOT whitelisted.
+'-- foreign locally modified WorkQueue' | Set-Content -LiteralPath $legacyWorkQueuePath -Encoding utf8
+$foreignWorkQueueApproved = $false
+try {
+    $denied = (& $resolverExe --capture $capture --mods $mods --semantic-library $semanticLibrary --generate-pass --pass-output (Join-Path $root 'foreign-workqueue.zip') --json 2>$null | ConvertFrom-Json)
+    if ($LASTEXITCODE -eq 0 -and $denied.ok) { $foreignWorkQueueApproved = $true }
+} catch {
+    $foreignWorkQueueApproved = $false
+} finally {
+    Remove-Item -LiteralPath $legacyWorkQueuePath -Force
+    $global:LASTEXITCODE = 0
+}
+if ($foreignWorkQueueApproved) {
+    throw 'Normal pass overwrote a foreign-modified WorkQueue; hash collision safeguard regressed.'
+}
+Write-Host 'Normal-pass legacy G-CET WorkQueue upgrade and foreign-edit refusal contract passed.'
+
 # Structurally compatible foreign 0-Engine contract.
 # Unknown versions keep their own runtime and receive only the additive
 # Engine.GCET bridge + private G-CET ActionRouter support module.
