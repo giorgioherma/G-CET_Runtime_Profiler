@@ -129,6 +129,10 @@ public static partial class ResultReportService
                 totalDurationMs = Round(a.ExplicitGc.TotalDurationMs, 3),
                 maximumDurationMs = Round(a.ExplicitGc.MaximumDurationMs, 3),
                 callbacksNearRecordedSpikes = a.ExplicitGc.SpikeOverlapCount,
+                alignedHitchEpisodeOverlaps = a.FrameTime?.Correlated == true && a.FrameTime.HitchPressure is not null
+                    ? a.ExplicitGc.Events.Count(x => a.FrameTime.HitchPressure.Episodes.Any(e =>
+                        e.StartMs <= x.EndMs && e.EndMs >= x.StartMs))
+                    : (int?)null,
                 fullCollections = a.ExplicitGc.Events.Count(x => x.Action == "collect"),
                 steps = a.ExplicitGc.Events.Count(x => x.Action == "step"),
                 slowest = a.ExplicitGc.Events

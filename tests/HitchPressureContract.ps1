@@ -108,6 +108,7 @@ if($null -eq $explicit -or
    [int]$explicit.steps -ne 1 -or
    [math]::Abs([double]$explicit.totalDurationMs - 4.8) -gt 0.01 -or
    [int]$explicit.callbacksNearRecordedSpikes -ne 1 -or
+   [int]$explicit.alignedHitchEpisodeOverlaps -lt 1 -or
    $explicit.automaticLuaJitGcTimingAvailable) {
  throw 'Explicit GC duration / callback-spike correlation test failed.'
 }

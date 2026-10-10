@@ -47,7 +47,7 @@ public static partial class ResultReportService
         return new ExplicitGcTelemetry { Events = events };
     }
 
-    private static void AppendExplicitGc(StringBuilder sb, ExplicitGcTelemetry gc)
+    private static void AppendExplicitGc(StringBuilder sb, ExplicitGcTelemetry gc, FrameTimeAnalysis? frameTime)
     {
         sb.Append("<div class=\"section\"><h2>Explicit Lua garbage collection timing</h2>");
         sb.Append("<div class=\"grid\">");
@@ -60,6 +60,13 @@ public static partial class ResultReportService
             "Exact native call duration");
         MetricCard(sb, "Overlaps recorded spikes", N(gc.SpikeOverlapCount),
             "Exact capture-time interval overlap");
+        if (frameTime?.Correlated == true && frameTime.HitchPressure is not null)
+        {
+            var hitchOverlap = gc.Events.Count(x => frameTime.HitchPressure.Episodes.Any(e =>
+                e.StartMs <= x.EndMs && e.EndMs >= x.StartMs));
+            MetricCard(sb, "Overlaps aligned hitch episodes", N(hitchOverlap),
+                "Clock-aligned intervals; temporal coincidence, not causality");
+        }
         sb.Append("</div><div class=\"note\">");
         sb.Append("Measured events are explicit collectgarbage('collect'/'step') calls from CET sandboxed Lua mods. ");
         sb.Append("CMB calls are included if invoked through CET's shared collectgarbage global. ");

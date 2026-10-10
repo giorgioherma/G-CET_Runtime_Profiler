@@ -85,7 +85,7 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
             AppendFrameTime(sb, a.FrameTime);
 
         if (a.ExplicitGc is not null)
-            AppendExplicitGc(sb, a.ExplicitGc);
+            AppendExplicitGc(sb, a.ExplicitGc, a.FrameTime);
 
         if (a.LuaHeap is not null)
             AppendLuaHeap(sb, a.LuaHeap);
