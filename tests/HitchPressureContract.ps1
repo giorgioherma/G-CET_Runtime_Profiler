@@ -109,6 +109,25 @@ $cap = @{
 $cap | ConvertTo-Json -Depth 8 -Compress | Set-Content -LiteralPath (Join-Path $frameRoot 'CapFrameX-test.json') -Encoding utf8
 @{ startKeyKnown = $true } | ConvertTo-Json -Compress | Set-Content -LiteralPath (Join-Path $frameRoot 'CompanionManifest.json') -Encoding utf8
 
+
+# New native phase/allocation schema with deliberately different GC trigger
+# and producer. Collector capture must not assign pause ownership to producer.
+@(
+'Phase,Operations,WallMs,Interpretation',
+'atomic,1,49.75,internal-state-operation-wall-time-nested-in-collector',
+'propagate,18,2.3,internal-state-operation-wall-time-nested-in-collector',
+'finalize,0,0,internal-state-operation-wall-time-nested-in-collector'
+) | Set-Content -LiteralPath (Join-Path $capture 'CET_Runtime_Profile_GC_Phases.csv') -Encoding utf8
+@(
+'CaptureStartMs,CaptureEndMs,DurationMs,ThreadId,RegistrationId,PhaseBefore,PhaseAfter,HeapBeforeMiB,HeapAfterMiB,ThresholdMiB,DebtKiB,Pause,StepMul,DroppedEventsAtDump,Interpretation',
+'1000,1049.75,49.75,1,1,atomic,sweepstring,300,275,250,4096,150,200,0,exact-internal-phase-wall-time-trigger-site-not-allocator-owner'
+) | Set-Content -LiteralPath (Join-Path $capture 'CET_Runtime_Profile_GC_SlowSteps.csv') -Encoding utf8
+@(
+'RegistrationId,Mod,Kind,Target,SourceFile,Calls,GrossAllocatedMiB,GrossAllocatedMiBPerSecond,Interpretation',
+'2,OwnerB,event,onUpdate,init.lua,100,125.5,5.0,capture-gated-positive-LuaJIT-allocation-growth-own-callback',
+'1,OwnerA,event,onUpdate,init.lua,100,2.0,0.08,capture-gated-positive-LuaJIT-allocation-growth-own-callback'
+) | Set-Content -LiteralPath (Join-Path $capture 'CET_Runtime_Profile_Lua_Allocations.csv') -Encoding utf8
+
 $result = (& $profilerExe --report --capture $capture --json | ConvertFrom-Json)
 if (!$result.ok) { throw 'Profiler report generation failed.' }
 
@@ -123,6 +142,29 @@ if ($null -eq $workload -or
     [math]::Abs([double]$workload.measuredNestedMsPerSecond-1.5) -gt 0.01) {
     throw '0-Engine workload instrumented cost/status regression.'
 }
+
+$phaseEvidence = $summary.collectorGc
+if (@($phaseEvidence.Phases).Count -ne 3 -or
+    $phaseEvidence.Phases[0].Phase -ne 'atomic' -or
+    [math]::Abs([double]$phaseEvidence.Phases[0].WallMs - 49.75) -gt 0.01 -or
+    @($phaseEvidence.SlowSteps).Count -ne 1 -or
+    $phaseEvidence.SlowSteps[0].PhaseBefore -ne 'atomic' -or
+    $phaseEvidence.SlowSteps[0].Callback -notmatch 'OwnerA' -or
+    [int]$phaseEvidence.SlowSteps[0].Pause -ne 150 -or
+    [int]$phaseEvidence.SlowSteps[0].StepMul -ne 200 -or
+    @($phaseEvidence.AllocationOwners).Count -ne 2 -or
+    $phaseEvidence.AllocationOwners[0].Callback -notmatch 'OwnerB' -or
+    [math]::Abs([double]$phaseEvidence.AllocationOwners[0].MiB - 125.5) -gt 0.01) {
+    throw 'Native phase/slow-step/gross-allocation report attribution contract failed.'
+}
+$diagnosticHtml = Get-Content -LiteralPath (Join-Path $capture 'CET_Report.html') -Raw
+if ($diagnosticHtml -notmatch 'Collector phase execution' -or
+    $diagnosticHtml -notmatch 'Slow internal GC operations' -or
+    $diagnosticHtml -notmatch 'positive LuaJIT allocations by callback' -or
+    $diagnosticHtml -notmatch 'this is not allocation ownership') {
+    throw 'GC phase/allocation evidence missing or causality safety explanation lost.'
+}
+
 $collector = $summary.collectorGc
 if ($null -eq $collector -or
     $collector.measurement -ne 'EXACT_INTERNAL_LUAJIT_GC_EXECUTION_FRAME_BUCKETED' -or
