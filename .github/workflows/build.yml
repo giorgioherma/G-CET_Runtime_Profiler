@@ -14,6 +14,15 @@ on:
   pull_request:
 
 jobs:
+  zero-engine-lua-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lua interpreter for development smoke test
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lua5.4
+      - name: Execute 0-Engine additive workload runtime contract
+        run: lua5.4 tests/ZeroEngineWorkloadLuaContract.lua resolver-runtime/0-Engine/modules
+
   build:
     runs-on: windows-latest
 
