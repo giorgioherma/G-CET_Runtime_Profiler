@@ -135,9 +135,10 @@ $cap | ConvertTo-Json -Depth 8 -Compress | Set-Content -LiteralPath (Join-Path $
 '<unattributed>,3,3,0,0,5,2,50,20,20,10,2,0,1,0.01,4,0,1,0,0,0,0,30,unscoped'
 ) | Set-Content -LiteralPath (Join-Path $capture 'CET_Runtime_Profile_GGC_Rankings.csv') -Encoding utf8
 @(
-'RegistrationId,ProfileEpoch,FunctionName,SourceFile,SourceLineStart,SourceLineEnd,SampledCalls,SampledExclusiveAllocatedBytes,SampledExclusiveAllocationOperations,Interpretation',
-'2,1,refresh,mods/OwnerB/init.lua,40,55,5,8000,320,sampled-not-global',
-'1,1,tick,mods/OwnerA/init.lua,20,26,4,2000,200,sampled-not-global'
+'RegistrationId,ProfileEpoch,FunctionName,SourceFile,SourceLineStart,SourceLineEnd,SampledCalls,SampledExclusiveAllocatedBytes,SampledExclusiveAllocationOperations,FunctionKey,LuaCallerFile,LuaCallerLine,CallsiteResolution,ExecutionKind,Interpretation',
+'2,1,refresh,mods/OwnerB/init.lua,40,55,5,8000,320,refresh-v1,,,NOT_OBSERVED,LUA_OR_OTHER,sampled-not-global',
+'1,1,tick,mods/OwnerA/init.lua,20,26,4,2000,200,tick-v1,,,NOT_OBSERVED,LUA_OR_OTHER,sampled-not-global',
+'2,1,GetGameInstance,=[C],-1,-1,3,700,120,c-native-v1,mods/OwnerB/init.lua,48,SINGLE_OBSERVED_LUA_CALLSITE,NATIVE_C,sampled-not-owner'
 ) | Set-Content -LiteralPath (Join-Path $capture 'CET_Runtime_Profile_GGC_Functions.csv') -Encoding utf8
 @(
 'RegistrationId,Mod,Kind,Target,AllocatedBytes,AllocationOperations,NewGCObjects,NewStrings,SampledObjects,SampleCollisions,SampledReclaimedObjects,SampledReclaimedBytes,SampledLifetimeTicks,SampledFinalizers,FocusedAtDump',
@@ -177,6 +178,31 @@ if ($null -eq $ggcHandoff.gcTracer -or
     @($ggcHandoff.gcTracer.rankings).Count -ne 3) {
     throw 'G-GC Tracer measurement-only resolver contract failed.'
 }
+if ($ggc.contractVersion -ne '1.0' -or
+    $ggc.evidenceVocabulary -ne 'MEGAMIND_CET_MULTISIGNAL_V1' -or
+    [int]$ggc.coverage.registrationRows -ne 2 -or
+    [int]$ggc.coverage.nativeOperationsWithSingleObservedLuaCallsite -ne 120 -or
+    [int]$ggc.coverage.functionSampleOperations -ne 640 -or
+    $ggc.finalizerValidation.status -ne 'UNVALIDATED_DO_NOT_USE_FOR_AUTOMATIC_DECISIONS' -or
+    [int]$ggc.finalizerValidation.rawGlobalCalls -ne 30 -or
+    [int]$ggc.registrations[0].RegistrationId -ne 1 -or
+    @($ggc.functionCandidates).Count -ne 3) {
+    throw 'MEGAMIND interop schema and accuracy metadata contract failed.'
+}
+$cFrame = @($ggc.functionCandidates | Where-Object { $_.ExecutionKind -eq 'NATIVE_C' }) | Select-Object -First 1
+if ($null -eq $cFrame -or $cFrame.SourceFile -ne '=[C]' -or
+    $cFrame.LuaCallerFile -ne 'mods/OwnerB/init.lua' -or
+    [int]$cFrame.LuaCallerLine -ne 48 -or
+    $cFrame.CallsiteResolution -ne 'SINGLE_OBSERVED_LUA_CALLSITE') {
+    throw 'G-GC Tracer incorrectly merged C function identity and Lua caller.'
+}
+# The human summary and Resolver handoff must not drift into two languages.
+$summaryContract = $ggc | ConvertTo-Json -Depth 35 -Compress
+$resolverContract = $ggcHandoff.gcTracer | ConvertTo-Json -Depth 35 -Compress
+if ($summaryContract -ne $resolverContract) {
+    throw 'Profiler and Resolver are not speaking the identical MEGAMIND contract.'
+}
+
 if ((Get-Content -LiteralPath (Join-Path $capture 'CET_Report.html') -Raw) -notmatch 'G-GC Tracer') {
     throw 'G-GC Tracer human-readable report section missing.'
 }
