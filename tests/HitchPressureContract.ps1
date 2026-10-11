@@ -159,6 +159,18 @@ if ($null -eq $ggc -or
     [int]$ggc.focusedFunctions[0].SampledExclusiveAllocationOperations -ne 320) {
     throw 'G-GC Tracer rankings, function sample or safety contract failed.'
 }
+# Preserve the distinction between allocator growth, object births, and
+# actual sampled reclamation. These are not interchangeable measurements.
+if (-not $ggc.allocationEventsAreNotIdenticalToGCObjectBirths -or
+    -not $ggc.sampledReclamationMustNotBeExtrapolated -or
+    -not $ggc.captureOnlyNoGCPolicyChanges -or
+    [int]$ggc.rankings[0].NewGCObjects -ne 500 -or
+    [int]$ggc.rankings[0].SampledReclaimedObjects -ne 6 -or
+    [int]$ggc.rankings[1].AllocationOperations -ne 2400 -or
+    $ggc.rankings[2].Mod -ne '<unattributed>' -or
+    [bool]$ggc.rankings[2].Selected) {
+    throw 'G-GC Tracer measurement units / unknown-owner contract failed.'
+}
 $ggcHandoff = Get-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Raw | ConvertFrom-Json
 if ($null -eq $ggcHandoff.gcTracer -or
     !$ggcHandoff.gcTracer.noAutomaticRewrites -or
