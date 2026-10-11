@@ -109,12 +109,17 @@ void ggc_trace_object_created(void *object, unsigned long long bytes, unsigned i
   tag->p = object;
   ggc_owners[owner].samples++;
 }
-static void ggc_trace_object_freed(GCobj *object) {
+void ggc_trace_object_freed(GCobj *object) {
   unsigned int slot, type;
   GGCSample *tag;
   GGCTraceOwner *owner;
   LARGE_INTEGER now;
   if (InterlockedCompareExchange(&gcet_gc_on,0,0) == 0 || !object) return;
+#if LJ_HASFFI
+  /* Finalizable cdata first moves to mmudata; memory is NOT freed yet. */
+  if (object->gch.gct == ~LJ_TCDATA &&
+      (gco2cd(object)->marked & LJ_GC_CDATA_FIN)) return;
+#endif
   slot = (unsigned int)((((uintptr_t)object >> 4) ^ ((uintptr_t)object >> 17)) & (GGC_SAMPLE_CAP-1));
   tag = &ggc_samples[slot];
   if (tag->p != object) return;
@@ -333,7 +338,7 @@ $src = Change-Once $src '  g->gc.total += size;' ('  gcet_gc_alloc_observe(0, si
 
 $src = Change-Once $src '      gc_freefunc[o->gch.gct - ~LJ_TSTR](g, o);' ('      ggc_trace_object_freed(o);' + [Environment]::NewLine + '      gc_freefunc[o->gch.gct - ~LJ_TSTR](g, o);') 'object sweep'
 $src = Change-Once $src '      lj_str_free(g, gco2str(o));' ('      ggc_trace_object_freed(o);' + [Environment]::NewLine + '      lj_str_free(g, gco2str(o));') 'string sweep'
-$src = Change-Once $src '  GCobj *o = gcnext(gcref(g->gc.mmudata));' ('  GCobj *o = gcnext(gcref(g->gc.mmudata));' + [Environment]::NewLine + '  ggc_trace_object_finalized(o);') 'real finalizer'
+$src = Change-Once $src '  uint8_t oldh = hook_save(g);' ('  ggc_trace_object_finalized(o);' + [Environment]::NewLine + '  uint8_t oldh = hook_save(g);') 'executed finalizer callback'
 
 $src = Change-Once $src '/* Ditto, but fix the stack top first. */' ($step + '/* Ditto, but fix the stack top first. */') 'incremental wrapper'
 $src = Change-Once $src 'void lj_gc_fullgc(lua_State *L)' 'static void gcet_original_gc_full(lua_State *L)' 'full GC function'
@@ -365,6 +370,14 @@ Write-Host 'GCET collector probe: instrumented pinned LuaJIT source (capture-gat
 # Interned strings bypass lj_mem_newgco; instrument their creation separately.
 $strPath = Join-Path $SourceRoot 'src\lj_str.c'
 $strSrc = [IO.File]::ReadAllText($strPath)
-$strSrc = Change-Once $strSrc '#include "lj_obj.h"' ('#include "lj_obj.h"' + [Environment]::NewLine + 'void ggc_trace_object_created(void *object, unsigned long long bytes, unsigned int string);') 'string hook declaration'
+$strSrc = Change-Once $strSrc '#include "lj_obj.h"' ('#include "lj_obj.h"' + [Environment]::NewLine + 'void ggc_trace_object_created(void *object, unsigned long long bytes, unsigned int string);' + [Environment]::NewLine + 'void ggc_trace_object_freed(GCobj *object);') 'string hook declaration'
+$strSrc = Change-Once $strSrc '  lj_str_free(g, s);' ('  ggc_trace_object_freed(obj2gco(s));' + [Environment]::NewLine + '  lj_str_free(g, s);') 'string rehash free'
 $strSrc = Change-Once $strSrc '  return s;  /* Return newly interned string. */' ('  ggc_trace_object_created(s, lj_str_size(len), 1);' + [Environment]::NewLine + '  return s;  /* Return newly interned string. */') 'string birth'
 [IO.File]::WriteAllText($strPath, $strSrc, [Text.UTF8Encoding]::new($false))
+
+# Aligned or variable-length cdata bypass lj_mem_newgco.
+$cdataPath = Join-Path $SourceRoot 'src\lj_cdata.c'
+$cdataSrc = [IO.File]::ReadAllText($cdataPath)
+$cdataSrc = Change-Once $cdataSrc '#include "lj_cdata.h"' ('#include "lj_cdata.h"' + [Environment]::NewLine + 'void ggc_trace_object_created(void *object, unsigned long long bytes, unsigned int string);') 'variable cdata declaration'
+$cdataSrc = Change-Once $cdataSrc '  cd->ctypeid = id;' ('  cd->ctypeid = id;' + [Environment]::NewLine + '  ggc_trace_object_created(cd, (unsigned long long)(extra + sz), 0);') 'variable cdata birth'
+[IO.File]::WriteAllText($cdataPath, $cdataSrc, [Text.UTF8Encoding]::new($false))
