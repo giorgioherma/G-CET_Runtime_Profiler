@@ -4,13 +4,10 @@ permissions:
   contents: write
   actions: read
 
+# Diagnostic isolation: disable automatic native rebuild/publish.
+# Experimental builds use a separate branch and standalone artifact only.
 on:
   workflow_dispatch:
-  push:
-    branches: [ dev/resolver-profiler-handoff ]
-    paths:
-      - 'native-profiler-build/**'
-      - '.github/workflows/native-profiler-rebuild.yml'
 
 jobs:
   rebuild:
