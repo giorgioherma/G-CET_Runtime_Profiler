@@ -382,6 +382,8 @@ public:
         bool LineRowsTruncated{false};
         uint32_t NestedRegistrationDepth{};
         std::chrono::steady_clock::time_point NestedBoundaryStart{};
+        uint64_t NestedBoundaryAllocBytes{};
+        uint64_t NestedBoundaryAllocOps{};
         uint64_t NestedRegistrationCount{};
         uint64_t NestedRegistrationNs{};
         std::vector<DeepFrame> Frames;
@@ -649,6 +651,8 @@ public:
         if (state.NestedRegistrationDepth++ == 0)
         {
             state.NestedBoundaryStart = bookkeepingStart;
+            state.NestedBoundaryAllocBytes = gcet_gc_alloc_bytes();
+            state.NestedBoundaryAllocOps = gcet_gc_alloc_ops();
             lua_sethook(aState, nullptr, 0, 0);
         }
         ++state.NestedRegistrationCount;
@@ -680,8 +684,13 @@ public:
                 std::chrono::duration_cast<std::chrono::nanoseconds>(
                     boundaryEnd - state.NestedBoundaryStart).count()));
         state.NestedRegistrationNs += nestedNs;
-        if (!state.Frames.empty())
+        if (!state.Frames.empty()) {
             state.Frames.back().ChildRawNs += nestedNs;
+            state.Frames.back().ChildAllocBytes +=
+                gcet_gc_alloc_bytes() - state.NestedBoundaryAllocBytes;
+            state.Frames.back().ChildAllocOps +=
+                gcet_gc_alloc_ops() - state.NestedBoundaryAllocOps;
+        }
 
         const auto bookkeepingStart = Clock::now();
         lua_sethook(
