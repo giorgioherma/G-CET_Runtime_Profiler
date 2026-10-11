@@ -747,6 +747,40 @@ $handoff = @{
             }
         }
     )
+    gcTracer = @{
+        contractVersion = '1.0'
+        evidenceVocabulary = 'MEGAMIND_CET_MULTISIGNAL_V1'
+        noAutomaticRewrites = $true
+        authorizesAutomaticRewrite = $false
+        metricSemantics = @{
+            allocationOperations = 'POSITIVE_GROWTH_ALLOCATOR_REQUESTS_NOT_GC_OBJECT_BIRTHS'
+            newGCObjects = 'OBSERVED_GC_OBJECT_CREATION_NOT_TOTAL_ALLOCATIONS'
+        }
+        registrations = @(
+            @{
+                RegistrationId = 101
+                Mod = 'FixtureAction'
+                Kind = 'observe'
+                Target = 'PlayerPuppet::OnAction'
+                AllocatedBytes = 123456
+                AllocationOperations = 640
+                NewGCObjects = 73
+                SampledReclaimedObjects = 4
+                Focused = $true
+            },
+            @{
+                RegistrationId = 104
+                Mod = 'WrongOwner'
+                Kind = 'observe'
+                Target = 'PlayerPuppet::OnAction'
+                AllocatedBytes = 9999999
+                AllocationOperations = 999999
+                NewGCObjects = 999999
+                SampledReclaimedObjects = 9999
+                Focused = $true
+            }
+        )
+    }
 } | ConvertTo-Json -Depth 30
 
 $handoff | Set-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Encoding utf8
@@ -1029,6 +1063,27 @@ function Action-For([string]$Owner) {
         if ($null -ne $row) { return $row }
     }
     throw "OnAction fixture was not ranked: $Owner"
+}
+
+if (!$result.policy.megaMindEvidenceIntegration -or
+    $result.policy.megaMindMayAuthorizeTransform -or
+    !$result.policy.megaMindOnlyCorrelatesExactRegistrationAndOwner -or
+    $result.megaMind.gcEvidenceStatus -ne 'READY' -or
+    $result.megaMind.changesAutomationDecisions) {
+    throw 'MEGAMIND observational-only contract was not honored.'
+}
+$megaAction = Action-For 'FixtureAction'
+if ($megaAction.runtime.megaMind.status -ne 'MATCHED_REGISTRATION' -or
+    [long]$megaAction.runtime.megaMind.positiveAllocationOperations -ne 640 -or
+    [long]$megaAction.runtime.megaMind.newGCObjects -ne 73 -or
+    $megaAction.runtime.megaMind.influencesGenericOrSemanticAdmission -or
+    $megaAction.runtime.megaMind.authorizesRewrite) {
+    throw 'MEGAMIND exact callback evidence join or policy failed.'
+}
+$wrongOwner = Action-For 'FixtureSingleton'
+if ($wrongOwner.runtime.megaMind.status -ne 'OWNER_ID_MISMATCH_REVIEW_ONLY' -or
+    [long]$wrongOwner.runtime.megaMind.positiveAllocatedBytes -ne 0) {
+    throw 'MEGAMIND must not assign another owner allocation evidence.'
 }
 
 $action = Action-For 'FixtureAction'
