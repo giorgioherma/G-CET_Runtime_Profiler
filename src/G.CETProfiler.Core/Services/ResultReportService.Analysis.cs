@@ -59,6 +59,7 @@ public static partial class ResultReportService
         var luaAllocations = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Lua_Allocations.csv"));
         var gcTracer = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_GGC_Rankings.csv"));
         var gcTracerFunctions = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_GGC_Functions.csv"));
+        var gcTracerRegistrations = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_GGC_Registrations.csv"));
         var spikes = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Spikes.csv"));
         var schedulerJobs = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Scheduler_ByJob.csv"));
         var schedulerSpikes = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Scheduler_Spikes.csv"));
@@ -252,7 +253,7 @@ public static partial class ResultReportService
             LuaHeap = AnalyzeLuaHeap(markers, spikes),
             ExplicitGc = explicitGcFile is null ? null : AnalyzeExplicitGc(explicitGc, spikes),
             CollectorGc = collectorGcFile is null ? null : AnalyzeGcCollector(collectorGc, spikes, frameTime, gcPhases, gcSlow, luaAllocations, detail),
-            GcTracer = gcTracer.Count > 0 ? AnalyzeGcTracer(gcTracer, gcTracerFunctions) : null,
+            GcTracer = gcTracer.Count > 0 ? AnalyzeGcTracer(gcTracer, gcTracerFunctions, gcTracerRegistrations) : null,
             WorkloadServices = AnalyzeWorkload(markers, schedulerJobMetrics)
         };
     }

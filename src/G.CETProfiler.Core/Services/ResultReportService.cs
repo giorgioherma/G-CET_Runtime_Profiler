@@ -146,16 +146,7 @@ public static partial class ResultReportService
                         maxMs = Round(x.MaxMs, 3)
                     })
             },
-            gcTracer = a.GcTracer is null ? null : new {
-                measurement = "G_GC_TRACER_ALLOCATION_PROVENANCE_SAMPLED",
-                allocationEventsAreNotIdenticalToGCObjectBirths = true,
-                dynamicFiveByBytesAndFiveDistinctByAllocationOperations = true,
-                captureOnlyNoGCPolicyChanges = true,
-                sampledReclamationMustNotBeExtrapolated = true,
-                authorizesAutomaticRewrite = false,
-                rankings = a.GcTracer.Mods.Take(50),
-                focusedFunctions = a.GcTracer.Functions.Take(100)
-            },
+            gcTracer = a.GcTracer is null ? null : BuildGcTracerInterop(a.GcTracer),
             collectorGc = a.CollectorGc is null ? null : new
             {
                 measurement = "EXACT_INTERNAL_LUAJIT_GC_EXECUTION_FRAME_BUCKETED",

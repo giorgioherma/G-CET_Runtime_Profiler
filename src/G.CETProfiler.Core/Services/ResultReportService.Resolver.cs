@@ -378,12 +378,7 @@ public static partial class ResultReportService
                         maxMs = Round(x.MaxMs, 3)
                     })
             },
-            gcTracer = a.GcTracer is null ? null : new {
-                attributionPolicy = "OBSERVATION_ONLY_REQUIRES_SOURCE_INSPECTION",
-                noAutomaticRewrites = true,
-                rankings = a.GcTracer.Mods.Take(50),
-                functionCandidates = a.GcTracer.Functions.Take(100)
-            },
+            gcTracer = a.GcTracer is null ? null : BuildGcTracerInterop(a.GcTracer),
             garbageCollection = a.ExplicitGc is null && a.CollectorGc is null ? null : new
             {
                 attributionPolicy = "MEASUREMENT_ONLY_NO_AUTOMATIC_OPTIMIZATION",
