@@ -314,6 +314,24 @@ if ($null -eq $handoff.hitchPressure -or [bool]$handoff.hitchPressure.authorizes
     throw 'Resolver handoff lost safe hitch-pressure semantics.'
 }
 
+
+# Old 2.14 captures have no G-GC Tracer CSVs. They must still produce valid
+# reports and resolver handoffs without inventing object provenance.
+$legacyGcCapture = Join-Path $root 'legacy-gc-capture'
+Copy-Item -LiteralPath $capture -Destination $legacyGcCapture -Recurse -Force
+foreach ($file in @('CET_Runtime_Profile_GGC_Rankings.csv',
+                   'CET_Runtime_Profile_GGC_Functions.csv',
+                   'CET_Runtime_Profile_GGC_Registrations.csv')) {
+    Remove-Item -LiteralPath (Join-Path $legacyGcCapture $file) -Force
+}
+$legacyResult = (& $profilerExe --report --capture $legacyGcCapture --json | ConvertFrom-Json)
+if (!$legacyResult.ok) { throw 'Legacy pre-G-GC Tracer capture report failed.' }
+$legacySummary = Get-Content (Join-Path $legacyGcCapture 'CET_Summary.json') -Raw | ConvertFrom-Json
+$legacyResolver = Get-Content (Join-Path $legacyGcCapture 'CET_Resolver_Input.json') -Raw | ConvertFrom-Json
+if ($null -ne $legacySummary.gcTracer -or $null -ne $legacyResolver.gcTracer) {
+    throw 'Legacy capture invented G-GC Tracer provenance without source CSVs.'
+}
+
 # Repeat with a collector-heavy bucket overlapping a long callback.
 # This exercises the positive review path independently of the earlier zero
 # confirmation, without treating bucket timing as caller-owned GC time.
