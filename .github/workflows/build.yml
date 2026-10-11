@@ -79,22 +79,31 @@ jobs:
 
           # A source-only native change is not a distributable feature. Refuse
           # to ship v2.12 with an old, hash-valid v2.11 profiler payload.
-          if ([string]$manifest.profilerNativeVersion -in @('2.12.0', '2.13.0', '2.14.0')) {
+          if ([string]$manifest.profilerNativeVersion -in @('2.12.0', '2.13.0', '2.14.0', '2.15.0')) {
             $payload = [IO.File]::ReadAllBytes((Resolve-Path 'payload\cyber_engine_tweaks.PROFILER.dll').Path)
             $binaryText = [Text.Encoding]::Latin1.GetString($payload)
             if (-not $binaryText.Contains('CET_Runtime_Profile_GC_Explicit.csv')) {
               throw 'Native GC explicit-call timing payload missing; refuse incomplete release.'
             }
-            if ([string]$manifest.profilerNativeVersion -in @('2.13.0', '2.14.0') -and
+            if ([string]$manifest.profilerNativeVersion -in @('2.13.0', '2.14.0', '2.15.0') -and
                 -not $binaryText.Contains('CET_Runtime_Profile_GC_Collector.csv')) {
               throw 'Native 2.13 collector probe is not rebuilt and hash locked; refuse incomplete release.'
             }
-            if ([string]$manifest.profilerNativeVersion -eq '2.14.0') {
+            if ([string]$manifest.profilerNativeVersion -in @('2.14.0', '2.15.0')) {
               foreach ($required in @('CET_Runtime_Profile_GC_Phases.csv',
                                       'CET_Runtime_Profile_GC_SlowSteps.csv',
                                       'CET_Runtime_Profile_Lua_Allocations.csv')) {
                 if (-not $binaryText.Contains($required)) {
                   throw "Native 2.14 diagnostic probe is not rebuilt and hash locked; missing $required."
+                }
+              }
+            }
+            if ([string]$manifest.profilerNativeVersion -eq '2.15.0') {
+              foreach ($required in @('CET_Runtime_Profile_GGC_Registrations.csv',
+                                      'CET_Runtime_Profile_GGC_Rankings.csv',
+                                      'CET_Runtime_Profile_GGC_Functions.csv')) {
+                if (-not $binaryText.Contains($required)) {
+                  throw "Native G-GC Tracer 2.15 payload missing $required; rebuild required."
                 }
               }
             }

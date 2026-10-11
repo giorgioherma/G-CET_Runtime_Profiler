@@ -20,6 +20,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Record native source identity
+        shell: pwsh
+        run: |
+          "GGC_SOURCE_HASH=$(git hash-object native-profiler-build/v2.11.0/Patch-LuaJIT-GC-Source.ps1)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "GGC_HEADER_HASH=$(git hash-object native-profiler-build/v2.11.0/CETRuntimeProfiler.h)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+
       - name: Rebuild native profiler from pinned CET source
         shell: pwsh
         run: |
@@ -58,6 +64,10 @@ jobs:
           # non-fast-forward push after a successful native build.
           git fetch origin dev/resolver-profiler-handoff
           git rebase origin/dev/resolver-profiler-handoff
+          if ((git hash-object native-profiler-build/v2.11.0/Patch-LuaJIT-GC-Source.ps1) -ne $env:GGC_SOURCE_HASH -or
+              (git hash-object native-profiler-build/v2.11.0/CETRuntimeProfiler.h) -ne $env:GGC_HEADER_HASH) {
+            throw 'Native source changed during build. Refusing to commit stale DLL.'
+          }
 
           Copy-Item $rebuilt 'payload\cyber_engine_tweaks.PROFILER.dll' -Force
           $hash = (Get-FileHash 'payload\cyber_engine_tweaks.PROFILER.dll' -Algorithm SHA256).Hash.ToLowerInvariant()
