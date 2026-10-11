@@ -19,6 +19,7 @@ $probe = @'
  * Disabled outside explicit capture. No heap allocations or logger calls. */
 /* GCET_COLLECTOR_PROBE_V2: phase + allocation evidence, capture-only. */
 #include <windows.h>
+#include <string.h>
 
 typedef struct GCETGCStats {
   unsigned long long stepCalls, stepTicks, maxStepTicks, completedCycles;
@@ -49,6 +50,100 @@ static volatile LONG64 gcet_segment_ticks = 0, gcet_segment_offset_ns = 0, gcet_
 static __declspec(thread) unsigned long long gcet_current_registration = 0;
 static __declspec(thread) unsigned long long gcet_gross_alloc_bytes = 0;
 
+/* G-GC Tracer: capture-gated, allocation-free native counters and sampled
+ * lifetime side table. No object header changes and no collector decisions. */
+#define GGC_OWNER_CAP 32768
+#define GGC_SAMPLE_CAP 65536
+typedef struct GGCTraceOwner {
+  unsigned long long bytes, allocations, objects, strings;
+  unsigned long long samples, collisions, freedSamples, freedBytes;
+  unsigned long long lifetimeTicks, finalizedSamples;
+  unsigned long long freedTables, freedStrings, freedUserdata, freedCdata, freedOther;
+} GGCTraceOwner;
+typedef struct GGCSample {
+  void *p;
+  unsigned long long owner, bytes, born;
+} GGCSample;
+static GGCTraceOwner ggc_owners[GGC_OWNER_CAP];
+static GGCSample ggc_samples[GGC_SAMPLE_CAP];
+static volatile LONG ggc_focus[GGC_OWNER_CAP];
+static __declspec(thread) unsigned long long ggc_alloc_ops = 0;
+static volatile LONG64 ggc_sequence = 0, ggc_finalizer_calls = 0;
+static unsigned int ggc_owner(void) {
+  return gcet_current_registration < GGC_OWNER_CAP - 1
+    ? (unsigned int)gcet_current_registration : GGC_OWNER_CAP - 1;
+}
+unsigned long long gcet_gc_alloc_ops(void) { return ggc_alloc_ops; }
+void ggc_trace_focus_set(unsigned long long id, int yes) {
+  if (id > 0 && id < GGC_OWNER_CAP - 1)
+    InterlockedExchange(&ggc_focus[(unsigned int)id], yes ? 1 : 0);
+}
+int ggc_trace_focused(unsigned long long id) {
+  return id > 0 && id < GGC_OWNER_CAP - 1 &&
+    InterlockedCompareExchange(&ggc_focus[(unsigned int)id],0,0) != 0;
+}
+void ggc_trace_owner_read(unsigned long long id, GGCTraceOwner *out) {
+  if (out) *out = ggc_owners[id < GGC_OWNER_CAP - 1 ? (unsigned int)id : GGC_OWNER_CAP - 1];
+}
+unsigned long long ggc_trace_finalizer_calls(void) {
+  return (unsigned long long)InterlockedCompareExchange64(&ggc_finalizer_calls,0,0);
+}
+void ggc_trace_object_created(void *object, unsigned long long bytes, unsigned int string) {
+  unsigned int owner, slot;
+  unsigned long long sequence;
+  LARGE_INTEGER now;
+  GGCSample *tag;
+  if (InterlockedCompareExchange(&gcet_gc_on,0,0) == 0 || !object) return;
+  owner = ggc_owner();
+  ggc_owners[owner].objects++;
+  if (string) ggc_owners[owner].strings++;
+  sequence = (unsigned long long)InterlockedIncrement64(&ggc_sequence);
+  if (sequence % (InterlockedCompareExchange(&ggc_focus[owner],0,0) ? 32 : 512)) return;
+  slot = (unsigned int)((((uintptr_t)object >> 4) ^ ((uintptr_t)object >> 17)) & (GGC_SAMPLE_CAP-1));
+  tag = &ggc_samples[slot];
+  if (tag->p) { ggc_owners[owner].collisions++; return; }
+  QueryPerformanceCounter(&now);
+  tag->owner = owner;
+  tag->bytes = bytes;
+  tag->born = (unsigned long long)now.QuadPart;
+  tag->p = object;
+  ggc_owners[owner].samples++;
+}
+static void ggc_trace_object_freed(GCobj *object) {
+  unsigned int slot, type;
+  GGCSample *tag;
+  GGCTraceOwner *owner;
+  LARGE_INTEGER now;
+  if (InterlockedCompareExchange(&gcet_gc_on,0,0) == 0 || !object) return;
+  slot = (unsigned int)((((uintptr_t)object >> 4) ^ ((uintptr_t)object >> 17)) & (GGC_SAMPLE_CAP-1));
+  tag = &ggc_samples[slot];
+  if (tag->p != object) return;
+  owner = &ggc_owners[(unsigned int)tag->owner];
+  owner->freedSamples++;
+  owner->freedBytes += tag->bytes;
+  QueryPerformanceCounter(&now);
+  if ((unsigned long long)now.QuadPart >= tag->born)
+    owner->lifetimeTicks += (unsigned long long)now.QuadPart - tag->born;
+  type = (unsigned int)object->gch.gct;
+  if (type == (unsigned int)~LJ_TTAB) owner->freedTables++;
+  else if (type == (unsigned int)~LJ_TSTR) owner->freedStrings++;
+  else if (type == (unsigned int)~LJ_TUDATA) owner->freedUserdata++;
+#if LJ_HASFFI
+  else if (type == (unsigned int)~LJ_TCDATA) owner->freedCdata++;
+#endif
+  else owner->freedOther++;
+  tag->p = NULL;
+}
+static void ggc_trace_object_finalized(GCobj *object) {
+  unsigned int slot;
+  if (InterlockedCompareExchange(&gcet_gc_on,0,0) == 0 || !object) return;
+  InterlockedIncrement64(&ggc_finalizer_calls);
+  slot = (unsigned int)((((uintptr_t)object >> 4) ^ ((uintptr_t)object >> 17)) & (GGC_SAMPLE_CAP-1));
+  if (ggc_samples[slot].p == object)
+    ggc_owners[(unsigned int)ggc_samples[slot].owner].finalizedSamples++;
+}
+
+
 unsigned long long gcet_gc_scope_set(unsigned long long registration)
 {
   unsigned long long old = gcet_current_registration;
@@ -59,7 +154,13 @@ unsigned long long gcet_gc_alloc_bytes(void) { return gcet_gross_alloc_bytes; }
 static void gcet_gc_alloc_observe(unsigned long long oldSize, unsigned long long newSize)
 {
   if (newSize > oldSize && InterlockedCompareExchange(&gcet_gc_on, 0, 0) != 0)
+  {
+    unsigned int owner = ggc_owner();
     gcet_gross_alloc_bytes += newSize - oldSize;
+    ggc_alloc_ops++;
+    ggc_owners[owner].bytes += newSize - oldSize;
+    ggc_owners[owner].allocations++;
+  }
 }
 void gcet_gc_trace_segment(unsigned long long captureOffsetNs)
 {
@@ -113,6 +214,11 @@ void gcet_gc_stats_set(int enable, int reset)
   InterlockedExchange(&gcet_gc_on, 0);
   if (reset) {
     int i;
+    memset(ggc_owners, 0, sizeof(ggc_owners));
+    memset(ggc_focus, 0, sizeof(ggc_focus));
+    memset(ggc_samples, 0, sizeof(ggc_samples));
+    InterlockedExchange64(&ggc_sequence, 0);
+    InterlockedExchange64(&ggc_finalizer_calls, 0);
     InterlockedExchange(&gcet_slow_seen, 0);
     for (i = 0; i < 6; i++) {
       InterlockedExchange64(&gcet_phase_calls[i], 0);
@@ -126,6 +232,7 @@ void gcet_gc_stats_set(int enable, int reset)
     InterlockedExchange64(&gcet_gc_full_ticks, 0);
     InterlockedExchange64(&gcet_gc_full_max, 0);
   }
+  if (!enable && !reset) memset(ggc_samples, 0, sizeof(ggc_samples));
   if (enable) InterlockedExchange(&gcet_gc_on, 1);
 }
 
@@ -223,6 +330,13 @@ static size_t gc_onestep(lua_State *L)
 $src = Change-Once $src '/* Perform a limited amount of incremental GC steps. */' ($phase + '/* Perform a limited amount of incremental GC steps. */') 'internal collector phase wrapper'
 $src = Change-Once $src '  g->gc.total = (g->gc.total - osz) + nsz;' ('  gcet_gc_alloc_observe(osz, nsz);' + [Environment]::NewLine + '  g->gc.total = (g->gc.total - osz) + nsz;') 'realloc accounting'
 $src = Change-Once $src '  g->gc.total += size;' ('  gcet_gc_alloc_observe(0, size);' + [Environment]::NewLine + '  g->gc.total += size;') 'new GC object accounting'
+
+$birth = '  setgref(g->gc.root, o);' # unused sentinel
+$src = Change-Once $src ('  setgcref(g->gc.root, o);' + [Environment]::NewLine + '  newwhite(g, o);' + [Environment]::NewLine + '  return o;') ('  setgcref(g->gc.root, o);' + [Environment]::NewLine + '  newwhite(g, o);' + [Environment]::NewLine + '  ggc_trace_object_created(o, size, 0);' + [Environment]::NewLine + '  return o;') 'GC object birth'
+$src = Change-Once $src '      gc_freefunc[o->gch.gct - ~LJ_TSTR](g, o);' ('      ggc_trace_object_freed(o);' + [Environment]::NewLine + '      gc_freefunc[o->gch.gct - ~LJ_TSTR](g, o);') 'object sweep'
+$src = Change-Once $src '      lj_str_free(g, gco2str(o));' ('      ggc_trace_object_freed(o);' + [Environment]::NewLine + '      lj_str_free(g, gco2str(o));') 'string sweep'
+$src = Change-Once $src '  GCobj *o = gcnext(gcref(g->gc.mmudata));' ('  GCobj *o = gcnext(gcref(g->gc.mmudata));' + [Environment]::NewLine + '  ggc_trace_object_finalized(o);') 'real finalizer'
+
 $src = Change-Once $src '/* Ditto, but fix the stack top first. */' ($step + '/* Ditto, but fix the stack top first. */') 'incremental wrapper'
 $src = Change-Once $src 'void lj_gc_fullgc(lua_State *L)' 'static void gcet_original_gc_full(lua_State *L)' 'full GC function'
 
@@ -249,3 +363,10 @@ void lj_gc_fullgc(lua_State *L)
 $src = Change-Once $src '/* -- Write barriers ------------------------------------------------------ */' ($full + '/* -- Write barriers ------------------------------------------------------ */') 'full GC wrapper'
 [IO.File]::WriteAllText($path, $src, [Text.UTF8Encoding]::new($false))
 Write-Host 'GCET collector probe: instrumented pinned LuaJIT source (capture-gated).'
+
+# Interned strings bypass lj_mem_newgco; instrument their creation separately.
+$strPath = Join-Path $SourceRoot 'src\lj_str.c'
+$strSrc = [IO.File]::ReadAllText($strPath)
+$strSrc = Change-Once $strSrc '#include "lj_obj.h"' ('#include "lj_obj.h"' + [Environment]::NewLine + 'void ggc_trace_object_created(void *object, unsigned long long bytes, unsigned int string);') 'string hook declaration'
+$strSrc = Change-Once $strSrc '  return s;  /* Return newly interned string. */' ('  ggc_trace_object_created(s, lj_str_size(len), 1);' + [Environment]::NewLine + '  return s;  /* Return newly interned string. */') 'string birth'
+[IO.File]::WriteAllText($strPath, $strSrc, [Text.UTF8Encoding]::new($false))
