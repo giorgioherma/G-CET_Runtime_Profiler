@@ -3739,9 +3739,22 @@ private:
             selected[v.mod] = true;
         }
         for (const auto& [_, counter] : m_counters) {
-            bool chosen = selected.count(counter->Mod) != 0;
-            counter->GcTracerFocused.store(chosen, std::memory_order_release);
+            const bool chosen = selected.count(counter->Mod) != 0;
+            const bool wasFocused = counter->GcTracerFocused.exchange(
+                chosen, std::memory_order_acq_rel);
             ggc_trace_focus_set(counter->RegistrationId, chosen ? 1 : 0);
+            // A callback may have completed the CPU hotset before this GC
+            // promotion. Give newly promoted owners a fresh bounded sampling
+            // epoch instead of silently producing no function attribution.
+            if (chosen && !wasFocused) {
+                counter->DeepComplete.store(false, std::memory_order_relaxed);
+                counter->DeepSpikeArmed.store(false, std::memory_order_relaxed);
+                counter->DeepSamples.store(0, std::memory_order_relaxed);
+                counter->DeepSampleTicker.store(0, std::memory_order_relaxed);
+                counter->DeepTargetSamples.store(
+                    DefaultDeepTargetSamples, std::memory_order_relaxed);
+                counter->DeepProfileEpoch.fetch_add(1, std::memory_order_relaxed);
+            }
             if (chosen && !counter->DeepSelected.load(std::memory_order_relaxed))
                 counter->DeepSampleStride.store(32, std::memory_order_relaxed);
         }
