@@ -2819,14 +2819,19 @@ public:
             std::unordered_map<std::string, size_t> byteRank, opRank;
             std::unordered_map<std::string, bool> topTen;
             for (size_t i = 0; i < rankedBytes.size(); ++i) {
-                byteRank[rankedBytes[i]] = i + 1;
-                if (i < 5 && rankedBytes[i][0] != '<')
-                    topTen[rankedBytes[i]] = true;
+                const auto& name = rankedBytes[i];
+                byteRank[name] = i + 1;
+                if (topTen.size() < 5 && name != "<unattributed>" &&
+                    name != "<registration-overflow>")
+                    topTen[name] = true;
             }
             for (size_t i = 0; i < rankedOps.size(); ++i)
                 opRank[rankedOps[i]] = i + 1;
-            for (const auto& name : rankedOps)
-                if (topTen.size() < 10 && name[0] != '<') topTen[name] = true;
+            for (const auto& name : rankedOps) {
+                if (topTen.size() >= 10) break;
+                if (name != "<unattributed>" && name != "<registration-overflow>")
+                    topTen[name] = true;
+            }
             GCETGCStats gc{};
             gcet_gc_stats_read(&gc);
             const double lifetimeScale = gc.frequency
