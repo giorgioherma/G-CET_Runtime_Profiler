@@ -1,0 +1,42 @@
+name: Native crash-isolation DLL only
+
+on:
+  push:
+    branches:
+      - 'diag/native-216-*'
+    paths:
+      - '.github/workflows/native-diagnostics.yml'
+      - 'native-profiler-build/v2.11.0/CETRuntimeProfiler.h'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic-dll:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rebuild diagnostic native DLL from pinned CET and LuaJIT sources
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./native-profiler-build/v2.11.0/Build-Profiler.ps1 -WorkRoot "$env:RUNNER_TEMP\gcet-native-isolation"
+      - name: Stage DLL only and print SHA256
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $source = 'native-profiler-build\v2.11.0\BUILD_OUTPUT\cyber_engine_tweaks.PROFILER.asi'
+          if (!(Test-Path -LiteralPath $source -PathType Leaf)) {
+            throw "Diagnostic native DLL source missing: $source"
+          }
+          New-Item -ItemType Directory -Force 'diagnostic-dll' | Out-Null
+          Copy-Item -LiteralPath $source -Destination 'diagnostic-dll\cyber_engine_tweaks.PROFILER.dll'
+          $hash = (Get-FileHash 'diagnostic-dll\cyber_engine_tweaks.PROFILER.dll' -Algorithm SHA256).Hash.ToLowerInvariant()
+          Write-Host "Diagnostic SHA256 $hash"
+      - name: Upload isolated DLL without touching stable payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: DLL-${{ github.ref_name }}
+          path: diagnostic-dll/cyber_engine_tweaks.PROFILER.dll
+          if-no-files-found: error
