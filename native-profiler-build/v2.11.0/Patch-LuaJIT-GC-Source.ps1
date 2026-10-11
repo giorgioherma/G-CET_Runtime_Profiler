@@ -257,7 +257,7 @@ void gcet_gc_stats_read(GCETGCStats *out)
 }
 
 '@
-$src = Change-Once $src '#include "lj_vmevent.h"' ('#include "lj_vmevent.h"' + [Environment]::NewLine + $probe) 'GC definitions after all LuaJIT headers'
+$src = Change-Once $src '#include "lj_vm.h"' ('#include "lj_vm.h"' + [Environment]::NewLine + $probe) 'GC definitions after all LuaJIT headers'
 $src = Change-Once $src 'int LJ_FASTCALL lj_gc_step(lua_State *L)' 'static int LJ_FASTCALL gcet_original_gc_step(lua_State *L)' 'GC step function'
 
 $step = @'
