@@ -1,6 +1,6 @@
 {
-  "packageVersion": "1.2.0",
-  "profilerNativeVersion": "2.15.0",
+  "packageVersion": "1.2.1",
+  "profilerNativeVersion": "2.16.0",
   "targetCET": {
     "version": "1.37.1",
     "officialSha256": "43a7b94698979703f9dfa2b0950607c9a88f53b84bbf09a8e593c7e218d41059",

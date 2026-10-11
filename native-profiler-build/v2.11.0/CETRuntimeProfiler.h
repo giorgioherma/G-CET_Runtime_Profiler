@@ -2921,7 +2921,7 @@ public:
                       << Csv(hasUniqueCaller ? found->second.LuaFile : "") << ','
                       << (hasUniqueCaller ? found->second.LuaLine : 0) << ','
                       << resolution << ',' << (native ? "NATIVE_C" : "LUA_OR_OTHER") << ','
-                      << "sampled-function-execution;caller-is-not-proven-object-owner\n";
+                      << "GGC_MEGAMIND_PROVENANCE_NATIVE_2_16_V1;caller-is-not-proven-object-owner\n";
                 }
             }
         }
