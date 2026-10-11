@@ -86,6 +86,8 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
 
         if (a.CollectorGc is not null)
             AppendGcCollector(sb, a.CollectorGc);
+        if (a.GcTracer is not null)
+            AppendGcTracer(sb, a.GcTracer);
 
         if (a.WorkloadServices is not null)
             AppendWorkloadTelemetry(sb, a.WorkloadServices);

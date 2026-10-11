@@ -56,6 +56,9 @@ public static partial class ResultReportService
         "CET_Runtime_Profile_GC_Phases.csv",
         "CET_Runtime_Profile_GC_SlowSteps.csv",
         "CET_Runtime_Profile_Lua_Allocations.csv",
+        "CET_Runtime_Profile_GGC_Registrations.csv",
+        "CET_Runtime_Profile_GGC_Rankings.csv",
+        "CET_Runtime_Profile_GGC_Functions.csv",
         "CET_Runtime_Profile_Deep_Registrations.csv",
         "CET_Runtime_Profile_Deep_Functions.csv",
         "CET_Runtime_Profile_Deep_Edges.csv",
@@ -142,6 +145,16 @@ public static partial class ResultReportService
                         msPerSecond = Round(x.MsPerSecond, 3),
                         maxMs = Round(x.MaxMs, 3)
                     })
+            },
+            gcTracer = a.GcTracer is null ? null : new {
+                measurement = "G_GC_TRACER_ALLOCATION_PROVENANCE_SAMPLED",
+                allocationEventsAreNotIdenticalToGCObjectBirths = true,
+                dynamicFiveByBytesAndFiveDistinctByAllocationOperations = true,
+                captureOnlyNoGCPolicyChanges = true,
+                sampledReclamationMustNotBeExtrapolated = true,
+                authorizesAutomaticRewrite = false,
+                rankings = a.GcTracer.Mods.Take(50),
+                focusedFunctions = a.GcTracer.Functions.Take(100)
             },
             collectorGc = a.CollectorGc is null ? null : new
             {
