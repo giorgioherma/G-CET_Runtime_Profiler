@@ -37,6 +37,7 @@ jobs:
       - name: Upload isolated DLL without touching stable payload
         uses: actions/upload-artifact@v4
         with:
-          name: DLL-${{ github.ref_name }}
+          # Use the commit SHA, not branch names containing '/'.
+          name: DLL-${{ github.sha }}
           path: diagnostic-dll/cyber_engine_tweaks.PROFILER.dll
           if-no-files-found: error
