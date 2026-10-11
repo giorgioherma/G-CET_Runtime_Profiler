@@ -329,10 +329,8 @@ static size_t gc_onestep(lua_State *L)
 '@
 $src = Change-Once $src '/* Perform a limited amount of incremental GC steps. */' ($phase + '/* Perform a limited amount of incremental GC steps. */') 'internal collector phase wrapper'
 $src = Change-Once $src '  g->gc.total = (g->gc.total - osz) + nsz;' ('  gcet_gc_alloc_observe(osz, nsz);' + [Environment]::NewLine + '  g->gc.total = (g->gc.total - osz) + nsz;') 'realloc accounting'
-$src = Change-Once $src '  g->gc.total += size;' ('  gcet_gc_alloc_observe(0, size);' + [Environment]::NewLine + '  g->gc.total += size;') 'new GC object accounting'
+$src = Change-Once $src '  g->gc.total += size;' ('  gcet_gc_alloc_observe(0, size);' + [Environment]::NewLine + '  ggc_trace_object_created(o, size, 0);' + [Environment]::NewLine + '  g->gc.total += size;') 'new GC object accounting'
 
-$birth = '  setgref(g->gc.root, o);' # unused sentinel
-$src = Change-Once $src ('  setgcref(g->gc.root, o);' + [Environment]::NewLine + '  newwhite(g, o);' + [Environment]::NewLine + '  return o;') ('  setgcref(g->gc.root, o);' + [Environment]::NewLine + '  newwhite(g, o);' + [Environment]::NewLine + '  ggc_trace_object_created(o, size, 0);' + [Environment]::NewLine + '  return o;') 'GC object birth'
 $src = Change-Once $src '      gc_freefunc[o->gch.gct - ~LJ_TSTR](g, o);' ('      ggc_trace_object_freed(o);' + [Environment]::NewLine + '      gc_freefunc[o->gch.gct - ~LJ_TSTR](g, o);') 'object sweep'
 $src = Change-Once $src '      lj_str_free(g, gco2str(o));' ('      ggc_trace_object_freed(o);' + [Environment]::NewLine + '      lj_str_free(g, gco2str(o));') 'string sweep'
 $src = Change-Once $src '  GCobj *o = gcnext(gcref(g->gc.mmudata));' ('  GCobj *o = gcnext(gcref(g->gc.mmudata));' + [Environment]::NewLine + '  ggc_trace_object_finalized(o);') 'real finalizer'
