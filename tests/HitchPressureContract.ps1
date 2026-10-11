@@ -353,6 +353,36 @@ if ($null -eq $handoff.hitchPressure -or [bool]$handoff.hitchPressure.authorizes
 }
 
 
+# Native 2.15, the pinned pre-F11 stable build, emits the ORIGINAL
+# function CSV schema. MEGAMIND may report unknown Lua callsites but cannot
+# invent 2.16 provenance from an old-format capture.
+$knownGoodCapture = Join-Path $root 'known-good-native-2-15'
+Copy-Item -LiteralPath $capture -Destination $knownGoodCapture -Recurse -Force
+@(
+'RegistrationId,ProfileEpoch,FunctionName,SourceFile,SourceLineStart,SourceLineEnd,SampledCalls,SampledExclusiveAllocatedBytes,SampledExclusiveAllocationOperations,Interpretation',
+'2,1,refresh,mods/OwnerB/init.lua,40,55,5,8000,320,sampled-callback-debug-hooks-not-global-function-census',
+'2,1,GetGameInstance,=[C],-1,-1,3,700,120,sampled-callback-debug-hooks-not-global-function-census'
+) | Set-Content -LiteralPath (Join-Path $knownGoodCapture 'CET_Runtime_Profile_GGC_Functions.csv') -Encoding utf8
+$oldNativeResult = (& $profilerExe --report --capture $knownGoodCapture --json | ConvertFrom-Json)
+if (!$oldNativeResult.ok) {
+    throw 'Known-good 2.15 G-GC Tracer function CSV was not accepted.'
+}
+$oldNativeSummary = Get-Content -LiteralPath (Join-Path $knownGoodCapture 'CET_Summary.json') -Raw | ConvertFrom-Json
+$oldNativeHandoff = Get-Content -LiteralPath (Join-Path $knownGoodCapture 'CET_Resolver_Input.json') -Raw | ConvertFrom-Json
+$oldCFunction = @($oldNativeSummary.gcTracer.functionCandidates | Where-Object { $_.SourceFile -eq '=[C]' }) | Select-Object -First 1
+if ($null -eq $oldCFunction -or
+    $oldCFunction.ExecutionKind -ne 'NATIVE_C' -or
+    $oldCFunction.CallsiteResolution -ne 'NOT_RECORDED_LEGACY' -or
+    $oldCFunction.LuaCallerFile -ne '' -or
+    [int]$oldCFunction.LuaCallerLine -ne 0 -or
+    [int]$oldNativeSummary.gcTracer.coverage.nativeOperationsWithSingleObservedLuaCallsite -ne 0) {
+    throw 'Old native 2.15 C frames were incorrectly assigned fabricated Lua callsites.'
+}
+if (($oldNativeSummary.gcTracer | ConvertTo-Json -Depth 35 -Compress) -ne
+    ($oldNativeHandoff.gcTracer | ConvertTo-Json -Depth 35 -Compress)) {
+    throw 'Profiler/Resolver vocabulary drifted for known-good native 2.15 captures.'
+}
+
 # Old 2.14 captures have no G-GC Tracer CSVs. They must still produce valid
 # reports and resolver handoffs without inventing object provenance.
 $legacyGcCapture = Join-Path $root 'legacy-gc-capture'
