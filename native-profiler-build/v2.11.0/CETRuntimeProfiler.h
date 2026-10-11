@@ -2732,6 +2732,147 @@ public:
             }
         }
 
+
+        // G-GC Tracer. Allocation requests and GC-object births are distinct:
+        // LuaJIT realloc growth is not the same as a new collectable object.
+        // Samples are NOT extrapolated; allocation owner is the creator scope,
+        // never the callback that happened to trigger garbage collection.
+        {
+            struct Volume {
+                uint64_t bytes{}, allocations{}, objects{}, strings{};
+                uint64_t samples{}, collisions{}, reclaimed{}, reclaimedBytes{};
+                uint64_t lifeTicks{}, finalized{};
+                uint64_t tables{}, freedStrings{}, userdata{}, cdata{}, other{};
+                bool focused{};
+            };
+            std::unordered_map<std::string, Volume> modTotals;
+            std::ofstream registrations(
+                outputRoot / "CET_Runtime_Profile_GGC_Registrations.csv", std::ios::trunc);
+            if (registrations)
+                registrations << "RegistrationId,Mod,Kind,Target,AllocatedBytes,"
+                    "AllocationOperations,NewGCObjects,NewStrings,SampledObjects,"
+                    "SampleCollisions,SampledReclaimedObjects,SampledReclaimedBytes,"
+                    "SampledLifetimeTicks,SampledFinalizers,FocusedAtDump\n";
+            for (const auto& row : rows) {
+                GGCTraceOwner native{};
+                ggc_trace_owner_read(row.RegistrationId, &native);
+                const bool focused = ggc_trace_focused(row.RegistrationId) != 0;
+                if (registrations)
+                    registrations << row.RegistrationId << ',' << Csv(row.Mod) << ','
+                        << Csv(row.Kind) << ',' << Csv(row.Target) << ','
+                        << native.bytes << ',' << native.allocations << ','
+                        << native.objects << ',' << native.strings << ','
+                        << native.samples << ',' << native.collisions << ','
+                        << native.freedSamples << ',' << native.freedBytes << ','
+                        << native.lifetimeTicks << ',' << native.finalizedSamples
+                        << ',' << (focused ? 1 : 0) << '\n';
+                auto& t = modTotals[row.Mod];
+                t.bytes += native.bytes; t.allocations += native.allocations;
+                t.objects += native.objects; t.strings += native.strings;
+                t.samples += native.samples; t.collisions += native.collisions;
+                t.reclaimed += native.freedSamples; t.reclaimedBytes += native.freedBytes;
+                t.lifeTicks += native.lifetimeTicks; t.finalized += native.finalizedSamples;
+                t.tables += native.freedTables; t.freedStrings += native.freedStrings;
+                t.userdata += native.freedUserdata; t.cdata += native.freedCdata;
+                t.other += native.freedOther;
+                t.focused = t.focused || focused;
+            }
+            for (uint64_t unknown : {0ULL, 32767ULL}) {
+                GGCTraceOwner native{};
+                ggc_trace_owner_read(unknown, &native);
+                const std::string label = unknown == 0
+                    ? "<unattributed>" : "<registration-overflow>";
+                auto& t = modTotals[label];
+                t.bytes = native.bytes; t.allocations = native.allocations;
+                t.objects = native.objects; t.strings = native.strings;
+                t.samples = native.samples; t.collisions = native.collisions;
+                t.reclaimed = native.freedSamples; t.reclaimedBytes = native.freedBytes;
+                t.lifeTicks = native.lifetimeTicks; t.finalized = native.finalizedSamples;
+                t.tables = native.freedTables; t.freedStrings = native.freedStrings;
+                t.userdata = native.freedUserdata; t.cdata = native.freedCdata;
+                t.other = native.freedOther;
+            }
+            std::vector<std::string> rankedBytes, rankedOps;
+            for (const auto& [name, t] : modTotals)
+                if (t.bytes || t.allocations) {
+                    rankedBytes.push_back(name); rankedOps.push_back(name);
+                }
+            std::sort(rankedBytes.begin(), rankedBytes.end(),
+                [&](const auto& a, const auto& b) {
+                    return modTotals[a].bytes == modTotals[b].bytes
+                        ? a < b : modTotals[a].bytes > modTotals[b].bytes;
+                });
+            std::sort(rankedOps.begin(), rankedOps.end(),
+                [&](const auto& a, const auto& b) {
+                    return modTotals[a].allocations == modTotals[b].allocations
+                        ? a < b : modTotals[a].allocations > modTotals[b].allocations;
+                });
+            std::unordered_map<std::string, size_t> byteRank, opRank;
+            std::unordered_map<std::string, bool> topTen;
+            for (size_t i = 0; i < rankedBytes.size(); ++i) {
+                byteRank[rankedBytes[i]] = i + 1;
+                if (i < 5 && rankedBytes[i][0] != '<')
+                    topTen[rankedBytes[i]] = true;
+            }
+            for (size_t i = 0; i < rankedOps.size(); ++i)
+                opRank[rankedOps[i]] = i + 1;
+            for (const auto& name : rankedOps)
+                if (topTen.size() < 10 && name[0] != '<') topTen[name] = true;
+            GCETGCStats gc{};
+            gcet_gc_stats_read(&gc);
+            const double lifetimeScale = gc.frequency
+                ? 1000.0 / static_cast<double>(gc.frequency) : 0.0;
+            std::ofstream ranks(
+                outputRoot / "CET_Runtime_Profile_GGC_Rankings.csv", std::ios::trunc);
+            if (ranks) {
+                ranks << "Mod,BytesRank,OperationsRank,SelectedTopTenAtDump,"
+                    "FocusedAtDump,AllocatedMiB,AllocatedMiBPerSecond,"
+                    "AllocationOperations,AllocationsPerSecond,NewGCObjects,NewStrings,"
+                    "SampledObjects,SampleCollisions,SampledReclaimedObjects,"
+                    "SampledReclaimedMiB,AverageReclaimedLifetimeMs,"
+                    "SampledFinalizers,FreedTablesSample,FreedStringsSample,"
+                    "FreedUserdataSample,FreedCdataSample,FreedOtherSample,"
+                    "ActualGlobalFinalizers,Interpretation\n";
+                ranks << std::fixed << std::setprecision(6);
+                for (const auto& name : rankedBytes) {
+                    const auto& t = modTotals[name];
+                    ranks << Csv(name) << ',' << byteRank[name] << ',' << opRank[name]
+                        << ',' << (topTen.count(name) ? 1 : 0)
+                        << ',' << (t.focused ? 1 : 0) << ','
+                        << t.bytes / 1048576.0 << ',' << t.bytes / 1048576.0 / elapsedSec << ','
+                        << t.allocations << ',' << t.allocations / elapsedSec << ','
+                        << t.objects << ',' << t.strings << ','
+                        << t.samples << ',' << t.collisions << ',' << t.reclaimed << ','
+                        << t.reclaimedBytes / 1048576.0 << ','
+                        << (t.reclaimed ? t.lifeTicks * lifetimeScale / t.reclaimed : 0.0)
+                        << ',' << t.finalized << ',' << t.tables << ','
+                        << t.freedStrings << ',' << t.userdata << ',' << t.cdata << ','
+                        << t.other << ',' << ggc_trace_finalizer_calls()
+                        << ",capture-only-creation-owner;sampled-lifetime-not-extrapolated\n";
+                }
+            }
+        }
+        // Function attribution reuses already-sampled G-CET Lua call/return
+        // hooks. Reports sampled inclusive-call windows, NOT total allocations.
+        {
+            std::ofstream f(outputRoot / "CET_Runtime_Profile_GGC_Functions.csv", std::ios::trunc);
+            if (f) {
+                f << "RegistrationId,ProfileEpoch,FunctionName,SourceFile,SourceLineStart,"
+                     "SourceLineEnd,SampledCalls,SampledExclusiveAllocatedBytes,"
+                     "SampledExclusiveAllocationOperations,Interpretation\n";
+                for (const auto& row : deepFunctionRows) {
+                    if (!row.SampledExclusiveAllocBytes &&
+                        !row.SampledExclusiveAllocations) continue;
+                    f << row.RegistrationId << ',' << row.ProfileEpoch << ','
+                      << Csv(row.FunctionName) << ',' << Csv(row.SourceFile) << ','
+                      << row.SourceLineStart << ',' << row.SourceLineEnd << ','
+                      << row.Calls << ',' << row.SampledExclusiveAllocBytes << ','
+                      << row.SampledExclusiveAllocations << ','
+                      << "sampled-callback-debug-hooks-not-global-function-census\n";
+                }
+            }
+        }
+
         // Phase state-machine timing and exceptional >2 ms individual operations.
         {
             static const char* names[] = {
