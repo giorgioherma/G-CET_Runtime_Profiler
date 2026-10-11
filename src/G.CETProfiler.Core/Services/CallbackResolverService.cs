@@ -52,6 +52,7 @@ internal static class CallbackResolverService
         var sourceIndex = new LiveSourceIndex(modsRoot);
         var schedulerJobs = ReadSchedulerJobs(handoff.RootElement, handoffPath);
         var collectorSpikeEvidence = ReadCollectorSpikeEvidence(handoff.RootElement);
+        var megaMindGc = ReadMegaMindGcEvidence(handoff.RootElement);
         var schedulerByOwner = callbacks
             .Select(callback => callback.Owner)
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -106,6 +107,14 @@ internal static class CallbackResolverService
                 var gcCoincidence = callback.RegistrationId is long nativeId &&
                     collectorSpikeEvidence.TryGetValue(nativeId, out var evidence)
                     ? evidence : GcSpikeReviewEvidence.Empty;
+                var gcRegistration = callback.RegistrationId is long gcId &&
+                    megaMindGc.Registrations.TryGetValue(gcId, out var gcFound)
+                    ? gcFound : null;
+                // Exact ID AND owner identity must agree. Shared frameworks
+                // execute across mod boundaries; name proximity is not proof.
+                var gcOwnerMatched = gcRegistration is not null &&
+                    string.Equals(gcRegistration.Owner, callback.Owner,
+                        StringComparison.OrdinalIgnoreCase);
                 schedulerByOwner.TryGetValue(
                     callback.Owner,
                     out var schedulerIntegration);
@@ -229,6 +238,27 @@ internal static class CallbackResolverService
                         callback.maxExclusiveMs,
                         callback.spikeCount,
                         callback.maxSpikeExclusiveMs,
+                        megaMind = new
+                        {
+                            status = megaMindGc.Status != "READY"
+                                ? megaMindGc.Status
+                                : gcRegistration is null ? "NO_MATCHING_REGISTRATION"
+                                : gcOwnerMatched ? "MATCHED_REGISTRATION"
+                                : "OWNER_ID_MISMATCH_REVIEW_ONLY",
+                            attribution = "EXACT_REGISTRATION_AND_OWNER_ONLY",
+                            positiveAllocatedBytes = gcOwnerMatched
+                                ? gcRegistration!.AllocatedBytes : 0,
+                            positiveAllocationOperations = gcOwnerMatched
+                                ? gcRegistration!.AllocationOperations : 0,
+                            newGCObjects = gcOwnerMatched
+                                ? gcRegistration!.NewGCObjects : 0,
+                            sampledReclaimedObjects = gcOwnerMatched
+                                ? gcRegistration!.SampledReclaimedObjects : 0,
+                            focusedAtDump = gcOwnerMatched && gcRegistration!.Focused,
+                            sourceProof = false,
+                            influencesGenericOrSemanticAdmission = false,
+                            authorizesRewrite = false
+                        },
                         collectorReview = new
                         {
                             gcCoincidence.FrameBucketOverlapSpikes,
@@ -451,6 +481,9 @@ internal static class CallbackResolverService
                 dormancyClassificationEvidenceOnly = true,
                 dormancyCanAuthorizeGeneration = false,
                 dormancyClasses = new[] { "NEVER_GATE", "HARD_DORMANT", "DISCOVERY_DORMANT", "BACKGROUND", "UNKNOWN" },
+                megaMindEvidenceIntegration = true,
+                megaMindOnlyCorrelatesExactRegistrationAndOwner = true,
+                megaMindMayAuthorizeTransform = false,
                 existingSchedulerRecognition = true,
                 existingSchedulerRecognitionPolicy = "Captured Scheduler job IDs must also exist as quoted literals in the current live owner source. Recognition is evidence/reporting only and does not suppress an independently safe generic transform.",
                 burstAwareMateriality = true,
@@ -466,6 +499,18 @@ internal static class CallbackResolverService
                 sharedProviderDeepEvidence = "UNTRUNCATED_GETTER_CALLEES_WITH_LEGACY_HOTCALLEES_FALLBACK",
                 sharedProviderDiscovery = "ALL_ZERO_ARG_GAME_GETTERS_PLUS_ALL_DEEP_GETTER_CALLEES; DEEP_ONLY_EVIDENCE_IS_ANALYSIS_ONLY_UNTIL_CURRENT_SOURCE_IS_PROVEN",
                 note = "Generic AUTO is restricted to mechanically source-proven action routing, exact Override prefiltering, frame-dispatch consolidation, interaction-UI hidden-state early guards, complete-draw UI visibility dormancy with an independent wake writer, canonical sequence-first literal ScriptableSystem polling, complete-wake hard-dormant guard hoists that bypass only read-only setup, and explicitly enabled shared-provider reads with exact current-source proof. Dynamic player-derived state remains analysis-only. Identity-specific automatic behavior lives exclusively in the source-proven semantic library. Shared-provider opportunity totals describe measured callback territory, not estimated savings. Shared-provider deep evidence is aggregated across the measured stack without a per-callback hot-callee top-N gate. Already-satisfied generated states are not re-applied."
+            },
+            megaMind = new
+            {
+                name = "MEGAMIND",
+                stage = "EVIDENCE_ONLY",
+                contractVersion = "1.0",
+                gcEvidenceStatus = megaMindGc.Status,
+                registeredObservations = megaMindGc.Registrations.Count,
+                sourceProofRequired = true,
+                changesAutomationDecisions = false,
+                zeroEngineAutoUpdateAllowed = false,
+                note = "GC metrics augment callback CPU, burst, dormancy and existing semantic evidence. Only the pre-existing source-proven Resolver rules can generate passes."
             },
             semanticLibrary = new
             {
@@ -5033,6 +5078,64 @@ internal static class CallbackResolverService
             if (value.ValueKind == JsonValueKind.False) return false;
         }
         return false;
+    }
+
+
+    private sealed record MegaMindGcRegistration(
+        string Owner, long AllocatedBytes, long AllocationOperations,
+        long NewGCObjects, long SampledReclaimedObjects, bool Focused);
+
+    private sealed record MegaMindGcEvidence(
+        string Status, Dictionary<long, MegaMindGcRegistration> Registrations);
+
+    // MEGAMIND v1 is an observational bridge, not an optimization rule.
+    // Fail closed for old, malformed, ambiguous or incompatible handoffs.
+    private static MegaMindGcEvidence ReadMegaMindGcEvidence(JsonElement root)
+    {
+        static MegaMindGcEvidence Empty(string status) =>
+            new(status, new Dictionary<long, MegaMindGcRegistration>());
+        if (!root.TryGetProperty("gcTracer", out var tracer) ||
+            tracer.ValueKind == JsonValueKind.Null)
+            return Empty("LEGACY_NO_GC_TRACER");
+        if (tracer.ValueKind != JsonValueKind.Object ||
+            JsonString(tracer, "contractVersion") != "1.0" ||
+            JsonString(tracer, "evidenceVocabulary") != "MEGAMIND_CET_MULTISIGNAL_V1" ||
+            !JsonBool(tracer, "noAutomaticRewrites") ||
+            JsonBool(tracer, "authorizesAutomaticRewrite"))
+            return Empty("UNSUPPORTED_OR_UNSAFE_CONTRACT");
+        if (!tracer.TryGetProperty("metricSemantics", out var metric) ||
+            metric.ValueKind != JsonValueKind.Object ||
+            JsonString(metric, "allocationOperations") !=
+                "POSITIVE_GROWTH_ALLOCATOR_REQUESTS_NOT_GC_OBJECT_BIRTHS" ||
+            JsonString(metric, "newGCObjects") !=
+                "OBSERVED_GC_OBJECT_CREATION_NOT_TOTAL_ALLOCATIONS")
+            return Empty("INCOMPATIBLE_METRIC_DEFINITIONS");
+        if (!tracer.TryGetProperty("registrations", out var rows) ||
+            rows.ValueKind != JsonValueKind.Array)
+            return Empty("NO_REGISTRATION_PROVENANCE");
+        var result = new Dictionary<long, MegaMindGcRegistration>();
+        foreach (var item in rows.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+                return Empty("MALFORMED_REGISTRATION_DATA");
+            var id = JsonNullableLong(item, "RegistrationId");
+            var owner = JsonString(item, "Mod");
+            var allocatedBytes = JsonNullableLong(item, "AllocatedBytes");
+            var operations = JsonNullableLong(item, "AllocationOperations");
+            var births = JsonNullableLong(item, "NewGCObjects");
+            var reclaimed = JsonNullableLong(item, "SampledReclaimedObjects");
+            if (id is null || id <= 0 || string.IsNullOrWhiteSpace(owner) ||
+                allocatedBytes is null || allocatedBytes < 0 ||
+                operations is null || operations < 0 ||
+                births is null || births < 0 ||
+                reclaimed is null || reclaimed < 0)
+                return Empty("MALFORMED_REGISTRATION_DATA");
+            if (!result.TryAdd(id.Value, new MegaMindGcRegistration(
+                owner, allocatedBytes.Value, operations.Value,
+                births.Value, reclaimed.Value, JsonBool(item, "Focused"))))
+                return Empty("DUPLICATE_REGISTRATION_ID");
+        }
+        return new MegaMindGcEvidence("READY", result);
     }
 
     private sealed record GcSpikeReviewEvidence(
