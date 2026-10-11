@@ -8,7 +8,7 @@ The Profiler supplies evidence, including its integrated G-GC Tracer. The Resolv
 
 The Profiler summary and Resolver handoff now use one identical G-GC Tracer evidence object, contractVersion 1.0, vocabulary MEGAMIND_CET_MULTISIGNAL_V1. It contains full mod rankings, exact per-registration positive allocation counts, separate GC-object births, bounded function samples, sampled reclamation and coverage. Original capture counters are left intact.
 
-Native 2.16 extends function records with FunctionKey, ExecutionKind, LuaCallerFile, LuaCallerLine and CallsiteResolution. The records distinguish registered callback owner, executing function and observed Lua callsite. A single sampled callsite is not a proof of exclusive ownership; ambiguous callers stay ambiguous. These are resolved from existing sampled deep-callsites at report dump time, without more hot-path Lua debug hooks.
+Native 2.16 experimentally extended function records with FunctionKey, ExecutionKind, LuaCallerFile, LuaCallerLine and CallsiteResolution, but it was rolled back from distribution because world-load crashed before F11. Product 1.2.2 ships exact known-good native 2.15.0. Managed evidence parsing supports the extended fields only if present. The records distinguish registered callback owner, executing function and observed Lua callsite. A single sampled callsite is not a proof of exclusive ownership; ambiguous callers stay ambiguous. These are resolved from existing sampled deep-callsites at report dump time, without more hot-path Lua debug hooks.
 
 Resolver ingestion accepts v1.0 only with the explicit metric semantics and no-rewrite policy. It requires exact registration ID and matching owner, rejects duplicate IDs, owner mismatches and incompatible data, and never changes AUTO or semantic admission from G-GC evidence. Legacy captures remain supported.
 
@@ -50,4 +50,12 @@ Allocation operations, positive bytes, object births, sampled reclamation and GC
 
 ## Validation of this implementation pass
 
-Product 1.2.1 / native 2.16.0 is compiled from the pinned CET 1.37.1 source. The native rebuild is SHA-256 locked in MANIFEST.json. The independent managed CI must compile the shared Profiler + Resolver, test the exact common report schema, distinguish the C source from its Lua callsite, and preserve old capture reporting. The main Windows CI must additionally execute the full Resolver regressions and package both binaries. No in-game validation is claimed until the user performs a new representative capture.
+Product 1.2.2 intentionally restores the byte-for-byte tested native 2.15.0 DLL from #925 while retaining managed MEGAMIND v1.0. The native rebuild is SHA-256 locked in MANIFEST.json. The independent managed CI must compile the shared Profiler + Resolver, test the exact common report schema, distinguish the C source from its Lua callsite, and preserve old capture reporting. The main Windows CI must additionally execute the full Resolver regressions and package both binaries. No in-game validation is claimed until the user performs a new representative capture.
+
+## Regression isolation: native 2.16 world-load crash
+
+The user confirmed that the identical save and mod stack load under native 2.15 (#925) and without a profiler, but crash during world load with native 2.16 (#934), before the F11 capture trigger. The minidump shows access violation 0xC0000005 in Cyberpunk2077.exe+0x53F9D4 and does not independently attribute the fault to a specific profiler instruction. The 2.16 source delta was limited to report-dump-time C/Lua callsite attribution; this does NOT prove that block executed at load. Treat this as a native binary regression until isolated with symbols, startup tracing, or a controlled rebuild.
+
+Product 1.2.2 retains managed evidence and Resolver joins but reverts native source and the distribution payload to 2.15. The native DLL SHA-256 is pinned to c62d57f50b1fd792ae989cb78fb54cee8d82b0370abdb51ea01617c2ddcfa23e. Callsite fields in old-format CSVs remain NOT_RECORDED_LEGACY, not inferred.
+
+Release gate: identical save must load before F11. No native extensions are allowed back into the stable package until that gate passes. Green compilation alone is insufficient.

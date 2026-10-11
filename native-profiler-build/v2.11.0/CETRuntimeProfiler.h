@@ -2866,62 +2866,23 @@ public:
                 }
             }
         }
-        // MEGAMIND provenance: the executing C function and its observed Lua
-        // caller are independent identities. Recover callsites from EXISTING
-        // bounded deep-callsites; no new Lua hook, GC hook or hot-path work.
-        // A function used at multiple sites must never inherit one false owner.
+        // Function attribution reuses already-sampled G-CET Lua call/return
+        // hooks. Reports sampled inclusive-call windows, NOT total allocations.
         {
-            struct ObservedSite {
-                std::string LuaFile;
-                int LuaLine{};
-                bool Ambiguous{};
-            };
-            const auto siteKey = [](uint64_t reg, uint32_t epoch,
-                                    const std::string& functionKey) {
-                return std::to_string(reg) + "\x1f" +
-                       std::to_string(epoch) + "\x1f" + functionKey;
-            };
-            std::unordered_map<std::string, ObservedSite> sites;
-            for (const auto& site : deepCallsiteRows) {
-                if (site.CallerLine <= 0 || site.CallerSourceFile.empty() ||
-                    site.CallerSourceFile == "=[C]") continue;
-                const auto key = siteKey(site.RegistrationId, site.ProfileEpoch,
-                                         site.ChildFunctionKey);
-                auto [it, inserted] = sites.try_emplace(
-                    key, ObservedSite{site.CallerSourceFile, site.CallerLine, false});
-                if (!inserted && (it->second.LuaFile != site.CallerSourceFile ||
-                                  it->second.LuaLine != site.CallerLine))
-                    it->second.Ambiguous = true;
-            }
             std::ofstream f(outputRoot / "CET_Runtime_Profile_GGC_Functions.csv", std::ios::trunc);
             if (f) {
                 f << "RegistrationId,ProfileEpoch,FunctionName,SourceFile,SourceLineStart,"
                      "SourceLineEnd,SampledCalls,SampledExclusiveAllocatedBytes,"
-                     "SampledExclusiveAllocationOperations,FunctionKey,"
-                     "LuaCallerFile,LuaCallerLine,CallsiteResolution,ExecutionKind,"
-                     "Interpretation\n";
+                     "SampledExclusiveAllocationOperations,Interpretation\n";
                 for (const auto& row : deepFunctionRows) {
                     if (!row.SampledExclusiveAllocBytes &&
                         !row.SampledExclusiveAllocations) continue;
-                    const bool native = row.SourceFile == "=[C]" ||
-                                        row.What == "C";
-                    const auto found = sites.find(siteKey(
-                        row.RegistrationId, row.ProfileEpoch, row.FunctionKey));
-                    const bool hasUniqueCaller = found != sites.end() &&
-                                                  !found->second.Ambiguous;
-                    const char* resolution = found == sites.end()
-                        ? "NOT_OBSERVED" : hasUniqueCaller
-                            ? "SINGLE_OBSERVED_LUA_CALLSITE" : "MULTIPLE_CALLSITES";
                     f << row.RegistrationId << ',' << row.ProfileEpoch << ','
                       << Csv(row.FunctionName) << ',' << Csv(row.SourceFile) << ','
                       << row.SourceLineStart << ',' << row.SourceLineEnd << ','
                       << row.Calls << ',' << row.SampledExclusiveAllocBytes << ','
                       << row.SampledExclusiveAllocations << ','
-                      << Csv(row.FunctionKey) << ','
-                      << Csv(hasUniqueCaller ? found->second.LuaFile : "") << ','
-                      << (hasUniqueCaller ? found->second.LuaLine : 0) << ','
-                      << resolution << ',' << (native ? "NATIVE_C" : "LUA_OR_OTHER") << ','
-                      << "GGC_MEGAMIND_PROVENANCE_NATIVE_2_16_V1;caller-is-not-proven-object-owner\n";
+                      << "sampled-callback-debug-hooks-not-global-function-census\n";
                 }
             }
         }

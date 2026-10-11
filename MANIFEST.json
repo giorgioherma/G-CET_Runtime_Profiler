@@ -1,10 +1,10 @@
 {
-  "packageVersion": "1.2.1",
-  "profilerNativeVersion": "2.16.0",
+  "packageVersion": "1.2.2",
+  "profilerNativeVersion": "2.15.0",
   "targetCET": {
     "version": "1.37.1",
     "officialSha256": "43a7b94698979703f9dfa2b0950607c9a88f53b84bbf09a8e593c7e218d41059",
-    "profilerSha256": "bb23d5e931d64f0f970f87f73a002a1b9305962db3cd99aa97d4bb34e1684a1d",
+    "profilerSha256": "c62d57f50b1fd792ae989cb78fb54cee8d82b0370abdb51ea01617c2ddcfa23e",
     "profilerPackageFile": "cyber_engine_tweaks.PROFILER.dll",
     "profilerInstallFile": "cyber_engine_tweaks.asi"
   },

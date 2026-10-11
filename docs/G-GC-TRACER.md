@@ -1,6 +1,11 @@
 # G-GC Tracer — integrated G-CET Runtime Profiler feature
 
-> Profiler 1.2.1 / native 2.16 exports one versioned MEGAMIND evidence contract to both the summary and Resolver input. Executing C function and observed Lua callsite are separate identities. Global finalizer counters are unvalidated. See [MEGAMIND plan](MEGAMIND-INTEGRATION-PLAN.md).
+> **Startup-safety rollback (1.2.2):** Product 1.2.2 deliberately ships the exact
+> native 2.15.0 DLL from successful #925 after native 2.16.0 was associated
+> with a reproducible pre-F11 world-load crash on the same stack/save. The
+> 2.16 native callsite CSV extension is **not deployed**. Managed MEGAMIND
+> interop accepts legacy tracer function rows with unresolved Lua caller fields.
+> See [MEGAMIND plan](MEGAMIND-INTEGRATION-PLAN.md).
 
 
 Product 1.2.0, native 2.15.0. This is not a standalone application.
