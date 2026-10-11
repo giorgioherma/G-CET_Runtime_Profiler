@@ -35,6 +35,17 @@ struct GCETGCPhaseStats { uint64_t calls[6], ticks[6]; };
 void gcet_gc_trace_segment(uint64_t captureOffsetNs);
 uint64_t gcet_gc_scope_set(uint64_t registration);
 uint64_t gcet_gc_alloc_bytes();
+struct GGCTraceOwner {
+ uint64_t bytes, allocations, objects, strings;
+ uint64_t samples, collisions, freedSamples, freedBytes;
+ uint64_t lifetimeTicks, finalizedSamples;
+ uint64_t freedTables, freedStrings, freedUserdata, freedCdata, freedOther;
+};
+uint64_t gcet_gc_alloc_ops();
+void ggc_trace_owner_read(uint64_t, GGCTraceOwner*);
+void ggc_trace_focus_set(uint64_t, int);
+int ggc_trace_focused(uint64_t);
+uint64_t ggc_trace_finalizer_calls();
 int gcet_gc_slow_read(GCETGCSlowEvent* out, int capacity, int* dropped);
 void gcet_gc_phase_read(GCETGCPhaseStats* out);
 }
@@ -62,6 +73,7 @@ public:
         std::atomic<uint64_t> MaxInclusiveNs{0};
         std::atomic<uint64_t> MaxExclusiveNs{0};
         std::atomic<uint64_t> GrossAllocatedBytes{0};
+        std::atomic<bool> GcTracerFocused{false};
         TimelineMod* TimelineOwner{};
 
         // Exact rendered-frame multiplicity, rotated lazily per callback.
@@ -249,6 +261,8 @@ public:
         uint64_t InclusiveNs{};
         uint64_t ExclusiveNs{};
         uint64_t MaxInclusiveNs{};
+        uint64_t SampledExclusiveAllocBytes{};
+        uint64_t SampledExclusiveAllocations{};
     };
 
     struct DeepEdgeAggregate
@@ -293,6 +307,10 @@ public:
         std::chrono::steady_clock::time_point Start{};
         uint64_t ChildRawNs{};
         uint64_t ProfilerNs{};
+        uint64_t AllocStartBytes{};
+        uint64_t AllocStartOps{};
+        uint64_t ChildAllocBytes{};
+        uint64_t ChildAllocOps{};
     };
 
     struct DeepLineHit
@@ -393,6 +411,8 @@ public:
     // chooses the targets; deep tracing samples only enough future invocations
     // to explain the hot callback without turning the whole Lua VM into a trace.
     static constexpr uint64_t DeepWarmupNs = 2'000'000'000ULL;
+    static constexpr uint64_t GcTracerWarmupNs = 5'000'000'000ULL;
+    static constexpr uint64_t GcTracerRebalanceNs = 5'000'000'000ULL;
     static constexpr uint64_t DeepRebalanceNs = 1'000'000'000ULL;
     static constexpr size_t MaxDeepHotRegistrations = 6;
     static constexpr uint64_t DefaultDeepTargetSamples = 24;
@@ -544,8 +564,10 @@ public:
 
             auto& probe = DeepProbeCounterForThread();
             ++probe;
-            if (probe <= 8 || (probe & 0x1FFu) == 0)
+            if (probe <= 8 || (probe & 0x1FFu) == 0) {
                 profiler.MaybeRebalanceDeepHotset();
+                profiler.MaybeRebalanceGcTracer();
+            }
 
             m_active = profiler.BeginDeepSample(aCounter, aState);
         }
@@ -698,8 +720,9 @@ public:
 
         const bool complete =
             aCounter->DeepComplete.load(std::memory_order_acquire);
-        const bool hotset =
-            !complete && aCounter->DeepSelected.load(std::memory_order_acquire);
+        const bool hotset = !complete &&
+           (aCounter->DeepSelected.load(std::memory_order_acquire) ||
+            aCounter->GcTracerFocused.load(std::memory_order_acquire));
         const bool spikeProbe =
             complete && aCounter->DeepSpikeArmed.load(std::memory_order_acquire);
 
@@ -904,6 +927,8 @@ public:
                     aggregate.Calls += local.Calls;
                     aggregate.InclusiveNs += local.InclusiveNs;
                     aggregate.ExclusiveNs += local.ExclusiveNs;
+                    aggregate.SampledExclusiveAllocBytes += local.SampledExclusiveAllocBytes;
+                    aggregate.SampledExclusiveAllocations += local.SampledExclusiveAllocations;
                     aggregate.MaxInclusiveNs =
                         std::max(aggregate.MaxInclusiveNs, local.MaxInclusiveNs);
                     aggregate.MinDepth =
@@ -2510,7 +2535,8 @@ public:
                 f << "RegistrationId,ProfileEpoch,FunctionIdentity,FunctionKey,"
                      "FunctionName,What,SourceFile,SourceLineStart,SourceLineEnd,"
                      "MinDepth,Calls,InclusiveMs,ExclusiveMs,AvgExclusiveUs,"
-                     "MaxInclusiveMs,Interpretation\n";
+                     "MaxInclusiveMs,GGCTracerSampledOwnAllocatedBytes,"
+                     "GGCTracerSampledOwnAllocations,Interpretation\n";
                 f << std::fixed << std::setprecision(6);
 
                 for (const auto& row : deepFunctionRows)
@@ -2535,6 +2561,8 @@ public:
                       << (static_cast<double>(row.ExclusiveNs) / 1'000'000.0) << ','
                       << avgExclusiveUs << ','
                       << (static_cast<double>(row.MaxInclusiveNs) / 1'000'000.0) << ','
+                      << row.SampledExclusiveAllocBytes << ','
+                      << row.SampledExclusiveAllocations << ','
                       << "sampled-relative-composition-not-absolute-runtime"
                       << '\n';
                 }
@@ -3349,6 +3377,12 @@ private:
             std::min(rawNs, frame.ChildRawNs + profilerNs);
         const uint64_t exclusiveNs = rawNs - excludedNs;
 
+        const uint64_t allocBytes = gcet_gc_alloc_bytes() - frame.AllocStartBytes;
+        const uint64_t allocOps = gcet_gc_alloc_ops() - frame.AllocStartOps;
+        const uint64_t ownBytes = allocBytes > frame.ChildAllocBytes
+            ? allocBytes - frame.ChildAllocBytes : 0;
+        const uint64_t ownOps = allocOps > frame.ChildAllocOps
+            ? allocOps - frame.ChildAllocOps : 0;
         const std::string localKey = frame.FunctionKey;
         auto& aggregate = aState.Functions[localKey];
         if (aggregate.FunctionKey.empty())
@@ -3369,6 +3403,8 @@ private:
         ++aggregate.Calls;
         aggregate.InclusiveNs += inclusiveNs;
         aggregate.ExclusiveNs += exclusiveNs;
+        aggregate.SampledExclusiveAllocBytes += ownBytes;
+        aggregate.SampledExclusiveAllocations += ownOps;
         aggregate.MaxInclusiveNs =
             std::max(aggregate.MaxInclusiveNs, inclusiveNs);
         aggregate.MinDepth =
@@ -3421,8 +3457,11 @@ private:
             }
         }
 
-        if (!aState.Frames.empty())
+        if (!aState.Frames.empty()) {
             aState.Frames.back().ChildRawNs += rawNs;
+            aState.Frames.back().ChildAllocBytes += allocBytes;
+            aState.Frames.back().ChildAllocOps += allocOps;
+        }
     }
 
     static void DeepLuaHook(lua_State* aState, lua_Debug* aDebug)
@@ -3456,6 +3495,8 @@ private:
                 aDebug,
                 static_cast<uint32_t>(deep.Frames.size()),
                 parentKey);
+            frame.AllocStartBytes = gcet_gc_alloc_bytes();
+            frame.AllocStartOps = gcet_gc_alloc_ops();
             deep.Frames.push_back(std::move(frame));
         }
 #endif
@@ -3470,6 +3511,8 @@ private:
                 aDebug,
                 static_cast<uint32_t>(deep.Frames.size()),
                 parentKey);
+            frame.AllocStartBytes = gcet_gc_alloc_bytes();
+            frame.AllocStartOps = gcet_gc_alloc_ops();
             deep.Frames.push_back(std::move(frame));
         }
 
@@ -3504,6 +3547,54 @@ private:
 
         ++deep.HookEvents;
         Scope::ExcludeProfilerOverhead(hookNs);
+    }
+
+
+    // Dynamic top-five allocation volume + next five distinct by operation count.
+    // Selection runs only from existing infrequent profiling management callbacks.
+    void MaybeRebalanceGcTracer()
+    {
+        if (!IsCapturing()) return;
+        const auto now = Clock::now();
+        const int64_t ticks = ClockTicksNs(now);
+        auto prior = m_nextGcTracerRebalanceTicksNs.load(std::memory_order_relaxed);
+        if (ticks < prior || !m_nextGcTracerRebalanceTicksNs.compare_exchange_strong(
+            prior, ticks + static_cast<int64_t>(GcTracerRebalanceNs),
+            std::memory_order_acq_rel, std::memory_order_relaxed)) return;
+        if (FastCapturedNanoseconds(now) < GcTracerWarmupNs) return;
+        std::lock_guard lock(m_mutex);
+        struct Volume { std::string mod; uint64_t bytes{}, ops{}; };
+        std::unordered_map<std::string, Volume> totals;
+        for (const auto& [_, counter] : m_counters) {
+            GGCTraceOwner stats{};
+            ggc_trace_owner_read(counter->RegistrationId, &stats);
+            auto& v = totals[counter->Mod];
+            v.mod = counter->Mod;
+            v.bytes += stats.bytes; v.ops += stats.allocations;
+        }
+        std::vector<Volume> bytes, ops;
+        for (const auto& [_, v] : totals)
+            if (v.bytes || v.ops) { bytes.push_back(v); ops.push_back(v); }
+        std::sort(bytes.begin(), bytes.end(), [](const auto& a, const auto& b) {
+            return a.bytes == b.bytes ? a.mod < b.mod : a.bytes > b.bytes;
+        });
+        std::sort(ops.begin(), ops.end(), [](const auto& a, const auto& b) {
+            return a.ops == b.ops ? a.mod < b.mod : a.ops > b.ops;
+        });
+        std::unordered_map<std::string, bool> selected;
+        for (size_t i = 0; i < std::min<size_t>(5, bytes.size()); ++i)
+            selected[bytes[i].mod] = true;
+        for (const auto& v : ops) {
+            if (selected.size() >= 10) break;
+            selected[v.mod] = true;
+        }
+        for (const auto& [_, counter] : m_counters) {
+            bool chosen = selected.count(counter->Mod) != 0;
+            counter->GcTracerFocused.store(chosen, std::memory_order_release);
+            ggc_trace_focus_set(counter->RegistrationId, chosen ? 1 : 0);
+            if (chosen && !counter->DeepSelected.load(std::memory_order_relaxed))
+                counter->DeepSampleStride.store(32, std::memory_order_relaxed);
+        }
     }
 
     void MaybeRebalanceDeepHotset()
@@ -3784,11 +3875,13 @@ private:
         m_droppedDeepCallsites = 0;
         m_nextDeepSampleSequence.store(0, std::memory_order_relaxed);
         m_lastDeepRebalanceCaptureNs = 0;
+        m_nextGcTracerRebalanceTicksNs.store(0, std::memory_order_relaxed);
         m_nextDeepRebalanceTicksNs.store(0, std::memory_order_relaxed);
 
         for (auto& [_, counter] : m_counters)
         {
             counter->DeepSelected.store(false, std::memory_order_relaxed);
+            counter->GcTracerFocused.store(false, std::memory_order_relaxed);
             counter->DeepComplete.store(false, std::memory_order_relaxed);
             counter->DeepProfileEpoch.store(1, std::memory_order_relaxed);
             counter->DeepSamples.store(0, std::memory_order_relaxed);
@@ -4266,6 +4359,7 @@ private:
     std::atomic<int64_t> m_fastSegmentStartedTicksNs{0};
     std::atomic<uint64_t> m_fastSegmentBaseCaptureNs{0};
     std::atomic<int64_t> m_nextDeepRebalanceTicksNs{0};
+    std::atomic<int64_t> m_nextGcTracerRebalanceTicksNs{0};
     std::atomic<uint64_t> m_nextDeepSampleSequence{0};
     uint64_t m_lastDeepRebalanceCaptureNs{0};
     uint64_t m_droppedDeepSamples{};
