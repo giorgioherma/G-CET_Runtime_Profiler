@@ -23,6 +23,23 @@ jobs:
       - name: Execute 0-Engine additive workload runtime contract
         run: lua5.4 tests/ZeroEngineWorkloadLuaContract.lua resolver-runtime/0-Engine/modules
 
+  # Compile and test the managed MEGAMIND evidence contract independently
+  # of the hash-locked native payload refresh (which can take several minutes).
+  megamind-evidence-contract:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Compile shared Profiler and Resolver evidence models
+        run: dotnet build G-CET-Runtime-Profiler.sln -c Release
+      - name: Publish managed report fixture
+        run: dotnet publish src/G.CETProfiler.App/G.CETProfiler.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o megamind-smoke/app
+      - name: Validate MEGAMIND metrics, provenance and legacy compatibility
+        shell: pwsh
+        run: ./tests/HitchPressureContract.ps1 -PublishedRoot megamind-smoke
+
   build:
     runs-on: windows-latest
 
