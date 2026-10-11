@@ -371,7 +371,12 @@ Write-Host 'GCET collector probe: instrumented pinned LuaJIT source (capture-gat
 $strPath = Join-Path $SourceRoot 'src\lj_str.c'
 $strSrc = [IO.File]::ReadAllText($strPath)
 $strSrc = Change-Once $strSrc '#include "lj_obj.h"' ('#include "lj_obj.h"' + [Environment]::NewLine + 'void ggc_trace_object_created(void *object, unsigned long long bytes, unsigned int string);' + [Environment]::NewLine + 'void ggc_trace_object_freed(GCobj *object);') 'string hook declaration'
-$strSrc = Change-Once $strSrc '  lj_str_free(g, s);' ('  ggc_trace_object_freed(obj2gco(s));' + [Environment]::NewLine + '  lj_str_free(g, s);') 'string rehash free'
+# Newer LuaJIT forks may free dead strings during an optional rehash.
+# The pinned 2023 OpenResty revision has no such path; ordinary GC sweep
+# remains mandatory and fully instrumented.
+if ($strSrc.Contains('  lj_str_free(g, s);')) {
+  $strSrc = Change-Once $strSrc '  lj_str_free(g, s);' ('  ggc_trace_object_freed(obj2gco(s));' + [Environment]::NewLine + '  lj_str_free(g, s);') 'optional string rehash free'
+}
 $strSrc = Change-Once $strSrc '  return s;  /* Return newly interned string. */' ('  ggc_trace_object_created(s, lj_str_size(len), 1);' + [Environment]::NewLine + '  return s;  /* Return newly interned string. */') 'string birth'
 [IO.File]::WriteAllText($strPath, $strSrc, [Text.UTF8Encoding]::new($false))
 
