@@ -47,3 +47,7 @@ Exit: pass legacy and new-capture regression matrix across diverse real stacks, 
 ## Strict interpretation rules
 
 Allocation operations, positive bytes, object births, sampled reclamation and GC collector wall time are different quantities. C function attribution is not a Lua callsite; a Lua callsite is not a proven memory owner. Collector frame buckets are not caller-owned GC CPU. Sampled data is not extrapolated. Suspicious finalizer counters are explicitly UNVALIDATED. Source proof and idempotence stay mandatory for behavior changes.
+
+## Validation of this implementation pass
+
+Product 1.2.1 / native 2.16.0 is compiled from the pinned CET 1.37.1 source. The native rebuild is SHA-256 locked in MANIFEST.json. The independent managed CI must compile the shared Profiler + Resolver, test the exact common report schema, distinguish the C source from its Lua callsite, and preserve old capture reporting. The main Windows CI must additionally execute the full Resolver regressions and package both binaries. No in-game validation is claimed until the user performs a new representative capture.
