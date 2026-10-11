@@ -80,6 +80,12 @@ jobs:
         shell: pwsh
         run: |
           $manifest = Get-Content MANIFEST.json -Raw | ConvertFrom-Json
+          if ([string]$manifest.packageVersion -eq '1.2.2') {
+            if ([string]$manifest.profilerNativeVersion -ne '2.15.0' -or
+                [string]$manifest.targetCET.profilerSha256 -ne 'c62d57f50b1fd792ae989cb78fb54cee8d82b0370abdb51ea01617c2ddcfa23e') {
+              throw 'Regression-isolation release must contain the exact working 2.15 DLL from CI #925.'
+            }
+          }
           $checks = @(
             @{ Path = 'payload\cyber_engine_tweaks.PROFILER.dll'; Expected = [string]$manifest.targetCET.profilerSha256 },
             @{ Path = 'payload\0-Engine\modules\Scheduler.lua'; Expected = [string]$manifest.zeroEngine.profilerSchedulerSha256 },
