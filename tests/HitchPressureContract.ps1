@@ -128,10 +128,47 @@ $cap | ConvertTo-Json -Depth 8 -Compress | Set-Content -LiteralPath (Join-Path $
 '1,OwnerA,event,onUpdate,init.lua,100,2.0,0.08,capture-gated-positive-LuaJIT-allocation-growth-own-callback'
 ) | Set-Content -LiteralPath (Join-Path $capture 'CET_Runtime_Profile_Lua_Allocations.csv') -Encoding utf8
 
+@(
+'Mod,BytesRank,OperationsRank,SelectedTopTenAtDump,FocusedAtDump,AllocatedMiB,AllocatedMiBPerSecond,AllocationOperations,AllocationsPerSecond,NewGCObjects,NewStrings,SampledObjects,SampleCollisions,SampledReclaimedObjects,SampledReclaimedMiB,AverageReclaimedLifetimeMs,SampledFinalizers,FreedTablesSample,FreedStringsSample,FreedUserdataSample,FreedCdataSample,FreedOtherSample,ActualGlobalFinalizers,Interpretation',
+'OwnerB,1,2,1,1,160,64,800,320,500,250,8,0,6,0.4,120,0,4,2,0,0,0,30,capture-only-creation-owner',
+'OwnerA,2,1,1,1,80,32,2400,960,2000,400,16,0,12,0.3,16,2,8,4,0,0,0,30,capture-only-creation-owner',
+'<unattributed>,3,3,0,0,5,2,50,20,20,10,2,0,1,0.01,4,0,1,0,0,0,0,30,unscoped'
+) | Set-Content -LiteralPath (Join-Path $capture 'CET_Runtime_Profile_GGC_Rankings.csv') -Encoding utf8
+@(
+'RegistrationId,ProfileEpoch,FunctionName,SourceFile,SourceLineStart,SourceLineEnd,SampledCalls,SampledExclusiveAllocatedBytes,SampledExclusiveAllocationOperations,Interpretation',
+'2,1,refresh,mods/OwnerB/init.lua,40,55,5,8000,320,sampled-not-global',
+'1,1,tick,mods/OwnerA/init.lua,20,26,4,2000,200,sampled-not-global'
+) | Set-Content -LiteralPath (Join-Path $capture 'CET_Runtime_Profile_GGC_Functions.csv') -Encoding utf8
+@(
+'RegistrationId,Mod,Kind,Target,AllocatedBytes,AllocationOperations,NewGCObjects,NewStrings,SampledObjects,SampleCollisions,SampledReclaimedObjects,SampledReclaimedBytes,SampledLifetimeTicks,SampledFinalizers,FocusedAtDump',
+'1,OwnerA,event,onUpdate,83886080,2400,2000,400,16,0,12,314572,20000,2,1',
+'2,OwnerB,event,onUpdate,167772160,800,500,250,8,0,6,419430,200000,0,1'
+) | Set-Content -LiteralPath (Join-Path $capture 'CET_Runtime_Profile_GGC_Registrations.csv') -Encoding utf8
+
 $result = (& $profilerExe --report --capture $capture --json | ConvertFrom-Json)
 if (!$result.ok) { throw 'Profiler report generation failed.' }
 
 $summary = Get-Content -LiteralPath (Join-Path $capture 'CET_Summary.json') -Raw | ConvertFrom-Json
+$ggc = $summary.gcTracer
+if ($null -eq $ggc -or
+    !$ggc.dynamicFiveByBytesAndFiveDistinctByAllocationOperations -or
+    $ggc.authorizesAutomaticRewrite -or
+    @($ggc.rankings).Count -ne 3 -or
+    $ggc.rankings[0].Mod -ne 'OwnerB' -or
+    [int]$ggc.rankings[1].OperationsRank -ne 1 -or
+    [int]$ggc.focusedFunctions[0].SampledExclusiveAllocationOperations -ne 320) {
+    throw 'G-GC Tracer rankings, function sample or safety contract failed.'
+}
+$ggcHandoff = Get-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Raw | ConvertFrom-Json
+if ($null -eq $ggcHandoff.gcTracer -or
+    !$ggcHandoff.gcTracer.noAutomaticRewrites -or
+    @($ggcHandoff.gcTracer.rankings).Count -ne 3) {
+    throw 'G-GC Tracer measurement-only resolver contract failed.'
+}
+if ((Get-Content -LiteralPath (Join-Path $capture 'CET_Report.html') -Raw) -notmatch 'G-GC Tracer') {
+    throw 'G-GC Tracer human-readable report section missing.'
+}
+
 $workload = $summary.workloadServices
 if ($null -eq $workload -or
     $workload.additiveToSchedulerOrCallbackTime -or
