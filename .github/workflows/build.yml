@@ -39,6 +39,9 @@ jobs:
       - name: Validate MEGAMIND metrics, provenance and legacy compatibility
         shell: pwsh
         run: ./tests/HitchPressureContract.ps1 -PublishedRoot megamind-smoke
+      - name: Validate compact timeline and measured report memory
+        shell: pwsh
+        run: ./tests/TimelineMemoryContract.ps1 -PublishedRoot megamind-smoke
 
   build:
     runs-on: windows-latest
