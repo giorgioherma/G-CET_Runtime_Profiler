@@ -326,11 +326,11 @@ public static partial class ResultReportService
             .ToArray();
 
         var timelineBucketWidthMs = timeline
-            .Select(r => D(r, "BucketWidthMs"))
+            .Select(r => r.WidthMs)
             .FirstOrDefault(x => x > 0);
 
         var droppedTimelineRows = timeline
-            .Select(r => L(r, "DroppedTimelineRowsAtDump"))
+            .Select(r => r.DroppedRows)
             .DefaultIfEmpty(0)
             .Max();
 
@@ -1155,10 +1155,10 @@ public static partial class ResultReportService
     }
 
     private static List<ResolverOwnerActivityMetric> BuildResolverOwnerActivity(
-        IReadOnlyList<Dictionary<string, string>> timeline)
+        IReadOnlyList<TimelineBucket> timeline)
     {
         var observedBuckets = timeline
-            .Select(r => S(r, "BucketIndex"))
+            .Select(r => r.BucketIndex)
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Count();
@@ -1167,20 +1167,20 @@ public static partial class ResultReportService
             return [];
 
         var ownerBuckets = timeline
-            .Where(r => !string.IsNullOrWhiteSpace(S(r, "Mod", "Owner")) &&
-                        !string.IsNullOrWhiteSpace(S(r, "BucketIndex")))
+            .Where(r => !string.IsNullOrWhiteSpace(r.Owner) &&
+                        !string.IsNullOrWhiteSpace(r.BucketIndex))
             .GroupBy(
-                r => S(r, "Mod", "Owner") + "\u001f" + S(r, "BucketIndex"),
+                r => r.Owner + "\u001f" + r.BucketIndex,
                 StringComparer.OrdinalIgnoreCase)
             .Select(g =>
             {
                 var first = g.First();
                 return new ResolverOwnerBucketMetric
                 {
-                    Owner = S(first, "Mod", "Owner"),
-                    BucketIndex = S(first, "BucketIndex"),
-                    Calls = g.Sum(r => L(r, "Calls")),
-                    ExclusiveMs = g.Sum(r => D(r, "ExclusiveMs"))
+                    Owner = first.Owner,
+                    BucketIndex = first.BucketIndex,
+                    Calls = g.Sum(r => r.Calls),
+                    ExclusiveMs = g.Sum(r => r.ExclusiveMs)
                 };
             })
             .ToList();
@@ -1214,7 +1214,7 @@ public static partial class ResultReportService
 
     private static ResolverScenarioAnalysis BuildResolverScenarios(
         IReadOnlyList<Dictionary<string, string>> markers,
-        IReadOnlyList<Dictionary<string, string>> timeline,
+        IReadOnlyList<TimelineBucket> timeline,
         IReadOnlyList<ResolverSpikeSample> spikes,
         FrameTimeAnalysis? frameTime,
         double captureSeconds)
@@ -1313,15 +1313,15 @@ public static partial class ResultReportService
 
             foreach (var row in timeline)
             {
-                var owner = S(row, "Mod", "Owner");
+                var owner = row.Owner;
                 if (string.IsNullOrWhiteSpace(owner))
                     continue;
 
-                var bucketStart = D(row, "BucketStartMs");
-                var bucketEnd = D(row, "BucketEndMs");
+                var bucketStart = row.StartMs;
+                var bucketEnd = row.EndMs;
                 if (bucketEnd <= bucketStart)
                 {
-                    var width = D(row, "BucketWidthMs");
+                    var width = row.WidthMs;
                     if (width > 0)
                         bucketEnd = bucketStart + width;
                 }
@@ -1342,8 +1342,8 @@ public static partial class ResultReportService
                     ownerWork[owner] = accumulator;
                 }
 
-                accumulator.Calls += L(row, "Calls") * fraction;
-                accumulator.ExclusiveMs += D(row, "ExclusiveMs") * fraction;
+                accumulator.Calls += row.Calls * fraction;
+                accumulator.ExclusiveMs += row.ExclusiveMs * fraction;
                 accumulator.ActiveBucketTouches++;
             }
 

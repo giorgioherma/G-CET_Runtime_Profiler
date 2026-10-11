@@ -6,6 +6,20 @@ namespace GCETRuntimeProfiler.Core.Services;
 
 public static partial class ResultReportService
 {
+
+    // The native timeline can exceed 700,000 rows. Storing each of its ten
+    // columns in a Dictionary<string,string> costs far more than the CSV bytes.
+    // Keep only the values the reports actually use; source CSV remains intact.
+    private readonly record struct TimelineBucket(
+        string BucketIndex,
+        string Owner,
+        double StartMs,
+        double EndMs,
+        double WidthMs,
+        long Calls,
+        double ExclusiveMs,
+        long DroppedRows);
+
     private sealed class ResultAnalysis
     {
         public List<OwnerMetric> Owners { get; init; } = [];
@@ -34,7 +48,7 @@ public static partial class ResultReportService
         // resolver handoff. Keep the already-parsed rows alive for this one
         // Generate() call instead of reopening/reparsing the same files.
         public List<Dictionary<string, string>> DetailRows { get; init; } = [];
-        public List<Dictionary<string, string>> TimelineRows { get; init; } = [];
+        public List<TimelineBucket> TimelineRows { get; init; } = [];
         public List<Dictionary<string, string>> MarkerRows { get; init; } = [];
         public List<Dictionary<string, string>> SpikeRows { get; init; } = [];
         public LuaHeapTelemetry? LuaHeap { get; init; }
@@ -48,7 +62,7 @@ public static partial class ResultReportService
     {
         var byMod = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_ByMod.csv"));
         var detail = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Detail.csv"));
-        var timeline = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Timeline.csv"));
+        var timeline = ReadTimeline(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Timeline.csv"));
         var markers = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Markers.csv"));
         var explicitGcFile = FindProfilerFile(captureRoot, "CET_Runtime_Profile_GC_Explicit.csv");
         var explicitGc = ReadCsv(explicitGcFile);
@@ -412,47 +426,47 @@ public static partial class ResultReportService
             .ToList();
     }
 
-    private static List<WindowMetric> BuildHeavyWindows(IReadOnlyList<Dictionary<string, string>> timeline)
+    private static List<WindowMetric> BuildHeavyWindows(IReadOnlyList<TimelineBucket> timeline)
     {
         return timeline
-            .Where(r => !string.IsNullOrWhiteSpace(S(r, "BucketIndex")))
-            .GroupBy(r => S(r, "BucketIndex"), StringComparer.OrdinalIgnoreCase)
+            .Where(r => !string.IsNullOrWhiteSpace(r.BucketIndex))
+            .GroupBy(r => r.BucketIndex, StringComparer.OrdinalIgnoreCase)
             .Select(g =>
             {
                 var rows = g.ToList();
-                var top = rows.OrderByDescending(r => D(r, "ExclusiveMs")).First();
+                var top = rows.OrderByDescending(r => r.ExclusiveMs).First();
                 return new WindowMetric
                 {
-                    BucketIndex = S(rows[0], "BucketIndex"),
-                    StartMs = rows.Select(r => D(r, "BucketStartMs")).DefaultIfEmpty(0).Min(),
-                    EndMs = rows.Select(r => D(r, "BucketEndMs")).DefaultIfEmpty(0).Max(),
-                    ExclusiveMs = rows.Sum(r => D(r, "ExclusiveMs")),
-                    Calls = rows.Sum(r => L(r, "Calls")),
-                    TopOwner = S(top, "Mod", "Owner"),
-                    TopOwnerExclusiveMs = D(top, "ExclusiveMs")
+                    BucketIndex = rows[0].BucketIndex,
+                    StartMs = rows.Min(r => r.StartMs),
+                    EndMs = rows.Max(r => r.EndMs),
+                    ExclusiveMs = rows.Sum(r => r.ExclusiveMs),
+                    Calls = rows.Sum(r => r.Calls),
+                    TopOwner = top.Owner,
+                    TopOwnerExclusiveMs = top.ExclusiveMs
                 };
             })
             .ToList();
     }
 
     private static List<WindowOwnerMetric> BuildHeavyWindowOwnerPresence(
-        IReadOnlyList<Dictionary<string, string>> timeline,
+        IReadOnlyList<TimelineBucket> timeline,
         IReadOnlyList<WindowMetric> topWindows)
     {
         var topIds = topWindows.Select(x => x.BucketIndex)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         return timeline
-            .Where(r => topIds.Contains(S(r, "BucketIndex")))
-            .GroupBy(r => S(r, "Mod", "Owner"), StringComparer.OrdinalIgnoreCase)
+            .Where(r => topIds.Contains(r.BucketIndex))
+            .GroupBy(r => r.Owner, StringComparer.OrdinalIgnoreCase)
             .Where(g => !string.IsNullOrWhiteSpace(g.Key))
             .Select(g => new WindowOwnerMetric
             {
                 Owner = g.Key,
-                WindowCount = g.Select(r => S(r, "BucketIndex"))
+                WindowCount = g.Select(r => r.BucketIndex)
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .Count(),
-                ExclusiveMs = g.Sum(r => D(r, "ExclusiveMs"))
+                ExclusiveMs = g.Sum(r => r.ExclusiveMs)
             })
             .OrderByDescending(x => x.WindowCount)
             .ThenByDescending(x => x.ExclusiveMs)
@@ -535,6 +549,84 @@ public static partial class ResultReportService
             rows.Add(row);
         }
 
+        return rows;
+    }
+
+    // Compact timeline reader: parse headers once, allocate no per-row maps,
+    // and retain no interpretation text or unused maximum-duration column.
+    // Missing, malformed and non-finite values follow ReadCsv()+D()/L().
+    private static List<TimelineBucket> ReadTimeline(string? path)
+    {
+        var rows = new List<TimelineBucket>();
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            return rows;
+
+        using var reader = new StreamReader(
+            path, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+        var headerLine = reader.ReadLine();
+        if (string.IsNullOrWhiteSpace(headerLine))
+            return rows;
+
+        var headers = ParseCsvLine(headerLine.TrimStart('\uFEFF'))
+            .Select(x => x.Trim()).ToArray();
+        int Column(string name) =>
+            Array.FindIndex(headers, x => x.Equals(name, StringComparison.OrdinalIgnoreCase));
+        var bucketColumn = Column("BucketIndex");
+        var startColumn = Column("BucketStartMs");
+        var endColumn = Column("BucketEndMs");
+        var ownerColumn = Column("Mod");
+        if (ownerColumn < 0) ownerColumn = Column("Owner");
+        var callsColumn = Column("Calls");
+        var exclusiveColumn = Column("ExclusiveMs");
+        var widthColumn = Column("BucketWidthMs");
+        var droppedColumn = Column("DroppedTimelineRowsAtDump");
+
+        static string Field(List<string> values, int column) =>
+            column >= 0 && column < values.Count ? values[column].Trim() : "";
+
+        static double Number(string text) =>
+            double.TryParse(text, NumberStyles.Float | NumberStyles.AllowThousands,
+                CultureInfo.InvariantCulture, out var n) && double.IsFinite(n) ? n : 0;
+
+        static long Whole(string text)
+        {
+            if (long.TryParse(text, NumberStyles.Integer,
+                CultureInfo.InvariantCulture, out var n))
+                return n;
+            if (double.TryParse(text, NumberStyles.Float,
+                CultureInfo.InvariantCulture, out var d) && double.IsFinite(d))
+                return (long)Math.Round(d);
+            return 0;
+        }
+
+        // A capture typically repeats fewer than 100 owner names and thousands
+        // of bucket IDs across hundreds of thousands of rows.
+        var ownerNames = new Dictionary<string, string>(StringComparer.Ordinal);
+        var bucketNames = new Dictionary<string, string>(StringComparer.Ordinal);
+        static string Canonical(Dictionary<string, string> pool, string value)
+        {
+            if (pool.TryGetValue(value, out var existing)) return existing;
+            pool.Add(value, value);
+            return value;
+        }
+
+        string? line;
+        while ((line = reader.ReadLine()) is not null)
+        {
+            if (string.IsNullOrWhiteSpace(line)) continue;
+            var values = ParseCsvLine(line);
+            var owner = Field(values, ownerColumn);
+            var bucket = Field(values, bucketColumn);
+            rows.Add(new TimelineBucket(
+                Canonical(bucketNames, bucket),
+                Canonical(ownerNames, owner),
+                Number(Field(values, startColumn)),
+                Number(Field(values, endColumn)),
+                Number(Field(values, widthColumn)),
+                Whole(Field(values, callsColumn)),
+                Number(Field(values, exclusiveColumn)),
+                Whole(Field(values, droppedColumn))));
+        }
         return rows;
     }
 
