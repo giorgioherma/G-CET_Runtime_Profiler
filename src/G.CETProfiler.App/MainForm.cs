@@ -1190,7 +1190,7 @@ public sealed class MainForm : Form
             {
                 try
                 {
-                    await Task.Run(() => ResultReportService.Generate(destination));
+                    await GenerateReportInChildProcessAsync(destination);
                 }
                 catch (Exception ex)
                 {
@@ -1229,6 +1229,47 @@ public sealed class MainForm : Form
         {
             SetBusy(false);
             await RefreshStatusAsync(silent: true);
+        }
+    }
+
+    // The report parser processes potentially hundreds of thousands of native
+    // timeline/callsite rows. Run the existing headless report command in a
+    // short-lived process: report bytes and error semantics are unchanged, but
+    // the GUI never retains the large .NET heap after COLLECT RESULTS.
+    private static async Task GenerateReportInChildProcessAsync(string captureFolder)
+    {
+        var appExecutable = Application.ExecutablePath;
+        var start = new ProcessStartInfo
+        {
+            FileName = appExecutable,
+            WorkingDirectory = Path.GetDirectoryName(appExecutable)!,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        start.ArgumentList.Add("--report");
+        start.ArgumentList.Add("--capture");
+        start.ArgumentList.Add(captureFolder);
+        start.ArgumentList.Add("--json");
+
+        using var process = new Process { StartInfo = start };
+        if (!process.Start())
+            throw new InvalidOperationException("Could not start isolated report generation.");
+
+        // Drain both pipes concurrently: even a failed report cannot deadlock
+        // the GUI while waiting for its child process to terminate.
+        var stdout = process.StandardOutput.ReadToEndAsync();
+        var stderr = process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        var output = await stdout;
+        var error = await stderr;
+        if (process.ExitCode != 0)
+        {
+            var reason = string.IsNullOrWhiteSpace(error) ? output : error;
+            throw new InvalidOperationException(
+                "Isolated report generation failed (exit " + process.ExitCode + "): " +
+                (string.IsNullOrWhiteSpace(reason) ? "No error detail was reported." : reason.Trim()));
         }
     }
 
