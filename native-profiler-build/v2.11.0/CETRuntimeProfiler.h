@@ -2873,7 +2873,8 @@ public:
             if (f) {
                 f << "RegistrationId,ProfileEpoch,FunctionName,SourceFile,SourceLineStart,"
                      "SourceLineEnd,SampledCalls,SampledExclusiveAllocatedBytes,"
-                     "SampledExclusiveAllocationOperations,Interpretation\n";
+                     "SampledExclusiveAllocationOperations,FunctionKey,LuaCallerFile,"
+                     "LuaCallerLine,CallsiteResolution,ExecutionKind,Interpretation\n";
                 for (const auto& row : deepFunctionRows) {
                     if (!row.SampledExclusiveAllocBytes &&
                         !row.SampledExclusiveAllocations) continue;
@@ -2882,7 +2883,10 @@ public:
                       << row.SourceLineStart << ',' << row.SourceLineEnd << ','
                       << row.Calls << ',' << row.SampledExclusiveAllocBytes << ','
                       << row.SampledExclusiveAllocations << ','
-                      << "sampled-callback-debug-hooks-not-global-function-census\n";
+                      << Csv(row.FunctionKey) << ",,0,NOT_OBSERVED,"
+                      << ((row.SourceFile == "=[C]" || row.What == "C")
+                            ? "NATIVE_C" : "LUA_OR_OTHER")
+                      << ",DIAG_SCHEMA_ONLY_V1_NO_CALLSITE_MAP\n";
                 }
             }
         }
