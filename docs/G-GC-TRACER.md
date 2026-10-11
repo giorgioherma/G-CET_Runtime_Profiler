@@ -1,5 +1,8 @@
 # G-GC Tracer — integrated G-CET Runtime Profiler feature
 
+> Profiler 1.2.1 / native 2.16 exports one versioned MEGAMIND evidence contract to both the summary and Resolver input. Executing C function and observed Lua callsite are separate identities. Global finalizer counters are unvalidated. See [MEGAMIND plan](MEGAMIND-INTEGRATION-PLAN.md).
+
+
 Product 1.2.0, native 2.15.0. This is not a standalone application.
 The Resolver consumes review-only evidence and never authorizes a rewrite from GC
 metrics alone. Collector policy and mod functionality remain unchanged.
