@@ -100,12 +100,26 @@ try {
     if (!$proc.Start()) { throw 'Failed to launch isolated stress report command.' }
     $outTask = $proc.StandardOutput.ReadToEndAsync()
     $errTask = $proc.StandardError.ReadToEndAsync()
+    # PeakWorkingSet64 becomes zero on Windows once the child has exited.
+    # Sample the live process, not its terminated handle.
+    $peakBytes = [long]0
+    while (!$proc.HasExited) {
+        try {
+            $proc.Refresh()
+            $peakBytes = [math]::Max($peakBytes,
+                [math]::Max([long]$proc.WorkingSet64, [long]$proc.PeakWorkingSet64))
+        } catch [InvalidOperationException] {
+            # It may exit between HasExited and the property read.
+        }
+        Start-Sleep -Milliseconds 60
+    }
     $proc.WaitForExit()
     $stdout = $outTask.GetAwaiter().GetResult()
     $stderr = $errTask.GetAwaiter().GetResult()
     if ($proc.ExitCode -ne 0) { throw "Stress report failed: $stderr $stdout" }
-    $peak = [math]::Round($proc.PeakWorkingSet64 / 1MB, 1)
-    Write-Host "Synthetic timeline: 200000 rows; isolated report peak working set: $peak MiB"
+    if ($peakBytes -le 0) { throw 'No live-process working-set sample was collected.' }
+    $peak = [math]::Round($peakBytes / 1MB, 1)
+    Write-Host "Synthetic timeline: 200000 rows; sampled peak working set: $peak MiB"
 } finally { $proc.Dispose() }
 
 $stressResolver = Get-Content (Join-Path $stress 'CET_Resolver_Input.json') -Raw | ConvertFrom-Json
