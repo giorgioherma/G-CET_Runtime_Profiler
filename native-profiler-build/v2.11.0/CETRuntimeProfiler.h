@@ -2857,7 +2857,7 @@ public:
                         << ',' << t.finalized << ',' << t.tables << ','
                         << t.freedStrings << ',' << t.userdata << ',' << t.cdata << ','
                         << t.other << ',' << ggc_trace_finalizer_calls()
-                        << ",capture-only-creation-owner;sampled-lifetime-not-extrapolated\n";
+                        << ",G_GC_TRACER_NATIVE_2_15_FINALIZER_CALL_NESTED_SCOPE_V1\n";
                 }
             }
         }

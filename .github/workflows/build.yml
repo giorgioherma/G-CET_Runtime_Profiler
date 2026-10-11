@@ -99,6 +99,9 @@ jobs:
               }
             }
             if ([string]$manifest.profilerNativeVersion -eq '2.15.0') {
+              if (-not $binaryText.Contains('G_GC_TRACER_NATIVE_2_15_FINALIZER_CALL_NESTED_SCOPE_V1')) {
+                throw 'Native G-GC Tracer compiled revision marker missing; refuse stale DLL.'
+              }
               foreach ($required in @('CET_Runtime_Profile_GGC_Registrations.csv',
                                       'CET_Runtime_Profile_GGC_Rankings.csv',
                                       'CET_Runtime_Profile_GGC_Functions.csv')) {
