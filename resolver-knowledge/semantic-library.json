@@ -14,7 +14,7 @@
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
     "fullPassRule": "A semantic injector can run only when the current capture meets that rule's runtime admission threshold (3.0 ms/s by default; lower only when explicitly declared by a production rule), the library rule matches, and the current live mod source graph proves its anchors.",
-    "enabledInjectorCount": 59,
+    "enabledInjectorCount": 60,
     "profileOnlyRuleCount": 0,
     "note": "The production semantic base contains source-proven, behavior-aware optimizations learned from validated references and measured hot callbacks, including burst-discovered diagnostic sentinels that preserve author cadence while gating globally expensive fallback scans. Generic/mechanical transforms stay in the Resolver; semantic rules cover state/cadence/hotpath knowledge that generic inference cannot safely own.",
     "admissionPolicy": {
@@ -3344,6 +3344,68 @@
       ]
     },
     {
+      "id": "autoloot-world-pin-allocation-scan",
+      "identityHints": [
+        "AutoLoot"
+      ],
+      "policyClass": "ALLOCATION_FREE_WORLD_PIN_CANDIDATE_SELECTION",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "world-map-query-hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "function isWorldMapPinOfTypeInRange(",
+          "if takeIt then tableInsert(closeMappins, mappin) end",
+          "local function vectorDistanceSquared(src, target)",
+          "return dx * dx + dy * dy + dz * dz;",
+          "mappinSystem:GetMappinEntries(gamemappinsMappinTargetTypeWorld)",
+          "mappinSystem:GetMappins(gamemappinsMappinTargetTypeWorld)"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:autoloot-world-pin-allocation-scan",
+        "expectedMarkerFileCount": 1
+      },
+      "behavior": {
+        "handler": "SEMANTIC_WORLD_PIN_SINGLE_PASS_NO_TEMP_CANDIDATE_TABLE",
+        "concepts": [
+          "preserveLiveNativeMappinQueryEachCall",
+          "preserveCurrentPolling",
+          "preserveFilterOrder",
+          "preserveFirstMatchForSingleCandidate",
+          "preserveFirstNearestOnTies",
+          "preserveSquaredRangeCheckForMultipleCandidates",
+          "preserveGlobalDistanceOutputsForMultipleCandidates",
+          "noCrossFrameCache"
+        ],
+        "note": "Replace the fresh closeMappins candidate-array allocation with scalar first/nearest selection, using the proven pure squared-distance helper. Preserve the author query, filtering, and all runtime cadence."
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 0.5,
+        "measuredPeakExclusiveMsPerSecond": 1.0537,
+        "evidenceStack": "G_GC_TRACER_20261012",
+        "admitted": true
+      },
+      "cadenceGroup": "UNCHANGED_AUTHOR_CADENCE_ALLOCATION_HOTPATH",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G_GC_TRACER_20261012"
+      ]
+    },
+    {
       "id": "better-loot-markers",
       "identityHints": [
         "BetterLootMarkers",
@@ -4362,11 +4424,13 @@
           "hooks:SyncJournalPins(path",
           "navigation-status.json"
         ],
-        "ownerAnyGroups": [[
-          "local N={age=0,retries=0}",
-          "local N={age=0,retries=0,scanKey=nil,lastMappins={}}",
-          "local N={age=0,retries=0,scanKey=nil,lastMappins={},missingScanAge=0}"
-        ]],
+        "ownerAnyGroups": [
+          [
+            "local N={age=0,retries=0}",
+            "local N={age=0,retries=0,scanKey=nil,lastMappins={}}",
+            "local N={age=0,retries=0,scanKey=nil,lastMappins={},missingScanAge=0}"
+          ]
+        ],
         "alreadySatisfiedMarker": "G-CET semantic:ziggy-last-play-navigation-sentinel-v2",
         "expectedMarkerFileCount": 1,
         "satisfiedAll": [

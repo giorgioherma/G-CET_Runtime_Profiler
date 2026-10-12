@@ -63,6 +63,7 @@ internal static class SemanticInjectors
             "advanced-settings" => ApplyAdvancedSettings(context),
             "auto-ammo-crafting" => ApplyAutoAmmoCrafting(context),
             "autoloot" => ApplyAutoLoot(context),
+            "autoloot-world-pin-allocation-scan" => ApplyAutoLootWorldPinAllocationScan(context),
             "better-loot-markers" => ApplyBetterLootMarkers(context),
             "drivebus" => ApplyDriveBus(context),
             "quest-tracking-toggle" => ApplyQuestTrackingToggle(context),
@@ -3623,6 +3624,110 @@ __CLOSE__" + "\n",
             "Preserved camera, shake, locomotion, Cron and speed interpolation every frame; moved vehicle/weapon state reconciliation to 20 Hz.");
     }
 
+
+    // GC-source-proven, allocation-only AutoLoot optimization. This affects
+    // neither native mappin polling nor author cadence. It fails closed if
+    // the known candidate scan shape or pure squared-distance helper changes.
+    private static SemanticInjectionResult ApplyAutoLootWorldPinAllocationScan(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "modules/logic.lua",
+            "function isWorldMapPinOfTypeInRange(",
+            "if takeIt then tableInsert(closeMappins, mappin) end",
+            "local function vectorDistanceSquared(src, target)",
+            "return dx * dx + dy * dy + dz * dz;",
+            "mappinSystem:GetMappinEntries(gamemappinsMappinTargetTypeWorld)",
+            "mappinSystem:GetMappins(gamemappinsMappinTargetTypeWorld)");
+        var text = file.Text;
+        var functionStart = text.IndexOf(
+            "function isWorldMapPinOfTypeInRange(", StringComparison.Ordinal);
+        var nextFunction = functionStart < 0 ? -1 : text.IndexOf(
+            "function logic.couldStartNewLootingCycle(", functionStart,
+            StringComparison.Ordinal);
+        if (functionStart < 0 || nextFunction < 0 ||
+            text.IndexOf("function isWorldMapPinOfTypeInRange(",
+                functionStart + 1, StringComparison.Ordinal) >= 0)
+            throw new InvalidOperationException(
+                "AutoLoot world-pin function boundaries are unproven.");
+        var worldFunction = text[functionStart..nextFunction];
+        var newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        string Native(string value) =>
+            value.Replace("\n", newline, StringComparison.Ordinal);
+
+        worldFunction = ReplaceOnce(
+            worldFunction,
+            Native("\tlocal closeMappins = {}\n\tlocal worldPosition\n"),
+            Native("\tlocal firstMappin, nearestMappin\n" +
+                   "\tlocal matchingMappins = 0\n" +
+                   "\tlocal nearestIndex = 0\n" +
+                   "\tlocal nearestDistanceSquared = 1000000000\n" +
+                   "\tlocal worldPosition\n"),
+            "AutoLoot fresh candidate buffer");
+        worldFunction = ReplaceOnce(
+            worldFunction,
+            "if takeIt then tableInsert(closeMappins, mappin) end",
+            Native("if takeIt then\n" +
+                   "\t\t\t\t\t\tmatchingMappins = matchingMappins + 1\n" +
+                   "\t\t\t\t\t\tif matchingMappins == 1 then\n" +
+                   "\t\t\t\t\t\t\tfirstMappin = mappin\n" +
+                   "\t\t\t\t\t\telse\n" +
+                   "\t\t\t\t\t\t\tif matchingMappins == 2 then\n" +
+                   "\t\t\t\t\t\t\t\tlocal dist = vectorDistanceSquared(objectPos, firstMappin.worldPosition)\n" +
+                   "\t\t\t\t\t\t\t\tif dist < nearestDistanceSquared then\n" +
+                   "\t\t\t\t\t\t\t\t\tnearestDistanceSquared = dist\n" +
+                   "\t\t\t\t\t\t\t\t\tnearestIndex = 1\n" +
+                   "\t\t\t\t\t\t\t\t\tnearestMappin = firstMappin\n" +
+                   "\t\t\t\t\t\t\t\tend\n" +
+                   "\t\t\t\t\t\t\tend\n" +
+                   "\t\t\t\t\t\t\tlocal dist = vectorDistanceSquared(objectPos, mappin.worldPosition)\n" +
+                   "\t\t\t\t\t\t\tif dist < nearestDistanceSquared then\n" +
+                   "\t\t\t\t\t\t\t\tnearestDistanceSquared = dist\n" +
+                   "\t\t\t\t\t\t\t\tnearestIndex = matchingMappins\n" +
+                   "\t\t\t\t\t\t\t\tnearestMappin = mappin\n" +
+                   "\t\t\t\t\t\t\tend\n" +
+                   "\t\t\t\t\t\tend\n" +
+                   "\t\t\t\t\tend"),
+            "AutoLoot single-pass candidate selection");
+
+        var oldTail = Native(
+            "\tlocal size = #closeMappins\n" +
+            "\tif size == 0 then return false end\n" +
+            "\tif size == 1 then return closeMappins[1] end\n" +
+            "\n" +
+            "\tlowestDistanceIndex = 0\n" +
+            "\tlowestDistanceSquared = 1000000000\n" +
+            "\n" +
+            "\tfor i = 1, size do\n" +
+            "\t\tlocal distSquared = vectorDistanceSquared(objectPos, closeMappins[i].worldPosition)\n" +
+            "\t\tif distSquared < lowestDistanceSquared then\n" +
+            "\t\t\tlowestDistanceSquared = distSquared\n" +
+            "\t\t\tlowestDistanceIndex = i\n" +
+            "\t\tend\n" +
+            "\tend\n" +
+            "\n" +
+            "\tif lowestDistanceIndex > 0 and lowestDistanceSquared <= range * range then\n" +
+            "\t\treturn closeMappins[lowestDistanceIndex]\n" +
+            "\tend");
+        var newTail = Native(
+            "\tif matchingMappins == 0 then return false end\n" +
+            "\tif matchingMappins == 1 then return firstMappin end\n" +
+            "\n" +
+            "\tlowestDistanceIndex = nearestIndex\n" +
+            "\tlowestDistanceSquared = nearestDistanceSquared\n" +
+            "\tif lowestDistanceIndex > 0 and lowestDistanceSquared <= range * range then\n" +
+            "\t\treturn nearestMappin\n" +
+            "\tend");
+        worldFunction = ReplaceOnce(
+            worldFunction, oldTail, newTail,
+            "AutoLoot nearest candidate and original global-distance results");
+        text = text[..functionStart] + worldFunction + text[nextFunction..];
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Removed the fresh world-map pin candidate table and table.insert " +
+            "calls; retained one live native query, filter order, single-candidate " +
+            "behavior, first-nearest tie policy, and original update cadence.");
+    }
 
     private static SemanticInjectionResult ApplyAutoLoot(
         SemanticPatchContext context)
