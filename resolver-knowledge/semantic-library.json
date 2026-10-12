@@ -14,7 +14,7 @@
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
     "fullPassRule": "A semantic injector can run only when the current capture meets that rule's runtime admission threshold (3.0 ms/s by default; lower only when explicitly declared by a production rule), the library rule matches, and the current live mod source graph proves its anchors.",
-    "enabledInjectorCount": 60,
+    "enabledInjectorCount": 59,
     "profileOnlyRuleCount": 0,
     "note": "The production semantic base contains source-proven, behavior-aware optimizations learned from validated references and measured hot callbacks, including burst-discovered diagnostic sentinels that preserve author cadence while gating globally expensive fallback scans. Generic/mechanical transforms stay in the Resolver; semantic rules cover state/cadence/hotpath knowledge that generic inference cannot safely own.",
     "admissionPolicy": {
@@ -3258,118 +3258,11 @@
       ]
     },
     {
-      "id": "autoloot",
+      "id": "autoloot-input-frame-v3",
       "identityHints": [
         "AutoLoot"
       ],
-      "policyClass": "EXACT_ACTION_ROUTING",
-      "callbacks": [
-        {
-          "kind": "Observe",
-          "target": "PlayerPuppet::OnAction",
-          "role": "hot-path"
-        }
-      ],
-      "sourceProof": {
-        "ownerAll": [
-          "handleButtonPressed",
-          "handleButtonReleased",
-          "useDefaultActionKey",
-          "action:GetType(action)"
-        ],
-        "ownerAnyGroups": [
-          [
-            "autoLoot.isContinuousLooting",
-            "continuousLootingNextAction"
-          ],
-          [
-            "UI_DPadWeapons",
-            "TogglePhotoMode"
-          ]
-        ],
-        "alreadySatisfiedMarker": "G-CET semantic:autoloot",
-        "expectedMarkerFileCount": 1,
-        "allowIdentityFallback": true,
-        "satisfiedAnyGroups": [
-          [
-            "gcetAutoLootOnAction",
-            "zeroEngineOnAction"
-          ],
-          [
-            "SubscribeAction"
-          ],
-          [
-            "UI_DPadWeapons"
-          ]
-        ]
-      },
-      "behavior": {
-        "handler": "SEMANTIC_EXACT_ACTION_ROUTING",
-        "concepts": [
-          "defaultActionKey",
-          "pressReleaseSemantics",
-          "continuousLooting",
-          "consumerIndependentInput"
-        ],
-        "actions": [
-          "Pause",
-          "OpenPauseMenu",
-          "OpenMapMenu",
-          "OpenCraftingMenu",
-          "OpenJournalMenu",
-          "OpenPerksMenu",
-          "OpenInventoryMenu",
-          "OpenHubMenu",
-          "TogglePhotoMode",
-          "UI_Apply",
-          "Choice1",
-          "click",
-          "Ping",
-          "Forward",
-          "Back",
-          "Left",
-          "Right",
-          "Jump",
-          "ToggleCrouch",
-          "MeleeAttack",
-          "UI_DPadWeapons"
-        ],
-        "genericResponsibilities": [
-          "FRAME_DISPATCH_CONSOLIDATION",
-          "SHARED_PROVIDER_READ"
-        ],
-        "note": "PASS4K cadence experiment was discarded; preserve AutoLoot's proven runtime cadence and only route the finite input set."
-      },
-      "generation": {
-        "enabled": true,
-        "patchStyle": "source-injection",
-        "shipReferenceOverride": false,
-        "requiresCurrentSourceProof": true,
-        "requiresIdempotenceMarker": true,
-        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
-      },
-      "runtimeAdmission": {
-        "thresholdMsPerSecond": 3,
-        "measuredPeakExclusiveMsPerSecond": 4.938033,
-        "evidenceStack": "G_COLLECTION_OPTIMIZED_REFERENCE",
-        "admitted": true
-      },
-      "cadenceGroup": "EXACT_ACTION_ROUTING_NO_CADENCE_CHANGE",
-      "catalogRole": "SEMANTIC_HOT_MOD",
-      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
-      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
-      "referenceOverrideAllowed": false,
-      "evidenceMembership": [
-        "G-CET_0-Engine_Manual+Automatic",
-        "PASS5_R3_AUDIT"
-      ]
-    },
-    {
-      "id": "autoloot-active-loot-cycle-v2",
-      "identityHints": [
-        "AutoLoot"
-      ],
-      "policyClass": "KEY_TRIGGERED_EARLY_RADIUS_PREFILTER_AND_WORLD_PIN_ALLOCATION_REMOVAL",
+      "policyClass": "AUTHOR_SOURCE_0ENGINE_ACTION_AND_FRAME_ROUTING_WITH_EARLY_LOOT_RADIUS_AND_NO_TEMP_WORLD_PINS",
       "callbacks": [
         {
           "kind": "event",
@@ -3379,24 +3272,37 @@
       ],
       "sourceProof": {
         "ownerAll": [
+          "handleButtonPressed",
+          "handleButtonReleased",
+          "useDefaultActionKey",
+          "action:GetType(action)",
           "function logic.lootInRange(",
-          "if isNpcSafeToLoot(gameObj) then",
           "transactionSystem:GetItemList(gameObj)",
           "function isWorldMapPinOfTypeInRange(",
           "local function vectorDistanceSquared(src, target)",
-          "return dx * dx + dy * dy + dz * dz;",
           "mappinSystem:GetMappinEntries(gamemappinsMappinTargetTypeWorld)",
-          "mappinSystem:GetMappins(gamemappinsMappinTargetTypeWorld)"
+          "mappinSystem:GetMappins(gamemappinsMappinTargetTypeWorld)",
+          "getAllJournalQuestEntries"
         ],
-        "alreadySatisfiedMarker": "G-CET semantic:autoloot-active-loot-cycle-v2",
-        "expectedMarkerFileCount": 1,
+        "alreadySatisfiedMarker": "G-CET semantic:autoloot-input-frame-v3",
+        "expectedMarkerFileCount": 2,
         "satisfiedAll": [
           "if isNpcSafeToLoot(gameObj) and (not lootInRange or vectorDistanceSquared(playerPos, gameObj:GetWorldPosition()) <= rangeSquared) then",
-          "if matchingMappins == 1 then return firstMappin end"
-        ]
+          "if matchingMappins == 1 then return firstMappin end",
+          "SubscribeAction(",
+          "MakeEventRegistrar(\"AutoLoot\", registerForEvent)",
+          "registerRuntimeEvent(\"onDraw\", function()"
+        ],
+        "satisfiedAnyGroups": [
+          [
+            "zeroEngineOnAction",
+            "gcetAutoLootOnAction"
+          ]
+        ],
+        "allowIdentityFallback": true
       },
       "behavior": {
-        "handler": "SEMANTIC_SOURCE_SAFE_LOOT_CYCLE_EARLY_PREFILTER_PLUS_NO_TEMP_MAPPINS",
+        "handler": "SEMANTIC_AUTOLOOT_COMPLETE_0ENGINE_INPUT_FRAME_AND_ACTIVE_LOOT_CYCLE",
         "concepts": [
           "preserve0EngineActionRouting",
           "radiusBeforeInventoryEnumeration",
@@ -3409,9 +3315,18 @@
           "upgradeExistingOptimizedWorldPinToV2",
           "preserveNativeMappinQueryAndFirstNearestTieSemantics",
           "noLoosenedQuestSafeguards",
-          "keepAuthor333msLootCadence"
+          "keepAuthor333msLootCadence",
+          "exactSourceProven20ActionRouting",
+          "pressAndReleaseTypes",
+          "nativeOnActionFallbackOnlyWhen0EngineUnavailable",
+          "sourceProvenFrameRegistrar",
+          "preserveUserDefaultActionKeySetting",
+          "atomicTwoFileV3Marker",
+          "upgradeAlreadyV2LogicWithoutRewritingIt",
+          "noExtraQuestDiagnosticObserver",
+          "keepAuthorOnDrawPayloadAndOnUpdateCadence"
         ],
-        "note": "From original AutoLoot 3.11.0/3.11.1-shaped Lua, source-proven early out-of-radius culling before the expensive GetItemList(gameObj)/GetItemList(gameObjOwner) pair, retaining original later distance/frustum/LoS checks and transfer/quest conditions. Also retain or generate the prior world-pin candidate-array elimination. Existing v1 world-pin optimization is recognized and only missing radius preflight added. Other author code, including 3.11.1 quest/protected positions/autosave behavior, remains unchanged."
+        "note": "Generate the proven LIVE 3.11.0 OnAction finite set/press-release 0-Engine SubscribeAction and routed onUpdate/onDraw frame registration from original 3.11.1 source; preserve fallback OnAction if 0-Engine unavailable. Add existing world-pin scalar + early radius optimizations, with exact structural proof and 2-file marker. Already optimized v1/v2 logic or original/0-Engine-routed init are recognized and only missing pieces are applied. No gameplay observer/marker/quest-protection removal."
       },
       "generation": {
         "enabled": true,
@@ -3426,16 +3341,18 @@
         "measuredPeakExclusiveMsPerSecond": 1.0537,
         "evidenceStack": "G_GC_TRACER_20261012",
         "admitted": true,
-        "rationale": "Previously source-proven GC allocation scan and cheap pre-inventory distance prefilter. Keypress activates author loop across all tracked objects every 0.33s. Exact 3.11.x source and native query behavior are maintained, so the rule-local 0.5ms/s floor is retained; G-GC evidence alone does not authorize edits."
+        "rationale": "Observed original AutoLoot onUpdate runtime >=0.5ms/s provides stable runtime admission for the complete source-proven AutoLoot owner transform. Separate OnAction observer is often missing in captures of already optimized/live input or idle with useDefaultActionKey=false. Routing is proven by the author's source and the user's tested 0-Engine LIVE version, not by fabricated OnAction measurements."
       },
-      "cadenceGroup": "UNCHANGED_AUTHOR_0_33_SECOND_KEY_TRIGGER_WITH_EARLY_RADIUS_FILTER",
+      "cadenceGroup": "AUTHOR_LOOT_333MS_PRESERVED_EXACT_ONACTION_ROUTING_AND_FRAME_EVENTS",
       "catalogRole": "SEMANTIC_HOT_MOD",
       "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
       "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
       "referenceOverrideAllowed": false,
       "evidenceMembership": [
         "G_GC_TRACER_20261012",
-        "AUTOLOOT_ACTIVE_KEYPRESS_SOURCE_INSPECTION_20261012"
+        "AUTOLOOT_ACTIVE_KEYPRESS_SOURCE_INSPECTION_20261012",
+        "AUTOLOOT_3_11_0_TESTED_0ENGINE_LIVE_INPUT_AND_FRAME_20261012",
+        "AUTOLOOT_3_11_1_ORIGINAL_FULL_SOURCE_PROOF"
       ]
     },
     {

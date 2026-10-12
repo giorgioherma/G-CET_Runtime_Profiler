@@ -134,7 +134,7 @@ $restoredReferenceRules = @(
     'immersivefirstperson',
     'nativeinteractions',
     'minimap-widgets',
-    'autoloot',
+    'autoloot-input-frame-v3',
     'better-loot-markers'
 )
 $missingRestored = @($restoredReferenceRules | Where-Object { $_ -notin $ids -or $_ -notin $injectorIds })
