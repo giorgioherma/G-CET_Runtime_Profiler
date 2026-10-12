@@ -356,37 +356,46 @@
       ],
       "sourceProof": {
         "ownerAll": [
-          "StreetTables",
+          "StreetGamesPoker",
           "PokerHUD",
-          "StreetGamesPoker.ready = true",
           "StreetTables.registerMapPins()",
           "Cron.Update(dt)",
           "SeatController.update(dt)",
           "StreetTables.update(dt)",
           "InteractionMenu.update()",
           "CardRenderer.update(dt)",
-          "TableTalk.update(dt)"
+          "TableTalk.update(dt)",
+          "function StreetTables.update(dt)",
+          "CHAIR_SPAWN_RANGE",
+          "CHAIR_DESPAWN_RANGE",
+          "TRACE_RANGE",
+          "traceApproach"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:streetgamespoker",
-        "expectedMarkerFileCount": 1,
+        "expectedMarkerFileCount": 2,
         "satisfiedAll": [
           "poker.realtime",
           "poker.world_far",
           "poker.world_near",
-          "poker.seat_near"
+          "poker.seat_near",
+          "__gcetPokerWakeSq",
+          "__gcetPokerNearAny"
         ]
       },
       "behavior": {
         "handler": "SEMANTIC_PASS4_FOUR_LANE_SCHEDULER",
         "concepts": [
-          "authorFallbackUntilReady",
-          "realtimeEveryFrame",
+          "twoFileSourceProof",
+          "distanceAwareWorldScan",
+          "squareDistanceNoSqrt",
+          "wake25m",
+          "nearFarStateTransition",
+          "realtimeGameplayFrame",
           "seat100ms",
           "worldNear200ms",
           "worldFar1000ms",
-          "distanceWake25m",
-          "lexicalInitialization",
-          "preserveMapPins"
+          "authorFallback",
+          "mapPinUnchanged"
         ],
         "lanes": [
           {
@@ -410,7 +419,7 @@
             "seconds": 1
           }
         ],
-        "note": "Generate PASS4-equivalent 0-Engine Scheduler from original Poker mod source, with lexical startup attach, author Logger.info, unchanged map pin registration and original update fallback until Scheduler is ready. Never add a posthoc repair-only rule."
+        "note": "Two-file, structurally source-proven PASS4/PASS4C: 0-Engine schedule (realtime / 0.1s seat / 0.2s near-world / 1s far-world), coupled to 25m squared-distance wake and original chair spawn/despawn/trace. Preserve original lifecycle callbacks and map pin registration, fail closed on altered distance semantics. No version or callback registration numbers hard-coded."
       },
       "generation": {
         "enabled": true,
@@ -426,7 +435,7 @@
         "evidenceStack": "OVERLAP",
         "admitted": true
       },
-      "cadenceGroup": "PASS4_FRAME_0_1_0_2_1_0",
+      "cadenceGroup": "PASS4_FAR_1HZ_NEAR_5HZ_SEAT_10HZ_ACTIVE_FRAME",
       "catalogRole": "SEMANTIC_HOT_MOD",
       "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
       "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
