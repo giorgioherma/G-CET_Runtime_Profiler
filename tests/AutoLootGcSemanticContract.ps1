@@ -355,7 +355,7 @@ function Verify-Variant([string]$label,[string]$source,[bool]$emit) {
             try {$outputText=$reader.ReadToEnd()} finally {$reader.Dispose()}
         } finally {$zip.Dispose()}
         $worldStage=[regex]::Match($outputText,
-            '(?ms)^function\s+isWorldMapPinOfTypeInRange\([^\r\n]*\).*?^end[ \t]*;?[ \t]*$').Value
+            '(?ms)^function\s+isWorldMapPinOfTypeInRange\([^\r\n]*\).*?^end[ \t]*;?[ \t]*\r?$').Value
         if (!$worldStage -or $worldStage.Contains('local closeMappins = {}') -or
             !$worldStage.Contains('local firstMappin, nearestMappin') -or
             $outputText.IndexOf(
@@ -371,9 +371,9 @@ function Verify-Variant([string]$label,[string]$source,[bool]$emit) {
     }
 }
 $origWorld=[regex]::Match($originalText,
-    '(?ms)^function\s+isWorldMapPinOfTypeInRange\([^\r\n]*\).*?^end[ \t]*;?[ \t]*$').Value
+    '(?ms)^function\s+isWorldMapPinOfTypeInRange\([^\r\n]*\).*?^end[ \t]*;?[ \t]*\r?$').Value
 $doneWorld=[regex]::Match($optimized,
-    '(?ms)^function\s+isWorldMapPinOfTypeInRange\([^\r\n]*\).*?^end[ \t]*;?[ \t]*$').Value
+    '(?ms)^function\s+isWorldMapPinOfTypeInRange\([^\r\n]*\).*?^end[ \t]*;?[ \t]*\r?$').Value
 if (!$origWorld -or !$doneWorld) {throw 'Variant world functions unavailable.'}
 $radiusOnly=$optimized.Replace($doneWorld,$origWorld)
 $worldOnly=$originalText.Replace($origWorld,$doneWorld)
