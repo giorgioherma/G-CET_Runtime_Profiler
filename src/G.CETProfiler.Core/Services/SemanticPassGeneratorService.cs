@@ -56,6 +56,15 @@ internal static class SemanticPassGeneratorService
                     throw new InvalidOperationException(
                         "Semantic injector reported success without changing any live source file.");
 
+                // Never ship unexpanded named-regex substitution tokens as Lua.
+                if (context.Changes.Any(change =>
+                    Encoding.UTF8.GetString(change.Bytes).Contains("${opening}", StringComparison.Ordinal) ||
+                    Encoding.UTF8.GetString(change.Bytes).Contains("${close}", StringComparison.Ordinal)))
+                {
+                    throw new InvalidOperationException(
+                        "Semantic injector emitted unexpanded callback placeholders; refusing the generated pass.");
+                }
+
                 if (candidate.ExpectedMarkerFileCount > 0 &&
                     context.Changes.Count != candidate.ExpectedMarkerFileCount)
                 {
