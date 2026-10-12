@@ -103,6 +103,52 @@ function isWorldMapPinOfTypeInRange(objectPos, range, typeFilterStr1, typeFilter
 	end
 end
 
+-- Author v3.11.x key-triggered loot scan: inventory precedes radius.
+local version = "v3.11.1"
+function logic.lootInRange(range, lootInView, lootVisible, audioFeedback)
+  local lootInRange = range > 0
+  local rangeSquared = range * range
+  local playerPos = player:GetWorldPosition()
+  for ownerHashStr, mappin in pairs(objectMappins) do
+    if mappin and mappin.isNew then
+      gameObj = findEntityByIdOrHashStr(mappin.entId or ownerHashStr)
+      if isObjectOfInterest(gameObj) then
+        if isNpcSafeToLoot(gameObj) then
+          local hasItemsToLoot, objectHasLootItems, ownerHasLootItems = false, false, false
+          result, items = transactionSystem:GetItemList(gameObj)
+          if result and #items > 0 then hasItemsToLoot = true objectHasLootItems = true end
+          local gameObjOwner = nil
+          pcall(function() gameObjOwner = gameObj:GetOwner() end)
+          if gameObjOwner then result, items = transactionSystem:GetItemList(gameObjOwner) end
+          if result and #items > 0 then hasItemsToLoot = true ownerHasLootItems = true end
+          if hasItemsToLoot then
+            local takeIt = true
+            local gameObjPos
+            if lootInRange then
+              gameObjPos = gameObj:GetWorldPosition()
+              takeIt = vectorDistanceSquared(playerPos, gameObjPos) <= rangeSquared
+            end
+            if takeIt then
+              if lootInView then takeIt = cameraSystem:IsInCameraFrustum(gameObj, 0.5, 0.2) end
+              if takeIt then
+                if lootVisible then gameObjPos = gameObjPos or gameObj:GetWorldPosition() takeIt = isObjectVisibleToPlayer(gameObj, gameObjPos, player, playerPos, true) end
+                if takeIt then
+                  result = lootObjectItems(gameObj, forceShard, false, true, playerPos)
+                end
+              end
+            end
+          end
+        end
+      else
+        mappin.isNew = false
+      end
+    end
+  end
+end
+
+function lootNpc(gameObj, skipPreCheck)
+end
+
 function logic.couldStartNewLootingCycle(player) return true end
 function logic.tick(dt) end
 return logic
@@ -152,7 +198,7 @@ if (!$resolved.ok -or $null -eq $resolved.pass) { throw 'AutoLoot allocation sem
 $result = Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
 $hit = @($result.callbackFamilies | ForEach-Object { $_.topConsumers } |
     Where-Object { $_.owner -eq 'AutoLoot' -and $_.target -eq 'onUpdate' })[0]
-if ($null -eq $hit -or $hit.semantic.RuleId -ne 'autoloot-world-pin-allocation-scan' -or
+if ($null -eq $hit -or $hit.semantic.RuleId -ne 'autoloot-active-loot-cycle-v2' -or
     -not $hit.semantic.SourceProofSatisfied -or -not $hit.semantic.generationReady) {
     throw 'AutoLoot rule failed exact source-proof/admission.'
 }
@@ -165,7 +211,7 @@ if ($hit.runtime.megaMind.status -ne 'MATCHED_REGISTRATION' -or
 
 $manifest = Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
 $transform = @($manifest.transforms | Where-Object {
-    $_.type -eq 'SEMANTIC_RULE' -and $_.RuleId -eq 'autoloot-world-pin-allocation-scan'
+    $_.type -eq 'SEMANTIC_RULE' -and $_.RuleId -eq 'autoloot-active-loot-cycle-v2'
 }) | Select-Object -First 1
 if ($null -eq $transform -or @($transform.files).Count -ne 1) {
     throw 'Source-proven AutoLoot transform is missing or touched multiple files.'
@@ -183,13 +229,15 @@ try {
 
 $world = $optimized.Substring($optimized.IndexOf('function isWorldMapPinOfTypeInRange('))
 $world = $world.Substring(0, $world.IndexOf('function logic.couldStartNewLootingCycle('))
-$expect = @('G-CET semantic:autoloot-world-pin-allocation-scan',
+$expect = @('G-CET semantic:autoloot-active-loot-cycle-v2',
             'if matchingMappins == 1 then return firstMappin end',
             'nearestIndex = matchingMappins',
             'lowestDistanceIndex = nearestIndex',
             'lowestDistanceSquared = nearestDistanceSquared',
             'GetMappinEntries(gamemappinsMappinTargetTypeWorld)',
-            'GetMappins(gamemappinsMappinTargetTypeWorld)')
+            'GetMappins(gamemappinsMappinTargetTypeWorld)',
+            'if isNpcSafeToLoot(gameObj) and (not lootInRange or vectorDistanceSquared(playerPos, gameObj:GetWorldPosition()) <= rangeSquared) then',
+            'local version = "v3.11.1"')
 foreach ($fragment in $expect) {
     if (!$optimized.Contains($fragment)) { throw "AutoLoot required fragment missing: $fragment" }
 }
@@ -209,4 +257,31 @@ $again = @($repeatResult.callbackFamilies | ForEach-Object { $_.topConsumers } |
 if ($null -eq $again -or $again.semantic.generationReady -or -not $again.semantic.AlreadySatisfied) {
     throw 'AutoLoot semantic pass is not idempotent.'
 }
-Write-Host 'AutoLoot allocation-eliminating source-proven, GC-admitted, idempotent semantic pass contract passed.'
+
+# Reconstruct the already-v1-optimized installation: world-pin table elimination
+# exists but the hot-key pre-inventory radius cull is still missing.
+$v1 = $optimized.Replace(
+ 'if isNpcSafeToLoot(gameObj) and (not lootInRange or vectorDistanceSquared(playerPos, gameObj:GetWorldPosition()) <= rangeSquared) then',
+ 'if isNpcSafeToLoot(gameObj) then').Replace(
+ 'G-CET semantic:autoloot-active-loot-cycle-v2',
+ 'G-CET semantic:autoloot-world-pin-allocation-scan')
+$v1 | Set-Content -LiteralPath $sourcePath -Encoding utf8
+$upgrade = (& $resolverExe --capture $capture --mods $mods --generate-pass --json | ConvertFrom-Json)
+if(!$upgrade.ok -or !$upgrade.pass){throw 'AutoLoot v1 world-pin source was not upgraded with the missing prefilter.'}
+$upgradeManifest=Get-Content -LiteralPath $upgrade.pass.ManifestPath -Raw | ConvertFrom-Json
+if(@($upgradeManifest.transforms | Where-Object {$_.RuleId -eq 'autoloot-active-loot-cycle-v2'}).Count -ne 1){
+ throw 'The same combined rule must complete prior v1 semantic work.'
+}
+$upgradeZip=[IO.Compression.ZipFile]::OpenRead([string]$upgrade.pass.ZipPath)
+try {
+ $upgradeFile=@($upgradeZip.Entries | Where-Object {$_.FullName.EndsWith('AutoLoot/modules/logic.lua')})[0]
+ $upgradeReader=[IO.StreamReader]::new($upgradeFile.Open())
+ try {$upgradeSource=$upgradeReader.ReadToEnd()} finally {$upgradeReader.Dispose()}
+} finally {$upgradeZip.Dispose()}
+if(!$upgradeSource.Contains('if matchingMappins == 1 then return firstMappin end') -or
+    !$upgradeSource.Contains('if isNpcSafeToLoot(gameObj) and (not lootInRange or vectorDistanceSquared(playerPos, gameObj:GetWorldPosition()) <= rangeSquared) then') -or
+    $upgradeSource.Contains('if takeIt then tableInsert(closeMappins, mappin) end')){
+ throw 'Incremental upgrade lost prior world-pin optimization or failed to install radius guard.'
+}
+
+Write-Host 'AutoLoot source-version-adaptive allocation and keypress prefilter source-proven, GC-admitted, idempotent semantic pass contract passed.'
