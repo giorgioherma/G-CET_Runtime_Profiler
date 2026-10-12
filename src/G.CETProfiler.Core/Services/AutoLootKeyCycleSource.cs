@@ -18,6 +18,27 @@ internal static class AutoLootKeyCycleSource
             "mappinSystem:GetMappinEntries(gamemappinsMappinTargetTypeWorld)",
             "mappinSystem:GetMappins(gamemappinsMappinTargetTypeWorld)");
 
+        // Never carry an old local phase/quest profiling observer or its
+        // instrumentation into a production optimization pass. This diagnostic
+        // was temporary, and must be removed from the installed input first.
+        // Normal gameplay observers (including loot discovery and the
+        // 0-Engine action-routing fallback) are explicitly NOT removed.
+        var init = context.FindFile("init.lua",
+            "handleButtonPressed", "handleButtonReleased", "useDefaultActionKey");
+        var journal = context.FindFile("modules/jmels.lua",
+            "getAllJournalQuestEntries", "getActiveQuestsMappins");
+        if (new[] { file.Text, init.Text, journal.Text }.Any(source =>
+                source.Contains("__gcetProbe", StringComparison.Ordinal) ||
+                source.Contains("modules/gcet_probe", StringComparison.Ordinal) ||
+                source.Contains("GCET_AutoLoot_ProfileDump", StringComparison.Ordinal)))
+        {
+            return SemanticInjectionResult.Skip(
+                "AutoLoot still contains the local G-CET action/quest diagnostic " +
+                "or its temporary journal observer. Restore clean init.lua, " +
+                "modules/logic.lua and modules/jmels.lua before generating " +
+                "the production semantic pass; author gameplay observers stay intact.");
+        }
+
         var worldIsOptimized =
             file.Text.Contains("local firstMappin, nearestMappin", StringComparison.Ordinal) &&
             file.Text.Contains("if matchingMappins == 1 then return firstMappin end", StringComparison.Ordinal) &&
