@@ -41,6 +41,15 @@
 - Rule intent: cheap frame-level distance/quest-state probe; if unaccepted/offered, stable session, no dialogue and >130m from Milo, run full controller every 0.25s. Near giver, dialogue, active story/accepted state, uncertainty or failure: original per-frame cadence. Keep author's elapsed-time accounting, journal/shard discovery, dialogue, pin correction and lifecycle.
 - Source-shaped CI passed with latest semantic tests, but **full quest and matched before/after reduction must still be tested in-game**.
 
+### AutoLoot 3.11.x — key-trigger hotpath prefilter
+
+- On 2026-10-12, inspected the user's **AutoLootLIVE** 3.11.0 with previous world-pin scalar optimization, untouched author **3.11.1**, AutoLoot Quest Guard 1.0.0, and Nearby Auto Loot 0.5.1 REDscript. The original 3.11.1 retains the same key-triggered `logic.lootInRange` scan, while preserving new author quest/autosave data/handling.
+- Critical source observation: each continuous-key cycle (approximately every 0.33s) did `GetItemList(gameObj)` and often `GetItemList(gameObjOwner)` **before** the radius/frustum check. Distant registry objects therefore paid unnecessary native inventory/array work.
+- Existing world-pin optimization semantic was upgraded in place to **`autoloot-active-loot-cycle-v2`**, not a competing same-callback rule. It generates the previous no-temporary-candidate-table optimization from untouched source **plus** one early radius predicate before inventories. An already-world-pin-optimized LIVE source receives **only** the missing radius predicate. Later author radius/frustum/line-of-sight, quest protections, transfer/loot action and 0-Engine input/cadence are retained.
+- **CI #983 GREEN** ([run](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38220899375)), source-generation + idempotence + incremental old-v1-upgrade contract. **Not yet verified in actual gameplay or a before/after hot-key capture**; expect savings to depend on how many tracked far objects exist, not a guaranteed percentage.
+- Quest Guard is independent transfer protection; REDscript Nearby Auto Loot maintains an object-attachment registry and 150ms bounded scan but uses continuous automatic looting. It is a research reference, **not** a drop-in safe replacement of AutoLoot's keybind, view, protection and other features. Do not run the competing looters together during benchmark.
+- Further potential offenders when in range: repeated journal/quest mappin scans, visibility/raycast retries and short-lived hit-point arrays; **inspect allocations and feature side effects before changing**.
+
 ## G-GC evidence: top open research
 
 - Experimental ~443-second capture reported ~**1,457.8 MiB positive allocated growth**, **12.18M allocation operations**, **2.21M object births**, **559.65 MiB (38.39%) unattributed**. Positive allocation is not retained heap; unknown and native/C source do not give proven Lua caller.
