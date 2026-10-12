@@ -3365,11 +3365,11 @@
       ]
     },
     {
-      "id": "autoloot-world-pin-allocation-scan",
+      "id": "autoloot-active-loot-cycle-v2",
       "identityHints": [
         "AutoLoot"
       ],
-      "policyClass": "ALLOCATION_FREE_WORLD_PIN_CANDIDATE_SELECTION",
+      "policyClass": "KEY_TRIGGERED_EARLY_RADIUS_PREFILTER_AND_WORLD_PIN_ALLOCATION_REMOVAL",
       "callbacks": [
         {
           "kind": "event",
@@ -3379,29 +3379,39 @@
       ],
       "sourceProof": {
         "ownerAll": [
+          "function logic.lootInRange(",
+          "if isNpcSafeToLoot(gameObj) then",
+          "transactionSystem:GetItemList(gameObj)",
           "function isWorldMapPinOfTypeInRange(",
-          "if takeIt then tableInsert(closeMappins, mappin) end",
           "local function vectorDistanceSquared(src, target)",
           "return dx * dx + dy * dy + dz * dz;",
           "mappinSystem:GetMappinEntries(gamemappinsMappinTargetTypeWorld)",
           "mappinSystem:GetMappins(gamemappinsMappinTargetTypeWorld)"
         ],
-        "alreadySatisfiedMarker": "G-CET semantic:autoloot-world-pin-allocation-scan",
-        "expectedMarkerFileCount": 1
+        "alreadySatisfiedMarker": "G-CET semantic:autoloot-active-loot-cycle-v2",
+        "expectedMarkerFileCount": 1,
+        "satisfiedAll": [
+          "if isNpcSafeToLoot(gameObj) and (not lootInRange or vectorDistanceSquared(playerPos, gameObj:GetWorldPosition()) <= rangeSquared) then",
+          "if matchingMappins == 1 then return firstMappin end"
+        ]
       },
       "behavior": {
-        "handler": "SEMANTIC_WORLD_PIN_SINGLE_PASS_NO_TEMP_CANDIDATE_TABLE",
+        "handler": "SEMANTIC_SOURCE_SAFE_LOOT_CYCLE_EARLY_PREFILTER_PLUS_NO_TEMP_MAPPINS",
         "concepts": [
-          "preserveLiveNativeMappinQueryEachCall",
-          "preserveCurrentPolling",
-          "preserveFilterOrder",
-          "preserveFirstMatchForSingleCandidate",
-          "preserveFirstNearestOnTies",
-          "preserveSquaredRangeCheckForMultipleCandidates",
-          "preserveGlobalDistanceOutputsForMultipleCandidates",
-          "noCrossFrameCache"
+          "preserve0EngineActionRouting",
+          "radiusBeforeInventoryEnumeration",
+          "keepLaterOriginalRangeCheck",
+          "skipDistantGetItemListOnKeypress",
+          "preserveExistingFrustumAndVisibilityChecks",
+          "preserveQuestItemAndSourceProtections",
+          "preserve3_11_1AutosaveAndProtectionChanges",
+          "avoidExtraGCObjectArray",
+          "upgradeExistingOptimizedWorldPinToV2",
+          "preserveNativeMappinQueryAndFirstNearestTieSemantics",
+          "noLoosenedQuestSafeguards",
+          "keepAuthor333msLootCadence"
         ],
-        "note": "Replace the fresh closeMappins candidate-array allocation with scalar first/nearest selection, using the proven pure squared-distance helper. Preserve the author query, filtering, and all runtime cadence."
+        "note": "From original AutoLoot 3.11.0/3.11.1-shaped Lua, source-proven early out-of-radius culling before the expensive GetItemList(gameObj)/GetItemList(gameObjOwner) pair, retaining original later distance/frustum/LoS checks and transfer/quest conditions. Also retain or generate the prior world-pin candidate-array elimination. Existing v1 world-pin optimization is recognized and only missing radius preflight added. Other author code, including 3.11.1 quest/protected positions/autosave behavior, remains unchanged."
       },
       "generation": {
         "enabled": true,
@@ -3416,15 +3426,16 @@
         "measuredPeakExclusiveMsPerSecond": 1.0537,
         "evidenceStack": "G_GC_TRACER_20261012",
         "admitted": true,
-        "rationale": "The measured AutoLoot world-pin polling callback is 1.0537 ms/s with a 184.42 ms isolated spike, below the default 3 ms/s sustained-work floor. This rule only removes a proven temporary Lua candidate-table allocation while preserving the exact mappin getter, frame cadence, filter order, and first-nearest result behavior. Admission still requires current-source proof and at least 0.5 ms/s callback workload; G-GC counts alone cannot authorize it."
+        "rationale": "Previously source-proven GC allocation scan and cheap pre-inventory distance prefilter. Keypress activates author loop across all tracked objects every 0.33s. Exact 3.11.x source and native query behavior are maintained, so the rule-local 0.5ms/s floor is retained; G-GC evidence alone does not authorize edits."
       },
-      "cadenceGroup": "UNCHANGED_AUTHOR_CADENCE_ALLOCATION_HOTPATH",
+      "cadenceGroup": "UNCHANGED_AUTHOR_0_33_SECOND_KEY_TRIGGER_WITH_EARLY_RADIUS_FILTER",
       "catalogRole": "SEMANTIC_HOT_MOD",
       "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
       "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
       "referenceOverrideAllowed": false,
       "evidenceMembership": [
-        "G_GC_TRACER_20261012"
+        "G_GC_TRACER_20261012",
+        "AUTOLOOT_ACTIVE_KEYPRESS_SOURCE_INSPECTION_20261012"
       ]
     },
     {

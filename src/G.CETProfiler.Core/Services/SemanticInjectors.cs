@@ -63,7 +63,7 @@ internal static class SemanticInjectors
             "advanced-settings" => ApplyAdvancedSettings(context),
             "auto-ammo-crafting" => ApplyAutoAmmoCrafting(context),
             "autoloot" => ApplyAutoLoot(context),
-            "autoloot-world-pin-allocation-scan" => ApplyAutoLootWorldPinAllocationScan(context),
+            "autoloot-active-loot-cycle-v2" => AutoLootKeyCycleSource.Apply(context),
             "better-loot-markers" => ApplyBetterLootMarkers(context),
             "drivebus" => ApplyDriveBus(context),
             "quest-tracking-toggle" => ApplyQuestTrackingToggle(context),
@@ -3571,7 +3571,7 @@ ${close}" + "\n",
     // GC-source-proven, allocation-only AutoLoot optimization. This affects
     // neither native mappin polling nor author cadence. It fails closed if
     // the known candidate scan shape or pure squared-distance helper changes.
-    private static SemanticInjectionResult ApplyAutoLootWorldPinAllocationScan(
+    internal static SemanticInjectionResult ApplyAutoLootWorldPinAllocationScan(
         SemanticPatchContext context)
     {
         var file = context.FindFile(
