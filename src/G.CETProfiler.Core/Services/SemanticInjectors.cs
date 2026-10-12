@@ -19,7 +19,7 @@ internal static class SemanticInjectors
             "gta-joyride" => ApplyJoyRide(context),
             "repeatable-cyberpsychos" => ApplyRepeatableCyberpsychos(context),
             "cybertrials" => ApplyCyberTrials(context),
-            "streetgamespoker" => ApplyStreetGamesPoker(context),
+            "streetgamespoker" => PokerPass4Source.Apply(context),
             "nightcitybilliards" => ApplyNightCityBilliards(context),
             "npcd-hotline" => ApplyNpcdHotline(context),
             "gameentityexaminertool" => ApplyGameEntityExaminer(context),

@@ -346,7 +346,7 @@
       "identityHints": [
         "StreetGamesPoker"
       ],
-      "policyClass": "DISTANCE_ACTIVITY_SPLIT",
+      "policyClass": "PASS4_FOUR_LANE_SCHEDULER",
       "callbacks": [
         {
           "kind": "event",
@@ -357,7 +357,15 @@
       "sourceProof": {
         "ownerAll": [
           "StreetTables",
-          "PokerHUD"
+          "PokerHUD",
+          "StreetGamesPoker.ready = true",
+          "StreetTables.registerMapPins()",
+          "Cron.Update(dt)",
+          "SeatController.update(dt)",
+          "StreetTables.update(dt)",
+          "InteractionMenu.update()",
+          "CardRenderer.update(dt)",
+          "TableTalk.update(dt)"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:streetgamespoker",
         "expectedMarkerFileCount": 1,
@@ -369,13 +377,16 @@
         ]
       },
       "behavior": {
-        "handler": "SEMANTIC_DISTANCE_ACTIVITY_SPLIT",
+        "handler": "SEMANTIC_PASS4_FOUR_LANE_SCHEDULER",
         "concepts": [
-          "activeGameplay",
-          "nearSeat",
-          "nearWorld",
-          "farWorld",
-          "rendererActivity"
+          "authorFallbackUntilReady",
+          "realtimeEveryFrame",
+          "seat100ms",
+          "worldNear200ms",
+          "worldFar1000ms",
+          "distanceWake25m",
+          "lexicalInitialization",
+          "preserveMapPins"
         ],
         "lanes": [
           {
@@ -398,7 +409,8 @@
             "cadence": "FIXED_SECONDS",
             "seconds": 1
           }
-        ]
+        ],
+        "note": "Generate PASS4-equivalent 0-Engine Scheduler from original Poker mod source, with lexical startup attach, author Logger.info, unchanged map pin registration and original update fallback until Scheduler is ready. Never add a posthoc repair-only rule."
       },
       "generation": {
         "enabled": true,
@@ -414,7 +426,7 @@
         "evidenceStack": "OVERLAP",
         "admitted": true
       },
-      "cadenceGroup": "DISTANCE_1HZ_5HZ_10HZ_PLUS_REALTIME",
+      "cadenceGroup": "PASS4_FRAME_0_1_0_2_1_0",
       "catalogRole": "SEMANTIC_HOT_MOD",
       "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
       "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
