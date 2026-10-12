@@ -961,6 +961,10 @@ jobs:
         shell: pwsh
         run: ./tests/AutoLootGcSemanticContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: GigCore SPECTER variant source-generation contract
+        shell: pwsh
+        run: ./tests/GigCoreSpecterSourceContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: Residual dormancy semantic contract
         shell: pwsh
         run: ./tests/ResidualDormancySemanticContract.ps1 -ResolverRoot ./publish-resolver

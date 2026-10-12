@@ -1,5 +1,16 @@
 # Active project state — 2026-10-12
 
+## GigCore 0.7.3 + SPECTER 1.5 source optimization (2026-10-12)
+
+- Source: original GigCore 0.7.3 and SPECTER 1.5; older 0.7.2/1.4.1 source+generic artifacts used as comparison, NEVER copied over updates.
+- Historical capture (not of SPECTER 1.5): GigCore ~9.21 ms/s; SpecterM11RecoveryDev ~8.18 ms/s (161.49 ms max); InfiniteGigs ~0.97 ms/s. These figures are prioritization only.
+- Existing version-agnostic generic frame registration, shared PLAYER getter and finite dialogue OnAction routing must regenerate from CURRENT source. Do not put mission features or newer GigCore MapPins/audio under old file overrides.
+- Added gigcore-blackboard-once: reuse Game.GetBlackboardSystem() inside one menu/photo pause-state probe, retaining original per-frame refresh and all GigCore service and session startup timing.
+- Added specter-recovery-prerequisite-reads: only fetch Rainbow Market/recovery completion metrics if earlier story prerequisites permit M9->M10 handoff. Retains per-frame wake and author's 0.75-second launch delay. In 1.5 only, replaces active Music.update per-frame literal contract table with immutable module-local table; 1.4.x has no music contract and only gets metric gate.
+- No throttle of GigCore Marker/NPC/VehicleDamage, bridge or active-ctx service loops; no SPECTER mission loop dormancy or altered music timing. Rare recovery spike ownership remains unproven.
+- Must verify CI original/compatible version/idempotence + actual gameplay reload/clock-in/phone/markers/M9->M10/music/restore. Native stays 2.15.0, package stays 1.2.4.
+
+
 ## Tunnel Rescue / Big Adam diagnostic + distance wake (2026-10-12)
 
 - Live 203.47s capture CET-20261012-184809: tunnel_rescue 9.81558 ms/s exclusive, 157.005 ms peak, 99 callbacks above 5 ms, 32.42 MiB positive allocations, 201,748 allocator ops. Spikes recur every ~2.05s at the diagnostics interval. Starman/Ziggy 6.307137 ms/s, 10.9953 ms peak, 1 callback above 5 ms.

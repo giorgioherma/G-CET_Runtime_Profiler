@@ -65,6 +65,8 @@ internal static class SemanticInjectors
             "autoloot" => ApplyAutoLoot(context),
             "autoloot-world-pin-and-early-distance" => ApplyAutoLootWorldPinAndEarlyDistance(context),
             "better-loot-markers" => ApplyBetterLootMarkers(context),
+            "gigcore-blackboard-once" => ApplyGigCoreBlackboardReuse(context),
+            "specter-recovery-prerequisite-reads" => ApplySpecterRecoveryPrerequisites(context),
             "drivebus" => ApplyDriveBus(context),
             "quest-tracking-toggle" => ApplyQuestTrackingToggle(context),
             "sitanywhere" => ApplySitAnywhere(context),
@@ -3857,6 +3859,111 @@ ${close}" + "\n",
         context.Write(file, text);
         return SemanticInjectionResult.Success(
             "Applied AutoLoot's known-good finite action routing without changing its looting cadence or trigger state machine.");
+    }
+
+
+    // GigCore 0.7.x: invocation-local, no persistent native handle.
+    private static SemanticInjectionResult ApplyGigCoreBlackboardReuse(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "init.lua", "local function _rawMenuOrPhotoPaused()",
+            "Game.GetAllBlackboardDefs()",
+            "Game.GetBlackboardSystem():Get(defs.UI_System)",
+            "Game.GetBlackboardSystem():Get(defs.PhotoMode)",
+            "local function computePauseState()");
+        var text = file.Text;
+        var newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        string Native(string source) => source.Replace("\n", newline, StringComparison.Ordinal);
+
+        text = ReplaceOnce(text,
+            Native("  local defs = Game.GetAllBlackboardDefs()\n" +
+                   "  local ui   = Game.GetBlackboardSystem():Get(defs.UI_System)"),
+            Native("  local defs = Game.GetAllBlackboardDefs()\n" +
+                   "  local __gcetGigBoards = Game.GetBlackboardSystem()\n" +
+                   "  local ui   = __gcetGigBoards:Get(defs.UI_System)"),
+            "GigCore invocation-local blackboard system");
+        text = ReplaceOnce(text,
+            "  local pm = Game.GetBlackboardSystem():Get(defs.PhotoMode)",
+            "  local pm = __gcetGigBoards:Get(defs.PhotoMode)",
+            "GigCore photo mode lookup shares the same native system");
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Reused one invocation-local blackboard system for UI/photo probes; " +
+            "left every-frame pause refresh, active timers, session-load safety, " +
+            "markers, damage, NPCs, and bus reconciliation unchanged.");
+    }
+
+    // SPECTER 1.4.1 and 1.5 share their M9->M10 handoff.
+    // 1.5 optionally adds a read-only music contract constructed every frame.
+    private static SemanticInjectionResult ApplySpecterRecoveryPrerequisites(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "init.lua",
+            "local function metricGet(ns,key,default)",
+            "local seq=metricGet(STORY_NS,",
+            "specter_story_done_specter_rainbow_market_dev",
+            "specter_story_done_recovery_counter_isolation",
+            "if seq==9 and rainbowDone==1 and recoveryDone==0 then",
+            "autoStartClock=autoStartClock+(delta or 0)");
+        var text = file.Text;
+        var newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        string Native(string source) => source.Replace("\n", newline, StringComparison.Ordinal);
+        var oldReads = Native(
+            "    local seq=metricGet(STORY_NS,\"specter_story_sequence\",0)\n" +
+            "    local rainbowDone=metricGet(STORY_NS,\"specter_story_done_specter_rainbow_market_dev\",0)\n" +
+            "    local recoveryDone=metricGet(STORY_NS,\"specter_story_done_recovery_counter_isolation\",0)");
+        var safeReads = Native(
+            "    local seq=metricGet(STORY_NS,\"specter_story_sequence\",0)\n" +
+            "    local rainbowDone=seq==9 and metricGet(STORY_NS,\"specter_story_done_specter_rainbow_market_dev\",0) or 0\n" +
+            "    local recoveryDone=(seq==9 and rainbowDone==1) and metricGet(STORY_NS,\"specter_story_done_recovery_counter_isolation\",0) or 0");
+
+        if (text.Contains(oldReads, StringComparison.Ordinal))
+            text = ReplaceOnce(text, oldReads, safeReads,
+                "SPECTER M9 prerequisite-gated persistent metric reads");
+        else if (!text.Contains(safeReads, StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "Recovery metric trio no longer matches supported author or optimized source.");
+
+        const string musicCall =
+            "Music.update(delta, phoneBus(), active and {id=\"recovery_counter_isolation\"} or nil, stage, active and \"recovery\" or \"idle\", Game.GetPlayer() ~= nil, active)";
+        const string optimizedCall =
+            "Music.update(delta, phoneBus(), active and __gcetRecoveryMusicContract or nil, stage, active and \"recovery\" or \"idle\", Game.GetPlayer() ~= nil, active)";
+        if (text.Contains(musicCall, StringComparison.Ordinal))
+        {
+            var music = context.FindFile(
+                "specter_mission_music.lua",
+                "function M.update(delta,bus,contract,stage,state,playerPresent,arrived)",
+                "local id=contract and contract.id");
+            if (music.Text.Replace("contract.id", "", StringComparison.Ordinal)
+                    .Contains("contract.", StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "Recovery music consumer references additional contract fields.");
+            if (!text.Contains("local Music = require(\"specter_mission_music\")", StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "Recovery music module initializer changed.");
+            text = ReplaceOnce(text,
+                "local Music = require(\"specter_mission_music\")",
+                Native("local Music = require(\"specter_mission_music\")\n" +
+                       "local __gcetRecoveryMusicContract = {id=\"recovery_counter_isolation\"}"),
+                "SPECTER module-local immutable music contract");
+            text = ReplaceOnce(text, musicCall, optimizedCall,
+                "SPECTER per-frame music contract reuse");
+        }
+        else if (text.Contains("Music.update(", StringComparison.Ordinal) &&
+                 !text.Contains(optimizedCall, StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "Recovery music update changed shape; refusing source rewrite.");
+
+        if (text == file.Text)
+            return SemanticInjectionResult.Skip(
+                "Recovery source already satisfies metric and music postconditions.");
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Preserved same-frame story detection, 0.75-second activation timing, " +
+            "restore, music timing and dialogue; skipped unneeded metric reads " +
+            "and reused the immutable 1.5 music contract.");
     }
 
     private static SemanticInjectionResult ApplyBetterLootMarkers(
