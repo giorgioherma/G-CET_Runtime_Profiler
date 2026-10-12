@@ -162,6 +162,39 @@ if ($null -eq $ggc -or
     [int]$ggc.focusedFunctions[0].SampledExclusiveAllocationOperations -ne 320) {
     throw 'G-GC Tracer rankings, function sample or safety contract failed.'
 }
+# Validate unscoped owner-0 allocations independently from GC object births.
+# Raw native metric totals must remain unchanged, and summary/resolver agree.
+$unknown=$summary.unknownAllocationCoverage
+$sourceHandoff=Get-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Raw | ConvertFrom-Json
+$unknownHandoff=$sourceHandoff.unknownAllocationCoverage
+if ($null -eq $unknown -or $null -eq $unknownHandoff -or
+    $unknown.measurement -ne 'POSITIVE_LUAJIT_GROWTH_SPLIT_BY_REGISTRATION_SCOPE' -or
+    !$unknown.additiveEvidenceOnly -or
+    !$unknown.preservesLegacyCpuAndGcMetrics -or
+    !$unknown.unknownIsNotAnAllocationOwner -or
+    $unknown.newFunctionAttributionFromExistingCsv -or
+    $unknown.temporalDistributionMeasured -or
+    $unknown.unscopedReasonKnown -or
+    [math]::Abs([double]$unknown.totalPositiveAllocatedMiB - 245) -gt 0.01 -or
+    [long]$unknown.totalAllocationOperations -ne 3250 -or
+    [long]$unknown.totalObservedGcObjectBirths -ne 2520 -or
+    [math]::Abs([double]$unknown.unscoped.positiveAllocatedMiB - 5) -gt 0.01 -or
+    [long]$unknown.unscoped.Operations -ne 50 -or
+    [long]$unknown.unscoped.ObjectBirths -ne 20 -or
+    [math]::Abs([double]$unknown.unscoped.allocatedByteSharePct - (5/245*100)) -gt 0.01 -or
+    [math]::Abs([double]$unknown.unscoped.objectBirthSharePct - (20/2520*100)) -gt 0.01 -or
+    [long]$unknown.scopedCallbacks.Operations -ne 3200 -or
+    $unknown.registrationOverflow.Present -or
+    [math]::Abs([double]$unknownHandoff.unscoped.positiveAllocatedMiB - 5) -gt 0.01) {
+    throw 'Owner-0 allocation gap was fabricated, conflated with births, or not carried to Resolver.'
+}
+$gapHtml=Get-Content -LiteralPath (Join-Path $capture 'CET_Report.html') -Raw
+if (!$gapHtml.Contains('Unknown allocation coverage') -or
+    !$gapHtml.Contains('UNSCOPED_REGISTRATION_ID_0') -or
+    !$gapHtml.Contains('GC births')) {
+    throw 'Native owner-0 allocation gap not visible in HTML.'
+}
+
 # Preserve the distinction between allocator growth, object births, and
 # actual sampled reclamation. These are not interchangeable measurements.
 if (-not $ggc.allocationEventsAreNotIdenticalToGCObjectBirths -or

@@ -1,5 +1,14 @@
 # Active project state — 2026-10-12
 
+## Attribution gap / owner-0 analysis — 2026-10-13
+
+- From the user's uploaded exact 470.629s capture, `<unattributed>` has **504.251627 MiB** (39.128% positive bytes), **3,452,096 positive allocator requests** (32.275% requests), **56,947 GC-object births** (only **3.133%** of all object births), and **12 interned-string births** (0.037% of all strings). Average positive allocation size about **153.17 bytes/request**, versus **113.55 bytes/request** for all other buckets combined.
+- These distinct counters expose an important mechanism: owner-0 disproportionately records allocator growth/requests compared with GC-object creations. It MAY include VM resizing/reallocations, LuaJIT internal growth or allocations outside registered CET callbacks. **Neither 504MiB nor 3.45M ops proves 504MiB of collectible garbage**, and no sampled function rows had registration ID=0, so the current 2.15 function sampler offers no source location for them.
+- Native v2.15 derives ownership from TLS current CET callback registration, restored after scoped callbacks; zero means no active attributed registration. It is not a guessed mod name. Overflow has its own bucket. No caller stacks, allocation-time categories or time distribution for owner 0 are present in current CSV. The native-v2.16 branch experienced a pre-F11 crash and stays unshipped.
+- Implemented **add-only** `ResultReportService.UnknownAllocationCoverage.cs`: split unscoped ID-0, registration overflow and named scoped callbacks, displaying each one's bytes MiB/%, alloc requests/s/%, observed object births/%, string births and average positive bytes/request. The section is in HTML and `unknownAllocationCoverage` appears in BOTH summary and Resolver handoff. Proves large-byte/small-object mismatch; no new ownership claims, no reductions to raw milliseconds, no GC action, no modifications to any mod or native payload.
+- Synthetic regression validates exact unscoped vs scoped shares, separate object births, no invented overflow, both report vocabularies. Next attribution improvement requires a **bounded new native capture experiment** classifying ID-0 execution contexts (Lua top-level/load, native CET internal, engine hooks, GC/VM maintenance, genuinely outside scope), with source/phase evidence and startup safety gate; cannot recover exact historical owners from ID=0 totals. Investigate cross-mod routed work separately and never assign unknown to whichever callback experienced GC.
+
+
 ## 0-Engine allocation production view / unchanged-value coverage (2026-10-13)
 
 - User explicitly prioritizes allocations/MB and creation frequency over ms savings; **retain every CPU/GC timing metric**, and leave GigCore/ImmersiveFirstPerson code alone.

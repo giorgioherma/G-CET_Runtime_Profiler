@@ -378,7 +378,8 @@ public static partial class ResultReportService
                         maxMs = Round(x.MaxMs, 3)
                     })
             },
-            gcTracer = a.GcTracer is null ? null : BuildGcTracerInterop(a.GcTracer),
+            gcTracer = a.GcTracer is null ? null : BuildGcTracerInterop(a),
+            unknownAllocationCoverage = BuildUnknownAllocationCoverageInterop(a),
             zeroEngineAllocationFlow = BuildZeroEngineFlowInterop(a),
             garbageCollection = a.ExplicitGc is null && a.CollectorGc is null ? null : new
             {

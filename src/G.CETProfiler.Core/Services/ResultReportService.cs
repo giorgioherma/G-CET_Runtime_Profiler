@@ -147,6 +147,7 @@ public static partial class ResultReportService
                     })
             },
             gcTracer = a.GcTracer is null ? null : BuildGcTracerInterop(a.GcTracer),
+            unknownAllocationCoverage = BuildUnknownAllocationCoverageInterop(a),
             zeroEngineAllocationFlow = BuildZeroEngineFlowInterop(a),
             collectorGc = a.CollectorGc is null ? null : new
             {
