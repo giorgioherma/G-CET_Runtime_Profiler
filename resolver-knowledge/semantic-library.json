@@ -4351,11 +4351,11 @@
       ]
     },
     {
-      "id": "tunnel-rescue-v2",
+      "id": "tunnel-rescue-v3",
       "identityHints": [
         "tunnel_rescue"
       ],
-      "policyClass": "QUEST_SESSION_DORMANCY_PLUS_DIAGNOSTIC_SENTINEL",
+      "policyClass": "QUEST_FAR_OUTSIDE_DISCOVERY_AND_BOUNDED_DIAGNOSTICS",
       "callbacks": [
         {
           "kind": "event",
@@ -4383,16 +4383,18 @@
           "GetQuestMappinPosition(hash)",
           "system:GetAllMappins()"
         ],
-        "alreadySatisfiedMarker": "G-CET semantic:tunnel-rescue-v2",
+        "alreadySatisfiedMarker": "G-CET semantic:tunnel-rescue-v3",
         "expectedMarkerFileCount": 1,
         "satisfiedAll": [
           "__gcetTunnelNavCache",
-          "__gcetTunnelNeedsFullScan",
+          "__gcetTunnelMissingActive",
+          "__gcetTunnelFarOutside",
+          "missingAge>=12",
           "result.mappins=__gcetTunnelNavCache.mappins or {}"
         ]
       },
       "behavior": {
-        "handler": "SEMANTIC_QUEST_SESSION_DORMANCY_DIAGNOSTIC_SENTINEL",
+        "handler": "SEMANTIC_FAR_OUTSIDE_DISCOVERY_BOUNDED_NAV",
         "concepts": [
           "authorOutsideCadence",
           "insideRealtime",
@@ -4401,9 +4403,11 @@
           "drawOnlyDuringSession",
           "targetedQuestMappinSentinel",
           "plainLuaDiagnosticCache",
-          "fullMappinEnumerationOnStateChangeOrFailure"
+          "fullMappinEnumerationOnObjectiveChangeOrBoundedActiveMiss",
+          "farOutside500msWithImmediate150mWake",
+          "recoverReunionAlwaysOriginal"
         ],
-        "note": "Preserve the existing quest-session split: outside runs only at the author's 0.15 s decision cadence and active tunnel phases keep rendered-frame simulation. The 2 s diagnostics path keeps its targeted GetQuestMappinPosition probes, but the global GetAllMappins scan now refreshes only when the quest-mappin state signature changes or a targeted pin is missing. Cached diagnostic rows are plain Lua values; no native mappin handle survives across calls."
+        "note": "Stable outside farther than 150m from ladder and Eli uses a 0.5s controller cadence while preserving journal, weather, input and diagnostics. Approaching, recovering, reunion, uncertain and active phases keep original timing. Global diagnostic mappins scan on objective signature changes, with bounded 12s retries for missing ACTIVE objectives only; inactive future-stage pins do not force scans."
       },
       "generation": {
         "enabled": true,
@@ -4415,12 +4419,12 @@
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
-        "measuredPeakExclusiveMsPerSecond": 8.372957,
+        "measuredPeakExclusiveMsPerSecond": 9.81558,
         "evidenceStack": "BURST_RECOGNITION_20261010",
         "admitted": true,
-        "measuredMaxExclusiveMs": 58.0256
+        "measuredMaxExclusiveMs": 157.005
       },
-      "cadenceGroup": "OUTSIDE_150MS_ACTIVE_REALTIME_DIAGNOSTIC_SENTINEL",
+      "cadenceGroup": "FAR_OUTSIDE_500MS_NEAR_150MS_ACTIVE_REALTIME_BOUNDED_DIAGNOSTICS",
       "catalogRole": "SEMANTIC_HOT_MOD",
       "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
       "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",

@@ -851,7 +851,7 @@ if (!$resolved.ok -or $null -eq $resolved.pass) { throw 'Residual semantic pass 
 $resolver = Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
 $rules=@(
  'good-feelings','good-feelings-hard-draw','air-backflip','auto-drop-weapon-dynamic-routing',
- 'drone-companions-revamp','ghost-void-system','straight-edged-controls-input-dormancy','tunnel-rescue-v2',
+ 'drone-companions-revamp','ghost-void-system','straight-edged-controls-input-dormancy','tunnel-rescue-v3',
  'ziggy-last-play-navigation-sentinel-v3','immersive-head-inertia'
 )
 foreach($rule in $rules) {
@@ -932,13 +932,17 @@ try {
     if($tunnel.Contains('${opening}') -or $tunnel.Contains('${close}')) {
         throw 'Tunnel semantic output retained unexpanded regex capture placeholders.'
     }
-    if($tunnel -notmatch 'G-CET semantic:tunnel-rescue-v2' -or
+    if($tunnel -notmatch 'G-CET semantic:tunnel-rescue-v3' -or
        $tunnel -notmatch '__gcetTunnelOutsideAcc' -or
        $tunnel -notmatch 'if __gcetTunnelOutsideAcc < \.15 then return end' -or
        $tunnel -notmatch "if ok and H\.phase~='outside' then" -or
        $tunnel -notmatch "H\.phase~='outside'.*Timer\.draw" -or
        $tunnel -notmatch '__gcetTunnelNavCache' -or
-       $tunnel -notmatch '__gcetTunnelNeedsFullScan' -or
+       $tunnel -notmatch '__gcetTunnelMissingActive' -or
+       $tunnel -notmatch '__gcetTunnelFarOutside' -or
+       $tunnel -notmatch '150\*150' -or
+       $tunnel -notmatch '__gcetTunnelOutsideAcc < \.5' -or
+       $tunnel -notmatch 'missingAge>=12' -or
        $tunnel -notmatch 'result\.mappins=__gcetTunnelNavCache\.mappins or \{\}') {
         throw 'Tunnel rescue quest-session dormancy + diagnostic sentinel is incomplete.'
     }
@@ -1065,4 +1069,4 @@ if(@($repeatZiggy | Where-Object {$_.semantic.MarkerFileCount -eq 2}).Count -lt 
     throw 'Ziggy v3 did not recognize both optimized files as already satisfied.'
 }
 
-Write-Host 'Residual sixth-stack semantic composition contract passed: existing residual rules + tunnel v2 diagnostic sentinel + Ziggy bounded diagnostic v2 with v1 upgrade/idempotence.'
+Write-Host 'Residual sixth-stack semantic composition contract passed: existing residual rules + tunnel v3 far wake and bounded diagnostic sentinel + Ziggy bounded diagnostic v2 with v1 upgrade/idempotence.'

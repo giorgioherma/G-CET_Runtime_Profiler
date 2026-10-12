@@ -1,5 +1,14 @@
 # Active project state — 2026-10-12
 
+## Tunnel Rescue / Big Adam diagnostic + distance wake (2026-10-12)
+
+- Live 203.47s capture CET-20261012-184809: tunnel_rescue 9.81558 ms/s exclusive, 157.005 ms peak, 99 callbacks above 5 ms, 32.42 MiB positive allocations, 201,748 allocator ops. Spikes recur every ~2.05s at the diagnostics interval. Starman/Ziggy 6.307137 ms/s, 10.9953 ms peak, 1 callback above 5 ms.
+- The installed 0.8.1-dev6 v2 status shows phase outside, correctly offered quest, V 1490m away. v2 forces a full GetAllMappins on inactive future-stage missing pins. This causes recurrent full enumeration and defeats the intended sentinel.
+- `tunnel-rescue-v3` reuses existing v2 source generator and introduces an optional fail-open far-outside probe, 150m squared-radius to BOTH Eli and the surface ladder, with the original controller at 0.5s when far. JournalOffer.update, Rescue.weather, status, native inputs and game state are NOT disabled. On approach, recovery, reunion, unknown save state or active visit, retain the original fast cadence.
+- The existing 2s diagnostic targeted quest-pin queries remain. Full world enumeration occurs on change of stage/phase/generation/tracking/pin state, or at most once per 12s while an ACTIVE objective's pin is missing. Inactive pin misses are expected, not continuous retry requests.
+- Preserve native hooks, actors, weather, teleport, shards/journal, QuietTunnel, recovery, cleanup and all inside Life/Street/Swimming frames. CI contract verifies source shape; actual full-quest gameplay and matched capture must validate results. Native 2.15.0 and package 1.2.4 unchanged.
+
+
 ## AutoLoot verified early-radius source composition (2026-10-12, after CI #997)
 
 - Starting point: `dev/resolver-profiler-handoff` CI **#997 GREEN**, commit `2e7c2a73ecdb2c08ca02e241ceee9e293279fe43`. Retain package 1.2.4 and native 2.15.0.

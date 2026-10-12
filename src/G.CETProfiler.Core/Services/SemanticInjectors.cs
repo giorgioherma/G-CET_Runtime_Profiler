@@ -52,7 +52,7 @@ internal static class SemanticInjectors
             "air-backflip" => ApplyAirBackFlip(context),
             "auto-drop-weapon-dynamic-routing" => ApplyAutoDropWeaponOnPickupEquip(context),
             "joytoys-of-night-city-bridge-active-split-idle-facts-v2" => ApplyJoytoysOfNightCity(context),
-            "tunnel-rescue-v2" => ApplyTunnelRescue(context),
+            "tunnel-rescue-v3" => ApplyTunnelRescue(context),
             "ziggy-last-play-navigation-sentinel-v3" => ZiggyProximitySource.Apply(context),
             "aerial-race-active-idle-split" => ApplyAerialRaceActiveIdleSplit(context),
             "appearance-menu-mod-squeeze" => ApplyAppearanceMenuModSqueeze(context),
@@ -2706,6 +2706,76 @@ ${close}" + "\n",
                 fullScan,
                 gatedScan,
                 "Tunnel global diagnostic mappin scan");
+        }
+
+        if (!text.Contains("__gcetTunnelMissingActive", StringComparison.Ordinal))
+        {
+            text = ReplaceOnce(text,
+                "local __gcetTunnelNavCache={key=nil,mappins={}}",
+                "local __gcetTunnelNavCache={key=nil,mappins={},missingAge=0,lastClock=nil}",
+                "Tunnel v3 diagnostic retry clock");
+            text = ReplaceOnce(text,
+                "  local __gcetTunnelNeedsFullScan=false",
+                "  local __gcetTunnelMissingActive=false",
+                "Tunnel v3 missing active objective only");
+            text = ReplaceOnce(text,
+                "    __gcetTunnelScanKey[#__gcetTunnelScanKey+1]=table.concat({stage,tostring(hash),tostring(found==true),tostring(row.tracked==true)},':')\n" +
+                "    if not found then __gcetTunnelNeedsFullScan=true end",
+                "    __gcetTunnelScanKey[#__gcetTunnelScanKey+1]=table.concat({stage,tostring(hash),tostring(row.state or ''),tostring(found==true),tostring(row.tracked==true)},':')\n" +
+                "    if not found and row.state==tostring(gameJournalEntryState.Active) then __gcetTunnelMissingActive=true end",
+                "Tunnel v3 objective transition signature");
+            text = ReplaceOnce(text,
+                "  local __gcetTunnelKey=table.concat(__gcetTunnelScanKey,'|')\n" +
+                "  if __gcetTunnelNeedsFullScan or __gcetTunnelNavCache.key~=__gcetTunnelKey then",
+                "  local __gcetTunnelKey=table.concat(__gcetTunnelScanKey,'|')\n" +
+                "  local __gcetTunnelNow=H.clock or 0\n" +
+                "  local __gcetTunnelSince=math.max(0,__gcetTunnelNow-(__gcetTunnelNavCache.lastClock or __gcetTunnelNow))\n" +
+                "  __gcetTunnelNavCache.lastClock=__gcetTunnelNow\n" +
+                "  if __gcetTunnelMissingActive then\n" +
+                "   __gcetTunnelNavCache.missingAge=__gcetTunnelNavCache.missingAge+__gcetTunnelSince\n" +
+                "  else __gcetTunnelNavCache.missingAge=0 end\n" +
+                "  if __gcetTunnelNavCache.key~=__gcetTunnelKey or (__gcetTunnelMissingActive and __gcetTunnelNavCache.missingAge>=12) then",
+                "Tunnel v3 bounded world scan");
+            text = ReplaceOnce(text,
+                "   __gcetTunnelNavCache.mappins=__gcetTunnelMappins\n",
+                "   __gcetTunnelNavCache.mappins=__gcetTunnelMappins\n" +
+                "   __gcetTunnelNavCache.missingAge=0\n",
+                "Tunnel v3 retry clock reset");
+        }
+
+        // 0.5 s full original controller only in stable distant outside state.
+        // Keep journal, weather, status, input and presentation paths intact.
+        // Near (<150m), active, returning, loading or uncertain -> original path.
+        if (!text.Contains("__gcetTunnelFarOutside", StringComparison.Ordinal))
+        {
+            var probe =
+                "local function __gcetTunnelFarOutside()\n" +
+                " if H.phase~='outside' or not H.session or H.recover or H.error or not valid(H.hooks) then return false end\n" +
+                " if H.generation~=H.hooks.generation or active() or Rescue.reunionPending or Rescue.reunionCompleted then return false end\n" +
+                " if fact('reunion_pending')==1 then return false end\n" +
+                " local site=L.rescue and L.rescue.surface\n" +
+                " local giver=L.rescue and L.rescue.brother\n" +
+                " if type(site)~='table' or type(giver)~='table' then return false end\n" +
+                " local player=Game.GetPlayer()\n" +
+                " if not valid(player) or not player:IsAttached() then return false end\n" +
+                " local p=player:GetWorldPosition()\n" +
+                " if not p then return false end\n" +
+                " local sx=p.x-site[1];local sy=p.y-site[2];local sz=p.z-site[3]\n" +
+                " local gx=p.x-giver[1];local gy=p.y-giver[2];local gz=p.z-giver[3]\n" +
+                " return sx*sx+sy*sy+sz*sz>150*150 and gx*gx+gy*gy+gz*gz>150*150\n" +
+                "end\n";
+            text = ReplaceOnce(text,
+                "local __gcetTunnelOutsideAcc = 0.0\n",
+                probe + "local __gcetTunnelOutsideAcc = 0.0\n",
+                "Tunnel far proximity wake probe");
+            text = ReplaceOnce(text,
+                "  if __gcetTunnelOutsideAcc < .15 then return end\n" +
+                "  dt = math.min(__gcetTunnelOutsideAcc, .5)",
+                "  if __gcetTunnelOutsideAcc < .15 then return end\n" +
+                "  local __gcetTunnelProbeOK,__gcetTunnelFar=pcall(__gcetTunnelFarOutside)\n" +
+                "  if __gcetTunnelProbeOK and __gcetTunnelFar and __gcetTunnelOutsideAcc < .5 then return end\n" +
+                "  dt = math.min(__gcetTunnelOutsideAcc, .5)",
+                "Tunnel far stable discovery cadence");
         }
 
         context.Write(file, text);
