@@ -502,7 +502,9 @@ internal static class CallbackResolverService
             },
             megaMind = new
             {
-                name = "MEGAMIND",
+                // Public-facing descriptor; the internal JSON field and evidence
+                // vocabulary remain unchanged for compatibility.
+                name = "G-CET Resolver",
                 stage = "EVIDENCE_ONLY",
                 contractVersion = "1.0",
                 gcEvidenceStatus = megaMindGc.Status,

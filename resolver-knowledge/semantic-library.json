@@ -3394,7 +3394,8 @@
         "thresholdMsPerSecond": 0.5,
         "measuredPeakExclusiveMsPerSecond": 1.0537,
         "evidenceStack": "G_GC_TRACER_20261012",
-        "admitted": true
+        "admitted": true,
+        "rationale": "The measured AutoLoot world-pin polling callback is 1.0537 ms/s with a 184.42 ms isolated spike, below the default 3 ms/s sustained-work floor. This rule only removes a proven temporary Lua candidate-table allocation while preserving the exact mappin getter, frame cadence, filter order, and first-nearest result behavior. Admission still requires current-source proof and at least 0.5 ms/s callback workload; G-GC counts alone cannot authorize it."
       },
       "cadenceGroup": "UNCHANGED_AUTHOR_CADENCE_ALLOCATION_HOTPATH",
       "catalogRole": "SEMANTIC_HOT_MOD",

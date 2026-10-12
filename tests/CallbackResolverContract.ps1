@@ -1073,6 +1073,9 @@ if (!$result.policy.megaMindEvidenceIntegration -or
     throw 'MEGAMIND observational-only contract was not honored.'
 }
 $megaAction = Action-For 'FixtureAction'
+if ($result.megaMind.name -ne 'G-CET Resolver') {
+    throw 'Internal codename leaked into the Resolver display name.'
+}
 if ($megaAction.runtime.megaMind.status -ne 'MATCHED_REGISTRATION' -or
     [long]$megaAction.runtime.megaMind.positiveAllocationOperations -ne 640 -or
     [long]$megaAction.runtime.megaMind.newGCObjects -ne 73 -or
