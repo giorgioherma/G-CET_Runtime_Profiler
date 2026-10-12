@@ -98,6 +98,8 @@ registerForEvent("onDraw", function()
     PokerHUD.draw()
 end)
 '@ | Set-Content -LiteralPath $path -Encoding utf8
+$authorInit=Get-Content -LiteralPath $path -Raw
+$authorTables=Get-Content -LiteralPath $tablesPath -Raw
 $input=@{schemaVersion='1.8';callbacks=@(
     @{registrationId=999;owner='StreetGamesPoker';infrastructure=$false;kind='event';target='onUpdate'
        source=@{file='init.lua';lineStart=17;lineEnd=24}
@@ -181,4 +183,41 @@ $semantic=@($pokerRows | Where-Object {
     $_.semantic.MarkerFileCount -eq 2
 })
 if(!$semantic.Count){throw 'Resolver did not recognize both optimized files as already satisfied'}
+
+# Version-variation regression: cosmetic source changes and a different dt
+# parameter name must remain eligible. The Resolver must still alter both files
+# from pristine author source, with the author fallback preserved.
+$variantInit=$authorInit.Replace('function(dt)', 'function(deltaTime)').
+    Replace('Cron.Update(dt)', 'Cron.Update(deltaTime)').
+    Replace('SeatController.update(dt)', 'SeatController.update(deltaTime)').
+    Replace('StreetTables.update(dt)', 'StreetTables.update(deltaTime)').
+    Replace('CardRenderer.update(dt)', 'CardRenderer.update(deltaTime)').
+    Replace('TableTalk.update(dt)', 'TableTalk.update(deltaTime)')
+$variantTables=$authorTables.Replace(
+    'function StreetTables.update(dt)',
+    'function StreetTables.update(deltaTime)').Replace(
+    'traceClock = traceClock + (dt or 0)',
+    'traceClock = traceClock + (deltaTime or 0)')
+$variantInit | Set-Content -LiteralPath $path -Encoding utf8
+$variantTables | Set-Content -LiteralPath $tablesPath -Encoding utf8
+$variation=Generate
+$vManifest=Get-Content -LiteralPath $variation.pass.ManifestPath -Raw | ConvertFrom-Json
+if(@($vManifest.transforms | Where-Object {$_.RuleId -eq 'streetgamespoker'}).Count -ne 1){
+    throw 'Version-varied Poker source did not generate PASS4'
+}
+$vZip=[System.IO.Compression.ZipFile]::OpenRead([string]$variation.pass.ZipPath)
+try {
+    foreach($pair in @(
+        @('init.lua','Cron.Update(deltaTime)'),
+        @('StreetTables.lua','function StreetTables.update(deltaTime, wakeRadius)')
+    )){
+        $entry=$vZip.GetEntry('bin/x64/plugins/cyber_engine_tweaks/mods/StreetGamesPoker/'+$pair[0])
+        if(!$entry){throw "Version-variation output missing $($pair[0])"}
+        $reader=[System.IO.StreamReader]::new($entry.Open())
+        try {$out=$reader.ReadToEnd()} finally {$reader.Dispose()}
+        if(!$out.Contains($pair[1])) {
+            throw "Version-variation output lost author delta-time identity: $($pair[1])"
+        }
+    }
+} finally {$vZip.Dispose()}
 Write-Host 'Poker PASS4 generated from author source, with four lanes, lexical startup, logger, map pins, fallback and idempotence.'
