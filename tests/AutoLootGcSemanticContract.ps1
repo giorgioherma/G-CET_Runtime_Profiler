@@ -28,12 +28,28 @@ finally { $output.Dispose(); $gzip.Dispose(); $input.Dispose() }
 @'
 local logic = require("modules/logic")
 local autoLoot = { settings = { useDefaultActionKey = false } }
-local function handleButtonPressed(this, action) end
-local function handleButtonReleased(this, action) end
+registerForEvent("onInit", function()
+    local gameinputActionTypeBUTTON_PRESSED = gameinputActionType.BUTTON_PRESSED
+    local gameinputActionTypeBUTTON_RELEASED = gameinputActionType.BUTTON_RELEASED
+    local actionType
+    local function handleButtonPressed(this, action) end
+    local function handleButtonReleased(this, action) end
+    Observe('PlayerPuppet', 'OnAction', function(this, action)
+        if not autoLoot.settings.useDefaultActionKey then return end
+        actionType = action:GetType(action)
+        if actionType == gameinputActionTypeBUTTON_PRESSED then handleButtonPressed(this, action) return end
+        if actionType == gameinputActionTypeBUTTON_RELEASED then handleButtonReleased(this, action) return end
+    end)
+end)
 registerForEvent("onUpdate", function(delta)
     logic.tick(delta)
 end)
+registerForEvent("onDraw", function()
+    local _ = autoLoot.settings.useDefaultActionKey
+end)
 '@ | Set-Content -LiteralPath (Join-Path $loot 'init.lua') -Encoding utf8
+$initPath = Join-Path $loot 'init.lua'
+$originalInit = Get-Content -LiteralPath $initPath -Raw
 
 # No diagnostic-only journal observer in a clean author installation.
 @'
@@ -209,7 +225,7 @@ if (!$resolved.ok -or $null -eq $resolved.pass) { throw 'AutoLoot allocation sem
 $result = Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
 $hit = @($result.callbackFamilies | ForEach-Object { $_.topConsumers } |
     Where-Object { $_.owner -eq 'AutoLoot' -and $_.target -eq 'onUpdate' })[0]
-if ($null -eq $hit -or $hit.semantic.RuleId -ne 'autoloot-active-loot-cycle-v2' -or
+if ($null -eq $hit -or $hit.semantic.RuleId -ne 'autoloot-input-frame-v3' -or
     -not $hit.semantic.SourceProofSatisfied -or -not $hit.semantic.generationReady) {
     throw 'AutoLoot rule failed exact source-proof/admission.'
 }
@@ -222,9 +238,9 @@ if ($hit.runtime.megaMind.status -ne 'MATCHED_REGISTRATION' -or
 
 $manifest = Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
 $transform = @($manifest.transforms | Where-Object {
-    $_.type -eq 'SEMANTIC_RULE' -and $_.RuleId -eq 'autoloot-active-loot-cycle-v2'
+    $_.type -eq 'SEMANTIC_RULE' -and $_.RuleId -eq 'autoloot-input-frame-v3'
 }) | Select-Object -First 1
-if ($null -eq $transform -or @($transform.files).Count -ne 1) {
+if ($null -eq $transform -or @($transform.files).Count -ne 2) {
     throw 'Source-proven AutoLoot transform is missing or touched multiple files.'
 }
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -236,11 +252,38 @@ try {
     if ($null -eq $entry) { throw 'AutoLoot world-pin source absent from generated pass.' }
     $reader = [IO.StreamReader]::new($entry.Open())
     try { $optimized = $reader.ReadToEnd() } finally { $reader.Dispose() }
+    $initEntry = @($zip.Entries | Where-Object {
+        $_.FullName.Replace('\','/').EndsWith('AutoLoot/init.lua',
+            [StringComparison]::OrdinalIgnoreCase) }) | Select-Object -First 1
+    if ($null -eq $initEntry) { throw 'AutoLoot input source absent from generated pass.' }
+    $initReader = [IO.StreamReader]::new($initEntry.Open())
+    try { $routedInit = $initReader.ReadToEnd() } finally { $initReader.Dispose() }
 } finally { $zip.Dispose() }
+
+$inputExpect = @('G-CET semantic:autoloot-input-frame-v3',
+ 'local function zeroEngineOnAction(this, action)',
+ 'types = { "BUTTON_PRESSED", "BUTTON_RELEASED" }',
+ 'zeroEngineMod.SubscribeAction(zeroEngineConfig, zeroEngineOnAction)',
+ "Observe('PlayerPuppet', 'OnAction', zeroEngineOnAction)",
+ 'registerRuntimeEvent("onUpdate", function(delta)',
+ 'registerRuntimeEvent("onDraw", function()',
+ 'MakeEventRegistrar("AutoLoot", registerForEvent)')
+foreach ($item in $inputExpect) {
+ if (!$routedInit.Contains($item)) { throw "Original AutoLoot 3.11.x input/frame optimization missing: $item" }
+}
+if ($routedInit.Contains("Observe('PlayerPuppet', 'OnAction', function(this, action)")) {
+ throw 'Unrestricted direct OnAction observer survived 0-Engine routing.'
+}
+if ($routedInit.Contains('__gcetProbe') -or $routedInit.Contains('gcet_probe')) {
+ throw 'Local diagnostic leaked into generated init.'
+}
+if ((Get-Content -LiteralPath $initPath -Raw) -ne $originalInit) {
+ throw 'Resolver modified original AutoLoot init.lua rather than staging a pass.'
+}
 
 $world = $optimized.Substring($optimized.IndexOf('function isWorldMapPinOfTypeInRange('))
 $world = $world.Substring(0, $world.IndexOf('function logic.couldStartNewLootingCycle('))
-$expect = @('G-CET semantic:autoloot-active-loot-cycle-v2',
+$expect = @('G-CET semantic:autoloot-input-frame-v3',
             'if matchingMappins == 1 then return firstMappin end',
             'nearestIndex = matchingMappins',
             'lowestDistanceIndex = nearestIndex',
@@ -264,6 +307,7 @@ if ((Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash -ne $original
 }
 # Installed optimized state must be recognized, not rewritten again.
 $optimized | Set-Content -LiteralPath $sourcePath -Encoding utf8
+$routedInit | Set-Content -LiteralPath $initPath -Encoding utf8
 $repeat = (& $resolverExe --capture $capture --mods $mods --generate-pass --json | ConvertFrom-Json)
 # No-op may emit its JSON error to stderr and leave stdout empty. This is
 # correct when the installed source already satisfies the rule, so validate
@@ -278,14 +322,17 @@ if ($null -eq $again -or $again.semantic.generationReady -or -not $again.semanti
     throw 'AutoLoot semantic pass is not idempotent.'
 }
 
+# Reconstruct already-v1-optimized logic with a pristine init: the same
+# onUpdate-admitted v3 rule must generate both input/frame and missing loot work.
 # Reconstruct the already-v1-optimized installation: world-pin table elimination
 # exists but the hot-key pre-inventory radius cull is still missing.
 $v1 = $optimized.Replace(
  'if isNpcSafeToLoot(gameObj) and (not lootInRange or vectorDistanceSquared(playerPos, gameObj:GetWorldPosition()) <= rangeSquared) then',
  'if isNpcSafeToLoot(gameObj) then').Replace(
- 'G-CET semantic:autoloot-active-loot-cycle-v2',
+ 'G-CET semantic:autoloot-input-frame-v3',
  'G-CET semantic:autoloot-world-pin-allocation-scan')
 $v1 | Set-Content -LiteralPath $sourcePath -Encoding utf8
+$originalInit | Set-Content -LiteralPath $initPath -Encoding utf8
 
 # The temporary journal-event observer used during GC research must not be
 # silently carried into a production source-generated pass.
@@ -296,7 +343,7 @@ $cleanJournal = Get-Content -LiteralPath $journalPath -Raw
 $blocked = (& $resolverExe --capture $capture --mods $mods --generate-pass --json | ConvertFrom-Json)
 if ($blocked.pass) {
     $blockedManifest = Get-Content -LiteralPath $blocked.pass.ManifestPath -Raw | ConvertFrom-Json
-    if (@($blockedManifest.transforms | Where-Object { $_.RuleId -eq 'autoloot-active-loot-cycle-v2' }).Count) {
+    if (@($blockedManifest.transforms | Where-Object { $_.RuleId -eq 'autoloot-input-frame-v3' }).Count) {
         throw 'Resolver emitted production AutoLoot code while a diagnostic journal observer remained installed.'
     }
 }
@@ -305,7 +352,7 @@ $cleanJournal | Set-Content -LiteralPath $journalPath -Encoding utf8
 $upgrade = (& $resolverExe --capture $capture --mods $mods --generate-pass --json | ConvertFrom-Json)
 if(!$upgrade.ok -or !$upgrade.pass){throw 'AutoLoot v1 world-pin source was not upgraded with the missing prefilter.'}
 $upgradeManifest=Get-Content -LiteralPath $upgrade.pass.ManifestPath -Raw | ConvertFrom-Json
-if(@($upgradeManifest.transforms | Where-Object {$_.RuleId -eq 'autoloot-active-loot-cycle-v2'}).Count -ne 1){
+if(@($upgradeManifest.transforms | Where-Object {$_.RuleId -eq 'autoloot-input-frame-v3'}).Count -ne 1){
  throw 'The same combined rule must complete prior v1 semantic work.'
 }
 $upgradeZip=[IO.Compression.ZipFile]::OpenRead([string]$upgrade.pass.ZipPath)
@@ -320,4 +367,36 @@ if(!$upgradeSource.Contains('if matchingMappins == 1 then return firstMappin end
  throw 'Incremental upgrade lost prior world-pin optimization or failed to install radius guard.'
 }
 
-Write-Host 'AutoLoot source-version-adaptive allocation and keypress prefilter source-proven, GC-admitted, idempotent semantic pass contract passed.'
+
+# Finally prove the real user upgrade state: v2 logic is already complete but
+# 3.11.1 init.lua remains untouched. The new rule must add missing input/frame
+# and retain the previously generated world-pin and early-radius behavior.
+$v2 = $optimized.Replace(
+ 'G-CET semantic:autoloot-input-frame-v3',
+ 'G-CET semantic:autoloot-active-loot-cycle-v2')
+$v2 | Set-Content -LiteralPath $sourcePath -Encoding utf8
+$originalInit | Set-Content -LiteralPath $initPath -Encoding utf8
+$v2Pass = (& $resolverExe --capture $capture --mods $mods --generate-pass --json | ConvertFrom-Json)
+if (!$v2Pass.ok -or !$v2Pass.pass) {
+ throw 'Already-v2 AutoLoot with native OnAction was not upgraded to the full v3 pass.'
+}
+$zipV2 = [IO.Compression.ZipFile]::OpenRead([string]$v2Pass.pass.ZipPath)
+try {
+ $a = @($zipV2.Entries | Where-Object {$_.FullName.EndsWith('AutoLoot/init.lua')})[0]
+ $b = @($zipV2.Entries | Where-Object {$_.FullName.EndsWith('AutoLoot/modules/logic.lua')})[0]
+ if (!$a -or !$b) { throw 'v2->v3 pass must stage both original source files.' }
+ $readerA = [IO.StreamReader]::new($a.Open())
+ try { $newInit = $readerA.ReadToEnd() } finally { $readerA.Dispose() }
+ $readerB = [IO.StreamReader]::new($b.Open())
+ try { $newLogic = $readerB.ReadToEnd() } finally { $readerB.Dispose() }
+} finally {$zipV2.Dispose()}
+if (!$newInit.Contains('zeroEngineMod.SubscribeAction(zeroEngineConfig, zeroEngineOnAction)') -or
+    !$newInit.Contains('registerRuntimeEvent("onUpdate", function(delta)') -or
+    !$newInit.Contains('registerRuntimeEvent("onDraw", function()') -or
+    !$newLogic.Contains('if matchingMappins == 1 then return firstMappin end') -or
+    !$newLogic.Contains('if isNpcSafeToLoot(gameObj) and (not lootInRange or vectorDistanceSquared(playerPos, gameObj:GetWorldPosition()) <= rangeSquared) then')) {
+ throw 'v2->v3 upgrade lost existing loot optimization or failed to route frame/input.'
+}
+
+Write-Host 'AutoLoot original 3.11.x full v3, v1/v2 incremental upgrade, no probe, and idempotence contracts passed.'
+
