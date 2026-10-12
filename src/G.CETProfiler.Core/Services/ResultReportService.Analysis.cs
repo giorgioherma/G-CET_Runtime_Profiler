@@ -224,6 +224,11 @@ public static partial class ResultReportService
             schedulerBurstMetrics,
             captureSeconds);
 
+        var analyzedCollector = collectorGcFile is null
+            ? null
+            : AnalyzeGcCollector(
+                collectorGc, spikes, frameTime, gcPhases,
+                gcSlow, luaAllocations, detail);
         var findings = BuildFindings(
             owners,
             totalMsPerSecond,
@@ -233,7 +238,8 @@ public static partial class ResultReportService
             spikeMetrics,
             burstCallbacks,
             sharedCallbacks,
-            worstSchedulerBurst);
+            worstSchedulerBurst,
+            analyzedCollector);
 
         AddFrameTimeFindings(findings, frameTime);
 
@@ -266,7 +272,7 @@ public static partial class ResultReportService
             SpikeRows = spikes,
             LuaHeap = AnalyzeLuaHeap(markers, spikes),
             ExplicitGc = explicitGcFile is null ? null : AnalyzeExplicitGc(explicitGc, spikes),
-            CollectorGc = collectorGcFile is null ? null : AnalyzeGcCollector(collectorGc, spikes, frameTime, gcPhases, gcSlow, luaAllocations, detail),
+            CollectorGc = analyzedCollector,
             GcTracer = gcTracer.Count > 0 ? AnalyzeGcTracer(gcTracer, gcTracerFunctions, gcTracerRegistrations) : null,
             WorkloadServices = AnalyzeWorkload(markers, schedulerJobMetrics)
         };
@@ -281,7 +287,8 @@ public static partial class ResultReportService
         IReadOnlyList<SpikeMetric> spikes,
         IReadOnlyList<CallbackBurstMetric> burstCallbacks,
         IReadOnlyList<CallbackMetric> sharedCallbacks,
-        SchedulerBurstMetric? worstSchedulerBurst)
+        SchedulerBurstMetric? worstSchedulerBurst,
+        GcCollectorTelemetry? analyzedCollector)
     {
         var findings = new List<Finding>();
 
@@ -326,7 +333,11 @@ public static partial class ResultReportService
             findings.Add(new(
                 "Largest recorded callback spike",
                 $"{worstSpike.Mod} · {JoinCallback(worstSpike.Kind, worstSpike.Target)} · {F(worstSpike.ExclusiveMs)} ms exclusive",
-                "This is the largest individual CET callback spike recorded above the profiler threshold."));
+                GcCoincidenceFor(
+                    analyzedCollector, worstSpike.RegistrationId,
+                    worstSpike.CaptureStartMs)?.PotentiallyConfounded == true
+                    ? "GC-CONFOUNDED: this is measured callback WALL time overlapping a collector-heavy frame. It is not proven script CPU or proof this mod allocated the garbage."
+                    : "This is raw callback wall time; any nested GC may be included. Without exact callback-level GC intervals, the script-only CPU duration is not known."));
         }
 
         var periodic = burstCallbacks

@@ -58,11 +58,19 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
 
         sb.Append("<div class=\"grid\">");
         MetricCard(sb, "Capture", a.CaptureSeconds > 0 ? F(a.CaptureSeconds, 1) + " s" : "—", a.Owners.Count + " measured owners");
-        MetricCard(sb, "Measured CET work", F(a.TotalMsPerSecond) + " ms/s", F(a.TotalOneCorePct, 2) + "% of one core measured");
+        MetricCard(sb, "Measured CET callback wall time", F(a.TotalMsPerSecond) + " ms/s",
+            F(a.TotalOneCorePct, 2) + "% of one core; includes any nested LuaJIT GC");
+
         MetricCard(sb, "Measured calls", N(a.TotalCalls), F(a.TotalCallsPerSecond, 0) + " calls/s");
         var top = a.Owners.FirstOrDefault();
         MetricCard(sb, "Largest workload", top is null ? "—" : H(top.Name), top is null ? "No ByMod data" : F(top.ExclusiveMsPerSecond) + " ms/s");
         sb.Append("</div>");
+        if (a.CollectorGc is not null && a.CaptureSeconds > 0)
+            sb.Append("<div class=\"note\"><b>Separate, non-additive collector measurement:</b> ")
+                .Append(F(a.CollectorGc.TotalMs / a.CaptureSeconds, 3))
+                .Append(" ms/s spent inside LuaJIT GC. It can be nested in CET and Scheduler wall times. ")
+                .Append("Raw  callback totals are not GC-free CPU costs; flagged spikes below need attribution review. ")
+                .Append("This is not permission to subtract all GC from any one mod.</div>");
 
         sb.Append("<div class=\"section\"><h2>What stands out</h2>");
         if (a.Findings.Count == 0)
@@ -480,15 +488,25 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
     private static void AppendSpikes(StringBuilder sb, ResultAnalysis a)
     {
         sb.Append("<div class=\"section\"><h2>Recorded CET callback spikes</h2>");
-        sb.Append("<table><thead><tr><th>Owner</th><th>Callback</th><th class=\"num\">Exclusive</th><th class=\"num\">Inclusive</th><th class=\"num\">Capture time</th></tr></thead><tbody>");
+        sb.Append("<div class=\"note\">Raw callback wall-time spikes include any nested GC. ")
+            .Append("GC review means a heavy collector frame overlaps the callback; it does NOT prove ")
+            .Append("the callback produced the garbage. No guessed GC-free number is shown.</div>");
+        sb.Append("<table><thead><tr><th>Owner</th><th>Callback</th><th class=\"num\">Exclusive raw</th><th class=\"num\">Inclusive raw</th><th class=\"num\">Capture time</th><th>GC attribution</th></tr></thead><tbody>");
 
         foreach (var x in a.Spikes)
         {
+            var overlap = GcCoincidenceFor(
+                a.CollectorGc, x.RegistrationId, x.CaptureStartMs);
+            var verdict = a.CollectorGc is null ? "Not measured"
+                : overlap?.PotentiallyConfounded == true ? "GC-confounded — review"
+                : overlap is not null ? "Frame overlap only"
+                : "No recorded GC overlap";
             sb.Append("<tr><td><b>").Append(H(x.Mod)).Append("</b></td><td><span class=\"mono\">")
                 .Append(H(JoinCallback(x.Kind, x.Target))).Append("</span></td><td class=\"num\">")
                 .Append(F(x.ExclusiveMs)).Append(" ms</td><td class=\"num\">")
                 .Append(F(x.InclusiveMs)).Append(" ms</td><td class=\"num\">")
-                .Append(F(x.CaptureStartMs, 1)).Append(" ms</td></tr>");
+                .Append(F(x.CaptureStartMs, 1)).Append(" ms</td><td>")
+                .Append(H(verdict)).Append("</td></tr>");
         }
 
         sb.Append("</tbody></table></div>");

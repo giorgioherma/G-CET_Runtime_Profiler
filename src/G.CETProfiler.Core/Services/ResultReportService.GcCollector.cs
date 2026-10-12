@@ -165,6 +165,13 @@ public static partial class ResultReportService
         };
     }
 
+    // Only marks temporal GC exposure. It does not determine allocation owner.
+    private static GcSpikeCoincidence? GcCoincidenceFor(
+        GcCollectorTelemetry? gc, long registrationId, double captureStartMs) =>
+        gc?.SpikeCoincidences.FirstOrDefault(x =>
+            x.RegistrationId == registrationId &&
+            Math.Abs(x.CaptureStartMs - captureStartMs) <= 0.05);
+
     private static void AppendGcCollector(StringBuilder sb, GcCollectorTelemetry gc)
     {
         sb.Append("<div class=\"section\"><h2>Internal LuaJIT GC execution</h2><div class=\"grid\">");
@@ -191,6 +198,11 @@ public static partial class ResultReportService
         sb.Append("Separate explicit collectgarbage timings are nested in these collector measurements, not additional work. ");
         sb.Append("Collector costs can also be nested inside CET callback and Scheduler time. ");
         sb.Append("Frame overlap identifies temporal coincidence only, not precise GC onset or causation.");
+        sb.Append("<div class=\"note\"><b>GC exposure is not allocation ownership.</b> ");
+        sb.Append("CET callbacks measure wall time and may include collector execution. ");
+        sb.Append("GC frame buckets do not locate exact GC time inside each callback. ");
+        sb.Append("Flagged spikes are not proven mod-owned Lua work; never subtract ");
+        sb.Append("collector buckets from callbacks, Scheduler jobs or CET totals.</div>");
         if (gc.Phases.Count > 0)
         {
             sb.Append("<h3>Collector phase execution</h3><table><thead><tr>")

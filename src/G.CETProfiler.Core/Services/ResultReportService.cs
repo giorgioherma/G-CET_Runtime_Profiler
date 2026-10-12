@@ -186,6 +186,12 @@ public static partial class ResultReportService
                 maximumFrameBucketMs = Round(a.CollectorGc.MaxObservedFrameMs, 3),
                 callbackSpikeOverlapFrames = a.CollectorGc.SpikeOverlapFrames,
                 spikeCoincidencePolicy = "FRAME_BUCKET_COINCIDENCE_NOT_CALLER_ATTRIBUTION",
+                callbackWallTimeContainsPossibleNestedGc = true,
+                collectorTimeAdditiveToCet = false,
+                collectorMsPerSecond = a.CaptureSeconds > 0
+                    ? Round(a.CollectorGc.TotalMs / a.CaptureSeconds, 6)
+                    : (double?)null,
+                sourceAllocationOwnerResolvedForCollector = false,
                 potentiallyConfoundedSpikeCount = a.CollectorGc.PotentiallyConfoundedSpikes,
                 spikeCoincidences = a.CollectorGc.SpikeCoincidences
                     .OrderByDescending(x => x.PotentiallyConfounded)
@@ -330,16 +336,31 @@ public static partial class ResultReportService
                 topOwner = x.TopOwner,
                 topOwnerExclusiveMs = Round(x.TopOwnerExclusiveMs, 6)
             }),
-            spikes = a.Spikes.Select(x => new
+            spikes = a.Spikes.Select(x =>
             {
-                x.Sequence,
-                startMs = Round(x.CaptureStartMs, 3),
-                endMs = Round(x.CaptureEndMs, 3),
-                exclusiveMs = Round(x.ExclusiveMs, 6),
-                inclusiveMs = Round(x.InclusiveMs, 6),
-                owner = x.Mod,
-                kind = x.Kind,
-                target = x.Target
+                var exposure = GcCoincidenceFor(
+                    a.CollectorGc, x.RegistrationId, x.CaptureStartMs);
+                return new
+                {
+                    x.Sequence,
+                    startMs = Round(x.CaptureStartMs, 3),
+                    endMs = Round(x.CaptureEndMs, 3),
+                    exclusiveMs = Round(x.ExclusiveMs, 6),
+                    inclusiveMs = Round(x.InclusiveMs, 6),
+                    owner = x.Mod,
+                    kind = x.Kind,
+                    target = x.Target,
+                    gcExposure = a.CollectorGc is null
+                        ? "NOT_MEASURED"
+                        : exposure?.PotentiallyConfounded == true
+                            ? "POTENTIALLY_GC_CONFOUNDED"
+                            : exposure is not null
+                                ? "TEMPORAL_FRAME_OVERLAP_ONLY"
+                                : "NO_RECORDED_FRAME_OVERLAP",
+                    possibleNestedGc = exposure?.PotentiallyConfounded == true,
+                    gcFreeExclusiveMs = (double?)null,
+                    attributionPolicy = "RAW_CALLBACK_WALL_TIME_NOT_PROVEN_SOURCE_CPU"
+                };
             }),
             scheduler = new
             {

@@ -436,8 +436,25 @@ if ([int]$reviewSummary.collectorGc.potentiallyConfoundedSpikeCount -ne 1 -or
     [math]::Abs([double]$reviewHandoff.garbageCollection.spikeCoincidences[0].largestGcFrameBucketMs - 18.0) -gt 0.01) {
     throw 'Collector-heavy bucket was not conservatively associated with overlapping callback.'
 }
+$reviewSpikeA = @($reviewSummary.spikes | Where-Object { $_.owner -eq 'OwnerA' })[0]
+$reviewSpikeB = @($reviewSummary.spikes | Where-Object { $_.owner -eq 'OwnerB' })[0]
+if ($reviewSpikeA.gcExposure -ne 'POTENTIALLY_GC_CONFOUNDED' -or
+    -not [bool]$reviewSpikeA.possibleNestedGc -or
+    $null -ne $reviewSpikeA.gcFreeExclusiveMs -or
+    [math]::Abs([double]$reviewSpikeA.exclusiveMs - 20.0) -gt 0.01 -or
+    $reviewSpikeB.gcExposure -ne 'NO_RECORDED_FRAME_OVERLAP' -or
+    [bool]$reviewSpikeB.possibleNestedGc) {
+    throw 'Per-spike GC exposure was misreported as mod-owned script CPU or a fabricated correction.'
+}
+if ([bool]$reviewSummary.collectorGc.collectorTimeAdditiveToCet -or
+    -not [bool]$reviewSummary.collectorGc.callbackWallTimeContainsPossibleNestedGc -or
+    [bool]$reviewSummary.collectorGc.sourceAllocationOwnerResolvedForCollector) {
+    throw 'Collector/callback timing was incorrectly added or assigned to an allocating owner.'
+}
 $reviewHtml = Get-Content -LiteralPath (Join-Path $gcReviewCapture 'CET_Report.html') -Raw
 if ($reviewHtml -notmatch 'Callback spikes near collector-heavy frame buckets' -or
+    $reviewHtml -notmatch 'GC-confounded' -or
+    $reviewHtml -notmatch 'Measured CET callback wall time' -or
     $reviewHtml -notmatch 'No GC-free cost can be obtained by subtracting') {
     throw 'GC coincidence safety explanation missing from human report.'
 }
