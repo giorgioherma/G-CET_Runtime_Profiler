@@ -8,6 +8,23 @@ $capture=Join-Path $root 'CET-20990101-040506_POKER_PASS4'
 $mods=Join-Path $root 'mods'
 $poker=Join-Path $mods 'StreetGamesPoker'
 New-Item -ItemType Directory -Force $capture,$poker | Out-Null
+
+# Resolver's actual pass contract requires the existing 0-Engine runtime.
+$zero=Join-Path $mods '0-Engine'
+New-Item -ItemType Directory -Force $zero | Out-Null
+$encoded=(Get-Content -LiteralPath (Join-Path $ResolverRoot 'runtime\0-Engine\fixed-init.lua.gz.b64') -Raw).Trim()
+$compressed=[Convert]::FromBase64String($encoded)
+$inputStream=[System.IO.MemoryStream]::new($compressed)
+$gzip=[System.IO.Compression.GZipStream]::new(
+    $inputStream,[System.IO.Compression.CompressionMode]::Decompress)
+$output=[System.IO.MemoryStream]::new()
+try {
+    $gzip.CopyTo($output)
+    [System.IO.File]::WriteAllBytes((Join-Path $zero 'init.lua'),$output.ToArray())
+}
+finally {
+    $output.Dispose();$gzip.Dispose();$inputStream.Dispose()
+}
 $path=Join-Path $poker 'init.lua'
 @'
 StreetGamesPoker={ready=false}
