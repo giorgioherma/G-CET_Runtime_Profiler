@@ -2660,7 +2660,7 @@ end)
                 @"(?ms)^(?<opening>[ \t]*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*[""']onUpdate[""']\s*,\s*function\s*\(\s*dt\s*\)\s*)\r?\n(?<body>.*?)(?<close>^[ \t]*end\s*\)\s*$)",
                 @"local __gcetTunnelOutsideAcc = 0.0
 local __gcetTunnelWasInside = false
-__OPENING__
+${opening}
  local __gcetTunnelActive = H.phase ~= 'outside'
  if not __gcetTunnelActive then
   __gcetTunnelOutsideAcc = __gcetTunnelOutsideAcc + (dt or 0)
@@ -2700,18 +2700,17 @@ __OPENING__
   if H.session and H.phase~='outside'then pcall(leave,'Tunnel interrupted. Returning to the saved departure.')end
   pcall(status)
  end
-__CLOSE__" + "\n",
+${close}" + "\n",
                 "Tunnel quest-session outer dormancy");
 
-            text = text.Replace("__OPENING__", "$" + "{opening}", StringComparison.Ordinal)
-                       .Replace("__CLOSE__", "$" + "{close}", StringComparison.Ordinal);
+            // Capture groups expand in RegexReplaceOnce, never as a later string substitution.
 
             text = RegexReplaceOnce(
                 text,
                 @"(?m)^(?<opening>[ \t]*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*[""']onDraw[""']\s*,\s*function\s*\(\s*\)\s*)if\s+H\.session\s+and\s+not\s+H\.overlay\s+and\s+not\s+H\.error\s+then\s+Timer\.draw\s*\(\s*\)\s*end\s+end\s*\)\s*$",
-                "__DRAWOPEN__if H.session and H.phase~='outside' and not H.overlay and not H.error then Timer.draw() end end)\n",
+                "${opening}if H.session and H.phase~='outside' and not H.overlay and not H.error then Timer.draw() end end)\n",
                 "Tunnel draw outside-phase gate");
-            text = text.Replace("__DRAWOPEN__", "$" + "{opening}", StringComparison.Ordinal);
+            // onDraw opening already expanded inside RegexReplaceOnce.
         }
 
         if (!text.Contains("__gcetTunnelNavCache", StringComparison.Ordinal))
