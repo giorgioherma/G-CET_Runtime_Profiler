@@ -1,5 +1,16 @@
 # Active project state — 2026-10-12
 
+## Composable source stages across version updates (2026-10-12, CI #1001 follow-up)
+
+- The user's 20:32 pass used older LIVE GigCore 0.7.2 and SPECTER recovery without 1.5 mission music; the Resolver did not downgrade them. It generated GigCore, recovery and Tunnel semantic changes but SKIPPED AutoLoot's radius-first stage because the world-stage detector scanned the ENTIRE logic.lua for `local closeMappins = {}`. That variable also occurs in a distinct quest-pin routine where it must be preserved.
+- The engineering contract explicitly requires independently recognizing ALREADY present generic/semantic stages and adding only missing pieces, even with partly integrated 0-Engine and manually optimized mods. Marker presence alone is NOT a complete-stage proof.
+- New opt-in, reusable `sourceProof.completeStages` field models independent scoped Lua-function postconditions (required/forbidden behaviors and ordered-before relations), using exact owning top-level function scopes rather than neighboring function names, versions, ZIP layout or hashes. For composite rules with this field, **all** stages must be proven for AlreadySatisfied; a partly present or legacy marker does not block a missing stage.
+- AutoLoot's existing SINGLE combined rule uses two source stages: scalar world-pin selection without per-call table, and early radius rejection BEFORE both inventory queries. Inputs ORIGINAL/WorldOnly/RadiusOnly/FullyOptimized (with previous, combined or no marker) produce BOTH/only missing stage/only missing stage/no repeat. An unrelated quest pin helper's `closeMappins` remains untouched. Ambiguous or restructured author code fails closed.
+- The world-pin injector no longer cuts by the next helper `logic.couldStartNewLootingCycle`; it uses the unique function's top-level closing `end`. The loot-radius rewrite is also constrained to `logic.lootInRange` and tolerates whitespace/quote differences while retaining the original item/quest/shard/visibility/transfer order.
+- CI now tests original, world-only, radius-only, both, legacy/combined/unmarked stages, harmless formatting, next-helper rename, preservation of unrelated candidate lists and idempotence. Generated logic is STILL subject to gameplay validation on the user's original AutoLoot, including loot immediacy and quest/shard protections.
+- No changes to native (SHA-locked 2.15.0), package (1.2.4), 0-Engine contract, other mod semantic/cadence rules, or live files.
+
+
 ## GigCore 0.7.3 + SPECTER 1.5 source optimization (2026-10-12)
 
 - Source: original GigCore 0.7.3 and SPECTER 1.5; older 0.7.2/1.4.1 source+generic artifacts used as comparison, NEVER copied over updates.

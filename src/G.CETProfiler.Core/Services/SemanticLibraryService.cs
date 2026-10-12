@@ -103,6 +103,7 @@ internal sealed class SemanticLibraryService
                             OwnerAnyGroups = JsonStringGroups(proofRow, "ownerAnyGroups"),
                             SatisfiedAll = JsonStringArray(proofRow, "satisfiedAll"),
                             SatisfiedAnyGroups = JsonStringGroups(proofRow, "satisfiedAnyGroups"),
+                            CompleteStages = ReadCompleteStages(proofRow),
                             AlreadySatisfiedMarker = JsonString(
                                 proofRow,
                                 "alreadySatisfiedMarker"),
@@ -289,19 +290,26 @@ internal sealed class SemanticLibraryService
             postconditionConfigured &&
             postconditionMissing.Count == 0;
 
-        var alreadySatisfied =
-            markerSatisfied ||
-            satisfiedBySourcePostcondition;
-        var alreadySatisfiedMode =
-            markerSatisfied
-                ? "MARKER"
-                : satisfiedBySourcePostcondition
-                    ? "SOURCE_POSTCONDITION"
-                    : "";
-        var partialState =
-            !alreadySatisfied &&
-            markerCount > 0 &&
-            markerCount < expectedMarkerFileCount;
+        // Composite source rules are complete only if EVERY independent
+        // scoped stage still holds. Older/misplaced markers never hide a
+        // missing stage; the injector will add only what is absent.
+        var composed = rule.Proof.CompleteStages.Length > 0;
+        if (composed)
+            satisfiedBySourcePostcondition =
+                rule.Proof.CompleteStages.All(stage =>
+                    SemanticScopedStages.IsComplete(graph.FileTexts, stage));
+
+        var alreadySatisfied = composed
+            ? satisfiedBySourcePostcondition
+            : markerSatisfied || satisfiedBySourcePostcondition;
+        var alreadySatisfiedMode = alreadySatisfied
+            ? composed ? "SCOPED_SOURCE_STAGES"
+                       : markerSatisfied ? "MARKER" : "SOURCE_POSTCONDITION"
+            : "";
+        // A recognized, incomplete composite is UPGRADEABLE. Ambiguous or
+        // foreign edits still fail closed inside its source injector.
+        var partialState = !composed && !alreadySatisfied &&
+            markerCount > 0 && markerCount < expectedMarkerFileCount;
 
         return new SemanticRuleMatch(
             true,
@@ -613,6 +621,31 @@ internal sealed class SemanticLibraryService
     private static string Normalize(string value) =>
         NormalizeNonAlphaNumeric.Replace(value.ToLowerInvariant(), "");
 
+    private static SemanticScopedStages.Stage[] ReadCompleteStages(
+        JsonElement proof)
+    {
+        if (!proof.TryGetProperty("completeStages", out var stages) ||
+            stages.ValueKind != JsonValueKind.Array)
+            return Array.Empty<SemanticScopedStages.Stage>();
+
+        var items = new List<SemanticScopedStages.Stage>();
+        foreach (var stage in stages.EnumerateArray())
+        {
+            if (stage.ValueKind != JsonValueKind.Object)
+                continue;
+            var name = JsonString(stage, "function");
+            var includes = JsonStringArray(stage, "includes");
+            if (string.IsNullOrWhiteSpace(name) || includes.Length == 0)
+                continue;
+            items.Add(new SemanticScopedStages.Stage(
+                name,
+                includes,
+                JsonStringArray(stage, "excludes"),
+                JsonStringGroups(stage, "before")));
+        }
+        return items.ToArray();
+    }
+
     private static string JsonString(JsonElement element, string name)
     {
         if (!element.TryGetProperty(name, out var value) ||
@@ -698,6 +731,8 @@ internal sealed class SemanticLibraryService
 
     private sealed class SourceProof
     {
+        internal SemanticScopedStages.Stage[] CompleteStages { get; init; } =
+            Array.Empty<SemanticScopedStages.Stage>();
         internal string[] OwnerAll { get; init; } = Array.Empty<string>();
         internal string[][] OwnerAnyGroups { get; init; } = Array.Empty<string[]>();
         internal string[] SatisfiedAll { get; init; } = Array.Empty<string>();

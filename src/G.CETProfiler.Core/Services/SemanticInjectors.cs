@@ -3655,17 +3655,9 @@ ${close}" + "\n",
             "mappinSystem:GetMappinEntries(gamemappinsMappinTargetTypeWorld)",
             "mappinSystem:GetMappins(gamemappinsMappinTargetTypeWorld)");
         var text = file.Text;
-        var functionStart = text.IndexOf(
-            "function isWorldMapPinOfTypeInRange(", StringComparison.Ordinal);
-        var nextFunction = functionStart < 0 ? -1 : text.IndexOf(
-            "function logic.couldStartNewLootingCycle(", functionStart,
-            StringComparison.Ordinal);
-        if (functionStart < 0 || nextFunction < 0 ||
-            text.IndexOf("function isWorldMapPinOfTypeInRange(",
-                functionStart + 1, StringComparison.Ordinal) >= 0)
-            throw new InvalidOperationException(
-                "AutoLoot world-pin function boundaries are unproven.");
-        var worldFunction = text[functionStart..nextFunction];
+        var worldSpan = SemanticScopedStages.RequireFunction(
+            text, "isWorldMapPinOfTypeInRange");
+        var worldFunction = worldSpan.Text;
         var newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
         string Native(string value) =>
             value.Replace("\n", newline, StringComparison.Ordinal);
@@ -3736,7 +3728,7 @@ ${close}" + "\n",
         worldFunction = ReplaceOnce(
             worldFunction, oldTail, newTail,
             "AutoLoot nearest candidate and original global-distance results");
-        text = text[..functionStart] + worldFunction + text[nextFunction..];
+        text = text[..worldSpan.Start] + worldFunction + text[worldSpan.End..];
         context.Write(file, text);
         return SemanticInjectionResult.Success(
             "Removed the fresh world-map pin candidate table and table.insert " +
@@ -3759,17 +3751,21 @@ ${close}" + "\n",
             "takeIt = vectorDistanceSquared(playerPos, gameObjPos) <= rangeSquared",
             "local function vectorDistanceSquared(src, target)");
         var text = file.Text;
-        var worldOriginal = text.Contains(
-            "if takeIt then tableInsert(closeMappins, mappin) end",
-            StringComparison.Ordinal);
-        var worldOptimized = text.Contains(
-            "local firstMappin, nearestMappin", StringComparison.Ordinal) &&
-            text.Contains("if matchingMappins == 1 then return firstMappin end",
-                StringComparison.Ordinal) &&
-            !text.Contains("local closeMappins = {}", StringComparison.Ordinal);
-        if (!worldOriginal && !worldOptimized)
+        var worldSource = SemanticScopedStages.RequireFunction(
+            text, "isWorldMapPinOfTypeInRange").Text;
+        // Diagnose each independent stage in the function that owns it.
+        // Other quest-pin helpers may legitimately use closeMappins.
+        var worldOriginal = SemanticScopedStages.ContainsToken(
+            worldSource, "if takeIt then tableInsert(closeMappins, mappin) end");
+        var worldOptimized = SemanticScopedStages.ContainsToken(
+            worldSource, "local firstMappin, nearestMappin") &&
+            SemanticScopedStages.ContainsToken(
+                worldSource, "if matchingMappins == 1 then return firstMappin end") &&
+            !SemanticScopedStages.ContainsToken(
+                worldSource, "local closeMappins = {}");
+        if (worldOriginal == worldOptimized)
             throw new InvalidOperationException(
-                "AutoLoot world-pin selection no longer matches either known safe shape.");
+                "AutoLoot world-pin selection is ambiguous or partly rewritten; refusing to guess.");
 
         if (worldOriginal)
         {
@@ -3791,15 +3787,27 @@ ${close}" + "\n",
 
         var oldGate = Native("\t\t\t\t\tif isNpcSafeToLoot(gameObj) then\n\t\t\t\t\t\tlocal hasItemsToLoot, objectHasLootItems, ownerHasLootItems = false, false, false\n\t\t\t\t\t\tresult, items = transactionSystem:GetItemList(gameObj)\n\t\t\t\t\t\tif result and #items > 0 then hasItemsToLoot = true objectHasLootItems = true end\n\t\t\t\t\t\tlocal gameObjOwner = nil\n\t\t\t\t\t\tresult = false\n\t\t\t\t\t\tpcall(function() gameObjOwner = gameObj:GetOwner() end)\n\t\t\t\t\t\tif gameObjOwner then result, items = transactionSystem:GetItemList(gameObjOwner) end\n\t\t\t\t\t\tif result and #items > 0 then hasItemsToLoot = true ownerHasLootItems = true end\n\t\t\t\t\t\tif hasItemsToLoot then\n\t\t\t\t\t\t\tlocal takeIt = true\n\t\t\t\t\t\t\tlocal gameObjPos\n\t\t\t\t\t\t\tif lootInRange then\n\t\t\t\t\t\t\t\tgameObjPos = gameObj:GetWorldPosition()\n\t\t\t\t\t\t\t\ttakeIt = vectorDistanceSquared(playerPos, gameObjPos) <= rangeSquared\n\t\t\t\t\t\t\tend\n\t\t\t\t\t\t\tif takeIt then\n");
         var newGate = Native("\t\t\t\t\tif isNpcSafeToLoot(gameObj) then\n\t\t\t\t\t\tlocal takeIt = true\n\t\t\t\t\t\tlocal gameObjPos\n\t\t\t\t\t\tif lootInRange then\n\t\t\t\t\t\t\tgameObjPos = gameObj:GetWorldPosition()\n\t\t\t\t\t\t\ttakeIt = vectorDistanceSquared(playerPos, gameObjPos) <= rangeSquared\n\t\t\t\t\t\tend\n\t\t\t\t\t\tif takeIt then\n\t\t\t\t\t\t\tlocal hasItemsToLoot, objectHasLootItems, ownerHasLootItems = false, false, false\n\t\t\t\t\t\t\tresult, items = transactionSystem:GetItemList(gameObj)\n\t\t\t\t\t\t\tif result and #items > 0 then hasItemsToLoot = true objectHasLootItems = true end\n\t\t\t\t\t\t\tlocal gameObjOwner = nil\n\t\t\t\t\t\t\tresult = false\n\t\t\t\t\t\t\tpcall(function() gameObjOwner = gameObj:GetOwner() end)\n\t\t\t\t\t\t\tif gameObjOwner then result, items = transactionSystem:GetItemList(gameObjOwner) end\n\t\t\t\t\t\t\tif result and #items > 0 then hasItemsToLoot = true ownerHasLootItems = true end\n\t\t\t\t\t\t\tif hasItemsToLoot then\n");
-        var hasOldGate = text.Contains(oldGate, StringComparison.Ordinal);
-        var hasNewGate = text.Contains(newGate, StringComparison.Ordinal);
+        var lootSpan = SemanticScopedStages.RequireFunction(
+            text, "logic.lootInRange");
+        var lootSource = lootSpan.Text;
+        // Version compatibility: accept quote/whitespace variation, but
+        // refuse changed transaction/visibility/protection order.
+        bool MatchesShape(string fragment) =>
+            lootSource.Contains(fragment, StringComparison.Ordinal) ||
+            Regex.IsMatch(lootSource, BuildFlexibleLiteralPattern(fragment),
+                RegexOptions.CultureInvariant | RegexOptions.Singleline);
+        var hasOldGate = MatchesShape(oldGate);
+        var hasNewGate = MatchesShape(newGate);
         if (hasOldGate == hasNewGate)
             throw new InvalidOperationException(
                 "AutoLoot radius-first ordering is missing or ambiguous; refusing to change inventories.");
 
         if (hasOldGate)
-            text = ReplaceOnce(text, oldGate, newGate,
+        {
+            lootSource = ReplaceOnce(lootSource, oldGate, newGate,
                 "AutoLoot radius rejection before both inventory queries");
+            text = text[..lootSpan.Start] + lootSource + text[lootSpan.End..];
+        }
 
         // An entirely already-optimized but unmarked variant is not rewritten.
         if (text == file.Text)

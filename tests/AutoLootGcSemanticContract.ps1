@@ -48,6 +48,11 @@ local isGameV23 = true
 local mappinSystem = {}
 local gamemappinsMappinTargetTypeWorld = 1
 local worldMappins
+-- Independent quest-pin helper retains its own collection; never rewrite it.
+local function questPinCandidates()
+    local closeMappins = {}
+    return closeMappins
+end
 function isWorldMapPinOfTypeInRange(objectPos, range, typeFilterStr1, typeFilterStr2, skipPreCheck)
     if not skipPreCheck then
         if not objectPos then return false end
@@ -233,8 +238,8 @@ foreach ($fragment in $expect) {
 if ($world.Contains('tableInsert(closeMappins') -or $world.Contains('local closeMappins = {}')) {
     throw 'AutoLoot world-pin temporary candidate-table allocation remains.'
 }
-if (-not $optimized.Contains('local firstMappin, nearestMappin') -or
-    $optimized.Contains('local closeMappins = {}')) {
+if (-not $world.Contains('local firstMappin, nearestMappin') -or
+    $world.Contains('local closeMappins = {}')) {
     throw 'AutoLoot world-pin allocation elimination is missing.'
 }
 $gateIndex = $optimized.IndexOf('takeIt = vectorDistanceSquared(playerPos, gameObjPos) <= rangeSquared')
@@ -297,10 +302,94 @@ try {
     $incReader = [IO.StreamReader]::new($incEntry.Open())
     try { $incText = $incReader.ReadToEnd() } finally { $incReader.Dispose() }
 } finally { $incZip.Dispose() }
-if ($incText.Contains('local closeMappins = {}') -or
-    !$incText.Contains('local firstMappin, nearestMappin') -or
+$incWorld = [regex]::Match($incText,
+    '(?ms)^function\s+isWorldMapPinOfTypeInRange\([^\r\n]*\).*?^end\s*;?\s*$').Value
+if (!$incWorld -or $incWorld.Contains('local closeMappins = {}') -or
+    !$incWorld.Contains('local firstMappin, nearestMappin') -or
     $incText.IndexOf('takeIt = vectorDistanceSquared(playerPos, gameObjPos) <= rangeSquared') -ge
     $incText.IndexOf('result, items = transactionSystem:GetItemList(gameObj)')) {
     throw 'AutoLoot incremental pass changed the wrong stage or lost scalar pins.'
 }
-Write-Host 'AutoLoot world-pin + early-radius original and incremental source contract passed.'
+if (!$incText.Contains('local closeMappins = {}')) {
+    throw 'AutoLoot incorrectly removed an unrelated quest-pin buffer.'
+}
+
+# Composition contract: source stages in either order, old/combined/no marker,
+# harmless whitespace and renamed NEXT helper, plus unrelated quest-pin lists.
+function Verify-Variant([string]$label,[string]$source,[bool]$emit) {
+    $source | Set-Content -LiteralPath $sourcePath -Encoding utf8
+    $hash=(Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash
+    $run=(& $resolverExe --capture $capture --mods $mods --generate-pass --json |
+        ConvertFrom-Json)
+    if ($emit -and (!$run.ok -or !$run.pass)) {
+        throw "AutoLoot $label should generate the missing stage but did not."
+    }
+    $transforms=@()
+    if ($run.pass -and $run.pass.ManifestPath) {
+        $manifest=Get-Content -LiteralPath $run.pass.ManifestPath -Raw | ConvertFrom-Json
+        $transforms=@($manifest.transforms | Where-Object {
+            $_.type -eq 'SEMANTIC_RULE' -and
+            $_.RuleId -eq 'autoloot-world-pin-and-early-distance'
+        })
+    }
+    if ($transforms.Count -ne [int]$emit) {
+        throw "AutoLoot $label expected emission=$emit; actual=$($transforms.Count)"
+    }
+    $report=Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw |
+        ConvertFrom-Json
+    $row=@($report.callbackFamilies | ForEach-Object {$_.topConsumers} |
+        Where-Object {$_.owner -eq 'AutoLoot' -and $_.target -eq 'onUpdate'})[0]
+    if (!$emit -and (!$row.semantic.AlreadySatisfied -or
+        $row.semantic.AlreadySatisfiedMode -ne 'SCOPED_SOURCE_STAGES')) {
+        throw "AutoLoot $label failed stage-aware idempotence."
+    }
+    if ($emit) {
+        $zip=[IO.Compression.ZipFile]::OpenRead([string]$run.pass.ZipPath)
+        try {
+            $entry=@($zip.Entries | Where-Object {
+                $_.FullName.Replace('\','/').EndsWith(
+                    'AutoLoot/modules/logic.lua',[StringComparison]::OrdinalIgnoreCase)
+            }) | Select-Object -First 1
+            if (!$entry) {throw "AutoLoot $label generated source missing"}
+            $reader=[IO.StreamReader]::new($entry.Open())
+            try {$outputText=$reader.ReadToEnd()} finally {$reader.Dispose()}
+        } finally {$zip.Dispose()}
+        $worldStage=[regex]::Match($outputText,
+            '(?ms)^function\s+isWorldMapPinOfTypeInRange\([^\r\n]*\).*?^end[ \t]*;?[ \t]*$').Value
+        if (!$worldStage -or $worldStage.Contains('local closeMappins = {}') -or
+            !$worldStage.Contains('local firstMappin, nearestMappin') -or
+            $outputText.IndexOf(
+               'takeIt = vectorDistanceSquared(playerPos, gameObjPos) <= rangeSquared') -ge
+            $outputText.IndexOf(
+               'result, items = transactionSystem:GetItemList(gameObj)') -or
+            !$outputText.Contains('local closeMappins = {}')) {
+            throw "AutoLoot $label lost a stage or unrelated quest helper."
+        }
+    }
+    if ((Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash -ne $hash) {
+        throw "AutoLoot $label modified live source."
+    }
+}
+$origWorld=[regex]::Match($originalText,
+    '(?ms)^function\s+isWorldMapPinOfTypeInRange\([^\r\n]*\).*?^end[ \t]*;?[ \t]*$').Value
+$doneWorld=[regex]::Match($optimized,
+    '(?ms)^function\s+isWorldMapPinOfTypeInRange\([^\r\n]*\).*?^end[ \t]*;?[ \t]*$').Value
+if (!$origWorld -or !$doneWorld) {throw 'Variant world functions unavailable.'}
+$radiusOnly=$optimized.Replace($doneWorld,$origWorld)
+$worldOnly=$originalText.Replace($origWorld,$doneWorld)
+$worldOnlyMarked='-- G-CET semantic:autoloot-world-pin-and-early-distance'+
+    [Environment]::NewLine+$worldOnly
+$whitespaceVariant=$worldOnlyMarked.Replace([string]([char]9),"    ").Replace(
+    'function logic.couldStartNewLootingCycle(',
+    'function logic.authorChangedNextHelper(')
+$unmarkedComplete=[regex]::Replace($optimized,
+    '(?m)^-- G-CET semantic:autoloot-world-pin-and-early-distance\r?\n','')
+Verify-Variant 'original' $originalText $true
+Verify-Variant 'world-only' $worldOnly $true
+Verify-Variant 'world-only-marked' $worldOnlyMarked $true
+Verify-Variant 'world-only-reformatted-next-function-renamed' $whitespaceVariant $true
+Verify-Variant 'radius-only-marked' $radiusOnly $true
+Verify-Variant 'complete-marked' $optimized $false
+Verify-Variant 'complete-unmarked' $unmarkedComplete $false
+
+Write-Host 'AutoLoot two-stage version-fluent partial/marker/composition contract passed.'

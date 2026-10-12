@@ -3390,7 +3390,36 @@
           "mappinSystem:GetMappins(gamemappinsMappinTargetTypeWorld)"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:autoloot-world-pin-and-early-distance",
-        "expectedMarkerFileCount": 1
+        "expectedMarkerFileCount": 1,
+        "completeStages": [
+          {
+            "function": "isWorldMapPinOfTypeInRange",
+            "includes": [
+              "local firstMappin, nearestMappin",
+              "if matchingMappins == 1 then return firstMappin end",
+              "lowestDistanceSquared = nearestDistanceSquared",
+              "return nearestMappin"
+            ],
+            "excludes": [
+              "local closeMappins = {}",
+              "tableInsert(closeMappins"
+            ]
+          },
+          {
+            "function": "logic.lootInRange",
+            "includes": [
+              "if isNpcSafeToLoot(gameObj) then",
+              "result, items = transactionSystem:GetItemList(gameObj)",
+              "takeIt = vectorDistanceSquared(playerPos, gameObjPos) <= rangeSquared"
+            ],
+            "before": [
+              [
+                "takeIt = vectorDistanceSquared(playerPos, gameObjPos) <= rangeSquared",
+                "result, items = transactionSystem:GetItemList(gameObj)"
+              ]
+            ]
+          }
+        ]
       },
       "behavior": {
         "handler": "SEMANTIC_WORLD_PIN_SCALAR_EARLY_RADIUS",
@@ -3405,9 +3434,12 @@
           "rejectOutOfRangeBeforeGameObjAndOwnerInventory",
           "keepAuthorLootTransfersShardQuestAndMarkerLogic",
           "composeWithExistingWorldPinOnlyOrRadiusOnly",
-          "noCrossFrameCache"
+          "noCrossFrameCache",
+          "independentScopedStageCompletionBeforeMarker",
+          "acceptPartialWorldOnlyRadiusOnlyEitherMarker",
+          "versionTolerantWhitespaceAndNextFunction"
         ],
-        "note": "Compose the existing world-pin scalar-selection rule with the gameplay-tested radius-before-GetItemList ordering; preserve native mappin query, looting cadence, transfers, shards, quest safety, visibility, input, and marker updates."
+        "note": "Compose world-pin scalar selection and tested early radius as TWO independently proven stages scoped to their owning Lua functions. Already-satisfied requires both source postconditions, not only a marker. Original, world-only, radius-only (including partially marked) and full variants get only missing work; unrelated quest-pin locals, next function name, source whitespace, and version numbering do not control admission. Reject ambiguous/modified behavior."
       },
       "generation": {
         "enabled": true,
