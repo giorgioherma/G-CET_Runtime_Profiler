@@ -6,6 +6,21 @@
 
 This is not a GC-only optimizer, nor a project to cosmetically lower garbage counters by retaining stale tables. GC traces add information to the **existing** Resolver; source proof still decides whether an optimization is generic, semantic, or review-only.
 
+## New field evidence: 2026-10-13 GC trigger-vs-producer split
+
+470.629s G-CET/G-GC/CapFrameX synchronized capture `CET-20261013-000328_THE_QUESTS_AND_AUTOLOOT_RESOLVER` strongly validates the trigger-site confounder:
+
+| Frame/time | Callback exclusive | Exact collector in SAME frame | Implication |
+| --- | ---: | ---: | --- |
+| 13470 / ~294.13s | radioExt onUpdate 574.721ms | 638.812ms / 85,371 incremental calls | Repeated collector steps likely inside callback; NOT evidence radioExt produced backlog |
+| 20934 / ~424.83s | 0-Engine onUpdate 519.378ms; sitAnywhere frame job 519.100ms INCLUSIVE | 573.950ms / 95,067 calls | Nested scheduler and collector durations overlap; do not double-add or assign generator owner |
+| 6288 / ~139.92s | 0-Engine routed OnAction 199.677ms | 200.966ms / 36 calls | Single native atomic→sweepstring 199.641ms phase operation directly overlaps |
+| 7550 / ~168.62s | f80h aroused expressions OnDetach 193.436ms | 268.900ms / 24,918 calls | Hook likely observed collector stall, source ownership unproven |
+
+Exact collector totals **12,568.538ms**, 8 cycles, 20 individually logged slow operations; `spikeCoincidences` already labels **19** callbacks potentially GC-confounded. For radioExt specifically, no 575ms individual GC phase was recorded; multiple incremental steps inside that frame are responsible for large collector time. Source script may still do work, but the callback's measured elapsed time is not independent proof of expensive script code.
+
+G-GC allocation positive MiB rankings: unattributed 504.252; 0-Engine/Routed 261.583; ImmersiveFirstPerson 102.099; GigCore 93.904; NPC Outfit Manager 33.014; Ziggy 31.379; radioExt 12.870. These positive allocated byte counts are not live heap and do not identify a specific duplicate table. Preserve UNKNOWN allocations and invalid global-finalizer counters. Recommend presentation mark GC-CONFOUNDED at spike level and separately show frame-level exact GC, source-allocated bytes and material callback work; no naïve arithmetic subtraction from exclusive callback values. Target demonstrable upstream data producers, not innocently interrupted callback owners.
+
 ## Real evidence and limitations
 
 An extended experimental capture from 2026-10-12 (about **443 s**) measured approximately **1,457.8 MiB positive LuaJIT allocator growth**, **12.18 million allocation operations** and **2.21 million GC object births**. About **559.65 MiB (38.39%)** remained unattributed. Some global finalizer invocation counts are inconsistent with sampled finalizers and explicitly **UNVALIDATED**. These figures represent that one capture/runtime only; positive allocator growth is **not retained memory**, and neither count alone proves that a particular allocation was unnecessary.
