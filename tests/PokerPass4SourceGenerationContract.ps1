@@ -167,9 +167,18 @@ if(@($manifest.transforms | Where-Object {$_.RuleId -eq 'streetgamespoker'} | Fo
 }
 $generated | Set-Content -LiteralPath $path -Encoding utf8
 $tablesOut | Set-Content -LiteralPath $tablesPath -Encoding utf8
-$second=Generate
-$manifest2=Get-Content -LiteralPath $second.pass.ManifestPath -Raw | ConvertFrom-Json
-if(@($manifest2.transforms | Where-Object {$_.RuleId -eq 'streetgamespoker'}).Count -ne 0){
-    throw 'Existing PASS4 optimization re-applied on subsequent run'
-}
+# A fully satisfied pass intentionally produces no ZIP. Analyze the optimized
+# live source directly rather than requiring an unrelated transform to exist.
+$second=(& $exe --capture $capture --mods $mods --json | ConvertFrom-Json)
+if(!$second.ok){throw 'Resolver failed to analyze already-optimized Poker source'}
+$resolver=Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
+$pokerRows=@($resolver.callbackFamilies | ForEach-Object {$_.topConsumers} |
+    Where-Object {$_.owner -eq 'StreetGamesPoker'})
+if(!$pokerRows.Count){throw 'Optimized Poker owner missing from Resolver report'}
+$semantic=@($pokerRows | Where-Object {
+    $_.semantic.RuleId -eq 'streetgamespoker' -and
+    $_.semantic.AlreadySatisfied -eq $true -and
+    $_.semantic.MarkerFileCount -eq 2
+})
+if(!$semantic.Count){throw 'Resolver did not recognize both optimized files as already satisfied'}
 Write-Host 'Poker PASS4 generated from author source, with four lanes, lexical startup, logger, map pins, fallback and idempotence.'
