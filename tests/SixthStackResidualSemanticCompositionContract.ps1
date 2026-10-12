@@ -473,9 +473,16 @@ return N
 
 Write-ModFile 'ziggy_last_play' 'init.lua' @'
 local Navigation=require('navigation')
-local H={objective='quest/test',s={phase='active'},playerKey='p',generation=1,hooks={},runtime={}}
-registerForEvent('onUpdate',function(dt)
+local Dialogue={busy=function()return false end}
+local C={giver={position={0,0,0}}}
+local H={objective='quest/test',s={phase='offered'},playerKey='p',generation=1,hooks={},runtime={},dialogue={}}
+local function valid(x)return x~=nil end
+local function update(dt)
+ local target=C.giver.position
  Navigation.update(dt,H.objective,H.s.phase,H.playerKey,H.generation,H.hooks,'destination_v6',H.runtime,true)
+end
+registerForEvent('onUpdate',function(dt)
+ update(dt)
 end)
 '@
 
@@ -845,7 +852,7 @@ $resolver = Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') 
 $rules=@(
  'good-feelings','good-feelings-hard-draw','air-backflip','auto-drop-weapon-dynamic-routing',
  'drone-companions-revamp','ghost-void-system','straight-edged-controls-input-dormancy','tunnel-rescue-v2',
- 'ziggy-last-play-navigation-sentinel-v2','immersive-head-inertia'
+ 'ziggy-last-play-navigation-sentinel-v3','immersive-head-inertia'
 )
 foreach($rule in $rules) {
     $matches=@()
@@ -937,7 +944,12 @@ try {
     }
 
     $ziggy=Read-ZipText ($base+'ziggy_last_play/navigation.lua')
-    if($ziggy -notmatch 'G-CET semantic:ziggy-last-play-navigation-sentinel-v2' -or
+    $ziggyController=Read-ZipText ($base+'ziggy_last_play/init.lua')
+    if($ziggyController -notmatch 'G-CET semantic:ziggy-last-play-navigation-sentinel-v3' -or
+       $ziggyController -notmatch '__gcetZiggyOfferedFarAcc' -or
+       $ziggyController -notmatch '130\*130' -or
+       $ziggyController -notmatch '__gcetProbeOK' -or
+       $ziggy -notmatch 'G-CET semantic:ziggy-last-play-navigation-sentinel-v3' -or
        $ziggy -notmatch 'scanKey=nil,lastMappins=\{\},missingScanAge=0' -or
        $ziggy -notmatch 'N\.scanKey ~= scanKey or \(not found and N\.missingScanAge >= 12\)' -or
        $ziggy -notmatch 'N\.missingScanAge=0' -or
@@ -1007,7 +1019,7 @@ $legacyRun = (& $resolverExe --capture $capture --mods $mods --generate-pass --j
 if(!$legacyRun.ok -or !$legacyRun.pass) { throw 'Ziggy v1-to-v2 semantic pass generation failed.' }
 $legacyManifest = Get-Content -LiteralPath $legacyRun.pass.ManifestPath -Raw | ConvertFrom-Json
 $legacyTransforms = @($legacyManifest.transforms | Where-Object {
-    $_.type -eq 'SEMANTIC_RULE' -and $_.RuleId -eq 'ziggy-last-play-navigation-sentinel-v2'
+    $_.type -eq 'SEMANTIC_RULE' -and $_.RuleId -eq 'ziggy-last-play-navigation-sentinel-v3'
 })
 if($legacyTransforms.Count -ne 1) { throw 'Ziggy v1 source did not generate exactly one v2 migration.' }
 $legacyZip = [System.IO.Compression.ZipFile]::OpenRead([string]$legacyRun.pass.ZipPath)
@@ -1019,7 +1031,7 @@ try {
     finally { $legacyReader.Dispose() }
 }
 finally { $legacyZip.Dispose() }
-if($upgradedZiggy -notmatch 'G-CET semantic:ziggy-last-play-navigation-sentinel-v2' -or
+if($upgradedZiggy -notmatch 'G-CET semantic:ziggy-last-play-navigation-sentinel-v3' -or
    $upgradedZiggy -notmatch 'N\.missingScanAge >= 12' -or
    $upgradedZiggy -notmatch 'function N\.reset\(\).*N\.scanKey=nil' -or
    $upgradedZiggy -notmatch 'GetQuestMappinPosition\(hash\)' -or
@@ -1029,17 +1041,28 @@ if($upgradedZiggy -notmatch 'G-CET semantic:ziggy-last-play-navigation-sentinel-
 }
 
 $upgradedZiggy | Set-Content -LiteralPath $ziggyLive -Encoding utf8
-$repeat = (& $resolverExe --capture $capture --mods $mods --generate-pass --json | ConvertFrom-Json)
-if(!$repeat.ok -or !$repeat.pass) { throw 'Ziggy v2 idempotence pass failed.' }
+# Both files are part of one semantic rule. Installing only navigation.lua
+# would be a partial pass that the Resolver correctly rejects.
+$ziggyInitLive = Join-Path $mods 'ziggy_last_play\init.lua'
+$upgradeZip=[System.IO.Compression.ZipFile]::OpenRead([string]$legacyRun.pass.ZipPath)
+try {
+    $initEntry=$upgradeZip.GetEntry('bin/x64/plugins/cyber_engine_tweaks/mods/ziggy_last_play/init.lua')
+    if(!$initEntry){throw 'Ziggy v3 upgrade missing controller file'}
+    $initReader=[System.IO.StreamReader]::new($initEntry.Open())
+    try {$upgradedInit=$initReader.ReadToEnd()} finally {$initReader.Dispose()}
+} finally {$upgradeZip.Dispose()}
+$upgradedInit | Set-Content -LiteralPath $ziggyInitLive -Encoding utf8
+# Analyze an already-optimized stack; no new pass ZIP should be generated.
+$repeat = (& $resolverExe --capture $capture --mods $mods --json | ConvertFrom-Json)
+if(!$repeat.ok) { throw 'Ziggy v3 post-pass analysis failed.' }
 $repeatResolver = Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
 $repeatZiggy=@($repeatResolver.callbackFamilies | ForEach-Object {$_.topConsumers} |
-    Where-Object { $_.owner -eq 'ziggy_last_play' -and $_.semantic.RuleId -eq 'ziggy-last-play-navigation-sentinel-v2' })
+    Where-Object { $_.owner -eq 'ziggy_last_play' -and $_.semantic.RuleId -eq 'ziggy-last-play-navigation-sentinel-v3' })
 if($repeatZiggy.Count -lt 1 -or !@($repeatZiggy | Where-Object {$_.semantic.AlreadySatisfied}).Count) {
     throw 'Ziggy transformed v2 source is not recognized as already satisfied.'
 }
-$repeatManifest=Get-Content -LiteralPath $repeat.pass.ManifestPath -Raw | ConvertFrom-Json
-if(@($repeatManifest.transforms | Where-Object {$_.RuleId -eq 'ziggy-last-play-navigation-sentinel-v2'}).Count -ne 0) {
-    throw 'Ziggy v2 semantic reapplied to an already transformed source.'
+if(@($repeatZiggy | Where-Object {$_.semantic.MarkerFileCount -eq 2}).Count -lt 1) {
+    throw 'Ziggy v3 did not recognize both optimized files as already satisfied.'
 }
 
 Write-Host 'Residual sixth-stack semantic composition contract passed: existing residual rules + tunnel v2 diagnostic sentinel + Ziggy bounded diagnostic v2 with v1 upgrade/idempotence.'
