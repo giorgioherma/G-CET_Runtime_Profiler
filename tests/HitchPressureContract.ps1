@@ -459,4 +459,54 @@ if ($reviewHtml -notmatch 'Callback spikes near collector-heavy frame buckets' -
     throw 'GC coincidence safety explanation missing from human report.'
 }
 
+
+# Additive 0-Engine allocation-route breakdown. A registration's measured
+# allocations are NOT proof that the framework itself created those objects.
+# Crucially, read/change equality was not sampled by pinned native 2.15.
+$engineFlowCapture = Join-Path $root 'zero-engine-allocation-flow'
+Copy-Item -LiteralPath $capture -Destination $engineFlowCapture -Recurse -Force
+foreach ($name in @('CET_Runtime_Profile_Detail.csv',
+                    'CET_Runtime_Profile_GGC_Registrations.csv')) {
+    $file = Join-Path $engineFlowCapture $name
+    (Get-Content -LiteralPath $file -Raw).Replace('OwnerB','0-Engine') |
+        Set-Content -LiteralPath $file -Encoding utf8
+}
+$flowResult = (& $profilerExe --report --capture $engineFlowCapture --json |
+    ConvertFrom-Json)
+if (!$flowResult.ok) { throw '0-Engine source-flow fixture report generation failed.' }
+$flowSummary = Get-Content -LiteralPath (Join-Path $engineFlowCapture 'CET_Summary.json') -Raw |
+    ConvertFrom-Json
+$flowResolver = Get-Content -LiteralPath (Join-Path $engineFlowCapture 'CET_Resolver_Input.json') -Raw |
+    ConvertFrom-Json
+$flows = $flowSummary.zeroEngineAllocationFlow
+$row = @($flows.streams | Where-Object { $_.registrationId -eq 2 })[0]
+if ($null -eq $flows -or !$flows.additiveEvidenceOnly -or
+    !$flows.timingMetricsUnchanged -or
+    $flows.valueChangeStatus -ne 'NOT_MEASURED_BY_NATIVE_2_15' -or
+    $null -ne $flows.valueChangeRate -or
+    $flows.readValueEqualityObserved -or
+    !$flows.executionRegistrationIsNotAllocationSourceProof -or
+    $null -eq $row -or
+    $row.Calls -ne 100 -or
+    [math]::Abs([double]$row.AllocationOperationsPerCall - 8) -gt 0.01 -or
+    [math]::Abs([double]$row.AllocatedMiB - 160) -gt 0.01 -or
+    $row.changeStatus -ne 'NOT_OBSERVED' -or
+    $null -ne $row.valueChangeRate -or
+    @($flows.functionSamples).Count -eq 0) {
+    throw '0-Engine positive-allocation, frequency or unknown-change contract failed.'
+}
+if ([math]::Abs([double]$flowSummary.capture.exclusiveMsPerSecond - 2) -gt 0.01 -or
+    [math]::Abs([double]$flowSummary.collectorGc.totalMeasuredMs - 4.8) -gt 0.01 -or
+    $null -eq $flowResolver.zeroEngineAllocationFlow -or
+    $flowResolver.zeroEngineAllocationFlow.valueChangeStatus -ne 'NOT_MEASURED_BY_NATIVE_2_15') {
+    throw 'New allocation evidence damaged old CPU/GC measurements or Resolver vocabulary.'
+}
+$flowHtml = Get-Content -LiteralPath (Join-Path $engineFlowCapture 'CET_Report.html') -Raw
+if (!$flowHtml.Contains('0-Engine: data production and frequency') -or
+    !$flowHtml.Contains('Return value change rate') -or
+    !$flowHtml.Contains('Not measured')) {
+    throw 'Additive 0-Engine source-flow HTML report missing or claiming measured changes.'
+}
+Write-Host '0-Engine additional allocation streams and truthful unknown-value-stability contract passed.'
+
 Write-Host 'Hitch-pressure frametime tolerance + episode attribution contract passed.'

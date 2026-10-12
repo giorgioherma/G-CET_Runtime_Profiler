@@ -1,5 +1,13 @@
 # Active project state — 2026-10-12
 
+## 0-Engine allocation production view / unchanged-value coverage (2026-10-13)
+
+- User explicitly prioritizes allocations/MB and creation frequency over ms savings; **retain every CPU/GC timing metric**, and leave GigCore/ImmersiveFirstPerson code alone.
+- Added managed-only additive 0-Engine registration allocation-flow view from existing G-GC CSV: MiB, MiB/s, operations/s, ops/call, bytes/call, calls/s, sampled native/Lua function execution source. HTML + summary JSON + Resolver input. No native or 0-Engine Lua runtime change.
+- Frequent-read/rare-change identification requires observing values. Native 2.15 captures allocation rate and function samples but no return-value change counts. Mark as NOT_MEASURED/null, do not infer stable reads or callsite provenance from native sampled function names.
+- Next: design opt-in in-situ primitive-read-change telemetry without calling getters again, preserving all original read rates, inputs, event order, session invalidation. Observe before optimization; don't alter GC policy.
+
+
 ## 2026-10-13 GC-aware report attribution (follow-up to 470.629s capture)
 
 - From exact CET-20261013-000328 capture: **126.878541 ms/s** raw CET callback wall time (includes GC if nested); **12,568.538ms** internally measured collector time / 470.629s = **26.71 ms/s** NON-ADDITIVE. Do not subtract it to report "real CET" because collector may run outside callback; do not treat raw callbacks as strictly Lua source CPU.

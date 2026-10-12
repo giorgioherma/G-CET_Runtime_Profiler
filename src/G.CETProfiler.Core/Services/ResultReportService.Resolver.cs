@@ -379,6 +379,7 @@ public static partial class ResultReportService
                     })
             },
             gcTracer = a.GcTracer is null ? null : BuildGcTracerInterop(a.GcTracer),
+            zeroEngineAllocationFlow = BuildZeroEngineFlowInterop(a),
             garbageCollection = a.ExplicitGc is null && a.CollectorGc is null ? null : new
             {
                 attributionPolicy = "MEASUREMENT_ONLY_NO_AUTOMATIC_OPTIMIZATION",

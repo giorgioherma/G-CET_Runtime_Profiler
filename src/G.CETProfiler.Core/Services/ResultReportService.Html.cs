@@ -97,6 +97,9 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
         if (a.GcTracer is not null)
             AppendGcTracer(sb, a.GcTracer);
 
+        if (a.GcTracer is not null)
+            AppendZeroEngineFlow(sb, a);
+
         if (a.WorkloadServices is not null)
             AppendWorkloadTelemetry(sb, a.WorkloadServices);
 

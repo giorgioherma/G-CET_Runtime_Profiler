@@ -1,5 +1,15 @@
 # GC research — the remaining major opportunity
 
+## 2026-10-13 add-only 0-Engine allocation frequency and value-stability coverage
+
+- User scope: leave GigCore / ImmersiveFirstPerson untouched; retain **all existing milliseconds, spikes and GC timing metrics**. Focus on 0-Engine-generated/routed data: **MiB**, MiB/s, allocator ops/s, per-callback frequency, ops/call, bytes/call; do not change scheduler/input frequency or GC policy.
+- Current 470.629s capture: 0-Engine registered `onUpdate` #5 **206,480,929 B = 196.92 MiB**, **1,501,074 allocator ops**, **24,067 calls (~51.138/s)**; `OnAction` #1107 **66,717,291 B = 63.626 MiB**, **796,215 allocator ops**, **601,860 calls (~1278.84/s)**. Routed callback allocation does not prove framework-owned allocation: nested client work must be separated by source before any optimization.
+- Added managed-only `ResultReportService.AllocationStreams.cs`: reads existing native 2.15 CSV records, preserves CPU/GC output; HTML table of the measured 0-Engine registration routes and their allocation rates/per-call counts; bounded sampled function table exposing Lua/native execution source and allocation samples; same `zeroEngineAllocationFlow` analysis block added to **both** `CET_Summary.json` and `CET_Resolver_Input.json` (review evidence only, not source proof or rewrite authority).
+- The user's key extra question is **where reads are frequent but returned data changes rarely**. Current 2.15 capture DOES NOT record return-value equality or change events for sampled native functions. The new block truthfully reports `valueChangeStatus=NOT_MEASURED_BY_NATIVE_2_15` and `valueChangeRate=null` everywhere: fast access + allocation cannot establish stability.
+- Next instrument specifically *proven scalar reads* at existing call sites (no new native getter calls) with a bounded, opt-in read count / changed-value count and source/caller identity; avoid mutable native handles or retaining game objects. Validate per-phase (menu/scene/quest) and reset on session changes. No broad interception, GC tuning, or unwarranted cached game-state assumptions.
+- Historical G-GC 2.15 function sampler is bounded and often reports native `=[C]` execution without the Lua callsite: `__index`, `jobEnd`, `GetQuestsSystem` are investigative leads, not proven repetitive unchanged values. Source hotspots should be inspected under the relevant routed callback before modifying behavior.
+
+
 ## Mission
 
 **Stop unnecessary data from being generated and fed into LuaJIT garbage collection.** This improves upstream Lua mod work and may also lower downstream collector pressure. The user's remaining major concern is that, despite successful callback consolidation, we have not sufficiently questioned whether the highest-volume **data producers are needed at all**.
