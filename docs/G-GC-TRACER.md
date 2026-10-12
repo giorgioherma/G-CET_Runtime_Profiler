@@ -59,3 +59,19 @@ knowing the reference responsible for retaining the object.
 
 Capture-only overhead still exists. Evaluate relative trends and keep
 untraced gameplay as the frametime control before patching source.
+
+## October 12 accuracy and allocation optimization update
+
+The managed G-GC evidence reports native/Lua sampled callsite categories separately:
+linked single caller, ambiguous multiple callers, not observed, legacy schema not
+recorded, and malformed or unsupported observations. A row reporting a single
+caller without a valid Lua file and positive line is **not** a resolved link.
+These are sampled function/call relationships, not allocations pinned to a Lua
+instruction. The same contract reaches the summary and Resolver handoff.
+
+The Resolver includes one new source-proven AutoLoot world-map allocation
+optimization. It eliminates the temporary candidate table but does not cache
+native mappin queries, modify callback cadence or infer a source edit solely
+from allocation counts. This optimization remains pending matched before/after
+gameplay capture validation. Unattributed bytes and raw global finalizer calls
+remain separately reported, not reassigned or treated as validated costs.

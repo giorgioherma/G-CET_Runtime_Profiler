@@ -139,7 +139,8 @@ $cap | ConvertTo-Json -Depth 8 -Compress | Set-Content -LiteralPath (Join-Path $
 '2,1,refresh,mods/OwnerB/init.lua,40,55,5,8000,320,refresh-v1,,,NOT_OBSERVED,LUA_OR_OTHER,sampled-not-global',
 '1,1,tick,mods/OwnerA/init.lua,20,26,4,2000,200,tick-v1,,,NOT_OBSERVED,LUA_OR_OTHER,sampled-not-global',
 '2,1,GetGameInstance,=[C],-1,-1,3,700,120,c-native-v1,mods/OwnerB/init.lua,48,SINGLE_OBSERVED_LUA_CALLSITE,NATIVE_C,sampled-not-owner',
-'2,1,tableInsert,=[C],-1,-1,1,100,30,c-native-multi-v1,,,MULTIPLE_CALLSITES,NATIVE_C,sampled-not-owner'
+'2,1,tableInsert,=[C],-1,-1,1,100,30,c-native-multi-v1,,,MULTIPLE_CALLSITES,NATIVE_C,sampled-not-owner',
+'2,1,NativeIncomplete,=[C],-1,-1,1,60,20,c-native-incomplete-v1,,,SINGLE_OBSERVED_LUA_CALLSITE,NATIVE_C,sampled-not-owner'
 ) | Set-Content -LiteralPath (Join-Path $capture 'CET_Runtime_Profile_GGC_Functions.csv') -Encoding utf8
 @(
 'RegistrationId,Mod,Kind,Target,AllocatedBytes,AllocationOperations,NewGCObjects,NewStrings,SampledObjects,SampleCollisions,SampledReclaimedObjects,SampledReclaimedBytes,SampledLifetimeTicks,SampledFinalizers,FocusedAtDump',
@@ -183,18 +184,20 @@ if ($ggc.contractVersion -ne '1.0' -or
     $ggc.evidenceVocabulary -ne 'MEGAMIND_CET_MULTISIGNAL_V1' -or
     [int]$ggc.coverage.registrationRows -ne 2 -or
     [int]$ggc.coverage.nativeOperationsWithSingleObservedLuaCallsite -ne 120 -or
-    [int]$ggc.coverage.functionSampleOperations -ne 670 -or
+    [int]$ggc.coverage.functionSampleOperations -ne 690 -or
     [int]$ggc.coverage.callsiteResolutionRows.singleObserved -ne 1 -or
     [int]$ggc.coverage.callsiteResolutionRows.notObserved -ne 2 -or
     [int]$ggc.coverage.callsiteResolutionRows.ambiguous -ne 1 -or
+    [int]$ggc.coverage.callsiteResolutionRows.other -ne 1 -or
     [int]$ggc.coverage.callsiteResolutionRows.legacyNotRecorded -ne 0 -or
     [int]$ggc.coverage.nativeCallsiteSampleOperations.singleObserved -ne 120 -or
     [int]$ggc.coverage.nativeCallsiteSampleOperations.notObserved -ne 0 -or
     [int]$ggc.coverage.nativeCallsiteSampleOperations.ambiguous -ne 30 -or
+    [int]$ggc.coverage.nativeCallsiteSampleOperations.other -ne 20 -or
     $ggc.finalizerValidation.status -ne 'UNVALIDATED_DO_NOT_USE_FOR_AUTOMATIC_DECISIONS' -or
     [int]$ggc.finalizerValidation.rawGlobalCalls -ne 30 -or
     [int]$ggc.registrations[0].RegistrationId -ne 1 -or
-    @($ggc.functionCandidates).Count -ne 4) {
+    @($ggc.functionCandidates).Count -ne 5) {
     throw 'MEGAMIND interop schema and accuracy metadata contract failed.'
 }
 $cFrame = @($ggc.functionCandidates | Where-Object { $_.ExecutionKind -eq 'NATIVE_C' }) | Select-Object -First 1

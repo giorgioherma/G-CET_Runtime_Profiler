@@ -40,6 +40,43 @@ Present one decision combining CPU work, burst risk, unnecessary polling, alloca
 
 Exit: pass legacy and new-capture regression matrix across diverse real stacks, including a manual 0-Engine configuration.
 
+## October 12: measured GC follow-through (package 1.2.2)
+
+The first full experimental native 2.16 capture ran for about 443 seconds. It measured
+roughly 1,457.8 MiB of positive allocator growth, 12.18 million positive allocation
+requests and 2.21 million GC object births. About 559.65 MiB (38.39%) was
+unattributed. The collector's 7.99-million raw global finalizer calls remain
+unvalidated and are not eligible as an optimization input. Native 2.16's isolated
+successful runtime test does not replace the pinned stable 2.15 product DLL.
+
+Managed report improvements were implemented in CI #939–#942: typed compact timeline
+storage, isolation of post-capture report generation from the GUI's long-lived
+working set, live-process working-set sampling, and a 200,000-row stress fixture.
+These CI contracts are not a measurement of post-collection idle memory on the
+user's 443-second capture. A fresh actual capture is still needed.
+
+For expanded callsite evidence the common G-GC handoff now distinguishes
+SINGLE_OBSERVED_LUA_CALLSITE, MULTIPLE_CALLSITES, NOT_OBSERVED,
+NOT_RECORDED_LEGACY and other malformed/unsupported states. The native/C sampled
+operation buckets are distinct from full attribution. A single caller is linked
+only when its observed Lua file is present and its line is positive. Even valid
+links do not prove the exact allocation instruction.
+
+The first additional GC-motivated **real Resolver optimization pass** is
+`autoloot-world-pin-allocation-scan`. Exact current-source proof on
+`AutoLoot/modules/logic.lua` permits replacing the per-call
+`closeMappins` candidate table with scalar first/nearest tracking.
+The author mappin query, filter order, single-candidate behavior, tie policy,
+range check, distance outputs and existing update cadence are retained. This
+is a separate onUpdate optimization; it does not replace the existing
+AutoLoot onAction action-routing semantic pass. The callback had about
+1.054 ms/s measured exclusive CPU workload and an isolated approximately
+184 ms spike. A **rule-local 0.5 ms/s floor** is justified only by the
+mechanical allocation removal and current-source proof; GC metrics never
+grant admission by themselves. The generated pass is idempotent and tested
+against a synthetic source-shaped fixture. A new, matched in-game capture
+must confirm the net performance benefit and gameplay behavior.
+
 ## Existing mod treatment
 
 0-Engine: manual framework-only updates. ziggy_last_play and JoytoysOfNightCity: honor gameplay transitions and existing optimizations. GigCore and Specter: analyze dependency pair, not isolated owners. AutoLoot: investigate repeated scans/query construction and potentially better cadence, using source proof first. Wrongen: recognize existing optimizations before additional changes. No blanket GC pass should overwrite these cases.

@@ -107,10 +107,13 @@ public static partial class ResultReportService
         var cOps = gc.Functions
             .Where(x => x.ExecutionKind == "NATIVE_C")
             .Sum(x => x.SampledExclusiveAllocationOperations);
+        static bool ProvenObservedCaller(GcTracerFunction x) =>
+            x.CallsiteResolution == "SINGLE_OBSERVED_LUA_CALLSITE" &&
+            !string.IsNullOrWhiteSpace(x.LuaCallerFile) &&
+            x.LuaCallerLine > 0;
         var callerLinkedOps = gc.Functions
             .Where(x => x.ExecutionKind == "NATIVE_C" &&
-                        x.CallsiteResolution == "SINGLE_OBSERVED_LUA_CALLSITE" &&
-                        !string.IsNullOrWhiteSpace(x.LuaCallerFile))
+                        ProvenObservedCaller(x))
             .Sum(x => x.SampledExclusiveAllocationOperations);
 
         // Callsite resolution is a property of sampled function observations,
@@ -154,13 +157,12 @@ public static partial class ResultReportService
                 nativeOperationsWithSingleObservedLuaCallsite = callerLinkedOps,
                 callsiteResolutionRows = new
                 {
-                    singleObserved = gc.Functions.Count(x =>
-                        x.CallsiteResolution == "SINGLE_OBSERVED_LUA_CALLSITE"),
+                    singleObserved = gc.Functions.Count(ProvenObservedCaller),
                     ambiguous = gc.Functions.Count(Ambiguous),
                     notObserved = gc.Functions.Count(NotObserved),
                     legacyNotRecorded = gc.Functions.Count(Legacy),
                     other = gc.Functions.Count(x =>
-                        x.CallsiteResolution != "SINGLE_OBSERVED_LUA_CALLSITE" &&
+                        !ProvenObservedCaller(x) &&
                         !Ambiguous(x) && !NotObserved(x) && !Legacy(x))
                 },
                 nativeCallsiteSampleOperations = new
@@ -173,7 +175,7 @@ public static partial class ResultReportService
                     legacyNotRecorded = nativeFunctions.Where(Legacy)
                         .Sum(x => x.SampledExclusiveAllocationOperations),
                     other = nativeFunctions.Where(x =>
-                            x.CallsiteResolution != "SINGLE_OBSERVED_LUA_CALLSITE" &&
+                            !ProvenObservedCaller(x) &&
                             !Ambiguous(x) && !NotObserved(x) && !Legacy(x))
                         .Sum(x => x.SampledExclusiveAllocationOperations)
                 },
