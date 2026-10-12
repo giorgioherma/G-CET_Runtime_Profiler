@@ -60,7 +60,7 @@ internal static class PokerPass4Source
         // Only transform the terminal world-update function, not the numerous
         // other table gameplay helpers in the author source.
         var start=Regex.Match(text,
-            @"(?m)^[ \t]*function\s+StreetTables\s*\.\s*update\s*\(\s*dt\s*\)\s*$",
+            @"(?m)^[ \t]*function\s+StreetTables\s*\.\s*update\s*\(\s*(?<delta>[A-Za-z_]\w*)\s*\)\s*$",
             RegexOptions.CultureInvariant);
         if (!start.Success || start.NextMatch().Success)
             throw new InvalidOperationException("Poker world update signature changed or is ambiguous.");
@@ -80,8 +80,8 @@ internal static class PokerPass4Source
                 "Poker distance scalar has new consumers; squared-distance rewrite not proven.");
 
         body=ReplaceUnique(body,
-            @"(?m)^[ \t]*function\s+StreetTables\s*\.\s*update\s*\(\s*dt\s*\)",
-            _=>"function StreetTables.update(dt, wakeRadius)",
+            @"(?m)^[ \t]*function\s+StreetTables\s*\.\s*update\s*\(\s*(?<delta>[A-Za-z_]\w*)\s*\)",
+            m=>"function StreetTables.update("+m.Groups["delta"].Value+", wakeRadius)",
             "world update signature");
 
         body=ReplaceUnique(body,
