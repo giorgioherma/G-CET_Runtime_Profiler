@@ -98,7 +98,7 @@ if ([int]$library.policy.enabledInjectorCount -ne $entries.Count) {
 $source = Get-Content -LiteralPath $injectorPath -Raw
 $matches = [regex]::Matches(
     $source,
-    '"(?<id>[^"]+)"\s*=>\s*Apply[A-Za-z0-9_]+\s*\(context\)')
+    '"(?<id>[^"]+)"\s*=>\s*(?:Apply[A-Za-z0-9_]+\s*\(context\)|[A-Za-z0-9_]+Source\.Apply\s*\(context\))')
 $injectorIds = @($matches | ForEach-Object { $_.Groups['id'].Value })
 if (@($injectorIds | Sort-Object -Unique).Count -ne $injectorIds.Count) {
     throw 'Semantic injector switch contains duplicate rule IDs.'
