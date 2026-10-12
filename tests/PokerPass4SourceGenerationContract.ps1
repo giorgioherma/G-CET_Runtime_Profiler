@@ -187,12 +187,13 @@ if(!$semantic.Count){throw 'Resolver did not recognize both optimized files as a
 # Version-variation regression: cosmetic source changes and a different dt
 # parameter name must remain eligible. The Resolver must still alter both files
 # from pristine author source, with the author fallback preserved.
-$variantInit=$authorInit.Replace('function(dt)', 'function(deltaTime)').
-    Replace('Cron.Update(dt)', 'Cron.Update(deltaTime)').
-    Replace('SeatController.update(dt)', 'SeatController.update(deltaTime)').
-    Replace('StreetTables.update(dt)', 'StreetTables.update(deltaTime)').
-    Replace('CardRenderer.update(dt)', 'CardRenderer.update(deltaTime)').
-    Replace('TableTalk.update(dt)', 'TableTalk.update(deltaTime)')
+$variantInit=$authorInit
+$variantInit=$variantInit.Replace('function(dt)', 'function(deltaTime)')
+$variantInit=$variantInit.Replace('Cron.Update(dt)', 'Cron.Update(deltaTime)')
+$variantInit=$variantInit.Replace('SeatController.update(dt)', 'SeatController.update(deltaTime)')
+$variantInit=$variantInit.Replace('StreetTables.update(dt)', 'StreetTables.update(deltaTime)')
+$variantInit=$variantInit.Replace('CardRenderer.update(dt)', 'CardRenderer.update(deltaTime)')
+$variantInit=$variantInit.Replace('TableTalk.update(dt)', 'TableTalk.update(deltaTime)')
 $variantTables=$authorTables.Replace(
     'function StreetTables.update(dt)',
     'function StreetTables.update(deltaTime)').Replace(
