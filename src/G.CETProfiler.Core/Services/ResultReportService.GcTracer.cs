@@ -118,6 +118,7 @@ public static partial class ResultReportService
         // Native 2.15 has no Lua caller columns: distinguish its missing
         // instrumentation from instrumented 2.16 rows with no observed caller.
         static bool Ambiguous(GcTracerFunction x) =>
+            x.CallsiteResolution == "MULTIPLE_CALLSITES" ||
             x.CallsiteResolution.StartsWith("AMBIGUOUS", StringComparison.Ordinal);
         static bool Legacy(GcTracerFunction x) =>
             x.CallsiteResolution == "NOT_RECORDED_LEGACY";
