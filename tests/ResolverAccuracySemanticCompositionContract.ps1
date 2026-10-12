@@ -870,8 +870,7 @@ $handoff=@{schemaVersion='1.9';callbacks=@(
  (Row 8 'ImmersiveFirstPerson' 'event' 'onUpdate' 'init.lua' (Find-CallbackRange $ifp 'registerForEvent\("onUpdate"') 11.24 60),
  (Row 9 'nativeInteractions' 'event' 'onUpdate' 'init.lua' (Find-CallbackRange $nif 'registerForEvent\("onUpdate"') 16.54 60),
  (Row 10 'Minimap Widgets' 'event' 'onUpdate' 'init.lua' (Find-CallbackRange $minimap 'registerForEvent\("onUpdate"') 8.23 60),
- # AutoLoot input and frame routing is now tested as part of its onUpdate-admitted
- # two-file v3 source-generated contract, not as an independent OnAction callback.
+ (Row 11 'AutoLoot' 'Observe' 'PlayerPuppet::OnAction' 'init.lua' (Find-CallbackRange $autoloot "Observe\('PlayerPuppet'") 4.10 600),
 
  (Row 12 'BetterLootMarkers' 'event' 'onUpdate' 'init.lua' (Find-CallbackRange $blm 'registerForEvent\("onUpdate"') 3.20 60)
 );optimizerEvidence=@()}|ConvertTo-Json -Depth 30
@@ -880,7 +879,7 @@ $handoff|Set-Content (Join-Path $capture 'CET_Resolver_Input.json') -Encoding ut
 $resolved=(& $resolverExe --capture $capture --mods $mods --generate-pass --json|ConvertFrom-Json)
 if(!$resolved.ok -or $null-eq$resolved.pass){throw 'Resolver-accuracy semantic pass generation failed.'}
 $resolver=Get-Content (Join-Path $capture 'G-CET_Resolver.json') -Raw|ConvertFrom-Json
-$rules=@('drivebus','quest-tracking-toggle','sitanywhere','repeatable-increased-criminal-activity','dedka-auto-shop','marmurbank','immersive-third-person','immersivefirstperson','nativeinteractions','minimap-widgets','better-loot-markers')
+$rules=@('drivebus','quest-tracking-toggle','sitanywhere','repeatable-increased-criminal-activity','dedka-auto-shop','marmurbank','immersive-third-person','immersivefirstperson','nativeinteractions','minimap-widgets','autoloot','better-loot-markers')
 foreach($rule in $rules){
  $m=@();foreach($family in @($resolver.callbackFamilies)){$m+=@($family.topConsumers|Where-Object{$_.semantic.RuleId-eq$rule})}
  if($m.Count-lt1 -or @($m|Where-Object{$_.semantic.SourceProofSatisfied}).Count-lt1){
@@ -908,7 +907,7 @@ try{
  $x=Z($b+'DriveBus/Modules/core.lua');foreach($t in @('gcetDriveBusOnAction','SubscribeAction','QuickExit','ChoiceScrollDown')){if($x-notmatch[regex]::Escape($t)){throw "DriveBus missing $t"}}
  $x=Z($b+'DriveBus/External/Cron.lua');if($x-notmatch'function Cron\.HasActiveTimers\(\)'){throw 'DriveBus active-timer probe missing.'}
  $x=Z($b+'DriveBus/init.lua');if($x-notmatch'if Cron\.HasActiveTimers\(\) then Cron\.Update\(delta\) end'){throw 'DriveBus idle Cron gate missing.'}
- # AutoLoot v3 input/frame/logic output is validated by AutoLootGcSemanticContract.ps1
+ $x=Z($b+'AutoLoot/init.lua');foreach($t in @('gcetAutoLootOnAction','SubscribeAction','UI_DPadWeapons')){if($x-notmatch[regex]::Escape($t)){throw "AutoLoot missing $t"}}
  $x=Z($b+'BetterLootMarkers/init.lua');if($x-notmatch'if BetterLootMarkers\.Settings\.immersiveMode then' -or $x-notmatch'BetterLootMarkers\.ImmersiveMode\.Tick\(dt\)'){throw 'BetterLootMarkers off-state gate incomplete.'}
  $x=Z($b+'QuestTrackingToggle/init.lua');foreach($t in @('questTrackingOnAction','SubscribeAction','ToggleSprint','world_map_menu_track_waypoint')){if($x-notmatch[regex]::Escape($t)){throw "QTT missing $t"}}
  $x=Z($b+'sitAnywhere/init.lua');if($x-notmatch'Cron\.HasActiveTimers\(\)' -or $x-notmatch'world\.hasVisibleState\(\)' -or $x-notmatch'if interaction\.hubShown then interaction\.update\(\) end'){throw 'sitAnywhere hard dormancy incomplete.'}

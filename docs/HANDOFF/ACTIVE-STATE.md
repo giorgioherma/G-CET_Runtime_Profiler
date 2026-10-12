@@ -1,12 +1,21 @@
 # Active project state — 2026-10-12
 
+## AutoLoot Resolver baseline restored (2026-10-12)
+
+- Keep package **1.2.4**, native profiler **2.15.0**, and all non-AutoLoot rules unchanged.
+- Roll back bundled AutoLoot v2/v3: no combined onUpdate-triggered input/frame rewrite and **no pre-inventory early-radius guard**.
+- Restore the two independent pre-v2 AutoLoot rules from commit `18172cba122d6a682c0b4c228c32a6654e6e24fa`: `autoloot` (source-proven finite OnAction routing) and `autoloot-world-pin-allocation-scan` (allocation-only map pin candidate selection), with their own evidence and idempotence checks.
+- Next AutoLoot work targets **keybind-held lootInRange burst** only; preserve the clean 3.11.0 behavior for shards/read prompts, quest/ordinary pickups, instant marker updates, native visibility and existing cadence. Require isolated measured source modifications and matched gameplay checks before shipping each.
+- The recent PhysX crash was isolated by user to Let There Be Flight, removed in favor of DriveAerialVehicle; do not attribute it to AutoLoot.
+
+
 **Snapshot, not canonical code:** confirm branch HEAD, run results, most recent capture, and source before acting. This page intentionally separates source/CI proof from user in-game verification.
 
 ## Repository, package and release safety
 
 - Repository: [giorgioherma/G-CET_Runtime_Profiler](https://github.com/giorgioherma/G-CET_Runtime_Profiler).
 - Development branch: `dev/resolver-profiler-handoff`.
-- **Managed Profiler and Resolver package version: 1.2.3**, shared via `VERSION.txt`, `MANIFEST.json` and `Directory.Build.props`; launcher version resource aligned. Building on a dev branch does **not** mean immutable public v1.2.3 release has been published.
+- **Managed Profiler and Resolver package version: 1.2.4**, shared via `VERSION.txt`, `MANIFEST.json` and `Directory.Build.props`; launcher version resource aligned. Building on a dev branch does **not** mean immutable public v1.2.3 release has been published.
 - **Native payload remains 2.15.0**, SHA-256 `c62d57f50b1fd792ae989cb78fb54cee8d82b0370abdb51ea01617c2ddcfa23e`. CI guard explicitly covers package 1.2.3. Do not accidentally package unvalidated native 2.16.
 - Last source/semantic baseline immediately before the 1.2.3/documentation updates: **CI #969 GREEN**, HEAD `ae73f48d636bcab940255db4791add4a77414ecd`. Check the **latest** [Actions build](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/workflows/build.yml) before calling current HEAD green.
 - Canonical Windows build: `.github/workflows/build.yml`; standalone Resolver artifact plus portable Profiler package. Version numbers identify product, CI run numbers identify iterations. Don't bump version for each rule by default.
