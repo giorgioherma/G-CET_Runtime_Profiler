@@ -4416,11 +4416,11 @@
       ]
     },
     {
-      "id": "ziggy-last-play-navigation-sentinel-v2",
+      "id": "ziggy-last-play-navigation-sentinel-v3",
       "identityHints": [
         "ziggy_last_play"
       ],
-      "policyClass": "DIAGNOSTIC_MAPPIN_SENTINEL_CACHE",
+      "policyClass": "QUEST_PROXIMITY_PLUS_DIAGNOSTIC_MAPPIN_SENTINEL",
       "callbacks": [
         {
           "kind": "event",
@@ -4435,7 +4435,9 @@
           "GetQuestMappinPosition(hash)",
           "system:GetAllMappins()",
           "hooks:SyncJournalPins(path",
-          "navigation-status.json"
+          "navigation-status.json",
+          "local function update(dt)",
+          "C.giver.position"
         ],
         "ownerAnyGroups": [
           [
@@ -4444,16 +4446,18 @@
             "local N={age=0,retries=0,scanKey=nil,lastMappins={},missingScanAge=0}"
           ]
         ],
-        "alreadySatisfiedMarker": "G-CET semantic:ziggy-last-play-navigation-sentinel-v2",
-        "expectedMarkerFileCount": 1,
+        "alreadySatisfiedMarker": "G-CET semantic:ziggy-last-play-navigation-sentinel-v3",
+        "expectedMarkerFileCount": 2,
         "satisfiedAll": [
           "scanKey=nil,lastMappins={},missingScanAge=0",
           "if N.scanKey ~= scanKey or (not found and N.missingScanAge >= 12) then",
-          "N.missingScanAge=0"
+          "N.missingScanAge=0",
+          "__gcetZiggyOfferedFarAcc",
+          "__gcetZiggyOfferedFar"
         ]
       },
       "behavior": {
-        "handler": "SEMANTIC_DIAGNOSTIC_MAPPIN_SENTINEL_CACHE",
+        "handler": "SEMANTIC_QUEST_PROXIMITY_DIAGNOSTIC_SENTINEL",
         "concepts": [
           "authorTwoSecondCadencePreserved",
           "v1SourceUpgradeSupported",
@@ -4462,9 +4466,15 @@
           "boundedRecoveryPreserved",
           "plainLuaDiagnosticCache",
           "fullMappinEnumerationOnStateChangeOrBoundedMissingRetry",
-          "noNativeHandleCache"
+          "noNativeHandleCache",
+          "unacceptedFarProbe4Hz",
+          "nearMissionRealtime",
+          "acceptedQuestRealtime",
+          "dialogueRealtime",
+          "v2NavigationPreserved",
+          "v1V2SourceUpgradeSupported"
         ],
-        "note": "Keep targeted 2 s lookup, journal repair and bounded retry unchanged. Original and G-CET v1 navigation source upgrade to a 12 s unchanged-missing-pin diagnostic refresh with immediate scan on signature change. No native mappin caching."
+        "note": "Preserve existing v2 targeted 2-second journal/mappin probe and bounded missing-pin scan. In init.lua, while phase is offered, the session is stable, no dialogue and player more than 130 m from Milo, run the full controller at 4 Hz with elapsed dt catch-up. All active states and near/wake transitions remain full-frame; a failed probe falls back to full-frame. Original, v1 and already optimized v2 navigation source supported."
       },
       "generation": {
         "enabled": true,
@@ -4476,18 +4486,19 @@
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
-        "measuredPeakExclusiveMsPerSecond": 15.627934,
-        "measuredMaxExclusiveMs": 69.6589,
-        "evidenceStack": "BURST_RECOGNITION_20261010",
+        "measuredPeakExclusiveMsPerSecond": 15.49,
+        "measuredMaxExclusiveMs": 228.86,
+        "evidenceStack": "CET_20261012_FIRST_GC_EVIDENCE_BASED_OPTIMIZATION",
         "admitted": true
       },
-      "cadenceGroup": "AUTHOR_2S_TARGETED_SENTINEL_BOUNDED_MISSING_SCAN_12S",
+      "cadenceGroup": "OFFERED_FAR_4HZ_NEAR_ACTIVE_FRAME_NAV_2S",
       "catalogRole": "SEMANTIC_HOT_MOD",
       "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
       "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
       "referenceOverrideAllowed": false,
       "evidenceMembership": [
-        "BURST_RECOGNITION_20261010"
+        "BURST_RECOGNITION_20261010",
+        "CET_20261012_FIRST_GC_EVIDENCE_BASED_OPTIMIZATION"
       ]
     },
     {

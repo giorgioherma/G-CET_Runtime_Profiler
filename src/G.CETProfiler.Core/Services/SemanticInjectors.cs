@@ -53,7 +53,7 @@ internal static class SemanticInjectors
             "auto-drop-weapon-dynamic-routing" => ApplyAutoDropWeaponOnPickupEquip(context),
             "joytoys-of-night-city-bridge-active-split-idle-facts-v2" => ApplyJoytoysOfNightCity(context),
             "tunnel-rescue-v2" => ApplyTunnelRescue(context),
-            "ziggy-last-play-navigation-sentinel-v2" => ApplyZiggyLastPlayNavigation(context),
+            "ziggy-last-play-navigation-sentinel-v3" => ZiggyProximitySource.Apply(context),
             "aerial-race-active-idle-split" => ApplyAerialRaceActiveIdleSplit(context),
             "appearance-menu-mod-squeeze" => ApplyAppearanceMenuModSqueeze(context),
             "drone-companions-revamp" => ApplyDroneCompanionsRevamp(context),
@@ -2779,7 +2779,7 @@ ${close}" + "\n",
     }
 
 
-    private static SemanticInjectionResult ApplyZiggyLastPlayNavigation(
+    internal static SemanticInjectionResult ApplyZiggyLastPlayNavigation(
         SemanticPatchContext context)
     {
         var file = context.FindFile(
@@ -2792,6 +2792,16 @@ ${close}" + "\n",
             "navigation-status.json");
 
         var text = file.Text;
+
+        // An installed v2 navigation sentinel already contains every bounded
+        // mappin optimization. v3 retains it byte-for-byte and adds only the
+        // new quest-proximity lane in init.lua (same semantic, no competing rule).
+        if (text.Contains("local N={age=0,retries=0,scanKey=nil,lastMappins={},missingScanAge=0}", StringComparison.Ordinal))
+        {
+            context.Write(file, "-- G-CET Ziggy v2 navigation behavior preserved\n" + text);
+            return SemanticInjectionResult.Success(
+                "Retained the existing v2 two-second targeted navigation and bounded 12-second missing-pin scan.");
+        }
 
         var originalState = "local N={age=0,retries=0}\n";
         var v1State = "local N={age=0,retries=0,scanKey=nil,lastMappins={}}\n";
