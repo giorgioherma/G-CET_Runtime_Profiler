@@ -2453,14 +2453,13 @@ end)
         text = RegexReplaceOnce(
             text,
             @"(?m)^(?<opening>[ \t]*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*[""']onUpdate[""']\s*,\s*function\s*\(\s*dt\s*\)\s*)\r?\n(?<indent>[ \t]*)t\s*=\s*t\s*\+\s*\(dt\s+or\s+0\)\s*$",
-            "__OPENING__\n" +
-            "__INDENT__if __gcetAutoDropWildcardDirty and __gcetAutoDropRefreshWildcard then __gcetAutoDropRefreshWildcard() end\n" +
-            "__INDENT__if not pending and not captureArmed then return end\n" +
-            "__INDENT__t = t + (dt or 0)",
+            "${opening}\n" +
+            "${indent}if __gcetAutoDropWildcardDirty and __gcetAutoDropRefreshWildcard then __gcetAutoDropRefreshWildcard() end\n" +
+            "${indent}if not pending and not captureArmed then return end\n" +
+            "${indent}t = t + (dt or 0)",
             "AutoDrop pending/capture-only update gate");
 
-        text = text.Replace("__OPENING__", "$" + "{opening}", StringComparison.Ordinal)
-                   .Replace("__INDENT__", "$" + "{indent}", StringComparison.Ordinal);
+        // Named capture groups expand directly in the RegexReplaceOnce replacement.
 
         context.Write(file, text);
         return SemanticInjectionResult.Success(
