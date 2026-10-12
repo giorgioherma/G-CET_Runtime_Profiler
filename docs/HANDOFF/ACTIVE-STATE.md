@@ -1,5 +1,14 @@
 # Active project state — 2026-10-12
 
+## AutoLoot verified early-radius source composition (2026-10-12, after CI #997)
+
+- Starting point: `dev/resolver-profiler-handoff` CI **#997 GREEN**, commit `2e7c2a73ecdb2c08ca02e241ceee9e293279fe43`. Retain package 1.2.4 and native 2.15.0.
+- User supplied untouched AutoLoot 3.11.1 author archive, live `EXISTING OPTIMIZATIONS.zip` (`init.lua` input routing/frame registration; `modules/logic.lua` prior world-pin scalar selection), and gameplay-tested `AutoLoot_EARLY_DISTANCE_ONLY(1).zip` (only `modules/logic.lua`, early radius before both inventory queries).
+- The previous AutoLoot v2/v3 combined cadence/input changes were rolled back. **Do not restore them**. In-game report for isolated early-radius change: much smoother keypress collection, prior shard/quest interaction bugs absent, markers still occasionally stale but shorter with Better Loot Markers present. Frame spikes remain nonzero; not an assertion of full gameplay verification.
+- One `onUpdate` catalog rule must compose world-pin allocation elimination and early radius (Resolver disallows two separate matched semantic rules for the same owner/callback). Original author source gets both; pre-optimized world-pin-only source receives only the radius gate; radius-only source receives only world-pin selection. Preserve original native mappin queries, key cadence, item transfers, shard/quest protection, visibility, marker behavior and separate `OnAction` rule.
+- CI test must verify generated `logic.lua` ordering, original + incrementally optimized variants, source-only output and idempotence. Re-run original/full live source in-game before calling shipped gameplay fully validated.
+
+
 ## AutoLoot Resolver baseline restored (2026-10-12)
 
 - Keep package **1.2.4**, native profiler **2.15.0**, and all non-AutoLoot rules unchanged.

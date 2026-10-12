@@ -63,7 +63,7 @@ internal static class SemanticInjectors
             "advanced-settings" => ApplyAdvancedSettings(context),
             "auto-ammo-crafting" => ApplyAutoAmmoCrafting(context),
             "autoloot" => ApplyAutoLoot(context),
-            "autoloot-world-pin-allocation-scan" => ApplyAutoLootWorldPinAllocationScan(context),
+            "autoloot-world-pin-and-early-distance" => ApplyAutoLootWorldPinAndEarlyDistance(context),
             "better-loot-markers" => ApplyBetterLootMarkers(context),
             "drivebus" => ApplyDriveBus(context),
             "quest-tracking-toggle" => ApplyQuestTrackingToggle(context),
@@ -3670,6 +3670,74 @@ ${close}" + "\n",
             "Removed the fresh world-map pin candidate table and table.insert " +
             "calls; retained one live native query, filter order, single-candidate " +
             "behavior, first-nearest tie policy, and original update cadence.");
+    }
+
+
+    // Compose the proven allocation-only world-pin selection with the independently
+    // in-game-tested radius-first rejection. Never touch loot transfer/quest/UI paths.
+    // Input may be author 3.11.1, world-pin-only optimized, or radius-first-only.
+    private static SemanticInjectionResult ApplyAutoLootWorldPinAndEarlyDistance(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "modules/logic.lua",
+            "function logic.lootInRange(",
+            "function isWorldMapPinOfTypeInRange(",
+            "result, items = transactionSystem:GetItemList(gameObj)",
+            "takeIt = vectorDistanceSquared(playerPos, gameObjPos) <= rangeSquared",
+            "local function vectorDistanceSquared(src, target)");
+        var text = file.Text;
+        var worldOriginal = text.Contains(
+            "if takeIt then tableInsert(closeMappins, mappin) end",
+            StringComparison.Ordinal);
+        var worldOptimized = text.Contains(
+            "local firstMappin, nearestMappin", StringComparison.Ordinal) &&
+            text.Contains("if matchingMappins == 1 then return firstMappin end",
+                StringComparison.Ordinal) &&
+            !text.Contains("local closeMappins = {}", StringComparison.Ordinal);
+        if (!worldOriginal && !worldOptimized)
+            throw new InvalidOperationException(
+                "AutoLoot world-pin selection no longer matches either known safe shape.");
+
+        if (worldOriginal)
+        {
+            // Reuse the existing verified scalar-selection source injector.
+            // Its output marker uses this combined rule's own identity.
+            var world = ApplyAutoLootWorldPinAllocationScan(context);
+            if (!world.Applied)
+                throw new InvalidOperationException(
+                    "AutoLoot world-pin optimization was not generated.");
+            text = context.FindFile(
+                "modules/logic.lua",
+                "local firstMappin, nearestMappin",
+                "function logic.lootInRange(").Text;
+        }
+
+        var newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        string Native(string value) =>
+            value.Replace("\n", newline, StringComparison.Ordinal);
+
+        var oldGate = Native("\t\t\t\t\tif isNpcSafeToLoot(gameObj) then\n\t\t\t\t\t\tlocal hasItemsToLoot, objectHasLootItems, ownerHasLootItems = false, false, false\n\t\t\t\t\t\tresult, items = transactionSystem:GetItemList(gameObj)\n\t\t\t\t\t\tif result and #items > 0 then hasItemsToLoot = true objectHasLootItems = true end\n\t\t\t\t\t\tlocal gameObjOwner = nil\n\t\t\t\t\t\tresult = false\n\t\t\t\t\t\tpcall(function() gameObjOwner = gameObj:GetOwner() end)\n\t\t\t\t\t\tif gameObjOwner then result, items = transactionSystem:GetItemList(gameObjOwner) end\n\t\t\t\t\t\tif result and #items > 0 then hasItemsToLoot = true ownerHasLootItems = true end\n\t\t\t\t\t\tif hasItemsToLoot then\n\t\t\t\t\t\t\tlocal takeIt = true\n\t\t\t\t\t\t\tlocal gameObjPos\n\t\t\t\t\t\t\tif lootInRange then\n\t\t\t\t\t\t\t\tgameObjPos = gameObj:GetWorldPosition()\n\t\t\t\t\t\t\t\ttakeIt = vectorDistanceSquared(playerPos, gameObjPos) <= rangeSquared\n\t\t\t\t\t\t\tend\n\t\t\t\t\t\t\tif takeIt then\n");
+        var newGate = Native("\t\t\t\t\tif isNpcSafeToLoot(gameObj) then\n\t\t\t\t\t\tlocal takeIt = true\n\t\t\t\t\t\tlocal gameObjPos\n\t\t\t\t\t\tif lootInRange then\n\t\t\t\t\t\t\tgameObjPos = gameObj:GetWorldPosition()\n\t\t\t\t\t\t\ttakeIt = vectorDistanceSquared(playerPos, gameObjPos) <= rangeSquared\n\t\t\t\t\t\tend\n\t\t\t\t\t\tif takeIt then\n\t\t\t\t\t\t\tlocal hasItemsToLoot, objectHasLootItems, ownerHasLootItems = false, false, false\n\t\t\t\t\t\t\tresult, items = transactionSystem:GetItemList(gameObj)\n\t\t\t\t\t\t\tif result and #items > 0 then hasItemsToLoot = true objectHasLootItems = true end\n\t\t\t\t\t\t\tlocal gameObjOwner = nil\n\t\t\t\t\t\t\tresult = false\n\t\t\t\t\t\t\tpcall(function() gameObjOwner = gameObj:GetOwner() end)\n\t\t\t\t\t\t\tif gameObjOwner then result, items = transactionSystem:GetItemList(gameObjOwner) end\n\t\t\t\t\t\t\tif result and #items > 0 then hasItemsToLoot = true ownerHasLootItems = true end\n\t\t\t\t\t\t\tif hasItemsToLoot then\n");
+        var hasOldGate = text.Contains(oldGate, StringComparison.Ordinal);
+        var hasNewGate = text.Contains(newGate, StringComparison.Ordinal);
+        if (hasOldGate == hasNewGate)
+            throw new InvalidOperationException(
+                "AutoLoot radius-first ordering is missing or ambiguous; refusing to change inventories.");
+
+        if (hasOldGate)
+            text = ReplaceOnce(text, oldGate, newGate,
+                "AutoLoot radius rejection before both inventory queries");
+
+        // An entirely already-optimized but unmarked variant is not rewritten.
+        if (text == file.Text)
+            return SemanticInjectionResult.Skip(
+                "Both AutoLoot source postconditions are already satisfied.");
+
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Preserved original transfer, quest, shard, visibility and marker code; " +
+            "applied only missing world-pin scalar selection and early radius gate.");
     }
 
     private static SemanticInjectionResult ApplyAutoLoot(

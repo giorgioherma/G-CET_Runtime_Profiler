@@ -103,12 +103,49 @@ function isWorldMapPinOfTypeInRange(objectPos, range, typeFilterStr1, typeFilter
 	end
 end
 
+
+function logic.lootInRange(player, range, lootInRange)
+    local playerPos = player:GetWorldPosition()
+    local rangeSquared = range * range
+    if objectMappinsCount > 0 then
+        for ownerHashStr, mappin in pairs(objectMappins) do
+            if mappin and mappin.isNew then
+                gameObj = findEntityByIdOrHashStr(mappin.entId or ownerHashStr)
+                if isObjectOfInterest(gameObj) then
+					if isNpcSafeToLoot(gameObj) then
+						local hasItemsToLoot, objectHasLootItems, ownerHasLootItems = false, false, false
+						result, items = transactionSystem:GetItemList(gameObj)
+						if result and #items > 0 then hasItemsToLoot = true objectHasLootItems = true end
+						local gameObjOwner = nil
+						result = false
+						pcall(function() gameObjOwner = gameObj:GetOwner() end)
+						if gameObjOwner then result, items = transactionSystem:GetItemList(gameObjOwner) end
+						if result and #items > 0 then hasItemsToLoot = true ownerHasLootItems = true end
+						if hasItemsToLoot then
+							local takeIt = true
+							local gameObjPos
+							if lootInRange then
+								gameObjPos = gameObj:GetWorldPosition()
+								takeIt = vectorDistanceSquared(playerPos, gameObjPos) <= rangeSquared
+							end
+							if takeIt then
+                                if lootInView then takeIt = cameraSystem:IsInCameraFrustum(gameObj, 0.5, 0.2) end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
 function logic.couldStartNewLootingCycle(player) return true end
 function logic.tick(dt) end
 return logic
 '@ | Set-Content -LiteralPath (Join-Path $loot 'modules/logic.lua') -Encoding utf8
 
 $sourcePath = Join-Path $loot 'modules/logic.lua'
+$originalText = Get-Content -LiteralPath $sourcePath -Raw
 $originalHash = (Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash
 $handoff = @{
   schemaVersion = '2.0'
@@ -152,7 +189,7 @@ if (!$resolved.ok -or $null -eq $resolved.pass) { throw 'AutoLoot allocation sem
 $result = Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
 $hit = @($result.callbackFamilies | ForEach-Object { $_.topConsumers } |
     Where-Object { $_.owner -eq 'AutoLoot' -and $_.target -eq 'onUpdate' })[0]
-if ($null -eq $hit -or $hit.semantic.RuleId -ne 'autoloot-world-pin-allocation-scan' -or
+if ($null -eq $hit -or $hit.semantic.RuleId -ne 'autoloot-world-pin-and-early-distance' -or
     -not $hit.semantic.SourceProofSatisfied -or -not $hit.semantic.generationReady) {
     throw 'AutoLoot rule failed exact source-proof/admission.'
 }
@@ -165,7 +202,7 @@ if ($hit.runtime.megaMind.status -ne 'MATCHED_REGISTRATION' -or
 
 $manifest = Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
 $transform = @($manifest.transforms | Where-Object {
-    $_.type -eq 'SEMANTIC_RULE' -and $_.RuleId -eq 'autoloot-world-pin-allocation-scan'
+    $_.type -eq 'SEMANTIC_RULE' -and $_.RuleId -eq 'autoloot-world-pin-and-early-distance'
 }) | Select-Object -First 1
 if ($null -eq $transform -or @($transform.files).Count -ne 1) {
     throw 'Source-proven AutoLoot transform is missing or touched multiple files.'
@@ -176,14 +213,14 @@ try {
     $entry = @($zip.Entries | Where-Object {
         $_.FullName.Replace('\','/').EndsWith('AutoLoot/modules/logic.lua',
             [StringComparison]::OrdinalIgnoreCase) }) | Select-Object -First 1
-    if ($null -eq $entry) { throw 'AutoLoot world-pin source absent from generated pass.' }
+    if ($null -eq $entry) { throw 'AutoLoot composed logic source absent from generated pass.' }
     $reader = [IO.StreamReader]::new($entry.Open())
     try { $optimized = $reader.ReadToEnd() } finally { $reader.Dispose() }
 } finally { $zip.Dispose() }
 
 $world = $optimized.Substring($optimized.IndexOf('function isWorldMapPinOfTypeInRange('))
 $world = $world.Substring(0, $world.IndexOf('function logic.couldStartNewLootingCycle('))
-$expect = @('G-CET semantic:autoloot-world-pin-allocation-scan',
+$expect = @('G-CET semantic:autoloot-world-pin-and-early-distance',
             'if matchingMappins == 1 then return firstMappin end',
             'nearestIndex = matchingMappins',
             'lowestDistanceIndex = nearestIndex',
@@ -195,6 +232,15 @@ foreach ($fragment in $expect) {
 }
 if ($world.Contains('tableInsert(closeMappins') -or $world.Contains('local closeMappins = {}')) {
     throw 'AutoLoot world-pin temporary candidate-table allocation remains.'
+}
+if (-not $optimized.Contains('local firstMappin, nearestMappin') -or
+    $optimized.Contains('local closeMappins = {}')) {
+    throw 'AutoLoot world-pin allocation elimination is missing.'
+}
+$gateIndex = $optimized.IndexOf('takeIt = vectorDistanceSquared(playerPos, gameObjPos) <= rangeSquared')
+$inventoryIndex = $optimized.IndexOf('result, items = transactionSystem:GetItemList(gameObj)')
+if ($gateIndex -lt 0 -or $inventoryIndex -lt 0 -or $gateIndex -ge $inventoryIndex) {
+    throw 'AutoLoot radius gate must be before both GetItemList calls.'
 }
 if ((Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash -ne $originalHash) {
     throw 'Resolver modified the actual live mod instead of staging a pass.'
@@ -208,7 +254,7 @@ $repeat = (& $resolverExe --capture $capture --mods $mods --generate-pass --json
 if ($repeat.pass -and $repeat.pass.ManifestPath) {
     $repeatManifest = Get-Content -LiteralPath $repeat.pass.ManifestPath -Raw | ConvertFrom-Json
     $repeatedWorldPin = @($repeatManifest.transforms | Where-Object {
-        $_.type -eq 'SEMANTIC_RULE' -and $_.RuleId -eq 'autoloot-world-pin-allocation-scan'
+        $_.type -eq 'SEMANTIC_RULE' -and $_.RuleId -eq 'autoloot-world-pin-and-early-distance'
     })
     if ($repeatedWorldPin.Count -gt 0) {
         throw 'Already optimized AutoLoot world-pin semantic was emitted twice.'
@@ -220,4 +266,41 @@ $again = @($repeatResult.callbackFamilies | ForEach-Object { $_.topConsumers } |
 if ($null -eq $again -or $again.semantic.generationReady -or -not $again.semantic.AlreadySatisfied) {
     throw 'AutoLoot semantic pass is not idempotent.'
 }
-Write-Host 'AutoLoot allocation-eliminating source-proven, GC-admitted, idempotent semantic pass contract passed.'
+# Incremental source: prior world-pin optimization installed, early-radius gate absent.
+# The same combined semantic must add ONLY radius first, retaining scalar pins.
+$worldOriginalStart = $originalText.IndexOf('function isWorldMapPinOfTypeInRange(')
+$worldOriginalEnd = $originalText.IndexOf('function logic.lootInRange(')
+$worldOptimizedStart = $optimized.IndexOf('function isWorldMapPinOfTypeInRange(')
+$worldOptimizedEnd = $optimized.IndexOf('function logic.lootInRange(')
+if ($worldOriginalStart -lt 0 -or $worldOriginalEnd -lt 0 -or
+    $worldOptimizedStart -lt 0 -or $worldOptimizedEnd -lt 0) {
+    throw 'World-pin incremental source boundaries unavailable.'
+}
+$worldOriginal = $originalText.Substring($worldOriginalStart,$worldOriginalEnd-$worldOriginalStart)
+$worldOptimized = $optimized.Substring($worldOptimizedStart,$worldOptimizedEnd-$worldOptimizedStart)
+$legacy = "-- G-CET semantic:autoloot-world-pin-allocation-scan`n" +
+    $originalText.Replace($worldOriginal,$worldOptimized)
+$legacy | Set-Content -LiteralPath $sourcePath -Encoding utf8
+$incremental = (& $resolverExe --capture $capture --mods $mods --generate-pass --json | ConvertFrom-Json)
+if (!$incremental.pass) { throw 'AutoLoot world-pin-only incremental upgrade produced no pass.' }
+$incManifest = Get-Content -LiteralPath $incremental.pass.ManifestPath -Raw | ConvertFrom-Json
+$incRule = @($incManifest.transforms | Where-Object {
+    $_.type -eq 'SEMANTIC_RULE' -and $_.RuleId -eq 'autoloot-world-pin-and-early-distance'
+})
+if ($incRule.Count -ne 1) { throw 'AutoLoot incremental pass did not apply once.' }
+$incZip = [IO.Compression.ZipFile]::OpenRead([string]$incremental.pass.ZipPath)
+try {
+    $incEntry = @($incZip.Entries | Where-Object {
+        $_.FullName.Replace('\\','/').EndsWith('AutoLoot/modules/logic.lua',
+            [StringComparison]::OrdinalIgnoreCase) }) | Select-Object -First 1
+    if (!$incEntry) { throw 'AutoLoot incremental logic.lua missing.' }
+    $incReader = [IO.StreamReader]::new($incEntry.Open())
+    try { $incText = $incReader.ReadToEnd() } finally { $incReader.Dispose() }
+} finally { $incZip.Dispose() }
+if ($incText.Contains('local closeMappins = {}') -or
+    !$incText.Contains('local firstMappin, nearestMappin') -or
+    $incText.IndexOf('takeIt = vectorDistanceSquared(playerPos, gameObjPos) <= rangeSquared') -ge
+    $incText.IndexOf('result, items = transactionSystem:GetItemList(gameObj)')) {
+    throw 'AutoLoot incremental pass changed the wrong stage or lost scalar pins.'
+}
+Write-Host 'AutoLoot world-pin + early-radius original and incremental source contract passed.'
