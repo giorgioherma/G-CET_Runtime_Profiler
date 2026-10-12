@@ -922,6 +922,9 @@ try {
     }
 
     $tunnel=Read-ZipText ($base+'tunnel_rescue/init.lua')
+    if($tunnel.Contains('${opening}') -or $tunnel.Contains('${close}')) {
+        throw 'Tunnel semantic output retained unexpanded regex capture placeholders.'
+    }
     if($tunnel -notmatch 'G-CET semantic:tunnel-rescue-v2' -or
        $tunnel -notmatch '__gcetTunnelOutsideAcc' -or
        $tunnel -notmatch 'if __gcetTunnelOutsideAcc < \.15 then return end' -or
