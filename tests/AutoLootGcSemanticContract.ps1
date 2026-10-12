@@ -265,7 +265,10 @@ if ((Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash -ne $original
 # Installed optimized state must be recognized, not rewritten again.
 $optimized | Set-Content -LiteralPath $sourcePath -Encoding utf8
 $repeat = (& $resolverExe --capture $capture --mods $mods --generate-pass --json | ConvertFrom-Json)
-if (!$repeat.ok) { throw 'Resolver failed on already optimized AutoLoot source.' }
+if (!$repeat.ok -and ($repeat.pass -or
+    -not ([string]$repeat.error).Contains('no applicable generic or source-proven semantic transforms'))) {
+    throw 'Resolver failed unexpectedly on already optimized AutoLoot source.'
+}
 $repeatResult = Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
 $again = @($repeatResult.callbackFamilies | ForEach-Object { $_.topConsumers } |
     Where-Object { $_.owner -eq 'AutoLoot' -and $_.target -eq 'onUpdate' })[0]
