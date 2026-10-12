@@ -27,10 +27,21 @@ finally { $output.Dispose(); $gzip.Dispose(); $input.Dispose() }
 
 @'
 local logic = require("modules/logic")
+local autoLoot = { settings = { useDefaultActionKey = false } }
+local function handleButtonPressed(this, action) end
+local function handleButtonReleased(this, action) end
 registerForEvent("onUpdate", function(delta)
     logic.tick(delta)
 end)
 '@ | Set-Content -LiteralPath (Join-Path $loot 'init.lua') -Encoding utf8
+
+# No diagnostic-only journal observer in a clean author installation.
+@'
+local jmels = {}
+function jmels.getAllJournalQuestEntries() return {} end
+function jmels.getActiveQuestsMappins() return {} end
+return jmels
+'@ | Set-Content -LiteralPath (Join-Path $loot 'modules/jmels.lua') -Encoding utf8
 
 # Synthetic source-shaped contract: the real mod is not redistributed.
 @'
@@ -241,6 +252,10 @@ $expect = @('G-CET semantic:autoloot-active-loot-cycle-v2',
 foreach ($fragment in $expect) {
     if (!$optimized.Contains($fragment)) { throw "AutoLoot required fragment missing: $fragment" }
 }
+if ($optimized.Contains('__gcetProbe') -or $optimized.Contains('gcet_probe') -or
+    $optimized.Contains('GCET_AutoLoot_ProfileDump')) {
+    throw 'Production AutoLoot pass contains local action-phase diagnostic instrumentation.'
+}
 if ($world.Contains('tableInsert(closeMappins') -or $world.Contains('local closeMappins = {}')) {
     throw 'AutoLoot world-pin temporary candidate-table allocation remains.'
 }
@@ -266,6 +281,22 @@ $v1 = $optimized.Replace(
  'G-CET semantic:autoloot-active-loot-cycle-v2',
  'G-CET semantic:autoloot-world-pin-allocation-scan')
 $v1 | Set-Content -LiteralPath $sourcePath -Encoding utf8
+
+# The temporary journal-event observer used during GC research must not be
+# silently carried into a production source-generated pass.
+$journalPath = Join-Path $loot 'modules/jmels.lua'
+$cleanJournal = Get-Content -LiteralPath $journalPath -Raw
+($cleanJournal + "\nlocal __gcetProbe = require('modules/gcet_probe') -- diagnostic observer\n") |
+    Set-Content -LiteralPath $journalPath -Encoding utf8
+$blocked = (& $resolverExe --capture $capture --mods $mods --generate-pass --json | ConvertFrom-Json)
+if ($blocked.pass) {
+    $blockedManifest = Get-Content -LiteralPath $blocked.pass.ManifestPath -Raw | ConvertFrom-Json
+    if (@($blockedManifest.transforms | Where-Object { $_.RuleId -eq 'autoloot-active-loot-cycle-v2' }).Count) {
+        throw 'Resolver emitted production AutoLoot code while a diagnostic journal observer remained installed.'
+    }
+}
+$cleanJournal | Set-Content -LiteralPath $journalPath -Encoding utf8
+
 $upgrade = (& $resolverExe --capture $capture --mods $mods --generate-pass --json | ConvertFrom-Json)
 if(!$upgrade.ok -or !$upgrade.pass){throw 'AutoLoot v1 world-pin source was not upgraded with the missing prefilter.'}
 $upgradeManifest=Get-Content -LiteralPath $upgrade.pass.ManifestPath -Raw | ConvertFrom-Json
