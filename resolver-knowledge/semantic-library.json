@@ -365,7 +365,7 @@
           "InteractionMenu.update()",
           "CardRenderer.update(dt)",
           "TableTalk.update(dt)",
-          "function StreetTables.update(dt)",
+          "function StreetTables.update(",
           "CHAIR_SPAWN_RANGE",
           "CHAIR_DESPAWN_RANGE",
           "TRACE_RANGE",
