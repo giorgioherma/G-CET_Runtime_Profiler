@@ -202,10 +202,17 @@ if ((Get-FileHash -LiteralPath $sourcePath -Algorithm SHA256).Hash -ne $original
 # Installed optimized state must be recognized, not rewritten again.
 $optimized | Set-Content -LiteralPath $sourcePath -Encoding utf8
 $repeat = (& $resolverExe --capture $capture --mods $mods --generate-pass --json | ConvertFrom-Json)
-# A fully optimized mod is an expected no-op, reported by the CLI through stderr.
-# Validate the saved resolver report instead of treating a missing ZIP as failure.
-if ($repeat.pass -and $repeat.pass.ZipPath) {
-    throw 'Already optimized AutoLoot world-pin code was emitted twice.'
+# A fully optimized AutoLoot world-pin semantic must be idempotent.
+# The Resolver can still generate other independent (e.g. generic 0-Engine)
+# transforms from the same synthetic capture, so a ZIP is not itself a failure.
+if ($repeat.pass -and $repeat.pass.ManifestPath) {
+    $repeatManifest = Get-Content -LiteralPath $repeat.pass.ManifestPath -Raw | ConvertFrom-Json
+    $repeatedWorldPin = @($repeatManifest.transforms | Where-Object {
+        $_.type -eq 'SEMANTIC_RULE' -and $_.RuleId -eq 'autoloot-world-pin-allocation-scan'
+    })
+    if ($repeatedWorldPin.Count -gt 0) {
+        throw 'Already optimized AutoLoot world-pin semantic was emitted twice.'
+    }
 }
 $repeatResult = Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
 $again = @($repeatResult.callbackFamilies | ForEach-Object { $_.topConsumers } |
