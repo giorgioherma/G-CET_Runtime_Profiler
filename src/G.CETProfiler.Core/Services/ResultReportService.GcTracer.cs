@@ -113,6 +113,18 @@ public static partial class ResultReportService
                         !string.IsNullOrWhiteSpace(x.LuaCallerFile))
             .Sum(x => x.SampledExclusiveAllocationOperations);
 
+        // Callsite resolution is a property of sampled function observations,
+        // not a count of exact allocation instructions or attributed bytes.
+        // Native 2.15 has no Lua caller columns: distinguish its missing
+        // instrumentation from instrumented 2.16 rows with no observed caller.
+        static bool Ambiguous(GcTracerFunction x) =>
+            x.CallsiteResolution.StartsWith("AMBIGUOUS", StringComparison.Ordinal);
+        static bool Legacy(GcTracerFunction x) =>
+            x.CallsiteResolution == "NOT_RECORDED_LEGACY";
+        static bool NotObserved(GcTracerFunction x) =>
+            x.CallsiteResolution == "NOT_OBSERVED";
+        var nativeFunctions = gc.Functions.Where(x => x.ExecutionKind == "NATIVE_C").ToList();
+
         return new
         {
             contractVersion = "1.0",
@@ -139,7 +151,32 @@ public static partial class ResultReportService
                 cFunctionSampleSharePct = Round(sampledOps > 0
                     ? (double)cOps / sampledOps * 100 : 0, 3),
                 nativeOperationsWithSingleObservedLuaCallsite = callerLinkedOps,
-                note = "Unattributed is excluded from real-mod focus; native caller is not a proven allocation owner."
+                callsiteResolutionRows = new
+                {
+                    singleObserved = gc.Functions.Count(x =>
+                        x.CallsiteResolution == "SINGLE_OBSERVED_LUA_CALLSITE"),
+                    ambiguous = gc.Functions.Count(Ambiguous),
+                    notObserved = gc.Functions.Count(NotObserved),
+                    legacyNotRecorded = gc.Functions.Count(Legacy),
+                    other = gc.Functions.Count(x =>
+                        x.CallsiteResolution != "SINGLE_OBSERVED_LUA_CALLSITE" &&
+                        !Ambiguous(x) && !NotObserved(x) && !Legacy(x))
+                },
+                nativeCallsiteSampleOperations = new
+                {
+                    singleObserved = callerLinkedOps,
+                    ambiguous = nativeFunctions.Where(Ambiguous)
+                        .Sum(x => x.SampledExclusiveAllocationOperations),
+                    notObserved = nativeFunctions.Where(NotObserved)
+                        .Sum(x => x.SampledExclusiveAllocationOperations),
+                    legacyNotRecorded = nativeFunctions.Where(Legacy)
+                        .Sum(x => x.SampledExclusiveAllocationOperations),
+                    other = nativeFunctions.Where(x =>
+                            x.CallsiteResolution != "SINGLE_OBSERVED_LUA_CALLSITE" &&
+                            !Ambiguous(x) && !NotObserved(x) && !Legacy(x))
+                        .Sum(x => x.SampledExclusiveAllocationOperations)
+                },
+                note = "Callsite counts and operations describe sampled function observations, not exact allocating instructions or allocated-byte ownership. Unattributed remains unowned."
             },
             metricSemantics = new
             {
@@ -173,7 +210,7 @@ public static partial class ResultReportService
             .Sum(x => x.AllocatedMiB);
         var totalMiB = gc.Mods.Sum(x => x.AllocatedMiB);
         sb.Append("<div class=\"section\"><h2>G-GC Tracer</h2>")
-          .Append("<p>MEGAMIND evidence only: allocation-request growth, GC-object births ")
+          .Append("<p>G-GC measurements: allocation-request growth, GC-object births ")
           .Append("and sampled reclamation are different measurements. A native/C frame ")
           .Append("is not the Lua source that called it. No resolver rewrite is ")
           .Append("authorized by these metrics.</p>")
@@ -219,6 +256,6 @@ public static partial class ResultReportService
             sb.Append("</tbody></table>");
         }
         sb.Append("<p class=\"note\">Raw global finalizer calls are unvalidated and ")
-          .Append("excluded from MEGAMIND optimization decisions.</p></div>");
+          .Append("excluded from automatic optimization decisions.</p></div>");
     }
 }

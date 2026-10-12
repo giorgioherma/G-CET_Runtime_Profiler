@@ -183,6 +183,11 @@ if ($ggc.contractVersion -ne '1.0' -or
     [int]$ggc.coverage.registrationRows -ne 2 -or
     [int]$ggc.coverage.nativeOperationsWithSingleObservedLuaCallsite -ne 120 -or
     [int]$ggc.coverage.functionSampleOperations -ne 640 -or
+    [int]$ggc.coverage.callsiteResolutionRows.singleObserved -ne 1 -or
+    [int]$ggc.coverage.callsiteResolutionRows.notObserved -ne 2 -or
+    [int]$ggc.coverage.callsiteResolutionRows.legacyNotRecorded -ne 0 -or
+    [int]$ggc.coverage.nativeCallsiteSampleOperations.singleObserved -ne 120 -or
+    [int]$ggc.coverage.nativeCallsiteSampleOperations.notObserved -ne 0 -or
     $ggc.finalizerValidation.status -ne 'UNVALIDATED_DO_NOT_USE_FOR_AUTOMATIC_DECISIONS' -or
     [int]$ggc.finalizerValidation.rawGlobalCalls -ne 30 -or
     [int]$ggc.registrations[0].RegistrationId -ne 1 -or
@@ -203,8 +208,12 @@ if ($summaryContract -ne $resolverContract) {
     throw 'Profiler and Resolver are not speaking the identical MEGAMIND contract.'
 }
 
-if ((Get-Content -LiteralPath (Join-Path $capture 'CET_Report.html') -Raw) -notmatch 'G-GC Tracer') {
+$ggcHtml = Get-Content -LiteralPath (Join-Path $capture 'CET_Report.html') -Raw
+if ($ggcHtml -notmatch 'G-GC Tracer') {
     throw 'G-GC Tracer human-readable report section missing.'
+}
+if ($ggcHtml -match '(?i)MEGAMIND') {
+    throw 'Internal optimizer codename leaked into the player-facing HTML report.'
 }
 
 $workload = $summary.workloadServices
@@ -375,7 +384,9 @@ if ($null -eq $oldCFunction -or
     $oldCFunction.CallsiteResolution -ne 'NOT_RECORDED_LEGACY' -or
     $oldCFunction.LuaCallerFile -ne '' -or
     [int]$oldCFunction.LuaCallerLine -ne 0 -or
-    [int]$oldNativeSummary.gcTracer.coverage.nativeOperationsWithSingleObservedLuaCallsite -ne 0) {
+    [int]$oldNativeSummary.gcTracer.coverage.nativeOperationsWithSingleObservedLuaCallsite -ne 0 -or
+    [int]$oldNativeSummary.gcTracer.coverage.callsiteResolutionRows.legacyNotRecorded -ne 2 -or
+    [int]$oldNativeSummary.gcTracer.coverage.nativeCallsiteSampleOperations.legacyNotRecorded -ne 120) {
     throw 'Old native 2.15 C frames were incorrectly assigned fabricated Lua callsites.'
 }
 if (($oldNativeSummary.gcTracer | ConvertTo-Json -Depth 35 -Compress) -ne
