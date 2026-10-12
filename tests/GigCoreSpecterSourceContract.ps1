@@ -21,6 +21,17 @@ function Case($version) {
   $gig=Join-Path $mods 'GigCore'
   $rec=Join-Path $mods 'SpecterM11RecoveryDev'
   New-Item -ItemType Directory -Force $capture,$gig,$rec|Out-Null
+  # Provide the pinned live 0-Engine runtime required by Resolver pass generation.
+  $zero = Join-Path $mods '0-Engine'
+  New-Item -ItemType Directory -Force $zero | Out-Null
+  $encoded = (Get-Content -LiteralPath (Join-Path $ResolverRoot 'runtime\0-Engine\fixed-init.lua.gz.b64') -Raw).Trim()
+  $bytes = [Convert]::FromBase64String($encoded)
+  $input = [IO.MemoryStream]::new($bytes)
+  $gzip = [IO.Compression.GZipStream]::new($input,[IO.Compression.CompressionMode]::Decompress)
+  $output = [IO.MemoryStream]::new()
+  try { $gzip.CopyTo($output); [IO.File]::WriteAllBytes((Join-Path $zero 'init.lua'),$output.ToArray()) }
+  finally { $output.Dispose(); $gzip.Dispose(); $input.Dispose() }
+
 
 @'
 local function _rawMenuOrPhotoPaused()
