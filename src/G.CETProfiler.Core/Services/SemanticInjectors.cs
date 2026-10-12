@@ -9,7 +9,10 @@ internal static class SemanticInjectors
         SemanticCandidate candidate,
         SemanticPatchContext context)
     {
-        if (context.OwnerAlreadyMarked())
+        // The catalog verifies independently completed source stages before
+        // admitting a composed rule. An existing marker on only one stage is
+        // not a reason to suppress the other stage's safe incremental pass.
+        if (context.OwnerAlreadyMarked() && !candidate.StageComposed)
             return SemanticInjectionResult.Skip(
                 "A G-CET semantic marker for this rule already exists in the live/staged mod.");
 

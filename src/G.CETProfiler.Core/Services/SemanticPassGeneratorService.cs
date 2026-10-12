@@ -219,7 +219,8 @@ internal static class SemanticPassGeneratorService
                     policyClass,
                     patchStyle,
                     runtimeMs,
-                    expectedMarkerFileCount));
+                    expectedMarkerFileCount,
+                    JsonBool(semantic, "StageComposed")));
             }
         }
 
@@ -271,7 +272,8 @@ internal sealed record SemanticCandidate(
     string PolicyClass,
     string PatchStyle,
     double RuntimeMsPerSecond,
-    int ExpectedMarkerFileCount);
+    int ExpectedMarkerFileCount,
+    bool StageComposed);
 
 internal sealed record SemanticInjectionResult(
     bool Applied,

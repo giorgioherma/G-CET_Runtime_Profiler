@@ -363,6 +363,7 @@ internal static class CallbackResolverService
                         semantic.AlreadySatisfied,
                         semantic.SatisfiedBySourcePostcondition,
                         semantic.AlreadySatisfiedMode,
+                        semantic.StageComposed,
                         semantic.PartialState,
                         semantic.MarkerFileCount,
                         semantic.ExpectedMarkerFileCount,

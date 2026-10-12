@@ -24,6 +24,8 @@ internal sealed record SemanticRuleMatch(
     string[] MissingAnchors,
     object? Graph)
 {
+    internal bool StageComposed { get; init; }
+
     internal static SemanticRuleMatch None { get; } = new(
         false, false, false, false, "", false, 0, 0, "", "", "", "", false, 3.0, false,
         Array.Empty<string>(), Array.Empty<string>(), null);
@@ -333,7 +335,10 @@ internal sealed class SemanticLibraryService
                 graph,
                 markerCount,
                 expectedMarkerFileCount,
-                sourceFingerprintFallback));
+                sourceFingerprintFallback))
+        {
+            StageComposed = composed
+        };
     }
 
     private static void EvaluateProof(
