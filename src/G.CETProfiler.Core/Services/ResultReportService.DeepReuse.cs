@@ -178,8 +178,8 @@ public static partial class ResultReportService
         static object Caller(DeepReuseCaller x) => new {
             sourceFile = x.File,
             sourceLine = x.Line,
-            x.ParentFunctionKey,
-            x.SampledEdgeCalls,
+            parentFunctionKey = x.ParentFunctionKey,
+            sampledEdgeCalls = x.SampledEdgeCalls,
             sampledChildInclusiveMs = Round(x.SampledChildInclusiveMs, 6),
             sampledFrames = x.Frames.Count,
             sampledInvocations = x.Invocations.Count,
@@ -188,9 +188,12 @@ public static partial class ResultReportService
             canReuseTable = false
         };
         static object Candidate(DeepReuseFunction f) => new {
-            f.Mod, f.RegistrationId, f.ProfileEpoch, f.FunctionKey,
-            f.FunctionName, f.SourceFile, f.SourceLine,
-            f.SampledFunctionCalls, f.SampledEdgeCalls,
+            mod = f.Mod, registrationId = f.RegistrationId,
+            profileEpoch = f.ProfileEpoch, functionKey = f.FunctionKey,
+            functionName = f.FunctionName, sourceFile = f.SourceFile,
+            sourceLine = f.SourceLine,
+            sampledFunctionCalls = f.SampledFunctionCalls,
+            sampledEdgeCalls = f.SampledEdgeCalls,
             sampledOwnPositiveBytesOnce = f.SampledOwnPositiveBytes,
             sampledOwnAllocationOpsOnce = f.SampledOwnAllocationOps,
             distinctObservedCallerSites = f.Callers.Count,
@@ -212,7 +215,7 @@ public static partial class ResultReportService
         return new {
             provenanceVersion = "1.1-deep-callsite-review",
             stage = "EXISTING_NATIVE_2_15_DEEP_SAMPLES",
-            a.Status,
+            status = a.Status,
             measurementMode = "OFFLINE_REPORT_ONLY_NO_ADDITIONAL_HOOKS",
             nativeVersionRequirement = "2.15.0_OR_COMPATIBLE_DEEP_CSV",
             timingMetricsPreserved = true,
@@ -225,9 +228,11 @@ public static partial class ResultReportService
             gcCollectorTriggerIsNotAllocationProducer = true,
             positiveBytesNotEquivalentToDisposableGcHeap = true,
             coverage = new {
-                a.FunctionRows, a.CallsiteRows,
-                a.MatchedCallsiteRows, a.UnmatchedCallsiteRows,
-                a.AmbiguousFunctionKeyRows, a.ConflictingRegistrationIds,
+                functionRows = a.FunctionRows, callsiteRows = a.CallsiteRows,
+                matchedCallsiteRows = a.MatchedCallsiteRows,
+                unmatchedCallsiteRows = a.UnmatchedCallsiteRows,
+                ambiguousFunctionKeyRows = a.AmbiguousFunctionKeyRows,
+                conflictingRegistrationIds = a.ConflictingRegistrationIds,
                 functionsWithObservedCallers = a.Candidates.Count,
                 sampledFunctionOwnPositiveBytesCountedOnce =
                     a.SampledFunctionOwnBytesOnce,
