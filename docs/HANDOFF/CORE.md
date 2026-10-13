@@ -28,7 +28,15 @@ For fuller component and progress table: [PRODUCT-STATUS.md](PRODUCT-STATUS.md).
 | `.github/workflows/native-profiler-rebuild.yml` — **Rebuild G-CET native profiler** | Compile and verify native `cyber_engine_tweaks.PROFILER.dll` **only** | Native DLL + SHA-256 artifact; **never Profiler/Resolver portable apps** |
 | `.github/workflows/build.yml` — **Build G CET Runtime Profiler** | Retrieve a **pinned successful native CI artifact**, verify SHA-256/required symbols, compile/test/package managed **Profiler and Resolver** | **Both** `G-CET-Runtime-Profiler-vX.Y.Z` and `G-CET-Resolver-vX.Y.Z` |
 
-**Native change release chain:** modify native source → native CI green → record its run ID and actual DLL SHA → update main build's pinned native run, `MANIFEST.json` SHA/native revision and product versions → **main Build G CET Runtime Profiler** green → verify *both* package artifacts and embedded native hash. Never package apps in native CI; never claim that successful native-only CI updated the normal Profiler package; never leave an unverified build running while reporting completion. See [BUILD-PIPELINE.md](BUILD-PIPELINE.md) for detailed commands/contracts.
+**Native change packaging chain:** modify native source → native CI green → record its run ID and actual DLL SHA → update main build's pinned native run and manifest native SHA/revision → **main Build G CET Runtime Profiler** green → verify *both* package artifacts and embedded native hash. **Do not bump the product version automatically**; change the shared product version only under the version policy below. Never package apps in native CI; never claim that successful native-only CI updated the normal Profiler package; never leave an unverified build running while reporting completion. See [BUILD-PIPELINE.md](BUILD-PIPELINE.md) for detailed commands/contracts.
+
+## Product version policy — user-controlled milestones
+
+- **Do NOT increment `VERSION.txt`, `Directory.Build.props`, or `MANIFEST.json.packageVersion` for each commit, workflow run, rebuilt DLL, bug fix, documentation change, or repeat CI run.** Any number of builds can share the same current version.
+- Advance the **Profiler and Resolver product version together** only **when the user explicitly asks for a version bump** or **for a substantial milestone that the user has agreed should be versioned**. Do not arbitrarily declare every technical task a milestone.
+- Continue making commits, testing and uploading Actions artifacts under the **existing version** between releases. Use Git commit SHA / GitHub Actions run ID / native DLL SHA-256 to identify the exact build, not a forced version increment.
+- When a version bump is authorized, update all three product-version fields **atomically**, then package Profiler + Resolver through the **main** workflow and verify both artifacts. A native DLL's hash/pin or accurate native revision metadata may change for a native rebuild **without** advancing the product version.
+- Keep draft/development builds and milestone releases distinct; do not republish or overwrite an official release/tag as a side effect of routine CI.
 
 ## Invariants you must preserve
 

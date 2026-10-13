@@ -8,6 +8,10 @@ G-CET Runtime Profiler measures heavily modded Cyberpunk 2077 CET/Lua; G-CET Res
 
 We are extending the same Resolver with burst/hitch and G-GC allocation evidence. The objective is to discover more reusable generic rules and worthwhile semantic rules **without degrading author behavior**. The internal decision-maker is not a separate player-facing optimizer.
 
+## Product version policy (explicit user instruction)
+
+**Version increments are not tied to CI frequency.** Keep the current shared Profiler/Resolver version across normal commits, tests, native DLL rebuilds, diagnostics and packaging reruns. Increase it **only** when the user explicitly requests it or agrees that a substantial project milestone warrants a release. A new native hash/run pin is not, by itself, a product version milestone. When authorized, synchronize `VERSION.txt`, `Directory.Build.props` and `MANIFEST.json.packageVersion`; otherwise identify builds by commit SHA and Actions run ID. See [BUILD-PIPELINE.md](BUILD-PIPELINE.md). Do not automatically replace an official release/tag.
+
 ## The single ordered pipeline
 
 1. **Capture real work.** Profiler collects exclusive CPU time, call rates, spikes, bursts, Scheduler workload, G-GC allocation counts/bytes/births, and optional frametime evidence. Record native revision, capture duration, source stack and coverage.

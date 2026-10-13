@@ -35,11 +35,20 @@ Displayed workflow: **Build G CET Runtime Profiler**
    - `MANIFEST.json.targetCET.profilerSha256` to the **new native artifact hash** (never copy an older run's hash);
    - `MANIFEST.json.profilerNativeVersion` to the chosen accurate native label;
    - the **pinned native run ID** in `.github/workflows/build.yml` (and artifact name if changed);
-   - `VERSION.txt`, `Directory.Build.props` and `MANIFEST.json.packageVersion` together if a new product version is being issued;
+   - **only when explicitly requested by the user or at a user-agreed milestone:** change `VERSION.txt`, `Directory.Build.props` and `MANIFEST.json.packageVersion` together. Otherwise **retain the exact current product version** through further CI runs;
    - product notes and short [CORE.md](CORE.md) snapshot.
 3. A commit triggers **Build G CET Runtime Profiler**, not the native workflow. Verify native import/hash check early; if red fix/re-run. Then verify full app, Resolver, contract tests and artifact upload.
 4. Confirm **both** main artifacts exist. Native workflow success alone is not package success. Never direct a user to the native run for the combined application.
 5. Note what CI checked and separately what is **not gameplay-verified**. Record final build IDs and SHA in [ACTIVE-STATE.md](ACTIVE-STATE.md), and update current values in CORE.
+
+## Version versus CI run — locked release policy
+
+- **The product version is NOT the build number.** An ordinary CI run or fixing a failing run does not cause `1.2.7 → 1.2.8`.
+- Bump product version **only** on the user's explicit request or a significant milestone **agreed with the user**. That milestone need not correspond to one commit/run; multiple builds may share a version.
+- Product version is shared by the Profiler and Resolver. On an authorized increment, synchronize `VERSION.txt`, `Directory.Build.props`, and `MANIFEST.json.packageVersion` in one commit. Otherwise leave all three unchanged.
+- Update native DLL SHA-256, pinned native CI run, and accurate native revision information whenever needed to ensure a correct packaged DLL **without interpreting those changes as product release bumps**.
+- Artifacts of repeated CI runs can have the same version name; identify the precise build by **Actions run ID / commit SHA / native DLL SHA-256**.
+- Routine CI should not silently create, overwrite, or retag an official GitHub release. Release publication needs deliberate authorization and matching version metadata.
 
 ## Common previous mistakes — explicit preventions
 

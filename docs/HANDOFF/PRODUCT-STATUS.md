@@ -2,6 +2,8 @@
 
 **Snapshot 2026-10-14.** This is a **durable orientation**, not a replacement for current code/CI or the chronological [ACTIVE-STATE.md](ACTIVE-STATE.md). Read [CORE.md](CORE.md) first.
 
+**Version cadence:** product version advances only at the user's request or a user-agreed milestone, **not** at each CI/commit. See [CORE.md](CORE.md) and [BUILD-PIPELINE.md](BUILD-PIPELINE.md). v1.2.7 remains the current version until such a decision.
+
 ## Product mission
 
 One native/CET **Profiler** measures actual Cyberpunk 2077 modded-game work; one **Resolver** analyzes captures and the current mod sources and generates conservative, composable optimizations. The goal is real responsiveness and fewer unnecessary computations/allocations—not just lowering profiler counters. The profiler never arbitrarily rewrites gameplay; the Resolver produces a reviewable overlay ZIP instead of modifying the live mod installation.
