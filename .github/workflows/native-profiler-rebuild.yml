@@ -45,75 +45,12 @@ jobs:
           "$hash  cyber_engine_tweaks.PROFILER.dll" | Set-Content native-rebuild-artifact\SHA256.txt -Encoding ascii
           Write-Host "Rebuilt profiler SHA256: $hash"
 
-      - name: Commit rebuilt payload to resolver branch
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-
-          $rebuilt = 'native-rebuild-artifact\cyber_engine_tweaks.PROFILER.dll'
-          if (!(Test-Path -LiteralPath $rebuilt -PathType Leaf)) {
-            throw "Rebuilt profiler payload is missing: $rebuilt"
-          }
-
-          # Native compilation takes several minutes. The branch may advance
-          # meanwhile, so rebase onto its latest tip before staging generated
-          # files. This avoids unrelated docs/test commits causing a rejected
-          # non-fast-forward push after a successful native build.
-          git fetch origin dev/resolver-profiler-handoff
-          git rebase origin/dev/resolver-profiler-handoff
-          if ((git hash-object native-profiler-build/v2.11.0/Patch-LuaJIT-GC-Source.ps1) -ne $env:GGC_SOURCE_HASH -or
-              (git hash-object native-profiler-build/v2.11.0/CETRuntimeProfiler.h) -ne $env:GGC_HEADER_HASH) {
-            throw 'Native source changed during build. Refusing to commit stale DLL.'
-          }
-
-          # Crash-isolation release 1.2.2 must retain the exact known-good
-          # native 2.15 binary from CI #925. Rebuilt files may be tested or
-          # uploaded as diagnostics, but cannot silently replace that payload.
-          $releaseManifest = Get-Content -LiteralPath 'MANIFEST.json' -Raw | ConvertFrom-Json
-          if ([string]$releaseManifest.packageVersion -eq '1.2.2' -and
-              [string]$releaseManifest.profilerNativeVersion -eq '2.15.0') {
-            $expected = 'c62d57f50b1fd792ae989cb78fb54cee8d82b0370abdb51ea01617c2ddcfa23e'
-            $actual = (Get-FileHash -LiteralPath 'payload\cyber_engine_tweaks.PROFILER.dll' -Algorithm SHA256).Hash.ToLowerInvariant()
-            if ($actual -ne $expected -or [string]$releaseManifest.targetCET.profilerSha256 -ne $expected) {
-              throw 'Known-good native payload was changed during regression isolation.'
-            }
-            Write-Host 'Retaining byte-identical native 2.15 from CI #925 for release 1.2.2.'
-            exit 0
-          }
-
-          Copy-Item $rebuilt 'payload\cyber_engine_tweaks.PROFILER.dll' -Force
-          $hash = (Get-FileHash 'payload\cyber_engine_tweaks.PROFILER.dll' -Algorithm SHA256).Hash.ToLowerInvariant()
-
-          $manifestPath = 'MANIFEST.json'
-          $manifest = Get-Content -LiteralPath $manifestPath -Raw
-          $updated = [regex]::Replace(
-            $manifest,
-            '"profilerSha256"\s*:\s*"[0-9a-fA-F]{64}"',
-            ('"profilerSha256": "' + $hash + '"'),
-            1)
-
-          if ($updated -eq $manifest) {
-            throw 'Could not update profilerSha256 in MANIFEST.json.'
-          }
-
-          Set-Content -LiteralPath $manifestPath -Value $updated -Encoding utf8 -NoNewline
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- payload/cyber_engine_tweaks.PROFILER.dll MANIFEST.json
-
-          git diff --cached --quiet
-          if ($LASTEXITCODE -eq 0) {
-            Write-Host 'Rebuilt payload already matches the branch.'
-          }
-          else {
-            git commit -m "build: refresh resolver onUpdate native profiler payload"
-            git push origin HEAD:dev/resolver-profiler-handoff
-          }
-
+      # Experimental builds remain diagnostic artifacts: no repository payload,
+      # manifest or release mutation. Promotion requires same-save world-load
+      # crash regression, capture-off/on, stop/pause and overhead validation.
       - name: Upload rebuilt native payload
         uses: actions/upload-artifact@v4
         with:
-          name: gcet-native-profiler-resolver-onupdate
+          name: gcet-native-experimental-scalar-observations
           path: native-rebuild-artifact/
           if-no-files-found: error
