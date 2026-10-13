@@ -11,6 +11,19 @@ $mods = Join-Path $root 'mods'
 $npc = Join-Path $mods 'NPC Outfit Manager'
 New-Item -ItemType Directory -Force $cap,$npc | Out-Null
 
+# The production Resolver requires the installed 0-Engine runtime. Reuse
+# the exact published contract fixture; do not weaken the dependency.
+$zero = Join-Path $mods '0-Engine'
+New-Item -ItemType Directory -Force $zero | Out-Null
+$encoded=(Get-Content -LiteralPath (Join-Path $ResolverRoot 'runtime/0-Engine/fixed-init.lua.gz.b64') -Raw).Trim()
+$bytes=[Convert]::FromBase64String($encoded)
+$inputStream=[IO.MemoryStream]::new($bytes)
+$gzip=[IO.Compression.GZipStream]::new($inputStream,[IO.Compression.CompressionMode]::Decompress)
+$outStream=[IO.MemoryStream]::new()
+try {$gzip.CopyTo($outStream); [IO.File]::WriteAllBytes((Join-Path $zero 'init.lua'),$outStream.ToArray())}
+finally {$outStream.Dispose();$gzip.Dispose();$inputStream.Dispose()}
+
+
 $original = @'
 local autoOutfitsData = {settings = {}, outfits = {}}
 local radarTimer = 0
