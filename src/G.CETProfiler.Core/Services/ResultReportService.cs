@@ -64,7 +64,8 @@ public static partial class ResultReportService
         "CET_Runtime_Profile_Deep_Edges.csv",
         "CET_Runtime_Profile_Deep_Samples.csv",
         "CET_Runtime_Profile_Deep_Lines.csv",
-        "CET_Runtime_Profile_Deep_Callsites.csv"
+        "CET_Runtime_Profile_Deep_Callsites.csv",
+        "CET_Runtime_Profile_Scalar_Observations.csv"
     };
 
     public static string GetArchiveRelativePath(string fileName)
@@ -88,6 +89,7 @@ public static partial class ResultReportService
 
         var a = Analyze(captureRoot);
         a.DeepReuse = AnalyzeDeepReuse(captureRoot);
+        a.ScalarObservations = AnalyzeScalarObservations(captureRoot);
         var summaryPath = Path.Combine(captureRoot, SummaryFileName);
         var resolverInputPath = Path.Combine(captureRoot, ResolverInputFileName);
         var reportPath = Path.Combine(captureRoot, ReportFileName);
@@ -152,6 +154,7 @@ public static partial class ResultReportService
             zeroEngineAllocationFlow = BuildZeroEngineFlowInterop(a),
             dataProvenanceCandidates = BuildDataProvenanceCandidates(a.GcTracer),
             deepDataReuseCandidates = BuildDeepReuseCandidates(a.DeepReuse),
+            scalarChangeObservations = BuildScalarObservations(a.ScalarObservations),
             collectorGc = a.CollectorGc is null ? null : new
             {
                 measurement = "EXACT_INTERNAL_LUAJIT_GC_EXECUTION_FRAME_BUCKETED",
