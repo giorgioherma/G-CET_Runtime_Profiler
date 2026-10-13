@@ -23,11 +23,17 @@ public static partial class ResultReportService
         long SampledCalls, long SampledAllocationOperations,
         long SampledPositiveBytes);
 
+    private sealed record NativeGetterNameCandidate(
+        string NativeFunction, long SampledCalls,
+        long SampledAllocationOperations, long SampledPositiveBytes,
+        IReadOnlyList<ProvenanceOwner> Consumers);
+
     private sealed class DataProvenanceAnalysis
     {
         public List<ProvenanceSite> Sites { get; init; } = [];
         public List<ProvenanceSite> CrossModSites { get; init; } = [];
         public List<ProvenanceNativeCandidate> NativeCandidates { get; init; } = [];
+        public List<NativeGetterNameCandidate> NativeGetterNames { get; init; } = [];
         public long MissingRegistrationSamples { get; init; }
         public long UnresolvedSourceSamples { get; init; }
         public long NativeSampleOps { get; init; }
@@ -65,6 +71,15 @@ public static partial class ResultReportService
             StringComparison.OrdinalIgnoreCase) ||
         string.Equals(NormalizedSource(x.SourceFile), "=[C]",
             StringComparison.Ordinal);
+
+    private static bool LooksLikeGetterName(string name) =>
+        !string.IsNullOrWhiteSpace(name) &&
+        ((name.StartsWith("Get", StringComparison.Ordinal) &&
+          name.Length > 3 && char.IsUpper(name[3])) ||
+         (name.StartsWith("Is", StringComparison.Ordinal) &&
+          name.Length > 2 && char.IsUpper(name[2])) ||
+         (name.StartsWith("Has", StringComparison.Ordinal) &&
+          name.Length > 3 && char.IsUpper(name[3])));
 
     private static DataProvenanceAnalysis? AnalyzeDataProvenance(
         GcTracerTelemetry? gc)
@@ -140,10 +155,37 @@ public static partial class ResultReportService
             .ThenBy(x => x.NativeFunction, StringComparer.Ordinal)
             .ToList();
 
+        // This is an instrumentation PRIORITY list only. GetPlayer sampled
+        // in 12 mods does not mean 12 identical players or caller parameters,
+        // and sampled calls cannot be scaled into full read frequency.
+        var nativeGetters = native
+            .Where(x => LooksLikeGetterName(x.NativeFunction) &&
+                x.RegistrationId > 0 &&
+                x.Mod != "<registration-not-resolved>")
+            .GroupBy(x => x.NativeFunction, StringComparer.Ordinal)
+            .Select(group => new NativeGetterNameCandidate(
+                group.Key,
+                group.Sum(x => x.SampledCalls),
+                group.Sum(x => x.SampledAllocationOperations),
+                group.Sum(x => x.SampledPositiveBytes),
+                group.GroupBy(x => x.Mod, StringComparer.OrdinalIgnoreCase)
+                    .Select(owner => new ProvenanceOwner(
+                        owner.Key, 0, owner.Sum(x => x.SampledCalls),
+                        owner.Sum(x => x.SampledAllocationOperations),
+                        owner.Sum(x => x.SampledPositiveBytes)))
+                    .OrderByDescending(x => x.SampledAllocationOperations)
+                    .ThenBy(x => x.Mod, StringComparer.Ordinal)
+                    .ToList()))
+            .Where(x => x.Consumers.Count >= 2)
+            .OrderByDescending(x => x.SampledAllocationOperations)
+            .ThenBy(x => x.NativeFunction, StringComparer.Ordinal)
+            .ToList();
+
         return new DataProvenanceAnalysis {
             Sites = sourceSites,
             CrossModSites = overlap,
             NativeCandidates = native,
+            NativeGetterNames = nativeGetters,
             MissingRegistrationSamples = gc.Functions
                 .Where(x => !registrations.ContainsKey(x.RegistrationId))
                 .Sum(x => x.SampledExclusiveAllocationOperations),
@@ -210,6 +252,7 @@ public static partial class ResultReportService
                 a.UnresolvedSourceSamples,
                 identifiedLuaSourceSites = a.Sites.Count,
                 crossModSourceSites = a.CrossModSites.Count,
+                repeatedNativeGetterNames = a.NativeGetterNames.Count,
                 ambiguousRelativeSourceOverlaps = a.Sites.Count(x =>
                     !HasQualifiedSourceIdentity(x.SourceFile) &&
                     x.Owners.Select(o => o.Mod)
@@ -220,6 +263,20 @@ public static partial class ResultReportService
                     string.IsNullOrWhiteSpace(x.LuaCallerFile) ||
                     x.LuaCallerLine <= 0)
             },
+            repeatedNativeGetterNames = a.NativeGetterNames.Take(50).Select(x => new {
+                x.NativeFunction, x.SampledCalls,
+                x.SampledAllocationOperations, x.SampledPositiveBytes,
+                consumers = x.Consumers.Select(o => new {
+                    o.Mod, o.SampledCalls,
+                    o.SampledAllocationOperations, o.SampledPositiveBytes
+                }),
+                evidenceLevel = "NATIVE_API_NAME_ONLY",
+                invocationArgumentsObserved = false,
+                returnValueEqualityObserved = false,
+                sourceCallsiteFullyResolved = false,
+                safeToShare = false,
+                possibleSavingsBytes = (long?)null
+            }),
             crossModSourceCandidates = a.CrossModSites.Take(60).Select(Site),
             topSampledLuaProducers = a.Sites.Take(60).Select(Site),
             nativeSourceUnknown = a.NativeCandidates.Take(50).Select(x => new {
@@ -282,6 +339,27 @@ public static partial class ResultReportService
                   .Append("</td><td>").Append(N(x.SampledAllocationOperations))
                   .Append("</td><td>").Append(N(x.SampledPositiveBytes))
                   .Append("</td><td>No; compare actual queries/results</td></tr>");
+            }
+            sb.Append("</tbody></table>");
+        }
+        sb.Append("<h3>Repeated native getter names across mods — review only</h3>");
+        if (a.NativeGetterNames.Count == 0)
+            sb.Append("<p>No repeated Get*/Is*/Has* native API names were ")
+              .Append("seen in the bounded samples.</p>");
+        else
+        {
+            sb.Append("<table><thead><tr><th>Native getter</th>")
+              .Append("<th>Observed consumers</th><th>Sampled calls</th>")
+              .Append("<th>Sampled alloc. ops</th><th>Equivalent query?</th>")
+              .Append("</tr></thead><tbody>");
+            foreach (var x in a.NativeGetterNames.Take(20))
+            {
+                sb.Append("<tr><td>").Append(H(x.NativeFunction))
+                  .Append("</td><td>")
+                  .Append(H(string.Join(", ", x.Consumers.Select(o => o.Mod))))
+                  .Append("</td><td>").Append(N(x.SampledCalls))
+                  .Append("</td><td>").Append(N(x.SampledAllocationOperations))
+                  .Append("</td><td>Unknown (name only)</td></tr>");
             }
             sb.Append("</tbody></table>");
         }

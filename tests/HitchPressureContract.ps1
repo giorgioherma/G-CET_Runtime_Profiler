@@ -435,6 +435,14 @@ if ($null -eq $pv -or
     $pv.unknownRegistrationZeroReassigned -or
     $pv.coverage.crossModSourceSites -ne 1 -or
     $pv.coverage.ambiguousRelativeSourceOverlaps -ne 1 -or
+    $pv.coverage.repeatedNativeGetterNames -ne 1 -or
+    @($pv.repeatedNativeGetterNames).Count -ne 1 -or
+    $pv.repeatedNativeGetterNames[0].NativeFunction -ne 'GetGameInstance' -or
+    @($pv.repeatedNativeGetterNames[0].consumers).Count -ne 2 -or
+    $pv.repeatedNativeGetterNames[0].invocationArgumentsObserved -or
+    $pv.repeatedNativeGetterNames[0].returnValueEqualityObserved -or
+    $pv.repeatedNativeGetterNames[0].safeToShare -or
+    $null -ne $pv.repeatedNativeGetterNames[0].possibleSavingsBytes -or
     $overlaps.Count -ne 1 -or
     $overlaps[0].sourceFile -ne 'mods/shared/provider.lua' -or
     $overlaps[0].sourceLine -ne 88 -or
@@ -461,6 +469,8 @@ if (($pv | ConvertTo-Json -Depth 35 -Compress) -ne
 $provenanceHtml = Get-Content -LiteralPath (Join-Path $provenanceCapture 'CET_Report.html') -Raw
 if (!$provenanceHtml.Contains('Data producers and cross-mod source overlap') -or
     !$provenanceHtml.Contains('mods/shared/provider.lua') -or
+    !$provenanceHtml.Contains('Repeated native getter names across mods') -or
+    !$provenanceHtml.Contains('Unknown (name only)') -or
     !$provenanceHtml.Contains('No; compare actual queries/results')) {
     throw 'HTML report omitted evidence/confidence warning for source-overlap candidates.'
 }
