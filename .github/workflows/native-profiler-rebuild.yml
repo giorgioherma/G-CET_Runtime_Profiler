@@ -1,13 +1,19 @@
 name: Rebuild G-CET native profiler
 
 permissions:
-  contents: write
+  contents: read
   actions: read
 
-# Diagnostic isolation: disable automatic native rebuild/publish.
-# Experimental builds use a separate branch and standalone artifact only.
+# Native changes produce an isolated candidate; release DLL stays unchanged.
+# Repo CI triggers an actual Windows native compilation on source/workflow changes.
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - dev/resolver-profiler-handoff
+    paths:
+      - '.github/workflows/native-profiler-rebuild.yml'
+      - 'native-profiler-build/v2.11.0/**'
 
 jobs:
   rebuild:
@@ -48,6 +54,99 @@ jobs:
       # Experimental builds remain diagnostic artifacts: no repository payload,
       # manifest or release mutation. Promotion requires same-save world-load
       # crash regression, capture-off/on, stop/pause and overhead validation.
+
+      - name: Validate isolated native PE and scalar probe source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $native = 'native-rebuild-artifact/cyber_engine_tweaks.PROFILER.dll'
+          $actual = (Get-FileHash -LiteralPath $native -Algorithm SHA256).Hash.ToLowerInvariant()
+          $hashLine = (Get-Content native-rebuild-artifact/SHA256.txt -Raw).Trim()
+          if (!$hashLine.StartsWith($actual + ' ')) { throw 'Native artifact SHA sidecar does not match DLL.' }
+          $pe = ./native-profiler-build/v2.11.0/Get-CETPEInfo.ps1 -Path $native
+          if ($pe.Linker -ne '14.44') { throw "Experimental native linker differs from historical toolchain: $($pe.Linker)" }
+          $source = Get-Content native-profiler-build/v2.11.0/CETRuntimeProfiler.h -Raw
+          $patch = Get-Content native-profiler-build/v2.11.0/Patch-CET-v1.37.1.ps1 -Raw
+          if (!$source.Contains('CET_Runtime_Profile_Scalar_Observations.csv') -or
+              !$source.Contains('bool ObserveScalar(') -or
+              !$patch.Contains('globals["CETProfilerObserveScalar"]')) {
+            throw 'Experimental native source does not contain expected scalar probe API/CSV contract.'
+          }
+          if ($actual -eq 'c62d57f50b1fd792ae989cb78fb54cee8d82b0370abdb51ea01617c2ddcfa23e') {
+            throw 'Experimental build unexpectedly matches old production payload; no new native bits produced.'
+          }
+          Write-Host "Experimental DLL valid PE/linker and distinct from production 2.15: $actual"
+
+      - name: Download last-green v1.2.6 managed portable bundle
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          gh run download 38470666533 --repo ${{ github.repository }} --name G-CET-Runtime-Profiler-v1.2.6 --dir stable-app-asset
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to retrieve pinned green managed v1.2.6 package.' }
+          $zip = @(Get-ChildItem -LiteralPath stable-app-asset -Recurse -File -Filter 'G-CET-Runtime-Profiler-v1.2.6.zip')
+          if ($zip.Count -ne 1) { throw "Expected one pinned v1.2.6 ZIP, found $($zip.Count)." }
+          Expand-Archive -LiteralPath $zip[0].FullName -DestinationPath experimental-unpacked -Force
+          $manifests = @(Get-ChildItem experimental-unpacked -Recurse -File -Filter MANIFEST.json)
+          if ($manifests.Count -ne 1) { throw "Expected one package manifest, found $($manifests.Count)." }
+          $root = Split-Path $manifests[0].FullName -Parent
+          "EXPERIMENTAL_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Stage a reversible experimental native portable package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = $env:EXPERIMENTAL_ROOT
+          $native = 'native-rebuild-artifact/cyber_engine_tweaks.PROFILER.dll'
+          $stable = Join-Path $root 'payload/cyber_engine_tweaks.PROFILER.dll'
+          $backup = Join-Path $root 'NativeRecovery'
+          New-Item -Path $backup -ItemType Directory -Force | Out-Null
+          $stableHash = (Get-FileHash -LiteralPath $stable -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($stableHash -ne 'c62d57f50b1fd792ae989cb78fb54cee8d82b0370abdb51ea01617c2ddcfa23e') {
+            throw 'Pinned managed source artifact unexpectedly lacks known-good native 2.15.'
+          }
+          Copy-Item $stable (Join-Path $backup 'cyber_engine_tweaks.PROFILER.native2.15.KNOWN_GOOD.dll') -Force
+          Copy-Item $native $stable -Force
+          $newHash = (Get-FileHash $stable -Algorithm SHA256).Hash.ToLowerInvariant()
+          $manifestPath = Join-Path $root 'MANIFEST.json'
+          $manifestText = Get-Content $manifestPath -Raw
+          $manifestText = $manifestText.Replace(
+            '"profilerNativeVersion": "2.15.0"',
+            '"profilerNativeVersion": "2.11.0-rebuilt-scalar-experimental"')
+          $manifestText = $manifestText.Replace(
+            '"profilerSha256": "c62d57f50b1fd792ae989cb78fb54cee8d82b0370abdb51ea01617c2ddcfa23e"',
+            ('"profilerSha256": "' + $newHash + '"'))
+          $manifest = $manifestText | ConvertFrom-Json
+          if ($manifest.targetCET.profilerSha256 -ne $newHash -or
+              $manifest.profilerNativeVersion -ne '2.11.0-rebuilt-scalar-experimental' -or
+              $manifest.packageVersion -ne '1.2.6') {
+            throw 'Experimental native manifest/hash metadata is invalid.'
+          }
+          [IO.File]::WriteAllText($manifestPath, $manifestText, [Text.UTF8Encoding]::new($false))
+          @"
+          EXPERIMENTAL NATIVE — NOT THE NORMAL v1.2.6 RELEASE
+          This bundle contains a newly compiled native profiler rebuilt from historical 2.11 source
+          plus the scalar observation API. It is NOT yet proved feature-equivalent to native 2.15.
+          Game startup/world-load, Lua hook compatibility, captured CSV completeness and
+          no-capture idle overhead must be verified before use in a real mod collection.
+          The previous known-good native 2.15 binary is in NativeRecovery for rollback.
+          Existing CET official .asi backup/restore still runs through the Profiler application.
+          Experimental native SHA-256: $newHash
+          Native source: native-profiler-build/v2.11.0 in dev/resolver-profiler-handoff
+          "@ | Set-Content (Join-Path $root 'NATIVE-EXPERIMENTAL-READ-ME.txt') -Encoding utf8
+          $out = 'G-CET-Runtime-Profiler-v1.2.6-NATIVE-EXPERIMENTAL.zip'
+          Compress-Archive -Path $root -DestinationPath $out -CompressionLevel Optimal -Force
+          if (!(Test-Path $out)) { throw 'Experimental package was not created.' }
+          Write-Host "Experimental portable package: $out native $newHash"
+
+      - name: Upload experimental Profiler bundle with new native
+        uses: actions/upload-artifact@v4
+        with:
+          name: G-CET-Runtime-Profiler-v1.2.6-NATIVE-EXPERIMENTAL
+          path: G-CET-Runtime-Profiler-v1.2.6-NATIVE-EXPERIMENTAL.zip
+          if-no-files-found: error
+
       - name: Upload rebuilt native payload
         uses: actions/upload-artifact@v4
         with:
