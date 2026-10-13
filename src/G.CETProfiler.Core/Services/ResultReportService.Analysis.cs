@@ -55,6 +55,7 @@ public static partial class ResultReportService
         public ExplicitGcTelemetry? ExplicitGc { get; init; }
         public GcCollectorTelemetry? CollectorGc { get; init; }
         public GcTracerTelemetry? GcTracer { get; init; }
+        public DeepReuseAnalysis? DeepReuse { get; set; }
         public WorkloadTelemetry? WorkloadServices { get; init; }
     }
 
