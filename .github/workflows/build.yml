@@ -989,6 +989,10 @@ jobs:
         shell: pwsh
         run: ./tests/AutoLootGcSemanticContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: NPC Outfit Manager version-fluid idle and state contract
+        shell: pwsh
+        run: ./tests/NpcOutfitManagerSemanticContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: GigCore SPECTER variant source-generation contract
         shell: pwsh
         run: ./tests/GigCoreSpecterSourceContract.ps1 -ResolverRoot ./publish-resolver
