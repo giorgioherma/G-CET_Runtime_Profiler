@@ -83,14 +83,21 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
+          # actions/upload-artifact packages portable/ itself; the downloaded
+          # artifact contains the product folder, NOT the separately created ZIP.
           gh run download 38470666533 --repo ${{ github.repository }} --name G-CET-Runtime-Profiler-v1.2.6 --dir stable-app-asset
           if ($LASTEXITCODE -ne 0) { throw 'Unable to retrieve pinned green managed v1.2.6 package.' }
-          $zip = @(Get-ChildItem -LiteralPath stable-app-asset -Recurse -File -Filter 'G-CET-Runtime-Profiler-v1.2.6.zip')
-          if ($zip.Count -ne 1) { throw "Expected one pinned v1.2.6 ZIP, found $($zip.Count)." }
-          Expand-Archive -LiteralPath $zip[0].FullName -DestinationPath experimental-unpacked -Force
-          $manifests = @(Get-ChildItem experimental-unpacked -Recurse -File -Filter MANIFEST.json)
-          if ($manifests.Count -ne 1) { throw "Expected one package manifest, found $($manifests.Count)." }
-          $root = Split-Path $manifests[0].FullName -Parent
+          $root = Join-Path (Resolve-Path stable-app-asset).Path 'G-CET-Runtime-Profiler'
+          $manifestPath = Join-Path $root 'MANIFEST.json'
+          if (!(Test-Path -LiteralPath $manifestPath -PathType Leaf) -or
+              !(Test-Path -LiteralPath (Join-Path $root 'app/G-CET-Runtime-Profiler.App.exe') -PathType Leaf) -or
+              !(Test-Path -LiteralPath (Join-Path $root 'payload/cyber_engine_tweaks.PROFILER.dll') -PathType Leaf)) {
+            throw 'Pinned v1.2.6 artifact did not contain the expected portable product layout.'
+          }
+          $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+          if ([string]$manifest.packageVersion -ne '1.2.6') {
+            throw 'Pinned managed package version does not match v1.2.6.'
+          }
           "EXPERIMENTAL_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Stage a reversible experimental native portable package
