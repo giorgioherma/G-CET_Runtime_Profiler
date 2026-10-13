@@ -11,6 +11,8 @@ on:
     paths-ignore:
       - 'native-profiler-build/**'
       - '.github/workflows/native-profiler-rebuild.yml'
+      - 'docs/**'
+      - 'BUILDING.md'
   pull_request:
 
 jobs:
