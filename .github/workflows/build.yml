@@ -83,7 +83,7 @@ jobs:
         shell: pwsh
         run: |
           $manifest = Get-Content MANIFEST.json -Raw | ConvertFrom-Json
-          if ([string]$manifest.packageVersion -in @('1.2.2', '1.2.3', '1.2.4')) {
+          if ([string]$manifest.packageVersion -in @('1.2.2', '1.2.3', '1.2.4', '1.2.5')) {
             if ([string]$manifest.profilerNativeVersion -ne '2.15.0' -or
                 [string]$manifest.targetCET.profilerSha256 -ne 'c62d57f50b1fd792ae989cb78fb54cee8d82b0370abdb51ea01617c2ddcfa23e') {
               throw 'Regression-isolation release must contain the exact working 2.15 DLL from CI #925.'
@@ -322,6 +322,9 @@ jobs:
           $publishedVersion = (Get-Content publish\VERSION.txt -Raw).Trim()
           $publishedManifest = Get-Content publish\MANIFEST.json -Raw | ConvertFrom-Json
           $productVersion = (Get-Item publish\app\G-CET-Runtime-Profiler.App.exe).VersionInfo.ProductVersion
+          $resolverVersion = (Get-Item publish-resolver\G-CET-Resolver.exe).VersionInfo.ProductVersion
+          $profilerFileVersion = (Get-Item publish\app\G-CET-Runtime-Profiler.App.exe).VersionInfo.FileVersion
+          $resolverFileVersion = (Get-Item publish-resolver\G-CET-Resolver.exe).VersionInfo.FileVersion
 
           if ($publishedVersion -ne $env:PRODUCT_VERSION) {
             throw "Published VERSION.txt mismatch: expected $env:PRODUCT_VERSION, got $publishedVersion"
@@ -332,6 +335,18 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($productVersion) -or !$productVersion.StartsWith($env:PRODUCT_VERSION, [StringComparison]::OrdinalIgnoreCase)) {
             throw "Managed app ProductVersion mismatch: expected prefix $env:PRODUCT_VERSION, got $productVersion"
           }
+          if ([string]::IsNullOrWhiteSpace($resolverVersion) -or !$resolverVersion.StartsWith($env:PRODUCT_VERSION, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Standalone Resolver ProductVersion mismatch: expected prefix $env:PRODUCT_VERSION, got $resolverVersion"
+          }
+          foreach ($versionInfo in @(
+              @{ App = 'Profiler'; Version = $profilerFileVersion },
+              @{ App = 'Resolver'; Version = $resolverFileVersion }
+          )) {
+            if (-not ([string]$versionInfo.Version).StartsWith("$env:PRODUCT_VERSION.", [StringComparison]::OrdinalIgnoreCase)) {
+              throw "$($versionInfo.App) FileVersion mismatch: expected $env:PRODUCT_VERSION.x, got $($versionInfo.Version)"
+            }
+          }
+          Write-Host "Verified both Profiler and Resolver $env:PRODUCT_VERSION (product and file versions)."
 
       - name: C# lifecycle integration smoke test
         shell: pwsh

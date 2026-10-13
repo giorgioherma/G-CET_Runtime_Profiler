@@ -1,5 +1,7 @@
 # G-CET Runtime Profiler v1.0.0
 
+> **Development builds:** v1.2.5 is built together for the Profiler and standalone Resolver. It adds review-only data provenance/source-overlap candidates from existing G-GC function samples, retains the original time and GC metrics, and does not change native 2.15.0 or GC behavior. This document also retains historical notes for the original v1.0.0 public release.
+
 First stable release of the standalone G-CET Runtime Profiler.
 
 ## Highlights

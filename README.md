@@ -4,9 +4,9 @@
 
 # G-CET Runtime Profiler
 
-**v1.2.3 development package — Profiler + Resolver**
+**v1.2.5 development package — Profiler + Resolver**
 
-**Development handoff:** [Project contract, active state, and GC research](docs/HANDOFF/README.md).
+**Development handoff:** [Project contract, active state, GC research, and locked data-provenance specification](docs/HANDOFF/README.md). Product 1.2.5 adds review-only producer/source-overlap and native getter candidate evidence to the existing Profiler and Resolver reports. Native 2.15.0 remains SHA-pinned.
 
 A standalone Cyberpunk 2077 CET/Lua runtime profiler with transactional install/restore, optional 0-Engine Scheduler attribution, optional frame-time pairing, and a headless interface for G's Cyberpunk 2077 TOTAL Profiler.
 

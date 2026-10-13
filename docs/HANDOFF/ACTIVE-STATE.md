@@ -1,11 +1,17 @@
-# Active project state — 2026-10-12
+# Active project state — 2026-10-13
+
+## Product 1.2.5 coordinated Profiler + Resolver bump (2026-10-13)
+
+- Advance **both** managed applications to v1.2.5 with VERSION.txt, Directory.Build.props and MANIFEST.json aligned. CI checks both executable ProductVersion and FileVersion, artifact ZIPs use v1.2.5. The pinned native 2.15.0 DLL and SHA are unchanged. No mod runtime or GC policy modifications. Version bump follows green data provenance Stage A (#1013) and updated permanent specification.
+- Next engineering milestone remains the experimental bounded creation-source context and opt-in in-situ read/change probes from DATA-PROVENANCE-SPEC.md. Do not assume Stage B is implemented or gameplay verified.
+
 
 ## 2026-10-13 locked new objective: data-production provenance and cross-mod duplication
 
 - **Authoritative spec:** [DATA-PROVENANCE-SPEC.md](DATA-PROVENANCE-SPEC.md). User approved the concept and requested permanent preservation plus immediate implementation. Scope: who generates bytes; how often; whether output changes; whether multiple mods independently make equivalent queries; which objects are reclaimed; safely eliminate/reuse/share with the *existing* Resolver only.
 - **Stage A implemented and GREEN in CI #1013 (commit 600751e):** managed-only candidate analyzer using pinned native 2.15 function samples, grouping exact normalized **qualified** Lua source file+line+function across distinct mod registrations (bare init.lua and ./json/json.lua are ambiguous across mods and excluded); native `=[C]` stays segregated with explicit callsite confidence. A separate repeated-native-Get*/Is*/Has* name list shows which API getters were sampled across distinct mods; it is `NATIVE_API_NAME_ONLY`, NEVER proof that arguments or return values matched. Output `dataProvenanceCandidates` in CET_Summary + CET_Resolver_Input and HTML, no automatic optimizer admission, no result equivalence assumptions. See `ResultReportService.DataProvenance.cs` and `tests/HitchPressureContract.ps1`.
 - Verified sample from real 470.629s capture: fully qualified `GigCore/core/bus.lua:18 Bus.get` sampled under `GigCore`, `SpecterCampaignProgression`, `SpecterM11RecoveryDev` registrations; in user-supplied GigCore 0.7.3 original code it intentionally performs fresh guarded `Game.GetScriptableSystemsContainer():Get(BUS_ID)` each invocation for offline-companion tolerance. **This is overlapping execution source, not proven repeated equivalent data. Do not cache the reds bus across callbacks without lifecycle/source proof.** Ambiguous `./json/json.lua` relative paths excluded from cross-mod claims. Other sampled native getter names across owners include GetPlayer, GetWorldPosition, GetScriptableSystemsContainer, GetQuestsSystem; names alone do not prove identical parameters or return values. Tests cover both false collisions and name-only native overlaps.
-- **Latest accepted CI:** #1013 green (all 3 jobs, managed package 1.2.4); production native remains 2.15.0.
+- **Stage A accepted CI:** #1013 green (all 3 jobs, managed package 1.2.4 before coordinated bump); production native remains 2.15.0. Product 1.2.5 CI must be confirmed separately.
 - Later B/C/D: capture-gated bounded native execution-context provenance including unscoped owner ID 0; in-situ scalar getter read/change rate; cross-mod parameter and output equivalence with source-verified lifetime, aliasing and invalidation. Native 2.15 product pinned, experimental 2.16 pre-F11 crash unresolved.
 - All existing CET ms, GC pauses, scheduler, throughput, source collection and gameplay behavior preserved. GigCore and ImmersiveFirstPerson are deferred, not permanently untouchable. CMB controls explicit GC policy; never conflate its manual collector trigger with allocation owner.
 

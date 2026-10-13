@@ -3,6 +3,8 @@
 All notable public changes to G-CET Runtime Profiler are recorded here.
 
 ## [Unreleased]
+- **v1.2.5 development package (Profiler + Resolver):** both Windows applications, product manifest, root VERSION and both GitHub Actions artifact names advance together. CI now checks the ProductVersion and FileVersion of both executables. The exact native CET profiler 2.15.0 SHA pin remains mandatory; no native DLL rebuild and no game/mod behavior change.
+- **Data-provenance Stage A:** adds bounded-source function allocation candidates, qualified cross-mod Lua source overlap, separate repeated native Get*/Is*/Has* name-only probes, and explicit uncertainty; preserved all existing ms/s, GC duration, spikes and allocation evidence. Locked specification and regression fixtures live in docs/HANDOFF and tests.
 - **v1.2.3 development candidate:** align Profiler, Resolver and launcher product version, retain exact known-good native CET profiler 2.15.0 with SHA lock, and publish permanent developer handoff/GC research docs.
 - Preserve existing two-file Poker PASS4/PASS4C semantic, Tunnel Rescue generated-callback correction and Ziggy v3 offered/far semantic. The version bump introduces no new native GC instrumentation.
 - **v1.1.9 (native rebuild #45, SHA-locked)** instruments internal LuaJIT GC execution (capture-gated incremental steps/full collections), keeps exact per-frame collector buckets distinct from explicit Lua GC API timing, and marks all measurements as nested/non-additive. Collector readout never advances or tunes GC.
