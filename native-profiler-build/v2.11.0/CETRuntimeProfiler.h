@@ -2443,12 +2443,12 @@ public:
                             std::ios::trunc);
             if (f)
             {
-                f << "Label,Observations,Unchanged,Changed,DroppedLabels,Interpretation\\n";
+                f << "Label,Observations,Unchanged,Changed,DroppedLabels,Interpretation\n";
                 for (const auto& item : scalarObservationRows)
                     f << Csv(item.first) << ',' << item.second.Observations << ','
                       << item.second.Unchanged << ',' << item.second.Changed << ','
                       << droppedScalarObservations << ','
-                      << "OPT_IN_EXACT_SCALAR_EQUALITY_NOT_CACHE_PROOF" << '\\n';
+                      << "OPT_IN_EXACT_SCALAR_EQUALITY_NOT_CACHE_PROOF" << '\n';
             }
         }
 
