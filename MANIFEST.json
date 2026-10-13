@@ -1,5 +1,5 @@
 {
-  "packageVersion": "1.2.5",
+  "packageVersion": "1.2.6",
   "profilerNativeVersion": "2.15.0",
   "targetCET": {
     "version": "1.37.1",
@@ -40,7 +40,8 @@
     "CET_Runtime_Profile_Deep_Edges.csv",
     "CET_Runtime_Profile_Deep_Samples.csv",
     "CET_Runtime_Profile_Deep_Lines.csv",
-    "CET_Runtime_Profile_Deep_Callsites.csv"
+    "CET_Runtime_Profile_Deep_Callsites.csv",
+    "CET_Runtime_Profile_Scalar_Observations.csv"
   ],
   "managerChanges": [
     "security-scan packaging: native profiler is distributed with a .dll extension matching its PE/DLL format and copied to CET's required cyber_engine_tweaks.asi name only during install",
