@@ -9,6 +9,7 @@
 3. [GC-RESEARCH.md](GC-RESEARCH.md) — reduce needless Lua allocations and redundant work *at the source*, using G-GC evidence without inventing causality.
 4. [ACTIVE-STATE.md](ACTIVE-STATE.md) — branch/version/native pin, recent Poker/Tunnel/Ziggy semantic work, remaining tests and priority work.
 5. [NEXT-CHAT.md](NEXT-CHAT.md) — short reusable continuation prompt.
+6. [AUTOMATIC-DEEP-REUSE-REPORT-2026-10-13.md](AUTOMATIC-DEEP-REUSE-REPORT-2026-10-13.md) — native 2.15 deep callsite joins automatically included in both normal JSON reports and HTML; review-only, no cache authorization.
 
 Authoritative technical references: [Architecture](../ARCHITECTURE.md), [0-Engine workload services](../0-ENGINE-WORKLOAD-SERVICES.md), [G-GC Tracer](../G-GC-TRACER.md), [GC phase diagnostics](../GC-PHASE-ALLOCATION-DIAGNOSTICS.md), and [unified evidence plan](../MEGAMIND-INTEGRATION-PLAN.md). The active rules live in [semantic-library.json](../../resolver-knowledge/semantic-library.json).
 
