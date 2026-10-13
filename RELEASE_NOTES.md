@@ -1,6 +1,6 @@
 # G-CET Runtime Profiler v1.0.0
 
-> **Development builds:** v1.2.5 is built together for the Profiler and standalone Resolver. It adds review-only data provenance/source-overlap candidates from existing G-GC function samples, retains the original time and GC metrics, and does not change native 2.15.0 or GC behavior. This document also retains historical notes for the original v1.0.0 public release.
+> **Development builds:** v1.2.6 contains optional scalar-observation report ingestion and source-driven, version-fluid NPC Outfit Manager idle-scan / last-edited state revision optimization in the standalone Resolver. Production native 2.15.0 remains hash-pinned; experimental native scalar-probe source is NOT bundled or promoted. Gameplay and native experimental safety remain pending. Historical release notes follow.
 
 First stable release of the standalone G-CET Runtime Profiler.
 
