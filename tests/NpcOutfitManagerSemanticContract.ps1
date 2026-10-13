@@ -99,6 +99,15 @@ function Invoke-Variant([string]$label, [string]$source, [bool]$expected) {
     $source | Set-Content -LiteralPath $path -Encoding utf8
     $sourceHash = (Get-FileHash $path -Algorithm SHA256).Hash
     $run = (& $exe --capture $cap --mods $mods --generate-pass --json | ConvertFrom-Json)
+    # A fully satisfied/unknown source has no rewrite, and the Resolver's
+    # generate-pass CLI explicitly returns ok=false when there is no ZIP.
+    if (!$expected -and !$run.ok -and
+        $run.error -match 'no applicable generic or source-proven semantic transforms') {
+        if ((Get-FileHash $path -Algorithm SHA256).Hash -ne $sourceHash) {
+            throw "NPC $label changed live source on a no-op"
+        }
+        return $null
+    }
     if (!$run.ok) { throw "NPC $label Resolver failed: $($run | ConvertTo-Json -Depth 5)" }
     $rules = @()
     if ($run.pass -and $run.pass.ManifestPath) {
