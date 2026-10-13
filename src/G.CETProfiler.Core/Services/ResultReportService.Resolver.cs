@@ -383,6 +383,7 @@ public static partial class ResultReportService
             zeroEngineAllocationFlow = BuildZeroEngineFlowInterop(a),
             dataProvenanceCandidates = BuildDataProvenanceCandidates(a.GcTracer),
             deepDataReuseCandidates = BuildDeepReuseCandidates(a.DeepReuse),
+            scalarChangeObservations = BuildScalarObservations(a.ScalarObservations),
             garbageCollection = a.ExplicitGc is null && a.CollectorGc is null ? null : new
             {
                 attributionPolicy = "MEASUREMENT_ONLY_NO_AUTOMATIC_OPTIMIZATION",
