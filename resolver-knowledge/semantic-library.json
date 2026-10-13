@@ -4910,6 +4910,71 @@
         "marmurbank"
       ],
       "note": "Mixed/raw collection used to close behavior-preserving gaps between the automatic resolver and the established manual 0-Engine reference stack."
+    },
+    {
+      "id": "npc-outfit-manager-idle-state",
+      "identityHints": [
+        "NPC Outfit Manager",
+        "NPC_Outfit_Manager",
+        "NPCOutfitManager"
+      ],
+      "policyClass": "EMPTY_AUTO_RULE_IDLE_DORMANCY_AND_EVENT_EDIT_STATE",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "idle-target-and-auto-outfit-radar"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "GetLookAtNPC()",
+          "ProcessRadarOutfits()",
+          "autoOutfitsData.outfits",
+          "Cron.Update(delta)",
+          "local bodyPartStates ="
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:npc-outfit-manager-idle-state",
+        "expectedMarkerFileCount": 1,
+        "satisfiedAll": [
+          "local __gcetHasAutoOutfitRules =",
+          "local __gcetLastEditedOutfits =",
+          "__gcetOutfitEdited("
+        ]
+      },
+      "behavior": {
+        "handler": "SEMANTIC_NPC_OUTFIT_IDLE_AND_LAST_EDIT",
+        "concepts": [
+          "skipEmptyAutoOutfitRadar",
+          "skipUnusedTargetPolling",
+          "mutationDrivenCanonicalStateRevision",
+          "onDemandEditor",
+          "doNotModifyAuthorSavedLooks"
+        ],
+        "note": "Version-fluid current-source injection only. Preserve live auto outfit assignment with editor closed, onDraw and camera/animation activity, Cron, native attach/detach tracking. Last-edited cache mirrors current in-memory author tables, not disk autosave."
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 0.05,
+        "measuredPeakExclusiveMsPerSecond": 0.5,
+        "evidenceStack": "CET_20261013_DEEP_GGC_SOURCE_AUDIT",
+        "admitted": true
+      },
+      "cadenceGroup": "AUTHOR_1S_RADAR_WHEN_RULES_ACTIVE_ZERO_IDLE_SCAN_WITHOUT_RULES",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "20261013_NPC_OUTFIT_MANAGER_SOURCE_AUDIT"
+      ]
     }
   ]
 }
