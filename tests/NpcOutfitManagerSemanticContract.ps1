@@ -73,9 +73,9 @@ $input = @{
       registrationId = 71; owner='NPC Outfit Manager'; infrastructure=$false
       kind='event'; target='onUpdate'
       source=@{file='init.lua';lineStart=30;lineEnd=55}
-      callsPerSecond=60;exclusiveMsPerSecond=0.40
+      callsPerSecond=60;exclusiveMsPerSecond=3.04
       globalWorkSharePct=1;familyWorkSharePct=100
-      avgExclusiveUs=6.6;maxExclusiveMs=17;spikeCount=1
+      avgExclusiveUs=60.8;maxExclusiveMs=17;spikeCount=1
       maxSpikeExclusiveMs=17
     })
   optimizerEvidence = @()
