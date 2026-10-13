@@ -68,6 +68,7 @@ internal static class SemanticInjectors
             "autoloot" => ApplyAutoLoot(context),
             "autoloot-world-pin-and-early-distance" => ApplyAutoLootWorldPinAndEarlyDistance(context),
             "better-loot-markers" => ApplyBetterLootMarkers(context),
+            "npc-outfit-manager-idle-state" => NpcOutfitManagerSource.Apply(context),
             "gigcore-blackboard-once" => ApplyGigCoreBlackboardReuse(context),
             "specter-recovery-prerequisite-reads" => ApplySpecterRecoveryPrerequisites(context),
             "drivebus" => ApplyDriveBus(context),
