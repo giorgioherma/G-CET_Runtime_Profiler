@@ -46,3 +46,28 @@ The top sampled-function rows are dominated by native `__index` operations, whic
 
 **Next native experiment**, permitted by the user: **separate opt-in/capture-gated build**, not an immediate release-DLL swap; minimally sample existing in-situ producer *inputs and scalar return signatures*, observed equality versus changes, stable field key/generation, and source callsite. Bound events and hashing/copy sizes, no extra game getter invocations, no mutable native pointer lifetime extension, no global interception or arbitrary table serialization. Separately improve owner-0 execution context provenance. Preserve known-good 2.15 release artifact until startup before F11, identical save, on/off, stop/pause, session transition, conflicts, overhead and long-play stability are validated.
 
+
+
+## User-directed prioritization: idle NPC scanner first; shared loot view second (2026-10-13)
+
+User clarified that **NPC Outfit Manager's editor was never opened in the test** and it should not continually create work while idle. User also prioritizes a **shared cached loot view for BetterLootMarkers and AutoLoot**; 0-Engine / ImmersiveFirstPerson cross-mod state cache is less certain and should remain lower priority.
+
+### Confirmed author-code cause: NPC Outfit Manager
+
+Read live `mods(3).zip` source `mods/NPC Outfit Manager/init.lua`:
+- `onUpdate` **always** invokes `GetLookAtNPC()` at **5460**. Its implementation **1304-1325** runs `Game.GetTargetingSystem():GetLookAtObject(player)` and checks a remembered NPC's `IsAttached()`.
+- **5469-5472** runs `ProcessRadarOutfits()` **once per second regardless of whether there are any auto-outfit rules**.
+- **1820-1845** loops `activeNPCs`, calls `GetNPCID(npc)` on each attached NPC, then only afterwards tests `autoOutfitsData.outfits[lookupId]` for a matching rule.
+- **529-540** performs `GetRecordID`, `tostring`, `find`, `match`, `gsub`. These calls explain the observed sampled record-ID/string churn. `OnGameAttached` and `OnGameDetached` observers **1871-1891** maintain the NPC list even with no rules.
+- `autoOutfitsData.outfits` defaults to an empty table at **160**, is loaded at **1157-1166** from `npc_auto_outfits.json`, and may be changed *live while the UI is open* at **2453-2467**. The user archive does not include the active `npc_auto_outfits.json` state; verify zero active assignments in an actual installation before claiming zero-rule measurements. The mod uses automatic outfitting in the background by design: **UI closed** alone does NOT mean this subsystem is unused.
+
+**Safe first optimization candidate:** when the auto-outfit rules table is empty, bypass the periodic `ProcessRadarOutfits` scan; skip continuous `GetLookAtNPC` polling unless a UI/camera/animation/pending targeting feature explicitly needs it. Preserve `Cron.Update`, pending wardrobe/camera actions, on-demand editor access, and ability to set an auto outfit while playing without restart. Do **not** unregister lifecycle observers blindly or drop already attached targets on re-enable. If rules are nonempty, follow with per-entity normalized NPC ID caching keyed by safe entity/record generation and cleared on detach, load and appearance/record changes; include NCA mapping rules. Tests: no rules + UI closed, editor opens, automatic assignment activated live, NCA, attach/detach/respawn, applied-once logic, camera and Cron pending work. This is an evidence-backed *source optimization candidate*, not a committed mod patch.
+
+### Source-checked loot-sharing boundary
+
+- `BetterLootMarkers/init.lua:111-122`: on mappin `UpdateVisibility`/`UpdateIcon` it queries a target via `GetItemListForObject` and constructs quality/category/count aggregates at **188-212**. That list helper at **243-262** reads the **object**, falls back to `owner` **only when object list is empty AND owner is `itemDropObject`**.
+- `AutoLoot/modules/logic.lua:1595-1635`: on accepted loot action it queries object and owner inventories separately, then `lootObjectItems` at **1929 onward** reads **fresh inventory** before protected item selection/transfers. It also checks remaining NPC loot when hiding mappins at **1550-1575**.
+- There is meaningful overlap in the underlying game transaction system but **different object vs owner routing, staleness tolerance, and consumer requirements**. An immutable `entity identity + generation + inventory revision -> marker category/quality/count summary` can let multiple marker refresh callbacks reuse presentation data; AutoLoot should read fresh item handles for actual quest/shard/protection and transfer decisions. AutoLoot can **invalidate** relevant marker snapshot entries upon successful/partial changes; other inventory mutation paths (manual loot, game grants, despawn/respawn, owner change, save/load) require their own invalidation or bounded conservative refresh. Without a reliable change signal, expiry is only a fallback and stale markers are a correctness risk. Don't share mutable native `gameItemData` arrays or claim the current 24/13 sampled calls prove savings. A provider must be optional/load-order-safe, with original fallback if other mod absent.
+- Focus a separate experiment on repeated `UpdateVisibility`/`UpdateIcon` for the **same entity** within a stable change generation and on source-proven inventory invalidation. Distinguish marker display reuse from actual AutoLoot inventory reads.
+
+**Scope:** These are investigative priorities and acceptance criteria only; no mod source, Resolver semantic, or native tracer is changed by this documentation entry.
