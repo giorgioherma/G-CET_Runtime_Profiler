@@ -87,6 +87,7 @@ public static partial class ResultReportService
         Directory.CreateDirectory(captureRoot);
 
         var a = Analyze(captureRoot);
+        a.DeepReuse = AnalyzeDeepReuse(captureRoot);
         var summaryPath = Path.Combine(captureRoot, SummaryFileName);
         var resolverInputPath = Path.Combine(captureRoot, ResolverInputFileName);
         var reportPath = Path.Combine(captureRoot, ReportFileName);
@@ -150,6 +151,7 @@ public static partial class ResultReportService
             unknownAllocationCoverage = BuildUnknownAllocationCoverageInterop(a),
             zeroEngineAllocationFlow = BuildZeroEngineFlowInterop(a),
             dataProvenanceCandidates = BuildDataProvenanceCandidates(a.GcTracer),
+            deepDataReuseCandidates = BuildDeepReuseCandidates(a.DeepReuse),
             collectorGc = a.CollectorGc is null ? null : new
             {
                 measurement = "EXACT_INTERNAL_LUAJIT_GC_EXECUTION_FRAME_BUCKETED",
