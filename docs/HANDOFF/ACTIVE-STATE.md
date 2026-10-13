@@ -1,5 +1,13 @@
 # Active project state — 2026-10-12
 
+## 2026-10-13 locked new objective: data-production provenance and cross-mod duplication
+
+- **Authoritative spec:** [DATA-PROVENANCE-SPEC.md](DATA-PROVENANCE-SPEC.md). User approved the concept and requested permanent preservation plus immediate implementation. Scope: who generates bytes; how often; whether output changes; whether multiple mods independently make equivalent queries; which objects are reclaimed; safely eliminate/reuse/share with the *existing* Resolver only.
+- **Stage A implemented pending CI:** managed-only candidate analyzer using pinned native 2.15 function samples, grouping exact normalized Lua source file+line+function across distinct mod registrations; native `=[C]` stays segregated with explicit callsite confidence. Output `dataProvenanceCandidates` in CET_Summary + CET_Resolver_Input and HTML, no automatic optimizer admission, no result equivalence assumptions. See `ResultReportService.DataProvenance.cs` and `tests/HitchPressureContract.ps1`.
+- Later B/C/D: capture-gated bounded native execution-context provenance including unscoped owner ID 0; in-situ scalar getter read/change rate; cross-mod parameter and output equivalence with source-verified lifetime, aliasing and invalidation. Native 2.15 product pinned, experimental 2.16 pre-F11 crash unresolved.
+- All existing CET ms, GC pauses, scheduler, throughput, source collection and gameplay behavior preserved. GigCore and ImmersiveFirstPerson are deferred, not permanently untouchable. CMB controls explicit GC policy; never conflate its manual collector trigger with allocation owner.
+
+
 ## Attribution gap / owner-0 analysis — 2026-10-13
 
 - From the user's uploaded exact 470.629s capture, `<unattributed>` has **504.251627 MiB** (39.128% positive bytes), **3,452,096 positive allocator requests** (32.275% requests), **56,947 GC-object births** (only **3.133%** of all object births), and **12 interned-string births** (0.037% of all strings). Average positive allocation size about **153.17 bytes/request**, versus **113.55 bytes/request** for all other buckets combined.

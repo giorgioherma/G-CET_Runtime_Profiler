@@ -381,6 +381,7 @@ public static partial class ResultReportService
             gcTracer = a.GcTracer is null ? null : BuildGcTracerInterop(a.GcTracer),
             unknownAllocationCoverage = BuildUnknownAllocationCoverageInterop(a),
             zeroEngineAllocationFlow = BuildZeroEngineFlowInterop(a),
+            dataProvenanceCandidates = BuildDataProvenanceCandidates(a.GcTracer),
             garbageCollection = a.ExplicitGc is null && a.CollectorGc is null ? null : new
             {
                 attributionPolicy = "MEASUREMENT_ONLY_NO_AUTOMATIC_OPTIMIZATION",

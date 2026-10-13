@@ -401,6 +401,68 @@ if ($null -eq $handoff.hitchPressure -or [bool]$handoff.hitchPressure.authorizes
 }
 
 
+
+# DATA PROVENANCE STAGE A: source-file+line+function overlap across two
+# different mod registrations is an investigative candidate, never evidence
+# that result values, input parameters or cache lifetimes are equivalent.
+$provenanceCapture = Join-Path $root 'data-provenance-cross-mod'
+Copy-Item -LiteralPath $capture -Destination $provenanceCapture -Recurse -Force
+$provenanceFunctionsPath = Join-Path $provenanceCapture 'CET_Runtime_Profile_GGC_Functions.csv'
+@(
+'2,1,sharedSnapshot,mods/shared/provider.lua,88,100,6,2800,90,shared-b,,,NOT_OBSERVED,LUA_OR_OTHER,observed-in-owner-b',
+'1,1,sharedSnapshot,mods\shared\provider.lua,88,100,4,1400,60,shared-a,,,NOT_OBSERVED,LUA_OR_OTHER,observed-in-owner-a',
+'2,1,sameName,mods/OwnerB/a.lua,77,90,3,250,35,name-b,,,NOT_OBSERVED,LUA_OR_OTHER,different-source',
+'1,1,sameName,mods/OwnerA/b.lua,77,90,3,250,35,name-a,,,NOT_OBSERVED,LUA_OR_OTHER,different-source',
+'1,1,GetGameInstance,=[C],-1,-1,2,300,70,native-a,,,NOT_OBSERVED,NATIVE_C,no-cross-mod-native-merge',
+'0,1,nativeUnknown,=[C],-1,-1,1,80,10,native-0,,,NOT_OBSERVED,NATIVE_C,unscoped-must-stay-unknown'
+) | Add-Content -LiteralPath $provenanceFunctionsPath -Encoding utf8
+$provenanceResult = (& $profilerExe --report --capture $provenanceCapture --json | ConvertFrom-Json)
+if (!$provenanceResult.ok) { throw 'Cross-mod source provenance fixture report failed.' }
+$provenanceSummary = Get-Content -LiteralPath (Join-Path $provenanceCapture 'CET_Summary.json') -Raw | ConvertFrom-Json
+$provenanceResolver = Get-Content -LiteralPath (Join-Path $provenanceCapture 'CET_Resolver_Input.json') -Raw | ConvertFrom-Json
+$pv = $provenanceSummary.dataProvenanceCandidates
+$overlaps = @($pv.crossModSourceCandidates)
+if ($null -eq $pv -or
+    $pv.provenanceVersion -ne '1.0-stage-a' -or
+    !$pv.timingMetricsPreserved -or
+    $pv.authorizesAutomaticRewrite -or
+    !$pv.sourceExecutionOverlapDoesNotProveResultEquivalence -or
+    $pv.observedReadFrequencyAvailable -or
+    $pv.valueChangeFrequencyAvailable -or
+    !$pv.noAdditionalRuntimeHooks -or
+    $pv.unknownRegistrationZeroReassigned -or
+    $pv.coverage.crossModSourceSites -ne 1 -or
+    $overlaps.Count -ne 1 -or
+    $overlaps[0].sourceFile -ne 'mods/shared/provider.lua' -or
+    $overlaps[0].sourceLine -ne 88 -or
+    $overlaps[0].function -ne 'sharedSnapshot' -or
+    @($overlaps[0].owners).Count -ne 2 -or
+    !$overlaps[0].crossModSourceOverlap -or
+    $overlaps[0].safeToShare -or
+    $overlaps[0].inputsEquivalent -or
+    $overlaps[0].resultEqualityObserved -or
+    $null -ne $overlaps[0].returnValueChangeRate -or
+    $null -ne $overlaps[0].sampledSavingsBytes -or
+    @($pv.nativeSourceUnknown | Where-Object { $_.NativeFunction -eq 'GetGameInstance' }).Count -ne 2 -or
+    @($pv.nativeSourceUnknown | Where-Object { $_.RegistrationId -eq 0 }).Count -ne 1) {
+    throw 'Cross-mod source detection fabricated identity or return equivalence.'
+}
+if (($pv | ConvertTo-Json -Depth 35 -Compress) -ne
+    ($provenanceResolver.dataProvenanceCandidates | ConvertTo-Json -Depth 35 -Compress) -or
+    [math]::Abs([double]$provenanceSummary.capture.exclusiveMsPerSecond -
+        [double]$summary.capture.exclusiveMsPerSecond) -gt 0.00001 -or
+    [math]::Abs([double]$provenanceSummary.collectorGc.totalMeasuredMs -
+        [double]$summary.collectorGc.totalMeasuredMs) -gt 0.00001) {
+    throw 'Data provenance evidence drifted or changed existing CPU/GC time.'
+}
+$provenanceHtml = Get-Content -LiteralPath (Join-Path $provenanceCapture 'CET_Report.html') -Raw
+if (!$provenanceHtml.Contains('Data producers and cross-mod source overlap') -or
+    !$provenanceHtml.Contains('mods/shared/provider.lua') -or
+    !$provenanceHtml.Contains('No; compare actual queries/results')) {
+    throw 'HTML report omitted evidence/confidence warning for source-overlap candidates.'
+}
+Write-Host 'Data provenance Stage A: cross-mod source and native non-attribution contract passed.'
+
 # Native 2.15, the pinned pre-F11 stable build, emits the ORIGINAL
 # function CSV schema. MEGAMIND may report unknown Lua callsites but cannot
 # invent 2.16 provenance from an old-format capture.

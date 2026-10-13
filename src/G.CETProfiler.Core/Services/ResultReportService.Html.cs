@@ -98,6 +98,7 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
         {
             AppendGcTracer(sb, a.GcTracer);
             AppendUnknownAllocationCoverage(sb, a);
+            AppendDataProvenance(sb, a.GcTracer);
         }
 
         if (a.GcTracer is not null)

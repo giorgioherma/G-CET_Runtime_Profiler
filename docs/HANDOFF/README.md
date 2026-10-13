@@ -5,9 +5,10 @@
 ## Reading order
 
 1. [PROJECT-CONTRACT.md](PROJECT-CONTRACT.md) — architecture, two optimization families, risk/payback, version tolerance, composition, and developer rules.
-2. [GC-RESEARCH.md](GC-RESEARCH.md) — **primary current research frontier**: reduce needless Lua allocations and redundant work *at the source*, using G-GC evidence without inventing causality.
-3. [ACTIVE-STATE.md](ACTIVE-STATE.md) — branch/version/native pin, recent Poker/Tunnel/Ziggy semantic work, remaining tests and priority work.
-4. [NEXT-CHAT.md](NEXT-CHAT.md) — short reusable continuation prompt.
+2. [DATA-PROVENANCE-SPEC.md](DATA-PROVENANCE-SPEC.md) — **locked primary new profiler objective**: find allocation sources, repeated creation, rarely changed results and cross-mod equivalent data without sacrificing existing metrics.
+3. [GC-RESEARCH.md](GC-RESEARCH.md) — reduce needless Lua allocations and redundant work *at the source*, using G-GC evidence without inventing causality.
+4. [ACTIVE-STATE.md](ACTIVE-STATE.md) — branch/version/native pin, recent Poker/Tunnel/Ziggy semantic work, remaining tests and priority work.
+5. [NEXT-CHAT.md](NEXT-CHAT.md) — short reusable continuation prompt.
 
 Authoritative technical references: [Architecture](../ARCHITECTURE.md), [0-Engine workload services](../0-ENGINE-WORKLOAD-SERVICES.md), [G-GC Tracer](../G-GC-TRACER.md), [GC phase diagnostics](../GC-PHASE-ALLOCATION-DIAGNOSTICS.md), and [unified evidence plan](../MEGAMIND-INTEGRATION-PLAN.md). The active rules live in [semantic-library.json](../../resolver-knowledge/semantic-library.json).
 

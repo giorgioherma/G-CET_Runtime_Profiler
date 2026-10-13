@@ -149,6 +149,7 @@ public static partial class ResultReportService
             gcTracer = a.GcTracer is null ? null : BuildGcTracerInterop(a.GcTracer),
             unknownAllocationCoverage = BuildUnknownAllocationCoverageInterop(a),
             zeroEngineAllocationFlow = BuildZeroEngineFlowInterop(a),
+            dataProvenanceCandidates = BuildDataProvenanceCandidates(a.GcTracer),
             collectorGc = a.CollectorGc is null ? null : new
             {
                 measurement = "EXACT_INTERNAL_LUAJIT_GC_EXECUTION_FRAME_BUCKETED",
