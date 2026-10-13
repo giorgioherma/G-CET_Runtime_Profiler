@@ -1,5 +1,13 @@
 # Active project state — 2026-10-13
 
+## Latest v1.2.5 validation and long-capture measurements (2026-10-13)
+
+- **Product 1.2.5 CI #1015 GREEN (all 3 jobs):** commit `54aa7b1c0dd0d2f38d9dca58daa89bb9b2506b17`; both Profiler and Resolver v1.2.5 Actions artifacts available under https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38330790554 . Native 2.15.0 unchanged, no runtime/gameplay optimization made by bump.
+- **New real capture** `CET-20261013-031413_CONTAIN_THE_DATA.zip` lasted **698.202s**, 11 completed automatic LuaJIT GC cycles, **19,834.020ms native GC**, 0 explicit full/step; **2,042.068MiB positive allocation growth**, **16.43M allocator ops**, **2.604M GC-object births**. Owner-0 **764.241MiB = 37.425%**, 5.23M ops (7,490/s), **1.095MiB/s**, almost the same unscoped stream as previous 470.629s capture (1.071MiB/s). Actual sampled object reclamation **54,051 of 54,145 tagged samples** and sample-tagged freed object bytes **3.262 MiB**—never interpret this as total heap freed. GC phase sweepstring 6.062s and finalize 4.903s together 55.28% of GC execution time. Strong timing overlap between automatic GC and large callback spikes, not proof of mod causation or additive CPU time.
+- **Stage A output validated on actual v1.2.5 capture:** 39 repeated *native getter API names*, 1 qualified cross-mod source-location overlap (GigCore/core/bus.lua:18 get; four observed mod registrations), but native 2.15 has **0 callsite-resolved rows / 2,278 legacy unresolved**. NO input/return equivalence; no source edits authorized. The next real engineering milestone is safe capture-gated attribution probes, then in-situ value change/identity measurement, not a bigger heuristic ranking.
+- Full evidence and comparisons: [GC-RESEARCH.md](GC-RESEARCH.md), heading “Long v1.2.5 capture — CONTAIN_THE_DATA”.
+
+
 ## Product 1.2.5 coordinated Profiler + Resolver bump (2026-10-13)
 
 - Advance **both** managed applications to v1.2.5 with VERSION.txt, Directory.Build.props and MANIFEST.json aligned. CI checks both executable ProductVersion and FileVersion, artifact ZIPs use v1.2.5. The pinned native 2.15.0 DLL and SHA are unchanged. No mod runtime or GC policy modifications. Version bump follows green data provenance Stage A (#1013) and updated permanent specification.
