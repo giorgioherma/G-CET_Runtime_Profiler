@@ -500,6 +500,10 @@ $1
     globals["CETProfilerIsRunning"] = []() -> bool {
         return CETRuntimeProfiler::Get().IsCapturing();
     };
+    globals["CETProfilerObserveScalar"] = [](const std::string& aLabel,
+                                                const std::string& aScalarValue) -> bool {
+        return CETRuntimeProfiler::Get().ObserveScalar(aLabel, aScalarValue);
+    };
     globals["CETProfilerSetSpikeThresholdMs"] = [](double aThresholdMs) -> double {
         return CETRuntimeProfiler::Get().SetSpikeThresholdMs(aThresholdMs);
     };
@@ -858,6 +862,7 @@ foreach ($marker in @(
     "CETProfilerSetTimelineBucketMs",
     "CETProfilerGetTimelineBucketMs",
     "CETProfilerMark",
+    "CETProfilerObserveScalar",
     "CETProfilerSchedulerRegisterJob",
     "CETProfilerSchedulerFrameBegin",
     "CETProfilerSchedulerFrameEnd",
