@@ -52,6 +52,9 @@ jobs:
       - name: Validate compact timeline and measured report memory
         shell: pwsh
         run: ./tests/TimelineMemoryContract.ps1 -PublishedRoot megamind-smoke
+      - name: Validate automatic deep caller producer reports and reuse fail-closed gates
+        shell: pwsh
+        run: ./tests/DeepReuseReportContract.ps1 -PublishedRoot megamind-smoke
 
   build:
     runs-on: windows-latest
