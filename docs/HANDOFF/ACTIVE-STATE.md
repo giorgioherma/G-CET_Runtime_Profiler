@@ -197,3 +197,10 @@
 5. When fresh generated mods are tested, validate Poker's pins and interactions, Tunnel's load/quest steps, Ziggy's first shard and full quest progression. Compare matched captures and report any feature regressions.
 
 Maintain this page after any substantial pass, measurement schema change, native promotion, or gameplay validation. Do not present a prior CI number as the current build without checking it.
+
+
+## Live CET data-production audit — 2026-10-13
+
+Read-only source inventory of user-supplied live `mods(3).zip`: **138 folders, 1,550 Lua source files**, compared with **139** captured named owners (additional `CETProfilerControls`). Static hook/data-production census generated with **25,382 occurrences**, not runtime counts. Focused source-proven investigations: NPC Outfit Manager repeated `GetNPCID` native record-id/string normalization, licksclubjukebox per-frame entity-controller validity loop, BetterLootMarkers/AutoLoot potential inventory-request overlap, same-event mappin controller scalar overlap, Specter developer/test dispatch and immediate quest handoff protections. Current archive confirms yaibaPenthouse already shares player position. Whole 698s capture and owner0 limitations remain; 592s chart cutoff is event cap, not verified STOP.
+
+**Documentation commit:** [LIVE-CET-DATA-PRODUCTION-AUDIT-2026-10-13.md](LIVE-CET-DATA-PRODUCTION-AUDIT-2026-10-13.md). No runtime/Resolver code changed, no new generic/semantic passes authorized; savings/equivalent query values not measured. Next: source-aware Deep_Callsites + Deep_Functions join, selected in-situ result probes and semantic lifetime proofs. Maintain native 2.15 pin.
