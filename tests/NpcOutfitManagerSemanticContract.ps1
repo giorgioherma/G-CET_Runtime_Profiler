@@ -24,7 +24,7 @@ local hiddenRefits = {}
 local bodyPartStates = {} -- current editor state
 local Cron = {Update = function(_) end}
 local function GetLookAtNPC() return nil end
-local function ProcessRadarOutfits() end
+local function ProcessRadarOutfits() if next(autoOutfitsData.outfits) then end end
 local function authorEdit(targetHash)
     currentSelections[targetHash] = {}
     currentSelections[targetHash]["Head"] = "Example"
