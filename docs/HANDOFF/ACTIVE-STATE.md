@@ -8,6 +8,10 @@ After creating a normal capture using the newly bundled native v1.2.7 package, u
 
 **Isolation plan:** restart/reload exact save without capture; verify `Esc`, inventory and sleep UI, then same save/mods new native with capture stopped; compare with previous known-good native 2.15 via normal manager restore/install, **not manual in-place ASI overwrite**. Preserve `cyber_engine_tweaks.log`, RED4ext logs, game crash/dump if produced, session timing and archive/native marker tail. Inspect `lua_gethook/lua_sethook` lifetime and capture-off hook cleanup **only if A/B/evidence indicates it**. No new code patch, no product version increment, no asserted GC reduction from this report.
 
+## 2026-10-14 user upload: new-native capture analyzed, symptom timing clarified
+
+Analysis: [NEW-NATIVE-GC-CONTINUATION-2026-10-14.md](NEW-NATIVE-GC-CONTINUATION-2026-10-14.md). User reports menus worked for some time **after** the capture, then the game became menu-locked after a strange Wannabe Edgerunner Cyberpsychosis transition, followed by an incomplete bed sleep-duration UI. User merged previous Resolver passes and plans to re-generate and check old absent-mod remnants. No evidence of failure **at capture stop**. Native CSVs are complete through single PAUSE at 185.908s with valid CapFrameX synchronization. NPC Outfit Manager previous/new `onUpdate` 3.037171→0.188525 ms/s, gross allocation operations 803.323→29.875/s (uncontrolled comparison, promising). 4 full GC cycles, 6.188s measured GC; 4 individual collector steps 113–187ms. Other workload callback frequencies changed, so total 138.964→158.488 ms/s is NOT a controlled native regression. No game source changes and **no version bump** from this audit.
+
 ## Current top-line snapshot — 2026-10-14 (supersedes older sections below)
 
 - **Working branch:** `dev/resolver-profiler-handoff`. Confirm latest HEAD before editing.
