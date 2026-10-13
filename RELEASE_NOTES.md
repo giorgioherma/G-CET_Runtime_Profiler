@@ -1,6 +1,6 @@
 # G-CET Runtime Profiler v1.0.0
 
-> **Development builds:** v1.2.7 packages both the Profiler and standalone Resolver from the main **Build G CET Runtime Profiler** workflow. Its native DLL is consumed from the successful native-only CI run #38473605694 and hash-locked at SHA-256 `239e268055e4229ca298bb338a6b82148a2d54e68fdd1af09567ca6ffca4437a`. Includes the opt-in native scalar observation API, managed reporting, and version-fluid NPC Outfit Manager Resolver rule. Native game stability and feature-parity testing remain pending; previous known-good v2.15 remains available in earlier packages. Historical release notes follow.
+> **Development builds:** v1.2.7 packages both the Profiler and standalone Resolver from the main **Build G CET Runtime Profiler** workflow. Its native DLL is consumed from the successful native-only CI run #38473605694 and hash-locked at SHA-256 `89d848b775fb67bc5e56043053f07f315eb414d46940eb7d343f9eaea3ab095b`. Includes the opt-in native scalar observation API, managed reporting, and version-fluid NPC Outfit Manager Resolver rule. Native game stability and feature-parity testing remain pending; previous known-good v2.15 remains available in earlier packages. Historical release notes follow.
 
 First stable release of the standalone G-CET Runtime Profiler.
 
