@@ -2,6 +2,12 @@
 
 > **FIRST READ:** [CORE.md](CORE.md) is the current short authoritative startup state; [BUILD-PIPELINE.md](BUILD-PIPELINE.md) describes the mandatory two workflows; [PRODUCT-STATUS.md](PRODUCT-STATUS.md) summarizes application progress. **Older sections below intentionally preserve historical claims about previous versions; they are not the current packaging instructions.**
 
+## 2026-10-14 newly reported post-capture UI/input failure (UNRESOLVED)
+
+After creating a normal capture using the newly bundled native v1.2.7 package, user continued playing. Subsequently `Esc`/inventory/other game menus stopped responding while ordinary gameplay still worked. Going to bed led to the sleep transition hanging before the UI asking how long to sleep. No files/logs/dump or exact time since stop provided in this report. **No proof that the native binary caused it.** Source initial inspection: `CETRuntimeProfiler::StopCapture` calls `PauseLocked` and `Dump`; `PauseLocked` disables GC stats and changes `m_state` to paused; regular modified Observe/Override wrappers bypass profiler when `!IsCapturing()`; no explicit menu lock found in reviewed source. A lingering deep Lua hook/abnormal callback lifetime remains a **hypothesis**, not a finding. Also possible: pre-existing mod gameplay UI context/input lock.
+
+**Isolation plan:** restart/reload exact save without capture; verify `Esc`, inventory and sleep UI, then same save/mods new native with capture stopped; compare with previous known-good native 2.15 via normal manager restore/install, **not manual in-place ASI overwrite**. Preserve `cyber_engine_tweaks.log`, RED4ext logs, game crash/dump if produced, session timing and archive/native marker tail. Inspect `lua_gethook/lua_sethook` lifetime and capture-off hook cleanup **only if A/B/evidence indicates it**. No new code patch, no product version increment, no asserted GC reduction from this report.
+
 ## Current top-line snapshot — 2026-10-14 (supersedes older sections below)
 
 - **Working branch:** `dev/resolver-profiler-handoff`. Confirm latest HEAD before editing.
