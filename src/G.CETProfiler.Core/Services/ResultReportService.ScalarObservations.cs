@@ -21,7 +21,8 @@ public static partial class ResultReportService
             captureRoot, "CET_Runtime_Profile_Scalar_Observations.csv");
         if (path is null)
             return new ScalarObservationReport();
-        var rows = ReadCsv(path)
+        var raw = ReadCsv(path);
+        var rows = raw
             .Where(x => !string.IsNullOrWhiteSpace(S(x, "Label")))
             .Select(x => new ScalarObservationRow(
                 S(x, "Label"), L(x, "Observations"),
@@ -32,7 +33,6 @@ public static partial class ResultReportService
             .OrderByDescending(x => x.Observations)
             .Take(128)
             .ToList();
-        var raw = ReadCsv(path);
         return new ScalarObservationReport
         {
             Status = rows.Count > 0 ? "OPT_IN_SCALARS_OBSERVED" : "NO_VALID_OBSERVATIONS",
