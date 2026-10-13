@@ -4883,8 +4883,8 @@
         "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
       },
       "runtimeAdmission": {
-        "thresholdMsPerSecond": 0.05,
-        "measuredPeakExclusiveMsPerSecond": 0.5,
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 3.037171,
         "evidenceStack": "CET_20261013_DEEP_GGC_SOURCE_AUDIT",
         "admitted": true
       },
