@@ -290,6 +290,17 @@ public:
         uint64_t ChildInclusiveNs{};
     };
 
+    // Experimental: scalar values are supplied by explicitly instrumented
+    // existing getter callsites. Never dereference native handles or tables.
+    // Only labels, not observed values, are exported from a capture.
+    struct ScalarObservation
+    {
+        uint64_t Observations{};
+        uint64_t Unchanged{};
+        uint64_t Changed{};
+        std::string LastValue;
+    };
+
     struct DeepFrame
     {
         uint64_t FunctionIdentity{};
@@ -1128,6 +1139,8 @@ public:
         ResetGcCollectorLocked();
         ResetSchedulerLocked();
         ResetDeepLocked();
+        m_scalarObservations.clear();
+        m_droppedScalarObservations = 0;
         m_accumulatedCapture = std::chrono::nanoseconds::zero();
         gcet_gc_trace_segment(0);
         gcet_gc_stats_set(
@@ -1143,6 +1156,38 @@ public:
         }
     }
 
+    // No automatic getter interception: callers opt in at their existing read.
+    // Exact scalar string equality is observed only within this capture;
+    // neither this probe nor its hash implies safe cache invalidation.
+    bool ObserveScalar(const std::string& aLabel, const std::string& aValue)
+    {
+        if (!IsCapturing() || aLabel.empty() || aLabel.size() > 128 ||
+            aValue.size() > 256)
+            return false;
+        std::lock_guard lock(m_mutex);
+        if (!IsCapturing())
+            return false;
+        auto it = m_scalarObservations.find(aLabel);
+        if (it == m_scalarObservations.end())
+        {
+            if (m_scalarObservations.size() >= 128)
+            {
+                ++m_droppedScalarObservations;
+                return false;
+            }
+            it = m_scalarObservations.emplace(aLabel, ScalarObservation{}).first;
+        }
+        auto& row = it->second;
+        if (row.Observations > 0)
+        {
+            if (row.LastValue == aValue) ++row.Unchanged;
+            else ++row.Changed;
+        }
+        row.LastValue = aValue;
+        ++row.Observations;
+        return true;
+    }
+
     void StartCapture()
     {
         std::lock_guard lock(m_mutex);
@@ -1154,6 +1199,8 @@ public:
         ResetGcCollectorLocked();
         ResetSchedulerLocked();
         ResetDeepLocked();
+        m_scalarObservations.clear();
+        m_droppedScalarObservations = 0;
         m_accumulatedCapture = std::chrono::nanoseconds::zero();
         // Disabled during all prior work. Activate atomics only for capture.
         gcet_gc_trace_segment(0);
@@ -1927,6 +1974,8 @@ public:
         std::vector<DeepFunctionAggregate> deepFunctionRows;
         std::vector<DeepEdgeAggregate> deepEdgeRows;
         std::vector<DeepCallsiteAggregate> deepCallsiteRows;
+        std::vector<std::pair<std::string, ScalarObservation>> scalarObservationRows;
+        uint64_t droppedScalarObservations{};
         std::vector<DeepSampleEvent> deepSampleRows;
         std::vector<DeepLineEvent> deepLineRows;
         std::vector<MarkerEvent> markerRows;
@@ -2144,6 +2193,10 @@ public:
             for (const auto& [_, row] : m_deepEdges)
                 deepEdgeRows.push_back(row);
 
+            scalarObservationRows.reserve(m_scalarObservations.size());
+            for (const auto& pair : m_scalarObservations)
+                scalarObservationRows.push_back(pair);
+            droppedScalarObservations = m_droppedScalarObservations;
             deepCallsiteRows = m_deepCallsites;
             deepSampleRows = m_deepSamples;
             deepLineRows = m_deepLines;
@@ -2377,6 +2430,25 @@ public:
                       << "exact-native-frame-callback-multiplicity"
                       << '\n';
                 }
+            }
+        }
+
+        // A separate optional CSV: only present if a probe was actually called.
+        // Existing deep files and schema stay unchanged for legacy readers.
+        if (!scalarObservationRows.empty() || droppedScalarObservations > 0)
+        {
+            std::sort(scalarObservationRows.begin(), scalarObservationRows.end(),
+                [](const auto& a, const auto& b) { return a.first < b.first; });
+            std::ofstream f(outputRoot / "CET_Runtime_Profile_Scalar_Observations.csv",
+                            std::ios::trunc);
+            if (f)
+            {
+                f << "Label,Observations,Unchanged,Changed,DroppedLabels,Interpretation\\n";
+                for (const auto& item : scalarObservationRows)
+                    f << Csv(item.first) << ',' << item.second.Observations << ','
+                      << item.second.Unchanged << ',' << item.second.Changed << ','
+                      << droppedScalarObservations << ','
+                      << "OPT_IN_EXACT_SCALAR_EQUALITY_NOT_CACHE_PROOF" << '\\n';
             }
         }
 
@@ -4513,6 +4585,8 @@ private:
     std::vector<DeepCallsiteAggregate> m_deepCallsites;
     std::vector<DeepSampleEvent> m_deepSamples;
     std::vector<DeepLineEvent> m_deepLines;
+    std::unordered_map<std::string, ScalarObservation> m_scalarObservations;
+    uint64_t m_droppedScalarObservations{};
     std::filesystem::path m_outputRoot;
     uint64_t m_captureGeneration{0};
     uint64_t m_dumpedGeneration{0};
