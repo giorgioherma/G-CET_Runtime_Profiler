@@ -1,5 +1,14 @@
 # GC research — the remaining major opportunity
 
+## Important correction: recorded length ≠ intentional capture window (2026-10-13)
+
+The user reports pressing STOP after approximately **7–9 minutes** and then playing another couple of minutes. The native `CET_Runtime_Profile_Markers.csv` contains **CAPTURE_START=0** and **PAUSE=698202.1602ms** with no earlier PAUSE or RESUME; the last GC frame ends 698202.1602ms, and CapFrameX independently spans 697.743s. The stop was **not successfully recorded at the intended time**, mechanism undiagnosed. The **11m38.202s** and all metrics in the following section describe the **actual recorded interval**, NOT a clean intentional single gameplay scenario.
+
+First 7m: **6 completed automatic GC cycles and 10,215.6ms collector work**. First 8m: **6 cycles and 11,664.9ms**. First 9m: **8 cycles and 13,525.2ms**. Last 2m38s–4m38s (depending on actual attempted stop) therefore includes **3–5 GC cycles** and ~**6.31–9.62s** measured collector wall. This is from raw GC Collector CSV and does not require any inferred attribution.
+
+**Critical limitation:** Native 2.15 GGC rankings, registration allocations, sampled-object lifetime/reclamation, and function provenance totals are **whole-recording aggregates**; there is NO evidence permitting re-derivation of these per owner for the first 7–9 minutes. Whole 698s owner-0 1.095 MiB/s and 99.826% reclaimed samples remain recorded facts, but **are not valid clean intended-window evidence or A/B baselines**. Avoid comparing their apparent similarity to the earlier 470s capture as definitive stationary/waste-stream proof. A time-binned producer trace, and stop acknowledgment diagnostics, should be priorities for next instrumentation. Keep GC timing non-additive.
+
+
 ## Long v1.2.5 capture — CONTAIN_THE_DATA (2026-10-13)
 
 Source: user-uploaded `CET-20261013-031413_CONTAIN_THE_DATA.zip` compared to `CET-20261013-000328_THE_QUESTS_AND_AUTOLOOT_RESOLVER.zip`. Read the raw nested CSV plus CET_Summary and CET_Resolver_Input; figures below are observed, not modeled garbage savings.
