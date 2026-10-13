@@ -101,6 +101,7 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
             AppendDataProvenance(sb, a.GcTracer);
         }
         AppendDeepReuseCandidates(sb, a.DeepReuse);
+        AppendScalarObservations(sb, a.ScalarObservations);
 
         if (a.GcTracer is not null)
             AppendZeroEngineFlow(sb, a);
