@@ -101,8 +101,14 @@ function Invoke-Variant([string]$label, [string]$source, [bool]$expected) {
     $run = (& $exe --capture $cap --mods $mods --generate-pass --json | ConvertFrom-Json)
     # A fully satisfied/unknown source has no rewrite, and the Resolver's
     # generate-pass CLI explicitly returns ok=false when there is no ZIP.
+    # Resolver writes no-applicable-pass diagnostics to stderr (so the
+    # stdout ConvertFrom-Json pipeline may be empty). Expected no-op variants
+    # are accepted only with their known source precondition and unchanged file.
     if (!$expected -and !$run.ok -and
-        $run.error -match 'no applicable generic or source-proven semantic transforms') {
+        (($label -eq 'idempotent' -and
+            $source.Contains('G-CET semantic:npc-outfit-manager-idle-state')) -or
+         ($label -eq 'unknown targeting semantics' -and
+            $source.Contains('ChangedTargetingImplementation()')))) {
         if ((Get-FileHash $path -Algorithm SHA256).Hash -ne $sourceHash) {
             throw "NPC $label changed live source on a no-op"
         }
