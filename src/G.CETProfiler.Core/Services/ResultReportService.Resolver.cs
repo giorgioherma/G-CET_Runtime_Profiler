@@ -382,6 +382,7 @@ public static partial class ResultReportService
             unknownAllocationCoverage = BuildUnknownAllocationCoverageInterop(a),
             zeroEngineAllocationFlow = BuildZeroEngineFlowInterop(a),
             dataProvenanceCandidates = BuildDataProvenanceCandidates(a.GcTracer),
+            deepDataReuseCandidates = BuildDeepReuseCandidates(a.DeepReuse),
             garbageCollection = a.ExplicitGc is null && a.CollectorGc is null ? null : new
             {
                 attributionPolicy = "MEASUREMENT_ONLY_NO_AUTOMATIC_OPTIMIZATION",
