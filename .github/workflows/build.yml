@@ -993,6 +993,10 @@ jobs:
         shell: pwsh
         run: ./tests/NpcOutfitManagerSemanticContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: Experimental native scalar report contract
+        shell: pwsh
+        run: ./tests/ScalarObservationReportContract.ps1 -PublishedRoot ./publish
+
       - name: GigCore SPECTER variant source-generation contract
         shell: pwsh
         run: ./tests/GigCoreSpecterSourceContract.ps1 -ResolverRoot ./publish-resolver
