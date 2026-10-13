@@ -37,6 +37,18 @@ public static partial class ResultReportService
     private static string NormalizedSource(string file) =>
         (file ?? "").Trim().Replace('\\', '/');
 
+    // A relative "init.lua" or "./json/json.lua" can refer to separate
+    // copies in different mod directories. Never merge such paths across mods.
+    private static bool HasQualifiedSourceIdentity(string source)
+    {
+        var file = NormalizedSource(source);
+        return file.StartsWith("mods/", StringComparison.OrdinalIgnoreCase) ||
+               file.Contains("/mods/", StringComparison.OrdinalIgnoreCase) ||
+               file.StartsWith('/') ||
+               (file.Length >= 3 && char.IsLetter(file[0]) &&
+                file[1] == ':' && file[2] == '/');
+    }
+
     private static bool HasLuaSource(GcTracerFunction x)
     {
         var f = NormalizedSource(x.SourceFile);
@@ -100,6 +112,7 @@ public static partial class ResultReportService
             .ToList();
 
         var overlap = sourceSites
+            .Where(x => HasQualifiedSourceIdentity(x.SourceFile))
             .Where(x => x.Owners
                 .Select(o => o.Mod)
                 .Where(o => o != "<registration-not-resolved>")
@@ -161,7 +174,9 @@ public static partial class ResultReportService
             crossModSourceOverlap = x.Owners
                 .Select(o => o.Mod)
                 .Where(o => o != "<registration-not-resolved>")
-                .Distinct(StringComparer.OrdinalIgnoreCase).Count() >= 2,
+                .Distinct(StringComparer.OrdinalIgnoreCase).Count() >= 2 &&
+                HasQualifiedSourceIdentity(x.SourceFile),
+            sourceIdentityQualified = HasQualifiedSourceIdentity(x.SourceFile),
             returnValueChangeRate = (double?)null,
             resultEqualityObserved = false,
             inputsEquivalent = false,
@@ -195,6 +210,11 @@ public static partial class ResultReportService
                 a.UnresolvedSourceSamples,
                 identifiedLuaSourceSites = a.Sites.Count,
                 crossModSourceSites = a.CrossModSites.Count,
+                ambiguousRelativeSourceOverlaps = a.Sites.Count(x =>
+                    !HasQualifiedSourceIdentity(x.SourceFile) &&
+                    x.Owners.Select(o => o.Mod)
+                        .Where(o => o != "<registration-not-resolved>")
+                        .Distinct(StringComparer.OrdinalIgnoreCase).Count() >= 2),
                 unresolvedNativeCallsite = a.NativeCandidates.Count(x =>
                     x.CallsiteResolution != "SINGLE_OBSERVED_LUA_CALLSITE" ||
                     string.IsNullOrWhiteSpace(x.LuaCallerFile) ||
@@ -226,6 +246,9 @@ public static partial class ResultReportService
           .Append("function samples only. Repeated execution of a Lua source location ")
           .Append("across mod registrations is a candidate, NOT proof of equivalent ")
           .Append("inputs, repeated returned values, safe reuse, or wasted bytes. ")
+          .Append("Short relative paths like init.lua or ./json/json.lua are ") 
+          .Append("excluded from cross-mod matching because distinct mods may ")
+          .Append("have independent files with those names. ")
           .Append("Native C source with no observed Lua callsite is never linked ")
           .Append("across mods by function name. Zero runtime hooks added.</div>")
           .Append("<div class=\"grid\">");

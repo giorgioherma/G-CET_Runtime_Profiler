@@ -413,6 +413,8 @@ $provenanceFunctionsPath = Join-Path $provenanceCapture 'CET_Runtime_Profile_GGC
 '1,1,sharedSnapshot,mods\shared\provider.lua,88,100,4,1400,60,shared-a,,,NOT_OBSERVED,LUA_OR_OTHER,observed-in-owner-a',
 '2,1,sameName,mods/OwnerB/a.lua,77,90,3,250,35,name-b,,,NOT_OBSERVED,LUA_OR_OTHER,different-source',
 '1,1,sameName,mods/OwnerA/b.lua,77,90,3,250,35,name-a,,,NOT_OBSERVED,LUA_OR_OTHER,different-source',
+'2,1,encode,./json/json.lua,134,141,3,150,19,json-b,,,NOT_OBSERVED,LUA_OR_OTHER,ambiguous-relative-source',
+'1,1,encode,./json/json.lua,134,141,3,110,17,json-a,,,NOT_OBSERVED,LUA_OR_OTHER,ambiguous-relative-source',
 '1,1,GetGameInstance,=[C],-1,-1,2,300,70,native-a,,,NOT_OBSERVED,NATIVE_C,no-cross-mod-native-merge',
 '0,1,nativeUnknown,=[C],-1,-1,1,80,10,native-0,,,NOT_OBSERVED,NATIVE_C,unscoped-must-stay-unknown'
 ) | Add-Content -LiteralPath $provenanceFunctionsPath -Encoding utf8
@@ -432,6 +434,7 @@ if ($null -eq $pv -or
     !$pv.noAdditionalRuntimeHooks -or
     $pv.unknownRegistrationZeroReassigned -or
     $pv.coverage.crossModSourceSites -ne 1 -or
+    $pv.coverage.ambiguousRelativeSourceOverlaps -ne 1 -or
     $overlaps.Count -ne 1 -or
     $overlaps[0].sourceFile -ne 'mods/shared/provider.lua' -or
     $overlaps[0].sourceLine -ne 88 -or
