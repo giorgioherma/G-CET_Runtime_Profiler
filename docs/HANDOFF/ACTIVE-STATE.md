@@ -1,4 +1,20 @@
-# Active project state — 2026-10-13
+# Active project state — chronological engineering history
+
+> **FIRST READ:** [CORE.md](CORE.md) is the current short authoritative startup state; [BUILD-PIPELINE.md](BUILD-PIPELINE.md) describes the mandatory two workflows; [PRODUCT-STATUS.md](PRODUCT-STATUS.md) summarizes application progress. **Older sections below intentionally preserve historical claims about previous versions; they are not the current packaging instructions.**
+
+## Current top-line snapshot — 2026-10-14 (supersedes older sections below)
+
+- **Working branch:** `dev/resolver-profiler-handoff`. Confirm latest HEAD before editing.
+- **Built product:** v1.2.7; [main Profiler + Resolver CI #38476578740](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38476578740) **success** across build, deep-reuse, 0-Engine and evidence jobs. Both `G-CET-Runtime-Profiler-v1.2.7` and `G-CET-Resolver-v1.2.7` artifacts verified present.
+- **Native DLL for this main product:** `2.15.1-scalar`, SHA-256 `89d848b775fb67bc5e56043053f07f315eb414d46940eb7d343f9eaea3ab095b`, built in **native-only** [CI #38473605694](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38473605694) then consumed by main CI. **Native CI never packages the Profiler/Resolver.**
+- **Important fix:** earlier native workflow briefly generated an app bundle, and the main build initially pinned the wrong DLL hash. Final commit `ec022b2daa0d80d423e54384ae13acdfa52d5407` corrected the pin; green main CI verified DLL import/hash, NPC Outfit Manager and scalar reporting contracts. Historical run #38472029196 produced a *different* DLL SHA and subsequently failed on packaging; it is NOT the shipped native input.
+- **Latest features:** managed deep reuse report; optional scalar probe API+CSV ingestion (no real opt-in in-situ game callsites yet); NPC Outfit Manager version-fluid idle scan gating and in-memory edited-state revisions (real gameplay and measured GC impact not yet verified).
+- **Remaining priority:** in-game native startup/gameplay/capture/restore test, actual NPC mod generated pass validation, cross-mod BetterLootMarkers+AutoLoot presentation snapshot validity/invalidation research, real producer value-change probes.
+- **Maintenance:** update CORE and relevant deep topic doc after every significant new result; use this long file for chronology, not as a repeatedly rewritten landing page.
+
+---
+
+## Historical notes (dates and versions below are intentionally preserved)
 
 ## Capture stop-boundary correction — 2026-10-13 (IMPORTANT)
 

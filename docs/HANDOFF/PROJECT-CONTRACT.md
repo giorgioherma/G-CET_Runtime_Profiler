@@ -1,5 +1,7 @@
 # G-CET engineering contract
 
+> **Startup/build contract:** [CORE.md](CORE.md) is the first-read summary, [BUILD-PIPELINE.md](BUILD-PIPELINE.md) is the authoritative two-workflow procedure (native CI = DLL only; main CI = Profiler + Resolver packages), and [PRODUCT-STATUS.md](PRODUCT-STATUS.md) is the current capabilities/remaining-work overview. The details below are the durable Resolver engineering contract.
+
 ## Goal and historical results
 
 G-CET Runtime Profiler measures heavily modded Cyberpunk 2077 CET/Lua; G-CET Resolver applies proven optimizations **to original/current mod source**. This project began with compatible 0-Engine integration and semantic optimization of measured big offenders, then systematic testing of essentially all Nexus mods carrying CET tags in the user's collection. The user repeatedly measured **over 50% lower CET workload** on tested stacks. That's valuable observed progress, *not a guarantee of universal correctness or performance*.
@@ -77,4 +79,4 @@ These are **infrastructure APIs**; existing mods do not become automatically dor
 - `resolver-runtime/0-Engine/` — pinned/safe runtime additions.
 - `tests/*.ps1`, `.github/workflows/build.yml` — regression and build/release contracts.
 
-For GC-focused work, continue with [GC-RESEARCH.md](GC-RESEARCH.md). For build and validation state, consult [ACTIVE-STATE.md](ACTIVE-STATE.md).
+For GC-focused work, continue with [GC-RESEARCH.md](GC-RESEARCH.md). For **current build and validation state**, consult [CORE.md](CORE.md) and [BUILD-PIPELINE.md](BUILD-PIPELINE.md); [ACTIVE-STATE.md](ACTIVE-STATE.md) contains dated historical context.

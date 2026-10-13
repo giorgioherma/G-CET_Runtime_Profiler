@@ -1,35 +1,24 @@
-# G-CET — permanent project handoff
+# G-CET development handoff — start here
 
-**Start here in every new development chat.** Read the documents below; then verify current GitHub branch HEAD, CI status, uploaded captures and live/original mod sources. Earlier assistants' statements are *not* substitutes for source or test results.
+**Every new development chat: read [CORE.md](CORE.md) FIRST.** It contains the current project identity, one-minute product overview/progress, **mandatory two-workflow CI contract**, the latest verified package/native SHA and immediate open items. Recheck GitHub HEAD/manifest/Actions for changes since that snapshot.
 
-## Reading order
+## Layered reading order
 
-1. [PROJECT-CONTRACT.md](PROJECT-CONTRACT.md) — architecture, two optimization families, risk/payback, version tolerance, composition, and developer rules.
-2. [DATA-PROVENANCE-SPEC.md](DATA-PROVENANCE-SPEC.md) — **locked primary new profiler objective**: find allocation sources, repeated creation, rarely changed results and cross-mod equivalent data without sacrificing existing metrics.
-3. [GC-RESEARCH.md](GC-RESEARCH.md) — reduce needless Lua allocations and redundant work *at the source*, using G-GC evidence without inventing causality.
-4. [ACTIVE-STATE.md](ACTIVE-STATE.md) — branch/version/native pin, recent Poker/Tunnel/Ziggy semantic work, remaining tests and priority work.
-5. [NEXT-CHAT.md](NEXT-CHAT.md) — short reusable continuation prompt.
-6. [AUTOMATIC-DEEP-REUSE-REPORT-2026-10-13.md](AUTOMATIC-DEEP-REUSE-REPORT-2026-10-13.md) — native 2.15 deep callsite joins automatically included in both normal JSON reports and HTML; review-only, no cache authorization.
+1. **[CORE.md](CORE.md)** — the **short primary startup context**; mandatory.
+2. **[BUILD-PIPELINE.md](BUILD-PIPELINE.md)** — native builds **DLL only**; main build packages **Profiler and Resolver**. Read before any build/native/package work.
+3. **[PRODUCT-STATUS.md](PRODUCT-STATUS.md)** — architecture, completed functions, what remains, practical roadmap.
+4. **[PROJECT-CONTRACT.md](PROJECT-CONTRACT.md)** — non-negotiable Resolver rules, source proof, behavior, risk/payback and composition.
+5. **[ACTIVE-STATE.md](ACTIVE-STATE.md)** — **historical chronological log**, substantial and sometimes describing superseded versions. Read latest sections for relevant task; do not treat older “current” values as authoritative.
+6. **Deep task-specific docs**, only when relevant:
+   - [DATA-PROVENANCE-SPEC.md](DATA-PROVENANCE-SPEC.md) — locked new native/managed data-producer objective.
+   - [GC-RESEARCH.md](GC-RESEARCH.md) — GC evidence and research priorities.
+   - [AUTOMATIC-DEEP-REUSE-REPORT-2026-10-13.md](AUTOMATIC-DEEP-REUSE-REPORT-2026-10-13.md) — current sampled data reuse and mod-source findings.
+   - [DEEP-CALLSITE-ATTRIBUTION-2026-10-13.md](DEEP-CALLSITE-ATTRIBUTION-2026-10-13.md), [LIVE-CET-DATA-PRODUCTION-AUDIT-2026-10-13.md](LIVE-CET-DATA-PRODUCTION-AUDIT-2026-10-13.md), [CET-CALLBACK-AUDIT-2026-10-13.md](CET-CALLBACK-AUDIT-2026-10-13.md), [GC-PROVENANCE-NOTATION](GC-RESEARCH.md) and the corresponding topic report.
 
-Authoritative technical references: [Architecture](../ARCHITECTURE.md), [0-Engine workload services](../0-ENGINE-WORKLOAD-SERVICES.md), [G-GC Tracer](../G-GC-TRACER.md), [GC phase diagnostics](../GC-PHASE-ALLOCATION-DIAGNOSTICS.md), and [unified evidence plan](../MEGAMIND-INTEGRATION-PLAN.md). The active rules live in [semantic-library.json](../../resolver-knowledge/semantic-library.json).
+[**NEXT-CHAT.md**](NEXT-CHAT.md) is a copyable prompt pointing to the CORE; it deliberately does **not** freeze an old build/version.
 
-## Project in one paragraph
+## Maintenance discipline
 
-We take **original/current Cyberpunk 2077 CET mod source**, profile real gameplay, and have **one Resolver** identify existing optimizations and apply *safe generic changes first* and *source-proven semantic changes second*. Both may apply to one mod; the Resolver recognizes generic, semantic and partial 0-Engine integration and adds only missing safe work. The generated source should match **behavioral code patterns across compatible mod versions**, not version tags, exact source hashes, incidental formatting or callback registration IDs. The Resolver emits a ZIP based on user-present files; it does **not** silently patch the live game. User installs and tests output.
+**The core is current; the deep documents retain historical evidence.** After a meaningful change, update the compact core snapshot and corresponding detailed file in the **same development task**. The default is to verify branch HEAD, both Actions workflows and relevant code/captures; do not make the new chat rely on a previous assistant's prose. Report live game tests distinctly from CI.
 
-## Principles that cannot be lost
-
-- **Generic is broad, conservative, high leverage.** We actively seek new generic rules: callback consolidation, finite action routing, safe shared-provider/state reuse, cheap no-escape allocation removal, and other mechanically proven improvements. Small wins are worthwhile when risk is almost zero and gains aggregate across many mods.
-- **Semantic targets significant offenders.** Dormancy, event wake, near/far state, quest progression, unique polling and mod-specific cadence are more invasive. Require substantial measured payback, complete gameplay/lifecycle proof and source tolerance across versions.
-- **GC is the biggest remaining optimization question.** The user wants to stop unnecessary high-volume data flowing into LuaJIT garbage collection, not just tune the collector. Search for duplicate large temporary tables, high-frequency full queries, repeated snapshots, shared read-only data, and occasional huge allocations.
-- **0-Engine is infrastructure**, not an automatic rewrite: Scheduler plus opt-in WorkQueue, PhasePlanner, FrameListeners and StateSignals.
-- **No third optimizer.** GC and burst data augment the current Resolver; neither grants automatic source rewrite authority.
-- **Never trade away author features.** Quest objectives, shard discovery, dialogue, map categories/pins, UI, input, timers, session reset, cleanup and ordering are requirements.
-- **Fix the generator**, not a generated broken mod as the product deliverable. Acceptance is **original mod → Resolver → complete optimized mod**.
-- **CI ≠ gameplay verification.** The user observed >50% CET workload reduction on many real tested stacks, but not every feature of every mod was exercised. No universal claims.
-
-## Session reporting standard
-
-Identify exact branch HEAD/build/native version and capture; measured evidence vs inference; source files and already-present optimizations; why the proposed rule passes risk/payback; precise generated changes and tests; actual CI result; what still needs live game validation.
-
-Keep this folder updated with major design or capture developments so future assistants do not reopen settled discussions or accidentally reverse working behavior.
+Code/system references: [Architecture](../ARCHITECTURE.md), [native build provenance](../NATIVE_PROFILER_BUILD_PROVENANCE.md), [0-Engine workload services](../0-ENGINE-WORKLOAD-SERVICES.md), [G-GC Tracer](../G-GC-TRACER.md), [build guide](../../BUILDING.md), [production semantic catalog](../../resolver-knowledge/semantic-library.json).

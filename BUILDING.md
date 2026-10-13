@@ -2,9 +2,12 @@
 
 This document describes how the **public G-CET manager and launcher** are built from this repository and documents the provenance of the native CET profiler payload.
 
-The canonical automated build is:
+Two **separate canonical workflows** (the division is mandatory):
 
-`.github/workflows/build.yml`
+- `.github/workflows/native-profiler-rebuild.yml` — builds and uploads the **native DLL + checksum only**.
+- `.github/workflows/build.yml` — downloads the pinned successful native DLL, verifies its SHA-256, builds/tests and packages **both the Profiler and standalone Resolver**.
+
+See [the explicit build/release contract](docs/HANDOFF/BUILD-PIPELINE.md) and [new-chat core](docs/HANDOFF/CORE.md). Native CI does **not** produce an application package.
 
 ## Build scope
 
@@ -35,15 +38,20 @@ Profiler implementation:CETRuntimeProfiler.h
 
 The official CET SHA-256 above is the same `officialSha256` recorded by the current G-CET `MANIFEST.json`.
 
-The recovered builder source is now published directly under [`native-profiler-build/v2.11.0/`](native-profiler-build/v2.11.0/) and documented in [docs/NATIVE_PROFILER_BUILD_PROVENANCE.md](docs/NATIVE_PROFILER_BUILD_PROVENANCE.md). The current public G-CET CI still treats the already-built ASI as a hash-locked release input rather than rebuilding the native ASI on every manager build.
+The recovered builder source is now published directly under [`native-profiler-build/v2.11.0/`](native-profiler-build/v2.11.0/) and documented in [docs/NATIVE_PROFILER_BUILD_PROVENANCE.md](docs/NATIVE_PROFILER_BUILD_PROVENANCE.md). Native CI reconstructs the source-built CET DLL independently; the main Profiler/Resolver build imports the hash-locked result from a pinned successful native workflow run. It does not independently recompile native CET each time.
 
-Current manifest identity:
+Current **verified combined v1.2.7** manifest identity (2026-10-14):
 
 ```text
-Native profiler version: 2.11.0
-Target CET version:      1.37.1
-Profiler ASI SHA-256:    3400a55fe6824519ec8882c924154b288aa43c969bb5a082bb4c8f8bc4071ddb
+Product version:        1.2.7
+Native profiler label:  2.15.1-scalar
+Target CET version:     1.37.1
+Native DLL SHA-256:     89d848b775fb67bc5e56043053f07f315eb414d46940eb7d343f9eaea3ab095b
+Native-only CI run:     38473605694 (success)
+Profiler+Resolver run:  38476578740 (success; both artifacts)
 ```
+
+The directory name `native-profiler-build/v2.11.0` is **historical**; later GC/deep instrumentation was integrated into that reconstructed source. The corresponding source lineage, not its folder label, must be compared when verifying features. The new native DLL is compiled and packaged but still requires in-game stability and feature-parity testing. Always check current `MANIFEST.json` and CI before relying on these snapshot values.
 
 This distinction is intentional and is stated explicitly for security/moderation review. The ASI is a custom source-built CET binary produced by the recovered historical reconstruction pipeline; it is separate from the C# manager/launcher build.
 

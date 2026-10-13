@@ -4,9 +4,9 @@
 
 # G-CET Runtime Profiler
 
-**v1.2.5 development package — Profiler + Resolver**
+**v1.2.7 development package — Profiler + Resolver + newly compiled native DLL**
 
-**Development handoff:** [Project contract, active state, GC research, and locked data-provenance specification](docs/HANDOFF/README.md). Product 1.2.5 adds review-only producer/source-overlap and native getter candidate evidence to the existing Profiler and Resolver reports. Native 2.15.0 remains SHA-pinned.
+**Development handoff:** [CORE — start every new development chat here](docs/HANDOFF/CORE.md), [build pipeline](docs/HANDOFF/BUILD-PIPELINE.md), [product status](docs/HANDOFF/PRODUCT-STATUS.md), and [deep handoff index](docs/HANDOFF/README.md). Product **1.2.7** includes the newly compiled **2.15.1-scalar native DLL** from native-only CI plus the managed Profiler and Resolver build. See the handoff for remaining in-game validation.
 
 A standalone Cyberpunk 2077 CET/Lua runtime profiler with transactional install/restore, optional 0-Engine Scheduler attribution, optional frame-time pairing, and a headless interface for G's Cyberpunk 2077 TOTAL Profiler.
 
@@ -18,7 +18,8 @@ G-CET is source-visible for its public manager and launcher.
 - **Native profiler build source:** [native-profiler-build/v2.11.0/](native-profiler-build/v2.11.0/)
 - **Security and binary provenance:** [SECURITY.md](SECURITY.md)
 - **Architecture / restore model:** [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- **Canonical build workflow:** [.github/workflows/build.yml](.github/workflows/build.yml)
+- **Native DLL build only:** [.github/workflows/native-profiler-rebuild.yml](.github/workflows/native-profiler-rebuild.yml)
+- **Profiler + Resolver packaging:** [.github/workflows/build.yml](.github/workflows/build.yml)
 
 For review purposes, the .NET manager and native root launcher are built from source in this repository. The shipped `payload/cyber_engine_tweaks.PROFILER.dll` is a **custom source-built CET profiler**. Its recovered PowerShell builder clones the pinned CET v1.37.1 source commit, reconstructs the historical build environment, applies the profiler source patch, and compiles the ASI. The clean unpacked builder source is published under [`native-profiler-build/v2.11.0/`](native-profiler-build/v2.11.0/); see also the [native profiler build provenance](docs/NATIVE_PROFILER_BUILD_PROVENANCE.md). The exact native profiler bytes are SHA-256 locked and verified before release. The package uses the `.dll` extension to match the PE/DLL format; installation copies those same bytes to CET's required `cyber_engine_tweaks.asi` filename.
 
