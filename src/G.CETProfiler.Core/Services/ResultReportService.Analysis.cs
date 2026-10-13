@@ -56,6 +56,7 @@ public static partial class ResultReportService
         public GcCollectorTelemetry? CollectorGc { get; init; }
         public GcTracerTelemetry? GcTracer { get; init; }
         public DeepReuseAnalysis? DeepReuse { get; set; }
+        public ScalarObservationReport? ScalarObservations { get; set; }
         public WorkloadTelemetry? WorkloadServices { get; init; }
     }
 
