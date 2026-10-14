@@ -140,6 +140,36 @@ function Invoke-Variant([string]$label, [string]$source, [bool]$expected) {
     return $optimized
 }
 
+$author317 = @'
+local MinimapWidgetsConfig = { ShowElevationArrow = true }
+ObserveAfter('MinimapStealthMappinController', 'UpdateAboveBelowVerticalRelation', function(this)
+    if not IsDefined(this) then return end
+    if MinimapWidgetsConfig.ShowElevationArrow == true then
+        local vertRelation = this:GetVerticalRelationToPlayer()
+        local shouldShow = this:GetRootWidget():IsVisible() and not this:IsClamped()
+        local isAbove = vertRelation == gamemappinsVerticalPositioning.Above
+        local isBelow = vertRelation == gamemappinsVerticalPositioning.Below
+        if this:IsClamped() then
+            if this.aboveWidget then this.aboveWidget:SetVisible(false) end
+            if this.belowWidget then this.belowWidget:SetVisible(false) end
+        else
+            if this.aboveWidget then this.aboveWidget:SetVisible(isAbove) end
+            if this.belowWidget then this.belowWidget:SetVisible(isBelow) end
+        end
+    else
+        if not this.aboveWidget and not this.belowWidget then
+            return
+        end
+        if this.aboveWidget then this.aboveWidget:SetVisible(false) end
+        if this.belowWidget then this.belowWidget:SetVisible(false) end
+    end
+end)
+'@
+$legacyOptimized=Invoke-Variant 'unmodified original Minimap Widgets 3.1.7' $author317 $true
+Invoke-Variant 'original 3.1.7 idempotent' $legacyOptimized $false | Out-Null
+$quoteVariant = $author317.Replace("ObserveAfter('MinimapStealthMappinController', 'UpdateAboveBelowVerticalRelation'",
+                                  'ObserveAfter("MinimapStealthMappinController", "UpdateAboveBelowVerticalRelation"')
+Invoke-Variant 'original equivalent quote style' $quoteVariant $true | Out-Null
 $optimized = Invoke-Variant 'measured live PASS5 structure' $original $true
 Invoke-Variant 'idempotent already patched' $optimized $false | Out-Null
 $reformatted = $original.Replace('local isClamped = this:IsClamped()',
