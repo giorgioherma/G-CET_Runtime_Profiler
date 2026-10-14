@@ -14,7 +14,7 @@
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
     "fullPassRule": "A semantic injector can run only when the current capture meets that rule's runtime admission threshold (3.0 ms/s by default; lower only when explicitly declared by a production rule), the library rule matches, and the current live mod source graph proves its anchors.",
-    "enabledInjectorCount": 65,
+    "enabledInjectorCount": 66,
     "profileOnlyRuleCount": 0,
     "note": "The production semantic base contains source-proven, behavior-aware optimizations learned from validated references and measured hot callbacks, including burst-discovered diagnostic sentinels that preserve author cadence while gating globally expensive fallback scans. Generic/mechanical transforms stay in the Resolver; semantic rules cover state/cadence/hotpath knowledge that generic inference cannot safely own.",
     "admissionPolicy": {
@@ -5036,6 +5036,66 @@
       "evidenceMembership": [
         "FOURTH_GGC_CAPTURE_YAIBA_20261014"
       ]
+    },
+    {
+      "id": "calllist-action-lazy-display-query",
+      "identityHints": [
+        "CallList-VehicleDetailsOverlay-CET"
+      ],
+      "policyClass": "ACTION_INPUT_LAZY_NATIVE_DISPLAY_QUERY",
+      "callbacks": [
+        {
+          "kind": "Observe",
+          "target": "PlayerPuppet::OnAction",
+          "role": "hot-path"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "VehiclesManagerListItemController",
+          "OnSelected",
+          "GetDisplayResolution",
+          "animOpen",
+          "popupOpen",
+          "moveup"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:calllist-action-lazy-display-query",
+        "expectedMarkerFileCount": 1,
+        "satisfiedAll": [
+          "if string.find(name:lower(), \"moveup\") then",
+          "local sizeX, sizeY = GetDisplayResolution()"
+        ]
+      },
+      "behavior": {
+        "handler": "SEMANTIC_ACTION_LAZY_DISPLAY_QUERY",
+        "concepts": [
+          "lazyNativeLookup",
+          "preserveLocalizedInput",
+          "noActionRouterAssumption",
+          "singlePassPristineSource"
+        ],
+        "note": "Defer GetDisplayResolution until the existing localized moveup button check succeeds. Preserve event ordering, dynamic localization and original handler."
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 3,
+        "admitted": true,
+        "evidenceStack": "PASS3_SOURCE_AUDIT",
+        "note": "Requires real runtime admission; candidate is not a claimed measured CallList saving."
+      },
+      "cadenceGroup": "ACTION_INPUT_LAZY_NATIVE_DISPLAY_QUERY",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false
     }
   ],
   "catalog": {
