@@ -33,7 +33,8 @@ function bathtub.update(player, pPos)
     if not player or not pPos then return end
     if not CONFIG.position then return end
     local pos = CONFIG.position
-    local near = true
+    local near = pPos.x < CONFIG.iconRange
+    local hasPin = bathtub.pinID ~= nil
     togglePin(near)
     if near and not bathtub.waterApplied then
         bathtub.waterApplied = true
