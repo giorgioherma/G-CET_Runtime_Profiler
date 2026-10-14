@@ -643,6 +643,34 @@ end
 return Helpers
 '@
 
+# ImmersiveFirstPerson's authoritative rule now also proves GameSession's
+# same-invocation UI/PhotoMode board reuse. Supply the pristine third module
+# rather than silently testing only the older two-file implementation.
+Write-ModFile 'ImmersiveFirstPerson' 'Modules/GameSession.lua' @'
+local GameSession = {}
+local function updateLoaded() end
+local function updatePaused() end
+local function updateBlurred() end
+local function updateDead() end
+local function isPreGame() return false end
+local isLoaded = true
+local function refreshCurrentState()
+	local player = Game.GetPlayer()
+	local blackboardDefs = Game.GetAllBlackboardDefs()
+	local blackboardUI = Game.GetBlackboardSystem():Get(blackboardDefs.UI_System)
+	local blackboardPM = Game.GetBlackboardSystem():Get(blackboardDefs.PhotoMode)
+	local menuActive = blackboardUI:GetBool(blackboardDefs.UI_System.IsInMenu)
+	local blurActive = blackboardUI:GetBool(blackboardDefs.UI_System.CircularBlurEnabled)
+	local photoModeActive = blackboardPM:GetBool(blackboardDefs.PhotoMode.IsActive)
+	local tutorialActive = Game.GetTimeSystem():IsTimeDilationActive('UI_TutorialPopup')
+	if not isLoaded then updateLoaded(player:IsAttached() and not isPreGame()) end
+	updatePaused(menuActive or photoModeActive or tutorialActive)
+	updateBlurred(blurActive)
+	updateDead(player:IsDeadNoStatPool())
+end
+return GameSession
+'@
+
 Write-ModFile 'nativeInteractions' 'init.lua' @'
 local Cron={Update=function() end}
 local manager=require("modules/projectsManager")
