@@ -28,7 +28,15 @@ function Check([string]$version,[bool]$drift=$false){
   $registration=if($version -eq 'live'){'__gcetRegisterEvent_413'}else{'registerForEvent'}
   $snippet=@"
 local pausedThisFrame=false
-local function computePauseState() return false end
+local function _rawMenuOrPhotoPaused()
+  local defs = Game.GetAllBlackboardDefs()
+  local ui   = Game.GetBlackboardSystem():Get(defs.UI_System)
+  if ui and ui:GetBool(defs.UI_System.IsInMenu) then return true end
+  local pm = Game.GetBlackboardSystem():Get(defs.PhotoMode)
+  if pm and pm:GetBool(defs.PhotoMode.IsActive) then return true end
+  return false
+end
+local function computePauseState() return _rawMenuOrPhotoPaused() end
 local Marker={tickAll=function() end}
 local VehicleDamage={tick=function() end}
 local function crumb(v) end
@@ -40,6 +48,10 @@ $registration("onUpdate", function(delta)
 end)
 "@
   if($drift){$snippet=$snippet.Replace('pausedThisFrame = computePauseState()', 'pausedThisFrame = not computePauseState()')}
+  if($version -eq 'live'){
+    $snippet=$snippet.Replace('  local ui   = Game.GetBlackboardSystem():Get(defs.UI_System)','  local __gcetGigBoards = Game.GetBlackboardSystem()`n  local ui   = __gcetGigBoards:Get(defs.UI_System)')
+    $snippet=$snippet.Replace('  local pm = Game.GetBlackboardSystem():Get(defs.PhotoMode)','  local pm = __gcetGigBoards:Get(defs.PhotoMode)')
+  }
   $src=Join-Path $gig 'init.lua'
   $snippet | Set-Content -LiteralPath $src -Encoding utf8
   $old=(Get-FileHash $src -Algorithm SHA256).Hash
@@ -59,7 +71,7 @@ end)
   $count=0
   if($result.pass -and $result.pass.ManifestPath){
     $manifest=Get-Content $result.pass.ManifestPath -Raw|ConvertFrom-Json
-    $count=@($manifest.transforms|Where-Object {$_.RuleId -eq 'gigcore-pause-guard-reuse'}).Count
+    $count=@($manifest.transforms|Where-Object {$_.RuleId -eq 'gigcore-blackboard-once'}).Count
   }
   if($drift){
     if($count -ne 0){throw 'Changed pause semantics must fail closed'}
@@ -74,7 +86,8 @@ end)
   if(!$text.Contains('local function __gcetGigCoreRefreshPausedFrame()') -or
      !$text.Contains('pcall(__gcetGigCoreRefreshPausedFrame)') -or
      $text.Contains('pcall(function() pausedThisFrame = computePauseState() end)') -or
-     !$text.Contains('pcall(Marker.tickAll, delta, activeGigId)')){
+     !$text.Contains('pcall(Marker.tickAll, delta, activeGigId)') -or
+     !$text.Contains('__gcetGigBoards:Get(defs.PhotoMode)')){
     throw "Unexpected GigCore frame guard output: $version"
   }
   if((Get-FileHash $src -Algorithm SHA256).Hash -ne $old){throw 'Live GigCore mutated by Resolver'}
@@ -83,7 +96,7 @@ end)
   if(!$again.ok -and [string]$again.error -notmatch 'no applicable generic or source-proven semantic transforms') {throw 'Rerun failed'}
   if($again.pass -and $again.pass.ManifestPath){
     $m2=Get-Content $again.pass.ManifestPath -Raw|ConvertFrom-Json
-    if(@($m2.transforms|Where-Object {$_.RuleId -eq 'gigcore-pause-guard-reuse'}).Count -gt 0){
+    if(@($m2.transforms|Where-Object {$_.RuleId -eq 'gigcore-blackboard-once'}).Count -gt 0){
       throw 'GigCore frame guard pass is not idempotent'
     }
   }
