@@ -27,3 +27,10 @@ Capture `CET-20261014-211612_PASS3_FIXED_QUEST_ACTIVE_AND_NATIVE_ADDITIONS.zip` 
 
 **Important scope:** `OnAction` is a method name shared by multiple classes. The hash alone does **not** identify `PlayerPuppet`, a Lua owner, an observer, or the precise allocation source. The source stack contains many OnAction registrations including PlayerPuppet; correlate native boundary, class/function identity and capture callback multiplicity before inferring savings. The 205.8 MiB pure-override population is a boundary category, not proof that this one method/owner produced all its bytes. A future optional capture-only class identity record could disambiguate classes without globally modifying wrapper behavior.
 
+
+## Remaining OnAction attribution — after exact-input routing
+
+The dominant PASS3 method hash `9658066991423262154` resolves to the unqualified method name `OnAction`, but method-name hashing does not distinguish `PlayerPuppet::OnAction` from similarly named methods on other classes. Before claiming native-pure-override memory savings from Lua observer consolidation, gather **bounded class-qualified attribution**, including the owning RTTI class, native boundary, observed call count, and per-boundary allocation-growth values. Do not infer a class from the name hash alone, or sum overlapping boundary populations. Make this an instrumentation-only, bounded-per-distinct-method diagnostic; do not allocate method strings on each hot callback. Compare pre/post native proxy/override and Lua observer call counts on like-for-like captures.
+
+`immersive_third_person` now has a dedicated exact-action routing semantic rule with the original Observe fallback. Its action interest is finite and proved by source, unlike DriveAerialVehicle's configurable action lists and queued full action data or CallList's localized substring matching. These latter consumers are **not** safe candidates for finite exact-name routing without further source evidence. Never replace their dynamic behavior with guessed lists merely to decrease registration counts.
+
