@@ -98,6 +98,7 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
         {
             AppendGcTracer(sb, a.GcTracer);
             AppendUnknownAllocationCoverage(sb, a);
+            AppendUnscopedDiagnostics(sb, a.UnscopedDiagnostics);
             AppendDataProvenance(sb, a.GcTracer);
         }
         AppendDeepReuseCandidates(sb, a.DeepReuse);

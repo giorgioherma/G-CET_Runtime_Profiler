@@ -1,10 +1,10 @@
 {
   "packageVersion": "1.2.7",
-  "profilerNativeVersion": "2.15.1-scalar-vm-context",
+  "profilerNativeVersion": "2.15.2-unscoped-native-callpaths",
   "targetCET": {
     "version": "1.37.1",
     "officialSha256": "43a7b94698979703f9dfa2b0950607c9a88f53b84bbf09a8e593c7e218d41059",
-    "profilerSha256": "72cb0f09827fcd86a07e6e510145de6907c7eb9f2e0d68f5381333857b381976",
+    "profilerSha256": "3efd05f3eb76195dff48e4e5b9a46a5380d4acf8623c6c5cadd15010033a4d52",
     "profilerPackageFile": "cyber_engine_tweaks.PROFILER.dll",
     "profilerInstallFile": "cyber_engine_tweaks.asi"
   },
@@ -43,7 +43,11 @@
     "CET_Runtime_Profile_Deep_Samples.csv",
     "CET_Runtime_Profile_Deep_Lines.csv",
     "CET_Runtime_Profile_Deep_Callsites.csv",
-    "CET_Runtime_Profile_Scalar_Observations.csv"
+    "CET_Runtime_Profile_Scalar_Observations.csv",
+    "CET_Runtime_Profile_GGC_UnscopedShapes.csv",
+    "CET_Runtime_Profile_GGC_UnscopedBoundaries.csv",
+    "CET_Runtime_Profile_GGC_UnscopedPathTimeline.csv",
+    "CET_Runtime_Profile_GGC_UnscopedNativeSamples.csv"
   ],
   "managerChanges": [
     "security-scan packaging: native profiler is distributed with a .dll extension matching its PE/DLL format and copied to CET's required cyber_engine_tweaks.asi name only during install",

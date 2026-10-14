@@ -55,6 +55,7 @@ public static partial class ResultReportService
         public ExplicitGcTelemetry? ExplicitGc { get; init; }
         public GcCollectorTelemetry? CollectorGc { get; init; }
         public GcTracerTelemetry? GcTracer { get; init; }
+        public UnscopedDiagnosticReport? UnscopedDiagnostics { get; init; }
         public DeepReuseAnalysis? DeepReuse { get; set; }
         public ScalarObservationReport? ScalarObservations { get; set; }
         public WorkloadTelemetry? WorkloadServices { get; init; }
@@ -276,6 +277,7 @@ public static partial class ResultReportService
             ExplicitGc = explicitGcFile is null ? null : AnalyzeExplicitGc(explicitGc, spikes),
             CollectorGc = analyzedCollector,
             GcTracer = gcTracer.Count > 0 ? AnalyzeGcTracer(gcTracer, gcTracerFunctions, gcTracerRegistrations) : null,
+            UnscopedDiagnostics = AnalyzeUnscopedDiagnostics(captureRoot, gcTracer),
             WorkloadServices = AnalyzeWorkload(markers, schedulerJobMetrics)
         };
     }

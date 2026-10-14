@@ -126,8 +126,8 @@ public static partial class ResultReportService
             newFunctionAttributionFromExistingCsv = false,
             unscopedReasonKnown = false,
             unscopedClassification = "REGISTRATION_SCOPE_ZERO; CAUSE_NOT_RECORDED",
-            temporalDistributionMeasured = false,
-            allocationFunctionSourceForUnscoped = "NOT_MEASURED_BY_NATIVE_2_15",
+            temporalDistributionMeasured = a.UnscopedDiagnostics?.HasVmTimeSeries == true,
+            allocationFunctionSourceForUnscoped = a.UnscopedDiagnostics?.HasNativeSamples == true ? "NATIVE_CALLPATH_SAMPLES_ONLY_NOT_LUA_CALLSITE" : "NOT_MEASURED",
             unscoped = Bucket(coverage.Unscoped, totalMiB, ops, births, strings, duration),
             registrationOverflow = Bucket(coverage.Overflow, totalMiB, ops, births, strings, duration),
             scopedCallbacks = Bucket(coverage.Scoped, totalMiB, ops, births, strings, duration),
@@ -150,7 +150,8 @@ public static partial class ResultReportService
           .Append("the name of an unknown mod. A registration overflow has its ")
           .Append("own bucket. Positive allocator growth is NOT retained memory, ")
           .Append("reclaimed memory or proven wasted data. There is no time-of-allocation ")
-          .Append("or source-function breakdown for registration 0 in native 2.15.</div>");
+          .Append("or source-function breakdown from legacy captures; newer captures may ")
+          .Append("include independently classified VM/boundary data and bounded native samples.</div>");
         sb.Append("<table><thead><tr><th>Scope</th><th>MiB</th>")
           .Append("<th>Bytes %</th><th>Requests</th><th>Ops/s</th>")
           .Append("<th>Ops %</th><th>GC births</th><th>Births %</th>")
