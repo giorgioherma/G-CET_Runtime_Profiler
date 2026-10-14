@@ -75,7 +75,90 @@ int ggc_trace_unscoped_seconds_read(GGCUnscopedSecond *out, int capacity) {
   for (i=0; i<count; i++) out[i]=ggc_unscoped_seconds[i];
   return count;
 }
-static void ggc_unscoped_observe(const global_State *g, unsigned long long bytes) {
+
+/* Allocation morphology + native execution boundary evidence.
+ * These are context tags, NEVER proof of a Lua source/mod producer.
+ * Exactly measured owner-0 positive growth, capture-only and bounded.
+ * Native stack snapshots are sampled, not extrapolated. */
+#define GGC_ORIGIN_KINDS 2
+#define GGC_SIZE_TIERS 6
+#define GGC_BRIDGE_KINDS 3
+#define GGC_NATIVE_SAMPLES 2048
+typedef struct GGCUnscopedDimension { unsigned long long bytes, operations; } GGCUnscopedDimension;
+typedef struct GGCUnscopedDetail {
+  GGCUnscopedDimension morphology[GGC_ORIGIN_KINDS][GGC_SIZE_TIERS];
+  GGCUnscopedDimension bridges[GGC_BRIDGE_KINDS];
+} GGCUnscopedDetail;
+typedef struct GGCUnscopedPathSecond { GGCUnscopedDimension paths[GGC_ORIGIN_KINDS]; GGCUnscopedDimension bridges[GGC_BRIDGE_KINDS]; } GGCUnscopedPathSecond;
+typedef struct GGCUnscopedNativeSample {
+  unsigned long long captureMs, positiveBytes, operationSequence;
+  unsigned int vmState, allocatorPath, bridgeContext, depth;
+  void *frames[6];
+} GGCUnscopedNativeSample;
+static GGCUnscopedDetail ggc_unscoped_detail;
+static GGCUnscopedPathSecond ggc_unscoped_path_seconds[GGC_UNSCOPED_SECONDS+1];
+static GGCUnscopedNativeSample ggc_unscoped_samples[GGC_NATIVE_SAMPLES];
+static volatile LONG ggc_unscoped_sample_seen=0;
+static volatile LONG64 ggc_unscoped_sample_dropped=0;
+static unsigned long long ggc_unscoped_sequence=0;
+static __declspec(thread) unsigned int ggc_bridge_context=0;
+unsigned int ggc_trace_bridge_set(unsigned int context) {
+  unsigned int old=ggc_bridge_context;
+  ggc_bridge_context=context < GGC_BRIDGE_KINDS ? context : 0;
+  return old;
+}
+void ggc_trace_unscoped_detail_read(GGCUnscopedDetail *out) { if(out) *out=ggc_unscoped_detail; }
+int ggc_trace_unscoped_path_seconds_read(GGCUnscopedPathSecond *out,int cap) {
+  int i,n=GGC_UNSCOPED_SECONDS+1;
+  if(!out||cap<=0)return 0;
+  if(cap<n)n=cap;
+  for(i=0;i<n;i++)out[i]=ggc_unscoped_path_seconds[i];
+  return n;
+}
+int ggc_trace_unscoped_samples_read(GGCUnscopedNativeSample *out,int cap,
+                                     unsigned long long *dropped) {
+  int i,n=(int)InterlockedCompareExchange(&ggc_unscoped_sample_seen,0,0);
+  if(dropped)*dropped=(unsigned long long)InterlockedCompareExchange64(&ggc_unscoped_sample_dropped,0,0);
+  if(!out||cap<=0)return 0;
+  if(n>GGC_NATIVE_SAMPLES)n=GGC_NATIVE_SAMPLES;
+  if(cap<n)n=cap;
+  for(i=0;i<n;i++)out[i]=ggc_unscoped_samples[i];
+  return n;
+}
+static unsigned int ggc_size_tier(unsigned long long bytes) {
+  if(bytes<64)return 0;
+  if(bytes<256)return 1;
+  if(bytes<1024)return 2;
+  if(bytes<4096)return 3;
+  if(bytes<16384)return 4;
+  return 5;
+}
+static void ggc_unscoped_extended(unsigned long long bytes,unsigned int path,
+                                  unsigned int state,unsigned long long second,
+                                  unsigned long long captureMs) {
+  unsigned int tier=ggc_size_tier(bytes), bridge=ggc_bridge_context;
+  unsigned long long seq=++ggc_unscoped_sequence;
+  GGCUnscopedDimension *shape=&ggc_unscoped_detail.morphology[path][tier];
+  GGCUnscopedDimension *scope=&ggc_unscoped_detail.bridges[bridge];
+  GGCUnscopedPathSecond *bin=&ggc_unscoped_path_seconds[(unsigned int)second];
+  shape->bytes+=bytes;shape->operations++;
+  scope->bytes+=bytes;scope->operations++;
+  bin->paths[path].bytes+=bytes;bin->paths[path].operations++;
+  bin->bridges[bridge].bytes+=bytes;bin->bridges[bridge].operations++;
+  /* Fixed-stride native callpath snapshots; never unwind every allocation. */
+  if((seq & 1023ULL)==0 || (bytes>=16384 && (seq & 127ULL)==0)) {
+    LONG idx=InterlockedIncrement(&ggc_unscoped_sample_seen)-1;
+    if(idx>=0 && idx<GGC_NATIVE_SAMPLES) {
+      GGCUnscopedNativeSample *s=&ggc_unscoped_samples[idx];
+      s->captureMs=captureMs; s->positiveBytes=bytes;
+      s->operationSequence=seq;s->vmState=state;
+      s->allocatorPath=path;s->bridgeContext=bridge;
+      s->depth=(unsigned int)CaptureStackBackTrace(2,6,s->frames,NULL);
+    } else { InterlockedIncrement64(&ggc_unscoped_sample_dropped); }
+  }
+}
+
+static void ggc_unscoped_observe(const global_State *g, unsigned long long bytes, unsigned int path) {
   unsigned int vmstate=ggc_unscoped_vmstate(g);
   unsigned long long nowMs=(unsigned long long)GetTickCount64();
   unsigned long long startMs=(unsigned long long)InterlockedCompareExchange64(&gcet_segment_wall_ms,0,0);
@@ -88,6 +171,7 @@ static void ggc_unscoped_observe(const global_State *g, unsigned long long bytes
   bin=&ggc_unscoped_seconds[(unsigned int)second].states[vmstate];
   tot->bytes+=bytes; tot->operations++;
   bin->bytes+=bytes; bin->operations++;
+  ggc_unscoped_extended(bytes,path,vmstate,second,offsetNs/1000000ULL+(nowMs>=startMs?nowMs-startMs:0));
 }
 
 
@@ -197,7 +281,7 @@ unsigned long long gcet_gc_scope_set(unsigned long long registration)
   return old;
 }
 unsigned long long gcet_gc_alloc_bytes(void) { return gcet_gross_alloc_bytes; }
-static void gcet_gc_alloc_observe(const global_State *g, unsigned long long oldSize, unsigned long long newSize)
+static void gcet_gc_alloc_observe(const global_State *g, unsigned long long oldSize, unsigned long long newSize, unsigned int allocationPath)
 {
   if (newSize > oldSize && InterlockedCompareExchange(&gcet_gc_on, 0, 0) != 0)
   {
@@ -206,7 +290,7 @@ static void gcet_gc_alloc_observe(const global_State *g, unsigned long long oldS
     ggc_alloc_ops++;
     ggc_owners[owner].bytes += newSize - oldSize;
     ggc_owners[owner].allocations++;
-    if (owner == 0) ggc_unscoped_observe(g, newSize - oldSize);
+    if (owner == 0) ggc_unscoped_observe(g, newSize - oldSize, allocationPath);
   }
 }
 void gcet_gc_trace_segment(unsigned long long captureOffsetNs)
@@ -265,6 +349,12 @@ void gcet_gc_stats_set(int enable, int reset)
     memset(ggc_owners, 0, sizeof(ggc_owners));
     memset(ggc_unscoped_contexts, 0, sizeof(ggc_unscoped_contexts));
     memset(ggc_unscoped_seconds, 0, sizeof(ggc_unscoped_seconds));
+    memset(&ggc_unscoped_detail, 0, sizeof(ggc_unscoped_detail));
+    memset(ggc_unscoped_path_seconds, 0, sizeof(ggc_unscoped_path_seconds));
+    memset(ggc_unscoped_samples, 0, sizeof(ggc_unscoped_samples));
+    InterlockedExchange(&ggc_unscoped_sample_seen, 0);
+    InterlockedExchange64(&ggc_unscoped_sample_dropped, 0);
+    ggc_unscoped_sequence = 0;
     memset(ggc_focus, 0, sizeof(ggc_focus));
     memset(ggc_samples, 0, sizeof(ggc_samples));
     InterlockedExchange64(&ggc_sequence, 0);
@@ -378,8 +468,8 @@ static size_t gc_onestep(lua_State *L)
 
 '@
 $src = Change-Once $src '/* Perform a limited amount of incremental GC steps. */' ($phase + '/* Perform a limited amount of incremental GC steps. */') 'internal collector phase wrapper'
-$src = Change-Once $src '  g->gc.total = (g->gc.total - osz) + nsz;' ('  gcet_gc_alloc_observe(g, osz, nsz);' + [Environment]::NewLine + '  g->gc.total = (g->gc.total - osz) + nsz;') 'realloc accounting'
-$src = Change-Once $src '  g->gc.total += size;' ('  gcet_gc_alloc_observe(g, 0, size);' + [Environment]::NewLine + '  ggc_trace_object_created(o, size, 0);' + [Environment]::NewLine + '  g->gc.total += size;') 'new GC object accounting'
+$src = Change-Once $src '  g->gc.total = (g->gc.total - osz) + nsz;' ('  gcet_gc_alloc_observe(g, osz, nsz, 0);' + [Environment]::NewLine + '  g->gc.total = (g->gc.total - osz) + nsz;') 'realloc accounting'
+$src = Change-Once $src '  g->gc.total += size;' ('  gcet_gc_alloc_observe(g, 0, size, 1);' + [Environment]::NewLine + '  ggc_trace_object_created(o, size, 0);' + [Environment]::NewLine + '  g->gc.total += size;') 'new GC object accounting'
 
 $src = Change-Once $src '      gc_freefunc[o->gch.gct - ~LJ_TSTR](g, o);' ('      ggc_trace_object_freed(o);' + [Environment]::NewLine + '      gc_freefunc[o->gch.gct - ~LJ_TSTR](g, o);') 'object sweep'
 $src = Change-Once $src '      lj_str_free(g, gco2str(o));' ('      ggc_trace_object_freed(o);' + [Environment]::NewLine + '      lj_str_free(g, gco2str(o));') 'string sweep'

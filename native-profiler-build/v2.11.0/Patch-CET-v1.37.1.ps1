@@ -584,6 +584,7 @@ void Scripting::TriggerOnUpdate(float aDeltaTime) const
 void Scripting::TriggerOnUpdate(float aDeltaTime) const
 {
     CETRuntimeProfiler::Get().BeginGameFrame();
+    CETRuntimeProfiler::BridgeScope ggcNativeBoundary(1, CETRuntimeProfiler::Get().IsCapturing());
     m_store.TriggerOnUpdate(aDeltaTime);
 }
 '@ `
@@ -621,7 +622,7 @@ Replace-RegexOnce `
     -Path $ssC `
     -Pattern '(void ScriptStore::TriggerOnOverlayOpen\(\) const\s*\r?\n\{\s*\r?\n\s*for \(const auto& mod : m_contexts \| std::views::values\)\s*\r?\n\s*mod\.TriggerOnOverlayOpen\(\);\s*\r?\n)(\})' `
     -Replacement @'
-$1
+$1    CETRuntimeProfiler::BridgeScope ggcOverlayBoundary(2, CETRuntimeProfiler::Get().IsCapturing());
     CETRuntimeProfiler::Get().Dump();
 $2
 '@ `

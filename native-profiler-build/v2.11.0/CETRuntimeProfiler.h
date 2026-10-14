@@ -16,6 +16,7 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <windows.h>
 
 // ABI shared with the embedded, statically linked LuaJIT collector probe.
 extern "C" {
@@ -52,6 +53,25 @@ struct GGCUnscopedContext { uint64_t bytes, operations; };
 struct GGCUnscopedSecond { GGCUnscopedContext states[8]; };
 void ggc_trace_unscoped_context_read(GGCUnscopedContext*, int capacity);
 int ggc_trace_unscoped_seconds_read(GGCUnscopedSecond*, int capacity);
+struct GGCUnscopedDimension { uint64_t bytes, operations; };
+struct GGCUnscopedDetail {
+    GGCUnscopedDimension morphology[2][6];
+    GGCUnscopedDimension bridges[3];
+};
+struct GGCUnscopedPathSecond {
+    GGCUnscopedDimension paths[2];
+    GGCUnscopedDimension bridges[3];
+};
+struct GGCUnscopedNativeSample {
+    uint64_t captureMs, positiveBytes, operationSequence;
+    uint32_t vmState, allocatorPath, bridgeContext, depth;
+    void* frames[6];
+};
+uint32_t ggc_trace_bridge_set(uint32_t context);
+void ggc_trace_unscoped_detail_read(GGCUnscopedDetail*);
+int ggc_trace_unscoped_path_seconds_read(GGCUnscopedPathSecond*, int);
+int ggc_trace_unscoped_samples_read(GGCUnscopedNativeSample*, int, uint64_t*);
+
 }
 
 class CETRuntimeProfiler
@@ -445,6 +465,21 @@ public:
     {
         Paused,
         Running
+    };
+
+    // Exact native CET entrypoint context (not source ownership).
+    // Only active captures change TLS; no call into Lua, no new getters.
+    class BridgeScope {
+    public:
+        BridgeScope(uint32_t context, bool active) : m_active(active) {
+            if (active) m_old=ggc_trace_bridge_set(context);
+        }
+        ~BridgeScope() { if (m_active) ggc_trace_bridge_set(m_old); }
+        BridgeScope(const BridgeScope&)=delete;
+        BridgeScope& operator=(const BridgeScope&)=delete;
+    private:
+        bool m_active{};
+        uint32_t m_old{};
     };
 
     // Scope tracks both inclusive and exclusive callback time.
@@ -2975,6 +3010,117 @@ public:
                                  << (i == 1200 ? "OVERFLOW_GE_1200_SECONDS" : "ONE_SECOND")
                                  << ",owner-zero-allocation-not-GC-cause\n";
                     }
+            }
+        }
+
+
+        // Four orthogonal owner-zero diagnostics: allocation path/size,
+        // CET execution boundary, one-second morphology, native stack samples.
+        // Native samples are sampled *events*, not all bytes or Lua callsites.
+        {
+            static const char* origins[2]={"RESIZE_GROWTH","NEW_GCO"};
+            static const char* tiers[6]={"LT_64B","64_255B","256_1023B",
+                "1_4KIB","4_16KIB","GE_16KIB"};
+            static const char* bridges[3]={"OUTSIDE_CET_INSTRUMENTED_BOUNDARY",
+                "CET_FRAME_UPDATE","CET_OVERLAY_DUMP"};
+            static const char* states[8]={"VM_INTERP","VM_C","VM_GC","VM_EXIT",
+                "VM_RECORD","VM_OPT","VM_ASM","VM_UNKNOWN"};
+            GGCUnscopedDetail detail{};
+            ggc_trace_unscoped_detail_read(&detail);
+            std::ofstream shapes(outputRoot / "CET_Runtime_Profile_GGC_UnscopedShapes.csv",
+                                 std::ios::trunc);
+            if(shapes) {
+                shapes << "AllocatorPath,PositiveGrowthTier,PositiveBytes,"
+                          "AllocationOperations,Interpretation\n";
+                for(int path=0;path<2;path++)
+                    for(int tier=0;tier<6;tier++) {
+                        const auto& x=detail.morphology[path][tier];
+                        shapes << origins[path] << ',' << tiers[tier] << ','
+                               << x.bytes << ',' << x.operations
+                               << ",exact-unscoped-positive-growth-not-live-heap\n";
+                    }
+            }
+            std::ofstream scopes(outputRoot / "CET_Runtime_Profile_GGC_UnscopedBoundaries.csv",
+                                 std::ios::trunc);
+            if(scopes) {
+                scopes << "NativeExecutionBoundary,PositiveBytes,AllocationOperations,"
+                          "Interpretation\n";
+                for(int bridge=0;bridge<3;bridge++) {
+                    const auto& x=detail.bridges[bridge];
+                    scopes << bridges[bridge] << ',' << x.bytes << ','
+                           << x.operations
+                           << ",CET-outer-boundary-not-mod-or-function-producer\n";
+                }
+            }
+            std::vector<GGCUnscopedPathSecond> bins(1201);
+            const int count=ggc_trace_unscoped_path_seconds_read(
+                bins.data(),static_cast<int>(bins.size()));
+            std::ofstream timeline(outputRoot / "CET_Runtime_Profile_GGC_UnscopedPathTimeline.csv",
+                                   std::ios::trunc);
+            if(timeline) {
+                timeline << "CaptureSecond,Dimension,Category,PositiveBytes,"
+                            "AllocationOperations,Window,Interpretation\n";
+                for(int i=0;i<count;i++) {
+                    for(int path=0;path<2;path++) {
+                        const auto& x=bins[static_cast<size_t>(i)].paths[path];
+                        if(x.operations)
+                            timeline << i << ",ALLOCATOR_PATH," << origins[path] << ','
+                                     << x.bytes << ',' << x.operations << ','
+                                     << (i==1200?"OVERFLOW":"ONE_SECOND")
+                                     << ",positive-growth-not-GC-cause\n";
+                    }
+                    for(int bridge=0;bridge<3;bridge++) {
+                        const auto& x=bins[static_cast<size_t>(i)].bridges[bridge];
+                        if(x.operations)
+                            timeline << i << ",CET_BOUNDARY," << bridges[bridge] << ','
+                                     << x.bytes << ',' << x.operations << ','
+                                     << (i==1200?"OVERFLOW":"ONE_SECOND")
+                                     << ",CET-boundary-not-source-ownership\n";
+                    }
+                }
+            }
+            std::vector<GGCUnscopedNativeSample> samples(2048);
+            uint64_t dropped=0;
+            const int observed=ggc_trace_unscoped_samples_read(samples.data(),
+                static_cast<int>(samples.size()),&dropped);
+            std::ofstream stack(outputRoot / "CET_Runtime_Profile_GGC_UnscopedNativeSamples.csv",
+                                std::ios::trunc);
+            if(stack) {
+                stack << "CaptureMs,OperationSequence,PositiveBytes,AllocatorPath,"
+                         "VmExecutionState,NativeExecutionBoundary,StackDepth,"
+                         "Frame1,Frame2,Frame3,Frame4,Frame5,Frame6,DroppedSamples,"
+                         "Interpretation\n";
+                for(int i=0;i<observed;i++) {
+                    const auto& s=samples[static_cast<size_t>(i)];
+                    stack << s.captureMs << ',' << s.operationSequence << ','
+                          << s.positiveBytes << ',' << origins[s.allocatorPath < 2?s.allocatorPath:0]
+                          << ',' << states[s.vmState < 8?s.vmState:7] << ','
+                          << bridges[s.bridgeContext < 3?s.bridgeContext:0] << ','
+                          << s.depth;
+                    for(int frame=0;frame<6;frame++) {
+                        std::string symbol="NO_FRAME";
+                        if(static_cast<uint32_t>(frame)<s.depth && s.frames[frame]) {
+                            HMODULE module=nullptr;
+                            if(GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                reinterpret_cast<LPCSTR>(s.frames[frame]),&module) && module) {
+                                char name[MAX_PATH]{};
+                                GetModuleFileNameA(module,name,MAX_PATH);
+                                std::string path(name);
+                                const size_t slash=path.find_last_of("\\/");
+                                if(slash!=std::string::npos) path=path.substr(slash+1);
+                                std::ostringstream address;
+                                address << path << "+0x" << std::hex
+                                        << (reinterpret_cast<uintptr_t>(s.frames[frame]) -
+                                            reinterpret_cast<uintptr_t>(module));
+                                symbol=address.str();
+                            } else symbol="UNKNOWN_OR_JIT_CODE";
+                        }
+                        stack << ',' << Csv(symbol);
+                    }
+                    stack << ',' << dropped
+                          << ",bounded-native-unwind-sample-not-exact-producer\n";
+                }
             }
         }
 
