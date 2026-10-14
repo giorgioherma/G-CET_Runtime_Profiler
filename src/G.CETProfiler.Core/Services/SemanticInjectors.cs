@@ -82,6 +82,7 @@ internal static class SemanticInjectors
             "nativeinteractions" => ApplyNativeInteractions(context),
             "minimap-widgets" => ApplyMinimapWidgets(context),
             "minimap-stealth-widget-locality" => ApplyMinimapStealthWidgetLocality(context),
+            "yaiba-penthouse-distant-bathtub" => ApplyYaibaDistantBathtub(context),
             _ => SemanticInjectionResult.Skip(
                 $"No semantic source injector is implemented for rule '{candidate.RuleId}'.")
         };
@@ -2783,6 +2784,37 @@ ${close}" + "\n",
                 "  if __gcetTunnelProbeOK and __gcetTunnelFar and __gcetTunnelOutsideAcc < .5 then return end\n" +
                 "  dt = math.min(__gcetTunnelOutsideAcc, .5)",
                 "Tunnel far stable discovery cadence");
+        }
+
+        // The preceding v3 diagnostics wrote status.json every two seconds
+        // even while the quest is unarmed, outside and not recovering. This
+        // invokes quest-mappin diagnostics and native queries on a hot timer.
+        // Reduce ONLY passive diagnostics (not controller discovery/cadence).
+        // Completed/active/uncertain states keep the author's two seconds.
+        if (!text.Contains("G-CET semantic:tunnel-rescue-quiet-idle-status-v4",
+                           StringComparison.Ordinal))
+        {
+            var statusWrites = Regex.Matches(text,
+                @"if[ \t]+H[.]diag\s*>\s*2[ \t]+then[ \t]+H[.]diag\s*=\s*0\s*;\s*status\s*\(\s*\)\s*end",
+                RegexOptions.CultureInvariant);
+            if (statusWrites.Count < 1 || statusWrites.Count > 4)
+                throw new InvalidOperationException(
+                    "Tunnel diagnostic writer shape changed; refused passive-status optimization.");
+            var match = statusWrites[^1];
+            // Last occurrence must belong to update(), before onInit,
+            // not to an arbitrary later callback.
+            var onInit = Regex.Match(text,
+                @"(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\([ \t]*['""]onInit['""]",
+                RegexOptions.CultureInvariant);
+            if (!onInit.Success || match.Index > onInit.Index)
+                throw new InvalidOperationException(
+                    "Tunnel final update status write no longer provable.");
+            text = text[..match.Index] +
+                "if H.diag>(H.phase=='outside' and H.session and not H.questArmed and " +
+                "not H.recover and not H.auto and not H.manual and not H.error and " +
+                "not active() and 8 or 2) then H.diag=0;status()end " +
+                "-- G-CET semantic:tunnel-rescue-quiet-idle-status-v4" +
+                text[(match.Index+match.Length)..];
         }
 
         context.Write(file, text);
@@ -5607,7 +5639,31 @@ ${close}" + "\n",
             "ifthis.aboveWidgetthenthis.aboveWidget:SetVisible(false)end",
             "ifthis.belowWidgetthenthis.belowWidget:SetVisible(false)end",
             "end");
-        if (!string.Equals(compact, proved, StringComparison.Ordinal))
+        // The untouched author 3.1.7 source has a redundant shouldShow query
+        // and calls IsClamped twice. The deployed PASS5 variant defers both.
+        // Accept either complete control-flow family (not a hash or version),
+        // tolerating whitespace/comment-only/source registrar changes.
+        // Neither family changes the original SetVisible decision matrix.
+        var originalAuthor = string.Concat(
+            "ifMinimapWidgetsConfig.ShowElevationArrow==truethen",
+            "localvertRelation=this:GetVerticalRelationToPlayer()",
+            "localshouldShow=this:GetRootWidget():IsVisible()andnotthis:IsClamped()",
+            "localisAbove=vertRelation==gamemappinsVerticalPositioning.Above",
+            "localisBelow=vertRelation==gamemappinsVerticalPositioning.Below",
+            "ifthis:IsClamped()then",
+            "ifthis.aboveWidgetthenthis.aboveWidget:SetVisible(false)end",
+            "ifthis.belowWidgetthenthis.belowWidget:SetVisible(false)end",
+            "else",
+            "ifthis.aboveWidgetthenthis.aboveWidget:SetVisible(isAbove)end",
+            "ifthis.belowWidgetthenthis.belowWidget:SetVisible(isBelow)end",
+            "end",
+            "else",
+            "ifnotthis.aboveWidgetandnotthis.belowWidgetthenreturnend",
+            "ifthis.aboveWidgetthenthis.aboveWidget:SetVisible(false)end",
+            "ifthis.belowWidgetthenthis.belowWidget:SetVisible(false)end",
+            "end");
+        if (!string.Equals(compact, proved, StringComparison.Ordinal) &&
+            !string.Equals(compact, originalAuthor, StringComparison.Ordinal))
             throw new InvalidOperationException(
                 "Current minimap callback's visibility semantics are not source-proven; refusing rewrite.");
 
@@ -5643,6 +5699,57 @@ ${close}" + "\n",
             "Localized native widget references in the measured stealth-elevation callback, " +
             "skipped missing-widget queries, and preserved the original update cadence and " +
             "visibility branches without cross-frame caching.");
+    }
+
+    /// <summary>
+    /// Yaiba Penthouse standalone author source: if neither the bathtub hub,
+    /// proximity pin nor pending water-apply state exists and the player is well
+    /// outside the 6m activation radius, the original update cannot mutate
+    /// any bath/UI state. Avoid game blackboard widget polling in those frames.
+    /// Entity attachment observers for lamps/candles continue independently.
+    /// </summary>
+    private static SemanticInjectionResult ApplyYaibaDistantBathtub(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "bathtub.lua", "function bathtub.update(player, pPos)",
+            "ui.update()", "CONFIG.iconRange", "bathtub.hubVisible",
+            "bathtub.pinID", "bathtub.waterApplied", "togglePin(near)",
+            "buildHub()");
+        var text = file.Text;
+        const string marker = "G-CET semantic:yaiba-penthouse-distant-bathtub";
+        var pattern = @"(?m)^(?<head>[ \t]*function[ \t]+bathtub[.]update[ \t]*\([ \t]*player[ \t]*,[ \t]*pPos[ \t]*\)[ \t]*\r?\n)(?<indent>[ \t]*)ui[.]update[ \t]*\([ \t]*\)[ \t]*";
+        var regex = new Regex(pattern, RegexOptions.CultureInvariant);
+        var matches = regex.Matches(text);
+        if (matches.Count != 1)
+            throw new InvalidOperationException(
+                "Yaiba bathtub update shape drifted; refused native getter dormancy.");
+        if (text.Contains(marker, StringComparison.Ordinal))
+            throw new InvalidOperationException("Yaiba distant-bathtub pass already present.");
+
+        // No code is moved/deleted below the early-out. Unchanged author
+        // handling resumes at ui.update for all nearby/active states.
+        var m = matches[0];
+        var indent = m.Groups["indent"].Value;
+        var newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        var gate = string.Join(newline, new [] {
+            indent + "-- " + marker,
+            indent + "-- Only skip when no bath UI, mappin or water reapply is pending.",
+            indent + "if player and pPos and not bathtub.hubVisible and not bathtub.pinID and not bathtub.waterApplied then",
+            indent + "    local __gcetBathPos = CONFIG.position",
+            indent + "    local __gcetDx = pPos.x - __gcetBathPos.x",
+            indent + "    local __gcetDy = pPos.y - __gcetBathPos.y",
+            indent + "    local __gcetDz = pPos.z + 1.0 - __gcetBathPos.z",
+            indent + "    if __gcetDx * __gcetDx + __gcetDy * __gcetDy + __gcetDz * __gcetDz > (CONFIG.iconRange + 1.0)^2 then return end",
+            indent + "end",
+            indent + "ui.update()"
+        });
+        text = text[..m.Index] + m.Groups["head"].Value + gate +
+               text[(m.Index+m.Length)..];
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Removed per-frame native UI/hub polling while distant from Yaiba bathtub " +
+            "and without active hub, icon or water state; all active interactions unchanged.");
     }
 
     private static SemanticInjectionResult ApplyMinimapWidgets(
