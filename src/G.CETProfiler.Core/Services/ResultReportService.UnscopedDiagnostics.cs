@@ -45,6 +45,7 @@ public static partial class ResultReportService
         public List<UnscopedDimension> VmStates { get; init; } = [];
         public List<UnscopedDimension> Shapes { get; init; } = [];
         public List<UnscopedDimension> ReallocOrigins { get; init; } = [];
+        public List<UnscopedDimension> ReallocNewSizeTiers { get; init; } = [];
         public List<UnscopedDimension> Boundaries { get; init; } = [];
         public List<UnscopedSampleGroup> NativeSampleGroups { get; init; } = [];
     }
@@ -129,6 +130,10 @@ public static partial class ResultReportService
             S(x, "ReallocOrigin") + " / " + S(x, "SizeTier"),
             L(x, "PositiveBytes"), L(x, "AllocationOperations")))
             .OrderByDescending(x => x.Bytes).ToList();
+        var reallocAbsoluteRows = reallocAbsolute.Select(x => new UnscopedDimension(
+            S(x, "ReallocOrigin") + " / " + S(x, "SizeTier"),
+            L(x, "PositiveBytes"), L(x, "AllocationOperations")))
+            .OrderByDescending(x => x.Bytes).ToList();
         var groups = samples
             .GroupBy(x => string.Join(" → ", new[] {
                 S(x, "Frame1"), S(x, "Frame2"), S(x, "Frame3"), S(x, "Frame4"),
@@ -174,6 +179,7 @@ public static partial class ResultReportService
             DroppedNativeSamples = samples.Count > 0
                 ? L(samples[0], "DroppedSamples") : 0,
             VmStates = vmRows, Shapes = shapeRows, ReallocOrigins = reallocRows,
+            ReallocNewSizeTiers = reallocAbsoluteRows,
             Boundaries = boundaryRows, NativeSampleGroups = groups
         };
     }
@@ -213,6 +219,10 @@ public static partial class ResultReportService
                 oldSizeZeroDoesNotProveAvoidableAllocation = true,
                 originBuckets = info.ReallocOrigins.Select(x => new {
                     category = x.Name, positiveBytes = x.Bytes,
+                    allocationOperations = x.Operations
+                }),
+                absoluteNewSizeTiers = info.ReallocNewSizeTiers.Select(x => new {
+                    category = x.Name, positiveGrowthBytes = x.Bytes,
                     allocationOperations = x.Operations
                 })
             },
@@ -259,6 +269,7 @@ public static partial class ResultReportService
             ("VM execution state", r.VmStates),
             ("Allocation path and size", r.Shapes),
             ("Realloc origin / positive-delta size (subset of RESIZE_GROWTH)", r.ReallocOrigins),
+            ("Realloc absolute new-size tiers (same RESIZE_GROWTH bytes)", r.ReallocNewSizeTiers),
             ("CET outer execution boundary", r.Boundaries) })
         {
             if (section.Item2.Count == 0) continue;
