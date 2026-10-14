@@ -1,5 +1,13 @@
 # Active project state — chronological engineering history
 
+## 2026-10-14 verified v1.2.7 GC origin/ingress experiment — game capture outstanding
+
+- [Native #38582048697](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38582048697) **SUCCESS**. Rebuilt native `2.15.3-unscoped-realloc-context`; actual DLL SHA-256 `5c3d5dfad9e9131c1aae53f700985dfdd7b9d417067044687fbf32f8b78b0e11`. Matching developer-only PDB SHA-256 `30ccf88c4f2d9515f05729b9473bc613f1d36392d54c29f2f8b4b48f9a658450`; separate native DLL/checksum and PDB artifact outputs verified.
+- [Combined main #38584208545](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38584208545) **SUCCESS across all four jobs**; imported hash-locked native run and verified compiled feature markers; **both** `G-CET-Runtime-Profiler-v1.2.7` and `G-CET-Resolver-v1.2.7` downloadable and individually verified. Product version unchanged. Strict new/legacy reporting reconciliation fixtures passed.
+- Source-level probes are capture-gated and additive; no live mod files, GC policy, Resolver optimizations or 0-Engine pass touched. `RESIZE_GROWTH` now decomposes into `OLD_SIZE_ZERO` vs `OLD_SIZE_NONZERO` and six delta/absolute-size tiers; new host ingress labels never establish mod ownership. Archive must prove in-game load, game controls before/after recording, all CSV totals and acceptable overhead.
+- Next user run: unchanged CET source/optimizations, 4–6 minute no-menu idle/run/combat, check post-stop Esc/inventory/sleep UI, collect one ZIP. PDB applies **only** to this exact new native DLL; do not use it to assert old RVA names. [Full experiment](../gc/research/UNSCOPED-REALLOC-AND-CET-INGRESS-2026-10-14.md).
+
+
 ## 2026-10-14 fourth native GC attribution implementation — build/game validation pending
 
 - Third native capture exposed a **labeling ambiguity**: `RESIZE_GROWTH` includes realloc-accounting calls where `oldSize=0`; it does not itself prove repeated growth of existing blocks. New capture-gated instrumentation partitions zero-old-size vs nonzero-old-size requests and records positive delta/absolute new size tiers (independent exact positive-growth partitions). The old allocation, VM, timeline, collector and deep-trace counters remain.
