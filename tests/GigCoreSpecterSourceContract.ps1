@@ -44,8 +44,12 @@ local function _rawMenuOrPhotoPaused()
 end
 local function computePauseState() return _rawMenuOrPhotoPaused() end
 local author073MapPins = "GigCore-v073-mappins"
+local pausedThisFrame = false
+local Marker = { tickAll = function() end }
 registerForEvent("onUpdate",function(delta)
-  local pausedThisFrame=computePauseState()
+  do local okPs, errPs = pcall(function() pausedThisFrame = computePauseState() end)
+     if not okPs then print("onUpdate GUARD: computePauseState threw: " .. tostring(errPs)) end end
+  Marker.tickAll(delta)
   GigCore.tick(delta,pausedThisFrame,author073MapPins)
 end)
 '@ | Set-Content (Join-Path $gig 'init.lua') -Encoding utf8
@@ -127,6 +131,7 @@ end)
   }
   $g=ZipText $r.pass.ZipPath 'GigCore/init.lua'
   $s=ZipText $r.pass.ZipPath 'SpecterM11RecoveryDev/init.lua'
+  if(!$g.Contains('local function __gcetGigCoreRefreshPausedFrame()') -or !$g.Contains('pcall(__gcetGigCoreRefreshPausedFrame)')){throw 'Missing one-pass GigCore closure reuse'}
   if(!$g.Contains('local __gcetGigBoards = Game.GetBlackboardSystem()') -or !$g.Contains('__gcetGigBoards:Get(defs.PhotoMode)') -or !$g.Contains('GigCore-v073-mappins')){throw "GigCore change/feature wrong: $version"}
   if(!$s.Contains('local rainbowDone=seq==9 and metricGet(') -or !$s.Contains('local recoveryDone=(seq==9 and rainbowDone==1) and metricGet(') -or !$s.Contains('autoStartClock>=0.75') -or !$s.Contains('SPECTER-1.5-dialogue-restore')){throw "Recovery behavior wrong: $version"}
   if($version -eq '1.5'){
