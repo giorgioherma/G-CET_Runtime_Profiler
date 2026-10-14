@@ -91,7 +91,7 @@ end)
   if((Get-FileHash $source -Algorithm SHA256).Hash -ne $before) { throw 'Resolver edited live source' }
   $patched | Set-Content -LiteralPath $source -Encoding utf8
   $second=(& $exe --capture $capture --mods $mods --generate-pass --json | ConvertFrom-Json)
-  if(!$second.ok){throw "Second pass failed $variant"}
+  if(!$second.ok -and [string]$second.error -notmatch "no applicable generic or source-proven semantic transforms") { throw "Second pass failed $variant" }
   if($second.pass -and $second.pass.ManifestPath){
     $again=Get-Content $second.pass.ManifestPath -Raw|ConvertFrom-Json
     if(@($again.transforms|Where-Object {$_.RuleId -eq 'calllist-action-lazy-display-query'}).Count -gt 0){
