@@ -208,4 +208,88 @@ internal static partial class SemanticInjectors
     }
 
 
+    // Finite action-interest proof from the live camera/movement handler.
+    // Preserve the original handler and native Observer as fallback.
+    private static SemanticInjectionResult ApplyImmersiveThirdPersonActionRouting(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile("init.lua",
+            "local function handlePlayerAction(action)",
+            "local function setDigitalMove(actionName, actionValue)",
+            "local function observePlayerActions()",
+            "Observe('PlayerPuppet', 'OnAction'");
+        var source = file.Text;
+        const string stage = "__gcetItppRoutedOnActionV1";
+        if (source.Contains(stage, StringComparison.Ordinal))
+        {
+            if (source.Contains("zeroEngineMod.SubscribeAction", StringComparison.Ordinal) &&
+                source.Contains("Observe('PlayerPuppet', 'OnAction'", StringComparison.Ordinal))
+                return SemanticInjectionResult.Skip("Immersive third-person native fallback and routed subscription already present.");
+            throw new InvalidOperationException("Immersive third-person action stage is inconsistent.");
+        }
+
+        var handler = source.IndexOf("local function handlePlayerAction(action)", StringComparison.Ordinal);
+        var registration = source.IndexOf("local function observePlayerActions()", StringComparison.Ordinal);
+        if (handler < 0 || registration < handler)
+            throw new InvalidOperationException("Third-person camera input handler is not uniquely proven.");
+        var body = source[handler..registration];
+        string[] actions =
+        {
+            "mouse_x", "mouse_y", "right_stick_x", "right_stick_y",
+            "CameraMouseX", "CameraMouseY", "CameraX", "CameraY",
+            "Forward", "Back", "Left", "Right",
+            "world_map_menu_move_horizontal", "world_map_menu_move_vertical",
+            "left_stick_x", "left_stick_y", "MoveX", "MoveY"
+        };
+        // All finite action literals must be proven in this handler or the
+        // exclusively called digital-movement predicate. No wildcard routing.
+        var digitalStart = source.IndexOf("local function setDigitalMove(actionName, actionValue)", StringComparison.Ordinal);
+        if (digitalStart < 0 || digitalStart >= handler)
+            throw new InvalidOperationException("Third-person digital movement predicate missing.");
+        var evidence = source[digitalStart..registration];
+        foreach (var action in actions)
+            if (!evidence.Contains("actionName == \"" + action + "\"", StringComparison.Ordinal))
+                throw new InvalidOperationException("Third-person action interest changed: " + action);
+        if (body.Contains("consumer:Consume", StringComparison.Ordinal) ||
+            body.Contains("Consume()", StringComparison.Ordinal))
+            throw new InvalidOperationException("Third-person action handler gained consumption behavior.");
+
+        var pattern = new Regex(
+            @"(?ms)local function observePlayerActions\(\)\s+if state\.observedActions or not Observe then\s+return\s+end\s+local okObs = pcall\(function\(\)\s+Observe\('PlayerPuppet', 'OnAction', function\(_, action\)\s+handlePlayerAction\(action\)\s+end\)\s+end\)\s+if okObs then\s+state\.observedActions = true\s+end\s+end",
+            RegexOptions.CultureInvariant);
+        var matches = pattern.Matches(source);
+        if (matches.Count != 1)
+            throw new InvalidOperationException("Third-person native OnAction lifecycle changed or became ambiguous.");
+
+        var quoted = string.Join(", ", actions.Select(action => "\"" + action + "\""));
+        var replacement =
+            "local function observePlayerActions()\n" +
+            "  if state.observedActions then return end\n" +
+            "  -- " + stage + ": exact camera and movement inputs, no wildcard\n" +
+            "  local okEngine, engine = pcall(GetMod, \"0-Engine\")\n" +
+            "  local zeroEngineMod = okEngine and type(engine) == \"table\" and type(engine.Register) == \"function\" and engine.Register(\"immersive_third_person\") or nil\n" +
+            "  local actions = { " + quoted + " }\n" +
+            "  local callback = function(_, action) handlePlayerAction(action) end\n" +
+            "  local routed = false\n" +
+            "  if type(zeroEngineMod) == \"table\" and type(zeroEngineMod.SubscribeAction) == \"function\" then\n" +
+            "    local ok = pcall(zeroEngineMod.SubscribeAction, { actions = actions, decodeType = false }, callback)\n" +
+            "    routed = ok\n" +
+            "  elseif okEngine and type(engine) == \"table\" and type(engine.SubscribeAction) == \"function\" then\n" +
+            "    local ok = pcall(engine.SubscribeAction, { actions = actions, decodeType = false }, callback, \"immersive_third_person\")\n" +
+            "    routed = ok\n" +
+            "  end\n" +
+            "  if not routed and Observe then\n" +
+            "    routed = pcall(function()\n" +
+            "      Observe('PlayerPuppet', 'OnAction', function(_, action) handlePlayerAction(action) end)\n" +
+            "    end)\n" +
+            "  end\n" +
+            "  if routed then state.observedActions = true end\n" +
+            "end";
+        var m = matches[0];
+        context.Write(file, source[..m.Index] + replacement + source[(m.Index + m.Length)..]);
+        return SemanticInjectionResult.Success(
+            "Replaced one independent third-person action observer with finite exact-action 0-Engine routing; preserved original input handling and native fallback.");
+    }
+
+
 }
