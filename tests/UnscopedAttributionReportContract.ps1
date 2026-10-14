@@ -32,6 +32,14 @@ NEW_GCO,64_255B,448576,40
 '@ | Set-Content "$root/CET_Runtime_Profile_GGC_UnscopedShapes.csv" -Encoding utf8
 
 @'
+Dimension,ReallocOrigin,SizeTier,PositiveBytes,AllocationOperations
+POSITIVE_DELTA,OLD_SIZE_ZERO,64_255B,400000,40
+POSITIVE_DELTA,OLD_SIZE_NONZERO,64_255B,200000,20
+ABSOLUTE_NEW_SIZE,OLD_SIZE_ZERO,64_255B,400000,40
+ABSOLUTE_NEW_SIZE,OLD_SIZE_NONZERO,256_1023B,200000,20
+'@ | Set-Content "$root/CET_Runtime_Profile_GGC_UnscopedReallocOrigins.csv" -Encoding utf8
+
+@'
 NativeExecutionBoundary,PositiveBytes,AllocationOperations
 CET_FRAME_UPDATE,400000,40
 OUTSIDE_CET_INSTRUMENTED_BOUNDARY,648576,60
@@ -43,6 +51,10 @@ CaptureSecond,Dimension,Category,PositiveBytes,AllocationOperations,Window
 0,ALLOCATOR_PATH,NEW_GCO,248576,25,ONE_SECOND
 1,ALLOCATOR_PATH,RESIZE_GROWTH,400000,40,ONE_SECOND
 1,ALLOCATOR_PATH,NEW_GCO,200000,15,ONE_SECOND
+0,REALLOC_ORIGIN,OLD_SIZE_ZERO,100000,10,ONE_SECOND
+0,REALLOC_ORIGIN,OLD_SIZE_NONZERO,100000,10,ONE_SECOND
+1,REALLOC_ORIGIN,OLD_SIZE_ZERO,300000,30,ONE_SECOND
+1,REALLOC_ORIGIN,OLD_SIZE_NONZERO,100000,10,ONE_SECOND
 0,CET_BOUNDARY,CET_FRAME_UPDATE,100000,10,ONE_SECOND
 0,CET_BOUNDARY,OUTSIDE_CET_INSTRUMENTED_BOUNDARY,348576,35,ONE_SECOND
 1,CET_BOUNDARY,CET_FRAME_UPDATE,300000,30,ONE_SECOND
@@ -50,9 +62,9 @@ CaptureSecond,Dimension,Category,PositiveBytes,AllocationOperations,Window
 '@ | Set-Content "$root/CET_Runtime_Profile_GGC_UnscopedPathTimeline.csv" -Encoding utf8
 
 @'
-CaptureMs,OperationSequence,PositiveBytes,AllocatorPath,VmExecutionState,NativeExecutionBoundary,StackDepth,Frame1,Frame2,Frame3,Frame4,Frame5,Frame6,DroppedSamples
-250,1024,120,RESIZE_GROWTH,VM_C,CET_FRAME_UPDATE,2,cyber_engine_tweaks.asi+0xABC,LuaJIT.dll+0x1,NO_FRAME,NO_FRAME,NO_FRAME,NO_FRAME,0
-1450,2048,180,NEW_GCO,VM_C,OUTSIDE_CET_INSTRUMENTED_BOUNDARY,1,cyber_engine_tweaks.asi+0xABC,NO_FRAME,NO_FRAME,NO_FRAME,NO_FRAME,NO_FRAME,0
+CaptureMs,OperationSequence,PositiveBytes,AllocatorPath,VmExecutionState,NativeExecutionBoundary,StackDepth,Frame1,Frame2,Frame3,Frame4,Frame5,Frame6,DroppedSamples,Interpretation,ReallocOrigin,OldSize,NewSize
+250,1024,120,RESIZE_GROWTH,VM_C,CET_FRAME_UPDATE,2,cyber_engine_tweaks.asi+0xABC,LuaJIT.dll+0x1,NO_FRAME,NO_FRAME,NO_FRAME,NO_FRAME,0,sample,OLD_SIZE_ZERO,0,120
+1450,2048,180,NEW_GCO,VM_C,OUTSIDE_CET_INSTRUMENTED_BOUNDARY,1,cyber_engine_tweaks.asi+0xABC,NO_FRAME,NO_FRAME,NO_FRAME,NO_FRAME,NO_FRAME,0,sample,NOT_REALLOC,0,180
 '@ | Set-Content "$root/CET_Runtime_Profile_GGC_UnscopedNativeSamples.csv" -Encoding utf8
 
 function Run-Report {
@@ -68,15 +80,42 @@ foreach($report in $pair) {
     if(!$u -or !$u.vmReconciled -or !$u.extendedReconciled -or
         $u.sourceAttribution -ne 'NOT_PROVEN' -or $u.autoRewriteAuthorized -or
         $u.nativeCallpaths.sampledEvents -ne 2 -or
+        !$u.hasReallocOrigins -or !$u.reallocOriginsReconciled -or
+        $u.reallocOriginDiagnostics.positiveDeltaBytes -ne 600000 -or
+        $u.reallocOriginDiagnostics.absoluteNewSizePositiveGrowthBytes -ne 600000 -or
+        $u.reallocOriginDiagnostics.perSecondOperations -ne 60 -or
         !$report.unknownAllocationCoverage.temporalDistributionMeasured){
         throw 'Unscoped multi-axis evidence accounting, provenance or compatibility failed.'
     }
 }
 $html=Get-Content "$root/CET_Report.html" -Raw
 if(!$html.Contains('Unscoped G-GC: VM, allocation type') -or
-   !$html.Contains('RESIZE_GROWTH') -or !$html.Contains('CET_FRAME_UPDATE')) {
+   !$html.Contains('RESIZE_GROWTH') -or !$html.Contains('OLD_SIZE_NONZERO') -or !$html.Contains('CET_FRAME_UPDATE')) {
     throw 'Unscoped diagnostics HTML is missing its distinct measured categories.'
 }
+# Realloc-origin mismatch must fail closed independently of old VM/path shapes.
+$originalOrigins=Get-Content "$root/CET_Runtime_Profile_GGC_UnscopedReallocOrigins.csv" -Raw
+$originalOrigins.Replace('400000,40','400000,39') |
+    Set-Content "$root/CET_Runtime_Profile_GGC_UnscopedReallocOrigins.csv" -Encoding utf8
+$reallocBad=Run-Report
+foreach($report in $reallocBad) {
+    if($report.unscopedProducerDiagnostics.reallocOriginsReconciled -or
+       $report.unscopedProducerDiagnostics.extendedReconciled -or
+       $report.unscopedProducerDiagnostics.autoRewriteAuthorized) {
+        throw 'Realloc-origin mismatch was considered reconciled or rewrite-safe.'
+    }
+}
+$originalOrigins | Set-Content "$root/CET_Runtime_Profile_GGC_UnscopedReallocOrigins.csv" -Encoding utf8
+# Missing optional new origins must retain legacy capture compatibility.
+Remove-Item "$root/CET_Runtime_Profile_GGC_UnscopedReallocOrigins.csv" -Force
+$oldExtension=Run-Report
+foreach($report in $oldExtension) {
+    if($report.unscopedProducerDiagnostics.hasReallocOrigins -or
+       !$report.unscopedProducerDiagnostics.extendedReconciled) {
+        throw 'Old native-capture layout was incorrectly rejected.'
+    }
+}
+$originalOrigins | Set-Content "$root/CET_Runtime_Profile_GGC_UnscopedReallocOrigins.csv" -Encoding utf8
 # Shape mismatch must fail closed and never assign a producer.
 (Get-Content "$root/CET_Runtime_Profile_GGC_UnscopedShapes.csv" -Raw).Replace(
     '448576,40','448576,39') | Set-Content "$root/CET_Runtime_Profile_GGC_UnscopedShapes.csv" -Encoding utf8
