@@ -13,6 +13,8 @@ on:
       - dev/resolver-profiler-handoff
     paths:
       - 'native-profiler-build/v2.11.0/**'
+      - '!native-profiler-build/v2.11.0/**/*.md'
+      - '!native-profiler-build/v2.11.0/*.md'
 
 jobs:
   rebuild:

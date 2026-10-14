@@ -1,6 +1,6 @@
 # G-CET engineering contract
 
-> **Startup/build contract:** [CORE.md](CORE.md) is the first-read summary, [BUILD-PIPELINE.md](BUILD-PIPELINE.md) is the authoritative two-workflow procedure (native CI = DLL only; main CI = Profiler + Resolver packages), and [PRODUCT-STATUS.md](PRODUCT-STATUS.md) is the current capabilities/remaining-work overview. The details below are the durable Resolver engineering contract.
+> **Startup/build contract:** [CORE.md](../HANDOFF/CORE.md) is the first-read summary, [BUILD-PIPELINE.md](../HANDOFF/BUILD-PIPELINE.md) is the authoritative two-workflow procedure (native CI = DLL only; main CI = Profiler + Resolver packages), and [PRODUCT-STATUS.md](../product/PRODUCT-STATUS.md) is the current capabilities/remaining-work overview. The details below are the durable Resolver engineering contract.
 
 ## Goal and historical results
 
@@ -10,7 +10,7 @@ We are extending the same Resolver with burst/hitch and G-GC allocation evidence
 
 ## Product version policy (explicit user instruction)
 
-**Version increments are not tied to CI frequency.** Keep the current shared Profiler/Resolver version across normal commits, tests, native DLL rebuilds, diagnostics and packaging reruns. Increase it **only** when the user explicitly requests it or agrees that a substantial project milestone warrants a release. A new native hash/run pin is not, by itself, a product version milestone. When authorized, synchronize `VERSION.txt`, `Directory.Build.props` and `MANIFEST.json.packageVersion`; otherwise identify builds by commit SHA and Actions run ID. See [BUILD-PIPELINE.md](BUILD-PIPELINE.md). Do not automatically replace an official release/tag.
+**Version increments are not tied to CI frequency.** Keep the current shared Profiler/Resolver version across normal commits, tests, native DLL rebuilds, diagnostics and packaging reruns. Increase it **only** when the user explicitly requests it or agrees that a substantial project milestone warrants a release. A new native hash/run pin is not, by itself, a product version milestone. When authorized, synchronize `VERSION.txt`, `Directory.Build.props` and `MANIFEST.json.packageVersion`; otherwise identify builds by commit SHA and Actions run ID. See [BUILD-PIPELINE.md](../HANDOFF/BUILD-PIPELINE.md). Do not automatically replace an official release/tag.
 
 ## The single ordered pipeline
 
@@ -83,4 +83,4 @@ These are **infrastructure APIs**; existing mods do not become automatically dor
 - `resolver-runtime/0-Engine/` — pinned/safe runtime additions.
 - `tests/*.ps1`, `.github/workflows/build.yml` — regression and build/release contracts.
 
-For GC-focused work, continue with [GC-RESEARCH.md](GC-RESEARCH.md). For **current build and validation state**, consult [CORE.md](CORE.md) and [BUILD-PIPELINE.md](BUILD-PIPELINE.md); [ACTIVE-STATE.md](ACTIVE-STATE.md) contains dated historical context.
+For GC-focused work, continue with [GC-RESEARCH.md](../gc/GC-RESEARCH.md). For **current build and validation state**, consult [CORE.md](../HANDOFF/CORE.md) and [BUILD-PIPELINE.md](../HANDOFF/BUILD-PIPELINE.md); [ACTIVE-STATE.md](../history/ACTIVE-STATE.md) contains dated historical context.

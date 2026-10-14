@@ -6,7 +6,7 @@ This document records the recovered source/build package used for the native pro
 
 The recovered builder/source is published as ordinary inspectable text files at:
 
-[**native-profiler-build/v2.11.0/**](../native-profiler-build/v2.11.0/)
+[**native-profiler-build/v2.11.0/**](../../native-profiler-build/v2.11.0)
 
 The published tree intentionally contains **no compiled ASI/EXE/PDB binaries** and excludes unrelated end-user install/collection helpers. It contains the native builder, profiler implementation, CET source patcher, historical-toolchain reconstruction helpers, validation records, changeset, and 0-Engine Scheduler bridge evidence.
 

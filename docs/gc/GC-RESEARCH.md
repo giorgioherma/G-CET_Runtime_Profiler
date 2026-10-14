@@ -51,7 +51,7 @@ Source: user-uploaded `CET-20261013-031413_CONTAIN_THE_DATA.zip` compared to `CE
 - Add bounded **one-second capture timeline**, fixed 1200s plus overflow bucket, no Lua debug hooks/getters/GC tuning, capture-gated. Normal GGC owner-zero metrics remain in their prior rows and **must reconcile** with new category totals. Manager already captures wildcard `CET_Runtime_Profile_*.csv`; manifest explicitly includes both.
 - Files: `CET_Runtime_Profile_GGC_UnscopedContexts.csv` and `CET_Runtime_Profile_GGC_UnscopedTimeline.csv`; raw CSV not a new primary managed HTML scoring field. Source only committed after proof-of-concept; native CI proves compilation, NOT game-load/safety or bounded overhead.
 - Next: use **new package** and reproduce a brief normal capture. Compare owner-zero byte/ops sum with categories; timeline with GC slowdown interval. Then use context evidence to select specific safe producer callsites for opt-in scalar sampling. Avoid owner0 guesses.
-- [Reproduction checklist](UNSCOPED-VM-CONTEXT-TEST-2026-10-14.md).
+- [Reproduction checklist](testing/UNSCOPED-VM-CONTEXT-TEST-2026-10-14.md).
 
 ## Mission
 

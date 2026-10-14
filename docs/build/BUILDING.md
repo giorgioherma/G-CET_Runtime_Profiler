@@ -7,7 +7,7 @@ Two **separate canonical workflows** (the division is mandatory):
 - `.github/workflows/native-profiler-rebuild.yml` — builds and uploads the **native DLL + checksum only**.
 - `.github/workflows/build.yml` — downloads the pinned successful native DLL, verifies its SHA-256, builds/tests and packages **both the Profiler and standalone Resolver**.
 
-See [the explicit build/release contract](docs/HANDOFF/BUILD-PIPELINE.md) and [new-chat core](docs/HANDOFF/CORE.md). Native CI does **not** produce an application package.
+See [the explicit build/release contract](../HANDOFF/BUILD-PIPELINE.md) and [new-chat core](../HANDOFF/CORE.md). Native CI does **not** produce an application package.
 
 ## Build scope
 
@@ -38,7 +38,7 @@ Profiler implementation:CETRuntimeProfiler.h
 
 The official CET SHA-256 above is the same `officialSha256` recorded by the current G-CET `MANIFEST.json`.
 
-The recovered builder source is now published directly under [`native-profiler-build/v2.11.0/`](native-profiler-build/v2.11.0/) and documented in [docs/NATIVE_PROFILER_BUILD_PROVENANCE.md](docs/NATIVE_PROFILER_BUILD_PROVENANCE.md). Native CI reconstructs the source-built CET DLL independently; the main Profiler/Resolver build imports the hash-locked result from a pinned successful native workflow run. It does not independently recompile native CET each time.
+The recovered builder source is now published directly under [`native-profiler-build/v2.11.0/`](../../native-profiler-build/v2.11.0) and documented in [docs/NATIVE_PROFILER_BUILD_PROVENANCE.md](../native/NATIVE_PROFILER_BUILD_PROVENANCE.md). Native CI reconstructs the source-built CET DLL independently; the main Profiler/Resolver build imports the hash-locked result from a pinned successful native workflow run. It does not independently recompile native CET each time.
 
 Current **verified combined v1.2.7** manifest identity (2026-10-14):
 
@@ -146,6 +146,6 @@ The canonical GitHub release publishes a matching `.sha256.txt` asset beside the
 
 For the manager/launcher, the source and exact build workflow are public in this repository.
 
-For `cyber_engine_tweaks.PROFILER.asi`, the current repository provides the exact shipped binary, its version, its target CET version, and its locked SHA-256. The complete clean recovered build source is inspectable under [`native-profiler-build/v2.11.0/`](native-profiler-build/v2.11.0/). The recovered builder establishes the exact upstream CET commit, historical toolchain, source patch and profiler implementation used to create the native profiler. The manager CI verifies the resulting ASI bytes rather than recompiling that native component on every release-manager build.
+For `cyber_engine_tweaks.PROFILER.asi`, the current repository provides the exact shipped binary, its version, its target CET version, and its locked SHA-256. The complete clean recovered build source is inspectable under [`native-profiler-build/v2.11.0/`](../../native-profiler-build/v2.11.0). The recovered builder establishes the exact upstream CET commit, historical toolchain, source patch and profiler implementation used to create the native profiler. The manager CI verifies the resulting ASI bytes rather than recompiling that native component on every release-manager build.
 
-Security reviewers should therefore evaluate the manager/launcher source and CI build separately from the native profiler ASI provenance described in [SECURITY.md](SECURITY.md).
+Security reviewers should therefore evaluate the manager/launcher source and CI build separately from the native profiler ASI provenance described in [SECURITY.md](../../SECURITY.md).

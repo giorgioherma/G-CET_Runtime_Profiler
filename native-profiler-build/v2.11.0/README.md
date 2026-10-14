@@ -65,8 +65,8 @@ On a compatible Windows development environment, `Build-Profiler.ps1`:
 
 For the full provenance and relationship to the G-CET release, see:
 
-- [Native profiler build provenance](../../docs/NATIVE_PROFILER_BUILD_PROVENANCE.md)
-- [Building G-CET](../../BUILDING.md)
+- [Native profiler build provenance](../../docs/native/NATIVE_PROFILER_BUILD_PROVENANCE.md)
+- [Building G-CET](../../docs/build/BUILDING.md)
 - [Security and binary provenance](../../SECURITY.md)
 
 ## Recovered-source integrity

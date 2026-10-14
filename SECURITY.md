@@ -15,7 +15,7 @@ G-CET Runtime Profiler is a Cyberpunk 2077 development/profiling utility. Its no
 - restores the original managed game files on request;
 - starts the internal managed application through the small native root launcher.
 
-These operations are part of the documented profiler lifecycle. The architecture and recovery rules are described in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+These operations are part of the documented profiler lifecycle. The architecture and recovery rules are described in [docs/ARCHITECTURE.md](docs/product/ARCHITECTURE.md).
 
 ## Source-visible components
 
@@ -27,7 +27,7 @@ These operations are part of the documented profiler lifecycle. The architecture
 | Lua integration payloads | Stored as source in `payload/` |
 | `payload\cyber_engine_tweaks.PROFILER.dll` | Custom source-built native profiler; recovered builder/source is published under `native-profiler-build/v2.11.0/` and exact release bytes are version/hash locked by `MANIFEST.json` |
 
-The complete manager/launcher build procedure is documented in [BUILDING.md](BUILDING.md).
+The complete manager/launcher build procedure is documented in [BUILDING.md](docs/build/BUILDING.md).
 
 ## Package filename vs. installed filename
 
@@ -64,7 +64,7 @@ That value matches `targetCET.officialSha256` in the current G-CET `MANIFEST.jso
 
 The public manager GitHub Actions workflow does not re-run this historical native reconstruction for every manager build. Instead, the completed ASI is committed as a release input, `MANIFEST.json` records its expected profiler SHA-256, and CI fails if the shipped bytes differ.
 
-The clean recovered builder/source is published directly under [`native-profiler-build/v2.11.0/`](native-profiler-build/v2.11.0/). Its provenance and recovered source hashes are documented in [docs/NATIVE_PROFILER_BUILD_PROVENANCE.md](docs/NATIVE_PROFILER_BUILD_PROVENANCE.md).
+The clean recovered builder/source is published directly under [`native-profiler-build/v2.11.0/`](native-profiler-build/v2.11.0). Its provenance and recovered source hashes are documented in [docs/NATIVE_PROFILER_BUILD_PROVENANCE.md](docs/native/NATIVE_PROFILER_BUILD_PROVENANCE.md).
 
 ## Package controls
 
@@ -90,7 +90,7 @@ Collected CET profiler output is copied and hash-verified before profiler-owned 
 
 External frame-time captures are copy-only; the source capture owned by the external profiler is not moved or deleted.
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the detailed transaction and recovery model.
+See [docs/ARCHITECTURE.md](docs/product/ARCHITECTURE.md) for the detailed transaction and recovery model.
 
 ## v1.0.0 canonical release identity
 
@@ -107,14 +107,14 @@ A scanner or moderation report should be matched against that published checksum
 For a compiled-code review, the relevant public material is:
 
 1. repository source under `src/`;
-2. native profiler build source under [`native-profiler-build/v2.11.0/`](native-profiler-build/v2.11.0/);
-3. [BUILDING.md](BUILDING.md);
+2. native profiler build source under [`native-profiler-build/v2.11.0/`](native-profiler-build/v2.11.0);
+3. [BUILDING.md](docs/build/BUILDING.md);
 4. the canonical CI definition at `.github/workflows/build.yml`;
-5. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md);
+5. [docs/ARCHITECTURE.md](docs/product/ARCHITECTURE.md);
 6. `MANIFEST.json`, which locks the native profiler/integration payload identities;
 7. the canonical GitHub release ZIP and its published SHA-256 file.
 
-The manager and launcher can be traced directly to source in this repository. The native profiler ASI should be reviewed as a custom source-built CET binary produced by the pinned historical reconstruction pipeline described above and in [docs/NATIVE_PROFILER_BUILD_PROVENANCE.md](docs/NATIVE_PROFILER_BUILD_PROVENANCE.md).
+The manager and launcher can be traced directly to source in this repository. The native profiler ASI should be reviewed as a custom source-built CET binary produced by the pinned historical reconstruction pipeline described above and in [docs/NATIVE_PROFILER_BUILD_PROVENANCE.md](docs/native/NATIVE_PROFILER_BUILD_PROVENANCE.md).
 
 ## Reporting a security concern
 

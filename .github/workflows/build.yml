@@ -13,6 +13,10 @@ on:
       - '.github/workflows/native-profiler-rebuild.yml'
       - 'docs/**'
       - 'BUILDING.md'
+      - 'README.md'
+      - 'SECURITY.md'
+      - 'CHANGELOG.md'
+      - 'RELEASE_NOTES.md'
   pull_request:
 
 jobs:

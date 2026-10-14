@@ -5,7 +5,7 @@
 > with a reproducible pre-F11 world-load crash on the same stack/save. The
 > 2.16 native callsite CSV extension is **not deployed**. Managed MEGAMIND
 > interop accepts legacy tracer function rows with unresolved Lua caller fields.
-> See [MEGAMIND plan](MEGAMIND-INTEGRATION-PLAN.md).
+> See [MEGAMIND plan](../resolver/MEGAMIND-INTEGRATION-PLAN.md).
 
 
 Product 1.2.0, native 2.15.0. This is not a standalone application.

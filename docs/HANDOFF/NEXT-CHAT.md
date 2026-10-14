@@ -1,15 +1,13 @@
-# New chat — minimal continuation prompt
+# New-chat continuation prompt
 
-Copy this into a new development conversation. Add the current task, capture(s) or original/live mod archives beneath it when relevant.
+Copy this and supply the task or capture. No frozen version or previous CI identifiers.
 
-> Continue `giorgioherma/G-CET_Runtime_Profiler` on branch `dev/resolver-profiler-handoff`. **Before doing anything else, read the current `docs/HANDOFF/CORE.md`, then `BUILD-PIPELINE.md`, `PRODUCT-STATUS.md`, `PROJECT-CONTRACT.md` and relevant recent `ACTIVE-STATE.md` entries.** Verify current GitHub HEAD, `MANIFEST.json`, product version, and **both native/main Actions builds**. The core has the current snapshot; the long historical entries may refer to obsolete releases.
+> Continue `giorgioherma/G-CET_Runtime_Profiler` on `dev/resolver-profiler-handoff`. Read `docs/HANDOFF/CORE.md`, `docs/HANDOFF/BUILD-PIPELINE.md` and `docs/README.md` first. Then consult current product status, relevant subsystem documents and recent engineering history as needed. Verify live branch HEAD, manifest/version, both GitHub workflows and Actions before editing.
 >
-> **Version rule:** Keep the Profiler and Resolver at the current shared product version through ordinary commits, bug fixes, native rebuilds and repeated CI. **Only increment when the user explicitly asks or agrees to a significant version milestone.** GitHub run IDs/SHAs identify individual builds. Synchronize all version fields only for an approved bump. Do not publish/overwrite an official release automatically.
+> Native CI builds **only** the native DLL/checksum; main CI packages **both** Profiler and Resolver using a pinned, hash-verified native artifact. Keep the shared product version until I explicitly request a bump or we agree on a significant milestone. Don't run CI for documentation-only changes.
 >
-> **Strict CI division:** `.github/workflows/native-profiler-rebuild.yml` builds/tests/publishes **only the native DLL+checksum**. `.github/workflows/build.yml` imports a pinned native artifact with verified SHA, and builds/packages/tests **both Profiler and standalone Resolver**. To ship new native: native CI green → update SHA/run pin + native manifest identity (**not automatically the product version**) → main build green → verify both artifacts. Track each run to terminal outcome; repair and rerun failures. Do **not** deliver a combined package from native CI or say that native CI alone updates the main Profiler.
+> Profiler measures real callback, deep, burst, allocation and GC evidence. Resolver applies version-fluid, composable, source-proven generic then semantic changes to staged files and produces a ZIP, never rewriting my live mods. Preserve gameplay, lifecycle, idempotence and safe fallbacks. Unknown allocation ownership is not to be guessed. CI green does not prove game stability.
 >
-> Product: portable CET profiler with safe install/restore, timing/burst/deep and G-GC reports, optional scalar probe; one Resolver running source-proven generic then semantic optimization on the user's original/current mod source, generating a non-destructive ZIP. Preserve author gameplay, callback cadence/lifecycle, version-fluid matching, composition and idempotence. GC/provenance is research evidence, **not permission to rewrite**. Resolve requested task from actual source/capture and run appropriate tests; CI does not prove in-game correctness. Keep the **short core** current and put deep findings in their own technical docs.
->
-> **Task for this chat:** [state the specific task here].
+> **Task:** [describe task here].
 
-See [CORE.md](CORE.md) for the one-minute app/progress overview and verified current build; do **not** copy an obsolete hardcoded version into this reusable prompt.
+[Handoff README](README.md) explains where to find detailed technical docs.
