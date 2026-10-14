@@ -87,6 +87,11 @@ function Copy-BuildArtifacts([string]$Repo, [string]$Out, [string]$Stem) {
     if (Test-Path $pdb) {
         Copy-Item $pdb (Join-Path $Out "$Stem.pdb") -Force
     }
+    elseif ($Stem -eq 'cyber_engine_tweaks.PROFILER') {
+        # Release build has set_symbols("debug") in pinned CET xmake.lua.
+        # Matching PDB is mandatory for exact sampled native RVA attribution.
+        throw "Profiler build produced an ASI but no matching PDB: $pdb"
+    }
 }
 
 Require-Command git
