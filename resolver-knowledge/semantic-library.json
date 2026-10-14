@@ -4795,10 +4795,12 @@
         "ownerAnyGroups": [
           [
             "Game.GetBlackboardSystem():Get(defs.UI_System)",
+            "__gcetGetBlackboardSystem():Get(defs.UI_System)",
             "__gcetGigBoards:Get(defs.UI_System)"
           ],
           [
             "Game.GetBlackboardSystem():Get(defs.PhotoMode)",
+            "__gcetGetBlackboardSystem():Get(defs.PhotoMode)",
             "__gcetGigBoards:Get(defs.PhotoMode)"
           ]
         ],
@@ -4830,7 +4832,7 @@
           "pristineOnePassComplete",
           "partialStageUpgrade"
         ],
-        "note": "The single authoritative rule applies BOTH invocation-local blackboard reuse and protected pause-refresh closure reuse from untouched GigCore source. Already-optimized and partially optimized source upgrades only missing stages; original tick timing, pcall protection and gig lifecycle are preserved."
+        "note": "The single authoritative rule applies BOTH invocation-local blackboard reuse and protected pause-refresh closure reuse from untouched GigCore source. Already-optimized and partially optimized source upgrades only missing stages; original tick timing, pcall protection and gig lifecycle are preserved. Same-pass generic SHARED_PROVIDER_READ rewrites are accepted as proven getter equivalents."
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
