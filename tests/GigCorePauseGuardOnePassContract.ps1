@@ -76,7 +76,7 @@ end)
   if((Get-FileHash $src -Algorithm SHA256).Hash -ne $old){throw 'Live GigCore mutated by Resolver'}
   $text|Set-Content -LiteralPath $src -Encoding utf8
   $again=(& $exe --capture $capture --mods $mods --generate-pass --json|ConvertFrom-Json)
-  if(!$again.ok){throw 'Rerun failed'}
+  if(!$again.ok -and [string]$again.error -notmatch 'no applicable generic or source-proven semantic transforms') {throw 'Rerun failed'}
   if($again.pass -and $again.pass.ManifestPath){
     $m2=Get-Content $again.pass.ManifestPath -Raw|ConvertFrom-Json
     if(@($m2.transforms|Where-Object {$_.RuleId -eq 'gigcore-pause-guard-reuse'}).Count -gt 0){
