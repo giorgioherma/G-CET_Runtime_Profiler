@@ -51,6 +51,18 @@ jobs:
           $hash = (Get-FileHash native-rebuild-artifact\cyber_engine_tweaks.PROFILER.dll -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  cyber_engine_tweaks.PROFILER.dll" | Set-Content native-rebuild-artifact\SHA256.txt -Encoding ascii
           Write-Host "Rebuilt profiler SHA256: $hash"
+          # Experimental developer symbols are a separate artifact, never imported
+          # into the player-facing Profiler/Resolver packages.
+          $pdb = 'native-profiler-build/v2.11.0/BUILD_OUTPUT/cyber_engine_tweaks.PROFILER.pdb'
+          if (!(Test-Path -LiteralPath $pdb -PathType Leaf)) {
+            throw 'Profiler PDB missing from this build. Cannot symbolicate native sample RVAs safely.'
+          }
+          New-Item -ItemType Directory -Force native-debug-symbols | Out-Null
+          Copy-Item -LiteralPath $pdb -Destination native-debug-symbols/cyber_engine_tweaks.PROFILER.pdb -Force
+          $pdbHash = (Get-FileHash native-debug-symbols/cyber_engine_tweaks.PROFILER.pdb -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$pdbHash  cyber_engine_tweaks.PROFILER.pdb" | Set-Content native-debug-symbols/SHA256.txt -Encoding ascii
+          "$hash  cyber_engine_tweaks.PROFILER.dll" | Set-Content native-debug-symbols/DLL_SHA256.txt -Encoding ascii
+          Write-Host "Matching PDB SHA256: $pdbHash"
 
       - name: Verify compiled native payload
         shell: pwsh
@@ -69,6 +81,13 @@ jobs:
               !$patch.Contains('globals["CETProfilerObserveScalar"]')) {
             throw 'Native source does not contain expected scalar observation API/CSV contract.'
           }
+          foreach ($marker in @('CET_Runtime_Profile_GGC_UnscopedReallocOrigins.csv',
+                                 'OLD_SIZE_NONZERO', 'CET_DRAW_DISPATCH',
+                                 'CET_LIFECYCLE_DISPATCH', 'CET_OVERLAY_EVENT_DISPATCH')) {
+            if (!$source.Contains($marker) -and !$patch.Contains($marker)) {
+              throw "New native attribution marker missing in source: $marker"
+            }
+          }
           Write-Host "Compiled native DLL verified: $actual"
 
       - name: Upload rebuilt native payload
@@ -76,4 +95,11 @@ jobs:
         with:
           name: gcet-native-experimental-scalar-observations
           path: native-rebuild-artifact/
+          if-no-files-found: error
+
+      - name: Upload developer-only matching debug symbols
+        uses: actions/upload-artifact@v4
+        with:
+          name: gcet-native-experimental-debug-symbols
+          path: native-debug-symbols/
           if-no-files-found: error
