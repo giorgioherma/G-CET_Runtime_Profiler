@@ -1063,6 +1063,10 @@ jobs:
         shell: pwsh
         run: ./tests/NpcOutfitManagerSemanticContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: Minimap native-widget locality semantic contract
+        shell: pwsh
+        run: ./tests/MinimapStealthWidgetLocalityContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: Experimental native scalar report contract
         shell: pwsh
         run: ./tests/ScalarObservationReportContract.ps1 -PublishedRoot ./publish
