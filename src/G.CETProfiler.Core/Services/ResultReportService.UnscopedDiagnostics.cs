@@ -14,6 +14,16 @@ public static partial class ResultReportService
         public bool HasVmTimeSeries { get; init; }
         public bool HasShapes { get; init; }
         public bool HasNativeSamples { get; init; }
+        public bool HasReallocOrigins { get; init; }
+        public bool ReallocOriginsReconciled { get; init; }
+        public long ReallocPositiveBytes { get; init; }
+        public long ReallocOperations { get; init; }
+        public long ReallocDeltaBytes { get; init; }
+        public long ReallocDeltaOperations { get; init; }
+        public long ReallocAbsoluteBytes { get; init; }
+        public long ReallocAbsoluteOperations { get; init; }
+        public long ReallocTimelineBytes { get; init; }
+        public long ReallocTimelineOperations { get; init; }
         public long OwnerZeroBytes { get; init; }
         public long OwnerZeroOps { get; init; }
         public long VmBytes { get; init; }
@@ -34,6 +44,7 @@ public static partial class ResultReportService
         public long DroppedNativeSamples { get; init; }
         public List<UnscopedDimension> VmStates { get; init; } = [];
         public List<UnscopedDimension> Shapes { get; init; } = [];
+        public List<UnscopedDimension> ReallocOrigins { get; init; } = [];
         public List<UnscopedDimension> Boundaries { get; init; } = [];
         public List<UnscopedSampleGroup> NativeSampleGroups { get; init; } = [];
     }
@@ -55,6 +66,8 @@ public static partial class ResultReportService
             "CET_Runtime_Profile_GGC_UnscopedPathTimeline.csv"));
         var samples = ReadCsv(FindProfilerFile(captureRoot,
             "CET_Runtime_Profile_GGC_UnscopedNativeSamples.csv"));
+        var reallocOrigins = ReadCsv(FindProfilerFile(captureRoot,
+            "CET_Runtime_Profile_GGC_UnscopedReallocOrigins.csv"));
 
         var owner = rankings.FirstOrDefault(x =>
             string.Equals(S(x, "Mod"), "<unattributed>", StringComparison.OrdinalIgnoreCase));
@@ -84,6 +97,38 @@ public static partial class ResultReportService
             S(x, "Dimension") == "ALLOCATOR_PATH").ToList();
         var boundaryBins = timeline.Where(x =>
             S(x, "Dimension") == "CET_BOUNDARY").ToList();
+        var reallocBins = timeline.Where(x =>
+            S(x, "Dimension") == "REALLOC_ORIGIN").ToList();
+        var reallocDelta = reallocOrigins.Where(x =>
+            S(x, "Dimension") == "POSITIVE_DELTA").ToList();
+        var reallocAbsolute = reallocOrigins.Where(x =>
+            S(x, "Dimension") == "ABSOLUTE_NEW_SIZE").ToList();
+        var reallocPath = shapes.Where(x =>
+            S(x, "AllocatorPath") == "RESIZE_GROWTH").ToList();
+        var reallocReferenceBytes = SumBytes(reallocPath);
+        var reallocReferenceOps = SumOps(reallocPath);
+        bool ReallocMatch(IEnumerable<Dictionary<string, string>> rows) =>
+            SumBytes(rows) == reallocReferenceBytes &&
+            SumOps(rows) == reallocReferenceOps;
+        // Each of the two realloc dimensions is a separate exact partition
+        // of the legacy RESIZE_GROWTH bucket, not additional allocated bytes.
+        var reallocCategories = new[] { "OLD_SIZE_ZERO", "OLD_SIZE_NONZERO" };
+        var reallocValidRows = reallocOrigins.All(x =>
+            reallocCategories.Contains(S(x, "ReallocOrigin")) &&
+            S(x, "SizeTier").Length > 0 &&
+            L(x, "PositiveBytes") >= 0 && L(x, "AllocationOperations") >= 0);
+        var hasReallocOrigins = reallocOrigins.Count > 0;
+        var reallocOk = hasReallocOrigins && reallocValidRows &&
+            reallocDelta.Count >= 2 && reallocAbsolute.Count >= 2 &&
+            reallocCategories.All(cat =>
+                reallocDelta.Any(x => S(x, "ReallocOrigin") == cat) &&
+                reallocAbsolute.Any(x => S(x, "ReallocOrigin") == cat)) &&
+            ReallocMatch(reallocDelta) && ReallocMatch(reallocAbsolute) &&
+            ReallocMatch(reallocBins);
+        var reallocRows = reallocDelta.Select(x => new UnscopedDimension(
+            S(x, "ReallocOrigin") + " / " + S(x, "SizeTier"),
+            L(x, "PositiveBytes"), L(x, "AllocationOperations")))
+            .OrderByDescending(x => x.Bytes).ToList();
         var groups = samples
             .GroupBy(x => string.Join(" → ", new[] {
                 S(x, "Frame1"), S(x, "Frame2"), S(x, "Frame3"), S(x, "Frame4"),
@@ -101,11 +146,22 @@ public static partial class ResultReportService
             Match(SumBytes(shapes), SumOps(shapes)) &&
             Match(SumBytes(boundary), SumOps(boundary)) &&
             Match(SumBytes(pathBins), SumOps(pathBins)) &&
-            Match(SumBytes(boundaryBins), SumOps(boundaryBins));
+            Match(SumBytes(boundaryBins), SumOps(boundaryBins)) &&
+            (!hasReallocOrigins || reallocOk);
         return new UnscopedDiagnosticReport {
             HasVmTimeSeries = vmTimeline.Count > 0,
             HasShapes = shapes.Count > 0,
             HasNativeSamples = samples.Count > 0,
+            HasReallocOrigins = hasReallocOrigins,
+            ReallocOriginsReconciled = reallocOk,
+            ReallocPositiveBytes = reallocReferenceBytes,
+            ReallocOperations = reallocReferenceOps,
+            ReallocDeltaBytes = SumBytes(reallocDelta),
+            ReallocDeltaOperations = SumOps(reallocDelta),
+            ReallocAbsoluteBytes = SumBytes(reallocAbsolute),
+            ReallocAbsoluteOperations = SumOps(reallocAbsolute),
+            ReallocTimelineBytes = SumBytes(reallocBins),
+            ReallocTimelineOperations = SumOps(reallocBins),
             OwnerZeroBytes = expectedBytes, OwnerZeroOps = expectedOps,
             VmBytes = SumBytes(vm), VmOps = SumOps(vm),
             VmTimelineBytes = SumBytes(vmTimeline), VmTimelineOps = SumOps(vmTimeline),
@@ -117,7 +173,7 @@ public static partial class ResultReportService
             NativeSamples = samples.Count,
             DroppedNativeSamples = samples.Count > 0
                 ? L(samples[0], "DroppedSamples") : 0,
-            VmStates = vmRows, Shapes = shapeRows,
+            VmStates = vmRows, Shapes = shapeRows, ReallocOrigins = reallocRows,
             Boundaries = boundaryRows, NativeSampleGroups = groups
         };
     }
@@ -133,6 +189,7 @@ public static partial class ResultReportService
             nativeSamplesDoNotRepresentExactPopulation = true,
             autoRewriteAuthorized = false,
             info.HasVmTimeSeries, info.HasShapes, info.HasNativeSamples,
+            info.HasReallocOrigins, info.ReallocOriginsReconciled,
             info.VmReconciled, info.ExtendedReconciled,
             referenceUnscopedPositiveBytes = info.OwnerZeroBytes,
             referenceUnscopedOperations = info.OwnerZeroOps,
@@ -143,6 +200,22 @@ public static partial class ResultReportService
                 category = x.Name, positiveBytes = x.Bytes,
                 allocationOperations = x.Operations
             }),
+            reallocOriginDiagnostics = new {
+                referenceResizePositiveBytes = info.ReallocPositiveBytes,
+                referenceResizeOperations = info.ReallocOperations,
+                positiveDeltaBytes = info.ReallocDeltaBytes,
+                positiveDeltaOperations = info.ReallocDeltaOperations,
+                absoluteNewSizePositiveGrowthBytes = info.ReallocAbsoluteBytes,
+                absoluteNewSizeOperations = info.ReallocAbsoluteOperations,
+                perSecondPositiveBytes = info.ReallocTimelineBytes,
+                perSecondOperations = info.ReallocTimelineOperations,
+                positiveGrowthIsNotRetainedHeap = true,
+                oldSizeZeroDoesNotProveAvoidableAllocation = true,
+                originBuckets = info.ReallocOrigins.Select(x => new {
+                    category = x.Name, positiveBytes = x.Bytes,
+                    allocationOperations = x.Operations
+                })
+            },
             outerCETBoundaries = info.Boundaries.Select(x => new {
                 category = x.Name, positiveBytes = x.Bytes,
                 allocationOperations = x.Operations
@@ -172,6 +245,10 @@ public static partial class ResultReportService
           .Append("<p class=\"note\">Only registration-zero positive LuaJIT allocator growth. ")
           .Append("Execution contexts and sampled native callpaths do not identify the originating ")
           .Append("Lua mod or prove useless allocations. Source rewrites are NOT authorized by these counters.</p>");
+        sb.Append("<p><b>Realloc origins reconcile:</b> ")
+          .Append(!r.HasReallocOrigins ? "not captured" :
+                  r.ReallocOriginsReconciled ? "YES" : "NO — review raw evidence")
+          .Append("</p>");
         sb.Append("<p><b>VM totals reconcile:</b> ")
           .Append(r.VmReconciled ? "YES" : "NO — review raw evidence")
           .Append(" | <b>Extended diagnostic totals reconcile:</b> ")
@@ -181,6 +258,7 @@ public static partial class ResultReportService
         foreach (var section in new[] {
             ("VM execution state", r.VmStates),
             ("Allocation path and size", r.Shapes),
+            ("Realloc origin / positive-delta size (subset of RESIZE_GROWTH)", r.ReallocOrigins),
             ("CET outer execution boundary", r.Boundaries) })
         {
             if (section.Item2.Count == 0) continue;
