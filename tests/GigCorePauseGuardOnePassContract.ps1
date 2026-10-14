@@ -49,7 +49,7 @@ end)
 "@
   if($drift){$snippet=$snippet.Replace('pausedThisFrame = computePauseState()', 'pausedThisFrame = not computePauseState()')}
   if($version -eq 'live'){
-    $snippet=$snippet.Replace('  local ui   = Game.GetBlackboardSystem():Get(defs.UI_System)','  local __gcetGigBoards = Game.GetBlackboardSystem()`n  local ui   = __gcetGigBoards:Get(defs.UI_System)')
+    $snippet=$snippet.Replace('  local ui   = Game.GetBlackboardSystem():Get(defs.UI_System)',"  local __gcetGigBoards = Game.GetBlackboardSystem()`n  local ui   = __gcetGigBoards:Get(defs.UI_System)")
     $snippet=$snippet.Replace('  local pm = Game.GetBlackboardSystem():Get(defs.PhotoMode)','  local pm = __gcetGigBoards:Get(defs.PhotoMode)')
   }
   $src=Join-Path $gig 'init.lua'
