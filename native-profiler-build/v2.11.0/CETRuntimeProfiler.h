@@ -3181,7 +3181,7 @@ public:
                           << ",bounded-native-unwind-sample-not-exact-producer,"
                           << (s.reallocOrigin==0?"OLD_SIZE_ZERO":
                               s.reallocOrigin==1?"OLD_SIZE_NONZERO":"NOT_REALLOC")
-                          << ',' << s.oldSize << ',' << s.newSize << '\n';
+                          << ',' << s.oldSize << ',' << s.newSize << ',' << s.methodHash << '\n';
                 }
             }
         }
