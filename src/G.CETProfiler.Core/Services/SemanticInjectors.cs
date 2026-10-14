@@ -19,7 +19,8 @@ internal static class SemanticInjectors
         // All other single-stage rules continue to honor their legacy marker.
         var versionFluidUpgrade = candidate.RuleId is
             "tunnel-rescue-v3" or
-            "ziggy-last-play-navigation-sentinel-v3";
+            "ziggy-last-play-navigation-sentinel-v3" or
+            "immersivefirstperson";
         if (context.OwnerAlreadyMarked() &&
             !candidate.StageComposed && !versionFluidUpgrade)
             return SemanticInjectionResult.Skip(
@@ -5329,7 +5330,7 @@ ${close}" + "\n",
             "IsActorInWorkspot",
             "StatusEffectSystem.ObjectHasStatusEffectOfType");
 
-        var initText = ReplaceOnce(
+        var initText = ReplaceOrSkipCompletedStage(
             init.Text,
             "local function collectPlayerState()\n" +
             "    return Helpers.RefreshPlayerState(cachedPlayerState)\n" +
@@ -5339,13 +5340,13 @@ ${close}" + "\n",
             "end\n",
             "ImmersiveFirstPerson collectPlayerState delta");
 
-        initText = ReplaceOnce(
+        initText = ReplaceOrSkipCompletedStage(
             initText,
             "        local playerState = isPaused and nil or collectPlayerState()\n",
             "        local playerState = isPaused and nil or collectPlayerState(delta)\n",
             "ImmersiveFirstPerson onUpdate player-state probe");
 
-        var helperText = ReplaceOnce(
+        var helperText = ReplaceOrSkipCompletedStage(
             helpers.Text,
             "    weaponSlot = nil,\n",
             "    weaponSlot = nil,\n" +
@@ -5359,7 +5360,7 @@ ${close}" + "\n",
             "    },\n",
             "ImmersiveFirstPerson slow-probe session state");
 
-        helperText = ReplaceOnce(
+        helperText = ReplaceOrSkipCompletedStage(
             helperText,
             "    session.weaponSlot = nil\n",
             "    session.weaponSlot = nil\n" +
@@ -5371,7 +5372,7 @@ ${close}" + "\n",
             "    session.slowProbe.crouching = false\n",
             "ImmersiveFirstPerson slow-probe reset");
 
-        helperText = ReplaceOnce(
+        helperText = ReplaceOrSkipCompletedStage(
             helperText,
             "local function refreshPlayerState(target)\n",
             "local function refreshPlayerState(target, delta)\n",
@@ -5413,39 +5414,39 @@ ${close}" + "\n",
             "        or landingState > 1\n" +
             "        or session.slowProbe.knockedStatus\n";
 
-        helperText = ReplaceOnce(
+        helperText = ReplaceOrSkipCompletedStage(
             helperText,
             hotProbeBlock,
             sampledProbeBlock,
             "ImmersiveFirstPerson expensive player-state probes");
 
-        helperText = ReplaceOnce(
+        helperText = ReplaceOrSkipCompletedStage(
             helperText,
             "    target.inVehicle = vehicleState ~= 0 or mountedVehicle ~= nil\n",
             "    target.inVehicle = vehicleState ~= 0 or session.slowProbe.mountedVehicle\n",
             "ImmersiveFirstPerson mounted-vehicle cache");
 
-        helperText = ReplaceOnce(
+        helperText = ReplaceOrSkipCompletedStage(
             helperText,
             "    target.inspecting = inspectionComponent ~= nil\n" +
             "        and inspectionComponent:GetIsPlayerInspecting() == true\n",
             "    target.inspecting = session.slowProbe.inspecting\n",
             "ImmersiveFirstPerson inspection cache");
 
-        helperText = ReplaceOnce(
+        helperText = ReplaceOrSkipCompletedStage(
             helperText,
             "    target.inWorkspot = session.workspotSystem ~= nil\n" +
             "        and session.workspotSystem:IsActorInWorkspot(player) == true\n",
             "    target.inWorkspot = session.slowProbe.inWorkspot\n",
             "ImmersiveFirstPerson workspot cache");
 
-        helperText = ReplaceOnce(
+        helperText = ReplaceOrSkipCompletedStage(
             helperText,
             "    target.crouching = playerState ~= nil and playerState:IsCrouch() == true\n",
             "    target.crouching = session.slowProbe.crouching\n",
             "ImmersiveFirstPerson crouch cache");
 
-        helperText = ReplaceOnce(
+        helperText = ReplaceOrSkipCompletedStage(
             helperText,
             "function Helpers.RefreshPlayerState(target)\n" +
             "    target = target or {}\n" +
@@ -5455,8 +5456,33 @@ ${close}" + "\n",
             "    local ok, refreshed = pcall(refreshPlayerState, target, delta)\n",
             "ImmersiveFirstPerson public RefreshPlayerState signature");
 
+        // Same-invocation native provider reuse: resolve the blackboard system once
+        // for UI and PhotoMode. Do not retain the game handle across frames.
+        // This is part of the authoritative pristine-source rule, not an
+        // additional patch which requires the older optimization first.
+        var gameSession = context.FindFile(
+            "Modules/GameSession.lua",
+            "local function refreshCurrentState()",
+            "blackboardDefs.UI_System",
+            "blackboardDefs.PhotoMode",
+            "menuActive");
+        var gameSessionText = ReplaceOrSkipCompletedStage(
+            gameSession.Text,
+            "\tlocal blackboardUI = Game.GetBlackboardSystem():Get(blackboardDefs.UI_System)\n" +
+            "\tlocal blackboardPM = Game.GetBlackboardSystem():Get(blackboardDefs.PhotoMode)",
+            "\tlocal __gcetIFPBlackboardSystem = Game.GetBlackboardSystem()\n" +
+            "\tlocal blackboardUI = __gcetIFPBlackboardSystem:Get(blackboardDefs.UI_System)\n" +
+            "\tlocal blackboardPM = __gcetIFPBlackboardSystem:Get(blackboardDefs.PhotoMode)",
+            "ImmersiveFirstPerson single invocation UI and PhotoMode provider");
+
+        if (initText == init.Text && helperText == helpers.Text &&
+            gameSessionText == gameSession.Text)
+            return SemanticInjectionResult.Skip(
+                "All ImmersiveFirstPerson source stages are already complete.");
+
         context.Write(init, initText);
         context.Write(helpers, helperText);
+        context.Write(gameSession, gameSessionText);
         return SemanticInjectionResult.Success(
             "Preserved rendered-frame camera/height work, but sampled expensive mounted/workspot/inspection/crouch/knockdown probes at 20 Hz using the validated optimized reference. Frame registration and action routing remain generic Resolver responsibilities.");
     }
@@ -6202,6 +6228,20 @@ ${close}" + "\n",
             text,
             replacement,
             1);
+    }
+
+    // Source-stage upgrade support: a pristine Nexus input receives every
+    // replacement in one generation. Previously optimized or partially
+    // optimized sources satisfy only stages whose resulting source is present.
+    // Never require an earlier pass or trust its marker as proof.
+    private static string ReplaceOrSkipCompletedStage(
+        string text, string oldValue, string newValue, string label)
+    {
+        if (text.Contains(newValue, StringComparison.Ordinal) ||
+            Regex.IsMatch(text, BuildFlexibleLiteralPattern(newValue),
+                RegexOptions.CultureInvariant | RegexOptions.Singleline))
+            return text;
+        return ReplaceOnce(text, oldValue, newValue, label);
     }
 
     private static string ReplaceOnce(
