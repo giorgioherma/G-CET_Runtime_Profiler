@@ -14,7 +14,7 @@
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
     "fullPassRule": "A semantic injector can run only when the current capture meets that rule's runtime admission threshold (3.0 ms/s by default; lower only when explicitly declared by a production rule), the library rule matches, and the current live mod source graph proves its anchors.",
-    "enabledInjectorCount": 64,
+    "enabledInjectorCount": 65,
     "profileOnlyRuleCount": 0,
     "note": "The production semantic base contains source-proven, behavior-aware optimizations learned from validated references and measured hot callbacks, including burst-discovered diagnostic sentinels that preserve author cadence while gating globally expensive fallback scans. Generic/mechanical transforms stay in the Resolver; semantic rules cover state/cadence/hotpath knowledge that generic inference cannot safely own.",
     "admissionPolicy": {
@@ -4410,14 +4410,15 @@
           "GetQuestMappinPosition(hash)",
           "system:GetAllMappins()"
         ],
-        "alreadySatisfiedMarker": "G-CET semantic:tunnel-rescue-v3",
+        "alreadySatisfiedMarker": "G-CET semantic:tunnel-rescue-quiet-idle-status-v4",
         "expectedMarkerFileCount": 1,
         "satisfiedAll": [
           "__gcetTunnelNavCache",
           "__gcetTunnelMissingActive",
           "__gcetTunnelFarOutside",
           "missingAge>=12",
-          "result.mappins=__gcetTunnelNavCache.mappins or {}"
+          "result.mappins=__gcetTunnelNavCache.mappins or {}",
+          "G-CET semantic:tunnel-rescue-quiet-idle-status-v4"
         ]
       },
       "behavior": {
@@ -4432,9 +4433,10 @@
           "plainLuaDiagnosticCache",
           "fullMappinEnumerationOnObjectiveChangeOrBoundedActiveMiss",
           "farOutside500msWithImmediate150mWake",
-          "recoverReunionAlwaysOriginal"
+          "recoverReunionAlwaysOriginal",
+          "idleDiagnosticStatusEightSecondCadence"
         ],
-        "note": "Stable outside farther than 150m from ladder and Eli uses a 0.5s controller cadence while preserving journal, weather, input and diagnostics. Approaching, recovering, reunion, uncertain and active phases keep original timing. Global diagnostic mappins scan on objective signature changes, with bounded 12s retries for missing ACTIVE objectives only; inactive future-stage pins do not force scans."
+        "note": "Stable outside farther than 150m from ladder and Eli uses a 0.5s controller cadence while preserving journal, weather, input and diagnostics. Approaching, recovering, reunion, uncertain and active phases keep original timing. Global diagnostic mappins scan on objective signature changes, with bounded 12s retries for missing ACTIVE objectives only; inactive future-stage pins do not force scans. Newly added version-fluid v4 additive stage: status.json diagnostics on fully unarmed, stable outside state become 8s instead of 2s (quest and discovery continue unaffected). Already optimized v3 installations are upgradeable without rollback."
       },
       "generation": {
         "enabled": true,
@@ -4446,8 +4448,8 @@
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
-        "measuredPeakExclusiveMsPerSecond": 9.81558,
-        "evidenceStack": "BURST_RECOGNITION_20261010",
+        "measuredPeakExclusiveMsPerSecond": 5.724675,
+        "evidenceStack": "CET-20261014-170941_FOURTH_G-GC_CAPTURE",
         "admitted": true,
         "measuredMaxExclusiveMs": 157.005
       },
@@ -4492,14 +4494,15 @@
             "local N={age=0,retries=0,scanKey=nil,lastMappins={},missingScanAge=0}"
           ]
         ],
-        "alreadySatisfiedMarker": "G-CET semantic:ziggy-last-play-navigation-sentinel-v3",
+        "alreadySatisfiedMarker": "G-CET semantic:ziggy-unaccepted-far-1hz",
         "expectedMarkerFileCount": 2,
         "satisfiedAll": [
           "scanKey=nil,lastMappins={},missingScanAge=0",
           "if N.scanKey ~= scanKey or (not found and N.missingScanAge >= 12) then",
           "N.missingScanAge=0",
           "__gcetZiggyOfferedFarAcc",
-          "__gcetZiggyOfferedFar"
+          "__gcetZiggyOfferedFar",
+          "G-CET semantic:ziggy-unaccepted-far-1hz"
         ]
       },
       "behavior": {
@@ -4518,9 +4521,11 @@
           "acceptedQuestRealtime",
           "dialogueRealtime",
           "v2NavigationPreserved",
-          "v1V2SourceUpgradeSupported"
+          "v1V2SourceUpgradeSupported",
+          "farOfferedIdle1Hz",
+          "instantNearWake"
         ],
-        "note": "Preserve existing v2 targeted 2-second journal/mappin probe and bounded missing-pin scan. In init.lua, while phase is offered, the session is stable, no dialogue and player more than 130 m from Milo, run the full controller at 4 Hz with elapsed dt catch-up. All active states and near/wake transitions remain full-frame; a failed probe falls back to full-frame. Original, v1 and already optimized v2 navigation source supported."
+        "note": "Preserve existing v2 targeted 2-second journal/mappin probe and bounded missing-pin scan. In init.lua, while phase is offered, the session is stable, no dialogue and player more than 130 m from Milo, run the full controller at 4 Hz with elapsed dt catch-up. All active states and near/wake transitions remain full-frame; a failed probe falls back to full-frame. Original, v1 and already optimized v2 navigation source supported. Fourth capture upgrade: already optimized v3 4Hz passive far-unaccepted phase becomes 1Hz, and original author archives can generate the same new 1Hz stage. Same every-frame near-area reentry, dialogue and active full frame."
       },
       "generation": {
         "enabled": true,
@@ -4532,9 +4537,9 @@
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
-        "measuredPeakExclusiveMsPerSecond": 15.49,
+        "measuredPeakExclusiveMsPerSecond": 4.099737,
         "measuredMaxExclusiveMs": 228.86,
-        "evidenceStack": "CET_20261012_FIRST_GC_EVIDENCE_BASED_OPTIMIZATION",
+        "evidenceStack": "CET-20261014-170941_FOURTH_G-GC_CAPTURE",
         "admitted": true
       },
       "cadenceGroup": "OFFERED_FAR_4HZ_NEAR_ACTIVE_FRAME_NAV_2S",
@@ -4910,7 +4915,7 @@
           "MinimapStealthMappinController",
           "UpdateAboveBelowVerticalRelation",
           "MinimapWidgetsConfig.ShowElevationArrow",
-          "local isClamped = this:IsClamped()",
+          "this:IsClamped()",
           "this:GetVerticalRelationToPlayer()",
           "this.aboveWidget:SetVisible",
           "this.belowWidget:SetVisible"
@@ -4932,7 +4937,7 @@
           "preserveOriginalVisibilityWrites",
           "noCrossFrameCaching"
         ],
-        "note": "CET fourth native G-GC capture measured 73,989 callbacks/519.833s, 5.679764 exclusive ms/s, 57,541,738 scoped positive bytes. Current source rereads two native widget references inside each callback. Gate only proven PASS5 source; preserve all visibility decisions."
+        "note": "CET fourth native G-GC capture measured 73,989 callbacks/519.833s, 5.679764 exclusive ms/s, 57,541,738 scoped positive bytes. Current source rereads two native widget references inside each callback. Gate only proven PASS5 source; preserve all visibility decisions. Original Minimap Widgets 3.1.7 pre-PASS5 and optimized PASS5 variants are independently verified; whitespace/comments and single/double quotes tolerated."
       },
       "generation": {
         "enabled": true,
@@ -4955,6 +4960,74 @@
       "referenceOverrideAllowed": false,
       "evidenceMembership": [
         "FOURTH_GGC_PDB_MARSHALLING_20261014"
+      ]
+    },
+    {
+      "id": "yaiba-penthouse-distant-bathtub",
+      "identityHints": [
+        "yaibaPenthouse",
+        "Yaiba Penthouse"
+      ],
+      "policyClass": "DISTANT_INACTIVE_APARTMENT_NATIVE_UI_GETTER_ELISION",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "distant-inactive-bathroom-ui"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "function bathtub.update(player, pPos)",
+          "ui.update()",
+          "CONFIG.iconRange",
+          "bathtub.hubVisible",
+          "bathtub.pinID",
+          "bathtub.waterApplied",
+          "togglePin(near)",
+          "buildHub()"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:yaiba-penthouse-distant-bathtub",
+        "expectedMarkerFileCount": 1,
+        "satisfiedAll": [
+          "__gcetBathPos = CONFIG.position",
+          "if player and pPos and not bathtub.hubVisible and not bathtub.pinID",
+          "ui.update()"
+        ]
+      },
+      "behavior": {
+        "handler": "SEMANTIC_APARTMENT_DISTANT_UI_DORMANCY",
+        "concepts": [
+          "noDistantBlackboardUIReads",
+          "noPerFrameNativeVectorConstructionWhenFar",
+          "preserveBathPinState",
+          "preserveBathFillTransition",
+          "preserveUiHubWake",
+          "independentLampAndCandleObservers"
+        ],
+        "note": "Only bath update and UI blackboard polling are skipped beyond (iconRange+1m) if no hub, pin or pending water apply state exists; lamp/candle OnGameAttached and updates remain active. Source-proven against original Yaiba Penthouse 1.3.0 and live G-CET stack."
+      },
+      "generation": {
+        "enabled": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 3.660565,
+        "admitted": true,
+        "evidenceStack": "CET-20261014-170941_FOURTH_G-GC_CAPTURE"
+      },
+      "cadenceGroup": "UNMODIFIED_PER_FRAME_ACTIVE_APARTMENT_GETTERS_OFF_WHEN_DISTANT",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "FOURTH_GGC_CAPTURE_YAIBA_20261014"
       ]
     }
   ],
