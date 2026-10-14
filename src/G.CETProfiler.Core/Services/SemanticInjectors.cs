@@ -2797,24 +2797,30 @@ ${close}" + "\n",
             var statusWrites = Regex.Matches(text,
                 @"if[ \t]+H[.]diag\s*>\s*2[ \t]+then[ \t]+H[.]diag\s*=\s*0\s*;\s*status\s*\(\s*\)\s*end",
                 RegexOptions.CultureInvariant);
-            if (statusWrites.Count < 1 || statusWrites.Count > 4)
+            // Some synthetic/older supported quest versions omit this
+            // *diagnostic writer* entirely. The v3 gameplay optimization may
+            // still apply; the optional v4 diagnostic stage is simply absent.
+            // Real author builds expose the final update() writer. Never
+            // invent or reintroduce a periodic status writer.
+            if (statusWrites.Count > 4)
                 throw new InvalidOperationException(
-                    "Tunnel diagnostic writer shape changed; refused passive-status optimization.");
-            var match = statusWrites[^1];
-            // Last occurrence must belong to update(), before onInit,
-            // not to an arbitrary later callback.
-            var onInit = Regex.Match(text,
-                @"(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\([ \t]*['""]onInit['""]",
-                RegexOptions.CultureInvariant);
-            if (!onInit.Success || match.Index > onInit.Index)
-                throw new InvalidOperationException(
-                    "Tunnel final update status write no longer provable.");
-            text = text[..match.Index] +
-                "if H.diag>(H.phase=='outside' and H.session and not H.questArmed and " +
-                "not H.recover and not H.auto and not H.manual and not H.error and " +
-                "not active() and 8 or 2) then H.diag=0;status()end " +
-                "-- G-CET semantic:tunnel-rescue-quiet-idle-status-v4" +
-                text[(match.Index+match.Length)..];
+                    "Tunnel diagnostic writer shape ambiguous; refused passive-status optimization.");
+            if (statusWrites.Count > 0)
+            {
+                var match = statusWrites[^1];
+                var onInit = Regex.Match(text,
+                    @"(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\([ \t]*['""]onInit['""]",
+                    RegexOptions.CultureInvariant);
+                if (!onInit.Success || match.Index > onInit.Index)
+                    throw new InvalidOperationException(
+                        "Tunnel final update status write no longer provable.");
+                text = text[..match.Index] +
+                    "if H.diag>(H.phase=='outside' and H.session and not H.questArmed and " +
+                    "not H.recover and not H.auto and not H.manual and not H.error and " +
+                    "not active() and 8 or 2) then H.diag=0;status()end " +
+                    "-- G-CET semantic:tunnel-rescue-quiet-idle-status-v4" +
+                    text[(match.Index+match.Length)..];
+            }
         }
 
         context.Write(file, text);
