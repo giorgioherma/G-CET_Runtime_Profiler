@@ -1,5 +1,11 @@
 # Active project state — chronological engineering history
 
+## 2026-10-14 PASS2 root-cause and real v5 quest idle passes — verified CI
+
+- User's `CET-20261014-194021_PASS2_GC_OPTIMIZATIONS_TEST.zip` (252.607s) shows Tunnel **86 spikes**, median inter-spike **2.5496s**, average **5.7469ms/s** (formerly 5.7247ms/s). Source+deep traces identify `status()` → navigation/mappin diagnostics → `json.encode` and status file writes. The prior 8s gate required `not H.questArmed`, but `tunnel-journal.lua` sets `H.questArmed=true` automatically on *quest offering*, not acceptance. v4 was functionally bypassed. New version-fluid v5 uses **60s diagnostic heartbeat** only while safely outside, no actual `visit`, inputs, recovery or error; original journal offer, native wake and active timing unaffected.
+- Ziggy `onUpdate` **3.7113ms/s**, `onDraw` **1.2433ms/s** in PASS2. Original `ZG11Hooks` REDscript proves `HidePuzzle` is canvas visibility and `ClearPrompt` scans owned dialogue-choice hubs; Lua previously invokes them repeatedly while quest idle. New source-fluid v5 retains one startup stale-state cleanup and visible-to-hidden cleanup, avoids redundant native HUD/prompt clearing, and preserves native every-frame near-area wake and active behavior. Yaiba's `onUpdate` fell to 0.8253ms/s versus 3.6606ms/s (scenario differences; not a controlled A/B proof).
+- [**CI #38611802787**](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38611802787) **SUCCESS all four jobs** and packaged [G-CET Resolver v1.2.7](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38611802787/artifacts/11917772007), including v4-marked-source→v5 upgrade, original-source, idempotence and unchanged live-file regression. Product version and native DLL unchanged; in-game and matched FPS/GC savings remain unverified. [Full audit](../gc/captures/PASS2-QUEST-IDLE-ROOT-CAUSE-2026-10-14.md).
+
 ## 2026-10-14 actual live-stack post-release fix — v3 marker suppressing new quest stages
 
 - User's live `mods(5).zip` **is** the current-source base. All four relevant file SHA256 hashes exactly match the sourceSha256 entries in their generated `G-CET_PASS_20261014-171003.json` (Tunnel `b76654d8...`, Ziggy `02a11aaa...`, Minimap `401641f8...`, Yaiba `4ba98779...`). Original mod archives are compatibility references, not applied source replacements.
