@@ -20,7 +20,8 @@ internal static class SemanticInjectors
         var versionFluidUpgrade = candidate.RuleId is
             "tunnel-rescue-v3" or
             "ziggy-last-play-navigation-sentinel-v3" or
-            "immersivefirstperson";
+            "immersivefirstperson" or
+            "calllist-action-lazy-display-query";
         if (context.OwnerAlreadyMarked() &&
             !candidate.StageComposed && !versionFluidUpgrade)
             return SemanticInjectionResult.Skip(
@@ -4252,55 +4253,86 @@ ${close}" + "\n",
     // A pristine Nexus CallList source must receive this complete stage in one pass.
     // Do not turn its localized "moveup" detection into a finite-name router:
     // the original author accepts a localized substring, not a known action ID.
+    // Pristine Nexus source -> FINAL lazy input filter in one generated pass.
+    // The older experimental display-only stage is recognized solely for safe
+    // upgrades of already-patched live copies; it is never a prerequisite.
     private static SemanticInjectionResult ApplyCallListActionLazyDisplayQuery(
         SemanticPatchContext context)
     {
         var file = context.FindFile(
             "init.lua",
             "VehiclesManagerListItemController",
-            "OnSelected",
-            "GetDisplayResolution",
-            "animOpen",
-            "popupOpen",
-            "moveup");
+            "OnSelected", "GetDisplayResolution", "animOpen", "popupOpen", "moveup");
         var text = file.Text;
+        const string guard =
+            @"if\s+not\s+animOpen\s+or\s+not\s+popupOpen\s+or\s+not\s+playerPosX\s+or\s+not\s+settings\.minigame\s+then\s+return\s+end";
+        const string press =
+            @"if\s+action:IsButtonJustPressed\s*\(\s*action\s*\)\s+then";
+        const string name =
+            @"local\s+name\s*=\s*Game\.GetLocalizedText\s*\(\s*action:GetName\s*\(\s*action\s*\)\.value\s*\)";
+        const string filter =
+            @"if\s+string\.find\s*\(\s*name:lower\s*\(\s*\)\s*,\s*['""]moveup['""]\s*\)\s+then";
+        const string display =
+            @"local\s+sizeX\s*,\s*sizeY\s*=\s*GetDisplayResolution\s*\(\s*\)";
+        const RegexOptions options = RegexOptions.Multiline |
+            RegexOptions.Singleline | RegexOptions.CultureInvariant;
 
-        // Stage completion is proven by source ordering, independently of
-        // any previous marker or registration wrapper.
-        var optimized = new Regex(
-            @"(?ms)if\s+not\s+animOpen\s+or\s+not\s+popupOpen\s+or\s+not\s+playerPosX\s+or\s+not\s+settings\.minigame\s+then\s+return\s+end\s+" +
-            @"local\s+name\s*=\s*Game\.GetLocalizedText\s*\(\s*action:GetName\s*\(\s*action\s*\)\.value\s*\)\s+" +
-            @"if\s+action:IsButtonJustPressed\s*\(\s*action\s*\)\s+then\s+" +
-            @"if\s+string\.find\s*\(\s*name:lower\s*\(\s*\)\s*,\s*['""]moveup['""]\s*\)\s+then\s+" +
-            @"local\s+sizeX\s*,\s*sizeY\s*=\s*GetDisplayResolution\s*\(\s*\)",
-            RegexOptions.CultureInvariant);
-        if (optimized.Matches(text).Count == 1)
+        // Verify both the new stage token and source ordering. A stray marker
+        // cannot suppress work after an author edits the handler.
+        var finalShape = new Regex(
+            @"(?m)^(?<indent>[ \t]*)" + guard + @"\s+" + press +
+            @"\s+--\s*G-CET:CallListActionLazyInputV2\s+" + name +
+            @"\s+" + filter + @"\s+" + display, options);
+        var complete = finalShape.Matches(text);
+        if (complete.Count == 1)
             return SemanticInjectionResult.Skip(
-                "CallList action-resolution query is already deferred until its relevant input.");
-
-        var source = new Regex(
-            @"(?ms)(?<guard>if\s+not\s+animOpen\s+or\s+not\s+popupOpen\s+or\s+not\s+playerPosX\s+or\s+not\s+settings\.minigame\s+then\s+return\s+end)" +
-            @"(?<gap>\s+)(?<query>local\s+sizeX\s*,\s*sizeY\s*=\s*GetDisplayResolution\s*\(\s*\))" +
-            @"(?<between>\s+local\s+name\s*=\s*Game\.GetLocalizedText\s*\(\s*action:GetName\s*\(\s*action\s*\)\.value\s*\)\s+" +
-            @"if\s+action:IsButtonJustPressed\s*\(\s*action\s*\)\s+then\s+" +
-            @"if\s+string\.find\s*\(\s*name:lower\s*\(\s*\)\s*,\s*['""]moveup['""]\s*\)\s+then)",
-            RegexOptions.CultureInvariant);
-        var matches = source.Matches(text);
-        if (matches.Count != 1)
+                "CallList V2 action-localized and display queries are already lazy.");
+        if (complete.Count > 1 || text.Contains("G-CET:CallListActionLazyInputV2",
+                StringComparison.Ordinal))
             throw new InvalidOperationException(
-                "CallList OnAction input and display-query ordering is not uniquely proven; source drift.");
-        var match = matches[0];
-        // The GetDisplayResolution call is pure display-state acquisition,
-        // only used by the proven moveup branch. Retain its exact original line.
-        var replacement = match.Groups["guard"].Value +
-            match.Groups["gap"].Value +
-            match.Groups["between"].Value +
-            "\n                -- G-CET:CallListActionLazyDisplayV1\n                " + match.Groups["query"].Value;
-        text = text[..match.Index] + replacement + text[(match.Index + match.Length)..];
+                "CallList V2 stage marker is duplicated or source ordering changed.");
+
+        var initial = new Regex(
+            @"(?m)^(?<indent>[ \t]*)(?<guard>" + guard + @")(?<gap>\s+)" +
+            @"(?<display>" + display + @")\s+" +
+            @"(?<name>" + name + @")\s+" +
+            @"(?<press>" + press + @")\s+" +
+            @"(?<filter>" + filter + @")", options);
+
+        var older = new Regex(
+            @"(?m)^(?<indent>[ \t]*)(?<guard>" + guard + @")(?<gap>\s+)" +
+            @"(?<name>" + name + @")\s+" +
+            @"(?<press>" + press + @")\s+" +
+            @"(?<filter>" + filter + @")\s+" +
+            @"(?:--\s*G-CET:CallListActionLazyDisplayV1\s+)?" +
+            @"(?<display>" + display + @")", options);
+
+        var pristineMatches = initial.Matches(text);
+        var olderMatches = older.Matches(text);
+        if (pristineMatches.Count + olderMatches.Count != 1)
+            throw new InvalidOperationException(
+                "CallList source does not uniquely prove the original or display-only OnAction branch.");
+        var selected = pristineMatches.Count == 1
+            ? pristineMatches[0] : olderMatches[0];
+        var indent = selected.Groups["indent"].Value;
+        var unit = indent.Contains('\t') ? "\t" : "    ";
+        var child = indent + unit;
+        var nested = child + unit;
+        var replacement =
+            indent + selected.Groups["guard"].Value.Trim() + "\n" +
+            indent + selected.Groups["press"].Value.Trim() + "\n" +
+            child + "-- G-CET:CallListActionLazyInputV2\n" +
+            child + selected.Groups["name"].Value.Trim() + "\n" +
+            child + selected.Groups["filter"].Value.Trim() + "\n" +
+            nested + selected.Groups["display"].Value.Trim();
+
+        text = text[..selected.Index] + replacement +
+            text[(selected.Index + selected.Length)..];
         context.Write(file, text);
         return SemanticInjectionResult.Success(
-            "CallList only acquires display resolution for the active moveup press; " +
-            "retained localized action detection, original position math and observer lifecycle.");
+            "CallList defers localized action-name conversion until JustPressed, " +
+            "then queries display resolution only for moveup; existing localized " +
+            "matching, position math, observer registration and UI state remain intact.");
     }
 
     private static SemanticInjectionResult ApplyQuestTrackingToggle(
