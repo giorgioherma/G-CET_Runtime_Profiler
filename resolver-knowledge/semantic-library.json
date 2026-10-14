@@ -5003,9 +5003,10 @@
           "preserveBathPinState",
           "preserveBathFillTransition",
           "preserveUiHubWake",
-          "independentLampAndCandleObservers"
+          "independentLampAndCandleObservers",
+          "staleUiHubLifecycleStatePreserved"
         ],
-        "note": "Only bath update and UI blackboard polling are skipped beyond (iconRange+1m) if no hub, pin or pending water apply state exists; lamp/candle OnGameAttached and updates remain active. Source-proven against original Yaiba Penthouse 1.3.0 and live G-CET stack."
+        "note": "Only bath update and UI blackboard polling are skipped beyond (iconRange+1m) if neither the bathtub nor the shared interaction UI has a hub, pin or pending water apply state; lamp/candle OnGameAttached and updates remain active. Source-proven against original Yaiba Penthouse 1.3.0 and live G-CET stack."
       },
       "generation": {
         "enabled": true,

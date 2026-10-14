@@ -92,7 +92,7 @@ function Invoke-Variant([string]$label,[string]$source,[bool]$shouldApply) {
   try{$new=$reader.ReadToEnd()}finally{$reader.Dispose()}
  } finally{$zip.Dispose()}
  foreach($token in @('G-CET semantic:yaiba-penthouse-distant-bathtub',
- 'not bathtub.hubVisible and not bathtub.pinID and not bathtub.waterApplied',
+ 'not bathtub.hubVisible and not ui.hubShown and not bathtub.pinID and not bathtub.waterApplied',
  '__gcetBathPos = CONFIG.position','ui.update()','togglePin(near)')){
   if(!$new.Contains($token)){throw "${label}: generated code lost $token"}
  }

@@ -5754,7 +5754,7 @@ ${close}" + "\n",
         var gate = string.Join(newline, new [] {
             indent + "-- " + marker,
             indent + "-- Only skip when no bath UI, mappin or water reapply is pending.",
-            indent + "if player and pPos and not bathtub.hubVisible and not bathtub.pinID and not bathtub.waterApplied then",
+            indent + "if player and pPos and not bathtub.hubVisible and not ui.hubShown and not bathtub.pinID and not bathtub.waterApplied then",
             indent + "    local __gcetBathPos = CONFIG.position",
             indent + "    local __gcetDx = pPos.x - __gcetBathPos.x",
             indent + "    local __gcetDy = pPos.y - __gcetBathPos.y",
