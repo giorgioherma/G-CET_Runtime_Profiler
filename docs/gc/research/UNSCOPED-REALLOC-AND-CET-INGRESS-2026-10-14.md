@@ -1,6 +1,6 @@
 # G-GC unscoped allocation-origin and CET ingress experiment — 2026-10-14
 
-**Status:** Implemented in source, pending full verification of the **latest matching native DLL** and game capture. No production mod changes, GC policy edits, Resolver optimization passes or product version bump.
+**Status:** Native + combined CI **verified**; game runtime/overhead capture **pending**. [Native #38582048697](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38582048697) SUCCESS; native `2.15.3-unscoped-realloc-context`, DLL SHA `5c3d5dfad9e9131c1aae53f700985dfdd7b9d417067044687fbf32f8b78b0e11`, developer PDB SHA `30ccf88c4f2d9515f05729b9473bc613f1d36392d54c29f2f8b4b48f9a658450`. [Main #38584208545](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38584208545) all four jobs SUCCESS with both player artifacts **v1.2.7**. No production mod changes, GC policy edits, Resolver optimization passes or product version bump.
 
 ## Why this pass
 
