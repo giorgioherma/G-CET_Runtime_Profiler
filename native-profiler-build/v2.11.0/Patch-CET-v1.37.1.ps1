@@ -98,9 +98,10 @@ $ssC = Join-Path $src "src\scripting\ScriptStore.cpp"
 $scriptingC = Join-Path $src "src\scripting\Scripting.cpp"
 $foH = Join-Path $src "src\scripting\FunctionOverride.h"
 $foC = Join-Path $src "src\scripting\FunctionOverride.cpp"
+$npC = Join-Path $src "src\reverse\NativeProxy.cpp"
 $profH = Join-Path $src "src\scripting\CETRuntimeProfiler.h"
 
-foreach ($p in @($scH, $scC, $ssC, $scriptingC, $foH, $foC)) {
+foreach ($p in @($scH, $scC, $ssC, $scriptingC, $foH, $foC, $npC)) {
     if (!(Test-Path -LiteralPath $p)) {
         throw "Missing CET source file: $p"
     }
@@ -929,6 +930,76 @@ $1            auto result = [&]() {
             }();
 '@ `
     -Label "Override capture-gated full callback timing"
+
+
+# Capture-gated game -> Lua marshalling scope. CName hashes are not Lua
+# mod owners. Never wrap Override::next() or downstream Lua callbacks.
+Replace-LiteralOnce `
+    -Path $foC `
+    -Old @'
+            {
+                auto lockedState = chain.pScripting->GetLockedState();
+'@ `
+    -New @'
+            {
+                CETRuntimeProfiler::MethodScope ggcMethodScope(
+                    6, apFunction->fullName.hash, CETRuntimeProfiler::Get().IsCapturing());
+                auto lockedState = chain.pScripting->GetLockedState();
+'@ `
+    -Label "PureScript argument marshalling native boundary"
+
+Replace-LiteralOnce `
+    -Path $foC `
+    -Old @'
+        {
+            auto lockedState = chain.pScripting->GetLockedState();
+'@ `
+    -New @'
+        {
+            CETRuntimeProfiler::MethodScope ggcMethodScope(
+                7, apFunction->fullName.hash, CETRuntimeProfiler::Get().IsCapturing());
+            auto lockedState = chain.pScripting->GetLockedState();
+'@ `
+    -Label "OverriddenScript argument marshalling native boundary"
+
+Replace-LiteralOnce `
+    -Path $npC `
+    -Old '#include "NativeProxy.h"' `
+    -New "#include `"NativeProxy.h`"`n#include <scripting/CETRuntimeProfiler.h>" `
+    -Label "NativeProxy capture-only GGC include"
+
+Replace-LiteralOnce `
+    -Path $npC `
+    -Old @'
+    for (const auto& param : apFrame->func->params)
+    {
+'@ `
+    -New @'
+    {
+    CETRuntimeProfiler::MethodScope ggcMethodScope(
+        8, apFrame->func->fullName.hash, CETRuntimeProfiler::Get().IsCapturing());
+    for (const auto& param : apFrame->func->params)
+    {
+'@ `
+    -Label "NativeProxy ToLua argument marshalling begin"
+
+Replace-LiteralOnce `
+    -Path $npC `
+    -Old @'
+    const auto result = functionIt.value()(sol::as_args(args));
+'@ `
+    -New @'
+    } // End capture-only ToLua method attribution before Lua callback.
+    const auto result = functionIt.value()(sol::as_args(args));
+'@ `
+    -Label "NativeProxy ToLua argument marshalling end"
+
+$nativeMethodText=Read-Utf8 $foC
+$nativeProxyText=Read-Utf8 $npC
+if (($nativeMethodText.Split('CETRuntimeProfiler::MethodScope ggcMethodScope').Count - 1) -ne 2 -or
+    ($nativeProxyText.Split('CETRuntimeProfiler::MethodScope ggcMethodScope').Count - 1) -ne 1) {
+    throw "G-GC native method scope count incorrect; refusing build."
+}
 
 # Hard safety checks.
 $foHHashAfter = (Get-FileHash -Algorithm SHA256 $foH).Hash
