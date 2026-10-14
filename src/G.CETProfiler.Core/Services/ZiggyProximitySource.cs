@@ -14,6 +14,38 @@ internal static class ZiggyProximitySource
         var file=context.FindFile("init.lua", "local function update(dt)",
             "Navigation.update(dt", "C.giver.position", "H.s", "Dialogue");
         var text=file.Text;
+        // A v3-optimized live source already contains the native proximity
+        // sentinel. Upgrade that one source token in place rather than
+        // injecting an extra callback wrapper (which would double dispatch).
+        // Original author archives take the same control-flow path below.
+        if (text.Contains("__gcetZiggyOfferedFarAcc", StringComparison.Ordinal))
+        {
+            if (text.Contains("G-CET semantic:ziggy-unaccepted-far-1hz",
+                              StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "Ziggy far-idle cadence stage already applied.");
+            var cadence = Regex.Matches(
+                text,
+                @"__gcetZiggyOfferedFarAcc\s*<\s*0[.]25\s*then\s*return",
+                RegexOptions.CultureInvariant);
+            if (cadence.Count != 1 ||
+                !text.Contains("if __gcetProbeOK and __gcetFar then",
+                               StringComparison.Ordinal) ||
+                !text.Contains("H.s.phase=='offered'", StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "Ziggy offered/far wake and timer semantics drifted; refusing cadence.");
+            var m = cadence[0];
+            text = text[..m.Index] +
+                "__gcetZiggyOfferedFarAcc < 1.0 then return" +
+                text[(m.Index+m.Length)..];
+            text = "-- G-CET semantic:ziggy-unaccepted-far-1hz\n" + text;
+            context.Write(file,text);
+            return SemanticInjectionResult.Success(
+                "Upgraded existing 4Hz distant, unaccepted Starman passive " +
+                "controller to 1Hz; same every-frame near-Milo probe and immediate " +
+                "full-speed wake; dialogue, accepted stages and timers unchanged.");
+        }
+
         var matches=Regex.Matches(text,
             @"(?m)^[ \t]*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]\s*,\s*function\s*\(\s*dt\s*\)\s*$",
             RegexOptions.CultureInvariant);
@@ -44,7 +76,7 @@ end
  end
  if __gcetProbeOK and __gcetFar then
   __gcetZiggyOfferedFarAcc=__gcetZiggyOfferedFarAcc+(dt or 0)
-  if __gcetZiggyOfferedFarAcc<0.25 then return end
+  if __gcetZiggyOfferedFarAcc<1.0 then return end
   dt=__gcetZiggyOfferedFarAcc
   __gcetZiggyOfferedFarAcc=0
  elseif __gcetZiggyOfferedFarAcc>0 then
@@ -52,11 +84,12 @@ end
   __gcetZiggyOfferedFarAcc=0
  end
 """;
+        text="-- G-CET semantic:ziggy-unaccepted-far-1hz\n" + text;
         text=text[..matches[0].Index]+prelude+"\n"+opening+"\n"+gate+
              text[(matches[0].Index+opening.Length+1)..];
         context.Write(file,text);
         return SemanticInjectionResult.Success(
-            "V2 navigation preserved; the unaccepted offered/far quest controller runs at 4 Hz " +
+            "V2 navigation preserved; the unaccepted offered/far quest controller runs at 1 Hz " +
             "beyond 130m, while near giver, dialogue, session transitions and all active phases " +
             "keep original frame cadence. State and timer elapsed time are preserved.");
     }
