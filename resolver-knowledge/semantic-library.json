@@ -5062,8 +5062,8 @@
         "alreadySatisfiedMarker": "G-CET semantic:calllist-action-lazy-display-query",
         "expectedMarkerFileCount": 1,
         "satisfiedAll": [
-          "if string.find(name:lower(), \"moveup\") then",
-          "local sizeX, sizeY = GetDisplayResolution()"
+          "G-CET:CallListActionLazyDisplayV1",
+          "GetDisplayResolution"
         ]
       },
       "behavior": {
