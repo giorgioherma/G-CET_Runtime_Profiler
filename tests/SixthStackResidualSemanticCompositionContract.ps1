@@ -424,6 +424,7 @@ registerForEvent('onUpdate',function(dt)
  end
 end)
 registerForEvent('onDraw',function()if H.session and not H.overlay and not H.error then Timer.draw()end end)
+registerForEvent('onInit',function() end)
 '@
 
 Write-ModFile 'ziggy_last_play' 'navigation.lua' @'
