@@ -82,6 +82,7 @@ internal static class SemanticInjectors
             "specter-recovery-prerequisite-reads" => ApplySpecterRecoveryPrerequisites(context),
             "drivebus" => ApplyDriveBus(context),
             "quest-tracking-toggle" => ApplyQuestTrackingToggle(context),
+            "calllist-action-lazy-display-query" => ApplyCallListActionLazyDisplayQuery(context),
             "sitanywhere" => ApplySitAnywhere(context),
             "repeatable-increased-criminal-activity" => ApplyRepeatableIncreasedCriminalActivity(context),
             "dedka-auto-shop" => ApplyDedkaAutoShop(context),
@@ -4191,6 +4192,61 @@ ${close}" + "\n",
         context.Write(init, initText);
         return SemanticInjectionResult.Success(
             "Routed DriveBus's six source-proven actions through 0-Engine and made its Cron frame callback hard-dormant whenever no active timer exists.");
+    }
+
+
+    // A pristine Nexus CallList source must receive this complete stage in one pass.
+    // Do not turn its localized "moveup" detection into a finite-name router:
+    // the original author accepts a localized substring, not a known action ID.
+    private static SemanticInjectionResult ApplyCallListActionLazyDisplayQuery(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "init.lua",
+            "VehiclesManagerListItemController",
+            "OnSelected",
+            "GetDisplayResolution",
+            "animOpen",
+            "popupOpen",
+            "moveup");
+        var text = file.Text;
+
+        // Stage completion is proven by source ordering, independently of
+        // any previous marker or registration wrapper.
+        var optimized = new Regex(
+            @"(?ms)if\s+not\s+animOpen\s+or\s+not\s+popupOpen\s+or\s+not\s+playerPosX\s+or\s+not\s+settings\.minigame\s+then\s+return\s+end\s+" +
+            @"local\s+name\s*=\s*Game\.GetLocalizedText\s*\(\s*action:GetName\s*\(\s*action\s*\)\.value\s*\)\s+" +
+            @"if\s+action:IsButtonJustPressed\s*\(\s*action\s*\)\s+then\s+" +
+            @"if\s+string\.find\s*\(\s*name:lower\s*\(\s*\)\s*,\s*['""]moveup['""]\s*\)\s+then\s+" +
+            @"local\s+sizeX\s*,\s*sizeY\s*=\s*GetDisplayResolution\s*\(\s*\)",
+            RegexOptions.CultureInvariant);
+        if (optimized.Matches(text).Count == 1)
+            return SemanticInjectionResult.Skip(
+                "CallList action-resolution query is already deferred until its relevant input.");
+
+        var source = new Regex(
+            @"(?ms)(?<guard>if\s+not\s+animOpen\s+or\s+not\s+popupOpen\s+or\s+not\s+playerPosX\s+or\s+not\s+settings\.minigame\s+then\s+return\s+end)" +
+            @"(?<gap>\s+)(?<query>local\s+sizeX\s*,\s*sizeY\s*=\s*GetDisplayResolution\s*\(\s*\))" +
+            @"(?<between>\s+local\s+name\s*=\s*Game\.GetLocalizedText\s*\(\s*action:GetName\s*\(\s*action\s*\)\.value\s*\)\s+" +
+            @"if\s+action:IsButtonJustPressed\s*\(\s*action\s*\)\s+then\s+" +
+            @"if\s+string\.find\s*\(\s*name:lower\s*\(\s*\)\s*,\s*['""]moveup['""]\s*\)\s+then)",
+            RegexOptions.CultureInvariant);
+        var matches = source.Matches(text);
+        if (matches.Count != 1)
+            throw new InvalidOperationException(
+                "CallList OnAction input and display-query ordering is not uniquely proven; source drift.");
+        var match = matches[0];
+        // The GetDisplayResolution call is pure display-state acquisition,
+        // only used by the proven moveup branch. Retain its exact original line.
+        var replacement = match.Groups["guard"].Value +
+            match.Groups["gap"].Value +
+            match.Groups["between"].Value +
+            "\n                " + match.Groups["query"].Value;
+        text = text[..match.Index] + replacement + text[(match.Index + match.Length)..];
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "CallList only acquires display resolution for the active moveup press; " +
+            "retained localized action detection, original position math and observer lifecycle.");
     }
 
     private static SemanticInjectionResult ApplyQuestTrackingToggle(
