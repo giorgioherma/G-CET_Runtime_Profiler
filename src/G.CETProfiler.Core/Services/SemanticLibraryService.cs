@@ -114,7 +114,9 @@ internal sealed class SemanticLibraryService
                                 JsonLong(proofRow, "expectedMarkerFileCount")),
                             AllowIdentityFallback = JsonBool(
                                 proofRow,
-                                "allowIdentityFallback")
+                                "allowIdentityFallback"),
+                            SourceCompletionAuthoritative = JsonBool(
+                                proofRow, "sourceCompletionAuthoritative")
                         };
                     }
 
@@ -301,7 +303,7 @@ internal sealed class SemanticLibraryService
                 rule.Proof.CompleteStages.All(stage =>
                     SemanticScopedStages.IsComplete(graph.FileTexts, stage));
 
-        var alreadySatisfied = composed
+        var alreadySatisfied = composed || rule.Proof.SourceCompletionAuthoritative
             ? satisfiedBySourcePostcondition
             : markerSatisfied || satisfiedBySourcePostcondition;
         var alreadySatisfiedMode = alreadySatisfied
@@ -310,7 +312,7 @@ internal sealed class SemanticLibraryService
             : "";
         // A recognized, incomplete composite is UPGRADEABLE. Ambiguous or
         // foreign edits still fail closed inside its source injector.
-        var partialState = !composed && !alreadySatisfied &&
+        var partialState = !composed && !rule.Proof.SourceCompletionAuthoritative && !alreadySatisfied &&
             markerCount > 0 && markerCount < expectedMarkerFileCount;
 
         return new SemanticRuleMatch(
@@ -745,6 +747,8 @@ internal sealed class SemanticLibraryService
         internal string AlreadySatisfiedMarker { get; init; } = "";
         internal int ExpectedMarkerFileCount { get; init; } = 1;
         internal bool AllowIdentityFallback { get; init; }
+        // Old markers never complete a safely upgradeable inline source stage.
+        internal bool SourceCompletionAuthoritative { get; init; }
     }
 
     private sealed class GenerationPolicy
