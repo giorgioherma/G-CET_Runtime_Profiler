@@ -7,7 +7,7 @@ This is a **version-independent process**. Never hardcode recent run IDs, DLL ch
 `.github/workflows/native-profiler-rebuild.yml` — **Rebuild G-CET native profiler**.
 
 - Reconstruct the pinned CET/LuaJIT native source, compile and verify `cyber_engine_tweaks.PROFILER.dll`.
-- Upload the **DLL plus its actual SHA256.txt** only.
+- Upload the player-consumed **DLL plus its actual SHA256.txt** in the native payload artifact. During attribution experiments, a **separate developer-only PDB artifact** may be published alongside its own SHA256 and the paired DLL SHA. The PDB must come from the same linker invocation, must never be included in normal Profiler/Resolver downloads, and must not replace/hash-bypass the pinned player DLL.
 - **Never** build or upload managed Profiler or Resolver packages here.
 - Native source changes are not automatically product version changes. A native-only success does not update the normal Profiler download.
 
