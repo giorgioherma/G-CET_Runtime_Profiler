@@ -2993,12 +2993,14 @@
           "StatusEffectSystem.ObjectHasStatusEffectOfType"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:immersivefirstperson",
-        "expectedMarkerFileCount": 2,
+        "expectedMarkerFileCount": 3,
         "satisfiedAll": [
           "slowProbeElapsed",
           "slowProbe = {",
           "Helpers.RefreshPlayerState(target, delta)",
-          "collectPlayerState(delta)"
+          "collectPlayerState(delta)",
+          "__gcetIFPBlackboardSystem:Get(blackboardDefs.UI_System)",
+          "__gcetIFPBlackboardSystem:Get(blackboardDefs.PhotoMode)"
         ]
       },
       "behavior": {
@@ -3006,7 +3008,10 @@
         "concepts": [
           "cameraRealtime",
           "heightRealtime",
-          "stablePlayerStateProbe"
+          "stablePlayerStateProbe",
+          "sameInvocationBlackboardReuse",
+          "completePristineSourceSinglePass",
+          "partialSourceUpgrade"
         ],
         "lanes": [
           {
@@ -3024,7 +3029,8 @@
           "FRAME_DISPATCH_CONSOLIDATION",
           "ACTION_ROUTING_*",
           "SHARED_PROVIDER_READ"
-        ]
+        ],
+        "note": "Authoritative one-pass implementation includes original 20 Hz slow state probe and invocation-local UI/PhotoMode blackboard system reuse; existing partial stages recognized by source rather than marker."
       },
       "generation": {
         "enabled": true,
