@@ -1090,6 +1090,10 @@ jobs:
         shell: pwsh
         run: ./tests/UnscopedAttributionReportContract.ps1 -PublishedRoot ./publish
 
+      - name: CallList pristine one-pass source contract
+        shell: pwsh
+        run: ./tests/CallListPristineSourceContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: GigCore SPECTER variant source-generation contract
         shell: pwsh
         run: ./tests/GigCoreSpecterSourceContract.ps1 -ResolverRoot ./publish-resolver
