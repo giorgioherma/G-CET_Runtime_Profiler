@@ -996,8 +996,8 @@ Replace-LiteralOnce `
 
 $nativeMethodText=Read-Utf8 $foC
 $nativeProxyText=Read-Utf8 $npC
-if (($nativeMethodText.Split('CETRuntimeProfiler::MethodScope ggcMethodScope').Count - 1) -ne 2 -or
-    ($nativeProxyText.Split('CETRuntimeProfiler::MethodScope ggcMethodScope').Count - 1) -ne 1) {
+if (([regex]::Matches($nativeMethodText, 'CETRuntimeProfiler::MethodScope ggcMethodScope').Count) -ne 2 -or
+    ([regex]::Matches($nativeProxyText, 'CETRuntimeProfiler::MethodScope ggcMethodScope').Count) -ne 1) {
     throw "G-GC native method scope count incorrect; refusing build."
 }
 
