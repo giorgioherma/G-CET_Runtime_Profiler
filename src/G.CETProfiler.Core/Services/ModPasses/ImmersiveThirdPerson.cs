@@ -272,11 +272,11 @@ internal static partial class SemanticInjectors
             "  local callback = function(_, action) handlePlayerAction(action) end\n" +
             "  local routed = false\n" +
             "  if type(zeroEngineMod) == \"table\" and type(zeroEngineMod.SubscribeAction) == \"function\" then\n" +
-            "    local ok = pcall(zeroEngineMod.SubscribeAction, { actions = actions, decodeType = false }, callback)\n" +
-            "    routed = ok\n" +
+            "    local ok, handle = pcall(zeroEngineMod.SubscribeAction, { actions = actions, decodeType = false }, callback)\n" +
+            "    routed = ok and type(handle) == \"table\"\n" +
             "  elseif okEngine and type(engine) == \"table\" and type(engine.SubscribeAction) == \"function\" then\n" +
-            "    local ok = pcall(engine.SubscribeAction, { actions = actions, decodeType = false }, callback, \"immersive_third_person\")\n" +
-            "    routed = ok\n" +
+            "    local ok, handle = pcall(engine.SubscribeAction, { actions = actions, decodeType = false }, callback, \"immersive_third_person\")\n" +
+            "    routed = ok and type(handle) == \"table\"\n" +
             "  end\n" +
             "  if not routed and Observe then\n" +
             "    routed = pcall(function()\n" +
