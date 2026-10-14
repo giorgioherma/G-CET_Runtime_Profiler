@@ -24,6 +24,8 @@ In the one measured callback only, after the author's `IsDefined(this)` guard:
 
 This removes **12 duplicate source property access expressions** from the existing callback body; executed native getter savings depend on branch and widget presence. **No FPS/GC decrease or byte savings have been proven** until in-game A/B. It is a real work-elimination rewrite, not a new probe.
 
+Version-fluid original-source coverage: the exact **unmodified Minimap Widgets 3.1.7** elevation callback is also admitted through an independently complete source-proof branch, alongside the already modified PASS5 variant. Existing game getter and visibility decisions are preserved in both; unknown control-flow deviations fail closed. [Main #38599376883](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38599376883) verified original-source generation, changed quote style, the live PASS5 path and negative drift/unchanged-input cases.
+
 ## Resolver admission and safety
 
 - New independent source injector `ApplyMinimapStealthWidgetLocality` and semantic catalog entry; current runtime threshold **3 ms/s**.

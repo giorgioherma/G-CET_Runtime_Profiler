@@ -1,6 +1,6 @@
 # Version-fluid optimization of dormant quests and Yaiba Penthouse — 2026-10-14
 
-**Status:** Source-level optimization implemented in Resolver production branch; final integrated CI and in-game validation must be separately recorded. No native collector/profiler instrumentation was introduced; both products remain **v1.2.7**.
+**Status:** Source-level optimizations **CI-verified and packaged** in [main #38599376883](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38599376883) (**all four jobs successful**), including original Minimap 3.1.7/pass5, two-file Ziggy v3→v4 upgrade, Tunnel original/live composition, and Yaiba original-source generation/idempotence/source drift. **In-game A/B and full quest/apartment gameplay validation remain pending.** Native DLL and both product versions (**v1.2.7**) unchanged.
 
 ## Evidence and originals
 
