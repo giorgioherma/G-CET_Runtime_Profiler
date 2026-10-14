@@ -9,6 +9,16 @@
 - **Resolver:** a separate portable app that reads captured evidence plus the user's **current original/live CET mod files read-only**. Generates composable safe generic then source-proven semantic optimization overlays; does not silently edit live mods.
 - One Profiler, one Resolver. The internal Resolver decision-layer codename stays **internal** and must not appear in player-facing UI, reports, releases or installer text.
 
+## Resolver optimization architecture — mandatory ownership design
+
+- **Generic AUTO stays cross-stack and centralized.** Generic frame dispatch, action routing/prefilters, source-proven shared-provider reads, and other mechanically safe reusable transformations belong to shared generic Resolver services. Do not duplicate global algorithms inside individual mod files or make generic eligibility depend on a named mod.
+- **Semantic optimization source is organized by mod.** Each mod's authoritative source transformations are owned in `src/G.CETProfiler.Core/Services/ModPasses/<Mod>.cs`, including all related stages for that mod (e.g. GigCore, AutoLoot, ImmersiveFirstPerson). Keep the `SemanticInjectors.cs` partial-class entrypoint for dispatch and shared matching/replacement/proof helpers. Specialized external source handlers may remain separately owned when explicitly documented.
+- **Rule identity is distinct from file ownership.** Multiple measured semantic rules can legitimately map to one mod-owned file; keep their catalog IDs, evidence/admission thresholds, completion proofs, and compatibility semantics unless a separately tested change warrants merging. Group code by mod; do not blindly combine unrelated callback behavior.
+- **One composed result from pristine Nexus input.** Generic and all admitted semantic stages must compose during **one Resolver generation/application pass** on untouched supported mod source. Fix the mod's authoritative implementation directly when updating an optimization; never preserve a stale pass then require a corrective pass. Generic-generated source variants and older/partially optimized sources must be recognized as compatible inputs where safely proven, or fail closed.
+- **Source ownership must remain enforced.** Keep `resolver-knowledge/semantic-library.json` aligned with the dispatch table and per-mod implementation; preserve `tests/SemanticModPassOwnershipContract.ps1` and the full CI semantic/pristine/upgrade/idempotence contracts. When adding or modifying a semantic optimization, inspect *all* existing stages for that mod first to prevent duplicate work and contradictory rewrites.
+
+See [per-mod source index](../resolver/MOD-PASS-SOURCE-INDEX.md) and [Resolver project contract](../resolver/PROJECT-CONTRACT.md).
+
 ## Invariants
 
 1. Preserve source-mod gameplay, quest state, pins, UI/input, dialogue, activity, transitions, deadlines, lifecycle, cleanup and fallback. A generic/semantic pass must be version-fluid, compose with already-applied/partial changes and be idempotent. See [Resolver contract](../resolver/PROJECT-CONTRACT.md).
