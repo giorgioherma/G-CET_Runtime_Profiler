@@ -1,5 +1,15 @@
 # Active project state — chronological engineering history
 
+## 2026-10-14 second G-GC instrumentation expansion — verified package, in-game test pending
+
+- The user identified a suspected **menu-contaminated extreme frametime** in the previous 239.85-second capture. Next game test should leave pause/inventory/overlay menus closed during phase measurements; don't label that maximum as representative combat load.
+- Native source commit [d6dd00b](https://github.com/giorgioherma/G-CET_Runtime_Profiler/commit/d6dd00b56fa14a0aee41d56ce47b3620c9544ac4) adds capture-only owner-zero allocation path/size tiers, outer CET frame/dump boundaries, bounded native unwind samples (2048 max), and one-second path/boundary bins. Nothing gets silently assigned to a Lua mod or approved for automatic rewriting.
+- [Native CI #38517977314](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38517977314) **SUCCESS**, actual compiled DLL SHA-256 \`3efd05f3eb76195dff48e4e5b9a46a5380d4acf8623c6c5cadd15010033a4d52\`; native feature label \`2.15.2-unscoped-native-callpaths\`.
+- Integration commit [b19ce0e](https://github.com/giorgioherma/G-CET_Runtime_Profiler/commit/b19ce0eb40a1ba5cc3554985e597fc6014f5dde3), corrected main CI guard [dc79332](https://github.com/giorgioherma/G-CET_Runtime_Profiler/commit/dc7933227dd05b33ed5f3a0de57036908652322d). [Main CI #38519218557](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38519218557) **SUCCESS, all 4 jobs**, with **both** \`G-CET-Runtime-Profiler-v1.2.7\` and \`G-CET-Resolver-v1.2.7\` downloadable artifacts. **Shared product version unchanged.**
+- Added managed HTML/Summary/Resolver JSON \`unscopedProducerDiagnostics\`, per-dimension **exact reconciliations** (with native six-decimal MiB ranking tolerance), explicit sampled-vs-whole data limits, new raw CSVs, and \`tests/UnscopedAttributionReportContract.ps1\`. The contract passed in final main CI, including mismatch refusal, paired reports and legacy CSV absence.
+- **No in-game verification yet of the new native DLL.** First load normally with capture off, record idle/movement/combat with no menus, test post-capture controls and collect one ZIP. Inspect exact dimensions, sample module+RVA clusters, native overhead and GC overlap; only after source validation choose optimizations.
+- [Full engineering/test plan](../gc/research/UNSCOPED-MULTI-AXIS-ATTRIBUTION-2026-10-14.md).
+
 > **FIRST READ:** [CORE.md](../HANDOFF/CORE.md) is the current short authoritative startup state; [BUILD-PIPELINE.md](../HANDOFF/BUILD-PIPELINE.md) describes the mandatory two workflows; [PRODUCT-STATUS.md](../product/PRODUCT-STATUS.md) summarizes application progress. **Older sections below intentionally preserve historical claims about previous versions; they are not the current packaging instructions.**
 
 ## 2026-10-14 newly reported post-capture UI/input failure (UNRESOLVED)

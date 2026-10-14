@@ -4,6 +4,8 @@
 
 **Version cadence:** product version advances only at the user's request or a user-agreed milestone, **not** at each CI/commit. See [CORE.md](../HANDOFF/CORE.md) and [BUILD-PIPELINE.md](../HANDOFF/BUILD-PIPELINE.md). v1.2.7 remains the current version until such a decision.
 
+**Latest verified packaging (2026-10-14):** Native #38517977314 produced `2.15.2-unscoped-native-callpaths` (DLL SHA-256 `3efd05f3eb76195dff48e4e5b9a46a5380d4acf8623c6c5cadd15010033a4d52`); [main #38519218557](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38519218557) passed all four jobs and packaged **both v1.2.7 apps**. Raw VM/path/size/boundary/callpath evidence plus add-only HTML/JSON diagnostics/fixtures are integrated, but actual in-game runtime safety remains unverified. [Test and limitations](../gc/research/UNSCOPED-MULTI-AXIS-ATTRIBUTION-2026-10-14.md).
+
 ## Product mission
 
 One native/CET **Profiler** measures actual Cyberpunk 2077 modded-game work; one **Resolver** analyzes captures and the current mod sources and generates conservative, composable optimizations. The goal is real responsiveness and fewer unnecessary computations/allocations—not just lowering profiler counters. The profiler never arbitrarily rewrites gameplay; the Resolver produces a reviewable overlay ZIP instead of modifying the live mod installation.

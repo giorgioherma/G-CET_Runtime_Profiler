@@ -1,5 +1,13 @@
 # GC research — the remaining major opportunity
 
+## Current experimental next step — bounded unscoped producer evidence (2026-10-14)
+
+Following the clean 239.85 s capture showing ~242 MiB unattributed positive growth and ~99.89% of this VM_C, instrumentation was expanded **in one native + managed package milestone**. [Engineering design and game test](research/UNSCOPED-MULTI-AXIS-ATTRIBUTION-2026-10-14.md).
+
+[Native #38517977314](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38517977314) and [combined #38519218557](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38519218557) both succeeded. Both Profiler and Resolver remain product **v1.2.7**. New exact owner-zero allocation-path and size breakdown, bounded sampled native callpaths, CET outer-boundary and per-second timelines should narrow source search; extra source/provenance evidence and gameplay proof are still required before GC optimization passes. Both Summary and Resolver JSON emit reconciliation and `autoRewriteAuthorized=false` for these observations.
+
+The user's note that a large previous frame may have been a **menu frame** is a real confound; the next capture will intentionally avoid menus during idle/movement/combat segments.
+
 ## Important correction: recorded length ≠ intentional capture window (2026-10-13)
 
 The user reports pressing STOP after approximately **7–9 minutes** and then playing another couple of minutes. The native `CET_Runtime_Profile_Markers.csv` contains **CAPTURE_START=0** and **PAUSE=698202.1602ms** with no earlier PAUSE or RESUME; the last GC frame ends 698202.1602ms, and CapFrameX independently spans 697.743s. The stop was **not successfully recorded at the intended time**, mechanism undiagnosed. The **11m38.202s** and all metrics in the following section describe the **actual recorded interval**, NOT a clean intentional single gameplay scenario.
