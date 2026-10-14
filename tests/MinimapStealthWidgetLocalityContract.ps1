@@ -149,3 +149,6 @@ $drift = $original.Replace('this:GetVerticalRelationToPlayer()',
                            'this:GetNewVerticalRelationState()')
 Invoke-Variant 'unproven semantics' $drift $false | Out-Null
 Write-Host 'Minimap native-widget source reuse: production generation, exact scope, idempotence, whitespace tolerance, author drift and read-only live source passed.'
+# The last deliberate fail-closed Resolver no-op can set LASTEXITCODE to 1.
+# The contract itself passed all assertions above; do not propagate that CLI status.
+$global:LASTEXITCODE = 0
