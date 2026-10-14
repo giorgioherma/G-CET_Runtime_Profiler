@@ -56,15 +56,19 @@ int ggc_trace_unscoped_seconds_read(GGCUnscopedSecond*, int capacity);
 struct GGCUnscopedDimension { uint64_t bytes, operations; };
 struct GGCUnscopedDetail {
     GGCUnscopedDimension morphology[2][6];
-    GGCUnscopedDimension bridges[3];
+    GGCUnscopedDimension reallocDeltas[2][6];
+    GGCUnscopedDimension reallocNewSizes[2][6];
+    GGCUnscopedDimension bridges[6];
 };
 struct GGCUnscopedPathSecond {
     GGCUnscopedDimension paths[2];
-    GGCUnscopedDimension bridges[3];
+    GGCUnscopedDimension reallocOrigins[2];
+    GGCUnscopedDimension bridges[6];
 };
 struct GGCUnscopedNativeSample {
     uint64_t captureMs, positiveBytes, operationSequence;
-    uint32_t vmState, allocatorPath, bridgeContext, depth;
+    uint32_t vmState, allocatorPath, bridgeContext, depth, reallocOrigin;
+    uint64_t oldSize, newSize;
     void* frames[6];
 };
 uint32_t ggc_trace_bridge_set(uint32_t context);
@@ -3021,8 +3025,9 @@ public:
             static const char* origins[2]={"RESIZE_GROWTH","NEW_GCO"};
             static const char* tiers[6]={"LT_64B","64_255B","256_1023B",
                 "1_4KIB","4_16KIB","GE_16KIB"};
-            static const char* bridges[3]={"OUTSIDE_CET_INSTRUMENTED_BOUNDARY",
-                "CET_FRAME_UPDATE","CET_OVERLAY_DUMP"};
+            static const char* bridges[6]={"OUTSIDE_CET_INSTRUMENTED_BOUNDARY",
+                "CET_FRAME_UPDATE","CET_OVERLAY_DUMP","CET_DRAW_DISPATCH",
+                "CET_LIFECYCLE_DISPATCH","CET_OVERLAY_EVENT_DISPATCH"};
             static const char* states[8]={"VM_INTERP","VM_C","VM_GC","VM_EXIT",
                 "VM_RECORD","VM_OPT","VM_ASM","VM_UNKNOWN"};
             GGCUnscopedDetail detail{};
@@ -3040,12 +3045,34 @@ public:
                                << ",exact-unscoped-positive-growth-not-live-heap\n";
                     }
             }
+            // Positive delta and absolute-new-size each reconcile independently
+            // to the original RESIZE_GROWTH path, not all owner-zero bytes.
+            {
+                static const char* kinds[2]={"OLD_SIZE_ZERO","OLD_SIZE_NONZERO"};
+                std::ofstream reallocs(outputRoot / "CET_Runtime_Profile_GGC_UnscopedReallocOrigins.csv",
+                                      std::ios::trunc);
+                if(reallocs) {
+                    reallocs << "Dimension,ReallocOrigin,SizeTier,PositiveBytes,"
+                                "AllocationOperations,Interpretation\n";
+                    for(int origin=0;origin<2;origin++)
+                        for(int tier=0;tier<6;tier++) {
+                            const auto& delta=detail.reallocDeltas[origin][tier];
+                            const auto& absolute=detail.reallocNewSizes[origin][tier];
+                            reallocs << "POSITIVE_DELTA," << kinds[origin] << ','
+                                     << tiers[tier] << ',' << delta.bytes << ','
+                                     << delta.operations << ",realloc-accounting-not-retained-heap\n";
+                            reallocs << "ABSOLUTE_NEW_SIZE," << kinds[origin] << ','
+                                     << tiers[tier] << ',' << absolute.bytes << ','
+                                     << absolute.operations << ",new-size-tier-positive-growth-bytes\n";
+                        }
+                }
+            }
             std::ofstream scopes(outputRoot / "CET_Runtime_Profile_GGC_UnscopedBoundaries.csv",
                                  std::ios::trunc);
             if(scopes) {
                 scopes << "NativeExecutionBoundary,PositiveBytes,AllocationOperations,"
                           "Interpretation\n";
-                for(int bridge=0;bridge<3;bridge++) {
+                for(int bridge=0;bridge<6;bridge++) {
                     const auto& x=detail.bridges[bridge];
                     scopes << bridges[bridge] << ',' << x.bytes << ','
                            << x.operations
@@ -3069,7 +3096,16 @@ public:
                                      << (i==1200?"OVERFLOW":"ONE_SECOND")
                                      << ",positive-growth-not-GC-cause\n";
                     }
-                    for(int bridge=0;bridge<3;bridge++) {
+                    for(int origin=0;origin<2;origin++) {
+                        const auto& x=bins[static_cast<size_t>(i)].reallocOrigins[origin];
+                        if(x.operations)
+                            timeline << i << ",REALLOC_ORIGIN,"
+                                     << (origin==0?"OLD_SIZE_ZERO":"OLD_SIZE_NONZERO")
+                                     << ',' << x.bytes << ',' << x.operations << ','
+                                     << (i==1200?"OVERFLOW":"ONE_SECOND")
+                                     << ",subset-of-RESIZE_GROWTH-not-additive\n";
+                    }
+                    for(int bridge=0;bridge<6;bridge++) {
                         const auto& x=bins[static_cast<size_t>(i)].bridges[bridge];
                         if(x.operations)
                             timeline << i << ",CET_BOUNDARY," << bridges[bridge] << ','
@@ -3089,13 +3125,13 @@ public:
                 stack << "CaptureMs,OperationSequence,PositiveBytes,AllocatorPath,"
                          "VmExecutionState,NativeExecutionBoundary,StackDepth,"
                          "Frame1,Frame2,Frame3,Frame4,Frame5,Frame6,DroppedSamples,"
-                         "Interpretation\n";
+                         "Interpretation,ReallocOrigin,OldSize,NewSize\n";
                 for(int i=0;i<observed;i++) {
                     const auto& s=samples[static_cast<size_t>(i)];
                     stack << s.captureMs << ',' << s.operationSequence << ','
                           << s.positiveBytes << ',' << origins[s.allocatorPath < 2?s.allocatorPath:0]
                           << ',' << states[s.vmState < 8?s.vmState:7] << ','
-                          << bridges[s.bridgeContext < 3?s.bridgeContext:0] << ','
+                          << bridges[s.bridgeContext < 6?s.bridgeContext:0] << ','
                           << s.depth;
                     for(int frame=0;frame<6;frame++) {
                         std::string symbol="NO_FRAME";
@@ -3119,7 +3155,10 @@ public:
                         stack << ',' << Csv(symbol);
                     }
                     stack << ',' << dropped
-                          << ",bounded-native-unwind-sample-not-exact-producer\n";
+                          << ",bounded-native-unwind-sample-not-exact-producer,"
+                          << (s.reallocOrigin==0?"OLD_SIZE_ZERO":
+                              s.reallocOrigin==1?"OLD_SIZE_NONZERO":"NOT_REALLOC")
+                          << ',' << s.oldSize << ',' << s.newSize << '\n';
                 }
             }
         }
