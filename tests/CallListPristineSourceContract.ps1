@@ -82,6 +82,9 @@ end)
   }
   if($drift){
     if($count -ne 0){throw 'Incompatible action behavior should fail closed'}
+    # A deliberate CLI rejection is a successful negative test, not a job error.
+    $global:LASTEXITCODE = 0
+    Write-Host 'CallList substantive source drift refused as expected: PASS'
     return
   }
   if($count -ne 1){throw "Missing CallList one-pass transform for $variant"}
