@@ -590,6 +590,115 @@ void Scripting::TriggerOnUpdate(float aDeltaTime) const
 '@ `
     -Label "Exact profiler rendered-frame boundary"
 
+# Additional capture-only host ingress boundaries. Do not modify Override/next() RAII.
+
+Replace-LiteralOnce `
+    -Path $scriptingC `
+    -Old @'
+void Scripting::TriggerOnHook() const
+{
+    m_store.TriggerOnHook();
+}
+'@ `
+    -New @'
+void Scripting::TriggerOnHook() const
+{
+    CETRuntimeProfiler::BridgeScope ggcNativeBoundary(4, CETRuntimeProfiler::Get().IsCapturing());
+    m_store.TriggerOnHook();
+}
+'@ `
+    -Label "TriggerOnHook capture-only host boundary"
+
+
+Replace-LiteralOnce `
+    -Path $scriptingC `
+    -Old @'
+void Scripting::TriggerOnTweak() const
+{
+    m_store.TriggerOnTweak();
+}
+'@ `
+    -New @'
+void Scripting::TriggerOnTweak() const
+{
+    CETRuntimeProfiler::BridgeScope ggcNativeBoundary(4, CETRuntimeProfiler::Get().IsCapturing());
+    m_store.TriggerOnTweak();
+}
+'@ `
+    -Label "TriggerOnTweak capture-only host boundary"
+
+
+Replace-LiteralOnce `
+    -Path $scriptingC `
+    -Old @'
+void Scripting::TriggerOnInit() const
+{
+    m_store.TriggerOnInit();
+}
+'@ `
+    -New @'
+void Scripting::TriggerOnInit() const
+{
+    CETRuntimeProfiler::BridgeScope ggcNativeBoundary(4, CETRuntimeProfiler::Get().IsCapturing());
+    m_store.TriggerOnInit();
+}
+'@ `
+    -Label "TriggerOnInit capture-only host boundary"
+
+
+Replace-LiteralOnce `
+    -Path $scriptingC `
+    -Old @'
+void Scripting::TriggerOnDraw() const
+{
+    m_store.TriggerOnDraw();
+}
+'@ `
+    -New @'
+void Scripting::TriggerOnDraw() const
+{
+    CETRuntimeProfiler::BridgeScope ggcNativeBoundary(3, CETRuntimeProfiler::Get().IsCapturing());
+    m_store.TriggerOnDraw();
+}
+'@ `
+    -Label "TriggerOnDraw capture-only host boundary"
+
+
+Replace-LiteralOnce `
+    -Path $scriptingC `
+    -Old @'
+void Scripting::TriggerOnOverlayOpen() const
+{
+    m_store.TriggerOnOverlayOpen();
+}
+'@ `
+    -New @'
+void Scripting::TriggerOnOverlayOpen() const
+{
+    CETRuntimeProfiler::BridgeScope ggcNativeBoundary(5, CETRuntimeProfiler::Get().IsCapturing());
+    m_store.TriggerOnOverlayOpen();
+}
+'@ `
+    -Label "TriggerOnOverlayOpen capture-only host boundary"
+
+
+Replace-LiteralOnce `
+    -Path $scriptingC `
+    -Old @'
+void Scripting::TriggerOnOverlayClose() const
+{
+    m_store.TriggerOnOverlayClose();
+}
+'@ `
+    -New @'
+void Scripting::TriggerOnOverlayClose() const
+{
+    CETRuntimeProfiler::BridgeScope ggcNativeBoundary(5, CETRuntimeProfiler::Get().IsCapturing());
+    m_store.TriggerOnOverlayClose();
+}
+'@ `
+    -Label "TriggerOnOverlayClose capture-only host boundary"
+
 # --------------------------------------------------------------------------
 # ScriptStore.cpp
 # --------------------------------------------------------------------------
