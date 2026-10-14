@@ -185,7 +185,7 @@ jobs:
                   }
                 }
               }
-              if ([string]$manifest.profilerNativeVersion -eq '2.15.1-scalar-vm-context', '2.15.2-unscoped-native-callpaths') {
+              if ([string]$manifest.profilerNativeVersion -in @('2.15.1-scalar-vm-context', '2.15.2-unscoped-native-callpaths')) {
                 foreach ($required in @('CET_Runtime_Profile_GGC_UnscopedContexts.csv',
                                         'CET_Runtime_Profile_GGC_UnscopedTimeline.csv')) {
                   if (-not $binaryText.Contains($required)) {
