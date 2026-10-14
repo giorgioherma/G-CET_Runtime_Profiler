@@ -79,6 +79,7 @@ internal static class SemanticInjectors
             "better-loot-markers" => ApplyBetterLootMarkers(context),
             "npc-outfit-manager-idle-state" => NpcOutfitManagerSource.Apply(context),
             "gigcore-blackboard-once" => ApplyGigCoreBlackboardReuse(context),
+            "gigcore-pause-guard-reuse" => ApplyGigCorePauseGuardReuse(context),
             "specter-recovery-prerequisite-reads" => ApplySpecterRecoveryPrerequisites(context),
             "drivebus" => ApplyDriveBus(context),
             "quest-tracking-toggle" => ApplyQuestTrackingToggle(context),
@@ -3971,6 +3972,61 @@ ${close}" + "\n",
             "Applied AutoLoot's known-good finite action routing without changing its looting cadence or trigger state machine.");
     }
 
+
+
+    private static SemanticInjectionResult ApplyGigCorePauseGuardReuse(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "init.lua",
+            "pausedThisFrame",
+            "computePauseState()",
+            "onUpdate GUARD: computePauseState threw:",
+            "Marker.tickAll",
+            "VehicleDamage.tick");
+        var text = file.Text;
+
+        // Proven standalone stage. Legacy blackboard optimization is optional:
+        // the untouched Nexus source must receive this stage without it.
+        if (Regex.IsMatch(text,
+            @"pcall\s*\(\s*__gcetGigCoreRefreshPausedFrame\s*\)",
+            RegexOptions.CultureInvariant))
+            return SemanticInjectionResult.Skip(
+                "GigCore pause-state pcall function has already been reused.");
+
+        var anonymous = new Regex(
+            @"pcall\s*\(\s*function\s*\(\s*\)\s*" +
+            @"pausedThisFrame\s*=\s*computePauseState\s*\(\s*\)\s*end\s*\)",
+            RegexOptions.CultureInvariant);
+        var matches = anonymous.Matches(text);
+        if (matches.Count != 1)
+            throw new InvalidOperationException(
+                "GigCore pause-state guard no longer has one independently proven closure.");
+
+        var update = new Regex(
+            @"(?m)^(?<indent>[ \t]*)(?<call>(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]\s*,\s*function\s*\(\s*delta\s*\))",
+            RegexOptions.CultureInvariant);
+        var updates = update.Matches(text);
+        if (updates.Count != 1 || updates[0].Index >= matches[0].Index)
+            throw new InvalidOperationException(
+                "GigCore active per-frame driver is missing or ambiguous.");
+
+        // Replace the anonymous allocation only; the same exception handling,
+        // frame ordering, and outer pause flag are preserved.
+        var m = matches[0];
+        text = text[..m.Index] + "pcall(__gcetGigCoreRefreshPausedFrame)" +
+            text[(m.Index + m.Length)..];
+        var frame = update.Match(text);
+        var definition =
+            "local function __gcetGigCoreRefreshPausedFrame()\n" +
+            "  pausedThisFrame = computePauseState()\n" +
+            "end\n\n";
+        text = text[..frame.Index] + definition + text[frame.Index..];
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Reused a stable pause-refresh pcall function instead of constructing " +
+            "one Lua closure every frame; retained synchronous pause checks and all gig ticks.");
+    }
 
     // GigCore 0.7.x: invocation-local, no persistent native handle.
     private static SemanticInjectionResult ApplyGigCoreBlackboardReuse(
