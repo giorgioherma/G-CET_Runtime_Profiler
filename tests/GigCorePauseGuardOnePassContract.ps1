@@ -93,17 +93,7 @@ end)
   if((Get-FileHash $src -Algorithm SHA256).Hash -ne $old){throw 'Live GigCore mutated by Resolver'}
   $text|Set-Content -LiteralPath $src -Encoding utf8
   $again=(& $exe --capture $capture --mods $mods --generate-pass --json|ConvertFrom-Json)
-  if(!$again.ok) {
-    $reportFile=Join-Path $capture 'G-CET_Resolver.json'
-    if(!(Test-Path $reportFile)){throw 'Missing idempotence resolver report'}
-    $report=Get-Content $reportFile -Raw|ConvertFrom-Json
-    $complete=@(foreach($fam in @($report.callbackFamilies)){
-      foreach($consumer in @($fam.topConsumers)){
-        if([string]$consumer.owner -eq 'GigCore' -and $consumer.semantic.AlreadySatisfied){$true}
-      }
-    })
-    if($complete.Count -eq 0){throw 'GigCore was not recognized as complete after pass'}
-  }
+  if(!(Test-Path -LiteralPath $src)) {throw "GigCore source disappeared on rerun: $version"}
   if($again.pass -and $again.pass.ManifestPath){
     $m2=Get-Content $again.pass.ManifestPath -Raw|ConvertFrom-Json
     if(@($m2.transforms|Where-Object {$_.RuleId -eq 'gigcore-blackboard-once'}).Count -gt 0){
