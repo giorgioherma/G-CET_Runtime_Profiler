@@ -82,17 +82,25 @@ int ggc_trace_unscoped_seconds_read(GGCUnscopedSecond *out, int capacity) {
  * Native stack snapshots are sampled, not extrapolated. */
 #define GGC_ORIGIN_KINDS 2
 #define GGC_SIZE_TIERS 6
-#define GGC_BRIDGE_KINDS 3
+#define GGC_BRIDGE_KINDS 6
 #define GGC_NATIVE_SAMPLES 2048
 typedef struct GGCUnscopedDimension { unsigned long long bytes, operations; } GGCUnscopedDimension;
 typedef struct GGCUnscopedDetail {
   GGCUnscopedDimension morphology[GGC_ORIGIN_KINDS][GGC_SIZE_TIERS];
+  /* Both arrays independently reconcile to RESIZE_GROWTH positive growth. */
+  GGCUnscopedDimension reallocDeltas[2][GGC_SIZE_TIERS];
+  GGCUnscopedDimension reallocNewSizes[2][GGC_SIZE_TIERS];
   GGCUnscopedDimension bridges[GGC_BRIDGE_KINDS];
 } GGCUnscopedDetail;
-typedef struct GGCUnscopedPathSecond { GGCUnscopedDimension paths[GGC_ORIGIN_KINDS]; GGCUnscopedDimension bridges[GGC_BRIDGE_KINDS]; } GGCUnscopedPathSecond;
+typedef struct GGCUnscopedPathSecond {
+  GGCUnscopedDimension paths[GGC_ORIGIN_KINDS];
+  GGCUnscopedDimension reallocOrigins[2];
+  GGCUnscopedDimension bridges[GGC_BRIDGE_KINDS];
+} GGCUnscopedPathSecond;
 typedef struct GGCUnscopedNativeSample {
   unsigned long long captureMs, positiveBytes, operationSequence;
-  unsigned int vmState, allocatorPath, bridgeContext, depth;
+  unsigned int vmState, allocatorPath, bridgeContext, depth, reallocOrigin;
+  unsigned long long oldSize, newSize;
   void *frames[6];
 } GGCUnscopedNativeSample;
 static GGCUnscopedDetail ggc_unscoped_detail;
@@ -135,8 +143,10 @@ static unsigned int ggc_size_tier(unsigned long long bytes) {
 }
 static void ggc_unscoped_extended(unsigned long long bytes,unsigned int path,
                                   unsigned int state,unsigned long long second,
-                                  unsigned long long captureMs) {
+                                  unsigned long long captureMs,
+                                  unsigned long long oldSize,unsigned long long newSize) {
   unsigned int tier=ggc_size_tier(bytes), bridge=ggc_bridge_context;
+  unsigned int origin = path == 0 ? (oldSize == 0 ? 0 : 1) : 2;
   unsigned long long seq=++ggc_unscoped_sequence;
   GGCUnscopedDimension *shape=&ggc_unscoped_detail.morphology[path][tier];
   GGCUnscopedDimension *scope=&ggc_unscoped_detail.bridges[bridge];
@@ -144,6 +154,14 @@ static void ggc_unscoped_extended(unsigned long long bytes,unsigned int path,
   shape->bytes+=bytes;shape->operations++;
   scope->bytes+=bytes;scope->operations++;
   bin->paths[path].bytes+=bytes;bin->paths[path].operations++;
+  if(path==0) {
+    GGCUnscopedDimension *delta=&ggc_unscoped_detail.reallocDeltas[origin][tier];
+    GGCUnscopedDimension *absolute=&ggc_unscoped_detail.reallocNewSizes[origin][ggc_size_tier(newSize)];
+    GGCUnscopedDimension *bySecond=&bin->reallocOrigins[origin];
+    delta->bytes+=bytes;delta->operations++;
+    absolute->bytes+=bytes;absolute->operations++;
+    bySecond->bytes+=bytes;bySecond->operations++;
+  }
   bin->bridges[bridge].bytes+=bytes;bin->bridges[bridge].operations++;
   /* Fixed-stride native callpath snapshots; never unwind every allocation. */
   if((seq & 1023ULL)==0 || (bytes>=16384 && (seq & 127ULL)==0)) {
@@ -153,12 +171,14 @@ static void ggc_unscoped_extended(unsigned long long bytes,unsigned int path,
       s->captureMs=captureMs; s->positiveBytes=bytes;
       s->operationSequence=seq;s->vmState=state;
       s->allocatorPath=path;s->bridgeContext=bridge;
+      s->reallocOrigin=origin;s->oldSize=oldSize;s->newSize=newSize;
       s->depth=(unsigned int)CaptureStackBackTrace(2,6,s->frames,NULL);
     } else { InterlockedIncrement64(&ggc_unscoped_sample_dropped); }
   }
 }
 
-static void ggc_unscoped_observe(const global_State *g, unsigned long long bytes, unsigned int path) {
+static void ggc_unscoped_observe(const global_State *g, unsigned long long bytes, unsigned int path,
+                                  unsigned long long oldSize,unsigned long long newSize) {
   unsigned int vmstate=ggc_unscoped_vmstate(g);
   unsigned long long nowMs=(unsigned long long)GetTickCount64();
   unsigned long long startMs=(unsigned long long)InterlockedCompareExchange64(&gcet_segment_wall_ms,0,0);
@@ -171,7 +191,7 @@ static void ggc_unscoped_observe(const global_State *g, unsigned long long bytes
   bin=&ggc_unscoped_seconds[(unsigned int)second].states[vmstate];
   tot->bytes+=bytes; tot->operations++;
   bin->bytes+=bytes; bin->operations++;
-  ggc_unscoped_extended(bytes,path,vmstate,second,offsetNs/1000000ULL+(nowMs>=startMs?nowMs-startMs:0));
+  ggc_unscoped_extended(bytes,path,vmstate,second,offsetNs/1000000ULL+(nowMs>=startMs?nowMs-startMs:0),oldSize,newSize);
 }
 
 
@@ -290,7 +310,7 @@ static void gcet_gc_alloc_observe(const global_State *g, unsigned long long oldS
     ggc_alloc_ops++;
     ggc_owners[owner].bytes += newSize - oldSize;
     ggc_owners[owner].allocations++;
-    if (owner == 0) ggc_unscoped_observe(g, newSize - oldSize, allocationPath);
+    if (owner == 0) ggc_unscoped_observe(g, newSize - oldSize, allocationPath, oldSize, newSize);
   }
 }
 void gcet_gc_trace_segment(unsigned long long captureOffsetNs)
