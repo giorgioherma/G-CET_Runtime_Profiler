@@ -4410,7 +4410,7 @@
           "GetQuestMappinPosition(hash)",
           "system:GetAllMappins()"
         ],
-        "alreadySatisfiedMarker": "G-CET semantic:tunnel-rescue-quiet-idle-status-v4",
+        "alreadySatisfiedMarker": "G-CET semantic:tunnel-passive-status-v5",
         "expectedMarkerFileCount": 1,
         "satisfiedAll": [
           "__gcetTunnelNavCache",
@@ -4418,7 +4418,9 @@
           "__gcetTunnelFarOutside",
           "missingAge>=12",
           "result.mappins=__gcetTunnelNavCache.mappins or {}",
-          "G-CET semantic:tunnel-rescue-quiet-idle-status-v4"
+          "G-CET semantic:tunnel-rescue-quiet-idle-status-v4",
+          "G-CET semantic:tunnel-passive-status-v5",
+          "H.diag>(H.phase=='outside' and H.session and not H.recover"
         ]
       },
       "behavior": {
@@ -4434,9 +4436,10 @@
           "fullMappinEnumerationOnObjectiveChangeOrBoundedActiveMiss",
           "farOutside500msWithImmediate150mWake",
           "recoverReunionAlwaysOriginal",
-          "idleDiagnosticStatusEightSecondCadence"
+          "idleDiagnosticStatusEightSecondCadence",
+          "offeredNotStarted60sDiagnosticHeartbeat"
         ],
-        "note": "Stable outside farther than 150m from ladder and Eli uses a 0.5s controller cadence while preserving journal, weather, input and diagnostics. Approaching, recovering, reunion, uncertain and active phases keep original timing. Global diagnostic mappins scan on objective signature changes, with bounded 12s retries for missing ACTIVE objectives only; inactive future-stage pins do not force scans. Newly added version-fluid v4 additive stage: status.json diagnostics on fully unarmed, stable outside state become 8s instead of 2s (quest and discovery continue unaffected). Already optimized v3 installations are upgradeable without rollback."
+        "note": "Stable outside farther than 150m from ladder and Eli uses a 0.5s controller cadence while preserving journal, weather, input and diagnostics. Approaching, recovering, reunion, uncertain and active phases keep original timing. Global diagnostic mappins scan on objective signature changes, with bounded 12s retries for missing ACTIVE objectives only; inactive future-stage pins do not force scans. Newly added version-fluid v4 additive stage: status.json diagnostics on fully unarmed, stable outside state become 8s instead of 2s (quest and discovery continue unaffected). Already optimized v3 installations are upgradeable without rollback. 60-second heartbeat only outside/unstarted: journal offer automatically sets questArmed and cannot be the dormancy qualifier. Previously dormant guard stayed at 2.55s spikes. One-time initial/transition/error diagnostics remain."
       },
       "generation": {
         "enabled": true,
@@ -4448,8 +4451,8 @@
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
-        "measuredPeakExclusiveMsPerSecond": 5.724675,
-        "evidenceStack": "CET-20261014-170941_FOURTH_G-GC_CAPTURE",
+        "measuredPeakExclusiveMsPerSecond": 5.746944,
+        "evidenceStack": "CET-20261014-194021_PASS2_GC_OPTIMIZATIONS_TEST",
         "admitted": true,
         "measuredMaxExclusiveMs": 157.005
       },
@@ -4494,7 +4497,7 @@
             "local N={age=0,retries=0,scanKey=nil,lastMappins={},missingScanAge=0}"
           ]
         ],
-        "alreadySatisfiedMarker": "G-CET semantic:ziggy-unaccepted-far-1hz",
+        "alreadySatisfiedMarker": "G-CET semantic:ziggy-passive-ui-v5",
         "expectedMarkerFileCount": 2,
         "satisfiedAll": [
           "scanKey=nil,lastMappins={},missingScanAge=0",
@@ -4502,7 +4505,9 @@
           "N.missingScanAge=0",
           "__gcetZiggyOfferedFarAcc",
           "__gcetZiggyOfferedFar",
-          "G-CET semantic:ziggy-unaccepted-far-1hz"
+          "G-CET semantic:ziggy-unaccepted-far-1hz",
+          "G-CET semantic:ziggy-passive-ui-v5",
+          "H.__gcetPuzzleWasShown"
         ]
       },
       "behavior": {
@@ -4523,9 +4528,10 @@
           "v2NavigationPreserved",
           "v1V2SourceUpgradeSupported",
           "farOfferedIdle1Hz",
-          "instantNearWake"
+          "instantNearWake",
+          "ownedHudAndPromptTransitionCleanup"
         ],
-        "note": "Preserve existing v2 targeted 2-second journal/mappin probe and bounded missing-pin scan. In init.lua, while phase is offered, the session is stable, no dialogue and player more than 130 m from Milo, run the full controller at 4 Hz with elapsed dt catch-up. All active states and near/wake transitions remain full-frame; a failed probe falls back to full-frame. Original, v1 and already optimized v2 navigation source supported. Fourth capture upgrade: already optimized v3 4Hz passive far-unaccepted phase becomes 1Hz, and original author archives can generate the same new 1Hz stage. Same every-frame near-area reentry, dialogue and active full frame."
+        "note": "Preserve existing v2 targeted 2-second journal/mappin probe and bounded missing-pin scan. In init.lua, while phase is offered, the session is stable, no dialogue and player more than 130 m from Milo, run the full controller at 4 Hz with elapsed dt catch-up. All active states and near/wake transitions remain full-frame; a failed probe falls back to full-frame. Original, v1 and already optimized v2 navigation source supported. Fourth capture upgrade: already optimized v3 4Hz passive far-unaccepted phase becomes 1Hz, and original author archives can generate the same new 1Hz stage. Same every-frame near-area reentry, dialogue and active full frame. First-frame and state-transition-only own puzzle HidePuzzle; owned prompt ClearPrompt similarly transitions only; active ShowPuzzle, StoryChoices, wake cadence unchanged."
       },
       "generation": {
         "enabled": true,
@@ -4537,9 +4543,9 @@
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
-        "measuredPeakExclusiveMsPerSecond": 4.099737,
+        "measuredPeakExclusiveMsPerSecond": 3.711343,
         "measuredMaxExclusiveMs": 228.86,
-        "evidenceStack": "CET-20261014-170941_FOURTH_G-GC_CAPTURE",
+        "evidenceStack": "CET-20261014-194021_PASS2_GC_OPTIMIZATIONS_TEST",
         "admitted": true
       },
       "cadenceGroup": "OFFERED_FAR_4HZ_NEAR_ACTIVE_FRAME_NAV_2S",
