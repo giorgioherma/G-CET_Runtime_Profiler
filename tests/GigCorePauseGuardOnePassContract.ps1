@@ -65,7 +65,11 @@ end)
     if($count -ne 0){throw 'Changed pause semantics must fail closed'}
     return
   }
-  if($count -ne 1){throw "Missing GigCore source transformation: $version"}
+  if($count -ne 1){
+    Write-Host ($result | ConvertTo-Json -Depth 20 -Compress)
+    if($manifest){Write-Host ($manifest | ConvertTo-Json -Depth 20 -Compress)}
+    throw "Missing GigCore source transformation: $version"
+  }
   $text=ZipText $result.pass.ZipPath 'GigCore/init.lua'
   if(!$text.Contains('local function __gcetGigCoreRefreshPausedFrame()') -or
      !$text.Contains('pcall(__gcetGigCoreRefreshPausedFrame)') -or
