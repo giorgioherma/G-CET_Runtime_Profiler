@@ -90,6 +90,7 @@ internal static partial class SemanticInjectors
             "dedka-auto-shop" => ApplyDedkaAutoShop(context),
             "marmurbank" => ApplyMarmurBank(context),
             "immersive-third-person" => ApplyImmersiveThirdPerson(context),
+            "immersive-third-person-action-routing" => ApplyImmersiveThirdPersonActionRouting(context),
             "immersivefirstperson" => ApplyImmersiveFirstPerson(context),
             "nativeinteractions" => ApplyNativeInteractions(context),
             "minimap-widgets" => ApplyMinimapWidgets(context),
