@@ -141,7 +141,13 @@ end)
   $g|Set-Content $gPath -Encoding utf8
   $s|Set-Content $sPath -Encoding utf8
   $r2=(& $exe --capture $capture --mods $mods --generate-pass --json|ConvertFrom-Json)
-  if(!$r2.ok){throw "Rerun failed $version"}
+  if(!$r2.ok) {
+    if([string]$r2.error -notmatch 'no applicable generic or source-proven semantic transforms'){
+      throw "Unexpected Resolver rerun failure $version"
+    }
+    # An already-complete source correctly generates no second ZIP.
+    $global:LASTEXITCODE=0
+  }
   if($r2.pass -and $r2.pass.ManifestPath){
     $manifest2=Get-Content $r2.pass.ManifestPath -Raw|ConvertFrom-Json
     if(@($manifest2.transforms|Where-Object {$_.RuleId -in @('gigcore-blackboard-once','specter-recovery-prerequisite-reads')}).Count -gt 0){throw "Non-idempotent $version"}
