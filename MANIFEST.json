@@ -1,10 +1,10 @@
 {
   "packageVersion": "1.2.7",
-  "profilerNativeVersion": "2.15.3-unscoped-realloc-context",
+  "profilerNativeVersion": "2.15.4-method-time-sampling",
   "targetCET": {
     "version": "1.37.1",
     "officialSha256": "43a7b94698979703f9dfa2b0950607c9a88f53b84bbf09a8e593c7e218d41059",
-    "profilerSha256": "5c3d5dfad9e9131c1aae53f700985dfdd7b9d417067044687fbf32f8b78b0e11",
+    "profilerSha256": "5dfcdf1c3bc495d25c5df9994189cd54b8a01df6f018a3df3cb955e322033ae1",
     "profilerPackageFile": "cyber_engine_tweaks.PROFILER.dll",
     "profilerInstallFile": "cyber_engine_tweaks.asi"
   },
