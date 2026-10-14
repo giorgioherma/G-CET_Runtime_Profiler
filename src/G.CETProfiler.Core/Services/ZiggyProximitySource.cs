@@ -112,9 +112,11 @@ end
   __gcetZiggyOfferedFarAcc=0
  end
 """;
-        text="-- G-CET semantic:ziggy-unaccepted-far-1hz\n" + text;
+        // Apply the source-offset replacement BEFORE adding the marker
+        // header; prepending first invalidates Regex.Match.Index.
         text=text[..matches[0].Index]+prelude+"\n"+opening+"\n"+gate+
              text[(matches[0].Index+opening.Length+1)..];
+        text="-- G-CET semantic:ziggy-unaccepted-far-1hz\n"+text;
         text=ReducePassivePresentation(text);
         context.Write(file,text);
         return SemanticInjectionResult.Success(
