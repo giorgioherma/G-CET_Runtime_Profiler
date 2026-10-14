@@ -156,11 +156,11 @@ jobs:
             if (-not $binaryText.Contains('CET_Runtime_Profile_GC_Explicit.csv')) {
               throw 'Native GC explicit-call timing payload missing; refuse incomplete release.'
             }
-            if ([string]$manifest.profilerNativeVersion -in @('2.13.0', '2.14.0', '2.15.0', '2.15.1-scalar', '2.15.1-scalar-vm-context', '2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.16.0') -and
+            if ([string]$manifest.profilerNativeVersion -in @('2.13.0', '2.14.0', '2.15.0', '2.15.1-scalar', '2.15.1-scalar-vm-context', '2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling', '2.16.0') -and
                 -not $binaryText.Contains('CET_Runtime_Profile_GC_Collector.csv')) {
               throw 'Native 2.13 collector probe is not rebuilt and hash locked; refuse incomplete release.'
             }
-            if ([string]$manifest.profilerNativeVersion -in @('2.14.0', '2.15.0', '2.15.1-scalar', '2.15.1-scalar-vm-context', '2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.16.0')) {
+            if ([string]$manifest.profilerNativeVersion -in @('2.14.0', '2.15.0', '2.15.1-scalar', '2.15.1-scalar-vm-context', '2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling', '2.16.0')) {
               foreach ($required in @('CET_Runtime_Profile_GC_Phases.csv',
                                       'CET_Runtime_Profile_GC_SlowSteps.csv',
                                       'CET_Runtime_Profile_Lua_Allocations.csv')) {
@@ -169,7 +169,7 @@ jobs:
                 }
               }
             }
-            if ([string]$manifest.profilerNativeVersion -in @('2.15.0', '2.15.1-scalar', '2.15.1-scalar-vm-context', '2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.16.0')) {
+            if ([string]$manifest.profilerNativeVersion -in @('2.15.0', '2.15.1-scalar', '2.15.1-scalar-vm-context', '2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling', '2.16.0')) {
               if (-not $binaryText.Contains('G_GC_TRACER_NATIVE_2_15_FINALIZER_CALL_NESTED_SCOPE_V1')) {
                 throw 'Native G-GC Tracer compiled revision marker missing; refuse stale DLL.'
               }
@@ -204,7 +204,7 @@ jobs:
                     }
                 }
               }
-              if ([string]$manifest.profilerNativeVersion -eq '2.15.3-unscoped-realloc-context') {
+              if ([string]$manifest.profilerNativeVersion -in @('2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling')) {
                  foreach ($required in @(
                      'CET_Runtime_Profile_GGC_UnscopedReallocOrigins.csv',
                      'OLD_SIZE_ZERO', 'OLD_SIZE_NONZERO',
