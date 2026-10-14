@@ -403,6 +403,7 @@ local function update(dt)
  if H.phase=='outside'then Rescue.outside(dt,H,L,can,nil)end
  JournalOffer.update(dt,H,can,fact,set,Rescue.journal)
  if H.phase=='outside'and H.questArmed and Rescue.surface(H,L,can,nil,nil)then end
+ if H.diag>2 then H.diag=0;status()end
 end
 registerForEvent('onUpdate',function(dt)
  local ok,e=pcall(update,dt)
@@ -1068,5 +1069,63 @@ if($repeatZiggy.Count -lt 1 -or !@($repeatZiggy | Where-Object {$_.semantic.Alre
 if(@($repeatZiggy | Where-Object {$_.semantic.MarkerFileCount -eq 2}).Count -lt 1) {
     throw 'Ziggy v3 did not recognize both optimized files as already satisfied.'
 }
+
+
+# Regression from the user's deployed pre-v4 state: old G-CET rule markers
+# exist, but the current idle stages are absent. The Resolver must upgrade,
+# not suppress on owner marker presence or reinstall older source.
+$tunnelLive=Join-Path $mods 'tunnel_rescue/init.lua'
+$quietV4="if H.diag>(H.phase=='outside' and H.session and not H.questArmed and not H.recover and not H.auto and not H.manual and not H.error and not active() and 8 or 2) then H.diag=0;status()end -- G-CET semantic:tunnel-rescue-quiet-idle-status-v4"
+if (!$tunnel.Contains($quietV4)) { throw 'Initial Tunnel stage lacks v4 status writer.' }
+$tunnelV3=$tunnel.Replace($quietV4,'if H.diag>2 then H.diag=0;status()end')
+$tunnelV3 | Set-Content -LiteralPath $tunnelLive -Encoding utf8
+$previousNav=[regex]::Replace($upgradedZiggy,'(?m)^-- G-CET semantic:ziggy-unaccepted-far-1hz\r?\n','')
+$previousInit=[regex]::Replace($upgradedInit,'(?m)^-- G-CET semantic:ziggy-unaccepted-far-1hz\r?\n','')
+if (!$previousInit.Contains('__gcetZiggyOfferedFarAcc<1.0')) {
+    throw 'Initial Ziggy v4 stage is missing.'
+}
+$previousInit=$previousInit.Replace('__gcetZiggyOfferedFarAcc<1.0','__gcetZiggyOfferedFarAcc<0.25')
+$previousNav | Set-Content -LiteralPath $ziggyLive -Encoding utf8
+$previousInit | Set-Content -LiteralPath $ziggyInitLive -Encoding utf8
+$hashes=@{
+ tunnel=(Get-FileHash $tunnelLive -Algorithm SHA256).Hash
+ nav=(Get-FileHash $ziggyLive -Algorithm SHA256).Hash
+ init=(Get-FileHash $ziggyInitLive -Algorithm SHA256).Hash
+}
+$upgrade=(& $resolverExe --capture $capture --mods $mods --generate-pass --json | ConvertFrom-Json)
+if (!$upgrade.ok -or !$upgrade.pass) { throw 'Previously optimized quest upgrade produced no pass.' }
+if ((Get-FileHash $tunnelLive -Algorithm SHA256).Hash -ne $hashes.tunnel -or
+    (Get-FileHash $ziggyLive -Algorithm SHA256).Hash -ne $hashes.nav -or
+    (Get-FileHash $ziggyInitLive -Algorithm SHA256).Hash -ne $hashes.init) {
+    throw 'Source-upgrade generation modified live installed quest files.'
+}
+$upManifest=Get-Content -LiteralPath $upgrade.pass.ManifestPath -Raw | ConvertFrom-Json
+foreach ($id in @('tunnel-rescue-v3','ziggy-last-play-navigation-sentinel-v3')) {
+    if (@($upManifest.transforms | Where-Object { $_.RuleId -eq $id -and $_.type -eq 'SEMANTIC_RULE' }).Count -ne 1) {
+        $skip=@($upManifest.skipped | Where-Object { $_.RuleId -eq $id })
+        throw "Legacy quest stage did not upgrade: $id / $($skip | ConvertTo-Json -Compress -Depth 8)"
+    }
+}
+$upZip=[System.IO.Compression.ZipFile]::OpenRead([string]$upgrade.pass.ZipPath)
+try {
+    function Upgrade-Text([string]$relative) {
+        $entry=$upZip.GetEntry('bin/x64/plugins/cyber_engine_tweaks/mods/'+$relative)
+        if (!$entry) { throw "Missing upgraded file: $relative" }
+        $reader=[System.IO.StreamReader]::new($entry.Open())
+        try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
+    }
+    $upTunnel=Upgrade-Text 'tunnel_rescue/init.lua'
+    $upInit=Upgrade-Text 'ziggy_last_play/init.lua'
+    $upNav=Upgrade-Text 'ziggy_last_play/navigation.lua'
+    if (!$upTunnel.Contains('G-CET semantic:tunnel-rescue-quiet-idle-status-v4') -or
+        !$upTunnel.Contains('__gcetTunnelFarOutside') -or
+        !$upInit.Contains('__gcetZiggyOfferedFarAcc<1.0') -or
+        !$upInit.Contains('G-CET semantic:ziggy-unaccepted-far-1hz') -or
+        !$upNav.Contains('G-CET semantic:ziggy-unaccepted-far-1hz') -or
+        ([regex]::Matches($upInit,'local function __gcetZiggyOfferedFar\(\)')).Count -ne 1) {
+        throw 'New quest stage missing or duplicate callback introduced during v3 upgrade.'
+    }
+} finally { $upZip.Dispose() }
+Write-Host 'Verified previous G-CET v3 -> v4 quest stage upgrades without modifying live sources.'
 
 Write-Host 'Residual sixth-stack semantic composition contract passed: existing residual rules + tunnel v3 far wake and bounded diagnostic sentinel + Ziggy bounded diagnostic v2 with v1 upgrade/idempotence.'
