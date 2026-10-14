@@ -3987,8 +3987,8 @@ ${close}" + "\n",
             "local function _rawMenuOrPhotoPaused()",
             "Game.GetAllBlackboardDefs()",
             "local function computePauseState()",
-            "onUpdate GUARD: computePauseState threw:",
-            "Marker.tickAll");
+            "registerForEvent",
+            "computePauseState");
         var text = file.Text;
         var original = text;
 
@@ -4070,9 +4070,19 @@ ${close}" + "\n",
         else
         {
             var matches = closure.Matches(text);
-            if (matches.Count != 1)
+            if (matches.Count == 0 &&
+                Regex.IsMatch(text,
+                    @"local\s+pausedThisFrame\s*=\s*computePauseState\s*\(\s*\)",
+                    RegexOptions.CultureInvariant))
+            {
+                // Earlier GigCore releases compute pause state directly and
+                // never create a protected per-frame closure. Nothing to reuse.
+            }
+            else if (matches.Count != 1)
                 throw new InvalidOperationException(
                     "GigCore pause-state guard is not a uniquely proven closure.");
+            if (matches.Count == 1)
+            {
             var update = new Regex(
                 @"(?m)^(?<indent>[ \t]*)(?<call>(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]\s*,\s*function\s*\(\s*delta\s*\))",
                 RegexOptions.CultureInvariant);
@@ -4089,6 +4099,7 @@ ${close}" + "\n",
                 "  pausedThisFrame = computePauseState()\n" +
                 "end\n\n";
             text = text[..frame.Index] + definition + text[frame.Index..];
+            }
         }
 
         if (text == original)
