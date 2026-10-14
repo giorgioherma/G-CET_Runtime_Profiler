@@ -4779,9 +4779,7 @@
         "ownerAll": [
           "local function _rawMenuOrPhotoPaused()",
           "Game.GetAllBlackboardDefs()",
-          "local function computePauseState()",
-          "onUpdate GUARD: computePauseState threw:",
-          "Marker.tickAll"
+          "local function computePauseState()"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:gigcore-blackboard-once",
         "expectedMarkerFileCount": 1,
@@ -4802,6 +4800,11 @@
             "Game.GetBlackboardSystem():Get(defs.PhotoMode)",
             "__gcetGetBlackboardSystem():Get(defs.PhotoMode)",
             "__gcetGigBoards:Get(defs.PhotoMode)"
+          ],
+          [
+            "onUpdate GUARD: computePauseState threw:",
+            "local pausedThisFrame=computePauseState()",
+            "local pausedThisFrame = computePauseState()"
           ]
         ],
         "completeStages": [
@@ -4832,7 +4835,7 @@
           "pristineOnePassComplete",
           "partialStageUpgrade"
         ],
-        "note": "The single authoritative rule applies BOTH invocation-local blackboard reuse and protected pause-refresh closure reuse from untouched GigCore source. Already-optimized and partially optimized source upgrades only missing stages; original tick timing, pcall protection and gig lifecycle are preserved. Same-pass generic SHARED_PROVIDER_READ rewrites are accepted as proven getter equivalents."
+        "note": "The single authoritative rule applies BOTH invocation-local blackboard reuse and protected pause-refresh closure reuse from untouched GigCore source. Already-optimized and partially optimized source upgrades only missing stages; original tick timing, pcall protection and gig lifecycle are preserved. Same-pass generic SHARED_PROVIDER_READ rewrites are accepted as proven getter equivalents. Legacy direct-assignment frame drivers require only the board optimization; guarded drivers additionally reuse the protected closure."
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
