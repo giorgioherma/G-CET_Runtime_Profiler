@@ -82,8 +82,12 @@ int ggc_trace_unscoped_seconds_read(GGCUnscopedSecond *out, int capacity) {
  * Native stack snapshots are sampled, not extrapolated. */
 #define GGC_ORIGIN_KINDS 2
 #define GGC_SIZE_TIERS 6
-#define GGC_BRIDGE_KINDS 6
-#define GGC_NATIVE_SAMPLES 2048
+#define GGC_BRIDGE_KINDS 9
+/* Four fixed native snapshots per capture-second bin, 1200s + overflow.
+ * This bounds stack walking and covers the whole capture instead of
+ * exhausting a global prefix-only buffer after ~300 seconds. */
+#define GGC_NATIVE_PER_SECOND 4
+#define GGC_NATIVE_SAMPLES (GGC_NATIVE_PER_SECOND*(GGC_UNSCOPED_SECONDS+1))
 typedef struct GGCUnscopedDimension { unsigned long long bytes, operations; } GGCUnscopedDimension;
 typedef struct GGCUnscopedDetail {
   GGCUnscopedDimension morphology[GGC_ORIGIN_KINDS][GGC_SIZE_TIERS];
@@ -100,16 +104,24 @@ typedef struct GGCUnscopedPathSecond {
 typedef struct GGCUnscopedNativeSample {
   unsigned long long captureMs, positiveBytes, operationSequence;
   unsigned int vmState, allocatorPath, bridgeContext, depth, reallocOrigin;
-  unsigned long long oldSize, newSize;
+  unsigned long long oldSize, newSize, methodHash;
   void *frames[6];
 } GGCUnscopedNativeSample;
 static GGCUnscopedDetail ggc_unscoped_detail;
 static GGCUnscopedPathSecond ggc_unscoped_path_seconds[GGC_UNSCOPED_SECONDS+1];
 static GGCUnscopedNativeSample ggc_unscoped_samples[GGC_NATIVE_SAMPLES];
 static volatile LONG ggc_unscoped_sample_seen=0;
+static volatile LONG ggc_unscoped_sample_second_seen[GGC_UNSCOPED_SECONDS+1];
 static volatile LONG64 ggc_unscoped_sample_dropped=0;
 static unsigned long long ggc_unscoped_sequence=0;
 static __declspec(thread) unsigned int ggc_bridge_context=0;
+static __declspec(thread) unsigned long long ggc_method_hash=0;
+/* Capture-only TLS tags, never Lua owner inference or RTTI string queries. */
+unsigned long long ggc_trace_method_set(unsigned long long hash) {
+  unsigned long long old=ggc_method_hash;
+  ggc_method_hash=hash;
+  return old;
+}
 unsigned int ggc_trace_bridge_set(unsigned int context) {
   unsigned int old=ggc_bridge_context;
   ggc_bridge_context=context < GGC_BRIDGE_KINDS ? context : 0;
@@ -125,12 +137,15 @@ int ggc_trace_unscoped_path_seconds_read(GGCUnscopedPathSecond *out,int cap) {
 }
 int ggc_trace_unscoped_samples_read(GGCUnscopedNativeSample *out,int cap,
                                      unsigned long long *dropped) {
-  int i,n=(int)InterlockedCompareExchange(&ggc_unscoped_sample_seen,0,0);
+  int i,n=0;
   if(dropped)*dropped=(unsigned long long)InterlockedCompareExchange64(&ggc_unscoped_sample_dropped,0,0);
   if(!out||cap<=0)return 0;
-  if(n>GGC_NATIVE_SAMPLES)n=GGC_NATIVE_SAMPLES;
-  if(cap<n)n=cap;
-  for(i=0;i<n;i++)out[i]=ggc_unscoped_samples[i];
+  /* Per-second slots are intentionally sparse. Read actual populated slots
+   * in capture-time order; never emit zeroed phantom samples. */
+  for(i=0;i<GGC_NATIVE_SAMPLES && n<cap;i++) {
+    if(ggc_unscoped_samples[i].operationSequence!=0)
+      out[n++]=ggc_unscoped_samples[i];
+  }
   return n;
 }
 static unsigned int ggc_size_tier(unsigned long long bytes) {
@@ -165,14 +180,17 @@ static void ggc_unscoped_extended(unsigned long long bytes,unsigned int path,
   bin->bridges[bridge].bytes+=bytes;bin->bridges[bridge].operations++;
   /* Fixed-stride native callpath snapshots; never unwind every allocation. */
   if((seq & 1023ULL)==0 || (bytes>=16384 && (seq & 127ULL)==0)) {
-    LONG idx=InterlockedIncrement(&ggc_unscoped_sample_seen)-1;
-    if(idx>=0 && idx<GGC_NATIVE_SAMPLES) {
+    LONG slot=InterlockedIncrement(&ggc_unscoped_sample_second_seen[(unsigned int)second])-1;
+    if(slot>=0 && slot<GGC_NATIVE_PER_SECOND) {
+      unsigned int idx=(unsigned int)second*GGC_NATIVE_PER_SECOND+(unsigned int)slot;
       GGCUnscopedNativeSample *s=&ggc_unscoped_samples[idx];
       s->captureMs=captureMs; s->positiveBytes=bytes;
       s->operationSequence=seq;s->vmState=state;
       s->allocatorPath=path;s->bridgeContext=bridge;
       s->reallocOrigin=origin;s->oldSize=oldSize;s->newSize=newSize;
+      s->methodHash=ggc_method_hash;
       s->depth=(unsigned int)CaptureStackBackTrace(2,6,s->frames,NULL);
+      InterlockedIncrement(&ggc_unscoped_sample_seen);
     } else { InterlockedIncrement64(&ggc_unscoped_sample_dropped); }
   }
 }
@@ -372,6 +390,7 @@ void gcet_gc_stats_set(int enable, int reset)
     memset(&ggc_unscoped_detail, 0, sizeof(ggc_unscoped_detail));
     memset(ggc_unscoped_path_seconds, 0, sizeof(ggc_unscoped_path_seconds));
     memset(ggc_unscoped_samples, 0, sizeof(ggc_unscoped_samples));
+    memset((void*)ggc_unscoped_sample_second_seen, 0, sizeof(ggc_unscoped_sample_second_seen));
     InterlockedExchange(&ggc_unscoped_sample_seen, 0);
     InterlockedExchange64(&ggc_unscoped_sample_dropped, 0);
     ggc_unscoped_sequence = 0;
