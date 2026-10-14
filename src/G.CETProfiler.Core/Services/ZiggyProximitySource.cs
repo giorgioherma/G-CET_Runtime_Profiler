@@ -18,10 +18,14 @@ internal static class ZiggyProximitySource
         var nav=context.FindFile("navigation.lua",
             "function N.update(dt,path,phase,playerKey,generation,hooks,pinId,runtime,gameplay)",
             "GetQuestMappinPosition(hash)");
-        if (!nav.Text.Contains("G-CET semantic:ziggy-unaccepted-far-1hz",
-                               StringComparison.Ordinal))
-            context.Write(nav,
-                "-- G-CET semantic:ziggy-unaccepted-far-1hz\n" + nav.Text);
+        var navigation = nav.Text;
+        if (!navigation.Contains("G-CET semantic:ziggy-unaccepted-far-1hz",
+                                 StringComparison.Ordinal))
+            navigation = "-- G-CET semantic:ziggy-unaccepted-far-1hz\n" + navigation;
+        if (!navigation.Contains("G-CET semantic:ziggy-passive-ui-v5",
+                                 StringComparison.Ordinal))
+            navigation = "-- G-CET semantic:ziggy-passive-ui-v5\n" + navigation;
+        context.Write(nav, navigation);
 
         var file=context.FindFile("init.lua", "local function update(dt)",
             "Navigation.update(dt", "C.giver.position", "H.s", "Dialogue");
@@ -32,30 +36,42 @@ internal static class ZiggyProximitySource
         // Original author archives take the same control-flow path below.
         if (text.Contains("__gcetZiggyOfferedFarAcc", StringComparison.Ordinal))
         {
-            if (text.Contains("G-CET semantic:ziggy-unaccepted-far-1hz",
-                              StringComparison.Ordinal))
-                throw new InvalidOperationException(
-                    "Ziggy far-idle cadence stage already applied.");
-            var cadence = Regex.Matches(
-                text,
+            // Version-fluid progression: v3 0.25s, v4 1.0s, or missing
+            // v5 passive-presentation cleanup. Never nest another update hook.
+            var oldCadence=Regex.Matches(text,
                 @"__gcetZiggyOfferedFarAcc\s*<\s*0[.]25\s*then\s*return",
                 RegexOptions.CultureInvariant);
-            if (cadence.Count != 1 ||
-                !text.Contains("if __gcetProbeOK and __gcetFar then",
+            var newCadence=Regex.Matches(text,
+                @"__gcetZiggyOfferedFarAcc\s*<\s*1[.]0\s*then\s*return",
+                RegexOptions.CultureInvariant);
+            var hasV4=text.Contains("G-CET semantic:ziggy-unaccepted-far-1hz",
+                                    StringComparison.Ordinal);
+            if (!text.Contains("if __gcetProbeOK and __gcetFar then",
                                StringComparison.Ordinal) ||
                 !text.Contains("H.s.phase=='offered'", StringComparison.Ordinal))
                 throw new InvalidOperationException(
-                    "Ziggy offered/far wake and timer semantics drifted; refusing cadence.");
-            var m = cadence[0];
-            text = text[..m.Index] +
-                "__gcetZiggyOfferedFarAcc < 1.0 then return" +
-                text[(m.Index+m.Length)..];
-            text = "-- G-CET semantic:ziggy-unaccepted-far-1hz\n" + text;
+                    "Ziggy game-phase and wake proof changed; refusing update.");
+            if (newCadence.Count==1 && oldCadence.Count==0 && hasV4)
+            {
+                // Existing 1Hz stage; add only the missing UI cleanup.
+            }
+            else if(oldCadence.Count==1 && newCadence.Count==0 && !hasV4)
+            {
+                var m=oldCadence[0];
+                text=text[..m.Index] +
+                    "__gcetZiggyOfferedFarAcc < 1.0 then return" +
+                    text[(m.Index+m.Length)..];
+                text="-- G-CET semantic:ziggy-unaccepted-far-1hz\n"+text;
+            }
+            else throw new InvalidOperationException(
+                "Ziggy earlier 1Hz/0.25s stages are inconsistent or source drifted.");
+            text=ReducePassivePresentation(text);
             context.Write(file,text);
             return SemanticInjectionResult.Success(
-                "Upgraded existing 4Hz distant, unaccepted Starman passive " +
-                "controller to 1Hz; same every-frame near-Milo probe and immediate " +
-                "full-speed wake; dialogue, accepted stages and timers unchanged.");
+                "Upgraded existing Ziggy v3/v4 without duplicate callback wrappers: " +
+                "far-offered remains 1Hz, active quest remains realtime; " +
+                "inactive owned HUD/prompt cleanup now occurs only on first frame " +
+                "or an actual presentation-to-hidden transition.");
         }
 
         var matches=Regex.Matches(text,
@@ -99,10 +115,66 @@ end
         text="-- G-CET semantic:ziggy-unaccepted-far-1hz\n" + text;
         text=text[..matches[0].Index]+prelude+"\n"+opening+"\n"+gate+
              text[(matches[0].Index+opening.Length+1)..];
+        text=ReducePassivePresentation(text);
         context.Write(file,text);
         return SemanticInjectionResult.Success(
             "V2 navigation preserved; the unaccepted offered/far quest controller runs at 1 Hz " +
             "beyond 130m, while near giver, dialogue, session transitions and all active phases " +
             "keep original frame cadence. State and timer elapsed time are preserved.");
     }
+    // The original Starman source unconditionally calls HidePuzzle from
+    // onDraw (50-60 times/sec) and ClearPrompt on unprompted update ticks.
+    // In matching original Redscript, HidePuzzle only hides its own canvas;
+    // ClearPrompt scans the dialog-choice blackboard for Ziggy's prompt ID.
+    // Preserve the first cleanup after loading and any visible-to-hidden
+    // transition. Never modify actual Draw/ShowPuzzle or StoryChoices paths.
+    private static string ReducePassivePresentation(string text)
+    {
+        const string marker="G-CET semantic:ziggy-passive-ui-v5";
+        if (text.Contains(marker,StringComparison.Ordinal))
+            throw new InvalidOperationException("Ziggy v5 passive UI already applied.");
+        var oldHide=Regex.Matches(text,
+            @"(?m)^(?<indent>[ \t]*)if\s+not\s+H[.]hudDrawn\s+and\s+valid\s*\(\s*H[.]hooks\s*\)\s*then\s+H[.]hooks:HidePuzzle\s*\(\s*\)\s*end\s*$",
+            RegexOptions.CultureInvariant);
+        var oldPrompt=Regex.Matches(text,
+            @"(?m)^(?<indent>[ \t]*)if\s+not\s+H[.]prompted\s+then\s+H[.]hooks:ClearPrompt\s*\(\s*\)\s*end\s*$",
+            RegexOptions.CultureInvariant);
+        if(oldHide.Count!=1 || oldPrompt.Count!=1 ||
+           !text.Contains("H.hudDrawn=ok and drawn==true",StringComparison.Ordinal) ||
+           !text.Contains("H.prompted=true",StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "Ziggy HUD/prompt lifecycle no longer matches original; refusing source rewrite.");
+        // Rewriting later source first preserves the earlier index.
+        var hide=oldHide[0];
+        var hi=hide.Groups["indent"].Value;
+        var hideNew=string.Join("\n",new [] {
+            hi+"if H.hudDrawn then",
+            hi+" H.__gcetPuzzleWasShown=true",
+            hi+"elseif H.__gcetPuzzleWasShown~=false and valid(H.hooks) then",
+            hi+" H.hooks:HidePuzzle()",
+            hi+" H.__gcetPuzzleWasShown=false",
+            hi+"end"
+        });
+        text=text[..hide.Index]+hideNew+text[(hide.Index+hide.Length)..];
+        var oldPromptNow=Regex.Match(text,
+            @"(?m)^(?<indent>[ \t]*)if\s+not\s+H[.]prompted\s+then\s+H[.]hooks:ClearPrompt\s*\(\s*\)\s*end\s*$",
+            RegexOptions.CultureInvariant);
+        if(!oldPromptNow.Success)throw new InvalidOperationException(
+            "Ziggy prompt no longer matches after HUD edit.");
+        var pi=oldPromptNow.Groups["indent"].Value;
+        var promptNew=string.Join("\n",new [] {
+            pi+"if H.prompted then",
+            pi+" H.__gcetPromptWasShown=true",
+            pi+"elseif H.__gcetPromptWasShown~=false then",
+            pi+" H.hooks:ClearPrompt()",
+            pi+" H.__gcetPromptWasShown=false",
+            pi+"end"
+        });
+        text=text[..oldPromptNow.Index]+promptNew+
+             text[(oldPromptNow.Index+oldPromptNow.Length)..];
+        // nil means "first frame"; both calls execute once as an initial
+        // stale-widget cleanup, then only on a real state transition.
+        return "-- "+marker+"\n"+text;
+    }
+
 }
