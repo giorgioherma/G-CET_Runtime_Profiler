@@ -1,6 +1,6 @@
-# PASS3 live-stack consolidation — paused work checkpoint (2026-10-14)
+# PASS3 live-stack consolidation — implementation record (2026-10-14)
 
-Status: investigation and scoping only. **No new Resolver rule, regression test or runtime optimization has yet been committed for this task.** Do not claim the planned passes were implemented.
+Status: development branch includes source changes and regression tests for CallList, GigCore and ImmersiveFirstPerson; final combined CI and in-game performance validation must be checked separately. Earlier checkpoint text below is historical planning context.
 
 ## User goal and authoritative input
 
@@ -33,3 +33,14 @@ Status: investigation and scoping only. **No new Resolver rule, regression test 
 ## Repository status at pause
 
 This task involved **read-only repository inspection** before this checkpoint. No new optimization code or tests were created. Previous native DLL integration and v1.2.7 packaging were completed in earlier commits; they are separate from the pending source consolidation work.
+
+## Implementation update — source-fix, one pristine pass
+
+- PASS3 dominant pure-override RTTI hash `9658066991423262154` resolved to the exact FNV-1a 64-bit hash of `OnAction`; this does not identify the class, mod owner or avoidable share of 205.8 MiB. See native method/time-sampling research addendum. No unsafe CET-wide wrapper changes were made.
+- Added `calllist-action-lazy-display-query` as one production source rule. Untouched CallList 1.6 gets BOTH button-press-gated name localization and moveup-only display resolution acquisition in one pass. The old experimental display-only V1 source upgrades safely; no finite-name action router guess was used. New V2 source completion proof ignores older markers. CallList must meet measured runtime admission; this is not an asserted GC saving.
+- Fixed `gigcore-blackboard-once` authoritative implementation rather than shipping a separate second GigCore rule: per-invocation UI/PhotoMode blackboard system reuse PLUS reusable `pcall` pause closure. Supports pristine getter and generic staged shared-provider getter in the same generated pass. Stage-aware postconditions and live partial variants. Original gig timers/recovery remain unchanged.
+- Fixed existing `immersivefirstperson` authoritative implementation: retains 20 Hz expensive state probes and adds invocation-local UI/PhotoMode blackboard-system reuse in `Modules/GameSession.lua`; recognises original/partially optimized stage postconditions instead of treating old markers as complete.
+- Resolver semantic matcher now supports opt-in `sourceCompletionAuthoritative` for inline stages whose older marker does not prove the current source revision. Existing 0-Engine manual framework is the runtime base; no original 0-Engine source archive is required for these consumer edits.
+- Added `tests/CallListPristineSourceContract.ps1` and `tests/GigCorePauseGuardOnePassContract.ps1` to main workflow to enforce pristine one-pass, older live partial source, source shape variation, no live mutations, drift refusal and idempotence. Standalone Resolver intentionally reports no applicable transforms and no ZIP on an idempotent second run.
+- **Pending:** final green CI, direct original-archive integration fixtures for ImmersiveFirstPerson, runtime gameplay A/B, an 0-Engine core hot path consolidation, and remaining independent event-observer mods. The method hash alone cannot authorize native allocation elimination.
+- Do not bump the shared product version for source-only development; keep v1.2.7 unless user requests a milestone.
