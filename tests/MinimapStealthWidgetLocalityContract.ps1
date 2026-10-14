@@ -105,10 +105,10 @@ function Invoke-Variant([string]$label, [string]$source, [bool]$expected) {
         $_.RuleId -eq 'minimap-stealth-widget-locality'
     })
     if ($rules.Count -ne 1) {
-        throw "$label: expected exactly one production minimap semantic transform, got $($rules.Count)"
+        throw "${label}: expected exactly one production minimap semantic transform, got $($rules.Count)"
     }
     if (@($rules[0].files).Count -ne 1) {
-        throw "$label: minimap pass touched multiple files"
+        throw "${label}: minimap pass touched multiple files"
     }
     $zip = [IO.Compression.ZipFile]::OpenRead([string]$result.pass.ZipPath)
     try {
@@ -117,7 +117,7 @@ function Invoke-Variant([string]$label, [string]$source, [bool]$expected) {
                 'Minimap Widgets/init.lua',
                 [StringComparison]::OrdinalIgnoreCase)
         }) | Select-Object -First 1
-        if (!$item) { throw "$label: generated minimap init.lua absent from ZIP" }
+        if (!$item) { throw "${label}: generated minimap init.lua absent from ZIP" }
         $reader = [IO.StreamReader]::new($item.Open())
         try { $optimized = $reader.ReadToEnd() } finally { $reader.Dispose() }
     } finally { $zip.Dispose() }
@@ -135,7 +135,7 @@ function Invoke-Variant([string]$label, [string]$source, [bool]$expected) {
     }
     if (([regex]::Matches($optimized,'this\.aboveWidget')).Count -ne 1 -or
         ([regex]::Matches($optimized,'this\.belowWidget')).Count -ne 1) {
-        throw "$label: native widget properties still reread inside callback"
+        throw "${label}: native widget properties still reread inside callback"
     }
     return $optimized
 }
