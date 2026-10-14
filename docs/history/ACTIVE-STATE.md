@@ -1,5 +1,11 @@
 # Active project state — chronological engineering history
 
+## 2026-10-14 source optimization shipped in Resolver — Minimap stealth widget locality
+
+- **Real production semantic pass**, `minimap-stealth-widget-locality`, implemented as capture-admitted, source-proven transformation (not profiler instrumentation). Fourth capture measured **73,989** `MinimapStealthMappinController::UpdateAboveBelowVerticalRelation` calls, **5.679764 exclusive ms/s**, **57,541,738 scoped positive bytes**. Source patch fetches each native `aboveWidget`/`belowWidget` once per invocation and skips UI-state queries when neither exists. All clamped/vertical/visibility branches and callback cadence remain.
+- New semantic catalog entry **64th production rule**, with exact original PASS5 control-flow proof, independent marker, idempotence and author drift refusal. Original `minimap-widgets` rule no longer competes for this same callback; it still covers other matching callbacks. Generator never edits live mods. Direct Vortex-ready one-file ZIP from user's exact uploaded live `Minimap Widgets/init.lua` was also prepared for opt-in install. No gameplay validation or measured A/B savings yet.
+- [Main CI #38594171519](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38594171519) **SUCCESS all four jobs**, including `MinimapStealthWidgetLocalityContract.ps1`: generated ZIP, unchanged live source, exact changed-file scope, no duplicate pass, whitespace-compatible source and negative drift tested. Both `G-CET-Runtime-Profiler-v1.2.7` (artifact `11908712823`) and `G-CET-Resolver-v1.2.7` (artifact `11908468618`) published. Product/native versions unchanged. Next test minimap above/below arrows, clamping, visibility, map settings and session reload; collect A/B timing only after testing functionality. [Implementation and limitations](../resolver/research/MINIMAP-STeALTH-WIDGET-LOCALITY-2026-10-14.md).
+
 ## 2026-10-14 fourth G-GC native capture — exact PDB resolves host-to-Lua wrapper sources
 
 - User capture `CET-20261014-170941_FOURTH_G-GC_CAPTURE.zip`: **519.833s**, 0–60 idle, 60–130 running, 130–270 combat, remainder mixed police chase/combat/running; full native/VM/realloc accounting reconciled, CapFrameX synchronization GOOD.

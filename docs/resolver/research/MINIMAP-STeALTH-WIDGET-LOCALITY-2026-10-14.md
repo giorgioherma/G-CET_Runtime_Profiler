@@ -1,7 +1,7 @@
 # Minimap Widgets stealth elevation — measured producer-side optimization
 
 **Date:** 2026-10-14  
-**Status:** Resolver production rule `minimap-stealth-widget-locality` committed with negative/idempotence/format/source safety CI contract. Gameplay A/B not performed. Profiler/Resolver version **v1.2.7** unchanged.
+**Status:** **CI-verified and packaged** in both v1.2.7 applications; [Main #38594171519](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38594171519) passed all four jobs, including source generation, idempotence, drift, unchanged-live-input and packaging contracts. **Gameplay A/B not performed**, and speed/GC savings remain unmeasured. Profiler/Resolver version **v1.2.7** unchanged.
 
 ## Why this optimization was selected
 
