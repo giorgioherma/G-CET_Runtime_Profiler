@@ -1,5 +1,14 @@
 # Active project state — chronological engineering history
 
+## 2026-10-14 third native G-GC decompression capture — measured, attribution still unresolved
+
+- User supplied `CET-20261014-152417_THIRD_NATIVE_FOR_GC_DECOMPRESS.zip`, 238.249s complete START/PAUSE, all four owner-zero dimensions reconciled **258,546,077 positive bytes (246.569 MiB)** / **1,654,279 operations**; 1,615 fixed-stride native unwind samples, no drops; CapFrameX synchronization GOOD.
+- **99.407%** of owner-zero positive bytes came from `RESIZE_GROWTH` accounting, **99.349%** from its 64–255B delta tier; **99.903%** was observed in VM_C; all recorded owner-zero bytes lay `OUTSIDE_CET_INSTRUMENTED_BOUNDARY`. **Do not misread these labels:** `RESIZE_GROWTH` includes `oldSize=0` first-time allocation, and CET bridge currently covers `TriggerOnUpdate`/dump only. Neither category identifies an exact mod or producer.
+- Planned idle/running/combat windows (untagged, approximate) showed owner-zero rates **0.677 / 1.064 / 1.248 MiB/s** and **74.6 / 120.6 / 170.2 operations per rendered frame**. Four CET-module third-frame RVAs (`0x8927a`, `0x11c30e`, `0xfd016`, `0x93f33`) account for **1,563/1,615 sampled events**; no validated native function symbolication or Lua source identity.
+- Internal incremental collector total **6,655.804ms**, four cycles, no explicit/full collections; four major `atomic→sweepstring` steps **164–193ms**. Collector callback overlaps are trigger contexts, not allocation ownership. No new source rewrite, GC policy change, or product version bump.
+- [Detailed decompression capture findings](../gc/captures/THIRD-NATIVE-GC-DECOMPRESSION-2026-10-14.md). Next: exact-build offline native RVA symbolication first, then if needed one compact instrumentation update splitting `oldSize=0` vs true resize and expanding CET ingress boundary coverage; require source/lifetime proof before Resolver changes.
+
+
 ## 2026-10-14 second G-GC instrumentation expansion — verified package, in-game test pending
 
 - The user identified a suspected **menu-contaminated extreme frametime** in the previous 239.85-second capture. Next game test should leave pause/inventory/overlay menus closed during phase measurements; don't label that maximum as representative combat load.
