@@ -481,10 +481,19 @@ local H={objective='quest/test',s={phase='offered'},playerKey='p',generation=1,h
 local function valid(x)return x~=nil end
 local function update(dt)
  local target=C.giver.position
+ H.prompted=false
  Navigation.update(dt,H.objective,H.s.phase,H.playerKey,H.generation,H.hooks,'destination_v6',H.runtime,true)
+ if not H.prompted then H.hooks:ClearPrompt()end
 end
+local function presentPrompt() H.prompted=true end
 registerForEvent('onUpdate',function(dt)
  update(dt)
+end)
+registerForEvent('onDraw',function()
+ H.hudDrawn=false
+ local ok,drawn=true,false
+ H.hudDrawn=ok and drawn==true
+ if not H.hudDrawn and valid(H.hooks)then H.hooks:HidePuzzle()end
 end)
 '@
 
