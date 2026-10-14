@@ -1120,7 +1120,7 @@ try {
     $upNav=Upgrade-Text 'ziggy_last_play/navigation.lua'
     if (!$upTunnel.Contains('G-CET semantic:tunnel-rescue-quiet-idle-status-v4') -or
         !$upTunnel.Contains('__gcetTunnelFarOutside') -or
-        !$upInit.Contains('__gcetZiggyOfferedFarAcc<1.0') -or
+        $upInit -notmatch '__gcetZiggyOfferedFarAcc\s*<\s*1\.0\s+then\s+return' -or
         !$upInit.Contains('G-CET semantic:ziggy-unaccepted-far-1hz') -or
         !$upNav.Contains('G-CET semantic:ziggy-unaccepted-far-1hz') -or
         ([regex]::Matches($upInit,'local function __gcetZiggyOfferedFar\(\)')).Count -ne 1) {
