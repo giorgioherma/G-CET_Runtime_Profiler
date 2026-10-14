@@ -3992,20 +3992,63 @@ ${close}" + "\n",
         var text = file.Text;
         var original = text;
 
-        text = ReplaceOrSkipCompletedStage(
-            text,
-            "  local defs = Game.GetAllBlackboardDefs()\n" +
-            "  local ui   = Game.GetBlackboardSystem():Get(defs.UI_System)",
-            "  local defs = Game.GetAllBlackboardDefs()\n" +
-            "  local __gcetGigBoards = Game.GetBlackboardSystem()\n" +
-            "  local ui   = __gcetGigBoards:Get(defs.UI_System)",
-            "GigCore invocation-local blackboard system");
-
-        text = ReplaceOrSkipCompletedStage(
-            text,
-            "  local pm = Game.GetBlackboardSystem():Get(defs.PhotoMode)",
-            "  local pm = __gcetGigBoards:Get(defs.PhotoMode)",
-            "GigCore photo mode lookup shares the same native system");
+        // Transform within this function only. Generic AUTO may already have
+        // rewritten either getter into the verified shared-provider helper.
+        var pauseScope = SemanticScopedStages.RequireFunction(
+            text, "_rawMenuOrPhotoPaused");
+        var body = pauseScope.Text;
+        bool uiDone = Regex.IsMatch(body,
+            @"local\s+ui\s*=\s*__gcetGigBoards\s*:\s*Get\s*\(\s*defs\.UI_System\s*\)",
+            RegexOptions.CultureInvariant);
+        bool pmDone = Regex.IsMatch(body,
+            @"local\s+pm\s*=\s*__gcetGigBoards\s*:\s*Get\s*\(\s*defs\.PhotoMode\s*\)",
+            RegexOptions.CultureInvariant);
+        if (uiDone || pmDone)
+        {
+            if (!uiDone || !pmDone ||
+                !Regex.IsMatch(body,
+                    @"local\s+__gcetGigBoards\s*=\s*(?:Game\.GetBlackboardSystem|__gcetGetBlackboardSystem)\s*\(\s*\)",
+                    RegexOptions.CultureInvariant))
+                throw new InvalidOperationException(
+                    "GigCore existing shared board source stage is incomplete.");
+        }
+        else
+        {
+            var ui = new Regex(
+                @"(?m)^(?<indent>[ \t]*)local\s+ui\s*=\s*" +
+                @"(?<getter>(?:Game\.GetBlackboardSystem|__gcetGetBlackboardSystem)\s*\(\s*\))" +
+                @"\s*:\s*Get\s*\(\s*defs\.UI_System\s*\)[ \t]*$",
+                RegexOptions.CultureInvariant);
+            var pm = new Regex(
+                @"(?m)^(?<indent>[ \t]*)local\s+pm\s*=\s*" +
+                @"(?<getter>(?:Game\.GetBlackboardSystem|__gcetGetBlackboardSystem)\s*\(\s*\))" +
+                @"\s*:\s*Get\s*\(\s*defs\.PhotoMode\s*\)[ \t]*$",
+                RegexOptions.CultureInvariant);
+            var uiMatches = ui.Matches(body);
+            var pmMatches = pm.Matches(body);
+            if (uiMatches.Count != 1 || pmMatches.Count != 1 ||
+                uiMatches[0].Index >= pmMatches[0].Index ||
+                !body.Contains("Game.GetAllBlackboardDefs()", StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "GigCore original/shared-provider UI and PhotoMode getters are not uniquely proven.");
+            var u = uiMatches[0];
+            var p = pmMatches[0];
+            var helper = u.Groups["getter"].Value.Contains("__gcetGetBlackboardSystem",
+                             StringComparison.Ordinal) ||
+                         p.Groups["getter"].Value.Contains("__gcetGetBlackboardSystem",
+                             StringComparison.Ordinal)
+                ? "__gcetGetBlackboardSystem()" : "Game.GetBlackboardSystem()";
+            var uiIndent = u.Groups["indent"].Value;
+            var pmIndent = p.Groups["indent"].Value;
+            var replacementPm = pmIndent +
+                "local pm = __gcetGigBoards:Get(defs.PhotoMode)";
+            body = body[..p.Index] + replacementPm + body[(p.Index + p.Length)..];
+            var replacementUi =
+                uiIndent + "local __gcetGigBoards = " + helper + "\n" +
+                uiIndent + "local ui = __gcetGigBoards:Get(defs.UI_System)";
+            body = body[..u.Index] + replacementUi + body[(u.Index + u.Length)..];
+            text = text[..pauseScope.Start] + body + text[pauseScope.End..];
+        }
 
         var stableFunction = new Regex(
             @"(?m)^\s*local\s+function\s+__gcetGigCoreRefreshPausedFrame\s*\(",
