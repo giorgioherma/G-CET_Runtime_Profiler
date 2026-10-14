@@ -308,6 +308,7 @@ internal sealed class SemanticLibraryService
             : markerSatisfied || satisfiedBySourcePostcondition;
         var alreadySatisfiedMode = alreadySatisfied
             ? composed ? "SCOPED_SOURCE_STAGES"
+                       : rule.Proof.SourceCompletionAuthoritative ? "SOURCE_POSTCONDITION"
                        : markerSatisfied ? "MARKER" : "SOURCE_POSTCONDITION"
             : "";
         // A recognized, incomplete composite is UPGRADEABLE. Ambiguous or
