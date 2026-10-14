@@ -5222,7 +5222,8 @@
         "measuredPeakExclusiveMsPerSecond": 0.316,
         "admitted": true,
         "evidenceStack": "PASS3_ONACTION_NATIVE_MARSHALLING_AUDIT",
-        "note": "Low Lua exclusive CPU but native observer dispatch reduction is the purpose; savings not yet measured."
+        "note": "Low Lua exclusive CPU but native observer dispatch reduction is the purpose; savings not yet measured.",
+        "rationale": "The measured callback's 0.316 ms/s Lua exclusive cost understates the per-observer CET native OnAction marshaling cost. This source-proven finite-action consolidation removes one duplicate native observer at ~1305 action invocations/s when 0-Engine is available; 0.1 ms/s is a measured rule-local admission floor, not a claimed allocation saving."
       },
       "cadenceGroup": "INPUT_SYNCHRONOUS",
       "catalogRole": "SEMANTIC_HOT_MOD",
