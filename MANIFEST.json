@@ -1,10 +1,10 @@
 {
   "packageVersion": "1.2.7",
-  "profilerNativeVersion": "2.15.1-scalar",
+  "profilerNativeVersion": "2.15.1-scalar-vm-context",
   "targetCET": {
     "version": "1.37.1",
     "officialSha256": "43a7b94698979703f9dfa2b0950607c9a88f53b84bbf09a8e593c7e218d41059",
-    "profilerSha256": "89d848b775fb67bc5e56043053f07f315eb414d46940eb7d343f9eaea3ab095b",
+    "profilerSha256": "72cb0f09827fcd86a07e6e510145de6907c7eb9f2e0d68f5381333857b381976",
     "profilerPackageFile": "cyber_engine_tweaks.PROFILER.dll",
     "profilerInstallFile": "cyber_engine_tweaks.asi"
   },
@@ -31,6 +31,8 @@
     "CET_Runtime_Profile_Lua_Allocations.csv",
     "CET_Runtime_Profile_GGC_Registrations.csv",
     "CET_Runtime_Profile_GGC_Rankings.csv",
+    "CET_Runtime_Profile_GGC_UnscopedContexts.csv",
+    "CET_Runtime_Profile_GGC_UnscopedTimeline.csv",
     "CET_Runtime_Profile_GGC_Functions.csv",
     "CET_Runtime_Profile_Scheduler_ByJob.csv",
     "CET_Runtime_Profile_Scheduler_Spikes.csv",

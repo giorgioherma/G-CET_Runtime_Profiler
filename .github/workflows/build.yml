@@ -102,7 +102,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           # Native CI builds. This workflow packages the Profiler + Resolver.
           # Pin both the successful run and compiled DLL SHA; never fetch latest.
-          gh run download 38473605694 --repo ${{ github.repository }} --name gcet-native-experimental-scalar-observations --dir native-from-ci
+          gh run download 38496930001 --repo ${{ github.repository }} --name gcet-native-experimental-scalar-observations --dir native-from-ci
           if ($LASTEXITCODE -ne 0) { throw 'Failed downloading the native CI DLL.' }
           $dll = 'native-from-ci/cyber_engine_tweaks.PROFILER.dll'
           $sidecar = 'native-from-ci/SHA256.txt'
@@ -146,17 +146,17 @@ jobs:
 
           # A source-only native change is not a distributable feature. Refuse
           # to ship v2.12 with an old, hash-valid v2.11 profiler payload.
-          if ([string]$manifest.profilerNativeVersion -in @('2.12.0', '2.13.0', '2.14.0', '2.15.0', '2.15.1-scalar', '2.16.0')) {
+          if ([string]$manifest.profilerNativeVersion -in @('2.12.0', '2.13.0', '2.14.0', '2.15.0', '2.15.1-scalar', '2.15.1-scalar-vm-context', '2.16.0')) {
             $payload = [IO.File]::ReadAllBytes((Resolve-Path 'payload\cyber_engine_tweaks.PROFILER.dll').Path)
             $binaryText = [Text.Encoding]::Latin1.GetString($payload)
             if (-not $binaryText.Contains('CET_Runtime_Profile_GC_Explicit.csv')) {
               throw 'Native GC explicit-call timing payload missing; refuse incomplete release.'
             }
-            if ([string]$manifest.profilerNativeVersion -in @('2.13.0', '2.14.0', '2.15.0', '2.15.1-scalar', '2.16.0') -and
+            if ([string]$manifest.profilerNativeVersion -in @('2.13.0', '2.14.0', '2.15.0', '2.15.1-scalar', '2.15.1-scalar-vm-context', '2.16.0') -and
                 -not $binaryText.Contains('CET_Runtime_Profile_GC_Collector.csv')) {
               throw 'Native 2.13 collector probe is not rebuilt and hash locked; refuse incomplete release.'
             }
-            if ([string]$manifest.profilerNativeVersion -in @('2.14.0', '2.15.0', '2.15.1-scalar', '2.16.0')) {
+            if ([string]$manifest.profilerNativeVersion -in @('2.14.0', '2.15.0', '2.15.1-scalar', '2.15.1-scalar-vm-context', '2.16.0')) {
               foreach ($required in @('CET_Runtime_Profile_GC_Phases.csv',
                                       'CET_Runtime_Profile_GC_SlowSteps.csv',
                                       'CET_Runtime_Profile_Lua_Allocations.csv')) {
@@ -165,7 +165,7 @@ jobs:
                 }
               }
             }
-            if ([string]$manifest.profilerNativeVersion -in @('2.15.0', '2.15.1-scalar', '2.16.0')) {
+            if ([string]$manifest.profilerNativeVersion -in @('2.15.0', '2.15.1-scalar', '2.15.1-scalar-vm-context', '2.16.0')) {
               if (-not $binaryText.Contains('G_GC_TRACER_NATIVE_2_15_FINALIZER_CALL_NESTED_SCOPE_V1')) {
                 throw 'Native G-GC Tracer compiled revision marker missing; refuse stale DLL.'
               }
@@ -173,11 +173,19 @@ jobs:
                   -not $binaryText.Contains('GGC_MEGAMIND_PROVENANCE_NATIVE_2_16_V1')) {
                 throw 'Native 2.16 MEGAMIND caller provenance contract missing in rebuilt DLL.'
               }
-              if ([string]$manifest.profilerNativeVersion -eq '2.15.1-scalar') {
+              if ([string]$manifest.profilerNativeVersion -in @('2.15.1-scalar', '2.15.1-scalar-vm-context')) {
                 foreach ($required in @('CET_Runtime_Profile_Scalar_Observations.csv',
                                         'CETProfilerObserveScalar')) {
                   if (-not $binaryText.Contains($required)) {
                     throw "Native scalar observation probe missing from compiled DLL: $required"
+                  }
+                }
+              }
+              if ([string]$manifest.profilerNativeVersion -eq '2.15.1-scalar-vm-context') {
+                foreach ($required in @('CET_Runtime_Profile_GGC_UnscopedContexts.csv',
+                                        'CET_Runtime_Profile_GGC_UnscopedTimeline.csv')) {
+                  if (-not $binaryText.Contains($required)) {
+                    throw "Unscoped VM-state attribution is missing in native payload: $required"
                   }
                 }
               }
