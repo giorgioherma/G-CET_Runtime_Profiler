@@ -1094,6 +1094,10 @@ jobs:
         shell: pwsh
         run: ./tests/GigCorePauseGuardOnePassContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: Third-person OnAction one-pass routing contract
+        shell: pwsh
+        run: ./tests/ImmersiveThirdPersonActionRoutingContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: CallList pristine one-pass source contract
         shell: pwsh
         run: ./tests/CallListPristineSourceContract.ps1 -ResolverRoot ./publish-resolver
