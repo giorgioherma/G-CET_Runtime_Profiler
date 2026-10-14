@@ -9,7 +9,7 @@ Displayed workflow: **Rebuild G-CET native profiler**
 
 - Inputs: repository `native-profiler-build/v2.11.0/` scripts, `CETRuntimeProfiler.h`, LuaJIT GC patch, pinned CET 1.37.1 upstream source, historical Xmake/MSVC 14.44 toolchain. Historical source folder name does **not** equal current feature version.
 - `Build-Profiler.ps1` reconstructs and compiles CET, then stages `cyber_engine_tweaks.PROFILER.dll`.
-- Test DLL PE/linker and API/CSV source contract. Publish a native **DLL + SHA256.txt** artifact. Current artifact name is `gcet-native-experimental-scalar-observations` from historical successful [run #38473605694](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38473605694).
+- Test DLL PE/linker and API/CSV source contract. Publish a native **DLL + SHA256.txt** artifact. Current artifact name is `gcet-native-experimental-scalar-observations` from historical successful [run #38496930001](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38496930001).
 - **NOT its responsibility:** release manifest/package version bump, managing/compiling WinForms Profiler, packaging standalone Resolver, uploading portable Profiler ZIP, merging applications, releasing production artifacts.
 - When source changes, trigger or dispatch the native workflow, check the final run **success** and download artifact hash. A build's previous status/sha is not sufficient for a newer source revision.
 
@@ -19,14 +19,14 @@ File: `.github/workflows/build.yml`
 Displayed workflow: **Build G CET Runtime Profiler**
 
 1. Read coordinated `VERSION.txt`, `Directory.Build.props` and `MANIFEST.json` versions.
-2. Download the **exact pinned native CI run + artifact** into `native-from-ci/` (current run #38473605694, artifact `gcet-native-experimental-scalar-observations`). Do **not** assume local `payload/cyber_engine_tweaks.PROFILER.dll` is the latest binary—it is overridden from native CI during packaging.
+2. Download the **exact pinned native CI run + artifact** into `native-from-ci/` (current run #38496930001, artifact `gcet-native-experimental-scalar-observations`). Do **not** assume local `payload/cyber_engine_tweaks.PROFILER.dll` is the latest binary—it is overridden from native CI during packaging.
 3. Verify native DLL SHA-256 against both its native `SHA256.txt` and `MANIFEST.json.targetCET.profilerSha256`; copy into `payload/` in this build's workspace only.
 4. Enforce native expected symbol/CSV contracts (G-GC, deep, optional scalar) and hash-locked 0-Engine/controls payload.
 5. Build .NET shared core, Profiler GUI/CLI, native root launcher and standalone Resolver. Run data/report, semantic, resolver, native payload/install/restore and packaging contracts.
 6. Package and upload **two separate same-version artifacts**: `G-CET-Runtime-Profiler-vX.Y.Z` (full portable Profiler app + latest verified native DLL) and `G-CET-Resolver-vX.Y.Z` (standalone Resolver). The main CI may also perform guarded canonical release steps on release-eligible refs; inspect current triggers.
 7. Verify the **main** CI success, both artifacts actually present, and new embedded native hash before saying “Profiler contains the new native.”
 
-**Current verified main run:** [#38476578740 — v1.2.7, four jobs successful](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38476578740). The build log explicitly confirms native DLL import SHA `89d848b775fb67bc5e56043053f07f315eb414d46940eb7d343f9eaea3ab095b`; `NpcOutfitManagerSemanticContract.ps1` and `ScalarObservationReportContract.ps1` passed. Native revision label in manifest: `2.15.1-scalar`. Gameplay validation pending.
+**Current verified main run:** [#38497725639 — v1.2.7, four jobs successful](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38497725639). The build log explicitly confirms native DLL import SHA `72cb0f09827fcd86a07e6e510145de6907c7eb9f2e0d68f5381333857b381976`; `NpcOutfitManagerSemanticContract.ps1` and `ScalarObservationReportContract.ps1` passed. Native revision label in manifest: `2.15.1-scalar-vm-context`. Gameplay validation pending.
 
 ## How to publish a new native source revision (REQUIRED ORDER)
 
@@ -50,11 +50,13 @@ Displayed workflow: **Build G CET Runtime Profiler**
 - Artifacts of repeated CI runs can have the same version name; identify the precise build by **Actions run ID / commit SHA / native DLL SHA-256**.
 - Routine CI should not silently create, overwrite, or retag an official GitHub release. Release publication needs deliberate authorization and matching version metadata.
 
+**Current feature and test gate (2026-10-14):** `CET_Runtime_Profile_GGC_UnscopedContexts.csv` and `CET_Runtime_Profile_GGC_UnscopedTimeline.csv` are additive native-generated raw outputs included in the unchanged v1.2.7 Profiler capture manifest; old reports remain backward-compatible. Main CI verifies both literal markers in the compiled DLL, plus native hash/import and both packaged artifacts. Only live gameplay confirms capture-off load, runtime overhead, pause/stop, correct owner-zero reconciliation and GC timeline correlation. [Test procedure](UNSCOPED-VM-CONTEXT-TEST-2026-10-14.md).
+
 ## Common previous mistakes — explicit preventions
 
 - **Wrong division of work (historical mistake):** building a complete Profiler package in native CI. This is prohibited. Native CI only publishes the DLL; main build owns both applications and packaging.
 - **Downloaded artifact layout:** GitHub `upload-artifact` of `portable/` extracts directly into product folders; it is **not** necessarily a nested `vX.Y.Z.zip`. Inspect the actual archive layout.
-- **Mismatched native hash:** successive DLL compilations can have different bytes. Verify against the actual successful **referenced run**, not the first earlier attempt. Example: early run #38472029196 SHA `239e...` was **not** the artifact selected for v1.2.7; successful native run #38473605694 SHA begins `89d848...`.
+- **Mismatched native hash:** successive DLL compilations can have different bytes. Verify against the actual successful **referenced run**, not the first earlier attempt. Example: early run #38472029196 SHA `239e...` was **not** the artifact selected for v1.2.7; successful native run #38496930001 SHA begins `89d848...`.
 - **Stale tracked binary:** the repo's `payload/` can still hold an older binary; the verified main build import is authoritative for its **published ZIP**. Do not misread this as source-controlled DLL replacement.
 - **Premature “done”:** new workflow triggered ≠ successful build ≠ both artifacts uploaded. Follow run to a terminal conclusion. Managed CI also ≠ in-game native validation.
 - **Tested rule ≠ deployed mod:** source-pattern NPC Outfit Manager rule is included in Resolver; its actual per-NPC game behavior, GC savings, pending applications and save/load remain separate in-game gates.

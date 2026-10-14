@@ -44,6 +44,15 @@ Source: user-uploaded `CET-20261013-031413_CONTAIN_THE_DATA.zip` compared to `CE
 - Historical G-GC 2.15 function sampler is bounded and often reports native `=[C]` execution without the Lua callsite: `__index`, `jobEnd`, `GetQuestsSystem` are investigative leads, not proven repetitive unchanged values. Source hotspots should be inspected under the relevant routed callback before modifying behavior.
 
 
+## 2026-10-14 native attribution iteration — ready for gameplay testing
+
+- Source commit `997cde051cfeaed6cae74ad4eb64d70a5c7672e0`; native CI [#38496930001](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38496930001) SUCCESS, actual DLL SHA `72cb0f09827fcd86a07e6e510145de6907c7eb9f2e0d68f5381333857b381976`; integration `d3ab2a7908834d54e937b0872f60ff60b6bc72ab` via main [#38497725639](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38497725639) SUCCESS, **both apps packaged v1.2.7**, no version increment.
+- Additive **exact within observed LuaJIT allocator sites** owner-zero growth counters by `g->vmstate`: INTERP, C, GC, EXIT, RECORD, OPT, ASM, UNKNOWN. This is a **VM-state execution classification, not Lua source/provenance or mod ownership**, and cannot establish duplicated data, safe caching, or GC cause.
+- Add bounded **one-second capture timeline**, fixed 1200s plus overflow bucket, no Lua debug hooks/getters/GC tuning, capture-gated. Normal GGC owner-zero metrics remain in their prior rows and **must reconcile** with new category totals. Manager already captures wildcard `CET_Runtime_Profile_*.csv`; manifest explicitly includes both.
+- Files: `CET_Runtime_Profile_GGC_UnscopedContexts.csv` and `CET_Runtime_Profile_GGC_UnscopedTimeline.csv`; raw CSV not a new primary managed HTML scoring field. Source only committed after proof-of-concept; native CI proves compilation, NOT game-load/safety or bounded overhead.
+- Next: use **new package** and reproduce a brief normal capture. Compare owner-zero byte/ops sum with categories; timeline with GC slowdown interval. Then use context evidence to select specific safe producer callsites for opt-in scalar sampling. Avoid owner0 guesses.
+- [Reproduction checklist](UNSCOPED-VM-CONTEXT-TEST-2026-10-14.md).
+
 ## Mission
 
 **Stop unnecessary data from being generated and fed into LuaJIT garbage collection.** This improves upstream Lua mod work and may also lower downstream collector pressure. The user's remaining major concern is that, despite successful callback consolidation, we have not sufficiently questioned whether the highest-volume **data producers are needed at all**.
