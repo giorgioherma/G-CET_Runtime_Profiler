@@ -53,6 +53,10 @@ registerForEvent("onInit", function()
   end)
 end)
 "@
+  if($variant -eq 'legacy-v1') {
+    $snippet=$snippet.Replace('    local sizeX, sizeY = GetDisplayResolution()' + "`n", '')
+    $snippet=$snippet.Replace('      if string.find(name:lower(), ' + $quote + 'moveup' + $quote + ') then', '      if string.find(name:lower(), ' + $quote + 'moveup' + $quote + ') then' + "`n        -- G-CET:CallListActionLazyDisplayV1`n        local sizeX, sizeY = GetDisplayResolution()")
+  }
   if($drift) { $snippet=$snippet.Replace('string.find(name:lower()', 'string.match(name:lower()') }
   $source=Join-Path $mod 'init.lua'
   $snippet | Set-Content -LiteralPath $source -Encoding utf8
@@ -70,7 +74,7 @@ end)
   } | ConvertTo-Json -Depth 25
   $input|Set-Content (Join-Path $capture 'CET_Resolver_Input.json') -Encoding utf8
   $result=(& $exe --capture $capture --mods $mods --generate-pass --json | ConvertFrom-Json)
-  if(!$result.ok){throw "Resolver failed: $variant"}
+  if(!$result.ok -and !$drift){throw "Resolver failed: $variant"}
   $count=0
   if($result.pass -and $result.pass.ManifestPath){
     $manifest=Get-Content $result.pass.ManifestPath -Raw|ConvertFrom-Json
@@ -84,7 +88,10 @@ end)
   $patched=FromZip $result.pass.ZipPath 'CallList-VehicleDetailsOverlay-CET/init.lua'
   $a=$patched.IndexOf('if string.find(name:lower()')
   $b=$patched.IndexOf('local sizeX, sizeY = GetDisplayResolution()')
-  if($a -lt 0 -or $b -lt $a -or !$patched.Contains('G-CET:CallListActionLazyDisplayV1')){
+  $press=$patched.IndexOf('if action:IsButtonJustPressed(action) then')
+  $name=$patched.IndexOf('local name = Game.GetLocalizedText(action:GetName(action).value)')
+  if($a -lt 0 -or $b -lt $a -or $name -lt $press -or $a -lt $name -or
+     !$patched.Contains('G-CET:CallListActionLazyInputV2')){
     throw "The native display query was not deferred for $variant"
   }
   if($patched -notmatch 'playerPosY\s*=\s*playerPosY\s*-\s*sizeY\s*\*\s*0.05') {throw 'Original input movement behavior lost'}
@@ -102,4 +109,5 @@ end)
 }
 RunCase 'original'
 RunCase 'quotes'
+RunCase 'legacy-v1'
 RunCase 'drift' $true
