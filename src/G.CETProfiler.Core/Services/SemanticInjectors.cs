@@ -80,7 +80,6 @@ internal static class SemanticInjectors
             "better-loot-markers" => ApplyBetterLootMarkers(context),
             "npc-outfit-manager-idle-state" => NpcOutfitManagerSource.Apply(context),
             "gigcore-blackboard-once" => ApplyGigCoreBlackboardReuse(context),
-            "gigcore-pause-guard-reuse" => ApplyGigCorePauseGuardReuse(context),
             "specter-recovery-prerequisite-reads" => ApplySpecterRecoveryPrerequisites(context),
             "drivebus" => ApplyDriveBus(context),
             "quest-tracking-toggle" => ApplyQuestTrackingToggle(context),
@@ -3975,90 +3974,88 @@ ${close}" + "\n",
 
 
 
-    private static SemanticInjectionResult ApplyGigCorePauseGuardReuse(
-        SemanticPatchContext context)
-    {
-        var file = context.FindFile(
-            "init.lua",
-            "pausedThisFrame",
-            "computePauseState()",
-            "onUpdate GUARD: computePauseState threw:",
-            "Marker.tickAll",
-            "VehicleDamage.tick");
-        var text = file.Text;
-
-        // Proven standalone stage. Legacy blackboard optimization is optional:
-        // the untouched Nexus source must receive this stage without it.
-        if (Regex.IsMatch(text,
-            @"pcall\s*\(\s*__gcetGigCoreRefreshPausedFrame\s*\)",
-            RegexOptions.CultureInvariant))
-            return SemanticInjectionResult.Skip(
-                "GigCore pause-state pcall function has already been reused.");
-
-        var anonymous = new Regex(
-            @"pcall\s*\(\s*function\s*\(\s*\)\s*" +
-            @"pausedThisFrame\s*=\s*computePauseState\s*\(\s*\)\s*end\s*\)",
-            RegexOptions.CultureInvariant);
-        var matches = anonymous.Matches(text);
-        if (matches.Count != 1)
-            throw new InvalidOperationException(
-                "GigCore pause-state guard no longer has one independently proven closure.");
-
-        var update = new Regex(
-            @"(?m)^(?<indent>[ \t]*)(?<call>(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]\s*,\s*function\s*\(\s*delta\s*\))",
-            RegexOptions.CultureInvariant);
-        var updates = update.Matches(text);
-        if (updates.Count != 1 || updates[0].Index >= matches[0].Index)
-            throw new InvalidOperationException(
-                "GigCore active per-frame driver is missing or ambiguous.");
-
-        // Replace the anonymous allocation only; the same exception handling,
-        // frame ordering, and outer pause flag are preserved.
-        var m = matches[0];
-        text = text[..m.Index] + "pcall(__gcetGigCoreRefreshPausedFrame)" +
-            text[(m.Index + m.Length)..];
-        var frame = update.Match(text);
-        var definition =
-            "local function __gcetGigCoreRefreshPausedFrame()\n" +
-            "  pausedThisFrame = computePauseState()\n" +
-            "end\n\n";
-        text = text[..frame.Index] + definition + text[frame.Index..];
-        context.Write(file, text);
-        return SemanticInjectionResult.Success(
-            "Reused a stable pause-refresh pcall function instead of constructing " +
-            "one Lua closure every frame; retained synchronous pause checks and all gig ticks.");
-    }
-
     // GigCore 0.7.x: invocation-local, no persistent native handle.
+    // Complete authoritative GigCore optimization: both pristine and
+    // previously optimized sources converge in ONE Resolver pass.
+    // All changes are invocation-local and retain protected frame semantics.
     private static SemanticInjectionResult ApplyGigCoreBlackboardReuse(
         SemanticPatchContext context)
     {
         var file = context.FindFile(
-            "init.lua", "local function _rawMenuOrPhotoPaused()",
+            "init.lua",
+            "local function _rawMenuOrPhotoPaused()",
             "Game.GetAllBlackboardDefs()",
-            "Game.GetBlackboardSystem():Get(defs.UI_System)",
-            "Game.GetBlackboardSystem():Get(defs.PhotoMode)",
-            "local function computePauseState()");
+            "local function computePauseState()",
+            "onUpdate GUARD: computePauseState threw:",
+            "Marker.tickAll");
         var text = file.Text;
-        var newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
-        string Native(string source) => source.Replace("\n", newline, StringComparison.Ordinal);
+        var original = text;
 
-        text = ReplaceOnce(text,
-            Native("  local defs = Game.GetAllBlackboardDefs()\n" +
-                   "  local ui   = Game.GetBlackboardSystem():Get(defs.UI_System)"),
-            Native("  local defs = Game.GetAllBlackboardDefs()\n" +
-                   "  local __gcetGigBoards = Game.GetBlackboardSystem()\n" +
-                   "  local ui   = __gcetGigBoards:Get(defs.UI_System)"),
+        text = ReplaceOrSkipCompletedStage(
+            text,
+            "  local defs = Game.GetAllBlackboardDefs()\n" +
+            "  local ui   = Game.GetBlackboardSystem():Get(defs.UI_System)",
+            "  local defs = Game.GetAllBlackboardDefs()\n" +
+            "  local __gcetGigBoards = Game.GetBlackboardSystem()\n" +
+            "  local ui   = __gcetGigBoards:Get(defs.UI_System)",
             "GigCore invocation-local blackboard system");
-        text = ReplaceOnce(text,
+
+        text = ReplaceOrSkipCompletedStage(
+            text,
             "  local pm = Game.GetBlackboardSystem():Get(defs.PhotoMode)",
             "  local pm = __gcetGigBoards:Get(defs.PhotoMode)",
             "GigCore photo mode lookup shares the same native system");
+
+        var stableFunction = new Regex(
+            @"(?m)^\s*local\s+function\s+__gcetGigCoreRefreshPausedFrame\s*\(",
+            RegexOptions.CultureInvariant);
+        var closure = new Regex(
+            @"pcall\s*\(\s*function\s*\(\s*\)\s*" +
+            @"pausedThisFrame\s*=\s*computePauseState\s*\(\s*\)\s*end\s*\)",
+            RegexOptions.CultureInvariant);
+        if (stableFunction.IsMatch(text))
+        {
+            if (stableFunction.Matches(text).Count != 1 ||
+                !Regex.IsMatch(text,
+                    @"pcall\s*\(\s*__gcetGigCoreRefreshPausedFrame\s*\)",
+                    RegexOptions.CultureInvariant) ||
+                closure.IsMatch(text))
+                throw new InvalidOperationException(
+                    "GigCore pause guard is partially transformed or ambiguous.");
+        }
+        else
+        {
+            var matches = closure.Matches(text);
+            if (matches.Count != 1)
+                throw new InvalidOperationException(
+                    "GigCore pause-state guard is not a uniquely proven closure.");
+            var update = new Regex(
+                @"(?m)^(?<indent>[ \t]*)(?<call>(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]\s*,\s*function\s*\(\s*delta\s*\))",
+                RegexOptions.CultureInvariant);
+            var updates = update.Matches(text);
+            if (updates.Count != 1 || updates[0].Index >= matches[0].Index)
+                throw new InvalidOperationException(
+                    "GigCore onUpdate entrypoint is not uniquely proven.");
+            var m = matches[0];
+            text = text[..m.Index] + "pcall(__gcetGigCoreRefreshPausedFrame)" +
+                text[(m.Index + m.Length)..];
+            var frame = update.Match(text);
+            var definition =
+                "local function __gcetGigCoreRefreshPausedFrame()\n" +
+                "  pausedThisFrame = computePauseState()\n" +
+                "end\n\n";
+            text = text[..frame.Index] + definition + text[frame.Index..];
+        }
+
+        if (text == original)
+            return SemanticInjectionResult.Skip(
+                "GigCore blackboard and pause-guard source stages are already complete.");
         context.Write(file, text);
         return SemanticInjectionResult.Success(
-            "Reused one invocation-local blackboard system for UI/photo probes; " +
-            "left every-frame pause refresh, active timers, session-load safety, " +
-            "markers, damage, NPCs, and bus reconciliation unchanged.");
+            "Resolved one blackboard system for UI/photo probes per invocation " +
+            "and reused one protected pause-update function per frame; existing " +
+            "gig timers, session/reconcile logic, callback order and exception " +
+            "handling are preserved.");
     }
 
     // SPECTER 1.4.1 and 1.5 share their M9->M10 handoff.
