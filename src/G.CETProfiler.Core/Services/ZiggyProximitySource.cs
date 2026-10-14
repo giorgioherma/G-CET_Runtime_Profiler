@@ -11,6 +11,18 @@ internal static class ZiggyProximitySource
         // Original and v1 are upgraded to v2; already-v2 navigation is preserved.
         SemanticInjectors.ApplyZiggyLastPlayNavigation(context);
 
+        // The Ziggy semantic is a TWO-FILE composable pass: navigation and
+        // controller must carry the complete revision marker together. The
+        // existing v3 navigation logic is retained; this comment records that
+        // the v4 passive-lane upgrade belongs to the same installed stage.
+        var nav=context.FindFile("navigation.lua",
+            "function N.update(dt,path,phase,playerKey,generation,hooks,pinId,runtime,gameplay)",
+            "GetQuestMappinPosition(hash)");
+        if (!nav.Text.Contains("G-CET semantic:ziggy-unaccepted-far-1hz",
+                               StringComparison.Ordinal))
+            context.Write(nav,
+                "-- G-CET semantic:ziggy-unaccepted-far-1hz\n" + nav.Text);
+
         var file=context.FindFile("init.lua", "local function update(dt)",
             "Navigation.update(dt", "C.giver.position", "H.s", "Dialogue");
         var text=file.Text;
