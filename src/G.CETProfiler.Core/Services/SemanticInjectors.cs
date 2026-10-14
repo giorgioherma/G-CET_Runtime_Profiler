@@ -12,7 +12,16 @@ internal static class SemanticInjectors
         // The catalog verifies independently completed source stages before
         // admitting a composed rule. An existing marker on only one stage is
         // not a reason to suppress the other stage's safe incremental pass.
-        if (context.OwnerAlreadyMarked() && !candidate.StageComposed)
+        // Legacy rule markers establish earlier passes, not newer *source*
+        // stages. These two controlled upgrade rules carry distinct v4
+        // source postconditions and edit existing live files in-place. Their
+        // injector validates each missing stage and refuses changed behavior.
+        // All other single-stage rules continue to honor their legacy marker.
+        var versionFluidUpgrade = candidate.RuleId is
+            "tunnel-rescue-v3" or
+            "ziggy-last-play-navigation-sentinel-v3";
+        if (context.OwnerAlreadyMarked() &&
+            !candidate.StageComposed && !versionFluidUpgrade)
             return SemanticInjectionResult.Skip(
                 "A G-CET semantic marker for this rule already exists in the live/staged mod.");
 
