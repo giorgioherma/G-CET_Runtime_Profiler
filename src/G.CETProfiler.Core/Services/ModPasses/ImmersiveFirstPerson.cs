@@ -106,11 +106,39 @@ internal static partial class SemanticInjectors
             "        or landingState > 1\n" +
             "        or session.slowProbe.knockedStatus\n";
 
-        helperText = ReplaceOrSkipCompletedStage(
-            helperText,
-            hotProbeBlock,
-            sampledProbeBlock,
-            "ImmersiveFirstPerson expensive player-state probes");
+        // The live/manual 20 Hz reference uses a named interval constant rather
+        // than the inline 0.05 literal. Both forms are already complete; do not
+        // require an obsolete G-CET pass or reject that established source.
+        // Verify the entire sampled block and the fixed 0.05 interval before
+        // recognizing it; a mere marker or variable name is insufficient.
+        var namedIntervalStage =
+            Regex.IsMatch(helperText,
+                @"(?m)^\s*local\s+SLOW_PROBE_INTERVAL\s*=\s*0\.05\s*$",
+                RegexOptions.CultureInvariant) &&
+            Regex.IsMatch(helperText,
+                @"if\s+session\.slowProbeElapsed\s*>=\s*SLOW_PROBE_INTERVAL\s+then",
+                RegexOptions.CultureInvariant) &&
+            helperText.Contains(
+                "session.slowProbeElapsed = session.slowProbeElapsed % SLOW_PROBE_INTERVAL",
+                StringComparison.Ordinal) &&
+            helperText.Contains("session.slowProbe.mountedVehicle = mountedVehicle ~= nil",
+                StringComparison.Ordinal) &&
+            helperText.Contains("session.slowProbe.knockedStatus =", StringComparison.Ordinal) &&
+            helperText.Contains("session.slowProbe.inspecting = inspectionComponent ~= nil",
+                StringComparison.Ordinal) &&
+            helperText.Contains("session.slowProbe.inWorkspot = session.workspotSystem ~= nil",
+                StringComparison.Ordinal) &&
+            helperText.Contains("session.slowProbe.crouching = playerState ~= nil",
+                StringComparison.Ordinal) &&
+            helperText.Contains("or session.slowProbe.knockedStatus",
+                StringComparison.Ordinal) &&
+            !helperText.Contains(hotProbeBlock, StringComparison.Ordinal);
+        if (!namedIntervalStage)
+            helperText = ReplaceOrSkipCompletedStage(
+                helperText,
+                hotProbeBlock,
+                sampledProbeBlock,
+                "ImmersiveFirstPerson expensive player-state probes");
 
         helperText = ReplaceOrSkipCompletedStage(
             helperText,
