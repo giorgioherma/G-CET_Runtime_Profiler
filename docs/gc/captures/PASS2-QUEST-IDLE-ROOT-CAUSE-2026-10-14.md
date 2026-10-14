@@ -1,0 +1,31 @@
+# PASS2 G-GC optimization test — Tunnel and Ziggy idle-work root cause
+
+**Input:** user capture `CET-20261014-194021_PASS2_GC_OPTIMIZATIONS_TEST.zip`, 252.606587s, 43 valid ZIP members, complete native/GC/Deep/CapFrameX streams, compared with fourth 519.833252s `CET-20261014-170941_FOURTH_G-GC_CAPTURE.zip`. Sources: user `mods(5).zip`, Vortex-ready previous v4 override, original Big Adam and original Starman Dev17 REDscript/Lua. **Analysis/engineering, not measured A/B proof.**
+
+## Hard numbers and diagnosis
+
+| Owner / callback | Fourth ms/s | PASS2 ms/s | Spike events fourth → PASS2 | Interpretation |
+| --- | ---: | ---: | ---: | --- |
+| `tunnel_rescue` `onUpdate` registration 1029 | 5.724675 | 5.746944 | 159/519.8s → 86/252.6s | Diagnostic path unchanged; no attributable improvement |
+| `ziggy_last_play` `onUpdate` registration 1085 | 4.099737 | 3.711343 | 3 → 2 | Lower average; substantial per-frame proximity/presentation overhead remains |
+| `ziggy_last_play` `onDraw` registration 1086 | 1.247235 | 1.243335 | none | Unconditional absent-HUD native HidePuzzle remains |
+| `yaibaPenthouse` `onUpdate` registration 1077 | 3.660565 | 0.825317 | 0 → 0 | Large decrease consistent with the distant-bathtub pass; scenarios not matched |
+
+**Tunnel spike regularity:** PASS2 86 spikes over 252.6s; **median inter-spike 2.5496s**, with 76 of 85 gaps rounding to **2.5 or 2.6s** (other gaps are skipped multiples); fourth capture 159 over 519.8s, median **2.5524s**. This is a periodic app workload, not a random 35:1 GC-sampler anomaly. PASS2 two exceptional callbacks near 29.797s and 167.580s reached **43.1265ms** and **42.6801ms**; the other status spikes were mostly 5–10ms. Individual spikes are *not* all coincident with long collector operations. In independent native collector data, some >100ms GC phase transitions occur elsewhere; don't assign their duration to Tunnel.
+
+**Direct evidence for Tunnel producer:** capture `Deep_Callsites.csv` registration 1029 includes Lua `./json/json.lua:102` → C `gsub`, `init.lua:194–208` journal/quest mappin queries, multiple `GetEntryByString`, `IsDefined`, `GetQuestsSystem`. Live `tunnel_rescue/init.lua` function `status()` (lines 238–250) constructs `navigationStatus()`, rescue/environment/UI status, then `json.encode(d)` and writes `status.json.tmp`→`status.json`. Source in `update(dt)` (line 362) uses `H.diag>2`. Previous v4 patch changes 2→8 only when `not H.questArmed`, but original `tunnel-journal.lua`, `JournalOffer.update(dt,...)`, sets `H.questArmed=true` and writes fact `quest_armed=1` during **journal offer**, even when the user never started the quest. Thus v4's quiet condition fails constantly in normal unstarted play, explaining the near-perfect original 2.55s spikes in PASS2. `status.json` is only written in the examined Tunnel Lua files, not used by them for gameplay decisions. No need for further profiler changes to identify this behavior.
+
+**Direct evidence for Ziggy producer:** PASS2 `onDraw` 13,911 calls / 55.07Hz; `ziggy_last_play/init.lua` onDraw always sets `H.hudDrawn=false`, then does `if not H.hudDrawn and valid(H.hooks) then H.hooks:HidePuzzle()end`. Original Starman Dev17 `r6/scripts/ZiggyLastPlay/ZiggyLastPlay.reds` has `ZG11Hooks.HidePuzzle()` which checks its own `puzzleRoot` and sets canvas `SetVisible(false)`. This is idempotent repeated game-to-native work when HUD isn't present. `update(dt)` unconditionally calls `H.hooks:ClearPrompt()` whenever `H.prompted` is false, and original `ZG11Hooks.ClearPrompt` scans `UIInteractions.DialogChoiceHubs` to remove only its own prompt ID `81101901`. In unaccepted/far phase, the 1Hz controller has improved average update cost, but the offered/far proximity probe continues to run every frame by design to preserve immediate near/generation wake. Do **not** remove that probe or throttle active dialogue/quest callbacks blindly.
+
+## Production changes after this diagnosis
+
+- **Tunnel stage v5**: Correctly distinguish `offered` from `started`. For `H.phase=='outside'`, established session, no recovery, manual/auto interaction, errors, or active `visit` fact, only `status.json` diagnostic heartbeat becomes **60s** instead of a falsified 8s conditional; active and uncertainty paths keep existing **2s**. All journal offer updates, game facts, input, proximity and quest activation cadence are preserved. Source version progression original→v3→v4→v5; source proof and idempotence required.
+- **Ziggy stage v5**: Keep original immediate game-trigger/near-player checks, `ShowPuzzle`, `StoryChoices`, and active phase behavior. Leave an initial stale-state cleanup, then call `HidePuzzle` and `ClearPrompt` only when owned HUD/prompt was recently shown and now must be cleared. The original Redscript methods only mutate the mod's own UI. On source drift in those exact presentation paths, **refuse** the stage. Original→v3→v4→v5 is additive and two-file marker composition is retained. No nested callback/proximity wrapper allowed.
+- G-CET semantic catalog and source generator updated. CI regression reconstructs v4-marked live quest source, asks for v5, checks zip outputs, preservation, no duplicate Ziggy probe function and read-only installed files.
+- Neither version number nor LuaJIT GC policy nor the native profiler needs to change. Gameplay verification and size/savings measurement are **pending** until the new pass is installed.
+
+## Expected validation
+
+A 4-minute out-of-quest capture should contain **only a handful of periodic Tunnel diagnostic spikes** instead of ~80–90 if the v5 60s gate actually activates; frequent spikes after patch would signal an unexpectedly active/error state, alternate call to `status()`, or old pass still winning Vortex priority. For Ziggy, inspect **onDraw** callbacks' ms/s and `onUpdate` ms/s; more modest overall improvements are expected because immediate near/far native checks deliberately remain. Test approaching the quest giver, accepting/reloading, native UI prompt appearance/removal, HUD puzzle transitions, and quest completion. Do not infer FPS uplift from reduced callback CPU without matched frametime data.
+
+[Fourth G-GC producer analysis](FOURTH-G-GC-PDB-PRODUCER-ANALYSIS-2026-10-14.md) · [Quest version-fluid report](../../resolver/research/QUEST-AND-APARTMENT-DORMANCY-2026-10-14.md)
