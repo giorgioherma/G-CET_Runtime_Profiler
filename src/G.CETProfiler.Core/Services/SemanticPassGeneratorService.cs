@@ -65,8 +65,18 @@ internal static class SemanticPassGeneratorService
                         "Semantic injector emitted unexpanded callback placeholders; refusing the generated pass.");
                 }
 
+                // Complete source stages may already be present in the live mod.
+                // ImmersiveFirstPerson has three independently proven files; a
+                // later pass can legitimately need just one or two. Its injector
+                // checks every unchanged stage and refuses source drift.
+                // Keep the exact file-count contract for all other rules.
+                var partialImmersiveFirstPersonUpgrade =
+                    candidate.RuleId == "immersivefirstperson" &&
+                    context.Changes.Count > 0 &&
+                    context.Changes.Count <= candidate.ExpectedMarkerFileCount;
                 if (candidate.ExpectedMarkerFileCount > 0 &&
-                    context.Changes.Count != candidate.ExpectedMarkerFileCount)
+                    context.Changes.Count != candidate.ExpectedMarkerFileCount &&
+                    !partialImmersiveFirstPersonUpgrade)
                 {
                     throw new InvalidOperationException(
                         $"Semantic injector changed {context.Changes.Count} file(s), but rule " +
