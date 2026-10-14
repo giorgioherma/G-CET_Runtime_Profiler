@@ -3987,7 +3987,6 @@ ${close}" + "\n",
             "local function _rawMenuOrPhotoPaused()",
             "Game.GetAllBlackboardDefs()",
             "local function computePauseState()",
-            "registerForEvent",
             "computePauseState");
         var text = file.Text;
         var original = text;
