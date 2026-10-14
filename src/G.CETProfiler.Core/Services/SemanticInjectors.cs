@@ -81,6 +81,7 @@ internal static class SemanticInjectors
             "immersivefirstperson" => ApplyImmersiveFirstPerson(context),
             "nativeinteractions" => ApplyNativeInteractions(context),
             "minimap-widgets" => ApplyMinimapWidgets(context),
+            "minimap-stealth-widget-locality" => ApplyMinimapStealthWidgetLocality(context),
             _ => SemanticInjectionResult.Skip(
                 $"No semantic source injector is implemented for rule '{candidate.RuleId}'.")
         };
@@ -5541,6 +5542,107 @@ ${close}" + "\n",
         context.Write(world, worldText);
         return SemanticInjectionResult.Success(
             "Kept scene/interaction work at rendered-frame cadence, moved dormant world discovery to ~30 Hz and manager maintenance to ~12 Hz with an immediate active-to-idle reconciliation tick, and indexed NIF mappins by ID while preserving a cold spatial fallback.");
+    }
+
+
+    /// <summary>
+    /// Observed 73,989 MinimapStealthMappinController elevation callbacks in
+    /// CET-20261014-170941_FOURTH_G-GC_CAPTURE (5.679764 exclusive ms/s).
+    /// Native widget properties are references marshalled into Lua; rereading
+    /// the same property inside one callback recreates wrapper traffic.
+    /// This pass never retains widgets across callbacks or suppresses updates.
+    /// </summary>
+    private static SemanticInjectionResult ApplyMinimapStealthWidgetLocality(
+        SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "init.lua",
+            "MinimapStealthMappinController",
+            "UpdateAboveBelowVerticalRelation",
+            "MinimapWidgetsConfig.ShowElevationArrow",
+            "this:GetVerticalRelationToPlayer()",
+            "this.aboveWidget",
+            "this.belowWidget");
+
+        const string marker = "G-CET semantic:minimap-stealth-widget-locality";
+        var pattern = new Regex(
+            @"(?ms)(?<opening>^[ \t]*ObserveAfter\s*\(\s*['""]MinimapStealthMappinController['""]\s*,\s*['""]UpdateAboveBelowVerticalRelation['""]\s*,\s*function\s*\(\s*this\s*\)\s*\r?\n[ \t]*if\s+not\s+IsDefined\(this\)\s+then\s+return\s+end[ \t]*\r?\n)(?<body>.*?)(?<ending>^[ \t]*end\s*\)[ \t]*(?:--[^\r\n]*)?$)",
+            RegexOptions.CultureInvariant | RegexOptions.Multiline |
+            RegexOptions.Singleline);
+
+        var matches = pattern.Matches(file.Text);
+        if (matches.Count != 1)
+            throw new InvalidOperationException(
+                "Minimap stealth-elevation callback is missing or ambiguous.");
+
+        var match = matches[0];
+        var opening = match.Groups["opening"].Value;
+        var body = match.Groups["body"].Value;
+        if (body.Contains(marker, StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "Minimap stealth widget pass already present.");
+
+        // Fail closed for meaningful author changes. Whitespace and standalone
+        // comments are intentionally flexible; callback control flow is not.
+        // The proof is the exact PASS5 visibility logic in the live source,
+        // not merely a set of words that could appear in unrelated functions.
+        var compact = Regex.Replace(
+            Regex.Replace(body, @"(?m)^[ \t]*--[^\r\n]*", ""),
+            @"\s+", "");
+        var proved = string.Concat(
+            "ifMinimapWidgetsConfig.ShowElevationArrow==truethen",
+            "localisClamped=this:IsClamped()",
+            "ifisClampedthen",
+            "ifthis.aboveWidgetthenthis.aboveWidget:SetVisible(false)end",
+            "ifthis.belowWidgetthenthis.belowWidget:SetVisible(false)end",
+            "else",
+            "localvertRelation=this:GetVerticalRelationToPlayer()",
+            "localisAbove=vertRelation==gamemappinsVerticalPositioning.Above",
+            "localisBelow=vertRelation==gamemappinsVerticalPositioning.Below",
+            "ifthis.aboveWidgetthenthis.aboveWidget:SetVisible(isAbove)end",
+            "ifthis.belowWidgetthenthis.belowWidget:SetVisible(isBelow)end",
+            "end",
+            "else",
+            "ifnotthis.aboveWidgetandnotthis.belowWidgetthenreturnend",
+            "ifthis.aboveWidgetthenthis.aboveWidget:SetVisible(false)end",
+            "ifthis.belowWidgetthenthis.belowWidget:SetVisible(false)end",
+            "end");
+        if (!string.Equals(compact, proved, StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "Current minimap callback's visibility semantics are not source-proven; refusing rewrite.");
+
+        var guard = Regex.Match(
+            opening,
+            @"(?m)^(?<indent>[ \t]*)if\s+not\s+IsDefined\(this\)");
+        if (!guard.Success)
+            throw new InvalidOperationException(
+                "Minimap IsDefined guard changed; refusing widget rewrite.");
+        var indent = guard.Groups["indent"].Value;
+        var newline = file.Text.Contains("\r\n", StringComparison.Ordinal)
+            ? "\r\n" : "\n";
+        var introduction = string.Join(newline, new[]
+        {
+            indent + "-- " + marker,
+            indent + "-- Invocation-local widget handles, never cached across frames.",
+            indent + "local __gcetAboveWidget = this.aboveWidget",
+            indent + "local __gcetBelowWidget = this.belowWidget",
+            indent + "if not __gcetAboveWidget and not __gcetBelowWidget then return end",
+            ""
+        });
+        var newBody = body.Replace("this.aboveWidget", "__gcetAboveWidget",
+                                  StringComparison.Ordinal)
+                          .Replace("this.belowWidget", "__gcetBelowWidget",
+                                  StringComparison.Ordinal);
+        var replacement = opening + introduction + newBody +
+                          match.Groups["ending"].Value;
+        var text = file.Text[..match.Index] + replacement +
+                   file.Text[(match.Index + match.Length)..];
+
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Localized native widget references in the measured stealth-elevation callback, " +
+            "skipped missing-widget queries, and preserved the original update cadence and " +
+            "visibility branches without cross-frame caching.");
     }
 
     private static SemanticInjectionResult ApplyMinimapWidgets(
