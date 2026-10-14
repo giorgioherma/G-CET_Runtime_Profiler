@@ -65,22 +65,21 @@ internal static class SemanticPassGeneratorService
                         "Semantic injector emitted unexpanded callback placeholders; refusing the generated pass.");
                 }
 
-                // Complete source stages may already be present in the live mod.
-                // ImmersiveFirstPerson has three independently proven files; a
-                // later pass can legitimately need just one or two. Its injector
-                // checks every unchanged stage and refuses source drift.
-                // Keep the exact file-count contract for all other rules.
-                var partialImmersiveFirstPersonUpgrade =
-                    candidate.RuleId == "immersivefirstperson" &&
-                    context.Changes.Count > 0 &&
-                    context.Changes.Count <= candidate.ExpectedMarkerFileCount;
-                if (candidate.ExpectedMarkerFileCount > 0 &&
-                    context.Changes.Count != candidate.ExpectedMarkerFileCount &&
-                    !partialImmersiveFirstPersonUpgrade)
+                // Source-composed semantic rules can have independently completed
+                // stages in the input. The unchanged stages are validated by
+                // their authoritative injectors, so count changed files rather
+                // than demanding that already-complete files be emitted again.
+                // Single-stage rules retain their exact expected-file count.
+                var validChangedFileCount = candidate.StageComposed
+                    ? context.Changes.Count > 0 &&
+                      context.Changes.Count <= candidate.ExpectedMarkerFileCount
+                    : context.Changes.Count == candidate.ExpectedMarkerFileCount;
+                if (candidate.ExpectedMarkerFileCount > 0 && !validChangedFileCount)
                 {
                     throw new InvalidOperationException(
                         $"Semantic injector changed {context.Changes.Count} file(s), but rule " +
-                        $"expects {candidate.ExpectedMarkerFileCount} complete marker file(s).");
+                        $"expects {(candidate.StageComposed ? "between 1 and " : "exactly ")}" +
+                        $"{candidate.ExpectedMarkerFileCount} changed file(s).");
                 }
 
                 var localLimitFailure = context.Changes
