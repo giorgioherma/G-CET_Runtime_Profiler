@@ -1,6 +1,10 @@
 # Version-fluid optimization of dormant quests and Yaiba Penthouse — 2026-10-14
 
-**Status:** Source-level optimizations **CI-verified and packaged** in [main #38599376883](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38599376883) (**all four jobs successful**), including original Minimap 3.1.7/pass5, two-file Ziggy v3→v4 upgrade, Tunnel original/live composition, and Yaiba original-source generation/idempotence/source drift. **In-game A/B and full quest/apartment gameplay validation remain pending.** Native DLL and both product versions (**v1.2.7**) unchanged.
+**Status:** Source-level optimizations **CI-verified and packaged** in [main #38605963886](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38605963886) (**all four jobs successful**), including original Minimap 3.1.7/pass5, two-file Ziggy v3→v4 upgrade, Tunnel original/live composition, and Yaiba original-source generation/idempotence/source drift. **In-game A/B and full quest/apartment gameplay validation remain pending.** Native DLL and both product versions (**v1.2.7**) unchanged.
+
+### Post-release live-stack marker upgrade fix
+
+The user's `G-CET_PASS_20261014-171003.json` confirmed that **Minimap + Yaiba generated**, but already G-CET v3-marked **Tunnel + Ziggy were incorrectly skipped** even though `AlreadySatisfied=false` and current-source proof passed. Root cause was a second legacy marker-only check in `SemanticInjectors.Apply`, not a missing source file or a version/hash mismatch. The two audited upgradeable rules now bypass that legacy check **only when already admitted by current source proof**, retaining the old v3 optimizations and appending v4 state handling. The actual uploaded `mods(5).zip` SHA256 hashes match all relevant sourceSha values. CI [#38605963886](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38605963886) **SUCCESS**, including the v3-marked source → Tunnel passive-status and Ziggy 1Hz stage upgrade, two-file output, nonduplicated wake function, and live-input read-only tests. No gameplay performance claim follows from CI.
 
 ## Evidence and originals
 

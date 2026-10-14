@@ -1,5 +1,13 @@
 # Active project state — chronological engineering history
 
+## 2026-10-14 actual live-stack post-release fix — v3 marker suppressing new quest stages
+
+- User's live `mods(5).zip` **is** the current-source base. All four relevant file SHA256 hashes exactly match the sourceSha256 entries in their generated `G-CET_PASS_20261014-171003.json` (Tunnel `b76654d8...`, Ziggy `02a11aaa...`, Minimap `401641f8...`, Yaiba `4ba98779...`). Original mod archives are compatibility references, not applied source replacements.
+- User-generated pass had 1 generic + 2 semantics (**Minimap**, **Yaiba**); **Tunnel** and **Ziggy** were incorrectly skipped with the reason `A G-CET semantic marker for this rule already exists in the live/staged mod.` The Resolver's source-proof correctly reported `SourceProofSatisfied=true`, `AlreadySatisfied=false`, but `SemanticInjectors.Apply` overrode that conclusion with `OwnerAlreadyMarked()` using their older v3 prefix comments.
+- Code fix [`daa0ee5`](https://github.com/giorgioherma/G-CET_Runtime_Profiler/commit/daa0ee52d9fb28e5548d45412fe7e37ab2034356) exempts **only** the two audited additive upgrade rules from that legacy whole-owner marker shortcut. Original/unknown-source proof still gates application, and already completed stages still skip normally. Do not remove/roll back the original v3 optimizations.
+- A stronger regression now generates an initial pass, installs synthetically reconstructed **earlier v3 Tunnel/Ziggy sources with their old markers**, reruns the Resolver and checks that both newer stages are emitted exactly once, no duplicated Ziggy proximity callback, the old Tunnel proximity guard survives, and all installed files remain unchanged. [CI #38605963886](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38605963886) **SUCCESS (all four jobs)**. Verified artifacts: `G-CET-Resolver-v1.2.7` ID `11916375066`, `G-CET-Runtime-Profiler-v1.2.7` ID `11916655070`.
+- [CORE](../HANDOFF/CORE.md) now states that an old marker proves only its own stage. No product/native version increment or collector change. In-game quest functionality and A/B savings still require user validation.
+
 ## 2026-10-14 verified original-to-live, version-fluid quest/apartment idle passes
 
 - [Main CI #38599376883](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38599376883) **SUCCESS all four jobs**, with both `G-CET-Resolver-v1.2.7` (artifact `11910884685`) and `G-CET-Runtime-Profiler-v1.2.7` (artifact `11911344390`) published. Native DLL unchanged; Resolver semantic catalog now **65 production rules**.
