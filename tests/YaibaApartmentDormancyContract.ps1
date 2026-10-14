@@ -50,7 +50,7 @@ $inputJson=@{
  callbacks=@(@{
   registrationId=1077;owner='yaibaPenthouse';infrastructure=$false
   kind='event';target='onUpdate'
-  source=@{file='init.lua';lineStart=100;lineEnd=135}
+  source=@{file='init.lua';lineStart=1;lineEnd=7}
   callsPerSecond=51.559;exclusiveMsPerSecond=3.660565
   globalWorkSharePct=1;familyWorkSharePct=100
   avgExclusiveUs=70.99;maxExclusiveMs=1.05;spikeCount=0
@@ -58,8 +58,13 @@ $inputJson=@{
  optimizerEvidence=@()
 } | ConvertTo-Json -Depth 20
 $inputJson | Set-Content -LiteralPath (Join-Path $cap 'CET_Resolver_Input.json') -Encoding utf8
-'registerForEvent("onUpdate", function() bathtub.update(GetPlayer(), nil) end)' |
- Set-Content -LiteralPath (Join-Path $apt 'init.lua') -Encoding utf8
+@'
+registerForEvent("onUpdate", function()
+    local player = GetPlayer()
+    local ppos = player and player:GetWorldPosition() or nil
+    bathtub.update(player, ppos)
+end)
+'@ | Set-Content -LiteralPath (Join-Path $apt 'init.lua') -Encoding utf8
 function Invoke-Variant([string]$label,[string]$source,[bool]$shouldApply) {
  $source | Set-Content -LiteralPath $file -Encoding utf8
  $before=(Get-FileHash $file -Algorithm SHA256).Hash
@@ -75,7 +80,16 @@ function Invoke-Variant([string]$label,[string]$source,[bool]$shouldApply) {
   }
   return $null
  }
- if(!$result -or !$result.ok){throw "${label}: no generated ZIP"}
+ if(!$result -or !$result.ok){
+  & $exe --capture $cap --mods $mods --json | Out-Null
+  $diagPath=Join-Path $cap 'G-CET_Resolver.json'
+  if(Test-Path $diagPath){
+    $diag=Get-Content $diagPath -Raw | ConvertFrom-Json
+    $owners=@($diag.callbackFamilies | ForEach-Object {$_.topConsumers} | Where-Object {$_.owner -eq 'yaibaPenthouse'})
+    Write-Host ("YAIBA DEBUG: " + ($owners | ConvertTo-Json -Depth 12 -Compress))
+  }
+  throw "${label}: no generated ZIP"
+ }
  $manifest=Get-Content $result.pass.ManifestPath -Raw | ConvertFrom-Json
  $rules=@($manifest.transforms | Where-Object {
    $_.type -eq 'SEMANTIC_RULE' -and $_.RuleId -eq 'yaiba-penthouse-distant-bathtub'
