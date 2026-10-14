@@ -54,7 +54,7 @@ registerForEvent("onInit", function()
 end)
 "@
   if($variant -eq 'legacy-v1') {
-    $snippet=$snippet.Replace('    local sizeX, sizeY = GetDisplayResolution()' + "`n", '')
+    $snippet=[regex]::Replace($snippet,'(?m)^    local sizeX, sizeY = GetDisplayResolution()\r?\n','')
     $snippet=$snippet.Replace('      if string.find(name:lower(), ' + $quote + 'moveup' + $quote + ') then', '      if string.find(name:lower(), ' + $quote + 'moveup' + $quote + ') then' + "`n        -- G-CET:CallListActionLazyDisplayV1`n        local sizeX, sizeY = GetDisplayResolution()")
   }
   if($drift) { $snippet=$snippet.Replace('string.find(name:lower()', 'string.match(name:lower()') }
