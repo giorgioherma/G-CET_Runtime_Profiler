@@ -2832,6 +2832,42 @@ ${close}" + "\n",
             }
         }
 
+
+        // The v4 diagnostic guard was functionally inert for an offered quest:
+        // tunnel-journal.lua actively sets H.questArmed=true during journal
+        // discovery. That does NOT mean the player entered/started the quest.
+        // The fourth/fifth captures show a stable 2.55s JSON/status() spike
+        // rhythm, including after the v4 deployment. Only slow the
+        // non-gameplay diagnostic snapshot (not JournalOffer.update or
+        // quest/response wake) while outside with no active visit/error/input.
+        if (!text.Contains("G-CET semantic:tunnel-passive-status-v5",
+                           StringComparison.Ordinal))
+        {
+            var oldGuard = Regex.Matches(text,
+                @"H[.]diag\s*>\s*\(\s*H[.]phase\s*==\s*'outside'\s+and\s+H[.]session\s+and\s+not\s+H[.]questArmed\s+and\s+not\s+H[.]recover\s+and\s+not\s+H[.]auto\s+and\s+not\s+H[.]manual\s+and\s+not\s+H[.]error\s+and\s+not\s+active\s*\(\s*\)\s+and\s+8\s+or\s+2\s*\)",
+                RegexOptions.CultureInvariant);
+            if (oldGuard.Count > 1)
+                throw new InvalidOperationException(
+                    "Tunnel passive diagnostic guard is ambiguous; refusing v5 upgrade.");
+            if (oldGuard.Count == 1)
+            {
+                var m = oldGuard[0];
+                text = text[..m.Index] +
+                    "H.diag>(H.phase=='outside' and H.session and " +
+                    "not H.recover and not H.auto and not H.manual and not H.error and " +
+                    "not active() and 60 or 2)" + text[(m.Index+m.Length)..];
+                text = "-- G-CET semantic:tunnel-passive-status-v5\n" + text;
+            }
+            else if (text.Contains("G-CET semantic:tunnel-rescue-quiet-idle-status-v4",
+                                   StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    "Tunnel v4 marker present but diagnostic source changed; refusing v5.");
+            }
+            // Older original fixtures without a periodic status writer are
+            // allowed; never synthesize a new costly diagnostic callback.
+        }
+
         context.Write(file, text);
         return SemanticInjectionResult.Success(
             "Preserved tunnel quest-session realtime behavior and the author's 0.15 s outside cadence. The 2 s diagnostics path keeps targeted quest-mappin probes, but globally enumerates mappins only when the cheap state signature changes or a target is missing; only plain Lua diagnostic rows are cached.");
