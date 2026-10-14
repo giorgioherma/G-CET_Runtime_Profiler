@@ -5121,9 +5121,12 @@
         "alreadySatisfiedMarker": "G-CET semantic:calllist-action-lazy-display-query",
         "expectedMarkerFileCount": 1,
         "satisfiedAll": [
-          "G-CET:CallListActionLazyDisplayV1",
-          "GetDisplayResolution"
-        ]
+          "G-CET:CallListActionLazyInputV2",
+          "Game.GetLocalizedText(action:GetName(action).value)",
+          "action:IsButtonJustPressed(action)",
+          "GetDisplayResolution()"
+        ],
+        "sourceCompletionAuthoritative": true
       },
       "behavior": {
         "handler": "SEMANTIC_ACTION_LAZY_DISPLAY_QUERY",
@@ -5131,9 +5134,11 @@
           "lazyNativeLookup",
           "preserveLocalizedInput",
           "noActionRouterAssumption",
-          "singlePassPristineSource"
+          "singlePassPristineSource",
+          "lazyLocalizedName",
+          "sourceCompletionAuthoritative"
         ],
-        "note": "Defer GetDisplayResolution until the existing localized moveup button check succeeds. Preserve event ordering, dynamic localization and original handler."
+        "note": "FINAL one-pass rule: defer localized name conversion until just-pressed, then obtain display resolution only for localized moveup. Recognize older display-only experimental source for safe in-place upgrade; pristine input never requires that stage."
       },
       "generation": {
         "enabled": true,
