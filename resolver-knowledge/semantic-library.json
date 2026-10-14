@@ -3165,11 +3165,6 @@
         },
         {
           "kind": "ObserveAfter",
-          "target": "MinimapStealthMappinController::UpdateAboveBelowVerticalRelation",
-          "role": "hot-path"
-        },
-        {
-          "kind": "ObserveAfter",
           "target": "MinimapStealthMappinController::Update",
           "role": "hot-path"
         }
