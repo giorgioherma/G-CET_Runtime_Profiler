@@ -1076,16 +1076,27 @@ if(@($repeatZiggy | Where-Object {$_.semantic.MarkerFileCount -eq 2}).Count -lt 
 # exist, but the current idle stages are absent. The Resolver must upgrade,
 # not suppress on owner marker presence or reinstall older source.
 $tunnelLive=Join-Path $mods 'tunnel_rescue/init.lua'
+$quietV5="if H.diag>(H.phase=='outside' and H.session and not H.recover and not H.auto and not H.manual and not H.error and not active() and 60 or 2) then H.diag=0;status()end -- G-CET semantic:tunnel-rescue-quiet-idle-status-v4"
 $quietV4="if H.diag>(H.phase=='outside' and H.session and not H.questArmed and not H.recover and not H.auto and not H.manual and not H.error and not active() and 8 or 2) then H.diag=0;status()end -- G-CET semantic:tunnel-rescue-quiet-idle-status-v4"
-if (!$tunnel.Contains($quietV4)) { throw 'Initial Tunnel stage lacks v4 status writer.' }
-$tunnelV3=$tunnel.Replace($quietV4,'if H.diag>2 then H.diag=0;status()end')
-$tunnelV3 | Set-Content -LiteralPath $tunnelLive -Encoding utf8
-$previousNav=[regex]::Replace($upgradedZiggy,'(?m)^-- G-CET semantic:ziggy-unaccepted-far-1hz\r?\n','')
-$previousInit=[regex]::Replace($upgradedInit,'(?m)^-- G-CET semantic:ziggy-unaccepted-far-1hz\r?\n','')
-if (!$previousInit.Contains('__gcetZiggyOfferedFarAcc<1.0')) {
-    throw 'Initial Ziggy v4 stage is missing.'
+if (!$tunnel.Contains($quietV5)) { throw 'Initial Tunnel stage lacks v5 passive diagnostic rewrite.' }
+$tunnelV4=$tunnel.Replace($quietV5,$quietV4)
+$tunnelV4=[regex]::Replace($tunnelV4,'(?m)^-- G-CET semantic:tunnel-passive-status-v5\r?\n','')
+$tunnelV4 | Set-Content -LiteralPath $tunnelLive -Encoding utf8
+$previousNav=[regex]::Replace($upgradedZiggy,'(?m)^-- G-CET semantic:ziggy-passive-ui-v5\r?\n','')
+$previousInit=[regex]::Replace($upgradedInit,'(?m)^-- G-CET semantic:ziggy-passive-ui-v5\r?\n','')
+if ($previousInit -notmatch '__gcetZiggyOfferedFarAcc\s*<\s*1\.0\s+then\s+return') {
+    throw 'Initial Ziggy v4 1Hz stage missing.'
 }
-$previousInit=$previousInit.Replace('__gcetZiggyOfferedFarAcc<1.0','__gcetZiggyOfferedFarAcc<0.25')
+$promptPattern='(?m)^(?<indent>[ \t]*)if H\.prompted then\r?\n[ \t]*H\.__gcetPromptWasShown=true\r?\n[ \t]*elseif H\.__gcetPromptWasShown~=false then\r?\n[ \t]*H\.hooks:ClearPrompt\(\)\r?\n[ \t]*H\.__gcetPromptWasShown=false\r?\n[ \t]*end'
+$hidePattern='(?m)^(?<indent>[ \t]*)if H\.hudDrawn then\r?\n[ \t]*H\.__gcetPuzzleWasShown=true\r?\n[ \t]*elseif H\.__gcetPuzzleWasShown~=false and valid\(H\.hooks\) then\r?\n[ \t]*H\.hooks:HidePuzzle\(\)\r?\n[ \t]*H\.__gcetPuzzleWasShown=false\r?\n[ \t]*end'
+if ([regex]::Matches($previousInit,$promptPattern).Count -ne 1 -or
+    [regex]::Matches($previousInit,$hidePattern).Count -ne 1) {
+    throw 'Could not reconstruct previous Ziggy v4 passive UI structure.'
+}
+$previousInit=[regex]::Replace($previousInit,$promptPattern,
+    '${indent}if not H.prompted then H.hooks:ClearPrompt()end')
+$previousInit=[regex]::Replace($previousInit,$hidePattern,
+    '${indent}if not H.hudDrawn and valid(H.hooks)then H.hooks:HidePuzzle()end')
 $previousNav | Set-Content -LiteralPath $ziggyLive -Encoding utf8
 $previousInit | Set-Content -LiteralPath $ziggyInitLive -Encoding utf8
 $hashes=@{
@@ -1118,11 +1129,15 @@ try {
     $upTunnel=Upgrade-Text 'tunnel_rescue/init.lua'
     $upInit=Upgrade-Text 'ziggy_last_play/init.lua'
     $upNav=Upgrade-Text 'ziggy_last_play/navigation.lua'
-    if (!$upTunnel.Contains('G-CET semantic:tunnel-rescue-quiet-idle-status-v4') -or
+    if (!$upTunnel.Contains('G-CET semantic:tunnel-passive-status-v5') -or
+        !$upTunnel.Contains('and 60 or 2') -or
         !$upTunnel.Contains('__gcetTunnelFarOutside') -or
         $upInit -notmatch '__gcetZiggyOfferedFarAcc\s*<\s*1\.0\s+then\s+return' -or
         !$upInit.Contains('G-CET semantic:ziggy-unaccepted-far-1hz') -or
-        !$upNav.Contains('G-CET semantic:ziggy-unaccepted-far-1hz') -or
+        !$upInit.Contains('G-CET semantic:ziggy-passive-ui-v5') -or
+        !$upInit.Contains('H.__gcetPuzzleWasShown') -or
+        !$upInit.Contains('H.__gcetPromptWasShown') -or
+        !$upNav.Contains('G-CET semantic:ziggy-passive-ui-v5') -or
         ([regex]::Matches($upInit,'local function __gcetZiggyOfferedFar\(\)')).Count -ne 1) {
         throw 'New quest stage missing or duplicate callback introduced during v3 upgrade.'
     }
