@@ -1,5 +1,14 @@
 # Active project state — chronological engineering history
 
+## 2026-10-14 fourth native GC attribution implementation — build/game validation pending
+
+- Third native capture exposed a **labeling ambiguity**: `RESIZE_GROWTH` includes realloc-accounting calls where `oldSize=0`; it does not itself prove repeated growth of existing blocks. New capture-gated instrumentation partitions zero-old-size vs nonzero-old-size requests and records positive delta/absolute new size tiers (independent exact positive-growth partitions). The old allocation, VM, timeline, collector and deep-trace counters remain.
+- CET host-boundary tags now also cover draw, lifecycle and overlay event dispatch using only pinned `Scripting::TriggerOn*` host scopes. Override/next() RAII and mod sources are unchanged. Missing outer boundaries and sampled stacks are **not** mod attribution.
+- Both reports add `reallocOriginDiagnostics`, `hasReallocOrigins`, `reallocOriginsReconciled`; a matching new CSV and new path timeline rows are accounted for separately without adding duplicate bytes. Old captures remain compatible. Added negative reconciliation fixture.
+- Native CI now retains developer-only same-link PDB + PDB SHA/DLL SHA in an artifact **separate from** the player-consumed DLL+SHA. Old 2.15.2 native sample RVAs **must not** be symbolicated with a non-identical new PDB.
+- Source changes committed; new native DLL and final combined v1.2.7 builds **not yet verified** at this record. Only pin actual successful native artifact hash after terminal green CI; never claim in-game stability from CI. [Experiment plan](../gc/research/UNSCOPED-REALLOC-AND-CET-INGRESS-2026-10-14.md).
+
+
 ## 2026-10-14 third native G-GC decompression capture — measured, attribution still unresolved
 
 - User supplied `CET-20261014-152417_THIRD_NATIVE_FOR_GC_DECOMPRESS.zip`, 238.249s complete START/PAUSE, all four owner-zero dimensions reconciled **258,546,077 positive bytes (246.569 MiB)** / **1,654,279 operations**; 1,615 fixed-stride native unwind samples, no drops; CapFrameX synchronization GOOD.
