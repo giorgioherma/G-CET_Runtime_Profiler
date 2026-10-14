@@ -58,20 +58,21 @@ struct GGCUnscopedDetail {
     GGCUnscopedDimension morphology[2][6];
     GGCUnscopedDimension reallocDeltas[2][6];
     GGCUnscopedDimension reallocNewSizes[2][6];
-    GGCUnscopedDimension bridges[6];
+    GGCUnscopedDimension bridges[9];
 };
 struct GGCUnscopedPathSecond {
     GGCUnscopedDimension paths[2];
     GGCUnscopedDimension reallocOrigins[2];
-    GGCUnscopedDimension bridges[6];
+    GGCUnscopedDimension bridges[9];
 };
 struct GGCUnscopedNativeSample {
     uint64_t captureMs, positiveBytes, operationSequence;
     uint32_t vmState, allocatorPath, bridgeContext, depth, reallocOrigin;
-    uint64_t oldSize, newSize;
+    uint64_t oldSize, newSize, methodHash;
     void* frames[6];
 };
 uint32_t ggc_trace_bridge_set(uint32_t context);
+uint64_t ggc_trace_method_set(uint64_t hash);
 void ggc_trace_unscoped_detail_read(GGCUnscopedDetail*);
 int ggc_trace_unscoped_path_seconds_read(GGCUnscopedPathSecond*, int);
 int ggc_trace_unscoped_samples_read(GGCUnscopedNativeSample*, int, uint64_t*);
@@ -484,6 +485,24 @@ public:
     private:
         bool m_active{};
         uint32_t m_old{};
+    };
+
+    // Game-originated RTTI argument-marshalling context, tagged only while
+    // capturing. Pure TLS; no Lua calls, strings or native handle retention.
+    // Does not wrap FunctionOverride::next() or change callback dispatch.
+    class MethodScope {
+    public:
+        MethodScope(uint32_t boundary, uint64_t methodHash, bool active)
+            : m_bridge(boundary, active), m_active(active) {
+            if(active) m_prior=ggc_trace_method_set(methodHash);
+        }
+        ~MethodScope() { if(m_active) ggc_trace_method_set(m_prior); }
+        MethodScope(const MethodScope&)=delete;
+        MethodScope& operator=(const MethodScope&)=delete;
+    private:
+        BridgeScope m_bridge;
+        bool m_active{};
+        uint64_t m_prior{};
     };
 
     // Scope tracks both inclusive and exclusive callback time.
@@ -3025,9 +3044,11 @@ public:
             static const char* origins[2]={"RESIZE_GROWTH","NEW_GCO"};
             static const char* tiers[6]={"LT_64B","64_255B","256_1023B",
                 "1_4KIB","4_16KIB","GE_16KIB"};
-            static const char* bridges[6]={"OUTSIDE_CET_INSTRUMENTED_BOUNDARY",
+            static const char* bridges[9]={"OUTSIDE_CET_INSTRUMENTED_BOUNDARY",
                 "CET_FRAME_UPDATE","CET_OVERLAY_DUMP","CET_DRAW_DISPATCH",
-                "CET_LIFECYCLE_DISPATCH","CET_OVERLAY_EVENT_DISPATCH"};
+                "CET_LIFECYCLE_DISPATCH","CET_OVERLAY_EVENT_DISPATCH",
+                "CET_FUNCTION_OVERRIDE_PURE","CET_FUNCTION_OVERRIDE_SCRIPT",
+                "CET_NATIVE_PROXY_CALLBACK"};
             static const char* states[8]={"VM_INTERP","VM_C","VM_GC","VM_EXIT",
                 "VM_RECORD","VM_OPT","VM_ASM","VM_UNKNOWN"};
             GGCUnscopedDetail detail{};
@@ -3072,7 +3093,7 @@ public:
             if(scopes) {
                 scopes << "NativeExecutionBoundary,PositiveBytes,AllocationOperations,"
                           "Interpretation\n";
-                for(int bridge=0;bridge<6;bridge++) {
+                for(int bridge=0;bridge<9;bridge++) {
                     const auto& x=detail.bridges[bridge];
                     scopes << bridges[bridge] << ',' << x.bytes << ','
                            << x.operations
@@ -3105,7 +3126,7 @@ public:
                                      << (i==1200?"OVERFLOW":"ONE_SECOND")
                                      << ",subset-of-RESIZE_GROWTH-not-additive\n";
                     }
-                    for(int bridge=0;bridge<6;bridge++) {
+                    for(int bridge=0;bridge<9;bridge++) {
                         const auto& x=bins[static_cast<size_t>(i)].bridges[bridge];
                         if(x.operations)
                             timeline << i << ",CET_BOUNDARY," << bridges[bridge] << ','
@@ -3115,7 +3136,9 @@ public:
                     }
                 }
             }
-            std::vector<GGCUnscopedNativeSample> samples(2048);
+            // Four bounded snapshots per second for 1200s plus overflow.
+            // Sparse native slots are compacted on read in timeline order.
+            std::vector<GGCUnscopedNativeSample> samples(4*1201);
             uint64_t dropped=0;
             const int observed=ggc_trace_unscoped_samples_read(samples.data(),
                 static_cast<int>(samples.size()),&dropped);
@@ -3125,13 +3148,13 @@ public:
                 stack << "CaptureMs,OperationSequence,PositiveBytes,AllocatorPath,"
                          "VmExecutionState,NativeExecutionBoundary,StackDepth,"
                          "Frame1,Frame2,Frame3,Frame4,Frame5,Frame6,DroppedSamples,"
-                         "Interpretation,ReallocOrigin,OldSize,NewSize\n";
+                         "Interpretation,ReallocOrigin,OldSize,NewSize,NativeMethodHash\n";
                 for(int i=0;i<observed;i++) {
                     const auto& s=samples[static_cast<size_t>(i)];
                     stack << s.captureMs << ',' << s.operationSequence << ','
                           << s.positiveBytes << ',' << origins[s.allocatorPath < 2?s.allocatorPath:0]
                           << ',' << states[s.vmState < 8?s.vmState:7] << ','
-                          << bridges[s.bridgeContext < 6?s.bridgeContext:0] << ','
+                          << bridges[s.bridgeContext < 9?s.bridgeContext:0] << ','
                           << s.depth;
                     for(int frame=0;frame<6;frame++) {
                         std::string symbol="NO_FRAME";
