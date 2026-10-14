@@ -2846,7 +2846,9 @@ ${close}" + "\n",
         // An installed v2 navigation sentinel already contains every bounded
         // mappin optimization. v3 retains it byte-for-byte and adds only the
         // new quest-proximity lane in init.lua (same semantic, no competing rule).
-        if (text.Contains("local N={age=0,retries=0,scanKey=nil,lastMappins={},missingScanAge=0}", StringComparison.Ordinal))
+        if (Regex.IsMatch(text,
+            @"(?m)^\s*local\s+N\s*=\s*\{\s*age\s*=\s*0\s*,\s*retries\s*=\s*0\s*,\s*scanKey\s*=\s*nil\s*,\s*lastMappins\s*=\s*\{\s*\}\s*,\s*missingScanAge\s*=\s*0\s*\}",
+            RegexOptions.CultureInvariant))
         {
             context.Write(file, "-- G-CET Ziggy v2 navigation behavior preserved\n" + text);
             return SemanticInjectionResult.Success(
@@ -2855,17 +2857,28 @@ ${close}" + "\n",
 
         var originalState = "local N={age=0,retries=0}\n";
         var v1State = "local N={age=0,retries=0,scanKey=nil,lastMappins={}}\n";
-        var isOriginal = text.Contains(originalState, StringComparison.Ordinal);
+        // Original and first-generation sentinel initializers are recognized
+        // by their *semantic field list*, not indentation or literal spaces.
+        // Replace only one complete initializer and retain the rest of file.
+        var originalShape = @"(?m)^\s*local\s+N\s*=\s*\{\s*age\s*=\s*0\s*,\s*retries\s*=\s*0\s*\}\s*$";
+        var v1Shape = @"(?m)^\s*local\s+N\s*=\s*\{\s*age\s*=\s*0\s*,\s*retries\s*=\s*0\s*,\s*scanKey\s*=\s*nil\s*,\s*lastMappins\s*=\s*\{\s*\}\s*\}\s*$";
+        var isOriginal = Regex.IsMatch(text, originalShape,
+                                     RegexOptions.CultureInvariant);
         if (isOriginal)
         {
-            text = ReplaceOnce(
-                text, originalState, v1State,
-                "Ziggy original diagnostic cache state");
+            text = RegexReplaceOnce(text, originalShape, v1State,
+                                    "Ziggy original diagnostic cache state");
         }
-        else if (!text.Contains(v1State, StringComparison.Ordinal))
+        else if (!Regex.IsMatch(text, v1Shape,
+                               RegexOptions.CultureInvariant))
         {
             throw new InvalidOperationException(
-                "Ziggy v2 requires the exact original or v1 navigation cache source shape.");
+                "Ziggy navigation state is not a proven original/v1/v2 field list.");
+        }
+        else
+        {
+            text = RegexReplaceOnce(text, v1Shape, v1State,
+                                    "Ziggy v1 formatted initializer normalization");
         }
 
         var fullScan =
