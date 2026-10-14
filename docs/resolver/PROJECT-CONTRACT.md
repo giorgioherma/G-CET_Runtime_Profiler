@@ -49,6 +49,12 @@ Production catalog entries must have an implemented source injector, measured el
 
 **Example: Starman / Ziggy.** The v3 semantic combines bounded navigation-mappin diagnostics and main controller gate in one rule. Stable unaccepted `offered` state, V >130 m from the giver, no dialogue and valid session → cheap frequent proximity probe/full controller 4 Hz. Nearby/accepted/uncertain or dialogue states → original per-frame updates. Preserve elapsed dt, shard discoverability, journal, full mission progression and teardown. Do not replace it with generic blind 4 Hz.
 
+### Quest journal lifecycle is not runtime activity
+
+Many modded quests create/offer their journal entry as part of initialization or registration; some may remain progression-locked or untouched. **A journal entry, tracked/registered mappin, quest-offer fact or flag named `questArmed` does not on its own prove accepted, started or currently active gameplay.** Tunnel is an observed counterexample: its journal-offer routine sets `questArmed=true` before acceptance, defeating the earlier quiet-status gate and producing periodic diagnostic JSON spikes. This distinction applies as a **general admission rule**, not a claim that every quest mod uses the same registration sequence.
+
+For every quest dormancy pass, audit the mod's source-defined state transitions and distinguish `registered/visible`, `offered`, `progression-locked`, `accepted/started`, `currently interacting`, `recovering/cleaning up`, and `completed` as supported by that particular mod. Determine which transitions or proximity checks need immediate wake. Keep journal availability, mission discovery, activation, dialogue, timers, UI and recovery semantics intact; optimize only source-proven work that is unnecessary in passive states. Spikes absent from captures are encouraging evidence for existing gates, **not proof of correctness for every future quest stage**. Avoid sweeping rewrites of other quest gates without separate source proof and measurements.
+
 ## 0-Engine runtime contract
 
 The existing Scheduler and 0-Engine mod integration may be part of a generated eligible pass, never a blind bulk rewrite of user runtime files. GCET opt-in modules:
