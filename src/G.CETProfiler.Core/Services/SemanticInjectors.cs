@@ -4241,7 +4241,7 @@ ${close}" + "\n",
         var replacement = match.Groups["guard"].Value +
             match.Groups["gap"].Value +
             match.Groups["between"].Value +
-            "\n                " + match.Groups["query"].Value;
+            "\n                -- G-CET:CallListActionLazyDisplayV1\n                " + match.Groups["query"].Value;
         text = text[..match.Index] + replacement + text[(match.Index + match.Length)..];
         context.Write(file, text);
         return SemanticInjectionResult.Success(
