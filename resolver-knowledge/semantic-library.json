@@ -3001,6 +3001,28 @@
           "collectPlayerState(delta)",
           "__gcetIFPBlackboardSystem:Get(blackboardDefs.UI_System)",
           "__gcetIFPBlackboardSystem:Get(blackboardDefs.PhotoMode)"
+        ],
+        "completeStages": [
+          {
+            "function": "collectPlayerState",
+            "includes": [
+              "Helpers.RefreshPlayerState(cachedPlayerState, delta)"
+            ]
+          },
+          {
+            "function": "Helpers.RefreshPlayerState",
+            "includes": [
+              "pcall(refreshPlayerState, target, delta)"
+            ]
+          },
+          {
+            "function": "refreshCurrentState",
+            "includes": [
+              "local __gcetIFPBlackboardSystem = Game.GetBlackboardSystem()",
+              "__gcetIFPBlackboardSystem:Get(blackboardDefs.UI_System)",
+              "__gcetIFPBlackboardSystem:Get(blackboardDefs.PhotoMode)"
+            ]
+          }
         ]
       },
       "behavior": {
