@@ -50,6 +50,47 @@ static volatile LONG64 gcet_segment_ticks = 0, gcet_segment_offset_ns = 0, gcet_
 static __declspec(thread) unsigned long long gcet_current_registration = 0;
 static __declspec(thread) unsigned long long gcet_gross_alloc_bytes = 0;
 
+/* VM-state context for unattributed allocation, NOT mod ownership.
+ * Capture only, no Lua stack walk or new Lua calls. 1200 seconds + overflow. */
+#define GGC_UNSCOPED_STATES 8
+#define GGC_UNSCOPED_SECONDS 1200
+typedef struct GGCUnscopedContext { unsigned long long bytes, operations; } GGCUnscopedContext;
+typedef struct GGCUnscopedSecond { GGCUnscopedContext states[GGC_UNSCOPED_STATES]; } GGCUnscopedSecond;
+static GGCUnscopedContext ggc_unscoped_contexts[GGC_UNSCOPED_STATES];
+static GGCUnscopedSecond ggc_unscoped_seconds[GGC_UNSCOPED_SECONDS+1];
+static volatile LONG64 gcet_segment_wall_ms = 0;
+static unsigned int ggc_unscoped_vmstate(const global_State *g) {
+  unsigned int state = g ? ~(unsigned int)g->vmstate : GGC_UNSCOPED_STATES-1;
+  return state < GGC_UNSCOPED_STATES-1 ? state : GGC_UNSCOPED_STATES-1;
+}
+void ggc_trace_unscoped_context_read(GGCUnscopedContext *out, int capacity) {
+  int i;
+  if (!out || capacity <= 0) return;
+  for (i=0; i<capacity && i<GGC_UNSCOPED_STATES; i++) out[i]=ggc_unscoped_contexts[i];
+}
+int ggc_trace_unscoped_seconds_read(GGCUnscopedSecond *out, int capacity) {
+  int i, count=GGC_UNSCOPED_SECONDS+1;
+  if (!out || capacity <= 0) return 0;
+  if (count > capacity) count=capacity;
+  for (i=0; i<count; i++) out[i]=ggc_unscoped_seconds[i];
+  return count;
+}
+static void ggc_unscoped_observe(const global_State *g, unsigned long long bytes) {
+  unsigned int vmstate=ggc_unscoped_vmstate(g);
+  unsigned long long nowMs=(unsigned long long)GetTickCount64();
+  unsigned long long startMs=(unsigned long long)InterlockedCompareExchange64(&gcet_segment_wall_ms,0,0);
+  unsigned long long offsetNs=(unsigned long long)InterlockedCompareExchange64(&gcet_segment_offset_ns,0,0);
+  unsigned long long second=offsetNs/1000000000ULL +
+    (nowMs >= startMs ? (nowMs-startMs)/1000ULL : 0);
+  GGCUnscopedContext *tot, *bin;
+  if (second > GGC_UNSCOPED_SECONDS) second=GGC_UNSCOPED_SECONDS;
+  tot=&ggc_unscoped_contexts[vmstate];
+  bin=&ggc_unscoped_seconds[(unsigned int)second].states[vmstate];
+  tot->bytes+=bytes; tot->operations++;
+  bin->bytes+=bytes; bin->operations++;
+}
+
+
 /* G-GC Tracer: capture-gated, allocation-free native counters and sampled
  * lifetime side table. No object header changes and no collector decisions. */
 #define GGC_OWNER_CAP 32768
@@ -156,7 +197,7 @@ unsigned long long gcet_gc_scope_set(unsigned long long registration)
   return old;
 }
 unsigned long long gcet_gc_alloc_bytes(void) { return gcet_gross_alloc_bytes; }
-static void gcet_gc_alloc_observe(unsigned long long oldSize, unsigned long long newSize)
+static void gcet_gc_alloc_observe(const global_State *g, unsigned long long oldSize, unsigned long long newSize)
 {
   if (newSize > oldSize && InterlockedCompareExchange(&gcet_gc_on, 0, 0) != 0)
   {
@@ -165,6 +206,7 @@ static void gcet_gc_alloc_observe(unsigned long long oldSize, unsigned long long
     ggc_alloc_ops++;
     ggc_owners[owner].bytes += newSize - oldSize;
     ggc_owners[owner].allocations++;
+    if (owner == 0) ggc_unscoped_observe(g, newSize - oldSize);
   }
 }
 void gcet_gc_trace_segment(unsigned long long captureOffsetNs)
@@ -172,6 +214,7 @@ void gcet_gc_trace_segment(unsigned long long captureOffsetNs)
   LARGE_INTEGER tick, freq;
   QueryPerformanceCounter(&tick);
   QueryPerformanceFrequency(&freq);
+  InterlockedExchange64(&gcet_segment_wall_ms, (LONG64)GetTickCount64());
   InterlockedExchange64(&gcet_segment_ticks, tick.QuadPart);
   InterlockedExchange64(&gcet_frequency, freq.QuadPart);
   InterlockedExchange64(&gcet_segment_offset_ns, (LONG64)captureOffsetNs);
@@ -220,6 +263,8 @@ void gcet_gc_stats_set(int enable, int reset)
   if (reset) {
     int i;
     memset(ggc_owners, 0, sizeof(ggc_owners));
+    memset(ggc_unscoped_contexts, 0, sizeof(ggc_unscoped_contexts));
+    memset(ggc_unscoped_seconds, 0, sizeof(ggc_unscoped_seconds));
     memset(ggc_focus, 0, sizeof(ggc_focus));
     memset(ggc_samples, 0, sizeof(ggc_samples));
     InterlockedExchange64(&ggc_sequence, 0);
@@ -333,8 +378,8 @@ static size_t gc_onestep(lua_State *L)
 
 '@
 $src = Change-Once $src '/* Perform a limited amount of incremental GC steps. */' ($phase + '/* Perform a limited amount of incremental GC steps. */') 'internal collector phase wrapper'
-$src = Change-Once $src '  g->gc.total = (g->gc.total - osz) + nsz;' ('  gcet_gc_alloc_observe(osz, nsz);' + [Environment]::NewLine + '  g->gc.total = (g->gc.total - osz) + nsz;') 'realloc accounting'
-$src = Change-Once $src '  g->gc.total += size;' ('  gcet_gc_alloc_observe(0, size);' + [Environment]::NewLine + '  ggc_trace_object_created(o, size, 0);' + [Environment]::NewLine + '  g->gc.total += size;') 'new GC object accounting'
+$src = Change-Once $src '  g->gc.total = (g->gc.total - osz) + nsz;' ('  gcet_gc_alloc_observe(g, osz, nsz);' + [Environment]::NewLine + '  g->gc.total = (g->gc.total - osz) + nsz;') 'realloc accounting'
+$src = Change-Once $src '  g->gc.total += size;' ('  gcet_gc_alloc_observe(g, 0, size);' + [Environment]::NewLine + '  ggc_trace_object_created(o, size, 0);' + [Environment]::NewLine + '  g->gc.total += size;') 'new GC object accounting'
 
 $src = Change-Once $src '      gc_freefunc[o->gch.gct - ~LJ_TSTR](g, o);' ('      ggc_trace_object_freed(o);' + [Environment]::NewLine + '      gc_freefunc[o->gch.gct - ~LJ_TSTR](g, o);') 'object sweep'
 $src = Change-Once $src '      lj_str_free(g, gco2str(o));' ('      ggc_trace_object_freed(o);' + [Environment]::NewLine + '      lj_str_free(g, gco2str(o));') 'string sweep'

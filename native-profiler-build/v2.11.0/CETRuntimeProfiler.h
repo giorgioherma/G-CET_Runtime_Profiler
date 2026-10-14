@@ -48,6 +48,10 @@ int ggc_trace_focused(uint64_t);
 uint64_t ggc_trace_finalizer_calls();
 int gcet_gc_slow_read(GCETGCSlowEvent* out, int capacity, int* dropped);
 void gcet_gc_phase_read(GCETGCPhaseStats* out);
+struct GGCUnscopedContext { uint64_t bytes, operations; };
+struct GGCUnscopedSecond { GGCUnscopedContext states[8]; };
+void ggc_trace_unscoped_context_read(GGCUnscopedContext*, int capacity);
+int ggc_trace_unscoped_seconds_read(GGCUnscopedSecond*, int capacity);
 }
 
 class CETRuntimeProfiler
@@ -2938,6 +2942,42 @@ public:
                 }
             }
         }
+        // Unscoped VM-state context is not mod identity or a GC-trigger cause.
+        {
+            static const char* states[8] = {
+                "VM_INTERP", "VM_C", "VM_GC", "VM_EXIT",
+                "VM_RECORD", "VM_OPT", "VM_ASM", "VM_UNKNOWN"
+            };
+            GGCUnscopedContext contexts[8]{};
+            ggc_trace_unscoped_context_read(contexts, 8);
+            std::ofstream out(outputRoot / "CET_Runtime_Profile_GGC_UnscopedContexts.csv", std::ios::trunc);
+            if (out) {
+                out << "VmExecutionState,PositiveBytes,AllocationOperations,Interpretation\n";
+                for (size_t i = 0; i < 8; ++i)
+                    out << states[i] << ',' << contexts[i].bytes << ','
+                        << contexts[i].operations
+                        << ",owner-zero-execution-context-not-producer-identity\n";
+            }
+            std::vector<GGCUnscopedSecond> seconds(1201);
+            const int count = ggc_trace_unscoped_seconds_read(seconds.data(),
+                static_cast<int>(seconds.size()));
+            std::ofstream timeline(outputRoot / "CET_Runtime_Profile_GGC_UnscopedTimeline.csv",
+                                   std::ios::trunc);
+            if (timeline) {
+                timeline << "CaptureSecond,VmExecutionState,PositiveBytes,AllocationOperations,"
+                            "Window,Interpretation\n";
+                for (int i = 0; i < count; ++i)
+                    for (size_t state = 0; state < 8; ++state) {
+                        const auto& v = seconds[static_cast<size_t>(i)].states[state];
+                        if (!v.bytes && !v.operations) continue;
+                        timeline << i << ',' << states[state] << ','
+                                 << v.bytes << ',' << v.operations << ','
+                                 << (i == 1200 ? "OVERFLOW_GE_1200_SECONDS" : "ONE_SECOND")
+                                 << ",owner-zero-allocation-not-GC-cause\n";
+                    }
+            }
+        }
+
         // Function attribution reuses already-sampled G-CET Lua call/return
         // hooks. Reports sampled inclusive-call windows, NOT total allocations.
         {
