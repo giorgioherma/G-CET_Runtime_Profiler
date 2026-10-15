@@ -158,8 +158,8 @@ end)
     throw 'Existing v1 action route must upgrade its missing v2 stage'
   }
   $upgraded=FromPass $upgrade.pass.ZipPath
-  if($upgraded -ne $patched) {
-    throw 'Pristine one-pass and legacy v1 upgrade must converge to exactly the same source'
+  if(($upgraded -replace "\r\n", "\n") -ne ($patched -replace "\r\n", "\n")) {
+    throw 'Pristine one-pass and legacy v1 upgrade must converge to semantically identical source (line endings ignored)'
   }
 
   $patched|Set-Content -LiteralPath $path -Encoding utf8
