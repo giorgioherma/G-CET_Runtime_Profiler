@@ -120,6 +120,28 @@ function Generate {
 }
     return $result
 }
+# Source-only admission for reviewed PASS4: no captured onUpdate callback
+# must not prevent its complete original-source two-file optimization.
+$emptyInput=@{schemaVersion='1.8';callbacks=@();optimizerEvidence=@()} | ConvertTo-Json -Depth 30
+$emptyInput | Set-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Encoding utf8
+try {
+    $unmeasured=Generate
+    $report=Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
+    $candidates=@($report.semanticSourceOnlyCandidates | Where-Object {$_.ruleId -eq 'streetgamespoker'})
+    if($candidates.Count -ne 1 -or !$candidates[0].stageComposed -or
+       @($report.callbackFamilies).Count -ne 0){
+        throw 'Poker source-only composition absent or fabricated captured callbacks'
+    }
+    $m=Get-Content -LiteralPath $unmeasured.pass.ManifestPath -Raw | ConvertFrom-Json
+    $t=@($m.transforms | Where-Object {$_.RuleId -eq 'streetgamespoker'})
+    if($t.Count -ne 1 -or $t[0].admissionEvidence -ne 'SOURCE_PROVEN_NO_CAPTURE' -or
+       $null -ne $t[0].runtimeMsPerSecond -or @($t[0].files).Count -ne 2){
+        throw 'Poker source-only admission did not generate both files with null runtime'
+    }
+}
+finally {
+    $input | Set-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Encoding utf8
+}
 $first=Generate
 $manifest=Get-Content -LiteralPath $first.pass.ManifestPath -Raw | ConvertFrom-Json
 $transforms=@($manifest.transforms | Where-Object {$_.type -eq 'SEMANTIC_RULE' -and $_.RuleId -eq 'streetgamespoker'})
