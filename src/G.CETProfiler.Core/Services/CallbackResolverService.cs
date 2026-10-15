@@ -43,20 +43,21 @@ internal static class CallbackResolverService
     {
         using var handoff = JsonDocument.Parse(File.ReadAllText(handoffPath));
         var nativePressure = NativeMarshallingEvidenceReader.Read(handoff.RootElement);
-        // A hot native-to-Lua registration can have zero *measured Lua*
-        // exclusive time when its author callback immediately returns.
-        // Excluding that row would prevent source-proven frame/action
-        // consolidation, the only generic fix for the native dispatch itself.
-        // Do not lower semantic/runtime work thresholds or admit zero-call rows.
+        var semanticLibrary = SemanticLibraryService.Load(semanticLibraryPath, modsRoot);
+        // Measured callback work and native-dispatch frequency determine
+        // investigation priority, NOT authored semantic eligibility. Retain
+        // an otherwise silent callback row only if its enabled semantic rule
+        // is independently proven by the current mod source. Generic AUTO
+        // remains measured/source-constrained; arbitrary zero-call rows are
+        // not promoted into the ranked workload.
         var callbacks = ReadCallbacks(handoff.RootElement)
             .Where(x => !x.Infrastructure &&
                 (x.ExclusiveMsPerSecond > 0 ||
-                 IsNativeDispatchCandidateWithMeasuredCalls(x)))
+                 IsNativeDispatchCandidateWithMeasuredCalls(x) ||
+                 IsSourceProvenSemanticWithoutMeasuredWork(x, semanticLibrary)))
             .OrderByDescending(x => x.ExclusiveMsPerSecond)
             .ThenByDescending(x => x.CallsPerSecond)
             .ToList();
-
-        var semanticLibrary = SemanticLibraryService.Load(semanticLibraryPath, modsRoot);
         var sourceIndex = new LiveSourceIndex(modsRoot);
         var schedulerJobs = ReadSchedulerJobs(handoff.RootElement, handoffPath);
         var collectorSpikeEvidence = ReadCollectorSpikeEvidence(handoff.RootElement);
@@ -543,7 +544,7 @@ internal static class CallbackResolverService
                 nativeDispatchZeroLuaCostAdmission = "POSITIVE_CALL_RATE_AND_SOURCE_PROVEN_FRAME_OR_ONACTION_REGISTRATION",
                 genericPatternsBeforeSemanticLibrary = true,
                 behaviorChangingCadenceRequiresSemanticRule = true,
-                semanticAdmissionLanes = new[] { "SEMANTIC_CPU_MATERIAL", "SEMANTIC_AUTHORED_LOW_COST" },
+                semanticAdmissionLanes = new[] { "SEMANTIC_CPU_MATERIAL", "SEMANTIC_AUTHORED_LOW_COST", "SEMANTIC_AUTHORED_UNMEASURED" },
                 semanticThreeMsPerSecondIsSoftBoundary = true,
                 nativeDispatchAndSemanticDecisionsSeparate = true,
                 liveSourcesReadOnly = true,
@@ -5179,6 +5180,32 @@ internal static class CallbackResolverService
             }).ToArray(),
             Source = result.Source
         };
+    }
+
+    // Source-backed semantic exceptions do not weaken generic dispatch
+    // admission. This path only retains existing profiler registration rows;
+    // discovery of a rule whose callback is absent from the capture remains
+    // a separately audited source-based candidate-generation task.
+    private static bool IsSourceProvenSemanticWithoutMeasuredWork(
+        CallbackMetric callback,
+        SemanticLibraryService semanticLibrary)
+    {
+        if (callback.CallsPerSecond > 0 || callback.ExclusiveMsPerSecond > 0)
+            return false;
+
+        var rule = semanticLibrary.Match(
+            callback.Owner,
+            callback.Kind,
+            callback.Target);
+        return SemanticAdmissionPolicy.Evaluate(
+            rule.Matched,
+            rule.SourceProofSatisfied,
+            rule.GenerationEnabled,
+            rule.AlreadySatisfied,
+            rule.PartialState,
+            callback.CallsPerSecond,
+            callback.ExclusiveMsPerSecond,
+            rule.RuntimeThresholdMsPerSecond).Ready;
     }
 
     private static bool IsNativeDispatchCandidateWithMeasuredCalls(
