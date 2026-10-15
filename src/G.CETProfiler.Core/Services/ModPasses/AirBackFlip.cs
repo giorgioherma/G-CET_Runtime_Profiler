@@ -16,7 +16,7 @@ internal static partial class SemanticInjectors
         text.Contains("local function __gcetAirBackFlipSync()", StringComparison.Ordinal) &&
         text.Contains("pcall(h.SetActive, desired)", StringComparison.Ordinal) &&
         text.Contains("Observe(\"PlayerPuppet\", \"OnAction\", gcetAirBackFlipOnAction)", StringComparison.Ordinal) &&
-        Regex.Matches(text, @"__gcetAirBackFlipHandle\s*=\s*handle;\s*__gcetAirBackFlipSync\(\)", RegexOptions.CultureInvariant).Count == 2 &&
+        Regex.Matches(text, @"__gcetAirBackFlipHandle\s*=\s*handle;\s*__gcetAirBackFlipLastActive\s*=\s*nil;\s*__gcetAirBackFlipSync\(\)", RegexOptions.CultureInvariant).Count == 2 &&
         text.Contains("cfg.enabled = ImGui.Checkbox(\"Enabled\", cfg.enabled)\n        __gcetAirBackFlipSync()", StringComparison.Ordinal) &&
         Regex.Matches(text, @"\bcfg\.enabled\s*=", RegexOptions.CultureInvariant).Count == 1;
 
