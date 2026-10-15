@@ -144,7 +144,8 @@ $oldNative | Set-Content "$root/CET_Runtime_Profile_GGC_UnscopedNativeSamples.cs
 
 $html=Get-Content "$root/CET_Report.html" -Raw
 if(!$html.Contains('Unscoped G-GC: VM, allocation type') -or
-   !$html.Contains('RESIZE_GROWTH') -or !$html.Contains('OLD_SIZE_NONZERO') -or !$html.Contains('CET_FRAME_UPDATE')) {
+   !$html.Contains('RESIZE_GROWTH') -or !$html.Contains('OLD_SIZE_NONZERO') -or !$html.Contains('CET_FRAME_UPDATE') -or
+   !$html.Contains('Native-to-Lua marshalling allocation pressure')) {
     throw 'Unscoped diagnostics HTML is missing its distinct measured categories.'
 }
 # Realloc-origin mismatch must fail closed independently of old VM/path shapes.
