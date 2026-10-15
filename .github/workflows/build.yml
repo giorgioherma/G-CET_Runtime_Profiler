@@ -110,8 +110,9 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           # Native CI builds. This workflow packages the Profiler + Resolver.
-          # Pin both the successful run and compiled DLL SHA; never fetch latest.
-          gh run download 38615098059 --repo ${{ github.repository }} --name gcet-native-experimental-scalar-observations --dir native-from-ci
+          # Pin verified experimental allocation-attribution native CI #84
+          # (run 38751863607, gameplay-validated by user), never fetch latest.
+          gh run download 38751863607 --repo ${{ github.repository }} --name gcet-native-experimental-scalar-observations --dir native-from-ci
           if ($LASTEXITCODE -ne 0) { throw 'Failed downloading the native CI DLL.' }
           $dll = 'native-from-ci/cyber_engine_tweaks.PROFILER.dll'
           $sidecar = 'native-from-ci/SHA256.txt'
@@ -155,17 +156,17 @@ jobs:
 
           # A source-only native change is not a distributable feature. Refuse
           # to ship v2.12 with an old, hash-valid v2.11 profiler payload.
-          if ([string]$manifest.profilerNativeVersion -in @('2.12.0', '2.13.0', '2.14.0', '2.15.0', '2.15.1-scalar', '2.15.1-scalar-vm-context', '2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling', '2.16.0')) {
+          if ([string]$manifest.profilerNativeVersion -in @('2.12.0', '2.13.0', '2.14.0', '2.15.0', '2.15.1-scalar', '2.15.1-scalar-vm-context', '2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling', '2.15.5-callback-allocator-attribution', '2.16.0')) {
             $payload = [IO.File]::ReadAllBytes((Resolve-Path 'payload\cyber_engine_tweaks.PROFILER.dll').Path)
             $binaryText = [Text.Encoding]::Latin1.GetString($payload)
             if (-not $binaryText.Contains('CET_Runtime_Profile_GC_Explicit.csv')) {
               throw 'Native GC explicit-call timing payload missing; refuse incomplete release.'
             }
-            if ([string]$manifest.profilerNativeVersion -in @('2.13.0', '2.14.0', '2.15.0', '2.15.1-scalar', '2.15.1-scalar-vm-context', '2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling', '2.16.0') -and
+            if ([string]$manifest.profilerNativeVersion -in @('2.13.0', '2.14.0', '2.15.0', '2.15.1-scalar', '2.15.1-scalar-vm-context', '2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling', '2.15.5-callback-allocator-attribution', '2.16.0') -and
                 -not $binaryText.Contains('CET_Runtime_Profile_GC_Collector.csv')) {
               throw 'Native 2.13 collector probe is not rebuilt and hash locked; refuse incomplete release.'
             }
-            if ([string]$manifest.profilerNativeVersion -in @('2.14.0', '2.15.0', '2.15.1-scalar', '2.15.1-scalar-vm-context', '2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling', '2.16.0')) {
+            if ([string]$manifest.profilerNativeVersion -in @('2.14.0', '2.15.0', '2.15.1-scalar', '2.15.1-scalar-vm-context', '2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling', '2.15.5-callback-allocator-attribution', '2.16.0')) {
               foreach ($required in @('CET_Runtime_Profile_GC_Phases.csv',
                                       'CET_Runtime_Profile_GC_SlowSteps.csv',
                                       'CET_Runtime_Profile_Lua_Allocations.csv')) {
@@ -174,7 +175,7 @@ jobs:
                 }
               }
             }
-            if ([string]$manifest.profilerNativeVersion -in @('2.15.0', '2.15.1-scalar', '2.15.1-scalar-vm-context', '2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling', '2.16.0')) {
+            if ([string]$manifest.profilerNativeVersion -in @('2.15.0', '2.15.1-scalar', '2.15.1-scalar-vm-context', '2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling', '2.15.5-callback-allocator-attribution', '2.16.0')) {
               if (-not $binaryText.Contains('G_GC_TRACER_NATIVE_2_15_FINALIZER_CALL_NESTED_SCOPE_V1')) {
                 throw 'Native G-GC Tracer compiled revision marker missing; refuse stale DLL.'
               }
@@ -182,7 +183,7 @@ jobs:
                   -not $binaryText.Contains('GGC_MEGAMIND_PROVENANCE_NATIVE_2_16_V1')) {
                 throw 'Native 2.16 MEGAMIND caller provenance contract missing in rebuilt DLL.'
               }
-              if ([string]$manifest.profilerNativeVersion -in @('2.15.1-scalar', '2.15.1-scalar-vm-context', '2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling')) {
+              if ([string]$manifest.profilerNativeVersion -in @('2.15.1-scalar', '2.15.1-scalar-vm-context', '2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling', '2.15.5-callback-allocator-attribution')) {
                 foreach ($required in @('CET_Runtime_Profile_Scalar_Observations.csv',
                                         'CETProfilerObserveScalar')) {
                   if (-not $binaryText.Contains($required)) {
@@ -190,7 +191,7 @@ jobs:
                   }
                 }
               }
-              if ([string]$manifest.profilerNativeVersion -in @('2.15.1-scalar-vm-context', '2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling')) {
+              if ([string]$manifest.profilerNativeVersion -in @('2.15.1-scalar-vm-context', '2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling', '2.15.5-callback-allocator-attribution')) {
                 foreach ($required in @('CET_Runtime_Profile_GGC_UnscopedContexts.csv',
                                         'CET_Runtime_Profile_GGC_UnscopedTimeline.csv')) {
                   if (-not $binaryText.Contains($required)) {
@@ -198,7 +199,7 @@ jobs:
                   }
                 }
               }
-              if ([string]$manifest.profilerNativeVersion -in @('2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling')) {
+              if ([string]$manifest.profilerNativeVersion -in @('2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling', '2.15.5-callback-allocator-attribution')) {
                 foreach ($required in @(
                   'CET_Runtime_Profile_GGC_UnscopedShapes.csv',
                   'CET_Runtime_Profile_GGC_UnscopedBoundaries.csv',
@@ -209,7 +210,7 @@ jobs:
                     }
                 }
               }
-              if ([string]$manifest.profilerNativeVersion -in @('2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling')) {
+              if ([string]$manifest.profilerNativeVersion -in @('2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling', '2.15.5-callback-allocator-attribution')) {
                  foreach ($required in @(
                      'CET_Runtime_Profile_GGC_UnscopedReallocOrigins.csv',
                      'OLD_SIZE_ZERO', 'OLD_SIZE_NONZERO',
@@ -220,7 +221,7 @@ jobs:
                    }
                  }
                }
-              if ([string]$manifest.profilerNativeVersion -eq '2.15.4-method-time-sampling') {
+              if ([string]$manifest.profilerNativeVersion -in @('2.15.4-method-time-sampling', '2.15.5-callback-allocator-attribution')) {
                 foreach ($required in @('CET_Runtime_Profile_GGC_UnscopedNativeSamples.csv',
                                          'NativeMethodHash',
                                          'CET_FUNCTION_OVERRIDE_PURE',
@@ -228,6 +229,14 @@ jobs:
                                          'CET_NATIVE_PROXY_CALLBACK')) {
                   if (-not $binaryText.Contains($required)) {
                     throw "Compiled method-context/time-sampling native marker missing: $required"
+                  }
+                }
+              }
+              if ([string]$manifest.profilerNativeVersion -eq '2.15.5-callback-allocator-attribution') {
+                foreach ($required in @('CET_Runtime_Profile_GGC_CallbackAllocatorPressure.csv',
+                                        'CET_Runtime_Profile_GGC_Registrations.csv')) {
+                  if (-not $binaryText.Contains($required)) {
+                    throw "Native callback-owned allocator attribution CSV marker missing: $required"
                   }
                 }
               }
