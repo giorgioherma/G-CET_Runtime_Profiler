@@ -3349,7 +3349,8 @@
           "pressReleaseSemantics",
           "continuousLooting",
           "consumerIndependentInput",
-          "defaultActionSubscriberDormancy"
+          "defaultActionSubscriberDormancy",
+          "sourceOnlyUpgradeFromExistingSharedOnActionSubscription"
         ],
         "actions": [
           "Pause",
@@ -3378,7 +3379,7 @@
           "FRAME_DISPATCH_CONSOLIDATION",
           "SHARED_PROVIDER_READ"
         ],
-        "note": "PASS4K cadence experiment was discarded; preserve AutoLoot's proven runtime cadence and only route the finite input set."
+        "note": "Route/pristine source or upgrade an existing routed AutoLoot input, including when its OnAction registration is already delegated to 0-Engine and absent from the profiler callback table. Exact current mod source/wake and existing observer fallback are required. Previously measured native costs are not invented."
       },
       "generation": {
         "enabled": true,
@@ -3386,7 +3387,8 @@
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
         "requiresIdempotenceMarker": true,
-        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR",
+        "sourceIndependentAdmission": true
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
