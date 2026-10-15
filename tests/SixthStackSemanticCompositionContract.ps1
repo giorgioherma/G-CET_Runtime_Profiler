@@ -120,6 +120,19 @@ registerForEvent("onInit", function() installPalmjetHooks() end)
 
 Write-ModFile 'BackStepDuo' 'init.lua' @'
 local settings = { EnableDash = true }
+local function loadSettingsFile()
+    local loaded = { EnableDash = false }
+    if loaded.EnableDash ~= nil then settings.EnableDash = loaded.EnableDash end
+end
+local function buildSettingsMenu(nativeSettings)
+    nativeSettings.addSwitch("Main", "EnableDash", "EnableDash", settings.EnableDash, true,
+        function(state)
+            settings.EnableDash = state
+            if not state then resetTransientStates() end
+            saveSettingsFileSafe()
+        end)
+end
+registerInput("InstantLookBack", "InstantLookBack", function(keypress) end)
 local function getPlayer() return Game.GetPlayer() end
 local function canUseAbility(player) return player ~= nil end
 local function normalizeActionName(name)
