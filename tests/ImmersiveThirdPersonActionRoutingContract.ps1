@@ -216,10 +216,15 @@ end)
     throw 'Source-independent admission lost semantic source proof or invented profiler runtime samples'
   }
   $sourceManifest=Get-Content $sourceRun.pass.ManifestPath -Raw | ConvertFrom-Json
-  if (@($sourceManifest.transforms | Where-Object {
+  $sourceTransforms=@($sourceManifest.transforms | Where-Object {
       $_.RuleId -eq 'immersive-third-person-action-routing'
-    }).Count -ne 1) {
+    })
+  if ($sourceTransforms.Count -ne 1) {
     throw 'Capture-absent source-only candidate did not generate exact action and native dormancy stage'
+  }
+  if ($sourceTransforms[0].admissionEvidence -ne 'SOURCE_PROVEN_NO_CAPTURE' -or
+      $null -ne $sourceTransforms[0].runtimeMsPerSecond) {
+    throw 'Semantic pass manifest falsely assigned runtime CPU measurement to a source-only pass'
   }
   $sourceOutput=FromPass $sourceRun.pass.ZipPath
   if (!$sourceOutput.Contains('__gcetItppActionDormancyV2') -or
