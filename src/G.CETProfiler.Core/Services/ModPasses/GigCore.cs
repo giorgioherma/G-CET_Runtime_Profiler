@@ -158,19 +158,46 @@ internal static partial class SemanticInjectors
         }
         if (text.Contains("local function " + readName + "()", StringComparison.Ordinal))
             throw new InvalidOperationException("GigCore phone read helper exists without its callsite.");
-        var pattern = new Regex(
-            @"(?m)^local function phoneIsOpen\(\)[ \t]*\r?\n" +
-            @"[ \t]*local open[ \t]*\r?\n" +
-            @"[ \t]*pcall\(function\(\)\)[ \t]*\r?\n" +
-            @"[ \t]*local ps = Game\.GetScriptableSystemsContainer\(\):Get\((?<q>[""'])PhoneSystem\k<q>\)[ \t]*\r?\n" +
-            @"[ \t]*if ps then open = ps:IsPhoneOpened\(\) end[ \t]*\r?\n" +
-            @"[ \t]*end\)[ \t]*\r?\n" +
-            @"[ \t]*return open == true[ \t]*\r?\n" +
-            @"end[ \t]*\r?$", RegexOptions.CultureInvariant);
-        var matches = pattern.Matches(text);
-        if (matches.Count != 1)
+        // Prove the entire author function body as a line-sequenced control
+        // flow. This avoids brittle mixed-quote regex backreferences while
+        // rejecting any additional work or changed native accessor.
+        var starts = Regex.Matches(text,
+            @"(?m)^[ \t]*local function phoneIsOpen\(\)[ \t]*\r?$",
+            RegexOptions.CultureInvariant);
+        var ends = Regex.Matches(text,
+            @"(?m)^[ \t]*local function phoneUiOpen\(\)[ \t]*return[ \t]+phoneIsOpen\(\)[ \t]*end[ \t]*\r?$",
+            RegexOptions.CultureInvariant);
+        if (starts.Count != 1 || ends.Count != 1 ||
+            starts[0].Index >= ends[0].Index)
             throw new InvalidOperationException(
-                "GigCore author phone-open protected read changed; refusing source rewrite.");
+                "GigCore author phone-open function boundaries changed.");
+        var segment = text[starts[0].Index..ends[0].Index];
+        var actual = segment.Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Split('\n').Select(x => x.Trim()).Where(x => x.Length != 0).ToArray();
+        var expected = new[]
+        {
+            "local function phoneIsOpen()",
+            "local open",
+            "pcall(function()",
+            "local ps = Game.GetScriptableSystemsContainer():Get(\"PhoneSystem\")",
+            "if ps then open = ps:IsPhoneOpened() end",
+            "end)",
+            "return open == true",
+            "end"
+        };
+        if (actual.Length != expected.Length)
+            throw new InvalidOperationException(
+                "GigCore author protected phone-open function changed.");
+        for (var i = 0; i < expected.Length; i++)
+        {
+            var value = actual[i];
+            if (i == 3 && value ==
+                "local ps = Game.GetScriptableSystemsContainer():Get('PhoneSystem')")
+                continue;
+            if (!string.Equals(value, expected[i], StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "GigCore protected PhoneSystem access or failure behavior changed.");
+        }
         var nl = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
         var replacement =
             "local function __gcetGigPhoneOpenedRead()" + nl +
@@ -180,10 +207,8 @@ internal static partial class SemanticInjectors
             "local function phoneIsOpen()" + nl +
             "  local ok, open = pcall(__gcetGigPhoneOpenedRead)" + nl +
             "  return ok and open == true" + nl +
-            "end";
-        var m = matches[0];
-        var trailingCr = m.Value.EndsWith("\r", StringComparison.Ordinal) ? "\r" : "";
-        return text[..m.Index] + replacement + trailingCr + text[(m.Index+m.Length)..];
+            "end" + nl;
+        return text[..starts[0].Index] + replacement + text[ends[0].Index..];
     }
 
     // SPECTER 1.4.1 and 1.5 share their M9->M10 handoff.
