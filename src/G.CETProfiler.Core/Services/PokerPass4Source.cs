@@ -211,28 +211,64 @@ internal static class PokerPass4Source
             m=>m.Groups["indent"].Value+"if not player then return false end",
             "no-player early exit");
 
-        body=ReplaceUnique(body,
-            @"(?m)^(?<indent>[ \t]*)local\s+px\s*,\s*py\s*,\s*pz\s*=\s*pos\.x\s*,\s*pos\.y\s*,\s*pos\.z[ \t]*$",
-            m=>m.Value+"\n"+m.Groups["indent"].Value+
-                "local __gcetPokerWakeRadius=wakeRadius or 25.0\n"+
-                m.Groups["indent"].Value+
-                "local __gcetPokerWakeSq=__gcetPokerWakeRadius*__gcetPokerWakeRadius\n"+
-                m.Groups["indent"].Value+
-                "local __gcetPokerSpawnSq=CHAIR_SPAWN_RANGE*CHAIR_SPAWN_RANGE\n"+
-                m.Groups["indent"].Value+
-                "local __gcetPokerDespawnSq=CHAIR_DESPAWN_RANGE*CHAIR_DESPAWN_RANGE\n"+
-                m.Groups["indent"].Value+
-                "local __gcetPokerTraceSq=TRACE_RANGE*TRACE_RANGE\n"+
-                m.Groups["indent"].Value+
-                "local __gcetPokerNearAny=StreetTables.activeSpotId~=nil or SpotManager.activeSpotId~=nil",
-            "world sweep scalar coordinates");
-
-        body=ReplaceUnique(body,
-            @"(?m)^(?<indent>[ \t]*)local\s+d\s*=\s*math\s*\.\s*sqrt\s*\(\s*dx\s*\*\s*dx\s*\+\s*dy\s*\*\s*dy\s*\+\s*dz\s*\*\s*dz\s*\)[ \t]*$",
-            m=>m.Groups["indent"].Value+"local __gcetPokerDistanceSq=dx*dx+dy*dy+dz*dz\n"+
-                m.Groups["indent"].Value+
-                "if __gcetPokerDistanceSq<=__gcetPokerWakeSq then __gcetPokerNearAny=true end",
-            "per-location distance");
+        // Two observed unmodified author source variants use the same exact
+        // three comparisons: older scalar math.sqrt, current Nexus Vector4.Distance.
+        // Do not infer arbitrary distance consumers or change trace semantics.
+        var vectorDistance = Regex.IsMatch(body,
+            @"\blocal\s+d\s*=\s*Vector4\.Distance\s*\(",
+            RegexOptions.CultureInvariant);
+        if (vectorDistance)
+        {
+            body=ReplaceUnique(body,
+                @"(?m)^(?<indent>[ \t]*)for\s+_,\s*loc\s+in\s+ipairs\s*\(\s*StreetTables\.locations\s*\)\s*do",
+                m=>m.Groups["indent"].Value+
+                   "local __gcetPokerWakeRadius=wakeRadius or 25.0\n"+
+                   m.Groups["indent"].Value+
+                   "local __gcetPokerWakeSq=__gcetPokerWakeRadius*__gcetPokerWakeRadius\n"+
+                   m.Groups["indent"].Value+
+                   "local __gcetPokerSpawnSq=CHAIR_SPAWN_RANGE*CHAIR_SPAWN_RANGE\n"+
+                   m.Groups["indent"].Value+
+                   "local __gcetPokerDespawnSq=CHAIR_DESPAWN_RANGE*CHAIR_DESPAWN_RANGE\n"+
+                   m.Groups["indent"].Value+
+                   "local __gcetPokerTraceSq=TRACE_RANGE*TRACE_RANGE\n"+
+                   m.Groups["indent"].Value+
+                   "local __gcetPokerNearAny=StreetTables.activeSpotId~=nil or SpotManager.activeSpotId~=nil\n\n"+
+                   m.Value,
+                "source-verifiable world sweep loop");
+            body=ReplaceUnique(body,
+                @"(?m)^(?<indent>[ \t]*)local\s+d\s*=\s*Vector4\.Distance\s*\(\s*pos\s*,\s*Vector4\.new\s*\(\s*loc\.center\.x\s*,\s*loc\.center\.y\s*,\s*loc\.floorZ\s*,\s*1\s*\)\s*\)[ \t]*$",
+                m=>m.Groups["indent"].Value+"local dx=pos.x-loc.center.x\n"+
+                   m.Groups["indent"].Value+"local dy=pos.y-loc.center.y\n"+
+                   m.Groups["indent"].Value+"local dz=pos.z-loc.floorZ\n"+
+                   m.Groups["indent"].Value+"local __gcetPokerDistanceSq=dx*dx+dy*dy+dz*dz\n"+
+                   m.Groups["indent"].Value+
+                   "if __gcetPokerDistanceSq<=__gcetPokerWakeSq then __gcetPokerNearAny=true end",
+                "exact Vector4.Distance author expression");
+        }
+        else
+        {
+            body=ReplaceUnique(body,
+                @"(?m)^(?<indent>[ \t]*)local\s+px\s*,\s*py\s*,\s*pz\s*=\s*pos\.x\s*,\s*pos\.y\s*,\s*pos\.z[ \t]*$",
+                m=>m.Value+"\n"+m.Groups["indent"].Value+
+                    "local __gcetPokerWakeRadius=wakeRadius or 25.0\n"+
+                    m.Groups["indent"].Value+
+                    "local __gcetPokerWakeSq=__gcetPokerWakeRadius*__gcetPokerWakeRadius\n"+
+                    m.Groups["indent"].Value+
+                    "local __gcetPokerSpawnSq=CHAIR_SPAWN_RANGE*CHAIR_SPAWN_RANGE\n"+
+                    m.Groups["indent"].Value+
+                    "local __gcetPokerDespawnSq=CHAIR_DESPAWN_RANGE*CHAIR_DESPAWN_RANGE\n"+
+                    m.Groups["indent"].Value+
+                    "local __gcetPokerTraceSq=TRACE_RANGE*TRACE_RANGE\n"+
+                    m.Groups["indent"].Value+
+                    "local __gcetPokerNearAny=StreetTables.activeSpotId~=nil or SpotManager.activeSpotId~=nil",
+                "world sweep scalar coordinates");
+            body=ReplaceUnique(body,
+                @"(?m)^(?<indent>[ \t]*)local\s+d\s*=\s*math\s*\.\s*sqrt\s*\(\s*dx\s*\*\s*dx\s*\+\s*dy\s*\*\s*dy\s*\+\s*dz\s*\*\s*dz\s*\)[ \t]*$",
+                m=>m.Groups["indent"].Value+"local __gcetPokerDistanceSq=dx*dx+dy*dy+dz*dz\n"+
+                    m.Groups["indent"].Value+
+                    "if __gcetPokerDistanceSq<=__gcetPokerWakeSq then __gcetPokerNearAny=true end",
+                "per-location scalar distance");
+        }
         body=ReplaceUnique(body,@"\bd\s*<\s*CHAIR_SPAWN_RANGE\b",
             _=>"__gcetPokerDistanceSq < __gcetPokerSpawnSq","chair spawn distance");
         body=ReplaceUnique(body,@"\bd\s*>\s*CHAIR_DESPAWN_RANGE\b",
