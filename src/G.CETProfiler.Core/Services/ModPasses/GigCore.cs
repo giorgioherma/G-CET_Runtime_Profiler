@@ -167,6 +167,13 @@ internal static partial class SemanticInjectors
         var ends = Regex.Matches(text,
             @"(?m)^[ \t]*local function phoneUiOpen\(\)[ \t]*return[ \t]+phoneIsOpen\(\)[ \t]*end[ \t]*\r?$",
             RegexOptions.CultureInvariant);
+        // Older supported GigCore source/CI fixtures have no authored phone
+        // detector. The earlier blackboard/pause stages must still generate
+        // in one pass; do not manufacture a phone subsystem in those versions.
+        if (starts.Count == 0 && ends.Count == 0 &&
+            !text.Contains("phoneIsOpen(", StringComparison.Ordinal) &&
+            !text.Contains("__gcetGigPhoneOpenedRead", StringComparison.Ordinal))
+            return text;
         if (starts.Count != 1 || ends.Count != 1 ||
             starts[0].Index >= ends[0].Index)
             throw new InvalidOperationException(
@@ -209,6 +216,31 @@ internal static partial class SemanticInjectors
             "  return ok and open == true" + nl +
             "end" + nl;
         return text[..starts[0].Index] + replacement + text[ends[0].Index..];
+    }
+
+    internal static bool IsGigCorePhoneClosureComplete(string ownerFolder)
+    {
+        try
+        {
+            var source = File.ReadAllText(Path.Combine(ownerFolder, "init.lua"));
+            var phone = Regex.IsMatch(source,
+                @"(?m)^[ \t]*local function phoneIsOpen\(\)",
+                RegexOptions.CultureInvariant);
+            var alias = Regex.IsMatch(source,
+                @"(?m)^[ \t]*local function phoneUiOpen\(\)",
+                RegexOptions.CultureInvariant);
+            // The old GigCore fixture and original author variants without
+            // this service cannot require a non-existent phone read stage.
+            if (!phone && !alias)
+                return !source.Contains("__gcetGigPhoneOpenedRead", StringComparison.Ordinal);
+            if (!phone || !alias) return false;
+            return source.Contains("local function __gcetGigPhoneOpenedRead()", StringComparison.Ordinal) &&
+                   source.Contains("local ok, open = pcall(__gcetGigPhoneOpenedRead)", StringComparison.Ordinal) &&
+                   source.Contains("return ok and open == true", StringComparison.Ordinal) &&
+                   !source.Contains("pcall(function()\n    local ps = Game.GetScriptableSystemsContainer():Get(\"PhoneSystem\")", StringComparison.Ordinal);
+        }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
     }
 
     // SPECTER 1.4.1 and 1.5 share their M9->M10 handoff.

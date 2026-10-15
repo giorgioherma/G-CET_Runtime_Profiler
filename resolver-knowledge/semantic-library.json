@@ -4881,9 +4881,7 @@
           "__gcetGigBoards:Get(defs.UI_System)",
           "__gcetGigBoards:Get(defs.PhotoMode)",
           "local function __gcetGigCoreRefreshPausedFrame()",
-          "pcall(__gcetGigCoreRefreshPausedFrame)",
-          "local function __gcetGigPhoneOpenedRead()",
-          "pcall(__gcetGigPhoneOpenedRead)"
+          "pcall(__gcetGigCoreRefreshPausedFrame)"
         ],
         "ownerAnyGroups": [
           [
@@ -4916,16 +4914,11 @@
             "includes": [
               "pausedThisFrame = computePauseState()"
             ]
-          },
-          {
-            "function": "phoneIsOpen",
-            "includes": [
-              "pcall(__gcetGigPhoneOpenedRead)"
-            ]
           }
         ],
         "sourceCompletionAuthoritative": true,
-        "composablePartialStages": true
+        "composablePartialStages": true,
+        "completionVerifier": "GIGCORE_PHONE_GUARD_V2"
       },
       "behavior": {
         "handler": "SEMANTIC_INVOCATION_LOCAL_BLACKBOARD_REUSE",
@@ -4939,7 +4932,7 @@
           "partialStageUpgrade",
           "phoneIsOpenSameFrameNoPerTickPcallClosure"
         ],
-        "note": "The single authoritative rule applies BOTH invocation-local blackboard reuse and protected pause-refresh closure reuse from untouched GigCore source. Already-optimized and partially optimized source upgrades only missing stages; original tick timing, pcall protection and gig lifecycle are preserved. Same-pass generic SHARED_PROVIDER_READ rewrites are accepted as proven getter equivalents. Legacy direct-assignment frame drivers require only the board optimization; guarded drivers additionally reuse the protected closure. Added incremental Lua lane A closure reuse in author phone-open probe; PhoneSystem queries and phone/menu wake remain per-frame, no cross-session native handle cached, failed accessor still returns false."
+        "note": "The single authoritative rule applies BOTH invocation-local blackboard reuse and protected pause-refresh closure reuse from untouched GigCore source. Already-optimized and partially optimized source upgrades only missing stages; original tick timing, pcall protection and gig lifecycle are preserved. Same-pass generic SHARED_PROVIDER_READ rewrites are accepted as proven getter equivalents. Legacy direct-assignment frame drivers require only the board optimization; guarded drivers additionally reuse the protected closure. Added incremental Lua lane A closure reuse in author phone-open probe; PhoneSystem queries and phone/menu wake remain per-frame, no cross-session native handle cached, failed accessor still returns false. Historical author variants lacking the phone function retain original A/B one-pass generation; the separate phone v2 completion verifier treats the absent subsystem as not applicable, not mandatory. Do not infer the absent service from markers."
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,

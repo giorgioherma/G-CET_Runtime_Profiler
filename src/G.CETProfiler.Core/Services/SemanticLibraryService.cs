@@ -404,6 +404,8 @@ internal sealed class SemanticLibraryService
                 SemanticInjectors.IsAppearanceMenuModSqueezeComplete(graph.OwnerFolder),
             "ZIGGY_NATIVE_SNAPSHOT_V6" =>
                 ZiggyProximitySource.IsNativeSnapshotCompletionSatisfied(graph.OwnerFolder),
+            "GIGCORE_PHONE_GUARD_V2" =>
+                SemanticInjectors.IsGigCorePhoneClosureComplete(graph.OwnerFolder),
             _ => false
         };
         if (verifiedCompletion.HasValue)
