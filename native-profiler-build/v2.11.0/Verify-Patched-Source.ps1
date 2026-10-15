@@ -84,6 +84,29 @@ try {
         throw "FunctionOverride instance/source/deep attribution was not patched."
     }
 
+    # Class-qualified native allocation evidence must be captured at the
+    # marshalling entrypoint, never by dereferencing RTTI in the allocator.
+    $nativeProxy=Get-Content ".\src\scripting\NativeProxy.cpp" -Raw
+    $nativeGcPatch=Get-Content (Join-Path $PSScriptRoot 'Patch-LuaJIT-GC-Source.ps1') -Raw
+    foreach($token in @('NativeClassHash','ggc_trace_class_set',
+                        'uint64_t oldSize, newSize, methodHash, classHash',
+                        'MethodScope(uint32_t boundary, uint64_t methodHash, uint64_t classHash')) {
+        if(!$profilerHeader.Contains($token) -and !$nativeGcPatch.Contains($token)) {
+            throw "Native class-qualified marshalling probe missing: $token"
+        }
+    }
+    if(([regex]::Matches($functionOverride,
+            'apFunction->parent \? apFunction->parent->GetName\(\)\.hash : 0ULL').Count) -ne 2) {
+        throw 'Both RTTI FunctionOverride argument-marshalling boundaries must carry owning class hash'
+    }
+    if(!$nativeProxy.Contains('0ULL, // NativeProxy func is not proven to be a CClassFunction')) {
+        throw 'NativeProxy must preserve unknown class rather than casting unproven function type'
+    }
+    if(!$profilerHeader.Contains('s.classHash') -or !$profilerHeader.Contains('NativeMethodHash,NativeClassHash')) {
+        throw 'Class hash not exported in matching bounded sample CSV'
+    }
+    "Native class-qualified marshalling source ABI verification: PASS"
+
     "Callback identity/source/deep/frame-multiplicity verification: PASS"
 }
 finally {
