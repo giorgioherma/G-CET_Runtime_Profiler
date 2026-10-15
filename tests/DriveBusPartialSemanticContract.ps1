@@ -195,6 +195,22 @@ $routed | Set-Content -LiteralPath $corePath -Encoding utf8
 $cron | Set-Content -LiteralPath $cronPath -Encoding utf8
 $init | Set-Content -LiteralPath $initPath -Encoding utf8
 $hashBefore=(Get-FileHash $corePath -Algorithm SHA256).Hash
+# A previously routed DriveBus with missing timer stages must also
+# remain eligible when the capture has no DriveBus callback records.
+$absentCapture | Set-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Encoding utf8
+try {
+    $partialNoCapture=Generate
+    $partialNoCaptureFiles=@(RuleFiles $partialNoCapture)
+    if ($partialNoCaptureFiles.Count -ne 2 -or
+        'DriveBus/Modules/core.lua' -in $partialNoCaptureFiles -or
+        'DriveBus/External/Cron.lua' -notin $partialNoCaptureFiles -or
+        'DriveBus/init.lua' -notin $partialNoCaptureFiles) {
+        throw "Capture-absent DriveBus partial upgrade must preserve existing routed core and emit only timer stages: $($partialNoCaptureFiles -join ',')"
+    }
+}
+finally {
+    $measuredInput | Set-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Encoding utf8
+}
 $partial=Generate
 $f2=@(RuleFiles $partial)
 if ($f2.Count -ne 2 -or
@@ -210,6 +226,20 @@ if ((Get-FileHash $corePath -Algorithm SHA256).Hash -ne $hashBefore) {
 (ZipText $partial.pass.ZipPath 'DriveBus/init.lua') |
     Set-Content -LiteralPath $initPath -Encoding utf8
 
+# Once all source stages are present, an absent callback row must
+# not offer this already-complete mod again.
+$absentCapture | Set-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Encoding utf8
+try {
+    $completeAbsent=(& $exe --capture $capture --mods $mods --json | ConvertFrom-Json)
+    if (!$completeAbsent.ok) { throw 'DriveBus complete empty-capture analysis failed' }
+    $completeAbsentReport=Get-Content (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
+    if (@($completeAbsentReport.semanticSourceOnlyCandidates | Where-Object {$_.ruleId -eq 'drivebus'}).Count -ne 0) {
+        throw 'Already complete DriveBus remains falsely source-only eligible'
+    }
+}
+finally {
+    $measuredInput | Set-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Encoding utf8
+}
 $analyzed=(& $exe --capture $capture --mods $mods --json | ConvertFrom-Json)
 if (!$analyzed.ok) { throw 'DriveBus completed source analysis failed' }
 $report=Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
