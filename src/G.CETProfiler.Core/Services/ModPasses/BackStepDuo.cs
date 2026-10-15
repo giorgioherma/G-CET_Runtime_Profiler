@@ -23,7 +23,7 @@ internal static partial class SemanticInjectors
             t.Contains("Observe(\"PlayerPuppet\", \"OnAction\", gcetBackStepDuoOnAction)", StringComparison.Ordinal) &&
             Regex.Matches(t, @"settings\.EnableDash\s*=\s*state\s*\r?\n\s*__gcetBackStepDuoSync\(\)", RegexOptions.CultureInvariant).Count == 1 &&
             Regex.Matches(t, @"__gcetBackStepDuoHandle\s*=\s*handle;\s*__gcetBackStepDuoSync\(\)", RegexOptions.CultureInvariant).Count == 2 &&
-            Regex.Matches(t, @"\bsettings\.EnableDash\s*=", RegexOptions.CultureInvariant).Count == 2;
+            Regex.Matches(t, @"\bsettings\.EnableDash\s*=(?![=])", RegexOptions.CultureInvariant).Count == 2;
     }
 
     private static SemanticInjectionResult ApplyBackStepDuo(
@@ -40,7 +40,7 @@ internal static partial class SemanticInjectors
             return SemanticInjectionResult.Skip("BackStepDuo action dormancy already source-complete.");
         }
         var source = file.Text;
-        if (Regex.Matches(source, @"\bsettings\.EnableDash\s*=", RegexOptions.CultureInvariant).Count != 2 ||
+        if (Regex.Matches(source, @"\bsettings\.EnableDash\s*=(?![=])", RegexOptions.CultureInvariant).Count != 2 ||
             !source.Contains("settings.EnableDash = state", StringComparison.Ordinal) ||
             !source.Contains("settings.EnableDash = loaded.EnableDash", StringComparison.Ordinal) ||
             !source.Contains("registerInput(\"InstantLookBack\"", StringComparison.Ordinal))
@@ -105,7 +105,7 @@ internal static partial class SemanticInjectors
                 ";fallback=" + text.Contains("Observe(\"PlayerPuppet\", \"OnAction\", gcetBackStepDuoOnAction)", StringComparison.Ordinal) +
                 ";switchCount=" + Regex.Matches(text, @"settings\.EnableDash\s*=\s*state\s*\r?\n\s*__gcetBackStepDuoSync\(\)", RegexOptions.CultureInvariant).Count +
                 ";handles=" + Regex.Matches(text, @"__gcetBackStepDuoHandle\s*=\s*handle;\s*__gcetBackStepDuoSync\(\)", RegexOptions.CultureInvariant).Count +
-                ";writerCount=" + Regex.Matches(text, @"\bsettings\.EnableDash\s*=", RegexOptions.CultureInvariant).Count);
+                ";writerCount=" + Regex.Matches(text, @"\bsettings\.EnableDash\s*=(?![=])", RegexOptions.CultureInvariant).Count);
         context.Write(file, text);
         return SemanticInjectionResult.Success(
             "Preserved six-action routing and native Observe fallback; paused only the optional BackStepDuo 0-Engine subscriber when EnableDash is off, with immediate author switch resume and safe old runtime fallback.");
@@ -118,5 +118,5 @@ internal static partial class SemanticInjectors
         t.Contains("Observe(\"PlayerPuppet\", \"OnAction\", gcetBackStepDuoOnAction)", StringComparison.Ordinal) &&
         Regex.Matches(t, @"settings\.EnableDash\s*=\s*state\s*\r?\n\s*__gcetBackStepDuoSync\(\)", RegexOptions.CultureInvariant).Count == 1 &&
         Regex.Matches(t, @"__gcetBackStepDuoHandle\s*=\s*handle;\s*__gcetBackStepDuoSync\(\)", RegexOptions.CultureInvariant).Count == 2 &&
-        Regex.Matches(t, @"\bsettings\.EnableDash\s*=", RegexOptions.CultureInvariant).Count == 2;
+        Regex.Matches(t, @"\bsettings\.EnableDash\s*=(?![=])", RegexOptions.CultureInvariant).Count == 2;
 }
