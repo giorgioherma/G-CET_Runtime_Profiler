@@ -9,6 +9,108 @@ namespace GCETRuntimeProfiler.Core.Services;
 // Unrecognized source shape fails closed; no post-generation repair.
 internal static class PokerPass4Source
 {
+    // Separate controller and world-sweep proof. The previously installed
+    // PASS4/PASS4C version uses non-G-CET local names but is already complete:
+    // accepting only an exact set of lane, wake, fallback and scan signatures
+    // avoids ever rolling it back to a reconstructed "canonical" variant.
+    internal static bool IsComplete(string ownerFolder)
+    {
+        try
+        {
+            return IsControllerComplete(File.ReadAllText(Path.Combine(ownerFolder, "init.lua"))) &&
+                IsWorldComplete(File.ReadAllText(Path.Combine(ownerFolder, "StreetTables.lua")));
+        }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
+    }
+
+    private static bool IsControllerComplete(string text)
+    {
+        var originalState = new[] {
+            "StreetTables.registerMapPins()", "Cron.Update(",
+            "SeatController.update(", "StreetTables.update(",
+            "InteractionMenu.update()", "CardRenderer.update(", "TableTalk.update("
+        };
+        if (originalState.Any(token => !text.Contains(token, StringComparison.Ordinal)) ||
+            !text.Contains("Schedule.EveryFrame", StringComparison.Ordinal) ||
+            !text.Contains("Schedule.Every", StringComparison.Ordinal) ||
+            !text.Contains("StreetGamesPoker.ready", StringComparison.Ordinal))
+            return false;
+
+        var jobs = new[] {
+            "poker.world_far", "poker.world_near", "poker.seat_near", "poker.realtime"
+        };
+        if (jobs.Any(job => Regex.Matches(text, @"['""]" + Regex.Escape(job) + @"['""]",
+                RegexOptions.CultureInvariant).Count != 1))
+            return false;
+
+        var historical = Regex.IsMatch(text,
+            @"\bTryAttachPokerPass4\s*=\s*function\s*\(",
+            RegexOptions.CultureInvariant) &&
+            Regex.IsMatch(text, @"\bif\s+pass4Attached\s+then\s+return\s+end",
+                RegexOptions.CultureInvariant) &&
+            Regex.IsMatch(text, @"\bpass4Attached\s*=\s*true\b",
+                RegexOptions.CultureInvariant);
+        var generated = text.Contains("__gcetPokerAttachPass4=function", StringComparison.Ordinal) &&
+            Regex.IsMatch(text, @"\bif\s+__gcetPokerAttached\s+then\s+return\s+end",
+                RegexOptions.CultureInvariant) &&
+            Regex.IsMatch(text, @"\b__gcetPokerAttached\s*=\s*true\b",
+                RegexOptions.CultureInvariant);
+        return (historical || generated) &&
+            Regex.IsMatch(text, @"\bLogger\.info\s*\(\s*['""]pass4_scheduler_attached['""]",
+                RegexOptions.CultureInvariant) &&
+            Regex.IsMatch(text,
+                @"\b(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]\s*,\s*function",
+                RegexOptions.CultureInvariant) &&
+            Regex.IsMatch(text, @"\bif\s+not\s+StreetGamesPoker\.ready\s+or\s+inMenu\s+or\s+not\s+inGame\s+then\s+return\s+end",
+                RegexOptions.CultureInvariant) &&
+            Regex.IsMatch(text, @"\bSeatController\.activeSpotId\s*~=\s*nil",
+                RegexOptions.CultureInvariant) &&
+            Regex.IsMatch(text, @"\bStreetTables\.activeSpotId\s*~=\s*nil",
+                RegexOptions.CultureInvariant);
+    }
+
+    private static bool IsWorldComplete(string text)
+    {
+        var update = Regex.Match(text,
+            @"(?m)^\s*function\s+StreetTables\.update\s*\(\s*[A-Za-z_]\w*\s*,\s*wakeRadius\s*\)",
+            RegexOptions.CultureInvariant);
+        if (!update.Success || update.NextMatch().Success)
+            return false;
+        var tail = text[update.Index..];
+        var stop = Regex.Match(tail,
+            @"(?m)^return\s+StreetTables\s*$", RegexOptions.CultureInvariant);
+        if (!stop.Success || stop.NextMatch().Success)
+            return false;
+        var body = tail[..stop.Index];
+
+        var canonical = body.Contains("__gcetPokerWakeSq", StringComparison.Ordinal) &&
+            body.Contains("__gcetPokerNearAny", StringComparison.Ordinal) &&
+            body.Contains("__gcetPokerDistanceSq", StringComparison.Ordinal);
+        var historical = Regex.IsMatch(body, @"\blocal\s+wakeSq\s*=\s*wake\s*\*\s*wake\b",
+                RegexOptions.CultureInvariant) &&
+            Regex.IsMatch(body, @"\blocal\s+nearAny\s*=\s*StreetTables\.activeSpotId",
+                RegexOptions.CultureInvariant) &&
+            Regex.IsMatch(body, @"\blocal\s+dSq\s*=\s*dx\s*\*\s*dx\s*\+\s*dy\s*\*\s*dy\s*\+\s*dz\s*\*\s*dz",
+                RegexOptions.CultureInvariant);
+        if (!canonical && !historical) return false;
+        var scalar = canonical ? "__gcetPokerDistanceSq" : "dSq";
+        var spawn = canonical ? "__gcetPokerSpawnSq" : "spawnSq";
+        var despawn = canonical ? "__gcetPokerDespawnSq" : "despawnSq";
+        var trace = canonical ? "__gcetPokerTraceSq" : "traceSq";
+        var ret = canonical ? "__gcetPokerNearAny" : "nearAny";
+        return body.Contains("if not player then return false end", StringComparison.Ordinal) &&
+            Regex.IsMatch(body, @"\bif\s+" + scalar + @"\s*<\s*" + spawn, RegexOptions.CultureInvariant) &&
+            Regex.IsMatch(body, @"\belseif\s+" + scalar + @"\s*>\s*" + despawn, RegexOptions.CultureInvariant) &&
+            Regex.IsMatch(body, @"\bif\s+doTrace\s+and\s+" + scalar + @"\s*<\s*" + trace, RegexOptions.CultureInvariant) &&
+            Regex.IsMatch(body, @"\breturn\s+" + ret + @"\b", RegexOptions.CultureInvariant) &&
+            body.Contains("spawnChair(loc)", StringComparison.Ordinal) &&
+            body.Contains("despawnChair(loc)", StringComparison.Ordinal) &&
+            body.Contains("traceApproach", StringComparison.Ordinal) &&
+            !Regex.IsMatch(body, @"\bVector4\.Distance\s*\(|\bmath\.sqrt\s*\(",
+                RegexOptions.CultureInvariant);
+    }
+
     internal static SemanticInjectionResult Apply(SemanticPatchContext context)
     {
         var init=context.FindFile("init.lua",
