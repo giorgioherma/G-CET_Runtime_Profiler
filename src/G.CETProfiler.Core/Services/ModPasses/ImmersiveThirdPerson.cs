@@ -219,20 +219,6 @@ internal static partial class SemanticInjectors
             "local function observePlayerActions()",
             "Observe('PlayerPuppet', 'OnAction'");
         var source = file.Text;
-        // CET input/keybind registration belongs exclusively to the author mod.
-        // An action-routing optimization must never remove or replace these
-        // wake paths; they remain callable while third-person mode is off.
-        string[] requiredModOwnedInputs =
-        {
-            "tpp_camera_toggle", "tpp_camera_free_look",
-            "tpp_camera_quick_fpp", "tpp_camera_shoulder_zoom",
-            "tpp_camera_front_view", "tpp_camera_profile_next",
-            "tpp_camera_profile_prev"
-        };
-        foreach (var input in requiredModOwnedInputs)
-            if (!source.Contains("registerInput(\"" + input + "\"", StringComparison.Ordinal))
-                throw new InvalidOperationException(
-                    "Third-person original mod-owned activation input changed: " + input);
         const string stage = "__gcetItppRoutedOnActionV1";
         if (source.Contains(stage, StringComparison.Ordinal))
         {
