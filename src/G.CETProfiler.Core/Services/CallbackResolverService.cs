@@ -42,8 +42,15 @@ internal static class CallbackResolverService
         string? semanticLibraryPath)
     {
         using var handoff = JsonDocument.Parse(File.ReadAllText(handoffPath));
+        // A hot native-to-Lua registration can have zero *measured Lua*
+        // exclusive time when its author callback immediately returns.
+        // Excluding that row would prevent source-proven frame/action
+        // consolidation, the only generic fix for the native dispatch itself.
+        // Do not lower semantic/runtime work thresholds or admit zero-call rows.
         var callbacks = ReadCallbacks(handoff.RootElement)
-            .Where(x => !x.Infrastructure && x.ExclusiveMsPerSecond > 0)
+            .Where(x => !x.Infrastructure &&
+                (x.ExclusiveMsPerSecond > 0 ||
+                 IsNativeDispatchCandidateWithMeasuredCalls(x)))
             .OrderByDescending(x => x.ExclusiveMsPerSecond)
             .ThenByDescending(x => x.CallsPerSecond)
             .ToList();
@@ -475,6 +482,9 @@ internal static class CallbackResolverService
                 callbackOriented = true,
                 familyFirst = true,
                 exhaustiveMeasuredCallbacks = true,
+                // Zero exclusive Lua milliseconds do not imply zero native
+                // dispatch overhead if the callback still fires.
+                nativeDispatchZeroLuaCostAdmission = "POSITIVE_CALL_RATE_AND_SOURCE_PROVEN_FRAME_OR_ONACTION_REGISTRATION",
                 genericPatternsBeforeSemanticLibrary = true,
                 behaviorChangingCadenceRequiresSemanticRule = true,
                 liveSourcesReadOnly = true,
@@ -5036,6 +5046,25 @@ internal static class CallbackResolverService
         }
 
         return result;
+    }
+
+    private static bool IsNativeDispatchCandidateWithMeasuredCalls(
+        CallbackMetric callback)
+    {
+        if (callback.CallsPerSecond <= 0)
+            return false;
+
+        var family = ClassifyCallbackFamily(callback.Kind, callback.Target);
+        if (family is "ONUPDATE" or "ONDRAW")
+            return callback.Kind.Equals("event", StringComparison.OrdinalIgnoreCase);
+
+        if (family != "ONACTION")
+            return false;
+
+        return callback.Kind.Equals("observe", StringComparison.OrdinalIgnoreCase) ||
+               callback.Kind.Equals("ObserveBefore", StringComparison.OrdinalIgnoreCase) ||
+               callback.Kind.Equals("ObserveAfter", StringComparison.OrdinalIgnoreCase) ||
+               callback.Kind.Equals("override", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string ClassifyCallbackFamily(string kind, string target)
