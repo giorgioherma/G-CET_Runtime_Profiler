@@ -56,6 +56,19 @@ end
 return Core
 '@
 
+Write-ModFile 'DriveBus' 'Modules/event.lua' @'
+local Event={}
+function Event:Init()
+    Cron.Every(0.1, {tick=1}, function(timer)
+        self:CheckAllEvents()
+    end)
+end
+function Event:CheckAllEvents()
+    -- Existing original bus discovery and state transition observer.
+end
+return Event
+'@
+
 Write-ModFile 'DriveBus' 'External/Cron.lua' @'
 local timers = {}
 function Cron.After(timeout, callback, data) end
@@ -933,6 +946,8 @@ try{
  function Z($n){$e=$zip.GetEntry($n);if(!$e){throw "ZIP entry missing: $n"};$r=[IO.StreamReader]::new($e.Open());try{$r.ReadToEnd()}finally{$r.Dispose()}}
  $b='bin/x64/plugins/cyber_engine_tweaks/mods/'
  $x=Z($b+'DriveBus/Modules/core.lua');foreach($t in @('gcetDriveBusOnAction','SubscribeAction','QuickExit','ChoiceScrollDown')){if($x-notmatch[regex]::Escape($t)){throw "DriveBus missing $t"}}
+ if($x-notmatch'__gcetDriveBusActionDormancyV2' -or $x-notmatch'pcall\(handle\.SetActive, needed\)'){throw 'DriveBus native subscriber dormancy stage missing.'}
+ $x=Z($b+'DriveBus/Modules/event.lua');if($x-notmatch'__gcetDriveBusDiscoveryWakeV2' -or $x-notmatch'DAB\.core_obj\.__gcetSyncActionDormancy'){throw 'DriveBus independent discovery wake stage missing.'}
  $x=Z($b+'DriveBus/External/Cron.lua');if($x-notmatch'function Cron\.HasActiveTimers\(\)'){throw 'DriveBus active-timer probe missing.'}
  $x=Z($b+'DriveBus/init.lua');if($x-notmatch'if Cron\.HasActiveTimers\(\) then Cron\.Update\(delta\) end'){throw 'DriveBus idle Cron gate missing.'}
  $x=Z($b+'AutoLoot/init.lua');foreach($t in @('gcetAutoLootOnAction','SubscribeAction','UI_DPadWeapons')){if($x-notmatch[regex]::Escape($t)){throw "AutoLoot missing $t"}}
