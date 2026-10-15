@@ -355,6 +355,9 @@
         }
       ],
       "sourceProof": {
+      "completionVerifier": "POKER_PASS4_TWO_FILE",
+      "composablePartialStages": true,
+      "sourceCompletionAuthoritative": true,
         "ownerAll": [
           "StreetGamesPoker",
           "PokerHUD",
@@ -2282,6 +2285,9 @@
         }
       ],
       "sourceProof": {
+      "completionVerifier": "DRIVEBUS_ROUTING_TIMERS",
+      "composablePartialStages": true,
+      "sourceCompletionAuthoritative": true,
         "ownerAll": [
           "function Core:SetObserve()",
           "exception_in_choice_list",
