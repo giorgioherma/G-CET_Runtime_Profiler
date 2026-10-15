@@ -5198,10 +5198,13 @@
         "alreadySatisfiedMarker": "G-CET semantic:immersive-third-person-action-routing",
         "expectedMarkerFileCount": 1,
         "sourceCompletionAuthoritative": true,
+        "completionVerifier": "ITPP_ACTION_DORMANCY_V2",
         "satisfiedAll": [
           "__gcetItppRoutedOnActionV1",
+          "__gcetItppActionDormancyV2",
           "zeroEngineMod.SubscribeAction",
-          "decodeType = false"
+          "decodeType = false",
+          "__gcetItppSyncActionDormancy"
         ]
       },
       "behavior": {
