@@ -88,7 +88,7 @@ internal static partial class SemanticInjectors
     private static bool HasDriveBusExistingDiscoveryWake(string events) =>
         events.Contains("__gcetDriveBusDiscoveryWakeV2", StringComparison.Ordinal) &&
         Regex.IsMatch(events,
-            @"self:CheckAllEvents\s*\(\s*\)\s*\r?\n\s*-- __gcetDriveBusDiscoveryWakeV2\s*\r?\n\s*if\s+DAB\.core_obj\s+and\s+type\s*\(\s*DAB\.core_obj\.__gcetSyncActionDormancy\s*\)\s*==\s*['""]function['""]",
+            @"self:CheckAllEvents\s*\(\s*\)[ \t]*\r?\n[ \t]*-- __gcetDriveBusDiscoveryWakeV2[^\r\n]*\r?\n[ \t]*if[ \t]+DAB\.core_obj[ \t]+and[ \t]+type\s*\(\s*DAB\.core_obj\.__gcetSyncActionDormancy\s*\)\s*==\s*['""]function['""]",
             RegexOptions.CultureInvariant);
 
     private static string AddDriveBusActionWakeGate(string core)
