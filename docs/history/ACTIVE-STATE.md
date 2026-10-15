@@ -1,5 +1,15 @@
 # Active project state — chronological engineering history
 
+
+## 2026-10-15 native-dispatch dormancy admission — original source restored, CI verified
+
+- Reverted the earlier session's unrequested CyberTrials icon and Illegal Mechanic coordinate caches, incremental injector changes and supporting documentation. Commit [`18eb97d`](https://github.com/giorgioherma/G-CET_Runtime_Profiler/commit/18eb97df86ac4bcb124cf779f24a5d1d4b151610) restores a file tree **identical** to pre-session commit `4bddd45d` (zero changed files in GitHub compare); history was preserved.
+- Source audit distinguishes independent CET native callback registration from near-free Lua early return and from `0-Engine`-routed callbacks whose `Observe("PlayerPuppet","OnAction")` survives only as fallback. The 62-mod list is a source-audit checklist, **not** permission to replace working current mod activation. No new caches or individual mod rewrites are in this follow-up.
+- Corrected central Resolver admission: a registered onUpdate/onDraw/OnAction callback with positive calls/sec and **zero rounded exclusive Lua ms/s** is no longer hidden from generic source-proven shared-native-dispatch consolidation. Newly admitted zero-cost callbacks allow only `FRAME_DISPATCH_CONSOLIDATION` and proven `ACTION_ROUTING_*`; no shared-provider rewrites, Lua guard hoists, UI work, or unrelated passes. All original source-fallback, input/consumer, wake and existing semantic thresholds remain.
+- [**CI #38670583305**](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38670583305) **SUCCESS all four jobs**. New `NativeDispatchZeroLuaCostContract.ps1` verified source-to-ZIP frame/action routing, already-routed and unsafe negative cases, unchanged guard order and unchanged installed sources. Verified both `G-CET-Resolver-v1.2.7` (artifact `11944531048`) and `G-CET-Runtime-Profiler-v1.2.7` (artifact `11944541123`) exist. Native payload and product version unchanged. No in-game A/B savings established.
+- [Detailed Resolver research](../resolver/research/NATIVE-DISPATCH-DORMANCY-2026-10-15.md). Remaining 62-mod cases require source-by-source wake/native routing proof; **not** implemented merely because a checklist entry exists.
+
+
 ## 2026-10-14 PASS2 root-cause and real v5 quest idle passes — verified CI
 
 - User's `CET-20261014-194021_PASS2_GC_OPTIMIZATIONS_TEST.zip` (252.607s) shows Tunnel **86 spikes**, median inter-spike **2.5496s**, average **5.7469ms/s** (formerly 5.7247ms/s). Source+deep traces identify `status()` → navigation/mappin diagnostics → `json.encode` and status file writes. The prior 8s gate required `not H.questArmed`, but `tunnel-journal.lua` sets `H.questArmed=true` automatically on *quest offering*, not acceptance. v4 was functionally bypassed. New version-fluid v5 uses **60s diagnostic heartbeat** only while safely outside, no actual `visit`, inputs, recovery or error; original journal offer, native wake and active timing unaffected.
