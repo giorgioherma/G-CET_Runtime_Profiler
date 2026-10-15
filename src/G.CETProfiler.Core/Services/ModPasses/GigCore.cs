@@ -128,6 +128,11 @@ internal static partial class SemanticInjectors
             }
         }
 
+        // Move the original per-frame PhoneSystem protected closure to a
+        // stable module thunk. Same fresh native reads and exception fallback:
+        // do NOT cache PhoneSystem across sessions or gate the phone wake.
+        text = ReduceGigCorePhoneClosure(text);
+
         if (text == original)
             return SemanticInjectionResult.Skip(
                 "GigCore blackboard and pause-guard source stages are already complete.");
@@ -137,6 +142,48 @@ internal static partial class SemanticInjectors
             "and reused one protected pause-update function per frame; existing " +
             "gig timers, session/reconcile logic, callback order and exception " +
             "handling are preserved.");
+    }
+
+    private static string ReduceGigCorePhoneClosure(string text)
+    {
+        const string readName = "__gcetGigPhoneOpenedRead";
+        const string newCall = "local ok, open = pcall(__gcetGigPhoneOpenedRead)";
+        if (text.Contains(newCall, StringComparison.Ordinal))
+        {
+            if (!text.Contains("local function " + readName + "()", StringComparison.Ordinal) ||
+                text.Contains("pcall(function()\n    local ps = Game.GetScriptableSystemsContainer():Get(\"PhoneSystem\")",
+                              StringComparison.Ordinal))
+                throw new InvalidOperationException("GigCore phone protected source stage is partial.");
+            return text;
+        }
+        if (text.Contains("local function " + readName + "()", StringComparison.Ordinal))
+            throw new InvalidOperationException("GigCore phone read helper exists without its callsite.");
+        var pattern = new Regex(
+            @"(?m)^local function phoneIsOpen\(\)[ \t]*\r?\n" +
+            @"[ \t]*local open[ \t]*\r?\n" +
+            @"[ \t]*pcall\(function\(\)\)[ \t]*\r?\n" +
+            @"[ \t]*local ps = Game\.GetScriptableSystemsContainer\(\):Get\((?<q>[""'])PhoneSystem\k<q>\)[ \t]*\r?\n" +
+            @"[ \t]*if ps then open = ps:IsPhoneOpened\(\) end[ \t]*\r?\n" +
+            @"[ \t]*end\)[ \t]*\r?\n" +
+            @"[ \t]*return open == true[ \t]*\r?\n" +
+            @"end[ \t]*\r?$", RegexOptions.CultureInvariant);
+        var matches = pattern.Matches(text);
+        if (matches.Count != 1)
+            throw new InvalidOperationException(
+                "GigCore author phone-open protected read changed; refusing source rewrite.");
+        var nl = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        var replacement =
+            "local function __gcetGigPhoneOpenedRead()" + nl +
+            "  local ps = Game.GetScriptableSystemsContainer():Get(\"PhoneSystem\")" + nl +
+            "  return ps and ps:IsPhoneOpened()" + nl +
+            "end" + nl +
+            "local function phoneIsOpen()" + nl +
+            "  local ok, open = pcall(__gcetGigPhoneOpenedRead)" + nl +
+            "  return ok and open == true" + nl +
+            "end";
+        var m = matches[0];
+        var trailingCr = m.Value.EndsWith("\r", StringComparison.Ordinal) ? "\r" : "";
+        return text[..m.Index] + replacement + trailingCr + text[(m.Index+m.Length)..];
     }
 
     // SPECTER 1.4.1 and 1.5 share their M9->M10 handoff.

@@ -375,3 +375,44 @@ try { [void](Rewrite 'UpgradeNativeInteractionsRealtimeProbe' $nativeDrift) }
 catch { $nativeRefused = $true }
 if (!$nativeRefused) { throw 'nativeInteractions drifted activity writer was not rejected' }
 Write-Host 'nativeInteractions existing PASS9/10 incremental safe realtime-status short-circuit and source drift PASS'
+
+
+# GigCore: eliminate one Lua closure per-frame, but retain its fresh native
+# PhoneSystem state read and the original failed-read == false behavior.
+$gigPhone = @'
+function GigCore.registerUIObservers() end
+local function phoneIsOpen()
+  local open
+  pcall(function()
+    local ps = Game.GetScriptableSystemsContainer():Get("PhoneSystem")
+    if ps then open = ps:IsPhoneOpened() end
+  end)
+  return open == true
+end
+local function phoneUiOpen() return phoneIsOpen() end
+'@
+$gigDone = Rewrite 'ReduceGigCorePhoneClosure' $gigPhone
+foreach($need in @('local function __gcetGigPhoneOpenedRead()',
+    'local ok, open = pcall(__gcetGigPhoneOpenedRead)',
+    'return ok and open == true',
+    'return ps and ps:IsPhoneOpened()',
+    'local function phoneUiOpen() return phoneIsOpen() end')) {
+    if (!$gigDone.Contains($need)) {throw "GigCore phone closure stage missing: $need"}
+}
+if ((Rewrite 'ReduceGigCorePhoneClosure' $gigDone) -cne $gigDone) {
+    throw 'GigCore phone closure source upgrade was not idempotent'
+}
+$gigCRLF = $gigPhone.Replace("`n", "`r`n")
+if (!(Rewrite 'ReduceGigCorePhoneClosure' $gigCRLF).Contains('pcall(__gcetGigPhoneOpenedRead)')) {
+    throw 'GigCore phone source CRLF variant was not accepted'
+}
+$gigQuote = $gigPhone.Replace('"PhoneSystem"', "'PhoneSystem'")
+if (!(Rewrite 'ReduceGigCorePhoneClosure' $gigQuote).Contains('pcall(__gcetGigPhoneOpenedRead)')) {
+    throw 'GigCore phone author equivalent quote variant was not accepted'
+}
+$gigDrift = $gigPhone.Replace('ps:IsPhoneOpened()', 'ps:IsPhoneOpenedCached()')
+$gigRefused = $false
+try { [void](Rewrite 'ReduceGigCorePhoneClosure' $gigDrift) }
+catch { $gigRefused=$true }
+if (!$gigRefused) { throw 'GigCore native phone accessor drift was not rejected' }
+Write-Host 'GigCore phone closure hoisting: original, CRLF, quote, idempotence, accessor drift PASS'

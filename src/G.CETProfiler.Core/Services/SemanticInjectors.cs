@@ -26,6 +26,7 @@ internal static partial class SemanticInjectors
             "backstep-duo" or
             "specter-recovery-prerequisite-reads" or
             "nativeinteractions" or
+            "gigcore-blackboard-once" or
             "air-backflip";
         if (context.OwnerAlreadyMarked() &&
             !candidate.StageComposed && !versionFluidUpgrade)
