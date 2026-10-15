@@ -2296,7 +2296,7 @@
           "Cron.Update(delta)"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:drivebus",
-        "expectedMarkerFileCount": 3,
+        "expectedMarkerFileCount": 4,
         "ownerAnyGroups": [
           [
             "self:ChoiceAction(action_name",
@@ -2329,7 +2329,9 @@
           "choiceInput",
           "mountInput",
           "consumerSemantics",
-          "timerDormancy"
+          "timerDormancy",
+          "sourceDrivenSubscriberDormancy",
+          "existingDiscoveryTimerWake"
         ],
         "actions": [
           "QuickExit",

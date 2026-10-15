@@ -206,9 +206,17 @@ if (!$guarded.Contains('if Cron.HasActiveTimers() then Cron.Update(delta) end') 
     throw 'Pristine DriveBus timer guard incomplete'
 }
 
-# Already routed, otherwise pristine: never reroute, only the TWO missing
-# Cron/initialization source stages. Existing core file stays byte-identical.
-$routed | Set-Content -LiteralPath $corePath -Encoding utf8
+# Simulate an already-routed historical v1 source without the new C stage.
+# Preserve its old route and existing native fallback; add only missing
+# stage postconditions with one generation pass.
+$olderRouted=[regex]::Replace($routed, '(?ms)\r?\n    -- __gcetDriveBusActionDormancyV2:.*?^    end\r?\n', '')
+$olderRouted=$olderRouted.Replace('__gcetDriveBusActionHandle = __gcetClient_gcetDriveBusOnAction.SubscribeAction',
+    '__gcetClient_gcetDriveBusOnAction.SubscribeAction')
+$olderRouted=$olderRouted.Replace('__gcetDriveBusActionHandle = __gcetEngine_gcetDriveBusOnAction.SubscribeAction',
+    '__gcetEngine_gcetDriveBusOnAction.SubscribeAction')
+if ($olderRouted.Contains('__gcetSyncActionDormancy') -or
+    !$olderRouted.Contains('gcetDriveBusOnAction')) { throw 'Could not construct routed pre-C-stage source' }
+$olderRouted | Set-Content -LiteralPath $corePath -Encoding utf8
 $cron | Set-Content -LiteralPath $cronPath -Encoding utf8
 $init | Set-Content -LiteralPath $initPath -Encoding utf8
 $event | Set-Content -LiteralPath $eventPath -Encoding utf8
@@ -219,12 +227,12 @@ $absentCapture | Set-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Inpu
 try {
     $partialNoCapture=Generate
     $partialNoCaptureFiles=@(RuleFiles $partialNoCapture)
-    if ($partialNoCaptureFiles.Count -ne 3 -or
-        'DriveBus/Modules/core.lua' -in $partialNoCaptureFiles -or
+    if ($partialNoCaptureFiles.Count -ne 4 -or
+        'DriveBus/Modules/core.lua' -notin $partialNoCaptureFiles -or
         'DriveBus/Modules/event.lua' -notin $partialNoCaptureFiles -or
         'DriveBus/External/Cron.lua' -notin $partialNoCaptureFiles -or
         'DriveBus/init.lua' -notin $partialNoCaptureFiles) {
-        throw "Capture-absent DriveBus partial upgrade must preserve existing routed core and emit only timer stages: $($partialNoCaptureFiles -join ',')"
+        throw "Capture-absent DriveBus must extend existing routed core with subscriber dormancy and update timer/wake stages: $($partialNoCaptureFiles -join ',')"
     }
 }
 finally {
@@ -232,15 +240,22 @@ finally {
 }
 $partial=Generate
 $f2=@(RuleFiles $partial)
-if ($f2.Count -ne 3 -or
+if ($f2.Count -ne 4 -or
     'DriveBus/Modules/event.lua' -notin $f2 -or
     'DriveBus/External/Cron.lua' -notin $f2 -or 'DriveBus/init.lua' -notin $f2 -or
-    'DriveBus/Modules/core.lua' -in $f2) {
-    throw "Partially routed DriveBus must update only Cron/init: $($f2 -join ',')"
+    'DriveBus/Modules/core.lua' -notin $f2) {
+    throw "Partially routed DriveBus must extend exactly existing subscriber and timer/wake stages: $($f2 -join ',')"
 }
 if ((Get-FileHash $corePath -Algorithm SHA256).Hash -ne $hashBefore) {
-    throw 'Generating partial pass overwrote current DriveBus routing'
+    throw 'Resolver mutated the currently installed source instead of emitting a separate pass'
 }
+$extendedCore=ZipText $partial.pass.ZipPath 'DriveBus/Modules/core.lua'
+if (!$extendedCore.Contains('__gcetDriveBusActionDormancyV2') -or
+    !$extendedCore.Contains('gcetDriveBusOnAction') -or
+    !$extendedCore.Contains('Observe("PlayerPuppet", "OnAction", gcetDriveBusOnAction)')) {
+    throw 'Existing DriveBus route and native fallback were not preserved during C-stage extension'
+}
+$extendedCore | Set-Content -LiteralPath $corePath -Encoding utf8
 (ZipText $partial.pass.ZipPath 'DriveBus/External/Cron.lua') |
     Set-Content -LiteralPath $cronPath -Encoding utf8
 (ZipText $partial.pass.ZipPath 'DriveBus/init.lua') |
@@ -271,12 +286,14 @@ if ($completed.Count -ne 1) {
     throw 'DriveBus routed+timer source was not recognized as already satisfied'
 }
 
-# Historical source uses a different callback local and action-table shape;
-# it must also preserve the route without rerouting and update only Cron/init.
-$legacyCore=$routed.Replace('gcetDriveBusOnAction','zeroEngineOnAction')
+# Historical v1 source uses a different callback local/action-table shape;
+# extend its existing route, never require a pristine predecessor pass.
+$legacyCore=$olderRouted.Replace('gcetDriveBusOnAction','zeroEngineOnAction')
 $legacyCore=$legacyCore -replace 'local __gcetActions_zeroEngineOnAction = \{ ([^\r\n]*) \}',
     'local zeroEngineConfig = { actions = { $1 } }'
 $legacyCore=$legacyCore.Replace('__gcetActions_zeroEngineOnAction','zeroEngineConfig.actions')
+$legacyCore=$legacyCore.Replace('__gcetClient_zeroEngineOnAction','zeroEngineMod')
+$legacyCore=$legacyCore.Replace('__gcetEngine_zeroEngineOnAction','zeroEngine')
 $legacyCore=$legacyCore -replace '(?m)^-- G-CET semantic:drivebus\r?\n',''
 if (!$legacyCore.Contains('local zeroEngineConfig') -or
     !$legacyCore.Contains('local function zeroEngineOnAction')) {
@@ -289,11 +306,17 @@ $event | Set-Content -LiteralPath $eventPath -Encoding utf8
 $legacyHash=(Get-FileHash $corePath -Algorithm SHA256).Hash
 $legacy=Generate
 $f3=@(RuleFiles $legacy)
-if ($f3.Count -ne 3 -or 'DriveBus/Modules/core.lua' -in $f3) {
-    throw 'Historical DriveBus route should only receive the missing timer stages'
+if ($f3.Count -ne 4 -or 'DriveBus/Modules/core.lua' -notin $f3) {
+    throw 'Historical DriveBus must receive new subscriber/wake stages without rerouting'
 }
 if ((Get-FileHash $corePath -Algorithm SHA256).Hash -ne $legacyHash) {
-    throw 'Historical DriveBus action route was mutated in-place'
+    throw 'Historical DriveBus source was mutated in place'
+}
+$legacyExtended=ZipText $legacy.pass.ZipPath 'DriveBus/Modules/core.lua'
+if (!$legacyExtended.Contains('local function zeroEngineOnAction') -or
+    !$legacyExtended.Contains('Observe("PlayerPuppet", "OnAction", zeroEngineOnAction)') -or
+    !$legacyExtended.Contains('__gcetDriveBusActionDormancyV2')) {
+    throw 'Historical DriveBus local route or fallback lost during subscriber stage'
 }
 
 # A broken fallback is NOT a successfully completed action stage.
@@ -309,4 +332,4 @@ $invalidComplete=@($invalidReport.callbackFamilies | ForEach-Object {$_.topConsu
 if ($invalidComplete.Count -gt 0) {
     throw 'DriveBus invalid original fallback incorrectly recognized as complete'
 }
-Write-Host 'DriveBus pristine, prior routed native observer, historical variant, partial upgrade, idempotent completion and drift checks: PASS'
+Write-Host 'DriveBus pristine four-file A/B/C stage, previous routed source, historical route, subscriber/wake composition, idempotence and fallback drift: PASS'
