@@ -110,6 +110,39 @@ function RuleFiles($result) {
     return @($t[0].files)
 }
 
+# An authored, production-enabled semantic rule must survive profiler
+# silence when this callback is registered but no invocation happened during
+# the capture. Source proof, not measured popularity, controls generation.
+$measuredInput = Get-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Raw
+$zeroRow = $measuredInput | ConvertFrom-Json
+$zeroRow.callbacks[0].callsPerSecond = 0
+$zeroRow.callbacks[0].exclusiveMsPerSecond = 0
+$zeroRow.callbacks[0].avgExclusiveUs = 0
+$zeroRow.callbacks[0].globalWorkSharePct = 0
+$zeroRow.callbacks[0].familyWorkSharePct = 0
+$zeroRow | ConvertTo-Json -Depth 35 |
+    Set-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Encoding utf8
+try {
+    $zeroWork = Generate
+    $zeroFiles = @(RuleFiles $zeroWork)
+    if ($zeroFiles.Count -ne 3) {
+        throw "Zero-observed-work DriveBus must still generate its complete safe semantic source stage; got $($zeroFiles.Count)"
+    }
+    $zeroReport = Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw |
+        ConvertFrom-Json
+    $zeroCandidates = @($zeroReport.callbackFamilies | ForEach-Object { $_.topConsumers } |
+        Where-Object { $_.semantic.RuleId -eq 'drivebus' })
+    if ($zeroCandidates.Count -ne 1 -or
+        !$zeroCandidates[0].semantic.generationReady -or
+        $zeroCandidates[0].semantic.admissionLane -ne 'SEMANTIC_AUTHORED_UNMEASURED') {
+        throw ('Zero-observed-work, source-proven semantic was incorrectly rejected: ' +
+            ($zeroCandidates | ConvertTo-Json -Depth 8 -Compress))
+    }
+}
+finally {
+    $measuredInput | Set-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Encoding utf8
+}
+
 # Pristine source must receive all three author files in ONE pass.
 $first=Generate
 $f1=@(RuleFiles $first)
