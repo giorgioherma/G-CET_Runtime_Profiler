@@ -3984,6 +3984,9 @@
         }
       ],
       "sourceProof": {
+        "completionVerifier": "AIR_BACKFLIP_DORMANCY_V2",
+        "composablePartialStages": true,
+        "sourceCompletionAuthoritative": true,
         "ownerAll": [
           "GAME_ACTIONS",
           "AirBackflip_Backflip",
@@ -4006,6 +4009,7 @@
       },
       "generation": {
         "enabled": true,
+        "sourceIndependentAdmission": true,
         "patchStyle": "source-injection",
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
