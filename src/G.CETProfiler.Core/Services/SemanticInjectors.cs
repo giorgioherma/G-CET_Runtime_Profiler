@@ -24,6 +24,7 @@ internal static partial class SemanticInjectors
             "calllist-action-lazy-display-query" or
             "immersive-third-person-action-routing" or
             "backstep-duo" or
+            "specter-recovery-prerequisite-reads" or
             "air-backflip";
         if (context.OwnerAlreadyMarked() &&
             !candidate.StageComposed && !versionFluidUpgrade)

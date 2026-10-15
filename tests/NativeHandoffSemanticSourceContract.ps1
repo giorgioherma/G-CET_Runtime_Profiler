@@ -310,3 +310,37 @@ if ([regex]::Matches($ziggyStage,'G-CET semantic:ziggy-native-snapshot-manager-v
 Write-Host 'Ziggy native lane B: invocation-local QuestsSystem reuse across all original saved fact writes, original API and idempotence PASS'
 
 Write-Host 'IFP FreeLook C-stage / AutoLoot default-action C-stage: pristine, fallback, source wake and idempotence PASS'
+
+
+# Specter source-proven inactive HUD stage. Never gate quest state, restore,
+# active expiry, or the author HUD display/Show wake.
+$specterHud = @'
+local HUD = require("m11_hud")
+registerForEvent("onUpdate",function(delta)
+  if not active then
+    present("HUD update",HUD.Update)
+    if bugId then resolveBugAppearance() end
+    return
+  end
+  present("HUD update",HUD.Update)
+end)
+'@
+$hudOnce = Rewrite 'GateSpecterHudWhenActive' $specterHud
+if ([regex]::Matches($hudOnce, 'if HUD\.IsActive\(\) then present\("HUD update",HUD\.Update\) end').Count -ne 2) {
+    throw 'Specter inactive HUD guards not generated at both exact original sites'
+}
+if ([regex]::Matches($hudOnce, '(?m)^\s*present\("HUD update",HUD\.Update\)\s*$').Count -ne 0 -or
+    (Rewrite 'GateSpecterHudWhenActive' $hudOnce) -cne $hudOnce) {
+    throw 'Specter inactive HUD guard double-injected or not idempotent'
+}
+$hudCRLF = $specterHud.Replace("`n", "`r`n")
+if ([regex]::Matches((Rewrite 'GateSpecterHudWhenActive' $hudCRLF), 'HUD\.IsActive\(\)').Count -ne 2) {
+    throw 'Specter inactive HUD stage rejected equivalent CRLF'
+}
+$hudDrift = $specterHud.Replace('present("HUD update",HUD.Update)', 'present("HUD update",HUD.Update)', 1)
+$hudDrift = $hudDrift.Replace('  present("HUD update",HUD.Update)' + "`nend)", '  present("HUD update",HUD.Refresh)' + "`nend)")
+$hudRefused = $false
+try { [void](Rewrite 'GateSpecterHudWhenActive' $hudDrift) }
+catch { $hudRefused = $true }
+if (!$hudRefused) { throw 'Specter unknown HUD lifecycle drift was not rejected' }
+Write-Host 'Specter inactive HUD original/live-equivalent, CRLF, idempotence, two authored sites and source drift PASS'

@@ -66,6 +66,20 @@ internal static partial class SemanticInjectors
             throw new InvalidOperationException(
                 "Recovery music update changed shape; refusing source rewrite.");
 
+        // M11 HUD.Update returns without side effects while HUD.active is false.
+        // Keep the author's Show/Hide/expiry clock and active presentation path:
+        // the only new condition avoids a no-op protected call on dormant frames.
+        // Separate author HUD source must prove the guard, not just a legacy marker.
+        if (text.Contains("present(\"HUD update\",HUD.Update)", StringComparison.Ordinal))
+        {
+            context.FindFile("m11_hud.lua",
+                "function HUD.Update()",
+                "if HUD.active and Game.GetEngineTime():ToFloat()",
+                "function HUD.IsActive()",
+                "return HUD.active == true");
+            text = GateSpecterHudWhenActive(text);
+        }
+
         if (text == file.Text)
             return SemanticInjectionResult.Skip(
                 "Recovery source already satisfies metric and music postconditions.");
@@ -74,6 +88,26 @@ internal static partial class SemanticInjectors
             "Preserved same-frame story detection, 0.75-second activation timing, " +
             "restore, music timing and dialogue; skipped unneeded metric reads " +
             "and reused the immutable 1.5 music contract.");
+    }
+
+    // Source-independent stage test is run on pristine and previously routed
+    // variants. Only the two authored HUD update sites are eligible.
+    private static string GateSpecterHudWhenActive(string text)
+    {
+        const string guarded = "if HUD.IsActive() then present(\"HUD update\",HUD.Update) end";
+        var oldPattern = new Regex(
+            @"(?m)^(?<indent>[ \t]*)present\(""HUD update"",HUD\.Update\)[ \t]*$",
+            RegexOptions.CultureInvariant);
+        var guardedPattern = new Regex(
+            @"(?m)^[ \t]*if HUD\.IsActive\(\) then present\(""HUD update"",HUD\.Update\) end[ \t]*$",
+            RegexOptions.CultureInvariant);
+        var oldCount = oldPattern.Matches(text).Count;
+        var guardedCount = guardedPattern.Matches(text).Count;
+        if (oldCount == 0 && guardedCount == 2) return text;
+        if (oldCount != 2 || guardedCount != 0)
+            throw new InvalidOperationException(
+                "Specter HUD lifecycle source changed; refusing dormant HUD stage.");
+        return oldPattern.Replace(text, m => m.Groups["indent"].Value + guarded);
     }
 
 }

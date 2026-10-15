@@ -4959,7 +4959,14 @@
           "autoStartClock=autoStartClock+(delta or 0)"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:specter-recovery-prerequisite-reads",
-        "expectedMarkerFileCount": 1
+        "expectedMarkerFileCount": 1,
+        "sourceCompletionAuthoritative": true,
+        "composablePartialStages": true,
+        "satisfiedAll": [
+          "local rainbowDone=seq==9 and metricGet(STORY_NS,\"specter_story_done_specter_rainbow_market_dev\",0) or 0",
+          "local recoveryDone=(seq==9 and rainbowDone==1) and metricGet(STORY_NS,\"specter_story_done_recovery_counter_isolation\",0) or 0",
+          "if HUD.IsActive() then present(\"HUD update\",HUD.Update) end"
+        ]
       },
       "behavior": {
         "handler": "SEMANTIC_RECOVERY_PREREQUISITE_READS_AND_MUSIC_CONTRACT",
@@ -4968,9 +4975,10 @@
           "same075SecondActivationClock",
           "skipMetricsOutsideRelevantStoryStage",
           "noNewPollingCadence",
-          "readOnlyMusicContractWhenPresent"
+          "readOnlyMusicContractWhenPresent",
+          "skipInactiveHudProtectedNoOpWithAuthorIsActiveWake"
         ],
-        "note": "SPECTER recovery 1.4.1 and 1.5 have the same story metric handoff. Gate subordinate state reads, and in 1.5 reuse read-only music contract. No quest timers, restore, UI, dialogue or audio gating."
+        "note": "SPECTER recovery 1.4.1 and 1.5 have the same story metric handoff. Gate subordinate state reads, and in 1.5 reuse read-only music contract. No quest timers, restore, UI, dialogue or audio gating. The v2 incremental Lua stage skips the two protected HUD.Update calls only while the author's HUD.IsActive() is false; Show/Hide/active expiry, same-frame story metrics and restore are untouched. Requires original m11_hud.lua pure-inactive source proof; old markers do not complete v2."
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
