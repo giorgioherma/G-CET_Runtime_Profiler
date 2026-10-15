@@ -2,6 +2,16 @@
 
 Scope: 67 production rules across distinct mod identities; all originals are available. Classification is based on the production policy, not yet proof of a full source retrofit.
 
+## Native OnAction evidence and Resolver linkage
+
+The measurement that triggered extended dormancy is documented in [Native marshalling and method-context research](../gc/research/NATIVE-MARSHALLING-METHOD-AND-TIME-SAMPLING-2026-10-14.md). PASS3 (`CET-20261014-211612_PASS3_FIXED_QUEST_ACTIVE_AND_NATIVE_ADDITIONS`) observed method hash `9658066991423262154` in 744/1,248 bounded native samples, exactly matching the short RTTI function name `OnAction`. This does **not** prove the owning class, mod, or byte attribution. The sampled native boundary is not interchangeable with measured Lua exclusive CPU.
+
+[The Resolver's third-person source injector](../../src/G.CETProfiler.Core/Services/ModPasses/ImmersiveThirdPerson.cs) implements `immersive-third-person-action-routing` as one exact-name 0-Engine action subscriber with native `Observe` fallback; catalog admission lives in [semantic-library.json](../../resolver-knowledge/semantic-library.json). The generated pass only proves source transformation, **not** a successful runtime subscription or saved native allocations.
+
+**Resolver evidence requirement for future dormancy decisions:** preserve these distinctions in reports and per-mod decisions: (1) native observer registration count, (2) native boundary and class-qualified method identity, (3) observer invocation count, (4) per-subscriber dispatch count, (5) actual Lua exclusive time, (6) scoped allocation bytes/growth, (7) state while dormant and original wake trigger, and (8) change in like-for-like pre/post captures. Never use a name-only RTTI hash to claim mod-specific allocation savings. If class-qualified data or runtime activation proof is absent, report the opportunity as unproven.
+
+See also [user authoritative per-mod gates](DORMANCY-USER-AUTHORITATIVE-SPEC.md) and [unknown-mod source review](DORMANCY-UNKNOWN-SOURCE-AUDIT.md). Extended dormancy should be implemented inside the existing per-mod semantic transformations with no duplicate mod-owned input binding.
+
 ## Invariants
 
 - Preserve author wake triggers, hotkeys, native listeners, action consumers and processing order.
