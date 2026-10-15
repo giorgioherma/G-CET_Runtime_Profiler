@@ -36,6 +36,7 @@ internal sealed record SemanticRuleMatch(
     object? Graph)
 {
     internal bool StageComposed { get; init; }
+    internal bool LuaLaneComplete { get; init; }
     internal SemanticNativeLane NativeLane { get; init; } =
         new(false, "UNCLASSIFIED", "UNCLASSIFIED", false, false, false, "");
 
@@ -171,6 +172,7 @@ internal sealed class SemanticLibraryService
                             OwnerAll = JsonStringArray(proofRow, "ownerAll"),
                             OwnerAnyGroups = JsonStringGroups(proofRow, "ownerAnyGroups"),
                             SatisfiedAll = JsonStringArray(proofRow, "satisfiedAll"),
+                            LuaSatisfiedAll = JsonStringArray(proofRow, "luaSatisfiedAll"),
                             SatisfiedAnyGroups = JsonStringGroups(proofRow, "satisfiedAnyGroups"),
                             CompleteStages = ReadCompleteStages(proofRow),
                             AlreadySatisfiedMarker = JsonString(
@@ -432,6 +434,13 @@ internal sealed class SemanticLibraryService
             markerCount > 0 && markerCount < expectedMarkerFileCount;
 
         var nativeLane = EvaluateNativeLane(rule.NativeProof, graph);
+        // Existing generation eligibility may include a newly implemented
+        // native B stage. LUA stage completeness must be independently
+        // evaluated against its ORIGINAL source postconditions.
+        var luaLaneComplete = rule.Proof.LuaSatisfiedAll.Length > 0
+            ? rule.Proof.LuaSatisfiedAll.All(anchor =>
+                ContainsProof(graph.ProofCorpus, anchor))
+            : alreadySatisfied;
 
         return new SemanticRuleMatch(
             true,
@@ -458,6 +467,7 @@ internal sealed class SemanticLibraryService
                 sourceFingerprintFallback))
         {
             StageComposed = composed,
+            LuaLaneComplete = luaLaneComplete,
             NativeLane = nativeLane
         };
     }
@@ -974,6 +984,7 @@ internal sealed class SemanticLibraryService
         internal string[] OwnerAll { get; init; } = Array.Empty<string>();
         internal string[][] OwnerAnyGroups { get; init; } = Array.Empty<string[]>();
         internal string[] SatisfiedAll { get; init; } = Array.Empty<string>();
+        internal string[] LuaSatisfiedAll { get; init; } = Array.Empty<string>();
         internal string[][] SatisfiedAnyGroups { get; init; } = Array.Empty<string[]>();
         internal string AlreadySatisfiedMarker { get; init; } = "";
         internal int ExpectedMarkerFileCount { get; init; } = 1;

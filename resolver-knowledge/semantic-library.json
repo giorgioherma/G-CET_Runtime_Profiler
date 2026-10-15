@@ -4578,7 +4578,17 @@
         ],
         "sourceCompletionAuthoritative": true,
         "composablePartialStages": true,
-        "completionVerifier": "ZIGGY_NATIVE_SNAPSHOT_V6"
+        "completionVerifier": "ZIGGY_NATIVE_SNAPSHOT_V6",
+        "luaSatisfiedAll": [
+          "scanKey=nil,lastMappins={},missingScanAge=0",
+          "if N.scanKey ~= scanKey or (not found and N.missingScanAge >= 12) then",
+          "N.missingScanAge=0",
+          "__gcetZiggyOfferedFarAcc",
+          "__gcetZiggyOfferedFar",
+          "G-CET semantic:ziggy-unaccepted-far-1hz",
+          "G-CET semantic:ziggy-passive-ui-v5",
+          "H.__gcetPuzzleWasShown"
+        ]
       },
       "behavior": {
         "handler": "SEMANTIC_QUEST_PROXIMITY_DIAGNOSTIC_SENTINEL",

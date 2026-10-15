@@ -452,8 +452,8 @@ internal static class CallbackResolverService
                         {
                             lua = new
                             {
-                                complete = semantic.AlreadySatisfied,
-                                state = semantic.AlreadySatisfied ? "COMPLETE"
+                                complete = semantic.LuaLaneComplete,
+                                state = semantic.LuaLaneComplete ? "COMPLETE"
                                     : semantic.PartialState ? "INCOMPLETE_AMBIGUOUS"
                                     : semantic.SourceProofSatisfied ? "SOURCE_PROVEN_PENDING"
                                     : "SOURCE_PROOF_MISSING",
@@ -473,7 +473,7 @@ internal static class CallbackResolverService
                             // Unclassified catalog entries are NOT native
                             // failures. This is unknown, not a false negative.
                             overallComplete = semantic.NativeLane.Classified
-                                ? (bool?)(semantic.AlreadySatisfied && semantic.NativeLane.Complete)
+                                ? (bool?)(semantic.LuaLaneComplete && semantic.NativeLane.Complete)
                                 : null
                         },
                         semantic.PartialState,
