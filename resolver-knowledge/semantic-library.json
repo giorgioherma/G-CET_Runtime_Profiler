@@ -13,7 +13,7 @@
     "runtimeAdmissionThresholdMsPerSecond": 3,
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
-    "fullPassRule": "A semantic injector can run only when the current capture meets that rule's runtime admission threshold (3.0 ms/s by default; lower only when explicitly declared by a production rule), the library rule matches, and the current live mod source graph proves its anchors.",
+    "fullPassRule": "An enabled, reviewed semantic injector may run with measured callback activity even below the default 3.0 ms/s soft CPU boundary, but only when its identity and current live-source proof match and the stage is not already satisfied. Generic native-dispatch/dormancy recipes retain their independent proof requirements.",
     "enabledInjectorCount": 67,
     "profileOnlyRuleCount": 0,
     "note": "The production semantic base contains source-proven, behavior-aware optimizations learned from validated references and measured hot callbacks, including burst-discovered diagnostic sentinels that preserve author cadence while gating globally expensive fallback scans. Generic/mechanical transforms stay in the Resolver; semantic rules cover state/cadence/hotpath knowledge that generic inference cannot safely own.",
@@ -33,7 +33,7 @@
         "OverclockedLynxPaws (source-only seed; no validated optimized reference yet)",
         "DualSense Support (source-only seed; no validated optimized reference yet)"
       ],
-      "note": "The production default is 3 ms/s. A rule may declare a lower positive threshold only for a deliberately admitted source-proven framework optimization; this does not lower generic AUTO or material-remaining thresholds. A semantic rule does not require a sleep state and may encode a validated behavior-preserving hotpath, prefilter, state cache, or multi-rate split when the current source proves the same semantic shape. Rules fail closed when that proof is incomplete.",
+      "note": "The production default of 3 ms/s is a soft CPU materiality boundary. An authored semantic rule may be admitted below it with measured calls and current source proof; this does not lower generic AUTO or material-remaining reporting thresholds. A semantic rule does not require a sleep state and may encode a validated behavior-preserving hotpath, prefilter, state cache, or multi-rate split when the current source proves the same semantic shape. Rules fail closed when that proof is incomplete.",
       "allowsSourceProvenHotpathRestructure": true,
       "allowsRealtimePreservingMultiRateSplit": true
     },
