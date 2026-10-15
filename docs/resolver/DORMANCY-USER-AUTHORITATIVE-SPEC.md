@@ -8,7 +8,7 @@ This document records user-specified intent. It is **not** evidence that source 
 - Separate listener registration, observer dispatch, Lua handler invocation, heavy polling, and allocation. Measure each; don't call a Lua early return native-hook elimination.
 - Never treat a modded quest merely present in the journal as actively started. Gate on actual mission activation/state and preserve mission triggers.
 - Cache static location tables only when all runtime providers, including other mods, are discovered and their invalidation/registration behavior is understood. Do not freeze dynamic markers.
-- For periodic location discovery, keep the required cheap wake scan. For input, preserve author keybinds and any action consumption, routing order and fallback.
+- For periodic location discovery, keep the required cheap wake scan. For input, **all keybind definitions, configurable action names, key registration and key ownership remain entirely inside the originating mod**. The Resolver must not hardcode keys (including V), manufacture or take ownership of bindings, change user configuration, or create parallel bindings. It may only reuse/observe the mod's existing wake events and preserve action consumption, routing order and fallback.
 - Check pristine, partially optimized and fully optimized sources for each eligible rule. Skip on meaningful version drift, tolerate equivalent formatting and known source variants.
 
 ## Per-mod requirements
@@ -22,7 +22,7 @@ This document records user-specified intent. It is **not** evidence that source 
 | 5 | StreetGamesPoker | Dormant unless playing; cache fixed locations. |
 | 6 | NightCityBilliards | Wake when close to vanilla pool table. |
 | 7 | NPCD_Hotline | SKIP |
-| 8 | GameEntityExaminerTool | Fully dormant until defined keybind. |
+| 8 | GameEntityExaminerTool | Fully dormant until its existing mod-owned keybind. |
 | 9 | GiveMeEverything | Dormant until CET UI use or keybind. |
 | 10 | Gambling System - Roulette | Dormant unless in use. |
 | 11 | DriveAerialVehicle | Dormant outside flight; listener recognizes entry into flying vehicle. |
@@ -49,7 +49,7 @@ This document records user-specified intent. It is **not** evidence that source 
 | 32 | repeatable_increased_criminal_activity | Wake on completed criminal activity. |
 | 33 | Dedka Auto Shop | Dormant outside use; cache static PC/physical locations. |
 | 34 | marmurbank | Dormant outside bank; retain deposit-exit event; do not continuously poll vanilla ATMs. |
-| 35 | immersive_third_person | Dormant while disabled; wake CET keybind. |
+| 35 | immersive_third_person | Dormant while disabled; wake through the existing mod-owned CET keybind. |
 | 36 | ImmersiveFirstPerson | Dormant while disabled; wake CET keybind. |
 | 37 | nativeInteractions | SKIP |
 | 38 | Minimap Widgets | POSSIBLE SKIP; source review before changes. |
@@ -74,9 +74,9 @@ This document records user-specified intent. It is **not** evidence that source 
 | 57 | AppearanceMenuMod | SKIP |
 | 58 | GigCore | Sleep inactive mission work where source-proven; retain discovery/wake. |
 | 59 | SpecterM11RecoveryDev | Coordinate with GigCore; prerequisite/recovery event wake. |
-| 60 | NPC Outfit Manager | Fully dormant until CET keybind/use. |
+| 60 | NPC Outfit Manager | Fully dormant until existing mod-owned CET keybind/use. |
 | 61 | yaibaPenthouse | Dormant when away from apartment; wake on proximity/entry. |
-| 62 | CallList-VehicleDetailsOverlay-CET | Only active from vanilla garage key (user binds V); preserve key wake. |
+| 62 | CallList-VehicleDetailsOverlay-CET | Only active from the mod's existing configurable vanilla-garage wake action; preserve the mod-owned binding (user currently uses V), never hardcode V. |
 
 ## Explicit skips and open decisions
 
