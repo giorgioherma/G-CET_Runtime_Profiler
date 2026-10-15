@@ -20,11 +20,13 @@ end
 local camera = Router.Subscribe({
     id = "itpp-dormancy-test",
     actions = { "MoveX" },
-    decodeType = false,
-    active = false
+    decodeType = false
 }, function()
     calls = calls + 1
 end, "immersive_third_person")
+-- Safe author/source opt-in: if a legacy router lacks SetActive, its
+-- original active registration stays active rather than being stranded.
+camera.SetActive(false)
 assert(camera.IsActive() == false, "initial dormant subscriber must be paused")
 dispatch()
 assert(calls == 0, "initial FPP state must not invoke camera action handler")
