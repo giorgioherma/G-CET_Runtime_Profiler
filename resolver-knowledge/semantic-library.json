@@ -856,12 +856,31 @@
           "interactionUI.update"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:illegal-mechanic",
-        "expectedMarkerFileCount": 1,
+        "expectedMarkerFileCount": 2,
         "satisfiedAll": [
           "interactionUpdateInterval = 0.20",
           "if not state.pulseActive and not state.hubVisible and currentTime < state.nextInteractionUpdateAt then",
           "state.nextInteractionUpdateAt = currentTime + cfg.interactionUpdateInterval",
-          "updatePulseVisual(system, currentTime)"
+          "updatePulseVisual(system, currentTime)",
+          "entry.__gcetAnchorPosition = Vector4.new(entry.x, entry.y, entry.z, 1.0)",
+          "return entry.__gcetAnchorPosition"
+        ],
+        "completeStages": [
+          {
+            "function": "HackSignalInteraction.Update",
+            "includes": [
+              "if not state.pulseActive and not state.hubVisible and currentTime < state.nextInteractionUpdateAt then",
+              "state.nextInteractionUpdateAt = currentTime + cfg.interactionUpdateInterval",
+              "updatePulseVisual(system, currentTime)"
+            ]
+          },
+          {
+            "function": "anchorPosition",
+            "includes": [
+              "entry.__gcetAnchorPosition = Vector4.new(entry.x, entry.y, entry.z, 1.0)",
+              "return entry.__gcetAnchorPosition"
+            ]
+          }
         ]
       },
       "behavior": {
