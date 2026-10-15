@@ -1,0 +1,7 @@
+build/
+build-win/
+.build/
+*.dll
+*.pdb
+*.so
+*.dylib
