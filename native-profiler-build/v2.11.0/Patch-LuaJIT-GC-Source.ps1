@@ -235,6 +235,17 @@ typedef struct GGCSample {
   unsigned long long owner, bytes, born;
 } GGCSample;
 static GGCTraceOwner ggc_owners[GGC_OWNER_CAP];
+/* Bounded exact allocation partitions for the currently executing callback.
+ * Registration zero (pre-dispatch/shared marshalling) remains unowned. */
+typedef struct GGCRegisteredPressure {
+  unsigned long long reallocBytes, reallocOps, newObjectBytes, newObjectOps;
+  GGCUnscopedDimension bridges[GGC_BRIDGE_KINDS];
+} GGCRegisteredPressure;
+static GGCRegisteredPressure ggc_registered_pressure[GGC_OWNER_CAP];
+void ggc_registered_pressure_read(unsigned long long id, GGCRegisteredPressure *out) {
+  if(out) *out=ggc_registered_pressure[id < GGC_OWNER_CAP-1 ?
+    (unsigned int)id : GGC_OWNER_CAP-1];
+}
 static GGCSample ggc_samples[GGC_SAMPLE_CAP];
 static volatile LONG ggc_focus[GGC_OWNER_CAP];
 static __declspec(thread) unsigned long long ggc_alloc_ops = 0;
@@ -335,7 +346,19 @@ static void gcet_gc_alloc_observe(const global_State *g, unsigned long long oldS
     ggc_alloc_ops++;
     ggc_owners[owner].bytes += newSize - oldSize;
     ggc_owners[owner].allocations++;
-    if (owner == 0) ggc_unscoped_observe(g, newSize - oldSize, allocationPath, oldSize, newSize);
+    if (owner == 0) {
+      /* Shared marshalling precedes per-subscriber delivery. */
+      ggc_unscoped_observe(g, newSize - oldSize, allocationPath, oldSize, newSize);
+    } else {
+      GGCRegisteredPressure *p=&ggc_registered_pressure[owner];
+      unsigned long long growth=newSize-oldSize;
+      unsigned int bridge=ggc_bridge_context < GGC_BRIDGE_KINDS ?
+        ggc_bridge_context : 0;
+      if (allocationPath==0) { p->reallocBytes+=growth; p->reallocOps++; }
+      else { p->newObjectBytes+=growth; p->newObjectOps++; }
+      p->bridges[bridge].bytes+=growth;
+      p->bridges[bridge].operations++;
+    }
   }
 }
 void gcet_gc_trace_segment(unsigned long long captureOffsetNs)
@@ -392,6 +415,7 @@ void gcet_gc_stats_set(int enable, int reset)
   if (reset) {
     int i;
     memset(ggc_owners, 0, sizeof(ggc_owners));
+    memset(ggc_registered_pressure, 0, sizeof(ggc_registered_pressure));
     memset(ggc_unscoped_contexts, 0, sizeof(ggc_unscoped_contexts));
     memset(ggc_unscoped_seconds, 0, sizeof(ggc_unscoped_seconds));
     memset(&ggc_unscoped_detail, 0, sizeof(ggc_unscoped_detail));

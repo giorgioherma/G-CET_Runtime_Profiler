@@ -54,6 +54,11 @@ struct GGCUnscopedSecond { GGCUnscopedContext states[8]; };
 void ggc_trace_unscoped_context_read(GGCUnscopedContext*, int capacity);
 int ggc_trace_unscoped_seconds_read(GGCUnscopedSecond*, int capacity);
 struct GGCUnscopedDimension { uint64_t bytes, operations; };
+struct GGCRegisteredPressure {
+    uint64_t reallocBytes, reallocOps, newObjectBytes, newObjectOps;
+    GGCUnscopedDimension bridges[9];
+};
+void ggc_registered_pressure_read(uint64_t, GGCRegisteredPressure*);
 struct GGCUnscopedDetail {
     GGCUnscopedDimension morphology[2][6];
     GGCUnscopedDimension reallocDeltas[2][6];
@@ -2928,6 +2933,53 @@ public:
                 t.userdata += native.freedUserdata; t.cdata += native.freedCdata;
                 t.other += native.freedOther;
                 t.focused = t.focused || focused;
+            }
+            // Scoped allocator growth partitions share bytes with the legacy
+            // creator counters: not extra heap and not pre-dispatch marshalling.
+            {
+                std::ofstream pressure(
+                    outputRoot / "CET_Runtime_Profile_GGC_CallbackAllocatorPressure.csv",
+                    std::ios::trunc);
+                if (pressure) {
+                    pressure << "RegistrationId,Mod,Kind,Target,ReallocPositiveBytes,"
+                        "ReallocOperations,NewObjectPositiveBytes,NewObjectOperations,"
+                        "NativeBoundaryPositiveBytes,NativeBoundaryOperations,"
+                        "OutsideNativeBoundaryPositiveBytes,OutsideNativeBoundaryOperations,"
+                        "TotalPositiveBytes,TotalOperations,Reconciled,Scope\n";
+                    auto writePressure = [&](uint64_t id, const std::string& mod,
+                                             const std::string& kind,
+                                             const std::string& target) {
+                        GGCRegisteredPressure p{};
+                        GGCTraceOwner total{};
+                        ggc_registered_pressure_read(id, &p);
+                        ggc_trace_owner_read(id, &total);
+                        uint64_t nativeBytes=0, nativeOps=0;
+                        for (size_t b=1; b<9; ++b) {
+                            nativeBytes+=p.bridges[b].bytes;
+                            nativeOps+=p.bridges[b].operations;
+                        }
+                        const uint64_t bytes=p.reallocBytes+p.newObjectBytes;
+                        const uint64_t ops=p.reallocOps+p.newObjectOps;
+                        const bool reconciled = bytes==total.bytes &&
+                            ops==total.allocations &&
+                            nativeBytes+p.bridges[0].bytes==bytes &&
+                            nativeOps+p.bridges[0].operations==ops;
+                        pressure << id << ',' << Csv(mod) << ',' << Csv(kind)
+                            << ',' << Csv(target) << ','
+                            << p.reallocBytes << ',' << p.reallocOps << ','
+                            << p.newObjectBytes << ',' << p.newObjectOps << ','
+                            << nativeBytes << ',' << nativeOps << ','
+                            << p.bridges[0].bytes << ',' << p.bridges[0].operations << ','
+                            << bytes << ',' << ops << ','
+                            << (reconciled ? 1 : 0) << ','
+                            << "EXACT_ACTIVE_CALLBACK_REGISTRATION_WINDOW\n";
+                    };
+                    for (const auto& row : rows)
+                        if (row.RegistrationId>0 && row.RegistrationId<32767)
+                            writePressure(row.RegistrationId,row.Mod,row.Kind,row.Target);
+                    // Overflow cannot honestly be allocated to one callback.
+                    writePressure(32767,"<registration-overflow>","UNKNOWN","UNKNOWN");
+                }
             }
             for (uint64_t unknown : {0ULL, 32767ULL}) {
                 GGCTraceOwner native{};

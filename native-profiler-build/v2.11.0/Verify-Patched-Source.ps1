@@ -111,6 +111,13 @@ try {
     }
     "Native method/boundary marshalling and safe unknown-class ABI verification: PASS"
 
+    if(!$profilerHeader.Contains('CET_Runtime_Profile_GGC_CallbackAllocatorPressure.csv') -or
+       !$profilerHeader.Contains('ggc_registered_pressure_read') -or
+       !$nativeGcPatch.Contains('GGCRegisteredPressure *p=&ggc_registered_pressure[owner]') -or
+       !$nativeGcPatch.Contains('memset(ggc_registered_pressure, 0,')) {
+        throw 'Callback-owned allocation partitions or reset/export path missing'
+    }
+    "Callback-owned allocator partition and shared owner-zero isolation: PASS"
     "Callback identity/source/deep/frame-multiplicity verification: PASS"
 }
 finally {
