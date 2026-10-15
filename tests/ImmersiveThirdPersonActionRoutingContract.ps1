@@ -118,15 +118,15 @@ end)
   $patched=FromPass $result.pass.ZipPath
   if(!$patched.Contains('__gcetItppRoutedOnActionV1') -or !$patched.Contains('zeroEngineMod.SubscribeAction') -or
      !$patched.Contains('__gcetItppActionDormancyV2') -or
-     !$patched.Contains('decodeType = false, active = state.enabled == true') -or
-     !$patched.Contains('handle.SetActive(state.enabled == true)') -or
+     !$patched.Contains('decodeType = false') -or
+     !$patched.Contains('pcall(handle.SetActive, state.enabled == true)') -or
      !$patched.Contains("Observe('PlayerPuppet', 'OnAction'") -or
      !$patched.Contains('handlePlayerAction(action)') -or
      !$patched.Contains('registerInput("tpp_camera_toggle"')) {
     throw 'Routed source lost v1 fallback, v2 dormancy or mod-owned CET wake key'
   }
   if(([regex]::Matches($patched,'__gcetItppActionHandle\s*=\s*handle')).Count -ne 2 -or
-     ([regex]::Matches($patched,'__gcetItppSyncActionDormancy\(\)')).Count -ne 4) {
+     ([regex]::Matches($patched,'__gcetItppSyncActionDormancy\(\)')).Count -ne 6) {
     throw 'Native subscriber handle or exact TPP/FPP/session lifecycle gates changed'
   }
   if((Get-FileHash $path -Algorithm SHA256).Hash -ne $before){throw 'Resolver modified live source'}
@@ -134,8 +134,7 @@ end)
   # semantic rule. The same rule upgrades it directly to v2.
   $v1=$patched
   $v1=[regex]::Replace($v1,'(?s)-- __gcetItppActionDormancyV2:.*?(?=local function observePlayerActions\(\))','')
-  $v1=$v1.Replace(', active = state.enabled == true','')
-  $v1=[regex]::Replace($v1,'(?m)^    if routed then __gcetItppActionHandle = handle end\r?\n','')
+  $v1=[regex]::Replace($v1,'(?m)^    if routed then __gcetItppActionHandle = handle; __gcetItppSyncActionDormancy\(\) end\r?\n','')
   $v1=[regex]::Replace($v1,'(?m)^[ \t]*__gcetItppSyncActionDormancy\(\)\r?\n','')
   if(!$v1.Contains('__gcetItppRoutedOnActionV1') -or $v1.Contains('__gcetItppActionDormancyV2')) {
     throw 'Historical v1-only action fixture was not formed'
@@ -166,9 +165,9 @@ end)
   if(!$originalActions.Success -or !$upgradedActions.Success -or
       $originalActions.Groups['names'].Value -ne $upgradedActions.Groups['names'].Value -or
       !$upgraded.Contains('__gcetItppActionDormancyV2') -or
-      !$upgraded.Contains('handle.SetActive(state.enabled == true)') -or
+      !$upgraded.Contains('pcall(handle.SetActive, state.enabled == true)') -or
       ([regex]::Matches($upgraded,'__gcetItppActionHandle\s*=\s*handle')).Count -ne 2 -or
-      ([regex]::Matches($upgraded,'__gcetItppSyncActionDormancy\(\)')).Count -ne 4 -or
+      ([regex]::Matches($upgraded,'__gcetItppSyncActionDormancy\(\)')).Count -ne 6 -or
       ([regex]::Matches($upgraded,"Observe\('PlayerPuppet', 'OnAction'")).Count -ne 1 -or
       !$upgraded.Contains('registerInput("tpp_camera_toggle"')) {
     throw 'Legacy v1 upgrade lost exact action interest, original fallback, author wake or new lifecycle stage'
