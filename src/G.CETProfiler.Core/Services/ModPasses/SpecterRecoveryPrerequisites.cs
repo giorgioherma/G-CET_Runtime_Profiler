@@ -96,10 +96,10 @@ internal static partial class SemanticInjectors
     {
         const string guarded = "if HUD.IsActive() then present(\"HUD update\",HUD.Update) end";
         var oldPattern = new Regex(
-            @"(?m)^(?<indent>[ \t]*)present\(""HUD update"",HUD\.Update\)[ \t]*$",
+            @"(?m)^(?<indent>[ \t]*)present\(""HUD update"",HUD\.Update\)[ \t]*(?<cr>\r?)$",
             RegexOptions.CultureInvariant);
         var guardedPattern = new Regex(
-            @"(?m)^[ \t]*if HUD\.IsActive\(\) then present\(""HUD update"",HUD\.Update\) end[ \t]*$",
+            @"(?m)^[ \t]*if HUD\.IsActive\(\) then present\(""HUD update"",HUD\.Update\) end[ \t]*\r?$",
             RegexOptions.CultureInvariant);
         var oldCount = oldPattern.Matches(text).Count;
         var guardedCount = guardedPattern.Matches(text).Count;
@@ -107,7 +107,7 @@ internal static partial class SemanticInjectors
         if (oldCount != 2 || guardedCount != 0)
             throw new InvalidOperationException(
                 "Specter HUD lifecycle source changed; refusing dormant HUD stage.");
-        return oldPattern.Replace(text, m => m.Groups["indent"].Value + guarded);
+        return oldPattern.Replace(text, m => m.Groups["indent"].Value + guarded + m.Groups["cr"].Value);
     }
 
 }
