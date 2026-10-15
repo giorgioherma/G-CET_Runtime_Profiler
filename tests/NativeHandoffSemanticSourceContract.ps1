@@ -233,20 +233,6 @@ $live=$live.Replace('    autoLoot.ui.onInit()', ([string][char]9)+'autoLoot.ui.o
 $live | Set-Content -LiteralPath (Join-Path $lootDir 'init.lua') -Encoding utf8
 $empty=@{schemaVersion='2.0';callbacks=@();optimizerEvidence=@()} | ConvertTo-Json -Depth 35
 $empty | Set-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Encoding utf8
-# Explicitly inspect source-only catalog match, never invent callback work.
-$libType=$assembly.GetType('GCETRuntimeProfiler.Core.Services.SemanticLibraryService', $true)
-$load=$libType.GetMethod('Load',[Reflection.BindingFlags]'Static,NonPublic')
-$lib=$load.Invoke($null,[object[]]@((Join-Path $ResolverRoot 'knowledge/semantic-library.json'),$mods))
-$matchMethod=$libType.GetMethod('Match',[Reflection.BindingFlags]'Instance,NonPublic')
-$match=$matchMethod.Invoke($lib,[object[]]@('AutoLoot','Observe','PlayerPuppet::OnAction'))
-Write-Host ("AutoLoot source-only preflight: " + ([ordered]@{
-    rule=$match.RuleId; matched=$match.Matched; proof=$match.SourceProofSatisfied
-    already=$match.AlreadySatisfied; partial=$match.PartialState
-    missing=$match.MissingAnchors
-} | ConvertTo-Json -Depth 10 -Compress))
-$candidates=$libType.GetMethod('CollectSourceIndependentCandidates',
-    [Reflection.BindingFlags]'Instance,NonPublic').Invoke($lib,$null)
-Write-Host ("Source-only candidates: " + (@($candidates) | Select-Object RuleId,Owner | ConvertTo-Json -Depth 10 -Compress))
 $first=(& $exe --capture $capture --mods $mods --generate-pass --json | ConvertFrom-Json)
 if (!$first.ok -or !$first.pass) {throw 'AutoLoot source-only generation failed'}
 $manifest=Get-Content -LiteralPath $first.pass.ManifestPath -Raw | ConvertFrom-Json
