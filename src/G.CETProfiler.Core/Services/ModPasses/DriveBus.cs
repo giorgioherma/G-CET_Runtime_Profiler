@@ -27,7 +27,8 @@ internal static partial class SemanticInjectors
         if (!text.Contains("exception_in_choice_list", StringComparison.Ordinal) ||
             !text.Contains("exception_in_mount_list", StringComparison.Ordinal) ||
             !text.Contains("self:ChoiceAction(action_name", StringComparison.Ordinal) ||
-            !text.Contains("consumer:Consume()", StringComparison.Ordinal))
+            !Regex.IsMatch(text, @"\bconsumer\s*:\s*Consume\s*\(",
+                RegexOptions.CultureInvariant))
             return false;
 
         // Both known historical routes carry exactly six authored actions.
