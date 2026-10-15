@@ -23,6 +23,7 @@ finally { $out.Dispose();$gz.Dispose();$in.Dispose() }
 $corePath=Join-Path $bus 'Modules/core.lua'
 $cronPath=Join-Path $bus 'External/Cron.lua'
 $initPath=Join-Path $bus 'init.lua'
+$eventPath=Join-Path $bus 'Modules/event.lua'
 
 $core=@'
 local Core = {}
@@ -72,6 +73,15 @@ registerForEvent("onUpdate", function(delta)
     Cron.Update(delta)
 end)
 '@
+$event=@'
+local Event = {}
+function Event:Init()
+    Cron.Every(0.1, {tick=1}, function(timer)
+        self:CheckAllEvents()
+    end)
+end
+'@
+$event | Set-Content -LiteralPath $eventPath -Encoding utf8
 $core | Set-Content -LiteralPath $corePath -Encoding utf8
 $cron | Set-Content -LiteralPath $cronPath -Encoding utf8
 $init | Set-Content -LiteralPath $initPath -Encoding utf8
@@ -125,7 +135,7 @@ $zeroRow | ConvertTo-Json -Depth 35 |
 try {
     $zeroWork = Generate
     $zeroFiles = @(RuleFiles $zeroWork)
-    if ($zeroFiles.Count -ne 3) {
+    if ($zeroFiles.Count -ne 4) {
         throw "Zero-observed-work DriveBus must still generate its complete safe semantic source stage; got $($zeroFiles.Count)"
     }
     $zeroReport = Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw |
@@ -152,8 +162,8 @@ $absentCapture | Set-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Inpu
 try {
     $sourceOnly=Generate
     $sourceOnlyFiles=@(RuleFiles $sourceOnly)
-    if ($sourceOnlyFiles.Count -ne 3) {
-        throw "DriveBus missing-callback source-only admission wrote $($sourceOnlyFiles.Count) files instead of 3"
+    if ($sourceOnlyFiles.Count -ne 4) {
+        throw "DriveBus missing-callback source-only admission wrote $($sourceOnlyFiles.Count) files instead of 4"
     }
     $sourceReport=Get-Content (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
     $sourceCandidates=@($sourceReport.semanticSourceOnlyCandidates | Where-Object {$_.ruleId -eq 'drivebus'})
@@ -174,13 +184,19 @@ finally {
     $measuredInput | Set-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Encoding utf8
 }
 
-# Pristine source must receive all three author files in ONE pass.
+# Pristine source must receive all four author files in ONE pass.
 $first=Generate
 $f1=@(RuleFiles $first)
-if ($f1.Count -ne 3) { throw "Pristine DriveBus wrote $($f1.Count), expected 3" }
+if ($f1.Count -ne 4) { throw "Pristine DriveBus wrote $($f1.Count), expected 4" }
 $routed=ZipText $first.pass.ZipPath 'DriveBus/Modules/core.lua'
 $guarded=ZipText $first.pass.ZipPath 'DriveBus/init.lua'
 $timer=ZipText $first.pass.ZipPath 'DriveBus/External/Cron.lua'
+$eventOut=ZipText $first.pass.ZipPath 'DriveBus/Modules/event.lua'
+if (!$eventOut.Contains('__gcetDriveBusDiscoveryWakeV2') -or
+    !$routed.Contains('__gcetDriveBusActionDormancyV2') -or
+    !$routed.Contains('pcall(handle.SetActive, needed)')) {
+    throw 'Pristine DriveBus native subscriber/dormancy wake stage missing'
+}
 foreach ($token in @('SubscribeAction','gcetDriveBusOnAction',
     'Observe("PlayerPuppet", "OnAction", gcetDriveBusOnAction)')) {
     if (!$routed.Contains($token)) { throw "Pristine DriveBus missing: $token" }
@@ -195,6 +211,7 @@ if (!$guarded.Contains('if Cron.HasActiveTimers() then Cron.Update(delta) end') 
 $routed | Set-Content -LiteralPath $corePath -Encoding utf8
 $cron | Set-Content -LiteralPath $cronPath -Encoding utf8
 $init | Set-Content -LiteralPath $initPath -Encoding utf8
+$event | Set-Content -LiteralPath $eventPath -Encoding utf8
 $hashBefore=(Get-FileHash $corePath -Algorithm SHA256).Hash
 # A previously routed DriveBus with missing timer stages must also
 # remain eligible when the capture has no DriveBus callback records.
@@ -202,8 +219,9 @@ $absentCapture | Set-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Inpu
 try {
     $partialNoCapture=Generate
     $partialNoCaptureFiles=@(RuleFiles $partialNoCapture)
-    if ($partialNoCaptureFiles.Count -ne 2 -or
+    if ($partialNoCaptureFiles.Count -ne 3 -or
         'DriveBus/Modules/core.lua' -in $partialNoCaptureFiles -or
+        'DriveBus/Modules/event.lua' -notin $partialNoCaptureFiles -or
         'DriveBus/External/Cron.lua' -notin $partialNoCaptureFiles -or
         'DriveBus/init.lua' -notin $partialNoCaptureFiles) {
         throw "Capture-absent DriveBus partial upgrade must preserve existing routed core and emit only timer stages: $($partialNoCaptureFiles -join ',')"
@@ -214,7 +232,8 @@ finally {
 }
 $partial=Generate
 $f2=@(RuleFiles $partial)
-if ($f2.Count -ne 2 -or
+if ($f2.Count -ne 3 -or
+    'DriveBus/Modules/event.lua' -notin $f2 -or
     'DriveBus/External/Cron.lua' -notin $f2 -or 'DriveBus/init.lua' -notin $f2 -or
     'DriveBus/Modules/core.lua' -in $f2) {
     throw "Partially routed DriveBus must update only Cron/init: $($f2 -join ',')"
@@ -226,6 +245,8 @@ if ((Get-FileHash $corePath -Algorithm SHA256).Hash -ne $hashBefore) {
     Set-Content -LiteralPath $cronPath -Encoding utf8
 (ZipText $partial.pass.ZipPath 'DriveBus/init.lua') |
     Set-Content -LiteralPath $initPath -Encoding utf8
+(ZipText $partial.pass.ZipPath 'DriveBus/Modules/event.lua') |
+    Set-Content -LiteralPath $eventPath -Encoding utf8
 
 # Once all source stages are present, an absent callback row must
 # not offer this already-complete mod again.
@@ -264,10 +285,11 @@ if (!$legacyCore.Contains('local zeroEngineConfig') -or
 $legacyCore | Set-Content -LiteralPath $corePath -Encoding utf8
 $cron | Set-Content -LiteralPath $cronPath -Encoding utf8
 $init | Set-Content -LiteralPath $initPath -Encoding utf8
+$event | Set-Content -LiteralPath $eventPath -Encoding utf8
 $legacyHash=(Get-FileHash $corePath -Algorithm SHA256).Hash
 $legacy=Generate
 $f3=@(RuleFiles $legacy)
-if ($f3.Count -ne 2 -or 'DriveBus/Modules/core.lua' -in $f3) {
+if ($f3.Count -ne 3 -or 'DriveBus/Modules/core.lua' -in $f3) {
     throw 'Historical DriveBus route should only receive the missing timer stages'
 }
 if ((Get-FileHash $corePath -Algorithm SHA256).Hash -ne $legacyHash) {

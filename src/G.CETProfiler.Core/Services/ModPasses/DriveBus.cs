@@ -15,7 +15,10 @@ internal static partial class SemanticInjectors
             var core = File.ReadAllText(Path.Combine(ownerFolder, "Modules", "core.lua"));
             var cron = File.ReadAllText(Path.Combine(ownerFolder, "External", "Cron.lua"));
             var init = File.ReadAllText(Path.Combine(ownerFolder, "init.lua"));
+            var events = File.ReadAllText(Path.Combine(ownerFolder, "Modules", "event.lua"));
             return IsDriveBusActionRouted(core) &&
+                HasDriveBusActionWakeGate(core) &&
+                HasDriveBusExistingDiscoveryWake(events) &&
                 HasDriveBusActiveTimers(cron) && HasDriveBusTimerGate(init);
         }
         catch (IOException) { return false; }
@@ -66,6 +69,104 @@ internal static partial class SemanticInjectors
                 return true;
         }
         return false;
+    }
+
+    // Stage C: only the mod's optional 0-Engine subscriber sleeps.
+    // The author's already-running 100 ms bus-discovery timer is the
+    // independent wake path; no additional native observer is installed.
+    // A missing SetActive handle leaves the original route/fallback alive.
+    private static bool HasDriveBusActionWakeGate(string core) =>
+        core.Contains("self.__gcetSyncActionDormancy = function()", StringComparison.Ordinal) &&
+        core.Contains("local __gcetDriveBusActionHandle = nil", StringComparison.Ordinal) &&
+        core.Contains("status == Def.VehicleStatus.PlayerIn", StringComparison.Ordinal) &&
+        core.Contains("status == Def.VehicleStatus.Mounted", StringComparison.Ordinal) &&
+        core.Contains("pcall(handle.SetActive, needed)", StringComparison.Ordinal) &&
+        Regex.Matches(core,
+            @"__gcetDriveBusActionHandle\s*=\s*(?:zeroEngine(?:Mod)?|__gcet(?:Client|Engine)_gcetDriveBusOnAction)\.SubscribeAction\s*\(",
+            RegexOptions.CultureInvariant).Count == 2;
+
+    private static bool HasDriveBusExistingDiscoveryWake(string events) =>
+        events.Contains("__gcetDriveBusDiscoveryWakeV2", StringComparison.Ordinal) &&
+        Regex.IsMatch(events,
+            @"self:CheckAllEvents\s*\(\s*\)\s*\r?\n\s*-- __gcetDriveBusDiscoveryWakeV2\s*\r?\n\s*if\s+DAB\.core_obj\s+and\s+type\s*\(\s*DAB\.core_obj\.__gcetSyncActionDormancy\s*\)\s*==\s*['""]function['""]",
+            RegexOptions.CultureInvariant);
+
+    private static string AddDriveBusActionWakeGate(string core)
+    {
+        if (HasDriveBusActionWakeGate(core)) return core;
+        if (core.Contains("__gcetSyncActionDormancy", StringComparison.Ordinal) ||
+            core.Contains("__gcetDriveBusActionHandle", StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "DriveBus action subscriber dormancy stage is partial/drifted.");
+
+        // The existing original (zeroEngineOnAction) and generated
+        // (gcetDriveBusOnAction) source shapes each have exactly two
+        // SubscribeAction choices plus their existing native Observe fallback.
+        var direct = new Regex(
+            @"(?<call>(?:zeroEngineMod|zeroEngine)\.SubscribeAction\([^\r\n]*\))",
+            RegexOptions.CultureInvariant);
+        var routed = new Regex(
+            @"(?<call>__gcet(?:Client|Engine)_gcetDriveBusOnAction\.SubscribeAction\([^\r\n]*\))",
+            RegexOptions.CultureInvariant);
+        var selected = direct.Matches(core).Count == 2 ? direct : routed;
+        if (selected.Matches(core).Count != 2 ||
+            (selected == direct && routed.IsMatch(core)) ||
+            (selected == routed && direct.IsMatch(core)))
+            throw new InvalidOperationException(
+                "DriveBus existing shared OnAction subscriber calls changed.");
+
+        core = selected.Replace(core,
+            m => "__gcetDriveBusActionHandle = " + m.Groups["call"].Value);
+
+        var open = new Regex(
+            @"(?m)^function\s+Core:SetObserve\s*\(\s*\)\s*$",
+            RegexOptions.CultureInvariant);
+        if (open.Matches(core).Count != 1)
+            throw new InvalidOperationException("DriveBus SetObserve is ambiguous.");
+        const string gate =
+            "\n    -- __gcetDriveBusActionDormancyV2: cached author bus state, no native getters\n" +
+            "    local __gcetDriveBusActionHandle = nil\n" +
+            "    local __gcetDriveBusLastActionState = nil\n" +
+            "    self.__gcetSyncActionDormancy = function()\n" +
+            "        local handle = __gcetDriveBusActionHandle\n" +
+            "        if type(handle) ~= \"table\" or type(handle.SetActive) ~= \"function\" then return end\n" +
+            "        local event = self.available_event_obj\n" +
+            "        local status = event and event:GetStatus()\n" +
+            "        local needed = status == Def.VehicleStatus.PlayerIn or status == Def.VehicleStatus.Mounted\n" +
+            "        if needed == __gcetDriveBusLastActionState then return end\n" +
+            "        if pcall(handle.SetActive, needed) then __gcetDriveBusLastActionState = needed end\n" +
+            "    end\n";
+        core = open.Replace(core, m => m.Value + gate, 1);
+        if (!HasDriveBusActionWakeGate(core))
+            throw new InvalidOperationException("DriveBus subscriber stage postconditions failed.");
+        return core;
+    }
+
+    private static string AddDriveBusDiscoveryWake(string events)
+    {
+        if (HasDriveBusExistingDiscoveryWake(events)) return events;
+        if (events.Contains("__gcetDriveBusDiscoveryWakeV2", StringComparison.Ordinal))
+            throw new InvalidOperationException("DriveBus discovery wake stage drifted.");
+        // The original timer discovers NoExistance -> Summoned -> PlayerIn
+        // -> Mounted without depending on OnAction. Piggyback on it rather
+        // than adding another always-on native listener.
+        if (!events.Contains("Cron.Every(0.1", StringComparison.Ordinal))
+            throw new InvalidOperationException("DriveBus 100 ms discovery timer missing.");
+        var check = new Regex(
+            @"(?m)^(?<indent>[ \t]*)self:CheckAllEvents\s*\(\s*\)[ \t]*$",
+            RegexOptions.CultureInvariant);
+        if (check.Matches(events).Count != 1)
+            throw new InvalidOperationException("DriveBus discovery wake is ambiguous.");
+        events = check.Replace(events, m =>
+            m.Value + "\n" + m.Groups["indent"].Value +
+            "-- __gcetDriveBusDiscoveryWakeV2: cached state, independent of OnAction\n" +
+            m.Groups["indent"].Value +
+            "if DAB.core_obj and type(DAB.core_obj.__gcetSyncActionDormancy) == \"function\" then\n" +
+            m.Groups["indent"].Value + "    DAB.core_obj.__gcetSyncActionDormancy()\n" +
+            m.Groups["indent"].Value + "end", 1);
+        if (!HasDriveBusExistingDiscoveryWake(events))
+            throw new InvalidOperationException("DriveBus discovery-stage postconditions failed.");
+        return events;
     }
 
     private static bool HasDriveBusActiveTimers(string cron) =>
@@ -178,11 +279,19 @@ internal static partial class SemanticInjectors
             throw new InvalidOperationException(
                 "DriveBus Cron active-timer guard failed source verification.");
 
+        // Route, dormancy and timer stages compose against pristine,
+        // historical-routed and partially optimized user source.
+        var events = context.FindFile(
+            "Modules/event.lua",
+            "Cron.Every(0.1", "self:CheckAllEvents()");
+        var eventText = AddDriveBusDiscoveryWake(events.Text);
+        coreText = AddDriveBusActionWakeGate(coreText);
         context.Write(core, coreText);
+        context.Write(events, eventText);
         context.Write(cron, cronText);
         context.Write(init, initText);
         return SemanticInjectionResult.Success(
-            "Preserved verified existing DriveBus action routing and fallback; added only missing Cron timer gate stages, with no dormant update work while no timer is active.");
+            "Extended existing DriveBus route with state-driven subscriber pause/resume from its original 100 ms discovery wake; preserved native Observe fallback, Input/Key/Axis and all Cron timers.");
     }
 
 
