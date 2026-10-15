@@ -143,8 +143,36 @@ public static class PassGeneratorService
             skipped);
 
         if (staged.Count == 0)
+        {
+            // An already-admitted authored rule may still fail its injector's
+            // independent source or lifecycle proof. Do not hide that failure
+            // under the same "no applicable rules" message used when nothing
+            // was eligible. Bound diagnostics to three semantic reasons.
+            var semanticFailures = skipped
+                .Select(item => JsonSerializer.SerializeToElement(item))
+                .Where(row => row.TryGetProperty("type", out var kind) &&
+                    kind.ValueKind == JsonValueKind.String &&
+                    kind.GetString() == "SEMANTIC_RULE")
+                .Take(3)
+                .Select(row =>
+                {
+                    var owner = row.TryGetProperty("Owner", out var name)
+                        ? name.GetString() : "unknown";
+                    var rule = row.TryGetProperty("RuleId", out var id)
+                        ? id.GetString() : "unknown";
+                    var reason = row.TryGetProperty("reason", out var why)
+                        ? why.GetString() : "source proof failed";
+                    return $"{owner}/{rule}: {reason}";
+                })
+                .ToArray();
+            var details = semanticFailures.Length > 0
+                ? " Source-proven semantic candidates were refused: " +
+                  string.Join("; ", semanticFailures)
+                : "";
             throw new InvalidOperationException(
-                "The resolver produced no applicable generic or source-proven semantic transforms. No ZIP was generated.");
+                "The resolver produced no applicable generic or source-proven semantic transforms. " +
+                "No ZIP was generated." + details);
+        }
 
         var callbackFileCount = staged.Count;
 
