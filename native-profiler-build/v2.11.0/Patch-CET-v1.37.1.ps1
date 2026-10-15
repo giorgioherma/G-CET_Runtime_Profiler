@@ -944,7 +944,7 @@ Replace-LiteralOnce `
             {
                 CETRuntimeProfiler::MethodScope ggcMethodScope(
                     6, apFunction->fullName.hash,
-                    apFunction->parent ? apFunction->parent->GetName().hash : 0ULL,
+                    CETRuntimeProfiler::Get().IsCapturing() && apFunction->parent ? apFunction->parent->GetName().hash : 0ULL,
                     CETRuntimeProfiler::Get().IsCapturing());
                 auto lockedState = chain.pScripting->GetLockedState();
 '@ `
@@ -960,7 +960,7 @@ Replace-LiteralOnce `
         {
             CETRuntimeProfiler::MethodScope ggcMethodScope(
                 7, apFunction->fullName.hash,
-                apFunction->parent ? apFunction->parent->GetName().hash : 0ULL,
+                CETRuntimeProfiler::Get().IsCapturing() && apFunction->parent ? apFunction->parent->GetName().hash : 0ULL,
                 CETRuntimeProfiler::Get().IsCapturing());
             auto lockedState = chain.pScripting->GetLockedState();
 '@ `
