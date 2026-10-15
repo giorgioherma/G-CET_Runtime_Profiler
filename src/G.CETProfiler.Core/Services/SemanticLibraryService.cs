@@ -7,6 +7,7 @@ namespace GCETRuntimeProfiler.Core.Services;
 // A completed Lua semantic stage does NOT authorize native dispatch dormancy.
 // Native read avoidance and native->Lua dispatch require independent source proof.
 internal sealed record SemanticNativeLane(
+    bool Classified,
     string ReadState,
     string DispatchState,
     bool ReadSourceProven,
@@ -36,7 +37,7 @@ internal sealed record SemanticRuleMatch(
 {
     internal bool StageComposed { get; init; }
     internal SemanticNativeLane NativeLane { get; init; } =
-        new("UNCLASSIFIED", "UNCLASSIFIED", false, false, false, "");
+        new(false, "UNCLASSIFIED", "UNCLASSIFIED", false, false, false, "");
 
     internal static SemanticRuleMatch None { get; } = new(
         false, false, false, false, "", false, 0, 0, "", "", "", "", false, 3.0, false,
@@ -527,7 +528,7 @@ internal sealed class SemanticLibraryService
         if (string.IsNullOrWhiteSpace(proof.ReadStage) &&
             string.IsNullOrWhiteSpace(proof.DispatchStage))
             return new SemanticNativeLane(
-                "UNCLASSIFIED", "UNCLASSIFIED", false, false, false, "");
+                false, "UNCLASSIFIED", "UNCLASSIFIED", false, false, false, "");
 
         // Never promote a native stage on the strength of the Lua lane marker.
         // The exact native-read avoidance and independent dispatch wake must
@@ -557,7 +558,7 @@ internal sealed class SemanticLibraryService
             : string.IsNullOrWhiteSpace(proof.DispatchStage)
                 ? "UNCLASSIFIED" : proof.DispatchStage;
         return new SemanticNativeLane(
-            readState, dispatchState, readProof, dispatchProof,
+            true, readState, dispatchState, readProof, dispatchProof,
             readComplete && dispatchComplete, proof.WakeContract);
     }
 

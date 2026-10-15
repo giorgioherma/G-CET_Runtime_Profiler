@@ -461,15 +461,20 @@ internal static class CallbackResolverService
                             },
                             native = new
                             {
+                                classified = semantic.NativeLane.Classified,
                                 readState = semantic.NativeLane.ReadState,
                                 dispatchState = semantic.NativeLane.DispatchState,
                                 readSourceProven = semantic.NativeLane.ReadSourceProven,
                                 dispatchSourceProven = semantic.NativeLane.DispatchSourceProven,
-                                complete = semantic.NativeLane.Complete,
+                                complete = semantic.NativeLane.Classified
+                                    ? (bool?)semantic.NativeLane.Complete : null,
                                 wakeContract = semantic.NativeLane.WakeContract
                             },
-                            overallComplete = semantic.AlreadySatisfied &&
-                                semantic.NativeLane.Complete
+                            // Unclassified catalog entries are NOT native
+                            // failures. This is unknown, not a false negative.
+                            overallComplete = semantic.NativeLane.Classified
+                                ? (bool?)(semantic.AlreadySatisfied && semantic.NativeLane.Complete)
+                                : null
                         },
                         semantic.PartialState,
                         semantic.MarkerFileCount,
