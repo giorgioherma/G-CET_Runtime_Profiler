@@ -6,6 +6,81 @@ namespace GCETRuntimeProfiler.Core.Services;
 // Mod-owned source transformations. Shared proof/replace helpers remain in SemanticInjectors.cs.
 internal static partial class SemanticInjectors
 {
+    // These are source-stage postconditions, not legacy version markers.
+    // The original fallback must remain when the shared native route exists.
+    internal static bool IsDriveBusComplete(string ownerFolder)
+    {
+        try
+        {
+            var core = File.ReadAllText(Path.Combine(ownerFolder, "Modules", "core.lua"));
+            var cron = File.ReadAllText(Path.Combine(ownerFolder, "External", "Cron.lua"));
+            var init = File.ReadAllText(Path.Combine(ownerFolder, "init.lua"));
+            return IsDriveBusActionRouted(core) &&
+                HasDriveBusActiveTimers(cron) && HasDriveBusTimerGate(init);
+        }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
+    }
+
+    private static bool IsDriveBusActionRouted(string text)
+    {
+        if (!text.Contains("exception_in_choice_list", StringComparison.Ordinal) ||
+            !text.Contains("exception_in_mount_list", StringComparison.Ordinal) ||
+            !text.Contains("self:ChoiceAction(action_name", StringComparison.Ordinal) ||
+            !text.Contains("consumer:Consume()", StringComparison.Ordinal))
+            return false;
+
+        // Both known historical routes carry exactly six authored actions.
+        // Require those names in ONE finite configuration, not scattered
+        // throughout the owner's source as unrelated strings.
+        var config = Regex.Match(text,
+            @"\blocal\s+(?:zeroEngineConfig|__gcetActions_[A-Za-z_0-9]+)\s*=\s*(?<table>\{(?:[^{}]|\{[^{}]*\})*\})",
+            RegexOptions.CultureInvariant | RegexOptions.Singleline);
+        if (!config.Success || config.NextMatch().Success)
+            return false;
+        var configured = Regex.Matches(config.Groups["table"].Value,
+                @"['""](?<name>[^'""]+)['""]", RegexOptions.CultureInvariant)
+            .Select(match => match.Groups["name"].Value).ToArray();
+        var expected = new[] { "QuickExit", "NextWeapon", "PreviousWeapon",
+            "ChoiceApply", "ChoiceScrollUp", "ChoiceScrollDown" };
+        if (configured.Length != expected.Length ||
+            configured.Distinct(StringComparer.Ordinal).Count() != expected.Length ||
+            expected.Except(configured, StringComparer.Ordinal).Any())
+            return false;
+
+        foreach (var handler in new[] { "zeroEngineOnAction", "gcetDriveBusOnAction" })
+        {
+            var escaped = Regex.Escape(handler);
+            if (Regex.IsMatch(text,
+                    @"\blocal\s+function\s+" + escaped +
+                    @"\s*\([^)]*\baction\b[^)]*\bconsumer\b[^)]*\)",
+                    RegexOptions.CultureInvariant) &&
+                Regex.IsMatch(text,
+                    @"\.\s*SubscribeAction\s*\([\s\S]*?\b" + escaped + @"\b",
+                    RegexOptions.CultureInvariant) &&
+                Regex.IsMatch(text,
+                    @"\bObserve\s*\(\s*['""]PlayerPuppet['""]\s*,\s*['""]OnAction['""]\s*,\s*" +
+                    escaped + @"\s*\)",
+                    RegexOptions.CultureInvariant))
+                return true;
+        }
+        return false;
+    }
+
+    private static bool HasDriveBusActiveTimers(string cron) =>
+        Regex.IsMatch(cron,
+            @"\bfunction\s+Cron\.HasActiveTimers\s*\(\s*\)\s*[\s\S]*?" +
+            @"\bfor\s+_,\s*timer\s+in\s+ipairs\s*\(\s*timers\s*\)\s*do\s*" +
+            @"if\s+timer\.active\s+then\s+return\s+true\s+end[\s\S]*?" +
+            @"\breturn\s+false\s+end\b",
+            RegexOptions.CultureInvariant);
+
+    private static bool HasDriveBusTimerGate(string init) =>
+        Regex.IsMatch(init,
+            @"\bif\s+Cron\.HasActiveTimers\s*\(\s*\)\s+then\s+" +
+            @"Cron\.Update\s*\(\s*delta\s*\)\s+end",
+            RegexOptions.CultureInvariant);
+
     private static SemanticInjectionResult ApplyDriveBus(
         SemanticPatchContext context)
     {
