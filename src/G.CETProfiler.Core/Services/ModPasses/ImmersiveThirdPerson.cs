@@ -283,9 +283,11 @@ internal static partial class SemanticInjectors
 
         var route = observer.Text;
         const string legacyOptions = "{ actions = actions, decodeType = false }";
-        const string legacyHandle = "    routed = ok and type(handle) == \"table\"\n";
+        var legacyHandle = new Regex(
+            @"(?m)^(?<indent>[ \t]*)routed\s*=\s*ok\s+and\s+type\(handle\)\s*==\s*""table""[ \t]*\r?$",
+            RegexOptions.CultureInvariant);
         if (route.Split(legacyOptions, StringSplitOptions.None).Length != 3 ||
-            route.Split(legacyHandle, StringSplitOptions.None).Length != 3 ||
+            legacyHandle.Matches(route).Count != 2 ||
             !route.Contains("__gcetItppRoutedOnActionV1", StringComparison.Ordinal))
             throw new InvalidOperationException(
                 "Third-person v1 action-route options or handle ownership have changed.");
@@ -293,9 +295,11 @@ internal static partial class SemanticInjectors
         route = route.Replace(legacyOptions,
             "{ actions = actions, decodeType = false, active = state.enabled == true }",
             StringComparison.Ordinal);
-        route = route.Replace(legacyHandle,
-            legacyHandle + "    if routed then __gcetItppActionHandle = handle end\n",
-            StringComparison.Ordinal);
+        // Legacy user files and CI-generated ZIPs can have LF or CRLF; both
+        // routed branches must be proven before introducing handle ownership.
+        route = legacyHandle.Replace(route, m =>
+            m.Value.TrimEnd('\r') + (m.Value.EndsWith('\r') ? "\r\n" : "\n") +
+            m.Groups["indent"].Value + "if routed then __gcetItppActionHandle = handle end");
 
         var prefix =
             "-- __gcetItppActionDormancyV2: author camera state owns subscriber activity\n" +
