@@ -281,4 +281,35 @@ try {
         }
     }
 } finally {$vZip.Dispose()}
+# Current untouched Nexus source uses Vector4.Distance rather than a scalar
+# math.sqrt expression. It must also produce BOTH complete PASS4 files in one
+# generation, without requiring a prior G-CET stage.
+$vectorWorld = [regex]::Replace($authorTables,
+    '(?m)^[ \t]*local px, py, pz = pos\.x, pos\.y, pos\.z\r?\n','')
+$vectorWorld = [regex]::Replace($vectorWorld,
+    '(?m)^[ \t]*local dx = px - loc\.center\.x\r?\n[ \t]*local dy = py - loc\.center\.y\r?\n[ \t]*local dz = pz - loc\.floorZ\r?\n[ \t]*local d = math\.sqrt\(dx \* dx \+ dy \* dy \+ dz \* dz\)',
+    '        local d = Vector4.Distance(pos, Vector4.new(loc.center.x, loc.center.y, loc.floorZ, 1))')
+if (!$vectorWorld.Contains('Vector4.Distance') -or $vectorWorld.Contains('math.sqrt(')) {
+    throw 'Could not construct current Nexus Vector4 author-source variant'
+}
+$authorInit | Set-Content -LiteralPath $path -Encoding utf8
+$vectorWorld | Set-Content -LiteralPath $tablesPath -Encoding utf8
+$vector = Generate
+$vectorManifest = Get-Content $vector.pass.ManifestPath -Raw | ConvertFrom-Json
+$vectorRule = @($vectorManifest.transforms | Where-Object {$_.RuleId -eq 'streetgamespoker'})
+if ($vectorRule.Count -ne 1 -or @($vectorRule[0].files).Count -ne 2) {
+    throw 'Pristine Vector4.Distance world source did not receive complete Poker PASS4'
+}
+$vectorZip = [System.IO.Compression.ZipFile]::OpenRead([string]$vector.pass.ZipPath)
+try {
+    $entry = $vectorZip.GetEntry('bin/x64/plugins/cyber_engine_tweaks/mods/StreetGamesPoker/StreetTables.lua')
+    if (!$entry) { throw 'Vector4 world output missing' }
+    $reader = [IO.StreamReader]::new($entry.Open())
+    try { $out = $reader.ReadToEnd() } finally { $reader.Dispose() }
+    if (!$out.Contains('__gcetPokerDistanceSq') -or $out.Contains('Vector4.Distance(') -or
+        !$out.Contains('return __gcetPokerNearAny')) {
+        throw 'Poker Vector4 source retained untransformed distance or lost the wake signal'
+    }
+} finally { $vectorZip.Dispose() }
+
 Write-Host 'Poker PASS4 generated from author source, with four lanes, lexical startup, logger, map pins, fallback and idempotence.'
