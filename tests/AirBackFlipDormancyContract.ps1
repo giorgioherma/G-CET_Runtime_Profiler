@@ -117,4 +117,5 @@ if($driftGenerate.ok -and $driftGenerate.pass){
 if(!(Get-Content -LiteralPath $initPath -Raw).Contains('cfg.enabled = false')){
     throw 'AirBackFlip source drift test modified the live source in-place'
 }
+$global:LASTEXITCODE=0
 Write-Host 'AirBackFlip pristine source-only, native fallback, idempotence and state-writer drift: PASS'
