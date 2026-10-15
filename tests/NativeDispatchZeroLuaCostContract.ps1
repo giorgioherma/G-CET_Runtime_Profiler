@@ -196,7 +196,9 @@ $manifest = Get-Content -LiteralPath $run.pass.ManifestPath -Raw |
 $transforms = @($manifest.transforms)
 foreach ($name in @('NativeZeroFrame','NativeZeroDraw','NativeZeroGuard','NativeZeroAction')) {
     if (@($transforms | Where-Object { $_.owner -eq $name }).Count -eq 0) {
-        throw "Expected native consolidation did not produce an overlay: $name"
+        $skipRows = @($manifest.skipped | Where-Object { $_.owner -eq $name })
+        $skipDetails = ($skipRows | ConvertTo-Json -Depth 12 -Compress)
+        throw "Expected native consolidation did not produce an overlay: $name; skips=$skipDetails"
     }
 }
 foreach ($name in @('NativeSilent','NativeOther','NativeWrapped','NativeAlreadyRouted')) {
