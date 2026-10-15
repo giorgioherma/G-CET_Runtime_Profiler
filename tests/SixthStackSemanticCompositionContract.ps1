@@ -374,4 +374,20 @@ finally {
     $global:LASTEXITCODE=0
 }
 
+# Installed output must be recognized as complete without a captured callback.
+$back | Set-Content -LiteralPath (Join-Path $mods 'BackStepDuo/init.lua') -Encoding utf8
+$emptyCapture|Set-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Encoding utf8
+try {
+    $complete=(& $resolverExe --capture $capture --mods $mods --json | ConvertFrom-Json)
+    if(!$complete.ok){throw 'BackStepDuo installed-source completion analysis failed'}
+    $completeReport=Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
+    if(@($completeReport.semanticSourceOnlyCandidates|Where-Object {$_.ruleId -eq 'backstep-duo'}).Count -ne 0){
+        throw 'Already optimized BackStepDuo was offered a redundant source-only pass'
+    }
+}
+finally {
+    $originalCapture|Set-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Encoding utf8
+    $global:LASTEXITCODE=0
+}
+
 Write-Host 'Sixth-stack semantic composition contract passed: GiveCraftMat + Simple Notepad + Dedra Palmjet + BackStepDuo + NightCityAlliesMissions.'
