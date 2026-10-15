@@ -88,6 +88,60 @@ foreach($report in $pair) {
         throw 'Unscoped multi-axis evidence accounting, provenance or compatibility failed.'
     }
 }
+# Native method samples are the outgoing allocation-pressure metric; legacy
+# captures remain method/class UNKNOWN rather than inheriting Lua callback CPU.
+foreach ($report in $pair) {
+    $p=$report.nativeMarshallingAllocationPressure
+    if (!$p -or $p.nativeMethodHashRecorded -or $p.nativeClassHashRecorded -or
+        $p.onAction.observedMethodSampleCount -ne 0 -or
+        $p.modAllocationAttributionProven -or $p.automaticRewriteAuthorized) {
+        throw 'Legacy native samples were falsely class-qualified or assigned to mods'
+    }
+}
+$oldNative=(Get-Content "$root/CET_Runtime_Profile_GGC_UnscopedNativeSamples.csv" -Raw)
+@'
+CaptureMs,OperationSequence,PositiveBytes,AllocatorPath,VmExecutionState,NativeExecutionBoundary,StackDepth,Frame1,Frame2,Frame3,Frame4,Frame5,Frame6,DroppedSamples,Interpretation,ReallocOrigin,OldSize,NewSize,NativeMethodHash
+250,1024,120,RESIZE_GROWTH,VM_C,CET_FUNCTION_OVERRIDE_PURE,2,cyber_engine_tweaks.asi+0xABC,LuaJIT.dll+0x1,NO_FRAME,NO_FRAME,NO_FRAME,NO_FRAME,0,sample,OLD_SIZE_ZERO,0,120,9658066991423262154
+1450,2048,180,NEW_GCO,VM_C,CET_FUNCTION_OVERRIDE_PURE,1,cyber_engine_tweaks.asi+0xABC,NO_FRAME,NO_FRAME,NO_FRAME,NO_FRAME,NO_FRAME,0,sample,NOT_REALLOC,0,180,9658066991423262154
+'@ | Set-Content "$root/CET_Runtime_Profile_GGC_UnscopedNativeSamples.csv" -Encoding utf8
+$methodOnly=Run-Report
+foreach ($report in $methodOnly) {
+    $p=$report.nativeMarshallingAllocationPressure
+    if (!$p.nativeMethodHashRecorded -or $p.nativeClassHashRecorded -or
+        $p.onAction.observedMethodSampleCount -ne 2 -or
+        $p.onAction.observedClassQualifiedSampleCount -ne 0 -or
+        $p.onAction.observedPlayerPuppetSampleCount -ne 0 -or
+        $p.modAllocationAttributionProven -or $p.nativeAllocationSavingsMeasured) {
+        throw 'Method-only OnAction evidence was incorrectly class-qualified or treated as savings'
+    }
+}
+@'
+CaptureMs,OperationSequence,PositiveBytes,AllocatorPath,VmExecutionState,NativeExecutionBoundary,StackDepth,Frame1,Frame2,Frame3,Frame4,Frame5,Frame6,DroppedSamples,Interpretation,ReallocOrigin,OldSize,NewSize,NativeMethodHash,NativeClassHash
+250,1024,120,RESIZE_GROWTH,VM_C,CET_FUNCTION_OVERRIDE_PURE,2,cyber_engine_tweaks.asi+0xABC,LuaJIT.dll+0x1,NO_FRAME,NO_FRAME,NO_FRAME,NO_FRAME,0,sample,OLD_SIZE_ZERO,0,120,9658066991423262154,14897567717734570886
+1450,2048,180,NEW_GCO,VM_C,CET_FUNCTION_OVERRIDE_PURE,1,cyber_engine_tweaks.asi+0xABC,NO_FRAME,NO_FRAME,NO_FRAME,NO_FRAME,NO_FRAME,0,sample,NOT_REALLOC,0,180,9658066991423262154,0
+'@ | Set-Content "$root/CET_Runtime_Profile_GGC_UnscopedNativeSamples.csv" -Encoding utf8
+$classQualified=Run-Report
+foreach ($report in $classQualified) {
+    $p=$report.nativeMarshallingAllocationPressure
+    if (!$p.nativeClassHashRecorded -or
+        $p.onAction.observedMethodSampleCount -ne 2 -or
+        $p.onAction.observedSamplePositiveBytes -ne 300 -or
+        $p.onAction.observedClassQualifiedSampleCount -ne 1 -or
+        $p.onAction.observedPlayerPuppetSampleCount -ne 1 -or
+        $p.onAction.observedPlayerPuppetSamplePositiveBytes -ne 120 -or
+        $p.onAction.perSubscriberAllocationBytes -ne $null -or
+        $p.modAllocationAttributionProven -or $p.nativeAllocationSavingsMeasured) {
+        throw 'Class-qualified native OnAction sample pipeline or no-mod-attribution contract failed'
+    }
+    $samples=@($p.methodGroups | Where-Object {
+        $_.className -eq 'PlayerPuppet' -and $_.methodName -eq 'OnAction' })
+    if ($samples.Count -ne 1 -or $samples[0].observedSamplePositiveBytes -ne 120 -or
+        $samples[0].subscriberRegistrationId -ne $null) {
+        throw 'PlayerPuppet::OnAction numeric hash identity incorrectly grouped'
+    }
+}
+$oldNative | Set-Content "$root/CET_Runtime_Profile_GGC_UnscopedNativeSamples.csv" -Encoding utf8
+
 $html=Get-Content "$root/CET_Report.html" -Raw
 if(!$html.Contains('Unscoped G-GC: VM, allocation type') -or
    !$html.Contains('RESIZE_GROWTH') -or !$html.Contains('OLD_SIZE_NONZERO') -or !$html.Contains('CET_FRAME_UPDATE')) {
