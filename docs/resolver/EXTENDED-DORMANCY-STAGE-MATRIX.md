@@ -119,3 +119,6 @@ Missing 0-Engine functionality is REQUIRES_ENGINE_EXTENSION, NOT an impossible/S
 | tunnel_rescue | REQUIRES_ENGINE_EXTENSION_AND_WAKE_PROOF | independent proximity, quest, session/recovery and input wakes |
 
 An added Lua ObserveAfter router alone consolidates subscribers; it still creates one native-to-Lua dispatch on every OnAction. A subscriber-level SetActive is not equivalent to native hook suspension.
+
+
+**Shared static location cache: see [SHARED-STATIC-LOCATION-REGISTRY.md](SHARED-STATIC-LOCATION-REGISTRY.md).** This is source-audited development work, not a completed A/B/C lane. Fixed anchors are distinct from quest activation. A per-mod 0-Engine proximity wake needs source evidence and full lifecycle proof before hard native C dormancy. In particular preserve Hotscenes ObserveAfter/open menu and DriveAerialVehicle pre-mount Waiting inputs.

@@ -4,6 +4,14 @@
 **Task:** Complete source-proven, per-mod **extended dormancy across Lua execution, Lua → native work, and native → Lua dispatch**, building on the existing 62-mod audit / 67-rule production semantic library.
 **Scope:** Resolver development branch `dev/resolver-profiler-handoff`. No product-version change or permission to modify the user's live mods.
 
+## 2026-10-16 — Shared fixed-location cache and first-interaction quest dormancy (SOURCE AUDIT)
+
+**User-directed architecture:** Build one common 0-Engine static-anchor registry and eventually one shared proximity/wake provider instead of per-mod duplicate fixed-location probes. **Not implemented or shipped yet.** Mod author remains source of truth; location data is cached at startup/session readiness and retained until its originating author source/provider changes. Quest dormancy is separate from location caching and must wake for actual source-proven first interaction, phone/SMS/shard/quest facts, or other independent start; a generated journal entry or mappin never counts as quest started.
+
+Reviewed live mod trees for Tunnel Rescue, illegal mechanic, Ziggy, GigCore, Specter M11, StreetGamesPoker, CyberTrials, Joytoys, ELM, Hidden Packages, Killing Night, MissingPersons, Night-night_City, PacificaTyphoon, QuestRunner and VehicleRepairGarages, plus Hotscenes and DriveAerialVehicle lifecycle. Source table, exact files and staged roll-out: [SHARED-STATIC-LOCATION-REGISTRY.md](resolver/SHARED-STATIC-LOCATION-REGISTRY.md).
+
+**Source correction:** Tunnel Rescue already parses layout.json once into L (so another separate cache copy would be waste); shared benefit comes from publishing immutable start anchors and centralizing proximity work. DriveAerialVehicle's Waiting state is **outside the craft before mounting** and must remain receptive to action inputs. Hotscenes OnAction REPEAT handler is relevant to an opened navigation UI; closed-UI video playback by itself is not a reason to keep that particular observer awake. Pure router consolidation is not native C-hook elimination. Preserve existing game code and installed mods until source-proven 0-Engine/API support, Resolver injectors, tests and live validation exist.
+
 ## 2026-10-16 — Next B/C batch: expand 0-Engine where native dispatch requires it
 
 **User decision: missing 0-Engine functionality is an engineering requirement, not an impossible optimization.** The actionable status is REQUIRES_ENGINE_EXTENSION (plus source wake proof), not permanent BLOCKED/SKIP. Next five: hotscenes, DriveAerialVehicle, InertiaReturns, licksclubjukebox, JoytoysOfNightCity; tunnel_rescue remains unfinished separately. Source reviewed from actual 2026-10-15 live ZIP.
