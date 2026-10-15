@@ -2,6 +2,12 @@
 
 > **Startup/build contract:** [CORE.md](../HANDOFF/CORE.md) is the first-read summary, [BUILD-PIPELINE.md](../HANDOFF/BUILD-PIPELINE.md) is the authoritative two-workflow procedure (native CI = DLL only; main CI = Profiler + Resolver packages), and [PRODUCT-STATUS.md](../product/PRODUCT-STATUS.md) is the current capabilities/remaining-work overview. The details below are the durable Resolver engineering contract.
 
+## Mandatory evidence acquisition and approved semantic admission
+
+When measurement can improve attribution, implementation accuracy, native/Lua boundary analysis, wake/lifecycle safety or verification, it is required. If that evidence is not currently captured, **extend the native instrumentation, managed Profiler, reports and Profiler → Resolver handoff to collect and carry it** with bounded capture cost, accurate scope, contracts and uncertainty/unknown fields. A missing useful measurement is a development requirement, not a reason to disregard profiler evidence. If capture is genuinely infeasible or behavior-distorting, document exactly why and use an explicitly reviewed alternate proof and validation path. Do not assign shared native marshalling cost to an individual mod without evidence.
+
+After full source review and explicit approval of a safe mod-specific semantic implementation, low, zero or absent workload in one capture must not block generation of missing supported stages. Source-only admission requires known installed owner, catalog opt-in, authored wake/lifecycle proof, verified anchors and postconditions, idempotence, drift refusal and fallback. Report absent values as null/`NOT_MEASURED`, never as inferred zero or fabricated savings. Generic AUTO remains measurement/mechanical-proof gated. **Measure and add missing useful measurements for accuracy; do not use measured popularity as a veto on an approved source-safe semantic rule.**
+
 ## Goal and historical results
 
 G-CET Runtime Profiler measures heavily modded Cyberpunk 2077 CET/Lua; G-CET Resolver applies proven optimizations **to original/current mod source**. This project began with compatible 0-Engine integration and semantic optimization of measured big offenders, then systematic testing of essentially all Nexus mods carrying CET tags in the user's collection. The user repeatedly measured **over 50% lower CET workload** on tested stacks. That's valuable observed progress, *not a guarantee of universal correctness or performance*.
