@@ -55,6 +55,7 @@ public static partial class ResultReportService
         public ExplicitGcTelemetry? ExplicitGc { get; init; }
         public GcCollectorTelemetry? CollectorGc { get; init; }
         public GcTracerTelemetry? GcTracer { get; init; }
+        public CallbackAllocatorPressureReport? CallbackAllocatorPressure { get; init; }
         public UnscopedDiagnosticReport? UnscopedDiagnostics { get; init; }
         public DeepReuseAnalysis? DeepReuse { get; set; }
         public ScalarObservationReport? ScalarObservations { get; set; }
@@ -77,6 +78,7 @@ public static partial class ResultReportService
         var gcTracer = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_GGC_Rankings.csv"));
         var gcTracerFunctions = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_GGC_Functions.csv"));
         var gcTracerRegistrations = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_GGC_Registrations.csv"));
+        var callbackPressureRows = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_GGC_CallbackAllocatorPressure.csv"));
         var spikes = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Spikes.csv"));
         var schedulerJobs = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Scheduler_ByJob.csv"));
         var schedulerSpikes = ReadCsv(FindProfilerFile(captureRoot, "CET_Runtime_Profile_Scheduler_Spikes.csv"));
@@ -277,6 +279,7 @@ public static partial class ResultReportService
             ExplicitGc = explicitGcFile is null ? null : AnalyzeExplicitGc(explicitGc, spikes),
             CollectorGc = analyzedCollector,
             GcTracer = gcTracer.Count > 0 ? AnalyzeGcTracer(gcTracer, gcTracerFunctions, gcTracerRegistrations) : null,
+            CallbackAllocatorPressure = AnalyzeCallbackAllocatorPressure(callbackPressureRows, gcTracerRegistrations),
             UnscopedDiagnostics = AnalyzeUnscopedDiagnostics(captureRoot, gcTracer),
             WorkloadServices = AnalyzeWorkload(markers, schedulerJobMetrics)
         };
