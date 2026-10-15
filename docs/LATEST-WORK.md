@@ -15,6 +15,14 @@ This is the **one mutable, cross-chat task document**, not a dated investigation
 4. **After completion,** transfer durable architecture/policy into the appropriate subsystem specifications and significant final evidence/commit/CI into `docs/history/ACTIVE-STATE.md`. **Only when the next task is agreed** replace the contents of `docs/LATEST-WORK.md` with that task; keep the filename and navigation links unchanged. The Git history retains this task's progress.
 5. Treat this document as the current-work pointer. Stable instructions remain in `HANDOFF`; detailed experiments remain with their subsystem. Avoid duplicate parallel latest-task documents.
 
+## Mandatory measurement completeness and manually approved semantic admission — 2026-10-15
+
+**If a measurement needed to improve attribution, implementation correctness, lifecycle safety or validation is missing, add the measurement.** Extend native capture, the managed Profiler, its output/report and the Profiler → Resolver handoff as necessary; make instrumentation bounded, capture-gated, tested and explicit about scope/ownership. Do not bypass a missing useful metric by labeling the work semantic. Where direct instrumentation is genuinely infeasible or would itself disturb behavior, record the concrete limitation, an alternate source/behavioral proof and an explicit validation plan. Never invent values or distribute a shared native marshalling total across unproven individual subscribers.
+
+**Measurement completeness is an engineering obligation, not a numeric eligibility threshold.** Profile and evaluate each investigated mod/callback on both native → Lua and Lua → native sides. Source-proof the real activation, wake, pending-work and fallback paths. Once that implementation is manually reviewed and approved as safe, the Resolver must admit supported, missing semantic stages even if measured work is tiny, zero or absent in that particular capture. Explicit source-only admission must retain null/unmeasured fields, strict source identity, drift guards and postconditions. Do not relax generic AUTO's independent mechanical/measurement admission policy.
+
+For every candidate, document (1) available measurements and their attribution scope, (2) missing useful measurements and the native/Profiler/handoff additions made to obtain them, or a concrete instrumentation limitation, (3) the source proof and manual approval basis, and (4) performed CI and gameplay validation. The rule is **measure what can improve correctness; add missing measurements; do not trivially veto an approved safe semantic rewrite over its workload score.**
+
 ## Authoritative decision — why and when to optimize
 
 **The semantic library is a library of safe, reusable source-proven transformations, not a leaderboard of expensive callbacks.**
