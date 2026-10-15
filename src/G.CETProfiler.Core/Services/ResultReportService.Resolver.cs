@@ -381,6 +381,7 @@ public static partial class ResultReportService
             gcTracer = a.GcTracer is null ? null : BuildGcTracerInterop(a.GcTracer),
             unknownAllocationCoverage = BuildUnknownAllocationCoverageInterop(a),
             unscopedProducerDiagnostics = BuildUnscopedDiagnosticsInterop(a.UnscopedDiagnostics),
+            nativeMarshallingAllocationPressure = BuildNativeMarshallingPressureInterop(a.UnscopedDiagnostics),
             zeroEngineAllocationFlow = BuildZeroEngineFlowInterop(a),
             dataProvenanceCandidates = BuildDataProvenanceCandidates(a.GcTracer),
             deepDataReuseCandidates = BuildDeepReuseCandidates(a.DeepReuse),
