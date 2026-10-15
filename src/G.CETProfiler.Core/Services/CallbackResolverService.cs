@@ -42,6 +42,7 @@ internal static class CallbackResolverService
         string? semanticLibraryPath)
     {
         using var handoff = JsonDocument.Parse(File.ReadAllText(handoffPath));
+        var nativePressure = NativeMarshallingEvidenceReader.Read(handoff.RootElement);
         // A hot native-to-Lua registration can have zero *measured Lua*
         // exclusive time when its author callback immediately returns.
         // Excluding that row would prevent source-proven frame/action
@@ -309,6 +310,23 @@ internal static class CallbackResolverService
                             hasMeasuredInvocations = callback.CallsPerSecond > 0,
                             measuredLuaExclusiveMsPerSecond = callback.ExclusiveMsPerSecond,
                             dispatchCrossingCostMeasuredSeparately = false,
+                            // The native metric is not callback CPU. Even a
+                            // PlayerPuppet class+method match is shared across
+                            // independent Lua subscribers/observers.
+                            allocationPressureMetric = "NATIVE_TO_LUA_ARGUMENT_MARSHALLING_ALLOCATION_PRESSURE",
+                            allocationPressureStatus = nativePressure.Status,
+                            sameClassMethodSampled = callback.Target.Equals(
+                                "PlayerPuppet::OnAction", StringComparison.OrdinalIgnoreCase) &&
+                                nativePressure.PlayerPuppetOnActionSamples > 0,
+                            sharedPlayerPuppetOnActionNativeSamples =
+                                callback.Target.Equals("PlayerPuppet::OnAction", StringComparison.OrdinalIgnoreCase)
+                                    ? nativePressure.PlayerPuppetOnActionSamples : 0,
+                            sampledMethodNameOnlyOnAction =
+                                callback.Target.EndsWith("::OnAction", StringComparison.OrdinalIgnoreCase)
+                                    ? nativePressure.OnActionMethodSamples : 0,
+                            observedNativeBytesAttributedToThisSubscriber = (long?)null,
+                            nativeAllocationSavingsMeasured = false,
+                            influencesSafetyAdmission = false,
                             evidenceOnly = true
                         },
                         burst = new
@@ -566,6 +584,16 @@ internal static class CallbackResolverService
                 zeroEngineAutoUpdateAllowed = false,
                 note = "GC metrics augment callback CPU, burst, dormancy and existing semantic evidence. Only the pre-existing source-proven Resolver rules can generate passes."
             },
+            nativeMarshallingAllocationPressure = nativePressure.FullEvidence,
+            nativeAllocationPressurePolicy = new
+            {
+                outgoingPriorityMetric = "NATIVE_TO_LUA_ARGUMENT_MARSHALLING_ALLOCATION_PRESSURE",
+                luaExclusiveCpuIsNotNativeMarshallingCost = true,
+                exactNativeBoundaryPopulationSeparateFromBoundedSamples = true,
+                classQualifiedMethodIsNotModSubscriberAttribution = true,
+                noNativeBytesAssignedToIndividualObservers = true,
+                noAutomaticRewriteAuthorization = true
+            },
             semanticLibrary = new
             {
                 path = semanticLibraryPath,
@@ -598,6 +626,10 @@ internal static class CallbackResolverService
                 semanticReadyRules = semanticReadyRules.Count,
                 semanticCpuReadyRules = semanticCpuReadyRules.Count,
                 semanticSoftReadyRules = semanticSoftReadyRules.Count,
+                nativeMethodSampleCount = nativePressure.NativeSampleCount,
+                nativeOnActionMethodSamples = nativePressure.OnActionMethodSamples,
+                nativeOnActionClassQualifiedSamples = nativePressure.OnActionClassQualifiedSamples,
+                nativePlayerPuppetOnActionSamples = nativePressure.PlayerPuppetOnActionSamples,
                 completeDormancyWakePaths,
                 incompleteDormancyWakePaths,
                 sharedProviderReadyCallbacks = sharedProviderReadyCallbackCount,
