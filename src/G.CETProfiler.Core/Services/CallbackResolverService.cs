@@ -464,8 +464,10 @@ internal static class CallbackResolverService
                                 classified = semantic.NativeLane.Classified,
                                 readState = semantic.NativeLane.ReadState,
                                 dispatchState = semantic.NativeLane.DispatchState,
-                                readSourceProven = semantic.NativeLane.ReadSourceProven,
-                                dispatchSourceProven = semantic.NativeLane.DispatchSourceProven,
+                                readSourceProven = semantic.NativeLane.Classified
+                                    ? (bool?)semantic.NativeLane.ReadSourceProven : null,
+                                dispatchSourceProven = semantic.NativeLane.Classified
+                                    ? (bool?)semantic.NativeLane.DispatchSourceProven : null,
                                 complete = semantic.NativeLane.Classified
                                     ? (bool?)semantic.NativeLane.Complete : null,
                                 wakeContract = semantic.NativeLane.WakeContract
