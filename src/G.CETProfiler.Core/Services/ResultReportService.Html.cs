@@ -101,6 +101,7 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
             AppendUnscopedDiagnostics(sb, a.UnscopedDiagnostics);
             AppendDataProvenance(sb, a.GcTracer);
         }
+        AppendCallbackAllocatorPressure(sb, a.CallbackAllocatorPressure);
         AppendDeepReuseCandidates(sb, a.DeepReuse);
         AppendScalarObservations(sb, a.ScalarObservations);
 

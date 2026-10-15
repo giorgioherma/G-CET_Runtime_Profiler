@@ -1,3 +1,5 @@
+using System.Text;
+
 namespace GCETRuntimeProfiler.Core.Services;
 
 public static partial class ResultReportService
@@ -74,6 +76,38 @@ public static partial class ResultReportService
             Rows = rows,
             AllReconciled = rows.All(x => x.Reconciled)
         };
+    }
+
+    private static void AppendCallbackAllocatorPressure(
+        StringBuilder sb, CallbackAllocatorPressureReport? pressure)
+    {
+        if (pressure is null) return;
+        var rows = pressure.Rows.Where(x => x.IdentityVerified).ToList();
+        sb.Append("<div class=\"section\"><h2>Callback-owned LuaJIT allocation pressure</h2>")
+          .Append("<p class=\"note\">Measured positive allocator growth inside known ")
+          .Append("callback execution windows, not shared pre-dispatch native ")
+          .Append("argument marshalling, native/C++ heap allocations, or savings. ")
+          .Append("These bytes are already included in the G-GC registration totals ")
+          .Append("and must not be added again.</p>")
+          .Append("<p><b>All native partition rows reconcile:</b> ")
+          .Append(pressure.AllReconciled ? "YES" : "NO — inspect raw CSV")
+          .Append(" | <b>Verified registration owners:</b> ")
+          .Append(N(rows.Count)).Append("</p>");
+        sb.Append("<table><thead><tr><th>Owner</th><th>Callback</th>")
+          .Append("<th>Positive growth bytes</th><th>Allocator operations</th>")
+          .Append("<th>Inside native boundary bytes</th></tr></thead><tbody>");
+        foreach(var row in rows.OrderByDescending(x=>x.TotalPositiveBytes).Take(35))
+            sb.Append("<tr><td>").Append(H(row.Mod)).Append("</td><td>")
+              .Append(H(row.Kind)).Append(" ").Append(H(row.Target))
+              .Append("</td><td>").Append(N(row.TotalPositiveBytes))
+              .Append("</td><td>").Append(N(row.TotalOperations))
+              .Append("</td><td>").Append(N(row.NativeBoundaryPositiveBytes))
+              .Append("</td></tr>");
+        sb.Append("</tbody></table>");
+        if (pressure.Rows.Any(x=>!x.IdentityVerified))
+            sb.Append("<p class=\"note\">Unverified or overflow rows are excluded ")
+              .Append("from owner rankings. See raw CSV for their original evidence.</p>");
+        sb.Append("</div>");
     }
 
     private static object? BuildCallbackAllocatorPressureInterop(
