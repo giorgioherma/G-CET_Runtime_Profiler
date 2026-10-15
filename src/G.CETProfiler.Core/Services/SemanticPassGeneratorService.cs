@@ -192,19 +192,17 @@ internal static class SemanticPassGeneratorService
                     continue;
 
                 var runtimeMs = JsonDouble(runtime, "exclusiveMsPerSecond");
-                var runtimeThresholdMs = JsonDouble(
-                    semantic,
-                    "RuntimeThresholdMsPerSecond");
-                if (runtimeThresholdMs <= 0.0)
-                    runtimeThresholdMs = MaterialThresholdMsPerSecond;
-                if (runtimeMs < runtimeThresholdMs)
-                    continue;
-
-                if (!JsonBool(semantic, "Matched") ||
-                    !JsonBool(semantic, "SourceProofSatisfied") ||
-                    JsonBool(semantic, "AlreadySatisfied") ||
-                    JsonBool(semantic, "PartialState") ||
-                    !JsonBool(semantic, "GenerationEnabled"))
+                var runtimeCalls = JsonDouble(runtime, "callsPerSecond");
+                var semanticAdmission = SemanticAdmissionPolicy.Evaluate(
+                    JsonBool(semantic, "Matched"),
+                    JsonBool(semantic, "SourceProofSatisfied"),
+                    JsonBool(semantic, "GenerationEnabled"),
+                    JsonBool(semantic, "AlreadySatisfied"),
+                    JsonBool(semantic, "PartialState"),
+                    runtimeCalls,
+                    runtimeMs,
+                    JsonDouble(semantic, "RuntimeThresholdMsPerSecond"));
+                if (!semanticAdmission.Ready)
                     continue;
 
                 var ruleId = JsonString(semantic, "RuleId");
