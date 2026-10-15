@@ -524,6 +524,14 @@ internal static class CallbackResolverService
             .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
+        // Per-mod semantic rules can have their source-proven wake paths
+        // entirely absent from the profiled interval. Keep these candidates
+        // separate from measured callback rows and native allocation samples.
+        var semanticSourceOnlyCandidates = semanticLibrary
+            .CollectSourceIndependentCandidates()
+            .Where(candidate => !semanticReadyRules.Contains(candidate.RuleId))
+            .ToArray();
+
         var document = new
         {
             schemaVersion = "0.2",
@@ -600,9 +608,10 @@ internal static class CallbackResolverService
                 path = semanticLibraryPath,
                 loaded = semanticLibrary.Loaded,
                 entryCount = semanticLibrary.EntryCount,
+                sourceIndependentReadyRules = semanticSourceOnlyCandidates.Length,
                 matchedCallbacks = semanticMatches,
                 sourceProvenCallbacks = semanticSourceProven,
-                policy = "Only measured callbacks are considered. Mod identity selects a candidate; the live owner directory is then graphed and source anchors must prove the rule. 3 ms/s is a soft CPU materiality priority, not a generation veto for enabled hand-authored rules with measured invocations and current source proof. Native-dispatch and generic dormancy still require their independent mechanical/wake proofs. Reference overrides are never shipped."
+                policy = "Profiler workload ranks investigation. Explicitly opted-in and source-proven production semantic rules can also be selected when their callback does not appear in a capture. No fabricated runtime invocations or per-mod allocation ownership. Owner identity, current source, injector postconditions and wake safety must independently hold. Generic AUTO remains measured/mechanically proven. Reference overrides are never shipped."
             },
             summary = new
             {
@@ -624,6 +633,7 @@ internal static class CallbackResolverService
                 materialityRule = "exclusiveMsPerSecond >= 3.0 OR profiler burst.stutterMaterial == true",
                 semanticMatches,
                 semanticSourceProven,
+                semanticSourceIndependentReadyRules = semanticSourceOnlyCandidates.Length,
                 semanticReadyRules = semanticReadyRules.Count,
                 semanticCpuReadyRules = semanticCpuReadyRules.Count,
                 semanticSoftReadyRules = semanticSoftReadyRules.Count,
@@ -708,6 +718,25 @@ internal static class CallbackResolverService
                     spikeCount = cb.SpikeCount,
                     maxSpikeExclusiveMs = Round(cb.MaxSpikeExclusiveMs)
                 }).ToArray()
+            }).ToArray(),
+            semanticSourceOnlyCandidates = semanticSourceOnlyCandidates.Select(candidate => new
+            {
+                ruleId = candidate.RuleId,
+                owner = candidate.Owner,
+                handler = candidate.Handler,
+                policyClass = candidate.PolicyClass,
+                patchStyle = candidate.PatchStyle,
+                expectedMarkerFileCount = candidate.ExpectedMarkerFileCount,
+                sourceProofSatisfied = true,
+                generationEnabled = true,
+                alreadySatisfied = false,
+                sourceIndependent = true,
+                admissionLane = "SEMANTIC_AUTHOR_SOURCE_ONLY",
+                capturedCallback = false,
+                callsPerSecond = (double?)null,
+                exclusiveMsPerSecond = (double?)null,
+                nativeBytesAttributedToMod = (long?)null,
+                matchedAnchors = candidate.MatchedAnchors
             }).ToArray(),
             callbackFamilies = familyDocuments
         };
