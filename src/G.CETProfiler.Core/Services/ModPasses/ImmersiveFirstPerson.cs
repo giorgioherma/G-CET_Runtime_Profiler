@@ -387,11 +387,15 @@ internal static partial class SemanticInjectors
             "            CameraCore.Suspend(\"disabled in overlay\")\n" +
             "            __gcetIfpSyncActionDormancy()\n",
             "IFP overlay disabled fallback");
-        text = ReplaceOnce(text,
-            "                CameraCore.AbortFreeLook()\n",
-            "                CameraCore.AbortFreeLook()\n" +
-            "                __gcetIfpSyncActionDormancy()\n",
-            "IFP overlay FreeLook disabled");
+        // This optional author UI toggle exists in modern IFP v2.1.x;
+        // the separate original CET key remains the primary wake mechanism.
+        // Do not mistake the mouse abort within OnAction for this UI toggle.
+        if (text.Contains("if not Config.inner.freeLookEnabled then", StringComparison.Ordinal))
+            text = ReplaceOnce(text,
+                "                CameraCore.AbortFreeLook()\n",
+                "                CameraCore.AbortFreeLook()\n" +
+                "                __gcetIfpSyncActionDormancy()\n",
+                "IFP overlay FreeLook disabled");
         if (!text.Contains(marker, StringComparison.Ordinal) ||
             !text.Contains("pcall(handle.SetActive, needed)", StringComparison.Ordinal) ||
             !text.Contains("__gcetIfpActionHandle = zeroEngine.SubscribeAction", StringComparison.Ordinal))
