@@ -4577,7 +4577,8 @@
           "G-CET semantic:ziggy-native-snapshot-manager-v6"
         ],
         "sourceCompletionAuthoritative": true,
-        "composablePartialStages": true
+        "composablePartialStages": true,
+        "completionVerifier": "ZIGGY_NATIVE_SNAPSHOT_V6"
       },
       "behavior": {
         "handler": "SEMANTIC_QUEST_PROXIMITY_DIAGNOSTIC_SENTINEL",

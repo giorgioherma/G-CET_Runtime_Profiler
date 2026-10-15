@@ -128,6 +128,38 @@ end
             "beyond 130m, while near giver, dialogue, session transitions and all active phases " +
             "keep original frame cadence. State and timer elapsed time are preserved.");
     }
+    internal static bool IsNativeSnapshotCompletionSatisfied(string ownerFolder)
+    {
+        try
+        {
+            var init = File.ReadAllText(Path.Combine(ownerFolder, "init.lua"));
+            var nav = File.ReadAllText(Path.Combine(ownerFolder, "navigation.lua"));
+            if (!init.Contains("G-CET semantic:ziggy-unaccepted-far-1hz", StringComparison.Ordinal) ||
+                !init.Contains("G-CET semantic:ziggy-passive-ui-v5", StringComparison.Ordinal) ||
+                !init.Contains("H.__gcetPuzzleWasShown", StringComparison.Ordinal) ||
+                !init.Contains("H.__gcetPromptWasShown", StringComparison.Ordinal) ||
+                !nav.Contains("G-CET semantic:ziggy-passive-ui-v5", StringComparison.Ordinal) ||
+                !nav.Contains("missingScanAge", StringComparison.Ordinal))
+                return false;
+            // Historical supported test/author versions without the
+            // original snapshot-writing function cannot need this B stage.
+            var hasSave = init.Contains("local function save()", StringComparison.Ordinal);
+            var hasSetter = init.Contains("local function set(k,v)", StringComparison.Ordinal);
+            if (!hasSave && !hasSetter)
+                return true;
+            if (!hasSave || !hasSetter)
+                return false;
+            return init.Contains("G-CET semantic:ziggy-native-snapshot-manager-v6",
+                                 StringComparison.Ordinal) &&
+                init.Contains("local __gcetZiggySnapshotQuestSystem=Game.GetQuestsSystem()",
+                              StringComparison.Ordinal) &&
+                init.Contains("__gcetZiggySnapshotQuestSystem:SetFactStr('zg11_'..k,v)",
+                              StringComparison.Ordinal);
+        }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
+    }
+
     // Native lane B: save() writes 15-20+ quest facts every half second.
     // The author-level set(k,v) reacquires Game.GetQuestsSystem() for EACH
     // fact. Reuse the manager only inside ONE synchronous save invocation:
@@ -138,9 +170,13 @@ end
         const string marker = "G-CET semantic:ziggy-native-snapshot-manager-v6";
         var start = Regex.Matches(text, @"(?m)^local function save\(\)[ \t]*\r?$", RegexOptions.CultureInvariant);
         var end = Regex.Matches(text, @"(?m)^local function trace\(event,details\)[ \t]*\r?$", RegexOptions.CultureInvariant);
+        var authorSetter = text.Contains(
+            "local function set(k,v)Game.GetQuestsSystem():SetFactStr('zg11_'..k,v)end",
+            StringComparison.Ordinal);
+        if (start.Count == 0 && end.Count == 0 && !authorSetter)
+            return text; // Minimal historical source, has no snapshot writer at all.
         if (start.Count != 1 || end.Count != 1 || start[0].Index >= end[0].Index ||
-            !text.Contains("local function set(k,v)Game.GetQuestsSystem():SetFactStr('zg11_'..k,v)end",
-                StringComparison.Ordinal))
+            !authorSetter)
             throw new InvalidOperationException("Ziggy native snapshot/save source scope changed.");
 
         var portion = text[start[0].Index..end[0].Index];

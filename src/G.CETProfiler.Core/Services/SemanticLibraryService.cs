@@ -399,6 +399,8 @@ internal sealed class SemanticLibraryService
                 SemanticInjectors.IsAutoLootDefaultActionDormancyComplete(graph.OwnerFolder),
             "AMM_CACHED_GTA_TRAVEL_LOOKUP_V2" =>
                 SemanticInjectors.IsAppearanceMenuModSqueezeComplete(graph.OwnerFolder),
+            "ZIGGY_NATIVE_SNAPSHOT_V6" =>
+                ZiggyProximitySource.IsNativeSnapshotCompletionSatisfied(graph.OwnerFolder),
             _ => false
         };
         if (verifiedCompletion.HasValue)
