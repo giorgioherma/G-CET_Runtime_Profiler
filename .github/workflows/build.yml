@@ -1050,6 +1050,10 @@ jobs:
         shell: pwsh
         run: ./tests/PokerPass4SourceGenerationContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: DriveBus second-generation existing-route and timer composition contract
+        shell: pwsh
+        run: ./tests/DriveBusPartialSemanticContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: Third-stack semantic composition contract
         shell: pwsh
         run: ./tests/ThirdStackSemanticCompositionContract.ps1 -ResolverRoot ./publish-resolver
