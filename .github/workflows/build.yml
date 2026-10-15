@@ -1111,6 +1111,10 @@ jobs:
         shell: pwsh
         run: ./tests/UnscopedAttributionReportContract.ps1 -PublishedRoot ./publish
 
+      - name: Exact per-callback allocator attribution and legacy isolation contract
+        shell: pwsh
+        run: ./tests/CallbackAllocatorPressureReportContract.ps1 -PublishedRoot ./publish
+
       - name: GigCore pause guard one-pass source contract
         shell: pwsh
         run: ./tests/GigCorePauseGuardOnePassContract.ps1 -ResolverRoot ./publish-resolver
