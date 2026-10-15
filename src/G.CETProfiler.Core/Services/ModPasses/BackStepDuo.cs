@@ -15,6 +15,18 @@ internal static partial class SemanticInjectors
         var path = Path.Combine(folder, "init.lua");
         if (!File.Exists(path)) return false;
         var t = File.ReadAllText(path);
+        return IsBackStepDuoDormancyCompleteText(t) &&
+            IsBackStepDuoIdleGuardCompleteText(t);
+    }
+
+    private static bool IsBackStepDuoIdleGuardCompleteText(string text) =>
+        text.Contains("__gcetBackStepDuoIdleGuardV3", StringComparison.Ordinal) &&
+        Regex.IsMatch(text,
+            @"registerForEvent\(""onUpdate"",\s*function\(deltaTime\)[\s\S]*?if\s+not\s+settings\.EnableDash\s+then\s+resetTransientStates\(\)\s+return\s+end\s+local\s+player\s*=\s*getPlayer\(\)",
+            RegexOptions.CultureInvariant);
+
+    private static bool IsBackStepDuoDormancyCompleteText(string t)
+    {
         return t.Contains("__gcetBackStepDuoDormancyV2", StringComparison.Ordinal) &&
             t.Contains("local function __gcetBackStepDuoSync()", StringComparison.Ordinal) &&
             t.Contains("pcall(h.SetActive, settings.EnableDash == true)", StringComparison.Ordinal) &&
@@ -33,12 +45,11 @@ internal static partial class SemanticInjectors
             "init.lua", "processDirectionAction", "getActionName",
             "getActionType", "getActionValue", "BUTTON_PRESSED", "movey", "movex");
 
-        if (file.Text.Contains("__gcetBackStepDuoDormancyV2", StringComparison.Ordinal))
-        {
-            if (!IsBackStepDuoDormancyCompleteText(file.Text))
-                throw new InvalidOperationException("Partial BackStepDuo subscriber dormancy stage; refusing drift.");
-            return SemanticInjectionResult.Skip("BackStepDuo action dormancy already source-complete.");
-        }
+        bool v2Installed = file.Text.Contains("__gcetBackStepDuoDormancyV2", StringComparison.Ordinal);
+        if (v2Installed && !IsBackStepDuoDormancyCompleteText(file.Text))
+            throw new InvalidOperationException("Partial BackStepDuo subscriber dormancy stage; refusing drift.");
+        if (v2Installed && IsBackStepDuoIdleGuardCompleteText(file.Text))
+            return SemanticInjectionResult.Skip("BackStepDuo v2 subscriber and v3 idle native-read stages complete.");
         var source = file.Text;
         if (Regex.Matches(source, @"\bsettings\.EnableDash\s*=(?![=])", RegexOptions.CultureInvariant).Count != 2 ||
             !source.Contains("settings.EnableDash = state", StringComparison.Ordinal) ||
@@ -64,6 +75,8 @@ internal static partial class SemanticInjectors
         if (!text.Contains("Observe(\"PlayerPuppet\", \"OnAction\", " + fn + ")", StringComparison.Ordinal))
             throw new InvalidOperationException("BackStepDuo original native observer fallback not proven.");
 
+        if (!v2Installed)
+        {
         text = ReplaceOnce(text,
             "local function loadSettingsFile()",
             "-- __gcetBackStepDuoDormancyV2: author-nativeSettings EnableDash owns input activity\n" +
@@ -96,7 +109,31 @@ internal static partial class SemanticInjectors
                 handle + " = handle; " + sync + "() end end)",
             "BackStepDuo engine subscriber handle");
 
-        if (!IsBackStepDuoDormancyCompleteText(text))
+        }
+        if (!IsBackStepDuoIdleGuardCompleteText(text))
+        {
+            var start = text.IndexOf("registerForEvent(\"onUpdate\", function(deltaTime)", StringComparison.Ordinal);
+            var next = start < 0 ? -1 : text.IndexOf("registerForEvent(\"onDraw\"", start, StringComparison.Ordinal);
+            if (start < 0 || next < 0 || next <= start)
+                throw new InvalidOperationException("BackStepDuo onUpdate/onDraw lifecycle not proven.");
+            var update = text[start..next];
+            var idleRead = "    local player = getPlayer()";
+            if (update.Split(idleRead, StringSplitOptions.None).Length != 2 ||
+                !update.Contains("if not settings.EnableDash then", StringComparison.Ordinal) ||
+                !update.Contains("resetTransientStates()", StringComparison.Ordinal))
+                throw new InvalidOperationException("BackStepDuo idle player native read no longer uniquely source-proven.");
+            var guarded = update.Replace(idleRead,
+                "    -- __gcetBackStepDuoIdleGuardV3: settings/menu retry remains live before native player read\n" +
+                "    if not settings.EnableDash then\n" +
+                "        resetTransientStates()\n" +
+                "        return\n" +
+                "    end\n" +
+                idleRead, StringComparison.Ordinal);
+            text = text[..start] + guarded + text[next..];
+        }
+
+        if (!IsBackStepDuoDormancyCompleteText(text) ||
+            !IsBackStepDuoIdleGuardCompleteText(text))
             throw new InvalidOperationException(
                 "BackStepDuo action routing / wake proof failed after transform: " +
                 "marker=" + text.Contains("__gcetBackStepDuoDormancyV2", StringComparison.Ordinal) +
@@ -108,15 +145,8 @@ internal static partial class SemanticInjectors
                 ";writerCount=" + Regex.Matches(text, @"\bsettings\.EnableDash\s*=(?![=])", RegexOptions.CultureInvariant).Count);
         context.Write(file, text);
         return SemanticInjectionResult.Success(
-            "Preserved six-action routing and native Observe fallback; paused only the optional BackStepDuo 0-Engine subscriber when EnableDash is off, with immediate author switch resume and safe old runtime fallback.");
+            "Preserved exact action route and native fallback; v2 subscriber sleeps when disabled with source-owned switch resume. v3 skips disabled getPlayer native calls after preserving menu registration retries.");
     }
 
-    private static bool IsBackStepDuoDormancyCompleteText(string t) =>
-        t.Contains("__gcetBackStepDuoDormancyV2", StringComparison.Ordinal) &&
-        t.Contains("local function __gcetBackStepDuoSync()", StringComparison.Ordinal) &&
-        t.Contains("pcall(h.SetActive, settings.EnableDash == true)", StringComparison.Ordinal) &&
-        t.Contains("Observe(\"PlayerPuppet\", \"OnAction\", gcetBackStepDuoOnAction)", StringComparison.Ordinal) &&
-        Regex.Matches(t, @"settings\.EnableDash\s*=\s*state\s*\r?\n\s*__gcetBackStepDuoSync\(\)", RegexOptions.CultureInvariant).Count == 1 &&
-        Regex.Matches(t, @"__gcetBackStepDuoHandle\s*=\s*handle;\s*__gcetBackStepDuoSync\(\)", RegexOptions.CultureInvariant).Count == 2 &&
-        Regex.Matches(t, @"\bsettings\.EnableDash\s*=(?![=])", RegexOptions.CultureInvariant).Count == 2;
+
 }
