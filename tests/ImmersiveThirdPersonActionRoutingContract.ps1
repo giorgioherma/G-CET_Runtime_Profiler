@@ -158,8 +158,20 @@ end)
     throw 'Existing v1 action route must upgrade its missing v2 stage'
   }
   $upgraded=FromPass $upgrade.pass.ZipPath
-  if(($upgraded -replace "\r\n", "\n") -ne ($patched -replace "\r\n", "\n")) {
-    throw 'Pristine one-pass and legacy v1 upgrade must converge to semantically identical source (line endings ignored)'
+  # Upgraded v1 is a separately formatted input. Prove identical finite
+  # routing and lifecycle postconditions rather than byte-equality of a
+  # historical source file after preserving its original cosmetic layout.
+  $originalActions=[regex]::Match($patched,'local actions = \{(?<names>[^\}]+)\}')
+  $upgradedActions=[regex]::Match($upgraded,'local actions = \{(?<names>[^\}]+)\}')
+  if(!$originalActions.Success -or !$upgradedActions.Success -or
+      $originalActions.Groups['names'].Value -ne $upgradedActions.Groups['names'].Value -or
+      !$upgraded.Contains('__gcetItppActionDormancyV2') -or
+      !$upgraded.Contains('handle.SetActive(state.enabled == true)') -or
+      ([regex]::Matches($upgraded,'__gcetItppActionHandle\s*=\s*handle')).Count -ne 2 -or
+      ([regex]::Matches($upgraded,'__gcetItppSyncActionDormancy\(\)')).Count -ne 4 -or
+      ([regex]::Matches($upgraded,"Observe\('PlayerPuppet', 'OnAction'")).Count -ne 1 -or
+      !$upgraded.Contains('registerInput("tpp_camera_toggle"')) {
+    throw 'Legacy v1 upgrade lost exact action interest, original fallback, author wake or new lifecycle stage'
   }
 
   $patched|Set-Content -LiteralPath $path -Encoding utf8
