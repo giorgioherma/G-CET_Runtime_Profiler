@@ -1063,6 +1063,10 @@ jobs:
         shell: pwsh
         run: ./tests/DriveBusPartialSemanticContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: AirBackFlip active-subscriber source dormancy contract
+        shell: pwsh
+        run: ./tests/AirBackFlipDormancyContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: Third-stack semantic composition contract
         shell: pwsh
         run: ./tests/ThirdStackSemanticCompositionContract.ps1 -ResolverRoot ./publish-resolver
