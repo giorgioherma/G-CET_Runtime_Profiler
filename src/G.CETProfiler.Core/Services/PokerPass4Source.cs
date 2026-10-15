@@ -121,18 +121,38 @@ internal static class PokerPass4Source
             "StreetTables.locations", "function StreetTables.update",
             "CHAIR_SPAWN_RANGE", "CHAIR_DESPAWN_RANGE", "TRACE_RANGE",
             "traceApproach", "spawnChair", "despawnChair");
-        if (init.Text.Contains("__gcetPokerAttachPass4",StringComparison.Ordinal) ||
-            tables.Text.Contains("__gcetPokerWakeSq",StringComparison.Ordinal))
-            throw new InvalidOperationException("Poker source is partially transformed; restore the pristine mod before generating PASS4.");
+        var controllerComplete = IsControllerComplete(init.Text);
+        var worldComplete = IsWorldComplete(tables.Text);
+        if (controllerComplete && worldComplete)
+            return SemanticInjectionResult.Skip(
+                "Both Poker scheduler and world-wake stages already hold in current source.");
 
-        var tableText=TransformWorldSweep(tables.Text);
-        var initText=TransformController(init.Text);
-        context.Write(init,initText);
-        context.Write(tables,tableText);
+        // Refuse ambiguous partially modified stages. Only a structurally
+        // complete old stage or the original author function may be upgraded.
+        if (!controllerComplete &&
+            (init.Text.Contains("__gcetPokerAttachPass4", StringComparison.Ordinal) ||
+             init.Text.Contains("TryAttachPokerPass4", StringComparison.Ordinal) ||
+             init.Text.Contains("poker.world_far", StringComparison.Ordinal)))
+            throw new InvalidOperationException(
+                "Poker scheduler has unknown partial/drifted source; leave it unchanged.");
+        if (!worldComplete &&
+            (tables.Text.Contains("__gcetPokerWakeSq", StringComparison.Ordinal) ||
+             Regex.IsMatch(tables.Text,
+                @"function\s+StreetTables\.update\s*\([^)]*,\s*wakeRadius\s*\)",
+                RegexOptions.CultureInvariant)))
+            throw new InvalidOperationException(
+                "Poker wake sweep has unknown partial/drifted source; leave it unchanged.");
+
+        var tableText = worldComplete ? tables.Text : TransformWorldSweep(tables.Text);
+        var initText = controllerComplete ? init.Text : TransformController(init.Text);
+        if (!IsControllerComplete(initText) || !IsWorldComplete(tableText))
+            throw new InvalidOperationException(
+                "Poker completed-source postconditions did not hold after composition.");
+        context.Write(init, initText);
+        context.Write(tables, tableText);
         return SemanticInjectionResult.Success(
-            "Generated both PASS4 files from original mod: far world 1 Hz, near world 5 Hz, " +
-            "near seat 10 Hz, realtime gameplay every frame; 25 m squared-distance wake probe, " +
-            "map pins untouched, initialized logger, and exact author update fallback.");
+            "Composed missing Poker controller/world stages with completed live stages. " +
+            "Kept 1Hz far / 5Hz near / 10Hz seat / per-frame active gameplay, wake and original fallback.");
     }
 
     private static string TransformController(string text)
