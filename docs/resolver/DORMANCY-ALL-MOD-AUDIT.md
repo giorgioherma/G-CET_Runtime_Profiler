@@ -86,3 +86,13 @@ Scope: 67 production rules across distinct mod identities; all originals are ava
 - CallList: localized substring matching; do not replace with guessed raw action-name list.
 
 Review lane counts: {"Dormancy candidate":31,"Conditional/non-dormancy":16,"Input listener review":15}. This document is an inventory/triage, not a claim of completed source modifications.
+
+## First live-source findings — native input versus mod-owned keybinds
+
+Inspection of `modsLIVEnow.zip` (not the original pristine variant) established:
+
+- `immersive_third_person/init.lua` declares CET-owned `registerInput` callbacks for `tpp_camera_toggle`, `tpp_camera_free_look`, `tpp_camera_quick_fpp`, `tpp_camera_shoulder_zoom`, `tpp_camera_front_view`, `tpp_camera_profile_next`, and `tpp_camera_profile_prev`. These controls stay owned, configured and registered by the mod while third-person processing is dormant. Its separate `PlayerPuppet::OnAction` observer handles movement/camera action signals; exact-name 0-Engine routing can consolidate that observer but is **not** the same thing as migrating its keybinds.
+- `DriveAerialVehicle/Modules/core.lua` registers `Observe("PlayerPuppet", "OnAction", ...)`; the observer exits before action-name decoding unless situation is `Waiting` or `InVehicle`. Action-interest lists are read from `Data/exception_in_veh_input.json` and `Data/exception_in_popup_input.json`. Therefore the active native registration alone is not evidence of ongoing expensive Lua work. Replacing this observer with static action names would change the mod's dynamic input behavior.
+- The earlier ImmersiveThirdPerson routing rule should be validated using runtime registration and fallback measurements, not merely by a generated patch manifest. CET `registerInput` wake events remain necessary even when the camera mode is off.
+
+**Decision:** implement dormancy at the nearest source-proven work boundary. Avoid suppressing generic CET native registration when it must deliver a wake event, and avoid adding duplicate keybind registration in Resolver output. The next source-specific tests must distinguish native registration count, per-input invocation, expensive downstream call count, active-state transitions and mod-owned wake keys.
