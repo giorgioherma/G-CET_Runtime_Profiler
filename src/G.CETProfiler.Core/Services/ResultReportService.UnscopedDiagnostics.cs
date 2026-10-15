@@ -42,6 +42,9 @@ public static partial class ResultReportService
         public bool ExtendedReconciled { get; init; }
         public long NativeSamples { get; init; }
         public long DroppedNativeSamples { get; init; }
+        // Retain already-parsed bounded samples; Summary and Resolver handoff
+        // share one capture analysis without reopening this expensive CSV.
+        public List<Dictionary<string, string>> NativeSampleRows { get; init; } = [];
         public List<UnscopedDimension> VmStates { get; init; } = [];
         public List<UnscopedDimension> Shapes { get; init; } = [];
         public List<UnscopedDimension> ReallocOrigins { get; init; } = [];
@@ -176,6 +179,7 @@ public static partial class ResultReportService
             BoundaryTimelineBytes = SumBytes(boundaryBins), BoundaryTimelineOps = SumOps(boundaryBins),
             VmReconciled = vmOk, ExtendedReconciled = extendedOk,
             NativeSamples = samples.Count,
+            NativeSampleRows = samples,
             DroppedNativeSamples = samples.Count > 0
                 ? L(samples[0], "DroppedSamples") : 0,
             VmStates = vmRows, Shapes = shapeRows, ReallocOrigins = reallocRows,
