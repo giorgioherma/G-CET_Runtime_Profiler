@@ -68,11 +68,12 @@ struct GGCUnscopedPathSecond {
 struct GGCUnscopedNativeSample {
     uint64_t captureMs, positiveBytes, operationSequence;
     uint32_t vmState, allocatorPath, bridgeContext, depth, reallocOrigin;
-    uint64_t oldSize, newSize, methodHash;
+    uint64_t oldSize, newSize, methodHash, classHash;
     void* frames[6];
 };
 uint32_t ggc_trace_bridge_set(uint32_t context);
 uint64_t ggc_trace_method_set(uint64_t hash);
+uint64_t ggc_trace_class_set(uint64_t hash);
 void ggc_trace_unscoped_detail_read(GGCUnscopedDetail*);
 int ggc_trace_unscoped_path_seconds_read(GGCUnscopedPathSecond*, int);
 int ggc_trace_unscoped_samples_read(GGCUnscopedNativeSample*, int, uint64_t*);
@@ -492,17 +493,25 @@ public:
     // Does not wrap FunctionOverride::next() or change callback dispatch.
     class MethodScope {
     public:
-        MethodScope(uint32_t boundary, uint64_t methodHash, bool active)
+        MethodScope(uint32_t boundary, uint64_t methodHash, uint64_t classHash, bool active)
             : m_bridge(boundary, active), m_active(active) {
-            if(active) m_prior=ggc_trace_method_set(methodHash);
+            if(active) {
+                m_priorMethod=ggc_trace_method_set(methodHash);
+                m_priorClass=ggc_trace_class_set(classHash);
+            }
         }
-        ~MethodScope() { if(m_active) ggc_trace_method_set(m_prior); }
+        ~MethodScope() {
+            if(m_active) {
+                ggc_trace_class_set(m_priorClass);
+                ggc_trace_method_set(m_priorMethod);
+            }
+        }
         MethodScope(const MethodScope&)=delete;
         MethodScope& operator=(const MethodScope&)=delete;
     private:
         BridgeScope m_bridge;
         bool m_active{};
-        uint64_t m_prior{};
+        uint64_t m_priorMethod{}, m_priorClass{};
     };
 
     // Scope tracks both inclusive and exclusive callback time.
@@ -3148,7 +3157,7 @@ public:
                 stack << "CaptureMs,OperationSequence,PositiveBytes,AllocatorPath,"
                          "VmExecutionState,NativeExecutionBoundary,StackDepth,"
                          "Frame1,Frame2,Frame3,Frame4,Frame5,Frame6,DroppedSamples,"
-                         "Interpretation,ReallocOrigin,OldSize,NewSize,NativeMethodHash\n";
+                         "Interpretation,ReallocOrigin,OldSize,NewSize,NativeMethodHash,NativeClassHash\n";
                 for(int i=0;i<observed;i++) {
                     const auto& s=samples[static_cast<size_t>(i)];
                     stack << s.captureMs << ',' << s.operationSequence << ','
@@ -3181,7 +3190,7 @@ public:
                           << ",bounded-native-unwind-sample-not-exact-producer,"
                           << (s.reallocOrigin==0?"OLD_SIZE_ZERO":
                               s.reallocOrigin==1?"OLD_SIZE_NONZERO":"NOT_REALLOC")
-                          << ',' << s.oldSize << ',' << s.newSize << ',' << s.methodHash << '\n';
+                          << ',' << s.oldSize << ',' << s.newSize << ',' << s.methodHash << ',' << s.classHash << '\n';
                 }
             }
         }
