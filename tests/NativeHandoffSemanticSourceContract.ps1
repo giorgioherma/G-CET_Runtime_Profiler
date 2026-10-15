@@ -337,7 +337,7 @@ $hudCRLF = $specterHud.Replace("`r`n", "`n").Replace("`n", "`r`n")
 if ([regex]::Matches((Rewrite 'GateSpecterHudWhenActive' $hudCRLF), 'HUD\.IsActive\(\)').Count -ne 2) {
     throw 'Specter inactive HUD stage rejected equivalent CRLF'
 }
-$hudDrift = $hudDrift.Replace('  present("HUD update",HUD.Update)' + "`nend)", '  present("HUD update",HUD.Refresh)' + "`nend)")
+$hudDrift = $specterHud.Replace('  present("HUD update",HUD.Update)' + "`nend)", '  present("HUD update",HUD.Refresh)' + "`nend)")
 $hudRefused = $false
 try { [void](Rewrite 'GateSpecterHudWhenActive' $hudDrift) }
 catch { $hudRefused = $true }
