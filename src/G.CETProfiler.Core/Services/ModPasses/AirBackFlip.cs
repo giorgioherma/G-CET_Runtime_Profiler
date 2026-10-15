@@ -3,42 +3,101 @@ using System.Text.RegularExpressions;
 
 namespace GCETRuntimeProfiler.Core.Services;
 
-// Mod-owned source transformations. Shared proof/replace helpers remain in SemanticInjectors.cs.
 internal static partial class SemanticInjectors
 {
-    private static SemanticInjectionResult ApplyAirBackFlip(
-        SemanticPatchContext context)
+    internal static bool IsAirBackFlipDormancyComplete(string folder)
     {
-        var file = context.FindFile(
-            "init.lua",
-            "GAME_ACTIONS",
-            "AirBackflip_Backflip",
-            "AirBackflip_SwingOver",
-            "MoveY",
-            "ListenerAction.IsButtonJustPressed",
-            "ListenerAction.IsButtonJustReleased");
-
-        var text = RouteExactOnActionObserver(
-            file.Text,
-            "gcetAirBackFlipOnAction",
-            "AirBackFlip",
-            new[] {
-                "MoveY",
-                "AirBackflip_Backflip",
-                "AirBackflip_Frontflip",
-                "AirBackflip_SideflipLeft",
-                "AirBackflip_SideflipRight",
-                "AirBackflip_SwingOver"
-            },
-            "AirBackFlip PlayerPuppet OnAction",
-            "GAME_ACTIONS",
-            "MoveY",
-            "ListenerAction.IsButtonJustPressed",
-            "ListenerAction.IsButtonJustReleased");
-
-        context.Write(file, text);
-        return SemanticInjectionResult.Success(
-            "Routed only MoveY and AirBackFlip's five game actions through 0-Engine. Airborne eligibility, press/release semantics, flip counters and active-flip frame cadence are unchanged.");
+        var path = Path.Combine(folder, "init.lua");
+        return File.Exists(path) && IsAirBackFlipDormancyCompleteText(File.ReadAllText(path));
     }
 
+    private static bool IsAirBackFlipDormancyCompleteText(string text) =>
+        text.Contains("__gcetAirBackFlipDormancyV2", StringComparison.Ordinal) &&
+        text.Contains("local function __gcetAirBackFlipSync()", StringComparison.Ordinal) &&
+        text.Contains("pcall(h.SetActive, cfg.enabled == true or flip ~= nil)", StringComparison.Ordinal) &&
+        text.Contains("Observe(\"PlayerPuppet\", \"OnAction\", gcetAirBackFlipOnAction)", StringComparison.Ordinal) &&
+        Regex.Matches(text, @"__gcetAirBackFlipHandle\s*=\s*handle;\s*__gcetAirBackFlipSync\(\)", RegexOptions.CultureInvariant).Count == 2 &&
+        text.Contains("cfg.enabled = ImGui.Checkbox(\"Enabled\", cfg.enabled)\n        __gcetAirBackFlipSync()", StringComparison.Ordinal) &&
+        Regex.Matches(text, @"\bcfg\.enabled\s*=", RegexOptions.CultureInvariant).Count == 1;
+
+    private static SemanticInjectionResult ApplyAirBackFlip(SemanticPatchContext context)
+    {
+        var file = context.FindFile("init.lua", "GAME_ACTIONS",
+            "AirBackflip_Backflip", "AirBackflip_SwingOver", "MoveY",
+            "ListenerAction.IsButtonJustPressed", "ListenerAction.IsButtonJustReleased");
+        var text = file.Text;
+        if (text.Contains("__gcetAirBackFlipDormancyV2", StringComparison.Ordinal))
+        {
+            if (!IsAirBackFlipDormancyCompleteText(text))
+                throw new InvalidOperationException("AirBackFlip incomplete subscriber dormancy stage.");
+            return SemanticInjectionResult.Skip("AirBackFlip subscriber dormancy already installed.");
+        }
+        if (Regex.Matches(text, @"\bcfg\.enabled\s*=", RegexOptions.CultureInvariant).Count != 1 ||
+            !text.Contains("cfg.enabled = ImGui.Checkbox(\"Enabled\", cfg.enabled)", StringComparison.Ordinal) ||
+            !text.Contains("local flip = nil", StringComparison.Ordinal) ||
+            !text.Contains("local function loadConfig()", StringComparison.Ordinal) ||
+            !text.Contains("registerForEvent(\"onUpdate\", function(dt)", StringComparison.Ordinal))
+            throw new InvalidOperationException("AirBackFlip UI/config/active-flip wake graph changed.");
+
+        if (!text.Contains("local function gcetAirBackFlipOnAction(", StringComparison.Ordinal))
+            text = RouteExactOnActionObserver(text, "gcetAirBackFlipOnAction",
+                "AirBackFlip", new[] {
+                    "MoveY", "AirBackflip_Backflip", "AirBackflip_Frontflip",
+                    "AirBackflip_SideflipLeft", "AirBackflip_SideflipRight",
+                    "AirBackflip_SwingOver"
+                }, "AirBackFlip PlayerPuppet OnAction",
+                "GAME_ACTIONS", "MoveY",
+                "ListenerAction.IsButtonJustPressed", "ListenerAction.IsButtonJustReleased");
+
+        const string fn = "gcetAirBackFlipOnAction";
+        const string client = "__gcetClient_" + fn;
+        const string engine = "__gcetEngine_" + fn;
+        const string actions = "__gcetActions_" + fn;
+        const string sync = "__gcetAirBackFlipSync";
+        const string handle = "__gcetAirBackFlipHandle";
+        if (!text.Contains("Observe(\"PlayerPuppet\", \"OnAction\", " + fn + ")", StringComparison.Ordinal))
+            throw new InvalidOperationException("AirBackFlip CET native Observe fallback changed.");
+
+        text = ReplaceOnce(text,
+            "local function loadConfig()",
+            "-- __gcetAirBackFlipDormancyV2: keep actions active during an existing flip\n" +
+            "local " + handle + " = nil\n" +
+            "local function " + sync + "()\n" +
+            "    local h = " + handle + "\n" +
+            "    if type(h) == \"table\" and type(h.SetActive) == \"function\" then\n" +
+            "        pcall(h.SetActive, cfg.enabled == true or flip ~= nil)\n" +
+            "    end\n" +
+            "end\n\n" +
+            "local function loadConfig()",
+            "AirBackFlip shared subscriber lifecycle");
+
+        text = ReplaceOnce(text,
+            "cfg.enabled = ImGui.Checkbox(\"Enabled\", cfg.enabled)\n",
+            "cfg.enabled = ImGui.Checkbox(\"Enabled\", cfg.enabled)\n" +
+            "        " + sync + "()\n",
+            "AirBackFlip own UI wake transition");
+
+        text = ReplaceOnce(text,
+            "registerForEvent(\"onUpdate\", function(dt)\n",
+            "registerForEvent(\"onUpdate\", function(dt)\n" +
+            "    " + sync + "()\n",
+            "AirBackFlip active flip completion sync");
+
+        var opts = "{ actions = " + actions + ", decodeType = false }";
+        var clientCall = client + ".SubscribeAction(" + opts + ", " + fn + ")";
+        var engineCall = engine + ".SubscribeAction(" + opts + ", " + fn + ", \"AirBackFlip\")";
+        text = ReplaceOnce(text, "pcall(function() " + clientCall + " end)",
+            "pcall(function() local handle = " + clientCall +
+            "; if type(handle) == \"table\" then " + handle + " = handle; " + sync + "() end end)",
+            "AirBackFlip 0-Engine subscriber capture");
+        text = ReplaceOnce(text, "pcall(function() " + engineCall + " end)",
+            "pcall(function() local handle = " + engineCall +
+            "; if type(handle) == \"table\" then " + handle + " = handle; " + sync + "() end end)",
+            "AirBackFlip legacy shared subscriber capture");
+
+        if (!IsAirBackFlipDormancyCompleteText(text))
+            throw new InvalidOperationException("AirBackFlip native subscriber/source wake completion proof failed.");
+        context.Write(file, text);
+        return SemanticInjectionResult.Success("Preserved native fallback and six exact input actions; gated only shared AirBackFlip subscriber when feature disabled and no flip is active. Overlay checkbox wakes synchronously; active flip and cleanup retain input delivery.");
+    }
 }
