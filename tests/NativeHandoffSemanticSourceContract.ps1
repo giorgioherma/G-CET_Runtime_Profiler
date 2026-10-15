@@ -268,4 +268,43 @@ if (@($report.semanticSourceOnlyCandidates | Where-Object {$_.ruleId -eq 'autolo
 }
 Write-Host 'AutoLoot 0-Engine delegated OnAction (zero profiler callback) => source-only native subscriber upgrade and completion: PASS'
 
+# Existing live v5 source and pristine source both need the new B
+# snapshot-manager stage even though their Lua quest cadence is complete.
+$ziggyType = $assembly.GetType('GCETRuntimeProfiler.Core.Services.ZiggyProximitySource', $true)
+$ziggyMethod = $ziggyType.GetMethod('ReuseZiggyNativeQuestManagerForSave',
+    [Reflection.BindingFlags]'NonPublic,Static')
+if (!$ziggyMethod) { throw 'Ziggy native read source stage missing' }
+$ziggySource = @'
+local function set(k,v)Game.GetQuestsSystem():SetFactStr('zg11_'..k,v)end
+local function save()
+ if not H.s or not valid(H.hooks)or not H.hooks:SessionLoaded()then return end
+ local s=H.s
+ for i,p in ipairs(phases)do if p==s.phase then set('phase',i)end end
+ set('version',3);set('pieces',s.pieces);set('defeated',s.defeated);set('shuffled',s.shuffled and 1 or 0)
+ for i,v in ipairs(s.order)do set('order'..i,v)end
+ set('drop_set',s.drop and 1 or 0);if s.drop then for i,k in ipairs({'x','y','z'})do set('drop_'..k,math.floor(s.drop[i]*1000))end end
+ set('playback',s.playback);set('song',math.floor(s.audioPosition*1000));set('listened',s.listened and 1 or 0);set('loops',s.loops);set('cycle',s.audioCycle);set('damage',math.floor(s.lockedDamage*100+.5))
+end
+local function trace(event,details)
+ print(event)
+end
+'@
+$prewrite=[regex]::Matches($ziggySource,'(?<![\w_])set\(').Count
+$ziggyStage=[string]$ziggyMethod.Invoke($null,[object[]]@([string]$ziggySource))
+if (!$ziggyStage.Contains('G-CET semantic:ziggy-native-snapshot-manager-v6') -or
+    !$ziggyStage.Contains('local __gcetZiggySnapshotQuestSystem=Game.GetQuestsSystem()') -or
+    !$ziggyStage.Contains("__gcetZiggySnapshotQuestSystem:SetFactStr('zg11_'..k,v)") -or
+    $ziggyStage.Contains('local function set(k,v)Game.GetQuestsSystem():SetFactStr(') -eq $false) {
+    throw 'Ziggy original native fact API/fallback or snapshot v6 stage missing'
+}
+if ([regex]::Matches($ziggyStage,'__gcetZiggySnapshotSet\(').Count -ne $prewrite+1) {
+    throw 'Ziggy native snapshot stage changed fact-write count/order'
+}
+$ziggyAgain=[string]$ziggyMethod.Invoke($null,[object[]]@([string]$ziggyStage))
+if ($ziggyAgain -cne $ziggyStage) {throw 'Ziggy native snapshot stage not idempotent'}
+if ([regex]::Matches($ziggyStage,'G-CET semantic:ziggy-native-snapshot-manager-v6').Count -ne 1) {
+    throw 'Ziggy native stage duplicated marker'
+}
+Write-Host 'Ziggy native lane B: invocation-local QuestsSystem reuse across all original saved fact writes, original API and idempotence PASS'
+
 Write-Host 'IFP FreeLook C-stage / AutoLoot default-action C-stage: pristine, fallback, source wake and idempotence PASS'
