@@ -83,6 +83,13 @@ For each mod with a candidate source-proven extension:
 - Dedicated `nativeMarshallingAllocationPressure` evidence in summary → Resolver, separate from Lua CPU. Experimental native class-hash capture built successfully as an isolated artifact, **not** promoted to the regular Profiler DLL; native game validation remains separate. This identifies RTTI **class+method envelope**, **not** the allocation owner mod or per-subscriber savings.
 - CI-proven managed measurement plumbing and existing semantic injectors do not demonstrate complete A/B/C dormancy coverage or observed native dispatch elimination in gameplay.
 
+**Current implementation of the source-led admission decision (2026-10-15):**
+- The shared `SemanticAdmissionPolicy` now admits a production-enabled, source-proven semantic rule with a **registered callback row** even if the capture reports zero calls and zero exclusive Lua CPU (`SEMANTIC_AUTHORED_UNMEASURED`); the same admission evaluator is used in ANALYZE and GENERATE.
+- The Resolver preserves such zero-observed-work rows **only when the mod's current source and production rule independently qualify**. Generic AUTO still excludes arbitrary zero-call registrations and retains its mechanical source/runtime proof.
+- The DriveBus production regression now forces `callsPerSecond=0` and `exclusiveMsPerSecond=0`, verifies the `SEMANTIC_AUTHORED_UNMEASURED` reporting lane, and verifies complete pristine-source pass generation. Existing zero-Lua native-dispatch tests retain their unsafe/generic exclusions.
+- **Verified:** [Main CI #38714129254](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38714129254) succeeded in all four jobs, including DriveBus and existing semantic/native-dispatch contracts, at code commit `e53c1d8`. Product version 1.2.7 and pinned native DLL unchanged; CI is not in-game validation.
+- **Not yet implemented:** Independent source-based candidate enumeration for rules whose callbacks are **entirely absent** from a given capture, plus the outstanding A/B/C per-mod native-dispatch stages. This acceptance improvement is not a claim the full extended-dormancy task is done.
+
 **Still required — THIS TASK IS OPEN:**
 - [ ] Audit the **67 production semantic rules covering the 62 user mods** against existing actual pristine and live sources; preserve explicit SKIPs, unknowns and genuine always-on work. Don't mistake every unmatched rule/callback for a missing optimization.
 - [ ] Build a single clear per-mod **A/B/C completion matrix** with sources, stage proof, wake preservation, actual native registration/dispatch effect, and gaps. `ALREADY_SATISFIED` for existing Lua-only work must not close C.
