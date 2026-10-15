@@ -99,6 +99,10 @@ internal static class CallbackResolverService
         var semanticMatches = 0;
         var semanticSourceProven = 0;
         var semanticReadyRules = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var semanticSoftReadyRules = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var semanticCpuReadyRules = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var incompleteDormancyWakePaths = 0;
+        var completeDormancyWakePaths = 0;
         var unresolved = 0;
         var alreadySatisfied = 0;
         var residualSchedulerBootstrapCallbacks = 0;
@@ -143,18 +147,34 @@ internal static class CallbackResolverService
                     if (semantic.SourceProofSatisfied)
                         semanticSourceProven++;
                 }
-                var semanticGenerationReady =
-                    semantic.Matched &&
-                    semantic.SourceProofSatisfied &&
-                    semantic.GenerationEnabled &&
-                    !semantic.AlreadySatisfied &&
-                    !semantic.PartialState &&
-                    callback.ExclusiveMsPerSecond >= semantic.RuntimeThresholdMsPerSecond &&
+                var semanticAdmission = SemanticAdmissionPolicy.Evaluate(
+                    semantic.Matched,
+                    semantic.SourceProofSatisfied,
+                    semantic.GenerationEnabled,
+                    semantic.AlreadySatisfied,
+                    semantic.PartialState,
+                    callback.CallsPerSecond,
+                    callback.ExclusiveMsPerSecond,
+                    semantic.RuntimeThresholdMsPerSecond);
+                var semanticGenerationReady = semanticAdmission.Ready &&
                     !string.IsNullOrWhiteSpace(semantic.RuleId);
                 if (semanticGenerationReady)
+                {
                     semanticReadyRules.Add(semantic.RuleId);
+                    if (semanticAdmission.Lane == "SEMANTIC_CPU_MATERIAL")
+                        semanticCpuReadyRules.Add(semantic.RuleId);
+                    else
+                        semanticSoftReadyRules.Add(semantic.RuleId);
+                }
 
                 var dormancy = ResolveDormancyEvidence(callback, generic.Source, sourceIndex);
+                if (dormancy.Class is "HARD_DORMANT" or "DISCOVERY_DORMANT")
+                {
+                    if (dormancy.CompleteWakePathProven)
+                        completeDormancyWakePaths++;
+                    else
+                        incompleteDormancyWakePaths++;
+                }
                 var residualSchedulerBootstrap =
                     schedulerIntegration.Detected &&
                     callback.Target.Equals("onUpdate", StringComparison.OrdinalIgnoreCase) &&
@@ -277,6 +297,20 @@ internal static class CallbackResolverService
                             canSubtractFromCallback = false,
                             authorizesRewrite = false
                         },
+                        nativeDispatch = new
+                        {
+                            callbackFamily = callback.Kind.Equals("event", StringComparison.OrdinalIgnoreCase) &&
+                                (callback.Target.Equals("onUpdate", StringComparison.OrdinalIgnoreCase) ||
+                                 callback.Target.Equals("onDraw", StringComparison.OrdinalIgnoreCase))
+                                    ? "FRAME_NATIVE_TO_LUA"
+                                    : callback.Target.Equals("PlayerPuppet::OnAction", StringComparison.OrdinalIgnoreCase)
+                                        ? "ACTION_NATIVE_TO_LUA" : "OTHER_NATIVE_OBSERVER",
+                            callback.callsPerSecond,
+                            hasMeasuredInvocations = callback.CallsPerSecond > 0,
+                            measuredLuaExclusiveMsPerSecond = callback.ExclusiveMsPerSecond,
+                            dispatchCrossingCostMeasuredSeparately = false,
+                            evidenceOnly = true
+                        },
                         burst = new
                         {
                             vocabularyVersion = callback.BurstVocabularyVersion,
@@ -383,6 +417,8 @@ internal static class CallbackResolverService
                         semantic.GenerationEnabled,
                         semantic.RuntimeThresholdMsPerSecond,
                         generationReady = semanticGenerationReady,
+                        admissionLane = semanticAdmission.Lane,
+                        admissionReason = semanticAdmission.Reason,
                         semantic.ShipReferenceOverride,
                         semantic.MatchedAnchors,
                         semantic.MissingAnchors,
@@ -557,6 +593,10 @@ internal static class CallbackResolverService
                 semanticMatches,
                 semanticSourceProven,
                 semanticReadyRules = semanticReadyRules.Count,
+                semanticCpuReadyRules = semanticCpuReadyRules.Count,
+                semanticSoftReadyRules = semanticSoftReadyRules.Count,
+                completeDormancyWakePaths,
+                incompleteDormancyWakePaths,
                 sharedProviderReadyCallbacks = sharedProviderReadyCallbackCount,
                 sharedProviderReadyReads = sharedProviderReadyReadCount,
                 sharedProviderReadyFamilies,
