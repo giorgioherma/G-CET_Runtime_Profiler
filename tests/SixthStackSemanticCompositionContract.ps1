@@ -331,7 +331,13 @@ try {
     if($back -notmatch 'G-CET semantic:backstep-duo' -or
        $back -notmatch 'gcetBackStepDuoOnAction' -or $back -notmatch 'SubscribeAction' -or
        $back -notmatch 'Forward' -or $back -notmatch 'MoveY' -or $back -notmatch 'MoveX' -or
-       $back -notmatch 'processDirectionAction') { throw 'BackStepDuo routing is incomplete.' }
+       $back -notmatch 'processDirectionAction' -or
+       $back -notmatch '__gcetBackStepDuoDormancyV2' -or
+       $back -notmatch '__gcetBackStepDuoIdleGuardV3' -or
+       $back -notmatch 'pcall\(h\.SetActive, settings\.EnableDash == true\)' -or
+       $back -notmatch 'Observe\("PlayerPuppet", "OnAction", gcetBackStepDuoOnAction\)') {
+       throw 'BackStepDuo v1 action route, v2 subscriber dormancy or v3 idle native-read skip is incomplete.'
+    }
 
     $nca=Read-ZipText ($base+'NightCityAlliesMissions/init.lua')
     if($nca -notmatch 'G-CET semantic:nightcity-allies-missions' -or
@@ -342,5 +348,30 @@ try {
        $nca -notmatch [regex]::Escape('BountySystem.UpdateRadar(db)')) { throw 'NCA Missions state-cache composition is incomplete.' }
 }
 finally { $zip.Dispose() }
+
+# Reviewed BackStepDuo must also survive a missing capture callback row:
+# all three current source stages originate from a single original pass.
+$originalCapture=Get-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Raw
+$emptyCapture=@{schemaVersion='1.8';callbacks=@();optimizerEvidence=@()} | ConvertTo-Json -Depth 30
+$emptyCapture|Set-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Encoding utf8
+try {
+    $unmeasured=(& $resolverExe --capture $capture --mods $mods --generate-pass --json | ConvertFrom-Json)
+    if(!$unmeasured.ok -or !$unmeasured.pass){throw 'BackStepDuo source-only original generation failed'}
+    $report=Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw|ConvertFrom-Json
+    $candidate=@($report.semanticSourceOnlyCandidates|Where-Object {$_.ruleId -eq 'backstep-duo'})
+    if($candidate.Count -ne 1 -or !$candidate[0].stageComposed -or @($report.callbackFamilies).Count -ne 0){
+        throw 'BackStepDuo source-only selection lost catalog-composed proof or fabricated runtime callbacks'
+    }
+    $manifest=Get-Content -LiteralPath $unmeasured.pass.ManifestPath -Raw|ConvertFrom-Json
+    $transform=@($manifest.transforms|Where-Object {$_.RuleId -eq 'backstep-duo'})
+    if($transform.Count -ne 1 -or $transform[0].admissionEvidence -ne 'SOURCE_PROVEN_NO_CAPTURE' -or
+        $null -ne $transform[0].runtimeMsPerSecond){
+        throw 'BackStepDuo source-only manifest recorded unsupported measurements'
+    }
+}
+finally {
+    $originalCapture|Set-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Encoding utf8
+    $global:LASTEXITCODE=0
+}
 
 Write-Host 'Sixth-stack semantic composition contract passed: GiveCraftMat + Simple Notepad + Dedra Palmjet + BackStepDuo + NightCityAlliesMissions.'
