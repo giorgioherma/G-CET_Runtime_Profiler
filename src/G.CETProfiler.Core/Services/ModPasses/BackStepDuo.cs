@@ -97,7 +97,15 @@ internal static partial class SemanticInjectors
             "BackStepDuo engine subscriber handle");
 
         if (!IsBackStepDuoDormancyCompleteText(text))
-            throw new InvalidOperationException("BackStepDuo action routing / wake proof failed after transform.");
+            throw new InvalidOperationException(
+                "BackStepDuo action routing / wake proof failed after transform: " +
+                "marker=" + text.Contains("__gcetBackStepDuoDormancyV2", StringComparison.Ordinal) +
+                ";sync=" + text.Contains("local function __gcetBackStepDuoSync()", StringComparison.Ordinal) +
+                ";SetActive=" + text.Contains("pcall(h.SetActive, settings.EnableDash == true)", StringComparison.Ordinal) +
+                ";fallback=" + text.Contains("Observe(\"PlayerPuppet\", \"OnAction\", gcetBackStepDuoOnAction)", StringComparison.Ordinal) +
+                ";switchCount=" + Regex.Matches(text, @"settings\.EnableDash\s*=\s*state\s*\r?\n\s*__gcetBackStepDuoSync\(\)", RegexOptions.CultureInvariant).Count +
+                ";handles=" + Regex.Matches(text, @"__gcetBackStepDuoHandle\s*=\s*handle;\s*__gcetBackStepDuoSync\(\)", RegexOptions.CultureInvariant).Count +
+                ";writerCount=" + Regex.Matches(text, @"\bsettings\.EnableDash\s*=", RegexOptions.CultureInvariant).Count);
         context.Write(file, text);
         return SemanticInjectionResult.Success(
             "Preserved six-action routing and native Observe fallback; paused only the optional BackStepDuo 0-Engine subscriber when EnableDash is off, with immediate author switch resume and safe old runtime fallback.");
