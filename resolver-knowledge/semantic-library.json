@@ -355,9 +355,9 @@
         }
       ],
       "sourceProof": {
-        "completionVerifier": "POKER_PASS4_TWO_FILE",
-        "composablePartialStages": true,
-        "sourceCompletionAuthoritative": true,
+      "completionVerifier": "POKER_PASS4_TWO_FILE",
+      "composablePartialStages": true,
+      "sourceCompletionAuthoritative": true,
         "ownerAll": [
           "StreetGamesPoker",
           "PokerHUD",
@@ -426,12 +426,12 @@
       },
       "generation": {
         "enabled": true,
+        "sourceIndependentAdmission": true,
         "patchStyle": "source-injection",
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
         "requiresIdempotenceMarker": true,
-        "implementationStatus": "ACTIVE_SOURCE_INJECTOR",
-        "sourceIndependentAdmission": true
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
@@ -2286,9 +2286,9 @@
         }
       ],
       "sourceProof": {
-        "completionVerifier": "DRIVEBUS_ROUTING_TIMERS",
-        "composablePartialStages": true,
-        "sourceCompletionAuthoritative": true,
+      "completionVerifier": "DRIVEBUS_ROUTING_TIMERS",
+      "composablePartialStages": true,
+      "sourceCompletionAuthoritative": true,
         "ownerAll": [
           "function Core:SetObserve()",
           "exception_in_choice_list",
