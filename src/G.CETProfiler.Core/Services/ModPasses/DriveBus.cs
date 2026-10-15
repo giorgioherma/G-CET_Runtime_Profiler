@@ -91,23 +91,32 @@ internal static partial class SemanticInjectors
             "exception_in_mount_list",
             "self:ChoiceAction(action_name");
 
-        var coreText = RouteExactOnActionObserver(
+        // Preserve an independently verified earlier G-CET/native route.
+        // Re-route only the pristine author observer, never an unrecognized
+        // subscriber/fallback or a mismatched action-selector table.
+        var routed = IsDriveBusActionRouted(core.Text);
+        if (!routed &&
+            Regex.IsMatch(core.Text, @"\.\s*SubscribeAction\s*\(",
+                RegexOptions.CultureInvariant))
+            throw new InvalidOperationException(
+                "DriveBus already has an unknown action route; refusing to replace it.");
+
+        var coreText = routed ? core.Text : RouteExactOnActionObserver(
             core.Text,
             "gcetDriveBusOnAction",
             "DriveBus",
             new[]
             {
-                "QuickExit",
-                "NextWeapon",
-                "PreviousWeapon",
-                "ChoiceApply",
-                "ChoiceScrollUp",
-                "ChoiceScrollDown"
+                "QuickExit", "NextWeapon", "PreviousWeapon",
+                "ChoiceApply", "ChoiceScrollUp", "ChoiceScrollDown"
             },
             "DriveBus PlayerPuppet OnAction",
             "exception_in_choice_list",
             "exception_in_mount_list",
             "self:ChoiceAction(action_name");
+        if (!IsDriveBusActionRouted(coreText))
+            throw new InvalidOperationException(
+                "DriveBus exact action route and original fallback were not proven.");
 
         var cron = context.FindFile(
             "External/Cron.lua",
