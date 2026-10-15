@@ -5220,6 +5220,7 @@
       },
       "generation": {
         "enabled": true,
+        "sourceIndependentAdmission": true,
         "patchStyle": "source-injection",
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
