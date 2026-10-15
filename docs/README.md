@@ -1,6 +1,6 @@
 # G-CET technical documentation
 
-Detailed work is grouped by subsystem. [HANDOFF](HANDOFF/README.md) is reserved **only** for stable startup guidance, process and the continuation prompt—no dated experiments, version snapshots or capture reports.
+**Active cross-chat task:** [LATEST-WORK.md](LATEST-WORK.md) — the single editable work-in-progress document, kept until completed and replaced with the next agreed task. Detailed research belongs in subsystem docs; [HANDOFF](HANDOFF/README.md) remains reserved **only** for stable startup guidance, process and the continuation prompt—no dated experiments, version snapshots or capture reports.
 
 | Subsystem | Documents |
 | --- | --- |
