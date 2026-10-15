@@ -1038,6 +1038,10 @@ jobs:
         shell: pwsh
         run: ./tests/NativeDispatchZeroLuaCostContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: Class-qualified native marshalling Resolver metric contract
+        shell: pwsh
+        run: ./tests/NativeMarshallingResolverContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: CyberTrials semantic composition contract
         shell: pwsh
         run: ./tests/CyberTrialsSemanticCompositionContract.ps1 -ResolverRoot ./publish-resolver
