@@ -18,7 +18,7 @@ internal static partial class SemanticInjectors
         text.Contains("Observe(\"PlayerPuppet\", \"OnAction\", gcetAirBackFlipOnAction)", StringComparison.Ordinal) &&
         Regex.Matches(text, @"__gcetAirBackFlipHandle\s*=\s*handle;\s*__gcetAirBackFlipLastActive\s*=\s*nil;\s*__gcetAirBackFlipSync\(\)", RegexOptions.CultureInvariant).Count == 2 &&
         text.Contains("cfg.enabled = ImGui.Checkbox(\"Enabled\", cfg.enabled)\n        __gcetAirBackFlipSync()", StringComparison.Ordinal) &&
-        Regex.Matches(text, @"\bcfg\.enabled\s*=", RegexOptions.CultureInvariant).Count == 1;
+        Regex.Matches(text, @"\bcfg\.enabled\s*=(?![=])", RegexOptions.CultureInvariant).Count == 1;
 
     private static SemanticInjectionResult ApplyAirBackFlip(SemanticPatchContext context)
     {
@@ -32,7 +32,7 @@ internal static partial class SemanticInjectors
                 throw new InvalidOperationException("AirBackFlip incomplete subscriber dormancy stage.");
             return SemanticInjectionResult.Skip("AirBackFlip subscriber dormancy already installed.");
         }
-        if (Regex.Matches(text, @"\bcfg\.enabled\s*=", RegexOptions.CultureInvariant).Count != 1 ||
+        if (Regex.Matches(text, @"\bcfg\.enabled\s*=(?![=])", RegexOptions.CultureInvariant).Count != 1 ||
             !text.Contains("cfg.enabled = ImGui.Checkbox(\"Enabled\", cfg.enabled)", StringComparison.Ordinal) ||
             !text.Contains("local flip = nil", StringComparison.Ordinal) ||
             !text.Contains("local function loadConfig()", StringComparison.Ordinal) ||
