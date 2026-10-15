@@ -285,6 +285,7 @@ try {
     $required=@(
         'G-CET semantic:appearance-menu-mod-squeeze',
         'if not drawWindow and not AMM.Props.buildMode then return end',
+        'local mod = AMM.TeleportMod == nil and GetMod("gtaTravel") or nil',
         'function AMM:GetTarget()',
         'local target = targetingSystem and (targetingSystem:GetLookAtObject(player, true, false) or targetingSystem:GetLookAtObject(player, false, false)) or nil',
         'AMM.currentTarget = AMM:GetTarget()',

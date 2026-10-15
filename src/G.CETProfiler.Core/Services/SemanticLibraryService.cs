@@ -370,6 +370,8 @@ internal sealed class SemanticLibraryService
                 SemanticInjectors.IsImmersiveFirstPersonActionDormancyComplete(graph.OwnerFolder),
             "AUTOLOOT_DEFAULT_ACTION_DORMANCY_V2" =>
                 SemanticInjectors.IsAutoLootDefaultActionDormancyComplete(graph.OwnerFolder),
+            "AMM_CACHED_GTA_TRAVEL_LOOKUP_V2" =>
+                SemanticInjectors.IsAppearanceMenuModSqueezeComplete(graph.OwnerFolder),
             _ => false
         };
         if (verifiedCompletion.HasValue)

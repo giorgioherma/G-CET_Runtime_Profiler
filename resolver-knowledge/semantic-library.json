@@ -4717,7 +4717,10 @@
           "AMM.Tools.currentTarget:Move()"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:appearance-menu-mod-squeeze",
-        "expectedMarkerFileCount": 1
+        "expectedMarkerFileCount": 1,
+        "completionVerifier": "AMM_CACHED_GTA_TRAVEL_LOOKUP_V2",
+        "sourceCompletionAuthoritative": true,
+        "composablePartialStages": true
       },
       "behavior": {
         "handler": "SEMANTIC_TARGET_IDENTITY_UI_LANE_SPLIT",
@@ -4726,7 +4729,8 @@
           "singleInvocationTargetingSystemReuse",
           "preserveAuthorTargetRefresh",
           "preserveWorldSensing",
-          "noCrossFrameNativeTargetCache"
+          "noCrossFrameNativeTargetCache",
+          "gtaTravelGetModAfterResolvedDormancy"
         ],
         "lanes": [
           {
