@@ -5,6 +5,21 @@
 **Scope:** Resolver development branch `dev/resolver-profiler-handoff`. No product-version change or permission to modify the user's live mods.
 **Owner of task decisions:** This file records the user's current task direction. Existing [CORE](HANDOFF/CORE.md), [Resolver project contract](resolver/PROJECT-CONTRACT.md), [authoritative per-mod intent](resolver/DORMANCY-USER-AUTHORITATIVE-SPEC.md), [62-mod / 67-rule audit](resolver/DORMANCY-ALL-MOD-AUDIT.md), and current source/CI remain authoritative for their respective domains.
 
+## Current live-game test scope and native attribution dependency — user correction (2026-10-15)
+
+**The uploaded live CET folder is the actual game instance and capture baseline. The separate original-mod collection is a source/reference collection, NOT a list of currently running mods.** Previous selection of BackStepDuo and AirBackFlip for immediate gameplay testing was wrong: their source stages can remain in the reviewed production library but cannot be treated as runtime-verified or as current-stack test requirements.
+
+**Immediate user gameplay test only:**
+1. `immersive_third_person`: FPP ↔ TPP toggles; confirm input/action subscription resumes and continues after session transitions.
+2. `DriveBus`: bus discovery, normal entry, driving, exit, interactions and action consumption.
+3. `StreetGamesPoker`: approach/proximity wake, seat/sit, gameplay and leaving the table.
+
+**Next evidence dependency:** user will test a **native instrumentation change** intended to provide actual allocator pressure/work attribution by mod and callback. Before treating that data as ground truth, inspect the native capture schema, boundedness, ownership provenance, native↔Lua boundary, callback identity and Profiler→Resolver propagation; verify actual per-mod attribution rather than assigning shared `CET_FUNCTION_OVERRIDE_PURE` totals to mods. Compare only like-for-like measures and preserve `NOT_MEASURED` for absent fields.
+
+**Next selection rule:** after current-game tests and updated native measurements, rank and implement safe missing A/B/C stages **only for mods confirmed present in the current live CET instance**. Use its real source files to prove wake, activation and fallback before implementation. Do not nominate next five merely because they appear in the separate original 62-mod audit or in the semantic catalog. The 62-mod library stays available for later stacks; it is not the runtime priority list.
+
+**Status:** first batch CI green [#38730263831](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38730263831); no in-game or allocator-attributed outcome yet. Continue development after the new capture without declaring the extended-dormancy assignment complete.
+
 ## Lifecycle of this file — mandatory
 
 This is the **one mutable, cross-chat task document**, not a dated investigation, release snapshot, or list of every previous task.
