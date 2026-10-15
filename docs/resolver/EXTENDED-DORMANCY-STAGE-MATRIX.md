@@ -20,7 +20,7 @@
 | 2 | Combat | `combat` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
 | 3 | repeatable_cyberpsychos | `repeatable-cyberpsychos` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
 | 4 | CyberTrials | `cybertrials` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
-| 5 | StreetGamesPoker | `streetgamespoker` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
+| 5 | StreetGamesPoker | `streetgamespoker` | EXISTING — partial | EXISTING — partial | UNREVIEWED | Reviewed two-file PASS4 source generation already provides realtime gameplay/seat/near/far cadence and source-proven wake, with opt-in source-only admission. No new C-stage native observer removal; preserve journal/pins and do not claim all A/B stages complete. CI source-only generation previously green. |
 | 6 | NightCityBilliards | `nightcitybilliards` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
 | 7 | NPCD_Hotline | `npcd-hotline` | SKIP — user | SKIP — user | SKIP — user | Original explicit user SKIP; preserve previous compatible patches |
 | 8 | GameEntityExaminerTool | `gameentityexaminertool` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
@@ -59,10 +59,10 @@
 | 41 | GiveCraftMat | `give-craft-mat` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
 | 42 | Simple Notepad - CET | `simple-notepad-cet` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
 | 43 | DedraPalmjetQuickslot | `dedra-palmjet-quickslot` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
-| 44 | BackStepDuo | `backstep-duo` | UNREVIEWED | UNREVIEWED | EXISTING — partial | Six exact movement actions already consolidated; verify dash-disable transition and independent wake before pausing |
+| 44 | BackStepDuo | `backstep-duo` | EXISTING — partial | IMPLEMENTED — CI pending | IMPLEMENTED — CI pending | Real original source proves nativeSettings EnableDash switch independently wakes the routed OnAction subscriber (v2) and allows disabled onUpdate to skip getPlayer native read after live menu retry (v3). Preserve default CET observe fallback, InstantLookBack binding, six movement actions and active dash. Source verifier distinguishes v1 routing, v2 subscriber pause, v3 idle read. Test/CI and in-game behavior not yet confirmed. |
 | 45 | NightCityAlliesMissions | `nightcity-allies-missions` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
 | 46 | GoodFeelings | `good-feelings, good-feelings-hard-draw` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
-| 47 | AirBackFlip | `air-backflip` | UNREVIEWED | UNREVIEWED | EXISTING — partial | Finite six-action routing already implemented; airborne/button transitions must remain available, pause needs separate author wake proof |
+| 47 | AirBackFlip | `air-backflip` | UNREVIEWED | UNREVIEWED | IMPLEMENTED — CI pending | Original overlay Enabled checkbox independently wakes. New v2 gates only the shared subscriber while cfg.enabled=false AND flip=nil; active-flip MoveY/press/release and onUpdate remain alive. SetActive deduplicates unchanged state. Source-only pristine/complete/drift CI regression exists but is undergoing completion-recognition fixes. No game validation/savings claim. |
 | 48 | AutoDropWeaponOnPickupEquip | `auto-drop-weapon-dynamic-routing` | EXISTING — partial | UNREVIEWED | EXISTING — partial | Exact subscriptions plus temporary wildcard for capture/debug already implemented; retain newly captured action wake and debug behavior |
 | 49 | Drone Companions (Revamp) | `drone-companions-revamp` | SKIP — user | SKIP — user | SKIP — user | Original explicit user SKIP; preserve previous compatible patches |
 | 50 | GhostVoidSystem | `ghost-void-system` | SKIP — user | SKIP — user | SKIP — user | Original explicit user SKIP; preserve previous compatible patches |
