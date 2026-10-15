@@ -333,7 +333,7 @@ if ([regex]::Matches($hudOnce, '(?m)^\s*present\("HUD update",HUD\.Update\)\s*$'
     (Rewrite 'GateSpecterHudWhenActive' $hudOnce) -cne $hudOnce) {
     throw 'Specter inactive HUD guard double-injected or not idempotent'
 }
-$hudCRLF = $specterHud.Replace("`n", "`r`n")
+$hudCRLF = $specterHud.Replace("`r`n", "`n").Replace("`n", "`r`n")
 if ([regex]::Matches((Rewrite 'GateSpecterHudWhenActive' $hudCRLF), 'HUD\.IsActive\(\)').Count -ne 2) {
     throw 'Specter inactive HUD stage rejected equivalent CRLF'
 }
@@ -364,7 +364,7 @@ if (!$nifDone.Contains('if not fullRate then fullRate = manager.hasRealtimeWork(
     (Rewrite 'UpgradeNativeInteractionsRealtimeProbe' $nifDone) -cne $nifDone) {
     throw 'nativeInteractions original/partial status short-circuit not idempotent'
 }
-$nifCRLF = $nifOld.Replace("`n", "`r`n")
+$nifCRLF = $nifOld.Replace("`r`n", "`n").Replace("`n", "`r`n")
 if (!(Rewrite 'UpgradeNativeInteractionsRealtimeProbe' $nifCRLF).Contains('if not fullRate then fullRate = manager.hasRealtimeWork() end')) {
     throw 'nativeInteractions current-source short-circuit failed CRLF equivalent'
 }
@@ -402,7 +402,7 @@ foreach($need in @('local function __gcetGigPhoneOpenedRead()',
 if ((Rewrite 'ReduceGigCorePhoneClosure' $gigDone) -cne $gigDone) {
     throw 'GigCore phone closure source upgrade was not idempotent'
 }
-$gigCRLF = $gigPhone.Replace("`n", "`r`n")
+$gigCRLF = $gigPhone.Replace("`r`n", "`n").Replace("`n", "`r`n")
 if (!(Rewrite 'ReduceGigCorePhoneClosure' $gigCRLF).Contains('pcall(__gcetGigPhoneOpenedRead)')) {
     throw 'GigCore phone source CRLF variant was not accepted'
 }
