@@ -232,11 +232,11 @@ internal static partial class SemanticInjectors
 
         if (!observer.Text.Contains("zeroEngineMod.SubscribeAction", StringComparison.Ordinal) ||
             !observer.Text.Contains("Observe('PlayerPuppet', 'OnAction'", StringComparison.Ordinal) ||
-            Regex.Matches(observer.Text, @"\bactive\s*=\s*state\.enabled\s*==\s*true",
+            Regex.Matches(observer.Text, @"__gcetItppSyncActionDormancy\(\)",
                 RegexOptions.CultureInvariant).Count != 2 ||
             Regex.Matches(observer.Text, @"__gcetItppActionHandle\s*=\s*handle",
                 RegexOptions.CultureInvariant).Count != 2 ||
-            !sync.Text.Contains("handle.SetActive(state.enabled == true)", StringComparison.Ordinal))
+            !sync.Text.Contains("pcall(handle.SetActive, state.enabled == true)", StringComparison.Ordinal))
             return false;
 
         return HasItppDormancyStateSync(enable.Text, true) &&
@@ -292,14 +292,15 @@ internal static partial class SemanticInjectors
             throw new InvalidOperationException(
                 "Third-person v1 action-route options or handle ownership have changed.");
 
-        route = route.Replace(legacyOptions,
-            "{ actions = actions, decodeType = false, active = state.enabled == true }",
-            StringComparison.Ordinal);
+        // Subscribe in its original active state and immediately sync after
+        // obtaining a pausable handle. A compatible older runtime without a
+        // SetActive handle retains the author's original active callback;
+        // pre-pausing at Subscribe time could strand that older runtime asleep.
         // Legacy user files and CI-generated ZIPs can have LF or CRLF; both
         // routed branches must be proven before introducing handle ownership.
         route = legacyHandle.Replace(route, m =>
             m.Value.TrimEnd('\r') + (m.Value.EndsWith('\r') ? "\r\n" : "\n") +
-            m.Groups["indent"].Value + "if routed then __gcetItppActionHandle = handle end");
+            m.Groups["indent"].Value + "if routed then __gcetItppActionHandle = handle; __gcetItppSyncActionDormancy() end");
 
         var prefix =
             "-- __gcetItppActionDormancyV2: author camera state owns subscriber activity\n" +
@@ -307,7 +308,7 @@ internal static partial class SemanticInjectors
             "local function __gcetItppSyncActionDormancy()\n" +
             "  local handle = __gcetItppActionHandle\n" +
             "  if handle and type(handle.SetActive) == \"function\" then\n" +
-            "    handle.SetActive(state.enabled == true)\n" +
+            "    pcall(handle.SetActive, state.enabled == true)\n" +
             "  end\n" +
             "end\n\n";
         var text = source[..observer.Start] + prefix + route + source[observer.End..];
