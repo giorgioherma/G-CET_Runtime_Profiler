@@ -7,3 +7,5 @@ This C++20 library tracks the complete **active** action subscriptions owned by 
 The on-demand 0-Engine service-value reader `0-Engine/GCETNativeEngineValues.lua` exposes existing ActionRouter, FrameListeners, WorkQueue, PhasePlanner and StateSignals `GetInfo` values for manual diagnostics. It does not run every frame or authorize native suppression.\n\nBuild with CMake (MSVC x64 on Windows) and run the included CTest suite. The experimental Lua bridge `0-Engine/GCETNativeActionValues.lua` uses an **explicit path** to load the DLL by LuaJIT FFI. An additional file `0-Engine/ActionRouter.experimental.lua` is a separate modified copy of the pinned ActionRouter for snapshot publication; **do not overwrite the installed `0-Engine/modules/ActionRouter.lua`** during this development phase.
 
 Tracked experiment uses `native-experiments/zero-engine-action-gate/` only; there are no changes to `.github/workflows/*`, `src/G.CETProfiler*`, production `resolver-runtime/0-Engine/*`, or pinned CET/DLL hashes.
+
+Validation status: [2026-10-16 results](docs/VALIDATION.md). Windows/CET integration remains pending; the tested shared object is not a game-installable DLL.
