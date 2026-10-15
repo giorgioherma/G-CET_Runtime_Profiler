@@ -4,6 +4,16 @@ using System.Text.RegularExpressions;
 
 namespace GCETRuntimeProfiler.Core.Services;
 
+// A completed Lua semantic stage does NOT authorize native dispatch dormancy.
+// Native read avoidance and native->Lua dispatch require independent source proof.
+internal sealed record SemanticNativeLane(
+    string ReadState,
+    string DispatchState,
+    bool ReadSourceProven,
+    bool DispatchSourceProven,
+    bool Complete,
+    string WakeContract);
+
 internal sealed record SemanticRuleMatch(
     bool Matched,
     bool SourceProofSatisfied,
@@ -25,6 +35,8 @@ internal sealed record SemanticRuleMatch(
     object? Graph)
 {
     internal bool StageComposed { get; init; }
+    internal SemanticNativeLane NativeLane { get; init; } =
+        new("UNCLASSIFIED", "UNCLASSIFIED", false, false, false, "");
 
     internal static SemanticRuleMatch None { get; } = new(
         false, false, false, false, "", false, 0, 0, "", "", "", "", false, 3.0, false,
@@ -174,6 +186,20 @@ internal sealed class SemanticLibraryService
                         };
                     }
 
+                    var nativeLane = new NativeStageProof();
+                    if (row.TryGetProperty("nativeHandoff", out var nativeRow) &&
+                        nativeRow.ValueKind == JsonValueKind.Object)
+                    {
+                        nativeLane = new NativeStageProof
+                        {
+                            ReadStage = JsonString(nativeRow, "readStage"),
+                            DispatchStage = JsonString(nativeRow, "dispatchStage"),
+                            ReadProofAll = JsonStringArray(nativeRow, "readProofAll"),
+                            DispatchProofAll = JsonStringArray(nativeRow, "dispatchProofAll"),
+                            WakeContract = JsonString(nativeRow, "wakeContract")
+                        };
+                    }
+
                     var handler = "";
                     if (row.TryGetProperty("behavior", out var behavior) &&
                         behavior.ValueKind == JsonValueKind.Object)
@@ -219,6 +245,7 @@ internal sealed class SemanticLibraryService
                         PolicyClass = JsonString(row, "policyClass"),
                         Callbacks = callbacks.ToArray(),
                         Proof = proof,
+                        NativeProof = nativeLane,
                         Handler = handler,
                         RuntimeThresholdMsPerSecond = runtimeThresholdMsPerSecond,
                         Generation = generation
@@ -401,6 +428,8 @@ internal sealed class SemanticLibraryService
         var partialState = !composed && !rule.Proof.SourceCompletionAuthoritative && !alreadySatisfied &&
             markerCount > 0 && markerCount < expectedMarkerFileCount;
 
+        var nativeLane = EvaluateNativeLane(rule.NativeProof, graph);
+
         return new SemanticRuleMatch(
             true,
             missing.Count == 0,
@@ -425,7 +454,8 @@ internal sealed class SemanticLibraryService
                 expectedMarkerFileCount,
                 sourceFingerprintFallback))
         {
-            StageComposed = composed
+            StageComposed = composed,
+            NativeLane = nativeLane
         };
     }
 
@@ -487,6 +517,46 @@ internal sealed class SemanticLibraryService
             }
         }
         return result.ToArray();
+    }
+
+    private static SemanticNativeLane EvaluateNativeLane(
+        NativeStageProof proof, ModSourceGraph graph)
+    {
+        if (string.IsNullOrWhiteSpace(proof.ReadStage) &&
+            string.IsNullOrWhiteSpace(proof.DispatchStage))
+            return new SemanticNativeLane(
+                "UNCLASSIFIED", "UNCLASSIFIED", false, false, false, "");
+
+        // Never promote a native stage on the strength of the Lua lane marker.
+        // The exact native-read avoidance and independent dispatch wake must
+        // each have source postconditions on the CURRENT owner files.
+        var readProof = proof.ReadProofAll.Length > 0 &&
+            proof.ReadProofAll.All(a => ContainsProof(graph.ProofCorpus, a));
+        var dispatchProof = proof.DispatchProofAll.Length > 0 &&
+            proof.DispatchProofAll.All(a => ContainsProof(graph.ProofCorpus, a));
+
+        var readComplete = proof.ReadStage.Equals(
+                "NOT_REQUIRED", StringComparison.OrdinalIgnoreCase) ||
+            proof.ReadStage.Equals("COMPLETE", StringComparison.OrdinalIgnoreCase) &&
+            readProof;
+        var dispatchComplete = proof.DispatchStage.Equals(
+                "NOT_REQUIRED", StringComparison.OrdinalIgnoreCase) ||
+            proof.DispatchStage.Equals("COMPLETE", StringComparison.OrdinalIgnoreCase) &&
+            dispatchProof;
+        var readState = proof.ReadStage.Equals("COMPLETE", StringComparison.OrdinalIgnoreCase)
+            ? readProof ? "COMPLETE" : "SOURCE_STAGE_MISSING"
+            : proof.ReadStage.Equals("PARTIAL_SOURCE_PROVEN", StringComparison.OrdinalIgnoreCase)
+                ? readProof ? "PARTIAL_SOURCE_PROVEN" : "SOURCE_PROOF_MISSING"
+                : string.IsNullOrWhiteSpace(proof.ReadStage)
+                    ? "UNCLASSIFIED" : proof.ReadStage;
+        var dispatchState = proof.DispatchStage.Equals(
+                "COMPLETE", StringComparison.OrdinalIgnoreCase)
+            ? dispatchProof ? "COMPLETE" : "SOURCE_STAGE_MISSING"
+            : string.IsNullOrWhiteSpace(proof.DispatchStage)
+                ? "UNCLASSIFIED" : proof.DispatchStage;
+        return new SemanticNativeLane(
+            readState, dispatchState, readProof, dispatchProof,
+            readComplete && dispatchComplete, proof.WakeContract);
     }
 
     private static void EvaluateProof(
@@ -872,9 +942,19 @@ internal sealed class SemanticLibraryService
         internal string PolicyClass { get; init; } = "";
         internal CallbackSelector[] Callbacks { get; init; } = Array.Empty<CallbackSelector>();
         internal SourceProof Proof { get; init; } = new();
+        internal NativeStageProof NativeProof { get; init; } = new();
         internal string Handler { get; init; } = "";
         internal double RuntimeThresholdMsPerSecond { get; init; } = 3.0;
         internal GenerationPolicy Generation { get; init; } = new();
+    }
+
+    private sealed class NativeStageProof
+    {
+        internal string ReadStage { get; init; } = "";
+        internal string DispatchStage { get; init; } = "";
+        internal string[] ReadProofAll { get; init; } = Array.Empty<string>();
+        internal string[] DispatchProofAll { get; init; } = Array.Empty<string>();
+        internal string WakeContract { get; init; } = "";
     }
 
     private sealed record CallbackSelector(

@@ -445,6 +445,32 @@ internal static class CallbackResolverService
                         semantic.SatisfiedBySourcePostcondition,
                         semantic.AlreadySatisfiedMode,
                         semantic.StageComposed,
+                        // Two independent diagnostic/completion lanes. This
+                        // legacy AlreadySatisfied describes authored Lua work;
+                        // it must never imply finished native handoff.
+                        lanes = new
+                        {
+                            lua = new
+                            {
+                                complete = semantic.AlreadySatisfied,
+                                state = semantic.AlreadySatisfied ? "COMPLETE"
+                                    : semantic.PartialState ? "INCOMPLETE_AMBIGUOUS"
+                                    : semantic.SourceProofSatisfied ? "SOURCE_PROVEN_PENDING"
+                                    : "SOURCE_PROOF_MISSING",
+                                semantic.SatisfiedBySourcePostcondition
+                            },
+                            native = new
+                            {
+                                readState = semantic.NativeLane.ReadState,
+                                dispatchState = semantic.NativeLane.DispatchState,
+                                readSourceProven = semantic.NativeLane.ReadSourceProven,
+                                dispatchSourceProven = semantic.NativeLane.DispatchSourceProven,
+                                complete = semantic.NativeLane.Complete,
+                                wakeContract = semantic.NativeLane.WakeContract
+                            },
+                            overallComplete = semantic.AlreadySatisfied &&
+                                semantic.NativeLane.Complete
+                        },
                         semantic.PartialState,
                         semantic.MarkerFileCount,
                         semantic.ExpectedMarkerFileCount,

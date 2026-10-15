@@ -4519,7 +4519,18 @@
       "evidenceMembership": [
         "SIXTH_STACK_SECOND_SEMANTIC_20261009",
         "BURST_RECOGNITION_20261010"
-      ]
+      ],
+      "nativeHandoff": {
+        "readStage": "PARTIAL_SOURCE_PROVEN",
+        "dispatchStage": "SOURCE_REVIEW_REQUIRED",
+        "readProofAll": [
+          "__gcetTunnelFarOutside",
+          "__gcetTunnelNavCache",
+          "H.diag>(H.phase=='outside'"
+        ],
+        "dispatchProofAll": [],
+        "wakeContract": "Static L.rescue.surface/brother can be reused; player proximity, quest facts, TRQHooks input queues, scene/recovery, presentation, JournalOffer, and arrival checks change live. Hard frame unsubscribe requires independent positional/quest/input/session wake; throttling Lua while retained native frame subscriber is not native dispatch dormancy."
+      }
     },
     {
       "id": "ziggy-last-play-navigation-sentinel-v3",
@@ -4611,7 +4622,18 @@
       "evidenceMembership": [
         "BURST_RECOGNITION_20261010",
         "CET_20261012_FIRST_GC_EVIDENCE_BASED_OPTIMIZATION"
-      ]
+      ],
+      "nativeHandoff": {
+        "readStage": "PARTIAL_SOURCE_PROVEN",
+        "dispatchStage": "SOURCE_REVIEW_REQUIRED",
+        "readProofAll": [
+          "__gcetZiggyOfferedFarAcc",
+          "__gcetZiggyOfferedFar",
+          "missingScanAge"
+        ],
+        "dispatchProofAll": [],
+        "wakeContract": "Static C.giver.position is cached in quest config, but live player position and actor locations are dynamic. Full-frame proximity wake currently lives inside onUpdate; cannot pause its native subscriber without a cheap independent proximity signal plus journal/phone/audio/scene/session and cleanup wake."
+      }
     },
     {
       "id": "aerial-race-active-idle-split",
@@ -4874,7 +4896,18 @@
         "admitted": true,
         "evidenceStack": "CET_20261012_184809_PRIOR_GIGCORE_STACK"
       },
-      "cadenceGroup": "UNCHANGED_PER_FRAME_PAUSE_STATE"
+      "cadenceGroup": "UNCHANGED_PER_FRAME_PAUSE_STATE",
+      "nativeHandoff": {
+        "readStage": "PARTIAL_SOURCE_PROVEN",
+        "dispatchStage": "SOURCE_REVIEW_REQUIRED",
+        "readProofAll": [
+          "local __gcetGigBoards = Game.GetBlackboardSystem()",
+          "__gcetGigBoards:Get(defs.UI_System)",
+          "__gcetGigBoards:Get(defs.PhotoMode)"
+        ],
+        "dispatchProofAll": [],
+        "wakeContract": "GigCore is a multi-mod shared session, marker, NPC, damage, phone, and REDS bus service. Clock-in state and gig location alone are insufficient: preserve save-load settle, independent registrations, pending queues, commands, bus reconciliation and external timer readers. Need independent source-proven signals for every service before native frame pause."
+      }
     },
     {
       "generation": {
