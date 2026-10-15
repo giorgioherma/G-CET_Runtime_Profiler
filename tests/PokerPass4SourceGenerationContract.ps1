@@ -184,6 +184,66 @@ $semantic=@($pokerRows | Where-Object {
 })
 if(!$semantic.Count){throw 'Resolver did not recognize both optimized files as already satisfied'}
 
+# A completed controller must be retained while an original world sweep is
+# independently upgraded; likewise a completed sweep survives controller reset.
+$generated | Set-Content -LiteralPath $path -Encoding utf8
+$authorTables | Set-Content -LiteralPath $tablesPath -Encoding utf8
+$partialWorld = Generate
+$mWorld = Get-Content $partialWorld.pass.ManifestPath -Raw | ConvertFrom-Json
+$tWorld = @($mWorld.transforms | Where-Object {$_.RuleId -eq 'streetgamespoker'})
+if ($tWorld.Count -ne 1 -or @($tWorld[0].files).Count -ne 1 -or
+    @($tWorld[0].files)[0] -ne 'StreetGamesPoker/StreetTables.lua') {
+    throw 'Poker original world sweep was not independently upgraded'
+}
+
+$authorInit | Set-Content -LiteralPath $path -Encoding utf8
+$tablesOut | Set-Content -LiteralPath $tablesPath -Encoding utf8
+$partialController = Generate
+$mController = Get-Content $partialController.pass.ManifestPath -Raw | ConvertFrom-Json
+$tController = @($mController.transforms | Where-Object {$_.RuleId -eq 'streetgamespoker'})
+if ($tController.Count -ne 1 -or @($tController[0].files).Count -ne 1 -or
+    @($tController[0].files)[0] -ne 'StreetGamesPoker/init.lua') {
+    throw 'Poker original controller was not independently upgraded'
+}
+
+# Prior live PASS4 used different local symbol names but identical lane and
+# squared-distance wake behavior. A complete source does not need G-CET
+# generated stage markers to be classified already-satisfied.
+$legacyInit = $generated.Replace('__gcetPokerAttachPass4','TryAttachPokerPass4').
+    Replace('__gcetPokerAttached','pass4Attached') -replace '(?m)^-- G-CET semantic:streetgamespoker\r?\n',''
+$legacyTables = $tablesOut.Replace('__gcetPokerWakeRadius','wake').
+    Replace('__gcetPokerWakeSq','wakeSq').
+    Replace('__gcetPokerSpawnSq','spawnSq').
+    Replace('__gcetPokerDespawnSq','despawnSq').
+    Replace('__gcetPokerTraceSq','traceSq').
+    Replace('__gcetPokerNearAny','nearAny').
+    Replace('__gcetPokerDistanceSq','dSq') -replace '(?m)^-- G-CET semantic:streetgamespoker\r?\n',''
+$legacyInit | Set-Content -LiteralPath $path -Encoding utf8
+$legacyTables | Set-Content -LiteralPath $tablesPath -Encoding utf8
+$legacy = (& $exe --capture $capture --mods $mods --json | ConvertFrom-Json)
+if (!$legacy.ok) { throw 'Historical Poker source could not be analyzed' }
+$legacyReport = Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
+$legacyMatches = @($legacyReport.callbackFamilies | ForEach-Object { $_.topConsumers } |
+    Where-Object { $_.semantic.RuleId -eq 'streetgamespoker' })
+if (@($legacyMatches | Where-Object { $_.semantic.AlreadySatisfied -and
+        $_.semantic.MarkerFileCount -eq 0 }).Count -lt 1) {
+    throw 'Unmarked historical Poker four-lane source was not recognized as complete'
+}
+
+# A missing wake return makes the same historical source INCOMPLETE. Merely
+# finding the four job IDs in a mod must never be treated as a full pass.
+($legacyTables -replace '\breturn\s+nearAny\b','return false') |
+    Set-Content -LiteralPath $tablesPath -Encoding utf8
+$drift = (& $exe --capture $capture --mods $mods --json | ConvertFrom-Json)
+$driftReport = Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
+$driftMatches = @($driftReport.callbackFamilies | ForEach-Object { $_.topConsumers } |
+    Where-Object { $_.semantic.RuleId -eq 'streetgamespoker' })
+if (@($driftMatches | Where-Object { $_.semantic.AlreadySatisfied }).Count -gt 0) {
+    throw 'Poker mutated wake stage incorrectly classified complete'
+}
+$authorInit | Set-Content -LiteralPath $path -Encoding utf8
+$authorTables | Set-Content -LiteralPath $tablesPath -Encoding utf8
+
 # Version-variation regression: cosmetic source changes and a different dt
 # parameter name must remain eligible. The Resolver must still alter both files
 # from pristine author source, with the author fallback preserved.
