@@ -92,6 +92,13 @@ For each mod with a candidate source-proven extension:
 - **Next rule-review intake:** inspected the existing mod-owned injectors for EasyTrainer, DriveBus, DiscardAmmoOnReload, AirBackFlip, BackStepDuo, AutoDropWeaponOnPickupEquip, BetterLootMarkers, Straight Edged Controls and CallList. Marked nine corresponding [A/B/C matrix](resolver/EXTENDED-DORMANCY-STAGE-MATRIX.md) rows as **existing partial** where a stage is already implemented, not fully native-dormant. Their individual author wake/source lifecycles still need proof before C is extended.
 - **Remaining:** all other per-mod A/B/C source re-audits and eligible stages, additional deliberate source-only opt-ins where original source proof supports them, actual game wake/session transitions and comparable native/Lua capture A/B. This task is NOT complete.
 
+
+## Follow-on implementation — DriveBus source-only admission (2026-10-15)
+
+- Extended the **existing** `drivebus` production semantic rule with explicit `generation.sourceIndependentAdmission=true`; no new action routing, wake assumptions, subscriber pause or native dispatch removal. Its already-reviewed three-file injector still supplies exact action/fallback proof and active-timer gate, with source completion/idempotence for prior routed/partial forms.
+- Extended `tests/DriveBusPartialSemanticContract.ps1` to run DriveBus generation with an **empty callback capture**, demanding a single source-only candidate, three authored staged files, no synthetic callback family, `SOURCE_PROVEN_NO_CAPTURE` and null measured runtime. Existing zero-call registered, pristine, partial, historical and drift tests remain.
+- **CI status: pending verification at time of this update.** This is an admission/coverage extension, **not** proof of further stage-C dormancy or in-game saving. Native measurement-gap review and source-defined bus activity/wake lifecycle are still needed before considering a new native-subscriber pause. Product version and pinned native unchanged.
+
 ## Current verified state versus unfinished task
 
 **Already implemented before this task was restated (do not repeat or roll back):**
