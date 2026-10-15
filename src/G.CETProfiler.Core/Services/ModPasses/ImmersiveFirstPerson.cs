@@ -229,6 +229,11 @@ internal static partial class SemanticInjectors
         if (text.Contains("__gcetIfpActionHandle", StringComparison.Ordinal) ||
             text.Contains("__gcetIfpSyncActionDormancy", StringComparison.Ordinal))
             throw new InvalidOperationException("ImmersiveFirstPerson subscriber stage is incomplete.");
+        // Some older/fixture sources implement only the camera-state scheduler,
+        // not the author's current FreeLook action/input pipeline. Preserve
+        // their existing independent A/B stages rather than inventing wake.
+        if (!text.Contains("local function registerPlayerInput(", StringComparison.Ordinal))
+            return text;
 
         if (!text.Contains("zeroEngineMod.SubscribeAction", StringComparison.Ordinal))
         {
