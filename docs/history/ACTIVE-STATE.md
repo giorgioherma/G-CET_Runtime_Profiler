@@ -1,5 +1,15 @@
 # Active project state — chronological engineering history
 
+## 2026-10-15 semantic soft materiality and native transition evidence — CI verified
+
+- User capture `ONACTION_DISCOVERY_IMMERSIVE_AND2` (269.436s, 54.741 FPS): 455 ranked non-infrastructure callbacks, including 337 heuristic hard-dormant and 26 discovery-dormant. The evidence-only generic classifier marks complete wake-path proof for 59 and not proven for 304; **this does not label 304 implementations broken**. Of 33 authored semantic matches, 29 have current-source anchor proof; only 6 have the independent generic wake-path flag and 27 do not. Existing authored hotpath work is not authorized by or dependent on the generic wake flag.
+- The captured Profiler handoff already transmits 1,449 registrations with calls/rate, native observer identity, source, deep samples, frame multiplicity, spikes and registration-matched G-GC counters. It contains no tagged gameplay scenarios and **cannot independently prove an author's quest activation state**. No new native DLL or Profiler instrumentation required for this admission-policy fix.
+- Introduced one shared `SemanticAdmissionPolicy` in the Resolver. For **production-enabled hand-authored semantic rules**, the 3 ms/s exclusive Lua figure is now a **soft CPU materiality priority**, not a hard veto, if measured callbacks, source anchors, postconditions and all injector safeguards hold. Analysis and ZIP generation invoke the same decision policy. Report now exposes independent `semantic.admissionLane`, `runtime.nativeDispatch` evidence, and generic wake proof coverage; newly supported native-dispatch zero-cost consolidation retains strict generic source proof. Unattributed GC counters do not authorize code rewriting.
+- Four source-matched, unfinished authored candidates are below the old threshold in this capture: DriveBus (`onUpdate`, 0.616ms/s); BetterLootMarkers (`onUpdate`, 0.061ms/s); StreetGamesPoker (`onUpdate`, 0.044ms/s); CallList (`PlayerPuppet::OnAction`, 0.261ms/s with 1269.455 calls/s). These are candidates, **not four guaranteed mod patches**, and live source is still immutable.
+- [**CI #38674502560**](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38674502560) **SUCCESS all four jobs** (latest code commit `53f10dd`, plus subsequent docs-only commits). Includes expanded [CallList pristine one-pass contract](../../tests/CallListPristineSourceContract.ps1) at 0.02ms/s, original/quote/legacy/negative-drift/idempotent variants, and existing semantic/generic contracts. Published artifacts: Resolver `11945394191`, Profiler `11944874412`. No version bump, no 0-Engine changes, no live mods modified, no in-game A/B claim.
+- [Detailed capture and evidence routing report](../resolver/research/SEMANTIC-SOFT-ADMISSION-AND-NATIVE-TRANSITIONS-2026-10-15.md).
+
+
 
 ## 2026-10-15 native-dispatch dormancy admission — original source restored, CI verified
 
