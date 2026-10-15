@@ -133,7 +133,7 @@ end)
   # Rehydrate an earlier v1-only routed source without adding a separate
   # semantic rule. The same rule upgrades it directly to v2.
   $v1=$patched
-  $v1=[regex]::Replace($v1,'(?ms)-- __gcetItppActionDormancyV2:.*?\nend\n\n','')
+  $v1=[regex]::Replace($v1,'(?s)-- __gcetItppActionDormancyV2:.*?(?=local function observePlayerActions\(\))','')
   $v1=$v1.Replace(', active = state.enabled == true','')
   $v1=[regex]::Replace($v1,'(?m)^    if routed then __gcetItppActionHandle = handle end\r?\n','')
   $v1=[regex]::Replace($v1,'(?m)^[ \t]*__gcetItppSyncActionDormancy\(\)\r?\n','')
