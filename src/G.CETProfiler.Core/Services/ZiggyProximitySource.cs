@@ -136,8 +136,8 @@ end
     private static string ReuseZiggyNativeQuestManagerForSave(string text)
     {
         const string marker = "G-CET semantic:ziggy-native-snapshot-manager-v6";
-        var start = Regex.Matches(text, @"(?m)^local function save\(\)[ \t]*$", RegexOptions.CultureInvariant);
-        var end = Regex.Matches(text, @"(?m)^local function trace\(event,details\)[ \t]*$", RegexOptions.CultureInvariant);
+        var start = Regex.Matches(text, @"(?m)^local function save\(\)[ \t]*\r?$", RegexOptions.CultureInvariant);
+        var end = Regex.Matches(text, @"(?m)^local function trace\(event,details\)[ \t]*\r?$", RegexOptions.CultureInvariant);
         if (start.Count != 1 || end.Count != 1 || start[0].Index >= end[0].Index ||
             !text.Contains("local function set(k,v)Game.GetQuestsSystem():SetFactStr('zg11_'..k,v)end",
                 StringComparison.Ordinal))
