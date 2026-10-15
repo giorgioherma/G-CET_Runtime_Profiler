@@ -86,9 +86,10 @@ end)
 '@
 
 $action = Write-Mod 'NativeZeroAction' @'
-Observe("PlayerPuppet", "OnAction", function(_, action)
-    if action:GetName() == CName.new("Jump") then
-        OnJump()
+Observe("PlayerPuppet", "OnAction", function(self, action, consumer)
+    local actionName = Game.NameToString(action:GetName())
+    if actionName == "Jump" or actionName == "Dodge" then
+        DoActionWork()
     end
 end)
 '@
