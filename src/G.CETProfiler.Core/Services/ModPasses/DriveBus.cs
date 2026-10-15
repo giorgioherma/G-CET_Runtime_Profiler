@@ -143,35 +143,45 @@ internal static partial class SemanticInjectors
                 "DriveBus Cron active-timer probe");
         }
 
+        if (!HasDriveBusActiveTimers(cronText))
+            throw new InvalidOperationException(
+                "DriveBus Cron active-timer function is incomplete or changed.");
+
         var init = context.FindFile(
             "init.lua",
             "Cron = require",
             "Cron.Update(delta)",
             "onUpdate");
+        var initText = init.Text;
+        if (!HasDriveBusTimerGate(initText))
+        {
+            var updateRegex = new Regex(
+                @"(?ms)^(?<indent>[ \t]*)(?<registrar>registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]\s*,\s*function\s*\(\s*delta\s*\)\s*\r?\n\k<indent>[ \t]+Cron\.Update\s*\(\s*delta\s*\)\s*\r?\n\k<indent>end\s*\)\s*$",
+                RegexOptions.CultureInvariant | RegexOptions.Multiline);
 
-        var updateRegex = new Regex(
-            @"(?ms)^(?<indent>[ \t]*)(?<registrar>registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]\s*,\s*function\s*\(\s*delta\s*\)\s*\r?\n\k<indent>[ \t]+Cron\.Update\s*\(\s*delta\s*\)\s*\r?\n\k<indent>end\s*\)\s*$",
-            RegexOptions.CultureInvariant | RegexOptions.Multiline);
+            var updateMatches = updateRegex.Matches(initText);
+            if (updateMatches.Count != 1)
+                throw new InvalidOperationException(
+                    "DriveBus Cron onUpdate no longer uniquely matches the dormant-timer gate.");
 
-        var updateMatches = updateRegex.Matches(init.Text);
-        if (updateMatches.Count != 1)
+            var update = updateMatches[0];
+            var updateIndent = update.Groups["indent"].Value;
+            var registrar = update.Groups["registrar"].Value;
+            initText = initText[..update.Index] +
+                updateIndent + registrar + "(\"onUpdate\", function(delta)\n" +
+                updateIndent + "    if Cron.HasActiveTimers() then Cron.Update(delta) end\n" +
+                updateIndent + "end)" +
+                initText[(update.Index + update.Length)..];
+        }
+        if (!HasDriveBusTimerGate(initText))
             throw new InvalidOperationException(
-                "DriveBus Cron onUpdate source no longer uniquely matches the dormant-timer gate.");
-
-        var update = updateMatches[0];
-        var updateIndent = update.Groups["indent"].Value;
-        var registrar = update.Groups["registrar"].Value;
-        var initText = init.Text[..update.Index] +
-            updateIndent + registrar + "(\"onUpdate\", function(delta)\n" +
-            updateIndent + "    if Cron.HasActiveTimers() then Cron.Update(delta) end\n" +
-            updateIndent + "end)" +
-            init.Text[(update.Index + update.Length)..];
+                "DriveBus Cron active-timer guard failed source verification.");
 
         context.Write(core, coreText);
         context.Write(cron, cronText);
         context.Write(init, initText);
         return SemanticInjectionResult.Success(
-            "Routed DriveBus's six source-proven actions through 0-Engine and made its Cron frame callback hard-dormant whenever no active timer exists.");
+            "Preserved verified existing DriveBus action routing and fallback; added only missing Cron timer gate stages, with no dormant update work while no timer is active.");
     }
 
 
