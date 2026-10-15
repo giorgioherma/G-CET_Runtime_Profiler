@@ -1,6 +1,6 @@
 # G-CET technical documentation
 
-**Active cross-chat task:** [LATEST-WORK.md](LATEST-WORK.md) — the single editable work-in-progress document, kept until completed and replaced with the next agreed task. Detailed research belongs in subsystem docs; [HANDOFF](HANDOFF/README.md) remains reserved **only** for stable startup guidance, process and the continuation prompt—no dated experiments, version snapshots or capture reports.
+**Active cross-chat task:** [LATEST-WORK.md](LATEST-WORK.md) — the single editable work-in-progress document, kept until completed and replaced with the next agreed task. [62-mod extended-dormancy A/B/C matrix](resolver/EXTENDED-DORMANCY-STAGE-MATRIX.md) tracks source-proof and per-mod status. Detailed research belongs in subsystem docs; [HANDOFF](HANDOFF/README.md) remains reserved **only** for stable startup guidance, process and the continuation prompt—no dated experiments, version snapshots or capture reports.
 
 | Subsystem | Documents |
 | --- | --- |
