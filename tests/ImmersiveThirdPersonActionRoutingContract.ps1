@@ -27,7 +27,7 @@ function TestVariant([bool]$drift) {
   try {$gzip.CopyTo($output);[IO.File]::WriteAllBytes((Join-Path $engine 'init.lua'),$output.ToArray())}
   finally {$output.Dispose();$gzip.Dispose();$input.Dispose()}
   $source=@'
-local state={enabled=true,observedActions=false}
+local state={enabled=false,observedActions=false}
 local config={camera={analogHoldTime=0.1,invertX=false,invertY=false}}
 local function isPlayerInAnyMenu() return false end
 local function getActionName(action) return action:GetName(action).value end
@@ -71,6 +71,23 @@ local function observePlayerActions()
     state.observedActions = true
   end
 end
+local function applyTppMode(opts)
+  state.enabled = true
+end
+local function restoreFppMode(immediate, headBackImmediate, forceRemove)
+  state.enabled = false
+end
+local function updateSessionGuard(delta)
+  if state.enabled then
+    state.enabled = false
+  end
+end
+registerInput("tpp_camera_toggle", "TPP", function(pressed)
+  if pressed then applyTppMode() else restoreFppMode() end
+end)
+registerForEvent("onInit", function()
+  observePlayerActions()
+end)
 '@
   if($drift){$source=$source.Replace('actionName == "MoveY"','actionName == "OtherMove"')}
   $path=Join-Path $owner 'init.lua'
@@ -100,9 +117,40 @@ end
   if($transforms.Count -ne 1){throw "Third-person pristine source did not receive one-pass exact action routing: $($result|ConvertTo-Json -Depth 4)"}
   $patched=FromPass $result.pass.ZipPath
   if(!$patched.Contains('__gcetItppRoutedOnActionV1') -or !$patched.Contains('zeroEngineMod.SubscribeAction') -or
-     !$patched.Contains('decodeType = false') -or !$patched.Contains("Observe('PlayerPuppet', 'OnAction'") -or
-     !$patched.Contains('handlePlayerAction(action)')){throw 'Routed source lost fallback, flags or handler'}
+     !$patched.Contains('__gcetItppActionDormancyV2') -or
+     !$patched.Contains('decodeType = false, active = state.enabled == true') -or
+     !$patched.Contains('handle.SetActive(state.enabled == true)') -or
+     !$patched.Contains("Observe('PlayerPuppet', 'OnAction'") -or
+     !$patched.Contains('handlePlayerAction(action)') -or
+     !$patched.Contains('registerInput("tpp_camera_toggle"')) {
+    throw 'Routed source lost v1 fallback, v2 dormancy or mod-owned CET wake key'
+  }
+  if(([regex]::Matches($patched,'__gcetItppActionHandle\s*=\s*handle')).Count -ne 2 -or
+     ([regex]::Matches($patched,'__gcetItppSyncActionDormancy\(\)')).Count -ne 4) {
+    throw 'Native subscriber handle or exact TPP/FPP/session lifecycle gates changed'
+  }
   if((Get-FileHash $path -Algorithm SHA256).Hash -ne $before){throw 'Resolver modified live source'}
+  # Rehydrate an earlier v1-only routed source without adding a separate
+  # semantic rule. The same rule upgrades it directly to v2.
+  $v1=$patched
+  $v1=[regex]::Replace($v1,'(?ms)-- __gcetItppActionDormancyV2:.*?\nend\n\n','')
+  $v1=$v1.Replace(', active = state.enabled == true','')
+  $v1=[regex]::Replace($v1,'(?m)^    if routed then __gcetItppActionHandle = handle end\r?\n','')
+  $v1=[regex]::Replace($v1,'(?m)^[ \t]*__gcetItppSyncActionDormancy\(\)\r?\n','')
+  if(!$v1.Contains('__gcetItppRoutedOnActionV1') -or $v1.Contains('__gcetItppActionDormancyV2')) {
+    throw 'Historical v1-only action fixture was not formed'
+  }
+  $v1|Set-Content -LiteralPath $path -Encoding utf8
+  $upgrade=(& $exe --capture $capture --mods $mods --generate-pass --json|ConvertFrom-Json)
+  $upgradeManifest=Get-Content $upgrade.pass.ManifestPath -Raw|ConvertFrom-Json
+  if(@($upgradeManifest.transforms|Where-Object {$_.RuleId -eq 'immersive-third-person-action-routing'}).Count -ne 1) {
+    throw 'Existing v1 action route must upgrade its missing v2 stage'
+  }
+  $upgraded=FromPass $upgrade.pass.ZipPath
+  if($upgraded -ne $patched) {
+    throw 'Pristine one-pass and legacy v1 upgrade must converge to exactly the same source'
+  }
+
   $patched|Set-Content -LiteralPath $path -Encoding utf8
   $again=(& $exe --capture $capture --mods $mods --generate-pass --json|ConvertFrom-Json)
   if($again.pass -and $again.pass.ManifestPath){
@@ -114,3 +162,22 @@ end
 }
 TestVariant $false
 TestVariant $true
+
+# A newly introduced source-side state writer outside audited TPP/FPP/
+# session paths invalidates the lifecycle proof.
+$root=Join-Path $env:RUNNER_TEMP 'gcet-itpp-onaction-pristine'
+$path=Join-Path $root 'mods/immersive_third_person/init.lua'
+$v2=Get-Content -LiteralPath $path -Raw
+$bad=$v2.Replace('-- __gcetItppActionDormancyV2:', 'state.enabled = false'+[Environment]::NewLine+'-- __gcetItppActionDormancyV2:')
+$bad|Set-Content -LiteralPath $path -Encoding utf8
+$cap=Join-Path $root 'capture'
+$mods=Join-Path $root 'mods'
+$check=(& $exe --capture $cap --mods $mods --json|ConvertFrom-Json)
+$report=Get-Content (Join-Path $cap 'G-CET_Resolver.json') -Raw|ConvertFrom-Json
+$matching=@($report.callbackFamilies|ForEach-Object {$_.topConsumers}|
+  Where-Object {$_.semantic.RuleId -eq 'immersive-third-person-action-routing'})
+if($matching.Count -gt 0 -and $matching[0].semantic.AlreadySatisfied){
+  throw 'Unexpected third-person state writer was incorrectly accepted as completed source'
+}
+$global:LASTEXITCODE=0
+Write-Host 'Third-person v2 activation, original v1 upgrade and source-lifecycle drift contracts: PASS'
