@@ -193,7 +193,14 @@ internal static partial class SemanticInjectors
             "useDefaultActionKey",
             "isContinuousLooting");
 
-        var text = RouteExactOnActionObserver(
+        var alreadyRouted = Regex.IsMatch(file.Text,
+            @"\b(?:zeroEngineMod|__gcetClient_gcetAutoLootOnAction)\.SubscribeAction\s*\(",
+            RegexOptions.CultureInvariant) &&
+            file.Text.Contains("zeroEngineOnAction", StringComparison.Ordinal)
+                || (file.Text.Contains("gcetAutoLootOnAction", StringComparison.Ordinal) &&
+                    file.Text.Contains("SubscribeAction", StringComparison.Ordinal) &&
+                    file.Text.Contains("Observe", StringComparison.Ordinal));
+        var text = alreadyRouted ? file.Text : RouteExactOnActionObserver(
             file.Text,
             "gcetAutoLootOnAction",
             "AutoLoot",
@@ -227,9 +234,16 @@ internal static partial class SemanticInjectors
             "handleButtonReleased",
             "action:GetType");
 
+        // Source-specific C-stage: the mod's own default-action setting
+        // governs only its shared native OnAction subscriber. The independent
+        // CET hotkey, event observers and onUpdate wake remain untouched.
+        text = ExtendAutoLootDefaultActionSubscriber(text);
+        if (text == file.Text)
+            return SemanticInjectionResult.Skip(
+                "AutoLoot finite action routing and source-supported subscriber dormancy already complete.");
         context.Write(file, text);
         return SemanticInjectionResult.Success(
-            "Applied AutoLoot's known-good finite action routing without changing its looting cadence or trigger state machine.");
+            "Preserved AutoLoot trigger/looting paths, exact-action routing and native fallback; source-backed default-action subscriber sleeps when author setting is off.");
     }
 
 
@@ -238,4 +252,74 @@ internal static partial class SemanticInjectors
     // Complete authoritative GigCore optimization: both pristine and
     // previously optimized sources converge in ONE Resolver pass.
     // All changes are invocation-local and retain protected frame semantics.
+
+    private static string ExtendAutoLootDefaultActionSubscriber(string text)
+    {
+        const string stage = "-- __gcetAutoLootDefaultActionDormancyV2";
+        if (text.Contains(stage, StringComparison.Ordinal))
+        {
+            if (!text.Contains("pcall(handle.SetActive, needed)", StringComparison.Ordinal) ||
+                !text.Contains("__gcetAutoLootActionHandle = ", StringComparison.Ordinal) ||
+                !text.Contains("__gcetAutoLootSyncDefaultAction()", StringComparison.Ordinal))
+                throw new InvalidOperationException("AutoLoot default-action subscriber stage drifted.");
+            return text;
+        }
+        if (text.Contains("__gcetAutoLootSyncDefaultAction", StringComparison.Ordinal) ||
+            text.Contains("__gcetAutoLootActionHandle", StringComparison.Ordinal))
+            throw new InvalidOperationException("AutoLoot source has a partial subscriber stage.");
+
+        // Some older or synthetic AutoLoot sources do not contain the mod's
+        // actual onInit/settings/UI wake graph. Preserve their existing
+        // route; do not invent subscription state without real source proof.
+        if (!text.Contains("autoLoot.ui.onInit()", StringComparison.Ordinal) ||
+            !text.Contains("autoLoot.settings.useDefaultActionKey", StringComparison.Ordinal) ||
+            !text.Contains("handleTriggers()", StringComparison.Ordinal))
+            return text;
+
+        var subscriptions = new Regex(
+            @"(?<call>(?:zeroEngineMod|zeroEngine|__gcet(?:Client|Engine)_gcetAutoLootOnAction)\.SubscribeAction\([^\r\n]*\))",
+            RegexOptions.CultureInvariant);
+        if (subscriptions.Matches(text).Count != 2 ||
+            !text.Contains("Observe(", StringComparison.Ordinal))
+            throw new InvalidOperationException("AutoLoot known native action route/fallback changed.");
+        text = subscriptions.Replace(text,
+            m => "__gcetAutoLootActionHandle = " + m.Groups["call"].Value);
+        var init = new Regex(
+            @"(?m)^(?<opening>[ \t]*registerForEvent\s*\(\s*['""]onInit['""]\s*,\s*function\s*\(\s*\)\s*)$",
+            RegexOptions.CultureInvariant);
+        if (init.Matches(text).Count != 1)
+            throw new InvalidOperationException("AutoLoot onInit not uniquely source-proven.");
+        var guard =
+            stage + ": only default action input, not custom CET triggers\n" +
+            "local __gcetAutoLootActionHandle = nil\n" +
+            "local __gcetAutoLootActionState = nil\n" +
+            "local function __gcetAutoLootSyncDefaultAction()\n" +
+            "    local handle = __gcetAutoLootActionHandle\n" +
+            "    if type(handle) ~= \"table\" or type(handle.SetActive) ~= \"function\" then return end\n" +
+            "    local needed = autoLoot.settings and autoLoot.settings.useDefaultActionKey == true\n" +
+            "    if needed == __gcetAutoLootActionState then return end\n" +
+            "    if pcall(handle.SetActive, needed) then __gcetAutoLootActionState = needed end\n" +
+            "end\n";
+        text = init.Replace(text, m => guard + "\n" + m.Value, 1);
+        text = ReplaceOnce(text,
+            "\tautoLoot.ui.onInit()\n",
+            "\t__gcetAutoLootSyncDefaultAction()\n" +
+            "\tautoLoot.ui.onInit()\n",
+            "AutoLoot initial author default-action state sync");
+        var update = new Regex(
+            @"(?m)^(?<opening>[ \t]*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]\s*,\s*function\s*\(\s*delta\s*\)\s*)$",
+            RegexOptions.CultureInvariant);
+        if (update.Matches(text).Count != 1)
+            throw new InvalidOperationException("AutoLoot onUpdate independent author setting wake changed.");
+        text = update.Replace(text,
+            m => m.Value + "\n\t__gcetAutoLootSyncDefaultAction()", 1);
+
+        if (!text.Contains(stage, StringComparison.Ordinal) ||
+            !text.Contains("pcall(handle.SetActive, needed)", StringComparison.Ordinal) ||
+            Regex.Matches(text, @"__gcetAutoLootActionHandle\s*=\s*[^;\r\n]*SubscribeAction\(", RegexOptions.CultureInvariant).Count != 2)
+            throw new InvalidOperationException("AutoLoot subscriber/source wake postconditions failed.");
+        return text;
+    }
+
+
 }
