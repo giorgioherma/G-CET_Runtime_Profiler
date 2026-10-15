@@ -6,7 +6,7 @@
 
 **v1.2.7 development package — Profiler + Resolver + newly compiled native DLL**
 
-**Development handoff:** [CORE — start every new development chat here](docs/HANDOFF/CORE.md), [build pipeline](docs/HANDOFF/BUILD-PIPELINE.md), [product status](docs/product/PRODUCT-STATUS.md), and [deep handoff index](docs/HANDOFF/README.md). Product **1.2.7** includes the newly compiled **2.15.1-scalar native DLL** from native-only CI plus the managed Profiler and Resolver build. See the handoff for remaining in-game validation.
+**Development handoff:** [CORE — start every new development chat here](docs/HANDOFF/CORE.md), [LATEST WORK — active task](docs/LATEST-WORK.md), [build pipeline](docs/HANDOFF/BUILD-PIPELINE.md), [product status](docs/product/PRODUCT-STATUS.md), and [deep handoff index](docs/HANDOFF/README.md). Product **1.2.7** includes the newly compiled **2.15.1-scalar native DLL** from native-only CI plus the managed Profiler and Resolver build. See the handoff for remaining in-game validation.
 
 A standalone Cyberpunk 2077 CET/Lua runtime profiler with transactional install/restore, optional 0-Engine Scheduler attribution, optional frame-time pairing, and a headless interface for G's Cyberpunk 2077 TOTAL Profiler.
 
