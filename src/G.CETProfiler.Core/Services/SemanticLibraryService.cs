@@ -39,6 +39,10 @@ internal sealed record SemanticRuleMatch(
 //   observed calls during a dormant capture veto a supported source rewrite.
 //   The independent source injector and postconditions remain fail-closed.
 // This never makes profiler dormancy guesses or GC coincidence a rewrite proof.
+internal sealed record SourceIndependentSemanticCandidate(
+    string RuleId, string Owner, string Handler, string PolicyClass,
+    string PatchStyle, int ExpectedMarkerFileCount, string[] MatchedAnchors);
+
 internal sealed record SemanticAdmissionDecision(bool Ready, string Lane, string Reason);
 
 internal static class SemanticAdmissionPolicy
@@ -202,7 +206,9 @@ internal sealed class SemanticLibraryService
                             PatchStyle = JsonString(generationRow, "patchStyle"),
                             ShipReferenceOverride = JsonBool(
                                 generationRow,
-                                "shipReferenceOverride")
+                                "shipReferenceOverride"),
+                            SourceIndependentAdmission = JsonBool(
+                                generationRow, "sourceIndependentAdmission")
                         };
                     }
 
@@ -410,6 +416,66 @@ internal sealed class SemanticLibraryService
         {
             StageComposed = composed
         };
+    }
+
+    // Only explicitly reviewed, opted-in production rules may be selected
+    // when their callback was absent from this profiler capture. This is
+    // source-only evidence, not a synthetic callback or native allocation.
+    internal SourceIndependentSemanticCandidate[] CollectSourceIndependentCandidates()
+    {
+        if (!Directory.Exists(_modsRoot))
+            return Array.Empty<SourceIndependentSemanticCandidate>();
+
+        string[] owners;
+        try
+        {
+            owners = Directory.EnumerateDirectories(_modsRoot)
+                .Take(2000)
+                .Select(Path.GetFileName)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Select(name => name!)
+                .ToArray();
+        }
+        catch
+        {
+            return Array.Empty<SourceIndependentSemanticCandidate>();
+        }
+
+        var result = new List<SourceIndependentSemanticCandidate>();
+        foreach (var entry in _entries)
+        {
+            if (!entry.Generation.Enabled ||
+                !entry.Generation.SourceIndependentAdmission ||
+                string.IsNullOrWhiteSpace(entry.Handler) ||
+                entry.Callbacks.Length == 0)
+                continue;
+
+            var matches = owners.Where(owner =>
+                entry.IdentityHints.Any(hint => OwnerHintMatches(hint, owner)))
+                .Take(2).ToArray();
+            if (matches.Length != 1) continue; // refuse ambiguous identity
+            var ownerName = matches[0];
+
+            foreach (var selector in entry.Callbacks)
+            {
+                if (string.IsNullOrWhiteSpace(selector.Kind) ||
+                    string.IsNullOrWhiteSpace(selector.Target))
+                    continue;
+                var match = Match(ownerName, selector.Kind, selector.Target);
+                if (!match.RuleId.Equals(entry.Id, StringComparison.OrdinalIgnoreCase) ||
+                    !match.Matched || !match.SourceProofSatisfied ||
+                    !match.GenerationEnabled || match.AlreadySatisfied ||
+                    match.PartialState)
+                    continue;
+
+                result.Add(new SourceIndependentSemanticCandidate(
+                    entry.Id, ownerName, match.Handler, match.PolicyClass,
+                    match.PatchStyle, match.ExpectedMarkerFileCount,
+                    match.MatchedAnchors));
+                break;
+            }
+        }
+        return result.ToArray();
     }
 
     private static void EvaluateProof(
@@ -827,6 +893,7 @@ internal sealed class SemanticLibraryService
         internal bool Enabled { get; init; }
         internal string PatchStyle { get; init; } = "";
         internal bool ShipReferenceOverride { get; init; }
+        internal bool SourceIndependentAdmission { get; init; }
     }
 
     private sealed record ModSourceGraph(
