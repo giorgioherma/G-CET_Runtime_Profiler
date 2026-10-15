@@ -142,6 +142,17 @@ end)
   }
   $v1|Set-Content -LiteralPath $path -Encoding utf8
   $upgrade=(& $exe --capture $capture --mods $mods --generate-pass --json|ConvertFrom-Json)
+  if(!$upgrade.ok -or !$upgrade.pass -or !$upgrade.pass.ManifestPath) {
+    $report=Get-Content (Join-Path $capture 'G-CET_Resolver.json') -Raw|ConvertFrom-Json
+    $semantic=@($report.callbackFamilies|ForEach-Object {$_.topConsumers}|
+      Where-Object {$_.semantic.RuleId -eq 'immersive-third-person-action-routing'})
+    throw ("v1 upgrade refused despite expected source evidence: " +
+      ($upgrade|ConvertTo-Json -Depth 8 -Compress) +
+      " semantic=" + ($semantic|ConvertTo-Json -Depth 10 -Compress) +
+      " v1statewriters=" + ([regex]::Matches($v1,'state\.enabled\s*=\s*(?:true|false)')).Count +
+      " handleLines=" + ([regex]::Matches($v1,'routed\s*=\s*ok and type\(handle\)')).Count +
+      " routePresent=" + $v1.Contains('__gcetItppRoutedOnActionV1'))
+  }
   $upgradeManifest=Get-Content $upgrade.pass.ManifestPath -Raw|ConvertFrom-Json
   if(@($upgradeManifest.transforms|Where-Object {$_.RuleId -eq 'immersive-third-person-action-routing'}).Count -ne 1) {
     throw 'Existing v1 action route must upgrade its missing v2 stage'
