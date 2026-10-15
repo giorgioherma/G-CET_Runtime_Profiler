@@ -14,7 +14,7 @@ internal static partial class SemanticInjectors
     private static bool IsAirBackFlipDormancyCompleteText(string text) =>
         text.Contains("__gcetAirBackFlipDormancyV2", StringComparison.Ordinal) &&
         text.Contains("local function __gcetAirBackFlipSync()", StringComparison.Ordinal) &&
-        text.Contains("pcall(h.SetActive, cfg.enabled == true or flip ~= nil)", StringComparison.Ordinal) &&
+        text.Contains("pcall(h.SetActive, desired)", StringComparison.Ordinal) &&
         text.Contains("Observe(\"PlayerPuppet\", \"OnAction\", gcetAirBackFlipOnAction)", StringComparison.Ordinal) &&
         Regex.Matches(text, @"__gcetAirBackFlipHandle\s*=\s*handle;\s*__gcetAirBackFlipSync\(\)", RegexOptions.CultureInvariant).Count == 2 &&
         text.Contains("cfg.enabled = ImGui.Checkbox(\"Enabled\", cfg.enabled)\n        __gcetAirBackFlipSync()", StringComparison.Ordinal) &&
@@ -62,10 +62,12 @@ internal static partial class SemanticInjectors
             "local function loadConfig()",
             "-- __gcetAirBackFlipDormancyV2: keep actions active during an existing flip\n" +
             "local " + handle + " = nil\n" +
+            "local __gcetAirBackFlipLastActive = nil\n" +
             "local function " + sync + "()\n" +
             "    local h = " + handle + "\n" +
-            "    if type(h) == \"table\" and type(h.SetActive) == \"function\" then\n" +
-            "        pcall(h.SetActive, cfg.enabled == true or flip ~= nil)\n" +
+            "    local desired = cfg.enabled == true or flip ~= nil\n" +
+            "    if type(h) == \"table\" and type(h.SetActive) == \"function\" and desired ~= __gcetAirBackFlipLastActive then\n" +
+            "        if pcall(h.SetActive, desired) then __gcetAirBackFlipLastActive = desired end\n" +
             "    end\n" +
             "end\n\n" +
             "local function loadConfig()",
@@ -88,11 +90,11 @@ internal static partial class SemanticInjectors
         var engineCall = engine + ".SubscribeAction(" + opts + ", " + fn + ", \"AirBackFlip\")";
         text = ReplaceOnce(text, "pcall(function() " + clientCall + " end)",
             "pcall(function() local handle = " + clientCall +
-            "; if type(handle) == \"table\" then " + handle + " = handle; " + sync + "() end end)",
+            "; if type(handle) == \"table\" then " + handle + " = handle; __gcetAirBackFlipLastActive = nil; " + sync + "() end end)",
             "AirBackFlip 0-Engine subscriber capture");
         text = ReplaceOnce(text, "pcall(function() " + engineCall + " end)",
             "pcall(function() local handle = " + engineCall +
-            "; if type(handle) == \"table\" then " + handle + " = handle; " + sync + "() end end)",
+            "; if type(handle) == \"table\" then " + handle + " = handle; __gcetAirBackFlipLastActive = nil; " + sync + "() end end)",
             "AirBackFlip legacy shared subscriber capture");
 
         if (!IsAirBackFlipDormancyCompleteText(text))
