@@ -354,6 +354,8 @@ internal sealed class SemanticLibraryService
                 SemanticInjectors.IsDriveBusComplete(graph.OwnerFolder),
             "POKER_PASS4_TWO_FILE" =>
                 PokerPass4Source.IsComplete(graph.OwnerFolder),
+            "ITPP_ACTION_DORMANCY_V2" =>
+                SemanticInjectors.IsImmersiveThirdPersonActionDormancyComplete(graph.OwnerFolder),
             _ => false
         };
         if (verifiedCompletion.HasValue)
