@@ -142,6 +142,8 @@ internal sealed class SemanticLibraryService
                     {
                         proof = new SourceProof
                         {
+                            CompletionVerifier = JsonString(proofRow, "completionVerifier"),
+                            ComposablePartialStages = JsonBool(proofRow, "composablePartialStages"),
                             OwnerAll = JsonStringArray(proofRow, "ownerAll"),
                             OwnerAnyGroups = JsonStringGroups(proofRow, "ownerAnyGroups"),
                             SatisfiedAll = JsonStringArray(proofRow, "satisfiedAll"),
@@ -335,11 +337,27 @@ internal sealed class SemanticLibraryService
             postconditionConfigured &&
             postconditionMissing.Count == 0;
 
+        // Known author-specific source-stage verifiers must establish all
+        // independent files. A marker or broad owner-string match is not
+        // enough to call previously optimized/live source complete.
+        var verifiedCompletion = rule.Proof.CompletionVerifier switch
+        {
+            "" => (bool?)null,
+            "DRIVEBUS_ROUTING_TIMERS" =>
+                SemanticInjectors.IsDriveBusComplete(graph.OwnerFolder),
+            "POKER_PASS4_TWO_FILE" =>
+                PokerPass4Source.IsComplete(graph.OwnerFolder),
+            _ => false
+        };
+        if (verifiedCompletion.HasValue)
+            satisfiedBySourcePostcondition = verifiedCompletion.Value;
+
         // Composite source rules are complete only if EVERY independent
         // scoped stage still holds. Older/misplaced markers never hide a
         // missing stage; the injector will add only what is absent.
-        var composed = rule.Proof.CompleteStages.Length > 0;
-        if (composed)
+        var composed = rule.Proof.CompleteStages.Length > 0 ||
+            rule.Proof.ComposablePartialStages;
+        if (rule.Proof.CompleteStages.Length > 0)
             satisfiedBySourcePostcondition =
                 rule.Proof.CompleteStages.All(stage =>
                     SemanticScopedStages.IsComplete(graph.FileTexts, stage));
@@ -780,6 +798,8 @@ internal sealed class SemanticLibraryService
 
     private sealed class SourceProof
     {
+        internal string CompletionVerifier { get; init; } = "";
+        internal bool ComposablePartialStages { get; init; }
         internal SemanticScopedStages.Stage[] CompleteStages { get; init; } =
             Array.Empty<SemanticScopedStages.Stage>();
         internal string[] OwnerAll { get; init; } = Array.Empty<string>();
