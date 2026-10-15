@@ -276,13 +276,18 @@
         ],
         "alreadySatisfiedMarker": "G-CET semantic:cybertrials",
         "expectedMarkerFileCount": 3,
+        "sourceCompletionAuthoritative": true,
         "satisfiedAll": [
-          "cybertrials.world_far",
-          "cybertrials.world_near",
-          "cybertrials.system_state",
-          "cybertrials.realtime",
           "mappin:GetVariant() ~= gamedataMappinVariant.Zzz18_RacingVariant",
-          "if #mappinIDs == #tracks and #tracks > 0 then return end"
+          "if #mappinIDs ==",
+          "this.iconWidget:SetAtlasResource(__gcetRaceIconAtlasPath)",
+          "this.iconWidget:SetTexturePart(__gcetRaceIconAtlasPart)"
+        ],
+        "satisfiedAnyGroups": [
+          [
+            "__gcetCyberTrialsWorldElapsed",
+            "cybertrials.world_far"
+          ]
         ]
       },
       "behavior": {
