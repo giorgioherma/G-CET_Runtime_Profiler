@@ -23,7 +23,8 @@ internal static partial class SemanticInjectors
             "immersivefirstperson" or
             "calllist-action-lazy-display-query" or
             "immersive-third-person-action-routing" or
-            "backstep-duo";
+            "backstep-duo" or
+            "air-backflip";
         if (context.OwnerAlreadyMarked() &&
             !candidate.StageComposed && !versionFluidUpgrade)
             return SemanticInjectionResult.Skip(
