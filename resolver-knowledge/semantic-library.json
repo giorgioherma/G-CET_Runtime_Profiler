@@ -3144,7 +3144,8 @@
         "satisfiedAll": [
           "manager.hasRealtimeWork()",
           "pinInteractions",
-          "if not fullRate then fullRate = manager.hasRealtimeWork() end"
+          "if not fullRate then fullRate = manager.hasRealtimeWork() end",
+          "local sceneStartPending = not sceneActive and quests:GetFactStr(\"nif_start_signal\") ~= 0"
         ]
       },
       "behavior": {
@@ -3155,7 +3156,8 @@
           "worldDiscovery",
           "managerMaintenance",
           "mappinIdentity",
-          "sourceFluidPartialLiveShortCircuit"
+          "sourceFluidPartialLiveShortCircuit",
+          "skipRedundantSceneStartFactWhenSceneActive"
         ],
         "lanes": [
           {
@@ -3180,7 +3182,7 @@
           "FRAME_DISPATCH_CONSOLIDATION",
           "SHARED_PROVIDER_READ"
         ],
-        "note": " The existing pristine source pass already avoids manager.hasRealtimeWork when independent source-defined full-rate gates are true. Upgrade equivalent older PASS9/10 live source without reverting world, pin-index, Cron or author wake paths. Unknown state writers fail closed."
+        "note": " The existing pristine source pass already avoids manager.hasRealtimeWork when independent source-defined full-rate gates are true. Upgrade equivalent older PASS9/10 live source without reverting world, pin-index, Cron or author wake paths. Unknown state writers fail closed. Native B optimization short-circuits the separate nif_start_signal quest fact getter only while nif_scene_active==1, when fullRate is already required. Preserve original value when inactive and retain all independent quest/recovery wake, observed fact writer effects and native observers."
       },
       "generation": {
         "enabled": true,
@@ -3204,7 +3206,16 @@
       "evidenceMembership": [
         "G-CET_SEMANTIC_LIBRARY_WORKSET",
         "MOD_COLLECTION_PRE_OPT"
-      ]
+      ],
+      "nativeHandoff": {
+        "readStage": "PARTIAL_SOURCE_PROVEN",
+        "dispatchStage": "BLOCKED_SOURCE_PROOF",
+        "readProofAll": [
+          "local sceneStartPending = not sceneActive and quests:GetFactStr(\"nif_start_signal\") ~= 0"
+        ],
+        "dispatchProofAll": [],
+        "wakeContract": "Current onUpdate maintains realtime scene Cron/NextTick, world pins, manager queues and GameUI observer wakes. This B stage omits only a redundant native fact read in a confirmed active scene; frame/observer dispatch is not suspendable without an independent complete wake."
+      }
     },
     {
       "id": "minimap-widgets",

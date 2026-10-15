@@ -359,13 +359,15 @@ if self.idleWorldElapsed >= IDLE_WORLD_INTERVAL then
 end
 '@
 $nifDone = Rewrite 'UpgradeNativeInteractionsRealtimeProbe' $nifOld
-if (!$nifDone.Contains('if not fullRate then fullRate = manager.hasRealtimeWork() end') -or
+if (!$nifDone.Contains('local sceneStartPending = not sceneActive and quests:GetFactStr("nif_start_signal") ~= 0') -or
+    !$nifDone.Contains('if not fullRate then fullRate = manager.hasRealtimeWork() end') -or
     $nifDone.Contains('local managerRealtime = manager.hasRealtimeWork()') -or
     (Rewrite 'UpgradeNativeInteractionsRealtimeProbe' $nifDone) -cne $nifDone) {
     throw 'nativeInteractions original/partial status short-circuit not idempotent'
 }
 $nifCRLF = $nifOld.Replace("`r`n", "`n").Replace("`n", "`r`n")
-if (!(Rewrite 'UpgradeNativeInteractionsRealtimeProbe' $nifCRLF).Contains('if not fullRate then fullRate = manager.hasRealtimeWork() end')) {
+if (!(Rewrite 'UpgradeNativeInteractionsRealtimeProbe' $nifCRLF).Contains('if not fullRate then fullRate = manager.hasRealtimeWork() end') -or
+    !(Rewrite 'UpgradeNativeInteractionsRealtimeProbe' $nifCRLF).Contains('local sceneStartPending = not sceneActive and quests:GetFactStr("nif_start_signal") ~= 0')) {
     throw 'nativeInteractions current-source short-circuit failed CRLF equivalent'
 }
 $nativeDrift = $nifOld.Replace('local interactionActive = next(world.activeInteractions) ~= nil',

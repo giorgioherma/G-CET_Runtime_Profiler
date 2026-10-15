@@ -105,7 +105,7 @@ internal static partial class SemanticInjectors
             "            local quests = Game.GetQuestsSystem()\n" +
             "            if not quests then return end\n" +
             "            local sceneActive = quests:GetFactStr(\"nif_scene_active\") == 1\n" +
-            "            local sceneStartPending = quests:GetFactStr(\"nif_start_signal\") ~= 0\n" +
+            "            local sceneStartPending = not sceneActive and quests:GetFactStr(\"nif_start_signal\") ~= 0\n" +
             "            local interactionActive = next(world.activeInteractions) ~= nil\n" +
             "            local fullRate = sceneActive or sceneStartPending or interactionActive or sceneLaunchPending\n" +
             "            if not fullRate then fullRate = manager.hasRealtimeWork() end\n\n" +
@@ -335,18 +335,15 @@ internal static partial class SemanticInjectors
         const string newSource =
             "            local fullRate = sceneActive or sceneStartPending or interactionActive or sceneLaunchPending\n" +
             "            if not fullRate then fullRate = manager.hasRealtimeWork() end";
+        const string oldFact = "local sceneStartPending = quests:GetFactStr(\"nif_start_signal\") ~= 0";
+        const string newFact = "local sceneStartPending = not sceneActive and quests:GetFactStr(\"nif_start_signal\") ~= 0";
         var normalized = text.Replace("\r\n", "\n", StringComparison.Ordinal);
-        if (normalized.Contains(newSource, StringComparison.Ordinal))
-        {
-            if (normalized.Contains(oldSource, StringComparison.Ordinal))
-                throw new InvalidOperationException(
-                    "nativeInteractions live probe upgrade has conflicting source stages.");
-            return text;
-        }
-        if (!normalized.Contains(oldSource, StringComparison.Ordinal) ||
+        var oldProbe = normalized.Contains(oldSource, StringComparison.Ordinal);
+        var newProbe = normalized.Contains(newSource, StringComparison.Ordinal);
+        var oldFactPresent = normalized.Contains(oldFact, StringComparison.Ordinal);
+        var newFactPresent = normalized.Contains(newFact, StringComparison.Ordinal);
+        if (oldProbe == newProbe || oldFactPresent == newFactPresent ||
             !normalized.Contains("local sceneActive = quests:GetFactStr(\"nif_scene_active\") == 1",
-                                 StringComparison.Ordinal) ||
-            !normalized.Contains("local sceneStartPending = quests:GetFactStr(\"nif_start_signal\") ~= 0",
                                  StringComparison.Ordinal) ||
             !normalized.Contains("local interactionActive = next(world.activeInteractions) ~= nil",
                                  StringComparison.Ordinal) ||
@@ -355,8 +352,14 @@ internal static partial class SemanticInjectors
             !normalized.Contains("if self.idleWorldElapsed >= IDLE_WORLD_INTERVAL then",
                                  StringComparison.Ordinal))
             throw new InvalidOperationException(
-                "nativeInteractions current live full-rate/wake source drifted.");
-        normalized = normalized.Replace(oldSource, newSource, StringComparison.Ordinal);
+                "nativeInteractions source-defined full-rate/fact wake stages changed.");
+        if (oldProbe)
+            normalized = normalized.Replace(oldSource, newSource, StringComparison.Ordinal);
+        // This fact is read only to select full-rate processing. While the
+        // real nif_scene_active fact is true, full-rate work already runs;
+        // do not issue the second Lua-to-native GetFactStr call.
+        if (oldFactPresent)
+            normalized = normalized.Replace(oldFact, newFact, StringComparison.Ordinal);
         return text.Contains("\r\n", StringComparison.Ordinal)
             ? normalized.Replace("\n", "\r\n", StringComparison.Ordinal)
             : normalized;
