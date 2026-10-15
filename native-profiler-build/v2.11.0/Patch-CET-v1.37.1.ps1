@@ -943,7 +943,9 @@ Replace-LiteralOnce `
     -New @'
             {
                 CETRuntimeProfiler::MethodScope ggcMethodScope(
-                    6, apFunction->fullName.hash, CETRuntimeProfiler::Get().IsCapturing());
+                    6, apFunction->fullName.hash,
+                    apFunction->parent ? apFunction->parent->GetName().hash : 0ULL,
+                    CETRuntimeProfiler::Get().IsCapturing());
                 auto lockedState = chain.pScripting->GetLockedState();
 '@ `
     -Label "PureScript argument marshalling native boundary"
@@ -957,7 +959,9 @@ Replace-LiteralOnce `
     -New @'
         {
             CETRuntimeProfiler::MethodScope ggcMethodScope(
-                7, apFunction->fullName.hash, CETRuntimeProfiler::Get().IsCapturing());
+                7, apFunction->fullName.hash,
+                apFunction->parent ? apFunction->parent->GetName().hash : 0ULL,
+                CETRuntimeProfiler::Get().IsCapturing());
             auto lockedState = chain.pScripting->GetLockedState();
 '@ `
     -Label "OverriddenScript argument marshalling native boundary"
@@ -977,7 +981,9 @@ Replace-LiteralOnce `
     -New @'
     {
     CETRuntimeProfiler::MethodScope ggcMethodScope(
-        8, apFrame->func->fullName.hash, CETRuntimeProfiler::Get().IsCapturing());
+        8, apFrame->func->fullName.hash,
+        0ULL, // NativeProxy func is not proven to be a CClassFunction; do not cast.
+        CETRuntimeProfiler::Get().IsCapturing());
     for (const auto& param : apFrame->func->params)
     {
 '@ `
