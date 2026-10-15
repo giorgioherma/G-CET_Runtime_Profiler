@@ -135,6 +135,15 @@ For each mod with a candidate source-proven extension:
 
 - **Batch CI now GREEN:** [#38730263831](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38730263831) passed at `f5867c9e` (following green #38730184497 and #38730039674). The BackStepDuo/AirBackFlip regression sequence is closed for CI; **gameplay checks, native allocation/dispatch measurements and actual live-source generated ZIP behavior remain pending**. Do not count these as in-game verified or claim all 62 complete. Continue with next reviewed safe mods after collecting the requested first-batch gameplay result.
 
+## Five-mod batch acceptance — CI green, player tests next (2026-10-15)
+
+- **Latest fully verified managed CI:** [#38730263831](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38730263831) commit `f5867c9e0bbc0ec384c3534fee177ab405c6a877`: **all four jobs successful** (build, evidence, deep reuse, 0-Engine Lua). Both downloadable artifacts verified: **Resolver** `11970044161`, **Profiler** `11969359782`, both **v1.2.7**, same pinned production native DLL.
+- **Five-mod review/test batch:** Immersive Third Person and DriveBus (previously CI-proven work retained), StreetGamesPoker (two-file source-only admission, source tests green), BackStepDuo (new v2 subscriber dormancy plus v3 disabled native `getPlayer` bypass after menu retry), AirBackFlip (new v2 subscriber dormancy when disabled AND no flip exists, with active-flip preservation). The last two have source-completion, original/pristine, missing-callback and negative drift contracts in managed CI. This is **not** five new native-transition eliminations.
+- **Debugging result:** BackStepDuo's equality-comparison false writer match was fixed using assignment-specific source regex. AirBackFlip's source-completion recognition now tolerates CRLF/LF while proving the checkbox-to-subscriber wake path. An intentional fail-closed drift test originally left `LASTEXITCODE=1`; corrected; final CI is green without weakening actual drift refusal.
+- **Source compatibility:** User archive `EXTENDED DORMANCY(1).zip` contains genuine original mod source and the **pre-extended-dormancy** current CET snapshot used for the capture. No silent user-file edit, no native DLL change. Synthetic CI and source inspection have not yet validated in-game wake behavior or quantified mod-specific native allocation savings; mark these `NOT_MEASURED`.
+- **Next gate:** user generates/installs Resolver overlay against current supported CET source, validates the five mods (especially BackStepDuo disabled/enabled, rapid state changes, InstantLookBack, and AirBackFlip disabled/enabled/mid-flip/landing/reload), and provides matched capture. Investigate any behavior deviation before expanding further C stages. Then continue next workload-led source-proven batch; keep the 62-mod task ACTIVE and update this file rather than replacing it.
+
+
 ## Current verified state versus unfinished task
 
 **Already implemented before this task was restated (do not repeat or roll back):**
