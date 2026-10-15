@@ -169,4 +169,100 @@ Observe('PlayerPuppet', 'OnAction', zeroEngineOnAction)
 if ((Rewrite 'ExtendAutoLootDefaultActionSubscriber' $unsupported) -cne $unsupported) {
     throw 'AutoLoot route without independent setting wake was changed'
 }
+
+# Critical integration: a previously routed live AutoLoot has NO separate
+# PlayerPuppet::OnAction profiler registration: 0-Engine owns dispatch.
+# It must still qualify for its source-proven missing C-stage. Do not
+# synthesize measured callback activity or treat earlier A/B completion
+# as C-stage completion.
+$root=Join-Path $env:RUNNER_TEMP 'gcet-autoloot-existing-route-sourceonly'
+if (Test-Path $root) {Remove-Item -LiteralPath $root -Recurse -Force}
+$capture=Join-Path $root 'capture'
+$mods=Join-Path $root 'mods'
+$lootDir=Join-Path $mods 'AutoLoot'
+$zeroDir=Join-Path $mods '0-Engine'
+New-Item -ItemType Directory -Force $capture,$lootDir,$zeroDir | Out-Null
+$exe=Join-Path (Resolve-Path $ResolverRoot).Path 'G-CET-Resolver.exe'
+$encoded=(Get-Content -LiteralPath (Join-Path $ResolverRoot 'runtime/0-Engine/fixed-init.lua.gz.b64') -Raw).Trim()
+$input=[IO.MemoryStream]::new([Convert]::FromBase64String($encoded))
+$gzip=[IO.Compression.GZipStream]::new($input,[IO.Compression.CompressionMode]::Decompress)
+$output=[IO.MemoryStream]::new()
+try {$gzip.CopyTo($output);[IO.File]::WriteAllBytes((Join-Path $zeroDir 'init.lua'),$output.ToArray())}
+finally {$output.Dispose();$gzip.Dispose();$input.Dispose()}
+# Build from the actual *shape* of the user's live 0-Engine-routed source,
+# not from an original native OnAction observer.
+$live=@'
+local __gcetRegisterEvent_45 = registerForEvent
+local autoLoot = {
+    settings = {useDefaultActionKey=false},
+    isContinuousLooting = false,
+    ui = {onInit=function()end}
+}
+local function handleButtonPressed(this,action) end
+local function handleButtonReleased(this,action) end
+registerForEvent("onInit", function()
+    local function zeroEngineOnAction(this, action)
+        if not autoLoot.settings.useDefaultActionKey then return end
+        local actionType = action:GetType(action)
+        if actionType == gameinputActionType.BUTTON_PRESSED then handleButtonPressed(this,action) end
+        if actionType == gameinputActionType.BUTTON_RELEASED then handleButtonReleased(this,action) end
+    end
+    local zeroEngineOk, zeroEngine = pcall(GetMod, "0-Engine")
+    local zeroEngineMod = zeroEngineOk and zeroEngine.Register("AutoLoot") or nil
+    local zeroEngineConfig = { actions = { "UI_DPadWeapons", "TogglePhotoMode" }, types = {"BUTTON_PRESSED","BUTTON_RELEASED"} }
+    if type(zeroEngineMod) == "table" and type(zeroEngineMod.SubscribeAction) == "function" then
+        zeroEngineMod.SubscribeAction(zeroEngineConfig, zeroEngineOnAction)
+    elseif zeroEngineOk and type(zeroEngine) == "table" and type(zeroEngine.SubscribeAction) == "function" then
+        zeroEngine.SubscribeAction(zeroEngineConfig, zeroEngineOnAction, "AutoLoot")
+    else
+        Observe('PlayerPuppet', 'OnAction', zeroEngineOnAction)
+    end
+    autoLoot.ui.onInit()
+end)
+local function handleTriggers() end
+__gcetRegisterEvent_45("onUpdate", function(delta)
+    handleTriggers()
+end)
+'@
+# Normalise only known author indentation; other current-source contents
+# are unchanged. Source-only admission must not require callback records.
+$live=$live.Replace('    autoLoot.ui.onInit()', ([string][char]9)+'autoLoot.ui.onInit()')
+$live | Set-Content -LiteralPath (Join-Path $lootDir 'init.lua') -Encoding utf8
+$empty=@{schemaVersion='2.0';callbacks=@();optimizerEvidence=@()} | ConvertTo-Json -Depth 35
+$empty | Set-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Encoding utf8
+$first=(& $exe --capture $capture --mods $mods --generate-pass --json | ConvertFrom-Json)
+if (!$first.ok -or !$first.pass) {throw 'AutoLoot source-only generation failed'}
+$manifest=Get-Content -LiteralPath $first.pass.ManifestPath -Raw | ConvertFrom-Json
+$autoloot=@($manifest.transforms | Where-Object {$_.RuleId -eq 'autoloot'})
+if ($autoloot.Count -ne 1 -or $autoloot[0].admissionEvidence -ne 'SOURCE_PROVEN_NO_CAPTURE' -or
+    $null -ne $autoloot[0].runtimeMsPerSecond -or
+    'AutoLoot/init.lua' -notin @($autoloot[0].files)) {
+    $skips=@($manifest.skipped | Where-Object {$_.RuleId -eq 'autoloot'})
+    throw ("Existing-route zero-callback AutoLoot C stage was not source-admitted: " +
+        ($skips | ConvertTo-Json -Compress))
+}
+$arc=[IO.Compression.ZipFile]::OpenRead([string]$first.pass.ZipPath)
+try {
+    $entry=$arc.GetEntry('bin/x64/plugins/cyber_engine_tweaks/mods/AutoLoot/init.lua')
+    if (!$entry) {throw 'AutoLoot source-only generated ZIP entry missing'}
+    $reader=[IO.StreamReader]::new($entry.Open())
+    try {$generated=$reader.ReadToEnd()} finally {$reader.Dispose()}
+} finally {$arc.Dispose()}
+foreach ($needle in @('__gcetAutoLootDefaultActionDormancyV2',
+   '__gcetAutoLootActionHandle = zeroEngineMod.SubscribeAction',
+   '__gcetAutoLootActionHandle = zeroEngine.SubscribeAction',
+   'pcall(handle.SetActive, needed)',
+   'Observe(''PlayerPuppet'', ''OnAction'', zeroEngineOnAction)',
+   '__gcetRegisterEvent_45("onUpdate"')) {
+    if (!$generated.Contains($needle)) {throw "AutoLoot source-only generated stage missing: $needle"}
+}
+$generated | Set-Content -LiteralPath (Join-Path $lootDir 'init.lua') -Encoding utf8
+$again=(& $exe --capture $capture --mods $mods --json | ConvertFrom-Json)
+if (!$again.ok) {throw 'AutoLoot source-only complete-source analysis failed'}
+$report=Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
+if (@($report.semanticSourceOnlyCandidates | Where-Object {$_.ruleId -eq 'autoloot'}).Count -ne 0) {
+    throw 'AutoLoot existing-route C stage not recognized as complete'
+}
+Write-Host 'AutoLoot 0-Engine delegated OnAction (zero profiler callback) => source-only native subscriber upgrade and completion: PASS'
+
 Write-Host 'IFP FreeLook C-stage / AutoLoot default-action C-stage: pristine, fallback, source wake and idempotence PASS'
