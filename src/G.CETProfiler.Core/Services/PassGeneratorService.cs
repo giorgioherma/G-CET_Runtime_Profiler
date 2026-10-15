@@ -240,7 +240,11 @@ public static class PassGeneratorService
                 semanticDefaultRuntimeThresholdMsPerSecond = SemanticPassGeneratorService.MaterialThresholdMsPerSecond,
                 semanticRuleLocalRuntimeThresholds = true,
                 semanticThreeMsPerSecondIsSoftBoundary = true,
-                semanticHandAuthoredAdmissionRequiresMeasuredActivityAndCurrentSourceProof = true,
+                // Retained legacy policy field for consuming tools: source
+                // proof is mandatory but captured activity no longer is.
+                semanticHandAuthoredAdmissionRequiresMeasuredActivityAndCurrentSourceProof = false,
+                semanticHandAuthoredCurrentSourceProofRequired = true,
+                semanticSourceIndependentAdmissionExplicitCatalogOptInOnly = true,
                 semanticCurrentSourceProofRequired = true,
                 semanticExistingLiveFilesOnly = true,
                 semanticCreatesNewModFiles = false,
