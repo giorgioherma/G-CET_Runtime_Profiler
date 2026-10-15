@@ -269,11 +269,7 @@ internal static class SemanticPassGeneratorService
                     JsonString(row, "policyClass"),
                     JsonString(row, "patchStyle"),
                     0.0, expectedFiles,
-                    // DriveBus is a reviewed multi-file source-composable rule:
-                    // its routed OnAction core can be complete while the Cron
-                    // and init timer stages are still missing. A source-only
-                    // candidate must preserve that known rule contract.
-                    ruleId.Equals("drivebus", StringComparison.OrdinalIgnoreCase),
+                    JsonBool(row, "stageComposed"),
                     SourceIndependent: true));
             }
         }
