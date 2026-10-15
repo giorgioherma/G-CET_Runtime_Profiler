@@ -198,6 +198,9 @@ local autoLoot = {
     isContinuousLooting = false,
     ui = {onInit=function()end}
 }
+-- This original owner-state write is source identity proof; it is not
+-- inferred from a zero-callback profiler capture.
+autoLoot.isContinuousLooting = false
 local function handleButtonPressed(this,action) end
 local function handleButtonReleased(this,action) end
 registerForEvent("onInit", function()
