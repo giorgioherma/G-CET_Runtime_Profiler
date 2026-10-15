@@ -208,6 +208,133 @@ internal static partial class SemanticInjectors
     }
 
 
+
+    // Registration count and subscriber dispatch are different layers. This
+    // stage pauses only the 0-Engine subscriber. The one shared native hook
+    // remains available to other mods and the original CET controls wake TPP.
+    internal static bool IsImmersiveThirdPersonActionDormancyComplete(string ownerFolder)
+    {
+        var path = Path.Combine(ownerFolder, "init.lua");
+        return File.Exists(path) &&
+            IsImmersiveThirdPersonActionDormancyCompleteText(File.ReadAllText(path));
+    }
+
+    private static bool IsImmersiveThirdPersonActionDormancyCompleteText(string text)
+    {
+        if (!text.Contains("__gcetItppActionDormancyV2", StringComparison.Ordinal) ||
+            !text.Contains("__gcetItppRoutedOnActionV1", StringComparison.Ordinal) ||
+            !SemanticScopedStages.TryFunction(text, "observePlayerActions", out var observer) ||
+            !SemanticScopedStages.TryFunction(text, "__gcetItppSyncActionDormancy", out var sync) ||
+            !SemanticScopedStages.TryFunction(text, "applyTppMode", out var enable) ||
+            !SemanticScopedStages.TryFunction(text, "restoreFppMode", out var disable) ||
+            !SemanticScopedStages.TryFunction(text, "updateSessionGuard", out var session))
+            return false;
+
+        if (!observer.Text.Contains("zeroEngineMod.SubscribeAction", StringComparison.Ordinal) ||
+            !observer.Text.Contains("Observe('PlayerPuppet', 'OnAction'", StringComparison.Ordinal) ||
+            Regex.Matches(observer.Text, @"\bactive\s*=\s*state\.enabled\s*==\s*true",
+                RegexOptions.CultureInvariant).Count != 2 ||
+            Regex.Matches(observer.Text, @"__gcetItppActionHandle\s*=\s*handle",
+                RegexOptions.CultureInvariant).Count != 2 ||
+            !sync.Text.Contains("handle.SetActive(state.enabled == true)", StringComparison.Ordinal))
+            return false;
+
+        return HasItppDormancyStateSync(enable.Text, true) &&
+            HasItppDormancyStateSync(disable.Text, false) &&
+            HasItppDormancyStateSync(session.Text, false) &&
+            Regex.Matches(text, @"\bstate\.enabled\s*=\s*(?:true|false)\b",
+                RegexOptions.CultureInvariant).Count == 3;
+    }
+
+    private static bool HasItppDormancyStateSync(string functionText, bool active)
+    {
+        return Regex.Matches(functionText,
+            @"\bstate\.enabled\s*=\s*" + (active ? "true" : "false") +
+            @"[ \t]*\r?\n[ \t]*__gcetItppSyncActionDormancy\(\)",
+            RegexOptions.CultureInvariant).Count == 1;
+    }
+
+    private static string AddImmersiveThirdPersonActionDormancy(string source)
+    {
+        if (IsImmersiveThirdPersonActionDormancyCompleteText(source))
+            return source;
+        if (source.Contains("__gcetItppActionDormancyV2", StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "Incomplete existing third-person action dormancy stage; refusing unsafe duplicate rewrite.");
+
+        if (!source.Contains("__gcetItppRoutedOnActionV1", StringComparison.Ordinal) ||
+            !SemanticScopedStages.TryFunction(source, "observePlayerActions", out var observer) ||
+            !SemanticScopedStages.TryFunction(source, "applyTppMode", out var enable) ||
+            !SemanticScopedStages.TryFunction(source, "restoreFppMode", out var disable) ||
+            !SemanticScopedStages.TryFunction(source, "updateSessionGuard", out var session))
+            throw new InvalidOperationException(
+                "Third-person shared action route or author state/wake functions are not source-proven.");
+
+        // Exactly three source-owned state writers were verified in the real
+        // mod: TPP activation, FPP restoration, and session-gap deactivation.
+        // A new writer could bypass subscriber resumption: fail closed.
+        if (Regex.Matches(source, @"\bstate\.enabled\s*=\s*(?:true|false)\b",
+                RegexOptions.CultureInvariant).Count != 3 ||
+            !Regex.IsMatch(enable.Text, @"\bstate\.enabled\s*=\s*true\b") ||
+            !Regex.IsMatch(disable.Text, @"\bstate\.enabled\s*=\s*false\b") ||
+            !Regex.IsMatch(session.Text, @"\bstate\.enabled\s*=\s*false\b"))
+            throw new InvalidOperationException(
+                "Third-person enable/disable/session writer set has changed.");
+
+        var route = observer.Text;
+        const string legacyOptions = "{ actions = actions, decodeType = false }";
+        const string legacyHandle = "    routed = ok and type(handle) == \"table\"\n";
+        if (route.Split(legacyOptions, StringSplitOptions.None).Length != 3 ||
+            route.Split(legacyHandle, StringSplitOptions.None).Length != 3 ||
+            !route.Contains("__gcetItppRoutedOnActionV1", StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "Third-person v1 action-route options or handle ownership have changed.");
+
+        route = route.Replace(legacyOptions,
+            "{ actions = actions, decodeType = false, active = state.enabled == true }",
+            StringComparison.Ordinal);
+        route = route.Replace(legacyHandle,
+            legacyHandle + "    if routed then __gcetItppActionHandle = handle end\n",
+            StringComparison.Ordinal);
+
+        var prefix =
+            "-- __gcetItppActionDormancyV2: author camera state owns subscriber activity\n" +
+            "local __gcetItppActionHandle = nil\n" +
+            "local function __gcetItppSyncActionDormancy()\n" +
+            "  local handle = __gcetItppActionHandle\n" +
+            "  if handle and type(handle.SetActive) == \"function\" then\n" +
+            "    handle.SetActive(state.enabled == true)\n" +
+            "  end\n" +
+            "end\n\n";
+        var text = source[..observer.Start] + prefix + route + source[observer.End..];
+
+        foreach (var pair in new[]
+        {
+            (Name: "applyTppMode", Active: true),
+            (Name: "restoreFppMode", Active: false),
+            (Name: "updateSessionGuard", Active: false)
+        })
+        {
+            if (!SemanticScopedStages.TryFunction(text, pair.Name, out var span))
+                throw new InvalidOperationException("Third-person state writer disappeared: " + pair.Name);
+            var state = pair.Active ? "true" : "false";
+            var regex = new Regex(
+                @"(?m)^(?<indent>[ \t]*)state\.enabled\s*=\s*" + state + @"[ \t]*$",
+                RegexOptions.CultureInvariant);
+            if (regex.Matches(span.Text).Count != 1)
+                throw new InvalidOperationException("Third-person state writer is ambiguous: " + pair.Name);
+            var updated = regex.Replace(span.Text, m =>
+                m.Groups["indent"].Value + "state.enabled = " + state + "\n" +
+                m.Groups["indent"].Value + "__gcetItppSyncActionDormancy()", 1);
+            text = text[..span.Start] + updated + text[span.End..];
+        }
+
+        if (!IsImmersiveThirdPersonActionDormancyCompleteText(text))
+            throw new InvalidOperationException(
+                "Third-person subscriber dormancy lifecycle postconditions failed.");
+        return text;
+    }
+
     // Finite action-interest proof from the live camera/movement handler.
     // Preserve the original handler and native Observer as fallback.
     private static SemanticInjectionResult ApplyImmersiveThirdPersonActionRouting(
@@ -222,10 +349,17 @@ internal static partial class SemanticInjectors
         const string stage = "__gcetItppRoutedOnActionV1";
         if (source.Contains(stage, StringComparison.Ordinal))
         {
-            if (source.Contains("zeroEngineMod.SubscribeAction", StringComparison.Ordinal) &&
-                source.Contains("Observe('PlayerPuppet', 'OnAction'", StringComparison.Ordinal))
-                return SemanticInjectionResult.Skip("Immersive third-person native fallback and routed subscription already present.");
-            throw new InvalidOperationException("Immersive third-person action stage is inconsistent.");
+            if (!source.Contains("zeroEngineMod.SubscribeAction", StringComparison.Ordinal) ||
+                !source.Contains("Observe('PlayerPuppet', 'OnAction'", StringComparison.Ordinal))
+                throw new InvalidOperationException("Immersive third-person action stage is inconsistent.");
+
+            var upgraded = AddImmersiveThirdPersonActionDormancy(source);
+            if (upgraded == source)
+                return SemanticInjectionResult.Skip(
+                    "Third-person routing and source-proven action subscriber dormancy already complete.");
+            context.Write(file, upgraded);
+            return SemanticInjectionResult.Success(
+                "Upgraded existing shared action routing with state-driven subscriber pause/resume; preserved original native fallback and author-owned CET keybinds.");
         }
 
         var handler = source.IndexOf("local function handlePlayerAction(action)", StringComparison.Ordinal);
@@ -286,9 +420,10 @@ internal static partial class SemanticInjectors
             "  if routed then state.observedActions = true end\n" +
             "end";
         var m = matches[0];
-        context.Write(file, source[..m.Index] + replacement + source[(m.Index + m.Length)..]);
+        var routed = source[..m.Index] + replacement + source[(m.Index + m.Length)..];
+        context.Write(file, AddImmersiveThirdPersonActionDormancy(routed));
         return SemanticInjectionResult.Success(
-            "Replaced one independent third-person action observer with finite exact-action 0-Engine routing; preserved original input handling and native fallback.");
+            "One pristine pass provides exact-action native observer consolidation and source-driven TPP enable/FPP disable/session-gap subscriber dormancy; preserves existing CET keybind wake and fallback.");
     }
 
 
