@@ -115,9 +115,10 @@ internal static partial class SemanticInjectors
             "UnregisterMappin");
 
         var hubsText = hubsFile.Text;
-        var existingHubs = hubsText.Contains(
-            "if #mappinIDs == #tracks and #tracks > 0 then return end",
-            StringComparison.Ordinal);
+        var existingHubs = Regex.IsMatch(
+            hubsText,
+            @"if\s+#mappinIDs\s*==\s*#(?<tracks>[A-Za-z_]\w*)\s+and\s+#\k<tracks>\s*>\s*0\s+then\s+return\s+end",
+            RegexOptions.CultureInvariant);
         if (!existingHubs)
         {
         hubsText = RegexReplaceOnce(
