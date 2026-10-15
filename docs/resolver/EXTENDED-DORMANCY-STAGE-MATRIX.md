@@ -104,3 +104,18 @@ The rows marked `EXISTING — partial` above represent source transformations **
 Stay **workload-led** (OnAction high-frequency contributors) but choose the next transform only where the original author input/state/wake graph proves it. In particular, do not assume DriveAerialVehicle's dynamically supplied exception lists are finite; do not replace CallList's localized substring selector with a guessed action table; and do not disable action observers that are their own wake trigger. Existing exact-router work on AirBackFlip, BackStepDuo, DiscardAmmoOnReload, DriveBus and AutoDropWeaponOnPickupEquip must be independently checked before adding dormancy. The Source API already has `SetActive` and can support mod-specific subscriber state changes without a new 0-Engine framework.
 
 Source-only eligible rules entirely absent from profiler callback rows remain a separate unresolved generation-discovery path (see [LATEST-WORK](../LATEST-WORK.md)); this matrix does not mark those stages complete.
+
+## Native C engineering backlog — 2026-10-16
+
+Missing 0-Engine functionality is REQUIRES_ENGINE_EXTENSION, NOT an impossible/SKIP case. Validate independent wakes and actual native-to-Lua crossing savings.
+
+| Mod | Native C status | Dependency |
+|---|---|---|
+| hotscenes | REQUIRES_ENGINE_EXTENSION_AND_WAKE_PROOF | Preserve ObserveAfter phase; all UI/showtime/shard transitions; native observer re-arm or native-side filter for zero native C crossing |
+| DriveAerialVehicle | ENGINE_CAPABILITY_OR_WAKE_PROOF_PENDING | Preserve wildcard action forwarding and runtime exception Consume; active only in Waiting/InVehicle; author situation wake |
+| InertiaReturns | C REQUIRES_INDEPENDENT_MOVEMENT_WAKE; B SOURCE-CANDIDATE | Locomotion callback is ground-to-air detector; gate unused player/linear velocity reads in Lua instead |
+| licksclubjukebox | C WAKE_REVIEW_OPEN | photo-mode and audio/Cron wake/stop |
+| JoytoysOfNightCity | C WAKE_REVIEW_OPEN | incoming externally written facts, scene and cleanup |
+| tunnel_rescue | REQUIRES_ENGINE_EXTENSION_AND_WAKE_PROOF | independent proximity, quest, session/recovery and input wakes |
+
+An added Lua ObserveAfter router alone consolidates subscribers; it still creates one native-to-Lua dispatch on every OnAction. A subscriber-level SetActive is not equivalent to native hook suspension.
