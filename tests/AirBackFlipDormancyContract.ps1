@@ -105,7 +105,16 @@ $patched.Replace('registerForEvent("onDraw",','cfg.enabled = false' + [Environme
     Set-Content -LiteralPath $initPath -Encoding utf8
 $drift=(& $exe --capture $capture --mods $mods --json|ConvertFrom-Json)
 $driftReport=Get-Content (Join-Path $capture 'G-CET_Resolver.json') -Raw|ConvertFrom-Json
-$falseComplete=@($driftReport.callbackFamilies|ForEach-Object {$_.topConsumers}|
-    Where-Object {$_.semantic.RuleId -eq 'air-backflip' -and $_.semantic.AlreadySatisfied})
-if($falseComplete.Count -gt 0){throw 'AirBackFlip newly introduced state writer passed source completion'}
+$driftGenerate=(& $exe --capture $capture --mods $mods --generate-pass --json | ConvertFrom-Json)
+$driftManifest=Join-Path $capture 'G-CET_Pass_Manifest.json'
+if($driftGenerate.ok -and $driftGenerate.pass){
+    $driftZip=[string]$driftGenerate.pass.ZipPath
+    $m=Get-Content -LiteralPath $driftGenerate.pass.ManifestPath -Raw|ConvertFrom-Json
+    if(@($m.transforms|Where-Object {$_.RuleId -eq 'air-backflip'}).Count -gt 0){
+        throw 'AirBackFlip additional author state writer incorrectly received a pass'
+    }
+}
+if(!(Get-Content -LiteralPath $initPath -Raw).Contains('cfg.enabled = false')){
+    throw 'AirBackFlip source drift test modified the live source in-place'
+}
 Write-Host 'AirBackFlip pristine source-only, native fallback, idempotence and state-writer drift: PASS'
