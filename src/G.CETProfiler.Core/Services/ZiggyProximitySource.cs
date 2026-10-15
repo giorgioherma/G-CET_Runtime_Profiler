@@ -65,7 +65,10 @@ internal static class ZiggyProximitySource
             }
             else throw new InvalidOperationException(
                 "Ziggy earlier 1Hz/0.25s stages are inconsistent or source drifted.");
-            text=ReducePassivePresentation(text);
+            if (!text.Contains("G-CET semantic:ziggy-passive-ui-v5",
+                               StringComparison.Ordinal))
+                text=ReducePassivePresentation(text);
+            text=ReuseZiggyNativeQuestManagerForSave(text);
             context.Write(file,text);
             return SemanticInjectionResult.Success(
                 "Upgraded existing Ziggy v3/v4 without duplicate callback wrappers: " +
@@ -118,12 +121,63 @@ end
              text[(matches[0].Index+opening.Length+1)..];
         text="-- G-CET semantic:ziggy-unaccepted-far-1hz\n"+text;
         text=ReducePassivePresentation(text);
+        text=ReuseZiggyNativeQuestManagerForSave(text);
         context.Write(file,text);
         return SemanticInjectionResult.Success(
             "V2 navigation preserved; the unaccepted offered/far quest controller runs at 1 Hz " +
             "beyond 130m, while near giver, dialogue, session transitions and all active phases " +
             "keep original frame cadence. State and timer elapsed time are preserved.");
     }
+    // Native lane B: save() writes 15-20+ quest facts every half second.
+    // The author-level set(k,v) reacquires Game.GetQuestsSystem() for EACH
+    // fact. Reuse the manager only inside ONE synchronous save invocation:
+    // never cache engine objects across save loads, missions or frames.
+    // Keeps every SetFactStr write, its order and error behavior identical.
+    private static string ReuseZiggyNativeQuestManagerForSave(string text)
+    {
+        const string marker = "G-CET semantic:ziggy-native-snapshot-manager-v6";
+        var start = Regex.Matches(text, @"(?m)^local function save\(\)[ \t]*$", RegexOptions.CultureInvariant);
+        var end = Regex.Matches(text, @"(?m)^local function trace\(event,details\)[ \t]*$", RegexOptions.CultureInvariant);
+        if (start.Count != 1 || end.Count != 1 || start[0].Index >= end[0].Index ||
+            !text.Contains("local function set(k,v)Game.GetQuestsSystem():SetFactStr('zg11_'..k,v)end",
+                StringComparison.Ordinal))
+            throw new InvalidOperationException("Ziggy native snapshot/save source scope changed.");
+
+        var portion = text[start[0].Index..end[0].Index];
+        if (portion.Contains(marker, StringComparison.Ordinal))
+        {
+            if (!portion.Contains("__gcetZiggySnapshotQuestSystem", StringComparison.Ordinal) ||
+                !portion.Contains("local function __gcetZiggySnapshotSet(", StringComparison.Ordinal) ||
+                Regex.IsMatch(portion, @"(?<![\w_])set\s*\(", RegexOptions.CultureInvariant))
+                throw new InvalidOperationException("Ziggy native quest manager stage is incomplete.");
+            return text;
+        }
+        if (portion.Contains("__gcetZiggySnapshotQuestSystem", StringComparison.Ordinal) ||
+            portion.Contains("__gcetZiggySnapshotSet", StringComparison.Ordinal))
+            throw new InvalidOperationException("Ziggy snapshot manager has a partial/foreign source stage.");
+        const string guard = " if not H.s or not valid(H.hooks)or not H.hooks:SessionLoaded()then return end";
+        if (!portion.Contains(guard, StringComparison.Ordinal) ||
+            !portion.Contains(" local s=H.s", StringComparison.Ordinal))
+            throw new InvalidOperationException("Ziggy saved quest-session guard changed.");
+        var calls = Regex.Matches(portion, @"(?<![\w_])set\s*\(", RegexOptions.CultureInvariant);
+        if (calls.Count < 6)
+            throw new InvalidOperationException("Ziggy quest snapshot writes changed.");
+        portion = Regex.Replace(portion, @"(?<![\w_])set\s*\(",
+            "__gcetZiggySnapshotSet(", RegexOptions.CultureInvariant);
+        portion = portion.Replace(" local s=H.s", 
+            " -- " + marker + "\n" +
+            " local __gcetZiggySnapshotQuestSystem=Game.GetQuestsSystem()\n" +
+            " local function __gcetZiggySnapshotSet(k,v)\n" +
+            "  __gcetZiggySnapshotQuestSystem:SetFactStr('zg11_'..k,v)\n" +
+            " end\n" +
+            " local s=H.s",
+            StringComparison.Ordinal);
+        if (!portion.Contains(marker, StringComparison.Ordinal) ||
+            Regex.IsMatch(portion, @"(?<![\w_])set\s*\(", RegexOptions.CultureInvariant))
+            throw new InvalidOperationException("Ziggy native save stage postcondition failed.");
+        return text[..start[0].Index]+portion+text[end[0].Index..];
+    }
+
     // The original Starman source unconditionally calls HidePuzzle from
     // onDraw (50-60 times/sec) and ClearPrompt on unprompted update ticks.
     // In matching original Redscript, HidePuzzle only hides its own canvas;

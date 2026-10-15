@@ -4573,8 +4573,11 @@
           "__gcetZiggyOfferedFar",
           "G-CET semantic:ziggy-unaccepted-far-1hz",
           "G-CET semantic:ziggy-passive-ui-v5",
-          "H.__gcetPuzzleWasShown"
-        ]
+          "H.__gcetPuzzleWasShown",
+          "G-CET semantic:ziggy-native-snapshot-manager-v6"
+        ],
+        "sourceCompletionAuthoritative": true,
+        "composablePartialStages": true
       },
       "behavior": {
         "handler": "SEMANTIC_QUEST_PROXIMITY_DIAGNOSTIC_SENTINEL",
@@ -4595,9 +4598,10 @@
           "v1V2SourceUpgradeSupported",
           "farOfferedIdle1Hz",
           "instantNearWake",
-          "ownedHudAndPromptTransitionCleanup"
+          "ownedHudAndPromptTransitionCleanup",
+          "invocationLocalQuestManagerReuseForSnapshotSaves"
         ],
-        "note": "Preserve existing v2 targeted 2-second journal/mappin probe and bounded missing-pin scan. In init.lua, while phase is offered, the session is stable, no dialogue and player more than 130 m from Milo, run the full controller at 4 Hz with elapsed dt catch-up. All active states and near/wake transitions remain full-frame; a failed probe falls back to full-frame. Original, v1 and already optimized v2 navigation source supported. Fourth capture upgrade: already optimized v3 4Hz passive far-unaccepted phase becomes 1Hz, and original author archives can generate the same new 1Hz stage. Same every-frame near-area reentry, dialogue and active full frame. First-frame and state-transition-only own puzzle HidePuzzle; owned prompt ClearPrompt similarly transitions only; active ShowPuzzle, StoryChoices, wake cadence unchanged."
+        "note": "Preserve existing v2 targeted 2-second journal/mappin probe and bounded missing-pin scan. In init.lua, while phase is offered, the session is stable, no dialogue and player more than 130 m from Milo, run the full controller at 4 Hz with elapsed dt catch-up. All active states and near/wake transitions remain full-frame; a failed probe falls back to full-frame. Original, v1 and already optimized v2 navigation source supported. Fourth capture upgrade: already optimized v3 4Hz passive far-unaccepted phase becomes 1Hz, and original author archives can generate the same new 1Hz stage. Same every-frame near-area reentry, dialogue and active full frame. First-frame and state-transition-only own puzzle HidePuzzle; owned prompt ClearPrompt similarly transitions only; active ShowPuzzle, StoryChoices, wake cadence unchanged. Native B v6: during each save() snapshot only, acquire QuestsSystem once for all original fact writes (never persist a native manager handle across frames). Ingame/native savings still need post-install validation."
       },
       "generation": {
         "enabled": true,
@@ -4629,7 +4633,9 @@
         "readProofAll": [
           "__gcetZiggyOfferedFarAcc",
           "__gcetZiggyOfferedFar",
-          "missingScanAge"
+          "missingScanAge",
+          "G-CET semantic:ziggy-native-snapshot-manager-v6",
+          "__gcetZiggySnapshotQuestSystem:SetFactStr('zg11_'..k,v)"
         ],
         "dispatchProofAll": [],
         "wakeContract": "Static C.giver.position is cached in quest config, but live player position and actor locations are dynamic. Full-frame proximity wake currently lives inside onUpdate; cannot pause its native subscriber without a cheap independent proximity signal plus journal/phone/audio/scene/session and cleanup wake."
