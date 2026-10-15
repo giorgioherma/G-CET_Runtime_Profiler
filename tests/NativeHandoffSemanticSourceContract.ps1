@@ -147,7 +147,7 @@ registerForEvent("onUpdate", function(delta)
     handleTriggers()
 end)
 registerInput('AutoLoot','Author key',function(down) end)
-'@.Replace('@@TAB@@',[char]9)
+'@.Replace('@@TAB@@',"`t")
 $out2 = Rewrite 'ExtendAutoLootDefaultActionSubscriber' $loot
 foreach ($needle in @('-- __gcetAutoLootDefaultActionDormancyV2',
     '__gcetAutoLootActionHandle = zeroEngineMod.SubscribeAction',
