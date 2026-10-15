@@ -13,15 +13,16 @@ internal static partial class SemanticInjectors
         // admitting a composed rule. An existing marker on only one stage is
         // not a reason to suppress the other stage's safe incremental pass.
         // Legacy rule markers establish earlier passes, not newer *source*
-        // stages. These two controlled upgrade rules carry distinct v4
-        // source postconditions and edit existing live files in-place. Their
-        // injector validates each missing stage and refuses changed behavior.
-        // All other single-stage rules continue to honor their legacy marker.
+        // stages. Only reviewed upgradeable rules bypass the blanket marker
+        // veto; each must independently prove all missing source stages and
+        // refuse unknown drift (including the v1->v2 third-person subscriber
+        // lifecycle). All other single-stage rules honor their legacy marker.
         var versionFluidUpgrade = candidate.RuleId is
             "tunnel-rescue-v3" or
             "ziggy-last-play-navigation-sentinel-v3" or
             "immersivefirstperson" or
-            "calllist-action-lazy-display-query";
+            "calllist-action-lazy-display-query" or
+            "immersive-third-person-action-routing";
         if (context.OwnerAlreadyMarked() &&
             !candidate.StageComposed && !versionFluidUpgrade)
             return SemanticInjectionResult.Skip(
