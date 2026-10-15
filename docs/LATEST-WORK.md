@@ -20,6 +20,13 @@
 
 **Status:** first batch CI green [#38730263831](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38730263831); no in-game or allocator-attributed outcome yet. Continue development after the new capture without declaring the extended-dormancy assignment complete.
 
+## Experimental native RTTI crash and safety correction — 2026-10-15
+
+- The user-supplied experimental native CI artifact `gcet-native-experimental-scalar-observations(1).zip` contains DLL SHA256 `5c7bc729d8c7ca2b98c3610604a0aa6af9c72904f37c776e87a69fbe8004c703` and PDB with PE CodeView identity `9e44566b-ca53-4946-86e5-efef188f1320`, age 1. Both user-reported movement-triggered dumps fault at installed `cyber_engine_tweaks.asi + 0x112B8A`.
+- Direct disassembly of **these exact uploaded binary bytes** resolves RVA `0x112B8A` to `mov r9, [rax+18h]`, reading the parent class name/hash after the experimental `apFunction->parent` non-null check. The call that follows is `MethodScope` boundary **7** (`OverriddenScript`) in `Patch-CET-v1.37.1.ps1`. A non-null parent is **not** proof of a safe dereference. This identifies the crashing instruction and new source expression; the precise invalid-pointer provenance is not yet verified from dump registers.
+- Native safety source correction: emit `classHash=0` (unknown) in both FunctionOverride marshalling scopes rather than dereference `apFunction->parent->GetName().hash`. Preserve the already-proven `apFunction->fullName.hash`, native scope IDs, population counts, bounded samples, CSV ABI and no per-mod attribution. Add a regression guard forbidding return of the unsafe RTTI dereference. **This source change requires fresh native-only CI and game movement/capture validation before deployment; previous experimental DLL is unsafe.**
+- Do not claim class-qualified sample data or owner/mod-specific native allocator savings from this fallback. The original attribution assignment remains **OPEN**: design source-proven callback/subscriber owner identity through the native → Lua marshalling boundary with bounded instrumentation and report-level `NOT_MEASURED` if no trustworthy owner exists. This crash correction does **not** complete extended dormancy or promote a new production DLL.
+
 ## Lifecycle of this file — mandatory
 
 This is the **one mutable, cross-chat task document**, not a dated investigation, release snapshot, or list of every previous task.

@@ -932,8 +932,12 @@ $1            auto result = [&]() {
     -Label "Override capture-gated full callback timing"
 
 
-# Capture-gated game -> Lua marshalling scope. CName hashes are not Lua
-# mod owners. Never wrap Override::next() or downstream Lua callbacks.
+# Capture-gated game -> Lua marshalling scope. A live class-parent pointer
+# was non-null yet invalid during gameplay, crashing at ASI RVA 0x112B8A.
+# Never dereference apFunction->parent for sampled class identity. Preserve
+# fullName method hash and native boundary; emit classHash=0 (unknown) until
+# safer provenance is implemented. Method/class hashes are not Lua mod owners.
+# Never wrap Override::next() or downstream Lua callbacks.
 Replace-LiteralOnce `
     -Path $foC `
     -Old @'
@@ -944,7 +948,7 @@ Replace-LiteralOnce `
             {
                 CETRuntimeProfiler::MethodScope ggcMethodScope(
                     6, apFunction->fullName.hash,
-                    CETRuntimeProfiler::Get().IsCapturing() && apFunction->parent ? apFunction->parent->GetName().hash : 0ULL,
+                    0ULL, // Unknown class: parent RTTI can be non-null but invalid during gameplay dispatch.
                     CETRuntimeProfiler::Get().IsCapturing());
                 auto lockedState = chain.pScripting->GetLockedState();
 '@ `
@@ -960,7 +964,7 @@ Replace-LiteralOnce `
         {
             CETRuntimeProfiler::MethodScope ggcMethodScope(
                 7, apFunction->fullName.hash,
-                CETRuntimeProfiler::Get().IsCapturing() && apFunction->parent ? apFunction->parent->GetName().hash : 0ULL,
+                0ULL, // Unknown class: parent RTTI can be non-null but invalid during gameplay dispatch.
                 CETRuntimeProfiler::Get().IsCapturing());
             auto lockedState = chain.pScripting->GetLockedState();
 '@ `

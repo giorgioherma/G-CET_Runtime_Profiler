@@ -84,8 +84,9 @@ try {
         throw "FunctionOverride instance/source/deep attribution was not patched."
     }
 
-    # Class-qualified native allocation evidence must be captured at the
-    # marshalling entrypoint, never by dereferencing RTTI in the allocator.
+    # Native marshalling retains method and boundary scope, but parent-class
+    # RTTI is unknown because a non-null parent can be invalid in gameplay.
+    # Do not reintroduce a parent dereference here or in the allocator.
     $nativeProxy=Get-Content ".\src\reverse\NativeProxy.cpp" -Raw
     $nativeGcPatch=Get-Content (Join-Path $PSScriptRoot 'Patch-LuaJIT-GC-Source.ps1') -Raw
     foreach($token in @('NativeClassHash','ggc_trace_class_set',
@@ -95,9 +96,12 @@ try {
             throw "Native class-qualified marshalling probe missing: $token"
         }
     }
+    if($functionOverride.Contains('apFunction->parent->GetName()')) {
+        throw 'Unsafe FunctionOverride parent RTTI dereference reintroduced'
+    }
     if(([regex]::Matches($functionOverride,
-            'apFunction->parent \? apFunction->parent->GetName\(\)\.hash : 0ULL').Count) -ne 2) {
-        throw 'Both RTTI FunctionOverride argument-marshalling boundaries must carry owning class hash'
+            'CETRuntimeProfiler::MethodScope ggcMethodScope\(\s*[67],\s*apFunction->fullName\.hash,\s*0ULL,').Count) -ne 2) {
+        throw 'Both FunctionOverride marshalling scopes must preserve method identity and unknown-class fallback'
     }
     if(!$nativeProxy.Contains('0ULL, // NativeProxy func is not proven to be a CClassFunction')) {
         throw 'NativeProxy must preserve unknown class rather than casting unproven function type'
@@ -105,7 +109,7 @@ try {
     if(!$profilerHeader.Contains('s.classHash') -or !$profilerHeader.Contains('NativeMethodHash,NativeClassHash')) {
         throw 'Class hash not exported in matching bounded sample CSV'
     }
-    "Native class-qualified marshalling source ABI verification: PASS"
+    "Native method/boundary marshalling and safe unknown-class ABI verification: PASS"
 
     "Callback identity/source/deep/frame-multiplicity verification: PASS"
 }
