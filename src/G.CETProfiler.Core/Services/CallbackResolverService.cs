@@ -727,6 +727,7 @@ internal static class CallbackResolverService
                 policyClass = candidate.PolicyClass,
                 patchStyle = candidate.PatchStyle,
                 expectedMarkerFileCount = candidate.ExpectedMarkerFileCount,
+                stageComposed = candidate.StageComposed,
                 sourceProofSatisfied = true,
                 generationEnabled = true,
                 alreadySatisfied = false,
