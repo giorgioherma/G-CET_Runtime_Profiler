@@ -173,6 +173,17 @@ end)
     throw 'Legacy v1 upgrade lost exact action interest, original fallback, author wake or new lifecycle stage'
   }
 
+  # Applying the incremental v1->v2 output must be idempotent too, not
+  # merely the pristine one-pass output. This verifies the persistent
+  # source-completion verifier does not mistake the old v1 marker for v2.
+  $upgraded | Set-Content -LiteralPath $path -Encoding utf8
+  $upgradeAgain = (& $exe --capture $capture --mods $mods --generate-pass --json | ConvertFrom-Json)
+  if ($upgradeAgain.pass -and $upgradeAgain.pass.ManifestPath) {
+    $upgradeAgainManifest = Get-Content $upgradeAgain.pass.ManifestPath -Raw | ConvertFrom-Json
+    if (@($upgradeAgainManifest.transforms | Where-Object {
+      $_.RuleId -eq 'immersive-third-person-action-routing'
+    }).Count -gt 0) { throw 'Incremental third-person v1->v2 upgrade was not idempotent' }
+  }
   $patched|Set-Content -LiteralPath $path -Encoding utf8
   $again=(& $exe --capture $capture --mods $mods --generate-pass --json|ConvertFrom-Json)
   if($again.pass -and $again.pass.ManifestPath){
