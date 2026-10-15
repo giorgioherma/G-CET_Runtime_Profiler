@@ -305,6 +305,12 @@ public static class PassGeneratorService
             },
             files = fileManifest,
             transforms = transformManifest,
+            optimizationClassCoverage = OptimizationClassCountService.FromManifest(
+                JsonSerializer.SerializeToElement(new
+                {
+                    transforms = transformManifest,
+                    files = fileManifest
+                })),
             skipped
         };
 

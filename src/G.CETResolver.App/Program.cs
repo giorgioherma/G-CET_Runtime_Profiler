@@ -77,6 +77,7 @@ internal static class Program
                 result.NonFrameOnlyAutoCount,
                 result.FrameOnlyAutoCount,
                 result.SemanticReadyRuleCount,
+                result.OptimizationCoverage,
                 result.AlreadySatisfiedCount,
                 result.MaterialRemainingCount,
                 result.BelowThresholdCount,

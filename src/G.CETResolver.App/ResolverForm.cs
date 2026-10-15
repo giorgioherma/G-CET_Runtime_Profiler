@@ -17,7 +17,8 @@ internal sealed class ResolverForm : Form
     private readonly Label _generic = new() { AutoSize = true, Text = "GENERIC READY: -" };
     private readonly Label _shared = new() { AutoSize = true, Text = "SHARED STATE READY: - families / - callbacks / - reads" };
     private readonly Label _semantic = new() { AutoSize = true, Text = "SEMANTIC READY: -   |   ALREADY SATISFIED: -" };
-    private readonly Label _unresolved = new() { AutoSize = true, Text = "MATERIAL REMAINING: -   |   BELOW 3 ms/s: -" };
+    private readonly Label _unresolved = new() { AutoSize = true, Text = "UNRESOLVED CALLBACKS: material -   |   below 3 ms/s -" };
+    private readonly Label _modSummary = new() { AutoSize = true, Text = "MOD COVERAGE: -" };
     private bool _passReady;
     private string? _resolvedResultsFolder;
 
@@ -33,15 +34,15 @@ internal sealed class ResolverForm : Form
     {
         Text = "G-CET Resolver — Dev";
         StartPosition = FormStartPosition.CenterScreen;
-        MinimumSize = new Size(760, 520);
-        Size = new Size(880, 620);
+        MinimumSize = new Size(760, 540);
+        Size = new Size(940, 680);
 
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             Padding = new Padding(14),
             ColumnCount = 3,
-            RowCount = 10
+            RowCount = 11
         };
 
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 125));
@@ -57,6 +58,7 @@ internal sealed class ResolverForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         var captureLabel = new Label { Text = "RESULTS / capture", AutoSize = true, Anchor = AnchorStyles.Left };
@@ -93,7 +95,9 @@ internal sealed class ResolverForm : Form
         root.SetColumnSpan(_semantic, 3);
         root.Controls.Add(_unresolved, 0, 8);
         root.SetColumnSpan(_unresolved, 3);
-        root.Controls.Add(_output, 0, 9);
+        root.Controls.Add(_modSummary, 0, 9);
+        root.SetColumnSpan(_modSummary, 3);
+        root.Controls.Add(_output, 0, 10);
         root.SetColumnSpan(_output, 3);
         _output.Dock = DockStyle.Fill;
 
@@ -183,7 +187,7 @@ internal sealed class ResolverForm : Form
     private static bool HasApplicablePass(ResolverBuildResult result)
     {
         return result.GenericResolvedCount > 0 ||
-               result.SemanticReadyRuleCount > 0 ||
+               result.OptimizationCoverage.ReadyModCount > 0 ||
                result.SharedProviderReadyCallbackCount > 0;
     }
 
@@ -191,7 +195,7 @@ internal sealed class ResolverForm : Form
     {
         _families.Text = $"CALLBACK FAMILIES: {result.FamilyCount}";
         _generic.Text =
-            $"GENERIC READY: {result.GenericResolvedCount}   |   " +
+            $"GENERIC READY CALLBACKS: {result.GenericResolvedCount}   |   " +
             $"NON-FRAME: {result.NonFrameOnlyAutoCount}   |   " +
             $"FRAME: {result.FrameOnlyAutoCount}";
         var sharedFamilies = result.SharedProviderReadyFamilies.Length == 0
@@ -201,12 +205,18 @@ internal sealed class ResolverForm : Form
             $"SHARED STATE READY: {result.SharedProviderReadyFamilies.Length} families / " +
             $"{result.SharedProviderReadyCallbackCount} callbacks / {result.SharedProviderReadyReadCount} reads";
         _shared.AccessibleDescription = sharedFamilies;
+        var c = result.OptimizationCoverage;
         _semantic.Text =
-            $"SEMANTIC READY: {result.SemanticReadyRuleCount}   |   " +
-            $"ALREADY SATISFIED: {result.AlreadySatisfiedCount}";
+            $"SEMANTIC READY: {c.ReadyModCount} mods / {c.ReadyRuleCount} rules " +
+            $"({c.SourceOnlyReadyModCount} source-only)   |   " +
+            $"ALREADY PROVEN: {c.AlreadySourceProvenModCount} mods";
+        _modSummary.Text =
+            $"CLASSES READY: {c.ReadySemanticClasses.Length} semantic / " +
+            $"{c.GenericReadyClasses.Length} generic   |   " +
+            $"MODS MEASURED: {c.MeasuredModCount}";
         _unresolved.Text =
-            $"MATERIAL REMAINING: {result.MaterialRemainingCount}   |   " +
-            $"BELOW 3 ms/s: {result.BelowThresholdCount}";
+            $"UNRESOLVED CALLBACKS: material {result.MaterialRemainingCount}   |   " +
+            $"below 3 ms/s {result.BelowThresholdCount}";
     }
 
     private static string ResolveModsFolder(string gameFolder)
@@ -262,7 +272,8 @@ internal sealed class ResolverForm : Form
                 : $"Complete — {result.RankedCallbackCount} measured callback consumers inspected. No applicable pass changes.";
             _output.Text =
                 $"G-CET resolver output:\r\n{result.ResolverPath}\r\n\r\n" +
-                "Live CET sources were inspected read-only. No mod files were changed.";
+                "Live CET sources were inspected read-only. No mod files were changed.\r\n\r\n" +
+                OptimizationClassCountService.FormatReady(result.OptimizationCoverage);
         }
         catch (Exception ex)
         {
@@ -315,13 +326,16 @@ internal sealed class ResolverForm : Form
             _resolvedResultsFolder = Path.GetDirectoryName(pass.ZipPath);
             UpdateOpenResultsState();
 
-            _status.Text = $"Pass ready — {pass.TransformCount} transforms across {pass.FileCount} files.";
+            var applied = OptimizationClassCountService.FromManifestFile(pass.ManifestPath);
+            _status.Text = $"Pass ready — {applied.AppliedModCount} mods / " +
+                $"{applied.AppliedRuleCount} transforms, {applied.ModifiedModFileCount} mod files.";
             _output.Text =
                 $"G-CET pass ZIP:\r\n{pass.ZipPath}\r\n\r\n" +
                 $"Pass manifest:\r\n{pass.ManifestPath}\r\n\r\n" +
                 $"Applied transforms: {pass.TransformCount}\r\n" +
                 $"Changed files: {pass.FileCount}\r\n" +
                 $"Skipped after source revalidation: {pass.SkippedCount}\r\n\r\n" +
+                OptimizationClassCountService.FormatApplied(applied) + "\r\n\r\n" +
                 "The ZIP contains only deployable game files. The JSON manifest is kept beside it in RESULTS. " +
                 "No live mod files were changed by the resolver.";
         }

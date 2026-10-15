@@ -17,7 +17,8 @@ public sealed record ResolverBuildResult(
     int SharedProviderReadyReadCount,
     string[] SharedProviderReadyFamilies,
     int AlreadySatisfiedCount,
-    int UnresolvedCount);
+    int UnresolvedCount,
+    ResolverOptimizationCoverage OptimizationCoverage);
 
 /// <summary>
 /// Top-level G-CET resolver. Callback families are the primary unit of work.
@@ -58,10 +59,17 @@ public static class ResolverService
             modsRoot,
             semanticLibraryPath);
 
+        // Extract distinct owner/class counts from the same complete rows that
+        // feed the report. Persist them under an explicit unit-bearing key.
+        var report = JsonSerializer.SerializeToElement(result.Document);
+        var coverage = OptimizationClassCountService.Analyze(report);
+        var augmented = System.Text.Json.Nodes.JsonNode.Parse(report.GetRawText())!;
+        augmented["optimizationClassCoverage"] = JsonSerializer.SerializeToNode(coverage);
+
         var resolverPath = Path.Combine(captureRoot, ResultReportService.ResolverResolutionFileName);
         File.WriteAllText(
             resolverPath,
-            JsonSerializer.Serialize(result.Document, JsonOptions) + Environment.NewLine,
+            augmented.ToJsonString(JsonOptions) + Environment.NewLine,
             new UTF8Encoding(false));
 
         return new ResolverBuildResult(
@@ -78,7 +86,8 @@ public static class ResolverService
             result.SharedProviderReadyReadCount,
             result.SharedProviderReadyFamilies,
             result.AlreadySatisfiedCount,
-            result.UnresolvedCount);
+            result.UnresolvedCount,
+            coverage);
     }
     public static PassBuildResult GeneratePass(
         string captureRoot,
