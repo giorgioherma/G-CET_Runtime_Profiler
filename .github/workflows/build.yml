@@ -38,6 +38,11 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq lua5.4
       - name: Execute 0-Engine additive workload runtime contract
         run: lua5.4 tests/ZeroEngineWorkloadLuaContract.lua resolver-runtime/0-Engine/modules
+      - name: Validate pinned action-router semantic subscriber pause/resume
+        run: |
+          mkdir -p /tmp/gcet-action-router
+          base64 -d resolver-runtime/0-Engine/modules/ActionRouter.lua.b64 > /tmp/gcet-action-router/ActionRouter.lua
+          lua5.4 tests/ActionRouterDormancyLuaContract.lua /tmp/gcet-action-router
 
   # Compile and test the managed MEGAMIND evidence contract independently
   # of the hash-locked native payload refresh (which can take several minutes).
