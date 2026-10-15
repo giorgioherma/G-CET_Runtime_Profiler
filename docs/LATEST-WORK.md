@@ -1,0 +1,97 @@
+# LATEST WORK — current active development task
+
+**Status: ACTIVE — incomplete.** Updated: 2026-10-15.
+**Task:** Complete source-proven, per-mod **extended dormancy across Lua execution, Lua → native work, and native → Lua dispatch**, building on the existing 62-mod audit / 67-rule production semantic library.
+**Scope:** Resolver development branch `dev/resolver-profiler-handoff`. No product-version change or permission to modify the user's live mods.
+**Owner of task decisions:** This file records the user's current task direction. Existing [CORE](HANDOFF/CORE.md), [Resolver project contract](resolver/PROJECT-CONTRACT.md), [authoritative per-mod intent](resolver/DORMANCY-USER-AUTHORITATIVE-SPEC.md), [62-mod / 67-rule audit](resolver/DORMANCY-ALL-MOD-AUDIT.md), and current source/CI remain authoritative for their respective domains.
+
+## Lifecycle of this file — mandatory
+
+This is the **one mutable, cross-chat task document**, not a dated investigation, release snapshot, or list of every previous task.
+
+1. Read this file at the start of **every development continuation**, after `docs/HANDOFF/CORE.md`. Its task remains active even if a conversation ends or a different capture/build is discussed.
+2. **Update this same file in place as work progresses**: decisions, source-proof findings, per-mod stage coverage, completed implementation and tests, blockers, and the next unfinished step. Do not start a new task document for intermediate milestones or declare this task complete from CI alone.
+3. **Keep this task here until its defined completion criteria are met** or the user explicitly changes/cancels it. Passing one CI run, improving instrumentation, or generating one pass does not close the task.
+4. **After completion,** transfer durable architecture/policy into the appropriate subsystem specifications and significant final evidence/commit/CI into `docs/history/ACTIVE-STATE.md`. **Only when the next task is agreed** replace the contents of `docs/LATEST-WORK.md` with that task; keep the filename and navigation links unchanged. The Git history retains this task's progress.
+5. Treat this document as the current-work pointer. Stable instructions remain in `HANDOFF`; detailed experiments remain with their subsystem. Avoid duplicate parallel latest-task documents.
+
+## Authoritative decision — why and when to optimize
+
+**The semantic library is a library of safe, reusable source-proven transformations, not a leaderboard of expensive callbacks.**
+
+- **Source proof determines permission.** Eligibility comes from the actual original/current per-mod Lua source: existing author-defined activation/deactivation states, lifecycle, exact wake triggers and required live listeners, active/pending work, input ownership, ordering and fallbacks. Wake triggers need **not appear in a profiling capture** and need **not be observed at runtime** to be established by a sufficiently complete source proof. Missing generic profiler wake-path classification is not a veto on independently proven authored semantics.
+- **Apply every independently source-proven beneficial dormancy extension**, including tiny individual savings and already-low Lua CPU. No minimum `exclusiveMsPerSecond`, sampled native bytes, arbitrary contribution cutoff, or observed wake-transition-count gate for hand-authored semantics. Existing measured-callback/identity and source-safety admission contracts must not be silently discarded; investigate whether unobserved-but-applicable source-defined wake paths can be safely generated without inventing runtime evidence.
+- **Profiling prioritizes investigation and verifies outcomes; it does not authorize the semantic behavior.** Count invocation frequency, registrations, native marshalling boundary samples/bytes, Lua execution/allocations, and matched before/after game behavior when available. Record each mod's measurable contribution for the library, even if small. Never invent per-mod attribution or guaranteed saved bytes from shared `OnAction` samples.
+- A mod whose current Lua work is already gated can **still lack native-dispatch dormancy**. Completion of one stage or presence of an older marker is **not** completion of the others. Generate only missing, independently source-proven changes.
+- Not every mod should sleep entirely. A continuously necessary observer, state watcher, wake event, menu input, queued completion, or author-requested exception remains active. **Document source-proven no-op/not-applicable decisions**; don't invent hooks or force dormancy.
+
+## Required dormancy stages — independently tracked per mod
+
+| Stage | What must be source-proven and optimized | What does **not** count as completion |
+| --- | --- | --- |
+| **A. Lua execution / state-processing dormancy** | Suspend idle Lua polling, quest/scene/area scans, timers, UI/draw, unnecessary computation and per-feature processing; preserve activation, discovery, pending work, state transitions and cleanup. | An early return that accidentally loses wake events or assumes a journal entry is an active quest. |
+| **B. Lua → native engine-work dormancy** | Avoid proven unnecessary native getters, entity/RTTI/blackboard queries, marshalling, duplicate construction and reads performed *by idle Lua logic*; retain essential wake/discovery reads at the source-proven minimal safe cadence. | Reducing Lua exclusive CPU but still executing unnecessary native reads; a speculative cache or shared query without safe invalidation. |
+| **C. Native → Lua observer-dispatch dormancy** | Eliminate or consolidate unnecessary independently registered native callbacks, and suppress optional downstream subscriptions while inactive **when CET/0-Engine mechanics and the mod's wake graph allow it**. Preserve required activation/wake listeners and fallback. Where source-proven, use existing shared native observer and semantic per-subscriber activation/deactivation. | Merely inserting an early Lua return after CET already marshalled and invoked the native callback; or claiming a sleeping Lua subscriber eliminates the *shared* bridge's remaining native → Lua transition. |
+
+**Native boundary reality:** Removing a mod's independent `Observe` registration or otherwise safely disabling native delivery can avoid its individual native → Lua invocation. Consolidating several observers into **one** 0-Engine observer can reduce duplicate native crossings, but that shared crossing and its argument conversion may still be required. A dormant subscriber behind the shared crossing suppresses only its own downstream dispatch until a native-level skip is separately proven and implemented. Do **not** mislabel all three results as “native hook eliminated.” If the native registration cannot be safely removed, keep it and document the unavoidable boundary.
+
+**The semantic state/wake model—not allocation samples—is the source of truth** for when any A/B/C stage can sleep and resume. Build and extend these stages **inside each mod's existing** `src/G.CETProfiler.Core/Services/ModPasses/<Mod>.cs` (with existing documented specialist handling where applicable), retaining catalog identities in `resolver-knowledge/semantic-library.json`. Shared generic routing belongs in centralized generic services/0-Engine, never duplicated in mod rules. Do **not** create a second dormancy framework.
+
+## Preserve user-approved per-mod behavior
+
+Follow [DORMANCY-USER-AUTHORITATIVE-SPEC.md](resolver/DORMANCY-USER-AUTHORITATIVE-SPEC.md) **per mod**; that file is user intent, not automatic proof. Follow [DORMANCY-UNKNOWN-SOURCE-AUDIT.md](resolver/DORMANCY-UNKNOWN-SOURCE-AUDIT.md) for still-uncertain source behavior. The broad [DORMANCY-ALL-MOD-AUDIT.md](resolver/DORMANCY-ALL-MOD-AUDIT.md) is inventory/triage, not proof that 67 rules are implemented across all stages.
+
+Specific invariants:
+- Preserve the mod's configurable keybinds and input definitions **within the owning mod**. Never move ownership to 0-Engine, invent parallel bindings, hardcode `V`, or change consumed-input behavior.
+- Preserve quest acceptance/start vs auto-created journal offers, progression prerequisites, proximity/interaction discovery, author event ordering, native observers required for wake, active gameplay responsiveness, scene/dialogue, saved state, hot reload/reinitialization, pending `Cron` work, cleanup, fallback and failure isolation.
+- Dynamic or localized action interest requires actual source proof; do not replace `DriveAerialVehicle` dynamic exception lists or CallList localized matching with guessed exact action names.
+- Retain the user's explicit **SKIP** dispositions unless the user changes them. Source-only reviews and the 67-rule catalog do not revoke SKIPs. `Minimap Widgets` broad dormancy remains uncertain; retain already-safe narrow optimizations.
+- Respect source drift and cross-mod dependencies: no incorrect lifetime caches, global observer shutdown, speculative patching or silent changes to gameplay.
+
+## Source and generation contract
+
+For each mod with a candidate source-proven extension:
+
+1. Inventory **all existing rules and installed stages first**, including partial/earlier G-CET output. Map source-defined `ACTIVE`, `DORMANT`, `WAKE_PENDING`, and cleanup / pending-job transitions **only where those states exist in the real mod**. Record the actual author wake listener(s), event writers and required state checks. Do not impose these as synthetic global states.
+2. Independently classify stage **A / B / C** as `UNREVIEWED`, `SOURCE_PROVEN_MISSING`, `ALREADY_SATISFIED`, `IMPLEMENTED_NEEDS_GAME_TEST`, `VERIFIED`, `NOT_APPLICABLE_SOURCE_PROVEN`, or `BLOCKED_SOURCE_PROOF`. The status must have real source anchors/postconditions, not just a marker or profiler inference.
+3. Extend the **existing authoritative per-mod injector**, keeping earlier compatible stages intact and updating stage-completion recognition. Implement complete optimizations from **pristine original Nexus source in ONE generated pass**. Also compose correctly against the user's **current optimized/partially optimized source**, emitting only genuinely missing files/stages.
+4. Make the change version-fluid: stable source/control-flow proofs; accept equivalent formatting/known variants; **fail closed** on substantive behavior drift. Never rely on a previous pass marker as a prerequisite or count of completed optimization.
+5. Test **pristine → complete one pass**, current/live partial → missing stages only, idempotence, harmless formatting differences, unknown source drift refusal, fallback, activation/deactivation/wake/cleanup and no lost events or input ordering. Keep supported files read-only until the generated overlay is deliberately applied by the user.
+6. Report **measured pre/post deltas by metric and scope** when captures exist; otherwise label `NOT_MEASURED`. Capture exact native boundary totals and bounded class/method samples separately; measure registration/observer/subscriber counts independently. Never attribute all `OnAction` bytes to one mod or extrapolate sample counts to savings.
+
+## Current verified state versus unfinished task
+
+**Already implemented before this task was restated (do not repeat or roll back):**
+- Existing semantic source transformations and 0-Engine action routing, plus extensive Lua-side gates across the catalog.
+- Soft 3 ms/s materiality policy for pre-reviewed authored semantic rules with measured callback invocations and source-proof admission. Profiler generic dormancy wake classification is evidence only.
+- Partial/current-source semantic composition improvements (e.g. DriveBus's existing routed `OnAction` can coexist with a still-missing `Cron` guard; StreetGamesPoker's already-completed lanes are recognized).
+- Dedicated `nativeMarshallingAllocationPressure` evidence in summary → Resolver, separate from Lua CPU. Experimental native class-hash capture built successfully as an isolated artifact, **not** promoted to the regular Profiler DLL; native game validation remains separate. This identifies RTTI **class+method envelope**, **not** the allocation owner mod or per-subscriber savings.
+- CI-proven managed measurement plumbing and existing semantic injectors do not demonstrate complete A/B/C dormancy coverage or observed native dispatch elimination in gameplay.
+
+**Still required — THIS TASK IS OPEN:**
+- [ ] Audit the **67 production semantic rules covering the 62 user mods** against existing actual pristine and live sources; preserve explicit SKIPs, unknowns and genuine always-on work. Don't mistake every unmatched rule/callback for a missing optimization.
+- [ ] Build a single clear per-mod **A/B/C completion matrix** with sources, stage proof, wake preservation, actual native registration/dispatch effect, and gaps. `ALREADY_SATISFIED` for existing Lua-only work must not close C.
+- [ ] Extend every **eligible, source-proven** per-mod semantic rule with its *missing* A/B/C stages regardless of measured size. Where C cannot eliminate native crossing, document whether shared consolidation, downstream subscriber gating, or `NOT_APPLICABLE_SOURCE_PROVEN` is the safe result.
+- [ ] Ensure the Resolver actually selects/composes/generates the stages as one overlay, even for low-CPU/low-allocation callbacks; keep source proof, compatibility, zero false savings and no independent registration pollution.
+- [ ] Cover pristine/partial/live/formatting/drift and lifecycle contracts in CI; run full Profiler+Resolver CI after code changes (and independent native CI only for native-source changes).
+- [ ] Validate representative native observer/consolidation effects and in-game wake/feature behavior against comparable captures and real game runs; measurements evaluate improvement but do not authorize semantic source behavior.
+- [ ] Close the task only after the per-mod matrix is resolved (verified or justified source-proven no-op/blocked), generated overlays cover all safe stages, tests pass and remaining game-validation limits are explicitly recorded.
+
+## Next execution order
+
+1. Read the source of the current 67 catalog rules, `ModPasses`, actual original/live test inputs and [per-mod source index](resolver/MOD-PASS-SOURCE-INDEX.md); **do not start another data-collection project** as a prerequisite to applying known source-proven semantics.
+2. Produce/update the A/B/C per-mod completion matrix **inside this file or a linked Resolver working matrix**, so it survives chat boundaries. Clearly separate what's already installed from what is only specified; inspect existing `OnAction` action router and subscribe/unsubscribe mechanics first.
+3. Implement safe missing native-dispatch stages alongside each mod's existing Lua dormancy source stage, prioritizing source readiness, not allocation magnitude. Small proven optimizations belong in the library.
+4. Run tests and CI, inspect emitted ZIP/manifest against pristine and live sources, then collect game validation evidence without claiming savings prematurely.
+5. Keep updating `docs/LATEST-WORK.md` until the complete extended-dormancy task is closed. New tasks replace this document **only after completion or explicit user redirection**.
+
+## Relevant authority and evidence links
+
+- [Handoff and implementation invariants](HANDOFF/CORE.md)
+- [Per-mod user intent (62 mods)](resolver/DORMANCY-USER-AUTHORITATIVE-SPEC.md)
+- [67-rule / native action audit](resolver/DORMANCY-ALL-MOD-AUDIT.md)
+- [Unknown source and source-backed wake review](resolver/DORMANCY-UNKNOWN-SOURCE-AUDIT.md)
+- [Native marshalling metric and capture class attribution](gc/research/NATIVE-ONACTION-OUTGOING-METRIC-2026-10-15.md)
+- [Native-dispatch / admission analysis](resolver/research/SEMANTIC-SOFT-ADMISSION-AND-NATIVE-TRANSITIONS-2026-10-15.md)
+- [Build and release guardrails](HANDOFF/BUILD-PIPELINE.md)
+- [Engineering history](history/ACTIVE-STATE.md)
