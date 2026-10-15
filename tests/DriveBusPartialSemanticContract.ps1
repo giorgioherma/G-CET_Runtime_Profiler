@@ -158,6 +158,7 @@ try {
     $sourceReport=Get-Content (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
     $sourceCandidates=@($sourceReport.semanticSourceOnlyCandidates | Where-Object {$_.ruleId -eq 'drivebus'})
     if ($sourceCandidates.Count -ne 1 -or
+        !$sourceCandidates[0].stageComposed -or
         @($sourceReport.callbackFamilies).Count -ne 0) {
         throw 'DriveBus source-only candidate missing or synthetic callback family generated'
     }
