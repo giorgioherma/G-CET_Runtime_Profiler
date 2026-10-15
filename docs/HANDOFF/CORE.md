@@ -1,6 +1,6 @@
 # G-CET — mandatory startup context
 
-**First read:** this file → [BUILD-PIPELINE.md](BUILD-PIPELINE.md) → [documentation index](../README.md). This is a stable entrypoint, **not a snapshot of any release**. Do not put versions, exact native hashes, CI run numbers, dated captures or active incidents here.
+**First read:** this file → [LATEST-WORK.md](../LATEST-WORK.md) (**active task; continue until completed or redirected**) → [BUILD-PIPELINE.md](BUILD-PIPELINE.md) → [documentation index](../README.md). This file is a stable entrypoint, **not a snapshot of any release**. Keep task status, dated captures and current blockers in LATEST-WORK / subsystem records—not here.
 
 ## Project identity
 
@@ -34,6 +34,6 @@ See [per-mod source index](../resolver/MOD-PASS-SOURCE-INDEX.md) and [Resolver p
 ## At the start of work
 
 1. Check the branch HEAD, `VERSION.txt`, `Directory.Build.props`, `MANIFEST.json`, native/main workflows and recent Actions/artifacts.
-2. Read [product status](../product/PRODUCT-STATUS.md) and relevant topic records from the [index](../README.md). Use history for past decisions, not as a substitute for live files.
+2. Read the active [LATEST-WORK task](../LATEST-WORK.md), [product status](../product/PRODUCT-STATUS.md), and relevant topic records from the [index](../README.md). Continue the active task rather than treating each chat/build as a new task. Use history for past decisions, not as a substitute for live files.
 3. Inspect the current source/capture. Implement source-safe solutions and run relevant tests; follow executable CI through terminal results, verify both outputs and separately record gameplay tests.
 4. Update technical subsystem notes/history when material. Avoid unnecessary handoff changes or CI for conversation-only observations.
