@@ -22,7 +22,8 @@ internal static partial class SemanticInjectors
             "ziggy-last-play-navigation-sentinel-v3" or
             "immersivefirstperson" or
             "calllist-action-lazy-display-query" or
-            "immersive-third-person-action-routing";
+            "immersive-third-person-action-routing" or
+            "backstep-duo";
         if (context.OwnerAlreadyMarked() &&
             !candidate.StageComposed && !versionFluidUpgrade)
             return SemanticInjectionResult.Skip(
