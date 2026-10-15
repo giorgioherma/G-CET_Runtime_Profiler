@@ -132,6 +132,9 @@ For each mod with a candidate source-proven extension:
 - **Instrumented policy retained:** per-mod sampled native/Lua attribution and wake timing must still be measured/added where it improves accuracy; a source-safe approved rule is not rejected for low measured CPU. No per-mod native allocation saving is claimed.
 - **CI state for new v2/v3 code:** active code and contract validations on development branch; green evidence for this batch must be checked at the latest run HEAD before distributing a player pass. Native DLL and product v1.2.7 remain unchanged. The live CET snapshot in the user archive is the capture baseline *before* extended dormancy.
 
+
+- **Batch CI now GREEN:** [#38730263831](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38730263831) passed at `f5867c9e` (following green #38730184497 and #38730039674). The BackStepDuo/AirBackFlip regression sequence is closed for CI; **gameplay checks, native allocation/dispatch measurements and actual live-source generated ZIP behavior remain pending**. Do not count these as in-game verified or claim all 62 complete. Continue with next reviewed safe mods after collecting the requested first-batch gameplay result.
+
 ## Current verified state versus unfinished task
 
 **Already implemented before this task was restated (do not repeat or roll back):**
