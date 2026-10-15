@@ -360,6 +360,8 @@ internal sealed class SemanticLibraryService
                 SemanticInjectors.IsDriveBusComplete(graph.OwnerFolder),
             "BACKSTEP_DUO_DORMANCY_V2" =>
                 SemanticInjectors.IsBackStepDuoDormancyComplete(graph.OwnerFolder),
+            "AIR_BACKFLIP_DORMANCY_V2" =>
+                SemanticInjectors.IsAirBackFlipDormancyComplete(graph.OwnerFolder),
             "POKER_PASS4_TWO_FILE" =>
                 PokerPass4Source.IsComplete(graph.OwnerFolder),
             "ITPP_ACTION_DORMANCY_V2" =>
