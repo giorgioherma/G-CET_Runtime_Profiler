@@ -190,8 +190,50 @@ end)
     $newManifest=Get-Content $again.pass.ManifestPath -Raw|ConvertFrom-Json
     if(@($newManifest.transforms|Where-Object {$_.RuleId -eq 'immersive-third-person-action-routing'}).Count -gt 0){throw 'Non-idempotent action routing'}
   }
+  # A source-proven, explicitly opted-in semantic rule must still generate
+  # when this capture contains zero callback rows. This is different from a
+  # registered callback with zero invocations: do not invent a measurement.
+  $source | Set-Content -LiteralPath $path -Encoding utf8
+  @{
+    schemaVersion='2.0'
+    callbacks=@()
+    optimizerEvidence=@()
+  } | ConvertTo-Json -Depth 20 |
+    Set-Content (Join-Path $capture 'CET_Resolver_Input.json') -Encoding utf8
+  $sourceRun=(& $exe --capture $capture --mods $mods --generate-pass --json | ConvertFrom-Json)
+  if (!$sourceRun.ok -or !$sourceRun.pass) {
+    throw "Source-proven action rule rejected without a callback record: $($sourceRun | ConvertTo-Json -Depth 8)"
+  }
+  $sourceReport=Get-Content (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
+  $sourceOnly=@($sourceReport.semanticSourceOnlyCandidates)
+  if ($sourceOnly.Count -ne 1 -or
+      $sourceOnly[0].ruleId -ne 'immersive-third-person-action-routing' -or
+      $sourceOnly[0].admissionLane -ne 'SEMANTIC_AUTHOR_SOURCE_ONLY' -or
+      $sourceOnly[0].capturedCallback -ne $false -or
+      $null -ne $sourceOnly[0].callsPerSecond -or
+      $null -ne $sourceOnly[0].exclusiveMsPerSecond -or
+      @($sourceReport.callbackFamilies).Count -ne 0) {
+    throw 'Source-independent admission lost semantic source proof or invented profiler runtime samples'
+  }
+  $sourceManifest=Get-Content $sourceRun.pass.ManifestPath -Raw | ConvertFrom-Json
+  if (@($sourceManifest.transforms | Where-Object {
+      $_.RuleId -eq 'immersive-third-person-action-routing'
+    }).Count -ne 1) {
+    throw 'Capture-absent source-only candidate did not generate exact action and native dormancy stage'
+  }
+  $sourceOutput=FromPass $sourceRun.pass.ZipPath
+  if (!$sourceOutput.Contains('__gcetItppActionDormancyV2') -or
+      !$sourceOutput.Contains('pcall(handle.SetActive, state.enabled == true)')) {
+    throw 'Capture-absent semantic transform omitted source-driven subscription dormancy'
+  }
+  $sourceOutput | Set-Content -LiteralPath $path -Encoding utf8
+  $completed=(& $exe --capture $capture --mods $mods --json | ConvertFrom-Json)
+  $completedReport=Get-Content (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
+  if (@($completedReport.semanticSourceOnlyCandidates).Count -ne 0) {
+    throw 'Fully source-proven dormant action subscriber was still offered as missing'
+  }
   $global:LASTEXITCODE=0
-  Write-Host 'Third-person OnAction pristine one-pass, fallback and rerun contract: PASS'
+  Write-Host 'Third-person routing, v2 source-dormancy and capture-absent semantic generation: PASS'
 }
 TestVariant $false
 TestVariant $true
