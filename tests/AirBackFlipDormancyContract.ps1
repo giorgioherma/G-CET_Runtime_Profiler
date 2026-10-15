@@ -89,7 +89,16 @@ $again=(& $exe --capture $capture --mods $mods --json|ConvertFrom-Json)
 if(!$again.ok){throw 'AirBackFlip completed-source analysis failed'}
 $completed=Get-Content (Join-Path $capture 'G-CET_Resolver.json') -Raw|ConvertFrom-Json
 if(@($completed.semanticSourceOnlyCandidates|Where-Object {$_.ruleId -eq 'air-backflip'}).Count -gt 0){
-    throw 'Completed AirBackFlip v2 was offered a redundant source-only rewrite'
+    $checks=@{
+        marker=$patched.Contains('__gcetAirBackFlipDormancyV2')
+        sync=$patched.Contains('local function __gcetAirBackFlipSync()')
+        setActive=$patched.Contains('pcall(h.SetActive, desired)')
+        fallback=$patched.Contains('Observe("PlayerPuppet", "OnAction", gcetAirBackFlipOnAction)')
+        handles=[regex]::Matches($patched,'__gcetAirBackFlipHandle\\s*=\\s*handle;\\s*__gcetAirBackFlipLastActive\\s*=\\s*nil;\\s*__gcetAirBackFlipSync\\(\\)').Count
+        checkbox=$patched.Contains("cfg.enabled = ImGui.Checkbox(`"Enabled`", cfg.enabled)`n        __gcetAirBackFlipSync()")
+        writers=[regex]::Matches($patched,'\\bcfg\\.enabled\\s*=(?![=])').Count
+    }
+    throw ('Completed AirBackFlip v2 still eligible: '+($checks|ConvertTo-Json -Compress))
 }
 # New author-side enable writer must fail closed, never be accepted as completed.
 $patched.Replace('registerForEvent("onDraw",','cfg.enabled = false' + [Environment]::NewLine + 'registerForEvent("onDraw",')|
