@@ -31,6 +31,47 @@ internal sealed record SemanticRuleMatch(
         Array.Empty<string>(), Array.Empty<string>(), null);
 }
 
+// Two independent authorizations are deliberately kept separate:
+// - Generic AUTO must prove its own mechanical transform and wake lifecycle.
+// - A hand-authored semantic rule already carries a mod-specific source
+//   implementation/proof. The 3 ms/s budget is a prioritization signal,
+//   not a veto on executing that reviewed rule against measured live activity.
+// This never makes profiler dormancy guesses or GC coincidence a rewrite proof.
+internal sealed record SemanticAdmissionDecision(bool Ready, string Lane, string Reason);
+
+internal static class SemanticAdmissionPolicy
+{
+    internal static SemanticAdmissionDecision Evaluate(
+        bool matched,
+        bool sourceProofSatisfied,
+        bool generationEnabled,
+        bool alreadySatisfied,
+        bool partialState,
+        double callsPerSecond,
+        double exclusiveMsPerSecond,
+        double configuredThresholdMsPerSecond)
+    {
+        if (!matched || !generationEnabled)
+            return new(false, "NONE", "No enabled authored semantic rule.");
+        if (!sourceProofSatisfied)
+            return new(false, "NONE", "Current source does not match the rule's required anchors.");
+        if (alreadySatisfied)
+            return new(false, "ALREADY_SATISFIED", "Authored source stages are already complete.");
+        if (partialState)
+            return new(false, "NONE", "Ambiguous incomplete semantic source state; fail closed.");
+        if (callsPerSecond <= 0 && exclusiveMsPerSecond <= 0)
+            return new(false, "NONE", "No measured invocation or Lua work for this callback.");
+
+        var threshold = configuredThresholdMsPerSecond > 0
+            ? configuredThresholdMsPerSecond : 3.0;
+        if (exclusiveMsPerSecond >= threshold)
+            return new(true, "SEMANTIC_CPU_MATERIAL", "Reviewed rule and current source proof; measured CPU exceeds the soft materiality boundary.");
+
+        return new(true, "SEMANTIC_AUTHORED_LOW_COST",
+            "Reviewed hand-authored source rule with measured invocations; CPU below soft boundary does not reject a safe semantic pass.");
+    }
+}
+
 internal sealed class SemanticLibraryService
 {
     private static readonly Regex NormalizeNonAlphaNumeric = new(
