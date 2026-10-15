@@ -1034,6 +1034,10 @@ jobs:
         shell: pwsh
         run: ./tests/GenericHardDormantGuardContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: Zero-Lua-cost native dispatch routing contract
+        shell: pwsh
+        run: ./tests/NativeDispatchZeroLuaCostContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: CyberTrials semantic composition contract
         shell: pwsh
         run: ./tests/CyberTrialsSemanticCompositionContract.ps1 -ResolverRoot ./publish-resolver
