@@ -94,9 +94,9 @@ if(@($completed.semanticSourceOnlyCandidates|Where-Object {$_.ruleId -eq 'air-ba
         sync=$patched.Contains('local function __gcetAirBackFlipSync()')
         setActive=$patched.Contains('pcall(h.SetActive, desired)')
         fallback=$patched.Contains('Observe("PlayerPuppet", "OnAction", gcetAirBackFlipOnAction)')
-        handles=[regex]::Matches($patched,'__gcetAirBackFlipHandle\\s*=\\s*handle;\\s*__gcetAirBackFlipLastActive\\s*=\\s*nil;\\s*__gcetAirBackFlipSync\\(\\)').Count
+        handles=[regex]::Matches($patched,'__gcetAirBackFlipHandle\s*=\s*handle;\s*__gcetAirBackFlipLastActive\s*=\s*nil;\s*__gcetAirBackFlipSync\(\)').Count
         checkbox=$patched.Contains("cfg.enabled = ImGui.Checkbox(`"Enabled`", cfg.enabled)`n        __gcetAirBackFlipSync()")
-        writers=[regex]::Matches($patched,'\\bcfg\\.enabled\\s*=(?![=])').Count
+        writers=[regex]::Matches($patched,'\bcfg\.enabled\s*=(?![=])').Count
     }
     throw ('Completed AirBackFlip v2 still eligible: '+($checks|ConvertTo-Json -Compress))
 }
