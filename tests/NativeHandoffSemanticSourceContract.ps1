@@ -297,7 +297,9 @@ if (!$ziggyStage.Contains('G-CET semantic:ziggy-native-snapshot-manager-v6') -or
     $ziggyStage.Contains('local function set(k,v)Game.GetQuestsSystem():SetFactStr(') -eq $false) {
     throw 'Ziggy original native fact API/fallback or snapshot v6 stage missing'
 }
-if ([regex]::Matches($ziggyStage,'__gcetZiggySnapshotSet\(').Count -ne $prewrite+1) {
+# $prewrite counts the original function declaration plus original callsites;
+# the generated local function also has one declaration, so counts are equal.
+if ([regex]::Matches($ziggyStage,'__gcetZiggySnapshotSet\(').Count -ne $prewrite) {
     throw 'Ziggy native snapshot stage changed fact-write count/order'
 }
 $ziggyAgain=[string]$ziggyMethod.Invoke($null,[object[]]@([string]$ziggyStage))
