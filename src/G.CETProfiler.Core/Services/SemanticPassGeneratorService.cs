@@ -231,6 +231,41 @@ internal static class SemanticPassGeneratorService
             }
         }
 
+        // Opted-in source-confirmed rules may remain eligible without any
+        // measured callback row. Never invent call rate, Lua CPU or native
+        // allocation; emit a normal reviewed injector candidate with zero
+        // measured cost and preserve its independent source safety gate.
+        if (root.TryGetProperty("semanticSourceOnlyCandidates", out var independent) &&
+            independent.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var row in independent.EnumerateArray())
+            {
+                if (row.ValueKind != JsonValueKind.Object ||
+                    !JsonBool(row, "sourceIndependent") ||
+                    !JsonBool(row, "sourceProofSatisfied") ||
+                    !JsonBool(row, "generationEnabled") ||
+                    JsonBool(row, "alreadySatisfied") ||
+                    JsonString(row, "admissionLane") != "SEMANTIC_AUTHOR_SOURCE_ONLY")
+                    continue;
+
+                var ruleId = JsonString(row, "ruleId");
+                var owner = JsonString(row, "owner");
+                var handler = JsonString(row, "handler");
+                var expectedFiles = (int)JsonLong(row, "expectedMarkerFileCount");
+                if (string.IsNullOrWhiteSpace(ruleId) ||
+                    string.IsNullOrWhiteSpace(owner) ||
+                    string.IsNullOrWhiteSpace(handler) ||
+                    expectedFiles < 1)
+                    continue;
+
+                result.Add(new SemanticCandidate(
+                    ruleId, owner, handler,
+                    JsonString(row, "policyClass"),
+                    JsonString(row, "patchStyle"),
+                    0.0, expectedFiles, false));
+            }
+        }
+
         return result;
     }
 
