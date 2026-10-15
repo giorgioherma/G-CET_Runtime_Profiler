@@ -43,6 +43,7 @@ internal static class CallbackResolverService
     {
         using var handoff = JsonDocument.Parse(File.ReadAllText(handoffPath));
         var nativePressure = NativeMarshallingEvidenceReader.Read(handoff.RootElement);
+        var callbackAllocator = CallbackAllocatorPressureEvidenceReader.Read(handoff.RootElement);
         var semanticLibrary = SemanticLibraryService.Load(semanticLibraryPath, modsRoot);
         // Measured callback work and native-dispatch frequency determine
         // investigation priority, NOT authored semantic eligibility. Retain
@@ -120,6 +121,8 @@ internal static class CallbackResolverService
                 var gcCoincidence = callback.RegistrationId is long nativeId &&
                     collectorSpikeEvidence.TryGetValue(nativeId, out var evidence)
                     ? evidence : GcSpikeReviewEvidence.Empty;
+                var ownedAllocator = callbackAllocator.Lookup(
+                    callback.RegistrationId, callback.Owner, callback.Kind, callback.Target);
                 var gcRegistration = callback.RegistrationId is long gcId &&
                     megaMindGc.Registrations.TryGetValue(gcId, out var gcFound)
                     ? gcFound : null;
@@ -289,6 +292,22 @@ internal static class CallbackResolverService
                             sourceProof = false,
                             influencesGenericOrSemanticAdmission = false,
                             authorizesRewrite = false
+                        },
+                        callbackAllocator = new
+                        {
+                            metric = "REGISTRATION_SCOPED_POSITIVE_LUAJIT_ALLOCATOR_PRESSURE",
+                            status = ownedAllocator is not null
+                                ? "VERIFIED_CALLBACK_EXECUTION_WINDOW"
+                                : callbackAllocator.Available ? "NOT_MEASURED_FOR_CALLBACK" : "NOT_CAPTURED",
+                            ownedPositiveGrowthBytes = ownedAllocator?.TotalPositiveBytes,
+                            ownedPositiveGrowthOperations = ownedAllocator?.TotalOperations,
+                            insideNativeExecutionBoundaryBytes = ownedAllocator?.NativeBoundaryPositiveBytes,
+                            insideNativeExecutionBoundaryOperations = ownedAllocator?.NativeBoundaryOperations,
+                            nativeBoundaryIsExecutionContextNotAllocatorInstruction = true,
+                            sharedPreDispatchMarshallingIncluded = false,
+                            duplicateOfGcRegistrationTotalsNotAdditive = true,
+                            measuredSavings = false,
+                            evidenceOnly = true
                         },
                         collectorReview = new
                         {
@@ -594,6 +613,7 @@ internal static class CallbackResolverService
                 note = "GC metrics augment callback CPU, burst, dormancy and existing semantic evidence. Only the pre-existing source-proven Resolver rules can generate passes."
             },
             nativeMarshallingAllocationPressure = nativePressure.FullEvidence,
+            callbackAllocatorPressure = callbackAllocator.FullEvidence,
             nativeAllocationPressurePolicy = new
             {
                 outgoingPriorityMetric = "NATIVE_TO_LUA_ARGUMENT_MARSHALLING_ALLOCATION_PRESSURE",
