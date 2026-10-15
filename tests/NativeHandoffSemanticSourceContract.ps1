@@ -343,3 +343,35 @@ try { [void](Rewrite 'GateSpecterHudWhenActive' $hudDrift) }
 catch { $hudRefused = $true }
 if (!$hudRefused) { throw 'Specter unknown HUD lifecycle drift was not rejected' }
 Write-Host 'Specter inactive HUD original/live-equivalent, CRLF, idempotence, two authored sites and source drift PASS'
+
+
+# nativeInteractions PASS9/PASS10 live-source source-fluid upgrade.
+# The original pristine injector already uses this short-circuit.
+$nifOld = @'
+local sceneLaunchPending = #resourceHelper.sceneQueue > 0
+local sceneActive = quests:GetFactStr("nif_scene_active") == 1
+local sceneStartPending = quests:GetFactStr("nif_start_signal") ~= 0
+local interactionActive = next(world.activeInteractions) ~= nil
+            local managerRealtime = manager.hasRealtimeWork()
+            local fullRate = sceneActive or sceneStartPending or interactionActive or sceneLaunchPending or managerRealtime
+if self.idleWorldElapsed >= IDLE_WORLD_INTERVAL then
+    doWork()
+end
+'@
+$nifDone = Rewrite 'UpgradeNativeInteractionsRealtimeProbe' $nifOld
+if (!$nifDone.Contains('if not fullRate then fullRate = manager.hasRealtimeWork() end') -or
+    $nifDone.Contains('local managerRealtime = manager.hasRealtimeWork()') -or
+    (Rewrite 'UpgradeNativeInteractionsRealtimeProbe' $nifDone) -cne $nifDone) {
+    throw 'nativeInteractions original/partial status short-circuit not idempotent'
+}
+$nifCRLF = $nifOld.Replace("`n", "`r`n")
+if (!(Rewrite 'UpgradeNativeInteractionsRealtimeProbe' $nifCRLF).Contains('if not fullRate then fullRate = manager.hasRealtimeWork() end')) {
+    throw 'nativeInteractions current-source short-circuit failed CRLF equivalent'
+}
+$nativeDrift = $nifOld.Replace('local interactionActive = next(world.activeInteractions) ~= nil',
+    'local interactionActive = isSomewhere()')
+$nativeRefused = $false
+try { [void](Rewrite 'UpgradeNativeInteractionsRealtimeProbe' $nativeDrift) }
+catch { $nativeRefused = $true }
+if (!$nativeRefused) { throw 'nativeInteractions drifted activity writer was not rejected' }
+Write-Host 'nativeInteractions existing PASS9/10 incremental safe realtime-status short-circuit and source drift PASS'

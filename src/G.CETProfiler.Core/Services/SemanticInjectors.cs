@@ -25,6 +25,7 @@ internal static partial class SemanticInjectors
             "immersive-third-person-action-routing" or
             "backstep-duo" or
             "specter-recovery-prerequisite-reads" or
+            "nativeinteractions" or
             "air-backflip";
         if (context.OwnerAlreadyMarked() &&
             !candidate.StageComposed && !versionFluidUpgrade)

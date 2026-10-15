@@ -9,6 +9,31 @@ internal static partial class SemanticInjectors
     private static SemanticInjectionResult ApplyNativeInteractions(
         SemanticPatchContext context)
     {
+        // Upgrade the user's genuinely installed PASS9/PASS10 source without
+        // replaying its original three-file injector or undoing the prior
+        // manager, world and pin-index patches. Pristine input still takes the
+        // original one-pass path below.
+        var currentInit = context.FindFile("init.lua",
+            "resourceHelper.onUpdate()", "self.runtimeData.inGame");
+        if (currentInit.Text.Contains("local managerRealtime = manager.hasRealtimeWork()",
+                                      StringComparison.Ordinal))
+        {
+            context.FindFile("modules/projectsManager.lua",
+                "function manager.hasRealtimeWork()",
+                "function manager.update(position)",
+                "manager.updateList");
+            context.FindFile("modules/utils/worldInteraction.lua",
+                "pinInteractions", "findPinInteraction", "world.getGridInteractions");
+            var upgraded = UpgradeNativeInteractionsRealtimeProbe(currentInit.Text);
+            context.Write(currentInit, upgraded);
+            return SemanticInjectionResult.Success(
+                "Upgraded installed nativeInteractions partial A/B source: " +
+                "skip the author realtime-status scan only when an existing scene, " +
+                "pending signal, interaction or queued launch already requires full rate. " +
+                "Retained Cron, every scene/recovery event, native observers, " +
+                "original world and manager cadences, and pin registry.");
+        }
+
         var init = context.FindFile(
             "init.lua",
             "resourceHelper.onUpdate()",
@@ -297,6 +322,45 @@ internal static partial class SemanticInjectors
             "Kept scene/interaction work at rendered-frame cadence, moved dormant world discovery to ~30 Hz and manager maintenance to ~12 Hz with an immediate active-to-idle reconciliation tick, and indexed NIF mappins by ID while preserving a cold spatial fallback.");
     }
 
+
+    // The author has independent full-rate reasons. Checking the director
+    // status for a reason that cannot affect that already-true decision is
+    // redundant. This is the current implementation's existing pristine
+    // short-circuit behavior, applied to the older patched live variant.
+    private static string UpgradeNativeInteractionsRealtimeProbe(string text)
+    {
+        const string oldSource =
+            "            local managerRealtime = manager.hasRealtimeWork()\n" +
+            "            local fullRate = sceneActive or sceneStartPending or interactionActive or sceneLaunchPending or managerRealtime";
+        const string newSource =
+            "            local fullRate = sceneActive or sceneStartPending or interactionActive or sceneLaunchPending\n" +
+            "            if not fullRate then fullRate = manager.hasRealtimeWork() end";
+        var normalized = text.Replace("\r\n", "\n", StringComparison.Ordinal);
+        if (normalized.Contains(newSource, StringComparison.Ordinal))
+        {
+            if (normalized.Contains(oldSource, StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "nativeInteractions live probe upgrade has conflicting source stages.");
+            return text;
+        }
+        if (!normalized.Contains(oldSource, StringComparison.Ordinal) ||
+            !normalized.Contains("local sceneActive = quests:GetFactStr(\"nif_scene_active\") == 1",
+                                 StringComparison.Ordinal) ||
+            !normalized.Contains("local sceneStartPending = quests:GetFactStr(\"nif_start_signal\") ~= 0",
+                                 StringComparison.Ordinal) ||
+            !normalized.Contains("local interactionActive = next(world.activeInteractions) ~= nil",
+                                 StringComparison.Ordinal) ||
+            !normalized.Contains("local sceneLaunchPending = #resourceHelper.sceneQueue > 0",
+                                 StringComparison.Ordinal) ||
+            !normalized.Contains("if self.idleWorldElapsed >= IDLE_WORLD_INTERVAL then",
+                                 StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "nativeInteractions current live full-rate/wake source drifted.");
+        normalized = normalized.Replace(oldSource, newSource, StringComparison.Ordinal);
+        return text.Contains("\r\n", StringComparison.Ordinal)
+            ? normalized.Replace("\n", "\r\n", StringComparison.Ordinal)
+            : normalized;
+    }
 
     /// <summary>
     /// Observed 73,989 MinimapStealthMappinController elevation callbacks in

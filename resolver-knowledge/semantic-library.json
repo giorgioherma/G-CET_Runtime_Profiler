@@ -3112,7 +3112,6 @@
       "sourceProof": {
         "ownerAll": [
           "resourceHelper.onUpdate()",
-          "function manager.update()",
           "WorldMappinUIProfile.nif",
           "world.getGridInteractions"
         ],
@@ -3133,6 +3132,19 @@
             "pinInteractions",
             "nativeinteractions.pin_index"
           ]
+        ],
+        "ownerAnyGroups": [
+          [
+            "function manager.update()",
+            "function manager.update(position)"
+          ]
+        ],
+        "sourceCompletionAuthoritative": true,
+        "composablePartialStages": true,
+        "satisfiedAll": [
+          "manager.hasRealtimeWork()",
+          "pinInteractions",
+          "if not fullRate then fullRate = manager.hasRealtimeWork() end"
         ]
       },
       "behavior": {
@@ -3142,7 +3154,8 @@
           "interactionRealtime",
           "worldDiscovery",
           "managerMaintenance",
-          "mappinIdentity"
+          "mappinIdentity",
+          "sourceFluidPartialLiveShortCircuit"
         ],
         "lanes": [
           {
@@ -3166,7 +3179,8 @@
         "genericResponsibilities": [
           "FRAME_DISPATCH_CONSOLIDATION",
           "SHARED_PROVIDER_READ"
-        ]
+        ],
+        "note": " The existing pristine source pass already avoids manager.hasRealtimeWork when independent source-defined full-rate gates are true. Upgrade equivalent older PASS9/10 live source without reverting world, pin-index, Cron or author wake paths. Unknown state writers fail closed."
       },
       "generation": {
         "enabled": true,
