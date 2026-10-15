@@ -158,6 +158,9 @@ return Overlay
 '@
 
 Write-ModFile 'AirBackFlip' 'init.lua' @'
+local cfg = { enabled = true }
+local flip = nil
+local function loadConfig() end
 local GAME_ACTIONS = {
     AirBackflip_Backflip=function() end,
     AirBackflip_Frontflip=function() end,
@@ -167,6 +170,7 @@ local GAME_ACTIONS = {
 }
 local moveY = 0
 registerForEvent("onInit", function()
+    loadConfig()
     Observe("PlayerPuppet", "OnAction", function(_, action)
         pcall(function()
             local name = Game.NameToString(ListenerAction.GetName(action))
@@ -183,6 +187,12 @@ registerForEvent("onInit", function()
             end
         end)
     end)
+end)
+registerForEvent("onUpdate", function(dt)
+    if flip then flip = nil end
+end)
+registerForEvent("onDraw", function()
+    cfg.enabled = ImGui.Checkbox("Enabled", cfg.enabled)
 end)
 '@
 
