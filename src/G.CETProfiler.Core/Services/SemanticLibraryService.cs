@@ -366,6 +366,10 @@ internal sealed class SemanticLibraryService
                 PokerPass4Source.IsComplete(graph.OwnerFolder),
             "ITPP_ACTION_DORMANCY_V2" =>
                 SemanticInjectors.IsImmersiveThirdPersonActionDormancyComplete(graph.OwnerFolder),
+            "IFP_FREELOOK_ACTION_DORMANCY_V2" =>
+                SemanticInjectors.IsImmersiveFirstPersonActionDormancyComplete(graph.OwnerFolder),
+            "AUTOLOOT_DEFAULT_ACTION_DORMANCY_V2" =>
+                SemanticInjectors.IsAutoLootDefaultActionDormancyComplete(graph.OwnerFolder),
             _ => false
         };
         if (verifiedCompletion.HasValue)
@@ -379,7 +383,8 @@ internal sealed class SemanticLibraryService
         if (rule.Proof.CompleteStages.Length > 0)
             satisfiedBySourcePostcondition =
                 rule.Proof.CompleteStages.All(stage =>
-                    SemanticScopedStages.IsComplete(graph.FileTexts, stage));
+                    SemanticScopedStages.IsComplete(graph.FileTexts, stage)) &&
+                (verifiedCompletion ?? true);
 
         var alreadySatisfied = composed || rule.Proof.SourceCompletionAuthoritative
             ? satisfiedBySourcePostcondition

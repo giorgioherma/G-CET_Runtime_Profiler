@@ -253,6 +253,32 @@ internal static partial class SemanticInjectors
     // previously optimized sources converge in ONE Resolver pass.
     // All changes are invocation-local and retain protected frame semantics.
 
+    internal static bool IsAutoLootDefaultActionDormancyComplete(string ownerFolder)
+    {
+        try
+        {
+            var source = File.ReadAllText(Path.Combine(ownerFolder, "init.lua"));
+            var routed = source.Contains("SubscribeAction", StringComparison.Ordinal) &&
+                (source.Contains("gcetAutoLootOnAction", StringComparison.Ordinal) ||
+                 source.Contains("zeroEngineOnAction", StringComparison.Ordinal)) &&
+                source.Contains("Observe(", StringComparison.Ordinal);
+            if (!routed) return false;
+            // Older source/fixture without authored onInit+onUpdate setting
+            // wake still uses the proven original finite routing rule.
+            if (!source.Contains("autoLoot.ui.onInit()", StringComparison.Ordinal) ||
+                !source.Contains("handleTriggers()", StringComparison.Ordinal))
+                return true;
+            return source.Contains("-- __gcetAutoLootDefaultActionDormancyV2", StringComparison.Ordinal) &&
+                source.Contains("pcall(handle.SetActive, needed)", StringComparison.Ordinal) &&
+                source.Contains("__gcetAutoLootSyncDefaultAction()", StringComparison.Ordinal) &&
+                Regex.Matches(source,
+                    @"__gcetAutoLootActionHandle\s*=\s*[^\r\n]*SubscribeAction\s*\(",
+                    RegexOptions.CultureInvariant).Count == 2;
+        }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
+    }
+
     private static string ExtendAutoLootDefaultActionSubscriber(string text)
     {
         const string stage = "-- __gcetAutoLootDefaultActionDormancyV2";

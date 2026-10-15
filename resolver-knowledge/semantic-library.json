@@ -355,9 +355,9 @@
         }
       ],
       "sourceProof": {
-      "completionVerifier": "POKER_PASS4_TWO_FILE",
-      "composablePartialStages": true,
-      "sourceCompletionAuthoritative": true,
+        "completionVerifier": "POKER_PASS4_TWO_FILE",
+        "composablePartialStages": true,
+        "sourceCompletionAuthoritative": true,
         "ownerAll": [
           "StreetGamesPoker",
           "PokerHUD",
@@ -2286,9 +2286,9 @@
         }
       ],
       "sourceProof": {
-      "completionVerifier": "DRIVEBUS_ROUTING_TIMERS",
-      "composablePartialStages": true,
-      "sourceCompletionAuthoritative": true,
+        "completionVerifier": "DRIVEBUS_ROUTING_TIMERS",
+        "composablePartialStages": true,
+        "sourceCompletionAuthoritative": true,
         "ownerAll": [
           "function Core:SetObserve()",
           "exception_in_choice_list",
@@ -3033,7 +3033,9 @@
               "__gcetIFPBlackboardSystem:Get(blackboardDefs.PhotoMode)"
             ]
           }
-        ]
+        ],
+        "completionVerifier": "IFP_FREELOOK_ACTION_DORMANCY_V2",
+        "composablePartialStages": true
       },
       "behavior": {
         "handler": "SEMANTIC_REALTIME_WITH_SLOW_STATE_PROBE",
@@ -3043,7 +3045,8 @@
           "stablePlayerStateProbe",
           "sameInvocationBlackboardReuse",
           "completePristineSourceSinglePass",
-          "partialSourceUpgrade"
+          "partialSourceUpgrade",
+          "authorFreelookSubscriberDormancy"
         ],
         "lanes": [
           {
@@ -3334,7 +3337,10 @@
           [
             "UI_DPadWeapons"
           ]
-        ]
+        ],
+        "completionVerifier": "AUTOLOOT_DEFAULT_ACTION_DORMANCY_V2",
+        "sourceCompletionAuthoritative": true,
+        "composablePartialStages": true
       },
       "behavior": {
         "handler": "SEMANTIC_EXACT_ACTION_ROUTING",
@@ -3342,7 +3348,8 @@
           "defaultActionKey",
           "pressReleaseSemantics",
           "continuousLooting",
-          "consumerIndependentInput"
+          "consumerIndependentInput",
+          "defaultActionSubscriberDormancy"
         ],
         "actions": [
           "Pause",

@@ -211,6 +211,28 @@ internal static partial class SemanticInjectors
             "Preserved rendered-frame camera/height work, but sampled expensive mounted/workspot/inspection/crouch/knockdown probes at 20 Hz using the validated optimized reference. Frame registration and action routing remain generic Resolver responsibilities.");
     }
 
+    internal static bool IsImmersiveFirstPersonActionDormancyComplete(string ownerFolder)
+    {
+        try
+        {
+            var source = File.ReadAllText(Path.Combine(ownerFolder, "init.lua"));
+            // An old supported camera-only source lacks the authored FreeLook
+            // input pipeline; preserve its independent A/B rule completion.
+            if (!source.Contains("local function registerPlayerInput(", StringComparison.Ordinal))
+                return true;
+            return source.Contains("-- __gcetIfpActionDormancyV2", StringComparison.Ordinal) &&
+                source.Contains("pcall(handle.SetActive, needed)", StringComparison.Ordinal) &&
+                source.Contains("__gcetIfpActionHandle = zeroEngineMod.SubscribeAction", StringComparison.Ordinal) &&
+                source.Contains("__gcetIfpActionHandle = zeroEngine.SubscribeAction", StringComparison.Ordinal) &&
+                source.Contains("registerInput(\"ifp_freelook\"", StringComparison.Ordinal) &&
+                source.Contains("CameraCore.BeginFreeLook(context)", StringComparison.Ordinal) &&
+                source.Contains("CameraCore.EndFreeLook(false)", StringComparison.Ordinal) &&
+                source.Contains("Observe('PlayerPuppet', 'OnAction'", StringComparison.Ordinal);
+        }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
+    }
+
     // Native handoff C: the player's CET FreeLook input and game-session events
     // independently wake the shared action subscriber. Its original native
     // OnAction fallback remains on runtimes lacking the 0-Engine action API.
