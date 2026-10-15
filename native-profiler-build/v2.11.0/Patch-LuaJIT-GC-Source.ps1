@@ -104,7 +104,7 @@ typedef struct GGCUnscopedPathSecond {
 typedef struct GGCUnscopedNativeSample {
   unsigned long long captureMs, positiveBytes, operationSequence;
   unsigned int vmState, allocatorPath, bridgeContext, depth, reallocOrigin;
-  unsigned long long oldSize, newSize, methodHash;
+  unsigned long long oldSize, newSize, methodHash, classHash;
   void *frames[6];
 } GGCUnscopedNativeSample;
 static GGCUnscopedDetail ggc_unscoped_detail;
@@ -116,10 +116,17 @@ static volatile LONG64 ggc_unscoped_sample_dropped=0;
 static unsigned long long ggc_unscoped_sequence=0;
 static __declspec(thread) unsigned int ggc_bridge_context=0;
 static __declspec(thread) unsigned long long ggc_method_hash=0;
-/* Capture-only TLS tags, never Lua owner inference or RTTI string queries. */
+static __declspec(thread) unsigned long long ggc_class_hash=0;
+/* Capture-only TLS tags. Never dereference native RTTI or Lua objects
+ * on the LuaJIT allocator hot path; only copy the already-scoped hashes. */
 unsigned long long ggc_trace_method_set(unsigned long long hash) {
   unsigned long long old=ggc_method_hash;
   ggc_method_hash=hash;
+  return old;
+}
+unsigned long long ggc_trace_class_set(unsigned long long hash) {
+  unsigned long long old=ggc_class_hash;
+  ggc_class_hash=hash;
   return old;
 }
 unsigned int ggc_trace_bridge_set(unsigned int context) {
@@ -188,7 +195,7 @@ static void ggc_unscoped_extended(unsigned long long bytes,unsigned int path,
       s->operationSequence=seq;s->vmState=state;
       s->allocatorPath=path;s->bridgeContext=bridge;
       s->reallocOrigin=origin;s->oldSize=oldSize;s->newSize=newSize;
-      s->methodHash=ggc_method_hash;
+      s->methodHash=ggc_method_hash;s->classHash=ggc_class_hash;
       s->depth=(unsigned int)CaptureStackBackTrace(2,6,s->frames,NULL);
       InterlockedIncrement(&ggc_unscoped_sample_seen);
     } else { InterlockedIncrement64(&ggc_unscoped_sample_dropped); }
