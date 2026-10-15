@@ -4634,12 +4634,10 @@
         "readProofAll": [
           "__gcetZiggyOfferedFarAcc",
           "__gcetZiggyOfferedFar",
-          "missingScanAge",
-          "G-CET semantic:ziggy-native-snapshot-manager-v6",
-          "__gcetZiggySnapshotQuestSystem:SetFactStr('zg11_'..k,v)"
+          "missingScanAge"
         ],
         "dispatchProofAll": [],
-        "wakeContract": "Static C.giver.position is cached in quest config, but live player position and actor locations are dynamic. Full-frame proximity wake currently lives inside onUpdate; cannot pause its native subscriber without a cheap independent proximity signal plus journal/phone/audio/scene/session and cleanup wake."
+        "wakeContract": "Static C.giver.position is cached in quest config, but live player position and actor locations are dynamic. Full-frame proximity wake currently lives inside onUpdate; cannot pause its native subscriber without a cheap independent proximity signal plus journal/phone/audio/scene/session and cleanup wake. Snapshot save manager B-v6 has independent completion proof; pre-v6 already has earlier native proximity/mappin B savings (partial)."
       }
     },
     {
