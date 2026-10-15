@@ -177,6 +177,19 @@ registerForEvent("onInit", function()
         processDirectionAction(actionName, actionType, value)
     end)
 end)
+local function resetTransientStates() end
+registerForEvent("onUpdate", function(deltaTime)
+    if not settings.EnableDash then resetTransientStates() end
+    local player = getPlayer()
+    if not player then return end
+    if not settings.EnableDash then
+        resetTransientStates()
+        return
+    end
+end)
+registerForEvent("onDraw", function()
+    if not settings.EnableDash then return end
+end)
 '@
 
 Write-ModFile 'NightCityAlliesMissions' 'init.lua' @'
