@@ -192,6 +192,13 @@ if ((Consumer 'NativeAlreadyRouted').generic.Status -ne 'ALREADY_SATISFIED') {
     throw 'Previously adopted frame was not recognized as complete.'
 }
 
+$actionRow = Consumer 'NativeZeroAction'
+Write-Host ("NativeZeroAction source resolution: " +
+    ($actionRow.source | ConvertTo-Json -Compress -Depth 8))
+Write-Host ("NativeZeroAction input span: " +
+    ((($rows | Where-Object { $_.owner -eq 'NativeZeroAction' }) |
+      ForEach-Object { "$($_.source.lineStart)-$($_.source.lineEnd)" }) -join ', '))
+Write-Host ("NativeZeroAction fixture line count: " + @(Get-Content -LiteralPath $action).Count)
 $manifest = Get-Content -LiteralPath $run.pass.ManifestPath -Raw |
     ConvertFrom-Json
 $transforms = @($manifest.transforms)
