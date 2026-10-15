@@ -211,6 +211,8 @@ public static class PassGeneratorService
                 sourceShaRequiredForGeneric = true,
                 semanticDefaultRuntimeThresholdMsPerSecond = SemanticPassGeneratorService.MaterialThresholdMsPerSecond,
                 semanticRuleLocalRuntimeThresholds = true,
+                semanticThreeMsPerSecondIsSoftBoundary = true,
+                semanticHandAuthoredAdmissionRequiresMeasuredActivityAndCurrentSourceProof = true,
                 semanticCurrentSourceProofRequired = true,
                 semanticExistingLiveFilesOnly = true,
                 semanticCreatesNewModFiles = false,
@@ -239,7 +241,7 @@ public static class PassGeneratorService
                 },
                 fixedRuntimeException = "0-Engine",
                 zeroEngineCompatibilityPolicy = "KNOWN_GCET_FIXED_RUNTIME_OR_STRUCTURALLY_PROVEN_HOST_PRESERVING_ADAPTER",
-                note = "The overlay generator composes generic AUTO and measured semantic source injections. 0-Engine uses the exact proven G-CET runtime for known states; unknown versions are preserved and receive only a namespaced Engine.GCET adapter when a safe final exported-table structure is proven. Semantic rules use a 3 ms/s default admission threshold; an explicit production rule may declare a lower positive threshold when justified by source-proven framework value. Every semantic still re-proves current live source."
+                note = "The overlay generator composes generic AUTO and measured semantic source injections. 0-Engine uses the exact proven G-CET runtime for known states; unknown versions are preserved and receive only a namespaced Engine.GCET adapter when a safe final exported-table structure is proven. The 3 ms/s boundary prioritizes CPU materiality but is not a hard veto on validated hand-authored semantic stages when callback activity and current-source proof are present. Already-complete source stages are not re-applied; generic native-dispatch and inferred dormancy retain independent proofs."
             },
             fixedRuntime = new
             {
