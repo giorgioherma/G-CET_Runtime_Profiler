@@ -138,7 +138,13 @@ internal static class SemanticPassGeneratorService
                     candidate.Owner,
                     candidate.Handler,
                     candidate.PolicyClass,
-                    runtimeMsPerSecond = Math.Round(candidate.RuntimeMsPerSecond, 6),
+                    // No measured callback exists for source-only candidates.
+                    // Zero is NOT a measurement; preserve null provenance.
+                    runtimeMsPerSecond = candidate.SourceIndependent
+                        ? (double?)null : Math.Round(candidate.RuntimeMsPerSecond, 6),
+                    admissionEvidence = candidate.SourceIndependent
+                        ? "SOURCE_PROVEN_NO_CAPTURE"
+                        : "CAPTURE_MATCHED_SOURCE_PROVEN",
                     patchStyle = candidate.PatchStyle,
                     sourceProof = true,
                     files = context.Changes
@@ -262,7 +268,7 @@ internal static class SemanticPassGeneratorService
                     ruleId, owner, handler,
                     JsonString(row, "policyClass"),
                     JsonString(row, "patchStyle"),
-                    0.0, expectedFiles, false));
+                    0.0, expectedFiles, false, SourceIndependent: true));
             }
         }
 
@@ -315,7 +321,8 @@ internal sealed record SemanticCandidate(
     string PatchStyle,
     double RuntimeMsPerSecond,
     int ExpectedMarkerFileCount,
-    bool StageComposed);
+    bool StageComposed,
+    bool SourceIndependent = false);
 
 internal sealed record SemanticInjectionResult(
     bool Applied,
