@@ -33,9 +33,11 @@ internal sealed record SemanticRuleMatch(
 
 // Two independent authorizations are deliberately kept separate:
 // - Generic AUTO must prove its own mechanical transform and wake lifecycle.
-// - A hand-authored semantic rule already carries a mod-specific source
-//   implementation/proof. The 3 ms/s budget is a prioritization signal,
-//   not a veto on executing that reviewed rule against measured live activity.
+// - A production-enabled hand-authored semantic rule carries a reviewed
+//   mod-specific source implementation/proof. A profiler callback row is a
+//   discovery link, not permission: neither the 3 ms/s budget nor zero
+//   observed calls during a dormant capture veto a supported source rewrite.
+//   The independent source injector and postconditions remain fail-closed.
 // This never makes profiler dormancy guesses or GC coincidence a rewrite proof.
 internal sealed record SemanticAdmissionDecision(bool Ready, string Lane, string Reason);
 
@@ -59,8 +61,13 @@ internal static class SemanticAdmissionPolicy
             return new(false, "ALREADY_SATISFIED", "Authored source stages are already complete.");
         if (partialState)
             return new(false, "NONE", "Ambiguous incomplete semantic source state; fail closed.");
+        // The callback can be registered yet dormant for the entire
+        // capture. Source-proven, production-enabled semantics can still
+        // safely remove missing idle stages; do not use profiler silence as
+        // a replacement for the author-specific wake/lifecycle proof.
         if (callsPerSecond <= 0 && exclusiveMsPerSecond <= 0)
-            return new(false, "NONE", "No measured invocation or Lua work for this callback.");
+            return new(true, "SEMANTIC_AUTHORED_UNMEASURED",
+                "Source-proven production semantic rule; no callback work observed in this capture. Injector source safety and postconditions still govern generation.");
 
         var threshold = configuredThresholdMsPerSecond > 0
             ? configuredThresholdMsPerSecond : 3.0;
