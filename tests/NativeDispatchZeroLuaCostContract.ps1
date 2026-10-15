@@ -93,6 +93,16 @@ Observe("PlayerPuppet", "OnAction", function(_, action)
 end)
 '@
 
+$guard = Write-Mod 'NativeZeroGuard' @'
+local active = false
+registerHotkey('native_zero_guard_wake', 'Wake', function() active = true end)
+registerForEvent('onUpdate', function(dt)
+    local player = Game.GetPlayer()
+    if not active then return end
+    DoActiveUpdate(player, dt)
+end)
+'@
+
 $silent = Write-Mod 'NativeSilent' @'
 registerForEvent("onUpdate", function(dt)
     NeverCalled(dt)
@@ -134,7 +144,8 @@ $rows = @(
     (Row 9904 'NativeSilent' 'event' 'onUpdate' 0 0 $silent 'registerForEvent'),
     (Row 9905 'NativeOther' 'ObserveAfter' 'PlayerPuppet::TickUnrelated' 900 0 $other 'ObserveAfter'),
     (Row 9906 'NativeAlreadyRouted' 'event' 'onUpdate' 60 0 $existing '__gcetRegisterEvent_9906\("onUpdate"'),
-    (Row 9907 'NativeWrapped' 'Observe' 'PlayerPuppet::OnAction' 600 0 $wrapped 'Event\.Observe')
+    (Row 9907 'NativeWrapped' 'Observe' 'PlayerPuppet::OnAction' 600 0 $wrapped 'Event\.Observe'),
+    (Row 9908 'NativeZeroGuard' 'event' 'onUpdate' 60 0 $guard 'registerForEvent')
 )
 $inputFile = Join-Path $capture 'CET_Resolver_Input.json'
 @{schemaVersion='1.8';callbacks=$rows;optimizerEvidence=@()} |
@@ -142,7 +153,7 @@ $inputFile = Join-Path $capture 'CET_Resolver_Input.json'
     Set-Content -LiteralPath $inputFile -Encoding utf8
 
 $before = @{}
-foreach ($file in @($frame,$draw,$action,$silent,$other,$wrapped,$existing)) {
+foreach ($file in @($frame,$draw,$action,$guard,$silent,$other,$wrapped,$existing)) {
     $before[$file] = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash
 }
 $run = (& $resolverExe --capture $capture --mods $mods --generate-pass --json |
@@ -156,14 +167,14 @@ $consumers = @($resolver.callbackFamilies | ForEach-Object { $_.topConsumers })
 function Consumer([string]$Owner) {
     return @($consumers | Where-Object { $_.owner -eq $Owner })[0]
 }
-foreach ($name in @('NativeZeroFrame','NativeZeroDraw','NativeZeroAction',
+foreach ($name in @('NativeZeroFrame','NativeZeroDraw','NativeZeroGuard','NativeZeroAction',
                      'NativeAlreadyRouted','NativeWrapped')) {
     if ($null -eq (Consumer $name)) { throw "Measured native callback was discarded: $name" }
 }
 foreach ($name in @('NativeSilent','NativeOther')) {
     if ($null -ne (Consumer $name)) { throw "Non-eligible zero-cost callback was admitted: $name" }
 }
-foreach ($name in @('NativeZeroFrame','NativeZeroDraw')) {
+foreach ($name in @('NativeZeroFrame','NativeZeroDraw','NativeZeroGuard')) {
     $row = Consumer $name
     if (-not $row.generic.Automatable -or
         @($row.generic.RecipeFamilies | Where-Object { $_ -eq 'FRAME_DISPATCH_CONSOLIDATION' }).Count -ne 1) {
@@ -183,7 +194,7 @@ if ((Consumer 'NativeAlreadyRouted').generic.Status -ne 'ALREADY_SATISFIED') {
 $manifest = Get-Content -LiteralPath $run.pass.ManifestPath -Raw |
     ConvertFrom-Json
 $transforms = @($manifest.transforms)
-foreach ($name in @('NativeZeroFrame','NativeZeroDraw','NativeZeroAction')) {
+foreach ($name in @('NativeZeroFrame','NativeZeroDraw','NativeZeroGuard','NativeZeroAction')) {
     if (@($transforms | Where-Object { $_.owner -eq $name }).Count -eq 0) {
         throw "Expected native consolidation did not produce an overlay: $name"
     }
@@ -209,6 +220,16 @@ try {
     }
     if ((Zip-Text 'NativeZeroDraw') -notmatch 'MakeEventRegistrar') {
         throw 'Dormant onDraw still uses an independent CET draw registration.'
+    }
+    $guardText=Zip-Text 'NativeZeroGuard'
+    if ($guardText.IndexOf('local player = Game.GetPlayer()') -lt 0 -or
+        $guardText.IndexOf('if not active then return end') -lt
+            $guardText.IndexOf('local player = Game.GetPlayer()')) {
+        throw 'Zero-cost admission improperly hoisted a Lua-side guard.'
+    }
+    if (@($transforms | Where-Object { $_.owner -eq 'NativeZeroGuard' -and
+         $_.type -eq 'HARD_DORMANT_GUARD_HOIST' }).Count -gt 0) {
+        throw 'Unmeasured Lua work transformation was incorrectly admitted.'
     }
     $routed=Zip-Text 'NativeZeroAction'
     if ($routed -notmatch 'SubscribeAction' -or
