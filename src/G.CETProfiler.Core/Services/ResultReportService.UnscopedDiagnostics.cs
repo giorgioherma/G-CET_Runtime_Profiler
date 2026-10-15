@@ -286,6 +286,23 @@ public static partial class ResultReportService
             sb.Append("</tbody></table>");
         }
         if (r.HasNativeSamples) {
+            var onAction = r.NativeSampleRows.Where(row =>
+                S(row, "NativeMethodHash") == "9658066991423262154").ToArray();
+            var playerPuppet = onAction.Where(row =>
+                S(row, "NativeClassHash") == "14897567717734570886").ToArray();
+            var classRecorded = r.NativeSampleRows.All(row =>
+                row.ContainsKey("NativeClassHash"));
+            sb.Append("<h3>Native-to-Lua marshalling allocation pressure</h3>")
+              .Append("<p class=\"note\">Correct outgoing metric for action dispatch pressure: ")
+              .Append("bounded sampled LuaJIT positive allocation growth at RTTI marshalling boundaries, ")
+              .Append("<b>not callback-exclusive Lua CPU</b>. Sampled bytes are not all native bytes, ")
+              .Append("and a class-qualified RTTI invocation still does not identify a Lua mod/subscriber.</p>")
+              .Append("<p><b>Sampled OnAction events:</b> ").Append(N(onAction.Length))
+              .Append(" | <b>sampled positive bytes:</b> ")
+              .Append(N(onAction.Sum(x => L(x, "PositiveBytes"))))
+              .Append(" | <b>PlayerPuppet::OnAction class-qualified samples:</b> ")
+              .Append(classRecorded ? N(playerPuppet.Length) : "not recorded by native capture")
+              .Append("</p>");
             sb.Append("<h3>Most frequent sampled native callpaths</h3>")
               .Append("<p class=\"note\">Sample count, not population-weighted bytes. ")
               .Append("Module+RVA addresses are for investigation only.</p>")
