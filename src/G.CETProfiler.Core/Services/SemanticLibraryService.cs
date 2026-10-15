@@ -41,7 +41,7 @@ internal sealed record SemanticRuleMatch(
 // This never makes profiler dormancy guesses or GC coincidence a rewrite proof.
 internal sealed record SourceIndependentSemanticCandidate(
     string RuleId, string Owner, string Handler, string PolicyClass,
-    string PatchStyle, int ExpectedMarkerFileCount, string[] MatchedAnchors);
+    string PatchStyle, int ExpectedMarkerFileCount, bool StageComposed, string[] MatchedAnchors);
 
 internal sealed record SemanticAdmissionDecision(bool Ready, string Lane, string Reason);
 
@@ -471,7 +471,7 @@ internal sealed class SemanticLibraryService
                 result.Add(new SourceIndependentSemanticCandidate(
                     entry.Id, ownerName, match.Handler, match.PolicyClass,
                     match.PatchStyle, match.ExpectedMarkerFileCount,
-                    match.MatchedAnchors));
+                    entry.Proof.ComposablePartialStages, match.MatchedAnchors));
                 break;
             }
         }
