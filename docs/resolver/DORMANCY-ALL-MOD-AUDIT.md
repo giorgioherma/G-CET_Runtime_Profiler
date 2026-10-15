@@ -1,6 +1,6 @@
 # Complete semantic dormancy triage
 
-Scope: 67 production rules across distinct mod identities; all originals are available. Classification is based on the production policy, not yet proof of a full source retrofit.
+Scope: 67 production rules across distinct mod identities; all originals are available. Classification is based on the production policy, not yet proof of a full source retrofit. For current 62-mod A/B/C implementation status, consult [the active stage matrix](EXTENDED-DORMANCY-STAGE-MATRIX.md) and [LATEST-WORK](../LATEST-WORK.md); this audit remains historical triage, not a stage-completion report.
 
 ## Native OnAction evidence and Resolver linkage
 
