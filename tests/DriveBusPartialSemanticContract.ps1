@@ -143,6 +143,36 @@ finally {
     $measuredInput | Set-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Encoding utf8
 }
 
+# Explicit source-only admission: the profiler capture can omit both
+# DriveBus callbacks while its current unmodified mod source still proves
+# the production rule. Neither callback ownership nor measured runtime
+# values may be synthesized.
+$absentCapture=@{schemaVersion='2.0';callbacks=@();optimizerEvidence=@()} | ConvertTo-Json -Depth 35
+$absentCapture | Set-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Encoding utf8
+try {
+    $sourceOnly=Generate
+    $sourceOnlyFiles=@(RuleFiles $sourceOnly)
+    if ($sourceOnlyFiles.Count -ne 3) {
+        throw "DriveBus missing-callback source-only admission wrote $($sourceOnlyFiles.Count) files instead of 3"
+    }
+    $sourceReport=Get-Content (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
+    $sourceCandidates=@($sourceReport.semanticSourceOnlyCandidates | Where-Object {$_.ruleId -eq 'drivebus'})
+    if ($sourceCandidates.Count -ne 1 -or
+        @($sourceReport.callbackFamilies).Count -ne 0) {
+        throw 'DriveBus source-only candidate missing or synthetic callback family generated'
+    }
+    $sourceManifest=Get-Content $sourceOnly.pass.ManifestPath -Raw | ConvertFrom-Json
+    $sourceTransforms=@($sourceManifest.transforms | Where-Object {$_.RuleId -eq 'drivebus'})
+    if ($sourceTransforms.Count -ne 1 -or
+        $sourceTransforms[0].admissionEvidence -ne 'SOURCE_PROVEN_NO_CAPTURE' -or
+        $null -ne $sourceTransforms[0].runtimeMsPerSecond) {
+        throw 'DriveBus source-only manifest invented measured callback cost or failed evidence provenance'
+    }
+}
+finally {
+    $measuredInput | Set-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Encoding utf8
+}
+
 # Pristine source must receive all three author files in ONE pass.
 $first=Generate
 $f1=@(RuleFiles $first)
