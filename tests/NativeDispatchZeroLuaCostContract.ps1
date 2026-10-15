@@ -47,7 +47,9 @@ function Range([string]$Path,[string]$First) {
     if ($start -lt 0) { throw "Callback not found in $Path" }
     for ($j=$start; $j -lt $lines.Count; $j++) {
         if ($lines[$j] -match '^\s*end\s*\)\s*$') {
-            return @($start,$j+1)
+            # The second array item must be parenthesized. Otherwise PowerShell
+            # can append +1 to the array rather than increment the end line.
+            return @($start, ($j + 1))
         }
     }
     throw "Callback end missing in $Path"
