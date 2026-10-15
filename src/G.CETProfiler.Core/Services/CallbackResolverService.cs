@@ -131,6 +131,8 @@ internal static class CallbackResolverService
                     callback,
                     sourceIndex,
                     schedulerIntegration);
+                if (callback.ExclusiveMsPerSecond <= 0)
+                    generic = RestrictZeroCostToNativeDispatch(generic);
                 var semantic = semanticLibrary.Match(
                     callback.Owner,
                     callback.Kind,
@@ -5046,6 +5048,58 @@ internal static class CallbackResolverService
         }
 
         return result;
+    }
+
+    // Newly admitted zero-exclusive rows exist solely to remove redundant
+    // CET native dispatch. They must NOT incidentally unlock Lua work rewrites,
+    // UI queries, guard hoists, or transparent-Override prefilters.
+    private static GenericResolution RestrictZeroCostToNativeDispatch(
+        GenericResolution result)
+    {
+        if (!result.Automatable)
+            return result;
+
+        var recipes = result.RecipeFamilies.Where(recipe =>
+            recipe.Equals("FRAME_DISPATCH_CONSOLIDATION",
+                StringComparison.OrdinalIgnoreCase) ||
+            recipe.StartsWith("ACTION_ROUTING", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+
+        if (recipes.Length == result.RecipeFamilies.Length)
+            return result;
+
+        if (recipes.Length == 0)
+        {
+            return new GenericResolution
+            {
+                Status = "ANALYSIS_ONLY",
+                Automatable = false,
+                Pattern = "ZERO_LUA_COST_NATIVE_DISPATCH_ONLY",
+                RecipeFamilies = Array.Empty<string>(),
+                Facts = result.Facts,
+                Evidence = result.Evidence,
+                Blockers = result.Blockers.Concat(new[]
+                {
+                    "Zero exclusive Lua time: only source-proven native frame/action dispatch consolidation is eligible."
+                }).ToArray(),
+                Source = result.Source
+            };
+        }
+
+        return new GenericResolution
+        {
+            Status = "RESOLVED",
+            Automatable = true,
+            Pattern = string.Join("_PLUS_", recipes),
+            RecipeFamilies = recipes,
+            Facts = result.Facts,
+            Evidence = result.Evidence,
+            Blockers = result.Blockers.Concat(new[]
+            {
+                "Other source-local rewrites are withheld because Lua exclusive time was zero."
+            }).ToArray(),
+            Source = result.Source
+        };
     }
 
     private static bool IsNativeDispatchCandidateWithMeasuredCalls(
