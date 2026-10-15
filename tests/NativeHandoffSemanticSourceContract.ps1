@@ -391,6 +391,7 @@ local function phoneIsOpen()
 end
 local function phoneUiOpen() return phoneIsOpen() end
 '@
+Write-Host 'GigCore test: pristine author source'
 $gigDone = Rewrite 'ReduceGigCorePhoneClosure' $gigPhone
 foreach($need in @('local function __gcetGigPhoneOpenedRead()',
     'local ok, open = pcall(__gcetGigPhoneOpenedRead)',
@@ -399,19 +400,23 @@ foreach($need in @('local function __gcetGigPhoneOpenedRead()',
     'local function phoneUiOpen() return phoneIsOpen() end')) {
     if (!$gigDone.Contains($need)) {throw "GigCore phone closure stage missing: $need"}
 }
+Write-Host 'GigCore test: idempotent staged source'
 if ((Rewrite 'ReduceGigCorePhoneClosure' $gigDone) -cne $gigDone) {
     throw 'GigCore phone closure source upgrade was not idempotent'
 }
 $gigCRLF = $gigPhone.Replace("`r`n", "`n").Replace("`n", "`r`n")
+Write-Host 'GigCore test: CRLF equivalent'
 if (!(Rewrite 'ReduceGigCorePhoneClosure' $gigCRLF).Contains('pcall(__gcetGigPhoneOpenedRead)')) {
     throw 'GigCore phone source CRLF variant was not accepted'
 }
 $gigQuote = $gigPhone.Replace('"PhoneSystem"', "'PhoneSystem'")
+Write-Host 'GigCore test: quote equivalent'
 if (!(Rewrite 'ReduceGigCorePhoneClosure' $gigQuote).Contains('pcall(__gcetGigPhoneOpenedRead)')) {
     throw 'GigCore phone author equivalent quote variant was not accepted'
 }
 $gigDrift = $gigPhone.Replace('ps:IsPhoneOpened()', 'ps:IsPhoneOpenedCached()')
 $gigRefused = $false
+Write-Host 'GigCore test: reject native accessor drift'
 try { [void](Rewrite 'ReduceGigCorePhoneClosure' $gigDrift) }
 catch { $gigRefused=$true }
 if (!$gigRefused) { throw 'GigCore native phone accessor drift was not rejected' }
