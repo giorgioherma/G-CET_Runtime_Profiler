@@ -525,6 +525,9 @@ internal static class CallbackResolverService
                 nativeDispatchZeroLuaCostAdmission = "POSITIVE_CALL_RATE_AND_SOURCE_PROVEN_FRAME_OR_ONACTION_REGISTRATION",
                 genericPatternsBeforeSemanticLibrary = true,
                 behaviorChangingCadenceRequiresSemanticRule = true,
+                semanticAdmissionLanes = new[] { "SEMANTIC_CPU_MATERIAL", "SEMANTIC_AUTHORED_LOW_COST" },
+                semanticThreeMsPerSecondIsSoftBoundary = true,
+                nativeDispatchAndSemanticDecisionsSeparate = true,
                 liveSourcesReadOnly = true,
                 dormancyClassification = true,
                 dormancyClassificationEvidenceOnly = true,
@@ -536,7 +539,7 @@ internal static class CallbackResolverService
                 existingSchedulerRecognition = true,
                 existingSchedulerRecognitionPolicy = "Captured Scheduler job IDs must also exist as quoted literals in the current live owner source. Recognition is evidence/reporting only and does not suppress an independently safe generic transform.",
                 burstAwareMateriality = true,
-                burstAwareMaterialityPolicy = "SUSTAINED_3_MS_PER_SECOND_OR_STUTTER_MATERIAL_BURST; BURST_EVIDENCE_DOES_NOT_AUTHORIZE_AUTO_OR_LOWER_SEMANTIC_THRESHOLDS",
+                burstAwareMaterialityPolicy = "SUSTAINED_3_MS_PER_SECOND_OR_STUTTER_MATERIAL_BURST; BURST_EVIDENCE_DOES_NOT_AUTHORIZE_AUTO;_AUTHOR_SEMANTIC_LOW_COST_USES_INDEPENDENT_SOURCE_PROOF",
                 burstVocabularyVersion = "1.0",
                 burstClasses = new[] { "STEADY", "RECORDED_SPIKES", "SUSTAINED_HOT", "PERIODIC_STUTTER", "BURST_HOT", "CATASTROPHIC_BURST" },
                 sharedProviderOpportunityAnalysis = true,
@@ -570,7 +573,7 @@ internal static class CallbackResolverService
                 entryCount = semanticLibrary.EntryCount,
                 matchedCallbacks = semanticMatches,
                 sourceProvenCallbacks = semanticSourceProven,
-                policy = "Only measured callbacks are considered. Mod identity selects a candidate; the live owner directory is then graphed and source anchors must prove the rule. Default semantic admission remains 3 ms/s; an individual production rule may declare a lower positive threshold only when its source-proven framework optimization justifies it. Reference overrides are never shipped."
+                policy = "Only measured callbacks are considered. Mod identity selects a candidate; the live owner directory is then graphed and source anchors must prove the rule. 3 ms/s is a soft CPU materiality priority, not a generation veto for enabled hand-authored rules with measured invocations and current source proof. Native-dispatch and generic dormancy still require their independent mechanical/wake proofs. Reference overrides are never shipped."
             },
             summary = new
             {
