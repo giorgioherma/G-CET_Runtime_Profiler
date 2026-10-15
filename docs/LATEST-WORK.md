@@ -99,6 +99,9 @@ For each mod with a candidate source-proven extension:
 - Extended `tests/DriveBusPartialSemanticContract.ps1` to run DriveBus generation with an **empty callback capture**, demanding a single source-only candidate, three authored staged files, no synthetic callback family, `SOURCE_PROVEN_NO_CAPTURE` and null measured runtime. Existing zero-call registered, pristine, partial, historical and drift tests remain.
 - **Admission CI:** [#38722592164](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38722592164) passed all four jobs. Extended the regression further to cover callback-absent partial upgrades (emit only missing Cron/init, preserve previously routed core) and completed-source exclusion; the new extension requires its own CI confirmation.  This is an admission/coverage extension, **not** proof of further stage-C dormancy or in-game saving. Native measurement-gap review and source-defined bus activity/wake lifecycle are still needed before considering a new native-subscriber pause. Product version and pinned native unchanged.
 
+
+- **CI regression and targeted fix (2026-10-15):** [#38723004854](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38723004854) failed only the DriveBus multi-file composition test. The new capture-absent partial-source fixture exposed that source-only candidate generation discarded DriveBus's composed-stage property, causing a legacy semantic marker rejection before its trusted source-completion verifier. Fixed in `SemanticPassGeneratorService.cs` for the explicitly reviewed DriveBus rule without loosening the generic marker guard. Commit `3b653db0`, follow-up [CI #38724652569](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38724652569) started; final result not yet verified.
+
 ## Current verified state versus unfinished task
 
 **Already implemented before this task was restated (do not repeat or roll back):**
