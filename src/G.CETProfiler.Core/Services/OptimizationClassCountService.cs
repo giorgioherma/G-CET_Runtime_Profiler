@@ -58,6 +58,17 @@ public static class OptimizationClassCountService
         Field(row, key) is { ValueKind: JsonValueKind.String } item
             ? item.GetString() ?? "" : "";
 
+    private static string Token(JsonElement row, string key)
+    {
+        var value = Field(row, key);
+        return value.ValueKind switch
+        {
+            JsonValueKind.Number => value.GetRawText(),
+            JsonValueKind.String => value.GetString() ?? "",
+            _ => ""
+        };
+    }
+
     private static bool Flag(JsonElement row, string key) =>
         Field(row, key).ValueKind == JsonValueKind.True;
 
@@ -126,8 +137,8 @@ public static class OptimizationClassCountService
             if (Flag(generic, "Automatable"))
                 foreach (var recipe in Items(generic, "RecipeFamilies"))
                     if (recipe.ValueKind == JsonValueKind.String)
-                        Add(genericReady, recipe.GetString() ?? "", owner, 
-                            Str(row, "registrationId"));
+                        Add(genericReady, recipe.GetString() ?? "", owner,
+                            "callback:" + Token(row, "registrationId"));
             // Measured disposition remains diagnostic-only: it is never counted
             // as an actual optimization or a source-authorized class.
             if (disposition == "UNRESOLVED")
@@ -190,7 +201,7 @@ public static class OptimizationClassCountService
                 var klass = type == "SHARED_PROVIDER_READ"
                     ? type + "/" + Str(row, "provider")
                     : type;
-                Add(generics, klass, owner, type + ":" + Str(row, "registrationId") +
+                Add(generics, klass, owner, type + ":" + Token(row, "registrationId") +
                     ":" + Str(row, "file"));
             }
         }
@@ -231,7 +242,7 @@ public static class OptimizationClassCountService
         AddLines(lines, coverage.AlreadySemanticClasses);
         lines.Add("");
         lines.Add("GENERIC READY CLASSES (mods per class):");
-        AddLines(lines, coverage.GenericReadyClasses);
+        AddLines(lines, coverage.GenericReadyClasses, "callback(s)");
         lines.Add("");
         lines.Add("DIAGNOSTIC COUNTS (not applied optimizations):");
         lines.Add($"  Material unresolved: {coverage.MaterialRemainingModCount} mods; " +
@@ -257,18 +268,19 @@ public static class OptimizationClassCountService
         AddLines(lines, coverage.AppliedSemanticClasses);
         lines.Add("");
         lines.Add("APPLIED GENERIC CLASSES (mods per class):");
-        AddLines(lines, coverage.AppliedGenericClasses);
+        AddLines(lines, coverage.AppliedGenericClasses, "transform(s)");
         lines.Add("");
         lines.Add("Counts describe generated source transforms, NOT measured savings or" +
             " gameplay validation. A mod may appear in multiple classes.");
         return string.Join(Environment.NewLine, lines);
     }
 
-    private static void AddLines(List<string> lines, OptimizationClassCount[] rows)
+    private static void AddLines(List<string> lines, OptimizationClassCount[] rows,
+        string unit = "rule(s)")
     {
         if (rows.Length == 0) { lines.Add("  (none)"); return; }
         foreach (var row in rows)
             lines.Add($"  {row.Class}: {row.ModCount} mod(s) / " +
-                $"{row.RuleCount} rule(s) — {string.Join(", ", row.Mods)}");
+                $"{row.RuleCount} {unit} — {string.Join(", ", row.Mods)}");
     }
 }

@@ -67,7 +67,7 @@ try {
     $ui=@($count.GenericReadyClasses | Where-Object {$_.Class -eq 'UI_VISIBILITY_DORMANCY'})
     if ($quest.Count -ne 1 -or $quest[0].ModCount -ne 1 -or $quest[0].RuleCount -ne 1 -or
         $native.Count -ne 1 -or $native[0].ModCount -ne 1 -or
-        $ui.Count -ne 1 -or $ui[0].ModCount -ne 1) {
+        $ui.Count -ne 1 -or $ui[0].ModCount -ne 1 -or $ui[0].RuleCount -ne 2) {
         throw 'Duplicate callback rows inflated per-class mod counts'
     }
 } finally { $reportDoc.Dispose() }
