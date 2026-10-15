@@ -2,6 +2,8 @@
 
 This document records user-specified intent. It is **not** evidence that source patches have been implemented or that guessed triggers are safe. Check every trigger against pristine and live Lua files, and preserve source semantics. All changes are Resolver-generated overlays, never direct edits to installed mods.
 
+**2026-10-15 user revision:** Historical `SKIP` decisions below are **not a prohibition on looking**: re-audit their current original/live source if relevant and add an individually source-proven safe, narrowly scoped A/B/C extension to the existing rule where one exists. Do not infer approval to suspend all callbacks, disable features or replace native wake listeners. Preserve historic decisions as provenance and document exceptions with per-source proof, tests and gameplay validation. Current first such narrow exception is `AppearanceMenuMod`'s already-bound `gtaTravel` lookup; `nativeInteractions` remains reviewed but without a new safe C suspension.
+
 ## Global behavioral contract
 
 - Preserve the original listener and exact wake/keybind/event lifecycle, including pending work and replay needed at wake. Inactive downstream work should sleep; native listener registration may remain if necessary for wake.
