@@ -656,6 +656,10 @@ internal static class CallbackResolverService
 
     private static bool IsSharedProviderSubstitutionEligible(
         SharedProviderCallbackEvidence cb) =>
+        // Native-only admission for callbacks with zero measured exclusive
+        // Lua time must not authorize source-local shared-provider rewrites.
+        // They remain discoverable as evidence, but not generator candidates.
+        cb.ExclusiveMsPerSecond > 0 &&
         cb.SourceRecognizedOccurrences > 0 &&
         cb.SourceUnresolvedOccurrences == 0 &&
         !string.IsNullOrWhiteSpace(cb.SourceSha256) &&
