@@ -86,7 +86,7 @@ try {
 
     # Class-qualified native allocation evidence must be captured at the
     # marshalling entrypoint, never by dereferencing RTTI in the allocator.
-    $nativeProxy=Get-Content ".\src\scripting\NativeProxy.cpp" -Raw
+    $nativeProxy=Get-Content ".\src\reverse\NativeProxy.cpp" -Raw
     $nativeGcPatch=Get-Content (Join-Path $PSScriptRoot 'Patch-LuaJIT-GC-Source.ps1') -Raw
     foreach($token in @('NativeClassHash','ggc_trace_class_set',
                         'uint64_t oldSize, newSize, methodHash, classHash',
