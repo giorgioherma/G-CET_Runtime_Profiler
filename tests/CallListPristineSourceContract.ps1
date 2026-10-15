@@ -14,7 +14,7 @@ function FromZip($file,$suffix) {
   }finally{$zip.Dispose()}
 }
 
-function RunCase([string]$variant,[bool]$drift=$false) {
+function RunCase([string]$variant,[bool]$drift=$false,[double]$runtimeMs=7.1) {
   $root=Join-Path $env:RUNNER_TEMP ("calllist-one-pass-"+$variant)
   if(Test-Path $root){Remove-Item -Recurse -Force $root}
   $capture=Join-Path $root 'capture'
@@ -67,7 +67,7 @@ end)
       registrationId=716; owner='CallList-VehicleDetailsOverlay-CET'; infrastructure=$false
       kind='Observe'; target='PlayerPuppet::OnAction'
       source=@{file='init.lua';lineStart=7;lineEnd=21}
-      callsPerSecond=80; exclusiveMsPerSecond=7.1; globalWorkSharePct=7
+      callsPerSecond=80; exclusiveMsPerSecond=$runtimeMs; globalWorkSharePct=7
       familyWorkSharePct=100;avgExclusiveUs=89;maxExclusiveMs=2;spikeCount=0
     })
     optimizerEvidence=@()
@@ -110,6 +110,7 @@ end)
   }
   Write-Host "CallList pristine one-pass, source variation and idempotence: $variant PASS"
 }
+RunCase 'low-cost' $false 0.02
 RunCase 'original'
 RunCase 'quotes'
 RunCase 'legacy-v1'
