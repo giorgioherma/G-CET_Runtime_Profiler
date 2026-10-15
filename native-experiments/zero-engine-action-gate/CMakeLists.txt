@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 project(GCETNativeActionGate LANGUAGES CXX)
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_library(gcet_native_action_gate SHARED src/gcet_action_gate.cpp)
 target_include_directories(gcet_native_action_gate PUBLIC include)

@@ -6,8 +6,8 @@ The October 16 ~378.4s capture shows 0-Engine `onUpdate` ~21.32 Lua ms/s and `Pl
 
 ## Specific experiment
 
-- `gcet_native_action_gate` is a **portable C++17 DLL** with stable C ABI v1, no CET SDK, game memory reads, profiler hooks, injector or network calls.
-- 0-Engine can explicitly publish a **complete current list** of its own active exact action names and presence of active `*` subscribers. The native index makes an action-name allow/skip decision without allocations on its query path.
+- `gcet_native_action_gate` is a **portable C++20 DLL** with stable C ABI v1, no CET SDK, game memory reads, profiler hooks, injector or network calls.
+- 0-Engine can explicitly publish a **complete current list** of its own active exact action names and presence of active `*` subscribers. The native index makes an action-name allow/skip decision without allocations on its query path (C++20 transparent heterogeneous lookup is required; C++17 would allocate a temporary string).
 - Safe defaults: before a full snapshot, while rebuilding, after failed or malformed synchronization, with unknown name, or when a wildcard is active, decisions return `deliver`. Only a proven complete exact-index miss returns `skip` **for this ActionRouter subscriber**.
 - Lifecycle: on every `Subscribe`, `SetActive`, `Pause`, `Resume`, `Cancel` or unsubscribe, **disarm before mutation** and rebuild from the entire authoritative subscriber set after mutation. This prevents stale native state from creating false negatives. The experimental copy of `ActionRouter.lua` has these hooks; stock ActionRouter remains untouched.
 - `GCETNativeActionValues.lua` exposes `Load(explicitDllPath)`, `Disarm()`, `Refresh(router)`, `ShouldDeliver(actionName)` and `GetValues()` with opt-in `ffi.load` and safe absence fallback. It adds no frame callbacks or global Observes. The experimental ActionRouter exposes `AttachNativeValues(bridge)` and `GetInterestSnapshot()`.

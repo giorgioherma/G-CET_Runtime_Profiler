@@ -80,7 +80,7 @@ int gcet_gate_should_deliver(gcet_action_gate* g, const char* action) {
             g->fail_open.fetch_add(1, std::memory_order_relaxed);
             return 1;
         }
-        if (g->exact.find(action) != g->exact.end()) {
+        if (g->exact.find(std::string_view(action)) != g->exact.end()) {
             g->admitted.fetch_add(1, std::memory_order_relaxed);
             return 1;
         }
