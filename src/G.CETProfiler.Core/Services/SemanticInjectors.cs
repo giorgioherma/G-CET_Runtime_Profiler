@@ -18,7 +18,6 @@ internal static partial class SemanticInjectors
         // injector validates each missing stage and refuses changed behavior.
         // All other single-stage rules continue to honor their legacy marker.
         var versionFluidUpgrade = candidate.RuleId is
-            "cybertrials" or
             "tunnel-rescue-v3" or
             "ziggy-last-play-navigation-sentinel-v3" or
             "immersivefirstperson" or

@@ -1,8 +1,6 @@
 # Authoritative user dormancy specification — 62 mods
 
-This document records user-specified intent. **The current implemented Lua for each mod is authoritative; these 62 hypotheses do not override functioning wake logic, activation gates, event subscriptions or previously staged optimizations.** It is **not** evidence that source patches have been implemented or that guessed triggers are safe. Check every trigger against pristine and live Lua files, and preserve source semantics. All changes are Resolver-generated overlays, never direct edits to installed mods.
-
-**2026-10-15 source precedence:** current live mod source and its existing listeners/gates → existing source-proven Resolver stages → coherent original baseline → suggestions below. The user-supplied archives contain 27 of the 62 mod identities in the current live directory and coherent original packages for all 62; the other 35 are *original-only*, not proof of a current live build. Eight explicit SKIPs remain binding. See [extended dormancy source-reconciliation status](research/EXTENDED-DORMANCY-2026-10-15.md). No automatic 0-Engine rewrite is allowed.
+This document records user-specified intent. It is **not** evidence that source patches have been implemented or that guessed triggers are safe. Check every trigger against pristine and live Lua files, and preserve source semantics. All changes are Resolver-generated overlays, never direct edits to installed mods.
 
 ## Global behavioral contract
 

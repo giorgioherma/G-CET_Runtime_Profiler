@@ -276,18 +276,13 @@
         ],
         "alreadySatisfiedMarker": "G-CET semantic:cybertrials",
         "expectedMarkerFileCount": 3,
-        "sourceCompletionAuthoritative": true,
         "satisfiedAll": [
+          "cybertrials.world_far",
+          "cybertrials.world_near",
+          "cybertrials.system_state",
+          "cybertrials.realtime",
           "mappin:GetVariant() ~= gamedataMappinVariant.Zzz18_RacingVariant",
-          "if #mappinIDs ==",
-          "this.iconWidget:SetAtlasResource(__gcetRaceIconAtlasPath)",
-          "this.iconWidget:SetTexturePart(__gcetRaceIconAtlasPart)"
-        ],
-        "satisfiedAnyGroups": [
-          [
-            "__gcetCyberTrialsWorldElapsed",
-            "cybertrials.world_far"
-          ]
+          "if #mappinIDs == #tracks and #tracks > 0 then return end"
         ]
       },
       "behavior": {
@@ -861,31 +856,12 @@
           "interactionUI.update"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:illegal-mechanic",
-        "expectedMarkerFileCount": 2,
+        "expectedMarkerFileCount": 1,
         "satisfiedAll": [
           "interactionUpdateInterval = 0.20",
           "if not state.pulseActive and not state.hubVisible and currentTime < state.nextInteractionUpdateAt then",
           "state.nextInteractionUpdateAt = currentTime + cfg.interactionUpdateInterval",
-          "updatePulseVisual(system, currentTime)",
-          "entry.__gcetAnchorPosition = Vector4.new(entry.x, entry.y, entry.z, 1.0)",
-          "return entry.__gcetAnchorPosition"
-        ],
-        "completeStages": [
-          {
-            "function": "HackSignalInteraction.Update",
-            "includes": [
-              "if not state.pulseActive and not state.hubVisible and currentTime < state.nextInteractionUpdateAt then",
-              "state.nextInteractionUpdateAt = currentTime + cfg.interactionUpdateInterval",
-              "updatePulseVisual(system, currentTime)"
-            ]
-          },
-          {
-            "function": "anchorPosition",
-            "includes": [
-              "entry.__gcetAnchorPosition = Vector4.new(entry.x, entry.y, entry.z, 1.0)",
-              "return entry.__gcetAnchorPosition"
-            ]
-          }
+          "updatePulseVisual(system, currentTime)"
         ]
       },
       "behavior": {

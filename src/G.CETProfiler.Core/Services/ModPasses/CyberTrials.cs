@@ -15,14 +15,7 @@ internal static partial class SemanticInjectors
             "world.update()",
             "raceLogic.raceInProgress");
 
-        var initText = init.Text;
-        // Retain existing frame/scheduler owners when upgrading a live stack.
-        var existingInitLane =
-            initText.Contains("__gcetCyberTrialsWorldElapsed", StringComparison.Ordinal) ||
-            initText.Contains("cybertrials.world_far", StringComparison.Ordinal);
-        if (!existingInitLane)
-        {
-        initText = ReplaceSemanticObserverBlockOnce(
+        var initText = ReplaceSemanticObserverBlockOnce(
             init.Text,
             "ObserveAfter",
             "BaseMappinBaseController",
@@ -97,13 +90,6 @@ internal static partial class SemanticInjectors
             "CyberTrials gameplay world cadence");
 
         context.Write(init, initText);
-        }
-        else if (!initText.Contains("raceLogic.raceInProgress", StringComparison.Ordinal) ||
-                 !initText.Contains("world.update()", StringComparison.Ordinal))
-        {
-            throw new InvalidOperationException(
-                "CyberTrials existing frame/scheduler lane is incomplete.");
-        }
 
         var hubsFile = context.FindFile(
             "modules/utils/interactionHubs.lua",
@@ -114,14 +100,7 @@ internal static partial class SemanticInjectors
             "RegisterMappin",
             "UnregisterMappin");
 
-        var hubsText = hubsFile.Text;
-        var existingHubs = Regex.IsMatch(
-            hubsText,
-            @"if\s+#mappinIDs\s*==\s*#(?<tracks>[A-Za-z_]\w*)\s+and\s+#\k<tracks>\s*>\s*0\s+then\s+return\s+end",
-            RegexOptions.CultureInvariant);
-        if (!existingHubs)
-        {
-        hubsText = RegexReplaceOnce(
+        var hubsText = RegexReplaceOnce(
             hubsFile.Text,
             @"(?m)^(?<indent>[ \t]*)(?<opening>function\s+interactionHubs\.setupMappins\s*\(\s*(?<tracks>[A-Za-z_]\w*)\s*\)\s*(?:--[^\r\n]*)?)$",
             "${indent}${opening}\n" +
@@ -142,13 +121,6 @@ internal static partial class SemanticInjectors
             "${indent}    if #${tracks} == 0 then return end",
             "CyberTrials idempotent state-driven mappin registry");
         context.Write(hubsFile, hubsText);
-        }
-        else if (!hubsText.Contains("UnregisterMappin", StringComparison.Ordinal) ||
-                 !hubsText.Contains("raceLogic.raceInProgress", StringComparison.Ordinal))
-        {
-            throw new InvalidOperationException(
-                "CyberTrials hub-mappin lifecycle is incomplete.");
-        }
 
         var world = context.FindFile(
             "modules/external/world.lua",
@@ -166,12 +138,7 @@ internal static partial class SemanticInjectors
             "        this.iconWidget:SetTintColor(HDRColor.new({ Red = 1, Green = 219 / 255, Blue = 78 / 255 }))\n" +
             "    end)\n";
 
-        var worldText = world.Text;
-        if (!worldText.Contains(
-                "mappin:GetVariant() ~= gamedataMappinVariant.Zzz18_RacingVariant",
-                StringComparison.Ordinal))
-        {
-        worldText = ReplaceSemanticObserverBlockOnce(
+        var worldText = ReplaceSemanticObserverBlockOnce(
             world.Text,
             "ObserveAfter",
             "BaseMappinBaseController",
@@ -184,68 +151,10 @@ internal static partial class SemanticInjectors
             "world.interactions",
             "Vector4.Distance",
             "iconWidget");
-        }
-        else if (!worldText.Contains(
-                     "TweakDBInterface.GetUIIconRecord(\"ChoiceIcon.VehicleIcon\")",
-                     StringComparison.Ordinal) ||
-                 worldText.Contains("Vector4.Distance(pos, interaction.pos)",
-                     StringComparison.Ordinal))
-        {
-            throw new InvalidOperationException(
-                "CyberTrials existing owned-mappin observer has drifted.");
-        }
+        context.Write(world, worldText);
 
-        worldText = CacheCyberTrialsRaceIcon(worldText);
-        if (!string.Equals(worldText, world.Text, StringComparison.Ordinal))
-            context.Write(world, worldText);
-
-        return context.Changes.Count == 0
-            ? SemanticInjectionResult.Skip("CyberTrials semantic lanes and race icon cache are complete.")
-            : SemanticInjectionResult.Success(
-                "Preserved current race/editor/near/far scheduler lanes and hub activation, " +
-                "retained the owned-mappin prefilter and cached immutable race icon metadata.");
-    }
-
-    private static string CacheCyberTrialsRaceIcon(string source)
-    {
-        // Cache immutable atlas scalars, never a live mappin handle or hub list.
-        const string declaration =
-            "function world.init()\n" +
-            "    local __gcetRaceIconAtlasPath = nil\n" +
-            "    local __gcetRaceIconAtlasPart = nil\n";
-        if (source.Contains("__gcetRaceIconAtlasPath", StringComparison.Ordinal))
-        {
-            if (!source.Contains(declaration, StringComparison.Ordinal) ||
-                !source.Contains("this.iconWidget:SetAtlasResource(__gcetRaceIconAtlasPath)",
-                    StringComparison.Ordinal) ||
-                !source.Contains("this.iconWidget:SetTexturePart(__gcetRaceIconAtlasPart)",
-                    StringComparison.Ordinal))
-                throw new InvalidOperationException(
-                    "CyberTrials icon metadata cache is incomplete or changed.");
-            return source;
-        }
-
-        source = ReplaceOnce(
-            source,
-            "function world.init()\n",
-            declaration,
-            "CyberTrials owned-mappin icon cache lifetime");
-
-        const string original =
-            "        local record = TweakDBInterface.GetUIIconRecord(\"ChoiceIcon.VehicleIcon\")\n" +
-            "        this.iconWidget:SetAtlasResource(record:AtlasResourcePath())\n" +
-            "        this.iconWidget:SetTexturePart(record:AtlasPartName())\n";
-        const string cached =
-            "        if __gcetRaceIconAtlasPath == nil then\n" +
-            "            local record = TweakDBInterface.GetUIIconRecord(\"ChoiceIcon.VehicleIcon\")\n" +
-            "            __gcetRaceIconAtlasPath = record:AtlasResourcePath()\n" +
-            "            __gcetRaceIconAtlasPart = record:AtlasPartName()\n" +
-            "        end\n" +
-            "        this.iconWidget:SetAtlasResource(__gcetRaceIconAtlasPath)\n" +
-            "        this.iconWidget:SetTexturePart(__gcetRaceIconAtlasPart)\n";
-        return ReplaceOnce(
-            source, original, cached,
-            "CyberTrials static icon atlas/part cache");
+        return SemanticInjectionResult.Success(
+            "Removed global mappin-driven hub refresh, made hub mappins state-driven and idempotent, gated world scans to 10 Hz outside realtime placement/race state, and added an owned-variant mappin prefilter.");
     }
 
 }

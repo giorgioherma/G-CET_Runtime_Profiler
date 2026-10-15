@@ -282,11 +282,6 @@ try {
         $worldText -match 'Vector4\.Distance\(pos,\s*interaction\.pos\)') {
         throw 'CyberTrials world observer was not structurally replaced after PLAYER staging.'
     }
-    if ($worldText -notmatch '__gcetRaceIconAtlasPath\s*=\s*record:AtlasResourcePath\(\)' -or
-        $worldText -notmatch 'this\.iconWidget:SetAtlasResource\(__gcetRaceIconAtlasPath\)' -or
-        $worldText -notmatch 'this\.iconWidget:SetTexturePart\(__gcetRaceIconAtlasPart\)') {
-        throw 'CyberTrials did not compose the race-icon metadata cache in the pristine-source pass.'
-    }
 
     if ($hubsText -notmatch 'local function clearMappins\(\)' -or
         $hubsText -notmatch '#tracksList' -or

@@ -70,13 +70,7 @@ internal static class SemanticPassGeneratorService
                 // their authoritative injectors, so count changed files rather
                 // than demanding that already-complete files be emitted again.
                 // Single-stage rules retain their exact expected-file count.
-                // CyberTrials' one authoritative rule owns a three-file pristine
-                // transform, but existing PASS4 builds need only the missing
-                // world.lua cache stage. All files are individually proof-checked.
-                var partialSourceUpgrade = candidate.StageComposed ||
-                    string.Equals(candidate.RuleId, "cybertrials",
-                        StringComparison.Ordinal);
-                var validChangedFileCount = partialSourceUpgrade
+                var validChangedFileCount = candidate.StageComposed
                     ? context.Changes.Count > 0 &&
                       context.Changes.Count <= candidate.ExpectedMarkerFileCount
                     : context.Changes.Count == candidate.ExpectedMarkerFileCount;
@@ -84,7 +78,7 @@ internal static class SemanticPassGeneratorService
                 {
                     throw new InvalidOperationException(
                         $"Semantic injector changed {context.Changes.Count} file(s), but rule " +
-                        $"expects {(partialSourceUpgrade ? "between 1 and " : "exactly ")}" +
+                        $"expects {(candidate.StageComposed ? "between 1 and " : "exactly ")}" +
                         $"{candidate.ExpectedMarkerFileCount} changed file(s).");
                 }
 
