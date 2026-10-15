@@ -39,12 +39,12 @@
 | 21 | DynamicOutfitsJudy | `dynamic-outfits-judy` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
 | 22 | FovSentinel | `fov-sentinel` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
 | 23 | FenixMantisBlade | `fenix-mantis-blade` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
-| 24 | EasyTrainer | `easytrainer, easytrainer-background-dormancy` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
+| 24 | EasyTrainer | `easytrainer, easytrainer-background-dormancy` | EXISTING — partial | EXISTING — partial | EXISTING — partial | Existing EasyTrainer background toggle, timer/native work gates and finite OnAction router; verify independent wake/input and active route before any extra subscriber sleep |
 | 25 | TeleportGatewaySystem | `teleport-gateway-system` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
-| 26 | DiscardAmmoOnReload | `discard-ammo-on-reload` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
+| 26 | DiscardAmmoOnReload | `discard-ammo-on-reload` | UNREVIEWED | UNREVIEWED | EXISTING — partial | Eight source-proven weapon-swap/reset actions already routed to shared observer; lifecycle pause only if reload state and wake are independently proven |
 | 27 | advanced_settings | `advanced-settings` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
 | 28 | Auto Ammo Crafting (I need more bullets) | `auto-ammo-crafting` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
-| 29 | DriveBus | `drivebus` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
+| 29 | DriveBus | `drivebus` | EXISTING — partial | UNREVIEWED | EXISTING — partial | Existing timer guard and exact OnAction consolidation; dynamic choice/mount exception behavior preserved, subscriber dormancy requires bus state wake proof |
 | 30 | QuestTrackingToggle | `quest-tracking-toggle` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
 | 31 | sitAnywhere | `sitanywhere` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
 | 32 | repeatable_increased_criminal_activity | `repeatable-increased-criminal-activity` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
@@ -55,18 +55,18 @@
 | 37 | nativeInteractions | `nativeinteractions` | SKIP — user | SKIP — user | SKIP — user | Original explicit user SKIP; preserve previous compatible patches |
 | 38 | Minimap Widgets | `minimap-widgets, minimap-stealth-widget-locality` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
 | 39 | AutoLoot | `autoloot, autoloot-world-pin-and-early-distance` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
-| 40 | BetterLootMarkers | `better-loot-markers` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
+| 40 | BetterLootMarkers | `better-loot-markers` | EXISTING — partial | UNREVIEWED | UNREVIEWED | Existing ImmersiveMode.Tick bypass while disabled; no claim of native observer elimination |
 | 41 | GiveCraftMat | `give-craft-mat` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
 | 42 | Simple Notepad - CET | `simple-notepad-cet` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
 | 43 | DedraPalmjetQuickslot | `dedra-palmjet-quickslot` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
-| 44 | BackStepDuo | `backstep-duo` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
+| 44 | BackStepDuo | `backstep-duo` | UNREVIEWED | UNREVIEWED | EXISTING — partial | Six exact movement actions already consolidated; verify dash-disable transition and independent wake before pausing |
 | 45 | NightCityAlliesMissions | `nightcity-allies-missions` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
 | 46 | GoodFeelings | `good-feelings, good-feelings-hard-draw` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
-| 47 | AirBackFlip | `air-backflip` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
-| 48 | AutoDropWeaponOnPickupEquip | `auto-drop-weapon-dynamic-routing` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
+| 47 | AirBackFlip | `air-backflip` | UNREVIEWED | UNREVIEWED | EXISTING — partial | Finite six-action routing already implemented; airborne/button transitions must remain available, pause needs separate author wake proof |
+| 48 | AutoDropWeaponOnPickupEquip | `auto-drop-weapon-dynamic-routing` | EXISTING — partial | UNREVIEWED | EXISTING — partial | Exact subscriptions plus temporary wildcard for capture/debug already implemented; retain newly captured action wake and debug behavior |
 | 49 | Drone Companions (Revamp) | `drone-companions-revamp` | SKIP — user | SKIP — user | SKIP — user | Original explicit user SKIP; preserve previous compatible patches |
 | 50 | GhostVoidSystem | `ghost-void-system` | SKIP — user | SKIP — user | SKIP — user | Original explicit user SKIP; preserve previous compatible patches |
-| 51 | Straight Edged Controls | `straight-edged-controls-input-dormancy` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
+| 51 | Straight Edged Controls | `straight-edged-controls-input-dormancy` | EXISTING — partial | EXISTING — partial | UNREVIEWED | Source rule gates idle UI/settings/native work to redscript sequence transitions; native frame listener lifecycle separately unreviewed |
 | 52 | ImmersiveHeadInertia | `immersive-head-inertia` | SKIP — user | SKIP — user | SKIP — user | Original explicit user SKIP; preserve previous compatible patches |
 | 53 | JoytoysOfNightCity | `joytoys-of-night-city-bridge-active-split-idle-facts-v2` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
 | 54 | tunnel_rescue | `tunnel-rescue-v3` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
@@ -77,7 +77,7 @@
 | 59 | SpecterM11RecoveryDev | `specter-recovery-prerequisite-reads` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
 | 60 | NPC Outfit Manager | `npc-outfit-manager-idle-state` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
 | 61 | yaibaPenthouse | `yaiba-penthouse-distant-bathtub` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
-| 62 | CallList-VehicleDetailsOverlay-CET | `calllist-action-lazy-display-query` | UNREVIEWED | UNREVIEWED | UNREVIEWED | Compare source and existing pass; no absence claim |
+| 62 | CallList-VehicleDetailsOverlay-CET | `calllist-action-lazy-display-query` | UNREVIEWED | EXISTING — partial | UNREVIEWED | Localized moveup conversion is deferred to JustPressed; native observer remains, do not guess finite action names |
 
 ## First implementation — immersive_third_person (mod #35)
 
@@ -87,6 +87,17 @@
 - The source matcher requires each of the three reviewed state writers exactly once and verifies the v2 route, handle and transition postconditions. A new author-side state writer is drift requiring re-review, not silently ignored. Supports pristine V1+V2 one pass and older V1 → V2 without discarding prior actions/routing.
 - [Windows source-generation contract](../../tests/ImmersiveThirdPersonActionRoutingContract.ps1) and [Lua test against unpacked actual pinned ActionRouter](../../tests/ActionRouterDormancyLuaContract.lua) cover source state, pristine/v1 composition, idempotence, SetActive, other-mod isolation and no needless type decoding. CI [#38718963646](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38718963646) passed all four jobs. In-game camera, session restore, active movement and capture A/B are still outstanding.
 - Related existing A/B work: [`ImmersiveThirdPerson.cs`](../../src/G.CETProfiler.Core/Services/ModPasses/ImmersiveThirdPerson.cs) has supervisor, maintenance and pending-state gates. These need independent completeness review before marking stages A or B fully satisfied.
+
+## Source-independent semantic admission — verified initial rule
+
+- `generation.sourceIndependentAdmission` is an **explicit opt-in** for a reviewed production semantic entry. It uses a unique installed owner identity plus existing current-source graph, anchors, stage-completion verifier, and injector postconditions. It never fabricates a callback row or native marshalling data.
+- The first opt-in is **`immersive-third-person-action-routing`** only. With no callback entries in `CET_Resolver_Input.json`, its semantic rule appears in the separate `semanticSourceOnlyCandidates` output, then generates the missing v1+v2 stage. A completed source no longer appears as a missing candidate. [CI #38720069775](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38720069775) succeeded in all four jobs, including explicit capture-absent, initial-pass, legacy upgrade, already-complete and drift contracts.
+- The generated manifest reports `admissionEvidence = SOURCE_PROVEN_NO_CAPTURE` and `runtimeMsPerSecond = null`. In-game savings remain **NOT_MEASURED**. The native shared 0-Engine observer remains active for other subscribers.
+- Other rules may opt in only after their individual identity, source, wake, partial-completion and fallback invariants are audited; we do not bulk-enable the entire catalog speculatively.
+
+## Existing source-rule inspection — next native-dispatch candidates
+
+The rows marked `EXISTING — partial` above represent source transformations **already implemented in the production library**, *not* newly generated C-stage dormancy work. Inspected the current mod-owned injectors for EasyTrainer, DriveBus, DiscardAmmoOnReload, AirBackFlip, BackStepDuo, AutoDropWeaponOnPickupEquip, BetterLootMarkers, Straight Edged Controls and CallList. Exact action consolidation and downstream work reduction often already exist; don't add a redundant pass. Whether native observer/subscriber shutdown is safe still requires each mod's actual author wake path. These rules remain incomplete for this extended A/B/C review.
 
 ## Next batch selection
 
