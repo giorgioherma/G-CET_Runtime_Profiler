@@ -57,6 +57,8 @@ public:
     bool Update(float x, float y, float z);
     // -1 unknown/unavailable, 0 reliably far, 1 near.
     int State(int32_t id) const;
+    // Transient edges for the latest Update only, including empty on a
+    // stationary skip. Persistent consumers use the independent journal.
     std::span<const Transition> Changes() const { return changes_; }
     uint32_t Generation() const { return generation_; }
     size_t Count() const { return entries_.size(); }
