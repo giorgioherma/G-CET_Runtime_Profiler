@@ -1,5 +1,9 @@
 # LATEST WORK — current active development task
 
+## 2026-10-16 — Development-stack results versus rapid follow-on stacks (USER CLARIFICATION)
+
+**Results expectation clarified:** The developer's primary 1000+-mod stack is the unusually deeply profiled and manually optimized research/development stack. Other stacks will be processed much more quickly using the accumulated generic and semantic library, without the same exhaustive manual investigation of each mod. Advertised before/after results from the development stack must **not** be presented as the typical outcome; variation arises from both mod composition and **unequal optimization depth**. Unknown/new releases may remain unoptimized where no safe generic/source-proven rule applies. This does not change source-safety/fallback gates. See [public results policy](product/UNIFIED-TWO-PAGE-WORKFLOW.md).
+
 ## 2026-10-16 — Release claims: personal measurements and non-universal semantic coverage (DECISION, NOT IMPLEMENTED)
 
 **User release position:** Publish demonstrable before/after performance **from their own tested mod stack** and explicitly warn results differ across installations. The included **semantic library** contains source-proven optimization knowledge; newly released, changed or unrecognized mods may be left untouched rather than risk unsafe changes. Generic, source-proven optimizations may still apply to previously unseen mods. Do not claim universal performance improvements or imply all new mods are covered. This is disclosure/analytics policy, not an added UI step. See [unified workflow](product/UNIFIED-TWO-PAGE-WORKFLOW.md).
