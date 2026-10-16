@@ -26,3 +26,9 @@ no source wake may be retired on its authority. Validate compilation, first
 snapshot, owner removal, load/fast travel, fallback and G-RED scheduler behavior
 before admitting it to generated passes. It does not modify the G-REDruntime
 repository or its production framework.
+
+## R4 source-matched native cache backend (not production)
+
+`LegacyR4NativeCacheBridge.lua` wraps the **existing experimentally optimized R4 `GCETStaticAnchors` module** and preserves `Register`, `Invalidate`, `Update`, `ResetSession`, `GetAnchor`, `QueryNearby`, `GetInfo` and owner handles. One-time author-provided anchor declarations become `GCETStaticAddAnchor` + `GCETStaticArm` calls; subsequent update notifications use the single native subscription. Failed/native-unavailable states fall back to the previously source-matched R4 Lua location worker. No extra author onUpdate hook is registered. An owner geometry reload allocates new IDs and removes the old anchors, preserving tombstone and session behavior. Test with `lua5.4 native-static-locations/tests/LegacyR4NativeCacheBridgeTests.lua`.
+
+This wrapper is **not** an independent source transformer, and it must not be blindly deployed on a pristine mod folder. It only targets the earlier R4 source fixture that already has source-specific author callbacks and old wake removal, and its installed source fingerprint must match. The game RTTI method names and runtime behavior require explicit testing. Even with a valid native transition, an author mod's independent quest/active work remains untouched. Avoid using `QueryNearby` from hot callbacks; it intentionally performs on-demand enumeration.
