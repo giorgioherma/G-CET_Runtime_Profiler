@@ -432,8 +432,23 @@ internal static partial class SemanticInjectors
         var after = ReplaceOnce(source, original.TrimEnd('\n'), updated,
             "Updated upstream ITP action observer");
         if (!IsImmersiveThirdPersonActionRoutingCompleteV3(after))
+        {
+            var scoped = SemanticScopedStages.TryFunction(after, "observePlayerActions", out var candidate);
+            var body = scoped ? candidate.Text : "";
             throw new InvalidOperationException(
-                "Updated third-person action routing postcondition failed.");
+                "Updated third-person action routing postcondition failed: " +
+                "scope=" + scoped +
+                " v3=" + after.Contains("__gcetItppRoutedOnActionV3", StringComparison.Ordinal) +
+                " always=" + after.Contains("__gcetItppAlwaysListeningV3", StringComparison.Ordinal) +
+                " registered=" + body.Contains("zeroEngineMod.SubscribeAction", StringComparison.Ordinal) +
+                " global=" + body.Contains("engine.SubscribeAction", StringComparison.Ordinal) +
+                " type=" + body.Contains("actions = actions, decodeType = false", StringComparison.Ordinal) +
+                " fallback=" + body.Contains("Observe('PlayerPuppet', 'OnAction'", StringComparison.Ordinal) +
+                " pcall=" + body.Contains("pcall(handlePlayerAction, action)", StringComparison.Ordinal) +
+                " branch=" + body.Contains("if not routed and Observe then", StringComparison.Ordinal) +
+                " paused=" + body.Contains("SetActive", StringComparison.Ordinal) +
+                " wildcard=" + body.Contains("actions = \"*\"", StringComparison.Ordinal));
+        }
         context.Write(file, after);
         return SemanticInjectionResult.Success(
             "Current ITP 18-name action observer consolidated into 0-Engine, " +
