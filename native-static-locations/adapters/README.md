@@ -1,4 +1,4 @@
-# Experimental CET native-static-location consumer
+# G-LookupCache — experimental CET, G-RED and R4 adapters
 
 This module is an **opt-in adapter** for the *existing* shared CET host (e.g. a 0-Engine runtime dispatcher), not another CET mod and not another `registerForEvent("onUpdate")` subscription.
 
