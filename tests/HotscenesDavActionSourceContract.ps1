@@ -230,4 +230,64 @@ foreach($p in $known){
    throw "Resolver changed original source: $p"
  }
 }
+
+# Regression: a live mod with 2/3 B-stage markers and CRLF owner source.
+# Previously it was reported as INCOMPLETE_AMBIGUOUS and silently omitted.
+$lf=[string][char]10
+$crlf=([string][char]13)+([string][char]10)
+$stagedRoot=Join-Path $root 'staged-mods'
+$stagedDav=Join-Path $stagedRoot 'DriveAerialVehicle'
+$stagedCapture=Join-Path $root 'staged-capture'
+New-Item -ItemType Directory -Force $stagedDav,(Join-Path $stagedDav 'Modules'),$stagedCapture | Out-Null
+$previousInit=@'
+-- G-CET semantic:driveaerialvehicle
+local DAV={}
+local Def={Situation={Idle=0,Normal=1}}
+registerForEvent('onUpdate',function(delta)
+  Cron.Update(delta)
+  if Def.Situation.Idle~=nil then
+    local __gcetEvent = DAV.core_obj.event_obj
+    local __gcetSituation = __gcetEvent and __gcetEvent.current_situation or Def.Situation.Idle
+    if __gcetSituation ~= Def.Situation.Idle and __gcetSituation ~= Def.Situation.Normal then
+      DAV.core_obj.av_obj.engine_obj:Update(delta)
+    end
+  end
+end)
+'@
+$previousCore=$core.Replace('function Core:Init()',('function Core:Init()'+$lf+'    local __gcetIdleEventTick = 0'))
+$previousCore='-- G-CET semantic:driveaerialvehicle'+$lf+$previousCore
+Put (Join-Path $stagedDav 'init.lua') $previousInit
+Put (Join-Path $stagedDav 'Modules\core.lua') ($previousCore.Replace($lf,$crlf))
+Put (Join-Path $stagedDav 'Modules\event.lua') ($event.Replace($lf,$crlf))
+Copy-Item -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Destination (Join-Path $stagedCapture 'CET_Resolver_Input.json')
+$stagedHash=@{}
+foreach($path in @('init.lua','Modules\core.lua','Modules\event.lua')){
+  $full=Join-Path $stagedDav $path
+  $stagedHash[$path]=(Get-FileHash $full -Algorithm SHA256).Hash
+}
+$stagedResult=& $exe --capture $stagedCapture --mods $stagedRoot --generate-pass --json | ConvertFrom-Json
+if(!$stagedResult.ok -or !$stagedResult.pass){throw 'DAV staged source pass generation failed'}
+$stagedManifest=Get-Content $stagedResult.pass.ManifestPath -Raw | ConvertFrom-Json
+$stagedRows=@($stagedManifest.transforms|Where-Object {$_.type -eq 'SEMANTIC_RULE' -and $_.RuleId -eq 'driveaerialvehicle'})
+if($stagedRows.Count -ne 1){
+ $skip=@($stagedManifest.skipped|Where-Object {$_.RuleId -eq 'driveaerialvehicle'})|ConvertTo-Json -Compress -Depth 8
+ throw "DAV staged B-stage did not upgrade to C-stage (skipped=$skip)"
+}
+$sc=ZipText $stagedResult.pass.ZipPath 'DriveAerialVehicle/Modules/core.lua'
+$se=ZipText $stagedResult.pass.ZipPath 'DriveAerialVehicle/Modules/event.lua'
+if(!$sc.Contains('__gcetDAVActionGateV2') -or !$sc.Contains('phase = "before"') -or
+   !$sc.Contains('local __gcetIdleEventTick = 0') -or
+   !$se.Contains('DAV.core_obj:SyncActionListener()')){
+ throw 'DAV staged output lacks native action stage, B-stage or wake'
+}
+if(!$sc.Contains($crlf) -or !$se.Contains($crlf)){
+ throw 'DAV stage upgrade lost original CRLF EOL convention'
+}
+foreach($path in $stagedHash.Keys){
+ if((Get-FileHash (Join-Path $stagedDav $path) -Algorithm SHA256).Hash -ne $stagedHash[$path]){
+  throw "DAV staged source changed on disk: $path"
+ }
+}
+Write-Host 'DAV 2/3 marked live-shaped CRLF -> complete native action upgrade passed.'
+
 Write-Host 'Experimental two-mod one-pass source contract passed; live gameplay/source bytes remain independent validation.'
