@@ -45,3 +45,19 @@ jobs:
           assert 'if afterActive == 0 then return end' in lua
           print('Isolated 1.2.7 source contract PASSED')
           PY
+
+  managed-source-and-semantic-contract:
+    name: Resolver compilation and semantic catalog
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Compile the exact isolated source
+        run: dotnet build G-CET-Runtime-Profiler.sln -c Release
+      - name: Verify mod source ownership and 68 enabled semantic rules
+        shell: pwsh
+        run: |
+          ./tests/SemanticModPassOwnershipContract.ps1
+          ./tests/SemanticLibraryContract.ps1
