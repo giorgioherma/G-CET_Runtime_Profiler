@@ -2926,15 +2926,18 @@
         "satisfiedAnyGroups": [
           [
             "__gcetItppSupervisorElapsed",
-            "itpp.supervisor_fast"
+            "itpp.supervisor_fast",
+            "__gcetItppUpdatedPendingGatesV3"
           ],
           [
             "__gcetItppMaintenanceElapsed",
-            "itpp.maintenance"
+            "itpp.maintenance",
+            "__gcetItppUpdatedPendingGatesV3"
           ],
           [
             "__gcetItppHasStandbyWork",
-            "itpp.realtime"
+            "itpp.realtime",
+            "__gcetItppUpdatedPendingGatesV3"
           ]
         ]
       },
@@ -2944,7 +2947,9 @@
           "cameraRealtime",
           "pendingStateRealtime",
           "supervisor",
-          "maintenance"
+          "maintenance",
+          "updatedSourcePendingStateEarlyGuardOnly",
+          "APIAndMovementPreservedPerFrame"
         ],
         "lanes": [
           {
@@ -2967,7 +2972,8 @@
             "cadence": "FIXED_SECONDS",
             "seconds": 0.25
           }
-        ]
+        ],
+        "note": "Original event-loop adaptive 10 Hz / 2 Hz supervisor and 4 Hz maintenance is retained only for proven older source. The new upstream API/move360/game-camera architecture must keep original frame cadence; source-proven V3 only skips six pending-state handlers when their own first operation returns on empty state. Never throttle pluginHeartbeat, native-toggle, API, camera, gameCamera, move360 or maintenance on the updated source."
       },
       "generation": {
         "enabled": true,
@@ -5325,6 +5331,16 @@
           "zeroEngineMod.SubscribeAction",
           "decodeType = false",
           "__gcetItppSyncActionDormancy"
+        ],
+        "satisfiedAnyGroups": [
+          [
+            "__gcetItppRoutedOnActionV1",
+            "__gcetItppRoutedOnActionV3"
+          ],
+          [
+            "__gcetItppActionDormancyV2",
+            "__gcetItppAlwaysListeningV3"
+          ]
         ]
       },
       "behavior": {
@@ -5334,9 +5350,11 @@
           "finiteActionInterest",
           "retainFallback",
           "preserveInputOrder",
-          "sourceProvenPristineOnePass"
+          "sourceProvenPristineOnePass",
+          "updatedUpstreamDisabledCameraAndMove360StillActive",
+          "versionSpecificNoSubscriberPause"
         ],
-        "note": "Route finite camera and movement action interest to 0-Engine; no wildcard, preserve handler and native fallback. Do not assume dynamic DriveAerialVehicle input lists are finite."
+        "note": "Older source retains v1 exact action routing and V2 subscriber activity synchronized to three proven TPP state writes. Updated upstream new handledActions table remains 18 exact actions, but gameCameraMoveSeen/move360Capture execute while TPP is disabled; V3 exact-action shared routing must ALWAYS remain active and use original pcall/fallback, never SetActive(false) based only on state.enabled."
       },
       "generation": {
         "enabled": true,
