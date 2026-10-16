@@ -195,6 +195,11 @@ bool StaticIndex::Update(float x, float y, float z) {
     // arm/session/source change, no distance can have crossed a boundary.
     if (positioned_ && !dirty_ && x == x_ && y == y_ && z == z_) {
         ++stationarySkips_;
+        // Changes() is a per-update edge list, not persistent anchor state.
+        // Keeping the prior edge here made passive telemetry replay NEAR on
+        // every stationary native tick until the next actual movement.
+        // The independent transition journal retains its own consumer cursors.
+        changes_.clear();
         return true;
     }
     ++playerUpdates_;
