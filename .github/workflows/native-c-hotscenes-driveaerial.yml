@@ -1,0 +1,47 @@
+name: Experimental Native C - Hotscenes and DriveAerialVehicle
+on:
+  push:
+    branches:
+      - dev/native-c-hotscenes-driveaerial-ci1336
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  action-phase-contract:
+    name: Phase-preserving shared action dispatch
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lua test runtime
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lua5.4
+      - name: Verify pinned router contract and new after-phase API
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/gcet-router
+          base64 -d resolver-runtime/0-Engine/modules/ActionRouter.lua.b64 > /tmp/gcet-router/ActionRouter.lua
+          luac5.4 -p /tmp/gcet-router/ActionRouter.lua
+          lua5.4 tests/ActionRouterDormancyLuaContract.lua /tmp/gcet-router
+          lua5.4 tests/ActionRouterAfterPhaseLuaContract.lua /tmp/gcet-router
+  source-and-version-contract:
+    name: Isolated CI baseline and source invariants
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enforce unchanged base package/version and no profiler native edits
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          assert Path('VERSION.txt').read_text().strip()=='1.2.7'
+          assert json.loads(Path('MANIFEST.json').read_text())['packageVersion']=='1.2.7'
+          source=Path('resolver-runtime/0-Engine/modules/ActionRouter.lua.b64').read_text()
+          import base64
+          lua=base64.b64decode(source).decode()
+          assert 'ActionRouter.DispatchAfter' in lua
+          assert 'phase == "after" and not afterHookInstalled' in lua
+          assert 'if beforeActive == 0 then return end' in lua
+          assert 'if afterActive == 0 then return end' in lua
+          print('Isolated 1.2.7 source contract PASSED')
+          PY
