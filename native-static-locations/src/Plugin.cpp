@@ -24,6 +24,9 @@ namespace {
     uint32_t g_reportedReasons=0;
     bool g_reportedReady=false;
     uint32_t g_logBudget=32;
+    // Explicit opt-in file ONLY in developer smoke overlays. No production
+    // manifest can silently enable the self-test or author wake replacement.
+    bool g_autoProbe=false;
 
     void Log(const char* message) {
         if(g_logger && g_logger->Info && g_logBudget) {
@@ -80,11 +83,30 @@ namespace {
             g_lastPlayerCode=code;
             g_coordinator.Tick(code==0,x,y,z);
             if(code==0) {
+                if(g_autoProbe && g_probe.Id()==0) {
+                    if(g_probe.Create(40.f)>0)
+                        Log("G-CET Static: diagnostic anchor ARMED at player location (40m, no mod callbacks)");
+                }
+                // Only when a probe is explicitly armed; no work in the
+                // default uninstrumented DLL beyond the coordinator.
+                if(g_probe.Id()>0) {
+                    const auto changed=g_index.Changes();
+                    for(const auto& transition:changed) {
+                        if(transition.id==g_probe.Id())
+                            Log(transition.inside ?
+                                "G-CET Static: diagnostic anchor NEAR" :
+                                "G-CET Static: diagnostic anchor FAR");
+                    }
+                }
                 if(!g_reportedReady) {
                     Log("G-CET Static: player world position VALID; native coordinator active");
                     g_reportedReady=true;
                 }
             } else {
+                if(g_probe.Id()>0) {
+                    g_probe.Remove();
+                    Log("G-CET Static: diagnostic anchor invalidated with unavailable player");
+                }
                 LogErrorCodeOnce(code); // once per reason per running session
             }
         }
@@ -92,6 +114,7 @@ namespace {
     }
     bool RunningExit(RED4ext::CGameApplication*){
         if(g_loaded) {
+            if(g_probe.Id()>0)g_probe.Remove();
             Log("G-CET Static: running-state exited; native session invalidated");
             g_coordinator.Exit();
             g_lastPlayerCode=-1;
@@ -325,7 +348,10 @@ namespace {
         wchar_t path[32768];
         DWORD count=GetModuleFileNameW(module,path,32768);
         if (!count || count>=32768) return;
-        auto dataPath = std::filesystem::path(std::wstring(path,count)).parent_path() / L"G-CET.locations";
+        auto root = std::filesystem::path(std::wstring(path,count)).parent_path();
+        auto dataPath = root / L"G-CET.locations";
+        std::error_code ec;
+        g_autoProbe=std::filesystem::exists(root / L"G-CET.smoke-probe",ec);
         std::vector<gcet::static_locations::Anchor> anchors;
         if (!gcet::static_locations::ReadCompiledFile(dataPath,anchors)) return;
         g_loaded = g_index.Load(anchors);
@@ -339,8 +365,11 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle handle,
         g_handle=handle;
         g_logger=sdk?sdk->logger:nullptr;
         LoadData();
-        if(g_loaded)
+        if(g_loaded) {
             Log("G-CET Static: native location manifest accepted");
+            if(g_autoProbe)
+                Log("G-CET Static: developer smoke-probe ENABLED by marker file");
+        }
         else
             Log("G-CET Static: native manifest missing or invalid; cache inactive");
         RED4ext::v1::GameState running{};
