@@ -37,6 +37,7 @@ The selector in `SemanticInjectors.cs` remains the only dispatch point; generic 
 | `GigCore.cs` | 1 |
 | `GiveCraftMat.cs` | 1 |
 | `GiveMeEverything.cs` | 1 |
+| `Hotscenes.cs` | 1 |
 | `GoodFeelings.cs` | 2 |
 | `IllegalMechanic.cs` | 1 |
 | `ImmersiveFirstPerson.cs` | 1 |
