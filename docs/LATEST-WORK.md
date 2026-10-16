@@ -1,5 +1,9 @@
 # LATEST WORK — current active development task
 
+## 2026-10-16 — Generated optimization deployment safety (DECISION, NOT IMPLEMENTED)
+
+**Installation guidance:** Recommend **Vortex** to manage the generated optimization ZIP as a separate mod. For **manual application**, instruct users prominently: **BACK UP the entire CET mods and REDscript scripts directories before applying ANY optimizations**, not merely before copying individual files. If native RED4ext files will be modified, back up the affected paths as well. Warning belongs in the app/distribution UI, not in the game-files-only ZIP. Vortex deployment rollback is helpful but not a substitute for backups when manual overlays or external modifications exist. See [unified workflow contract](product/UNIFIED-TWO-PAGE-WORKFLOW.md).
+
 ## 2026-10-16 — Compatibility disclosures and per-mod recovery (DECISION, NOT IMPLEMENTED)
 
 **User correction:** Do not make exhaustive manual gameplay testing across hundreds of heterogeneous installations a release gate. Bugs are inevitable and should be disclosed. The primary recovery is **per-mod isolation**, not rolling back the whole optimization pass: before applying the ZIP, remove a problematic CET mod folder and retain the other owners. Source generation must maintain independent per-owner file paths. After application, merely removing that mod from an old ZIP **does not restore** previously overwritten live files; restore originals or reinstall the mod. REDscript and shared-native coupled files need owner-attributed exclusions and regeneration of the ZIP/anchor dataset. Internal ownership metadata and backups stay **outside** the game-only ZIP; do not add extra primary UI actions. Preserve source proof and automated regression/safety tests without claiming universal in-game coverage. See [unified product contract](product/UNIFIED-TWO-PAGE-WORKFLOW.md).
