@@ -60,7 +60,13 @@ public class GCETStaticLocationHub extends ScriptableSystem {
     // Membership changes require a fresh snapshot, never a silent stale FAR.
     this.ReleaseNative();
     this.Start();
-    return this.m_started;
+    if !this.m_started {
+      // Do not leave a stale owner after G-RED is not yet ready: generated
+      // source can retry registration when the runtime becomes available.
+      ArrayErase(this.m_owners, ArraySize(this.m_owners) - 1);
+      return false;
+    }
+    return true;
   }
 
   public func UnregisterOwner(owner: Int32) -> Bool {
