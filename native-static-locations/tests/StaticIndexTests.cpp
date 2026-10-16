@@ -8,6 +8,7 @@
 #include <limits>
 #include <chrono>
 #include <iostream>
+#include <memory>
 using namespace gcet::static_locations;
 int main(int argc,char** argv) {
     StaticIndex s;
@@ -135,7 +136,10 @@ int main(int argc,char** argv) {
 
 
     // Runtime source registration, source reload, tombstones, and dynamic wake.
-    StaticIndex dynamic;
+    // StaticIndex embeds an 8,192-event ring; use heap to stay below MSVC's
+    // default 1MB test-thread stack as fixtures accumulate.
+    auto dynamicStore=std::make_unique<StaticIndex>();
+    auto& dynamic=*dynamicStore;
     GCET_ASSERT(dynamic.Load(std::vector<Anchor>{}));
     GCET_ASSERT(dynamic.Subscribe(8001,0) && dynamic.AckSnapshot(8001));
     GCET_ASSERT(dynamic.Update(0,0,0));
