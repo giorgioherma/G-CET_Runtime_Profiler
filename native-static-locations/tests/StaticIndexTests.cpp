@@ -29,6 +29,8 @@ int main(int argc,char** argv) {
     GCET_ASSERT(s.Changes().size()==1 && s.Changes()[0].id==2);
     auto gen=s.Generation();
     GCET_ASSERT(s.Update(0,0,1000) && s.Generation()==gen); // stationary zero work
+    GCET_ASSERT(s.Changes().empty()); // never replay the old NEAR edge
+    GCET_ASSERT(s.State(2)==1); // steady anchor state retained
     GCET_ASSERT(s.Update(0,0,5) && s.State(1)==1 && s.State(2)==1);
     GCET_ASSERT(s.Changes().size()==1 && s.Changes()[0].id==1);
     GCET_ASSERT(s.SetArmed(2,false));
@@ -209,6 +211,9 @@ int main(int argc,char** argv) {
     GCET_ASSERT(probeIndex->State(firstProbe)==-1); // dirty until next tick
     GCET_ASSERT(probeCoordinator.Tick(true,0,0,0));
     GCET_ASSERT(probeIndex->State(firstProbe)==1);
+    GCET_ASSERT(probeIndex->Changes().size()==1);
+    GCET_ASSERT(probeCoordinator.Tick(true,0,0,0));
+    GCET_ASSERT(probeIndex->Changes().empty()); // diagnostic log must not flood
     GCET_ASSERT(probeCoordinator.Tick(true,100,0,0));
     GCET_ASSERT(probeIndex->State(firstProbe)==0);
     GCET_ASSERT(probeCoordinator.Tick(true,0,0,0));
