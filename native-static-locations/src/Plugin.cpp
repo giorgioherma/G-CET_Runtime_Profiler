@@ -78,6 +78,19 @@ namespace {
     }
     bool RunningUpdate(RED4ext::CGameApplication*){
         if(g_loaded){
+            // True native dormancy: no active source anchor means no
+            // game-player RTTI read or spatial evaluation this frame.
+            // An explicit smoke marker deliberately bypasses this guard,
+            // so its first automatic probe can sample the actual player.
+            if (!g_autoProbe && g_index.ActiveCount()==0) {
+                g_lastPlayerCode=-1;
+                // Invalidate a previously known position exactly once
+                // when the last live anchor is disarmed or removed. Do not
+                // repeatedly ResetSession or touch subscriber cursors.
+                if (g_coordinator.Status()==2)
+                    g_coordinator.Tick(false,0,0,0);
+                return false;
+            }
             float x=0,y=0,z=0;
             const int32_t code=SamplePlayer(x,y,z);
             g_lastPlayerCode=code;

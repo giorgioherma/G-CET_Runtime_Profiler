@@ -21,7 +21,9 @@ int main(int argc,char** argv) {
     std::vector<Anchor> duplicate = {{1,0,0,0,10,false,1},{1,0,0,0,10,false,1}};
     GCET_ASSERT(!s.Load(duplicate));
     GCET_ASSERT(s.Count()==4); // transactional failed Load
+    GCET_ASSERT(s.ActiveCount()==0);
     GCET_ASSERT(s.SetArmed(1,true) && s.SetArmed(2,true) && s.SetArmed(3,true));
+    GCET_ASSERT(s.ActiveCount()==3);
     GCET_ASSERT(!s.SetArmed(123,true));
     GCET_ASSERT(s.State(1)==-1); // no player snapshot, must fail open
     GCET_ASSERT(s.Update(0,0,1000));
@@ -34,8 +36,10 @@ int main(int argc,char** argv) {
     GCET_ASSERT(s.Update(0,0,5) && s.State(1)==1 && s.State(2)==1);
     GCET_ASSERT(s.Changes().size()==1 && s.Changes()[0].id==1);
     GCET_ASSERT(s.SetArmed(2,false));
+    GCET_ASSERT(s.ActiveCount()==2);
     GCET_ASSERT(s.Update(0,0,5) && s.State(2)==-1);
-    GCET_ASSERT(s.Changes().size()==1 && s.Changes()[0].id==2 && !s.Changes()[0].inside);
+    GCET_ASSERT(s.Changes().empty()); // disarm is UNKNOWN, not FAR
+    GCET_ASSERT(s.SetArmed(2,false) && s.ActiveCount()==2); // idempotent
     GCET_ASSERT(s.Update(280,0,0) && s.State(1)==0 && s.State(3)==1);
     GCET_ASSERT(s.Changes().size()==2); // leave first + enter third
     GCET_ASSERT(!s.Update(std::numeric_limits<float>::quiet_NaN(),0,0));
@@ -91,7 +95,9 @@ int main(int argc,char** argv) {
     GCET_ASSERT(events.Poll(5002,e2)==TransitionJournal::Result::EventReady);
     GCET_ASSERT(e2.id==101 && e2.state==0);
     GCET_ASSERT(events.Poll(5002,e2)==TransitionJournal::Result::Empty);
+    GCET_ASSERT(events.ActiveCount()==2);
     GCET_ASSERT(events.RemoveOwner(11));
+    GCET_ASSERT(events.ActiveCount()==1);
     GCET_ASSERT(events.State(101)==-1);
     GCET_ASSERT(!events.SetArmed(101,true) && !events.RemoveOwner(11));
     GCET_ASSERT(events.Poll(5002,e2)==TransitionJournal::Result::EventReady);
@@ -173,11 +179,13 @@ int main(int argc,char** argv) {
     GCET_ASSERT(!dynamic.AddAnchor({801,0,0,0,20,false,88}));
     GCET_ASSERT(!dynamic.AddAnchor({802,0,0,0,-20,false,88}));
     GCET_ASSERT(dynamic.SetArmed(801,true));
+    GCET_ASSERT(dynamic.ActiveCount()==1);
     GCET_ASSERT(dynamic.Update(0,0,0) && dynamic.State(801)==1);
     TransitionJournal::Event dynEv{};
     GCET_ASSERT(dynamic.Poll(8001,dynEv)==TransitionJournal::Result::EventReady);
     GCET_ASSERT(dynEv.id==801 && dynEv.state==1);
     GCET_ASSERT(dynamic.RemoveAnchor(801));
+    GCET_ASSERT(dynamic.ActiveCount()==0);
     GCET_ASSERT(dynamic.State(801)==-1 && !dynamic.SetArmed(801,true));
     GCET_ASSERT(dynamic.Poll(8001,dynEv)==TransitionJournal::Result::EventReady);
     GCET_ASSERT(dynEv.id==801 && dynEv.state==-1);
@@ -189,6 +197,7 @@ int main(int argc,char** argv) {
     GCET_ASSERT(dynamic.OwnerCount(88)==2); // tombstones retained until new payload
     GCET_ASSERT(dynamic.OwnerAnchor(88,0)==-1 && dynamic.OwnerAnchor(88,1)==803);
     GCET_ASSERT(dynamic.RemoveOwner(88) && dynamic.State(803)==-1);
+    GCET_ASSERT(dynamic.ActiveCount()==0);
     GCET_ASSERT(!dynamic.RemoveOwner(88));
 
 
@@ -208,6 +217,7 @@ int main(int argc,char** argv) {
     GCET_ASSERT(probe.Create(0.f)==-1 && probe.Create(2000.f)==-1);
     const auto firstProbe=probe.Create(25.f);
     GCET_ASSERT(firstProbe==DiagnosticProbe::kFirstId);
+    GCET_ASSERT(probeIndex->ActiveCount()==1);
     GCET_ASSERT(probeIndex->State(firstProbe)==-1); // dirty until next tick
     GCET_ASSERT(probeCoordinator.Tick(true,0,0,0));
     GCET_ASSERT(probeIndex->State(firstProbe)==1);
@@ -231,6 +241,7 @@ int main(int argc,char** argv) {
     GCET_ASSERT(probeIndex->State(secondProbe)==1);
     GCET_ASSERT(probe.Remove());
     GCET_ASSERT(probeIndex->State(secondProbe)==-1 && probe.Id()==0);
+    GCET_ASSERT(probeIndex->ActiveCount()==0);
     GCET_ASSERT(!probe.Remove());
     probeCoordinator.Exit();
     GCET_ASSERT(!probeCoordinator.CurrentPosition(px,py,pz));

@@ -110,8 +110,15 @@ bool StaticIndex::SetArmed(int32_t id, bool armed) {
         if (!armed && positioned_) Emit(e,-1); // disarm becomes UNKNOWN, never FAR
         e.armed = armed;
         if (armed) {
+            ++activeCount_;
             e.inside=false; // guarantee a new near wake after rearming
             e.firstValidEvaluation=evaluationCount_+1;
+        } else {
+            --activeCount_;
+            // UNKNOWN was already delivered to the independent journal.
+            // Do not publish a second, misleading FAR in Changes() on the
+            // next positional tick from stale previousNear_ bookkeeping.
+            e.inside=false;
         }
         dirty_ = true;
     }
@@ -125,6 +132,7 @@ bool StaticIndex::RemoveEntry(uint32_t i) {
     auto& e=entries_[i];
     if (e.removed) return false;
     if (positioned_) Emit(e,-1);
+    if (e.armed) --activeCount_;
     e.removed=true; e.armed=false; e.inside=false;
     dirty_=true;
     return true;

@@ -62,6 +62,9 @@ public:
     std::span<const Transition> Changes() const { return changes_; }
     uint32_t Generation() const { return generation_; }
     size_t Count() const { return entries_.size(); }
+    // O(1) count of armed, non-tombstoned anchors. The Running-state hook
+    // can sleep entirely when no source has activated a location.
+    size_t ActiveCount() const { return activeCount_; }
 
 private:
     struct Entry {
@@ -104,6 +107,7 @@ private:
     float x_ = 0, y_ = 0, z_ = 0;
     bool positioned_ = false;
     bool dirty_ = true;
+    size_t activeCount_ = 0;
 };
 
 // Frozen little-endian disk format: header GCAS (4), version(4), count(4), reserved(4).
