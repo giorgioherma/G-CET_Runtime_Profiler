@@ -1,6 +1,6 @@
 # Native shared static locations: subscriber contract + diagnostic counters
 
-Status: **experimental native interface only**. Main-thread-only API. This is NOT yet a production or gameplay-verified wake replacement.
+Status: **experimental native interface + experimental single game-state coordinator**. Main-thread-only API. This is NOT yet a production or gameplay-verified wake replacement.
 
 ## One service, independent consumers
 
@@ -9,7 +9,7 @@ Status: **experimental native interface only**. Main-thread-only API. This is NO
 - `Poll(consumer)` returns anchor ID **>0** for a delivered event; `PolledState(consumer)` is `1` NEAR, `0` FAR, `-1` UNKNOWN. `PolledOwner(consumer)` names its owner. `Poll==0` means no unconsumed events. `Poll==-1` means **RESYNC_REQUIRED**. A reset/session transition or a slow reader that falls >8192 events behind forces resync, never a silent skip.
 - The event ring uses fixed storage and position processing emits no per-consumer allocations. Polls never remove another consumer's events. Individual owners and anchors can be tombstoned via `RemoveOwner` / `RemoveAnchor`: affected current states turn UNKNOWN; removal is idempotently irreversible within that loaded manifest. Normal source upgrades/removal are handled by a **new Resolver-generated installed-only payload**.
 - `Arm(id,false)` disarms a location and emits UNKNOWN when position is known. On rearm, the next `Update` recomputes position even if stationary; the service may emit a NEAR wake. Unarmed/removed state is never interpreted as reliably FAR.
-- One authoritative player coordinator **outside any subscriber to be retired** must feed `UpdatePlayer`. Do not remove an old author wake until source injection proves that the coordinator is live, native stream is consumed and exact author first-interaction/wake semantics are preserved. No self-start on proximity.
+- One authoritative **RED4ext native Running-state position coordinator** now feeds the index without relying on scripts from any owner to be retired. `GCETStaticCoordinatorState()`: 0=not running, 1=running but player location unavailable (UNKNOWN), 2=valid position sample. The previous `UpdatePlayer` RTTI function is disabled (returns -1) to prevent two competing writers; never call it from CET or REDscript. Consumers must continue source-original handling when coordinator state is not 2. Do not remove an old author wake until source injection proves that the coordinator is live, native stream is consumed and exact author first-interaction/wake semantics are preserved. No self-start on proximity.
 - The native plugin does **not** automatically discover or mutate mods, patch files, load YAML, call author Lua callbacks, install REDscript declarations, or remove CET `Observe` hooks. Those require independently source-proven Resolver + runtime adapters; this interface only makes their safe implementation possible.
 
 ## Profiler sampling counters
@@ -29,11 +29,14 @@ Status: **experimental native interface only**. Main-thread-only API. This is NO
 | 8 | Squared-distance tests, last processed update | Immediate per-update work |
 | 9 | Number of registered consumers | Duplicate subscribers / current fan-out |
 | 10 | Total appended event sequence | Debug event-generation continuity |
+| 11 | Native running-state tick count | Actual position-coordinator frame samples attempted |
+| 12 | Coordinator ticks with no valid world position | Game player unavailable/getter failed/invalid coordinates; must fail open |
+| 13 | Valid-to-unknown position losses | Number of snapshot-forcing availability transitions |
 
 Metrics deliberately **do not** claim or count saved Lua allocations, native-to-Lua marshalling, original author callback invocations or FPS. To prove a Resolver optimization, combine service counters with per-source Profiler evidence: retired author registration/timer, original callback dispatches, per-callback Lua and native allocation/cpu, actual event delivery, wake latency and same-scene CapFrameX. A high counter 5 or invalid-state 6 should veto a claim that a retired author wake was equivalently replaced.
 
 ## Remaining limitations
 
-- Large teleport/high-speed traversal can skip an enter-and-leave cycle between samples; the runtime coordinator must provide adequate cadence/segment logic before replacing original early wake.
+- Large teleport/high-speed traversal can skip an enter-and-leave cycle between frames. Running-state callback timing, actual Game.GetPlayer/GetWorldPosition ABI, game transitions and RED4ext integration still require Windows CI plus **actual in-game testing** before retiring a source wake.
 - Removal and subscribed event handling have **not yet been in-game tested**. The current native plugin exposes functions via RED4ext RTTI, but no signed-off CET/REDscript adapter or source transformer exists.
 - Owner IDs in the compiled manifest are restricted to **1..2,147,483,647** for Int32 RTTI compatibility. The Resolver must generate unique IDs with collision detection. Identical coordinates alone are never sufficient for ID identity.

@@ -1,5 +1,9 @@
 # LATEST WORK — current active development task
 
+## 2026-10-16 — Single native shared-location position coordinator (EXPERIMENTAL, NOT GAME-VALIDATED)
+
+**Isolated implementation branch** `dev/native-static-anchors-experimental`: commit `8cc9083` added `PositionCoordinator` to the native core, one RED4ext Running-state OnEnter/OnUpdate/OnExit callback which attempts player `GetWorldPosition` via RTTI, a native health status getter (0 unavailable, 1 unknown, 2 valid), three new metric IDs (11 ticks, 12 unavailable, 13 position losses), a disabled manual `UpdatePlayer` writer, and core tests for independent consumers, position loss/renewal and session resync. Follow-up commit `986d1df` fixed a missing namespace closure discovered by Linux CI. **Build/real-game safety remains to be verified**; until then do not distribute as a production cache. Generic Resolver wake transformer, CET and REDscript consumer source adapters and proof of old callback retirement are **still missing**. Profiler #84 and production Resolver unchanged. See [native docs](../native-static-locations/docs/STREAM-AND-METRICS.md).
+
 ## 2026-10-16 — REDscript semantic-library scope remains undecided (PROVISIONAL)
 
 **User preference:** Do **not** assume a CET-scale REDscript semantic library will be built. REDscript is expected to expose a different/lower return from extensive per-mod tailoring. Explore generic REDscript wins and shared native location/other systemic paths first; selectively add a few semantic rules **only when a measured extreme offender** warrants the cost. The many smaller reported `5–10 ms` contributors are not a blanket manual optimization queue; measurement units/period must be verified before interpreting severity. This is intentionally **not a locked rejection** of future REDscript semantic rules; new profiling may change the decision. See [unified product contract](product/UNIFIED-TWO-PAGE-WORKFLOW.md).
