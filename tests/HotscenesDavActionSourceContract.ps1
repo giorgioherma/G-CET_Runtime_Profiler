@@ -97,6 +97,7 @@ end)
 $core=@'
 local Core={}
 local VehicleSystem={}
+local function defaultSituation() return Def.Situation.Normal end
 function Core:Update() end
 function Core:Init()
     Cron.Every(DAV.time_resolution, function()
