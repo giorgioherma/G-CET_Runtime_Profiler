@@ -1,4 +1,4 @@
-# Service architecture and runtime API (durable)
+# G-LookupCache — architecture and runtime API
 
 ## Data flow
 
