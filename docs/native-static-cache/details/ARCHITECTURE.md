@@ -26,3 +26,9 @@ C++: `native-static-locations/src/Plugin.cpp`, `PositionCoordinator.cpp`, `Stati
 ## API compatibility discipline
 
 Compiled GCAS v1 is deterministic, little-endian, versioned, owner-scoped. RTTI methods are native; version mismatch between DLL and declarations/adapters must not silently proceed. Do not infer stable ABI from mock C++ unit tests or native CI compilation. Always use one native DLL; only one compatible script declaration may be installed.
+
+## Fresh-arm UNKNOWN safety and temporary diagnostic service
+
+The native registry now tracks the first valid **evaluation epoch** required by newly armed entries. An anchor armed while the player is already positioned must return `UNKNOWN=-1` until the next native `Update` actually processes that arm change, **even if its initial internal `inside` flag is false**. This prevents false FAR in initial consumer snapshots. The per-entry epoch avoids scanning every anchor to mark pending evaluations.
+
+`PositionCoordinator::CurrentPosition` exposes the last valid position **only while known/running**; after exit, invalid sample or unavailable player it refuses to reuse stale coordinates. `DiagnosticProbe` can register at most one active developer-only high-ID anchor using that trusted position, never an author mod owner, and with no callbacks. Runtime probe operation is optional; a marker file co-located with the native DLL enables a 40 m passive automatic probe for isolated smoke packages. No file marker in Resolver payloads.

@@ -46,3 +46,10 @@ Metrics deliberately **do not** claim or count saved Lua allocations, native-to-
 - Large teleport/high-speed traversal can skip an enter-and-leave cycle between frames. Running-state callback timing, actual Game.GetPlayer/GetWorldPosition ABI, game transitions and RED4ext integration still require Windows CI plus **actual in-game testing** before retiring a source wake.
 - Removal and subscribed event handling have **not yet been in-game tested**. The current native plugin exposes functions via RED4ext RTTI, but no signed-off CET/REDscript adapter or source transformer exists.
 - Owner IDs in the compiled manifest are restricted to **1..2,147,483,647** for Int32 RTTI compatibility. The Resolver must generate unique IDs with collision detection. Identical coordinates alone are never sufficient for ID identity.
+
+## Diagnostic player lookup and opt-in probe (experimental)
+
+- `GCETStaticLastPlayerError() -> Int32`: -1 not sampled/inactive, 0 valid, 1 missing/GetPlayer failed, 2 missing RTTI class, 3 missing GetWorldPosition method, 4 getter invocation failed, 5 invalid coordinates. One RED4ext log message per failure reason per running session, with total process-wide budget of 32 diagnostic messages. The first valid position is explicitly logged.
+- Explicit diagnostic only: `GCETStaticProbeHere(radius)`, `GCETStaticProbeId()`, `GCETStaticProbeRemove()`. ID/owner range is reserved high Int32 (starting at 2100000000); never generate normal source owner IDs in this range. Probe has no author callbacks. After the next native evaluation a valid active probe reports NEAR/FAR normally.
+- Opt-in filename `G-CET.smoke-probe` beside `GCETStaticLocations.dll` causes **one automatically armed passive 40m anchor** at the first reliable position, logging NEAR/FAR transitions when the player moves. Intended for **smoke test overlays only**; no automatic probes in normal native or Resolver payloads.
+- Newly armed anchors are **UNKNOWN until evaluated**; subscription snapshots must never interpret that pending state as FAR. This is enforced by source-agnostic native evaluation epochs and a regression test.

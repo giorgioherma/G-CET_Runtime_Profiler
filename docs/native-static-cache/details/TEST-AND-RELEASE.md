@@ -23,3 +23,15 @@
 - A client-reported gameplay bug must permit per-mod opt-out and restoration of that mod without discarding unaffected optimizations. Source owner dependency graph governs regeneration if shared compiled data is involved.
 - Never promise uniform performance gains across stacks; the 1000+-mod development stack received exceptional manual investigation. Future stacks prioritize broad generic rules and large measured offenders only.
 - No version bump, production profiler/Resolver CI modification, or promotion of experimental binaries without explicit user decision and matching tests.
+
+## Developer-only passive native probe and health logs (2026-10-16)
+
+To prove the **existing native engine callback's real player coordinates**, use a **matching freshly built DLL** and an otherwise-empty valid `G-CET.locations` (GCAS v1, 16 bytes, no anchors). Add an **empty marker file named `G-CET.smoke-probe` beside the DLL** for this one experimental test. Without the marker no automatic anchor is created and the normal DLL remains passive.
+
+On the first valid native player position the marker enables **one purely diagnostic XYZ radius-40m anchor** at the player's location, using the reserved high Int32 owner/ID range. Source mods are untouched, no CET or REDscript mod callback is registered, and there is **no gameplay activation**. The native log emits `diagnostic anchor ARMED`, then `diagnostic anchor NEAR` on initial evaluation, `FAR` after leaving 40m and `NEAR` upon return. Reloads/position loss invalidate the probe; it can be recreated at the new valid player position. No more than 32 diagnostic log messages are emitted over a plugin load, preventing dense-scene log floods.
+
+Native `GCETStaticLastPlayerError` returns **-1** (inactive/not sampled), **0** (valid), **1** (GameInstance GetPlayer failed/unavailable), **2** (no player RTTI class), **3** (GetWorldPosition absent), **4** (native getter invocation failed), **5** (nonfinite/out-of-bounds world position). Native `GCETStaticProbeHere(radius)`, `GCETStaticProbeId()`, `GCETStaticProbeRemove()` allow explicit testing when the compatible RTTI exports are reachable, but the file marker needs no CET bridge and is safer as the first live probe. Never assume these functions are CET-callable until actually proven.
+
+**Interpretation:** The user's original 2026-10-16 RED4ext log proves the native plugin **loaded** into v2.31 alongside existing mods; it does not prove world-position sampling. Native code compilation and pure C++ state tests do not prove actual game RTTI. The probe intentionally supplies no optimization benefit. Failure of this opt-in probe does not justify turning off author callbacks or putting sample anchors into production.
+
+**Expected game-only observations:** correct load, bounded log, player VALID or a specific failure reason; diagnostic NEAR/FAR after actual movement; no unintended mod starts; stable save reload/teleport/menu behavior; removing the marker and Vortex overlay returns to no diagnostic source. This is an additional gate, not a substitute for per-mod source behavior comparison.
