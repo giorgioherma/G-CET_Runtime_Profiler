@@ -467,7 +467,7 @@ CETRuntimeProfiler::Counter* ResolveProfilerCounter(
             loggerObject.is<std::shared_ptr<spdlog::logger>>())
         {
             const auto logger =
-                loggerObject.get<std::shared_ptr<spdlog::logger>>();
+                loggerObject.as<std::shared_ptr<spdlog::logger>>();
             if (logger)
                 modName = logger->name();
         }
