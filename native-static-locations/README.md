@@ -1,4 +1,4 @@
-# Shared Static Locations — standalone RED4ext experiment
+# G-LookupCache — experimental RED4ext location service
 
 This module is deliberately scoped to **world-space locations fixed within each source-owned registration epoch**, independent of the game-side CET/Lua and REDscript script runtimes. It is **not** a production optimizer yet.
 
