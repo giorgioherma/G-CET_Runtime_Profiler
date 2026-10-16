@@ -1,4 +1,4 @@
-# Consumer adapters and source-wake retirement (durable)
+# G-LookupCache — consumers and source proof
 
 ## Three experimental bridges
 
