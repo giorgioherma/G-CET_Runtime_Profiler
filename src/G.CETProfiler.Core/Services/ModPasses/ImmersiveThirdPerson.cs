@@ -16,6 +16,10 @@ internal static partial class SemanticInjectors
             "updateAutoPerspective",
             "mod.headLookTick");
 
+        if (file.Text.Contains("mod.pluginHeartbeat(delta)", StringComparison.Ordinal) &&
+            file.Text.Contains("mod.move360CaptureNamed = function", StringComparison.Ordinal))
+            return ApplyImmersiveThirdPersonUpdatedLoop(context, file);
+
         var opening = FindOnUpdateOpening(file.Text, "delta");
 
         var helpers =
@@ -209,6 +213,234 @@ internal static partial class SemanticInjectors
 
 
 
+    
+    // Current upstream ITP (2026-10): its update loop contains live API,
+    // move360, scene, camera and input clocks. We must NOT reuse the former
+    // wholesale supervisor/maintenance throttling on those new dependencies.
+    // Only hoist null-state guards already proven as first operation of each
+    // owner function; all active work still runs every frame with original delta.
+    private static SemanticInjectionResult ApplyImmersiveThirdPersonUpdatedLoop(
+        SemanticPatchContext context, SemanticSourceFile file)
+    {
+        var text = file.Text;
+        const string stage = "__gcetItppUpdatedPendingGatesV3";
+        if (text.Contains(stage, StringComparison.Ordinal))
+        {
+            if (!text.Contains("if state.pendingFppCleanup then", StringComparison.Ordinal) ||
+                !text.Contains("if state.pendingTppRepReassert then", StringComparison.Ordinal) ||
+                !text.Contains("if state.pendingMirrorHeadVerify then", StringComparison.Ordinal) ||
+                !text.Contains("if state.pendingFacialMute then", StringComparison.Ordinal) ||
+                !text.Contains("if state.pendingTppAnimPoke then", StringComparison.Ordinal) ||
+                !text.Contains("if state.pendingFppRestore then", StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "Updated third-person pending-state gates are incomplete.");
+            return SemanticInjectionResult.Skip(
+                "Current ITP event-loop pending-state guards already applied.");
+        }
+
+        if (!text.Contains("mod.move360CaptureNamed = function", StringComparison.Ordinal) ||
+            !text.Contains("mod.apiTick, delta", StringComparison.Ordinal) ||
+            !text.Contains("mod.updateMove360Step, delta", StringComparison.Ordinal) ||
+            !text.Contains("mod.updateTppMaintenance, delta", StringComparison.Ordinal) ||
+            !text.Contains("mod.pluginHeartbeat(delta)", StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "Unknown third-person update architecture: fail closed.");
+
+        // Each author function begins with precisely this empty-state return.
+        // No Timer, callback or native getter is allowed before that return.
+        var gates = new (string Function, string Proof, string State)[]
+        {
+            ("updatePendingFppCleanup",
+                "local function updatePendingFppCleanup(delta)\n  local pending = state.pendingFppCleanup\n  if not pending then",
+                "state.pendingFppCleanup"),
+            ("updateTppRepReassert",
+                "local function updateTppRepReassert(delta)\n  local pending = state.pendingTppRepReassert\n  if not pending then",
+                "state.pendingTppRepReassert"),
+            ("updateMirrorHeadVerify",
+                "local function updateMirrorHeadVerify(delta)\n  local pending = state.pendingMirrorHeadVerify\n  if not pending then",
+                "state.pendingMirrorHeadVerify"),
+            ("updateFacialMute",
+                "local function updateFacialMute(delta)\n  local pending = state.pendingFacialMute\n  if not pending then",
+                "state.pendingFacialMute"),
+            ("updatePendingTppAnimPoke",
+                "local function updatePendingTppAnimPoke(delta)\n  local pending = state.pendingTppAnimPoke\n  if not pending then",
+                "state.pendingTppAnimPoke"),
+            ("updateFppRestoreWatchdog",
+                "local function updateFppRestoreWatchdog(delta)\n  if not state.pendingFppRestore or state.enabled then",
+                "state.pendingFppRestore"),
+        };
+        foreach (var gate in gates)
+        {
+            if (!text.Contains(gate.Proof, StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "Third-person null-state early return drift: " + gate.Function);
+            var oldCall = "  guardStep(\"" + gate.Function + "\", " +
+                          gate.Function + ", delta)\n";
+            var newCall = "  if " + gate.State + " then\n" +
+                          "    guardStep(\"" + gate.Function + "\", " +
+                          gate.Function + ", delta)\n" +
+                          "  end\n";
+            text = ReplaceOnce(text, oldCall, newCall,
+                "Updated third-person " + gate.Function + " source guard");
+        }
+
+        text = ReplaceOnce(text,
+            "registerForEvent('onUpdate', function(delta)\n  mod.pluginHeartbeat(delta)",
+            "-- " + stage + ": author-verified absent-state fast guards only\n" +
+            "registerForEvent('onUpdate', function(delta)\n  mod.pluginHeartbeat(delta)",
+            "Updated third-person onUpdate owner marker");
+
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Current ITP API, movement, camera, heartbeat, native toggle and " +
+            "TPP maintenance remain original per-frame work. Six proven " +
+            "empty-state handler calls are skipped only when absent.");
+    }
+
+    // Updated upstream action handler explicitly services game-camera movement
+    // and move360 even when TPP is disabled. The previous V2 SetActive(false)
+    // contract is UNSAFE here: route exact finite actions but never pause
+    // this subscriber on state.enabled alone.
+    private static bool IsImmersiveThirdPersonActionRoutingCompleteV3(string text)
+    {
+        if (!text.Contains("__gcetItppRoutedOnActionV3", StringComparison.Ordinal) ||
+            !text.Contains("__gcetItppAlwaysListeningV3", StringComparison.Ordinal) ||
+            !SemanticScopedStages.TryFunction(text, "observePlayerActions", out var observer))
+            return false;
+        var body = observer.Text;
+        return body.Contains("zeroEngineMod.SubscribeAction", StringComparison.Ordinal) &&
+               body.Contains("engine.SubscribeAction", StringComparison.Ordinal) &&
+               body.Contains("actions = actions, decodeType = false", StringComparison.Ordinal) &&
+               body.Contains("Observe('PlayerPuppet', 'OnAction'", StringComparison.Ordinal) &&
+               body.Contains("pcall(handlePlayerAction, action)", StringComparison.Ordinal) &&
+               body.Contains("if not routed and Observe then", StringComparison.Ordinal) &&
+               !body.Contains("SetActive", StringComparison.Ordinal) &&
+               !body.Contains("actions = \"*\"", StringComparison.Ordinal);
+    }
+
+    private static SemanticInjectionResult ApplyImmersiveThirdPersonUpdatedActions(
+        SemanticPatchContext context, SemanticSourceFile file)
+    {
+        var source = file.Text;
+        if (IsImmersiveThirdPersonActionRoutingCompleteV3(source))
+            return SemanticInjectionResult.Skip(
+                "Current ITP exact-action shared subscriber already applied; " +
+                "its disabled-camera/move360 callbacks stay active.");
+        if (source.Contains("__gcetItppRoutedOnActionV3", StringComparison.Ordinal) ||
+            source.Contains("__gcetItppActionDormancyV2", StringComparison.Ordinal) ||
+            source.Contains("__gcetItppRoutedOnActionV1", StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "Unexpected mixed/partial third-person action source; fail closed.");
+
+        // The source-owned finite action table is authoritative. Any new
+        // name, removed name or dynamic table modification requires re-audit.
+        var tableMatch = Regex.Match(source,
+            @"(?s)\bmod\.handledActions\s*=\s*\{(?<entries>.*?)\}",
+            RegexOptions.CultureInvariant);
+        if (!tableMatch.Success)
+            throw new InvalidOperationException(
+                "Updated third-person finite action table absent.");
+        var entries = tableMatch.Groups["entries"].Value;
+        var names = Regex.Matches(entries,
+            @"\b(?<name>[a-zA-Z_][a-zA-Z_0-9]*)\s*=\s*true\b",
+            RegexOptions.CultureInvariant)
+            .Select(m => m.Groups["name"].Value).ToArray();
+        string[] actions =
+        {
+            "mouse_x", "mouse_y", "right_stick_x", "right_stick_y",
+            "CameraMouseX", "CameraMouseY", "CameraX", "CameraY",
+            "Forward", "Back", "Left", "Right",
+            "world_map_menu_move_horizontal", "world_map_menu_move_vertical",
+            "left_stick_x", "left_stick_y", "MoveX", "MoveY"
+        };
+        var rest = Regex.Replace(entries,
+            @"\b[a-zA-Z_][a-zA-Z_0-9]*\s*=\s*true\b", "",
+            RegexOptions.CultureInvariant);
+        if (names.Length != actions.Length ||
+            names.Distinct(StringComparer.Ordinal).Count() != actions.Length ||
+            !names.OrderBy(x => x, StringComparer.Ordinal).SequenceEqual(
+                actions.OrderBy(x => x, StringComparer.Ordinal)) ||
+            Regex.IsMatch(rest, @"[^\s,]", RegexOptions.CultureInvariant))
+            throw new InvalidOperationException(
+                "Updated ITP action set is not the proved exact 18 names.");
+
+        if (!source.Contains(
+                "if not state.enabled or isPlayerInAnyMenu() then\n" +
+                "    if state.gameCameraHold ~= nil then\n" +
+                "      mod.gameCameraMoveSeen(action)\n" +
+                "    end\n" +
+                "    if config.camera.move360 then\n" +
+                "      mod.move360Capture(action)\n" +
+                "    end\n" +
+                "    return",
+                StringComparison.Ordinal) ||
+            !source.Contains("mod.move360CaptureNamed(action, actionName, actionValue)", StringComparison.Ordinal) ||
+            !source.Contains("if not actionName or not mod.handledActions[actionName] then", StringComparison.Ordinal) ||
+            !source.Contains("pcall(handlePlayerAction, action)", StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "Updated disabled-camera/360 movement action semantics drifted.");
+
+        // No author action consumption, no additional native observer and no
+        // clock/input-value transformation. Fallback retains the exact pcall.
+        const string original = """
+local function observePlayerActions()
+  if state.observedActions or not Observe then
+    return
+  end
+
+  local okObs = pcall(function()
+    Observe('PlayerPuppet', 'OnAction', function(_, action)
+      pcall(handlePlayerAction, action)
+    end)
+  end)
+  if okObs then
+    state.observedActions = true
+  end
+end
+""";
+        var quoted = string.Join(", ", actions.Select(a => "\"" + a + "\""));
+        var updated = "local function observePlayerActions()\n" +
+            "  if state.observedActions or not Observe then return end\n" +
+            "  -- __gcetItppRoutedOnActionV3: exact 18 author action names\n" +
+            "  -- __gcetItppAlwaysListeningV3: disabled TPP still tracks camera/move360\n" +
+            "  local okEngine, engine = pcall(GetMod, \"0-Engine\")\n" +
+            "  local zeroEngineMod = okEngine and type(engine) == \"table\" and " +
+            "type(engine.Register) == \"function\" and " +
+            "engine.Register(\"immersive_third_person\") or nil\n" +
+            "  local actions = { " + quoted + " }\n" +
+            "  local callback = function(_, action) pcall(handlePlayerAction, action) end\n" +
+            "  local routed = false\n" +
+            "  if type(zeroEngineMod) == \"table\" and type(zeroEngineMod.SubscribeAction) == \"function\" then\n" +
+            "    local ok, handle = pcall(zeroEngineMod.SubscribeAction, " +
+            "{ actions = actions, decodeType = false }, callback)\n" +
+            "    routed = ok and type(handle) == \"table\"\n" +
+            "  elseif okEngine and type(engine) == \"table\" and " +
+            "type(engine.SubscribeAction) == \"function\" then\n" +
+            "    local ok, handle = pcall(engine.SubscribeAction, " +
+            "{ actions = actions, decodeType = false }, callback, \"immersive_third_person\")\n" +
+            "    routed = ok and type(handle) == \"table\"\n" +
+            "  end\n" +
+            "  if not routed and Observe then\n" +
+            "    routed = pcall(function()\n" +
+            "      Observe('PlayerPuppet', 'OnAction', function(_, action)\n" +
+            "        pcall(handlePlayerAction, action)\n" +
+            "      end)\n" +
+            "    end)\n" +
+            "  end\n" +
+            "  if routed then state.observedActions = true end\n" +
+            "end";
+        var after = ReplaceOnce(source, original.TrimEnd('\n'), updated,
+            "Updated upstream ITP action observer");
+        if (!IsImmersiveThirdPersonActionRoutingCompleteV3(after))
+            throw new InvalidOperationException(
+                "Updated third-person action routing postcondition failed.");
+        context.Write(file, after);
+        return SemanticInjectionResult.Success(
+            "Current ITP 18-name action observer consolidated into 0-Engine, " +
+            "preserving all author camera/move360 work when TPP is disabled " +
+            "and original native fallback; no unsafe TPP-only pause.");
+    }
+
     // Registration count and subscriber dispatch are different layers. This
     // stage pauses only the 0-Engine subscriber. The one shared native hook
     // remains available to other mods and the original CET controls wake TPP.
@@ -221,6 +453,8 @@ internal static partial class SemanticInjectors
 
     private static bool IsImmersiveThirdPersonActionDormancyCompleteText(string text)
     {
+        if (IsImmersiveThirdPersonActionRoutingCompleteV3(text))
+            return true;
         if (!text.Contains("__gcetItppActionDormancyV2", StringComparison.Ordinal) ||
             !text.Contains("__gcetItppRoutedOnActionV1", StringComparison.Ordinal) ||
             !SemanticScopedStages.TryFunction(text, "observePlayerActions", out var observer) ||
@@ -351,6 +585,9 @@ internal static partial class SemanticInjectors
             "local function observePlayerActions()",
             "Observe('PlayerPuppet', 'OnAction'");
         var source = file.Text;
+        if (source.Contains("mod.handledActions = {", StringComparison.Ordinal) &&
+            source.Contains("mod.gameCameraMoveSeen = function", StringComparison.Ordinal))
+            return ApplyImmersiveThirdPersonUpdatedActions(context, file);
         const string stage = "__gcetItppRoutedOnActionV1";
         if (source.Contains(stage, StringComparison.Ordinal))
         {
