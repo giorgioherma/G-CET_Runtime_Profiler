@@ -61,3 +61,14 @@ jobs:
         run: |
           ./tests/SemanticModPassOwnershipContract.ps1
           ./tests/SemanticLibraryContract.ps1
+      - name: Publish isolated experimental Resolver
+        run: dotnet publish src/G.CETResolver.App/G.CETResolver.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o publish-resolver
+      - name: Prove both source transformations generate from author-shaped fixtures
+        shell: pwsh
+        run: ./tests/HotscenesDavActionSourceContract.ps1 -ResolverRoot ./publish-resolver
+      - name: Upload experimental standalone Resolver (not a release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: G-CET-Resolver-v1.2.7-HotscenesDAV-EXPERIMENTAL
+          path: publish-resolver/
+          retention-days: 7
