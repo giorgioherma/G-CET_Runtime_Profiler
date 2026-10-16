@@ -1,4 +1,4 @@
-# Experimental G-CET static location native payload
+# G-LookupCache — experimental native payload
 
 **Do not install as an active location optimizer yet.** This artifact proves the isolated RED4ext native plugin build. It does not include a source-proven per-installation `G-CET.locations` dataset, REDscript declaration, CET coordination adapter, source-approved author-wake replacement or Resolver-generated subscriber suspension.
 
