@@ -1,4 +1,4 @@
-# WORKFLOW — how and where to work
+# G-LookupCache — WORKFLOW
 
 ## Startup (every new chat)
 
