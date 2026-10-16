@@ -45,9 +45,9 @@
       "modules/GCETFrameListeners.lua",
       "modules/GCETStateSignals.lua"
     ],
-    "additivePolicy": "Opt-in only: no stock callback or Scheduler behavior is changed, no new native event hooks, and no arbitrary Lua preemption.",
+    "additivePolicy": "Opt-in only: existing before-phase callbacks and Scheduler behavior remain unchanged. An explicit phase=after subscriber lazily installs one shared CET ObserveAfter action hook; subscriber pause does not unregister that native hook. No arbitrary Lua preemption.",
     "files": {
-      "modules/ActionRouter.lua": "4c5ad5f6925b9cb9b2f24ab359eaadc5d54fcf890d661682307ce8cbe09c955c",
+      "modules/ActionRouter.lua": "4ef1eafd3aeb255c9bb940c37f6b4a0e6781da19219254e448f9ba5bff477656",
       "modules/Health.lua": "85b2c6402e54c64f83c1f55e35b5bfee0dc5ebabcdd079c3c8aebb06b010620f",
       "modules/Scheduler.lua": "60529e3a1eb1db9e01f88ad44ff223ebe1d538bc55039ec8bb1f8dbed7f6e5b5"
     }

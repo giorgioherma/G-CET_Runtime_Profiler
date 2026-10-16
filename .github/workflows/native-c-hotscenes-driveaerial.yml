@@ -1,0 +1,74 @@
+name: Experimental Native C - Hotscenes and DriveAerialVehicle
+on:
+  push:
+    branches:
+      - dev/native-c-hotscenes-driveaerial-ci1336
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  action-phase-contract:
+    name: Phase-preserving shared action dispatch
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lua test runtime
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lua5.4
+      - name: Verify pinned router contract and new after-phase API
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/gcet-router
+          base64 -d resolver-runtime/0-Engine/modules/ActionRouter.lua.b64 > /tmp/gcet-router/ActionRouter.lua
+          luac5.4 -p /tmp/gcet-router/ActionRouter.lua
+          lua5.4 tests/ActionRouterDormancyLuaContract.lua /tmp/gcet-router
+          lua5.4 tests/ActionRouterAfterPhaseLuaContract.lua /tmp/gcet-router
+  source-and-version-contract:
+    name: Isolated CI baseline and source invariants
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Enforce unchanged base package/version and no profiler native edits
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          assert Path('VERSION.txt').read_text().strip()=='1.2.7'
+          assert json.loads(Path('MANIFEST.json').read_text())['packageVersion']=='1.2.7'
+          source=Path('resolver-runtime/0-Engine/modules/ActionRouter.lua.b64').read_text()
+          import base64
+          lua=base64.b64decode(source).decode()
+          assert 'ActionRouter.DispatchAfter' in lua
+          assert 'phase == "after" and not afterHookInstalled' in lua
+          assert 'if beforeActive == 0 then return end' in lua
+          assert 'if afterActive == 0 then return end' in lua
+          print('Isolated 1.2.7 source contract PASSED')
+          PY
+
+  managed-source-and-semantic-contract:
+    name: Resolver compilation and semantic catalog
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Compile the exact isolated source
+        run: dotnet build G-CET-Runtime-Profiler.sln -c Release
+      - name: Verify mod source ownership and 68 enabled semantic rules
+        shell: pwsh
+        run: |
+          ./tests/SemanticModPassOwnershipContract.ps1
+          ./tests/SemanticLibraryContract.ps1
+      - name: Publish isolated experimental Resolver
+        run: dotnet publish src/G.CETResolver.App/G.CETResolver.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o publish-resolver
+      - name: Prove both source transformations generate from author-shaped fixtures
+        shell: pwsh
+        run: ./tests/HotscenesDavActionSourceContract.ps1 -ResolverRoot ./publish-resolver
+      - name: Upload experimental standalone Resolver (not a release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: G-CET-Resolver-v1.2.7-HotscenesDAV-EXPERIMENTAL
+          path: publish-resolver/
+          retention-days: 7
