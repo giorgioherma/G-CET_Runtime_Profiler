@@ -1,4 +1,6 @@
-# CORE — new-chat mandatory context
+# G-LookupCache — CORE
+
+**Naming rule:** Use **G-LookupCache** in new documentation. Keep existing `GCETStaticLocations.dll`, `GCETStatic*` RTTI functions, `G-CET.locations`, source paths and legacy runtime display names unchanged until an explicitly tested migration.
 
 ## What we are building
 
