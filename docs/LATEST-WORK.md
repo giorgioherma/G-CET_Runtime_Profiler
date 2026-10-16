@@ -1,5 +1,9 @@
 # LATEST WORK — current active development task
 
+## 2026-10-16 — High-return-first future-stack triage (USER DECISION)
+
+**Future-stack strategy refined:** The primary 1000+-mod stack is the exhaustive R&D exception. Rapid follow-on stack audits target **only the big measured opportunities** and reuse existing generic/semantic optimizations; leave small, low-ROI or manually laborious cases on the table by design. Strong candidate domains include REDscript workload, shared native location wakes, allocation/GC pressure where instrumentable, **both** directions of the Lua/C++ bridge, 0-Engine work and newly profiled hotspots. These are opportunities, **not delivered optimizations or proven specific gains**. Prioritize by attributable cost/removable work/engineering effort; safety and source proof still apply to anything generated. See [unified product contract](product/UNIFIED-TWO-PAGE-WORKFLOW.md).
+
 ## 2026-10-16 — Development-stack results versus rapid follow-on stacks (USER CLARIFICATION)
 
 **Results expectation clarified:** The developer's primary 1000+-mod stack is the unusually deeply profiled and manually optimized research/development stack. Other stacks will be processed much more quickly using the accumulated generic and semantic library, without the same exhaustive manual investigation of each mod. Advertised before/after results from the development stack must **not** be presented as the typical outcome; variation arises from both mod composition and **unequal optimization depth**. Unknown/new releases may remain unoptimized where no safe generic/source-proven rule applies. This does not change source-safety/fallback gates. See [public results policy](product/UNIFIED-TWO-PAGE-WORKFLOW.md).

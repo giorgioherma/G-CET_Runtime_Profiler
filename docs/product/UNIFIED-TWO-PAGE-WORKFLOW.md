@@ -59,6 +59,16 @@ Each transition is evidence-backed and resumable or recoverable after interrupti
 - The analytics report should distinguish `optimized`, `already optimized`, `not beneficial`, `unsupported/unrecognized` and `unsafe/unknown`; no fake support count or performance-gain estimate for unmeasured changes. Coverage is specific to the installation and capture analyzed.
 - This disclosure belongs in the public description and optional report context, without adding an extra primary step to the two-page workflow.
 
+## High-return-first optimization policy for follow-on stacks (user decision)
+
+**The primary 1000+-mod installation is the deep R&D/proving stack; subsequent stacks are not exhaustive per-mod audits.** The tool and developer deliberately prioritize a small number of substantial, evidence-supported gains and accept leaving many minor or disproportionately costly opportunities unoptimized. Do not chase mod-count/coverage statistics as a substitute for actual workload reduction.
+
+- Reuse safe generic source transformations and established semantic-library adaptations first. Rank additional investigation by **measured contribution to workload**, plausible removable cost, blast radius and engineering effort. Focus limited manual analysis on unusually expensive paths with credible high payoff; skip cheap mods and low-return special cases.
+- Important exploration lanes include **REDscript-side recurring work**, shared native/static-location wakes replacing redundant proximity jobs on either side, **measured allocation/GC pressure** (including LuaJIT as well as separately measured native/REDscript allocation behavior), **native-to-Lua and Lua-to-native boundary crossings** and marshalling, **0-Engine** attribution/dispatch, and newly revealed significant hotspots. These are **research targets, not claims that cross-language optimization, REDscript GC instrumentation or complete native wake replacement is already implemented**.
+- Measure the real bottleneck before proposing a broad architectural intervention. Count callback invocations separately from allocation bytes, garbage collection, script CPU work and native dispatch; do not infer large gains solely from number of functions or mods. Favor retirement of redundant work over moving the same work to another runtime.
+- A high-value unresolved hotspot may justify deeper investigation; a modest opportunity can be left untouched even when technically feasible. This is intentional optimization-budget management, not a defect.
+- Preserve the existing proof/safety requirements for changes that **are** generated: targeted prioritization does **not** justify speculative edits, incorrect behavior, or false savings claims. Unsupported and unaffected mods continue working as originally installed.
+
 ## Release compatibility and per-mod opt-out (user decision)
 
 **The optimization tool is best-effort software for heterogeneous mod installations, not a guarantee of gameplay correctness in every possible stack.** No release criterion requires a developer to manually play through every supported mod, quest or combination. There will be unsupported versions and inevitably some missed gameplay interactions. The user-facing release notes and application report must state the limitation clearly and avoid absolute claims of zero bugs or universal compatibility.
