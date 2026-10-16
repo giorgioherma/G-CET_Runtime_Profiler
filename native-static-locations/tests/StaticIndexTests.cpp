@@ -133,6 +133,36 @@ int main(int argc,char** argv) {
     GCET_ASSERT(driver.Tick(true,200,0,0)&&shared.State(202)==1);
     driver.Exit();
 
+
+    // Runtime source registration, source reload, tombstones, and dynamic wake.
+    StaticIndex dynamic;
+    GCET_ASSERT(dynamic.Load(std::vector<Anchor>{}));
+    GCET_ASSERT(dynamic.Subscribe(8001,0) && dynamic.AckSnapshot(8001));
+    GCET_ASSERT(dynamic.Update(0,0,0));
+    GCET_ASSERT(dynamic.AddAnchor({801,0,0,0,20,false,88}));
+    GCET_ASSERT(dynamic.Count()==1 && dynamic.State(801)==-1);
+    GCET_ASSERT(dynamic.OwnerCount(88)==1 && dynamic.OwnerAnchor(88,0)==801);
+    GCET_ASSERT(!dynamic.AddAnchor({801,0,0,0,20,false,88}));
+    GCET_ASSERT(!dynamic.AddAnchor({802,0,0,0,-20,false,88}));
+    GCET_ASSERT(dynamic.SetArmed(801,true));
+    GCET_ASSERT(dynamic.Update(0,0,0) && dynamic.State(801)==1);
+    TransitionJournal::Event dynEv{};
+    GCET_ASSERT(dynamic.Poll(8001,dynEv)==TransitionJournal::Result::EventReady);
+    GCET_ASSERT(dynEv.id==801 && dynEv.state==1);
+    GCET_ASSERT(dynamic.RemoveAnchor(801));
+    GCET_ASSERT(dynamic.State(801)==-1 && !dynamic.SetArmed(801,true));
+    GCET_ASSERT(dynamic.Poll(8001,dynEv)==TransitionJournal::Result::EventReady);
+    GCET_ASSERT(dynEv.id==801 && dynEv.state==-1);
+    GCET_ASSERT(!dynamic.AddAnchor({801,100,0,0,20,false,88}));
+    GCET_ASSERT(dynamic.AddAnchor({803,100,0,0,20,false,88}));
+    GCET_ASSERT(dynamic.SetArmed(803,true));
+    GCET_ASSERT(dynamic.Update(100,0,0));
+    GCET_ASSERT(dynamic.State(803)==1 && dynamic.State(801)==-1);
+    GCET_ASSERT(dynamic.OwnerCount(88)==2); // tombstones retained until new payload
+    GCET_ASSERT(dynamic.OwnerAnchor(88,0)==-1 && dynamic.OwnerAnchor(88,1)==803);
+    GCET_ASSERT(dynamic.RemoveOwner(88) && dynamic.State(803)==-1);
+    GCET_ASSERT(!dynamic.RemoveOwner(88));
+
     // Thousands of locations, only a few near the player. Update must not scan
     // all locations or allocate in the hot path. Independent wake radii work.
     std::vector<Anchor> many;

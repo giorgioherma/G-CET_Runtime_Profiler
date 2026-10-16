@@ -26,6 +26,11 @@ struct Transition {
 class StaticIndex final {
 public:
     bool Load(std::span<const Anchor> anchors);
+    // Runtime source-proven registration. One-time indexing is allowed to
+    // allocate; Update/Poll still do not after Add has reserved scratch space.
+    // IDs are unique for the lifetime of this loaded manifest, including
+    // tombstones; callers must allocate a new ID on source-geometry change.
+    bool AddAnchor(const Anchor& anchor);
     void Clear();
     void ResetSession();
     bool SetArmed(int32_t id, bool armed);

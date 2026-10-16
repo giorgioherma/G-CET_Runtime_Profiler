@@ -29,6 +29,10 @@ public native func GCETStaticPolledOwner(consumer: Int32) -> Int32;
 public native func GCETStaticAnchorAt(index: Int32) -> Int32;
 public native func GCETStaticOwnerCount(owner: Int32) -> Int32;
 public native func GCETStaticOwnerAnchor(owner: Int32, index: Int32) -> Int32;
+// Runtime registration for source-proven (including editor-reloaded) sites.
+ // Fresh unique IDs for replaced sites; adding does not arm an anchor.
+public native func GCETStaticAddAnchor(id: Int32, x: Float, y: Float, z: Float,
+                                       radius: Float, xyOnly: Bool, owner: Int32) -> Bool;
 public native func GCETStaticRemoveAnchor(id: Int32) -> Bool;
 public native func GCETStaticRemoveOwner(owner: Int32) -> Bool;
 

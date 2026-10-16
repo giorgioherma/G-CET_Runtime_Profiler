@@ -141,6 +141,19 @@ namespace {
         int32_t consumer=0; RED4ext::GetParameter(f,&consumer); f->code++;
         *out=g_loaded?g_index.LastPolledOwner(consumer):-1;
     }
+    void AddAnchor(RED4ext::IScriptable*, RED4ext::CStackFrame* f, bool* out, int64_t) {
+        int32_t id=0,owner=0; float x=0,y=0,z=0,radius=0; bool xyOnly=false;
+        RED4ext::GetParameter(f,&id);
+        RED4ext::GetParameter(f,&x);
+        RED4ext::GetParameter(f,&y);
+        RED4ext::GetParameter(f,&z);
+        RED4ext::GetParameter(f,&radius);
+        RED4ext::GetParameter(f,&xyOnly);
+        RED4ext::GetParameter(f,&owner);
+        f->code++;
+        *out=g_loaded && owner>0 &&
+            g_index.AddAnchor({id,x,y,z,radius,xyOnly,static_cast<uint32_t>(owner)});
+    }
     void OwnerCount(RED4ext::IScriptable*, RED4ext::CStackFrame* f, int32_t* out, int64_t) {
         int32_t owner=0; RED4ext::GetParameter(f,&owner); f->code++;
         *out=g_loaded && owner>0 ? static_cast<int32_t>(g_index.OwnerCount(static_cast<uint32_t>(owner))) : 0;
@@ -214,6 +227,9 @@ namespace {
         RegisterFunction("GCETStaticPoll",Poll,"Int32",consumerNames,intTypes,1);
         RegisterFunction("GCETStaticPolledState",PolledState,"Int32",consumerNames,intTypes,1);
         RegisterFunction("GCETStaticPolledOwner",PolledOwner,"Int32",consumerNames,intTypes,1);
+        const char* addNames[]={"id","x","y","z","radius","xyOnly","owner"};
+        const char* addTypes[]={"Int32","Float","Float","Float","Float","Bool","Int32"};
+        RegisterFunction("GCETStaticAddAnchor",AddAnchor,"Bool",addNames,addTypes,7);
         RegisterFunction("GCETStaticOwnerCount",OwnerCount,"Int32",ownerNames,intTypes,1);
         RegisterFunction("GCETStaticOwnerAnchor",OwnerAnchor,"Int32",ownerIndexNames,subscriptionTypes,2);
         RegisterFunction("GCETStaticAnchorAt",AnchorAt,"Int32",indexNames,intTypes,1);

@@ -64,6 +64,30 @@ bool StaticIndex::Load(std::span<const Anchor> anchors) {
     *this = std::move(next);
     return true;
 }
+bool StaticIndex::AddAnchor(const Anchor& anchor) {
+    if (!Valid(anchor) || entries_.size()>=kMaxAnchors || ids_.contains(anchor.id))
+        return false;
+    const int32_t xl=Cell(anchor.x-anchor.radius),xh=Cell(anchor.x+anchor.radius);
+    const int32_t yl=Cell(anchor.y-anchor.radius),yh=Cell(anchor.y+anchor.radius);
+    if (size_t(xh-xl+1)*size_t(yh-yl+1)>kMaxCellsPerAnchor)
+        return false;
+    const uint32_t index=static_cast<uint32_t>(entries_.size());
+    // New locations are deliberately unarmed: author stage/lifecycle must arm.
+    // Reserve scratch here, NEVER on the hot position-evaluation path.
+    candidates_.reserve(index+1);
+    previousNear_.reserve(index+1);
+    changes_.reserve(index+1);
+    entries_.push_back({anchor, false, false, false, 0});
+    ids_[anchor.id]=index;
+    owners_[anchor.owner].push_back(index);
+    for(int32_t cx=xl;cx<=xh;++cx)
+        for(int32_t cy=yl;cy<=yh;++cy)
+            cells_[CellKey(cx,cy)].push_back(index);
+    dirty_=true;
+    // If registered mid-session, consumers may require a fresh owner snapshot.
+    // Never pretend an unarmed source anchor is reliably FAR.
+    return true;
+}
 void StaticIndex::Clear() {
     *this = StaticIndex{};
 }
