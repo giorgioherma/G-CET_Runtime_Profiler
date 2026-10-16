@@ -781,13 +781,17 @@
           "Core:Update"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:driveaerialvehicle",
-        "expectedMarkerFileCount": 2,
+        "expectedMarkerFileCount": 3,
         "satisfiedAll": [
           "local idleEventTick = 0",
           "if activeVehicleState then",
           "elseif situation == Def.Situation.Normal then",
           "if idleEventTick >= 8 then",
-          "if situation ~= Def.Situation.Idle and situation ~= Def.Situation.Normal then"
+          "if situation ~= Def.Situation.Idle and situation ~= Def.Situation.Normal then",
+          "__gcetDAVActionGateV2",
+          "phase = \"before\"",
+          "if not __gcetDAVRouted then",
+          "DAV.core_obj:SyncActionListener()"
         ]
       },
       "behavior": {
@@ -796,7 +800,11 @@
           "vehicleActiveState",
           "normalOnFoot",
           "queuedAction",
-          "physicsRealtime"
+          "physicsRealtime",
+          "nativeActionSharedBeforePhaseWildcard",
+          "waitingPremountActionWake",
+          "sessionSituationResetWake",
+          "originalConsumeAndStorePlayerActionUnchanged"
         ],
         "lanes": [
           {
@@ -814,7 +822,8 @@
             "cadence": "DORMANT",
             "seconds": 0
           }
-        ]
+        ],
+        "note": "Native C v2 addition: a wildcard subscriber on the already-existing 0-Engine before-phase PlayerPuppet::OnAction bridge is active during Waiting (pre-mount) and InVehicle only; original author Observe fallback stays when shared routing cannot be proven. Both the seven author SetSituation success transitions and direct SessionStart/SessionEnd state assignments synchronize the handle. Preserve all configurable exception lists, Consume order inside the handler, all actions forwarded to StorePlayerAction, and original B-stage physics/cadence. Real CET input-order gameplay test remains mandatory."
       },
       "generation": {
         "enabled": true,
