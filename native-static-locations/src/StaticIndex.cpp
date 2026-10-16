@@ -74,7 +74,7 @@ void StaticIndex::ResetSession() {
     ++generation_;
     changes_.clear();
     previousNear_.clear();
-    for (auto& entry : entries_) { entry.near = false; entry.seen = 0; }
+    for (auto& entry : entries_) { entry.inside = false; entry.seen = 0; }
     stamp_ = 0;
 }
 bool StaticIndex::SetArmed(int32_t id, bool armed) {
@@ -85,7 +85,7 @@ bool StaticIndex::SetArmed(int32_t id, bool armed) {
     if (e.armed != armed) {
         if (!armed && positioned_) Emit(e,-1); // disarm becomes UNKNOWN, never FAR
         e.armed = armed;
-        if (armed) e.near=false; // guarantee a new near wake after rearming
+        if (armed) e.inside=false; // guarantee a new near wake after rearming
         dirty_ = true;
     }
     return true;
@@ -98,7 +98,7 @@ bool StaticIndex::RemoveEntry(uint32_t i) {
     auto& e=entries_[i];
     if (e.removed) return false;
     if (positioned_) Emit(e,-1);
-    e.removed=true; e.armed=false; e.near=false;
+    e.removed=true; e.armed=false; e.inside=false;
     dirty_=true;
     return true;
 }
@@ -188,9 +188,9 @@ bool StaticIndex::Update(float x, float y, float z) {
         ++lastDistanceTests_;
         const float dx = x-e.anchor.x, dy=y-e.anchor.y;
         const float distSq = dx*dx+dy*dy + (e.anchor.xyOnly ? 0.0f : (z-e.anchor.z)*(z-e.anchor.z));
-        const bool near = distSq <= e.anchor.radius*e.anchor.radius;
-        if (near != e.near) {
-            e.near = near;
+        const bool inside = distSq <= e.anchor.radius*e.anchor.radius;
+        if (near != e.inside) {
+            e.inside = near;
             changes_.push_back({e.anchor.id, near});
             Emit(e,near?1:0);
         }
@@ -198,21 +198,21 @@ bool StaticIndex::Update(float x, float y, float z) {
     // Previous near anchors can leave the current cell. No global N-anchor scan.
     for (uint32_t index : previousNear_) {
         auto& e = entries_[index];
-        if (e.near && (!e.armed || e.seen != stamp_)) {
-            e.near = false;
+        if (e.inside && (!e.armed || e.seen != stamp_)) {
+            e.inside = false;
             changes_.push_back({e.anchor.id, false});
             if (e.armed && !e.removed) Emit(e,0);
         }
     }
     previousNear_.clear();
-    for (uint32_t index : candidates_) if (entries_[index].near) previousNear_.push_back(index);
+    for (uint32_t index : candidates_) if (entries_[index].inside) previousNear_.push_back(index);
     return true;
 }
 int StaticIndex::State(int32_t id) const {
     auto it=ids_.find(id);
     if (it == ids_.end() || !positioned_) return -1;
     const auto& e=entries_[it->second];
-    return e.armed && !e.removed ? (e.near ? 1 : 0) : -1;
+    return e.armed && !e.removed ? (e.inside ? 1 : 0) : -1;
 }
 
 bool ReadCompiledFile(const std::filesystem::path& path, std::vector<Anchor>& out) {

@@ -18,7 +18,7 @@ struct Anchor {
 
 struct Transition {
     int32_t id;
-    bool near;
+    bool inside;
 };
 
 // All public methods must be called on the game's main thread. No background thread,
@@ -61,7 +61,7 @@ private:
         Anchor anchor;
         bool armed = false;
         bool removed = false;
-        bool near = false;
+        bool inside = false;
         uint32_t seen = 0;
     };
     static constexpr int kCell = 128;
