@@ -72,7 +72,7 @@ void StaticIndex::ResetSession() {
     ++generation_;
     changes_.clear();
     previousNear_.clear();
-    for (auto& entry : entries_) { entry.near = false; entry.seen = 0; }
+    for (auto& entry : entries_) { entry.inside = false; entry.seen = 0; }
     stamp_ = 0;
 }
 bool StaticIndex::SetArmed(int32_t id, bool armed) {
@@ -114,28 +114,28 @@ bool StaticIndex::Update(float x, float y, float z) {
         const float dx = x-e.anchor.x, dy=y-e.anchor.y;
         const float distSq = dx*dx+dy*dy + (e.anchor.xyOnly ? 0.0f : (z-e.anchor.z)*(z-e.anchor.z));
         const bool near = distSq <= e.anchor.radius*e.anchor.radius;
-        if (near != e.near) {
-            e.near = near;
+        if (near != e.inside) {
+            e.inside = near;
             changes_.push_back({e.anchor.id, near});
         }
     }
     // Previous near anchors can leave the current cell. No global N-anchor scan.
     for (uint32_t index : previousNear_) {
         auto& e = entries_[index];
-        if (e.near && (!e.armed || e.seen != stamp_)) {
-            e.near = false;
+        if (e.inside && (!e.armed || e.seen != stamp_)) {
+            e.inside = false;
             changes_.push_back({e.anchor.id, false});
         }
     }
     previousNear_.clear();
-    for (uint32_t index : candidates_) if (entries_[index].near) previousNear_.push_back(index);
+    for (uint32_t index : candidates_) if (entries_[index].inside) previousNear_.push_back(index);
     return true;
 }
 int StaticIndex::State(int32_t id) const {
     auto it=ids_.find(id);
     if (it == ids_.end() || !positioned_) return -1;
     const auto& e=entries_[it->second];
-    return e.armed ? (e.near ? 1 : 0) : -1;
+    return e.armed ? (e.inside ? 1 : 0) : -1;
 }
 
 bool ReadCompiledFile(const std::filesystem::path& path, std::vector<Anchor>& out) {

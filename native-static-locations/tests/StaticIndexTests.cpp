@@ -30,7 +30,7 @@ int main(int argc,char** argv) {
     GCET_ASSERT(s.Changes().size()==1 && s.Changes()[0].id==1);
     GCET_ASSERT(s.SetArmed(2,false));
     GCET_ASSERT(s.Update(0,0,5) && s.State(2)==-1);
-    GCET_ASSERT(s.Changes().size()==1 && s.Changes()[0].id==2 && !s.Changes()[0].near);
+    GCET_ASSERT(s.Changes().size()==1 && s.Changes()[0].id==2 && !s.Changes()[0].inside);
     GCET_ASSERT(s.Update(280,0,0) && s.State(1)==0 && s.State(3)==1);
     GCET_ASSERT(s.Changes().size()==2); // leave first + enter third
     GCET_ASSERT(!s.Update(std::numeric_limits<float>::quiet_NaN(),0,0));

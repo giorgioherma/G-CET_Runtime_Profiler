@@ -63,7 +63,7 @@ namespace {
         RED4ext::GetParameter(frame,&i);
         frame->code++;
         const auto changes=g_index.Changes();
-        *out = g_loaded && i>=0 && static_cast<size_t>(i)<changes.size() && changes[i].near;
+        *out = g_loaded && i>=0 && static_cast<size_t>(i)<changes.size() && changes[i].inside;
     }
     template <typename T>
     void RegisterFunction(const char* name, RED4ext::ScriptingFunction_t<T> handler,
