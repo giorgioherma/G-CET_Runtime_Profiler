@@ -14,3 +14,7 @@ if(BUILD_TESTING)
   target_link_libraries(gcet_native_gate_tests PRIVATE gcet_native_action_gate Threads::Threads)
   add_test(NAME gcet_native_gate_tests COMMAND gcet_native_gate_tests)
 endif()
+
+# Opt-in standalone microbenchmark, deliberately excluded from CTest pass/fail.
+add_executable(gcet_native_gate_bench tests/bench_action_gate.cpp)
+target_link_libraries(gcet_native_gate_bench PRIVATE gcet_native_action_gate)

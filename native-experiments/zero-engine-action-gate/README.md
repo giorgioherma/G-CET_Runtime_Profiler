@@ -9,3 +9,7 @@ The on-demand 0-Engine service-value reader `0-Engine/GCETNativeEngineValues.lua
 Tracked experiment uses `native-experiments/zero-engine-action-gate/` only; there are no changes to `.github/workflows/*`, `src/G.CETProfiler*`, production `resolver-runtime/0-Engine/*`, or pinned CET/DLL hashes.
 
 Validation status: [2026-10-16 results](docs/VALIDATION.md). Windows/CET integration remains pending; the tested shared object is not a game-installable DLL.
+
+## Isolated Windows test
+
+This experimental branch also contains a path-scoped **standalone Windows x64** Action Gate test workflow at `.github/workflows/native-action-gate-experiment.yml`. It builds the decision library, runs native safety tests and microbenchmarks, and publishes a standalone native DLL. **Do not install it over CET**: the library does not intercept `OnAction`. Read `docs/NATIVE-CET-SHADOW-TEST-PLAN.md` for the native pre-Lua proof and shadow test required before proposing an actual performance A/B.

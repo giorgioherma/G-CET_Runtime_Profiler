@@ -1,0 +1,36 @@
+name: Experimental Native Action Gate - Standalone Windows x64
+on:
+  push:
+    branches:
+      - exp/native-zero-engine-hotpath-20261016
+    paths:
+      - 'native-experiments/zero-engine-action-gate/**'
+      - '.github/workflows/native-action-gate-experiment.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  standalone-native-x64:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure standalone test project
+        run: cmake -S native-experiments/zero-engine-action-gate -B native-experiments/zero-engine-action-gate/build-win -A x64 -DBUILD_TESTING=ON
+      - name: Build Release
+        run: cmake --build native-experiments/zero-engine-action-gate/build-win --config Release --parallel
+      - name: Run independent native safety tests
+        run: ctest --test-dir native-experiments/zero-engine-action-gate/build-win -C Release --output-on-failure
+      - name: Benchmark native decision cost (not CET savings)
+        run: native-experiments/zero-engine-action-gate/build-win/Release/gcet_native_gate_bench.exe
+      - name: Publish standalone library (not a CET plugin)
+        uses: actions/upload-artifact@v4
+        with:
+          name: gcet-action-gate-standalone-win-x64-NOT-CET
+          path: |
+            native-experiments/zero-engine-action-gate/build-win/Release/gcet_native_action_gate.dll
+            native-experiments/zero-engine-action-gate/build-win/Release/gcet_native_gate_tests.exe
+            native-experiments/zero-engine-action-gate/build-win/Release/gcet_native_gate_bench.exe
+            native-experiments/zero-engine-action-gate/docs/VALIDATION.md
+          if-no-files-found: error

@@ -20,3 +20,10 @@
 ## Acceptance gate for a later early native stage
 
 Only propose a CET-side host patch after proving: exact per-subscriber call site after distinguishing 0-Engine's observer from other mods, valid native action name without unsafe RTTI dereference, lossless fallback for no/unknown name, complete subscription mirror invalidation, preserved ordering and all dynamically changed subscribers, no global suppression of `OnAction`, and reliable game-load/capture-off/on/restoration with separately pinned DLL/PDB. If any requirement cannot be met, leave the native decision core observational.
+
+## 2026-10-16 — native microbenchmark and isolated Windows validation setup
+
+- Independently reconstructed the exact C++ ABI v1 source and existing CTest fixture, compiled with GCC 14.2 C++20 Release/Ninja on Linux and ran `ctest`: **1/1 passed**. This is a local rerun, not a Windows/CET runtime test.
+- Added `tests/bench_action_gate.cpp` with 2,000,000 sequential decisions per case. Local Linux Release measured **59.7 ns** per disarmed fail-open lookup, **68.3 ns** per exact-action hit, **67.1 ns** per exact-action miss and **68.2 ns** per wildcard fail-open. These are environment-specific **native C ABI lookup costs only**, excluding native CName decoding, CET dispatch/argument marshalling, FFI and Lua. They are not frame-time savings.
+- Added `.github/workflows/native-action-gate-experiment.yml` restricted to this isolated experiment branch and path, which builds MSVC x64 Release, runs existing CTest, prints the standalone benchmark, and uploads **standalone** DLL/EXE artifacts. This does **not** modify the existing profiler/Resolver/native production workflows. Windows CI results must be observed separately after push; at authorship time this was not yet verified.
+- See `docs/NATIVE-CET-SHADOW-TEST-PLAN.md` for the required **shadow-only pre-Lua test** before any native skip; that integration is not implemented here and no game effect is claimed.
