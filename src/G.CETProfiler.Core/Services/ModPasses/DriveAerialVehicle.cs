@@ -60,9 +60,17 @@ internal static partial class SemanticInjectors
             "        end\n" +
             "    end)";
 
-        var coreText = core.Text.Contains("local __gcetIdleEventTick", StringComparison.Ordinal)
-            ? core.Text : RegexReplaceOnce(
-            core.Text,
+        // The real installed mod uses CRLF in both core.lua and event.lua.
+        // Work on normalized in-memory source so exact callback closures and
+        // direct SessionStart/SessionEnd writers match regardless of EOL;
+        // restore the owner's original EOL convention before staging files.
+        var coreCrLf = core.Text.Contains("\r\n", StringComparison.Ordinal);
+        var normalizedCore = coreCrLf
+            ? core.Text.Replace("\r\n", "\n", StringComparison.Ordinal)
+            : core.Text;
+        var coreText = normalizedCore.Contains("local __gcetIdleEventTick", StringComparison.Ordinal)
+            ? normalizedCore : RegexReplaceOnce(
+            normalizedCore,
             pattern,
             replacement,
             "DriveAerialVehicle active/normal event cadence");
@@ -77,7 +85,10 @@ internal static partial class SemanticInjectors
             "GameUI.Observe(\"SessionEnd\"",
             "self.current_situation = Def.Situation.Waiting",
             "self.current_situation = Def.Situation.InVehicle");
-        var eventText = events.Text;
+        var eventCrLf = events.Text.Contains("\r\n", StringComparison.Ordinal);
+        var eventText = eventCrLf
+            ? events.Text.Replace("\r\n", "\n", StringComparison.Ordinal)
+            : events.Text;
         if (!coreText.Contains("__gcetDAVActionGateV2", StringComparison.Ordinal))
         {
             if (!coreText.Contains("function Core:SetInputListener()", StringComparison.Ordinal) ||
@@ -182,8 +193,10 @@ end
                  !coreText.Contains("Observe(\"PlayerPuppet\", \"OnAction\", __gcetDAVOnAction)", StringComparison.Ordinal))
             throw new InvalidOperationException("DAV partial action gate; fail closed.");
 
-        context.Write(core, coreText);
-        context.Write(events, eventText);
+        context.Write(core, coreCrLf
+            ? coreText.Replace("\n", "\r\n", StringComparison.Ordinal) : coreText);
+        context.Write(events, eventCrLf
+            ? eventText.Replace("\n", "\r\n", StringComparison.Ordinal) : eventText);
         return SemanticInjectionResult.Success(
             "Existing flight physics/cadence preserved. New native action C route uses the existing 0-Engine before hook with wildcard delivery and direct CET fallback. " +
             "Source-proven Waiting/InVehicle transitions synchronously wake or suspend the subscriber; full in-game action consumption ordering still needs testing.");

@@ -792,7 +792,8 @@
           "phase = \"before\"",
           "if not __gcetDAVRouted then",
           "DAV.core_obj:SyncActionListener()"
-        ]
+        ],
+        "composablePartialStages": true
       },
       "behavior": {
         "handler": "SEMANTIC_ACTIVITY_GATE",
@@ -823,7 +824,7 @@
             "seconds": 0
           }
         ],
-        "note": "Native C v2 addition: a wildcard subscriber on the already-existing 0-Engine before-phase PlayerPuppet::OnAction bridge is active during Waiting (pre-mount) and InVehicle only; original author Observe fallback stays when shared routing cannot be proven. Both the seven author SetSituation success transitions and direct SessionStart/SessionEnd state assignments synchronize the handle. Preserve all configurable exception lists, Consume order inside the handler, all actions forwarded to StorePlayerAction, and original B-stage physics/cadence. Real CET input-order gameplay test remains mandatory."
+        "note": "Native C v2 addition: a wildcard subscriber on the already-existing 0-Engine before-phase PlayerPuppet::OnAction bridge is active during Waiting (pre-mount) and InVehicle only; original author Observe fallback stays when shared routing cannot be proven. Both the seven author SetSituation success transitions and direct SessionStart/SessionEnd state assignments synchronize the handle. Preserve all configurable exception lists, Consume order inside the handler, all actions forwarded to StorePlayerAction, and original B-stage physics/cadence. Real CET input-order gameplay test remains mandatory. The two older approved source-stage marker files (init.lua + Modules/core.lua) constitute an explicitly composable partial source state; the Resolver must admit upgrading just the missing native action stage only after current source proof and fail-closed replacement. This field does not authorize any other ambiguous partial mod."
       },
       "generation": {
         "enabled": true,
