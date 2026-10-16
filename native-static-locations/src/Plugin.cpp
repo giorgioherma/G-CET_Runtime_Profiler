@@ -1,5 +1,7 @@
 #include "StaticIndex.hpp"
 #include "PositionCoordinator.hpp"
+#include "DiagnosticProbe.hpp"
+#include <cmath>
 #include <RED4ext/Scripting/Utils.hpp>
 #include <RED4ext/Scripting/Natives/ScriptGameInstance.hpp>
 #include <RED4ext/Scripting/Natives/Generated/Vector4.hpp>
@@ -15,36 +17,85 @@ namespace {
     gcet::static_locations::StaticIndex g_index;
     bool g_loaded = false;
     gcet::static_locations::PositionCoordinator g_coordinator(g_index);
+    gcet::static_locations::DiagnosticProbe g_probe(g_index,g_coordinator);
+    const RED4ext::v1::Logger* g_logger=nullptr;
+    RED4ext::v1::PluginHandle g_handle{};
+    int32_t g_lastPlayerCode=-1;
+    uint32_t g_reportedReasons=0;
+    bool g_reportedReady=false;
+    uint32_t g_logBudget=32;
+
+    void Log(const char* message) {
+        if(g_logger && g_logger->Info && g_logBudget) {
+            --g_logBudget;
+            g_logger->Info(g_handle,message);
+        }
+    }
+    void LogErrorCodeOnce(int32_t code) {
+        if(code<=0 || code>5)return;
+        const uint32_t bit=uint32_t(1) << static_cast<uint32_t>(code);
+        if(g_reportedReasons & bit)return;
+        g_reportedReasons|=bit;
+        switch(code) {
+            case 1:Log("G-CET Static: player unavailable / GameInstance.GetPlayer failed");break;
+            case 2:Log("G-CET Static: player RTTI class unavailable");break;
+            case 3:Log("G-CET Static: player GetWorldPosition method not found");break;
+            case 4:Log("G-CET Static: player GetWorldPosition invocation failed");break;
+            case 5:Log("G-CET Static: player position invalid or out of bounds");break;
+        }
+    }
 
     // RED4ext's Running-state callback provides ONE native position owner.
-    bool SamplePlayer(float& x,float& y,float& z){
+    int32_t SamplePlayer(float& x,float& y,float& z){
         RED4ext::ScriptGameInstance game;
         RED4ext::Handle<RED4ext::IScriptable> player;
         if(!RED4ext::ExecuteGlobalFunction("GetPlayer;GameInstance",&player,game) || !player.instance)
-            return false;
+            return 1;
         auto* klass=player.instance->GetType();
-        if(!klass)return false;
+        if(!klass)return 2;
         auto* method=klass->GetFunction("GetWorldPosition");
-        if(!method)return false;
+        if(!method)return 3;
         RED4ext::Vector4 pos{};
-        if(!RED4ext::ExecuteFunction(player.instance,method,&pos))return false;
+        if(!RED4ext::ExecuteFunction(player.instance,method,&pos))return 4;
         x=pos.X; y=pos.Y; z=pos.Z;
-        return true;
+        if(!std::isfinite(x)||!std::isfinite(y)||!std::isfinite(z)||
+           std::abs(x)>1000000.0f||std::abs(y)>1000000.0f||std::abs(z)>1000000.0f)
+            return 5;
+        return 0;
     }
     bool RunningEnter(RED4ext::CGameApplication*){
-        if(g_loaded)g_coordinator.Enter();
+        if(g_loaded) {
+            g_reportedReasons=0;
+            g_reportedReady=false;
+            g_lastPlayerCode=-1;
+            g_coordinator.Enter();
+            Log("G-CET Static: running-state entered; awaiting valid player position");
+        }
         return true;
     }
     bool RunningUpdate(RED4ext::CGameApplication*){
         if(g_loaded){
             float x=0,y=0,z=0;
-            const bool available=SamplePlayer(x,y,z);
-            g_coordinator.Tick(available,x,y,z);
+            const int32_t code=SamplePlayer(x,y,z);
+            g_lastPlayerCode=code;
+            g_coordinator.Tick(code==0,x,y,z);
+            if(code==0) {
+                if(!g_reportedReady) {
+                    Log("G-CET Static: player world position VALID; native coordinator active");
+                    g_reportedReady=true;
+                }
+            } else {
+                LogErrorCodeOnce(code); // once per reason per running session
+            }
         }
         return false;
     }
     bool RunningExit(RED4ext::CGameApplication*){
-        if(g_loaded)g_coordinator.Exit();
+        if(g_loaded) {
+            Log("G-CET Static: running-state exited; native session invalidated");
+            g_coordinator.Exit();
+            g_lastPlayerCode=-1;
+        }
         return true;
     }
     void CoordinatorStatus(RED4ext::IScriptable*,RED4ext::CStackFrame* frame,int32_t* out,int64_t){
@@ -52,6 +103,26 @@ namespace {
         *out=g_loaded?g_coordinator.Status():0;
     }
 
+    void LastPlayerCode(RED4ext::IScriptable*,RED4ext::CStackFrame* frame,int32_t* out,int64_t){
+        frame->code++;
+        *out=g_loaded?g_lastPlayerCode:-1;
+    }
+    void ProbeHere(RED4ext::IScriptable*,RED4ext::CStackFrame* frame,int32_t* out,int64_t){
+        float radius=0;
+        RED4ext::GetParameter(frame,&radius);
+        frame->code++;
+        *out=g_loaded?g_probe.Create(radius):-1;
+        if(*out>0)Log("G-CET Static: diagnostic-only anchor created (no author callbacks)");
+    }
+    void ProbeId(RED4ext::IScriptable*,RED4ext::CStackFrame* frame,int32_t* out,int64_t){
+        frame->code++;
+        *out=g_loaded?g_probe.Id():-1;
+    }
+    void ProbeRemove(RED4ext::IScriptable*,RED4ext::CStackFrame* frame,bool* out,int64_t){
+        frame->code++;
+        *out=g_loaded && g_probe.Remove();
+        if(*out)Log("G-CET Static: diagnostic-only anchor removed");
+    }
     void StartSession(RED4ext::IScriptable*, RED4ext::CStackFrame* frame, void*, int64_t) {
         frame->code++;
         g_index.ResetSession();
@@ -206,6 +277,12 @@ namespace {
         const char* intTypes[]={"Int32"};
         RegisterFunction("GCETStaticReady",Ready,"Bool",nullptr,nullptr,0);
         RegisterFunction("GCETStaticCoordinatorState",CoordinatorStatus,"Int32",nullptr,nullptr,0);
+        RegisterFunction("GCETStaticLastPlayerError",LastPlayerCode,"Int32",nullptr,nullptr,0);
+        const char* radiusNames[]={"radius"};
+        const char* radiusTypes[]={"Float"};
+        RegisterFunction("GCETStaticProbeHere",ProbeHere,"Int32",radiusNames,radiusTypes,1);
+        RegisterFunction("GCETStaticProbeId",ProbeId,"Int32",nullptr,nullptr,0);
+        RegisterFunction("GCETStaticProbeRemove",ProbeRemove,"Bool",nullptr,nullptr,0);
         RegisterFunction("GCETStaticCount",Count,"Int32",nullptr,nullptr,0);
         RegisterFunction("GCETStaticResetSession",StartSession,nullptr,nullptr,nullptr,0);
         RegisterFunction("GCETStaticArm",Arm,"Bool",armNames,armTypes,2);
@@ -258,18 +335,28 @@ namespace {
 RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle handle,
                                         RED4ext::v1::EMainReason reason,
                                         const RED4ext::v1::Sdk* sdk) {
-    RED4EXT_UNUSED_PARAMETER(handle);
-    RED4EXT_UNUSED_PARAMETER(sdk);
     if (reason == RED4ext::v1::EMainReason::Load) {
+        g_handle=handle;
+        g_logger=sdk?sdk->logger:nullptr;
         LoadData();
+        if(g_loaded)
+            Log("G-CET Static: native location manifest accepted");
+        else
+            Log("G-CET Static: native manifest missing or invalid; cache inactive");
         RED4ext::v1::GameState running{};
         running.OnEnter=&RunningEnter;
         running.OnUpdate=&RunningUpdate;
         running.OnExit=&RunningExit;
-        sdk->gameStates->Add(handle,RED4ext::EGameStateType::Running,&running);
+        if(!sdk || !sdk->gameStates ||
+           !sdk->gameStates->Add(handle,RED4ext::EGameStateType::Running,&running)) {
+            Log("G-CET Static: ERROR native running-state callback registration failed");
+        } else {
+            Log("G-CET Static: native running-state callbacks registered");
+        }
         RED4ext::CRTTISystem::Get()->AddPostRegisterCallback(PostRegisterTypes);
     } else if (reason == RED4ext::v1::EMainReason::Unload) {
         g_coordinator.Exit(); g_index.Clear(); g_loaded=false;
+        g_logger=nullptr;
     }
     return true;
 }

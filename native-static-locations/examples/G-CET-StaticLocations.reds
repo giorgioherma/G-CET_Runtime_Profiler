@@ -3,6 +3,16 @@
 public native func GCETStaticReady() -> Bool;
 // 0 not running, 1 position UNKNOWN, 2 valid native position feed.
 public native func GCETStaticCoordinatorState() -> Int32;
+// -1 not sampled/inactive; 0 VALID; 1 no player; 2 no RTTI class;
+// 3 no world-position getter; 4 getter invoke failed; 5 invalid coordinates.
+public native func GCETStaticLastPlayerError() -> Int32;
+
+// EXPLICIT developer-only active probe: marks one radius around the LAST valid
+// player position. No quest/callback connection. Unique high-range tombstoned ID;
+// this does NOT make the cache a gameplay optimization.
+public native func GCETStaticProbeHere(radius: Float) -> Int32;
+public native func GCETStaticProbeId() -> Int32;
+public native func GCETStaticProbeRemove() -> Bool;
 public native func GCETStaticCount() -> Int32;
 public native func GCETStaticArm(id: Int32, armed: Bool) -> Bool;
 // Compatibility signature only: native coordinator owns the position; returns -1.

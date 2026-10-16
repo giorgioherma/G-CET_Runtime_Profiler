@@ -24,6 +24,7 @@ bool PositionCoordinator::Tick(bool available,float x,float y,float z){
         if(known_){known_=false; ++losses_; index_.ResetSession();}
         return false;
     }
+    x_=x;y_=y;z_=z;
     known_=true;
     return true;
 }

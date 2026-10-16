@@ -1,5 +1,6 @@
 #include "StaticIndex.hpp"
 #include "PositionCoordinator.hpp"
+#include "DiagnosticProbe.hpp"
 #include <cstdlib>
 #define GCET_ASSERT(expr) do { if(!(expr)) { std::cerr << "FAILED: " << #expr << " line " << __LINE__ << "\n"; std::abort(); } } while(false)
 #include <cmath>
@@ -166,6 +167,47 @@ int main(int argc,char** argv) {
     GCET_ASSERT(dynamic.OwnerAnchor(88,0)==-1 && dynamic.OwnerAnchor(88,1)==803);
     GCET_ASSERT(dynamic.RemoveOwner(88) && dynamic.State(803)==-1);
     GCET_ASSERT(!dynamic.RemoveOwner(88));
+
+
+    // Diagnostics are intentionally passive. They never dispatch mod callbacks,
+    // use source owner IDs, or accept stale coordinates after a load.
+    auto probeIndex=std::make_unique<StaticIndex>();
+    GCET_ASSERT(probeIndex->Load(std::vector<Anchor>{}));
+    PositionCoordinator probeCoordinator(*probeIndex);
+    DiagnosticProbe probe(*probeIndex,probeCoordinator);
+    GCET_ASSERT(probe.Create(25.f)==-1); // no running session/position
+    probeCoordinator.Enter();
+    GCET_ASSERT(probe.Create(25.f)==-1);
+    GCET_ASSERT(probeCoordinator.Tick(true,0,0,0));
+    float px=0,py=0,pz=0;
+    GCET_ASSERT(probeCoordinator.CurrentPosition(px,py,pz));
+    GCET_ASSERT(px==0 && py==0 && pz==0);
+    GCET_ASSERT(probe.Create(0.f)==-1 && probe.Create(2000.f)==-1);
+    const auto firstProbe=probe.Create(25.f);
+    GCET_ASSERT(firstProbe==DiagnosticProbe::kFirstId);
+    GCET_ASSERT(probeIndex->State(firstProbe)==-1); // dirty until next tick
+    GCET_ASSERT(probeCoordinator.Tick(true,0,0,0));
+    GCET_ASSERT(probeIndex->State(firstProbe)==1);
+    GCET_ASSERT(probeCoordinator.Tick(true,100,0,0));
+    GCET_ASSERT(probeIndex->State(firstProbe)==0);
+    GCET_ASSERT(probeCoordinator.Tick(true,0,0,0));
+    GCET_ASSERT(probeIndex->State(firstProbe)==1);
+    const auto secondProbe=probe.Create(40.f);
+    GCET_ASSERT(secondProbe==firstProbe+1);
+    GCET_ASSERT(probeIndex->State(firstProbe)==-1); // tombstone
+    GCET_ASSERT(probeCoordinator.Tick(true,0,0,0));
+    GCET_ASSERT(probeIndex->State(secondProbe)==1);
+    GCET_ASSERT(probeCoordinator.Tick(false,0,0,0)==false);
+    GCET_ASSERT(!probeCoordinator.CurrentPosition(px,py,pz));
+    GCET_ASSERT(probe.Create(15.f)==-1); // unavailable -> fail closed
+    GCET_ASSERT(probeIndex->State(secondProbe)==-1); // fail OPEN for authors
+    GCET_ASSERT(probeCoordinator.Tick(true,0,0,0));
+    GCET_ASSERT(probeIndex->State(secondProbe)==1);
+    GCET_ASSERT(probe.Remove());
+    GCET_ASSERT(probeIndex->State(secondProbe)==-1 && probe.Id()==0);
+    GCET_ASSERT(!probe.Remove());
+    probeCoordinator.Exit();
+    GCET_ASSERT(!probeCoordinator.CurrentPosition(px,py,pz));
 
     // Thousands of locations, only a few near the player. Update must not scan
     // all locations or allocate in the hot path. Independent wake radii work.

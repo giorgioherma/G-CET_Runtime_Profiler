@@ -15,9 +15,17 @@ public:
     uint64_t Ticks() const {return ticks_;}
     uint64_t UnavailableTicks() const {return unavailable_;}
     uint64_t AvailabilityLosses() const {return losses_;}
+    // Valid only while Running and after a successful sample. Never hand a
+    // previously valid position to a debug probe after position loss/reset.
+    bool CurrentPosition(float& x,float& y,float& z) const {
+        if(!running_ || !known_)return false;
+        x=x_;y=y_;z=z_;
+        return true;
+    }
 private:
     StaticIndex& index_;
     bool running_=false,known_=false;
     uint64_t ticks_=0,unavailable_=0,losses_=0;
+    float x_=0,y_=0,z_=0;
 };
 } // namespace gcet::static_locations
