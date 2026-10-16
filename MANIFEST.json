@@ -1,10 +1,10 @@
 {
-  "packageVersion": "1.2.7",
-  "profilerNativeVersion": "2.15.5-callback-allocator-attribution",
+  "packageVersion": "1.2.8",
+  "profilerNativeVersion": "2.15.6-zeroengine-source-attribution",
   "targetCET": {
     "version": "1.37.1",
     "officialSha256": "43a7b94698979703f9dfa2b0950607c9a88f53b84bbf09a8e593c7e218d41059",
-    "profilerSha256": "20ece8ed101b70e4a7589ff7d83a35e7e11eefdf1853e10f5106508252105c6a",
+    "profilerSha256": "0c0386745ba38c04feea360fdaf1fb1f01a70df9e818f1f95d9d24b70f18d507",
     "profilerPackageFile": "cyber_engine_tweaks.PROFILER.dll",
     "profilerInstallFile": "cyber_engine_tweaks.asi"
   },
@@ -49,7 +49,9 @@
     "CET_Runtime_Profile_GGC_UnscopedReallocOrigins.csv",
     "CET_Runtime_Profile_GGC_UnscopedBoundaries.csv",
     "CET_Runtime_Profile_GGC_UnscopedPathTimeline.csv",
-    "CET_Runtime_Profile_GGC_UnscopedNativeSamples.csv"
+    "CET_Runtime_Profile_GGC_UnscopedNativeSamples.csv",
+    "CET_Runtime_Profile_ZeroEngine_SourceAttribution.csv",
+    "CET_Runtime_Profile_ZeroEngine_Callsites.csv"
   ],
   "managerChanges": [
     "security-scan packaging: native profiler is distributed with a .dll extension matching its PE/DLL format and copied to CET's required cyber_engine_tweaks.asi name only during install",

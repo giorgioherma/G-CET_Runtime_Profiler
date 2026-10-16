@@ -3,6 +3,7 @@
 All notable public changes to G-CET Runtime Profiler are recorded here.
 
 ## [Unreleased]
+- **v1.2.8 development build:** coordinated Profiler/Resolver/launcher version bump; pinned native CI #85 source-attribution DLL and verified SHA; added two 0-Engine source/callsite CSVs to expected output and compiled-marker checks. Includes Hotscenes phase-faithful UI navigation routing and DriveAerialVehicle `Waiting`/`InVehicle` action gating, with staged B-to-C upgrade regression. In-game native and input-order validation still required.
 - **v1.2.5 development package (Profiler + Resolver):** both Windows applications, product manifest, root VERSION and both GitHub Actions artifact names advance together. CI now checks the ProductVersion and FileVersion of both executables. The exact native CET profiler 2.15.0 SHA pin remains mandatory; no native DLL rebuild and no game/mod behavior change.
 - **Data-provenance Stage A:** adds bounded-source function allocation candidates, qualified cross-mod Lua source overlap, separate repeated native Get*/Is*/Has* name-only probes, and explicit uncertainty; preserved all existing ms/s, GC duration, spikes and allocation evidence. Locked specification and regression fixtures live in docs/HANDOFF and tests.
 - **v1.2.3 development candidate:** align Profiler, Resolver and launcher product version, retain exact known-good native CET profiler 2.15.0 with SHA lock, and publish permanent developer handoff/GC research docs.
