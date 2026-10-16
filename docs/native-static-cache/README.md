@@ -1,4 +1,6 @@
-# Shared native static-location cache — documentation home
+# G-LookupCache — native shared-location cache
+
+**Documentation name: G-LookupCache.** Runtime/ABI identifiers, existing DLL, source paths, manifest, plugin folder and historic CI artifact names remain unchanged.
 
 **Dedicated continuation area for branch `dev/native-static-anchors-experimental`.** This is distinct from the existing main Profiler/Resolver handoff at [../HANDOFF](../HANDOFF/README.md). Do **not** start a cache-development chat by reading the 150k-character general [../LATEST-WORK](../LATEST-WORK.md).
 
