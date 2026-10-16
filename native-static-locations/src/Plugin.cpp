@@ -1,4 +1,8 @@
 #include "StaticIndex.hpp"
+#include "PositionCoordinator.hpp"
+#include <RED4ext/Scripting/Utils.hpp>
+#include <RED4ext/Scripting/Natives/ScriptGameInstance.hpp>
+#include <RED4ext/Scripting/Natives/Generated/Vector4.hpp>
 #include <RED4ext/RED4ext.hpp>
 #include <RED4ext/RTTITypes.hpp>
 #include <RED4ext/Scripting/IScriptable.hpp>
@@ -10,6 +14,43 @@
 namespace {
     gcet::static_locations::StaticIndex g_index;
     bool g_loaded = false;
+    gcet::static_locations::PositionCoordinator g_coordinator(g_index);
+
+    // RED4ext's Running-state callback provides ONE native position owner.
+    bool SamplePlayer(float& x,float& y,float& z){
+        RED4ext::ScriptGameInstance game;
+        RED4ext::Handle<RED4ext::IScriptable> player;
+        if(!RED4ext::ExecuteGlobalFunction("GetPlayer;GameInstance",&player,game) || !player.instance)
+            return false;
+        auto* klass=player.instance->GetType();
+        if(!klass)return false;
+        auto* method=klass->GetFunction("GetWorldPosition");
+        if(!method)return false;
+        RED4ext::Vector4 pos{};
+        if(!RED4ext::ExecuteFunction(player.instance,method,&pos))return false;
+        x=pos.X; y=pos.Y; z=pos.Z;
+        return true;
+    }
+    bool RunningEnter(RED4ext::CGameApplication*){
+        if(g_loaded)g_coordinator.Enter();
+        return true;
+    }
+    bool RunningUpdate(RED4ext::CGameApplication*){
+        if(g_loaded){
+            float x=0,y=0,z=0;
+            const bool available=SamplePlayer(x,y,z);
+            g_coordinator.Tick(available,x,y,z);
+        }
+        return false;
+    }
+    bool RunningExit(RED4ext::CGameApplication*){
+        if(g_loaded)g_coordinator.Exit();
+        return true;
+    }
+    void CoordinatorStatus(RED4ext::IScriptable*,RED4ext::CStackFrame* frame,int32_t* out,int64_t){
+        frame->code++;
+        *out=g_loaded?g_coordinator.Status():0;
+    }
 
     void StartSession(RED4ext::IScriptable*, RED4ext::CStackFrame* frame, void*, int64_t) {
         frame->code++;
@@ -36,10 +77,9 @@ namespace {
         RED4ext::GetParameter(frame,&y);
         RED4ext::GetParameter(frame,&z);
         frame->code++;
-        // Exactly one coordinator should call this with the authoritative player
-        // position each engine tick. Invalid position is fail-open (unknown).
-        *out = g_loaded && g_index.Update(x,y,z) ?
-            static_cast<int32_t>(g_index.Generation()) : -1;
+        // Disabled: native Running-state owns position, never two writers.
+        (void)x; (void)y; (void)z;
+        *out=-1;
     }
     void State(RED4ext::IScriptable*, RED4ext::CStackFrame* frame, int32_t* out, int64_t) {
         int32_t id=0;
@@ -124,7 +164,13 @@ namespace {
     }
     void Metric(RED4ext::IScriptable*, RED4ext::CStackFrame* f, int64_t* out, int64_t) {
         int32_t metric=0; RED4ext::GetParameter(f,&metric); f->code++;
-        *out=g_loaded ? g_index.Metric(metric) : -1;
+        if(!g_loaded){*out=-1;return;}
+        switch(metric){
+            case 11:*out=static_cast<int64_t>(g_coordinator.Ticks());return;
+            case 12:*out=static_cast<int64_t>(g_coordinator.UnavailableTicks());return;
+            case 13:*out=static_cast<int64_t>(g_coordinator.AvailabilityLosses());return;
+            default:*out=g_index.Metric(metric);return;
+        }
     }
     template <typename T>
     void RegisterFunction(const char* name, RED4ext::ScriptingFunction_t<T> handler,
@@ -146,6 +192,7 @@ namespace {
         const char* indexNames[]={"index"};
         const char* intTypes[]={"Int32"};
         RegisterFunction("GCETStaticReady",Ready,"Bool",nullptr,nullptr,0);
+        RegisterFunction("GCETStaticCoordinatorState",CoordinatorStatus,"Int32",nullptr,nullptr,0);
         RegisterFunction("GCETStaticCount",Count,"Int32",nullptr,nullptr,0);
         RegisterFunction("GCETStaticResetSession",StartSession,nullptr,nullptr,nullptr,0);
         RegisterFunction("GCETStaticArm",Arm,"Bool",armNames,armTypes,2);
@@ -199,9 +246,14 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle handle,
     RED4EXT_UNUSED_PARAMETER(sdk);
     if (reason == RED4ext::v1::EMainReason::Load) {
         LoadData();
+        RED4ext::GameState running{};
+        running.OnEnter=&RunningEnter;
+        running.OnUpdate=&RunningUpdate;
+        running.OnExit=&RunningExit;
+        sdk->gameStates->Add(handle,RED4ext::EGameStateType::Running,&running);
         RED4ext::CRTTISystem::Get()->AddPostRegisterCallback(PostRegisterTypes);
     } else if (reason == RED4ext::v1::EMainReason::Unload) {
-        g_index.Clear(); g_loaded=false;
+        g_coordinator.Exit(); g_index.Clear(); g_loaded=false;
     }
     return true;
 }

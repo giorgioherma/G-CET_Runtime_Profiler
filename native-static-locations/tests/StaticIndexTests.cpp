@@ -1,4 +1,5 @@
 #include "StaticIndex.hpp"
+#include "PositionCoordinator.hpp"
 #include <cstdlib>
 #define GCET_ASSERT(expr) do { if(!(expr)) { std::cerr << "FAILED: " << #expr << " line " << __LINE__ << "\n"; std::abort(); } } while(false)
 #include <cmath>
@@ -95,6 +96,42 @@ int main(int argc,char** argv) {
     GCET_ASSERT(out.id==101 && out.state==1);
     GCET_ASSERT(journal.Poll(2,out)==TransitionJournal::Result::NeedsSnapshot);
     GCET_ASSERT(journal.Unsubscribe(1));
+
+
+    // Single native coordinator; independent consumers; failure becomes UNKNOWN.
+    StaticIndex shared;
+    GCET_ASSERT(shared.Load(std::vector<Anchor>{{201,0,0,0,20,false,41},
+                                                 {202,200,0,0,20,false,42}}));
+    GCET_ASSERT(shared.SetArmed(201,true)&&shared.SetArmed(202,true));
+    GCET_ASSERT(shared.Subscribe(6001,0)&&shared.Subscribe(6002,41));
+    PositionCoordinator driver(shared);
+    GCET_ASSERT(driver.Status()==0&&!driver.Tick(true,0,0,0));
+    driver.Enter();
+    GCET_ASSERT(driver.Status()==1&&shared.State(201)==-1);
+    GCET_ASSERT(driver.Tick(true,0,0,0));
+    GCET_ASSERT(driver.Status()==2&&shared.State(201)==1&&shared.State(202)==0);
+    GCET_ASSERT(shared.AckSnapshot(6001)&&shared.AckSnapshot(6002));
+    GCET_ASSERT(driver.Tick(true,200,0,0));
+    TransitionJournal::Event delivered{};
+    GCET_ASSERT(shared.Poll(6002,delivered)==TransitionJournal::Result::EventReady);
+    GCET_ASSERT(delivered.id==201&&delivered.state==0);
+    GCET_ASSERT(shared.Poll(6001,delivered)==TransitionJournal::Result::EventReady);
+    GCET_ASSERT(delivered.id==202&&delivered.state==1);
+    GCET_ASSERT(!driver.Tick(false,0,0,0));
+    GCET_ASSERT(driver.Status()==1&&shared.State(201)==-1);
+    GCET_ASSERT(shared.NeedsSnapshot(6001)&&shared.NeedsSnapshot(6002));
+    auto losses=driver.AvailabilityLosses();
+    for(int k=0;k<100;++k)GCET_ASSERT(!driver.Tick(false,0,0,0));
+    GCET_ASSERT(driver.AvailabilityLosses()==losses); // no O(N) reset per bad tick
+    GCET_ASSERT(driver.Tick(true,0,0,0)&&shared.State(201)==1);
+    GCET_ASSERT(shared.AckSnapshot(6001));
+    driver.Exit();
+    GCET_ASSERT(driver.Status()==0&&shared.State(201)==-1&&shared.NeedsSnapshot(6001));
+    driver.Enter();
+    GCET_ASSERT(!driver.Tick(true,std::numeric_limits<float>::quiet_NaN(),0,0));
+    GCET_ASSERT(driver.Status()==1);
+    GCET_ASSERT(driver.Tick(true,200,0,0)&&shared.State(202)==1);
+    driver.Exit();
 
     // Thousands of locations, only a few near the player. Update must not scan
     // all locations or allocate in the hot path. Independent wake radii work.
