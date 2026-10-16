@@ -246,7 +246,7 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle handle,
     RED4EXT_UNUSED_PARAMETER(sdk);
     if (reason == RED4ext::v1::EMainReason::Load) {
         LoadData();
-        RED4ext::GameState running{};
+        RED4ext::v1::GameState running{};
         running.OnEnter=&RunningEnter;
         running.OnUpdate=&RunningUpdate;
         running.OnExit=&RunningExit;
