@@ -1,4 +1,4 @@
-# 2026-10-16 — Native shared-location foundation (historical milestone)
+# G-LookupCache — native foundation (2026-10-16)
 
 **Branch:** `dev/native-static-anchors-experimental`. Dated record; do not update it as the rolling current task.
 
