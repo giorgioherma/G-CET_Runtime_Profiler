@@ -110,9 +110,9 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           # Native CI builds. This workflow packages the Profiler + Resolver.
-          # Pin successful native source-attribution CI #85
-          # (run 38850962957; in-game validation of new probe remains pending), never fetch latest.
-          gh run download 38850962957 --repo ${{ github.repository }} --name gcet-native-experimental-scalar-observations --dir native-from-ci
+          # Pin successful native source-attribution CI #89
+          # (run 38874980928; runtime crash retest remains pending), never fetch latest.
+          gh run download 38874980928 --repo ${{ github.repository }} --name gcet-native-experimental-scalar-observations --dir native-from-ci
           if ($LASTEXITCODE -ne 0) { throw 'Failed downloading the native CI DLL.' }
           $dll = 'native-from-ci/cyber_engine_tweaks.PROFILER.dll'
           $sidecar = 'native-from-ci/SHA256.txt'
