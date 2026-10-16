@@ -220,7 +220,7 @@ internal static partial class SemanticInjectors
     // Only hoist null-state guards already proven as first operation of each
     // owner function; all active work still runs every frame with original delta.
     private static SemanticInjectionResult ApplyImmersiveThirdPersonUpdatedLoop(
-        SemanticPatchContext context, SemanticSourceFile file)
+        SemanticPatchContext context, SemanticTextFile file)
     {
         var text = file.Text;
         const string stage = "__gcetItppUpdatedPendingGatesV3";
@@ -319,7 +319,7 @@ internal static partial class SemanticInjectors
     }
 
     private static SemanticInjectionResult ApplyImmersiveThirdPersonUpdatedActions(
-        SemanticPatchContext context, SemanticSourceFile file)
+        SemanticPatchContext context, SemanticTextFile file)
     {
         var source = file.Text;
         if (IsImmersiveThirdPersonActionRoutingCompleteV3(source))
