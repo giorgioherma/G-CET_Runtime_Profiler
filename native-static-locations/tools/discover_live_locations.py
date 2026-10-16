@@ -17,7 +17,7 @@ import sys
 # a claim that an expression executes or a coordinate is truly immutable.
 RECURRING = re.compile(
     r'\b(?:Cron\s*\.\s*Every|Schedule\s*\.\s*Every|'
-    r'registerForEvent\s*\(\s*["\']onUpdate["\']|onUpdate\s*=)\b?',
+    r'registerForEvent\s*\(\s*["\']onUpdate["\']|onUpdate\s*=)',
     re.IGNORECASE,
 )
 POSITION = re.compile(
