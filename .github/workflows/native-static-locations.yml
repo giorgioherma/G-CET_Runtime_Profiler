@@ -9,7 +9,15 @@ on:
   push:
     branches: [dev/native-static-anchors-experimental]
     paths:
-      - 'native-static-locations/**'
+      # Build only on code/interface/test changes. Documentation-only edits
+      # must not recompile the native DLL or trigger product CI.
+      - 'native-static-locations/src/**'
+      - 'native-static-locations/include/**'
+      - 'native-static-locations/tools/**'
+      - 'native-static-locations/tests/**'
+      - 'native-static-locations/adapters/**'
+      - 'native-static-locations/examples/**'
+      - 'native-static-locations/CMakeLists.txt'
       - '.github/workflows/native-static-locations.yml'
 
 jobs:
