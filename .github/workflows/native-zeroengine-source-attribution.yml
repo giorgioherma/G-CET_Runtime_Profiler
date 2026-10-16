@@ -1,0 +1,121 @@
+name: Experimental native 0-Engine source attribution
+
+permissions:
+  contents: read
+  actions: read
+
+# Native CI only compiles and uploads the native DLL and checksum.
+# The Profiler/Resolver build consumes a pinned successful native artifact.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - dev/native-zeroengine-source-attribution
+    paths:
+      - 'native-profiler-build/v2.11.0/**'
+      - '!native-profiler-build/v2.11.0/**/*.md'
+      - '!native-profiler-build/v2.11.0/*.md'
+
+jobs:
+  rebuild:
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record native source identity
+        shell: pwsh
+        run: |
+          "GGC_SOURCE_HASH=$(git hash-object native-profiler-build/v2.11.0/Patch-LuaJIT-GC-Source.ps1)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "GGC_HEADER_HASH=$(git hash-object native-profiler-build/v2.11.0/CETRuntimeProfiler.h)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Verify experimental source-attribution contract
+        shell: pwsh
+        run: python tests/test_native_zeroengine_source.py
+
+      - name: Rebuild native profiler from pinned CET source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./native-profiler-build/v2.11.0/Build-Profiler.ps1 -WorkRoot "$env:RUNNER_TEMP\gcet-native-rebuild"
+
+      - name: Stage rebuilt payload
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $source = 'native-profiler-build\v2.11.0\BUILD_OUTPUT\cyber_engine_tweaks.PROFILER.asi'
+          if (!(Test-Path -LiteralPath $source -PathType Leaf)) {
+            throw "Rebuilt profiler ASI was not found: $source"
+          }
+
+          New-Item -ItemType Directory -Force native-rebuild-artifact | Out-Null
+          Copy-Item $source native-rebuild-artifact\cyber_engine_tweaks.PROFILER.dll -Force
+
+          $hash = (Get-FileHash native-rebuild-artifact\cyber_engine_tweaks.PROFILER.dll -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  cyber_engine_tweaks.PROFILER.dll" | Set-Content native-rebuild-artifact\SHA256.txt -Encoding ascii
+          Write-Host "Rebuilt profiler SHA256: $hash"
+          # Experimental developer symbols are a separate artifact, never imported
+          # into the player-facing Profiler/Resolver packages.
+          $pdb = 'native-profiler-build/v2.11.0/BUILD_OUTPUT/cyber_engine_tweaks.PROFILER.pdb'
+          if (!(Test-Path -LiteralPath $pdb -PathType Leaf)) {
+            throw 'Profiler PDB missing from this build. Cannot symbolicate native sample RVAs safely.'
+          }
+          New-Item -ItemType Directory -Force native-debug-symbols | Out-Null
+          Copy-Item -LiteralPath $pdb -Destination native-debug-symbols/cyber_engine_tweaks.PROFILER.pdb -Force
+          $pdbHash = (Get-FileHash native-debug-symbols/cyber_engine_tweaks.PROFILER.pdb -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$pdbHash  cyber_engine_tweaks.PROFILER.pdb" | Set-Content native-debug-symbols/SHA256.txt -Encoding ascii
+          "$hash  cyber_engine_tweaks.PROFILER.dll" | Set-Content native-debug-symbols/DLL_SHA256.txt -Encoding ascii
+          Write-Host "Matching PDB SHA256: $pdbHash"
+
+      - name: Verify compiled native payload
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $native = 'native-rebuild-artifact/cyber_engine_tweaks.PROFILER.dll'
+          $actual = (Get-FileHash -LiteralPath $native -Algorithm SHA256).Hash.ToLowerInvariant()
+          $hashLine = (Get-Content native-rebuild-artifact/SHA256.txt -Raw).Trim()
+          if (!$hashLine.StartsWith($actual + ' ')) { throw 'Native artifact SHA sidecar does not match DLL.' }
+          $pe = ./native-profiler-build/v2.11.0/Get-CETPEInfo.ps1 -Path $native
+          if ($pe.Linker -ne '14.44') { throw "Native linker differs from the historical toolchain: $($pe.Linker)" }
+          $source = Get-Content native-profiler-build/v2.11.0/CETRuntimeProfiler.h -Raw
+          $patch = Get-Content native-profiler-build/v2.11.0/Patch-CET-v1.37.1.ps1 -Raw
+          if (!$source.Contains('CET_Runtime_Profile_Scalar_Observations.csv') -or
+              !$source.Contains('bool ObserveScalar(') -or
+              !$patch.Contains('globals["CETProfilerObserveScalar"]')) {
+            throw 'Native source does not contain expected scalar observation API/CSV contract.'
+          }
+          foreach ($marker in @('CET_Runtime_Profile_GGC_UnscopedReallocOrigins.csv',
+                                 'OLD_SIZE_NONZERO', 'CET_DRAW_DISPATCH',
+                                 'CET_LIFECYCLE_DISPATCH', 'CET_OVERLAY_EVENT_DISPATCH')) {
+            if (!$source.Contains($marker) -and !$patch.Contains($marker)) {
+              throw "New native attribution marker missing in source: $marker"
+            }
+          }
+          # Source labels must be compiled into the actual DLL, not only appear
+          # in git. Reject a stale native payload even if the ASI exists.
+          $binary = [Text.Encoding]::Latin1.GetString(
+              [IO.File]::ReadAllBytes((Resolve-Path $native).Path))
+          foreach ($marker in @(
+              'CET_Runtime_Profile_ZeroEngine_SourceAttribution.csv',
+              'CET_Runtime_Profile_ZeroEngine_Callsites.csv',
+              'sampled-child-inclusive-overlap-not-additive')) {
+            if (!$source.Contains($marker) -or !$binary.Contains($marker)) {
+              throw "Compiled 0-Engine source attribution marker missing: $marker"
+            }
+          }
+          Write-Host "Compiled experimental native DLL verified: $actual"
+
+      - name: Upload rebuilt native payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: gcet-native-zeroengine-source-attribution
+          path: native-rebuild-artifact/
+          if-no-files-found: error
+
+      - name: Upload developer-only matching debug symbols
+        uses: actions/upload-artifact@v4
+        with:
+          name: gcet-native-zeroengine-source-attribution-pdb
+          path: native-debug-symbols/
+          if-no-files-found: error
