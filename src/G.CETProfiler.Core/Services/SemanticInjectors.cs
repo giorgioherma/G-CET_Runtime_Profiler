@@ -48,6 +48,7 @@ internal static partial class SemanticInjectors
             "givemeeverything" => ApplyGiveMeEverything(context),
             "questrunner" => ApplyQuestRunner(context),
             "driveaerialvehicle" => ApplyDriveAerialVehicle(context),
+            "hotscenes-ui-action-dormancy" => ApplyHotscenesAfterActionUi(context),
             "roulette" => ApplyRoulette(context),
             "blackjack" => ApplyBlackjack(context),
             "illegal-mechanic" => ApplyIllegalMechanic(context),
