@@ -304,11 +304,35 @@ internal static partial class SemanticInjectors
     private static bool IsImmersiveThirdPersonActionRoutingCompleteV3(string text)
     {
         if (!text.Contains("__gcetItppRoutedOnActionV3", StringComparison.Ordinal) ||
-            !text.Contains("__gcetItppAlwaysListeningV3", StringComparison.Ordinal) ||
-            !SemanticScopedStages.TryFunction(text, "observePlayerActions", out var observer))
+            !text.Contains("__gcetItppAlwaysListeningV3", StringComparison.Ordinal))
             return false;
-        var body = observer.Text;
-        return body.Contains("zeroEngineMod.SubscribeAction", StringComparison.Ordinal) &&
+
+        // Scope this exact author-owned function without interpreting nested
+        // Lua closures as separate top-level owners. The generic scanner can
+        // fail on this newer upstream nested callback structure.
+        const string signature = "local function observePlayerActions()";
+        var start = text.IndexOf(signature, StringComparison.Ordinal);
+        if (start < 0 || text.IndexOf(signature, start + signature.Length,
+                                    StringComparison.Ordinal) >= 0)
+            return false;
+        var finish = text.IndexOf("\nend", start + signature.Length,
+                                  StringComparison.Ordinal);
+        if (finish < 0)
+            return false;
+        var body = text[start..(finish + 4)];
+
+        var currentMap = Regex.Match(text,
+            @"(?s)\bmod\.handledActions\s*=\s*\{(?<entries>.*?)\}",
+            RegexOptions.CultureInvariant);
+        var members = currentMap.Success
+            ? Regex.Matches(currentMap.Groups["entries"].Value,
+                @"\b[a-zA-Z_][a-zA-Z_0-9]*\s*=\s*true\b",
+                RegexOptions.CultureInvariant).Count
+            : 0;
+        return members == 18 &&
+               text.Contains("mod.gameCameraMoveSeen(action)", StringComparison.Ordinal) &&
+               text.Contains("mod.move360Capture(action)", StringComparison.Ordinal) &&
+               body.Contains("zeroEngineMod.SubscribeAction", StringComparison.Ordinal) &&
                body.Contains("engine.SubscribeAction", StringComparison.Ordinal) &&
                body.Contains("actions = actions, decodeType = false", StringComparison.Ordinal) &&
                body.Contains("Observe('PlayerPuppet', 'OnAction'", StringComparison.Ordinal) &&
@@ -432,23 +456,8 @@ internal static partial class SemanticInjectors
         var after = ReplaceOnce(source, original.TrimEnd('\n'), updated,
             "Updated upstream ITP action observer");
         if (!IsImmersiveThirdPersonActionRoutingCompleteV3(after))
-        {
-            var scoped = SemanticScopedStages.TryFunction(after, "observePlayerActions", out var candidate);
-            var body = scoped ? candidate.Text : "";
             throw new InvalidOperationException(
-                "Updated third-person action routing postcondition failed: " +
-                "scope=" + scoped +
-                " v3=" + after.Contains("__gcetItppRoutedOnActionV3", StringComparison.Ordinal) +
-                " always=" + after.Contains("__gcetItppAlwaysListeningV3", StringComparison.Ordinal) +
-                " registered=" + body.Contains("zeroEngineMod.SubscribeAction", StringComparison.Ordinal) +
-                " global=" + body.Contains("engine.SubscribeAction", StringComparison.Ordinal) +
-                " type=" + body.Contains("actions = actions, decodeType = false", StringComparison.Ordinal) +
-                " fallback=" + body.Contains("Observe('PlayerPuppet', 'OnAction'", StringComparison.Ordinal) +
-                " pcall=" + body.Contains("pcall(handlePlayerAction, action)", StringComparison.Ordinal) +
-                " branch=" + body.Contains("if not routed and Observe then", StringComparison.Ordinal) +
-                " paused=" + body.Contains("SetActive", StringComparison.Ordinal) +
-                " wildcard=" + body.Contains("actions = \"*\"", StringComparison.Ordinal));
-        }
+                "Updated third-person action routing postcondition failed.");
         context.Write(file, after);
         return SemanticInjectionResult.Success(
             "Current ITP 18-name action observer consolidated into 0-Engine, " +
