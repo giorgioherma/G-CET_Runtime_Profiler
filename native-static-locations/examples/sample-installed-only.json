@@ -1,0 +1,7 @@
+{
+  "schema": 1,
+  "anchors": [
+    {"id": 101, "owner": 11, "x": 0, "y": 0, "z": 5, "radius": 25, "metric": "xyz"},
+    {"id": 102, "owner": 12, "x": 50, "y": 0, "z": 20, "radius": 142, "metric": "xy"}
+  ]
+}
