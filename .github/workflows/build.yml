@@ -1076,6 +1076,10 @@ jobs:
         shell: pwsh
         run: ./tests/NativeHandoffSemanticSourceContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: Hotscenes and DriveAerialVehicle pristine/staged native action contract
+        shell: pwsh
+        run: ./tests/HotscenesDavActionSourceContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: Optimization class mod-count contract
         shell: pwsh
         run: ./tests/OptimizationClassCountContract.ps1 -ResolverRoot ./publish-resolver
