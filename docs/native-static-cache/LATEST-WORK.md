@@ -1,6 +1,8 @@
-# LATEST WORK — native cache ONLY (fluid)
+# G-LookupCache — LATEST WORK (fluid)
 
 **Active task:** Validate native player position and passive NEAR/FAR transitions in the actual modded game, then complete the first safely source-matched author-wake replacement. **Still experimental; no real author polling retired.**
+
+**Naming:** G-LookupCache is the documentation name; the previously loaded binary appears under its legacy name in old logs. CI #23 is the packaged probe test; CI #25's raw artifact alone omits the opt-in marker and empty manifest.
 
 **User evidence:** On 2026-10-16, Cyberpunk 2077 v2.31 / RED4ext 1.30.0 reported `G-CET Static Locations (experimental) 0.1.0 has been loaded` and successful REDscript invocation in the player's RED4ext log. The user played normally on their extensive mod stack. **This verifies DLL loading and apparent smoke stability, NOT player-world-position resolution, wake delivery or performance improvement.** The initial smoke manifest was empty.
 
