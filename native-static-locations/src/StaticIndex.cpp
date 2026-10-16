@@ -109,7 +109,10 @@ bool StaticIndex::SetArmed(int32_t id, bool armed) {
     if (e.armed != armed) {
         if (!armed && positioned_) Emit(e,-1); // disarm becomes UNKNOWN, never FAR
         e.armed = armed;
-        if (armed) e.inside=false; // guarantee a new near wake after rearming
+        if (armed) {
+            e.inside=false; // guarantee a new near wake after rearming
+            e.firstValidEvaluation=evaluationCount_+1;
+        }
         dirty_ = true;
     }
     return true;
@@ -197,6 +200,7 @@ bool StaticIndex::Update(float x, float y, float z) {
     ++playerUpdates_;
     x_ = x; y_ = y; z_ = z; positioned_ = true; dirty_ = false;
     ++generation_;
+    ++evaluationCount_;
     ++stamp_;
     if (!stamp_) { stamp_ = 1; for (auto& e : entries_) e.seen = 0; }
     candidates_.clear();
@@ -236,7 +240,9 @@ int StaticIndex::State(int32_t id) const {
     auto it=ids_.find(id);
     if (it == ids_.end() || !positioned_) return -1;
     const auto& e=entries_[it->second];
-    return e.armed && !e.removed ? (e.inside ? 1 : 0) : -1;
+    if(!e.armed || e.removed || evaluationCount_<e.firstValidEvaluation)
+        return -1;
+    return e.inside ? 1 : 0;
 }
 
 bool ReadCompiledFile(const std::filesystem::path& path, std::vector<Anchor>& out) {

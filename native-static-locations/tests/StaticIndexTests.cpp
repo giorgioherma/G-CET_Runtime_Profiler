@@ -42,6 +42,27 @@ int main(int argc,char** argv) {
     s.ResetSession(); GCET_ASSERT(s.State(3)==-1);
     GCET_ASSERT(s.Update(50000,50000,0) && s.State(3)==0);
 
+
+    // Source arming while already positioned cannot publish a premature FAR
+    // in the initial snapshot. Both near and far anchors become known after
+    // one complete Update (without an O(all anchors) scan).
+    auto armIndex=std::make_unique<StaticIndex>();
+    GCET_ASSERT(armIndex->Load(std::vector<Anchor>{
+        {901,0,0,0,20,false,91},{902,300,0,0,20,false,92}
+    }));
+    GCET_ASSERT(armIndex->Update(0,0,0));
+    GCET_ASSERT(armIndex->SetArmed(901,true));
+    GCET_ASSERT(armIndex->SetArmed(902,true));
+    GCET_ASSERT(armIndex->State(901)==-1&&armIndex->State(902)==-1);
+    GCET_ASSERT(armIndex->Update(0,0,0));
+    GCET_ASSERT(armIndex->State(901)==1&&armIndex->State(902)==0);
+    GCET_ASSERT(armIndex->SetArmed(901,false));
+    GCET_ASSERT(armIndex->State(901)==-1);
+    GCET_ASSERT(armIndex->SetArmed(901,true));
+    GCET_ASSERT(armIndex->State(901)==-1);
+    GCET_ASSERT(armIndex->Update(0,0,0));
+    GCET_ASSERT(armIndex->State(901)==1);
+
     // Independent consumers do not steal events from one another.
     // This is required before removing any author's original proximity wake.
     StaticIndex events;

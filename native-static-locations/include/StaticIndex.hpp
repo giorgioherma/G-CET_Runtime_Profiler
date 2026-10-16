@@ -67,6 +67,9 @@ private:
         bool armed = false;
         bool removed = false;
         bool inside = false;
+        // A newly armed anchor is UNKNOWN until the next complete native
+        // position evaluation, including when the player is stationary.
+        uint64_t firstValidEvaluation = 0;
         uint32_t seen = 0;
     };
     static constexpr int kCell = 128;
@@ -94,6 +97,7 @@ private:
     uint32_t lastCandidates_ = 0;
     uint32_t lastDistanceTests_ = 0;
     uint32_t generation_ = 0;
+    uint64_t evaluationCount_ = 0;
     uint32_t stamp_ = 0;
     float x_ = 0, y_ = 0, z_ = 0;
     bool positioned_ = false;
