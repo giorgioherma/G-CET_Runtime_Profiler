@@ -1,5 +1,7 @@
 # LATEST WORK — current active development task
 
+> **Native static-location cache has its own short, replaceable task handoff:** [native-static-cache/LATEST-WORK.md](native-static-cache/LATEST-WORK.md), with [CORE](native-static-cache/HANDOFF/CORE.md) and [NEXT-CHAT](native-static-cache/HANDOFF/NEXT-CHAT.md). For work on `dev/native-static-anchors-experimental`, use that dedicated task rather than reading the long cross-product log below.
+
 ## 2026-10-16 — Native static cache: CET/G-RED adapters and source-epoch dynamic anchors (EXPERIMENTAL)
 
 **Isolated code progress:** Commit `505ea0a` corrected pinned RED4ext v1 SDK game-state type. First **Windows plugin + Linux core tests verified success** at [native CI #38908591860](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38908591860). Commit `cadb90c` added opt-in CET native journal consumer, source-mandatory fail-open, independent snapshot/retry and Lua protocol tests. [Native CI #38908855166](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38908855166) verified **Windows DLL, Linux spatial core and CET Lua mock test all green**. Commit `ef7590c` added **optional** G-RED scheduler-based source overlay; compile and in-game behavior **not validated**. Commit `c73f520` prevented unready G-RED owner registration; [native CI #38909484764](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38909484764) confirmed green.
