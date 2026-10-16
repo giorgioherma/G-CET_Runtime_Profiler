@@ -188,11 +188,11 @@ bool StaticIndex::Update(float x, float y, float z) {
         ++lastDistanceTests_;
         const float dx = x-e.anchor.x, dy=y-e.anchor.y;
         const float distSq = dx*dx+dy*dy + (e.anchor.xyOnly ? 0.0f : (z-e.anchor.z)*(z-e.anchor.z));
-        const bool inside = distSq <= e.anchor.radius*e.anchor.radius;
-        if (near != e.inside) {
-            e.inside = near;
-            changes_.push_back({e.anchor.id, near});
-            Emit(e,near?1:0);
+        const bool isWithin = distSq <= e.anchor.radius*e.anchor.radius;
+        if (isWithin != e.inside) {
+            e.inside = isWithin;
+            changes_.push_back({e.anchor.id, isWithin});
+            Emit(e,isWithin?1:0);
         }
     }
     // Previous near anchors can leave the current cell. No global N-anchor scan.
