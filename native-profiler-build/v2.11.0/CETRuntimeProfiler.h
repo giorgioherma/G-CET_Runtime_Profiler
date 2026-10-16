@@ -463,6 +463,10 @@ public:
     static constexpr uint64_t GcTracerRebalanceNs = 5'000'000'000ULL;
     static constexpr uint64_t DeepRebalanceNs = 1'000'000'000ULL;
     static constexpr size_t MaxDeepHotRegistrations = 6;
+    // One independent bounded sampling slot for 0-Engine; it cannot evict
+    // the normal six-mod hotset. Only active during an explicit capture.
+    static constexpr size_t MaxZeroEngineDeepRegistrations = 1;
+    static constexpr uint64_t ZeroEngineDeepTargetSamples = 20;
     static constexpr uint64_t DefaultDeepTargetSamples = 24;
     static constexpr uint64_t ReusedDeepTargetSamples = 6;
     static constexpr uint32_t DeepDriftWindowsRequired = 3;
@@ -3396,6 +3400,103 @@ public:
         }
 
         // -----------------------------------------------------------------
+        // ZERO-ENGINE SOURCE ATTRIBUTION (bounded deep samples only).
+        // Registration owner is 0-Engine, but nested functions may belong to
+        // different mods: preserve actual Lua source and mark the distinction.
+        // These are observed samples, NOT extrapolated whole-capture CPU/GC.
+        // -----------------------------------------------------------------
+        {
+            std::unordered_map<uint64_t, bool> zeroRegistration;
+            for (const auto& row : rows)
+            {
+                if (row.Mod == "0-Engine")
+                    zeroRegistration.emplace(row.RegistrationId, true);
+            }
+
+            std::vector<const DeepFunctionAggregate*> sourceRows;
+            sourceRows.reserve(deepFunctionRows.size());
+            for (const auto& row : deepFunctionRows)
+            {
+                if (zeroRegistration.count(row.RegistrationId))
+                    sourceRows.push_back(&row);
+            }
+            std::sort(sourceRows.begin(), sourceRows.end(),
+                      [](const DeepFunctionAggregate* a,
+                         const DeepFunctionAggregate* b)
+                      {
+                          if (a->ExclusiveNs != b->ExclusiveNs)
+                              return a->ExclusiveNs > b->ExclusiveNs;
+                          if (a->RegistrationId != b->RegistrationId)
+                              return a->RegistrationId < b->RegistrationId;
+                          return a->SourceFile < b->SourceFile;
+                      });
+            const auto path =
+                outputRoot / "CET_Runtime_Profile_ZeroEngine_SourceAttribution.csv";
+            std::ofstream f(path, std::ios::trunc);
+            if (f)
+            {
+                f << "RegistrationId,ProfileEpoch,SourceFile,"
+                     "SourceLineStart,SourceLineEnd,FunctionName,FunctionKey,"
+                     "SourceScope,SampledCalls,SampledExclusiveMs,"
+                     "SampledInclusiveMs,SampledOwnAllocatedBytes,"
+                     "SampledOwnAllocationRequests,Interpretation\n";
+                f << std::fixed << std::setprecision(6);
+                for (const auto* row : sourceRows)
+                {
+                    const bool engineSource =
+                        row->SourceFile.find("0-Engine/") != std::string::npos ||
+                        row->SourceFile.find("0-Engine\\") != std::string::npos;
+                    f << row->RegistrationId << ','
+                      << row->ProfileEpoch << ','
+                      << Csv(row->SourceFile) << ','
+                      << row->SourceLineStart << ','
+                      << row->SourceLineEnd << ','
+                      << Csv(row->FunctionName) << ','
+                      << Csv(row->FunctionKey) << ','
+                      << (engineSource ? "engine-source" :
+                          "nested-external-or-unresolved") << ','
+                      << row->Calls << ','
+                      << (static_cast<double>(row->ExclusiveNs) / 1'000'000.0) << ','
+                      << (static_cast<double>(row->InclusiveNs) / 1'000'000.0) << ','
+                      << row->SampledExclusiveAllocBytes << ','
+                      << row->SampledExclusiveAllocations << ','
+                      << "bounded-sampled-exclusive-do-not-add-to-owner-total"
+                      << '\n';
+                }
+            }
+
+            const auto callsitePath =
+                outputRoot / "CET_Runtime_Profile_ZeroEngine_Callsites.csv";
+            std::ofstream c(callsitePath, std::ios::trunc);
+            if (c)
+            {
+                c << "RegistrationId,ProfileEpoch,SampleSequence,Frame,"
+                     "CallerSourceFile,CallerLine,ParentFunctionKey,"
+                     "ChildFunctionKey,SampledCalls,ChildInclusiveMs,"
+                     "Interpretation\n";
+                c << std::fixed << std::setprecision(6);
+                for (const auto& row : deepCallsiteRows)
+                {
+                    if (!zeroRegistration.count(row.RegistrationId))
+                        continue;
+                    c << row.RegistrationId << ','
+                      << row.ProfileEpoch << ','
+                      << row.SampleSequence << ','
+                      << row.Frame << ','
+                      << Csv(row.CallerSourceFile) << ','
+                      << row.CallerLine << ','
+                      << Csv(row.ParentFunctionKey) << ','
+                      << Csv(row.ChildFunctionKey) << ','
+                      << row.Calls << ','
+                      << (static_cast<double>(row.ChildInclusiveNs) /
+                          1'000'000.0) << ','
+                      << "sampled-child-inclusive-overlap-not-additive"
+                      << '\n';
+                }
+            }
+        }
+
+        // -----------------------------------------------------------------
         // SCHEDULER BY JOB: cooperative 0-Engine child attribution.
         //
         // These rows are supplemental inclusive job wall-time measurements
@@ -4180,6 +4281,7 @@ private:
         };
 
         std::vector<Candidate> candidates;
+        std::vector<Candidate> zeroEngineCandidates;
         std::lock_guard lock(m_mutex);
 
         const uint64_t previousCaptureNs = m_lastDeepRebalanceCaptureNs;
@@ -4311,10 +4413,33 @@ private:
             if (counter->DeepComplete.load(std::memory_order_relaxed))
                 continue;
 
-            if (counter->Mod == "0-Engine" ||
-                counter->Mod == "CETProfilerControls" ||
-                calls < 2)
+            if (counter->Mod == "CETProfilerControls" || calls < 2)
+                continue;
+
+            // Prior versions excluded 0-Engine entirely. That prevented the
+            // deep function/line/callsite trace from explaining its aggregate
+            // cost. Reserve one bounded callback slot without consuming any
+            // of the six normal user-mod hotset slots.
+            if (counter->Mod == "0-Engine")
             {
+                const double maxMs = static_cast<double>(
+                    counter->MaxExclusiveNs.load(std::memory_order_relaxed)) /
+                    1'000'000.0;
+                const uint64_t stride = callsPerSecond >= 500.0 ? 256 :
+                    callsPerSecond >= 60.0 ? 32 :
+                    callsPerSecond >= 10.0 ? 8 : 1;
+                counter->DeepSampleStride.store(
+                    stride, std::memory_order_relaxed);
+                counter->DeepTargetSamples.store(
+                    ZeroEngineDeepTargetSamples, std::memory_order_relaxed);
+                counter->DeepReuseFromRegistrationId.store(
+                    0, std::memory_order_relaxed);
+                zeroEngineCandidates.push_back({
+                    counter,
+                    msPerSecond + std::min(maxMs, 100.0) * 0.35,
+                    callsPerSecond,
+                    msPerSecond
+                });
                 continue;
             }
 
@@ -4402,6 +4527,22 @@ private:
                           return a.WindowMsPerSecond > b.WindowMsPerSecond;
                       return a.WindowCallsPerSecond > b.WindowCallsPerSecond;
                   });
+
+        std::sort(zeroEngineCandidates.begin(), zeroEngineCandidates.end(),
+                  [](const Candidate& a, const Candidate& b)
+                  {
+                      if (a.Score != b.Score)
+                          return a.Score > b.Score;
+                      return a.WindowCallsPerSecond > b.WindowCallsPerSecond;
+                  });
+        const size_t selectedZero =
+            std::min(MaxZeroEngineDeepRegistrations,
+                     zeroEngineCandidates.size());
+        for (size_t i = 0; i < selectedZero; ++i)
+        {
+            zeroEngineCandidates[i].CounterPtr->DeepSelected.store(
+                true, std::memory_order_release);
+        }
 
         const size_t selected =
             std::min(MaxDeepHotRegistrations, candidates.size());

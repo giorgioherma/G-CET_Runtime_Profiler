@@ -30,6 +30,10 @@ jobs:
           "GGC_SOURCE_HASH=$(git hash-object native-profiler-build/v2.11.0/Patch-LuaJIT-GC-Source.ps1)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
           "GGC_HEADER_HASH=$(git hash-object native-profiler-build/v2.11.0/CETRuntimeProfiler.h)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
 
+      - name: Verify 0-Engine source attribution contract
+        shell: pwsh
+        run: python tests/test_native_zeroengine_source.py
+
       - name: Rebuild native profiler from pinned CET source
         shell: pwsh
         run: |
@@ -86,6 +90,18 @@ jobs:
                                  'CET_LIFECYCLE_DISPATCH', 'CET_OVERLAY_EVENT_DISPATCH')) {
             if (!$source.Contains($marker) -and !$patch.Contains($marker)) {
               throw "New native attribution marker missing in source: $marker"
+            }
+          }
+          # Verify both attribution report paths made it into the DLL.
+          # Source-only matches are insufficient (can accidentally ship stale binaries).
+          $binary = [Text.Encoding]::Latin1.GetString(
+              [IO.File]::ReadAllBytes((Resolve-Path $native).Path))
+          foreach ($marker in @(
+              'CET_Runtime_Profile_ZeroEngine_SourceAttribution.csv',
+              'CET_Runtime_Profile_ZeroEngine_Callsites.csv',
+              'sampled-child-inclusive-overlap-not-additive')) {
+            if (!$source.Contains($marker) -or !$binary.Contains($marker)) {
+              throw "Compiled 0-Engine attribution marker missing: $marker"
             }
           }
           Write-Host "Compiled native DLL verified: $actual"
