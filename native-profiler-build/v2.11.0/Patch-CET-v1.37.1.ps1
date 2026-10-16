@@ -789,10 +789,23 @@ CETRuntimeProfiler::Counter* ResolveProfilerCounter(
 
     // This executes only from CET callback execution paths after
     // GetLockedState() has established a live Lua state.
-    const auto logger =
-        apContext->Environment["__logger"].get<std::shared_ptr<spdlog::logger>>();
-    if (logger)
-        modName = logger->name();
+    // Capture-on ownership lookup is diagnostic, not gameplay-critical.
+    // A live Lua state does not imply a valid __logger usertype.
+    try
+    {
+        const sol::object loggerObject = apContext->Environment["__logger"];
+        if (loggerObject.valid() &&
+            loggerObject.is<std::shared_ptr<spdlog::logger>>())
+        {
+            const auto logger = loggerObject.as<std::shared_ptr<spdlog::logger>>();
+            if (logger)
+                modName = logger->name();
+        }
+    }
+    catch (const std::exception&)
+    {
+        // Continue with unknown owner; do not throw from instrumentation.
+    }
 
     auto* counter = profiler.ResolveCallback(apContext, modName);
 
