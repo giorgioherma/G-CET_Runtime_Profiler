@@ -1,5 +1,9 @@
 # LATEST WORK — current active development task
 
+## 2026-10-16 — REDscript semantic-library scope remains undecided (PROVISIONAL)
+
+**User preference:** Do **not** assume a CET-scale REDscript semantic library will be built. REDscript is expected to expose a different/lower return from extensive per-mod tailoring. Explore generic REDscript wins and shared native location/other systemic paths first; selectively add a few semantic rules **only when a measured extreme offender** warrants the cost. The many smaller reported `5–10 ms` contributors are not a blanket manual optimization queue; measurement units/period must be verified before interpreting severity. This is intentionally **not a locked rejection** of future REDscript semantic rules; new profiling may change the decision. See [unified product contract](product/UNIFIED-TWO-PAGE-WORKFLOW.md).
+
 ## 2026-10-16 — High-return-first future-stack triage (USER DECISION)
 
 **Future-stack strategy refined:** The primary 1000+-mod stack is the exhaustive R&D exception. Rapid follow-on stack audits target **only the big measured opportunities** and reuse existing generic/semantic optimizations; leave small, low-ROI or manually laborious cases on the table by design. Strong candidate domains include REDscript workload, shared native location wakes, allocation/GC pressure where instrumentable, **both** directions of the Lua/C++ bridge, 0-Engine work and newly profiled hotspots. These are opportunities, **not delivered optimizations or proven specific gains**. Prioritize by attributable cost/removable work/engineering effort; safety and source proof still apply to anything generated. See [unified product contract](product/UNIFIED-TWO-PAGE-WORKFLOW.md).
