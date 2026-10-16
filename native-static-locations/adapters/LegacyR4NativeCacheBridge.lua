@@ -155,7 +155,7 @@ function M.Wrap(old, native, consumerId)
       entries=entries,near=nil,nearCount=0,legacy=legacyHandle,native=false}
     for _,entry in ipairs(entries) do entry.record=rec end
     records[key]=rec
-    registerNative(rec)
+    if not registerNative(rec) then teardownNative() end
     local handle={}
     function handle.IsNear()
       if nativeMode and rec.native then return rec.near end
@@ -209,7 +209,28 @@ function M.Wrap(old, native, consumerId)
     end
   end
   function wrapper.GetAnchor(...) return old.GetAnchor(...) end
-  function wrapper.QueryNearby(...) return old.QueryNearby(...) end
+  function wrapper.QueryNearby(owner,px,py,pz)
+    if not nativeMode then return old.QueryNearby(owner,px,py,pz) end
+    local function finite(v)
+      return type(v)=="number" and v==v and v~=math.huge and v~=-math.huge
+    end
+    if not finite(px) or not finite(py) or not finite(pz) then return nil end
+    local result={}
+    -- On-demand API only; no allocation in the frame worker.
+    for _,rec in pairs(records) do
+      if rec.owner==owner then
+        for _,entry in ipairs(rec.entries) do
+          local dx,dy=px-entry.x,py-entry.y
+          local dz=entry.metric=="xy" and 0 or (pz-entry.z)
+          if dx*dx+dy*dy+dz*dz<=entry.radius*entry.radius then
+            result[#result+1]={id=entry.id,x=entry.x,y=entry.y,
+              z=entry.z,radius=entry.radius}
+          end
+        end
+      end
+    end
+    return result
+  end
   function wrapper.GetInfo()
     local info=old.GetInfo()
     info.nativeBacked=nativeMode
