@@ -20,6 +20,7 @@ function old.GetInfo() return {ready=false} end
 
 local state,events,metadata={}, {},{}
 local subscribed=false
+local snapshotNeeded=true
 local last=nil
 local valid=true
 local native={
@@ -31,11 +32,11 @@ local native={
   GCETStaticArm=function(id,on) if not metadata[id]then return false end
     state[id]=metadata[id].x==0 and 1 or 0;return true end,
   GCETStaticRemoveAnchor=function(id) state[id]=nil;metadata[id]=nil;return true end,
-  GCETStaticSubscribe=function(id,owner)assert(id==1702401 and owner==0);subscribed=true;return true end,
+  GCETStaticSubscribe=function(id,owner)assert(id==1702401 and owner==0);subscribed=true;snapshotNeeded=true;return true end,
   GCETStaticUnsubscribe=function(id) subscribed=false;return true end,
-  GCETStaticNeedsSnapshot=function(id)return true end,
+  GCETStaticNeedsSnapshot=function(id)return snapshotNeeded end,
   GCETStaticState=function(id)return state[id] end,
-  GCETStaticAckSnapshot=function(id)return true end,
+  GCETStaticAckSnapshot=function(id)snapshotNeeded=false;return true end,
   GCETStaticPoll=function(id)
     if #events==0 then return 0 end
     last=table.remove(events,1);return last.id
@@ -51,6 +52,8 @@ local h=w.Register("Poker","tables",nil,{{id="A",x=0,y=0,z=0,radius=25}}, {
 assert(h and h.IsNear()==nil)
 w.Update({x=0,y=0,z=0},1)
 assert(subscribed and h.IsNear()==true and observed.near==1 and observed.legacyUpdates==0)
+local close=w.QueryNearby("Poker",0,0,0)
+assert(#close==1 and close[1].id=="A")
 local id=next(metadata);state[id]=0;events[#events+1]={id=id,value=0}
 w.Update({x=0,y=0,z=0},2)
 assert(h.IsNear()==false and observed.far==1)
