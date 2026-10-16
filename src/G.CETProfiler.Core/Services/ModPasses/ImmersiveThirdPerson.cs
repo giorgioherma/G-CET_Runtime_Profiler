@@ -383,20 +383,20 @@ internal static partial class SemanticInjectors
         // No author action consumption, no additional native observer and no
         // clock/input-value transformation. Fallback retains the exact pcall.
         const string original = """
-local function observePlayerActions()
-  if state.observedActions or not Observe then
-    return
-  end
+        local function observePlayerActions()
+          if state.observedActions or not Observe then
+            return
+          end
 
-  local okObs = pcall(function()
-    Observe('PlayerPuppet', 'OnAction', function(_, action)
-      pcall(handlePlayerAction, action)
-    end)
-  end)
-  if okObs then
-    state.observedActions = true
-  end
-end
+          local okObs = pcall(function()
+            Observe('PlayerPuppet', 'OnAction', function(_, action)
+              pcall(handlePlayerAction, action)
+            end)
+          end)
+          if okObs then
+            state.observedActions = true
+          end
+        end
 """;
         var quoted = string.Join(", ", actions.Select(a => "\"" + a + "\""));
         var updated = "local function observePlayerActions()\n" +
