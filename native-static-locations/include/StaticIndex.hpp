@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include "TransitionJournal.hpp"
 #include <filesystem>
 #include <span>
 #include <unordered_map>
@@ -17,7 +18,7 @@ struct Anchor {
 
 struct Transition {
     int32_t id;
-    bool inside;
+    bool near;
 };
 
 // All public methods must be called on the game's main thread. No background thread,
@@ -28,6 +29,25 @@ public:
     void Clear();
     void ResetSession();
     bool SetArmed(int32_t id, bool armed);
+    // Runtime removal is a tombstone, not a spatial reindex. The next Resolver
+    // manifest physically omits the removed static locations.
+    bool RemoveAnchor(int32_t id);
+    bool RemoveOwner(uint32_t owner);
+    size_t OwnerCount(uint32_t owner) const;
+    int32_t OwnerAnchor(uint32_t owner, size_t index) const;
+    int32_t AnchorAt(size_t index) const;
+    bool Subscribe(int32_t consumer, uint32_t owner);
+    bool Unsubscribe(int32_t consumer) { return journal_.Unsubscribe(consumer); }
+    bool NeedsSnapshot(int32_t consumer) { return journal_.NeedsSnapshot(consumer); }
+    bool AckSnapshot(int32_t consumer) { return journal_.AckSnapshot(consumer); }
+    int32_t LastPolledState(int32_t consumer) const { return journal_.LastState(consumer); }
+    int32_t LastPolledOwner(int32_t consumer) const { return journal_.LastOwner(consumer); }
+    TransitionJournal::Result Poll(int32_t consumer, TransitionJournal::Event& out) {
+        return journal_.Poll(consumer,out);
+    }
+    // Numeric diagnostics are exposed over RTTI to the separate Profiler.
+    // Values represent service work, not eliminated Lua/CET native dispatch.
+    int64_t Metric(int32_t metric) const;
     // Returns false for invalid player position; state then fails OPEN to Unknown.
     bool Update(float x, float y, float z);
     // -1 unknown/unavailable, 0 reliably far, 1 near.
@@ -40,7 +60,8 @@ private:
     struct Entry {
         Anchor anchor;
         bool armed = false;
-        bool inside = false;
+        bool removed = false;
+        bool near = false;
         uint32_t seen = 0;
     };
     static constexpr int kCell = 128;
@@ -50,12 +71,23 @@ private:
     static uint64_t CellKey(int32_t x, int32_t y);
     static bool Valid(const Anchor& anchor);
     void CollectCell(int32_t x, int32_t y);
+    void Emit(const Entry& entry, int32_t state);
+    bool RemoveEntry(uint32_t index);
     std::vector<Entry> entries_;
     std::unordered_map<int32_t, uint32_t> ids_;
+    std::unordered_map<uint32_t, std::vector<uint32_t>> owners_;
     std::unordered_map<uint64_t, std::vector<uint32_t>> cells_;
     std::vector<uint32_t> candidates_;
     std::vector<uint32_t> previousNear_;
     std::vector<Transition> changes_;
+    TransitionJournal journal_;
+    uint64_t playerUpdates_ = 0;
+    uint64_t stationarySkips_ = 0;
+    uint64_t distanceTests_ = 0;
+    uint64_t emittedTransitions_ = 0;
+    uint64_t invalidPlayerSamples_ = 0;
+    uint32_t lastCandidates_ = 0;
+    uint32_t lastDistanceTests_ = 0;
     uint32_t generation_ = 0;
     uint32_t stamp_ = 0;
     float x_ = 0, y_ = 0, z_ = 0;

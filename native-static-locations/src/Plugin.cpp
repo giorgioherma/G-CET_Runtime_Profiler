@@ -63,7 +63,68 @@ namespace {
         RED4ext::GetParameter(frame,&i);
         frame->code++;
         const auto changes=g_index.Changes();
-        *out = g_loaded && i>=0 && static_cast<size_t>(i)<changes.size() && changes[i].inside;
+        *out = g_loaded && i>=0 && static_cast<size_t>(i)<changes.size() && changes[i].near;
+    }
+    // Generation/cursor-driven cross-runtime delivery. All calls are main-thread
+    // only; consuming a CET event never consumes the REDscript subscriber's event.
+    void Subscribe(RED4ext::IScriptable*, RED4ext::CStackFrame* f, bool* out, int64_t) {
+        int32_t consumer=0,owner=0;
+        RED4ext::GetParameter(f,&consumer); RED4ext::GetParameter(f,&owner); f->code++;
+        *out=g_loaded && owner>=0 && g_index.Subscribe(consumer,static_cast<uint32_t>(owner));
+    }
+    void Unsubscribe(RED4ext::IScriptable*, RED4ext::CStackFrame* f, bool* out, int64_t) {
+        int32_t consumer=0; RED4ext::GetParameter(f,&consumer); f->code++;
+        *out=g_loaded && g_index.Unsubscribe(consumer);
+    }
+    void SnapshotNeeded(RED4ext::IScriptable*, RED4ext::CStackFrame* f, bool* out, int64_t) {
+        int32_t consumer=0; RED4ext::GetParameter(f,&consumer); f->code++;
+        *out=!g_loaded || g_index.NeedsSnapshot(consumer);
+    }
+    void AckSnapshot(RED4ext::IScriptable*, RED4ext::CStackFrame* f, bool* out, int64_t) {
+        int32_t consumer=0; RED4ext::GetParameter(f,&consumer); f->code++;
+        *out=g_loaded && g_index.AckSnapshot(consumer);
+    }
+    void Poll(RED4ext::IScriptable*, RED4ext::CStackFrame* f, int32_t* out, int64_t) {
+        int32_t consumer=0; RED4ext::GetParameter(f,&consumer); f->code++;
+        *out=-1;
+        if (!g_loaded) return;
+        gcet::static_locations::TransitionJournal::Event event;
+        const auto result=g_index.Poll(consumer,event);
+        *out = result==gcet::static_locations::TransitionJournal::Result::EventReady ? event.id :
+               (result==gcet::static_locations::TransitionJournal::Result::Empty ? 0 : -1);
+    }
+    void PolledState(RED4ext::IScriptable*, RED4ext::CStackFrame* f, int32_t* out, int64_t) {
+        int32_t consumer=0; RED4ext::GetParameter(f,&consumer); f->code++;
+        *out=g_loaded?g_index.LastPolledState(consumer):-1;
+    }
+    void PolledOwner(RED4ext::IScriptable*, RED4ext::CStackFrame* f, int32_t* out, int64_t) {
+        int32_t consumer=0; RED4ext::GetParameter(f,&consumer); f->code++;
+        *out=g_loaded?g_index.LastPolledOwner(consumer):-1;
+    }
+    void OwnerCount(RED4ext::IScriptable*, RED4ext::CStackFrame* f, int32_t* out, int64_t) {
+        int32_t owner=0; RED4ext::GetParameter(f,&owner); f->code++;
+        *out=g_loaded && owner>0 ? static_cast<int32_t>(g_index.OwnerCount(static_cast<uint32_t>(owner))) : 0;
+    }
+    void OwnerAnchor(RED4ext::IScriptable*, RED4ext::CStackFrame* f, int32_t* out, int64_t) {
+        int32_t owner=0,index=-1;
+        RED4ext::GetParameter(f,&owner); RED4ext::GetParameter(f,&index); f->code++;
+        *out=g_loaded && owner>0 && index>=0 ? g_index.OwnerAnchor(static_cast<uint32_t>(owner),static_cast<size_t>(index)) : -1;
+    }
+    void AnchorAt(RED4ext::IScriptable*, RED4ext::CStackFrame* f, int32_t* out, int64_t) {
+        int32_t index=-1; RED4ext::GetParameter(f,&index); f->code++;
+        *out=g_loaded && index>=0 ? g_index.AnchorAt(static_cast<size_t>(index)) : -1;
+    }
+    void RemoveAnchor(RED4ext::IScriptable*, RED4ext::CStackFrame* f, bool* out, int64_t) {
+        int32_t id=0; RED4ext::GetParameter(f,&id); f->code++;
+        *out=g_loaded && g_index.RemoveAnchor(id);
+    }
+    void RemoveOwner(RED4ext::IScriptable*, RED4ext::CStackFrame* f, bool* out, int64_t) {
+        int32_t owner=0; RED4ext::GetParameter(f,&owner); f->code++;
+        *out=g_loaded && owner>0 && g_index.RemoveOwner(static_cast<uint32_t>(owner));
+    }
+    void Metric(RED4ext::IScriptable*, RED4ext::CStackFrame* f, int64_t* out, int64_t) {
+        int32_t metric=0; RED4ext::GetParameter(f,&metric); f->code++;
+        *out=g_loaded ? g_index.Metric(metric) : -1;
     }
     template <typename T>
     void RegisterFunction(const char* name, RED4ext::ScriptingFunction_t<T> handler,
@@ -93,6 +154,25 @@ namespace {
         RegisterFunction("GCETStaticChangeCount",ChangeCount,"Int32",nullptr,nullptr,0);
         RegisterFunction("GCETStaticChangeId",ChangeId,"Int32",indexNames,intTypes,1);
         RegisterFunction("GCETStaticChangeNear",ChangeNear,"Bool",indexNames,intTypes,1);
+        const char* consumerNames[]={"consumer"};
+        const char* subscriptionNames[]={"consumer","owner"};
+        const char* subscriptionTypes[]={"Int32","Int32"};
+        const char* ownerNames[]={"owner"};
+        const char* ownerIndexNames[]={"owner","index"};
+        const char* metricNames[]={"metric"};
+        RegisterFunction("GCETStaticSubscribe",Subscribe,"Bool",subscriptionNames,subscriptionTypes,2);
+        RegisterFunction("GCETStaticUnsubscribe",Unsubscribe,"Bool",consumerNames,intTypes,1);
+        RegisterFunction("GCETStaticNeedsSnapshot",SnapshotNeeded,"Bool",consumerNames,intTypes,1);
+        RegisterFunction("GCETStaticAckSnapshot",AckSnapshot,"Bool",consumerNames,intTypes,1);
+        RegisterFunction("GCETStaticPoll",Poll,"Int32",consumerNames,intTypes,1);
+        RegisterFunction("GCETStaticPolledState",PolledState,"Int32",consumerNames,intTypes,1);
+        RegisterFunction("GCETStaticPolledOwner",PolledOwner,"Int32",consumerNames,intTypes,1);
+        RegisterFunction("GCETStaticOwnerCount",OwnerCount,"Int32",ownerNames,intTypes,1);
+        RegisterFunction("GCETStaticOwnerAnchor",OwnerAnchor,"Int32",ownerIndexNames,subscriptionTypes,2);
+        RegisterFunction("GCETStaticAnchorAt",AnchorAt,"Int32",indexNames,intTypes,1);
+        RegisterFunction("GCETStaticRemoveAnchor",RemoveAnchor,"Bool",idNames,intTypes,1);
+        RegisterFunction("GCETStaticRemoveOwner",RemoveOwner,"Bool",ownerNames,intTypes,1);
+        RegisterFunction("GCETStaticMetric",Metric,"Int64",metricNames,intTypes,1);
     }
     void LoadData() {
         // The location file is co-located with this DLL under red4ext/plugins.

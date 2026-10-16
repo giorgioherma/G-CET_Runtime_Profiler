@@ -30,3 +30,9 @@ Windows x64 plugin: `cmake -S native-static-locations -B build/static -A x64 -DG
 ## Delivery policy
 
 The correct **eventual delivery is as an opt-in Resolver payload**, including both the RED4ext DLL+SHA and that installed stack's generated location file + exact compatible source adapters. It should not be included in the normal Profiler payload and must not silently install code on the player's live mods. Native CI builds only the DLL; Resolver CI would import a pinned successfully built DLL after the native API and mod-owned wake tests pass.
+
+## Independent wake stream (experimental revision)
+
+The core now includes `TransitionJournal` with a fixed 8192-event ring, independent consumer cursors/owner filters, an explicit initial-state snapshot handoff, reliable RESYNC_REQUIRED on lost events, per-owner/anchor removal, and 11 inexpensive native workload metrics available to an **optional, bounded** profiler sampler. See [subscriber and metrics contract](docs/STREAM-AND-METRICS.md) for the complete API/state machine. Linux core and manifest tests validate this code; game integration and actual retirement of the source-author callback remain **unimplemented**.
+
+A future generic Resolver recognizer must infer source-proven static coordinates *and* equivalence of the author wake path. If the old timer/position getter only discovers proximity, its registration and redundant checks can be removed after native wake replacement is proven; if it also runs independent quest, entity or recovery work, the Resolver must split that work. Do not select mods from historical/original-source archives merely because a directory exists there: use the user's present `modsLIVEnow` scope and explicit exclusions.

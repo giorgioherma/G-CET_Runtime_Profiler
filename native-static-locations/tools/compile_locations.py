@@ -33,8 +33,8 @@ def compile_data(payload):
         metric = item.get('metric', 'xyz')
         if type(id_) is not int or not 0 < id_ <= 2147483647 or id_ in seen:
             raise ValueError('id must be unique positive int32')
-        if type(owner) is not int or not 0 < owner <= 4294967295:
-            raise ValueError('owner must be positive uint32')
+        if type(owner) is not int or not 0 < owner <= 2147483647:
+            raise ValueError('owner must be positive int32-compatible ID')
         if metric not in ('xy', 'xyz'):
             raise ValueError('metric must be xy/xyz')
         vals = [item.get(k) for k in ('x', 'y', 'z', 'radius')]
