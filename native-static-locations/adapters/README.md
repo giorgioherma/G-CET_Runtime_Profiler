@@ -1,0 +1,11 @@
+# Experimental CET native-static-location consumer
+
+This module is an **opt-in adapter** for the *existing* shared CET host (e.g. a 0-Engine runtime dispatcher), not another CET mod and not another `registerForEvent("onUpdate")` subscription.
+
+A source-proven Resolver transformation creates one Hub with a unique positive consumer ID and binds each admitted owner to `onNear(anchorId,isSnapshot)`, optional `onFar(anchorId,isSnapshot)`, and **mandatory source-original fail-open fallback** `onFallback(reason)`. The host calls `hub:step()` on its existing update/scheduled event. It does **not** arm anchors, take over quest logic, or automatically invoke author interactions. Owner source adaptation must control `GCETStaticArm(id,armed)` at the correct stage.
+
+The required `native` table exposes callable `Game.GCETStatic*` RTTI wrappers. Pass the Game proxy only after CET initializes; these native exports must be validated in-game, including ABI visibility, before shipping. The adapter never invokes `GCETStaticUpdatePlayer`: the RED4ext running-state coordinator exclusively owns that.
+
+Lifecycle: subscribe -> initial owner-scoped snapshot -> ACK -> bounded independent event poll. On missing native coordinator, unknown anchor, overrun, native error, or callback exception the module executes the **original source-proven fallback**. A callback error tears down subscription so the next successful step re-snapshots. This bridge alone does not authorize removal of author polling or guarantee first-interaction timing; the Resolver must prove the fallback exists and current source semantics survive.
+
+Development-only mock protocol test: `lua5.4 native-static-locations/tests/CETStaticLocationConsumerTests.lua`.
