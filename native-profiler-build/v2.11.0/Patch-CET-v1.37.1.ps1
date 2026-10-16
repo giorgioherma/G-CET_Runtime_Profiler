@@ -462,7 +462,7 @@ CETRuntimeProfiler::Counter* ResolveProfilerCounter(
     // down the game when capture is enabled. Unknown is still profileable.
     try
     {
-        const auto loggerObject = apContext->Environment["__logger"];
+        const sol::object loggerObject = apContext->Environment["__logger"];
         if (loggerObject.valid() &&
             loggerObject.is<std::shared_ptr<spdlog::logger>>())
         {
