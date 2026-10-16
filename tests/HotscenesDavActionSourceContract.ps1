@@ -284,8 +284,10 @@ if(!$core.Contains($bSource)){throw 'Regression core pristine Cron source change
 $previousCore=$core.Replace($bSource,$bStage)
 $previousCore='-- G-CET semantic:driveaerialvehicle'+$lf+$previousCore
 Put (Join-Path $stagedDav 'init.lua') $previousInit
-Put (Join-Path $stagedDav 'Modules\core.lua') ($previousCore.Replace($lf,$crlf))
-Put (Join-Path $stagedDav 'Modules\event.lua') ($event.Replace($lf,$crlf))
+# PowerShell here-strings already use CRLF on Windows. Normalize once to
+# avoid accidental CRCRLF, which would make the exact safety regex refuse.
+Put (Join-Path $stagedDav 'Modules\core.lua') ($previousCore.Replace($crlf,$lf).Replace($lf,$crlf))
+Put (Join-Path $stagedDav 'Modules\event.lua') ($event.Replace($crlf,$lf).Replace($lf,$crlf))
 $stagedEngine=Join-Path $stagedRoot '0-Engine'
 New-Item -ItemType Directory -Force $stagedEngine | Out-Null
 Copy-Item -LiteralPath (Join-Path $zero 'init.lua') -Destination (Join-Path $stagedEngine 'init.lua')
