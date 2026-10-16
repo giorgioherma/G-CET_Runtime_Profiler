@@ -421,7 +421,7 @@ internal static partial class SemanticInjectors
             state.observedActions = true
           end
         end
-""";
+        """;
         var quoted = string.Join(", ", actions.Select(a => "\"" + a + "\""));
         var updated = "local function observePlayerActions()\n" +
             "  if state.observedActions or not Observe then return end\n" +
