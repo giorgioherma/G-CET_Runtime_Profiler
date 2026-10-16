@@ -1,5 +1,9 @@
 # LATEST WORK — current active development task
 
+## 2026-10-16 — Release claims: personal measurements and non-universal semantic coverage (DECISION, NOT IMPLEMENTED)
+
+**User release position:** Publish demonstrable before/after performance **from their own tested mod stack** and explicitly warn results differ across installations. The included **semantic library** contains source-proven optimization knowledge; newly released, changed or unrecognized mods may be left untouched rather than risk unsafe changes. Generic, source-proven optimizations may still apply to previously unseen mods. Do not claim universal performance improvements or imply all new mods are covered. This is disclosure/analytics policy, not an added UI step. See [unified workflow](product/UNIFIED-TWO-PAGE-WORKFLOW.md).
+
 ## 2026-10-16 — Vortex overlay is the main installation UX (DECISION, NOT IMPLEMENTED)
 
 **User clarification:** The single game-root ZIP is specifically designed as **one Vortex-managed optimization mod** placed on top of every original mod. User imports it to Vortex, explicitly assigns **win conflicts / load after** rules for all modified files, and deploys. **Disable or uninstall the one generated overlay and redeploy** to fall back to the installed original mods; no per-file manual rollback or removal of the entire underlying mod stack. This depends on originals being managed/preserved, and it does not retroactively undo uncontrolled manual overwrites. The ZIP must preserve the correct `bin/`, `r6/`, `red4ext/` deployment topology with no wrapping folder/docs; verify Vortex Cyberpunk 2077 ZIP install semantics and conflict resolution. Manual installation remains supported with prominent BACK UP CET + REDscript (and affected native) **before applying anything** warning. Full contract: [unified workflow](product/UNIFIED-TWO-PAGE-WORKFLOW.md).

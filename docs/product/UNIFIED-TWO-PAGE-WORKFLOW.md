@@ -51,6 +51,14 @@ Do not silently read/write unselected profiles. Until verified, show MO2 compati
 
 Each transition is evidence-backed and resumable or recoverable after interruption. The important gate is `CAPTURE_READY` based on the **current** capture session, not just the presence of a past CSV/ZIP. Any failure to restore both native layers switches to `RECOVERY_REQUIRED` and does not silently continue. Dependency/source-analysis failures yield an honest `NO_PASS` outcome.
 
+## Public performance evidence and semantic-library coverage (user decision)
+
+- The developer will publish **measured before-and-after results from their own installation** as an illustrative demonstration, **not** advertise the same FPS, frametime, allocation or CPU improvement for every player. Every mod stack, version mix, game state, configuration, workload and machine can behave differently. No universal percentage/guarantee is permitted.
+- Explain candidly that the Resolver ships a **curated semantic library** of source-proven behaviors and optimizations. New releases and unreviewed or semantically changed mods may **remain unoptimized** until their behavior can be analyzed and a safe transformation established. Being recent or unsupported is not a bug; original behavior is intentionally preserved.
+- The semantic library is **not an exhaustive whitelist**. The Resolver may still apply independently verified **generic source transformations** to previously unseen mods. Mod name alone does not confer safe coverage; specific versions are not disqualified by superficial edits when source/control-flow equivalence is provable. Unknown or changed semantics fail closed.
+- The analytics report should distinguish `optimized`, `already optimized`, `not beneficial`, `unsupported/unrecognized` and `unsafe/unknown`; no fake support count or performance-gain estimate for unmeasured changes. Coverage is specific to the installation and capture analyzed.
+- This disclosure belongs in the public description and optional report context, without adding an extra primary step to the two-page workflow.
+
 ## Release compatibility and per-mod opt-out (user decision)
 
 **The optimization tool is best-effort software for heterogeneous mod installations, not a guarantee of gameplay correctness in every possible stack.** No release criterion requires a developer to manually play through every supported mod, quest or combination. There will be unsupported versions and inevitably some missed gameplay interactions. The user-facing release notes and application report must state the limitation clearly and avoid absolute claims of zero bugs or universal compatibility.
