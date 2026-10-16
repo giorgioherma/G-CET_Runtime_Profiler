@@ -498,3 +498,7 @@ For each mod with a candidate source-proven extension:
 - [Native-dispatch / admission analysis](resolver/research/SEMANTIC-SOFT-ADMISSION-AND-NATIVE-TRANSITIONS-2026-10-15.md)
 - [Build and release guardrails](HANDOFF/BUILD-PIPELINE.md)
 - [Engineering history](history/ACTIVE-STATE.md)
+
+### Native CI #2 compiled artifact verified (2026-10-16)
+
+[Dedicated run #38851453170](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/38851453170) completed successfully (Linux native core/manifest tests and Windows MSVC RED4ext SDK plugin). The first CI #38851044842 failed on the Windows SDK `near` macro collision; the isolated fix was committed as `cb4a399fcc6b5b92088b4a29bc319c44bc0c9acb`. Artifact `gcet-static-native-experimental`, ID `12024958767`, has been **downloaded and independently inspected**: `red4ext/plugins/G-CET-StaticLocations/GCETStaticLocations.dll`, PE x64, 98,304 bytes, SHA256 `d5d7aeb6b356e5b86cd30c973728121b7b68cbdcbfa3d4560ad0fca7e6f05d1c` equal to packaged `SHA256.txt`; archive CRC passed. Download is a **foundation-only developer experiment**: it contains no generated installed-mod GCAS file, player coordinator, active adapter/subscriber or gameplay validation. Do not install it expecting current mods to sleep, and do not merge it into the normal Profiler DLL.
