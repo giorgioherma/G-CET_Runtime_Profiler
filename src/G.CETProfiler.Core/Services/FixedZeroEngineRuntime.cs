@@ -83,7 +83,7 @@ internal static class FixedZeroEngineRuntime
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["modules/ActionRouter.lua"] =
-                "4c5ad5f6925b9cb9b2f24ab359eaadc5d54fcf890d661682307ce8cbe09c955c",
+                "4ef1eafd3aeb255c9bb940c37f6b4a0e6781da19219254e448f9ba5bff477656",
             ["modules/Health.lua"] =
                 "85b2c6402e54c64f83c1f55e35b5bfee0dc5ebabcdd079c3c8aebb06b010620f",
             ["modules/Scheduler.lua"] =
