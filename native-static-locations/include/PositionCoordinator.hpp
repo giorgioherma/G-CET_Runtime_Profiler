@@ -20,3 +20,4 @@ private:
     bool running_=false,known_=false;
     uint64_t ticks_=0,unavailable_=0,losses_=0;
 };
+} // namespace gcet::static_locations
