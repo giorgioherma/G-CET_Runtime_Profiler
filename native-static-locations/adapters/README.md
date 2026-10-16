@@ -9,3 +9,20 @@ The required `native` table exposes callable `Game.GCETStatic*` RTTI wrappers. P
 Lifecycle: subscribe -> initial owner-scoped snapshot -> ACK -> bounded independent event poll. On missing native coordinator, unknown anchor, overrun, native error, or callback exception the module executes the **original source-proven fallback**. A callback error tears down subscription so the next successful step re-snapshots. This bridge alone does not authorize removal of author polling or guarantee first-interaction timing; the Resolver must prove the fallback exists and current source semantics survive.
 
 Development-only mock protocol test: `lua5.4 native-static-locations/tests/CETStaticLocationConsumerTests.lua`.
+
+## Experimental G-RED consumer
+
+`GRedStaticLocationHub.reds` is a separate optional overlay for installations
+with G-REDruntime. It consumes **one all-owner native event stream** through
+**one existing G-RED scheduler job**, registered only when an author adapter
+calls `GCETStaticLocationHub.Get(game).RegisterOwner(owner, listener)`.
+Source adapters subclass `GCETStaticLocationListener` to receive near/far
+transitions and implement **mandatory original-behavior fallback** for unknown
+service/position. It does not arm quest-stage anchors automatically.
+
+The REDscript file has **not been compiled with the player's full REDscript
+stack or game-tested**. It is not included in the native DLL artifact, and
+no source wake may be retired on its authority. Validate compilation, first
+snapshot, owner removal, load/fast travel, fallback and G-RED scheduler behavior
+before admitting it to generated passes. It does not modify the G-REDruntime
+repository or its production framework.
