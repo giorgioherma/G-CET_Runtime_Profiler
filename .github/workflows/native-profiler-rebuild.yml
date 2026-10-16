@@ -37,9 +37,16 @@ jobs:
 
           New-Item -ItemType Directory -Force native-rebuild-artifact | Out-Null
           Copy-Item $source native-rebuild-artifact\cyber_engine_tweaks.PROFILER.dll -Force
+          $pdb = 'native-profiler-build\v2.11.0\BUILD_OUTPUT\cyber_engine_tweaks.PROFILER.pdb'
+          if (!(Test-Path -LiteralPath $pdb -PathType Leaf)) {
+            throw "Matching profiler PDB was not found: $pdb"
+          }
+          Copy-Item $pdb native-rebuild-artifact\cyber_engine_tweaks.PROFILER.pdb -Force
 
           $hash = (Get-FileHash native-rebuild-artifact\cyber_engine_tweaks.PROFILER.dll -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  cyber_engine_tweaks.PROFILER.dll" | Set-Content native-rebuild-artifact\SHA256.txt -Encoding ascii
+          $pdbHash = (Get-FileHash native-rebuild-artifact\cyber_engine_tweaks.PROFILER.pdb -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$pdbHash  cyber_engine_tweaks.PROFILER.pdb" | Add-Content native-rebuild-artifact\SHA256.txt -Encoding ascii
           Write-Host "Rebuilt profiler SHA256: $hash"
 
       - name: Commit rebuilt payload to resolver branch
