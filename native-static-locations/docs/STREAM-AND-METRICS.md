@@ -1,4 +1,4 @@
-# Native shared static locations: subscriber contract + diagnostic counters
+# G-LookupCache — native subscription and diagnostics
 
 Status: **experimental native interface + experimental single game-state coordinator**. Main-thread-only API. This is NOT yet a production or gameplay-verified wake replacement.
 
