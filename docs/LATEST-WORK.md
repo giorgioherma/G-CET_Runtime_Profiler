@@ -1,5 +1,9 @@
 # LATEST WORK — current active development task
 
+## 2026-10-16 — Vortex overlay is the main installation UX (DECISION, NOT IMPLEMENTED)
+
+**User clarification:** The single game-root ZIP is specifically designed as **one Vortex-managed optimization mod** placed on top of every original mod. User imports it to Vortex, explicitly assigns **win conflicts / load after** rules for all modified files, and deploys. **Disable or uninstall the one generated overlay and redeploy** to fall back to the installed original mods; no per-file manual rollback or removal of the entire underlying mod stack. This depends on originals being managed/preserved, and it does not retroactively undo uncontrolled manual overwrites. The ZIP must preserve the correct `bin/`, `r6/`, `red4ext/` deployment topology with no wrapping folder/docs; verify Vortex Cyberpunk 2077 ZIP install semantics and conflict resolution. Manual installation remains supported with prominent BACK UP CET + REDscript (and affected native) **before applying anything** warning. Full contract: [unified workflow](product/UNIFIED-TWO-PAGE-WORKFLOW.md).
+
 ## 2026-10-16 — Generated optimization deployment safety (DECISION, NOT IMPLEMENTED)
 
 **Installation guidance:** Recommend **Vortex** to manage the generated optimization ZIP as a separate mod. For **manual application**, instruct users prominently: **BACK UP the entire CET mods and REDscript scripts directories before applying ANY optimizations**, not merely before copying individual files. If native RED4ext files will be modified, back up the affected paths as well. Warning belongs in the app/distribution UI, not in the game-files-only ZIP. Vortex deployment rollback is helpful but not a substitute for backups when manual overlays or external modifications exist. See [unified workflow contract](product/UNIFIED-TWO-PAGE-WORKFLOW.md).
