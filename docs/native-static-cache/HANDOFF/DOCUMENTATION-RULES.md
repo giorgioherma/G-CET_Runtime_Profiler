@@ -1,4 +1,4 @@
-# DOCUMENTATION-RULES — obligations for every continuation
+# G-LookupCache — documentation rules
 
 ## Four distinct layers (avoid endless logs)
 
