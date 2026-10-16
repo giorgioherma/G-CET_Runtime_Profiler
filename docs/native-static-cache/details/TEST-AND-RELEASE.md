@@ -1,4 +1,4 @@
-# Tests, CI, smoke and release gates
+# G-LookupCache — tests and release gates
 
 ## Automation that currently exists
 
