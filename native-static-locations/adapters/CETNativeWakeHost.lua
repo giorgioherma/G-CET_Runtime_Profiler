@@ -69,12 +69,19 @@ function Host:attachSource(ownerId,farJob,nearJobs,keepAlive,epoch,fingerprint,s
   assert(type(self.lifecycleFactory)=="table"
       and type(self.lifecycleFactory.new)=="function",
       "native source lifecycle module required")
+  -- Reserve the single shared scheduler lane BEFORE allocating source IDs.
+  -- If the host cannot schedule yet, leave the author far job untouched and
+  -- retry later without tombstoning a valid, source-pinned anchor roster.
+  if not self:_install() then return nil,"HOST_SCHEDULER_UNAVAILABLE" end
   local lifecycle=self.lifecycleFactory.new(self.native,ownerId,
       function() self.hub:_stop() end)
   -- Fail closed for sources and fail open for gameplay: no Gate exists yet,
   -- so the original far-discovery job is still running.
   local ok,reason=lifecycle:register(epoch,fingerprint,sites,relevant)
-  if not ok then return nil,reason end
+  if not ok then
+    self:_pauseWhenEmpty()
+    return nil,reason
+  end
   local gate=self:attach(ownerId,farJob,nearJobs,keepAlive,restoreOriginal,onFarHousekeeping)
   self.sources[ownerId]={lifecycle=lifecycle,gate=gate,sites=self.setFactory}
   if not relevant then
