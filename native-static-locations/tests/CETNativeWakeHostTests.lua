@@ -2,6 +2,7 @@ local Hub=dofile("native-static-locations/adapters/CETStaticLocationConsumer.lua
 local Gate=dofile("native-static-locations/adapters/CETNativeJobGate.lua")
 local Set=dofile("native-static-locations/adapters/CETAnchorSetGate.lua")
 local Host=dofile("native-static-locations/adapters/CETNativeWakeHost.lua")
+local Life=dofile("native-static-locations/adapters/CETSourceAnchorLifecycle.lua")
 local sites={
  [41]={[401]=0,[402]=1},
  [42]={[420]=0},
@@ -73,4 +74,79 @@ local unavailable=Host.new(native,failed,1703002,Hub,Set,Gate)
 unavailable:attach(41,farC,{job(false)})
 assert(farC.active)
 unavailable:shutdown()
-print("PASS shared single CET native host, late owner, fallback and shutdown")
+
+-- A source-owned stage that is entirely inactive must be removed from
+-- snapshots, not interpreted as FAR or UNKNOWN. Another owner stays active.
+local nativeSites={}
+local sourceNative={
+ GCETStaticReady=function() return true end,
+ GCETStaticCoordinatorState=function() return 2 end,
+ GCETStaticAddAnchor=function(id,x,y,z,radius,xy,owner)
+   nativeSites[id]={owner=owner,armed=false,state=owner==100 and 1 or 0}
+   return true
+ end,
+ GCETStaticArm=function(id,armed)
+   if not nativeSites[id] then return false end
+   nativeSites[id].armed=armed
+   return true
+ end,
+ GCETStaticRemoveAnchor=function(id)
+   nativeSites[id]=nil;return true
+ end,
+ GCETStaticSubscribe=function() snapshot=true;return true end,
+ GCETStaticUnsubscribe=function() return true end,
+ GCETStaticNeedsSnapshot=function() return snapshot end,
+ GCETStaticOwnerCount=function(owner)
+   local n=0
+   for _,v in pairs(nativeSites) do if v.owner==owner then n=n+1 end end
+   return n
+ end,
+ GCETStaticOwnerAnchor=function(owner,i)
+   local ids={}
+   for id,v in pairs(nativeSites) do if v.owner==owner then ids[#ids+1]=id end end
+   table.sort(ids);return ids[i+1]
+ end,
+ GCETStaticState=function(id)
+   return nativeSites[id].armed and nativeSites[id].state or -1
+ end,
+ GCETStaticAckSnapshot=function() snapshot=false;return true end,
+ GCETStaticPoll=function() return 0 end,
+}
+local sourceJobs={}
+local sourceClient={Schedule={EveryFrame=function(_,fn)
+ sourceJobs[#sourceJobs+1]=fn
+ return {Cancel=function() end}
+end}}
+local sourceHost=Host.new(sourceNative,sourceClient,1703003,Hub,Set,Gate,Life)
+local aFar,aNear=job(true),job(false)
+local bFar,bNear=job(false),job(false)
+local defsA={{id=1001,x=1,y=2,z=3,radius=50,metric="xyz"}}
+local defsB={{id=2001,x=10,y=20,z=30,radius=60,metric="xy"}}
+local ownerA=sourceHost:attachSource(100,aFar,{aNear},nil,
+ "epoch-A","fingerprint-owner-A",defsA,true)
+local ownerB=sourceHost:attachSource(200,bFar,{bNear},nil,
+ "epoch-B","fingerprint-owner-B",defsB,false)
+assert(ownerA and ownerB and #sourceJobs==1)
+assert(nativeSites[1001].armed and not nativeSites[2001].armed)
+sourceJobs[1]()
+assert(aNear.active and not aFar.active and not bFar.active)
+-- Reactivate inactive owner by source lifecycle event; native stream
+-- re-snapshots both owners without first treating B's disarmed ID as FAR.
+assert(sourceHost:setRelevant(200,true))
+sourceJobs[1]()
+assert(not bFar.active and not bNear.active)
+-- Completing A must not silence B nor restore A's old far scanner.
+assert(sourceHost:setRelevant(100,false))
+assert(not nativeSites[1001].armed and not aFar.active and not aNear.active)
+sourceJobs[1]()
+assert(not bFar.active)
+-- New source data gets new IDs; old ones tombstoned.
+local defsB2={{id=2002,x=11,y=22,z=33,radius=70,metric="xyz"}}
+assert(sourceHost:replaceSourceEpoch(200,"epoch-B2","fingerprint-owner-B2",defsB2,true))
+assert(nativeSites[2002] and not nativeSites[2001])
+sourceJobs[1]()
+assert(not bFar.active)
+sourceHost:shutdown()
+assert(not nativeSites[1001] and not nativeSites[2002])
+assert(not aFar.active) -- source A explicitly inactive even on shutdown
+print("PASS shared native host, source-owned stage dormancy and reactivation")

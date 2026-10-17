@@ -24,6 +24,14 @@ function Hub:addOwner(ownerId, onNear, onFar, onFallback, onSnapshot)
   self.ownerCount=self.ownerCount+1
 end
 
+function Hub:removeOwner(ownerId)
+  if not self.owners[ownerId] then return false end
+  self:_stop()
+  self.owners[ownerId]=nil
+  self.ownerCount=self.ownerCount-1
+  return true
+end
+
 function Hub:_fallback(reason)
   -- Fallback re-arms the *original* author scanner. Trigger once per
   -- outage, not every 0-Engine frame. Retry if an owner handler failed.

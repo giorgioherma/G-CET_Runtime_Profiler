@@ -37,6 +37,15 @@ end
 
 function Gate:_apply()
   local live=self:_mustKeepActive()
+  if self.mode=="INACTIVE" then
+    -- Author explicitly said this location responsibility is irrelevant.
+    -- Independent non-location listeners are NOT among these jobs.
+    doJob(self.far,"Pause")
+    for _,job in ipairs(self.near) do
+      doJob(job,live and "Resume" or "Pause")
+    end
+    return
+  end
   if self.mode=="ORIGINAL" then
     -- Fail-open: restore the authored far discovery, regardless of distance.
     doJob(self.far,"Resume")
@@ -68,15 +77,27 @@ function Gate:_transition(mode)
 end
 
 function Gate:onNear(_,initial)
+  if self.mode=="INACTIVE" then return true end
   return self:_transition("NEAR")
 end
 
 function Gate:onFar(_,initial)
+  if self.mode=="INACTIVE" then return true end
   return self:_transition("FAR")
 end
 
 function Gate:onFallback(_)
+  if self.mode=="INACTIVE" then return true end
   return self:_transition("ORIGINAL")
+end
+
+function Gate:deactivate()
+  return self:_transition("INACTIVE")
+end
+
+function Gate:reactivate()
+  if self.mode=="INACTIVE" then return self:_transition("ORIGINAL") end
+  return true
 end
 
 function Gate:reconcileAuthorTransition()
