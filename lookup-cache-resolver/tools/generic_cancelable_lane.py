@@ -118,7 +118,16 @@ def admit(text: str, relative: str, owner: int, anchor: int):
         # external rearm or mutation of job handles. Other listeners remain
         # untouched and may do independent work, but cannot control the pair.
         outside=text[:far["start"]]+text[far["end"]:near["start"]]+text[near["end"]:]
-        if re.search(r"\b"+re.escape(near_name)+r"\b", outside) or re.search(
+        # Require one explicit local upvalue declaration before both jobs.
+        # Globals would admit unrelated writers from another module/event.
+        declaration=re.compile(r"(?m)^[ \t]*local[ \t]+"+
+              re.escape(far["name"])+r"[ \t]*,[ \t]*"+
+              re.escape(near_name)+r"[ \t]*\n")
+        matches=list(declaration.finditer(outside))
+        if len(matches)!=1 or matches[0].start()>=far["start"]:
+            continue
+        outside=declaration.sub("",outside,count=1)
+        if re.search(r"\b"+re.escape(near_name)+r"\b",outside) or re.search(
             r"\b"+re.escape(far["name"])+r"\b",outside):
             continue
         # Do not transform the near lane's work at all. It is only resumed
