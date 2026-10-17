@@ -74,6 +74,8 @@ def function_leads(lua):
     seen=set()
     results=[]
     for registration in REG.finditer(lua):
+        if safe[registration.start()].isspace():
+            continue  # comments and strings are never registrations
         # A registration without an inlined anonymous function is not
         # automatically transformable by this family.
         begin=registration.end()

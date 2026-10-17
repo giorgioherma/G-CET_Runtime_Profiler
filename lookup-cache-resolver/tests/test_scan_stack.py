@@ -447,6 +447,17 @@ registerForEvent("onUpdate",function(dt) uiOnly() end)
         src='''Cron.Every(1,function() if cond then Game.GetPlayer():Distance(p) end'''
         self.assertEqual(function_leads(src),[])
 
+
+    def test_lua_comment_and_literal_do_not_create_fake_scopes(self):
+        from lua_callback_scopes import function_leads
+        src='''-- Cron.Every(1,function() Game.GetPlayer():Distance(site) end)
+local note="Cron.Every(1,function() end)"
+registerForEvent("onUpdate",function(dt) local x=1 end)
+'''
+        matches=function_leads(src)
+        self.assertEqual(len(matches),1)
+        self.assertFalse(matches[0]["scoped_location_lead"])
+
     def test_empty_install_refused(self):
         with tempfile.TemporaryDirectory() as root:
             with self.assertRaises(ValueError):
