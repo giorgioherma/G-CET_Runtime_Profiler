@@ -38,8 +38,8 @@ function Hub:_fallback(reason)
   if self.fallbackActive then return true end
   local allOk=true
   for _,handler in pairs(self.owners) do
-    local ok=pcall(handler.fallback,reason)
-    if not ok then allOk=false end
+    local ok,result=pcall(handler.fallback,reason)
+    if not ok or result==false then allOk=false end
   end
   self.fallbackActive=allOk
   return allOk
