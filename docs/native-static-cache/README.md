@@ -8,6 +8,7 @@
 
 | Detailed subject | Document |
 | --- | --- |
+| Ten representative R4 integrations, original-source variants and four new source audits | [details/R4-REPRESENTATIVE-ORIGINALS.md](details/R4-REPRESENTATIVE-ORIGINALS.md) |
 | Generic CET/REDscript evidence intake, independent wake and native arming contract | [details/RESOLVER-EVIDENCE-AND-ARMING.md](details/RESOLVER-EVIDENCE-AND-ARMING.md) |
 | Read-only selected-stack source evidence scanner | [lookup-cache-resolver/README.md](../../lookup-cache-resolver/README.md) |
 | Service architecture, ownership, lifecycle, native API | [details/ARCHITECTURE.md](details/ARCHITECTURE.md) |
