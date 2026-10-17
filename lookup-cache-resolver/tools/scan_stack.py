@@ -18,22 +18,25 @@ CAP=2_000_000
 PATTERNS={
     "recurring":re.compile(r'\b(?:Cron\s*\.\s*Every|Schedule\s*\.\s*Every|registerForEvent\s*\(\s*["\x27]on(?:Update|Draw)["\x27]|onUpdate\s*=|OnUpdate\s*\(|OnDraw\s*\(|@(?:wrapMethod|replaceMethod)\s*\([^)]*(?:Update|Tick))',re.I),
     "player":re.compile(r'\b(?:GetPlayer|GetWorldPosition|GetPlayerPosition|PlayerPuppet)\b',re.I),
-    "distance":re.compile(r'\\b(?:DistanceSquared|DistanceSq|Distance|DistanceBetween|distSq|LengthSquared|GetDistance|DistanceTo|IsInRange|withinRadius)\\b|\\^\\s*2\\b',re.I),
+    "distance":re.compile(r'\b(?:DistanceSquared|DistanceSq|Distance|DistanceBetween|distSq|LengthSquared|GetDistance|DistanceTo|IsInRange|withinRadius)\b|\^\s*2\b',re.I),
     "literal_xyz":re.compile(r'\b[xX]\s*[:=]\s*[-+]?\d+(?:\.\d+)?\s*[,;]\s*[yY]\s*[:=]\s*[-+]?\d+(?:\.\d+)?\s*[,;]\s*[zZ]\s*[:=]\s*[-+]?\d+(?:\.\d+)?|["\x27]x["\x27]\s*:\s*[-+]?\d+(?:\.\d+)?\s*,\s*["\x27]y["\x27]\s*:\s*[-+]?\d+(?:\.\d+)?\s*,\s*["\x27]z["\x27]\s*:\s*[-+]?\d+(?:\.\d+)?|\b(?:new\s+)?Vector4\s*(?:\.\s*new)?\s*\(\s*[-+]?\d+(?:\.\d+)?\s*,\s*[-+]?\d+(?:\.\d+)?\s*,\s*[-+]?\d+(?:\.\d+)?',re.I),
     "independent_wake":re.compile(r'\b(?:OnAction|ObserveAfter|Observe|registerHotkey|registerInput|GetQuestsSystem|GetFactsDB|GetJournalManager|Phone|SMS|Message|OnSave|OnLoad|OnShutdown|OnQuest|Quest)\b',re.I),
     "mutable_source":re.compile(r'\b(?:SetWorldPosition|SetPosition|Teleport|Editor|GetTarget|GetLookAt|AddTrack|RemoveTrack|WriteFile|SaveJson|json\.encode|io\.open)\b',re.I)
 }
 REQUIRED=("recurring","player","distance","literal_xyz")
 NUMERIC=r'[-+]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][-+]?\d+)?'
-# Source-authored numeric tables commonly span 3+ lines, unlike the old
-# line-only regex. This is a triage match; not world-space/immutability proof.
+# Multiline numeric source coordinates are evidence, not proof of world-space.
 MULTILINE_XYZ=re.compile(
     r'\b["\x27]?x["\x27]?\s*[:=]\s*'+NUMERIC+
     r'\s*,\s*["\x27]?y["\x27]?\s*[:=]\s*'+NUMERIC+
     r'\s*,\s*["\x27]?z["\x27]?\s*[:=]\s*'+NUMERIC,re.I)
 MAP_ROW=re.compile(
     r'^\s*'+NUMERIC+r'\s+'+NUMERIC+r'\s+'+NUMERIC+
-    r'(?:\s+'+NUMERIC+r')?\s*(?:#.*)?
+    r'(?:\s+'+NUMERIC+r')?\s*(?:#.*)?$')
+VEHICLE_POSITION=re.compile(
+    r'\b(?:GetMountedVehicle|GetVehiclePosition|GetActiveGarageForVehicle|GetWorldTransform)\b',re.I)
+PLAYER_POSITION=re.compile(
+    r'\b(?:GetPlayer|GetWorldPosition|GetPlayerPosition)\b',re.I)
 
 def files_under(owner:Path,extensions:set[str])->list[Path]:
     result=[]
@@ -58,9 +61,9 @@ def file_evidence(f:Path,root:Path,language:str)->dict:
     # .map is data-only (not script); it can define a reloadable epoch.
     extra_geometry=[]
     for match in MULTILINE_XYZ.finditer(content):
-        line_no=content.count("\\n",0,match.start())+1
-        if "\\n" in match.group(0):
-            extra_geometry.append((line_no,match.group(0).strip().replace("\\n"," ")[:180]))
+        line_no=content.count("\n",0,match.start())+1
+        if "\n" in match.group(0):
+            extra_geometry.append((line_no,match.group(0).strip().replace("\n"," ")[:180]))
     for line_no,line in enumerate(content.splitlines(),1):
         if f.suffix.casefold()==".map" and MAP_ROW.fullmatch(line):
             counts["literal_xyz"]+=1
