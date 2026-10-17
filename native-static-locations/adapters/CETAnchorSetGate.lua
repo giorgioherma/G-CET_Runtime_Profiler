@@ -15,7 +15,9 @@ function Set:_unknown(reason)
   self.sites={}
   self.count=0
   self.near=0
-  return self.gate:onFallback(reason)
+  self.gate:onFallback(reason)
+  -- Propagate failure to the shared consumer: resubscribe + full snapshot.
+  return false
 end
 
 function Set:snapshot(rows)
@@ -72,7 +74,7 @@ function Set:bind(hub,ownerId)
   hub:addOwner(ownerId,
     function(id) assert(self:update(id,1)) end,
     function(id) assert(self:update(id,0)) end,
-    function(reason) assert(self:fallback(reason)) end,
+    function(reason) self:fallback(reason) end,
     function(rows) assert(self:snapshot(rows)) end)
 end
 
