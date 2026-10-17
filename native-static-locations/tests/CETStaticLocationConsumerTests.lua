@@ -81,4 +81,16 @@ assert(hub:step() and subscribed)
 
 hub:shutdown()
 assert(not subscribed)
-print("PASS native CET consumer fail-open edge, forced resnapshot, recovery")
+-- A source gate can reject restoring its original scheduler. That is not
+-- successful fallback; retry on the next host tick rather than latching once.
+local restores=0
+local recoveryHub=Hub.new(native,1702002)
+recoveryHub:addOwner(41,function() end,function() end,function()
+ restores=restores+1
+ return restores>=3
+end)
+healthy=false
+for i=1,50 do assert(recoveryHub:step()) end
+assert(restores==3,"failed original fallback must be retried, not spammed")
+recoveryHub:shutdown()
+print("PASS native CET consumer fail-open edge, retryable fallback, resnapshot, recovery")
