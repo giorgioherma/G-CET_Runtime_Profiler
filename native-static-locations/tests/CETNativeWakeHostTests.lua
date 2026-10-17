@@ -118,6 +118,16 @@ local sourceNative={
  GCETStaticAckSnapshot=function() snapshot=false;return true end,
  GCETStaticPoll=function() return 0 end,
 }
+-- A source must not consume native anchor IDs when the shared host
+-- scheduler is temporarily unavailable; the authored far job keeps running.
+local unavailableFar=job(true)
+local noHost=Host.new(sourceNative,failed,1703019,Hub,Set,Gate,Life)
+local unavailableGate,unavailableReason=noHost:attachSource(900,
+ unavailableFar,{job(false)},nil,"epoch-no-host","fingerprint-no-host",
+ {{id=9001,x=0,y=0,z=0,radius=45,metric="xyz"}},true)
+assert(unavailableGate==nil and unavailableReason=="HOST_SCHEDULER_UNAVAILABLE")
+assert(unavailableFar.active and nativeSites[9001]==nil)
+noHost:shutdown()
 local sourceJobs={}
 local sourceClient={Schedule={EveryFrame=function(_,fn)
  local entry={fn=fn,running=true}
