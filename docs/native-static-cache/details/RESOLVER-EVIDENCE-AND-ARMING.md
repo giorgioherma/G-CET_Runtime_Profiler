@@ -34,6 +34,16 @@ The native coordinator is the sole player-position writer. With zero armed owner
 
 ## Current implementation boundary
 
-Read-only discovery, schema generation and unit tests are implemented and separate from production. Neither callback control-flow proof nor a generic source injector exists yet. Native baseline and event delivery are experimental; REDscript adapter is not game compiled. This contract is the handoff interface, **not** a claim that arbitrary installed mods are already optimized.
+The generic scanner remains read-only triage. In addition, an **explicitly reviewed, source-fingerprinted CET pilot** now stages an opt-in StreetGamesPoker scheduler rewrite with a complete 40-site roster, one owner/native consumer, original far-job retirement on healthy native snapshots, native FAR housekeeping, independently retained gameplay lanes, and a reversible Lua overlay. It is *not* generic automatic source admission, has not been game loaded and has no measured runtime savings. The REDscript adapter remains uncompiled in the user's modded game.
+
+### Runtime failure and teardown obligations
+
+- A failed author fallback is **not** a completed fail-open transition. Native consumer and source job gate must keep retrying original `Resume()`/source restoration until successful; do not permanently latch a failed callback just because `pcall` completed.
+- Shared 0-Engine scheduler admission must succeed before native source IDs are allocated; otherwise a temporarily unavailable scheduler permanently tombstones a valid source epoch and later retries cannot attach.
+- CET shutdown and failed source construction must detach the owner, retire/disarm native anchors and relinquish the shared subscription without stopping other owners. Fully inactive stage cleanup remains separate.
+- The normal far-scanner `StreetTables.update` also performs chair despawn and stranded safety. Only proof-guided housekeeping on native FAR/teleport with retained active gameplay is eligible for retirement.
+- Source syntax and exact fingerprint checking are necessary but not sufficient. Require in-game RTTI, first snapshot, first-near, leave/re-enter, save/load, remote/active gameplay and original-job dispatch comparison before accepting the optimization.
+
+This contract is not a claim that arbitrary installed mods can safely be transformed.
 
 References: [native wake replacement contract](../../resolver/NATIVE-STATIC-WAKE-REPLACEMENT-CONTRACT.md), [cache core](../HANDOFF/CORE.md), [scanner](../../../lookup-cache-resolver/README.md).
