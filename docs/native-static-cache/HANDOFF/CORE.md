@@ -14,6 +14,8 @@ A **single shared native spatial service** for Cyberpunk 2077's source-proven fi
 - G-RED framework is a **separate repository** `giorgioherma/G-REDruntime_Framework`. Prefer optional source overlay and existing scheduler; do not modify its stable core without separate authorization.
 - Main product target is eventual **one application, two pages, three primary actions, one game-root input**. Cache integration must fit this without another player config screen. This combined UI is not yet implemented.
 
+**Generic-pass identity:** Location optimization is a reusable **source-structural Resolver pass**, not a per-mod semantic rule list. The goal is to suspend source-proven location-dependent recurring functions or safely separable branches across arbitrary installed quest/gameplay mods; preserve all independent phone, PC/terminal, message, quest/fact and lifecycle listeners. A whole callback may sleep only if *all* its remaining obligations can safely sleep or wake equivalently. Reviewed named-source pilots are fixtures, not generic admissions. See [Resolver evidence and arming](../details/RESOLVER-EVIDENCE-AND-ARMING.md).
+
 **Separate location and remote wake responsibilities:** A phone listener or quest event does not invalidate a proven fixed-location optimization. Preserve the independent event listener; retire only proved recurring location discovery. FAR_DORMANT owners awaiting proximity must keep their native anchor armed. Fully inactive location stages must disarm the native owner so idle native tracking can sleep. See [Resolver evidence and arming](../details/RESOLVER-EVIDENCE-AND-ARMING.md).
 
 ## Non-negotiable behavior
