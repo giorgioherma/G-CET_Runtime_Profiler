@@ -89,8 +89,14 @@ recoveryHub:addOwner(41,function() end,function() end,function()
  restores=restores+1
  return restores>=3
 end)
+local stableRestores=0
+recoveryHub:addOwner(42,function() end,function() end,function()
+ stableRestores=stableRestores+1
+ return true
+end)
 healthy=false
 for i=1,50 do assert(recoveryHub:step()) end
 assert(restores==3,"failed original fallback must be retried, not spammed")
+assert(stableRestores==1,"successfully restored owners must not re-fallback")
 recoveryHub:shutdown()
 print("PASS native CET consumer fail-open edge, retryable fallback, resnapshot, recovery")
