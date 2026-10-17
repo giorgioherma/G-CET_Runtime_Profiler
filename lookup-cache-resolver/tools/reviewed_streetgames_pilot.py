@@ -181,7 +181,7 @@ def bundle_runtime(game:Path,overlay:bytes)->bytes:
         if path in result and result[path]!=data:
             raise Refused("shared runtime output collision")
         result[path]=data
-    result["G-LookupCache/EXPERIMENTAL-NATIVE-DEPENDENCY.txt"]=(
+    result[shared+"EXPERIMENTAL-NATIVE-DEPENDENCY.txt"]=(
       "Experimental source pass; not gameplay verified.\\n"
       "Requires the matching GCETStaticLocations RED4ext native DLL.\\n"
       "Never install this bundle on an unverified source variant.\\n"
