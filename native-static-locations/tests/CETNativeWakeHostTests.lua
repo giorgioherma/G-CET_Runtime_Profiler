@@ -66,9 +66,10 @@ healthy=true
 scheduled.step()
 assert(not farA.active and not farB.active and nearA.active and nearB.active)
 
--- Retiring owner 42 keeps owner 41's shared host and native site alive.
-assert(host:detachSource(42))
-assert(host.gates[42]==nil and host.sources[42]==nil)
+-- Only lifecycle-owned registrations can be detached as sources;
+-- unowned legacy attachments must not be silently removed or misreported.
+local refused,why=host:detachSource(42)
+assert(not refused and why=="UNKNOWN_OWNER" and host.gates[42]~=nil)
 assert(host.gates[41]~=nil)
 host:shutdown()
 assert(scheduled.canceled and farA.active and farB.active)
@@ -156,6 +157,12 @@ assert(sourceHost:replaceSourceEpoch(200,"epoch-B2","fingerprint-owner-B2",defsB
 assert(nativeSites[2002] and not nativeSites[2001])
 sourceJobs[1].fn()
 assert(not bFar.active)
+-- A completed source stays registered but disarmed. Detach B without
+-- disturbing A or shutting down the shared service.
+assert(sourceHost:detachSource(200))
+assert(sourceHost.gates[200]==nil and sourceHost.sources[200]==nil)
+assert(not nativeSites[2002] and nativeSites[1001])
+assert(sourceHost.gates[100]~=nil)
 sourceHost:shutdown()
 assert(not nativeSites[1001] and not nativeSites[2002])
 assert(not aFar.active) -- source A explicitly inactive even on shutdown
