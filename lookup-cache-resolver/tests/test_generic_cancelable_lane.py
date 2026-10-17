@@ -86,6 +86,17 @@ class GenericCancelableLaneTests(unittest.TestCase):
                                          "z":15.0,"radius":25.0,"metric":"xyz"}])
         (self.root/PATH).write_text(BASE+"-- modified after admission\n")
         with self.assertRaises(Refused):stage(self.root,self.contract())
+    def test_cli_refuses_writes_under_game_root(self):
+        cmd=[sys.executable,str(TOOLS/"generic_cancelable_lane.py"),
+             "--game",str(self.root),"--source",PATH,
+             "--owner-id","1400123","--anchor-id","1400124"]
+        output=self.root/"live-overwrite.zip"
+        run=subprocess.run(cmd+["--output",str(output)],
+                           text=True,capture_output=True)
+        self.assertEqual(run.returncode,2)
+        self.assertIn("outside selected game root",run.stderr)
+        self.assertFalse(output.exists())
+
     def test_generated_lua_preserves_remote_author_fallback(self):
         lua=shutil.which("lua5.4")
         if not lua:
