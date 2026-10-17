@@ -17,6 +17,9 @@ function Hub:addOwner(ownerId, onNear, onFar, onFallback, onSnapshot)
   assert(type(onNear)=="function" and type(onFallback)=="function")
   assert(onSnapshot==nil or type(onSnapshot)=="function")
   assert(not self.owners[ownerId],"duplicate native anchor owner")
+  -- A newly attached owner cannot wait for another owner to generate an
+  -- event. Force a complete all-owner snapshot on the next shared host step.
+  self:_stop()
   self.owners[ownerId]={near=onNear,far=onFar,fallback=onFallback,snapshot=onSnapshot}
   self.ownerCount=self.ownerCount+1
 end
