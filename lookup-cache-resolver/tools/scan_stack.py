@@ -34,7 +34,7 @@ MAP_ROW=re.compile(
     r'^\s*'+NUMERIC+r'\s+'+NUMERIC+r'\s+'+NUMERIC+
     r'(?:\s+'+NUMERIC+r')?\s*(?:#.*)?$')
 VEHICLE_POSITION=re.compile(
-    r'\b(?:GetMountedVehicle|GetVehiclePosition|GetActiveGarageForVehicle|GetWorldTransform)\b',re.I)
+    r'\b(?:GetMountedVehicle(?:Safe)?|GetVehiclePosition|GetActiveGarageForVehicle(?:Position)?|GetWorldTransform)\b',re.I)
 PLAYER_POSITION=re.compile(
     r'\b(?:GetPlayer|GetWorldPosition|GetPlayerPosition)\b',re.I)
 
