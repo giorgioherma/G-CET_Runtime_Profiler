@@ -16,7 +16,7 @@ CET=Path("bin/x64/plugins/cyber_engine_tweaks/mods")
 REDS=Path("r6/scripts")
 CAP=2_000_000
 PATTERNS={
-    "recurring":re.compile(r'\b(?:Cron\s*\.\s*Every|Schedule\s*\.\s*Every|registerForEvent\s*\(\s*["\x27]on(?:Update|Draw)["\x27]|onUpdate\s*=|OnUpdate\s*\(|OnDraw\s*\(|@(?:wrapMethod|replaceMethod)\s*\([^)]*(?:Update|Tick))',re.I),
+    "recurring":re.compile(r'\b(?:Cron\s*\.\s*Every|Schedule\s*\.\s*Every|(?:registerForEvent|__gcetRegisterEvent_\d+)\s*\(\s*["\x27]on(?:Update|Draw)["\x27]|onUpdate\s*=|OnUpdate\s*\(|OnDraw\s*\(|@(?:wrapMethod|replaceMethod)\s*\([^)]*(?:Update|Tick))',re.I),
     "player":re.compile(r'\b(?:GetPlayer|GetWorldPosition|GetPlayerPosition|PlayerPuppet)\b',re.I),
     "distance":re.compile(r'\b(?:DistanceSquared|DistanceSq|Distance|DistanceBetween|distSq|LengthSquared|GetDistance|DistanceTo|IsInRange|withinRadius)\b|\^\s*2\b',re.I),
     "literal_xyz":re.compile(r'\b[xX]\s*[:=]\s*[-+]?\d+(?:\.\d+)?\s*[,;]\s*[yY]\s*[:=]\s*[-+]?\d+(?:\.\d+)?\s*[,;]\s*[zZ]\s*[:=]\s*[-+]?\d+(?:\.\d+)?|["\x27]x["\x27]\s*:\s*[-+]?\d+(?:\.\d+)?\s*,\s*["\x27]y["\x27]\s*:\s*[-+]?\d+(?:\.\d+)?\s*,\s*["\x27]z["\x27]\s*:\s*[-+]?\d+(?:\.\d+)?|\b(?:new\s+)?Vector4\s*(?:\.\s*new)?\s*\(\s*[-+]?\d+(?:\.\d+)?\s*,\s*[-+]?\d+(?:\.\d+)?\s*,\s*[-+]?\d+(?:\.\d+)?',re.I),
@@ -43,6 +43,43 @@ VEHICLE_POSITION=re.compile(
 PLAYER_POSITION=re.compile(
     r'\b(?:GetPlayer|GetWorldPosition|GetPlayerPosition)\b',re.I)
 SURFACE_CLUES=("map_marker","interaction","appearance","audio_cue")
+# Callback registration is a useful lead, not the boundary of a Lua function.
+# In particular, Resolver-generated wrappers must be recognized alongside vanilla CET.
+WAKE_REGISTRATION=re.compile(
+    r'\b(?:Cron\s*\.\s*Every|Schedule\s*\.\s*Every|'
+    r'(?:registerForEvent|__gcetRegisterEvent_\d+)\s*\(\s*["\x27]on(?:Update|Draw)["\x27]|'
+    r'OnUpdate\s*\(|OnDraw\s*\()',re.I)
+ACTION_REGISTRATION=re.compile(
+    r'\b(?:Observe|ObserveAfter)\s*\(\s*["\x27]PlayerPuppet["\x27]\s*,'
+    r'\s*["\x27]OnAction["\x27]',re.I)
+WAKE_LOOKAHEAD_LINES=48
+MAX_WAKE_LEADS_PER_FILE=24
+
+def wake_evidence(lines:list[str])->list[dict]:
+    """Bounded nearby-source hints; no fabricated control-flow or savings proof."""
+    leads=[]
+    for offset,line in enumerate(lines):
+        kind=("RECURRING" if WAKE_REGISTRATION.search(line) else
+              "ACTION_EVENT" if ACTION_REGISTRATION.search(line) else None)
+        if kind is None:
+            continue
+        # Not an AST: later unrelated functions can be in this window.
+        # Both the evidence and the explicit uncertainty go to the Resolver.
+        nearby="\n".join(lines[offset:offset+WAKE_LOOKAHEAD_LINES])
+        has_player=bool(PATTERNS["player"].search(nearby))
+        has_distance=bool(PATTERNS["distance"].search(nearby))
+        leads.append({
+            "line":offset+1,
+            "kind":kind,
+            "neighboring_player_hint":has_player,
+            "neighboring_distance_hint":has_distance,
+            "relation":("NEARBY_PLAYER_DISTANCE_CLUE" if has_player and has_distance
+                        else "CALLBACK_ONLY"),
+            "source_control_flow_proven":False,
+        })
+        if len(leads)==MAX_WAKE_LEADS_PER_FILE:
+            break
+    return leads
 
 def surface_evidence(evidence:list[dict])->dict:
     """Co-location leads only. Same owner does NOT prove marker/callback linkage."""
@@ -85,7 +122,8 @@ def file_evidence(f:Path,root:Path,language:str)->dict:
         line_no=content.count("\n",0,match.start())+1
         if "\n" in match.group(0):
             extra_geometry.append((line_no,match.group(0).strip().replace("\n"," ")[:180]))
-    for line_no,line in enumerate(content.splitlines(),1):
+    lines=content.splitlines()
+    for line_no,line in enumerate(lines,1):
         if f.suffix.casefold()==".map" and MAP_ROW.fullmatch(line):
             counts["literal_xyz"]+=1
             if len(spans.setdefault("literal_xyz",[]))<18:
@@ -110,6 +148,7 @@ def file_evidence(f:Path,root:Path,language:str)->dict:
         },
         "sha256":hashlib.sha256(raw).hexdigest(),"bytes":len(raw),
         "counts":counts,"spans":spans,
+        "wake_leads":wake_evidence(lines) if f.suffix.casefold() in (".lua",".reds") else [],
     }
 
 def examine(name:str,language:str,paths:list[Path],root:Path)->dict:
@@ -138,6 +177,9 @@ def examine(name:str,language:str,paths:list[Path],root:Path)->dict:
                                  (".json",".map",".yaml",".yml",".xl")
                               and e["counts"]["literal_xyz"]>0],
         "surface_clues":surface_evidence(evidence),
+        "wake_leads":[{"path":e["path"],**lead}
+                      for e in evidence for lead in e["wake_leads"]][:100],
+        "site_set_completeness":"NOT_PROVEN_BY_SCANNER",
         "mutable_source_hint":counts["mutable_source"]>0,
         "source_fingerprint":source_hash,"evidence_counts":counts,
         "evidence_files":[e for e in evidence if any(e["counts"].values())],

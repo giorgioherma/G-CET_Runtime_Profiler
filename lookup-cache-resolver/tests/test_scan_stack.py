@@ -206,6 +206,80 @@ nativeInteractions.ShowChoice("hello")
         self.assertTrue(mod["source_review_candidate"])
         self.assertFalse(mod["safe_to_patch"])
 
+
+    def test_live_resolver_wrapped_update_is_not_missed(self):
+        # Observed __gcetRegisterEvent_N registration shape in the live archive.
+        self.put(s.CET/"Wrapped/init.lua",'''local site={x=10,y=20,z=30}
+__gcetRegisterEvent_421('onUpdate',function(dt)
+  local player=Game.GetPlayer():GetWorldPosition()
+  local distance=Vector4.Distance(player,site)
+  if distance<50 then active() end
+end)''')
+        mod=s.scan(self.root)["owners"][0]
+        self.assertEqual(mod["classification"],"SOURCE_REVIEW_SAME_FILE")
+        self.assertTrue(mod["source_review_candidate"])
+        self.assertEqual(len(mod["wake_leads"]),1)
+        self.assertEqual(mod["wake_leads"][0]["relation"],
+                         "NEARBY_PLAYER_DISTANCE_CLUE")
+        self.assertFalse(mod["wake_leads"][0]["source_control_flow_proven"])
+        self.assertEqual(mod["site_set_completeness"],"NOT_PROVEN_BY_SCANNER")
+
+    def test_wrapped_marker_only_is_not_location_wake(self):
+        # BetterLootMarkers-style onUpdate for appearance/visual state: no fixed site.
+        self.put(s.CET/"VisualMarkers/init.lua",'''local appearanceName="loot"
+__gcetRegisterEvent_61("onUpdate",function(dt)
+   Markers.ImmersiveMode.Tick(dt)
+end)
+Game.GetMappinSystem():RegisterMappin(movingDrop)''')
+        mod=s.scan(self.root)["owners"][0]
+        self.assertEqual(mod["evidence_counts"]["recurring"],1)
+        self.assertFalse(mod["source_review_candidate"])
+        self.assertEqual(mod["wake_leads"][0]["relation"],"CALLBACK_ONLY")
+        self.assertEqual(mod["surface_clues"]["map_marker"]["location_source_relation"],
+                         "NO_LOCATION_LINK")
+
+    def test_dynamically_assigned_job_marker_is_not_fixed_location_proof(self):
+        # A courier job may assign the current destination at runtime.
+        self.put(s.CET/"Job/init.lua",'''local start={x=10,y=20,z=30}
+registerForEvent("onUpdate", function(dt)
+  if currentJob then monitorJob(currentJob) end
+end)
+local function setQuestPin(currentJob)
+  return Game.GetMappinSystem():RegisterMappin(currentJob.destination)
+end
+local function farCheck()
+ return Game.GetPlayer():GetWorldPosition():Distance(start)
+end''')
+        mod=s.scan(self.root)["owners"][0]
+        self.assertTrue(mod["source_review_candidate"])
+        self.assertEqual(mod["site_set_completeness"],"NOT_PROVEN_BY_SCANNER")
+        self.assertFalse(mod["safe_to_patch"])
+
+    def test_action_listener_separate_from_recurring_lanes(self):
+        self.put(s.CET/"ActionOnly/init.lua",'''local site={x=1,y=2,z=3}
+Observe("PlayerPuppet","OnAction", function(this,action)
+  local player=Game.GetPlayer():GetWorldPosition()
+  if player:Distance(site)<100 then respond() end
+end)''')
+        mod=s.scan(self.root)["owners"][0]
+        self.assertEqual(mod["evidence_counts"]["recurring"],0)
+        self.assertFalse(mod["source_review_candidate"])
+        self.assertEqual(mod["wake_leads"][0]["kind"],"ACTION_EVENT")
+        self.assertEqual(mod["wake_leads"][0]["relation"],
+                         "NEARBY_PLAYER_DISTANCE_CLUE")
+
+    def test_separate_callback_and_distance_are_unproven(self):
+        # Multiple unrelated responsibilities within one mod file are common.
+        lines=['__gcetRegisterEvent_10("onUpdate", function(dt) updateUI() end)']
+        lines+=['local visualOnly%s=true' % i for i in range(55)]
+        lines+=['local site={x=1,y=2,z=3}',
+                'local d=Game.GetPlayer():GetWorldPosition():Distance(site)']
+        self.put(s.CET/"Separate/init.lua","\\n".join(lines))
+        mod=s.scan(self.root)["owners"][0]
+        self.assertTrue(mod["source_review_candidate"])  # owner-level lead only
+        self.assertEqual(mod["wake_leads"][0]["relation"],"CALLBACK_ONLY")
+        self.assertFalse(mod["safe_to_patch"])
+
     def test_empty_install_refused(self):
         with tempfile.TemporaryDirectory() as root:
             with self.assertRaises(ValueError):

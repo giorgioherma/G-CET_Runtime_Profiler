@@ -16,6 +16,8 @@
 
 **Native-stage invariant:** FAR_DORMANT requiring proximity as the next wake retains an armed anchor; INACTIVE/irrelevant location stages disarm their anchor, even if phone/quest listeners remain. No additional per-mod polling bridge; never deploy geometry-only registry as a no-gain optimization.
 
+**Extended Dormancy (6) calibration:** Supplied developer archive contains 141 live CET source owners and 62 semantic-original owners. Positive and negative examples exposed previously missed generated `__gcetRegisterEvent_N` onUpdate registrations and unrelated markers/visual callbacks. Source scanner now emits bounded callback-neighborhood evidence; nearby text is NOT control-flow equivalence or complete site-set proof. Archive is a fixture, not the selected live installation.
+
 **Scanner increment:** Generic mod-source marker/interaction/appearance/audio clues are now reported with source-file vs source-owner relation, plus YAML/XL text assets. Still read-only, no subscribed anchors. Existing Profiler workload join and semantic rewrite remain future implementation.
 
 **NEXT:** Make source-callback/side-effect equivalence proof and native lifecycle ownership the Resolver's input contract, using the now-available 10 originals and R4 as test variants. Start with garages, fixed mission-start locations and selected-map package streaming; ELM only after auditing nativeInteractions' actual dispatcher. Build source-matched reversible original/live/partial overlays and verification of recurring author wake removal. No blind port of the R4 code.
