@@ -15,7 +15,7 @@ function Set:_unknown(reason)
   self.sites={}
   self.count=0
   self.near=0
-  self.gate:onFallback(reason)
+  self.fallbackOk=(self.gate:onFallback(reason)==true)
   -- Propagate failure to the shared consumer: resubscribe + full snapshot.
   return false
 end
@@ -66,7 +66,8 @@ function Set:update(id,state)
 end
 
 function Set:fallback(reason)
-  return self:_unknown(reason or "NATIVE_UNAVAILABLE")
+  self:_unknown(reason or "NATIVE_UNAVAILABLE")
+  return self.fallbackOk
 end
 
 function Set:bind(hub,ownerId)
@@ -74,7 +75,7 @@ function Set:bind(hub,ownerId)
   hub:addOwner(ownerId,
     function(id) assert(self:update(id,1)) end,
     function(id) assert(self:update(id,0)) end,
-    function(reason) self:fallback(reason) end,
+    function(reason) return self:fallback(reason) end,
     function(rows) assert(self:snapshot(rows)) end)
 end
 
