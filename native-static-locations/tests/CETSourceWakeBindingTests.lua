@@ -14,7 +14,10 @@ local source={epoch="initial",fingerprint="sha256-source-1",relevant=true,
   {id=501,x=10,y=20,z=30,radius=30,metric="xyz"},
   {id=502,x=40,y=50,z=60,radius=30,metric="xyz"},
  } end}
-local host={closed=false,attachSource=function(self,owner,f,n,alive,epoch,fp,sites,rel,restore)
+local detached=0
+local host={closed=false,detachSource=function(self,owner)
+ assert(owner==44);detached=detached+1;return true
+end,attachSource=function(self,owner,f,n,alive,epoch,fp,sites,rel,restore)
  registered=registered+1
  assert(owner==44 and f==far and n[1]==near)
  assert(epoch=="initial" and fp=="sha256-source-1")
@@ -39,7 +42,7 @@ assert(src:setRelevant(false) and src.relevant==false)
 assert(src:replaceEpoch("next","sha256-source-2",
  {{id=503,x=3,y=4,z=5,radius=20,metric="xyz"}},false))
 assert(src.attachedEpoch=="next")
-assert(src:shutdown() and far.active)
+assert(src:shutdown() and far.active and detached==1)
 assert(not src:attempt())
 -- Missing sites never calls the host or alters the source job.
 local broken=Binding.new(function() return host end,45,job(true),{},nil,nil,

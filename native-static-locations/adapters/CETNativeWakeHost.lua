@@ -119,6 +119,20 @@ function Host:replaceSourceEpoch(ownerId,epoch,fingerprint,sites,relevant)
   return self:setRelevant(ownerId,false)
 end
 
+function Host:detachSource(ownerId)
+  local src=self.sources[ownerId]
+  if not src then return false,"UNKNOWN_OWNER" end
+  -- Restore the source's own scheduler first. Detach is not an optimization
+  -- failure that permits retaining orphaned native site subscriptions.
+  src.gate:onFallback("AUTHOR_DETACH")
+  self.hub:removeOwner(ownerId)
+  local retired=src.lifecycle:retire()
+  self.sources[ownerId]=nil
+  self.gates[ownerId]=nil
+  self:_pauseWhenEmpty()
+  return retired,retired and nil or "NATIVE_REMOVE_FAILED"
+end
+
 function Host:shutdown()
   if self.closed then return end
   self.closed=true

@@ -65,6 +65,11 @@ assert(farA.active and farB.active)
 healthy=true
 scheduled.step()
 assert(not farA.active and not farB.active and nearA.active and nearB.active)
+
+-- Retiring owner 42 keeps owner 41's shared host and native site alive.
+assert(host:detachSource(42))
+assert(host.gates[42]==nil and host.sources[42]==nil)
+assert(host.gates[41]~=nil)
 host:shutdown()
 assert(scheduled.canceled and farA.active and farB.active)
 -- Scheduler unavailable: never disable author discovery.

@@ -95,10 +95,17 @@ function Binding:shutdown()
   if self.closed then return true end
   self.closed=true
   if self.gate then
-    -- Host must own native teardown. Until detachSource exists, shared host
-    -- shutdown/owner stage management is required; avoid faking cleanup.
     self.gate:onFallback("AUTHOR_SHUTDOWN")
-    self.host:setRelevant(self.owner,false)
+    -- Remove only this owner's armed sites; leave the shared dispatcher and
+    -- other source owners alive. A native removal failure is fail-open.
+    if type(self.host.detachSource)=="function" then
+      local ok,retired=pcall(self.host.detachSource,self.host,self.owner)
+      if not ok or not retired then
+        pcall(self.host.setRelevant,self.host,self.owner,false)
+      end
+    else
+      pcall(self.host.setRelevant,self.host,self.owner,false)
+    end
   end
   return true
 end
