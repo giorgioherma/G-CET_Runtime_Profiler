@@ -8,6 +8,12 @@
 - For the **2026-10-16 development snapshot only**, user explicitly excluded **Dedka Auto Shop, Gambling System - Roulette and NightCityBilliards**; the next stack may include them. The archived `modsLIVEnow` snapshot contains a Dedka folder, which cannot override the user's then-current installed-source statement. In the final product, actual selected installation membership, not this historical exclusion list, determines whether to inspect a mod.
 - Repeat discovery independently for a subsequent stack. No all-mod static registry; only installed, source-proven, *admitted* optimizations contribute anchors. A mod with **one** fixed location is eligible if replacing its recurring discovery has meaningful savings.
 
+## Pass identity and suspension granularity
+
+This is **one generic, source-structural Resolver optimization**, not a named-mod semantic rule or a registry of approved quests. A reviewed source-specific pilot is a fixture used to prove one transferable transformation family. Production admission re-derives proof for each effective installed source and source epoch, rather than recognizing names or reusing archived source hashes.
+
+The safe suspension unit is a *location-dependent recurring execution lane*, not the mod as a whole. Disable an entire recurring callback/job only if its entire transitive side-effect/callee closure can be retired or replaced by correct source-proven wake semantics. For mixed callbacks, preserve independent remote and active work and split out only the location-dependent section if provably safe; otherwise select a narrower gate or reject. In particular, **phone/SMS, PC-terminal and quest fact listeners continue while FAR**, and their callbacks can change eligibility, rearm/disarm native anchors, or reactivate author code without the player moving. A quest starting point becoming NEAR must re-enable the original author's exact activation conditions, not trigger a synthetic quest launch. A noncancelable timer with inseparable work is not an eligible whole-job retirement just because a fixed coordinate was found.
+
 ## Admission means provable dormancy, NOT absence of an existing wake path
 
 An authored recurring position scan **may be the wake mechanism the native service replaces**. Its existence must not disqualify the mod.
