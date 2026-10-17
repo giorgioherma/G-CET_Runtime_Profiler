@@ -402,6 +402,51 @@ local localSite={x=-1.2,y=2.5,z=0.5}
         self.assertEqual(found[0]["source_key"],"$/sites/0")
         self.assertEqual(extract_sites("sites.json","broken"),[])
 
+
+    def test_function_bounded_proof_rejects_unrelated_nearby_code(self):
+        from lua_callback_scopes import function_leads
+        src='''__gcetRegisterEvent_10("onUpdate",function(dt)
+ updateUI()
+end)
+local site={x=1,y=2,z=3}
+local d=Game.GetPlayer():GetWorldPosition():Distance(site)
+'''
+        found=function_leads(src)
+        self.assertEqual(len(found),1)
+        self.assertFalse(found[0]["scoped_location_lead"])
+        self.assertFalse(found[0]["semantic_equivalence_proven"])
+        self.put(s.CET/"A/init.lua",src)
+        m=s.scan(self.root)["owners"][0]
+        self.assertEqual(len(m["function_scoped_leads"]),1)
+        self.assertFalse(m["function_scoped_leads"][0]["scoped_location_lead"])
+
+    def test_function_bounded_positive_nested_control_flow_and_comments(self):
+        from lua_callback_scopes import function_leads
+        src='''Cron.Every(1.0,{attempt=1},function(timer)
+ local s="end function GetPlayer():Distance()"
+ -- end function
+ if timer then
+   for i=1,3 do
+     local p=Game.GetPlayer():GetWorldPosition()
+     if p:Distance(target)<50 then
+       doSomething()
+     end
+   end
+ end
+end)
+registerForEvent("onUpdate",function(dt) uiOnly() end)
+'''
+        found=function_leads(src)
+        self.assertEqual(len(found),2)
+        self.assertTrue(found[0]["scoped_location_lead"])
+        self.assertFalse(found[1]["scoped_location_lead"])
+        self.assertLess(found[0]["end_line"],found[1]["start_line"])
+
+    def test_callback_unmatched_structure_refuses_guess(self):
+        from lua_callback_scopes import function_leads
+        src='''Cron.Every(1,function() if cond then Game.GetPlayer():Distance(p) end'''
+        self.assertEqual(function_leads(src),[])
+
     def test_empty_install_refused(self):
         with tempfile.TemporaryDirectory() as root:
             with self.assertRaises(ValueError):
