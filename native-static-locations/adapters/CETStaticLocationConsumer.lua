@@ -8,7 +8,7 @@ function Hub.new(native, consumerId)
   assert(type(native)=="table" and type(consumerId)=="number" and consumerId>0)
   return setmetatable({
     native=native, consumerId=consumerId, owners={}, ownerCount=0,
-    subscribed=false, fallbackActive=false, maxEventsPerStep=512
+    subscribed=false, fallbackActive=false, fallbackComplete={}, maxEventsPerStep=512
   },Hub)
 end
 
@@ -22,6 +22,8 @@ function Hub:addOwner(ownerId, onNear, onFar, onFallback, onSnapshot)
   self:_stop()
   self.owners[ownerId]={near=onNear,far=onFar,fallback=onFallback,snapshot=onSnapshot}
   self.ownerCount=self.ownerCount+1
+  self.fallbackComplete[ownerId]=nil
+  self.fallbackActive=false
 end
 
 function Hub:removeOwner(ownerId)
@@ -29,6 +31,8 @@ function Hub:removeOwner(ownerId)
   self:_stop()
   self.owners[ownerId]=nil
   self.ownerCount=self.ownerCount-1
+  self.fallbackComplete[ownerId]=nil
+  self.fallbackActive=false
   return true
 end
 
@@ -37,9 +41,15 @@ function Hub:_fallback(reason)
   -- outage, not every 0-Engine frame. Retry if an owner handler failed.
   if self.fallbackActive then return true end
   local allOk=true
-  for _,handler in pairs(self.owners) do
-    local ok,result=pcall(handler.fallback,reason)
-    if not ok or result==false then allOk=false end
+  for ownerId,handler in pairs(self.owners) do
+    if not self.fallbackComplete[ownerId] then
+      local ok,result=pcall(handler.fallback,reason)
+      if ok and result~=false then
+        self.fallbackComplete[ownerId]=true
+      else
+        allOk=false
+      end
+    end
   end
   self.fallbackActive=allOk
   return allOk
@@ -91,6 +101,10 @@ function Hub:_snapshot()
     if not group then group={};groups[row.owner]=group end
     group[#group+1]={id=row.id,state=row.state}
   end
+  -- Fresh source callbacks can enter native mode before another owner fails.
+  -- Clear outage acknowledgements so any snapshot failure restores ALL owners.
+  self.fallbackComplete={}
+  self.fallbackActive=false
   for owner,handler in pairs(self.owners) do
     if handler.snapshot then
       handler.snapshot(groups[owner] or {})
