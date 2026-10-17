@@ -1,17 +1,23 @@
--- Pure Lua protocol test; no Cyberpunk runtime or author mod required.
+-- Pure Lua fail-open/snapshot protocol regression; no Cyberpunk runtime required.
 local Hub=dofile("native-static-locations/adapters/CETStaticLocationConsumer.lua")
-local state={ [101]=1,[102]=0 }
+local state={[101]=1,[102]=0}
 local events={}
 local subscribed=false
+local subscribes,unsubscribes=0,0
 local snap=true
-local available=true
-local healthy=true
+local available,healthy=true,true
 local last={}
 local native={
  GCETStaticReady=function() return available end,
  GCETStaticCoordinatorState=function() return healthy and 2 or 1 end,
- GCETStaticSubscribe=function(id,owner) assert(id==1702001 and owner==0);subscribed=true;snap=true;return true end,
- GCETStaticUnsubscribe=function(id) assert(id==1702001);subscribed=false;return true end,
+ GCETStaticSubscribe=function(id,owner)
+   assert(id==1702001 and owner==0)
+   subscribes=subscribes+1;subscribed=true;snap=true;return true
+ end,
+ GCETStaticUnsubscribe=function(id)
+   assert(id==1702001)
+   unsubscribes=unsubscribes+1;subscribed=false;return true
+ end,
  GCETStaticNeedsSnapshot=function() return snap end,
  GCETStaticOwnerCount=function(owner) assert(owner==41);return 2 end,
  GCETStaticOwnerAnchor=function(_,i) return i==0 and 101 or 102 end,
@@ -37,16 +43,42 @@ events[#events+1]={id=101,owner=41,value=0}
 events[#events+1]={id=102,owner=41,value=1}
 assert(hub:step() and #near==2 and #far==2)
 assert(not near[2][2] and near[2][1]==102)
+
+-- Loss of position may last hundreds of host ticks: no repeated fallback.
 healthy=false
-assert(hub:step() and #fallback==1 and fallback[1]=="NATIVE_UNAVAILABLE")
+for i=1,100 do assert(hub:step()) end
+assert(#fallback==1 and fallback[1]=="NATIVE_UNAVAILABLE")
+assert(unsubscribes==1 and not subscribed)
+
+-- Even if native did not invalidate its snapshot, re-enter with new subscription.
 healthy=true
-snap=true
+state[101]=0
+state[102]=1
+local previous=subscribes
+assert(hub:step() and subscribed and subscribes==previous+1)
+assert(#far==3 and #near==3 and not snap)
+
+-- An UNKNOWN initial state must not partially apply known states or ACK.
+healthy=false
+assert(hub:step() and #fallback==2)
+healthy=true
 state[101]=-1
-assert(hub:step() and #fallback==2 and fallback[2]=="UNKNOWN_ANCHOR_STATE")
+local lastNear,lastFar=#near,#far
+assert(not hub:step() and not subscribed)
+assert(#near==lastNear and #far==lastFar)
+assert(#fallback==2) -- outage fallback already active; not spammed
+for i=1,3 do assert(not hub:step()) end
+assert(#fallback==2 and not subscribed)
+
+-- A healthy complete snapshot finally restores native delivery.
+state[101]=1
+assert(hub:step() and subscribed)
+assert(#near==lastNear+2 and #far==lastFar)
 events[#events+1]={id=-1,owner=0,value=-1}
 assert(not hub:step() and not subscribed and #fallback==3)
 state[101]=1
-assert(hub:step() and subscribed and #near==3)
+assert(hub:step() and subscribed)
+
 hub:shutdown()
 assert(not subscribed)
-print("PASS native CET consumer snapshot/events/fail-open/recovery")
+print("PASS native CET consumer fail-open edge, forced resnapshot, recovery")
