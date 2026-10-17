@@ -5,7 +5,7 @@
 **Reviewed source:** The user-supplied `EXTENDED DORMANCY(7).zip` includes the precise source epoch already pinned in `reviewed_streetgames_pilot.py`: `StreetGamesPoker/init.lua` SHA-256 `e4594ed8eb7a1ad0a889068db0a5be258c498fab719a6f2ab13df408e6e9af84`, `StreetTables.lua` SHA-256 `a79edb7eca3632531d6a35d304857592a9f61f6f7c00337ecf9e0ff8346d0099`. All 40 source-roster sites and nine reviewed insertion points (including shutdown) were located. A local reproduction of the reviewed insertions parsed successfully with Lua 5.4 and reversed exactly to original text; that is **not** an in-game load or a production-generated gameplay validation.
 
 **Implemented:** Shared native service, CET host, per-owner lifecycle, multi-anchor aggregate, original scheduler-job fallback, source-fingerprint-guarded reversible overlay, source-owned late adoption. New hardening in this continuation:
-- Native consumer distinguishes successful original-job restoration from failed fallback, retrying unsuccessful outages instead of latching them.
+- Native consumer distinguishes successful original-job restoration from failed fallback, retrying only unsuccessful owners instead of latching them or repeatedly invoking already-restored owners; a failed new snapshot resets acknowledgements for every affected owner.
 - Source gate retains a retryable `fallbackPending` state when a scheduler operation or author's restore callback fails.
 - Source-pinned poker overlay now detaches native ownership on CET shutdown, in addition to rollback and session stage changes.
 - Shared host must schedule successfully **before allocating native source IDs**, avoiding irreversible tombstone loss on temporary host startup failures.
