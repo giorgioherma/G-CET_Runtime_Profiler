@@ -12,11 +12,12 @@ function Hub.new(native, consumerId)
   },Hub)
 end
 
-function Hub:addOwner(ownerId, onNear, onFar, onFallback)
+function Hub:addOwner(ownerId, onNear, onFar, onFallback, onSnapshot)
   assert(type(ownerId)=="number" and ownerId>0)
   assert(type(onNear)=="function" and type(onFallback)=="function")
+  assert(onSnapshot==nil or type(onSnapshot)=="function")
   assert(not self.owners[ownerId],"duplicate native anchor owner")
-  self.owners[ownerId]={near=onNear,far=onFar,fallback=onFallback}
+  self.owners[ownerId]={near=onNear,far=onFar,fallback=onFallback,snapshot=onSnapshot}
   self.ownerCount=self.ownerCount+1
 end
 
@@ -71,8 +72,22 @@ function Hub:_snapshot()
       states[#states+1]={owner=owner,id=id,state=state}
     end
   end
+  -- Owners with multiple sites need an atomic aggregate initial state.
+  -- A FAR for one anchor must not suppress NEAR at another.
+  local groups={}
   for _,row in ipairs(states) do
-    self:_notify(row.owner,row.id,row.state,true)
+    local group=groups[row.owner]
+    if not group then group={};groups[row.owner]=group end
+    group[#group+1]={id=row.id,state=row.state}
+  end
+  for owner,handler in pairs(self.owners) do
+    if handler.snapshot then
+      handler.snapshot(groups[owner] or {})
+    else
+      for _,row in ipairs(groups[owner] or {}) do
+        self:_notify(owner,row.id,row.state,true)
+      end
+    end
   end
   assert(native.GCETStaticAckSnapshot(self.consumerId),
          "native snapshot ACK rejected")
