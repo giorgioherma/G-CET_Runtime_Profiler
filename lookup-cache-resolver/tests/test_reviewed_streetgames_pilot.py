@@ -28,6 +28,8 @@ class ReviewedPilotTests(unittest.TestCase):
   self.assertIn("StreetTables.update(0.0,POKER_WAKE_RADIUS)",edits["site_bind"])
   self.assertIn("if not exactNear then setNearMode(false)",edits["site_bind"])
   self.assertIn("gcetLookupBinding:reconcile()",edits["source_mode"])
+  self.assertIn("gcetLookupBinding:shutdown()",edits["shutdown"])
+  self.assertIn("gcetLookupBinding:shutdown()",edits["rollback"])
   with self.assertRaises(Exception):
    m.get_sites(text+"table.insert(StreetTables.locations, site)\n")
   with self.assertRaises(Exception):
