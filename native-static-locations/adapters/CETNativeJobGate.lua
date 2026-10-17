@@ -10,15 +10,16 @@ local function validJob(job)
     and type(job.Pause)=="function" and type(job.Resume)=="function"
 end
 
-function Gate.new(farJob,nearJobs,keepAlive,restoreOriginal)
+function Gate.new(farJob,nearJobs,keepAlive,restoreOriginal,onFarHousekeeping)
   assert(validJob(farJob),"original far-discovery job must be pauseable")
   assert(type(nearJobs)=="table","near jobs required")
   for _,job in ipairs(nearJobs) do assert(validJob(job)) end
   if keepAlive~=nil then assert(type(keepAlive)=="function") end
   if restoreOriginal~=nil then assert(type(restoreOriginal)=="function") end
+  if onFarHousekeeping~=nil then assert(type(onFarHousekeeping)=="function") end
   return setmetatable({
     far=farJob,near=nearJobs,keepAlive=keepAlive,
-    restoreOriginal=restoreOriginal,
+    restoreOriginal=restoreOriginal,onFarHousekeeping=onFarHousekeeping,
     mode="ORIGINAL", lastNativeState=nil,
   },Gate)
 end
@@ -92,6 +93,15 @@ end
 
 function Gate:onFar(_,initial)
   if self.mode=="INACTIVE" then return true end
+  if self.mode~="FAR" and self.onFarHousekeeping then
+    -- Preserve once-on-exit author cleanup even when the periodic FAR
+    -- discovery job has been retired. Failure resumes original discovery.
+    local ok,result=pcall(self.onFarHousekeeping)
+    if not ok or result==false then
+      self:onFallback("AUTHOR_FAR_CLEANUP_FAILED")
+      return false
+    end
+  end
   return self:_transition("FAR")
 end
 

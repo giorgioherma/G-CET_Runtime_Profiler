@@ -5,7 +5,7 @@ local Binding={}
 Binding.__index=Binding
 
 function Binding.new(hostProvider,ownerId,farJob,nearJobs,keepAlive,
-                     restoreOriginal,source)
+                     restoreOriginal,source,onFarHousekeeping)
   assert(type(hostProvider)=="function")
   assert(type(ownerId)=="number" and ownerId>0 and ownerId%1==0)
   assert(type(farJob)=="table" and type(farJob.Pause)=="function"
@@ -18,6 +18,7 @@ function Binding.new(hostProvider,ownerId,farJob,nearJobs,keepAlive,
   return setmetatable({
     provider=hostProvider,owner=ownerId,far=farJob,near=nearJobs,
     keepAlive=keepAlive,restoreOriginal=restoreOriginal,source=source,
+    onFarHousekeeping=onFarHousekeeping,
     host=nil,gate=nil,relevant=source.relevant~=false,
     attachedEpoch=nil,attachedFingerprint=nil,closed=false,
   },Binding)
@@ -39,7 +40,8 @@ function Binding:attempt()
   end
   local attached,gate,why=pcall(host.attachSource,host,self.owner,
      self.far,self.near,self.keepAlive,self.source.epoch,
-     self.source.fingerprint,sites,self.relevant,self.restoreOriginal)
+     self.source.fingerprint,sites,self.relevant,self.restoreOriginal,
+     self.onFarHousekeeping)
   if not attached or type(gate)~="table" then
     return false,(attached and why) or "HOST_ADMISSION_FAILED"
   end

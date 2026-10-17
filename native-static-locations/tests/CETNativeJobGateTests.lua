@@ -68,4 +68,19 @@ local failing=Gate.new(originalFail,{job(false)},nil,
 assert(failing:onNear(13,true))
 assert(not failing:onFallback("NATIVE_UNAVAILABLE"))
 assert(originalFail.active and not failing:isNative())
-print("PASS native job gate proximity, author-state restoration, fail-open")
+-- Author housekeeping runs exactly once on native FAR and teleport exits.
+local sweeps=0
+local originalFar=job(true)
+local cleanup=Gate.new(originalFar,{job(false)},nil,nil,function()
+ sweeps=sweeps+1
+end)
+assert(cleanup:onFar(20,true) and sweeps==1 and not originalFar.active)
+assert(cleanup:onFar(20,false) and sweeps==1)
+assert(cleanup:onNear(20,false))
+assert(cleanup:onFar(20,false) and sweeps==2)
+local failedFar=job(true)
+local failingCleanup=Gate.new(failedFar,{job(false)},nil,nil,
+ function() error("author cleanup failed") end)
+assert(not failingCleanup:onFar(25,true))
+assert(failedFar.active and failingCleanup.mode=="ORIGINAL")
+print("PASS native job gate FAR housekeeping, author-state restoration, fail-open")
