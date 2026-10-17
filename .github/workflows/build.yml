@@ -11,6 +11,8 @@ on:
     paths-ignore:
       - 'native-profiler-build/**'
       - '.github/workflows/native-profiler-rebuild.yml'
+      - 'native-static-locations/**'
+      - '.github/workflows/native-static-locations.yml'
       - 'docs/**'
       - 'BUILDING.md'
       - 'README.md'
