@@ -21,12 +21,12 @@ SOURCE_HASH="e4594ed8eb7a1ad0a889068db0a5be258c498fab719a6f2ab13df408e6e9af84"
 DATA_HASH="a79edb7eca3632531d6a35d304857592a9f61f6f7c00337ecf9e0ff8346d0099"
 OWNER_ID=1730200
 FIRST_SITE_ID=1730201
-NUM=r"[-+]?(?:\\d+(?:\\.\\d+)?|\\.\\d+)"
+NUM=r"[-+]?(?:\d+(?:\.\d+)?|\.\d+)"
 TABLE_ROW=re.compile(
-    r"id\\s*=\\s*'([^']+)'\\s*,.*?"
-    r"center\\s*=\\s*\\{\\s*x\\s*=\\s*("+NUM+r")\\s*,"
-    r"\\s*y\\s*=\\s*("+NUM+r")\\s*\\}.*?"
-    r"floorZ\\s*=\\s*("+NUM+r")",re.S)
+    r"id\s*=\s*'([^']+)'\s*,.*?"
+    r"center\s*=\s*\{\s*x\s*=\s*("+NUM+r")\s*,"
+    r"\s*y\s*=\s*("+NUM+r")\s*\}.*?"
+    r"floorZ\s*=\s*("+NUM+r")",re.S)
 
 def get_sites(data:str)->list[dict]:
     token="StreetTables.locations = {"
@@ -39,8 +39,8 @@ def get_sites(data:str)->list[dict]:
     if len(rows)!=40 or len({r[0] for r in rows})!=40:
         raise Refused("reviewed 40-site source epoch changed")
     if data.count(token)!=1 or re.search(
-        r"(?:StreetTables\\.locations\\s*=|"
-        r"table\\.(?:insert|remove)\\s*\\(\\s*StreetTables\\.locations)",
+        r"(?:StreetTables\.locations\s*=|"
+        r"table\.(?:insert|remove)\s*\(\s*StreetTables\.locations)",
         section[1]):
         raise Refused("location table can change after initialization")
     return [{"name":name,"id":FIRST_SITE_ID+i,
@@ -51,13 +51,13 @@ def get_sites(data:str)->list[dict]:
 def build_contract(game:Path)->dict:
     source=(game/SOURCE).read_bytes()
     data=(game/DATA).read_bytes()
-    if hashlib.sha256(source).hexdigest()!=SOURCE_HASH or
-       hashlib.sha256(data).hexdigest()!=DATA_HASH:
+    if (hashlib.sha256(source).hexdigest()!=SOURCE_HASH or
+        hashlib.sha256(data).hexdigest()!=DATA_HASH):
         raise Refused("reviewed author-source epoch does not match")
     sites=get_sites(data.decode("utf-8"))
     # Deterministic, source-backed roster. Lua checks it again against the
     # actual loaded author tables before registering any native IDs.
-    entries="\\n".join('      ["'+s["name"]+'"]={'+
+    entries="\n".join('      ["'+s["name"]+'"]={'+
                  ','.join(str(s[v]) for v in ("id","x","y","z"))+'},'
                  for s in sites)
     binding='''        local okLookup, LookupBinding = pcall(require, "GCETLookupWakeBinding")
@@ -78,8 +78,8 @@ def build_contract(game:Path)->dict:
           end,OWNER,farWorldJob,{nearWorldJob,nearSeatJob},
           function() return pokerIsActive() or InteractionMenu.visible end,
           function() setNearMode(false) end,
-          {epoch="poker-source-"+SOURCE_EPOCH,
-           fingerprint=""+TABLE_EPOCH,relevant=inGame,
+          {epoch="poker-source-"..SOURCE_EPOCH,
+           fingerprint=TABLE_EPOCH,relevant=inGame,
            sites=function()
              local expected={
 EXPECTED_ENTRIES
