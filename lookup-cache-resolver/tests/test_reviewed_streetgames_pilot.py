@@ -41,7 +41,7 @@ class ReviewedPilotTests(unittest.TestCase):
     self.assertIn("bin/x64/plugins/cyber_engine_tweaks/mods/StreetGamesPoker/GCETLookupWakeBinding.lua",names)
     self.assertIn("bin/x64/plugins/cyber_engine_tweaks/mods/G-LookupCache/modules/CETNativeWakeHost.lua",names)
     self.assertIn("G-LookupCache/EXPERIMENTAL-NATIVE-DEPENDENCY.txt",names)
-    self.assertEqual(len(names),11)
+    self.assertEqual(len(names),10)
    target=root/"bin/x64/plugins/cyber_engine_tweaks/mods/G-LookupCache/init.lua"
    target.parent.mkdir(parents=True)
    target.write_text("foreign")
