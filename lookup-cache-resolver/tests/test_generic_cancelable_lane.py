@@ -86,6 +86,58 @@ class GenericCancelableLaneTests(unittest.TestCase):
                                          "z":15.0,"radius":25.0,"metric":"xyz"}])
         (self.root/PATH).write_text(BASE+"-- modified after admission\n")
         with self.assertRaises(Refused):stage(self.root,self.contract())
+    def test_generated_lua_preserves_remote_author_fallback(self):
+        lua=shutil.which("lua5.4")
+        if not lua:
+            return
+        compiled=self.source(stage(self.root,self.contract())[1])
+        source=self.root/"optimized.lua"
+        source.write_text(compiled)
+        runner=self.root/"run.lua"
+        runner.write_text("""
+local events,jobs={},{}
+local pos={x=0,y=0,z=0}
+local remote,interactions=0,0
+Game={GetPlayer=function() return {GetWorldPosition=function() return pos end} end}
+client={Schedule={Every=function(_,opts,cb)
+    local h={active=opts.active~=false,callback=cb}
+    h.Pause=function() h.active=false end
+    h.Resume=function() h.active=true end
+    jobs[#jobs+1]=h
+    return h
+end}}
+function registerForEvent(n,f)
+    events[n]=events[n] or {}
+    table.insert(events[n],f)
+end
+function remoteQuestFactListener() remote=remote+1 end
+function refreshRemoteQuestFact() remote=remote+1 end
+function originalAuthorExactInteraction() interactions=interactions+1 end
+function GetMod() return nil end
+dofile(arg[1])
+assert(#jobs==2 and jobs[1].active and not jobs[2].active)
+events.onInit[1]()
+events.onQuestUpdate[1]()
+assert(remote==2)
+jobs[1].callback()
+assert(not jobs[2].active)
+pos.x,pos.y,pos.z=100,200,15
+jobs[1].callback()
+assert(jobs[2].active)
+jobs[2].callback()
+assert(interactions==1)
+pos.x=0
+jobs[1].callback()
+assert(not jobs[2].active)
+events.onQuestUpdate[1]()
+assert(remote==3)
+events.onShutdown[1]()
+print("PASS source runtime remote listener and fallback")
+""")
+        result=subprocess.run([lua,str(runner),str(source)],
+                              text=True,capture_output=True)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+
     def test_same_pattern_different_coordinates_and_radius(self):
         moved=(BASE.replace("pos.x - 100","pos.x - -325.5")
                    .replace("pos.y - 200","pos.y - 27")
