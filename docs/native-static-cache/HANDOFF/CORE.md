@@ -14,6 +14,8 @@ A **single shared native spatial service** for Cyberpunk 2077's source-proven fi
 - G-RED framework is a **separate repository** `giorgioherma/G-REDruntime_Framework`. Prefer optional source overlay and existing scheduler; do not modify its stable core without separate authorization.
 - Main product target is eventual **one application, two pages, three primary actions, one game-root input**. Cache integration must fit this without another player config screen. This combined UI is not yet implemented.
 
+**Separate location and remote wake responsibilities:** A phone listener or quest event does not invalidate a proven fixed-location optimization. Preserve the independent event listener; retire only proved recurring location discovery. FAR_DORMANT owners awaiting proximity must keep their native anchor armed. Fully inactive location stages must disarm the native owner so idle native tracking can sleep. See [Resolver evidence and arming](../details/RESOLVER-EVIDENCE-AND-ARMING.md).
+
 ## Non-negotiable behavior
 
 - A **single RED4ext Running-state coordinator** owns player-position sampling; CET/REDscript consumers must never become competing update writers.
@@ -26,6 +28,6 @@ A **single shared native spatial service** for Cyberpunk 2077's source-proven fi
 
 ## Current truth versus intended goal
 
-The native index, event journal, coordinator, runtime owner registration, CET bridge, optional G-RED scheduler bridge and source-matched R4 fallback bridge are **implemented experimentally** with Linux/Windows CI. They are **not** a production pass. Neither automatic generic Resolver source rewriting nor full gameplay-equivalent author callback retirement on the user's stack has been proved. REDscript overlay has not been game-compiled. The game-side player getter RTTI and mod consumer API require smoke tests.
+The native index, event journal, coordinator, runtime owner registration, CET bridge, optional G-RED scheduler bridge and source-matched R4 fallback bridge are **implemented experimentally** with Linux/Windows CI. They are **not** a production pass. Neither automatic generic Resolver source rewriting nor full gameplay-equivalent author callback retirement on the user's stack has been proved. REDscript overlay has not been game-compiled. Player world-position RTTI and initial native NEAR were observed in-game; FAR/return and full consumer integration still need gameplay verification. Native CI #30 validates zero-armed-owner dormancy. The generic CET+REDscript source-evidence scanner is implemented separately under `lookup-cache-resolver/` (read-only, no admission or injection).
 
 For the exact **current next action and CI**, read [../LATEST-WORK.md](../LATEST-WORK.md). Do not copy dated statuses into CORE.
