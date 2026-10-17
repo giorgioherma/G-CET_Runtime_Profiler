@@ -15,7 +15,16 @@ local engine={Register=function(name)
 end}
 GetMod=function(name) assert(name=="0-Engine");return available and engine or nil end
 Game={}
-local Entry=dofile("native-static-locations/adapters/CETLookupCacheModEntry.lua")
+-- CI sources live in adapters/, while the deployed CET mod contains
+-- the same modules under modules/. Resolve this layout in the mock only.
+local realDofile=dofile
+dofile=function(path)
+ if path:find("/modules/",1,true) then
+  path=path:gsub("/modules/","/")
+ end
+ return realDofile(path)
+end
+local Entry=realDofile("native-static-locations/adapters/CETLookupCacheModEntry.lua")
 assert(#callbacks==1 and clients==0)
 assert(not Entry.TryAttach())
 callbacks[1]()
@@ -28,5 +37,5 @@ assert(same==host and clients==1)
 assert(engine.GCET.LookupCacheHostVersion==1)
 local Boot=dofile("native-static-locations/adapters/CETNativeWakeBootstrap.lua")
 assert(Boot.Uninstall(engine))
-registerForEvent,GetMod,Game=oldRegister,oldGetMod,oldGame
+registerForEvent,GetMod,Game,dofile=oldRegister,oldGetMod,oldGame,realDofile
 print("PASS CET init-only host bootstrap, no recurring listener, late engine")
