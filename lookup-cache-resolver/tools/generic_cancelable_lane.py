@@ -142,13 +142,16 @@ def admit(text: str, relative: str, owner: int, anchor: int):
         raise Refused("expected one fully proved isolated cancelable XYZ lane")
     far,near,xyz,radius=eligible[0]
     digest=source_hash(text)
-    far_header=text[far["start"]:far["header_end"]]
-    near_expr=text[near["start"]:near["end"]]
+    if (text[far["header_end"]:far["header_end"]+1] != "\n" or
+        text[near["end"]:near["end"]+1] != "\n"):
+        raise Refused("scheduler job insertion requires newline boundary")
+    far_header=text[far["start"]:far["header_end"]+1]
+    near_expr=text[near["start"]:near["end"]+1]
     if text.count(far_header)!=1 or text.count(near_expr)!=1:
         raise Refused("source insertion anchors not unique")
     # Inject only at original scheduler boundaries. The original distance
     # callback remains byte-for-byte available as fail-open fallback.
-    retry='''\n        if gcetLocationBinding then gcetLocationBinding:attempt() end\n'''
+    retry='        if gcetLocationBinding then gcetLocationBinding:attempt() end'
     binding=f'''
 local okNativeBinding, NativeBinding = pcall(require, "GCETLookupWakeBinding")
 if okNativeBinding and type(NativeBinding) == "table" then
@@ -179,7 +182,7 @@ end)
     edits=[
         {"name":"state","needle":first_anchor,"before":"local gcetLocationBinding = nil\n","after":""},
         {"name":"retry","needle":far_header,"before":"","after":retry},
-        {"name":"adopt","needle":near_expr,"before":"","after":"\n"+binding},
+        {"name":"adopt","needle":near_expr,"before":"","after":binding.strip()},
     ]
     return {
         "schema":SCHEMA,"source":relative,"original_sha256":digest,
