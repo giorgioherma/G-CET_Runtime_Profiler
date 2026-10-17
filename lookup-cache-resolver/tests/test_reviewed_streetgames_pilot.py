@@ -41,14 +41,14 @@ class ReviewedPilotTests(unittest.TestCase):
    root=Path(td)
    base=io.BytesIO()
    with zipfile.ZipFile(base,"w") as z:
-    z.writestr("G-LookupCache/REVIEWED-STAGE.json","{}")
+    z.writestr("bin/x64/plugins/cyber_engine_tweaks/mods/G-LookupCache/REVIEWED-STAGE.json","{}")
    blob=m.bundle_runtime(root,base.getvalue())
    with zipfile.ZipFile(io.BytesIO(blob)) as z:
     names=set(z.namelist())
     self.assertIn("bin/x64/plugins/cyber_engine_tweaks/mods/G-LookupCache/init.lua",names)
     self.assertIn("bin/x64/plugins/cyber_engine_tweaks/mods/StreetGamesPoker/GCETLookupWakeBinding.lua",names)
     self.assertIn("bin/x64/plugins/cyber_engine_tweaks/mods/G-LookupCache/modules/CETNativeWakeHost.lua",names)
-    self.assertIn("G-LookupCache/EXPERIMENTAL-NATIVE-DEPENDENCY.txt",names)
+    self.assertIn("bin/x64/plugins/cyber_engine_tweaks/mods/G-LookupCache/EXPERIMENTAL-NATIVE-DEPENDENCY.txt",names)\n    self.assertTrue(all(name.startswith("bin/x64/plugins/cyber_engine_tweaks/mods/") for name in names))
     self.assertEqual(len(names),10)
    target=root/"bin/x64/plugins/cyber_engine_tweaks/mods/G-LookupCache/init.lua"
    target.parent.mkdir(parents=True)
