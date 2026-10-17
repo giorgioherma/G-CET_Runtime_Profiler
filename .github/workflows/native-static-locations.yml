@@ -39,6 +39,7 @@ jobs:
           lua5.4 native-static-locations/tests/CETAnchorSetGateTests.lua
           lua5.4 native-static-locations/tests/CETNativeWakeHostTests.lua
           lua5.4 native-static-locations/tests/CETSourceAnchorLifecycleTests.lua
+          lua5.4 native-static-locations/tests/CETSourceWakeBindingTests.lua
           lua5.4 native-static-locations/tests/CETNativeJobRetirementTests.lua
           lua5.4 native-static-locations/tests/CETNativeWakeBootstrapTests.lua
           lua5.4 native-static-locations/tests/LegacyR4NativeCacheBridgeTests.lua
