@@ -12,6 +12,7 @@ import zipfile
 TOOLS=Path(__file__).resolve().parents[1]/"tools"
 sys.path.insert(0,str(TOOLS))
 from generic_cancelable_lane import admit,stage_generic
+from economic_gate import EconomicRefused, SCHEMA as ECONOMIC_SCHEMA
 from stage_source_pass import Refused,stage
 
 PATH="bin/x64/plugins/cyber_engine_tweaks/mods/UnnamedQuest/init.lua"
@@ -47,6 +48,26 @@ class GenericCancelableLaneTests(unittest.TestCase):
         target=self.root/PATH
         target.parent.mkdir(parents=True,exist_ok=True)
         target.write_text(BASE,encoding="utf-8")
+    def economics(self,source=BASE):
+        # Synthetic paired-capture figures for the transformer regression,
+        # never claimed to be actual Profiler/game measurements.
+        return {"schema":ECONOMIC_SCHEMA,"source":PATH,
+                "original_sha256":hashlib.sha256(source.encode()).hexdigest(),
+                "attribution":"SOURCE_OWNED_FAR_JOB",
+                "shared_cost_scope":"ENTIRE_NATIVE_AND_CET_HOST",
+                "scenarios":{
+                  "sparse":{"baseline_capture_id":"mock-sparse-original",
+                            "optimized_capture_id":"mock-sparse-optimized",
+                            "baseline_seconds":60,"optimized_seconds":60,
+                            "retired_far_job_ms_per_second":2.0,
+                            "added_owner_ms_per_second":0.2,
+                            "shared_native_cet_ms_per_second":0.4},
+                  "dense":{"baseline_capture_id":"mock-dense-original",
+                           "optimized_capture_id":"mock-dense-optimized",
+                           "baseline_seconds":60,"optimized_seconds":60,
+                           "retired_far_job_ms_per_second":1.4,
+                           "added_owner_ms_per_second":0.3,
+                           "shared_native_cet_ms_per_second":0.4}}}
     def contract(self,text=BASE):
         return admit(text,PATH,1400123,1400124)
     def source(self,blob):
@@ -184,8 +205,25 @@ print("PASS source runtime remote listener and fallback")
         with self.assertRaises(Refused):self.contract(BASE+BASE)
         with self.assertRaises(Refused):self.contract(
             BASE.replace("active=false","active=true"))
+    def test_economic_gate_refuses_unmeasured_generic_staging(self):
+        with self.assertRaisesRegex(EconomicRefused,"MEASURE_FIRST"):
+            stage_generic(self.root,PATH,1400123,1400124)
+        self.assertEqual((self.root/PATH).read_text(),BASE)
+        self.assertFalse((self.root/"not-generated.zip").exists())
+
+    def test_economic_gate_catches_source_and_dense_cost(self):
+        stale=self.economics()
+        stale["original_sha256"]="0"*64
+        with self.assertRaisesRegex(EconomicRefused,"fingerprint"):
+            stage_generic(self.root,PATH,1400123,1400124,stale)
+        expensive=self.economics()
+        expensive["scenarios"]["dense"]["added_owner_ms_per_second"]=1.25
+        with self.assertRaisesRegex(EconomicRefused,"NO_GAIN"):
+            stage_generic(self.root,PATH,1400123,1400124,expensive)
+        self.assertEqual((self.root/PATH).read_text(),BASE)
+
     def test_full_generic_payload_and_managed_source(self):
-        (status,blob),contract=stage_generic(self.root,PATH,1400123,1400124)
+        (status,blob),contract=stage_generic(self.root,PATH,1400123,1400124,self.economics())
         self.assertEqual(status,"OPTIMIZATION_STAGED")
         self.assertEqual(contract["sites"][0]["radius"],25.0)
         with zipfile.ZipFile(io.BytesIO(blob)) as z:
@@ -194,6 +232,7 @@ print("PASS source runtime remote listener and fallback")
             self.assertTrue(all(n.startswith(prefix) for n in names))
             self.assertIn(prefix+"UnnamedQuest/GCETLookupWakeBinding.lua",names)
             self.assertIn(prefix+"G-LookupCache/modules/CETNativeWakeHost.lua",names)
+            self.assertIn(prefix+"G-LookupCache/ECONOMIC-DECISION.json",names)
             patched=z.read(PATH).decode()
         luac=shutil.which("luac5.4")
         if luac:
@@ -203,7 +242,7 @@ print("PASS source runtime remote listener and fallback")
                                 capture_output=True,text=True)
             self.assertEqual(proc.returncode,0,proc.stderr)
         (self.root/PATH).write_text(patched)
-        (status,blob2),_=stage_generic(self.root,PATH,1400123,1400124)
+        (status,blob2),_=stage_generic(self.root,PATH,1400123,1400124,self.economics())
         self.assertEqual(status,"ALREADY_OPTIMIZED")
         with zipfile.ZipFile(io.BytesIO(blob2)) as z:
             self.assertEqual(z.read(PATH).decode(),patched)
@@ -211,16 +250,16 @@ print("PASS source runtime remote listener and fallback")
             "G-LOOKUPCACHE:BEGIN:retry",
             "G-LOOKUPCACHE:BEGIN:tampered",1))
         with self.assertRaises(Refused):
-            stage_generic(self.root,PATH,1400123,1400124)
+            stage_generic(self.root,PATH,1400123,1400124,self.economics())
         (self.root/PATH).write_text(patched.replace("NativeBinding.new", "ForeignBinding.new",1))
         with self.assertRaises(Refused):
-            stage_generic(self.root,PATH,1400123,1400124)
+            stage_generic(self.root,PATH,1400123,1400124,self.economics())
         (self.root/PATH).write_text(BASE)
         target=self.root/"bin/x64/plugins/cyber_engine_tweaks/mods/G-LookupCache/init.lua"
         target.parent.mkdir(parents=True)
         target.write_text("-- foreign runtime")
         with self.assertRaises(Refused):
-            stage_generic(self.root,PATH,1400123,1400124)
+            stage_generic(self.root,PATH,1400123,1400124,self.economics())
 
     def test_independent_remote_listener_remains_even_when_far(self):
         contract=self.contract()
