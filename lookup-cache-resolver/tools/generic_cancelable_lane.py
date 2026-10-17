@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Conservative generic CET source->native job adoption (one pure XYZ lane).
+"""Conservative generic CET source->native job adoption (one pure XYZ FAR lane).
 
 This is a deliberately narrow *structural* auto-admission family. It does not
 infer that arbitrary helper calls are pure, split mixed callbacks, or admit a
@@ -116,16 +116,16 @@ def admit(text: str, relative: str, owner: int, anchor: int):
         if re.search(r"\b"+re.escape(near_name)+r"\b", outside) or re.search(
             r"\b"+re.escape(far["name"])+r"\b",outside):
             continue
-        # The near callback must not register listeners, timers or dispatch
-        # opaque state-changing helper calls. Current support is an exact
-        # author-owned function name whose effects are NOT proved, so refuse
-        # automatic adoption until its transitive closure can be established.
+        # Do not transform the near lane's work at all. It is only resumed
+        # when the exact author radius becomes NEAR, and the source proves
+        # that no unrelated code manages either scheduler handle. Reject
+        # self-mutation, new registrations and dynamic source geometry.
         near_body=_pure_body(text,near)
-        if near_body is None or re.search(r"\b(?:Schedule|Cron|registerForEvent|Observe)\b",near_body):
+        if near_body is None or re.search(
+            r"\b(?:Schedule|Cron|registerForEvent|Observe)\b",near_body):
             continue
-        # Only an entirely empty near callback is automatically provable
-        # with this narrow family; nontrivial author work needs callee proof.
-        if near_body.strip():
+        if re.search(r"\b(?:"+re.escape(near_name)+"|"+
+                     re.escape(far["name"])+r")\b",near_body):
             continue
         try:
             xyz=[float(proof.group(k)) for k in ("x","y","z")]
@@ -188,7 +188,7 @@ end)
         "sites":[{"id":anchor,"x":xyz[0],"y":xyz[1],"z":xyz[2],
                   "radius":radius,"metric":"xyz"}],
         "insertions":edits,
-        "admission":"STRICT_EMPTY_NEAR_JOB_XYZ",
+        "admission":"STRICT_PURE_FAR_JOB_XYZ",
         "auto_admission":True, "reviewed_source_only":False,
     }
 
