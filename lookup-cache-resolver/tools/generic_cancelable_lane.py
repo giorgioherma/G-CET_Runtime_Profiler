@@ -8,8 +8,10 @@ sources remain entirely unchanged. No game installation is modified.
 """
 from __future__ import annotations
 
+import argparse
 import hashlib
 import io
+import json
 import math
 from pathlib import Path, PurePosixPath
 import re
@@ -17,7 +19,7 @@ import sys
 import zipfile
 
 from lua_callback_scopes import masked, scope_end
-from stage_source_pass import SCHEMA, REQUIRED_PROOFS, Refused, stage
+from stage_source_pass import SCHEMA, REQUIRED_PROOFS, Refused, stage, _path
 
 IDENT = r"[A-Za-z_][A-Za-z0-9_]*"
 NUMBER = r"-?(?:\d+(?:\.\d+)?|\.\d+)"
@@ -229,6 +231,8 @@ def bundle_runtime(game:Path, relative:str, overlay:bytes)->bytes:
     for name,source in files.items():
         data=source.read_bytes()
         live=game/name
+        if not live.resolve().is_relative_to(game.resolve()):
+            raise Refused("support path escapes selected game root: "+name)
         if live.exists():
             if not live.is_file() or live.is_symlink() or live.read_bytes()!=data:
                 raise Refused("support source conflict: "+name)
@@ -265,8 +269,38 @@ def _normalize_for_admission(source:str)->str:
 
 def stage_generic(game:Path,relative:str,owner:int,anchor:int):
     """Stage reversible game-root ZIP including generic host support."""
-    src=game/relative
+    root=game.expanduser().resolve(strict=True)
+    src=_path(root,relative)
     live=src.read_text(encoding="utf-8")
     contract=admit(_normalize_for_admission(live),relative,owner,anchor)
-    status,overlay=stage(game,contract)
-    return (status,bundle_runtime(game,relative,overlay)),contract
+    status,overlay=stage(root,contract)
+    return (status,bundle_runtime(root,relative,overlay)),contract
+
+
+def main(argv=None)->int:
+    p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--game",type=Path,required=True)
+    p.add_argument("--source",required=True,
+                   help="CET mod init.lua path relative to game root")
+    p.add_argument("--owner-id",type=int,required=True,
+                   help="unique positive native ID allocated by Resolver")
+    p.add_argument("--anchor-id",type=int,required=True)
+    p.add_argument("--output",type=Path,required=True)
+    p.add_argument("--contract-output",type=Path)
+    args=p.parse_args(argv)
+    try:
+        (status,bundle),contract=stage_generic(
+            args.game,args.source,args.owner_id,args.anchor_id)
+        args.output.parent.mkdir(parents=True,exist_ok=True)
+        args.output.write_bytes(bundle)
+        if args.contract_output:
+            args.contract_output.parent.mkdir(parents=True,exist_ok=True)
+            args.contract_output.write_text(json.dumps(contract,indent=2)+"\n")
+        print(status+" / experimental / game root unchanged")
+        return 0
+    except (Refused,OSError,ValueError,UnicodeError) as exc:
+        print("G-LookupCache generic lane refused: "+str(exc),file=sys.stderr)
+        return 2
+
+if __name__=="__main__":
+    raise SystemExit(main())
