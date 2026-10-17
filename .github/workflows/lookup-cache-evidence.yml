@@ -1,0 +1,21 @@
+name: G-LookupCache Source Evidence
+on:
+  workflow_dispatch:
+  push:
+    branches: [dev/native-static-anchors-experimental]
+    paths:
+      - 'lookup-cache-resolver/tools/**'
+      - 'lookup-cache-resolver/tests/**'
+      - '.github/workflows/lookup-cache-evidence.yml'
+permissions:
+  contents: read
+jobs:
+  generic-evidence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate CET and REDscript evidence and native lifecycle contract
+        run: python -m unittest discover -s lookup-cache-resolver/tests -p 'test_*.py' -v
