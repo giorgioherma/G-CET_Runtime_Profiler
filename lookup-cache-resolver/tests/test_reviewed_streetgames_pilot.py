@@ -22,6 +22,7 @@ class ReviewedPilotTests(unittest.TestCase):
   self.assertEqual(len(found),40)
   self.assertEqual(len({x["id"] for x in found}),40)
   self.assertEqual(found[0]["metric"],"xyz")
+  self.assertEqual(found[0]["radius"],45.0)
   with self.assertRaises(Exception):
    m.get_sites(text+"table.insert(StreetTables.locations, site)\n")
   with self.assertRaises(Exception):

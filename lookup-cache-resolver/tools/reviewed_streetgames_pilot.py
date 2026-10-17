@@ -47,7 +47,7 @@ def get_sites(data:str)->list[dict]:
         raise Refused("location table can change after initialization")
     return [{"name":name,"id":FIRST_SITE_ID+i,
              "x":float(x),"y":float(y),"z":float(z),
-             "radius":25.0,"metric":"xyz"}
+             "radius":45.0,"metric":"xyz"}
             for i,(name,x,y,z) in enumerate(rows)]
 
 def build_contract(game:Path)->dict:
@@ -57,6 +57,7 @@ def build_contract(game:Path)->dict:
         hashlib.sha256(data).hexdigest()!=DATA_HASH):
         raise Refused("reviewed author-source epoch does not match")
     sites=get_sites(data.decode("utf-8"))
+    # Native 45m gate is conservative; exact author 25m work remains unchanged.
     # Deterministic, source-backed roster. Lua checks it again against the
     # actual loaded author tables before registering any native IDs.
     entries="\n".join('      ["'+s["name"]+'"]={'+
@@ -95,7 +96,7 @@ EXPECTED_ENTRIES
                    or loc.floorZ~=v[4] then return nil end
                seen[loc.id]=true
                result[#result+1]={id=v[1],x=v[2],y=v[3],z=v[4],
-                                  radius=POKER_WAKE_RADIUS,metric="xyz"}
+                                  radius=45.0,metric="xyz"}
              end
              if #result~=EXPECTED_COUNT then return nil end
              return result
