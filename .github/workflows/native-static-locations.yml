@@ -38,6 +38,7 @@ jobs:
           lua5.4 native-static-locations/tests/CETNativeJobGateTests.lua
           lua5.4 native-static-locations/tests/CETAnchorSetGateTests.lua
           lua5.4 native-static-locations/tests/CETNativeWakeHostTests.lua
+          lua5.4 native-static-locations/tests/CETSourceAnchorLifecycleTests.lua
           lua5.4 native-static-locations/tests/LegacyR4NativeCacheBridgeTests.lua
       - name: Compile deterministic sample data
         run: python native-static-locations/tools/compile_locations.py native-static-locations/examples/sample-installed-only.json ${{ runner.temp }}/G-CET.locations
