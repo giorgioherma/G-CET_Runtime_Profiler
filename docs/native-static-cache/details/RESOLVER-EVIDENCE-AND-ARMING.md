@@ -33,6 +33,18 @@ The reusable Resolver pass recognizes this from source control flow and wake obl
 
 The current scanner emits heuristics and candidate callback scopes; it has **no call graph or side-effect proof**. The current `reviewed_streetgames_pilot.py` is a narrowly source-pinned *test case* for the generic scheduler-job pattern, **not an implemented generic admission rule**. The existing reviewed staging tool accepts explicitly asserted proof flags and injects predetermined snippets; those flags do not themselves prove arbitrary functions safe. The next developer implementation must build source-derived callback boundaries and machine-checkable admission/refusal evidence before automatic generic passes can be claimed.
 
+## Cost-benefit admission (required, not a source-recognition side effect)
+
+Source proof establishes whether a location lane **can** be retired; it does not prove the retirement is worth enabling. The existing Profiler workload gate is **investigation priority only** and must never be presented as proof of net savings. Keep experimental source overlays separate from deployable Resolver passes until economic admission exists.
+
+- **Opportunity:** a concrete recurring callback/job or downstream location lane is actually retired in healthy native mode. If registration only adds anchors while the same authored work continues, classify `NO_GAIN` and emit **no** native owner/anchor.
+- **Benefit:** compare attributed retired-lane CPU/allocations and dispatch savings against marginal native distance/index work, CET shared consumer overhead, callbacks newly active in nearby areas, snapshot/fallback cost, and the **one-time** shared baseline for the whole selected owner set. Never add overlapping Profiler attribution views or assign owner-zero native allocations to an individual mod.
+- **Selection:** include only candidates with evidenced positive **aggregate net savings** under representative sparse and dense scenarios. Reject/defer tiny or unobserved candidates; combining several small candidates is allowed only if the measured combined net is positive. Do not invent a per-mod gain from owner-level numbers.
+- **Lifecycle:** disarm completed/irrelevant sites so dense city coverage does not keep otherwise idle near jobs alive. If a location stays NEAR for most of the play session, include the surviving author near-work in the before/after comparison.
+- **Uncertainty:** missing or noisy per-lane data means `MEASURE_FIRST`, not automatically approved. Existing, independently supported semantic passes are outside this location-pass economic gate and must not be vetoed by unrelated low Profiler observations.
+
+Keep this simple: **retired work > added shared and incremental work**. Do not build another general cost model or broaden the spatial index until measurements justify it.
+
 ## Native lease state
 
 | Situation | Native anchor | Other author listeners |
