@@ -83,4 +83,31 @@ local failingCleanup=Gate.new(failedFar,{job(false)},nil,nil,
  function() error("author cleanup failed") end)
 assert(not failingCleanup:onFar(25,true))
 assert(failedFar.active and failingCleanup.mode=="ORIGINAL")
-print("PASS native job gate FAR housekeeping, author-state restoration, fail-open")
+-- A rejected original Resume must not be classified as permanently recovered.
+-- Retry on subsequent unavailable native frames until the author job is live.
+local transientFar=job(true)
+local failingResume=true
+transientFar.Resume=function()
+ if failingResume then return false end
+ transientFar.active=true;return true
+end
+local rejectedNear=job(false)
+rejectedNear.Resume=function() return false end
+local transientGate=Gate.new(transientFar,{rejectedNear})
+assert(not transientGate:onNear(501,true))
+assert(transientGate.mode=="ORIGINAL" and transientGate.fallbackPending)
+assert(not transientGate:onFallback("NATIVE_LOST"))
+assert(transientGate.fallbackPending and not transientFar.active)
+failingResume=false
+assert(transientGate:onFallback("NATIVE_STILL_LOST"))
+assert(transientFar.active and not transientGate.fallbackPending)
+local resetAttempts=0
+local resetGate=Gate.new(job(true),{job(false)},nil,function()
+ resetAttempts=resetAttempts+1
+ return resetAttempts>1
+end)
+assert(resetGate:onNear(601,true))
+assert(not resetGate:onFallback("RESET_REJECTED"))
+assert(resetGate.fallbackPending)
+assert(resetGate:onFallback("RESET_RECOVERED") and resetAttempts==2)
+print("PASS native job gate FAR housekeeping, author-state restoration, retryable fail-open")
