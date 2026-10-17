@@ -274,7 +274,7 @@ end)''')
         lines+=['local visualOnly%s=true' % i for i in range(55)]
         lines+=['local site={x=1,y=2,z=3}',
                 'local d=Game.GetPlayer():GetWorldPosition():Distance(site)']
-        self.put(s.CET/"Separate/init.lua","\\n".join(lines))
+        self.put(s.CET/"Separate/init.lua","\n".join(lines))
         mod=s.scan(self.root)["owners"][0]
         self.assertTrue(mod["source_review_candidate"])  # owner-level lead only
         self.assertEqual(mod["wake_leads"][0]["relation"],"CALLBACK_ONLY")
