@@ -289,6 +289,10 @@ def main(argv=None)->int:
     p.add_argument("--contract-output",type=Path)
     args=p.parse_args(argv)
     try:
+        root=args.game.expanduser().resolve(strict=True)
+        for destination in (args.output,args.contract_output):
+            if destination and destination.expanduser().resolve().is_relative_to(root):
+                raise Refused("generated artifacts must be outside selected game root")
         (status,bundle),contract=stage_generic(
             args.game,args.source,args.owner_id,args.anchor_id)
         args.output.parent.mkdir(parents=True,exist_ok=True)
