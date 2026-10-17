@@ -86,6 +86,17 @@ class GenericCancelableLaneTests(unittest.TestCase):
                                          "z":15.0,"radius":25.0,"metric":"xyz"}])
         (self.root/PATH).write_text(BASE+"-- modified after admission\n")
         with self.assertRaises(Refused):stage(self.root,self.contract())
+    def test_same_pattern_different_coordinates_and_radius(self):
+        moved=(BASE.replace("pos.x - 100","pos.x - -325.5")
+                   .replace("pos.y - 200","pos.y - 27")
+                   .replace("pos.z - 15","pos.z - 101")
+                   .replace("<= 625","<= 1600"))
+        proof=self.contract(moved)
+        self.assertEqual(proof["sites"][0]["x"],-325.5)
+        self.assertEqual(proof["sites"][0]["y"],27.0)
+        self.assertEqual(proof["sites"][0]["radius"],40.0)
+        self.assertNotEqual(proof["original_sha256"],self.contract()["original_sha256"])
+
     def test_never_suspend_mixed_callback_or_non_cancelable_cron(self):
         for modified in (
             BASE.replace("nearJob.Resume()","nearJob.Resume()\n        advanceQuest()"),
@@ -136,6 +147,9 @@ class GenericCancelableLaneTests(unittest.TestCase):
         (self.root/PATH).write_text(patched.replace(
             "G-LOOKUPCACHE:BEGIN:retry",
             "G-LOOKUPCACHE:BEGIN:tampered",1))
+        with self.assertRaises(Refused):
+            stage_generic(self.root,PATH,1400123,1400124)
+        (self.root/PATH).write_text(patched.replace("NativeBinding.new", "ForeignBinding.new",1))
         with self.assertRaises(Refused):
             stage_generic(self.root,PATH,1400123,1400124)
         (self.root/PATH).write_text(BASE)
