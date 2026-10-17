@@ -1,6 +1,8 @@
 """Fail-closed generic CET job admission and reversible source-staging tests."""
 import hashlib
 import io
+import shutil
+import subprocess
 from pathlib import Path
 import sys
 import tempfile
@@ -9,7 +11,7 @@ import zipfile
 
 TOOLS=Path(__file__).resolve().parents[1]/"tools"
 sys.path.insert(0,str(TOOLS))
-from generic_cancelable_lane import admit
+from generic_cancelable_lane import admit,stage_generic
 from stage_source_pass import Refused,stage
 
 PATH="bin/x64/plugins/cyber_engine_tweaks/mods/UnnamedQuest/init.lua"
@@ -105,6 +107,41 @@ class GenericCancelableLaneTests(unittest.TestCase):
         with self.assertRaises(Refused):self.contract(BASE+BASE)
         with self.assertRaises(Refused):self.contract(
             BASE.replace("active=false","active=true"))
+    def test_full_generic_payload_and_managed_source(self):
+        (status,blob),contract=stage_generic(self.root,PATH,1400123,1400124)
+        self.assertEqual(status,"OPTIMIZATION_STAGED")
+        self.assertEqual(contract["sites"][0]["radius"],25.0)
+        with zipfile.ZipFile(io.BytesIO(blob)) as z:
+            names=set(z.namelist())
+            prefix="bin/x64/plugins/cyber_engine_tweaks/mods/"
+            self.assertTrue(all(n.startswith(prefix) for n in names))
+            self.assertIn(prefix+"UnnamedQuest/GCETLookupWakeBinding.lua",names)
+            self.assertIn(prefix+"G-LookupCache/modules/CETNativeWakeHost.lua",names)
+            patched=z.read(PATH).decode()
+        luac=shutil.which("luac5.4")
+        if luac:
+            generated=self.root/"generated.lua"
+            generated.write_text(patched)
+            proc=subprocess.run([luac,"-p",str(generated)],
+                                capture_output=True,text=True)
+            self.assertEqual(proc.returncode,0,proc.stderr)
+        (self.root/PATH).write_text(patched)
+        (status,blob2),_=stage_generic(self.root,PATH,1400123,1400124)
+        self.assertEqual(status,"ALREADY_OPTIMIZED")
+        with zipfile.ZipFile(io.BytesIO(blob2)) as z:
+            self.assertEqual(z.read(PATH).decode(),patched)
+        (self.root/PATH).write_text(patched.replace(
+            "G-LOOKUPCACHE:BEGIN:retry",
+            "G-LOOKUPCACHE:BEGIN:tampered",1))
+        with self.assertRaises(Refused):
+            stage_generic(self.root,PATH,1400123,1400124)
+        (self.root/PATH).write_text(BASE)
+        target=self.root/"bin/x64/plugins/cyber_engine_tweaks/mods/G-LookupCache/init.lua"
+        target.parent.mkdir(parents=True)
+        target.write_text("-- foreign runtime")
+        with self.assertRaises(Refused):
+            stage_generic(self.root,PATH,1400123,1400124)
+
     def test_independent_remote_listener_remains_even_when_far(self):
         contract=self.contract()
         self.assertEqual(contract["proof"]["independent_listeners_preserved"],True)
