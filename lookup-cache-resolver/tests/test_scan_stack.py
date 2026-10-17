@@ -132,6 +132,80 @@ local site={x=-1496.32,y=2201.52,z=18.19}
         self.assertEqual(mod["classification"],"SOURCE_REVIEW_SAME_FILE")
         self.assertFalse(mod["safe_to_patch"])
 
+
+    def test_map_marker_and_interaction_clues_same_source(self):
+        self.put(s.CET/"Venue/init.lua",'''local sites={{x=10,y=20,z=30}}
+local mappin=Game.GetMappinSystem():RegisterMappin(sites[1])
+local soundEvent="ui_terminal_open"
+local appearanceName="netrunner"
+nativeInteractions.ShowChoice("venue")
+Cron.Every(1,function()
+  local p=Game.GetPlayer():GetWorldPosition()
+  if p:Distance(sites[1])<100 then updateVenue() end
+end)''')
+        mod=s.scan(self.root)["owners"][0]
+        self.assertTrue(mod["source_review_candidate"])
+        for kind in ("map_marker","interaction","appearance","audio_cue"):
+            self.assertEqual(mod["surface_clues"][kind]["location_source_relation"],
+                             "SAME_FILE_CLUE")
+            self.assertEqual(len(mod["surface_clues"][kind]["files"]),1)
+        self.assertFalse(mod["safe_to_patch"])
+
+    def test_marker_data_and_wake_different_files_remain_unproven(self):
+        self.put(s.CET/"Trader/init.lua",'''Cron.Every(1,function()
+local p=Game.GetPlayer():GetWorldPosition()
+return p:Distance(merchant)
+end)''')
+        self.put(s.CET/"Trader/locations.yml",'''x: 10, y: 20, z: 30
+icon: vendor''')
+        self.put(s.CET/"Trader/mappin.lua",'''Game.GetMappinSystem():RegisterMappin(merchant)
+PlaySound("ui_shop")''')
+        mod=s.scan(self.root)["owners"][0]
+        self.assertEqual(mod["classification"],"SOURCE_REVIEW_CROSS_FILE")
+        self.assertEqual(mod["surface_clues"]["map_marker"]["location_source_relation"],
+                         "SAME_OWNER_ONLY")
+        self.assertEqual(mod["surface_clues"]["audio_cue"]["location_source_relation"],
+                         "SAME_OWNER_ONLY")
+        self.assertTrue(any(path.endswith("locations.yml")
+                            for path in mod["author_data_assets"]))
+        self.assertFalse(mod["safe_to_patch"])
+
+    def test_visual_sound_without_position_not_location_candidate(self):
+        self.put(s.CET/"Cosmetic/init.lua",'''local appearanceName="gold"
+PlaySound("ui_phone_sms")
+RegisterMappin(nil)
+nativeInteractions.ShowChoice("hello")
+''')
+        mod=s.scan(self.root)["owners"][0]
+        self.assertFalse(mod["source_review_candidate"])
+        for kind in ("map_marker","interaction","appearance","audio_cue"):
+            self.assertEqual(mod["surface_clues"][kind]["location_source_relation"],
+                             "NO_LOCATION_LINK")
+        # A sound labelled "sms" does not prove a phone listener.
+        self.assertFalse(mod["independent_wake_present"])
+
+    def test_surface_clues_do_not_cross_mod_owners(self):
+        self.put(s.CET/"A/init.lua",'''Game.GetMappinSystem():RegisterMappin(spot)''')
+        self.put(s.CET/"B/sites.json",'''{"x":1,"y":2,"z":3}''')
+        report=s.scan(self.root)
+        self.assertEqual(report["source_review_candidates"],0)
+        a=next(m for m in report["owners"] if m["owner"]=="CET:A")
+        self.assertEqual(a["surface_clues"]["map_marker"]["location_source_relation"],
+                         "NO_LOCATION_LINK")
+
+    def test_redscript_map_marker_clue_is_not_admission(self):
+        self.put(s.REDS/"World/markers.reds",'''public func OnUpdate() -> Void {
+  let p = GameInstance.GetPlayer().GetWorldPosition();
+  let area = new Vector4(1,2,3,1);
+  let distance = Vector4.Distance(p,area);
+  let marker = GetMappinSystem().RegisterMappin(area);
+}''')
+        mod=s.scan(self.root)["owners"][0]
+        self.assertEqual(mod["surface_clues"]["map_marker"]["location_source_relation"],
+                         "SAME_FILE_CLUE")
+        self.assertTrue(mod["source_review_candidate"])
+        self.assertFalse(mod["safe_to_patch"])
+
     def test_empty_install_refused(self):
         with tempfile.TemporaryDirectory() as root:
             with self.assertRaises(ValueError):

@@ -21,7 +21,12 @@ PATTERNS={
     "distance":re.compile(r'\b(?:DistanceSquared|DistanceSq|Distance|DistanceBetween|distSq|LengthSquared|GetDistance|DistanceTo|IsInRange|withinRadius)\b|\^\s*2\b',re.I),
     "literal_xyz":re.compile(r'\b[xX]\s*[:=]\s*[-+]?\d+(?:\.\d+)?\s*[,;]\s*[yY]\s*[:=]\s*[-+]?\d+(?:\.\d+)?\s*[,;]\s*[zZ]\s*[:=]\s*[-+]?\d+(?:\.\d+)?|["\x27]x["\x27]\s*:\s*[-+]?\d+(?:\.\d+)?\s*,\s*["\x27]y["\x27]\s*:\s*[-+]?\d+(?:\.\d+)?\s*,\s*["\x27]z["\x27]\s*:\s*[-+]?\d+(?:\.\d+)?|\b(?:new\s+)?Vector4\s*(?:\.\s*new)?\s*\(\s*[-+]?\d+(?:\.\d+)?\s*,\s*[-+]?\d+(?:\.\d+)?\s*,\s*[-+]?\d+(?:\.\d+)?',re.I),
     "independent_wake":re.compile(r'\b(?:OnAction|ObserveAfter|Observe|registerHotkey|registerInput|GetQuestsSystem|GetFactsDB|GetJournalManager|Phone|SMS|Message|OnSave|OnLoad|OnShutdown|OnQuest|Quest)\b',re.I),
-    "mutable_source":re.compile(r'\b(?:SetWorldPosition|SetPosition|Teleport|Editor|GetTarget|GetLookAt|AddTrack|RemoveTrack|WriteFile|SaveJson|json\.encode|io\.open)\b',re.I)
+    "mutable_source":re.compile(r'\b(?:SetWorldPosition|SetPosition|Teleport|Editor|GetTarget|GetLookAt|AddTrack|RemoveTrack|WriteFile|SaveJson|json\.encode|io\.open)\b',re.I),
+    # Mod-authored clues. Neither a known site nor proof of callback ownership.
+    "map_marker":re.compile(r'\b(?:RegisterMappin|UnregisterMappin|RegisterFastTravelMappin|Add(?:Custom)?Mappin|CreateMappin|GetMappinSystem|MappinData|MappinVariant|MapPin)\b',re.I),
+    "interaction":re.compile(r'\b(?:ShowChoice|HideChoice|InteractionChoice|RegisterInteraction|AddInteraction|nativeInteractions|workspot)\b',re.I),
+    "appearance":re.compile(r'\b(?:SetAppearance|appearanceName|appearance_name|iconAtlas|iconName|MappinIcon|widgetIcon|appearance\s*[:=]|icon\s*[:=])',re.I),
+    "audio_cue":re.compile(r'\b(?:PlaySound|PlaySoundEvent|PlayAudioEvent|audioEvent|soundEvent|SoundEvent|sound\s*[:=]|audio\s*[:=])',re.I),
 }
 REQUIRED=("recurring","player","distance","literal_xyz")
 NUMERIC=r'[-+]?(?:\d+(?:\.\d+)?|\.\d+)(?:[eE][-+]?\d+)?'
@@ -37,6 +42,22 @@ VEHICLE_POSITION=re.compile(
     r'\b(?:GetMountedVehicle(?:Safe)?|GetVehiclePosition|GetActiveGarageForVehicle(?:Position)?|GetWorldTransform)\b',re.I)
 PLAYER_POSITION=re.compile(
     r'\b(?:GetPlayer|GetWorldPosition|GetPlayerPosition)\b',re.I)
+SURFACE_CLUES=("map_marker","interaction","appearance","audio_cue")
+
+def surface_evidence(evidence:list[dict])->dict:
+    """Co-location leads only. Same owner does NOT prove marker/callback linkage."""
+    geometry={e["path"] for e in evidence if e["counts"]["literal_xyz"]}
+    result={}
+    for kind in SURFACE_CLUES:
+        sources={e["path"] for e in evidence if e["counts"][kind]}
+        relation=("SAME_FILE_CLUE" if sources & geometry else
+                  "SAME_OWNER_ONLY" if sources and geometry else
+                  "NO_LOCATION_LINK")
+        result[kind]={
+            "files":sorted(sources),
+            "location_source_relation":relation,
+        }
+    return result
 
 def files_under(owner:Path,extensions:set[str])->list[Path]:
     result=[]
@@ -113,8 +134,10 @@ def examine(name:str,language:str,paths:list[Path],root:Path)->dict:
                 e["source_position_hints"]["vehicle_or_world_transform"] for e in evidence),
         },
         "author_data_assets":[e["path"] for e in evidence
-                              if Path(e["path"]).suffix.casefold() in (".json",".map")
+                              if Path(e["path"]).suffix.casefold() in
+                                 (".json",".map",".yaml",".yml",".xl")
                               and e["counts"]["literal_xyz"]>0],
+        "surface_clues":surface_evidence(evidence),
         "mutable_source_hint":counts["mutable_source"]>0,
         "source_fingerprint":source_hash,"evidence_counts":counts,
         "evidence_files":[e for e in evidence if any(e["counts"].values())],
@@ -141,7 +164,7 @@ def scan(game:Path)->dict:
     if cet.is_dir():
         for p in sorted(cet.iterdir(),key=lambda v:v.name.casefold()):
             if p.is_dir() and not p.is_symlink():
-                paths=files_under(p,{".lua",".json",".map"})
+                paths=files_under(p,{".lua",".json",".map",".yaml",".yml",".xl"})
                 if paths:
                     owners.append(examine("CET:"+p.name,"CET_LUA",paths,root))
     if reds.is_dir():
@@ -149,7 +172,7 @@ def scan(game:Path)->dict:
             if p.is_symlink():
                 continue
             if p.is_dir():
-                paths=files_under(p,{".reds",".json"})
+                paths=files_under(p,{".reds",".json",".yaml",".yml",".xl"})
                 if paths:
                     owners.append(examine("REDS:"+p.name,"REDSCRIPT",paths,root))
             elif p.is_file() and p.suffix.casefold()==".reds" and p.stat().st_size<=CAP:
