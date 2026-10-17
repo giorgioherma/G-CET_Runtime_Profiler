@@ -140,7 +140,7 @@ def stage(game:Path,contract:dict,restore:bool=False)->tuple[str,bytes]:
     buffer=io.BytesIO()
     with zipfile.ZipFile(buffer,"w",compression=zipfile.ZIP_DEFLATED) as zipout:
         for path,data in [(contract["source"],new.encode("utf-8")),
-                          ("G-LookupCache/REVIEWED-STAGE.json",
+                          ("bin/x64/plugins/cyber_engine_tweaks/mods/G-LookupCache/REVIEWED-STAGE.json",
                            (json.dumps(metadata,sort_keys=True,indent=2)+"\n").encode("utf-8"))]:
             info=zipfile.ZipInfo(path,date_time=(1980,1,1,0,0,0))
             info.compress_type=zipfile.ZIP_DEFLATED
