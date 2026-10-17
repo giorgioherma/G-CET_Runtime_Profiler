@@ -1,10 +1,12 @@
 import importlib.util
 import json
 import tempfile
+import sys
 import unittest
 from pathlib import Path
 
 script=Path(__file__).resolve().parents[1]/"tools"/"scan_stack.py"
+sys.path.insert(0,str(script.parent))
 spec=importlib.util.spec_from_file_location("lookup_scanner",script)
 s=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(s)
