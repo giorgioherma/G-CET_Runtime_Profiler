@@ -11,7 +11,7 @@
 
 ## New changes
 
-1. Retried source-job fail-open after a failed Resume or author state restorer (rather than caching a failed fallback as successful). Owner snapshot errors still reject native gating.
+1. Retried source-job fail-open after a failed Resume or author state restorer (rather than caching a failed fallback as successful). Owner snapshot errors still reject native gating. Retries are per owner, not per entire stack; fresh snapshots invalidate old restoration acknowledgements.
 2. Added explicit CET `onShutdown` owner-detach injection in the reviewed pilot.
 3. Required shared host scheduler admission ahead of lifecycle registration to avoid permanently consuming/tombstoning source IDs if the scheduler is unavailable.
 4. Added native Lua and source Python regression tests; independent source CI [#39055713415](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/39055713415) passed. Matching native CI for new host and fallback tests must be consulted at current HEAD before declaring those changes CI-verified.
