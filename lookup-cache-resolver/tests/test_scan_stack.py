@@ -362,6 +362,46 @@ Cron.Every(1,function() return Game.GetPlayer():GetWorldPosition():Distance(site
         self.assertEqual(m["workload_gate"]["metrics"]["shared_native_marshalling_owner"],
                          "NOT_ATTRIBUTABLE")
 
+
+    def test_geometry_hints_do_not_admit_callbacks(self):
+        from extract_site_hints import extract_sites
+        src="""StreetTables.locations={
+ {center={x=1165.115,y=-483.113},surfaceZ=32.457,floorZ=31.69}
+}
+local p=Vector4.new(-4,5,6,1)
+local localSite={x=-1.2,y=2.5,z=0.5}
+"""
+        sites=extract_sites("tables.lua",src)
+        forms={s["form"] for s in sites}
+        self.assertEqual(forms,{"LUA_CENTER_FLOORZ","VECTOR4_LITERAL","SOURCE_XYZ"})
+        center=next(s for s in sites if s["form"]=="LUA_CENTER_FLOORZ")
+        self.assertEqual(center["xyz"],[1165.115,-483.113,31.69])
+        self.put(s.CET/"Geometry/tables.lua",src)
+        m=s.scan(self.root)["owners"][0]
+        self.assertEqual(m["site_hint_count"],3)
+        self.assertFalse(m["all_possible_locations_proven"])
+        self.assertFalse(m["safe_to_patch"])
+
+    def test_map_200_sites_remains_selected_epoch_unproven(self):
+        from extract_site_hints import extract_sites
+        raw="\n".join("%s %s %s 1" % (i,i*2,i*3) for i in range(200))
+        candidates=extract_sites("packages.map",raw)
+        self.assertEqual(len(candidates),200)
+        self.assertEqual(candidates[-1]["xyz"],[199.,398.,597.])
+        self.put(s.CET/"Package/maps/packages.map",raw)
+        m=s.scan(self.root)["owners"][0]
+        self.assertEqual(m["site_hint_count"],200)
+        self.assertEqual(len(m["evidence_files"][0]["site_hints"]["examples"]),16)
+        self.assertEqual(m["classification"],"NOT_IDENTIFIED")
+
+    def test_json_coordinates_ignore_boolean_and_bad_source(self):
+        from extract_site_hints import extract_sites
+        data='{"sites":[{"x":1,"y":2,"z":3},{"x":true,"y":0,"z":1}]}'
+        found=extract_sites("sites.json",data)
+        self.assertEqual(len(found),1)
+        self.assertEqual(found[0]["source_key"],"$/sites/0")
+        self.assertEqual(extract_sites("sites.json","broken"),[])
+
     def test_empty_install_refused(self):
         with tempfile.TemporaryDirectory() as root:
             with self.assertRaises(ValueError):

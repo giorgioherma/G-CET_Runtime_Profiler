@@ -12,6 +12,7 @@ from pathlib import Path
 import re
 import sys
 from workload_gate import apply_workload_gate
+from extract_site_hints import extract_sites
 
 CET=Path("bin/x64/plugins/cyber_engine_tweaks/mods")
 REDS=Path("r6/scripts")
@@ -139,6 +140,7 @@ def file_evidence(f:Path,root:Path,language:str)->dict:
         counts["literal_xyz"]+=1
         if len(spans.setdefault("literal_xyz",[]))<18:
             spans["literal_xyz"].append({"line":line_no,"excerpt":excerpt})
+    geometry=extract_sites(f.as_posix(),content)
     vehicle=bool(VEHICLE_POSITION.search(content))
     player=bool(PLAYER_POSITION.search(content))
     return {
@@ -150,6 +152,8 @@ def file_evidence(f:Path,root:Path,language:str)->dict:
         "sha256":hashlib.sha256(raw).hexdigest(),"bytes":len(raw),
         "counts":counts,"spans":spans,
         "wake_leads":wake_evidence(lines) if f.suffix.casefold() in (".lua",".reds") else [],
+        "site_hints":{"total":len(geometry),"examples":geometry[:16],
+                      "all_sites_source_proven":False},
     }
 
 def examine(name:str,language:str,paths:list[Path],root:Path)->dict:
@@ -178,6 +182,8 @@ def examine(name:str,language:str,paths:list[Path],root:Path)->dict:
                                  (".json",".map",".yaml",".yml",".xl")
                               and e["counts"]["literal_xyz"]>0],
         "surface_clues":surface_evidence(evidence),
+        "site_hint_count":sum(e["site_hints"]["total"] for e in evidence),
+        "all_possible_locations_proven":False,
         "wake_leads":[{"path":e["path"],**lead}
                       for e in evidence for lead in e["wake_leads"]][:100],
         "site_set_completeness":"NOT_PROVEN_BY_SCANNER",
