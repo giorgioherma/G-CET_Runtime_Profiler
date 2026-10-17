@@ -95,6 +95,6 @@ def decide(evidence:dict|None, source:str, source_sha256:str)->dict:
         "min_net_ms_per_second":MIN_NET_MS_PER_SECOND,
         "min_return_ratio":MIN_RETURN_RATIO,
         "shared_overhead_charged":"ONCE_IN_FULL_FOR_SINGLE_OWNER",
-        "source":"SOURCE_PINNED",
+        "measurement_basis":"SOURCE_PINNED_PAIRED_CAPTURES",
         "not_gameplay_verified":True,
     }
