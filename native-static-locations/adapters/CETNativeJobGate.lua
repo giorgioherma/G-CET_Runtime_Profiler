@@ -20,7 +20,7 @@ function Gate.new(farJob,nearJobs,keepAlive,restoreOriginal,onFarHousekeeping)
   return setmetatable({
     far=farJob,near=nearJobs,keepAlive=keepAlive,
     restoreOriginal=restoreOriginal,onFarHousekeeping=onFarHousekeeping,
-    mode="ORIGINAL", lastNativeState=nil,
+    mode="ORIGINAL", lastNativeState=nil, fallbackPending=false,
   },Gate)
 end
 
@@ -67,22 +67,25 @@ function Gate:_apply()
 end
 
 function Gate:_transition(mode)
-  if self.mode==mode then return true end
+  if self.mode==mode and not (mode=="ORIGINAL" and self.fallbackPending) then return true end
   self.mode=mode
   -- Source adapters can supply their authored mode reset (e.g. a
   -- setNearMode(false) transition). Merely resuming the far job can be
   -- insufficient when author nearMode still says it is already NEAR.
   local restored=true
   if mode=="ORIGINAL" and self.restoreOriginal then
-    restored=pcall(self.restoreOriginal)
+    local ok,result=pcall(self.restoreOriginal)
+    restored=ok and result~=false
   end
   local ok=pcall(self._apply,self)
   if not ok or not restored then
     self.mode="ORIGINAL"
+    self.fallbackPending=true
     -- Attempt original service even when a near-job operation failed.
     pcall(self.far.Resume)
     return false
   end
+  self.fallbackPending=false
   return true
 end
 
@@ -125,6 +128,7 @@ function Gate:reconcileAuthorTransition()
   local ok=pcall(self._apply,self)
   if not ok then
     self.mode="ORIGINAL"
+    self.fallbackPending=true
     pcall(self.far.Resume)
     return false
   end
