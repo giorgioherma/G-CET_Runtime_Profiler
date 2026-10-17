@@ -47,4 +47,25 @@ assert(broken.active and not bad:isNative())
 -- If author active predicate errors, keep the independent lane alive.
 local predicate=Gate.new(job(true),{job(false)},function() error("unavailable") end)
 assert(predicate:onFar(22,true) and predicate.near[1].active)
-print("PASS native job gate proximity, active lanes, fail-open, original recovery")
+-- Author nearMode can remain true after native leaves or becomes UNKNOWN.
+-- Source-owned transition must reset it before original far timer resumes.
+local authoredNear=true
+local original=job(true)
+local restoreCount=0
+local restoredGate=Gate.new(original,{job(false)},nil,function()
+ authoredNear=false
+ restoreCount=restoreCount+1
+end)
+assert(restoredGate:onNear(12,true))
+authoredNear=true
+assert(restoredGate:onFallback("COORDINATOR_LOST"))
+assert(not authoredNear and original.active and restoreCount==1)
+assert(restoredGate:onFallback("COORDINATOR_LOST") and restoreCount==1)
+-- An author restorer may error. Do not leave original scan suspended.
+local originalFail=job(true)
+local failing=Gate.new(originalFail,{job(false)},nil,
+ function() error("author reset failed") end)
+assert(failing:onNear(13,true))
+assert(not failing:onFallback("NATIVE_UNAVAILABLE"))
+assert(originalFail.active and not failing:isNative())
+print("PASS native job gate proximity, author-state restoration, fail-open")

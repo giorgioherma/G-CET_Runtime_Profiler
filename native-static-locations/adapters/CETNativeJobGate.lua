@@ -10,13 +10,15 @@ local function validJob(job)
     and type(job.Pause)=="function" and type(job.Resume)=="function"
 end
 
-function Gate.new(farJob,nearJobs,keepAlive)
+function Gate.new(farJob,nearJobs,keepAlive,restoreOriginal)
   assert(validJob(farJob),"original far-discovery job must be pauseable")
   assert(type(nearJobs)=="table","near jobs required")
   for _,job in ipairs(nearJobs) do assert(validJob(job)) end
   if keepAlive~=nil then assert(type(keepAlive)=="function") end
+  if restoreOriginal~=nil then assert(type(restoreOriginal)=="function") end
   return setmetatable({
     far=farJob,near=nearJobs,keepAlive=keepAlive,
+    restoreOriginal=restoreOriginal,
     mode="ORIGINAL", lastNativeState=nil,
   },Gate)
 end
@@ -66,8 +68,15 @@ end
 function Gate:_transition(mode)
   if self.mode==mode then return true end
   self.mode=mode
+  -- Source adapters can supply their authored mode reset (e.g. a
+  -- setNearMode(false) transition). Merely resuming the far job can be
+  -- insufficient when author nearMode still says it is already NEAR.
+  local restored=true
+  if mode=="ORIGINAL" and self.restoreOriginal then
+    restored=pcall(self.restoreOriginal)
+  end
   local ok=pcall(self._apply,self)
-  if not ok then
+  if not ok or not restored then
     self.mode="ORIGINAL"
     -- Attempt original service even when a near-job operation failed.
     pcall(self.far.Resume)

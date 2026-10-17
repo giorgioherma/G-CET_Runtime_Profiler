@@ -33,9 +33,9 @@ function Host:_install()
   return true
 end
 
-function Host:attach(ownerId,farJob,nearJobs,keepAlive)
+function Host:attach(ownerId,farJob,nearJobs,keepAlive,restoreOriginal)
   assert(not self.closed and self.gates[ownerId]==nil)
-  local gate=self.gateFactory.new(farJob,nearJobs,keepAlive)
+  local gate=self.gateFactory.new(farJob,nearJobs,keepAlive,restoreOriginal)
   local owner=self.setFactory.new(gate)
   owner:bind(self.hub,ownerId)
   self.gates[ownerId]=gate
@@ -44,7 +44,7 @@ function Host:attach(ownerId,farJob,nearJobs,keepAlive)
   return gate
 end
 
-function Host:attachSource(ownerId,farJob,nearJobs,keepAlive,epoch,fingerprint,sites,relevant)
+function Host:attachSource(ownerId,farJob,nearJobs,keepAlive,epoch,fingerprint,sites,relevant,restoreOriginal)
   assert(not self.closed and self.gates[ownerId]==nil)
   assert(type(self.lifecycleFactory)=="table"
       and type(self.lifecycleFactory.new)=="function",
@@ -55,7 +55,7 @@ function Host:attachSource(ownerId,farJob,nearJobs,keepAlive,epoch,fingerprint,s
   -- so the original far-discovery job is still running.
   local ok,reason=lifecycle:register(epoch,fingerprint,sites,relevant)
   if not ok then return nil,reason end
-  local gate=self:attach(ownerId,farJob,nearJobs,keepAlive)
+  local gate=self:attach(ownerId,farJob,nearJobs,keepAlive,restoreOriginal)
   self.sources[ownerId]={lifecycle=lifecycle,gate=gate,sites=self.setFactory}
   if not relevant then
     gate:deactivate()
