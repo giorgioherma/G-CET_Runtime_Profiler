@@ -14,6 +14,13 @@ local count=far.pauses
 assert(gate:onFar(17,false) and far.pauses==count)
 -- A native enter wakes the ORIGINAL near-exact author check, not a quest start.
 assert(gate:onNear(17,false) and not far.active and near.active)
+-- Author Scheduler methods are permitted to return nil on success.
+local nilJob=job(true)
+nilJob.Pause=function() nilJob.active=false end
+nilJob.Resume=function() nilJob.active=true end
+local nilGate=Gate.new(nilJob,{job(false)})
+assert(nilGate:onFar(1,true) and not nilJob.active)
+assert(nilGate:onFallback("lost") and nilJob.active)
 -- If author logic changed both handles, one lifecycle reconciliation
 -- must not resurrect old far discovery.
 far.Resume()

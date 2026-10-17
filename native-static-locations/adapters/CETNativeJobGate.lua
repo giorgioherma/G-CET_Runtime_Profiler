@@ -31,7 +31,8 @@ end
 local function doJob(job,operation)
   -- 0-Engine Scheduler job API provides handle.Pause()/Resume().
   -- Never suppress a failure and pretend that the old discovery retired.
-  assert(job[operation](),operation.." rejected")
+  local ok,result=pcall(job[operation])
+  assert(ok and result~=false,operation.." rejected")
 end
 
 function Gate:_apply()
