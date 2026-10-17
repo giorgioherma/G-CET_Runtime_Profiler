@@ -68,6 +68,9 @@ local function frames(n)
   end
  end
 end
+-- The single host snapshots on the first shared scheduler tick, before
+-- the authored 1-second far task reaches its first due time.
+ticks[4].fn()
 frames(100)
 assert(counts.far==0 and counts.near==0)
 assert(counts.independent==100)
@@ -75,12 +78,12 @@ assert(ticks[1].calls==0) -- actual callback dispatch suppressed
 changes[#changes+1]={id=51,state=1}
 state=1
 frames(20)
-assert(counts.far==0 and counts.near==20)
+assert(counts.far==0 and counts.near==19)
 assert(counts.independent==120)
 changes[#changes+1]={id=51,state=0}
 state=0
 frames(40)
-assert(counts.far==0 and counts.near==21) -- event handled after first near tick
+assert(counts.far==0 and counts.near==20) -- event handled after first near tick
 ready=false
 frames(40)
 assert(counts.far==39) -- original scanner wakes next dispatch after fallback
