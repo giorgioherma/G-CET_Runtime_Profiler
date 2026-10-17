@@ -104,7 +104,8 @@ EXPECTED_ENTRIES
             -- Native FAR is an original author cleanup wake, not an
             -- instruction to launch/advance gameplay. Run once per exit.
             if pokerRuntimeReady() then
-              StreetTables.update(0.0,POKER_WAKE_RADIUS)
+              local exactNear=StreetTables.update(0.0,POKER_WAKE_RADIUS)
+              if not exactNear then setNearMode(false) end
             end
             return true
           end)
@@ -125,6 +126,7 @@ EXPECTED_ENTRIES
       ("far_retry",'            if near then setNearMode(true) end',
        '            if gcetLookupBinding then gcetLookupBinding:attempt() end\n'),
       ("near_retry",'            if not near then setNearMode(false) end',
+       '            if near then setNearMode(true) end\n'
        '            if gcetLookupBinding then gcetLookupBinding:attempt() end\n'),
       ("site_bind",'        local realtimeJob = client.Schedule.EveryFrame({',
        binding+"\n"),
