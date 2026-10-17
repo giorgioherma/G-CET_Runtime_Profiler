@@ -14,7 +14,7 @@
 1. Retried source-job fail-open after a failed Resume or author state restorer (rather than caching a failed fallback as successful). Owner snapshot errors still reject native gating. Retries are per owner, not per entire stack; fresh snapshots invalidate old restoration acknowledgements.
 2. Added explicit CET `onShutdown` owner-detach injection in the reviewed pilot.
 3. Required shared host scheduler admission ahead of lifecycle registration to avoid permanently consuming/tombstoning source IDs if the scheduler is unavailable.
-4. Added native Lua and source Python regression tests; independent source CI [#39055713415](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/39055713415) passed. Matching native CI for new host and fallback tests must be consulted at current HEAD before declaring those changes CI-verified.
+4. Added native Lua and source Python regression tests. Native CI [#39056164888](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/39056164888) passed Windows/Linux at code SHA `95df3e02`. Source CI [#39056375951](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/39056375951) passed at code SHA `f736f578`. Experimental metadata files were moved under the game-root CET folder. Interim source CI failures came from stale test expectations and a literal newline escape in a test; the corrected regression passed.
 
 These are experimental, source-pinned modifications, not changes to the production Resolver/Profiler. **No gameplay load, callback-dispatch performance savings, RTTI ABI verification or REDscript compile has been established by this source check.**
 
