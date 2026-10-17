@@ -9,10 +9,12 @@ sources remain entirely unchanged. No game installation is modified.
 from __future__ import annotations
 
 import hashlib
+import io
 import math
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import sys
+import zipfile
 
 from lua_callback_scopes import masked, scope_end
 from stage_source_pass import SCHEMA, REQUIRED_PROOFS, Refused, stage
@@ -89,8 +91,11 @@ def admit(text: str, relative: str, owner: int, anchor: int):
             0 < owner < 2_100_000_000 and
             0 < anchor < 2_100_000_000 and owner != anchor):
         raise Refused("invalid/colliding native IDs")
-    if not relative.startswith("bin/x64/plugins/cyber_engine_tweaks/mods/") or not relative.endswith(".lua"):
-        raise Refused("not an installed CET Lua source")
+    mod_root="bin/x64/plugins/cyber_engine_tweaks/mods/"
+    parts=PurePosixPath(relative).parts
+    if (not relative.startswith(mod_root) or len(parts)!=8 or
+        parts[-1]!="init.lua" or any(p in ("..",".") for p in parts)):
+        raise Refused("strict family requires an installed CET mod init.lua")
     jobs = _jobs(text)
     eligible=[]
     for far in jobs:
@@ -195,8 +200,50 @@ end)
         "auto_admission":True, "reviewed_source_only":False,
     }
 
+def bundle_runtime(game:Path, relative:str, overlay:bytes)->bytes:
+    """Bundle shared CET host source; no DLL or game-root mutation."""
+    adapters=Path(__file__).resolve().parents[2]/"native-static-locations"/"adapters"
+    mod_root="bin/x64/plugins/cyber_engine_tweaks/mods/"
+    mod=PurePosixPath(relative).parts[-2]
+    shared=mod_root+"G-LookupCache/"
+    files={
+        mod_root+mod+"/GCETLookupWakeBinding.lua":
+            adapters/"CETSourceWakeBinding.lua",
+        shared+"init.lua":adapters/"CETLookupCacheModEntry.lua",
+    }
+    for name in ("CETNativeWakeHost.lua","CETStaticLocationConsumer.lua",
+                 "CETAnchorSetGate.lua","CETNativeJobGate.lua",
+                 "CETSourceAnchorLifecycle.lua","CETNativeWakeBootstrap.lua"):
+        files[shared+"modules/"+name]=adapters/name
+    with zipfile.ZipFile(io.BytesIO(overlay)) as inp:
+        result={name:inp.read(name) for name in inp.namelist()}
+    for name,source in files.items():
+        data=source.read_bytes()
+        live=game/name
+        if live.exists():
+            if not live.is_file() or live.is_symlink() or live.read_bytes()!=data:
+                raise Refused("support source conflict: "+name)
+            continue
+        if name in result and result[name]!=data:
+            raise Refused("overlay support collision: "+name)
+        result[name]=data
+    result[shared+"EXPERIMENTAL-NATIVE-DEPENDENCY.txt"]=(
+        b"Generic structurally-proven pilot; not gameplay verified.\n"
+        b"Requires a matching GCETStaticLocations RED4ext DLL.\n")
+    out=io.BytesIO()
+    with zipfile.ZipFile(out,"w",compression=zipfile.ZIP_DEFLATED) as z:
+        for name in sorted(result):
+            if not name.startswith(mod_root):
+                raise Refused("non-game-root payload member: "+name)
+            info=zipfile.ZipInfo(name,date_time=(1980,1,1,0,0,0))
+            info.compress_type=zipfile.ZIP_DEFLATED
+            info.external_attr=0o644<<16
+            z.writestr(info,result[name])
+    return out.getvalue()
+
 def stage_generic(game:Path,relative:str,owner:int,anchor:int):
-    """Stage reversible overlay; no game-root changes or per-mod whitelist."""
+    """Stage reversible game-root ZIP including generic host support."""
     src=game/relative
     contract=admit(src.read_text(encoding="utf-8"),relative,owner,anchor)
-    return stage(game,contract),contract
+    status,overlay=stage(game,contract)
+    return (status,bundle_runtime(game,relative,overlay)),contract
