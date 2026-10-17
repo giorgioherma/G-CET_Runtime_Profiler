@@ -8,6 +8,8 @@
 
 | Detailed subject | Document |
 | --- | --- |
+| Generic CET/REDscript evidence intake, independent wake and native arming contract | [details/RESOLVER-EVIDENCE-AND-ARMING.md](details/RESOLVER-EVIDENCE-AND-ARMING.md) |
+| Read-only selected-stack source evidence scanner | [lookup-cache-resolver/README.md](../../lookup-cache-resolver/README.md) |
 | Service architecture, ownership, lifecycle, native API | [details/ARCHITECTURE.md](details/ARCHITECTURE.md) |
 | CET, G-RED and source-matched R4 adapters; transformation gates | [details/CONSUMERS-AND-SOURCE-PROOF.md](details/CONSUMERS-AND-SOURCE-PROOF.md) |
 | Build, CI, profiling and in-game validation matrix | [details/TEST-AND-RELEASE.md](details/TEST-AND-RELEASE.md) |
