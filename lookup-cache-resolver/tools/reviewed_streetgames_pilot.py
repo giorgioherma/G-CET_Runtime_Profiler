@@ -57,6 +57,17 @@ def build_contract(game:Path)->dict:
         hashlib.sha256(data).hexdigest()!=DATA_HASH):
         raise Refused("reviewed author-source epoch does not match")
     sites=get_sites(data.decode("utf-8"))
+    return {
+      "schema":SCHEMA,"source":SOURCE,"original_sha256":SOURCE_HASH,
+      "dependency_sha256":{DATA:DATA_HASH},
+      "proof":{x:True for x in REQUIRED_PROOFS},
+      "sites":[{k:v for k,v in site.items() if k!="name"} for site in sites],
+      "insertions":[{"name":name,"needle":needle,"before":snippet,"after":""}
+                    for name,needle,snippet in reviewed_insertions(sites)],
+      "status":"EXPERIMENTAL_SOURCE_REVIEW_ONLY",
+    }
+
+def reviewed_insertions(sites:list[dict])->list[tuple[str,str,str]]:
     # Native 45m gate is conservative; exact author 25m work remains unchanged.
     # Deterministic, source-backed roster. Lua checks it again against the
     # actual loaded author tables before registering any native IDs.
@@ -134,15 +145,7 @@ EXPECTED_ENTRIES
       ("rollback",'        for _, handle in ipairs(created) do',
        '        if gcetLookupBinding then gcetLookupBinding:shutdown(); gcetLookupBinding=nil end\n'),
     ]
-    return {
-      "schema":SCHEMA,"source":SOURCE,"original_sha256":SOURCE_HASH,
-      "dependency_sha256":{DATA:DATA_HASH},
-      "proof":{x:True for x in REQUIRED_PROOFS},
-      "sites":[{k:v for k,v in site.items() if k!="name"} for site in sites],
-      "insertions":[{"name":name,"needle":needle,"before":snippet,"after":""}
-                    for name,needle,snippet in edits],
-      "status":"EXPERIMENTAL_SOURCE_REVIEW_ONLY",
-    }
+    return edits
 
 def bundle_runtime(game:Path,overlay:bytes)->bytes:
     """Package the one shared host, without touching the user's game files.

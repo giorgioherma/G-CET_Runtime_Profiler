@@ -23,6 +23,11 @@ class ReviewedPilotTests(unittest.TestCase):
   self.assertEqual(len({x["id"] for x in found}),40)
   self.assertEqual(found[0]["metric"],"xyz")
   self.assertEqual(found[0]["radius"],45.0)
+  edits={name:code for name,_,code in m.reviewed_insertions(found)}
+  self.assertIn("if near then setNearMode(true)",edits["near_retry"])
+  self.assertIn("StreetTables.update(0.0,POKER_WAKE_RADIUS)",edits["site_bind"])
+  self.assertIn("if not exactNear then setNearMode(false)",edits["site_bind"])
+  self.assertIn("gcetLookupBinding:reconcile()",edits["source_mode"])
   with self.assertRaises(Exception):
    m.get_sites(text+"table.insert(StreetTables.locations, site)\n")
   with self.assertRaises(Exception):
