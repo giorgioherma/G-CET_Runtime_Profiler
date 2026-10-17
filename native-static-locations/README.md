@@ -1,13 +1,13 @@
 # G-LookupCache — experimental RED4ext location service
 
-This module is deliberately scoped to **world-space locations fixed within each source-owned registration epoch**, independent of the game-side CET/Lua and REDscript script runtimes. It is **not** a production optimizer yet.
+This native backend now lives in the authoritative **`dev/resolver-profiler-handoff`** tree, alongside the C# Resolver's `HoneyTrapService` opportunity analysis. It retains an independent RED4ext build and artifact; it does **not** replace the native CET Profiler or autonomously optimize installed mods. Native code is deliberately scoped to **world-space locations fixed within each source-owned registration epoch**. The Resolver remains the only authority for selecting, source-proving and staging an optimization.
 
 ## Built and tested
 
 - Single shared C++ spatial hash with 128-metre XY grid, squared XY/XYZ distance, per-owner stable integer IDs, exact-position unchanged early return, owner-controlled armed state, transition-only change list, invalid-position fail-open, and session reset. Threading is deliberately excluded; call on the game main thread.
 - Compiler converts a **source-proven installed-only JSON manifest** into a small, versioned, fixed-record little-endian file (`GCAS` v1); YAML may be used as a review/export format but is not interpreted in game. Invalid IDs, duplicates, coordinates, nonfinite numbers, unsupported metrics and radii fail closed.
 - RED4ext RTTI exports the native index/state/owner subscription API and `GCETStaticCoordinatorState`. The **single native Running-state callback** now reads the game player's world position and updates the index once per running-state tick, with enter/exit snapshot invalidation. A failed/absent player getter changes state to UNKNOWN. The old `UpdatePlayer` method is a disabled compatibility stub returning -1: CET/REDscript mods **must not** feed position separately. `State==-1` means unknown, therefore **run original author path**. The native game callback still needs actual runtime validation.
-- Dedicated branch + independent Windows RED4ext CI and Linux core/manifest CI. This is **not** an extension of the existing Profiler native build.
+- Independent Windows RED4ext CI and Linux core/manifest CI on the Resolver/Profiler development branch. This is **not** an extension of the existing Profiler native build.
 
 ## Critical limitations
 
@@ -33,6 +33,15 @@ Windows x64 plugin: `cmake -S native-static-locations -B build/static -A x64 -DG
 Alongside the compiled GCAS v1 manifest, `GCETStaticAddAnchor(id,x,y,z,radius,xyOnly,owner)` allows an author adapter to register **source-proven locations once** without knowing locations during Resolver manifest creation. This covers fixed positions loaded from editable JSON, owner-created location tables, and source epoch changes. New anchors are **unarmed**; the owner adapter must explicitly call `GCETStaticArm(id,true)` when that wake is applicable. Remove obsolete anchors with `GCETStaticRemoveAnchor`; reloaded coordinates need a **new unique ID** (tombstones prevent identity reuse until the service reloads). The C++ index updates spatial cells during registration, not per-frame, with ownership-aware snapshots and unknown-state recovery. Repeated new registrations consume up to the 100,000-entry capacity, including tombstones; churny spawned entities must not use this static service.
 
 The initial source-matched R4 Lua prototype has its own experimental bridge `adapters/LegacyR4NativeCacheBridge.lua`. It can substitute native proximity checks behind the existing 0-Engine static-anchor API **without introducing a new CET per-mod update hook**, and uses the original R4 Lua work path as fail-open fallback. It is **not** automatically installed or enabled. CET consumer and G-RED scheduler bridges are also maintained under `adapters/`, but they are not yet the integrated production Resolver transforms. See [adapter contract](adapters/README.md).
+
+## Resolver-owned integration status
+
+- **Transferred:** all native index/coordinator/journal/probe C++ code, interfaces, source-facing Lua/REDscript adapters, source-aware manifests/compiler, regression tests and isolated CI workflow from the experimental branch.
+- **Integrated analysis:** `src/G.CETProfiler.Core/Services/HoneyTrapService.cs` consumes the existing measured Resolver Scheduler/semantic data and refuses unproven transformation.
+- **Not yet integrated in generated passes:** pinned native DLL deployment, per-installation `G-CET.locations`, per-mod source-proven registration/retirement and measured savings; the production `PassGeneratorService` does **not** yet include this backend automatically. Existing semantic rules remain authoritative.
+- **Profiler evidence gap:** native metric IDs 0–13 are available for capture-gated sampling, but current Profiler→Resolver reporting has not yet independently measured shared native tracker CPU, owner-lane retirement or near/far duty cycle. Extend Profiler where such precision is required. Do not infer these from 0-Engine parent CPU.
+
+**Safety:** Never deploy the separately compiled DLL or source adapters to a user from a generic successful CI build alone. Enable only after Resolver source/economic admission and exact hash-verified packaging for the supported installed stack. Any missing/UNKNOWN native state must restore original author behavior.
 
 ## Delivery policy
 
