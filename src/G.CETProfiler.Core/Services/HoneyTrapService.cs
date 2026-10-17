@@ -23,9 +23,13 @@ internal static class HoneyTrapService
         public bool SemanticNativeStageComplete { get; set; }
     }
 
-    private static bool Child(JsonElement parent, string name, out JsonElement child) =>
-        parent.ValueKind == JsonValueKind.Object &&
-        parent.TryGetProperty(name, out child);
+    private static bool Child(JsonElement parent, string name, out JsonElement child)
+    {
+        if (parent.ValueKind == JsonValueKind.Object)
+            return parent.TryGetProperty(name, out child);
+        child = default;
+        return false;
+    }
 
     private static bool Flag(JsonElement obj, string name) =>
         Child(obj, name, out var value) && value.ValueKind == JsonValueKind.True;
