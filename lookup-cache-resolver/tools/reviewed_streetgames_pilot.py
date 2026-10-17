@@ -12,6 +12,8 @@ import json
 from pathlib import Path
 import re
 import sys
+import io
+import zipfile
 
 from stage_source_pass import SCHEMA, REQUIRED_PROOFS, Refused, stage
 
@@ -139,6 +141,52 @@ EXPECTED_ENTRIES
       "status":"EXPERIMENTAL_SOURCE_REVIEW_ONLY",
     }
 
+def bundle_runtime(game:Path,overlay:bytes)->bytes:
+    """Package the one shared host, without touching the user's game files.
+
+    A native DLL is deliberately NOT bundled, and this stage is not declared
+    gameplay-stable until original wake-equivalence is tested in game.
+    """
+    repo=Path(__file__).resolve().parents[2]
+    adapters=repo/"native-static-locations"/"adapters"
+    modroot="bin/x64/plugins/cyber_engine_tweaks/mods/"
+    shared=modroot+"G-LookupCache/"
+    requested={
+       modroot+"StreetGamesPoker/GCETLookupWakeBinding.lua":
+           adapters/"CETSourceWakeBinding.lua",
+       shared+"init.lua":adapters/"CETLookupCacheModEntry.lua",
+    }
+    for name in ("CETNativeWakeHost.lua","CETStaticLocationConsumer.lua",
+                 "CETAnchorSetGate.lua","CETNativeJobGate.lua",
+                 "CETSourceAnchorLifecycle.lua","CETNativeWakeBootstrap.lua"):
+        requested[shared+"modules/"+name]=adapters/name
+    original=zipfile.ZipFile(io.BytesIO(overlay),"r")
+    with original:
+        result={name:original.read(name) for name in original.namelist()}
+    for path,source in requested.items():
+        data=source.read_bytes()
+        target=game/path
+        if target.exists():
+            if not target.is_file() or target.is_symlink() or target.read_bytes()!=data:
+                raise Refused("existing installed support file differs: "+path)
+            continue
+        if path in result and result[path]!=data:
+            raise Refused("shared runtime output collision")
+        result[path]=data
+    result["G-LookupCache/EXPERIMENTAL-NATIVE-DEPENDENCY.txt"]=(
+      "Experimental source pass; not gameplay verified.\\n"
+      "Requires the matching GCETStaticLocations RED4ext native DLL.\\n"
+      "Never install this bundle on an unverified source variant.\\n"
+    ).encode("utf-8")
+    output=io.BytesIO()
+    with zipfile.ZipFile(output,"w",compression=zipfile.ZIP_DEFLATED) as z:
+        for name in sorted(result):
+            info=zipfile.ZipInfo(name,date_time=(1980,1,1,0,0,0))
+            info.compress_type=zipfile.ZIP_DEFLATED
+            info.external_attr=0o644<<16
+            z.writestr(info,result[name])
+    return output.getvalue()
+
 def main(argv=None)->int:
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument("--game",type=Path,required=True)
@@ -148,6 +196,7 @@ def main(argv=None)->int:
     try:
         contract=build_contract(args.game)
         _,bundle=stage(args.game,contract)
+        bundle=bundle_runtime(args.game,bundle)
         args.contract_output.parent.mkdir(parents=True,exist_ok=True)
         args.contract_output.write_text(json.dumps(contract,indent=2)+"\n")
         args.stage_output.write_bytes(bundle)
