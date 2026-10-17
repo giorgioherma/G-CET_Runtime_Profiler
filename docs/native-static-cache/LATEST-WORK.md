@@ -18,6 +18,8 @@
 
 **Extended Dormancy (6) calibration:** Supplied developer archive contains 141 live CET source owners and 62 semantic-original owners. Positive and negative examples exposed previously missed generated `__gcetRegisterEvent_N` onUpdate registrations and unrelated markers/visual callbacks. Source scanner now emits bounded callback-neighborhood evidence; nearby text is NOT control-flow equivalence or complete site-set proof. Archive is a fixture, not the selected live installation.
 
+**Workload gate:** Experimental scanner optionally consumes existing `CET_Resolver_Input.json` (`--profiler-input`), ranks source candidates using Lua exclusive CPU, owned G-GC positive allocation pressure and non-additive 0-Engine scheduler jobs. Low observed workload is an investigation DEFER only, never a source-safe semantic rule veto; unmatched/unknown owners remain reviewable, native owner-zero cost stays unattributed.
+
 **Scanner increment:** Generic mod-source marker/interaction/appearance/audio clues are now reported with source-file vs source-owner relation, plus YAML/XL text assets. Still read-only, no subscribed anchors. Existing Profiler workload join and semantic rewrite remain future implementation.
 
 **NEXT:** Make source-callback/side-effect equivalence proof and native lifecycle ownership the Resolver's input contract, using the now-available 10 originals and R4 as test variants. Start with garages, fixed mission-start locations and selected-map package streaming; ELM only after auditing nativeInteractions' actual dispatcher. Build source-matched reversible original/live/partial overlays and verification of recurring author wake removal. No blind port of the R4 code.

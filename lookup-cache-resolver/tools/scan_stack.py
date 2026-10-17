@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import re
 import sys
+from workload_gate import apply_workload_gate
 
 CET=Path("bin/x64/plugins/cyber_engine_tweaks/mods")
 REDS=Path("r6/scripts")
@@ -241,9 +242,14 @@ def main(argv=None)->int:
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--game",type=Path,required=True)
     parser.add_argument("--output",type=Path)
+    parser.add_argument("--profiler-input",type=Path,
+                        help="existing CET_Resolver_Input.json; only prioritizes investigation")
     args=parser.parse_args(argv)
     try:
         report=scan(args.game)
+        if args.profiler_input:
+            profile=json.loads(args.profiler_input.read_text(encoding="utf-8-sig"))
+            apply_workload_gate(report,profile)
         output=json.dumps(report,indent=2,ensure_ascii=False)+"\n"
         if args.output:
             args.output.parent.mkdir(parents=True,exist_ok=True)
@@ -253,7 +259,7 @@ def main(argv=None)->int:
         print("G-LookupCache: %d owners, %d review candidates, zero automatic patches" %
               (report["owners_inspected"],report["source_review_candidates"]),file=sys.stderr)
         return 0
-    except (OSError,ValueError) as error:
+    except (OSError,ValueError,json.JSONDecodeError) as error:
         print("G-LookupCache scan refused: "+str(error),file=sys.stderr)
         return 2
 

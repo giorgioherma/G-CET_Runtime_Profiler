@@ -280,6 +280,86 @@ end)''')
         self.assertEqual(mod["wake_leads"][0]["relation"],"CALLBACK_ONLY")
         self.assertFalse(mod["safe_to_patch"])
 
+
+    def test_workload_cutoff_skips_only_low_observed_source_review(self):
+        from workload_gate import apply_workload_gate
+        self.put(s.CET/"Tiny/init.lua",'''local site={x=1,y=2,z=3}
+__gcetRegisterEvent_1("onUpdate",function()
+ return Game.GetPlayer():GetWorldPosition():Distance(site)
+end)''')
+        self.put(s.CET/"Large/init.lua",'''local site={x=3,y=4,z=5}
+Cron.Every(1,function() return Game.GetPlayer():GetWorldPosition():Distance(site) end)''')
+        self.put(s.CET/"Missing/init.lua",'''local site={x=3,y=4,z=5}
+Cron.Every(1,function() return Game.GetPlayer():GetWorldPosition():Distance(site) end)''')
+        self.put(s.CET/"Markers/init.lua",'''Game.GetMappinSystem():RegisterMappin(pos)''')
+        duration=100
+        profile={
+          "capture":{"durationSeconds":duration,"title":"CALIBRATION"},
+          "owners":[
+            {"owner":"Tiny","exclusiveMsPerSecond":0.005,"maxExclusiveMs":0.2},
+            {"owner":"Large","exclusiveMsPerSecond":2.0,"maxExclusiveMs":4.0},
+            {"owner":"Markers","exclusiveMsPerSecond":4.0,"maxExclusiveMs":20.0}],
+          "callbackAllocatorPressure":{"byMod":[
+            {"owner":"Tiny","positiveBytes":100,"allocationOperations":2},
+            {"owner":"Large","positiveBytes":100,"allocationOperations":2}]},
+          "scheduler":{"jobs":[]},
+          "gcTracer":{"rankings":[]},
+        }
+        report=apply_workload_gate(s.scan(self.root),profile)
+        mods={m["owner"].split(":",1)[1]:m for m in report["owners"]}
+        self.assertEqual(mods["Tiny"]["workload_gate"]["status"],
+                         "DEFER_LOW_CAPTURED_FOOTPRINT")
+        self.assertEqual(mods["Large"]["workload_gate"]["status"],
+                         "REVIEW_MEASURED_FOOTPRINT")
+        self.assertEqual(mods["Missing"]["workload_gate"]["status"],
+                         "UNOBSERVED_IN_CAPTURE")
+        self.assertEqual(mods["Markers"]["workload_gate"]["status"],
+                         "NO_SOURCE_WAKE_CANDIDATE")
+        self.assertTrue(all(not m["safe_to_patch"] for m in report["owners"]))
+        self.assertTrue(mods["Tiny"]["workload_gate"]["never_veto_existing_source_proven_semantic"])
+
+    def test_workload_keeps_small_lua_but_heavy_nested_or_gc(self):
+        from workload_gate import apply_workload_gate
+        for name in ("Nested","Allocator","Spike","Unknown"):
+            self.put(s.CET/f"{name}/init.lua",'''local site={x=1,y=2,z=3}
+Cron.Every(1,function() return Game.GetPlayer():GetWorldPosition():Distance(site) end)''')
+        profile={
+          "capture":{"durationSeconds":100},
+          "owners":[{"owner":n,"exclusiveMsPerSecond":0.0,
+                     "maxExclusiveMs":6.0 if n=="Spike" else 0.0}
+                    for n in ("Nested","Allocator","Spike","Unknown")],
+          "callbackAllocatorPressure":{"byMod":[
+            {"owner":"Nested","positiveBytes":0,"allocationOperations":0},
+            {"owner":"Allocator","positiveBytes":10_000_000,"allocationOperations":10000},
+            {"owner":"Spike","positiveBytes":0,"allocationOperations":0}]},
+          "scheduler":{"jobs":[{"owner":"Nested","msPerSecond":0.6}]},
+        }
+        mods={m["owner"].split(":",1)[1]:m
+              for m in apply_workload_gate(s.scan(self.root),profile)["owners"]}
+        for n in ("Nested","Allocator","Spike"):
+            self.assertEqual(mods[n]["workload_gate"]["status"],
+                             "REVIEW_MEASURED_FOOTPRINT")
+        self.assertEqual(mods["Unknown"]["workload_gate"]["status"],
+                         "UNKNOWN_ALLOCATION_COVERAGE")
+        self.assertEqual(mods["Nested"]["workload_gate"]["metrics"]
+                         ["scheduler_nested_ms_per_second"],0.6)
+
+    def test_workload_never_uses_shared_native_owner_zero_as_mod_evidence(self):
+        from workload_gate import apply_workload_gate
+        self.put(s.CET/"A/init.lua",'''local site={x=1,y=2,z=3}
+Cron.Every(1,function() return Game.GetPlayer():GetWorldPosition():Distance(site) end)''')
+        profile={"capture":{"durationSeconds":100},
+                 "owners":[{"owner":"A","exclusiveMsPerSecond":0,
+                            "maxExclusiveMs":0}],
+                 "callbackAllocatorPressure":{"byMod":[
+                     {"owner":"A","positiveBytes":0,"allocationOperations":0}]},
+                 "nativeMarshallingAllocationPressure":{
+                     "nativeBoundaryExactOwnerZero":[{"exactPositiveBytes":5000000000}]}}
+        m=apply_workload_gate(s.scan(self.root),profile)["owners"][0]
+        self.assertEqual(m["workload_gate"]["status"],"DEFER_LOW_CAPTURED_FOOTPRINT")
+        self.assertEqual(m["workload_gate"]["metrics"]["shared_native_marshalling_owner"],
+                         "NOT_ATTRIBUTABLE")
+
     def test_empty_install_refused(self):
         with tempfile.TemporaryDirectory() as root:
             with self.assertRaises(ValueError):
