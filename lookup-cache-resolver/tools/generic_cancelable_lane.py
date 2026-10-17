@@ -93,7 +93,7 @@ def admit(text: str, relative: str, owner: int, anchor: int):
         raise Refused("invalid/colliding native IDs")
     mod_root="bin/x64/plugins/cyber_engine_tweaks/mods/"
     parts=PurePosixPath(relative).parts
-    if (not relative.startswith(mod_root) or len(parts)!=8 or
+    if (not relative.startswith(mod_root) or len(parts)!=7 or
         parts[-1]!="init.lua" or any(p in ("..",".") for p in parts)):
         raise Refused("strict family requires an installed CET mod init.lua")
     jobs = _jobs(text)
@@ -241,9 +241,23 @@ def bundle_runtime(game:Path, relative:str, overlay:bytes)->bytes:
             z.writestr(info,result[name])
     return out.getvalue()
 
+def _normalize_for_admission(source:str)->str:
+    """Recover original from known marker envelopes for shape rediscovery.
+
+    Staging independently verifies the *exact* generated content, so merely
+    deleting a tampered marker here never authorizes a corrupted live source.
+    """
+    pattern=re.compile(r"-- G-LOOKUPCACHE:BEGIN:(state|retry|adopt)\n"
+                       r".*?-- G-LOOKUPCACHE:END:\1\n",re.S)
+    candidate=pattern.sub("",source)
+    if "G-LOOKUPCACHE:BEGIN:" in candidate or "G-LOOKUPCACHE:END:" in candidate:
+        raise Refused("unknown or incomplete optimizer marker")
+    return candidate
+
 def stage_generic(game:Path,relative:str,owner:int,anchor:int):
     """Stage reversible game-root ZIP including generic host support."""
     src=game/relative
-    contract=admit(src.read_text(encoding="utf-8"),relative,owner,anchor)
+    live=src.read_text(encoding="utf-8")
+    contract=admit(_normalize_for_admission(live),relative,owner,anchor)
     status,overlay=stage(game,contract)
     return (status,bundle_runtime(game,relative,overlay)),contract
