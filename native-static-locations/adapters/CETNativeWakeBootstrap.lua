@@ -4,11 +4,17 @@
 local M={}
 local VERSION=1
 function M.Install(engine,native,consumerId,components)
-  if type(engine)~="table" or type(engine.GCET)~="table"
-    or type(engine.Register)~="function" then
+  if type(engine)~="table" or type(engine.Register)~="function" then
     return nil,"UNSUPPORTED_ENGINE"
   end
+  -- 0-Engine builds in real installed stacks do not necessarily predeclare
+  -- a GCET namespace. Do not mutate the engine unless host construction
+  -- has succeeded, and never replace an existing foreign namespace.
   local api=engine.GCET
+  if api~=nil and type(api)~="table" then
+    return nil,"EXISTING_NAMESPACE_CONFLICT"
+  end
+  api=api or {}
   if api.LookupCacheHost~=nil then
     if api.LookupCacheHostVersion~=VERSION
       or api.LookupCacheConsumerId~=consumerId then
@@ -32,6 +38,7 @@ function M.Install(engine,native,consumerId,components)
     return nil,"HOST_NOT_READY"
   end
   -- All changes are isolated to this new opt-in namespace.
+  if engine.GCET==nil then engine.GCET=api end
   api.LookupCacheHost=host
   api.LookupCacheHostVersion=VERSION
   api.LookupCacheConsumerId=consumerId
