@@ -19,6 +19,7 @@ BASE='''-- unrelated event listeners must survive untouched
 registerForEvent("onInit", function()
     remoteQuestFactListener()
 end)
+local farJob, nearJob
 farJob = client.Schedule.Every(1.0, {id="quest.far", active=true}, function()
     local pos = Game.GetPlayer():GetWorldPosition()
     local dx = pos.x - 100
@@ -90,6 +91,8 @@ class GenericCancelableLaneTests(unittest.TestCase):
             BASE.replace("nearJob.Resume()","nearJob.Resume()\n        advanceQuest()"),
             BASE.replace("nearJob.Pause()","nearJob.Pause()\n        resetOtherSystems()"),
             BASE.replace("client.Schedule.Every","Cron.Every",1),
+            BASE.replace("local farJob, nearJob", "local farJob, otherJob"),
+            BASE.replace("local farJob, nearJob", ""),
             BASE.replace("local dx = pos.x - 100","local dx = pos.x - movingTarget.x"),
             BASE.replace("625","distanceThreshold"),
             BASE.replace("625","625 or remoteQuestFact()"),
