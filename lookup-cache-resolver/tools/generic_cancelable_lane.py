@@ -20,6 +20,7 @@ import zipfile
 
 from lua_callback_scopes import masked, scope_end
 from stage_source_pass import SCHEMA, REQUIRED_PROOFS, Refused, stage, _path
+from economic_gate import EconomicRefused, decide as decide_economic
 
 IDENT = r"[A-Za-z_][A-Za-z0-9_]*"
 NUMBER = r"-?(?:\d+(?:\.\d+)?|\.\d+)"
@@ -211,7 +212,7 @@ end)
         "auto_admission":True, "reviewed_source_only":False,
     }
 
-def bundle_runtime(game:Path, relative:str, overlay:bytes)->bytes:
+def bundle_runtime(game:Path, relative:str, overlay:bytes, decision:dict)->bytes:
     """Bundle shared CET host source; no DLL or game-root mutation."""
     adapters=Path(__file__).resolve().parents[2]/"native-static-locations"/"adapters"
     mod_root="bin/x64/plugins/cyber_engine_tweaks/mods/"
@@ -240,6 +241,8 @@ def bundle_runtime(game:Path, relative:str, overlay:bytes)->bytes:
         if name in result and result[name]!=data:
             raise Refused("overlay support collision: "+name)
         result[name]=data
+    result[shared+"ECONOMIC-DECISION.json"]=(
+        json.dumps(decision,sort_keys=True,indent=2)+"\n").encode("utf-8")
     result[shared+"EXPERIMENTAL-NATIVE-DEPENDENCY.txt"]=(
         b"Generic structurally-proven pilot; not gameplay verified.\n"
         b"Requires a matching GCETStaticLocations RED4ext DLL.\n")
@@ -267,14 +270,16 @@ def _normalize_for_admission(source:str)->str:
         raise Refused("unknown or incomplete optimizer marker")
     return candidate
 
-def stage_generic(game:Path,relative:str,owner:int,anchor:int):
+def stage_generic(game:Path,relative:str,owner:int,anchor:int,economics:dict|None=None):
     """Stage reversible game-root ZIP including generic host support."""
     root=game.expanduser().resolve(strict=True)
     src=_path(root,relative)
     live=src.read_text(encoding="utf-8")
     contract=admit(_normalize_for_admission(live),relative,owner,anchor)
+    # Source shape is only an opportunity. No measurements means NO overlay.
+    decision=decide_economic(economics,contract["source"],contract["original_sha256"])
     status,overlay=stage(root,contract)
-    return (status,bundle_runtime(root,relative,overlay)),contract
+    return (status,bundle_runtime(root,relative,overlay,decision)),contract
 
 
 def main(argv=None)->int:
@@ -287,14 +292,19 @@ def main(argv=None)->int:
     p.add_argument("--anchor-id",type=int,required=True)
     p.add_argument("--output",type=Path,required=True)
     p.add_argument("--contract-output",type=Path)
+    p.add_argument("--economic-evidence",type=Path,
+                   help="source-pinned paired sparse/dense before-after job-cost JSON; required for an enabled ZIP")
     args=p.parse_args(argv)
     try:
         root=args.game.expanduser().resolve(strict=True)
         for destination in (args.output,args.contract_output):
             if destination and destination.expanduser().resolve().is_relative_to(root):
                 raise Refused("generated artifacts must be outside selected game root")
+        economics=None
+        if args.economic_evidence:
+            economics=json.loads(args.economic_evidence.read_text(encoding="utf-8"))
         (status,bundle),contract=stage_generic(
-            args.game,args.source,args.owner_id,args.anchor_id)
+            args.game,args.source,args.owner_id,args.anchor_id,economics)
         args.output.parent.mkdir(parents=True,exist_ok=True)
         args.output.write_bytes(bundle)
         if args.contract_output:
