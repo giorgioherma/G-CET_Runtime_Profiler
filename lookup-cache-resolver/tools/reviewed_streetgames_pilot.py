@@ -142,6 +142,8 @@ EXPECTED_ENTRIES
        '            if gcetLookupBinding then gcetLookupBinding:attempt() end\n'),
       ("site_bind",'        local realtimeJob = client.Schedule.EveryFrame({',
        binding+"\n"),
+      ("shutdown",'    cleanup("cet_shutdown")\n    StreetGamesPoker.ready = false',
+       '    if gcetLookupBinding then gcetLookupBinding:shutdown(); gcetLookupBinding=nil end\n'),
       ("rollback",'        for _, handle in ipairs(created) do',
        '        if gcetLookupBinding then gcetLookupBinding:shutdown(); gcetLookupBinding=nil end\n'),
     ]
