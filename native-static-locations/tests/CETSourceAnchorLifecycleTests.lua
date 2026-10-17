@@ -55,4 +55,8 @@ failArm=nil
 assert(l:retire() and not entries[201] and removed[201])
 assert(not l:register("map-v5","hash-of-source-v5",b,true))
 assert(changed>=5)
+local reserved={{id=2100000000,x=1,y=2,z=3,radius=10,metric="xyz"}}
+assert(not l:register("probe-id","hash-of-probe-id",reserved,true))
+local invalidOwner=pcall(Life.new,native,2100000000)
+assert(not invalidOwner)
 print("PASS native source epochs, arm/disarm, atomic replace, tombstones")

@@ -3,7 +3,8 @@
 -- separable function. UNKNOWN/native failure restores author-side discovery.
 local Life={}
 Life.__index=Life
-local MAX_ID=2147483647
+-- Native diagnostic probes reserve IDs beginning at 2,100,000,000.
+local MAX_ID=2099999999
 local function validNum(n)
  return type(n)=="number" and n==n and n~=math.huge and n~=-math.huge
 end
