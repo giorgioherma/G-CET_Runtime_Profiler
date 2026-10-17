@@ -38,7 +38,7 @@ The generic scanner remains read-only triage. In addition, an **explicitly revie
 
 ### Runtime failure and teardown obligations
 
-- A failed author fallback is **not** a completed fail-open transition. Native consumer and source job gate must keep retrying original `Resume()`/source restoration until successful; do not permanently latch a failed callback just because `pcall` completed.
+- A failed author fallback is **not** a completed fail-open transition. Native consumer and source job gate must keep retrying original `Resume()`/source restoration until successful; do not permanently latch a failed callback just because `pcall` completed. In a shared consumer, cache acknowledgements **per owner**, so already-restored owners do not replay fallback while another owner fails. Clear these acknowledgements before applying a new native snapshot, so an interrupted multi-owner snapshot restores all changed owners.
 - Shared 0-Engine scheduler admission must succeed before native source IDs are allocated; otherwise a temporarily unavailable scheduler permanently tombstones a valid source epoch and later retries cannot attach.
 - CET shutdown and failed source construction must detach the owner, retire/disarm native anchors and relinquish the shared subscription without stopping other owners. Fully inactive stage cleanup remains separate.
 - The normal far-scanner `StreetTables.update` also performs chair despawn and stranded safety. Only proof-guided housekeeping on native FAR/teleport with retained active gameplay is eligible for retirement.
