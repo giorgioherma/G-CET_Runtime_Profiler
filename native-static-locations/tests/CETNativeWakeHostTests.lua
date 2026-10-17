@@ -114,8 +114,13 @@ local sourceNative={
 }
 local sourceJobs={}
 local sourceClient={Schedule={EveryFrame=function(_,fn)
- sourceJobs[#sourceJobs+1]=fn
- return {Cancel=function() end}
+ local entry={fn=fn,running=true}
+ sourceJobs[#sourceJobs+1]=entry
+ return {
+   Pause=function() entry.running=false end,
+   Resume=function() entry.running=true end,
+   Cancel=function() entry.running=false end,
+ }
 end}}
 local sourceHost=Host.new(sourceNative,sourceClient,1703003,Hub,Set,Gate,Life)
 local aFar,aNear=job(true),job(false)
@@ -128,25 +133,39 @@ local ownerB=sourceHost:attachSource(200,bFar,{bNear},nil,
  "epoch-B","fingerprint-owner-B",defsB,false)
 assert(ownerA and ownerB and #sourceJobs==1)
 assert(nativeSites[1001].armed and not nativeSites[2001].armed)
-sourceJobs[1]()
+sourceJobs[1].fn()
 assert(aNear.active and not aFar.active and not bFar.active)
 -- Reactivate inactive owner by source lifecycle event; native stream
 -- re-snapshots both owners without first treating B's disarmed ID as FAR.
 assert(sourceHost:setRelevant(200,true))
-sourceJobs[1]()
+sourceJobs[1].fn()
 assert(not bFar.active and not bNear.active)
 -- Completing A must not silence B nor restore A's old far scanner.
 assert(sourceHost:setRelevant(100,false))
 assert(not nativeSites[1001].armed and not aFar.active and not aNear.active)
-sourceJobs[1]()
+sourceJobs[1].fn()
 assert(not bFar.active)
 -- New source data gets new IDs; old ones tombstoned.
 local defsB2={{id=2002,x=11,y=22,z=33,radius=70,metric="xyz"}}
 assert(sourceHost:replaceSourceEpoch(200,"epoch-B2","fingerprint-owner-B2",defsB2,true))
 assert(nativeSites[2002] and not nativeSites[2001])
-sourceJobs[1]()
+sourceJobs[1].fn()
 assert(not bFar.active)
 sourceHost:shutdown()
 assert(not nativeSites[1001] and not nativeSites[2002])
 assert(not aFar.active) -- source A explicitly inactive even on shutdown
+-- Last owner becoming inactive pauses the ONE shared host job entirely.
+local singleHost=Host.new(sourceNative,sourceClient,1703004,Hub,Set,Gate,Life)
+local dFar,dNear=job(true),job(false)
+local defsD={{id=3001,x=10,y=20,z=30,radius=35,metric="xyz"}}
+assert(singleHost:attachSource(300,dFar,{dNear},nil,
+ "epoch-D","fingerprint-owner-D",defsD,true))
+local index=#sourceJobs
+assert(sourceJobs[index].running)
+assert(singleHost:setRelevant(300,false))
+assert(not sourceJobs[index].running and not nativeSites[3001].armed)
+assert(singleHost:setRelevant(300,true))
+assert(sourceJobs[index].running and nativeSites[3001].armed)
+assert(#sourceJobs==index) -- resumed same shared job, no duplicate scheduler
+singleHost:shutdown()
 print("PASS shared native host, source-owned stage dormancy and reactivation")
