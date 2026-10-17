@@ -78,6 +78,60 @@ function Editor() SetWorldPosition(a) end''')
         self.assertEqual(a["native_lifecycle_contract"]["inactive_location_stage"],
                          "ANCHOR_DISARMED")
 
+    def test_static_vehicle_garage_position_is_not_player_equivalence(self):
+        self.put(s.CET/"AnyGarage/init.lua",'''local sites = {
+ { key="first", pos = {
+    x = -788.028,
+    y = 943.054,
+    z = 12.199,
+ }, radius = 10.0 }
+}
+registerForEvent("onUpdate", function()
+ local vehicle=GetMountedVehicleSafe()
+ if vehicle and GetActiveGarageForVehiclePosition(vehicle) then
+   ProcessRepairState()
+ end
+ local p = Game.GetPlayer()
+end)
+local d=DistanceBetween(vehiclePos, garagePos)
+''')
+        report=s.scan(self.root)
+        mod=report["owners"][0]
+        self.assertEqual(mod["classification"],"SOURCE_REVIEW_SAME_FILE")
+        self.assertTrue(mod["position_sources_detected"]["vehicle_or_world_transform"])
+        self.assertTrue(mod["position_sources_detected"]["player"])
+        self.assertFalse(mod["safe_to_patch"])
+
+    def test_external_map_epoch_and_nearby_package_streaming(self):
+        self.put(s.CET/"Pack/init.lua",'''local p=Game.GetPlayer():GetWorldPosition()
+Cron.Every(1, function()
+ if math.abs(p.x-target.x)<=100 and DistanceSquared(p,target)<=100 then end
+end)''')
+        self.put(s.CET/"Pack/Maps/current.map",
+                 "# generated package map\n-123.4 55.2 7.5 1\n1 2 3\n")
+        mod=s.scan(self.root)["owners"][0]
+        self.assertEqual(mod["classification"],"SOURCE_REVIEW_CROSS_FILE")
+        self.assertEqual(mod["evidence_counts"]["literal_xyz"],2)
+        self.assertEqual(len(mod["author_data_assets"]),1)
+        self.assertTrue(mod["author_data_assets"][0].endswith("current.map"))
+        self.assertFalse(mod["safe_to_patch"])
+
+    def test_fixed_start_with_manual_squared_distance(self):
+        self.put(s.CET/"Start/init.lua",'''registerForEvent("onUpdate",function(dt) Cron.Update(dt) end)
+local function start()
+ Cron.Every(1.0,function()
+  local playerPos=Game.GetPlayer():GetWorldPosition()
+  local distSq84=(playerPos.x + 1496.32)^2 + (playerPos.y - 2201.52)^2
+  if distSq84<=1.0 then activate() end
+ end)
+end
+local site={x=-1496.32,y=2201.52,z=18.19}
+''')
+        mod=s.scan(self.root)["owners"][0]
+        self.assertTrue(mod["source_review_candidate"])
+        self.assertEqual(mod["classification"],"SOURCE_REVIEW_SAME_FILE")
+        self.assertFalse(mod["safe_to_patch"])
+
     def test_empty_install_refused(self):
         with tempfile.TemporaryDirectory() as root:
             with self.assertRaises(ValueError):
