@@ -70,7 +70,7 @@ class GenericCancelableLaneTests(unittest.TestCase):
         self.assertEqual(self.source(same),optimized)
         partial=optimized.replace("-- G-LOOKUPCACHE:BEGIN:retry\n"+
             "        if gcetLocationBinding then gcetLocationBinding:attempt() end\n"+
-            "\n-- G-LOOKUPCACHE:END:retry\n","")
+            "-- G-LOOKUPCACHE:END:retry\n","")
         self.assertNotEqual(partial,optimized)
         (self.root/PATH).write_text(partial)
         self.assertEqual(self.source(stage(self.root,contract)[1]),optimized)
