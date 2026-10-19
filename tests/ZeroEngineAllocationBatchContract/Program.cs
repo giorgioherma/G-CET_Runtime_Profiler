@@ -151,10 +151,13 @@ var lifeDrift = lifecycleFixture.Replace("local hash = GetPlayerHash(player)",
     "local hash = GetPlayerHash(nil)", StringComparison.Ordinal);
 object?[] lInvalid = [Encoding.UTF8.GetBytes(lifeDrift), false, null, null];
 Check(!(bool)lifecycle.Invoke(null, lInvalid)!, "Lifecycle source drift admitted");
-var lifeInvalidationDrift = lifecycleFixture.Replace(
-    "    -- Session teardown is a separate invalidation event path.\n    Events.PlayerInvalidated:trigger()",
-    "    -- Session teardown is a separate invalidation event path.",
-    StringComparison.Ordinal);
+// Locate the second event directly: fixture source line endings may be CRLF
+// on Windows, making newline-delimited Replace() an unreliable drift test.
+const string invalidation = "Events.PlayerInvalidated:trigger()";
+var teardownEvent = lifecycleFixture.LastIndexOf(invalidation, StringComparison.Ordinal);
+Check(teardownEvent > lifecycleFixture.IndexOf(invalidation, StringComparison.Ordinal),
+    "Fixture must contain a separate ForceInvalidate event");
+var lifeInvalidationDrift = lifecycleFixture.Remove(teardownEvent, invalidation.Length);
 object?[] lInvalidation = [Encoding.UTF8.GetBytes(lifeInvalidationDrift), false, null, null];
 Check(!(bool)lifecycle.Invoke(null, lInvalidation)!,
     "Missing ForceInvalidate event path was accepted");
