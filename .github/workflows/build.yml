@@ -57,6 +57,8 @@ jobs:
         run: dotnet build G-CET-Runtime-Profiler.sln -c Release
       - name: Validate 0-Engine BlackboardCache Stage A source rewrite and evidence gates
         run: dotnet run --project tests/BlackboardPsmStageAContract/BlackboardPsmStageAContract.csproj -c Release
+      - name: Validate 0-Engine allocation batch source, idempotence, drift and evidence
+        run: dotnet run --project tests/ZeroEngineAllocationBatchContract/ZeroEngineAllocationBatchContract.csproj -c Release
       - name: Publish managed report fixture
         run: dotnet publish src/G.CETProfiler.App/G.CETProfiler.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o megamind-smoke/app
       - name: Validate MEGAMIND metrics, provenance and legacy compatibility
