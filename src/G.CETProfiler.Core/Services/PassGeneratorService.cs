@@ -142,6 +142,16 @@ public static class PassGeneratorService
             transformManifest,
             skipped);
 
+        // Explicitly reviewed 0-Engine Stage A: the 12 immutable PSM
+        // definition keys, not the blackboard handle/getters/callback cadence.
+        // Requires all 12 allocation-producing callsites in the active capture,
+        // exact source hash and author lifecycle anchors; unknown source fails
+        // closed. This is independent of the 62 per-mod semantic catalog.
+        if (BlackboardPsmDefinitionCacheSource.TryStage(
+                captureRoot, modsRoot, staged, liveSourceHashes,
+                appliedTransformsByFile, transformManifest, skipped))
+            ++semanticTransformCount;
+
         if (staged.Count == 0)
         {
             // An already-admitted authored rule may still fail its injector's
@@ -269,7 +279,8 @@ public static class PassGeneratorService
                     "HARD_DORMANT_GUARD_HOIST",
                     "SEQUENCE_FIRST_SCRIPTABLE_SYSTEM_POLL",
                     "SHARED_PROVIDER_READ",
-                    "SEMANTIC_RULE_SOURCE_INJECTION"
+                    "SEMANTIC_RULE_SOURCE_INJECTION",
+                    "0_ENGINE_PSM_DEFINITIONS_CACHE_STAGE_A"
                 },
                 fixedRuntimeException = "0-Engine",
                 zeroEngineCompatibilityPolicy = "KNOWN_GCET_FIXED_RUNTIME_OR_STRUCTURALLY_PROVEN_HOST_PRESERVING_ADAPTER",
