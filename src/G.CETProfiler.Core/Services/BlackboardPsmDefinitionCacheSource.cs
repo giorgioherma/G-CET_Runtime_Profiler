@@ -78,7 +78,13 @@ internal static class BlackboardPsmDefinitionCacheSource
         return false;
     }
 
-    internal static bool TryTransform(byte[] source, out byte[] result, out string reason)
+    internal static bool TryTransform(byte[] source, out byte[] result, out string reason) =>
+        TryTransformCore(source, true, out result, out reason);
+
+    // Test-only direct structural gate, used by the managed regression fixture.
+    // Production TryStage always requires exact source SHA256.
+    internal static bool TryTransformCore(byte[] source, bool requireReviewedSha,
+        out byte[] result, out string reason)
     {
         result = source;
         var text = Encoding.UTF8.GetString(source);
@@ -88,7 +94,7 @@ internal static class BlackboardPsmDefinitionCacheSource
             return false;
         }
         var hash = Convert.ToHexString(SHA256.HashData(source)).ToLowerInvariant();
-        if (!hash.Equals(PinnedSha256, StringComparison.Ordinal))
+        if (requireReviewedSha && !hash.Equals(PinnedSha256, StringComparison.Ordinal))
         {
             reason = "Source hash is not the reviewed 0-Engine BlackboardCache2.lua version.";
             return false;
