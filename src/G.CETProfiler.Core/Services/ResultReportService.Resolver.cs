@@ -382,6 +382,7 @@ public static partial class ResultReportService
             unknownAllocationCoverage = BuildUnknownAllocationCoverageInterop(a),
             unscopedProducerDiagnostics = BuildUnscopedDiagnosticsInterop(a.UnscopedDiagnostics),
             nativeMarshallingAllocationPressure = BuildNativeMarshallingPressureInterop(a.UnscopedDiagnostics),
+            nativeBoundaryCallsiteEvidence = BuildNativeBoundaryEvidence(captureRoot),
             callbackAllocatorPressure = BuildCallbackAllocatorPressureInterop(a.CallbackAllocatorPressure),
             zeroEngineAllocationFlow = BuildZeroEngineFlowInterop(a),
             dataProvenanceCandidates = BuildDataProvenanceCandidates(a.GcTracer),

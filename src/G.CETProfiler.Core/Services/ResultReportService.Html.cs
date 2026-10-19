@@ -102,6 +102,7 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
             AppendDataProvenance(sb, a.GcTracer);
         }
         AppendCallbackAllocatorPressure(sb, a.CallbackAllocatorPressure);
+        AppendNativeBoundaryEvidence(sb, captureRoot);
         AppendDeepReuseCandidates(sb, a.DeepReuse);
         AppendScalarObservations(sb, a.ScalarObservations);
 

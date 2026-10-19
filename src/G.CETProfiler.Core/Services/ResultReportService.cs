@@ -72,6 +72,8 @@ public static partial class ResultReportService
         "CET_Runtime_Profile_Deep_Samples.csv",
         "CET_Runtime_Profile_Deep_Lines.csv",
         "CET_Runtime_Profile_Deep_Callsites.csv",
+        "CET_Runtime_Profile_LuaNative_Callsites.csv",
+        "CET_Runtime_Profile_Native_PreDispatchPressure.csv",
         "CET_Runtime_Profile_Scalar_Observations.csv"
     };
 
@@ -160,6 +162,7 @@ public static partial class ResultReportService
             unknownAllocationCoverage = BuildUnknownAllocationCoverageInterop(a),
             unscopedProducerDiagnostics = BuildUnscopedDiagnosticsInterop(a.UnscopedDiagnostics),
             nativeMarshallingAllocationPressure = BuildNativeMarshallingPressureInterop(a.UnscopedDiagnostics),
+            nativeBoundaryCallsiteEvidence = BuildNativeBoundaryEvidence(captureRoot),
             callbackAllocatorPressure = BuildCallbackAllocatorPressureInterop(a.CallbackAllocatorPressure),
             zeroEngineAllocationFlow = BuildZeroEngineFlowInterop(a),
             dataProvenanceCandidates = BuildDataProvenanceCandidates(a.GcTracer),
