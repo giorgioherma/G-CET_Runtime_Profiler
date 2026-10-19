@@ -25,6 +25,9 @@ Line 272 `math.ceil(cfg.pollRadius / gridSize)`: pre-Stage A 50 sampled calls / 
 
 Experimental single-file SHA256: `8f0af7d1d52a630628e1f12b75e4df54edc0f0f28ef607a2776e03367ee33adf`. Archive contains **only** `0-Engine/modules/SpatialHash.lua` with a matching pristine rollback archive. Both are created externally from the uploaded source. No change to spatial entry positions, spatial query semantics, native calls, polling cadence, callbacks or persistent entity userdata. Lua 5.3 syntax passed; deterministic two-set behavioral harness produced identical results for poll events, nearest/within query, count and reset, with `math.ceil` calls shifted from 0 registration + 6 polling calls to 2 registration + 0 polling calls. LuaJIT/gameplay acceptance **PENDING**. No runtime/FPS/allocation saving claimed yet; the CPU payoff may be small.
 
+### Verified live consumers of SpatialHash
+Static search of the entire uploaded active Lua mod tree found only two external registration sites: `Card Collection/init.lua:1232` registers `card_collection` with `gridSize=100`, `pollRadius=2.0`, **`pollThrottle=1.0`** and an `onEnter` collector; `marmurbank/module/Bank.lua:71` registers `marmurbank` with `gridSize=100` but **no `pollRadius`** (it calls `QueryNearest` explicitly). Thus the automatic `Update`-time `ceil` hotspot is specifically consistent with Card Collection polling every frame while active, not all 143 mods. This supports the narrow experiment and bounds its potential benefit. `QueryNearest` remains unchanged for Marmurbank.
+
 This candidate is **NOT wired into automatic passes**, since final admission requires approval, an exact-source hash, allocator-callsite evidence, idempotence, drift/postcondition testing and real A/B gameplay. Do not substitute the hand-built overlay for a source-authorized Resolver stage.
 
 ## Shared-position and NPC-state investigation
