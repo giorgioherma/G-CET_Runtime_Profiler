@@ -840,21 +840,6 @@ if (!(Test-Path -LiteralPath $outPath -PathType Leaf)) {
 }
 
 $result = Get-Content -LiteralPath $outPath -Raw | ConvertFrom-Json
-# G-HoneyTrap runs in the Resolver executable and carries a pinned, INACTIVE
-# RED4ext resource; it must never overwrite the Profiler DLL or become an
-# implicit game install simply because GENERATE PASS was requested.
-$htPayload = Join-Path $ResolverRoot 'runtime\G-HoneyTrap\native\GCETStaticLocations.dll'
-$htContract = Join-Path $ResolverRoot 'runtime\G-HoneyTrap\native\G-CET-StaticLocations.reds'
-$htMarker = Join-Path $ResolverRoot 'runtime\G-HoneyTrap\NOT-DEPLOYED.txt'
-if (!(Test-Path $htPayload -PathType Leaf) -or
-    !(Test-Path $htContract -PathType Leaf) -or
-    !(Test-Path $htMarker -PathType Leaf)) {
-    throw 'Standalone Resolver is missing its pinned, inactive RED4ext location tracker resources.'
-}
-$htSha = (Get-FileHash -LiteralPath $htPayload -Algorithm SHA256).Hash.ToLowerInvariant()
-if ($htSha -ne '1eb8b4197a37c352fbe8314ffc568a8e5f4d2ed9b21efa634848d465ec92595c') {
-    throw "Packaged RED4ext tracker hash is not the approved independent native CI build: $htSha"
-}
 if (!$result.policy.callbackOriented) { throw 'Resolver is not marked callback-oriented.' }
 if (!$result.policy.familyFirst) { throw 'Resolver is not marked callback-family-first.' }
 if (!$result.policy.genericPatternsBeforeSemanticLibrary) { throw 'Semantic library is not gated behind generic pattern resolution.' }
@@ -1371,31 +1356,6 @@ if (@($frame.existingOptimization.capturedSchedulerOwners) -notcontains 'ManualA
     throw 'Resolver incorrectly required Scheduler owner text to equal the CET mod folder.'
 }
 
-# G-HoneyTrap must consume the Resolver's EXISTING Scheduler/source attribution
-# and semantic stage status. It must not issue independent transforms or infer
-# that a recorded job's entire CPU can be retired.
-if ($result.honeyTrap.module -ne 'G-HoneyTrap' -or
-    $result.honeyTrap.integratedIn -ne 'G-CET_RESOLVER' -or
-    [int]$result.honeyTrap.productionTransformsAuthorized -ne 0) {
-    throw 'G-HoneyTrap was not integrated fail-closed into the Resolver analysis.'
-}
-$htFrame = @($result.honeyTrap.opportunities |
-    Where-Object { $_.owner -eq 'FixtureFrame' -and $_.job -eq 'fixture.frame.scheduled' })
-if ($htFrame.Count -ne 1) {
-    throw 'G-HoneyTrap lost/doubled a source-linked Scheduler lane across callback families.'
-}
-if ($htFrame[0].approval -ne 'NOT_ADMITTED' -or
-    $htFrame[0].activeOverlay -or
-    [math]::Abs([double]$htFrame[0].measuredNestedMsPerSecond - 0.4) -gt 0.000001) {
-    throw 'G-HoneyTrap fabricated savings, authorized an overlay, or lost nested job CPU.'
-}
-if ([int]$result.honeyTrap.candidateSchedulerLanes -lt 2) {
-    throw 'G-HoneyTrap failed to preserve source-linked Scheduler candidates.'
-}
-if ($result.honeyTrap.economicPolicy -notmatch 'RISK_ADJUSTED_AGGREGATE_PAYBACK') {
-    throw 'G-HoneyTrap drifted from Resolver system-level risk-adjusted payback.'
-}
-
 $wrappedFrame = @($onUpdate.topConsumers | Where-Object { $_.owner -eq 'FixtureWrappedFrame' }) | Select-Object -First 1
 if ($null -eq $wrappedFrame) { throw 'FixtureWrappedFrame was not ranked inside onUpdate.' }
 if ($wrappedFrame.generic.Automatable) {
@@ -1687,15 +1647,6 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [System.IO.Compression.ZipFile]::OpenRead([string]$resolved.pass.ZipPath)
 try {
     $names = @($zip.Entries | ForEach-Object FullName)
-
-    # Native tracker assets are resources of the Resolver APP, not a
-    # blanket opt-in in every generated pass. The only allowed native
-    # deployment is a future source/economics-approved G-HoneyTrap pass.
-    if (@($names | Where-Object { $_ -like 'red4ext/*' -or
-                                   $_ -like '*GCETStaticLocations.dll' -or
-                                   $_ -like '*G-CET.locations' }).Count -gt 0) {
-        throw 'Unapproved RED4ext tracker or location manifest leaked into ordinary Resolver pass.'
-    }
 
     foreach ($requiredEntry in @(
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureAction/init.lua',

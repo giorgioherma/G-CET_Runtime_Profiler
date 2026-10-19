@@ -65,11 +65,6 @@ public static class ResolverService
         var coverage = OptimizationClassCountService.Analyze(report);
         var augmented = System.Text.Json.Nodes.JsonNode.Parse(report.GetRawText())!;
         augmented["optimizationClassCoverage"] = JsonSerializer.SerializeToNode(coverage);
-        // G-HoneyTrap lives in the same Resolver analysis pipeline. Reuse the
-        // existing source-linked Scheduler and semantic completion evidence;
-        // opportunity recognition is not automatic transformation admission.
-        augmented["honeyTrap"] = JsonSerializer.SerializeToNode(
-            HoneyTrapService.Analyze(report));
 
         var resolverPath = Path.Combine(captureRoot, ResultReportService.ResolverResolutionFileName);
         File.WriteAllText(

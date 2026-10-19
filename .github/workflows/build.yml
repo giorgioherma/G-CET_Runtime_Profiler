@@ -11,8 +11,6 @@ on:
     paths-ignore:
       - 'native-profiler-build/**'
       - '.github/workflows/native-profiler-rebuild.yml'
-      - 'native-static-locations/**'
-      - '.github/workflows/native-static-locations.yml'
       - 'docs/**'
       - 'BUILDING.md'
       - 'README.md'
@@ -270,48 +268,6 @@ jobs:
 
       - name: Publish standalone G-CET resolver
         run: dotnet publish src/G.CETResolver.App/G.CETResolver.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o publish-resolver
-
-      # Inactive backend resource: only G-HoneyTrap source-admitted native passes
-      # may eventually stage this file into a game-root overlay. Unlike the
-      # Profiler DLL this is RED4ext, built and hash pinned independently.
-      - name: Import pinned G-HoneyTrap RED4ext module into Resolver resources
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $expected = '1eb8b4197a37c352fbe8314ffc568a8e5f4d2ed9b21efa634848d465ec92595c'
-          gh run download 39070439790 --repo ${{ github.repository }} --name gcet-static-native-experimental --dir honeytrap-from-ci
-          if ($LASTEXITCODE -ne 0) { throw 'Pinned RED4ext tracker artifact download failed' }
-          $src = 'honeytrap-from-ci/red4ext/plugins/G-CET-StaticLocations'
-          $dll = Join-Path $src 'GCETStaticLocations.dll'
-          $sidecar = Join-Path $src 'SHA256.txt'
-          if (!(Test-Path -LiteralPath $dll -PathType Leaf) -or
-              !(Test-Path -LiteralPath $sidecar -PathType Leaf)) {
-            throw 'RED4ext tracker DLL or checksum missing from pinned native CI artifact'
-          }
-          $actual = (Get-FileHash -LiteralPath $dll -Algorithm SHA256).Hash.ToLowerInvariant()
-          $recorded = (Get-Content -LiteralPath $sidecar -Raw).Trim().ToLowerInvariant()
-          if ($actual -ne $expected -or !$recorded.StartsWith($expected + '  gcetstaticlocations.dll')) {
-            throw "RED4ext tracker SHA mismatch: expected=$expected actual=$actual sidecar=$recorded"
-          }
-          $target = 'publish-resolver/runtime/G-HoneyTrap'
-          New-Item -Path "$target/native","$target/adapters" -ItemType Directory -Force | Out-Null
-          Copy-Item -LiteralPath $dll -Destination "$target/native/GCETStaticLocations.dll"
-          Copy-Item -LiteralPath 'native-static-locations/examples/G-CET-StaticLocations.reds' -Destination "$target/native/G-CET-StaticLocations.reds"
-          Copy-Item -Path 'native-static-locations/adapters/*.lua' -Destination "$target/adapters"
-          @'
-          G-HoneyTrap developer resource. This is a pinned RED4ext DLL,
-          NOT cyber_engine_tweaks.PROFILER.dll. The Resolver does NOT copy it
-          into any generated game pass until source, wake, and economic admission
-          have been implemented and independently validated. No probe marker,
-          sample manifest, or automatically installed mod locations are shipped.
-          '@ | Set-Content -LiteralPath "$target/NOT-DEPLOYED.txt" -Encoding utf8
-          "nativeRun=39070439790`nsha256=$expected" | Set-Content -LiteralPath "$target/native/SHA256.txt" -Encoding ascii
-          if (((Get-FileHash "$target/native/GCETStaticLocations.dll" -Algorithm SHA256).Hash.ToLowerInvariant()) -ne $expected) {
-            throw 'Packaged RED4ext tracker resource hash mismatch'
-          }
-          Write-Host "Pinned G-HoneyTrap RED4ext resource verified: $expected"
 
       - name: Build native root launcher
         shell: pwsh
