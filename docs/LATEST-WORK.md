@@ -47,9 +47,9 @@ No new mod observer, hook, getter, GC policy, or native dispatch filter. Source/
 
 **CI #91 diagnosis and correction:** Native #91 failed in `Patch-CET-v1.37.1.ps1` at `Overridden pre-dispatch allocation snapshot`, *after* historical control built successfully. Its source matcher sought the untouched upstream block, but the earlier `MethodScope` instrumentation had already inserted a guard into that same block. Updated the later patch to match the **post-MethodScope** exact source and added a regression assertion. This was a deterministic source-patcher failure, unrelated to GitHub's earlier queue incident. Native replacement still requires a fresh Windows build and gameplay validation.
 
-## 2026-10-19 — CI #93 native attribution DLL packaged for runtime test
+## 2026-10-19 — CI #93 native attribution DLL packaged in green v1.2.10
 
 - [Native CI #93](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/39286615574) succeeded, verified compiler linkage and new native CSVs. Actual DLL SHA-256 `c9cca34d38ecbdf0b7f7fac6db676f3faee92cbe2d31e7d5e362ae575b172219`. Matching developer PDB is a separate developer-only artifact.
-- Both Profiler/Resolver now use **v1.2.10**, native identity `2.15.7-callsite-predispatch-attribution`. Main Windows build pins native workflow **run 39286615574**, verifies sidecar/DLL against `MANIFEST.json`, plus compiled native attribution markers.
+- Both Profiler/Resolver now use **v1.2.10**, native identity `2.15.7-callsite-predispatch-attribution`. Main Windows build pins native workflow **run 39286615574**, verifies sidecar/DLL against `MANIFEST.json`, plus compiled native attribution markers. **[Combined CI #1363](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/39289744624) is green**: all four jobs, including DLL import, exact hash, Windows packaging, Profiler and Resolver artifacts. Both artifacts are named `G-CET-Runtime-Profiler-v1.2.10` and `G-CET-Resolver-v1.2.10`.
 - The two new CSV streams are included in the `liveResultFiles` manifest and are already wired into HTML, summary JSON and Resolver input. No mod rewrites or GC behavior changes.
 - **Runtime acceptance pending:** Same save, load before capture, start/stop F11, no new crashing, two CSVs contain plausible data and no unexpected profiler overhead. Main package CI green cannot replace this gameplay evidence.
