@@ -1046,14 +1046,16 @@ Replace-LiteralOnce -Path $foC `
         TiltedPhoques::Allocator::Set(pAllocator);
 
         {
-            auto lockedState = chain.pScripting->GetLockedState();
+            CETRuntimeProfiler::MethodScope ggcMethodScope(
+                7, apFunction->fullName.hash,
 '@ `
     -New @'
         TiltedPhoques::Allocator::Set(pAllocator);
         const auto gcetBeforeOverridden = CETRuntimeProfiler::BeginPreDispatch();
 
         {
-            auto lockedState = chain.pScripting->GetLockedState();
+            CETRuntimeProfiler::MethodScope ggcMethodScope(
+                7, apFunction->fullName.hash,
 '@ `
     -Label "Overridden pre-dispatch allocation snapshot"
 Replace-LiteralOnce -Path $foC `

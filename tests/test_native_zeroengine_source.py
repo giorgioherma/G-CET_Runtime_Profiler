@@ -50,3 +50,17 @@ assert 'gcet_unscoped_thread_bytes += newSize - oldSize' in Path('native-profile
 patch_text = Path('native-profiler-build/v2.11.0/Patch-CET-v1.37.1.ps1').read_text(encoding='utf-8')
 assert patch_text.count('EndPreDispatch(') == 3
 assert patch_text.count('BeginPreDispatch()') == 3
+
+# CI #91 regression: the earlier MethodScope patch modifies the same
+# Overridden block before this new pre-dispatch patch runs.
+# A pristine upstream-only search fails, so match the post-patch marker.
+overridden_snapshot = """    -Old @'
+        TiltedPhoques::Allocator::Set(pAllocator);
+
+        {
+            CETRuntimeProfiler::MethodScope ggcMethodScope(
+                7, apFunction->fullName.hash,
+'@ \`
+"""
+assert overridden_snapshot in patch_text, "Overridden snapshot must match prior MethodScope insertion"
+assert patch_text.index('-Label "OverriddenScript argument marshalling native boundary"') < patch_text.index('-Label "Overridden pre-dispatch allocation snapshot"')
