@@ -237,7 +237,10 @@ internal static class ZeroEngineAllocationBatchSource
             Count(original, "function Lifecycle.Update()") != 1 ||
             Count(original, "function Lifecycle.ForceInvalidate()") != 1 ||
             Count(original, "Events.PlayerReady:trigger(player)") != 1 ||
-            Count(original, "Events.PlayerRecreated:trigger(player)") != 1)
+            Count(original, "Events.PlayerRecreated:trigger(player)") != 1 ||
+            // Author defines two distinct invalidation paths:
+            // transient 30-frame loss and ForceInvalidate/session teardown.
+            Count(original, "Events.PlayerInvalidated:trigger()") != 2)
         {
             reason = "Lifecycle exact anchors or event paths drifted.";
             return false;
@@ -250,7 +253,7 @@ internal static class ZeroEngineAllocationBatchSource
             Count(updated, "local hash = GetPlayerHash(checkedId)") != 1 ||
             Count(updated, "Events.PlayerReady:trigger(player)") != 1 ||
             Count(updated, "Events.PlayerRecreated:trigger(player)") != 1 ||
-            Count(updated, "Events.PlayerInvalidated:trigger()") != 1)
+            Count(updated, "Events.PlayerInvalidated:trigger()") != 2)
         {
             reason = "Lifecycle postconditions failed.";
             return false;
