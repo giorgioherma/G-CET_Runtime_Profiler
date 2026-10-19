@@ -62,5 +62,5 @@ overridden_snapshot = """    -Old @'
                 7, apFunction->fullName.hash,
 '@ \`
 """
-assert overridden_snapshot in patch_text, "Overridden snapshot must match prior MethodScope insertion"
+assert overridden_snapshot.replace('\\`', '`') in patch_text, "Overridden snapshot must match prior MethodScope insertion"
 assert patch_text.index('-Label "OverriddenScript argument marshalling native boundary"') < patch_text.index('-Label "Overridden pre-dispatch allocation snapshot"')
