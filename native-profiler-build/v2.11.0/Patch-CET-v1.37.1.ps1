@@ -1041,6 +1041,8 @@ Replace-LiteralOnce -Path $foC `
             return ExecuteChain(chain, lock, pContext, &args, &ret, &outArgs, apStack, a3, nullptr, 0);
 '@ `
     -Label "Pure pre-dispatch allocation boundary"
+# Previous MethodScope injection has already changed the Overridden
+# GetLockedState block; this target MUST match the post-instrumented form.
 Replace-LiteralOnce -Path $foC `
     -Old @'
         TiltedPhoques::Allocator::Set(pAllocator);
