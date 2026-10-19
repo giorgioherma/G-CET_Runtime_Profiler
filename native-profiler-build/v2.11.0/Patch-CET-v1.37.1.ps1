@@ -1024,6 +1024,60 @@ if (([regex]::Matches($nativeMethodText, 'CETRuntimeProfiler::MethodScope ggcMet
     throw "G-GC native method scope count incorrect; refusing build."
 }
 
+# Attribution-only native marshalling measurement. No extra Lua calls,
+# no source-level callback suppression, and no profiler RAII across next().
+# Snapshot owner-zero LuaJIT growth on this thread; finish BEFORE ExecuteChain.
+Replace-LiteralOnce -Path $foC `
+    -Old '            const auto pContext = apStack->GetContext();' `
+    -New @'
+            const auto pContext = apStack->GetContext();
+            const auto gcetBeforePure = CETRuntimeProfiler::BeginPreDispatch();
+'@ `
+    -Label "Pure pre-dispatch allocation snapshot"
+Replace-LiteralOnce -Path $foC `
+    -Old '            return ExecuteChain(chain, lock, pContext, &args, &ret, &outArgs, apStack, a3, nullptr, 0);' `
+    -New @'
+            CETRuntimeProfiler::Get().EndPreDispatch(6, apFunction->fullName.hash, gcetBeforePure);
+            return ExecuteChain(chain, lock, pContext, &args, &ret, &outArgs, apStack, a3, nullptr, 0);
+'@ `
+    -Label "Pure pre-dispatch allocation boundary"
+Replace-LiteralOnce -Path $foC `
+    -Old @'
+        TiltedPhoques::Allocator::Set(pAllocator);
+
+        {
+            auto lockedState = chain.pScripting->GetLockedState();
+'@ `
+    -New @'
+        TiltedPhoques::Allocator::Set(pAllocator);
+        const auto gcetBeforeOverridden = CETRuntimeProfiler::BeginPreDispatch();
+
+        {
+            auto lockedState = chain.pScripting->GetLockedState();
+'@ `
+    -Label "Overridden pre-dispatch allocation snapshot"
+Replace-LiteralOnce -Path $foC `
+    -Old '        ExecuteChain(chain, lock, apContext, &args, &ret, &outArgs, nullptr, apFrame, pCode, currentParam);' `
+    -New @'
+        CETRuntimeProfiler::Get().EndPreDispatch(7, apFunction->fullName.hash, gcetBeforeOverridden);
+        ExecuteChain(chain, lock, apContext, &args, &ret, &outArgs, nullptr, apFrame, pCode, currentParam);
+'@ `
+    -Label "Overridden pre-dispatch allocation boundary"
+Replace-LiteralOnce -Path $npC `
+    -Old '    TiltedPhoques::Vector<sol::object> args(0);' `
+    -New @'
+    const auto gcetBeforeProxy = CETRuntimeProfiler::BeginPreDispatch();
+    TiltedPhoques::Vector<sol::object> args(0);
+'@ `
+    -Label "NativeProxy pre-dispatch allocation snapshot"
+Replace-LiteralOnce -Path $npC `
+    -Old '    const auto result = functionIt.value()(sol::as_args(args));' `
+    -New @'
+    CETRuntimeProfiler::Get().EndPreDispatch(8, apFrame->func->fullName.hash, gcetBeforeProxy);
+    const auto result = functionIt.value()(sol::as_args(args));
+'@ `
+    -Label "NativeProxy pre-dispatch allocation boundary"
+
 # Hard safety checks.
 $foHHashAfter = (Get-FileHash -Algorithm SHA256 $foH).Hash
 if ($foHHashAfter -ne $foHHashBefore) {

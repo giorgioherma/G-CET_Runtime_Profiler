@@ -116,6 +116,10 @@ static volatile LONG64 ggc_unscoped_sample_dropped=0;
 static unsigned long long ggc_unscoped_sequence=0;
 static __declspec(thread) unsigned int ggc_bridge_context=0;
 static __declspec(thread) unsigned long long ggc_method_hash=0;
+static __declspec(thread) unsigned long long gcet_unscoped_thread_bytes=0;
+static __declspec(thread) unsigned long long gcet_unscoped_thread_ops=0;
+unsigned long long gcet_gc_unscoped_thread_bytes(void) { return gcet_unscoped_thread_bytes; }
+unsigned long long gcet_gc_unscoped_thread_ops(void) { return gcet_unscoped_thread_ops; }
 static __declspec(thread) unsigned long long ggc_class_hash=0;
 /* Capture-only TLS tags. Never dereference native RTTI or Lua objects
  * on the LuaJIT allocator hot path; only copy the already-scoped hashes. */
@@ -347,6 +351,8 @@ static void gcet_gc_alloc_observe(const global_State *g, unsigned long long oldS
     ggc_owners[owner].bytes += newSize - oldSize;
     ggc_owners[owner].allocations++;
     if (owner == 0) {
+      gcet_unscoped_thread_bytes += newSize - oldSize;
+      ++gcet_unscoped_thread_ops;
       /* Shared marshalling precedes per-subscriber delivery. */
       ggc_unscoped_observe(g, newSize - oldSize, allocationPath, oldSize, newSize);
     } else {

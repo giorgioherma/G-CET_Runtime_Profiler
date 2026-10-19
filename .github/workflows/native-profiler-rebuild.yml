@@ -99,6 +99,8 @@ jobs:
           foreach ($marker in @(
               'CET_Runtime_Profile_ZeroEngine_SourceAttribution.csv',
               'CET_Runtime_Profile_ZeroEngine_Callsites.csv',
+              'CET_Runtime_Profile_LuaNative_Callsites.csv',
+              'CET_Runtime_Profile_Native_PreDispatchPressure.csv',
               'sampled-child-inclusive-overlap-not-additive')) {
             if (!$source.Contains($marker) -or !$binary.Contains($marker)) {
               throw "Compiled 0-Engine attribution marker missing: $marker"

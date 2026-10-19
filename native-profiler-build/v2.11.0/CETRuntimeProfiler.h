@@ -44,6 +44,8 @@ struct GGCTraceOwner {
 };
 uint64_t gcet_gc_alloc_ops();
 void ggc_trace_owner_read(uint64_t, GGCTraceOwner*);
+uint64_t gcet_gc_unscoped_thread_bytes(void);
+uint64_t gcet_gc_unscoped_thread_ops(void);
 void ggc_trace_focus_set(uint64_t, int);
 int ggc_trace_focused(uint64_t);
 uint64_t ggc_trace_finalizer_calls();
@@ -323,6 +325,9 @@ public:
         std::string ChildFunctionKey;
         uint64_t Calls{};
         uint64_t ChildInclusiveNs{};
+        uint64_t SampledCFunctionOwnPositiveBytes{};
+        uint64_t SampledCFunctionOwnPositiveOps{};
+        uint64_t SampledCFunctionCalls{};
     };
 
     // Experimental: scalar values are supplied by explicitly instrumented
@@ -522,6 +527,32 @@ public:
         bool m_active{};
         uint64_t m_priorMethod{}, m_priorClass{};
     };
+
+    // Owner-zero positive LuaJIT request deltas on the current native
+    // argument-conversion thread BEFORE entering an owned Lua callback.
+    // Does not assign shared cost to a subscriber or include native heap.
+    struct PreDispatchSnapshot { uint64_t Bytes{}, Ops{}; bool Active{}; };
+    struct PreDispatchPressure {
+        std::atomic<uint64_t> Calls{0}, PositiveBytes{0}, Operations{0};
+    };
+    static PreDispatchSnapshot BeginPreDispatch() noexcept {
+        if (!Get().IsCapturing()) return {};
+        return {gcet_gc_unscoped_thread_bytes(),
+                gcet_gc_unscoped_thread_ops(), true};
+    }
+    void EndPreDispatch(uint32_t boundary, uint64_t methodHash,
+                        const PreDispatchSnapshot& start) noexcept {
+        if (!start.Active || !IsCapturing() || boundary < 6 || boundary > 8)
+            return;
+        constexpr uint64_t onAction = 9658066991423262154ULL;
+        auto& row = m_preDispatch[boundary - 6][methodHash == onAction ? 0 : 1];
+        const uint64_t bytes = gcet_gc_unscoped_thread_bytes();
+        const uint64_t ops = gcet_gc_unscoped_thread_ops();
+        if (bytes < start.Bytes || ops < start.Ops) return;
+        row.Calls.fetch_add(1, std::memory_order_relaxed);
+        row.PositiveBytes.fetch_add(bytes - start.Bytes, std::memory_order_relaxed);
+        row.Operations.fetch_add(ops - start.Ops, std::memory_order_relaxed);
+    }
 
     // Scope tracks both inclusive and exclusive callback time.
     //
@@ -1219,6 +1250,7 @@ public:
         ResetGcCollectorLocked();
         ResetSchedulerLocked();
         ResetDeepLocked();
+        ResetPreDispatch();
         m_scalarObservations.clear();
         m_droppedScalarObservations = 0;
         m_accumulatedCapture = std::chrono::nanoseconds::zero();
@@ -1279,6 +1311,7 @@ public:
         ResetGcCollectorLocked();
         ResetSchedulerLocked();
         ResetDeepLocked();
+        ResetPreDispatch();
         m_scalarObservations.clear();
         m_droppedScalarObservations = 0;
         m_accumulatedCapture = std::chrono::nanoseconds::zero();
@@ -3496,6 +3529,58 @@ public:
             }
         }
 
+        // Bounded sampled Lua->C own allocation at the resolved Lua caller line.
+        // C functions include Lua libraries and CET; NOT all are engine getters.
+        {
+            std::ofstream f(outputRoot / "CET_Runtime_Profile_LuaNative_Callsites.csv",
+                            std::ios::trunc);
+            if (f) {
+                f << "RegistrationId,ProfileEpoch,SampleSequence,Frame,"
+                     "CallerSourceFile,CallerLine,ParentFunctionKey,ChildFunctionKey,"
+                     "SampledCCalls,SampledCOwnPositiveBytes,SampledCOwnPositiveOps,"
+                     "Attribution,Interpretation\n";
+                for (const auto& row : deepCallsiteRows) {
+                    if (!row.SampledCFunctionCalls) continue;
+                    f << row.RegistrationId << ',' << row.ProfileEpoch << ','
+                      << row.SampleSequence << ',' << row.Frame << ','
+                      << Csv(row.CallerSourceFile) << ',' << row.CallerLine << ','
+                      << Csv(row.ParentFunctionKey) << ','
+                      << Csv(row.ChildFunctionKey) << ','
+                      << row.SampledCFunctionCalls << ','
+                      << row.SampledCFunctionOwnPositiveBytes << ','
+                      << row.SampledCFunctionOwnPositiveOps << ','
+                      << "SAMPLED_C_FRAME_EXCLUSIVE,"
+                      << "C_FUNCTION_NOT_PROVEN_ENGINE_GETTER_NOT_ADDITIVE\n";
+                }
+            }
+        }
+
+        // Capture-only owner-zero marshalling before Lua callback delivery.
+        // Six fixed buckets: method hash OnAction or OTHER, three boundaries.
+        {
+            std::ofstream f(outputRoot / "CET_Runtime_Profile_Native_PreDispatchPressure.csv",
+                            std::ios::trunc);
+            if (f) {
+                f << "Boundary,MethodGroup,Calls,OwnerZeroPositiveBytes,"
+                     "OwnerZeroPositiveOps,MethodHash,ClassAttribution,"
+                     "SubscriberAttribution,Interpretation\n";
+                const char* names[] = {"PURE", "OVERRIDDEN", "NATIVE_PROXY"};
+                for (int boundary = 0; boundary < 3; ++boundary) {
+                    for (int group = 0; group < 2; ++group) {
+                        const auto& row = m_preDispatch[boundary][group];
+                        f << names[boundary] << ','
+                          << (group == 0 ? "OnAction" : "OTHER") << ','
+                          << row.Calls.load(std::memory_order_relaxed) << ','
+                          << row.PositiveBytes.load(std::memory_order_relaxed) << ','
+                          << row.Operations.load(std::memory_order_relaxed) << ','
+                          << (group == 0 ? "9658066991423262154" : "UNKNOWN") << ','
+                          << "NOT_PROVEN,NOT_PROVEN,"
+                          << "OWNER_ZERO_POSITIVE_LUAJIT_GROWTH_BEFORE_CALLBACK_ONLY\n";
+                    }
+                }
+            }
+        }
+
         // -----------------------------------------------------------------
         // SCHEDULER BY JOB: cooperative 0-Engine child attribution.
         //
@@ -4091,6 +4176,13 @@ private:
                 }
                 ++callsite.Calls;
                 callsite.ChildInclusiveNs += inclusiveNs;
+                // Attribute only this sampled C frame's own allocation;
+                // do NOT duplicate whole-function allocation across callers.
+                if (frame.What == "C" && frame.SourceFile == "=[C]") {
+                    ++callsite.SampledCFunctionCalls;
+                    callsite.SampledCFunctionOwnPositiveBytes += ownBytes;
+                    callsite.SampledCFunctionOwnPositiveOps += ownOps;
+                }
             }
         }
 
@@ -5014,6 +5106,16 @@ private:
           << elapsedSec << ','
           << "events+observe+override-exclusive+capture-gated"
           << '\n';
+    }
+
+    PreDispatchPressure m_preDispatch[3][2]{};
+    void ResetPreDispatch() noexcept {
+        for (auto& boundary : m_preDispatch)
+            for (auto& row : boundary) {
+                row.Calls.store(0, std::memory_order_relaxed);
+                row.PositiveBytes.store(0, std::memory_order_relaxed);
+                row.Operations.store(0, std::memory_order_relaxed);
+            }
     }
 
     std::mutex m_mutex;

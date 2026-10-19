@@ -36,3 +36,11 @@
 - **Previous extended-dormancy/cache-era handoff notes** were archived at [`history/EXTENDED-DORMANCY-TASK-ARCHIVE-20261019.md`](history/EXTENDED-DORMANCY-TASK-ARCHIVE-20261019.md). The location-cache prototype is preserved separately on [`dev/generic-location-cache-deferred-20261019`](https://github.com/giorgioherma/G-CET_Runtime_Profiler/tree/dev/generic-location-cache-deferred-20261019) and [`dev/native-static-anchors-experimental`](https://github.com/giorgioherma/G-CET_Runtime_Profiler/tree/dev/native-static-anchors-experimental), **not active updater work**.
 
 **Handoff rule:** Continue this native/Lua boundary investigation until a proven GO/NO-GO and documented measurements. Do not treat CI green, a Lua-side early return, a lookup benchmark, a callback name match or old cached-location experiments as proof of native-to-Lua savings. Apply only reviewed source-safe transformations in the normal Resolver and do not modify the user's installed mods.
+
+
+## 2026-10-19 — capture-gated allocator attribution extension (native CI pending)
+
+Added native-only experimental evidence for two outstanding gaps:
+- `CET_Runtime_Profile_LuaNative_Callsites.csv`: bounded adaptive deep-hook C-function calls with exact Lua caller source/line and sampled **C-frame own** positive allocation bytes/ops; includes standard Lua C functions, not necessarily engine getters. Neither total workload nor callback-owned bytes are multiplied by callsite count. Original six mod deep slots and one 0-Engine slot remain unchanged.
+- `CET_Runtime_Profile_Native_PreDispatchPressure.csv`: capture-only owner-zero per-thread allocation request deltas around the pinned CET argument-conversion window, distinguished by PURE/OVERRIDDEN/NATIVE_PROXY and `OnAction`/OTHER. Counts calls at the start of Lua delivery, not individual subscriber marshalling, and does not cover native C++ heap or post-dispatch callback allocations. Method-class/subscriber ownership stays `NOT_PROVEN`.
+No new mod observer, hook, getter, GC policy, or native dispatch filter. Source/build CI and in-game stability validation required before promoting the native DLL or relying on the new CSVs.

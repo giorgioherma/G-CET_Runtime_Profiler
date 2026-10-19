@@ -39,3 +39,14 @@ assert "Get-CETPEInfo.ps1" in normal
 assert "DLL_SHA256.txt" in normal
 assert "cyber_engine_tweaks.PROFILER.pdb" in normal
 print("native 0-Engine source attribution original-CI and schema contract passed")
+
+# Capture-gated C caller-site and owner-zero native pre-dispatch contracts.
+assert 'CET_Runtime_Profile_LuaNative_Callsites.csv' in native
+assert 'CET_Runtime_Profile_Native_PreDispatchPressure.csv' in native
+assert 'SampledCFunctionOwnPositiveBytes += ownBytes' in native
+assert 'frame.What == "C" && frame.SourceFile == "=[C]"' in native
+assert 'gcet_gc_unscoped_thread_bytes' in native and 'ResetPreDispatch();' in native
+assert 'gcet_unscoped_thread_bytes += newSize - oldSize' in Path('native-profiler-build/v2.11.0/Patch-LuaJIT-GC-Source.ps1').read_text(encoding='utf-8')
+patch_text = Path('native-profiler-build/v2.11.0/Patch-CET-v1.37.1.ps1').read_text(encoding='utf-8')
+assert patch_text.count('EndPreDispatch(') == 3
+assert patch_text.count('BeginPreDispatch()') == 3
