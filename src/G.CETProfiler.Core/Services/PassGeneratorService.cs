@@ -152,6 +152,13 @@ public static class PassGeneratorService
                 appliedTransformsByFile, transformManifest, skipped))
             ++semanticTransformCount;
 
+        // Reviewed 0-Engine same-update allocation batch. Independent exact
+        // source/evidence gates for the spatial and Lifecycle modules; no
+        // dynamic entity snapshots or cross-mod sharing.
+        semanticTransformCount += ZeroEngineAllocationBatchSource.TryStage(
+            captureRoot, modsRoot, staged, liveSourceHashes,
+            appliedTransformsByFile, transformManifest, skipped);
+
         if (staged.Count == 0)
         {
             // An already-admitted authored rule may still fail its injector's
