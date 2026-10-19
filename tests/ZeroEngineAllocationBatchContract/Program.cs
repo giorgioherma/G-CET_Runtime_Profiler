@@ -124,6 +124,8 @@ function Lifecycle.Update()
     end
 end
 function Lifecycle.ForceInvalidate()
+    -- Session teardown is a separate invalidation event path.
+    Events.PlayerInvalidated:trigger()
 end
 return Lifecycle
 """;
@@ -138,6 +140,8 @@ Check(lifeOutput.Contains("local hash = GetPlayerHash(checkedId)"),
     "Lifecycle failed to use validated local ID");
 Check(lifeOutput.Contains("Events.PlayerRecreated:trigger(player)"),
     "Lifecycle original event lost");
+Check(lifeOutput.Split("Events.PlayerInvalidated:trigger()").Length - 1 == 2,
+    "Lifecycle must retain both update-time and ForceInvalidate event paths");
 object?[] lAgain = [l[2], false, null, null];
 Check(!(bool)lifecycle.Invoke(null, lAgain)!, "Lifecycle double application");
 Check((string)lAgain[3]! == "ALREADY_SATISFIED", "Lifecycle idempotence wrong reason");
@@ -147,6 +151,13 @@ var lifeDrift = lifecycleFixture.Replace("local hash = GetPlayerHash(player)",
     "local hash = GetPlayerHash(nil)", StringComparison.Ordinal);
 object?[] lInvalid = [Encoding.UTF8.GetBytes(lifeDrift), false, null, null];
 Check(!(bool)lifecycle.Invoke(null, lInvalid)!, "Lifecycle source drift admitted");
+var lifeInvalidationDrift = lifecycleFixture.Replace(
+    "    -- Session teardown is a separate invalidation event path.\n    Events.PlayerInvalidated:trigger()",
+    "    -- Session teardown is a separate invalidation event path.",
+    StringComparison.Ordinal);
+object?[] lInvalidation = [Encoding.UTF8.GetBytes(lifeInvalidationDrift), false, null, null];
+Check(!(bool)lifecycle.Invoke(null, lInvalidation)!,
+    "Missing ForceInvalidate event path was accepted");
 
 var root = Path.Combine(Path.GetTempPath(), "gcet-0engine-batch-" + Guid.NewGuid().ToString("N"));
 try
