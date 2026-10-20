@@ -114,4 +114,10 @@ private:
 // Every 28-byte record: int32 id; float x/y/z/radius; uint32 flags (bit 0 XY);
 // uint32 owner. Zero internal pointers or mod-owned userdata are persisted.
 bool ReadCompiledFile(const std::filesystem::path& path, std::vector<Anchor>& out);
+
+// A missing optional file starts a valid empty dynamic registry. A present but
+// malformed/unreadable file is INVALID; never silently discard authored sites.
+enum class ManifestLoadStatus { Missing, Loaded, Invalid };
+ManifestLoadStatus LoadOptionalManifest(const std::filesystem::path& path,
+                                       StaticIndex& index);
 }
