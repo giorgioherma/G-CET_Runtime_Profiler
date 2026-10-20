@@ -84,7 +84,7 @@ internal static partial class SemanticInjectors
 
         hudText = RegexReplaceOnce(
             hudText,
-            @"(?ms)^(?<indent>\s*)if\s+hud\.destVisible\s+then\s*\r?\n\s*hud\.drawDestinations\s*\(\s*ts\.stationSys\s*\)\s*\r?\n\s*hud\.destVisible\s*=\s*false\s*\r?\n\s*else\s*\r?\n\s*observers\.nextStationText\s*=\s*[""'][""']\s*\r?\n\s*Game\.GetMappinSystem\(\):UnregisterMappin\s*\(\s*observers\.nextStationPoint\s*\)\s*\r?\n\s*if\s+ts\.observers\.hudText\s+then\s*\r?\n\s*ts\.observers\.hudText:SetVisible\s*\(\s*false\s*\)\s*\r?\n\s*end\s*\r?\n\s*end\s*$",
+            @"(?ms)^(?<indent>\s*)if\s+hud\.destVisible\s+then\s*\r?\n\s*hud\.drawDestinations\s*\(\s*ts\.stationSys\s*\)\s*\r?\n\s*hud\.destVisible\s*=\s*false\s*\r?\n\s*else\s*\r?\n\s*observers\.nextStationText\s*=\s*[""'][""']\s*\r?\n\s*(?<mappin>Game\.GetMappinSystem\(\)|__gcetGetMappinSystem\(\)):UnregisterMappin\s*\(\s*observers\.nextStationPoint\s*\)\s*\r?\n\s*if\s+ts\.observers\.hudText\s+then\s*\r?\n\s*ts\.observers\.hudText:SetVisible\s*\(\s*false\s*\)\s*\r?\n\s*end\s*\r?\n\s*end\s*$",
             "${indent}if hud.destVisible then\n" +
             "${indent}    hud.drawDestinations(ts.stationSys)\n" +
             "${indent}    hud.destVisible = false\n" +
@@ -92,7 +92,7 @@ internal static partial class SemanticInjectors
             "${indent}elseif hud.destinationWasVisible or observers.nextStationPoint ~= nil or observers.nextStationText ~= \"\" then\n" +
             "${indent}    observers.nextStationText = \"\"\n" +
             "${indent}    if observers.nextStationPoint ~= nil then\n" +
-            "${indent}        Game.GetMappinSystem():UnregisterMappin(observers.nextStationPoint)\n" +
+            "${indent}        ${mappin}:UnregisterMappin(observers.nextStationPoint)\n" +
             "${indent}        observers.nextStationPoint = nil\n" +
             "${indent}    end\n" +
             "${indent}    if ts.observers.hudText then\n" +
