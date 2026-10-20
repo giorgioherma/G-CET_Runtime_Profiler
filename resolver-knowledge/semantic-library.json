@@ -5866,10 +5866,10 @@
           "POKER_WAKE_RADIUS",
           "pass4FarWorldJob = farWorldJob"
         ],
-        "alreadySatisfiedMarker": "G-CET native location:poker-v1",
+        "alreadySatisfiedMarker": "G-CET native location:poker-v2",
         "expectedMarkerFileCount": 1,
         "satisfiedAll": [
-          "G-CET native location:poker-v1",
+          "G-CET native location:poker-v2",
           "__gcetNativeOwned",
           "lookup:attach(10031"
         ]
@@ -5893,7 +5893,7 @@
             "seconds": 0
           }
         ],
-        "note": "Opt-in source-proven native static locations; original author discovery retained until healthy snapshot and restored on unavailable/UNKNOWN/overrun. No native DLL bundled."
+        "note": "Opt-in source-proven native static locations; original author discovery retained until healthy snapshot and restored on unavailable/UNKNOWN/overrun. Compatible native DLL bundled with the generated game-root ZIP; no location manifest required for owner-registered sites."
       },
       "generation": {
         "enabled": true,
@@ -5941,10 +5941,10 @@
           "JournalOffer.update",
           "Rescue.surface"
         ],
-        "alreadySatisfiedMarker": "G-CET native location:tunnel-v1",
+        "alreadySatisfiedMarker": "G-CET native location:tunnel-v2",
         "expectedMarkerFileCount": 1,
         "satisfiedAll": [
-          "G-CET native location:tunnel-v1",
+          "G-CET native location:tunnel-v2",
           "__gcetTunnelNativeFar",
           "lookup:attach(10032"
         ]
@@ -5968,7 +5968,7 @@
             "seconds": 0
           }
         ],
-        "note": "Opt-in source-proven native static locations; original author discovery retained until healthy snapshot and restored on unavailable/UNKNOWN/overrun. No native DLL bundled."
+        "note": "Opt-in source-proven native static locations; original author discovery retained until healthy snapshot and restored on unavailable/UNKNOWN/overrun. Compatible native DLL bundled with the generated game-root ZIP; no location manifest required for owner-registered sites."
       },
       "generation": {
         "enabled": true,
@@ -6016,10 +6016,10 @@
           "  nextUpdateAt = 0.0",
           "if #state.mechanics == 0 and not loadMatrix() then return end"
         ],
-        "alreadySatisfiedMarker": "G-CET native location:illegal-v1",
+        "alreadySatisfiedMarker": "G-CET native location:illegal-v2",
         "expectedMarkerFileCount": 1,
         "satisfiedAll": [
-          "G-CET native location:illegal-v1",
+          "G-CET native location:illegal-v2",
           "__gcetNativeFar",
           "lookup:attach(10033"
         ]
@@ -6043,7 +6043,7 @@
             "seconds": 0
           }
         ],
-        "note": "Opt-in source-proven native static locations; original author discovery retained until healthy snapshot and restored on unavailable/UNKNOWN/overrun. No native DLL bundled."
+        "note": "Opt-in source-proven native static locations; original author discovery retained until healthy snapshot and restored on unavailable/UNKNOWN/overrun. Compatible native DLL bundled with the generated game-root ZIP; no location manifest required for owner-registered sites."
       },
       "generation": {
         "enabled": true,
@@ -6092,10 +6092,10 @@
           "startShopDetail()",
           "entrancePos_2"
         ],
-        "alreadySatisfiedMarker": "G-CET native location:dedka-v1",
+        "alreadySatisfiedMarker": "G-CET native location:dedka-v2",
         "expectedMarkerFileCount": 1,
         "satisfiedAll": [
-          "G-CET native location:dedka-v1",
+          "G-CET native location:dedka-v2",
           "__gcetDedkaZone1",
           "lookup:attach(10034"
         ]
@@ -6119,7 +6119,7 @@
             "seconds": 0
           }
         ],
-        "note": "Opt-in source-proven native static locations; original author discovery retained until healthy snapshot and restored on unavailable/UNKNOWN/overrun. No native DLL bundled."
+        "note": "Opt-in source-proven native static locations; original author discovery retained until healthy snapshot and restored on unavailable/UNKNOWN/overrun. Compatible native DLL bundled with the generated game-root ZIP; no location manifest required for owner-registered sites."
       },
       "generation": {
         "enabled": true,
