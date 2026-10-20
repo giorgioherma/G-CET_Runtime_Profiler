@@ -408,6 +408,11 @@ internal static class FixedZeroEngineRuntime
         // fill gaps only. A missing API is handled at the opt-in call site,
         // never by replacing or refusing the whole pass.
         var bytes = File.ReadAllBytes(livePath);
+        if (relativeModule.Equals("modules/GCETNativeLocationHost.lua",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return UpgradeNativeLocationHost(bytes,bundled);
+        }
         if (relativeModule.Equals("modules/GCETWorkQueue.lua",
                 StringComparison.OrdinalIgnoreCase))
         {
@@ -417,6 +422,104 @@ internal static class FixedZeroEngineRuntime
                 return EncodeLikeOriginal(bytes, upgraded);
         }
         return bytes;
+    }
+
+
+    // The player's 0-Engine is authoritative, including custom Scheduler,
+    // routing and module changes. Native-location APIs are an independent
+    // *capability* requirement: reusing an old G-CET host with no
+    // attachCompiled makes an otherwise valid generated GCAS manifest inert.
+    // Inject only source-proven missing capabilities, never replace the host
+    // module wholesale and never identify compatibility by release or hash.
+    private static byte[] UpgradeNativeLocationHost(byte[] live,byte[] bundled)
+    {
+        var source=Encoding.UTF8.GetString(live);
+        var current=Encoding.UTF8.GetString(bundled);
+        var hasAttach=source.Contains("function Host:attachCompiled(",StringComparison.Ordinal);
+        var hasShutdownPreservation=source.Contains("if owner.compiled then",StringComparison.Ordinal);
+        if(hasAttach && hasShutdownPreservation)
+            return live;
+
+        var required=new[]{
+            "local function native(", "function Host:attach(", "function Host:_stop(",
+            "function Host:_schedule(", "function Host:_fallback(",
+            "function Host:shutdown(", "self.owners"
+        };
+        if(required.Any(token=>!source.Contains(token,StringComparison.Ordinal)))
+            throw new InvalidOperationException(
+                "The installed 0-Engine native location host lacks required " +
+                "source-proven owner/session APIs; refusing to overwrite custom code.");
+
+        var anchors=Regex.Matches(source,
+            @"(?m)^[ \t]*return[ \t]+Host[ \t]*;?[ \t]*(?:--[^\r\n]*)?\r?$",
+            RegexOptions.CultureInvariant);
+        if(anchors.Count!=1 ||
+           !Regex.IsMatch(source[(anchors[0].Index+anchors[0].Length)..],
+               @"\A(?:\s|--[^\r\n]*)*\z",RegexOptions.CultureInvariant))
+            throw new InvalidOperationException(
+                "Cannot prove the native host's final exported module table.");
+
+        var patch=new StringBuilder();
+        if(!hasAttach)
+        {
+            var start=current.IndexOf("function Host:attachCompiled(",StringComparison.Ordinal);
+            var end=start<0?-1:current.IndexOf(
+                "\n-- Site-granular native wake",start,StringComparison.Ordinal);
+            if(end<0)
+                throw new InvalidOperationException(
+                    "Bundled compiled-owner API source is missing its reviewed boundary.");
+            var compiled=current[start..end];
+            if(!compiled.Contains("GCETStaticOwnerCount",StringComparison.Ordinal) ||
+               !compiled.Contains("GCETStaticArm",StringComparison.Ordinal) ||
+               !compiled.Contains("compiled=true",StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "Bundled compiled-owner API fails required behavioral contract.");
+            patch.AppendLine("-- G-CET source-structural native capability bridge");
+            patch.AppendLine(compiled);
+
+            // Existing manually optimized mods may still use :attach(id,sites).
+            // Do not create duplicate anchors where the generated GCAS file
+            // already owns that ID; preserve the old dynamic path otherwise.
+            patch.AppendLine("""
+                local __gcetPriorAttach=Host.attach
+                function Host:attach(id,sites,onNear,onFar,onFallback)
+                  local ok,count=pcall(native,"GCETStaticOwnerCount",id)
+                  if ok and type(count)=="number" and count>0 then
+                    if count~=#sites and not (id==10035 and count==100 and #sites<=100) then
+                      return false
+                    end
+                    return self:attachCompiled(id,count,onNear,onFar,onFallback)
+                  end
+                  return __gcetPriorAttach(self,id,sites,onNear,onFar,onFallback)
+                end
+                """);
+        }
+        if(!hasShutdownPreservation)
+        {
+            // Reuse the author's own shutdown routine. Hide immutable anchor
+            // IDs from its legacy RemoveAnchor loop after first disarming
+            // them; preserve every other custom shutdown side effect.
+            patch.AppendLine("""
+                local __gcetPriorNativeShutdown=Host.shutdown
+                function Host:shutdown()
+                  if self.owners then
+                    for _,owner in pairs(self.owners) do
+                      if owner.compiled and type(owner.ids)=="table" then
+                        for _,id in ipairs(owner.ids) do
+                          pcall(native,"GCETStaticArm",id,false)
+                        end
+                        owner.ids={}
+                      end
+                    end
+                  end
+                  return __gcetPriorNativeShutdown(self)
+                end
+                """);
+        }
+        var insertion=patch.ToString();
+        if(insertion.Length==0)return live;
+        var amended=source.Insert(anchors[0].Index,insertion+"\n");
+        return EncodeLikeOriginal(live,amended);
     }
 
     private static byte[] EncodeLikeOriginal(byte[] original, string text)
