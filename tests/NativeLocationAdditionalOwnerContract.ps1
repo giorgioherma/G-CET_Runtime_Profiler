@@ -123,4 +123,51 @@ function bathtub.update(player, pPos)
 end
 '@
 $y=Apply 'yaibaPenthouse' 'bathtub.lua' 'native-location-yaiba-bathtub' 'ApplyBathtub' $bath @('G-CET native location:yaiba-bathtub-v1','lookup:attach(10037','z=CONFIG.position.z-1.0','if __gcetBathNativeFar == true then return end','if __gcetBathNativeFar == nil then')
+
+$ziggy=@'
+local C={giver={position={1,2,3}}}
+local H={s={phase='offered'},generation=1,playerKey='abc',hooks=nil}
+local Dialogue={}
+local function valid(x) return x~=nil end
+registerForEvent('onInit',function()H.hooks=NewObject('ZG11Hooks');H.hooks:Register();print('ready')end)
+local __gcetZiggyOfferedFarAcc=0.0
+local function __gcetZiggyOfferedFar()
+ if not H.s or H.s.phase~='offered' or not valid(H.hooks) then return false end
+ if not H.hooks:SessionLoaded() or H.generation~=H.hooks.generation then return false end
+ if Dialogue.busy(H.dialogue) then return false end
+ local p=Game.GetPlayer()
+ if not valid(p) or not p:IsAttached() then return false end
+ if tostring(p:GetEntityID().hash)~=H.playerKey then return false end
+ local pos=p:GetWorldPosition()
+ local loc=C.giver and C.giver.position
+ if not pos or not loc then return false end
+ local dx=pos.x-loc[1];local dy=pos.y-loc[2];local dz=pos.z-loc[3]
+ return dx*dx+dy*dy+dz*dz>130*130
+end
+__gcetRegisterEvent_1061('onUpdate',function(dt)
+ local __gcetProbeOK,__gcetFar=false,false
+ if H.s and H.s.phase=='offered' then
+  __gcetProbeOK,__gcetFar=pcall(__gcetZiggyOfferedFar)
+ end
+ if __gcetProbeOK and __gcetFar then
+  __gcetZiggyOfferedFarAcc=__gcetZiggyOfferedFarAcc+(dt or 0)
+  if __gcetZiggyOfferedFarAcc < 1.0 then return end
+  dt=__gcetZiggyOfferedFarAcc
+  __gcetZiggyOfferedFarAcc=0
+ end
+end)
+'@
+$z=Apply 'ziggy_last_play' 'init.lua' 'native-location-ziggy-offered' 'ApplyZiggy' $ziggy @(
+ 'G-CET native location:ziggy-offered-v1',
+ 'lookup:attach(10038',
+ 'radius=130,metric="xyz"',
+ 'if __gcetZiggyNativeOfferedFar ~= nil then return __gcetZiggyNativeOfferedFar end',
+ '__gcetZiggyNativeOfferedFar=nil;return true end',
+ 'if Dialogue.busy(H.dialogue) then return false end',
+ 'if tostring(p:GetEntityID().hash)~=H.playerKey then return false end',
+ 'local pos=p:GetWorldPosition()',
+ 'if __gcetZiggyOfferedFarAcc < 1.0 then return end'
+) $true
+Write-Host 'Ziggy offered source-native 130m: same author guards and 1Hz cadence, UNKNOWN fallback, CRLF and idempotence PASS'
+
 Write-Host 'Native static location additional owners: Card Collection 100-site coarse dormancy, banker SpatialHash FAR, Yaiba bathroom author gate; fallback, CRLF and idempotence PASS'
