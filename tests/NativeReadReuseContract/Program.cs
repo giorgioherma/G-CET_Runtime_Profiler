@@ -99,6 +99,55 @@ try
     Check(combined.Contains("__gcetGetPlayer()"),"Generated shared helper missing");
     Check(File.ReadAllText(main)==mainText,"Installed source was modified");
     Check(manifest.Count==3,"Expected per-provider transform manifest");
+    // A large Lua file with 199 top-level locals cannot accept two newly
+    // generated shared providers, but CAN safely benefit from one. The
+    // resolver must keep the higher-impact provider, rather than rejecting
+    // all independent getter reuse or deleting author declarations.
+    var tightRoot=Path.Combine(root,"tightmodset");
+    var tightMods=Path.Combine(tightRoot,"Budget");
+    Directory.CreateDirectory(tightMods);
+    var authorLine="local "+string.Join(",",
+        Enumerable.Range(1,199).Select(i=>"author"+i));
+    var tightSource=authorLine+"\n"+
+        "return Game.GetPlayer(), Game.GetPlayer(), Game.GetPlayer(), "+
+        "Game.GetQuestsSystem()\n";
+    File.WriteAllText(Path.Combine(tightMods,"init.lua"),
+        tightSource,new UTF8Encoding(false));
+    var withinBudget=M("TryTransformWithinBudget");
+    object?[] budgetArgs=[tightSource,headers,null,null,0,null];
+    Check((bool)withinBudget.Invoke(null,budgetArgs)!,
+        "Near-limit source rejected every independently affordable getter");
+    var partialOutput=(string)budgetArgs[2]!;
+    var picked=(Array)budgetArgs[3]!;
+    var unpicked=(string[])budgetArgs[5]!;
+    Check((int)budgetArgs[4] == 201 && picked.Length==1 &&
+          unpicked.SequenceEqual(["GetQuestsSystem"]) &&
+          partialOutput.Contains("return __gcetGetPlayer(), __gcetGetPlayer(), __gcetGetPlayer(), Game.GetQuestsSystem()") &&
+          partialOutput.Contains("local author199"),
+        "Lua-budget source selector must preserve all 199 author locals "+
+        "while applying the highest-value proven getter");
+    var tightStages=new Dictionary<string,byte[]>(StringComparer.OrdinalIgnoreCase);
+    var tightHash=new Dictionary<string,string?>(StringComparer.OrdinalIgnoreCase);
+    var tightApplied=new Dictionary<string,int>(StringComparer.OrdinalIgnoreCase);
+    var tightManifest=new List<object>();
+    var tightSkipped=new List<object>();
+    object?[] tightArgs=[document.RootElement,tightRoot,tightStages,tightHash,
+        tightApplied,tightManifest,tightSkipped,headers];
+    Check((int)stage.Invoke(null,tightArgs)!==3 &&
+          tightStages.ContainsKey("Budget/init.lua") &&
+          tightManifest.Count==1 &&
+          tightSkipped.Any(x=>x.ToString()!.Contains("LUA_LOCAL_LIMIT_PARTIAL")),
+        "Native stage did not preserve the highest-benefit safe partial rewrite");
+    var tightAgain=new List<object>();
+    object?[] tightRepeat=[document.RootElement,tightRoot,tightStages,tightHash,
+        tightApplied,tightAgain,new List<object>(),headers];
+    Check((int)stage.Invoke(null,tightRepeat)!==0 && tightAgain.Count==0,
+        "Lua-budget partial provider was duplicated on a repeat generation");
+    Check(File.ReadAllText(Path.Combine(tightMods,"init.lua"))==tightSource,
+        "Local-budget fallback mutated installed Lua source");
+    Console.WriteLine("GCET 199-local partial reuse: three reads saved, "+
+        "all author locals retained, unsafe fourth deferred PASS");
+
     // Drift must refuse without modifying staged file.
     File.AppendAllText(main,"-- changed\n");
     var before=staged["Example/init.lua"].ToArray();
