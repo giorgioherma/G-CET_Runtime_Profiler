@@ -314,6 +314,7 @@ Write-Host 'Same-pass pristine author source -> compiled-native semantic composi
 $pokerSource=@'
 local StreetTables={locations={{center={x=1,y=2},floorZ=3}}}
 local pokerTableCount=#StreetTables.locations
+local __gcetPokerRadius=25.0
 local InteractionMenu={visible=false}
 local function __gcetPokerReady() return true end
 local function __gcetPokerActive() return false end
@@ -417,5 +418,57 @@ $m=Apply 'marmurbank' 'module/Bank.lua' 'native-location-marmurbank' 'ApplyMarmu
   'if self.__gcetNativeFar then self.nearestLocation=nil;return 0 end'
 )
 Write-Host 'Source-structural Poker, Dedka helper-zone and MarmurBank logger-independent, per-stage idempotent hooks PASS'
+
+
+# Location extraction is independent from owner hook completion. Deliberately
+# compile from PRE-native source with no "G-CET native location" markers.
+# A source update may preserve the coordinates even if its listener changed.
+$tables=@'
+local StreetTables={}
+StreetTables.locations = {
+ {id="one",center={x=1,y=2},surfaceZ=4,floorZ=3},
+ {id="two",center={x=101,y=102},surfaceZ=104,floorZ=103}
+}
+'@
+$posdata=@'
+local PosData={}
+PosData.Bankers = {
+ {x=10,y=11,z=12},
+ {x=20,y=21,z=22},
+ {x=30,y=31,z=32}
+}
+PosData.All={}
+for _,b in ipairs(PosData.Bankers) do
+ table.insert(PosData.All,{x=b.x,y=b.y,z=b.z,type="banker"})
+end
+return PosData
+'@
+$stPath=Join-Path $root 'StreetGamesPoker/StreetTables.lua'
+$psPath=Join-Path $root 'marmurbank/data/PosData.lua'
+New-Item -ItemType Directory -Force (Split-Path $stPath -Parent),(Split-Path $psPath -Parent) | Out-Null
+[IO.File]::WriteAllText($stPath,$tables)
+[IO.File]::WriteAllText($psPath,$posdata)
+$geometry=[Collections.Generic.Dictionary[string,byte[]]]::new([StringComparer]::OrdinalIgnoreCase)
+$geometry.Add('StreetGamesPoker/init.lua',[Text.Encoding]::UTF8.GetBytes($pokerSource))
+$geometry.Add('Dedka Auto Shop/init.lua',[Text.Encoding]::UTF8.GetBytes($dedkaSource))
+$geometry.Add('marmurbank/module/Bank.lua',[Text.Encoding]::UTF8.GetBytes($bankSource))
+try {$compiled=$compile.Invoke($null,[object[]]@([string]$root,$geometry))}
+catch {throw "Independent location geometry failed source proof: $($_.Exception.InnerException.Message)"}
+$countMap=$compilerType.GetProperty('OwnerCounts',[Reflection.BindingFlags]'Instance,Public,NonPublic').GetValue($compiled)
+if($countMap[10031] -ne 2 -or $countMap[10034] -ne 2 -or $countMap[10036] -ne 3) {
+ throw "Independent source-owned location counts invalid: Poker=$($countMap[10031]) Dedka=$($countMap[10034]) Bank=$($countMap[10036])"
+}
+$bytes=$compilerType.GetProperty('Bytes',[Reflection.BindingFlags]'Instance,Public,NonPublic').GetValue($compiled)
+if([BitConverter]::ToUInt32($bytes,8) -ne 7){throw 'Expected seven independent geometry records'}
+# Native banker coarse wake MUST exceed the 25m source discovery scan.
+$bankRadii=for($idx=0;$idx -lt 7;$idx++){
+ if([BitConverter]::ToUInt32($bytes,16+28*$idx+24) -eq 10036){
+  [BitConverter]::ToSingle($bytes,16+28*$idx+16)
+ }
+}
+if($bankRadii.Count -ne 3 -or @($bankRadii | Where-Object {$_ -lt 30}).Count -gt 0){
+ throw 'Banker native wake does not encompass the source nearest query radius'
+}
+Write-Host 'Independently compiled pre-native geometry: Poker 2 + Dedka 2 + Bank 3, discovered banker radius + 5m PASS'
 
 Write-Host 'Native static location additional owners: Card Collection 100-site coarse dormancy, banker SpatialHash FAR, Yaiba bathroom author gate; fallback, CRLF and idempotence PASS'
