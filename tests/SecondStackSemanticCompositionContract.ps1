@@ -496,7 +496,8 @@ try {
     }
     if ($metroHudOut -notmatch 'destinationWasVisible' -or
         $metroHudOut -notmatch 'observers\.nextStationPoint = nil' -or
-        $metroHudOut -notmatch 'UnregisterMappin\(observers\.nextStationPoint\)') {
+        $metroHudOut -notmatch 'UnregisterMappin\(observers\.nextStationPoint\)' -or
+        $metroHudOut -notmatch '__gcetGetMappinSystem\(\):UnregisterMappin\(observers\.nextStationPoint\)') {
         throw 'Metro destination cleanup was not converted to transition-driven teardown.'
     }
 
