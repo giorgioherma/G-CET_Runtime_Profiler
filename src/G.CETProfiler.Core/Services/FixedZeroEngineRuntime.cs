@@ -29,18 +29,12 @@ internal static class FixedZeroEngineRuntime
     internal const string BaseVersion = "0.18.6";
     internal const string FixedVersion = "0.18.14-ADDITIVE-WORKLOAD-SERVICES";
 
-    internal const string BaseInitSha256 =
-        "c2113cabc10b7f270f7be5542cfa9a8fcc87734913c0f17510eddd1037bca46f";
-
     // The repository keeps the last proven fixed init compressed as the baseline.
     // The shared-system layer is injected deterministically at pass generation
     // time so existing PASS4 installs can be upgraded without replacing the
     // entire opaque payload by hand.
     internal const string LegacyFixedInitSha256 =
         "a0e6480c9404e968e30e573a36fd92b5a87310ba91bfac305a80aad04938e2ef";
-
-    internal const string PreviousSharedInitSha256 =
-        "8e746ff2e4959b17e1c7616a3e5fa05381913b8d8df0095f3ef6aca46a035c1d";
 
     private const string SharedSystemMarker =
         "-- G-CET shared providers v2";
@@ -143,21 +137,29 @@ internal static class FixedZeroEngineRuntime
                 "Bundled fixed 0-Engine init payload failed its SHA256 integrity check.");
         }
 
-        var sharedInit = AddSharedSystemAccessors(fixedInit);
-        var sharedInitHash = Sha256(sharedInit);
-        var extendedInit = AddNativeLocationBridge(AddWorkloadServices(sharedInit));
-        var extendedInitHash = Sha256(extendedInit);
-        var knownState = ClassifyCompatibleInit(sourceHash, sharedInitHash, extendedInitHash);
-
-        if (knownState != "UNSUPPORTED")
+        // Upgrade the CURRENT source by proven additive anchors instead
+        // of recognizing an old install through an exact file hash and
+        // replacing it with a bundled snapshot.
+        try
         {
-            var files = BuildKnownFixedRuntime(runtimeRoot, liveRoot, extendedInit);
+            var sharedCurrent = AddSharedSystemAccessors(sourceBytes);
+            var extendedCurrent =
+                AddNativeLocationBridge(AddWorkloadServices(sharedCurrent));
+            var liveFiles = BuildKnownFixedRuntime(
+                runtimeRoot, liveRoot, extendedCurrent);
             return new FixedZeroEngineBuild(
-                files,
-                statePrefix + knownState,
+                liveFiles,
+                statePrefix + "SOURCE_PROVEN_GCET_RUNTIME",
                 liveHash,
                 FixedVersion,
-                extendedInitHash);
+                Sha256(extendedCurrent));
+        }
+        catch (InvalidOperationException)
+        {
+            // Newer/forked author implementations can expose the same
+            // exported runtime table without the legacy accessor anchor.
+            // Preserve the author's complete init via the general adapter.
+            // It must prove its export before any file is staged.
         }
 
         if (!TryBuildHostCompatibilityInit(
@@ -198,24 +200,6 @@ internal static class FixedZeroEngineRuntime
             Sha256(compatibleInit));
     }
 
-
-    private static string ClassifyCompatibleInit(
-        string hash,
-        string currentSharedHash,
-        string extendedInitHash)
-    {
-        if (hash.Equals(BaseInitSha256, StringComparison.OrdinalIgnoreCase))
-            return "BASE_0.18.6";
-        if (hash.Equals(LegacyFixedInitSha256, StringComparison.OrdinalIgnoreCase))
-            return "LEGACY_FIXED";
-        if (hash.Equals(PreviousSharedInitSha256, StringComparison.OrdinalIgnoreCase))
-            return "PREVIOUS_SHARED_FIXED";
-        if (hash.Equals(currentSharedHash, StringComparison.OrdinalIgnoreCase))
-            return "ALREADY_FIXED";
-        if (hash.Equals(extendedInitHash, StringComparison.OrdinalIgnoreCase))
-            return "ALREADY_WORKLOAD_EXTENDED";
-        return "UNSUPPORTED";
-    }
 
     private static string? ResolveProfilerBackupInit(string modsRoot)
     {
@@ -916,7 +900,7 @@ internal static class FixedZeroEngineRuntime
         if (!playerAccessor.Success)
         {
             throw new InvalidOperationException(
-                "Bundled fixed 0-Engine init does not expose the expected Engine.GetPlayer accessor anchor.");
+                "Installed 0-Engine source does not expose the legacy Engine.GetPlayer accessor anchor.");
         }
 
         var newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
