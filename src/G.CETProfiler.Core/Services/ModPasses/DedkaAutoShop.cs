@@ -235,6 +235,27 @@ internal static partial class SemanticInjectors
                 text[(update.Index + update.Length)..];
         }
 
+        // Existing or freshly composed Dedka callbacks must retain the
+        // generic GetPlayer provider. Rewrite ONLY our two known fallback
+        // callsites; never rewrite the original fallback inside the provider.
+        if (PreserveGenericGetters(text,"Game.GetPlayer()")=="__gcetGetPlayer()")
+        {
+            const string oldFallback=
+                "type(__gcetDedkaEngine.GetPlayer) == \"function\" and __gcetDedkaEngine.GetPlayer() or Game.GetPlayer()";
+            const string newFallback=
+                "type(__gcetDedkaEngine.GetPlayer) == \"function\" and __gcetDedkaEngine.GetPlayer() or __gcetGetPlayer()";
+            var legacyCount=Regex.Matches(text,Regex.Escape(oldFallback),
+                RegexOptions.CultureInvariant).Count;
+            if (legacyCount!=0 && legacyCount!=2)
+                throw new InvalidOperationException(
+                    "Dedka player provider fallback drifted; refusing partial migration.");
+            if (legacyCount==2)
+                text=text.Replace(oldFallback,newFallback,StringComparison.Ordinal);
+        }
+        if (text==file.Text)
+            return SemanticInjectionResult.Skip(
+                "Dedka scheduler and generic player fallback already source-proven.");
+
         context.Write(file, text);
         return SemanticInjectionResult.Success(
             "Moved Dedka Auto Shop's proximity discovery to 0-Engine coarse zones plus a 5 Hz near-shop lane, replaced vehicle polling with mount lifecycle events, hard-slept the shop while far away, and kept only active toggle/spawn cleanup on the frame path.");
