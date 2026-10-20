@@ -132,7 +132,9 @@ end)
   $g=ZipText $r.pass.ZipPath 'GigCore/init.lua'
   $s=ZipText $r.pass.ZipPath 'SpecterM11RecoveryDev/init.lua'
   if(!$g.Contains('local function __gcetGigCoreRefreshPausedFrame()') -or !$g.Contains('pcall(__gcetGigCoreRefreshPausedFrame)')){throw 'Missing one-pass GigCore closure reuse'}
-  if(!$g.Contains('local __gcetGigBoards = Game.GetBlackboardSystem()') -or !$g.Contains('__gcetGigBoards:Get(defs.PhotoMode)') -or !$g.Contains('GigCore-v073-mappins')){throw "GigCore change/feature wrong: $version"}
+  $boardReadOk=$g.Contains('local __gcetGigBoards = Game.GetBlackboardSystem()') -or
+               $g.Contains('local __gcetGigBoards = __gcetGetBlackboardSystem()')
+  if(!$boardReadOk -or !$g.Contains('__gcetGigBoards:Get(defs.PhotoMode)') -or !$g.Contains('GigCore-v073-mappins')){throw "GigCore change/feature wrong: $version"}
   if(!$s.Contains('local rainbowDone=seq==9 and metricGet(') -or !$s.Contains('local recoveryDone=(seq==9 and rainbowDone==1) and metricGet(') -or !$s.Contains('autoStartClock>=0.75') -or !$s.Contains('SPECTER-1.5-dialogue-restore')){throw "Recovery behavior wrong: $version"}
   if($version -eq '1.5'){
     if(!$s.Contains('local __gcetRecoveryMusicContract = {id="recovery_counter_isolation"}') -or !$s.Contains('active and __gcetRecoveryMusicContract or nil') -or $s.Contains('active and {id="recovery_counter_isolation"} or nil')){throw '1.5 music allocation not removed'}

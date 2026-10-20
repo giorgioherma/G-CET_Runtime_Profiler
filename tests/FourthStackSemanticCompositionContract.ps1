@@ -665,13 +665,19 @@ try {
     $interval=$ammo.IndexOf('scriptInterval = scriptInterval + deltaTime')
     $player=$ammo.IndexOf('player = Game.GetPlayerSystem():GetLocalPlayerMainGameObject()',$interval)
     $readyCheck=$ammo.IndexOf('if notReady() then')
+    # Author cadence/guard ordering stays unchanged; the generic
+    # source-first lane may independently replace only the exact read
+    # expressions with existing shared-provider equivalents.
+    $playerReadOk=$ammo.Contains('local __gcetPlayer = Game.GetPlayer()') -or
+                  $ammo.Contains('local __gcetPlayer = __gcetGetPlayer()')
+    $uiReadOk=$ammo.Contains('local __gcetUIBB = Game.GetAllBlackboardDefs().UI_System') -or
+              $ammo.Contains('local __gcetUIBB = __gcetGetAllBlackboardDefs().UI_System')
     if($ammo -match '__gcetAutoAmmoReadyProbeElapsed' -or
        $ammo -match '__gcetAutoAmmoProbeDue' -or
        $readyCheck -lt 0 -or $interval -lt 0 -or $player -lt 0 -or
        $readyCheck -gt $interval -or $interval -gt $player -or
        $ammo -notmatch 'local __gcetPlayerSystem = Game\.GetPlayerSystem\(\)' -or
-       $ammo -notmatch 'local __gcetPlayer = Game\.GetPlayer\(\)' -or
-       $ammo -notmatch 'local __gcetUIBB = Game\.GetAllBlackboardDefs\(\)\.UI_System') {
+       !$playerReadOk -or !$uiReadOk) {
         throw 'Auto Ammo functionality-preserving author-cadence semantic composition is incomplete.'
     }
 }
