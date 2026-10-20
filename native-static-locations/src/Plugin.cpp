@@ -18,6 +18,8 @@
 namespace {
     gcet::static_locations::StaticIndex g_index;
     bool g_loaded = false;
+    gcet::static_locations::ManifestLoadStatus g_manifestStatus =
+        gcet::static_locations::ManifestLoadStatus::Invalid;
     gcet::static_locations::PositionCoordinator g_coordinator(g_index);
     gcet::static_locations::PlayerSnapshot g_playerSnapshot;
     gcet::static_locations::DemandFrameCache g_onDemandPosition;
