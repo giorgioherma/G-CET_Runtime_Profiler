@@ -157,4 +157,42 @@ internal static partial class SemanticInjectors
             "Removed global mappin-driven hub refresh, made hub mappins state-driven and idempotent, gated world scans to 10 Hz outside realtime placement/race state, and added an owned-variant mappin prefilter.");
     }
 
+
+    private static SemanticInjectionResult ApplyCyberTrialsClosedOverlayProvider(SemanticPatchContext context)
+    {
+        var file = context.FindFile("init.lua", "DrawEditor()", "BestTimes()",
+            "WindowHiderTool", "windowSettings.Current.mywindowhidden");
+        var text = file.Text;
+        const string tag = "__gcetCyberTrialsOverlayProviderWake";
+        if (text.Contains(tag, StringComparison.Ordinal))
+            return SemanticInjectionResult.Skip("Closed overlay WindowHiderTool lookup already gated.");
+        var expression = new Regex(
+            @"(?m)^(?<indent>[ \t]*)local\s+WindowHiderTool\s*=\s*GetMod\(\s*['""]WindowHiderTool['""]\s*\)\r?\n" +
+            @"\k<indent>if\s+WindowHiderTool\s+and\s+cetopen\s+then\r?\n" +
+            @"\k<indent>[ \t]+DrawWindowHider\(\)\r?\n" +
+            @"\k<indent>elseif\s+not\s+WindowHiderTool\s+then\r?\n" +
+            @"\k<indent>[ \t]+windowSettings\.Current\.mywindowhidden\s*=\s*false\r?\n" +
+            @"\k<indent>end",
+            RegexOptions.CultureInvariant);
+        var matches = expression.Matches(text);
+        if (matches.Count != 1 ||
+            !Regex.IsMatch(text, @"(?m)^\s*registerRuntimeEvent\(\s*['""]onDraw['""]\s*,\s*function\s*\("))
+            throw new InvalidOperationException("CyberTrials onDraw provider/overlay semantics not uniquely proven.");
+        text = expression.Replace(text, m =>
+        {
+            var i = m.Groups["indent"].Value;
+            return i + "-- G-CET " + tag + ": closed/no-hide overlay needs no CET plugin lookup\n" +
+                i + "if cetopen or (windowSettings.Current and windowSettings.Current.mywindowhidden) then\n" +
+                i + "    local WindowHiderTool = GetMod(\"WindowHiderTool\")\n" +
+                i + "    if WindowHiderTool and cetopen then\n" +
+                i + "        DrawWindowHider()\n" +
+                i + "    elseif not WindowHiderTool then\n" +
+                i + "        windowSettings.Current.mywindowhidden = false\n" +
+                i + "    end\n" +
+                i + "end";
+        });
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Skipped repeated CET GetMod lookup when overlay is closed and its hide state is already false; original open/hide recovery unchanged.");
+    }
 }
