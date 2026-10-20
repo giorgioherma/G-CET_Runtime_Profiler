@@ -471,4 +471,54 @@ if($bankRadii.Count -ne 3 -or @($bankRadii | Where-Object {$_ -lt 30}).Count -gt
 }
 Write-Host 'Independently compiled pre-native geometry: Poker 2 + Dedka 2 + Bank 3, discovered banker radius + 5m PASS'
 
+
+# Player's installed 0-Engine module may be the original dynamic owner host,
+# with local custom code. It must gain only the missing compiled-owner API
+# without overwriting the entire module or removing the immutable GCAS IDs.
+$fixedType=$asm.GetType('GCETRuntimeProfiler.Core.Services.FixedZeroEngineRuntime',$true)
+$upgrade=$fixedType.GetMethod('UpgradeNativeLocationHost',
+    [Reflection.BindingFlags]'Static,NonPublic')
+if(!$upgrade){throw 'Structural legacy 0-Engine native host capability migration absent'}
+$oldHost=@'
+local Host={}
+Host.__index=Host
+local function native(name,...) return Game[name](...) end
+function Host:_stop() end
+function Host:_schedule() return true end
+function Host:_fallback(reason) return true end
+function Host:attach(id,sites,onNear,onFar,onFallback)
+ self.owners=self.owners or {}
+ self.owners[id]={ids={1},fallback=onFallback}
+ return true
+end
+-- USER CUSTOM CODE KEEP THIS UNTOUCHED
+function Host:shutdown()
+ self:_stop()
+ for _,owner in pairs(self.owners) do
+  for _,id in ipairs(owner.ids) do pcall(native,"GCETStaticRemoveAnchor",id) end
+ end
+end
+return Host
+'@
+$nativeSource=Join-Path (Get-Location).Path 'resolver-runtime/0-Engine/modules/GCETNativeLocationHost.lua'
+if(!(Test-Path $nativeSource)){throw "Bundled reviewed native module unavailable: $nativeSource"}
+$officialBytes=[IO.File]::ReadAllBytes($nativeSource)
+try {$mergedBytes=$upgrade.Invoke($null,[object[]]@(
+  [Text.Encoding]::UTF8.GetBytes($oldHost),$officialBytes))}
+catch {throw "Legacy customized native host capability migration failed: $($_.Exception.InnerException.Message)"}
+$merged=[Text.Encoding]::UTF8.GetString($mergedBytes)
+foreach($proof in @('USER CUSTOM CODE KEEP THIS UNTOUCHED',
+ 'function Host:attachCompiled(', 'GCETStaticOwnerAnchor',
+ 'local __gcetPriorAttach=Host.attach',
+ 'local __gcetPriorNativeShutdown=Host.shutdown',
+ 'owner.ids={}')){
+ if(!$merged.Contains($proof)){throw "Legacy native host migration missing: $proof"}
+}
+try {$second=$upgrade.Invoke($null,[object[]]@($mergedBytes,$officialBytes))}
+catch {throw "Reapplying native host capabilities failed: $($_.Exception.InnerException.Message)"}
+if(-not [Linq.Enumerable]::SequenceEqual[byte]($mergedBytes,[byte[]]$second)){
+ throw 'Native host capability bridge was not idempotent'
+}
+Write-Host 'Existing customized 0-Engine native host retained + missing compiled API and safe shutdown reconstituted, no version/SHA gate PASS'
+
 Write-Host 'Native static location additional owners: Card Collection 100-site coarse dormancy, banker SpatialHash FAR, Yaiba bathroom author gate; fallback, CRLF and idempotence PASS'
