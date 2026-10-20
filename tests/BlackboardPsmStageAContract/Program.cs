@@ -49,11 +49,11 @@ before.AppendLine("    if mounted then Trigger('MountedToVehicleChanged', mounte
       .AppendLine("    playerBB = nil")
       .AppendLine("end");
 var original = Encoding.UTF8.GetBytes(before.ToString());
-object?[] a = [original, false, null, null];
+object?[] a = [original, null, null];
 Check((bool)transform.Invoke(null, a)!, "Fixture structural rewrite rejected");
-var output = (byte[])a[2]!;
+var output = (byte[])a[1]!;
 var after = Encoding.UTF8.GetString(output);
-Check((string)a[3]! == "APPLIED", "Unexpected success reason");
+Check((string)a[2]! == "APPLIED", "Unexpected success reason");
 Check(after.Contains("G-CET PSM_DEFS_STAGE_A_V1"), "Stage marker missing");
 Check(after.Contains("MountedToVehicleChanged"), "Original event logic lost");
 Check(after.Contains("BlackboardCache.Attach(player)"), "Attach contract removed");
@@ -67,15 +67,18 @@ foreach (var (_, field, getter) in defs)
     Check(after.Contains($"playerBB:{getter}(__gcetPsmFields.{field})"),
         $"Read {field} not replaced");
 }
-object?[] duplicate = [output, false, null, null];
+object?[] duplicate = [output, null, null];
 Check(!(bool)transform.Invoke(null, duplicate)!, "Double-injected already optimized source");
-Check((string)duplicate[3]! == "ALREADY_SATISFIED", "Bad idempotence status");
-object?[] noPin = [original, null, null];
-Check(!(bool)pinned.Invoke(null, noPin)!, "Unreviewed source SHA unexpectedly admitted");
+Check((string)duplicate[2]! == "ALREADY_SATISFIED", "Bad idempotence status");
+// An otherwise identical source with local author metadata is accepted
+// by the production path without the legacy SHA pin.
+var modified = Encoding.UTF8.GetBytes(before + "-- author version-fluid comment\n");
+object?[] noPin = [modified, null, null];
+Check((bool)pinned.Invoke(null, noPin)!, "Source-compatible local edit rejected by production");
 var drift = before.ToString().Replace(
     "playerBB:GetInt(PlayerStateDefs.Weapon)",
     "playerBB:GetInt(PlayerStateDefs.SomethingElse)");
-object?[] invalid = [Encoding.UTF8.GetBytes(drift), false, null, null];
+object?[] invalid = [Encoding.UTF8.GetBytes(drift), null, null];
 Check(!(bool)transform.Invoke(null, invalid)!, "Structural drift was not rejected");
 var folder = Path.Combine(Path.GetTempPath(), "gcet-psm-defs-" + Guid.NewGuid().ToString("N"));
 try
