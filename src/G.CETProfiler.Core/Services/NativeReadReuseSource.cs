@@ -64,7 +64,7 @@ internal static class NativeReadReuseSource
                 // Never auto-rewrite inside an existing generated shared helper.
                 if(text.Contains("-- G-CET shared provider: "+provider.Provider,
                     StringComparison.Ordinal))return null;
-                return new Operation(provider.Provider,g.Key,g.Count,"__gcet"+g.Key);
+                return new Operation(provider.Provider,g.Key,g.Count(),"__gcet"+g.Key);
             })
             .Where(x=>x is not null).Select(x=>x!)
             .OrderBy(x=>x.Provider,StringComparer.Ordinal).ToArray();
