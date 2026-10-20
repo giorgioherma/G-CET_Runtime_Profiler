@@ -169,9 +169,9 @@ internal static partial class SemanticInjectors
         var expression = new Regex(
             @"(?m)^(?<indent>[ \t]*)local\s+WindowHiderTool\s*=\s*GetMod\(\s*['""]WindowHiderTool['""]\s*\)\r?\n" +
             @"\k<indent>if\s+WindowHiderTool\s+and\s+cetopen\s+then\r?\n" +
-            @"\k<indent>[ \t]+DrawWindowHider\(\)\r?\n" +
+            @"[ \t]+DrawWindowHider\(\)\r?\n" +
             @"\k<indent>elseif\s+not\s+WindowHiderTool\s+then\r?\n" +
-            @"\k<indent>[ \t]+windowSettings\.Current\.mywindowhidden\s*=\s*false\r?\n" +
+            @"[ \t]+windowSettings\.Current\.mywindowhidden\s*=\s*false\r?\n" +
             @"\k<indent>end",
             RegexOptions.CultureInvariant);
         var matches = expression.Matches(text);
