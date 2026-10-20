@@ -424,7 +424,6 @@ public static class PassGeneratorService
                 if (registrationId is null ||
                     string.IsNullOrWhiteSpace(owner) ||
                     string.IsNullOrWhiteSpace(relativeFile) ||
-                    string.IsNullOrWhiteSpace(sha) ||
                     lineStart <= 0 ||
                     lineEnd < lineStart)
                     continue;
@@ -523,7 +522,6 @@ public static class PassGeneratorService
                     if (registrationId is null ||
                         string.IsNullOrWhiteSpace(owner) ||
                         string.IsNullOrWhiteSpace(relativeFile) ||
-                        string.IsNullOrWhiteSpace(sha) ||
                         lineStart <= 0 ||
                         lineEnd < lineStart)
                         continue;
@@ -566,7 +564,6 @@ public static class PassGeneratorService
                     "|",
                     x.Provider,
                     x.RelativeFile,
-                    x.SourceSha256,
                     x.LineStart.ToString(),
                     x.LineEnd.ToString()),
                 StringComparer.OrdinalIgnoreCase)
@@ -932,7 +929,7 @@ public static class PassGeneratorService
                                 // Hash is retained for diagnostics only; the
                                 // function, gate, pending state, reset, receiver
                                 // and module path remain the proof of safety.
-                                if (currentProof with { ModuleSha256 = expectedProof.ModuleSha256 } != expectedProof ||
+                                if ((currentProof with { ModuleSha256 = expectedProof.ModuleSha256 }) != expectedProof ||
                                     !GenericInteractionUiTransform.TryApplyCrossFileCallGuard(
                                         callbackSegment,
                                         currentProof,
