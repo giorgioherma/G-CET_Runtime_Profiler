@@ -294,3 +294,63 @@ finally {
 }
 
 Write-Host 'CyberTrials semantic composition contract passed: version-tolerant structure + PLAYER staging + semantic generation.'
+
+# The 22:22 real source uses registerForEvent('onDraw'), not just
+# registerRuntimeEvent. All three forms prove the same owned callback.
+$asm=[Reflection.Assembly]::LoadFrom((Join-Path $ResolverRoot 'G.CETProfiler.Core.dll'))
+$injectors=$asm.GetType('GCETRuntimeProfiler.Core.Services.SemanticInjectors',$true)
+$ctxType=$asm.GetType('GCETRuntimeProfiler.Core.Services.SemanticPatchContext',$true)
+$method=$injectors.GetMethod('ApplyCyberTrialsClosedOverlayProvider',
+ [Reflection.BindingFlags]'Static,NonPublic')
+$ctor=@($ctxType.GetConstructors([Reflection.BindingFlags]'Instance,NonPublic') |
+ Where-Object {$_.GetParameters().Count -eq 4})[0]
+if(!$method -or !$ctor){throw 'CyberTrials overlay semantic source-stage adapter missing'}
+$originalOverlay=@'
+local windowSettings={Current={mywindowhidden=false}}
+local function DrawEditor() end
+local function BestTimes() end
+local function DrawWindowHider() end
+registerForEvent('onDraw', function()
+    DrawEditor()
+    BestTimes()
+    local WindowHiderTool = GetMod("WindowHiderTool")
+    if WindowHiderTool and cetopen then
+        DrawWindowHider()
+    elseif not WindowHiderTool then
+        windowSettings.Current.mywindowhidden = false
+    end
+end)
+'@
+foreach($registrar in @('registerForEvent','registerRuntimeEvent','__gcetRegisterEvent_93')){
+ foreach($crlf in @($false,$true)){
+  $variant=$originalOverlay.Replace('registerForEvent(',($registrar+'('))
+  if($crlf){$variant=$variant.Replace([string][char]10,([string][char]13+[string][char]10))}
+  [IO.File]::WriteAllText($initPath,$variant,[Text.UTF8Encoding]::new($false))
+  $stage=[Collections.Generic.Dictionary[string,byte[]]]::new([StringComparer]::OrdinalIgnoreCase)
+  $ctx=$ctor.Invoke([object[]]@([string]$mods,'CyberTrials',
+      'cybertrials-closed-overlay-provider',$stage))
+  try{$outcome=$method.Invoke($null,[object[]]@($ctx))}
+  catch{throw "CyberTrials $registrar overlay composition failed: $($_.Exception.InnerException.Message)"}
+  if(!$outcome.Applied){throw "CyberTrials $registrar overlay was not optimized"}
+  $writes=@($ctxType.GetProperty('Changes',
+      [Reflection.BindingFlags]'Instance,NonPublic').GetValue($ctx))
+  if($writes.Count -ne 1){throw 'Overlay optimization changed unexpected number of files'}
+  $optimized=[Text.Encoding]::UTF8.GetString($writes[0].Bytes)
+  foreach($token in @(
+   '__gcetCyberTrialsOverlayProviderWake',
+   'if cetopen or (windowSettings.Current and windowSettings.Current.mywindowhidden) then',
+   'local WindowHiderTool = GetMod("WindowHiderTool")',
+   'windowSettings.Current.mywindowhidden = false'
+  )){if(!$optimized.Contains($token)){throw "CyberTrials overlay lost $token"}}
+  if($crlf -and !$optimized.Contains(([string][char]13+[string][char]10))){throw 'Overlay lost author CRLF format'}
+  [IO.File]::WriteAllText($initPath,$optimized,[Text.UTF8Encoding]::new($false))
+  $again=$ctor.Invoke([object[]]@([string]$mods,'CyberTrials',
+      'cybertrials-closed-overlay-provider',
+      [Collections.Generic.Dictionary[string,byte[]]]::new()))
+  if($method.Invoke($null,[object[]]@($again)).Applied){
+   throw 'CyberTrials overlay was not idempotent'
+  }
+ }
+}
+Write-Host 'CyberTrials original/runtime/generated onDraw, CRLF and idempotent overlay semantic PASS'
+
