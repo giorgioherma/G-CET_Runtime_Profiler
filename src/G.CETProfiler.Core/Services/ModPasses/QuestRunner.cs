@@ -58,4 +58,37 @@ internal static partial class SemanticInjectors
             "Preserved active QuestRunner Manager frame cadence, moved idle Manager refresh to 5 Hz, and fed Spawner at 4 Hz with accumulated delta.");
     }
 
+
+    private static SemanticInjectionResult ApplyQuestRunnerStaticDebounce(SemanticPatchContext context)
+    {
+        var file = context.FindFile("init.lua", "Runner.debounce", "Cron.After(0.1",
+            "registerForEvent(\"onInit\"");
+        const string marker = "G-CET semantic:questrunner-debounce-static-closure";
+        if (file.Text.Contains(marker, StringComparison.Ordinal))
+            return SemanticInjectionResult.Skip("QuestRunner single debounce callback already installed.");
+        var source = file.Text;
+        var anchor = new Regex(
+            @"(?m)^(?<indent>[ \t]*)Cron\.After\(0\.1,\s*function\(\)\s*Runner\.debounce\s*=\s*false\s+end\)\s*\r?$",
+            RegexOptions.CultureInvariant);
+        if (anchor.Matches(source).Count != 1 ||
+            source.IndexOf("if Runner.debounce then return end", StringComparison.Ordinal) < 0)
+            throw new InvalidOperationException("QuestRunner debounce schedule or callback changed.");
+        var registration = new Regex(
+            @"(?m)^[ \t]*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]",
+            RegexOptions.CultureInvariant);
+        var matches = registration.Matches(source);
+        if (matches.Count != 1 || matches[0].Index >= anchor.Match(source).Index)
+            throw new InvalidOperationException("QuestRunner frame callback not uniquely recognized.");
+        var nl = source.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        var head = "-- " + marker + nl +
+            "local function __gcetQuestRunnerReleaseDebounce()" + nl +
+            "    Runner.debounce = false" + nl +
+            "end" + nl + nl;
+        var revised = source.Insert(matches[0].Index, head);
+        revised = anchor.Replace(revised, m => m.Groups["indent"].Value +
+            "Cron.After(0.1, __gcetQuestRunnerReleaseDebounce)");
+        context.Write(file, revised);
+        return SemanticInjectionResult.Success(
+            "Reuses a single identical Lua debounce callback for every 0.1-second timer; timer scheduling, input wake and active quest callbacks remain untouched.");
+    }
 }
