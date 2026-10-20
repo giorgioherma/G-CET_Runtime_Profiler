@@ -20,23 +20,35 @@ original-state restoration remains a different problem).
    prefilters, frame consolidation and mechanically safe generic recipes.
 2. **GENERIC 2 — shared infrastructure and getters:** 0-Engine PSM,
    SpatialHash and Lifecycle stages, native forced-live player vectors,
-   and broad source-first shared getter reuse. Each consumes previously
-   staged bytes and finishes BEFORE source-specific semantic injection.
-3. **SEMANTIC — behavior:** version-fluid, source-structural mod-specific
-   scheduling, wake state, lifecycle and dormancy stages over final generic
-   source. Reuse existing capabilities instead of requiring old template text.
-4. **SEMANTIC native-location substage — last:** apply remaining compiled
-   location subscriptions and safe same-generation follow-ups for Poker,
-   Tunnel, Illegal Mechanic, Dedka, Card Collection, MarmurBank, Yaiba,
-   and Ziggy. No generic source rewriting occurs after semantic.
-5. **FINALIZE:** compose additive 0-Engine host files; compile native
-   positions from CURRENT installed/staged owner source; verify native DLL
-   availability; check every generated Lua file against the 200 active-local
-   hard limit; package one coherent overlay ZIP and manifest.
+   and broad source-first shared getter reuse. Each consumes staged bytes.
+3. **NATIVE STATIC-LOCATION INVENTORY:** independently read the CURRENT
+   installed author/REDscript coordinates of known owner sources after both
+   generic passes. Compile immutable coordinate + conservative wake-radius
+   records into one GCAS database **before any handpicked semantic source
+   edit**. No Lua subscription, old G-CET marker, file SHA, runtime capture
+   or historical semantic version is required to inventory the positions.
+   Unsubscribed owners are inert: compiling coordinates does NOT authorize
+   gameplay changes or prove an owner has a working native listener.
+4. **SEMANTIC — behavior AND optional native subscriptions:** version-fluid,
+   source-structural mod-specific scheduling, wake state, lifecycle and
+   dormancy changes consuming FINAL generic source. Handpicked semantic
+   stages may subscribe to the already-compiled static owners through
+   `NativeLocationHost:attachCompiled` if their own lifecycle/source proof
+   passes. Within this phase, same-generation prerequisites are composed
+   before their dependent native subscriber edits.
+5. **FINALIZE ONLY:** compose additive 0-Engine host source, require the CI
+   native DLL when the compiled database or generated code needs it, verify
+   every generated Lua file against the 200 active-local limit, and package
+   DLL + precompiled GCAS + Lua in one ZIP. Do not rewrite or regenerate
+   location geometry after the semantic phase.
 
-A local-stage refusal must neither revert independent changes nor be
-reported as a completed capability. Runtime native API availability is
-different from generation-time location composition.
+**Geometry presence and semantic subscription are independent capabilities.**
+An absent mod must not contribute native coordinates. A changed mod remains
+eligible if its current source supplies provable valid geometry. Unknown
+coordinate shapes fail closed without blocking unrelated mod optimizations.
+Conservative reviewed wake-radius defaults are used only for known semantic
+contracts before their source-specific scheduler exists; they never permit
+subscribing to an unsupported mod version.
 
 ### Add/remove/update/reset contract
 
@@ -49,15 +61,15 @@ gated on source-file SHA or release version. Repeated generation must not
 duplicate listeners or wipe previous manual optimizations.
 
 When native service is included, the current source-derived complete GCAS
-manifest (including already-satisfied owners with zero new Lua edits)
-replaces the previous manifest; removed owners must disappear. Static owner
-geometry alone does not establish that its subscription hook succeeded.
+manifest (including current-source owners with no Lua subscription at all)
+replaces the previous manifest; removed owners must disappear. Unsubscribed
+geometry is inert and the manifest cannot claim a successful hook.
 
 ## Regression matrix
 
 Test original, optimized, eight-reset/mixed, updated, newly added, removed,
-and repeated sources; preserve all unrelated files. Assert generic phases
-precede semantic/native phases, native-location subscription closure,
+and repeated sources; preserve all unrelated files. Assert generic phases precede native inventory which precedes semantic
+subscriptions, native-location source independence and subscription closure,
 owner-count correctness, local-variable ceiling, DLL fallback behavior,
 and stage-by-stage generated ZIP postconditions.
 
