@@ -179,6 +179,103 @@ $drift = $original.Replace('this:GetVerticalRelationToPlayer()',
                            'this:GetNewVerticalRelationState()')
 Invoke-Variant 'unproven semantics' $drift $false | Out-Null
 Write-Host 'Minimap native-widget source reuse: production generation, exact scope, idempotence, whitespace tolerance, author drift and read-only live source passed.'
+
+
+# 22:22 stack mixed-source case: the independently installed locality semantic
+# has already changed this.aboveWidget to __gcetAboveWidget before the
+# timer-first/deferred-elevation semantic is applied. Neither can undo the other.
+$assembly=[Reflection.Assembly]::LoadFrom((Join-Path $ResolverRoot 'G.CETProfiler.Core.dll'))
+$injectors=$assembly.GetType('GCETRuntimeProfiler.Core.Services.SemanticInjectors',$true)
+$ctxType=$assembly.GetType('GCETRuntimeProfiler.Core.Services.SemanticPatchContext',$true)
+$method=$injectors.GetMethod('ApplyMinimapWidgets',
+ [Reflection.BindingFlags]'Static,NonPublic')
+$ctor=@($ctxType.GetConstructors([Reflection.BindingFlags]'Instance,NonPublic') |
+ Where-Object {$_.GetParameters().Count -eq 4})[0]
+if(!$method -or !$ctor){throw 'Minimap timer/elevation semantic source adapter missing'}
+$mixed=@'
+local timerFast=0
+local timerSlow=0
+local timerCoord=0
+registerForEvent("onUpdate", function(deltaTime)
+    if isGameLoading or isPreGameState or not isInitialized then return end
+    if not shouldForceUpdate then return end
+    -- 1. FPS
+    if MinimapWidgetsConfig.FPS == true and shouldCountFPS == true then
+        updateFpsCounter()
+    end
+    timerFast = timerFast + deltaTime
+    if timerFast >= 0.2 then
+        updateFastWidgets()
+        timerFast = 0
+    end
+    timerSlow = timerSlow + deltaTime
+    if timerSlow >= 1.0 then
+        updateSlowWidgets()
+        timerSlow = 0
+    end
+    timerCoord = timerCoord + deltaTime
+    if timerCoord >= MinimapWidgetsConfig.CoordInterv then
+        updateCoordinatesOnly()
+        timerCoord = 0
+    end
+end)
+ObserveAfter('MinimapStealthMappinController','UpdateAboveBelowVerticalRelation',function(this)
+    if not IsDefined(this) then return end
+    -- G-CET semantic:minimap-stealth-widget-locality
+    local __gcetAboveWidget = this.aboveWidget
+    local __gcetBelowWidget = this.belowWidget
+    if not __gcetAboveWidget and not __gcetBelowWidget then return end
+    if MinimapWidgetsConfig.ShowElevationArrow == true then
+            local vertRelation = this:GetVerticalRelationToPlayer()
+            local shouldShow = this:GetRootWidget():IsVisible() and not this:IsClamped()
+            local isAbove = vertRelation == gamemappinsVerticalPositioning.Above
+            local isBelow = vertRelation == gamemappinsVerticalPositioning.Below
+            if this:IsClamped() then
+                if __gcetAboveWidget then __gcetAboveWidget:SetVisible(false) end
+                if __gcetBelowWidget then __gcetBelowWidget:SetVisible(false) end
+            else
+                if __gcetAboveWidget then __gcetAboveWidget:SetVisible(isAbove) end
+                if __gcetBelowWidget then __gcetBelowWidget:SetVisible(isBelow) end
+            end
+    end
+end)
+ObserveAfter('MinimapStealthMappinController','Intro',function(this)
+    if not IsDefined(this) then return end
+    this:Update()
+end)
+ObserveAfter('MinimapStealthMappinController','Update',function(this)
+    if not IsDefined(this) then return end
+    this:Update()
+end)
+'@
+foreach($crlf in @($false,$true)){
+ $fixture=$mixed
+ if($crlf){$fixture=$fixture.Replace([string][char]10,([string][char]13+[string][char]10))}
+ [IO.File]::WriteAllText($file,$fixture,[Text.UTF8Encoding]::new($false))
+ $ctx=$ctor.Invoke([object[]]@([string]$mods,'Minimap Widgets',
+  'minimap-widgets',
+  [Collections.Generic.Dictionary[string,byte[]]]::new()))
+ try{$result=$method.Invoke($null,[object[]]@($ctx))}
+ catch{throw "Minimap 22:22 mixed-source deferred elevation failed: $($_.Exception.InnerException.Message)"}
+ if(!$result.Applied){throw 'Minimap did not admit mixed generic/stealth semantic source'}
+ $rows=@($ctxType.GetProperty('Changes',
+  [Reflection.BindingFlags]'Instance,NonPublic').GetValue($ctx))
+ if($rows.Count -ne 1){throw 'Minimap mixed source did not generate exactly one file'}
+ $out=[Text.Encoding]::UTF8.GetString($rows[0].Bytes)
+ foreach($token in @(
+  '__gcetMinimapFastDue',
+  'local __gcetAboveWidget = this.aboveWidget',
+  'local isClamped = this:IsClamped()',
+  'if __gcetAboveWidget then __gcetAboveWidget:SetVisible(isAbove) end',
+  'local vertRelation = this:GetVerticalRelationToPlayer()',
+  'local hideEnemies = not MinimapWidgetsConfig.ShowEnemies'
+ )){if(!$out.Contains($token)){throw "Minimap mixed semantic discarded source: $token"}}
+ if($out.Contains('if this.aboveWidget then this.aboveWidget:SetVisible(isAbove) end')){
+  throw 'Minimap semantic undid earlier widget-locality pass'
+ }
+}
+Write-Host 'Minimap mixed source: timer-first + prior local widgets + deferred elevation, LF and CRLF PASS'
+
 # The last deliberate fail-closed Resolver no-op can set LASTEXITCODE to 1.
 # The contract itself passed all assertions above; do not propagate that CLI status.
 $global:LASTEXITCODE = 0
