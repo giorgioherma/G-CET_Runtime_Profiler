@@ -21,7 +21,13 @@ internal static class SemanticPassGeneratorService
         var candidates = ReadCandidates(resolverRoot)
             .GroupBy(x => x.Owner + "\n" + x.RuleId, StringComparer.OrdinalIgnoreCase)
             .Select(g => g.OrderByDescending(x => x.RuntimeMsPerSecond).First())
-            .OrderByDescending(x => x.RuntimeMsPerSecond)
+            // All source-aware behavior stages must complete BEFORE
+            // native-location subscriptions. Never prioritize a native owner
+            // before its scheduler and wake/fallback semantics by CPU alone.
+            .OrderBy(x => x.RuleId.StartsWith("native-location-",
+                StringComparison.OrdinalIgnoreCase) ? 1 : 0)
+            .ThenByDescending(x => x.RuntimeMsPerSecond)
+            .ThenBy(x => x.RuleId, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         var applied = 0;
