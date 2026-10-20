@@ -256,7 +256,7 @@ internal static partial class SemanticInjectors
         // twice in one invocation. No value is retained across frames.
         var original = new Regex(
             @"(?m)^(?<indent>[ \t]*)local\s+hours\s*=\s*Game\.GetTimeSystem\(\):GetGameTime\(\):Hours\(\)\s*\r?\n" +
-            @"\k<indent>local\s+minutes\s*=\s*\(?\s*Game\.GetTimeSystem\(\):GetGameTime\(\):Minutes\(\)\s*\)?[ \t]*$",
+            @"\k<indent>local\s+minutes\s*=\s*\(?[ \t]*Game\.GetTimeSystem\(\):GetGameTime\(\):Minutes\(\)\)?[ \t]*\r?$",
             RegexOptions.CultureInvariant);
         var matches = original.Matches(text);
         if (matches.Count != 2 ||
