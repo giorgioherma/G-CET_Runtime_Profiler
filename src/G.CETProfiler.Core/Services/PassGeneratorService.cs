@@ -153,9 +153,16 @@ public static class PassGeneratorService
             provider => SharedProviderRecipes.TryGetValue(provider, out var recipe)
                 ? BuildSharedProviderHeader(recipe) : Array.Empty<string>());
 
-        // SEMANTIC PHASE: current-source behavior, scheduling and dormancy.
-        // Native static-location subscribers are the final semantic substage.
-        // No generic source rewrites follow semantic composition.
+        // NATIVE STATIC-LOCATION INVENTORY: inspect final generic source and
+        // immutable author/REDscript coordinate definitions BEFORE handpicked
+        // semantic source processing. Location entries are passive data, not
+        // subscriptions. Semantic injectors may then attach to these owners;
+        // no post-semantic native database rewrite is necessary.
+        var availableLocations=CompiledNativeLocations.Compile(modsRoot,staged);
+
+        // SEMANTIC PHASE: current-source behavior, scheduling and dormancy,
+        // including OPTIONAL Lua subscriptions to already-inventoried
+        // static native owners. No generic or native-geometry pass follows.
         var semanticTransformCount = genericInfrastructureTransformCount +
             SemanticPassGeneratorService.Apply(
                 resolver.RootElement,
@@ -166,8 +173,7 @@ public static class PassGeneratorService
                 transformManifest,
                 skipped);
 
-        if (staged.Count == 0 &&
-            CompiledNativeLocations.Compile(modsRoot,staged).OwnerCounts.Count == 0)
+        if (staged.Count == 0 && availableLocations.OwnerCounts.Count == 0)
         {
             // An already-admitted authored rule may still fail its injector's
             // independent source or lifecycle proof. Do not hide that failure
@@ -226,13 +232,9 @@ public static class PassGeneratorService
             fixedInfrastructurePaths.Add(relative);
         }
 
-        // An official Resolver ships a CI-built native service, never a DLL
-        // copied from the player's game. Without it, native source changes
-        // are rejected rather than producing an incomplete installation ZIP.
-        // Compile all independently proven location owners FIRST. Native
-        // coverage must survive a pass that changes only an unrelated mod;
-        // completed owners are recognized in their installed source.
-        var availableLocations=CompiledNativeLocations.Compile(modsRoot,staged);
+        // Package the ALREADY-COMPILED native inventory. A semantic Lua
+        // subscriber is optional, but cannot silently add or remove geometry.
+        // The immutable native DLL is taken from CI, never the player's game.
         var requiresNative = availableLocations.OwnerCounts.Count>0 ||
             nativePlayerVectorCount > 0 || staged.Any(pair =>
             !pair.Key.StartsWith("0-Engine/", StringComparison.OrdinalIgnoreCase) &&
