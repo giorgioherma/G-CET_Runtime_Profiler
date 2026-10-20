@@ -27,6 +27,18 @@ internal static class NativeLocationFourOwnersSource
         text = Once(text,
             "                if farWorldJob then farWorldJob.Resume() end\n            end\n        end\n\n        farWorldJob = client.Schedule.Every(1.0,",
             "                if farWorldJob then\n                    if __gcetNativeOwned then farWorldJob.Pause() else farWorldJob.Resume() end\n                end\n                if __gcetNativeOwned and __gcetNativeNear and nearWorldJob then nearWorldJob.Resume() end\n            end\n        end\n\n        farWorldJob = client.Schedule.Every(1.0,", "Poker far-job resume");
+        // First native NEAR may arrive during a loading/menu frame. The
+        // already-existing realtime lane must rearm discovery once the
+        // author's runtime-ready predicate becomes true without demanding
+        // another boundary crossing or adding a new frame subscriber.
+        text = Once(text,
+            "            local active = pokerIsActive()\n\n            if (active or InteractionMenu.visible) and not nearMode then",
+            "            local active = pokerIsActive()\n\n" +
+            "            if __gcetNativeOwned and __gcetNativeNear and not nearMode then\n" +
+            "                setNearMode(true)\n" +
+            "            end\n\n" +
+            "            if (active or InteractionMenu.visible) and not nearMode then",
+            "Poker first-wake/game-ready reconciliation");
         text = Once(text,
             "            if not near then setNearMode(false) end\n        end)\n        table.insert(created, nearWorldJob)",
             "            if near then setNearMode(true) else setNearMode(false) end\n        end)\n        table.insert(created, nearWorldJob)", "Poker native near reentry");
