@@ -635,7 +635,9 @@ try {
        $easySuperSpeed -notmatch 'if SuperSpeed\.enabled\.value == applied then return end' -or
        $easyThrusters -notmatch 'if AirThrusterBoots\.enabled\.value == applied then return end' -or
        $easyInvisibility -notmatch 'if Invisibility\.enabled\.value == wasApplied then return end' -or
-       $easyInvisibility -match 'GetStatusEffectSystem') {
+       # A generic helper may legitimately contain the original getter
+       # as its guarded fallback. Reject only the stale per-tick local read.
+       $easyInvisibility -match '(?m)^\s*local\s+statusSystem\s*=\s*(?:Game\.GetStatusEffectSystem|__gcetGetStatusEffectSystem)\s*\(') {
         throw 'EasyTrainer routed-action/transition-dormancy semantic composition is incomplete.'
     }
 
