@@ -315,15 +315,16 @@ $compilerType=$asm.GetType('GCETRuntimeProfiler.Core.Services.CompiledNativeLoca
 $compile=$compilerType.GetMethod('Compile',[Reflection.BindingFlags]'Static,NonPublic')
 if(!$compile){throw 'Compiled static location manifest compiler missing'}
 $map=[Collections.Generic.Dictionary[string,byte[]]]::new()
-# Native geometry requires a *verified subscription* in the staged
-# source. Mere generic staging or a semantic comment cannot arm an owner.
+# Native coordinates are reusable passive resources and must compile
+# BEFORE any handpicked semantic attaches. A comment cannot *activate* native
+# behavior; merely inventorying valid installed author coordinates is safe.
 $unboundMap=[Collections.Generic.Dictionary[string,byte[]]]::new()
 $unboundMap.Add('illegal_mechanic_phase1a/physical_npc.lua',
  [Text.Encoding]::UTF8.GetBytes('-- G-CET native location:illegal-v3'))
 $unbound=$compile.Invoke($null,[object[]]@([string]$modsRoot,$unboundMap))
 $unboundBytes=$compilerType.GetProperty('Bytes',[Reflection.BindingFlags]'Instance,Public,NonPublic').GetValue($unbound)
-if([BitConverter]::ToUInt32($unboundBytes,8) -ne 0){
- throw 'Unbound native owner was compiled just because the mod was staged'
+if([BitConverter]::ToUInt32($unboundBytes,8) -ne 2){
+ throw 'Source-proven mechanic coordinates missing before Lua subscription'
 }
 $map.Add('illegal_mechanic_phase1a/physical_npc.lua',
  [IO.File]::ReadAllBytes((Join-Path $mechRoot 'physical_npc.lua')))
@@ -552,9 +553,9 @@ New-Item -ItemType Directory -Force (Split-Path $stPath -Parent),(Split-Path $ps
 [IO.File]::WriteAllText($stPath,$tables)
 [IO.File]::WriteAllText($psPath,$posdata)
 $geometry=[Collections.Generic.Dictionary[string,byte[]]]::new([StringComparer]::OrdinalIgnoreCase)
-$geometry.Add('StreetGamesPoker/init.lua',[Text.Encoding]::UTF8.GetBytes($p))
-$geometry.Add('Dedka Auto Shop/init.lua',[Text.Encoding]::UTF8.GetBytes($d))
-$geometry.Add('marmurbank/module/Bank.lua',[Text.Encoding]::UTF8.GetBytes($m))
+$geometry.Add('StreetGamesPoker/init.lua',[Text.Encoding]::UTF8.GetBytes($pokerSource))
+$geometry.Add('Dedka Auto Shop/init.lua',[Text.Encoding]::UTF8.GetBytes($dedkaSource))
+$geometry.Add('marmurbank/module/Bank.lua',[Text.Encoding]::UTF8.GetBytes($bankSource))
 try {$compiled=$compile.Invoke($null,[object[]]@([string]$root,$geometry))}
 catch {throw "Independent location geometry failed source proof: $($_.Exception.InnerException.Message)"}
 $countMap=$compilerType.GetProperty('OwnerCounts',[Reflection.BindingFlags]'Instance,Public,NonPublic').GetValue($compiled)
@@ -573,7 +574,21 @@ $bankRadii=for($idx=0;$idx -lt $compiledSiteCount;$idx++){
 if($bankRadii.Count -ne 3 -or @($bankRadii | Where-Object {$_ -lt 30}).Count -gt 0){
  throw 'Banker native wake does not encompass the source nearest query radius'
 }
-Write-Host 'Independently compiled subscribed native geometry: Poker 2 + Dedka 2 + Bank 3, discovered banker radius + 5m PASS'
+Write-Host 'Pre-semantic native inventory from original Poker, Dedka and banker sources without subscriptions PASS'
+
+# Verify native coordinates are independent of whether the handpicked
+# semantic subscription exists: original and optimized source states must
+# produce identical inventory bytes whenever their positions are equivalent.
+$semanticGeometry=[Collections.Generic.Dictionary[string,byte[]]]::new([StringComparer]::OrdinalIgnoreCase)
+$semanticGeometry.Add('StreetGamesPoker/init.lua',[Text.Encoding]::UTF8.GetBytes($p))
+$semanticGeometry.Add('Dedka Auto Shop/init.lua',[Text.Encoding]::UTF8.GetBytes($d))
+$semanticGeometry.Add('marmurbank/module/Bank.lua',[Text.Encoding]::UTF8.GetBytes($m))
+$semanticCompiled=$compile.Invoke($null,[object[]]@([string]$root,$semanticGeometry))
+$semanticBytes=$compilerType.GetProperty('Bytes',[Reflection.BindingFlags]'Instance,Public,NonPublic').GetValue($semanticCompiled)
+if(!([Convert]::ToBase64String($bytes) -ceq [Convert]::ToBase64String($semanticBytes))){
+ throw 'Native geometry depended on the semantic subscription source'
+}
+Write-Host 'Pre-semantic and post-semantic coordinate inventory binary equivalence PASS'
 
 # A newly generated pass may touch zero files belonging to these already
 # completed owners. Do NOT silently drop their native geometry from GCAS.
@@ -793,9 +808,9 @@ $orderedPipeline=@(
  'ZeroEngineAllocationBatchSource.TryStage(',
  'NativePlayerVectorStage.TryStage(',
  'NativeReadReuseSource.TryStage(',
+ 'var availableLocations=CompiledNativeLocations.Compile(modsRoot,staged);',
  'SemanticPassGeneratorService.Apply(',
  'var fixedRuntime = FixedZeroEngineRuntime.Prepare(modsRoot);',
- 'var availableLocations=CompiledNativeLocations.Compile(modsRoot,staged);',
  'Whole-overlay Lua budget validation',
  'var fileManifest = staged'
 )
@@ -803,7 +818,7 @@ $previous=-1
 foreach($stage in $orderedPipeline){
  $index=$passGeneratorSource.IndexOf($stage,[StringComparison]::Ordinal)
  if($index -le $previous) {
-  throw "GENERIC -> GENERIC -> SEMANTIC -> NATIVE ordering violation: $stage ($index after $previous)"
+  throw "GENERIC -> GENERIC -> NATIVE LOCATIONS -> SEMANTIC ordering violation: $stage ($index after $previous)"
  }
  $previous=$index
 }
@@ -817,4 +832,4 @@ if(!$semanticSource.Contains('OrderBy(x => x.RuleId.StartsWith("native-location-
    !$semanticSource.Contains('ApplyPreparedNativeLocationStages(')){
  throw 'Native static location owner ordering or same-pass semantic composition missing'
 }
-Write-Host 'GENERIC 1 -> GENERIC 2 -> SEMANTIC -> static native locations -> final Lua budget PASS'
+Write-Host 'GENERIC 1 -> GENERIC 2 -> NATIVE static locations -> SEMANTIC subscribers -> final Lua budget PASS'
