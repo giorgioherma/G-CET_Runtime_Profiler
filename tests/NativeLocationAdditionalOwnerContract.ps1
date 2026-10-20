@@ -694,11 +694,20 @@ foreach($row in $providerRows) {
  $old='local target = Game.'+$getter+'()'
  $new=$old+[Environment]::NewLine+'local checked = true'
  $regexSource='(?m)^local\s+target\s*=\s*Game\.'+$getter+'\(\)\s*$'
+ $label='generic provider '+$getter
+ $literalArgs=[object[]]::new(4)
+ $literalArgs[0]=$source
+ $literalArgs[1]=$old
+ $literalArgs[2]=$new
+ $literalArgs[3]=$label
+ $regexArgs=[object[]]::new(4)
+ $regexArgs[0]=$source
+ $regexArgs[1]=$regexSource
+ $regexArgs[2]=$new
+ $regexArgs[3]=$label
  try {
-  $literalCheck=[string]$literalAdapter.Invoke($null,
-   [object[]]@($source,$old,$new,'generic provider '+$getter))
-  $regexCheck=[string]$regexAdapter.Invoke($null,
-   [object[]]@($source,$regexSource,$new,'generic provider '+$getter))
+  $literalCheck=[string]$literalAdapter.Invoke($null,$literalArgs)
+  $regexCheck=[string]$regexAdapter.Invoke($null,$regexArgs)
  } catch {
   throw "Generic-first semantic compatibility failed for $provider/${getter}: $($_.Exception.InnerException.Message)"
  }
