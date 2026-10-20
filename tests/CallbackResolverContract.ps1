@@ -2009,10 +2009,10 @@ try {
         'function Engine.GetJournalManager',
         '-- G-CET shared providers v2',
         '-- G-CET additive 0-Engine workload services v1',
-        'runtime.WorkQueue',
-        'runtime.PhasePlanner',
-        'runtime.FrameListeners',
-        'runtime.StateSignals',
+        "installIfAvailable('"+field+"', 'modules/GCET"+field+"')",
+        "installIfAvailable('"+field+"', 'modules/GCET"+field+"')",
+        "installIfAvailable('"+field+"', 'modules/GCET"+field+"')",
+        "installIfAvailable('"+field+"', 'modules/GCET"+field+"')",
         'ActionRouter.Dispatch'
     )) {
         if ($zeroText -notmatch [regex]::Escape($requiredRuntimeSymbol)) {
