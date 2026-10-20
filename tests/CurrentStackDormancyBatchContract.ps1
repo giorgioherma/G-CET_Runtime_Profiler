@@ -297,9 +297,18 @@ $minimapPath=Join-Path $mods 'Minimap Widgets\init.lua'
  'Game.GetTimeSystem():GetGameTime():Hours()',
  'Game.GetTimeSystem():GetDifferentTime():Hours()'))
 $driftBatch=Generate
+# The source-only list is an *eligibility* report, not proof that a source
+# rewrite succeeded. A single Time/Weather author-call change may retain
+# owner-level anchors but must be rejected by the injector's two-call proof.
+# The definitive safety condition is that no drifted file is emitted.
+$driftTransforms=@()
+if($driftBatch.Output.ok -and $driftBatch.Output.pass) {
+ $driftManifest=Get-Content -Raw $driftBatch.Output.pass.ManifestPath | ConvertFrom-Json
+ $driftTransforms=@($driftManifest.transforms)
+}
 foreach($id in @('npc-outfit-manager-id-normalization','illegal-mechanic-npc-position-reuse','minimap-widgets-time-weather-snapshot')){
- if(@($driftBatch.Report.semanticSourceOnlyCandidates | Where-Object {$_.ruleId -eq $id}).Count -gt 0){
-  throw "Unsafe semantic source drift admitted: $id"
+ if(@($driftTransforms | Where-Object {$_.RuleId -eq $id}).Count -gt 0){
+  throw "Unsafe semantic source drift generated an output file: $id"
  }
 }
 
