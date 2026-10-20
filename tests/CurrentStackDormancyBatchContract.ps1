@@ -39,6 +39,7 @@ function updateWeatherWidget()
     local minutes = Game.GetTimeSystem():GetGameTime():Minutes()
     WeatherWidget.label:SetText(hours..minutes)
 end
+registerForEvent("onInit", function() end)
 registerForEvent("onUpdate",function(dt) updateTimeWidget(); updateWeatherWidget() end)
 '@
  'CyberTrials/init.lua'=@'
@@ -82,10 +83,12 @@ local function ProcessRadarOutfits()
        local record = GetNPCID(npc)
     end
 end
+registerForEvent("onInit", function() end)
 registerForEvent("onUpdate", function(delta) ProcessRadarOutfits() end)
 '@
  'illegal_mechanic_phase1a/init.lua'=@'
 local PhysicalNpc=require("physical_npc")
+registerForEvent("onInit", function() end)
 registerForEvent("onUpdate", function(delta) PhysicalNpc.Update(delta) end)
 '@
  'illegal_mechanic_phase1a/physical_npc.lua'=@'
