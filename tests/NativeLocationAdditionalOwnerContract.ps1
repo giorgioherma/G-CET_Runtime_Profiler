@@ -182,15 +182,15 @@ local function loadMatrix()
  for index=0,count-1 do
   result[#result+1]={index=index,mechanicID=system:GetMechanicIDAtForCET(index),x=1,y=2,z=3}
  end
- state.mechanics = result
+  state.mechanics = result
  return true
 end
 local function getPlayer() return Game.GetPlayer() end
 local function resolvePendingSpawn(entry) end
 local function distanceFromPlayer(entry,player) return 0 end
 function PhysicalNpc.Update(delta)
- if #state.mechanics == 0 and not loadMatrix() then return end
- local player = getPlayer()
+  if #state.mechanics == 0 and not loadMatrix() then return end
+  local player = getPlayer()
  if player == nil then return end
  for _, entry in ipairs(state.mechanics) do
     if entry.spawnPending then
