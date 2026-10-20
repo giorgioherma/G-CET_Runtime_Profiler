@@ -60,6 +60,24 @@ for _,owner in ipairs({10031,10032,10033,10034,10035,10036,10037,10038}) do
     function()effects[owner].fallback=effects[owner].fallback+1;return true end))
 end
 assert(scheduled==1,"one 0-Engine consumer must serve all eight owners")
+-- The compiled GCAS record set has already been loaded by RED4ext.
+-- Owner subscriptions never add a duplicate Lua-created anchor.
+for index=1,2 do
+  local ownerId=1003300+index
+  local nativeId=30000+index
+  positions[nativeId]={x=200+index,y=0,z=0,r=110,owner=ownerId}
+  roster[ownerId]={nativeId}
+  states[nativeId]=0
+  effects[ownerId]={near=0,far=0,fallback=0}
+  assert(host:attachCompiled(ownerId,1,
+    function()effects[ownerId].near=effects[ownerId].near+1 end,
+    function()effects[ownerId].far=effects[ownerId].far+1 end,
+    function()effects[ownerId].fallback=effects[ownerId].fallback+1;return true end))
+end
+assert(#roster[1003301]==1 and #roster[1003302]==1,
+       "compiled native mechanics must keep original native anchor IDs")
+assert(scheduled==1,"one native consumer for 8 original + 2 independent mechanics")
+
 for id in pairs(positions) do states[id]=0 end
 host:step()
 for _,v in pairs(effects) do
@@ -80,6 +98,18 @@ event(ids[1],0)
 assert(effects[owner].far==1,"one far site cannot silence another near site")
 event(ids[2],0)
 assert(effects[owner].far==2)
+-- Approaching one mechanic MUST NOT activate any other mechanic.
+local mechanicId=roster[1003301][1]
+states[mechanicId]=1
+stream[#stream+1]={id=mechanicId,owner=1003301,state=1}
+host:step()
+assert(effects[1003301].near==1 and effects[1003302].near==0,
+       "one mechanic may not wake its neighbor")
+states[mechanicId]=0
+stream[#stream+1]={id=mechanicId,owner=1003301,state=0}
+host:step()
+assert(effects[1003301].far==2 and effects[1003302].far==1)
+
 known=false
 host:step()
 for _,v in pairs(effects) do assert(v.fallback==1) end
@@ -92,4 +122,4 @@ stream[#stream+1]={overrun=true}
 host:step()
 for _,v in pairs(effects) do assert(v.fallback==2) end
 host:shutdown()
-print("Native eight-owner contract passed: one 10Hz host, 100-card snapshot, aggregate near/far, unknown and stream overrun.")
+print("Native ten-owner compiled/dynamic contract passed: one 10Hz host, 100-card snapshot, aggregate near/far, unknown and stream overrun.")
