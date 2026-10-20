@@ -108,6 +108,8 @@ internal static class NativeLocationFourOwnersSource
 
     internal static SemanticInjectionResult ApplyPoker(SemanticPatchContext context)
     {
+        var structural=NativeLocationStructuralSource.TryPoker(context);
+        if(structural is not null)return structural;
         var file = context.FindFile("init.lua", "poker.world_far", "poker.world_near",
             "poker.seat_near", "StreetTables.locations");
         if (file.Text.Contains("G-CET native location:poker-v2", StringComparison.Ordinal))
@@ -399,6 +401,8 @@ internal static class NativeLocationFourOwnersSource
 
     internal static SemanticInjectionResult ApplyDedka(SemanticPatchContext context)
     {
+        var structural=NativeLocationStructuralSource.TryDedka(context);
+        if(structural is not null)return structural;
         var file=context.FindFile("init.lua","dedka_entrance1","dedka_entrance2_cluster",
             "stopShopDetail()", "startShopDetail()", "entrancePos_2");
         if(file.Text.Contains("G-CET native location:dedka-v2",StringComparison.Ordinal))
