@@ -217,7 +217,8 @@ internal static class SemanticPassGeneratorService
             if(!staged.TryGetValue(relative,out var prior))continue;
             var priorText=Encoding.UTF8.GetString(prior);
             if(!priorText.Contains(item.Prerequisite,StringComparison.Ordinal) ||
-               priorText.Contains(item.Completion,StringComparison.Ordinal))
+               priorText.Contains(item.Completion,StringComparison.Ordinal) ||
+               NativeLocationStructuralSource.CompleteStage(item.Rule,new[]{priorText}))
                 continue;
             var context=new SemanticPatchContext(modsRoot,item.Owner,item.Rule,staged);
             try
@@ -231,7 +232,13 @@ internal static class SemanticPassGeneratorService
                     continue;
                 var change=context.Changes.Single();
                 var code=Encoding.UTF8.GetString(change.Bytes);
-                if(!code.Contains(item.Completion,StringComparison.Ordinal) ||
+                // A semantic stage may be complete through a structurally
+                // proven source adapter even though its legacy comment marker
+                // is absent. Treat each implementation's postcondition as
+                // independently authoritative, not the earlier template ID.
+                var hookComplete=code.Contains(item.Completion,StringComparison.Ordinal) ||
+                    NativeLocationStructuralSource.CompleteStage(item.Rule,new[]{code});
+                if(!hookComplete ||
                    code.Contains("$"+"{opening}",StringComparison.Ordinal) ||
                    code.Contains("$"+"{close}",StringComparison.Ordinal))
                     throw new InvalidOperationException(
