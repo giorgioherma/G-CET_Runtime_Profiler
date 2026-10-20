@@ -102,32 +102,33 @@ internal static class NativeReadReuseSource
         List<object> transformManifest,List<object> skipped,
         Func<string,IEnumerable<string>> headerForProvider)
     {
-        if(!resolver.TryGetProperty("nativeReadReuse",out var root) ||
-           root.ValueKind!=JsonValueKind.Object ||
-           !root.TryGetProperty("contract",out var version) ||
-           version.GetString()!=Contract ||
-           !root.TryGetProperty("files",out var files) ||
-           files.ValueKind!=JsonValueKind.Array)return 0;
+        // Resolver report SHA is provenance, not a compatibility gate.
+        // Re-discover every installed mod source for each generation, including
+        // dormant files and mod updates not present in an earlier capture.
+        var plans=Analyze(modsRoot);
         var applied=0;
         var rootPath=Path.GetFullPath(modsRoot);
         var prefix=rootPath.TrimEnd(Path.DirectorySeparatorChar)+Path.DirectorySeparatorChar;
-        foreach(var file in files.EnumerateArray())
+        foreach(var plan in plans)
         {
-            var rel=file.GetProperty("relativeFile").GetString();
-            var sha=file.GetProperty("sha256").GetString();
-            if(string.IsNullOrWhiteSpace(rel)||string.IsNullOrWhiteSpace(sha)||
-               !rel.EndsWith(".lua",StringComparison.OrdinalIgnoreCase)||
-               IsInfrastructure(rel.Replace('\\','/')))continue;
-            var path=Path.GetFullPath(Path.Combine(rootPath,rel.Replace('/',Path.DirectorySeparatorChar)));
+            var rel=plan.RelativeFile;
+            var path=Path.GetFullPath(Path.Combine(rootPath,
+                rel.Replace('/',Path.DirectorySeparatorChar)));
             if(!path.StartsWith(prefix,StringComparison.OrdinalIgnoreCase)||
                !File.Exists(path))continue;
             var original=File.ReadAllBytes(path);
-            if(!Hash(original).Equals(sha,StringComparison.OrdinalIgnoreCase))
+            var key=rel.Replace('\\','/');
+            // Snapshot identity only: refuse mixing two different live files
+            // into the SAME ongoing generation, not a different mod release.
+            if(staged.ContainsKey(key) &&
+               liveSourceHashes.TryGetValue(key,out var generationSource) &&
+               generationSource is not null &&
+               !Hash(original).Equals(generationSource,StringComparison.OrdinalIgnoreCase))
             {
-                skipped.Add(new {type="NATIVE_READ_REUSE",file=rel,reason="SOURCE_HASH_DRIFT"});
+                skipped.Add(new {type="NATIVE_READ_REUSE",file=key,
+                    reason="LIVE_SOURCE_CHANGED_DURING_GENERATION"});
                 continue;
             }
-            var key=rel.Replace('\\','/');
             var input=staged.TryGetValue(key,out var other)?other:original;
             var text=Decode(input);
             if(!TryTransform(text,headerForProvider,out var result,out var operations))continue;
@@ -155,7 +156,7 @@ internal static class NativeReadReuseSource
                     type="NATIVE_READ_REUSE",
                     contract=Contract,
                     file=key,
-                    sourceSha256=sha,
+                    sourceSha256=Hash(original),
                     operation=operation.Getter,
                     provider=operation.Provider,
                     replacedOccurrences=operation.Occurrences,
