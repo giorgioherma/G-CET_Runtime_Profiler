@@ -28,7 +28,11 @@ internal static partial class SemanticInjectors
             "specter-recovery-prerequisite-reads" or
             "nativeinteractions" or
             "gigcore-blackboard-once" or
-            "air-backflip";
+            "air-backflip" or
+            "native-location-poker" or "native-location-tunnel" or
+            "native-location-illegal" or "native-location-dedka" or
+            "native-location-card-collection" or "native-location-marmurbank" or
+            "native-location-yaiba-bathtub";
         if (context.OwnerAlreadyMarked() &&
             !candidate.StageComposed && !versionFluidUpgrade)
             return SemanticInjectionResult.Skip(
@@ -47,6 +51,9 @@ internal static partial class SemanticInjectors
             "native-location-tunnel" => NativeLocationFourOwnersSource.ApplyTunnel(context),
             "native-location-illegal" => NativeLocationFourOwnersSource.ApplyIllegal(context),
             "native-location-dedka" => NativeLocationFourOwnersSource.ApplyDedka(context),
+            "native-location-card-collection" => NativeLocationAdditionalOwnersSource.ApplyCards(context),
+            "native-location-marmurbank" => NativeLocationAdditionalOwnersSource.ApplyMarmur(context),
+            "native-location-yaiba-bathtub" => NativeLocationAdditionalOwnersSource.ApplyBathtub(context),
             "nightcitybilliards" => ApplyNightCityBilliards(context),
             "npcd-hotline" => ApplyNpcdHotline(context),
             "gameentityexaminertool" => ApplyGameEntityExaminer(context),
