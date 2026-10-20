@@ -222,6 +222,7 @@ foreach($id in $ids){
 }
 $minimap=Get-Content -Raw (Join-Path $mods 'Minimap Widgets\init.lua')
 if(([regex]::Matches($minimap,'local __gcetMinimapGameTimePerInvocation =')).Count -ne 2 -or
+   ([regex]::Matches($minimap,'local __gcetMinimapGameTimePerInvocation = __gcetGetTimeSystem\(\):GetGameTime\(\)')).Count -ne 2 -or
    !$minimap.Contains('if MinimapWidgetsConfig.TimeSwitch == 5 then mod = GetMod')){
   throw 'Minimap time/provider stage incomplete'
 }
