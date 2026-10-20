@@ -280,13 +280,9 @@ internal static class ZeroEngineAllocationBatchSource
                 continue;
             var livePath = Path.Combine(modsRoot, "0-Engine", "modules", descriptor.Module);
             if (!File.Exists(livePath)) continue;
-            if (staged.ContainsKey(descriptor.Relative))
-            {
-                skipped.Add(new { type = "SEMANTIC_RULE", Owner = "0-Engine",
-                    RuleId = descriptor.Rule, reason = "File already staged by a prior transform; no composition." });
-                continue;
-            }
-            var source = File.ReadAllBytes(livePath);
+            var original = File.ReadAllBytes(livePath);
+            var source = staged.TryGetValue(descriptor.Relative,out var pending)
+                ? pending : original;
             byte[] next;
             string reason;
             var ok = descriptor.Module == "SpatialHash.lua"
