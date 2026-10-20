@@ -1707,8 +1707,21 @@ try {
     if ('bin/x64/plugins/cyber_engine_tweaks/mods/FixtureAbsentSemantic/init.lua' -in $names) {
         throw 'Semantic catalog created a file for a mod that is not installed.'
     }
-    if ('bin/x64/plugins/cyber_engine_tweaks/mods/FixtureColdProvider/init.lua' -in $names) {
-        throw 'Shared-provider generation escaped the measured callback set.'
+    # The measured callback-only SHARED_PROVIDER_READ family must remain
+    # confined to measured callbacks. The NEW source-first native read lane
+    # intentionally adopts the unmeasured cold getter independently.
+    $coldEntry = 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureColdProvider/init.lua'
+    $coldPlans = @($result.nativeReadReuse.files | Where-Object {
+        $_.relativeFile -eq 'FixtureColdProvider/init.lua'
+    })
+    $coldGenerated = @($generatedManifest.transforms | Where-Object {
+        $_.type -eq 'NATIVE_READ_REUSE' -and
+        $_.file -eq 'FixtureColdProvider/init.lua' -and
+        $_.operation -eq 'GetPlayer'
+    })
+    if ($coldEntry -notin $names -or $coldPlans.Count -ne 1 -or
+        $coldGenerated.Count -ne 1) {
+        throw 'Unmeasured cold source read was not adopted by the separate source-first lane.'
     }
     foreach ($parkedEntry in @(
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureAlreadyFrame/init.lua',
