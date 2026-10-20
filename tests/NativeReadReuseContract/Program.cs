@@ -41,11 +41,12 @@ try
     Save("0-Engine/init.lua","return Game.GetPlayer()\n");
     Save("Shadow/init.lua","local Game = require('Game')\nreturn Game.GetPlayer()\n");
     Save("OnlyComments/init.lua","-- Game.GetPlayer()\nreturn 'Game.GetPlayer()'\n");
+    Save("HelperCollision/init.lua","local function __gcetGetPlayer() return nil end\nreturn Game.GetPlayer()\n");
     Save("PreviouslyApplied/init.lua","-- G-CET shared provider: PLAYER\nlocal function __gcetGetPlayer() return Game.GetPlayer() end\n");
     // Scanner must see exact code calls, ignore literals, disallow local Game
     // shadowing, and preserve direct derived Vector4 semantics.
     var plans=(Array)analyze.Invoke(null,[mods])!;
-    Check(plans.Length==2,"Expected two eligible files, never framework/shadow/comments");
+    Check(plans.Length==2,"Expected two eligible files, never framework/shadow/comments/helper-collision");
     var mainPlan=plans.Cast<object>().Single(x=>
        ((string)x.GetType().GetProperty("RelativeFile")!.GetValue(x)!) == "Example/init.lua");
     var operations=(Array)mainPlan.GetType().GetProperty("Operations")!.GetValue(mainPlan)!;

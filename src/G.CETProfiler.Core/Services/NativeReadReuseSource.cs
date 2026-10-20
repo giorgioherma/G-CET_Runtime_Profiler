@@ -64,7 +64,12 @@ internal static class NativeReadReuseSource
                 // Never auto-rewrite inside an existing generated shared helper.
                 if(text.Contains("-- G-CET shared provider: "+provider.Provider,
                     StringComparison.Ordinal))return null;
-                return new Operation(provider.Provider,g.Key,g.Count(),"__gcet"+g.Key);
+                var helper="__gcet"+g.Key;
+                // Preserve authored symbols: unlike 0-Engine's generated
+                // namespace, arbitrary mods may already use this identifier.
+                if(Regex.IsMatch(code,@"\b"+Regex.Escape(helper)+@"\b",
+                    RegexOptions.CultureInvariant))return null;
+                return new Operation(provider.Provider,g.Key,g.Count(),helper);
             })
             .Where(x=>x is not null).Select(x=>x!)
             .OrderBy(x=>x.Provider,StringComparer.Ordinal).ToArray();
