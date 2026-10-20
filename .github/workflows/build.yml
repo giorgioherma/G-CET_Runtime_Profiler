@@ -1162,6 +1162,10 @@ jobs:
         shell: pwsh
         run: ./tests/CurrentStackDormancyBatchContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: Additional native-location source and fallback contract
+        shell: pwsh
+        run: ./tests/NativeLocationAdditionalOwnerContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: Four native-location v2 upgrade and source-drift contract
         shell: pwsh
         run: ./tests/NativeLocationV2UpgradeContract.ps1 -ResolverRoot ./publish-resolver
