@@ -225,4 +225,49 @@ if(@($drift.Report.semanticSourceOnlyCandidates |
  Where-Object {$_.ruleId -eq 'cybertrials-closed-overlay-provider'}).Count -gt 0){
  throw 'CyberTrials substantive provider drift admitted'
 }
+
+# Recheck actual author-style tabs and harmless provider-quote/CRLF variants.
+foreach($pair in $fixtures.GetEnumerator()){
+ $file=Join-Path $mods ($pair.Key.Replace('/',[IO.Path]::DirectorySeparatorChar))
+ [IO.File]::WriteAllText($file,[string]$pair.Value)
+}
+$cyberPath=Join-Path $mods 'CyberTrials\init.lua'
+$cyberVariant=[IO.File]::ReadAllText($cyberPath).Replace(
+ '        DrawWindowHider()', (([string][char]9)+'DrawWindowHider()')).Replace(
+ '        windowSettings.Current.mywindowhidden = false', (([string][char]9)+'windowSettings.Current.mywindowhidden = false'))
+[IO.File]::WriteAllText($cyberPath,$cyberVariant)
+$minimapPath=Join-Path $mods 'Minimap Widgets\init.lua'
+$miniVariant=[IO.File]::ReadAllText($minimapPath).Replace(
+ 'GetMod("TimeIsRunningOut")', "GetMod('TimeIsRunningOut')")
+[IO.File]::WriteAllText($minimapPath,$miniVariant.Replace(
+ ([string][char]10), (([string][char]13)+([string][char]10))))
+$variant=Generate
+foreach($id in @('cybertrials-closed-overlay-provider','minimap-widgets-time-weather-snapshot')){
+ if(@($variant.Report.semanticSourceOnlyCandidates | Where-Object {$_.ruleId -eq $id}).Count -ne 1){
+  throw "Quote/CRLF/tab source variant not admitted: $id"
+ }
+}
+# Deliberate source drift must reject only the affected owner.
+foreach($pair in $fixtures.GetEnumerator()){
+ $file=Join-Path $mods ($pair.Key.Replace('/',[IO.Path]::DirectorySeparatorChar))
+ [IO.File]::WriteAllText($file,[string]$pair.Value)
+}
+$npcPath=Join-Path $mods 'NPC Outfit Manager\init.lua'
+[IO.File]::WriteAllText($npcPath,([IO.File]::ReadAllText($npcPath)).Replace(
+ 'target:GetRecordID()', 'target:GetOtherRecordID()'))
+$illegalPath=Join-Path $mods 'illegal_mechanic_phase1a\physical_npc.lua'
+[IO.File]::WriteAllText($illegalPath,([IO.File]::ReadAllText($illegalPath)).Replace(
+ 'Vector4.Distance(player:GetWorldPosition(), anchorPosition(entry))',
+ 'Vector4.Distance(getPositionByOtherRules(player), anchorPosition(entry))'))
+$minimapPath=Join-Path $mods 'Minimap Widgets\init.lua'
+[IO.File]::WriteAllText($minimapPath,([IO.File]::ReadAllText($minimapPath)).Replace(
+ 'Game.GetTimeSystem():GetGameTime():Hours()',
+ 'Game.GetTimeSystem():GetDifferentTime():Hours()'))
+$driftBatch=Generate
+foreach($id in @('npc-outfit-manager-id-normalization','illegal-mechanic-npc-position-reuse','minimap-widgets-time-weather-snapshot')){
+ if(@($driftBatch.Report.semanticSourceOnlyCandidates | Where-Object {$_.ruleId -eq $id}).Count -gt 0){
+  throw "Unsafe semantic source drift admitted: $id"
+ }
+}
+
 Write-Host 'Current-stack dormancy batch: four original, missing-stage, source-only, composition, idempotence and drift checks passed.'
