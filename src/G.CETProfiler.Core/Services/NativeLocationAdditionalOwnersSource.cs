@@ -33,15 +33,11 @@ internal static class NativeLocationAdditionalOwnersSource
         var native="""
 local function __gcetAttachCardNative()
   local lookup=engine and engine.GCET and engine.GCET.NativeLocationHost
-  if not lookup or type(lookup.attach)~="function" then return end
-  -- Reuse exactly the author's uncollected source entries. The 20m
-  -- outer wake arms the original 1s poll before the 2m collection boundary.
-  local sites={}
-  for _,entry in ipairs(buildSpatialEntries()) do
-    sites[#sites+1]={x=entry.x,y=entry.y,z=entry.z,radius=20.0,metric="xyz"}
-  end
-  if #sites==0 then return end
-  lookup:attach(10035,sites,
+  if not lookup or type(lookup.attachCompiled)~="function" then return end
+  -- All 100 source-defined card anchors were compiled by Resolver.
+  -- Keep exact collection and picked-state logic in Lua.
+  if #buildSpatialEntries()==0 then return end
+  lookup:attachCompiled(10035,100,
     function()
       __gcetCardNativeFar=false
       if engine.IsPlaying() then registerSpatialSet() end
@@ -97,13 +93,9 @@ end
         var addition="""
 	if not self.__gcetNativeAttached then
 		local lookup=self.engine.GCET and self.engine.GCET.NativeLocationHost
-		if lookup and type(lookup.attach)=="function" then
-			local sites={}
-			for _,loc in ipairs(PosData.All) do
-				sites[#sites+1]={x=loc.x,y=loc.y,z=loc.z,radius=10.0,metric="xyz"}
-			end
-			if #sites>0 then
-				self.__gcetNativeAttached=lookup:attach(10036,sites,
+		if lookup and type(lookup.attachCompiled)=="function" then
+			if #PosData.All>0 then
+				self.__gcetNativeAttached=lookup:attachCompiled(10036,#PosData.All,
 					function()
 						self.__gcetNativeFar=false
 						self:registerSpatialSet()
@@ -166,11 +158,9 @@ local function __gcetZiggyAttachNative()
  local ok,engine=pcall(GetMod,'0-Engine')
  local lookup=ok and engine and engine.GCET and engine.GCET.NativeLocationHost
  local loc=C.giver and C.giver.position
- if not lookup or type(lookup.attach)~='function' or
+ if not lookup or type(lookup.attachCompiled)~='function' or
     type(loc)~='table' then return end
- lookup:attach(10038,{
-  {x=loc[1],y=loc[2],z=loc[3],radius=130,metric="xyz"}
- },function() __gcetZiggyNativeOfferedFar=false end,
+ lookup:attachCompiled(10038,1,function() __gcetZiggyNativeOfferedFar=false end,
    function() __gcetZiggyNativeOfferedFar=true end,
    function() __gcetZiggyNativeOfferedFar=nil;return true end)
 end
@@ -214,11 +204,9 @@ end
             "function bathtub.init()\n    ui.init()\n"+
             "    local ok,engine=pcall(GetMod,\"0-Engine\")\n"+
             "    local lookup=ok and engine and engine.GCET and engine.GCET.NativeLocationHost\n"+
-            "    if lookup and type(lookup.attach)==\"function\" then\n"+
-            "        -- Author eye z=pPos.z+1; translate anchor z to preserve threshold.\n"+
-            "        lookup:attach(10037,{{x=CONFIG.position.x,y=CONFIG.position.y,\n"+
-            "            z=CONFIG.position.z-1.0,radius=CONFIG.iconRange+1.0,metric=\"xyz\"}},\n"+
-            "            function() __gcetBathNativeFar=false end,\n"+
+            "    if lookup and type(lookup.attachCompiled)==\"function\" then\n"+
+            "        -- The eye-height corrected anchor is already in GCAS.\n"+
+            "        lookup:attachCompiled(10037,1,function() __gcetBathNativeFar=false end,\n"+
             "            function() __gcetBathNativeFar=true end,\n"+
             "            function() __gcetBathNativeFar=nil;return true end)\n"+
             "    end",
