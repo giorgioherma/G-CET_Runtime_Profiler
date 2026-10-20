@@ -187,7 +187,7 @@ try
     Check(observedTags.Count(x=>x=="UNKNOWN")==3,
         "NPC, nested function or different registration falsely bound to player");
     Check(observedRows.Cast<object>().Any(x=>
-        (string)x.GetType().GetProperty("ReceiverClass")!.GetValue(x)!=="PlayerPuppet"),
+        (string)x.GetType().GetProperty("ReceiverClass")!.GetValue(x)! == "PlayerPuppet"),
         "Registered callback receiver class provenance missing");
     var overridden="""
         Override("PlayerPuppet", "OnAction", function(entity, action, wrapped)
