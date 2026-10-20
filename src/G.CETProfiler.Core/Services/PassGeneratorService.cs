@@ -141,6 +141,16 @@ public static class PassGeneratorService
             captureRoot, modsRoot, staged, liveSourceHashes,
             appliedTransformsByFile, transformManifest, skipped);
 
+        // Broad source-first getter reuse is applied AFTER all existing
+        // semantic and callback transforms. This avoids clobbering PASS11
+        // source anchors and permits safe composition in a single ZIP.
+        // Independently verifies the current installed file fingerprint.
+        var nativeReadReuseCount = NativeReadReuseSource.TryStage(
+            resolver.RootElement, modsRoot, staged, liveSourceHashes,
+            appliedTransformsByFile, transformManifest, skipped,
+            provider => SharedProviderRecipes.TryGetValue(provider, out var recipe)
+                ? BuildSharedProviderHeader(recipe) : Array.Empty<string>());
+
         if (staged.Count == 0)
         {
             // An already-admitted authored rule may still fail its injector's
@@ -232,7 +242,12 @@ public static class PassGeneratorService
             resolverSha256 = Sha256(resolverBytes),
             policy = new
             {
-                selection = "MEASURED_GENERIC_PLUS_SOURCE_PROVEN_SEMANTIC_CANDIDATES_FROM_G-CET_Resolver.json",
+                selection = "MEASURED_GENERIC_PLUS_SOURCE_PROVEN_SEMANTIC_PLUS_SOURCE_FIRST_READ_REUSE",
+                nativeReadReuseContract = NativeReadReuseSource.Contract,
+                nativeReadReuseAppliedOccurrences = nativeReadReuseCount,
+                nativeReadReuseBypassesCallbackCpuGate = true,
+                nativeReadReuseBackend = "0-Engine:existing-shared-provider",
+                nativePlayerVectorRewrite = false,
                 modNameRules = false,
                 sourceShaRequired = true,
                 sourceShaRequiredForGeneric = true,
@@ -268,6 +283,7 @@ public static class PassGeneratorService
                     "HARD_DORMANT_GUARD_HOIST",
                     "SEQUENCE_FIRST_SCRIPTABLE_SYSTEM_POLL",
                     "SHARED_PROVIDER_READ",
+                    "NATIVE_READ_REUSE",
                     "SEMANTIC_RULE_SOURCE_INJECTION",
                     "0_ENGINE_PSM_DEFINITIONS_CACHE_STAGE_A"
                 },

@@ -7,7 +7,7 @@ permissions:
 on:
   workflow_dispatch:
   push:
-    branches: [ main, 'dev/resolver-profiler-handoff' ]
+    branches: [ main, 'dev/resolver-profiler-handoff', 'dev/generic-native-read-reuse-ci' ]
     paths-ignore:
       - 'native-profiler-build/**'
       - '.github/workflows/native-profiler-rebuild.yml'
@@ -20,6 +20,16 @@ on:
   pull_request:
 
 jobs:
+  native-read-reuse-contract:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Validate source-first native read reuse, semantic composition, source drift and idempotence
+        run: dotnet run --project tests/NativeReadReuseContract/NativeReadReuseContract.csproj -c Release
+
   deep-reuse-contract:
     runs-on: ubuntu-latest
     steps:

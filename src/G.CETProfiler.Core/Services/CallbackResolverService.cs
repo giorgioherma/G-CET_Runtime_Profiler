@@ -576,6 +576,12 @@ internal static class CallbackResolverService
             .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
+        // Source-first read reuse is independent of measured callback CPU. It
+        // covers untouched helper/module Lua as well as profiled callbacks.
+        // Authorization covers only existing, scalar-independent 0-Engine
+        // shared Game.Get...() providers; player Vector4 reads stay review-only.
+        var nativeReadReuseFiles = NativeReadReuseSource.Analyze(modsRoot);
+
         // Per-mod semantic rules can have their source-proven wake paths
         // entirely absent from the profiled interval. Keep these candidates
         // separate from measured callback rows and native allocation samples.
@@ -712,6 +718,36 @@ internal static class CallbackResolverService
                     .Count()
             },
             globalTopCallbacks = globalTop,
+            nativeReadReuse = new
+            {
+                contract = NativeReadReuseSource.Contract,
+                status = "SOURCE_FIRST_EXACT_GETTER_PROOF",
+                producerOwner = "0-Engine",
+                nativePlayerSnapshot = "OPTIONAL_NOT_USED_FOR_VECTOR4_GETTER_REWRITES",
+                measuredOutboundCrossingsAvoided = (long?)null,
+                measuredEngineGetterWorkAvoided = (long?)null,
+                files = nativeReadReuseFiles.Select(file => new
+                {
+                    relativeFile = file.RelativeFile,
+                    sha256 = file.Sha256,
+                    proof = file.Proof,
+                    generationEligible = true,
+                    operations = file.Operations.Select(op => new
+                    {
+                        provider = op.Provider,
+                        getter = op.Getter,
+                        occurrences = op.Occurrences,
+                        receiver = "GLOBAL_CET_GAME",
+                        signature = "()",
+                        owner = "0-Engine",
+                        backend = "EXISTING_SHARED_PROVIDER",
+                        transform = "NATIVE_READ_REUSE",
+                        callbackRetirement = false,
+                        costThresholdMsPerSecond = (double?)null,
+                        onUnknown = "ORIGINAL_GETTER"
+                    }).ToArray()
+                }).ToArray()
+            },
             sharedProviderOpportunities = sharedProviderOpportunities.Select(x => new
             {
                 provider = x.Provider,
