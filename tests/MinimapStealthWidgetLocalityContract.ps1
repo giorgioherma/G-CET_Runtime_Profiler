@@ -249,7 +249,7 @@ ObserveAfter('MinimapStealthMappinController','Update',function(this)
 end)
 '@
 foreach($crlf in @($false,$true)){
- $fixture=$mixed
+ $fixture=$mixed.Replace(([string][char]13+[string][char]10),[string][char]10)
  if($crlf){$fixture=$fixture.Replace([string][char]10,([string][char]13+[string][char]10))}
  [IO.File]::WriteAllText($file,$fixture,[Text.UTF8Encoding]::new($false))
  $ctx=$ctor.Invoke([object[]]@([string]$mods,'Minimap Widgets',
