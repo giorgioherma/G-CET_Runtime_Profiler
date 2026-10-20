@@ -49,7 +49,7 @@ internal static partial class SemanticInjectors
             "streetgamespoker-hud-invisible-native-idle" => PokerPass4Source.ApplyHudInvisibleIdle(context),
             "native-location-poker" => NativeLocationFourOwnersSource.ApplyPoker(context),
             "native-location-tunnel" => NativeLocationFourOwnersSource.ApplyTunnel(context),
-            "native-location-illegal" => NativeLocationFourOwnersSource.ApplyIllegal(context),
+            "native-location-illegal" => NativeLocationFourOwnersSource.ApplyIllegalV3(context),
             "native-location-dedka" => NativeLocationFourOwnersSource.ApplyDedka(context),
             "native-location-card-collection" => NativeLocationAdditionalOwnersSource.ApplyCards(context),
             "native-location-marmurbank" => NativeLocationAdditionalOwnersSource.ApplyMarmur(context),
