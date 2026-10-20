@@ -313,6 +313,7 @@ Write-Host 'Same-pass pristine author source -> compiled-native semantic composi
 # and logging text may change while the actual lifecycle remains provable.
 $pokerSource=@'
 local StreetTables={locations={{center={x=1,y=2},floorZ=3}}}
+local pokerTableCount=#StreetTables.locations
 local InteractionMenu={visible=false}
 local function __gcetPokerReady() return true end
 local function __gcetPokerActive() return false end
