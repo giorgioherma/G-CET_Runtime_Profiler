@@ -81,7 +81,9 @@ internal sealed record CompiledNativeLocations(byte[] Bytes,
                 relative.Replace('/',Path.DirectorySeparatorChar));
             if (staged.TryGetValue(relative,out var data))
                 return Encoding.UTF8.GetString(data);
-            return File.Exists(path) ? File.ReadAllText(path) : null;
+            try { return File.Exists(path) ? File.ReadAllText(path) : null; }
+            catch(IOException) { return null; }
+            catch(UnauthorizedAccessException) { return null; }
         }
 
         void Include(int owner, IEnumerable<Site> rows) {
@@ -97,7 +99,8 @@ internal sealed record CompiledNativeLocations(byte[] Bytes,
             sites.AddRange(list);
         }
         static float Number(string s) =>
-            float.Parse(s,NumberStyles.Float,CultureInfo.InvariantCulture);
+            float.TryParse(s,NumberStyles.Float,CultureInfo.InvariantCulture,
+                out var value) && float.IsFinite(value) ? value : float.NaN;
         static List<Site> Parse(int owner,string? text,Regex regex,float radius,
                                 int? exact=null) {
             var result=new List<Site>();
