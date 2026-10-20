@@ -46,7 +46,7 @@ internal static class NativeLocationFourOwnersSource
         -- G-CET native location:poker-v1
         -- The existing far scanner is retired ONLY after a valid native snapshot.
         local lookup = engine.GCET and engine.GCET.NativeLocationHost
-        if lookup and lookup.version == 1 and type(lookup.attach) == "function" then
+        if lookup and type(lookup.attach) == 'function' and type(lookup.attach) == "function" then
             local sites = {}
             for _, loc in ipairs(StreetTables.locations) do
                 sites[#sites+1] = {x=loc.center.x,y=loc.center.y,z=loc.floorZ,
@@ -101,7 +101,7 @@ internal static class NativeLocationFourOwnersSource
         local function __gcetTunnelAttachNative()
             local ok, engine = pcall(GetMod,"0-Engine")
             local lookup = ok and engine and engine.GCET and engine.GCET.NativeLocationHost
-            if not lookup or lookup.version ~= 1 then return end
+            if not lookup or type(lookup.attach) ~= 'function' then return end
             local site=L.rescue and L.rescue.surface
             local giver=L.rescue and L.rescue.brother
             if type(site)~="table" or type(giver)~="table" then return end
@@ -136,7 +136,7 @@ internal static class NativeLocationFourOwnersSource
           -- G-CET native location:illegal-v1
           local engineOk,engine=pcall(GetMod,"0-Engine")
           local lookup=engineOk and engine and engine.GCET and engine.GCET.NativeLocationHost
-          if lookup and lookup.version == 1 then
+          if lookup and type(lookup.attach) == 'function' then
             local sites={}
             for _,entry in ipairs(result) do
               sites[#sites+1]={x=entry.x,y=entry.y,z=entry.z,radius=100,metric="xyz"}
@@ -222,7 +222,7 @@ internal static class NativeLocationFourOwnersSource
             return __gcetZone1~=nil and __gcetZone2~=nil
           end
           local lookup=engine.GCET and engine.GCET.NativeLocationHost
-          if lookup and lookup.version==1 then
+          if lookup and type(lookup.attach)=='function' then
             lookup:attach(10034,{
               {x=entrancePos.x,y=entrancePos.y,z=entrancePos.z,radius=200,metric="xyz"},
               {x=entrancePos_2.x,y=entrancePos_2.y,z=entrancePos_2.z,radius=200,metric="xyz"}
