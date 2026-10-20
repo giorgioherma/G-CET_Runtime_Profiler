@@ -5871,7 +5871,8 @@
         "satisfiedAll": [
           "G-CET native location:poker-v2",
           "__gcetNativeOwned",
-          "lookup:attach(10031"
+          "lookup:attach(10031",
+          "if nearMode then farWorldJob.Pause() else farWorldJob.Resume() end"
         ]
       },
       "behavior": {
@@ -5946,7 +5947,8 @@
         "satisfiedAll": [
           "G-CET native location:tunnel-v2",
           "__gcetTunnelNativeFar",
-          "lookup:attach(10032"
+          "lookup:attach(10032",
+          "if __gcetTunnelNativeOutside ~= nil then return __gcetTunnelNativeOutside end"
         ]
       },
       "behavior": {
@@ -6021,7 +6023,8 @@
         "satisfiedAll": [
           "G-CET native location:illegal-v2",
           "__gcetNativeFar",
-          "lookup:attach(10033"
+          "lookup:attach(10033",
+          "if state.__gcetNativeFar and not entry.spawnPending"
         ]
       },
       "behavior": {
@@ -6097,7 +6100,8 @@
         "satisfiedAll": [
           "G-CET native location:dedka-v2",
           "__gcetDedkaZone1",
-          "lookup:attach(10034"
+          "lookup:attach(10034",
+          "return __gcetRestoreZones() end"
         ]
       },
       "behavior": {
