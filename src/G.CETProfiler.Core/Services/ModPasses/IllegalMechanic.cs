@@ -43,4 +43,56 @@ internal static partial class SemanticInjectors
             "Kept active HACK pulse visuals frame-responsive while avoiding ScriptableSystem and interaction discovery work between the existing 0.20 s polling deadlines when idle.");
     }
 
+
+    private static SemanticInjectionResult ApplyIllegalMechanicNpcPositionReuse(SemanticPatchContext context)
+    {
+        var file = context.FindFile("physical_npc.lua", "function PhysicalNpc.Update(delta)",
+            "local function distanceFromPlayer(entry, player)", "state.mechanics",
+            "distanceFromPlayer(entry, player)");
+        var text = file.Text;
+        const string stage = "__gcetMechanicPlayerPosition";
+        if (text.Contains(stage, StringComparison.Ordinal))
+            return SemanticInjectionResult.Skip("Synchronous per-mechanic player-position reuse is installed.");
+        var signature = new Regex(
+            @"(?m)^local\s+function\s+distanceFromPlayer\(\s*entry\s*,\s*player\s*\)\s*$",
+            RegexOptions.CultureInvariant);
+        var getter = new Regex(
+            @"return\s+Vector4\.Distance\(\s*player:GetWorldPosition\(\)\s*,\s*anchorPosition\(entry\)\s*\)",
+            RegexOptions.CultureInvariant);
+        var loop = new Regex(
+            @"(?m)^(?<indent>[ \t]*)for\s+_,\s*entry\s+in\s+ipairs\(state\.mechanics\)\s+do\r?\n(?<body>(?:(?!^\k<indent>end\s*$)[\s\S])*?)^\k<indent>end\s*$",
+            RegexOptions.CultureInvariant);
+        var call = new Regex(
+            @"(?m)^(?<indent>[ \t]*)local\s+distance\s*=\s*distanceFromPlayer\(\s*entry\s*,\s*player\s*\)\s*$",
+            RegexOptions.CultureInvariant);
+        if (signature.Matches(text).Count != 1 || getter.Matches(text).Count != 1 ||
+            call.Matches(text).Count != 1 ||
+            !text.Contains("if entry.spawnPending then", StringComparison.Ordinal) ||
+            !text.Contains("resolvePendingSpawn(entry)", StringComparison.Ordinal))
+            throw new InvalidOperationException("Physical NPC lifetime/pending/position reads changed.");
+        text = signature.Replace(text,
+            "local function distanceFromPlayer(entry, player, playerPos)");
+        text = getter.Replace(text,
+            "local pos = playerPos or player:GetWorldPosition()\n    return Vector4.Distance(pos, anchorPosition(entry)), pos");
+        const string priorReturn = "  return ok and distance or nil\nend";
+        if (text.Split(priorReturn, StringSplitOptions.None).Length != 2)
+            throw new InvalidOperationException("Physical NPC protected distance fallback changed.");
+        text = text.Replace("local ok, distance = pcall(function()", "local ok, distance, pos = pcall(function()", StringComparison.Ordinal);
+        text = text.Replace(priorReturn,
+            "  return ok and distance or nil, ok and pos or nil\nend", StringComparison.Ordinal);
+        var hits = call.Matches(text);
+        text = call.Replace(text, m =>
+            m.Groups["indent"].Value + "local distance, __gcetPositionObserved = distanceFromPlayer(entry, player, " + stage + ")\n" +
+            m.Groups["indent"].Value + "if __gcetPositionObserved then " + stage + " = __gcetPositionObserved end");
+        var update = text.IndexOf("function PhysicalNpc.Update(delta)", StringComparison.Ordinal);
+        var loopStart = text.IndexOf("for _, entry in ipairs(state.mechanics) do", update, StringComparison.Ordinal);
+        if (update < 0 || loopStart < 0)
+            throw new InvalidOperationException("Physical NPC update loop changed.");
+        // Scope the cache ONLY to one protected, synchronous Update invocation;
+        // the pending-spawn branch never reads position, exactly as in the author version.
+        text = text.Insert(loopStart, "local " + stage + " = nil\n  ");
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Reused freshly obtained player world position within one NPC supervisor scan; preserved protected getter fallback, native distance math, pending spawn and each lifecycle decision.");
+    }
 }
