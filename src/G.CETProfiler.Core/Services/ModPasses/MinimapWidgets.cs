@@ -207,15 +207,23 @@ internal static partial class SemanticInjectors
             elevationNew,
             "Minimap Widgets elevation prefilter");
 
-        text = ReplaceOnce(
+        // The independently applied stealth-widget locality semantic
+        // can already have localized the same callback's handles. Preserve
+        // those invocation-local handles instead of demanding old author
+        // source or restoring the original this.aboveWidget access.
+        var localizedWidgets = text.Contains(
+            "-- G-CET semantic:minimap-stealth-widget-locality",
+            StringComparison.Ordinal);
+        var aboveWidget = localizedWidgets ? "__gcetAboveWidget" : "this.aboveWidget";
+        text = ReplaceOrSkipCompletedStage(
             text,
             "\t\t\telse \n" +
-            "\t\t\t\tif this.aboveWidget then this.aboveWidget:SetVisible(isAbove) end\n",
+            "\t\t\t\tif " + aboveWidget + " then " + aboveWidget + ":SetVisible(isAbove) end\n",
             "\t\t\telse\n" +
             "\t\t\t\tlocal vertRelation = this:GetVerticalRelationToPlayer()\n" +
             "\t\t\t\tlocal isAbove = vertRelation == gamemappinsVerticalPositioning.Above\n" +
             "\t\t\t\tlocal isBelow = vertRelation == gamemappinsVerticalPositioning.Below\n" +
-            "\t\t\t\tif this.aboveWidget then this.aboveWidget:SetVisible(isAbove) end\n",
+            "\t\t\t\tif " + aboveWidget + " then " + aboveWidget + ":SetVisible(isAbove) end\n",
             "Minimap Widgets elevation deferred query");
 
         var visibilityGate =
