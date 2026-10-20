@@ -7,7 +7,7 @@ permissions:
 on:
   workflow_dispatch:
   push:
-    branches: [ main, 'dev/resolver-profiler-handoff', 'dev/generic-native-read-reuse-ci', 'dev/player-ownership-evidence-ci' ]
+    branches: [ main, 'dev/resolver-profiler-handoff', 'dev/generic-native-read-reuse-ci', 'dev/player-ownership-evidence-ci', 'dev/observer-self-player-evidence' ]
     paths-ignore:
       - 'native-profiler-build/**'
       - '.github/workflows/native-profiler-rebuild.yml'
