@@ -35,26 +35,45 @@ internal sealed class ZeroEngineService
 
     public ZeroFileState GetSchedulerState(ProfilerPaths paths)
     {
-        var aware = manifest.ZeroEngine.ProfilerSchedulerSha256.ToLowerInvariant();
         if (!File.Exists(paths.ZeroScheduler))
             return new ZeroFileState("absent", "ABSENT - WILL ADD");
 
+        var source = File.ReadAllText(paths.ZeroScheduler);
+        var aware = HasProfilerSchedulerApi(source);
         var hash = FileSystemService.Sha256(paths.ZeroScheduler);
-        return string.Equals(hash, aware, StringComparison.OrdinalIgnoreCase)
-            ? new ZeroFileState("aware", "PROFILER-AWARE", hash)
-            : new ZeroFileState("other", "PRESENT - WILL BACKUP + REPLACE", hash);
+        return aware
+            ? new ZeroFileState("aware", "PROFILER-AWARE (SOURCE-VERIFIED)", hash)
+            : new ZeroFileState("other", "SCHEDULER NEEDS PROFILER BRIDGE - BACKUP BEFORE REPLACE", hash);
     }
 
     public ZeroFileState GetAdaptiveSchedulerState(ProfilerPaths paths)
     {
-        var aware = manifest.ZeroEngine.ProfilerAdaptiveSchedulerSha256.ToLowerInvariant();
         if (!File.Exists(paths.ZeroAdaptiveScheduler))
             return new ZeroFileState("absent", "WILL ADD CETProfilerScheduler");
 
+        var source = File.ReadAllText(paths.ZeroAdaptiveScheduler);
+        var aware = HasProfilerSchedulerApi(source);
         var hash = FileSystemService.Sha256(paths.ZeroAdaptiveScheduler);
-        return string.Equals(hash, aware, StringComparison.OrdinalIgnoreCase)
-            ? new ZeroFileState("aware", "CETProfilerScheduler READY", hash)
-            : new ZeroFileState("other", "CUSTOM CETProfilerScheduler - WILL BACKUP", hash);
+        return aware
+            ? new ZeroFileState("aware", "CETProfilerScheduler READY (SOURCE-VERIFIED)", hash)
+            : new ZeroFileState("other", "CETProfilerScheduler NEEDS PROFILER BRIDGE - BACKUP BEFORE REPLACE", hash);
+    }
+
+    private static bool HasProfilerSchedulerApi(string source)
+    {
+        // The profiler manager must recognize customized Scheduler files with
+        // the same runtime measurement integration. A released-file digest is
+        // irrelevant to whether the methods are implemented.
+        return Regex.IsMatch(source,
+                   @"\bfunction\s+Scheduler\.Init\s*\(", RegexOptions.CultureInvariant) &&
+               Regex.IsMatch(source,
+                   @"\bfunction\s+Scheduler\.Update\s*\(", RegexOptions.CultureInvariant) &&
+               source.Contains("CETProfilerIsRunning", StringComparison.Ordinal) &&
+               source.Contains("CETProfilerSchedulerRegisterJob", StringComparison.Ordinal) &&
+               source.Contains("CETProfilerSchedulerFrameBegin", StringComparison.Ordinal) &&
+               source.Contains("CETProfilerSchedulerFrameEnd", StringComparison.Ordinal) &&
+               source.Contains("CETProfilerSchedulerJobBegin", StringComparison.Ordinal) &&
+               source.Contains("CETProfilerSchedulerJobEnd", StringComparison.Ordinal);
     }
 
     public bool IsSchedulerIntegrated(string initPath)
