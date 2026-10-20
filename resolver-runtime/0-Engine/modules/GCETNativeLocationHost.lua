@@ -76,6 +76,17 @@ function Host:attach(id,sites,onNear,onFar,onFallback)
      type(sites)~="table" or #sites==0 or
      type(onNear)~="function" or type(onFar)~="function" or
      type(onFallback)~="function" then return false end
+  -- Preferred source-compiled path. All static locations are already
+  -- resident in native memory; NEVER add a duplicate runtime anchor.
+  -- Card Collection compiles all 100 cards, although the old Lua registration
+  -- used only the uncollected subset.
+  local found,preloaded=pcall(native,"GCETStaticOwnerCount",id)
+  if found and type(preloaded)=="number" and preloaded>0 then
+    if preloaded~=#sites and not (id==10035 and preloaded==100 and #sites<=100) then
+      return false -- not safe to bind a mismatched source database
+    end
+    return self:attachCompiled(id,preloaded,onNear,onFar,onFallback)
+  end
   -- An absent native plugin must add zero periodic Lua work.
   local available,nativeReady=pcall(native,"GCETStaticReady")
   if not available or nativeReady~=true then return false end
