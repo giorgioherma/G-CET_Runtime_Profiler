@@ -242,4 +242,42 @@ internal static partial class SemanticInjectors
             "Moved widget timers ahead of native-system acquisition so dormant frames exit before Game getters, deferred elevation queries until unclamped, and added a version-open visibility prefilter that skips stealth-mappin native work when no hide option is enabled.");
     }
 
+
+    private static SemanticInjectionResult ApplyMinimapTimeWeatherSnapshot(SemanticPatchContext context)
+    {
+        var file = context.FindFile("init.lua", "function updateTimeWidget()",
+            "function updateWeatherWidget()", "TimeIsRunningOut",
+            "Game.GetTimeSystem():GetGameTime():Hours()");
+        var text = file.Text;
+        const string stage = "__gcetMinimapGameTimePerInvocation";
+        if (text.Contains(stage, StringComparison.Ordinal))
+            return SemanticInjectionResult.Skip("Time/weather synchronous native time snapshot already installed.");
+        // Both author functions independently read the same game-time object
+        // twice in one invocation. No value is retained across frames.
+        var original = new Regex(
+            @"(?m)^(?<indent>[ \t]*)local\s+hours\s*=\s*Game\.GetTimeSystem\(\):GetGameTime\(\):Hours\(\)\s*\r?\n" +
+            @"\k<indent>local\s+minutes\s*=\s*\(?\s*Game\.GetTimeSystem\(\):GetGameTime\(\):Minutes\(\)\s*\)?[ \t]*$",
+            RegexOptions.CultureInvariant);
+        var matches = original.Matches(text);
+        if (matches.Count != 2 ||
+            text.IndexOf("function updateTimeWidget()", StringComparison.Ordinal) >= matches[0].Index ||
+            text.IndexOf("function updateWeatherWidget()", StringComparison.Ordinal) >= matches[1].Index ||
+            text.IndexOf("function updateWeatherWidget()", StringComparison.Ordinal) <= matches[0].Index)
+            throw new InvalidOperationException("Time/weather source flow or two-read structure changed.");
+        text = original.Replace(text, m =>
+            m.Groups["indent"].Value + "local " + stage + " = Game.GetTimeSystem():GetGameTime()\n" +
+            m.Groups["indent"].Value + "local hours = " + stage + ":Hours()\n" +
+            m.Groups["indent"].Value + "local minutes = " + stage + ":Minutes()");
+        var provider = new Regex(
+            @"(?m)^(?<indent>[ \t]*)local\s+mod\s*=\s*GetMod\(\s*['""]TimeIsRunningOut['""]\s*\)[ \t]*$",
+            RegexOptions.CultureInvariant);
+        if (provider.Matches(text).Count != 1)
+            throw new InvalidOperationException("TimeIsRunningOut provider is no longer one unique optional time-only lookup.");
+        text = provider.Replace(text, m => m.Groups["indent"].Value +
+            "local mod = nil\n" + m.Groups["indent"].Value +
+            "if MinimapWidgetsConfig.TimeSwitch == 5 then mod = GetMod(\"TimeIsRunningOut\") end");
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Read one fresh GameTime per Time/Weather callback and resolve optional TimeIsRunningOut only in author mode 5; original formatting and widget decisions retained.");
+    }
 }
