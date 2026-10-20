@@ -2052,13 +2052,29 @@ try {
         [int]$manifest.summary.nativeRuntimeFiles)) {
         throw 'Generated pass callback-file accounting is inconsistent.'
     }
-    if ([int]$manifest.summary.nativeRuntimeFiles -ne 1 -or
-        !$manifest.nativeRuntime.included) {
-        throw 'Bundled RED4ext native runtime is missing from the generated pass manifest.'
+    if ([int]$manifest.summary.nativeRuntimeFiles -ne 2 -or
+        !$manifest.nativeRuntime.included -or
+        !$manifest.policy.compiledSourceOwnedNativeLocations) {
+        throw 'Bundled RED4ext native DLL plus compiled GCAS manifest are missing.'
     }
     if ($null -eq $zip.GetEntry('red4ext/plugins/G-CET-StaticLocations/GCETStaticLocations.dll')) {
         throw 'Generated pass ZIP lacks the required game-root RED4ext native service.'
     }
+    $locationsEntry=$zip.GetEntry('red4ext/plugins/G-CET-StaticLocations/G-CET.locations')
+    if ($null -eq $locationsEntry) {
+        throw 'Generated pass ZIP lacks the compiled native G-CET.locations file.'
+    }
+    $manifestStream=$locationsEntry.Open()
+    $manifestHeader=New-Object byte[] 16
+    try {
+        if($manifestStream.Read($manifestHeader,0,16) -ne 16) {
+            throw 'Compiled native GCAS header truncated.'
+        }
+        if([Text.Encoding]::ASCII.GetString($manifestHeader,0,4) -ne 'GCAS' -or
+            [BitConverter]::ToUInt32($manifestHeader,4) -ne 1) {
+            throw 'Compiled native GCAS v1 header invalid.'
+        }
+    } finally {$manifestStream.Dispose()}
     if ([int]$manifest.summary.fixedRuntimeFiles -ne 10) {
         throw "Expected 10 fixed 0-Engine runtime files, got $($manifest.summary.fixedRuntimeFiles)."
     }
