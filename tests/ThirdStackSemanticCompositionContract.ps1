@@ -458,11 +458,12 @@ try {
         throw 'Fenix semantic marker missing.'
     }
     $guardIndex=$fenixOut.IndexOf('if not isHangPressed and not isStuck then return end')
-    # Source-first shared getter reuse may replace the exact player getter
-    # AFTER Fenix's independently validated semantic guard hoist. The
-    # inactive guard must still precede both player access and raycast work.
+    # Generic shared getters precede semantic; the inactive guard must
+    # retain the existing generic helper instead of restoring Game.GetPlayer.
     $playerIndex=$fenixOut.IndexOf('local player = __gcetGetPlayer()')
-    if($playerIndex -lt 0) { $playerIndex=$fenixOut.IndexOf('local player = Game.GetPlayer()') }
+    if($fenixOut.Contains('local player = Game.GetPlayer()')) {
+        throw 'Fenix semantic hoist undid the generic shared-player getter.'
+    }
     $heightIndex=$fenixOut.IndexOf('if not IsHighEnough(player) and not isStuck then')
     if($guardIndex -lt 0 -or $playerIndex -lt 0 -or $heightIndex -lt 0 -or
        $guardIndex -gt $playerIndex -or $guardIndex -gt $heightIndex) {
