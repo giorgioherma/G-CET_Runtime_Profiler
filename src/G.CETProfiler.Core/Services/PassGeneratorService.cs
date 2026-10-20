@@ -333,8 +333,11 @@ public static class PassGeneratorService
                 compiledNativeLocationOwnerCounts = nativeLocations?.OwnerCounts,
                 nativeRuntimeSha256ProvenanceOnly = true,
                 modNameRules = false,
-                sourceShaRequired = true,
-                sourceShaRequiredForGeneric = true,
+                // Retained compatibility fields describe eligibility,
+                // not whether sourceSha256 is emitted for diagnostics.
+                // A captured digest never admits or rejects a mod revision.
+                sourceShaRequired = false,
+                sourceShaRequiredForGeneric = false,
                 semanticDefaultRuntimeThresholdMsPerSecond = SemanticPassGeneratorService.MaterialThresholdMsPerSecond,
                 semanticRuleLocalRuntimeThresholds = true,
                 semanticThreeMsPerSecondIsSoftBoundary = true,
