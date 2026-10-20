@@ -276,7 +276,12 @@ $modsRoot=Join-Path $game 'bin/x64/plugins/cyber_engine_tweaks/mods'
 $mechRoot=Join-Path $modsRoot 'illegal_mechanic_phase1a'
 $redsRoot=Join-Path $game 'r6/scripts/zzz_illegal_mechanic_phase1a'
 New-Item -ItemType Directory -Force $mechRoot,$redsRoot | Out-Null
-[IO.File]::WriteAllText((Join-Path $mechRoot 'physical_npc.lua'),'-- G-CET native location:illegal-v3')
+[IO.File]::WriteAllText((Join-Path $mechRoot 'physical_npc.lua'),@'
+-- G-CET native location:illegal-v3
+local function attachMechanic(lookup,index,near,far,fallback)
+ return lookup:attachCompiled(1003301+index,1,near,far,fallback)
+end
+'@)
 $reds=@'
 public final class IllegalMechanicRegistry extends IScriptable {
  public static func Build(out result: array<ref<IllegalMechanicDefinition>>) -> Void {
@@ -310,10 +315,18 @@ $compilerType=$asm.GetType('GCETRuntimeProfiler.Core.Services.CompiledNativeLoca
 $compile=$compilerType.GetMethod('Compile',[Reflection.BindingFlags]'Static,NonPublic')
 if(!$compile){throw 'Compiled static location manifest compiler missing'}
 $map=[Collections.Generic.Dictionary[string,byte[]]]::new()
-# The compiler intentionally admits only owners whose source was staged by
-# the Resolver, not arbitrary installed mod files. Mirror that production gate.
-$map.Add("illegal_mechanic_phase1a/physical_npc.lua",
-         [Text.Encoding]::UTF8.GetBytes("-- G-CET native location:illegal-v3"))
+# Native geometry requires a *verified subscription* in the staged
+# source. Mere generic staging or a semantic comment cannot arm an owner.
+$unboundMap=[Collections.Generic.Dictionary[string,byte[]]]::new()
+$unboundMap.Add('illegal_mechanic_phase1a/physical_npc.lua',
+ [Text.Encoding]::UTF8.GetBytes('-- G-CET native location:illegal-v3'))
+$unbound=$compile.Invoke($null,[object[]]@([string]$modsRoot,$unboundMap))
+$unboundBytes=$compilerType.GetProperty('Bytes',[Reflection.BindingFlags]'Instance,Public,NonPublic').GetValue($unbound)
+if([BitConverter]::ToUInt32($unboundBytes,8) -ne 0){
+ throw 'Unbound native owner was compiled just because the mod was staged'
+}
+$map.Add('illegal_mechanic_phase1a/physical_npc.lua',
+ [IO.File]::ReadAllBytes((Join-Path $mechRoot 'physical_npc.lua')))
 try {$built=$compile.Invoke($null,[object[]]@([string]$modsRoot,$map))}
 catch {throw "Native author REDscript compilation failed: $($_.Exception.InnerException.Message)"}
 $manifestBytes=$compilerType.GetProperty('Bytes',[Reflection.BindingFlags]'Instance,Public,NonPublic').GetValue($built)
@@ -539,9 +552,9 @@ New-Item -ItemType Directory -Force (Split-Path $stPath -Parent),(Split-Path $ps
 [IO.File]::WriteAllText($stPath,$tables)
 [IO.File]::WriteAllText($psPath,$posdata)
 $geometry=[Collections.Generic.Dictionary[string,byte[]]]::new([StringComparer]::OrdinalIgnoreCase)
-$geometry.Add('StreetGamesPoker/init.lua',[Text.Encoding]::UTF8.GetBytes($pokerSource))
-$geometry.Add('Dedka Auto Shop/init.lua',[Text.Encoding]::UTF8.GetBytes($dedkaSource))
-$geometry.Add('marmurbank/module/Bank.lua',[Text.Encoding]::UTF8.GetBytes($bankSource))
+$geometry.Add('StreetGamesPoker/init.lua',[Text.Encoding]::UTF8.GetBytes($p))
+$geometry.Add('Dedka Auto Shop/init.lua',[Text.Encoding]::UTF8.GetBytes($d))
+$geometry.Add('marmurbank/module/Bank.lua',[Text.Encoding]::UTF8.GetBytes($m))
 try {$compiled=$compile.Invoke($null,[object[]]@([string]$root,$geometry))}
 catch {throw "Independent location geometry failed source proof: $($_.Exception.InnerException.Message)"}
 $countMap=$compilerType.GetProperty('OwnerCounts',[Reflection.BindingFlags]'Instance,Public,NonPublic').GetValue($compiled)
@@ -560,7 +573,7 @@ $bankRadii=for($idx=0;$idx -lt $compiledSiteCount;$idx++){
 if($bankRadii.Count -ne 3 -or @($bankRadii | Where-Object {$_ -lt 30}).Count -gt 0){
  throw 'Banker native wake does not encompass the source nearest query radius'
 }
-Write-Host 'Independently compiled pre-native geometry: Poker 2 + Dedka 2 + Bank 3, discovered banker radius + 5m PASS'
+Write-Host 'Independently compiled subscribed native geometry: Poker 2 + Dedka 2 + Bank 3, discovered banker radius + 5m PASS'
 
 # A newly generated pass may touch zero files belonging to these already
 # completed owners. Do NOT silently drop their native geometry from GCAS.
