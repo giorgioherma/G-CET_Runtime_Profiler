@@ -148,7 +148,7 @@ function Generate {
  $noPass = $exitCode -eq 1 -and !$o.ok -and
      [string]$o.error -like '*no applicable generic or source-proven semantic transforms*'
  if ($exitCode -ne 0 -and !$noPass) {
-     throw "Unexpected Resolver exit code $exitCode: $($raw -join ' ')"
+     throw "Unexpected Resolver exit code ${exitCode}: $($raw -join ' ')"
  }
  $report=Get-Content -Raw (Join-Path $capture 'G-CET_Resolver.json') | ConvertFrom-Json
  return @{Output=$o;Report=$report;ExitCode=$exitCode;NoPass=$noPass}
