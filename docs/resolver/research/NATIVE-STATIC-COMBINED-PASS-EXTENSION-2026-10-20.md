@@ -143,3 +143,62 @@ rather than silently rewritten. The complete original mod must be
 installed (including `r6/scripts` registry and JSON configuration)
 while Resolver generates the native binary, since an overlay-only ZIP
 does not carry those original input files.
+
+
+## Source-structural capability and independent-stage correction (CI1550)
+
+The October 20 generated pass demonstrated **five** native-location source
+hooks, with Poker, Dedka, and MarmurBank skipped because previously
+optimized source changed *shape*. The pass also included a **legacy
+GCETNativeLocationHost.lua without attachCompiled** (same source and
+generated SHA in its JSON manifest), so manifest placement alone did not
+establish a working native owner.
+
+Fixed by the following independent, source-proven capabilities:
+
+1. **Location geometry** is compiled separately from the callback hook.
+   Source-constant author coordinates still qualify if the mod's staged
+   callback rewrite fails, while unsupported/unproven geometry is refused.
+   Poker table locations, Dedka's entrance positions, and banker PosData
+   use current installed source, not a reference file, mod version or
+   source SHA. Wake radii are read from the author's current discovery
+   behavior and conservatively expanded: Poker +5m, Dedka +10m,
+   MarmurBank source nearest-query radius +5m.
+2. **Source-hook registration** is verified independently. Poker proves
+   far/near/seat scheduler IDs, pause/resume transitions and realtime
+   activity. Dedka proves its two keyed author zones, helper
+   RegisterZone and enter/exit lifecycle, retaining restorable handles.
+   MarmurBank proves spatial register/unregister and nearest-query
+   lifecycles without relying on log messages. Unchanged callbacks and
+   active gameplay are untouched. Ambiguous changes reject only that
+   native-location semantic rule.
+3. **Idempotence** is based on the behavioral postcondition for each
+   structural stage. A complete stage skips; a partially present stage
+   fails closed; absence of one native implementation does not invalidate
+   other semantic transformations in the same mod.
+4. **0-Engine host capability** is separate from the 0-Engine source
+   version. Resolver retains the installed module and uses source proof
+   to add the missing attachCompiled API, legacy attach-to-precompiled
+   dispatch, and safe immutable-anchor shutdown handling. This is a
+   surgical additive adaptation; existing Scheduler, Health, ActionRouter
+   and customized module code remain authoritative. Unknown host layouts
+   fail closed rather than receiving a guessed overwrite. Reapplying the
+   bridge is byte-for-byte idempotent.
+
+No mod-version or source-SHA admission gate was added to these stages.
+SHA values in manifests remain provenance, not native-location
+compatibility decisions. This does not remove integrity protections
+for profiler original-state restoration or unrelated generic capture
+consistency.
+
+CI1544/1545 validated structurally changed Poker/Dedka/MarmurBank hook
+source and independently compiled pre-native locations. **CI1550
+completed all five jobs successfully**, including legacy customized
+0-Engine native-host migration and its idempotence check:
+https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/39452851455
+
+**Runtime qualification:** CI does not constitute successful gameplay
+validation of all eight owners in the user's precise combined stack.
+Generate a new Resolver pass and inspect both native hook transform rows
+and compiled owner counts; never mistake the 20261020-151906 legacy
+pass for a valid new-native installation.
