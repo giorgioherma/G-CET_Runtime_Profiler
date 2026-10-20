@@ -514,9 +514,8 @@ namespace {
         auto dataPath = root / L"G-CET.locations";
         std::error_code ec;
         g_autoProbe=std::filesystem::exists(root / L"G-CET.smoke-probe",ec);
-        std::vector<gcet::static_locations::Anchor> anchors;
-        if (!gcet::static_locations::ReadCompiledFile(dataPath,anchors)) return;
-        g_loaded = g_index.Load(anchors);
+        g_manifestStatus = gcet::static_locations::LoadOptionalManifest(dataPath,g_index);
+        g_loaded = g_manifestStatus != gcet::static_locations::ManifestLoadStatus::Invalid;
     }
 }
 
