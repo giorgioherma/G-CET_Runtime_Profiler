@@ -112,7 +112,12 @@ try
     // Source evidence is refreshed from the actual installed tree. An update
     // arriving after the report was generated is not a compatibility failure.
     Save("AddedAfterCapture/init.lua","local late = Game.GetQuestsSystem()\n");
-    var newStages=new Dictionary<string,byte[]>(StringComparer.OrdinalIgnoreCase);
+    Save("StagedOnly/init.lua","return 'author code'\n");
+    var newStages=new Dictionary<string,byte[]>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["StagedOnly/init.lua"]=Encoding.UTF8.GetBytes(
+            "-- prior semantic stage\nlocal introduced=Game.GetQuestsSystem()\n")
+    };
     var newerHashes=new Dictionary<string,string?>(StringComparer.OrdinalIgnoreCase);
     var newApplied=new Dictionary<string,int>(StringComparer.OrdinalIgnoreCase);
     var newerManifest=new List<object>();
@@ -125,6 +130,11 @@ try
     Check(Encoding.UTF8.GetString(newStages["AddedAfterCapture/init.lua"])
               .Contains("__gcetGetQuestsSystem()"),
         "Updated mod direct getter was not source-adopted");
+    Check(Encoding.UTF8.GetString(newStages["StagedOnly/init.lua"])
+            .Contains("local introduced=__gcetGetQuestsSystem()") &&
+          Encoding.UTF8.GetString(newStages["StagedOnly/init.lua"])
+            .Contains("-- prior semantic stage"),
+        "Semantically staged new getter was not adopted after source scan");
 
     // Existing helpers stay intact. A newly added getter call gets adopted
     // without creating a duplicate provider or rewriting its own fallback.
