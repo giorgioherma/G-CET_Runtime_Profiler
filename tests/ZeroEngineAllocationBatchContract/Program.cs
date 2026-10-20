@@ -85,6 +85,29 @@ Check(!spatialOutput.Contains("local key = getGridKey(px + dx * gridSize"),
 object?[] pAgain = [p[1], null, null];
 Check(!(bool)spatial.Invoke(null, pAgain)!, "Spatial double application");
 Check((string)pAgain[2]! == "ALREADY_SATISFIED", "Spatial idempotence wrong reason");
+// Independently proven row reuse is not proof that the radius snapshot
+// has already been applied. This occurs in a mixed historical overlay.
+var gridOriginal = new System.Text.RegularExpressions.Regex(
+    @"(?m)^(?<outer>[ \\t]*)for dx = -cellRadius, cellRadius do\\r?\\n(?<inner>[ \\t]*)for dy = -cellRadius, cellRadius do\\r?\\n(?<key>[ \\t]*)local key = getGridKey\\(px \\+ dx \\* gridSize, py \\+ dy \\* gridSize, gridSize\\)");
+var rowOnly = gridOriginal.Replace(spatialFixture, m =>
+    m.Groups["outer"].Value + "for dx = -cellRadius, cellRadius do\\n" +
+    m.Groups["inner"].Value + "local gx = math.floor((px + dx * gridSize) / gridSize)  -- G-CET SPATIAL_GRID_X_ROW_REUSE_STAGE_B_V1\\n" +
+    m.Groups["inner"].Value + "for dy = -cellRadius, cellRadius do\\n" +
+    m.Groups["key"].Value + "local gy = math.floor((py + dy * gridSize) / gridSize)\\n" +
+    m.Groups["key"].Value + "local key = (gx + 10000) * 20000 + (gy + 10000)");
+Check(rowOnly.Split("G-CET SPATIAL_GRID_X_ROW_REUSE_STAGE_B_V1").Length - 1 == 3,
+    "Historical row-only fixture construction failed");
+object?[] rowPartial = [Encoding.UTF8.GetBytes(rowOnly), null, null];
+Check((bool)spatial.Invoke(null, rowPartial)!, "Row-only partial stack failed to add missing radius optimization");
+var completedPartial = Encoding.UTF8.GetString((byte[])rowPartial[1]!);
+Check(completedPartial.Contains("G-CET SPATIAL_POLL_RADIUS_SNAPSHOT_STAGE_A_V1"),
+    "Radius optimization not added to row-only partial stack");
+Check(completedPartial.Split("G-CET SPATIAL_GRID_X_ROW_REUSE_STAGE_B_V1").Length - 1 == 3,
+    "Already-proven grid-row optimization was duplicated");
+object?[] partialAgain = [rowPartial[1], null, null];
+Check(!(bool)spatial.Invoke(null, partialAgain)!, "Partial completion must be idempotent");
+Check((string)partialAgain[2]! == "ALREADY_SATISFIED", "Mixed-stage completion was not recognized");
+
 object?[] pPinned = [Encoding.UTF8.GetBytes(spatialFixture + "\n-- custom SpatialHash release metadata"), null, null];
 Check((bool)pinnedSpatial.Invoke(null, pPinned)!, "Version-fluid Spatial source incorrectly rejected");
 var missingLoop = spatialFixture.Replace(
