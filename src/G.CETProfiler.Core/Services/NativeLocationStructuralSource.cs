@@ -42,7 +42,7 @@ internal static class NativeLocationStructuralSource
     // AND prove pause/resume and active/realtime behavior before editing.
     internal static SemanticInjectionResult? TryPoker(SemanticPatchContext context)
     {
-        SemanticSourceFile file;
+        SemanticTextFile file;
         try {
             file=context.FindFile("init.lua","poker.world_far","poker.world_near",
                 "poker.seat_near","StreetTables.update");
@@ -147,7 +147,7 @@ internal static class NativeLocationStructuralSource
     // expanded RegisterZone template or require the previous variable names.
     internal static SemanticInjectionResult? TryDedka(SemanticPatchContext context)
     {
-        SemanticSourceFile file;
+        SemanticTextFile file;
         try {
             file=context.FindFile("init.lua","dedka_entrance1",
                 "dedka_entrance2_cluster","RegisterZone(","startShopDetail",
@@ -250,7 +250,7 @@ internal static class NativeLocationStructuralSource
     // the register/unregister/query lifecycle is structurally complete.
     internal static SemanticInjectionResult? TryMarmur(SemanticPatchContext context)
     {
-        SemanticSourceFile file;
+        SemanticTextFile file;
         try {
             file=context.FindFile("module/Bank.lua",
                 "function bank:registerSpatialSet()","PosData.All",
