@@ -458,7 +458,11 @@ try {
         throw 'Fenix semantic marker missing.'
     }
     $guardIndex=$fenixOut.IndexOf('if not isHangPressed and not isStuck then return end')
-    $playerIndex=$fenixOut.IndexOf('local player = Game.GetPlayer()')
+    # Source-first shared getter reuse may replace the exact player getter
+    # AFTER Fenix's independently validated semantic guard hoist. The
+    # inactive guard must still precede both player access and raycast work.
+    $playerIndex=$fenixOut.IndexOf('local player = __gcetGetPlayer()')
+    if($playerIndex -lt 0) { $playerIndex=$fenixOut.IndexOf('local player = Game.GetPlayer()') }
     $heightIndex=$fenixOut.IndexOf('if not IsHighEnough(player) and not isStuck then')
     if($guardIndex -lt 0 -or $playerIndex -lt 0 -or $heightIndex -lt 0 -or
        $guardIndex -gt $playerIndex -or $guardIndex -gt $heightIndex) {
