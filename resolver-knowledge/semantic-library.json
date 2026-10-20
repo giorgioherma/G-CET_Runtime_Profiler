@@ -1009,8 +1009,8 @@
       "callbacks": [
         {
           "kind": "event",
-          "target": "onUpdate",
-          "role": "source-proven-unnecessary-idle-work"
+          "target": "onInit",
+          "role": "source-only-owner-registration; rewrite retained onUpdate work"
         }
       ],
       "sourceProof": {
@@ -3467,8 +3467,8 @@
       "callbacks": [
         {
           "kind": "event",
-          "target": "onUpdate",
-          "role": "source-proven-unnecessary-idle-work"
+          "target": "onInit",
+          "role": "source-only-owner-registration; rewrite retained onUpdate work"
         }
       ],
       "sourceProof": {
@@ -5342,8 +5342,8 @@
       "callbacks": [
         {
           "kind": "event",
-          "target": "onUpdate",
-          "role": "source-proven-unnecessary-idle-work"
+          "target": "onInit",
+          "role": "source-only-owner-registration; rewrite retained onUpdate work"
         }
       ],
       "sourceProof": {
