@@ -1,15 +1,38 @@
-# G-LookupCache — experimental native payload
+# G-CET Static Locations — independent RED4ext native service
 
-**Do not install as an active location optimizer yet.** This artifact proves the isolated RED4ext native plugin build. It does not include a source-proven per-installation `G-CET.locations` dataset, REDscript declaration, CET coordination adapter, source-approved author-wake replacement or Resolver-generated subscriber suspension.
+This artifact contains the separately compiled `GCETStaticLocations.dll`.
+It is **not** the CET profiler ASI and must never replace
+`cyber_engine_tweaks.PROFILER.dll`.
 
-Payload layout (once ready for integration): `red4ext/plugins/G-CET-StaticLocations/GCETStaticLocations.dll`. The compiled `G-CET.locations` file must be placed BESIDE it by the Resolver **only after** the Resolver identifies source-proven fixed-location mods installed in that specific CET/RED stack. No global mod list is forced on the user.
+Expected installed layout:
 
-The native service fails safely with unknown state (`-1`) if its location data is missing, invalid or no valid player snapshot has been supplied. Do not use `State()==0` as a reason to suspend a callback until the source-specific coordinator, wake and remote-activation paths are verified.
+```text
+red4ext/plugins/G-CET-StaticLocations/GCETStaticLocations.dll
+```
 
-This experiment does NOT replace `cyber_engine_tweaks.PROFILER.dll`, RED4ext core, 0-Engine, or G-RED. The two original Profiler and Resolver packages remain pinned and untouched.
+## Bootstrap policy (native CI75 source)
 
-## Diagnostic revision (opt-in only)
+- **No `G-CET.locations` file:** initialize a valid empty location index.
+  Source-proven Lua owners may add coordinates later using
+  `GCETStaticAddAnchor`; they must arm them and wait for a valid snapshot.
+- **Valid GCAS manifest present:** load its source-proven static anchors.
+  Dynamic registration can add additional independent anchors.
+- **Invalid or unreadable manifest present:** refuse the native location
+  coordinator. Never silently reinterpret corrupted data as an empty manifest.
+- **No valid player position, unavailable service, or stale snapshot:**
+  keep state UNKNOWN and execute original authored logic.
 
-The native service includes a RED4ext Running-state **player-position coordinator** and bounded health logging. The source ABI is still not proven in-game even though the plugin DLL previously loaded successfully. The usual isolated native CI DLL package has no probe marker and makes **no performance improvement**.
+The Resolver integrates four **source-specific** owners (poker, tunnel
+rescue, illegal mechanic, Dedka) through a single additive 0-Engine host.
+The native service evaluates distances; it does not infer quest activation
+or turn arbitrary gameplay callbacks off.
 
-For one deliberate diagnostic session only, a developer smoke overlay may add a file `G-CET.smoke-probe` beside the DLL and an empty GCAS manifest. When the game supplies a valid position the plugin creates a **40m passive native anchor** and logs first NEAR, FAR on leaving, and NEAR on returning, plus player-getter errors if relevant. No author mod callbacks are changed or invoked. Remove the independent smoke overlay afterwards.
+Normal generated Resolver optimization ZIPs bundle this native DLL
+as a game-root overlay. The independent native CI artifact remains useful
+for developers; it is not a required separate user installation. Neither
+sample anchors nor the `G-CET.smoke-probe` marker belong in player ZIPs.
+
+The native player-state API is independent of the manifest. The optional
+40m smoke probe is only for deliberate developer testing. The native
+core/Windows build tests have passed; the combined four-owner game
+behavior remains to be validated in game.
