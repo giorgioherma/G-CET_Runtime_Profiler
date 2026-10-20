@@ -294,6 +294,7 @@ internal static class NativeLocationStructuralSource
             var endAfter=t.IndexOf("\nend",start.Index+start.Length,StringComparison.Ordinal);
             var insertion="""
 
+  -- G-CET native location:marmurbank-v1
   -- G-CET native location:marmurbank-structural-v1
   if not self.__gcetNativeAttached then
     local lookup=self.engine.GCET and self.engine.GCET.NativeLocationHost
