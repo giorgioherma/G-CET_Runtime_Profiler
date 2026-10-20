@@ -840,6 +840,33 @@ if (!(Test-Path -LiteralPath $outPath -PathType Leaf)) {
 }
 
 $result = Get-Content -LiteralPath $outPath -Raw | ConvertFrom-Json
+# Receiver ownership tagging is derived offline from existing callback
+# metadata and source. Callback class context never proves an inner getter.
+$ownership=$result.playerOwnershipEvidence
+if($null -eq $ownership -or
+   [string]$ownership.contract -ne 'GCET_PLAYER_OWNERSHIP_EVIDENCE_V1' -or
+   $ownership.nativeProfilerInstrumentationAdded -or
+   $ownership.runtimeReceiverComparisonPerformed -or
+   $ownership.workloadMetricsAffected -or
+   $ownership.classificationIsRewriteAuthorization) {
+    throw 'Missing safe offline player ownership evidence contract.'
+}
+$sourcePlayerSites=@($ownership.callbacks | ForEach-Object { $_.getterCallsites })
+if(@($sourcePlayerSites).Count -lt 1) {
+    throw 'Player receiver candidate evidence absent from the source fixture.'
+}
+$badOwnership=@($sourcePlayerSites | Where-Object {
+    $_.runtimeObserved -or $_.authorizesRewrite
+})
+if($badOwnership.Count -gt 0) {
+    throw 'Offline receiver evidence incorrectly authorized an automatic rewrite.'
+}
+if(@($ownership.callbacks | Where-Object {
+    $_.callbackContext -eq 'PLAYER_PUPPET_CLASS_CONTEXT'
+}).Count -lt 1) {
+    throw 'PlayerPuppet observer class context tag is missing.'
+}
+
 if (!$result.policy.callbackOriented) { throw 'Resolver is not marked callback-oriented.' }
 if (!$result.policy.familyFirst) { throw 'Resolver is not marked callback-family-first.' }
 if (!$result.policy.genericPatternsBeforeSemanticLibrary) { throw 'Semantic library is not gated behind generic pattern resolution.' }

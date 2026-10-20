@@ -109,6 +109,54 @@ try
     Check(afterDrift==0,"Drift accepted unexpectedly");
     Check(before.SequenceEqual(staged["Example/init.lua"]),"Drift mutated staged file");
     Check(drifts.Count>0,"Drift not diagnosed");
+    // Player ownership evidence is built from callback registration metadata
+    // and source analysis; it must not equate PlayerPuppet class context with
+    // the receiver of unrelated NPC getter calls.
+    var ownership=core.GetType("GCETRuntimeProfiler.Core.Services.PlayerOwnershipEvidenceSource",true)!;
+    var classify=ownership.GetMethod("Context",BindingFlags.Static|BindingFlags.NonPublic|BindingFlags.Public)!;
+    Check((string)classify.Invoke(null,["Observe","PlayerPuppet::OnAction"])! ==
+        "PLAYER_PUPPET_CLASS_CONTEXT","PlayerPuppet context tag missing");
+    Check((string)classify.Invoke(null,["event","onUpdate"])! ==
+        "GLOBAL_EVENT_CONTEXT","Global event must not be tagged as player");
+    var analyzeOwnership=ownership.GetMethod("Analyze",BindingFlags.Static|BindingFlags.NonPublic|BindingFlags.Public)!;
+    var playerScript="""
+        -- Game.GetPlayer():GetWorldPosition()
+        local ignored = "this:GetWorldPosition()"
+        local direct = Game.GetPlayer():GetWorldPosition()
+        local player = Game.GetPlayer()
+        local actor = player
+        local pos = actor:GetWorldPosition()
+        local npc = findNearestNPC()
+        local hostile = npc:GetWorldOrientation()
+        local changing = Game.GetPlayer()
+        changing = npc
+        local dynamic = changing:IsInCombat()
+        local observer = this:GetWorldPosition()
+        """;
+    var siteRows=(Array)analyzeOwnership.Invoke(null,[playerScript])!;
+    Check(siteRows.Length==5,"Unexpected getter receiver callsite count");
+    string Tag(object x)=>(string)x.GetType().GetProperty("ReceiverTag")!.GetValue(x)!;
+    var playerTags=siteRows.Cast<object>().Select(Tag).ToArray();
+    Check(playerTags.Count(x=>x=="CURRENT_PLAYER_SOURCE_PROVEN")==1,
+        "Direct source player getter proof not classified");
+    Check(playerTags.Count(x=>x=="PLAYER_ALIAS_SOURCE_EVIDENCE")==1,
+        "Straight-line local alias not recognized");
+    Check(playerTags.Count(x=>x=="UNKNOWN")==3,
+        "NPC, rebound alias or PlayerPuppet 'this' must remain UNKNOWN");
+    var shadowedRows=(Array)analyzeOwnership.Invoke(null,[
+        "local Game = something\nlocal pos=Game.GetPlayer():GetWorldPosition()"])!;
+    Check(shadowedRows.Length==1&&Tag(shadowedRows.GetValue(0)!)=="UNKNOWN",
+        "Shadowed Game facade was falsely proven");
+    var boundaryRows=(Array)analyzeOwnership.Invoke(null,[
+        "local p = Game.GetPlayer()\nif ready then return end\nlocal x=p:GetWorldPosition()"])!;
+    Check(boundaryRows.Length==1&&Tag(boundaryRows.GetValue(0)!)=="UNKNOWN",
+        "Cross-scope local alias was falsely proven");
+    Check(siteRows.Cast<object>().All(x=>
+        !(bool)x.GetType().GetProperty("RuntimeObserved")!.GetValue(x)! &&
+        !(bool)x.GetType().GetProperty("AuthorizesRewrite")!.GetValue(x)!),
+        "Source-only ownership tag must never impersonate runtime evidence");
+    Console.WriteLine("GCET PlayerOwnership source-only receiver evidence PASS");
+
     Console.WriteLine("GCET NativeReadReuse source-first contracts PASS");
 }
 finally { Directory.Delete(root,true); }

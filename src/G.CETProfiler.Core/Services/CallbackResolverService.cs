@@ -51,7 +51,8 @@ internal static class CallbackResolverService
         // is independently proven by the current mod source. Generic AUTO
         // remains measured/source-constrained; arbitrary zero-call rows are
         // not promoted into the ranked workload.
-        var callbacks = ReadCallbacks(handoff.RootElement)
+        var allCapturedCallbacks = ReadCallbacks(handoff.RootElement);
+        var callbacks = allCapturedCallbacks
             .Where(x => !x.Infrastructure &&
                 (x.ExclusiveMsPerSecond > 0 ||
                  IsNativeDispatchCandidateWithMeasuredCalls(x) ||
@@ -576,6 +577,42 @@ internal static class CallbackResolverService
             .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
+        // Receiver identity evidence has ZERO native instrumentation overhead:
+        // these are already captured registration IDs/targets plus source-local
+        // origin tags. Class context never proves a player receiver.
+        var playerOwnershipCallbacks = allCapturedCallbacks
+            .Where(x => !x.Infrastructure)
+            .Select(cb =>
+            {
+                var source = sourceIndex.Resolve(cb);
+                var sites = source is null
+                    ? Array.Empty<PlayerOwnershipEvidenceSource.Callsite>()
+                    : PlayerOwnershipEvidenceSource.Analyze(source.CallbackText);
+                return new
+                {
+                    registrationId = cb.RegistrationId,
+                    owner = cb.Owner,
+                    kind = cb.Kind,
+                    target = cb.Target,
+                    callbackContext = PlayerOwnershipEvidenceSource.Context(cb.Kind, cb.Target),
+                    callbackContextIsReceiverProof = false,
+                    sourceFile = source?.RelativeFile ?? cb.SourceFile,
+                    sourceResolved = source is not null,
+                    sourceResolution = source?.MatchMode ?? "UNKNOWN",
+                    callsPerSecond = cb.CallsPerSecond,
+                    getterCallsites = sites.Select(site => new
+                    {
+                        method = site.Method,
+                        receiverExpression = site.ReceiverExpression,
+                        line = source?.LineStart is int start ? start + site.LineOffset : (int?)null,
+                        receiverTag = site.ReceiverTag,
+                        proof = site.Proof,
+                        runtimeObserved = site.RuntimeObserved,
+                        authorizesRewrite = site.AuthorizesRewrite
+                    }).ToArray()
+                };
+            }).ToArray();
+
         // Source-first read reuse is independent of measured callback CPU. It
         // covers untouched helper/module Lua as well as profiled callbacks.
         // Authorization covers only existing, scalar-independent 0-Engine
@@ -718,6 +755,32 @@ internal static class CallbackResolverService
                     .Count()
             },
             globalTopCallbacks = globalTop,
+            playerOwnershipEvidence = new
+            {
+                contract = PlayerOwnershipEvidenceSource.Contract,
+                origin = "EXISTING_CAPTURE_CALLBACK_REGISTRATIONS_PLUS_CURRENT_INSTALLED_LUA_SOURCE",
+                nativeProfilerInstrumentationAdded = false,
+                runtimeReceiverComparisonPerformed = false,
+                workloadMetricsAffected = false,
+                callbackClassIsReceiverProof = false,
+                classificationIsRewriteAuthorization = false,
+                scope = "GETWORLD_POSITION_ORIENTATION_COMBAT_STATE_PER_CALLSITE",
+                callbacks = playerOwnershipCallbacks,
+                summary = new
+                {
+                    callbacks = playerOwnershipCallbacks.Length,
+                    playerClassContextCallbacks = playerOwnershipCallbacks.Count(x =>
+                        x.callbackContext == "PLAYER_PUPPET_CLASS_CONTEXT"),
+                    directlyProvenPlayerGetterCalls = playerOwnershipCallbacks.Sum(x =>
+                        x.getterCallsites.Count(site =>
+                            site.receiverTag == "CURRENT_PLAYER_SOURCE_PROVEN")),
+                    traceablePlayerAliasCalls = playerOwnershipCallbacks.Sum(x =>
+                        x.getterCallsites.Count(site =>
+                            site.receiverTag == "PLAYER_ALIAS_SOURCE_EVIDENCE")),
+                    unknownReceiverCalls = playerOwnershipCallbacks.Sum(x =>
+                        x.getterCallsites.Count(site => site.receiverTag == "UNKNOWN"))
+                }
+            },
             nativeReadReuse = new
             {
                 contract = NativeReadReuseSource.Contract,
