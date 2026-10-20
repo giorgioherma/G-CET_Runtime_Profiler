@@ -20,6 +20,8 @@ internal static class NativeLocationFourOwnersSource
     // live v1 source is not falsely treated as already satisfying v2.
     private static string UpgradePokerV2(string text)
     {
+        var useCrlf = text.Contains("\r\n", StringComparison.Ordinal);
+        if (useCrlf) text = text.Replace("\r\n", "\n", StringComparison.Ordinal);
         text = Once(text,
             "G-CET native location:poker-v1",
             "G-CET native location:poker-v2",
@@ -32,11 +34,13 @@ internal static class NativeLocationFourOwnersSource
             "if farWorldJob then farWorldJob.Resume() end\n        return true",
             "if farWorldJob then\n            if nearMode then farWorldJob.Pause() else farWorldJob.Resume() end\n        end\n        return true",
             "Poker source scanner fallback mode");
-        return text;
+        return useCrlf ? text.Replace("\n", "\r\n", StringComparison.Ordinal) : text;
     }
 
     private static string UpgradeTunnelV2(string text)
     {
+        var useCrlf = text.Contains("\r\n", StringComparison.Ordinal);
+        if (useCrlf) text = text.Replace("\r\n", "\n", StringComparison.Ordinal);
         text = Once(text,
             "G-CET native location:tunnel-v1",
             "G-CET native location:tunnel-v2",
@@ -61,11 +65,13 @@ internal static class NativeLocationFourOwnersSource
             "function() __gcetTunnelNativeFar=false;return true end)",
             "function() __gcetTunnelNativeOutside=nil;return true end)",
             "Tunnel unknown returns original distance probe");
-        return text;
+        return useCrlf ? text.Replace("\n", "\r\n", StringComparison.Ordinal) : text;
     }
 
     private static string UpgradeIllegalV2(string text)
     {
+        var useCrlf = text.Contains("\r\n", StringComparison.Ordinal);
+        if (useCrlf) text = text.Replace("\r\n", "\n", StringComparison.Ordinal);
         text = Once(text,
             "G-CET native location:illegal-v1",
             "G-CET native location:illegal-v2",
@@ -83,11 +89,13 @@ internal static class NativeLocationFourOwnersSource
             "      -- Far inactive site: no entity to maintain or despawn.\n" +
             "    elseif entry.spawnPending then\n      resolvePendingSpawn(entry)\n    else\n      local distance",
             "Mechanic safe distant inactive-site replacement");
-        return text;
+        return useCrlf ? text.Replace("\n", "\r\n", StringComparison.Ordinal) : text;
     }
 
     private static string UpgradeDedkaV2(string text)
     {
+        var useCrlf = text.Contains("\r\n", StringComparison.Ordinal);
+        if (useCrlf) text = text.Replace("\r\n", "\n", StringComparison.Ordinal);
         text = Once(text,
             "G-CET native location:dedka-v1",
             "G-CET native location:dedka-v2",
@@ -95,7 +103,7 @@ internal static class NativeLocationFourOwnersSource
         // Both 200m zones are already retired by the source-proven v1 handler
         // after an authoritative owner snapshot. Do not replace the authored
         // 5Hz fine-detail job or invent an unsafe external wake.
-        return text;
+        return useCrlf ? text.Replace("\n", "\r\n", StringComparison.Ordinal) : text;
     }
 
     internal static SemanticInjectionResult ApplyPoker(SemanticPatchContext context)
