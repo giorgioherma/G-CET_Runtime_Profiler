@@ -133,7 +133,7 @@ try
     var tightSkipped=new List<object>();
     object?[] tightArgs=[document.RootElement,tightRoot,tightStages,tightHash,
         tightApplied,tightManifest,tightSkipped,headers];
-    Check((int)stage.Invoke(null,tightArgs)!==3 &&
+    Check((int)stage.Invoke(null,tightArgs)! == 3 &&
           tightStages.ContainsKey("Budget/init.lua") &&
           tightManifest.Count==1 &&
           tightSkipped.Any(x=>x.ToString()!.Contains("LUA_LOCAL_LIMIT_PARTIAL")),
@@ -141,7 +141,7 @@ try
     var tightAgain=new List<object>();
     object?[] tightRepeat=[document.RootElement,tightRoot,tightStages,tightHash,
         tightApplied,tightAgain,new List<object>(),headers];
-    Check((int)stage.Invoke(null,tightRepeat)!==0 && tightAgain.Count==0,
+    Check((int)stage.Invoke(null,tightRepeat)! == 0 && tightAgain.Count==0,
         "Lua-budget partial provider was duplicated on a repeat generation");
     Check(File.ReadAllText(Path.Combine(tightMods,"init.lua"))==tightSource,
         "Local-budget fallback mutated installed Lua source");
