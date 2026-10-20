@@ -45,9 +45,15 @@ internal sealed record CompiledNativeLocations(byte[] Bytes,
         // Source is only admitted when this exact owner has an installed,
         // successfully generated semantic stage. Do not add anchor demand for
         // the other user's installed or absent mods.
-        bool Has(string relative,string marker) =>
-            staged.TryGetValue(relative,out var bytes) &&
-            Encoding.UTF8.GetString(bytes).Contains(marker,StringComparison.Ordinal);
+        // Compile geometry independently of individual Lua callback hooks:
+        // a rewrite failing source proof must not discard unchanged locations.
+        // Require the owner to be actively selected/staged by this Resolver
+        // pass, then inspect its currently installed position definition.
+        // Never infer geometry from the name, version, hash or stale template.
+        bool Selected(string relative) =>
+            staged.Keys.Any(path=>path.Equals(relative,StringComparison.OrdinalIgnoreCase) ||
+                path.StartsWith(relative.Split('/')[0]+"/",StringComparison.OrdinalIgnoreCase));
+        bool Has(string relative,string marker) => Selected(relative);
 
         string? Read(string relative) {
             var path=Path.Combine(modsRoot,
@@ -141,10 +147,11 @@ internal sealed record CompiledNativeLocations(byte[] Bytes,
         {
             var init=Read("StreetGamesPoker/init.lua");
             var radius=init is null ? Match.Empty :
-                Regex.Match(init,@"\bPOKER_WAKE_RADIUS\s*=\s*(?<r>"+Num+")");
+                Regex.Match(init,@"\b(?:POKER_WAKE_RADIUS|__gcetPokerRadius)\s*=\s*(?<r>"+Num+")");
             var src=Read("StreetGamesPoker/StreetTables.lua");
-            if(radius.Success && src?.Contains("StreetTables.locations = {",
-                                               StringComparison.Ordinal)==true)
+            if(radius.Success && init?.Contains("poker.world_far",StringComparison.Ordinal)==true &&
+               init.Contains("StreetTables.update",StringComparison.Ordinal) &&
+               src?.Contains("StreetTables.locations = {",StringComparison.Ordinal)==true)
                 Include(10031,Parse(10031,src,Poker,Number(radius.Groups["r"].Value)));
         }
 
@@ -224,6 +231,10 @@ internal sealed record CompiledNativeLocations(byte[] Bytes,
 
         if(Has("Dedka Auto Shop/init.lua","G-CET native location:dedka-")) {
             var src=Read("Dedka Auto Shop/init.lua");
+            if(src is null || !src.Contains("RegisterZone(",StringComparison.Ordinal) ||
+               !src.Contains("dedka_entrance1",StringComparison.Ordinal) ||
+               !src.Contains("dedka_entrance2_cluster",StringComparison.Ordinal))
+                src=null;
             var first=ParseNamed(10034,src,"ENTRANCE_POS",200);
             var second=ParseNamed(10034,src,"ENTRANCE_POS_2",200);
             if(first.Count==0 || second.Count==0) {
@@ -240,8 +251,25 @@ internal sealed record CompiledNativeLocations(byte[] Bytes,
             if(src?.Contains("local cards = {",StringComparison.Ordinal)==true)
                 Include(10035,Parse(10035,src,Card,20,100));
         }
-        if(Has("marmurbank/module/Bank.lua","G-CET native location:marmurbank-"))
-            Include(10036,BankerSites(Read("marmurbank/data/PosData.lua")));
+        if(Has("marmurbank/module/Bank.lua","G-CET native location:marmurbank-")) {
+            var bank=Read("marmurbank/module/Bank.lua");
+            if(bank?.Contains("RegisterSpatialSet",StringComparison.Ordinal)==true &&
+               bank.Contains("QueryNearest",StringComparison.Ordinal) &&
+               bank.Contains("PosData.All",StringComparison.Ordinal)) {
+                // Preserve the entire current nearest-discovery scan, NOT
+                // merely the two-metre interaction threshold. Fail closed if
+                // source changes the radius expression beyond recognition.
+                var search=Regex.Match(bank,
+                    @"\bsearchRadiusSq\s*=\s*(?<r>"+Num+@")\s*\*\s*\k<r>",
+                    RegexOptions.CultureInvariant);
+                if(search.Success) {
+                    var searchRadius=Number(search.Groups["r"].Value);
+                    if(searchRadius>0 && searchRadius<=1000)
+                        Include(10036,BankerSites(Read("marmurbank/data/PosData.lua"))
+                            .Select(site=>site with{Radius=searchRadius+5}));
+                }
+            }
+        }
 
         if(Has("yaibaPenthouse/bathtub.lua","G-CET native location:yaiba-bathtub-")){
             var src=Read("yaibaPenthouse/bathtub.lua");
