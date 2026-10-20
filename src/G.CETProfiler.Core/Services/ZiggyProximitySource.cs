@@ -153,7 +153,7 @@ end
             return init.Contains("G-CET semantic:ziggy-native-snapshot-manager-v6",
                                  StringComparison.Ordinal) &&
                 Regex.IsMatch(init,
-                    @"local\\s+__gcetZiggySnapshotQuestSystem\\s*=\\s*(?:Game\\.GetQuestsSystem|__gcetGetQuestsSystem)\\s*\\(\\s*\\)",
+                    @"local\s+__gcetZiggySnapshotQuestSystem\s*=\s*(?:Game\.GetQuestsSystem|__gcetGetQuestsSystem)\s*\(\s*\)",
                     RegexOptions.CultureInvariant) &&
                 init.Contains("__gcetZiggySnapshotQuestSystem:SetFactStr('zg11_'..k,v)",
                               StringComparison.Ordinal);
@@ -176,7 +176,7 @@ end
         // rewriting has substituted a PROVEN shared QuestSystem getter.
         // Match the actual receiver, never a historical source version/hash.
         var setter=Regex.Matches(text,
-            @"local\\s+function\\s+set\\s*\\(\\s*k\\s*,\\s*v\\s*\\)\\s*(?<getter>Game\\.GetQuestsSystem\\(\\)|__gcetGetQuestsSystem\\(\\))\\s*:\\s*SetFactStr\\s*\\(\\s*['""]zg11_['""]\\s*\\.\\.\\s*k\\s*,\\s*v\\s*\\)\\s*end",
+            @"local\s+function\s+set\s*\(\s*k\s*,\s*v\s*\)\s*(?<getter>Game\.GetQuestsSystem\(\)|__gcetGetQuestsSystem\(\))\s*:\s*SetFactStr\s*\(\s*['""]zg11_['""]\s*\.\.\s*k\s*,\s*v\s*\)\s*end",
             RegexOptions.CultureInvariant);
         var authorSetter=setter.Count==1 &&
             (setter[0].Groups["getter"].Value=="Game.GetQuestsSystem()" ||
