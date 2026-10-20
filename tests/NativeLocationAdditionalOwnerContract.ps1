@@ -419,6 +419,44 @@ $m=Apply 'marmurbank' 'module/Bank.lua' 'native-location-marmurbank' 'ApplyMarmu
 )
 Write-Host 'Source-structural Poker, Dedka helper-zone and MarmurBank logger-independent, per-stage idempotent hooks PASS'
 
+# Historical mixed-state acceptance: generated semantic work can contain
+# source-optimized Poker scheduler and Dedka helper zones but no native
+# location stage yet. Validate the FULL same-pass composer, not just the
+# individual adapter's ability to patch a fixture.
+$matrix=[Collections.Generic.Dictionary[string,byte[]]]::new([StringComparer]::OrdinalIgnoreCase)
+$matrix.Add('StreetGamesPoker/init.lua',[Text.Encoding]::UTF8.GetBytes($pokerSource))
+$matrix.Add('Dedka Auto Shop/init.lua',[Text.Encoding]::UTF8.GetBytes($dedkaSource))
+$matrix.Add('marmurbank/module/Bank.lua',[Text.Encoding]::UTF8.GetBytes($m))
+$matrixHash=[Collections.Generic.Dictionary[string,string]]::new([StringComparer]::OrdinalIgnoreCase)
+$matrixCounts=[Collections.Generic.Dictionary[string,int]]::new([StringComparer]::OrdinalIgnoreCase)
+$matrixApplied=[Collections.Generic.List[object]]::new()
+$matrixSkipped=[Collections.Generic.List[object]]::new()
+try {$matrixResult=$follow.Invoke($null,[object[]]@(
+  [string]$root,$matrix,$matrixHash,$matrixCounts,$matrixApplied,$matrixSkipped))}
+catch {throw "Historical partly-optimized composition rejected: $($_.Exception.InnerException.Message)"}
+# Banker was already completed in the fixture. Its completion is independent
+# of the other stages and MUST NOT cause reapplication.
+if($matrixResult -ne 2 -or $matrixSkipped.Count -ne 0) {
+ throw "Mixed-state composer failed: expected Poker/Dedka only, got $matrixResult; skipped=$($matrixSkipped.Count)"
+}
+foreach($check in @(
+ @{path='StreetGamesPoker/init.lua';marker='G-CET native location:poker-structural-v1'},
+ @{path='Dedka Auto Shop/init.lua';marker='G-CET native location:dedka-structural-v1'})) {
+ $found=[Text.Encoding]::UTF8.GetString($matrix[$check.path])
+ if(!$found.Contains($check.marker) -or !$found.Contains('attachCompiled(')) {
+  throw "Mixed state lost a source-proven native stage: $($check.path)"
+ }
+}
+try {$matrixSecond=$follow.Invoke($null,[object[]]@(
+  [string]$root,$matrix,$matrixHash,$matrixCounts,$matrixApplied,$matrixSkipped))}
+catch {throw "Historical same-pass second generation failed: $($_.Exception.InnerException.Message)"}
+if($matrixSecond -ne 0 -or $matrixSkipped.Count -ne 0) {
+ throw "Historical source-composition is not idempotent: changed=$matrixSecond, skipped=$($matrixSkipped.Count)"
+}
+Write-Host 'Historical mixed partially-optimized stack: Poker + Dedka compose, banker already satisfied, rerun does not reapply PASS'
+
+
+
 
 # Location extraction is independent from owner hook completion. Deliberately
 # compile from PRE-native source with no "G-CET native location" markers.
