@@ -281,9 +281,14 @@ internal static class NativeLocationStructuralSource
             if(!listenerBody.Contains("QueryNearest",StringComparison.Ordinal) ||
                !listenerBody.Contains("marmurbank",StringComparison.Ordinal))
                 return null;
-            t=ReplaceOne(t,guard.Value,
+            // Change only the proven registration function: unrelated
+            // methods may use the same engine-readiness guard.
+            var rewritten=body.Replace(guard.Value,
                 guard.Value+"\n\tif self.__gcetNativeFar then return end",
-                "Banker original register gate");
+                StringComparison.Ordinal);
+            if(rewritten==body)
+                throw new InvalidOperationException("Banker guard did not change.");
+            t=t[..start.Index]+rewritten+t[end..];
             // Insert inside the proved registration function, before its
             // closing 'end'; no logger text or pretty-printing dependence.
             var endAfter=t.IndexOf("\nend",start.Index+start.Length,StringComparison.Ordinal);
