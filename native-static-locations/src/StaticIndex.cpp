@@ -7,6 +7,24 @@
 #include <array>
 
 namespace gcet::static_locations {
+
+ManifestLoadStatus LoadOptionalManifest(const std::filesystem::path& path,
+                                        StaticIndex& index) {
+    std::error_code error;
+    const bool exists = std::filesystem::exists(path, error);
+    if (error) return ManifestLoadStatus::Invalid;
+    if (!exists) {
+        // Runtime source owners may register their coordinates after load.
+        // No malformed/real manifest is ever replaced by an empty index.
+        return index.Load(std::span<const Anchor>{})
+            ? ManifestLoadStatus::Missing : ManifestLoadStatus::Invalid;
+    }
+    std::vector<Anchor> anchors;
+    if (!ReadCompiledFile(path, anchors) || !index.Load(anchors))
+        return ManifestLoadStatus::Invalid;
+    return ManifestLoadStatus::Loaded;
+}
+
 namespace {
     constexpr float kCellF = 128.0f;
     // Coordinate bounds keep floor/cell conversion and the cell-key math safe.
