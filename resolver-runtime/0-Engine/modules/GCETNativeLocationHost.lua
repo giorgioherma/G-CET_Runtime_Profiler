@@ -147,7 +147,7 @@ function Host:attachCompiled(id,expected,onNear,onFar,onFallback)
     return false
   end
   self.owners[id]={id=id,ids=ids,onNear=onNear,onFar=onFar,
-    fallback=onFallback,mode="ORIGINAL",known={},nearCount=0}
+    fallback=onFallback,mode="ORIGINAL",known={},nearCount=0,compiled=true}
   self:_stop() -- joining an owner demands a complete authoritative snapshot
   return true
 end
@@ -257,7 +257,15 @@ function Host:shutdown()
   self:_stop()
   self:_fallback("NATIVE_HOST_SHUTDOWN")
   for _,owner in pairs(self.owners) do
-    for _,id in ipairs(owner.ids) do pcall(native,"GCETStaticRemoveAnchor",id) end
+    for _,id in ipairs(owner.ids) do
+      if owner.compiled then
+        -- Immutable manifest entries must persist across CET reloads.
+        -- Disarm only; a new Lua host will reattach and rearm them.
+        pcall(native,"GCETStaticArm",id,false)
+      else
+        pcall(native,"GCETStaticRemoveAnchor",id)
+      end
+    end
   end
   self.owners={}
   if self.job then pcall(self.job.Cancel);self.job=nil end
