@@ -1614,7 +1614,30 @@ $expectedSharedTransforms = @(
         } |
         Sort-Object -Unique
 ).Count
-$expectedPassTransforms = $expectedGenericTransforms + $expectedSharedTransforms - 1
+# Source-first reads are independent of callback CPU thresholds. They add
+# narrowly recorded transforms only if the generator revalidated installed
+# source SHA and the exact authorized Game.Get...() operation.
+$generatedManifest = Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
+$nativeReadReuseTransforms = @($generatedManifest.transforms | Where-Object {
+    $_.type -eq 'NATIVE_READ_REUSE'
+})
+foreach ($entry in $nativeReadReuseTransforms) {
+    if ([string]$entry.contract -ne 'GCET_NATIVE_READ_REUSE_V1' -or
+        [int]$entry.replacedOccurrences -le 0 -or
+        [string]::IsNullOrWhiteSpace([string]$entry.sourceSha256)) {
+        throw 'Native read reuse manifest entry lacks contract/source proof.'
+    }
+    $matchingFile = @($result.nativeReadReuse.files | Where-Object {
+        $_.relativeFile -eq $entry.file -and $_.sha256 -eq $entry.sourceSha256
+    })
+    $matchingOperation = @($matchingFile | ForEach-Object { $_.operations } |
+        Where-Object { $_.getter -eq $entry.operation -and $_.provider -eq $entry.provider })
+    if ($matchingOperation.Count -ne 1 -or [string]$entry.providerOwner -ne '0-Engine') {
+        throw 'Native read reuse generated an operation not backed by the source-first Resolver plan.'
+    }
+}
+$expectedPassTransforms = $expectedGenericTransforms + $expectedSharedTransforms - 1 +
+    $nativeReadReuseTransforms.Count
 if ([int]$resolved.pass.TransformCount -ne $expectedPassTransforms) {
     if (Test-Path -LiteralPath $resolved.pass.ManifestPath -PathType Leaf) {
         $failedManifest = Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
