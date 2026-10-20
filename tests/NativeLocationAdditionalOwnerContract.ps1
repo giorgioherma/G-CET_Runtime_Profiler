@@ -625,3 +625,42 @@ if([Convert]::ToHexString($mergedBytes) -ne [Convert]::ToHexString([byte[]]$seco
 Write-Host 'Existing customized 0-Engine native host retained + missing compiled API and safe shutdown reconstituted, no version/SHA gate PASS'
 
 Write-Host 'Native static location additional owners: Card Collection 100-site coarse dormancy, banker SpatialHash FAR, Yaiba bathroom author gate; fallback, CRLF and idempotence PASS'
+ 
+# Regression: two generic stages finish before semantic source composition.
+# Native static locations are its LAST substage. No generic rewrite may
+# run after semantic. The actual generated source is independently validated
+# after fixed runtime assembly to enforce Lua's 200 active-local limit.
+$passGeneratorSource=[IO.File]::ReadAllText(
+  (Join-Path (Get-Location).Path 'src/G.CETProfiler.Core/Services/PassGeneratorService.cs'))
+$orderedPipeline=@(
+ 'var transformed = TransformFile(',
+ 'BlackboardPsmDefinitionCacheSource.TryStage(',
+ 'ZeroEngineAllocationBatchSource.TryStage(',
+ 'NativePlayerVectorStage.TryStage(',
+ 'NativeReadReuseSource.TryStage(',
+ 'SemanticPassGeneratorService.Apply(',
+ 'var fixedRuntime = FixedZeroEngineRuntime.Prepare(modsRoot);',
+ 'Whole-overlay Lua budget validation',
+ 'var fileManifest = staged',
+ 'CompiledNativeLocations.Compile(modsRoot,staged);'
+)
+$previous=-1
+foreach($stage in $orderedPipeline){
+ $index=$passGeneratorSource.IndexOf($stage,[StringComparison]::Ordinal)
+ if($index -le $previous) {
+  throw "GENERIC -> GENERIC -> SEMANTIC -> NATIVE ordering violation: $stage ($index after $previous)"
+ }
+ $previous=$index
+}
+if(!$passGeneratorSource.Contains('LuaLocalBudgetAnalyzer.Analyze(pair.Value)') -or
+   !$passGeneratorSource.Contains('budget.MaxActiveLocals > LuaLocalBudgetAnalyzer.Limit')){
+ throw 'Final generated Lua 200-local verification is missing'
+}
+$semanticSource=[IO.File]::ReadAllText(
+  (Join-Path (Get-Location).Path 'src/G.CETProfiler.Core/Services/SemanticPassGeneratorService.cs'))
+if(!$semanticSource.Contains('OrderBy(x => x.RuleId.StartsWith("native-location-"') -or
+   !$semanticSource.Contains('ApplyPreparedNativeLocationStages(')){
+ throw 'Native static location owner ordering or same-pass semantic composition missing'
+}
+Write-Host 'GENERIC 1 -> GENERIC 2 -> SEMANTIC -> static native locations -> final Lua budget PASS'
+
