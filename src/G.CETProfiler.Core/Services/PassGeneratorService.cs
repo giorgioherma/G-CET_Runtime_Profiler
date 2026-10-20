@@ -242,7 +242,7 @@ public static class PassGeneratorService
             resolverSha256 = Sha256(resolverBytes),
             policy = new
             {
-                selection = "MEASURED_GENERIC_PLUS_SOURCE_PROVEN_SEMANTIC_PLUS_SOURCE_FIRST_READ_REUSE",
+                selection = "MEASURED_GENERIC_PLUS_SOURCE_PROVEN_SEMANTIC_CANDIDATES_FROM_G-CET_Resolver.json",
                 nativeReadReuseContract = NativeReadReuseSource.Contract,
                 nativeReadReuseAppliedOccurrences = nativeReadReuseCount,
                 nativeReadReuseBypassesCallbackCpuGate = true,

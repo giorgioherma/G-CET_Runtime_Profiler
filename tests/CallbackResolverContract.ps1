@@ -1928,6 +1928,11 @@ try {
     if ($manifest.policy.selection -ne 'MEASURED_GENERIC_PLUS_SOURCE_PROVEN_SEMANTIC_CANDIDATES_FROM_G-CET_Resolver.json') {
         throw 'Generated pass manifest is not using the combined generic + semantic resolver selection model.'
     }
+    if ($manifest.policy.nativeReadReuseContract -ne 'GCET_NATIVE_READ_REUSE_V1' -or
+        !$manifest.policy.nativeReadReuseBypassesCallbackCpuGate -or
+        $manifest.policy.nativePlayerVectorRewrite) {
+        throw 'Native source-first read reuse lost its additive manifest policy contract.'
+    }
     if ($manifest.policy.modNameRules) {
         throw 'Generated pass manifest unexpectedly allows mod-name rules.'
     }
