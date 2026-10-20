@@ -29,8 +29,8 @@ internal static class NativeLocationFourOwnersSource
             "if lookup and type(lookup.attach) == 'function' then",
             "Poker unique native host admission");
         text = Once(text,
-            "if farWorldJob then farWorldJob.Resume() end\\n        return true",
-            "if farWorldJob then\\n            if nearMode then farWorldJob.Pause() else farWorldJob.Resume() end\\n        end\\n        return true",
+            "if farWorldJob then farWorldJob.Resume() end\n        return true",
+            "if farWorldJob then\n            if nearMode then farWorldJob.Pause() else farWorldJob.Resume() end\n        end\n        return true",
             "Poker source scanner fallback mode");
         return text;
     }
@@ -74,12 +74,12 @@ internal static class NativeLocationFourOwnersSource
         // If ANY source/streaming state is unknown, retain the original scan.
         // Pending spawns always continue their original resolution path.
         var oldBlock = new Regex(
-            @"(?s)  if state\\.__gcetNativeFar then\\s+local hasLiveOrPending=false\\s+" +
-            @"for _,entry in ipairs\\(state\\.mechanics\\) do\\s+" +
-            @"if entry\\.spawnPending or entry\\.entityID ~= nil or entry\\.entity ~= nil then\\s+" +
-            @"hasLiveOrPending=true;break\\s+end\\s+end\\s+" +
-            @"if not hasLiveOrPending then return end\\s+end\\s+" +
-            @"local player = getPlayer\\(\\)",
+            @"(?s)  if state\.__gcetNativeFar then\s+local hasLiveOrPending=false\s+" +
+            @"for _,entry in ipairs\(state\.mechanics\) do\s+" +
+            @"if entry\.spawnPending or entry\.entityID ~= nil or entry\.entity ~= nil then\s+" +
+            @"hasLiveOrPending=true;break\s+end\s+end\s+" +
+            @"if not hasLiveOrPending then return end\s+end\s+" +
+            @"local player = getPlayer\(\)",
             RegexOptions.CultureInvariant);
         if (oldBlock.Matches(text).Count != 1)
             throw new InvalidOperationException(
