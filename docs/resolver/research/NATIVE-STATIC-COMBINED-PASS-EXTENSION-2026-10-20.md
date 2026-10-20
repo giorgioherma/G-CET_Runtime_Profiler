@@ -61,3 +61,37 @@ Dynamic `CourierJobs` pickup/delivery destinations, `Hidden Packages` swappable 
 - Source-level regression: `NativeLocationAdditionalOwnerContract.ps1` (author source shape, LF/CRLF, original callback retention, idempotence).
 - Shared Lua host regression now includes **all eight owners**, including the complete 100-card native anchor snapshot with **one** consumer.
 - Native branch binary remains unchanged, and combined runtime gameplay testing is still required for save/reload, fast travel, source fallback, and actively collected/visible states. CI validates code and generated behavior contracts, not an in-game playthrough.
+
+## Final combined-pass exclusion: GigCore and SPECTER
+
+Reviewed against the user-supplied combined installed Lua sources on
+2026-10-20, using the **existing source-owned location-dormancy rule**
+without inventing a new native-location framework.
+
+- **GigCore (`GigCore/init.lua`): NOT A STATIC-LOCATION DORMANCY OWNER.**
+  Its `onUpdate` coordinates session-restoration safety, one-per-frame
+  UI/PhotoMode/Phone pause state, `Marker.tickAll`,
+  `VehicleDamage.tick`, `NPC.tick`, redscript bus commands (0.15 s
+  reconciliation), live gig context timers and periodic reassertion.
+  It does not have an authored dormant FAR/NEAR static site predicate to
+  substitute. Its existing blackboard and callback reuse passes remain.
+
+- **SPECTER (InfiniteGigs + Specter* CET modules): NOT AN ADDITIONAL
+  STATIC-LOCATION DORMANCY OWNER.** Static mission checkpoint coordinates
+  exist, but `InfiniteGigs/init.lua` accesses the selected
+  `Slice.point`/`Slice.stageIndex` and live encounter positions while
+  the GigCore context is active; it must also process active mission
+  milestones, save restoration and transient actor rebuilds. The
+  `SpecterM11RecoveryDev` route is a fixed authored set but is
+  conditionally selected by live `stage`, `exitArmed`, dialogue/HUD,
+  music and restore state. `SpecterInterceptorClean` selects a site on
+  request and phases through 300 m spawn, combat and 55 m payout/exit,
+  with a pre-existing 0.5 s processing lane. Its chosen site and phase
+  vary at runtime. `SpecterCampaignProgression` and
+  `SpecterNessaIntro` already use 0.5 s nonspatial
+  metric/offer polling. The existing SPECTER M11 metric, immutable music
+  contract and inactive HUD pass remain intact.
+
+**Decision:** No native anchor, new subscriber, source injector, additional
+10 Hz work, or changed game logic. Eight existing native owners remain
+the complete conservative, source-proven static-location set.
