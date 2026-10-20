@@ -53,7 +53,28 @@ internal sealed record CompiledNativeLocations(byte[] Bytes,
         bool Selected(string relative) =>
             staged.Keys.Any(path=>path.Equals(relative,StringComparison.OrdinalIgnoreCase) ||
                 path.StartsWith(relative.Split('/')[0]+"/",StringComparison.OrdinalIgnoreCase));
-        bool Has(string relative,string marker) => Selected(relative);
+        bool Has(string relative,string marker)
+        {
+            if(Selected(relative))return true;
+            // Already optimized owners require ZERO new Lua rewrites.
+            // Source-proven compiled subscriptions remain an independent
+            // native-manifest stage even in a partial/updated stack.
+            var existing=Read(relative);
+            if(existing is null)return false;
+            var binding=marker switch {
+                "G-CET native location:poker-" => "attachCompiled(10031,",
+                "G-CET native location:tunnel-" => "attachCompiled(10032,",
+                "G-CET native location:illegal-v3" => "attachCompiled(1003301+index,",
+                "G-CET native location:dedka-" => "attachCompiled(10034,",
+                "G-CET native location:card-collection-" => "attachCompiled(10035,",
+                "G-CET native location:marmurbank-" => "attachCompiled(10036,",
+                "G-CET native location:yaiba-bathtub-" => "attachCompiled(10037,",
+                "G-CET native location:ziggy-offered-" => "attachCompiled(10038,",
+                _ => null
+            };
+            return binding is not null &&
+                existing.Contains(binding,StringComparison.Ordinal);
+        }
 
         string? Read(string relative) {
             var path=Path.Combine(modsRoot,
