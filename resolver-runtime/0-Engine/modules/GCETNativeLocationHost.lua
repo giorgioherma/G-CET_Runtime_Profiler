@@ -105,6 +105,42 @@ function Host:attach(id,sites,onNear,onFar,onFallback)
   return true
 end
 
+-- Bind an owner whose immutable positions are already in G-CET.locations.
+-- No Lua->RTTI anchor writes, no Lua site table and no duplicate shared timer.
+-- A source mismatch or missing/invalid native data leaves author fallback alive.
+function Host:attachCompiled(id,expected,onNear,onFar,onFallback)
+  if type(id)~="number" or id<=0 or self.owners[id] or
+     type(expected)~="number" or expected<=0 or expected>100000 or
+     type(onNear)~="function" or type(onFar)~="function" or
+     type(onFallback)~="function" then return false end
+  local ok,ready=pcall(native,"GCETStaticReady")
+  if not ok or ready~=true then return false end
+  local countOk,count=pcall(native,"GCETStaticOwnerCount",id)
+  if not countOk or count~=expected then return false end
+  if not self:_schedule() then return false end
+  local ids,armed={},{}
+  local success=pcall(function()
+    local seen={}
+    for n=0,count-1 do
+      local key=native("GCETStaticOwnerAnchor",id,n)
+      assert(type(key)=="number" and key>0 and not seen[key])
+      seen[key]=true;ids[#ids+1]=key
+    end
+    for _,key in ipairs(ids) do
+      assert(native("GCETStaticArm",key,true)==true)
+      armed[#armed+1]=key
+    end
+  end)
+  if not success then
+    for _,key in ipairs(armed) do pcall(native,"GCETStaticArm",key,false) end
+    return false
+  end
+  self.owners[id]={id=id,ids=ids,onNear=onNear,onFar=onFar,
+    fallback=onFallback,mode="ORIGINAL",known={},nearCount=0}
+  self:_stop() -- joining an owner demands a complete authoritative snapshot
+  return true
+end
+
 function Host:_snapshot()
   local rows={}
   for _,owner in pairs(self.owners) do
