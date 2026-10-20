@@ -46,19 +46,27 @@ $illegal=@'
     end
     if not hasLiveOrPending then return end
   end  local player = getPlayer()
-  if entry.spawnPending then resolvePendingSpawn(entry) end
+  for _, entry in ipairs(state.mechanics) do
+    if entry.spawnPending then
+      resolvePendingSpawn(entry)
+    else
+      local distance = distanceFromPlayer(entry,player)
+    end
+  end
 '@
 $i=Upgrade 'UpgradeIllegalV2' $illegal
-foreach($part in @('illegal-v2','resolvePendingSpawn(entry)',
-  'deleteEntry(entry, "player left spawn radius (native FAR)")',
-  'if not needsOriginal then return end','local player = getPlayer()')) {
+foreach($part in @('illegal-v2','if state.__gcetNativeFar then',
+  'if state.__gcetNativeFar and not entry.spawnPending',
+  'elseif entry.spawnPending then',
+  'local distance = distanceFromPlayer(entry,player)')) {
  if(!$i.Contains($part)){throw "Illegal mechanic far-native contract missing $part"}
 }
 $spacing=$illegal.Replace('  end  local player', '  end' + "`r`n" + '  local player')
 if(!(Upgrade 'UpgradeIllegalV2' $spacing).Contains('if not needsOriginal then return end')) {
  throw 'Illegal native source equivalent failed'
 }
-$drift=$illegal.Replace('entry.spawnPending or entry.entityID','entry.spawnPending and entry.entityID')
+$drift=$illegal.Replace('      resolvePendingSpawn(entry)' + "`n" + '    else',
+ '      cancelPendingSpawn(entry)' + "`n" + '    else')
 $refused=$false
 try{[void](Upgrade 'UpgradeIllegalV2' $drift)}catch{$refused=$true}
 if(!$refused){throw 'Illegal native v2 accepted substantive pending-state drift'}
