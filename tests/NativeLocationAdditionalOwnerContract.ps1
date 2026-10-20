@@ -70,7 +70,7 @@ registerForEvent("onInit", function()
   Mod.Subscribe("PlayerInvalidated", unregisterSpatialSet)
 end)
 '@
-$c=Apply 'Card Collection' 'init.lua' 'native-location-card-collection' 'ApplyCards' $card @('G-CET native location:card-collection-v1','lookup:attach(10035','radius=20.0','unregisterSpatialSet()','__gcetCardNativeFar')
+$c=Apply 'Card Collection' 'init.lua' 'native-location-card-collection' 'ApplyCards' $card @('G-CET native location:card-collection-v1','lookup:attachCompiled(10035,100','unregisterSpatialSet()','__gcetCardNativeFar')
 $marmur=@'
 local PosData={All={{x=1,y=2,z=3}}}
 bank={}
@@ -98,7 +98,7 @@ function bank:distanceListener()
 	return entry and 1 or 0
 end
 '@
-$m=Apply 'marmurbank' 'module/Bank.lua' 'native-location-marmurbank' 'ApplyMarmur' $marmur @('G-CET native location:marmurbank-v1','lookup:attach(10036','radius=10.0','self.spatialHandle:unregister()','if self.__gcetNativeFar then self.nearestLocation=nil;return 0 end') $true
+$m=Apply 'marmurbank' 'module/Bank.lua' 'native-location-marmurbank' 'ApplyMarmur' $marmur @('G-CET native location:marmurbank-v1','lookup:attachCompiled(10036,#PosData.All','self.spatialHandle:unregister()','if self.__gcetNativeFar then self.nearestLocation=nil;return 0 end') $true
 $bath=@'
 local ui=require("interactionUI")
 local CONFIG={position={x=1,y=2,z=3},iconRange=6.0}
@@ -122,7 +122,7 @@ function bathtub.update(player, pPos)
     togglePin(near)
 end
 '@
-$y=Apply 'yaibaPenthouse' 'bathtub.lua' 'native-location-yaiba-bathtub' 'ApplyBathtub' $bath @('G-CET native location:yaiba-bathtub-v1','lookup:attach(10037','z=CONFIG.position.z-1.0','if __gcetBathNativeFar == true then return end','if __gcetBathNativeFar == nil then')
+$y=Apply 'yaibaPenthouse' 'bathtub.lua' 'native-location-yaiba-bathtub' 'ApplyBathtub' $bath @('G-CET native location:yaiba-bathtub-v1','lookup:attachCompiled(10037,1','if __gcetBathNativeFar == true then return end','if __gcetBathNativeFar == nil then')
 
 $ziggy=@'
 local C={giver={position={1,2,3}}}
@@ -159,8 +159,7 @@ end)
 '@
 $z=Apply 'ziggy_last_play' 'init.lua' 'native-location-ziggy-offered' 'ApplyZiggy' $ziggy @(
  'G-CET native location:ziggy-offered-v1',
- 'lookup:attach(10038',
- 'radius=130,metric="xyz"',
+ 'lookup:attachCompiled(10038,1',
  'if __gcetZiggyNativeOfferedFar ~= nil then return __gcetZiggyNativeOfferedFar end',
  '__gcetZiggyNativeOfferedFar=nil;return true end',
  'if Dialogue.busy(H.dialogue) then return false end',
