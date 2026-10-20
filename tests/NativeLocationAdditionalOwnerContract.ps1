@@ -640,9 +640,9 @@ $orderedPipeline=@(
  'NativeReadReuseSource.TryStage(',
  'SemanticPassGeneratorService.Apply(',
  'var fixedRuntime = FixedZeroEngineRuntime.Prepare(modsRoot);',
+ 'var availableLocations=CompiledNativeLocations.Compile(modsRoot,staged);',
  'Whole-overlay Lua budget validation',
- 'var fileManifest = staged',
- 'var availableLocations=CompiledNativeLocations.Compile(modsRoot,staged);'
+ 'var fileManifest = staged'
 )
 $previous=-1
 foreach($stage in $orderedPipeline){
