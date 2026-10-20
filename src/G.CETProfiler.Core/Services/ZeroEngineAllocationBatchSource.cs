@@ -57,14 +57,35 @@ internal static class ZeroEngineAllocationBatchSource
     {
         result = source;
         var original = Encoding.UTF8.GetString(source);
-        if (original.Contains(RowMarker, StringComparison.Ordinal))
+        // Independently recognize registration-time poll radius and the
+        // three grid-row calculations. A partial historical pass is NOT
+        // equivalent to the complete SpatialHash optimization.
+        var alreadyRadius = original.Contains(RadiusMarker, StringComparison.Ordinal);
+        var alreadyRows = original.Contains(RowMarker, StringComparison.Ordinal);
+        if (alreadyRows &&
+            (Count(original, RowMarker) != 3 ||
+             Count(original, "local gy = math.floor((py + dy * gridSize) / gridSize)") != 3 ||
+             Count(original, "local key = (gx + 10000) * 20000 + (gy + 10000)") != 3 ||
+             Count(original, "local key = getGridKey(px + dx * gridSize, py + dy * gridSize, gridSize)") != 0))
+        {
+            reason = "Grid-row stage is partially modified; refusing unsafe reuse.";
+            return false;
+        }
+        if (alreadyRadius &&
+            (Count(original, RadiusMarker) != 1 ||
+             Count(original, "cfg.pollCellRadius") != 1 ||
+             Count(original, "cfg.pollRadius / gridSize") != 1))
+        {
+            reason = "Polling-radius stage is partially modified; refusing unsafe reuse.";
+            return false;
+        }
+        if (alreadyRadius && alreadyRows)
         {
             reason = "ALREADY_SATISFIED";
             return false;
         }
         var nl = original.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
         var updated = original;
-        var alreadyRadius = original.Contains(RadiusMarker, StringComparison.Ordinal);
         if (!alreadyRadius)
         {
             var anchor = "    config = config or {}" + nl + "    entries = entries or {}";
@@ -112,12 +133,12 @@ internal static class ZeroEngineAllocationBatchSource
             updated = updated.Replace(oldPoll, newPoll, StringComparison.Ordinal);
         }
 
-        if (SpatialGridLoops.Matches(updated).Count != 3)
+        if (!alreadyRows && SpatialGridLoops.Matches(updated).Count != 3)
         {
             reason = "Expected exactly three unchanged grid loops (nearest, within and polling).";
             return false;
         }
-        updated = SpatialGridLoops.Replace(updated, m =>
+        if (!alreadyRows) updated = SpatialGridLoops.Replace(updated, m =>
         {
             var outer = m.Groups["outer"].Value;
             var inner = m.Groups["inner"].Value;
