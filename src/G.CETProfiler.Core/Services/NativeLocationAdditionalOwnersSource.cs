@@ -138,6 +138,63 @@ end
             "Native coarse FAR parks the three banker SpatialHash entries and QueryNearest; NEAR/UNKNOWN restores the original exact 2m nearest interaction and banking UI.");
     }
 
+
+    // Existing v5 Ziggy offered/far dormancy: exact 130 m static giver site.
+    // Native replaces only that distance decision; live quest, player/session
+    // identity, dialogue, journal, audio and render cadence remain untouched.
+    internal static SemanticInjectionResult ApplyZiggy(SemanticPatchContext context)
+    {
+        var file=context.FindFile("init.lua",
+            "local __gcetZiggyOfferedFarAcc=0.0",
+            "local function __gcetZiggyOfferedFar()",
+            "H.s.phase=='offered'",
+            "C.giver and C.giver.position",
+            "return dx*dx+dy*dy+dz*dz>130*130",
+            "H.hooks:Register()");
+        const string marker="G-CET native location:ziggy-offered-v1";
+        if (file.Text.Contains(marker,StringComparison.Ordinal))
+            return SemanticInjectionResult.Skip("Native Ziggy offered/far wake already installed.");
+        var useCrlf=file.Text.Contains("\r\n",StringComparison.Ordinal);
+        var text=useCrlf ? file.Text.Replace("\r\n","\n",StringComparison.Ordinal) : file.Text;
+
+        const string setup="""
+-- G-CET native location:ziggy-offered-v1
+-- Native is authoritative only after a complete snapshot. nil means use the
+-- source's exact previous position/math probe, including quest safety guards.
+local __gcetZiggyNativeOfferedFar=nil
+local function __gcetZiggyAttachNative()
+ local ok,engine=pcall(GetMod,'0-Engine')
+ local lookup=ok and engine and engine.GCET and engine.GCET.NativeLocationHost
+ local loc=C.giver and C.giver.position
+ if not lookup or type(lookup.attach)~='function' or
+    type(loc)~='table' then return end
+ lookup:attach(10038,{
+  {x=loc[1],y=loc[2],z=loc[3],radius=130,metric="xyz"}
+ },function() __gcetZiggyNativeOfferedFar=false end,
+   function() __gcetZiggyNativeOfferedFar=true end,
+   function() __gcetZiggyNativeOfferedFar=nil;return true end)
+end
+
+""";
+        text=Once(text,
+            "registerForEvent('onInit',function()H.hooks=NewObject('ZG11Hooks');H.hooks:Register();",
+            setup+"registerForEvent('onInit',function()H.hooks=NewObject('ZG11Hooks');H.hooks:Register();__gcetZiggyAttachNative();",
+            "Ziggy source-owned native registration on CET init");
+
+        // The getter and original squared-distance check are retained exactly
+        // as the fail-open source path. The player's identity/session guards
+        // execute before native can return either known NEAR or known FAR.
+        text=Once(text,
+            " if tostring(p:GetEntityID().hash)~=H.playerKey then return false end\n local pos=p:GetWorldPosition()",
+            " if tostring(p:GetEntityID().hash)~=H.playerKey then return false end\n"+
+            " if __gcetZiggyNativeOfferedFar ~= nil then return __gcetZiggyNativeOfferedFar end\n"+
+            " local pos=p:GetWorldPosition()",
+            "Ziggy native offered distance substitution after source safety guards");
+        context.Write(file,useCrlf ? text.Replace("\n","\r\n",StringComparison.Ordinal) : text);
+        return SemanticInjectionResult.Success(
+            "Existing Ziggy 130m offered-state FAR/NEAR probe now uses shared native transitions after player/session/dialogue guards; original math remains for UNKNOWN and 1Hz/active quest cadence is unchanged.");
+    }
+
     internal static SemanticInjectionResult ApplyBathtub(SemanticPatchContext context)
     {
         var file=context.FindFile("bathtub.lua",
