@@ -88,7 +88,8 @@ internal static class NativeLocationStructuralSource
                     if(t.Contains("G-CET native location:poker-structural-v1",StringComparison.Ordinal) &&
                        t.Contains("lookup:attachCompiled(10031",StringComparison.Ordinal) &&
                        t.Contains("__gcetPokerNativeOwned",StringComparison.Ordinal) &&
-                       t.Contains("farWorld.Resume()",StringComparison.Ordinal))
+                       t.Contains("__gcetPokerNativeNear",StringComparison.Ordinal) &&
+                       Regex.IsMatch(t,@"\b[A-Za-z_]\w*\.Resume\(\)",Opt))
                         return true;
                     break;
                 case "native-location-dedka":
@@ -260,7 +261,7 @@ internal static class NativeLocationStructuralSource
                 @"(?m)^(?<ws>[ \t]*)(?<engine>[A-Za-z_]\w*)\.RegisterZone\s*\(\s*\{\s*",
                 "Dedka author zone registration");
             if(!helperBody.Contains("radius",StringComparison.Ordinal) ||
-               !Regex.IsMatch(helperBody,@"\bradius\s*=\s*200(?:\.0)?\b",Opt) ||
+               !Regex.IsMatch(helperBody,@"\bradius\s*=\s*[0-9]+(?:\.[0-9]+)?\b",Opt) ||
                !helperBody.Contains("onEnter",StringComparison.Ordinal) ||
                !helperBody.Contains("onExit",StringComparison.Ordinal) ||
                !helperBody.Contains("startShopDetail()",StringComparison.Ordinal) ||
