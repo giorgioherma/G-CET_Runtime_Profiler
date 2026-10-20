@@ -141,9 +141,17 @@ foreach($pair in $fixtures.GetEnumerator()){
  ConvertTo-Json -Depth 20 |
  Set-Content -Encoding utf8 (Join-Path $capture 'CET_Resolver_Input.json')
 function Generate {
- $o=(& $exe --capture $capture --mods $mods --generate-pass --json | ConvertFrom-Json)
+ $raw = & $exe --capture $capture --mods $mods --generate-pass --json
+ $exitCode = $LASTEXITCODE
+ $global:LASTEXITCODE = 0
+ $o = $raw | ConvertFrom-Json
+ $noPass = $exitCode -eq 1 -and !$o.ok -and
+     [string]$o.error -like '*no applicable generic or source-proven semantic transforms*'
+ if ($exitCode -ne 0 -and !$noPass) {
+     throw "Unexpected Resolver exit code $exitCode: $($raw -join ' ')"
+ }
  $report=Get-Content -Raw (Join-Path $capture 'G-CET_Resolver.json') | ConvertFrom-Json
- return @{Output=$o;Report=$report}
+ return @{Output=$o;Report=$report;ExitCode=$exitCode;NoPass=$noPass}
 }
 $ids=@(
  'minimap-widgets-time-weather-snapshot',
