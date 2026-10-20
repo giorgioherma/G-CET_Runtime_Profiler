@@ -62,15 +62,28 @@ $originalHash = (Get-FileHash -LiteralPath $hudPath -Algorithm SHA256).Hash
     Set-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Encoding utf8
 
 function ResolvePokerHud {
-    $stderrPath = Join-Path $capture 'gcet-test-resolver-stderr.json'
-    $stdout = & $exe --capture $capture --mods $mods --generate-pass --json 2> $stderrPath
-    $exitCode = $LASTEXITCODE
-    $global:LASTEXITCODE = 0
-    $stdoutText = (@($stdout) -join [Environment]::NewLine).Trim()
-    $stderrText = if (Test-Path -LiteralPath $stderrPath) {
-        (Get-Content -LiteralPath $stderrPath -Raw).Trim()
-    } else { '' }
+    $processInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $processInfo.FileName = $exe
+    $processInfo.UseShellExecute = $false
+    $processInfo.RedirectStandardOutput = $true
+    $processInfo.RedirectStandardError = $true
+    foreach ($argument in @('--capture', $capture, '--mods', $mods, '--generate-pass', '--json')) {
+        [void]$processInfo.ArgumentList.Add([string]$argument)
+    }
+    $process = [System.Diagnostics.Process]::Start($processInfo)
+    if ($null -eq $process) { throw 'Could not launch standalone Resolver' }
+    try {
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        $process.WaitForExit()
+        $exitCode = $process.ExitCode
+        $stdoutText = ([string]$stdoutTask.GetAwaiter().GetResult()).Trim()
+        $stderrText = ([string]$stderrTask.GetAwaiter().GetResult()).Trim()
+    } finally { $process.Dispose() }
     $jsonText = if ($stdoutText.Length -gt 0) { $stdoutText } else { $stderrText }
+    if ($jsonText.Length -eq 0) {
+        throw "Resolver produced no diagnostic JSON; exit ${exitCode}"
+    }
     try { $parsed = $jsonText | ConvertFrom-Json -ErrorAction Stop }
     catch { throw "Resolver did not return parsable JSON, exit ${exitCode}: $jsonText" }
     $noPass = $exitCode -eq 1 -and !$parsed.ok -and
