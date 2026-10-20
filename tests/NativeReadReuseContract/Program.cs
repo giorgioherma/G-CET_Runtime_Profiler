@@ -59,9 +59,9 @@ try
       "() return nil end"
     ]);
     var mainText=File.ReadAllText(main);
-    object?[] args=[mainText,headers,null,null];
-    Check((bool)transform.Invoke(null,args)!,"Transform refused");
-    string output=(string)args[2]!;
+    object?[] transformArgs=[mainText,headers,null,null];
+    Check((bool)transform.Invoke(null,transformArgs)!,"Transform refused");
+    string output=(string)transformArgs[2]!;
     Check(output.Contains("actor = __gcetGetPlayer()"),"Missing player getter rewrite");
     Check(output.Contains("actor:GetWorldPosition()"),"Derived vector read changed");
     Check(output.Contains("__gcetGetPlayer():GetWorldPosition()"),"Chained player getter was not reused");
