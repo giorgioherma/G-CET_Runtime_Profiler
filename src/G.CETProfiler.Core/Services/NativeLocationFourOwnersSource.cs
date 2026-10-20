@@ -325,6 +325,78 @@ internal static class NativeLocationFourOwnersSource
             "Per-mechanic static native NEAR/FAR wakes each original 0.5-second listener independently; exact 75/95m, live NPCs, pending resolution and UNKNOWN fallback stay.");
     }
 
+
+    // Author fixed positions live in the REDscript registry, not the CET
+    // matrix getter. Resolver extracts the registry once into GCAS and creates
+    // one independent native owner per mechanic. Never let proximity for one
+    // mechanic wake the other sites or bypass live-NPC cleanup.
+    internal static SemanticInjectionResult ApplyIllegalV3(SemanticPatchContext context)
+    {
+        var file=context.FindFile("physical_npc.lua",
+            "function PhysicalNpc.Update(delta)", "state.mechanics = result",
+            "if entry.spawnPending then", "GetMechanicCountForCET",
+            "cfg.spawnDistance", "cfg.despawnDistance");
+        if(file.Text.Contains("G-CET native location:illegal-v3",StringComparison.Ordinal))
+            return SemanticInjectionResult.Skip("Independent mechanic native wake is already installed.");
+        if(file.Text.Contains("G-CET native location:illegal-v1",StringComparison.Ordinal) ||
+           file.Text.Contains("G-CET native location:illegal-v2",StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "Old aggregate mechanic location optimization installed; regenerate this mod from original source for per-mechanic native owners.");
+        var crlf=file.Text.Contains("\r\n",StringComparison.Ordinal);
+        var text=crlf ? file.Text.Replace("\r\n","\n",StringComparison.Ordinal) : file.Text;
+        var helper="""
+  -- G-CET native location:illegal-v3
+  -- One compiled REDscript-backed site per mechanic: 1003301+registry index.
+  -- Do not register positions from Lua. If absent, leave each site's author
+  -- supervision active; only an authoritative FAR parks a dormant site.
+  local engineOk,engine=pcall(GetMod,"0-Engine")
+  local host=engineOk and engine and engine.GCET and engine.GCET.NativeLocationHost
+  if host and type(host.attachCompiled)=="function" then
+    for _,entry in ipairs(result) do
+      local index=tonumber(entry.index)
+      if index and index>=0 and index<256 then
+        host:attachCompiled(1003301+index,1,
+          function() entry.__gcetNativeFar=false;state.nextUpdateAt=0 end,
+          function() entry.__gcetNativeFar=true;state.nextUpdateAt=0 end,
+          function() entry.__gcetNativeFar=false;state.nextUpdateAt=0;return true end)
+      end
+    end
+  end
+""".Replace("\r\n","\n",StringComparison.Ordinal);
+        text=Once(text,"  state.mechanics = result\n",
+                  "  state.mechanics = result\n"+helper,
+                  "Mechanic per-registry-index compiled listener subscription");
+        text=Once(text,
+                  "  if #state.mechanics == 0 and not loadMatrix() then return end\n"+
+                  "  local player = getPlayer()",
+                  "  if #state.mechanics == 0 and not loadMatrix() then return end\n"+
+                  "  -- When all native-owned mechanics are FAR with no live/pending\n"+
+                  "  -- actors, avoid even the per-cycle player getter. UNKNOWN\n"+
+                  "  -- and failed owner bindings remain original-author active.\n"+
+                  "  local __gcetAnySiteActive=false\n"+
+                  "  for _,entry in ipairs(state.mechanics) do\n"+
+                  "    if entry.__gcetNativeFar ~= true or entry.spawnPending or\n"+
+                  "       entry.entityID ~= nil or entry.entity ~= nil then\n"+
+                  "      __gcetAnySiteActive=true;break\n"+
+                  "    end\n"+
+                  "  end\n"+
+                  "  if not __gcetAnySiteActive then return end\n"+
+                  "  local player = getPlayer()",
+                  "Mechanic native FAR only suppresses idle player queries");
+        text=Once(text,
+                  "    if entry.spawnPending then\n      resolvePendingSpawn(entry)\n    else\n      local distance",
+                  "    if entry.__gcetNativeFar == true and not entry.spawnPending and\n"+
+                  "       entry.entityID == nil and entry.entity == nil then\n"+
+                  "      -- Dormant only for THIS mechanic; other mechanics proceed.\n"+
+                  "    elseif entry.spawnPending then\n"+
+                  "      resolvePendingSpawn(entry)\n"+
+                  "    else\n      local distance",
+                  "Mechanic exact original near NPC supervision per owner");
+        context.Write(file,crlf ? text.Replace("\n","\r\n",StringComparison.Ordinal):text);
+        return SemanticInjectionResult.Success(
+            "Each fixed REDscript mechanic receives its own compiled native owner with 110m+ discovery-safe wake; exact author 75/95m NPC streaming, live/pending cleanup and Redscript discovery listeners are unchanged.");
+    }
+
     internal static SemanticInjectionResult ApplyDedka(SemanticPatchContext context)
     {
         var file=context.FindFile("init.lua","dedka_entrance1","dedka_entrance2_cluster",
