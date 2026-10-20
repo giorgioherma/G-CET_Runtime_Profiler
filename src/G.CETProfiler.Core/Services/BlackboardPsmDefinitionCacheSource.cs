@@ -87,7 +87,24 @@ internal static class BlackboardPsmDefinitionCacheSource
         var text = Encoding.UTF8.GetString(source);
         if (text.Contains(Marker, StringComparison.Ordinal))
         {
-            reason = "ALREADY_SATISFIED";
+            // A comment is not sufficient proof. Partial or subsequently
+            // edited player-state snapshots must not silently pass as complete.
+            var complete =
+                text.Split(Marker, StringSplitOptions.None).Length == 2 &&
+                text.Contains("function BlackboardCache.Init(events)", StringComparison.Ordinal) &&
+                text.Contains("function BlackboardCache.Attach(player)", StringComparison.Ordinal) &&
+                text.Contains("function BlackboardCache.Reset()", StringComparison.Ordinal) &&
+                Regex.Matches(text, @"\\b__gcetPsmFields\\s*=\\s*\\{").Count == 1 &&
+                Reads.All(read =>
+                    Regex.Matches(text, @"\\b" + Regex.Escape(read.Field) +
+                        @"\\s*=\\s*PlayerStateDefs\\." + Regex.Escape(read.Field) +
+                        @"\\s*[,}]").Count == 1 &&
+                    Regex.Matches(text, @"\\blocal\\s+" + Regex.Escape(read.Name) +
+                        @"\\s*=\\s*playerBB:" + read.Getter +
+                        @"\\(\\s*__gcetPsmFields\\." + Regex.Escape(read.Field) +
+                        @"\\s*\\)").Count == 1);
+            reason = complete ? "ALREADY_SATISFIED" :
+                "PARTIAL_PSM_STAGE_SOURCE_POSTCONDITION_FAILED";
             return false;
         }
         if (!text.Contains("function BlackboardCache.Init(events)", StringComparison.Ordinal) ||
