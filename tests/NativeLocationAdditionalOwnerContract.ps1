@@ -734,6 +734,53 @@ foreach($row in $providerRows) {
 }
 Write-Host 'All 26 authorized shared-provider getters preserved across literal and regex semantic adapters PASS'
 
+# Real Ziggy 19:55 regression: generic has already rewritten
+# GetQuestsSystem, while the authored save() and fact write contract survives.
+$ziggyType=$asm.GetType('GCETRuntimeProfiler.Core.Services.ZiggyProximitySource',$true)
+$ziggySnapshot=$ziggyType.GetMethod('ReuseZiggyNativeQuestManagerForSave',
+ [Reflection.BindingFlags]'Static,NonPublic')
+if(!$ziggySnapshot){throw 'Ziggy native snapshot source adapter missing'}
+$ziggyGeneric=@'
+-- G-CET shared provider: QUESTS_SYSTEM
+local function __gcetGetQuestsSystem()
+ return Game.GetQuestsSystem()
+end
+local function set(k,v)__gcetGetQuestsSystem():SetFactStr('zg11_'..k,v)end
+local function save()
+ if not H.s or not valid(H.hooks)or not H.hooks:SessionLoaded()then return end
+ local s=H.s
+ set('step',s.step)
+ set('path',s.path)
+ set('cycle',s.cycle)
+ set('damage',s.damage)
+ set('phase',s.phase)
+ set('active',s.active)
+ set('state',s.state)
+end
+local function trace(event,details)
+ print(event)
+end
+'@
+try{$ziggyOutput=[string]$ziggySnapshot.Invoke($null,[object[]]@($ziggyGeneric))}
+catch{throw "Ziggy 19:55 generic-first save composition failed: $($_.Exception.InnerException.Message)"}
+if(!$ziggyOutput.Contains('local __gcetZiggySnapshotQuestSystem=__gcetGetQuestsSystem()') -or
+ !$ziggyOutput.Contains('G-CET semantic:ziggy-native-snapshot-manager-v6') -or
+ !$ziggyOutput.Contains('local function __gcetZiggySnapshotSet(k,v)') -or
+ !$ziggyOutput.Contains('local function set(k,v)__gcetGetQuestsSystem()')){
+ throw 'Ziggy semantic failed to preserve generic QuestSystem getter and seven authored fact writes'
+}
+try{$ziggyAgain=[string]$ziggySnapshot.Invoke($null,[object[]]@($ziggyOutput))}
+catch{throw "Ziggy native snapshot repeat failed: $($_.Exception.InnerException.Message)"}
+if($ziggyAgain -cne $ziggyOutput){throw 'Ziggy source composition was not idempotent'}
+$ziggyUnknown=$ziggyGeneric.Replace(
+ 'local function set(k,v)__gcetGetQuestsSystem():SetFactStr',
+ 'local function set(k,v)UnknownQuestsSystem():SetFactStr')
+$refused=$false
+try {$null=$ziggySnapshot.Invoke($null,[object[]]@($ziggyUnknown))}
+catch {$refused=$true}
+if(!$refused){throw 'Ziggy accepted an unknown quest-system writer without source proof'}
+Write-Host 'Ziggy generic QuestSystem source: full seven-fact save, 1-pass, idempotence and unknown-source refusal PASS'
+
 # Regression: two generic stages finish before semantic source composition.
 # Native static locations are its LAST substage. No generic rewrite may
 # run after semantic. The actual generated source is independently validated
