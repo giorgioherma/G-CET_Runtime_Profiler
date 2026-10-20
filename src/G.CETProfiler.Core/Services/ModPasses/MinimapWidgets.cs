@@ -245,9 +245,11 @@ internal static partial class SemanticInjectors
 
     private static SemanticInjectionResult ApplyMinimapTimeWeatherSnapshot(SemanticPatchContext context)
     {
+        // Generic shared-getter reuse may have replaced the Game facade.
+        // Source proof is the pair of author functions plus matching live
+        // time-getter structure, never a pre-generic exact spelling.
         var file = context.FindFile("init.lua", "function updateTimeWidget()",
-            "function updateWeatherWidget()", "TimeIsRunningOut",
-            "Game.GetTimeSystem():GetGameTime():Hours()");
+            "function updateWeatherWidget()", "TimeIsRunningOut");
         var text = file.Text;
         const string stage = "__gcetMinimapGameTimePerInvocation";
         if (text.Contains(stage, StringComparison.Ordinal))
@@ -255,8 +257,8 @@ internal static partial class SemanticInjectors
         // Both author functions independently read the same game-time object
         // twice in one invocation. No value is retained across frames.
         var original = new Regex(
-            @"(?m)^(?<indent>[ \t]*)local\s+hours\s*=\s*Game\.GetTimeSystem\(\):GetGameTime\(\):Hours\(\)\s*\r?\n" +
-            @"\k<indent>local\s+minutes\s*=\s*\(?[ \t]*Game\.GetTimeSystem\(\):GetGameTime\(\):Minutes\(\)\)?[ \t]*\r?$",
+            @"(?m)^(?<indent>[ \t]*)local\s+hours\s*=\s*(?<getter>Game\.GetTimeSystem\(\)|__gcetGetTimeSystem\(\)):GetGameTime\(\):Hours\(\)\s*\r?\n" +
+            @"\k<indent>local\s+minutes\s*=\s*\(?[ \t]*\k<getter>:GetGameTime\(\):Minutes\(\)\)?[ \t]*\r?$",
             RegexOptions.CultureInvariant);
         var matches = original.Matches(text);
         if (matches.Count != 2 ||
@@ -265,7 +267,7 @@ internal static partial class SemanticInjectors
             text.IndexOf("function updateWeatherWidget()", StringComparison.Ordinal) <= matches[0].Index)
             throw new InvalidOperationException("Time/weather source flow or two-read structure changed.");
         text = original.Replace(text, m =>
-            m.Groups["indent"].Value + "local " + stage + " = Game.GetTimeSystem():GetGameTime()\n" +
+            m.Groups["indent"].Value + "local " + stage + " = " + m.Groups["getter"].Value + ":GetGameTime()\n" +
             m.Groups["indent"].Value + "local hours = " + stage + ":Hours()\n" +
             m.Groups["indent"].Value + "local minutes = " + stage + ":Minutes()");
         var provider = new Regex(
