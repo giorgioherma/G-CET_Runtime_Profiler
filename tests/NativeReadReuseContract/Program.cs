@@ -109,6 +109,64 @@ try
     Check(afterDrift==0,"Drift accepted unexpectedly");
     Check(before.SequenceEqual(staged["Example/init.lua"]),"Drift mutated staged file");
     Check(drifts.Count>0,"Drift not diagnosed");
+    // Source evidence is refreshed from the actual installed tree. An update
+    // arriving after the report was generated is not a compatibility failure.
+    Save("AddedAfterCapture/init.lua","local late = Game.GetQuestsSystem()\n");
+    var newStages=new Dictionary<string,byte[]>(StringComparer.OrdinalIgnoreCase);
+    var newerHashes=new Dictionary<string,string?>(StringComparer.OrdinalIgnoreCase);
+    var newApplied=new Dictionary<string,int>(StringComparer.OrdinalIgnoreCase);
+    var newerManifest=new List<object>();
+    var newerSkipped=new List<object>();
+    object?[] freshArgs=[document.RootElement,mods,newStages,newerHashes,
+                         newApplied,newerManifest,newerSkipped,headers];
+    var accepted=(int)stage.Invoke(null,freshArgs)!;
+    Check(accepted>0 && newStages.ContainsKey("AddedAfterCapture/init.lua"),
+        "Updated mod was wrongly gated by stale report file inventory/SHA");
+    Check(Encoding.UTF8.GetString(newStages["AddedAfterCapture/init.lua"])
+              .Contains("__gcetGetQuestsSystem()"),
+        "Updated mod direct getter was not source-adopted");
+
+    // Existing helpers stay intact. A newly added getter call gets adopted
+    // without creating a duplicate provider or rewriting its own fallback.
+    var partialProvider="""
+        -- G-CET shared provider: PLAYER
+        local function __gcetGetPlayer()
+            return Game.GetPlayer()
+        end
+        local added = Game.GetPlayer()
+        """;
+    object?[] providerArgs=[partialProvider,headers,null,null];
+    Check((bool)transform.Invoke(null,providerArgs)!,
+        "New getter beside previously installed shared provider not adopted");
+    var providerResult=(string)providerArgs[2]!;
+    Check(providerResult.Contains("local added = __gcetGetPlayer()") &&
+          providerResult.Contains("return Game.GetPlayer()") &&
+          providerResult.Split("-- G-CET shared provider: PLAYER").Length==2,
+        "Existing provider was duplicated or original fallback rewritten");
+    object?[] providerAgain=[providerResult,headers,null,null];
+    Check(!(bool)transform.Invoke(null,providerAgain)!,
+        "Already completed provider callsites must skip on a second pass");
+
+    // Native typed player Vector4 provider follows the same stage-local rule.
+    var vectorType=core.GetType("GCETRuntimeProfiler.Core.Services.NativePlayerVectorStage",true)!;
+    var vector=vectorType.GetMethod("TryTransform",
+        BindingFlags.Static|BindingFlags.NonPublic|BindingFlags.Public)!;
+    object?[] vectorInit=["local pos = Game.GetPlayer():GetWorldPosition()\n",null,0];
+    Check((bool)vector.Invoke(null,vectorInit)! && (int)vectorInit[2]!==1,
+        "Initial native player Vector4 source transform failed");
+    var vectorFirst=(string)vectorInit[1]!;
+    object?[] vectorUpdate=[vectorFirst+"\nlocal newPos = Game.GetPlayer():GetWorldPosition()\n",null,0];
+    Check((bool)vector.Invoke(null,vectorUpdate)! && (int)vectorUpdate[2]!==1,
+        "A later source version did not adopt its new player position callsite");
+    var vectorResult=(string)vectorUpdate[1]!;
+    Check(vectorResult.Contains("local newPos = __gcetNativePlayerWorldPosition()") &&
+          vectorResult.Contains("return Game.GetPlayer():GetWorldPosition()") &&
+          vectorResult.Split("-- G-CET native player Vector4 on-demand live v1").Length==2,
+        "Existing native player helper was duplicated or its live fallback lost");
+    object?[] vectorAgain=[vectorResult,null,0];
+    Check(!(bool)vector.Invoke(null,vectorAgain)!,
+        "Native player stage is not idempotent after incremental source update");
+
     // Player ownership evidence is built from callback registration metadata
     // and source analysis; it must not equate PlayerPuppet class context with
     // the receiver of unrelated NPC getter calls.
