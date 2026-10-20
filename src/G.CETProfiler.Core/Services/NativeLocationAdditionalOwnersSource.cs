@@ -68,6 +68,8 @@ end
 
     internal static SemanticInjectionResult ApplyMarmur(SemanticPatchContext context)
     {
+        var structural=NativeLocationStructuralSource.TryMarmur(context);
+        if(structural is not null)return structural;
         var file=context.FindFile("module/Bank.lua",
             "function bank:registerSpatialSet()","PosData.All",
             "self.engine.RegisterSpatialSet(\"marmurbank\"",
