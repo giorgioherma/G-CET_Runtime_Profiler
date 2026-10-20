@@ -23,7 +23,7 @@ internal static class NativeReadReuseSource
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly IReadOnlyDictionary<string,SharedProviderAuthorization> ByGetter =
         SharedProviderCatalog.Authorized.ToDictionary(x=>x.Getter, StringComparer.Ordinal);
-    internal sealed record Operation(string Provider,string Getter,int Occurrences,string HelperName);
+    internal sealed record Operation(string Provider,string Getter,int Occurrences,string HelperName,bool ExistingHelper=false);
     internal sealed record FilePlan(string RelativeFile,string Sha256,Operation[] Operations,string Proof);
     internal static FilePlan[] Analyze(string modsRoot)
     {
@@ -52,24 +52,60 @@ internal static class NativeReadReuseSource
                first.Equals("G-CET",StringComparison.OrdinalIgnoreCase) ||
                first.Equals("G-CET-Profiler",StringComparison.OrdinalIgnoreCase);
     }
+    // Mask only complete, previously generated provider functions (and the
+    // native Vector4 live helper). Their author fallback must remain exactly
+    // intact. Source-matched callsites OUTSIDE those helpers remain eligible.
+    private static string ExcludeGeneratedFallbacks(string source,string masked,
+        out HashSet<string> existing)
+    {
+        var chars=masked.ToCharArray();
+        existing=new HashSet<string>(StringComparer.Ordinal);
+        foreach(var provider in ByGetter.Values)
+        {
+            var marker="-- G-CET shared provider: "+provider.Provider;
+            if(!source.Contains(marker,StringComparison.Ordinal))continue;
+            var helper="__gcet"+provider.Getter;
+            var pattern=@"local\s+function\s+"+Regex.Escape(helper)+
+                @"\s*\(\s*\)[\s\S]*?return\s+Game\s*\.\s*"+
+                Regex.Escape(provider.Getter)+@"\s*\(\s*\)\s*end";
+            var matches=Regex.Matches(masked,pattern,RegexOptions.CultureInvariant);
+            if(matches.Count!=1)continue;
+            existing.Add(provider.Provider);
+            foreach(Match m in matches)
+                for(int i=m.Index;i<m.Index+m.Length;i++)
+                    if(chars[i]!='\r'&&chars[i]!='\n')chars[i]=' ';
+        }
+        if(source.Contains("-- G-CET native player Vector4 on-demand live v1",
+            StringComparison.Ordinal))
+        {
+            var block=Regex.Matches(masked,
+                @"local\s+function\s+__gcetNativePlayerWorldPosition\s*\(\s*\)[\s\S]*?return\s+Game\s*\.\s*GetPlayer\s*\(\s*\)\s*:\s*GetWorldPosition\s*\(\s*\)\s*end",
+                RegexOptions.CultureInvariant);
+            if(block.Count==1)
+                foreach(Match m in block)
+                    for(int i=m.Index;i<m.Index+m.Length;i++)
+                        if(chars[i]!='\r'&&chars[i]!='\n')chars[i]=' ';
+        }
+        return new string(chars);
+    }
+
     internal static Operation[] FindOperations(string text)
     {
         var code=MaskNonCode(text);
         if(ShadowGame.IsMatch(code))return [];
+        code=ExcludeGeneratedFallbacks(text,code,out var existing);
         return DirectGetter.Matches(code).Cast<Match>()
             .Where(m=>ByGetter.ContainsKey(m.Groups["getter"].Value))
             .GroupBy(m=>m.Groups["getter"].Value,StringComparer.Ordinal)
             .Select(g=>{
                 var provider=ByGetter[g.Key];
-                // Never auto-rewrite inside an existing generated shared helper.
-                if(text.Contains("-- G-CET shared provider: "+provider.Provider,
-                    StringComparison.Ordinal))return null;
                 var helper="__gcet"+g.Key;
-                // Preserve authored symbols: unlike 0-Engine's generated
-                // namespace, arbitrary mods may already use this identifier.
-                if(Regex.IsMatch(code,@"\b"+Regex.Escape(helper)+@"\b",
-                    RegexOptions.CultureInvariant))return null;
-                return new Operation(provider.Provider,g.Key,g.Count(),helper);
+                var marked=text.Contains("-- G-CET shared provider: "+
+                    provider.Provider,StringComparison.Ordinal);
+                if(marked && !existing.Contains(provider.Provider))return null;
+                if(!marked && Regex.IsMatch(code,@"\b"+Regex.Escape(helper)+@"\b",
+                     RegexOptions.CultureInvariant))return null;
+                return new Operation(provider.Provider,g.Key,g.Count(),helper,marked);
             })
             .Where(x=>x is not null).Select(x=>x!)
             .OrderBy(x=>x.Provider,StringComparer.Ordinal).ToArray();
@@ -83,6 +119,7 @@ internal static class NativeReadReuseSource
         if(rewritten.Length==0)return false;
         var permitted=rewritten.ToDictionary(x=>x.Getter,x=>x.HelperName,StringComparer.Ordinal);
         var masked=MaskNonCode(input);
+        masked=ExcludeGeneratedFallbacks(input,masked,out _);
         var matches=DirectGetter.Matches(masked).Cast<Match>()
             .Where(m=>permitted.ContainsKey(m.Groups["getter"].Value)).ToArray();
         if(matches.Length==0)return false;
@@ -90,9 +127,11 @@ internal static class NativeReadReuseSource
         foreach(var m in matches.Reverse())
             builder.Remove(m.Index,m.Length).Insert(m.Index,permitted[m.Groups["getter"].Value]+"()");
         var newline=input.Contains("\r\n",StringComparison.Ordinal)?"\r\n":"\n";
-        var headers=rewritten.SelectMany(x=>headerForProvider(x.Provider)).ToArray();
-        if(headers.Length==0){output=input;return false;}
-        output=string.Join(newline,headers)+newline+builder;
+        var newProviders=rewritten.Where(x=>!x.ExistingHelper).ToArray();
+        var headers=newProviders.SelectMany(x=>headerForProvider(x.Provider)).ToArray();
+        if(newProviders.Length>0&&headers.Length==0){output=input;return false;}
+        output=headers.Length==0?builder.ToString():
+            string.Join(newline,headers)+newline+builder;
         return true;
     }
     internal static int TryStage(JsonElement resolver,string modsRoot,
