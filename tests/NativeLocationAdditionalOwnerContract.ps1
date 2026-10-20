@@ -277,4 +277,34 @@ foreach($i in 0..1){
 }
 Write-Host 'Compiled REDscript 2-owner GCAS fixture: independent owner IDs, author positions and >95m discovery-safe wake PASS'
 
+
+# The Resolver evaluates initial source candidates before any primary semantic
+# stages have been staged. Once an existing source is optimized in this SAME
+# generation, the reviewed native stage must compose without a second pass.
+$followType=$asm.GetType('GCETRuntimeProfiler.Core.Services.SemanticPassGeneratorService',$true)
+$follow=$followType.GetMethod('ApplyPreparedNativeLocationStages',
+    [Reflection.BindingFlags]'Static,NonPublic')
+if(!$follow){throw 'Same-pass source-native composition stage absent'}
+$followStaged=[Collections.Generic.Dictionary[string,byte[]]]::new(
+    [StringComparer]::OrdinalIgnoreCase)
+$followStaged.Add('Card Collection/init.lua',[Text.Encoding]::UTF8.GetBytes($card))
+$followHashes=[Collections.Generic.Dictionary[string,string]]::new(
+    [StringComparer]::OrdinalIgnoreCase)
+$followCounts=[Collections.Generic.Dictionary[string,int]]::new(
+    [StringComparer]::OrdinalIgnoreCase)
+$followManifest=[Collections.Generic.List[object]]::new()
+$followSkipped=[Collections.Generic.List[object]]::new()
+try {
+ $generated=$follow.Invoke($null,[object[]]@(
+   [string]$root,$followStaged,$followHashes,
+   $followCounts,$followManifest,$followSkipped))
+} catch {throw "Pristine staged source -> native follow-up failed: $($_.Exception.InnerException.Message)"}
+if($generated -ne 1){throw "Single-pass pristine staged Card Collection native composition failed: applied=$generated; skipped=$($followSkipped.Count)"}
+$composed=[Text.Encoding]::UTF8.GetString($followStaged['Card Collection/init.lua'])
+if(!$composed.Contains('lookup:attachCompiled(10035,100') -or
+   !$composed.Contains('G-CET native location:card-collection-v1')){
+  throw 'The composed source did not gain compiled card owner callbacks'
+}
+Write-Host 'Same-pass pristine author source -> compiled-native semantic composition PASS'
+
 Write-Host 'Native static location additional owners: Card Collection 100-site coarse dormancy, banker SpatialHash FAR, Yaiba bathroom author gate; fallback, CRLF and idempotence PASS'
