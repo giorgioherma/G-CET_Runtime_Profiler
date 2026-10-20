@@ -436,7 +436,8 @@ internal static class FixedZeroEngineRuntime
         var source=Encoding.UTF8.GetString(live);
         var current=Encoding.UTF8.GetString(bundled);
         var hasAttach=source.Contains("function Host:attachCompiled(",StringComparison.Ordinal);
-        var hasShutdownPreservation=source.Contains("if owner.compiled then",StringComparison.Ordinal);
+        var hasShutdownPreservation=source.Contains("if owner.compiled",StringComparison.Ordinal) &&
+            source.Contains("GCETStaticArm",StringComparison.Ordinal);
         if(hasAttach && hasShutdownPreservation)
             return live;
 
