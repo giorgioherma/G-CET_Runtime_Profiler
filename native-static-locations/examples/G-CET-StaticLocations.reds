@@ -64,7 +64,8 @@ public native func GCETStaticMetric(metric: Int32) -> Int64;
 // Version 1: stable capability handshake for zero-per-mod-configuration
 // discovery by an EXISTING shared host. Capabilities bits:
 // 1 position, 2 availability, 4 change-poll, 8 session epoch,
-// 16 player snapshot independent of the static-location manifest.
+// 16 player snapshot independent of the static-location manifest,
+// 32 native typed Vector4 player-position getter.
 public native func GCETPlayerApiVersion() -> Int32;
 public native func GCETPlayerCapabilities() -> Int32;
 public native func GCETPlayerConsumerCount() -> Int32;
@@ -77,3 +78,9 @@ public native func GCETPlayerRevision() -> Int32;
 public native func GCETPlayerX() -> Float;
 public native func GCETPlayerY() -> Float;
 public native func GCETPlayerZ() -> Float;
+
+// Typed snapshot, not three independently marshalled scalar reads.
+// Call only when GCETPlayerStatus()==2 AND update-phase freshness is proven.
+// On UNKNOWN or incompatible callback phase, retain original authored getter.
+// No implicit rewrite authorization; optional ABI v1 bit 32.
+public native func GCETPlayerVector4() -> Vector4;

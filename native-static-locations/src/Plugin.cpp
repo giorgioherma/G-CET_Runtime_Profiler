@@ -51,7 +51,7 @@ namespace {
     }
 
     // RED4ext's Running-state callback provides ONE native position owner.
-    int32_t SamplePlayer(float& x,float& y,float& z){
+    int32_t SamplePlayer(float& x,float& y,float& z,float& w){
         RED4ext::ScriptGameInstance game;
         RED4ext::Handle<RED4ext::IScriptable> player;
         if(!RED4ext::ExecuteGlobalFunction("GetPlayer;GameInstance",&player,game) || !player.instance)
@@ -62,8 +62,8 @@ namespace {
         if(!method)return 3;
         RED4ext::Vector4 pos{};
         if(!RED4ext::ExecuteFunction(player.instance,method,&pos))return 4;
-        x=pos.X; y=pos.Y; z=pos.Z;
-        if(!std::isfinite(x)||!std::isfinite(y)||!std::isfinite(z)||
+        x=pos.X; y=pos.Y; z=pos.Z; w=pos.W;
+        if(!std::isfinite(x)||!std::isfinite(y)||!std::isfinite(z)||!std::isfinite(w)||
            std::abs(x)>1000000.0f||std::abs(y)>1000000.0f||std::abs(z)>1000000.0f)
             return 5;
         return 0;
@@ -91,10 +91,10 @@ namespace {
             return false;
         }
         // Exactly one native player RTTI read, regardless of active clients.
-        float x=0,y=0,z=0;
-        const int32_t code=SamplePlayer(x,y,z);
+        float x=0,y=0,z=0,w=0;
+        const int32_t code=SamplePlayer(x,y,z,w);
         g_lastPlayerCode=code;
-        if(playerDemand)g_playerSnapshot.Tick(code==0,x,y,z);
+        if(playerDemand)g_playerSnapshot.Tick(code==0,x,y,z,w);
         if(g_loaded && locationDemand){
             g_coordinator.Tick(code==0,x,y,z);
             if(code==0) {
@@ -148,7 +148,7 @@ namespace {
         f->code++;*out=1;
     }
     void PlayerCapabilities(RED4ext::IScriptable*,RED4ext::CStackFrame* f,int32_t* out,int64_t){
-        f->code++;*out=1|2|4|8|16;
+        f->code++;*out=1|2|4|8|16|32;
     }
     void PlayerConsumerCount(RED4ext::IScriptable*,RED4ext::CStackFrame* f,int32_t* out,int64_t){
         f->code++;*out=static_cast<int32_t>(g_playerSnapshot.SubscriberCount());
@@ -183,6 +183,19 @@ namespace {
     }
     void PlayerZ(RED4ext::IScriptable*,RED4ext::CStackFrame* f,float* out,int64_t){
         f->code++;*out=g_playerSnapshot.Z();
+    }
+    // Single typed RTTI crossing. Retain the exact four-component Vector4
+    // returned by the existing native player sample (including W). A missing
+    // or stale snapshot produces the zero sentinel; callers MUST check
+    // GCETPlayerStatus()==2 and phase freshness before using it. This is
+    // deliberately not yet an automatic replacement for GetWorldPosition().
+    void PlayerVector4(RED4ext::IScriptable*,RED4ext::CStackFrame* f,
+                       RED4ext::Vector4* out,int64_t) {
+        f->code++;
+        *out=RED4ext::Vector4{};
+        float x=0,y=0,z=0,w=0;
+        if(!g_playerSnapshot.ReadVector4(x,y,z,w)) return;
+        out->X=x;out->Y=y;out->Z=z;out->W=w;
     }
     void CoordinatorStatus(RED4ext::IScriptable*,RED4ext::CStackFrame* frame,int32_t* out,int64_t){
         frame->code++;
@@ -414,6 +427,9 @@ namespace {
         RegisterFunction("GCETPlayerX",PlayerX,"Float",nullptr,nullptr,0);
         RegisterFunction("GCETPlayerY",PlayerY,"Float",nullptr,nullptr,0);
         RegisterFunction("GCETPlayerZ",PlayerZ,"Float",nullptr,nullptr,0);
+        // ABI v1 additive capability bit 32 (typed Vector4). Keep all older
+        // scalar/near-far API consumers compatible.
+        RegisterFunction("GCETPlayerVector4",PlayerVector4,"Vector4",nullptr,nullptr,0);
 
     }
     void LoadData() {

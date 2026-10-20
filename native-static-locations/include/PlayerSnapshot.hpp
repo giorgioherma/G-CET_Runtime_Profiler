@@ -48,18 +48,18 @@ public:
         running_=false;known_=false;++epoch_;
         Publish(Session|Snapshot|Availability);
     }
-    void Tick(bool valid,float x,float y,float z){
+    void Tick(bool valid,float x,float y,float z,float w=1.0f){
         if(!running_ || !HasDemand())return;
         ++samples_;
-        valid=valid && std::isfinite(x)&&std::isfinite(y)&&std::isfinite(z)
+        valid=valid && std::isfinite(x)&&std::isfinite(y)&&std::isfinite(z)&&std::isfinite(w)
             && std::abs(x)<=1000000.f&&std::abs(y)<=1000000.f&&std::abs(z)<=1000000.f;
         if(!valid){
             if(known_){known_=false;++revision_;Publish(Availability);}
             return;
         }
         const bool becameKnown=!known_;
-        const bool moved=becameKnown||x!=x_||y!=y_||z!=z_;
-        known_=true;x_=x;y_=y;z_=z;
+        const bool moved=becameKnown||x!=x_||y!=y_||z!=z_||w!=w_;
+        known_=true;x_=x;y_=y;z_=z;w_=w;
         if(becameKnown||moved){
             ++revision_;
             Publish((becameKnown?Availability:0)|(moved?Position:0));
@@ -84,6 +84,14 @@ public:
     float X() const{return known_?x_:0;}
     float Y() const{return known_?y_:0;}
     float Z() const{return known_?z_:0;}
+    float W() const{return known_?w_:0;}
+    // All components are returned atomically from the same main-thread sample.
+    // No engine object handle or Lua table is stored by this service.
+    bool ReadVector4(float& x,float& y,float& z,float& w) const {
+        if(!running_||!known_)return false;
+        x=x_;y=y_;z=z_;w=w_;
+        return true;
+    }
 private:
     struct Slot{int32_t id=0,fields=0,pending=0;};
     void Publish(int32_t flags){
@@ -101,6 +109,6 @@ private:
     bool running_=false,known_=false;
     uint32_t epoch_=0,revision_=0;
     uint64_t samples_=0;
-    float x_=0,y_=0,z_=0;
+    float x_=0,y_=0,z_=0,w_=0;
 };
 }

@@ -23,7 +23,9 @@ int main(){
  s.Tick(false,0,0,0);
  CHECK(s.Status()==1&&s.Poll(100)==0);
  s.Tick(true,0,0,0);
- CHECK(s.Status()==2&&s.X()==0);
+ CHECK(s.Status()==2&&s.X()==0&&s.W()==1);
+ float px=0,py=0,pz=0,pw=0;
+ CHECK(s.ReadVector4(px,py,pz,pw)&&px==0&&py==0&&pz==0&&pw==1);
  CHECK(s.Poll(100)==PlayerSnapshot::Fields);
  CHECK(s.Poll(200)==PlayerSnapshot::Availability);
  auto rev=s.Revision();
@@ -32,6 +34,20 @@ int main(){
  s.Tick(true,2,3,4);
  CHECK(s.Poll(100)==PlayerSnapshot::Position&&s.Poll(200)==0);
  CHECK(s.X()==2&&s.Z()==4);
+ // Only W changing must also invalidate the snapshot revision. No XYZ loss
+ // or separate per-component samples are permitted.
+ CHECK(s.ReadVector4(px,py,pz,pw)&&px==2&&py==3&&pz==4&&pw==1);
+ auto beforeW=s.Revision();
+ s.Tick(true,2,3,4,0.25f);
+ CHECK(s.W()==0.25f&&s.Revision()==beforeW+1);
+ CHECK(s.ReadVector4(px,py,pz,pw)&&pw==0.25f);
+ CHECK(s.Poll(100)==PlayerSnapshot::Position);
+ s.Tick(true,2,3,4,std::numeric_limits<float>::quiet_NaN());
+ CHECK(s.Status()==1&&!s.ReadVector4(px,py,pz,pw));
+ CHECK(s.Poll(100)==PlayerSnapshot::Availability);
+ s.Tick(true,2,3,4,1);
+ CHECK(s.Status()==2&&s.Poll(100)==PlayerSnapshot::Fields);
+ CHECK(s.Poll(200)==PlayerSnapshot::Availability);
  s.Tick(true,3,3,4);s.Tick(true,4,3,4);
  CHECK((s.Poll(100)&PlayerSnapshot::Coalesced)!=0);
  CHECK(s.X()==4);
@@ -44,6 +60,7 @@ int main(){
  CHECK(s.Status()==2&&s.Poll(100)==PlayerSnapshot::Fields);
  s.Exit();
  CHECK(s.Status()==0&&s.Epoch()!=first);
+ CHECK(!s.ReadVector4(px,py,pz,pw));
  CHECK((s.Poll(100)&PlayerSnapshot::Session)!=0);
  s.Enter();
  CHECK(s.Status()==1&&s.Poll(100)!=0);

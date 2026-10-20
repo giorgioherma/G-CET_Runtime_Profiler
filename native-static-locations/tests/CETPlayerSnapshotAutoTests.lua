@@ -54,4 +54,34 @@ listener.Cancel()
 assert(calls.unsubscribe==1 and hub.listenerCount==0)
 hub:Shutdown()
 assert(calls.unsubscribe==1)
+-- Legacy scalar consumers remain compatible without optional bit 32.
+local scalarOnly=Hub.TryAuto(g,7001)
+assert(scalarOnly)
+local absent,why=scalarOnly:TryReadVector4()
+assert(absent==nil and why=="TYPED_VECTOR4_UNAVAILABLE")
+scalarOnly:Shutdown()
+
+-- One typed RTTI Vector4 read, not three scalar C calls or a Lua-rebuilt
+-- plain table. The real native RTTI path owns the object and W component.
+local reads=0
+g.GCETPlayerCapabilities=function()return 63 end
+g.GCETPlayerVector4=function()
+    reads=reads+1
+    return {x=11,y=22,z=33,w=0.75} -- test stand-in for CET Vector4 userdata
+end
+local typed=Hub.TryAuto(g,7001)
+assert(typed)
+local vec,reason=typed:TryReadVector4()
+assert(vec and not reason and vec.x==11 and vec.w==0.75 and reads==1)
+typed:Shutdown()
+g.GCETPlayerStatus=function()return 1 end
+local unknown=Hub.TryAuto(g,7001)
+assert(unknown)
+local unavailable,unknownReason=unknown:TryReadVector4()
+assert(unavailable==nil and unknownReason=="PLAYER_UNKNOWN" and reads==1)
+unknown:Shutdown()
+g.GCETPlayerVector4=nil
+local bad,failed=Hub.TryAuto(g,7001)
+assert(bad==nil and failed=="INCOMPLETE_VECTOR4_ABI")
+
 print("CETPlayerSnapshotAutoTests PASS")

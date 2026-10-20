@@ -45,6 +45,16 @@ function Hub.TryAuto(game,consumer,onFallback)
         if not fn then return nil,"INCOMPLETE_NATIVE_ABI" end
         native[name]=fn
     end
+    -- Optional ABI v1 capability bit 32: a single typed native Vector4
+    -- return. Do not require it from older plugin builds (legacy XYZ remains).
+    -- The typed getter stays opt-in; it is NOT a license to rewrite
+    -- per-callsite GetWorldPosition reads without phase compatibility proof.
+    if has(32) then
+        native.GCETPlayerVector4=nativeMethod(game,"GCETPlayerVector4")
+        if not native.GCETPlayerVector4 then
+            return nil,"INCOMPLETE_VECTOR4_ABI"
+        end
+    end
     -- No native sampling begins until someone Watch()es and the shared host
     -- invokes Step() on its already existing update lane.
     return Hub.new(native,consumer,onFallback)
@@ -138,6 +148,19 @@ function Hub:Step()
         end
     end
     return true
+end
+-- A typed, opt-in read. Never manufacture Vector4 userdata from XYZ in Lua.
+-- The producer must have a valid native sample and caller must independently
+-- prove the update phase matches its original getter; otherwise fallback.
+function Hub:TryReadVector4()
+    if self.closed then return nil,"CLOSED" end
+    local fn=self.native.GCETPlayerVector4
+    if type(fn)~="function" then return nil,"TYPED_VECTOR4_UNAVAILABLE" end
+    local ok,status=invoke(self.native.GCETPlayerStatus)
+    if not ok or status~=2 then return nil,"PLAYER_UNKNOWN" end
+    local read,value=invoke(fn)
+    if not read or value==nil then return nil,"NATIVE_VECTOR4_FAILED" end
+    return value,nil
 end
 function Hub:Shutdown()
     if self.closed then return end

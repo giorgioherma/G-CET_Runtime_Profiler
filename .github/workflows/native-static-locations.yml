@@ -9,7 +9,7 @@ permissions:
 on:
   workflow_dispatch:
   push:
-    branches: [dev/resolver-profiler-handoff, dev/native-fixed-cache-player-state]
+    branches: [dev/resolver-profiler-handoff, dev/native-fixed-cache-player-state, dev/native-player-vector4-handoff]
     paths:
       # Build only on code/interface/test changes. Documentation-only edits
       # must not recompile the native DLL or trigger product CI.
@@ -78,6 +78,23 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'RED4ext plugin build failed' }
           ctest --test-dir build/static-locations -C Release --output-on-failure
           if ($LASTEXITCODE -ne 0) { throw 'Native core tests failed' }
+      - name: Verify typed native Vector4 ABI in compiled DLL
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cpp = Get-Content native-static-locations/src/Plugin.cpp -Raw
+          $header = Get-Content native-static-locations/include/PlayerSnapshot.hpp -Raw
+          $dll = 'build/static-locations/Release/GCETStaticLocations.dll'
+          if (!$cpp.Contains('RegisterFunction("GCETPlayerVector4",PlayerVector4,"Vector4"') -or
+              !$cpp.Contains('w=pos.W') -or
+              !$header.Contains('ReadVector4(float& x,float& y,float& z,float& w)')) {
+            throw 'Player Vector4 RTTI registration or complete snapshot transfer is missing.'
+          }
+          $binary = [Text.Encoding]::Latin1.GetString([IO.File]::ReadAllBytes((Resolve-Path $dll).Path))
+          if (!$binary.Contains('GCETPlayerVector4')) {
+            throw 'Compiled plugin DLL does not contain GCETPlayerVector4 exported RTTI method.'
+          }
+          Write-Host 'Compiled native typed Vector4 ABI verified.'
       - name: Stage isolated native payload
         shell: pwsh
         run: |
