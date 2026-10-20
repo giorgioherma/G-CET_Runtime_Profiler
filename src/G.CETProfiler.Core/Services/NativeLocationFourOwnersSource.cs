@@ -14,12 +14,123 @@ internal static class NativeLocationFourOwnersSource
         return text.Replace(before, after, StringComparison.Ordinal);
     }
 
+
+    // Each upgrader applies to the old v1 integration and to the v1 scaffold
+    // composed from pristine author source IN THE SAME generation. A completed
+    // live v1 source is not falsely treated as already satisfying v2.
+    private static string UpgradePokerV2(string text)
+    {
+        text = Once(text,
+            "G-CET native location:poker-v1",
+            "G-CET native location:poker-v2",
+            "Poker native revision");
+        text = Once(text,
+            "if lookup and type(lookup.attach) == 'function' and type(lookup.attach) == \"function\" then",
+            "if lookup and type(lookup.attach) == 'function' then",
+            "Poker unique native host admission");
+        text = Once(text,
+            "if farWorldJob then farWorldJob.Resume() end\\n        return true",
+            "if farWorldJob then\\n            if nearMode then farWorldJob.Pause() else farWorldJob.Resume() end\\n        end\\n        return true",
+            "Poker source scanner fallback mode");
+        return text;
+    }
+
+    private static string UpgradeTunnelV2(string text)
+    {
+        text = Once(text,
+            "G-CET native location:tunnel-v1",
+            "G-CET native location:tunnel-v2",
+            "Tunnel native revision");
+        text = Once(text,
+            "local __gcetTunnelNativeFar = false",
+            "local __gcetTunnelNativeOutside = nil",
+            "Tunnel native UNKNOWN bootstrap");
+        text = Once(text,
+            "if __gcetTunnelNativeFar then return true end",
+            "if __gcetTunnelNativeOutside ~= nil then return __gcetTunnelNativeOutside end",
+            "Tunnel authoritative near/far result");
+        text = Once(text,
+            "function() __gcetTunnelNativeFar=false end,",
+            "function() __gcetTunnelNativeOutside=false end,",
+            "Tunnel known near");
+        text = Once(text,
+            "function() __gcetTunnelNativeFar=true end,",
+            "function() __gcetTunnelNativeOutside=true end,",
+            "Tunnel known far");
+        text = Once(text,
+            "function() __gcetTunnelNativeFar=false;return true end)",
+            "function() __gcetTunnelNativeOutside=nil;return true end)",
+            "Tunnel unknown returns original distance probe");
+        return text;
+    }
+
+    private static string UpgradeIllegalV2(string text)
+    {
+        text = Once(text,
+            "G-CET native location:illegal-v1",
+            "G-CET native location:illegal-v2",
+            "Mechanic native revision");
+        // 100m native FAR exceeds the original 95m despawn threshold.
+        // If ANY source/streaming state is unknown, retain the original scan.
+        // Pending spawns always continue their original resolution path.
+        var oldBlock = new Regex(
+            @"(?s)  if state\\.__gcetNativeFar then\\s+local hasLiveOrPending=false\\s+" +
+            @"for _,entry in ipairs\\(state\\.mechanics\\) do\\s+" +
+            @"if entry\\.spawnPending or entry\\.entityID ~= nil or entry\\.entity ~= nil then\\s+" +
+            @"hasLiveOrPending=true;break\\s+end\\s+end\\s+" +
+            @"if not hasLiveOrPending then return end\\s+end\\s+" +
+            @"local player = getPlayer\\(\\)",
+            RegexOptions.CultureInvariant);
+        if (oldBlock.Matches(text).Count != 1)
+            throw new InvalidOperationException(
+                "Mechanic v1 FAR/live/pending ownership no longer uniquely proven.");
+        const string replacement = """
+          -- G-CET native FAR is strictly beyond the author's 95m despawn band.
+          -- Resolve pending spawns as authored; live NPCs may now be retired
+          -- without another Game.GetPlayer/GetWorldPosition/Vector4.Distance.
+          -- Uncertain entity lifetime fails open to the exact original scan.
+          if state.__gcetNativeFar then
+            local needsOriginal=false
+            for _,entry in ipairs(state.mechanics) do
+              if entry.spawnPending then
+                resolvePendingSpawn(entry)
+              elseif entry.entityID ~= nil then
+                deleteEntry(entry, "player left spawn radius (native FAR)")
+              elseif entry.entity ~= nil then
+                needsOriginal=true
+              end
+            end
+            if not needsOriginal then return end
+          end
+          local player = getPlayer()
+          """;
+        return oldBlock.Replace(text,replacement,1);
+    }
+
+    private static string UpgradeDedkaV2(string text)
+    {
+        text = Once(text,
+            "G-CET native location:dedka-v1",
+            "G-CET native location:dedka-v2",
+            "Dedka native revision");
+        // Both 200m zones are already retired by the source-proven v1 handler
+        // after an authoritative owner snapshot. Do not replace the authored
+        // 5Hz fine-detail job or invent an unsafe external wake.
+        return text;
+    }
+
     internal static SemanticInjectionResult ApplyPoker(SemanticPatchContext context)
     {
         var file = context.FindFile("init.lua", "poker.world_far", "poker.world_near",
             "poker.seat_near", "StreetTables.locations");
+        if (file.Text.Contains("G-CET native location:poker-v2", StringComparison.Ordinal))
+            return SemanticInjectionResult.Skip("Native poker transition stage v2 already installed.");
         if (file.Text.Contains("G-CET native location:poker-v1", StringComparison.Ordinal))
-            return SemanticInjectionResult.Skip("Native poker transition stage already installed.");
+        {
+            context.Write(file, UpgradePokerV2(file.Text));
+            return SemanticInjectionResult.Success(
+                "Upgraded old poker location stage in place: native owns far discovery; source-owned near table/seat and active hand lanes remain.");
+        }
         var text = file.Text;
         text = Once(text,
             "        local nearMode = false\n        local farWorldJob = nil",
@@ -77,17 +188,23 @@ internal static class NativeLocationFourOwnersSource
         """;
         text = Once(text, "        pokerClient = client\n        pass4FarWorldJob = farWorldJob",
             install + "        pokerClient = client\n        pass4FarWorldJob = farWorldJob", "Poker native owner registration");
-        context.Write(file, text);
+        context.Write(file, UpgradePokerV2(text));
         return SemanticInjectionResult.Success(
-            "Native near/far transitions gate only the source-proven poker far scanner; original seat, active hand, cleanup and realtime lanes continue.");
+            "Native location v2 replaces the previous 1 Hz distant poker wake scanner after the first valid snapshot; table/seat and active gameplay work remain, original scanner is standby fallback.");
     }
 
     internal static SemanticInjectionResult ApplyTunnel(SemanticPatchContext context)
     {
         var file = context.FindFile("init.lua","local function __gcetTunnelFarOutside()",
             "Rescue.surface", "H.phase", "JournalOffer.update");
+        if (file.Text.Contains("G-CET native location:tunnel-v2",StringComparison.Ordinal))
+            return SemanticInjectionResult.Skip("Native tunnel transition stage v2 already installed.");
         if (file.Text.Contains("G-CET native location:tunnel-v1",StringComparison.Ordinal))
-            return SemanticInjectionResult.Skip("Native tunnel transition stage already installed.");
+        {
+            context.Write(file, UpgradeTunnelV2(file.Text));
+            return SemanticInjectionResult.Success(
+                "Upgraded native quest distance to tri-state: both proven NEAR and FAR avoid Lua player-position reads; UNKNOWN retains original distance getter.");
+        }
         var text = Once(file.Text,
             "local function __gcetTunnelFarOutside()\n",
             "local __gcetTunnelNativeFar = false\nlocal function __gcetTunnelFarOutside()\n", "Tunnel discovery gate");
@@ -117,9 +234,9 @@ internal static class NativeLocationFourOwnersSource
         """;
         text = Once(text, "local __gcetTunnelOutsideAcc = 0.0\n",
             setup + "local __gcetTunnelOutsideAcc = 0.0\n", "Tunnel native attach");
-        context.Write(file,text);
+        context.Write(file,UpgradeTunnelV2(text));
         return SemanticInjectionResult.Success(
-            "Replaces repeated far-outside player world-position acquisition with native FAR only when quest-session guards permit; journal, recoveries and active scenes continue.");
+            "Native location v2 replaces both near and far distance probes after valid snapshots, preserving 150ms/500ms quest cadence, journal, input, recovery and original unknown fallback.");
     }
 
     internal static SemanticInjectionResult ApplyIllegal(SemanticPatchContext context)
@@ -127,8 +244,14 @@ internal static class NativeLocationFourOwnersSource
         var file = context.FindFile("physical_npc.lua",
             "function PhysicalNpc.Update(delta)","state.mechanics = result",
             "if entry.spawnPending then","loadMatrix()");
+        if (file.Text.Contains("G-CET native location:illegal-v2",StringComparison.Ordinal))
+            return SemanticInjectionResult.Skip("Native mechanic stage v2 already installed.");
         if (file.Text.Contains("G-CET native location:illegal-v1",StringComparison.Ordinal))
-            return SemanticInjectionResult.Skip("Native mechanic stage already installed.");
+        {
+            context.Write(file, UpgradeIllegalV2(file.Text));
+            return SemanticInjectionResult.Success(
+                "Native FAR now resolves pending mechanics and despawns established out-of-range NPCs without repeated position/vector scans; near and UNKNOWN retain exact source decisions.");
+        }
         var text = Once(file.Text,
             "  nextUpdateAt = 0.0\n}",
             "  nextUpdateAt = 0.0,\n  __gcetNativeFar = false\n}", "Mechanic supervisor state");
@@ -165,17 +288,23 @@ internal static class NativeLocationFourOwnersSource
             "  if #state.mechanics == 0 and not loadMatrix() then return end\n  local player = getPlayer()",
             "  if #state.mechanics == 0 and not loadMatrix() then return end\n" + gate + "  local player = getPlayer()",
             "Mechanic inactive far guard");
-        context.Write(file,text);
+        context.Write(file,UpgradeIllegalV2(text));
         return SemanticInjectionResult.Success(
-            "Native FAR skips empty matrix-distance scans; pending/live entities, exact 75/95m thresholds and original supervisor remain authoritative.");
+            "Native v2 FAR replaces matrix distance polling, including safe live-NPC despawn and pending resolution; exact 75/95m decisions, live entities and UNKNOWN fallback remain source-owned.");
     }
 
     internal static SemanticInjectionResult ApplyDedka(SemanticPatchContext context)
     {
         var file=context.FindFile("init.lua","dedka_entrance1","dedka_entrance2_cluster",
             "stopShopDetail()", "startShopDetail()", "entrancePos_2");
+        if(file.Text.Contains("G-CET native location:dedka-v2",StringComparison.Ordinal))
+            return SemanticInjectionResult.Skip("Native Dedka zone stage v2 already installed.");
         if(file.Text.Contains("G-CET native location:dedka-v1",StringComparison.Ordinal))
-            return SemanticInjectionResult.Skip("Native Dedka zone stage already installed.");
+        {
+            context.Write(file, UpgradeDedkaV2(file.Text));
+            return SemanticInjectionResult.Success(
+                "Upgraded source-proven native zone ownership and fallback without replacing the nearby shop detail/interaction lifecycle.");
+        }
         var text=Once(file.Text,
             "  engine.RegisterZone({\n    id = \"dedka_entrance1\",",
             "  local __gcetDedkaZone1 = engine.RegisterZone({\n    id = \"dedka_entrance1\",",
@@ -238,8 +367,8 @@ internal static class NativeLocationFourOwnersSource
             "  -- vehicle mount/unmount events (replaces per-frame GetMountedVehicle polling)",
             integration + "  -- vehicle mount/unmount events (replaces per-frame GetMountedVehicle polling)",
             "Dedka native aggregate binding");
-        context.Write(file,text);
+        context.Write(file,UpgradeDedkaV2(text));
         return SemanticInjectionResult.Success(
-            "Native aggregate NEAR/FAR replaces two existing 200m 0-Engine zone registrations only after snapshot; original zones restore on UNKNOWN.");
+            "Native v2 owns both distant shop zones following a valid snapshot; original 0-Engine zones remain standby fallback and near shop detail/interaction events are unchanged.");
     }
 }
