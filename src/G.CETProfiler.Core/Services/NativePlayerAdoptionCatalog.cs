@@ -29,6 +29,7 @@ internal static class NativePlayerAdoptionCatalog
         var player=0;
         var scanned=0;
         var skipped=0;
+        var authorized=0;
         if(!Directory.Exists(modsRoot))
             return new(Contract,"INSTALLED_LUA_SOURCES","MODS_FOLDER_MISSING",
                 0,0,0,0,0,0,[]);
@@ -67,13 +68,19 @@ internal static class NativePlayerAdoptionCatalog
                         "PLAYER_PUPPET_OBSERVER_RECEIVER" or
                         "PLAYER_PUPPET_OBSERVER_ALIAS";
                     if(isPlayer)player++;
+                    if(x.Method=="GetWorldPosition" &&
+                       x.ReceiverTag=="CURRENT_PLAYER_SOURCE_PROVEN")authorized++;
                     total++;
+                    var directLive=x.Method=="GetWorldPosition" &&
+                        x.ReceiverTag=="CURRENT_PLAYER_SOURCE_PROVEN";
                     return new Site(x.LineOffset+1,x.Method,x.ReceiverExpression,
                         x.ReceiverTag,x.Proof,x.ReceiverClass,
-                        x.Method=="GetWorldPosition"?"NATIVE_PLAYER_XYZ":
-                        "NO_NATIVE_EQUIVALENT",false,
-                        x.Method=="GetWorldPosition"
-                          ?"TYPED_VECTOR4_AND_CALLSITE_FRAME_FRESHNESS_NOT_PROVEN"
+                        x.Method=="GetWorldPosition"?"NATIVE_PLAYER_TYPED_VECTOR4":
+                        "NO_NATIVE_EQUIVALENT",directLive,
+                        directLive
+                          ?"AUTO_GUARDED_STRICT_LIVE_WITH_ORIGINAL_FALLBACK"
+                          :x.Method=="GetWorldPosition"
+                          ?"IDENTITY_OR_SAME_FRAME_SEMANTICS_NOT_PROVEN"
                           :"NO_COMPATIBLE_NATIVE_API");
                 }).ToArray();
                 files.Add(new File(rel,sites));
@@ -83,7 +90,7 @@ internal static class NativePlayerAdoptionCatalog
         catch(UnauthorizedAccessException){skipped++;}
         return new(Contract,"INSTALLED_LUA_SOURCES",
             skipped==0?"INVENTORY_COMPLETE_WITHIN_SCAN_LIMITS":"PARTIAL_SCAN_FAILURE",
-            scanned,skipped,total,player,total-player,0,files.ToArray());
+            scanned,skipped,total,player,total-player,authorized,files.ToArray());
     }
 
     internal static void Write(string modsRoot,string output)

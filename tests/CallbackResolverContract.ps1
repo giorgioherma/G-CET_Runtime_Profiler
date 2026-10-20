@@ -846,8 +846,9 @@ $nativeCatalog=$result.nativePlayerAdoptionCatalog
 if($null -eq $nativeCatalog -or
    [string]$nativeCatalog.contract -ne 'GCET_NATIVE_PLAYER_ADOPTION_DISCOVERY_V1' -or
    [string]$nativeCatalog.source -ne 'CURRENT_INSTALLED_LUA_NOT_CAPTURE_GATED' -or
-   $nativeCatalog.nativeVector4RewriteAllowed -or
-   [int]$nativeCatalog.safeGenericNativeRewrites -ne 0 -or
+   [string]$nativeCatalog.nativeVector4RewriteMode -ne 'GUARDED_STRICT_LIVE_DIRECT_GAME_GETPLAYER_ONLY' -or
+   $nativeCatalog.nativeFrameCacheSameFrameRewriteAllowed -or
+   [int]$nativeCatalog.safeGenericNativeRewrites -lt 0 -or
    [int]$nativeCatalog.getterCallsites -le 0) {
     throw 'Native player adoption source-only catalog missing, incomplete or falsely rewrite-authorizing.'
 }

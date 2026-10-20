@@ -278,7 +278,8 @@ try
         InventoryTag(x)=="UNKNOWN")==1,
         "NPC getter was incorrectly promoted to player");
     Check((int)catalog.GetType().GetProperty("NativeRewriteAuthorizedSites")!
-        .GetValue(catalog)! == 0,"Unproven native Vector4 rewrite authorized");
+        .GetValue(catalog)! >= 1,
+        "Direct Game.GetPlayer native live candidate was not authorized");
     var saveCatalog=catalogType.GetMethod("Write",
         BindingFlags.Static|BindingFlags.NonPublic|BindingFlags.Public)!;
     var savedCatalog=Path.Combine(root,"native-player-discovery.json");
@@ -292,6 +293,39 @@ try
             "Native inventory contract mismatch");
     }
     Console.WriteLine("GCET NativePlayerAdoption full-source catalog PASS");
+
+    // Native adoption must be mechanical, fail-open, CRLF/idempotent,
+    // and never substitute other NPC receivers or comments/strings.
+    var vectorStage=core.GetType(
+        "GCETRuntimeProfiler.Core.Services.NativePlayerVectorStage",true)!;
+    var tryVector=vectorStage.GetMethod("TryTransform",
+        BindingFlags.Static|BindingFlags.NonPublic|BindingFlags.Public)!;
+    var vecSource="""
+        -- Game.GetPlayer():GetWorldPosition() is only a comment
+        local str="Game.GetPlayer():GetWorldPosition()"
+        local a=Game.GetPlayer():GetWorldPosition()
+        local npc=findNpc()
+        local b=npc:GetWorldPosition()
+        """.Replace("\n","\r\n");
+    object?[] vecArgs=[vecSource,null,0];
+    Check((bool)tryVector.Invoke(null,vecArgs)! &&
+        (int)vecArgs[2]! == 1,"Direct GetPlayer source should be rewritten once");
+    var transformed=(string)vecArgs[1]!;
+    Check(transformed.Contains("GCETPlayerVector4Live") &&
+        transformed.Contains("GCETPlayerVector4Valid") &&
+        transformed.Contains("return Game.GetPlayer():GetWorldPosition()"),
+        "Typed native live provider or original fallback missing");
+    Check(transformed.Contains("npc:GetWorldPosition()") &&
+        transformed.Contains("-- Game.GetPlayer():GetWorldPosition()") &&
+        transformed.Contains("\"Game.GetPlayer():GetWorldPosition()\""),
+        "NPC, quoted or commented getter modified");
+    Check(transformed.Contains("\r\n"),"Native vector helper lost CRLF");
+    object?[] vecAgain=[transformed,null,0];
+    Check(!(bool)tryVector.Invoke(null,vecAgain)!,"Native vector transform not idempotent");
+    object?[] shadowVec=[
+        "local Game={}\nreturn Game.GetPlayer():GetWorldPosition()",null,0];
+    Check(!(bool)tryVector.Invoke(null,shadowVec)!,"Shadowed Game should be rejected");
+    Console.WriteLine("GCET NativePlayerVector guarded live source PASS");
 
     Console.WriteLine("GCET NativeReadReuse source-first contracts PASS");
 }

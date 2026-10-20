@@ -1,0 +1,119 @@
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.RegularExpressions;
+
+namespace GCETRuntimeProfiler.Core.Services;
+
+/// <summary>
+/// Source-first opt-in at the exact direct Game.GetPlayer():GetWorldPosition
+/// expression. No semantic equivalence is asserted for PlayerPuppet:self or
+/// aliases. The guarded provider invokes the on-demand STRICT-LIVE native
+/// getter, never the unverified phase-shared cache, and falls back to the
+/// original expression if native ABI is missing or invalid.
+/// </summary>
+internal static class NativePlayerVectorStage
+{
+    internal const string Contract="GCET_NATIVE_PLAYER_VECTOR_LIVE_V1";
+    internal const string Marker="-- G-CET native player Vector4 on-demand live v1";
+    private const string Helper="__gcetNativePlayerWorldPosition";
+    private static readonly Regex Expression=new(
+        @"(?<![A-Za-z0-9_\.:])Game\s*\.\s*GetPlayer\s*\(\s*\)\s*:\s*GetWorldPosition\s*\(\s*\)",
+        RegexOptions.CultureInvariant|RegexOptions.Compiled);
+    private static readonly Regex ShadowGame=new(
+        @"\blocal\s+Game\b|\bGame\s*=(?!=)|\bfunction\s*\w+\s*\([^)]*\bGame\b[^)]*\)",
+        RegexOptions.CultureInvariant|RegexOptions.Compiled);
+
+    internal static bool TryTransform(string original,out string output,out int count)
+    {
+        output=original;count=0;
+        if(string.IsNullOrEmpty(original)||original.Contains(Marker,StringComparison.Ordinal))
+            return false;
+        var masked=NativeReadReuseSource.MaskNonCode(original);
+        if(ShadowGame.IsMatch(masked) ||
+           Regex.IsMatch(masked,@"\b"+Helper+@"\b",RegexOptions.CultureInvariant))
+            return false;
+        var matches=Expression.Matches(masked).Cast<Match>().ToArray();
+        if(matches.Length==0)return false;
+        var builder=new StringBuilder(original);
+        foreach(var m in matches.Reverse())
+            builder.Remove(m.Index,m.Length).Insert(m.Index,Helper+"()");
+        var nl=original.Contains("\r\n",StringComparison.Ordinal)?"\r\n":"\n";
+        var header=string.Join(nl,new []{
+            Marker,
+            "local __gcetNativeLive, __gcetNativeValid",
+            "do",
+            "  local ok,fn=pcall(function() return Game.GCETPlayerVector4Live end)",
+            "  if ok and type(fn)=='function' then __gcetNativeLive=fn end",
+            "  local validOk,validFn=pcall(function() return Game.GCETPlayerVector4Valid end)",
+            "  if validOk and type(validFn)=='function' then __gcetNativeValid=validFn end",
+            "end",
+            "local function "+Helper+"()",
+            "  if __gcetNativeLive and __gcetNativeValid then",
+            "    local ok,value=pcall(__gcetNativeLive)",
+            "    if ok and value~=nil then",
+            "      local statusOk,valid=pcall(__gcetNativeValid)",
+            "      if statusOk and valid==true then return value end",
+            "    end",
+            "  end",
+            "  return Game.GetPlayer():GetWorldPosition()",
+            "end",
+            ""
+        });
+        output=header+builder;
+        count=matches.Length;
+        return true;
+    }
+
+    internal static int TryStage(string modsRoot,
+        Dictionary<string,byte[]> staged,
+        Dictionary<string,string?> liveSourceHashes,
+        Dictionary<string,int> appliedTransformsByFile,
+        List<object> transformManifest,List<object> skipped)
+    {
+        var root=Path.GetFullPath(modsRoot);
+        var prefix=root.TrimEnd(Path.DirectorySeparatorChar)+Path.DirectorySeparatorChar;
+        var inventory=NativePlayerAdoptionCatalog.Scan(modsRoot);
+        var applied=0;
+        foreach(var file in inventory.Files)
+        {
+            if(!file.Sites.Any(x=>x.Method=="GetWorldPosition" &&
+                x.IdentityTag=="CURRENT_PLAYER_SOURCE_PROVEN"))continue;
+            var relative=file.RelativeFile;
+            var path=Path.GetFullPath(Path.Combine(root,relative.Replace('/',Path.DirectorySeparatorChar)));
+            if(!path.StartsWith(prefix,StringComparison.OrdinalIgnoreCase)||
+               !System.IO.File.Exists(path))continue;
+            var original=System.IO.File.ReadAllBytes(path);
+            var key=relative.Replace('\\','/');
+            var input=staged.TryGetValue(key,out var current)?current:original;
+            var text=NativeReadReuseSource.Decode(input);
+            if(!TryTransform(text,out var result,out var count))continue;
+            if(LuaLocalBudgetAnalyzer.Analyze(result).MaxActiveLocals>
+               LuaLocalBudgetAnalyzer.Limit)
+            {
+                skipped.Add(new{type="NATIVE_PLAYER_VECTOR_LIVE",file=key,
+                    reason="LUA_LOCAL_LIMIT"});
+                continue;
+            }
+            var bom=input.Length>=3&&input[0]==0xef&&input[1]==0xbb&&input[2]==0xbf;
+            var bytes=Encoding.UTF8.GetBytes(result);
+            if(bom)bytes=[0xef,0xbb,0xbf,..bytes];
+            staged[key]=bytes;
+            if(!liveSourceHashes.ContainsKey(key))
+                liveSourceHashes[key]=Convert.ToHexString(SHA256.HashData(original)).ToLowerInvariant();
+            appliedTransformsByFile[key]=appliedTransformsByFile.GetValueOrDefault(key)+count;
+            transformManifest.Add(new {
+                type="NATIVE_PLAYER_VECTOR_LIVE", contract=Contract,file=key,
+                sourceSha256=Convert.ToHexString(SHA256.HashData(original)).ToLowerInvariant(),
+                replacedOccurrences=count,receiverProof="DIRECT_GAME_GETPLAYER_EXPRESSION",
+                source="ALL_INSTALLED_LUA_NOT_CAPTURE_GATED",
+                backend="RED4EXT_TYPED_VECTOR4_FORCE_LIVE",
+                originalFallback="Game.GetPlayer():GetWorldPosition()",
+                cacheReuse=false,reason="CONSERVATIVE_CROSS_PHASE_FRESHNESS",
+                runtimeCapability="GCETPlayerVector4Live+GCETPlayerVector4Valid",
+                savings="NOT_MEASURED",doesNotRetireCallback=true
+            });
+            applied+=count;
+        }
+        return applied;
+    }
+}

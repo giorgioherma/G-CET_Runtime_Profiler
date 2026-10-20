@@ -141,6 +141,14 @@ public static class PassGeneratorService
             captureRoot, modsRoot, staged, liveSourceHashes,
             appliedTransformsByFile, transformManifest, skipped);
 
+        // Direct, source-proven Game.GetPlayer():GetWorldPosition() only:
+        // typed native forced-live getter plus original fail-open fallback.
+        // Runs BEFORE generic GetPlayer shared-read replacement, otherwise
+        // the direct chain would be hidden inside __gcetGetPlayer().
+        var nativePlayerVectorCount=NativePlayerVectorStage.TryStage(
+            modsRoot,staged,liveSourceHashes,appliedTransformsByFile,
+            transformManifest,skipped);
+
         // Broad source-first getter reuse is applied AFTER all existing
         // semantic and callback transforms. This avoids clobbering PASS11
         // source anchors and permits safe composition in a single ZIP.
@@ -247,7 +255,10 @@ public static class PassGeneratorService
                 nativeReadReuseAppliedOccurrences = nativeReadReuseCount,
                 nativeReadReuseBypassesCallbackCpuGate = true,
                 nativeReadReuseBackend = "0-Engine:existing-shared-provider",
-                nativePlayerVectorRewrite = false,
+                nativePlayerVectorRewrite = nativePlayerVectorCount > 0,
+                nativePlayerVectorGuardedLiveAppliedOccurrences = nativePlayerVectorCount,
+                nativePlayerVectorFrameReuseAuthorized = false,
+                nativePlayerVectorContract = NativePlayerVectorStage.Contract,
                 modNameRules = false,
                 sourceShaRequired = true,
                 sourceShaRequiredForGeneric = true,
@@ -284,6 +295,7 @@ public static class PassGeneratorService
                     "SEQUENCE_FIRST_SCRIPTABLE_SYSTEM_POLL",
                     "SHARED_PROVIDER_READ",
                     "NATIVE_READ_REUSE",
+                    "NATIVE_PLAYER_VECTOR_LIVE",
                     "SEMANTIC_RULE_SOURCE_INJECTION",
                     "0_ENGINE_PSM_DEFINITIONS_CACHE_STAGE_A"
                 },
