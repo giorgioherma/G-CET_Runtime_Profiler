@@ -218,6 +218,17 @@ public static class PassGeneratorService
             fixedInfrastructurePaths.Add(relative);
         }
 
+        // An official Resolver ships a CI-built native service, never a DLL
+        // copied from the player's game. Without it, native source changes
+        // are rejected rather than producing an incomplete installation ZIP.
+        var requiresNative = nativePlayerVectorCount > 0 || staged.Any(pair =>
+            !pair.Key.StartsWith("0-Engine/", StringComparison.OrdinalIgnoreCase) &&
+            (Encoding.UTF8.GetString(pair.Value).Contains(
+                "G-CET native location:", StringComparison.Ordinal) ||
+             Encoding.UTF8.GetString(pair.Value).Contains(
+                NativePlayerVectorStage.Marker, StringComparison.Ordinal)));
+        var nativeRuntime = NativeRuntimeBundle.TryLoad(requiresNative);
+
         var fileManifest = staged
             .OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
             .Select(pair => (object)new
@@ -233,6 +244,18 @@ public static class PassGeneratorService
                 fixedInfrastructure = fixedInfrastructurePaths.Contains(pair.Key)
             })
             .ToList();
+
+        if (nativeRuntime is not null)
+        {
+            fileManifest.Add(new
+            {
+                path = NativeRuntimeBundle.GameRootRelativePath,
+                sourceSha256 = (string?)null,
+                generatedSha256 = nativeRuntime.Sha256,
+                appliedTransforms = 0,
+                fixedInfrastructure = true
+            });
+        }
 
         var resolverBytes = File.ReadAllBytes(resolverPath);
         var captureName = new DirectoryInfo(captureRoot).Name;
@@ -259,6 +282,9 @@ public static class PassGeneratorService
                 nativePlayerVectorGuardedLiveAppliedOccurrences = nativePlayerVectorCount,
                 nativePlayerVectorFrameReuseAuthorized = false,
                 nativePlayerVectorContract = NativePlayerVectorStage.Contract,
+                nativeRuntimeIncluded = nativeRuntime is not null,
+                nativeRuntimeManifestOptionalForDynamicOwners = true,
+                nativeRuntimeSha256ProvenanceOnly = true,
                 modNameRules = false,
                 sourceShaRequired = true,
                 sourceShaRequiredForGeneric = true,
@@ -321,11 +347,20 @@ public static class PassGeneratorService
                     .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
                     .ToArray()
             },
+            nativeRuntime = new
+            {
+                included = nativeRuntime is not null,
+                gameRootPath = nativeRuntime is null ? null : NativeRuntimeBundle.GameRootRelativePath,
+                sha256 = nativeRuntime?.Sha256,
+                bootstrap = "MISSING_MANIFEST_EMPTY; MALFORMED_MANIFEST_REJECTED",
+                requiredByGeneratedSource = requiresNative
+            },
             summary = new
             {
-                files = staged.Count,
+                files = staged.Count + (nativeRuntime is null ? 0 : 1),
                 callbackFiles = callbackFileCount,
                 fixedRuntimeFiles = fixedRuntime.Files.Count,
+                nativeRuntimeFiles = nativeRuntime is null ? 0 : 1,
                 genericTransforms = transformManifest.Count - semanticTransformCount,
                 semanticTransforms = semanticTransformCount,
                 transforms = transformManifest.Count,
@@ -365,6 +400,13 @@ public static class PassGeneratorService
                 using var stream = entry.Open();
                 stream.Write(pair.Value, 0, pair.Value.Length);
             }
+            if (nativeRuntime is not null)
+            {
+                var entry = archive.CreateEntry(
+                    NativeRuntimeBundle.GameRootRelativePath, CompressionLevel.Optimal);
+                using var stream = entry.Open();
+                stream.Write(nativeRuntime.Bytes, 0, nativeRuntime.Bytes.Length);
+            }
         }
 
         File.WriteAllText(
@@ -375,7 +417,7 @@ public static class PassGeneratorService
         return new PassBuildResult(
             outputZipPath,
             manifestPath,
-            staged.Count,
+            staged.Count + (nativeRuntime is null ? 0 : 1),
             transformManifest.Count,
             skipped.Count);
     }
