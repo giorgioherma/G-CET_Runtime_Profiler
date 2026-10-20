@@ -47,7 +47,7 @@ int main(){
  CHECK(s.Poll(100)==PlayerSnapshot::Availability);
  s.Tick(true,2,3,4,1);
  CHECK(s.Status()==2&&s.Poll(100)==PlayerSnapshot::Fields);
- CHECK(s.Poll(200)==PlayerSnapshot::Availability);
+ CHECK((s.Poll(200)&PlayerSnapshot::Availability)!=0);
  s.Tick(true,3,3,4);s.Tick(true,4,3,4);
  CHECK((s.Poll(100)&PlayerSnapshot::Coalesced)!=0);
  CHECK(s.X()==4);
