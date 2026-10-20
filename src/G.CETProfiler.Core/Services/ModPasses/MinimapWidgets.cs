@@ -269,7 +269,7 @@ internal static partial class SemanticInjectors
             m.Groups["indent"].Value + "local hours = " + stage + ":Hours()\n" +
             m.Groups["indent"].Value + "local minutes = " + stage + ":Minutes()");
         var provider = new Regex(
-            @"(?m)^(?<indent>[ \t]*)local\s+mod\s*=\s*GetMod\(\s*['""]TimeIsRunningOut['""]\s*\)[ \t]*$",
+            @"(?m)^(?<indent>[ \t]*)local\s+mod\s*=\s*GetMod\(\s*['""]TimeIsRunningOut['""]\s*\)[ \t]*\r?$",
             RegexOptions.CultureInvariant);
         if (provider.Matches(text).Count != 1)
             throw new InvalidOperationException("TimeIsRunningOut provider is no longer one unique optional time-only lookup.");
