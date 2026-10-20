@@ -43,13 +43,37 @@ event registration. Both are metadata, not receiver classifications.
 orientation/combat methods) with no locally detectable \`Game\` shadowing.
 This describes **source origin**, not a sampled runtime entity identity.
 
+\`PLAYER_PUPPET_OBSERVER_RECEIVER\`: an exact, unshadowed direct
+\`Observe\`/\`ObserveAfter\`/\`Override\` registration with literal
+\`"PlayerPuppet", "Method"\` parameters and an inline Lua function binds its
+**first argument** (whatever the identifier, usually \`self\`) to the
+registered PlayerPuppet instance. The operation occurs within that function
+and the first parameter was not reassigned. This **does not claim equivalence
+to \`Game.GetPlayer()\` across every game lifecycle state**.
+
+\`PLAYER_PUPPET_OBSERVER_ALIAS\`: the same registered first parameter reaches
+the operation via a straight-line \`local alias = self\` declaration, without
+intervening branch, scope boundary or reassignment; analysis-only.
+
+\`CLASS_BOUND_OBSERVER_RECEIVER\`: a first argument bound to a registered
+non-PlayerPuppet class. The exact class is included in \`receiverClass\`;
+a generic \`ScriptedPuppet\` registration does not imply nonplayer identity.
+
+The source recognizer finds the enclosing registration in the **full installed
+Lua file** and matches the profiler's callback kind, class, method, and
+source-line window. It explicitly rejects wrapped registrations
+(e.g. \`Event.Observe\`), shadowed registration functions, nested Lua functions,
+reassigned first parameters, and ambiguous local aliases. The owner of an
+unrelated \`targetNpc:GetWorldPosition()\` call is never inferred from the
+PlayerPuppet callback context.
+
 \`PLAYER_ALIAS_SOURCE_EVIDENCE\`: a traceable local player binding and alias
 chain without reassignment or lexical scope boundary in the available source
 span. It remains **investigation evidence only**, not a conclusive cross-path
 runtime proof.
 
 \`UNKNOWN\`: unrecognized/dynamic/mixed/out-of-scope receiver; including
-\`this:GetWorldPosition()\` in a PlayerPuppet callback, NPC references,
+\`this:GetWorldPosition()\` without an exact enclosing direct CET registration, NPC references,
 reassigned aliases, ambiguous scope and missing source. It is never
 silently classified as "not player".
 

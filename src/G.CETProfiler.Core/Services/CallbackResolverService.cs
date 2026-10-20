@@ -587,7 +587,9 @@ internal static class CallbackResolverService
                 var source = sourceIndex.Resolve(cb);
                 var sites = source is null
                     ? Array.Empty<PlayerOwnershipEvidenceSource.Callsite>()
-                    : PlayerOwnershipEvidenceSource.Analyze(source.CallbackText);
+                    : PlayerOwnershipEvidenceSource.Analyze(
+                        source.FullText, cb.Kind, cb.Target,
+                        source.LineStart, source.LineEnd);
                 return new
                 {
                     registrationId = cb.RegistrationId,
@@ -607,6 +609,7 @@ internal static class CallbackResolverService
                         line = source?.LineStart is int start ? start + site.LineOffset : (int?)null,
                         receiverTag = site.ReceiverTag,
                         proof = site.Proof,
+                        receiverClass = site.ReceiverClass,
                         runtimeObserved = site.RuntimeObserved,
                         authorizesRewrite = site.AuthorizesRewrite
                     }).ToArray()
@@ -777,6 +780,13 @@ internal static class CallbackResolverService
                     traceablePlayerAliasCalls = playerOwnershipCallbacks.Sum(x =>
                         x.getterCallsites.Count(site =>
                             site.receiverTag == "PLAYER_ALIAS_SOURCE_EVIDENCE")),
+                    playerPuppetObserverReceiverCalls = playerOwnershipCallbacks.Sum(x =>
+                        x.getterCallsites.Count(site =>
+                            site.receiverTag == "PLAYER_PUPPET_OBSERVER_RECEIVER" ||
+                            site.receiverTag == "PLAYER_PUPPET_OBSERVER_ALIAS")),
+                    otherClassObserverReceiverCalls = playerOwnershipCallbacks.Sum(x =>
+                        x.getterCallsites.Count(site =>
+                            site.receiverTag == "CLASS_BOUND_OBSERVER_RECEIVER")),
                     unknownReceiverCalls = playerOwnershipCallbacks.Sum(x =>
                         x.getterCallsites.Count(site => site.receiverTag == "UNKNOWN"))
                 }

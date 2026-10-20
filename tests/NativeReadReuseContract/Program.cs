@@ -133,7 +133,7 @@ try
         local dynamic = changing:IsInCombat()
         local observer = this:GetWorldPosition()
         """;
-    var siteRows=(Array)analyzeOwnership.Invoke(null,[playerScript])!;
+    var siteRows=(Array)analyzeOwnership.Invoke(null,[playerScript,null,null,null,null])!;
     Check(siteRows.Length==5,"Unexpected getter receiver callsite count");
     string Tag(object x)=>(string)x.GetType().GetProperty("ReceiverTag")!.GetValue(x)!;
     var playerTags=siteRows.Cast<object>().Select(Tag).ToArray();
@@ -144,17 +144,108 @@ try
     Check(playerTags.Count(x=>x=="UNKNOWN")==3,
         "NPC, rebound alias or PlayerPuppet 'this' must remain UNKNOWN");
     var shadowedRows=(Array)analyzeOwnership.Invoke(null,[
-        "local Game = something\nlocal pos=Game.GetPlayer():GetWorldPosition()"])!;
+        "local Game = something\nlocal pos=Game.GetPlayer():GetWorldPosition()",null,null,null,null])!;
     Check(shadowedRows.Length==1&&Tag(shadowedRows.GetValue(0)!)=="UNKNOWN",
         "Shadowed Game facade was falsely proven");
     var boundaryRows=(Array)analyzeOwnership.Invoke(null,[
-        "local p = Game.GetPlayer()\nif ready then return end\nlocal x=p:GetWorldPosition()"])!;
+        "local p = Game.GetPlayer()\nif ready then return end\nlocal x=p:GetWorldPosition()",null,null,null,null])!;
     Check(boundaryRows.Length==1&&Tag(boundaryRows.GetValue(0)!)=="UNKNOWN",
         "Cross-scope local alias was falsely proven");
     Check(siteRows.Cast<object>().All(x=>
         !(bool)x.GetType().GetProperty("RuntimeObserved")!.GetValue(x)! &&
         !(bool)x.GetType().GetProperty("AuthorizesRewrite")!.GetValue(x)!),
         "Source-only ownership tag must never impersonate runtime evidence");
+    // Class-registered callback first parameter is a real instance receiver;
+    // it may be called 'self', 'actor', etc. Matching the class/target and
+    // lexical body is mandatory. The tag does not prove current local player.
+    var observedScript="""
+        -- Observe("PlayerPuppet", "OnAction", function(fake)
+        --    fake:GetWorldPosition()
+        -- end)
+        Observe("PlayerPuppet", "OnAction", function(actor, action)
+            local p = actor
+            local a = actor:GetWorldPosition()
+            local b = p:GetWorldOrientation()
+            if action then
+                local c = actor:IsInCombat()
+            end
+            local npcPos = nearbyNpc:GetWorldPosition()
+            local inner = function() return actor:GetWorldPosition() end
+        end)
+        Observe("NPCPuppet", "OnAction", function(npc, action)
+            local d = npc:GetWorldPosition()
+        end)
+        """;
+    var observedRows=(Array)analyzeOwnership.Invoke(null,
+        [observedScript,"observe","PlayerPuppet::OnAction",null,null])!;
+    var observedTags=observedRows.Cast<object>().Select(Tag).ToArray();
+    Check(observedTags.Length==6,"Wrong full-file registered-callsite inventory");
+    Check(observedTags.Count(x=>x=="PLAYER_PUPPET_OBSERVER_RECEIVER")==2,
+        "PlayerPuppet first argument not bound to registration, including if body");
+    Check(observedTags.Count(x=>x=="PLAYER_PUPPET_OBSERVER_ALIAS")==1,
+        "Safe straight-line first-parameter alias not recognized");
+    Check(observedTags.Count(x=>x=="UNKNOWN")==3,
+        "NPC, nested function or different registration falsely bound to player");
+    Check(observedRows.Cast<object>().Any(x=>
+        (string)x.GetType().GetProperty("ReceiverClass")!.GetValue(x)!=="PlayerPuppet"),
+        "Registered callback receiver class provenance missing");
+    var overridden="""
+        Override("PlayerPuppet", "OnAction", function(entity, action, wrapped)
+            return entity:GetWorldPosition()
+        end)
+        """;
+    var overrideRows=(Array)analyzeOwnership.Invoke(null,
+        [overridden,"Override","PlayerPuppet::OnAction",null,null])!;
+    Check(overrideRows.Length==1&&Tag(overrideRows.GetValue(0)!)==
+        "PLAYER_PUPPET_OBSERVER_RECEIVER","Override first receiver not recognized");
+    var wrapped="""
+        Event.Observe("PlayerPuppet", "OnAction", function(self)
+            return self:GetWorldPosition()
+        end)
+        """;
+    var wrappedRows=(Array)analyzeOwnership.Invoke(null,
+        [wrapped,"observe","PlayerPuppet::OnAction",null,null])!;
+    Check(wrappedRows.Length==1&&Tag(wrappedRows.GetValue(0)!)=="UNKNOWN",
+        "Wrapped Observe must not inherit direct CET first-arg contract");
+    var rebound="""
+        Observe("PlayerPuppet", "OnAction", function(self)
+            if condition then self = npc end
+            return self:GetWorldPosition()
+        end)
+        """;
+    var reboundRows=(Array)analyzeOwnership.Invoke(null,
+        [rebound,"observe","PlayerPuppet::OnAction",null,null])!;
+    Check(reboundRows.Length==1&&Tag(reboundRows.GetValue(0)!)=="UNKNOWN",
+        "Rebound self incorrectly classified as player");
+    var globalEvent="""
+        registerForEvent("onUpdate", function(self)
+            local pos = self:GetWorldPosition()
+        end)
+        """;
+    var globalRows=(Array)analyzeOwnership.Invoke(null,
+        [globalEvent,"event","onUpdate",null,null])!;
+    Check(globalRows.Length==1&&Tag(globalRows.GetValue(0)!)=="UNKNOWN",
+        "Event callback first arg incorrectly assumed to be player");
+    var otherClass="""
+        Observe("ScriptedPuppet", "OnAction", function(self)
+            return self:GetWorldPosition()
+        end)
+        """;
+    var otherRows=(Array)analyzeOwnership.Invoke(null,
+        [otherClass,"observe","ScriptedPuppet::OnAction",null,null])!;
+    Check(otherRows.Length==1&&Tag(otherRows.GetValue(0)!)==
+        "CLASS_BOUND_OBSERVER_RECEIVER","Other class must not be PlayerPuppet");
+    // Full-file metadata windows restrict a callback to its measured span:
+    // an unrelated PlayerPuppet registration cannot leak across callbacks.
+    var scopedRows=(Array)analyzeOwnership.Invoke(null,
+        [observedScript,"observe","PlayerPuppet::OnAction",10,14])!;
+    Check(scopedRows.Cast<object>().All(x=>Tag(x)!="CLASS_BOUND_OBSERVER_RECEIVER"),
+        "Source span leaked a different registration");
+    Check(observedRows.Cast<object>().All(x=>
+        !(bool)x.GetType().GetProperty("RuntimeObserved")!.GetValue(x)! &&
+        !(bool)x.GetType().GetProperty("AuthorizesRewrite")!.GetValue(x)!),
+        "Registered self evidence falsely enabled an optimization");
+
     Console.WriteLine("GCET PlayerOwnership source-only receiver evidence PASS");
 
     Console.WriteLine("GCET NativeReadReuse source-first contracts PASS");
