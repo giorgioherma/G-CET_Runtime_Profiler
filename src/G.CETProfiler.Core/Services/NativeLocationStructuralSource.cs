@@ -37,6 +37,79 @@ internal static class NativeLocationStructuralSource
     private static string Restore(string text,bool crlf) =>
         crlf?text.Replace("\n","\r\n",StringComparison.Ordinal):text;
 
+    // Used for semantic candidate admission and per-stage completion. These
+    // are source *graphs* (registration + lifecycle + consumer), not hashes,
+    // version tags, changed logger text, or identity-only filename matches.
+    // The injector subsequently verifies unique exact mutation edges.
+    internal static bool ProvesSourceShape(string rule,IEnumerable<string> sources)
+    {
+        foreach(var text in sources)
+        {
+            bool Has(string literal)=>text.Contains(literal,StringComparison.Ordinal);
+            switch(rule)
+            {
+                case "native-location-poker":
+                    if(Has("StreetTables.update") && Has("StreetTables.locations") &&
+                       Has("poker.world_far") && Has("poker.world_near") &&
+                       Has("poker.seat_near") && Has("Schedule.EveryFrame") &&
+                       Regex.IsMatch(text,@"\bclient\.Schedule\.Every\s*\(",Opt) &&
+                       Regex.IsMatch(text,@"\b[A-Za-z_]\w*\.Pause\(\)",Opt) &&
+                       Regex.IsMatch(text,@"\b[A-Za-z_]\w*\.Resume\(\)",Opt))
+                        return true;
+                    break;
+                case "native-location-dedka":
+                    if(Has("dedka_entrance1") && Has("dedka_entrance2_cluster") &&
+                       Has("RegisterZone(") && Has("startShopDetail()") &&
+                       Has("stopShopDetail()") &&
+                       Regex.IsMatch(text,@"\bonEnter\s*=",Opt) &&
+                       Regex.IsMatch(text,@"\bonExit\s*=",Opt))
+                        return true;
+                    break;
+                case "native-location-marmurbank":
+                    if(Has("PosData.All") && Has("RegisterSpatialSet") &&
+                       Has("QueryNearest") && Has("spatialHandle:unregister()") &&
+                       Regex.IsMatch(text,
+                           @"function\s+bank:registerSpatialSet\s*\(",Opt) &&
+                       Regex.IsMatch(text,@"function\s+bank:distanceListener\s*\(",Opt))
+                        return true;
+                    break;
+            }
+        }
+        return false;
+    }
+
+    internal static bool CompleteStage(string rule,IEnumerable<string> sources)
+    {
+        foreach(var t in sources)
+        {
+            switch(rule)
+            {
+                case "native-location-poker":
+                    if(t.Contains("G-CET native location:poker-structural-v1",StringComparison.Ordinal) &&
+                       t.Contains("lookup:attachCompiled(10031",StringComparison.Ordinal) &&
+                       t.Contains("__gcetPokerNativeOwned",StringComparison.Ordinal) &&
+                       t.Contains("farWorld.Resume()",StringComparison.Ordinal))
+                        return true;
+                    break;
+                case "native-location-dedka":
+                    if(t.Contains("G-CET native location:dedka-structural-v1",StringComparison.Ordinal) &&
+                       t.Contains("lookup:attachCompiled(10034",StringComparison.Ordinal) &&
+                       t.Contains("__gcetDedkaRestore",StringComparison.Ordinal) &&
+                       t.Contains("__gcetDedkaRetire",StringComparison.Ordinal))
+                        return true;
+                    break;
+                case "native-location-marmurbank":
+                    if(t.Contains("G-CET native location:marmurbank-structural-v1",StringComparison.Ordinal) &&
+                       t.Contains("lookup:attachCompiled(10036",StringComparison.Ordinal) &&
+                       t.Contains("self.__gcetNativeFar",StringComparison.Ordinal) &&
+                       t.Contains("self.spatialHandle:unregister()",StringComparison.Ordinal))
+                        return true;
+                    break;
+            }
+        }
+        return false;
+    }
+
     // Current PASS4 variants can rename handles, regroup declarations, and
     // reformat timers. Identify the three lanes by their stable scheduler IDs
     // AND prove pause/resume and active/realtime behavior before editing.
