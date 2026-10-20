@@ -1,6 +1,6 @@
 # Native static-location source integration — 2026-10-20
 
-**Current status:** Four source-specific Resolver semantic stages and the opt-in 0-Engine native event host are implemented on `dev/resolver-profiler-handoff`. Lua host regression and managed CI gates are maintained in the normal build. **This is not equivalent to a gameplay-verified combined overlay.** Native RED4ext DLL remains independently installed and was not changed or bundled into the Profiler.
+**Current status:** Four source-specific native-location v2 Resolver stages and the shared 0-Engine event host are implemented on `dev/resolver-profiler-handoff`. The compatible RED4ext DLL is bundled with the Resolver's generated game-root optimization ZIP, not with the temporary Profiler instrumentation. Native and managed CI are distinct from gameplay proof; the four-owner combined overlay still requires in-game validation.
 
 ## Architecture / bounds
 
@@ -76,8 +76,8 @@ rather than requiring an extra repair pass:
 | illegal_mechanic_phase1a | original 75 m/95 m NPC streaming with half-second scans; v1 native FAR skipped scans only when no NPC existed | Native FAR skips inactive/unspawned entries even when another mechanic is live; live and pending NPCs keep their original exact-distance/resolve/despawn logic (no native-based premature deletion during fast travel) |
 | Dedka Auto Shop | original 0-Engine 200 m entrance zones plus 5 Hz nearby detail | Existing native aggregate fully retires both zone evaluators after known state; v2 retains original zones purely for UNKNOWN/native failure fallback and leaves shop details/input/callbacks unchanged |
 
-The catalog uses `G-CET native location:* -v2` completion
-postconditions (without the space before `-v2` in actual markers), including
+The catalog uses `G-CET native location:<owner>-v2` completion
+postconditions, including
 v2-specific behavior tokens, rather than treating a v1 marker as completed.
 Each injector accepts supported existing v1 source or composes v1-to-v2
 **in one generation from pristine source**; existing Lua code is not
