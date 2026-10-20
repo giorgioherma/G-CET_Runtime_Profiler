@@ -626,6 +626,52 @@ Write-Host 'Existing customized 0-Engine native host retained + missing compiled
 
 Write-Host 'Native static location additional owners: Card Collection 100-site coarse dormancy, banker SpatialHash FAR, Yaiba bathroom author gate; fallback, CRLF and idempotence PASS'
  
+# Semantic catalog generic-source bridge, with original fallback preservation
+# and explicit rejection of an unproven helper name.
+$semanticInjectorType=$asm.GetType('GCETRuntimeProfiler.Core.Services.SemanticInjectors',$true)
+$literalAdapter=$semanticInjectorType.GetMethod('ReplaceOnce',$flags)
+$regexAdapter=$semanticInjectorType.GetMethod('RegexReplaceOnce',$flags)
+if(!$literalAdapter -or !$regexAdapter){throw 'Shared semantic getter adapters missing'}
+$srcGeneric=@'
+-- G-CET shared provider: PLAYER
+local function __gcetGetPlayer()
+  return Game.GetPlayer()
+end
+local player = __gcetGetPlayer()
+'@
+$srcOriginal="local player = Game.GetPlayer()"
+$replacement=@'
+local player = Game.GetPlayer()
+if not player then return end
+'@
+try {
+ $rewritten=[string]$literalAdapter.Invoke($null,
+  [object[]]@($srcGeneric,$srcOriginal,$replacement,"generic player source"))
+} catch {throw "Literal generic-source bridge failed: $($_.Exception.InnerException.Message)"}
+if(!$rewritten.Contains('local player = __gcetGetPlayer()') -or
+   !$rewritten.Contains('return Game.GetPlayer()') -or
+   !$rewritten.Contains('if not player then return end')){
+ throw 'Semantic literal adapter discarded generic getter or fallback'
+}
+$regexPattern='(?m)^local\s+player\s*=\s*Game\.GetPlayer\(\)\s*$'
+try {
+ $rewrittenRegex=[string]$regexAdapter.Invoke($null,
+  [object[]]@($srcGeneric,$regexPattern,$replacement,"generic regex player"))
+} catch {throw "Regex generic-source bridge failed: $($_.Exception.InnerException.Message)"}
+if(!$rewrittenRegex.Contains('local player = __gcetGetPlayer()') -or
+   !$rewrittenRegex.Contains('if not player then return end') -or
+   !$rewrittenRegex.Contains('return Game.GetPlayer()')){
+ throw 'Semantic regex adapter discarded generic getter or original fallback'
+}
+$unproven='local player = __gcetGetPlayer()'
+$refused=$false
+try {
+ $null=$literalAdapter.Invoke($null,
+  [object[]]@($unproven,$srcOriginal,$replacement,"unproven helper"))
+} catch {$refused=$true}
+if(!$refused){throw 'Semantic adapter accepted unproven generic helper'}
+Write-Host 'Catalog generic getter composition: literal, regex, fallback and unproven refusal PASS'
+
 # Regression: two generic stages finish before semantic source composition.
 # Native static locations are its LAST substage. No generic rewrite may
 # run after semantic. The actual generated source is independently validated
