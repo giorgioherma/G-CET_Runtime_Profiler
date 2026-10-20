@@ -221,18 +221,20 @@ public static class PassGeneratorService
         // An official Resolver ships a CI-built native service, never a DLL
         // copied from the player's game. Without it, native source changes
         // are rejected rather than producing an incomplete installation ZIP.
-        var requiresNative = nativePlayerVectorCount > 0 || staged.Any(pair =>
+        // Compile all independently proven location owners FIRST. Native
+        // coverage must survive a pass that changes only an unrelated mod;
+        // completed owners are recognized in their installed source.
+        var availableLocations=CompiledNativeLocations.Compile(modsRoot,staged);
+        var requiresNative = availableLocations.OwnerCounts.Count>0 ||
+            nativePlayerVectorCount > 0 || staged.Any(pair =>
             !pair.Key.StartsWith("0-Engine/", StringComparison.OrdinalIgnoreCase) &&
             (Encoding.UTF8.GetString(pair.Value).Contains(
                 "G-CET native location:", StringComparison.Ordinal) ||
              Encoding.UTF8.GetString(pair.Value).Contains(
-                NativePlayerVectorStage.Marker, StringComparison.Ordinal)));
+                 NativePlayerVectorStage.Marker, StringComparison.Ordinal)));
         var nativeRuntime = NativeRuntimeBundle.TryLoad(requiresNative);
-        // Always ship an explicit GCAS manifest with the bundled DLL. Even an
-        // empty manifest prevents stale sites from an older generated overlay.
-        // Owners without source-constant coordinates keep dynamic author wake.
-        var nativeLocations = nativeRuntime is null ? null :
-            CompiledNativeLocations.Compile(modsRoot, staged);
+        // Explicit empty GCAS prevents ghost anchors from a stale overlay.
+        var nativeLocations = nativeRuntime is null ? null : availableLocations;
 
         var fileManifest = staged
             .OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
