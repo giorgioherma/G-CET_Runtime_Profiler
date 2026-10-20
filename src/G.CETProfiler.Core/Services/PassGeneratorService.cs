@@ -228,6 +228,11 @@ public static class PassGeneratorService
              Encoding.UTF8.GetString(pair.Value).Contains(
                 NativePlayerVectorStage.Marker, StringComparison.Ordinal)));
         var nativeRuntime = NativeRuntimeBundle.TryLoad(requiresNative);
+        // Always ship an explicit GCAS manifest with the bundled DLL. Even an
+        // empty manifest prevents stale sites from an older generated overlay.
+        // Owners without source-constant coordinates keep dynamic author wake.
+        var nativeLocations = nativeRuntime is null ? null :
+            CompiledNativeLocations.Compile(modsRoot, staged);
 
         var fileManifest = staged
             .OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
@@ -252,6 +257,18 @@ public static class PassGeneratorService
                 path = NativeRuntimeBundle.GameRootRelativePath,
                 sourceSha256 = (string?)null,
                 generatedSha256 = nativeRuntime.Sha256,
+                appliedTransforms = 0,
+                fixedInfrastructure = true
+            });
+        }
+
+        if (nativeLocations is not null)
+        {
+            fileManifest.Add(new
+            {
+                path = CompiledNativeLocations.GameRootRelativePath,
+                sourceSha256 = (string?)null,
+                generatedSha256 = Sha256(nativeLocations.Bytes),
                 appliedTransforms = 0,
                 fixedInfrastructure = true
             });
@@ -283,7 +300,9 @@ public static class PassGeneratorService
                 nativePlayerVectorFrameReuseAuthorized = false,
                 nativePlayerVectorContract = NativePlayerVectorStage.Contract,
                 nativeRuntimeIncluded = nativeRuntime is not null,
-                nativeRuntimeManifestOptionalForDynamicOwners = true,
+                nativeRuntimeManifestOptionalForDynamicOwners = false,
+                compiledSourceOwnedNativeLocations = nativeLocations is not null,
+                compiledNativeLocationOwnerCounts = nativeLocations?.OwnerCounts,
                 nativeRuntimeSha256ProvenanceOnly = true,
                 modNameRules = false,
                 sourceShaRequired = true,
@@ -352,15 +371,18 @@ public static class PassGeneratorService
                 included = nativeRuntime is not null,
                 gameRootPath = nativeRuntime is null ? null : NativeRuntimeBundle.GameRootRelativePath,
                 sha256 = nativeRuntime?.Sha256,
-                bootstrap = "MISSING_MANIFEST_EMPTY; MALFORMED_MANIFEST_REJECTED",
+                bootstrap = "COMPILED_GCAS_V1_FROM_INSTALLED_AUTHOR_SOURCES; UNKNOWN_OWNER_DYNAMIC_ORIGINAL_FALLBACK",
+                locationFilePath = nativeLocations is null ? null : CompiledNativeLocations.GameRootRelativePath,
+                locationSha256 = nativeLocations is null ? null : Sha256(nativeLocations.Bytes),
+                compiledOwnerCounts = nativeLocations?.OwnerCounts,
                 requiredByGeneratedSource = requiresNative
             },
             summary = new
             {
-                files = staged.Count + (nativeRuntime is null ? 0 : 1),
+                files = staged.Count + (nativeRuntime is null ? 0 : 2),
                 callbackFiles = callbackFileCount,
                 fixedRuntimeFiles = fixedRuntime.Files.Count,
-                nativeRuntimeFiles = nativeRuntime is null ? 0 : 1,
+                nativeRuntimeFiles = nativeRuntime is null ? 0 : 2,
                 genericTransforms = transformManifest.Count - semanticTransformCount,
                 semanticTransforms = semanticTransformCount,
                 transforms = transformManifest.Count,
@@ -407,6 +429,13 @@ public static class PassGeneratorService
                 using var stream = entry.Open();
                 stream.Write(nativeRuntime.Bytes, 0, nativeRuntime.Bytes.Length);
             }
+            if (nativeLocations is not null)
+            {
+                var entry = archive.CreateEntry(
+                    CompiledNativeLocations.GameRootRelativePath, CompressionLevel.Optimal);
+                using var stream = entry.Open();
+                stream.Write(nativeLocations.Bytes, 0, nativeLocations.Bytes.Length);
+            }
         }
 
         File.WriteAllText(
@@ -417,7 +446,7 @@ public static class PassGeneratorService
         return new PassBuildResult(
             outputZipPath,
             manifestPath,
-            staged.Count + (nativeRuntime is null ? 0 : 1),
+            staged.Count + (nativeRuntime is null ? 0 : 2),
             transformManifest.Count,
             skipped.Count);
     }
