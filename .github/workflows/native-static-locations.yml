@@ -9,7 +9,7 @@ permissions:
 on:
   workflow_dispatch:
   push:
-    branches: [dev/resolver-profiler-handoff, dev/native-fixed-cache-player-state, dev/native-player-vector4-handoff]
+    branches: [dev/resolver-profiler-handoff, dev/native-fixed-cache-player-state, dev/native-player-vector4-handoff, dev/native-on-demand-player-frame-20261020]
     paths:
       # Build only on code/interface/test changes. Documentation-only edits
       # must not recompile the native DLL or trigger product CI.
@@ -87,6 +87,8 @@ jobs:
           $dll = 'build/static-locations/Release/GCETStaticLocations.dll'
           if (!$cpp.Contains('RegisterFunction("GCETPlayerVector4",PlayerVector4,"Vector4"') -or
               !$cpp.Contains('w=pos.W') -or
+              !$cpp.Contains('RegisterFunction("GCETPlayerVector4Live"') -or
+              !$cpp.Contains('GetFrameNumber') -or
               !$header.Contains('ReadVector4(float& x,float& y,float& z,float& w)')) {
             throw 'Player Vector4 RTTI registration or complete snapshot transfer is missing.'
           }

@@ -55,6 +55,13 @@ function Hub.TryAuto(game,consumer,onFallback)
             return nil,"INCOMPLETE_VECTOR4_ABI"
         end
     end
+    if has(64) then
+        native.GCETPlayerVector4Live=nativeMethod(game,"GCETPlayerVector4Live")
+        native.GCETPlayerVector4Valid=nativeMethod(game,"GCETPlayerVector4Valid")
+        if not native.GCETPlayerVector4Live or not native.GCETPlayerVector4Valid then
+            return nil,"INCOMPLETE_DEMAND_ABI"
+        end
+    end
     -- No native sampling begins until someone Watch()es and the shared host
     -- invokes Step() on its already existing update lane.
     return Hub.new(native,consumer,onFallback)
@@ -152,11 +159,24 @@ end
 -- A typed, opt-in read. Never manufacture Vector4 userdata from XYZ in Lua.
 -- The producer must have a valid native sample and caller must independently
 -- prove the update phase matches its original getter; otherwise fallback.
-function Hub:TryReadVector4()
+function Hub:TryReadVector4(requireLive)
     if self.closed then return nil,"CLOSED" end
-    local fn=self.native.GCETPlayerVector4
+    local native=self.native
+    if type(native.GCETPlayerVector4Valid)=="function" then
+        -- The on-demand native getter reads from the game itself on a frame
+        -- miss, and performs a direct engine read for requireLive==true.
+        local fn=requireLive and native.GCETPlayerVector4Live or native.GCETPlayerVector4
+        if type(fn)~="function" then return nil,"TYPED_VECTOR4_UNAVAILABLE" end
+        local read,value=invoke(fn)
+        if not read or value==nil then return nil,"NATIVE_VECTOR4_FAILED" end
+        local ok,valid=invoke(native.GCETPlayerVector4Valid)
+        if not ok or valid~=true then return nil,"PLAYER_UNKNOWN" end
+        return value,nil
+    end
+    if requireLive then return nil,"ON_DEMAND_NATIVE_UNAVAILABLE" end
+    local fn=native.GCETPlayerVector4
     if type(fn)~="function" then return nil,"TYPED_VECTOR4_UNAVAILABLE" end
-    local ok,status=invoke(self.native.GCETPlayerStatus)
+    local ok,status=invoke(native.GCETPlayerStatus)
     if not ok or status~=2 then return nil,"PLAYER_UNKNOWN" end
     local read,value=invoke(fn)
     if not read or value==nil then return nil,"NATIVE_VECTOR4_FAILED" end

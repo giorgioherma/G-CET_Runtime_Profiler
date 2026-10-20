@@ -80,6 +80,24 @@ assert(unknown)
 local unavailable,unknownReason=unknown:TryReadVector4()
 assert(unavailable==nil and unknownReason=="PLAYER_UNKNOWN" and reads==1)
 unknown:Shutdown()
+g.GCETPlayerVector4Valid=function()return true end
+g.GCETPlayerVector4Live=function()return {x=11,y=22,z=33,w=0.75} end
+g.GCETPlayerCapabilities=function()return 127 end
+local demand=Hub.TryAuto(g,7001)
+assert(demand)
+local result,err=demand:TryReadVector4(true)
+assert(result and err==nil and result.w==0.75)
+demand:Shutdown()
+g.GCETPlayerVector4Valid=function()return false end
+local missing=Hub.TryAuto(g,7001)
+assert(missing)
+local n,reason=missing:TryReadVector4()
+assert(n==nil and reason=="PLAYER_UNKNOWN")
+missing:Shutdown()
+g.GCETPlayerVector4Valid=nil
+local noDemand,missingReason=Hub.TryAuto(g,7001)
+assert(noDemand==nil and missingReason=="INCOMPLETE_DEMAND_ABI")
+g.GCETPlayerCapabilities=function()return 63 end
 g.GCETPlayerVector4=nil
 local bad,failed=Hub.TryAuto(g,7001)
 assert(bad==nil and failed=="INCOMPLETE_VECTOR4_ABI")

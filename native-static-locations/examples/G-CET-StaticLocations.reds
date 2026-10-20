@@ -65,7 +65,7 @@ public native func GCETStaticMetric(metric: Int32) -> Int64;
 // discovery by an EXISTING shared host. Capabilities bits:
 // 1 position, 2 availability, 4 change-poll, 8 session epoch,
 // 16 player snapshot independent of the static-location manifest,
-// 32 native typed Vector4 player-position getter.
+// 32 native typed Vector4 player-position getter, 64 on-demand/frame or forced-live API.
 public native func GCETPlayerApiVersion() -> Int32;
 public native func GCETPlayerCapabilities() -> Int32;
 public native func GCETPlayerConsumerCount() -> Int32;
@@ -84,3 +84,12 @@ public native func GCETPlayerZ() -> Float;
 // On UNKNOWN or incompatible callback phase, retain original authored getter.
 // No implicit rewrite authorization; optional ABI v1 bit 32.
 public native func GCETPlayerVector4() -> Vector4;
+
+// On-demand getter uses ScriptGameInstance.GetFrameNumber when available;
+// unknown frame identity forces an actual engine read for every request.
+// Forced-live getter always calls the engine. Valid() describes the immediately
+// preceding native getter call on the main thread; never use the zero sentinel.
+public native func GCETPlayerVector4Live() -> Vector4;
+public native func GCETPlayerVector4Valid() -> Bool;
+public native func GCETPlayerPositionCacheHits() -> Int64;
+public native func GCETPlayerPositionEngineReads() -> Int64;

@@ -1,6 +1,7 @@
 #include "StaticIndex.hpp"
 #include "PositionCoordinator.hpp"
 #include "PlayerSnapshot.hpp"
+#include "DemandFrameCache.hpp"
 #include "DiagnosticProbe.hpp"
 #include <cmath>
 #include <RED4ext/Scripting/Utils.hpp>
@@ -19,6 +20,8 @@ namespace {
     bool g_loaded = false;
     gcet::static_locations::PositionCoordinator g_coordinator(g_index);
     gcet::static_locations::PlayerSnapshot g_playerSnapshot;
+    gcet::static_locations::DemandFrameCache g_onDemandPosition;
+    bool g_positionLastReadValid=false;
     gcet::static_locations::DiagnosticProbe g_probe(g_index,g_coordinator);
     const RED4ext::v1::Logger* g_logger=nullptr;
     RED4ext::v1::PluginHandle g_handle{};
@@ -51,6 +54,7 @@ namespace {
     }
 
     // RED4ext's Running-state callback provides ONE native position owner.
+    bool ReadFrameNumber(uint64_t& number);
     int32_t SamplePlayer(float& x,float& y,float& z,float& w){
         RED4ext::ScriptGameInstance game;
         RED4ext::Handle<RED4ext::IScriptable> player;
@@ -69,6 +73,7 @@ namespace {
         return 0;
     }
     bool RunningEnter(RED4ext::CGameApplication*){
+        g_onDemandPosition.Reset();g_positionLastReadValid=false;
         // Player snapshot is independent of location manifest readiness.
         g_playerSnapshot.Enter();
         if(g_loaded) {
@@ -94,6 +99,13 @@ namespace {
         float x=0,y=0,z=0,w=0;
         const int32_t code=SamplePlayer(x,y,z,w);
         g_lastPlayerCode=code;
+        // Share the already-performed native engine read with same-frame
+        // CET callers. If frame RTTI is unavailable, do not seed the cache.
+        uint64_t currentFrame=0;
+        if(code==0 && ReadFrameNumber(currentFrame))
+            g_onDemandPosition.Seed(currentFrame,true,{x,y,z,w});
+        else if(code!=0)
+            g_onDemandPosition.Reset();
         if(playerDemand)g_playerSnapshot.Tick(code==0,x,y,z,w);
         if(g_loaded && locationDemand){
             g_coordinator.Tick(code==0,x,y,z);
@@ -129,6 +141,7 @@ namespace {
         return false;
     }
     bool RunningExit(RED4ext::CGameApplication*){
+        g_onDemandPosition.Reset();g_positionLastReadValid=false;
         g_playerSnapshot.Exit();
         if(g_loaded) {
             if(g_probe.Id()>0)g_probe.Remove();
@@ -148,7 +161,7 @@ namespace {
         f->code++;*out=1;
     }
     void PlayerCapabilities(RED4ext::IScriptable*,RED4ext::CStackFrame* f,int32_t* out,int64_t){
-        f->code++;*out=1|2|4|8|16|32;
+        f->code++;*out=1|2|4|8|16|32|64;
     }
     void PlayerConsumerCount(RED4ext::IScriptable*,RED4ext::CStackFrame* f,int32_t* out,int64_t){
         f->code++;*out=static_cast<int32_t>(g_playerSnapshot.SubscriberCount());
@@ -189,13 +202,61 @@ namespace {
     // or stale snapshot produces the zero sentinel; callers MUST check
     // GCETPlayerStatus()==2 and phase freshness before using it. This is
     // deliberately not yet an automatic replacement for GetWorldPosition().
+    // Single typed return. Read through the engine directly if the game's
+    // frame-number RTTI method cannot be resolved; never return an old sample
+    // merely because the profiler host or native subscriber has not ticked.
+    bool ReadFrameNumber(uint64_t& number){
+        auto* rtti=RED4ext::CRTTISystem::Get();
+        auto* cls=rtti ? rtti->GetClass("ScriptGameInstance") : nullptr;
+        auto* method=cls ? cls->GetFunction("GetFrameNumber") : nullptr;
+        if(!method)return false;
+        RED4ext::ScriptGameInstance game;
+        number=0;
+        return RED4ext::ExecuteFunction(&game,method,&number);
+    }
+    bool ReadPositionNative(gcet::static_locations::Position4& pos){
+        float x=0,y=0,z=0,w=0;
+        const int32_t code=SamplePlayer(x,y,z,w);
+        if(code!=0)return false;
+        pos={x,y,z,w};
+        return true;
+    }
     void PlayerVector4(RED4ext::IScriptable*,RED4ext::CStackFrame* f,
                        RED4ext::Vector4* out,int64_t) {
         f->code++;
         *out=RED4ext::Vector4{};
-        float x=0,y=0,z=0,w=0;
-        if(!g_playerSnapshot.ReadVector4(x,y,z,w)) return;
-        out->X=x;out->Y=y;out->Z=z;out->W=w;
+        g_positionLastReadValid=false;
+        uint64_t frame=0;
+        bool gotFrame=ReadFrameNumber(frame);
+        gcet::static_locations::Position4 pos{};
+        if(!g_onDemandPosition.Read(frame,gotFrame,ReadPositionNative,pos))
+            return;
+        out->X=pos.x;out->Y=pos.y;out->Z=pos.z;out->W=pos.w;
+        g_positionLastReadValid=true;
+    }
+    void PlayerVector4Live(RED4ext::IScriptable*,RED4ext::CStackFrame* f,
+                           RED4ext::Vector4* out,int64_t) {
+        f->code++;*out=RED4ext::Vector4{};
+        g_positionLastReadValid=false;
+        uint64_t frame=0;
+        bool gotFrame=ReadFrameNumber(frame);
+        gcet::static_locations::Position4 pos{};
+        if(!g_onDemandPosition.Read(frame,gotFrame,ReadPositionNative,pos,true))
+            return;
+        out->X=pos.x;out->Y=pos.y;out->Z=pos.z;out->W=pos.w;
+        g_positionLastReadValid=true;
+    }
+    void PlayerVector4Valid(RED4ext::IScriptable*,RED4ext::CStackFrame* f,
+                            bool* out,int64_t){
+        f->code++;*out=g_positionLastReadValid;
+    }
+    void PlayerPositionCacheHits(RED4ext::IScriptable*,RED4ext::CStackFrame* f,
+                                 int64_t* out,int64_t){
+        f->code++;*out=static_cast<int64_t>(g_onDemandPosition.Hits());
+    }
+    void PlayerPositionEngineReads(RED4ext::IScriptable*,RED4ext::CStackFrame* f,
+                                   int64_t* out,int64_t){
+        f->code++;*out=static_cast<int64_t>(g_onDemandPosition.Reads());
     }
     void CoordinatorStatus(RED4ext::IScriptable*,RED4ext::CStackFrame* frame,int32_t* out,int64_t){
         frame->code++;
@@ -430,6 +491,10 @@ namespace {
         // ABI v1 additive capability bit 32 (typed Vector4). Keep all older
         // scalar/near-far API consumers compatible.
         RegisterFunction("GCETPlayerVector4",PlayerVector4,"Vector4",nullptr,nullptr,0);
+        RegisterFunction("GCETPlayerVector4Live",PlayerVector4Live,"Vector4",nullptr,nullptr,0);
+        RegisterFunction("GCETPlayerVector4Valid",PlayerVector4Valid,"Bool",nullptr,nullptr,0);
+        RegisterFunction("GCETPlayerPositionCacheHits",PlayerPositionCacheHits,"Int64",nullptr,nullptr,0);
+        RegisterFunction("GCETPlayerPositionEngineReads",PlayerPositionEngineReads,"Int64",nullptr,nullptr,0);
 
     }
     void LoadData() {
@@ -479,6 +544,7 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle handle,
         }
         RED4ext::CRTTISystem::Get()->AddPostRegisterCallback(PostRegisterTypes);
     } else if (reason == RED4ext::v1::EMainReason::Unload) {
+        g_onDemandPosition.Reset();g_positionLastReadValid=false;
         g_playerSnapshot.Exit();g_coordinator.Exit(); g_index.Clear(); g_loaded=false;
         g_logger=nullptr;
     }
