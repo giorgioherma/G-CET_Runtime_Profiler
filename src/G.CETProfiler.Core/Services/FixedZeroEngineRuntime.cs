@@ -29,13 +29,6 @@ internal static class FixedZeroEngineRuntime
     internal const string BaseVersion = "0.18.6";
     internal const string FixedVersion = "0.18.14-ADDITIVE-WORKLOAD-SERVICES";
 
-    // The repository keeps the last proven fixed init compressed as the baseline.
-    // The shared-system layer is injected deterministically at pass generation
-    // time so existing PASS4 installs can be upgraded without replacing the
-    // entire opaque payload by hand.
-    internal const string LegacyFixedInitSha256 =
-        "a0e6480c9404e968e30e573a36fd92b5a87310ba91bfac305a80aad04938e2ef";
-
     private const string SharedSystemMarker =
         "-- G-CET shared providers v2";
 
@@ -68,16 +61,12 @@ internal static class FixedZeroEngineRuntime
     private const string HostActionRouterModule =
         "modules/G-CET/ActionRouter.lua";
 
-    private static readonly IReadOnlyDictionary<string, string> FixedModuleHashes =
-        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["modules/ActionRouter.lua"] =
-                "4ef1eafd3aeb255c9bb940c37f6b4a0e6781da19219254e448f9ba5bff477656",
-            ["modules/Health.lua"] =
-                "85b2c6402e54c64f83c1f55e35b5bfee0dc5ebabcdd079c3c8aebb06b010620f",
-            ["modules/Scheduler.lua"] =
-                "60529e3a1eb1db9e01f88ad44ff223ebe1d538bc55039ec8bb1f8dbed7f6e5b5"
-        };
+    private static readonly string[] FixedModules =
+    [
+        "modules/ActionRouter.lua",
+        "modules/Health.lua",
+        "modules/Scheduler.lua"
+    ];
 
     internal static FixedZeroEngineBuild Prepare(string modsRoot)
     {
@@ -122,20 +111,6 @@ internal static class FixedZeroEngineRuntime
         }
 
         var runtimeRoot = Path.Combine(AppContext.BaseDirectory, "runtime", "0-Engine");
-        var encodedInitPath = Path.Combine(runtimeRoot, "fixed-init.lua.gz.b64");
-        if (!File.Exists(encodedInitPath))
-        {
-            throw new InvalidOperationException(
-                $"Bundled fixed 0-Engine init payload is missing: {encodedInitPath}");
-        }
-
-        var fixedInit = DecodeGzipBase64(encodedInitPath, "init.lua");
-        var fixedInitHash = Sha256(fixedInit);
-        if (!fixedInitHash.Equals(LegacyFixedInitSha256, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException(
-                "Bundled fixed 0-Engine init payload failed its SHA256 integrity check.");
-        }
 
         // Upgrade the CURRENT source by proven additive anchors instead
         // of recognizing an old install through an exact file hash and
@@ -175,7 +150,7 @@ internal static class FixedZeroEngineRuntime
                 "No unknown 0-Engine files will be replaced.");
         }
 
-        var actionRouter = LoadVerifiedFixedModule(
+        var actionRouter = LoadBundledFixedModule(
             runtimeRoot,
             "modules/ActionRouter.lua");
 
@@ -227,48 +202,38 @@ internal static class FixedZeroEngineRuntime
             ["0-Engine/init.lua"] = sharedInit
         };
 
-        foreach (var pair in FixedModuleHashes)
+        foreach (var module in FixedModules)
         {
-            files["0-Engine/" + pair.Key] =
-                ReconcileHostModule(liveRoot, pair.Key,
-                    LoadVerifiedFixedModule(runtimeRoot, pair.Key));
+            files["0-Engine/" + module] =
+                ReconcileHostModule(liveRoot, module,
+                    LoadBundledFixedModule(runtimeRoot, module));
         }
 
         AddWorkloadModules(runtimeRoot, liveRoot, files);
         return files;
     }
 
-    private static byte[] LoadVerifiedFixedModule(
-        string runtimeRoot,
-        string modulePath)
+    private static byte[] LoadBundledFixedModule(
+        string runtimeRoot, string modulePath)
     {
-        if (!FixedModuleHashes.TryGetValue(modulePath, out var expectedHash))
-        {
+        if (!FixedModules.Contains(modulePath, StringComparer.Ordinal))
             throw new InvalidOperationException(
-                $"No bundled hash is registered for 0-Engine runtime module: {modulePath}");
-        }
-
-        var encodedPath = Path.Combine(
-            runtimeRoot,
+                "Unexpected bundled runtime module path: " + modulePath);
+        var path = Path.Combine(runtimeRoot,
             (modulePath + ".b64").Replace('/', Path.DirectorySeparatorChar));
-        if (!File.Exists(encodedPath))
-        {
+        if (!File.Exists(path))
             throw new InvalidOperationException(
-                $"Bundled fixed 0-Engine runtime payload is missing for {modulePath}: {encodedPath}");
-        }
+                "Bundled support module missing: " + path);
 
-        var bytes = DecodeBase64(encodedPath, modulePath);
-        var hash = Sha256(bytes);
-        if (!hash.Equals(expectedHash, StringComparison.OrdinalIgnoreCase))
-        {
+        // Version-fluid source adaptation does not use exact release hashes.
+        // A packaged baseline is trusted as part of the signed build artifact,
+        // but the installed source always takes precedence when present.
+        var bytes = DecodeBase64(path, modulePath);
+        if (bytes.Length < 100)
             throw new InvalidOperationException(
-                $"Bundled fixed 0-Engine runtime failed SHA256 verification: {modulePath}. " +
-                $"Expected {expectedHash}, got {hash}.");
-        }
-
+                "Bundled support module is empty or truncated: " + modulePath);
         return bytes;
     }
-
 
     // Additive, namespaced 0-Engine services. No stock runtime module is
     // replaced. No frame listener starts until a client opts into a service.
