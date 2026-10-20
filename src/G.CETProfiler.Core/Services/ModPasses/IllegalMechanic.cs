@@ -90,7 +90,7 @@ internal static partial class SemanticInjectors
         var hits = call.Matches(text);
         text = call.Replace(text, m =>
             m.Groups["indent"].Value + "local distance, __gcetPositionObserved = distanceFromPlayer(entry, player, " + stage + ")\n" +
-            m.Groups["indent"].Value + "if __gcetPositionObserved then " + stage + " = __gcetPositionObserved end");
+            m.Groups["indent"].Value + "if distance ~= nil and __gcetPositionObserved then " + stage + " = __gcetPositionObserved end");
         var loopAnchor = new Regex(
             @"(?m)^(?<indent>[ \t]*)if\s+player\s*==\s*nil\s+then\s+return\s+end\r?\n" +
             @"\r?\n\k<indent>for\s+_,\s*entry\s+in\s+ipairs\(state\.mechanics\)\s+do",
