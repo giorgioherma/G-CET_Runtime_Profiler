@@ -88,7 +88,7 @@ Check((string)pAgain[2]! == "ALREADY_SATISFIED", "Spatial idempotence wrong reas
 // Independently proven row reuse is not proof that the radius snapshot
 // has already been applied. This occurs in a mixed historical overlay.
 var gridOriginal = new System.Text.RegularExpressions.Regex(
-    @"(?m)^(?<outer>[ \\t]*)for dx = -cellRadius, cellRadius do\\r?\\n(?<inner>[ \\t]*)for dy = -cellRadius, cellRadius do\\r?\\n(?<key>[ \\t]*)local key = getGridKey\\(px \\+ dx \\* gridSize, py \\+ dy \\* gridSize, gridSize\\)");
+    @"(?m)^(?<outer>[ \t]*)for dx = -cellRadius, cellRadius do\r?\n(?<inner>[ \t]*)for dy = -cellRadius, cellRadius do\r?\n(?<key>[ \t]*)local key = getGridKey\(px \+ dx \* gridSize, py \+ dy \* gridSize, gridSize\)");
 var rowOnly = gridOriginal.Replace(spatialFixture, m =>
     m.Groups["outer"].Value + "for dx = -cellRadius, cellRadius do\\n" +
     m.Groups["inner"].Value + "local gx = math.floor((px + dx * gridSize) / gridSize)  -- G-CET SPATIAL_GRID_X_ROW_REUSE_STAGE_B_V1\\n" +
