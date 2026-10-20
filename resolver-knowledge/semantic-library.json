@@ -6392,9 +6392,9 @@
       "policyClass": "NATIVE_STATIC_LOCATION_QUEST_OFFERED_FAR",
       "callbacks": [
         {
-          "kind": "event",
-          "target": "onUpdate",
-          "role": "source-proven unaccepted 130m location dormancy"
+          "kind": "source",
+          "target": "init.lua",
+          "role": "source-only static giver location; do not compete with Ziggy quest onUpdate semantic rule"
         }
       ],
       "sourceProof": {
