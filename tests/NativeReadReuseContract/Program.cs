@@ -248,6 +248,51 @@ try
 
     Console.WriteLine("GCET PlayerOwnership source-only receiver evidence PASS");
 
+    // All installed mod sources participate, including dormant callbacks
+    // absent from profiler registration traces. Native XYZ does not supply
+    // a compatible full Vector4/freshness contract, so no unsafe rewrite.
+    Save("DormantPlayerObserver/init.lua", """
+        Observe("PlayerPuppet", "OnAction", function(self, action)
+            local pos = self:GetWorldPosition()
+            local npc = findNpc()
+            local npcPos = npc:GetWorldPosition()
+        end)
+        """);
+    var catalogType=core.GetType(
+        "GCETRuntimeProfiler.Core.Services.NativePlayerAdoptionCatalog",true)!;
+    var scan=catalogType.GetMethod("Scan",
+        BindingFlags.Static|BindingFlags.NonPublic|BindingFlags.Public)!;
+    var catalog=scan.Invoke(null,[mods])!;
+    var files=(Array)catalog.GetType().GetProperty("Files")!.GetValue(catalog)!;
+    var dormant=files.Cast<object>().Single(x=>(string)x.GetType()
+        .GetProperty("RelativeFile")!.GetValue(x)! == "DormantPlayerObserver/init.lua");
+    var dormantSites=(Array)dormant.GetType().GetProperty("Sites")!
+        .GetValue(dormant)!;
+    Check(dormantSites.Length==2,"Dormant observer inventory omitted getter");
+    string InventoryTag(object x)=>(string)x.GetType().GetProperty("IdentityTag")!
+        .GetValue(x)!;
+    Check(dormantSites.Cast<object>().Count(x=>
+        InventoryTag(x)=="PLAYER_PUPPET_OBSERVER_RECEIVER")==1,
+        "Dormant PlayerPuppet self not recognized");
+    Check(dormantSites.Cast<object>().Count(x=>
+        InventoryTag(x)=="UNKNOWN")==1,
+        "NPC getter was incorrectly promoted to player");
+    Check((int)catalog.GetType().GetProperty("NativeRewriteAuthorizedSites")!
+        .GetValue(catalog)! == 0,"Unproven native Vector4 rewrite authorized");
+    var saveCatalog=catalogType.GetMethod("Write",
+        BindingFlags.Static|BindingFlags.NonPublic|BindingFlags.Public)!;
+    var savedCatalog=Path.Combine(root,"native-player-discovery.json");
+    saveCatalog.Invoke(null,[mods,savedCatalog]);
+    using(var saved=JsonDocument.Parse(File.ReadAllText(savedCatalog)))
+    {
+        Check(saved.RootElement.GetProperty("Files").GetArrayLength()>0,
+            "Installer-native inventory was not emitted");
+        Check(saved.RootElement.GetProperty("Contract").GetString()==
+            "GCET_NATIVE_PLAYER_ADOPTION_DISCOVERY_V1",
+            "Native inventory contract mismatch");
+    }
+    Console.WriteLine("GCET NativePlayerAdoption full-source catalog PASS");
+
     Console.WriteLine("GCET NativeReadReuse source-first contracts PASS");
 }
 finally { Directory.Delete(root,true); }

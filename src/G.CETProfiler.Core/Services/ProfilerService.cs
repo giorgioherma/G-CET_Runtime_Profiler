@@ -233,6 +233,19 @@ public sealed class ProfilerService : IProfilerService
 
             bindings.EnsureDefaultF11IfMissing(paths);
 
+            // Installed game root is already validated. Build the complete
+            // source-side native-player candidate inventory before gameplay,
+            // without starting a profiler or executing author callbacks.
+            // Failed optional discovery must never leave the ASI install stuck.
+            try
+            {
+                NativePlayerAdoptionCatalog.Write(
+                    Path.Combine(paths.CetRoot, "mods"),
+                    Path.Combine(paths.StateRoot, "NativePlayerAdoptionCatalog.json"));
+            }
+            catch (IOException) { /* Resolver rescans live sources on generation. */ }
+            catch (UnauthorizedAccessException) { /* Installation remains usable. */ }
+
             SaveState(paths, state);
             return GetStatus(paths.Root);
         }

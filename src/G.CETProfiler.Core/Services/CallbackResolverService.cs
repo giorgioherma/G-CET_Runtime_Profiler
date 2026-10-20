@@ -621,6 +621,9 @@ internal static class CallbackResolverService
         // Authorization covers only existing, scalar-independent 0-Engine
         // shared Game.Get...() providers; player Vector4 reads stay review-only.
         var nativeReadReuseFiles = NativeReadReuseSource.Analyze(modsRoot);
+        // Enumerate dormant/unmeasured sources too. Installation may have a
+        // snapshot, but the current live Lua is authoritative after mod updates.
+        var nativePlayerCatalog = NativePlayerAdoptionCatalog.Scan(modsRoot);
 
         // Per-mod semantic rules can have their source-proven wake paths
         // entirely absent from the profiled interval. Keep these candidates
@@ -758,6 +761,36 @@ internal static class CallbackResolverService
                     .Count()
             },
             globalTopCallbacks = globalTop,
+            nativePlayerAdoptionCatalog = new
+            {
+                contract = NativePlayerAdoptionCatalog.Contract,
+                source = "CURRENT_INSTALLED_LUA_NOT_CAPTURE_GATED",
+                nativePlayerApi = "RED4EXT_XYZ_SNAPSHOT",
+                nativeVector4RewriteAllowed = false,
+                status = nativePlayerCatalog.Status,
+                filesScanned = nativePlayerCatalog.FilesScanned,
+                filesSkipped = nativePlayerCatalog.FilesSkipped,
+                getterCallsites = nativePlayerCatalog.TotalGetterSites,
+                playerOriginCandidates = nativePlayerCatalog.SourcePlayerGetterSites,
+                unresolvedOrOther = nativePlayerCatalog.OtherOrUnknownGetterSites,
+                safeGenericNativeRewrites = nativePlayerCatalog.NativeRewriteAuthorizedSites,
+                files = nativePlayerCatalog.Files.Select(f => new
+                {
+                    relativeFile = f.RelativeFile,
+                    callsites = f.Sites.Select(p => new
+                    {
+                        line = p.Line,
+                        method = p.Method,
+                        receiverExpression = p.Receiver,
+                        receiverTag = p.IdentityTag,
+                        sourceProof = p.SourceProof,
+                        receiverClass = p.ReceiverClass,
+                        nativeFamily = p.NativeFamily,
+                        nativeRewriteAuthorized = p.NativeRewriteAuthorized,
+                        missingContract = p.MissingContract
+                    }).ToArray()
+                }).ToArray()
+            },
             playerOwnershipEvidence = new
             {
                 contract = PlayerOwnershipEvidenceSource.Contract,

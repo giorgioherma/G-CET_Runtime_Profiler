@@ -842,6 +842,16 @@ if (!(Test-Path -LiteralPath $outPath -PathType Leaf)) {
 $result = Get-Content -LiteralPath $outPath -Raw | ConvertFrom-Json
 # Receiver ownership tagging is derived offline from existing callback
 # metadata and source. Callback class context never proves an inner getter.
+$nativeCatalog=$result.nativePlayerAdoptionCatalog
+if($null -eq $nativeCatalog -or
+   [string]$nativeCatalog.contract -ne 'GCET_NATIVE_PLAYER_ADOPTION_DISCOVERY_V1' -or
+   [string]$nativeCatalog.source -ne 'CURRENT_INSTALLED_LUA_NOT_CAPTURE_GATED' -or
+   $nativeCatalog.nativeVector4RewriteAllowed -or
+   [int]$nativeCatalog.safeGenericNativeRewrites -ne 0 -or
+   [int]$nativeCatalog.getterCallsites -le 0) {
+    throw 'Native player adoption source-only catalog missing, incomplete or falsely rewrite-authorizing.'
+}
+
 $ownership=$result.playerOwnershipEvidence
 if($null -eq $ownership -or
    [string]$ownership.contract -ne 'GCET_PLAYER_OWNERSHIP_EVIDENCE_V1' -or
