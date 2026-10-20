@@ -551,10 +551,14 @@ internal static class FixedZeroEngineRuntime
             relativeModule.Equals("modules/ActionRouter.lua",
                 StringComparison.OrdinalIgnoreCase))
         {
-            var exported = Regex.Match(source,
+            var exports = Regex.Matches(source,
                 @"(?m)^[ \t]*return[ \t]+(?<name>[A-Za-z_]\w*)[ \t]*;?[ \t]*(?:--[^\r\n]*)?$",
                 RegexOptions.CultureInvariant);
-            if (!exported.Success) return false;
+            if (exports.Count == 0) return false;
+            var exported = exports[^1];
+            if (!Regex.IsMatch(source[(exported.Index + exported.Length)..],
+                    @"\A(?:\s|--[^\r\n]*)*\z", RegexOptions.CultureInvariant))
+                return false;
             var name = exported.Groups["name"].Value;
             return Declares(source, name, "Subscribe") &&
                    Declares(source, name, "Dispatch");
