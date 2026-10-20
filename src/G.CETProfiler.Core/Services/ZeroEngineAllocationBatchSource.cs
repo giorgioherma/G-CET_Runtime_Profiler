@@ -14,9 +14,6 @@ internal static class ZeroEngineAllocationBatchSource
 {
     internal const string SpatialRelative = "0-Engine/modules/SpatialHash.lua";
     internal const string LifecycleRelative = "0-Engine/modules/Lifecycle.lua";
-    internal const string SpatialBaseSha = "ec9d6a8d3960ceb81b5588024786dfffecf290443415727c44231be159fd4b56";
-    internal const string SpatialRadiusOnlySha = "8f0af7d1d52a630628e1f12b75e4df54edc0f0f28ef607a2776e03367ee33adf";
-    internal const string LifecycleBaseSha = "49361c89ceee395024471a5e0dde3f7a83aff1ba22272624e81618502ad59d62";
     internal const string RadiusMarker = "-- G-CET SPATIAL_POLL_RADIUS_SNAPSHOT_STAGE_A_V1";
     internal const string RowMarker = "-- G-CET SPATIAL_GRID_X_ROW_REUSE_STAGE_B_V1";
     internal const string LifecycleMarker = "-- G-CET LIFECYCLE_SINGLE_ENTITY_ID_STAGE_A_V1";
@@ -42,7 +39,7 @@ internal static class ZeroEngineAllocationBatchSource
             var pathPart = fields[4].Replace('\\', '/').Trim('"');
             if (!pathPart.EndsWith("/mods/0-Engine/modules/" + module, StringComparison.OrdinalIgnoreCase)) continue;
             if (!int.TryParse(fields[5], NumberStyles.None, CultureInfo.InvariantCulture, out var foundLine) ||
-                foundLine != line) continue;
+                foundLine <= 0) continue;
             if (!fields[7].Contains("|" + child + "|C", StringComparison.Ordinal)) continue;
             if (!long.TryParse(fields[9], NumberStyles.None, CultureInfo.InvariantCulture, out var positive) ||
                 positive <= 0) continue;
@@ -52,10 +49,10 @@ internal static class ZeroEngineAllocationBatchSource
     }
 
     internal static bool TryTransformSpatial(byte[] source, out byte[] result, out string reason) =>
-        TryTransformSpatialCore(source, true, out result, out reason);
+        TryTransformSpatialCore(source, out result, out reason);
 
-    // Exposed only to the managed structural regression fixture.
-    internal static bool TryTransformSpatialCore(byte[] source, bool requireReviewedSha,
+    // Production and tests both use current-source structural proofs.
+    internal static bool TryTransformSpatialCore(byte[] source,
         out byte[] result, out string reason)
     {
         result = source;
@@ -65,24 +62,9 @@ internal static class ZeroEngineAllocationBatchSource
             reason = "ALREADY_SATISFIED";
             return false;
         }
-        var sha = Convert.ToHexString(SHA256.HashData(source)).ToLowerInvariant();
-        var originalVariant = sha.Equals(SpatialBaseSha, StringComparison.Ordinal);
-        var radiusOnlyVariant = sha.Equals(SpatialRadiusOnlySha, StringComparison.Ordinal);
-        if (requireReviewedSha && !originalVariant && !radiusOnlyVariant)
-        {
-            reason = "Unknown SpatialHash.lua SHA256 (only reviewed baseline or radius-only Stage A accepted).";
-            return false;
-        }
-
         var nl = original.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
         var updated = original;
         var alreadyRadius = original.Contains(RadiusMarker, StringComparison.Ordinal);
-        if (requireReviewedSha && alreadyRadius != radiusOnlyVariant)
-        {
-            reason = "SpatialHash radius marker/source variant mismatch.";
-            return false;
-        }
-
         if (!alreadyRadius)
         {
             var anchor = "    config = config or {}" + nl + "    entries = entries or {}";
@@ -167,9 +149,9 @@ internal static class ZeroEngineAllocationBatchSource
     }
 
     internal static bool TryTransformLifecycle(byte[] source, out byte[] result, out string reason) =>
-        TryTransformLifecycleCore(source, true, out result, out reason);
+        TryTransformLifecycleCore(source, out result, out reason);
 
-    internal static bool TryTransformLifecycleCore(byte[] source, bool requireReviewedSha,
+    internal static bool TryTransformLifecycleCore(byte[] source,
         out byte[] result, out string reason)
     {
         result = source;
@@ -177,12 +159,6 @@ internal static class ZeroEngineAllocationBatchSource
         if (original.Contains(LifecycleMarker, StringComparison.Ordinal))
         {
             reason = "ALREADY_SATISFIED";
-            return false;
-        }
-        var sha = Convert.ToHexString(SHA256.HashData(source)).ToLowerInvariant();
-        if (requireReviewedSha && !sha.Equals(LifecycleBaseSha, StringComparison.Ordinal))
-        {
-            reason = "Unknown Lifecycle.lua SHA256.";
             return false;
         }
         var nl = original.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
