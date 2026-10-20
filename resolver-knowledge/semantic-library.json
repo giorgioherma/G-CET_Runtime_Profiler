@@ -5946,7 +5946,7 @@
         "expectedMarkerFileCount": 1,
         "satisfiedAll": [
           "G-CET native location:tunnel-v2",
-          "__gcetTunnelNativeFar",
+          "__gcetTunnelNativeOutside",
           "lookup:attach(10032",
           "if __gcetTunnelNativeOutside ~= nil then return __gcetTunnelNativeOutside end"
         ]
