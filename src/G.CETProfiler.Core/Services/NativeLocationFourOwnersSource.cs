@@ -70,41 +70,20 @@ internal static class NativeLocationFourOwnersSource
             "G-CET native location:illegal-v1",
             "G-CET native location:illegal-v2",
             "Mechanic native revision");
-        // 100m native FAR exceeds the original 95m despawn threshold.
-        // If ANY source/streaming state is unknown, retain the original scan.
-        // Pending spawns always continue their original resolution path.
-        var oldBlock = new Regex(
-            @"(?s)  if state\.__gcetNativeFar then\s+local hasLiveOrPending=false\s+" +
-            @"for _,entry in ipairs\(state\.mechanics\) do\s+" +
-            @"if entry\.spawnPending or entry\.entityID ~= nil or entry\.entity ~= nil then\s+" +
-            @"hasLiveOrPending=true;break\s+end\s+end\s+" +
-            @"if not hasLiveOrPending then return end\s+end\s+" +
-            @"local player = getPlayer\(\)",
-            RegexOptions.CultureInvariant);
-        if (oldBlock.Matches(text).Count != 1)
-            throw new InvalidOperationException(
-                "Mechanic v1 FAR/live/pending ownership no longer uniquely proven.");
-        const string replacement = """
-          -- G-CET native FAR is strictly beyond the author's 95m despawn band.
-          -- Resolve pending spawns as authored; live NPCs may now be retired
-          -- without another Game.GetPlayer/GetWorldPosition/Vector4.Distance.
-          -- Uncertain entity lifetime fails open to the exact original scan.
-          if state.__gcetNativeFar then
-            local needsOriginal=false
-            for _,entry in ipairs(state.mechanics) do
-              if entry.spawnPending then
-                resolvePendingSpawn(entry)
-              elseif entry.entityID ~= nil then
-                deleteEntry(entry, "player left spawn radius (native FAR)")
-              elseif entry.entity ~= nil then
-                needsOriginal=true
-              end
-            end
-            if not needsOriginal then return end
-          end
-          local player = getPlayer()
-          """;
-        return oldBlock.Replace(text,replacement,1);
+
+        // Native FAR is an aggregate discovery hint (100m), not a replacement
+        // for the author's exact 75m spawn/95m despawn decisions for live NPCs.
+        // Fast travel can make a 10Hz Lua-delivered transition briefly stale.
+        // Retain original exact player-distance checks for all live entities,
+        // pending spawns and uncertain entity states. Only skip never-spawned,
+        // idle matrix entries while a valid native FAR is already known.
+        text = Once(text,
+            "    if entry.spawnPending then\n      resolvePendingSpawn(entry)\n    else\n      local distance",
+            "    if state.__gcetNativeFar and not entry.spawnPending and entry.entityID == nil and entry.entity == nil then\n" +
+            "      -- Far inactive site: no entity to maintain or despawn.\n" +
+            "    elseif entry.spawnPending then\n      resolvePendingSpawn(entry)\n    else\n      local distance",
+            "Mechanic safe distant inactive-site replacement");
+        return text;
     }
 
     private static string UpgradeDedkaV2(string text)
@@ -250,7 +229,7 @@ internal static class NativeLocationFourOwnersSource
         {
             context.Write(file, UpgradeIllegalV2(file.Text));
             return SemanticInjectionResult.Success(
-                "Native FAR now resolves pending mechanics and despawns established out-of-range NPCs without repeated position/vector scans; near and UNKNOWN retain exact source decisions.");
+                "Native FAR skips unspawned inactive sites even when another mechanic is live; live/pending NPCs retain exact original distance and cleanup.");
         }
         var text = Once(file.Text,
             "  nextUpdateAt = 0.0\n}",
@@ -290,7 +269,7 @@ internal static class NativeLocationFourOwnersSource
             "Mechanic inactive far guard");
         context.Write(file,UpgradeIllegalV2(text));
         return SemanticInjectionResult.Success(
-            "Native v2 FAR replaces matrix distance polling, including safe live-NPC despawn and pending resolution; exact 75/95m decisions, live entities and UNKNOWN fallback remain source-owned.");
+            "Native v2 avoids unused matrix-site distance scans during FAR; original 75/95m exact live-NPC streaming, pending resolution and UNKNOWN fallback remain untouched.");
     }
 
     internal static SemanticInjectionResult ApplyDedka(SemanticPatchContext context)
