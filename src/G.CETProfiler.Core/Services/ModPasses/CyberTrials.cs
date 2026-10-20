@@ -176,7 +176,8 @@ internal static partial class SemanticInjectors
             RegexOptions.CultureInvariant);
         var matches = expression.Matches(text);
         if (matches.Count != 1 ||
-            !Regex.IsMatch(text, @"(?m)^\s*registerRuntimeEvent\(\s*['""]onDraw['""]\s*,\s*function\s*\("))
+            !Regex.IsMatch(text,
+                @"(?m)^\s*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onDraw['""]\s*,\s*function\s*\("))
             throw new InvalidOperationException("CyberTrials onDraw provider/overlay semantics not uniquely proven.");
         text = expression.Replace(text, m =>
         {
