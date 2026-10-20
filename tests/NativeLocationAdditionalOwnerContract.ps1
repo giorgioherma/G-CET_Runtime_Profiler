@@ -258,6 +258,10 @@ $compilerType=$asm.GetType('GCETRuntimeProfiler.Core.Services.CompiledNativeLoca
 $compile=$compilerType.GetMethod('Compile',[Reflection.BindingFlags]'Static,NonPublic')
 if(!$compile){throw 'Compiled static location manifest compiler missing'}
 $map=[Collections.Generic.Dictionary[string,byte[]]]::new()
+# The compiler intentionally admits only owners whose source was staged by
+# the Resolver, not arbitrary installed mod files. Mirror that production gate.
+$map.Add("illegal_mechanic_phase1a/physical_npc.lua",
+         [Text.Encoding]::UTF8.GetBytes("-- G-CET native location:illegal-v3"))
 try {$built=$compile.Invoke($null,[object[]]@([string]$modsRoot,$map))}
 catch {throw "Native author REDscript compilation failed: $($_.Exception.InnerException.Message)"}
 $manifestBytes=$compilerType.GetProperty('Bytes',[Reflection.BindingFlags]'Instance,Public,NonPublic').GetValue($built)
