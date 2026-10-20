@@ -692,7 +692,8 @@ public sealed class ProfilerService : IProfilerService
         {
             transaction.Mode = "preexisting-profiler";
             transaction.OriginalHash = current.Hash;
-            transaction.InstalledHash = expectedProfilerHash;
+            // Preserve the actual installed customized profiler-aware source.
+            transaction.InstalledHash = current.Hash;
             SaveState(paths, state);
             return;
         }
