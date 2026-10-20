@@ -62,7 +62,8 @@ internal static class FixedZeroEngineRuntime
         "modules/GCETPhasePlanner.lua",
         "modules/GCETFrameListeners.lua",
         "modules/GCETStateSignals.lua",
-        "modules/GCETWorkloadProbe.lua"
+        "modules/GCETWorkloadProbe.lua",
+        "modules/GCETNativeLocationHost.lua"
     ];
 
     // First shipped workload modules are recognized as G-CET-owned files.
@@ -150,7 +151,7 @@ internal static class FixedZeroEngineRuntime
 
         var sharedInit = AddSharedSystemAccessors(fixedInit);
         var sharedInitHash = Sha256(sharedInit);
-        var extendedInit = AddWorkloadServices(sharedInit);
+        var extendedInit = AddNativeLocationBridge(AddWorkloadServices(sharedInit));
         var extendedInitHash = Sha256(extendedInit);
         var knownState = ClassifyCompatibleInit(sourceHash, sharedInitHash, extendedInitHash);
 
@@ -187,7 +188,7 @@ internal static class FixedZeroEngineRuntime
             HostActionRouterModule,
             actionRouter);
 
-        compatibleInit = AddWorkloadServices(compatibleInit);
+        compatibleInit = AddNativeLocationBridge(AddWorkloadServices(compatibleInit));
         var hostFiles = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase)
         {
             ["0-Engine/init.lua"] = compatibleInit,
@@ -348,6 +349,73 @@ internal static class FixedZeroEngineRuntime
         return withBom;
     }
 
+
+    // Additive opt-in native location host. The prior profiler/0-Engine native
+    // payload is unchanged; the RED4ext plugin remains independently installed.
+    // An absent native API must not disable any author discovery callback.
+    private static byte[] AddNativeLocationBridge(byte[] source)
+    {
+        const string marker = "-- G-CET native static location host v1";
+        var hasBom = source.Length >= 3 && source[0] == 0xEF &&
+            source[1] == 0xBB && source[2] == 0xBF;
+        var text = hasBom
+            ? Encoding.UTF8.GetString(source, 3, source.Length - 3)
+            : Encoding.UTF8.GetString(source);
+        if (text.Contains(marker, StringComparison.Ordinal))
+        {
+            if (!text.Contains("GCETNativeLocationHost", StringComparison.Ordinal) ||
+                !text.Contains("NativeLocationHost:shutdown()", StringComparison.Ordinal))
+                throw new InvalidOperationException("Partial or foreign native location host bridge.");
+            return source;
+        }
+        var exports = Regex.Matches(text,
+            @"(?m)^[ \t]*return[ \t]+(?<name>[A-Za-z_][A-Za-z0-9_]*)[ \t]*;?[ \t]*(?:--[^\r\n]*)?\r?$",
+            RegexOptions.CultureInvariant);
+        if (exports.Count == 0)
+            throw new InvalidOperationException("Native location host requires a final 0-Engine export.");
+        var last = exports[^1];
+        if (!Regex.IsMatch(text[(last.Index + last.Length)..],
+                @"\A(?:\s|--[^\r\n]*)*\z", RegexOptions.CultureInvariant))
+            throw new InvalidOperationException("0-Engine export cannot safely host native location bridge.");
+        var name = last.Groups["name"].Value;
+        var block = $"""
+            {marker}
+            do
+                local runtime={name}
+                if type(runtime)=="table" and type(runtime.Register)=="function" then
+                    local ok,source=pcall(require,"modules/GCETNativeLocationHost")
+                    if ok and type(source)=="table" and type(source.new)=="function" then
+                        local api=runtime.GCET
+                        if api==nil or type(api)=="table" then
+                            api=api or {{}}
+                            if api.NativeLocationHost==nil then
+                                local okHost,host=pcall(source.new,runtime)
+                                if okHost and type(host)=="table" then
+                                    api.NativeLocationHost=host
+                                    runtime.GCET=api
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            registerForEvent("onShutdown",function()
+                if type({name})=="table" and type({name}.GCET)=="table" and
+                    type({name}.GCET.NativeLocationHost)=="table" then
+                    {name}.GCET.NativeLocationHost:shutdown()
+                end
+            end)
+
+            """;
+        var inserted = text.Insert(last.Index, block + "\n");
+        var body=Encoding.UTF8.GetBytes(inserted);
+        if (!hasBom) return body;
+        var output=new byte[body.Length+3];
+        output[0]=0xEF;output[1]=0xBB;output[2]=0xBF;
+        Buffer.BlockCopy(body,0,output,3,body.Length);
+        return output;
+    }
+
     private static void AddWorkloadModules(
         string runtimeRoot, string liveRoot, Dictionary<string, byte[]> files)
     {
@@ -362,7 +430,9 @@ internal static class FixedZeroEngineRuntime
             var moduleText = Encoding.UTF8.GetString(data);
             var requiredFactory = relative.EndsWith("GCETWorkloadProbe.lua", StringComparison.Ordinal)
                 ? "function M.Begin("
-                : "function M.New(";
+                : relative.EndsWith("GCETNativeLocationHost.lua", StringComparison.Ordinal)
+                    ? "function Host.new("
+                    : "function M.New(";
             if (data.Length < 100 ||
                 !moduleText.Contains(requiredFactory, StringComparison.Ordinal))
                 throw new InvalidOperationException(
