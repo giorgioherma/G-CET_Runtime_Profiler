@@ -601,7 +601,7 @@ internal static class FixedZeroEngineRuntime
         string[] required = relativeModule.Replace('\\', '/') switch
         {
             "modules/GCETWorkQueue.lua" =>
-                ["New", "Submit", "Cancel", "GetInfo"],
+                ["New", "Submit", "InvalidateGeneration", "GetInfo"],
             "modules/GCETPhasePlanner.lua" =>
                 ["New", "Every", "GetInfo"],
             "modules/GCETFrameListeners.lua" =>
@@ -617,7 +617,10 @@ internal static class FixedZeroEngineRuntime
                        Declares(source, "api", member)) &&
                    Regex.IsMatch(source,
                        @"(?m)^[ \t]*return[ \t]+M[ \t]*$",
-                       RegexOptions.CultureInvariant);
+                       RegexOptions.CultureInvariant) &&
+                   (!relativeModule.Equals("modules/GCETWorkQueue.lua",
+                        StringComparison.OrdinalIgnoreCase) ||
+                     Declares(source, "handle", "Cancel"));
 
         // Unknown runtime modules cannot be staged over the player's source.
         return false;
