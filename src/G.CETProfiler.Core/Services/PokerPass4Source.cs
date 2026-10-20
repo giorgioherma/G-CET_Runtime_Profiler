@@ -292,4 +292,83 @@ internal static class PokerPass4Source
         var m=matches[0];
         return text[..m.Index]+convert(m)+text[(m.Index+m.Length)..];
     }
+
+    // Separate author HUD stage from PASS4 controller/world work. The invisible
+    // signature has five '|' separators; the original author already suppresses
+    // repeated HUD writes by this exact string. Once last equals this signature,
+    // GetPlayer and string serialization have no visible/state-changing consumer.
+    private static bool HasPokerHudSourceProof(string text)
+    {
+        const string signature =
+            @"(?m)^[ \t]*local\s+key\s*=\s*tostring\s*\(\s*vis\s*\)" +
+            @"\s*\.\.\s*['""]\|['""]\s*\.\.\s*header" +
+            @"\s*\.\.\s*['""]\|['""]\s*\.\.\s*board" +
+            @"\s*\.\.\s*['""]\|['""]\s*\.\.\s*hand" +
+            @"\s*\.\.\s*['""]\|['""]\s*\.\.\s*seats" +
+            @"\s*\.\.\s*['""]\|['""]\s*\.\.\s*log\s*$";
+        return Regex.IsMatch(text, @"(?m)^\s*local\s+last\s*=\s*nil\s*$",
+                   RegexOptions.CultureInvariant) &&
+               Regex.IsMatch(text, signature, RegexOptions.CultureInvariant) &&
+               text.Contains("PokerHUD.push(true)", StringComparison.Ordinal) &&
+               text.Contains("PokerHUD.push(false)", StringComparison.Ordinal) &&
+               Regex.IsMatch(text,
+                   @"(?m)^\s*function\s+PokerHUD\.hide\s*\(\s*\)",
+                   RegexOptions.CultureInvariant) &&
+               Regex.IsMatch(text,
+                   @"(?m)^\s*function\s+PokerHUD\.show\s*\(\s*\)",
+                   RegexOptions.CultureInvariant) &&
+               Regex.IsMatch(text,
+                   @"(?m)^\s*if\s+not\s+force\s+and\s+key\s*==\s*last\s+then\s+return\s+end\s*$",
+                   RegexOptions.CultureInvariant);
+    }
+
+    private static bool IsPokerHudInvisibleIdleComplete(string text)
+    {
+        if (!HasPokerHudSourceProof(text)) return false;
+        return Regex.IsMatch(text,
+            @"(?m)^[ \t]*function\s+PokerHUD\.push\s*\(\s*force\s*\)[ \t]*\r?\n" +
+            @"[ \t]*--\s*G-CET Poker HUD invisible-state native getter gate\r?\n" +
+            @"[ \t]*if\s+not\s+force\s+and\s+not\s+PokerHUD\.visible\s+and\s+last\s*==\s*['""]false\|\|\|\|\|['""]\s+then\s+return\s+end\r?\n" +
+            @"[ \t]*local\s+player\s*=\s*GetPlayer\s*\(\s*\)",
+            RegexOptions.CultureInvariant);
+    }
+
+    internal static SemanticInjectionResult ApplyHudInvisibleIdle(SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "PokerHUD.lua", "PokerHUD.push", "PokerHUD.visible",
+            "GetPlayer", "PokerHUD.hide", "last");
+        var text = file.Text;
+        if (IsPokerHudInvisibleIdleComplete(text))
+            return SemanticInjectionResult.Skip(
+                "Poker HUD invisible-state native getter gate is already complete.");
+        if (!HasPokerHudSourceProof(text) ||
+            text.Contains("G-CET Poker HUD invisible-state native getter gate",
+                StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "Poker HUD author state/key/force behavior changed or has an incomplete gate.");
+
+        var pattern =
+            @"(?m)^(?<head>[ \t]*function\s+PokerHUD\.push\s*\(\s*force\s*\)[ \t]*)\r?\n" +
+            @"(?<player>[ \t]+local\s+player\s*=\s*GetPlayer\s*\(\s*\)[^\r\n]*)$";
+        var hits = Regex.Matches(text, pattern, RegexOptions.CultureInvariant);
+        if (hits.Count != 1)
+            throw new InvalidOperationException(
+                "Poker HUD GetPlayer is not the original first statement of a unique push function.");
+
+        var hit = hits[0];
+        var line = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        var indent = Regex.Match(hit.Groups["player"].Value, @"^[ \t]*").Value;
+        var replacement = hit.Groups["head"].Value + line +
+            indent + "-- G-CET Poker HUD invisible-state native getter gate" + line +
+            indent + "if not force and not PokerHUD.visible and last == 'false|||||' then return end" + line +
+            hit.Groups["player"].Value;
+        text = text[..hit.Index] + replacement + text[(hit.Index + hit.Length)..];
+        if (!IsPokerHudInvisibleIdleComplete(text))
+            throw new InvalidOperationException(
+                "Poker HUD invisible-state gate source postconditions failed.");
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Preserved forced/visible/first hidden HUD updates; skipped GetPlayer and hidden-state string rebuilding only after an identical invisible payload was already sent.");
+    }
 }
