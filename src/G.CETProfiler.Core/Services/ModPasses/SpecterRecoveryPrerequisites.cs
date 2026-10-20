@@ -40,7 +40,12 @@ internal static partial class SemanticInjectors
             "Music.update(delta, phoneBus(), active and {id=\"recovery_counter_isolation\"} or nil, stage, active and \"recovery\" or \"idle\", Game.GetPlayer() ~= nil, active)";
         const string optimizedCall =
             "Music.update(delta, phoneBus(), active and __gcetRecoveryMusicContract or nil, stage, active and \"recovery\" or \"idle\", Game.GetPlayer() ~= nil, active)";
-        if (text.Contains(musicCall, StringComparison.Ordinal))
+        // Source is already generic-rewritten: both admission and output
+        // must use the SAME proven shared player getter, not a pre-generic
+        // version-specific Music.update literal.
+        var currentMusicCall=PreserveGenericGetters(text,musicCall);
+        var currentOptimizedCall=PreserveGenericGetters(text,optimizedCall);
+        if (text.Contains(currentMusicCall, StringComparison.Ordinal))
         {
             var music = context.FindFile(
                 "specter_mission_music.lua",
@@ -58,11 +63,11 @@ internal static partial class SemanticInjectors
                 Native("local Music = require(\"specter_mission_music\")\n" +
                        "local __gcetRecoveryMusicContract = {id=\"recovery_counter_isolation\"}"),
                 "SPECTER module-local immutable music contract");
-            text = ReplaceOnce(text, musicCall, optimizedCall,
+            text = ReplaceOnce(text, currentMusicCall, currentOptimizedCall,
                 "SPECTER per-frame music contract reuse");
         }
         else if (text.Contains("Music.update(", StringComparison.Ordinal) &&
-                 !text.Contains(optimizedCall, StringComparison.Ordinal))
+                 !text.Contains(currentOptimizedCall, StringComparison.Ordinal))
             throw new InvalidOperationException(
                 "Recovery music update changed shape; refusing source rewrite.");
 
