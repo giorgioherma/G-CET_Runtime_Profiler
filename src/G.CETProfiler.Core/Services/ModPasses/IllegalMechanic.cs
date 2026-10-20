@@ -84,13 +84,17 @@ internal static partial class SemanticInjectors
         text = call.Replace(text, m =>
             m.Groups["indent"].Value + "local distance, __gcetPositionObserved = distanceFromPlayer(entry, player, " + stage + ")\n" +
             m.Groups["indent"].Value + "if __gcetPositionObserved then " + stage + " = __gcetPositionObserved end");
-        var update = text.IndexOf("function PhysicalNpc.Update(delta)", StringComparison.Ordinal);
-        var loopStart = text.IndexOf("for _, entry in ipairs(state.mechanics) do", update, StringComparison.Ordinal);
-        if (update < 0 || loopStart < 0)
-            throw new InvalidOperationException("Physical NPC update loop changed.");
-        // Scope the cache ONLY to one protected, synchronous Update invocation;
-        // the pending-spawn branch never reads position, exactly as in the author version.
-        text = text.Insert(loopStart, "local " + stage + " = nil\n  ");
+        var loopAnchor = new Regex(
+            @"(?m)^(?<indent>[ \t]*)if\s+player\s*==\s*nil\s+then\s+return\s+end\r?\n" +
+            @"\r?\n\k<indent>for\s+_,\s*entry\s+in\s+ipairs\(state\.mechanics\)\s+do",
+            RegexOptions.CultureInvariant);
+        if (loopAnchor.Matches(text).Count != 1)
+            throw new InvalidOperationException("Physical NPC main scan boundary changed.");
+        // Cache belongs to the main periodic scan, not the earlier pending-spawn loop.
+        text = loopAnchor.Replace(text, m => m.Groups["indent"].Value +
+            "if player == nil then return end\n\n" +
+            m.Groups["indent"].Value + "local " + stage + " = nil\n" +
+            m.Groups["indent"].Value + "for _, entry in ipairs(state.mechanics) do");
         context.Write(file, text);
         return SemanticInjectionResult.Success(
             "Reused freshly obtained player world position within one NPC supervisor scan; preserved protected getter fallback, native distance math, pending spawn and each lifecycle decision.");
