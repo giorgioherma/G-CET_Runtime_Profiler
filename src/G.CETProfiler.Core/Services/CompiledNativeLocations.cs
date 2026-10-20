@@ -42,38 +42,27 @@ internal sealed record CompiledNativeLocations(byte[] Bytes,
     {
         var sites=new List<Site>();
         var counts=new SortedDictionary<int,int>();
-        // Source is only admitted when this exact owner has an installed,
-        // successfully generated semantic stage. Do not add anchor demand for
-        // the other user's installed or absent mods.
-        // Compile geometry independently of individual Lua callback hooks:
-        // a rewrite failing source proof must not discard unchanged locations.
-        // Require the owner to be actively selected/staged by this Resolver
-        // pass, then inspect its currently installed position definition.
-        // Never infer geometry from the name, version, hash or stale template.
-        bool Selected(string relative) =>
-            staged.Keys.Any(path=>path.Equals(relative,StringComparison.OrdinalIgnoreCase) ||
-                path.StartsWith(relative.Split('/')[0]+"/",StringComparison.OrdinalIgnoreCase));
+        // Compile a location owner ONLY when the FINAL staged-or-installed
+        // Lua actually subscribes to that compiled owner. Merely being in the
+        // mod stack or touched by generic rewrites does not arm native demand.
+        // This is a structural owner proof, never a version or file SHA gate.
         bool Has(string relative,string marker)
         {
-            if(Selected(relative))return true;
-            // Already optimized owners require ZERO new Lua rewrites.
-            // Source-proven compiled subscriptions remain an independent
-            // native-manifest stage even in a partial/updated stack.
-            var existing=Read(relative);
-            if(existing is null)return false;
-            var binding=marker switch {
-                "G-CET native location:poker-" => "attachCompiled(10031,",
-                "G-CET native location:tunnel-" => "attachCompiled(10032,",
-                "G-CET native location:illegal-v3" => "attachCompiled(1003301+index,",
-                "G-CET native location:dedka-" => "attachCompiled(10034,",
-                "G-CET native location:card-collection-" => "attachCompiled(10035,",
-                "G-CET native location:marmurbank-" => "attachCompiled(10036,",
-                "G-CET native location:yaiba-bathtub-" => "attachCompiled(10037,",
-                "G-CET native location:ziggy-offered-" => "attachCompiled(10038,",
+            var source=Read(relative);
+            if(source is null)return false;
+            var owner=marker switch {
+                "G-CET native location:poker-" => @"\\battachCompiled\\s*\\(\\s*10031\\s*,",
+                "G-CET native location:tunnel-" => @"\\battachCompiled\\s*\\(\\s*10032\\s*,",
+                "G-CET native location:illegal-v3" => @"\\battachCompiled\\s*\\(\\s*1003301\\s*\\+\\s*index\\s*,",
+                "G-CET native location:dedka-" => @"\\battachCompiled\\s*\\(\\s*10034\\s*,",
+                "G-CET native location:card-collection-" => @"\\battachCompiled\\s*\\(\\s*10035\\s*,",
+                "G-CET native location:marmurbank-" => @"\\battachCompiled\\s*\\(\\s*10036\\s*,",
+                "G-CET native location:yaiba-bathtub-" => @"\\battachCompiled\\s*\\(\\s*10037\\s*,",
+                "G-CET native location:ziggy-offered-" => @"\\battachCompiled\\s*\\(\\s*10038\\s*,",
                 _ => null
             };
-            return binding is not null &&
-                existing.Contains(binding,StringComparison.Ordinal);
+            return owner is not null &&
+                Regex.IsMatch(source,owner,RegexOptions.CultureInvariant);
         }
 
         string? Read(string relative) {
