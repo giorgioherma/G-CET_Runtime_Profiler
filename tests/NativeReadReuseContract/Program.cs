@@ -152,11 +152,11 @@ try
     var vector=vectorType.GetMethod("TryTransform",
         BindingFlags.Static|BindingFlags.NonPublic|BindingFlags.Public)!;
     object?[] vectorInit=["local pos = Game.GetPlayer():GetWorldPosition()\n",null,0];
-    Check((bool)vector.Invoke(null,vectorInit)! && (int)vectorInit[2]!==1,
+    Check((bool)vector.Invoke(null,vectorInit)! && (int)vectorInit[2]!=1,
         "Initial native player Vector4 source transform failed");
     var vectorFirst=(string)vectorInit[1]!;
     object?[] vectorUpdate=[vectorFirst+"\nlocal newPos = Game.GetPlayer():GetWorldPosition()\n",null,0];
-    Check((bool)vector.Invoke(null,vectorUpdate)! && (int)vectorUpdate[2]!==1,
+    Check((bool)vector.Invoke(null,vectorUpdate)! && (int)vectorUpdate[2]!=1,
         "A later source version did not adopt its new player position callsite");
     var vectorResult=(string)vectorUpdate[1]!;
     Check(vectorResult.Contains("local newPos = __gcetNativePlayerWorldPosition()") &&
