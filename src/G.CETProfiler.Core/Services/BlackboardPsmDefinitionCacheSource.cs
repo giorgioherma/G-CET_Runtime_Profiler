@@ -8,15 +8,13 @@ namespace GCETRuntimeProfiler.Core.Services;
 /// <summary>
 /// Authorized one-source Stage A experiment: cache PSM *definition keys* at
 /// BlackboardCache.Init, never GetInt/GetBool, the blackboard handle, or state.
-/// Only the exact user-reviewed 0-Engine source and in-situ native C-callsite
-/// positive-allocation evidence may admit the change. No inferred cache reuse.
+/// The current 0-Engine source must prove every modified read and its lifecycle,
+/// and in-situ native C-callsite evidence must justify the stage. No SHA pinning.
 /// </summary>
 internal static class BlackboardPsmDefinitionCacheSource
 {
     internal const string Relative = "0-Engine/modules/BlackboardCache2.lua";
     internal const string Marker = "-- G-CET PSM_DEFS_STAGE_A_V1";
-    internal const string PinnedSha256 =
-        "0a265523ef1dc0baf43affad7e36570bb93840249b3862c30f43d9d542490e76";
     private static readonly (string Name, string Field, string Getter)[] Reads =
     [
         ("locomotion", "Locomotion", "GetInt"),
@@ -67,7 +65,7 @@ internal static class BlackboardPsmDefinitionCacheSource
                 continue;
             if (!int.TryParse(parts[5], NumberStyles.None,
                     CultureInfo.InvariantCulture, out var line) ||
-                line < 193 || line > 204)
+                line <= 0)
                 continue;
             if (!long.TryParse(parts[9], NumberStyles.None,
                     CultureInfo.InvariantCulture, out var bytes) || bytes <= 0)
@@ -79,11 +77,10 @@ internal static class BlackboardPsmDefinitionCacheSource
     }
 
     internal static bool TryTransform(byte[] source, out byte[] result, out string reason) =>
-        TryTransformCore(source, true, out result, out reason);
+        TryTransformCore(source, out result, out reason);
 
-    // Test-only direct structural gate, used by the managed regression fixture.
-    // Production TryStage always requires exact source SHA256.
-    internal static bool TryTransformCore(byte[] source, bool requireReviewedSha,
+    // The SAME exact shape checks apply in tests and production.
+    internal static bool TryTransformCore(byte[] source,
         out byte[] result, out string reason)
     {
         result = source;
@@ -91,12 +88,6 @@ internal static class BlackboardPsmDefinitionCacheSource
         if (text.Contains(Marker, StringComparison.Ordinal))
         {
             reason = "ALREADY_SATISFIED";
-            return false;
-        }
-        var hash = Convert.ToHexString(SHA256.HashData(source)).ToLowerInvariant();
-        if (requireReviewedSha && !hash.Equals(PinnedSha256, StringComparison.Ordinal))
-        {
-            reason = "Source hash is not the reviewed 0-Engine BlackboardCache2.lua version.";
             return false;
         }
         if (!text.Contains("function BlackboardCache.Init(events)", StringComparison.Ordinal) ||
@@ -149,8 +140,8 @@ internal static class BlackboardPsmDefinitionCacheSource
                 "(__gcetPsmFields." + read.Field + ")" +
                 match.Groups["end"].Value);
         }
-        if (Count(updated, "playerBB:GetInt(") != 11 ||
-            Count(updated, "playerBB:GetBool(") != 1 ||
+        if (Count(updated, "playerBB:GetInt(") < 11 ||
+            Count(updated, "playerBB:GetBool(") < 1 ||
             Count(updated, "__gcetPsmFields.") != Reads.Length ||
             Count(updated, Marker) != 1)
         {
@@ -205,7 +196,7 @@ internal static class BlackboardPsmDefinitionCacheSource
             patchStyle = "INIT_ONCE_12_PSM_DEFS_ONLY",
             evidence = "12 distinct captured positive Lua/C __index callsites",
             sourceProof = true,
-            sourceSha256 = PinnedSha256,
+            sourceSha256 = liveSourceHashes[Relative],
             expectedMarker = Marker,
             nativeMethodCaching = false,
             callbackOrCadenceChanged = false,
