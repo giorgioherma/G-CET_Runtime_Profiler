@@ -53,6 +53,8 @@ function Hub:Step()
     end
     local ok,flags=invoke(native.GCETPlayerPoll,self.consumer)
     if not ok or type(flags)~="number" or flags<0 then
+        -- Retire the abandoned subscription before retrying registration.
+        invoke(native.GCETPlayerUnsubscribe,self.consumer)
         self.active=false
         return self:_fallback("NATIVE_POLL_FAILED")
     end
