@@ -114,4 +114,4 @@ function bathtub.update(player, pPos)
 end
 '@
 $y=Apply 'yaibaPenthouse' 'bathtub.lua' 'native-location-yaiba-bathtub' 'ApplyBathtub' $bath @('G-CET native location:yaiba-bathtub-v1','lookup:attach(10037','z=CONFIG.position.z-1.0','if __gcetBathNativeFar == true then return end','if __gcetBathNativeFar == nil then')
-Write-Host 'Native static location additional owners: Card Collection 95-site coarse dormancy, banker SpatialHash FAR, Yaiba bathroom author gate; fallback, CRLF and idempotence PASS'
+Write-Host 'Native static location additional owners: Card Collection 100-site coarse dormancy, banker SpatialHash FAR, Yaiba bathroom author gate; fallback, CRLF and idempotence PASS'
