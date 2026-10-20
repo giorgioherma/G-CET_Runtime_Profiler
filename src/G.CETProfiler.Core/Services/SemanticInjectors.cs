@@ -466,7 +466,7 @@ internal static partial class SemanticInjectors
         }
     }
 
-    private static string PreserveGenericGetters(string source,string fragment)
+    internal static string PreserveGenericGetters(string source,string fragment)
     {
         foreach(var provider in ProvenGenericGetters(source))
         {
