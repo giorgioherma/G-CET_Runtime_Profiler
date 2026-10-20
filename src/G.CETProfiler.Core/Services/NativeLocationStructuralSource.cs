@@ -120,6 +120,12 @@ internal static class NativeLocationStructuralSource
             file=context.FindFile("init.lua","poker.world_far","poker.world_near",
                 "poker.seat_near","StreetTables.update");
         } catch(InvalidOperationException) {return null;}
+        if(file.Text.Contains("G-CET native location:poker-structural-v1",StringComparison.Ordinal))
+        {
+            if(CompleteStage("native-location-poker",new[]{file.Text}))
+                return SemanticInjectionResult.Skip("Source-proven native poker stage already satisfied.");
+            throw new InvalidOperationException("Partial native poker source stage; refusing conflicting rewrite.");
+        }
         if(file.Text.Contains("G-CET native location:poker-",StringComparison.Ordinal))
             return null; // Legacy source has its own complete v1->v2 path.
         var t=Normalize(file.Text,out var crlf);
@@ -226,6 +232,12 @@ internal static class NativeLocationStructuralSource
                 "dedka_entrance2_cluster","RegisterZone(","startShopDetail",
                 "stopShopDetail");
         }catch(InvalidOperationException){return null;}
+        if(file.Text.Contains("G-CET native location:dedka-structural-v1",StringComparison.Ordinal))
+        {
+            if(CompleteStage("native-location-dedka",new[]{file.Text}))
+                return SemanticInjectionResult.Skip("Source-proven native dedka stage already satisfied.");
+            throw new InvalidOperationException("Partial native dedka source stage; refusing conflicting rewrite.");
+        }
         if(file.Text.Contains("G-CET native location:dedka-",StringComparison.Ordinal))
             return null;
         var t=Normalize(file.Text,out var crlf);
@@ -330,6 +342,12 @@ internal static class NativeLocationStructuralSource
                 "RegisterSpatialSet","function bank:distanceListener()",
                 "QueryNearest");
         }catch(InvalidOperationException){return null;}
+        if(file.Text.Contains("G-CET native location:marmurbank-structural-v1",StringComparison.Ordinal))
+        {
+            if(CompleteStage("native-location-marmurbank",new[]{file.Text}))
+                return SemanticInjectionResult.Skip("Source-proven native marmurbank stage already satisfied.");
+            throw new InvalidOperationException("Partial native marmurbank source stage; refusing conflicting rewrite.");
+        }
         if(file.Text.Contains("G-CET native location:marmurbank-",StringComparison.Ordinal))
             return null;
         var t=Normalize(file.Text,out var crlf);
