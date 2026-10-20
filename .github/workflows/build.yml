@@ -1104,6 +1104,10 @@ jobs:
         shell: pwsh
         run: ./tests/PokerPass4SourceGenerationContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: Poker HUD source-proven invisible idle native getter contract
+        shell: pwsh
+        run: ./tests/PokerHudInvisibleIdleContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: Native source handoff semantic regression contract
         shell: pwsh
         run: ./tests/NativeHandoffSemanticSourceContract.ps1 -ResolverRoot ./publish-resolver
