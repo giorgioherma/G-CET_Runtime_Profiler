@@ -560,6 +560,26 @@ internal static class FixedZeroEngineRuntime
                    Declares(source, name, "Dispatch");
         }
 
+        if (relativeModule.Equals("modules/Health.lua",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return Declares(source, "Health", "Configure") &&
+                   Declares(source, "Health", "Invoke") &&
+                   Declares(source, "Health", "GetSummary") &&
+                   Regex.IsMatch(source,
+                       @"(?m)^[ \t]*return[ \t]+Health[ \t]*$");
+        }
+        if (relativeModule.Equals("modules/Scheduler.lua",
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return Declares(source, "Scheduler", "Init") &&
+                   Declares(source, "Scheduler", "Every") &&
+                   Declares(source, "Scheduler", "EveryFrame") &&
+                   Declares(source, "Scheduler", "Update") &&
+                   Regex.IsMatch(source,
+                       @"(?m)^[ \t]*return[ \t]+Scheduler[ \t]*$");
+        }
+
         if (relativeModule.EndsWith("GCETNativeLocationHost.lua",
                 StringComparison.OrdinalIgnoreCase))
             return Declares(source, "Host", "new") &&
@@ -595,8 +615,7 @@ internal static class FixedZeroEngineRuntime
                        @"(?m)^[ \t]*return[ \t]+M[ \t]*$",
                        RegexOptions.CultureInvariant);
 
-        // Stock fixed runtime modules are never version-reconciled here.
-        // A foreign edit to any remaining module must not be overwritten.
+        // Unknown runtime modules cannot be staged over the player's source.
         return false;
     }
 
