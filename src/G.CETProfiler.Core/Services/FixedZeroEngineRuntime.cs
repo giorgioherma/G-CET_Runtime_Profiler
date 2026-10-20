@@ -328,10 +328,17 @@ internal static class FixedZeroEngineRuntime
             "do",
             $"    local runtime = {id}",
             "    if type(runtime) == 'table' then",
-            "        if runtime.WorkQueue == nil then runtime.WorkQueue = require('modules/GCETWorkQueue').New(runtime) end",
-            "        if runtime.PhasePlanner == nil then runtime.PhasePlanner = require('modules/GCETPhasePlanner').New(runtime) end",
-            "        if runtime.FrameListeners == nil then runtime.FrameListeners = require('modules/GCETFrameListeners').New(runtime) end",
-            "        if runtime.StateSignals == nil then runtime.StateSignals = require('modules/GCETStateSignals').New(runtime) end",
+            "        local function installIfAvailable(field, moduleName)",
+            "            if runtime[field] ~= nil then return end",
+            "            local ok, module = pcall(require, moduleName)",
+            "            if not ok or type(module) ~= 'table' or type(module.New) ~= 'function' then return end",
+            "            local built, service = pcall(module.New, runtime)",
+            "            if built and type(service) == 'table' then runtime[field] = service end",
+            "        end",
+            "        installIfAvailable('WorkQueue', 'modules/GCETWorkQueue')",
+            "        installIfAvailable('PhasePlanner', 'modules/GCETPhasePlanner')",
+            "        installIfAvailable('FrameListeners', 'modules/GCETFrameListeners')",
+            "        installIfAvailable('StateSignals', 'modules/GCETStateSignals')",
             "    end",
             "end",
             ""
@@ -442,32 +449,20 @@ internal static class FixedZeroEngineRuntime
         string relativeModule,
         byte[] bundled)
     {
-        var livePath = Path.Combine(
-            liveRoot,
+        var livePath = Path.Combine(liveRoot,
             relativeModule.Replace('/', Path.DirectorySeparatorChar));
         if (!File.Exists(livePath))
             return bundled;
 
-        // Already-installed G-CET-owned modules are the source of truth.
-        // Hash equality is neither a version proof nor an authorization to
-        // overwrite custom changes. Validate executable source/API instead.
+        // Existing author/user source is authoritative regardless of release,
+        // naming conventions, file hash, or local changes. Bundled support files
+        // fill gaps only. A missing API is handled at the opt-in call site,
+        // never by replacing or refusing the whole pass.
         var bytes = File.ReadAllBytes(livePath);
-        var original = Encoding.UTF8.GetString(bytes);
-        if (!MatchesHostModuleContract(relativeModule, original))
-        {
-            throw new InvalidOperationException(
-                "G-CET 0-Engine module has an unrecognized source/API contract; " +
-                "refusing to overwrite existing optimized code. " +
-                $"Module: {relativeModule}. Path: {livePath}.");
-        }
-
-        // Earlier WorkQueue versions can receive the additive capture-only
-        // probe without replacing their other source or imposing a version
-        // fingerprint. If callback structure has drifted, retain their
-        // compatible code byte-for-byte instead of attempting a blind edit.
         if (relativeModule.Equals("modules/GCETWorkQueue.lua",
-            StringComparison.OrdinalIgnoreCase))
+                StringComparison.OrdinalIgnoreCase))
         {
+            var original = Encoding.UTF8.GetString(bytes);
             var upgraded = AddOptionalWorkQueueProbe(original);
             if (upgraded != original)
                 return EncodeLikeOriginal(bytes, upgraded);
@@ -528,102 +523,6 @@ internal static class FixedZeroEngineRuntime
         withProbe = withProbe.Insert(module.Index + module.Length,
             "\nlocal Probe = require(\"modules/GCETWorkloadProbe\")");
         return withProbe;
-    }
-
-    private static bool MatchesHostModuleContract(
-        string relativeModule,
-        string source)
-    {
-        // Anchor at executable Lua declarations, not comments, file name,
-        // binary digest or a particular release's formatting.
-        static bool Declares(string text, string symbol, string member) =>
-            Regex.IsMatch(text,
-                @"(?m)^[ \t]*(?:local[ \t]+)?function[ \t]+" +
-                Regex.Escape(symbol) + @"[.:]" + Regex.Escape(member) +
-                @"[ \t]*\(", RegexOptions.CultureInvariant) ||
-            Regex.IsMatch(text,
-                @"(?m)^[ \t]*" + Regex.Escape(symbol) + @"\." +
-                Regex.Escape(member) + @"[ \t]*=[ \t]*function[ \t]*\(",
-                RegexOptions.CultureInvariant);
-
-        if (relativeModule.Equals("modules/G-CET/ActionRouter.lua",
-                StringComparison.OrdinalIgnoreCase) ||
-            relativeModule.Equals("modules/ActionRouter.lua",
-                StringComparison.OrdinalIgnoreCase))
-        {
-            var exports = Regex.Matches(source,
-                @"(?m)^[ \t]*return[ \t]+(?<name>[A-Za-z_]\w*)[ \t]*;?[ \t]*(?:--[^\r\n]*)?$",
-                RegexOptions.CultureInvariant);
-            if (exports.Count == 0) return false;
-            var exported = exports[^1];
-            if (!Regex.IsMatch(source[(exported.Index + exported.Length)..],
-                    @"\A(?:\s|--[^\r\n]*)*\z", RegexOptions.CultureInvariant))
-                return false;
-            var name = exported.Groups["name"].Value;
-            return Declares(source, name, "Subscribe") &&
-                   Declares(source, name, "Dispatch");
-        }
-
-        if (relativeModule.Equals("modules/Health.lua",
-                StringComparison.OrdinalIgnoreCase))
-        {
-            return Declares(source, "Health", "Configure") &&
-                   Declares(source, "Health", "Invoke") &&
-                   Declares(source, "Health", "GetSummary") &&
-                   Regex.IsMatch(source,
-                       @"(?m)^[ \t]*return[ \t]+Health[ \t]*$");
-        }
-        if (relativeModule.Equals("modules/Scheduler.lua",
-                StringComparison.OrdinalIgnoreCase))
-        {
-            return Declares(source, "Scheduler", "Init") &&
-                   Declares(source, "Scheduler", "Every") &&
-                   Declares(source, "Scheduler", "EveryFrame") &&
-                   Declares(source, "Scheduler", "Update") &&
-                   Regex.IsMatch(source,
-                       @"(?m)^[ \t]*return[ \t]+Scheduler[ \t]*$");
-        }
-
-        if (relativeModule.EndsWith("GCETNativeLocationHost.lua",
-                StringComparison.OrdinalIgnoreCase))
-            return Declares(source, "Host", "new") &&
-                   Declares(source, "Host", "attach") &&
-                   Declares(source, "Host", "step") &&
-                   Declares(source, "Host", "shutdown") &&
-                   Regex.IsMatch(source, @"(?m)^[ \t]*return[ \t]+Host[ \t]*$");
-
-        if (relativeModule.EndsWith("GCETWorkloadProbe.lua",
-                StringComparison.OrdinalIgnoreCase))
-            return Declares(source, "M", "Begin") &&
-                   Declares(source, "M", "End") &&
-                   Regex.IsMatch(source, @"(?m)^[ \t]*return[ \t]+M[ \t]*$");
-
-        string[] required = relativeModule.Replace('\\', '/') switch
-        {
-            "modules/GCETWorkQueue.lua" =>
-                ["New", "Submit", "InvalidateGeneration", "GetInfo"],
-            "modules/GCETPhasePlanner.lua" =>
-                ["New", "Every", "GetInfo"],
-            "modules/GCETFrameListeners.lua" =>
-                ["New", "MakeRegistrar", "GetInfo"],
-            "modules/GCETStateSignals.lua" =>
-                ["New", "Watch", "GetInfo"],
-            _ => Array.Empty<string>()
-        };
-
-        if (required.Length > 0)
-            return required.All(member =>
-                       Declares(source, "M", member) ||
-                       Declares(source, "api", member)) &&
-                   Regex.IsMatch(source,
-                       @"(?m)^[ \t]*return[ \t]+M[ \t]*$",
-                       RegexOptions.CultureInvariant) &&
-                   (!relativeModule.Equals("modules/GCETWorkQueue.lua",
-                        StringComparison.OrdinalIgnoreCase) ||
-                     Declares(source, "handle", "Cancel"));
-
-        // Unknown runtime modules cannot be staged over the player's source.
-        return false;
     }
 
     private static bool TryBuildHostCompatibilityInit(
