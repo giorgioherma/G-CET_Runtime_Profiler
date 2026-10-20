@@ -70,7 +70,7 @@ registerForEvent("onInit", function()
   Mod.Subscribe("PlayerInvalidated", unregisterSpatialSet)
 end)
 '@
-$c=Apply 'Card Collection' 'init.lua' 'native-location-card-collection' 'ApplyCards' $card @('G-CET native location:card-collection-v1','lookup:attach(10035','radius=2.25','unregisterSpatialSet()','__gcetCardNativeFar')
+$c=Apply 'Card Collection' 'init.lua' 'native-location-card-collection' 'ApplyCards' $card @('G-CET native location:card-collection-v1','lookup:attach(10035','radius=20.0','unregisterSpatialSet()','__gcetCardNativeFar')
 $marmur=@'
 local PosData={All={{x=1,y=2,z=3}}}
 bank={}
@@ -98,7 +98,7 @@ function bank:distanceListener()
 	return entry and 1 or 0
 end
 '@
-$m=Apply 'marmurbank' 'module/Bank.lua' 'native-location-marmurbank' 'ApplyMarmur' $marmur @('G-CET native location:marmurbank-v1','lookup:attach(10036','radius=2.25','self.spatialHandle:unregister()','if self.__gcetNativeFar then self.nearestLocation=nil;return 0 end') $true
+$m=Apply 'marmurbank' 'module/Bank.lua' 'native-location-marmurbank' 'ApplyMarmur' $marmur @('G-CET native location:marmurbank-v1','lookup:attach(10036','radius=10.0','self.spatialHandle:unregister()','if self.__gcetNativeFar then self.nearestLocation=nil;return 0 end') $true
 $bath=@'
 local ui=require("interactionUI")
 local CONFIG={position={x=1,y=2,z=3},iconRange=6.0}
