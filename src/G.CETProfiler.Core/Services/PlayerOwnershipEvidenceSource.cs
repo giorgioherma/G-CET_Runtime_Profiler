@@ -11,7 +11,7 @@ namespace GCETRuntimeProfiler.Core.Services;
 internal static class PlayerOwnershipEvidenceSource
 {
     internal const string Contract = "GCET_PLAYER_OWNERSHIP_EVIDENCE_V1";
-    private const string Methods = "GetWorldPosition|GetWorldOrientation|IsInCombat";
+    private const string Methods = "GetWorldPosition|GetWorldOrientation|GetWorldForward|GetWorldRight|GetWorldUp|GetVelocity|IsInCombat|GetMountedVehicle";
     private static readonly Regex Direct = new(
         @"(?<![A-Za-z0-9_\.:])Game\s*\.\s*GetPlayer\s*\(\s*\)\s*:\s*(?<method>"+Methods+@")\s*\(\s*\)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);

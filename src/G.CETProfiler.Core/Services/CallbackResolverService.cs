@@ -788,6 +788,7 @@ internal static class CallbackResolverService
                         sourceProof = p.SourceProof,
                         receiverClass = p.ReceiverClass,
                         nativeFamily = p.NativeFamily,
+                        rttiReturnType = p.RttiReturnType,
                         nativeRewriteAuthorized = p.NativeRewriteAuthorized,
                         missingContract = p.MissingContract
                     }).ToArray()

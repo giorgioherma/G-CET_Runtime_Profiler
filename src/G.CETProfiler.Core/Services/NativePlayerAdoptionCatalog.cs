@@ -14,13 +14,26 @@ internal static class NativePlayerAdoptionCatalog
     internal sealed record Site(
         int Line,string Method,string Receiver,string IdentityTag,
         string SourceProof,string? ReceiverClass,string NativeFamily,
-        bool NativeRewriteAuthorized,string MissingContract);
+        bool NativeRewriteAuthorized,string MissingContract,string RttiReturnType);
     internal sealed record File(string RelativeFile,Site[] Sites);
     internal sealed record Inventory(
         string Contract,string Source,string Status,
         int FilesScanned,int FilesSkipped,int TotalGetterSites,
         int SourcePlayerGetterSites,int OtherOrUnknownGetterSites,
         int NativeRewriteAuthorizedSites,File[] Files);
+
+    // Signatures verified against the user's Cyberpunk 2077 2.31 RTTI dump:
+    // ScriptGameInstance.GetFrameNumber Uint64; entEntity world getters;
+    // gamePuppet.GetVelocity; PlayerPuppet combat/mount methods.
+    internal static string RttiReturnType(string method)=>method switch
+    {
+        "GetWorldPosition" or "GetWorldForward" or
+        "GetWorldRight" or "GetWorldUp" or "GetVelocity" => "Vector4",
+        "GetWorldOrientation" => "Quaternion",
+        "IsInCombat" => "Bool",
+        "GetMountedVehicle" => "handle:vehicleBaseObject",
+        _ => "RTTI_TYPE_UNKNOWN"
+    };
 
     internal static Inventory Scan(string modsRoot)
     {
@@ -81,7 +94,7 @@ internal static class NativePlayerAdoptionCatalog
                           ?"AUTO_GUARDED_STRICT_LIVE_WITH_ORIGINAL_FALLBACK"
                           :x.Method=="GetWorldPosition"
                           ?"IDENTITY_OR_SAME_FRAME_SEMANTICS_NOT_PROVEN"
-                          :"NO_COMPATIBLE_NATIVE_API");
+                          :"NO_COMPATIBLE_NATIVE_API",RttiReturnType(x.Method));
                 }).ToArray();
                 files.Add(new File(rel,sites));
             }

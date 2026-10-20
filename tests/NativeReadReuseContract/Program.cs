@@ -325,6 +325,24 @@ try
     object?[] shadowVec=[
         "local Game={}\nreturn Game.GetPlayer():GetWorldPosition()",null,0];
     Check(!(bool)tryVector.Invoke(null,shadowVec)!,"Shadowed Game should be rejected");
+    // Source discovery includes RTTI-grounded future candidates, but they
+    // are NOT automatically rewritten just because a return type is known.
+    var rttiType=catalogType.GetMethod("RttiReturnType",
+        BindingFlags.Static|BindingFlags.NonPublic|BindingFlags.Public)!;
+    string TypeOf(string method)=>(string)rttiType.Invoke(null,[method])!;
+    Check(TypeOf("GetWorldOrientation")=="Quaternion" &&
+          TypeOf("GetVelocity")=="Vector4" &&
+          TypeOf("GetMountedVehicle")=="handle:vehicleBaseObject" &&
+          TypeOf("IsInCombat")=="Bool",
+          "RTTI signature catalog mismatch");
+    var future=(Array)analyzeOwnership.Invoke(null,
+        ["local a=Game.GetPlayer():GetVelocity()\n"+
+         "local b=Game.GetPlayer():GetWorldOrientation()\n"+
+         "local c=Game.GetPlayer():GetMountedVehicle()",null,null,null,null])!;
+    Check(future.Length==3&&future.Cast<object>().All(x=>
+        Tag(x)=="CURRENT_PLAYER_SOURCE_PROVEN"),
+        "RTTI getter source inventory lost direct player proof");
+
     Console.WriteLine("GCET NativePlayerVector guarded live source PASS");
 
     Console.WriteLine("GCET NativeReadReuse source-first contracts PASS");
