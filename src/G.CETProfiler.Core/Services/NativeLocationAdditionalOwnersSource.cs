@@ -67,7 +67,7 @@ end
             "Card native initial registration");
         context.Write(file,useCrlf ? text.Replace("\n","\r\n",StringComparison.Ordinal) : text);
         return SemanticInjectionResult.Success(
-            "Native 95-site aggregate FAR parks the original 0-Engine card spatial set; NEAR/UNKNOWN restores exact 2m author collection callbacks and picked-state behavior.");
+            "Native 100-site aggregate FAR parks the original 0-Engine card spatial set; NEAR/UNKNOWN restores exact 2m author collection callbacks and picked-state behavior.");
     }
 
     internal static SemanticInjectionResult ApplyMarmur(SemanticPatchContext context)
