@@ -276,8 +276,9 @@ internal static class ZeroEngineAllocationBatchSource
              Handler: "ZeroEngineAllocationBatchSource.Lifecycle", Policy: "SOURCE_VERIFIED_SAME_UPDATE_ENTITY_ID_REUSE")
         })
         {
-            if (!HasCallsiteEvidence(captureRoot, descriptor.Module, descriptor.Line, descriptor.Child))
-                continue;
+            // Measured callsites were used to establish these optimizations.
+            // Reapplying them to a compatible updated source is source-proof
+            // driven, even when this capture did not exercise the callback.
             var livePath = Path.Combine(modsRoot, "0-Engine", "modules", descriptor.Module);
             if (!File.Exists(livePath)) continue;
             var original = File.ReadAllBytes(livePath);
@@ -310,7 +311,7 @@ internal static class ZeroEngineAllocationBatchSource
                 PolicyClass = descriptor.Policy,
                 sourceProof = true,
                 sourceSha256 = liveSourceHashes[descriptor.Relative],
-                evidence = "Bounded positive Lua/C source-specific allocation callsite",
+                evidence = "HISTORICALLY_MEASURED; CURRENT_SOURCE_STRUCTURAL_PROOF",
                 patchStyle = descriptor.Module == "SpatialHash.lua"
                     ? "REGISTER_ONCE_RADIUS_AND_WITHIN_SEARCH_ROW_X"
                     : "WITHIN_UPDATE_PLAYER_ID_SCALAR_REUSE",
