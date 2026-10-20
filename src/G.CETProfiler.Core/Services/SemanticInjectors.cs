@@ -443,28 +443,88 @@ internal static partial class SemanticInjectors
     }
 
 
+    // Shared cross-version bridge: a semantic stage consumes the exact
+    // accessor already emitted by generic source rewriting. Source validation
+    // requires a uniquely defined G-CET helper AND its original live fallback,
+    // never just a matching name, mod release, comment, or file digest.
+    private static IEnumerable<SharedProviderAuthorization> ProvenGenericGetters(
+        string source)
+    {
+        foreach (var provider in SharedProviderCatalog.Authorized)
+        {
+            var name="__gcet"+provider.Getter;
+            if (!source.Contains("-- G-CET shared provider: "+provider.Provider,
+                    StringComparison.Ordinal) ||
+                Regex.Matches(source,@"\blocal\s+function\s+"+
+                    Regex.Escape(name)+@"\s*\(\s*\)",
+                    RegexOptions.CultureInvariant).Count!=1 ||
+                !Regex.IsMatch(source,@"\breturn\s+Game\s*\.\s*"+
+                    Regex.Escape(provider.Getter)+@"\s*\(\s*\)",
+                    RegexOptions.CultureInvariant))
+                continue;
+            yield return provider;
+        }
+    }
+
+    private static string PreserveGenericGetters(string source,string fragment)
+    {
+        foreach(var provider in ProvenGenericGetters(source))
+        {
+            fragment=Regex.Replace(fragment,
+                @"\bGame\s*\.\s*"+Regex.Escape(provider.Getter)+
+                @"\s*\(\s*\)",
+                "__gcet"+provider.Getter+"()",
+                RegexOptions.CultureInvariant);
+        }
+        return fragment;
+    }
+
+    private static string PreserveGenericRegexGetters(string source,string pattern)
+    {
+        foreach(var provider in ProvenGenericGetters(source))
+        {
+            // Regex patterns encode the original code differently than Lua
+            // replacement templates. Support the two reviewed zero-arg
+            // spellings only; do not generalize arbitrary receiver methods.
+            var original=@"Game\.Get"+provider.Getter[3..]+@"\(\)";
+            var generic=@"__gcet"+provider.Getter+@"\(\)";
+            pattern=pattern.Replace(original,generic,StringComparison.Ordinal);
+            var spacedOriginal=@"Game\.Get"+provider.Getter[3..]+@"\s*\(\s*\)";
+            var spacedGeneric=@"__gcet"+provider.Getter+@"\s*\(\s*\)";
+            pattern=pattern.Replace(spacedOriginal,spacedGeneric,
+                StringComparison.Ordinal);
+        }
+        return pattern;
+    }
+
     private static string RegexReplaceOnce(
         string text,
         string pattern,
         string replacement,
         string label)
     {
-        var regex = new Regex(
-            pattern,
-            RegexOptions.CultureInvariant);
-
-        var matches = regex.Matches(text);
-        if (matches.Count == 0)
+        var regex = new Regex(pattern,RegexOptions.CultureInvariant);
+        var matches=regex.Matches(text);
+        if(matches.Count==0)
+        {
+            // Generic-first composition: the old semantic source pattern may
+            // describe Game.Get* even though the actual installed source now
+            // contains its proven __gcetGet*() equivalent.
+            var currentPattern=PreserveGenericRegexGetters(text,pattern);
+            if(currentPattern!=pattern)
+            {
+                regex=new Regex(currentPattern,RegexOptions.CultureInvariant);
+                matches=regex.Matches(text);
+            }
+        }
+        if(matches.Count==0)
             throw new InvalidOperationException(
                 $"Current source no longer matches semantic anchor: {label}.");
-        if (matches.Count != 1)
+        if(matches.Count!=1)
             throw new InvalidOperationException(
                 $"Semantic anchor is ambiguous in current source: {label}.");
 
-        return regex.Replace(
-            text,
-            replacement,
-            1);
+        return regex.Replace(text,PreserveGenericGetters(text,replacement),1);
     }
 
     // Source-stage upgrade support: a pristine Nexus input receives every
@@ -474,6 +534,8 @@ internal static partial class SemanticInjectors
     private static string ReplaceOrSkipCompletedStage(
         string text, string oldValue, string newValue, string label)
     {
+        oldValue=PreserveGenericGetters(text,oldValue);
+        newValue=PreserveGenericGetters(text,newValue);
         if (text.Contains(newValue, StringComparison.Ordinal) ||
             Regex.IsMatch(text, BuildFlexibleLiteralPattern(newValue),
                 RegexOptions.CultureInvariant | RegexOptions.Singleline))
@@ -487,6 +549,8 @@ internal static partial class SemanticInjectors
         string newValue,
         string label)
     {
+        oldValue=PreserveGenericGetters(text,oldValue);
+        newValue=PreserveGenericGetters(text,newValue);
         var first = text.IndexOf(oldValue, StringComparison.Ordinal);
         if (first >= 0)
         {
