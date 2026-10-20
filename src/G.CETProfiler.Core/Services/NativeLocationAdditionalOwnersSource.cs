@@ -21,7 +21,8 @@ internal static class NativeLocationAdditionalOwnersSource
         const string marker="G-CET native location:card-collection-v1";
         if (file.Text.Contains(marker,StringComparison.Ordinal))
             return SemanticInjectionResult.Skip("Native card collection coarse wake already installed.");
-        var text=file.Text;
+        var useCrlf=file.Text.Contains("\r\n",StringComparison.Ordinal);
+        var text=useCrlf ? file.Text.Replace("\r\n","\n",StringComparison.Ordinal) : file.Text;
         text=Once(text,
             "local function registerSpatialSet()\n  if spatialHandle then return end",
             "-- "+marker+"\n"+
@@ -64,7 +65,7 @@ end
             "  Mod.Subscribe(\"PlayerReady\", registerSpatialSet)",
             "  __gcetAttachCardNative()\n  Mod.Subscribe(\"PlayerReady\", registerSpatialSet)",
             "Card native initial registration");
-        context.Write(file,text);
+        context.Write(file,useCrlf ? text.Replace("\n","\r\n",StringComparison.Ordinal) : text);
         return SemanticInjectionResult.Success(
             "Native 95-site aggregate FAR parks the original 0-Engine card spatial set; NEAR/UNKNOWN restores exact 2m author collection callbacks and picked-state behavior.");
     }
@@ -79,7 +80,8 @@ end
         const string marker="G-CET native location:marmurbank-v1";
         if (file.Text.Contains(marker,StringComparison.Ordinal))
             return SemanticInjectionResult.Skip("Native banker coarse wake already installed.");
-        var text=file.Text;
+        var useCrlf=file.Text.Contains("\r\n",StringComparison.Ordinal);
+        var text=useCrlf ? file.Text.Replace("\r\n","\n",StringComparison.Ordinal) : file.Text;
         text=Once(text,
             "function bank:registerSpatialSet()\n\tif not self.engine then return end",
             "function bank:registerSpatialSet()\n"+
@@ -131,7 +133,7 @@ end
             "\tif self.__gcetNativeFar then self.nearestLocation=nil;return 0 end\n"+
             "\tif not self.engine then return 0 end",
             "Banker native FAR bypasses only idle QueryNearest");
-        context.Write(file,text);
+        context.Write(file,useCrlf ? text.Replace("\n","\r\n",StringComparison.Ordinal) : text);
         return SemanticInjectionResult.Success(
             "Native coarse FAR parks the three banker SpatialHash entries and QueryNearest; NEAR/UNKNOWN restores the original exact 2m nearest interaction and banking UI.");
     }
@@ -146,7 +148,8 @@ end
         const string marker="G-CET native location:yaiba-bathtub-v1";
         if (file.Text.Contains(marker,StringComparison.Ordinal))
             return SemanticInjectionResult.Skip("Native bathtub location gate already installed.");
-        var text=file.Text;
+        var useCrlf=file.Text.Contains("\r\n",StringComparison.Ordinal);
+        var text=useCrlf ? file.Text.Replace("\r\n","\n",StringComparison.Ordinal) : file.Text;
         text=Once(text,
             "function bathtub.init()\n    ui.init()",
             "-- "+marker+"\n"+
@@ -177,7 +180,7 @@ end
             "        end -- original distance check used only until first native snapshot / UNKNOWN\n"+
             "    end\n    ui.update()",
             "Bathtub fallback exact geometry retained");
-        context.Write(file,text);
+        context.Write(file,useCrlf ? text.Replace("\n","\r\n",StringComparison.Ordinal) : text);
         return SemanticInjectionResult.Success(
             "Native FAR replaces the existing dormant bathtub vector arithmetic; icon/hub/water active state and original UNKNOWN distance check remain unchanged.");
     }
