@@ -77,7 +77,14 @@ internal static partial class SemanticInjectors
         const string priorReturn = "  return ok and distance or nil\nend";
         if (text.Split(priorReturn, StringSplitOptions.None).Length != 2)
             throw new InvalidOperationException("Physical NPC protected distance fallback changed.");
-        text = text.Replace("local ok, distance = pcall(function()", "local ok, distance, pos = pcall(function()", StringComparison.Ordinal);
+        var protectedRead = new Regex(
+            @"(?m)^(?<indent>[ \t]*)local\s+ok,\s*distance\s*=\s*pcall\(function\(\)" +
+            @"(?<position>\r?\n[ \t]*local pos = playerPos or player:GetWorldPosition\(\))",
+            RegexOptions.CultureInvariant);
+        if (protectedRead.Matches(text).Count != 1)
+            throw new InvalidOperationException("NPC distance pcall boundary drifted.");
+        text = protectedRead.Replace(text, m => m.Groups["indent"].Value +
+            "local ok, distance, pos = pcall(function()" + m.Groups["position"].Value);
         text = text.Replace(priorReturn,
             "  return ok and distance or nil, ok and pos or nil\nend", StringComparison.Ordinal);
         var hits = call.Matches(text);
