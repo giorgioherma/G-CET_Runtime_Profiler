@@ -152,7 +152,7 @@ internal sealed record CompiledNativeLocations(byte[] Bytes,
             if(radius.Success && init?.Contains("poker.world_far",StringComparison.Ordinal)==true &&
                init.Contains("StreetTables.update",StringComparison.Ordinal) &&
                src?.Contains("StreetTables.locations = {",StringComparison.Ordinal)==true)
-                Include(10031,Parse(10031,src,Poker,Number(radius.Groups["r"].Value)));
+                Include(10031,Parse(10031,src,Poker,Number(radius.Groups["r"].Value)+5));
         }
 
         if(Has("tunnel_rescue/init.lua","G-CET native location:tunnel-"))
@@ -235,11 +235,20 @@ internal sealed record CompiledNativeLocations(byte[] Bytes,
                !src.Contains("dedka_entrance1",StringComparison.Ordinal) ||
                !src.Contains("dedka_entrance2_cluster",StringComparison.Ordinal))
                 src=null;
-            var first=ParseNamed(10034,src,"ENTRANCE_POS",200);
-            var second=ParseNamed(10034,src,"ENTRANCE_POS_2",200);
+            // Derive wake from the authored zone's current radius, not
+            // a hardcoded implementation release. Advance wake 10 metres
+            // beyond the largest proven discovery boundary.
+            var zoneRadii=src is null ? new List<float>() :
+                Regex.Matches(src,@"\bradius\s*=\s*(?<v>"+Num+")",RegexOptions.CultureInvariant)
+                    .Select(m=>Number(m.Groups["v"].Value))
+                    .Where(v=>v>0 && v<=1000 && float.IsFinite(v))
+                    .ToList();
+            var wake=zoneRadii.Count>0 ? zoneRadii.Max()+10f : 0f;
+            var first=wake>0 ? ParseNamed(10034,src,"ENTRANCE_POS",wake) : new List<Site>();
+            var second=wake>0 ? ParseNamed(10034,src,"ENTRANCE_POS_2",wake) : new List<Site>();
             if(first.Count==0 || second.Count==0) {
-                first=ParseNamed(10034,src,"entrancePos",200);
-                second=ParseNamed(10034,src,"entrancePos_2",200);
+                first=wake>0 ? ParseNamed(10034,src,"entrancePos",wake) : new List<Site>();
+                second=wake>0 ? ParseNamed(10034,src,"entrancePos_2",wake) : new List<Site>();
             }
             if(first.Count==1 && second.Count==1)
                 Include(10034,first.Concat(second));
