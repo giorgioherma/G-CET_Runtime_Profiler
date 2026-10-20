@@ -5,6 +5,9 @@
 
 **The matrix is not a claim that previously developed semantics are absent.** `UNREVIEWED` means the A/B/C coverage of a rule has not yet been re-audited for this *new* two-direction dormancy task; many rules already contain tested Lua gates, caches or native routing. Do not falsely mark them missing or complete without inspecting both the source and current generated postconditions.
 
+
+**2026-10-20 current-stack intake:** The supplied current installation contains 27 of the 62 original mod owners. Ten were addressed in the recent PASS5–8 work (plus the non-catalog radioExt/Hotscenes owners); **17 remain in the present installation for A/B/C source review**. See [current live-stack source/capture intake](research/CURRENT-LIVE-STACK-DORMANCY-INTAKE-2026-10-20.md). This intake does not mark rows complete or change existing source-proven stage evidence. All three checkpoint captures differ in duration/play state; do not infer a net improvement or regression from their whole-stack totals.
+
 ## Stages
 
 - **A:** idle Lua execution/state processing; **B:** unnecessary Lua → native engine calls and marshalling; **C:** unnecessary native → Lua observer/subscriber dispatch, with exactly the original author wake paths.
