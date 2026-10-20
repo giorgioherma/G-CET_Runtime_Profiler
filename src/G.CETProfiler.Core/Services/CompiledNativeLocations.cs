@@ -151,8 +151,76 @@ internal sealed record CompiledNativeLocations(byte[] Bytes,
         if(Has("tunnel_rescue/init.lua","G-CET native location:tunnel-"))
             Include(10032,JsonPair(Read("tunnel_rescue/layout.json"),10032));
 
-        // 10033 Illegal Mechanic is runtime REDscript matrix-backed, not
-        // source-constant. Its tested native dynamic AddAnchor path remains.
+        // The REDscript registry is fixed author source, despite being
+        // exposed to CET via a runtime system. Bind each mechanic independently.
+        // Native wakes at least 15m OUTSIDE the largest of its discovery
+        // polygon, 95m despawn and 75m spawn boundaries. No per-site
+        // coordinate/geometry is inferred from the current player position.
+        // An absent or drifted REDscript registry leaves the original
+        // always-running Lua NPC supervision and REDscript discovery intact.
+        if(Has("illegal_mechanic_phase1a/physical_npc.lua",
+               "G-CET native location:illegal-v3"))
+        {
+            var game=new DirectoryInfo(Path.GetFullPath(modsRoot));
+            // .../Cyberpunk 2077/bin/x64/plugins/cyber_engine_tweaks/mods
+            for(var depth=0;depth<5 && game.Parent is not null;depth++)
+                game=game.Parent;
+            var reds=Path.Combine(game.FullName,"r6","scripts",
+                "zzz_illegal_mechanic_phase1a","zzz_IllegalMechanicTypes.reds");
+            if(File.Exists(reds)) {
+                var definition=File.ReadAllText(reds);
+                var blocks=Regex.Matches(definition,
+                    @"data\s*=\s*new\s+IllegalMechanicDefinition\(\)\s*;(?<body>[\s\S]*?)ArrayPush\s*\(\s*result\s*,\s*data\s*\)\s*;",
+                    RegexOptions.CultureInvariant);
+                var candidates=new List<Site>();
+                var complete=blocks.Count is >=1 and <=256;
+                for(var index=0;index<blocks.Count && complete;index++) {
+                    var body=blocks[index].Groups["body"].Value;
+                    var idMatch=Regex.Match(body,
+                        @"data\.mechanicID\s*=\s*n""[^""]+""\s*;");
+                    var center=Regex.Match(body,
+                        @"data\.npcPosition\s*=\s*new\s+Vector4\s*\(\s*(?<x>"+Num+
+                        @")\s*,\s*(?<y>"+Num+@")\s*,\s*(?<z>"+Num+@")\s*,");
+                    var vertices=Regex.Matches(body,
+                        @"ArrayPush\s*\(\s*data\.discoveryVertices\s*,\s*new\s+Vector4\s*\(\s*(?<x>"+Num+
+                        @")\s*,\s*(?<y>"+Num+@")\s*,\s*(?<z>"+Num+@")\s*,");
+                    var zLow=Regex.Match(body,@"data\.discoveryLowestPointZ\s*=\s*"+Num);
+                    var zHigh=Regex.Match(body,@"data\.discoveryHighestPointZ\s*=\s*"+Num);
+                    var zTolerance=Regex.Match(body,@"data\.discoveryZTolerance\s*=\s*"+Num);
+                    if(!idMatch.Success || !center.Success || vertices.Count==0 ||
+                       !zLow.Success || !zHigh.Success || !zTolerance.Success){
+                        complete=false;break;
+                    }
+                    var x=Number(center.Groups["x"].Value);
+                    var y=Number(center.Groups["y"].Value);
+                    var z=Number(center.Groups["z"].Value);
+                    var maxXY=0d;
+                    foreach(Match vertex in vertices) {
+                        var dx=Number(vertex.Groups["x"].Value)-x;
+                        var dy=Number(vertex.Groups["y"].Value)-y;
+                        maxXY=Math.Max(maxXY,Math.Sqrt(dx*dx+dy*dy));
+                    }
+                    // Original REDscript discovery uses XY plus its own
+                    // Z slab. Conservative 3D encompassing sphere also
+                    // accounts for the author slab and outlying vertices.
+                    var low=Number(zLow.Value.Split('=').Last().Trim());
+                    var high=Number(zHigh.Value.Split('=').Last().Trim());
+                    var tolerance=Number(zTolerance.Value.Split('=').Last().Trim());
+                    var vertical=Math.Max(Math.Abs(z-(low-tolerance)),
+                                          Math.Abs(high+tolerance-z));
+                    var discovery=Math.Sqrt(maxXY*maxXY+vertical*vertical);
+                    var radius=(float)Math.Max(110d,Math.Ceiling(discovery+15d));
+                    if(!float.IsFinite(radius) || radius>1024) {
+                        complete=false;break;
+                    }
+                    candidates.Add(new Site(1003301+index,x,y,z,radius));
+                }
+                if(complete && candidates.Count==blocks.Count) {
+                    foreach(var candidate in candidates)
+                        Include(candidate.Owner,new[]{candidate});
+                }
+            }
+        }
 
         if(Has("Dedka Auto Shop/init.lua","G-CET native location:dedka-")) {
             var src=Read("Dedka Auto Shop/init.lua");
