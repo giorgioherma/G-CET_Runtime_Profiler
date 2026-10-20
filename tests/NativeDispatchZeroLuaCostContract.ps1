@@ -234,9 +234,14 @@ try {
         throw 'Dormant onDraw still uses an independent CET draw registration.'
     }
     $guardText=Zip-Text 'NativeZeroGuard'
-    if ($guardText.IndexOf('local player = Game.GetPlayer()') -lt 0 -or
-        $guardText.IndexOf('if not active then return end') -lt
-            $guardText.IndexOf('local player = Game.GetPlayer()')) {
+    # The source-first READ_REUSE lane may substitute the exact getter while
+    # leaving this zero-cost callback's original guard position unchanged.
+    # Accept ONLY the original read or its known shared-helper equivalent.
+    $originalPlayerRead=$guardText.IndexOf('local player = Game.GetPlayer()')
+    $sharedPlayerRead=$guardText.IndexOf('local player = __gcetGetPlayer()')
+    $playerRead=if($sharedPlayerRead -ge 0){$sharedPlayerRead}else{$originalPlayerRead}
+    if ($playerRead -lt 0 -or
+        $guardText.IndexOf('if not active then return end') -lt $playerRead) {
         throw 'Zero-cost admission improperly hoisted a Lua-side guard.'
     }
     if (@($transforms | Where-Object { $_.owner -eq 'NativeZeroGuard' -and
