@@ -144,13 +144,16 @@ internal static class NativeReadReuseSource
         // Resolver report SHA is provenance, not a compatibility gate.
         // Re-discover every installed mod source for each generation, including
         // dormant files and mod updates not present in an earlier capture.
-        var plans=Analyze(modsRoot);
+        var paths=Analyze(modsRoot).Select(x=>x.RelativeFile)
+            .Concat(staged.Keys.Where(x=>x.EndsWith(".lua",StringComparison.OrdinalIgnoreCase)
+                && !IsInfrastructure(x.Replace('\\','/'))))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(x=>x,StringComparer.OrdinalIgnoreCase);
         var applied=0;
         var rootPath=Path.GetFullPath(modsRoot);
         var prefix=rootPath.TrimEnd(Path.DirectorySeparatorChar)+Path.DirectorySeparatorChar;
-        foreach(var plan in plans)
+        foreach(var rel in paths)
         {
-            var rel=plan.RelativeFile;
             var path=Path.GetFullPath(Path.Combine(rootPath,
                 rel.Replace('/',Path.DirectorySeparatorChar)));
             if(!path.StartsWith(prefix,StringComparison.OrdinalIgnoreCase)||
