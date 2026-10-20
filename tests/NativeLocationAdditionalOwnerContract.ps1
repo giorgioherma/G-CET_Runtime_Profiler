@@ -5,6 +5,7 @@ if(Test-Path $root){Remove-Item $root -Force -Recurse}
 New-Item -ItemType Directory -Force $root | Out-Null
 $asm=[Reflection.Assembly]::LoadFrom((Join-Path (Resolve-Path $ResolverRoot).Path 'G.CETProfiler.Core.dll'))
 $type=$asm.GetType('GCETRuntimeProfiler.Core.Services.NativeLocationAdditionalOwnersSource',$true)
+$four=$asm.GetType('GCETRuntimeProfiler.Core.Services.NativeLocationFourOwnersSource',$true)
 $contextType=$asm.GetType('GCETRuntimeProfiler.Core.Services.SemanticPatchContext',$true)
 $flags=[Reflection.BindingFlags]'Static,NonPublic'
 $ctor=@($contextType.GetConstructors([Reflection.BindingFlags]'Instance,NonPublic') | Where-Object {$_.GetParameters().Count -eq 4})[0]
@@ -24,7 +25,8 @@ function Apply([string]$owner,[string]$relative,[string]$rule,[string]$method,[s
     $types=(@($args4) | ForEach-Object {$_.GetType().FullName}) -join ', '
     throw "Constructing $owner native source context failed ($types): $($_.Exception.InnerException.Message)"
   }
-  $m=$type.GetMethod($method,$flags)
+  $targetType=if($method -eq 'ApplyIllegalV3'){$four}else{$type}
+  $m=$targetType.GetMethod($method,$flags)
   if(!$m){throw "Native location injector missing: $method"}
   try {$result=$m.Invoke($null,[object[]]@($ctx))}
   catch{throw "Native location $owner rejected current-author source: $($_.Exception.InnerException.Message)"}
@@ -168,5 +170,50 @@ $z=Apply 'ziggy_last_play' 'init.lua' 'native-location-ziggy-offered' 'ApplyZigg
  'if __gcetZiggyOfferedFarAcc < 1.0 then return end'
 ) $true
 Write-Host 'Ziggy offered source-native 130m: same author guards and 1Hz cadence, UNKNOWN fallback, CRLF and idempotence PASS'
+
+
+$mechanic=@'
+local cfg={spawnDistance=75.0,despawnDistance=95.0,updateInterval=0.5}
+local state={mechanics={}}
+local function loadMatrix()
+ local system=getSystem()
+ local count=system:GetMechanicCountForCET()
+ local result={}
+ for index=0,count-1 do
+  result[#result+1]={index=index,mechanicID=system:GetMechanicIDAtForCET(index),x=1,y=2,z=3}
+ end
+ state.mechanics = result
+ return true
+end
+local function getPlayer() return Game.GetPlayer() end
+local function resolvePendingSpawn(entry) end
+local function distanceFromPlayer(entry,player) return 0 end
+function PhysicalNpc.Update(delta)
+ if #state.mechanics == 0 and not loadMatrix() then return end
+ local player = getPlayer()
+ if player == nil then return end
+ for _, entry in ipairs(state.mechanics) do
+    if entry.spawnPending then
+      resolvePendingSpawn(entry)
+    else
+      local distance = distanceFromPlayer(entry, player)
+      if distance ~= nil then
+        if entry.entityID == nil and distance <= cfg.spawnDistance then spawnMechanic(entry)
+        elseif entry.entityID ~= nil and distance >= cfg.despawnDistance then deleteEntry(entry, "far") end
+      end
+    end
+ end
+end
+'@
+$il=Apply 'illegal_mechanic_phase1a' 'physical_npc.lua' 'native-location-illegal' 'ApplyIllegalV3' $mechanic @(
+  'G-CET native location:illegal-v3',
+  'host:attachCompiled(1003301+index,1,',
+  'entry.__gcetNativeFar=true;state.nextUpdateAt=0',
+  'if not __gcetAnySiteActive then return end',
+  'entry.__gcetNativeFar == true and not entry.spawnPending',
+  'distance <= cfg.spawnDistance',
+  'distance >= cfg.despawnDistance'
+)
+Write-Host 'Illegal Mechanic per-site compiled owner binding, individual FAR/NEAR wake, existing exact NPC streaming, and idempotence PASS'
 
 Write-Host 'Native static location additional owners: Card Collection 100-site coarse dormancy, banker SpatialHash FAR, Yaiba bathroom author gate; fallback, CRLF and idempotence PASS'
