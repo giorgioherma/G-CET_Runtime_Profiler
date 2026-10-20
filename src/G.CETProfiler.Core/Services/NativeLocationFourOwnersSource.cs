@@ -328,6 +328,41 @@ internal static class NativeLocationFourOwnersSource
     }
 
 
+    private static string RestoreLegacyIllegalAggregateScanner(string source)
+    {
+        var crlf=source.Contains("\r\n",StringComparison.Ordinal);
+        var text=crlf?source.Replace("\r\n","\n",StringComparison.Ordinal):source;
+        // PASS11 used a single owner (10033) across all mechanics. Its
+        // aggregate FAR gate can incorrectly park another mechanic. Remove
+        // ONLY the independently proven injected aggregate wrapper, keeping
+        // the original author NPC lifetimes and unrelated optimizations.
+        var attachment=new Regex(
+            @"(?ms)^[ \t]*-- G-CET native location:illegal-v[12]\n[\s\S]*?^[ \t]*end[ \t]*(?=log\()",
+            RegexOptions.CultureInvariant);
+        var far=new Regex(
+            @"(?ms)^[ \t]*if state\.__gcetNativeFar then\s*local hasLiveOrPending=false[\s\S]*?^[ \t]*end[ \t]*(?=local player\s*=\s*getPlayer\(\))",
+            RegexOptions.CultureInvariant);
+        var binding=attachment.Matches(text);
+        var guards=far.Matches(text);
+        if(binding.Count!=1 || guards.Count!=1 ||
+           !binding[0].Value.Contains("lookup:attach(10033,sites,",StringComparison.Ordinal) ||
+           !binding[0].Value.Contains("state.__gcetNativeFar=true",StringComparison.Ordinal) ||
+           !binding[0].Value.Contains("radius=100,metric=\"xyz\"",StringComparison.Ordinal) ||
+           !guards[0].Value.Contains("if not hasLiveOrPending then return end",StringComparison.Ordinal) ||
+           !text.Contains("cfg.spawnDistance",StringComparison.Ordinal) ||
+           !text.Contains("cfg.despawnDistance",StringComparison.Ordinal) ||
+           !text.Contains("resolvePendingSpawn(entry)",StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "Legacy aggregate mechanic wake is not source-proven; keep old gameplay unchanged.");
+        text=attachment.Replace(text,"  ",1);
+        text=far.Replace(text,"  ",1);
+        if(text.Contains("state.__gcetNativeFar",StringComparison.Ordinal) ||
+           text.Contains("lookup:attach(10033,",StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "Legacy aggregate mechanic state remains; refuse conflicting native owners.");
+        return crlf?text.Replace("\n","\r\n",StringComparison.Ordinal):text;
+    }
+
     // Author fixed positions live in the REDscript registry, not the CET
     // matrix getter. Resolver extracts the registry once into GCAS and creates
     // one independent native owner per mechanic. Never let proximity for one
@@ -340,12 +375,11 @@ internal static class NativeLocationFourOwnersSource
             "cfg.spawnDistance", "cfg.despawnDistance");
         if(file.Text.Contains("G-CET native location:illegal-v3",StringComparison.Ordinal))
             return SemanticInjectionResult.Skip("Independent mechanic native wake is already installed.");
-        if(file.Text.Contains("G-CET native location:illegal-v1",StringComparison.Ordinal) ||
-           file.Text.Contains("G-CET native location:illegal-v2",StringComparison.Ordinal))
-            throw new InvalidOperationException(
-                "Old aggregate mechanic location optimization installed; regenerate this mod from original source for per-mechanic native owners.");
-        var crlf=file.Text.Contains("\r\n",StringComparison.Ordinal);
-        var text=crlf ? file.Text.Replace("\r\n","\n",StringComparison.Ordinal) : file.Text;
+        var legacy=file.Text.Contains("G-CET native location:illegal-v1",StringComparison.Ordinal) ||
+            file.Text.Contains("G-CET native location:illegal-v2",StringComparison.Ordinal);
+        var input=legacy?RestoreLegacyIllegalAggregateScanner(file.Text):file.Text;
+        var crlf=input.Contains("\r\n",StringComparison.Ordinal);
+        var text=crlf ? input.Replace("\r\n","\n",StringComparison.Ordinal) : input;
         var helper="""
   -- G-CET native location:illegal-v3
   -- One compiled REDscript-backed site per mechanic: 1003301+registry index.
