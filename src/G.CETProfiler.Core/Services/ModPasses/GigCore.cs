@@ -12,7 +12,8 @@ internal static partial class SemanticInjectors
         var file = context.FindFile(
             "init.lua",
             "local function _rawMenuOrPhotoPaused()",
-            "Game.GetAllBlackboardDefs()",
+            "defs.UI_System",
+            "defs.PhotoMode",
             "local function computePauseState()",
             "computePauseState");
         var text = file.Text;
@@ -54,7 +55,8 @@ internal static partial class SemanticInjectors
             var pmMatches = pm.Matches(body);
             if (uiMatches.Count != 1 || pmMatches.Count != 1 ||
                 uiMatches[0].Index >= pmMatches[0].Index ||
-                !body.Contains("Game.GetAllBlackboardDefs()", StringComparison.Ordinal))
+                !(body.Contains("Game.GetAllBlackboardDefs()", StringComparison.Ordinal) ||
+                  body.Contains("__gcetGetAllBlackboardDefs()", StringComparison.Ordinal)))
                 throw new InvalidOperationException(
                     "GigCore original/shared-provider UI and PhotoMode getters are not uniquely proven.");
             var u = uiMatches[0];
@@ -192,6 +194,7 @@ internal static partial class SemanticInjectors
             "return open == true",
             "end"
         };
+        expected[3]=PreserveGenericGetters(text,expected[3]);
         if (actual.Length != expected.Length)
             throw new InvalidOperationException(
                 "GigCore author protected phone-open function changed.");
@@ -199,7 +202,8 @@ internal static partial class SemanticInjectors
         {
             var value = actual[i];
             if (i == 3 && value ==
-                "local ps = Game.GetScriptableSystemsContainer():Get('PhoneSystem')")
+                PreserveGenericGetters(text,
+                  "local ps = Game.GetScriptableSystemsContainer():Get('PhoneSystem')"))
                 continue;
             if (!string.Equals(value, expected[i], StringComparison.Ordinal))
                 throw new InvalidOperationException(
@@ -208,7 +212,8 @@ internal static partial class SemanticInjectors
         var nl = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
         var replacement =
             "local function __gcetGigPhoneOpenedRead()" + nl +
-            "  local ps = Game.GetScriptableSystemsContainer():Get(\"PhoneSystem\")" + nl +
+            "  " + PreserveGenericGetters(text,
+                "local ps = Game.GetScriptableSystemsContainer():Get(\"PhoneSystem\")") + nl +
             "  return ps and ps:IsPhoneOpened()" + nl +
             "end" + nl +
             "local function phoneIsOpen()" + nl +
