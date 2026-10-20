@@ -69,10 +69,10 @@ end
 return SpatialHash
 """;
 var spatialInput = Encoding.UTF8.GetBytes(spatialFixture);
-object?[] p = [spatialInput, false, null, null];
+object?[] p = [spatialInput, null, null];
 Check((bool)spatial.Invoke(null, p)!, "Spatial structural fixture refused");
-var spatialOutput = Encoding.UTF8.GetString((byte[])p[2]!);
-Check((string)p[3]! == "APPLIED", "Spatial success reason incorrect");
+var spatialOutput = Encoding.UTF8.GetString((byte[])p[1]!);
+Check((string)p[2]! == "APPLIED", "Spatial success reason incorrect");
 Check(spatialOutput.Split("G-CET SPATIAL_GRID_X_ROW_REUSE_STAGE_B_V1").Length - 1 == 3,
     "Missing three loop rewrites");
 Check(spatialOutput.Contains("G-CET SPATIAL_POLL_RADIUS_SNAPSHOT_STAGE_A_V1"),
@@ -82,17 +82,17 @@ Check(spatialOutput.Contains("local key = (gx + 10000) * 20000 + (gy + 10000)"),
     "Grid hash formula missing");
 Check(!spatialOutput.Contains("local key = getGridKey(px + dx * gridSize"),
     "Old repetitive grid helper still present");
-object?[] pAgain = [p[2], false, null, null];
+object?[] pAgain = [p[1], null, null];
 Check(!(bool)spatial.Invoke(null, pAgain)!, "Spatial double application");
-Check((string)pAgain[3]! == "ALREADY_SATISFIED", "Spatial idempotence wrong reason");
-object?[] pPinned = [spatialInput, null, null];
-Check(!(bool)pinnedSpatial.Invoke(null, pPinned)!, "Unreviewed Spatial source admitted");
+Check((string)pAgain[2]! == "ALREADY_SATISFIED", "Spatial idempotence wrong reason");
+object?[] pPinned = [Encoding.UTF8.GetBytes(spatialFixture + "\n-- custom SpatialHash release metadata"), null, null];
+Check((bool)pinnedSpatial.Invoke(null, pPinned)!, "Version-fluid Spatial source incorrectly rejected");
 var missingLoop = spatialFixture.Replace(
     "function SpatialHash.QueryWithin(setName, radiusSq)",
     "function SpatialHash.QueryWithin(setName, radiusSq)")
     .Replace("local key = getGridKey(px + dx * gridSize, py + dy * gridSize, gridSize)",
        "local key = unexpectedGrid()", StringComparison.Ordinal);
-object?[] pDrift = [Encoding.UTF8.GetBytes(missingLoop), false, null, null];
+object?[] pDrift = [Encoding.UTF8.GetBytes(missingLoop), null, null];
 Check(!(bool)spatial.Invoke(null, pDrift)!, "Drifted spatial loops accepted");
 
 var lifecycleFixture = """
@@ -130,10 +130,10 @@ end
 return Lifecycle
 """;
 var lifeInput = Encoding.UTF8.GetBytes(lifecycleFixture);
-object?[] l = [lifeInput, false, null, null];
+object?[] l = [lifeInput, null, null];
 Check((bool)lifecycle.Invoke(null, l)!, "Lifecycle structural fixture refused");
-var lifeOutput = Encoding.UTF8.GetString((byte[])l[2]!);
-Check((string)l[3]! == "APPLIED", "Lifecycle success reason incorrect");
+var lifeOutput = Encoding.UTF8.GetString((byte[])l[1]!);
+Check((string)l[2]! == "APPLIED", "Lifecycle success reason incorrect");
 Check(lifeOutput.Split("pcall(player.GetEntityID, player)").Length - 1 == 1,
     "Lifecycle duplicate getter remains");
 Check(lifeOutput.Contains("local hash = GetPlayerHash(checkedId)"),
@@ -142,14 +142,14 @@ Check(lifeOutput.Contains("Events.PlayerRecreated:trigger(player)"),
     "Lifecycle original event lost");
 Check(lifeOutput.Split("Events.PlayerInvalidated:trigger()").Length - 1 == 2,
     "Lifecycle must retain both update-time and ForceInvalidate event paths");
-object?[] lAgain = [l[2], false, null, null];
+object?[] lAgain = [l[1], null, null];
 Check(!(bool)lifecycle.Invoke(null, lAgain)!, "Lifecycle double application");
-Check((string)lAgain[3]! == "ALREADY_SATISFIED", "Lifecycle idempotence wrong reason");
-object?[] lPinned = [lifeInput, null, null];
-Check(!(bool)pinnedLifecycle.Invoke(null, lPinned)!, "Unreviewed Lifecycle source admitted");
+Check((string)lAgain[2]! == "ALREADY_SATISFIED", "Lifecycle idempotence wrong reason");
+object?[] lPinned = [Encoding.UTF8.GetBytes(lifecycleFixture + "\n-- author Lifecycle upgrade"), null, null];
+Check((bool)pinnedLifecycle.Invoke(null, lPinned)!, "Version-fluid Lifecycle source incorrectly rejected");
 var lifeDrift = lifecycleFixture.Replace("local hash = GetPlayerHash(player)",
     "local hash = GetPlayerHash(nil)", StringComparison.Ordinal);
-object?[] lInvalid = [Encoding.UTF8.GetBytes(lifeDrift), false, null, null];
+object?[] lInvalid = [Encoding.UTF8.GetBytes(lifeDrift), null, null];
 Check(!(bool)lifecycle.Invoke(null, lInvalid)!, "Lifecycle source drift admitted");
 // Locate the second event directly: fixture source line endings may be CRLF
 // on Windows, making newline-delimited Replace() an unreliable drift test.
@@ -158,7 +158,7 @@ var teardownEvent = lifecycleFixture.LastIndexOf(invalidation, StringComparison.
 Check(teardownEvent > lifecycleFixture.IndexOf(invalidation, StringComparison.Ordinal),
     "Fixture must contain a separate ForceInvalidate event");
 var lifeInvalidationDrift = lifecycleFixture.Remove(teardownEvent, invalidation.Length);
-object?[] lInvalidation = [Encoding.UTF8.GetBytes(lifeInvalidationDrift), false, null, null];
+object?[] lInvalidation = [Encoding.UTF8.GetBytes(lifeInvalidationDrift), null, null];
 Check(!(bool)lifecycle.Invoke(null, lInvalidation)!,
     "Missing ForceInvalidate event path was accepted");
 
