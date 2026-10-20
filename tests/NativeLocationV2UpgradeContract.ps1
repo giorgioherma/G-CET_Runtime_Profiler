@@ -65,8 +65,8 @@ $spacing=$illegal.Replace('  end  local player', '  end' + "`r`n" + '  local pla
 if(!(Upgrade 'UpgradeIllegalV2' $spacing).Contains('if state.__gcetNativeFar and not entry.spawnPending')) {
  throw 'Illegal native source equivalent failed'
 }
-$drift=$illegal.Replace('      resolvePendingSpawn(entry)' + "`n" + '    else',
- '      cancelPendingSpawn(entry)' + "`n" + '    else')
+$drift=$illegal.Replace('    if entry.spawnPending then',
+    '    if entry.spawnPending ~= false then')
 $refused=$false
 try{[void](Upgrade 'UpgradeIllegalV2' $drift)}catch{$refused=$true}
 if(!$refused){throw 'Illegal native v2 accepted substantive pending-state drift'}
