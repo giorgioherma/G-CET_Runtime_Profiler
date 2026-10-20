@@ -95,3 +95,44 @@ Possible attachment sequence:
 - Game ABI, native-Lua visibility, load/teleport, frame-relative freshness and
   net optimization require an IN-GAME pass before production admission.
 - This branch does not ship a new Resolver pass or modify any installed mod.
+
+
+## Auto-discovery contract (native-only CI extension)
+
+The shared 0-Engine host (owned/updated separately) may negotiate automatically
+once per game session, using \`GCETPlayerApiVersion()==1\` and the
+\`GCETPlayerCapabilities()\` bitmask. Required capabilities for the generic
+position bridge are 1 (position), 2 (availability), 4 (change-poll),
+8 (session epoch) and 16 (manifest-independent operation). The experimental
+native plugin reports bitmask 31. \`GCETPlayerConsumerCount()\` is a
+diagnostic query, **not** a reason to create more clients.
+
+The optional \`CETPlayerSnapshotHub.TryAuto(Game, sharedConsumerId, fallback)\`
+performs this negotiation and checks the complete native method surface.
+It does NOT start a new callback, call Game.GetPlayer, read any coordinate,
+or register a native subscriber just because the DLL exists. A shared host
+must first bind at least one approved subscriber, then call \`:Step()\` from
+its already existing update callback. If no subscriber exists, the native
+Running-state callback avoids the player getter entirely (unless an independent
+location anchor is already armed).
+
+No mod needs a hand-written \`:Watch()\` call: the existing 0-Engine/Resolver
+generated integration is responsible for connecting recognized source methods
+to the one aggregate host. This native repository **does not** automatically
+patch, intercept, or replace arbitrary mod source. Such end-to-end zero-manual
+adoption requires the other agent's auto-binding/Resolver path to supply the
+shared consumer and source rewrites. With the plugin absent or incompatible,
+the host leaves original getters and callback behavior unchanged.
+
+Automatic hook adoption is not synonymous with native subscription. A direct
+\`Game.GetPlayer()\` call in an unmodified mod still crosses Lua/C++;
+neither RED4ext nor the existence of this DLL makes that crossing disappear.
+Avoid claiming removed decoding cost until a generated pass actually replaces
+that call and a runtime measurement verifies fewer boundary crossings.
+
+**Ownership priority:** existing 0-Engine provider remains authoritative unless
+its integration explicitly delegates an equivalent field to the native service.
+Never create two unconditional producers for the same field. An active native
+location anchor can share the player's native position read with snapshot
+consumers, but an empty/dormant index incurs no player read solely to advertise
+capabilities.

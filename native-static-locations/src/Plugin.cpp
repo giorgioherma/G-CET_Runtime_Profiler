@@ -140,6 +140,19 @@ namespace {
     }
     // Fixed-size aggregate subscriptions: 0-Engine needs one consumer,
     // not a separate native registration for every participating Lua mod.
+    // Stable, runtime-discoverable capability contract for the existing shared
+    // host. No anchor manifest, CET hook, or mod-specific registration required.
+    // API v1 bits: 1=position, 2=availability, 4=change poll,
+    // 8=session epoch, 16=independent of static-location manifests.
+    void PlayerApiVersion(RED4ext::IScriptable*,RED4ext::CStackFrame* f,int32_t* out,int64_t){
+        f->code++;*out=1;
+    }
+    void PlayerCapabilities(RED4ext::IScriptable*,RED4ext::CStackFrame* f,int32_t* out,int64_t){
+        f->code++;*out=1|2|4|8|16;
+    }
+    void PlayerConsumerCount(RED4ext::IScriptable*,RED4ext::CStackFrame* f,int32_t* out,int64_t){
+        f->code++;*out=static_cast<int32_t>(g_playerSnapshot.SubscriberCount());
+    }
     void PlayerSubscribe(RED4ext::IScriptable*,RED4ext::CStackFrame* f,bool* out,int64_t){
         int32_t consumer=0,fields=0;
         RED4ext::GetParameter(f,&consumer);RED4ext::GetParameter(f,&fields);f->code++;
@@ -389,6 +402,9 @@ namespace {
         // Independent player-state service; works without G-CET.locations.
         const char* pcNames[]={"consumer","fields"};
         const char* pcTypes[]={"Int32","Int32"};
+        RegisterFunction("GCETPlayerApiVersion",PlayerApiVersion,"Int32",nullptr,nullptr,0);
+        RegisterFunction("GCETPlayerCapabilities",PlayerCapabilities,"Int32",nullptr,nullptr,0);
+        RegisterFunction("GCETPlayerConsumerCount",PlayerConsumerCount,"Int32",nullptr,nullptr,0);
         RegisterFunction("GCETPlayerSubscribe",PlayerSubscribe,"Bool",pcNames,pcTypes,2);
         RegisterFunction("GCETPlayerUnsubscribe",PlayerUnsubscribe,"Bool",consumerNames,intTypes,1);
         RegisterFunction("GCETPlayerPoll",PlayerPoll,"Int32",consumerNames,intTypes,1);

@@ -9,6 +9,46 @@ local function invoke(fn,...)
     if not fn then return true end
     return pcall(fn,...)
 end
+-- One-time capability negotiation used by the existing shared 0-Engine host.
+-- This does NOT register a CET callback or rewrite an author's source.
+local autoMethods={
+    "GCETPlayerSubscribe","GCETPlayerUnsubscribe","GCETPlayerPoll",
+    "GCETPlayerStatus","GCETPlayerEpoch",
+    "GCETPlayerX","GCETPlayerY","GCETPlayerZ"
+}
+local function nativeMethod(game,name)
+    local ok,fn=pcall(function()return game[name]end)
+    if not ok or type(fn)~="function" then return nil end
+    return fn
+end
+function Hub.TryAuto(game,consumer,onFallback)
+    if (type(game)~="table" and type(game)~="userdata") then
+        return nil,"NATIVE_UNAVAILABLE"
+    end
+    local versionFn=nativeMethod(game,"GCETPlayerApiVersion")
+    local capsFn=nativeMethod(game,"GCETPlayerCapabilities")
+    if not versionFn or not capsFn then return nil,"NATIVE_UNAVAILABLE" end
+    local vok,v=pcall(versionFn)
+    local cok,c=pcall(capsFn)
+    if not vok or v~=1 then return nil,"API_MISMATCH" end
+    if not cok or type(c)~="number" then return nil,"CAPABILITY_MISMATCH" end
+    -- Require manifest independence (bit 16) and the four field/event bits.
+    -- Arithmetic masking is compatible with the stock CET LuaJIT runtime.
+    local function has(bit)return math.floor(c/bit)%2==1 end
+    if not has(1) or not has(2) or not has(4) or not has(8) or not has(16) then
+        return nil,"CAPABILITY_MISMATCH"
+    end
+    local native={}
+    for i=1,#autoMethods do
+        local name=autoMethods[i]
+        local fn=nativeMethod(game,name)
+        if not fn then return nil,"INCOMPLETE_NATIVE_ABI" end
+        native[name]=fn
+    end
+    -- No native sampling begins until someone Watch()es and the shared host
+    -- invokes Step() on its already existing update lane.
+    return Hub.new(native,consumer,onFallback)
+end
 function Hub.new(native,consumer,onFallback)
     assert(type(native)=="table" and type(consumer)=="number" and consumer>0)
     return setmetatable({

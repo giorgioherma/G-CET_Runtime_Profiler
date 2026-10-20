@@ -47,6 +47,7 @@ jobs:
           lua5.4 native-static-locations/tests/CETLookupCacheModEntryTests.lua
           lua5.4 native-static-locations/tests/LegacyR4NativeCacheBridgeTests.lua
           lua5.4 native-static-locations/tests/CETPlayerSnapshotHubTests.lua
+          lua5.4 native-static-locations/tests/CETPlayerSnapshotAutoTests.lua
       - name: Compile deterministic sample data
         run: python native-static-locations/tools/compile_locations.py native-static-locations/examples/sample-installed-only.json ${{ runner.temp }}/G-CET.locations
       - name: Build and execute allocation-bounded spatial index tests

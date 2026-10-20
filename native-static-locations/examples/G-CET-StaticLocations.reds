@@ -61,6 +61,13 @@ public native func GCETStaticMetric(metric: Int32) -> Int64;
 // Subscribe field bits: 1 position, 2 availability.
 // Poll: 1 position, 2 availability, 4 snapshot, 8 session, 16 coalesced.
 // 0 unchanged; -1 invalid ID. UNKNOWN is never safe as FAR/dormant.
+// Version 1: stable capability handshake for zero-per-mod-configuration
+// discovery by an EXISTING shared host. Capabilities bits:
+// 1 position, 2 availability, 4 change-poll, 8 session epoch,
+// 16 player snapshot independent of the static-location manifest.
+public native func GCETPlayerApiVersion() -> Int32;
+public native func GCETPlayerCapabilities() -> Int32;
+public native func GCETPlayerConsumerCount() -> Int32;
 public native func GCETPlayerSubscribe(consumer: Int32, fields: Int32) -> Bool;
 public native func GCETPlayerUnsubscribe(consumer: Int32) -> Bool;
 public native func GCETPlayerPoll(consumer: Int32) -> Int32;
