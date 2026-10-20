@@ -214,6 +214,58 @@ $il=Apply 'illegal_mechanic_phase1a' 'physical_npc.lua' 'native-location-illegal
   'distance <= cfg.spawnDistance',
   'distance >= cfg.despawnDistance'
 )
+
+# PASS11 partially optimized source has one owner gating every mechanic.
+# Remove ONLY that proven aggregate, preserving the previous player-position
+# reuse stage and exact 75/95 metre NPC lifecycle.
+$legacyAttach=@'
+  -- G-CET native location:illegal-v1
+  local engineOk,engine=pcall(GetMod,"0-Engine")
+  local lookup=engineOk and engine and engine.GCET and engine.GCET.NativeLocationHost
+  if lookup and type(lookup.attach) == 'function' then
+    local sites={}
+    for _,entry in ipairs(result) do
+      sites[#sites+1]={x=entry.x,y=entry.y,z=entry.z,radius=100,metric="xyz"}
+    end
+    lookup:attach(10033,sites,
+      function() state.__gcetNativeFar=false;state.nextUpdateAt=0 end,
+      function() state.__gcetNativeFar=true;state.nextUpdateAt=0 end,
+      function() state.__gcetNativeFar=false;state.nextUpdateAt=0;return true end)
+  end  log("matrix loaded")
+'@
+$legacyGate=@'
+  if state.__gcetNativeFar then
+    local hasLiveOrPending=false
+    for _,entry in ipairs(state.mechanics) do
+      if entry.spawnPending or entry.entityID ~= nil or entry.entity ~= nil then
+        hasLiveOrPending=true;break
+      end
+    end
+    if not hasLiveOrPending then return end
+  end  local player = getPlayer()
+'@
+$nl=[Environment]::NewLine
+$legacy=$mechanic.Replace('  state.mechanics = result',
+  '  state.mechanics = result'+$nl+$legacyAttach)
+$legacy=$legacy.Replace('  local player = getPlayer()',$legacyGate)
+$legacy=$legacy.Replace('      local distance = distanceFromPlayer(entry, player)',
+  '      local distance, __gcetPositionObserved = distanceFromPlayer(entry, player, __gcetMechanicPlayerPosition)')
+$legacy=$legacy.Replace('  for _, entry in ipairs(state.mechanics) do',
+  '  local __gcetMechanicPlayerPosition=nil'+$nl+'  for _, entry in ipairs(state.mechanics) do')
+$legacyResult=Apply 'illegal_mechanic_phase1a' 'physical_npc.lua' 'native-location-illegal' 'ApplyIllegalV3' $legacy @(
+ 'G-CET native location:illegal-v3',
+ 'host:attachCompiled(1003301+index,1,',
+ '__gcetMechanicPlayerPosition',
+ 'entry.__gcetNativeFar == true and not entry.spawnPending',
+ 'distance <= cfg.spawnDistance',
+ 'distance >= cfg.despawnDistance'
+)
+if($legacyResult.Contains('lookup:attach(10033,sites') -or
+   $legacyResult.Contains('state.__gcetNativeFar')){
+ throw 'PASS11 legacy aggregate owner was not fully retired'
+}
+Write-Host 'PASS11 aggregate -> independent native owner migration with prior position reuse PASS'
+
 Write-Host 'Illegal Mechanic per-site compiled owner binding, individual FAR/NEAR wake, existing exact NPC streaming, and idempotence PASS'
 
 
