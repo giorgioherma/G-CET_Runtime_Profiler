@@ -527,7 +527,10 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle handle,
         g_logger=sdk?sdk->logger:nullptr;
         LoadData();
         if(g_loaded) {
-            Log("G-CET Static: native location manifest accepted");
+            if(g_manifestStatus == gcet::static_locations::ManifestLoadStatus::Missing)
+                Log("G-CET Static: no manifest; dynamic location registration ready");
+            else
+                Log("G-CET Static: native location manifest accepted");
             if(g_autoProbe)
                 Log("G-CET Static: developer smoke-probe ENABLED by marker file");
         }
