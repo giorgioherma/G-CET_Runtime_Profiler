@@ -378,7 +378,7 @@ internal static class FixedZeroEngineRuntime
                 @"\A(?:\s|--[^\r\n]*)*\z", RegexOptions.CultureInvariant))
             throw new InvalidOperationException("0-Engine export cannot safely host native location bridge.");
         var name = last.Groups["name"].Value;
-        var block = $"""
+        var block = $$"""
             {{marker}}
             do
                 local runtime={{name}}
