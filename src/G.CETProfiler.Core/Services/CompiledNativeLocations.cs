@@ -42,28 +42,12 @@ internal sealed record CompiledNativeLocations(byte[] Bytes,
     {
         var sites=new List<Site>();
         var counts=new SortedDictionary<int,int>();
-        // Compile a location owner ONLY when the FINAL staged-or-installed
-        // Lua actually subscribes to that compiled owner. Merely being in the
-        // mod stack or touched by generic rewrites does not arm native demand.
-        // This is a structural owner proof, never a version or file SHA gate.
-        bool Has(string relative,string marker)
-        {
-            var source=Read(relative);
-            if(source is null)return false;
-            var owner=marker switch {
-                "G-CET native location:poker-" => @"\battachCompiled\s*\(\s*10031\s*,",
-                "G-CET native location:tunnel-" => @"\battachCompiled\s*\(\s*10032\s*,",
-                "G-CET native location:illegal-v3" => @"\battachCompiled\s*\(\s*1003301\s*\+\s*index\s*,",
-                "G-CET native location:dedka-" => @"\battachCompiled\s*\(\s*10034\s*,",
-                "G-CET native location:card-collection-" => @"\battachCompiled\s*\(\s*10035\s*,",
-                "G-CET native location:marmurbank-" => @"\battachCompiled\s*\(\s*10036\s*,",
-                "G-CET native location:yaiba-bathtub-" => @"\battachCompiled\s*\(\s*10037\s*,",
-                "G-CET native location:ziggy-offered-" => @"\battachCompiled\s*\(\s*10038\s*,",
-                _ => null
-            };
-            return owner is not null &&
-                Regex.IsMatch(source,owner,RegexOptions.CultureInvariant);
-        }
+        // NATIVE INVENTORY PHASE: compile source-proven static coordinates
+        // from currently installed mod definitions, before ANY semantic
+        // subscription. Coordinates are inert until a semantic Lua consumer
+        // explicitly calls attachCompiled(owner,...).
+        // Never depend on a prior G-CET hook, mod SHA, or capture version.
+        bool Has(string relative) => Read(relative) is not null;
 
         string? Read(string relative) {
             var path=Path.Combine(modsRoot,
@@ -156,19 +140,24 @@ internal sealed record CompiledNativeLocations(byte[] Bytes,
             return list;
         }
 
-        if(Has("StreetGamesPoker/init.lua","G-CET native location:poker-"))
+        if(Has("StreetGamesPoker/init.lua"))
         {
             var init=Read("StreetGamesPoker/init.lua");
             var radius=init is null ? Match.Empty :
                 Regex.Match(init,@"\b(?:POKER_WAKE_RADIUS|__gcetPokerRadius)\s*=\s*(?<r>"+Num+")");
             var src=Read("StreetGamesPoker/StreetTables.lua");
-            if(radius.Success && init?.Contains("poker.world_far",StringComparison.Ordinal)==true &&
-               init.Contains("StreetTables.update",StringComparison.Ordinal) &&
-               src?.Contains("StreetTables.locations = {",StringComparison.Ordinal)==true)
-                Include(10031,Parse(10031,src,Poker,Number(radius.Groups["r"].Value)+5));
+            // The handpicked Poker semantic uses a 25m discovery wake.
+            // It is not yet present in pristine author source. This reviewed
+            // conservative radius is an inventory bound, not permission to
+            // inject any scheduling or native Lua subscription.
+            var discovered=radius.Success ? Number(radius.Groups["r"].Value) : 25f;
+            if(init?.Contains("StreetTables.update",StringComparison.Ordinal)==true &&
+               src?.Contains("StreetTables.locations",StringComparison.Ordinal)==true &&
+               discovered>0 && discovered<=1000)
+                Include(10031,Parse(10031,src,Poker,discovered+5));
         }
 
-        if(Has("tunnel_rescue/init.lua","G-CET native location:tunnel-"))
+        if(Has("tunnel_rescue/init.lua"))
             Include(10032,JsonPair(Read("tunnel_rescue/layout.json"),10032));
 
         // The REDscript registry is fixed author source, despite being
@@ -178,8 +167,7 @@ internal sealed record CompiledNativeLocations(byte[] Bytes,
         // coordinate/geometry is inferred from the current player position.
         // An absent or drifted REDscript registry leaves the original
         // always-running Lua NPC supervision and REDscript discovery intact.
-        if(Has("illegal_mechanic_phase1a/physical_npc.lua",
-               "G-CET native location:illegal-v3"))
+        if(Has("illegal_mechanic_phase1a/physical_npc.lua"))
         {
             var game=new DirectoryInfo(Path.GetFullPath(modsRoot));
             // .../Cyberpunk 2077/bin/x64/plugins/cyber_engine_tweaks/mods
@@ -242,11 +230,12 @@ internal sealed record CompiledNativeLocations(byte[] Bytes,
             }
         }
 
-        if(Has("Dedka Auto Shop/init.lua","G-CET native location:dedka-")) {
+        if(Has("Dedka Auto Shop/init.lua")) {
             var src=Read("Dedka Auto Shop/init.lua");
-            if(src is null || !src.Contains("RegisterZone(",StringComparison.Ordinal) ||
-               !src.Contains("dedka_entrance1",StringComparison.Ordinal) ||
-               !src.Contains("dedka_entrance2_cluster",StringComparison.Ordinal))
+            // The original author has the two entrance positions but no
+            // semantic 0-Engine zone yet. Native inventory must precede it.
+            if(src is null || !src.Contains("ENTRANCE_POS",StringComparison.Ordinal) ||
+               !src.Contains("ENTRANCE_POS_2",StringComparison.Ordinal))
                 src=null;
             // Derive wake from the authored zone's current radius, not
             // a hardcoded implementation release. Advance wake 10 metres
@@ -256,7 +245,11 @@ internal sealed record CompiledNativeLocations(byte[] Bytes,
                     .Select(m=>Number(m.Groups["v"].Value))
                     .Where(v=>v>0 && v<=1000 && float.IsFinite(v))
                     .ToList();
-            var wake=zoneRadii.Count>0 ? zoneRadii.Max()+10f : 0f;
+            // The reviewed near-shop semantic registers 200m discovery
+            // zones; reserve 210m before that semantic exists. If an already
+            // optimized source exposes a larger radius, never shrink it.
+            var wake=src is null ? 0f :
+                Math.Max(210f,zoneRadii.Count>0 ? zoneRadii.Max()+10f : 210f);
             var first=wake>0 ? ParseNamed(10034,src,"ENTRANCE_POS",wake) : new List<Site>();
             var second=wake>0 ? ParseNamed(10034,src,"ENTRANCE_POS_2",wake) : new List<Site>();
             if(first.Count==0 || second.Count==0) {
@@ -266,34 +259,38 @@ internal sealed record CompiledNativeLocations(byte[] Bytes,
             if(first.Count==1 && second.Count==1)
                 Include(10034,first.Concat(second));
         }
-        if(Has("Card Collection/init.lua","G-CET native location:card-collection-")){
+        if(Has("Card Collection/init.lua")){
             var src=Read("Card Collection/init.lua");
             // Require author card ID as well as its coordinate: no incidental
             // UI/vector literal is allowed into the native location table.
             if(src?.Contains("local cards = {",StringComparison.Ordinal)==true)
                 Include(10035,Parse(10035,src,Card,20,100));
         }
-        if(Has("marmurbank/module/Bank.lua","G-CET native location:marmurbank-")) {
+        if(Has("marmurbank/module/Bank.lua")) {
             var bank=Read("marmurbank/module/Bank.lua");
-            if(bank?.Contains("RegisterSpatialSet",StringComparison.Ordinal)==true &&
-               bank.Contains("QueryNearest",StringComparison.Ordinal) &&
-               bank.Contains("PosData.All",StringComparison.Ordinal)) {
+            // Only author-owned banker geometry is inventoried. This must
+            // also work with the original large Bank.lua which has not yet
+            // been optimized to 0-Engine SpatialHash. Its compiled records
+            // remain inert until a later reviewed semantic subscribes.
+            if(bank?.Contains("PosData",StringComparison.Ordinal)==true) {
                 // Preserve the entire current nearest-discovery scan, NOT
                 // merely the two-metre interaction threshold. Fail closed if
                 // source changes the radius expression beyond recognition.
                 var search=Regex.Match(bank,
                     @"\bsearchRadiusSq\s*=\s*(?<r>"+Num+@")\s*\*\s*\k<r>",
                     RegexOptions.CultureInvariant);
-                if(search.Success) {
-                    var searchRadius=Number(search.Groups["r"].Value);
-                    if(searchRadius>0 && searchRadius<=1000)
-                        Include(10036,BankerSites(Read("marmurbank/data/PosData.lua"))
-                            .Select(site=>site with{Radius=searchRadius+5}));
-                }
+                // The reviewed banker spatial stage searches 25m. Source
+                // with a larger proven radius keeps that larger boundary;
+                // unidentified bank implementations are never subscribed
+                // without their own independent semantic source proof.
+                var searchRadius=search.Success ? Number(search.Groups["r"].Value) : 25f;
+                if(searchRadius>0 && searchRadius<=1000)
+                    Include(10036,BankerSites(Read("marmurbank/data/PosData.lua"))
+                        .Select(site=>site with{Radius=searchRadius+5}));
             }
         }
 
-        if(Has("yaibaPenthouse/bathtub.lua","G-CET native location:yaiba-bathtub-")){
+        if(Has("yaibaPenthouse/bathtub.lua")){
             var src=Read("yaibaPenthouse/bathtub.lua");
             if(src is not null){
                 var m=Regex.Match(src,@"\bposition\s*=\s*\{(?<v>[^\}]+)\}",
@@ -311,7 +308,7 @@ internal sealed record CompiledNativeLocations(byte[] Bytes,
             }
         }
 
-        if(Has("ziggy_last_play/init.lua","G-CET native location:ziggy-offered-")) {
+        if(Has("ziggy_last_play/init.lua")) {
             var src=Read("ziggy_last_play/quest.json");
             if(src is not null) {
                 try {
