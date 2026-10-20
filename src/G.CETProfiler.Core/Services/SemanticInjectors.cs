@@ -41,6 +41,7 @@ internal static partial class SemanticInjectors
             "repeatable-cyberpsychos" => ApplyRepeatableCyberpsychos(context),
             "cybertrials" => ApplyCyberTrials(context),
             "streetgamespoker" => PokerPass4Source.Apply(context),
+            "streetgamespoker-hud-invisible-native-idle" => PokerPass4Source.ApplyHudInvisibleIdle(context),
             "nightcitybilliards" => ApplyNightCityBilliards(context),
             "npcd-hotline" => ApplyNpcdHotline(context),
             "gameentityexaminertool" => ApplyGameEntityExaminer(context),
