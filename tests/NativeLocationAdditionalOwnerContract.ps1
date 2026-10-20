@@ -25,7 +25,7 @@ function Apply([string]$owner,[string]$relative,[string]$rule,[string]$method,[s
     $types=(@($args4) | ForEach-Object {$_.GetType().FullName}) -join ', '
     throw "Constructing $owner native source context failed ($types): $($_.Exception.InnerException.Message)"
   }
-  $targetType=if($method -eq 'ApplyIllegalV3'){$four}else{$type}
+  $targetType=if($method -in @('ApplyIllegalV3','ApplyPoker','ApplyDedka')){$four}else{$type}
   $m=$targetType.GetMethod($method,$flags)
   if(!$m){throw "Native location injector missing: $method"}
   try {$result=$m.Invoke($null,[object[]]@($ctx))}
@@ -306,5 +306,115 @@ if(!$composed.Contains('lookup:attachCompiled(10035,100') -or
   throw 'The composed source did not gain compiled card owner callbacks'
 }
 Write-Host 'Same-pass pristine author source -> compiled-native semantic composition PASS'
+
+
+# Independent, source-structural hook contracts. These intentionally differ
+# from older expanded source templates: scheduler variables, helper wrappers
+# and logging text may change while the actual lifecycle remains provable.
+$pokerSource=@'
+local StreetTables={locations={{center={x=1,y=2},floorZ=3}}}
+local InteractionMenu={visible=false}
+local function __gcetPokerReady() return true end
+local function __gcetPokerActive() return false end
+__gcetPokerAttachPass4=function()
+ local engine=GetMod("0-Engine")
+ local client=engine.Register("StreetGamesPoker")
+ local nearMode=false
+ local farWorld,nearWorld,nearSeat=nil,nil,nil
+ local function setNear(state)
+  state=state==true
+  if state==nearMode then return end
+  nearMode=state
+  if state then
+   if farWorld then farWorld.Pause() end
+   if nearWorld then nearWorld.Resume() end
+   if nearSeat then nearSeat.Resume() end
+  else
+   if nearWorld then nearWorld.Pause() end
+   if nearSeat then nearSeat.Pause() end
+   if farWorld then farWorld.Resume() end
+  end
+ end
+ farWorld=client.Schedule.Every(1.0,{id="poker.world_far"},function(ctx)
+  if not __gcetPokerReady() then return end
+  if StreetTables.update(ctx.elapsed,25.0) then setNear(true) end
+ end)
+ nearWorld=client.Schedule.Every(0.2,{id="poker.world_near"},function(ctx)
+  if StreetTables.update(ctx.elapsed,25.0) then setNear(true) end
+ end)
+ nearSeat=client.Schedule.Every(0.1,{id="poker.seat_near"},function(ctx)
+  if nearMode then SeatController.update(ctx.elapsed) end
+ end)
+ local realtime=client.Schedule.EveryFrame({id="poker.realtime"},function(ctx)
+  local active=__gcetPokerActive()
+  if (active or InteractionMenu.visible) and not nearMode then setNear(true) end
+ end)
+ created[#created+1]=realtime
+ __gcetPokerAttached=true
+end
+'@
+$p=Apply 'StreetGamesPoker' 'init.lua' 'native-location-poker' 'ApplyPoker' $pokerSource @(
+  'G-CET native location:poker-structural-v1',
+  'lookup:attachCompiled(10031,#StreetTables.locations',
+  'if __gcetPokerNativeOwned then farWorld.Pause() else farWorld.Resume() end',
+  'if __gcetPokerNativeOwned and __gcetPokerNativeNear and not nearMode'
+)
+$dedkaSource=@'
+local ENTRANCE_POS={x=-1677.94,y=160.47,z=7.82}
+local ENTRANCE_POS_2={x=606.4076,y=-404.74185,z=6.784172}
+local __gcetDedkaEngine=GetMod("0-Engine")
+local shopNearCount=0
+local function startShopDetail() end
+local function stopShopDetail() end
+local function registerWakeZone(id,pos)
+ __gcetDedkaEngine.RegisterZone({
+  id=id,x=pos.x,y=pos.y,z=pos.z,radius=200,throttle=10,
+  onEnter=function() shopNearCount=shopNearCount+1;startShopDetail() end,
+  onExit=function()
+   shopNearCount=shopNearCount-1
+   if shopNearCount<=0 then shopNearCount=0;stopShopDetail() end
+  end
+ })
+end
+registerWakeZone("dedka_entrance1",ENTRANCE_POS)
+registerWakeZone("dedka_entrance2_cluster",ENTRANCE_POS_2)
+'@
+$d=Apply 'Dedka Auto Shop' 'init.lua' 'native-location-dedka' 'ApplyDedka' $dedkaSource @(
+  'G-CET native location:dedka-structural-v1',
+  'return __gcetDedkaEngine.RegisterZone({',
+  'lookup:attachCompiled(10034,2',
+  '__gcetDedkaNativeZone1=registerWakeZone'
+)
+$bankSource=@'
+local bank={}
+local PosData={All={{x=1,y=2,z=3}}}
+function bank:registerSpatialSet()
+ if not self.engine then return end
+ if self.spatialHandle then
+  self.spatialHandle:unregister()
+  self.spatialHandle=nil
+ end
+ self.spatialHandle = self.engine.RegisterSpatialSet("marmurbank",PosData.All, {
+  gridSize=100
+ })
+ if self.spatialHandle then
+  self.engine.Log("MarmurBank changed log wording","works","info")
+ end
+end
+function bank:distanceListener()
+ if not self.engine then return 0 end
+ local searchRadiusSq = 25 * 25
+ local entry,distSq=self.engine.QueryNearest("marmurbank",searchRadiusSq)
+ if entry and distSq then self.nearestLocation=entry end
+ return 0
+end
+'@
+$m=Apply 'marmurbank' 'module/Bank.lua' 'native-location-marmurbank' 'ApplyMarmur' $bankSource @(
+  'G-CET native location:marmurbank-structural-v1',
+  'lookup:attachCompiled(10036,#PosData.All',
+  'if self.__gcetNativeFar then return end',
+  'if self.__gcetNativeFar then self.nearestLocation=nil;return 0 end'
+)
+Write-Host 'Source-structural Poker, Dedka helper-zone and MarmurBank logger-independent, per-stage idempotent hooks PASS'
 
 Write-Host 'Native static location additional owners: Card Collection 100-site coarse dormancy, banker SpatialHash FAR, Yaiba bathroom author gate; fallback, CRLF and idempotence PASS'
