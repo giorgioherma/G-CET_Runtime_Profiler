@@ -296,9 +296,11 @@ internal static class ZeroEngineAllocationBatchSource
                 continue;
             }
             staged[descriptor.Relative] = next;
-            liveSourceHashes[descriptor.Relative] =
-                Convert.ToHexString(SHA256.HashData(source)).ToLowerInvariant();
-            appliedTransformsByFile[descriptor.Relative] = 1;
+            if(!liveSourceHashes.ContainsKey(descriptor.Relative))
+                liveSourceHashes[descriptor.Relative] =
+                    Convert.ToHexString(SHA256.HashData(original)).ToLowerInvariant();
+            appliedTransformsByFile[descriptor.Relative] =
+                appliedTransformsByFile.GetValueOrDefault(descriptor.Relative)+1;
             transformManifest.Add(new
             {
                 type = "SEMANTIC_RULE",
