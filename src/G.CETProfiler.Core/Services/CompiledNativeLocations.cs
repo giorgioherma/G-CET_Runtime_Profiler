@@ -51,14 +51,14 @@ internal sealed record CompiledNativeLocations(byte[] Bytes,
             var source=Read(relative);
             if(source is null)return false;
             var owner=marker switch {
-                "G-CET native location:poker-" => @"\\battachCompiled\\s*\\(\\s*10031\\s*,",
-                "G-CET native location:tunnel-" => @"\\battachCompiled\\s*\\(\\s*10032\\s*,",
-                "G-CET native location:illegal-v3" => @"\\battachCompiled\\s*\\(\\s*1003301\\s*\\+\\s*index\\s*,",
-                "G-CET native location:dedka-" => @"\\battachCompiled\\s*\\(\\s*10034\\s*,",
-                "G-CET native location:card-collection-" => @"\\battachCompiled\\s*\\(\\s*10035\\s*,",
-                "G-CET native location:marmurbank-" => @"\\battachCompiled\\s*\\(\\s*10036\\s*,",
-                "G-CET native location:yaiba-bathtub-" => @"\\battachCompiled\\s*\\(\\s*10037\\s*,",
-                "G-CET native location:ziggy-offered-" => @"\\battachCompiled\\s*\\(\\s*10038\\s*,",
+                "G-CET native location:poker-" => @"\battachCompiled\s*\(\s*10031\s*,",
+                "G-CET native location:tunnel-" => @"\battachCompiled\s*\(\s*10032\s*,",
+                "G-CET native location:illegal-v3" => @"\battachCompiled\s*\(\s*1003301\s*\+\s*index\s*,",
+                "G-CET native location:dedka-" => @"\battachCompiled\s*\(\s*10034\s*,",
+                "G-CET native location:card-collection-" => @"\battachCompiled\s*\(\s*10035\s*,",
+                "G-CET native location:marmurbank-" => @"\battachCompiled\s*\(\s*10036\s*,",
+                "G-CET native location:yaiba-bathtub-" => @"\battachCompiled\s*\(\s*10037\s*,",
+                "G-CET native location:ziggy-offered-" => @"\battachCompiled\s*\(\s*10038\s*,",
                 _ => null
             };
             return owner is not null &&
