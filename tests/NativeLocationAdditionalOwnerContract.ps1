@@ -1,0 +1,117 @@
+param([Parameter(Mandatory=$true)][string]$ResolverRoot)
+$ErrorActionPreference='Stop'
+$root=Join-Path $env:RUNNER_TEMP 'gcet-seven-native-location-source'
+if(Test-Path $root){Remove-Item $root -Force -Recurse}
+New-Item -ItemType Directory -Force $root | Out-Null
+$asm=[Reflection.Assembly]::LoadFrom((Join-Path (Resolve-Path $ResolverRoot).Path 'G.CETProfiler.Core.dll'))
+$type=$asm.GetType('GCETRuntimeProfiler.Core.Services.NativeLocationAdditionalOwnersSource',$true)
+$contextType=$asm.GetType('GCETRuntimeProfiler.Core.Services.SemanticPatchContext',$true)
+$flags=[Reflection.BindingFlags]'Static,NonPublic'
+$ctor=@($contextType.GetConstructors([Reflection.BindingFlags]'Instance,NonPublic') | Where-Object {$_.GetParameters().Count -eq 4})[0]
+if(!$ctor){throw 'SemanticPatchContext 4-argument source constructor missing'}
+function Apply([string]$owner,[string]$relative,[string]$rule,[string]$method,[string]$fixture,[string[]]$need,[bool]$crlf=$false) {
+  $mod=Join-Path $root $owner
+  $path=Join-Path $mod ($relative.Replace('/',[IO.Path]::DirectorySeparatorChar))
+  $parent=Split-Path $path -Parent
+  New-Item -ItemType Directory -Force $parent | Out-Null
+  if($crlf){$fixture=$fixture.Replace("`r`n","`n").Replace("`n","`r`n")}
+  [IO.File]::WriteAllText($path,$fixture,[Text.UTF8Encoding]::new($false))
+  $staged=[Collections.Generic.Dictionary[string,byte[]]]::new()
+  $ctx=$ctor.Invoke([object[]]@($root,$owner,$rule,$staged))
+  $m=$type.GetMethod($method,$flags)
+  if(!$m){throw "Native location injector missing: $method"}
+  try {$result=$m.Invoke($null,[object[]]@($ctx))}
+  catch{throw "Native location $owner rejected current-author source: $($_.Exception.InnerException.Message)"}
+  if(!$result.Applied){throw "Native $owner source refused its first pass"}
+  $rows=@($contextType.GetProperty('Changes',[Reflection.BindingFlags]'Instance,NonPublic').GetValue($ctx))
+  if($rows.Count -ne 1){throw "Native $owner did not stage exactly one source file"}
+  $output=[Text.Encoding]::UTF8.GetString($rows[0].Bytes)
+  foreach($part in $need){if(!$output.Contains($part)){throw "$owner native stage omitted: $part"}}
+  if($crlf -and !$output.Contains("`r`n")){throw "$owner lost CRLF source format"}
+  [IO.File]::WriteAllText($path,$output,[Text.UTF8Encoding]::new($false))
+  $again=$ctor.Invoke([object[]]@($root,$owner,$rule,[Collections.Generic.Dictionary[string,byte[]]]::new()))
+  $done=$m.Invoke($null,[object[]]@($again))
+  if($done.Applied){throw "Native $owner stage was not idempotent"}
+  return $output
+}
+$card=@'
+local spatialHandle
+local engine=GetMod("0-Engine")
+local Mod=engine.Register("CardCollection")
+local function buildSpatialEntries()
+ return {{x=1,y=2,z=3,id="card1"}}
+end
+local function collectCard(entry)
+ Engine.RemoveSpatialEntry("card_collection",entry)
+end
+local function registerSpatialSet()
+  if spatialHandle then return end
+  local entries=buildSpatialEntries()
+  spatialHandle = Mod.RegisterSpatialSet("card_collection", entries, {
+    gridSize=100,pollRadius=2.0,pollThrottle=1.0,
+    onEnter=function(entry,distSq) collectCard(entry) end,
+  })
+end
+local function unregisterSpatialSet()
+ if spatialHandle then spatialHandle:unregister();spatialHandle=nil end
+end
+registerForEvent("onInit", function()
+  if engine.IsPlaying() then registerSpatialSet() end
+  Mod.Subscribe("PlayerReady", registerSpatialSet)
+  Mod.Subscribe("PlayerInvalidated", unregisterSpatialSet)
+end)
+'@
+$c=Apply 'Card Collection' 'init.lua' 'native-location-card-collection' 'ApplyCards' $card @('G-CET native location:card-collection-v1','lookup:attach(10035','radius=2.25','unregisterSpatialSet()','__gcetCardNativeFar')
+$marmur=@'
+local PosData={All={{x=1,y=2,z=3}}}
+bank={}
+function bank:registerSpatialSet()
+	if not self.engine then return end
+	if self.spatialHandle then
+		self.spatialHandle:unregister()
+		self.spatialHandle = nil
+	end
+	for _, loc in ipairs(PosData.All) do
+		loc.radiusSq = self.bankerDistanceSq
+	end
+	self.spatialHandle = self.engine.RegisterSpatialSet("marmurbank", PosData.All, {
+		gridSize = 100,
+	})
+	if self.spatialHandle then
+		self.engine.Log("Marmurbank",
+			string.format("Registered %d banker locations with 0-Engine SpatialHash", self.spatialHandle:count()), "info")
+	end
+end
+function bank:distanceListener()
+	if not self.engine then return 0 end
+	local entry,distSq=self.engine.QueryNearest("marmurbank",25*25)
+	self.nearestLocation=entry
+	return entry and 1 or 0
+end
+'@
+$m=Apply 'marmurbank' 'module/Bank.lua' 'native-location-marmurbank' 'ApplyMarmur' $marmur @('G-CET native location:marmurbank-v1','lookup:attach(10036','radius=2.25','self.spatialHandle:unregister()','if self.__gcetNativeFar then self.nearestLocation=nil;return 0 end') $true
+$bath=@'
+local ui=require("interactionUI")
+local CONFIG={position={x=1,y=2,z=3},iconRange=6.0}
+local bathtub={hubVisible=false,pinID=nil,waterApplied=false}
+local function buildHub() end
+local function togglePin(near) end
+function bathtub.init()
+    ui.init()
+end
+function bathtub.update(player, pPos)
+    -- G-CET semantic:yaiba-penthouse-distant-bathtub
+    -- Only skip when no bath UI, mappin or water reapply is pending.
+    if player and pPos and not bathtub.hubVisible and not ui.hubShown and not bathtub.pinID and not bathtub.waterApplied then
+        local __gcetBathPos = CONFIG.position
+        local __gcetDx = pPos.x - __gcetBathPos.x
+        local __gcetDy = pPos.y - __gcetBathPos.y
+        local __gcetDz = pPos.z + 1.0 - __gcetBathPos.z
+        if __gcetDx * __gcetDx + __gcetDy * __gcetDy + __gcetDz * __gcetDz > (CONFIG.iconRange + 1.0)^2 then return end
+    end
+    ui.update()
+    togglePin(near)
+end
+'@
+$y=Apply 'yaibaPenthouse' 'bathtub.lua' 'native-location-yaiba-bathtub' 'ApplyBathtub' $bath @('G-CET native location:yaiba-bathtub-v1','lookup:attach(10037','z=CONFIG.position.z-1.0','if __gcetBathNativeFar == true then return end','if __gcetBathNativeFar == nil then')
+Write-Host 'Native static location additional owners: Card Collection 95-site coarse dormancy, banker SpatialHash FAR, Yaiba bathroom author gate; fallback, CRLF and idempotence PASS'
