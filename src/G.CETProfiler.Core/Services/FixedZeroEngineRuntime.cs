@@ -379,15 +379,15 @@ internal static class FixedZeroEngineRuntime
             throw new InvalidOperationException("0-Engine export cannot safely host native location bridge.");
         var name = last.Groups["name"].Value;
         var block = $"""
-            {marker}
+            {{marker}}
             do
-                local runtime={name}
+                local runtime={{name}}
                 if type(runtime)=="table" and type(runtime.Register)=="function" then
                     local ok,source=pcall(require,"modules/GCETNativeLocationHost")
                     if ok and type(source)=="table" and type(source.new)=="function" then
                         local api=runtime.GCET
                         if api==nil or type(api)=="table" then
-                            api=api or {{}}
+                            api=api or {}
                             if api.NativeLocationHost==nil then
                                 local okHost,host=pcall(source.new,runtime)
                                 if okHost and type(host)=="table" then
@@ -400,9 +400,9 @@ internal static class FixedZeroEngineRuntime
                 end
             end
             registerForEvent("onShutdown",function()
-                if type({name})=="table" and type({name}.GCET)=="table" and
-                    type({name}.GCET.NativeLocationHost)=="table" then
-                    {name}.GCET.NativeLocationHost:shutdown()
+                if type({{name}})=="table" and type({{name}}.GCET)=="table" and
+                    type({{name}}.GCET.NativeLocationHost)=="table" then
+                    {{name}}.GCET.NativeLocationHost:shutdown()
                 end
             end)
 
