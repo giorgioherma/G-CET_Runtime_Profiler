@@ -159,7 +159,8 @@ public static class PassGeneratorService
             provider => SharedProviderRecipes.TryGetValue(provider, out var recipe)
                 ? BuildSharedProviderHeader(recipe) : Array.Empty<string>());
 
-        if (staged.Count == 0)
+        if (staged.Count == 0 &&
+            CompiledNativeLocations.Compile(modsRoot,staged).OwnerCounts.Count == 0)
         {
             // An already-admitted authored rule may still fail its injector's
             // independent source or lifecycle proof. Do not hide that failure
