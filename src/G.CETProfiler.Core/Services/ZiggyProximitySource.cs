@@ -100,6 +100,7 @@ local function __gcetZiggyOfferedFar()
  return dx*dx+dy*dy+dz*dz>130*130
 end
 """;
+        prelude = SemanticInjectors.PreserveGenericGetters(text,prelude);
         var gate= """
  local __gcetProbeOK,__gcetFar=false,false
  if H.s and H.s.phase=='offered' then
@@ -151,8 +152,9 @@ end
                 return false;
             return init.Contains("G-CET semantic:ziggy-native-snapshot-manager-v6",
                                  StringComparison.Ordinal) &&
-                init.Contains("local __gcetZiggySnapshotQuestSystem=Game.GetQuestsSystem()",
-                              StringComparison.Ordinal) &&
+                Regex.IsMatch(init,
+                    @"local\\s+__gcetZiggySnapshotQuestSystem\\s*=\\s*(?:Game\\.GetQuestsSystem|__gcetGetQuestsSystem)\\s*\\(\\s*\\)",
+                    RegexOptions.CultureInvariant) &&
                 init.Contains("__gcetZiggySnapshotQuestSystem:SetFactStr('zg11_'..k,v)",
                               StringComparison.Ordinal);
         }
@@ -170,9 +172,18 @@ end
         const string marker = "G-CET semantic:ziggy-native-snapshot-manager-v6";
         var start = Regex.Matches(text, @"(?m)^local function save\(\)[ \t]*\r?$", RegexOptions.CultureInvariant);
         var end = Regex.Matches(text, @"(?m)^local function trace\(event,details\)[ \t]*\r?$", RegexOptions.CultureInvariant);
-        var authorSetter = text.Contains(
-            "local function set(k,v)Game.GetQuestsSystem():SetFactStr('zg11_'..k,v)end",
-            StringComparison.Ordinal);
+        // The author setter is unchanged semantically when generic source
+        // rewriting has substituted a PROVEN shared QuestSystem getter.
+        // Match the actual receiver, never a historical source version/hash.
+        var setter=Regex.Matches(text,
+            @"local\\s+function\\s+set\\s*\\(\\s*k\\s*,\\s*v\\s*\\)\\s*(?<getter>Game\\.GetQuestsSystem\\(\\)|__gcetGetQuestsSystem\\(\\))\\s*:\\s*SetFactStr\\s*\\(\\s*['""]zg11_['""]\\s*\\.\\.\\s*k\\s*,\\s*v\\s*\\)\\s*end",
+            RegexOptions.CultureInvariant);
+        var authorSetter=setter.Count==1 &&
+            (setter[0].Groups["getter"].Value=="Game.GetQuestsSystem()" ||
+             SemanticInjectors.PreserveGenericGetters(text,
+               "Game.GetQuestsSystem()")=="__gcetGetQuestsSystem()");
+        var getter=setter.Count==1
+            ? setter[0].Groups["getter"].Value : "Game.GetQuestsSystem()";
         if (start.Count == 0 && end.Count == 0 && !authorSetter)
             return text; // Minimal historical source, has no snapshot writer at all.
         if (start.Count != 1 || end.Count != 1 || start[0].Index >= end[0].Index ||
@@ -202,7 +213,7 @@ end
             "__gcetZiggySnapshotSet(", RegexOptions.CultureInvariant);
         portion = portion.Replace(" local s=H.s", 
             " -- " + marker + "\n" +
-            " local __gcetZiggySnapshotQuestSystem=Game.GetQuestsSystem()\n" +
+            " local __gcetZiggySnapshotQuestSystem=" + getter + "\n" +
             " local function __gcetZiggySnapshotSet(k,v)\n" +
             "  __gcetZiggySnapshotQuestSystem:SetFactStr('zg11_'..k,v)\n" +
             " end\n" +
