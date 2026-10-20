@@ -561,6 +561,18 @@ if($bankRadii.Count -ne 3 -or @($bankRadii | Where-Object {$_ -lt 30}).Count -gt
 }
 Write-Host 'Independently compiled pre-native geometry: Poker 2 + Dedka 2 + Bank 3, discovered banker radius + 5m PASS'
 
+# A newly generated pass may touch zero files belonging to these already
+# completed owners. Do NOT silently drop their native geometry from GCAS.
+$noNativeEdits=[Collections.Generic.Dictionary[string,byte[]]]::new([StringComparer]::OrdinalIgnoreCase)
+try {$completedSites=$compile.Invoke($null,[object[]]@([string]$root,$noNativeEdits))}
+catch {throw "Existing completed native owners lost manifest coverage: $($_.Exception.InnerException.Message)"}
+$completedMap=$compilerType.GetProperty('OwnerCounts',[Reflection.BindingFlags]'Instance,Public,NonPublic').GetValue($completedSites)
+if($completedMap[10031] -ne 2 -or $completedMap[10034] -ne 2 -or $completedMap[10036] -ne 3) {
+ throw 'Already satisfied Poker, Dedka, banker geometry omitted from new incremental GCAS'
+}
+Write-Host 'Existing compiled owners remain in GCAS with zero staged Lua owner changes PASS'
+
+
 
 # Player's installed 0-Engine module may be the original dynamic owner host,
 # with local custom code. It must gain only the missing compiled-owner API
