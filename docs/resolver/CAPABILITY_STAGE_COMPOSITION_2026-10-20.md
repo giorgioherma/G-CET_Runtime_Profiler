@@ -14,35 +14,52 @@ version, source SHA, or comments alone—govern adoption. A file digest is only
 provenance and within-run source snapshot consistency (and profiler ASI
 original-state restoration remains a different problem).
 
-## Existing deterministic implementation order in PassGeneratorService
-1. Source-verified generic callback transformations, staged in memory from
-   the current deployed Lua.
-2. Source-proven semantic library stages, with same-pass native-location
-   follow-up for prerequisites materialized by an earlier stage.
-3. 0-Engine PSM 12-definition-key snapshot in BlackboardCache2.lua;
-   recognizes already-complete cache before attempting insertion.
-4. SpatialHash poll-cell-radius and grid-row-X stages (independent
-   substage completion) and separate Lifecycle same-update entity ID reuse.
-   Consume previously staged bytes, not just disk source.
-5. Exact current-local-player **direct** Game.GetPlayer():GetWorldPosition()
-   source rewrites through the native **forced-live typed Vector4** capability
-   with original fallback. Scan current AND earlier staged files; add new
-   callsites without duplicating a prior helper or changing its fallback.
-6. Authorized shared 0-Engine getter reuse after semantic/native-position
-   stages. Scan current and staged sources, reuse source-proven existing
-   helpers, and do not rewrite generated helper fallbacks.
-7. Additive, source-preserving 0-Engine workload and location host services.
-   If a customized native host lacks attachCompiled and safe immutable-anchor
-   teardown, add these capabilities; do not replace other custom modules.
-8. Compile the source-backed GCAS location manifest, including owners
-   already completely optimized in installed Lua with **zero** new owner
-   edits. Compile before deciding whether the native DLL is required.
-9. Package one complete ZIP with native DLL + location manifest whenever
-   supported static/native callsites require it. Source hashes in the ZIP
-   describe the exact original input, not mod-version eligibility.
+## Deterministic generation order (source graph, not mod list)
 
-This order is a dependency model, not a strict file-level exclusion model.
-A stage may skip itself without preventing later, independent stages.
+1. **GENERIC 1 — callbacks:** source-verified action routing, override
+   prefilters, frame consolidation and mechanically safe generic recipes.
+2. **GENERIC 2 — shared infrastructure and getters:** 0-Engine PSM,
+   SpatialHash and Lifecycle stages, native forced-live player vectors,
+   and broad source-first shared getter reuse. Each consumes previously
+   staged bytes and finishes BEFORE source-specific semantic injection.
+3. **SEMANTIC — behavior:** version-fluid, source-structural mod-specific
+   scheduling, wake state, lifecycle and dormancy stages over final generic
+   source. Reuse existing capabilities instead of requiring old template text.
+4. **SEMANTIC native-location substage — last:** apply remaining compiled
+   location subscriptions and safe same-generation follow-ups for Poker,
+   Tunnel, Illegal Mechanic, Dedka, Card Collection, MarmurBank, Yaiba,
+   and Ziggy. No generic source rewriting occurs after semantic.
+5. **FINALIZE:** compose additive 0-Engine host files; compile native
+   positions from CURRENT installed/staged owner source; verify native DLL
+   availability; check every generated Lua file against the 200 active-local
+   hard limit; package one coherent overlay ZIP and manifest.
+
+A local-stage refusal must neither revert independent changes nor be
+reported as a completed capability. Runtime native API availability is
+different from generation-time location composition.
+
+### Add/remove/update/reset contract
+
+An added mod becomes eligible from its installed source, not a historical
+mod-list snapshot. Missing measurement is not permission for arbitrary CPU
+based generic rewrites; source-proven eligible stages remain independent.
+A removed mod must not acquire new Lua output or retained native anchors.
+Updated, reset or partially optimized mods are evaluated per stage, never
+gated on source-file SHA or release version. Repeated generation must not
+duplicate listeners or wipe previous manual optimizations.
+
+When native service is included, the current source-derived complete GCAS
+manifest (including already-satisfied owners with zero new Lua edits)
+replaces the previous manifest; removed owners must disappear. Static owner
+geometry alone does not establish that its subscription hook succeeded.
+
+## Regression matrix
+
+Test original, optimized, eight-reset/mixed, updated, newly added, removed,
+and repeated sources; preserve all unrelated files. Assert generic phases
+precede semantic/native phases, native-location subscription closure,
+owner-count correctness, local-variable ceiling, DLL fallback behavior,
+and stage-by-stage generated ZIP postconditions.
 
 ## PASS11 native-location upgrade
 Old PASS11 Poker, Tunnel, Dedka and Illegal Mechanic used dynamic
