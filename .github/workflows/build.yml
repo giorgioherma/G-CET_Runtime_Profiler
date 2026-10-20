@@ -38,6 +38,8 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq lua5.4
       - name: Execute 0-Engine additive workload runtime contract
         run: lua5.4 tests/ZeroEngineWorkloadLuaContract.lua resolver-runtime/0-Engine/modules
+      - name: Validate native four-owner near/far, initial snapshot and fail-open behavior
+        run: lua5.4 tests/NativeLocationFourOwnersLuaContract.lua resolver-runtime/0-Engine/modules/GCETNativeLocationHost.lua
       - name: Validate pinned action-router semantic subscriber pause/resume
         run: |
           mkdir -p /tmp/gcet-action-router
