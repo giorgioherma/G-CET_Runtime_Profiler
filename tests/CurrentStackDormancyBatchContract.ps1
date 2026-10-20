@@ -144,15 +144,23 @@ foreach($pair in $fixtures.GetEnumerator()){
  ConvertTo-Json -Depth 20 |
  Set-Content -Encoding utf8 (Join-Path $capture 'CET_Resolver_Input.json')
 function Generate {
- $raw = & $exe --capture $capture --mods $mods --generate-pass --json
+ $stderrPath = Join-Path $capture 'gcet-test-resolver-stderr.json'
+ $stdout = & $exe --capture $capture --mods $mods --generate-pass --json 2> $stderrPath
  $exitCode = $LASTEXITCODE
  $global:LASTEXITCODE = 0
- $o = $raw | ConvertFrom-Json
- $noPass = $exitCode -eq 1 -and !$o.ok -and
-     [string]$o.error -like '*no applicable generic or source-proven semantic transforms*'
+ $stdoutText = (@($stdout) -join [Environment]::NewLine).Trim()
+ $stderrText = if (Test-Path -LiteralPath $stderrPath) {
+     (Get-Content -LiteralPath $stderrPath -Raw).Trim()
+ } else { '' }
+ $jsonText = if ($stdoutText.Length -gt 0) { $stdoutText } else { $stderrText }
+ try { $parsed = $jsonText | ConvertFrom-Json -ErrorAction Stop }
+ catch { throw "Resolver did not return parsable JSON, exit ${exitCode}: $jsonText" }
+ $noPass = $exitCode -eq 1 -and !$parsed.ok -and
+     [string]$parsed.error -like '*no applicable generic or source-proven semantic transforms*'
  if ($exitCode -ne 0 -and !$noPass) {
-     throw "Unexpected Resolver exit code ${exitCode}: $($raw -join ' ')"
+     throw "Unexpected Resolver exit code ${exitCode}: $jsonText"
  }
+ $o = $parsed
  $report=Get-Content -Raw (Join-Path $capture 'G-CET_Resolver.json') | ConvertFrom-Json
  return @{Output=$o;Report=$report;ExitCode=$exitCode;NoPass=$noPass}
 }
