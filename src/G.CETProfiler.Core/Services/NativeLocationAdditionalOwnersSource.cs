@@ -34,11 +34,11 @@ internal static class NativeLocationAdditionalOwnersSource
 local function __gcetAttachCardNative()
   local lookup=engine and engine.GCET and engine.GCET.NativeLocationHost
   if not lookup or type(lookup.attach)~="function" then return end
-  -- Reuse exactly the author's uncollected source entries. The 2.25m
-  -- coarse radius includes the 2m author collection boundary.
+  -- Reuse exactly the author's uncollected source entries. The 20m
+  -- outer wake arms the original 1s poll before the 2m collection boundary.
   local sites={}
   for _,entry in ipairs(buildSpatialEntries()) do
-    sites[#sites+1]={x=entry.x,y=entry.y,z=entry.z,radius=2.25,metric="xyz"}
+    sites[#sites+1]={x=entry.x,y=entry.y,z=entry.z,radius=20.0,metric="xyz"}
   end
   if #sites==0 then return end
   lookup:attach(10035,sites,
@@ -100,7 +100,7 @@ end
 		if lookup and type(lookup.attach)=="function" then
 			local sites={}
 			for _,loc in ipairs(PosData.All) do
-				sites[#sites+1]={x=loc.x,y=loc.y,z=loc.z,radius=2.25,metric="xyz"}
+				sites[#sites+1]={x=loc.x,y=loc.y,z=loc.z,radius=10.0,metric="xyz"}
 			end
 			if #sites>0 then
 				self.__gcetNativeAttached=lookup:attach(10036,sites,
