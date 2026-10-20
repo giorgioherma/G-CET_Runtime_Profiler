@@ -216,4 +216,61 @@ $il=Apply 'illegal_mechanic_phase1a' 'physical_npc.lua' 'native-location-illegal
 )
 Write-Host 'Illegal Mechanic per-site compiled owner binding, individual FAR/NEAR wake, existing exact NPC streaming, and idempotence PASS'
 
+
+# Prove source-owned compilation of two independent native owners from the
+# actual author REDscript registry structure, not runtime coordinate guesses.
+$game=Join-Path $env:RUNNER_TEMP 'gcet-mechanic-gcas-provenance'
+$modsRoot=Join-Path $game 'bin/x64/plugins/cyber_engine_tweaks/mods'
+$mechRoot=Join-Path $modsRoot 'illegal_mechanic_phase1a'
+$redsRoot=Join-Path $game 'r6/scripts/zzz_illegal_mechanic_phase1a'
+New-Item -ItemType Directory -Force $mechRoot,$redsRoot | Out-Null
+[IO.File]::WriteAllText((Join-Path $mechRoot 'physical_npc.lua'),'-- G-CET native location:illegal-v3')
+$reds=@'
+public final class IllegalMechanicRegistry extends IScriptable {
+ public static func Build(out result: array<ref<IllegalMechanicDefinition>>) -> Void {
+ let data: ref<IllegalMechanicDefinition>;
+ ArrayClear(result);
+ data = new IllegalMechanicDefinition();
+ data.mechanicID = n"first_mechanic";
+ data.npcPosition = new Vector4(10.000, 20.000, 30.000, 1.000);
+ data.discoveryShape = EIllegalMechanicDiscoveryShape.RADIAL;
+ ArrayPush(data.discoveryVertices, new Vector4(20.000, 25.000, 30.000, 1.000));
+ data.discoveryLowestPointZ = 30.000;
+ data.discoveryHighestPointZ = 30.000;
+ data.discoveryZTolerance = 1.25;
+ ArrayPush(result, data);
+ data = new IllegalMechanicDefinition();
+ data.mechanicID = n"second_mechanic";
+ data.npcPosition = new Vector4(300.000, 400.000, 50.000, 1.000);
+ data.discoveryShape = EIllegalMechanicDiscoveryShape.POLYGON;
+ ArrayPush(data.discoveryVertices, new Vector4(390.000, 400.000, 50.000, 1.000));
+ ArrayPush(data.discoveryVertices, new Vector4(300.000, 400.000, 50.000, 1.000));
+ ArrayPush(data.discoveryVertices, new Vector4(320.000, 410.000, 50.000, 1.000));
+ data.discoveryLowestPointZ = 50.000;
+ data.discoveryHighestPointZ = 50.000;
+ data.discoveryZTolerance = 1.25;
+ ArrayPush(result, data);
+ }
+}
+'@
+[IO.File]::WriteAllText((Join-Path $redsRoot 'zzz_IllegalMechanicTypes.reds'),$reds)
+$compilerType=$asm.GetType('GCETRuntimeProfiler.Core.Services.CompiledNativeLocations',$true)
+$compile=$compilerType.GetMethod('Compile',[Reflection.BindingFlags]'Static,NonPublic')
+if(!$compile){throw 'Compiled static location manifest compiler missing'}
+$map=[Collections.Generic.Dictionary[string,byte[]]]::new()
+try {$built=$compile.Invoke($null,[object[]]@([string]$modsRoot,$map))}
+catch {throw "Native author REDscript compilation failed: $($_.Exception.InnerException.Message)"}
+$manifestBytes=$compilerType.GetProperty('Bytes',[Reflection.BindingFlags]'Instance,Public,NonPublic').GetValue($built)
+if([Text.Encoding]::ASCII.GetString($manifestBytes,0,4) -ne 'GCAS'){throw 'Not a native GCAS file'}
+if([BitConverter]::ToUInt32($manifestBytes,8) -ne 2){throw 'Expected exactly 2 compiled mechanic sites'}
+if([BitConverter]::ToUInt32($manifestBytes,16+24) -ne 1003301 -or
+   [BitConverter]::ToUInt32($manifestBytes,16+28+24) -ne 1003302){
+    throw 'Per-mechanic stable native owner IDs were not preserved'
+}
+foreach($i in 0..1){
+ $radius=[BitConverter]::ToSingle($manifestBytes,16+28*$i+16)
+ if($radius -le 95.0 -or $radius -le 90.0){throw 'Native wake must exceed all authored discovery and 95m NPC boundaries'}
+}
+Write-Host 'Compiled REDscript 2-owner GCAS fixture: independent owner IDs, author positions and >95m discovery-safe wake PASS'
+
 Write-Host 'Native static location additional owners: Card Collection 100-site coarse dormancy, banker SpatialHash FAR, Yaiba bathroom author gate; fallback, CRLF and idempotence PASS'
