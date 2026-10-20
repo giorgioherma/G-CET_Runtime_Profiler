@@ -152,6 +152,23 @@ function Host:attachCompiled(id,expected,onNear,onFar,onFallback)
   return true
 end
 
+-- Site-granular native wake, for fixed REDscript-matrix NPC sites. Each
+-- result index receives its own transition; an aggregate owner wake would
+-- incorrectly activate unrelated distant mechanics.
+function Host:attachPerSite(id,sites,onSite,onFallback)
+  if type(onSite)~="function" or type(onFallback)~="function" then
+    return false
+  end
+  local ok=self:attach(id,sites,function()end,function()end,onFallback)
+  if not ok then return false end
+  local owner=self.owners[id]
+  owner.siteChanged=onSite
+  owner.anchorIndexes={}
+  for i,key in ipairs(owner.ids) do owner.anchorIndexes[key]=i end
+  owner.mode="SITES"
+  return true
+end
+
 function Host:_snapshot()
   local rows={}
   for _,owner in pairs(self.owners) do
@@ -172,7 +189,15 @@ function Host:_snapshot()
   for _,row in ipairs(rows) do
     row.owner.known=row.states
     row.owner.nearCount=row.count
-    self:_set(row.owner,row.count>0)
+    if row.owner.siteChanged then
+      row.owner.mode="SITES"
+      for i,key in ipairs(row.owner.ids) do
+        local ok,value=pcall(row.owner.siteChanged,i,row.states[key]==1)
+        if not ok or value==false then error("site snapshot callback failed") end
+      end
+    else
+      self:_set(row.owner,row.count>0)
+    end
   end
   assert(native("GCETStaticAckSnapshot",self.consumer)==true)
   self.snapshotRequired=false
@@ -209,7 +234,15 @@ function Host:_tick()
         owner.known[id]=state
         owner.nearCount=owner.nearCount+(state==1 and 1 or -1)
         assert(owner.nearCount>=0 and owner.nearCount<=#owner.ids)
-        self:_set(owner,owner.nearCount>0)
+        if owner.siteChanged then
+          owner.mode="SITES"
+          local index=owner.anchorIndexes[id]
+          assert(index~=nil,"UNKNOWN_SITE_INDEX")
+          local ok,value=pcall(owner.siteChanged,index,state==1)
+          if not ok or value==false then error("site transition callback failed") end
+        else
+          self:_set(owner,owner.nearCount>0)
+        end
       end
     end
   end
