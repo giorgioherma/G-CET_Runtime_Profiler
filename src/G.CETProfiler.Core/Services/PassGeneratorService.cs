@@ -115,15 +115,10 @@ public static class PassGeneratorService
                     : transformed.AppliedTransforms;
         }
 
-        var semanticTransformCount = SemanticPassGeneratorService.Apply(
-            resolver.RootElement,
-            modsRoot,
-            staged,
-            liveSourceHashes,
-            appliedTransformsByFile,
-            transformManifest,
-            skipped);
+        var genericInfrastructureTransformCount = 0;
 
+        // GENERIC PHASE 2: finish source infrastructure and shared-read
+        // rewrites before any semantic source injection.
         // Explicitly reviewed 0-Engine Stage A: the 12 immutable PSM
         // definition keys, not the blackboard handle/getters/callback cadence.
         // Requires all 12 allocation-producing callsites in the active capture,
@@ -132,12 +127,12 @@ public static class PassGeneratorService
         if (BlackboardPsmDefinitionCacheSource.TryStage(
                 captureRoot, modsRoot, staged, liveSourceHashes,
                 appliedTransformsByFile, transformManifest, skipped))
-            ++semanticTransformCount;
+            ++genericInfrastructureTransformCount;
 
         // Reviewed 0-Engine same-update allocation batch. Independent exact
         // source/evidence gates for the spatial and Lifecycle modules; no
         // dynamic entity snapshots or cross-mod sharing.
-        semanticTransformCount += ZeroEngineAllocationBatchSource.TryStage(
+        genericInfrastructureTransformCount += ZeroEngineAllocationBatchSource.TryStage(
             captureRoot, modsRoot, staged, liveSourceHashes,
             appliedTransformsByFile, transformManifest, skipped);
 
@@ -149,15 +144,27 @@ public static class PassGeneratorService
             modsRoot,staged,liveSourceHashes,appliedTransformsByFile,
             transformManifest,skipped);
 
-        // Broad source-first getter reuse is applied AFTER all existing
-        // semantic and callback transforms. This avoids clobbering PASS11
-        // source anchors and permits safe composition in a single ZIP.
+        // Final generic rewrite before source-structural semantic stages.
+        // Semantic injectors must adapt to the resulting current source.
         // Independently verifies the current installed file fingerprint.
         var nativeReadReuseCount = NativeReadReuseSource.TryStage(
             resolver.RootElement, modsRoot, staged, liveSourceHashes,
             appliedTransformsByFile, transformManifest, skipped,
             provider => SharedProviderRecipes.TryGetValue(provider, out var recipe)
                 ? BuildSharedProviderHeader(recipe) : Array.Empty<string>());
+
+        // SEMANTIC PHASE: current-source behavior, scheduling and dormancy.
+        // Native static-location subscribers are the final semantic substage.
+        // No generic source rewrites follow semantic composition.
+        var semanticTransformCount = genericInfrastructureTransformCount +
+            SemanticPassGeneratorService.Apply(
+                resolver.RootElement,
+                modsRoot,
+                staged,
+                liveSourceHashes,
+                appliedTransformsByFile,
+                transformManifest,
+                skipped);
 
         if (staged.Count == 0 &&
             CompiledNativeLocations.Compile(modsRoot,staged).OwnerCounts.Count == 0)
@@ -236,6 +243,22 @@ public static class PassGeneratorService
         var nativeRuntime = NativeRuntimeBundle.TryLoad(requiresNative);
         // Explicit empty GCAS prevents ghost anchors from a stale overlay.
         var nativeLocations = nativeRuntime is null ? null : availableLocations;
+
+        // Whole-overlay Lua budget validation, AFTER semantic/native hooks
+        // and fixed 0-Engine assembly. Individual stages refuse unsafe edits;
+        // this last backstop prevents packaging any invalid combination.
+        foreach (var pair in staged.Where(p =>
+                     p.Key.EndsWith(".lua", StringComparison.OrdinalIgnoreCase)))
+        {
+            var budget = LuaLocalBudgetAnalyzer.Analyze(pair.Value);
+            if (budget.MaxActiveLocals > LuaLocalBudgetAnalyzer.Limit)
+                throw new InvalidOperationException(
+                    $"Final Lua validation refused {pair.Key}: " +
+                    $"{budget.MaxActiveLocals} active locals at " +
+                    $"{budget.Scope}:{budget.Line} exceed Lua's " +
+                    $"{LuaLocalBudgetAnalyzer.Limit}-local hard limit. " +
+                    "No optimization ZIP was produced.");
+        }
 
         var fileManifest = staged
             .OrderBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
