@@ -252,6 +252,79 @@
       ]
     },
     {
+      "id": "cybertrials-closed-overlay-provider",
+      "identityHints": [
+        "CyberTrials"
+      ],
+      "policyClass": "INACTIVE_OVERLAY_PROVIDER_WAKE",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onDraw",
+          "role": "source-proven-unnecessary-idle-work"
+        }
+      ],
+      "sourceProof": {
+        "sourceCompletionAuthoritative": true,
+        "ownerAll": [
+          "DrawEditor()",
+          "BestTimes()",
+          "WindowHiderTool",
+          "windowSettings.Current.mywindowhidden"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:cybertrials-closed-overlay-provider",
+        "expectedMarkerFileCount": 1,
+        "satisfiedAll": [
+          "__gcetCyberTrialsOverlayProviderWake",
+          "if cetopen or (windowSettings.Current and windowSettings.Current.mywindowhidden) then"
+        ]
+      },
+      "behavior": {
+        "handler": "SEMANTIC_SOURCE_PROVEN_EXISTING_MOD_STAGE",
+        "concepts": [
+          "overlayOnDraw",
+          "pluginLookupDormancy",
+          "overlayWakePreserved"
+        ],
+        "lanes": [
+          {
+            "role": "PROVEN_REDUNDANT",
+            "cadence": "SOURCE_GUARDED",
+            "seconds": 0
+          },
+          {
+            "role": "WAKE_OR_ACTIVE",
+            "cadence": "AUTHOR_UNCHANGED",
+            "seconds": 0
+          }
+        ],
+        "note": "Retains onDraw, race custom window, CET overlay opening and hidden-window recovery; skips repeated WindowHiderTool GetMod only when overlay closed and no hidden flag remains."
+      },
+      "generation": {
+        "enabled": true,
+        "sourceIndependentAdmission": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 2.588,
+        "evidenceStack": "CURRENT_STACK_CHECKPOINT3_SOURCE_AUDIT",
+        "admitted": true
+      },
+      "cadenceGroup": "SOURCE_PROVEN_IDLE_WORK_REDUCTION",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G-CET_CURRENT_STACK_20261020"
+      ]
+    },
+    {
       "id": "cybertrials",
       "identityHints": [
         "CyberTrials"
@@ -925,6 +998,79 @@
       "referenceOverrideAllowed": false,
       "evidenceMembership": [
         "G_MOD_COLLECTION_20260926"
+      ]
+    },
+    {
+      "id": "illegal-mechanic-npc-position-reuse",
+      "identityHints": [
+        "illegal_mechanic_phase1a"
+      ],
+      "policyClass": "SYNCHRONOUS_NPC_POSITION_REUSE",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "source-proven-unnecessary-idle-work"
+        }
+      ],
+      "sourceProof": {
+        "sourceCompletionAuthoritative": true,
+        "ownerAll": [
+          "function PhysicalNpc.Update(delta)",
+          "local function distanceFromPlayer(entry, player)",
+          "state.mechanics",
+          "distanceFromPlayer(entry, player)"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:illegal-mechanic-npc-position-reuse",
+        "expectedMarkerFileCount": 1,
+        "satisfiedAll": [
+          "__gcetMechanicPlayerPosition",
+          "local pos = playerPos or player:GetWorldPosition()"
+        ]
+      },
+      "behavior": {
+        "handler": "SEMANTIC_SOURCE_PROVEN_EXISTING_MOD_STAGE",
+        "concepts": [
+          "singleInvocationPosition",
+          "multiNpcNativeGetter",
+          "protectedOriginalFallback"
+        ],
+        "lanes": [
+          {
+            "role": "PROVEN_REDUNDANT",
+            "cadence": "SOURCE_GUARDED",
+            "seconds": 0
+          },
+          {
+            "role": "WAKE_OR_ACTIVE",
+            "cadence": "AUTHOR_UNCHANGED",
+            "seconds": 0
+          }
+        ],
+        "note": "One player world position per synchronous mechanic scan when successful, preserving original Vector4.Distance, pending spawn, error fallback and near/far streaming. Never caches native position across frames or sessions."
+      },
+      "generation": {
+        "enabled": true,
+        "sourceIndependentAdmission": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 2.524,
+        "evidenceStack": "CURRENT_STACK_CHECKPOINT3_SOURCE_AUDIT",
+        "admitted": true
+      },
+      "cadenceGroup": "SOURCE_PROVEN_IDLE_WORK_REDUCTION",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G-CET_CURRENT_STACK_20261020"
       ]
     },
     {
@@ -3312,6 +3458,79 @@
       }
     },
     {
+      "id": "minimap-widgets-time-weather-snapshot",
+      "identityHints": [
+        "Minimap Widgets"
+      ],
+      "policyClass": "INVOCATION_LOCAL_TIME_AND_OPTIONAL_PROVIDER",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "source-proven-unnecessary-idle-work"
+        }
+      ],
+      "sourceProof": {
+        "sourceCompletionAuthoritative": true,
+        "ownerAll": [
+          "function updateTimeWidget()",
+          "function updateWeatherWidget()",
+          "TimeIsRunningOut",
+          "Game.GetTimeSystem():GetGameTime():Hours()"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:minimap-widgets-time-weather-snapshot",
+        "expectedMarkerFileCount": 1,
+        "satisfiedAll": [
+          "__gcetMinimapGameTimePerInvocation",
+          "if MinimapWidgetsConfig.TimeSwitch == 5 then mod = GetMod"
+        ]
+      },
+      "behavior": {
+        "handler": "SEMANTIC_SOURCE_PROVEN_EXISTING_MOD_STAGE",
+        "concepts": [
+          "invocationLocalNativeTime",
+          "optionalModProvider",
+          "liveHUDPreserved"
+        ],
+        "lanes": [
+          {
+            "role": "PROVEN_REDUNDANT",
+            "cadence": "SOURCE_GUARDED",
+            "seconds": 0
+          },
+          {
+            "role": "WAKE_OR_ACTIVE",
+            "cadence": "AUTHOR_UNCHANGED",
+            "seconds": 0
+          }
+        ],
+        "note": "Independent, synchronous time/weather callbacks read one fresh native GameTime object each, preserving all Hour/Minute evaluations and UI semantics; optional TimeIsRunningOut provider is queried only in existing mode 5. Not a cross-frame cache."
+      },
+      "generation": {
+        "enabled": true,
+        "sourceIndependentAdmission": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 2.776,
+        "evidenceStack": "CURRENT_STACK_CHECKPOINT3_SOURCE_AUDIT",
+        "admitted": true
+      },
+      "cadenceGroup": "SOURCE_PROVEN_IDLE_WORK_REDUCTION",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G-CET_CURRENT_STACK_20261020"
+      ]
+    },
+    {
       "id": "minimap-widgets",
       "identityHints": [
         "Minimap Widgets"
@@ -5111,6 +5330,79 @@
         "evidenceStack": "CET_20261012_184809_PRIOR_SPECTER_STACK"
       },
       "cadenceGroup": "UNCHANGED_FRAME_REALTIME_STORY_HANDOFF"
+    },
+    {
+      "id": "npc-outfit-manager-id-normalization",
+      "identityHints": [
+        "NPC Outfit Manager"
+      ],
+      "policyClass": "BOUNDED_RAW_RECORD_STRING_NORMALIZATION",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "source-proven-unnecessary-idle-work"
+        }
+      ],
+      "sourceProof": {
+        "sourceCompletionAuthoritative": true,
+        "ownerAll": [
+          "local function GetNPCID(target)",
+          "target:GetRecordID()",
+          "ProcessRadarOutfits()",
+          "autoOutfitsData.outfits"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:npc-outfit-manager-id-normalization",
+        "expectedMarkerFileCount": 1,
+        "satisfiedAll": [
+          "__gcetNpcIdNormalizedByRawRecord",
+          "return __gcetRememberNpcId(rawID, match)"
+        ]
+      },
+      "behavior": {
+        "handler": "SEMANTIC_SOURCE_PROVEN_EXISTING_MOD_STAGE",
+        "concepts": [
+          "freshGetRecordID",
+          "boundedStringMemo",
+          "nativeHandleNotCached"
+        ],
+        "lanes": [
+          {
+            "role": "PROVEN_REDUNDANT",
+            "cadence": "SOURCE_GUARDED",
+            "seconds": 0
+          },
+          {
+            "role": "WAKE_OR_ACTIVE",
+            "cadence": "AUTHOR_UNCHANGED",
+            "seconds": 0
+          }
+        ],
+        "note": "Caches only parsed Lua record-ID strings keyed on a freshly fetched exact raw record string (512-entry bounded reset). Does not cache entity handles, record identity or outfit assignment; preserves NCA rule selection and every attach/detach/mutation writer."
+      },
+      "generation": {
+        "enabled": true,
+        "sourceIndependentAdmission": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 4.942,
+        "evidenceStack": "CURRENT_STACK_CHECKPOINT3_SOURCE_AUDIT",
+        "admitted": true
+      },
+      "cadenceGroup": "SOURCE_PROVEN_IDLE_WORK_REDUCTION",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G-CET_CURRENT_STACK_20261020"
+      ]
     },
     {
       "id": "npc-outfit-manager-idle-state",
