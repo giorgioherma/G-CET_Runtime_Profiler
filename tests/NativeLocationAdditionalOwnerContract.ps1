@@ -700,7 +700,7 @@ foreach($row in $providerRows) {
   $regexCheck=[string]$regexAdapter.Invoke($null,
    [object[]]@($source,$regexSource,$new,'generic provider '+$getter))
  } catch {
-  throw "Generic-first semantic compatibility failed for $provider/$getter: $($_.Exception.InnerException.Message)"
+  throw "Generic-first semantic compatibility failed for $provider/${getter}: $($_.Exception.InnerException.Message)"
  }
  foreach($output in @($literalCheck,$regexCheck)){
   if(!$output.Contains('local target = __gcet'+$getter+'()') -or
@@ -749,62 +749,3 @@ if(!$semanticSource.Contains('OrderBy(x => x.RuleId.StartsWith("native-location-
  throw 'Native static location owner ordering or same-pass semantic composition missing'
 }
 Write-Host 'GENERIC 1 -> GENERIC 2 -> SEMANTIC -> static native locations -> final Lua budget PASS'
-
-
- try {
-  $literalCheck=[string]$literalAdapter.Invoke($null,
-   [object[]]@($source,$old,$new,'generic provider '+$getter))
-  $regexCheck=[string]$regexAdapter.Invoke($null,
-   [object[]]@($source,$regexSource,$new,'generic provider '+$getter))
- } catch {
-  throw "Generic-first semantic compatibility failed for $provider/$getter: $($_.Exception.InnerException.Message)"
- }
- foreach($output in @($literalCheck,$regexCheck)){
-  if(!$output.Contains('local target = __gcet'+$getter+'()') -or
-     !$output.Contains('return Game.'+$getter+'()') -or
-     !$output.Contains('local checked = true')){
-   throw "Generic-first semantic regression for $provider/$getter"
-  }
- }
-}
-Write-Host 'All 26 authorized shared-provider getters preserved across literal and regex semantic adapters PASS'
-
-
-# Regression: two generic stages finish before semantic source composition.
-# Native static locations are its LAST substage. No generic rewrite may
-# run after semantic. The actual generated source is independently validated
-# after fixed runtime assembly to enforce Lua's 200 active-local limit.
-$passGeneratorSource=[IO.File]::ReadAllText(
-  (Join-Path (Get-Location).Path 'src/G.CETProfiler.Core/Services/PassGeneratorService.cs'))
-$orderedPipeline=@(
- 'var transformed = TransformFile(',
- 'BlackboardPsmDefinitionCacheSource.TryStage(',
- 'ZeroEngineAllocationBatchSource.TryStage(',
- 'NativePlayerVectorStage.TryStage(',
- 'NativeReadReuseSource.TryStage(',
- 'SemanticPassGeneratorService.Apply(',
- 'var fixedRuntime = FixedZeroEngineRuntime.Prepare(modsRoot);',
- 'var availableLocations=CompiledNativeLocations.Compile(modsRoot,staged);',
- 'Whole-overlay Lua budget validation',
- 'var fileManifest = staged'
-)
-$previous=-1
-foreach($stage in $orderedPipeline){
- $index=$passGeneratorSource.IndexOf($stage,[StringComparison]::Ordinal)
- if($index -le $previous) {
-  throw "GENERIC -> GENERIC -> SEMANTIC -> NATIVE ordering violation: $stage ($index after $previous)"
- }
- $previous=$index
-}
-if(!$passGeneratorSource.Contains('LuaLocalBudgetAnalyzer.Analyze(pair.Value)') -or
-   !$passGeneratorSource.Contains('budget.MaxActiveLocals > LuaLocalBudgetAnalyzer.Limit')){
- throw 'Final generated Lua 200-local verification is missing'
-}
-$semanticSource=[IO.File]::ReadAllText(
-  (Join-Path (Get-Location).Path 'src/G.CETProfiler.Core/Services/SemanticPassGeneratorService.cs'))
-if(!$semanticSource.Contains('OrderBy(x => x.RuleId.StartsWith("native-location-"') -or
-   !$semanticSource.Contains('ApplyPreparedNativeLocationStages(')){
- throw 'Native static location owner ordering or same-pass semantic composition missing'
-}
-Write-Host 'GENERIC 1 -> GENERIC 2 -> SEMANTIC -> static native locations -> final Lua budget PASS'
-
