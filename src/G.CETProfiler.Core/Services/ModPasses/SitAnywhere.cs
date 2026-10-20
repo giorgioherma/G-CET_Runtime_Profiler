@@ -192,4 +192,44 @@ internal static partial class SemanticInjectors
             "Made Sit Anywhere hard-dormant when scanner/workspot/transition/timer/hub/mappin state is fully idle, while preserving rendered-frame cadence for live scanner, world, timer and workspot work.");
     }
 
+
+    private static SemanticInjectionResult ApplySitAnywhereUnshownMappinGate(SemanticPatchContext context)
+    {
+        var file = context.FindFile(
+            "modules/worldInteraction.lua",
+            "function world.init()",
+            "ObserveAfter(\"BaseMappinBaseController\", \"UpdateRootState\"",
+            "local mappin = this:GetMappin()",
+            "world.interactions");
+        const string marker = "G-CET semantic:sitanywhere-hidden-mappin-getter";
+        if (file.Text.Contains(marker, StringComparison.Ordinal))
+            return SemanticInjectionResult.Skip("SitAnywhere hidden-mappin getter stage already present.");
+        var source = file.Text;
+        var proof = new Regex(
+            @"(?m)^(?<indent>[ \t]*)local\s+mappin\s*=\s*this:GetMappin\(\)\s*\r?$",
+            RegexOptions.CultureInvariant);
+        var matches = proof.Matches(source);
+        if (matches.Count != 1 ||
+            source.IndexOf("function world.init()", StringComparison.Ordinal) >= matches[0].Index ||
+            source.IndexOf("function world.update()", StringComparison.Ordinal) <= matches[0].Index ||
+            !source.Contains("if interaction.shown then", StringComparison.Ordinal) &&
+            !source.Contains("and interaction.shown then", StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "SitAnywhere world-mappin observer/visible-state ownership changed.");
+        var selected = matches[0];
+        var i = selected.Groups["indent"].Value;
+        var nl = source.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        var gate =
+            i + "-- " + marker + nl +
+            i + "-- Never request a native mappin unless our visible interactions need its icon." + nl +
+            i + "local __gcetAnyShown = false" + nl +
+            i + "for _, interaction in pairs(world.interactions) do" + nl +
+            i + "    if interaction.shown then __gcetAnyShown = true; break end" + nl +
+            i + "end" + nl +
+            i + "if not __gcetAnyShown then return end" + nl;
+        context.Write(file, source[..selected.Index] + gate + selected.Value +
+            source[(selected.Index + selected.Length)..]);
+        return SemanticInjectionResult.Success(
+            "Preserved the native mappin observer and shown-interaction icon wake; skipped GetMappin/GetWorldPosition when no custom SitAnywhere interaction is shown.");
+    }
 }
