@@ -58,3 +58,33 @@ and generated ZIP before declaring packaging green; run the existing
 four-owner initial near/far, UNKNOWN/fallback, fast-travel and quest
 lifecycle gameplay checks. The unified two-page app UI is separate
 future product work, not part of this runtime packaging commit.
+
+
+## Native dormancy v2 — replacement of previous proximity work
+
+The user's attached `HANDOFF CHAT FILES(3).zip` contains the original
+`G-CET_SEMANTIC_ORIGINALS_62`, historical `G-CET_PASS0` and
+`G-CET_PASS11_NATIVE_CACHE`, and the latest `modsLIVEnow`. PASS11 and
+the live files already carry the first native-location integration. The
+Resolver v2 change modifies the **same four authoritative source injectors**
+rather than requiring an extra repair pass:
+
+| Owner | Previously optimized source | Native v2 ownership |
+| --- | --- | --- |
+| StreetGamesPoker | PASS4 1 Hz far search plus 5 Hz nearby table/10 Hz seat and realtime gameplay | Native NEAR/FAR replaces the far scanner once healthy; old far job stays paused as a standby and resumes only when actually needed by fallback, without duplicating near-mode scans |
+| tunnel_rescue | source-proven outside .15/.5 s quest cadence; v1 native FAR shortcut, but NEAR still called Lua player-position getters | Tri-state native NEAR/FAR supplies both distance outcomes; absent/UNKNOWN routes to the original exact source probe; all quest updates/journal/input and recovery remain |
+| illegal_mechanic_phase1a | original 75 m/95 m NPC streaming with half-second scans; v1 native FAR skipped scans only when no NPC existed | Native FAR skips inactive/unspawned entries even when another mechanic is live; live and pending NPCs keep their original exact-distance/resolve/despawn logic (no native-based premature deletion during fast travel) |
+| Dedka Auto Shop | original 0-Engine 200 m entrance zones plus 5 Hz nearby detail | Existing native aggregate fully retires both zone evaluators after known state; v2 retains original zones purely for UNKNOWN/native failure fallback and leaves shop details/input/callbacks unchanged |
+
+The catalog uses `G-CET native location:* -v2` completion
+postconditions (without the space before `-v2` in actual markers), including
+v2-specific behavior tokens, rather than treating a v1 marker as completed.
+Each injector accepts supported existing v1 source or composes v1-to-v2
+**in one generation from pristine source**; existing Lua code is not
+globally rewritten. The Windows source contract exercises upgrade, CRLF/LF,
+UNKNOWN/near behavior, and refusal on unsupported pending-state drift.
+
+**This is selective replacement, not generic quest dormancy.** Native
+coordinates are the shared execution service. Original author stages
+remain responsible for lifecycle, active gameplay, fine proximity, input,
+quest states and reliable fallback. No player mod-source SHA gate is added.
