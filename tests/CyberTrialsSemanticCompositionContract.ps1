@@ -323,7 +323,7 @@ end)
 '@
 foreach($registrar in @('registerForEvent','registerRuntimeEvent','__gcetRegisterEvent_93')){
  foreach($crlf in @($false,$true)){
-  $variant=$originalOverlay.Replace('registerForEvent(',($registrar+'('))
+  $variant=$originalOverlay.Replace(([string][char]13+[string][char]10),[string][char]10).Replace('registerForEvent(',($registrar+'('))
   if($crlf){$variant=$variant.Replace([string][char]10,([string][char]13+[string][char]10))}
   [IO.File]::WriteAllText($initPath,$variant,[Text.UTF8Encoding]::new($false))
   $stage=[Collections.Generic.Dictionary[string,byte[]]]::new([StringComparer]::OrdinalIgnoreCase)
