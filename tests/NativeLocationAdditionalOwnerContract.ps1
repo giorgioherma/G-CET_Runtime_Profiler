@@ -672,11 +672,11 @@ try {
 if(!$refused){throw 'Semantic adapter accepted unproven generic helper'}
 Write-Host 'Catalog generic getter composition: literal, regex, fallback and unproven refusal PASS'
 
-# Exercise EVERY authorized shared getter, not just the first failing owner.
-# Dynamic metadata is read from the same catalog used by the generic generator.
+# Exercise EVERY authorized shared getter, not just PLAYER.
+# The authorized provider list is read from the actual compiled catalog.
 $providerCatalog=$asm.GetType('GCETRuntimeProfiler.Core.Services.SharedProviderCatalog',$true)
 $providerField=$providerCatalog.GetField('Authorized',
-  [Reflection.BindingFlags]'Static,NonPublic,Public')
+ [Reflection.BindingFlags]'Static,NonPublic,Public')
 if(!$providerField){throw 'Shared provider catalog is missing'}
 $providerRows=@($providerField.GetValue($null))
 if($providerRows.Count -ne 26){throw "Expected 26 authorized shared providers; got $($providerRows.Count)"}
@@ -693,7 +693,24 @@ foreach($row in $providerRows) {
  $source=$srcLines -join [Environment]::NewLine
  $old='local target = Game.'+$getter+'()'
  $new=$old+[Environment]::NewLine+'local checked = true'
- $regexSource='(?m)^local\s+target\s*=\s*Game\.'+$getter+'\(\)\s*
+ $regexSource='(?m)^local\s+target\s*=\s*Game\.'+$getter+'\(\)\s*$'
+ try {
+  $literalCheck=[string]$literalAdapter.Invoke($null,
+   [object[]]@($source,$old,$new,'generic provider '+$getter))
+  $regexCheck=[string]$regexAdapter.Invoke($null,
+   [object[]]@($source,$regexSource,$new,'generic provider '+$getter))
+ } catch {
+  throw "Generic-first semantic compatibility failed for $provider/$getter: $($_.Exception.InnerException.Message)"
+ }
+ foreach($output in @($literalCheck,$regexCheck)){
+  if(!$output.Contains('local target = __gcet'+$getter+'()') -or
+     !$output.Contains('return Game.'+$getter+'()') -or
+     !$output.Contains('local checked = true')){
+   throw "Generic-first semantic regression for $provider/$getter"
+  }
+ }
+}
+Write-Host 'All 26 authorized shared-provider getters preserved across literal and regex semantic adapters PASS'
 
 # Regression: two generic stages finish before semantic source composition.
 # Native static locations are its LAST substage. No generic rewrite may
