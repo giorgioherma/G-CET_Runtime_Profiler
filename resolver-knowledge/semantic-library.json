@@ -14,7 +14,7 @@
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
     "fullPassRule": "An enabled, reviewed semantic injector may run with measured callback activity even below the default 3.0 ms/s soft CPU boundary, but only when its identity and current live-source proof match and the stage is not already satisfied. Generic native-dispatch/dormancy recipes retain their independent proof requirements.",
-    "enabledInjectorCount": 73,
+    "enabledInjectorCount": 77,
     "profileOnlyRuleCount": 0,
     "note": "The production semantic base contains source-proven, behavior-aware optimizations learned from validated references and measured hot callbacks, including burst-discovered diagnostic sentinels that preserve author cadence while gating globally expensive fallback scans. Generic/mechanical transforms stay in the Resolver; semantic rules cover state/cadence/hotpath knowledge that generic inference cannot safely own.",
     "admissionPolicy": {
@@ -272,12 +272,12 @@
           "WindowHiderTool",
           "windowSettings.Current.mywindowhidden"
         ],
-      "ownerAnyGroups": [
-        [
-          "GetMod(\"WindowHiderTool\")",
-          "GetMod('WindowHiderTool')"
-        ]
-      ],
+        "ownerAnyGroups": [
+          [
+            "GetMod(\"WindowHiderTool\")",
+            "GetMod('WindowHiderTool')"
+          ]
+        ],
         "alreadySatisfiedMarker": "G-CET semantic:cybertrials-closed-overlay-provider",
         "expectedMarkerFileCount": 1,
         "satisfiedAll": [
@@ -1022,18 +1022,18 @@
       "sourceProof": {
         "sourceCompletionAuthoritative": true,
         "ownerAll": [
-        "function PhysicalNpc.Update(delta)",
-        "local function distanceFromPlayer",
-        "anchorPosition(entry)",
-        "state.mechanics",
-        "if entry.spawnPending then"
-      ],
-      "ownerAnyGroups": [
-        [
-          "return Vector4.Distance(player:GetWorldPosition(), anchorPosition(entry))",
-          "return Vector4.Distance(pos, anchorPosition(entry)), pos"
-        ]
-      ],
+          "function PhysicalNpc.Update(delta)",
+          "local function distanceFromPlayer",
+          "anchorPosition(entry)",
+          "state.mechanics",
+          "if entry.spawnPending then"
+        ],
+        "ownerAnyGroups": [
+          [
+            "return Vector4.Distance(player:GetWorldPosition(), anchorPosition(entry))",
+            "return Vector4.Distance(pos, anchorPosition(entry)), pos"
+          ]
+        ],
         "alreadySatisfiedMarker": "G-CET semantic:illegal-mechanic-npc-position-reuse",
         "expectedMarkerFileCount": 1,
         "satisfiedAll": [
@@ -3486,12 +3486,12 @@
       "sourceProof": {
         "sourceCompletionAuthoritative": true,
         "ownerAll": [
-        "function updateTimeWidget()",
-        "function updateWeatherWidget()",
-        "TimeIsRunningOut",
-        "MinimapWidgetsConfig.TimeSwitch",
-        "Game.GetTimeSystem():GetGameTime()"
-      ],
+          "function updateTimeWidget()",
+          "function updateWeatherWidget()",
+          "TimeIsRunningOut",
+          "MinimapWidgetsConfig.TimeSwitch",
+          "Game.GetTimeSystem():GetGameTime()"
+        ],
         "alreadySatisfiedMarker": "G-CET semantic:minimap-widgets-time-weather-snapshot",
         "expectedMarkerFileCount": 1,
         "satisfiedAll": [
@@ -5841,6 +5841,308 @@
       "referenceOverrideAllowed": false,
       "evidenceMembership": [
         "CET-20261016-001659_CAPTURE_5-10_LUA_TO_C"
+      ]
+    },
+    {
+      "id": "native-location-poker",
+      "identityHints": [
+        "StreetGamesPoker"
+      ],
+      "policyClass": "NATIVE_STATIC_LOCATION_FAR_DISCOVERY",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onInit",
+          "role": "native location source stage"
+        }
+      ],
+      "sourceProof": {
+        "sourceCompletionAuthoritative": true,
+        "ownerAll": [
+          "poker.world_far",
+          "poker.world_near",
+          "poker.seat_near",
+          "StreetTables.locations",
+          "POKER_WAKE_RADIUS",
+          "pass4FarWorldJob = farWorldJob"
+        ],
+        "alreadySatisfiedMarker": "G-CET native location:poker-v1",
+        "expectedMarkerFileCount": 1,
+        "satisfiedAll": [
+          "G-CET native location:poker-v1",
+          "__gcetNativeOwned",
+          "lookup:attach(10031"
+        ]
+      },
+      "behavior": {
+        "handler": "SEMANTIC_NATIVE_LOCATION_SOURCE_PROVEN",
+        "concepts": [
+          "nativeStaticWake",
+          "singleSharedConsumer",
+          "authorGameplayFallback"
+        ],
+        "lanes": [
+          {
+            "role": "FAR_STATIC_DISCOVERY",
+            "cadence": "NATIVE_TRANSITION_DRIVEN",
+            "seconds": 0
+          },
+          {
+            "role": "ACTIVE_GAMEPLAY",
+            "cadence": "AUTHOR_UNCHANGED",
+            "seconds": 0
+          }
+        ],
+        "note": "Opt-in source-proven native static locations; original author discovery retained until healthy snapshot and restored on unavailable/UNKNOWN/overrun. No native DLL bundled."
+      },
+      "generation": {
+        "enabled": true,
+        "sourceIndependentAdmission": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 0,
+        "evidenceStack": "NATIVE_LOCATION_FOUR_OWNER_SOURCE_REVIEW",
+        "admitted": true
+      },
+      "cadenceGroup": "NATIVE_LOCATION_WAKE",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G-CET_CURRENT_STACK_20261020"
+      ]
+    },
+    {
+      "id": "native-location-tunnel",
+      "identityHints": [
+        "tunnel_rescue"
+      ],
+      "policyClass": "NATIVE_STATIC_LOCATION_QUEST_IDLE",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onInit",
+          "role": "native location source stage"
+        }
+      ],
+      "sourceProof": {
+        "sourceCompletionAuthoritative": true,
+        "ownerAll": [
+          "local function __gcetTunnelFarOutside()",
+          "local __gcetTunnelOutsideAcc = 0.0",
+          "H.phase",
+          "JournalOffer.update",
+          "Rescue.surface"
+        ],
+        "alreadySatisfiedMarker": "G-CET native location:tunnel-v1",
+        "expectedMarkerFileCount": 1,
+        "satisfiedAll": [
+          "G-CET native location:tunnel-v1",
+          "__gcetTunnelNativeFar",
+          "lookup:attach(10032"
+        ]
+      },
+      "behavior": {
+        "handler": "SEMANTIC_NATIVE_LOCATION_SOURCE_PROVEN",
+        "concepts": [
+          "nativeStaticWake",
+          "singleSharedConsumer",
+          "authorGameplayFallback"
+        ],
+        "lanes": [
+          {
+            "role": "FAR_STATIC_DISCOVERY",
+            "cadence": "NATIVE_TRANSITION_DRIVEN",
+            "seconds": 0
+          },
+          {
+            "role": "ACTIVE_GAMEPLAY",
+            "cadence": "AUTHOR_UNCHANGED",
+            "seconds": 0
+          }
+        ],
+        "note": "Opt-in source-proven native static locations; original author discovery retained until healthy snapshot and restored on unavailable/UNKNOWN/overrun. No native DLL bundled."
+      },
+      "generation": {
+        "enabled": true,
+        "sourceIndependentAdmission": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 0,
+        "evidenceStack": "NATIVE_LOCATION_FOUR_OWNER_SOURCE_REVIEW",
+        "admitted": true
+      },
+      "cadenceGroup": "NATIVE_LOCATION_WAKE",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G-CET_CURRENT_STACK_20261020"
+      ]
+    },
+    {
+      "id": "native-location-illegal",
+      "identityHints": [
+        "illegal_mechanic_phase1a"
+      ],
+      "policyClass": "NATIVE_STATIC_LOCATION_NPC_DISCOVERY",
+      "callbacks": [
+        {
+          "kind": "source",
+          "target": "physical_npc.lua",
+          "role": "source-owned native static wake registration"
+        }
+      ],
+      "sourceProof": {
+        "sourceCompletionAuthoritative": true,
+        "ownerAll": [
+          "function PhysicalNpc.Update(delta)",
+          "state.mechanics = result",
+          "if entry.spawnPending then",
+          "  nextUpdateAt = 0.0",
+          "if #state.mechanics == 0 and not loadMatrix() then return end"
+        ],
+        "alreadySatisfiedMarker": "G-CET native location:illegal-v1",
+        "expectedMarkerFileCount": 1,
+        "satisfiedAll": [
+          "G-CET native location:illegal-v1",
+          "__gcetNativeFar",
+          "lookup:attach(10033"
+        ]
+      },
+      "behavior": {
+        "handler": "SEMANTIC_NATIVE_LOCATION_SOURCE_PROVEN",
+        "concepts": [
+          "nativeStaticWake",
+          "singleSharedConsumer",
+          "authorGameplayFallback"
+        ],
+        "lanes": [
+          {
+            "role": "FAR_STATIC_DISCOVERY",
+            "cadence": "NATIVE_TRANSITION_DRIVEN",
+            "seconds": 0
+          },
+          {
+            "role": "ACTIVE_GAMEPLAY",
+            "cadence": "AUTHOR_UNCHANGED",
+            "seconds": 0
+          }
+        ],
+        "note": "Opt-in source-proven native static locations; original author discovery retained until healthy snapshot and restored on unavailable/UNKNOWN/overrun. No native DLL bundled."
+      },
+      "generation": {
+        "enabled": true,
+        "sourceIndependentAdmission": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 0,
+        "evidenceStack": "NATIVE_LOCATION_FOUR_OWNER_SOURCE_REVIEW",
+        "admitted": true
+      },
+      "cadenceGroup": "NATIVE_LOCATION_WAKE",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G-CET_CURRENT_STACK_20261020"
+      ]
+    },
+    {
+      "id": "native-location-dedka",
+      "identityHints": [
+        "Dedka Auto Shop"
+      ],
+      "policyClass": "NATIVE_STATIC_LOCATION_ZONE_REPLACEMENT",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onInit",
+          "role": "native location source stage"
+        }
+      ],
+      "sourceProof": {
+        "sourceCompletionAuthoritative": true,
+        "ownerAll": [
+          "engine.RegisterZone({",
+          "dedka_entrance1",
+          "dedka_entrance2_cluster",
+          "stopShopDetail()",
+          "startShopDetail()",
+          "entrancePos_2"
+        ],
+        "alreadySatisfiedMarker": "G-CET native location:dedka-v1",
+        "expectedMarkerFileCount": 1,
+        "satisfiedAll": [
+          "G-CET native location:dedka-v1",
+          "__gcetDedkaZone1",
+          "lookup:attach(10034"
+        ]
+      },
+      "behavior": {
+        "handler": "SEMANTIC_NATIVE_LOCATION_SOURCE_PROVEN",
+        "concepts": [
+          "nativeStaticWake",
+          "singleSharedConsumer",
+          "authorGameplayFallback"
+        ],
+        "lanes": [
+          {
+            "role": "FAR_STATIC_DISCOVERY",
+            "cadence": "NATIVE_TRANSITION_DRIVEN",
+            "seconds": 0
+          },
+          {
+            "role": "ACTIVE_GAMEPLAY",
+            "cadence": "AUTHOR_UNCHANGED",
+            "seconds": 0
+          }
+        ],
+        "note": "Opt-in source-proven native static locations; original author discovery retained until healthy snapshot and restored on unavailable/UNKNOWN/overrun. No native DLL bundled."
+      },
+      "generation": {
+        "enabled": true,
+        "sourceIndependentAdmission": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 0,
+        "evidenceStack": "NATIVE_LOCATION_FOUR_OWNER_SOURCE_REVIEW",
+        "admitted": true
+      },
+      "cadenceGroup": "NATIVE_LOCATION_WAKE",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G-CET_CURRENT_STACK_20261020"
       ]
     }
   ],
