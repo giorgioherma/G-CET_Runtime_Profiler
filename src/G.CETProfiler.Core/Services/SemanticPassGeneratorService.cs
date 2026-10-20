@@ -170,6 +170,111 @@ internal static class SemanticPassGeneratorService
             }
         }
 
+
+        // Pristine author input can lack a native-location prerequisite that
+        // the earlier semantic rule creates in THIS SAME generation.
+        // Compose only production-admitted owners, only from already-staged
+        // current source, and only after the exact source injector accepts it.
+        applied += ApplyPreparedNativeLocationStages(
+            modsRoot,staged,liveSourceHashes,appliedTransformsByFile,
+            transformManifest,skipped);
+        return applied;
+    }
+
+
+    private static int ApplyPreparedNativeLocationStages(
+        string modsRoot,
+        Dictionary<string,byte[]> staged,
+        Dictionary<string,string?> liveSourceHashes,
+        Dictionary<string,int> appliedTransformsByFile,
+        List<object> transformManifest,
+        List<object> skipped)
+    {
+        var verifiedFollowups = new (string Rule,string Owner,string File,
+            string Prerequisite,string Completion)[]
+        {
+            ("native-location-poker","StreetGamesPoker","init.lua",
+                "poker.world_far","G-CET native location:poker-v2"),
+            ("native-location-tunnel","tunnel_rescue","init.lua",
+                "local function __gcetTunnelFarOutside()","G-CET native location:tunnel-v2"),
+            ("native-location-illegal","illegal_mechanic_phase1a","physical_npc.lua",
+                "GetMechanicCountForCET","G-CET native location:illegal-v3"),
+            ("native-location-dedka","Dedka Auto Shop","init.lua",
+                "dedka_entrance2_cluster","G-CET native location:dedka-v2"),
+            ("native-location-card-collection","Card Collection","init.lua",
+                "local function buildSpatialEntries()","G-CET native location:card-collection-v1"),
+            ("native-location-marmurbank","marmurbank","module/Bank.lua",
+                "function bank:registerSpatialSet()","G-CET native location:marmurbank-v1"),
+            ("native-location-yaiba-bathtub","yaibaPenthouse","bathtub.lua",
+                "G-CET semantic:yaiba-penthouse-distant-bathtub","G-CET native location:yaiba-bathtub-v1"),
+            ("native-location-ziggy-offered","ziggy_last_play","init.lua",
+                "local __gcetZiggyOfferedFarAcc=0.0","G-CET native location:ziggy-offered-v1")
+        };
+        var applied=0;
+        foreach(var item in verifiedFollowups)
+        {
+            var relative=item.Owner+"/"+item.File;
+            if(!staged.TryGetValue(relative,out var prior))continue;
+            var priorText=Encoding.UTF8.GetString(prior);
+            if(!priorText.Contains(item.Prerequisite,StringComparison.Ordinal) ||
+               priorText.Contains(item.Completion,StringComparison.Ordinal))
+                continue;
+            var context=new SemanticPatchContext(modsRoot,item.Owner,item.Rule,staged);
+            try
+            {
+                var rule=new SemanticCandidate(item.Rule,item.Owner,
+                    "SEMANTIC_NATIVE_LOCATION_SOURCE_PROVEN",
+                    "NATIVE_SOURCE_COMPOSED","source-injection",
+                    0.0,1,false,SourceIndependent:true);
+                var result=SemanticInjectors.Apply(rule,context);
+                if(!result.Applied || context.Changes.Count!=1)
+                    continue;
+                var change=context.Changes.Single();
+                var code=Encoding.UTF8.GetString(change.Bytes);
+                if(!code.Contains(item.Completion,StringComparison.Ordinal) ||
+                   code.Contains("$"+"{opening}",StringComparison.Ordinal) ||
+                   code.Contains("$"+"{close}",StringComparison.Ordinal))
+                    throw new InvalidOperationException(
+                        "Composed native location source postcondition did not hold.");
+                var limit=LuaLocalBudgetAnalyzer.Analyze(change.Bytes);
+                if(limit.MaxActiveLocals>LuaLocalBudgetAnalyzer.Limit)
+                    throw new InvalidOperationException(
+                        "Composed native location exceeds the source's Lua local limit.");
+                var path=change.RelativeFile.Replace('\\','/');
+                if(!path.Equals(relative,StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException(
+                        "Composed native stage escaped its reviewed owner source.");
+                if(!liveSourceHashes.ContainsKey(path))
+                {
+                    var livePath=Path.Combine(Path.GetFullPath(modsRoot),
+                        path.Replace('/',Path.DirectorySeparatorChar));
+                    liveSourceHashes[path]=File.Exists(livePath)
+                        ? Sha256(File.ReadAllBytes(livePath)):null;
+                }
+                staged[path]=change.Bytes;
+                appliedTransformsByFile[path]=appliedTransformsByFile.TryGetValue(
+                    path,out var count)?count+1:1;
+                transformManifest.Add(new {
+                    type="SEMANTIC_RULE",
+                    ruleId=item.Rule,owner=item.Owner,
+                    handler="SEMANTIC_NATIVE_LOCATION_SOURCE_PROVEN",
+                    policyClass="NATIVE_SOURCE_COMPOSED",
+                    runtimeMsPerSecond=(double?)null,
+                    admissionEvidence="SOURCE_PROVEN_SAME_PASS_COMPOSITION",
+                    patchStyle="source-injection",sourceProof=true,
+                    files=new[]{path},result.Note
+                });
+                applied++;
+            }
+            catch(Exception error)
+            {
+                skipped.Add(new {
+                    type="SEMANTIC_RULE",ruleId=item.Rule,
+                    owner=item.Owner,
+                    reason="Composed native location source refused: "+error.Message
+                });
+            }
+        }
         return applied;
     }
 
