@@ -642,7 +642,7 @@ $orderedPipeline=@(
  'var fixedRuntime = FixedZeroEngineRuntime.Prepare(modsRoot);',
  'Whole-overlay Lua budget validation',
  'var fileManifest = staged',
- 'CompiledNativeLocations.Compile(modsRoot,staged);'
+ 'var availableLocations=CompiledNativeLocations.Compile(modsRoot,staged);'
 )
 $previous=-1
 foreach($stage in $orderedPipeline){
