@@ -28,3 +28,33 @@ Source injectors: `src/G.CETProfiler.Core/Services/NativeLocationFourOwnersSourc
 3. **In game:** verify initial spawn NEAR and FAR, active poker session, chair despawn, first-ready wake, tunnel quest journey, mechanic pending spawn, Dedka UI, fast travel and save reload, and an intentional service-unavailable fail-open case. Recheck Lua GC, native-Lua boundary calls and allocation operation counts, not just FPS.
 
 Native player tracking, including far/near and fast travel, was reported as functioning in the user's own game, but **these four integrations have not yet been tested in game**.
+
+## Delivery update — 20 October 2026
+
+The native bootstrap has been corrected on
+`dev/native-fixed-cache-player-state` (code commit `71aace1`, native
+CI75 passed). A **missing** `G-CET.locations` now enables an empty
+registration index; a **present malformed** manifest still fails closed.
+The native C++ regression exercises missing versus malformed and live
+dynamic add/arm/update.
+
+Resolver commit `173c197` on `dev/resolver-profiler-handoff` stages
+`red4ext/plugins/G-CET-StaticLocations/GCETStaticLocations.dll` beside
+optimized CET/0-Engine mods in the generated **game-root** ZIP. The
+Resolver package imports the DLL from a successful native CI run pinned
+to the exact native source commit; its checksum protects only the native
+binary transfer, not arbitrary installed mod source versions. The
+generated manifest records native SHA as provenance only.
+
+No empty GCAS file is required in the normal ZIP. All four proven owners
+already source-register their sites through `lookup:attach` and the
+shared 0-Engine native host. No duplicate generated coordinates are
+invented. The service is not installed during capture solely for
+Resolver source discovery; profiler ASI restoration remains unchanged.
+
+**Validation boundary:** successful native CI alone does not prove
+combined in-game source behavior. Check the main Resolver CI artifact
+and generated ZIP before declaring packaging green; run the existing
+four-owner initial near/far, UNKNOWN/fallback, fast-travel and quest
+lifecycle gameplay checks. The unified two-page app UI is separate
+future product work, not part of this runtime packaging commit.
