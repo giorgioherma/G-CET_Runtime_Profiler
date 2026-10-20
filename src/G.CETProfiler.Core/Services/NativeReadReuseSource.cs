@@ -112,9 +112,20 @@ internal static class NativeReadReuseSource
     }
     internal static bool TryTransform(string input,
         Func<string,IEnumerable<string>> headerForProvider,
+        out string output,out Operation[] rewritten) =>
+        TryTransformSelected(input,headerForProvider,null,out output,out rewritten);
+
+    // Preserve all-or-nothing public contract above; budget-driven selection
+    // works only on an explicit subset of source-proven provider operations.
+    // Never shorten/delete author locals or turn live getters into snapshots.
+    internal static bool TryTransformSelected(string input,
+        Func<string,IEnumerable<string>> headerForProvider,
+        IReadOnlySet<string>? includedGetters,
         out string output,out Operation[] rewritten)
     {
-        rewritten=FindOperations(input);
+        rewritten=FindOperations(input)
+            .Where(x=>includedGetters is null ||
+                includedGetters.Contains(x.Getter)).ToArray();
         output=input;
         if(rewritten.Length==0)return false;
         var permitted=rewritten.ToDictionary(x=>x.Getter,x=>x.HelperName,StringComparer.Ordinal);
@@ -134,6 +145,67 @@ internal static class NativeReadReuseSource
             string.Join(newline,headers)+newline+builder;
         return true;
     }
+    // The 200-local limit is per Lua function/chunk, NOT per line or file.
+    // Recover only independently affordable getter families when a whole-file
+    // rewrite would exceed the hard limit. Prioritize existing helpers (zero
+    // added locals), then the highest number of actual proven getter calls.
+    // Each accepted subset is re-analyzed from the ORIGINAL staged source;
+    // no unsupported variable renaming, scope changes or author-code deletion.
+    internal static bool TryTransformWithinBudget(
+        string input,
+        Func<string,IEnumerable<string>> headerForProvider,
+        out string output,out Operation[] rewritten,
+        out int fullPeak,out string[] deferredGetters)
+    {
+        output=input;
+        rewritten=[];
+        deferredGetters=[];
+        if(!TryTransform(input,headerForProvider,out var full,out var all))
+        {
+            fullPeak=LuaLocalBudgetAnalyzer.Analyze(input).MaxActiveLocals;
+            return false;
+        }
+        fullPeak=LuaLocalBudgetAnalyzer.Analyze(full).MaxActiveLocals;
+        if(fullPeak<=LuaLocalBudgetAnalyzer.Limit)
+        {
+            output=full;
+            rewritten=all;
+            return true;
+        }
+        // If the starting file already exceeds the analyzer's bound, adding
+        // a source helper cannot make it legal. Preserve it byte-for-byte.
+        var startingPeak=LuaLocalBudgetAnalyzer.Analyze(input).MaxActiveLocals;
+        if(startingPeak>LuaLocalBudgetAnalyzer.Limit)
+        {
+            deferredGetters=all.Select(x=>x.Getter).ToArray();
+            return false;
+        }
+        var accepted=new HashSet<string>(StringComparer.Ordinal);
+        foreach(var op in all
+            .OrderByDescending(x=>x.ExistingHelper)
+            .ThenByDescending(x=>x.Occurrences)
+            .ThenBy(x=>x.Provider,StringComparer.Ordinal))
+        {
+            accepted.Add(op.Getter);
+            if(!TryTransformSelected(input,headerForProvider,accepted,
+                   out var candidate,out var selected) ||
+               LuaLocalBudgetAnalyzer.Analyze(candidate).MaxActiveLocals >
+                   LuaLocalBudgetAnalyzer.Limit)
+                accepted.Remove(op.Getter);
+        }
+        deferredGetters=all.Where(x=>!accepted.Contains(x.Getter))
+            .Select(x=>x.Getter).ToArray();
+        if(accepted.Count==0)return false;
+        if(!TryTransformSelected(input,headerForProvider,accepted,
+            out output,out rewritten))
+        {
+            output=input;
+            rewritten=[];
+            return false;
+        }
+        return true;
+    }
+
     internal static int TryStage(JsonElement resolver,string modsRoot,
         Dictionary<string,byte[]> staged,
         Dictionary<string,string?> liveSourceHashes,
@@ -173,18 +245,30 @@ internal static class NativeReadReuseSource
             }
             var input=staged.TryGetValue(key,out var other)?other:original;
             var text=Decode(input);
-            if(!TryTransform(text,headerForProvider,out var result,out var operations))continue;
-            // Every generated helper adds a Lua local in the main chunk. The
-            // existing 200-local safeguard must apply to source-first edits
-            // too; preserve earlier semantic staging if the extra helper
-            // would exceed the language's hard per-function limit.
-            var budget=LuaLocalBudgetAnalyzer.Analyze(result);
-            if(budget.MaxActiveLocals>LuaLocalBudgetAnalyzer.Limit)
+            if(!TryTransformWithinBudget(text,headerForProvider,
+                    out var result,out var operations,
+                    out var fullPeak,out var deferredGetters))
             {
-                skipped.Add(new {type="NATIVE_READ_REUSE",file=key,
-                    reason="LUA_LOCAL_LIMIT",peak=budget.MaxActiveLocals});
+                if(fullPeak>LuaLocalBudgetAnalyzer.Limit)
+                    skipped.Add(new {type="NATIVE_READ_REUSE",file=key,
+                        reason="LUA_LOCAL_LIMIT",peak=fullPeak,
+                        sourcePeak=LuaLocalBudgetAnalyzer.Analyze(text).MaxActiveLocals,
+                        deferredGetters});
                 continue;
             }
+            if(deferredGetters.Length>0)
+                skipped.Add(new {type="NATIVE_READ_REUSE",file=key,
+                    reason="LUA_LOCAL_LIMIT_PARTIAL",
+                    peak=fullPeak,
+                    selectedGetters=operations.Select(x=>x.Getter).ToArray(),
+                    recoveredOccurrences=operations.Sum(x=>x.Occurrences),
+                    deferredGetters});
+            // Independent safeguard: nothing staged from this phase may
+            // exceed the hard 200-local limit, even in partial-reuse mode.
+            var budget=LuaLocalBudgetAnalyzer.Analyze(result);
+            if(budget.MaxActiveLocals>LuaLocalBudgetAnalyzer.Limit)
+                throw new InvalidOperationException(
+                    "Native read reuse violated Lua local budget: "+key);
             // BOM and original newline style are preserved; no per-mod hooks.
             var bom=input.Length>=3&&input[0]==0xef&&input[1]==0xbb&&input[2]==0xbf;
             var bytes=Encoding.UTF8.GetBytes(result);
