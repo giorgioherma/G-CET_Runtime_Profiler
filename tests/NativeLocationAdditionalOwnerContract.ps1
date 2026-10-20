@@ -17,7 +17,13 @@ function Apply([string]$owner,[string]$relative,[string]$rule,[string]$method,[s
   if($crlf){$fixture=$fixture.Replace("`r`n","`n").Replace("`n","`r`n")}
   [IO.File]::WriteAllText($path,$fixture,[Text.UTF8Encoding]::new($false))
   $staged=[Collections.Generic.Dictionary[string,byte[]]]::new()
-  $ctx=$ctor.Invoke([object[]]@($root,$owner,$rule,$staged))
+  try {
+    $args4=[object[]]@([string]$root,[string]$owner,[string]$rule,$staged)
+    $ctx=$ctor.Invoke($args4)
+  } catch {
+    $types=(@($args4) | ForEach-Object {$_.GetType().FullName}) -join ', '
+    throw "Constructing $owner native source context failed ($types): $($_.Exception.InnerException.Message)"
+  }
   $m=$type.GetMethod($method,$flags)
   if(!$m){throw "Native location injector missing: $method"}
   try {$result=$m.Invoke($null,[object[]]@($ctx))}
@@ -29,8 +35,11 @@ function Apply([string]$owner,[string]$relative,[string]$rule,[string]$method,[s
   foreach($part in $need){if(!$output.Contains($part)){throw "$owner native stage omitted: $part"}}
   if($crlf -and !$output.Contains("`r`n")){throw "$owner lost CRLF source format"}
   [IO.File]::WriteAllText($path,$output,[Text.UTF8Encoding]::new($false))
-  $again=$ctor.Invoke([object[]]@($root,$owner,$rule,[Collections.Generic.Dictionary[string,byte[]]]::new()))
-  $done=$m.Invoke($null,[object[]]@($again))
+  $againArgs=[object[]]@([string]$root,[string]$owner,[string]$rule,[Collections.Generic.Dictionary[string,byte[]]]::new())
+  try {$again=$ctor.Invoke($againArgs)}
+  catch {throw "Repeated $owner native context constructor failed: $($_.Exception.InnerException.Message)"}
+  try {$done=$m.Invoke($null,[object[]]@($again))}
+  catch {throw "Repeated $owner native source injection failed: $($_.Exception.InnerException.Message)"}
   if($done.Applied){throw "Native $owner stage was not idempotent"}
   return $output
 }
