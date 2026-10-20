@@ -379,6 +379,11 @@ internal sealed class SemanticLibraryService
         var satisfiedBySourcePostcondition =
             postconditionConfigured &&
             postconditionMissing.Count == 0;
+        // Version-fluid native location hook completion belongs to each
+        // implementation, not to a broad legacy marker. A different hook or
+        // unresolved geometry stage must never suppress a completed one.
+        if (NativeLocationStructuralSource.CompleteStage(rule.Id,graph.FileTexts))
+            satisfiedBySourcePostcondition=true;
 
         // Known author-specific source-stage verifiers must establish all
         // independent files. A marker or broad owner-string match is not
@@ -578,13 +583,21 @@ internal sealed class SemanticLibraryService
         SemanticRule rule,
         ModSourceGraph graph,
         out List<string> matched,
-        out List<string> missing) =>
+        out List<string> missing)
+    {
         EvaluateAnchors(
             rule.Proof.OwnerAll,
             rule.Proof.OwnerAnyGroups,
             graph,
             out matched,
             out missing);
+        if(missing.Count>0 &&
+           NativeLocationStructuralSource.ProvesSourceShape(rule.Id,graph.FileTexts))
+        {
+            matched.Add("NATIVE_LOCATION_SOURCE_STRUCTURAL_GRAPH_PROOF");
+            missing.Clear();
+        }
+    }
 
     private static void EvaluateAnchors(
         string[] all,
