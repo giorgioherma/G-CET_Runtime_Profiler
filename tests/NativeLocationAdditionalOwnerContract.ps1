@@ -516,7 +516,7 @@ foreach($proof in @('USER CUSTOM CODE KEEP THIS UNTOUCHED',
 }
 try {$second=$upgrade.Invoke($null,[object[]]@($mergedBytes,$officialBytes))}
 catch {throw "Reapplying native host capabilities failed: $($_.Exception.InnerException.Message)"}
-if(-not [Linq.Enumerable]::SequenceEqual[byte]($mergedBytes,[byte[]]$second)){
+if([Convert]::ToHexString($mergedBytes) -ne [Convert]::ToHexString([byte[]]$second)){
  throw 'Native host capability bridge was not idempotent'
 }
 Write-Host 'Existing customized 0-Engine native host retained + missing compiled API and safe shutdown reconstituted, no version/SHA gate PASS'
