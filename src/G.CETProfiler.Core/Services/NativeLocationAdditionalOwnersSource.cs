@@ -30,7 +30,7 @@ internal static class NativeLocationAdditionalOwnersSource
             "local function registerSpatialSet()\n"+
             "  if __gcetCardNativeFar or spatialHandle then return end",
             "Card original spatial registration");
-        const string native="""
+        var native="""
 local function __gcetAttachCardNative()
   local lookup=engine and engine.GCET and engine.GCET.NativeLocationHost
   if not lookup or type(lookup.attach)~="function" then return end
@@ -57,7 +57,7 @@ local function __gcetAttachCardNative()
     end)
 end
 
-""";
+""".Replace("\r\n","\n",StringComparison.Ordinal);
         text=Once(text,"registerForEvent(\"onInit\", function()",
             native+"registerForEvent(\"onInit\", function()",
             "Card native registration helper placement");
@@ -88,13 +88,13 @@ end
             "\t-- "+marker+"\n"+
             "\tif not self.engine or self.__gcetNativeFar then return end",
             "Banker spatial registration original guard");
-        const string anchor="""
+        var anchor="""
 	if self.spatialHandle then
 		self.engine.Log("Marmurbank",
 			string.format("Registered %d banker locations with 0-Engine SpatialHash", self.spatialHandle:count()), "info")
 	end
-""";
-        const string addition="""
+""".Replace("\r\n","\n",StringComparison.Ordinal);
+        var addition="""
 	if not self.__gcetNativeAttached then
 		local lookup=self.engine.GCET and self.engine.GCET.NativeLocationHost
 		if lookup and type(lookup.attach)=="function" then
@@ -124,7 +124,7 @@ end
 			end
 		end
 	end
-""";
+""".Replace("\r\n","\n",StringComparison.Ordinal);
         text=Once(text,anchor,anchor+addition,
             "Banker original spatial set and source-owned positions");
         text=Once(text,
