@@ -2046,8 +2046,18 @@ try {
     if ([int]$manifest.summary.genericTransforms -ne $expectedPassTransforms -or [int]$manifest.summary.semanticTransforms -ne 0) {
         throw 'Shared-provider transforms were not composed into generic transform accounting.'
     }
-    if ([int]$manifest.summary.callbackFiles -ne ([int]$resolved.pass.FileCount - [int]$manifest.summary.fixedRuntimeFiles)) {
+    if ([int]$manifest.summary.callbackFiles -ne (
+        [int]$resolved.pass.FileCount -
+        [int]$manifest.summary.fixedRuntimeFiles -
+        [int]$manifest.summary.nativeRuntimeFiles)) {
         throw 'Generated pass callback-file accounting is inconsistent.'
+    }
+    if ([int]$manifest.summary.nativeRuntimeFiles -ne 1 -or
+        !$manifest.nativeRuntime.included) {
+        throw 'Bundled RED4ext native runtime is missing from the generated pass manifest.'
+    }
+    if ($null -eq $zip.GetEntry('red4ext/plugins/G-CET-StaticLocations/GCETStaticLocations.dll')) {
+        throw 'Generated pass ZIP lacks the required game-root RED4ext native service.'
     }
     if ([int]$manifest.summary.fixedRuntimeFiles -ne 10) {
         throw "Expected 10 fixed 0-Engine runtime files, got $($manifest.summary.fixedRuntimeFiles)."
