@@ -6,6 +6,18 @@ namespace GCETRuntimeProfiler.Core.Services;
 // Mod-owned source transformations. Shared proof/replace helpers remain in SemanticInjectors.cs.
 internal static partial class SemanticInjectors
 {
+    // Retain the exact shared getter spelling already admitted by generic.
+    // Semantic control-flow edges still require their own source proof.
+    private static string EasyTrainerLiveGetter(string text, string getter)
+    {
+        var shared="__gcet"+getter+"()";
+        if(text.Contains(shared,StringComparison.Ordinal))return shared;
+        var author="Game."+getter+"()";
+        if(text.Contains(author,StringComparison.Ordinal))return author;
+        throw new InvalidOperationException(
+            "EasyTrainer cannot prove current getter "+getter);
+    }
+
     private static SemanticInjectionResult ApplyEasyTrainer(
         SemanticPatchContext context)
     {
@@ -25,8 +37,7 @@ internal static partial class SemanticInjectors
         var noClip = context.FindFile(
             "Features/Self/Abilities/NoClip.lua",
             "function Noclip.HandleMouseLook(action)",
-            "CameraMouseX",
-            "Game.GetSettingsSystem()");
+            "CameraMouseX");
 
         var weapon = context.FindFile(
             "Utils/Weapon.lua",
@@ -70,6 +81,15 @@ internal static partial class SemanticInjectors
             "function Invisibility.Tick()",
             "Invisibility.enabled.value",
             "local wasApplied = false");
+
+        // Select only verified current getters; never undo the generic pass.
+        _ = EasyTrainerLiveGetter(noClip.Text,"GetSettingsSystem");
+        var weaponPlayer=EasyTrainerLiveGetter(weapon.Text,"GetPlayer");
+        var mobilityStats=EasyTrainerLiveGetter(mobility.Text,"GetStatsSystem");
+        var superSpeedTime=EasyTrainerLiveGetter(superSpeed.Text,"GetTimeSystem");
+        var thrusterStats=EasyTrainerLiveGetter(thrusters.Text,"GetStatsSystem");
+        var invisPlayer=EasyTrainerLiveGetter(invisibility.Text,"GetPlayer");
+        var invisStatus=EasyTrainerLiveGetter(invisibility.Text,"GetStatusEffectSystem");
 
         var oldAction =
             "    Event.Observe(\"PlayerPuppet\", \"OnAction\", function(_, action)\n" +
@@ -139,7 +159,7 @@ internal static partial class SemanticInjectors
         var weaponText = ReplaceOnce(
             weapon.Text,
             "function Weapon.HandleInputAction(action)\n" +
-            "    local player = Game.GetPlayer()\n" +
+            "    local player = " + weaponPlayer + "\n" +
             "    if not player then return end\n" +
             "\n" +
             "    Weapon.isAiming = player.isAiming\n" +
@@ -263,41 +283,41 @@ internal static partial class SemanticInjectors
         var mobilityText = ReplaceOnce(
             mobility.Text,
             "local function HandleStatToggle(toggle, statName, appliedFlag, label)\n" +
-            "    local stats = Game.GetStatsSystem()",
+            "    local stats = " + mobilityStats,
             "local function HandleStatToggle(toggle, statName, appliedFlag, label)\n" +
             "    if toggle.value == state[appliedFlag] then return end\n" +
-            "    local stats = Game.GetStatsSystem()",
+            "    local stats = " + mobilityStats,
             "EasyTrainer AdvancedMobility transition guard");
         context.Write(mobility, mobilityText);
 
         var superSpeedText = ReplaceOnce(
             superSpeed.Text,
             "function SuperSpeed.Tick()\n" +
-            "    local timeSystem = Game.GetTimeSystem()",
+            "    local timeSystem = " + superSpeedTime,
             "function SuperSpeed.Tick()\n" +
             "    if SuperSpeed.enabled.value == applied then return end\n" +
-            "    local timeSystem = Game.GetTimeSystem()",
+            "    local timeSystem = " + superSpeedTime,
             "EasyTrainer SuperSpeed transition guard");
         context.Write(superSpeed, superSpeedText);
 
         var thrusterText = ReplaceOnce(
             thrusters.Text,
             "function AirThrusterBoots.Tick()\n" +
-            "    local stats = Game.GetStatsSystem()",
+            "    local stats = " + thrusterStats,
             "function AirThrusterBoots.Tick()\n" +
             "    if AirThrusterBoots.enabled.value == applied then return end\n" +
-            "    local stats = Game.GetStatsSystem()",
+            "    local stats = " + thrusterStats,
             "EasyTrainer AirThrusterBoots transition guard");
         context.Write(thrusters, thrusterText);
 
         var invisibilityText = ReplaceOnce(
             invisibility.Text,
             "function Invisibility.Tick()\n" +
-            "    local player = Game.GetPlayer()\n" +
-            "    local statusSystem = Game.GetStatusEffectSystem()",
+            "    local player = " + invisPlayer + "\n" +
+            "    local statusSystem = " + invisStatus,
             "function Invisibility.Tick()\n" +
             "    if Invisibility.enabled.value == wasApplied then return end\n" +
-            "    local player = Game.GetPlayer()",
+            "    local player = " + invisPlayer,
             "EasyTrainer Invisibility transition guard");
         context.Write(invisibility, invisibilityText);
 
