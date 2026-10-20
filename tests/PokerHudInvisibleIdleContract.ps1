@@ -62,9 +62,20 @@ $originalHash = (Get-FileHash -LiteralPath $hudPath -Algorithm SHA256).Hash
     Set-Content -LiteralPath (Join-Path $capture 'CET_Resolver_Input.json') -Encoding utf8
 
 function ResolvePokerHud {
-    $result = (& $exe --capture $capture --mods $mods --generate-pass --json | ConvertFrom-Json)
+    $raw = & $exe --capture $capture --mods $mods --generate-pass --json
+    $exitCode = $LASTEXITCODE
+    # An already-complete or source-drift fixture legitimately has no pass:
+    # Resolver reports that outcome as JSON with exit code 1. Do not let that
+    # expected native-process code leak out as this PowerShell test's result.
+    $global:LASTEXITCODE = 0
+    $result = $raw | ConvertFrom-Json
+    $noPass = $exitCode -eq 1 -and !$result.ok -and
+        [string]$result.error -like '*no applicable generic or source-proven semantic transforms*'
+    if ($exitCode -ne 0 -and !$noPass) {
+        throw "Unexpected Resolver exit code $exitCode: $($raw -join ' ')"
+    }
     $report = Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
-    return @{ Result=$result; Report=$report }
+    return @{ Result=$result; Report=$report; ExitCode=$exitCode; NoPass=$noPass }
 }
 function ReadGeneratedHud($zipPath) {
     $zip = [System.IO.Compression.ZipFile]::OpenRead([string]$zipPath)
