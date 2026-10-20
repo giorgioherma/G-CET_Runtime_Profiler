@@ -175,7 +175,25 @@ internal static class NativeLocationFourOwnersSource
         """;
         text = Once(text, "        pokerClient = client\n        pass4FarWorldJob = farWorldJob",
             install + "        pokerClient = client\n        pass4FarWorldJob = farWorldJob", "Poker native owner registration");
-        context.Write(file, UpgradePokerV2(text));
+        // Source coordinates are in the generated GCAS manifest, not sent
+        // through Lua on game start. The original far scanner stays standby.
+        var result=UpgradePokerV2(text);
+        result=Once(result,
+            "            local sites = {}\n" +
+            "            for _, loc in ipairs(StreetTables.locations) do\n" +
+            "                sites[#sites+1] = {x=loc.center.x,y=loc.center.y,z=loc.floorZ,\n" +
+            "                    radius=POKER_WAKE_RADIUS,metric=\"xyz\"}\n" +
+            "            end\n",
+            "","Poker remove Lua-side coordinate table");
+        result=Once(result,
+            "lookup:attach(10031,sites,nativePokerNear,nativePokerFar,nativePokerFallback)",
+            "lookup:attachCompiled(10031,#StreetTables.locations,nativePokerNear,nativePokerFar,nativePokerFallback)",
+            "Poker compiled native owner binding");
+        result=Once(result,
+            "if lookup and type(lookup.attach) == 'function' then",
+            "if lookup and type(lookup.attachCompiled) == 'function' then",
+            "Poker compiled host shape");
+        context.Write(file,result);
         return SemanticInjectionResult.Success(
             "Native location v2 replaces the previous 1 Hz distant poker wake scanner after the first valid snapshot; table/seat and active gameplay work remain, original scanner is standby fallback.");
     }
@@ -209,10 +227,7 @@ internal static class NativeLocationFourOwnersSource
             local site=L.rescue and L.rescue.surface
             local giver=L.rescue and L.rescue.brother
             if type(site)~="table" or type(giver)~="table" then return end
-            lookup:attach(10032,{
-                {x=site[1],y=site[2],z=site[3],radius=150,metric="xyz"},
-                {x=giver[1],y=giver[2],z=giver[3],radius=150,metric="xyz"}
-            },function() __gcetTunnelNativeFar=false end,
+            lookup:attachCompiled(10032,2,function() __gcetTunnelNativeFar=false end,
               function() __gcetTunnelNativeFar=true end,
               function() __gcetTunnelNativeFar=false;return true end)
         end
@@ -339,10 +354,7 @@ internal static class NativeLocationFourOwnersSource
           end
           local lookup=engine.GCET and engine.GCET.NativeLocationHost
           if lookup and type(lookup.attach)=='function' then
-            lookup:attach(10034,{
-              {x=entrancePos.x,y=entrancePos.y,z=entrancePos.z,radius=200,metric="xyz"},
-              {x=entrancePos_2.x,y=entrancePos_2.y,z=entrancePos_2.z,radius=200,metric="xyz"}
-            },function()
+            lookup:attachCompiled(10034,2,function()
               __gcetRetireZones();shopNearCount=1;startShopDetail()
             end,function()
               __gcetRetireZones();shopNearCount=0;stopShopDetail()
