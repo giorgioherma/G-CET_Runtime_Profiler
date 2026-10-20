@@ -202,3 +202,56 @@ validation of all eight owners in the user's precise combined stack.
 Generate a new Resolver pass and inspect both native hook transform rows
 and compiled owner counts; never mistake the 20261020-151906 legacy
 pass for a valid new-native installation.
+
+## Resolver stage-graph acceptance contract (PASS0–PASS11, October 20)
+
+The user's PASS0–PASS11 ZIPs are **incremental, overlapping overlays**, not
+independent complete mod releases. Preserve the tested installed optimized
+baseline. Every source transformation must be admitted **per behavior stage**;
+source hashes and author release labels are provenance, never mod-version
+admission gates. A marker alone is not proof of stage completion.
+
+Order and invariants:
+
+1. **Current-source inventory and proof** — compare live source with each
+   stage's behavioral postconditions; classify independently as SATISFIED,
+   APPLICABLE, or UNSUPPORTED. Never infer from a whole-mod marker.
+2. **Lua and 0-Engine source composition** — produce missing PASS0–PASS10
+   optimizations in the staged source graph, preserving prior edits. Do not
+   refuse independent work merely because another stage already touched the
+   file. PSM immutable-key cache, SpatialHash poll radius, SpatialHash
+   grid-row reuse and Lifecycle same-update entity ID are separate stages.
+3. **Player-state/source ownership** — distinguish 0-Engine Blackboard PSM
+   definitions from native player position, typed Vector4 and live entity
+   receiver identity. Require valid epoch, freshness/phase, typed return and
+   original getter fallback before substituting a live player read.
+4. **Native capability resolution** — evaluate existing 0-Engine source and
+   native ABI by capability, not release or SHA. Preserve customized modules;
+   add only independently proven missing APIs. Native player getter/position
+   validity is separate from static owner-index availability.
+5. **Compiled static locations** — extract author geometry independently of
+   wake callback rewrites, require source-proven radius beyond the largest
+   discovery/streaming boundary, and map each mechanic to its own owner.
+6. **Native subscription and fallback** — subscribe only when both compiled
+   geometry and compatible runtime/owner callbacks are proven. Otherwise
+   retain the original discovery, listeners and lifecycle; do not pretend
+   the presence of a DLL alone proves an active optimization.
+7. **Final pass validation** — verify each retained or newly applied stage,
+   per-stage unresolved reasons, 0-Engine baseline preservation, binary
+   manifest/host capability consistency, and no duplicate anchors on reload.
+
+Mandatory matrix for each stage: pristine original, radius-only / row-only /
+other partially optimized variant, mixed variants across multiple files,
+already-satisfied source, author-update formatting / nonsemantic changes,
+changed gameplay semantics (refuse only that stage), and second-pass
+idempotence. Source-only contracts verify the known variants; real game
+behavior remains separately pending.
+
+2026-10-20 implementation progress: The SpatialHash generator no longer
+classifies a row-only stage as completion of the poll-radius snapshot.
+It verifies all three existing row calculations, adds a missing radius
+snapshot independently and preserves row work without duplication. The
+PSM cache also validates all twelve keyed reads and lifecycle entrypoints
+before calling its existing marker complete. CI regression for mixed
+SpatialHash states was added. **This is partial progress, not a claim that
+all PASS0–PASS11 stages are already fully version-fluid.**
