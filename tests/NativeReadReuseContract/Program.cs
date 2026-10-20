@@ -42,11 +42,12 @@ try
     Save("Shadow/init.lua","local Game = require('Game')\nreturn Game.GetPlayer()\n");
     Save("OnlyComments/init.lua","-- Game.GetPlayer()\nreturn 'Game.GetPlayer()'\n");
     Save("HelperCollision/init.lua","local function __gcetGetPlayer() return nil end\nreturn Game.GetPlayer()\n");
+    Save("Overflow/init.lua","local "+string.Join(",",Enumerable.Range(1,200).Select(i=>"v"+i))+"\nreturn Game.GetPlayer()\n");
     Save("PreviouslyApplied/init.lua","-- G-CET shared provider: PLAYER\nlocal function __gcetGetPlayer() return Game.GetPlayer() end\n");
     // Scanner must see exact code calls, ignore literals, disallow local Game
     // shadowing, and preserve direct derived Vector4 semantics.
     var plans=(Array)analyze.Invoke(null,[mods])!;
-    Check(plans.Length==2,"Expected two eligible files, never framework/shadow/comments/helper-collision");
+    Check(plans.Length==3,"Expected three candidates; never framework/shadow/comments/helper-collision");
     var mainPlan=plans.Cast<object>().Single(x=>
        ((string)x.GetType().GetProperty("RelativeFile")!.GetValue(x)!) == "Example/init.lua");
     var operations=(Array)mainPlan.GetType().GetProperty("Operations")!.GetValue(mainPlan)!;
@@ -91,7 +92,8 @@ try
     var skipped=new List<object>();
     object?[] stageArgs=[document.RootElement,mods,staged,hashes,applied,manifest,skipped,headers];
     var count=(int)stage.Invoke(null,stageArgs)!;
-    Check(count==4,"Expected 3 direct reads + one helper getter replacement");
+    Check(count==4,"Expected four safe reads; 200-local overflow must not be staged");
+    Check(skipped.Any(x=>x.ToString()!.Contains("LUA_LOCAL_LIMIT")), "Lua local limit skip missing");
     var combined=Encoding.UTF8.GetString(staged["Example/init.lua"]);
     Check(combined.Contains("-- semantic pass retained"),"Existing semantic stage clobbered");
     Check(combined.Contains("__gcetGetPlayer()"),"Generated shared helper missing");

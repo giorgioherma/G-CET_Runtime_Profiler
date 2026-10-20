@@ -131,6 +131,17 @@ internal static class NativeReadReuseSource
             var input=staged.TryGetValue(key,out var other)?other:original;
             var text=Decode(input);
             if(!TryTransform(text,headerForProvider,out var result,out var operations))continue;
+            // Every generated helper adds a Lua local in the main chunk. The
+            // existing 200-local safeguard must apply to source-first edits
+            // too; preserve earlier semantic staging if the extra helper
+            // would exceed the language's hard per-function limit.
+            var budget=LuaLocalBudgetAnalyzer.Analyze(result);
+            if(budget.MaxActiveLocals>LuaLocalBudgetAnalyzer.Limit)
+            {
+                skipped.Add(new {type="NATIVE_READ_REUSE",file=key,
+                    reason="LUA_LOCAL_LIMIT",peak=budget.MaxActiveLocals});
+                continue;
+            }
             // BOM and original newline style are preserved; no per-mod hooks.
             var bom=input.Length>=3&&input[0]==0xef&&input[1]==0xbb&&input[2]==0xbf;
             var bytes=Encoding.UTF8.GetBytes(result);
