@@ -5,6 +5,7 @@
 #define GCET_ASSERT(expr) do { if(!(expr)) { std::cerr << "FAILED: " << #expr << " line " << __LINE__ << "\n"; std::abort(); } } while(false)
 #include <cmath>
 #include <cstdio>
+#include <fstream>
 #include <vector>
 #include <limits>
 #include <chrono>
@@ -22,6 +23,31 @@ int main(int argc,char** argv) {
     GCET_ASSERT(!s.Load(duplicate));
     GCET_ASSERT(s.Count()==4); // transactional failed Load
     GCET_ASSERT(s.ActiveCount()==0);
+
+    // Optional manifest policy: absent permits source-owned registration,
+    // malformed present data must NEVER quietly become an empty registry.
+    const auto optionalFile=std::filesystem::temp_directory_path() /
+        "gcet-dynamic-manifest-bootstrap-test.locations";
+    std::error_code cleanupError;
+    std::filesystem::remove(optionalFile,cleanupError);
+    auto optionalIndex=std::make_unique<StaticIndex>();
+    GCET_ASSERT(LoadOptionalManifest(optionalFile,*optionalIndex)==
+                ManifestLoadStatus::Missing);
+    GCET_ASSERT(optionalIndex->Count()==0);
+    GCET_ASSERT(optionalIndex->AddAnchor({7777,0,0,0,30,false,77}));
+    GCET_ASSERT(optionalIndex->SetArmed(7777,true));
+    GCET_ASSERT(optionalIndex->Update(0,0,0));
+    GCET_ASSERT(optionalIndex->State(7777)==1);
+    {
+        std::ofstream bad(optionalFile,std::ios::binary|std::ios::trunc);
+        GCET_ASSERT(static_cast<bool>(bad));
+        bad << "invalid GCAS file";
+    }
+    auto rejectedIndex=std::make_unique<StaticIndex>();
+    GCET_ASSERT(LoadOptionalManifest(optionalFile,*rejectedIndex)==
+                ManifestLoadStatus::Invalid);
+    GCET_ASSERT(rejectedIndex->Count()==0);
+    std::filesystem::remove(optionalFile,cleanupError);
     GCET_ASSERT(s.SetArmed(1,true) && s.SetArmed(2,true) && s.SetArmed(3,true));
     GCET_ASSERT(s.ActiveCount()==3);
     GCET_ASSERT(!s.SetArmed(123,true));
