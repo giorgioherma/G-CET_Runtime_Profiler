@@ -2058,22 +2058,30 @@ try {
     }
 } finally { $upgrade.Dispose() }
 
-# An incompatible file at that same path must still fail closed.
-'-- foreign locally modified WorkQueue' | Set-Content -LiteralPath $legacyWorkQueuePath -Encoding utf8
-$foreignWorkQueueApproved = $false
+# A version-fluid custom WorkQueue that does not expose the known API is
+# never overwritten, does not block other safe pass rules, and must not
+# receive a blind instrumentation rewrite.
+$foreignQueueText = '-- author-owned alternative WorkQueue without New API'
+[IO.File]::WriteAllText($legacyWorkQueuePath, $foreignQueueText, [Text.UTF8Encoding]::new($false))
+$foreignQueueZip = Join-Path $root 'foreign-workqueue-preserved.zip'
+$foreignQueuePass = (& $resolverExe --capture $capture --mods $mods --semantic-library $semanticLibrary --generate-pass --pass-output $foreignQueueZip --json | ConvertFrom-Json)
+if (!$foreignQueuePass.ok) {
+    throw 'Resolver blocked all pass generation due to an unrelated custom WorkQueue.'
+}
+$foreignQueueArchive = [IO.Compression.ZipFile]::OpenRead($foreignQueueZip)
 try {
-    $denied = (& $resolverExe --capture $capture --mods $mods --semantic-library $semanticLibrary --generate-pass --pass-output (Join-Path $root 'foreign-workqueue.zip') --json 2>$null | ConvertFrom-Json)
-    if ($LASTEXITCODE -eq 0 -and $denied.ok) { $foreignWorkQueueApproved = $true }
-} catch {
-    $foreignWorkQueueApproved = $false
+    $foreignQueueEntry=$foreignQueueArchive.GetEntry('bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/modules/GCETWorkQueue.lua')
+    if ($null -eq $foreignQueueEntry) { throw 'Pass omitted version-fluid WorkQueue.' }
+    $foreignQueueReader=[IO.StreamReader]::new($foreignQueueEntry.Open())
+    try {$foreignQueueOutput=$foreignQueueReader.ReadToEnd()} finally {$foreignQueueReader.Dispose()}
+    if ($foreignQueueOutput -cne $foreignQueueText) {
+        throw 'Pass overwritten or instrumented an unproven WorkQueue.'
+    }
 } finally {
+    $foreignQueueArchive.Dispose()
     Remove-Item -LiteralPath $legacyWorkQueuePath -Force
-    $global:LASTEXITCODE = 0
 }
-if ($foreignWorkQueueApproved) {
-    throw 'Normal pass admitted an incompatible WorkQueue without its required API.'
-}
-Write-Host 'Version-fluid WorkQueue instrumentation and incompatible-source refusal passed.'
+Write-Host 'Version-fluid WorkQueue preservation and source-proven instrumentation passed.'
 
 # Structurally compatible foreign 0-Engine contract.
 # Unknown versions keep their own runtime and receive only the additive
@@ -2242,21 +2250,31 @@ try {
         throw 'The generated ActionRouter overwrote source-compatible custom code.'
     }
 } finally {$routerArchive.Dispose()}
-[IO.File]::WriteAllText($customRouterPath,'-- incompatible router; no dispatch or subscribe API',[Text.UTF8Encoding]::new($false))
-$unsupportedRouterApproved=$false
+
+# A user-provided ActionRouter without the reference API is source-preserved.
+# Runtime action routing stays guarded by the existing bridge's optional
+# Subscribe/Dispatch check; an incompatible router is never overwritten.
+$customRouterText='-- custom ActionRouter; different implementation interface'
+[IO.File]::WriteAllText($customRouterPath,$customRouterText,[Text.UTF8Encoding]::new($false))
+$customRouterUnknownZip=Join-Path $root 'foreign-unknown-router-preserved.zip'
+$customRouterUnknownPass=(& $resolverExe --capture $capture --mods $foreignMods --generate-pass --pass-output $customRouterUnknownZip --json | ConvertFrom-Json)
+if (!$customRouterUnknownPass.ok) {
+    throw 'An unrelated installed ActionRouter blocked all pass generation.'
+}
+$unknownArchive=[IO.Compression.ZipFile]::OpenRead($customRouterUnknownZip)
 try {
-    $bad=(& $resolverExe --capture $capture --mods $foreignMods --generate-pass --pass-output (Join-Path $root 'foreign-incompatible-router.zip') --json 2>$null | ConvertFrom-Json)
-    if ($LASTEXITCODE -eq 0 -and $bad.ok) {$unsupportedRouterApproved=$true}
-} catch {
-    $unsupportedRouterApproved=$false
+    $unknownEntry=$unknownArchive.GetEntry('bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/modules/G-CET/ActionRouter.lua')
+    if ($null -eq $unknownEntry) { throw 'Pass omitted existing version-fluid ActionRouter.' }
+    $unknownReader=[IO.StreamReader]::new($unknownEntry.Open())
+    try {$unknownText=$unknownReader.ReadToEnd()} finally {$unknownReader.Dispose()}
+    if ($unknownText -cne $customRouterText) {
+        throw 'Pass overwrote version-fluid ActionRouter with the bundled copy.'
+    }
 } finally {
+    $unknownArchive.Dispose()
     Remove-Item -LiteralPath $customRouterPath -Force
-    $global:LASTEXITCODE=0
 }
-if ($unsupportedRouterApproved) {
-    throw 'Source-incompatible private ActionRouter was silently overwritten.'
-}
-Write-Host 'Version-fluid custom ActionRouter preservation and incompatible-source refusal passed.'
+Write-Host 'Version-fluid ActionRouter source preservation passed.'
 
 Write-Host 'Foreign 0-Engine structural compatibility contract passed.'
 
