@@ -350,7 +350,7 @@ internal static class PokerPass4Source
 
         var pattern =
             @"(?m)^(?<head>[ \t]*function\s+PokerHUD\.push\s*\(\s*force\s*\)[ \t]*)\r?\n" +
-            @"(?<player>[ \t]+local\s+player\s*=\s*GetPlayer\s*\(\s*\)[^\r\n]*)$";
+            @"(?<player>[ \t]+local\s+player\s*=\s*GetPlayer\s*\(\s*\)[^\r\n]*\r?)$";
         var hits = Regex.Matches(text, pattern, RegexOptions.CultureInvariant);
         if (hits.Count != 1)
             throw new InvalidOperationException(
