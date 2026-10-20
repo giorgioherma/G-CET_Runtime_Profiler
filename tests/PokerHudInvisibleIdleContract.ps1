@@ -72,7 +72,7 @@ function ResolvePokerHud {
     $noPass = $exitCode -eq 1 -and !$result.ok -and
         [string]$result.error -like '*no applicable generic or source-proven semantic transforms*'
     if ($exitCode -ne 0 -and !$noPass) {
-        throw "Unexpected Resolver exit code $exitCode: $($raw -join ' ')"
+        throw "Unexpected Resolver exit code ${exitCode}: $($raw -join ' ')"
     }
     $report = Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
     return @{ Result=$result; Report=$report; ExitCode=$exitCode; NoPass=$noPass }
