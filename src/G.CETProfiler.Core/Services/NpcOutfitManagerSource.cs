@@ -134,4 +134,71 @@ internal static class NpcOutfitManagerSource
             $"and refreshed session-only canonical outfit state after {writes} author writes; " +
             "no disk autosave, changed gameplay cadence or guessed version SHA.");
     }
+
+    internal static SemanticInjectionResult ApplyRecordIdNormalization(SemanticPatchContext context)
+    {
+        var file = context.FindFile("init.lua", "local function GetNPCID(target)",
+            "ProcessRadarOutfits()", "target:GetRecordID()", "autoOutfitsData.outfits");
+        var text = file.Text;
+        const string stage = "__gcetNpcIdNormalizedByRawRecord";
+        if (text.Contains(stage, StringComparison.Ordinal))
+            return SemanticInjectionResult.Skip(
+                "Record-string normalization stage already installed.");
+        // The cached key is the CURRENT raw record-id string, never a native
+        // entity handle or an assumed record identity from an earlier frame.
+        var function = new Regex(
+            @"(?ms)^(?<head>[ \t]*local\s+function\s+GetNPCID\(\s*target\s*\)\r?\n)" +
+            @"(?<body>.*?)(?<tail>^[ \t]*end\s*\r?\n)(?=\s*local\s+function\s+CleanKey\()",
+            RegexOptions.CultureInvariant);
+        var functions = function.Matches(text);
+        if (functions.Count != 1)
+            throw new InvalidOperationException("NPC record-normalization function boundaries drifted.");
+        var hit = functions[0];
+        var body = hit.Groups["body"].Value;
+        var raw = new Regex(
+            @"(?m)^(?<indent>[ \t]*)local\s+rawID\s*=\s*tostring\(\s*target:GetRecordID\(\)\s*\)[ \t]*\r?$",
+            RegexOptions.CultureInvariant);
+        var cleaned = new Regex(
+            @"(?m)^(?<indent>[ \t]*)if\s+match\s*~=\s*['""]['""]\s+then\s+return\s+match\s+end[ \t]*\r?$",
+            RegexOptions.CultureInvariant);
+        var fallback = new Regex(
+            @"(?m)^(?<indent>[ \t]*)return\s+rawID[ \t]*\r?$",
+            RegexOptions.CultureInvariant);
+        if (raw.Matches(body).Count != 1 || cleaned.Matches(body).Count != 1 ||
+            fallback.Matches(body).Count != 1 ||
+            !Regex.IsMatch(body, @"if\s+not\s+target\s+then\s+return\s+['""]Unknown['""]\s+end") ||
+            !body.Contains("string.find(rawID", StringComparison.Ordinal) ||
+            !body.Contains("rawID:match(", StringComparison.Ordinal) ||
+            !body.Contains("match:gsub(", StringComparison.Ordinal))
+            throw new InvalidOperationException("NPC record parser has unknown behavioral changes.");
+        body = raw.Replace(body, m => m.Value.TrimEnd('\r') +
+            "\n" + m.Groups["indent"].Value + "local __gcetNormalized = " + stage + "[rawID]" +
+            "\n" + m.Groups["indent"].Value + "if __gcetNormalized ~= nil then return __gcetNormalized end");
+        body = cleaned.Replace(body, m => m.Groups["indent"].Value +
+            "if match ~= \"\" then return __gcetRememberNpcId(rawID, match) end");
+        body = fallback.Replace(body, m => m.Groups["indent"].Value +
+            "return __gcetRememberNpcId(rawID, rawID)");
+        var helper =
+            "-- G-CET raw record string normalization cache; preserves a fresh native GetRecordID read.\n" +
+            "local " + stage + " = {}\n" +
+            "local __gcetNpcIdCacheCount = 0\n" +
+            "local function __gcetRememberNpcId(rawID, result)\n" +
+            "    if __gcetNpcIdCacheCount >= 512 then\n" +
+            "        " + stage + " = {}\n" +
+            "        __gcetNpcIdCacheCount = 0\n" +
+            "    end\n" +
+            "    " + stage + "[rawID] = result\n" +
+            "    __gcetNpcIdCacheCount = __gcetNpcIdCacheCount + 1\n" +
+            "    return result\n" +
+            "end\n\n";
+        text = text[..hit.Index] + helper + hit.Groups["head"].Value + body +
+            hit.Groups["tail"].Value + text[(hit.Index + hit.Length)..];
+        if (!text.Contains("if __gcetNormalized ~= nil then return __gcetNormalized end",
+                StringComparison.Ordinal) ||
+            !text.Contains("return __gcetRememberNpcId(rawID, match)", StringComparison.Ordinal))
+            throw new InvalidOperationException("NPC normalization cache postconditions failed.");
+        context.Write(file, text);
+        return SemanticInjectionResult.Success(
+            "Bounded 512-entry raw record-string normalization memo avoids repeated Lua find/match/gsub; preserves fresh per-NPC native GetRecordID, NCA fallback, live outfit lookup and attachment lifecycle.");
+    }
 }
