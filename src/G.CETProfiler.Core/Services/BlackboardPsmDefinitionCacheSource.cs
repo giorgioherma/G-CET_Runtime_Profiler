@@ -179,19 +179,18 @@ internal static class BlackboardPsmDefinitionCacheSource
         List<object> transformManifest,
         List<object> skipped)
     {
-        if (!HasMeasuredCallsiteEvidence(captureRoot)) return false;
         var livePath = Path.Combine(modsRoot, "0-Engine", "modules",
             "BlackboardCache2.lua");
         if (!File.Exists(livePath)) return false;
-        if (staged.ContainsKey(Relative))
-        {
-            skipped.Add(new { type = "SEMANTIC_RULE",
-                Owner = "0-Engine", RuleId = "0engine-psm-definitions-cache-stage-a",
-                reason = "Another transform already staged this 0-Engine module; refusing composition." });
-            return false;
-        }
         var original = File.ReadAllBytes(livePath);
-        if (!TryTransform(original, out var transformed, out var reason))
+        var current = staged.TryGetValue(Relative,out var earlierStage)
+            ? earlierStage : original;
+        // A completed cache is recognized without requiring current profiler
+        // samples. For missing stages, retain the original evidence gate.
+        if (NativeReadReuseSource.Decode(current).Contains(Marker,StringComparison.Ordinal))
+            return false;
+        if (!HasMeasuredCallsiteEvidence(captureRoot)) return false;
+        if (!TryTransform(current, out var transformed, out var reason))
         {
             if (reason != "ALREADY_SATISFIED")
                 skipped.Add(new { type = "SEMANTIC_RULE",
@@ -200,9 +199,11 @@ internal static class BlackboardPsmDefinitionCacheSource
             return false;
         }
         staged[Relative] = transformed;
-        liveSourceHashes[Relative] =
-            Convert.ToHexString(SHA256.HashData(original)).ToLowerInvariant();
-        appliedTransformsByFile[Relative] = 1;
+        if (!liveSourceHashes.ContainsKey(Relative))
+            liveSourceHashes[Relative] =
+                Convert.ToHexString(SHA256.HashData(original)).ToLowerInvariant();
+        appliedTransformsByFile[Relative] =
+            appliedTransformsByFile.GetValueOrDefault(Relative)+1;
         transformManifest.Add(new
         {
             type = "SEMANTIC_RULE",
