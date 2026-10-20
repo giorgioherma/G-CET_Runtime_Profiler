@@ -2030,14 +2030,12 @@ finally {
 $legacyWorkQueueFixture = Join-Path $PSScriptRoot 'fixtures\0Engine-legacy-GCETWorkQueue.lua'
 $legacyWorkQueuePath = Join-Path $mods '0-Engine\modules\GCETWorkQueue.lua'
 New-Item -ItemType Directory -Force (Split-Path $legacyWorkQueuePath) | Out-Null
-# Windows Git checkouts may convert test-fixture LF to CRLF. Normalize the
-# fixture back to its original source bytes before validating the known hash.
+# The older module is intentionally customized: admission is based on API
+# structure, not a released-file SHA. Preserve modifications during the
+# source-proven instrumentation upgrade.
 $legacySource = [IO.File]::ReadAllText($legacyWorkQueueFixture).Replace("`r`n", "`n")
+$legacySource += "`n-- user-defined WorkQueue extension (preserve verbatim)`n"
 $legacyBytes = [Text.UTF8Encoding]::new($false).GetBytes($legacySource)
-$oldHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($legacyBytes)).ToLowerInvariant()
-if ($oldHash -ne '63f752dcab1377bfc73757133034d938e2bb2580684dff40d2274eebc3bb46b6') {
-    throw 'Legacy G-CET WorkQueue fixture does not match its whitelisted version.'
-}
 [IO.File]::WriteAllBytes($legacyWorkQueuePath, $legacyBytes)
 
 $upgradeZip = Join-Path $root 'legacy-workqueue-normal-pass.zip'
@@ -2048,10 +2046,19 @@ if (!$legacyUpgrade.ok -or $null -eq $legacyUpgrade.pass -or !(Test-Path $upgrad
 $upgrade = [System.IO.Compression.ZipFile]::OpenRead($upgradeZip)
 try {
     $entry = $upgrade.GetEntry('bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/modules/GCETWorkQueue.lua')
-    if ($null -eq $entry) { throw 'Normal optimization pass omitted upgraded 0-Engine WorkQueue.' }
+    if ($null -eq $entry) { throw 'Normal optimization pass omitted compatible 0-Engine WorkQueue.' }
+    $reader=[IO.StreamReader]::new($entry.Open())
+    try {$workText=$reader.ReadToEnd()} finally {$reader.Dispose()}
+    foreach ($fragment in @('user-defined WorkQueue extension (preserve verbatim)',
+        'local Probe = require("modules/GCETWorkloadProbe")',
+        'Probe.Begin(', 'Probe.End(')) {
+        if (!$workText.Contains($fragment)) {
+            throw "Version-fluid WorkQueue rewrite lost source or probe: $fragment"
+        }
+    }
 } finally { $upgrade.Dispose() }
 
-# A user-modified file at that same path is NOT whitelisted.
+# An incompatible file at that same path must still fail closed.
 '-- foreign locally modified WorkQueue' | Set-Content -LiteralPath $legacyWorkQueuePath -Encoding utf8
 $foreignWorkQueueApproved = $false
 try {
@@ -2064,9 +2071,9 @@ try {
     $global:LASTEXITCODE = 0
 }
 if ($foreignWorkQueueApproved) {
-    throw 'Normal pass overwrote a foreign-modified WorkQueue; hash collision safeguard regressed.'
+    throw 'Normal pass admitted an incompatible WorkQueue without its required API.'
 }
-Write-Host 'Normal-pass legacy G-CET WorkQueue upgrade and foreign-edit refusal contract passed.'
+Write-Host 'Version-fluid WorkQueue instrumentation and incompatible-source refusal passed.'
 
 # Structurally compatible foreign 0-Engine contract.
 # Unknown versions keep their own runtime and receive only the additive
@@ -2210,6 +2217,46 @@ try {
 finally {
     $foreignZip.Dispose()
 }
+
+
+# Source-compatible locally edited ActionRouter must remain unchanged within
+# the Resolver pass. An incompatible ActionRouter must not be overwritten.
+$customRouterPath=Join-Path $foreignMods '0-Engine\modules\G-CET\ActionRouter.lua'
+New-Item -ItemType Directory -Force (Split-Path $customRouterPath) | Out-Null
+$routerEncoded=Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\resolver-runtime\0-Engine\modules\ActionRouter.lua.b64') -Raw
+$routerText=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($routerEncoded.Trim()))
+$routerText += "`n-- project-owned ActionRouter extension; retain exact source`n"
+[IO.File]::WriteAllText($customRouterPath,$routerText,[Text.UTF8Encoding]::new($false))
+$customRouterZip=Join-Path $root 'foreign-custom-router-source.zip'
+$customRouterPass=(& $resolverExe --capture $capture --mods $foreignMods --generate-pass --pass-output $customRouterZip --json | ConvertFrom-Json)
+if (!$customRouterPass.ok) {
+    throw 'Version-fluid private ActionRouter with a proven API was rejected.'
+}
+$routerArchive=[IO.Compression.ZipFile]::OpenRead($customRouterZip)
+try {
+    $routeEntry=$routerArchive.GetEntry('bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/modules/G-CET/ActionRouter.lua')
+    if ($null -eq $routeEntry) { throw 'Version-fluid pass omitted existing ActionRouter.' }
+    $routeReader=[IO.StreamReader]::new($routeEntry.Open())
+    try {$generatedRouterText=$routeReader.ReadToEnd()} finally {$routeReader.Dispose()}
+    if ($generatedRouterText -cne $routerText) {
+        throw 'The generated ActionRouter overwrote source-compatible custom code.'
+    }
+} finally {$routerArchive.Dispose()}
+[IO.File]::WriteAllText($customRouterPath,'-- incompatible router; no dispatch or subscribe API',[Text.UTF8Encoding]::new($false))
+$unsupportedRouterApproved=$false
+try {
+    $bad=(& $resolverExe --capture $capture --mods $foreignMods --generate-pass --pass-output (Join-Path $root 'foreign-incompatible-router.zip') --json 2>$null | ConvertFrom-Json)
+    if ($LASTEXITCODE -eq 0 -and $bad.ok) {$unsupportedRouterApproved=$true}
+} catch {
+    $unsupportedRouterApproved=$false
+} finally {
+    Remove-Item -LiteralPath $customRouterPath -Force
+    $global:LASTEXITCODE=0
+}
+if ($unsupportedRouterApproved) {
+    throw 'Source-incompatible private ActionRouter was silently overwritten.'
+}
+Write-Host 'Version-fluid custom ActionRouter preservation and incompatible-source refusal passed.'
 
 Write-Host 'Foreign 0-Engine structural compatibility contract passed.'
 
