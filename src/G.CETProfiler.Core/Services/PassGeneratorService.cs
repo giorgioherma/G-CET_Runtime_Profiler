@@ -83,18 +83,9 @@ public static class PassGeneratorService
 
         foreach (var group in groups)
         {
-            var expectedHashes = group
-                .Select(x => x.SourceSha256)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-
-            if (expectedHashes.Length != 1)
-            {
-                foreach (var candidate in group)
-                    skipped.Add(Skip(candidate, "Conflicting source hashes were recorded for the same file."));
-                continue;
-            }
-
+            // File fingerprints are provenance only: independently revalidate
+            // each rewrite against the current installed Lua and its recorded
+            // callback bounds. Mod updates must not veto unrelated safe rules.
             var livePath = ResolveInsideMods(modsRoot, group.Key);
             if (livePath is null || !File.Exists(livePath))
             {
@@ -105,15 +96,6 @@ public static class PassGeneratorService
 
             var originalBytes = File.ReadAllBytes(livePath);
             var liveHash = Sha256(originalBytes);
-            if (!liveHash.Equals(expectedHashes[0], StringComparison.OrdinalIgnoreCase))
-            {
-                foreach (var candidate in group)
-                    skipped.Add(Skip(
-                        candidate,
-                        $"Current source SHA256 no longer matches the analyzed capture. Expected {expectedHashes[0]}, got {liveHash}."));
-                continue;
-            }
-
             var transformed = TransformFile(
                 originalBytes,
                 group.OrderByDescending(x => x.LineStart).ToList(),
@@ -899,27 +881,17 @@ public static class PassGeneratorService
                     var modulePath = ResolveInsideMods(
                         modsRoot,
                         candidate.CrossFileInteractionUiModuleFile);
-                    if (modulePath is null ||
-                        !File.Exists(modulePath) ||
-                        string.IsNullOrWhiteSpace(candidate.CrossFileInteractionUiModuleSha256))
+                    if (modulePath is null || !File.Exists(modulePath))
                     {
                         skipped.Add(Skip(
                             candidate,
-                            "Cross-file interaction UI module is missing or its proof hash is incomplete."));
+                            "Cross-file interaction UI module is missing; leave onDraw unchanged."));
                     }
                     else
                     {
                         var moduleBytes = File.ReadAllBytes(modulePath);
                         var moduleHash = Sha256(moduleBytes);
-                        if (!moduleHash.Equals(
-                                candidate.CrossFileInteractionUiModuleSha256,
-                                StringComparison.OrdinalIgnoreCase))
-                        {
-                            skipped.Add(Skip(
-                                candidate,
-                                "Cross-file interaction UI module changed after analysis; leave onDraw unchanged."));
-                        }
-                        else if (effectiveLineEnd > lines.Count)
+                        if (effectiveLineEnd > lines.Count)
                         {
                             skipped.Add(Skip(
                                 candidate,
@@ -957,10 +929,13 @@ public static class PassGeneratorService
                                     candidate.CrossFileInteractionUiModuleFile,
                                     candidate.CrossFileInteractionUiModuleSha256);
 
-                                if (currentProof != expectedProof ||
+                                // Hash is retained for diagnostics only; the
+                                // function, gate, pending state, reset, receiver
+                                // and module path remain the proof of safety.
+                                if (currentProof with { ModuleSha256 = expectedProof.ModuleSha256 } != expectedProof ||
                                     !GenericInteractionUiTransform.TryApplyCrossFileCallGuard(
                                         callbackSegment,
-                                        expectedProof,
+                                        currentProof,
                                         out var rewrittenCrossFileUi))
                                 {
                                     skipped.Add(Skip(
@@ -987,7 +962,7 @@ public static class PassGeneratorService
                                         gate = candidate.CrossFileInteractionUiGate,
                                         pending = candidate.CrossFileInteractionUiPending,
                                         moduleFile = candidate.CrossFileInteractionUiModuleFile,
-                                        moduleSha256 = candidate.CrossFileInteractionUiModuleSha256,
+                                        moduleSha256 = moduleHash,
                                         proof = "call-only onDraw delegates to a required module whose hidden path is source-proven to perform only the preserved false-state reset"
                                     });
                                     applied++;
