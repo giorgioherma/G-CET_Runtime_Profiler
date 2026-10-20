@@ -54,3 +54,19 @@ public native func GCETStaticRemoveOwner(owner: Int32) -> Bool;
 // 12 unavailable player ticks, 13 valid-to-unknown losses.
 // Does not count saved CET C hooks.
 public native func GCETStaticMetric(metric: Int32) -> Int64;
+
+
+// Experimental independent native scalar player snapshot, available even
+// without a G-CET.locations manifest. ONE ID per shared host, not per mod.
+// Subscribe field bits: 1 position, 2 availability.
+// Poll: 1 position, 2 availability, 4 snapshot, 8 session, 16 coalesced.
+// 0 unchanged; -1 invalid ID. UNKNOWN is never safe as FAR/dormant.
+public native func GCETPlayerSubscribe(consumer: Int32, fields: Int32) -> Bool;
+public native func GCETPlayerUnsubscribe(consumer: Int32) -> Bool;
+public native func GCETPlayerPoll(consumer: Int32) -> Int32;
+public native func GCETPlayerStatus() -> Int32;
+public native func GCETPlayerEpoch() -> Int32;
+public native func GCETPlayerRevision() -> Int32;
+public native func GCETPlayerX() -> Float;
+public native func GCETPlayerY() -> Float;
+public native func GCETPlayerZ() -> Float;

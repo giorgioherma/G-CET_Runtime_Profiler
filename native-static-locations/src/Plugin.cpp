@@ -1,5 +1,6 @@
 #include "StaticIndex.hpp"
 #include "PositionCoordinator.hpp"
+#include "PlayerSnapshot.hpp"
 #include "DiagnosticProbe.hpp"
 #include <cmath>
 #include <RED4ext/Scripting/Utils.hpp>
@@ -17,6 +18,7 @@ namespace {
     gcet::static_locations::StaticIndex g_index;
     bool g_loaded = false;
     gcet::static_locations::PositionCoordinator g_coordinator(g_index);
+    gcet::static_locations::PlayerSnapshot g_playerSnapshot;
     gcet::static_locations::DiagnosticProbe g_probe(g_index,g_coordinator);
     const RED4ext::v1::Logger* g_logger=nullptr;
     RED4ext::v1::PluginHandle g_handle{};
@@ -67,6 +69,8 @@ namespace {
         return 0;
     }
     bool RunningEnter(RED4ext::CGameApplication*){
+        // Player snapshot is independent of location manifest readiness.
+        g_playerSnapshot.Enter();
         if(g_loaded) {
             g_reportedReasons=0;
             g_reportedReady=false;
@@ -77,31 +81,27 @@ namespace {
         return true;
     }
     bool RunningUpdate(RED4ext::CGameApplication*){
-        if(g_loaded){
-            // True native dormancy: no active source anchor means no
-            // game-player RTTI read or spatial evaluation this frame.
-            // An explicit smoke marker deliberately bypasses this guard,
-            // so its first automatic probe can sample the actual player.
-            if (!g_autoProbe && g_index.ActiveCount()==0) {
-                g_lastPlayerCode=-1;
-                // Invalidate a previously known position exactly once
-                // when the last live anchor is disarmed or removed. Do not
-                // repeatedly ResetSession or touch subscriber cursors.
-                if (g_coordinator.Status()==2)
-                    g_coordinator.Tick(false,0,0,0);
-                return false;
-            }
-            float x=0,y=0,z=0;
-            const int32_t code=SamplePlayer(x,y,z);
-            g_lastPlayerCode=code;
+        const bool locationDemand=g_loaded && (g_autoProbe || g_index.ActiveCount()>0);
+        const bool playerDemand=g_playerSnapshot.HasDemand();
+        if(!locationDemand && !playerDemand) {
+            // Native dormancy: zero player getter calls without any live owner.
+            if(g_loaded && g_coordinator.Status()==2)
+                g_coordinator.Tick(false,0,0,0);
+            g_lastPlayerCode=-1;
+            return false;
+        }
+        // Exactly one native player RTTI read, regardless of active clients.
+        float x=0,y=0,z=0;
+        const int32_t code=SamplePlayer(x,y,z);
+        g_lastPlayerCode=code;
+        if(playerDemand)g_playerSnapshot.Tick(code==0,x,y,z);
+        if(g_loaded && locationDemand){
             g_coordinator.Tick(code==0,x,y,z);
             if(code==0) {
                 if(g_autoProbe && g_probe.Id()==0) {
                     if(g_probe.Create(40.f)>0)
                         Log("G-CET Static: diagnostic anchor ARMED at player location (40m, no mod callbacks)");
                 }
-                // Only when a probe is explicitly armed; no work in the
-                // default uninstrumented DLL beyond the coordinator.
                 if(g_probe.Id()>0) {
                     const auto changed=g_index.Changes();
                     for(const auto& transition:changed) {
@@ -120,12 +120,16 @@ namespace {
                     g_probe.Remove();
                     Log("G-CET Static: diagnostic anchor invalidated with unavailable player");
                 }
-                LogErrorCodeOnce(code); // once per reason per running session
+                LogErrorCodeOnce(code);
             }
+        } else if(g_loaded && g_coordinator.Status()==2){
+            // Do not leave stale native anchor state when the final anchor sleeps.
+            g_coordinator.Tick(false,0,0,0);
         }
         return false;
     }
     bool RunningExit(RED4ext::CGameApplication*){
+        g_playerSnapshot.Exit();
         if(g_loaded) {
             if(g_probe.Id()>0)g_probe.Remove();
             Log("G-CET Static: running-state exited; native session invalidated");
@@ -133,6 +137,39 @@ namespace {
             g_lastPlayerCode=-1;
         }
         return true;
+    }
+    // Fixed-size aggregate subscriptions: 0-Engine needs one consumer,
+    // not a separate native registration for every participating Lua mod.
+    void PlayerSubscribe(RED4ext::IScriptable*,RED4ext::CStackFrame* f,bool* out,int64_t){
+        int32_t consumer=0,fields=0;
+        RED4ext::GetParameter(f,&consumer);RED4ext::GetParameter(f,&fields);f->code++;
+        *out=g_playerSnapshot.Subscribe(consumer,fields);
+    }
+    void PlayerUnsubscribe(RED4ext::IScriptable*,RED4ext::CStackFrame* f,bool* out,int64_t){
+        int32_t consumer=0;RED4ext::GetParameter(f,&consumer);f->code++;
+        *out=g_playerSnapshot.Unsubscribe(consumer);
+    }
+    void PlayerPoll(RED4ext::IScriptable*,RED4ext::CStackFrame* f,int32_t* out,int64_t){
+        int32_t consumer=0;RED4ext::GetParameter(f,&consumer);f->code++;
+        *out=g_playerSnapshot.Poll(consumer);
+    }
+    void PlayerStatus(RED4ext::IScriptable*,RED4ext::CStackFrame* f,int32_t* out,int64_t){
+        f->code++;*out=g_playerSnapshot.Status();
+    }
+    void PlayerEpoch(RED4ext::IScriptable*,RED4ext::CStackFrame* f,int32_t* out,int64_t){
+        f->code++;*out=static_cast<int32_t>(g_playerSnapshot.Epoch());
+    }
+    void PlayerRevision(RED4ext::IScriptable*,RED4ext::CStackFrame* f,int32_t* out,int64_t){
+        f->code++;*out=static_cast<int32_t>(g_playerSnapshot.Revision());
+    }
+    void PlayerX(RED4ext::IScriptable*,RED4ext::CStackFrame* f,float* out,int64_t){
+        f->code++;*out=g_playerSnapshot.X();
+    }
+    void PlayerY(RED4ext::IScriptable*,RED4ext::CStackFrame* f,float* out,int64_t){
+        f->code++;*out=g_playerSnapshot.Y();
+    }
+    void PlayerZ(RED4ext::IScriptable*,RED4ext::CStackFrame* f,float* out,int64_t){
+        f->code++;*out=g_playerSnapshot.Z();
     }
     void CoordinatorStatus(RED4ext::IScriptable*,RED4ext::CStackFrame* frame,int32_t* out,int64_t){
         frame->code++;
@@ -349,6 +386,19 @@ namespace {
         RegisterFunction("GCETStaticRemoveAnchor",RemoveAnchor,"Bool",idNames,intTypes,1);
         RegisterFunction("GCETStaticRemoveOwner",RemoveOwner,"Bool",ownerNames,intTypes,1);
         RegisterFunction("GCETStaticMetric",Metric,"Int64",metricNames,intTypes,1);
+        // Independent player-state service; works without G-CET.locations.
+        const char* pcNames[]={"consumer","fields"};
+        const char* pcTypes[]={"Int32","Int32"};
+        RegisterFunction("GCETPlayerSubscribe",PlayerSubscribe,"Bool",pcNames,pcTypes,2);
+        RegisterFunction("GCETPlayerUnsubscribe",PlayerUnsubscribe,"Bool",consumerNames,intTypes,1);
+        RegisterFunction("GCETPlayerPoll",PlayerPoll,"Int32",consumerNames,intTypes,1);
+        RegisterFunction("GCETPlayerStatus",PlayerStatus,"Int32",nullptr,nullptr,0);
+        RegisterFunction("GCETPlayerEpoch",PlayerEpoch,"Int32",nullptr,nullptr,0);
+        RegisterFunction("GCETPlayerRevision",PlayerRevision,"Int32",nullptr,nullptr,0);
+        RegisterFunction("GCETPlayerX",PlayerX,"Float",nullptr,nullptr,0);
+        RegisterFunction("GCETPlayerY",PlayerY,"Float",nullptr,nullptr,0);
+        RegisterFunction("GCETPlayerZ",PlayerZ,"Float",nullptr,nullptr,0);
+
     }
     void LoadData() {
         // The location file is co-located with this DLL under red4ext/plugins.
@@ -397,7 +447,7 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle handle,
         }
         RED4ext::CRTTISystem::Get()->AddPostRegisterCallback(PostRegisterTypes);
     } else if (reason == RED4ext::v1::EMainReason::Unload) {
-        g_coordinator.Exit(); g_index.Clear(); g_loaded=false;
+        g_playerSnapshot.Exit();g_coordinator.Exit(); g_index.Clear(); g_loaded=false;
         g_logger=nullptr;
     }
     return true;
@@ -405,7 +455,7 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle handle,
 RED4EXT_C_EXPORT void RED4EXT_CALL Query(RED4ext::v1::PluginInfo* info) {
     info->name=L"G-CET Static Locations (experimental)";
     info->author=L"G-CET";
-    info->version=RED4EXT_V1_SEMVER(0,1,0);
+    info->version=RED4EXT_V1_SEMVER(0,2,0);
     info->runtime=RED4EXT_V1_RUNTIME_VERSION_LATEST;
     info->sdk=RED4EXT_V1_SDK_VERSION_CURRENT;
 }
