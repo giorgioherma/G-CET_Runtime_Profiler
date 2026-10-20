@@ -95,3 +95,51 @@ without inventing a new native-location framework.
 **Decision:** No native anchor, new subscriber, source injector, additional
 10 Hz work, or changed game logic. Eight existing native owners remain
 the complete conservative, source-proven static-location set.
+
+## Compiled GCAS implementation (post-CI1529)
+
+Resolver's game-root ZIP now includes **both**
+`red4ext/plugins/G-CET-StaticLocations/GCETStaticLocations.dll` and
+`red4ext/plugins/G-CET-StaticLocations/G-CET.locations`. The latter is a
+little-endian GCAS v1 binary generated from the currently installed author
+sources. Fixed owners use `NativeLocationHost:attachCompiled` and no longer
+register Lua coordinate arrays. The DLL's existing GCAS reader loads the
+file on plugin initialization. Missing/unsupported source coordinates are
+never invented, and the Lua author fallback remains available.
+
+The eight semantic mod families remain Poker, Tunnel Rescue, Illegal
+Mechanic, Dedka, Card Collection, MarmurBank, Yaiba bathtub and Ziggy.
+Illegal Mechanic no longer uses **one aggregate** native owner: Resolver
+reads its installed `zzz_IllegalMechanicTypes.reds` registry and assigns
+individual owner IDs `1003301 + registry index` for each fixed NPC
+location. The supplied October 20 registry has **18 mechanics**; all
+18 original discovery shapes plus the 75 m spawn / 95 m despawn
+thresholds fit inside a **110 m** native wake sphere. Lua FAR can park
+only that site's unspawned/unpending NPC supervisor; live/pending actors
+retain the author's position and cleanup behavior. The original
+REDscript discovery logic remains authoritative.
+
+The compiled host marks manifest anchors as immutable across CET reload:
+shutdown **disarms** compiled anchors, never removes them. Any dynamic
+legacy anchors are still removed. This is an in-place source-composition
+change, not a new binary API; the pinned native DLL is unchanged and
+the Resolver product version stays `1.2.11`.
+
+**CI1527 failure:** test constructed a sample REDscript registry but
+did not stage the associated semantic owner, so the compiler correctly
+emitted zero records. CI1528 and CI1529 succeeded after the fixture was
+corrected; CI1529 also verifies compiled-anchor reload lifecycle.
+Contract verification does **not** replace runtime gameplay testing or
+guarantee that every pristine input mod receives all chained semantic
+stages in a single pass. Inspect the generated JSON for each
+`native-location-*` rule and the `compiledOwnerCounts` table before
+installing. A missing owner must be investigated rather than described
+as generated.
+
+**Migration:** users may restore pristine author source files and rerun
+Resolver's existing semantic generation. Old aggregate native v1/v2
+Illegal Mechanic source is explicitly rejected by its v3 injector
+rather than silently rewritten. The complete original mod must be
+installed (including `r6/scripts` registry and JSON configuration)
+while Resolver generates the native binary, since an overlay-only ZIP
+does not carry those original input files.
