@@ -23,20 +23,45 @@ internal static class NativePlayerVectorStage
         @"\blocal\s+Game\b|\bGame\s*=(?!=)|\bfunction\s*\w+\s*\([^)]*\bGame\b[^)]*\)",
         RegexOptions.CultureInvariant|RegexOptions.Compiled);
 
+    // Independent, per-callsite adoption, including partially optimized
+    // files. A generated helper is excluded from its OWN source scan so the
+    // required live fallback is never recursively rewritten.
     internal static bool TryTransform(string original,out string output,out int count)
     {
         output=original;count=0;
-        if(string.IsNullOrEmpty(original)||original.Contains(Marker,StringComparison.Ordinal))
-            return false;
+        if(string.IsNullOrEmpty(original))return false;
         var masked=NativeReadReuseSource.MaskNonCode(original);
-        if(ShadowGame.IsMatch(masked) ||
-           Regex.IsMatch(masked,@"\b"+Helper+@"\b",RegexOptions.CultureInvariant))
+        if(ShadowGame.IsMatch(masked))return false;
+        var already=original.Contains(Marker,StringComparison.Ordinal);
+        if(already)
+        {
+            var helper=Regex.Matches(masked,
+                @"local\s+function\s+"+Helper+
+                @"\s*\(\s*\)[\s\S]*?return\s+Game\s*\.\s*GetPlayer\s*\(\s*\)\s*:\s*GetWorldPosition\s*\(\s*\)\s*end",
+                RegexOptions.CultureInvariant);
+            if(helper.Count!=1 ||
+               !original.Contains("GCETPlayerVector4Live",StringComparison.Ordinal) ||
+               !original.Contains("GCETPlayerVector4Valid",StringComparison.Ordinal))
+                return false; // partial/foreign helper: never duplicate it
+            var chars=masked.ToCharArray();
+            for(int i=helper[0].Index;i<helper[0].Index+helper[0].Length;i++)
+                if(chars[i]!='\n'&&chars[i]!='\r') chars[i]=' ';
+            masked=new string(chars);
+        }
+        else if(Regex.IsMatch(masked,@"\b"+Helper+@"\b",
+            RegexOptions.CultureInvariant))
             return false;
         var matches=Expression.Matches(masked).Cast<Match>().ToArray();
         if(matches.Length==0)return false;
         var builder=new StringBuilder(original);
         foreach(var m in matches.Reverse())
             builder.Remove(m.Index,m.Length).Insert(m.Index,Helper+"()");
+        if(already)
+        {
+            output=builder.ToString();
+            count=matches.Length;
+            return true;
+        }
         var nl=original.Contains("\r\n",StringComparison.Ordinal)?"\r\n":"\n";
         var header=string.Join(nl,new []{
             Marker,
@@ -72,22 +97,22 @@ internal static class NativePlayerVectorStage
     {
         var root=Path.GetFullPath(modsRoot);
         var prefix=root.TrimEnd(Path.DirectorySeparatorChar)+Path.DirectorySeparatorChar;
-        var inventory=NativePlayerAdoptionCatalog.Scan(modsRoot);
+        // Scan the CURRENT installed files and all previously staged source;
+        // earlier semantic rewrites may introduce a new eligible callsite.
+        // Captured player-state inventory is evidence, not an admission lock.
         var applied=0;
-        foreach(var file in inventory.Files)
+        var liveFiles=Directory.EnumerateFiles(root,"*.lua",SearchOption.AllDirectories)
+            .OrderBy(path=>path,StringComparer.OrdinalIgnoreCase).Take(20000);
+        foreach(var path in liveFiles)
         {
-            if(!file.Sites.Any(x=>x.Method=="GetWorldPosition" &&
-                x.IdentityTag=="CURRENT_PLAYER_SOURCE_PROVEN"))continue;
-            var relative=file.RelativeFile;
+            var relative=Path.GetRelativePath(root,path).Replace('\\','/');
             var first=relative.Split('/')[0];
             if(first.Equals("0-Engine",StringComparison.OrdinalIgnoreCase) ||
                first.StartsWith("G-CET",StringComparison.OrdinalIgnoreCase))
-                continue; // fixed runtime is managed independently
-            var path=Path.GetFullPath(Path.Combine(root,relative.Replace('/',Path.DirectorySeparatorChar)));
-            if(!path.StartsWith(prefix,StringComparison.OrdinalIgnoreCase)||
-               !System.IO.File.Exists(path))continue;
+                continue;
             var original=System.IO.File.ReadAllBytes(path);
-            var key=relative.Replace('\\','/');
+            if(original.Length>2_000_000 || original.Any(b=>b==0))continue;
+            var key=relative;
             var input=staged.TryGetValue(key,out var current)?current:original;
             var text=NativeReadReuseSource.Decode(input);
             if(!TryTransform(text,out var result,out var count))continue;
