@@ -256,7 +256,11 @@ internal static class NativeLocationFourOwnersSource
         }
         var text = Once(file.Text,
             "  nextUpdateAt = 0.0\n}",
-            "  nextUpdateAt = 0.0,\n  __gcetNativeFar = false\n}", "Mechanic supervisor state");
+            "  nextUpdateAt = 0.0,\n  __gcetNearByIndex = nil\n}", "Mechanic per-site supervisor state");
+        text=Once(text,
+            "      result[#result + 1] = {\n        index = index,",
+            "      result[#result + 1] = {\n        nativeIndex = #result + 1,\n        index = index,",
+            "Mechanic per-site dense index identity");
         const string attach = """
           -- G-CET native location:illegal-v1
           local engineOk,engine=pcall(GetMod,"0-Engine")
@@ -266,10 +270,17 @@ internal static class NativeLocationFourOwnersSource
             for _,entry in ipairs(result) do
               sites[#sites+1]={x=entry.x,y=entry.y,z=entry.z,radius=100,metric="xyz"}
             end
-            lookup:attach(10033,sites,
-              function() state.__gcetNativeFar=false;state.nextUpdateAt=0 end,
-              function() state.__gcetNativeFar=true;state.nextUpdateAt=0 end,
-              function() state.__gcetNativeFar=false;state.nextUpdateAt=0;return true end)
+            lookup:attachPerSite(10033,sites,
+              function(index,near)
+                state.__gcetNearByIndex=state.__gcetNearByIndex or {}
+                state.__gcetNearByIndex[index]=near
+                state.nextUpdateAt=0
+              end,
+              function()
+                state.__gcetNearByIndex=nil
+                state.nextUpdateAt=0
+                return true
+              end)
           end
         """;
         text = Once(text, "  state.mechanics = result\n  log(\"matrix loaded mechanics=\" .. tostring(#result))",
@@ -290,9 +301,28 @@ internal static class NativeLocationFourOwnersSource
             "  if #state.mechanics == 0 and not loadMatrix() then return end\n  local player = getPlayer()",
             "  if #state.mechanics == 0 and not loadMatrix() then return end\n" + gate + "  local player = getPlayer()",
             "Mechanic inactive far guard");
-        context.Write(file,UpgradeIllegalV2(text));
+        // Source identity remains per mechanic, not per owner. Native FAR
+        // is only an idle-site hint; original live/pending NPC service stays.
+        text=Once(text,
+            "          if state.__gcetNativeFar then\n" +
+            "            local hasLiveOrPending=false\n" +
+            "            for _,entry in ipairs(state.mechanics) do\n" +
+            "              if entry.spawnPending or entry.entityID ~= nil or entry.entity ~= nil then\n" +
+            "                hasLiveOrPending=true;break\n" +
+            "              end\n" +
+            "            end\n" +
+            "            if not hasLiveOrPending then return end\n" +
+            "          end\n", "", "Remove aggregate mechanic FAR guard");
+        text=Once(text,
+            "    if entry.spawnPending then\n      resolvePendingSpawn(entry)\n    else\n      local distance",
+            "    if state.__gcetNearByIndex and state.__gcetNearByIndex[entry.nativeIndex] == false and " +
+                "not entry.spawnPending and entry.entityID == nil and entry.entity == nil then\n" +
+            "      -- This idle FAR mechanic alone sleeps; other listeners run.\n" +
+            "    elseif entry.spawnPending then\n      resolvePendingSpawn(entry)\n    else\n      local distance",
+            "Mechanic independent listener eligibility");
+        context.Write(file,text);
         return SemanticInjectionResult.Success(
-            "Native v2 avoids unused matrix-site distance scans during FAR; original 75/95m exact live-NPC streaming, pending resolution and UNKNOWN fallback remain untouched.");
+            "Per-mechanic static native NEAR/FAR wakes each original 0.5-second listener independently; exact 75/95m, live NPCs, pending resolution and UNKNOWN fallback stay.");
     }
 
     internal static SemanticInjectionResult ApplyDedka(SemanticPatchContext context)
