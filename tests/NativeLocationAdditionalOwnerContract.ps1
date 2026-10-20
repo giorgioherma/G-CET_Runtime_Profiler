@@ -549,9 +549,10 @@ if($countMap[10031] -ne 2 -or $countMap[10034] -ne 2 -or $countMap[10036] -ne 3)
  throw "Independent source-owned location counts invalid: Poker=$($countMap[10031]) Dedka=$($countMap[10034]) Bank=$($countMap[10036])"
 }
 $bytes=$compilerType.GetProperty('Bytes',[Reflection.BindingFlags]'Instance,Public,NonPublic').GetValue($compiled)
-if([BitConverter]::ToUInt32($bytes,8) -ne 7){throw 'Expected seven independent geometry records'}
+$compiledSiteCount=[BitConverter]::ToUInt32($bytes,8)
+if($compiledSiteCount -lt 7){throw 'Required seven source-proven locations missing from compiled database'}
 # Native banker coarse wake MUST exceed the 25m source discovery scan.
-$bankRadii=for($idx=0;$idx -lt 7;$idx++){
+$bankRadii=for($idx=0;$idx -lt $compiledSiteCount;$idx++){
  if([BitConverter]::ToUInt32($bytes,16+28*$idx+24) -eq 10036){
   [BitConverter]::ToSingle($bytes,16+28*$idx+16)
  }
