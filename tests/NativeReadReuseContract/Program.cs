@@ -249,8 +249,10 @@ try
     Console.WriteLine("GCET PlayerOwnership source-only receiver evidence PASS");
 
     // All installed mod sources participate, including dormant callbacks
-    // absent from profiler registration traces. Native XYZ does not supply
-    // a compatible full Vector4/freshness contract, so no unsafe rewrite.
+    // absent from profiler registration traces. Only direct Game.GetPlayer
+    // position calls qualify for guarded strict-live native substitution.
+    Save("0-Engine/NativeProbe.lua",
+        "local current=Game.GetPlayer():GetWorldPosition()\n");
     Save("DormantPlayerObserver/init.lua", """
         Observe("PlayerPuppet", "OnAction", function(self, action)
             local pos = self:GetWorldPosition()
@@ -264,6 +266,10 @@ try
         BindingFlags.Static|BindingFlags.NonPublic|BindingFlags.Public)!;
     var catalog=scan.Invoke(null,[mods])!;
     var files=(Array)catalog.GetType().GetProperty("Files")!.GetValue(catalog)!;
+    Check(files.Cast<object>().Any(x=>
+        (string)x.GetType().GetProperty("RelativeFile")!.GetValue(x)! ==
+            "0-Engine/NativeProbe.lua"),
+        "Whole-stack inventory silently omitted the managed runtime");
     var dormant=files.Cast<object>().Single(x=>(string)x.GetType()
         .GetProperty("RelativeFile")!.GetValue(x)! == "DormantPlayerObserver/init.lua");
     var dormantSites=(Array)dormant.GetType().GetProperty("Sites")!
@@ -342,6 +348,40 @@ try
     Check(future.Length==3&&future.Cast<object>().All(x=>
         Tag(x)=="CURRENT_PLAYER_SOURCE_PROVEN"),
         "RTTI getter source inventory lost direct player proof");
+
+    // Exercise the full generator staging handoff, not just local rewrites.
+    // No capture activity is needed; the installer source scan is authoritative.
+    var vecInstalled=Save("NativeVectorFixture/init.lua", """
+        local pos=Game.GetPlayer():GetWorldPosition()
+        local npc=findNpc()
+        local npcPos=npc:GetWorldPosition()
+        """);
+    var vecBefore=File.ReadAllText(vecInstalled);
+    var stageVector=vectorStage.GetMethod("TryStage",
+        BindingFlags.Static|BindingFlags.NonPublic|BindingFlags.Public)!;
+    var vecStaged=new Dictionary<string,byte[]>(StringComparer.OrdinalIgnoreCase);
+    var vecHashes=new Dictionary<string,string?>(StringComparer.OrdinalIgnoreCase);
+    var vecApplied=new Dictionary<string,int>(StringComparer.OrdinalIgnoreCase);
+    var vecManifest=new List<object>();
+    var vecSkipped=new List<object>();
+    var stagedCount=(int)stageVector.Invoke(null,
+        [mods,vecStaged,vecHashes,vecApplied,vecManifest,vecSkipped])!;
+    Check(stagedCount>=1&&vecStaged.ContainsKey("NativeVectorFixture/init.lua"),
+        "Native live candidate was not auto-staged from the source catalog");
+    var vecText=Encoding.UTF8.GetString(vecStaged["NativeVectorFixture/init.lua"]);
+    Check(vecText.Contains("__gcetNativePlayerWorldPosition()") &&
+          vecText.Contains("npc:GetWorldPosition()") &&
+          vecText.Contains("GCETPlayerVector4Live"),
+          "Auto-staged player native pass lost required guards");
+    Check(File.ReadAllText(vecInstalled)==vecBefore,
+        "Native auto-adoption modified installed author source");
+    Check(!vecStaged.ContainsKey("0-Engine/NativeProbe.lua"),
+        "Native author-mod auto-adopter must not rewrite managed 0-Engine");
+    var afterCount=(int)stageVector.Invoke(null,
+        [mods,vecStaged,vecHashes,vecApplied,vecManifest,vecSkipped])!;
+    Check(afterCount==0,"Native stage not idempotent");
+    Check(vecManifest.Any(m=>m.ToString()!.Contains("NATIVE_PLAYER_VECTOR_LIVE")),
+        "Native live stage manifest missing");
 
     Console.WriteLine("GCET NativePlayerVector guarded live source PASS");
 

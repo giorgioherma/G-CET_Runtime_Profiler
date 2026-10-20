@@ -51,13 +51,12 @@ internal static class NativePlayerAdoptionCatalog
         {
             foreach(var path in Directory.EnumerateFiles(root,"*.lua",
                         SearchOption.AllDirectories)
-                     .OrderBy(x=>x,StringComparer.OrdinalIgnoreCase).Take(20000))
+                     .OrderBy(x=>x,StringComparer.OrdinalIgnoreCase))
             {
                 var rel=Path.GetRelativePath(root,path).Replace('\\','/');
-                var folder=rel.Split('/')[0];
-                if(folder.Equals("0-Engine",StringComparison.OrdinalIgnoreCase) ||
-                   folder.StartsWith("G-CET",StringComparison.OrdinalIgnoreCase))
-                    continue;
+                // Enumerate infrastructure too: the inventory reports the
+                // COMPLETE installed Lua stack, even though generated
+                // transforms never modify reserved G-CET/0-Engine sources.
                 byte[] bytes;
                 try {bytes=System.IO.File.ReadAllBytes(path);}
                 catch {skipped++;continue;}

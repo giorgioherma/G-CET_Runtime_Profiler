@@ -79,6 +79,10 @@ internal static class NativePlayerVectorStage
             if(!file.Sites.Any(x=>x.Method=="GetWorldPosition" &&
                 x.IdentityTag=="CURRENT_PLAYER_SOURCE_PROVEN"))continue;
             var relative=file.RelativeFile;
+            var first=relative.Split('/')[0];
+            if(first.Equals("0-Engine",StringComparison.OrdinalIgnoreCase) ||
+               first.StartsWith("G-CET",StringComparison.OrdinalIgnoreCase))
+                continue; // fixed runtime is managed independently
             var path=Path.GetFullPath(Path.Combine(root,relative.Replace('/',Path.DirectorySeparatorChar)));
             if(!path.StartsWith(prefix,StringComparison.OrdinalIgnoreCase)||
                !System.IO.File.Exists(path))continue;
