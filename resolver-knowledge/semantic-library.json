@@ -1016,11 +1016,12 @@
       "sourceProof": {
         "sourceCompletionAuthoritative": true,
         "ownerAll": [
-          "function PhysicalNpc.Update(delta)",
-          "local function distanceFromPlayer(entry, player)",
-          "state.mechanics",
-          "distanceFromPlayer(entry, player)"
-        ],
+        "function PhysicalNpc.Update(delta)",
+        "local function distanceFromPlayer",
+        "anchorPosition(entry)",
+        "state.mechanics",
+        "if entry.spawnPending then"
+      ],
         "alreadySatisfiedMarker": "G-CET semantic:illegal-mechanic-npc-position-reuse",
         "expectedMarkerFileCount": 1,
         "satisfiedAll": [
@@ -3473,11 +3474,12 @@
       "sourceProof": {
         "sourceCompletionAuthoritative": true,
         "ownerAll": [
-          "function updateTimeWidget()",
-          "function updateWeatherWidget()",
-          "TimeIsRunningOut",
-          "Game.GetTimeSystem():GetGameTime():Hours()"
-        ],
+        "function updateTimeWidget()",
+        "function updateWeatherWidget()",
+        "TimeIsRunningOut",
+        "MinimapWidgetsConfig.TimeSwitch",
+        "Game.GetTimeSystem():GetGameTime()"
+      ],
         "alreadySatisfiedMarker": "G-CET semantic:minimap-widgets-time-weather-snapshot",
         "expectedMarkerFileCount": 1,
         "satisfiedAll": [
