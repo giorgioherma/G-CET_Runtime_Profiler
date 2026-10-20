@@ -6018,21 +6018,22 @@
           "  nextUpdateAt = 0.0",
           "if #state.mechanics == 0 and not loadMatrix() then return end"
         ],
-        "alreadySatisfiedMarker": "G-CET native location:illegal-v2",
+        "alreadySatisfiedMarker": "G-CET native location:illegal-v3",
         "expectedMarkerFileCount": 1,
         "satisfiedAll": [
-          "G-CET native location:illegal-v2",
-          "__gcetNativeFar",
-          "lookup:attach(10033",
-          "if state.__gcetNativeFar and not entry.spawnPending"
+          "G-CET native location:illegal-v3",
+          "host:attachCompiled(1003301+index,1,",
+          "entry.__gcetNativeFar",
+          "if not __gcetAnySiteActive then return end",
+          "entry.__gcetNativeFar == true and not entry.spawnPending"
         ]
       },
       "behavior": {
         "handler": "SEMANTIC_NATIVE_LOCATION_SOURCE_PROVEN",
         "concepts": [
-          "nativeStaticWake",
-          "singleSharedConsumer",
-          "authorGameplayFallback"
+          "nativeCompiledPerMechanicOwner",
+          "authorGameplayFallback",
+          "sourceProvenDiscoveryBoundaries"
         ],
         "lanes": [
           {
@@ -6046,7 +6047,7 @@
             "seconds": 0
           }
         ],
-        "note": "Opt-in source-proven native static locations; original author discovery retained until healthy snapshot and restored on unavailable/UNKNOWN/overrun. Compatible native DLL bundled with the generated game-root ZIP; no location manifest required for owner-registered sites."
+        "note": "18 fixed NPC and discovery site definitions sourced from the installed REDscript registry; one 110m-or-greater native anchor per mechanic. Radius encloses polygon/radial discovery and 95m despawn boundary. Exact per-mechanic author listeners, 75/95m NPC streaming and REDscript discovery scans remain unchanged. No source SHA gating. Previous aggregate v2 installations require pristine regeneration."
       },
       "generation": {
         "enabled": true,
