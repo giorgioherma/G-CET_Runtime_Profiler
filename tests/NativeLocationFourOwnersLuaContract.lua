@@ -46,8 +46,8 @@ local engine={Register=function(id)
 end}
 local host=Host.new(engine)
 local effects={}
-for _,owner in ipairs({10031,10032,10033,10034,10035,10036,10037}) do
-  local sites=owner==10035 and 100 or owner==10036 and 3 or owner==10037 and 1 or
+for _,owner in ipairs({10031,10032,10033,10034,10035,10036,10037,10038}) do
+  local sites=owner==10035 and 100 or owner==10036 and 3 or owner==10037 and 1 or owner==10038 and 1 or
     owner==10031 and 2 or owner==10032 and 2 or owner==10033 and 1 or 2
   local list={}
   for n=1,sites do
@@ -59,7 +59,7 @@ for _,owner in ipairs({10031,10032,10033,10034,10035,10036,10037}) do
     function()effects[owner].far=effects[owner].far+1 end,
     function()effects[owner].fallback=effects[owner].fallback+1;return true end))
 end
-assert(scheduled==1,"one 0-Engine consumer must serve all seven owners")
+assert(scheduled==1,"one 0-Engine consumer must serve all eight owners")
 for id in pairs(positions) do states[id]=0 end
 host:step()
 for _,v in pairs(effects) do
@@ -92,4 +92,4 @@ stream[#stream+1]={overrun=true}
 host:step()
 for _,v in pairs(effects) do assert(v.fallback==2) end
 host:shutdown()
-print("Native seven-owner contract passed: one 10Hz host, 100-card snapshot, aggregate near/far, unknown and stream overrun.")
+print("Native eight-owner contract passed: one 10Hz host, 100-card snapshot, aggregate near/far, unknown and stream overrun.")
