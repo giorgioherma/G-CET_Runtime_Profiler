@@ -62,7 +62,7 @@ foreach($part in @('illegal-v2','if state.__gcetNativeFar then',
  if(!$i.Contains($part)){throw "Illegal mechanic far-native contract missing $part"}
 }
 $spacing=$illegal.Replace('  end  local player', '  end' + "`r`n" + '  local player')
-if(!(Upgrade 'UpgradeIllegalV2' $spacing).Contains('if not needsOriginal then return end')) {
+if(!(Upgrade 'UpgradeIllegalV2' $spacing).Contains('if state.__gcetNativeFar and not entry.spawnPending')) {
  throw 'Illegal native source equivalent failed'
 }
 $drift=$illegal.Replace('      resolvePendingSpawn(entry)' + "`n" + '    else',
