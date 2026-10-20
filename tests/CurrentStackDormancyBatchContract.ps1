@@ -202,7 +202,8 @@ if(!$npc.Contains('__gcetNpcIdCacheCount >= 512') -or
 $illegal=Get-Content -Raw (Join-Path $mods 'illegal_mechanic_phase1a\physical_npc.lua')
 if(!$illegal.Contains('local __gcetMechanicPlayerPosition = nil') -or
    !$illegal.Contains('if entry.spawnPending then') -or
-   !$illegal.Contains('local pos = playerPos or player:GetWorldPosition()')){
+   !$illegal.Contains('local pos = playerPos or player:GetWorldPosition()') -or
+   !$illegal.Contains('if distance ~= nil and __gcetPositionObserved then')){
  throw 'Illegal Mechanic source update lost position/pending fallback'
 }
 $cyber=Get-Content -Raw (Join-Path $mods 'CyberTrials\init.lua')
