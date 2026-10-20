@@ -1970,8 +1970,8 @@ try {
     if ([int]$manifest.summary.callbackFiles -ne ([int]$resolved.pass.FileCount - [int]$manifest.summary.fixedRuntimeFiles)) {
         throw 'Generated pass callback-file accounting is inconsistent.'
     }
-    if ([int]$manifest.summary.fixedRuntimeFiles -ne 9) {
-        throw "Expected 8 fixed 0-Engine runtime files, got $($manifest.summary.fixedRuntimeFiles)."
+    if ([int]$manifest.summary.fixedRuntimeFiles -ne 10) {
+        throw "Expected 10 fixed 0-Engine runtime files, got $($manifest.summary.fixedRuntimeFiles)."
     }
     if (!$manifest.fixedRuntime.included -or !$manifest.fixedRuntime.exception) {
         throw 'Generated pass did not mark 0-Engine as the fixed runtime exception.'
@@ -1980,7 +1980,7 @@ try {
         throw "Unexpected fixed 0-Engine version: $($manifest.fixedRuntime.FixedVersion)"
     }
 
-    foreach ($service in @('GCETWorkQueue','GCETPhasePlanner','GCETFrameListeners','GCETStateSignals','GCETWorkloadProbe')) {
+    foreach ($service in @('GCETWorkQueue','GCETPhasePlanner','GCETFrameListeners','GCETStateSignals','GCETWorkloadProbe','GCETNativeLocationHost')) {
         if ($null -eq $zip.GetEntry('bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/modules/' + $service + '.lua')) {
             throw "Fixed runtime pass missing service: $service"
         }
@@ -2163,7 +2163,7 @@ try {
         }
     }
 
-    foreach ($service in @('GCETWorkQueue','GCETPhasePlanner','GCETFrameListeners','GCETStateSignals','GCETWorkloadProbe')) {
+    foreach ($service in @('GCETWorkQueue','GCETPhasePlanner','GCETFrameListeners','GCETStateSignals','GCETWorkloadProbe','GCETNativeLocationHost')) {
         if ($null -eq $foreignZip.GetEntry($base + '0-Engine/modules/' + $service + '.lua')) {
             throw "Host-preserving pass missing new service module: $service"
         }
