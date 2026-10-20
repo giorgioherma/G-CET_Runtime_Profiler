@@ -272,6 +272,12 @@
           "WindowHiderTool",
           "windowSettings.Current.mywindowhidden"
         ],
+      "ownerAnyGroups": [
+        [
+          "GetMod(\"WindowHiderTool\")",
+          "GetMod('WindowHiderTool')"
+        ]
+      ],
         "alreadySatisfiedMarker": "G-CET semantic:cybertrials-closed-overlay-provider",
         "expectedMarkerFileCount": 1,
         "satisfiedAll": [
@@ -1021,6 +1027,12 @@
         "anchorPosition(entry)",
         "state.mechanics",
         "if entry.spawnPending then"
+      ],
+      "ownerAnyGroups": [
+        [
+          "return Vector4.Distance(player:GetWorldPosition(), anchorPosition(entry))",
+          "return Vector4.Distance(pos, anchorPosition(entry)), pos"
+        ]
       ],
         "alreadySatisfiedMarker": "G-CET semantic:illegal-mechanic-npc-position-reuse",
         "expectedMarkerFileCount": 1,
