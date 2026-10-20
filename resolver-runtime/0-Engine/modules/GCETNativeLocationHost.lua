@@ -76,6 +76,9 @@ function Host:attach(id,sites,onNear,onFar,onFallback)
      type(sites)~="table" or #sites==0 or
      type(onNear)~="function" or type(onFar)~="function" or
      type(onFallback)~="function" then return false end
+  -- An absent native plugin must add zero periodic Lua work.
+  local available,nativeReady=pcall(native,"GCETStaticReady")
+  if not available or nativeReady~=true then return false end
   if not self:_schedule() then return false end
   local added={}
   local ok=pcall(function()
