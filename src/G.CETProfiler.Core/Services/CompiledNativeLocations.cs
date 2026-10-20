@@ -32,7 +32,7 @@ internal sealed record CompiledNativeLocations(byte[] Bytes,
     private static readonly Regex Card = new(
         @"\bpos\s*=\s*\{\s*x\s*=\s*(?<x>"+Num+
         @")\s*,\s*y\s*=\s*(?<y>"+Num+
-        @")\s*,\s*z\s*=\s*(?<z>"+Num+")\s*\}",
+        @")\s*,\s*z\s*=\s*(?<z>"+Num+@")\s*\}",
         RegexOptions.CultureInvariant);
     private static readonly Regex Scalar = new(
         @"(?<n>"+Num+")",RegexOptions.CultureInvariant);
