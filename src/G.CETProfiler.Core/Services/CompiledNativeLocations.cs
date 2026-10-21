@@ -312,8 +312,8 @@ internal sealed record CompiledNativeLocations(byte[] Bytes,
                     @"\{\s*id\s*=\s*[""'](?<id>[^""']+)[""'][^\r\n]*?position\s*=\s*\{\s*x\s*=\s*(?<x>"+Num+
                     @")\s*,\s*y\s*=\s*(?<y>"+Num+@")\s*,\s*z\s*=\s*(?<z>"+Num+@")",
                     RegexOptions.CultureInvariant);
-                if(rows.Count==17 &&
-                   rows.Cast<Match>().Select(m=>m.Groups["id"].Value).Distinct(StringComparer.Ordinal).Count()==17) {
+                if(rows.Count is >=1 and <=512 &&
+                   rows.Cast<Match>().Select(m=>m.Groups["id"].Value).Distinct(StringComparer.Ordinal).Count()==rows.Count) {
                     for(int k=0;k<rows.Count;k++){
                         var m=rows[k];
                         // Coarse radius exceeds the authored 180m default;
@@ -353,7 +353,7 @@ internal sealed record CompiledNativeLocations(byte[] Bytes,
                             Number(m.Groups["y"].Value),
                             Number(m.Groups["z"].Value),350f));
                 }
-                if(complete && positions.Count==49)Include(10042,positions);
+                if(complete && positions.Count is >=1 and <=1024)Include(10042,positions);
             }
         }
 
