@@ -4,7 +4,7 @@ internal static partial class SemanticInjectors
 {
     private static SemanticInjectionResult ApplyQuestRunnerEngineWorker(SemanticPatchContext context)
     {
-        var file=context.FindFile("init.lua", "pass5ManagerIdleAccumulator");
+        var file=context.FindFile("init.lua", "Cron.Update(dt)", "Runner.gameState");
         const string marker="-- G-CET semantic:questrunner-engine-worker-v1";
         if(file.Text.Contains(marker,StringComparison.Ordinal))
             return SemanticInjectionResult.Skip("QuestRunner PASS5 0-Engine worker already installed.");
