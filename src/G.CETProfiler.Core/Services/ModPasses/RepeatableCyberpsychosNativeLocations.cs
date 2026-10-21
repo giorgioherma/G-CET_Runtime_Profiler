@@ -1,0 +1,82 @@
+namespace GCETRuntimeProfiler.Core.Services;
+
+// The native boundary only bypasses futile distant fallback actor lookups.
+// Scriptable encounter status, death/leave respawn, global scheduler, cleanup,
+// rewards and saved-game reconciliation remain source-owned and always active.
+internal static partial class SemanticInjectors
+{
+    private static SemanticInjectionResult ApplyCyberpsychosNativeLocations(
+        SemanticPatchContext context)
+    {
+        var init=context.FindFile("init.lua",
+            "BossWatchdog.init(Bridge, Diagnostics)",
+            "local Sites = require(\"./modules/sites.lua\")",
+            "TryAttachRepeatablePass4");
+        var watchdog=context.FindFile("modules/boss_watchdog.lua",
+            "local function syncSiteWithPosition(",
+            "if status == 1 then",
+            "local trackedID, trackedEntity = tracked(system, site.id)",
+            "function Watchdog.clear()");
+        const string marker="G-CET native location:cyberpsychos-fallback-v1";
+        var hasInit=init.Text.Contains(marker,StringComparison.Ordinal);
+        var hasDog=watchdog.Text.Contains(marker,StringComparison.Ordinal);
+        if(hasInit && hasDog) return SemanticInjectionResult.Skip(
+            "Cyberpsychos native per-site fallback vicinity already installed.");
+        if(hasInit!=hasDog) throw new InvalidOperationException(
+            "Cyberpsychos native fallback stage incomplete.");
+        var crlfInit=init.Text.Contains("\r\n",StringComparison.Ordinal);
+        var crlfDog=watchdog.Text.Contains("\r\n",StringComparison.Ordinal);
+        var i=crlfInit?init.Text.Replace("\r\n","\n",StringComparison.Ordinal):init.Text;
+        var w=crlfDog?watchdog.Text.Replace("\r\n","\n",StringComparison.Ordinal):watchdog.Text;
+        const string dogAnchor="    if status == 1 then\n        -- PASS4-R4:";
+        if(w.Split(dogAnchor,StringSplitOptions.None).Length!=2)
+            throw new InvalidOperationException("Cyberpsychos active watchdog boundary changed.");
+        var gate="""
+    if status == 1 then
+        -- G-CET native location:cyberpsychos-fallback-v1
+        -- FAR is only a coarse hint for missing fallback boss lookup.
+        -- Existing actor, pending attach, cleanup and all status checks remain.
+        local far = Watchdog.nativeFar and Watchdog.nativeFar[site.id]
+        if far == true and triggerDistance <= 180.0
+            and state.fallbackID == nil and state.registered == false
+            and state.grace == 0.0 then
+            return
+        end
+        -- PASS4-R4:
+""";
+        w=w.Replace(dogAnchor,gate,StringComparison.Ordinal);
+        const string initAnchor="    BossWatchdog.init(Bridge, Diagnostics)\n";
+        if(i.Split(initAnchor,StringSplitOptions.None).Length!=2)
+            throw new InvalidOperationException("Cyberpsychos watchdog initialization drifted.");
+        var attach="""
+    -- G-CET native location:cyberpsychos-fallback-v1
+    -- Bind each original workspot to its compiled GCAS owner.
+    -- Unknown, missing or failed native ownership runs the original logic.
+    BossWatchdog.nativeFar = {}
+    local okEngine, engine = pcall(GetMod, "0-Engine")
+    local host = okEngine and type(engine) == "table"
+        and engine.GCET and engine.GCET.NativeLocationHost or nil
+    if host and type(host.attachCompiled) == "function"
+        and Sites and Sites.list and #Sites.list == 17 then
+        for index, site in ipairs(Sites.list) do
+            local siteID = site.id
+            local owner = 1004100 + index
+            local ok, attached = pcall(function()
+                return host:attachCompiled(owner, 1,
+                    function() BossWatchdog.nativeFar[siteID] = false end,
+                    function() BossWatchdog.nativeFar[siteID] = true end,
+                    function() BossWatchdog.nativeFar[siteID] = nil; return true end)
+            end)
+            if not ok or not attached then
+                BossWatchdog.nativeFar[siteID] = nil
+            end
+        end
+    end
+""";
+        i=i.Replace(initAnchor,initAnchor+attach+"\n",StringComparison.Ordinal);
+        context.Write(init,crlfInit?i.Replace("\n","\r\n",StringComparison.Ordinal):i);
+        context.Write(watchdog,crlfDog?w.Replace("\n","\r\n",StringComparison.Ordinal):w);
+        return SemanticInjectionResult.Success(
+            "17 compiled vicinity owners bypass only distant unneeded fallback-boss resolution; death/departure, status, rewards, existing entities and UNKNOWN retain original Lua lifecycle.");
+    }
+}
