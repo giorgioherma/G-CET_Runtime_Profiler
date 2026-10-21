@@ -1169,6 +1169,10 @@ jobs:
         shell: pwsh
         run: ./tests/CurrentStackDormancyBatchContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: QuestRunner PASS5 cadence coordinator contract
+        shell: pwsh
+        run: ./tests/QuestRunnerEngineWorkerContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: RICA six-job 0-Engine coordinator contract
         shell: pwsh
         run: ./tests/RicaEngineWorkerContract.ps1 -ResolverRoot ./publish-resolver
