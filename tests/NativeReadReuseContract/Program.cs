@@ -123,7 +123,7 @@ try
     Check((int)budgetArgs[4] == 201 && picked.Length==1 &&
           unpicked.SequenceEqual(["GetQuestsSystem"]) &&
           partialOutput.Contains("return __gcetGetPlayer(), __gcetGetPlayer(), __gcetGetPlayer(), Game.GetQuestsSystem()") &&
-          partialOutput.Contains("local author199"),
+          partialOutput.Contains(authorLine, StringComparison.Ordinal),
         "Lua-budget source selector must preserve all 199 author locals "+
         "while applying the highest-value proven getter");
     var tightStages=new Dictionary<string,byte[]>(StringComparer.OrdinalIgnoreCase);
