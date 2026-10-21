@@ -14,7 +14,7 @@
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
     "fullPassRule": "An enabled, reviewed semantic injector may run with measured callback activity even below the default 3.0 ms/s soft CPU boundary, but only when its identity and current live-source proof match and the stage is not already satisfied. Generic native-dispatch/dormancy recipes retain their independent proof requirements.",
-    "enabledInjectorCount": 82,
+    "enabledInjectorCount": 83,
     "profileOnlyRuleCount": 0,
     "note": "The production semantic base contains source-proven, behavior-aware optimizations learned from validated references and measured hot callbacks, including burst-discovered diagnostic sentinels that preserve author cadence while gating globally expensive fallback scans. Generic/mechanical transforms stay in the Resolver; semantic rules cover state/cadence/hotpath knowledge that generic inference cannot safely own.",
     "admissionPolicy": {
@@ -6525,6 +6525,67 @@
         "admitted": true
       },
       "cadenceGroup": "NATIVE_STATIC_JUMP_WAKE",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_LIVE_SOURCE_PROOF",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G-CET_CURRENT_STACK_20261021"
+      ]
+    },
+    {
+      "id": "inertia-returns-ground-transition-velocity",
+      "identityHints": [
+        "InertiaReturns"
+      ],
+      "policyClass": "NATIVE_GETTER_TRANSITION_LOCAL",
+      "callbacks": [
+        {
+          "kind": "source",
+          "target": "init.lua",
+          "role": "source-proven locomotion transition native getter"
+        }
+      ],
+      "sourceProof": {
+        "sourceCompletionAuthoritative": true,
+        "ownerAll": [
+          "LocomotionEventsTransition",
+          "AIR.last_ground_velocity",
+          "this.GetLinearVelocity(scriptInterface)",
+          "AIR.was_on_ground"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:inertia-ground-transition-velocity-v1",
+        "expectedMarkerFileCount": 1,
+        "satisfiedAll": [
+          "G-CET semantic:inertia-ground-transition-velocity-v1",
+          "local locomotion_velocity = this.GetLinearVelocity(scriptInterface)"
+        ]
+      },
+      "behavior": {
+        "handler": "SEMANTIC_NATIVE_GETTER_SOURCE_PROVEN",
+        "concepts": [
+          "groundedNativeGetterElision",
+          "groundToAirImpulse",
+          "dodgeWake"
+        ],
+        "note": "Do not suppress OnUpdate native locomotion observer. Getter used solely inside airborne transition impulse."
+      },
+      "generation": {
+        "enabled": true,
+        "sourceIndependentAdmission": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 0,
+        "evidenceStack": "SOURCE_REVIEW_INERTIA_20261021",
+        "admitted": true
+      },
+      "cadenceGroup": "NATIVE_TRANSITION_LOCAL_GETTER",
       "catalogRole": "SEMANTIC_HOT_MOD",
       "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
       "presencePolicy": "REQUIRE_LIVE_SOURCE_PROOF",

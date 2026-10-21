@@ -110,6 +110,7 @@ internal static partial class SemanticInjectors
             "drivebus" => ApplyDriveBus(context),
             "quest-tracking-toggle" => ApplyQuestTrackingToggle(context),
             "calllist-action-lazy-display-query" => ApplyCallListActionLazyDisplayQuery(context),
+            "inertia-returns-ground-transition-velocity" => ApplyInertiaGroundTransitionVelocity(context),
             "sitanywhere" => ApplySitAnywhere(context),
             "repeatable-increased-criminal-activity" => ApplyRepeatableIncreasedCriminalActivity(context),
             "dedka-auto-shop" => ApplyDedkaAutoShop(context),
