@@ -1,5 +1,4 @@
 using System.IO.Compression;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -75,7 +74,6 @@ public static class PassGeneratorService
             .ToList();
 
         var staged = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
-        var liveSourceHashes = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         var appliedTransformsByFile = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var fixedInfrastructurePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var transformManifest = new List<object>();
@@ -83,7 +81,7 @@ public static class PassGeneratorService
 
         foreach (var group in groups)
         {
-            // File fingerprints are provenance only: independently revalidate
+        // Match current installed Lua code, not a captured fingerprint.
             // each rewrite against the current installed Lua and its recorded
             // callback bounds. Mod updates must not veto unrelated safe rules.
             var livePath = ResolveInsideMods(modsRoot, group.Key);
@@ -95,7 +93,6 @@ public static class PassGeneratorService
             }
 
             var originalBytes = File.ReadAllBytes(livePath);
-            var liveHash = Sha256(originalBytes);
             var transformed = TransformFile(
                 originalBytes,
                 group.OrderByDescending(x => x.LineStart).ToList(),
@@ -108,7 +105,6 @@ public static class PassGeneratorService
 
             var relative = group.Key.Replace('\\', '/');
             staged[relative] = transformed.Bytes;
-            liveSourceHashes[relative] = liveHash;
             appliedTransformsByFile[relative] =
                 appliedTransformsByFile.TryGetValue(relative, out var priorCount)
                     ? priorCount + transformed.AppliedTransforms
@@ -125,7 +121,7 @@ public static class PassGeneratorService
         // exact source hash and author lifecycle anchors; unknown source fails
         // closed. This is independent of the 62 per-mod semantic catalog.
         if (BlackboardPsmDefinitionCacheSource.TryStage(
-                captureRoot, modsRoot, staged, liveSourceHashes,
+                captureRoot, modsRoot, staged,
                 appliedTransformsByFile, transformManifest, skipped))
             ++genericInfrastructureTransformCount;
 
@@ -133,7 +129,7 @@ public static class PassGeneratorService
         // source/evidence gates for the spatial and Lifecycle modules; no
         // dynamic entity snapshots or cross-mod sharing.
         genericInfrastructureTransformCount += ZeroEngineAllocationBatchSource.TryStage(
-            captureRoot, modsRoot, staged, liveSourceHashes,
+            captureRoot, modsRoot, staged,
             appliedTransformsByFile, transformManifest, skipped);
 
         // Direct, source-proven Game.GetPlayer():GetWorldPosition() only:
@@ -141,14 +137,14 @@ public static class PassGeneratorService
         // Runs BEFORE generic GetPlayer shared-read replacement, otherwise
         // the direct chain would be hidden inside __gcetGetPlayer().
         var nativePlayerVectorCount=NativePlayerVectorStage.TryStage(
-            modsRoot,staged,liveSourceHashes,appliedTransformsByFile,
+            modsRoot,staged,appliedTransformsByFile,
             transformManifest,skipped);
 
         // Final generic rewrite before source-structural semantic stages.
         // Semantic injectors must adapt to the resulting current source.
-        // Independently verifies the current installed file fingerprint.
+        // Authorize using current staged Lua source shape.
         var nativeReadReuseCount = NativeReadReuseSource.TryStage(
-            resolver.RootElement, modsRoot, staged, liveSourceHashes,
+            resolver.RootElement, modsRoot, staged,
             appliedTransformsByFile, transformManifest, skipped,
             provider => SharedProviderRecipes.TryGetValue(provider, out var recipe)
                 ? BuildSharedProviderHeader(recipe) : Array.Empty<string>());
@@ -168,7 +164,6 @@ public static class PassGeneratorService
                 resolver.RootElement,
                 modsRoot,
                 staged,
-                liveSourceHashes,
                 appliedTransformsByFile,
                 transformManifest,
                 skipped);
@@ -221,13 +216,6 @@ public static class PassGeneratorService
             var relative = pair.Key.Replace('\\', '/');
             staged[relative] = pair.Value;
 
-            var liveRuntimePath = ResolveInsideMods(modsRoot, relative);
-            var liveRuntimeHash =
-                liveRuntimePath is not null && File.Exists(liveRuntimePath)
-                    ? Sha256(File.ReadAllBytes(liveRuntimePath))
-                    : null;
-
-            liveSourceHashes[relative] = liveRuntimeHash;
             appliedTransformsByFile[relative] = 0;
             fixedInfrastructurePaths.Add(relative);
         }
@@ -267,10 +255,6 @@ public static class PassGeneratorService
             .Select(pair => (object)new
             {
                 path = pair.Key.Replace('\\', '/'),
-                sourceSha256 = liveSourceHashes.TryGetValue(pair.Key, out var sourceHash)
-                    ? sourceHash
-                    : null,
-                generatedSha256 = Sha256(pair.Value),
                 appliedTransforms = appliedTransformsByFile.TryGetValue(pair.Key, out var transformCount)
                     ? transformCount
                     : 0,
@@ -283,8 +267,6 @@ public static class PassGeneratorService
             fileManifest.Add(new
             {
                 path = NativeRuntimeBundle.GameRootRelativePath,
-                sourceSha256 = (string?)null,
-                generatedSha256 = nativeRuntime.Sha256,
                 appliedTransforms = 0,
                 fixedInfrastructure = true
             });
@@ -295,14 +277,11 @@ public static class PassGeneratorService
             fileManifest.Add(new
             {
                 path = CompiledNativeLocations.GameRootRelativePath,
-                sourceSha256 = (string?)null,
-                generatedSha256 = Sha256(nativeLocations.Bytes),
                 appliedTransforms = 0,
                 fixedInfrastructure = true
             });
         }
 
-        var resolverBytes = File.ReadAllBytes(resolverPath);
         var captureName = new DirectoryInfo(captureRoot).Name;
         var generatedUtc = DateTime.UtcNow;
         outputZipPath ??= Path.Combine(
@@ -315,7 +294,6 @@ public static class PassGeneratorService
             schemaVersion = "0.1",
             generatedUtc = generatedUtc.ToString("O"),
             capture = captureName,
-            resolverSha256 = Sha256(resolverBytes),
             policy = new
             {
                 selection = "MEASURED_GENERIC_PLUS_SOURCE_PROVEN_SEMANTIC_CANDIDATES_FROM_G-CET_Resolver.json",
@@ -331,13 +309,7 @@ public static class PassGeneratorService
                 nativeRuntimeManifestOptionalForDynamicOwners = false,
                 compiledSourceOwnedNativeLocations = nativeLocations is not null,
                 compiledNativeLocationOwnerCounts = nativeLocations?.OwnerCounts,
-                nativeRuntimeSha256ProvenanceOnly = true,
                 modNameRules = false,
-                // Retained compatibility fields describe eligibility,
-                // not whether sourceSha256 is emitted for diagnostics.
-                // A captured digest never admits or rejects a mod revision.
-                sourceShaRequired = false,
-                sourceShaRequiredForGeneric = false,
                 semanticDefaultRuntimeThresholdMsPerSecond = SemanticPassGeneratorService.MaterialThresholdMsPerSecond,
                 semanticRuleLocalRuntimeThresholds = true,
                 semanticThreeMsPerSecondIsSoftBoundary = true,
@@ -391,8 +363,6 @@ public static class PassGeneratorService
                 baseVersion = FixedZeroEngineRuntime.BaseVersion,
                 fixedRuntime.FixedVersion,
                 fixedRuntime.LiveState,
-                fixedRuntime.LiveInitSha256,
-                fixedRuntime.FixedInitSha256,
                 files = fixedRuntime.Files.Keys
                     .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
                     .ToArray()
@@ -401,10 +371,8 @@ public static class PassGeneratorService
             {
                 included = nativeRuntime is not null,
                 gameRootPath = nativeRuntime is null ? null : NativeRuntimeBundle.GameRootRelativePath,
-                sha256 = nativeRuntime?.Sha256,
                 bootstrap = "COMPILED_GCAS_V1_FROM_INSTALLED_AUTHOR_SOURCES; UNKNOWN_OWNER_DYNAMIC_ORIGINAL_FALLBACK",
                 locationFilePath = nativeLocations is null ? null : CompiledNativeLocations.GameRootRelativePath,
-                locationSha256 = nativeLocations is null ? null : Sha256(nativeLocations.Bytes),
                 compiledOwnerCounts = nativeLocations?.OwnerCounts,
                 requiredByGeneratedSource = requiresNative
             },
@@ -547,7 +515,6 @@ public static class PassGeneratorService
                 var registrationId = JsonNullableLong(consumer, "registrationId");
                 var owner = JsonString(consumer, "owner");
                 var relativeFile = JsonString(source, "RelativeFile", "relativeFile");
-                var sha = JsonString(source, "Sha256", "sha256");
                 var lineStart = (int)(JsonNullableLong(source, "LineStart", "lineStart") ?? 0);
                 var lineEnd = (int)(JsonNullableLong(source, "LineEnd", "lineEnd") ?? 0);
 
@@ -567,7 +534,6 @@ public static class PassGeneratorService
                     RegistrationId = registrationId.Value,
                     Owner = owner,
                     RelativeFile = relativeFile.Replace('\\', '/'),
-                    SourceSha256 = sha,
                     LineStart = lineStart,
                     LineEnd = lineEnd,
                     Pattern = pattern,
@@ -613,7 +579,6 @@ public static class PassGeneratorService
                     CrossFileInteractionUiPending = facts.CrossFileInteractionUiPending,
                     CrossFileInteractionUiIdleReset = facts.CrossFileInteractionUiIdleReset,
                     CrossFileInteractionUiModuleFile = facts.CrossFileInteractionUiModuleFile,
-                    CrossFileInteractionUiModuleSha256 = facts.CrossFileInteractionUiModuleSha256,
                     UiVisibilityGate = facts.UiVisibilityGate,
                     UiVisibilityWakeKind = facts.UiVisibilityWakeKind,
                     SequenceSystemName = facts.SequenceSystemName,
@@ -646,7 +611,6 @@ public static class PassGeneratorService
                     var registrationId = JsonNullableLong(callback, "registrationId");
                     var owner = JsonString(callback, "owner");
                     var relativeFile = JsonString(callback, "sourceFile");
-                    var sha = JsonString(callback, "sourceSha256");
                     var lineStart = (int)(JsonNullableLong(callback, "lineStart") ?? 0);
                     var lineEnd = (int)(JsonNullableLong(callback, "lineEnd") ?? 0);
 
@@ -664,7 +628,6 @@ public static class PassGeneratorService
                         RegistrationId = registrationId.Value,
                         Owner = owner,
                         RelativeFile = relativeFile.Replace('\\', '/'),
-                        SourceSha256 = sha,
                         LineStart = lineStart,
                         LineEnd = lineEnd,
                         Pattern = "SHARED_PROVIDER_READ",
@@ -761,7 +724,6 @@ public static class PassGeneratorService
             CrossFileInteractionUiPending = JsonString(facts, "crossFileInteractionUiPending"),
             CrossFileInteractionUiIdleReset = JsonString(facts, "crossFileInteractionUiIdleReset"),
             CrossFileInteractionUiModuleFile = JsonString(facts, "crossFileInteractionUiModuleFile"),
-            CrossFileInteractionUiModuleSha256 = JsonString(facts, "crossFileInteractionUiModuleSha256"),
             UiVisibilityGate = JsonString(facts, "uiVisibilityGate"),
             UiVisibilityWakeKind = JsonString(facts, "uiVisibilityWakeKind"),
             HardDormantGateExpression = JsonString(facts, "hardDormantGateExpression"),
@@ -1037,7 +999,6 @@ public static class PassGeneratorService
                     else
                     {
                         var moduleBytes = File.ReadAllBytes(modulePath);
-                        var moduleHash = Sha256(moduleBytes);
                         if (effectiveLineEnd > lines.Count)
                         {
                             skipped.Add(Skip(
@@ -1058,7 +1019,6 @@ public static class PassGeneratorService
                                     callbackSegment,
                                     moduleText,
                                     candidate.CrossFileInteractionUiModuleFile,
-                                    moduleHash,
                                     out var currentProof))
                             {
                                 skipped.Add(Skip(
@@ -1073,13 +1033,10 @@ public static class PassGeneratorService
                                     candidate.CrossFileInteractionUiGate,
                                     candidate.CrossFileInteractionUiPending,
                                     candidate.CrossFileInteractionUiIdleReset,
-                                    candidate.CrossFileInteractionUiModuleFile,
-                                    candidate.CrossFileInteractionUiModuleSha256);
+                                    candidate.CrossFileInteractionUiModuleFile);
 
-                                // Hash is retained for diagnostics only; the
-                                // function, gate, pending state, reset, receiver
-                                // and module path remain the proof of safety.
-                                if ((currentProof with { ModuleSha256 = expectedProof.ModuleSha256 }) != expectedProof ||
+                                // Recheck current callback and module semantics.
+                                if (currentProof != expectedProof ||
                                     !GenericInteractionUiTransform.TryApplyCrossFileCallGuard(
                                         callbackSegment,
                                         currentProof,
@@ -1109,7 +1066,6 @@ public static class PassGeneratorService
                                         gate = candidate.CrossFileInteractionUiGate,
                                         pending = candidate.CrossFileInteractionUiPending,
                                         moduleFile = candidate.CrossFileInteractionUiModuleFile,
-                                        moduleSha256 = moduleHash,
                                         proof = "call-only onDraw delegates to a required module whose hidden path is source-proven to perform only the preserved false-state reset"
                                     });
                                     applied++;
@@ -1801,8 +1757,6 @@ public static class PassGeneratorService
             .Replace("\t", "\\t", StringComparison.Ordinal) +
         "\"";
 
-    private static string Sha256(byte[] bytes) =>
-        Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
 
     private static string JsonString(JsonElement element, params string[] names)
     {
@@ -1961,7 +1915,6 @@ public static class PassGeneratorService
         public long RegistrationId { get; init; }
         public string Owner { get; init; } = "";
         public string RelativeFile { get; init; } = "";
-        public string SourceSha256 { get; init; } = "";
         public int LineStart { get; init; }
         public int LineEnd { get; init; }
         public string Pattern { get; init; } = "";
@@ -2000,7 +1953,6 @@ public static class PassGeneratorService
         public string CrossFileInteractionUiPending { get; init; } = "";
         public string CrossFileInteractionUiIdleReset { get; init; } = "";
         public string CrossFileInteractionUiModuleFile { get; init; } = "";
-        public string CrossFileInteractionUiModuleSha256 { get; init; } = "";
         public string UiVisibilityGate { get; init; } = "";
         public string UiVisibilityWakeKind { get; init; } = "";
         public string SequenceSystemName { get; init; } = "";
@@ -2037,7 +1989,6 @@ public static class PassGeneratorService
         public string CrossFileInteractionUiPending { get; init; } = "";
         public string CrossFileInteractionUiIdleReset { get; init; } = "";
         public string CrossFileInteractionUiModuleFile { get; init; } = "";
-        public string CrossFileInteractionUiModuleSha256 { get; init; } = "";
         public string UiVisibilityGate { get; init; } = "";
         public string UiVisibilityWakeKind { get; init; } = "";
         public string HardDormantGateExpression { get; init; } = "";

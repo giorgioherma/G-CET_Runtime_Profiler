@@ -91,7 +91,6 @@ internal static class NativePlayerVectorStage
 
     internal static int TryStage(string modsRoot,
         Dictionary<string,byte[]> staged,
-        Dictionary<string,string?> liveSourceHashes,
         Dictionary<string,int> appliedTransformsByFile,
         List<object> transformManifest,List<object> skipped)
     {
@@ -127,12 +126,9 @@ internal static class NativePlayerVectorStage
             var bytes=Encoding.UTF8.GetBytes(result);
             if(bom)bytes=[0xef,0xbb,0xbf,..bytes];
             staged[key]=bytes;
-            if(!liveSourceHashes.ContainsKey(key))
-                liveSourceHashes[key]=Convert.ToHexString(SHA256.HashData(original)).ToLowerInvariant();
             appliedTransformsByFile[key]=appliedTransformsByFile.GetValueOrDefault(key)+count;
             transformManifest.Add(new {
                 type="NATIVE_PLAYER_VECTOR_LIVE", contract=Contract,file=key,
-                sourceSha256=Convert.ToHexString(SHA256.HashData(original)).ToLowerInvariant(),
                 replacedOccurrences=count,receiverProof="DIRECT_GAME_GETPLAYER_EXPRESSION",
                 source="ALL_INSTALLED_LUA_NOT_CAPTURE_GATED",
                 backend="RED4EXT_TYPED_VECTOR4_FORCE_LIVE",

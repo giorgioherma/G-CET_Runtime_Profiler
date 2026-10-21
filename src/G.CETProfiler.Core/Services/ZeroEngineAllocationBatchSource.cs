@@ -261,7 +261,7 @@ internal static class ZeroEngineAllocationBatchSource
     }
 
     internal static int TryStage(string captureRoot, string modsRoot,
-        Dictionary<string, byte[]> staged, Dictionary<string, string?> liveSourceHashes,
+        Dictionary<string, byte[]> staged,
         Dictionary<string, int> appliedTransformsByFile, List<object> transformManifest,
         List<object> skipped)
     {
@@ -297,9 +297,6 @@ internal static class ZeroEngineAllocationBatchSource
                 continue;
             }
             staged[descriptor.Relative] = next;
-            if(!liveSourceHashes.ContainsKey(descriptor.Relative))
-                liveSourceHashes[descriptor.Relative] =
-                    Convert.ToHexString(SHA256.HashData(original)).ToLowerInvariant();
             appliedTransformsByFile[descriptor.Relative] =
                 appliedTransformsByFile.GetValueOrDefault(descriptor.Relative)+1;
             transformManifest.Add(new
@@ -310,7 +307,6 @@ internal static class ZeroEngineAllocationBatchSource
                 Handler = descriptor.Handler,
                 PolicyClass = descriptor.Policy,
                 sourceProof = true,
-                sourceSha256 = liveSourceHashes[descriptor.Relative],
                 evidence = "HISTORICALLY_MEASURED; CURRENT_SOURCE_STRUCTURAL_PROOF",
                 patchStyle = descriptor.Module == "SpatialHash.lua"
                     ? "REGISTER_ONCE_RADIUS_AND_WITHIN_SEARCH_ROW_X"

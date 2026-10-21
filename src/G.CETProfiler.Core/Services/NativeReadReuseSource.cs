@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -24,7 +23,7 @@ internal static class NativeReadReuseSource
     private static readonly IReadOnlyDictionary<string,SharedProviderAuthorization> ByGetter =
         SharedProviderCatalog.Authorized.ToDictionary(x=>x.Getter, StringComparer.Ordinal);
     internal sealed record Operation(string Provider,string Getter,int Occurrences,string HelperName,bool ExistingHelper=false);
-    internal sealed record FilePlan(string RelativeFile,string Sha256,Operation[] Operations,string Proof);
+    internal sealed record FilePlan(string RelativeFile,Operation[] Operations,string Proof);
     internal static FilePlan[] Analyze(string modsRoot)
     {
         if(!Directory.Exists(modsRoot))return [];
@@ -41,7 +40,7 @@ internal static class NativeReadReuseSource
             var text=Decode(bytes);
             var operations=FindOperations(text);
             if(operations.Length==0)continue;
-            plans.Add(new FilePlan(relative,Hash(bytes),operations,"LEXICAL_CODE_ONLY_EXACT_ZERO_ARG_GAME_GETTER"));
+            plans.Add(new FilePlan(relative,operations,"LEXICAL_CODE_ONLY_EXACT_ZERO_ARG_GAME_GETTER"));
         }
         return plans.ToArray();
     }
@@ -208,12 +207,10 @@ internal static class NativeReadReuseSource
 
     internal static int TryStage(JsonElement resolver,string modsRoot,
         Dictionary<string,byte[]> staged,
-        Dictionary<string,string?> liveSourceHashes,
         Dictionary<string,int> appliedTransformsByFile,
         List<object> transformManifest,List<object> skipped,
         Func<string,IEnumerable<string>> headerForProvider)
     {
-        // Resolver report SHA is provenance, not a compatibility gate.
         // Re-discover every installed mod source for each generation, including
         // dormant files and mod updates not present in an earlier capture.
         var paths=Analyze(modsRoot).Select(x=>x.RelativeFile)
@@ -232,17 +229,6 @@ internal static class NativeReadReuseSource
                !File.Exists(path))continue;
             var original=File.ReadAllBytes(path);
             var key=rel.Replace('\\','/');
-            // Snapshot identity only: refuse mixing two different live files
-            // into the SAME ongoing generation, not a different mod release.
-            if(staged.ContainsKey(key) &&
-               liveSourceHashes.TryGetValue(key,out var generationSource) &&
-               generationSource is not null &&
-               !Hash(original).Equals(generationSource,StringComparison.OrdinalIgnoreCase))
-            {
-                skipped.Add(new {type="NATIVE_READ_REUSE",file=key,
-                    reason="LIVE_SOURCE_CHANGED_DURING_GENERATION"});
-                continue;
-            }
             var input=staged.TryGetValue(key,out var other)?other:original;
             var text=Decode(input);
             if(!TryTransformWithinBudget(text,headerForProvider,
@@ -274,7 +260,6 @@ internal static class NativeReadReuseSource
             var bytes=Encoding.UTF8.GetBytes(result);
             if(bom)bytes=[0xef,0xbb,0xbf,..bytes];
             staged[key]=bytes;
-            if(!liveSourceHashes.ContainsKey(key))liveSourceHashes[key]=Hash(original);
             appliedTransformsByFile[key]=
                 appliedTransformsByFile.GetValueOrDefault(key)+operations.Sum(x=>x.Occurrences);
             foreach(var operation in operations)
@@ -282,7 +267,6 @@ internal static class NativeReadReuseSource
                     type="NATIVE_READ_REUSE",
                     contract=Contract,
                     file=key,
-                    sourceSha256=Hash(original),
                     operation=operation.Getter,
                     provider=operation.Provider,
                     replacedOccurrences=operation.Occurrences,
@@ -302,8 +286,7 @@ internal static class NativeReadReuseSource
         var start=bytes.Length>=3&&bytes[0]==0xef&&bytes[1]==0xbb&&bytes[2]==0xbf?3:0;
         return Encoding.UTF8.GetString(bytes,start,bytes.Length-start);
     }
-    private static string Hash(byte[] bytes)=>
-        Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+
     /// <summary>Exact-length Lua code mask: remove comments and all string
     /// literals (including Lua long brackets) without changing source spans.</summary>
     internal static string MaskNonCode(string text)

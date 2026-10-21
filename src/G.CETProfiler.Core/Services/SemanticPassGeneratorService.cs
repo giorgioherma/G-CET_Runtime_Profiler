@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -13,7 +12,6 @@ internal static class SemanticPassGeneratorService
         JsonElement resolverRoot,
         string modsRoot,
         Dictionary<string, byte[]> staged,
-        Dictionary<string, string?> liveSourceHashes,
         Dictionary<string, int> appliedTransformsByFile,
         List<object> transformManifest,
         List<object> skipped)
@@ -127,12 +125,6 @@ internal static class SemanticPassGeneratorService
                         Path.GetFullPath(modsRoot),
                         relative.Replace('/', Path.DirectorySeparatorChar));
 
-                    if (!liveSourceHashes.ContainsKey(relative))
-                    {
-                        liveSourceHashes[relative] = File.Exists(livePath)
-                            ? Sha256(File.ReadAllBytes(livePath))
-                            : null;
-                    }
 
                     staged[relative] = change.Bytes;
                     appliedTransformsByFile[relative] =
@@ -186,7 +178,7 @@ internal static class SemanticPassGeneratorService
         // Compose only production-admitted owners, only from already-staged
         // current source, and only after the exact source injector accepts it.
         applied += ApplyPreparedNativeLocationStages(
-            modsRoot,staged,liveSourceHashes,appliedTransformsByFile,
+            modsRoot,staged,appliedTransformsByFile,
             transformManifest,skipped);
         return applied;
     }
@@ -195,7 +187,6 @@ internal static class SemanticPassGeneratorService
     private static int ApplyPreparedNativeLocationStages(
         string modsRoot,
         Dictionary<string,byte[]> staged,
-        Dictionary<string,string?> liveSourceHashes,
         Dictionary<string,int> appliedTransformsByFile,
         List<object> transformManifest,
         List<object> skipped)
@@ -261,13 +252,6 @@ internal static class SemanticPassGeneratorService
                 if(!path.Equals(relative,StringComparison.OrdinalIgnoreCase))
                     throw new InvalidOperationException(
                         "Composed native stage escaped its reviewed owner source.");
-                if(!liveSourceHashes.ContainsKey(path))
-                {
-                    var livePath=Path.Combine(Path.GetFullPath(modsRoot),
-                        path.Replace('/',Path.DirectorySeparatorChar));
-                    liveSourceHashes[path]=File.Exists(livePath)
-                        ? Sha256(File.ReadAllBytes(livePath)):null;
-                }
                 staged[path]=change.Bytes;
                 appliedTransformsByFile[path]=appliedTransformsByFile.TryGetValue(
                     path,out var count)?count+1:1;
@@ -433,8 +417,6 @@ internal static class SemanticPassGeneratorService
         return number;
     }
 
-    private static string Sha256(byte[] bytes) =>
-        Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
 }
 
 internal sealed record SemanticCandidate(

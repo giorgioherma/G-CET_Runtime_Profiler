@@ -14,8 +14,7 @@ internal sealed record CrossFileInteractionUiCallProof(
     string GateExpression,
     string PendingExpression,
     string IdleResetStatement,
-    string ModuleRelativeFile,
-    string ModuleSha256);
+    string ModuleRelativeFile);
 
 internal static class GenericInteractionUiTransform
 {
@@ -84,11 +83,10 @@ internal static class GenericInteractionUiTransform
         string callbackText,
         string moduleText,
         string moduleRelativeFile,
-        string moduleSha256,
         out CrossFileInteractionUiCallProof proof)
     {
         proof = new CrossFileInteractionUiCallProof(
-            "", "", "", "", "", "", "");
+            "", "", "", "", "", "");
 
         var normalizedCallback = Normalize(callbackText);
         var match = CallOnlyOnDraw.Match(normalizedCallback);
@@ -144,8 +142,7 @@ internal static class GenericInteractionUiTransform
             functionProof.GateExpression,
             pendingExpression,
             functionProof.IdleResetStatement,
-            moduleRelativeFile,
-            moduleSha256);
+            moduleRelativeFile);
         return true;
     }
 

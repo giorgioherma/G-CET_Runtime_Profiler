@@ -174,7 +174,6 @@ internal static class BlackboardPsmDefinitionCacheSource
         string captureRoot,
         string modsRoot,
         Dictionary<string, byte[]> staged,
-        Dictionary<string, string?> liveSourceHashes,
         Dictionary<string, int> appliedTransformsByFile,
         List<object> transformManifest,
         List<object> skipped)
@@ -201,9 +200,6 @@ internal static class BlackboardPsmDefinitionCacheSource
             return false;
         }
         staged[Relative] = transformed;
-        if (!liveSourceHashes.ContainsKey(Relative))
-            liveSourceHashes[Relative] =
-                Convert.ToHexString(SHA256.HashData(original)).ToLowerInvariant();
         appliedTransformsByFile[Relative] =
             appliedTransformsByFile.GetValueOrDefault(Relative)+1;
         transformManifest.Add(new
@@ -216,7 +212,6 @@ internal static class BlackboardPsmDefinitionCacheSource
             patchStyle = "INIT_ONCE_12_PSM_DEFS_ONLY",
             evidence = "HISTORICALLY_MEASURED_12_PSM_DEFS; CURRENT_SOURCE_LIFECYCLE_PROVEN",
             sourceProof = true,
-            sourceSha256 = liveSourceHashes[Relative],
             expectedMarker = Marker,
             nativeMethodCaching = false,
             callbackOrCadenceChanged = false,

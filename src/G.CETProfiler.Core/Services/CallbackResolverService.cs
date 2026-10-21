@@ -887,7 +887,6 @@ internal static class CallbackResolverService
                 files = nativeReadReuseFiles.Select(file => new
                 {
                     relativeFile = file.RelativeFile,
-                    sha256 = file.Sha256,
                     proof = file.Proof,
                     generationEligible = true,
                     operations = file.Operations.Select(op => new
@@ -1015,7 +1014,6 @@ internal static class CallbackResolverService
         cb.ExclusiveMsPerSecond > 0 &&
         cb.SourceRecognizedOccurrences > 0 &&
         cb.SourceUnresolvedOccurrences == 0 &&
-        !string.IsNullOrWhiteSpace(cb.SourceSha256) &&
         cb.LineStart.GetValueOrDefault() > 0 &&
         cb.LineEnd.GetValueOrDefault() >= cb.LineStart.GetValueOrDefault();
 
@@ -2254,7 +2252,6 @@ internal static class CallbackResolverService
                     crossFileInteractionUiPending = crossFileInteractionUi?.PendingExpression ?? "",
                     crossFileInteractionUiIdleReset = crossFileInteractionUi?.IdleResetStatement ?? "",
                     crossFileInteractionUiModuleFile = crossFileInteractionUi?.ModuleRelativeFile ?? "",
-                    crossFileInteractionUiModuleSha256 = crossFileInteractionUi?.ModuleSha256 ?? "",
                     uiVisibilityDormancy = uiVisibilityDormancy is not null,
                     uiVisibilityGate = uiVisibilityDormancy?.GateExpression ?? "",
                     uiVisibilityWakeKind = uiVisibilityDormancy?.WakeKind ?? ""
@@ -5980,7 +5977,6 @@ internal static class CallbackResolverService
                 callbackSource.CallbackText,
                 moduleText,
                 moduleRelative,
-                Sha256(modulePath),
                 out proof);
         }
 
