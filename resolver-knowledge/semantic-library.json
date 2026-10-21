@@ -14,7 +14,7 @@
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
     "fullPassRule": "An enabled, reviewed semantic injector may run with measured callback activity even below the default 3.0 ms/s soft CPU boundary, but only when its identity and current live-source proof match and the stage is not already satisfied. Generic native-dispatch/dormancy recipes retain their independent proof requirements.",
-    "enabledInjectorCount": 90,
+    "enabledInjectorCount": 91,
     "profileOnlyRuleCount": 0,
     "note": "The production semantic base contains source-proven, behavior-aware optimizations learned from validated references and measured hot callbacks, including burst-discovered diagnostic sentinels that preserve author cadence while gating globally expensive fallback scans. Generic/mechanical transforms stay in the Resolver; semantic rules cover state/cadence/hotpath knowledge that generic inference cannot safely own.",
     "admissionPolicy": {
@@ -7056,6 +7056,62 @@
         "thresholdMsPerSecond": 3,
         "measuredPeakExclusiveMsPerSecond": 0,
         "evidenceStack": "CURRENT_LIVE_RICA_PASS4",
+        "admitted": true
+      },
+      "cadenceGroup": "ZERO_ENGINE_WORKER",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G-CET_CURRENT_STACK_20261020"
+      ]
+    },
+    {
+      "id": "questrunner-engine-worker",
+      "identityHints": [
+        "QuestRunner"
+      ],
+      "policyClass": "SOURCE_PROVEN_ZERO_ENGINE_COORDINATOR",
+      "callbacks": [
+        {
+          "kind": "source",
+          "target": "init.lua",
+          "role": "PASS5 Manager/Spawner cadence worker"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "pass5ManagerIdleAccumulator",
+          "pass5SpawnerAccumulator",
+          "Manager:update(dt)",
+          "Spawner.Update(elapsed)"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:questrunner-engine-worker-v1",
+        "expectedMarkerFileCount": 1
+      },
+      "behavior": {
+        "handler": "SEMANTIC_SOURCE_COORDINATOR",
+        "concepts": [
+          "centralZeroEngineScheduling",
+          "atomicRollback",
+          "sourceOwnedQuestState"
+        ],
+        "note": "Existing 0-Engine frame event retained; Manager idle 0.20s and Spawner 0.25s accumulated cadence extracted to worker."
+      },
+      "generation": {
+        "enabled": true,
+        "sourceIndependentAdmission": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 0,
+        "evidenceStack": "CURRENT_LIVE_QUESTRUNNER_PASS5",
         "admitted": true
       },
       "cadenceGroup": "ZERO_ENGINE_WORKER",
