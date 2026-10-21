@@ -37,10 +37,15 @@ internal static partial class SemanticInjectors
         if (!text.Contains("__gcetAirBackFlipCoordinator", StringComparison.Ordinal))
             return true; // previously reviewed inline v2 remains compatible
         var modulePath = Path.Combine(folder, "G-CET", "AirBackFlipCoordinator.lua");
+        // PowerShell Set-Content and several mod managers append one final
+        // newline when installing the ZIP's exact Lua bytes. A terminal EOL
+        // is not a semantic change; compare the complete owned module body
+        // after normalizing only line endings and final newlines.
         return File.Exists(modulePath) &&
-            File.ReadAllText(modulePath).Replace("\r\n", "\n", StringComparison.Ordinal)
-                .Equals(CoordinatorLua.Replace("\r\n", "\n", StringComparison.Ordinal),
-                    StringComparison.Ordinal);
+            File.ReadAllText(modulePath)
+                .Replace("\r\n", "\n", StringComparison.Ordinal).TrimEnd('\n')
+                .Equals(CoordinatorLua.Replace("\r\n", "\n", StringComparison.Ordinal)
+                    .TrimEnd('\n'), StringComparison.Ordinal);
     }
 
     private static bool IsAirBackFlipDormancyCompleteText(string text)
