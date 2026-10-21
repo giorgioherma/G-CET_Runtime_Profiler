@@ -26,6 +26,8 @@ jobs:
           dotnet-version: '8.0.x'
       - name: Compile Resolver only; no native artifacts or installer
         run: dotnet publish src/G.CETResolver.App/G.CETResolver.App.csproj -c Release -r win-x64 --self-contained false -p:SelfContained=false -o publish-resolver
+      - name: Verify present-owner coordinators and drift isolation
+        run: dotnet run --project tests/LiveStackCoordinatorContract/LiveStackCoordinatorContract.csproj -c Release
       - name: Check absent-owner isolation
         shell: pwsh
         run: ./tests/ResidualDormancySemanticContract.ps1 -ResolverRoot ./publish-resolver
