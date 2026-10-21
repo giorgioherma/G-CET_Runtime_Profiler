@@ -143,9 +143,11 @@ end
 
             context.Write(init, updated);
             context.WriteOwnedModule(Module, coordinator);
-            if (context.Changes.Count != 1 || context.OwnedModules.Count != 1)
+            if (context.Changes.Count != 1 ||
+                context.OwnedModules.Count > 1 ||
+                context.ReadOwnedModule(Module) != coordinator)
                 throw new InvalidOperationException(
-                    "Poker bridge and owned coordinator must be emitted atomically.");
+                    "Poker bridge requires an identical installed or newly staged owned coordinator.");
             foreach (var change in context.Changes.Concat(context.OwnedModules))
             {
                 var relative = change.RelativeFile.Replace('\\', '/');
