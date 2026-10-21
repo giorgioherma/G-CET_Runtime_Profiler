@@ -39,6 +39,7 @@ internal static partial class SemanticInjectors
             "native-location-f80h-aroused" or
             "rica-lazy-completion-details" or
             "rica-engine-worker" or
+            "questrunner-engine-worker" or
             "infinitegigs-empty-queue-fastpath" or
             "native-location-yaiba-bathtub" or "native-location-ziggy-offered" or "native-location-cyberstunts";
         if (context.OwnerAlreadyMarked() &&
@@ -73,6 +74,7 @@ internal static partial class SemanticInjectors
             "shift" => ApplyShift(context),
             "givemeeverything" => ApplyGiveMeEverything(context),
             "questrunner" => ApplyQuestRunner(context),
+            "questrunner-engine-worker" => ApplyQuestRunnerEngineWorker(context),
             "driveaerialvehicle" => ApplyDriveAerialVehicle(context),
             "hotscenes-ui-action-dormancy" => ApplyHotscenesAfterActionUi(context),
             "roulette" => ApplyRoulette(context),
