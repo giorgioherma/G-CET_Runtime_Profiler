@@ -53,7 +53,7 @@ end
 Probe 'repeatable_cyberpsychos' 'native-location-cyberpsychos' 'ApplyCyberpsychosNativeLocations' @{
  'init.lua'=$psyInit
  'modules/boss_watchdog.lua'=$psyDog
-} 2 @('attachCompiled(owner, 1','BossWatchdog.nativeFar','triggerDistance <= 180.0')
+} 3 @('attachCompiled(owner, 1','watchdog.nativeFar','triggerDistance <= 180.0')
 $rica=@'
 local function processCompletionRewards(system, limit)
     local processed = 0
