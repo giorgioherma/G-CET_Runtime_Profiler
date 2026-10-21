@@ -89,8 +89,14 @@ end
     local __gcetHotscenesRouted = false
     if type(GetMod) == "function" then
         local found, engine = pcall(GetMod, "0-Engine")
-        if found and type(engine) == "table" and type(engine.SubscribeAction) == "function" then
-            local subscribed, handle = pcall(engine.SubscribeAction,
+        if found and type(engine) == "table" then
+            local api = engine
+            if type(engine.GCET) == "table"
+                and type(engine.GCET.SubscribeAction) == "function" then
+                api = engine.GCET
+            end
+            if type(api.SubscribeAction) == "function" then
+            local subscribed, handle = pcall(api.SubscribeAction,
                 { actions = "*", phase = "after", decodeType = false,
                   active = true, id = "hotscenes-menu-navigation" },
                 __gcetHotscenesOnAction, "hotscenes")
@@ -103,6 +109,7 @@ end
                     __gcetHotscenesSync()
                     __gcetHotscenesRouted = true
                 end
+            end
             end
         end
     end
