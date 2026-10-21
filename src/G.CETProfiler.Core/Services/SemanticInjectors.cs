@@ -38,6 +38,7 @@ internal static partial class SemanticInjectors
             "native-location-cyberpsychos" or
             "native-location-f80h-aroused" or
             "rica-lazy-completion-details" or
+            "rica-engine-worker" or
             "infinitegigs-empty-queue-fastpath" or
             "native-location-yaiba-bathtub" or "native-location-ziggy-offered" or "native-location-cyberstunts";
         if (context.OwnerAlreadyMarked() &&
@@ -124,6 +125,7 @@ internal static partial class SemanticInjectors
             "sitanywhere" => ApplySitAnywhere(context),
             "repeatable-increased-criminal-activity" => ApplyRepeatableIncreasedCriminalActivity(context),
             "rica-lazy-completion-details" => ApplyRicaLazyRewardDetails(context),
+            "rica-engine-worker" => ApplyRicaEngineWorker(context),
             "infinitegigs-empty-queue-fastpath" => ApplyInfiniteGigsEmptyQueueFastPath(context),
             "dedka-auto-shop" => ApplyDedkaAutoShop(context),
             "marmurbank" => ApplyMarmurBank(context),
