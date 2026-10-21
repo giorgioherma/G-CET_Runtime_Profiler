@@ -12,7 +12,7 @@ internal static partial class SemanticInjectors
         // Incremental PASS4 live-stage extension: skip logic-level work
         // when neither scanner nor a workspot nor a pending hide exists.
         // World/UI/timer reconciliation and active workspot frames are unchanged.
-        var live = context.FindFile("init.lua", "runSitAnywhereFrame", "self.logic:onUpdate()");
+        var live = context.FindFile("init.lua", "self.logic:onUpdate()");
         if (live.Text.Contains("local function runSitAnywhereFrame(dt)", StringComparison.Ordinal))
         {
             const string marker = "-- G-CET semantic:sitanywhere-scanner-workspot-only-v1";
