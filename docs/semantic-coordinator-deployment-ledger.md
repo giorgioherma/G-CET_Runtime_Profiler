@@ -8,8 +8,8 @@ A rule marked `NOT_CONVERTED` still retains its existing reviewed inline/owned b
 
 - Converted in this branch: `streetgamespoker` (Poker PASS4 scheduler only; world sweep remains in the author `StreetTables.lua`; its native location bindings move with the scheduler if present).
 - Already external before this branch: `air-backflip` (existing `G-CET/AirBackFlipCoordinator.lua` contract; only its Windows CRLF ownership check was repaired here).
-- Also prepared in this batch: `gta-joyride`, `aerial-race-active-idle-split`, `blackjack` as source-proven moved cadence gates with unoptimized author-work fallback if a coordinator fails to load. Their in-game behavior remains unverified.
-- Not converted: 76 remaining production rule entries.
+- Also prepared in this batch: `gta-joyride` and `blackjack` as opt-in moved cadence gates. These apply only when matching owner files exist and the exact inline source is proven; in-game behavior remains unverified.
+- Not converted: 77 remaining production rule entries.
 - The previously described 15 extended-dormancy A/B/C passes have not been batch-converted. The conversion is deliberately opt-in and source-proven, not bulk lexical extraction.
 - Behavior equivalence is not claimed until regression CI and game runtime tests pass. Lua coordinator packaging is not semantic code inference.
 - The `streetgamespoker-hud-invisible-native-idle` and `native-location-poker` rules are separate entries and have **not** independently been converted; existing native Poker hooks remain attached to the reviewed scheduler.
@@ -78,7 +78,7 @@ A rule marked `NOT_CONVERTED` still retains its existing reviewed inline/owned b
 | `joytoys-of-night-city-bridge-active-split-idle-facts-v2` | NOT_CONVERTED |
 | `tunnel-rescue-v3` | NOT_CONVERTED |
 | `ziggy-last-play-navigation-sentinel-v3` | NOT_CONVERTED |
-| `aerial-race-active-idle-split` | CADENCE_GATE_EXTERNALIZED_PENDING_RUNTIME |
+| `aerial-race-active-idle-split` | NOT_CONVERTED |
 | `appearance-menu-mod-squeeze` | NOT_CONVERTED |
 | `gigcore-blackboard-once` | NOT_CONVERTED |
 | `specter-recovery-prerequisite-reads` | NOT_CONVERTED |

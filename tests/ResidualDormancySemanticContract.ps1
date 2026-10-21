@@ -117,54 +117,14 @@ function toggleDrone()
 end
 '@
 
-Write-ModFile 'AerialRace' 'init.lua' @'
-local Cron={Update=function() end}
-local settings={usePlatforms=false}
-local checkpointsSpawned=false
-local startTime=0
-local nc1=require("nc1")
-local function updatePlatforms() end
-registerForEvent("onUpdate", function(dt)
-    Cron.Update(dt)
-
-    if settings.usePlatforms then
-        updatePlatforms()
-    end
-
-    if checkpointsSpawned == false and Game.GetSimTime():ToFloat()-startTime > 90 then
-        local player = Game.GetPlayer()
-        if player then
-            checkpointsSpawned = true
-            nc1.SpawnCheckpoints()
-        end
-    end
-
-    if checkpointsSpawned == true then
-        nc1.Update()
-    end
-end)
-'@
-Write-ModFile 'AerialRace' 'nc1.lua' @'
-local nc1={raceActive=false,resetTimeTarget=nil}
-function nc1.Update() end
-function nc1.SpawnCheckpoints() end
-function nc1.ResetRace()
-  nc1.raceActive=false
-  nc1.resetTimeTarget=nil
-end
-return nc1
-'@
-
 $dedraLine=Find-Line (Join-Path $mods 'Dedrajudygoonadate\init.lua') 'registerForEvent\("onDraw"'
 $fpvLine=Find-Line (Join-Path $mods 'FPVDrone\fpv\bindings.lua') 'registerForEvent\("onUpdate"'
-$aerialLine=Find-Line (Join-Path $mods 'AerialRace\init.lua') 'registerForEvent\("onUpdate"'
 
 $handoff=@{
   schemaVersion='1.8'
   callbacks=@(
     (CallbackRow 9101 'Dedrajudygoonadate' 'onDraw' 'init.lua' $dedraLine 5.0),
-    (CallbackRow 9102 'FPVDrone' 'onUpdate' 'fpv/bindings.lua' $fpvLine 4.0),
-    (CallbackRow 9103 'AerialRace' 'onUpdate' 'init.lua' $aerialLine 4.0)
+    (CallbackRow 9102 'FPVDrone' 'onUpdate' 'fpv/bindings.lua' $fpvLine 4.0)
   )
   optimizerEvidence=@()
 } | ConvertTo-Json -Depth 30
@@ -174,12 +134,6 @@ $resolved = (& $resolverExe --capture $capture --mods $mods --generate-pass --js
 if (!$resolved.ok -or $null -eq $resolved.pass) { throw 'Residual dormancy semantic pass generation failed.' }
 
 $resolver = Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
-$expected=@('aerial-race-active-idle-split')
-foreach($rule in $expected) {
-  $hit=@($resolver.callbackFamilies | ForEach-Object {$_.topConsumers} | Where-Object {$_.semantic.RuleId -eq $rule})[0]
-  if($null -eq $hit -or -not $hit.semantic.generationReady) { throw "Semantic rule not generation-ready: $rule" }
-}
-
 $fpv=@($resolver.callbackFamilies |
   ForEach-Object {$_.topConsumers} |
   Where-Object {$_.owner -eq 'FPVDrone' -and $_.target -eq 'onUpdate'})[0]
@@ -201,11 +155,8 @@ if($dedra.semantic.Matched) {
 }
 
 $manifest = Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
-foreach($rule in $expected) {
-  if(@($manifest.transforms | Where-Object {$_.type -eq 'SEMANTIC_RULE' -and $_.RuleId -eq $rule}).Count -ne 1) {
-    $cause = @($manifest.skipped | Where-Object { $_.RuleId -eq $rule } | ForEach-Object { $_.reason }) -join "; "
-    throw "Generated pass missing semantic rule: $rule; source refusal: $cause"
-  }
+if(@($manifest.transforms | Where-Object { $_.RuleId -eq 'aerial-race-active-idle-split' -or $_.Owner -eq 'AerialRace' }).Count -ne 0) {
+  throw 'Absent AerialRace owner unexpectedly became a semantic dependency.'
 }
 if(@($manifest.transforms | Where-Object {
   $_.type -eq 'SEMANTIC_RULE' -and ($_.RuleId -eq 'fpv-drone-idle-dormancy' -or $_.owner -eq 'FPVDrone')
@@ -239,17 +190,10 @@ try {
     }
   }
 
-  $aerial=Read-ZipText ($base+'AerialRace/init.lua')
-  if($aerial -notmatch '__gcetAerialIdleElapsed' -or $aerial -notmatch '< 0\.20') { throw 'Aerial idle discovery split incomplete.' }
-  $aerialCron=$aerial.IndexOf('Cron.Update(dt)')
-  $aerialPlatforms=$aerial.IndexOf('updatePlatforms()',$aerialCron)
-  $aerialGate=$aerial.IndexOf('__gcetAerialBusy',$aerialCron)
-  $aerialDiscovery=$aerial.IndexOf('if checkpointsSpawned == false',$aerialCron)
-  if($aerialCron -lt 0 -or $aerialPlatforms -lt 0 -or $aerialGate -lt 0 -or $aerialDiscovery -lt 0 -or
-     $aerialCron -gt $aerialPlatforms -or $aerialPlatforms -gt $aerialGate -or $aerialGate -gt $aerialDiscovery) {
-    throw 'Aerial lane ordering is wrong: Cron/platforms must stay realtime before the idle race-discovery gate.'
+  if($zip.GetEntry($base+'AerialRace/init.lua') -or $zip.GetEntry($base+'AerialRace/G-CET/Coordinator.lua')) {
+    throw 'Pass generated files for an absent AerialRace owner.'
   }
 }
 finally { $zip.Dispose() }
 
-Write-Host 'Residual dormancy contract passed: Dedra generic AUTO + Aerial semantic; FPVDrone semantic retired.'
+Write-Host 'Residual dormancy contract passed: present Dedra generic AUTO, retired FPVDrone semantic, absent AerialRace not generated.'

@@ -1,0 +1,37 @@
+name: G-CET semantic focused check
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - dev/semantic-external-coordinators-20261021
+    paths:
+      - .github/semantic-smoke-trigger.txt
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gcet-semantic-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  semantic-only:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Compile Resolver only; no native artifacts or installer
+        run: dotnet publish src/G.CETResolver.App/G.CETResolver.App.csproj -c Release -r win-x64 --self-contained false -p:SelfContained=false -o publish-resolver
+      - name: Check absent-owner isolation
+        shell: pwsh
+        run: ./tests/ResidualDormancySemanticContract.ps1 -ResolverRoot ./publish-resolver
+      - name: Verify Poker source coordinator
+        shell: pwsh
+        run: ./tests/PokerPass4SourceGenerationContract.ps1 -ResolverRoot ./publish-resolver
+      - name: Verify semantic library contract
+        shell: pwsh
+        run: ./tests/SemanticLibraryContract.ps1 -ResolverRoot ./publish-resolver

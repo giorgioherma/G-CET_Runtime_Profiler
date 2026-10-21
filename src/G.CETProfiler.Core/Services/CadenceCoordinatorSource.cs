@@ -14,7 +14,6 @@ internal static class CadenceCoordinatorSource
         switch (candidate.RuleId)
         {
             case "gta-joyride": JoyRide(context); break;
-            case "aerial-race-active-idle-split": AerialRace(context); break;
             case "blackjack": Blackjack(context); break;
         }
     }
@@ -90,51 +89,6 @@ internal static class CadenceCoordinatorSource
             " local __gcetJoyRideWasBusy=false\n" +
             " return function(deltaTime,SESSION,pendingSpawns)\n" +
             moved + " end\nend\n";
-        context.Write(file, text);
-        context.WriteOwnedModule("G-CET/Coordinator.lua", module);
-    }
-
-    private static void AerialRace(SemanticPatchContext context)
-    {
-        var file = context.FindFile("init.lua",
-            "__gcetAerialIdleElapsed", "settings.usePlatforms",
-            "nc1.raceActive", "nc1.resetTimeTarget");
-        const string state = "local __gcetAerialIdleElapsed = 0.0\n\n";
-        const string gate = """
-                local __gcetAerialBusy = nc1.raceActive == true or nc1.resetTimeTarget ~= nil
-                if not __gcetAerialBusy then
-                    __gcetAerialIdleElapsed = __gcetAerialIdleElapsed + math.max(0.0, dt or 0.0)
-                    if __gcetAerialIdleElapsed < 0.20 then return end
-                    __gcetAerialIdleElapsed = 0.0
-                else
-                    __gcetAerialIdleElapsed = 0.0
-                end
-            """;
-        const string bridge = """
-            -- G-CET semantic coordinator bridge:aerial-race-active-idle-split
-            local __gcetAerialGate=nil
-            do
-             local ok,make=pcall(dofile,"G-CET/Coordinator.lua")
-             if ok and type(make)=="function" then
-              local bound,gate=pcall(make)
-              if bound and type(gate)=="function" then __gcetAerialGate=gate end
-             end
-            end
-
-            """;
-        const string call = """
-                if __gcetAerialGate and not __gcetAerialGate(dt,nc1) then return end
-            """;
-        var text = Once(file.Text, state, bridge, "AerialRace cadence state");
-        text = Once(text, gate, call, "AerialRace idle/active gate");
-        var moved = MakeGate(gate, "then return end",
-            "then return false end", "    return true");
-        var module =
-            "-- G-CET semantic coordinator:aerial-race-active-idle-split\n" +
-            "return function()\n" +
-            " local __gcetAerialIdleElapsed=0.0\n" +
-            " return function(dt,nc1)\n" + moved +
-            " end\nend\n";
         context.Write(file, text);
         context.WriteOwnedModule("G-CET/Coordinator.lua", module);
     }
