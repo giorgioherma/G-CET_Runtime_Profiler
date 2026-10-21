@@ -625,6 +625,45 @@ internal static class CallbackResolverService
         // snapshot, but the current live Lua is authoritative after mod updates.
         var nativePlayerCatalog = NativePlayerAdoptionCatalog.Scan(modsRoot);
 
+        // A profiler capture describes the runtime that was executed, which
+        // can be an earlier optimized/modded source tree. Direct CET registrar
+        // adoption MUST use the currently installed Lua instead. Preserve
+        // measured callback rows solely for workload attribution; these new
+        // source-only rows are deliberately not assigned fabricated CPU data.
+        var sourceFirstGenericFamilies = DiscoverSourceFirstRegistrations(modsRoot)
+            .Select(callback => new
+            {
+                Callback = callback,
+                Generic = ResolveGeneric(callback, sourceIndex, SchedulerIntegration.None)
+            })
+            .Where(row => row.Generic.Automatable)
+            .Select(row => (object)new
+            {
+                kind = row.Callback.Kind,
+                target = row.Callback.Target,
+                resolverFamily = ClassifyCallbackFamily(row.Callback.Kind, row.Callback.Target),
+                sourceFirst = true,
+                topConsumers = new[] { new
+                {
+                    registrationId = row.Callback.RegistrationId,
+                    owner = row.Callback.Owner,
+                    sourceFirst = true,
+                    source = row.Generic.Source,
+                    generic = new
+                    {
+                        row.Generic.Status,
+                        row.Generic.Automatable,
+                        row.Generic.Pattern,
+                        row.Generic.RecipeFamilies,
+                        row.Generic.Facts,
+                        row.Generic.Evidence,
+                        row.Generic.Blockers
+                    }
+                }}
+            })
+            .ToArray();
+
+
         // Per-mod semantic rules can have their source-proven wake paths
         // entirely absent from the profiled interval. Keep these candidates
         // separate from measured callback rows and native allocation samples.
@@ -937,7 +976,7 @@ internal static class CallbackResolverService
                 nativeBytesAttributedToMod = (long?)null,
                 matchedAnchors = candidate.MatchedAnchors
             }).ToArray(),
-            callbackFamilies = familyDocuments
+            callbackFamilies = familyDocuments.Concat(sourceFirstGenericFamilies).ToArray()
         };
 
         return new CallbackResolverDocumentResult(
@@ -5294,6 +5333,102 @@ internal static class CallbackResolverService
                 .ToArray(),
             TotalMsPerSecond = matched.Sum(job => job.MsPerSecond)
         };
+    }
+
+
+    // Lexically discover direct CET registrations in the LIVE author sources.
+    // Balanced call parentheses (with comments/strings masked) locate each
+    // complete registrar independently of historical line numbers or IDs.
+    // No mod-specific fingerprints, prior G-CET markers or source hashes.
+    // Unknown wrapper/alias calls are left untouched.
+    private static List<CallbackMetric> DiscoverSourceFirstRegistrations(string modsRoot)
+    {
+        var rows = new List<CallbackMetric>();
+        if (!Directory.Exists(modsRoot))
+            return rows;
+        var registration = new Regex(
+            @"(?m)^[ \t]*(?<registrar>(?:registerForEvent|registerRuntimeEvent)\s*\(\s*['""](?<event>onUpdate|onDraw)['""]\s*,\s*function\s*\(|Observe\s*\(\s*['""]PlayerPuppet['""]\s*,\s*['""]OnAction['""]\s*,\s*function\s*\()",
+            RegexOptions.CultureInvariant);
+        long id = 1_500_000_000L;
+        IEnumerable<string> files;
+        try
+        {
+            files = Directory.EnumerateFiles(modsRoot, "*.lua", SearchOption.AllDirectories)
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .Take(20000)
+                .ToArray();
+        }
+        catch (IOException) { return rows; }
+        catch (UnauthorizedAccessException) { return rows; }
+
+        foreach (var file in files)
+        {
+            var relative = Path.GetRelativePath(modsRoot, file).Replace('\\', '/');
+            var owner = relative.Split('/')[0];
+            if (owner.Equals("0-Engine", StringComparison.OrdinalIgnoreCase) ||
+                owner.StartsWith("G-CET", StringComparison.OrdinalIgnoreCase))
+                continue;
+            string source;
+            try
+            {
+                if (new FileInfo(file).Length > 2_000_000) continue;
+                source = File.ReadAllText(file).Replace("\r\n", "\n").Replace('\r', '\n');
+            }
+            catch (IOException) { continue; }
+            catch (UnauthorizedAccessException) { continue; }
+            if (source.IndexOf('\0') >= 0) continue;
+
+            var masked = NativeReadReuseSource.MaskNonCode(source);
+            foreach (Match found in registration.Matches(source))
+            {
+                var token = found.Groups["registrar"];
+                if (!token.Success ||
+                    !Regex.IsMatch(masked[token.Index..],
+                        @"^(?:Observe|registerForEvent|registerRuntimeEvent)\s*\(",
+                        RegexOptions.CultureInvariant))
+                    continue;
+
+                var open = masked.IndexOf('(', token.Index);
+                if (open < 0 || open >= found.Index + found.Length) continue;
+                var depth = 0;
+                var close = -1;
+                for (var pos = open; pos < masked.Length; pos++)
+                {
+                    if (masked[pos] == '(') depth++;
+                    else if (masked[pos] == ')' && --depth == 0)
+                    {
+                        close = pos;
+                        break;
+                    }
+                }
+                if (close < 0 ||
+                    !Regex.IsMatch(masked[open..(close + 1)],
+                        @"\bend\s*\)\s*$", RegexOptions.CultureInvariant))
+                    continue;
+
+                var start = 1;
+                for (var i = 0; i < found.Index; i++)
+                    if (source[i] == '\n') start++;
+                var end = start;
+                for (var i = found.Index; i < close; i++)
+                    if (source[i] == '\n') end++;
+
+                var evt = found.Groups["event"].Success
+                    ? found.Groups["event"].Value
+                    : "OnAction";
+                rows.Add(new CallbackMetric
+                {
+                    RegistrationId = id++,
+                    Owner = owner,
+                    Kind = evt == "OnAction" ? "observe" : "event",
+                    Target = evt == "OnAction" ? "PlayerPuppet::OnAction" : evt,
+                    SourceFile = relative,
+                    SourceLineStart = start,
+                    SourceLineEnd = end
+                });
+            }
+        }
+        return rows;
     }
 
     private static List<CallbackMetric> ReadCallbacks(JsonElement root)
