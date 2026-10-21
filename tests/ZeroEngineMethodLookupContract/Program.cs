@@ -19,7 +19,8 @@ void Assert(bool value,string text)
 {
     if(!value)throw new InvalidOperationException(text);
 }
-const string prefix="""-- G-CET shared provider: PLAYER
+const string prefix="""
+-- G-CET shared provider: PLAYER
 local __gcetSharedPlayerProvider = nil
 local function __gcetGetPlayer()
     if __gcetSharedPlayerProvider == nil then
@@ -35,7 +36,8 @@ var changed=Repair(prefix,out var n);
 Assert(n==1 && changed.Contains("type(__gcetEngine.GCET.GetPlayer) == \"function\""),
     "Legacy player wrapper still chooses a namespace instead of its method");
 Assert(Repair(changed,out n)==changed && n==0,"Player repair is not idempotent");
-const string frame="""-- G-CET generated frame registrar: source-selected from resolver evidence.
+const string frame="""
+-- G-CET generated frame registrar: source-selected from resolver evidence.
 local __gcetRegisterEvent_9 = registerForEvent
 do
     local __gcetOk, __gcetEngine = pcall(GetMod, "0-Engine")
@@ -49,7 +51,8 @@ end
 changed=Repair(frame,out n);
 Assert(n==1 && changed.Contains("type(__gcetEngine.GCET.MakeEventRegistrar) == \"function\""),
     "Frame router did not retain top-level registrar fallback");
-const string actions="""local __gcetRouted_7 = false
+const string actions="""
+local __gcetRouted_7 = false
 local __gcetHandles_7 = {}
 local __gcetOk_7, __gcetEngine_7 = pcall(GetMod, "0-Engine")
 local __gcetApi_7 = __gcetEngine_7
