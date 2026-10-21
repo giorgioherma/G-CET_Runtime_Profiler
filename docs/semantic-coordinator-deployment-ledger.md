@@ -97,4 +97,6 @@ A rule marked `NOT_CONVERTED` still retains its existing reviewed inline/owned b
 | `native-location-yaiba-bathtub` | NOT_CONVERTED |
 | `native-location-ziggy-offered` | NOT_CONVERTED |
 
+Poker PASS4 local-budget rule: an intermediate over-200-local **inline** stage may proceed only when the exact reviewed four-job controller source is uniquely recognized for extraction. The final generated ZIP validates every Lua file separately; if extraction cannot complete or the final bridge still exceeds 200 locals, no ZIP is produced. This does not apply to other semantic implementations.
+
 Implementation contract: `SemanticPatchContext.WriteOwnedModule` owns the mod-local namespace and guards against author-file overwrite; `PokerSemanticCoordinatorSource.TryStage` executes after `ApplyPreparedNativeLocationStages`; completion proof must read both author bridge and owned coordinator. No generic semantic source inference or Lua SHA compatibility gate is introduced.
