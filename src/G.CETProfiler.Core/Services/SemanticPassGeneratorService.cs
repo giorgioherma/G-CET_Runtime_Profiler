@@ -356,8 +356,7 @@ internal static class SemanticPassGeneratorService
                     !JsonBool(row, "sourceIndependent") ||
                     !JsonBool(row, "sourceProofSatisfied") ||
                     !JsonBool(row, "generationEnabled") ||
-                    JsonBool(row, "alreadySatisfied") ||
-                    JsonString(row, "admissionLane") != "SEMANTIC_AUTHOR_SOURCE_ONLY")
+                    JsonBool(row, "alreadySatisfied"))
                     continue;
 
                 var ruleId = JsonString(row, "ruleId");

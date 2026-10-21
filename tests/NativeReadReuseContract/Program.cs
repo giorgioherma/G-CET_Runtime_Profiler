@@ -1,5 +1,4 @@
 using System.Reflection;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using GCETRuntimeProfiler.Core.Services;
@@ -8,7 +7,6 @@ static void Check(bool yes,string why)
 {
     if(!yes)throw new InvalidOperationException(why);
 }
-static string Hash(byte[] bytes)=>Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
 var core=typeof(PassGeneratorService).Assembly;
 var cls=core.GetType("GCETRuntimeProfiler.Core.Services.NativeReadReuseSource",true)!;
 MethodInfo M(string name)=>cls.GetMethod(name,BindingFlags.Static|BindingFlags.NonPublic|BindingFlags.Public)!;
@@ -73,11 +71,10 @@ try
     Check(output.Contains("\r\n"),"CRLF not preserved");
     object?[] again=[output,headers,null,null];
     Check(!(bool)transform.Invoke(null,again)!,"Transform not idempotent");
-    // Exercise source-digest-locked generator attachment to an existing semantic
+    // Exercise version-independent source regeneration on a staged semantic pass.
     // pass: no callback gate, no new hooks, original source remains unmodified.
     var rows=plans.Cast<object>().Select(x=>new {
-        relativeFile=(string)x.GetType().GetProperty("RelativeFile")!.GetValue(x)!,
-        sha256=(string)x.GetType().GetProperty("Sha256")!.GetValue(x)!
+        relativeFile=(string)x.GetType().GetProperty("RelativeFile")!.GetValue(x)!
     }).ToArray();
     using var document=JsonDocument.Parse(JsonSerializer.Serialize(new {
         nativeReadReuse=new {contract="GCET_NATIVE_READ_REUSE_V1",files=rows}
@@ -86,11 +83,10 @@ try
     {
       ["Example/init.lua"]=Encoding.UTF8.GetBytes("-- semantic pass retained\n"+mainText)
     };
-    var hashes=new Dictionary<string,string?>(StringComparer.OrdinalIgnoreCase);
     var applied=new Dictionary<string,int>(StringComparer.OrdinalIgnoreCase);
     var manifest=new List<object>();
     var skipped=new List<object>();
-    object?[] stageArgs=[document.RootElement,mods,staged,hashes,applied,manifest,skipped,headers];
+    object?[] stageArgs=[document.RootElement,mods,staged,applied,manifest,skipped,headers];
     var count=(int)stage.Invoke(null,stageArgs)!;
     Check(count==4,"Expected four safe reads; 200-local overflow must not be staged");
     Check(skipped.Any(x=>x.ToString()!.Contains("LUA_LOCAL_LIMIT")), "Lua local limit skip missing");
@@ -127,11 +123,10 @@ try
         "Lua-budget source selector must preserve all 199 author locals "+
         "while applying the highest-value proven getter");
     var tightStages=new Dictionary<string,byte[]>(StringComparer.OrdinalIgnoreCase);
-    var tightHash=new Dictionary<string,string?>(StringComparer.OrdinalIgnoreCase);
     var tightApplied=new Dictionary<string,int>(StringComparer.OrdinalIgnoreCase);
     var tightManifest=new List<object>();
     var tightSkipped=new List<object>();
-    object?[] tightArgs=[document.RootElement,tightRoot,tightStages,tightHash,
+    object?[] tightArgs=[document.RootElement,tightRoot,tightStages,
         tightApplied,tightManifest,tightSkipped,headers];
     Check((int)stage.Invoke(null,tightArgs)! == 3 &&
           tightStages.ContainsKey("Budget/init.lua") &&
@@ -139,7 +134,7 @@ try
           tightSkipped.Any(x=>x.ToString()!.Contains("LUA_LOCAL_LIMIT_PARTIAL")),
         "Native stage did not preserve the highest-benefit safe partial rewrite");
     var tightAgain=new List<object>();
-    object?[] tightRepeat=[document.RootElement,tightRoot,tightStages,tightHash,
+    object?[] tightRepeat=[document.RootElement,tightRoot,tightStages,
         tightApplied,tightAgain,new List<object>(),headers];
     Check((int)stage.Invoke(null,tightRepeat)! == 0 && tightAgain.Count==0,
         "Lua-budget partial provider was duplicated on a repeat generation");
@@ -153,11 +148,12 @@ try
     var before=staged["Example/init.lua"].ToArray();
     var newManifest=new List<object>();
     var drifts=new List<object>();
-    object?[] driftArgs=[document.RootElement,mods,staged,hashes,applied,newManifest,drifts,headers];
+    object?[] driftArgs=[document.RootElement,mods,staged,applied,newManifest,drifts,headers];
     var afterDrift=(int)stage.Invoke(null,driftArgs)!;
     Check(afterDrift==0,"Drift accepted unexpectedly");
     Check(before.SequenceEqual(staged["Example/init.lua"]),"Drift mutated staged file");
-    Check(drifts.Count>0,"Drift not diagnosed");
+    Check(!drifts.Any(x=>x.ToString()!.Contains("LIVE_SOURCE_CHANGED_DURING_GENERATION")),
+        "Unrelated live-source change was incorrectly used as a digest gate");
     // Source evidence is refreshed from the actual installed tree. An update
     // arriving after the report was generated is not a compatibility failure.
     Save("AddedAfterCapture/init.lua","local late = Game.GetQuestsSystem()\n");
@@ -167,11 +163,10 @@ try
         ["StagedOnly/init.lua"]=Encoding.UTF8.GetBytes(
             "-- prior semantic stage\nlocal introduced=Game.GetQuestsSystem()\n")
     };
-    var newerHashes=new Dictionary<string,string?>(StringComparer.OrdinalIgnoreCase);
     var newApplied=new Dictionary<string,int>(StringComparer.OrdinalIgnoreCase);
     var newerManifest=new List<object>();
     var newerSkipped=new List<object>();
-    object?[] freshArgs=[document.RootElement,mods,newStages,newerHashes,
+    object?[] freshArgs=[document.RootElement,mods,newStages,
                          newApplied,newerManifest,newerSkipped,headers];
     var accepted=(int)stage.Invoke(null,freshArgs)!;
     Check(accepted>0 && newStages.ContainsKey("AddedAfterCapture/init.lua"),
@@ -477,12 +472,11 @@ try
     var stageVector=vectorStage.GetMethod("TryStage",
         BindingFlags.Static|BindingFlags.NonPublic|BindingFlags.Public)!;
     var vecStaged=new Dictionary<string,byte[]>(StringComparer.OrdinalIgnoreCase);
-    var vecHashes=new Dictionary<string,string?>(StringComparer.OrdinalIgnoreCase);
     var vecApplied=new Dictionary<string,int>(StringComparer.OrdinalIgnoreCase);
     var vecManifest=new List<object>();
     var vecSkipped=new List<object>();
     var stagedCount=(int)stageVector.Invoke(null,
-        [mods,vecStaged,vecHashes,vecApplied,vecManifest,vecSkipped])!;
+        [mods,vecStaged,vecApplied,vecManifest,vecSkipped])!;
     Check(stagedCount>=1&&vecStaged.ContainsKey("NativeVectorFixture/init.lua"),
         "Native live candidate was not auto-staged from the source catalog");
     var vecText=Encoding.UTF8.GetString(vecStaged["NativeVectorFixture/init.lua"]);
@@ -495,7 +489,7 @@ try
     Check(!vecStaged.ContainsKey("0-Engine/NativeProbe.lua"),
         "Native author-mod auto-adopter must not rewrite managed 0-Engine");
     var afterCount=(int)stageVector.Invoke(null,
-        [mods,vecStaged,vecHashes,vecApplied,vecManifest,vecSkipped])!;
+        [mods,vecStaged,vecApplied,vecManifest,vecSkipped])!;
     Check(afterCount==0,"Native stage not idempotent");
     Check(vecManifest.Any(m=>m.ToString()!.Contains("NATIVE_PLAYER_VECTOR_LIVE")),
         "Native live stage manifest missing");

@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -944,7 +943,6 @@ internal static class CallbackResolverService
                     kind = cb.Kind,
                     target = cb.Target,
                     sourceFile = cb.SourceFile,
-                    sourceSha256 = cb.SourceSha256,
                     lineStart = cb.LineStart,
                     lineEnd = cb.LineEnd,
                     substitutionEligible =
@@ -1092,7 +1090,6 @@ internal static class CallbackResolverService
                     Kind = callback.Kind,
                     Target = callback.Target,
                     SourceFile = source?.RelativeFile ?? "",
-                    SourceSha256 = source?.Sha256 ?? "",
                     LineStart = source?.LineStart,
                     LineEnd = source?.LineEnd,
                     SourceOccurrences = providerMatches.Length,
@@ -1141,7 +1138,6 @@ internal static class CallbackResolverService
                     Kind = callback.Kind,
                     Target = callback.Target,
                     SourceFile = source?.RelativeFile ?? "",
-                    SourceSha256 = source?.Sha256 ?? "",
                     LineStart = source?.LineStart,
                     LineEnd = source?.LineEnd,
                     SourceOccurrences = 0,
@@ -2036,7 +2032,6 @@ internal static class CallbackResolverService
             : new SourceEvidence
             {
                 RelativeFile = source.RelativeFile,
-                Sha256 = source.Sha256,
                 LineStart = source.LineStart,
                 LineEnd = source.LineEnd,
                 MatchMode = source.MatchMode
@@ -6246,7 +6241,6 @@ internal static class CallbackResolverService
                 {
                     Path = path,
                     RelativeFile = Path.GetRelativePath(_modsRoot, path).Replace('\\', '/'),
-                    Sha256 = Sha256(path),
                     FullText = full,
                     CallbackText = callbackText,
                     Window = window,
@@ -6299,11 +6293,6 @@ internal static class CallbackResolverService
         private static string Normalize(string value) =>
             NormalizeNonAlphaNumeric.Replace(value.ToLowerInvariant(), "");
 
-        private static string Sha256(string path)
-        {
-            using var stream = File.OpenRead(path);
-            return Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
-        }
     }
 
 
@@ -6367,7 +6356,6 @@ internal static class CallbackResolverService
         public string Kind { get; init; } = "";
         public string Target { get; init; } = "";
         public string SourceFile { get; init; } = "";
-        public string SourceSha256 { get; init; } = "";
         public int? LineStart { get; init; }
         public int? LineEnd { get; init; }
         public int SourceOccurrences { get; init; }
@@ -6585,7 +6573,6 @@ internal static class CallbackResolverService
     private sealed class SourceEvidence
     {
         public string RelativeFile { get; init; } = "";
-        public string Sha256 { get; init; } = "";
         public int? LineStart { get; init; }
         public int? LineEnd { get; init; }
         public string MatchMode { get; init; } = "";
@@ -6595,7 +6582,6 @@ internal static class CallbackResolverService
     {
         public string Path { get; init; } = "";
         public string RelativeFile { get; init; } = "";
-        public string Sha256 { get; init; } = "";
         public string FullText { get; init; } = "";
         public string CallbackText { get; init; } = "";
         public string Window { get; init; } = "";
