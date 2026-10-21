@@ -7582,6 +7582,73 @@
       "evidenceMembership": [
         "G-CET_CURRENT_STACK_20261020"
       ]
+    },
+    {
+      "id": "ziggy-native-worker",
+      "identityHints": [
+        "ziggy_last_play"
+      ],
+      "policyClass": "NATIVE_STATIC_LOCATION_QUEST_OFFERED_FAR",
+      "callbacks": [
+        {
+          "kind": "source",
+          "target": "init.lua",
+          "role": "source-only static giver location; do not compete with Ziggy quest onUpdate semantic rule"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "local function __gcetZiggyAttachNative()",
+          "local function __gcetZiggyOfferedFar()"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:ziggy-native-worker-v1",
+        "expectedMarkerFileCount": 1
+      },
+      "behavior": {
+        "handler": "SEMANTIC_NATIVE_LOCATION_SOURCE_PROVEN",
+        "concepts": [
+          "nativeStaticWake",
+          "authorOfferedFarOneHz",
+          "noNewQuestAssumption",
+          "authorGameplayFallback"
+        ],
+        "lanes": [
+          {
+            "role": "UNACCEPTED_OFFERED_FAR",
+            "cadence": "AUTHOR_1HZ_WHEN_NATIVE_FAR",
+            "seconds": 1
+          },
+          {
+            "role": "NEAR_AND_ACTIVE_QUEST",
+            "cadence": "AUTHOR_UNCHANGED",
+            "seconds": 0
+          }
+        ],
+        "note": "Existing Ziggy 130m unaccepted/offered quest-state distance guard, unchanged 1Hz far cadence. Source checks player identity, attachment, session generation and dialogue; native only supplies distance result, UNKNOWN uses original world-position math."
+      },
+      "generation": {
+        "enabled": true,
+        "sourceIndependentAdmission": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 0,
+        "evidenceStack": "CURRENT_ZIGGY_NATIVE",
+        "admitted": true
+      },
+      "cadenceGroup": "NATIVE_ZIGGY_OFFERED_130M",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G-CET_CURRENT_STACK_20261020"
+      ]
     }
   ],
   "catalog": {
