@@ -36,6 +36,7 @@ internal static partial class SemanticInjectors
             "tunnel-native-worker" or
             "native-location-illegal" or
             "illegal-mechanic-native-worker" or "native-location-dedka" or
+            "dedka-native-worker" or
             "native-location-card-collection" or
             "card-collection-native-worker" or "native-location-marmurbank" or
             "marmurbank-native-worker" or
@@ -69,6 +70,7 @@ internal static partial class SemanticInjectors
             "native-location-illegal" => NativeLocationFourOwnersSource.ApplyIllegalV3(context),
             "illegal-mechanic-native-worker" => ApplyIllegalMechanicNativeWorker(context),
             "native-location-dedka" => NativeLocationFourOwnersSource.ApplyDedka(context),
+            "dedka-native-worker" => ApplyDedkaNativeWorker(context),
             "native-location-card-collection" => NativeLocationAdditionalOwnersSource.ApplyCards(context),
             "card-collection-native-worker" => ApplyCardCollectionNativeWorker(context),
             "native-location-marmurbank" => NativeLocationAdditionalOwnersSource.ApplyMarmur(context),
