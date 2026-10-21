@@ -5,8 +5,7 @@ internal static partial class SemanticInjectors
     private static SemanticInjectionResult ApplyCardCollectionNativeWorker(SemanticPatchContext context)
     {
         var file=context.FindFile("init.lua","local function __gcetAttachCardNative()",
-            "lookup:attachCompiled(10035,100","local function registerSpatialSet()",
-            "local function unregisterSpatialSet()");
+            "local function registerSpatialSet()", "local function unregisterSpatialSet()");
         const string marker="-- G-CET semantic:card-collection-native-worker-v1";
         if(file.Text.Contains(marker,StringComparison.Ordinal))
             return SemanticInjectionResult.Skip("Card Collection native coordinator already installed.");
@@ -36,7 +35,7 @@ local function __gcetAttachCardNative()
 end
 
 """;
-        if(source.Split(original,StringSplitOptions.None).Length!=2)
+        if(source.Split(original.TrimEnd('\n'),StringSplitOptions.None).Length!=2)
             throw new InvalidOperationException("Card Collection native subscription source changed.");
         const string bridge="""
 -- G-CET semantic:card-collection-native-worker-v1
@@ -54,7 +53,7 @@ local function __gcetAttachCardNative()
 end
 
 """;
-        source=source.Replace(original,bridge,StringComparison.Ordinal);
+        source=source.Replace(original.TrimEnd('\n'),bridge.TrimEnd('\n'),StringComparison.Ordinal);
         context.Write(file,crlf?source.Replace("\n","\r\n",StringComparison.Ordinal):source);
         context.WriteCoordinator("card_collection_native_worker.lua", """
 -- G-CET semantic coordinator:card-collection-native-worker
