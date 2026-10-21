@@ -9,6 +9,36 @@ internal static partial class SemanticInjectors
     private static SemanticInjectionResult ApplySitAnywhere(
         SemanticPatchContext context)
     {
+        // Incremental PASS4 live-stage extension: skip logic-level work
+        // when neither scanner nor a workspot nor a pending hide exists.
+        // World/UI/timer reconciliation and active workspot frames are unchanged.
+        var live = context.FindFile("init.lua", "runSitAnywhereFrame", "self.logic:onUpdate()");
+        if (live.Text.Contains("local function runSitAnywhereFrame(dt)", StringComparison.Ordinal))
+        {
+            const string marker = "-- G-CET semantic:sitanywhere-scanner-workspot-only-v1";
+            if (live.Text.Contains(marker, StringComparison.Ordinal))
+                return SemanticInjectionResult.Skip("SitAnywhere scanner/workspot idle extension already installed.");
+            const string before =
+                "        -- Active scanner placement remains full rendered-frame cadence.\\n" +
+                "        self.logic:onUpdate()";
+            const string after =
+                "        " + marker + "\\n" +
+                "        -- Keep cleanup and seated exit work, but do not enter the\\n" +
+                "        -- surface scanner while its presentation is already hidden.\\n" +
+                "        if scanning or inWorkspot or not self.logic.workspotsHidden then\\n" +
+                "            self.logic:onUpdate()\\n" +
+                "        end";
+            var normalized = live.Text.Replace("\\r\\n", "\\n", StringComparison.Ordinal);
+            if (!normalized.Contains("and not world.hasVisibleState() then", StringComparison.Ordinal)
+                || !normalized.Contains("local scanning = self.logic.isScanning or self.runtimeData.forceScan", StringComparison.Ordinal)
+                || normalized.Split(before, StringSplitOptions.None).Length != 2)
+                throw new InvalidOperationException("SitAnywhere deployed PASS4 frame boundary changed.");
+            var patched = normalized.Replace(before, after, StringComparison.Ordinal);
+            context.Write(live, live.Text.Contains("\\r\\n", StringComparison.Ordinal)
+                ? patched.Replace("\\n", "\\r\\n", StringComparison.Ordinal) : patched);
+            return SemanticInjectionResult.Success("SitAnywhere skips already-hidden non-scanner surface processing; active scanning, seated states and cleanup remain.");
+        }
+
         var init = context.FindFile(
             "init.lua",
             "Cron.Update(dt)",
