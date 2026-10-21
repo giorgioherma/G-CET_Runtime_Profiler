@@ -519,6 +519,23 @@ internal static partial class SemanticInjectors
                 matches=regex.Matches(text);
             }
         }
+        // Generic 0-Engine runs first and may replace the event registrar
+        // with __gcetRegisterEvent_N while preserving the same callback body.
+        // Revalidate this exact captured source shape rather than requiring
+        // its pre-generic registrar name or a historical source version.
+        if(matches.Count==0 && text.Contains("__gcetRegisterEvent_",StringComparison.Ordinal))
+        {
+            const string bareRegistrar=@"registerForEvent\s*\(";
+            var current=regex.ToString();
+            if(current.Contains(bareRegistrar,StringComparison.Ordinal))
+            {
+                var adapted=current.Replace(bareRegistrar,
+                    @"(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(",
+                    StringComparison.Ordinal);
+                regex=new Regex(adapted,RegexOptions.CultureInvariant);
+                matches=regex.Matches(text);
+            }
+        }
         if(matches.Count==0)
             throw new InvalidOperationException(
                 $"Current source no longer matches semantic anchor: {label}.");

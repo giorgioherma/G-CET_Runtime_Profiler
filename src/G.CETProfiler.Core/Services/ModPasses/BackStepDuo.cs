@@ -22,7 +22,7 @@ internal static partial class SemanticInjectors
     private static bool IsBackStepDuoIdleGuardCompleteText(string text) =>
         text.Contains("__gcetBackStepDuoIdleGuardV3", StringComparison.Ordinal) &&
         Regex.IsMatch(text,
-            @"registerForEvent\(""onUpdate"",\s*function\(deltaTime\)[\s\S]*?if\s+not\s+settings\.EnableDash\s+then\s+resetTransientStates\(\)\s+return\s+end\s+local\s+player\s*=\s*getPlayer\(\)",
+            @"(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*[""']onUpdate[""']\s*,\s*function\(\s*deltaTime\s*\)[\s\S]*?if\s+not\s+settings\.EnableDash\s+then\s+resetTransientStates\(\)\s+return\s+end\s+local\s+player\s*=\s*getPlayer\(\)",
             RegexOptions.CultureInvariant);
 
     private static bool IsBackStepDuoDormancyCompleteText(string t)
@@ -112,8 +112,14 @@ internal static partial class SemanticInjectors
         }
         if (!IsBackStepDuoIdleGuardCompleteText(text))
         {
-            var start = text.IndexOf("registerForEvent(\"onUpdate\", function(deltaTime)", StringComparison.Ordinal);
-            var next = start < 0 ? -1 : text.IndexOf("registerForEvent(\"onDraw\"", start, StringComparison.Ordinal);
+            var updateStart=Regex.Match(text,
+                @"\b(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*[""']onUpdate[""']\s*,\s*function\(\s*deltaTime\s*\)",
+                RegexOptions.CultureInvariant);
+            var start=updateStart.Success?updateStart.Index:-1;
+            var drawStart=start<0?Match.Empty:Regex.Match(text[start..],
+                @"\b(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*[""']onDraw[""']",
+                RegexOptions.CultureInvariant);
+            var next=drawStart.Success?start+drawStart.Index:-1;
             if (start < 0 || next < 0 || next <= start)
                 throw new InvalidOperationException("BackStepDuo onUpdate/onDraw lifecycle not proven.");
             var update = text[start..next];
