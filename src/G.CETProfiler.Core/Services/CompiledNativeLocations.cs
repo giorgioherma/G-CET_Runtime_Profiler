@@ -328,6 +328,35 @@ internal sealed record CompiledNativeLocations(byte[] Bytes,
             }
         }
 
+        // f80h: source-owned fixed anchors, compiled before native admission.
+        // Use one aggregate owner: FAR only guards new candidate registration.
+        // Never gate tracked/pending entity maintenance or cleanup.
+        if(Has("f80h_aroused_expressions/init.lua")){
+            var index=Read("f80h_aroused_expressions/AnchorsIndex.lua");
+            var names=new[]{"lizzies_club","afterlife","heavy_hearts_club",
+                "heavy_hearts_club_mod","black_saphire","7th_hell","jigjig","coyote"};
+            if(index is not null && names.All(n=>
+                    index.Contains("Anchors/"+n+".lua",StringComparison.Ordinal))){
+                var positions=new List<Site>();
+                var complete=true;
+                foreach(var name in names){
+                    var source=Read("f80h_aroused_expressions/Anchors/"+name+".lua");
+                    if(source is null){complete=false;break;}
+                    var matches=Regex.Matches(source,
+                        @"\\bpos\\s*=\\s*\\{\\s*x\\s*=\\s*(?<x>"+Num+
+                        @")\\s*,\\s*y\\s*=\\s*(?<y>"+Num+
+                        @")\\s*,\\s*z\\s*=\\s*(?<z>"+Num+@")",
+                        RegexOptions.CultureInvariant);
+                    if(matches.Count==0){complete=false;break;}
+                    foreach(Match m in matches)
+                        positions.Add(new Site(10042,Number(m.Groups["x"].Value),
+                            Number(m.Groups["y"].Value),
+                            Number(m.Groups["z"].Value),350f));
+                }
+                if(complete && positions.Count==49)Include(10042,positions);
+            }
+        }
+
         if(Has("Card Collection/init.lua")){
             var src=Read("Card Collection/init.lua");
             // Require author card ID as well as its coordinate: no incidental
