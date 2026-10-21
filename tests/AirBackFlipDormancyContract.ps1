@@ -60,7 +60,14 @@ $result=(& $exe --capture $capture --mods $mods --generate-pass --json|ConvertFr
 if(!$result.ok -or !$result.pass){throw 'AirBackFlip original source-only generation failed'}
 $report=Get-Content (Join-Path $capture 'G-CET_Resolver.json') -Raw|ConvertFrom-Json
 $candidates=@($report.semanticSourceOnlyCandidates|Where-Object {$_.ruleId -eq 'air-backflip'})
-if($candidates.Count -ne 1 -or !$candidates[0].stageComposed -or @($report.callbackFamilies).Count -ne 0){
+# Current-source generic discovery is not a fabricated profiler capture.
+$invalidSourceFamilies=@($report.callbackFamilies|Where-Object {
+    $_.sourceFirst -ne $true -or
+    @($_.topConsumers|Where-Object {
+        $_.sourceFirst -ne $true -or $null -ne $_.runtime
+    }).Count -gt 0
+})
+if($candidates.Count -ne 1 -or !$candidates[0].stageComposed -or $invalidSourceFamilies.Count -ne 0){
     throw 'AirBackFlip source-only candidate lost composed-stage evidence or fabricated callbacks'
 }
 $manifest=Get-Content $result.pass.ManifestPath -Raw|ConvertFrom-Json

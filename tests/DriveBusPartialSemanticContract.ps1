@@ -167,9 +167,16 @@ try {
     }
     $sourceReport=Get-Content (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
     $sourceCandidates=@($sourceReport.semanticSourceOnlyCandidates | Where-Object {$_.ruleId -eq 'drivebus'})
+    # Current-source generic discovery is not a fabricated profiler capture.
+    $invalidSourceFamilies=@($sourceReport.callbackFamilies|Where-Object {
+        $_.sourceFirst -ne $true -or
+        @($_.topConsumers|Where-Object {
+            $_.sourceFirst -ne $true -or $null -ne $_.runtime
+        }).Count -gt 0
+    })
     if ($sourceCandidates.Count -ne 1 -or
         !$sourceCandidates[0].stageComposed -or
-        @($sourceReport.callbackFamilies).Count -ne 0) {
+        $invalidSourceFamilies.Count -ne 0) {
         throw 'DriveBus source-only candidate missing or synthetic callback family generated'
     }
     $sourceManifest=Get-Content $sourceOnly.pass.ManifestPath -Raw | ConvertFrom-Json

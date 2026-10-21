@@ -359,7 +359,14 @@ try {
     if(!$unmeasured.ok -or !$unmeasured.pass){throw 'BackStepDuo source-only original generation failed'}
     $report=Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw|ConvertFrom-Json
     $candidate=@($report.semanticSourceOnlyCandidates|Where-Object {$_.ruleId -eq 'backstep-duo'})
-    if($candidate.Count -ne 1 -or !$candidate[0].stageComposed -or @($report.callbackFamilies).Count -ne 0){
+    # Current-source generic discovery is not a fabricated profiler capture.
+    $invalidSourceFamilies=@($report.callbackFamilies|Where-Object {
+        $_.sourceFirst -ne $true -or
+        @($_.topConsumers|Where-Object {
+            $_.sourceFirst -ne $true -or $null -ne $_.runtime
+        }).Count -gt 0
+    })
+    if($candidate.Count -ne 1 -or !$candidate[0].stageComposed -or $invalidSourceFamilies.Count -ne 0){
         throw 'BackStepDuo source-only selection lost catalog-composed proof or fabricated runtime callbacks'
     }
     $manifest=Get-Content -LiteralPath $unmeasured.pass.ManifestPath -Raw|ConvertFrom-Json
