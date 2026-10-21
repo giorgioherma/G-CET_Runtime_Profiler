@@ -191,7 +191,15 @@ $expected=@{
 }
 $first=Generate
 if(!$first.Output.ok -or !$first.Output.pass){throw 'Four new source-only stages did not generate'}
-if(@($first.Report.callbackFamilies).Count -ne 0){throw 'Source-only stages fabricated callback measurements'}
+# Generic source-first registration discoveries are allowed, but no
+# measured callback or runtime sample may be invented by an empty capture.
+$invalidFamilies=@($first.Report.callbackFamilies|Where-Object {
+ $_.sourceFirst -ne $true -or
+ @($_.topConsumers|Where-Object {
+  $_.sourceFirst -ne $true -or $null -ne $_.runtime
+ }).Count -gt 0
+})
+if($invalidFamilies.Count -gt 0){throw "Source-only stages invented measured callbacks: $($invalidFamilies.Count)"}
 $manifest=Get-Content -Raw $first.Output.pass.ManifestPath | ConvertFrom-Json
 $zip=[IO.Compression.ZipFile]::OpenRead([string]$first.Output.pass.ZipPath)
 try {

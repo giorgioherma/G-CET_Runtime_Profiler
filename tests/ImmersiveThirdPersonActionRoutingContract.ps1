@@ -206,13 +206,19 @@ end)
   }
   $sourceReport=Get-Content (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
   $sourceOnly=@($sourceReport.semanticSourceOnlyCandidates)
+  $invalidFamilies=@($sourceReport.callbackFamilies|Where-Object {
+    $_.sourceFirst -ne $true -or
+    @($_.topConsumers|Where-Object {
+      $_.sourceFirst -ne $true -or $null -ne $_.runtime
+    }).Count -gt 0
+  })
   if ($sourceOnly.Count -ne 1 -or
       $sourceOnly[0].ruleId -ne 'immersive-third-person-action-routing' -or
       $sourceOnly[0].admissionLane -ne 'SEMANTIC_AUTHOR_SOURCE_ONLY' -or
       $sourceOnly[0].capturedCallback -ne $false -or
       $null -ne $sourceOnly[0].callsPerSecond -or
       $null -ne $sourceOnly[0].exclusiveMsPerSecond -or
-      @($sourceReport.callbackFamilies).Count -ne 0) {
+      $invalidFamilies.Count -ne 0) {
     throw 'Source-independent admission lost semantic source proof or invented profiler runtime samples'
   }
   $sourceManifest=Get-Content $sourceRun.pass.ManifestPath -Raw | ConvertFrom-Json

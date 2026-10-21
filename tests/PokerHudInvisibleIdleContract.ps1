@@ -108,8 +108,18 @@ $first = ResolvePokerHud
 if (!$first.Result.ok -or !$first.Result.pass) { throw 'HUD pristine source-only generation failed' }
 $candidates = @($first.Report.semanticSourceOnlyCandidates |
     Where-Object { $_.ruleId -eq 'streetgamespoker-hud-invisible-native-idle' })
-if ($candidates.Count -ne 1 -or @($first.Report.callbackFamilies).Count -ne 0) {
-    throw 'HUD source-only admission missing or invented callback measurements'
+# Source-first generic families are unmeasured current-source opportunities,
+# not fabricated profiler captures. Reject actual measured callback families
+# and any source-first row that incorrectly contains runtime evidence.
+$invalidFamilies = @($first.Report.callbackFamilies | Where-Object {
+    $_.sourceFirst -ne $true -or
+    @($_.topConsumers | Where-Object {
+        $_.sourceFirst -ne $true -or $null -ne $_.runtime
+    }).Count -gt 0
+})
+if ($candidates.Count -ne 1 -or $invalidFamilies.Count -gt 0) {
+    throw "HUD source-only admission invalid: candidates=$($candidates.Count), "+
+          "measuredOrMislabelledFamilies=$($invalidFamilies.Count)"
 }
 $manifest = Get-Content $first.Result.pass.ManifestPath -Raw | ConvertFrom-Json
 $rule = @($manifest.transforms | Where-Object { $_.RuleId -eq 'streetgamespoker-hud-invisible-native-idle' })
