@@ -113,3 +113,27 @@ real gameplay behavior. A green release is installation-eligible only
 for demonstrated source variants; other variants fail closed per stage,
 not globally. No promise is made that every arbitrary future mod update
 can be rewritten safely.
+
+## 2026-10-21 SHA-free Lua generation contract
+
+All Lua optimization phases are **current-source admitted**. The generic
+0-Engine phase, native-read/player-vector phase, compiled native-location
+inventory and final semantic phase must never require matching a previous
+Lua SHA, a captured source fingerprint, an output-file digest or an
+`admissionLane`/provenance label. No Lua-source digest is emitted by the
+optimization pass generator to determine source compatibility. Identity comes
+from uniquely source-proven owners, actual callsites, behavioral conditions,
+completed-stage postconditions and safe fallbacks. Unknown/drifted semantic
+behavior refuses **only that stage**, not unrelated source-admitted passes.
+
+The independently maintained source-only/observed workload distinction is
+factual reporting, **never a compatibility or admission credential**. Do not
+invent measurements when a callback is absent from the capture. Lua source
+updates and partial optimizations are re-analyzed from the installed/staged
+code. Generic 0-Engine => native => semantic remains the fixed order.
+
+**Integrity exception:** profiler-original restore and checksum verification
+of compiled profiler/native DLLs and release payloads remain byte-precise.
+Regression tests may compare before/after hashes to prove Resolver has not
+modified installed author files. Those integrity checks must never be used
+to reject a Lua optimization for a newer author revision.
