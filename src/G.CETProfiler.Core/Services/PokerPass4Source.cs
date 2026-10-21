@@ -182,7 +182,13 @@ internal static class PokerPass4Source
 
         var tableText = worldComplete ? tables.Text : TransformWorldSweep(tables.Text);
         var initText = controllerComplete ? init.Text : TransformController(init.Text);
-        if (!IsControllerComplete(initText) || !IsWorldComplete(tableText))
+        // A completed external controller is proved by both the live bridge
+        // and its owned coordinator, including when only the world stage is
+        // being upgraded. Never demand the inline scheduler a second time.
+        if (!(IsControllerComplete(initText) ||
+              IsExternalControllerComplete(initText,
+                  context.ReadOwnedModule(PokerSemanticCoordinatorSource.Module))) ||
+            !IsWorldComplete(tableText))
             throw new InvalidOperationException(
                 "Poker completed-source postconditions did not hold after composition.");
         context.Write(init, initText);
