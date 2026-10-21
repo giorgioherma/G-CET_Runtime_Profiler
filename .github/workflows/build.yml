@@ -1169,6 +1169,10 @@ jobs:
         shell: pwsh
         run: ./tests/CurrentStackDormancyBatchContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: CyberStunts native worker source contract
+        shell: pwsh
+        run: ./tests/CyberStuntsNativeWorkerContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: Yaiba native worker source contract
         shell: pwsh
         run: ./tests/YaibaNativeWorkerContract.ps1 -ResolverRoot ./publish-resolver
