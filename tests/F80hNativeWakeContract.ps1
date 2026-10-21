@@ -52,4 +52,16 @@ New-Item -ItemType Directory -Force (Join-Path $folder 'GCET_Semantic') | Out-Nu
 [IO.File]::WriteAllText((Join-Path $folder 'GCET_Semantic/f80h_native_wake.lua'),$coordinator,[Text.UTF8Encoding]::new($false))
 $second=ApplySource $output
 if($second.result.Applied){throw 'f80h regenerated a completed stage'}
+$ownedPath=Join-Path $folder 'GCET_Semantic/f80h_native_wake.lua'
+$previous=$coordinator.Replace('return M', "-- older generated implementation`nreturn M")
+[IO.File]::WriteAllText($ownedPath,$previous,[Text.UTF8Encoding]::new($false))
+$upgrade=ApplySource $source
+if(!$upgrade.result.Applied -or $upgrade.rows.Count -ne 2){throw 'Same-rule older worker was not upgraded'}
+$upgraded=@($upgrade.rows | Where-Object {$_.RelativeFile -like '*/GCET_Semantic/f80h_native_wake.lua'}) | Select-Object -First 1
+if(!$upgraded -or [Text.Encoding]::UTF8.GetString($upgraded.Bytes) -ne $coordinator){throw 'Worker upgrade differs from reviewed coordinator'}
+[IO.File]::WriteAllText($ownedPath,($previous.Replace('native-location-f80h-aroused','unrelated-owner')),[Text.UTF8Encoding]::new($false))
+$refused=$false
+try { $null=ApplySource $source } catch { $refused=$true }
+if(!$refused){throw 'Foreign-owned coordinator was overwritten'}
+Write-Host 'f80h same-owner worker upgrade and foreign-owner protection: PASS'
 Write-Host 'f80h native coordinator, bridge and idempotence: PASS'
