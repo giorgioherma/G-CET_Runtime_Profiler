@@ -51,7 +51,7 @@ end
   local okEngine, engine = pcall(GetMod, "0-Engine")
   local host = okEngine and type(engine) == "table"
     and engine.GCET and engine.GCET.NativeLocationHost or nil
-  if host and type(host.attachCompiled) == "function" and #ANCHORS == 49 then
+  if host and type(host.attachCompiled) == "function" and #ANCHORS > 0 and #ANCHORS <= 1024 then
     local ok, attached = pcall(function()
       return host:attachCompiled(10042, #ANCHORS,
         function() __gcetF80hFar = false end,
@@ -64,6 +64,6 @@ end
         source=source.Replace(initAnchor,initAnchor+attach+"\n",StringComparison.Ordinal);
         context.Write(file,crlf?source.Replace("\n","\r\n",StringComparison.Ordinal):source);
         return SemanticInjectionResult.Success(
-            "49 installed source anchors compiled to native coarse FAR; only new distant NPC attach/registration is bypassed when all pending/tracked queues are empty. PASS8 frame, NPC lifecycle and audio remain unchanged.");
+            "Installed source anchors compiled to native coarse FAR; only new distant NPC attach/registration is bypassed when all pending/tracked queues are empty. PASS8 frame, NPC lifecycle and audio remain unchanged.");
     }
 }
