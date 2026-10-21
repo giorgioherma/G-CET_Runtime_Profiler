@@ -953,7 +953,29 @@ try{
  $x=Z($b+'AutoLoot/init.lua');foreach($t in @('gcetAutoLootOnAction','SubscribeAction','UI_DPadWeapons')){if($x-notmatch[regex]::Escape($t)){throw "AutoLoot missing $t"}}
  $x=Z($b+'BetterLootMarkers/init.lua');if($x-notmatch'if BetterLootMarkers\.Settings\.immersiveMode then' -or $x-notmatch'BetterLootMarkers\.ImmersiveMode\.Tick\(dt\)'){throw 'BetterLootMarkers off-state gate incomplete.'}
  $x=Z($b+'QuestTrackingToggle/init.lua');foreach($t in @('questTrackingOnAction','SubscribeAction','ToggleSprint','world_map_menu_track_waypoint')){if($x-notmatch[regex]::Escape($t)){throw "QTT missing $t"}}
- $x=Z($b+'sitAnywhere/init.lua');if($x-notmatch'Cron\.HasActiveTimers\(\)' -or $x-notmatch'world\.hasVisibleState\(\)' -or $x-notmatch'if interaction\.hubShown then interaction\.update\(\) end'){throw 'sitAnywhere hard dormancy incomplete.'}
+ $x=Z($b+'sitAnywhere/init.lua')
+  if($x -match 'G-CET semantic coordinator bridge:sitanywhere') {
+    # Semantic A/B/C work may be packaged externally after generic and native passes.
+    # Verify the relocated wake/cadence code AND the unchanged author callback fallback.
+    $coordinator=Z($b+'sitAnywhere/G-CET/Coordinator.lua')
+    if($coordinator -notmatch '(?m)^-- G-CET semantic coordinator:sitanywhere$' -or
+       $coordinator -notmatch 'Cron\.HasActiveTimers\(\)' -or
+       $coordinator -notmatch 'world\.hasVisibleState\(\)' -or
+       $coordinator -notmatch 'if interaction\.hubShown then interaction\.update\(\) end' -or
+       $coordinator -notmatch 'if self\.runtimeData\.inMenu or not self\.runtimeData\.inGame then return end' -or
+       $x -notmatch 'pcall\(dofile,"G-CET/Coordinator\.lua"\)' -or
+       $x -notmatch 'return __gcetSitAnywhereUpdate\(dt,self,Cron,interaction,world\)' -or
+       $x -notmatch 'Cron\.Update\(dt\)' -or
+       $x -notmatch 'world\.update\(\)' -or
+       [regex]::Matches($x, '(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\("onUpdate"').Count -ne 1) {
+      throw 'sitAnywhere owned coordinator, callback bridge, wake, or author fallback incomplete.'
+    }
+  }
+  elseif($x-notmatch'Cron\.HasActiveTimers\(\)' -or
+         $x-notmatch'world\.hasVisibleState\(\)' -or
+         $x-notmatch'if interaction\.hubShown then interaction\.update\(\) end') {
+    throw 'sitAnywhere inline hard dormancy incomplete.'
+  }
  $x=Z($b+'sitAnywhere/modules/external/Cron.lua');if($x-notmatch'function Cron\.HasActiveTimers\(\)'){throw 'sitAnywhere timer wake probe missing.'}
  $x=Z($b+'sitAnywhere/modules/worldInteraction.lua');if($x-notmatch'function world\.hasVisibleState\(\)'){throw 'sitAnywhere visible-world wake probe missing.'}
  $x=Z($b+'sitAnywhere/modules/logic.lua');if($x-notmatch'workspotsHidden' -or $x-notmatch'if self\.workspotsHidden then return end'){throw 'sitAnywhere parked-workspot state missing.'}
