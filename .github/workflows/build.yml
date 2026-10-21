@@ -1106,6 +1106,10 @@ jobs:
 
           Write-Host 'C# lifecycle integration smoke test passed.'
 
+      - name: CyberStunts compiled source-owned jump FAR/NEAR regression
+        shell: pwsh
+        run: ./tests/CyberStuntsNativeLocationContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: Alpha6b resolver and handoff regression contract
         shell: pwsh
         run: ./tests/ResolverHandoffContract.ps1 -PublishedRoot ./publish
@@ -1165,10 +1169,6 @@ jobs:
       - name: Additional native-location source and fallback contract
         shell: pwsh
         run: ./tests/NativeLocationAdditionalOwnerContract.ps1 -ResolverRoot ./publish-resolver
-
-      - name: CyberStunts compiled source-owned jump FAR/NEAR regression
-        shell: pwsh
-        run: ./tests/CyberStuntsNativeLocationContract.ps1 -ResolverRoot ./publish-resolver
 
       - name: Four native-location v2 upgrade and source-drift contract
         shell: pwsh
