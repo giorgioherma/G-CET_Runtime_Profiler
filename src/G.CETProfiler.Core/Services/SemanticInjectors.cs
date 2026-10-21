@@ -36,6 +36,7 @@ internal static partial class SemanticInjectors
             "native-location-card-collection" or "native-location-marmurbank" or
             "native-location-vehicle-mileage-pumps" or
             "native-location-cyberpsychos" or
+            "native-location-f80h-aroused" or
             "rica-lazy-completion-details" or
             "infinitegigs-empty-queue-fastpath" or
             "native-location-yaiba-bathtub" or "native-location-ziggy-offered" or "native-location-cyberstunts";
@@ -61,6 +62,7 @@ internal static partial class SemanticInjectors
             "native-location-marmurbank" => NativeLocationAdditionalOwnersSource.ApplyMarmur(context),
             "native-location-vehicle-mileage-pumps" => ApplyVehicleMileageNativePumps(context),
             "native-location-cyberpsychos" => ApplyCyberpsychosNativeLocations(context),
+            "native-location-f80h-aroused" => ApplyF80hArousedNativeWake(context),
             "native-location-yaiba-bathtub" => NativeLocationAdditionalOwnersSource.ApplyBathtub(context),
             "native-location-ziggy-offered" => NativeLocationAdditionalOwnersSource.ApplyZiggy(context),
             "native-location-cyberstunts" => ApplyCyberStuntsNativeLocation(context),
