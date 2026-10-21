@@ -302,6 +302,32 @@ internal sealed record CompiledNativeLocations(byte[] Bytes,
             if(first.Count==1 && second.Count==1)
                 Include(10034,first.Concat(second));
         }
+        // Cyberpsycho fallback actors: compile each of the 17 author workspots
+        // independently. Unknown or changing site lists omit the entire owner
+        // family, preserving the original Lua watchdog unmodified.
+        if(Has("repeatable_cyberpsychos/init.lua")){
+            var src=Read("repeatable_cyberpsychos/modules/sites.lua");
+            if(src is not null && src.Contains("local Sites = {",StringComparison.Ordinal)){
+                var rows=Regex.Matches(src,
+                    @"\{\s*id\s*=\s*[""'](?<id>[^""']+)[""'][^\r\n]*?position\s*=\s*\{\s*x\s*=\s*(?<x>"+Num+
+                    @")\s*,\s*y\s*=\s*(?<y>"+Num+@")\s*,\s*z\s*=\s*(?<z>"+Num+@")",
+                    RegexOptions.CultureInvariant);
+                if(rows.Count==17 &&
+                   rows.Cast<Match>().Select(m=>m.Groups["id"].Value).Distinct(StringComparer.Ordinal).Count()==17) {
+                    for(int k=0;k<rows.Count;k++){
+                        var m=rows[k];
+                        // Coarse radius exceeds the authored 180m default;
+                        // injection checks live user setting before ever trusting FAR.
+                        Include(1004101+k,new[]{
+                            new Site(1004101+k,Number(m.Groups["x"].Value),
+                                Number(m.Groups["y"].Value),
+                                Number(m.Groups["z"].Value),210f)
+                        });
+                    }
+                }
+            }
+        }
+
         if(Has("Card Collection/init.lua")){
             var src=Read("Card Collection/init.lua");
             // Require author card ID as well as its coordinate: no incidental
