@@ -619,6 +619,26 @@ internal sealed class SemanticPatchContext
             new UTF8Encoding(false).GetBytes(lua));
     }
 
+    // A completed external coordinator may already exist on disk or may have
+    // been staged by a prior rule in this generation. Always read only from the
+    // reserved owned subtree, and never treat an arbitrary author file as proof.
+    internal string? ReadOwnedModule(string relativeModule)
+    {
+        var ownerFolder = ResolveOwnerFolder();
+        if (ownerFolder is null ||
+            !relativeModule.StartsWith("G-CET/", StringComparison.Ordinal) ||
+            relativeModule.Contains("..", StringComparison.Ordinal))
+            return null;
+        var dest = Path.Combine(ownerFolder,
+            relativeModule.Replace('/', Path.DirectorySeparatorChar));
+        var key = Path.GetRelativePath(_modsRoot, dest).Replace('\\', '/');
+        if (_ownedModules.TryGetValue(key, out var generated))
+            return Encoding.UTF8.GetString(generated.Bytes);
+        if (_staged.TryGetValue(key, out var staged))
+            return Encoding.UTF8.GetString(staged);
+        return File.Exists(dest) ? File.ReadAllText(dest) : null;
+    }
+
     internal bool OwnerAlreadyMarked()
     {
         var folder = ResolveOwnerFolder();
