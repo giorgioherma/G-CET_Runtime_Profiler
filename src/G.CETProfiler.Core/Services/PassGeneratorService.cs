@@ -563,6 +563,7 @@ public static class PassGeneratorService
                 result.Add(new PassCandidate
                 {
                     Kind = kind.Value,
+                    SourceFirst = JsonBool(consumer, "sourceFirst"),
                     RegistrationId = registrationId.Value,
                     Owner = owner,
                     RelativeFile = relativeFile.Replace('\\', '/'),
@@ -705,6 +706,25 @@ public static class PassGeneratorService
             .ToList();
 
         nonShared.AddRange(shared);
+
+        // Current-source registrations supersede captured coordinates for the
+        // SAME kind/event in the SAME Lua file. A capture from an optimized
+        // runtime may point to different lines after a Nexus reset. Retain
+        // measured rows in ANALYZE for attribution, but never let them race a
+        // structural current-source registrar in GENERATE. Other independent
+        // candidate kinds and files remain untouched.
+        var sourceFirstSites = nonShared
+            .Where(candidate => candidate.SourceFirst &&
+                (candidate.Kind == CandidateKind.Action ||
+                 candidate.Kind == CandidateKind.Frame))
+            .Select(candidate => string.Join("|", candidate.RelativeFile,
+                candidate.Kind, candidate.FrameEvent))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        nonShared.RemoveAll(candidate => !candidate.SourceFirst &&
+            (candidate.Kind == CandidateKind.Action ||
+             candidate.Kind == CandidateKind.Frame) &&
+            sourceFirstSites.Contains(string.Join("|", candidate.RelativeFile,
+                candidate.Kind, candidate.FrameEvent)));
         return nonShared;
     }
 
@@ -1936,6 +1956,7 @@ public static class PassGeneratorService
     private sealed class PassCandidate
     {
         public CandidateKind Kind { get; init; }
+        public bool SourceFirst { get; init; }
         public string Provider { get; init; } = "";
         public long RegistrationId { get; init; }
         public string Owner { get; init; } = "";
