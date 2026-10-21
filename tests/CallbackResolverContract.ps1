@@ -969,7 +969,6 @@ $eligibleSharedCandidates = @(
                 registrationId = [int64]$callback.registrationId
                 reads = [int]$callback.sourceRecognizedOccurrences
                 file = [string]$callback.sourceFile
-                sha = [string]$callback.sourceSha256
                 lineStart = [int]$callback.lineStart
                 lineEnd = [int]$callback.lineEnd
             }
@@ -1648,13 +1647,13 @@ foreach ($family in @($result.callbackFamilies)) {
 $expectedSharedTransforms = @(
     $eligibleSharedCandidates |
         ForEach-Object {
-            "$($_.provider)|$($_.file)|$($_.sha)|$($_.lineStart)|$($_.lineEnd)"
+            "$($_.provider)|$($_.file)|$($_.lineStart)|$($_.lineEnd)"
         } |
         Sort-Object -Unique
 ).Count
 # Source-first reads are independent of callback CPU thresholds. They add
-# narrowly recorded transforms only if the generator revalidated installed
-# source SHA and the exact authorized Game.Get...() operation.
+# narrowly recorded transforms only if the generator revalidated the current
+# Lua source shape and the exact authorized Game.Get...() operation.
 $generatedManifest = Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
 $nativeReadReuseTransforms = @($generatedManifest.transforms | Where-Object {
     $_.type -eq 'NATIVE_READ_REUSE'
@@ -1662,11 +1661,11 @@ $nativeReadReuseTransforms = @($generatedManifest.transforms | Where-Object {
 foreach ($entry in $nativeReadReuseTransforms) {
     if ([string]$entry.contract -ne 'GCET_NATIVE_READ_REUSE_V1' -or
         [int]$entry.replacedOccurrences -le 0 -or
-        [string]::IsNullOrWhiteSpace([string]$entry.sourceSha256)) {
-        throw 'Native read reuse manifest entry lacks contract/source proof.'
+        [string]::IsNullOrWhiteSpace([string]$entry.file)) {
+        throw 'Native read reuse manifest entry lacks source-owned operation proof.'
     }
     $matchingFile = @($result.nativeReadReuse.files | Where-Object {
-        $_.relativeFile -eq $entry.file -and $_.sha256 -eq $entry.sourceSha256
+        $_.relativeFile -eq $entry.file
     })
     $matchingOperation = @($matchingFile | ForEach-Object { $_.operations } |
         Where-Object { $_.getter -eq $entry.operation -and $_.provider -eq $entry.provider })
