@@ -559,12 +559,23 @@ internal sealed class SemanticPatchContext
             return;
         }
 
+        // A prior generated worker is replaceable only when its FIRST line
+        // proves the same owner/rule. Different users' files and foreign
+        // stages remain protected. Updated coordinator code never needs
+        // to be squeezed back into an author's init.lua.
+        static bool SameCoordinatorOwner(string current, string ownerMarker) =>
+            current.StartsWith(ownerMarker+"\n",StringComparison.Ordinal);
+
         if (_staged.TryGetValue(relative,out var stagedBytes))
         {
-            var current=SemanticTextFile.From(relative,stagedBytes).Text;
-            if (!current.Equals(normalized,StringComparison.Ordinal))
+            var current=SemanticTextFile.From(relative,stagedBytes).Text
+                .Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
+            if (current.Equals(normalized,StringComparison.Ordinal)) return;
+            if (!SameCoordinatorOwner(current,marker))
                 throw new InvalidOperationException(
                     "A different semantic stage already owns the coordinator path.");
+            _changes[relative]=new SemanticFileChange(
+                relative,new UTF8Encoding(false).GetBytes(normalized));
             return;
         }
 
@@ -573,9 +584,12 @@ internal sealed class SemanticPatchContext
         {
             var current=File.ReadAllText(path)
                 .Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
-            if (!current.Equals(normalized,StringComparison.Ordinal))
+            if (current.Equals(normalized,StringComparison.Ordinal)) return;
+            if (!SameCoordinatorOwner(current,marker))
                 throw new InvalidOperationException(
-                    "Existing coordinator differs from reviewed implementation; manual semantic adaptation required.");
+                    "Existing coordinator has a different owner; manual semantic adaptation required.");
+            _changes[relative]=new SemanticFileChange(
+                relative,new UTF8Encoding(false).GetBytes(normalized));
             return;
         }
 
