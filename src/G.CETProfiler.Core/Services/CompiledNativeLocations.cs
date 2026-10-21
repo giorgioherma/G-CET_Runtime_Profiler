@@ -308,6 +308,53 @@ internal sealed record CompiledNativeLocations(byte[] Bytes,
             }
         }
 
+        // CyberStunts' built-in launch sites are immutable author data.
+        // Dynamic UserJumps.json entries are NOT covered by this owner.
+        // Until the semantic source proves a safe dynamic-site wake/fallback,
+        // these passive anchors MUST NOT be used to suspend stunt processing.
+        if(Has("CyberStunts-StuntJumps-CET/init.lua")) {
+            var src=Read("CyberStunts-StuntJumps-CET/init.lua");
+            if(src is not null) {
+                var start=Regex.Match(src,
+                    @"\blocal\s+jumps\s*=\s*\{",RegexOptions.CultureInvariant);
+                var end=start.Success ? src.IndexOf("local userJumps",
+                    start.Index+start.Length,StringComparison.Ordinal) : -1;
+                if(end>start.Index && end-start.Index<100000 &&
+                   src.Contains("DetectJumpLaunch",StringComparison.Ordinal) &&
+                   src.Contains("LoadUserJumps",StringComparison.Ordinal)) {
+                    var fixedTable=src.Substring(start.Index,end-start.Index);
+                    var entries=Regex.Matches(fixedTable,
+                        @"\bjumpName\s*=\s*[""'][^""']+[""']\s*,\s*jumpPos\s*=\s*\{(?<pos>[^{}]+)\}",
+                        RegexOptions.CultureInvariant);
+                    var found=new List<Site>();
+                    var complete=entries.Count is >=1 and <=256;
+                    foreach(Match entry in entries) {
+                        var pos=entry.Groups["pos"].Value;
+                        var mx=Regex.Matches(pos,@"\b([xyz])\s*=\s*("+Num+")",
+                            RegexOptions.CultureInvariant);
+                        if(mx.Count!=3) {complete=false;break;}
+                        var coords=new Dictionary<string,float>(StringComparer.Ordinal);
+                        foreach(Match c in mx) {
+                            if(!coords.TryAdd(c.Groups[1].Value,Number(c.Groups[2].Value)))
+                                complete=false;
+                        }
+                        if(!complete || coords.Count!=3 ||
+                           !coords.ContainsKey("x") || !coords.ContainsKey("y") ||
+                           !coords.ContainsKey("z")) {complete=false;break;}
+                        // Conservatively outside the 5m author launch gate.
+                        // Native events are passive until a reviewed semantic
+                        // integrates fast vehicle approach and dynamic jumps.
+                        found.Add(new Site(10039,coords["x"],coords["y"],
+                            coords["z"],200));
+                    }
+                    if(complete && found.Count==entries.Count &&
+                       Regex.Matches(fixedTable,@"\bjumpName\s*=",
+                           RegexOptions.CultureInvariant).Count==entries.Count)
+                        Include(10039,found);
+                }
+            }
+        }
+
         if(Has("ziggy_last_play/init.lua")) {
             var src=Read("ziggy_last_play/quest.json");
             if(src is not null) {
