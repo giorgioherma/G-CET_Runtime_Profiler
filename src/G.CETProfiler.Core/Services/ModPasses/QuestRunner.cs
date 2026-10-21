@@ -9,6 +9,18 @@ internal static partial class SemanticInjectors
     private static SemanticInjectionResult ApplyQuestRunner(
         SemanticPatchContext context)
     {
+        // PASS5 deployed sources already separate active quest, idle Manager,
+        // and Spawner feeds. Keep them intact on regeneration.
+        var liveFile = context.FindFile("init.lua", "Cron.Update(dt)", "Runner.gameState");
+        if (liveFile.Text.Contains("pass5ManagerIdleAccumulator", StringComparison.Ordinal))
+        {
+            if (!liveFile.Text.Contains("pass5SpawnerAccumulator", StringComparison.Ordinal)
+                || !liveFile.Text.Contains("if Manager.current then", StringComparison.Ordinal)
+                || !liveFile.Text.Contains("Manager:update(dt)", StringComparison.Ordinal))
+                throw new InvalidOperationException("QuestRunner PASS5 active/idle stage incomplete.");
+            return SemanticInjectionResult.Skip("QuestRunner deployed PASS5 active/idle stages preserved.");
+        }
+
         var file = context.FindFile(
             "init.lua",
             "Manager:update(dt)",
