@@ -49,30 +49,35 @@ internal static partial class SemanticInjectors
         if(i.Split(initAnchor,StringSplitOptions.None).Length!=2)
             throw new InvalidOperationException("Cyberpsychos watchdog initialization drifted.");
         var attach="""
-    -- G-CET native location:cyberpsychos-fallback-v1
-    -- Bind each original workspot to its compiled GCAS owner.
-    -- Unknown, missing or failed native ownership runs the original logic.
-    BossWatchdog.nativeFar = {}
-    local okEngine, engine = pcall(GetMod, "0-Engine")
-    local host = okEngine and type(engine) == "table"
-        and engine.GCET and engine.GCET.NativeLocationHost or nil
-    if host and type(host.attachCompiled) == "function"
-        and Sites and Sites.list and #Sites.list > 0 and #Sites.list <= 512 then
-        for index, site in ipairs(Sites.list) do
-            local siteID = site.id
-            local owner = 1004100 + index
-            local ok, attached = pcall(function()
-                return host:attachCompiled(owner, 1,
-                    function() BossWatchdog.nativeFar[siteID] = false end,
-                    function() BossWatchdog.nativeFar[siteID] = true end,
-                    function() BossWatchdog.nativeFar[siteID] = nil; return true end)
-            end)
-            if not ok or not attached then
-                BossWatchdog.nativeFar[siteID] = nil
-            end
-        end
-    end
+    -- Native fallback vicinity is delegated to 0-Engine worker.
+    require("GCET_Semantic/cyberpsycho_native_wake").attach(Sites, BossWatchdog)
 """;
+        context.WriteCoordinator("cyberpsycho_native_wake.lua", """
+-- G-CET semantic coordinator:native-location-cyberpsychos
+-- One native owner per source site; no clocks, combat or respawn decisions.
+local M = {}
+function M.attach(sites, watchdog)
+  watchdog.nativeFar = {}
+  if not sites or not sites.list or #sites.list < 1 or #sites.list > 512 then return false end
+  local okEngine, engine = pcall(GetMod, "0-Engine")
+  local host = okEngine and type(engine) == "table"
+    and engine.GCET and engine.GCET.NativeLocationHost or nil
+  if not host or type(host.attachCompiled) ~= "function" then return false end
+  for index, site in ipairs(sites.list) do
+    local siteID = site.id
+    local owner = 1004100 + index
+    local ok, attached = pcall(function()
+      return host:attachCompiled(owner, 1,
+        function() watchdog.nativeFar[siteID] = false end,
+        function() watchdog.nativeFar[siteID] = true end,
+        function() watchdog.nativeFar[siteID] = nil; return true end)
+    end)
+    if not ok or not attached then watchdog.nativeFar[siteID] = nil end
+  end
+  return true
+end
+return M
+""");
         i=i.Replace(initAnchor,initAnchor+attach+"\n",StringComparison.Ordinal);
         context.Write(init,crlfInit?i.Replace("\n","\r\n",StringComparison.Ordinal):i);
         context.Write(watchdog,crlfDog?w.Replace("\n","\r\n",StringComparison.Ordinal):w);
