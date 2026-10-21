@@ -1169,6 +1169,10 @@ jobs:
         shell: pwsh
         run: ./tests/CurrentStackDormancyBatchContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: Ziggy native worker source contract
+        shell: pwsh
+        run: ./tests/ZiggyNativeWorkerContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: Dedka native worker source contract
         shell: pwsh
         run: ./tests/DedkaNativeWorkerContract.ps1 -ResolverRoot ./publish-resolver
