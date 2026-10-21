@@ -8,7 +8,7 @@ A rule marked `NOT_CONVERTED` still retains its existing reviewed inline/owned b
 
 - Converted in this branch: `streetgamespoker` (Poker PASS4 scheduler only; world sweep remains in the author `StreetTables.lua`; its native location bindings move with the scheduler if present).
 - Already external before this branch: `air-backflip` (existing `G-CET/AirBackFlipCoordinator.lua` contract; only its Windows CRLF ownership check was repaired here).
-- Additional live-stack deployments: `questrunner` and `sitanywhere` after source-proven inline semantic composition; exact Lua scheduler/control flow moved and the original author work remains a missing-module fallback. In-game behavior unverified.
+- Additional live-stack deployments: `questrunner` and `sitanywhere`, operating only on their present owner folder and recognized optimized source. Exact scheduler/control-flow Lua moves into an owned coordinator. Missing modules fall back to author work. Focused managed/source contract CI [#39533434326](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/39533434326) GREEN, including present-owner generation, LF/CRLF, no absent-owner dependency, drift refusal, rerun idempotence, Poker integration and semantic library. Actual installed-source/game behavior remains UNTESTED.
 - Not converted: 77 remaining production rule entries.
 - The previously described 15 extended-dormancy A/B/C passes have not been batch-converted. The conversion is deliberately opt-in and source-proven, not bulk lexical extraction.
 - Behavior equivalence is not claimed until regression CI and game runtime tests pass. Lua coordinator packaging is not semantic code inference.
@@ -33,7 +33,7 @@ A rule marked `NOT_CONVERTED` still retains its existing reviewed inline/owned b
 | `illegal-mechanic` | NOT_CONVERTED |
 | `shift` | NOT_CONVERTED |
 | `blackjack` | NOT_CONVERTED |
-| `questrunner` | LIVE_STACK_COORDINATOR_PENDING_TEST |
+| `questrunner` | LIVE_STACK_COORDINATOR_SOURCE_CI_GREEN_RUNTIME_PENDING |
 | `alternative-midair-movement` | NOT_CONVERTED |
 | `metro-system` | NOT_CONVERTED |
 | `nightcitypizza` | NOT_CONVERTED |
@@ -50,7 +50,7 @@ A rule marked `NOT_CONVERTED` still retains its existing reviewed inline/owned b
 | `auto-ammo-crafting` | NOT_CONVERTED |
 | `drivebus` | NOT_CONVERTED |
 | `quest-tracking-toggle` | NOT_CONVERTED |
-| `sitanywhere` | LIVE_STACK_COORDINATOR_PENDING_TEST |
+| `sitanywhere` | LIVE_STACK_COORDINATOR_SOURCE_CI_GREEN_RUNTIME_PENDING |
 | `repeatable-increased-criminal-activity` | NOT_CONVERTED |
 | `dedka-auto-shop` | NOT_CONVERTED |
 | `marmurbank` | NOT_CONVERTED |
