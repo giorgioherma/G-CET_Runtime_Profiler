@@ -14,7 +14,7 @@
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
     "fullPassRule": "An enabled, reviewed semantic injector may run with measured callback activity even below the default 3.0 ms/s soft CPU boundary, but only when its identity and current live-source proof match and the stage is not already satisfied. Generic native-dispatch/dormancy recipes retain their independent proof requirements.",
-    "enabledInjectorCount": 84,
+    "enabledInjectorCount": 85,
     "profileOnlyRuleCount": 0,
     "note": "The production semantic base contains source-proven, behavior-aware optimizations learned from validated references and measured hot callbacks, including burst-discovered diagnostic sentinels that preserve author cadence while gating globally expensive fallback scans. Generic/mechanical transforms stay in the Resolver; semantic rules cover state/cadence/hotpath knowledge that generic inference cannot safely own.",
     "admissionPolicy": {
@@ -6657,6 +6657,77 @@
       "referenceOverrideAllowed": false,
       "evidenceMembership": [
         "CET-20261021-094249"
+      ]
+    },
+    {
+      "id": "native-location-vehicle-mileage-pumps",
+      "identityHints": [
+        "VehicleMileage"
+      ],
+      "policyClass": "NATIVE_STATIC_LOCATION_VEHICLE_FUEL_STATIONS",
+      "callbacks": [
+        {
+          "kind": "source",
+          "target": "init.lua + vm_gas_station.lua",
+          "role": "coarse native FAR pump proximity only"
+        }
+      ],
+      "sourceProof": {
+        "sourceCompletionAuthoritative": true,
+        "ownerAll": [
+          "GAS.setup({",
+          "Mod.Subscribe(\"VehicleMount\"",
+          "Mod.Subscribe(\"VehicleUnmount\"",
+          "function M.update(dt, helpers)",
+          "findGasPoint(px, py, pz)"
+        ],
+        "alreadySatisfiedMarker": "G-CET native location:vehicle-mileage-pumps-v1",
+        "expectedMarkerFileCount": 2
+      },
+      "behavior": {
+        "handler": "SEMANTIC_NATIVE_LOCATION_SOURCE_PROVEN",
+        "concepts": [
+          "nativeStaticWake",
+          "oneShared10HzHost",
+          "originalExactProximity",
+          "authorLifecycleFallback"
+        ],
+        "lanes": [
+          {
+            "role": "DISTANT_STATIC_DISCOVERY",
+            "cadence": "NATIVE_TRANSITION_DRIVEN",
+            "seconds": 0
+          },
+          {
+            "role": "NEAR_INTERACTION_AND_UNKNOWN",
+            "cadence": "AUTHOR_UNCHANGED",
+            "seconds": 0
+          }
+        ],
+        "note": "Compiled station anchors from installed vm_gas_locations.json. Native FAR only skips repeated gas station lookup and resets refuel audio/state; NEAR/UNKNOWN keeps exact author pump logic. Mount, odometer, fuel economy, station economy, player state, UI, markers unchanged."
+      },
+      "generation": {
+        "enabled": true,
+        "sourceIndependentAdmission": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 0,
+        "evidenceStack": "VEHICLE_MILEAGE_CURRENT_STACK_SOURCE",
+        "admitted": true
+      },
+      "cadenceGroup": "NATIVE_STATIC_WAKE",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G-CET_CURRENT_STACK_20261020"
       ]
     }
   ],
