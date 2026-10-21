@@ -119,6 +119,7 @@ internal static partial class SemanticInjectors
             "inertia-returns-ground-transition-velocity" => ApplyInertiaGroundTransitionVelocity(context),
             "sitanywhere" => ApplySitAnywhere(context),
             "repeatable-increased-criminal-activity" => ApplyRepeatableIncreasedCriminalActivity(context),
+            "rica-lazy-completion-details" => ApplyRicaLazyRewardDetails(context),
             "dedka-auto-shop" => ApplyDedkaAutoShop(context),
             "marmurbank" => ApplyMarmurBank(context),
             "marmurbank-modern-input" => ApplyMarmurBankModernInput(context),
