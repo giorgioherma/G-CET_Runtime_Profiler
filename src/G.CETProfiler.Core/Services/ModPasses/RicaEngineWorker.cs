@@ -4,10 +4,7 @@ internal static partial class SemanticInjectors
 {
     private static SemanticInjectionResult ApplyRicaEngineWorker(SemanticPatchContext context)
     {
-        var file=context.FindFile("init.lua",
-            "TryAttachRicaPass4 = function()", "client.Schedule.EveryFrame({",
-            "id = \"rica.diagnostics_worker\"", "id = \"rica.system\"",
-            "pass4AttachInProgress = false", "pass4DiagnosticsWorkerJob");
+        var file=context.FindFile("init.lua", "TryAttachRicaPass4 = function()");
         const string marker="-- G-CET semantic:rica-engine-worker-v1";
         if(file.Text.Contains(marker,StringComparison.Ordinal))
             return SemanticInjectionResult.Skip("RICA six-lane 0-Engine worker already attached.");
