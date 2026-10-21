@@ -14,7 +14,7 @@ internal static partial class SemanticInjectors
             "nativeUI.isMainMenu",
             "nativeUI.isSelectionList",
             "nativeUI.activeInstances",
-            "ObserveAfter('PlayerPuppet', 'OnAction'",
+            "OnAction",
             "handleShardButtonNavigation");
         var text = ui.Text;
         if (text.Contains("__gcetHotscenesAfterV1", StringComparison.Ordinal))
@@ -24,7 +24,32 @@ internal static partial class SemanticInjectors
                 !text.Contains("local function __gcetHotscenesSync()", StringComparison.Ordinal) ||
                 Regex.Matches(text, @"(?m)^\s*__gcetHotscenesSync\(\)", RegexOptions.CultureInvariant).Count < 7)
                 throw new InvalidOperationException("Hotscenes after-phase source is partially installed or changed.");
-            return SemanticInjectionResult.Skip("Hotscenes phase-faithful UI action gate already complete.");
+            const string oldCall = "pcall(engine.SubscribeAction,";
+            const string newCall = "pcall(api.SubscribeAction,";
+            if (text.Contains(newCall, StringComparison.Ordinal))
+            {
+                if (!text.Contains("type(engine.GCET.SubscribeAction)", StringComparison.Ordinal))
+                    throw new InvalidOperationException("Hotscenes API migration is incomplete.");
+                return SemanticInjectionResult.Skip("Hotscenes after-phase action API already method-resolved.");
+            }
+            if (!text.Contains(oldCall, StringComparison.Ordinal) ||
+                !text.Contains("if found and type(engine) == \"table\" and type(engine.SubscribeAction) == \"function\" then", StringComparison.Ordinal))
+                throw new InvalidOperationException("Hotscenes previous action API shape changed.");
+            var migrated = text.Replace(
+                "if found and type(engine) == \"table\" and type(engine.SubscribeAction) == \"function\" then",
+                "if found and type(engine) == \"table\" then\\n" +
+                "            local api = engine\\n" +
+                "            if type(engine.GCET) == \"table\" and type(engine.GCET.SubscribeAction) == \"function\" then api = engine.GCET end\\n" +
+                "            if type(api.SubscribeAction) == \"function\" then",
+                StringComparison.Ordinal).Replace(oldCall, newCall, StringComparison.Ordinal);
+            // Exactly one additional end closes the method-capability branch.
+            const string oldEnd = "                    __gcetHotscenesRouted = true\\n                end\\n            end\\n        end\\n    end";
+            const string newEnd = "                    __gcetHotscenesRouted = true\\n                end\\n            end\\n            end\\n        end\\n    end";
+            if (!migrated.Contains(oldEnd, StringComparison.Ordinal))
+                throw new InvalidOperationException("Hotscenes subscriber closing anchor changed.");
+            migrated = migrated.Replace(oldEnd, newEnd, StringComparison.Ordinal);
+            context.Write(ui, migrated);
+            return SemanticInjectionResult.Success("Upgraded deployed after-phase subscriber to method-resolved Engine/Engine.GCET action API.");
         }
 
         // Both initialization and every later author isShowtime writer are
