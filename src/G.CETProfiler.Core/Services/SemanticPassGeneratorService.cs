@@ -565,6 +565,19 @@ internal sealed class SemanticPatchContext
         var normalized=contents.Replace("\r\n","\n",StringComparison.Ordinal)
             .Replace('\r','\n');
 
+        // A single semantic implementation may prepare a coordinator more
+        // than once while composing independent stages. An identical write
+        // is idempotent; a different one must never silently overwrite the
+        // file already reserved by this context.
+        if (_changes.TryGetValue(relative,out var pending))
+        {
+            var current=SemanticTextFile.From(relative,pending.Bytes).Text;
+            if (!current.Equals(normalized,StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "Conflicting coordinator definitions in one semantic pass.");
+            return;
+        }
+
         if (_staged.TryGetValue(relative,out var stagedBytes))
         {
             var current=SemanticTextFile.From(relative,stagedBytes).Text;

@@ -523,6 +523,9 @@ try
         "local "+string.Join(",",Enumerable.Range(1,160).Select(i=>"n"+i))+"\n"+
         "return function(author) return author.update end\n";
     createCoordinator.Invoke(context,["Controller.lua",body]);
+    // Identical re-injection in the same pass is a no-op. The existing
+    // conflicting-write assertion below must still refuse different bytes.
+    createCoordinator.Invoke(context,["Controller.lua",body]);
     var changes=(System.Collections.IEnumerable)semanticContext.GetProperty(
         "Changes",BindingFlags.Instance|BindingFlags.NonPublic|BindingFlags.Public)!
         .GetValue(context)!;
