@@ -115,6 +115,7 @@ internal static partial class SemanticInjectors
             "repeatable-increased-criminal-activity" => ApplyRepeatableIncreasedCriminalActivity(context),
             "dedka-auto-shop" => ApplyDedkaAutoShop(context),
             "marmurbank" => ApplyMarmurBank(context),
+            "marmurbank-modern-input" => ApplyMarmurBankModernInput(context),
             "immersive-third-person" => ApplyImmersiveThirdPerson(context),
             "immersive-third-person-action-routing" => ApplyImmersiveThirdPersonActionRouting(context),
             "immersivefirstperson" => ApplyImmersiveFirstPerson(context),

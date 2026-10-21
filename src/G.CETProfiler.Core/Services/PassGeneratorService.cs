@@ -149,6 +149,12 @@ public static class PassGeneratorService
             provider => SharedProviderRecipes.TryGetValue(provider, out var recipe)
                 ? BuildSharedProviderHeader(recipe) : Array.Empty<string>());
 
+        // Repair pre-existing generated method lookups as well: previously
+        // optimized Lua must not fall back just because Engine.GCET contains
+        // native-location services but not the requested top-level API.
+        var methodLookupRepairs=ZeroEngineMethodResolutionSource.TryStage(
+            modsRoot,staged,appliedTransformsByFile,transformManifest,skipped);
+
         // NATIVE STATIC-LOCATION INVENTORY: inspect final generic source and
         // immutable author/REDscript coordinate definitions BEFORE handpicked
         // semantic source processing. Location entries are passive data, not
@@ -299,6 +305,7 @@ public static class PassGeneratorService
                 selection = "MEASURED_GENERIC_PLUS_SOURCE_PROVEN_SEMANTIC_CANDIDATES_FROM_G-CET_Resolver.json",
                 nativeReadReuseContract = NativeReadReuseSource.Contract,
                 nativeReadReuseAppliedOccurrences = nativeReadReuseCount,
+                legacyMethodLookupRepairOccurrences = methodLookupRepairs,
                 nativeReadReuseBypassesCallbackCpuGate = true,
                 nativeReadReuseBackend = "0-Engine:existing-shared-provider",
                 nativePlayerVectorRewrite = nativePlayerVectorCount > 0,
@@ -1467,7 +1474,7 @@ public static class PassGeneratorService
                 header.Add("do");
                 header.Add("    local __gcetOk, __gcetEngine = pcall(GetMod, \"0-Engine\")");
                 header.Add("    local __gcetApi = __gcetEngine");
-                header.Add("    if __gcetOk and type(__gcetEngine) == \"table\" and type(__gcetEngine.GCET) == \"table\" then __gcetApi = __gcetEngine.GCET end");
+                header.Add("    if __gcetOk and type(__gcetEngine) == \"table\" and type(__gcetEngine.GCET) == \"table\" and type(__gcetEngine.GCET.MakeEventRegistrar) == \"function\" then __gcetApi = __gcetEngine.GCET end");
                 header.Add("    if __gcetOk and type(__gcetApi) == \"table\" and type(__gcetApi.MakeEventRegistrar) == \"function\" then");
                 header.Add($"        {item.Token} = __gcetApi.MakeEventRegistrar({owner}, registerForEvent)");
                 header.Add("    end");
@@ -1632,7 +1639,7 @@ public static class PassGeneratorService
         lines.Add($"{indent}local __gcetHandles_{candidate.RegistrationId} = {{}}");
         lines.Add($"{indent}local __gcetOk_{candidate.RegistrationId}, __gcetEngine_{candidate.RegistrationId} = pcall(GetMod, \"0-Engine\")");
         lines.Add($"{indent}local __gcetApi_{candidate.RegistrationId} = __gcetEngine_{candidate.RegistrationId}");
-        lines.Add($"{indent}if __gcetOk_{candidate.RegistrationId} and type(__gcetEngine_{candidate.RegistrationId}) == \"table\" and type(__gcetEngine_{candidate.RegistrationId}.GCET) == \"table\" then __gcetApi_{candidate.RegistrationId} = __gcetEngine_{candidate.RegistrationId}.GCET end");
+        lines.Add($"{indent}if __gcetOk_{candidate.RegistrationId} and type(__gcetEngine_{candidate.RegistrationId}) == \"table\" and type(__gcetEngine_{candidate.RegistrationId}.GCET) == \"table\" and type(__gcetEngine_{candidate.RegistrationId}.GCET.SubscribeAction) == \"function\" then __gcetApi_{candidate.RegistrationId} = __gcetEngine_{candidate.RegistrationId}.GCET end");
         lines.Add($"{indent}if __gcetOk_{candidate.RegistrationId} and type(__gcetApi_{candidate.RegistrationId}) == \"table\" and type(__gcetApi_{candidate.RegistrationId}.SubscribeAction) == \"function\" then");
         lines.Add($"{indent}    __gcetRouted_{candidate.RegistrationId} = pcall(function()");
 
@@ -1831,7 +1838,7 @@ public static class PassGeneratorService
                 "    if __gcetSharedPlayerProvider == nil then",
                 "        local __gcetOk, __gcetEngine = pcall(GetMod, \"0-Engine\")",
                 "        if __gcetOk and type(__gcetEngine) == \"table\" then",
-                "            local __gcetApi = type(__gcetEngine.GCET) == \"table\" and __gcetEngine.GCET or __gcetEngine",
+                "            local __gcetApi = type(__gcetEngine.GCET) == \"table\" and type(__gcetEngine.GCET.GetPlayer) == \"function\" and __gcetEngine.GCET or __gcetEngine",
                 "            if type(__gcetApi.GetPlayer) == \"function\" then __gcetSharedPlayerProvider = __gcetApi.GetPlayer end",
                 "        end",
                 "    end",
@@ -1854,7 +1861,7 @@ public static class PassGeneratorService
             $"    if {providerVariable} == nil then",
             "        local __gcetOk, __gcetEngine = pcall(GetMod, \"0-Engine\")",
             "        if __gcetOk and type(__gcetEngine) == \"table\" then",
-            "            local __gcetApi = type(__gcetEngine.GCET) == \"table\" and __gcetEngine.GCET or __gcetEngine",
+            "            local __gcetApi = type(__gcetEngine.GCET) == \"table\" and type(__gcetEngine.GCET.{recipe.EngineGetter}) == \"function\" and __gcetEngine.GCET or __gcetEngine",
             $"            if type(__gcetApi.{recipe.EngineGetter}) == \"function\" then {providerVariable} = __gcetApi.{recipe.EngineGetter} end",
             "        end",
             "    end",

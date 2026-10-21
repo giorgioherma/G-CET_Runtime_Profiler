@@ -27,6 +27,9 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
+      - name: Method-level 0-Engine API lookup contract
+        run: dotnet run --project tests/ZeroEngineMethodLookupContract/ZeroEngineMethodLookupContract.csproj -c Release
+
       - name: Validate source-first native read reuse, semantic composition, source drift and idempotence
         run: dotnet run --project tests/NativeReadReuseContract/NativeReadReuseContract.csproj -c Release
 

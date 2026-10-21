@@ -14,7 +14,7 @@
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
     "fullPassRule": "An enabled, reviewed semantic injector may run with measured callback activity even below the default 3.0 ms/s soft CPU boundary, but only when its identity and current live-source proof match and the stage is not already satisfied. Generic native-dispatch/dormancy recipes retain their independent proof requirements.",
-    "enabledInjectorCount": 83,
+    "enabledInjectorCount": 84,
     "profileOnlyRuleCount": 0,
     "note": "The production semantic base contains source-proven, behavior-aware optimizations learned from validated references and measured hot callbacks, including burst-discovered diagnostic sentinels that preserve author cadence while gating globally expensive fallback scans. Generic/mechanical transforms stay in the Resolver; semantic rules cover state/cadence/hotpath knowledge that generic inference cannot safely own.",
     "admissionPolicy": {
@@ -6592,6 +6592,71 @@
       "referenceOverrideAllowed": false,
       "evidenceMembership": [
         "G-CET_CURRENT_STACK_20261021"
+      ]
+    },
+    {
+      "id": "marmurbank-modern-input",
+      "identityHints": [
+        "marmurbank"
+      ],
+      "policyClass": "MODERN_BANK_SELECTIVE_ACTION_OWNER",
+      "callbacks": [
+        {
+          "kind": "source",
+          "target": "external/interactionUI.lua",
+          "role": "finite action routing, world override dormant fast path"
+        }
+      ],
+      "sourceProof": {
+        "sourceCompletionAuthoritative": true,
+        "ownerAll": [
+          "WORLD_INTERACTION_ACTIONS",
+          "shouldBlockWorldAction",
+          "worldActionOverrideOk",
+          "if ui.input or not ui.hubShown then"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:marmurbank-modern-input-v1",
+        "expectedMarkerFileCount": 1,
+        "satisfiedAll": [
+          "G-CET semantic:marmurbank-modern-input-v1",
+          "__gcetMarmurBankOnAction",
+          "__gcetMarmurBankRouted",
+          "if action and shouldSuppressVanillaNow() then"
+        ]
+      },
+      "behavior": {
+        "handler": "SEMANTIC_MODERN_BANK_INPUT",
+        "concepts": [
+          "bankingFeaturePreservation",
+          "vanillaWorldInteractionOverride",
+          "idleActionDecodeElision",
+          "finiteActionRouter",
+          "CETFallback"
+        ],
+        "note": "Supports live 21b and uploaded author 22.5 source shape without changing full modern banking runtime jobs or removing ATM features."
+      },
+      "generation": {
+        "enabled": true,
+        "sourceIndependentAdmission": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 40.67,
+        "evidenceStack": "CET-20261021-094249",
+        "admitted": true
+      },
+      "cadenceGroup": "BANK_INPUT_SELECTIVE_ROUTER",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_LIVE_SOURCE_PROOF",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "CET-20261021-094249"
       ]
     }
   ],
