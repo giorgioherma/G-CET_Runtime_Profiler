@@ -203,7 +203,8 @@ if($dedra.semantic.Matched) {
 $manifest = Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
 foreach($rule in $expected) {
   if(@($manifest.transforms | Where-Object {$_.type -eq 'SEMANTIC_RULE' -and $_.RuleId -eq $rule}).Count -ne 1) {
-    throw "Generated pass missing semantic rule: $rule"
+    $cause = @($manifest.skipped | Where-Object { $_.RuleId -eq $rule } | ForEach-Object { $_.reason }) -join "; "
+    throw "Generated pass missing semantic rule: $rule; source refusal: $cause"
   }
 }
 if(@($manifest.transforms | Where-Object {
