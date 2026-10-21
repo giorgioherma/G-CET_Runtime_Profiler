@@ -152,6 +152,10 @@ try{
     if(!$entry){throw 'PASS4 output missing'}
     $reader=[System.IO.StreamReader]::new($entry.Open())
     try{$generated=$reader.ReadToEnd()}finally{$reader.Dispose()}
+    $coordEntry=$zip.GetEntry('bin/x64/plugins/cyber_engine_tweaks/mods/StreetGamesPoker/G-CET/Coordinator.lua')
+    if(!$coordEntry){throw 'PASS4 missing owned Lua coordinator'}
+    $coordReader=[IO.StreamReader]::new($coordEntry.Open())
+    try{$coordinator=$coordReader.ReadToEnd()}finally{$coordReader.Dispose()}
 }finally{$zip.Dispose()}
 $forward=$generated.IndexOf('local __gcetPokerAttachPass4')
 $onInit=$generated.IndexOf('registerForEvent("onInit"')
@@ -161,10 +165,20 @@ if($forward -lt 0 -or $onInit -lt 0 -or $assigned -lt 0 -or $onUpdate -lt 0 -or
   $forward -ge $onInit -or $assigned -le $onInit -or $assigned -ge $onUpdate){
   throw 'PASS4 startup lexical scope/order incorrect'
 }
+foreach($token in @('StreetTables.registerMapPins()','Cron.Update(dt)',
+  'StreetTables.update(dt)','TableTalk.update(dt)','if __gcetPokerAttached then return end',
+  'G-CET semantic coordinator bridge:streetgamespoker',
+  'dofile(root.."G-CET/Coordinator.lua")')){
+    if(!$generated.Contains($token)){throw "Generated PASS4 bridge missing $token"}
+}
 foreach($token in @('poker.world_far','poker.world_near','poker.seat_near','poker.realtime',
-  'Logger.info("pass4_scheduler_attached"','StreetTables.registerMapPins()','Cron.Update(dt)',
-  'StreetTables.update(dt)','TableTalk.update(dt)','if __gcetPokerAttached then return end')){
-    if(!$generated.Contains($token)){throw "Generated PASS4 missing $token"}
+  'Logger.info("pass4_scheduler_attached"','__gcetBindings.onAttached()',
+  'return StreetGamesPoker.ready and not __gcetBindings.inMenu() and __gcetBindings.inGame()')){
+    if(!$coordinator.Contains($token)){throw "Generated PASS4 coordinator missing $token"}
+}
+if($coordinator.Contains('registerForEvent("onUpdate"') -or
+   $coordinator.Contains('registerForEvent("onInit"')) {
+    throw 'Coordinator must not register duplicate callbacks'
 }
 if($generated.Contains('log.info(') -or $generated.Contains('TryAttachPokerPass4()')){
     throw 'Invalid PASS4 logger or stale function call'
@@ -191,6 +205,9 @@ if(@($manifest.transforms | Where-Object {$_.RuleId -eq 'streetgamespoker'} | Fo
 }
 $generated | Set-Content -LiteralPath $path -Encoding utf8
 $tablesOut | Set-Content -LiteralPath $tablesPath -Encoding utf8
+$moduleDir=Join-Path $poker 'G-CET'
+New-Item -ItemType Directory -Force $moduleDir | Out-Null
+$coordinator | Set-Content -LiteralPath (Join-Path $moduleDir 'Coordinator.lua') -Encoding utf8
 # A fully satisfied pass intentionally produces no ZIP. Analyze the optimized
 # live source directly rather than requiring an unrelated transform to exist.
 $second=(& $exe --capture $capture --mods $mods --json | ConvertFrom-Json)
@@ -231,7 +248,19 @@ if ($tController.Count -ne 1 -or @($tController[0].files).Count -ne 1 -or
 # Prior live PASS4 used different local symbol names but identical lane and
 # squared-distance wake behavior. A complete source does not need G-CET
 # generated stage markers to be classified already-satisfied.
-$legacyInit = $generated.Replace('__gcetPokerAttachPass4','TryAttachPokerPass4').
+# Recover the previously supported INLINE shape without changing any lane
+# implementation. Historical completion cannot be inferred from the bridge.
+$inlineScheduler=[regex]::Match($coordinator,
+  '(?ms)^-- Distance-aware PASS4:.*?(?=^ return __gcetPokerAttachPass4\s*$)').Value
+if (!$inlineScheduler) {throw 'Could not reconstruct inline historical scheduler'}
+$inlineScheduler=$inlineScheduler.Replace(
+  'return StreetGamesPoker.ready and not __gcetBindings.inMenu() and __gcetBindings.inGame()',
+  'return StreetGamesPoker.ready and not inMenu and inGame')
+$inlineScheduler=$inlineScheduler.Replace("  __gcetBindings.onAttached()`n",'')
+$inlineInit=[regex]::Replace($generated,
+  '(?ms)^-- G-CET semantic coordinator bridge:streetgamespoker.*?(?=^[ \t]*registerForEvent\("onUpdate")',
+  $inlineScheduler)
+$legacyInit = $inlineInit.Replace('__gcetPokerAttachPass4','TryAttachPokerPass4').
     Replace('__gcetPokerAttached','pass4Attached') -replace '(?m)^-- G-CET semantic:streetgamespoker\r?\n',''
 $legacyTables = $tablesOut.Replace('__gcetPokerWakeRadius','wake').
     Replace('__gcetPokerWakeSq','wakeSq').
