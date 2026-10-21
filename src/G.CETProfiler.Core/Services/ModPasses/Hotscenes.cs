@@ -37,14 +37,14 @@ internal static partial class SemanticInjectors
                 throw new InvalidOperationException("Hotscenes previous action API shape changed.");
             var migrated = text.Replace(
                 "if found and type(engine) == \"table\" and type(engine.SubscribeAction) == \"function\" then",
-                "if found and type(engine) == \"table\" then\\n" +
-                "            local api = engine\\n" +
-                "            if type(engine.GCET) == \"table\" and type(engine.GCET.SubscribeAction) == \"function\" then api = engine.GCET end\\n" +
+                "if found and type(engine) == \"table\" then\n" +
+                "            local api = engine\n" +
+                "            if type(engine.GCET) == \"table\" and type(engine.GCET.SubscribeAction) == \"function\" then api = engine.GCET end\n" +
                 "            if type(api.SubscribeAction) == \"function\" then",
                 StringComparison.Ordinal).Replace(oldCall, newCall, StringComparison.Ordinal);
             // Exactly one additional end closes the method-capability branch.
-            const string oldEnd = "                    __gcetHotscenesRouted = true\\n                end\\n            end\\n        end\\n    end";
-            const string newEnd = "                    __gcetHotscenesRouted = true\\n                end\\n            end\\n            end\\n        end\\n    end";
+            const string oldEnd = "                    __gcetHotscenesRouted = true\n                end\n            end\n        end\n    end";
+            const string newEnd = "                    __gcetHotscenesRouted = true\n                end\n            end\n            end\n        end\n    end";
             if (!migrated.Contains(oldEnd, StringComparison.Ordinal))
                 throw new InvalidOperationException("Hotscenes subscriber closing anchor changed.");
             migrated = migrated.Replace(oldEnd, newEnd, StringComparison.Ordinal);
