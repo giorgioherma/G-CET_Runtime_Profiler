@@ -168,7 +168,7 @@ if($forward -lt 0 -or $onInit -lt 0 -or $assigned -lt 0 -or $onUpdate -lt 0 -or
 foreach($token in @('StreetTables.registerMapPins()','Cron.Update(dt)',
   'StreetTables.update(dt)','TableTalk.update(dt)','if __gcetPokerAttached then return end',
   'G-CET semantic coordinator bridge:streetgamespoker',
-  'dofile(root.."G-CET/Coordinator.lua")')){
+  'pcall(dofile,"G-CET/Coordinator.lua")')){
     if(!$generated.Contains($token)){throw "Generated PASS4 bridge missing $token"}
 }
 foreach($token in @('poker.world_far','poker.world_near','poker.seat_near','poker.realtime',
