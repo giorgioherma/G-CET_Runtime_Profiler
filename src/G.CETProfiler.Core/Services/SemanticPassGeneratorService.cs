@@ -588,7 +588,11 @@ internal sealed class SemanticPatchContext
             throw new InvalidOperationException("Invalid semantic-owned module path.");
         const string signature = "-- G-CET semantic coordinator:";
         var expected = signature + RuleId;
-        if (!lua.StartsWith(expected + "\n", StringComparison.Ordinal))
+        // Raw C# multiline Lua literals inherit source checkout line endings.
+        // A CRLF module is still owned by the identical exact rule; only the
+        // line terminator differs. Never accept a header prefix without EOL.
+        if (!lua.StartsWith(expected + "\n", StringComparison.Ordinal) &&
+            !lua.StartsWith(expected + "\r\n", StringComparison.Ordinal))
             throw new InvalidOperationException(
                 "Semantic-owned module requires its exact rule ownership header.");
         var dest = Path.GetFullPath(Path.Combine(ownerFolder,
