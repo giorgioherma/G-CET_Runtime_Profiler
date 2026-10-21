@@ -10,7 +10,7 @@ internal static partial class SemanticInjectors
         var crlf=file.Text.Contains("\r\n",StringComparison.Ordinal);
         var s=file.Text.Replace("\r\n","\n",StringComparison.Ordinal);
         const string begin="  -- G-CET native location:illegal-v3";
-        const string finish="  if #state.mechanics == 0 and not loadMatrix() then return end";
+        const string finish="  log(\"matrix loaded mechanics=";
         var a=s.IndexOf(begin,StringComparison.Ordinal);
         var b=a<0?-1:s.IndexOf(finish,a+begin.Length,StringComparison.Ordinal);
         if(a<0||b<0||s.IndexOf(begin,a+begin.Length,StringComparison.Ordinal)>=0)
