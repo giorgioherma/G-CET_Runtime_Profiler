@@ -83,6 +83,7 @@ internal static partial class SemanticInjectors
             "native-location-ziggy-offered" => NativeLocationAdditionalOwnersSource.ApplyZiggy(context),
             "ziggy-native-worker" => ApplyZiggyNativeWorker(context),
             "native-location-cyberstunts" => ApplyCyberStuntsNativeLocation(context),
+            "cyberstunts-native-worker" => ApplyCyberStuntsNativeWorker(context),
             "nightcitybilliards" => ApplyNightCityBilliards(context),
             "npcd-hotline" => ApplyNpcdHotline(context),
             "gameentityexaminertool" => ApplyGameEntityExaminer(context),
