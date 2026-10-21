@@ -76,10 +76,14 @@ internal static class SemanticPassGeneratorService
                 // their authoritative injectors, so count changed files rather
                 // than demanding that already-complete files be emitted again.
                 // Single-stage rules retain their exact expected-file count.
+                // A namespaced coordinator is a packaged Resolver-owned module,
+                // not another author source file or a newly installed mod.
+                var authorChanges = context.Changes.Count(change =>
+                    !context.IsOwnedCoordinator(change.RelativeFile));
                 var validChangedFileCount = candidate.StageComposed
-                    ? context.Changes.Count > 0 &&
-                      context.Changes.Count <= candidate.ExpectedMarkerFileCount
-                    : context.Changes.Count == candidate.ExpectedMarkerFileCount;
+                    ? authorChanges > 0 &&
+                      authorChanges <= candidate.ExpectedMarkerFileCount
+                    : authorChanges == candidate.ExpectedMarkerFileCount;
                 if (candidate.ExpectedMarkerFileCount > 0 && !validChangedFileCount)
                 {
                     throw new InvalidOperationException(
@@ -528,6 +532,61 @@ internal sealed class SemanticPatchContext
             _ => throw new InvalidOperationException(
                 $"Current Lua source is ambiguous for [{string.Join(", ", requiredTokens)}].")
         };
+    }
+
+    // New, author-scoped modules are allowed ONLY for a reviewed semantic
+    // injector. They do not create a new mod, change arbitrary user files,
+    // or bypass the per-file Lua budget and final overlay manifest.
+    internal bool IsOwnedCoordinator(string relativeFile)
+    {
+        var folder=ResolveOwnerFolder();
+        if (folder is null) return false;
+        var root=Path.GetFileName(folder);
+        return relativeFile.StartsWith(root + "/GCET_Semantic/",
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal void WriteCoordinator(string fileName, string contents)
+    {
+        if (string.IsNullOrWhiteSpace(fileName) ||
+            fileName != Path.GetFileName(fileName) ||
+            !fileName.EndsWith(".lua", StringComparison.OrdinalIgnoreCase) ||
+            fileName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+            throw new InvalidOperationException(
+                "Semantic coordinator filename must be one safe .lua basename.");
+
+        var folder=ResolveOwnerFolder() ??
+            throw new InvalidOperationException("Coordinator owner is absent.");
+        var relative=Path.GetFileName(folder)+"/GCET_Semantic/"+fileName;
+        var marker="-- G-CET semantic coordinator:"+RuleId;
+        if (!contents.StartsWith(marker+"\n",StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "Semantic coordinator is missing its exact reviewed owner/rule marker.");
+        var normalized=contents.Replace("\r\n","\n",StringComparison.Ordinal)
+            .Replace('\r','\n');
+
+        if (_staged.TryGetValue(relative,out var stagedBytes))
+        {
+            var current=SemanticTextFile.From(relative,stagedBytes).Text;
+            if (!current.Equals(normalized,StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "A different semantic stage already owns the coordinator path.");
+            return;
+        }
+
+        var path=Path.Combine(folder,"GCET_Semantic",fileName);
+        if (File.Exists(path))
+        {
+            var current=File.ReadAllText(path)
+                .Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
+            if (!current.Equals(normalized,StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "Existing coordinator differs from reviewed implementation; manual semantic adaptation required.");
+            return;
+        }
+
+        _changes[relative]=new SemanticFileChange(
+            relative,new UTF8Encoding(false).GetBytes(normalized));
     }
 
     internal void Write(SemanticTextFile file, string text)
