@@ -1166,6 +1166,10 @@ jobs:
         shell: pwsh
         run: ./tests/NativeLocationAdditionalOwnerContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: CyberStunts compiled source-owned jump FAR/NEAR regression
+        shell: pwsh
+        run: ./tests/CyberStuntsNativeLocationContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: Four native-location v2 upgrade and source-drift contract
         shell: pwsh
         run: ./tests/NativeLocationV2UpgradeContract.ps1 -ResolverRoot ./publish-resolver
