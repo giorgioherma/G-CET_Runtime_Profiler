@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: gcet-semantic-smoke-${{ github.ref }}
@@ -34,6 +35,42 @@ jobs:
       - name: Verify Poker source coordinator
         shell: pwsh
         run: ./tests/PokerPass4SourceGenerationContract.ps1 -ResolverRoot ./publish-resolver
+      - name: Import compatible RED4ext native service into Resolver
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Pin the independent native source commit, NOT the mutable latest run.
+          $sourceSha = '71aace123a2fb77bbf5a50386a34dcd308606c5c'
+          $endpoint = 'repos/${{ github.repository }}/actions/workflows/native-static-locations.yml/runs?branch=dev%2Fnative-fixed-cache-player-state&per_page=100'
+          $runsJson = & gh api $endpoint
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot query native location CI runs.' }
+          $runs = ($runsJson | ConvertFrom-Json).workflow_runs
+          $matched = @($runs | Where-Object {
+            $_.head_sha -eq $sourceSha -and
+            $_.status -eq 'completed' -and
+            $_.conclusion -eq 'success'
+          } | Sort-Object run_started_at -Descending)
+          if ($matched.Count -lt 1) {
+            throw "Pinned native location source $sourceSha has no successful CI; do not ship an older DLL."
+          }
+          $runId = [string]$matched[0].id
+          gh run download $runId --repo ${{ github.repository }} --name gcet-static-native-experimental --dir native-location-from-ci
+          if ($LASTEXITCODE -ne 0) { throw "Native location artifact download failed: $runId." }
+          $root = 'native-location-from-ci/red4ext/plugins/G-CET-StaticLocations'
+          $dll = Join-Path $root 'GCETStaticLocations.dll'
+          $sidecar = Join-Path $root 'SHA256.txt'
+          if (!(Test-Path $dll -PathType Leaf) -or !(Test-Path $sidecar -PathType Leaf)) {
+            throw 'Native CI artifact missing DLL/checksum.'
+          }
+          $actual = (Get-FileHash $dll -Algorithm SHA256).Hash.ToLowerInvariant()
+          $expected = (Get-Content $sidecar -Raw).Trim().ToLowerInvariant()
+          if (!$expected.StartsWith("$actual ")) { throw 'Native CI binary checksum mismatch.' }
+          $dest = 'publish-resolver/runtime/native'
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Copy-Item $dll (Join-Path $dest 'GCETStaticLocations.dll')
+          Write-Host "Native runtime imported from CI $runId : $actual"
       - name: Verify full mixed-stack semantic composition after coordinator relocation
         shell: pwsh
         run: ./tests/ResolverAccuracySemanticCompositionContract.ps1 -ResolverRoot ./publish-resolver
