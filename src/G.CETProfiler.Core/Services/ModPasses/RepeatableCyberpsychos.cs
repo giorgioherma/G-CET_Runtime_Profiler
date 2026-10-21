@@ -9,6 +9,24 @@ internal static partial class SemanticInjectors
     private static SemanticInjectionResult ApplyRepeatableCyberpsychos(
         SemanticPatchContext context)
     {
+        // Repair PASS4's current live bootstrap on regeneration. Retain all lanes.
+        // Pristine inputs continue through the earlier source transformation below.
+        var liveFile = context.FindFile("init.lua", "Mappins.sync", "Diagnostics.snapshot");
+        const string handoff = "    TryAttachRepeatablePass4()\n\n    Mod.tickElapsed = Mod.tickElapsed + delta";
+        const string fixedHandoff = "    TryAttachRepeatablePass4()\n    if pass4Attached then return end\n\n    Mod.tickElapsed = Mod.tickElapsed + delta";
+        if (liveFile.Text.Contains("TryAttachRepeatablePass4()", StringComparison.Ordinal))
+        {
+            if (liveFile.Text.Contains(fixedHandoff, StringComparison.Ordinal))
+                return SemanticInjectionResult.Skip("PASS4 bootstrap handoff already repaired.");
+            if (!liveFile.Text.Contains("if pass4Attached then return end", StringComparison.Ordinal))
+                throw new InvalidOperationException("Cyberpsychos PASS4 bootstrap source drifted.");
+            var output = ReplaceOnce(liveFile.Text, handoff, fixedHandoff,
+                "Cyberpsychos PASS4 same-frame native handoff");
+            context.Write(liveFile, output);
+            return SemanticInjectionResult.Success(
+                "Stops fallback accumulators after successful same-frame PASS4 scheduler attachment.");
+        }
+
         var file = context.FindFile(
             "init.lua",
             "local function runtimeTick()",
