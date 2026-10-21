@@ -309,6 +309,41 @@ internal sealed record CompiledNativeLocations(byte[] Bytes,
             if(src?.Contains("local cards = {",StringComparison.Ordinal)==true)
                 Include(10035,Parse(10035,src,Card,20,100));
         }
+        // VehicleMileage pump geometry is loaded from its installed JSON.
+        // Native is a coarse FAR gate only; the author retains exact pump
+        // selection, refuel billing, vehicle consumption and interaction.
+        if(Has("VehicleMileage/init.lua") && Has("VehicleMileage/vm_gas_station.lua")){
+            var src=Read("VehicleMileage/vm_gas_locations.json");
+            if(src is not null) {
+                try {
+                    using var json=JsonDocument.Parse(src);
+                    var roots=json.RootElement;
+                    var points=new List<Site>();
+                    if(roots.ValueKind==JsonValueKind.Array &&
+                       roots.GetArrayLength() is >=1 and <=512) {
+                        foreach(var point in roots.EnumerateArray()) {
+                            if(point.ValueKind!=JsonValueKind.Object ||
+                               !point.TryGetProperty("x",out var x) ||
+                               !point.TryGetProperty("y",out var y) ||
+                               !point.TryGetProperty("z",out var z)) {
+                                points.Clear();break;
+                            }
+                            var radius=point.TryGetProperty("radius",out var r) ?
+                                (float)r.GetDouble() : 5f;
+                            if(!float.IsFinite(radius) || radius<=0 || radius>100f) {
+                                points.Clear();break;
+                            }
+                            points.Add(new Site(10040,(float)x.GetDouble(),
+                                (float)y.GetDouble(),(float)z.GetDouble(),
+                                radius+40f));
+                        }
+                        if(points.Count==roots.GetArrayLength()) Include(10040,points);
+                    }
+                } catch(JsonException) {} catch(InvalidOperationException) {}
+                  catch(FormatException) {} catch(OverflowException) {}
+            }
+        }
+
         if(Has("marmurbank/module/Bank.lua")) {
             var bank=Read("marmurbank/module/Bank.lua");
             // Only author-owned banker geometry is inventoried. This must
