@@ -58,9 +58,9 @@ internal static class SemanticPassGeneratorService
                     continue;
                 }
 
-                if (context.Changes.Count == 0)
+                if (context.Changes.Count == 0 && context.OwnedModules.Count == 0)
                     throw new InvalidOperationException(
-                        "Semantic injector reported success without changing any live source file.");
+                        "Semantic injector reported success without changing current source or creating an owned module.");
 
                 // Never ship unexpanded named-regex substitution tokens as Lua.
                 if (context.Changes.Any(change =>
@@ -88,7 +88,7 @@ internal static class SemanticPassGeneratorService
                         $"{candidate.ExpectedMarkerFileCount} changed file(s).");
                 }
 
-                var localLimitFailure = context.Changes
+                var localLimitFailure = context.Changes.Concat(context.OwnedModules)
                     .Select(change => new
                     {
                         Change = change,
@@ -116,7 +116,7 @@ internal static class SemanticPassGeneratorService
                     continue;
                 }
 
-                foreach (var change in context.Changes)
+                foreach (var change in context.Changes.Concat(context.OwnedModules))
                 {
                     var relative = change.RelativeFile.Replace('\\', '/');
                     var livePath = Path.Combine(
@@ -153,7 +153,7 @@ internal static class SemanticPassGeneratorService
                         : "CAPTURE_MATCHED_SOURCE_PROVEN",
                     patchStyle = candidate.PatchStyle,
                     sourceProof = true,
-                    files = context.Changes
+                    files = context.Changes.Concat(context.OwnedModules)
                         .Select(x => x.RelativeFile.Replace('\\', '/'))
                         .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
                         .ToArray(),
@@ -466,6 +466,8 @@ internal sealed class SemanticPatchContext
     private readonly Dictionary<string, byte[]> _staged;
     private readonly Dictionary<string, SemanticFileChange> _changes =
         new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, SemanticFileChange> _ownedModules =
+        new(StringComparer.OrdinalIgnoreCase);
     private string? _ownerFolder;
 
     internal string Owner { get; }
@@ -473,6 +475,9 @@ internal sealed class SemanticPatchContext
 
     internal IReadOnlyCollection<SemanticFileChange> Changes =>
         _changes.Values;
+
+    internal IReadOnlyCollection<SemanticFileChange> OwnedModules =>
+        _ownedModules.Values;
 
     internal SemanticPatchContext(
         string modsRoot,
@@ -557,6 +562,54 @@ internal sealed class SemanticPatchContext
         _changes[file.RelativeFile] = new SemanticFileChange(
             file.RelativeFile,
             file.Encode(text));
+    }
+
+    // Only a reviewed per-mod semantic injector may create a new Lua module.
+    // Generic callbacks never use this path. The name is relative to the
+    // installed owner folder, and must be beneath the reserved G-CET subtree.
+    // Never overwrite an author's own file or emit files for absent mods.
+    internal void WriteOwnedModule(string relativeModule, string lua)
+    {
+        var ownerFolder = ResolveOwnerFolder()
+            ?? throw new InvalidOperationException("Semantic owner is absent.");
+        var normalized = relativeModule.Replace('\\', '/');
+        if (!normalized.StartsWith("G-CET/", StringComparison.Ordinal) ||
+            !normalized.EndsWith(".lua", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Contains("..", StringComparison.Ordinal) ||
+            normalized.Split('/').Any(part => part.Length == 0 || part == ".") ||
+            Path.IsPathRooted(relativeModule))
+            throw new InvalidOperationException("Invalid semantic-owned module path.");
+        const string signature = "-- G-CET semantic coordinator:";
+        var expected = signature + RuleId;
+        if (!lua.StartsWith(expected + "\n", StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "Semantic-owned module requires its exact rule ownership header.");
+        var dest = Path.GetFullPath(Path.Combine(ownerFolder,
+            normalized.Replace('/', Path.DirectorySeparatorChar)));
+        var folderPrefix = Path.GetFullPath(ownerFolder)
+            .TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        if (!dest.StartsWith(folderPrefix, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Semantic module escaped its owner.");
+
+        var key = Path.GetRelativePath(_modsRoot, dest).Replace('\\', '/');
+        if (_changes.ContainsKey(key))
+            throw new InvalidOperationException("Owned module conflicts with an author edit.");
+        string? prior = null;
+        if (_staged.TryGetValue(key, out var staged))
+            prior = Encoding.UTF8.GetString(staged);
+        else if (File.Exists(dest))
+            prior = File.ReadAllText(dest);
+        if (prior is not null &&
+            !prior.StartsWith(signature, StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "Refusing to replace a non-G-CET Lua module.");
+        if (prior is not null &&
+            !prior.StartsWith(expected, StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "Owned module belongs to a different semantic rule.");
+        if (prior == lua) return;
+        _ownedModules[key] = new SemanticFileChange(key,
+            new UTF8Encoding(false).GetBytes(lua));
     }
 
     internal bool OwnerAlreadyMarked()
