@@ -631,6 +631,16 @@ internal static class CallbackResolverService
         // measured callback rows solely for workload attribution; these new
         // source-only rows are deliberately not assigned fabricated CPU data.
         var sourceFirstGenericFamilies = DiscoverSourceFirstRegistrations(modsRoot)
+            .Where(callback => !allCapturedCallbacks.Any(measured =>
+                measured.Owner.Equals(callback.Owner, StringComparison.OrdinalIgnoreCase) &&
+                ClassifyCallbackFamily(measured.Kind, measured.Target) ==
+                    ClassifyCallbackFamily(callback.Kind, callback.Target) &&
+                measured.SourceLineStart.HasValue &&
+                callback.SourceLineStart.HasValue &&
+                Math.Abs(measured.SourceLineStart.Value - callback.SourceLineStart.Value) <= 2 &&
+                (string.IsNullOrWhiteSpace(measured.SourceFile) ||
+                 callback.SourceFile.EndsWith(measured.SourceFile.Replace('\\', '/'),
+                     StringComparison.OrdinalIgnoreCase))))
             .Select(callback => new
             {
                 Callback = callback,
