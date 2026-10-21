@@ -57,7 +57,7 @@ internal static partial class SemanticInjectors
     local host = okEngine and type(engine) == "table"
         and engine.GCET and engine.GCET.NativeLocationHost or nil
     if host and type(host.attachCompiled) == "function"
-        and Sites and Sites.list and #Sites.list == 17 then
+        and Sites and Sites.list and #Sites.list > 0 and #Sites.list <= 512 then
         for index, site in ipairs(Sites.list) do
             local siteID = site.id
             local owner = 1004100 + index
@@ -77,6 +77,6 @@ internal static partial class SemanticInjectors
         context.Write(init,crlfInit?i.Replace("\n","\r\n",StringComparison.Ordinal):i);
         context.Write(watchdog,crlfDog?w.Replace("\n","\r\n",StringComparison.Ordinal):w);
         return SemanticInjectionResult.Success(
-            "17 compiled vicinity owners bypass only distant unneeded fallback-boss resolution; death/departure, status, rewards, existing entities and UNKNOWN retain original Lua lifecycle.");
+            "Source-count compiled vicinity owners bypass only distant unneeded fallback-boss resolution; death/departure, status, rewards, existing entities and UNKNOWN retain original Lua lifecycle.");
     }
 }
