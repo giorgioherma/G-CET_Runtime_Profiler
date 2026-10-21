@@ -1169,6 +1169,10 @@ jobs:
         shell: pwsh
         run: ./tests/CurrentStackDormancyBatchContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: Tunnel native worker source contract
+        shell: pwsh
+        run: ./tests/TunnelNativeWorkerContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: Poker native worker source contract
         shell: pwsh
         run: ./tests/PokerNativeWorkerContract.ps1 -ResolverRoot ./publish-resolver
