@@ -31,7 +31,8 @@ internal static partial class SemanticInjectors
             "nativeinteractions" or
             "gigcore-blackboard-once" or
             "air-backflip" or
-            "native-location-poker" or "native-location-tunnel" or
+            "native-location-poker" or
+            "poker-native-worker" or "native-location-tunnel" or
             "native-location-illegal" or "native-location-dedka" or
             "native-location-card-collection" or
             "card-collection-native-worker" or "native-location-marmurbank" or
@@ -60,6 +61,7 @@ internal static partial class SemanticInjectors
             "streetgamespoker" => PokerPass4Source.Apply(context),
             "streetgamespoker-hud-invisible-native-idle" => PokerPass4Source.ApplyHudInvisibleIdle(context),
             "native-location-poker" => NativeLocationFourOwnersSource.ApplyPoker(context),
+            "poker-native-worker" => ApplyPokerNativeWorker(context),
             "native-location-tunnel" => NativeLocationFourOwnersSource.ApplyTunnel(context),
             "native-location-illegal" => NativeLocationFourOwnersSource.ApplyIllegalV3(context),
             "native-location-dedka" => NativeLocationFourOwnersSource.ApplyDedka(context),
