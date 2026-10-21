@@ -17,7 +17,7 @@ internal static partial class SemanticInjectors
         // Match precisely the original getter group but tolerate the author's
         // indentation and source-format changes. Keep all statements in order.
         var pattern = new System.Text.RegularExpressions.Regex(
-            @"(?m)^(?<indent>[ \t]*)pcall\(function\(\)\)\n" +
+            @"(?m)^(?<indent>[ \t]*)pcall\(function\(\)\n" +
             @"(?<inner>[ \t]+)serial = system:GetPendingRewardSerial\(\)\n" +
             @"\k<inner>siteID = system:GetPendingRewardSiteID\(\)\n" +
             @"\k<inner>cycle = system:GetPendingRewardCycle\(\)\n" +
