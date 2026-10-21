@@ -62,8 +62,8 @@ if([Text.Encoding]::ASCII.GetString($bytes,0,4) -ne 'GCAS' -or
    [BitConverter]::ToUInt32($bytes,8) -ne 2){throw 'Compiled native GCAS header/site count incorrect'}
 $bad=$source.Replace('jumpPos = { z = 70.0, x = 400.0, y = 500.0 }','jumpPos = playerPosition')
 if([int]$counter.Invoke($null,[object[]]@($bad)) -ne 0){throw 'Unproven dynamic literal was compiled'}
-function TrySource([string]$input) {
-  [IO.File]::WriteAllText($file,$input,[Text.UTF8Encoding]::new($false))
+function TrySource([string]$sourceText) {
+  [IO.File]::WriteAllText($file,$sourceText,[Text.UTF8Encoding]::new($false))
   $staging=[Collections.Generic.Dictionary[string,byte[]]]::new()
   $ctx=$constructor.Invoke([object[]]@([string]$root,[string]$owner,
     'native-location-cyberstunts',$staging))
