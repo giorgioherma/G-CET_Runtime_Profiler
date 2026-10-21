@@ -540,11 +540,11 @@ internal sealed class SemanticPatchContext
             throw new InvalidOperationException("Coordinator owner is absent.");
         var relative=Path.GetFileName(folder)+"/GCET_Semantic/"+fileName;
         var marker="-- G-CET semantic coordinator:"+RuleId;
-        if (!contents.StartsWith(marker+"\n",StringComparison.Ordinal))
-            throw new InvalidOperationException(
-                "Semantic coordinator is missing its exact reviewed owner/rule marker.");
         var normalized=contents.Replace("\r\n","\n",StringComparison.Ordinal)
             .Replace('\r','\n');
+        if (!normalized.StartsWith(marker+"\n",StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "Semantic coordinator is missing its exact reviewed owner/rule marker.");
 
         // A single semantic implementation may prepare a coordinator more
         // than once while composing independent stages. An identical write
