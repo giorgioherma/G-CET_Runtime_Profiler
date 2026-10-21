@@ -33,7 +33,8 @@ internal static partial class SemanticInjectors
             "air-backflip" or
             "native-location-poker" or "native-location-tunnel" or
             "native-location-illegal" or "native-location-dedka" or
-            "native-location-card-collection" or "native-location-marmurbank" or
+            "native-location-card-collection" or
+            "card-collection-native-worker" or "native-location-marmurbank" or
             "native-location-vehicle-mileage-pumps" or
             "native-location-cyberpsychos" or
             "native-location-f80h-aroused" or
@@ -62,6 +63,7 @@ internal static partial class SemanticInjectors
             "native-location-illegal" => NativeLocationFourOwnersSource.ApplyIllegalV3(context),
             "native-location-dedka" => NativeLocationFourOwnersSource.ApplyDedka(context),
             "native-location-card-collection" => NativeLocationAdditionalOwnersSource.ApplyCards(context),
+            "card-collection-native-worker" => ApplyCardCollectionNativeWorker(context),
             "native-location-marmurbank" => NativeLocationAdditionalOwnersSource.ApplyMarmur(context),
             "native-location-vehicle-mileage-pumps" => ApplyVehicleMileageNativePumps(context),
             "native-location-cyberpsychos" => ApplyCyberpsychosNativeLocations(context),
