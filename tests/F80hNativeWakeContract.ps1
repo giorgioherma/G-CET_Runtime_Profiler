@@ -15,7 +15,7 @@ local function tryRegisterNPC(self)
 end
 registerForEvent("onInit", function()
 end)
-ObserveAfter("NPCPuppet", "OnGameAttached", function(self)
+  ObserveAfter("NPCPuppet", "OnGameAttached", function(self)
   if not isEnabled() then return end
 end)
 '@
