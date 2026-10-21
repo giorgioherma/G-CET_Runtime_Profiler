@@ -14,7 +14,7 @@
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
     "fullPassRule": "An enabled, reviewed semantic injector may run with measured callback activity even below the default 3.0 ms/s soft CPU boundary, but only when its identity and current live-source proof match and the stage is not already satisfied. Generic native-dispatch/dormancy recipes retain their independent proof requirements.",
-    "enabledInjectorCount": 98,
+    "enabledInjectorCount": 99,
     "profileOnlyRuleCount": 0,
     "note": "The production semantic base contains source-proven, behavior-aware optimizations learned from validated references and measured hot callbacks, including burst-discovered diagnostic sentinels that preserve author cadence while gating globally expensive fallback scans. Generic/mechanical transforms stay in the Resolver; semantic rules cover state/cadence/hotpath knowledge that generic inference cannot safely own.",
     "admissionPolicy": {
