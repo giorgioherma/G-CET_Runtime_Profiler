@@ -1,5 +1,5 @@
 {
-  "packageVersion": "1.2.11",
+  "packageVersion": "1.3.0",
   "profilerNativeVersion": "2.15.7-callsite-predispatch-attribution",
   "targetCET": {
     "version": "1.37.1",

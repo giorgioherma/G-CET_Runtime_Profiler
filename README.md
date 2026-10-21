@@ -4,9 +4,9 @@
 
 # G-CET Runtime Profiler
 
-**v1.2.8 development package — Profiler + Resolver + pinned native CI #85 DLL**
+**v1.3.0 development package — Profiler + Resolver + pinned native DLLs**
 
-**Development handoff:** [CORE — start every new development chat here](docs/HANDOFF/CORE.md), [LATEST WORK — active task](docs/LATEST-WORK.md), [build pipeline](docs/HANDOFF/BUILD-PIPELINE.md), [product status](docs/product/PRODUCT-STATUS.md), and [deep handoff index](docs/HANDOFF/README.md). Product **1.2.8** includes the **2.15.6-zeroengine-source-attribution native DLL** from successful native CI #85 (run `38850962957`) plus both managed applications. Its DLL is SHA-256 pinned; 0-Engine source/callsite attribution and DriveAerialVehicle input wake still require in-game validation.
+**Development handoff:** [CORE — start every new development chat here](docs/HANDOFF/CORE.md), [LATEST WORK — active task](docs/LATEST-WORK.md), [build pipeline](docs/HANDOFF/BUILD-PIPELINE.md), [product status](docs/product/PRODUCT-STATUS.md), and [deep handoff index](docs/HANDOFF/README.md). Product **1.3.0** coordinates the standalone Profiler and Resolver with the manifest-pinned native CET DLL and the compatible compiled-location native service. Resolver applies generic 0-Engine work, native integration, then semantic behavior changes against staged Lua; historical Lua SHA and provenance labels do not gate optimization. Native integrity and exact profiler-original restoration remain verified. Gameplay and performance still require in-game validation.
 
 A standalone Cyberpunk 2077 CET/Lua runtime profiler with transactional install/restore, optional 0-Engine Scheduler attribution, optional frame-time pairing, and a headless interface for G's Cyberpunk 2077 TOTAL Profiler.
 

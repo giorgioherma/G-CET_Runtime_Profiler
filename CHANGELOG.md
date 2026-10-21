@@ -3,6 +3,14 @@
 All notable public changes to G-CET Runtime Profiler are recorded here.
 
 ## [Unreleased]
+
+## [1.3.0] — 2026-10-21 (development)
+- Unified the Resolver's ordered passes: generic 0-Engine transformations, native state and compiled-location integration, then behavior-specific semantic stages against the final staged Lua.
+- Removed historical Lua SHA/fingerprint and provenance-label admission requirements across generic/native/semantic generation, while retaining source-structural proofs, per-stage fail-closed behavior, Lua local-budget checks, and existing stage preservation.
+- Added source-owned compiled FAR/NEAR location integration for CyberStunts, retaining original active-jump and dynamic-location fallbacks; preserved Tunnel, Ziggy and Yaiba native-location owner integration.
+- Made the AirBackFlip semantic wake/dormancy stage compose safely with earlier generic 0-Engine OnAction routing, retaining original CET observer fallback; upgraded shared semantic event matching for adopted generic registrar names.
+- Kept profiler-original restoration, native DLL identity, package integrity and recorded GC/runtime measurements separate from Lua optimization admission. The complete pre-promotion five-job Windows CI #1666 succeeded; gameplay/performance still requires in-game validation.
+
 - **v1.2.8 development build:** coordinated Profiler/Resolver/launcher version bump; pinned native CI #85 source-attribution DLL and verified SHA; added two 0-Engine source/callsite CSVs to expected output and compiled-marker checks. Includes Hotscenes phase-faithful UI navigation routing and DriveAerialVehicle `Waiting`/`InVehicle` action gating, with staged B-to-C upgrade regression. In-game native and input-order validation still required.
 - **v1.2.5 development package (Profiler + Resolver):** both Windows applications, product manifest, root VERSION and both GitHub Actions artifact names advance together. CI now checks the ProductVersion and FileVersion of both executables. The exact native CET profiler 2.15.0 SHA pin remains mandatory; no native DLL rebuild and no game/mod behavior change.
 - **Data-provenance Stage A:** adds bounded-source function allocation candidates, qualified cross-mod Lua source overlap, separate repeated native Get*/Is*/Has* name-only probes, and explicit uncertainty; preserved all existing ms/s, GC duration, spikes and allocation evidence. Locked specification and regression fixtures live in docs/HANDOFF and tests.

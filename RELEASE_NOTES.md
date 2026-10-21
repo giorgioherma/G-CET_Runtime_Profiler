@@ -1,4 +1,21 @@
-# G-CET Runtime Profiler v1.0.0
+# G-CET Runtime Profiler v1.3.0
+
+> Development build on `dev/resolver-profiler-handoff`. Both Profiler and standalone Resolver use the same coordinated product version. The native CET profiler and compiled-location DLL dependencies remain the previously verified, pinned binaries.
+
+## Resolver changes
+- Generic 0-Engine optimization runs first, followed by source-admitted native integration and then per-mod semantic scheduling and dormancy on the final staged Lua.
+- Lua optimization no longer requires historical source SHA, version-fingerprint or provenance-label matches. Source structure, behavior and wake/fallback correctness remain the eligibility checks.
+- Compiled FAR/NEAR location integration includes CyberStunts' source-derived fixed launch sites alongside the existing Tunnel, Ziggy and Yaiba native location owners. Dynamic locations and active gameplay retain safe fallbacks.
+- Existing Lua coordinator work, original gameplay events, staged optimizations and the 200-active-local safety limit remain protected.
+- The generic-first AirBackFlip subscriber lifecycle now supports the generated action router without registering duplicate observers.
+- Profiler-original restoration, native payload checksums and package integrity remain byte-precise; they are not Lua admission gates.
+
+## Validation
+The last unversioned pre-promotion commit passed all five CI #1666 jobs and published both Windows artifacts. The coordinated 1.3.0 build is separately required to pass. CI does not substitute for in-game behavior or performance validation.
+
+## Historical release notes
+
+### Initial v1.0.0 release
 
 > **Development builds:** v1.2.8 packages both Profiler and Resolver from the successful main development CI #1341 source plus this version/pin update. It imports native CI #85 (run `38850962957`, SHA-256 `0c0386745ba38c04feea360fdaf1fb1f01a70df9e818f1f95d9d24b70f18d507`) for bounded 0-Engine Lua source/callsite attribution. The Resolver includes Hotscenes UI action dormancy and DriveAerialVehicle `Waiting`/`InVehicle` action routing with its staged two-file upgrade fix. Build tests do not prove gameplay safety or performance savings; in-game validation remains pending.
 
