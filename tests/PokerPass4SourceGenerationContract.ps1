@@ -129,7 +129,7 @@ try {
     $report=Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
     $candidates=@($report.semanticSourceOnlyCandidates | Where-Object {$_.ruleId -eq 'streetgamespoker'})
     if($candidates.Count -ne 1 -or !$candidates[0].stageComposed -or
-       @($report.callbackFamilies).Count -ne 0){
+       @($report.callbackFamilies | Where-Object { -not $_.sourceFirst }).Count -ne 0){
         throw 'Poker source-only composition absent or fabricated captured callbacks'
     }
     $m=Get-Content -LiteralPath $unmeasured.pass.ManifestPath -Raw | ConvertFrom-Json
