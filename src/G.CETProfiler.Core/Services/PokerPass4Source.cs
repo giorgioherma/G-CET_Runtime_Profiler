@@ -84,9 +84,8 @@ internal static class PokerPass4Source
                 StringComparison.Ordinal) ||
             !init.Contains(PokerSemanticCoordinatorSource.BridgeMarker,
                 StringComparison.Ordinal) ||
-            !init.Contains("dofile(root..\"G-CET/Coordinator.lua\")",
+            !init.Contains("pcall(dofile,\"G-CET/Coordinator.lua\")",
                 StringComparison.Ordinal) ||
-            !init.Contains("source:match", StringComparison.Ordinal) ||
             !init.Contains("if __gcetPokerAttached then return end",
                 StringComparison.Ordinal) ||
             !init.Contains("if __gcetPokerAttachPass4 then __gcetPokerAttachPass4() end",
