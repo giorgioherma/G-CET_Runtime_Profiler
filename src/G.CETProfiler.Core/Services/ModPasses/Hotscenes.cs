@@ -35,7 +35,9 @@ internal static partial class SemanticInjectors
             if (!text.Contains(oldCall, StringComparison.Ordinal) ||
                 !text.Contains("if found and type(engine) == \"table\" and type(engine.SubscribeAction) == \"function\" then", StringComparison.Ordinal))
                 throw new InvalidOperationException("Hotscenes previous action API shape changed.");
-            var migrated = text.Replace(
+            var crlf = text.Contains("\r\n", StringComparison.Ordinal);
+            var normalized = crlf ? text.Replace("\r\n", "\n", StringComparison.Ordinal) : text;
+            var migrated = normalized.Replace(
                 "if found and type(engine) == \"table\" and type(engine.SubscribeAction) == \"function\" then",
                 "if found and type(engine) == \"table\" then\n" +
                 "            local api = engine\n" +
@@ -48,7 +50,7 @@ internal static partial class SemanticInjectors
             if (!migrated.Contains(oldEnd, StringComparison.Ordinal))
                 throw new InvalidOperationException("Hotscenes subscriber closing anchor changed.");
             migrated = migrated.Replace(oldEnd, newEnd, StringComparison.Ordinal);
-            context.Write(ui, migrated);
+            context.Write(ui, crlf ? migrated.Replace("\n", "\r\n", StringComparison.Ordinal) : migrated);
             return SemanticInjectionResult.Success("Upgraded deployed after-phase subscriber to method-resolved Engine/Engine.GCET action API.");
         }
 
