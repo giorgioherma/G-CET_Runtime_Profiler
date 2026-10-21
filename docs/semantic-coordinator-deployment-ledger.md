@@ -8,16 +8,15 @@ A rule marked `NOT_CONVERTED` still retains its existing reviewed inline/owned b
 
 - Converted in this branch: `streetgamespoker` (Poker PASS4 scheduler only; world sweep remains in the author `StreetTables.lua`; its native location bindings move with the scheduler if present).
 - Already external before this branch: `air-backflip` (existing `G-CET/AirBackFlipCoordinator.lua` contract; only its Windows CRLF ownership check was repaired here).
-- Also prepared in this batch: `gta-joyride` and `blackjack` as opt-in moved cadence gates. These apply only when matching owner files exist and the exact inline source is proven; in-game behavior remains unverified.
 - Additional live-stack deployments: `questrunner` and `sitanywhere` after source-proven inline semantic composition; exact Lua scheduler/control flow moved and the original author work remains a missing-module fallback. In-game behavior unverified.
-- Not converted: 75 remaining production rule entries.
+- Not converted: 77 remaining production rule entries.
 - The previously described 15 extended-dormancy A/B/C passes have not been batch-converted. The conversion is deliberately opt-in and source-proven, not bulk lexical extraction.
 - Behavior equivalence is not claimed until regression CI and game runtime tests pass. Lua coordinator packaging is not semantic code inference.
 - The `streetgamespoker-hud-invisible-native-idle` and `native-location-poker` rules are separate entries and have **not** independently been converted; existing native Poker hooks remain attached to the reviewed scheduler.
 
 | Rule ID | External coordinator deployment |
 |---|---|
-| `gta-joyride` | CADENCE_GATE_EXTERNALIZED_PENDING_RUNTIME |
+| `gta-joyride` | NOT_CONVERTED |
 | `combat` | NOT_CONVERTED |
 | `repeatable-cyberpsychos` | NOT_CONVERTED |
 | `cybertrials-closed-overlay-provider` | NOT_CONVERTED |
@@ -33,7 +32,7 @@ A rule marked `NOT_CONVERTED` still retains its existing reviewed inline/owned b
 | `illegal-mechanic-npc-position-reuse` | NOT_CONVERTED |
 | `illegal-mechanic` | NOT_CONVERTED |
 | `shift` | NOT_CONVERTED |
-| `blackjack` | CADENCE_GATE_EXTERNALIZED_PENDING_RUNTIME |
+| `blackjack` | NOT_CONVERTED |
 | `questrunner` | LIVE_STACK_COORDINATOR_PENDING_TEST |
 | `alternative-midair-movement` | NOT_CONVERTED |
 | `metro-system` | NOT_CONVERTED |

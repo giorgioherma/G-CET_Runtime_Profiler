@@ -43,8 +43,6 @@ internal static class SemanticPassGeneratorService
             try
             {
                 var result = SemanticInjectors.Apply(candidate, context);
-                if (result.Applied)
-                    CadenceCoordinatorSource.Apply(candidate, context);
                 if (!result.Applied)
                 {
                     skipped.Add(new
