@@ -1169,6 +1169,10 @@ jobs:
         shell: pwsh
         run: ./tests/CurrentStackDormancyBatchContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: Illegal Mechanic native worker source contract
+        shell: pwsh
+        run: ./tests/IllegalMechanicNativeWorkerContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: Tunnel native worker source contract
         shell: pwsh
         run: ./tests/TunnelNativeWorkerContract.ps1 -ResolverRoot ./publish-resolver
