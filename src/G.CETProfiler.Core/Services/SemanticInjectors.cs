@@ -36,6 +36,8 @@ internal static partial class SemanticInjectors
             "native-location-card-collection" or "native-location-marmurbank" or
             "native-location-vehicle-mileage-pumps" or
             "native-location-cyberpsychos" or
+            "rica-lazy-completion-details" or
+            "infinitegigs-empty-queue-fastpath" or
             "native-location-yaiba-bathtub" or "native-location-ziggy-offered" or "native-location-cyberstunts";
         if (context.OwnerAlreadyMarked() &&
             !candidate.StageComposed && !versionFluidUpgrade)
