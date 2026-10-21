@@ -6,8 +6,9 @@ This ledger describes **deployment format**, not semantic implementation status.
 A rule marked `NOT_CONVERTED` still retains its existing reviewed inline/owned behavior.
 `NOT_CONVERTED` is not evidence of incompatibility.
 
-- Converted: `streetgamespoker` (Poker PASS4 scheduler only; world sweep remains in the author `StreetTables.lua`; its native location bindings move with the scheduler if present).
-- Not converted: 80 remaining production rule entries.
+- Converted in this branch: `streetgamespoker` (Poker PASS4 scheduler only; world sweep remains in the author `StreetTables.lua`; its native location bindings move with the scheduler if present).
+- Already external before this branch: `air-backflip` (existing `G-CET/AirBackFlipCoordinator.lua` contract; only its Windows CRLF ownership check was repaired here).
+- Not converted: 79 remaining production rule entries.
 - The previously described 15 extended-dormancy A/B/C passes have not been batch-converted. The conversion is deliberately opt-in and source-proven, not bulk lexical extraction.
 - Behavior equivalence is not claimed until regression CI and game runtime tests pass. Lua coordinator packaging is not semantic code inference.
 - The `streetgamespoker-hud-invisible-native-idle` and `native-location-poker` rules are separate entries and have **not** independently been converted; existing native Poker hooks remain attached to the reviewed scheduler.
@@ -67,7 +68,7 @@ A rule marked `NOT_CONVERTED` still retains its existing reviewed inline/owned b
 | `nightcity-allies-missions` | NOT_CONVERTED |
 | `good-feelings` | NOT_CONVERTED |
 | `good-feelings-hard-draw` | NOT_CONVERTED |
-| `air-backflip` | NOT_CONVERTED |
+| `air-backflip` | EXISTING_OWNED_COORDINATOR |
 | `auto-drop-weapon-dynamic-routing` | NOT_CONVERTED |
 | `drone-companions-revamp` | NOT_CONVERTED |
 | `ghost-void-system` | NOT_CONVERTED |
