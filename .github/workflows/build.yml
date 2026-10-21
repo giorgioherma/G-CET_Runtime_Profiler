@@ -1169,6 +1169,10 @@ jobs:
         shell: pwsh
         run: ./tests/CurrentStackDormancyBatchContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: Card Collection native worker source contract
+        shell: pwsh
+        run: ./tests/CardCollectionNativeWorkerContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: SitAnywhere PASS4 0-Engine coordinator contract
         shell: pwsh
         run: ./tests/SitAnywhereEngineWorkerContract.ps1 -ResolverRoot ./publish-resolver
