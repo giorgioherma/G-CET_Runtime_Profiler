@@ -97,7 +97,17 @@ internal static class SemanticPassGeneratorService
                     .FirstOrDefault(x =>
                         x.Budget.MaxActiveLocals > LuaLocalBudgetAnalyzer.Limit);
 
-                if (localLimitFailure is not null)
+                // PASS4 is still an inline scheduler at this intermediate
+                // stage. Its verified coordinator extraction runs only after
+                // native location composition. Do not reject a temporary
+                // over-budget chunk that is guaranteed a final ZIP-level
+                // validation; extraction failure still refuses the entire ZIP.
+                var deferredPokerBudget = localLimitFailure is not null &&
+                    PokerSemanticCoordinatorSource.MayDeferIntermediateLocalBudget(
+                        candidate.RuleId,
+                        localLimitFailure.Change.RelativeFile,
+                        localLimitFailure.Change.Bytes);
+                if (localLimitFailure is not null && !deferredPokerBudget)
                 {
                     skipped.Add(new
                     {
