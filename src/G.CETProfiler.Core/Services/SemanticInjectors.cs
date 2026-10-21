@@ -40,6 +40,7 @@ internal static partial class SemanticInjectors
             "rica-lazy-completion-details" or
             "rica-engine-worker" or
             "questrunner-engine-worker" or
+            "sitanywhere-engine-worker" or
             "infinitegigs-empty-queue-fastpath" or
             "native-location-yaiba-bathtub" or "native-location-ziggy-offered" or "native-location-cyberstunts";
         if (context.OwnerAlreadyMarked() &&
@@ -125,6 +126,7 @@ internal static partial class SemanticInjectors
             "calllist-action-lazy-display-query" => ApplyCallListActionLazyDisplayQuery(context),
             "inertia-returns-ground-transition-velocity" => ApplyInertiaGroundTransitionVelocity(context),
             "sitanywhere" => ApplySitAnywhere(context),
+            "sitanywhere-engine-worker" => ApplySitAnywhereEngineWorker(context),
             "repeatable-increased-criminal-activity" => ApplyRepeatableIncreasedCriminalActivity(context),
             "rica-lazy-completion-details" => ApplyRicaLazyRewardDetails(context),
             "rica-engine-worker" => ApplyRicaEngineWorker(context),
