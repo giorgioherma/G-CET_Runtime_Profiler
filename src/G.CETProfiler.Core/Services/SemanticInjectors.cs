@@ -120,6 +120,7 @@ internal static partial class SemanticInjectors
             "sitanywhere" => ApplySitAnywhere(context),
             "repeatable-increased-criminal-activity" => ApplyRepeatableIncreasedCriminalActivity(context),
             "rica-lazy-completion-details" => ApplyRicaLazyRewardDetails(context),
+            "infinitegigs-empty-queue-fastpath" => ApplyInfiniteGigsEmptyQueueFastPath(context),
             "dedka-auto-shop" => ApplyDedkaAutoShop(context),
             "marmurbank" => ApplyMarmurBank(context),
             "marmurbank-modern-input" => ApplyMarmurBankModernInput(context),
