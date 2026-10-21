@@ -37,6 +37,49 @@ internal sealed record CompiledNativeLocations(byte[] Bytes,
     private static readonly Regex Scalar = new(
         @"(?<n>"+Num+")",RegexOptions.CultureInvariant);
 
+
+    // Source-derived immutable jump launches. Dynamic user-created jumps are
+    // deliberately absent from GCAS; original Lua always owns their wake.
+    private static List<Site> CyberStuntsFixedSites(string? source)
+    {
+        var result=new List<Site>();
+        if(source is null || !source.Contains("DetectJumpLaunch(",StringComparison.Ordinal) ||
+           !source.Contains("LoadUserJumps(",StringComparison.Ordinal) ||
+           !source.Contains("DriveEvents",StringComparison.Ordinal))return result;
+        var table=Regex.Match(source,
+            @"(?ms)^\s*local\s+jumps\s*=\s*\{(?<body>.*?)^\s*\}\s*local\s+userJumps\s*=\s*\{\s*\}",
+            RegexOptions.CultureInvariant);
+        var launch=Regex.Match(source,@"\blocal\s+launchDetectionRadius\s*=\s*(?<v>"+Num+")",
+            RegexOptions.CultureInvariant);
+        if(!table.Success || !launch.Success)return result;
+        if(!float.TryParse(launch.Groups["v"].Value,NumberStyles.Float,
+            CultureInfo.InvariantCulture,out var radius) || !float.IsFinite(radius) ||
+            radius<=0 || radius>400)return result;
+        var body=table.Groups["body"].Value;
+        var names=Regex.Matches(body,@"\bjumpName\s*=\s*[""'][^""']+[""']");
+        var starts=Regex.Matches(body,@"\bjumpPos\s*=\s*\{(?<v>[^{}]*)\}");
+        var ends=Regex.Matches(body,@"\blandPos\s*=\s*\{(?<v>[^{}]*)\}");
+        if(starts.Count==0 || starts.Count>256 ||
+           names.Count!=starts.Count || ends.Count!=starts.Count)return result;
+        foreach(Match start in starts)
+        {
+            var values=start.Groups["v"].Value;
+            float ReadAxis(string axis) {
+                var match=Regex.Match(values,@"\b"+axis+@"\s*=\s*(?<v>"+Num+")");
+                return match.Success && float.TryParse(match.Groups["v"].Value,
+                    NumberStyles.Float,CultureInfo.InvariantCulture,out var value)
+                    ? value : float.NaN;
+            }
+            result.Add(new Site(10039,ReadAxis("x"),ReadAxis("y"),ReadAxis("z"),
+                Math.Max(150f,radius+100f)));
+        }
+        return result.Any(s=>!float.IsFinite(s.X) || !float.IsFinite(s.Y) ||
+            !float.IsFinite(s.Z)) ? new List<Site>() : result;
+    }
+
+    internal static int CyberStuntsFixedJumpCount(string? source) =>
+        CyberStuntsFixedSites(source).Count;
+
     internal static CompiledNativeLocations Compile(
         string modsRoot, IReadOnlyDictionary<string,byte[]> staged)
     {
@@ -367,6 +410,10 @@ internal sealed record CompiledNativeLocations(byte[] Bytes,
                  catch(InvalidOperationException){}
             }
         }
+
+        if(Has("CyberStunts-StuntJumps-CET/init.lua"))
+            Include(10039,CyberStuntsFixedSites(
+                Read("CyberStunts-StuntJumps-CET/init.lua")));
 
         if(sites.Count>100000)
             throw new InvalidOperationException("Compiled static location limit exceeded.");

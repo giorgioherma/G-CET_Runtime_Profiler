@@ -32,7 +32,7 @@ internal static partial class SemanticInjectors
             "native-location-poker" or "native-location-tunnel" or
             "native-location-illegal" or "native-location-dedka" or
             "native-location-card-collection" or "native-location-marmurbank" or
-            "native-location-yaiba-bathtub" or "native-location-ziggy-offered";
+            "native-location-yaiba-bathtub" or "native-location-ziggy-offered" or "native-location-cyberstunts";
         if (context.OwnerAlreadyMarked() &&
             !candidate.StageComposed && !versionFluidUpgrade)
             return SemanticInjectionResult.Skip(
@@ -55,6 +55,7 @@ internal static partial class SemanticInjectors
             "native-location-marmurbank" => NativeLocationAdditionalOwnersSource.ApplyMarmur(context),
             "native-location-yaiba-bathtub" => NativeLocationAdditionalOwnersSource.ApplyBathtub(context),
             "native-location-ziggy-offered" => NativeLocationAdditionalOwnersSource.ApplyZiggy(context),
+            "native-location-cyberstunts" => ApplyCyberStuntsNativeLocation(context),
             "nightcitybilliards" => ApplyNightCityBilliards(context),
             "npcd-hotline" => ApplyNpcdHotline(context),
             "gameentityexaminertool" => ApplyGameEntityExaminer(context),
