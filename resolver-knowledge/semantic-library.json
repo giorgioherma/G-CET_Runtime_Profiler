@@ -14,7 +14,7 @@
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
     "fullPassRule": "An enabled, reviewed semantic injector may run with measured callback activity even below the default 3.0 ms/s soft CPU boundary, but only when its identity and current live-source proof match and the stage is not already satisfied. Generic native-dispatch/dormancy recipes retain their independent proof requirements.",
-    "enabledInjectorCount": 100,
+    "enabledInjectorCount": 101,
     "profileOnlyRuleCount": 0,
     "note": "The production semantic base contains source-proven, behavior-aware optimizations learned from validated references and measured hot callbacks, including burst-discovered diagnostic sentinels that preserve author cadence while gating globally expensive fallback scans. Generic/mechanical transforms stay in the Resolver; semantic rules cover state/cadence/hotpath knowledge that generic inference cannot safely own.",
     "admissionPolicy": {
@@ -7716,6 +7716,62 @@
       "referenceOverrideAllowed": false,
       "evidenceMembership": [
         "G-CET_CURRENT_STACK_20261020"
+      ]
+    },
+    {
+      "id": "cyberstunts-native-worker",
+      "identityHints": [
+        "CyberStunts-StuntJumps-CET"
+      ],
+      "policyClass": "NATIVE_STATIC_LOCATION_FIXED_JUMP_DORMANCY",
+      "callbacks": [
+        {
+          "kind": "source",
+          "target": "init.lua",
+          "role": "source-owned fixed launch location"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "local __gcetStuntsFixedCount=#jumps",
+          "local function __gcetStuntsAttachNative()",
+          "__gcetStuntsLocationSleeping()"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:cyberstunts-native-worker-v1",
+        "expectedMarkerFileCount": 1
+      },
+      "behavior": {
+        "handler": "SEMANTIC_NATIVE_LOCATION_SOURCE_PROVEN",
+        "concepts": [
+          "immutableLaunchPositions",
+          "userDefinedJumpsFallback",
+          "vehicleWake",
+          "activeJumpPreserved"
+        ],
+        "note": "Native static FAR/NEAR supplies only immutable built-in launch region. Dynamic user jump edits, active scoring and CET overlay bypass it; author DriveEvents remains registered."
+      },
+      "generation": {
+        "enabled": true,
+        "sourceIndependentAdmission": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 0,
+        "evidenceStack": "CURRENT_CYBERSTUNTS_NATIVE",
+        "admitted": true
+      },
+      "cadenceGroup": "NATIVE_STATIC_JUMP_WAKE",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_LIVE_SOURCE_PROOF",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G-CET_CURRENT_STACK_20261021"
       ]
     }
   ],
