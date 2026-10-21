@@ -72,8 +72,12 @@ if($candidates.Count -ne 1 -or !$candidates[0].stageComposed -or $invalidSourceF
 }
 $manifest=Get-Content $result.pass.ManifestPath -Raw|ConvertFrom-Json
 $stages=@($manifest.transforms|Where-Object {$_.RuleId -eq 'air-backflip'})
-if($stages.Count -ne 1 -or $stages[0].admissionEvidence -ne 'SOURCE_PROVEN_NO_CAPTURE' -or
-   $null -ne $stages[0].runtimeMsPerSecond){throw 'AirBackFlip source-only provenance mismatch'}
+if($stages.Count -ne 1 -or $stages[0].sourceProof -ne $true -or
+   $null -ne $stages[0].runtimeMsPerSecond){
+    $skips=@($manifest.skipped | Where-Object {$_.RuleId -eq 'air-backflip'})
+    throw ('AirBackFlip source-only semantic stage did not compose: ' +
+        (@{transforms=$stages;skipped=$skips}|ConvertTo-Json -Depth 12 -Compress))
+}
 $archive=[IO.Compression.ZipFile]::OpenRead($result.pass.ZipPath)
 try{
     $entry=$archive.GetEntry('bin/x64/plugins/cyber_engine_tweaks/mods/AirBackFlip/init.lua')
@@ -82,13 +86,23 @@ try{
     try{$patched=$reader.ReadToEnd()}finally{$reader.Dispose()}
 }
 finally{$archive.Dispose()}
-foreach($token in @(
-    '__gcetAirBackFlipDormancyV2',
+$usesGeneric = $patched.Contains('__gcetAirBackFlipDormancyV3')
+$usesLegacy = $patched.Contains('__gcetAirBackFlipDormancyV2')
+if(!$usesGeneric -and !$usesLegacy){throw 'AirBackFlip lacks semantic dormancy stage'}
+$tokens=@(
     'pcall(h.SetActive, desired)',
     'desired = cfg.enabled == true or flip ~= nil',
     '__gcetAirBackFlipLastActive',
-    'Observe("PlayerPuppet", "OnAction", gcetAirBackFlipOnAction)',
-    'cfg.enabled = ImGui.Checkbox("Enabled", cfg.enabled)')){
+    'cfg.enabled = ImGui.Checkbox("Enabled", cfg.enabled)'
+)
+if($usesGeneric) {
+    $tokens+=@('__gcetAirBackFlipHandles = __gcetHandles_',
+                'local function __gcetOnAction_',
+                'if not __gcetRouted_')
+} else {
+    $tokens+='Observe("PlayerPuppet", "OnAction", gcetAirBackFlipOnAction)'
+}
+foreach($token in $tokens){
     if(!$patched.Contains($token)){throw "AirBackFlip missing source stage: $token"}
 }
 $patched|Set-Content -LiteralPath $initPath -Encoding utf8
