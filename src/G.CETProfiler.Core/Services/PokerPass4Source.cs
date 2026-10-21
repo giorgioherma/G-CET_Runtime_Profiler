@@ -17,7 +17,10 @@ internal static class PokerPass4Source
     {
         try
         {
-            return IsControllerComplete(File.ReadAllText(Path.Combine(ownerFolder, "init.lua"))) &&
+            var init = File.ReadAllText(Path.Combine(ownerFolder, "init.lua"));
+            var modulePath = Path.Combine(ownerFolder, "G-CET", "Coordinator.lua");
+            var module = File.Exists(modulePath) ? File.ReadAllText(modulePath) : null;
+            return (IsControllerComplete(init) || IsExternalControllerComplete(init, module)) &&
                 IsWorldComplete(File.ReadAllText(Path.Combine(ownerFolder, "StreetTables.lua")));
         }
         catch (IOException) { return false; }
@@ -70,6 +73,41 @@ internal static class PokerPass4Source
                 RegexOptions.CultureInvariant);
     }
 
+    // A new-style bridge is not complete merely because the Lua module is
+    // present. Require the original scheduler's full controller postconditions
+    // across BOTH files and prove the live bridge, private state getters,
+    // source-relative loader, attached transition and original fallback.
+    private static bool IsExternalControllerComplete(string init, string? module)
+    {
+        if (module is null ||
+            !module.StartsWith(PokerSemanticCoordinatorSource.Marker + "\n",
+                StringComparison.Ordinal) ||
+            !init.Contains(PokerSemanticCoordinatorSource.BridgeMarker,
+                StringComparison.Ordinal) ||
+            !init.Contains("dofile(root..\"G-CET/Coordinator.lua\")",
+                StringComparison.Ordinal) ||
+            !init.Contains("source:match", StringComparison.Ordinal) ||
+            !init.Contains("if __gcetPokerAttached then return end",
+                StringComparison.Ordinal) ||
+            !init.Contains("if __gcetPokerAttachPass4 then __gcetPokerAttachPass4() end",
+                StringComparison.Ordinal) ||
+            !module.Contains("__gcetBindings.onAttached()", StringComparison.Ordinal) ||
+            !module.Contains("not __gcetBindings.inMenu() and __gcetBindings.inGame()",
+                StringComparison.Ordinal) ||
+            !init.Contains("onAttached=function() __gcetPokerAttached=true end",
+                StringComparison.Ordinal) ||
+            Regex.Matches(module, @"\bclient\.Schedule\.Every\s*\(").Count != 3 ||
+            Regex.Matches(module, @"\bclient\.Schedule\.EveryFrame\s*\(").Count != 1 ||
+            Regex.Matches(init,
+                @"(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]",
+                RegexOptions.CultureInvariant).Count != 1 ||
+            Regex.IsMatch(module,
+                @"\b(?:registerForEvent|registerRuntimeEvent)\s*\(",
+                RegexOptions.CultureInvariant))
+            return false;
+        return IsControllerComplete(init + "\n" + module);
+    }
+
     private static bool IsWorldComplete(string text)
     {
         var update = Regex.Match(text,
@@ -114,14 +152,14 @@ internal static class PokerPass4Source
     internal static SemanticInjectionResult Apply(SemanticPatchContext context)
     {
         var init=context.FindFile("init.lua",
-            "StreetGamesPoker", "StreetTables.registerMapPins()",
-            "Cron.Update", "SeatController.update", "StreetTables.update",
-            "InteractionMenu.update", "CardRenderer.update", "TableTalk.update");
+            "StreetGamesPoker.ready", "StreetTables.registerMapPins()");
         var tables=context.FindFile("StreetTables.lua",
             "StreetTables.locations", "function StreetTables.update",
             "CHAIR_SPAWN_RANGE", "CHAIR_DESPAWN_RANGE", "TRACE_RANGE",
             "traceApproach", "spawnChair", "despawnChair");
-        var controllerComplete = IsControllerComplete(init.Text);
+        var controllerComplete = IsControllerComplete(init.Text) ||
+            IsExternalControllerComplete(init.Text,
+                context.ReadOwnedModule(PokerSemanticCoordinatorSource.Module));
         var worldComplete = IsWorldComplete(tables.Text);
         if (controllerComplete && worldComplete)
             return SemanticInjectionResult.Skip(
