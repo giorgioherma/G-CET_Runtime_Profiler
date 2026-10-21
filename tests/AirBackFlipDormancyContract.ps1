@@ -122,8 +122,16 @@ if(@($completed.semanticSourceOnlyCandidates|Where-Object {$_.ruleId -eq 'air-ba
     throw ('Completed AirBackFlip v2 still eligible: '+($checks|ConvertTo-Json -Compress))
 }
 # New author-side enable writer must fail closed, never be accepted as completed.
-$patched.Replace('registerForEvent("onDraw",','cfg.enabled = false' + [Environment]::NewLine + 'registerForEvent("onDraw",')|
-    Set-Content -LiteralPath $initPath -Encoding utf8
+# The generic 0-Engine frame stage may rename the onDraw registrar.
+# Insert the extra author state writer against either current-source form,
+# and explicitly assert the fixture mutation happened before testing drift.
+$drawMatches=[regex]::Matches($patched,'(?m)^[ \\t]*(?:registerForEvent|__gcetRegisterEvent_\\d+)\\s*\\(\\s*["'']onDraw["'']')
+if($drawMatches.Count -ne 1){throw 'AirBackFlip drift fixture lost unique onDraw registration'}
+$drifted=$patched.Insert($drawMatches[0].Index,'cfg.enabled = false' + [Environment]::NewLine)
+if($drifted -eq $patched -or !$drifted.Contains('cfg.enabled = false')){
+    throw 'AirBackFlip drift fixture did not insert author config writer'
+}
+$drifted|Set-Content -LiteralPath $initPath -Encoding utf8
 $drift=(& $exe --capture $capture --mods $mods --json|ConvertFrom-Json)
 $driftReport=Get-Content (Join-Path $capture 'G-CET_Resolver.json') -Raw|ConvertFrom-Json
 $driftGenerate=(& $exe --capture $capture --mods $mods --generate-pass --json | ConvertFrom-Json)
