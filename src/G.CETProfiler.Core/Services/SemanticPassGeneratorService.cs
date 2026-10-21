@@ -184,6 +184,13 @@ internal static class SemanticPassGeneratorService
         applied += ApplyPreparedNativeLocationStages(
             modsRoot,staged,liveSourceHashes,appliedTransformsByFile,
             transformManifest,skipped);
+
+        // Only after all inline native scheduler adapters have run can the
+        // source-proven PASS4 implementation move into its owned Lua chunk.
+        // This is a packaging transform, never a new scheduling policy.
+        applied += PokerSemanticCoordinatorSource.TryStage(
+            modsRoot,staged,liveSourceHashes,appliedTransformsByFile,
+            transformManifest,skipped);
         return applied;
     }
 
