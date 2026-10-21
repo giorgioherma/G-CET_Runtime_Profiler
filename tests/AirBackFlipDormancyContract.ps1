@@ -125,7 +125,7 @@ if(@($completed.semanticSourceOnlyCandidates|Where-Object {$_.ruleId -eq 'air-ba
 # The generic 0-Engine frame stage may rename the onDraw registrar.
 # Insert the extra author state writer against either current-source form,
 # and explicitly assert the fixture mutation happened before testing drift.
-$drawMatches=[regex]::Matches($patched,'(?m)^[ \\t]*(?:registerForEvent|__gcetRegisterEvent_\\d+)\\s*\\(\\s*["'']onDraw["'']')
+$drawMatches=[regex]::Matches($patched,'(?m)^[ \t]*(?:registerForEvent|__gcetRegisterEvent_\d+)\s*\(\s*["'']onDraw["'']')
 if($drawMatches.Count -ne 1){throw 'AirBackFlip drift fixture lost unique onDraw registration'}
 $drifted=$patched.Insert($drawMatches[0].Index,'cfg.enabled = false' + [Environment]::NewLine)
 if($drifted -eq $patched -or !$drifted.Contains('cfg.enabled = false')){
