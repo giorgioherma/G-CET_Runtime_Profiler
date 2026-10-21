@@ -42,7 +42,7 @@ end
 -- G-CET semantic:card-collection-native-worker-v1
 local function __gcetAttachCardNative()
   return require("GCET_Semantic/card_collection_native_worker").attach(
-    engine, #buildSpatialEntries(),
+    engine, (#buildSpatialEntries() > 0) and 100 or 0,
     function(far)
       __gcetCardNativeFar = far == true
       if __gcetCardNativeFar then
