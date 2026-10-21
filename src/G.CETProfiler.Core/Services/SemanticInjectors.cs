@@ -48,7 +48,7 @@ internal static partial class SemanticInjectors
             "questrunner-engine-worker" or
             "sitanywhere-engine-worker" or
             "infinitegigs-empty-queue-fastpath" or
-            "native-location-yaiba-bathtub" or "native-location-ziggy-offered" or "ziggy-native-worker" or "native-location-cyberstunts";
+            "native-location-yaiba-bathtub" or "yaiba-native-worker" or "native-location-ziggy-offered" or "ziggy-native-worker" or "native-location-cyberstunts";
         if (context.OwnerAlreadyMarked() &&
             !candidate.StageComposed && !versionFluidUpgrade)
             return SemanticInjectionResult.Skip(
@@ -79,6 +79,7 @@ internal static partial class SemanticInjectors
             "native-location-cyberpsychos" => ApplyCyberpsychosNativeLocations(context),
             "native-location-f80h-aroused" => ApplyF80hArousedNativeWake(context),
             "native-location-yaiba-bathtub" => NativeLocationAdditionalOwnersSource.ApplyBathtub(context),
+            "yaiba-native-worker" => ApplyYaibaNativeWorker(context),
             "native-location-ziggy-offered" => NativeLocationAdditionalOwnersSource.ApplyZiggy(context),
             "ziggy-native-worker" => ApplyZiggyNativeWorker(context),
             "native-location-cyberstunts" => ApplyCyberStuntsNativeLocation(context),
