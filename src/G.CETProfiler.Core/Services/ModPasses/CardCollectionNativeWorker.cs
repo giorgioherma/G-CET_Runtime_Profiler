@@ -11,32 +11,29 @@ internal static partial class SemanticInjectors
             return SemanticInjectionResult.Skip("Card Collection native coordinator already installed.");
         var crlf=file.Text.Contains("\r\n",StringComparison.Ordinal);
         var source=file.Text.Replace("\r\n","\n",StringComparison.Ordinal);
-        const string original="""
-local function __gcetAttachCardNative()
-  local lookup=engine and engine.GCET and engine.GCET.NativeLocationHost
-  if not lookup or type(lookup.attachCompiled)~="function" then return end
-  -- All 100 source-defined card anchors were compiled by Resolver.
-  -- Keep exact collection and picked-state logic in Lua.
-  if #buildSpatialEntries()==0 then return end
-  lookup:attachCompiled(10035,100,
-    function()
-      __gcetCardNativeFar=false
-      if engine.IsPlaying() then registerSpatialSet() end
-    end,
-    function()
-      __gcetCardNativeFar=true
-      unregisterSpatialSet()
-    end,
-    function()
-      __gcetCardNativeFar=false
-      if engine.IsPlaying() then registerSpatialSet() end
-      return true
-    end)
-end
-
-""";
-        if(source.Split(original.TrimEnd('\n'),StringSplitOptions.None).Length!=2)
+        // Locate the unique original helper by its bounded CET init registration,
+        // then prove the required native owner and all three transition paths.
+        const string helperStart="local function __gcetAttachCardNative()";
+        const string nextInit="registerForEvent(\"onInit\"";
+        var start=source.IndexOf(helperStart,StringComparison.Ordinal);
+        var end=start<0?-1:source.IndexOf(nextInit,start+helperStart.Length,StringComparison.Ordinal);
+        if(start<0 || end<0 ||
+           source.IndexOf(helperStart,start+helperStart.Length,StringComparison.Ordinal)>=0)
             throw new InvalidOperationException("Card Collection native subscription source changed.");
+        var original=source.Substring(start,end-start);
+        foreach(var proof in new[]{
+            "lookup:attachCompiled(10035,100",
+            "if #buildSpatialEntries()==0 then return end",
+            "__gcetCardNativeFar=true",
+            "__gcetCardNativeFar=false",
+            "unregisterSpatialSet()",
+            "registerSpatialSet()",
+            "return true"
+        })
+            if(!original.Contains(proof,StringComparison.Ordinal))
+                throw new InvalidOperationException("Card Collection native subscription drift: "+proof);
+        if(original.Split("lookup:attachCompiled(",StringSplitOptions.None).Length!=2)
+            throw new InvalidOperationException("Card Collection native owner no longer unique.");
         const string bridge="""
 -- G-CET semantic:card-collection-native-worker-v1
 local function __gcetAttachCardNative()
@@ -53,7 +50,7 @@ local function __gcetAttachCardNative()
 end
 
 """;
-        source=source.Replace(original.TrimEnd('\n'),bridge.TrimEnd('\n'),StringComparison.Ordinal);
+        source=source[..start]+bridge+"\n"+source[end..];
         context.Write(file,crlf?source.Replace("\n","\r\n",StringComparison.Ordinal):source);
         context.WriteCoordinator("card_collection_native_worker.lua", """
 -- G-CET semantic coordinator:card-collection-native-worker
