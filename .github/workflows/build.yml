@@ -1169,6 +1169,10 @@ jobs:
         shell: pwsh
         run: ./tests/CurrentStackDormancyBatchContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: f80h native vicinity and NPC attachment source contract
+        shell: pwsh
+        run: ./tests/F80hNativeWakeContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: Remaining CET native, lazy reward and idle allocation contract
         shell: pwsh
         run: ./tests/RemainingCetSourceStagesContract.ps1 -ResolverRoot ./publish-resolver
