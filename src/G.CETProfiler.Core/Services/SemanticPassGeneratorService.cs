@@ -203,6 +203,9 @@ internal static class SemanticPassGeneratorService
         applied += PokerSemanticCoordinatorSource.TryStage(
             modsRoot,staged,liveSourceHashes,appliedTransformsByFile,
             transformManifest,skipped);
+        applied += LiveStackSemanticCoordinatorSource.TryStage(
+            modsRoot,staged,liveSourceHashes,appliedTransformsByFile,
+            transformManifest,skipped);
         return applied;
     }
 
