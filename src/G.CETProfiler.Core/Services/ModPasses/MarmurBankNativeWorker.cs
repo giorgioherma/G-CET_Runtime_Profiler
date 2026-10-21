@@ -7,7 +7,7 @@ internal static partial class SemanticInjectors
     {
         var file=context.FindFile("module/Bank.lua",
             "function bank:registerSpatialSet()", "function bank:distanceListener()",
-            "lookup:attachCompiled(10036,#PosData.All");
+            "self.__gcetNativeAttached");
         const string marker="-- G-CET semantic:marmurbank-native-worker-v1";
         if(file.Text.Contains(marker,StringComparison.Ordinal))
             return SemanticInjectionResult.Skip("Marmur Bank native coordinator already installed.");
