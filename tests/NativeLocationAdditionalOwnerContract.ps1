@@ -354,15 +354,13 @@ if(!$follow){throw 'Same-pass source-native composition stage absent'}
 $followStaged=[Collections.Generic.Dictionary[string,byte[]]]::new(
     [StringComparer]::OrdinalIgnoreCase)
 $followStaged.Add('Card Collection/init.lua',[Text.Encoding]::UTF8.GetBytes($card))
-$followHashes=[Collections.Generic.Dictionary[string,string]]::new(
-    [StringComparer]::OrdinalIgnoreCase)
 $followCounts=[Collections.Generic.Dictionary[string,int]]::new(
     [StringComparer]::OrdinalIgnoreCase)
 $followManifest=[Collections.Generic.List[object]]::new()
 $followSkipped=[Collections.Generic.List[object]]::new()
 try {
  $generated=$follow.Invoke($null,[object[]]@(
-   [string]$root,$followStaged,$followHashes,
+   [string]$root,$followStaged,
    $followCounts,$followManifest,$followSkipped))
 } catch {throw "Pristine staged source -> native follow-up failed: $($_.Exception.InnerException.Message)"}
 if($generated -ne 1){throw "Single-pass pristine staged Card Collection native composition failed: applied=$generated; skipped=$($followSkipped.Count)"}
