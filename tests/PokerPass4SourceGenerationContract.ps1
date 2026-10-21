@@ -133,7 +133,7 @@ try {
         throw 'Poker source-only composition absent or fabricated captured callbacks'
     }
     $m=Get-Content -LiteralPath $unmeasured.pass.ManifestPath -Raw | ConvertFrom-Json
-    $t=@($m.transforms | Where-Object {$_.RuleId -eq 'streetgamespoker'})
+    $t=@($m.transforms | Where-Object {$_.type -eq 'SEMANTIC_RULE' -and $_.RuleId -eq 'streetgamespoker'})
     if($t.Count -ne 1 -or $t[0].admissionEvidence -ne 'SOURCE_PROVEN_NO_CAPTURE' -or
        $null -ne $t[0].runtimeMsPerSecond -or @($t[0].files).Count -ne 2){
         throw 'Poker source-only admission did not generate both files with null runtime'
@@ -200,7 +200,7 @@ foreach($token in @('__gcetPokerWakeSq','__gcetPokerNearAny','__gcetPokerDistanc
 if($tablesOut.Contains('math.sqrt(dx * dx + dy * dy + dz * dz)')){
   throw 'Expensive distance sqrt still present'
 }
-if(@($manifest.transforms | Where-Object {$_.RuleId -eq 'streetgamespoker'} | ForEach-Object {$_.files}).Count -ne 2){
+if(@($manifest.transforms | Where-Object {$_.type -eq 'SEMANTIC_RULE' -and $_.RuleId -eq 'streetgamespoker'} | ForEach-Object {$_.files}).Count -ne 2){
   throw 'Poker semantic must patch init and world scan together'
 }
 $generated | Set-Content -LiteralPath $path -Encoding utf8
@@ -229,7 +229,7 @@ $generated | Set-Content -LiteralPath $path -Encoding utf8
 $authorTables | Set-Content -LiteralPath $tablesPath -Encoding utf8
 $partialWorld = Generate
 $mWorld = Get-Content $partialWorld.pass.ManifestPath -Raw | ConvertFrom-Json
-$tWorld = @($mWorld.transforms | Where-Object {$_.RuleId -eq 'streetgamespoker'})
+$tWorld = @($mWorld.transforms | Where-Object {$_.type -eq 'SEMANTIC_RULE' -and $_.RuleId -eq 'streetgamespoker'})
 if ($tWorld.Count -ne 1 -or @($tWorld[0].files).Count -ne 1 -or
     @($tWorld[0].files)[0] -ne 'StreetGamesPoker/StreetTables.lua') {
     throw 'Poker original world sweep was not independently upgraded'
@@ -239,7 +239,7 @@ $authorInit | Set-Content -LiteralPath $path -Encoding utf8
 $tablesOut | Set-Content -LiteralPath $tablesPath -Encoding utf8
 $partialController = Generate
 $mController = Get-Content $partialController.pass.ManifestPath -Raw | ConvertFrom-Json
-$tController = @($mController.transforms | Where-Object {$_.RuleId -eq 'streetgamespoker'})
+$tController = @($mController.transforms | Where-Object {$_.type -eq 'SEMANTIC_RULE' -and $_.RuleId -eq 'streetgamespoker'})
 if ($tController.Count -ne 1 -or @($tController[0].files).Count -ne 1 -or
     @($tController[0].files)[0] -ne 'StreetGamesPoker/init.lua') {
     throw 'Poker original controller was not independently upgraded'
@@ -314,7 +314,7 @@ $variantInit | Set-Content -LiteralPath $path -Encoding utf8
 $variantTables | Set-Content -LiteralPath $tablesPath -Encoding utf8
 $variation=Generate
 $vManifest=Get-Content -LiteralPath $variation.pass.ManifestPath -Raw | ConvertFrom-Json
-if(@($vManifest.transforms | Where-Object {$_.RuleId -eq 'streetgamespoker'}).Count -ne 1){
+if(@($vManifest.transforms | Where-Object {$_.type -eq 'SEMANTIC_RULE' -and $_.RuleId -eq 'streetgamespoker'}).Count -ne 1){
     throw 'Version-varied Poker source did not generate PASS4'
 }
 $vZip=[System.IO.Compression.ZipFile]::OpenRead([string]$variation.pass.ZipPath)
@@ -347,7 +347,7 @@ $authorInit | Set-Content -LiteralPath $path -Encoding utf8
 $vectorWorld | Set-Content -LiteralPath $tablesPath -Encoding utf8
 $vector = Generate
 $vectorManifest = Get-Content $vector.pass.ManifestPath -Raw | ConvertFrom-Json
-$vectorRule = @($vectorManifest.transforms | Where-Object {$_.RuleId -eq 'streetgamespoker'})
+$vectorRule = @($vectorManifest.transforms | Where-Object {$_.type -eq 'SEMANTIC_RULE' -and $_.RuleId -eq 'streetgamespoker'})
 if ($vectorRule.Count -ne 1 -or @($vectorRule[0].files).Count -ne 2) {
     throw 'Pristine Vector4.Distance world source did not receive complete Poker PASS4'
 }
