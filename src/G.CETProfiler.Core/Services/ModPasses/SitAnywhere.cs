@@ -19,23 +19,23 @@ internal static partial class SemanticInjectors
             if (live.Text.Contains(marker, StringComparison.Ordinal))
                 return SemanticInjectionResult.Skip("SitAnywhere scanner/workspot idle extension already installed.");
             const string before =
-                "        -- Active scanner placement remains full rendered-frame cadence.\\n" +
+                "        -- Active scanner placement remains full rendered-frame cadence.\n" +
                 "        self.logic:onUpdate()";
             const string after =
-                "        " + marker + "\\n" +
-                "        -- Keep cleanup and seated exit work, but do not enter the\\n" +
-                "        -- surface scanner while its presentation is already hidden.\\n" +
-                "        if scanning or inWorkspot or not self.logic.workspotsHidden then\\n" +
-                "            self.logic:onUpdate()\\n" +
+                "        " + marker + "\n" +
+                "        -- Keep cleanup and seated exit work, but do not enter the\n" +
+                "        -- surface scanner while its presentation is already hidden.\n" +
+                "        if scanning or inWorkspot or not self.logic.workspotsHidden then\n" +
+                "            self.logic:onUpdate()\n" +
                 "        end";
-            var normalized = live.Text.Replace("\\r\\n", "\\n", StringComparison.Ordinal);
+            var normalized = live.Text.Replace("\r\n", "\n", StringComparison.Ordinal);
             if (!normalized.Contains("and not world.hasVisibleState() then", StringComparison.Ordinal)
                 || !normalized.Contains("local scanning = self.logic.isScanning or self.runtimeData.forceScan", StringComparison.Ordinal)
                 || normalized.Split(before, StringSplitOptions.None).Length != 2)
                 throw new InvalidOperationException("SitAnywhere deployed PASS4 frame boundary changed.");
             var patched = normalized.Replace(before, after, StringComparison.Ordinal);
-            context.Write(live, live.Text.Contains("\\r\\n", StringComparison.Ordinal)
-                ? patched.Replace("\\n", "\\r\\n", StringComparison.Ordinal) : patched);
+            context.Write(live, live.Text.Contains("\r\n", StringComparison.Ordinal)
+                ? patched.Replace("\n", "\r\n", StringComparison.Ordinal) : patched);
             return SemanticInjectionResult.Success("SitAnywhere skips already-hidden non-scanner surface processing; active scanning, seated states and cleanup remain.");
         }
 
