@@ -364,3 +364,18 @@ try {
 } finally { $vectorZip.Dispose() }
 
 Write-Host 'Poker PASS4 generated from author source, with four lanes, lexical startup, logger, map pins, fallback and idempotence.'
+
+# Near-200 Lua locals: inline PASS4 would exceed 200 active chunk locals,
+# while moving its five coordinator locals into a separate Lua module leaves
+# the installed author bridge exactly at the budget. The final ZIP analyzer,
+# not this assertion alone, is the safety backstop.
+$budgetProbe=(@(1..188|ForEach-Object { 'local __gcetBudgetProbe'+$_+'=false' }) -join "`n")+"`n"
+($budgetProbe+$authorInit)|Set-Content -LiteralPath $path -Encoding utf8
+$authorTables|Set-Content -LiteralPath $tablesPath -Encoding utf8
+$budgetPass=Generate
+$budgetZip=[IO.Compression.ZipFile]::OpenRead($budgetPass.pass.ZipPath)
+try {
+    if(!$budgetZip.GetEntry('bin/x64/plugins/cyber_engine_tweaks/mods/StreetGamesPoker/G-CET/Coordinator.lua')){
+        throw 'Near-200 Lua-local case failed to externalize Poker coordinator'
+    }
+} finally {$budgetZip.Dispose()}
