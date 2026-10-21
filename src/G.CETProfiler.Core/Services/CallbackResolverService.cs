@@ -5920,7 +5920,7 @@ internal static class CallbackResolverService
             out CrossFileInteractionUiCallProof proof)
         {
             proof = new CrossFileInteractionUiCallProof(
-                "", "", "", "", "", "", "");
+                "", "", "", "", "", "");
 
             var callback = callbackSource.CallbackText
                 .Replace("\r\n", "\n", StringComparison.Ordinal)
