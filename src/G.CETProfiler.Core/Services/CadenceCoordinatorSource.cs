@@ -32,7 +32,7 @@ internal static class CadenceCoordinatorSource
         string replacement, string appendedReturn)
     {
         var moved = Once(exactBody, terminalReturn, replacement, "original early-return");
-        return moved + appendedReturn + "\n";
+        return moved + "\n" + appendedReturn + "\n";
     }
 
     private static void JoyRide(SemanticPatchContext context)
