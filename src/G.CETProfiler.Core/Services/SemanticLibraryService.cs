@@ -506,6 +506,7 @@ internal sealed class SemanticLibraryService
         foreach (var entry in _entries)
         {
             if (!entry.Generation.Enabled ||
+                !entry.Generation.SourceIndependentAdmission ||
                 string.IsNullOrWhiteSpace(entry.Handler) ||
                 entry.Callbacks.Length == 0)
                 continue;
