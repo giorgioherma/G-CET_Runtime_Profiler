@@ -73,18 +73,34 @@ try{
     if(!$entry){throw 'AirBackFlip output source missing'}
     $reader=[IO.StreamReader]::new($entry.Open())
     try{$patched=$reader.ReadToEnd()}finally{$reader.Dispose()}
+    $moduleEntry=$archive.GetEntry('bin/x64/plugins/cyber_engine_tweaks/mods/AirBackFlip/G-CET/AirBackFlipCoordinator.lua')
+    if(!$moduleEntry){throw 'AirBackFlip external coordinator missing from ZIP'}
+    $reader=[IO.StreamReader]::new($moduleEntry.Open())
+    try{$coordinator=$reader.ReadToEnd()}finally{$reader.Dispose()}
 }
 finally{$archive.Dispose()}
 foreach($token in @(
     '__gcetAirBackFlipDormancyV2',
-    'pcall(h.SetActive, desired)',
-    'desired = cfg.enabled == true or flip ~= nil',
-    '__gcetAirBackFlipLastActive',
+    '__gcetAirBackFlipCoordinatorV1',
+    'G-CET/AirBackFlipCoordinator',
+    'pcall(mod.sync, cfg.enabled == true, flip ~= nil)',
     'Observe("PlayerPuppet", "OnAction", gcetAirBackFlipOnAction)',
     'cfg.enabled = ImGui.Checkbox("Enabled", cfg.enabled)')){
     if(!$patched.Contains($token)){throw "AirBackFlip missing source stage: $token"}
 }
+foreach($token in @('-- G-CET semantic coordinator:air-backflip',
+    'function M.sync(enabled, flipping)', 'function M.adopt(handle, enabled, flipping)',
+    'pcall(h.SetActive, desired)', 'state.lastActive = desired')){
+    if(!$coordinator.Contains($token)){throw "AirBackFlip coordinator missing: $token"}
+}
+$created=@($stages[0].files)
+if($created.Count -ne 2 -or $created -notcontains 'AirBackFlip/G-CET/AirBackFlipCoordinator.lua'){
+    throw 'Semantic manifest omitted a required source/coordinator pair'
+}
 $patched|Set-Content -LiteralPath $initPath -Encoding utf8
+$moduleDir=Join-Path $air 'G-CET'
+New-Item -ItemType Directory -Force $moduleDir|Out-Null
+$coordinator|Set-Content -LiteralPath (Join-Path $moduleDir 'AirBackFlipCoordinator.lua') -Encoding utf8
 $again=(& $exe --capture $capture --mods $mods --json|ConvertFrom-Json)
 if(!$again.ok){throw 'AirBackFlip completed-source analysis failed'}
 $completed=Get-Content (Join-Path $capture 'G-CET_Resolver.json') -Raw|ConvertFrom-Json
@@ -92,9 +108,9 @@ if(@($completed.semanticSourceOnlyCandidates|Where-Object {$_.ruleId -eq 'air-ba
     $checks=@{
         marker=$patched.Contains('__gcetAirBackFlipDormancyV2')
         sync=$patched.Contains('local function __gcetAirBackFlipSync()')
-        setActive=$patched.Contains('pcall(h.SetActive, desired)')
+        setActive=$coordinator.Contains('pcall(h.SetActive, desired)')
         fallback=$patched.Contains('Observe("PlayerPuppet", "OnAction", gcetAirBackFlipOnAction)')
-        handles=[regex]::Matches($patched,'__gcetAirBackFlipHandle\s*=\s*handle;\s*__gcetAirBackFlipLastActive\s*=\s*nil;\s*__gcetAirBackFlipSync\(\)').Count
+        handles=[regex]::Matches($patched,'__gcetAirBackFlipCoordinator\.adopt').Count
         checkbox=$patched.Contains("cfg.enabled = ImGui.Checkbox(`"Enabled`", cfg.enabled)`n        __gcetAirBackFlipSync()")
         writers=[regex]::Matches($patched,'\bcfg\.enabled\s*=(?![=])').Count
     }
