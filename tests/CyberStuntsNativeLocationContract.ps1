@@ -74,7 +74,7 @@ function TrySource([string]$input) {
   return @{Applied=$result.Applied;Output=$output}
 }
 $result=TrySource $source
-if(!$result.Applied){throw 'Original CyberStunts source not staged'}
+if(!$result.Applied){throw "Original CyberStunts source not staged: $($result.Error)"}
 foreach($required in @('G-CET native location:cyberstunts-v1',
  'attachCompiled(10039,','__gcetStuntsNativeFar==true',
  '__gcetStuntsUserEdited=true','if wasVehicleAirborne==nil then wasVehicleAirborne=isAirborne end',
