@@ -9,6 +9,19 @@ internal static partial class SemanticInjectors
     private static SemanticInjectionResult ApplyRepeatableIncreasedCriminalActivity(
         SemanticPatchContext context)
     {
+        // The current live RICA source already carries its PASS4 multi-rate
+        // workers. Do not apply the original cadence rewrite again.
+        // Preserve native scheduling, watchdog, rewards and fallback.
+        var liveFile = context.FindFile("init.lua", "Mappins.sync", "Diagnostics.snapshot");
+        if (liveFile.Text.Contains("TryAttachRicaPass4", StringComparison.Ordinal))
+        {
+            if (!liveFile.Text.Contains("if pass4Attached then return end", StringComparison.Ordinal)
+                || !liveFile.Text.Contains("scheduledDiagnosticsTick", StringComparison.Ordinal)
+                || !liveFile.Text.Contains("rewardTick", StringComparison.Ordinal))
+                throw new InvalidOperationException("RICA existing PASS4 stage is incomplete or source has drifted.");
+            return SemanticInjectionResult.Skip("RICA current live PASS4 already provides multi-rate 0-Engine scheduling; preserve existing source.");
+        }
+
         var file = context.FindFile(
             "init.lua",
             "processBodyRewards(system)",
