@@ -33,6 +33,7 @@ internal static partial class SemanticInjectors
             "air-backflip" or
             "native-location-poker" or
             "poker-native-worker" or "native-location-tunnel" or
+            "tunnel-native-worker" or
             "native-location-illegal" or "native-location-dedka" or
             "native-location-card-collection" or
             "card-collection-native-worker" or "native-location-marmurbank" or
@@ -63,6 +64,7 @@ internal static partial class SemanticInjectors
             "native-location-poker" => NativeLocationFourOwnersSource.ApplyPoker(context),
             "poker-native-worker" => ApplyPokerNativeWorker(context),
             "native-location-tunnel" => NativeLocationFourOwnersSource.ApplyTunnel(context),
+            "tunnel-native-worker" => ApplyTunnelNativeWorker(context),
             "native-location-illegal" => NativeLocationFourOwnersSource.ApplyIllegalV3(context),
             "native-location-dedka" => NativeLocationFourOwnersSource.ApplyDedka(context),
             "native-location-card-collection" => NativeLocationAdditionalOwnersSource.ApplyCards(context),
