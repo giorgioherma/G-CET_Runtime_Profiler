@@ -52,23 +52,30 @@ function M.update(dt, helpers)
             throw new InvalidOperationException("VehicleMileage 0-Engine mount lane changed.");
         const string nativeAttach = """
   -- G-CET native location:vehicle-mileage-pumps-v1
-  -- The installed JSON is compiled into GCAS by Resolver at generation time.
-  -- Failed/unknown native ownership leaves the original pump scan running.
-  if Mod and type(Engine) == "table" then
-    local host = Engine.GCET and Engine.GCET.NativeLocationHost
-    if host and type(host.attachCompiled) == "function"
-        and GAS.points and #GAS.points > 0
-        and type(GAS.__gcetSetNativeFar) == "function" then
-      local ok, attached = pcall(function()
-        return host:attachCompiled(10040, #GAS.points,
-          function() GAS.__gcetSetNativeFar(false) end,
-          function() GAS.__gcetSetNativeFar(true) end,
-          function() GAS.__gcetSetNativeFar(false); return true end)
-      end)
-      if not ok or not attached then GAS.__gcetSetNativeFar(false) end
-    end
-  end
+  -- Registration is delegated to a 0-Engine-hosted worker.
+  require("GCET_Semantic/vehicle_native_pumps").attach(Engine, Mod, GAS)
 """;
+        context.WriteCoordinator("vehicle_native_pumps.lua", """
+-- G-CET semantic coordinator:native-location-vehicle-mileage-pumps
+-- Native pump vicinity worker; the original fuel loop remains the authority.
+local M = {}
+function M.attach(engine, mod, gas)
+  if not mod or type(engine) ~= "table" or not gas then return false end
+  local host = engine.GCET and engine.GCET.NativeLocationHost
+  if not host or type(host.attachCompiled) ~= "function"
+      or not gas.points or #gas.points == 0
+      or type(gas.__gcetSetNativeFar) ~= "function" then return false end
+  local ok, attached = pcall(function()
+    return host:attachCompiled(10040, #gas.points,
+      function() gas.__gcetSetNativeFar(false) end,
+      function() gas.__gcetSetNativeFar(true) end,
+      function() gas.__gcetSetNativeFar(false); return true end)
+  end)
+  if not ok or not attached then gas.__gcetSetNativeFar(false) end
+  return ok and attached == true
+end
+return M
+""");
         i=i.Replace(initAttach,nativeAttach+"\n"+initAttach,StringComparison.Ordinal);
         context.Write(init,crlfInit ? i.Replace("\n","\r\n",StringComparison.Ordinal) : i);
         context.Write(gas,crlfGas ? g.Replace("\n","\r\n",StringComparison.Ordinal) : g);
