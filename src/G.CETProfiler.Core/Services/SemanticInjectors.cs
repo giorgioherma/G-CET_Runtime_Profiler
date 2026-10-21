@@ -35,6 +35,7 @@ internal static partial class SemanticInjectors
             "native-location-illegal" or "native-location-dedka" or
             "native-location-card-collection" or
             "card-collection-native-worker" or "native-location-marmurbank" or
+            "marmurbank-native-worker" or
             "native-location-vehicle-mileage-pumps" or
             "native-location-cyberpsychos" or
             "native-location-f80h-aroused" or
@@ -65,6 +66,7 @@ internal static partial class SemanticInjectors
             "native-location-card-collection" => NativeLocationAdditionalOwnersSource.ApplyCards(context),
             "card-collection-native-worker" => ApplyCardCollectionNativeWorker(context),
             "native-location-marmurbank" => NativeLocationAdditionalOwnersSource.ApplyMarmur(context),
+            "marmurbank-native-worker" => ApplyMarmurBankNativeWorker(context),
             "native-location-vehicle-mileage-pumps" => ApplyVehicleMileageNativePumps(context),
             "native-location-cyberpsychos" => ApplyCyberpsychosNativeLocations(context),
             "native-location-f80h-aroused" => ApplyF80hArousedNativeWake(context),
