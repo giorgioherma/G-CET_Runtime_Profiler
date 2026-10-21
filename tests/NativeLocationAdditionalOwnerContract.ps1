@@ -491,12 +491,11 @@ $matrix=[Collections.Generic.Dictionary[string,byte[]]]::new([StringComparer]::O
 $matrix.Add('StreetGamesPoker/init.lua',[Text.Encoding]::UTF8.GetBytes($pokerSource))
 $matrix.Add('Dedka Auto Shop/init.lua',[Text.Encoding]::UTF8.GetBytes($dedkaSource))
 $matrix.Add('marmurbank/module/Bank.lua',[Text.Encoding]::UTF8.GetBytes($m))
-$matrixHash=[Collections.Generic.Dictionary[string,string]]::new([StringComparer]::OrdinalIgnoreCase)
 $matrixCounts=[Collections.Generic.Dictionary[string,int]]::new([StringComparer]::OrdinalIgnoreCase)
 $matrixApplied=[Collections.Generic.List[object]]::new()
 $matrixSkipped=[Collections.Generic.List[object]]::new()
 try {$matrixResult=$follow.Invoke($null,[object[]]@(
-  [string]$root,$matrix,$matrixHash,$matrixCounts,$matrixApplied,$matrixSkipped))}
+  [string]$root,$matrix,$matrixCounts,$matrixApplied,$matrixSkipped))}
 catch {throw "Historical partly-optimized composition rejected: $($_.Exception.InnerException.Message)"}
 # Banker was already completed in the fixture. Its completion is independent
 # of the other stages and MUST NOT cause reapplication.
@@ -512,7 +511,7 @@ foreach($check in @(
  }
 }
 try {$matrixSecond=$follow.Invoke($null,[object[]]@(
-  [string]$root,$matrix,$matrixHash,$matrixCounts,$matrixApplied,$matrixSkipped))}
+  [string]$root,$matrix,$matrixCounts,$matrixApplied,$matrixSkipped))}
 catch {throw "Historical same-pass second generation failed: $($_.Exception.InnerException.Message)"}
 if($matrixSecond -ne 0 -or $matrixSkipped.Count -ne 0) {
  throw "Historical source-composition is not idempotent: changed=$matrixSecond, skipped=$($matrixSkipped.Count)"
