@@ -4,3 +4,5 @@ No full build, native artifact downloads, or release publication.
 Focused two-owner extraction test and unchanged absent-owner contract.
 
 Verified LF-normalized coordinator source and drift fixture.
+
+Cross-stack external sitAnywhere contract verification.
