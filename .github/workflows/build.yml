@@ -1169,6 +1169,10 @@ jobs:
         shell: pwsh
         run: ./tests/CurrentStackDormancyBatchContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: Marmur Bank native worker source contract
+        shell: pwsh
+        run: ./tests/MarmurBankNativeWorkerContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: Card Collection native worker source contract
         shell: pwsh
         run: ./tests/CardCollectionNativeWorkerContract.ps1 -ResolverRoot ./publish-resolver
