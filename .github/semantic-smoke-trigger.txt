@@ -1,0 +1,2 @@
+Manual targeted semantic smoke request — 2026-10-21.
+No full build, native artifact downloads, or release publication.
