@@ -36,11 +36,20 @@ function ApplySource([string]$sourceText) {
  return @{result=$result;rows=$rows}
 }
 $first=ApplySource $source
-if(!$first.result.Applied -or $first.rows.Count -ne 1){throw 'f80h first pass was not applied exactly once'}
-$output=[Text.Encoding]::UTF8.GetString($first.rows[0].Bytes)
-foreach($need in @('attachCompiled(10042, #ANCHORS','__gcetF80hCanSkipNew()','__gcetF80hFar = nil','and next(preActiveQueue) == nil')) {
- if(!$output.Contains($need)){throw "f80h omitted $need"}
+if(!$first.result.Applied -or $first.rows.Count -ne 2){throw 'f80h first pass did not stage bridge plus worker'}
+$bridge=@($first.rows | Where-Object {$_.RelativeFile -like '*/init.lua'}) | Select-Object -First 1
+$worker=@($first.rows | Where-Object {$_.RelativeFile -like '*/GCET_Semantic/f80h_native_wake.lua'}) | Select-Object -First 1
+if(!$bridge -or !$worker){throw 'f80h bridge or generated coordinator missing'}
+$output=[Text.Encoding]::UTF8.GetString($bridge.Bytes)
+$coordinator=[Text.Encoding]::UTF8.GetString($worker.Bytes)
+foreach($need in @('GCET_Semantic/f80h_native_wake','__gcetF80hCanSkipNew()','and next(preActiveQueue) == nil')) {
+ if(!$output.Contains($need)){throw "f80h bridge omitted $need"}
 }
+foreach($need in @('G-CET semantic coordinator:native-location-f80h-aroused','attachCompiled(10042, count','function M.attach(count)','function M.isFar()')) {
+ if(!$coordinator.Contains($need)){throw "f80h worker omitted $need"}
+}
+New-Item -ItemType Directory -Force (Join-Path $folder 'GCET_Semantic') | Out-Null
+[IO.File]::WriteAllText((Join-Path $folder 'GCET_Semantic/f80h_native_wake.lua'),$coordinator,[Text.UTF8Encoding]::new($false))
 $second=ApplySource $output
 if($second.result.Applied){throw 'f80h regenerated a completed stage'}
-Write-Host 'f80h native wake first pass and idempotence: PASS'
+Write-Host 'f80h native coordinator, bridge and idempotence: PASS'
