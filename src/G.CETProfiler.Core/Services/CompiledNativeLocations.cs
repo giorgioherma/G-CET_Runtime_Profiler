@@ -343,9 +343,9 @@ internal sealed record CompiledNativeLocations(byte[] Bytes,
                     var source=Read("f80h_aroused_expressions/Anchors/"+name+".lua");
                     if(source is null){complete=false;break;}
                     var matches=Regex.Matches(source,
-                        @"\\bpos\\s*=\\s*\\{\\s*x\\s*=\\s*(?<x>"+Num+
-                        @")\\s*,\\s*y\\s*=\\s*(?<y>"+Num+
-                        @")\\s*,\\s*z\\s*=\\s*(?<z>"+Num+@")",
+                        @"\bpos\s*=\s*\{\s*x\s*=\s*(?<x>"+Num+
+                        @")\s*,\s*y\s*=\s*(?<y>"+Num+
+                        @")\s*,\s*z\s*=\s*(?<z>"+Num+@")",
                         RegexOptions.CultureInvariant);
                     if(matches.Count==0){complete=false;break;}
                     foreach(Match m in matches)
