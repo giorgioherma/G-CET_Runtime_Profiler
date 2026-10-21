@@ -14,7 +14,7 @@
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
     "fullPassRule": "An enabled, reviewed semantic injector may run with measured callback activity even below the default 3.0 ms/s soft CPU boundary, but only when its identity and current live-source proof match and the stage is not already satisfied. Generic native-dispatch/dormancy recipes retain their independent proof requirements.",
-    "enabledInjectorCount": 88,
+    "enabledInjectorCount": 89,
     "profileOnlyRuleCount": 0,
     "note": "The production semantic base contains source-proven, behavior-aware optimizations learned from validated references and measured hot callbacks, including burst-discovered diagnostic sentinels that preserve author cadence while gating globally expensive fallback scans. Generic/mechanical transforms stay in the Resolver; semantic rules cover state/cadence/hotpath knowledge that generic inference cannot safely own.",
     "admissionPolicy": {
@@ -6930,6 +6930,76 @@
         "thresholdMsPerSecond": 3,
         "measuredPeakExclusiveMsPerSecond": 0,
         "evidenceStack": "CURRENT_LIVE_INFINITEGIGS_SOURCE",
+        "admitted": true
+      },
+      "cadenceGroup": "NATIVE_STATIC_WAKE",
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false,
+      "evidenceMembership": [
+        "G-CET_CURRENT_STACK_20261020"
+      ]
+    },
+    {
+      "id": "native-location-f80h-aroused",
+      "identityHints": [
+        "f80h_aroused_expressions"
+      ],
+      "policyClass": "NATIVE_STATIC_NPC_ATTACHMENT_CANDIDATE_GATE",
+      "callbacks": [
+        {
+          "kind": "source",
+          "target": "init.lua",
+          "role": "new NPC attachment and registration FAR guard"
+        }
+      ],
+      "sourceProof": {
+        "sourceCompletionAuthoritative": true,
+        "ownerAll": [
+          "local ANCHORS = dofile(\"AnchorsIndex.lua\")",
+          "local function tryRegisterNPC(self)",
+          "ObserveAfter(\"NPCPuppet\", \"OnGameAttached\"",
+          "registerForEvent(\"onInit\", function()"
+        ],
+        "alreadySatisfiedMarker": "G-CET native location:f80h-aroused-v1",
+        "expectedMarkerFileCount": 1
+      },
+      "behavior": {
+        "handler": "SEMANTIC_NATIVE_LOCATION_SOURCE_PROVEN",
+        "concepts": [
+          "nativeStaticWake",
+          "oneShared10HzHost",
+          "originalExactProximity",
+          "authorLifecycleFallback"
+        ],
+        "lanes": [
+          {
+            "role": "DISTANT_STATIC_DISCOVERY",
+            "cadence": "NATIVE_TRANSITION_DRIVEN",
+            "seconds": 0
+          },
+          {
+            "role": "NEAR_INTERACTION_AND_UNKNOWN",
+            "cadence": "AUTHOR_UNCHANGED",
+            "seconds": 0
+          }
+        ],
+        "note": "49 exact live-source anchor positions compiled into one 350m radius aggregate native owner; FAR skips only new NPC discovery while all tracked/pending/preActive queues are empty. PASS8 frame dormancy, active entity/audio/cleanup and original fallback unchanged."
+      },
+      "generation": {
+        "enabled": true,
+        "sourceIndependentAdmission": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 0,
+        "evidenceStack": "F80H_USER_LIVE_20261021",
         "admitted": true
       },
       "cadenceGroup": "NATIVE_STATIC_WAKE",
