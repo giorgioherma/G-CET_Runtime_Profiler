@@ -18,6 +18,7 @@ internal static partial class SemanticInjectors
         // refuse unknown drift (including the v1->v2 third-person subscriber
         // lifecycle). All other single-stage rules honor their legacy marker.
         var versionFluidUpgrade = candidate.RuleId is
+            "hotscenes-ui-action-dormancy" or
             "driveaerialvehicle" or
             "tunnel-rescue-v3" or
             "ziggy-last-play-navigation-sentinel-v3" or
