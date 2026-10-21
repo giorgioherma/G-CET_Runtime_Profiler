@@ -3,7 +3,7 @@ internal static partial class SemanticInjectors
 {
     private static SemanticInjectionResult ApplyDedkaNativeWorker(SemanticPatchContext context)
     {
-        var file=context.FindFile("init.lua","dedka_entrance1","dedka_entrance2_cluster","attachCompiled(10034,2");
+        var file=context.FindFile("init.lua","dedka_entrance1","dedka_entrance2_cluster","startShopDetail()");
         const string marker="-- G-CET semantic:dedka-native-worker-v1";
         if(file.Text.Contains(marker,StringComparison.Ordinal))
             return SemanticInjectionResult.Skip("Dedka native coordinator already installed.");
