@@ -98,18 +98,13 @@ internal static class PokerSemanticCoordinatorSource
 
             // Preserve the one original onInit and onUpdate registrations.
             // Loading failures leave the original author update path active.
-            // debug.getinfo derives the *current mod's* init.lua path, never a
-            // shared package.path or potentially colliding require module ID.
+            // CET resolves dofile paths inside the calling mod's sandbox.
+            // Never depend on debug.getinfo or a global require cache.
             const string bridge = """
 -- G-CET semantic coordinator bridge:streetgamespoker
 local __gcetPokerAttached=false
 __gcetPokerAttachPass4=function()
- local ok,factory=pcall(function()
-  local source=debug.getinfo(1,"S").source
-  local root=source and source:match("^@(.+[\\/])[^\\/]+$")
-  if not root then error("Poker coordinator source path unavailable") end
-  return dofile(root.."G-CET/Coordinator.lua")
- end)
+ local ok,factory=pcall(dofile,"G-CET/Coordinator.lua")
  if not ok or type(factory)~="function" then return false end
  local bound,attach=pcall(factory,{
   StreetGamesPoker=StreetGamesPoker,StreetTables=StreetTables,
