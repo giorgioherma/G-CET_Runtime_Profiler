@@ -35,9 +35,13 @@ internal static partial class SemanticInjectors
         end)
         if serial <= 0 then break end
 """;
-        if(source.Split(before,StringSplitOptions.None).Length!=2)
+        // Raw strings are indentation-neutral; source statements occur inside
+        // the author's eight-space while-loop body. Keep that exact shape.
+        var anchoredBefore = "        " + before.Replace("\n", "\n        ", StringComparison.Ordinal);
+        var anchoredAfter = "        " + after.Replace("\n", "\n        ", StringComparison.Ordinal);
+        if(source.Split(anchoredBefore,StringSplitOptions.None).Length!=2)
             throw new InvalidOperationException("RICA pending reward getter grouping changed.");
-        var patched=source.Replace(before,after,StringComparison.Ordinal);
+        var patched=source.Replace(anchoredBefore,anchoredAfter,StringComparison.Ordinal);
         context.Write(file,crlf?patched.Replace("\n","\r\n",StringComparison.Ordinal):patched);
         return SemanticInjectionResult.Success(
             "RICA skips two native reward-detail getters on empty polls; global replenishment and reward timing are untouched.");
