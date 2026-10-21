@@ -30,9 +30,9 @@ internal static partial class SemanticInjectors
             throw new InvalidOperationException("f80h attachment, pre-active or pending state changed.");
         var state="""
 -- G-CET native location:f80h-aroused-v1
-local __gcetF80hFar = nil
+local __gcetF80hWorker = require("GCET_Semantic/f80h_native_wake")
 local function __gcetF80hCanSkipNew()
-  return __gcetF80hFar == true
+  return __gcetF80hWorker.isFar()
     and next(tracked) == nil and next(pending) == nil
     and next(pendingAppearance) == nil and next(preActiveQueue) == nil
 end
@@ -46,24 +46,36 @@ end
             "    if scriptActive and __gcetF80hCanSkipNew() then return end\n",
             StringComparison.Ordinal);
         const string attach="""
-  -- Native FAR is authoritative only after initial snapshot. UNKNOWN or
-  -- missing host keeps all original CET NPC attachment work alive.
+  -- 0-Engine remains the single lifecycle/native host authority.
+  __gcetF80hWorker.attach(#ANCHORS)
+""";
+        context.WriteCoordinator("f80h_native_wake.lua", """
+-- G-CET semantic coordinator:native-location-f80h-aroused
+-- Private native FAR worker; no independent scheduler or gameplay hooks.
+local M = {}
+local far = false
+function M.isFar() return far == true end
+function M.attach(count)
+  far = false
+  if type(count) ~= "number" or count < 1 or count > 1024 then return false end
   local okEngine, engine = pcall(GetMod, "0-Engine")
   local host = okEngine and type(engine) == "table"
     and engine.GCET and engine.GCET.NativeLocationHost or nil
-  if host and type(host.attachCompiled) == "function" and #ANCHORS > 0 and #ANCHORS <= 1024 then
-    local ok, attached = pcall(function()
-      return host:attachCompiled(10042, #ANCHORS,
-        function() __gcetF80hFar = false end,
-        function() __gcetF80hFar = true end,
-        function() __gcetF80hFar = nil; return true end)
-    end)
-    if not ok or not attached then __gcetF80hFar = nil end
-  end
-""";
+  if not host or type(host.attachCompiled) ~= "function" then return false end
+  local ok, attached = pcall(function()
+    return host:attachCompiled(10042, count,
+      function() far = false end,
+      function() far = true end,
+      function() far = false; return true end)
+  end)
+  if not ok or not attached then far = false end
+  return ok and attached == true
+end
+return M
+""");
         source=source.Replace(initAnchor,initAnchor+attach+"\n",StringComparison.Ordinal);
         context.Write(file,crlf?source.Replace("\n","\r\n",StringComparison.Ordinal):source);
         return SemanticInjectionResult.Success(
-            "Installed source anchors compiled to native coarse FAR; only new distant NPC attach/registration is bypassed when all pending/tracked queues are empty. PASS8 frame, NPC lifecycle and audio remain unchanged.");
+            "Coordinator-owned native wake: installed source anchors compiled to native coarse FAR; only new distant NPC attach/registration is bypassed when all pending/tracked queues are empty. PASS8 frame, NPC lifecycle and audio remain unchanged.");
     }
 }
