@@ -22,6 +22,33 @@ internal static class PokerSemanticCoordinatorSource
         @"(?m)^-- Distance-aware PASS4: author gameplay preserved, only discovery/work throttled\.[\s\S]*?(?=^[ \t]*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]\s*,\s*function\s*\()",
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
+    // The temporary INLINE source is never shipped if extraction fails.
+    // Only this already-reviewed PASS4 scheduler may defer its intermediate
+    // local budget to the mandatory whole-ZIP validation after extraction.
+    internal static bool MayDeferIntermediateLocalBudget(
+        string ruleId, string relativeFile, byte[] generatedBytes)
+    {
+        if (ruleId != Rule ||
+            !relativeFile.Equals(Owner + "/init.lua",
+                StringComparison.OrdinalIgnoreCase))
+            return false;
+        var text = Encoding.UTF8.GetString(generatedBytes);
+        var hits = SchedulerSection.Matches(text);
+        if (hits.Count != 1 ||
+            text.Contains(BridgeMarker, StringComparison.Ordinal))
+            return false;
+        var body = hits[0].Value;
+        return body.Contains("local __gcetPokerAttached=false", StringComparison.Ordinal) &&
+            body.Contains("__gcetPokerAttachPass4=function()", StringComparison.Ordinal) &&
+            body.Contains("Logger.info(\"pass4_scheduler_attached\"", StringComparison.Ordinal) &&
+            Regex.Matches(body, @"\bclient\.Schedule\.Every\s*\(").Count == 3 &&
+            Regex.Matches(body, @"\bclient\.Schedule\.EveryFrame\s*\(").Count == 1 &&
+            new[] { "poker.world_far", "poker.world_near",
+                    "poker.seat_near", "poker.realtime" }
+                .All(id => Regex.Matches(body,
+                    "id=[\"']" + Regex.Escape(id) + "[\"']").Count == 1);
+    }
+
     internal static int TryStage(
         string modsRoot,
         Dictionary<string, byte[]> staged,
