@@ -321,7 +321,7 @@ internal sealed record CompiledNativeLocations(byte[] Bytes,
                         Include(1004101+k,new[]{
                             new Site(1004101+k,Number(m.Groups["x"].Value),
                                 Number(m.Groups["y"].Value),
-                                Number(m.Groups["z"].Value),210f)
+                                Number(m.Groups["z"].Value),210f,true)
                         });
                     }
                 }
