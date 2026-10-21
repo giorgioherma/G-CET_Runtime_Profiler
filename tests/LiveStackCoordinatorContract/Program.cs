@@ -164,6 +164,11 @@ try
         "__gcetQuestRunnerSpawnerElapsed = __gcetQuestRunnerSpawnerElapsed +",
         "__gcetQuestManagerGate");
     Directory.Delete(Path.Combine(root, OwnerQuest), true);
+    Validate(root, OwnerQuest,
+        QuestFixture().Replace("\r\n", "\n", StringComparison.Ordinal),
+        "__gcetQuestRunnerSpawnerElapsed = __gcetQuestRunnerSpawnerElapsed +",
+        "__gcetQuestManagerGate");
+    Directory.Delete(Path.Combine(root, OwnerQuest), true);
     Validate(root, OwnerSit, SitFixture(),
         "local workspotRealtime = false",
         "__gcetSitAnywhereUpdate");

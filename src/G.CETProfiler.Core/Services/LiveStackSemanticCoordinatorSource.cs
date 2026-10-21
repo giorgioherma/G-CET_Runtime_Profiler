@@ -157,8 +157,8 @@ end
         var spawner = UniqueBlock(text,
             @"(?m)^(?<indent>[ \t]*)__gcetQuestRunnerSpawnerElapsed\s*=\s*__gcetQuestRunnerSpawnerElapsed\s*\+[\s\S]*?^\k<indent>end[ \t]*$",
             "QuestRunner Spawner lane");
-        if (Dedent(manager) != managerExpected.TrimEnd('\n') ||
-            Dedent(spawner) != spawnerExpected.TrimEnd('\n'))
+        if (Dedent(manager) != Lf(managerExpected).TrimEnd('\n') ||
+            Dedent(spawner) != Lf(spawnerExpected).TrimEnd('\n'))
             throw new InvalidOperationException("QuestRunner exact optimized lane bodies changed.");
         if (Regex.Matches(text, Regex.Escape(state)).Count != 1 ||
             manager.Index >= spawner.Index ||
@@ -190,10 +190,10 @@ end
 """;
         // Source offsets are re-resolved after each edit: no guessed replacement positions.
         text = ReplaceOnce(text, manager.Value,
-            IndentBlock(managerCall.TrimEnd('\n'), manager.Groups["indent"].Value),
+            IndentBlock(Lf(managerCall).TrimEnd('\n'), manager.Groups["indent"].Value),
             "QuestRunner Manager location");
         text = ReplaceOnce(text, spawner.Value,
-            IndentBlock(spawnerCall.TrimEnd('\n'), spawner.Groups["indent"].Value),
+            IndentBlock(Lf(spawnerCall).TrimEnd('\n'), spawner.Groups["indent"].Value),
             "QuestRunner Spawner location");
         const string loader = """
 -- G-CET semantic coordinator bridge:questrunner
@@ -209,7 +209,7 @@ do
 end
 
 """;
-        text = ReplaceOnce(text, state, loader, "QuestRunner coordinator initialization");
+        text = ReplaceOnce(text, state, Lf(loader), "QuestRunner coordinator initialization");
         return (crlf ? text.Replace("\n", "\r\n", StringComparison.Ordinal) : text,
             module);
     }
@@ -299,7 +299,7 @@ end
             indent + "    if __gcetSitAnywhereUpdate then\n" +
             indent + "        return __gcetSitAnywhereUpdate(dt,self,Cron,interaction,world)\n" +
             indent + "    end\n" +
-            IndentBlock(fallback.TrimEnd('\n'), indent + "    ") + "\n" +
+            IndentBlock(Lf(fallback).TrimEnd('\n'), indent + "    ") + "\n" +
             indent + "end)";
         text = text[..chosen.Index] + replacement +
             text[(chosen.Index + chosen.Length)..];
@@ -316,7 +316,7 @@ end
         if (revisedCallback < 0 || text.IndexOf(replacement,
             revisedCallback + replacement.Length, StringComparison.Ordinal) >= 0)
             throw new InvalidOperationException("sitAnywhere callback placement drift.");
-        text = text.Insert(revisedCallback, loader);
+        text = text.Insert(revisedCallback, Lf(loader));
         return (crlf ? text.Replace("\n", "\r\n", StringComparison.Ordinal) : text,
             module);
     }
@@ -329,6 +329,11 @@ end
             throw new InvalidOperationException(label + " is not uniquely source-proven.");
         return matches[0];
     }
+
+    // C# raw string literals inherit checkout EOL on Windows; all source
+    // matching and splice positions are strictly normalized to LF first.
+    private static string Lf(string value) =>
+        value.Replace("\r\n", "\n", StringComparison.Ordinal);
 
     private static string Dedent(Match block)
     {
