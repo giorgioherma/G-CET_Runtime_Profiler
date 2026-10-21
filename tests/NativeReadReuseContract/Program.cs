@@ -502,6 +502,60 @@ try
 
     Console.WriteLine("GCET NativePlayerVector guarded live source PASS");
 
+    // A reviewed semantic may emit an owned Lua coordinator in the same
+    // overlay. It is a distinct Lua chunk with its own 200-local budget.
+    // Never rewrite an unrelated existing module or allow path traversal.
+    var coordinatorOwner="CoordinatorFixture";
+    var coordinatorRoot=Path.Combine(mods,coordinatorOwner);
+    Directory.CreateDirectory(coordinatorRoot);
+    File.WriteAllText(Path.Combine(coordinatorRoot,"init.lua"),
+        "local "+string.Join(",",Enumerable.Range(1,199).Select(i=>"v"+i))+"\n"+
+        "(function() local ok,mod=pcall(require,'GCET_Semantic/Controller') end)()\n");
+    var semanticContext=core.GetType(
+        "GCETRuntimeProfiler.Core.Services.SemanticPatchContext",true)!;
+    var createCoordinator=semanticContext.GetMethod("WriteCoordinator",
+        BindingFlags.Instance|BindingFlags.NonPublic|BindingFlags.Public)!;
+    var context=Activator.CreateInstance(semanticContext,
+        BindingFlags.Instance|BindingFlags.NonPublic|BindingFlags.Public,
+        null,new object[]{mods,coordinatorOwner,"reviewed-controller",
+            new Dictionary<string,byte[]>(StringComparer.OrdinalIgnoreCase)},null)!;
+    var body="-- G-CET semantic coordinator:reviewed-controller\n"+
+        "local "+string.Join(",",Enumerable.Range(1,160).Select(i=>"n"+i))+"\n"+
+        "return function(author) return author.update end\n";
+    createCoordinator.Invoke(context,["Controller.lua",body]);
+    var changes=(System.Collections.IEnumerable)semanticContext.GetProperty(
+        "Changes",BindingFlags.Instance|BindingFlags.NonPublic|BindingFlags.Public)!
+        .GetValue(context)!;
+    var changeRows=changes.Cast<object>().ToArray();
+    Check(changeRows.Length==1,"Reviewed coordinator must stage exactly one new owned file");
+    var change=changeRows[0];
+    var rel=(string)change.GetType().GetProperty("RelativeFile")!.GetValue(change)!;
+    Check(rel=="CoordinatorFixture/GCET_Semantic/Controller.lua",
+        "Coordinator path escaped its owning mod");
+    Check(!File.Exists(Path.Combine(coordinatorRoot,"GCET_Semantic","Controller.lua")),
+        "Semantic coordinator generation modified installed mods");
+    var luaBudget=core.GetType(
+        "GCETRuntimeProfiler.Core.Services.LuaLocalBudgetAnalyzer",true)!;
+    var analyzeBudget=luaBudget.GetMethod("Analyze",
+        BindingFlags.Static|BindingFlags.NonPublic|BindingFlags.Public,
+        [typeof(string)])!;
+    var sourceBudget=analyzeBudget.Invoke(null,
+        [File.ReadAllText(Path.Combine(coordinatorRoot,"init.lua"))])!;
+    var coordinatorBudget=analyzeBudget.Invoke(null,[body])!;
+    int Active(object value)=>(int)value.GetType().GetProperty("MaxActiveLocals")!.GetValue(value)!;
+    Check(Active(sourceBudget)<=200 && Active(coordinatorBudget)<=200,
+        "Semantic sidecar must keep its Lua locals in an independent chunk");
+    try {
+        createCoordinator.Invoke(context,["../hijack.lua",body]);
+        throw new InvalidOperationException("Path traversal was accepted");
+    } catch(TargetInvocationException e) when(e.InnerException is InvalidOperationException) {}
+    try {
+        createCoordinator.Invoke(context,["Controller.lua",
+            "-- G-CET semantic coordinator:reviewed-controller\nreturn nil\n"]);
+        throw new InvalidOperationException("Conflicting coordinator update was accepted");
+    } catch(TargetInvocationException e) when(e.InnerException is InvalidOperationException) {}
+    Console.WriteLine("GCET semantic coordinator packaging/source/local-budget PASS");
+
     Console.WriteLine("GCET NativeReadReuse source-first contracts PASS");
 }
 finally { Directory.Delete(root,true); }
