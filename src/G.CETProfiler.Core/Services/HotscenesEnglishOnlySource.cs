@@ -134,7 +134,7 @@ internal static class HotscenesEnglishOnlySource
         source=Replace(source,
             @"^local function vectorDistance2D\(src, target\);\n.*?^end;\n",
             "","unreferenced 2D distance helper");
-        source=Replace(source,@"^local isFemaleScene = false\n",
+        source=Replace(source,@"^local isFemaleScene = false(?:\n|$)",
             "","unreferenced local scene flag");
         foreach(var removed in new[]{"saveTextFile","loadAllLanguageFiles",
             "loadLocalizedStrings","getGameUILanguage","currentUiLanguage",
