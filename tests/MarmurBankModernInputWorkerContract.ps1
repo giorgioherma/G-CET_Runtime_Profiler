@@ -108,7 +108,7 @@ foreach($needle in @('GCET_Semantic/marmurbank_ui_worker','__gcetWorker.subscrib
 foreach($needle in @('GameUI.Listen(function(state)','__gcetDropoffVendorClose(state)','BANK:updateTimers(delta)','BANK:initialize(SPAWN)')) {
  if(!$i.Contains($needle)){throw "Init bridge lost $needle"}
 }
-foreach($needle in @('state.lastMenu ~= "Vendor"','"Trade"','0.35','bank._atmPosCache','entry.isDropPoint','SubscribeAction','originalObserve')) {
+foreach($needle in @('G-CET semantic coordinator:marmurbank-modern-input','state.lastMenu ~= "Vendor"','"Trade"','0.35','bank._atmPosCache','entry.isDropPoint','SubscribeAction','originalObserve')) {
  if(!$worker.Contains($needle.Replace('originalObserve','observe('))){throw "Worker missing $needle"}
 }
 if($worker.Contains('Observe("InteractionUIBase"')){throw 'Worker added redundant vanilla dialog observer'}

@@ -113,7 +113,7 @@ internal static partial class SemanticInjectors
         context.Write(init,init.Text.Contains("\r\n",StringComparison.Ordinal)
             ?main.Replace("\n","\r\n",StringComparison.Ordinal):main);
         context.WriteCoordinator("marmurbank_ui_worker.lua", """
--- G-CET semantic coordinator:marmurbank-modern-input-v2
+-- G-CET semantic coordinator:marmurbank-modern-input
 -- No ATM class overrides; reuses author's vanilla dialogue close and bank tick.
 local M = {}
 local wake = { pending = nil, index = 0 }
