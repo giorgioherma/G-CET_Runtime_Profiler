@@ -72,7 +72,7 @@ public static class PassSkipSummaryService
     }
 
     internal static Summary FromSkipped(IEnumerable<object> rows) =>
-        Build(rows.Select(JsonSerializer.SerializeToElement));
+        Build(rows.Select(item => JsonSerializer.SerializeToElement(item)));
 
     private static Summary Build(IEnumerable<JsonElement> rows)
     {
