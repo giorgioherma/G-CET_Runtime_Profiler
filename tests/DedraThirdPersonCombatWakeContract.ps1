@@ -74,6 +74,9 @@ foreach($needle in @(
 }
 if($generated.Contains('registerInput(') -or $generated.Contains('registerHotkey(')){throw 'User CET binding duplicated'}
 if(([regex]::Matches($generated,'pcall\(dedraStep,')).Count -ne 1){throw 'Step callback duplicated'}
+if(([regex]::Matches($generated,'registerForEvent\("onInit", function\(\)')).Count -ne 1){throw 'Init registration corrupted'}
+if(([regex]::Matches($generated,'(?:registerForEvent|__gcetRegisterEvent_293)\("onUpdate", function\(dt\)')).Count -ne 1){throw 'Update registration corrupted'}
+if($generated.Contains('pcall(dedraStep, dt)')){throw 'Original onUpdate escaped wake gate'}
 if([IO.File]::ReadAllText($live) -ne $fixture){throw 'Installed source was changed'}
 $again=Run $generated
 if($again.applied -or $again.changes.Count -ne 0){throw 'Semantic stage not idempotent'}

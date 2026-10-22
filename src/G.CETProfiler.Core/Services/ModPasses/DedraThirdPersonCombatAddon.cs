@@ -137,15 +137,20 @@ internal static partial class SemanticInjectors
             throw new InvalidOperationException("Dedra onInit owner ambiguous.");
         source=source.Replace(init,prelude+init+"\n  __gcetDedraBind()",StringComparison.Ordinal);
 
-        var match=registration[0];
-        var original=match.Value;
+        // Source was extended above onUpdate: the earlier Match.Index is stale.
+        // Resolve the original verified registration again in CURRENT text.
+        var original=registration[0].Value;
+        var registrationAt=source.IndexOf(original,StringComparison.Ordinal);
+        if(registrationAt<0 ||
+            source.IndexOf(original,registrationAt+1,StringComparison.Ordinal)>=0)
+            throw new InvalidOperationException("Dedra update registration shifted or duplicated.");
         var updated=Regex.Replace(original,
             @"(?m)^([ \t]*)pcall\(dedraStep,[ \t]*dt\)[ \t]*$",
             "$1if __gcetDedraDue(dt) then pcall(dedraStep, __gcetDedraStepDelta) end",
             RegexOptions.CultureInvariant);
         if(updated==original)
             throw new InvalidOperationException("Dedra update registration not replaced.");
-        source=source[..match.Index]+updated+source[(match.Index+match.Length)..];
+        source=source[..registrationAt]+updated+source[(registrationAt+original.Length)..];
 
         // Settings toggles can change ownership without a perspective event.
         source=source.Replace("  Dedra.cfg.combatTpp = state\n",
