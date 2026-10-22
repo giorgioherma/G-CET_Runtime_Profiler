@@ -825,7 +825,8 @@ if(!$passGeneratorSource.Contains('LuaLocalBudgetAnalyzer.Analyze(pair.Value)') 
 }
 $semanticSource=[IO.File]::ReadAllText(
   (Join-Path (Get-Location).Path 'src/G.CETProfiler.Core/Services/SemanticPassGeneratorService.cs'))
-if(!$semanticSource.Contains('OrderBy(x => x.RuleId.StartsWith("native-location-"') -or
+if(!$semanticSource.Contains('OrderBy(x => x.RuleId.EndsWith("-worker"') -or
+   !$semanticSource.Contains('StringComparison.OrdinalIgnoreCase) ? 1 : 0') -or
    !$semanticSource.Contains('ApplyPreparedNativeLocationStages(')){
  throw 'Native static location owner ordering or same-pass semantic composition missing'
 }
