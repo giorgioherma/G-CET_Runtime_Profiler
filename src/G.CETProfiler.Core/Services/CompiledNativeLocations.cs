@@ -155,34 +155,6 @@ internal sealed record CompiledNativeLocations(byte[] Bytes,
               catch(KeyNotFoundException) {return new List<Site>();}
               catch(InvalidOperationException) {return new List<Site>();}
         }
-        static List<Site> BankerSites(string? src) {
-            if(src is null)return new List<Site>();
-            // Current optimized PosData.Bankers uses numeric tables; older
-            // source defines exactly the same three sites as quoted positions.
-            var banker=Regex.Match(src,
-                @"\bPosData\.Bankers\s*=\s*\{(?<v>[\s\S]*?)\n\}",
-                RegexOptions.CultureInvariant);
-            if(banker.Success) {
-                var listed=Parse(10036,banker.Groups["v"].Value,XYZ,10,3);
-                if(listed.Count==3)return listed;
-            }
-            var original=Regex.Match(src,
-                @"\bPOSData_NCBankLocation\s*=\s*\{(?<v>[\s\S]*?)\n\}",
-                RegexOptions.CultureInvariant);
-            if(!original.Success)return new List<Site>();
-            var rows=Regex.Matches(original.Groups["v"].Value,
-                "\"(?<numbers>[-+0-9.eE\\s]+)\"",RegexOptions.CultureInvariant);
-            if(rows.Count!=3)return new List<Site>();
-            var list=new List<Site>();
-            foreach(Match row in rows) {
-                var numbers=Scalar.Matches(row.Groups["numbers"].Value);
-                if(numbers.Count<3)return new List<Site>();
-                list.Add(new Site(10036,Number(numbers[0].Value),
-                    Number(numbers[1].Value),Number(numbers[2].Value),10));
-            }
-            return list;
-        }
-
         if(Has("StreetGamesPoker/init.lua"))
         {
             var init=Read("StreetGamesPoker/init.lua");

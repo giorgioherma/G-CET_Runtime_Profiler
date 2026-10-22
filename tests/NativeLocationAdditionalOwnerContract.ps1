@@ -556,22 +556,22 @@ $geometry.Add('marmurbank/module/Bank.lua',[Text.Encoding]::UTF8.GetBytes($bankS
 try {$compiled=$compile.Invoke($null,[object[]]@([string]$root,$geometry))}
 catch {throw "Independent location geometry failed source proof: $($_.Exception.InnerException.Message)"}
 $countMap=$compilerType.GetProperty('OwnerCounts',[Reflection.BindingFlags]'Instance,Public,NonPublic').GetValue($compiled)
-if($countMap[10031] -ne 2 -or $countMap[10034] -ne 2 -or $countMap[10036] -ne 3) {
+if($countMap[10031] -ne 2 -or $countMap[10034] -ne 2 -or $countMap.ContainsKey(10036)) {
  throw "Independent source-owned location counts invalid: Poker=$($countMap[10031]) Dedka=$($countMap[10034]) Bank=$($countMap[10036])"
 }
 $bytes=$compilerType.GetProperty('Bytes',[Reflection.BindingFlags]'Instance,Public,NonPublic').GetValue($compiled)
 $compiledSiteCount=[BitConverter]::ToUInt32($bytes,8)
-if($compiledSiteCount -lt 7){throw 'Required seven source-proven locations missing from compiled database'}
+if($compiledSiteCount -lt 4){throw 'Required seven source-proven locations missing from compiled database'}
 # Native banker coarse wake MUST exceed the 25m source discovery scan.
 $bankRadii=for($idx=0;$idx -lt $compiledSiteCount;$idx++){
  if([BitConverter]::ToUInt32($bytes,16+28*$idx+24) -eq 10036){
   [BitConverter]::ToSingle($bytes,16+28*$idx+16)
  }
 }
-if($bankRadii.Count -ne 3 -or @($bankRadii | Where-Object {$_ -lt 30}).Count -gt 0){
+if($bankRadii.Count -ne 0){
  throw 'Banker native wake does not encompass the source nearest query radius'
 }
-Write-Host 'Pre-semantic native inventory from original Poker, Dedka and banker sources without subscriptions PASS'
+Write-Host 'Pre-semantic native inventory: Poker/Dedka retained, bank excluded PASS'
 
 # Verify native coordinates are independent of whether the handpicked
 # semantic subscription exists: original and optimized source states must
@@ -593,7 +593,7 @@ $noNativeEdits=[Collections.Generic.Dictionary[string,byte[]]]::new([StringCompa
 try {$completedSites=$compile.Invoke($null,[object[]]@([string]$root,$noNativeEdits))}
 catch {throw "Existing completed native owners lost manifest coverage: $($_.Exception.InnerException.Message)"}
 $completedMap=$compilerType.GetProperty('OwnerCounts',[Reflection.BindingFlags]'Instance,Public,NonPublic').GetValue($completedSites)
-if($completedMap[10031] -ne 2 -or $completedMap[10034] -ne 2 -or $completedMap[10036] -ne 3) {
+if($completedMap[10031] -ne 2 -or $completedMap[10034] -ne 2 -or $completedMap.ContainsKey(10036)) {
  throw 'Already satisfied Poker, Dedka, banker geometry omitted from new incremental GCAS'
 }
 Write-Host 'Existing compiled owners remain in GCAS with zero staged Lua owner changes PASS'

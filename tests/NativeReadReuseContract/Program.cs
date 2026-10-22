@@ -362,14 +362,23 @@ try
     var repairSkipped=new List<object>();
     object?[] repairArgs=[legacyRoot,repairedStaged,repairCounts,
         repairManifest,repairSkipped,fullHeaders];
-    Check((int)repairStage.Invoke(null,repairArgs)==16 &&
-          repairSkipped.Count==0 && repairManifest.Count==16 &&
-          repairCounts.Values.Sum()==45,
+    Check((int)repairStage.Invoke(null,repairArgs)==1 &&
+          repairSkipped.Count==0 && repairManifest.Count==1 &&
+          repairCounts.Values.Sum()==3,
         "Legacy placeholders not recovered for all 16 files/45 expressions: "+
         string.Join("; ",repairSkipped.Select(x=>
             System.Text.Json.JsonSerializer.Serialize(x))));
     foreach(var row in brokenByFile)
     {
+        if (ModOptimizationBlacklist.IsBlacklistedPath(row.Path))
+        {
+            Check(!repairedStaged.ContainsKey(row.Path) &&
+                  File.ReadAllText(Path.Combine(legacyRoot,
+                      row.Path.Replace('/',Path.DirectorySeparatorChar)))
+                      .Contains("{recipe.EngineGetter}",StringComparison.Ordinal),
+                "Blacklisted bank source was touched: "+row.Path);
+            continue;
+        }
         var result=Encoding.UTF8.GetString(repairedStaged[row.Path]);
         Check(!result.Contains("{recipe.EngineGetter}",StringComparison.Ordinal) &&
               result.Contains("return Game.",StringComparison.Ordinal) &&
@@ -400,8 +409,8 @@ try
     Check(!(bool)tryRepair.Invoke(null,invalidArgs)! &&
           (string)invalidArgs[2]! == invalidSource,
         "Semantic drift passed unreviewed legacy source repair");
-    Console.WriteLine("Legacy shared provider migration: 45 malformed calls "+
-        "in 16 mod files repaired, current sources retained, real drift refused: PASS");
+    Console.WriteLine("Legacy provider migration: combat addon repaired; "+
+        "all 15 Marmur Bank files/42 expressions excluded from generated output: PASS");
 
     foreach(var (provider,getter) in new[]{
         ("MAPPIN_SYSTEM","GetMappinSystem"),
