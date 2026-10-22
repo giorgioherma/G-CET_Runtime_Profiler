@@ -1229,6 +1229,10 @@ jobs:
         shell: pwsh
         run: ./tests/QuestRunnerEngineWorkerContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: Personal English-only Hotscenes source and opt-in contract
+        shell: pwsh
+        run: ./tests/HotscenesEnglishOnlySourceContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: RICA six-job 0-Engine coordinator contract
         shell: pwsh
         run: ./tests/RicaEngineWorkerContract.ps1 -ResolverRoot ./publish-resolver
