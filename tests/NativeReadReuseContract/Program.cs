@@ -158,6 +158,7 @@ try
             "PLAYER"=>"GetPlayer",
             "QUESTS_SYSTEM"=>"GetQuestsSystem",
             "STATS_SYSTEM"=>"GetStatsSystem",
+            "STATS_SYSTEM"=>"GetStatsSystem",
             _=>throw new InvalidOperationException("unexpected fixture provider: "+provider)
         };
         return new [] {
