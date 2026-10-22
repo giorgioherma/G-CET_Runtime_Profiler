@@ -920,7 +920,7 @@ $handoff|Set-Content (Join-Path $capture 'CET_Resolver_Input.json') -Encoding ut
 $resolved=(& $resolverExe --capture $capture --mods $mods --generate-pass --json|ConvertFrom-Json)
 if(!$resolved.ok -or $null-eq$resolved.pass){throw 'Resolver-accuracy semantic pass generation failed.'}
 $resolver=Get-Content (Join-Path $capture 'G-CET_Resolver.json') -Raw|ConvertFrom-Json
-$rules=@('drivebus','quest-tracking-toggle','sitanywhere','repeatable-increased-criminal-activity','dedka-auto-shop','marmurbank','immersive-third-person','immersivefirstperson','nativeinteractions','minimap-widgets','autoloot','better-loot-markers')
+$rules=@('drivebus','quest-tracking-toggle','sitanywhere','repeatable-increased-criminal-activity','dedka-auto-shop','immersive-third-person','immersivefirstperson','nativeinteractions','minimap-widgets','autoloot','better-loot-markers')
 foreach($rule in $rules){
  $m=@();foreach($family in @($resolver.callbackFamilies)){$m+=@($family.topConsumers|Where-Object{$_.semantic.RuleId-eq$rule})}
  if($m.Count-lt1 -or @($m|Where-Object{$_.semantic.SourceProofSatisfied}).Count-lt1){
@@ -929,6 +929,15 @@ foreach($rule in $rules){
 }
 }
 $manifest=Get-Content $resolved.pass.ManifestPath -Raw|ConvertFrom-Json
+if(@($resolver.modOptimizationBlacklist.installedOwners|Where-Object{$_ -eq 'marmurbank'}).Count -ne 1){
+  throw 'Marmur Bank was not identified as blacklisted in Resolver JSON.'
+}
+if(@($manifest.skipped|Where-Object{$_.type -eq 'MOD_BLACKLIST' -and $_.owner -eq 'marmurbank'}).Count -ne 1){
+  throw 'Marmur Bank MOD_BLACKLIST manifest entry missing.'
+}
+if(@($manifest.transforms|Where-Object{$_.owner -eq 'marmurbank' -or $_.file -like 'marmurbank/*'}).Count -gt 0){
+  throw 'Blacklisted Bank has generated source transforms.'
+}
 foreach($rule in $rules){
  $hits=@($manifest.transforms|Where-Object{$_.type-eq'SEMANTIC_RULE' -and $_.RuleId-eq$rule})
  if($hits.Count-ne1){
@@ -959,9 +968,10 @@ try{
  $x=Z($b+'sitAnywhere/modules/logic.lua');if($x-notmatch'workspotsHidden' -or $x-notmatch'if self\.workspotsHidden then return end'){throw 'sitAnywhere parked-workspot state missing.'}
  $x=Z($b+'repeatable_increased_criminal_activity/init.lua');foreach($t in @('rewardElapsed','mappinElapsed','diagnosticsElapsed','processBodyRewards(system, 4)','processCompletionRewards(system, 1)','Mod.rewardElapsed >= 0.25','Mod.mappinElapsed >= 1.0','Mod.diagnosticsElapsed >= 5.0','Mod.schedulerElapsed >= 10.0')){if($x-notmatch[regex]::Escape($t)){throw "RICA multi-rate semantic missing $t"}}
  $x=Z($b+'Dedka Auto Shop/init.lua');foreach($t in @('__gcetDedkaSemanticReady','RegisterZone','SetInterval(0.2','VehicleMount','VehicleUnmount','PlayerInvalidated','if not __gcetDedkaNearby then return end','if state.showing then')){if($x-notmatch[regex]::Escape($t)){throw "Dedka semantic missing $t"}}
- $x=Z($b+'marmurbank/external/InteractionUI.lua');if($x-notmatch'__gcetMarmurActionRelevant' -or $x-notmatch'WORLD_INTERACTION_ACTIONS\[name\] == true' -or $x-notmatch'wrapped\(action, wrappedConsumer\)'){throw 'MarmurBank prefilter incomplete.'}
- $x=Z($b+'marmurbank/init.lua');foreach($t in @('__gcetMarmurQueueAfterDropPoint','GameUI.Event.MenuClose','state.lastMenu ~= "Vendor"','Mod.SetTimeout(0.35','bank:showHub()')){if($x-notmatch[regex]::Escape($t)){throw "MarmurBank post-vendor wake missing $t"}}
- $x=Z($b+'immersive_third_person/init.lua');if($x-notmatch'__gcetItppSupervisorElapsed' -or $x-notmatch'__gcetItppMaintenanceElapsed' -or $x-notmatch'if state\.enabled or state\.cameraTransition then' -or $x-notmatch'if state\.pendingFppCleanup then' -or $x-notmatch'pcall\(mod\.fallCommitTick, delta\)'){throw 'ITP split incomplete.'}
+ if(@($zip.Entries|Where-Object{$_.FullName.StartsWith($b+'marmurbank/',[StringComparison]::OrdinalIgnoreCase)}).Count -ne 0){
+    throw 'Blacklisted Marmur Bank file escaped into pass ZIP.'
+  }
+  $x=Z($b+'immersive_third_person/init.lua');if($x-notmatch'__gcetItppSupervisorElapsed' -or $x-notmatch'__gcetItppMaintenanceElapsed' -or $x-notmatch'if state\.enabled or state\.cameraTransition then' -or $x-notmatch'if state\.pendingFppCleanup then' -or $x-notmatch'pcall\(mod\.fallCommitTick, delta\)'){throw 'ITP split incomplete.'}
  $x=Z($b+'ImmersiveFirstPerson/Modules/Helpers.lua');if($x-notmatch'slowProbeElapsed' -or $x-notmatch'session\.slowProbe\.inWorkspot' -or $x-notmatch'Helpers\.RefreshPlayerState\(target, delta\)'){throw 'ImmersiveFirstPerson slow probe incomplete.'}
  $x=Z($b+'ImmersiveFirstPerson/init.lua');if($x-notmatch'collectPlayerState\(delta\)'){throw 'ImmersiveFirstPerson delta propagation incomplete.'}
  $x=Z($b+'nativeInteractions/init.lua');if($x-notmatch'__gcetNifIdleWorldInterval' -or $x-notmatch'manager\.hasRealtimeWork'){throw 'nativeInteractions cadence split incomplete.'}
