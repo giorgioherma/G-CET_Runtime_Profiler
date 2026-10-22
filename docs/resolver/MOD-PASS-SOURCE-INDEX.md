@@ -24,6 +24,7 @@ The selector in `SemanticInjectors.cs` remains the only dispatch point; generic 
 | `CyberTrials.cs` | 1 |
 | `DedkaAutoShop.cs` | 1 |
 | `DedraPalmjetQuickslot.cs` | 1 |
+| `DedraThirdPersonCombatAddon.cs` | 1 |
 | `DiscardAmmoOnReload.cs` | 1 |
 | `DriveAerialVehicle.cs` | 1 |
 | `DriveBus.cs` | 1 |
