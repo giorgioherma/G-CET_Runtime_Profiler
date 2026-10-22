@@ -67,7 +67,7 @@ indentation. Differences in executable lines still fail closed; no
 unknown author helper is deleted or overwritten.
 
 The user explicitly approved **permanent English-only Hotscenes** for
-their personal installation. Opting in via `G-CET-UserOptions.json`
+their personal installation. Opting in using the Resolver checkbox or CLI flag
 allows the locale subsystem and unused author locals to be removed first;
 then `hotscenes/init.lua` is eligible for a separate generic read worker
 despite not previously having provider headers. No localization is cut

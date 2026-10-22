@@ -6,16 +6,18 @@ semantic optimization or silently apply to other installations.
 
 ## How opt-in works
 
-Place `G-CET-UserOptions.json` in the CET `mods` folder containing:
+In the Resolver application, enable **Personal pass: Hotscenes English-only
+(remove localization)** before generating the optimization ZIP. The option
+persists alongside the Resolver application in
+`G-CET-Resolver.settings.json`, not in Cyberpunk's CET mod folder.
 
-```json
-{"hotscenesEnglishOnly": true}
-```
+The equivalent command-line flag is `--hotscenes-english-only` with
+`--generate-pass` (no settings file needed). By default, Hotscenes is
+unchanged. The old test file `G-CET-UserOptions.json` in CET `mods`
+is no longer read and should be removed if installed.
 
-Without this file or with `false`, multilingual Hotscenes is left
-untouched. The Resolver re-reads the opt-in and live source every pass.
-Only `hotscenes/init.lua` is considered, and an unknown source structure
-fails closed without blocking other mods.
+Only `hotscenes/init.lua` is considered; unknown source structures
+fail closed without blocking other mods.
 
 ## Exactly what is removed
 

@@ -105,23 +105,28 @@ local isFemaleScene = false
 '@
 $path=Join-Path $root 'hotscenes/init.lua'
 [IO.File]::WriteAllText($path,$src,[Text.UTF8Encoding]::new($false))
-function Apply($stage,$errors) {
+function Apply([bool]$enabled,$stage,$errors) {
  $changes=[Collections.Generic.Dictionary[string,byte[]]]::new()
  $counts=[Collections.Generic.Dictionary[string,int]]::new()
  return @($run.Invoke($null,[object[]]@(
-    [string]$root,$changes,$counts,$stage,$errors)),$changes)
+    [bool]$enabled,[string]$root,$changes,$counts,$stage,$errors)),$changes)
 }
 $manifest=[Collections.Generic.List[object]]::new()
 $errors=[Collections.Generic.List[object]]::new()
-$a=Apply $manifest $errors
+$a=Apply $false $manifest $errors
 if($a[0] -ne 0 -or $a[1].Count -ne 0){throw 'English-only stage unexpectedly enabled by default'}
+# Legacy CET-root settings must NEVER silently authorize a feature cut.
 [IO.File]::WriteAllText((Join-Path $root 'G-CET-UserOptions.json'),
  '{"hotscenesEnglishOnly":true}',[Text.UTF8Encoding]::new($false))
+$legacy=Apply $false ([Collections.Generic.List[object]]::new()) ([Collections.Generic.List[object]]::new())
+if($legacy[0] -ne 0 -or $legacy[1].Count -ne 0){
+ throw 'Loose CET-root JSON incorrectly opted the user in'
+}
 $staged=[Collections.Generic.Dictionary[string,byte[]]]::new()
 $counts=[Collections.Generic.Dictionary[string,int]]::new()
 $manifest=[Collections.Generic.List[object]]::new()
 $errors=[Collections.Generic.List[object]]::new()
-$result=$run.Invoke($null,[object[]]@([string]$root,$staged,$counts,$manifest,$errors))
+$result=$run.Invoke($null,[object[]]@([bool]$true,[string]$root,$staged,$counts,$manifest,$errors))
 if($result -ne 1 -or $errors.Count -gt 0){
  throw "English-only opt-in refused: $($errors | ConvertTo-Json -Depth 4)"
 }
@@ -135,7 +140,7 @@ foreach($unwanted in @('loadAllLanguageFiles','loadLocalizedStrings','getGameUIL
  if($out.Contains($unwanted)){throw "Translation cleanup incomplete: $unwanted"}
 }
 $again=[Collections.Generic.List[object]]::new()
-$repeat=$run.Invoke($null,[object[]]@([string]$root,$staged,$counts,$again,
+$repeat=$run.Invoke($null,[object[]]@([bool]$true,[string]$root,$staged,$counts,$again,
     [Collections.Generic.List[object]]::new()))
 if($repeat -ne 0 -or $again.Count -ne 0){throw 'Repeated English-only generation duplicated changes'}
 if([IO.File]::ReadAllText($path) -ne $src){throw 'Installed Hotscenes was modified'}
@@ -143,7 +148,7 @@ $staged.Clear()
 [IO.File]::WriteAllText($path,$src.Replace('loadAllLanguageFiles','changedLanguageLoader'),
  [Text.UTF8Encoding]::new($false))
 $rejections=[Collections.Generic.List[object]]::new()
-$refused=$run.Invoke($null,[object[]]@([string]$root,$staged,$counts,
+$refused=$run.Invoke($null,[object[]]@([bool]$true,[string]$root,$staged,$counts,
  [Collections.Generic.List[object]]::new(),$rejections))
 if($refused -ne 0 -or $rejections.Count -ne 1 -or $staged.Count -ne 0){
  throw 'Drifted source did not fail closed'
