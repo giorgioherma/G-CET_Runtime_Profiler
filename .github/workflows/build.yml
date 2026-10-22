@@ -1200,6 +1200,10 @@ jobs:
       - name: Poker native worker source contract
         shell: pwsh
         run: ./tests/PokerNativeWorkerContract.ps1 -ResolverRoot ./publish-resolver
+      
+      - name: Extracted Poker and Dedka native stage completion contract
+        shell: pwsh
+        run: ./tests/NativeExtractedWorkerCompletionContract.ps1 -ResolverRoot ./publish-resolver
 
       - name: Marmur Bank 22.5 UI coordinator source contract
         shell: pwsh
