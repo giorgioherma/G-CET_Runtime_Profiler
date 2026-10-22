@@ -114,3 +114,52 @@ green on all five jobs. No new generated pass against the user's whole
 current CET folder was available after this commit, and no in-game
 behavior claim is made. The English-only personal cut is selected in
 Resolver's own UI/CLI, not through a file in the CET `mods` root.
+
+## 08:14 run: one missing C# interpolation, two affected phases
+
+The four generic read-worker failures were **not** missing semantic worker
+files, a stale profiler capture, or actual author Lua drift. The 08:14
+manifest shows source block line 7 with real
+`__gcetEngine.GCET.GetMappinSystem` versus the expected literal
+`__gcetEngine.GCET.{recipe.EngineGetter}`. The generator's C# string
+was missing `$` immediately before its opening quote. The fix is
+**central**: all 26 shared-provider catalog families receive their
+actual resolved getter in the generated expected header.
+
+### Installed-stack audit
+
+From `modsLIVER.zip`, the affected source inventory is:
+
+| Measure | Source-audited total |
+|---|---:|
+| Lua files scanned | 2,051 |
+| Existing G-CET provider helper blocks | 1,084 in 373 Lua files |
+| Previously emitted unresolved recipe expressions | **45** |
+| Affected Lua files | **16** |
+| Affected owners | **2**: `marmurbank` (15 files), `DedraThirdPersonCombatAddon` (1 file) |
+| Legacy source blocks matching canonical after correcting placeholder | **45/45** |
+
+The unresolved expression is Lua-invalid; existing optimization files
+with that bug cannot be left silently untouched. The new
+`SharedProviderTemplateRepairSource` stage runs before generic worker
+extraction and scans current installed/staged Lua source, but rewrites
+**only** the single misrendered getter reference inside a source-proven
+G-CET helper. It verifies the **whole helper**, including Game fallback,
+against the current reviewed canonical recipe before staging. Unknown,
+partially edited or foreign blocks are refused atomically and reported as
+generation failures, not silently accepted or overwritten. It does not
+remove author functionality, depend on a historic pass ZIP, or add Lua SHA
+validation.
+
+The generated manifest reports
+`sourceOwnedMalformedProviderFilesRepaired`; repair transforms use
+`GENERIC_PROVIDER_TEMPLATE_REPAIR` with the per-file repair count and
+provider families. A repeat pass skips already repaired code.
+
+Regression tests independently verify all 26 C# recipes (to prevent the
+generator and its test sharing a broken template), generate/repair the
+16-file/45-expression inventory, preserve live files, reject real source
+drift, and verify idempotence. **CI and source comparisons are not
+in-game evidence**; after a green build a new current-stack pass must
+verify all four original read-worker failures are cleared and the 16
+repaired files are emitted.
