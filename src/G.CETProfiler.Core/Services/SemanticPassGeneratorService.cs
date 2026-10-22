@@ -70,26 +70,12 @@ internal static class SemanticPassGeneratorService
                         "Semantic injector emitted unexpanded callback placeholders; refusing the generated pass.");
                 }
 
-                // Source-composed semantic rules can have independently completed
-                // stages in the input. The unchanged stages are validated by
-                // their authoritative injectors, so count changed files rather
-                // than demanding that already-complete files be emitted again.
-                // Single-stage rules retain their exact expected-file count.
-                // A namespaced coordinator is a packaged Resolver-owned module,
-                // not another author source file or a newly installed mod.
-                var authorChanges = context.Changes.Count(change =>
-                    !context.IsOwnedCoordinator(change.RelativeFile));
-                var validChangedFileCount = candidate.StageComposed
-                    ? authorChanges > 0 &&
-                      authorChanges <= candidate.ExpectedMarkerFileCount
-                    : authorChanges == candidate.ExpectedMarkerFileCount;
-                if (candidate.ExpectedMarkerFileCount > 0 && !validChangedFileCount)
-                {
-                    throw new InvalidOperationException(
-                        $"Semantic injector changed {context.Changes.Count} file(s), but rule " +
-                        $"expects {(candidate.StageComposed ? "between 1 and " : "exactly ")}" +
-                        $"{candidate.ExpectedMarkerFileCount} changed file(s).");
-                }
+                // Coordinator-based semantic stages use source ownership and
+                // proof markers instead of an arbitrary count of author files.
+                // This tolerates author updates moving a proven bridge between
+                // init and submodules, while forbidding unrelated output.
+                // Legacy rules without coordinators retain their file budget.
+                ValidateSemanticOutput(candidate, context);
 
                 var localLimitFailure = context.Changes
                     .Select(change => new
@@ -184,6 +170,65 @@ internal static class SemanticPassGeneratorService
         return applied;
     }
 
+
+    // Coordinator output is owned by the current mod and the exact semantic
+    // rule. A file-count assertion does not prove any of those properties.
+    // Source injectors are responsible for validating the live callback graph
+    // and postconditions before reporting Success.
+    private static void ValidateSemanticOutput(
+        SemanticCandidate candidate, SemanticPatchContext context)
+    {
+        var coordinatorChanges = context.Changes
+            .Where(change => context.IsOwnedCoordinator(change.RelativeFile))
+            .ToList();
+        if (coordinatorChanges.Count > 0)
+        {
+            var authorChanges = context.Changes
+                .Where(change => !context.IsOwnedCoordinator(change.RelativeFile))
+                .ToList();
+            if (authorChanges.Count == 0)
+                throw new InvalidOperationException(
+                    "Coordinator stage has no source bridge in the current pass.");
+
+            var marker = "-- G-CET semantic:" + candidate.RuleId;
+            var workerMarker = "-- G-CET semantic coordinator:" + candidate.RuleId + "\n";
+            foreach (var change in context.Changes)
+            {
+                var path = change.RelativeFile.Replace('\\', '/');
+                if (!context.IsOwnerPath(path))
+                    throw new InvalidOperationException(
+                        "Coordinator stage changed a file outside its source owner: " + path);
+                var source = Encoding.UTF8.GetString(change.Bytes)
+                    .Replace("\r\n", "\n", StringComparison.Ordinal)
+                    .Replace('\r', '\n');
+                if (context.IsOwnedCoordinator(path))
+                {
+                    if (!source.StartsWith(workerMarker, StringComparison.Ordinal))
+                        throw new InvalidOperationException(
+                            "Coordinator output lost its exact semantic rule ownership.");
+                }
+                else if (!source.Split('\n').Any(line =>
+                             line.Trim().Equals(marker, StringComparison.OrdinalIgnoreCase)))
+                {
+                    throw new InvalidOperationException(
+                        "Author source output lost its semantic rule ownership: " + path);
+                }
+            }
+            return;
+        }
+
+        // Original exact/partial budget remains for source-only legacy passes.
+        var changedSources = context.Changes.Count(change =>
+            !context.IsOwnedCoordinator(change.RelativeFile));
+        var valid = candidate.StageComposed
+            ? changedSources > 0 && changedSources <= candidate.ExpectedMarkerFileCount
+            : changedSources == candidate.ExpectedMarkerFileCount;
+        if (candidate.ExpectedMarkerFileCount > 0 && !valid)
+            throw new InvalidOperationException(
+                $"Semantic injector changed {context.Changes.Count} file(s), but rule " +
+                $"expects {(candidate.StageComposed ? "between 1 and " : "exactly ")}" +
+                $"{candidate.ExpectedMarkerFileCount} changed file(s).");
+    }
 
     private static int ApplyPreparedNativeLocationStages(
         string modsRoot,
@@ -519,6 +564,20 @@ internal sealed class SemanticPatchContext
     // New, author-scoped modules are allowed ONLY for a reviewed semantic
     // injector. They do not create a new mod, change arbitrary user files,
     // or bypass the per-file Lua budget and final overlay manifest.
+    // A structural path check is independent of how many source files
+    // an author version happens to use. Reject parent traversal and aliases.
+    internal bool IsOwnerPath(string relativeFile)
+    {
+        var folder = ResolveOwnerFolder();
+        if (folder is null) return false;
+        var relative = relativeFile.Replace('\\', '/');
+        var root = Path.GetFileName(folder) + "/";
+        if (!relative.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+            return false;
+        return relative.Split('/').All(part =>
+            !string.IsNullOrEmpty(part) && part != "." && part != "..");
+    }
+
     internal bool IsOwnedCoordinator(string relativeFile)
     {
         var folder=ResolveOwnerFolder();

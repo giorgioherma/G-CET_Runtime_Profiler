@@ -125,4 +125,46 @@ $refused=$false
 try {$null=Apply $drift $init $bank}
 catch {$refused=$_.Exception.Message -match 'Marmur suppression override changed'}
 if(!$refused){throw 'Updated world suppression behavior was not refused'}
+
+# Prove full pass generation ignores the obsolete 1-file count for a
+# source-owned coordinator while still applying strict source checks.
+[IO.File]::WriteAllText((Join-Path $folder 'external/interactionUI.lua'),$ui,[Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText((Join-Path $folder 'init.lua'),$init,[Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText((Join-Path $folder 'module/Bank.lua'),$bank,[Text.UTF8Encoding]::new($false))
+$generatorType=$asm.GetType('GCETRuntimeProfiler.Core.Services.SemanticPassGeneratorService',$true)
+$generate=$generatorType.GetMethod('Apply',[Reflection.BindingFlags]'Static,NonPublic')
+$oneFileCatalog=@'
+{
+  "callbackFamilies":[],
+  "semanticSourceOnlyCandidates":[{
+    "ruleId":"marmurbank-modern-input",
+    "owner":"marmurbank",
+    "handler":"SEMANTIC_MODERN_BANK_INPUT",
+    "policyClass":"MODERN_BANK_SELECTIVE_ACTION_OWNER",
+    "patchStyle":"source-injection",
+    "sourceIndependent":true,
+    "sourceProofSatisfied":true,
+    "generationEnabled":true,
+    "alreadySatisfied":false,
+    "expectedMarkerFileCount":1
+  }]
+}
+'@
+$jsonDoc=[System.Text.Json.JsonDocument]::Parse($oneFileCatalog)
+$staged=[Collections.Generic.Dictionary[string,byte[]]]::new()
+$byFile=[Collections.Generic.Dictionary[string,int]]::new()
+$transforms=[Collections.Generic.List[object]]::new()
+$skipped=[Collections.Generic.List[object]]::new()
+try {
+    $generated=$generate.Invoke($null,[object[]]@(
+        $jsonDoc.RootElement,[string]$root,$staged,$byFile,$transforms,$skipped))
+} finally { $jsonDoc.Dispose() }
+if($generated -ne 1 -or $staged.Count -ne 3 -or $skipped.Count -ne 0) {
+    throw "Full Bank pass refused valid source-owned coordinator: applied=$generated, staged=$($staged.Count), skipped=$($skipped.Count)."
+}
+if(@($staged.Keys|Where-Object{$_ -like '*/GCET_Semantic/marmurbank_ui_worker.lua'}).Count -ne 1) {
+    throw 'Full pass failed to package the separate Bank worker.'
+}
+Write-Host 'Marmur generated-pass structural ownership admission, independent of marker file count: PASS'
+
 Write-Host 'Marmur 22.5 source worker, Vendor close, 0-Engine routing, CRLF, drift and idempotence: PASS'
