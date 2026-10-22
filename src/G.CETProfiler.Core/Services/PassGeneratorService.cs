@@ -1928,7 +1928,7 @@ public static class PassGeneratorService
             $"    if {providerVariable} == nil then",
             "        local __gcetOk, __gcetEngine = pcall(GetMod, \"0-Engine\")",
             "        if __gcetOk and type(__gcetEngine) == \"table\" then",
-            "            local __gcetApi = type(__gcetEngine.GCET) == \"table\" and type(__gcetEngine.GCET.{recipe.EngineGetter}) == \"function\" and __gcetEngine.GCET or __gcetEngine",
+            $"            local __gcetApi = type(__gcetEngine.GCET) == \"table\" and type(__gcetEngine.GCET.{recipe.EngineGetter}) == \"function\" and __gcetEngine.GCET or __gcetEngine",
             $"            if type(__gcetApi.{recipe.EngineGetter}) == \"function\" then {providerVariable} = __gcetApi.{recipe.EngineGetter} end",
             "        end",
             "    end",
