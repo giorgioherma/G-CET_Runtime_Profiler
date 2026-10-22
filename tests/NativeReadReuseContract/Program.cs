@@ -362,11 +362,11 @@ try
     Check((int)workerStage.Invoke(null,groupedArgs)==4 &&
           groupedSkips.Count==0 && groupedManifest.Count==4,
         "Full source helper inventories were rejected: "+
-            string.Join("; ",groupedSkips.Select(System.Text.Json.JsonSerializer.Serialize)));
+            string.Join("; ",groupedSkips.Select(item=>System.Text.Json.JsonSerializer.Serialize(item))));
     foreach(var x in currentStackSpecs)
     {
         var file=x.Owner+"/"+x.File;
-        var transformed=Encoding.UTF8.GetString(groupedStaged[file]);
+        var groupedSource=Encoding.UTF8.GetString(groupedStaged[file]);
         var generatedFiles=groupedStaged.Keys
             .Where(k=>k.StartsWith(x.Owner+"/GCET_Semantic/gcet_native_reads_",
                 StringComparison.OrdinalIgnoreCase)).ToArray();
@@ -376,13 +376,13 @@ try
         foreach(var family in x.Families)
         {
             var reviewedMarker="-- G-CET shared provider: "+family;
-            Check(!transformed.Contains(reviewedMarker,StringComparison.Ordinal) &&
+            Check(!groupedSource.Contains(reviewedMarker,StringComparison.Ordinal) &&
                   workerText.Contains(reviewedMarker,StringComparison.Ordinal),
                 "Provider not moved exactly once to owner worker: "+x.Owner+"/"+family);
         }
-        Check(transformed.Contains("__gcetNativeReads.GetStatsSystem()") &&
+        Check(groupedSource.Contains("__gcetNativeReads.GetStatsSystem()") &&
               workerText.Contains("return Game.GetStatsSystem()") &&
-              transformed.Contains("local v1,v2,v3") &&
+              groupedSource.Contains("local v1,v2,v3") &&
               File.ReadAllText(Path.Combine(liveCasesRoot,x.Owner,x.File))
                   .Contains("-- G-CET shared provider: "+x.Families[0],
                       StringComparison.Ordinal),
