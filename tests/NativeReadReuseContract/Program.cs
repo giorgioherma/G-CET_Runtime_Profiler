@@ -201,8 +201,9 @@ try
           workerManifest.Count==1 && workerSkips.Count==0,
         "Worker must own only generated helpers, preserve author locals and exact fallbacks");
     var budgetType=core.GetType("GCETRuntimeProfiler.Core.Services.LuaLocalBudgetAnalyzer",true)!;
-    var budgetMethod=budgetType.GetMethod("Analyze",
-        BindingFlags.NonPublic|BindingFlags.Static)!;
+    var budgetMethod=budgetType.GetMethods(BindingFlags.NonPublic|BindingFlags.Static)
+        .Single(m=>m.Name=="Analyze" && m.GetParameters().Length==1 &&
+                   m.GetParameters()[0].ParameterType==typeof(string));
     var beforeBudget=budgetMethod.Invoke(null,[workerSource])!;
     var afterBudget=budgetMethod.Invoke(null,[workerMain])!;
     var peakProperty=beforeBudget.GetType().GetProperty("MaxActiveLocals")!;
