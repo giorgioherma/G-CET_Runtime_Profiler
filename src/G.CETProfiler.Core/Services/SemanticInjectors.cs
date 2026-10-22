@@ -153,6 +153,7 @@ internal static partial class SemanticInjectors
             "immersive-third-person" => ApplyImmersiveThirdPerson(context),
             "dedra-third-person-combat-wake" => ApplyDedraThirdPersonCombatWake(context),
             "immersive-third-person-action-routing" => ApplyImmersiveThirdPersonActionRouting(context),
+            "immersive-third-person-dedra-toggle-signal" => ApplyImmersiveThirdPersonDedraToggleSignal(context),
             "immersivefirstperson" => ApplyImmersiveFirstPerson(context),
             "nativeinteractions" => ApplyNativeInteractions(context),
             "minimap-widgets" => ApplyMinimapWidgets(context),
