@@ -18,12 +18,27 @@ internal static partial class SemanticInjectors
             "local trackedID, trackedEntity = tracked(system, site.id)",
             "function Watchdog.clear()");
         const string marker="G-CET native location:cyberpsychos-fallback-v1";
-        var hasInit=init.Text.Contains(marker,StringComparison.Ordinal);
+        // Historical output marked only the watchdog, even though init.lua
+        // already contained the completed coordinator bridge. Recognize the
+        // actual paired postconditions, not the misplaced header marker.
+        const string legacyBridge =
+            "require(\"GCET_Semantic/cyberpsycho_native_wake\").attach(Sites, BossWatchdog)";
+        var hasInitMarker=init.Text.Contains(marker,StringComparison.Ordinal);
+        var hasBridge=init.Text.Split(legacyBridge,StringSplitOptions.None).Length==2;
         var hasDog=watchdog.Text.Contains(marker,StringComparison.Ordinal);
-        if(hasInit && hasDog) return SemanticInjectionResult.Skip(
-            "Cyberpsychos native per-site fallback vicinity already installed.");
-        if(hasInit!=hasDog) throw new InvalidOperationException(
-            "Cyberpsychos native fallback stage incomplete.");
+        if(hasDog && hasBridge)
+        {
+            if(!watchdog.Text.Contains("Watchdog.nativeFar and Watchdog.nativeFar[site.id]",
+                    StringComparison.Ordinal) ||
+               !watchdog.Text.Contains("state.fallbackID == nil",StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "Cyberpsychos native watchdog completion proof changed.");
+            return SemanticInjectionResult.Skip(
+                "Cyberpsychos native fallback source and 0-Engine bridge already installed.");
+        }
+        if(hasInitMarker || hasDog || hasBridge)
+            throw new InvalidOperationException(
+                "Cyberpsychos native fallback stage incomplete: missing watchdog gate or init worker bridge.");
         var crlfInit=init.Text.Contains("\r\n",StringComparison.Ordinal);
         var crlfDog=watchdog.Text.Contains("\r\n",StringComparison.Ordinal);
         var i=crlfInit?init.Text.Replace("\r\n","\n",StringComparison.Ordinal):init.Text;
@@ -49,6 +64,7 @@ internal static partial class SemanticInjectors
         if(i.Split(initAnchor,StringSplitOptions.None).Length!=2)
             throw new InvalidOperationException("Cyberpsychos watchdog initialization drifted.");
         var attach="""
+    -- G-CET native location:cyberpsychos-fallback-v1
     -- Native fallback vicinity is delegated to 0-Engine worker.
     require("GCET_Semantic/cyberpsycho_native_wake").attach(Sites, BossWatchdog)
 """;

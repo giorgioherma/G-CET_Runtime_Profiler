@@ -12,6 +12,20 @@ internal static partial class SemanticInjectors
         // PASS5 deployed sources already separate active quest, idle Manager,
         // and Spawner feeds. Keep them intact on regeneration.
         var liveFile = context.FindFile("init.lua", "Cron.Update(dt)", "Runner.gameState");
+        const string workerMarker="-- G-CET semantic:questrunner-engine-worker-v1";
+        if(liveFile.Text.Contains(workerMarker,StringComparison.Ordinal))
+        {
+            if(!liveFile.Text.Contains(
+                    "require(\"GCET_Semantic/questrunner_engine_worker\")",
+                    StringComparison.Ordinal) ||
+               !liveFile.Text.Contains(
+                    "__gcetQuestCadence.update(dt, Manager, Spawner)",
+                    StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "QuestRunner extracted 0-Engine cadence bridge incomplete.");
+            return SemanticInjectionResult.Skip(
+                "QuestRunner completed extracted 0-Engine worker already installed.");
+        }
         if (liveFile.Text.Contains("pass5ManagerIdleAccumulator", StringComparison.Ordinal))
         {
             if (!liveFile.Text.Contains("pass5SpawnerAccumulator", StringComparison.Ordinal)
