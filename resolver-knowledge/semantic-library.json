@@ -14,7 +14,7 @@
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
     "fullPassRule": "An enabled, reviewed semantic injector may run with measured callback activity even below the default 3.0 ms/s soft CPU boundary, but only when its identity and current live-source proof match and the stage is not already satisfied. Generic native-dispatch/dormancy recipes retain their independent proof requirements.",
-    "enabledInjectorCount": 103,
+    "enabledInjectorCount": 107,
     "profileOnlyRuleCount": 0,
     "note": "The production semantic base contains source-proven, behavior-aware optimizations learned from validated references and measured hot callbacks, including burst-discovered diagnostic sentinels that preserve author cadence while gating globally expensive fallback scans. Generic/mechanical transforms stay in the Resolver; semantic rules cover state/cadence/hotpath knowledge that generic inference cannot safely own.",
     "admissionPolicy": {
@@ -7909,6 +7909,226 @@
         "measuredPeakExclusiveMsPerSecond": 9.422138,
         "admitted": true,
         "evidenceStack": "CET_20261022_105614"
+      },
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false
+    },
+    {
+      "id": "f80h-active-gc-sweep",
+      "identityHints": [
+        "f80h_aroused_expressions"
+      ],
+      "policyClass": "SOURCE_PROVEN_ACTIVE_ALLOCATIONS",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "active NPC/audio/couple work"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "local SWEEP_INTERVAL   = 1.5",
+          "local PENDING_TTL      = 12.0",
+          "local womenByAnchor = {}",
+          "CoupleVariance.Update(",
+          "for hash, data in pairs(pendingAppearance) do"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:f80h-active-gc-sweep",
+        "expectedMarkerFileCount": 1,
+        "sourceCompletionAuthoritative": true,
+        "satisfiedAll": [
+          "__gcetF80hActiveGcSweepV1",
+          "__gcetSweepElapsed",
+          "__gcetVarianceDispose",
+          "audioCheckTimer + delta >= AUDIO_CHECK_INTERVAL"
+        ]
+      },
+      "behavior": {
+        "handler": "SEMANTIC_ACTIVE_GC_SWEEP",
+        "concepts": [
+          "fixedPendingExpiry",
+          "noPerFrameVarianceClosureAlloc",
+          "sameAudioDistanceCadence",
+          "realtimeFacialRetained"
+        ],
+        "note": "Runs only in active f80h sources. Native FAR remains separate; pending 12-second TTL uses time since last 1.5-second sweep, not latest frame dt. Audio woman ownership reconciles at original one-second audio interval."
+      },
+      "generation": {
+        "enabled": true,
+        "sourceIndependentAdmission": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 25.116,
+        "admitted": true,
+        "evidenceStack": "CET_20261022_105614"
+      },
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false
+    },
+    {
+      "id": "npc-outfit-manager-radar-gc",
+      "identityHints": [
+        "NPC Outfit Manager"
+      ],
+      "policyClass": "SOURCE_PROVEN_GC_AND_IDLE_HOTPATH",
+      "callbacks": [
+        {
+          "kind": "source",
+          "target": "init.lua",
+          "role": "allocation/hotpath improvement"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "local function ProcessRadarOutfits()",
+          "local function GetNPCID(target)",
+          "activeNPCs[entId] = self",
+          "activeNPCs[entId] = nil",
+          "local __gcetHasAutoOutfitRules"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:npc-outfit-manager-radar-gc",
+        "expectedMarkerFileCount": 1,
+        "sourceCompletionAuthoritative": true
+      },
+      "behavior": {
+        "handler": "SEMANTIC_SOURCE_OWNED_ALLOCATION_FASTPATH",
+        "concepts": [
+          "preserveRealtimeAndAuthorCallbacks",
+          "avoidUnnecessaryLuaNativeReads",
+          "versionFluidSourceProof"
+        ],
+        "note": "Preserve attach/detach owned NPC discovery, acquire passive looked-at NPC at existing one-second radar tick, and cache only radar GetRecordID by live entity hash, invalidated on attach/detach."
+      },
+      "generation": {
+        "enabled": true,
+        "sourceIndependentAdmission": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 3.97,
+        "admitted": true,
+        "evidenceStack": "CET_20261022_105614"
+      },
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false
+    },
+    {
+      "id": "appearance-menu-mod-preset-once",
+      "identityHints": [
+        "AppearanceMenuMod"
+      ],
+      "policyClass": "SOURCE_PROVEN_GC_AND_IDLE_HOTPATH",
+      "callbacks": [
+        {
+          "kind": "source",
+          "target": "init.lua",
+          "role": "allocation/hotpath improvement"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "AMM.Props.presetLoadInProgress",
+          "Util:FreezePlayer()",
+          "Util:RemovePlayerEffects()"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:appearance-menu-mod-preset-once",
+        "expectedMarkerFileCount": 1,
+        "sourceCompletionAuthoritative": true
+      },
+      "behavior": {
+        "handler": "SEMANTIC_SOURCE_OWNED_ALLOCATION_FASTPATH",
+        "concepts": [
+          "preserveRealtimeAndAuthorCallbacks",
+          "avoidUnnecessaryLuaNativeReads",
+          "versionFluidSourceProof"
+        ],
+        "note": "One Cron.After(5) per preset load with generation ticket; preserve author per-frame player freeze and end-of-load cleanup. Only applies to the unique source block."
+      },
+      "generation": {
+        "enabled": true,
+        "sourceIndependentAdmission": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 3.16,
+        "admitted": true,
+        "evidenceStack": "CET_20261022_105614"
+      },
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false
+    },
+    {
+      "id": "better-loot-markers-category-no-temporary-table",
+      "identityHints": [
+        "BetterLootMarkers"
+      ],
+      "policyClass": "SOURCE_PROVEN_GC_AND_IDLE_HOTPATH",
+      "callbacks": [
+        {
+          "kind": "source",
+          "target": "init.lua",
+          "role": "allocation/hotpath improvement"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "function BetterLootMarkers.ResolveHighestQualityByCategory(itemList)",
+          "BetterLootMarkers.GetItemScore",
+          "RPGManager.IsItemIconic(item)"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:better-loot-markers-category-no-temporary-table",
+        "expectedMarkerFileCount": 1,
+        "sourceCompletionAuthoritative": true
+      },
+      "behavior": {
+        "handler": "SEMANTIC_SOURCE_OWNED_ALLOCATION_FASTPATH",
+        "concepts": [
+          "preserveRealtimeAndAuthorCallbacks",
+          "avoidUnnecessaryLuaNativeReads",
+          "versionFluidSourceProof"
+        ],
+        "note": "Author native item reads/counts and category semantics retained. Avoid discarded per-item Lua summary tables for nonwinning loot items."
+      },
+      "generation": {
+        "enabled": true,
+        "sourceIndependentAdmission": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 2,
+        "measuredPeakExclusiveMsPerSecond": 2.25,
+        "admitted": true,
+        "evidenceStack": "CET_20261022_105614",
+        "rationale": "Measured BetterLootMarkers owner is 2.25 ms/s; 400 ms UpdateIcon spike and repeatedly discarded categorization objects justify below-standard 3 ms/s optimization."
       },
       "catalogRole": "SEMANTIC_HOT_MOD",
       "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",

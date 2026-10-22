@@ -43,7 +43,11 @@ internal static partial class SemanticInjectors
             "marmurbank-native-worker" or
             "native-location-vehicle-mileage-pumps" or
             "native-location-cyberpsychos" or
+            "npc-outfit-manager-radar-gc" or
+            "appearance-menu-mod-preset-once" or
+            "better-loot-markers-category-no-temporary-table" or
             "native-location-f80h-aroused" or
+            "f80h-active-gc-sweep" or
             "rica-lazy-completion-details" or
             "rica-engine-worker" or
             "questrunner-engine-worker" or
@@ -79,6 +83,7 @@ internal static partial class SemanticInjectors
             "native-location-vehicle-mileage-pumps" => ApplyVehicleMileageNativePumps(context),
             "native-location-cyberpsychos" => ApplyCyberpsychosNativeLocations(context),
             "native-location-f80h-aroused" => ApplyF80hArousedNativeWake(context),
+            "f80h-active-gc-sweep" => ApplyF80hActiveGcSweep(context),
             "native-location-yaiba-bathtub" => NativeLocationAdditionalOwnersSource.ApplyBathtub(context),
             "yaiba-native-worker" => ApplyYaibaNativeWorker(context),
             "native-location-ziggy-offered" => NativeLocationAdditionalOwnersSource.ApplyZiggy(context),
@@ -123,6 +128,7 @@ internal static partial class SemanticInjectors
             "tunnel-rescue-v3" => ApplyTunnelRescue(context),
             "ziggy-last-play-navigation-sentinel-v3" => ZiggyProximitySource.Apply(context),
             "aerial-race-active-idle-split" => ApplyAerialRaceActiveIdleSplit(context),
+            "appearance-menu-mod-preset-once" => ApplyAppearanceMenuPresetTimer(context),
             "appearance-menu-mod-squeeze" => ApplyAppearanceMenuModSqueeze(context),
             "drone-companions-revamp" => ApplyDroneCompanionsRevamp(context),
             "ghost-void-system" => ApplyGhostVoidSystem(context),
@@ -132,8 +138,10 @@ internal static partial class SemanticInjectors
             "auto-ammo-crafting" => ApplyAutoAmmoCrafting(context),
             "autoloot" => ApplyAutoLoot(context),
             "autoloot-world-pin-and-early-distance" => ApplyAutoLootWorldPinAndEarlyDistance(context),
+            "better-loot-markers-category-no-temporary-table" => ApplyBetterLootMarkersCategoryAllocation(context),
             "better-loot-markers" => ApplyBetterLootMarkers(context),
             "npc-outfit-manager-idle-state" => NpcOutfitManagerSource.Apply(context),
+            "npc-outfit-manager-radar-gc" => ApplyNpcOutfitRadarGc(context),
             "npc-outfit-manager-id-normalization" => NpcOutfitManagerSource.ApplyRecordIdNormalization(context),
             "gigcore-blackboard-once" => ApplyGigCoreBlackboardReuse(context),
             "specter-recovery-prerequisite-reads" => ApplySpecterRecoveryPrerequisites(context),

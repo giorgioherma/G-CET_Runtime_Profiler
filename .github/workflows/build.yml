@@ -1213,6 +1213,10 @@ jobs:
         shell: pwsh
         run: ./tests/PassGenerationOutcomeContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: Hot mod GC and lifecycle fastpath source contract
+        shell: pwsh
+        run: ./tests/HotModGcFastpathsContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: Dedra combat camera event wake source contract
         shell: pwsh
         run: ./tests/DedraThirdPersonCombatWakeContract.ps1 -ResolverRoot ./publish-resolver
