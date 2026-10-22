@@ -53,3 +53,27 @@ The remaining second-stage work is moving independently source-proven
 0-Engine scheduling and wake coordination out of semantic mods while
 preserving their existing native workers. This helper migration alone
 does **not** claim that broader scheduler separation is complete.
+
+
+## 06:07 real pass and follow-up
+
+The user's 06:07 pass applied **InfiniteGigs only**. It deferred
+CourierJobs, Dedrapanamgoondate, Hotscenes NC Delights and Hotscenes main
+for Lua locals. Four standalone provider relocation attempts (including
+DedraJNCJoytoy) refused their existing header as `source drift`; the
+Resolver now compares the **whole actual provider body** line-by-line after
+normalizing cosmetic layout rather than requiring identical CRLF and
+indentation. Differences in executable lines still fail closed; no
+unknown author helper is deleted or overwritten.
+
+The user explicitly approved **permanent English-only Hotscenes** for
+their personal installation. Opting in via `G-CET-UserOptions.json`
+allows the locale subsystem and unused author locals to be removed first;
+then `hotscenes/init.lua` is eligible for a separate generic read worker
+despite not previously having provider headers. No localization is cut
+for non-opted-in users. This is separate from the general 0-Engine
+scheduler coordinator work and is not automatically enabled elsewhere.
+
+Do not mark remaining Lua-budget cases resolved until a **new pass ZIP**
+contains all source/worker pairs with budget under 201 and no source
+conflicts. No source version or Lua SHA is used as an admission key.
