@@ -143,6 +143,98 @@ try
     Console.WriteLine("GCET 199-local partial reuse: three reads saved, "+
         "all author locals retained, unsafe fourth deferred PASS");
 
+    // Near-limit source can move ONLY exact G-CET generated helpers to a
+    // separate, file-owned chunk. Do not delete author code or add another
+    // callback. The original Game fallback is inside the new Lua worker.
+    var workerType=core.GetType("GCETRuntimeProfiler.Core.Services.GenericReadCoordinatorSource",true)!;
+    var workerStage=workerType.GetMethod("TryStage",
+        BindingFlags.NonPublic|BindingFlags.Static)!;
+    var workerRoot=Path.Combine(root,"worker-budget");
+    var workerMod=Path.Combine(workerRoot,"Ready");
+    Directory.CreateDirectory(workerMod);
+    Func<string,IEnumerable<string>> workerHeaders=provider=>
+    {
+        var getter=provider switch {
+            "PLAYER"=>"GetPlayer",
+            "QUESTS_SYSTEM"=>"GetQuestsSystem",
+            "STATS_SYSTEM"=>"GetStatsSystem",
+            _=>throw new InvalidOperationException("unexpected fixture provider: "+provider)
+        };
+        return new [] {
+            "-- G-CET shared provider: "+provider,
+            "local __gcetProvider_"+getter+" = nil",
+            "local function __gcet"+getter+"()",
+            "    if __gcetProvider_"+getter+" == nil then",
+            "        __gcetProvider_"+getter+" = Game."+getter+"",
+            "    end",
+            "    local answer = __gcetProvider_"+getter+"()",
+            "    if answer ~= nil then return answer end",
+            "    return Game."+getter+"()",
+            "end",
+            ""
+        };
+    };
+    var workerSource=string.Join("\n",workerHeaders("PLAYER"))+"\n"+
+        "local "+string.Join(",",Enumerable.Range(1,198).Select(i=>"author"+i))+
+        "\nreturn __gcetGetPlayer(), Game.GetQuestsSystem()\n";
+    File.WriteAllText(Path.Combine(workerMod,"init.lua"),workerSource,
+        new UTF8Encoding(false));
+    var workerStaged=new Dictionary<string,byte[]>(StringComparer.OrdinalIgnoreCase);
+    var workerCounts=new Dictionary<string,int>(StringComparer.OrdinalIgnoreCase);
+    var workerManifest=new List<object>();
+    var workerSkips=new List<object>();
+    object?[] workerArgs=[workerRoot,workerStaged,workerCounts,workerManifest,
+                          workerSkips,workerHeaders];
+    Check((int)workerStage.Invoke(null,workerArgs)!==1,
+        "Near-limit G-CET generated helpers were not moved to a separate Lua chunk");
+    var workerMain=Encoding.UTF8.GetString(workerStaged["Ready/init.lua"]);
+    var workerFile=workerStaged.Keys.Single(x=>x.StartsWith(
+        "Ready/GCET_Semantic/gcet_native_reads_",StringComparison.Ordinal));
+    var workerBody=Encoding.UTF8.GetString(workerStaged[workerFile]);
+    Check(workerMain.Contains("local __gcetNativeReads = require(") &&
+          workerMain.Contains("__gcetNativeReads.GetPlayer()") &&
+          workerMain.Contains("__gcetNativeReads.GetQuestsSystem()") &&
+          !workerMain.Contains("local function __gcetGetPlayer") &&
+          workerMain.Contains("local author1,author2,author3") &&
+          workerBody.Contains("return Game.GetPlayer()") &&
+          workerBody.Contains("return Game.GetQuestsSystem()") &&
+          workerManifest.Count==1 && workerSkips.Count==0,
+        "Worker must own only generated helpers, preserve author locals and exact fallbacks");
+    var budgetType=core.GetType("GCETRuntimeProfiler.Core.Services.LuaLocalBudgetAnalyzer",true)!;
+    var budgetMethod=budgetType.GetMethod("Analyze",
+        BindingFlags.NonPublic|BindingFlags.Static)!;
+    var beforeBudget=budgetMethod.Invoke(null,[workerSource])!;
+    var afterBudget=budgetMethod.Invoke(null,[workerMain])!;
+    var peakProperty=beforeBudget.GetType().GetProperty("MaxActiveLocals")!;
+    Check((int)peakProperty.GetValue(beforeBudget)!==200 &&
+          (int)peakProperty.GetValue(afterBudget)!==199,
+        "Separate Lua import must reduce 200-local source to 199 without touching author code");
+    var againWorkers=new List<object>();
+    object?[] againArgs=[workerRoot,workerStaged,workerCounts,againWorkers,
+                         new List<object>(),workerHeaders];
+    Check((int)workerStage.Invoke(null,againArgs)!==0&&againWorkers.Count==0,
+        "Repeated generation duplicated read coordinator");
+    workerStaged["Ready/init.lua"]=Encoding.UTF8.GetBytes(workerMain+
+        "\nlocal extra = Game.GetStatsSystem()\n");
+    // Existing worker and source can adopt newly introduced source getters
+    // without a second import or a second copy of the old fallback helpers.
+    var updatedManifest=new List<object>();
+    object?[] newerWorkerArgs=[workerRoot,workerStaged,workerCounts,updatedManifest,
+                               new List<object>(),workerHeaders];
+    Check((int)workerStage.Invoke(null,newerWorkerArgs)!==1,
+        "Existing G-CET read worker did not adopt a new current-source getter");
+    var upgraded=Encoding.UTF8.GetString(workerStaged["Ready/init.lua"]);
+    var upgradedWorker=Encoding.UTF8.GetString(workerStaged[workerFile]);
+    Check(upgraded.Contains("__gcetNativeReads.GetStatsSystem()") &&
+          upgraded.Split("local __gcetNativeReads = require(",StringSplitOptions.None).Length==2 &&
+          upgradedWorker.Contains("return Game.GetStatsSystem()") &&
+          upgradedWorker.Split("-- G-CET shared provider: PLAYER").Length==2,
+        "Worker upgrade duplicated an import/provider or lost a fallback");
+    Check(File.ReadAllText(Path.Combine(workerMod,"init.lua"))==workerSource,
+        "Worker upgrade changed installed mod source");
+    Console.WriteLine("GCET near-limit source -> separate Lua worker; 200 to 199 locals, "+
+        "current-source upgrade and idempotence: PASS");
+
     // Drift must refuse without modifying staged file.
     File.AppendAllText(main,"-- changed\n");
     var before=staged["Example/init.lua"].ToArray();
