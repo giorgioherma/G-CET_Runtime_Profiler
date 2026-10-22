@@ -82,22 +82,22 @@ registerForEvent("onInit",function()
 		end
 	end
 	local nativeSettings = GetMod("nativeSettings")
-  local lastlanguageSelected = userSettings.lastLanguageSelected
-  loadLocalizedStrings(true, true)
-  if userSettings.lastLanguageSelected ~= lastlanguageSelected then saveUserSettings() end
+	local lastlanguageSelected = userSettings.lastLanguageSelected
+	loadLocalizedStrings(true, true)
+	if userSettings.lastLanguageSelected ~= lastlanguageSelected then saveUserSettings() end
 end)
 local translation = scenePerformers[performer].performerFullNameTranslations[currentUiLanguage]
 if type(settings.lastLanguageSelected) == 'string' then userSettings.lastLanguageSelected = settings.lastLanguageSelected else userSettings.lastLanguageSelected = "en-us" end
 function setObservers()
   Observe('PlayerPuppet', 'OnGameAttached', function(this)
-    local lastlanguageSelected = userSettings.lastLanguageSelected
-    loadLocalizedStrings(true)
-    if userSettings.lastLanguageSelected ~= lastlanguageSelected then saveUserSettings() end
+		local lastlanguageSelected = userSettings.lastLanguageSelected
+		loadLocalizedStrings(true)
+		if userSettings.lastLanguageSelected ~= lastlanguageSelected then saveUserSettings() end
   end)
   ObserveBefore('inkISystemRequestsHandler','RequestSaveUserSettings',function(this)
-    local lastlanguageSelected = userSettings.lastLanguageSelected
-    loadLocalizedStrings(true)
-    if userSettings.lastLanguageSelected ~= lastlanguageSelected then saveUserSettings() end
+		local lastlanguageSelected = userSettings.lastLanguageSelected
+		loadLocalizedStrings(true)
+		if userSettings.lastLanguageSelected ~= lastlanguageSelected then saveUserSettings() end
     updatePerformers()
   end)
 end
