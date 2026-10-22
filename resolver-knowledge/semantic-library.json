@@ -5811,10 +5811,11 @@
         "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
       },
       "runtimeAdmission": {
-        "thresholdMsPerSecond": 0,
-        "measuredPeakExclusiveMsPerSecond": 0,
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 11.16,
         "admitted": true,
-        "evidenceStack": "ITP_USER_TOGGLE_LIVE_SOURCE_20261022"
+        "evidenceStack": "CET_20261022_105614",
+        "rationale": "Source-only exact CET key event wake added to measured base ITP owner; no new hot frame callback. The existing callback owner exceeds the ordinary 3 ms/s materiality threshold."
       },
       "catalogRole": "SEMANTIC_HOT_MOD",
       "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
