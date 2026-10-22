@@ -31,6 +31,8 @@ $display=$summary.FormatForUi()
 foreach($needle in @('ALREADY IMPLEMENTED:','LUA LOCAL LIMIT','Generation failures','CourierJobs/init.lua')) {
  if(!$display.Contains($needle)){throw "GUI diagnostic missing $needle"}
 }
+$items.Add(@{type='NATIVE_READ_REUSE';file='sample/already_partly_optimized.lua';
+  reason='LUA_LOCAL_LIMIT_PARTIAL'})
 $items.Add(@{type='SEMANTIC_RULE';Owner='Marmur Bank';
   RuleId='marmurbank-modern-input';
   reason='Semantic injection failed closed: source callback graph changed.'})
@@ -41,9 +43,9 @@ $items.Add(@{type='SEMANTIC_RULE';Owner='Dedka';
     [Text.UTF8Encoding]::new($false))
 $bad=$method.Invoke($null,@($path))
 if($bad.AlreadyImplementedCount -ne 6 -or
-   $bad.LuaLocalLimitCount -ne 5 -or
+   $bad.LuaLocalLimitCount -ne 6 -or
    $bad.GenerationFailureCount -ne 2 -or
-   $bad.TotalNotApplied -ne 13) {
+   $bad.TotalNotApplied -ne 14) {
     throw 'Source incompatibility and partial state must be generation failures'
 }
 if(!$bad.FormatForUi().Contains('Marmur Bank/marmurbank-modern-input')) {

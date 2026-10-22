@@ -108,6 +108,11 @@ public static class PassSkipSummaryService
         if (explicitCategory is AlreadyImplemented or LuaLocalLimit or GenerationFailure)
             return explicitCategory;
 
+        if (type.Equals("LUA_LOCAL_LIMIT", StringComparison.OrdinalIgnoreCase) ||
+            reason.StartsWith("LUA_LOCAL_LIMIT", StringComparison.OrdinalIgnoreCase) ||
+            reason.Contains("Lua's hard per-function limit", StringComparison.OrdinalIgnoreCase))
+            return LuaLocalLimit;
+
         // A thrown injector exception is NEVER an "already complete" result,
         // even when its explanation mentions a prior installation.
         if (reason.Contains("failed closed:", StringComparison.OrdinalIgnoreCase) ||
@@ -116,11 +121,6 @@ public static class PassSkipSummaryService
             reason.Contains("partial", StringComparison.OrdinalIgnoreCase) ||
             reason.Contains("conflict", StringComparison.OrdinalIgnoreCase))
             return GenerationFailure;
-
-        if (type.Equals("LUA_LOCAL_LIMIT", StringComparison.OrdinalIgnoreCase) ||
-            reason.StartsWith("LUA_LOCAL_LIMIT", StringComparison.OrdinalIgnoreCase) ||
-            reason.Contains("Lua's hard per-function limit", StringComparison.OrdinalIgnoreCase))
-            return LuaLocalLimit;
 
         if (Regex.IsMatch(reason,
                 @"\balready\s+(?:complete|satisfied|installed|present|applied|implemented|optimized|hold|holds)\b",
