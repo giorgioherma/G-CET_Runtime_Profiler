@@ -160,7 +160,8 @@ try {
         $jsonDoc.RootElement,[string]$root,$staged,$byFile,$transforms,$skipped))
 } finally { $jsonDoc.Dispose() }
 if($generated -ne 1 -or $staged.Count -ne 3 -or $skipped.Count -ne 0) {
-    throw "Full Bank pass refused valid source-owned coordinator: applied=$generated, staged=$($staged.Count), skipped=$($skipped.Count)."
+    $details=($skipped | ConvertTo-Json -Depth 8 -Compress)
+    throw "Full Bank pass refused valid source-owned coordinator: applied=$generated, staged=$($staged.Count), skipped=$($skipped.Count), reasons=$details"
 }
 if(@($staged.Keys|Where-Object{$_ -like '*/GCET_Semantic/marmurbank_ui_worker.lua'}).Count -ne 1) {
     throw 'Full pass failed to package the separate Bank worker.'
