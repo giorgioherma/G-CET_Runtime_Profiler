@@ -112,11 +112,16 @@ internal static class GenericReadCoordinatorSource
             worker=Norm(loaded);
             if(!worker.StartsWith(WorkerMarker+relative+"\n",StringComparison.Ordinal))
             {reason="Existing worker missing or owner changed.";return false;}
-            foreach(var p in SharedProviderCatalog.Authorized)
+            foreach(Match marker in ProviderHeader.Matches(worker))
             {
-                var block=string.Join("\n",headers(p.Provider)).TrimEnd('\n','\r');
-                if(block.Length>0&&worker.Contains(block,StringComparison.Ordinal))
-                    functions.Add(p.Getter,block);
+                var key=marker.Groups["provider"].Value;
+                if(!SharedProviderCatalog.ByProvider.TryGetValue(key,out var p)||
+                   functions.ContainsKey(p.Getter))
+                {reason="Existing worker provider unknown or duplicated: "+key;return false;}
+                var block=string.Join("\n",headers(key)).TrimEnd('\n','\r');
+                if(block.Length==0||worker.Split(block,StringSplitOptions.None).Length!=2)
+                {reason="Existing worker provider differs from reviewed fallback: "+key;return false;}
+                functions.Add(p.Getter,block);
             }
             if(functions.Count==0)
             {reason="Existing worker has no recognized G-CET fallbacks.";return false;}
