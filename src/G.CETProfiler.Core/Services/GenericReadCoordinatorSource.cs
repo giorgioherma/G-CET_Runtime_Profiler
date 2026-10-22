@@ -173,13 +173,14 @@ internal static class GenericReadCoordinatorSource
         {
             // Reconstruct exactly what the previously generated coordinator
             // should contain. An author-edited worker is not disposable.
+            var existingWorkerSnapshot=worker;
             var canonical=WorkerMarker+relative+"\n"+
                 string.Join("\n\n",functions
-                    .Where(x=>worker.Contains(x.Value,StringComparison.Ordinal))
+                    .Where(x=>existingWorkerSnapshot.Contains(x.Value,StringComparison.Ordinal))
                     .OrderBy(x=>x.Key,StringComparer.Ordinal).Select(x=>x.Value))+
                 "\n\nreturn { "+
                 string.Join(", ",functions
-                    .Where(x=>worker.Contains(x.Value,StringComparison.Ordinal))
+                    .Where(x=>existingWorkerSnapshot.Contains(x.Value,StringComparison.Ordinal))
                     .Select(x=>x.Key)
                     .OrderBy(x=>x,StringComparer.Ordinal)
                     .Select(x=>x+" = __gcet"+x))+" }\n";
