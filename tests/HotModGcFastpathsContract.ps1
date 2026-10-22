@@ -194,4 +194,43 @@ Check 'BetterLootMarkers' 'better-loot-markers-category-no-temporary-table' 'App
  'better-loot-markers-category-no-temporary-table',
  'local iconic = RPGManager.IsItemIconic(item)',
  'local current = categories[category]') 'local newItem = {'
-Write-Host 'Four GC/idle source-safe hot mod stages PASS'
+
+# NIF's native-to-Lua global observer must return before ANY engine reads
+# when both author-owned pin tables are empty; no native object caching.
+$nifOwner=Join-Path $root 'nativeInteractions'
+$nifFolder=Join-Path $nifOwner 'modules/utils'
+New-Item -ItemType Directory -Force $nifFolder|Out-Null
+$nifPath=Join-Path $nifFolder 'worldInteraction.lua'
+$nif=@'
+local world={pinInteractions={},pinnedInteractions={}}
+local function indexPin(interaction) end
+local function unindexPin(interaction) end
+local function findPinInteraction(mappin, mappinID) return nil end
+world.pinInteractions = {}
+world.pinnedInteractions = {}
+ObserveAfter("BaseMappinBaseController", "UpdateRootState", function(this) -- Custom pin texture
+  local mappin=this:GetMappin()
+  if not mappin then return end
+  local profile=this:GetProfile()
+  if not profile or profile:GetID().value ~= "WorldMappinUIProfile.nif" then return end
+end)
+'@
+[IO.File]::WriteAllText($nifPath,$nif)
+$fn=$t.GetMethod('ApplyNativeInteractionsEmptyPinIdle',$flags)
+if(!$fn){throw 'Missing NIF empty-pin injector'}
+$ctx=$ctor.Invoke([object[]]@([string]$root,[string]'nativeInteractions',
+  [string]'nativeinteractions-no-pins-observer',
+  [Collections.Generic.Dictionary[string,byte[]]]::new([StringComparer]::OrdinalIgnoreCase)))
+$res=$fn.Invoke($null,[object[]]@($ctx))
+$changes=@($ctxT.GetProperty('Changes',[Reflection.BindingFlags]'Instance,NonPublic').GetValue($ctx))
+if(!$res.Applied -or $changes.Count -ne 1){throw 'NIF empty pin stage failed'}
+$raw=[Text.Encoding]::UTF8.GetString($changes[0].Bytes)
+if(!$raw.Contains('if next(world.pinInteractions) == nil and next(world.pinnedInteractions) == nil then return end')){
+  throw 'NIF empty marker inventory not checked'
+}
+if($raw.IndexOf('if next(world.pinInteractions)') -gt $raw.IndexOf('local mappin=this:GetMappin()')){
+  throw 'NIF native reads occurred before empty-inventory gate'
+}
+if([IO.File]::ReadAllText($nifPath) -ne $nif){throw 'NIF original source overwritten'}
+Write-Host 'NativeInteractions empty-pin observer gate PASS'
+Write-Host 'Five GC/idle source-safe hot mod stages PASS'

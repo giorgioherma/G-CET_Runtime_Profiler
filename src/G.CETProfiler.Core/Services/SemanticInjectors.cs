@@ -30,6 +30,7 @@ internal static partial class SemanticInjectors
             "backstep-duo" or
             "specter-recovery-prerequisite-reads" or
             "nativeinteractions" or
+            "nativeinteractions-no-pins-observer" or
             "gigcore-blackboard-once" or
             "air-backflip" or
             "native-location-poker" or
@@ -164,6 +165,7 @@ internal static partial class SemanticInjectors
             "immersive-third-person-dedra-toggle-signal" => ApplyImmersiveThirdPersonDedraToggleSignal(context),
             "immersivefirstperson" => ApplyImmersiveFirstPerson(context),
             "nativeinteractions" => ApplyNativeInteractions(context),
+            "nativeinteractions-no-pins-observer" => ApplyNativeInteractionsEmptyPinIdle(context),
             "minimap-widgets" => ApplyMinimapWidgets(context),
             "minimap-widgets-time-weather-snapshot" => ApplyMinimapTimeWeatherSnapshot(context),
             "minimap-stealth-widget-locality" => ApplyMinimapStealthWidgetLocality(context),
