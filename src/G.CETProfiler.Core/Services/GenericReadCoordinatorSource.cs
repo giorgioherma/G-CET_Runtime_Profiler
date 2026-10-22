@@ -129,6 +129,12 @@ internal static class GenericReadCoordinatorSource
         else
         {
             var code=NativeReadReuseSource.MaskNonCode(source);
+            // A package with its own require allowlist (for example, a
+            // deferred native-handshake factory) needs a bespoke reviewed
+            // bridge, not an automatic module import.
+            if(Regex.IsMatch(code,
+                @"\brequire\s*=\s*function\b|\bfunction\s+require\s*\("))
+            {reason="Author package overrides require; generic worker import is not proven.";return false;}
             if(Regex.IsMatch(code,@"\b"+Alias+@"\b"))
             {reason="Coordinator alias conflicts with existing source.";return false;}
             var existing=ProviderHeader.Matches(source).Cast<Match>().ToArray();
