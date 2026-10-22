@@ -273,9 +273,12 @@ internal sealed class SemanticLibraryService
     internal SemanticRuleMatch Match(
         string owner,
         string kind,
-        string target)
+        string target,
+        string? exactRuleId = null)
     {
         var callbackCandidates = _entries
+            .Where(entry => exactRuleId is null ||
+                entry.Id.Equals(exactRuleId, StringComparison.OrdinalIgnoreCase))
             .Where(entry =>
                 entry.Callbacks.Any(selector =>
                     WildcardEquals(selector.Kind, kind) &&
@@ -522,7 +525,7 @@ internal sealed class SemanticLibraryService
                 if (string.IsNullOrWhiteSpace(selector.Kind) ||
                     string.IsNullOrWhiteSpace(selector.Target))
                     continue;
-                var match = Match(ownerName, selector.Kind, selector.Target);
+                var match = Match(ownerName, selector.Kind, selector.Target, entry.Id);
                 if (!match.RuleId.Equals(entry.Id, StringComparison.OrdinalIgnoreCase) ||
                     !match.Matched || !match.SourceProofSatisfied ||
                     !match.GenerationEnabled || match.AlreadySatisfied ||
