@@ -45,8 +45,12 @@ internal static class GenericReadCoordinatorSource
             var source=NativeReadReuseSource.Decode(original);
             var marked=source.Contains(Marker,StringComparison.Ordinal);
             var sourcePeak=LuaLocalBudgetAnalyzer.Analyze(original).MaxActiveLocals;
+            var englishOnly=rel.Equals("hotscenes/init.lua",
+                StringComparison.OrdinalIgnoreCase) &&
+                source.Contains(HotscenesEnglishOnlySource.Marker,StringComparison.Ordinal);
             if(!marked && (sourcePeak<197 ||
-               !source.Contains("-- G-CET shared provider: ",StringComparison.Ordinal)))
+               (!source.Contains("-- G-CET shared provider: ",
+                   StringComparison.Ordinal) && !englishOnly)))
                 continue;
             if(!TryRewrite(root,rel,source,staged,headerForProvider,
                 out var rewritten,out var worker,out var workerRel,
@@ -138,7 +142,11 @@ internal static class GenericReadCoordinatorSource
             if(Regex.IsMatch(code,@"\b"+Alias+@"\b"))
             {reason="Coordinator alias conflicts with existing source.";return false;}
             var existing=ProviderHeader.Matches(source).Cast<Match>().ToArray();
-            if(existing.Length==0)return false;
+            if(existing.Length==0 && !(relative.Equals("hotscenes/init.lua",
+                    StringComparison.OrdinalIgnoreCase) &&
+                source.Contains(HotscenesEnglishOnlySource.Marker,
+                    StringComparison.Ordinal)))
+                return false;
             foreach(var match in existing)
             {
                 var providerName=match.Groups["provider"].Value;

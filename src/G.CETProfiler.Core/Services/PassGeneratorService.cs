@@ -144,6 +144,11 @@ public static class PassGeneratorService
         // exact G-CET-generated provider helpers into a source-owned Lua
         // worker; original author locals, callbacks, and 0-Engine fallback
         // behavior remain unchanged.
+        // Only explicit G-CET-UserOptions.json opt-in removes Hotscenes
+        // localization; source admission and English defaults are reviewed.
+        var englishOnlyHotscenes = HotscenesEnglishOnlySource.TryStage(
+            modsRoot, staged, appliedTransformsByFile, transformManifest, skipped);
+
         var genericReadWorkers = GenericReadCoordinatorSource.TryStage(
             modsRoot, staged, appliedTransformsByFile, transformManifest, skipped,
             provider => SharedProviderRecipes.TryGetValue(provider, out var recipe)
@@ -317,6 +322,7 @@ public static class PassGeneratorService
                 nativeReadReuseContract = NativeReadReuseSource.Contract,
                 nativeReadReuseAppliedOccurrences = nativeReadReuseCount,
                 sourceOwnedGenericReadCoordinatorStages = genericReadWorkers,
+                personalEnglishOnlyHotscenesStages = englishOnlyHotscenes,
                 legacyMethodLookupRepairOccurrences = methodLookupRepairs,
                 nativeReadReuseBypassesCallbackCpuGate = true,
                 nativeReadReuseBackend = "0-Engine:existing-shared-provider",
