@@ -85,24 +85,90 @@ internal static class GenericReadCoordinatorSource
     // line must otherwise match the reviewed 0-Engine/Game fallback recipe.
     // Keep the actual original block when moving it to the new worker.
     private static bool TryFindProviderBlock(string source,string provider,
-        string getter,string reviewed,out string actual)
+        string getter,string reviewed,out string actual,out string detail)
     {
         actual="";
-        var pattern=@"(?ms)^-- G-CET shared provider: "+
-            Regex.Escape(provider)+@"[ \t]*\n.*?^end[ \t]*(?=\n|$)";
-        var matches=Regex.Matches(source,pattern,RegexOptions.CultureInvariant);
-        if(matches.Count!=1)return false;
-        actual=matches[0].Value.TrimEnd('\r','\n');
-        static string LayoutNormalized(string text) =>
-            string.Join("\n",text.Replace("\r\n","\n",StringComparison.Ordinal)
-                .Split('\n').Select(line=>line.Trim())
-                .Where(line=>line.Length>0));
-        if(LayoutNormalized(actual)!=LayoutNormalized(reviewed))
+        detail="";
+        // Inspect the source's *actual* generated helper, bounded by the
+        // literal G-CET owner marker and unindented function terminator.
+        // Do not pattern-match through other author functions or rely on
+        // .NET regex multiline/Singleline interaction for source ownership.
+        var marker="-- G-CET shared provider: "+provider;
+        int first=-1, count=0;
+        for(int at=source.IndexOf(marker,StringComparison.Ordinal);at>=0;
+            at=source.IndexOf(marker,at+marker.Length,StringComparison.Ordinal))
         {
+            if(at>0 && source[at-1]!='\n')continue;
+            var after=at+marker.Length;
+            if(after<source.Length && source[after]!='\n' &&
+               source[after]!='\r' && source[after]!=' ' && source[after]!='\t')
+                continue;
+            count++;
+            first=at;
+        }
+        if(count!=1)
+        {
+            detail="owner marker occurrences="+count;
+            return false;
+        }
+
+        var cursor=source.IndexOf('\n',first);
+        if(cursor<0)
+        {
+            detail="provider marker has no helper definition";
+            return false;
+        }
+        var stop=-1;
+        while(cursor<source.Length)
+        {
+            var lineStart=cursor+1;
+            if(lineStart>=source.Length)break;
+            var lineEnd=source.IndexOf('\n',lineStart);
+            if(lineEnd<0)lineEnd=source.Length;
+            // The generated outer helper ends at column zero. Nested
+            // expressions use indented 'end', so scope remains bounded.
+            if(source.AsSpan(lineStart,lineEnd-lineStart).TrimEnd().SequenceEqual(
+                "end".AsSpan()))
+            {
+                stop=lineStart+3;
+                break;
+            }
+            cursor=lineEnd;
+        }
+        if(stop<0)
+        {
+            detail="generated helper has no unindented closing end";
+            return false;
+        }
+        actual=source[first..stop];
+        static string[] NormalizedLines(string text) =>
+            text.Replace("\r\n","\n",StringComparison.Ordinal).Split('\n')
+                .Select(line=>line.Trim())
+                .Where(line=>line.Length>0).ToArray();
+
+        var actualLines=NormalizedLines(actual);
+        var reviewedLines=NormalizedLines(reviewed);
+        var mismatched=Enumerable.Range(0,Math.Min(actualLines.Length,reviewedLines.Length))
+            .FirstOrDefault(i=>!string.Equals(actualLines[i],reviewedLines[i],
+                StringComparison.Ordinal),-1);
+        if(mismatched>=0 || actualLines.Length!=reviewedLines.Length)
+        {
+            detail=mismatched>=0
+                ? "first differing generated-helper line "+(mismatched+1)+
+                    " (source: "+actualLines[mismatched]+
+                    "; expected: "+reviewedLines[mismatched]+")"
+                : "helper length differs: source "+actualLines.Length+
+                    " lines, expected "+reviewedLines.Length+" lines";
             actual="";
             return false;
         }
-        return actual.Contains("return Game."+getter+"()",StringComparison.Ordinal);
+        if(!actual.Contains("return Game."+getter+"()",StringComparison.Ordinal))
+        {
+            detail="original Game getter fallback missing";
+            actual="";
+            return false;
+        }
+        return true;
     }
 
     internal static bool TryRewrite(string modsRoot,string relative,string input,
@@ -149,8 +215,9 @@ internal static class GenericReadCoordinatorSource
                 {reason="Existing worker provider unknown or duplicated: "+key;return false;}
                 var reviewed=string.Join("\n",headers(key)).TrimEnd('\n','\r');
                 if(reviewed.Length==0||!TryFindProviderBlock(worker,
-                    key,p.Getter,reviewed,out var block))
-                {reason="Existing worker provider differs from reviewed fallback: "+key;return false;}
+                    key,p.Getter,reviewed,out var block,out var detail))
+                {reason="Existing worker provider differs from reviewed fallback: "+
+                    key+"; "+detail;return false;}
                 functions.Add(p.Getter,block);
             }
             if(functions.Count==0)
@@ -181,8 +248,9 @@ internal static class GenericReadCoordinatorSource
                 {reason="Existing G-CET provider unrecognized or duplicated: "+providerName;return false;}
                 var reviewed=string.Join("\n",headers(providerName)).TrimEnd('\n','\r');
                 if(reviewed.Length==0||!TryFindProviderBlock(source,
-                    providerName,p.Getter,reviewed,out var block))
-                {reason="Existing G-CET provider fallback has semantic source drift: "+providerName;return false;}
+                    providerName,p.Getter,reviewed,out var block,out var detail))
+                {reason="Existing G-CET provider fallback has semantic source drift: "+
+                    providerName+"; "+detail;return false;}
                 functions.Add(p.Getter,block);
             }
             foreach(var block in functions.Values)source=source.Replace(block,"",StringComparison.Ordinal);
