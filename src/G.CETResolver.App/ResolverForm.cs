@@ -327,14 +327,18 @@ internal sealed class ResolverForm : Form
             UpdateOpenResultsState();
 
             var applied = OptimizationClassCountService.FromManifestFile(pass.ManifestPath);
+            var outcomes = PassSkipSummaryService.FromManifestFile(pass.ManifestPath);
             _status.Text = $"Pass ready — {applied.AppliedModCount} mods / " +
-                $"{applied.AppliedRuleCount} transforms, {applied.ModifiedModFileCount} mod files.";
+                $"{applied.AppliedRuleCount} transforms, {applied.ModifiedModFileCount} mod files. " +
+                $"Failures: {outcomes.GenerationFailureCount} | " +
+                $"Already: {outcomes.AlreadyImplementedCount} | " +
+                $"Lua limit: {outcomes.LuaLocalLimitCount}.";
             _output.Text =
                 $"G-CET pass ZIP:\r\n{pass.ZipPath}\r\n\r\n" +
                 $"Pass manifest:\r\n{pass.ManifestPath}\r\n\r\n" +
                 $"Applied transforms: {pass.TransformCount}\r\n" +
-                $"Changed files: {pass.FileCount}\r\n" +
-                $"Skipped after source revalidation: {pass.SkippedCount}\r\n\r\n" +
+                $"Changed files: {pass.FileCount}\r\n\r\n" +
+                outcomes.FormatForUi() + "\r\n\r\n" +
                 OptimizationClassCountService.FormatApplied(applied) + "\r\n\r\n" +
                 "The ZIP contains only deployable game files. The JSON manifest is kept beside it in RESULTS. " +
                 "No live mod files were changed by the resolver.";

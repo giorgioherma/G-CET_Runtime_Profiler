@@ -295,6 +295,8 @@ public static class PassGeneratorService
             $"G-CET_PASS_{generatedUtc:yyyyMMdd-HHmmss}.zip");
         outputZipPath = Path.GetFullPath(outputZipPath);
 
+        var skipOutcomes = PassSkipSummaryService.FromSkipped(skipped);
+
         var manifest = new
         {
             schemaVersion = "0.1",
@@ -392,7 +394,10 @@ public static class PassGeneratorService
                 genericTransforms = transformManifest.Count - semanticTransformCount,
                 semanticTransforms = semanticTransformCount,
                 transforms = transformManifest.Count,
-                skipped = skipped.Count
+                skipped = skipped.Count,
+                alreadyImplemented = skipOutcomes.AlreadyImplementedCount,
+                luaLocalLimitDeferred = skipOutcomes.LuaLocalLimitCount,
+                generationFailures = skipOutcomes.GenerationFailureCount
             },
             files = fileManifest,
             transforms = transformManifest,
@@ -402,6 +407,22 @@ public static class PassGeneratorService
                     transforms = transformManifest,
                     files = fileManifest
                 })),
+            skipOutcomes = new
+            {
+                alreadyImplemented = skipOutcomes.AlreadyImplementedCount,
+                luaLocalLimitDeferred = skipOutcomes.LuaLocalLimitCount,
+                generationFailures = skipOutcomes.GenerationFailureCount,
+                totalNotApplied = skipOutcomes.TotalNotApplied,
+                entries = skipOutcomes.Entries.Select(row => new
+                {
+                    category = row.Category,
+                    type = row.Type,
+                    owner = row.Owner,
+                    ruleId = row.RuleId,
+                    file = row.File,
+                    reason = row.Reason
+                }).ToArray()
+            },
             skipped
         };
 
