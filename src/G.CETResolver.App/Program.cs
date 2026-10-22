@@ -25,6 +25,7 @@ internal static class Program
             string? semanticLibrary = null;
             string? passOutput = null;
             var generatePass = false;
+            var hotscenesEnglishOnly = false;
 
             for (var i = 0; i < args.Length; i++)
             {
@@ -35,6 +36,7 @@ internal static class Program
                     case "--game" when i + 1 < args.Length: game = args[++i]; break;
                     case "--semantic-library" when i + 1 < args.Length: semanticLibrary = args[++i]; break;
                     case "--generate-pass": generatePass = true; break;
+                    case "--hotscenes-english-only": hotscenesEnglishOnly = true; break;
                     case "--pass-output" when i + 1 < args.Length: passOutput = args[++i]; break;
                     case "--json": break;
                     case "--help":
@@ -45,6 +47,7 @@ internal static class Program
                             "  --capture <collected result folder> --mods <live CET mods folder> --json\n" +
                             "  --capture <collected result folder> --game <Cyberpunk 2077 root> --json\n" +
                             "  [--generate-pass] [--pass-output <zip path>]\n" +
+                            "  [--hotscenes-english-only] (pass generation only)\n" +
                             "  [--semantic-library <semantic rule library json>]");
                         return 0;
                     default:
@@ -65,7 +68,8 @@ internal static class Program
             var result = ResolverService.Resolve(capture, mods, semanticLibrary);
             PassBuildResult? pass = null;
             if (generatePass)
-                pass = ResolverService.GeneratePass(capture, mods, passOutput);
+                pass = ResolverService.GeneratePass(capture, mods, passOutput,
+                    hotscenesEnglishOnly);
 
             Console.WriteLine(JsonSerializer.Serialize(new
             {

@@ -92,7 +92,8 @@ public static class ResolverService
     public static PassBuildResult GeneratePass(
         string captureRoot,
         string modsRoot,
-        string? outputZipPath = null)
+        string? outputZipPath = null,
+        bool hotscenesEnglishOnly = false)
     {
         if (string.IsNullOrWhiteSpace(captureRoot))
             throw new ArgumentException("Capture folder is empty.", nameof(captureRoot));
@@ -102,7 +103,8 @@ public static class ResolverService
         captureRoot = ResolveCaptureRoot(Path.GetFullPath(captureRoot));
         modsRoot = Path.GetFullPath(modsRoot);
 
-        return PassGeneratorService.Generate(captureRoot, modsRoot, outputZipPath);
+        return PassGeneratorService.Generate(captureRoot, modsRoot, outputZipPath,
+            hotscenesEnglishOnly);
     }
 
     internal static string ResolveCaptureRoot(string selectedPath)

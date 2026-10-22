@@ -52,7 +52,8 @@ public static class PassGeneratorService
     public static PassBuildResult Generate(
         string captureRoot,
         string modsRoot,
-        string? outputZipPath = null)
+        string? outputZipPath = null,
+        bool hotscenesEnglishOnly = false)
     {
         captureRoot = Path.GetFullPath(captureRoot);
         modsRoot = Path.GetFullPath(modsRoot);
@@ -144,10 +145,11 @@ public static class PassGeneratorService
         // exact G-CET-generated provider helpers into a source-owned Lua
         // worker; original author locals, callbacks, and 0-Engine fallback
         // behavior remain unchanged.
-        // Only explicit G-CET-UserOptions.json opt-in removes Hotscenes
-        // localization; source admission and English defaults are reviewed.
+        // Only explicitly requested personal source cuts remove localization.
+        // The generator reads no configuration file from CET's mods root.
         var englishOnlyHotscenes = HotscenesEnglishOnlySource.TryStage(
-            modsRoot, staged, appliedTransformsByFile, transformManifest, skipped);
+            hotscenesEnglishOnly, modsRoot, staged, appliedTransformsByFile,
+            transformManifest, skipped);
 
         var genericReadWorkers = GenericReadCoordinatorSource.TryStage(
             modsRoot, staged, appliedTransformsByFile, transformManifest, skipped,
@@ -346,6 +348,7 @@ public static class PassGeneratorService
                 nativeReadReuseAppliedOccurrences = nativeReadReuseCount,
                 sourceOwnedGenericReadCoordinatorStages = genericReadWorkers,
                 personalEnglishOnlyHotscenesStages = englishOnlyHotscenes,
+                personalEnglishOnlyHotscenesRequested = hotscenesEnglishOnly,
                 legacyMethodLookupRepairOccurrences = methodLookupRepairs,
                 nativeReadReuseBypassesCallbackCpuGate = true,
                 nativeReadReuseBackend = "0-Engine:existing-shared-provider",

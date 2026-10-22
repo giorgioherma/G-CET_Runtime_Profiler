@@ -1,5 +1,4 @@
 using System.Text;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace GCETRuntimeProfiler.Core.Services;
@@ -12,24 +11,13 @@ namespace GCETRuntimeProfiler.Core.Services;
 internal static class HotscenesEnglishOnlySource
 {
     internal const string Marker="-- G-CET personal:hotscenes-english-only-v1";
-    private const string OptionFile="G-CET-UserOptions.json";
     private static readonly RegexOptions Multiline =
         RegexOptions.Multiline|RegexOptions.Singleline|RegexOptions.CultureInvariant;
 
-    internal static bool IsOptedIn(string modsRoot)
-    {
-        var file=Path.Combine(modsRoot,OptionFile);
-        if(!File.Exists(file))return false;
-        using var json=JsonDocument.Parse(File.ReadAllText(file));
-        return json.RootElement.ValueKind==JsonValueKind.Object &&
-            json.RootElement.TryGetProperty("hotscenesEnglishOnly",out var value) &&
-            value.ValueKind==JsonValueKind.True;
-    }
-
-    internal static int TryStage(string modsRoot,Dictionary<string,byte[]> staged,
+    internal static int TryStage(bool enabled,string modsRoot,Dictionary<string,byte[]> staged,
         Dictionary<string,int> counts,List<object> transforms,List<object> skipped)
     {
-        if(!IsOptedIn(modsRoot))return 0;
+        if(!enabled)return 0;
         const string relative="hotscenes/init.lua";
         var path=Path.Combine(modsRoot,"hotscenes","init.lua");
         if(!File.Exists(path))return 0;
@@ -52,7 +40,7 @@ internal static class HotscenesEnglishOnlySource
             staged[relative]=encoded;
             counts[relative]=counts.GetValueOrDefault(relative)+1;
             transforms.Add(new {type="PERSONAL_HOTSCENES_ENGLISH_ONLY",
-                file=relative,optIn=OptionFile,englishDefaultsRetained=true,
+                file=relative,optIn="RESOLVER_PASS_OPTION",englishDefaultsRetained=true,
                 previousActiveLocals=LuaLocalBudgetAnalyzer.Analyze(source).MaxActiveLocals,
                 newActiveLocals=LuaLocalBudgetAnalyzer.Analyze(output).MaxActiveLocals,
                 localizationFeatureRemoved=true});

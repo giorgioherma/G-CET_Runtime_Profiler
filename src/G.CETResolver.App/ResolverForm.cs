@@ -19,6 +19,13 @@ internal sealed class ResolverForm : Form
     private readonly Label _semantic = new() { AutoSize = true, Text = "SEMANTIC READY: -   |   ALREADY SATISFIED: -" };
     private readonly Label _unresolved = new() { AutoSize = true, Text = "UNRESOLVED CALLBACKS: material -   |   below 3 ms/s -" };
     private readonly Label _modSummary = new() { AutoSize = true, Text = "MOD COVERAGE: -" };
+    private readonly CheckBox _hotscenesEnglishOnly = new()
+    {
+        AutoSize = true,
+        Text = "Personal pass: Hotscenes English-only (remove localization)",
+        AccessibleDescription = "Only changes the generated Hotscenes Lua; it is not an installed game-mod setting."
+    };
+    private readonly ResolverSettings _resolverSettings = ResolverSettings.Load();
     private bool _passReady;
     private string? _resolvedResultsFolder;
 
@@ -42,7 +49,7 @@ internal sealed class ResolverForm : Form
             Dock = DockStyle.Fill,
             Padding = new Padding(14),
             ColumnCount = 3,
-            RowCount = 11
+            RowCount = 12
         };
 
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 125));
@@ -58,6 +65,7 @@ internal sealed class ResolverForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
@@ -97,11 +105,19 @@ internal sealed class ResolverForm : Form
         root.SetColumnSpan(_unresolved, 3);
         root.Controls.Add(_modSummary, 0, 9);
         root.SetColumnSpan(_modSummary, 3);
-        root.Controls.Add(_output, 0, 10);
+        root.Controls.Add(_hotscenesEnglishOnly, 0, 10);
+        root.SetColumnSpan(_hotscenesEnglishOnly, 3);
+        root.Controls.Add(_output, 0, 11);
         root.SetColumnSpan(_output, 3);
         _output.Dock = DockStyle.Fill;
 
         Controls.Add(root);
+        _hotscenesEnglishOnly.Checked = _resolverSettings.HotscenesEnglishOnly;
+        _hotscenesEnglishOnly.CheckedChanged += (_, _) =>
+        {
+            _resolverSettings.HotscenesEnglishOnly = _hotscenesEnglishOnly.Checked;
+            _resolverSettings.Save();
+        };
 
         _captureBrowse.Click += (_, _) => BrowseInto(_capture);
         _gameBrowse.Click += (_, _) => BrowseInto(_game);
@@ -322,7 +338,8 @@ internal sealed class ResolverForm : Form
                 return;
             }
 
-            var pass = ResolverService.GeneratePass(capture, mods);
+            var pass = ResolverService.GeneratePass(capture, mods,
+                hotscenesEnglishOnly: _hotscenesEnglishOnly.Checked);
             _resolvedResultsFolder = Path.GetDirectoryName(pass.ZipPath);
             UpdateOpenResultsState();
 
@@ -337,7 +354,8 @@ internal sealed class ResolverForm : Form
                 $"G-CET pass ZIP:\r\n{pass.ZipPath}\r\n\r\n" +
                 $"Pass manifest:\r\n{pass.ManifestPath}\r\n\r\n" +
                 $"Applied transforms: {pass.TransformCount}\r\n" +
-                $"Changed files: {pass.FileCount}\r\n\r\n" +
+                $"Changed files: {pass.FileCount}\r\n" +
+                $"Hotscenes English-only requested: {_hotscenesEnglishOnly.Checked}\r\n\r\n" +
                 outcomes.FormatForUi() + "\r\n\r\n" +
                 OptimizationClassCountService.FormatApplied(applied) + "\r\n\r\n" +
                 "The ZIP contains only deployable game files. The JSON manifest is kept beside it in RESULTS. " +
