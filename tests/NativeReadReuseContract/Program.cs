@@ -254,6 +254,16 @@ try
             "DYNAMIC_ENTITY_SYSTEM"=>"GetDynamicEntitySystem",
             "AI_NAVIGATION_SYSTEM"=>"GetAINavigationSystem",
             "PLAYER"=>"GetPlayer",
+            "UI_SYSTEM"=>"GetUISystem",
+            "ALL_BLACKBOARD_DEFS"=>"GetAllBlackboardDefs",
+            "CAMERA_SYSTEM"=>"GetCameraSystem",
+            "QUESTS_SYSTEM"=>"GetQuestsSystem",
+            "WORKSPOT_SYSTEM"=>"GetWorkspotSystem",
+            "STATUS_EFFECT_SYSTEM"=>"GetStatusEffectSystem",
+            "SCRIPTABLE_SYSTEMS_CONTAINER"=>"GetScriptableSystemsContainer",
+            "TELEPORTATION_FACILITY"=>"GetTeleportationFacility",
+            "TIME_SYSTEM"=>"GetTimeSystem",
+            "TRANSACTION_SYSTEM"=>"GetTransactionSystem",
             _=>throw new InvalidOperationException("Unreviewed test provider "+p)
         };
         var recipe=mkRecipe.Invoke(null,[p,getter,"__gcet"+getter])!;
@@ -305,6 +315,82 @@ try
     }
     Console.WriteLine("Production 0-Engine provider bodies: CRLF and indentation admitted, "+
         "unknown getter bodies refused: PASS");
+
+    // Match the full generated helper inventories in the four owners that
+    // reported false semantic source drift in the 07:21 pass. The 28 family
+    // markers/ordering come from the supplied modsLIVER archive; only G-CET
+    // generated helpers are recreated, no author mod source is committed.
+    var currentStackSpecs=new[] {
+        (Owner:"CourierJobs", File:"init.lua",
+         Families:new[]{"MAPPIN_SYSTEM","UI_SYSTEM"}, AuthorLocals:196, CRLF:true),
+        (Owner:"DedraJNCJoytoy", File:"init.lua",
+         Families:new[]{"BLACKBOARD_SYSTEM","MAPPIN_SYSTEM","PLAYER",
+            "SCRIPTABLE_SYSTEMS_CONTAINER","STATUS_EFFECT_SYSTEM",
+            "TELEPORTATION_FACILITY","TIME_SYSTEM","TRANSACTION_SYSTEM",
+            "UI_SYSTEM"}, AuthorLocals:182, CRLF:false),
+        (Owner:"Dedrapanamgoondate", File:"init.lua",
+         Families:new[]{"DYNAMIC_ENTITY_SYSTEM","MAPPIN_SYSTEM","PLAYER",
+            "QUESTS_SYSTEM","SCRIPTABLE_SYSTEMS_CONTAINER",
+            "STATUS_EFFECT_SYSTEM","TELEPORTATION_FACILITY","TIME_SYSTEM"},
+         AuthorLocals:184, CRLF:false),
+        (Owner:"hotscenes", File:"hotscenes_nc_delights.lua",
+         Families:new[]{"AI_NAVIGATION_SYSTEM","ALL_BLACKBOARD_DEFS",
+            "BLACKBOARD_SYSTEM","CAMERA_SYSTEM","DYNAMIC_ENTITY_SYSTEM",
+            "MAPPIN_SYSTEM","QUESTS_SYSTEM",
+            "SCRIPTABLE_SYSTEMS_CONTAINER","WORKSPOT_SYSTEM"},
+         AuthorLocals:181, CRLF:true)
+    };
+    var liveCasesRoot=Path.Combine(root,"live-provider-inventory");
+    foreach(var x in currentStackSpecs)
+    {
+        var folder=Path.Combine(liveCasesRoot,x.Owner);
+        Directory.CreateDirectory(folder);
+        var helpers=string.Join("\n\n",x.Families.Select(
+            family=>string.Join("\n",actualRecipes(family)).TrimEnd('\r','\n')));
+        var source=helpers+"\n\nlocal "+
+            string.Join(",",Enumerable.Range(1,x.AuthorLocals).Select(i=>"v"+i))+
+            "\nreturn Game.GetStatsSystem()\n";
+        if(x.CRLF)source=source.Replace("\n","\r\n",StringComparison.Ordinal);
+        File.WriteAllText(Path.Combine(folder,x.File),source,new UTF8Encoding(false));
+    }
+    var groupedStaged=new Dictionary<string,byte[]>(StringComparer.OrdinalIgnoreCase);
+    var groupedCounts=new Dictionary<string,int>();
+    var groupedManifest=new List<object>();
+    var groupedSkips=new List<object>();
+    object?[] groupedArgs=[liveCasesRoot,groupedStaged,groupedCounts,
+        groupedManifest,groupedSkips,actualRecipes];
+    Check((int)workerStage.Invoke(null,groupedArgs)==4 &&
+          groupedSkips.Count==0 && groupedManifest.Count==4,
+        "Full source helper inventories were rejected: "+
+            string.Join("; ",groupedSkips.Select(System.Text.Json.JsonSerializer.Serialize)));
+    foreach(var x in currentStackSpecs)
+    {
+        var file=x.Owner+"/"+x.File;
+        var transformed=Encoding.UTF8.GetString(groupedStaged[file]);
+        var generatedFiles=groupedStaged.Keys
+            .Where(k=>k.StartsWith(x.Owner+"/GCET_Semantic/gcet_native_reads_",
+                StringComparison.OrdinalIgnoreCase)).ToArray();
+        Check(generatedFiles.Length==1,
+            "Missing or duplicated extracted Lua worker for "+x.Owner);
+        var workerText=Encoding.UTF8.GetString(groupedStaged[generatedFiles[0]]);
+        foreach(var family in x.Families)
+        {
+            var reviewedMarker="-- G-CET shared provider: "+family;
+            Check(!transformed.Contains(reviewedMarker,StringComparison.Ordinal) &&
+                  workerText.Contains(reviewedMarker,StringComparison.Ordinal),
+                "Provider not moved exactly once to owner worker: "+x.Owner+"/"+family);
+        }
+        Check(transformed.Contains("__gcetNativeReads.GetStatsSystem()") &&
+              workerText.Contains("return Game.GetStatsSystem()") &&
+              transformed.Contains("local v1,v2,v3") &&
+              File.ReadAllText(Path.Combine(liveCasesRoot,x.Owner,x.File))
+                  .Contains("-- G-CET shared provider: "+x.Families[0],
+                      StringComparison.Ordinal),
+            "Owner source, fallback or author declarations changed: "+x.Owner);
+    }
+    Console.WriteLine("07:21 live provider inventories: 4 owners, 28 generated helpers "+
+        "relocated, 4 workers, exact author source retained: PASS");
+
 
     // Drift must refuse without modifying staged file.
     File.AppendAllText(main,"-- changed\n");
