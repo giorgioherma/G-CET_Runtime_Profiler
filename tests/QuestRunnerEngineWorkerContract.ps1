@@ -68,4 +68,21 @@ New-Item -ItemType Directory -Force (Join-Path $folder 'GCET_Semantic')|Out-Null
 [IO.File]::WriteAllText((Join-Path $folder 'GCET_Semantic/questrunner_engine_worker.lua'),$w,[Text.UTF8Encoding]::new($false))
 $again=Apply $b
 if($again.result.Applied){throw 'QuestRunner stage injected twice'}
+# The original semantic stage must also recognize this extracted worker as a
+# completed stage. Without the worker it must refuse a partial installation.
+$legacy=$t.GetMethod('ApplyQuestRunner',$flags)
+$ctx=$ctor.Invoke([object[]]@([string]$root,[string]'QuestRunner',
+    [string]'questrunner',[Collections.Generic.Dictionary[string,byte[]]]::new()))
+$complete=$legacy.Invoke($null,[object[]]@($ctx))
+if($complete.Applied -or $complete.Reason -notlike '*already installed*'){
+ throw 'Original QuestRunner semantic did not recognize completed engine worker'
+}
+Remove-Item (Join-Path $folder 'GCET_Semantic/questrunner_engine_worker.lua') -Force
+$missing=$ctor.Invoke([object[]]@([string]$root,[string]'QuestRunner',
+    [string]'questrunner',[Collections.Generic.Dictionary[string,byte[]]]::new()))
+$refused=$false
+try {[void]$legacy.Invoke($null,[object[]]@($missing))}catch {
+ $refused=$_.Exception.InnerException.Message -like '*missing or incompatible*'
+}
+if(!$refused){throw 'QuestRunner semantic accepted missing extracted worker'}
 Write-Host 'QuestRunner PASS5 worker and idempotent bridge: PASS'
