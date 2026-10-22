@@ -2,7 +2,7 @@ using System.Text.RegularExpressions;
 namespace GCETRuntimeProfiler.Core.Services;
 
 // Marmur 22.5: no finance, timer, popup API or legacy source rollback.
-// The separately packaged Lua owns the finite routing and ATM exit wake.
+// The worker owns finite routing and source-proven Vendor/Trade exit wake.
 internal static partial class SemanticInjectors
 {
     private static SemanticInjectionResult ApplyMarmurBankModernInput(SemanticPatchContext context)
@@ -54,17 +54,16 @@ internal static partial class SemanticInjectors
         var gate=Regex.Match(overrideSource,@"\bif\s+action\s+then\b");
         if(!gate.Success || Regex.Matches(overrideSource,@"\bif\s+action\s+then\b").Count!=1)
             throw new InvalidOperationException("Marmur override gate changed.");
-        if(!s.Contains("if getDialogHubCount(value) > 0 then",StringComparison.Ordinal) ||
-           !s.Contains("ui.vanillaDialogSeenAt = 0",StringComparison.Ordinal) ||
-           !main.Contains("local packageRequire = require",StringComparison.Ordinal) ||
+        if(!main.Contains("local packageRequire = require",StringComparison.Ordinal) ||
            !main.Contains("registerForEvent(\"onShutdown\"",StringComparison.Ordinal) ||
            !bank.Text.Contains("entry.isDropPoint",StringComparison.Ordinal))
             throw new InvalidOperationException("Marmur ATM popup, package or dialog-close proof changed.");
-        var dialogIndex=s.IndexOf("Override(\"InteractionUIBase\", \"OnDialogsData\"",StringComparison.Ordinal);
-        var vanillaEnd=s.IndexOf("\n\t\twrapped(value)",dialogIndex,StringComparison.Ordinal);
-        var closeIndex=s.IndexOf("ui.vanillaDialogSeenAt = 0",dialogIndex,StringComparison.Ordinal);
-        if(dialogIndex<0 || vanillaEnd<0 || closeIndex<0 || closeIndex>vanillaEnd)
-            throw new InvalidOperationException("Marmur vanilla dialogue close path changed.");
+        // The author's existing GameUI.Listen owns MenuClose; reuse it.
+        var menuListener=main.IndexOf("GameUI.Listen(function(state)",StringComparison.Ordinal);
+        var eventRow=main.IndexOf("local event = state.event",menuListener,StringComparison.Ordinal);
+        if(menuListener<0 || eventRow<menuListener ||
+           main.Split("local event = state.event",StringSplitOptions.None).Length!=2)
+            throw new InvalidOperationException("Marmur Vendor/Trade lifecycle event changed.");
         const string initAnchor="BANK:initialize(SPAWN)";
         const string tickAnchor="if delta > MARMUR_UPDATE_DELTA_MAX then delta = MARMUR_UPDATE_DELTA_MAX end";
         const string importAnchor="local function nowSeconds()";
@@ -83,14 +82,19 @@ internal static partial class SemanticInjectors
         s=s[..gateIndex]+
             "if action and __gcetWorker.overrideActive(ui, shouldSuppressVanillaNow) then"+
             s[(gateIndex+gate.Length)..];
-        dialogIndex=s.IndexOf("Override(\"InteractionUIBase\", \"OnDialogsData\"",StringComparison.Ordinal);
-        vanillaEnd=s.IndexOf("\n\t\twrapped(value)",dialogIndex,StringComparison.Ordinal);
-        if(vanillaEnd<0)throw new InvalidOperationException("Marmur dialog close handler moved.");
-        s=s[..vanillaEnd]+"\n\t\t__gcetWorker.dialog(ui, getDialogHubCount(value))"+s[vanillaEnd..];
         s=s.Replace(importAnchor,
             "local __gcetWorker = require(\"GCET_Semantic/marmurbank_ui_worker\")\n"+
+            "ui.__gcetDropoffVendorClose = function(state)\n"+
+            "    return __gcetWorker.vendorClose(ui, state)\nend\n"+
             "ui.__gcetDropoffTick = function(gameplay, inMenu, delta)\n"+
             "    return __gcetWorker.tick(ui, gameplay, inMenu, delta)\nend\n\n"+importAnchor,
+            StringComparison.Ordinal);
+        // Existing GameUI observer receives Vendor exit without a new listener.
+        const string eventAnchor="local event = state.event";
+        main=main.Replace(eventAnchor,eventAnchor+
+            "\n\t\tif event == \"MenuClose\" and BANK and BANK.interactionUI and "+
+            "BANK.interactionUI.__gcetDropoffVendorClose then"+
+            "\n\t\t\tBANK.interactionUI.__gcetDropoffVendorClose(state)\n\t\tend",
             StringComparison.Ordinal);
         main=main.Replace(initAnchor,initAnchor+
             "\n\t\tif BANK.interactionUI then BANK.interactionUI.__gcetBank = BANK end",
@@ -101,7 +105,8 @@ internal static partial class SemanticInjectors
             StringComparison.Ordinal);
         if(!s.Contains(marker,StringComparison.Ordinal) ||
            !s.Contains("__gcetWorker.subscribe",StringComparison.Ordinal) ||
-           !main.Contains("__gcetDropoffTick",StringComparison.Ordinal))
+           !main.Contains("__gcetDropoffTick",StringComparison.Ordinal) ||
+           !main.Contains("__gcetDropoffVendorClose(state)",StringComparison.Ordinal))
             throw new InvalidOperationException("Marmur worker source postcondition failed.");
         context.Write(ui,ui.Text.Contains("\r\n",StringComparison.Ordinal)
             ?s.Replace("\n","\r\n",StringComparison.Ordinal):s);
@@ -111,7 +116,7 @@ internal static partial class SemanticInjectors
 -- G-CET semantic coordinator:marmurbank-modern-input-v2
 -- No ATM class overrides; reuses author's vanilla dialogue close and bank tick.
 local M = {}
-local wake = { armed = false, pending = nil, index = 0 }
+local wake = { pending = nil, index = 0 }
 local function nearby(ui)
   local bank = ui.__gcetBank
   if not bank or not bank.isInitialized or ui.hubShown or
@@ -159,15 +164,14 @@ function M.subscribe(actionsMap, callback, observe)
   observe("PlayerPuppet", "OnAction", callback)
   return false
 end
-function M.dialog(ui, count)
-  if tonumber(count) and count > 0 then
-    wake.pending = nil
-    wake.index = nearby(ui)
-    wake.armed = wake.index > 0
-  elseif wake.armed then
-    wake.armed = false
-    wake.pending = 0
-  end
+function M.vendorClose(ui, state)
+  -- Only the vanilla Vendor/Trade menu exit can arm an ATM wake.
+  if not state or state.lastMenu ~= "Vendor" or
+     (state.lastSubmenu ~= nil and state.lastSubmenu ~= false and
+      state.lastSubmenu ~= "Trade") then return end
+  local index = nearby(ui)
+  wake.index = index
+  wake.pending = index > 0 and 0 or nil
 end
 function M.tick(ui, gameplay, inMenu, delta)
   if wake.pending == nil then return end
@@ -176,12 +180,8 @@ function M.tick(ui, gameplay, inMenu, delta)
   if wake.pending > 1.5 then wake.pending = nil; return end
   if not gameplay or inMenu or ui.hubShown or
      ui.suppressVanillaDialogs or ui.clearingVanillaDialogs or
-     wake.pending < 0.12 then return end
-  local base = ui.baseControler
-  if base then
-    local ok, stillOpen = pcall(function() return base.AreDialogsOpen == true end)
-    if not ok or stillOpen then return end
-  end
+     wake.pending < 0.35 then return end
+  -- The existing source GameUI listener already proved Vendor menu close.
   local index = nearby(ui)
   if index == 0 or index ~= wake.index then wake.pending = nil; return end
   wake.pending = nil
@@ -192,7 +192,7 @@ return M
 """);
         return SemanticInjectionResult.Success(
             "22.5 Bank action registration moved to separate 0-Engine coordinator; "+
-            "idle override decode eliminated; nearby vanilla drop-point close opens "+
+            "idle override decode eliminated; nearby Vendor/Trade menu close opens "+
             "the original popup through existing 20Hz timer. Author finance, ATM "+
             "keybind, package handshake and suppression fallback preserved.");
     }
