@@ -35,7 +35,9 @@ end
 
 
 local currentUiLanguage = "en-us"
-languages = {['en-us']=false}
+languages = {
+ ['en-us']=false
+}
 
 function loadAllLanguageFiles()
  return loadJsonTable("language/en-us/cetUiStrings.json")
@@ -62,9 +64,10 @@ local function vectorDistance2D(src, target);
 end;
 
 registerForEvent("onInit",function()
-  if uiDefaultStrings.nuiUiStrings then
-    local exportTable = {}
-    exportTable.exportOrder = {'fileHeader', 'uiStrings'}
+	if true then
+		if uiDefaultStrings.nuiUiStrings then
+		local exportTable = {}
+		exportTable.exportOrder = {'fileHeader', 'uiStrings'}
     exportTable.fileHeader = exportedStringsFileHeader
     exportTable.uiStrings = uiDefaultStrings.nuiUiStrings
     if type(jsonDump) == 'string' then saveTextFile(jsonDump, "language/en-us_template/nuiUiStrings.json") end
@@ -76,8 +79,9 @@ registerForEvent("onInit",function()
       local exportTable = {}
       if type(jsonDump) == 'string' then saveTextFile(jsonDump, "language/en-us_template/destinationStrings.json") end
     end
-  end
-  local nativeSettings = GetMod("nativeSettings")
+		end
+	end
+	local nativeSettings = GetMod("nativeSettings")
   local lastlanguageSelected = userSettings.lastLanguageSelected
   loadLocalizedStrings(true, true)
   if userSettings.lastLanguageSelected ~= lastlanguageSelected then saveUserSettings() end
