@@ -183,6 +183,20 @@ public static class OptimizationClassCountService
             if (string.IsNullOrWhiteSpace(owner))
                 owner = Str(row, "owner");
             var type = Str(row, "type");
+            // Source-first generic stages use the changed relative mod file
+            // as their identity; they don't originate from captured callback
+            // owners. Never let their successful work disappear from coverage.
+            if (string.IsNullOrWhiteSpace(owner) && type != "SEMANTIC_RULE")
+            {
+                var file=Str(row,"file").Replace('\\','/');
+                var cut=file.IndexOf('/');
+                if(cut>0)
+                {
+                    var candidate=file[..cut];
+                    if(candidate is not ("0-Engine" or "G-CET" or "G-CET-Profiler" or "red4ext"))
+                        owner=candidate;
+                }
+            }
             if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(type))
                 continue;
 
