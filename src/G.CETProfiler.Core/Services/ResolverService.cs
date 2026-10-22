@@ -71,6 +71,77 @@ public static class ResolverService
             JsonSerializer.SerializeToElement(augmented));
         augmented["optimizationClassCoverage"] = JsonSerializer.SerializeToNode(coverage);
 
+        // A blacklisted mod is still profiled, but must not inflate the
+        // displayed Ready/Generate button counts. Retain other owners' counts.
+        var genericReady = result.GenericResolvedCount;
+        var nonFrameReady = result.NonFrameOnlyAutoCount;
+        var frameReady = result.FrameOnlyAutoCount;
+        var providerReady = result.SharedProviderReadyCallbackCount;
+        var providerReads = result.SharedProviderReadyReadCount;
+        var providerFamilies = result.SharedProviderReadyFamilies;
+        if (blacklistedMods.Length > 0)
+        {
+            static bool Bool(JsonElement row, string name) =>
+                row.ValueKind == JsonValueKind.Object &&
+                row.TryGetProperty(name, out var value) &&
+                value.ValueKind == JsonValueKind.True;
+            static string Str(JsonElement row, string name) =>
+                row.ValueKind == JsonValueKind.Object &&
+                row.TryGetProperty(name, out var value) &&
+                value.ValueKind == JsonValueKind.String
+                    ? value.GetString() ?? "" : "";
+            static long Id(JsonElement row, string name) =>
+                row.ValueKind == JsonValueKind.Object &&
+                row.TryGetProperty(name, out var value) &&
+                value.ValueKind == JsonValueKind.Number &&
+                value.TryGetInt64(out var n) ? n : 0;
+
+            if (report.TryGetProperty("callbackFamilies", out var families) &&
+                families.ValueKind == JsonValueKind.Array)
+                foreach (var family in families.EnumerateArray())
+                {
+                    if (!family.TryGetProperty("topConsumers", out var consumers) ||
+                        consumers.ValueKind != JsonValueKind.Array) continue;
+                    var kind = Str(family, "resolverFamily");
+                    foreach (var row in consumers.EnumerateArray())
+                    {
+                        if (!ModOptimizationBlacklist.IsBlacklistedOwner(Str(row, "owner")) ||
+                            !row.TryGetProperty("generic", out var generic) ||
+                            !Bool(generic, "Automatable")) continue;
+                        genericReady = Math.Max(0, genericReady - 1);
+                        if (kind is "ONUPDATE" or "ONDRAW")
+                            frameReady = Math.Max(0, frameReady - 1);
+                        else nonFrameReady = Math.Max(0, nonFrameReady - 1);
+                    }
+                }
+
+            var blockedIds = new HashSet<long>();
+            var blockedReads = 0;
+            var retainedFamilies = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (report.TryGetProperty("sharedProviderOpportunities", out var providers) &&
+                providers.ValueKind == JsonValueKind.Array)
+                foreach (var family in providers.EnumerateArray())
+                {
+                    if (!family.TryGetProperty("callbacks", out var callbacks) ||
+                        callbacks.ValueKind != JsonValueKind.Array) continue;
+                    var familyName = Str(family, "provider");
+                    foreach (var row in callbacks.EnumerateArray())
+                    {
+                        if (!Bool(row, "substitutionEligible")) continue;
+                        if (ModOptimizationBlacklist.IsBlacklistedOwner(Str(row, "owner")))
+                        {
+                            var id = Id(row, "registrationId");
+                            if (id > 0) blockedIds.Add(id);
+                            blockedReads += (int)Id(row, "sourceRecognizedOccurrences");
+                        }
+                        else retainedFamilies.Add(familyName);
+                    }
+                }
+            providerReady = Math.Max(0, providerReady - blockedIds.Count);
+            providerReads = Math.Max(0, providerReads - blockedReads);
+            providerFamilies = providerFamilies.Where(retainedFamilies.Contains).ToArray();
+        }
+
         var resolverPath = Path.Combine(captureRoot, ResultReportService.ResolverResolutionFileName);
         File.WriteAllText(
             resolverPath,
@@ -81,15 +152,15 @@ public static class ResolverService
             resolverPath,
             result.FamilyCount,
             result.RankedCallbackCount,
-            result.GenericResolvedCount,
-            result.NonFrameOnlyAutoCount,
-            result.FrameOnlyAutoCount,
+            genericReady,
+            nonFrameReady,
+            frameReady,
             result.MaterialRemainingCount,
             result.BelowThresholdCount,
-            result.SemanticReadyRuleCount,
-            result.SharedProviderReadyCallbackCount,
-            result.SharedProviderReadyReadCount,
-            result.SharedProviderReadyFamilies,
+            blacklistedMods.Length > 0 ? coverage.ReadyRuleCount : result.SemanticReadyRuleCount,
+            providerReady,
+            providerReads,
+            providerFamilies,
             result.AlreadySatisfiedCount,
             result.UnresolvedCount,
             coverage,

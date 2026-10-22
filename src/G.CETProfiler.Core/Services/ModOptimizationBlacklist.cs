@@ -86,6 +86,7 @@ public static class ModOptimizationBlacklist
                         if (consumer["semantic"] is JsonObject semantic)
                         {
                             semantic["GenerationEnabled"] = false;
+                            semantic["generationReady"] = false;
                             semantic["Status"] = "MOD_BLACKLISTED_INCOMPATIBLE";
                         }
                     }

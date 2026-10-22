@@ -33,7 +33,7 @@ if(@($plans|Where-Object{$_.RelativeFile -like 'marmurbank/*'}).Count -ne 0) {
 $doc=[System.Text.Json.Nodes.JsonNode]::Parse(@'
 {
  "callbackFamilies":[{"topConsumers":[
-  {"owner":"marmurbank","generic":{"Automatable":true,"Status":"READY"},"semantic":{"GenerationEnabled":true}},
+  {"owner":"marmurbank","generic":{"Automatable":true,"Status":"READY"},"semantic":{"GenerationEnabled":true,"generationReady":true}},
   {"owner":"UnrelatedMod","generic":{"Automatable":true,"Status":"READY"}}
  ]}],
  "semanticSourceOnlyCandidates":[
@@ -50,6 +50,7 @@ $apply.Invoke($null,[object[]]@($doc,[string[]]@('marmurbank'))) | Out-Null
 function Flag($node) { return [bool]::Parse($node.ToString()) }
 if(Flag $doc['callbackFamilies'][0]['topConsumers'][0]['generic']['Automatable']){throw 'Blacklisted generic candidate stayed ready'}
 if(Flag $doc['callbackFamilies'][0]['topConsumers'][0]['semantic']['GenerationEnabled']){throw 'Blacklisted semantic candidate stayed ready'}
+if(Flag $doc['callbackFamilies'][0]['topConsumers'][0]['semantic']['generationReady']){throw 'Semantic-ready summary still counts Marmur Bank'}
 if(Flag $doc['semanticSourceOnlyCandidates'][0]['generationEnabled']){throw 'Blacklisted source-only stage stayed ready'}
 if(Flag $doc['sharedProviderOpportunities'][0]['callbacks'][0]['substitutionEligible']){throw 'Blacklisted provider stayed ready'}
 if(!(Flag $doc['callbackFamilies'][0]['topConsumers'][1]['generic']['Automatable'])){throw 'Unrelated generic was blocked'}
