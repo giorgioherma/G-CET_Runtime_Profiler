@@ -91,6 +91,7 @@ internal static class SharedProviderTemplateRepairSource
             if(broken!=1)
             {
                 reason="Multiple malformed expressions in one G-CET provider: "+provider;
+                result=source;changes=0;families=[];
                 return false;
             }
             var corrected=block.Replace(BrokenExpression,
@@ -104,6 +105,7 @@ internal static class SharedProviderTemplateRepairSource
             {
                 reason="Malformed G-CET provider cannot be source-verified: "+
                     provider+"; "+mismatch;
+                result=source;changes=0;families=[];
                 return false;
             }
             result=candidate;changes++;fixedFamilies.Add(provider);
