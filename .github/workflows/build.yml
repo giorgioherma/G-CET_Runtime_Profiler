@@ -1213,6 +1213,10 @@ jobs:
         shell: pwsh
         run: ./tests/PassGenerationOutcomeContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: Dedra combat camera event wake source contract
+        shell: pwsh
+        run: ./tests/DedraThirdPersonCombatWakeContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: Marmur Bank all-release blacklist contract
         shell: pwsh
         run: ./tests/MarmurBankBlacklistContract.ps1 -ResolverRoot ./publish-resolver

@@ -7774,6 +7774,86 @@
       "evidenceMembership": [
         "G-CET_CURRENT_STACK_20261021"
       ]
+    },
+    {
+      "id": "dedra-third-person-combat-wake",
+      "identityHints": [
+        "DedraThirdPersonCombatAddon"
+      ],
+      "policyClass": "EVENT_DRIVEN_CAMERA_COMBAT_WAKE",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "combat camera/weapon animation owner"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "local function dedraReadItp()",
+          "local function dedraStep(dt)",
+          "local function dedraFirstPersonOnly(player)",
+          "local function dedraLeaveTakeover(player, backToFirst)",
+          "registerForEvent(\"onInit\", function()"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:dedra-third-person-combat-wake",
+        "expectedMarkerFileCount": 1,
+        "sourceCompletionAuthoritative": true,
+        "satisfiedAll": [
+          "__gcetDedraEventWakeV1",
+          "__gcetDedraDue(dt)",
+          "__gcetDedraStepDelta"
+        ]
+      },
+      "behavior": {
+        "handler": "SEMANTIC_CAMERA_COMBAT_EVENT_WAKE",
+        "concepts": [
+          "originalCETToggle",
+          "basePerspectiveEvents",
+          "frameRealtimeCombat",
+          "zeroHeavyWorkWhenFpp",
+          "standby4Hz",
+          "pendingCleanupNeverSleeps",
+          "standaloneFallback"
+        ],
+        "lanes": [
+          {
+            "role": "TPP_DISABLED",
+            "cadence": "API_STATE_PROBE_ONLY",
+            "seconds": 0.1
+          },
+          {
+            "role": "TPP_ENABLED_NONCOMBAT",
+            "cadence": "FIXED_SECONDS",
+            "seconds": 0.25
+          },
+          {
+            "role": "COMBAT_TAKEOVER_AND_CLEANUP",
+            "cadence": "EVERY_FRAME",
+            "seconds": 0
+          }
+        ],
+        "note": "On the current Dedra source, the base ITP API owns userWantsThirdPerson and combat override. Do not add a duplicate F7 binding, disable standalone fallback, throttle combat takeovers or prevent aim cleanup. Source changes fail closed."
+      },
+      "generation": {
+        "enabled": true,
+        "sourceIndependentAdmission": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 9.422138,
+        "admitted": true,
+        "evidenceStack": "CET_20261022_105614"
+      },
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false
     }
   ],
   "catalog": {

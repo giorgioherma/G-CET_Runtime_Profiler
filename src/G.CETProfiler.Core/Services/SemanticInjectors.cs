@@ -150,6 +150,7 @@ internal static partial class SemanticInjectors
             "marmurbank" => ApplyMarmurBank(context),
             "marmurbank-modern-input" => ApplyMarmurBankModernInput(context),
             "immersive-third-person" => ApplyImmersiveThirdPerson(context),
+            "dedra-third-person-combat-wake" => ApplyDedraThirdPersonCombatWake(context),
             "immersive-third-person-action-routing" => ApplyImmersiveThirdPersonActionRouting(context),
             "immersivefirstperson" => ApplyImmersiveFirstPerson(context),
             "nativeinteractions" => ApplyNativeInteractions(context),
