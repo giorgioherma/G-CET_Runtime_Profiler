@@ -25,6 +25,7 @@ internal static partial class SemanticInjectors
             "ziggy-last-play-navigation-sentinel-v3" or
             "immersivefirstperson" or
             "calllist-action-lazy-display-query" or
+            "dedra-third-person-combat-wake" or
             "immersive-third-person-action-routing" or
             "backstep-duo" or
             "specter-recovery-prerequisite-reads" or

@@ -219,6 +219,68 @@ internal static partial class SemanticInjectors
     // wholesale supervisor/maintenance throttling on those new dependencies.
     // Only hoist null-state guards already proven as first operation of each
     // owner function; all active work still runs every frame with original delta.
+
+    // Signal the combat add-on from the base's ORIGINAL CET toggle. This does
+    // not register F7, interpret the current camera view, or force a switch:
+    // a user request can remain deferred during a combat/scene override.
+    private static SemanticInjectionResult ApplyImmersiveThirdPersonDedraToggleSignal(
+        SemanticPatchContext context)
+    {
+        var file=context.FindFile("init.lua",
+            "local function autoTppHandleToggle()",
+            "registerInput(\"tpp_camera_toggle\"",
+            "pcall(autoTppHandleToggle)");
+        var src=file.Text.Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
+        const string marker="__gcetDedraToggleSignalV2";
+        if(src.Contains(marker,StringComparison.Ordinal))
+        {
+            if(src.Contains("pcall(mod.__gcetDedraToggleSignalV2)",StringComparison.Ordinal) &&
+               src.Contains("mod.__gcetDedraWakeBridgeV2 = true",StringComparison.Ordinal))
+                return SemanticInjectionResult.Skip("ITP user-request signal already present.");
+            throw new InvalidOperationException("Incomplete base ITP toggle signal.");
+        }
+        const string binding =
+            "registerInput(\"tpp_camera_toggle\", TEXT.bindToggle[1], function(keypress)\n" +
+            "  if not keypress then\n" +
+            "    return\n" +
+            "  end\n\n" +
+            "  pcall(autoTppHandleToggle)\n" +
+            "end)";
+        if(src.Split(binding,StringSplitOptions.None).Length!=2)
+            throw new InvalidOperationException("Base ITP CET toggle callback changed; no safe addon signal.");
+        const string helper = """
+        -- __gcetDedraToggleSignalV2: original user request may precede camera switch.
+        mod.__gcetDedraWakeBridgeV2 = true
+        mod.__gcetDedraToggleSignalV2 = function()
+          local ok, addon = pcall(GetMod, "DedraThirdPersonCombatAddon")
+          if ok and type(addon) == "table" and
+             type(addon.__gcetWakeFromBase) == "function" then
+            pcall(addon.__gcetWakeFromBase)
+          end
+        end
+
+        """;
+        var update=binding.Replace("  pcall(autoTppHandleToggle)\n",
+            "  pcall(autoTppHandleToggle)\n" +
+            "  pcall(mod.__gcetDedraToggleSignalV2)\n",StringComparison.Ordinal);
+        src=src.Replace(binding,helper+update,StringComparison.Ordinal);
+        // UI toggle uses the SAME author function, not a second keybind.
+        const string ui="    autoTppHandleToggle()\n";
+        var menu=src.IndexOf("if UI.wideButton(UI.icon(UI.ICONS.swap)",StringComparison.Ordinal);
+        if(menu>=0)
+        {
+            var toggle=src.IndexOf(ui,menu,StringComparison.Ordinal);
+            if(toggle>=0 && toggle-menu<400)
+                src=src[..toggle]+ui+"    pcall(mod.__gcetDedraToggleSignalV2)\n"+src[(toggle+ui.Length)..];
+        }
+        if(file.Text.Contains("\r\n",StringComparison.Ordinal))
+            src=src.Replace("\n","\r\n",StringComparison.Ordinal);
+        context.Write(file,src);
+        return SemanticInjectionResult.Success(
+            "Existing base CET and UI toggle notify the add-on of requested TPP state, " +
+            "even when combat or scene temporarily defers the visible camera switch.");
+    }
+
     private static SemanticInjectionResult ApplyImmersiveThirdPersonUpdatedLoop(
         SemanticPatchContext context, SemanticTextFile file)
     {

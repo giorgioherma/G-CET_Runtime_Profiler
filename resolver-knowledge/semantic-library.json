@@ -14,7 +14,7 @@
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
     "fullPassRule": "An enabled, reviewed semantic injector may run with measured callback activity even below the default 3.0 ms/s soft CPU boundary, but only when its identity and current live-source proof match and the stage is not already satisfied. Generic native-dispatch/dormancy recipes retain their independent proof requirements.",
-    "enabledInjectorCount": 102,
+    "enabledInjectorCount": 103,
     "profileOnlyRuleCount": 0,
     "note": "The production semantic base contains source-proven, behavior-aware optimizations learned from validated references and measured hot callbacks, including burst-discovered diagnostic sentinels that preserve author cadence while gating globally expensive fallback scans. Generic/mechanical transforms stay in the Resolver; semantic rules cover state/cadence/hotpath knowledge that generic inference cannot safely own.",
     "admissionPolicy": {
@@ -5764,6 +5764,64 @@
       "referenceOverrideAllowed": false
     },
     {
+      "id": "immersive-third-person-dedra-toggle-signal",
+      "identityHints": [
+        "immersive_third_person"
+      ],
+      "policyClass": "EXISTING_CET_TOGGLE_SIGNAL",
+      "callbacks": [
+        {
+          "kind": "source",
+          "target": "init.lua",
+          "role": "base user-request edge notification"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "local function autoTppHandleToggle()",
+          "registerInput(\"tpp_camera_toggle\"",
+          "pcall(autoTppHandleToggle)"
+        ],
+        "sourceCompletionAuthoritative": true,
+        "alreadySatisfiedMarker": "G-CET semantic:immersive-third-person-dedra-toggle-signal",
+        "expectedMarkerFileCount": 1,
+        "satisfiedAll": [
+          "__gcetDedraToggleSignalV2",
+          "mod.__gcetDedraWakeBridgeV2 = true",
+          "pcall(mod.__gcetDedraToggleSignalV2)"
+        ]
+      },
+      "behavior": {
+        "handler": "SEMANTIC_CET_TOGGLE_WAKE_SIGNAL",
+        "concepts": [
+          "noDuplicateKeybind",
+          "userRequestBeforeCameraTransition",
+          "deferredCombatOverride",
+          "noFramePolling"
+        ],
+        "note": "Preserve base original F7/configured registerInput and notify only after the author accepts its toggle. Current camera may remain FPP until combat/scene override releases."
+      },
+      "generation": {
+        "enabled": true,
+        "sourceIndependentAdmission": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 0,
+        "measuredPeakExclusiveMsPerSecond": 0,
+        "admitted": true,
+        "evidenceStack": "ITP_USER_TOGGLE_LIVE_SOURCE_20261022"
+      },
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false
+    },
+    {
       "id": "hotscenes-ui-action-dormancy",
       "identityHints": [
         "hotscenes"
@@ -7800,40 +7858,41 @@
         "expectedMarkerFileCount": 1,
         "sourceCompletionAuthoritative": true,
         "satisfiedAll": [
-          "__gcetDedraEventWakeV1",
-          "__gcetDedraDue(dt)",
-          "__gcetDedraStepDelta"
+          "__gcetDedraDetachedWakeV2",
+          "Dedra.__gcetWakeController.Register()",
+          "Dedra.__gcetWakeFromBase"
         ]
       },
       "behavior": {
         "handler": "SEMANTIC_CAMERA_COMBAT_EVENT_WAKE",
         "concepts": [
-          "originalCETToggle",
-          "basePerspectiveEvents",
-          "frameRealtimeCombat",
-          "zeroHeavyWorkWhenFpp",
-          "standby4Hz",
-          "pendingCleanupNeverSleeps",
-          "standaloneFallback"
+          "existingCETToggleOnly",
+          "baseF7SignalsRequestedTPP",
+          "detachedSharedFrameListenerWhenOff",
+          "noIdleFramePolling",
+          "noIdleTimers",
+          "originalCombatRealtime",
+          "pendingCleanupRealtime",
+          "failOpenWithoutBaseOrZeroEngine"
         ],
+        "note": "V2 supersedes V1 timer/probe gate. Separate per-mod Lua worker registers one 0-Engine FrameListeners subscriber; pausing detaches from the shared emitter while requested TPP is false and author cleanup completed. Base toggles signal after author state changes even if visible perspective is deferred by combat. Base API events handle transitions/session; original author step and CET fallback preserved.",
         "lanes": [
           {
-            "role": "TPP_DISABLED",
-            "cadence": "API_STATE_PROBE_ONLY",
-            "seconds": 0.1
+            "role": "TPP_DISABLED_CLEAN",
+            "cadence": "DETACHED_EVENT_WAKE",
+            "seconds": 0
           },
           {
-            "role": "TPP_ENABLED_NONCOMBAT",
-            "cadence": "FIXED_SECONDS",
-            "seconds": 0.25
-          },
-          {
-            "role": "COMBAT_TAKEOVER_AND_CLEANUP",
+            "role": "TPP_REQUESTED_OR_AUTHOR_CLEANUP",
             "cadence": "EVERY_FRAME",
             "seconds": 0
+          },
+          {
+            "role": "UNKNOWN_RUNTIME_FALLBACK",
+            "cadence": "AUTHOR_UNCHANGED",
+            "seconds": 0
           }
-        ],
-        "note": "On the current Dedra source, the base ITP API owns userWantsThirdPerson and combat override. Do not add a duplicate F7 binding, disable standalone fallback, throttle combat takeovers or prevent aim cleanup. Source changes fail closed."
+        ]
       },
       "generation": {
         "enabled": true,
