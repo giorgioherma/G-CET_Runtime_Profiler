@@ -72,3 +72,37 @@ The compiled code and tests run in the managed Profiler/Resolver workflow;
 Optional future profiler extension: bounded aggregate outgoing Lua→C++ getter
 counts for A/B. Existing inbound native→Lua marshalling attribution is not
 a substitute and is never reported as exact outbound savings.
+
+
+## Near-limit, separate-Lua helper migration (2026-10-22)
+
+`GenericReadCoordinatorSource` is a **generic** pre-adoption phase. When the
+source's active-local peak is at least 197 and the file contains exactly
+recognizable G-CET-generated provider headers, it moves those exact headers
+to one file-owned `GCET_Semantic/gcet_native_reads_<stable-path-id>.lua`.
+Its module path is derived from the file's relative path (not Lua SHA,
+author version, or a historical pass). Existing calls resolve via one
+`local __gcetNativeReads = require(...)` and table methods. Any fresh
+eligible getter joins the same worker, retaining its originally proven
+`Game.Get…()` fallback. Author gameplay locals and all author callbacks
+remain untouched; no new polling loop or timer is registered.
+
+Staged/live workers are recognized through the matching source bridge,
+file-owner header, exact generated provider bodies, and canonical exports.
+A modified, missing, unrecognized, or foreign worker is refused rather
+than overwritten. Custom `require` override packages require a bespoke
+semantic bridge and are intentionally excluded.
+
+The local count is recomputed on the final original source and must be
+at most 200. Other mods use the existing in-file generic provider strategy.
+A file already at 200 with no G-CET provider block (notably Hotscenes
+`init.lua`) cannot acquire the one required local import; it remains
+a truthful `LUA_LOCAL_LIMIT` deferral pending independently reviewed
+source scope extraction. No author locals are deleted.
+
+The integration test in
+`tests/NativeReadReuseContract/Program.cs` proves the 200→199-local
+source case, worker packaging, original fallback preservation,
+idempotence, current-source getter expansion and no live-source mutation.
+A new produced ZIP from the user's full stack remains to be reviewed;
+source tests and green CI do not prove game performance or LuaJIT behavior.
