@@ -399,29 +399,8 @@ internal sealed record CompiledNativeLocations(byte[] Bytes,
             }
         }
 
-        if(Has("marmurbank/module/Bank.lua")) {
-            var bank=Read("marmurbank/module/Bank.lua");
-            // Only author-owned banker geometry is inventoried. This must
-            // also work with the original large Bank.lua which has not yet
-            // been optimized to 0-Engine SpatialHash. Its compiled records
-            // remain inert until a later reviewed semantic subscribes.
-            if(bank?.Contains("PosData",StringComparison.Ordinal)==true) {
-                // Preserve the entire current nearest-discovery scan, NOT
-                // merely the two-metre interaction threshold. Fail closed if
-                // source changes the radius expression beyond recognition.
-                var search=Regex.Match(bank,
-                    @"\bsearchRadiusSq\s*=\s*(?<r>"+Num+@")\s*\*\s*\k<r>",
-                    RegexOptions.CultureInvariant);
-                // The reviewed banker spatial stage searches 25m. Source
-                // with a larger proven radius keeps that larger boundary;
-                // unidentified bank implementations are never subscribed
-                // without their own independent semantic source proof.
-                var searchRadius=search.Success ? Number(search.Groups["r"].Value) : 25f;
-                if(searchRadius>0 && searchRadius<=1000)
-                    Include(10036,BankerSites(Read("marmurbank/data/PosData.lua"))
-                        .Select(site=>site with{Radius=searchRadius+5}));
-            }
-        }
+        // Marmur Bank is blacklisted across every release: never emit
+        // the former native owner 10036 into a new GCAS inventory.
 
         if(Has("yaibaPenthouse/bathtub.lua")){
             var src=Read("yaibaPenthouse/bathtub.lua");

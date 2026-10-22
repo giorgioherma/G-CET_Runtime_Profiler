@@ -67,7 +67,10 @@ public static class PassGeneratorService
             throw new DirectoryNotFoundException($"CET mods folder was not found: {modsRoot}");
 
         using var resolver = JsonDocument.Parse(File.ReadAllText(resolverPath));
-        var candidates = ReadCandidates(resolver.RootElement);
+        var candidates = ReadCandidates(resolver.RootElement)
+            .Where(c => !ModOptimizationBlacklist.IsBlacklistedOwner(c.Owner) &&
+                !ModOptimizationBlacklist.IsBlacklistedPath(c.RelativeFile))
+            .ToList();
 
         var groups = candidates
             .GroupBy(x => x.RelativeFile, StringComparer.OrdinalIgnoreCase)
@@ -79,6 +82,10 @@ public static class PassGeneratorService
         var fixedInfrastructurePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var transformManifest = new List<object>();
         var skipped = new List<object>();
+        var blacklistedMods = ModOptimizationBlacklist.FindInstalledOwners(modsRoot);
+        foreach (var owner in blacklistedMods)
+            skipped.Add(new {type = "MOD_BLACKLIST", category = "MOD_BLACKLIST",
+                owner, reason = ModOptimizationBlacklist.Warning});
 
         foreach (var group in groups)
         {
@@ -199,6 +206,12 @@ public static class PassGeneratorService
                 transformManifest,
                 skipped);
 
+        // Fail closed if a future stage bypasses the central owner policy.
+        var forbiddenOutput = staged.Keys.FirstOrDefault(ModOptimizationBlacklist.IsBlacklistedPath);
+        if (forbiddenOutput is not null)
+            throw new InvalidOperationException(
+                "Marmur Bank blacklist violation: generated output targets " + forbiddenOutput);
+
         if (staged.Count == 0 && availableLocations.OwnerCounts.Count == 0)
         {
             // An already-admitted authored rule may still fail its injector's
@@ -228,7 +241,8 @@ public static class PassGeneratorService
                 : "";
             throw new InvalidOperationException(
                 "The resolver produced no applicable generic or source-proven semantic transforms. " +
-                "No ZIP was generated." + details);
+                "No ZIP was generated." + details +
+                (blacklistedMods.Length > 0 ? " " + ModOptimizationBlacklist.Warning : ""));
         }
 
         var callbackFileCount = staged.Count;
@@ -371,6 +385,9 @@ public static class PassGeneratorService
                 compiledSourceOwnedNativeLocations = nativeLocations is not null,
                 compiledNativeLocationOwnerCounts = nativeLocations?.OwnerCounts,
                 modNameRules = false,
+                incompatibleModBlacklist = "MARMUR_BANK_ALL_RELEASES",
+                blacklistRule = ModOptimizationBlacklist.Warning,
+                blacklistedInstalledMods = blacklistedMods,
                 semanticDefaultRuntimeThresholdMsPerSecond = SemanticPassGeneratorService.MaterialThresholdMsPerSecond,
                 semanticRuleLocalRuntimeThresholds = true,
                 semanticThreeMsPerSecondIsSoftBoundary = true,
@@ -453,7 +470,8 @@ public static class PassGeneratorService
                 skipped = skipped.Count,
                 alreadyImplemented = skipOutcomes.AlreadyImplementedCount,
                 luaLocalLimitDeferred = skipOutcomes.LuaLocalLimitCount,
-                generationFailures = skipOutcomes.GenerationFailureCount
+                generationFailures = skipOutcomes.GenerationFailureCount,
+                blacklistedMods = skipOutcomes.BlacklistedCount
             },
             files = fileManifest,
             transforms = transformManifest,
@@ -468,6 +486,7 @@ public static class PassGeneratorService
                 alreadyImplemented = skipOutcomes.AlreadyImplementedCount,
                 luaLocalLimitDeferred = skipOutcomes.LuaLocalLimitCount,
                 generationFailures = skipOutcomes.GenerationFailureCount,
+                blacklistedMods = skipOutcomes.BlacklistedCount,
                 totalNotApplied = skipOutcomes.TotalNotApplied,
                 entries = skipOutcomes.Entries.Select(row => new
                 {

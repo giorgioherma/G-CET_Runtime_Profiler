@@ -5367,6 +5367,7 @@ internal static class CallbackResolverService
         {
             var relative = Path.GetRelativePath(modsRoot, file).Replace('\\', '/');
             var owner = relative.Split('/')[0];
+            if (ModOptimizationBlacklist.IsBlacklistedOwner(owner))continue;
             if (owner.Equals("0-Engine", StringComparison.OrdinalIgnoreCase) ||
                 owner.StartsWith("G-CET", StringComparison.OrdinalIgnoreCase))
                 continue;

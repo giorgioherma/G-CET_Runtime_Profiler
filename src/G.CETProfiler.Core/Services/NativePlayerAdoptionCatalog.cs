@@ -54,6 +54,7 @@ internal static class NativePlayerAdoptionCatalog
                      .OrderBy(x=>x,StringComparer.OrdinalIgnoreCase))
             {
                 var rel=Path.GetRelativePath(root,path).Replace('\\','/');
+                if(ModOptimizationBlacklist.IsBlacklistedPath(rel))continue;
                 // Enumerate infrastructure too: the inventory reports the
                 // COMPLETE installed Lua stack, even though generated
                 // transforms never modify reserved G-CET/0-Engine sources.

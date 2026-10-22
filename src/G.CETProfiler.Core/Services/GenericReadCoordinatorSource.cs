@@ -35,6 +35,7 @@ internal static class GenericReadCoordinatorSource
                     .OrderBy(x=>x,StringComparer.OrdinalIgnoreCase))
         {
             var rel=Path.GetRelativePath(root,file).Replace('\\','/');
+            if(ModOptimizationBlacklist.IsBlacklistedPath(rel))continue;
             var owner=rel.Split('/')[0];
             if(!rel.Contains('/') ||
                owner is "0-Engine" or "G-CET" or "G-CET-Profiler" ||

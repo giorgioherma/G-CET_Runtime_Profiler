@@ -13,6 +13,7 @@ public static class PassSkipSummaryService
     public const string AlreadyImplemented = "ALREADY_IMPLEMENTED";
     public const string LuaLocalLimit = "LUA_LOCAL_LIMIT";
     public const string GenerationFailure = "GENERATION_FAILURE";
+    public const string Blacklisted = "MOD_BLACKLIST";
 
     public sealed record Diagnostic(
         string Category, string Type, string? Owner, string? RuleId,
@@ -20,7 +21,7 @@ public static class PassSkipSummaryService
 
     public sealed record Summary(
         int AlreadyImplementedCount, int LuaLocalLimitCount,
-        int GenerationFailureCount, Diagnostic[] Entries)
+        int GenerationFailureCount, int BlacklistedCount, Diagnostic[] Entries)
     {
         public int TotalNotApplied => Entries.Length;
 
@@ -31,8 +32,9 @@ public static class PassSkipSummaryService
             sb.AppendLine($"Already implemented (verified, no duplicate generated): {AlreadyImplementedCount}");
             sb.AppendLine($"Deferred — Lua 200-local capacity: {LuaLocalLimitCount}");
             sb.AppendLine($"Generation failures — examine source/design compatibility: {GenerationFailureCount}");
+            sb.AppendLine($"Blacklisted incompatible mods (all versions): {BlacklistedCount}");
             sb.AppendLine($"Total not reapplied: {TotalNotApplied}");
-            foreach (var group in new[] { AlreadyImplemented, LuaLocalLimit, GenerationFailure })
+            foreach (var group in new[] { AlreadyImplemented, LuaLocalLimit, GenerationFailure, Blacklisted })
             {
                 var entries = Entries.Where(row => row.Category == group).ToArray();
                 if (entries.Length == 0) continue;
@@ -40,7 +42,8 @@ public static class PassSkipSummaryService
                 {
                     AlreadyImplemented => "ALREADY IMPLEMENTED:",
                     LuaLocalLimit => "LUA LOCAL LIMIT — DEFERRED:",
-                    _ => "GENERATION FAILURES — NEEDS REVIEW:"
+                    GenerationFailure => "GENERATION FAILURES — NEEDS REVIEW:",
+                    _ => "BLACKLISTED — NO FILES MODIFIED:"
                 };
                 sb.AppendLine().AppendLine(title);
                 foreach (var entry in entries)
@@ -99,13 +102,14 @@ public static class PassSkipSummaryService
             entries.Count(x => x.Category == AlreadyImplemented),
             entries.Count(x => x.Category == LuaLocalLimit),
             entries.Count(x => x.Category == GenerationFailure),
+            entries.Count(x => x.Category == Blacklisted),
             entries);
     }
 
     private static string Classify(string type, string reason, string? explicitCategory)
     {
         // Forward-compatible: emitters can supply explicit outcome categories.
-        if (explicitCategory is AlreadyImplemented or LuaLocalLimit or GenerationFailure)
+        if (explicitCategory is AlreadyImplemented or LuaLocalLimit or GenerationFailure or Blacklisted)
             return explicitCategory;
 
         if (type.Equals("LUA_LOCAL_LIMIT", StringComparison.OrdinalIgnoreCase) ||

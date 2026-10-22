@@ -81,6 +81,7 @@ internal static class ZeroEngineMethodResolutionSource
                      .OrderBy(p=>p,StringComparer.OrdinalIgnoreCase).Take(20000))
         {
             var key=Path.GetRelativePath(root,path).Replace('\\','/');
+            if(ModOptimizationBlacklist.IsBlacklistedPath(key))continue;
             if(key.StartsWith("0-Engine/",StringComparison.OrdinalIgnoreCase) ||
                key.StartsWith("G-CET/",StringComparison.OrdinalIgnoreCase))
                 continue;

@@ -29,6 +29,7 @@ internal static class SharedProviderTemplateRepairSource
                      .OrderBy(x=>x,StringComparer.OrdinalIgnoreCase))
         {
             var relative=Path.GetRelativePath(root,file).Replace('\\','/');
+            if(ModOptimizationBlacklist.IsBlacklistedPath(relative))continue;
             if(!relative.Contains('/') ||
                relative.StartsWith("0-Engine/",StringComparison.OrdinalIgnoreCase))
                 continue;

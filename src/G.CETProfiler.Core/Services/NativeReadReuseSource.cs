@@ -33,7 +33,7 @@ internal static class NativeReadReuseSource
                              .OrderBy(x=>x,StringComparer.OrdinalIgnoreCase).Take(20000))
         {
             var relative=Path.GetRelativePath(root,path).Replace('\\','/');
-            if(IsInfrastructure(relative))continue;
+            if(IsInfrastructure(relative) || ModOptimizationBlacklist.IsBlacklistedPath(relative))continue;
             byte[] bytes;
             try { bytes=File.ReadAllBytes(path); } catch { continue; }
             if(bytes.Length>2_000_000 || bytes.Any(x=>x==0))continue;
@@ -223,6 +223,7 @@ internal static class NativeReadReuseSource
         var prefix=rootPath.TrimEnd(Path.DirectorySeparatorChar)+Path.DirectorySeparatorChar;
         foreach(var rel in paths)
         {
+            if(ModOptimizationBlacklist.IsBlacklistedPath(rel))continue;
             var path=Path.GetFullPath(Path.Combine(rootPath,
                 rel.Replace('/',Path.DirectorySeparatorChar)));
             if(!path.StartsWith(prefix,StringComparison.OrdinalIgnoreCase)||

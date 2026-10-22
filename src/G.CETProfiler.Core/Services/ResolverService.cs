@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace GCETRuntimeProfiler.Core.Services;
 
@@ -18,7 +19,8 @@ public sealed record ResolverBuildResult(
     string[] SharedProviderReadyFamilies,
     int AlreadySatisfiedCount,
     int UnresolvedCount,
-    ResolverOptimizationCoverage OptimizationCoverage);
+    ResolverOptimizationCoverage OptimizationCoverage,
+    string[] BlacklistedMods);
 
 /// <summary>
 /// Top-level G-CET resolver. Callback families are the primary unit of work.
@@ -62,8 +64,11 @@ public static class ResolverService
         // Extract distinct owner/class counts from the same complete rows that
         // feed the report. Persist them under an explicit unit-bearing key.
         var report = JsonSerializer.SerializeToElement(result.Document);
-        var coverage = OptimizationClassCountService.Analyze(report);
-        var augmented = System.Text.Json.Nodes.JsonNode.Parse(report.GetRawText())!;
+        var augmented = JsonNode.Parse(report.GetRawText())!;
+        var blacklistedMods = ModOptimizationBlacklist.FindInstalledOwners(modsRoot);
+        ModOptimizationBlacklist.ApplyToResolver(augmented, blacklistedMods);
+        var coverage = OptimizationClassCountService.Analyze(
+            JsonSerializer.SerializeToElement(augmented));
         augmented["optimizationClassCoverage"] = JsonSerializer.SerializeToNode(coverage);
 
         var resolverPath = Path.Combine(captureRoot, ResultReportService.ResolverResolutionFileName);
@@ -87,7 +92,8 @@ public static class ResolverService
             result.SharedProviderReadyFamilies,
             result.AlreadySatisfiedCount,
             result.UnresolvedCount,
-            coverage);
+            coverage,
+            blacklistedMods);
     }
     public static PassBuildResult GeneratePass(
         string captureRoot,

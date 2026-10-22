@@ -33,6 +33,8 @@ internal static class SemanticPassGeneratorService
 
         foreach (var candidate in candidates)
         {
+            if (ModOptimizationBlacklist.IsBlacklistedOwner(candidate.Owner))
+                continue;
             var context = new SemanticPatchContext(
                 modsRoot,
                 candidate.Owner,
@@ -270,6 +272,7 @@ internal static class SemanticPassGeneratorService
         var applied=0;
         foreach(var item in verifiedFollowups)
         {
+            if(ModOptimizationBlacklist.IsBlacklistedOwner(item.Owner))continue;
             var relative=item.Owner+"/"+item.File;
             if(!staged.TryGetValue(relative,out var prior))continue;
             var context=new SemanticPatchContext(modsRoot,item.Owner,item.Rule,staged);

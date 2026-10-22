@@ -289,7 +289,8 @@ internal sealed class ResolverForm : Form
             _output.Text =
                 $"G-CET resolver output:\r\n{result.ResolverPath}\r\n\r\n" +
                 "Live CET sources were inspected read-only. No mod files were changed.\r\n\r\n" +
-                OptimizationClassCountService.FormatReady(result.OptimizationCoverage);
+                OptimizationClassCountService.FormatReady(result.OptimizationCoverage) +
+                ModOptimizationBlacklist.FormatWarning(result.BlacklistedMods);
         }
         catch (Exception ex)
         {
@@ -334,7 +335,8 @@ internal sealed class ResolverForm : Form
                 _status.Text = "No applicable pass changes remain after live-source revalidation.";
                 _output.Text =
                     $"G-CET resolver output:\r\n{resolved.ResolverPath}\r\n\r\n" +
-                    "No pass ZIP was generated because the current live stack has no applicable changes.";
+                    "No pass ZIP was generated because the current live stack has no applicable changes." +
+                    ModOptimizationBlacklist.FormatWarning(resolved.BlacklistedMods);
                 return;
             }
 
@@ -349,6 +351,7 @@ internal sealed class ResolverForm : Form
                 $"{applied.AppliedRuleCount} transforms, {applied.ModifiedModFileCount} mod files. " +
                 $"Failures: {outcomes.GenerationFailureCount} | " +
                 $"Already: {outcomes.AlreadyImplementedCount} | " +
+                $"Blacklisted: {outcomes.BlacklistedCount} | " +
                 $"Lua limit: {outcomes.LuaLocalLimitCount}.";
             _output.Text =
                 $"G-CET pass ZIP:\r\n{pass.ZipPath}\r\n\r\n" +
@@ -359,7 +362,8 @@ internal sealed class ResolverForm : Form
                 outcomes.FormatForUi() + "\r\n\r\n" +
                 OptimizationClassCountService.FormatApplied(applied) + "\r\n\r\n" +
                 "The ZIP contains only deployable game files. The JSON manifest is kept beside it in RESULTS. " +
-                "No live mod files were changed by the resolver.";
+                "No live mod files were changed by the resolver." +
+                ModOptimizationBlacklist.FormatWarning(resolved.BlacklistedMods);
         }
         catch (Exception ex)
         {

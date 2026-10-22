@@ -86,6 +86,9 @@ internal static class Program
                 result.MaterialRemainingCount,
                 result.BelowThresholdCount,
                 result.UnresolvedCount,
+                result.BlacklistedMods,
+                blacklistWarning = result.BlacklistedMods.Length > 0
+                    ? ModOptimizationBlacklist.Warning : null,
                 pass
             }, JsonOptions));
             return 0;
