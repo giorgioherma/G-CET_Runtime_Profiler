@@ -97,9 +97,10 @@ internal static class SharedProviderTemplateRepairSource
                 "__gcetEngine.GCET."+recipe.Getter,StringComparison.Ordinal);
             var candidate=result[..marker.Index]+corrected+result[end..];
             var reviewed=string.Join("\n",headerForProvider(provider)).TrimEnd('\r','\n');
+            var mismatch="Missing reviewed fallback recipe";
             if(reviewed.Length==0 ||
                !GenericReadCoordinatorSource.TryFindProviderBlock(candidate,
-                   provider,recipe.Getter,reviewed,out _,out var mismatch))
+                   provider,recipe.Getter,reviewed,out _,out mismatch))
             {
                 reason="Malformed G-CET provider cannot be source-verified: "+
                     provider+"; "+mismatch;
