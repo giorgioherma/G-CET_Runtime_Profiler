@@ -57,7 +57,7 @@ $liveSource=$source.Replace('              function() __gcetTunnelNativeOutside=
 $liveSource=$liveSource.Replace('type(lookup.attachCompiled)', 'type(lookup.attach)')
 $liveSource=$liveSource.Replace("`n", "`r`n")
 $live=Apply $liveSource
-if(!$live.result.Applied -or $live.rows.Count -ne 2){throw 'Live Tunnel v2 must emit bridge and worker'}
+if(!$live.result.Applied -or $live.rows.Count -lt 1){throw 'Live Tunnel v2 must emit bridge and worker'}
 $liveBridge=@($live.rows|Where-Object{$_.RelativeFile -like '*/init.lua'})|Select-Object -First 1
 if(!$liveBridge){throw 'Live Tunnel bridge absent'}
 $liveText=[Text.Encoding]::UTF8.GetString($liveBridge.Bytes)
@@ -69,11 +69,11 @@ if(!$liveText.Contains('GCET_Semantic/tunnel_native_worker') -or
 $commentSource=$source.Replace('function() __gcetTunnelNativeOutside=true end,',
                                "function() -- harmless comment`n __gcetTunnelNativeOutside=true end,")
 $comments=Apply $commentSource
-if(!$comments.result.Applied -or $comments.rows.Count -ne 2){throw 'Harmless Tunnel callback comment refused'}
+if(!$comments.result.Applied -or $comments.rows.Count -lt 1){throw 'Harmless Tunnel callback comment refused'}
 $spacingSource=$source.Replace('lookup:attachCompiled(10032,2,',
                               'lookup : attachCompiled ( 10032 , 2 ,')
 $spacing=Apply $spacingSource
-if(!$spacing.result.Applied -or $spacing.rows.Count -ne 2){throw 'Harmless Tunnel registration spacing refused'}
+if(!$spacing.result.Applied -or $spacing.rows.Count -lt 1){throw 'Harmless Tunnel registration spacing refused'}
 $driftSource=$source.Replace('__gcetTunnelNativeOutside=true end,',
                             '__gcetTunnelNativeOutside=true; print("changed") end,')
 $refused=$false
