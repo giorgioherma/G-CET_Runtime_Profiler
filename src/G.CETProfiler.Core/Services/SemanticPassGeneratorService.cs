@@ -208,7 +208,17 @@ internal static class SemanticPassGeneratorService
                             "Coordinator output lost its exact semantic rule ownership.");
                 }
                 else if (!source.Split('\n').Any(line =>
-                             line.Trim().Equals(marker, StringComparison.OrdinalIgnoreCase)))
+                {
+                    var comment = line.Trim();
+                    if (comment.Equals(marker, StringComparison.OrdinalIgnoreCase))
+                        return true;
+                    // Reviewed injectors may version the marker independently
+                    // of the stable catalog RuleId (for example, "-v2").
+                    if (!comment.StartsWith(marker + "-v", StringComparison.OrdinalIgnoreCase))
+                        return false;
+                    var suffix = comment[(marker.Length + 2)..];
+                    return suffix.Length > 0 && suffix.All(char.IsDigit);
+                }))
                 {
                     throw new InvalidOperationException(
                         "Author source output lost its semantic rule ownership: " + path);
