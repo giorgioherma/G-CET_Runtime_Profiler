@@ -22,6 +22,7 @@ internal static partial class SemanticInjectors
             "hotscenes-ui-action-dormancy" or
             "driveaerialvehicle" or
             "tunnel-rescue-v3" or
+            "tunnel-missing-hooks-diagnostics" or
             "ziggy-last-play-navigation-sentinel-v3" or
             "immersivefirstperson" or
             "calllist-action-lazy-display-query" or
@@ -127,6 +128,7 @@ internal static partial class SemanticInjectors
             "auto-drop-weapon-dynamic-routing" => ApplyAutoDropWeaponOnPickupEquip(context),
             "joytoys-of-night-city-bridge-active-split-idle-facts-v2" => ApplyJoytoysOfNightCity(context),
             "tunnel-rescue-v3" => ApplyTunnelRescue(context),
+            "tunnel-missing-hooks-diagnostics" => ApplyTunnelMissingHooksDiagnostics(context),
             "ziggy-last-play-navigation-sentinel-v3" => ZiggyProximitySource.Apply(context),
             "aerial-race-active-idle-split" => ApplyAerialRaceActiveIdleSplit(context),
             "appearance-menu-mod-preset-once" => ApplyAppearanceMenuPresetTimer(context),

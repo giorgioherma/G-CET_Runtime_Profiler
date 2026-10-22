@@ -208,7 +208,7 @@ local function unindexPin(interaction) end
 local function findPinInteraction(mappin, mappinID) return nil end
 world.pinInteractions = {}
 world.pinnedInteractions = {}
-ObserveAfter("BaseMappinBaseController", "UpdateRootState", function(this) -- Custom pin texture
+    ObserveAfter("BaseMappinBaseController", "UpdateRootState", function(this) -- Custom pin texture
   local mappin=this:GetMappin()
   if not mappin then return end
   local profile=this:GetProfile()
@@ -233,4 +233,19 @@ if($raw.IndexOf('if next(world.pinInteractions)') -gt $raw.IndexOf('local mappin
 }
 if([IO.File]::ReadAllText($nifPath) -ne $nif){throw 'NIF original source overwritten'}
 Write-Host 'NativeInteractions empty-pin observer gate PASS'
-Write-Host 'Five GC/idle source-safe hot mod stages PASS'
+
+$tunnel=@'
+local H={diag=0,tick=0,clock=0}
+local function status() return true end
+local function update(dt)
+ H.clock=H.clock+dt;H.tick=H.tick+dt;H.diag=H.diag+dt
+ if H.tick<.15 then return end;dt=math.min(H.tick,.5);H.tick=0;H.age=H.age+dt
+ if not valid(H.hooks)then H.error='Native TRQHooks unavailable. Native scripts need to reload.';if H.diag>3 then H.diag=0;status()end;return end
+end
+'@
+Check 'tunnel_rescue' 'tunnel-missing-hooks-diagnostics' 'ApplyTunnelMissingHooksDiagnostics' $tunnel @(
+ '__gcetTunnelMissingHooksDiagV1',
+ '__gcetTunnelMissingHooksReported and 15 or 3',
+ '__gcetTunnelMissingHooksReported=false') 'Native TRQHooks unavailable. Native scripts need to reload.'
+Write-Host 'Six GC/idle source-safe mod stages PASS'
+

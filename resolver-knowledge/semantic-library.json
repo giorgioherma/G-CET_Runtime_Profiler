@@ -14,7 +14,7 @@
     "runtimeEvidenceRequired": true,
     "referencePatchesShipWithResolver": false,
     "fullPassRule": "An enabled, reviewed semantic injector may run with measured callback activity even below the default 3.0 ms/s soft CPU boundary, but only when its identity and current live-source proof match and the stage is not already satisfied. Generic native-dispatch/dormancy recipes retain their independent proof requirements.",
-    "enabledInjectorCount": 108,
+    "enabledInjectorCount": 109,
     "profileOnlyRuleCount": 0,
     "note": "The production semantic base contains source-proven, behavior-aware optimizations learned from validated references and measured hot callbacks, including burst-discovered diagnostic sentinels that preserve author cadence while gating globally expensive fallback scans. Generic/mechanical transforms stay in the Resolver; semantic rules cover state/cadence/hotpath knowledge that generic inference cannot safely own.",
     "admissionPolicy": {
@@ -8188,6 +8188,66 @@
         "measuredPeakExclusiveMsPerSecond": 8.22,
         "admitted": true,
         "evidenceStack": "CET_20261022_105614"
+      },
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false
+    },
+    {
+      "id": "tunnel-missing-hooks-diagnostics",
+      "identityHints": [
+        "tunnel_rescue"
+      ],
+      "policyClass": "SOURCE_PROVEN_MISSING_NATIVE_DIAGNOSTIC_CADENCE",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onUpdate",
+          "role": "native hook unavailable diagnostic"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "local function status()",
+          "local function update(dt)",
+          "Native TRQHooks unavailable. Native scripts need to reload.",
+          "H.diag=H.diag+dt"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:tunnel-missing-hooks-diagnostics",
+        "expectedMarkerFileCount": 1,
+        "sourceCompletionAuthoritative": true,
+        "satisfiedAll": [
+          "__gcetTunnelMissingHooksDiagV1",
+          "__gcetTunnelMissingHooksReported and 15 or 3",
+          "__gcetTunnelMissingHooksReported=false"
+        ]
+      },
+      "behavior": {
+        "handler": "SEMANTIC_MISSING_NATIVE_DIAGNOSTICS",
+        "concepts": [
+          "preserveReadinessProbe",
+          "reduceRepeatedJsonAndDiskWrites",
+          "firstErrorAfter3s",
+          "noQuestCadenceChanges"
+        ],
+        "note": "Only affects persistent missing TRQHooks error path. Does not fix missing hook or reduce normal active quest diagnostic cadence. Reset reporter when native hooks become valid."
+      },
+      "generation": {
+        "enabled": true,
+        "sourceIndependentAdmission": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 1.5,
+        "measuredPeakExclusiveMsPerSecond": 1.887,
+        "admitted": true,
+        "evidenceStack": "CET_20261022_105614",
+        "rationale": "Measured Tunnel 1.887 ms/s while same-process status.json documents absent TRQHooks and repeated costly full diagnostic writes; source-proven error cadence pass has no gameplay impact."
       },
       "catalogRole": "SEMANTIC_HOT_MOD",
       "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
