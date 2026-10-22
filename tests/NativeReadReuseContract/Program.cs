@@ -236,6 +236,76 @@ try
     Console.WriteLine("GCET near-limit source -> separate Lua worker; 200 to 199 locals, "+
         "current-source upgrade and idempotence: PASS");
 
+    // Four previously refused live owners used the real G-CET 0-Engine
+    // provider body, but with CRLF or cosmetic indentation differences.
+    // Exercise that complete recipe (not a simplified synthetic helper).
+    var recipeType=core.GetType(
+        "GCETRuntimeProfiler.Core.Services.PassGeneratorService+SharedProviderRecipe",true)!;
+    var mkRecipe=recipeType.GetMethod("Create",
+        BindingFlags.NonPublic|BindingFlags.Public|BindingFlags.Static)!;
+    var mkHeader=typeof(PassGeneratorService).GetMethod(
+        "BuildSharedProviderHeader",BindingFlags.NonPublic|BindingFlags.Static)!;
+    Func<string,IEnumerable<string>> actualRecipes=p=>
+    {
+        var getter=p switch
+        {
+            "MAPPIN_SYSTEM"=>"GetMappinSystem",
+            "BLACKBOARD_SYSTEM"=>"GetBlackboardSystem",
+            "DYNAMIC_ENTITY_SYSTEM"=>"GetDynamicEntitySystem",
+            "AI_NAVIGATION_SYSTEM"=>"GetAINavigationSystem",
+            "PLAYER"=>"GetPlayer",
+            _=>throw new InvalidOperationException("Unreviewed test provider "+p)
+        };
+        var recipe=mkRecipe.Invoke(null,[p,getter,"__gcet"+getter])!;
+        return (IEnumerable<string>)mkHeader.Invoke(null,[recipe])!;
+    };
+    foreach(var (provider,getter) in new[]{
+        ("MAPPIN_SYSTEM","GetMappinSystem"),
+        ("BLACKBOARD_SYSTEM","GetBlackboardSystem"),
+        ("DYNAMIC_ENTITY_SYSTEM","GetDynamicEntitySystem"),
+        ("AI_NAVIGATION_SYSTEM","GetAINavigationSystem")})
+    {
+        var testRoot=Path.Combine(root,"reviewed-provider-"+provider);
+        var owner=Path.Combine(testRoot,"Reviewed");
+        Directory.CreateDirectory(owner);
+        var helper=string.Join("\n",actualRecipes(provider))
+            .Replace("    if ","\tif ",StringComparison.Ordinal);
+        var code=helper+"\n"+"local "+
+            string.Join(",",Enumerable.Range(1,198).Select(n=>"v"+n))+
+            "\nreturn __gcet"+getter+"(), Game.GetPlayer()\n";
+        code=code.Replace("\n","\r\n",StringComparison.Ordinal);
+        var target=Path.Combine(owner,"init.lua");
+        File.WriteAllText(target,code,new UTF8Encoding(false));
+        var changed=new Dictionary<string,byte[]>(StringComparer.OrdinalIgnoreCase);
+        var diagnostics=new List<object>();
+        object?[] arguments=[testRoot,changed,new Dictionary<string,int>(),
+            new List<object>(),diagnostics,actualRecipes];
+        Check((int)workerStage.Invoke(null,arguments)==1&&diagnostics.Count==0,
+            "Production helper with CRLF/indentation was rejected: "+provider);
+        var bridge=Encoding.UTF8.GetString(changed["Reviewed/init.lua"]);
+        var workerPath=changed.Keys.Single(x=>x.Contains("GCET_Semantic/gcet_native_reads_"));
+        var emitted=Encoding.UTF8.GetString(changed[workerPath]);
+        Check(bridge.Contains("\r\n",StringComparison.Ordinal) &&
+              bridge.Contains("__gcetNativeReads."+getter+"()") &&
+              !bridge.Contains("local function __gcet"+getter+"()") &&
+              emitted.Contains("return Game."+getter+"()") &&
+              emitted.Contains("pcall(GetMod, \"0-Engine\")") &&
+              File.ReadAllText(target)==code,
+            "Relocation did not preserve exact 0-Engine/Game fallback "+provider);
+        var drift=code.Replace("return Game."+getter+"()",
+            "return Game.Nonmatching"+getter+"()",StringComparison.Ordinal);
+        File.WriteAllText(target,drift,new UTF8Encoding(false));
+        var negative=new Dictionary<string,byte[]>(StringComparer.OrdinalIgnoreCase);
+        var reasons=new List<object>();
+        object?[] rejectArgs=[testRoot,negative,new Dictionary<string,int>(),
+            new List<object>(),reasons,actualRecipes];
+        Check((int)workerStage.Invoke(null,rejectArgs)==0 &&
+              negative.Count==0 && reasons.Count==1,
+            "Non-layout source change must refuse the "+provider+" worker");
+    }
+    Console.WriteLine("Production 0-Engine provider bodies: CRLF and indentation admitted, "+
+        "unknown getter bodies refused: PASS");
+
     // Drift must refuse without modifying staged file.
     File.AppendAllText(main,"-- changed\n");
     var before=staged["Example/init.lua"].ToArray();
