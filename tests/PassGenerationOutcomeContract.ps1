@@ -20,7 +20,7 @@ foreach($owner in @('ImmersiveFirstPerson','GigCore','Card Collection',
 }
 [IO.File]::WriteAllText($path,(@{skipped=$items}|ConvertTo-Json -Depth 10),
     [Text.UTF8Encoding]::new($false))
-$summary=$method.Invoke($null,@($path))
+$summary=$method.Invoke($null,[object[]]@([string]$path))
 if($summary.AlreadyImplementedCount -ne 6 -or
    $summary.LuaLocalLimitCount -ne 5 -or
    $summary.GenerationFailureCount -ne 0 -or
@@ -41,7 +41,7 @@ $items.Add(@{type='SEMANTIC_RULE';Owner='Dedka';
   reason='Partial source conflict: already installed marker but missing worker.'})
 [IO.File]::WriteAllText($path,(@{skipped=$items}|ConvertTo-Json -Depth 10),
     [Text.UTF8Encoding]::new($false))
-$bad=$method.Invoke($null,@($path))
+$bad=$method.Invoke($null,[object[]]@([string]$path))
 if($bad.AlreadyImplementedCount -ne 6 -or
    $bad.LuaLocalLimitCount -ne 6 -or
    $bad.GenerationFailureCount -ne 2 -or
