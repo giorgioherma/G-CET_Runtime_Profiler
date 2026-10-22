@@ -310,6 +310,29 @@ public static class PassGeneratorService
         outputZipPath = Path.GetFullPath(outputZipPath);
 
         var skipOutcomes = PassSkipSummaryService.FromSkipped(skipped);
+        // A coordinator is a newly emitted mod Lua file, not a replacement
+        // for an author file. The old constant "false" contradicted the
+        // actual 15-worker output and hid generic read workers as well.
+        var coordinatorOutputFiles = staged.Keys
+            .Where(key=>key.Contains("/GCET_Semantic/",StringComparison.OrdinalIgnoreCase)
+                 && key.EndsWith(".lua",StringComparison.OrdinalIgnoreCase))
+            .OrderBy(key=>key,StringComparer.OrdinalIgnoreCase).ToArray();
+        var newCoordinatorOutputFiles = coordinatorOutputFiles
+            .Where(key=>!File.Exists(Path.Combine(modsRoot,
+                key.Replace('/',Path.DirectorySeparatorChar)))).ToArray();
+        var semanticCoordinatorOutputFiles = transformManifest
+            .Select(item=>JsonSerializer.SerializeToElement(item))
+            .Where(item=>item.TryGetProperty("type",out var type) &&
+                type.GetString()=="SEMANTIC_RULE")
+            .SelectMany(item=>item.TryGetProperty("files",out var files) &&
+                files.ValueKind==JsonValueKind.Array
+                    ? files.EnumerateArray().Select(file=>file.GetString() ?? "").ToArray()
+                    : Array.Empty<string>())
+            .Where(file=>file.Contains("/GCET_Semantic/",StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var newSemanticCoordinatorOutputCount=semanticCoordinatorOutputFiles.Count(file=>
+            !File.Exists(Path.Combine(modsRoot,file.Replace('/',
+                Path.DirectorySeparatorChar))));
 
         var manifest = new
         {
@@ -345,7 +368,11 @@ public static class PassGeneratorService
                 semanticSourceIndependentAdmissionExplicitCatalogOptInOnly = true,
                 semanticCurrentSourceProofRequired = true,
                 semanticExistingLiveFilesOnly = true,
-                semanticCreatesNewModFiles = false,
+                semanticCreatesNewModFiles = newSemanticCoordinatorOutputCount > 0,
+                semanticMayCreateSourceOwnedLuaCoordinators = true,
+                semanticCoordinatorFilesEmitted = semanticCoordinatorOutputFiles.Length,
+                sourceOwnedLuaCoordinatorFilesEmitted = coordinatorOutputFiles.Length,
+                sourceOwnedLuaCoordinatorFilesNew = newCoordinatorOutputFiles.Length,
                 semanticReferenceOverridesShipped = false,
                 luaLocalVariableLimit = LuaLocalBudgetAnalyzer.Limit,
                 luaLocalBudgetPolicy = "ALLOW_UP_TO_200_ACTIVE_LOCALS_PER_FUNCTION; REFUSE_G-CET_FILE_TRANSFORM_IF_GENERATED_SOURCE_EXCEEDS_LIMIT; NEVER_DELETE_AUTHOR_CODE_TO_MAKE_ROOM",
