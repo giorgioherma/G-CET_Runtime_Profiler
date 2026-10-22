@@ -49,4 +49,38 @@ New-Item -ItemType Directory -Force (Join-Path $folder 'GCET_Semantic') | Out-Nu
 [IO.File]::WriteAllText((Join-Path $folder 'GCET_Semantic/tunnel_native_worker.lua'),$w,[Text.UTF8Encoding]::new($false))
 $again=Apply $b
 if($again.result.Applied){throw 'Tunnel worker reapplied'}
+
+# CI #1801 regression: live Tunnel v2 has different indentation, CRLF,
+# and the legacy attach capability guard before the compiled call.
+$liveSource=$source.Replace('              function() __gcetTunnelNativeOutside=true end,',
+                            '      function() __gcetTunnelNativeOutside=true end,')
+$liveSource=$liveSource.Replace('type(lookup.attachCompiled)', 'type(lookup.attach)')
+$liveSource=$liveSource.Replace("`n", "`r`n")
+$live=Apply $liveSource
+if(!$live.result.Applied -or $live.rows.Count -ne 2){throw 'Live Tunnel v2 must emit bridge and worker'}
+$liveBridge=@($live.rows|Where-Object{$_.RelativeFile -like '*/init.lua'})|Select-Object -First 1
+if(!$liveBridge){throw 'Live Tunnel bridge absent'}
+$liveText=[Text.Encoding]::UTF8.GetString($liveBridge.Bytes)
+if(!$liveText.Contains('GCET_Semantic/tunnel_native_worker') -or
+   $liveText.Contains('lookup:attachCompiled(10032,2') -or
+   !$liveText.Contains("`r`n")){throw 'Live Tunnel native subscription not migrated once'}
+
+# Accept benign comments/spacing while rejecting changed callback effects.
+$commentSource=$source.Replace('function() __gcetTunnelNativeOutside=true end,',
+                               "function() -- harmless comment`n __gcetTunnelNativeOutside=true end,")
+$comments=Apply $commentSource
+if(!$comments.result.Applied -or $comments.rows.Count -ne 2){throw 'Harmless Tunnel callback comment refused'}
+$spacingSource=$source.Replace('lookup:attachCompiled(10032,2,',
+                              'lookup : attachCompiled ( 10032 , 2 ,')
+$spacing=Apply $spacingSource
+if(!$spacing.result.Applied -or $spacing.rows.Count -ne 2){throw 'Harmless Tunnel registration spacing refused'}
+$driftSource=$source.Replace('__gcetTunnelNativeOutside=true end,',
+                            '__gcetTunnelNativeOutside=true; print("changed") end,')
+$refused=$false
+try { $null=Apply $driftSource }
+catch { $refused=$_.Exception.Message -like '*native owner/source has changed*' }
+if(!$refused){throw 'Tunnel callback behavior drift was not refused'}
+
+Write-Host 'Tunnel live indentation/CRLF, benign variants and drift refusal: PASS'
+
 Write-Host 'Tunnel native tri-state worker, bridge and idempotence: PASS'
