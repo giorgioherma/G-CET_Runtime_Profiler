@@ -90,6 +90,14 @@ internal static class GenericReadCoordinatorSource
         workerRel=owner+"/GCET_Semantic/"+name;
         var module="GCET_Semantic/"+Path.GetFileNameWithoutExtension(name);
         var exists=source.Contains(Marker,StringComparison.Ordinal);
+        // Never overwrite a user module or a different source's coordinator.
+        if(!exists && (staged.ContainsKey(workerRel) ||
+            File.Exists(Path.Combine(modsRoot,workerRel.Replace('/',
+                Path.DirectorySeparatorChar)))))
+        {
+            reason="Read-worker target path is already owned by another file.";
+            return false;
+        }
         var functions=new Dictionary<string,string>(StringComparer.Ordinal);
         if(exists)
         {
@@ -160,6 +168,26 @@ internal static class GenericReadCoordinatorSource
                 +string.Join("|",functions.Keys.Select(Regex.Escape))+@")\b");
             foreach(Match m in funcs.Matches(lex))
                 substitutions.Add((m.Index,m.Length,Alias+"."+m.Value[6..]));
+        }
+        if(exists)
+        {
+            // Reconstruct exactly what the previously generated coordinator
+            // should contain. An author-edited worker is not disposable.
+            var canonical=WorkerMarker+relative+"\n"+
+                string.Join("\n\n",functions
+                    .Where(x=>worker.Contains(x.Value,StringComparison.Ordinal))
+                    .OrderBy(x=>x.Key,StringComparer.Ordinal).Select(x=>x.Value))+
+                "\n\nreturn { "+
+                string.Join(", ",functions
+                    .Where(x=>worker.Contains(x.Value,StringComparison.Ordinal))
+                    .Select(x=>x.Key)
+                    .OrderBy(x=>x,StringComparer.Ordinal)
+                    .Select(x=>x+" = __gcet"+x))+" }\n";
+            if(!string.Equals(worker,canonical,StringComparison.Ordinal))
+            {
+                reason="Existing source-owned read worker has unrelated edits; refusing overwrite.";
+                return false;
+            }
         }
         if(exists && calls.Length==0)return false;
         var builder=new StringBuilder(source);
