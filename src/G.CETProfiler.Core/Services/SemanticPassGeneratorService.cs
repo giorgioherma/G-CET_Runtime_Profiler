@@ -272,12 +272,13 @@ internal static class SemanticPassGeneratorService
         {
             var relative=item.Owner+"/"+item.File;
             if(!staged.TryGetValue(relative,out var prior))continue;
+            var context=new SemanticPatchContext(modsRoot,item.Owner,item.Rule,staged);
             var priorText=Encoding.UTF8.GetString(prior);
             if(!priorText.Contains(item.Prerequisite,StringComparison.Ordinal) ||
                priorText.Contains(item.Completion,StringComparison.Ordinal) ||
-               NativeLocationStructuralSource.CompleteStage(item.Rule,new[]{priorText}))
+               NativeLocationStructuralSource.CompleteStageWithCoordinator(
+                   context,item.Rule,priorText))
                 continue;
-            var context=new SemanticPatchContext(modsRoot,item.Owner,item.Rule,staged);
             try
             {
                 var rule=new SemanticCandidate(item.Rule,item.Owner,
@@ -574,6 +575,26 @@ internal sealed class SemanticPatchContext
     // New, author-scoped modules are allowed ONLY for a reviewed semantic
     // injector. They do not create a new mod, change arbitrary user files,
     // or bypass the per-file Lua budget and final overlay manifest.
+    // Read only a source-owner worker, considering staged output before live
+    // files; coordinator writes remain separately guarded by WriteCoordinator.
+    internal string? TryReadOwnedCoordinator(string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName) ||
+            fileName != Path.GetFileName(fileName) ||
+            !fileName.EndsWith(".lua",StringComparison.OrdinalIgnoreCase))
+            return null;
+        var folder=ResolveOwnerFolder();
+        if(folder is null)return null;
+        var relative=Path.GetFileName(folder)+"/GCET_Semantic/"+fileName;
+        if(_changes.TryGetValue(relative,out var pending))
+            return SemanticTextFile.From(relative,pending.Bytes).Text;
+        if(_staged.TryGetValue(relative,out var staged))
+            return SemanticTextFile.From(relative,staged).Text;
+        var absolute=Path.Combine(folder,"GCET_Semantic",fileName);
+        if(!File.Exists(absolute))return null;
+        return SemanticTextFile.From(relative,File.ReadAllBytes(absolute)).Text;
+    }
+
     // A worker already installed (and unchanged) is still part of this
     // source-owned stage. Its absence from Changes must not send two valid
     // author bridges back through an obsolete one-file count.

@@ -108,7 +108,59 @@ internal static class NativeLocationStructuralSource
                     break;
             }
         }
+        // A native subscription can be extracted into a G-CET-owned Lua
+        // coordinator. Completion must prove BOTH the original source bridge
+        // and that coordinator's compiled owner, never just the source marker.
+        var texts=sources.ToArray();
+        if(rule=="native-location-poker")
+        {
+            return texts.Any(source =>
+                source.Contains("G-CET native location:poker-structural-v1",StringComparison.Ordinal) &&
+                source.Contains("G-CET semantic:poker-native-worker-v1",StringComparison.Ordinal) &&
+                source.Contains("__gcetPokerNativeOwned",StringComparison.Ordinal) &&
+                source.Contains("__gcetPokerNativeNear",StringComparison.Ordinal) &&
+                Regex.IsMatch(source,@"\b[A-Za-z_]\w*\.Resume\(\)",Opt) &&
+                Regex.Matches(source,
+                    @"require\s*\(\s*['""]GCET_Semantic/poker_native_worker['""]\s*\)\s*\.\s*attach\s*\(\s*lookup\s*,\s*#\s*StreetTables\.locations\s*,",Opt).Count==1) &&
+                texts.Any(worker =>
+                    worker.Replace("\r\n","\n",StringComparison.Ordinal).StartsWith(
+                        "-- G-CET semantic coordinator:poker-native-worker\n",StringComparison.Ordinal) &&
+                    Regex.Matches(worker,@"host\s*:\s*attachCompiled\s*\(\s*10031\s*,\s*count\s*,",Opt).Count==1 &&
+                    worker.Contains("return ok and attached == true",StringComparison.Ordinal));
+        }
+        if(rule=="native-location-dedka")
+        {
+            return texts.Any(source =>
+                source.Contains("G-CET native location:dedka-structural-v1",StringComparison.Ordinal) &&
+                source.Contains("G-CET semantic:dedka-native-worker-v1",StringComparison.Ordinal) &&
+                source.Contains("__gcetDedkaRetire",StringComparison.Ordinal) &&
+                source.Contains("__gcetDedkaRestore",StringComparison.Ordinal) &&
+                source.Contains("startShopDetail()",StringComparison.Ordinal) &&
+                source.Contains("stopShopDetail()",StringComparison.Ordinal) &&
+                Regex.Matches(source,
+                    @"require\s*\(\s*['""]GCET_Semantic/dedka_native_worker['""]\s*\)\s*\.\s*attach\s*\(\s*lookup\s*,",Opt).Count==1) &&
+                texts.Any(worker =>
+                    worker.Replace("\r\n","\n",StringComparison.Ordinal).StartsWith(
+                        "-- G-CET semantic coordinator:dedka-native-worker\n",StringComparison.Ordinal) &&
+                    Regex.Matches(worker,@"host\s*:\s*attachCompiled\s*\(\s*10034\s*,\s*2\s*,",Opt).Count==1 &&
+                    worker.Contains("return ok and attached == true",StringComparison.Ordinal));
+        }
         return false;
+    }
+
+    // The source proof can span unchanged live Lua and freshly staged worker.
+    // An absent/mismatched worker never counts as a completed native stage.
+    internal static bool CompleteStageWithCoordinator(
+        SemanticPatchContext context,string rule,string source)
+    {
+        var name=rule switch
+        {
+            "native-location-poker"=>"poker_native_worker.lua",
+            "native-location-dedka"=>"dedka_native_worker.lua",
+            _=>null
+        };
+        var worker=name is null ? null : context.TryReadOwnedCoordinator(name);
+        return CompleteStage(rule,worker is null ? new[]{source} : new[]{source,worker});
     }
 
     // Current PASS4 variants can rename handles, regroup declarations, and
@@ -123,7 +175,7 @@ internal static class NativeLocationStructuralSource
         } catch(InvalidOperationException) {return null;}
         if(file.Text.Contains("G-CET native location:poker-structural-v1",StringComparison.Ordinal))
         {
-            if(CompleteStage("native-location-poker",new[]{file.Text}))
+            if(CompleteStageWithCoordinator(context,"native-location-poker",file.Text))
                 return SemanticInjectionResult.Skip("Source-proven native poker stage already satisfied.");
             throw new InvalidOperationException("Partial native poker source stage; refusing conflicting rewrite.");
         }
@@ -235,7 +287,7 @@ internal static class NativeLocationStructuralSource
         }catch(InvalidOperationException){return null;}
         if(file.Text.Contains("G-CET native location:dedka-structural-v1",StringComparison.Ordinal))
         {
-            if(CompleteStage("native-location-dedka",new[]{file.Text}))
+            if(CompleteStageWithCoordinator(context,"native-location-dedka",file.Text))
                 return SemanticInjectionResult.Skip("Source-proven native dedka stage already satisfied.");
             throw new InvalidOperationException("Partial native dedka source stage; refusing conflicting rewrite.");
         }
