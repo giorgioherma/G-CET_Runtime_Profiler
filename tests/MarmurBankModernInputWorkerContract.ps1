@@ -60,6 +60,8 @@ return ui
 $init=@'
 local packageEvent = registerForEvent
 local packageRequire = require
+local packageAllowedModules={ ["module/Bank"] = true }
+require=function(name) if not packageAllowedModules[name] then return nil end return packageRequire(name) end
 local function registerZeroEngineInterval(modName, interval, callback) end
 registerForEvent("onShutdown", function() end)
 if BANK then
@@ -105,7 +107,7 @@ $worker=[Text.Encoding]::UTF8.GetString((@($first.rows|Where-Object{$_.RelativeF
 foreach($needle in @('GCET_Semantic/marmurbank_ui_worker','__gcetWorker.subscribe','__gcetWorker.overrideActive','local function __gcetMarmurBankOnAction')) {
  if(!$u.Contains($needle)){throw "UI bridge lost $needle"}
 }
-foreach($needle in @('GameUI.Listen(function(state)','__gcetDropoffVendorClose(state)','BANK:updateTimers(delta)','BANK:initialize(SPAWN)')) {
+foreach($needle in @('GameUI.Listen(function(state)','__gcetDropoffVendorClose(state)','BANK:updateTimers(delta)','BANK:initialize(SPAWN)','["GCET_Semantic/marmurbank_ui_worker"]=true')) {
  if(!$i.Contains($needle)){throw "Init bridge lost $needle"}
 }
 foreach($needle in @('G-CET semantic coordinator:marmurbank-modern-input','state.lastMenu ~= "Vendor"','"Trade"','0.35','bank._atmPosCache','entry.isDropPoint','SubscribeAction','originalObserve')) {

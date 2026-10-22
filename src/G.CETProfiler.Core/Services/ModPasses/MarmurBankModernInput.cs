@@ -55,6 +55,7 @@ internal static partial class SemanticInjectors
         if(!gate.Success || Regex.Matches(overrideSource,@"\bif\s+action\s+then\b").Count!=1)
             throw new InvalidOperationException("Marmur override gate changed.");
         if(!main.Contains("local packageRequire = require",StringComparison.Ordinal) ||
+           !main.Contains("require=function(name)",StringComparison.Ordinal) ||
            !main.Contains("registerForEvent(\"onShutdown\"",StringComparison.Ordinal) ||
            !bank.Text.Contains("entry.isDropPoint",StringComparison.Ordinal))
             throw new InvalidOperationException("Marmur ATM popup, package or dialog-close proof changed.");
@@ -96,6 +97,15 @@ internal static partial class SemanticInjectors
             "BANK.interactionUI.__gcetDropoffVendorClose then"+
             "\n\t\t\tBANK.interactionUI.__gcetDropoffVendorClose(state)\n\t\tend",
             StringComparison.Ordinal);
+        // Author 22.5 replaces the global require in its deferred factory.
+        // Whitelist only this source-owned worker; preserve every stock entry.
+        var moduleList=new Regex(@"local\s+packageAllowedModules\s*=\s*\{");
+        if(moduleList.Matches(main).Count!=1)
+            throw new InvalidOperationException("Marmur package allowlist source changed.");
+        main=moduleList.Replace(main,m=>m.Value+
+            "[\"GCET_Semantic/marmurbank_ui_worker\"]=true,"+
+            "[\"GCET_Semantic/marmurbank_ui_worker.lua\"]=true,"+
+            "[\"GCET_Semantic.marmurbank_ui_worker\"]=true,",1);
         main=main.Replace(initAnchor,initAnchor+
             "\n\t\tif BANK.interactionUI then BANK.interactionUI.__gcetBank = BANK end",
             StringComparison.Ordinal);
