@@ -78,11 +78,13 @@ internal static partial class SemanticInjectors
           if accepted then __gcetDedraLinked = api end
           return accepted
         end
-        local function __gcetDedraPending()
+        local function __gcetDedraPending(p)
+          local cleanup = not p or p.userWantsThirdPerson ~= true
           return Dedra.takeover == true or Dedra.easeOut ~= nil
-            or Dedra.on == true or Dedra.armSent == true
-            or Dedra.aimAsk ~= nil or Dedra.headLookHeld == true
-            or Dedra.planeHeld == true or (Dedra.standIn ~= nil and Dedra.standIn ~= "")
+            or Dedra.aimAsk ~= nil or Dedra.planeHeld == true
+            or (cleanup and (Dedra.on == true or Dedra.armSent == true
+              or Dedra.headLookHeld == true
+              or (Dedra.standIn ~= nil and Dedra.standIn ~= "")))
         end
         local function __gcetDedraDue(dt)
           local step = math.max(dt or 0, 0)
@@ -114,7 +116,7 @@ internal static partial class SemanticInjectors
             __gcetDedraElapsed = 0
             return true
           end
-          local pending = __gcetDedraPending()
+          local pending = __gcetDedraPending(p)
           if not p.userWantsThirdPerson and not pending then
             return false  -- No weapon/PSM/native bridge work in FPP.
           end

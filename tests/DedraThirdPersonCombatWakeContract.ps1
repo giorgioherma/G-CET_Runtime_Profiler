@@ -69,7 +69,8 @@ foreach($needle in @(
   'status ~= 2','__gcetDedraProbe >= 0.10',
   '__gcetDedraElapsed < 0.25','p.userWantsThirdPerson',
   'p.override == "combat"','return true  -- Original standalone',
-  'Dedra.standIn ~= ""','Dedra.cfg.combatTpp = state',
+  'Dedra.standIn ~= ""','local cleanup = not p or p.userWantsThirdPerson ~= true',
+  '__gcetDedraPending(p)','Dedra.cfg.combatTpp = state',
   'pcall(dedraLeaveTakeover, player, true)')) {
   if(!$generated.Contains($needle)){throw "Combat wake postcondition missing: $needle"}
 }
