@@ -15,6 +15,17 @@ internal static partial class SemanticInjectors
         const string workerMarker="-- G-CET semantic:questrunner-engine-worker-v1";
         if(liveFile.Text.Contains(workerMarker,StringComparison.Ordinal))
         {
+            var worker=context.TryReadOwnedCoordinator("questrunner_engine_worker.lua");
+            if(worker is null ||
+               !worker.StartsWith(
+                   "-- G-CET semantic coordinator:questrunner-engine-worker",
+                   StringComparison.Ordinal) ||
+               !worker.Contains("managerIdleElapsed >= 0.20",
+                   StringComparison.Ordinal) ||
+               !worker.Contains("spawnerElapsed >= 0.25",
+                   StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "QuestRunner extracted 0-Engine worker missing or incompatible.");
             if(!liveFile.Text.Contains(
                     "require(\"GCET_Semantic/questrunner_engine_worker\")",
                     StringComparison.Ordinal) ||

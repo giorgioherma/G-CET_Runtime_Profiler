@@ -28,6 +28,15 @@ internal static partial class SemanticInjectors
         var hasDog=watchdog.Text.Contains(marker,StringComparison.Ordinal);
         if(hasDog && hasBridge)
         {
+            var worker=context.TryReadOwnedCoordinator("cyberpsycho_native_wake.lua");
+            if(worker is null ||
+               !worker.StartsWith(
+                   "-- G-CET semantic coordinator:native-location-cyberpsychos",
+                   StringComparison.Ordinal) ||
+               !worker.Contains("host:attachCompiled(owner, 1,",StringComparison.Ordinal) ||
+               !worker.Contains("1004100 + index",StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "Cyberpsychos watchdog/bridge exists but its native worker is missing or incompatible.");
             if(!watchdog.Text.Contains("Watchdog.nativeFar and Watchdog.nativeFar[site.id]",
                     StringComparison.Ordinal) ||
                !watchdog.Text.Contains("state.fallbackID == nil",StringComparison.Ordinal))
