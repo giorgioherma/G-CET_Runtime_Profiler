@@ -119,4 +119,32 @@ try {
         throw 'Actual pass UI is missing independently auditable class names and mod counts'
     }
 } finally { $manifestDoc.Dispose() }
+# A generic source worker has no captured registration/Owner, but is an
+# actually changed author mod and MUST NOT be reported as 0 mods/0 passes.
+$workerManifest=@'
+{
+  "transforms":[
+    {"type":"GENERIC_READ_COORDINATOR","file":"InfiniteGigs/init.lua",
+     "worker":"InfiniteGigs/GCET_Semantic/gcet_native_reads.lua",
+     "adoptedOccurrences":15},
+    {"type":"PERSONAL_HOTSCENES_ENGLISH_ONLY","file":"hotscenes/init.lua"}
+  ],
+  "files":[
+    {"path":"InfiniteGigs/init.lua","fixedInfrastructure":false},
+    {"path":"InfiniteGigs/GCET_Semantic/gcet_native_reads.lua","fixedInfrastructure":false},
+    {"path":"hotscenes/init.lua","fixedInfrastructure":false},
+    {"path":"0-Engine/init.lua","fixedInfrastructure":true}
+  ]
+}
+'@
+$workerDoc=[System.Text.Json.JsonDocument]::Parse($workerManifest)
+try {
+  $applied=[GCETRuntimeProfiler.Core.Services.OptimizationClassCountService]::FromManifest($workerDoc.RootElement)
+  if($applied.AppliedModCount -ne 2 -or $applied.AppliedRuleCount -ne 2 -or
+     $applied.ModifiedModFileCount -ne 3 -or
+     @($applied.AppliedGenericClasses).Count -ne 2) {
+    throw "Source-owned generic worker disappeared from UI coverage: $($applied | ConvertTo-Json -Depth 5)"
+  }
+} finally { $workerDoc.Dispose() }
+
 Write-Host 'Optimization class coverage PASS: captured and source-only mod readiness, distinct source-verified class counts, applied ZIP owner counts, multi-file and callback de-duplication, fixed 0-Engine exclusion.'
