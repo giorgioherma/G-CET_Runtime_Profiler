@@ -231,6 +231,11 @@ internal static class NativeReadReuseSource
             var key=rel.Replace('\\','/');
             var input=staged.TryGetValue(key,out var other)?other:original;
             var text=Decode(input);
+            // This source already routes G-CET reads through a separately
+            // generated, mod-owned Lua worker. Never add new provider locals
+            // or duplicate fallback definitions in the original source.
+            if(text.Contains(GenericReadCoordinatorSource.Marker,StringComparison.Ordinal))
+                continue;
             if(!TryTransformWithinBudget(text,headerForProvider,
                     out var result,out var operations,
                     out var fullPeak,out var deferredGetters))

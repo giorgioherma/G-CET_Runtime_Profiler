@@ -140,6 +140,15 @@ public static class PassGeneratorService
             modsRoot,staged,appliedTransformsByFile,
             transformManifest,skipped);
 
+        // Recover Lua local capacity before shared-read adoption. Move only
+        // exact G-CET-generated provider helpers into a source-owned Lua
+        // worker; original author locals, callbacks, and 0-Engine fallback
+        // behavior remain unchanged.
+        var genericReadWorkers = GenericReadCoordinatorSource.TryStage(
+            modsRoot, staged, appliedTransformsByFile, transformManifest, skipped,
+            provider => SharedProviderRecipes.TryGetValue(provider, out var recipe)
+                ? BuildSharedProviderHeader(recipe) : Array.Empty<string>());
+
         // Final generic rewrite before source-structural semantic stages.
         // Semantic injectors must adapt to the resulting current source.
         // Authorize using current staged Lua source shape.
@@ -307,6 +316,7 @@ public static class PassGeneratorService
                 selection = "MEASURED_GENERIC_PLUS_SOURCE_PROVEN_SEMANTIC_CANDIDATES_FROM_G-CET_Resolver.json",
                 nativeReadReuseContract = NativeReadReuseSource.Contract,
                 nativeReadReuseAppliedOccurrences = nativeReadReuseCount,
+                sourceOwnedGenericReadCoordinatorStages = genericReadWorkers,
                 legacyMethodLookupRepairOccurrences = methodLookupRepairs,
                 nativeReadReuseBypassesCallbackCpuGate = true,
                 nativeReadReuseBackend = "0-Engine:existing-shared-provider",
