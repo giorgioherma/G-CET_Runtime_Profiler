@@ -181,7 +181,7 @@ internal static class SemanticPassGeneratorService
         var coordinatorChanges = context.Changes
             .Where(change => context.IsOwnedCoordinator(change.RelativeFile))
             .ToList();
-        if (coordinatorChanges.Count > 0)
+        if (coordinatorChanges.Count > 0 || context.HasOwnedCoordinator())
         {
             var authorChanges = context.Changes
                 .Where(change => !context.IsOwnedCoordinator(change.RelativeFile))
@@ -574,6 +574,36 @@ internal sealed class SemanticPatchContext
     // New, author-scoped modules are allowed ONLY for a reviewed semantic
     // injector. They do not create a new mod, change arbitrary user files,
     // or bypass the per-file Lua budget and final overlay manifest.
+    // A worker already installed (and unchanged) is still part of this
+    // source-owned stage. Its absence from Changes must not send two valid
+    // author bridges back through an obsolete one-file count.
+    internal bool HasOwnedCoordinator()
+    {
+        var folder = ResolveOwnerFolder();
+        if (folder is null) return false;
+        var ownerPrefix = Path.GetFileName(folder) + "/GCET_Semantic/";
+        var marker = "-- G-CET semantic coordinator:" + RuleId + "\n";
+        foreach (var pair in _staged)
+        {
+            if (pair.Key.Replace('\\', '/').StartsWith(
+                    ownerPrefix, StringComparison.OrdinalIgnoreCase) &&
+                SemanticTextFile.From(pair.Key, pair.Value).Text
+                    .StartsWith(marker, StringComparison.Ordinal))
+                return true;
+        }
+        var directory = Path.Combine(folder, "GCET_Semantic");
+        if (!Directory.Exists(directory)) return false;
+        foreach (var file in Directory.EnumerateFiles(directory, "*.lua",
+                     SearchOption.TopDirectoryOnly))
+        {
+            if (File.ReadAllText(file)
+                    .Replace("\r\n", "\n", StringComparison.Ordinal)
+                    .StartsWith(marker, StringComparison.Ordinal))
+                return true;
+        }
+        return false;
+    }
+
     // A structural path check is independent of how many source files
     // an author version happens to use. Reject parent traversal and aliases.
     internal bool IsOwnerPath(string relativeFile)

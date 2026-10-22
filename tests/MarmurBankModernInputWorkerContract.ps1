@@ -159,12 +159,33 @@ try {
     $generated=$generate.Invoke($null,[object[]]@(
         $jsonDoc.RootElement,[string]$root,$staged,$byFile,$transforms,$skipped))
 } finally { $jsonDoc.Dispose() }
-if($generated -ne 1 -or $staged.Count -ne 3 -or $skipped.Count -ne 0) {
+if($generated -ne 1 -or $staged.Count -ne 2 -or $skipped.Count -ne 0) {
     $details=($skipped | ConvertTo-Json -Depth 8 -Compress)
     throw "Full Bank pass refused valid source-owned coordinator: applied=$generated, staged=$($staged.Count), skipped=$($skipped.Count), reasons=$details"
 }
-if(@($staged.Keys|Where-Object{$_ -like '*/GCET_Semantic/marmurbank_ui_worker.lua'}).Count -ne 1) {
-    throw 'Full pass failed to package the separate Bank worker.'
+if(@($staged.Keys|Where-Object{$_ -like '*/GCET_Semantic/marmurbank_ui_worker.lua'}).Count -ne 0) {
+    throw 'An unchanged existing Bank worker was duplicated.'
+}
+if(!(Test-Path (Join-Path $folder 'GCET_Semantic/marmurbank_ui_worker.lua'))) {
+    throw 'Existing Bank coordinator disappeared.'
+}
+# Pristine install must also generate the worker, without a count dependency.
+Remove-Item (Join-Path $folder 'GCET_Semantic/marmurbank_ui_worker.lua') -Force
+$cleanStaged=[Collections.Generic.Dictionary[string,byte[]]]::new()
+$cleanCounts=[Collections.Generic.Dictionary[string,int]]::new()
+$cleanTransforms=[Collections.Generic.List[object]]::new()
+$cleanSkipped=[Collections.Generic.List[object]]::new()
+$cleanDoc=[System.Text.Json.JsonDocument]::Parse($oneFileCatalog)
+try {
+    $cleanApplied=$generate.Invoke($null,[object[]]@(
+        $cleanDoc.RootElement,[string]$root,$cleanStaged,$cleanCounts,$cleanTransforms,$cleanSkipped))
+} finally { $cleanDoc.Dispose() }
+if($cleanApplied -ne 1 -or $cleanStaged.Count -ne 3 -or $cleanSkipped.Count -ne 0) {
+    $details=($cleanSkipped | ConvertTo-Json -Depth 8 -Compress)
+    throw "Pristine Bank generation failed: applied=$cleanApplied, files=$($cleanStaged.Count), skipped=$details"
+}
+if(@($cleanStaged.Keys|Where-Object{$_ -like '*/GCET_Semantic/marmurbank_ui_worker.lua'}).Count -ne 1) {
+    throw 'Pristine Bank pass failed to generate the coordinator.'
 }
 Write-Host 'Marmur generated-pass structural ownership admission, independent of marker file count: PASS'
 
