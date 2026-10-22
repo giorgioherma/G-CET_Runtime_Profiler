@@ -6615,13 +6615,14 @@
           "worldActionOverrideOk",
           "if ui.input or not ui.hubShown then"
         ],
-        "alreadySatisfiedMarker": "G-CET semantic:marmurbank-modern-input-v1",
+        "alreadySatisfiedMarker": "G-CET semantic:marmurbank-modern-input-v2",
         "expectedMarkerFileCount": 1,
         "satisfiedAll": [
-          "G-CET semantic:marmurbank-modern-input-v1",
+          "G-CET semantic:marmurbank-modern-input-v2",
+          "GCET_Semantic/marmurbank_ui_worker",
+          "__gcetDropoffTick",
           "__gcetMarmurBankOnAction",
-          "__gcetMarmurBankRouted",
-          "if action and shouldSuppressVanillaNow() then"
+          "__gcetWorker.subscribe"
         ]
       },
       "behavior": {
@@ -6633,7 +6634,7 @@
           "finiteActionRouter",
           "CETFallback"
         ],
-        "note": "Supports live 21b and uploaded author 22.5 source shape without changing full modern banking runtime jobs or removing ATM features."
+        "note": "Author 22.5 package preserved. Separate Lua owns finite OnAction routing and nearby vanilla drop-point close wake. Existing 0-Engine bank timer drives deferred popup. World interaction override only decodes actions when suppression is active."
       },
       "generation": {
         "enabled": true,
