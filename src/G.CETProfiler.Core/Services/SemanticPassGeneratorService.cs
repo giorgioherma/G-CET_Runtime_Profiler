@@ -22,7 +22,8 @@ internal static class SemanticPassGeneratorService
             // All source-aware behavior stages must complete BEFORE
             // native-location subscriptions. Never prioritize a native owner
             // before its scheduler and wake/fallback semantics by CPU alone.
-            .OrderBy(x => x.RuleId.StartsWith("native-location-",
+            .OrderBy(x => x.RuleId.EndsWith("-worker", StringComparison.OrdinalIgnoreCase)
+                ? 2 : x.RuleId.StartsWith("native-location-",
                 StringComparison.OrdinalIgnoreCase) ? 1 : 0)
             .ThenByDescending(x => x.RuntimeMsPerSecond)
             .ThenBy(x => x.RuleId, StringComparer.OrdinalIgnoreCase)
