@@ -77,3 +77,40 @@ scheduler coordinator work and is not automatically enabled elsewhere.
 Do not mark remaining Lua-budget cases resolved until a **new pass ZIP**
 contains all source/worker pairs with budget under 201 and no source
 conflicts. No source version or Lua SHA is used as an admission key.
+
+
+## 07:21 pass: full four-owner source correction (2026-10-22)
+
+The 07:21 #1842 live-stack result (one InfiniteGigs worker, ten completed
+semantic stages, four Lua-budget deferrals, four generic-read coordinator
+refusals) was **not** a semantic dormancy regression. The helper definitions
+remained in their original Lua files; no worker was referenced at the
+rejected stage. All **28** existing, G-CET-generated provider bodies match
+the reviewed 0-Engine getter recipes:
+
+| Source file | G-CET provider bodies |
+|---|---:|
+| `CourierJobs/init.lua` | 2 |
+| `DedraJNCJoytoy/init.lua` | 9 |
+| `Dedrapanamgoondate/init.lua` | 8 |
+| `hotscenes/hotscenes_nc_delights.lua` | 9 |
+
+`GenericReadCoordinatorSource.TryFindProviderBlock` now uses a literal
+G-CET owner marker and source-bounded, unindented helper terminator rather
+than the brittle multiline regex. It verifies every normalized executable
+line against the current generated provider recipe. Unknown blocks are
+never removed; if source semantics really differ, the generated failure
+reports the first differing line, or absent/duplicate owner markers.
+
+`tests/NativeReadReuseContract/Program.cs` also replays the **four
+complete owner inventories**, at their representative near-limit local
+counts and original CRLF/LF conventions: four worker stages, 28 moved
+provider families, preserved author declarations and `Game` fallbacks.
+A separate negative contract changes a fallback body and verifies refusal.
+
+**Validation:** GitHub CI
+[#1850](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/39743387947)
+green on all five jobs. No new generated pass against the user's whole
+current CET folder was available after this commit, and no in-game
+behavior claim is made. The English-only personal cut is selected in
+Resolver's own UI/CLI, not through a file in the CET `mods` root.
