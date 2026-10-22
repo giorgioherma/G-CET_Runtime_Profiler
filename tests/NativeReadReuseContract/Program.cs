@@ -185,7 +185,7 @@ try
     var workerSkips=new List<object>();
     object?[] workerArgs=[workerRoot,workerStaged,workerCounts,workerManifest,
                           workerSkips,workerHeaders];
-    Check((int)workerStage.Invoke(null,workerArgs)!=1,
+    Check((int)workerStage.Invoke(null,workerArgs)==1,
         "Near-limit G-CET generated helpers were not moved to a separate Lua chunk");
     var workerMain=Encoding.UTF8.GetString(workerStaged["Ready/init.lua"]);
     var workerFile=workerStaged.Keys.Single(x=>x.StartsWith(
@@ -207,13 +207,13 @@ try
     var beforeBudget=budgetMethod.Invoke(null,[workerSource])!;
     var afterBudget=budgetMethod.Invoke(null,[workerMain])!;
     var peakProperty=beforeBudget.GetType().GetProperty("MaxActiveLocals")!;
-    Check((int)peakProperty.GetValue(beforeBudget)!=200 &&
-          (int)peakProperty.GetValue(afterBudget)!=199,
+    Check((int)peakProperty.GetValue(beforeBudget)==200 &&
+          (int)peakProperty.GetValue(afterBudget)==199,
         "Separate Lua import must reduce 200-local source to 199 without touching author code");
     var againWorkers=new List<object>();
     object?[] againArgs=[workerRoot,workerStaged,workerCounts,againWorkers,
                          new List<object>(),workerHeaders];
-    Check((int)workerStage.Invoke(null,againArgs)!=0&&againWorkers.Count==0,
+    Check((int)workerStage.Invoke(null,againArgs)==0&&againWorkers.Count==0,
         "Repeated generation duplicated read coordinator");
     workerStaged["Ready/init.lua"]=Encoding.UTF8.GetBytes(workerMain+
         "\nlocal extra = Game.GetStatsSystem()\n");
@@ -222,7 +222,7 @@ try
     var updatedManifest=new List<object>();
     object?[] newerWorkerArgs=[workerRoot,workerStaged,workerCounts,updatedManifest,
                                new List<object>(),workerHeaders];
-    Check((int)workerStage.Invoke(null,newerWorkerArgs)!=1,
+    Check((int)workerStage.Invoke(null,newerWorkerArgs)==1,
         "Existing G-CET read worker did not adopt a new current-source getter");
     var upgraded=Encoding.UTF8.GetString(workerStaged["Ready/init.lua"]);
     var upgradedWorker=Encoding.UTF8.GetString(workerStaged[workerFile]);
