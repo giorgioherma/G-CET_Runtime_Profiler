@@ -158,7 +158,6 @@ try
             "PLAYER"=>"GetPlayer",
             "QUESTS_SYSTEM"=>"GetQuestsSystem",
             "STATS_SYSTEM"=>"GetStatsSystem",
-            "STATS_SYSTEM"=>"GetStatsSystem",
             _=>throw new InvalidOperationException("unexpected fixture provider: "+provider)
         };
         return new [] {
@@ -256,6 +255,7 @@ try
             "AI_NAVIGATION_SYSTEM"=>"GetAINavigationSystem",
             "PLAYER"=>"GetPlayer",
             "UI_SYSTEM"=>"GetUISystem",
+            "STATS_SYSTEM"=>"GetStatsSystem",
             "ALL_BLACKBOARD_DEFS"=>"GetAllBlackboardDefs",
             "CAMERA_SYSTEM"=>"GetCameraSystem",
             "QUESTS_SYSTEM"=>"GetQuestsSystem",
