@@ -151,6 +151,15 @@ public static class PassGeneratorService
             hotscenesEnglishOnly, modsRoot, staged, appliedTransformsByFile,
             transformManifest, skipped);
 
+        // Fix historical G-CET provider-template interpolation in already
+        // optimized Lua BEFORE any current-source generic/semantic rewrite.
+        // Each repaired helper is checked against the canonical 0-Engine
+        // method lookup and original Game getter fallback.
+        var repairedProviderFiles = SharedProviderTemplateRepairSource.TryStage(
+            modsRoot, staged, appliedTransformsByFile, transformManifest, skipped,
+            provider => SharedProviderRecipes.TryGetValue(provider, out var recipe)
+                ? BuildSharedProviderHeader(recipe) : Array.Empty<string>());
+
         var genericReadWorkers = GenericReadCoordinatorSource.TryStage(
             modsRoot, staged, appliedTransformsByFile, transformManifest, skipped,
             provider => SharedProviderRecipes.TryGetValue(provider, out var recipe)
@@ -348,6 +357,7 @@ public static class PassGeneratorService
                 nativeReadReuseAppliedOccurrences = nativeReadReuseCount,
                 sourceOwnedGenericReadCoordinatorStages = genericReadWorkers,
                 personalEnglishOnlyHotscenesStages = englishOnlyHotscenes,
+                sourceOwnedMalformedProviderFilesRepaired = repairedProviderFiles,
                 personalEnglishOnlyHotscenesRequested = hotscenesEnglishOnly,
                 legacyMethodLookupRepairOccurrences = methodLookupRepairs,
                 nativeReadReuseBypassesCallbackCpuGate = true,

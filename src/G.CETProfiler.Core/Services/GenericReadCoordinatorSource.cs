@@ -84,7 +84,7 @@ internal static class GenericReadCoordinatorSource
     // (CRLF, indentation and empty lines) are acceptable; every executable
     // line must otherwise match the reviewed 0-Engine/Game fallback recipe.
     // Keep the actual original block when moving it to the new worker.
-    private static bool TryFindProviderBlock(string source,string provider,
+    internal static bool TryFindProviderBlock(string source,string provider,
         string getter,string reviewed,out string actual,out string detail)
     {
         actual="";
