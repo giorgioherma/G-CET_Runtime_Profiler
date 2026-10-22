@@ -214,8 +214,9 @@ internal static class GenericReadCoordinatorSource
                    functions.ContainsKey(p.Getter))
                 {reason="Existing worker provider unknown or duplicated: "+key;return false;}
                 var reviewed=string.Join("\n",headers(key)).TrimEnd('\n','\r');
+                var detail="reviewed worker provider recipe is missing";
                 if(reviewed.Length==0||!TryFindProviderBlock(worker,
-                    key,p.Getter,reviewed,out var block,out var detail))
+                    key,p.Getter,reviewed,out var block,out detail))
                 {reason="Existing worker provider differs from reviewed fallback: "+
                     key+"; "+detail;return false;}
                 functions.Add(p.Getter,block);
@@ -247,8 +248,9 @@ internal static class GenericReadCoordinatorSource
                    functions.ContainsKey(p.Getter))
                 {reason="Existing G-CET provider unrecognized or duplicated: "+providerName;return false;}
                 var reviewed=string.Join("\n",headers(providerName)).TrimEnd('\n','\r');
+                var detail="reviewed source provider recipe is missing";
                 if(reviewed.Length==0||!TryFindProviderBlock(source,
-                    providerName,p.Getter,reviewed,out var block,out var detail))
+                    providerName,p.Getter,reviewed,out var block,out detail))
                 {reason="Existing G-CET provider fallback has semantic source drift: "+
                     providerName+"; "+detail;return false;}
                 functions.Add(p.Getter,block);
