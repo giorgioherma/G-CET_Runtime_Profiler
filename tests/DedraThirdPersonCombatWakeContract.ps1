@@ -57,6 +57,7 @@ function Run([string]$source) {
   $changes=@($ctxType.GetProperty('Changes',[Reflection.BindingFlags]'Instance,NonPublic').GetValue($ctx))
   return @{applied=$result.Applied;changes=$changes}
 }
+Write-Host 'Testing optimized registrar/LF...'
 $first=Run $fixture
 if(!$first.applied -or $first.changes.Count -ne 1){throw 'One source-owned Lua transform expected'}
 $generated=[Text.Encoding]::UTF8.GetString($first.changes[0].Bytes)
@@ -78,10 +79,13 @@ if(([regex]::Matches($generated,'registerForEvent\("onInit", function\(\)')).Cou
 if(([regex]::Matches($generated,'(?:registerForEvent|__gcetRegisterEvent_293)\("onUpdate", function\(dt\)')).Count -ne 1){throw 'Update registration corrupted'}
 if($generated.Contains('pcall(dedraStep, dt)')){throw 'Original onUpdate escaped wake gate'}
 if([IO.File]::ReadAllText($live) -ne $fixture){throw 'Installed source was changed'}
+Write-Host 'Testing idempotence...'
 $again=Run $generated
 if($again.applied -or $again.changes.Count -ne 0){throw 'Semantic stage not idempotent'}
+Write-Host 'Testing CRLF...'
 $crlf=Run ($fixture.Replace([string][char]10,([string][char]13 + [string][char]10)))
 if(!$crlf.applied){throw 'CRLF source not supported'}
+Write-Host 'Testing pristine registrar...'
 $pristine=Run ($fixture.Replace('__gcetRegisterEvent_293("onUpdate"','registerForEvent("onUpdate"'))
 if(!$pristine.applied){throw 'Pristine CET event registrar not supported'}
 $drift=$fixture.Replace('pcall(dedraStep, dt)','pcall(newAuthorStep, dt)')

@@ -160,13 +160,6 @@ internal static partial class SemanticInjectors
             "  Dedra.cfg.anims[key] = state\n  __gcetDedraWake = true\n",
             StringComparison.Ordinal);
 
-        // Never drop cleanup through a stale session event.
-        const string attached="    Dedra.takeover = false\n    Dedra.armSent = nil";
-        if(!source.Contains(attached,StringComparison.Ordinal))
-            throw new InvalidOperationException("Dedra player attach/reset source changed.");
-        source=source.Replace(attached,
-            attached+"\n    __gcetDedraWake = true\n    __gcetDedraLast = nil",
-            StringComparison.Ordinal);
         if(!source.Contains("local function __gcetDedraDue(dt)",StringComparison.Ordinal) ||
            !source.Contains("if __gcetDedraDue(dt) then pcall(dedraStep, __gcetDedraStepDelta) end",
                StringComparison.Ordinal))
