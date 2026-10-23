@@ -252,15 +252,14 @@ do
             error("G-CET namespaced scheduler dependency missing or incomplete")
         end
         local __started, __frame = false, 0
-        local __lastClock = os.clock()
         local function __activate()
             if __started then return end
             __scheduler.Init(nil, nil)
             registerForEvent("onUpdate", function(dt)
                 __frame = __frame + 1
-                local __now = os.clock()
-                local __realDt = __now - __lastClock
-                __lastClock = __now
+                -- CET onUpdate delta is an elapsed-frame interval.
+                -- os.clock() measures process CPU time, not wall time.
+                local __realDt = dt or 0
                 local __player = nil
                 if Game ~= nil and type(Game.GetPlayer) == "function" then
                     local ok, player = pcall(Game.GetPlayer)
