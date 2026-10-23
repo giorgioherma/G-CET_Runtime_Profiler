@@ -267,12 +267,19 @@ end
         text = ReplaceOnce(text, initEvent, installer + initEvent,
             "RICA pristine one-pass scheduler before lifecycle registration");
 
-        var initTail = "\nend)\n\n" + opening;
-        if(text.Split(initTail,StringSplitOptions.None).Length!=2)
-            throw new InvalidOperationException("RICA onInit/onUpdate scheduling handoff boundary changed.");
-        text = ReplaceOnce(text,initTail,
-            "\n    ricaBaseInitialized = true\n    TryAttachRicaPass4()\nend)\n\n"+opening,
-            "RICA one-time scheduler initialization");
+        // A generic source registrar may live between onInit and onUpdate.
+        // Locate the last top-level callback close BEFORE the proven update
+        // opening, rather than requiring those two events to be adjacent.
+        var updateStart=text.IndexOf(opening,StringComparison.Ordinal);
+        var initStart=text.IndexOf(initEvent,StringComparison.Ordinal);
+        var initClose=updateStart<0?-1:
+            text.LastIndexOf("\nend)\n",updateStart,StringComparison.Ordinal);
+        if(initStart<0 || initClose<initStart ||
+           text.IndexOf("\nend)\n",initClose+1,StringComparison.Ordinal)<updateStart &&
+           text.IndexOf(initEvent,initStart+initEvent.Length,StringComparison.Ordinal)>=0)
+            throw new InvalidOperationException(
+                "RICA onInit callback close cannot be proven before generated frame routing.");
+        text=text.Insert(initClose,"\n    ricaBaseInitialized = true\n    TryAttachRicaPass4()");
         text = ReplaceOnce(text,opening,
             opening+"    if pass4Attached then return end\n"+
             "    if not ricaBaseInitialized then return end\n"+
