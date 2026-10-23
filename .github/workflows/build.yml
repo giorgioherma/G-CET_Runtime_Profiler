@@ -33,6 +33,9 @@ jobs:
       - name: Validate source-first native read reuse, semantic composition, source drift and idempotence
         run: dotnet run --project tests/NativeReadReuseContract/NativeReadReuseContract.csproj -c Release
 
+      - name: Validate read-only virtual 0-Engine/native runtime composition and profiler backup isolation
+        run: dotnet run --project tests/VirtualRuntimeProjectionContract/VirtualRuntimeProjectionContract.csproj -c Release
+
   deep-reuse-contract:
     runs-on: ubuntu-latest
     steps:
