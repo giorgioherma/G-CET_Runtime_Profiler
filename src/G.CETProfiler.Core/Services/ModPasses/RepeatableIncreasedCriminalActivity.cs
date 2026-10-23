@@ -19,6 +19,18 @@ internal static partial class SemanticInjectors
                 || !liveFile.Text.Contains("scheduledDiagnosticsTick", StringComparison.Ordinal)
                 || !liveFile.Text.Contains("rewardTick", StringComparison.Ordinal))
                 throw new InvalidOperationException("RICA existing PASS4 stage is incomplete or source has drifted.");
+            if(liveFile.Text.Contains("-- G-CET semantic:repeatable-increased-criminal-activity-v2",
+                    StringComparison.Ordinal))
+            {
+                var worker=context.TryReadOwnedCoordinator("rica_engine_worker.lua");
+                if(worker is null || !worker.StartsWith(
+                        "-- G-CET semantic coordinator:repeatable-increased-criminal-activity\n",
+                        StringComparison.Ordinal) ||
+                   !worker.Contains("id = \"rica.diagnostics_worker\"",StringComparison.Ordinal) ||
+                   !worker.Contains("id = \"rica.system\"",StringComparison.Ordinal))
+                    throw new InvalidOperationException(
+                        "RICA pristine source contains six-lane marker without its owned scheduler worker.");
+            }
             return SemanticInjectionResult.Skip("RICA current live PASS4 already provides multi-rate 0-Engine scheduling; preserve existing source.");
         }
 
