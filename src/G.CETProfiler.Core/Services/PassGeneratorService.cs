@@ -1737,28 +1737,31 @@ public static class PassGeneratorService
         ref string source,
         string routedNameVariable)
     {
-        // The router has already decoded the action name before dispatch. Reuse
-        // that value only for a simple local assignment whose RHS is a pure
-        // action-name decode. When the callback runs through the original
-        // Observe fallback the routed value is nil and the original expression
-        // executes unchanged.
+        // Reuse the router's decoded name only for a source-proven pure decode.
+        // Preserve the original author decode on the Observe fallback (nil
+        // routed name), including trailing Lua comments. Do not put generated
+        // closing parentheses after --, which would be swallowed as a comment.
         var match = Regex.Match(
             source,
-            @"(?m)^(?<indent>\s*)local\s+(?<var>[A-Za-z_]\w*)\s*=\s*(?<expr>[^\r\n;]*\b(?:GetName|NameToString)\b[^\r\n;]*)\s*;?\s*$",
+            @"(?m)^(?<indent>[ \t]*)local\s+(?<var>[A-Za-z_]\w*)\s*=\s*(?<expr>[^\r\n;]*\b(?:GetName|NameToString)\b[^\r\n;]*)[ \t]*;?[ \t]*$",
             RegexOptions.CultureInvariant);
         if (!match.Success)
             return false;
 
-        var expression = match.Groups["expr"].Value.Trim();
+        var rhs = match.Groups["expr"].Value;
+        var commentIndex = rhs.IndexOf("--", StringComparison.Ordinal);
+        var beforeComment = commentIndex >= 0 ? rhs[..commentIndex] : rhs;
+        var expression = beforeComment.Trim();
+        var trailingComment = commentIndex >= 0
+            ? beforeComment[beforeComment.TrimEnd().Length..] + rhs[commentIndex..]
+            : "";
+
+        // Full-expression proof: no concatenation, other function calls,
+        // boolean fallback, string containing --, or side effects are folded
+        // into the cached name. Unknown author forms retain their original code.
         if (!Regex.IsMatch(
                 expression,
-                @"^(?:Game\.NameToString\s*\(\s*)?action\s*[:.]\s*GetName\s*\(",
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
-            return false;
-
-        if (Regex.IsMatch(
-                expression,
-                @"\b(?:Set|Consume|Write|Update|Send|Trigger|Call)\w*\s*\(",
+                @"^(?:Game\s*\.\s*NameToString\s*\(\s*)?action\s*[:.]\s*GetName\s*\(\s*action\s*\)\s*(?:\.\s*value\s*)?\)?$",
                 RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
             return false;
 
@@ -1770,7 +1773,8 @@ public static class PassGeneratorService
             routedNameVariable +
             " or (" +
             expression +
-            "))";
+            "))" +
+            trailingComment;
 
         source =
             source[..match.Index] +

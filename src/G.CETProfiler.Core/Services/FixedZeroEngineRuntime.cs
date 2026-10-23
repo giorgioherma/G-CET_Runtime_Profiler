@@ -357,7 +357,13 @@ end
                 throw new InvalidOperationException(
                     "Namespaced scheduler bridge cannot adopt central 0-Engine tick.");
             var driver = """
+            local __lastRealClock = os.clock()
             __host.__gcetScheduleDriver = function(ctx)
+                -- Match Phase 1+2 clock=real semantics while preserving the
+                -- original CET delta for simulation/game-time jobs.
+                local __realClock = os.clock()
+                ctx.realDt = __realClock - __lastRealClock
+                __lastRealClock = __realClock
                 __frame = __frame + 1
                 pcall(__scheduler.Update, ctx)
             end

@@ -2,6 +2,29 @@ param([Parameter(Mandatory=$true)][string]$ResolverRoot)
 $ErrorActionPreference='Stop'
 $exe=Join-Path (Resolve-Path $ResolverRoot).Path 'G-CET-Resolver.exe'
 if(!(Test-Path $exe)){throw 'Experimental Resolver missing'}
+
+# Exact untouched Hotscenes hotscenes_adhoc_interactionUI.lua line 302.
+# Test the production generic OnAction generator, not a corrective semantic.
+$assembly = [Reflection.Assembly]::LoadFrom((Join-Path (Resolve-Path $ResolverRoot).Path 'G.CETProfiler.Core.dll'))
+$generator = $assembly.GetType('GCETRuntimeProfiler.Core.Services.PassGeneratorService', $true)
+$rewrite = $generator.GetMethod('TryRewriteActionNameDecode', [Reflection.BindingFlags]'Static,NonPublic')
+if (!$rewrite) { throw 'Authoritative generic action-name decoder is unavailable' }
+function AssertGenericActionRewrite([string]$original, [string]$expected, [bool]$applied) {
+  $args = [object[]]@($original, '__gcetRoutedName')
+  $actualApplied = [bool]$rewrite.Invoke($null, $args)
+  if ($actualApplied -ne $applied -or [string]$args[0] -cne $expected) {
+    throw "Generic OnAction source/comment handling drifted: actual=$($args[0])"
+  }
+}
+$commented = '        local actionName = action:GetName(action).value -- added by anygoodname'
+$reused = '        local actionName = (__gcetRoutedName or (action:GetName(action).value)) -- added by anygoodname'
+AssertGenericActionRewrite $commented $reused $true
+AssertGenericActionRewrite $reused $reused $false
+AssertGenericActionRewrite 'local name = action:GetName(action).value' 'local name = (__gcetRoutedName or (action:GetName(action).value))' $true
+AssertGenericActionRewrite 'local name = Game.NameToString(action:GetName(action)) -- author comment' 'local name = (__gcetRoutedName or (Game.NameToString(action:GetName(action)))) -- author comment' $true
+AssertGenericActionRewrite 'local name = action:GetName(action).value or fallback() -- author comment' 'local name = action:GetName(action).value or fallback() -- author comment' $false
+AssertGenericActionRewrite 'local name = action:GetName(action).value .. "--suffix"' 'local name = action:GetName(action).value .. "--suffix"' $false
+Write-Host 'Generic source-owned ActionRouter preserves inline comments and original fallback.'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $root=Join-Path $env:RUNNER_TEMP 'gcet-native-action-c-ci1336'
 if(Test-Path $root){Remove-Item $root -Recurse -Force}
