@@ -1,5 +1,7 @@
 # Phase 1+2 preservation recovery — single-source engineering handoff
 
+> **2026-10-24 stock-stack second-pass regression: the user's G-CET_PASS_20261023-222620.json reports 407 files, 1311 transforms, and three semantic generation failures. CyberTrials and Repeatable Cyberpsychos fail exact rule ownership validation because the shared SemanticPatchContext.Write mistook a longer stage-specific marker for the canonical whole-line catalog marker. Native Cyberpsychos then fails to find the missing PASS4 producer. The existing shared writer has been corrected to require the exact owner marker line; coordinator validation remains strict and both pristine-source contracts now check exact output ownership. The two LUA_LOCAL_LIMIT_PARTIAL native-read deferrals are separate safe outcomes. Await CI and a fresh untouched-stack ZIP before accepting any preservation claim. Version 1.3.0 unchanged.**
+
 **Active task: INCOMPLETE / generated patch NOT ACCEPTED (2026-10-23).**
 **Branch:** `dev/resolver-profiler-handoff` (source changes merged from `dev/virtual-runtime-view-20261023` at `ddbaa666`). Continue here; do not restart development from a historical ZIP, re-merge draft PR #28, or treat a green build as semantic parity.
 **Master task:** [LATEST-WORK](../LATEST-WORK.md). **Mandatory contract:** [PROJECT-CONTRACT](PROJECT-CONTRACT.md) and [HANDOFF/CORE](../HANDOFF/CORE.md).

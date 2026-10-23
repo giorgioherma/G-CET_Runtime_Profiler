@@ -381,6 +381,96 @@ foreach($token in @('function Cron.HasTimers()','function Cron.HasActiveTimers()
 }
 $compiled=[Text.Encoding]::UTF8.GetString($initChange.Bytes)
 $workerCode=[Text.Encoding]::UTF8.GetString($worker.Bytes)
+# A five-job stage marker does not replace exact catalog rule ownership.
+if($compiled -notmatch '(?m)^-- G-CET semantic:cybertrials\r?
+foreach($required in @('-- G-CET semantic:cybertrials-five-job-v1',
+  '__gcetCyberTrialsPass4.Dispatch(dt,"fallback")',
+  'if __gcetCyberTrialsPass4.attached then return end',
+  'TryAttach()', 'GCET_Semantic/cybertrials_engine_worker')) {
+  if(!$compiled.Contains($required)){throw "CyberTrials pristine output missing $required"}
+}
+foreach($id in @('cybertrials.world_far','cybertrials.world_near',
+  'cybertrials.system_state','cybertrials.race_state','cybertrials.realtime')) {
+  if(!$workerCode.Contains('id = "'+$id+'"')){throw "CyberTrials pristine five-job worker missing $id"}
+}
+if(!$workerCode.StartsWith('-- G-CET semantic coordinator:cybertrials'+[char]10)){
+  throw 'CyberTrials generated coordinator has the wrong authoritative rule'
+}
+foreach($change in $changes){$stage[$change.RelativeFile]=$change.Bytes}
+$again=$ctor.Invoke([object[]]@([string]$mods,'CyberTrials','cybertrials',$stage))
+if($method.Invoke($null,[object[]]@($again)).Applied){
+  throw 'CyberTrials complete five-job original-source pass was not idempotent'
+}
+if([IO.File]::ReadAllText($initPath) -ne $fullCyber -or
+   [IO.File]::ReadAllText($cronPath) -ne $originalCron) {
+  throw 'CyberTrials pristine init or Cron was mutated rather than staged'
+}
+Write-Host 'CyberTrials full original-shaped five-job owner, fallback, original preservation and idempotence PASS'
+
+
+
+# The 22:22 real source uses registerForEvent('onDraw'), not just
+# registerRuntimeEvent. All three forms prove the same owned callback.
+$asm=[Reflection.Assembly]::LoadFrom((Join-Path $ResolverRoot 'G.CETProfiler.Core.dll'))
+$injectors=$asm.GetType('GCETRuntimeProfiler.Core.Services.SemanticInjectors',$true)
+$ctxType=$asm.GetType('GCETRuntimeProfiler.Core.Services.SemanticPatchContext',$true)
+$method=$injectors.GetMethod('ApplyCyberTrialsClosedOverlayProvider',
+ [Reflection.BindingFlags]'Static,NonPublic')
+$ctor=@($ctxType.GetConstructors([Reflection.BindingFlags]'Instance,NonPublic') |
+ Where-Object {$_.GetParameters().Count -eq 4})[0]
+if(!$method -or !$ctor){throw 'CyberTrials overlay semantic source-stage adapter missing'}
+$originalOverlay=@'
+local windowSettings={Current={mywindowhidden=false}}
+local function DrawEditor() end
+local function BestTimes() end
+local function DrawWindowHider() end
+registerForEvent('onDraw', function()
+    DrawEditor()
+    BestTimes()
+    local WindowHiderTool = GetMod("WindowHiderTool")
+    if WindowHiderTool and cetopen then
+        DrawWindowHider()
+    elseif not WindowHiderTool then
+        windowSettings.Current.mywindowhidden = false
+    end
+end)
+'@
+foreach($registrar in @('registerForEvent','registerRuntimeEvent','__gcetRegisterEvent_93')){
+ foreach($crlf in @($false,$true)){
+  $variant=$originalOverlay.Replace(([string][char]13+[string][char]10),[string][char]10).Replace('registerForEvent(',($registrar+'('))
+  if($crlf){$variant=$variant.Replace([string][char]10,([string][char]13+[string][char]10))}
+  [IO.File]::WriteAllText($initPath,$variant,[Text.UTF8Encoding]::new($false))
+  $stage=[Collections.Generic.Dictionary[string,byte[]]]::new([StringComparer]::OrdinalIgnoreCase)
+  $ctx=$ctor.Invoke([object[]]@([string]$mods,'CyberTrials',
+      'cybertrials-closed-overlay-provider',$stage))
+  try{$outcome=$method.Invoke($null,[object[]]@($ctx))}
+  catch{throw "CyberTrials $registrar overlay composition failed: $($_.Exception.InnerException.Message)"}
+  if(!$outcome.Applied){throw "CyberTrials $registrar overlay was not optimized"}
+  $writes=@($ctxType.GetProperty('Changes',
+      [Reflection.BindingFlags]'Instance,NonPublic').GetValue($ctx))
+  if($writes.Count -ne 1){throw 'Overlay optimization changed unexpected number of files'}
+  $optimized=[Text.Encoding]::UTF8.GetString($writes[0].Bytes)
+  foreach($token in @(
+   '__gcetCyberTrialsOverlayProviderWake',
+   'if cetopen or (windowSettings.Current and windowSettings.Current.mywindowhidden) then',
+   'local WindowHiderTool = GetMod("WindowHiderTool")',
+   'windowSettings.Current.mywindowhidden = false'
+  )){if(!$optimized.Contains($token)){throw "CyberTrials overlay lost $token"}}
+  if($crlf -and !$optimized.Contains(([string][char]13+[string][char]10))){throw 'Overlay lost author CRLF format'}
+  [IO.File]::WriteAllText($initPath,$optimized,[Text.UTF8Encoding]::new($false))
+  $again=$ctor.Invoke([object[]]@([string]$mods,'CyberTrials',
+      'cybertrials-closed-overlay-provider',
+      [Collections.Generic.Dictionary[string,byte[]]]::new()))
+  if($method.Invoke($null,[object[]]@($again)).Applied){
+   throw 'CyberTrials overlay was not idempotent'
+  }
+ }
+}
+Write-Host 'CyberTrials original/runtime/generated onDraw, CRLF and idempotent overlay semantic PASS'
+
+){
+  throw 'CyberTrials pristine source lost canonical rule ownership.'
+}
 foreach($required in @('-- G-CET semantic:cybertrials-five-job-v1',
   '__gcetCyberTrialsPass4.Dispatch(dt,"fallback")',
   'if __gcetCyberTrialsPass4.attached then return end',

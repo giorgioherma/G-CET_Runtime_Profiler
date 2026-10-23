@@ -93,6 +93,86 @@ foreach($edit in $edits) { $staged.Add($edit.RelativeFile,$edit.Bytes) }
 function Staged([string]$path) { [Text.Encoding]::UTF8.GetString($staged['repeatable_cyberpsychos/' + $path]) }
 $initResult = Staged 'init.lua'
 $workResult = Staged 'GCET_Semantic/cyberpsychos_engine_worker.lua'
+# Stage-specific marker alone is insufficient for Resolver's exact ownership validator.
+if ($initResult -notmatch '(?m)^-- G-CET semantic:repeatable-cyberpsychos\r?
+foreach($id in @('runtime_combat_reward','runtime_watchdog','presentation_worker','runtime','presentation','scheduler')) {
+  if (!$workResult.Contains('id = "cyberpsychos.' + $id + '"')) { throw "Missing source-owned job $id" }
+}
+foreach($required in @('TryAttachRepeatablePass4()','if pass4Attached then return end','runtimeCoreTick','runRuntimeWatchdogStep','runPresentationWorkStep')) {
+  if (!$initResult.Contains($required)) { throw "Primary source missing $required" }
+}
+if (!(Staged 'modules/mappins.lua').Contains('function Mappins.syncStep(')) { throw 'Incremental mappins omitted' }
+if (!(Staged 'modules/diagnostics.lua').Contains('function Diagnostics.snapshotStep(')) { throw 'Incremental diagnostics omitted' }
+if (!(Staged 'modules/boss_watchdog.lua').Contains('function Watchdog.syncSite(')) { throw 'Per-site watchdog omitted' }
+# A separate catalog identity now runs in the SAME generation, from the staged source.
+$nativeMethod = $t.GetMethod('ApplyCyberpsychosNativeLocations',$flags)
+$native = NewCtx 'native-location-cyberpsychos' $staged
+$nativeResult = $nativeMethod.Invoke($null,[object[]]@($native))
+if (!$nativeResult.Applied -or @(Changes $native).Count -ne 3) { throw 'Native worker/wake failed to compose in first pass.' }
+foreach($edit in (Changes $native)) { $staged[$edit.RelativeFile] = $edit.Bytes }
+$nativeWorker = Staged 'GCET_Semantic/cyberpsycho_native_wake.lua'
+if (!$nativeWorker.Contains('host:attachCompiled(owner, 1,') -or !$nativeWorker.Contains('1004100 + index')) { throw 'Native compiled consumer missing' }
+# Idempotent complete stage must not generate another coordinator.
+$repeat = $fn.Invoke($null,[object[]]@((NewCtx 'repeatable-cyberpsychos' $staged)))
+if ($repeat.Applied) { throw 'Pristine stage not idempotent.' }
+$repeatNative = $nativeMethod.Invoke($null,[object[]]@((NewCtx 'native-location-cyberpsychos' $staged)))
+if ($repeatNative.Applied) { throw 'Native worker stage not idempotent.' }
+# Comments and harmless quote differences remain source-compatible.
+$variation = [Collections.Generic.Dictionary[string,byte[]]]::new()
+$variation['repeatable_cyberpsychos/init.lua'] = $utf8.GetBytes($init.Replace('Diagnostics.event("body_reward_failed"',"Diagnostics.event('body_reward_failed'").Replace('local function processBodyRewards(system)',"-- harmless comment`nlocal function processBodyRewards(system)"))
+$variant = $fn.Invoke($null,[object[]]@((NewCtx 'repeatable-cyberpsychos' $variation)))
+if (!$variant.Applied) { throw 'Equivalent formatting/quote variation incorrectly rejected.' }
+# Executable control-flow drift must fail closed, not silently replace author code.
+$drift = [Collections.Generic.Dictionary[string,byte[]]]::new()
+$drift['repeatable_cyberpsychos/init.lua'] = $utf8.GetBytes($init.Replace('while pending > 0 and processed < 5 do','while pending >= 0 and processed < 5 do'))
+$refused = $false
+try { [void]$fn.Invoke($null,[object[]]@((NewCtx 'repeatable-cyberpsychos' $drift))) }
+catch { $refused = $_.Exception.InnerException.Message -like '*source drifted*' }
+if (!$refused) { throw 'Executable source drift incorrectly accepted.' }
+Write-Host 'Cyberpsychos pristine six-job source, native consumer, exact author fallback, idempotence, source variation and drift refusal PASS' -or
+    $initResult -notmatch 'G-CET semantic:repeatable-cyberpsychos-six-job-v1') {
+  throw 'Cyberpsychos pristine init lost canonical rule ownership.'
+}
+foreach ($authorPath in @('modules/mappins.lua','modules/diagnostics.lua','modules/boss_watchdog.lua')) {
+  if ((Staged $authorPath) -notmatch '(?m)^-- G-CET semantic:repeatable-cyberpsychos\r?
+foreach($id in @('runtime_combat_reward','runtime_watchdog','presentation_worker','runtime','presentation','scheduler')) {
+  if (!$workResult.Contains('id = "cyberpsychos.' + $id + '"')) { throw "Missing source-owned job $id" }
+}
+foreach($required in @('TryAttachRepeatablePass4()','if pass4Attached then return end','runtimeCoreTick','runRuntimeWatchdogStep','runPresentationWorkStep')) {
+  if (!$initResult.Contains($required)) { throw "Primary source missing $required" }
+}
+if (!(Staged 'modules/mappins.lua').Contains('function Mappins.syncStep(')) { throw 'Incremental mappins omitted' }
+if (!(Staged 'modules/diagnostics.lua').Contains('function Diagnostics.snapshotStep(')) { throw 'Incremental diagnostics omitted' }
+if (!(Staged 'modules/boss_watchdog.lua').Contains('function Watchdog.syncSite(')) { throw 'Per-site watchdog omitted' }
+# A separate catalog identity now runs in the SAME generation, from the staged source.
+$nativeMethod = $t.GetMethod('ApplyCyberpsychosNativeLocations',$flags)
+$native = NewCtx 'native-location-cyberpsychos' $staged
+$nativeResult = $nativeMethod.Invoke($null,[object[]]@($native))
+if (!$nativeResult.Applied -or @(Changes $native).Count -ne 3) { throw 'Native worker/wake failed to compose in first pass.' }
+foreach($edit in (Changes $native)) { $staged[$edit.RelativeFile] = $edit.Bytes }
+$nativeWorker = Staged 'GCET_Semantic/cyberpsycho_native_wake.lua'
+if (!$nativeWorker.Contains('host:attachCompiled(owner, 1,') -or !$nativeWorker.Contains('1004100 + index')) { throw 'Native compiled consumer missing' }
+# Idempotent complete stage must not generate another coordinator.
+$repeat = $fn.Invoke($null,[object[]]@((NewCtx 'repeatable-cyberpsychos' $staged)))
+if ($repeat.Applied) { throw 'Pristine stage not idempotent.' }
+$repeatNative = $nativeMethod.Invoke($null,[object[]]@((NewCtx 'native-location-cyberpsychos' $staged)))
+if ($repeatNative.Applied) { throw 'Native worker stage not idempotent.' }
+# Comments and harmless quote differences remain source-compatible.
+$variation = [Collections.Generic.Dictionary[string,byte[]]]::new()
+$variation['repeatable_cyberpsychos/init.lua'] = $utf8.GetBytes($init.Replace('Diagnostics.event("body_reward_failed"',"Diagnostics.event('body_reward_failed'").Replace('local function processBodyRewards(system)',"-- harmless comment`nlocal function processBodyRewards(system)"))
+$variant = $fn.Invoke($null,[object[]]@((NewCtx 'repeatable-cyberpsychos' $variation)))
+if (!$variant.Applied) { throw 'Equivalent formatting/quote variation incorrectly rejected.' }
+# Executable control-flow drift must fail closed, not silently replace author code.
+$drift = [Collections.Generic.Dictionary[string,byte[]]]::new()
+$drift['repeatable_cyberpsychos/init.lua'] = $utf8.GetBytes($init.Replace('while pending > 0 and processed < 5 do','while pending >= 0 and processed < 5 do'))
+$refused = $false
+try { [void]$fn.Invoke($null,[object[]]@((NewCtx 'repeatable-cyberpsychos' $drift))) }
+catch { $refused = $_.Exception.InnerException.Message -like '*source drifted*' }
+if (!$refused) { throw 'Executable source drift incorrectly accepted.' }
+Write-Host 'Cyberpsychos pristine six-job source, native consumer, exact author fallback, idempotence, source variation and drift refusal PASS') {
+    throw "Cyberpsychos author module lost exact rule ownership: $authorPath"
+  }
+}
 foreach($id in @('runtime_combat_reward','runtime_watchdog','presentation_worker','runtime','presentation','scheduler')) {
   if (!$workResult.Contains('id = "cyberpsychos.' + $id + '"')) { throw "Missing source-owned job $id" }
 }

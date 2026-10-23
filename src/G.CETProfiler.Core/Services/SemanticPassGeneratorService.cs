@@ -740,7 +740,10 @@ internal sealed class SemanticPatchContext
         }
 
         var marker = $"G-CET semantic:{RuleId}";
-        if (!text.Contains(marker, StringComparison.OrdinalIgnoreCase))
+        // Stage-specific labels (e.g. -five-job-v1) do not establish the
+        // exact catalog rule ownership required by ValidateSemanticOutput.
+        // Emit the canonical marker if its own line is absent.
+        if (!HasMarkerLine(text, marker))
         {
             text = $"-- {marker}\n" + text;
         }
