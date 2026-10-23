@@ -260,7 +260,7 @@ do
                 local __realDt = __now - __lastClock
                 __lastClock = __now
                 local __player = nil
-                if type(Game) == "table" and type(Game.GetPlayer) == "function" then
+                if Game ~= nil and type(Game.GetPlayer) == "function" then
                     local ok, player = pcall(Game.GetPlayer)
                     if ok then __player = player end
                 end
@@ -279,9 +279,10 @@ do
             and __host.Schedule or {}
         for _, name in ipairs(__names) do
             if type(__schedule[name]) ~= "function" then
-                __schedule[name] = function(...)
+                local method = name
+                __schedule[method] = function(...)
                     __activate()
-                    return __scheduler[name](...)
+                    return __scheduler[method](...)
                 end
             end
         end
@@ -296,11 +297,12 @@ do
                 local schedule = type(mod.Schedule) == "table" and mod.Schedule or {}
                 local owner = mod.name or (select(1, ...)) or "unscoped"
                 for _, name in ipairs(__names) do
-                    if type(schedule[name]) ~= "function" then
-                        schedule[name] = function(...)
+                    local method = name
+                    if type(schedule[method]) ~= "function" then
+                        schedule[method] = function(...)
                             local args = {...}
-                            local optIdx = (name == "EveryFrames" or
-                                name == "Every" or name == "After") and 2 or 1
+                            local optIdx = (method == "EveryFrames" or
+                                method == "Every" or method == "After") and 2 or 1
                             local options = args[optIdx]
                             if type(options) == "function" then
                                 args[optIdx + 1] = options
@@ -311,7 +313,7 @@ do
                             for key, value in pairs(options) do copy[key] = value end
                             copy.owner = owner
                             args[optIdx] = copy
-                            return __schedule[name](table.unpack(args))
+                            return __schedule[method]((table.unpack or unpack)(args))
                         end
                     end
                 end
