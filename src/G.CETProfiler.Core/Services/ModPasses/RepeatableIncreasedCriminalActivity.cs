@@ -182,6 +182,7 @@ local pass4AttachInProgress = false
 local TryAttachRicaPass4 = nil
 local pass4DiagnosticsWorkerJob = nil
 local ricaDiagnosticsRequested = false
+local ricaDiagnosticsQueued = false
 local ricaDiagnosticsIdleCycles = 5
 
 local function scheduledDiagnosticsTick()
@@ -197,7 +198,11 @@ local function scheduledDiagnosticsTick()
         if ricaDiagnosticsIdleCycles < 6 then return end
         ricaDiagnosticsIdleCycles = 0
     end
-    ricaDiagnosticsRequested = true
+    if ricaDiagnosticsRequested or Diagnostics.isSnapshotActive() then
+        ricaDiagnosticsQueued = true
+    else
+        ricaDiagnosticsRequested = true
+    end
     if pass4DiagnosticsWorkerJob and
        type(pass4DiagnosticsWorkerJob.Resume) == "function" then
         pass4DiagnosticsWorkerJob.Resume()
@@ -205,21 +210,47 @@ local function scheduledDiagnosticsTick()
 end
 
 local function diagnosticsWorkerTick()
-    if not ricaDiagnosticsRequested then
+    if not ricaDiagnosticsRequested and not Diagnostics.isSnapshotActive() then
         if pass4DiagnosticsWorkerJob and
            type(pass4DiagnosticsWorkerJob.Pause) == "function" then
             pass4DiagnosticsWorkerJob.Pause()
         end
         return
     end
-    ricaDiagnosticsRequested = false
-    -- Full source-author diagnostic fallback until an independently proven
-    -- per-site snapshot stage is composed; do not claim incremental parity.
-    local ok, err = pcall(diagnosticsTick)
-    if not ok then Diagnostics.event("diagnostics_tick_failed", {error=tostring(err)}) end
-    if pass4DiagnosticsWorkerJob and
-       type(pass4DiagnosticsWorkerJob.Pause) == "function" then
-        pass4DiagnosticsWorkerJob.Pause()
+    local system = Bridge.system()
+    if not system or not Game.GetPlayer() then
+        Diagnostics.cancelSnapshot()
+        ricaDiagnosticsRequested = false
+        ricaDiagnosticsQueued = false
+        if pass4DiagnosticsWorkerJob and
+           type(pass4DiagnosticsWorkerJob.Pause) == "function" then
+            pass4DiagnosticsWorkerJob.Pause()
+        end
+        return
+    end
+    if ricaDiagnosticsRequested and not Diagnostics.isSnapshotActive() then
+        ricaDiagnosticsRequested = false
+        Diagnostics.setEnabled(Mod.settings.diagnostics.enabled)
+        Diagnostics.configuration(Mod.settings)
+        if not Diagnostics.beginSnapshot(system, Sites, Mod.settings, Mappins) then
+            ricaDiagnosticsQueued = false
+            if pass4DiagnosticsWorkerJob and
+               type(pass4DiagnosticsWorkerJob.Pause) == "function" then
+                pass4DiagnosticsWorkerJob.Pause()
+            end
+        end
+        -- Always defer first site read until the next rendered frame.
+        return
+    end
+    if Diagnostics.isSnapshotActive() then
+        local done = Diagnostics.snapshotStep(system, Sites, 1)
+        if done and ricaDiagnosticsQueued then
+            ricaDiagnosticsQueued = false
+            ricaDiagnosticsRequested = true
+        elseif done and pass4DiagnosticsWorkerJob and
+               type(pass4DiagnosticsWorkerJob.Pause) == "function" then
+            pass4DiagnosticsWorkerJob.Pause()
+        end
     end
 end
 
@@ -289,6 +320,8 @@ end
         text = ReplaceOnce(text,shutdownEvent,
             shutdownEvent+
             "    ricaDiagnosticsRequested = false\n"+
+            "    ricaDiagnosticsQueued = false\n"+
+            "    Diagnostics.cancelSnapshot()\n"+
             "    if pass4DiagnosticsWorkerJob and type(pass4DiagnosticsWorkerJob.Pause) == \"function\" then\n"+
             "        pass4DiagnosticsWorkerJob.Pause()\n"+
             "    end\n",
