@@ -256,6 +256,8 @@ internal static partial class SemanticInjectors
         var initText = init.Text[..selected.Index] +
             composedFrame + schedulerStage + bootstrap +
             init.Text[(selected.Index + selected.Length)..];
+        var originalCrLf = init.Text.Contains("\r\n", StringComparison.Ordinal);
+        initText = initText.Replace("\r\n", "\n", StringComparison.Ordinal);
         const string initAnchor = "function sit:new()\n";
         const string initialization = "        self.logic:init()\n";
         if (initText.Split(initAnchor, StringSplitOptions.None).Length != 2 ||
@@ -297,7 +299,8 @@ function M.attach(created, onFrame)
 end
 return M
 """);
-        context.Write(init, initText);
+        context.Write(init, originalCrLf
+            ? initText.Replace("\n", "\r\n", StringComparison.Ordinal) : initText);
         context.Write(cron, cronText);
         context.Write(logic, logicText);
         context.Write(world, worldText);
