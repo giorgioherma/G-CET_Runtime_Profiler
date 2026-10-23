@@ -18,14 +18,18 @@ internal static partial class SemanticInjectors
             // A complete current-generation result is already composed from
             // pristine author source. Never treat its scheduler as an
             // intermediate PASS4 input and apply another repair pass.
-            const string engineMarker = "-- G-CET semantic:sitanywhere-engine-worker-v1";
-            if (live.Text.Contains(engineMarker, StringComparison.Ordinal))
+            const string engineMarker = "-- G-CET semantic:sitanywhere-v1";
+            const string legacyEngineMarker = "-- G-CET semantic:sitanywhere-engine-worker-v1";
+            var currentStage = live.Text.Contains(engineMarker, StringComparison.Ordinal);
+            var legacyStage = live.Text.Contains(legacyEngineMarker, StringComparison.Ordinal);
+            if (currentStage || legacyStage)
             {
                 var worker = context.TryReadOwnedCoordinator("sitanywhere_engine_worker.lua");
+                var expectedOwner = currentStage
+                    ? "-- G-CET semantic coordinator:sitanywhere\n"
+                    : "-- G-CET semantic coordinator:sitanywhere-engine-worker\n";
                 if (worker is null ||
-                    !worker.StartsWith(
-                        "-- G-CET semantic coordinator:sitanywhere-engine-worker",
-                        StringComparison.Ordinal) ||
+                    !worker.StartsWith(expectedOwner, StringComparison.Ordinal) ||
                     !live.Text.Contains("if pass4Attached then return end", StringComparison.Ordinal) ||
                     !live.Text.Contains("TryAttachSitAnywherePass4()", StringComparison.Ordinal) ||
                     !live.Text.Contains("runSitAnywhereFrame(dt)", StringComparison.Ordinal))
@@ -241,7 +245,7 @@ internal static partial class SemanticInjectors
         var composedFrame = indent + "local function runSitAnywhereFrame(dt)\n" +
             authoredFrameBody + indent + "end\n\n";
         var schedulerStage = """
-    -- G-CET semantic:sitanywhere-engine-worker-v1
+    -- G-CET semantic:sitanywhere-v1
     TryAttachSitAnywherePass4 = function()
         if not sitAnywhereBaseInitialized then return false end
         if pass4Attached then return true end
@@ -295,7 +299,7 @@ internal static partial class SemanticInjectors
             "        sitAnywhereBaseInitialized = true\n" +
             "        TryAttachSitAnywherePass4()\n", StringComparison.Ordinal);
         context.WriteCoordinator("sitanywhere_engine_worker.lua", """
--- G-CET semantic coordinator:sitanywhere-engine-worker
+-- G-CET semantic coordinator:sitanywhere
 -- Author frame logic remains in init.lua; one 0-Engine frame job.
 local M = {}
 function M.attach(created, onFrame)
@@ -318,11 +322,18 @@ function M.attach(created, onFrame)
 end
 return M
 """);
-        context.Write(init, originalCrLf
-            ? initText.Replace("\n", "\r\n", StringComparison.Ordinal) : initText);
-        context.Write(cron, cronText);
-        context.Write(logic, logicText);
-        context.Write(world, worldText);
+        // All edited files are part of ONE authoritative sitanywhere rule,
+        // including the source-owned worker. Keep atomic ownership proof intact.
+        const string ownedMarker = "-- G-CET semantic:sitanywhere\n";
+        static string MarkOwned(string source, string marker) =>
+            source.StartsWith(marker, StringComparison.Ordinal)
+                ? source : marker + source;
+        context.Write(init, MarkOwned(originalCrLf
+            ? initText.Replace("\n", "\r\n", StringComparison.Ordinal) : initText,
+            originalCrLf ? ownedMarker.Replace("\n", "\r\n", StringComparison.Ordinal) : ownedMarker));
+        context.Write(cron, MarkOwned(cronText, ownedMarker));
+        context.Write(logic, MarkOwned(logicText, ownedMarker));
+        context.Write(world, MarkOwned(worldText, ownedMarker));
         return SemanticInjectionResult.Success(
             "Made Sit Anywhere hard-dormant when scanner/workspot/transition/timer/hub/mappin state is fully idle, while preserving rendered-frame cadence for live scanner, world, timer and workspot work.");
     }
