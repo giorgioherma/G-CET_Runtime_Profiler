@@ -70,19 +70,18 @@ return Engine
         "Bundled namespaced Scheduler dependency missing");
     Check(files.ContainsKey("0-Engine/modules/G-CET/ActionRouter.lua"),
         "Bundled namespaced ActionRouter dependency missing");
-    // A stock G-CET router only installs a normal CET Observe hook.
-    // An after-phase subscriber must refuse that route so Hotscenes
-    // retains its exact original CET ObserveAfter fallback.
-    var afterGuard = init.IndexOf(
-        "if type(config) == \"table\" and config.phase == \"after\" then",
-        StringComparison.Ordinal);
-    var originalHostRoute = init.IndexOf(
-        "if type(__gcetHostSubscribeAction) == \"function\" then",
-        StringComparison.Ordinal);
-    Check(afterGuard > 0 && originalHostRoute > afterGuard &&
-          init[afterGuard..originalHostRoute].Contains(
-              "return nil", StringComparison.Ordinal),
-        "Stock compatibility runtime silently accepts an unsupported after-phase action hook");
+    // Phase after must bypass a legacy host SubscribeAction which may
+    // silently ignore the phase, and dispatch through our phase-aware module.
+    Check(init.Contains("phase ~= \"after\" and type(__gcetHostSubscribeAction)", StringComparison.Ordinal),
+        "After-phase action incorrectly admitted by a legacy host subscriber");
+    Check(init.Contains("__gcetEnsureActionRouter(phase)", StringComparison.Ordinal),
+        "After-phase route does not select its explicit action router");
+    var router = Encoding.UTF8.GetString(files["0-Engine/modules/G-CET/ActionRouter.lua"]);
+    Check(router.Contains("function ActionRouter.DispatchAfter(", StringComparison.Ordinal) &&
+          router.Contains("phase == \"after\"", StringComparison.Ordinal),
+        "Generated namespaced action router cannot dispatch CET after-phase");
+    Check(init.Contains("phase ~= \"after\" and not __gcetActionObserverInstalled", StringComparison.Ordinal),
+        "After-only subscriber unnecessarily installs a before-phase native observer");
     Check(files.ContainsKey("0-Engine/modules/GCETNativeLocationHost.lua"),
         "Bundled native location host dependency missing");
     Check(Hash(originalInit) == originalHash && File.ReadAllText(originalInit) == stock,
