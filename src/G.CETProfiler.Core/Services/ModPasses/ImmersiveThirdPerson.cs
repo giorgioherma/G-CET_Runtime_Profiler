@@ -346,11 +346,23 @@ internal static partial class SemanticInjectors
                 "Updated third-person " + gate.Function + " source guard");
         }
 
-        text = ReplaceOnce(text,
-            "registerForEvent('onUpdate', function(delta)\n  mod.pluginHeartbeat(delta)",
-            "-- " + stage + ": author-verified absent-state fast guards only\n" +
-            "registerForEvent('onUpdate', function(delta)\n  mod.pluginHeartbeat(delta)",
-            "Updated third-person onUpdate owner marker");
+        // Generic 0-Engine runs before semantic passes and can convert the
+        // author registrar into __gcetRegisterEvent_<registrationId>. That
+        // changes the entrypoint name, NOT the owned heartbeat/body. Accept
+        // exactly one verified original or generated event registration.
+        var updateOwners = Regex.Matches(text,
+            @"(?m)^[ \t]*(?<registrar>registerForEvent|__gcetRegisterEvent_[0-9]+)\((?<quote>['""])onUpdate\k<quote>,[ \t]*function\(delta\)\r?\n[ \t]*mod\.pluginHeartbeat\(delta\)",
+            RegexOptions.CultureInvariant);
+        if(updateOwners.Count!=1)
+            throw new InvalidOperationException(
+                "Updated third-person onUpdate owner marker: expected one author/generic frame entrypoint.");
+        var owner=updateOwners[0].Groups["registrar"].Value;
+        if(owner.StartsWith("__gcetRegisterEvent_",StringComparison.Ordinal) &&
+           !text.Contains("local "+owner+" = registerForEvent",StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "Updated third-person generic registrar has no source-owned fallback.");
+        text = text.Insert(updateOwners[0].Index,
+            "-- " + stage + ": author-verified absent-state fast guards only\n");
 
         context.Write(file, text);
         return SemanticInjectionResult.Success(

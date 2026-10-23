@@ -232,5 +232,28 @@ if($drift.ok -and $drift.pass -and $drift.pass.ManifestPath){
   throw 'Unknown updated ITP action was routed without source proof'
  }
 }
+# Same callback/body, but generically moved behind the 0-Engine registrar
+# BEFORE the semantic pass. Source lines remain stable for capture coordinates.
+$wrapped=$source.Replace('local mod={}',
+  'local mod={}; local __gcetRegisterEvent_525 = registerForEvent')
+  .Replace("registerForEvent('onUpdate', function(delta)",
+   "__gcetRegisterEvent_525('onUpdate', function(delta)")
+if($wrapped -eq $source){throw 'Generic-owner fixture did not change'}
+[IO.File]::WriteAllText($sourcePath,$wrapped,[Text.Encoding]::UTF8)
+$wrappedPass=& $exe --capture $capture --mods $mods --generate-pass --json |
+  ConvertFrom-Json
+if(!$wrappedPass.ok -or !$wrappedPass.pass){throw 'Wrapped ITP owner generation refused'}
+$wrappedManifest=Get-Content $wrappedPass.pass.ManifestPath -Raw|ConvertFrom-Json
+if(@($wrappedManifest.skipped|Where-Object{
+  $_.RuleId -eq 'immersive-third-person' -and $_.category -eq 'GENERATION_FAILURE'
+}).Count -gt 0){
+  throw 'Semantic stage refused otherwise identical generic-owned ITP callback'
+}
+$wrappedOutput=ZipSource $wrappedPass.pass.ZipPath 'immersive_third_person/init.lua'
+if(!$wrappedOutput.Contains('__gcetItppUpdatedPendingGatesV3') -or
+   !$wrappedOutput.Contains('__gcetRegisterEvent_525') -or
+   !$wrappedOutput.Contains('mod.pluginHeartbeat(delta)')){
+   throw 'ITP upgraded generic registrar lost heartbeat/pending gates'
+}
 $global:LASTEXITCODE=0
-Write-Host 'Updated ITP source: 2-rule one-pass + API/move360 retained + idempotence + action-map drift fail-closed passed.'
+Write-Host 'Updated ITP source: author and generic registrars, API/move360 retained, idempotence and action-map drift fail-closed passed.'

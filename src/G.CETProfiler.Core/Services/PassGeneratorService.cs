@@ -1553,6 +1553,7 @@ public static class PassGeneratorService
         if (sharedHeaders.Count > 0)
             lines.InsertRange(0, sharedHeaders);
 
+        var insertedFrameHeaderCount = 0;
         if (frameHelpers.Count > 0)
         {
             var header = new List<string>
@@ -1579,6 +1580,7 @@ public static class PassGeneratorService
             }
 
             lines.InsertRange(0, header);
+            insertedFrameHeaderCount = header.Count;
         }
 
         var outputText = string.Join(newline, lines);
@@ -1586,6 +1588,36 @@ public static class PassGeneratorService
             outputText += newline;
 
         var generatedBudget = LuaLocalBudgetAnalyzer.Analyze(outputText);
+        if(generatedBudget.MaxActiveLocals > LuaLocalBudgetAnalyzer.Limit &&
+           insertedFrameHeaderCount>0)
+        {
+            // Move only generated frame registrar locals into one-time local
+            // closures at the original callsites. No author code/scope changes.
+            var scoped=string.Join(newline,lines.Skip(insertedFrameHeaderCount));
+            var proven=true;
+            foreach(var item in frameHelpers)
+            {
+                var call=item.Token+"(";
+                if(scoped.Split(call,StringSplitOptions.None).Length!=2)
+                {
+                    proven=false;
+                    break;
+                }
+                scoped=scoped.Replace(call,
+                    BuildScopedFrameRegistrar(item.Candidate.Owner)+"(",
+                    StringComparison.Ordinal);
+            }
+            if(proven)
+            {
+                var scopedText=scoped+(hadTerminalNewline?newline:"");
+                var scopedBudget=LuaLocalBudgetAnalyzer.Analyze(scopedText);
+                if(scopedBudget.MaxActiveLocals<=LuaLocalBudgetAnalyzer.Limit)
+                {
+                    outputText=scopedText;
+                    generatedBudget=scopedBudget;
+                }
+            }
+        }
         if (generatedBudget.MaxActiveLocals > LuaLocalBudgetAnalyzer.Limit)
         {
             var sourceBudget = LuaLocalBudgetAnalyzer.Analyze(text);
@@ -1651,6 +1683,25 @@ public static class PassGeneratorService
         }
 
         return true;
+    }
+
+    private static string BuildScopedFrameRegistrar(string owner)
+    {
+        // Registration-time factory: inner locals never enter the author's
+        // saturated main chunk. Original 0-Engine and CET fallback preserved.
+        return "((function() " +
+            "local __gcetRegister = registerForEvent; " +
+            "local __gcetOk, __gcetEngine = pcall(GetMod, \"0-Engine\"); " +
+            "local __gcetApi = __gcetEngine; " +
+            "if __gcetOk and type(__gcetEngine) == \"table\" and " +
+            "type(__gcetEngine.GCET) == \"table\" and " +
+            "type(__gcetEngine.GCET.MakeEventRegistrar) == \"function\" " +
+            "then __gcetApi = __gcetEngine.GCET end; " +
+            "if __gcetOk and type(__gcetApi) == \"table\" and " +
+            "type(__gcetApi.MakeEventRegistrar) == \"function\" " +
+            "then __gcetRegister = __gcetApi.MakeEventRegistrar(" +
+            LuaQuote(owner) + ", registerForEvent) end; " +
+            "return __gcetRegister end)())";
     }
 
     private static bool HasExistingFrameHelper(

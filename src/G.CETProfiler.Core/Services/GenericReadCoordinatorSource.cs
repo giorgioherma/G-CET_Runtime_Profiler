@@ -49,9 +49,21 @@ internal static class GenericReadCoordinatorSource
             var englishOnly=rel.Equals("hotscenes/init.lua",
                 StringComparison.OrdinalIgnoreCase) &&
                 source.Contains(HotscenesEnglishOnlySource.Marker,StringComparison.Ordinal);
-            if(!marked && (sourcePeak<197 ||
-               (!source.Contains("-- G-CET shared provider: ",
-                   StringComparison.Ordinal) && !englishOnly)))
+            // A file may be under 197 locals now, yet a complete native-read
+            // reuse pass would push it over 200. Project that pass, without
+            // altering source, and extract our own provider helpers first.
+            var hasProvider=source.Contains("-- G-CET shared provider: ",
+                StringComparison.Ordinal);
+            var projectedOverflow=false;
+            if(!marked && sourcePeak<197 && hasProvider &&
+               NativeReadReuseSource.TryTransform(source,headerForProvider,
+                   out var projected,out var operations) &&
+               operations.Length>0)
+                projectedOverflow=LuaLocalBudgetAnalyzer.Analyze(projected)
+                    .MaxActiveLocals>LuaLocalBudgetAnalyzer.Limit;
+            if(!marked && sourcePeak<197 && !projectedOverflow)
+                continue;
+            if(!marked && !hasProvider && !englishOnly)
                 continue;
             if(!TryRewrite(root,rel,source,staged,headerForProvider,
                 out var rewritten,out var worker,out var workerRel,
@@ -152,7 +164,29 @@ internal static class GenericReadCoordinatorSource
         var mismatched=Enumerable.Range(0,Math.Min(actualLines.Length,reviewedLines.Length))
             .FirstOrDefault(i=>!string.Equals(actualLines[i],reviewedLines[i],
                 StringComparison.Ordinal),-1);
-        if(mismatched>=0 || actualLines.Length!=reviewedLines.Length)
+        // Two source-owned G-CET releases generated the same fallback
+        // helper with different GCET-table selection guards. Preserve the
+        // installed recipe byte-for-byte when moving it into its worker;
+        // never rewrite the author's original getter fallback. Only this
+        // exact, getter-qualified historical guard is admitted.
+        var historicalLines=reviewedLines.ToArray();
+        var currentGuard=
+            "local __gcetApi = type(__gcetEngine.GCET) == \"table\" and " +
+            "type(__gcetEngine.GCET."+getter+") == \"function\" and " +
+            "__gcetEngine.GCET or __gcetEngine";
+        var historicalGuard=
+            "local __gcetApi = type(__gcetEngine.GCET) == \"table\" and " +
+            "__gcetEngine.GCET or __gcetEngine";
+        var guardIndex=Array.IndexOf(historicalLines,currentGuard);
+        var historicalMatch=false;
+        if(guardIndex>=0)
+        {
+            historicalLines[guardIndex]=historicalGuard;
+            historicalMatch=actualLines.SequenceEqual(historicalLines,
+                StringComparer.Ordinal);
+        }
+        if((mismatched>=0 || actualLines.Length!=reviewedLines.Length) &&
+           !historicalMatch)
         {
             detail=mismatched>=0
                 ? "first differing generated-helper line "+(mismatched+1)+

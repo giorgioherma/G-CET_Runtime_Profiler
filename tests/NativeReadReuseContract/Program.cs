@@ -534,6 +534,87 @@ try
     Console.WriteLine("07:21 live provider inventories: 4 owners, 28 generated helpers "+
         "relocated, 4 workers, exact author source retained: PASS");
 
+    // October 23 CourierJobs had a genuine older provider selection recipe,
+    // not an author edit: permit precisely this reviewed historical expression
+    // while keeping that source helper's unchanged body in the worker.
+    var uireview=reviewedHeaders["UI_SYSTEM"].Header;
+    var latestGuard=
+        "local __gcetApi = type(__gcetEngine.GCET) == \"table\" and " +
+        "type(__gcetEngine.GCET.GetUISystem) == \"function\" and " +
+        "__gcetEngine.GCET or __gcetEngine";
+    var formerGuard=
+        "local __gcetApi = type(__gcetEngine.GCET) == \"table\" and " +
+        "__gcetEngine.GCET or __gcetEngine";
+    Check(uireview.Contains(latestGuard,StringComparison.Ordinal),
+        "Current UI_SYSTEM recipe unavailable");
+    var olderUi=uireview.Replace(latestGuard,formerGuard,StringComparison.Ordinal);
+    var validateProvider=workerType.GetMethod("TryFindProviderBlock",
+        BindingFlags.Static|BindingFlags.NonPublic)!;
+    object?[] legacyArgs=[olderUi,"UI_SYSTEM","GetUISystem",uireview,"",""];
+    Check((bool)validateProvider.Invoke(null,legacyArgs)! &&
+          (string)legacyArgs[4] == olderUi,
+        "Legacy UI_SYSTEM selection was not source-proven verbatim");
+    var poisoned=olderUi.Replace("return Game.GetUISystem()",
+        "return Game.GetQuestsSystem()",StringComparison.Ordinal);
+    object?[] poisonArgs=[poisoned,"UI_SYSTEM","GetUISystem",uireview,"",""];
+    Check(!(bool)validateProvider.Invoke(null,poisonArgs)!,
+        "Different original Game getter must not pass historical recipe proof");
+    var driftRoot=Path.Combine(root,"legacy-courier-ui");
+    Directory.CreateDirectory(Path.Combine(driftRoot,"CourierJobs"));
+    var oldFile=olderUi+"\nlocal "+
+        string.Join(",",Enumerable.Range(1,195).Select(i=>"l"+i))+
+        "\nreturn __gcetGetUISystem(), Game.GetPlayer()\n";
+    File.WriteAllText(Path.Combine(driftRoot,"CourierJobs","init.lua"),
+        oldFile,new UTF8Encoding(false));
+    var legacyStaged=new Dictionary<string,byte[]>(StringComparer.OrdinalIgnoreCase);
+    var legacySkips=new List<object>();
+    object?[] legacyStage=[driftRoot,legacyStaged,
+        new Dictionary<string,int>(),new List<object>(),
+        legacySkips,actualRecipes];
+    Check((int)workerStage.Invoke(null,legacyStage)==1 && legacySkips.Count==0 &&
+          legacyStaged.Keys.Any(x=>x.Contains("/GCET_Semantic/gcet_native_reads_",
+              StringComparison.OrdinalIgnoreCase)),
+        "Older CourierJobs provider helper still rejected by worker migration");
+    Check(legacyStaged.Where(x=>x.Key.Contains("/GCET_Semantic/"))
+          .Any(x=>Encoding.UTF8.GetString(x.Value).Contains(
+              formerGuard,StringComparison.Ordinal)),
+        "Legacy helper's original 0-Engine preference was silently rewritten");
+
+    // Initial 190-ish main chunk locals need not trigger the old 197
+    // threshold: if full native read reuse would exceed 200, extract the
+    // G-CET-owned provider now and share the other native reads via worker.
+    var projectionRoot=Path.Combine(root,"projected-native-limit");
+    Directory.CreateDirectory(Path.Combine(projectionRoot,"Projected"));
+    var projectionSource=string.Join("\n",actualRecipes("UI_SYSTEM"))+
+        "\nlocal "+string.Join(",",Enumerable.Range(1,187).Select(i=>"author"+i))+
+        "\nreturn Game.GetBlackboardSystem(), Game.GetQuestsSystem(), "+
+        "Game.GetTimeSystem(), Game.GetPlayer(), Game.GetTransactionSystem(), "+
+        "Game.GetMappinSystem(), Game.GetStatsSystem(), Game.GetWorkspotSystem()\n";
+    var projectionPeak=(int)peakProperty.GetValue(
+        budgetMethod.Invoke(null,[projectionSource])!)!;
+    Check(projectionPeak<197,"Projected-overflow test must begin below 197");
+    File.WriteAllText(Path.Combine(projectionRoot,"Projected","init.lua"),
+        projectionSource,new UTF8Encoding(false));
+    var projectionStaged=new Dictionary<string,byte[]>(StringComparer.OrdinalIgnoreCase);
+    var projectionSkips=new List<object>();
+    object?[] projectionArgs=[projectionRoot,projectionStaged,
+        new Dictionary<string,int>(),new List<object>(),
+        projectionSkips,actualRecipes];
+    Check((int)workerStage.Invoke(null,projectionArgs)==1 &&
+          projectionSkips.Count==0,
+        "Projected overflow did not trigger worker extraction below 197 locals");
+    var projectionMain=Encoding.UTF8.GetString(projectionStaged["Projected/init.lua"]);
+    var projectionWorker=Encoding.UTF8.GetString(projectionStaged.Single(x=>
+        x.Key.StartsWith("Projected/GCET_Semantic/gcet_native_reads_",
+           StringComparison.Ordinal)).Value);
+    Check(projectionMain.Contains("__gcetNativeReads.GetWorkspotSystem()") &&
+          projectionWorker.Contains("return Game.GetWorkspotSystem()") &&
+          (int)peakProperty.GetValue(budgetMethod.Invoke(null,[projectionMain])!)!
+              <=200,
+        "Native reads lost or generated chunk exceeds 200 in projected case");
+    Console.WriteLine("October 23 legacy CourierJobs/low-local projection: "+
+        "exact previous fallback retained; 200-local boundary avoided: PASS");
+
 
     // Drift must refuse without modifying staged file.
     File.AppendAllText(main,"-- changed\n");
