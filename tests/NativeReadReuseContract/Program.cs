@@ -236,6 +236,30 @@ try
     Console.WriteLine("GCET near-limit source -> separate Lua worker; 200 to 199 locals, "+
         "current-source upgrade and idempotence: PASS");
 
+    // Hotscenes was already at 200 main-chunk locals after the English-only
+    // worker. An additional main-chunk frame registrar is illegal, while an
+    // equivalent one-time registrar factory inside its own closure is legal.
+    var scopedRegistrarMethod=typeof(PassGeneratorService).GetMethod(
+        "BuildScopedFrameRegistrar",BindingFlags.Static|BindingFlags.NonPublic)!;
+    var scopedRegistrar=(string)scopedRegistrarMethod.Invoke(null,["hotscenes"])!;
+    var authorChunk="local "+
+        string.Join(",",Enumerable.Range(1,200).Select(i=>"author"+i))+"\n";
+    var overBudget=authorChunk+
+        "local __gcetRegisterEvent_469 = registerForEvent\n"+
+        "__gcetRegisterEvent_469('onUpdate', function(dt) end)\n";
+    var withinBudget=authorChunk+scopedRegistrar+
+        "('onUpdate', function(dt) end)\n";
+    Check((int)peakProperty.GetValue(budgetMethod.Invoke(null,[overBudget])!)!>200 &&
+          (int)peakProperty.GetValue(budgetMethod.Invoke(null,[withinBudget])!)!<=200 &&
+          scopedRegistrar.Contains("MakeEventRegistrar",StringComparison.Ordinal) &&
+          scopedRegistrar.Contains("return __gcetRegister end",StringComparison.Ordinal) &&
+          scopedRegistrar.Contains("registerForEvent",StringComparison.Ordinal),
+        "Scoped registrar did not keep a saturated Lua main chunk within 200 locals");
+    Console.WriteLine("Saturated Hotscenes main chunk: registrar locals are isolated "+
+        "inside one-time Lua function scope, original CET fallback retained: PASS");
+
+
+
     // Four previously refused live owners used the real G-CET 0-Engine
     // provider body, but with CRLF or cosmetic indentation differences.
     // Exercise that complete recipe (not a simplified synthetic helper).
