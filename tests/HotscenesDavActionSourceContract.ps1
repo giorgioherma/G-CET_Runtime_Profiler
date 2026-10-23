@@ -22,6 +22,8 @@ AssertGenericActionRewrite $commented $reused $true
 AssertGenericActionRewrite $reused $reused $false
 AssertGenericActionRewrite 'local name = action:GetName(action).value' 'local name = (__gcetRoutedName or (action:GetName(action).value))' $true
 AssertGenericActionRewrite 'local name = Game.NameToString(action:GetName(action)) -- author comment' 'local name = (__gcetRoutedName or (Game.NameToString(action:GetName(action)))) -- author comment' $true
+AssertGenericActionRewrite 'local name = Game.NameToString(action:GetName())' 'local name = (__gcetRoutedName or (Game.NameToString(action:GetName())))' $true
+AssertGenericActionRewrite 'local name = action:GetName().value' 'local name = (__gcetRoutedName or (action:GetName().value))' $true
 AssertGenericActionRewrite 'local name = action:GetName(action).value or fallback() -- author comment' 'local name = action:GetName(action).value or fallback() -- author comment' $false
 AssertGenericActionRewrite 'local name = action:GetName(action).value .. "--suffix"' 'local name = action:GetName(action).value .. "--suffix"' $false
 Write-Host 'Generic source-owned ActionRouter preserves inline comments and original fallback.'

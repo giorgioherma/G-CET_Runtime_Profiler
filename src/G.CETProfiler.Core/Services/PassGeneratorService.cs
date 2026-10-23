@@ -1761,7 +1761,7 @@ public static class PassGeneratorService
         // into the cached name. Unknown author forms retain their original code.
         if (!Regex.IsMatch(
                 expression,
-                @"^(?:Game\s*\.\s*NameToString\s*\(\s*)?action\s*[:.]\s*GetName\s*\(\s*action\s*\)\s*(?:\.\s*value\s*)?\)?$",
+                @"^(?:Game\s*\.\s*NameToString\s*\(\s*)?action\s*[:.]\s*GetName\s*\(\s*(?:action\s*)?\)\s*(?:\.\s*value\s*)?\)?$",
                 RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
             return false;
 
