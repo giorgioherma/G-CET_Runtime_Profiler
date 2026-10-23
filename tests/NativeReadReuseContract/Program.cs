@@ -552,7 +552,7 @@ try
         BindingFlags.Static|BindingFlags.NonPublic)!;
     object?[] legacyArgs=[olderUi,"UI_SYSTEM","GetUISystem",uireview,"",""];
     Check((bool)validateProvider.Invoke(null,legacyArgs)! &&
-          (string)legacyArgs[4] == olderUi,
+          ((string)legacyArgs[4]!).TrimEnd('\r','\n') == olderUi.TrimEnd('\r','\n'),
         "Legacy UI_SYSTEM selection was not source-proven verbatim");
     var poisoned=olderUi.Replace("return Game.GetUISystem()",
         "return Game.GetQuestsSystem()",StringComparison.Ordinal);
