@@ -251,6 +251,7 @@ local Mod={
     playerAttached=false,
     tickElapsed = 0.0,
     schedulerElapsed = 0.0,
+    lastScheduleSignature = nil,
 }
 local Sites={list={}}
 local Mappins={sync=function() end}
@@ -270,13 +271,29 @@ local function processCompletionRewards(system)
         break
     end
 end
-function Mod.applyRuntimeSettings() end
+function Mod.applyRuntimeSettings()
+    local system = Bridge.system()
+    if not system then return false end
+    Mod.lastSettingsError = nil
+
+    local signature = "fixture"
+    return true
+end
 local function runtimeTick()
     local system = Bridge.system()
-    if not system or not Game.GetPlayer() then return end
+    if not system or not Game.GetPlayer() then
+        if Mod.playerAttached then
+            Diagnostics.event("save_detached", {})
+            Mod.playerAttached = false
+        end
+        return
+    end
     Diagnostics.setEnabled(Mod.settings.diagnostics.enabled)
     Diagnostics.configuration(Mod.settings)
     Mod.applyRuntimeSettings()
+    if not Mod.playerAttached then
+        Mod.playerAttached = true
+    end
     processBodyRewards(system)
     processCompletionRewards(system)
     Mappins.sync(system, Sites)
