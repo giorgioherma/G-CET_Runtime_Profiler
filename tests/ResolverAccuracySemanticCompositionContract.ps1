@@ -282,6 +282,10 @@ local function runtimeTick()
     Mappins.sync(system, Sites)
     Diagnostics.snapshot(system, Sites, Mod.settings, Mappins)
 end
+registerForEvent("onInit", function()
+    Mod.applyRuntimeSettings()
+end)
+
 registerForEvent("onUpdate", function(delta)
     Mod.tickElapsed = Mod.tickElapsed + delta
     Mod.schedulerElapsed = Mod.schedulerElapsed + delta
@@ -294,6 +298,10 @@ registerForEvent("onUpdate", function(delta)
         local system = Bridge.system()
         if system then local ok, err = pcall(function() system:Tick() end) end
     end
+end)
+
+registerForEvent("onShutdown", function()
+    Diagnostics.shutdown()
 end)
 '@
 
@@ -974,6 +982,17 @@ try{
  $x=Z($b+'sitAnywhere/modules/worldInteraction.lua');if($x-notmatch'function world\.hasVisibleState\(\)'){throw 'sitAnywhere visible-world wake probe missing.'}
  $x=Z($b+'sitAnywhere/modules/logic.lua');if($x-notmatch'workspotsHidden' -or $x-notmatch'if self\.workspotsHidden then return end'){throw 'sitAnywhere parked-workspot state missing.'}
  $x=Z($b+'repeatable_increased_criminal_activity/init.lua');foreach($t in @('rewardElapsed','mappinElapsed','diagnosticsElapsed','processBodyRewards(system, 4)','processCompletionRewards(system, 1)','Mod.rewardElapsed >= 0.25','Mod.mappinElapsed >= 1.0','Mod.diagnosticsElapsed >= 5.0','Mod.schedulerElapsed >= 10.0')){if($x-notmatch[regex]::Escape($t)){throw "RICA multi-rate semantic missing $t"}}
+ if($x -notmatch 'TryAttachRicaPass4 = function\(\)' -or
+    $x -notmatch 'pass4DiagnosticsWorkerJob = worker.attach\(' -or
+    $x -notmatch 'if pass4Attached then return end') {
+   throw 'RICA pristine source failed to compose the complete six-job Scheduler handoff'
+ }
+ $ricaWorker=Z($b+'repeatable_increased_criminal_activity/GCET_Semantic/rica_engine_worker.lua')
+ foreach($job in @('rica.diagnostics_worker','rica.rewards','rica.state',
+  'rica.mappins','rica.diagnostics','rica.system')) {
+    if(!$ricaWorker.Contains($job)){throw "RICA original-source worker missing $job"}
+ }
+
  $x=Z($b+'Dedka Auto Shop/init.lua');foreach($t in @('__gcetDedkaSemanticReady','RegisterZone','SetInterval(0.2','VehicleMount','VehicleUnmount','PlayerInvalidated','if not __gcetDedkaNearby then return end','if state.showing then')){if($x-notmatch[regex]::Escape($t)){throw "Dedka semantic missing $t"}}
  if(@($zip.Entries|Where-Object{$_.FullName.StartsWith($b+'marmurbank/',[StringComparison]::OrdinalIgnoreCase)}).Count -ne 0){
     throw 'Blacklisted Marmur Bank file escaped into pass ZIP.'
