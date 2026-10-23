@@ -56,15 +56,22 @@ public static class ResolverService
             "knowledge",
             "semantic-library.json");
 
+        // Compose deployment dependencies virtually. This must not change
+        // observed/live source evidence or mutate the installed game.
+        var effectiveRuntime = EffectiveRuntimeView.Build(modsRoot);
         var result = CallbackResolverService.Build(
             handoff,
             modsRoot,
-            semanticLibraryPath);
+            semanticLibraryPath,
+            effectiveRuntime);
 
         // Extract distinct owner/class counts from the same complete rows that
         // feed the report. Persist them under an explicit unit-bearing key.
         var report = JsonSerializer.SerializeToElement(result.Document);
         var augmented = JsonNode.Parse(report.GetRawText())!;
+        // Only future ZIP capabilities: never count as ALREADY_SATISFIED.
+        augmented["effectiveRuntime"] =
+            JsonSerializer.SerializeToNode(effectiveRuntime.Describe());
         var blacklistedMods = ModOptimizationBlacklist.FindInstalledOwners(modsRoot);
         ModOptimizationBlacklist.ApplyToResolver(augmented, blacklistedMods);
         var coverage = OptimizationClassCountService.Analyze(

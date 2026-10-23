@@ -223,7 +223,13 @@ self.logic.mod=self
 self.logic.sittables={
  [0]={workspot={enableCamera=false,camTransition=false,slide=false},update=function() end}
 }
-registerForEvent("onUpdate", function(dt)
+-- Model the pristine sitAnywhere owner initialization, not a detached
+-- callback missing the actual author's one-pass bootstrap boundaries.
+function sit:new()
+    registerForEvent("onInit", function()
+        self.logic:init()
+    end)
+    registerForEvent("onUpdate", function(dt)
         if not self.runtimeData.inMenu and self.runtimeData.inGame then
             Cron.Update(dt)
             interaction.update()
@@ -235,7 +241,8 @@ registerForEvent("onUpdate", function(dt)
                 spot:update(dt)
             end
         end
-end)
+    end)
+end
 '@
 
 Write-ModFile 'repeatable_increased_criminal_activity' 'init.lua' @'

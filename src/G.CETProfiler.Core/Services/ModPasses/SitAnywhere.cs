@@ -15,6 +15,25 @@ internal static partial class SemanticInjectors
         var live = context.FindFile("init.lua", "self.logic:onUpdate()");
         if (live.Text.Contains("local function runSitAnywhereFrame(dt)", StringComparison.Ordinal))
         {
+            // A complete current-generation result is already composed from
+            // pristine author source. Never treat its scheduler as an
+            // intermediate PASS4 input and apply another repair pass.
+            const string engineMarker = "-- G-CET semantic:sitanywhere-engine-worker-v1";
+            if (live.Text.Contains(engineMarker, StringComparison.Ordinal))
+            {
+                var worker = context.TryReadOwnedCoordinator("sitanywhere_engine_worker.lua");
+                if (worker is null ||
+                    !worker.StartsWith(
+                        "-- G-CET semantic coordinator:sitanywhere-engine-worker",
+                        StringComparison.Ordinal) ||
+                    !live.Text.Contains("if pass4Attached then return end", StringComparison.Ordinal) ||
+                    !live.Text.Contains("TryAttachSitAnywherePass4()", StringComparison.Ordinal) ||
+                    !live.Text.Contains("runSitAnywhereFrame(dt)", StringComparison.Ordinal))
+                    throw new InvalidOperationException(
+                        "SitAnywhere scheduler source/worker is partially installed.");
+                return SemanticInjectionResult.Skip(
+                    "SitAnywhere complete scheduler and frame worker already installed.");
+            }
             const string marker = "-- G-CET semantic:sitanywhere-scanner-workspot-only-v1";
             if (live.Text.Contains(marker, StringComparison.Ordinal))
                 return SemanticInjectionResult.Skip("SitAnywhere scanner/workspot idle extension already installed.");
@@ -210,11 +229,97 @@ internal static partial class SemanticInjectors
             i1 + "end\n" +
             indent + "end)";
 
-        var initText = init.Text[..selected.Index] +
-            replacementUpdate +
-            init.Text[(selected.Index + selected.Length)..];
+        var fallbackOpening = indent + registrar + "(\"onUpdate\", function(dt)\n";
+        var fallbackClosing = indent + "end)";
+        if (!replacementUpdate.StartsWith(fallbackOpening, StringComparison.Ordinal) ||
+            !replacementUpdate.EndsWith(fallbackClosing, StringComparison.Ordinal))
+            throw new InvalidOperationException("SitAnywhere generated frame callback cannot be extracted safely.");
+        // Compose the definitive frame-worker stage from pristine source in the
+        // SAME source transformation, not as a repair of an earlier PASS4 ZIP.
+        var authoredFrameBody = replacementUpdate[
+            fallbackOpening.Length..^fallbackClosing.Length];
+        var composedFrame = indent + "local function runSitAnywhereFrame(dt)\n" +
+            authoredFrameBody + indent + "end\n\n";
+        var schedulerStage = """
+    -- G-CET semantic:sitanywhere-engine-worker-v1
+    TryAttachSitAnywherePass4 = function()
+        if not sitAnywhereBaseInitialized then return false end
+        if pass4Attached then return true end
+        if pass4AttachInProgress then return false end
+        pass4AttachInProgress = true
+        local created = {}
+        local okAttach = pcall(function()
+            pass4FrameJob = require("GCET_Semantic/sitanywhere_engine_worker").attach(
+                created, runSitAnywhereFrame)
+            pass4Attached = true
+        end)
+        pass4AttachInProgress = false
+        if not okAttach then
+            for _, handle in ipairs(created) do
+                if handle and type(handle.Cancel) == "function" then
+                    pcall(handle.Cancel)
+                end
+            end
+            return false
+        end
+        return true
+    end
 
-        context.Write(init, initText);
+""";
+        var bootstrap = indent + registrar + "(\"onUpdate\", function(dt)\n" +
+            indent + "    if pass4Attached then return end\n" +
+            indent + "    if not sitAnywhereBaseInitialized then return end\n" +
+            indent + "    if TryAttachSitAnywherePass4() then return end\n" +
+            indent + "    runSitAnywhereFrame(dt)\n" +
+            indent + "end)";
+        var initText = init.Text[..selected.Index] +
+            composedFrame + schedulerStage + bootstrap +
+            init.Text[(selected.Index + selected.Length)..];
+        var originalCrLf = init.Text.Contains("\r\n", StringComparison.Ordinal);
+        initText = initText.Replace("\r\n", "\n", StringComparison.Ordinal);
+        const string initAnchor = "function sit:new()\n";
+        const string initialization = "        self.logic:init()\n";
+        if (initText.Split(initAnchor, StringSplitOptions.None).Length != 2 ||
+            initText.Split(initialization, StringSplitOptions.None).Length != 2)
+            throw new InvalidOperationException("SitAnywhere owner initialization boundaries changed.");
+        initText = initText.Replace(initAnchor,
+            initAnchor +
+            "    local pass4Attached = false\n" +
+            "    local pass4AttachInProgress = false\n" +
+            "    local sitAnywhereBaseInitialized = false\n" +
+            "    local TryAttachSitAnywherePass4 = nil\n" +
+            "    local pass4FrameJob = nil\n",
+            StringComparison.Ordinal);
+        initText = initText.Replace(initialization,
+            initialization +
+            "        sitAnywhereBaseInitialized = true\n" +
+            "        TryAttachSitAnywherePass4()\n", StringComparison.Ordinal);
+        context.WriteCoordinator("sitanywhere_engine_worker.lua", """
+-- G-CET semantic coordinator:sitanywhere-engine-worker
+-- Author frame logic remains in init.lua; one 0-Engine frame job.
+local M = {}
+function M.attach(created, onFrame)
+    local ok, engine = pcall(GetMod, "0-Engine")
+    if not ok or type(engine) ~= "table" or type(engine.Register) ~= "function" then
+        error("0-Engine Register API not ready")
+    end
+    local client = engine.Register("sitAnywhere")
+    if type(client) ~= "table" or type(client.Schedule) ~= "table"
+        or type(client.Schedule.EveryFrame) ~= "function" then
+        error("0-Engine Scheduler API not ready")
+    end
+    local job = client.Schedule.EveryFrame({
+        id = "sitanywhere.realtime", pause = "never"
+    }, function(ctx)
+        onFrame(ctx.dt or 0)
+    end)
+    created[#created + 1] = job
+    return job
+end
+return M
+""");
+        context.Write(init, originalCrLf
+            ? initText.Replace("\n", "\r\n", StringComparison.Ordinal) : initText);
         context.Write(cron, cronText);
         context.Write(logic, logicText);
         context.Write(world, worldText);

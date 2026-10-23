@@ -67,6 +67,12 @@ public static class PassGeneratorService
             throw new DirectoryNotFoundException($"CET mods folder was not found: {modsRoot}");
 
         using var resolver = JsonDocument.Parse(File.ReadAllText(resolverPath));
+        // Use exactly the framework capability projection seen by ANALYZE.
+        // Recompose it from the current author sources on every GENERATE so
+        // updates cannot silently invalidate a stale analysis snapshot.
+        var effectiveRuntime = EffectiveRuntimeView.Build(modsRoot);
+        var fixedRuntime = effectiveRuntime.RequireFramework();
+
         var candidates = ReadCandidates(resolver.RootElement)
             .Where(c => !ModOptimizationBlacklist.IsBlacklistedOwner(c.Owner) &&
                 !ModOptimizationBlacklist.IsBlacklistedPath(c.RelativeFile))
@@ -251,7 +257,6 @@ public static class PassGeneratorService
         // callbacks above are still selected strictly from capture/resolver
         // evidence; the shared runtime needed to execute those generic recipes
         // is shipped with every generated CET pass.
-        var fixedRuntime = FixedZeroEngineRuntime.Prepare(modsRoot);
         foreach (var pair in fixedRuntime.Files)
         {
             if (staged.ContainsKey(pair.Key))
@@ -275,7 +280,7 @@ public static class PassGeneratorService
                 "G-CET native location:", StringComparison.Ordinal) ||
              Encoding.UTF8.GetString(pair.Value).Contains(
                  NativePlayerVectorStage.Marker, StringComparison.Ordinal)));
-        var nativeRuntime = NativeRuntimeBundle.TryLoad(requiresNative);
+        var nativeRuntime = effectiveRuntime.NativeForGeneration(requiresNative);
         // Explicit empty GCAS prevents ghost anchors from a stale overlay.
         var nativeLocations = nativeRuntime is null ? null : availableLocations;
 
@@ -433,6 +438,7 @@ public static class PassGeneratorService
                 zeroEngineCompatibilityPolicy = "KNOWN_GCET_FIXED_RUNTIME_OR_STRUCTURALLY_PROVEN_HOST_PRESERVING_ADAPTER",
                 note = "The overlay generator composes generic AUTO and measured semantic source injections. 0-Engine uses the exact proven G-CET runtime for known states; unknown versions are preserved and receive only a namespaced Engine.GCET adapter when a safe final exported-table structure is proven. The 3 ms/s boundary prioritizes CPU materiality but never vetoes validated, production-enabled hand-authored semantic stages with current-source proof, even for registered callbacks with zero observed calls in this capture. Already-complete source stages are not re-applied; generic native-dispatch and inferred dormancy retain independent proofs."
             },
+            effectiveRuntime = effectiveRuntime.Describe(),
             fixedRuntime = new
             {
                 included = true,

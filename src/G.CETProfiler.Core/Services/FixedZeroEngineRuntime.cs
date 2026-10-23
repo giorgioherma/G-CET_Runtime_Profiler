@@ -120,14 +120,18 @@ internal static class FixedZeroEngineRuntime
             var sharedCurrent = AddSharedSystemAccessors(sourceBytes);
             var extendedCurrent =
                 AddNativeLocationBridge(AddWorkloadServices(sharedCurrent));
+            var integratedCurrent = EnsureRuntimeApis(extendedCurrent);
             var liveFiles = BuildKnownFixedRuntime(
-                runtimeRoot, liveRoot, extendedCurrent);
+                runtimeRoot, liveRoot, integratedCurrent)
+                .ToDictionary(x => x.Key, x => x.Value,
+                    StringComparer.OrdinalIgnoreCase);
+            AddNamespacedRuntimeDependencies(runtimeRoot, liveRoot, liveFiles);
             return new FixedZeroEngineBuild(
                 liveFiles,
                 statePrefix + "SOURCE_PROVEN_GCET_RUNTIME",
                 liveHash,
                 FixedVersion,
-                Sha256(extendedCurrent));
+                Sha256(integratedCurrent));
         }
         catch (InvalidOperationException)
         {
@@ -159,13 +163,15 @@ internal static class FixedZeroEngineRuntime
             HostActionRouterModule,
             actionRouter);
 
-        compatibleInit = AddNativeLocationBridge(AddWorkloadServices(compatibleInit));
+        compatibleInit = EnsureRuntimeApis(
+            AddNativeLocationBridge(AddWorkloadServices(compatibleInit)));
         var hostFiles = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase)
         {
             ["0-Engine/init.lua"] = compatibleInit,
             ["0-Engine/" + HostActionRouterModule] = actionRouter
         };
         AddWorkloadModules(runtimeRoot, liveRoot, hostFiles);
+        AddNamespacedRuntimeDependencies(runtimeRoot, liveRoot, hostFiles);
 
         return new FixedZeroEngineBuild(
             hostFiles,
@@ -175,6 +181,252 @@ internal static class FixedZeroEngineRuntime
             Sha256(compatibleInit));
     }
 
+
+
+    // Build against a complete 0-Engine API, not only its Lua filenames.
+    // Source-proven inputs are preserved: missing methods are attached in one
+    // G-CET-owned compatibility block, never by rewriting author functions.
+    private static byte[] EnsureRuntimeApis(byte[] source)
+    {
+        var text = Encoding.UTF8.GetString(source);
+        if (!text.Contains("MakeEventRegistrar", StringComparison.Ordinal) ||
+            !text.Contains("SubscribeAction", StringComparison.Ordinal))
+        {
+            if (!TryBuildHostCompatibilityInit(
+                    source, out var adapted, out var reason))
+                throw new InvalidOperationException(
+                    "Cannot attach required action/frame APIs: " + reason);
+            source = adapted;
+        }
+
+        return EnsureNamespacedSchedule(source);
+    }
+
+    // The stock 0-Engine may contain a Scheduler.lua file without ever
+    // importing or ticking it. Add a separate, verified scheduler runtime,
+    // with a SINGLE native event bridge installed only on first use.
+    // Do not replace modules/Scheduler.lua or alter original Register methods.
+    private static byte[] EnsureNamespacedSchedule(byte[] source)
+    {
+        var hasBom = source.Length >= 3 && source[0] == 0xEF &&
+            source[1] == 0xBB && source[2] == 0xBF;
+        var text = hasBom ? Encoding.UTF8.GetString(source, 3, source.Length - 3)
+                          : Encoding.UTF8.GetString(source);
+
+        const string marker = "-- G-CET namespaced scheduler compatibility v1";
+        if (text.Contains(marker, StringComparison.Ordinal))
+            return source;
+
+        // Existing complete integration is authoritative. A source name,
+        // an imported but unused Scheduler module, or version is not proof.
+        if (Regex.IsMatch(text,
+                @"\b(?:Engine|[A-Za-z_][A-Za-z0-9_]*)\.Schedule\s*=\s*\{",
+                RegexOptions.CultureInvariant) &&
+            text.Contains("Schedule.Every", StringComparison.Ordinal) &&
+            text.Contains("Scheduler.Update", StringComparison.Ordinal) &&
+            text.Contains("Scheduler.Init", StringComparison.Ordinal))
+            return source;
+
+        var exports = Regex.Matches(text,
+            @"(?m)^[ \t]*return[ \t]+(?<name>[A-Za-z_][A-Za-z0-9_]*)[ \t]*;?[ \t]*(?:--[^\r\n]*)?\r?$",
+            RegexOptions.CultureInvariant);
+        if (exports.Count == 0)
+            throw new InvalidOperationException(
+                "Cannot attach Scheduler: no final 0-Engine export.");
+        var final = exports[^1];
+        if (!Regex.IsMatch(text[(final.Index + final.Length)..],
+                @"\A(?:\s|--[^\r\n]*)*\z", RegexOptions.CultureInvariant))
+            throw new InvalidOperationException(
+                "Cannot attach Scheduler after executable statements.");
+
+        // The known 0.18.6 author runtime already owns a single CET onUpdate
+        // dispatcher. Adopt it instead of registering another CET callback.
+        // Only source-proven core state/export shapes are admitted.
+        var normalizedHost = text.Replace("\r\n", "\n", StringComparison.Ordinal);
+        const string authorUpdate =
+            "    pcall(Cron.Update, delta)\n" +
+            "    pcall(UpdateFrame, delta)\n" +
+            "end)";
+        var canAdoptCentralUpdate =
+            normalizedHost.Split(authorUpdate, StringSplitOptions.None).Length == 2 &&
+            normalizedHost.Contains("registerForEvent(\"onUpdate\", function(delta)", StringComparison.Ordinal) &&
+            normalizedHost.Contains("local currentFrame", StringComparison.Ordinal) &&
+            normalizedHost.Contains("local isPlaying", StringComparison.Ordinal) &&
+            normalizedHost.Contains("State.inMenu", StringComparison.Ordinal) &&
+            normalizedHost.Contains("State.player()", StringComparison.Ordinal) &&
+            normalizedHost.Contains("function Engine.GetState(", StringComparison.Ordinal);
+        var block = """
+-- G-CET namespaced scheduler compatibility v1
+do
+    local __host = __GCET_HOST__
+    if type(__host) == "table" and type(__host.Register) == "function" then
+        local __ok, __scheduler = pcall(require, "modules/G-CET/Scheduler")
+        if not __ok or type(__scheduler) ~= "table" or
+           type(__scheduler.Init) ~= "function" or
+           type(__scheduler.Update) ~= "function" or
+           type(__scheduler.Every) ~= "function" then
+            error("G-CET namespaced scheduler dependency missing or incomplete")
+        end
+        local __started, __frame = false, 0
+        local function __activate()
+            if __started then return end
+            __scheduler.Init(nil, nil)
+            registerForEvent("onUpdate", function(dt)
+                __frame = __frame + 1
+                -- CET onUpdate delta is an elapsed-frame interval.
+                -- os.clock() measures process CPU time, not wall time.
+                local __realDt = dt or 0
+                local __player = nil
+                if Game ~= nil and type(Game.GetPlayer) == "function" then
+                    local ok, player = pcall(Game.GetPlayer)
+                    if ok then __player = player end
+                end
+                pcall(__scheduler.Update, {
+                    frame = __frame, dt = dt, realDt = __realDt,
+                    now = nil, generation = 0, playing = __player ~= nil,
+                    inMenu = false, player = __player, state = nil
+                })
+            end)
+            __started = true
+        end
+        local __names = {
+            "EveryFrame", "EveryFrames", "Every", "After", "NextTick"
+        }
+        local __schedule = type(__host.Schedule) == "table"
+            and __host.Schedule or {}
+        for _, name in ipairs(__names) do
+            if type(__schedule[name]) ~= "function" then
+                local method = name
+                __schedule[method] = function(...)
+                    __activate()
+                    return __scheduler[method](...)
+                end
+            end
+        end
+        if type(__schedule.GetInfo) ~= "function" then
+            __schedule.GetInfo = __scheduler.GetInfo
+        end
+        __host.Schedule = __schedule
+        local __priorRegister = __host.Register
+        __host.Register = function(...)
+            local mod = __priorRegister(...)
+            if type(mod) == "table" then
+                local schedule = type(mod.Schedule) == "table" and mod.Schedule or {}
+                local owner = mod.name or (select(1, ...)) or "unscoped"
+                for _, name in ipairs(__names) do
+                    local method = name
+                    if type(schedule[method]) ~= "function" then
+                        schedule[method] = function(...)
+                            local args = {...}
+                            local optIdx = (method == "EveryFrames" or
+                                method == "Every" or method == "After") and 2 or 1
+                            local options = args[optIdx]
+                            if type(options) == "function" then
+                                args[optIdx + 1] = options
+                                options = {}
+                            end
+                            if type(options) ~= "table" then options = {} end
+                            local copy = {}
+                            for key, value in pairs(options) do copy[key] = value end
+                            copy.owner = owner
+                            args[optIdx] = copy
+                            return __schedule[method]((table.unpack or unpack)(args))
+                        end
+                    end
+                end
+                mod.Schedule = schedule
+            end
+            return mod
+        end
+    end
+end
+
+""".Replace("__GCET_HOST__", final.Groups["name"].Value);
+        if (canAdoptCentralUpdate)
+        {
+            // This closure is installed by the namespaced bridge before any
+            // gameplay update. The author callback supplies the real lifecycle
+            // context; no second native CET onUpdate is registered.
+            const string existingSchedulerEvent =
+                "            registerForEvent(\"onUpdate\", function(dt)";
+            const string startedLine = "            __started = true";
+            var eventStart = block.IndexOf(existingSchedulerEvent, StringComparison.Ordinal);
+            var eventEnd = eventStart < 0 ? -1 :
+                block.IndexOf(startedLine, eventStart, StringComparison.Ordinal);
+            if (eventStart < 0 || eventEnd < 0)
+                throw new InvalidOperationException(
+                    "Namespaced scheduler bridge cannot adopt central 0-Engine tick.");
+            var driver = """
+            __host.__gcetScheduleDriver = function(ctx)
+                __frame = __frame + 1
+                pcall(__scheduler.Update, ctx)
+            end
+""";
+            block = block[..eventStart] + driver + block[eventEnd..];
+            var authorReplacement = """
+    pcall(Cron.Update, delta)
+    pcall(UpdateFrame, delta)
+    if type(Engine.__gcetScheduleDriver) == "function" then
+        local __gcetPlayer = State.player()
+        Engine.__gcetScheduleDriver({
+            frame = currentFrame, dt = delta, realDt = delta,
+            now = State.time, generation = 0, playing = isPlaying,
+            inMenu = State.inMenu, player = __gcetPlayer,
+            state = Engine.GetState()
+        })
+    end
+end)
+""";
+            normalizedHost = normalizedHost.Replace(
+                authorUpdate, authorReplacement, StringComparison.Ordinal);
+            text = text.Contains("\r\n", StringComparison.Ordinal)
+                ? normalizedHost.Replace("\n", "\r\n", StringComparison.Ordinal)
+                : normalizedHost;
+            // Insertion index changed after author-update injection.
+            exports = Regex.Matches(text,
+                @"(?m)^[ \t]*return[ \t]+(?<name>[A-Za-z_][A-Za-z0-9_]*)[ \t]*;?[ \t]*(?:--[^\r\n]*)?\r?$",
+                RegexOptions.CultureInvariant);
+            final = exports[^1];
+        }
+        var encoded = Encoding.UTF8.GetBytes(text.Insert(final.Index, block));
+        if (!hasBom) return encoded;
+        var result = new byte[encoded.Length + 3];
+        result[0] = 0xEF; result[1] = 0xBB; result[2] = 0xBF;
+        Buffer.BlockCopy(encoded, 0, result, 3, encoded.Length);
+        return result;
+    }
+
+    private static void AddNamespacedRuntimeDependencies(
+        string runtimeRoot, string liveRoot,
+        Dictionary<string, byte[]> files)
+    {
+        var init = Encoding.UTF8.GetString(files["0-Engine/init.lua"]);
+        if (init.Contains("modules/G-CET/ActionRouter", StringComparison.Ordinal))
+        {
+            var router = ReconcileHostModule(liveRoot,
+                HostActionRouterModule,
+                LoadBundledFixedModule(runtimeRoot, "modules/ActionRouter.lua"));
+            // An unrelated user-authored module at this namespaced path is
+            // never overwritten or used as proof of an operational router.
+            // Generated OnAction wrappers are pcall-guarded and retain their
+            // original Observe fallback when Subscribe/Dispatch is unavailable.
+            files["0-Engine/" + HostActionRouterModule] = router;
+        }
+
+        if (init.Contains("G-CET namespaced scheduler compatibility v1",
+                StringComparison.Ordinal))
+        {
+            const string schedulePath = "modules/G-CET/Scheduler.lua";
+            var bundled = LoadBundledFixedModule(runtimeRoot, "modules/Scheduler.lua");
+            var scheduler = ReconcileHostModule(liveRoot, schedulePath, bundled);
+            var source = Encoding.UTF8.GetString(scheduler);
+            foreach (var method in new[] { "Init", "Update", "Every", "EveryFrames" })
+                if (!source.Contains("function Scheduler." + method, StringComparison.Ordinal))
+                    throw new InvalidOperationException(
+                        "Existing namespaced Scheduler is missing " + method);
+            files["0-Engine/" + schedulePath] = scheduler;
+        }
+    }
 
     private static string? ResolveProfilerBackupInit(string modsRoot)
     {
@@ -408,6 +660,26 @@ internal static class FixedZeroEngineRuntime
         // fill gaps only. A missing API is handled at the opt-in call site,
         // never by replacing or refusing the whole pass.
         var bytes = File.ReadAllBytes(livePath);
+        if (relativeModule.Equals(HostActionRouterModule, StringComparison.OrdinalIgnoreCase))
+        {
+            var oldRouter = Encoding.UTF8.GetString(bytes);
+            // The user's known legacy G-CET router can implement Subscribe and
+            // Dispatch yet silently ignore phase="after". For our private
+            // G-CET namespace use the packaged phase-aware implementation,
+            // but never replace an unrecognized custom router.
+            if (oldRouter.Contains("function ActionRouter.DispatchAfter(", StringComparison.Ordinal) &&
+                oldRouter.Contains("phase == \"after\"", StringComparison.Ordinal))
+                return bytes;
+            if (oldRouter.Contains("ActionRouter.lua - one indexed PlayerPuppet::OnAction fan-out.", StringComparison.Ordinal) &&
+                oldRouter.Contains("function ActionRouter.Subscribe(config, fn, owner)", StringComparison.Ordinal) &&
+                oldRouter.Contains("function ActionRouter.Dispatch(this, action, consumer)", StringComparison.Ordinal) &&
+                !oldRouter.Contains("DispatchAfter", StringComparison.Ordinal))
+                return bundled;
+            // Unknown user-owned namespace remains unchanged. Its missing
+            // after-phase capability is checked at SubscribeAction, which
+            // must return nil so the author retains CET ObserveAfter fallback.
+            return bytes;
+        }
         if (relativeModule.Equals("modules/GCETNativeLocationHost.lua",
                 StringComparison.OrdinalIgnoreCase))
         {
@@ -794,7 +1066,7 @@ internal static class FixedZeroEngineRuntime
             "        local __gcetActionRouter = nil",
             "        local __gcetActionObserverInstalled = false",
             "",
-            "        local function __gcetEnsureActionRouter()",
+            "        local function __gcetEnsureActionRouter(phase)",
             "            if __gcetActionRouter == nil then",
             "                local ok, router = pcall(require, \"modules/G-CET/ActionRouter\")",
             "                if not ok or type(router) ~= \"table\" or type(router.Subscribe) ~= \"function\" or type(router.Dispatch) ~= \"function\" then",
@@ -806,7 +1078,7 @@ internal static class FixedZeroEngineRuntime
             "                end",
             "            end",
             "",
-            "            if not __gcetActionObserverInstalled then",
+            "            if phase ~= \"after\" and not __gcetActionObserverInstalled then",
             "                local ok = pcall(function()",
             "                    Observe(\"PlayerPuppet\", \"OnAction\", function(player, action, consumer)",
             "                        __gcetActionRouter.Dispatch(player, action, consumer)",
@@ -819,14 +1091,20 @@ internal static class FixedZeroEngineRuntime
             "        end",
             "",
             "        function __gcetApi.SubscribeAction(config, fn, source)",
-            "            if type(__gcetHostSubscribeAction) == \"function\" then",
+            "            local phase = type(config) == \"table\" and config.phase or \"before\"",
+            "            -- Legacy host methods may silently ignore phase=after.",
+            "            -- All after clients use the G-CET-owned phase-aware router.",
+            "            if phase ~= \"after\" and type(__gcetHostSubscribeAction) == \"function\" then",
             "                local ok, handle = pcall(__gcetHostSubscribeAction, config, fn, source)",
             "                if ok and handle ~= nil then return handle end",
             "                ok, handle = pcall(__gcetHostSubscribeAction, __gcetHost, config, fn, source)",
             "                if ok and handle ~= nil then return handle end",
             "            end",
-            "            if not __gcetEnsureActionRouter() then",
+            "            if not __gcetEnsureActionRouter(phase) then",
             "                error(\"G-CET ActionRouter could not initialize\")",
+            "            end",
+            "            if phase == \"after\" and type(__gcetActionRouter.DispatchAfter) ~= \"function\" then",
+            "                return nil",
             "            end",
             "            return __gcetActionRouter.Subscribe(config, fn, source or \"unscoped\")",
             "        end",
