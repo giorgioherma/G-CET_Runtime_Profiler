@@ -55,8 +55,15 @@ return Engine
     var files = (IReadOnlyDictionary<string, byte[]>)filesProperty.GetValue(fw)!;
     var init = Encoding.UTF8.GetString(files["0-Engine/init.lua"]);
     foreach (var api in new[] { "MakeEventRegistrar", "SubscribeAction",
-                                "GCETNativeLocationHost", "Schedule.Every" })
+                                "GCETNativeLocationHost",
+                                "modules/G-CET/Scheduler" })
         Check(init.Contains(api), "Missing virtual API: " + api);
+    // The namespaced adapter defines methods from __names at runtime;
+    // no literal "Schedule.Every" source token is emitted.
+    Check(init.Contains("EveryFrame") && init.Contains("\"Every\"") &&
+          init.Contains("__host.Schedule = __schedule") &&
+          init.Contains("__scheduler.Update"),
+          "Projected scheduler is not wired to its dynamic Every/Update API");
     Check(init.Contains("G-CET namespaced scheduler compatibility v1"),
         "Missing Scheduler executable bridge");
     Check(files.ContainsKey("0-Engine/modules/G-CET/Scheduler.lua"),
