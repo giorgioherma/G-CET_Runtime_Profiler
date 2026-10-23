@@ -295,6 +295,92 @@ finally {
 
 Write-Host 'CyberTrials semantic composition contract passed: version-tolerant structure + PLAYER staging + semantic generation.'
 
+# Full, original-shaped editor/system/race callback, never PASS4 output.
+# Reduced compatible source keeps legacy semantic without forcing five jobs.
+$fullCyber=$initSource.Replace(
+    '    local player = Game.GetPlayer()',
+@'
+    if Game.GetSystemRequestsHandler():IsPreGame() then
+        if timeTrials.runtimeData.inGame == true then
+            timeTrials.runtimeData.inGame = false
+        end
+        if nativeSettings and not addedNativeSettings then
+            NativeMenu()
+            addedNativeSettings = true
+        end
+    elseif Game.GetSystemRequestsHandler():IsGamePaused() then
+        if nativeSettings and not addedNativeSettings then
+            NativeMenu()
+            addedNativeSettings = true
+        end
+    else
+        if addedNativeSettings then
+            addedNativeSettings = false
+        end
+    end
+    if keyPressed == true and readyToPlace == true then
+        if placingProp == true then
+            flashTimer = flashTimer + dt
+        else
+            isPlacingKey1 = true
+            NewMappin(position)
+        end
+    elseif keyPressed == false and readyToPlace == true then
+        if isPlacingKey1 then isPlacingKey1 = false end
+    end
+    if rightKeyPressed == true and readyToPlace == true then
+        isPlacingKey4 = true
+        NewMappin(position)
+    elseif rightKeyPressed == false and readyToPlace == true then
+        if isPlacingKey4 then isPlacingKey4 = false end
+    end
+    local player = Game.GetPlayer()
+'@)
+if($fullCyber -eq $initSource){throw 'Full CyberTrials source-shaped callback was not composed'}
+[IO.File]::WriteAllText($initPath,$fullCyber,[Text.UTF8Encoding]::new($false))
+$assembly=[Reflection.Assembly]::LoadFrom((Join-Path $ResolverRoot 'G.CETProfiler.Core.dll'))
+$inject=$assembly.GetType('GCETRuntimeProfiler.Core.Services.SemanticInjectors',$true)
+$ctxType=$assembly.GetType('GCETRuntimeProfiler.Core.Services.SemanticPatchContext',$true)
+$method=$inject.GetMethod('ApplyCyberTrials',[Reflection.BindingFlags]'Static,NonPublic')
+$ctor=@($ctxType.GetConstructors([Reflection.BindingFlags]'Instance,NonPublic')|
+  Where-Object{$_.GetParameters().Count -eq 4})[0]
+if(!$method -or !$ctor){throw 'CyberTrials primary source generator unavailable'}
+$stage=[Collections.Generic.Dictionary[string,byte[]]]::new([StringComparer]::OrdinalIgnoreCase)
+$ctx=$ctor.Invoke([object[]]@([string]$mods,'CyberTrials','cybertrials',$stage))
+try{$result=$method.Invoke($null,[object[]]@($ctx))}
+catch{throw "CyberTrials full pristine source rejected: $($_.Exception.InnerException.Message)"}
+if(!$result.Applied){throw 'CyberTrials full original should generate a five-job pass'}
+$changes=@($ctxType.GetProperty('Changes',[Reflection.BindingFlags]'Instance,NonPublic').GetValue($ctx))
+$initChange=$changes|Where-Object{$_.RelativeFile -like '*/init.lua'}|Select-Object -First 1
+$worker=$changes|Where-Object{$_.RelativeFile -like '*/GCET_Semantic/cybertrials_engine_worker.lua'}|Select-Object -First 1
+if(!$initChange -or !$worker){throw 'CyberTrials original pass missing main dispatcher or owned scheduler worker'}
+$compiled=[Text.Encoding]::UTF8.GetString($initChange.Bytes)
+$workerCode=[Text.Encoding]::UTF8.GetString($worker.Bytes)
+foreach($required in @('-- G-CET semantic:cybertrials-five-job-v1',
+  '__gcetCyberTrialsPass4.Dispatch(dt,"fallback")',
+  'if __gcetCyberTrialsPass4.attached then return end',
+  'TryAttach()', 'GCET_Semantic/cybertrials_engine_worker')) {
+  if(!$compiled.Contains($required)){throw "CyberTrials pristine output missing $required"}
+}
+foreach($id in @('cybertrials.world_far','cybertrials.world_near',
+  'cybertrials.system_state','cybertrials.race_state','cybertrials.realtime')) {
+  if(!$workerCode.Contains('id = "'+$id+'"')){throw "CyberTrials pristine five-job worker missing $id"}
+}
+if(!$workerCode.StartsWith('-- G-CET semantic coordinator:cybertrials'+[char]10)){
+  throw 'CyberTrials generated coordinator has the wrong authoritative rule'
+}
+foreach($change in $changes){$stage[$change.RelativeFile]=$change.Bytes}
+$again=$ctor.Invoke([object[]]@([string]$mods,'CyberTrials','cybertrials',$stage))
+if($method.Invoke($null,[object[]]@($again)).Applied){
+  throw 'CyberTrials complete five-job original-source pass was not idempotent'
+}
+if([IO.File]::ReadAllText($initPath) -ne $fullCyber){
+  throw 'CyberTrials pristine source was mutated rather than staged'
+}
+Write-Host 'CyberTrials full original-shaped five-job owner, fallback, original preservation and idempotence PASS'
+
+
+
 # The 22:22 real source uses registerForEvent('onDraw'), not just
 # registerRuntimeEvent. All three forms prove the same owned callback.
 $asm=[Reflection.Assembly]::LoadFrom((Join-Path $ResolverRoot 'G.CETProfiler.Core.dll'))
