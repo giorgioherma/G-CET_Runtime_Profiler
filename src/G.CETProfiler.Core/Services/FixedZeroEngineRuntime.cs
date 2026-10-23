@@ -122,7 +122,9 @@ internal static class FixedZeroEngineRuntime
                 AddNativeLocationBridge(AddWorkloadServices(sharedCurrent));
             var integratedCurrent = EnsureRuntimeApis(extendedCurrent);
             var liveFiles = BuildKnownFixedRuntime(
-                runtimeRoot, liveRoot, integratedCurrent);
+                runtimeRoot, liveRoot, integratedCurrent)
+                .ToDictionary(x => x.Key, x => x.Value,
+                    StringComparer.OrdinalIgnoreCase);
             AddNamespacedRuntimeDependencies(runtimeRoot, liveRoot, liveFiles);
             return new FixedZeroEngineBuild(
                 liveFiles,
