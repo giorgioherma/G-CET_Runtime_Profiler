@@ -24,10 +24,35 @@ internal static partial class SemanticInjectors
         }
         // The historical two-lane cadence is not completion. Explicitly refuse
         // partial PASS4 sources instead of layering a correction on their output.
-        if(file.Text.Contains("TryAttachRepeatablePass4",StringComparison.Ordinal) ||
-           file.Text.Contains("cyberpsychos.runtime_combat_reward",StringComparison.Ordinal))
-            throw new InvalidOperationException("Cyberpsychos partial PASS4 source requires separately source-proven upgrade; refusing unsafe rewrite.");
+        if(file.Text.Contains("TryAttachRepeatablePass4",StringComparison.Ordinal))
+        {
+            // Older fully integrated PASS4 Lua is a compatible completed source
+            // representation, not an input prerequisite for pristine generation.
+            // Prove every job and every incremental dependency before adopting it.
+            foreach(var id in new[] {
+                "runtime_combat_reward", "runtime_watchdog", "presentation_worker",
+                "runtime", "presentation", "scheduler"
+            })
+                if(!file.Text.Contains("id = \"cyberpsychos."+id+"\"",StringComparison.Ordinal))
+                    throw new InvalidOperationException("Cyberpsychos partial PASS4 job set drifted: "+id);
+            context.FindFile("modules/mappins.lua","Mappins.beginSync","Mappins.syncStep");
+            context.FindFile("modules/diagnostics.lua","Diagnostics.beginSnapshot","Diagnostics.snapshotStep");
+            context.FindFile("modules/boss_watchdog.lua","Watchdog.syncSite","syncSiteWithPosition");
+            const string oldHandoff="    TryAttachRepeatablePass4()\n\n    Mod.tickElapsed = Mod.tickElapsed + delta";
+            const string fixedHandoff="    TryAttachRepeatablePass4()\n    if pass4Attached then return end\n\n    Mod.tickElapsed = Mod.tickElapsed + delta";
+            if(file.Text.Contains(fixedHandoff,StringComparison.Ordinal))
+                return SemanticInjectionResult.Skip("Cyberpsychos older full PASS4 source and handoff verified.");
+            if(!file.Text.Contains(oldHandoff,StringComparison.Ordinal))
+                throw new InvalidOperationException("Cyberpsychos existing PASS4 handoff drifted.");
+            context.Write(file,CyberpsychoReplaceExact(file.Text,oldHandoff,fixedHandoff,"PASS4 handoff"));
+            return SemanticInjectionResult.Success("Completed older PASS4 source: repaired only same-frame scheduler takeover.");
+        }
+        if(file.Text.Contains("cyberpsychos.runtime_combat_reward",StringComparison.Ordinal))
+            throw new InvalidOperationException("Cyberpsychos partial PASS4 work stages are not source-proven.");
         var init=NormalizeCyberpsychoLineEndings(file.Text,out var crlfInit);
+        // Legacy v1 only gated presentation; the same authoritative rule
+        // recognizes that earlier source and creates the complete first-pass form.
+        var legacyPresentation=init.Contains("local function runtimeTick(includePresentation)",StringComparison.Ordinal);
         init=CyberpsychoReplaceExact(init,"    tickElapsed = 0.0,","    tickElapsed = 0.0,\n    presentationElapsed = 0.0,","presentation clock");
         init=CyberpsychoReplaceExact(init,"    schedulerElapsed = 0.0,","    schedulerElapsed = 0.0,\n    schedulerIdleElapsed = 20.0,","idle scheduler");
         init=CyberpsychoReplaceExact(init,"    playerAttached = false,",CyberpsychoFields(),"player-state");
@@ -94,6 +119,7 @@ internal static partial class SemanticInjectors
     private static void CyberpsychoAssertEquivalent(string found,string known,string boundary)
     {
         // Shared generic PLAYER getter is an equivalent source-adopted read.
+        found=CyberpsychoNormalizeLegacy(found,boundary);
         found=found.Replace("__gcetGetPlayer()","Game.GetPlayer()",StringComparison.Ordinal);
         found=Regex.Replace(found,@"__gcetRegisterEvent_\d+(?=\s*\()", "registerForEvent");
         if(!string.Equals(CyberpsychoCanonicalTokens(found),CyberpsychoCanonicalTokens(known),StringComparison.Ordinal))
@@ -124,6 +150,44 @@ internal static partial class SemanticInjectors
         source=CyberpsychoReplaceExact(source,clearOld,clearNew,path+" teardown");
         ctx.Write(file,RestoreCyberpsychoLineEndings(source,crlf));
     }
+
+    private static string CyberpsychoNormalizeLegacy(string found,string boundary)
+    {
+        if(boundary=="runtime source" &&
+           found.Contains("runtimeTick(includePresentation)",StringComparison.Ordinal))
+        {
+            const string gated = """
+    if includePresentation then
+        Mappins.sync(system, Sites)
+        Diagnostics.snapshot(system, Sites, Mod.settings, Mappins)
+    end
+""";
+            const string ungated = """
+    Mappins.sync(system, Sites)
+    Diagnostics.snapshot(system, Sites, Mod.settings, Mappins)
+""";
+            found=CyberpsychoReplaceExact(found,"local function runtimeTick(includePresentation)",
+                "local function runtimeTick()","legacy runtime signature");
+            found=CyberpsychoReplaceExact(found,gated.TrimEnd('\n')+"\n",
+                ungated.TrimEnd('\n')+"\n","legacy presentation gate");
+        }
+        if(boundary=="onUpdate/shutdown" &&
+           found.Contains("local includePresentation = Mod.presentationElapsed",StringComparison.Ordinal))
+        {
+            found=CyberpsychoReplaceExact(found,
+                "    Mod.presentationElapsed = (Mod.presentationElapsed or 5.0) + delta\n",
+                "","legacy presentation accumulator");
+            found=CyberpsychoReplaceExact(found,
+                "        local includePresentation = Mod.presentationElapsed >= 5.0\n"+
+                "        if includePresentation then Mod.presentationElapsed = 0.0 end\n",
+                "","legacy presentation selection");
+            found=CyberpsychoReplaceExact(found,
+                "pcall(runtimeTick, includePresentation)",
+                "pcall(runtimeTick)","legacy runtime invocation");
+        }
+        return found;
+    }
+
     private static string CyberpsychoFields() => """
     playerAttached = false,
 

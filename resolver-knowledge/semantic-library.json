@@ -6808,7 +6808,7 @@
         "sourceCompletionAuthoritative": true,
         "ownerAll": [
           "BossWatchdog.init(Bridge, Diagnostics)",
-          "local function runtimeTick()",
+          "local function runtimeTick(",
           "function Watchdog.sync(",
           "if status == 1 then",
           "tracked(system, site.id)"
