@@ -181,11 +181,12 @@
         }
       ],
       "sourceProof": {
+        "sourceCompletionAuthoritative": true,
         "ownerAll": [
           "Sites.list",
           "Diagnostics"
         ],
-        "alreadySatisfiedMarker": "G-CET semantic:repeatable-cyberpsychos",
+        "alreadySatisfiedMarker": "G-CET semantic:repeatable-cyberpsychos-six-job-v1",
         "expectedMarkerFileCount": 1,
         "satisfiedAll": [
           "cyberpsychos.runtime_combat_reward",
@@ -6807,8 +6808,8 @@
         "sourceCompletionAuthoritative": true,
         "ownerAll": [
           "BossWatchdog.init(Bridge, Diagnostics)",
-          "TryAttachRepeatablePass4",
-          "syncSiteWithPosition",
+          "local function runtimeTick()",
+          "function Watchdog.sync(",
           "if status == 1 then",
           "tracked(system, site.id)"
         ],
