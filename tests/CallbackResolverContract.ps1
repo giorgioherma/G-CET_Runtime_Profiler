@@ -2351,7 +2351,11 @@ try {
 
     $hostActionCapture=$foreignZeroText.IndexOf('local __gcetHostSubscribeAction = __gcetHost.SubscribeAction')
     $hostActionCall=$foreignZeroText.IndexOf('pcall(__gcetHostSubscribeAction, config, fn, source)')
-    $localActionFallback=$foreignZeroText.IndexOf('if not __gcetEnsureActionRouter() then')
+    $localActionFallback=$foreignZeroText.IndexOf('if not __gcetEnsureActionRouter(phase) then')
+    $hostBeforeOnly=$foreignZeroText.IndexOf('phase ~= "after" and type(__gcetHostSubscribeAction)')
+    if($hostBeforeOnly -lt $hostActionCapture -or $hostBeforeOnly -gt $hostActionCall) {
+        throw 'Host compatibility phase guard missing: before-action host may silently accept an after-phase subscription.'
+    }
     if($hostActionCapture -lt 0 -or $hostActionCall -lt $hostActionCapture -or $localActionFallback -lt $hostActionCall) {
         throw 'Host compatibility bridge no longer prefers an existing host SubscribeAction before its private ActionRouter fallback.'
     }
