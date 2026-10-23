@@ -1252,6 +1252,10 @@ jobs:
         shell: pwsh
         run: ./tests/CyberpsychosWorkerCompletionContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: Cyberpsychos pristine six-job scheduler and native dependency contract
+        shell: pwsh
+        run: ./tests/CyberpsychosPristineOnePassContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: Personal English-only Hotscenes source and opt-in contract
         shell: pwsh
         run: ./tests/HotscenesEnglishOnlySourceContract.ps1 -ResolverRoot ./publish-resolver
