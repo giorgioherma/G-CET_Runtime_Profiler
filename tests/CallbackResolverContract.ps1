@@ -2270,8 +2270,8 @@ if ([string]$foreignManifest.fixedRuntime.FixedVersion -ne 'HOST-COMPAT-v1') {
 if ([string]$foreignManifest.fixedRuntime.mode -ne 'HOST_PRESERVING_ADAPTER' -or !$foreignManifest.fixedRuntime.hostPreserving) {
     throw 'Foreign 0-Engine manifest did not report host-preserving adapter mode.'
 }
-if ([int]$foreignManifest.summary.fixedRuntimeFiles -ne 8) {
-    throw "Foreign 0-Engine compatibility should ship init, private ActionRouter and 6 additive service modules, got $($foreignManifest.summary.fixedRuntimeFiles)."
+if ([int]$foreignManifest.summary.fixedRuntimeFiles -ne 9) {
+    throw "Foreign 0-Engine compatibility should ship init, private ActionRouter, namespaced Scheduler and 6 additive service modules, got $($foreignManifest.summary.fixedRuntimeFiles)."
 }
 
 $foreignZip = [System.IO.Compression.ZipFile]::OpenRead([string]$foreignResolved.pass.ZipPath)
@@ -2303,6 +2303,10 @@ try {
         'pcall(__gcetHostSubscribeAction, config, fn, source)',
         'modules/G-CET/ActionRouter',
         '-- G-CET additive 0-Engine workload services v1',
+        '-- G-CET namespaced scheduler compatibility v1',
+        'modules/G-CET/Scheduler',
+        '__host.Schedule = __schedule',
+        '__scheduler.Update',
         'modules/GCETWorkQueue',
         'modules/GCETPhasePlanner',
         'modules/GCETFrameListeners',
@@ -2320,6 +2324,13 @@ try {
     }
     if ($null -eq $foreignZip.GetEntry($base + '0-Engine/modules/G-CET/ActionRouter.lua')) {
         throw 'Host-preserving 0-Engine adapter did not ship its private ActionRouter.'
+    }
+    $namespacedScheduler = Read-ForeignZipText ($base + '0-Engine/modules/G-CET/Scheduler.lua')
+    foreach ($required in @('function Scheduler.Init(', 'function Scheduler.Update(',
+                           'function Scheduler.Every(', 'function Scheduler.EveryFrame(')) {
+        if (!$namespacedScheduler.Contains($required)) {
+            throw "Namespaced Scheduler is missing the required API: $required"
+        }
     }
     foreach ($forbidden in @(
         '0-Engine/modules/ActionRouter.lua',
