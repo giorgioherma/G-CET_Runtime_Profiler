@@ -226,7 +226,7 @@ internal static partial class SemanticInjectors
         // assuming the author's next unrelated function is named NewMappin.
         // Older compatible versions need not have that function at all.
         var callbackClose=Regex.Match(s[(begin+opening.Length)..],
-            @"(?m)^end[ \\t]*\\)[ \\t]*(?:--[^\\n]*)?$",
+            @"(?m)^end[ \t]*\)[ \t]*(?:--[^\n]*)?$",
             RegexOptions.CultureInvariant);
         if(!callbackClose.Success)
             throw new InvalidOperationException("CyberTrials onUpdate closing boundary not proven.");
