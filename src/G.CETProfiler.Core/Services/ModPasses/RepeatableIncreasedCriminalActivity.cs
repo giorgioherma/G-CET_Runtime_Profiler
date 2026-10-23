@@ -134,9 +134,148 @@ internal static partial class SemanticInjectors
             "    if Mod.schedulerElapsed >= 10.0 then\n",
             "RICA mappin diagnostics cadence");
 
+        // Build the scheduler and all six jobs as part of this SAME
+        // pristine-source rule, not as a repair of a prior PASS4 ZIP.
+        text = ComposeRicaPristineScheduler(context, text);
         context.Write(file, text);
         return SemanticInjectionResult.Success(
-            "Applied RICA's validated multi-rate answer without version-locking Scheduler plumbing: rewards at 4 Hz with bounded batches, runtime state and mappins at 1 Hz, diagnostics at 0.2 Hz, and the scriptable-system tick at 0.1 Hz.");
+            "RICA pristine source: composed bounded reward/state/mappin/diagnostic/system lanes and an owned six-job 0-Engine Scheduler coordinator with author callback fallback.");
+    }
+
+    private static string ComposeRicaPristineScheduler(
+        SemanticPatchContext context, string source)
+    {
+        var originalCrLf = source.Contains("\r\n", StringComparison.Ordinal);
+        var text = source.Replace("\r\n", "\n", StringComparison.Ordinal);
+        var opening = FindOnUpdateOpening(text, "delta");
+        const string initEvent = "registerForEvent(\"onInit\", function()\n";
+        const string shutdownEvent = "registerForEvent(\"onShutdown\", function()\n";
+        if(text.Split(initEvent,StringSplitOptions.None).Length!=2 ||
+           text.Split(shutdownEvent,StringSplitOptions.None).Length!=2 ||
+           !text.Contains("local function rewardTick()",StringComparison.Ordinal) ||
+           !text.Contains("local function mappinTick()",StringComparison.Ordinal) ||
+           !text.Contains("local function diagnosticsTick()",StringComparison.Ordinal) ||
+           !text.Contains("local function runtimeTick()",StringComparison.Ordinal) ||
+           !text.Contains("local function processCompletionRewards(system, limit)",StringComparison.Ordinal))
+            throw new InvalidOperationException("RICA pristine six-lane scheduler ownership is not source-proven.");
+
+        const string installer = """
+-- G-CET semantic:repeatable-increased-criminal-activity-v2
+-- Six jobs are generated from untouched author source with the existing rule.
+-- The original onUpdate is the exact fallback if 0-Engine is unavailable.
+local ricaBaseInitialized = false
+local pass4Attached = false
+local pass4AttachInProgress = false
+local TryAttachRicaPass4 = nil
+local pass4DiagnosticsWorkerJob = nil
+local ricaDiagnosticsRequested = false
+local ricaDiagnosticsIdleCycles = 5
+
+local function scheduledDiagnosticsTick()
+    if Mod.settings.diagnostics.enabled == false then return end
+    local system = Bridge.system()
+    if not system or not Game.GetPlayer() then return end
+    local active = 0
+    pcall(function() active = math.max(0, system:GetActiveReplayCount()) end)
+    if active > 0 then
+        ricaDiagnosticsIdleCycles = 0
+    else
+        ricaDiagnosticsIdleCycles = ricaDiagnosticsIdleCycles + 1
+        if ricaDiagnosticsIdleCycles < 6 then return end
+        ricaDiagnosticsIdleCycles = 0
+    end
+    ricaDiagnosticsRequested = true
+    if pass4DiagnosticsWorkerJob and
+       type(pass4DiagnosticsWorkerJob.Resume) == "function" then
+        pass4DiagnosticsWorkerJob.Resume()
+    end
+end
+
+local function diagnosticsWorkerTick()
+    if not ricaDiagnosticsRequested then
+        if pass4DiagnosticsWorkerJob and
+           type(pass4DiagnosticsWorkerJob.Pause) == "function" then
+            pass4DiagnosticsWorkerJob.Pause()
+        end
+        return
+    end
+    ricaDiagnosticsRequested = false
+    -- Full source-author diagnostic fallback until an independently proven
+    -- per-site snapshot stage is composed; do not claim incremental parity.
+    local ok, err = pcall(diagnosticsTick)
+    if not ok then Diagnostics.event("diagnostics_tick_failed", {error=tostring(err)}) end
+    if pass4DiagnosticsWorkerJob and
+       type(pass4DiagnosticsWorkerJob.Pause) == "function" then
+        pass4DiagnosticsWorkerJob.Pause()
+    end
+end
+
+local function ricaSystemJob()
+    local system = Bridge.system()
+    if not system then return end
+    local ok, err = pcall(function() system:Tick() end)
+    if not ok then
+        print("[RICA] Scheduler tick failed: " .. tostring(err))
+        Diagnostics.event("scheduler_tick_failed", {error=tostring(err)})
+    end
+end
+
+TryAttachRicaPass4 = function()
+    if not ricaBaseInitialized then return false end
+    if pass4Attached then return true end
+    if pass4AttachInProgress then return false end
+    pass4AttachInProgress = true
+    local created = {}
+    local okAttach = pcall(function()
+        local worker = require("GCET_Semantic/rica_engine_worker")
+        pass4DiagnosticsWorkerJob = worker.attach(created, {
+            diagnosticsWorkerTick = diagnosticsWorkerTick,
+            rewardTick = rewardTick,
+            runtimeStateTick = runtimeTick,
+            mappinTick = mappinTick,
+            scheduledDiagnosticsTick = scheduledDiagnosticsTick,
+            schedulerTick = ricaSystemJob
+        })
+        pass4Attached = true
+    end)
+    pass4AttachInProgress = false
+    if not okAttach then
+        for _, handle in ipairs(created) do
+            if handle and type(handle.Cancel) == "function" then
+                pcall(handle.Cancel)
+            end
+        end
+        pass4DiagnosticsWorkerJob = nil
+        return false
+    end
+    return true
+end
+
+""";
+        text = ReplaceOnce(text, initEvent, installer + initEvent,
+            "RICA pristine one-pass scheduler before lifecycle registration");
+
+        var initTail = "\nend)\n\n" + opening;
+        if(text.Split(initTail,StringSplitOptions.None).Length!=2)
+            throw new InvalidOperationException("RICA onInit/onUpdate scheduling handoff boundary changed.");
+        text = ReplaceOnce(text,initTail,
+            "\n    ricaBaseInitialized = true\n    TryAttachRicaPass4()\nend)\n\n"+opening,
+            "RICA one-time scheduler initialization");
+        text = ReplaceOnce(text,opening,
+            opening+"    if pass4Attached then return end\n"+
+            "    if not ricaBaseInitialized then return end\n"+
+            "    TryAttachRicaPass4()\n"+
+            "    if pass4Attached then return end\n",
+            "RICA author fallback and atomic scheduler takeover");
+        text = ReplaceOnce(text,shutdownEvent,
+            shutdownEvent+
+            "    ricaDiagnosticsRequested = false\n"+
+            "    if pass4DiagnosticsWorkerJob and type(pass4DiagnosticsWorkerJob.Pause) == \"function\" then\n"+
+            "        pass4DiagnosticsWorkerJob.Pause()\n"+
+            "    end\n",
+            "RICA worker shutdown gate");
+        context.WriteCoordinator("rica_engine_worker.lua",RicaEngineWorkerCode(context.RuleId));
+        return originalCrLf ? text.Replace("\n","\r\n",StringComparison.Ordinal) : text;
     }
 
 }
