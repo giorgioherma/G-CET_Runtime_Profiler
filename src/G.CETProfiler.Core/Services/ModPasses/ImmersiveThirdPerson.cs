@@ -232,12 +232,27 @@ internal static partial class SemanticInjectors
             "pcall(autoTppHandleToggle)");
         var src=file.Text.Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
         const string marker="__gcetDedraToggleSignalV2";
+        // GetMod(\"immersive_third_person\") returns mod.api, NOT the
+        // internal mod table. The partner's worker must see the wake proof
+        // on that same public API. This is one producer-side semantic rule;
+        // do not require a later corrective semantic or optimized input.
+        const string apiAnchor = "mod.api = mod.apiCore and mod.apiCore.public or nil";
+        const string publicFlag = "mod.api.__gcetDedraWakeBridgeV2 = mod.__gcetDedraWakeBridgeV2 == true";
+        const string apiBridge = "\\nif type(mod.api) == \\\"table\\\" then\\n" +
+            "  " + publicFlag + "\\nend";
         if(src.Contains(marker,StringComparison.Ordinal))
         {
-            if(src.Contains("pcall(mod.__gcetDedraToggleSignalV2)",StringComparison.Ordinal) &&
-               src.Contains("mod.__gcetDedraWakeBridgeV2 = true",StringComparison.Ordinal))
-                return SemanticInjectionResult.Skip("ITP user-request signal already present.");
-            throw new InvalidOperationException("Incomplete base ITP toggle signal.");
+            if(!src.Contains("pcall(mod.__gcetDedraToggleSignalV2)",StringComparison.Ordinal) ||
+               !src.Contains("mod.__gcetDedraWakeBridgeV2 = true",StringComparison.Ordinal))
+                throw new InvalidOperationException("Incomplete base ITP toggle signal.");
+            if(src.Contains(publicFlag,StringComparison.Ordinal))
+                return SemanticInjectionResult.Skip("ITP public Dedra wake contract already present.");
+            if(src.Split(apiAnchor,StringSplitOptions.None).Length!=2)
+                throw new InvalidOperationException("ITP public API assignment changed; no safe Dedra wake export.");
+            src=src.Replace(apiAnchor,apiAnchor+apiBridge,StringComparison.Ordinal);
+            context.Write(file,file.Text.Contains("\\r\\n",StringComparison.Ordinal)
+                ? src.Replace("\\n","\\r\\n",StringComparison.Ordinal):src);
+            return SemanticInjectionResult.Success("Completed ITP public wake contract for an older partial source.");
         }
         const string binding =
             "registerInput(\"tpp_camera_toggle\", TEXT.bindToggle[1], function(keypress)\n" +
@@ -273,6 +288,9 @@ internal static partial class SemanticInjectors
             if(toggle>=0 && toggle-menu<400)
                 src=src[..toggle]+ui+"    pcall(mod.__gcetDedraToggleSignalV2)\n"+src[(toggle+ui.Length)..];
         }
+        if(src.Split(apiAnchor,StringSplitOptions.None).Length!=2)
+            throw new InvalidOperationException("ITP public API assignment changed; no safe Dedra wake export.");
+        src=src.Replace(apiAnchor,apiAnchor+apiBridge,StringComparison.Ordinal);
         if(file.Text.Contains("\r\n",StringComparison.Ordinal))
             src=src.Replace("\n","\r\n",StringComparison.Ordinal);
         context.Write(file,src);
