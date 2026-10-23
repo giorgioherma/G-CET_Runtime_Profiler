@@ -236,8 +236,8 @@ if($drift.ok -and $drift.pass -and $drift.pass.ManifestPath){
 # BEFORE the semantic pass. Source lines remain stable for capture coordinates.
 $wrapped=$source.Replace('local mod={}',
   'local mod={}; local __gcetRegisterEvent_525 = registerForEvent')
-  .Replace("registerForEvent('onUpdate', function(delta)",
-   "__gcetRegisterEvent_525('onUpdate', function(delta)")
+$wrapped=$wrapped.Replace("registerForEvent('onUpdate', function(delta)",
+  "__gcetRegisterEvent_525('onUpdate', function(delta)")
 if($wrapped -eq $source){throw 'Generic-owner fixture did not change'}
 [IO.File]::WriteAllText($sourcePath,$wrapped,[Text.Encoding]::UTF8)
 $wrappedPass=& $exe --capture $capture --mods $mods --generate-pass --json |
