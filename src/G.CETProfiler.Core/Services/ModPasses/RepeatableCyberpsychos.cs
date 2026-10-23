@@ -19,7 +19,7 @@ internal static partial class SemanticInjectors
                 throw new InvalidOperationException("Cyberpsychos completed stage lacks six-job worker.");
             var mappins=context.FindFile("modules/mappins.lua","Mappins.beginSync","Mappins.syncStep");
             var diagnostics=context.FindFile("modules/diagnostics.lua","Diagnostics.beginSnapshot","Diagnostics.snapshotStep");
-            var watchdog=context.FindFile("modules/boss_watchdog.lua","Watchdog.syncSite","syncSiteWithPosition");
+            var watchdogProof=context.FindFile("modules/boss_watchdog.lua","Watchdog.syncSite","syncSiteWithPosition");
             return SemanticInjectionResult.Skip("Cyberpsychos complete scheduler and incremental source already installed.");
         }
         // The historical two-lane cadence is not completion. Explicitly refuse
