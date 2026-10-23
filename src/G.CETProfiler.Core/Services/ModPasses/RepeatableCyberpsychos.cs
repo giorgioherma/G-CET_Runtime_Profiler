@@ -66,7 +66,7 @@ internal static partial class SemanticInjectors
         if(initStart<0||initEnd<0) throw new InvalidOperationException("Cyberpsychos onInit boundaries ambiguous.");
         initEnd += "\nend)\n".Length;
         CyberpsychoAssertEquivalent(init[initStart..initEnd],CyberpsychoOnInitOld(),"onInit lifecycle");
-        init=init[..initStart]+CyberpsychoOnInitNew()+init[initEnd..];
+        init=init[..initStart]+CyberpsychoOnInitNew().TrimEnd('\n')+"\n\n"+init[initEnd..];
         var reg=Regex.Match(init,@"(?m)^(?<registrar>(?:registerForEvent|__gcetRegisterEvent_\d+))\(\s*['""]onUpdate['""]");
         if(!reg.Success) throw new InvalidOperationException("Cyberpsychos update registrar source drifted.");
         var updateStart=reg.Index;
@@ -76,7 +76,7 @@ internal static partial class SemanticInjectors
         CyberpsychoAssertEquivalent(oldTail,CyberpsychoTailOld(),"onUpdate/shutdown");
         var newTail=CyberpsychoTailNew().Replace("__CYBERPSYCHOS_REGISTER__",reg.Groups["registrar"].Value,StringComparison.Ordinal);
         if(hasSharedPlayer) newTail=newTail.Replace("Game.GetPlayer()","__gcetGetPlayer()",StringComparison.Ordinal);
-        init=init[..updateStart]+newTail+init[updateEnd..];
+        init=init[..updateStart]+newTail.TrimEnd('\n')+"\n\n"+init[updateEnd..];
         init="-- "+completed+"\n"+init;
         context.Write(file,RestoreCyberpsychoLineEndings(init,crlfInit));
         CyberpsychoModule(context,"modules/mappins.lua","function Mappins.sync", "function Mappins.clear",CyberpsychoMappinsOld(),CyberpsychoMappinsNew(),
@@ -138,7 +138,7 @@ internal static partial class SemanticInjectors
         if(first<0||last<0 || source.IndexOf(start,first+start.Length,StringComparison.Ordinal)>=0)
             throw new InvalidOperationException("Cyberpsychos "+label+" block anchors missing or ambiguous.");
         CyberpsychoAssertEquivalent(source[first..last],oldSource,label);
-        return source[..first]+replacement+source[last..];
+        return source[..first]+replacement.TrimEnd('\n')+"\n\n"+source[last..];
     }
     private static void CyberpsychoModule(SemanticPatchContext ctx,string path,string start,string end,string oldSource,string newSource,
         string fieldOld,string fieldNew,string clearOld,string clearNew)

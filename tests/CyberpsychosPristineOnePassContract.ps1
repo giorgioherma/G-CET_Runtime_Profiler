@@ -31,12 +31,12 @@ function Mod.saveSettings()
     Config.save(Mod.configPath, Mod.settings)
 end
 
-'@ + (Raw 'PreludeOld') + (Raw 'OnInitOld') + (Raw 'TailOld') + "`nreturn Mod`n"
+'@ + (Raw 'PreludeOld') + "`n`n" + (Raw 'OnInitOld') + "`n`n" + (Raw 'TailOld') + "`n`nreturn Mod`n"
 $mappins = @'
 local Mappins = {
     lastSummary = nil,
 }
-'@ + (Raw 'MappinsOld') + @'
+'@ + (Raw 'MappinsOld') + "`n`n" + @'
 function Mappins.clear()
     Mappins.lastSummary = nil
 end
@@ -46,7 +46,7 @@ $diagnostics = @'
 local Diagnostics = {
     lastSnapshotAt = 0,
 }
-'@ + (Raw 'DiagnosticsOld') + @'
+'@ + (Raw 'DiagnosticsOld') + "`n`n" + @'
 function Diagnostics.shutdown()
     Diagnostics.event("session_end", {}, true)
 end
@@ -54,9 +54,9 @@ return Diagnostics
 '@
 $watchdog = @'
 local Watchdog = {}
-'@ + (Raw 'DistanceOld') + @'
+'@ + (Raw 'DistanceOld') + "`n`n" + @'
 local function entityIDKey(id) return tostring(id) end
-'@ + (Raw 'WatchdogOld') + @'
+'@ + (Raw 'WatchdogOld') + "`n`n" + @'
 function Watchdog.clear()
 end
 return Watchdog
