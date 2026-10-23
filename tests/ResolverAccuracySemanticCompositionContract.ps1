@@ -248,10 +248,10 @@ end
 Write-ModFile 'repeatable_increased_criminal_activity' 'init.lua' @'
 local Mod={
     settings={diagnostics={enabled=true}},
-    playerAttached=false,
     tickElapsed = 0.0,
     schedulerElapsed = 0.0,
     lastScheduleSignature = nil,
+    playerAttached = false,
 }
 local Sites={list={}}
 local Mappins={sync=function() end}
