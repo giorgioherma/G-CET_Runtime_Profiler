@@ -247,10 +247,10 @@ try
     var overBudget=authorChunk+
         "local __gcetRegisterEvent_469 = registerForEvent\n"+
         "__gcetRegisterEvent_469('onUpdate', function(dt) end)\n";
-    var withinBudget=authorChunk+scopedRegistrar+
+    var scopedBudgetSource=authorChunk+scopedRegistrar+
         "('onUpdate', function(dt) end)\n";
     Check((int)peakProperty.GetValue(budgetMethod.Invoke(null,[overBudget])!)!>200 &&
-          (int)peakProperty.GetValue(budgetMethod.Invoke(null,[withinBudget])!)!<=200 &&
+          (int)peakProperty.GetValue(budgetMethod.Invoke(null,[scopedBudgetSource])!)!<=200 &&
           scopedRegistrar.Contains("MakeEventRegistrar",StringComparison.Ordinal) &&
           scopedRegistrar.Contains("return __gcetRegister end",StringComparison.Ordinal) &&
           scopedRegistrar.Contains("registerForEvent",StringComparison.Ordinal),
