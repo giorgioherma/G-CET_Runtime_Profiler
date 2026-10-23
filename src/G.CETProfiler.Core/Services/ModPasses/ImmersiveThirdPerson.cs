@@ -238,8 +238,8 @@ internal static partial class SemanticInjectors
         // do not require a later corrective semantic or optimized input.
         const string apiAnchor = "mod.api = mod.apiCore and mod.apiCore.public or nil";
         const string publicFlag = "mod.api.__gcetDedraWakeBridgeV2 = mod.__gcetDedraWakeBridgeV2 == true";
-        const string apiBridge = "\\nif type(mod.api) == \\\"table\\\" then\\n" +
-            "  " + publicFlag + "\\nend";
+        const string apiBridge = "\nif type(mod.api) == \"table\" then\n" +
+            "  " + publicFlag + "\nend";
         if(src.Contains(marker,StringComparison.Ordinal))
         {
             if(!src.Contains("pcall(mod.__gcetDedraToggleSignalV2)",StringComparison.Ordinal) ||
@@ -250,8 +250,8 @@ internal static partial class SemanticInjectors
             if(src.Split(apiAnchor,StringSplitOptions.None).Length!=2)
                 throw new InvalidOperationException("ITP public API assignment changed; no safe Dedra wake export.");
             src=src.Replace(apiAnchor,apiAnchor+apiBridge,StringComparison.Ordinal);
-            context.Write(file,file.Text.Contains("\\r\\n",StringComparison.Ordinal)
-                ? src.Replace("\\n","\\r\\n",StringComparison.Ordinal):src);
+            context.Write(file,file.Text.Contains("\r\n",StringComparison.Ordinal)
+                ? src.Replace("\n","\r\n",StringComparison.Ordinal):src);
             return SemanticInjectionResult.Success("Completed ITP public wake contract for an older partial source.");
         }
         const string binding =
