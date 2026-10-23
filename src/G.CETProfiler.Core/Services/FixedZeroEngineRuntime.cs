@@ -242,14 +242,14 @@ internal static class FixedZeroEngineRuntime
         // The known 0.18.6 author runtime already owns a single CET onUpdate
         // dispatcher. Adopt it instead of registering another CET callback.
         // Only source-proven core state/export shapes are admitted.
-        var normalizedHost = text.Replace("\\r\\n", "\\n", StringComparison.Ordinal);
+        var normalizedHost = text.Replace("\r\n", "\n", StringComparison.Ordinal);
         const string authorUpdate =
-            "    pcall(Cron.Update, delta)\\n" +
-            "    pcall(UpdateFrame, delta)\\n" +
+            "    pcall(Cron.Update, delta)\n" +
+            "    pcall(UpdateFrame, delta)\n" +
             "end)";
         var canAdoptCentralUpdate =
             normalizedHost.Split(authorUpdate, StringSplitOptions.None).Length == 2 &&
-            normalizedHost.Contains("registerForEvent(\\\"onUpdate\\\", function(delta)", StringComparison.Ordinal) &&
+            normalizedHost.Contains("registerForEvent(\"onUpdate\", function(delta)", StringComparison.Ordinal) &&
             normalizedHost.Contains("local currentFrame", StringComparison.Ordinal) &&
             normalizedHost.Contains("local isPlaying", StringComparison.Ordinal) &&
             normalizedHost.Contains("State.inMenu", StringComparison.Ordinal) &&
@@ -348,7 +348,7 @@ end
             // gameplay update. The author callback supplies the real lifecycle
             // context; no second native CET onUpdate is registered.
             const string existingSchedulerEvent =
-                "            registerForEvent(\\\"onUpdate\\\", function(dt)";
+                "            registerForEvent(\"onUpdate\", function(dt)";
             const string startedLine = "            __started = true";
             var eventStart = block.IndexOf(existingSchedulerEvent, StringComparison.Ordinal);
             var eventEnd = eventStart < 0 ? -1 :
@@ -379,12 +379,12 @@ end)
 """;
             normalizedHost = normalizedHost.Replace(
                 authorUpdate, authorReplacement, StringComparison.Ordinal);
-            text = text.Contains("\\r\\n", StringComparison.Ordinal)
-                ? normalizedHost.Replace("\\n", "\\r\\n", StringComparison.Ordinal)
+            text = text.Contains("\r\n", StringComparison.Ordinal)
+                ? normalizedHost.Replace("\n", "\r\n", StringComparison.Ordinal)
                 : normalizedHost;
             // Insertion index changed after author-update injection.
             exports = Regex.Matches(text,
-                @"(?m)^[ \\t]*return[ \\t]+(?<name>[A-Za-z_][A-Za-z0-9_]*)[ \\t]*;?[ \\t]*(?:--[^\\r\\n]*)?\\r?$",
+                @"(?m)^[ \t]*return[ \t]+(?<name>[A-Za-z_][A-Za-z0-9_]*)[ \t]*;?[ \t]*(?:--[^\r\n]*)?\r?$",
                 RegexOptions.CultureInvariant);
             final = exports[^1];
         }
