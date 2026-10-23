@@ -305,6 +305,63 @@ registerForEvent("onShutdown", function()
 end)
 '@
 
+# Minimal author-shaped diagnostic snapshot source. Its original per-site
+# projection is retained while the primary RICA generator splits the work
+# across pausable Scheduler frames (no pre-existing PASS4 prerequisite).
+Write-ModFile 'repeatable_increased_criminal_activity' 'modules/diagnostics.lua' @'
+local Diagnostics = {
+    enabled = true,
+    lastSnapshot = nil,
+    lastSnapshotAt = 0,
+}
+local function encode(payload) return tostring(payload) end
+local function rotateIfLarge() end
+function Diagnostics.event(event, payload, force) end
+function Diagnostics.init()
+    Diagnostics.lastSnapshotAt = 0
+    rotateIfLarge()
+end
+local function read(system, fallback, fn)
+    return fallback
+end
+function Diagnostics.snapshot(system, sites, settings, mappins, force)
+    if (not Diagnostics.enabled and not force) or not system then return false end
+    local now = read(system, 0, function(value) return value:GetNowSeconds() end)
+    local payload = {
+        appliedSchedule = {},
+        scheduler = {},
+        markers = {},
+        sites = {},
+    }
+
+    for _, site in ipairs(sites.list) do
+        local nextEligibleAt = read(system, 0,
+            function(value) return value:GetNextEligibleAt(site.id) end)
+        payload.sites[#payload.sites + 1] = {
+            id = site.id,
+            status = 0,
+            nextEligibleAt = nextEligibleAt,
+            remainingSeconds = math.max(0, nextEligibleAt - now),
+        }
+    end
+
+    local raw = encode(payload)
+    local wall = os.time()
+    if force or raw ~= Diagnostics.lastSnapshot or wall - Diagnostics.lastSnapshotAt >= 60 then
+        Diagnostics.event("state_snapshot", payload, force)
+        Diagnostics.lastSnapshot = raw
+        Diagnostics.lastSnapshotAt = wall
+        return true
+    end
+    return false
+end
+
+function Diagnostics.shutdown()
+    Diagnostics.event("session_end", {}, true)
+end
+return Diagnostics
+'@
+
 Write-ModFile 'Dedka Auto Shop' 'init.lua' @'
 local ui={update=function() end}
 local state={showing=false,atEntrance=false,atEntrance2=false,atShopExit=false,phase="root"}
@@ -992,6 +1049,16 @@ try{
   'rica.mappins','rica.diagnostics','rica.system')) {
     if(!$ricaWorker.Contains($job)){throw "RICA original-source worker missing $job"}
  }
+ $ricaDiagnostics=Z($b+'repeatable_increased_criminal_activity/modules/diagnostics.lua')
+ foreach($api in @('Diagnostics.beginSnapshot','Diagnostics.snapshotStep',
+   'Diagnostics.isSnapshotActive','Diagnostics.cancelSnapshot','work.index',
+   'gcetRicaSnapshotSignature')) {
+     if(!$ricaDiagnostics.Contains($api)) { throw "RICA incremental diagnostics missing $api" }
+ }
+ if(!$x.Contains('Diagnostics.snapshotStep(system, Sites, 1)')) {
+   throw 'RICA frame worker does not consume incremental diagnostics'
+ }
+
 
  $x=Z($b+'Dedka Auto Shop/init.lua');foreach($t in @('__gcetDedkaSemanticReady','RegisterZone','SetInterval(0.2','VehicleMount','VehicleUnmount','PlayerInvalidated','if not __gcetDedkaNearby then return end','if state.showing then')){if($x-notmatch[regex]::Escape($t)){throw "Dedka semantic missing $t"}}
  if(@($zip.Entries|Where-Object{$_.FullName.StartsWith($b+'marmurbank/',[StringComparison]::OrdinalIgnoreCase)}).Count -ne 0){
