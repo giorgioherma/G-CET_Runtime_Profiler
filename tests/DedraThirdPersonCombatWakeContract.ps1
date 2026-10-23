@@ -58,10 +58,14 @@ mod.apiCore = { public = { events = { on = function() end }, perspective = { get
 mod.api = mod.apiCore and mod.apiCore.public or nil
 return mod.api
 '@
-function Run([string]$owner,[string]$rule,[string]$source,$handler) {
+function Run([string]$owner,[string]$rule,[string]$source,$handler,[switch]$StageInput) {
   $folder=Join-Path $root $owner
-  [IO.File]::WriteAllText((Join-Path $folder 'init.lua'),$source,[Text.UTF8Encoding]::new($false))
   $staged=[Collections.Generic.Dictionary[string,byte[]]]::new([StringComparer]::OrdinalIgnoreCase)
+  if($StageInput) {
+    $staged[($owner+'/init.lua')]=[Text.Encoding]::UTF8.GetBytes($source)
+  } else {
+    [IO.File]::WriteAllText((Join-Path $folder 'init.lua'),$source,[Text.UTF8Encoding]::new($false))
+  }
   $ctx=$ctor.Invoke([object[]]@([string]$root,[string]$owner,[string]$rule,$staged))
   try {$result=$handler.Invoke($null,[object[]]@($ctx))}
   catch {throw "Rule $rule rejected: $($_.Exception.InnerException.Message)"}
@@ -81,7 +85,7 @@ if(!$bridge.Contains('mod.__gcetDedraWakeBridgeV2 = true') -or
 }
 # Full public API export must already be complete on a second original-owned
 # generation; the source injector may not rely on a separate corrective rule.
-$twice=Run 'immersive_third_person' 'immersive-third-person-dedra-toggle-signal' $bridge $base
+$twice=Run 'immersive_third_person' 'immersive-third-person-dedra-toggle-signal' $bridge $base -StageInput
 if($twice.Applied -or $twice.Changes.Count -ne 0) {
   throw 'Public Dedra wake export was not idempotent'
 }
