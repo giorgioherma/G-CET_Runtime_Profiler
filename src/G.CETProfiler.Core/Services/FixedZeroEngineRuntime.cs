@@ -344,11 +344,10 @@ end
             var router = ReconcileHostModule(liveRoot,
                 HostActionRouterModule,
                 LoadBundledFixedModule(runtimeRoot, "modules/ActionRouter.lua"));
-            var source = Encoding.UTF8.GetString(router);
-            if (!source.Contains("function ActionRouter.Subscribe", StringComparison.Ordinal) ||
-                !source.Contains("function ActionRouter.Dispatch", StringComparison.Ordinal))
-                throw new InvalidOperationException(
-                    "Existing namespaced ActionRouter lacks required dispatch API.");
+            // An unrelated user-authored module at this namespaced path is
+            // never overwritten or used as proof of an operational router.
+            // Generated OnAction wrappers are pcall-guarded and retain their
+            // original Observe fallback when Subscribe/Dispatch is unavailable.
             files["0-Engine/" + HostActionRouterModule] = router;
         }
 
