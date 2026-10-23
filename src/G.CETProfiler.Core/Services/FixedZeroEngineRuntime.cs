@@ -675,8 +675,10 @@ end)
                 oldRouter.Contains("function ActionRouter.Dispatch(this, action, consumer)", StringComparison.Ordinal) &&
                 !oldRouter.Contains("DispatchAfter", StringComparison.Ordinal))
                 return bundled;
-            throw new InvalidOperationException(
-                "An unrecognized G-CET ActionRouter module cannot be silently used for after-phase subscribers.");
+            // Unknown user-owned namespace remains unchanged. Its missing
+            // after-phase capability is checked at SubscribeAction, which
+            // must return nil so the author retains CET ObserveAfter fallback.
+            return bytes;
         }
         if (relativeModule.Equals("modules/GCETNativeLocationHost.lua",
                 StringComparison.OrdinalIgnoreCase))
@@ -1100,6 +1102,9 @@ end)
             "            end",
             "            if not __gcetEnsureActionRouter(phase) then",
             "                error(\"G-CET ActionRouter could not initialize\")",
+            "            end",
+            "            if phase == \"after\" and type(__gcetActionRouter.DispatchAfter) ~= \"function\" then",
+            "                return nil",
             "            end",
             "            return __gcetActionRouter.Subscribe(config, fn, source or \"unscoped\")",
             "        end",
