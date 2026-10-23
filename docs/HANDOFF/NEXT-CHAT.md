@@ -2,7 +2,7 @@
 
 Copy this to continue development. The active task and its outstanding steps are in [LATEST-WORK.md](../LATEST-WORK.md); supply additional captures or instructions as needed. No frozen version or previous CI identifiers.
 
-> Continue `giorgioherma/G-CET_Runtime_Profiler` on `dev/resolver-profiler-handoff`. Read `docs/HANDOFF/CORE.md` then `docs/LATEST-WORK.md` (active task, not a historical snapshot), `docs/HANDOFF/BUILD-PIPELINE.md` and `docs/README.md` first. Then consult current product status, relevant subsystem documents and recent engineering history as needed. Verify live branch HEAD, manifest/version, both GitHub workflows and Actions before editing.
+> Continue `giorgioherma/G-CET_Runtime_Profiler` on `dev/resolver-profiler-handoff`. Read `docs/HANDOFF/CORE.md` then `docs/LATEST-WORK.md` (active task, not a historical snapshot), `docs/HANDOFF/BUILD-PIPELINE.md` and `docs/README.md` first. If the current task is Phase 1+2 optimization preservation, also read its single detailed brief at `docs/resolver/PHASE12-PRESERVATION-RECOVERY.md` before changing any generator. Then consult current product status, relevant subsystem documents and recent engineering history as needed. Verify live branch HEAD, manifest/version, both GitHub workflows and Actions before editing.
 >
 > Native CI builds **only** the native DLL/checksum; main CI packages **both** Profiler and Resolver using a pinned, hash-verified native artifact. Keep the shared product version until I explicitly request a bump or we agree on a significant milestone. Don't run CI for documentation-only changes.
 >

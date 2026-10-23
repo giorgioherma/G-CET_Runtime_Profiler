@@ -1,6 +1,6 @@
 # Resolver virtual 0-Engine and native runtime view (2026-10-23)
 
-**Status:** isolated implementation on `dev/virtual-runtime-view-20261023`; target after user approval: `dev/resolver-profiler-handoff`. Do not merge automatically.
+**Status (2026-10-23):** the virtual runtime source was integrated into `dev/resolver-profiler-handoff` at `ddbaa666` following user direction; CI #1904 is green, but *full Phase 1+2 semantic/runtime-equivalence acceptance is still open*. This document describes the architectural mechanism, not a passing full-modstack validation. See the [active preservation-recovery brief](PHASE12-PRESERVATION-RECOVERY.md).
 
 ## Ownership and timing
 
@@ -17,7 +17,7 @@ A Lua support filename alone is **not** an active capability. Prior to packaging
 For older 0-Engine installs without runtime exports:
 
 - The exported author `Engine` table remains intact. A G-CET compatibility block adds the frame and action routing contracts only if absent.
-- If `Schedule.Every` is not actively wired to `Scheduler.Update`, a G-CET-owned scheduler is loaded from `modules/G-CET/Scheduler.lua`. This does not replace `modules/Scheduler.lua`. Its one native `onUpdate` bridge is lazy (only after a client schedules work); its client API adds `Schedule` to the return value of `Engine.Register` when needed.
+- If `Schedule.Every` is not actively wired to `Scheduler.Update`, a G-CET-owned scheduler is loaded from `modules/G-CET/Scheduler.lua` (without replacing the author's `modules/Scheduler.lua`). On the source-proven stock 0.18.6 host, current code attempts to adopt the **existing central `onUpdate`** and real host lifecycle context rather than registering a second CET update hook; other hosts may require a lazy compatibility bridge. This is **not yet equivalent to Phase 1+2 by audited runtime/gameplay proof**.
 - The native location host remains opt-in and fails open to the author's callbacks if the native player/location API is unavailable.
 - User-provided `modules/G-CET/` files are preserved where they implement the required API. Incomplete collisions fail closed rather than silently replacing custom code.
 
@@ -27,4 +27,4 @@ No author Lua source SHA is used as a version gate. The profiler ASI's binary ha
 
 `tests/VirtualRuntimeProjectionContract` checks a stock exported-table host, repeatable projected output, required router/scheduler/native-host files, unmodified live source, temporary-profiler bridge exclusion, and missing-backup refusal.
 
-Runtime behavior, C# compile, Lua syntax, and complete-overlay composition still require CI on the test branch and gameplay validation before approval. The new projection does not guarantee that every existing semantic worker is effective or that all 140 substantive mod-file differences from the prior ZIP comparison are reconciled.
+Integration CI #1904 passed on the handoff branch, but **complete-overlay semantics and gameplay acceptance are not proven**. The audited 18:14:57 output still failed reference preservation; the [single recovery brief](PHASE12-PRESERVATION-RECOVERY.md) now tracks the specific source/worker gaps and required original-stack regeneration.

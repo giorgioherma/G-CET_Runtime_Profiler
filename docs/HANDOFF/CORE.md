@@ -17,7 +17,7 @@
 - **One composed result from pristine Nexus input.** Generic and all admitted semantic stages must compose during **one Resolver generation/application pass** on untouched supported mod source. Fix the mod's authoritative implementation directly when updating an optimization; never preserve a stale pass then require a corrective pass. Generic-generated source variants and older/partially optimized sources must be recognized as compatible inputs where safely proven, or fail closed.
 - **Source ownership must remain enforced.** Keep `resolver-knowledge/semantic-library.json` aligned with the dispatch table and per-mod implementation; preserve `tests/SemanticModPassOwnershipContract.ps1` and the full CI semantic/pristine/upgrade/idempotence contracts. When adding or modifying a semantic optimization, inspect *all* existing stages for that mod first to prevent duplicate work and contradictory rewrites.
 
-See [per-mod source index](../resolver/MOD-PASS-SOURCE-INDEX.md) and [Resolver project contract](../resolver/PROJECT-CONTRACT.md).
+See [per-mod source index](../resolver/MOD-PASS-SOURCE-INDEX.md) and [Resolver project contract](../resolver/PROJECT-CONTRACT.md). **For the active Phase 1+2 preservation-recovery task, use the [single focused engineering handoff](../resolver/PHASE12-PRESERVATION-RECOVERY.md)** alongside [LATEST-WORK](../LATEST-WORK.md); do not replace its original-source acceptance requirements with a green CI build.
 
 ## Invariants
 

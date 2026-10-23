@@ -1,6 +1,6 @@
 # G-CET technical documentation
 
-**Active cross-chat task:** [LATEST-WORK.md](LATEST-WORK.md) — the single editable work-in-progress document, kept until completed and replaced with the next agreed task. [Live-expanded semantic owner A/B/C matrix (62 originals + 10 tracked additions)](resolver/EXTENDED-DORMANCY-STAGE-MATRIX.md) tracks source-proof and per-mod status. Detailed research belongs in subsystem docs; [HANDOFF](HANDOFF/README.md) remains reserved **only** for stable startup guidance, process and the continuation prompt—no dated experiments, version snapshots or capture reports.
+**Active cross-chat task:** [LATEST-WORK.md](LATEST-WORK.md) — the single editable work-in-progress document, kept until completed and replaced with the next agreed task. **Current source-preservation handoff:** [Phase 1+2 single-pass recovery](resolver/PHASE12-PRESERVATION-RECOVERY.md) (inputs, discrepancies, existing generators, tests and acceptance). [Live-expanded semantic owner A/B/C matrix (62 originals + 10 tracked additions)](resolver/EXTENDED-DORMANCY-STAGE-MATRIX.md) tracks source-proof and per-mod status. Detailed research belongs in subsystem docs; [HANDOFF](HANDOFF/README.md) remains reserved **only** for stable startup guidance, process and the continuation prompt—no dated experiments, version snapshots or capture reports.
 
 | Subsystem | Documents |
 | --- | --- |
