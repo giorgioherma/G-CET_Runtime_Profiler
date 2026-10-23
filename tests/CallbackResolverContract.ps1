@@ -1689,7 +1689,10 @@ foreach ($entry in $readCoordinatorTransforms) {
         throw 'Generated read coordinator has incomplete ownership/fallback proof.'
     }
 }
-$expectedPassTransforms = $expectedGenericTransforms + $expectedSharedTransforms - 1 +
+# All counted source-proven callback, shared-provider and native-read
+# transformations are independent here. The old minus-one overlap no longer
+# exists and undercounted the verified 25 + 11 + 1 result.
+$expectedPassTransforms = $expectedGenericTransforms + $expectedSharedTransforms +
     $nativeReadReuseTransforms.Count + $readCoordinatorTransforms.Count
 if ([int]$resolved.pass.TransformCount -ne $expectedPassTransforms) {
     if (Test-Path -LiteralPath $resolved.pass.ManifestPath -PathType Leaf) {
