@@ -38,8 +38,14 @@ internal static class CallbackResolverService
     internal static CallbackResolverDocumentResult Build(
         string handoffPath,
         string modsRoot,
-        string? semanticLibraryPath)
+        string? semanticLibraryPath,
+        EffectiveRuntimeView? effectiveRuntime = null)
     {
+        // SourceIndex deliberately stays on the physical author tree. The
+        // effective runtime is a read-only dependency contract, not evidence
+        // that Lua transforms are already present on disk.
+        if (effectiveRuntime?.HasFramework == true)
+            _ = effectiveRuntime.RequireFramework();
         using var handoff = JsonDocument.Parse(File.ReadAllText(handoffPath));
         var nativePressure = NativeMarshallingEvidenceReader.Read(handoff.RootElement);
         var callbackAllocator = CallbackAllocatorPressureEvidenceReader.Read(handoff.RootElement);
