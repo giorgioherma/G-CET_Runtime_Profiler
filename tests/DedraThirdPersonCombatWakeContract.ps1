@@ -54,7 +54,9 @@ registerInput("tpp_camera_toggle", TEXT.bindToggle[1], function(keypress)
 
   pcall(autoTppHandleToggle)
 end)
-return mod
+mod.apiCore = { public = { events = { on = function() end }, perspective = { get = function() return {} end } } }
+mod.api = mod.apiCore and mod.apiCore.public or nil
+return mod.api
 '@
 function Run([string]$owner,[string]$rule,[string]$source,$handler) {
   $folder=Join-Path $root $owner
@@ -70,11 +72,20 @@ $b=Run 'immersive_third_person' 'immersive-third-person-dedra-toggle-signal' $it
 if(!$b.Applied -or $b.Changes.Count -ne 1){throw 'Base should emit one source signal'}
 $bridge=[Text.Encoding]::UTF8.GetString($b.Changes[0].Bytes)
 if(!$bridge.Contains('mod.__gcetDedraWakeBridgeV2 = true') -or
+   !$bridge.Contains('mod.api.__gcetDedraWakeBridgeV2 = mod.__gcetDedraWakeBridgeV2 == true') -or
+   !$bridge.Contains('return mod.api') -or
    !$bridge.Contains('pcall(mod.__gcetDedraToggleSignalV2)') -or
    $bridge.Contains('registerHotkey(') -or
    ([regex]::Matches($bridge,'registerInput\("tpp_camera_toggle"')).Count -ne 1){
   throw 'Original CET keybind not preserved or user-request wake missing'
 }
+# Full public API export must already be complete on a second original-owned
+# generation; the source injector may not rely on a separate corrective rule.
+$twice=Run 'immersive_third_person' 'immersive-third-person-dedra-toggle-signal' $bridge $base
+if($twice.Applied -or $twice.Changes.Count -ne 0) {
+  throw 'Public Dedra wake export was not idempotent'
+}
+
 $a=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $dedraFixture $addon
 if(!$a.Applied -or $a.Changes.Count -ne 2){throw "Dedra expected init + separate worker, got $($a.Changes.Count)"}
 $init=$a.Changes|Where-Object{$_.RelativeFile -like '*/init.lua'}|Select-Object -First 1
