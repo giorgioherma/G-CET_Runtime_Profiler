@@ -14,6 +14,20 @@ internal static partial class SemanticInjectors
             "hubs.setupMappins",
             "world.update()",
             "raceLogic.raceInProgress");
+        const string completeMarker = "-- G-CET semantic:cybertrials-five-job-v1";
+        if(init.Text.Contains(completeMarker,StringComparison.Ordinal))
+        {
+            var worker=context.TryReadOwnedCoordinator("cybertrials_engine_worker.lua");
+            if(worker is null ||
+               !worker.StartsWith("-- G-CET semantic coordinator:cybertrials\n",
+                    StringComparison.Ordinal) ||
+               !worker.Contains("cybertrials.realtime",StringComparison.Ordinal) ||
+               !worker.Contains("cybertrials.race_state",StringComparison.Ordinal) ||
+               !init.Text.Contains("__gcetCyberTrialsPass4.TryAttach()",StringComparison.Ordinal))
+                throw new InvalidOperationException("CyberTrials five-job source/worker incomplete.");
+            return SemanticInjectionResult.Skip(
+                "CyberTrials five-job scheduler already created by the authoritative primary rule.");
+        }
 
         var initText = ReplaceSemanticObserverBlockOnce(
             init.Text,
@@ -89,6 +103,7 @@ internal static partial class SemanticInjectors
             gameplayWorldReplacement,
             "CyberTrials gameplay world cadence");
 
+        initText=ComposeCyberTrialsPristineFiveJobScheduler(context,initText,opening);
         context.Write(init, initText);
 
         var hubsFile = context.FindFile(
@@ -196,4 +211,183 @@ internal static partial class SemanticInjectors
         return SemanticInjectionResult.Success(
             "Skipped repeated CET GetMod lookup when overlay is closed and its hide state is already false; original open/hide recovery unchanged.");
     }
+    // One authoritative source transform: original callback content is split
+    // by its own source-proven responsibilities, never replaced with a copy
+    // of a previous generated ZIP. Generic frame registrar is preserved.
+    private static string ComposeCyberTrialsPristineFiveJobScheduler(
+        SemanticPatchContext context, string source, string opening)
+    {
+        var crlf=source.Contains("\r\n",StringComparison.Ordinal);
+        var s=source.Replace("\r\n","\n",StringComparison.Ordinal);
+        var begin=s.IndexOf(opening,StringComparison.Ordinal);
+        var next=begin<0?-1:s.IndexOf("\nfunction NewMappin(",begin,StringComparison.Ordinal);
+        var close=next<0?-1:s.LastIndexOf("\nend)\n",next,StringComparison.Ordinal);
+        if(begin<0||next<begin||close<begin ||
+           s.IndexOf(opening,begin+opening.Length,StringComparison.Ordinal)>=0)
+            throw new InvalidOperationException("CyberTrials source onUpdate/NewMappin boundary not proven.");
+        var callback=s[(begin+opening.Length)..close];
+        var systemMatch=Regex.Match(callback,
+            @"(?m)^    if\s+(?:__gcetGetSystemRequestsHandler\(\)|Game\.GetSystemRequestsHandler\(\)):IsPreGame\(\)\s+then\s*$",
+            RegexOptions.CultureInvariant);
+        var system=systemMatch.Success?systemMatch.Index:-1;
+        var editor=system<0?-1:callback.IndexOf(
+            "    if keyPressed == true and readyToPlace == true then",system,StringComparison.Ordinal);
+        var gameplay=editor<0?-1:callback.IndexOf(
+            "    if not timeTrials.runtimeData.inMenu and timeTrials.runtimeData.inGame then",editor,StringComparison.Ordinal);
+        if(system<=0||editor<=system||gameplay<=editor ||
+           callback.IndexOf("    if keyPressed == true and readyToPlace == true then",editor+1,
+               StringComparison.Ordinal)>=0)
+            throw new InvalidOperationException("CyberTrials system/editor/race ownership changed.");
+        var setup=callback[..system];
+        var systemBody=callback[system..editor];
+        var editorBody=callback[editor..gameplay];
+        var gameplayBody=callback[gameplay..];
+        const string elapsed="    __gcetCyberTrialsWorldElapsed = __gcetCyberTrialsWorldElapsed + dt\n";
+        if(setup.Split(elapsed,StringSplitOptions.None).Length!=2)
+            throw new InvalidOperationException("CyberTrials generated hub state/early world clock changed.");
+        setup=setup.Replace(elapsed,
+            "    if mode == \"fallback\" then\n"+elapsed,StringComparison.Ordinal);
+        setup+="    end\n";
+        const string gameplayStart=
+            "        Cron.Update(dt)\n"+
+            "        interactionUI.update()\n"+
+            "        local __gcetWorldRealtime = raceLogic.raceInProgress == true or readyToPlace == true\n"+
+            "        if __gcetWorldRealtime or __gcetCyberTrialsWorldElapsed >= 0.10 then\n"+
+            "            world.update()\n"+
+            "            __gcetCyberTrialsWorldElapsed = 0.0\n"+
+            "        end\n";
+        if(gameplayBody.Split(gameplayStart,StringSplitOptions.None).Length!=2)
+            throw new InvalidOperationException("CyberTrials authored realtime/gameplay split changed.");
+        gameplayBody=gameplayBody.Replace(gameplayStart,
+            "        if mode == \"fallback\" then\n"+gameplayStart+
+            "        end\n",StringComparison.Ordinal);
+        if(!gameplayBody.Contains("        if raceLogic.raceInProgress == true then",StringComparison.Ordinal) ||
+           !editorBody.Contains("    if rightKeyPressed == true and readyToPlace == true then",StringComparison.Ordinal))
+            throw new InvalidOperationException("CyberTrials race/editor callback proof failed.");
+        var dispatch= """
+-- G-CET semantic:cybertrials-five-job-v1
+-- Original callback has a complete source-owned fallback.
+local __gcetCyberTrialsPass4 = { attached = false, attaching = false }
+function __gcetCyberTrialsPass4.Dispatch(dt, mode)
+    if mode == "world_far" or mode == "world_near" then
+        if timeTrials.runtimeData.inMenu or not timeTrials.runtimeData.inGame
+           or raceLogic.raceInProgress == true then return end
+        if mode == "world_far" then
+            if readyToPlace or placingProp or timeTrials.runtimeData.inEditor
+                or interactionUI.hubShown then return end
+            if #timeTrials.availableRaces > 0 and #world.interactions > 0 then
+                world.update()
+            end
+        elseif interactionUI.hubShown then
+            world.update()
+        end
+        return
+    end
+    if mode == "fallback" or mode == "race" then
+"""+
+        setup+
+        "    end\n"+
+        "    if mode == \"fallback\" or mode == \"system\" then\n"+
+        systemBody+
+        "    end\n"+
+        "    if mode == \"fallback\" or mode == \"editor\" then\n"+
+        editorBody+
+        "    end\n"+
+        "    if mode == \"fallback\" or mode == \"race\" then\n"+
+        gameplayBody+
+        "    end\n"+
+        """
+end
+function __gcetCyberTrialsPass4.TryAttach()
+    if __gcetCyberTrialsPass4.attached then return true end
+    if __gcetCyberTrialsPass4.attaching then return false end
+    __gcetCyberTrialsPass4.attaching = true
+    local created = {}
+    local ok = pcall(function()
+        require("GCET_Semantic/cybertrials_engine_worker").attach(
+            created, __gcetCyberTrialsPass4.Dispatch, function()
+                if timeTrials.runtimeData.inMenu or not timeTrials.runtimeData.inGame then return end
+                if type(Cron.HasActiveTimers) ~= "function" or Cron.HasActiveTimers() then
+                    Cron.Update(0.0)
+                end
+            end,
+            function(dt)
+                if timeTrials.runtimeData.inMenu or not timeTrials.runtimeData.inGame then return end
+                if type(Cron.HasActiveTimers) ~= "function" or Cron.HasActiveTimers() then
+                    Cron.Update(dt)
+                end
+                if interactionUI.hubShown then interactionUI.update() end
+                if readyToPlace or placingProp or timeTrials.runtimeData.inEditor
+                    or keyPressed or centerKeyPressed or leftKeyPressed or rightKeyPressed
+                    or isPlacingKey1 or isPlacingKey2 or isPlacingKey3 or isPlacingKey4 then
+                    __gcetCyberTrialsPass4.Dispatch(dt,"editor")
+                    if #timeTrials.availableRaces > 0 and #world.interactions > 0 then
+                        world.update()
+                    end
+                end
+            end)
+        __gcetCyberTrialsPass4.attached = true
+    end)
+    __gcetCyberTrialsPass4.attaching = false
+    if not ok then
+        for _, job in ipairs(created) do
+            if job and type(job.Cancel) == "function" then pcall(job.Cancel) end
+        end
+        return false
+    end
+    return true
+end
+
+""";
+        var replacement=dispatch+opening+
+            "    if __gcetCyberTrialsPass4.attached then return end\n"+
+            "    __gcetCyberTrialsPass4.TryAttach()\n"+
+            "    __gcetCyberTrialsPass4.Dispatch(dt,\"fallback\")\n"+
+            "end)";
+        s=s[..begin]+replacement+s[(close+"\nend)".Length)..];
+        context.WriteCoordinator("cybertrials_engine_worker.lua", """
+-- G-CET semantic coordinator:cybertrials
+-- Authored state logic is retained in the single source dispatcher.
+local M = {}
+function M.attach(created, dispatch, legacyTick, realtime)
+    local ok, engine = pcall(GetMod,"0-Engine")
+    if not ok or type(engine) ~= "table" or type(engine.Register) ~= "function" then
+        error("CyberTrials 0-Engine not ready")
+    end
+    local client = engine.Register("CyberTrials")
+    if type(client) ~= "table" or type(client.Schedule) ~= "table" or
+       type(client.Schedule.Every) ~= "function" or
+       type(client.Schedule.EveryFrame) ~= "function" then
+        error("CyberTrials Scheduler missing")
+    end
+    local function add(handle)
+        if type(handle) ~= "table" then error("Scheduler refused CyberTrials job") end
+        created[#created + 1] = handle
+    end
+    add(client.Schedule.Every(1.0, {
+        id = "cybertrials.world_far", pause = "never",
+        clock = "game", catchUp = false
+    }, function() dispatch(1.0,"world_far") end))
+    add(client.Schedule.Every(0.10, {
+        id = "cybertrials.world_near", pause = "never",
+        clock = "game", catchUp = false
+    }, function() dispatch(0.10,"world_near") end))
+    add(client.Schedule.Every(0.25, {
+        id = "cybertrials.system_state", pause = "never",
+        clock = "real", catchUp = false
+    }, function() dispatch(0.25,"system") end))
+    add(client.Schedule.Every(0.10, {
+        id = "cybertrials.race_state", pause = "never",
+        clock = "game", catchUp = false
+    }, function(ctx) dispatch(ctx.elapsed or 0.10,"race") end))
+    add(client.Schedule.EveryFrame({
+        id = "cybertrials.realtime", pause = "never"
+    }, function(ctx) realtime(ctx.dt or 0) end))
+    return true
+end
+return M
+""");
+        return crlf?s.Replace("\n","\r\n",StringComparison.Ordinal):s;
+    }
+
 }
