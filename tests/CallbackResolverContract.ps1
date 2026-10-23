@@ -1734,6 +1734,7 @@ try {
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureAction/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureFrame/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureLocalLimitExact/init.lua',
+        'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureLocalLimitOverflow/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureStructural/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDiscoveryAuthorRate/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDormantOnUpdate/init.lua',
@@ -1757,8 +1758,20 @@ try {
     if ('G-CET_Pass_Manifest.json' -in $names) {
         throw 'Documentation manifest leaked into the deployable ZIP.'
     }
-    if ('bin/x64/plugins/cyber_engine_tweaks/mods/FixtureLocalLimitOverflow/init.lua' -in $names) {
-        throw 'Lua-local overflow fixture was emitted even though generation exceeds the 200-local compiler limit.'
+    # The former 201-local overflow is now solved by an inline, one-time
+    # frame registrar. It must not add a permanent main-chunk local.
+    $limitEntry=$zip.GetEntry('bin/x64/plugins/cyber_engine_tweaks/mods/FixtureLocalLimitOverflow/init.lua')
+    if(!$limitEntry){throw 'Source-proven 200-local fixture was not recovered'}
+    $limitReader=[IO.StreamReader]::new($limitEntry.Open())
+    try { $limitText=$limitReader.ReadToEnd() }
+    finally { $limitReader.Dispose() }
+    if(!$limitText.Contains('local gcet_limit_over_1 = 1') -or
+       !$limitText.Contains('local gcet_limit_over_200 = 200') -or
+       !$limitText.Contains('MakeEventRegistrar("FixtureLocalLimitOverflow"') -or
+       !$limitText.Contains('return __gcetRegister end)())') -or
+       !$limitText.Contains('DrawLocalLimitOverflow()') -or
+       $limitText.Contains('local __gcetRegisterEvent_146 = registerForEvent')) {
+       throw 'Saturated main chunk did not retain all author locals and original onDraw through a scoped one-time registrar'
     }
     if ('bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDynamic/init.lua' -in $names) {
         throw 'Blocked dynamic OnAction callback leaked into the generated pass.'
@@ -2034,23 +2047,19 @@ try {
         throw 'Generated pass no longer advertises exact-boundary Lua local-budget refusal.'
     }
 
-    $localLimitSkip = @($manifest.skipped | Where-Object {
+    # The 200-local main chunk remains valid by placing all new G-CET
+    # registrar locals inside their own registration-time function scope.
+    if(@($manifest.skipped | Where-Object {
         $_.type -eq 'LUA_LOCAL_LIMIT' -and
         $_.file -eq 'FixtureLocalLimitOverflow/init.lua'
-    }) | Select-Object -First 1
-    if ($null -eq $localLimitSkip) {
-        throw 'PASS did not report why the 200-local fixture was refused.'
+    }).Count -ne 0) {
+        throw 'Recovered 200-local frame registration was still reported as skipped.'
     }
-    if ([int]$localLimitSkip.limit -ne 200 -or
-        [int]$localLimitSkip.sourceMaxActiveLocals -ne 200 -or
-        [int]$localLimitSkip.generatedMaxActiveLocals -ne 201) {
-        $localLimitDebug = $localLimitSkip | ConvertTo-Json -Depth 8 -Compress
-        throw "Unexpected Lua local-budget report: $localLimitDebug"
-    }
-    if ([string]$localLimitSkip.reason -notmatch '201' -or
-        [string]$localLimitSkip.reason -notmatch '200' -or
-        [string]$localLimitSkip.reason -notmatch 'Author code was not deleted') {
-        throw 'Lua local-budget refusal did not explain the exact cause and non-deletion policy.'
+    if(@($manifest.transforms | Where-Object {
+        $_.type -eq 'FRAME_DISPATCH_CONSOLIDATION' -and
+        $_.file -eq 'FixtureLocalLimitOverflow/init.lua'
+    }).Count -ne 1) {
+        throw 'Recovered 200-local frame callback is missing a source-owned transform.'
     }
     foreach ($forbiddenType in @(
         'STRUCTURAL_HOTPATH_REWRITE',
