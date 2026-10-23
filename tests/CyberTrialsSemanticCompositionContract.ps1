@@ -295,6 +295,23 @@ finally {
 
 Write-Host 'CyberTrials semantic composition contract passed: version-tolerant structure + PLAYER staging + semantic generation.'
 
+# Original author Cron lacks active-timer accessors, which this single
+# five-job generation must add without editing the original source.
+$originalCron=@'
+local Cron = {}
+local timers = {}
+---@param delta number
+---@return void
+function Cron.Update(delta)
+    for _, timer in ipairs(timers) do
+        if timer.active then timer.delay = timer.delay - delta end
+    end
+end
+return Cron
+'@
+$cronPath=Join-Path $worldDir 'Cron.lua'
+[IO.File]::WriteAllText($cronPath,$originalCron,[Text.UTF8Encoding]::new($false))
+
 # Full, original-shaped editor/system/race callback, never PASS4 output.
 # Reduced compatible source keeps legacy semantic without forcing five jobs.
 $fullCyber=$initSource.Replace(
@@ -353,7 +370,15 @@ if(!$result.Applied){throw 'CyberTrials full original should generate a five-job
 $changes=@($ctxType.GetProperty('Changes',[Reflection.BindingFlags]'Instance,NonPublic').GetValue($ctx))
 $initChange=$changes|Where-Object{$_.RelativeFile -like '*/init.lua'}|Select-Object -First 1
 $worker=$changes|Where-Object{$_.RelativeFile -like '*/GCET_Semantic/cybertrials_engine_worker.lua'}|Select-Object -First 1
-if(!$initChange -or !$worker){throw 'CyberTrials original pass missing main dispatcher or owned scheduler worker'}
+$cronChange=$changes|Where-Object{$_.RelativeFile -like '*/modules/external/Cron.lua'}|Select-Object -First 1
+if(!$initChange -or !$worker -or !$cronChange) {
+  throw 'CyberTrials original pass missing main dispatcher, timer gate or owned scheduler worker'
+}
+$cronResult=[Text.Encoding]::UTF8.GetString($cronChange.Bytes)
+foreach($token in @('function Cron.HasTimers()','function Cron.HasActiveTimers()',
+  'if timer.active then return true end')){
+    if(!$cronResult.Contains($token)){throw "CyberTrials source-owned Cron idle gate missing $token"}
+}
 $compiled=[Text.Encoding]::UTF8.GetString($initChange.Bytes)
 $workerCode=[Text.Encoding]::UTF8.GetString($worker.Bytes)
 foreach($required in @('-- G-CET semantic:cybertrials-five-job-v1',
@@ -374,8 +399,9 @@ $again=$ctor.Invoke([object[]]@([string]$mods,'CyberTrials','cybertrials',$stage
 if($method.Invoke($null,[object[]]@($again)).Applied){
   throw 'CyberTrials complete five-job original-source pass was not idempotent'
 }
-if([IO.File]::ReadAllText($initPath) -ne $fullCyber){
-  throw 'CyberTrials pristine source was mutated rather than staged'
+if([IO.File]::ReadAllText($initPath) -ne $fullCyber -or
+   [IO.File]::ReadAllText($cronPath) -ne $originalCron) {
+  throw 'CyberTrials pristine init or Cron was mutated rather than staged'
 }
 Write-Host 'CyberTrials full original-shaped five-job owner, fallback, original preservation and idempotence PASS'
 

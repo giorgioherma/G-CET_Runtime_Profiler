@@ -18,9 +18,12 @@ internal static partial class SemanticInjectors
         if(init.Text.Contains(completeMarker,StringComparison.Ordinal))
         {
             var worker=context.TryReadOwnedCoordinator("cybertrials_engine_worker.lua");
+            var cron=context.FindFile("modules/external/Cron.lua",
+                "function Cron.HasActiveTimers()", "local timers = {}");
             if(worker is null ||
                !worker.StartsWith("-- G-CET semantic coordinator:cybertrials\n",
                     StringComparison.Ordinal) ||
+               !cron.Text.Contains("if timer.active then",StringComparison.Ordinal) ||
                !worker.Contains("cybertrials.realtime",StringComparison.Ordinal) ||
                !worker.Contains("cybertrials.race_state",StringComparison.Ordinal) ||
                !init.Text.Contains("__gcetCyberTrialsPass4.TryAttach()",StringComparison.Ordinal))
@@ -402,7 +405,50 @@ function M.attach(created, dispatch, legacyTick, realtime)
 end
 return M
 """);
+        ComposeCyberTrialsCronActiveTimerGate(context);
         return crlf?s.Replace("\n","\r\n",StringComparison.Ordinal):s;
+    }
+
+    // The pristine mod's Cron does not expose idle timer state.
+    // Install the former PASS4 active-timer gate in the same primary
+    // CyberTrials generator, never as a second repair semantic.
+    private static void ComposeCyberTrialsCronActiveTimerGate(
+        SemanticPatchContext context)
+    {
+        var file=context.FindFile("modules/external/Cron.lua",
+            "local timers = {}", "function Cron.Update(delta)", "return Cron");
+        var crlf=file.Text.Contains("\r\n",StringComparison.Ordinal);
+        var source=file.Text.Replace("\r\n","\n",StringComparison.Ordinal);
+        if(source.Contains("function Cron.HasActiveTimers()",StringComparison.Ordinal))
+        {
+            if(!source.Contains("for _, timer in ipairs(timers) do",StringComparison.Ordinal)
+                || !source.Contains("if timer.active then",StringComparison.Ordinal))
+                throw new InvalidOperationException("CyberTrials Cron timer accessor has drifted.");
+            return;
+        }
+        const string anchor="function Cron.Update(delta)";
+        if(source.Split(anchor,StringSplitOptions.None).Length!=2)
+            throw new InvalidOperationException("CyberTrials author Cron.Update is ambiguous.");
+        const string accessor="""
+---@return boolean
+function Cron.HasTimers()
+    return #timers > 0
+end
+
+---@return boolean
+function Cron.HasActiveTimers()
+    for _, timer in ipairs(timers) do
+        if timer.active then return true end
+    end
+    return false
+end
+
+""";
+        var index=source.IndexOf("---@param delta number\n---@return void\n"+anchor,
+            StringComparison.Ordinal);
+        if(index<0)index=source.IndexOf(anchor,StringComparison.Ordinal);
+        var patched=source.Insert(index,accessor);
+        context.Write(file,crlf?patched.Replace("\n","\r\n",StringComparison.Ordinal):patched);
     }
 
 }
