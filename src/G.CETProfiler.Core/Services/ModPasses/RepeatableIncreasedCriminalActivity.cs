@@ -275,8 +275,7 @@ end
         var initClose=updateStart<0?-1:
             text.LastIndexOf("\nend)\n",updateStart,StringComparison.Ordinal);
         if(initStart<0 || initClose<initStart ||
-           text.IndexOf("\nend)\n",initClose+1,StringComparison.Ordinal)<updateStart &&
-           text.IndexOf(initEvent,initStart+initEvent.Length,StringComparison.Ordinal)>=0)
+           text.Split(initEvent,StringSplitOptions.None).Length!=2)
             throw new InvalidOperationException(
                 "RICA onInit callback close cannot be proven before generated frame routing.");
         text=text.Insert(initClose,"\n    ricaBaseInitialized = true\n    TryAttachRicaPass4()");
