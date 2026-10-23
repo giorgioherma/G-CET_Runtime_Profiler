@@ -239,6 +239,22 @@ internal static class FixedZeroEngineRuntime
             throw new InvalidOperationException(
                 "Cannot attach Scheduler after executable statements.");
 
+        // The known 0.18.6 author runtime already owns a single CET onUpdate
+        // dispatcher. Adopt it instead of registering another CET callback.
+        // Only source-proven core state/export shapes are admitted.
+        var normalizedHost = text.Replace("\\r\\n", "\\n", StringComparison.Ordinal);
+        const string authorUpdate =
+            "    pcall(Cron.Update, delta)\\n" +
+            "    pcall(UpdateFrame, delta)\\n" +
+            "end)";
+        var canAdoptCentralUpdate =
+            normalizedHost.Split(authorUpdate, StringSplitOptions.None).Length == 2 &&
+            normalizedHost.Contains("registerForEvent(\\\"onUpdate\\\", function(delta)", StringComparison.Ordinal) &&
+            normalizedHost.Contains("local currentFrame", StringComparison.Ordinal) &&
+            normalizedHost.Contains("local isPlaying", StringComparison.Ordinal) &&
+            normalizedHost.Contains("State.inMenu", StringComparison.Ordinal) &&
+            normalizedHost.Contains("State.player()", StringComparison.Ordinal) &&
+            normalizedHost.Contains("function Engine.GetState(", StringComparison.Ordinal);
         var block = """
 -- G-CET namespaced scheduler compatibility v1
 do
@@ -326,6 +342,52 @@ do
 end
 
 """.Replace("__GCET_HOST__", final.Groups["name"].Value);
+        if (canAdoptCentralUpdate)
+        {
+            // This closure is installed by the namespaced bridge before any
+            // gameplay update. The author callback supplies the real lifecycle
+            // context; no second native CET onUpdate is registered.
+            const string existingSchedulerEvent =
+                "            registerForEvent(\\\"onUpdate\\\", function(dt)";
+            const string startedLine = "            __started = true";
+            var eventStart = block.IndexOf(existingSchedulerEvent, StringComparison.Ordinal);
+            var eventEnd = eventStart < 0 ? -1 :
+                block.IndexOf(startedLine, eventStart, StringComparison.Ordinal);
+            if (eventStart < 0 || eventEnd < 0)
+                throw new InvalidOperationException(
+                    "Namespaced scheduler bridge cannot adopt central 0-Engine tick.");
+            var driver = """
+            __host.__gcetScheduleDriver = function(ctx)
+                __frame = __frame + 1
+                pcall(__scheduler.Update, ctx)
+            end
+""";
+            block = block[..eventStart] + driver + block[eventEnd..];
+            var authorReplacement = """
+    pcall(Cron.Update, delta)
+    pcall(UpdateFrame, delta)
+    if type(Engine.__gcetScheduleDriver) == "function" then
+        local __gcetPlayer = State.player()
+        Engine.__gcetScheduleDriver({
+            frame = currentFrame, dt = delta, realDt = delta,
+            now = State.time, generation = 0, playing = isPlaying,
+            inMenu = State.inMenu, player = __gcetPlayer,
+            state = Engine.GetState()
+        })
+    end
+end)
+""";
+            normalizedHost = normalizedHost.Replace(
+                authorUpdate, authorReplacement, StringComparison.Ordinal);
+            text = text.Contains("\\r\\n", StringComparison.Ordinal)
+                ? normalizedHost.Replace("\\n", "\\r\\n", StringComparison.Ordinal)
+                : normalizedHost;
+            // Insertion index changed after author-update injection.
+            exports = Regex.Matches(text,
+                @"(?m)^[ \\t]*return[ \\t]+(?<name>[A-Za-z_][A-Za-z0-9_]*)[ \\t]*;?[ \\t]*(?:--[^\\r\\n]*)?\\r?$",
+                RegexOptions.CultureInvariant);
+            final = exports[^1];
+        }
         var encoded = Encoding.UTF8.GetBytes(text.Insert(final.Index, block));
         if (!hasBom) return encoded;
         var result = new byte[encoded.Length + 3];
