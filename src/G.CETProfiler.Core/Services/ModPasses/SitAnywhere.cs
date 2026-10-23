@@ -15,6 +15,25 @@ internal static partial class SemanticInjectors
         var live = context.FindFile("init.lua", "self.logic:onUpdate()");
         if (live.Text.Contains("local function runSitAnywhereFrame(dt)", StringComparison.Ordinal))
         {
+            // A complete current-generation result is already composed from
+            // pristine author source. Never treat its scheduler as an
+            // intermediate PASS4 input and apply another repair pass.
+            const string engineMarker = "-- G-CET semantic:sitanywhere-engine-worker-v1";
+            if (live.Text.Contains(engineMarker, StringComparison.Ordinal))
+            {
+                var worker = context.TryReadOwnedCoordinator("sitanywhere_engine_worker.lua");
+                if (worker is null ||
+                    !worker.StartsWith(
+                        "-- G-CET semantic coordinator:sitanywhere-engine-worker",
+                        StringComparison.Ordinal) ||
+                    !live.Text.Contains("if pass4Attached then return end", StringComparison.Ordinal) ||
+                    !live.Text.Contains("TryAttachSitAnywherePass4()", StringComparison.Ordinal) ||
+                    !live.Text.Contains("runSitAnywhereFrame(dt)", StringComparison.Ordinal))
+                    throw new InvalidOperationException(
+                        "SitAnywhere scheduler source/worker is partially installed.");
+                return SemanticInjectionResult.Skip(
+                    "SitAnywhere complete scheduler and frame worker already installed.");
+            }
             const string marker = "-- G-CET semantic:sitanywhere-scanner-workspot-only-v1";
             if (live.Text.Contains(marker, StringComparison.Ordinal))
                 return SemanticInjectionResult.Skip("SitAnywhere scanner/workspot idle extension already installed.");
