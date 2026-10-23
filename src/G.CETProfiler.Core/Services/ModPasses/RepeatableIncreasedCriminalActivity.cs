@@ -149,6 +149,7 @@ internal static partial class SemanticInjectors
         // Build the scheduler and all six jobs as part of this SAME
         // pristine-source rule, not as a repair of a prior PASS4 ZIP.
         text = ComposeRicaPristineScheduler(context, text);
+        ComposeRicaIncrementalDiagnostics(context);
         context.Write(file, text);
         return SemanticInjectionResult.Success(
             "RICA pristine source: composed bounded reward/state/mappin/diagnostic/system lanes and an owned six-job 0-Engine Scheduler coordinator with author callback fallback.");
@@ -294,6 +295,154 @@ end
             "RICA worker shutdown gate");
         context.WriteCoordinator("rica_engine_worker.lua",RicaEngineWorkerCode(context.RuleId));
         return originalCrLf ? text.Replace("\n","\r\n",StringComparison.Ordinal) : text;
+    }
+
+    // Preserve the author's payload and per-site projection while splitting
+    // one expensive synchronous snapshot into a source-owned frame cursor.
+    // This is generated in the PRIMARY RICA rule from untouched source.
+    private static void ComposeRicaIncrementalDiagnostics(SemanticPatchContext context)
+    {
+        var file=context.FindFile("modules/diagnostics.lua",
+            "function Diagnostics.snapshot(system, sites, settings, mappins, force)",
+            "local function read(system, fallback, fn)",
+            "function Diagnostics.shutdown()");
+        var crlf=file.Text.Contains("\r\n",StringComparison.Ordinal);
+        var source=file.Text.Replace("\r\n","\n",StringComparison.Ordinal);
+        const string opening="function Diagnostics.snapshot(system, sites, settings, mappins, force)\n";
+        const string siteOpening="    for _, site in ipairs(sites.list) do\n";
+        const string postOpening="\n    local raw = encode(payload)\n";
+        const string shutdownOpening="\nfunction Diagnostics.shutdown()\n";
+        var start=source.IndexOf(opening,StringComparison.Ordinal);
+        var site=start<0?-1:source.IndexOf(siteOpening,start,StringComparison.Ordinal);
+        var post=site<0?-1:source.IndexOf(postOpening,site,StringComparison.Ordinal);
+        var finish=post<0?-1:source.IndexOf(shutdownOpening,post,StringComparison.Ordinal);
+        if(start<0||site<start||post<site||finish<post ||
+           source.IndexOf(opening,start+opening.Length,StringComparison.Ordinal)>=0 ||
+           source.IndexOf(siteOpening,site+siteOpening.Length,StringComparison.Ordinal)>=0)
+            throw new InvalidOperationException("RICA diagnostic per-site snapshot is not uniquely source-proven.");
+        var begin=source[start..site];
+        var sites=source[site..post];
+        if(!begin.Contains("local payload = {",StringComparison.Ordinal) ||
+           !begin.Contains("        sites = {},\n    }\n",StringComparison.Ordinal) ||
+           !sites.Contains("payload.sites[#payload.sites + 1] = {",StringComparison.Ordinal) ||
+           !sites.Contains("nextEligibleAt - now",StringComparison.Ordinal) ||
+           !source[post..finish].Contains("Diagnostics.lastSnapshot = raw",StringComparison.Ordinal))
+            throw new InvalidOperationException("RICA authored diagnostic payload or snapshot completion changed.");
+        begin=begin.Replace(opening,
+            "function Diagnostics.beginSnapshot(system, sites, settings, mappins, force)\n",
+            StringComparison.Ordinal);
+        begin=begin.Replace(
+            "    if (not Diagnostics.enabled and not force) or not system then return false end",
+            "    if (not Diagnostics.enabled and not force) or not system then\n"+
+            "        Diagnostics.snapshotWork = nil\n        return false\n    end",
+            StringComparison.Ordinal);
+        begin=begin.Replace("    local payload = {",
+            "    Diagnostics.snapshotWork = {\n"+
+            "        index = 1, now = now, force = force == true,\n"+
+            "        payload = {",StringComparison.Ordinal);
+        begin=begin.Replace("        sites = {},\n    }\n",
+            "        sites = {},\n        }\n    }\n    return true\nend\n",
+            StringComparison.Ordinal);
+        sites=sites.Replace(siteOpening,
+            """
+function Diagnostics.isSnapshotActive()
+    return Diagnostics.snapshotWork ~= nil
+end
+
+function Diagnostics.cancelSnapshot()
+    Diagnostics.snapshotWork = nil
+end
+
+function Diagnostics.snapshotStep(system, sites, maxSites)
+    local work = Diagnostics.snapshotWork
+    if not work then return true end
+    if (not Diagnostics.enabled and not work.force) or not system then
+        Diagnostics.snapshotWork = nil
+        return true
+    end
+    local limit = math.max(1, tonumber(maxSites) or 1)
+    local processed = 0
+    while work.index <= #sites.list and processed < limit do
+        local site = sites.list[work.index]
+        work.index = work.index + 1
+        processed = processed + 1
+""",StringComparison.Ordinal)
+            .Replace("payload.sites[#payload.sites + 1]",
+                "work.payload.sites[#work.payload.sites + 1]",StringComparison.Ordinal)
+            .Replace("nextEligibleAt - now","nextEligibleAt - work.now",StringComparison.Ordinal);
+        var signature = """
+local function gcetRicaSnapshotSignature(payload)
+    local schedule = payload.appliedSchedule or {}
+    local scheduler = payload.scheduler or {}
+    local markers = payload.markers or {}
+    local values = {
+        tostring(schedule.enabled), tostring(schedule.poolSize),
+        tostring(schedule.effectivePoolSize), tostring(schedule.cooldownHours),
+        tostring(schedule.rosterPercent), tostring(schedule.reinforcements),
+        tostring(schedule.cleanupSeconds), tostring(schedule.cleanupDistance),
+        tostring(scheduler.active), tostring(scheduler.eligible),
+        tostring(scheduler.tracked), tostring(scheduler.pendingRewards),
+        tostring(scheduler.totalClears),
+        tostring(markers.discovered), tostring(markers.registered),
+        tostring(markers.schedulerActive), tostring(markers.target),
+        tostring(markers.eligible), tostring(markers.tracked),
+        tostring(markers.registrationFailures)
+    }
+    for _, site in ipairs(payload.sites or {}) do
+        for _, key in ipairs({
+            "id", "status", "enabled", "vanillaEligible", "ownedActivation",
+            "cycle", "lastClearedAt", "nextEligibleAt", "cleanupReadyAt",
+            "cooldownOverrideHours", "trackedActors", "bossLoaded"
+        }) do
+            values[#values+1] = tostring(site[key])
+        end
+    end
+    return table.concat(values, "|")
+end
+
+local function gcetRicaFinishSnapshot(work)
+    local signature = gcetRicaSnapshotSignature(work.payload)
+    local wall = os.time()
+    if work.force or signature ~= Diagnostics.lastSnapshot
+        or wall - Diagnostics.lastSnapshotAt >= 60 then
+        Diagnostics.event("state_snapshot", work.payload, work.force)
+        Diagnostics.lastSnapshot = signature
+        Diagnostics.lastSnapshotAt = wall
+    end
+    Diagnostics.snapshotWork = nil
+end
+
+""";
+        var afterSites = """
+    if work.index > #sites.list then
+        gcetRicaFinishSnapshot(work)
+        return true
+    end
+    return false
+end
+
+function Diagnostics.snapshot(system, sites, settings, mappins, force)
+    if not Diagnostics.beginSnapshot(system, sites, settings, mappins, force) then
+        return false
+    end
+    while Diagnostics.isSnapshotActive() do
+        Diagnostics.snapshotStep(system, sites, #sites.list)
+    end
+    return true
+end
+""";
+        var merged=source[..start]+signature+"\n"+begin+sites+afterSites+source[finish..];
+        const string field="    lastSnapshotAt = 0,\n}";
+        const string reset="    Diagnostics.lastSnapshotAt = 0\n    rotateIfLarge()";
+        const string shutdown="function Diagnostics.shutdown()\n";
+        if(merged.Split(field,StringSplitOptions.None).Length!=2 ||
+           merged.Split(reset,StringSplitOptions.None).Length!=2 ||
+           merged.Split(shutdown,StringSplitOptions.None).Length!=2)
+            throw new InvalidOperationException("RICA diagnostics session lifecycle changed.");
+        merged=merged.Replace(field,"    lastSnapshotAt = 0,\n    snapshotWork = nil,\n}",StringComparison.Ordinal)
+            .Replace(reset,"    Diagnostics.lastSnapshotAt = 0\n    Diagnostics.snapshotWork = nil\n    rotateIfLarge()",StringComparison.Ordinal)
+            .Replace(shutdown,"function Diagnostics.shutdown()\n    Diagnostics.snapshotWork = nil\n",StringComparison.Ordinal);
+        context.Write(file,crlf?merged.Replace("\n","\r\n",StringComparison.Ordinal):merged);
     }
 
 }
