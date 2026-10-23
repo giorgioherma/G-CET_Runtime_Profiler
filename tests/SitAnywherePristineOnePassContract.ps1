@@ -58,7 +58,8 @@ function logic:onUpdate()
 end
 '@
 Put 'modules/worldInteraction.lua' @'
-local world = { interactions = {} }
+local world = {}
+world.interactions = {}
 function world.update() end
 function world.onSessionStart() end
 '@
