@@ -1695,6 +1695,9 @@ if ([int]$resolved.pass.TransformCount -ne $expectedPassTransforms) {
     if (Test-Path -LiteralPath $resolved.pass.ManifestPath -PathType Leaf) {
         $failedManifest = Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
         Write-Host "PASS DEBUG transforms=$($failedManifest.summary.transforms) skipped=$($failedManifest.summary.skipped)"
+        $failedManifest.transforms | Group-Object type | Sort-Object Name | ForEach-Object {
+            Write-Host "PASS DEBUG TRANSFORM_TYPE $($_.Name) count=$($_.Count)"
+        }
         foreach ($skip in @($failedManifest.skipped)) {
             Write-Host ("PASS DEBUG SKIP owner={0} type={1} file={2} reason={3}" -f $skip.owner,$skip.type,$skip.file,$skip.reason)
         }
