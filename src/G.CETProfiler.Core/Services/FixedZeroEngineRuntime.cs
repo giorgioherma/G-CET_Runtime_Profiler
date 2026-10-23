@@ -120,14 +120,16 @@ internal static class FixedZeroEngineRuntime
             var sharedCurrent = AddSharedSystemAccessors(sourceBytes);
             var extendedCurrent =
                 AddNativeLocationBridge(AddWorkloadServices(sharedCurrent));
+            var integratedCurrent = EnsureRuntimeApis(extendedCurrent);
             var liveFiles = BuildKnownFixedRuntime(
-                runtimeRoot, liveRoot, extendedCurrent);
+                runtimeRoot, liveRoot, integratedCurrent);
+            AddNamespacedRuntimeDependencies(runtimeRoot, liveRoot, liveFiles);
             return new FixedZeroEngineBuild(
                 liveFiles,
                 statePrefix + "SOURCE_PROVEN_GCET_RUNTIME",
                 liveHash,
                 FixedVersion,
-                Sha256(extendedCurrent));
+                Sha256(integratedCurrent));
         }
         catch (InvalidOperationException)
         {
@@ -159,13 +161,15 @@ internal static class FixedZeroEngineRuntime
             HostActionRouterModule,
             actionRouter);
 
-        compatibleInit = AddNativeLocationBridge(AddWorkloadServices(compatibleInit));
+        compatibleInit = EnsureRuntimeApis(
+            AddNativeLocationBridge(AddWorkloadServices(compatibleInit)));
         var hostFiles = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase)
         {
             ["0-Engine/init.lua"] = compatibleInit,
             ["0-Engine/" + HostActionRouterModule] = actionRouter
         };
         AddWorkloadModules(runtimeRoot, liveRoot, hostFiles);
+        AddNamespacedRuntimeDependencies(runtimeRoot, liveRoot, hostFiles);
 
         return new FixedZeroEngineBuild(
             hostFiles,
@@ -175,6 +179,190 @@ internal static class FixedZeroEngineRuntime
             Sha256(compatibleInit));
     }
 
+
+
+    // Build against a complete 0-Engine API, not only its Lua filenames.
+    // Source-proven inputs are preserved: missing methods are attached in one
+    // G-CET-owned compatibility block, never by rewriting author functions.
+    private static byte[] EnsureRuntimeApis(byte[] source)
+    {
+        var text = Encoding.UTF8.GetString(source);
+        if (!text.Contains("MakeEventRegistrar", StringComparison.Ordinal) ||
+            !text.Contains("SubscribeAction", StringComparison.Ordinal))
+        {
+            if (!TryBuildHostCompatibilityInit(
+                    source, out var adapted, out var reason))
+                throw new InvalidOperationException(
+                    "Cannot attach required action/frame APIs: " + reason);
+            source = adapted;
+        }
+
+        return EnsureNamespacedSchedule(source);
+    }
+
+    // The stock 0-Engine may contain a Scheduler.lua file without ever
+    // importing or ticking it. Add a separate, verified scheduler runtime,
+    // with a SINGLE native event bridge installed only on first use.
+    // Do not replace modules/Scheduler.lua or alter original Register methods.
+    private static byte[] EnsureNamespacedSchedule(byte[] source)
+    {
+        var hasBom = source.Length >= 3 && source[0] == 0xEF &&
+            source[1] == 0xBB && source[2] == 0xBF;
+        var text = hasBom ? Encoding.UTF8.GetString(source, 3, source.Length - 3)
+                          : Encoding.UTF8.GetString(source);
+
+        const string marker = "-- G-CET namespaced scheduler compatibility v1";
+        if (text.Contains(marker, StringComparison.Ordinal))
+            return source;
+
+        // Existing complete integration is authoritative. A source name,
+        // an imported but unused Scheduler module, or version is not proof.
+        if (Regex.IsMatch(text,
+                @"\b(?:Engine|[A-Za-z_][A-Za-z0-9_]*)\.Schedule\s*=\s*\{",
+                RegexOptions.CultureInvariant) &&
+            text.Contains("Schedule.Every", StringComparison.Ordinal) &&
+            text.Contains("Scheduler.Update", StringComparison.Ordinal) &&
+            text.Contains("Scheduler.Init", StringComparison.Ordinal))
+            return source;
+
+        var exports = Regex.Matches(text,
+            @"(?m)^[ \t]*return[ \t]+(?<name>[A-Za-z_][A-Za-z0-9_]*)[ \t]*;?[ \t]*(?:--[^\r\n]*)?\r?$",
+            RegexOptions.CultureInvariant);
+        if (exports.Count == 0)
+            throw new InvalidOperationException(
+                "Cannot attach Scheduler: no final 0-Engine export.");
+        var final = exports[^1];
+        if (!Regex.IsMatch(text[(final.Index + final.Length)..],
+                @"\A(?:\s|--[^\r\n]*)*\z", RegexOptions.CultureInvariant))
+            throw new InvalidOperationException(
+                "Cannot attach Scheduler after executable statements.");
+
+        var block = """
+-- G-CET namespaced scheduler compatibility v1
+do
+    local __host = __GCET_HOST__
+    if type(__host) == "table" and type(__host.Register) == "function" then
+        local __ok, __scheduler = pcall(require, "modules/G-CET/Scheduler")
+        if not __ok or type(__scheduler) ~= "table" or
+           type(__scheduler.Init) ~= "function" or
+           type(__scheduler.Update) ~= "function" or
+           type(__scheduler.Every) ~= "function" then
+            error("G-CET namespaced scheduler dependency missing or incomplete")
+        end
+        local __started, __frame = false, 0
+        local __lastClock = os.clock()
+        local function __activate()
+            if __started then return end
+            __scheduler.Init(nil, nil)
+            registerForEvent("onUpdate", function(dt)
+                __frame = __frame + 1
+                local __now = os.clock()
+                local __realDt = __now - __lastClock
+                __lastClock = __now
+                local __player = nil
+                if type(Game) == "table" and type(Game.GetPlayer) == "function" then
+                    local ok, player = pcall(Game.GetPlayer)
+                    if ok then __player = player end
+                end
+                pcall(__scheduler.Update, {
+                    frame = __frame, dt = dt, realDt = __realDt,
+                    now = nil, generation = 0, playing = __player ~= nil,
+                    inMenu = false, player = __player, state = nil
+                })
+            end)
+            __started = true
+        end
+        local __names = {
+            "EveryFrame", "EveryFrames", "Every", "After", "NextTick"
+        }
+        local __schedule = type(__host.Schedule) == "table"
+            and __host.Schedule or {}
+        for _, name in ipairs(__names) do
+            if type(__schedule[name]) ~= "function" then
+                __schedule[name] = function(...)
+                    __activate()
+                    return __scheduler[name](...)
+                end
+            end
+        end
+        if type(__schedule.GetInfo) ~= "function" then
+            __schedule.GetInfo = __scheduler.GetInfo
+        end
+        __host.Schedule = __schedule
+        local __priorRegister = __host.Register
+        __host.Register = function(...)
+            local mod = __priorRegister(...)
+            if type(mod) == "table" then
+                local schedule = type(mod.Schedule) == "table" and mod.Schedule or {}
+                local owner = mod.name or (select(1, ...)) or "unscoped"
+                for _, name in ipairs(__names) do
+                    if type(schedule[name]) ~= "function" then
+                        schedule[name] = function(...)
+                            local args = {...}
+                            local optIdx = (name == "EveryFrames" or
+                                name == "Every" or name == "After") and 2 or 1
+                            local options = args[optIdx]
+                            if type(options) == "function" then
+                                args[optIdx + 1] = options
+                                options = {}
+                            end
+                            if type(options) ~= "table" then options = {} end
+                            local copy = {}
+                            for key, value in pairs(options) do copy[key] = value end
+                            copy.owner = owner
+                            args[optIdx] = copy
+                            return __schedule[name](table.unpack(args))
+                        end
+                    end
+                end
+                mod.Schedule = schedule
+            end
+            return mod
+        end
+    end
+end
+
+""".Replace("__GCET_HOST__", final.Groups["name"].Value);
+        var encoded = Encoding.UTF8.GetBytes(text.Insert(final.Index, block));
+        if (!hasBom) return encoded;
+        var result = new byte[encoded.Length + 3];
+        result[0] = 0xEF; result[1] = 0xBB; result[2] = 0xBF;
+        Buffer.BlockCopy(encoded, 0, result, 3, encoded.Length);
+        return result;
+    }
+
+    private static void AddNamespacedRuntimeDependencies(
+        string runtimeRoot, string liveRoot,
+        Dictionary<string, byte[]> files)
+    {
+        var init = Encoding.UTF8.GetString(files["0-Engine/init.lua"]);
+        if (init.Contains("modules/G-CET/ActionRouter", StringComparison.Ordinal))
+        {
+            var router = ReconcileHostModule(liveRoot,
+                HostActionRouterModule,
+                LoadBundledFixedModule(runtimeRoot, "modules/ActionRouter.lua"));
+            var source = Encoding.UTF8.GetString(router);
+            if (!source.Contains("function ActionRouter.Subscribe", StringComparison.Ordinal) ||
+                !source.Contains("function ActionRouter.Dispatch", StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "Existing namespaced ActionRouter lacks required dispatch API.");
+            files["0-Engine/" + HostActionRouterModule] = router;
+        }
+
+        if (init.Contains("G-CET namespaced scheduler compatibility v1",
+                StringComparison.Ordinal))
+        {
+            const string schedulePath = "modules/G-CET/Scheduler.lua";
+            var bundled = LoadBundledFixedModule(runtimeRoot, "modules/Scheduler.lua");
+            var scheduler = ReconcileHostModule(liveRoot, schedulePath, bundled);
+            var source = Encoding.UTF8.GetString(scheduler);
+            foreach (var method in new[] { "Init", "Update", "Every", "EveryFrames" })
+                if (!source.Contains("function Scheduler." + method, StringComparison.Ordinal))
+                    throw new InvalidOperationException(
+                        "Existing namespaced Scheduler is missing " + method);
+            files["0-Engine/" + schedulePath] = scheduler;
+        }
+    }
 
     private static string? ResolveProfilerBackupInit(string modsRoot)
     {
