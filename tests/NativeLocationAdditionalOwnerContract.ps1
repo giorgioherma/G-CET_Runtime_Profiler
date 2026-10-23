@@ -799,6 +799,12 @@ Write-Host 'Ziggy generic QuestSystem source: full seven-fact save, 1-pass, idem
 # after fixed runtime assembly to enforce Lua's 200 active-local limit.
 $passGeneratorSource=[IO.File]::ReadAllText(
   (Join-Path (Get-Location).Path 'src/G.CETProfiler.Core/Services/PassGeneratorService.cs'))
+$projection=$passGeneratorSource.IndexOf('var effectiveRuntime = EffectiveRuntimeView.Build(modsRoot);',[StringComparison]::Ordinal)
+$fixedReady=$passGeneratorSource.IndexOf('var fixedRuntime = effectiveRuntime.RequireFramework();',[StringComparison]::Ordinal)
+$genericBegin=$passGeneratorSource.IndexOf('var transformed = TransformFile(',[StringComparison]::Ordinal)
+if($projection -lt 0 -or $fixedReady -le $projection -or $genericBegin -le $fixedReady) {
+  throw 'Virtual framework must be composed read-only before all generic/native/semantic stages'
+}
 $orderedPipeline=@(
  'var transformed = TransformFile(',
  'BlackboardPsmDefinitionCacheSource.TryStage(',
@@ -807,7 +813,6 @@ $orderedPipeline=@(
  'NativeReadReuseSource.TryStage(',
  'var availableLocations=CompiledNativeLocations.Compile(modsRoot,staged);',
  'SemanticPassGeneratorService.Apply(',
- 'var fixedRuntime = FixedZeroEngineRuntime.Prepare(modsRoot);',
  'Whole-overlay Lua budget validation',
  'var fileManifest = staged'
 )
