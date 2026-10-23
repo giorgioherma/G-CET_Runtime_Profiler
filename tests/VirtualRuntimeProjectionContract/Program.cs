@@ -70,6 +70,19 @@ return Engine
         "Bundled namespaced Scheduler dependency missing");
     Check(files.ContainsKey("0-Engine/modules/G-CET/ActionRouter.lua"),
         "Bundled namespaced ActionRouter dependency missing");
+    // A stock G-CET router only installs a normal CET Observe hook.
+    // An after-phase subscriber must refuse that route so Hotscenes
+    // retains its exact original CET ObserveAfter fallback.
+    var afterGuard = init.IndexOf(
+        "if type(config) == \"table\" and config.phase == \"after\" then",
+        StringComparison.Ordinal);
+    var originalHostRoute = init.IndexOf(
+        "if type(__gcetHostSubscribeAction) == \"function\" then",
+        StringComparison.Ordinal);
+    Check(afterGuard > 0 && originalHostRoute > afterGuard &&
+          init[afterGuard..originalHostRoute].Contains(
+              "return nil", StringComparison.Ordinal),
+        "Stock compatibility runtime silently accepts an unsupported after-phase action hook");
     Check(files.ContainsKey("0-Engine/modules/GCETNativeLocationHost.lua"),
         "Bundled native location host dependency missing");
     Check(Hash(originalInit) == originalHash && File.ReadAllText(originalInit) == stock,
