@@ -598,6 +598,24 @@ end
         // fill gaps only. A missing API is handled at the opt-in call site,
         // never by replacing or refusing the whole pass.
         var bytes = File.ReadAllBytes(livePath);
+        if (relativeModule.Equals(HostActionRouterModule, StringComparison.OrdinalIgnoreCase))
+        {
+            var oldRouter = Encoding.UTF8.GetString(bytes);
+            // The user's known legacy G-CET router can implement Subscribe and
+            // Dispatch yet silently ignore phase="after". For our private
+            // G-CET namespace use the packaged phase-aware implementation,
+            // but never replace an unrecognized custom router.
+            if (oldRouter.Contains("function ActionRouter.DispatchAfter(", StringComparison.Ordinal) &&
+                oldRouter.Contains("phase == \"after\"", StringComparison.Ordinal))
+                return bytes;
+            if (oldRouter.Contains("ActionRouter.lua - one indexed PlayerPuppet::OnAction fan-out.", StringComparison.Ordinal) &&
+                oldRouter.Contains("function ActionRouter.Subscribe(config, fn, owner)", StringComparison.Ordinal) &&
+                oldRouter.Contains("function ActionRouter.Dispatch(this, action, consumer)", StringComparison.Ordinal) &&
+                !oldRouter.Contains("DispatchAfter", StringComparison.Ordinal))
+                return bundled;
+            throw new InvalidOperationException(
+                "An unrecognized G-CET ActionRouter module cannot be silently used for after-phase subscribers.");
+        }
         if (relativeModule.Equals("modules/GCETNativeLocationHost.lua",
                 StringComparison.OrdinalIgnoreCase))
         {
@@ -984,7 +1002,7 @@ end
             "        local __gcetActionRouter = nil",
             "        local __gcetActionObserverInstalled = false",
             "",
-            "        local function __gcetEnsureActionRouter()",
+            "        local function __gcetEnsureActionRouter(phase)",
             "            if __gcetActionRouter == nil then",
             "                local ok, router = pcall(require, \"modules/G-CET/ActionRouter\")",
             "                if not ok or type(router) ~= \"table\" or type(router.Subscribe) ~= \"function\" or type(router.Dispatch) ~= \"function\" then",
@@ -996,7 +1014,7 @@ end
             "                end",
             "            end",
             "",
-            "            if not __gcetActionObserverInstalled then",
+            "            if phase ~= \"after\" and not __gcetActionObserverInstalled then",
             "                local ok = pcall(function()",
             "                    Observe(\"PlayerPuppet\", \"OnAction\", function(player, action, consumer)",
             "                        __gcetActionRouter.Dispatch(player, action, consumer)",
@@ -1009,18 +1027,16 @@ end
             "        end",
             "",
             "        function __gcetApi.SubscribeAction(config, fn, source)",
-            "            -- A stock router does not implement CET after-phase delivery.",
-            "            -- Refuse, so callers using pcall can preserve ObserveAfter.",
-            "            if type(config) == \"table\" and config.phase == \"after\" then",
-            "                return nil",
-            "            end",
-            "            if type(__gcetHostSubscribeAction) == \"function\" then",
+            "            local phase = type(config) == \"table\" and config.phase or \"before\"",
+            "            -- Legacy host methods may silently ignore phase=after.",
+            "            -- All after clients use the G-CET-owned phase-aware router.",
+            "            if phase ~= \"after\" and type(__gcetHostSubscribeAction) == \"function\" then",
             "                local ok, handle = pcall(__gcetHostSubscribeAction, config, fn, source)",
             "                if ok and handle ~= nil then return handle end",
             "                ok, handle = pcall(__gcetHostSubscribeAction, __gcetHost, config, fn, source)",
             "                if ok and handle ~= nil then return handle end",
             "            end",
-            "            if not __gcetEnsureActionRouter() then",
+            "            if not __gcetEnsureActionRouter(phase) then",
             "                error(\"G-CET ActionRouter could not initialize\")",
             "            end",
             "            return __gcetActionRouter.Subscribe(config, fn, source or \"unscoped\")",
