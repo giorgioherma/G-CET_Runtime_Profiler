@@ -220,11 +220,17 @@ internal static partial class SemanticInjectors
         var crlf=source.Contains("\r\n",StringComparison.Ordinal);
         var s=source.Replace("\r\n","\n",StringComparison.Ordinal);
         var begin=s.IndexOf(opening,StringComparison.Ordinal);
-        var next=begin<0?-1:s.IndexOf("\nfunction NewMappin(",begin,StringComparison.Ordinal);
-        var close=next<0?-1:s.LastIndexOf("\nend)\n",next,StringComparison.Ordinal);
-        if(begin<0||next<begin||close<begin ||
-           s.IndexOf(opening,begin+opening.Length,StringComparison.Ordinal)>=0)
-            throw new InvalidOperationException("CyberTrials source onUpdate/NewMappin boundary not proven.");
+        if(begin<0 || s.IndexOf(opening,begin+opening.Length,StringComparison.Ordinal)>=0)
+            throw new InvalidOperationException("CyberTrials update registrar is absent or ambiguous.");
+        // A 0-column callback close is a stronger ownership boundary than
+        // assuming the author's next unrelated function is named NewMappin.
+        // Older compatible versions need not have that function at all.
+        var callbackClose=Regex.Match(s[(begin+opening.Length)..],
+            @"(?m)^end[ \\t]*\\)[ \\t]*(?:--[^\\n]*)?$",
+            RegexOptions.CultureInvariant);
+        if(!callbackClose.Success)
+            throw new InvalidOperationException("CyberTrials onUpdate closing boundary not proven.");
+        var close=begin+opening.Length+callbackClose.Index;
         var callback=s[(begin+opening.Length)..close];
         var systemMatch=Regex.Match(callback,
             @"(?m)^    if\s+(?:__gcetGetSystemRequestsHandler\(\)|Game\.GetSystemRequestsHandler\(\)):IsPreGame\(\)\s+then\s*$",
@@ -234,10 +240,19 @@ internal static partial class SemanticInjectors
             "    if keyPressed == true and readyToPlace == true then",system,StringComparison.Ordinal);
         var gameplay=editor<0?-1:callback.IndexOf(
             "    if not timeTrials.runtimeData.inMenu and timeTrials.runtimeData.inGame then",editor,StringComparison.Ordinal);
+        // A deliberately smaller compatible-version callback still receives
+        // the safe existing three-file semantic pass. Never fabricate the
+        // five runtime responsibilities from absent author code.
+        if(!systemMatch.Success &&
+           !callback.Contains("    if keyPressed == true and readyToPlace == true then",
+               StringComparison.Ordinal) &&
+           !callback.Contains("    if rightKeyPressed == true and readyToPlace == true then",
+               StringComparison.Ordinal))
+            return source;
         if(system<=0||editor<=system||gameplay<=editor ||
            callback.IndexOf("    if keyPressed == true and readyToPlace == true then",editor+1,
                StringComparison.Ordinal)>=0)
-            throw new InvalidOperationException("CyberTrials system/editor/race ownership changed.");
+            throw new InvalidOperationException("CyberTrials full system/editor/race ownership changed.");
         var setup=callback[..system];
         var systemBody=callback[system..editor];
         var editorBody=callback[editor..gameplay];
@@ -344,7 +359,7 @@ end
             "    __gcetCyberTrialsPass4.TryAttach()\n"+
             "    __gcetCyberTrialsPass4.Dispatch(dt,\"fallback\")\n"+
             "end)";
-        s=s[..begin]+replacement+s[(close+"\nend)".Length)..];
+        s=s[..begin]+replacement+s[(close+callbackClose.Length)..];
         context.WriteCoordinator("cybertrials_engine_worker.lua", """
 -- G-CET semantic coordinator:cybertrials
 -- Authored state logic is retained in the single source dispatcher.
