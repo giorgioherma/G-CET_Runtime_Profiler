@@ -1673,8 +1673,24 @@ foreach ($entry in $nativeReadReuseTransforms) {
         throw 'Native read reuse generated an operation not backed by the source-first Resolver plan.'
     }
 }
+# A source-owned read coordinator is an additional valid transform when
+# projected native-read provider locals would exceed the 200-local ceiling.
+# Count it independently, and require the exact two-file worker contract.
+$readCoordinatorTransforms = @($generatedManifest.transforms | Where-Object {
+    $_.type -eq 'GENERIC_READ_COORDINATOR'
+})
+foreach ($entry in $readCoordinatorTransforms) {
+    if ([string]$entry.contract -ne 'GCET_GENERIC_READ_COORDINATOR_V1' -or
+        [string]::IsNullOrWhiteSpace([string]$entry.file) -or
+        [string]::IsNullOrWhiteSpace([string]$entry.worker) -or
+        [int]$entry.adoptedOccurrences -le 0 -or
+        [string]$entry.providerOwner -ne '0-Engine' -or
+        !$entry.originalGameGetterFallbackPreserved) {
+        throw 'Generated read coordinator has incomplete ownership/fallback proof.'
+    }
+}
 $expectedPassTransforms = $expectedGenericTransforms + $expectedSharedTransforms - 1 +
-    $nativeReadReuseTransforms.Count
+    $nativeReadReuseTransforms.Count + $readCoordinatorTransforms.Count
 if ([int]$resolved.pass.TransformCount -ne $expectedPassTransforms) {
     if (Test-Path -LiteralPath $resolved.pass.ManifestPath -PathType Leaf) {
         $failedManifest = Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
