@@ -85,13 +85,21 @@ if(!$result.Applied -or $changes.Count -lt 5){throw 'Untouched SitAnywhere was n
 foreach($change in $changes){$staged[$change.RelativeFile]=$change.Bytes}
 $init=[Text.Encoding]::UTF8.GetString($staged['sitAnywhere/init.lua'])
 $worker=[Text.Encoding]::UTF8.GetString($staged['sitAnywhere/GCET_Semantic/sitanywhere_engine_worker.lua'])
+if(!$worker.StartsWith("-- G-CET semantic coordinator:sitanywhere`n")) {
+ throw 'Primary semantic rule does not own the generated worker'
+}
+foreach($owned in @('sitAnywhere/init.lua','sitAnywhere/modules/external/Cron.lua','sitAnywhere/modules/logic.lua','sitAnywhere/modules/worldInteraction.lua')) {
+ if(!([Text.Encoding]::UTF8.GetString($staged[$owned])).Contains('-- G-CET semantic:sitanywhere')) {
+   throw "Primary semantic ownership missing: $owned"
+ }
+}
 foreach($token in @('local function runSitAnywhereFrame(dt)',
  'TryAttachSitAnywherePass4 = function()',
  'sitAnywhereBaseInitialized = true',
  'if pass4Attached then return end',
  'runSitAnywhereFrame(dt)',
  'require("GCET_Semantic/sitanywhere_engine_worker")',
- 'G-CET semantic:sitanywhere-engine-worker-v1')) {
+ 'G-CET semantic:sitanywhere-v1')) {
  if(!$init.Contains($token)){throw "Pristine output missing full scheduler stage: $token"}
 }
 foreach($token in @('Schedule.EveryFrame','sitanywhere.realtime',
