@@ -109,7 +109,10 @@ internal static class NativeLocationFourOwnersSource
     internal static SemanticInjectionResult ApplyPoker(SemanticPatchContext context)
     {
         var structural=NativeLocationStructuralSource.TryPoker(context);
-        if(structural is not null)return structural;
+        if(structural is not null) {
+            if(structural.Applied) SemanticInjectors.ApplyPokerNativeWorker(context);
+            return structural;
+        }
         var file = context.FindFile("init.lua", "poker.world_far", "poker.world_near",
             "poker.seat_near", "StreetTables.locations");
         if (file.Text.Contains("G-CET native location:poker-v2", StringComparison.Ordinal))
@@ -196,6 +199,7 @@ internal static class NativeLocationFourOwnersSource
             "if lookup and type(lookup.attachCompiled) == 'function' then",
             "Poker compiled host shape");
         context.Write(file,result);
+        SemanticInjectors.ApplyPokerNativeWorker(context);
         return SemanticInjectionResult.Success(
             "Native location v2 replaces the previous 1 Hz distant poker wake scanner after the first valid snapshot; table/seat and active gameplay work remain, original scanner is standby fallback.");
     }
@@ -239,6 +243,7 @@ internal static class NativeLocationFourOwnersSource
         text = Once(text, "local __gcetTunnelOutsideAcc = 0.0\n",
             setup + "local __gcetTunnelOutsideAcc = 0.0\n", "Tunnel native attach");
         context.Write(file,UpgradeTunnelV2(text));
+        SemanticInjectors.ApplyTunnelNativeWorker(context);
         return SemanticInjectionResult.Success(
             "Native location v2 replaces both near and far distance probes after valid snapshots, preserving 150ms/500ms quest cadence, journal, input, recovery and original unknown fallback.");
     }
@@ -429,6 +434,7 @@ internal static class NativeLocationFourOwnersSource
                   "    else\n      local distance",
                   "Mechanic exact original near NPC supervision per owner");
         context.Write(file,crlf ? text.Replace("\n","\r\n",StringComparison.Ordinal):text);
+        SemanticInjectors.ApplyIllegalMechanicNativeWorker(context);
         return SemanticInjectionResult.Success(
             "Each fixed REDscript mechanic receives its own compiled native owner with 110m+ discovery-safe wake; exact author 75/95m NPC streaming, live/pending cleanup and Redscript discovery listeners are unchanged.");
     }
@@ -436,7 +442,10 @@ internal static class NativeLocationFourOwnersSource
     internal static SemanticInjectionResult ApplyDedka(SemanticPatchContext context)
     {
         var structural=NativeLocationStructuralSource.TryDedka(context);
-        if(structural is not null)return structural;
+        if(structural is not null) {
+            if(structural.Applied) SemanticInjectors.ApplyDedkaNativeWorker(context);
+            return structural;
+        }
         var file=context.FindFile("init.lua","dedka_entrance1","dedka_entrance2_cluster",
             "stopShopDetail()", "startShopDetail()", "entrancePos_2");
         if(file.Text.Contains("G-CET native location:dedka-v2",StringComparison.Ordinal))
@@ -507,6 +516,7 @@ internal static class NativeLocationFourOwnersSource
             integration + "  -- vehicle mount/unmount events (replaces per-frame GetMountedVehicle polling)",
             "Dedka native aggregate binding");
         context.Write(file,UpgradeDedkaV2(text));
+        SemanticInjectors.ApplyDedkaNativeWorker(context);
         return SemanticInjectionResult.Success(
             "Native v2 owns both distant shop zones following a valid snapshot; original 0-Engine zones remain standby fallback and near shop detail/interaction events are unchanged.");
     }
