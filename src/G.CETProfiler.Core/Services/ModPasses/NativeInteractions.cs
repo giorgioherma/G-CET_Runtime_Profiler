@@ -21,7 +21,7 @@ internal static partial class SemanticInjectors
         {
             var worker = context.TryReadOwnedCoordinator("nativeinteractions_engine_worker.lua");
             if (worker is null ||
-                !worker.StartsWith("-- G-CET semantic coordinator:nativeinteractions-engine-worker-v1", StringComparison.Ordinal) ||
+                !worker.StartsWith("-- G-CET semantic coordinator:nativeinteractions\n", StringComparison.Ordinal) ||
                 !worker.Contains("function M.reset()", StringComparison.Ordinal) ||
                 !worker.Contains("manager.updateDormant(position)", StringComparison.Ordinal) ||
                 !currentInit.Text.Contains("__gcetNifCadence.update(dt, self, manager, world, sceneLaunchPending,", StringComparison.Ordinal))
@@ -384,7 +384,7 @@ internal static partial class SemanticInjectors
             "nativeInteractions shared world position/forward/quest handle");
 
         context.WriteCoordinator("nativeinteractions_engine_worker.lua", """
--- G-CET semantic coordinator:nativeinteractions-engine-worker-v1
+-- G-CET semantic coordinator:nativeinteractions
 -- Single per-mod active/dormant state owner; no additional CET registration.
 local M = {}
 local worldElapsed, managerElapsed = 0.0, 0.0
