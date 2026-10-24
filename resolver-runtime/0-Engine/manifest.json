@@ -49,8 +49,17 @@
     "files": {
       "modules/ActionRouter.lua": "4ef1eafd3aeb255c9bb940c37f6b4a0e6781da19219254e448f9ba5bff477656",
       "modules/Health.lua": "85b2c6402e54c64f83c1f55e35b5bfee0dc5ebabcdd079c3c8aebb06b010620f",
-      "modules/Scheduler.lua": "60529e3a1eb1db9e01f88ad44ff223ebe1d538bc55039ec8bb1f8dbed7f6e5b5"
-    }
+      "modules/Scheduler.lua": "4030ef6d8fa743f7a4accf00406c2110f70162261232b564469d3eaa0b7c78cb"
+    },
+    "templateOnlyModules": [
+      "modules/Scheduler.lua",
+      "modules/ActionRouter.lua"
+    ],
+    "resolverOwnedDeploymentModules": [
+      "modules/G-CET/Scheduler.lua",
+      "modules/G-CET/ActionRouter.lua"
+    ],
+    "upstreamModulePolicy": "Never stage root modules/Scheduler.lua or modules/ActionRouter.lua. The bundled source templates are deployed exclusively under modules/G-CET; preserve foreign/upstream root modules."
   },
   "hostCompatibility": {
     "version": "HOST-COMPAT-v1",
@@ -65,7 +74,8 @@
       "modules/GCETWorkQueue.lua",
       "modules/GCETPhasePlanner.lua",
       "modules/GCETFrameListeners.lua",
-      "modules/GCETStateSignals.lua"
+      "modules/GCETStateSignals.lua",
+      "modules/G-CET/Scheduler.lua"
     ],
     "collisionPolicy": "Never overwrite a foreign file at the private G-CET support-module path.",
     "lazyRuntimePolicy": "Frame and action hooks are registered only when a generated client actually subscribes."
@@ -81,6 +91,7 @@
       "current-expanded-shared-fixed",
       "structurally-compatible-final-export",
       "profiler-managed-original-of-any-state-above"
-    ]
+    ],
+    "namespaceOwner": "G-CET; Profiler modules/CETProfilerScheduler.lua is a temporary install/restore tool and not part of Resolver payload"
   }
 }
