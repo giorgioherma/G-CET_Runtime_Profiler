@@ -94,21 +94,25 @@ internal sealed class EffectiveRuntimeView
                 throw new InvalidOperationException(
                     "Projected 0-Engine init.lua does not wire " + api + ".");
 
-        if (!framework.Files.Keys.Any(path =>
-                path.EndsWith("/ActionRouter.lua",
-                    StringComparison.OrdinalIgnoreCase)))
+        if (!framework.Files.ContainsKey("0-Engine/modules/G-CET/ActionRouter.lua"))
             throw new InvalidOperationException(
-                "Projected 0-Engine has no ActionRouter implementation.");
+                "Projected 0-Engine has no namespaced G-CET ActionRouter.");
 
         if (!framework.Files.ContainsKey(
                 "0-Engine/modules/GCETNativeLocationHost.lua"))
             throw new InvalidOperationException(
                 "Projected native location host dependency is absent.");
 
-        if (!framework.Files.ContainsKey(
-                "0-Engine/modules/G-CET/Scheduler.lua") &&
-            !framework.Files.ContainsKey("0-Engine/modules/Scheduler.lua"))
+        if (!framework.Files.ContainsKey("0-Engine/modules/G-CET/Scheduler.lua"))
             throw new InvalidOperationException(
-                "Projected scheduler dependency is absent.");
+                "Projected namespaced G-CET Scheduler dependency is absent.");
+
+        foreach (var rootName in new[] {
+            "0-Engine/modules/Scheduler.lua",
+            "0-Engine/modules/ActionRouter.lua"
+        })
+            if (framework.Files.ContainsKey(rootName))
+                throw new InvalidOperationException(
+                    "Resolver must not deploy upstream-named module: " + rootName);
     }
 }
