@@ -8,6 +8,14 @@ $type=$asm.GetType('GCETRuntimeProfiler.Core.Services.NativeLocationAdditionalOw
 $four=$asm.GetType('GCETRuntimeProfiler.Core.Services.NativeLocationFourOwnersSource',$true)
 $contextType=$asm.GetType('GCETRuntimeProfiler.Core.Services.SemanticPatchContext',$true)
 $flags=[Reflection.BindingFlags]'Static,NonPublic'
+$workerByRule=@{
+  'native-location-card-collection'='card_collection_native_worker.lua'
+  'native-location-yaiba-bathtub'='yaiba_native_worker.lua'
+  'native-location-ziggy-offered'='ziggy_native_worker.lua'
+  'native-location-illegal'='illegal_mechanic_native_worker.lua'
+  'native-location-poker'='poker_native_worker.lua'
+  'native-location-dedka'='dedka_native_worker.lua'
+}
 $ctor=@($contextType.GetConstructors([Reflection.BindingFlags]'Instance,NonPublic') | Where-Object {$_.GetParameters().Count -eq 4})[0]
 if(!$ctor){throw 'SemanticPatchContext 4-argument source constructor missing'}
 function Apply([string]$owner,[string]$relative,[string]$rule,[string]$method,[string]$fixture,[string[]]$need,[bool]$crlf=$false) {
@@ -32,10 +40,28 @@ function Apply([string]$owner,[string]$relative,[string]$rule,[string]$method,[s
   catch{throw "Native location $owner rejected current-author source: $($_.Exception.InnerException.Message)"}
   if(!$result.Applied){throw "Native $owner source refused its first pass"}
   $rows=@($contextType.GetProperty('Changes',[Reflection.BindingFlags]'Instance,NonPublic').GetValue($ctx))
-  if($rows.Count -ne 1){throw "Native $owner did not stage exactly one source file"}
-  $output=[Text.Encoding]::UTF8.GetString($rows[0].Bytes)
+  $expected=$workerByRule[$rule]
+  $wanted=if($expected){2}else{1}
+  if($rows.Count -ne $wanted){throw "Native $owner generated $($rows.Count) files; expected $wanted source/worker files"}
+  $sourceRow=@($rows|Where-Object{$_.RelativeFile -eq "$owner/$relative"})[0]
+  if(!$sourceRow){throw "$owner missing source output"}
+  $output=[Text.Encoding]::UTF8.GetString($sourceRow.Bytes)
   foreach($part in $need){if(!$output.Contains($part)){throw "$owner native stage omitted: $part"}}
   if($crlf -and !$output.Contains("`r`n")){throw "$owner lost CRLF source format"}
+  if($expected){
+    $workerPath="$owner/GCET_Semantic/$expected"
+    $workerRow=@($rows|Where-Object{$_.RelativeFile -eq $workerPath})[0]
+    if(!$workerRow){throw "$owner did not generate its external worker"}
+    $w=[Text.Encoding]::UTF8.GetString($workerRow.Bytes)
+    if(!$w.StartsWith("-- G-CET semantic coordinator:$rule`n") -or
+       !$w.Contains('attachCompiled(') -or
+       !$output.Contains("GCET_Semantic/$($expected.Replace('.lua',''))")){
+      throw "$owner worker ownership, native dependency or source bridge invalid"
+    }
+    $workerDisk=Join-Path $mod "GCET_Semantic/$expected"
+    New-Item -ItemType Directory -Force (Split-Path $workerDisk -Parent)|Out-Null
+    [IO.File]::WriteAllBytes($workerDisk,$workerRow.Bytes)
+  }
   [IO.File]::WriteAllText($path,$output,[Text.UTF8Encoding]::new($false))
   $againArgs=[object[]]@([string]$root,[string]$owner,[string]$rule,[Collections.Generic.Dictionary[string,byte[]]]::new())
   try {$again=$ctor.Invoke($againArgs)}
@@ -72,7 +98,7 @@ registerForEvent("onInit", function()
   Mod.Subscribe("PlayerInvalidated", unregisterSpatialSet)
 end)
 '@
-$c=Apply 'Card Collection' 'init.lua' 'native-location-card-collection' 'ApplyCards' $card @('G-CET native location:card-collection-v1','lookup:attachCompiled(10035,100','unregisterSpatialSet()','__gcetCardNativeFar')
+$c=Apply 'Card Collection' 'init.lua' 'native-location-card-collection' 'ApplyCards' $card @('G-CET native location:card-collection-v1','GCET_Semantic/card_collection_native_worker','unregisterSpatialSet()','__gcetCardNativeFar')
 $marmur=@'
 local PosData={All={{x=1,y=2,z=3}}}
 bank={}
@@ -124,7 +150,7 @@ function bathtub.update(player, pPos)
     togglePin(near)
 end
 '@
-$y=Apply 'yaibaPenthouse' 'bathtub.lua' 'native-location-yaiba-bathtub' 'ApplyBathtub' $bath @('G-CET native location:yaiba-bathtub-v1','lookup:attachCompiled(10037,1','if __gcetBathNativeFar == true then return end','if __gcetBathNativeFar == nil then')
+$y=Apply 'yaibaPenthouse' 'bathtub.lua' 'native-location-yaiba-bathtub' 'ApplyBathtub' $bath @('G-CET native location:yaiba-bathtub-v1','GCET_Semantic/yaiba_native_worker','if __gcetBathNativeFar == true then return end','if __gcetBathNativeFar == nil then')
 
 $ziggy=@'
 local C={giver={position={1,2,3}}}
@@ -161,7 +187,7 @@ end)
 '@
 $z=Apply 'ziggy_last_play' 'init.lua' 'native-location-ziggy-offered' 'ApplyZiggy' $ziggy @(
  'G-CET native location:ziggy-offered-v1',
- 'lookup:attachCompiled(10038,1',
+ 'GCET_Semantic/ziggy_native_worker',
  'if __gcetZiggyNativeOfferedFar ~= nil then return __gcetZiggyNativeOfferedFar end',
  '__gcetZiggyNativeOfferedFar=nil;return true end',
  'if Dialogue.busy(H.dialogue) then return false end',
@@ -207,7 +233,7 @@ end
 '@
 $il=Apply 'illegal_mechanic_phase1a' 'physical_npc.lua' 'native-location-illegal' 'ApplyIllegalV3' $mechanic @(
   'G-CET native location:illegal-v3',
-  'host:attachCompiled(1003301+index,1,',
+  'GCET_Semantic/illegal_mechanic_native_worker',
   'entry.__gcetNativeFar=true;state.nextUpdateAt=0',
   'if not __gcetAnySiteActive then return end',
   'entry.__gcetNativeFar == true and not entry.spawnPending',
@@ -254,7 +280,7 @@ $legacy=$legacy.Replace('  for _, entry in ipairs(state.mechanics) do',
   '  local __gcetMechanicPlayerPosition=nil'+$nl+'  for _, entry in ipairs(state.mechanics) do')
 $legacyResult=Apply 'illegal_mechanic_phase1a' 'physical_npc.lua' 'native-location-illegal' 'ApplyIllegalV3' $legacy @(
  'G-CET native location:illegal-v3',
- 'host:attachCompiled(1003301+index,1,',
+ 'GCET_Semantic/illegal_mechanic_native_worker',
  '__gcetMechanicPlayerPosition',
  'entry.__gcetNativeFar == true and not entry.spawnPending',
  'distance <= cfg.spawnDistance',
@@ -353,6 +379,7 @@ $follow=$followType.GetMethod('ApplyPreparedNativeLocationStages',
 if(!$follow){throw 'Same-pass source-native composition stage absent'}
 $followStaged=[Collections.Generic.Dictionary[string,byte[]]]::new(
     [StringComparer]::OrdinalIgnoreCase)
+Remove-Item (Join-Path $root 'Card Collection/GCET_Semantic/card_collection_native_worker.lua') -Force
 $followStaged.Add('Card Collection/init.lua',[Text.Encoding]::UTF8.GetBytes($card))
 $followCounts=[Collections.Generic.Dictionary[string,int]]::new(
     [StringComparer]::OrdinalIgnoreCase)
@@ -365,8 +392,9 @@ try {
 } catch {throw "Pristine staged source -> native follow-up failed: $($_.Exception.InnerException.Message)"}
 if($generated -ne 1){throw "Single-pass pristine staged Card Collection native composition failed: applied=$generated; skipped=$($followSkipped.Count)"}
 $composed=[Text.Encoding]::UTF8.GetString($followStaged['Card Collection/init.lua'])
-if(!$composed.Contains('lookup:attachCompiled(10035,100') -or
-   !$composed.Contains('G-CET native location:card-collection-v1')){
+if(!$composed.Contains('GCET_Semantic/card_collection_native_worker') -or
+   !$composed.Contains('G-CET native location:card-collection-v1') -or
+   !$followStaged.ContainsKey('Card Collection/GCET_Semantic/card_collection_native_worker.lua')){
   throw 'The composed source did not gain compiled card owner callbacks'
 }
 Write-Host 'Same-pass pristine author source -> compiled-native semantic composition PASS'
@@ -421,7 +449,7 @@ end
 '@
 $p=Apply 'StreetGamesPoker' 'init.lua' 'native-location-poker' 'ApplyPoker' $pokerSource @(
   'G-CET native location:poker-structural-v1',
-  'lookup:attachCompiled(10031,#StreetTables.locations',
+  'GCET_Semantic/poker_native_worker',
   'if __gcetPokerNativeOwned then farWorld.Pause() else farWorld.Resume() end',
   'if __gcetPokerNativeOwned and __gcetPokerNativeNear and not nearMode'
 )
@@ -448,7 +476,7 @@ registerWakeZone("dedka_entrance2_cluster",ENTRANCE_POS_2)
 $d=Apply 'Dedka Auto Shop' 'init.lua' 'native-location-dedka' 'ApplyDedka' $dedkaSource @(
   'G-CET native location:dedka-structural-v1',
   'return __gcetDedkaEngine.RegisterZone({',
-  'lookup:attachCompiled(10034,2',
+  'GCET_Semantic/dedka_native_worker',
   '__gcetDedkaNativeZone1=registerWakeZone'
 )
 $bankSource=@'
