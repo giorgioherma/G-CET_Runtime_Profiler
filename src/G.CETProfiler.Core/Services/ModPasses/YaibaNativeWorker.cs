@@ -30,8 +30,8 @@ function M.attach(host, onKnown, onUnknown)
   return ok and attached == true
 end
 return M
-""".Replace("-- G-CET semantic coordinator:yaiba-native-worker\n",
-        "-- G-CET semantic coordinator:" + context.RuleId + "\n", StringComparison.Ordinal));
+""".Replace("-- G-CET semantic coordinator:yaiba-native-worker",
+        "-- G-CET semantic coordinator:" + context.RuleId, StringComparison.Ordinal));
         return SemanticInjectionResult.Success(
             "Yaiba native bathtub proximity moved to worker; active UI/water and original UNKNOWN geometry remain.");
     }
