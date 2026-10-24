@@ -328,6 +328,72 @@ try
     Console.WriteLine("26 shared provider recipes have fully resolved getter names "+
         "and independently verified original fallbacks: PASS");
 
+    // Regression from the 2026-10-24 CLEAN AudioXL-base pass: the pristine
+    // Dedrapanamgoondate source had NO existing G-CET provider helpers and
+    // projected to >200 locals. The old worker-only-if-marked admission
+    // silently applied seven getters inline and deferred BlackboardSystem /
+    // TeleportationFacility. One composed pass must emit an owned read worker.
+    // Build a source-shaped pristine near-limit case that specifically proves
+    // projection triggers from author getter calls, not pre-existing G-CET.
+    var pristineReadRoot=Path.Combine(root,"pristine-audioxl-native-reads");
+    var pristineReadPath=Path.Combine(pristineReadRoot,"CleanAudioXL","init.lua");
+    Directory.CreateDirectory(Path.GetDirectoryName(pristineReadPath)!);
+    var authorLocals="local "+string.Join(",",
+        Enumerable.Range(1,196).Select(i=>"author"+i));
+    var pristineAudioSource=authorLocals+"\n"+
+        "local cue = 'AudioXL.AudioXLLua'\n"+
+        "-- Game.GetStatusEffectSystem() is not executable\n"+
+        "return Game.GetPlayer(), Game.GetQuestsSystem(), "+
+        "Game.GetScriptableSystemsContainer(), "+
+        "Game.GetBlackboardSystem(), Game.GetTeleportationFacility()\n";
+    File.WriteAllText(pristineReadPath,pristineAudioSource,new UTF8Encoding(false));
+    var pristineStages=new Dictionary<string,byte[]>(StringComparer.OrdinalIgnoreCase);
+    var pristineCounts=new Dictionary<string,int>(StringComparer.OrdinalIgnoreCase);
+    var pristineManifest=new List<object>();
+    var pristineSkips=new List<object>();
+    object?[] pristineArgs=[pristineReadRoot,pristineStages,pristineCounts,
+                            pristineManifest,pristineSkips,fullHeaders];
+    Check((int)workerStage.Invoke(null,pristineArgs)!==1 && pristineSkips.Count==0,
+        "Pristine AudioXL-style near-limit source must get a worker in ONE pass: "+
+        string.Join("; ",pristineSkips.Select(x=>JsonSerializer.Serialize(x))));
+    var pristineGenerated=Encoding.UTF8.GetString(
+        pristineStages["CleanAudioXL/init.lua"]);
+    var pristineWorkerPath=pristineStages.Keys.Single(x=>
+        x.StartsWith("CleanAudioXL/GCET_Semantic/gcet_native_reads_",
+            StringComparison.Ordinal));
+    var pristineWorker=Encoding.UTF8.GetString(pristineStages[pristineWorkerPath]);
+    foreach(var getter in new[]{
+        "GetPlayer","GetQuestsSystem","GetScriptableSystemsContainer",
+        "GetBlackboardSystem","GetTeleportationFacility"})
+    {
+        Check(pristineGenerated.Contains("__gcetNativeReads."+getter+"()",
+                  StringComparison.Ordinal) &&
+              pristineWorker.Contains("return Game."+getter+"()",
+                  StringComparison.Ordinal),
+            "Pristine worker lost original getter fallback: "+getter);
+    }
+    Check(pristineGenerated.Contains(authorLocals,StringComparison.Ordinal) &&
+          pristineGenerated.Contains("AudioXL.AudioXLLua",StringComparison.Ordinal) &&
+          pristineGenerated.Contains("-- Game.GetStatusEffectSystem()",
+              StringComparison.Ordinal) &&
+          (int)peakProperty.GetValue(
+              budgetMethod.Invoke(null,[pristineGenerated])!)!<=200 &&
+          File.ReadAllText(pristineReadPath)==pristineAudioSource,
+        "Pristine read coordinator damaged author code, cue, local budget or input");
+    var pristineRepeatManifest=new List<object>();
+    object?[] pristineRepeatArgs=[pristineReadRoot,pristineStages,pristineCounts,
+        pristineRepeatManifest,new List<object>(),fullHeaders];
+    Check((int)workerStage.Invoke(null,pristineRepeatArgs)!==0 &&
+          pristineRepeatManifest.Count==0,
+        "Pristine source coordinator duplicated on repeat pass");
+    object?[] pristineNativeArgs=[document.RootElement,pristineReadRoot,
+        pristineStages,pristineCounts,new List<object>(),new List<object>(),
+        fullHeaders];
+    Check((int)stage.Invoke(null,pristineNativeArgs)!==0,
+        "Native-read stage must not duplicate or bypass a composed worker");
+    Console.WriteLine("Pristine AudioXL-style 196-local five-provider source "+
+        "-> owned worker; zero deferrals, idempotence and fallback: PASS");
+
     // Full legacy-placeholder inventory from the supplied 08:14 live stack:
     // 45 invalid generated expressions in 16 Lua source files owned by two
     // installed mods. Recreate only G-CET-generated provider blocks.
