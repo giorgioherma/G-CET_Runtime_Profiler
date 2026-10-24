@@ -70,6 +70,53 @@ return Engine
         "Bundled namespaced Scheduler dependency missing");
     Check(files.ContainsKey("0-Engine/modules/G-CET/ActionRouter.lua"),
         "Bundled namespaced ActionRouter dependency missing");
+
+    foreach (var rootName in new[] {
+        "0-Engine/modules/Scheduler.lua",
+        "0-Engine/modules/ActionRouter.lua"
+    })
+        Check(!files.ContainsKey(rootName),
+            "Resolver overlay must not ship upstream module path: " + rootName);
+    var namespacedScheduler = Encoding.UTF8.GetString(
+        files["0-Engine/modules/G-CET/Scheduler.lua"]);
+    foreach (var instrumentation in new[] {
+        "CETProfilerSchedulerRegisterJob", "CETProfilerSchedulerFrameBegin",
+        "CETProfilerSchedulerFrameEnd", "CETProfilerSchedulerJobBegin",
+        "CETProfilerSchedulerJobEnd"
+    })
+        Check(namespacedScheduler.Contains(instrumentation, StringComparison.Ordinal),
+            "G-CET Scheduler payload lacks native job instrumentation: " + instrumentation);
+
+    // Older G-CET-integrated sources must migrate their private imports,
+    // while unrelated future upstream module requires remain untouched.
+    var routeLegacy = frameworkType.GetMethod("RouteLegacyGcetImportsToNamespace", flags)!;
+    string ResolveImports(string value) => Encoding.UTF8.GetString(
+        (byte[])routeLegacy.Invoke(null, [Encoding.UTF8.GetBytes(value)])!);
+    var legacyGcet = """
+local Scheduler = require('modules/Scheduler')
+local ActionRouter = require("modules/ActionRouter")
+Scheduler.Init(Logger, Health)
+ActionRouter.Init(Logger, Health, function() return 0 end)
+Scheduler.Update(ctx)
+ActionRouter.Dispatch(player, action, consumer)
+Engine.Schedule = {}
+Engine.SubscribeAction = function() end
+""";
+    var migrated = ResolveImports(legacyGcet);
+    Check(migrated.Contains("require('modules/G-CET/Scheduler')", StringComparison.Ordinal) &&
+          migrated.Contains("require(\"modules/G-CET/ActionRouter\")", StringComparison.Ordinal),
+        "Source-proven legacy G-CET integration did not adopt the namespace");
+    Check(ResolveImports(migrated) == migrated,
+        "G-CET namespace migration is not idempotent");
+    var upstream = """
+local Scheduler = require('modules/Scheduler')
+local ActionRouter = require("modules/ActionRouter")
+Scheduler.Init(Logger, Health)
+return Engine
+""";
+    Check(ResolveImports(upstream) == upstream,
+        "Resolver rewrote unrelated upstream Scheduler/ActionRouter requires");
+
     // Phase after must bypass a legacy host SubscribeAction which may
     // silently ignore the phase, and dispatch through our phase-aware module.
     Check(init.Contains("phase ~= \"after\" and type(__gcetHostSubscribeAction)", StringComparison.Ordinal),
