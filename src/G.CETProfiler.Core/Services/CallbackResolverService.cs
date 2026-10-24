@@ -6021,30 +6021,43 @@ internal static class CallbackResolverService
                 candidates.Add(guarded.Groups["path"].Value);
             }
 
-            // Optional module loads often use an explicit no-op stub.
-            // Recognize only that source-proven shape: a successful require
-            // owns the real UI; failure gives update=function() end, so the
-            // source-safe draw guard cannot suppress any fallback behavior.
-            var optionalStub = new Regex(
-                @"(?ms)^[ \t]*local\s+"+escapedReceiver+@"[ \t]*\r?\n"+
-                @"[ \t]*do[ \t]*\r?\n"+
-                @"[ \t]*local\s+(?<ok>[A-Za-z_]\w*)\s*,\s*(?<module>[A-Za-z_]\w*)\s*=\s*"+
-                @"pcall\s*\(\s*require\s*,\s*[""'](?<path>[^""']+)[""']\s*\)[ \t]*\r?\n"+
-                @"[ \t]*if\s+\k<ok>\s+and\s+\k<module>\s+then\s*\r?\n"+
-                @"[ \t]*"+escapedReceiver+@"\s*=\s*\k<module>[ \t]*\r?\n"+
-                @"[ \t]*else\s*\r?\n"+
-                @"[ \t]*"+escapedReceiver+@"\s*=\s*\{(?<stub>.*?)^[ \t]*\}[ \t]*\r?\n"+
-                @"[ \t]*(?:print\(\s*[""'][^""'\r\n]*[""']\s*\)[ \t]*\r?\n)?"+
-                @"[ \t]*end\s*\r?\n"+
-                @"[ \t]*end\b",
+            // Optional UI binding: prove the SAME lexical owner and two
+            // branches in their authored order. This intentionally avoids a
+            // single giant regex spanning nested stub function bodies.
+            var optionalLoads=Regex.Matches(fullText,
+                @"(?m)^[ \t]*local\s+(?<ok>[A-Za-z_]\w*)\s*,\s*(?<module>[A-Za-z_]\w*)\s*=\s*"+
+                @"pcall\s*\(\s*require\s*,\s*[""'](?<path>[^""']+)[""']\s*\)[ \t]*$",
                 RegexOptions.CultureInvariant);
-            foreach(Match candidate in optionalStub.Matches(fullText))
+            foreach(Match load in optionalLoads)
             {
-                var stub=candidate.Groups["stub"].Value;
-                if(Regex.IsMatch(stub,
-                    @"(?m)^[ \t]*update\s*=\s*function\s*\(\s*\)\s*end\s*,?[ \t]*$",
-                    RegexOptions.CultureInvariant))
-                    candidates.Add(candidate.Groups["path"].Value);
+                var before=fullText[..load.Index];
+                if(!Regex.IsMatch(before,
+                      @"(?m)^[ \t]*local\s+"+escapedReceiver+@"\s*$",
+                      RegexOptions.CultureInvariant) ||
+                   !before.TrimEnd().EndsWith("do",StringComparison.Ordinal))
+                    continue;
+                var tail=fullText[(load.Index+load.Length)..]
+                    .Replace("\r\n","\n",StringComparison.Ordinal);
+                var okVar=Regex.Escape(load.Groups["ok"].Value);
+                var moduleVar=Regex.Escape(load.Groups["module"].Value);
+                var branch=Regex.Match(tail,
+                    @"(?s)^\s*if\s+"+okVar+@"\s+and\s+"+moduleVar+
+                    @"\s+then\s+"+escapedReceiver+@"\s*=\s*"+moduleVar+
+                    @"\s+else\s+"+escapedReceiver+@"\s*=\s*\{(?<stub>.*?)\n[ \t]*\}",
+                    RegexOptions.CultureInvariant);
+                if(!branch.Success ||
+                   !Regex.IsMatch(branch.Groups["stub"].Value,
+                     @"(?m)^[ \t]*update\s*=\s*function\s*\(\s*\)\s*end\s*,?[ \t]*$",
+                     RegexOptions.CultureInvariant))
+                    continue;
+                // After the stub, only an optional diagnostic and the two
+                // matching branch/do ends are permitted.
+                var remainder=tail[(branch.Index+branch.Length)..];
+                if(!Regex.IsMatch(remainder,
+                      @"(?s)^\s*(?:print\s*\(\s*[""'][^""'\r\n]*[""']\s*\)\s*)?end\s+end\b",
+                      RegexOptions.CultureInvariant))
+                    continue;
+                candidates.Add(load.Groups["path"].Value);
             }
 
             candidates = candidates
