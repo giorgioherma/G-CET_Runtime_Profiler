@@ -481,9 +481,9 @@ internal static class GenericInteractionUiTransform
                 continue;
 
             var timer=Regex.Matches(init,
-                @"(?m)^[ \t]*Cron\.Update\s*\(\s*delta\s*\)\s*$");
+                @"(?m)^[ \t]*Cron\.Update\s*\(\s*delta\s*\)[ \t]*$");
             var uiCalls=Regex.Matches(init,
-                @"(?m)^[ \t]*interactionUI\.update\s*\(\s*\)\s*$");
+                @"(?m)^[ \t]*interactionUI\.update\s*\(\s*\)[ \t]*$");
             var alreadyTimer=init.Contains("Cron.HasActiveTimers()",StringComparison.Ordinal);
             var alreadyUi=init.Contains(
                 "interactionUI.hubShown or interactionUI.input",StringComparison.Ordinal);
@@ -515,13 +515,13 @@ internal static class GenericInteractionUiTransform
                     "end\n\nfunction Cron.Update(delta)",
                     StringComparison.Ordinal);
                 newInit=Regex.Replace(newInit,
-                    @"(?m)^(?<pad>[ \t]*)Cron\.Update\s*\(\s*delta\s*\)\s*$",
+                    @"(?m)^(?<pad>[ \t]*)Cron\.Update\s*\(\s*delta\s*\)[ \t]*$",
                     "$"+"{pad}-- G-CET source-proven timer/UI idle-v1\n"+
                     "$"+"{pad}if Cron.HasActiveTimers() then Cron.Update(delta) end");
             }
             if(uiCalls.Count==1)
                 newInit=Regex.Replace(newInit,
-                    @"(?m)^(?<pad>[ \t]*)interactionUI\.update\s*\(\s*\)\s*$",
+                    @"(?m)^(?<pad>[ \t]*)interactionUI\.update\s*\(\s*\)[ \t]*$",
                     "$"+"{pad}if interactionUI.hubShown or interactionUI.input then interactionUI.update() end");
             else if(oldUi && !alreadyUi)
                 newInit=Regex.Replace(newInit,
