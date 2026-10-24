@@ -12,87 +12,111 @@ internal static partial class SemanticInjectors
         // PASS5 deployed sources already separate active quest, idle Manager,
         // and Spawner feeds. Keep them intact on regeneration.
         var liveFile = context.FindFile("init.lua", "Cron.Update(dt)", "Runner.gameState");
-        const string workerMarker="-- G-CET semantic:questrunner-engine-worker-v1";
-        if(liveFile.Text.Contains(workerMarker,StringComparison.Ordinal))
+        const string workerMarker = "-- G-CET semantic:questrunner-engine-worker-v1";
+        const string workerImport = "local __gcetQuestCadence = require(\"GCET_Semantic/questrunner_engine_worker\")";
+        const string workerCall = "__gcetQuestCadence.update(dt, Manager, Spawner)";
+        var source = liveFile.Text;
+
+        if (source.Contains(workerMarker, StringComparison.Ordinal))
         {
-            var worker=context.TryReadOwnedCoordinator("questrunner_engine_worker.lua");
-            if(worker is null ||
-               !worker.StartsWith(
-                   "-- G-CET semantic coordinator:questrunner-engine-worker",
-                   StringComparison.Ordinal) ||
-               !worker.Contains("managerIdleElapsed >= 0.20",
-                   StringComparison.Ordinal) ||
-               !worker.Contains("spawnerElapsed >= 0.25",
-                   StringComparison.Ordinal))
-                throw new InvalidOperationException(
-                    "QuestRunner extracted 0-Engine worker missing or incompatible.");
-            if(!liveFile.Text.Contains(
-                    "require(\"GCET_Semantic/questrunner_engine_worker\")",
-                    StringComparison.Ordinal) ||
-               !liveFile.Text.Contains(
-                    "__gcetQuestCadence.update(dt, Manager, Spawner)",
-                    StringComparison.Ordinal))
-                throw new InvalidOperationException(
-                    "QuestRunner extracted 0-Engine cadence bridge incomplete.");
-            return SemanticInjectionResult.Skip(
-                "QuestRunner completed extracted 0-Engine worker already installed.");
-        }
-        if (liveFile.Text.Contains("pass5ManagerIdleAccumulator", StringComparison.Ordinal))
-        {
-            if (!liveFile.Text.Contains("pass5SpawnerAccumulator", StringComparison.Ordinal)
-                || !liveFile.Text.Contains("if Manager.current then", StringComparison.Ordinal)
-                || !liveFile.Text.Contains("Manager:update(dt)", StringComparison.Ordinal))
-                throw new InvalidOperationException("QuestRunner PASS5 active/idle stage incomplete.");
-            return SemanticInjectionResult.Skip("QuestRunner deployed PASS5 active/idle stages preserved.");
+            // Existing external worker owns the cadence; never inline it.
+            var worker = context.TryReadOwnedCoordinator("questrunner_engine_worker.lua");
+            if (worker is null ||
+                !worker.StartsWith("-- G-CET semantic coordinator:questrunner-engine-worker", StringComparison.Ordinal) ||
+                !worker.Contains("managerIdleElapsed >= 0.20", StringComparison.Ordinal) ||
+                !worker.Contains("spawnerElapsed >= 0.25", StringComparison.Ordinal) ||
+                !source.Contains(workerImport, StringComparison.Ordinal) ||
+                !source.Contains(workerCall, StringComparison.Ordinal))
+                throw new InvalidOperationException("QuestRunner external worker missing or incompatible.");
+            var guarded = EnsureQuestRunnerUiPendingGuard(source);
+            if (source != guarded)
+            {
+                context.Write(liveFile, guarded);
+                return SemanticInjectionResult.Success("QuestRunner extracted worker retained; pending-input UI guard restored.");
+            }
+            return SemanticInjectionResult.Skip("QuestRunner external worker and UI dormancy already satisfied.");
         }
 
-        var file = context.FindFile(
-            "init.lua",
-            "Manager:update(dt)",
-            "Spawner.Update(dt)",
-            "Cron.Update(dt)",
-            "Runner.gameState");
+        if (source.Contains("pass5ManagerIdleAccumulator", StringComparison.Ordinal))
+        {
+            if (!source.Contains("pass5SpawnerAccumulator", StringComparison.Ordinal) ||
+                !source.Contains("if Manager.current then", StringComparison.Ordinal))
+                throw new InvalidOperationException("QuestRunner legacy PASS5 source incomplete.");
+            return SemanticInjectionResult.Skip("QuestRunner historical PASS5 source preserved.");
+        }
 
-        var opening = FindOnUpdateOpening(file.Text, "dt");
-        var text = ReplaceOnce(
-            file.Text,
-            opening,
-            "local __gcetQuestRunnerManagerElapsed = 0.0\n" +
-            "local __gcetQuestRunnerSpawnerElapsed = 0.0\n\n" +
-            opening,
-            "QuestRunner cadence declarations");
+        var opening = FindOnUpdateOpening(source, "dt");
+        if (source.Contains("__gcetQuestRunnerManagerElapsed", StringComparison.Ordinal))
+        {
+            // Migrate the known old inline-generator form to its original
+            // dedicated worker. Do not accept unknown partially rewritten Lua.
+            var inline = new Regex(
+                @"(?s)[ \t]*if Manager\.current then\s+__gcetQuestRunnerManagerElapsed = 0\.0\s+Manager:update\(dt\)\s+else\s+__gcetQuestRunnerManagerElapsed = __gcetQuestRunnerManagerElapsed \+ \(tonumber\(dt\) or 0\)\s+if __gcetQuestRunnerManagerElapsed >= 0\.20 then\s+local __gcetElapsed = __gcetQuestRunnerManagerElapsed\s+__gcetQuestRunnerManagerElapsed = 0\.0\s+Manager:update\(__gcetElapsed\)\s+end\s+end\s+__gcetQuestRunnerSpawnerElapsed = __gcetQuestRunnerSpawnerElapsed \+ \(tonumber\(dt\) or 0\)\s+if __gcetQuestRunnerSpawnerElapsed >= 0\.25 then\s+local __gcetElapsed = __gcetQuestRunnerSpawnerElapsed\s+__gcetQuestRunnerSpawnerElapsed = 0\.0\s+Spawner\.Update\(__gcetElapsed\)\s+end",
+                RegexOptions.CultureInvariant);
+            if (inline.Matches(source).Count != 1)
+                throw new InvalidOperationException("QuestRunner prior inline cadence differs from supported source.");
+            source = inline.Replace(source, "\n\t" + workerMarker + "\n\t" + workerCall, 1);
+            source = RegexReplaceOnce(source,
+                @"(?m)^local __gcetQuestRunnerManagerElapsed = 0\.0\r?\nlocal __gcetQuestRunnerSpawnerElapsed = 0\.0\r?\n",
+                "", "QuestRunner obsolete inline state removal");
+        }
+        else
+        {
+            context.FindFile("init.lua", "Manager:update(dt)", "Spawner.Update(dt)",
+                "Cron.Update(dt)", "Runner.gameState");
+            source = RegexReplaceOnce(source,
+                @"(?m)^([ \t]*)Manager:update\(dt\)[ \t]*\r?\n[ \t]*Spawner\.Update\(dt\)[ \t]*\r?$",
+                "$1" + workerMarker + "\n$1" + workerCall,
+                "QuestRunner source worker bridge");
+        }
 
-        text = RegexReplaceOnce(
-            text,
-            @"(?m)^(?<indent>\s*)Manager:update\(dt\)\s*$",
-            "${indent}if Manager.current then\n" +
-            "${indent}\t__gcetQuestRunnerManagerElapsed = 0.0\n" +
-            "${indent}\tManager:update(dt)\n" +
-            "${indent}else\n" +
-            "${indent}\t__gcetQuestRunnerManagerElapsed = __gcetQuestRunnerManagerElapsed + (tonumber(dt) or 0)\n" +
-            "${indent}\tif __gcetQuestRunnerManagerElapsed >= 0.20 then\n" +
-            "${indent}\t\tlocal __gcetElapsed = __gcetQuestRunnerManagerElapsed\n" +
-            "${indent}\t\t__gcetQuestRunnerManagerElapsed = 0.0\n" +
-            "${indent}\t\tManager:update(__gcetElapsed)\n" +
-            "${indent}\tend\n" +
-            "${indent}end",
-            "QuestRunner active/idle Manager lane");
+        source = EnsureQuestRunnerUiPendingGuard(source);
+        source = ReplaceOnce(source, opening, workerImport + "\n\n" + opening,
+            "QuestRunner worker import");
 
-        text = RegexReplaceOnce(
-            text,
-            @"(?m)^(?<indent>\s*)Spawner\.Update\(dt\)\s*$",
-            "${indent}__gcetQuestRunnerSpawnerElapsed = __gcetQuestRunnerSpawnerElapsed + (tonumber(dt) or 0)\n" +
-            "${indent}if __gcetQuestRunnerSpawnerElapsed >= 0.25 then\n" +
-            "${indent}\tlocal __gcetElapsed = __gcetQuestRunnerSpawnerElapsed\n" +
-            "${indent}\t__gcetQuestRunnerSpawnerElapsed = 0.0\n" +
-            "${indent}\tSpawner.Update(__gcetElapsed)\n" +
-            "${indent}end",
-            "QuestRunner Spawner feed lane");
-
-        context.Write(file, text);
-
+        context.WriteCoordinator("questrunner_engine_worker.lua", """
+-- G-CET semantic coordinator:questrunner-engine-worker
+-- One cadence owner; the author onUpdate remains the only frame callback.
+local M = {}
+local managerIdleElapsed = 0.0
+local spawnerElapsed = 0.0
+function M.update(dt, manager, spawner)
+  local step = tonumber(dt) or 0.0
+  if manager.current then
+    managerIdleElapsed = 0.0
+    manager:update(dt)
+  else
+    managerIdleElapsed = managerIdleElapsed + step
+    if managerIdleElapsed >= 0.20 then
+      local elapsed = managerIdleElapsed
+      managerIdleElapsed = 0.0
+      manager:update(elapsed)
+    end
+  end
+  spawnerElapsed = spawnerElapsed + step
+  if spawnerElapsed >= 0.25 then
+    local elapsed = spawnerElapsed
+    spawnerElapsed = 0.0
+    spawner.Update(elapsed)
+  end
+end
+return M
+""");
+        context.Write(liveFile, source);
         return SemanticInjectionResult.Success(
-            "Preserved active QuestRunner Manager frame cadence, moved idle Manager refresh to 5 Hz, and fed Spawner at 4 Hz with accumulated delta.");
+            "QuestRunner external worker from pristine source, active/idle Manager and Spawner cadence, pending-input-safe UI.");
+    }
+
+    private static string EnsureQuestRunnerUiPendingGuard(string source)
+    {
+        if (Regex.IsMatch(source,
+                @"\bif\s+ui\.hubShown\s+or\s+ui\.input\s+then\s+ui\.update\(\)\s+end\b",
+                RegexOptions.CultureInvariant))
+            return source;
+        return RegexReplaceOnce(source,
+            @"(?m)^([ \t]*)(?:if\s+ui\.hubShown\s+then\s+ui\.update\(\)\s+end|ui\.update\(\))[ \t]*\r?$",
+            "$1if ui.hubShown or ui.input then ui.update() end",
+            "QuestRunner hidden and pending-input UI guard");
     }
 
 
