@@ -322,6 +322,7 @@ registerForEvent("onDraw", function()
     ui.update()
 end)
 '@
+New-Item -ItemType Directory -Force (Join-Path $mods 'GenericBareOptionalUiFixture\modules') | Out-Null
 Copy-Item -LiteralPath (Join-Path $mods 'GenericCrossFileUiFixture\modules\interactionUI.lua') -Destination (Join-Path $mods 'GenericBareOptionalUiFixture\modules\interactionUI.lua') -Force
 
 # Pristine source-shaped Cron + interaction UI. Both required files must be
@@ -355,6 +356,7 @@ function Cron.Update(delta)
 end
 return Cron
 '@
+New-Item -ItemType Directory -Force (Join-Path $mods 'GenericCronUiFixture\modules') | Out-Null
 Copy-Item -LiteralPath (Join-Path $mods 'GenericCrossFileUiFixture\modules\interactionUI.lua') -Destination (Join-Path $mods 'GenericCronUiFixture\modules\interactionUI.lua') -Force
 
 $uiLine=Find-Line (Join-Path $mods 'GenericUiDormancyFixture\init.lua') 'registerForEvent\("onDraw"'
