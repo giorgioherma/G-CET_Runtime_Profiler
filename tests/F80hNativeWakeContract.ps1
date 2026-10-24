@@ -97,7 +97,10 @@ registerForEvent("onUpdate", function(delta)
   Cron.Update(delta)
 
   -- ensure we seed as soon as game time becomes available
-  if scriptActive and not rngSeeded then seedRngOnce() end
+  if scriptActive and not rngSeeded then
+    seedRngOnce()
+  end
+
   if not isEnabled() then return end
   if not scriptActive then return end
 
