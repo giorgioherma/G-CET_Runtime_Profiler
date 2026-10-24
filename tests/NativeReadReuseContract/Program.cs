@@ -339,7 +339,7 @@ try
     var pristineReadPath=Path.Combine(pristineReadRoot,"CleanAudioXL","init.lua");
     Directory.CreateDirectory(Path.GetDirectoryName(pristineReadPath)!);
     var authorLocals="local "+string.Join(",",
-        Enumerable.Range(1,196).Select(i=>"author"+i));
+        Enumerable.Range(1,195).Select(i=>"author"+i));
     var pristineAudioSource=authorLocals+"\n"+
         "local cue = 'AudioXL.AudioXLLua'\n"+
         "-- Game.GetStatusEffectSystem() is not executable\n"+
