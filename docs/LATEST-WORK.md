@@ -9,6 +9,13 @@
 **Mandatory engineering contracts:** [HANDOFF/CORE](HANDOFF/CORE.md), [Resolver PROJECT-CONTRACT](resolver/PROJECT-CONTRACT.md), [BUILD-PIPELINE](HANDOFF/BUILD-PIPELINE.md).  
 **Prior work, not the active task:** [archived native/Lua callback and 0-Engine allocation investigation](history/NATIVE-LUA-CALLBACK-LATEST-WORK-ARCHIVE-20261024.md). Its experimental GO/NO-GO and runtime gaps were not resolved merely by moving the notes.
 
+## 2026-10-24 agreed stack-source validation workflow (agent-owned, not new CI)
+
+- User continues **Profiler capture → analysis/discussion and optimization selection → implementation/CI**. At each of roughly 6–7 stack starts, user can add a **read-only ZIP of untouched CET mod Lua sources to ChatGPT Project Sources**, resetting the active baseline once for that stack. No repeated per-mod source upload unless files are missing or updated. Ordinary CET Lua optimization needs no REDscript baseline.
+- Created root `AGENTS.md` to require the **implementing agent** (once implementation begins) to locate accessible active-stack originals, select only needed source/module files, run the complete generic → native → semantic Resolver generation from untouched input, verify source/function preservation, earlier and new optimizations, worker ownership/dependencies, guard ordering, fallback, staged compatibility and idempotence, and add focused permanent regression assertions for defects. **Fix the existing authoritative generator**, not with corrective semantics.
+- Original source ZIP and extracted author Lua are temporary/private inputs, **never GitHub repository fixtures or build artifacts**; CI cannot read ChatGPT Project Sources by default. If originals are missing/inaccessible, report the blocker, never claim a real-source test. Existing GitHub CI remains, but green CI **does not itself certify** agent-owned real-source acceptance; report CI and actual-source validation independently. No new CI workflow requested under this agreed model.
+- Current 19:30 overlay remains **REJECTED** until existing Illegal Mechanic and CyberStunts generators are repaired and revalidated. Phase 1+2 is relevant only as a current preservation reference, not a future stack requirement.
+
 ## Objective and hard acceptance rule
 
 Restore the **effective complete Phase 1+2 optimization behavior** through **a single composed Resolver generation from supported untouched author mod sources**. Phase 1+2 is the authoritative *optimization* reference, not necessarily an identical Lua layout, number of generated workers, or replacement for updated original gameplay/audio code.
