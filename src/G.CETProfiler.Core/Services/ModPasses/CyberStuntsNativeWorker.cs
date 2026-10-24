@@ -31,8 +31,8 @@ function M.attach(host, count, onKnown, onUnknown)
   return ok and attached == true
 end
 return M
-""".Replace("-- G-CET semantic coordinator:cyberstunts-native-worker\n",
-        "-- G-CET semantic coordinator:" + context.RuleId + "\n", StringComparison.Ordinal));
+""".Replace("-- G-CET semantic coordinator:cyberstunts-native-worker",
+        "-- G-CET semantic coordinator:" + context.RuleId, StringComparison.Ordinal));
         return SemanticInjectionResult.Success(
             "CyberStunts compiled fixed-jump native attach moved to Lua worker; custom jumps, vehicle airborne reset, scoring and UNKNOWN remain original.");
     }
