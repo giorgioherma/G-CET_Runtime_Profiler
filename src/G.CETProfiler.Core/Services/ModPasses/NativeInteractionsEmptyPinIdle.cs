@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 namespace GCETRuntimeProfiler.Core.Services;
 
 internal static partial class SemanticInjectors
@@ -23,18 +24,26 @@ internal static partial class SemanticInjectors
         // author findPinInteraction cold fallback. If no pinned markers exist,
         // the observer cannot modify a marker. Keep all native calls/cold
         // spatial fallback unchanged while any marker is active.
-        const string old=
-            "    ObserveAfter(\"BaseMappinBaseController\", \"UpdateRootState\", function(this) -- Custom pin texture\n";
-        const string updated=old+
-            "        -- "+marker+": empty owner inventories mean no NIF pin can be styled.\n"+
-            "        if next(world.pinInteractions) == nil and next(world.pinnedInteractions) == nil then return end\n";
-        if(s.Split(old,StringSplitOptions.None).Length!=2 ||
+        // The original observer carries "-- Custom pin texture"; the
+        // existing base nativeInteractions injector retains the identical
+        // observer but normalizes that trailing comment away. Recognize both
+        // source-equivalent openings, never arbitrary observer bodies.
+        var opening = new Regex(
+            @"(?m)^(?<indent>[ \\t]*)ObserveAfter\\(""BaseMappinBaseController"",[ \\t]*""UpdateRootState"",[ \\t]*function\\(this\\)(?:[ \\t]*-- Custom pin texture)?[ \\t]*$",
+            RegexOptions.CultureInvariant);
+        if(opening.Matches(s).Count!=1 ||
            !s.Contains("world.pinnedInteractions = {}",StringComparison.Ordinal) ||
            !s.Contains("world.pinInteractions = {}",StringComparison.Ordinal) ||
            !s.Contains("indexPin(interaction)",StringComparison.Ordinal) ||
-           !s.Contains("unindexPin(interaction)",StringComparison.Ordinal))
+           !s.Contains("unindexPin(interaction)",StringComparison.Ordinal) ||
+           !s.Contains("local function findPinInteraction(mappin, mappinID)",StringComparison.Ordinal))
             throw new InvalidOperationException("NIF pin inventory/lifecycle source changed.");
-        s=s.Replace(old,updated,StringComparison.Ordinal);
+        s=opening.Replace(s, m => m.Value+"\n"+
+            m.Groups["indent"].Value+"    -- "+marker+
+            ": empty owner inventories mean no NIF pin can be styled.\n"+
+            m.Groups["indent"].Value+
+            "    if next(world.pinInteractions) == nil and next(world.pinnedInteractions) == nil then return end",
+            1);
         if(file.Text.Contains("\r\n",StringComparison.Ordinal))
             s=s.Replace("\n","\r\n",StringComparison.Ordinal);
         context.Write(file,s);

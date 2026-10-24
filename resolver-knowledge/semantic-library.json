@@ -3838,6 +3838,7 @@
       },
       "generation": {
         "enabled": true,
+        "sourceIndependentAdmission": true,
         "patchStyle": "source-injection",
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
@@ -7996,7 +7997,7 @@
           "local function GetNPCID(target)",
           "activeNPCs[entId] = self",
           "activeNPCs[entId] = nil",
-          "local __gcetHasAutoOutfitRules"
+          "radarTimer = radarTimer + delta"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:npc-outfit-manager-radar-gc",
         "expectedMarkerFileCount": 1,
@@ -8152,9 +8153,10 @@
       "sourceProof": {
         "ownerAll": [
           "ObserveAfter(\"BaseMappinBaseController\", \"UpdateRootState\"",
-          "world.pinInteractions",
           "world.pinnedInteractions",
-          "local function findPinInteraction(mappin, mappinID)"
+          "function world.init()",
+          "function world.togglePin",
+          "world.getGridInteractions"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:nativeinteractions-no-pins-observer",
         "expectedMarkerFileCount": 1,

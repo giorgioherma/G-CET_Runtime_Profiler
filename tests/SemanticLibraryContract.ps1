@@ -95,6 +95,27 @@ if ([int]$library.policy.enabledInjectorCount -ne $entries.Count) {
     throw "Semantic library enabledInjectorCount does not match entry count: $($library.policy.enabledInjectorCount) vs $($entries.Count)"
 }
 
+# Source-only rules must be admitted from actual pristine author source,
+# not from a preceding G-CET optimization overlay. The strict injector still
+# checks staged source owner/postconditions at application time.
+$sourceOnlyPristineRules = @(
+    'autoloot-world-pin-and-early-distance',
+    'npc-outfit-manager-radar-gc',
+    'nativeinteractions-no-pins-observer'
+)
+foreach ($ruleId in $sourceOnlyPristineRules) {
+    $candidate = @($entries | Where-Object { $_.id -eq $ruleId })
+    if ($candidate.Count -ne 1 -or !$candidate[0].generation.sourceIndependentAdmission) {
+        throw "Approved pristine-source optimization not selected for source-only admission: $ruleId"
+    }
+    $ownerAnchors = @($candidate[0].sourceProof.ownerAll)
+    if (@($ownerAnchors | Where-Object {
+        [string]$_ -match '__gcet|G-CET|pinInteractions|findPinInteraction'
+    }).Count -gt 0) {
+        throw "Pristine-source admission requires previously generated G-CET code: $ruleId"
+    }
+}
+
 $source = Get-Content -LiteralPath $injectorPath -Raw
 $matches = [regex]::Matches(
     $source,
