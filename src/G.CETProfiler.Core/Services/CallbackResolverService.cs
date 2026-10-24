@@ -6026,7 +6026,7 @@ internal static class CallbackResolverService
             // single giant regex spanning nested stub function bodies.
             var optionalLoads=Regex.Matches(fullText,
                 @"(?m)^[ \t]*local\s+(?<ok>[A-Za-z_]\w*)\s*,\s*(?<module>[A-Za-z_]\w*)\s*=\s*"+
-                @"pcall\s*\(\s*require\s*,\s*[""'](?<path>[^""']+)[""']\s*\)[ \t]*$",
+                @"pcall\s*\(\s*require\s*,\s*[""'](?<path>[^""']+)[""']\s*\)[ \t]*\r?$",
                 RegexOptions.CultureInvariant);
             foreach(Match load in optionalLoads)
             {
