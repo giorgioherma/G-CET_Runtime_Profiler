@@ -523,7 +523,7 @@ internal static class GenericInteractionUiTransform
                 continue; // Never emit a caller without its actual API.
             var newInit=init;
             var newCron=cron;
-            if(timer.Count==1)
+            if(timer.Count==1 && !alreadyTimer)
             {
                 if(cron.Contains("function Cron.HasActiveTimers()",StringComparison.Ordinal))
                     continue; // Different author implementation: fail closed.
