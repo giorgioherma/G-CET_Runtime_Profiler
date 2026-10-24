@@ -91,6 +91,26 @@ internal static partial class SemanticInjectors
             "      data.since = data.since + __gcetSweepElapsed",StringComparison.Ordinal);
         } // End of existing active-GC transformation; PASS8 composes in this SAME owner.
 
+        // The legacy active-GC contract also supports independently
+        // source-proven trimmed fixtures with no runtime state, Cron or
+        // OnDetach owner at all. Preserve the existing GC-only behavior there.
+        // On real authored files, ANY runtime evidence means PASS8 must prove
+        // the complete lifecycle or refuse source drift (never partial emit).
+        var pass8RuntimeOwner = text.Contains("local preActiveQueue =",StringComparison.Ordinal) ||
+            text.Contains("  Cron.Update(delta)",StringComparison.Ordinal) ||
+            text.Contains("ObserveAfter(\"NPCPuppet\", \"OnDetach\"",StringComparison.Ordinal) ||
+            text.Contains("local idleCronElapsed =",StringComparison.Ordinal);
+        if(!pass8RuntimeOwner)
+        {
+            if(activeGcComplete)
+                return SemanticInjectionResult.Skip("Original active GC stage already complete; no PASS8 runtime owner.");
+            if(file.Text.Contains("\r\n",StringComparison.Ordinal))
+                text=text.Replace("\n","\r\n",StringComparison.Ordinal);
+            context.Write(file,text);
+            return SemanticInjectionResult.Success(
+                "Original active-GC source-only stage; no runtime lifecycle exists to authorize PASS8.");
+        }
+
         // Prior Phase 1+2 PASS8 code came from an already-optimized source.
         // Reproduce it directly from pristine current author source, after
         // generic/native and alongside the existing active-GC stage.
