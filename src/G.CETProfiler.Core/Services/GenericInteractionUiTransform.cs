@@ -43,9 +43,9 @@ internal static class GenericInteractionUiTransform
     // Panam-style optional-ui wrapper. Both forms still require full
     // cross-file module proof (visible branch and pending input cleanup).
     private static readonly Regex BareCallOnlyOnDraw = new(
-        @"(?ms)^(?<opening>[ \\t]*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\\d+)\\s*\\(\\s*[""']onDraw[""']\\s*,\\s*function\\s*\\(\\s*\\)\\s*\\r?\\n)" +
-        @"(?<indent>[ \\t]*)(?<receiver>[A-Za-z_]\\w*)\\.(?<method>update)\\s*\\(\\s*\\)\\s*;?\\s*\\r?\\n" +
-        @"(?<close>[ \\t]*end\\s*\\)\\s*;?\\s*(?:--[^\\r\\n]*)?$)",
+        @"(?ms)^(?<opening>[ \t]*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*[""']onDraw[""']\s*,\s*function\s*\(\s*\)\s*\r?\n)" +
+        @"(?<indent>[ \t]*)(?<receiver>[A-Za-z_]\w*)\.(?<method>update)\s*\(\s*\)\s*;?\s*\r?\n" +
+        @"(?<close>[ \t]*end\s*\)\s*;?\s*(?:--[^\r\n]*)?$)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant |
         RegexOptions.Multiline | RegexOptions.Singleline);
 
