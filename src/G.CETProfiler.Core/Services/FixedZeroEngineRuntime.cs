@@ -163,21 +163,11 @@ internal static class FixedZeroEngineRuntime
                 "No unknown 0-Engine files will be replaced.");
         }
 
-        var actionRouter = LoadBundledFixedModule(
-            runtimeRoot,
-            "modules/ActionRouter.lua");
-
-        actionRouter = ReconcileHostModule(
-            liveRoot,
-            HostActionRouterModule,
-            actionRouter);
-
         compatibleInit = EnsureRuntimeApis(
             AddNativeLocationBridge(AddWorkloadServices(compatibleInit)));
         var hostFiles = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase)
         {
-            ["0-Engine/init.lua"] = compatibleInit,
-            ["0-Engine/" + HostActionRouterModule] = actionRouter
+            ["0-Engine/init.lua"] = compatibleInit
         };
         AddWorkloadModules(runtimeRoot, liveRoot, hostFiles);
         AddNamespacedRuntimeDependencies(runtimeRoot, liveRoot, hostFiles);
