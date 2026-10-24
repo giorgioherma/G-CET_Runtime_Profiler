@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 namespace GCETRuntimeProfiler.Core.Services;
 internal static partial class SemanticInjectors
 {
-    private static SemanticInjectionResult ApplyTunnelNativeWorker(SemanticPatchContext context)
+    internal static SemanticInjectionResult ApplyTunnelNativeWorker(SemanticPatchContext context)
     {
         var file=context.FindFile("init.lua", "local function __gcetTunnelAttachNative()", "local function __gcetTunnelFarOutside()");
         const string marker="-- G-CET semantic:tunnel-native-worker-v1";
@@ -59,7 +59,8 @@ function M.attach(host, onKnown, onUnknown)
   return ok and attached == true
 end
 return M
-""");
+""".Replace("-- G-CET semantic coordinator:tunnel-native-worker\n",
+        "-- G-CET semantic coordinator:" + context.RuleId + "\n", StringComparison.Ordinal));
         return SemanticInjectionResult.Success(
             "Tunnel two-site native wake moved to coordinator; quest safeguards and UNKNOWN distance calculation unchanged.");
     }
