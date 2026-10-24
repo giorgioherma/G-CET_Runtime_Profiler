@@ -5,7 +5,7 @@ namespace GCETRuntimeProfiler.Core.Services;
 // subscription, now invoked from a separately generated worker.
 internal static partial class SemanticInjectors
 {
-    private static SemanticInjectionResult ApplyPokerNativeWorker(SemanticPatchContext context)
+    internal static SemanticInjectionResult ApplyPokerNativeWorker(SemanticPatchContext context)
     {
         var file=context.FindFile("init.lua", "poker.world_far", "poker.world_near",
             "poker.seat_near", "StreetTables.locations");
@@ -48,7 +48,8 @@ function M.attach(host, count, onNear, onFar, onUnknown)
   return ok and attached == true
 end
 return M
-""");
+""".Replace("-- G-CET semantic coordinator:poker-native-worker\n",
+        "-- G-CET semantic coordinator:" + context.RuleId + "\n", StringComparison.Ordinal));
         return SemanticInjectionResult.Success(
             "Poker owner 10031 native attach delegated to generated Lua worker; author NEAR, FAR, UNKNOWN, active hand, near-seat and fallback lifecycle retained.");
     }
