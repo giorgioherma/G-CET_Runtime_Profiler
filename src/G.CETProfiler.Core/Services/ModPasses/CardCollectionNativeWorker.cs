@@ -2,7 +2,7 @@ namespace GCETRuntimeProfiler.Core.Services;
 
 internal static partial class SemanticInjectors
 {
-    private static SemanticInjectionResult ApplyCardCollectionNativeWorker(SemanticPatchContext context)
+    internal static SemanticInjectionResult ApplyCardCollectionNativeWorker(SemanticPatchContext context)
     {
         var file=context.FindFile("init.lua","local function __gcetAttachCardNative()",
             "local function registerSpatialSet()", "local function unregisterSpatialSet()");
@@ -70,7 +70,8 @@ function M.attach(engine, count, onTransition)
   return ok and attached == true
 end
 return M
-""");
+""".Replace("-- G-CET semantic coordinator:card-collection-native-worker\n",
+        "-- G-CET semantic coordinator:" + context.RuleId + "\n", StringComparison.Ordinal));
         return SemanticInjectionResult.Success(
             "Card Collection native source callbacks moved to separate 0-Engine worker; gameplay, pickup and spatial registration remain source-owned.");
     }
