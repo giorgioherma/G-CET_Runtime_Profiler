@@ -11,7 +11,22 @@ if (!['initial', 'repeated'].includes(mode) || !inputMods || !overlayRoot || !ma
 }
 const prefix = path.join(overlayRoot, 'bin', 'x64', 'plugins', 'cyber_engine_tweaks', 'mods');
 const failures = [];
+const cetSourceRoot = 'bin/x64/plugins/cyber_engine_tweaks/mods/';
 let parsed = 0;
+// Print stable game-relative locations, never private runner paths.
+function sourceLocation(modRelativeFile) {
+  const relative = String(modRelativeFile || '').replace(/\\/g, '/').replace(/^\/+/, '');
+  if (!relative || relative === '.' || relative.split('/').includes('..')) return null;
+  return cetSourceRoot + relative;
+}
+function missingOriginal(modRelativeFile) {
+  const file = sourceLocation(modRelativeFile);
+  if (!file) {
+    fail('Resolver', 'missing-original-file-path-unavailable');
+    return;
+  }
+  fail(file, 'MISSING_REQUIRED_ORIGINAL: supply exactly this file');
+}
 function fail(file, check) {
   const title = String(check).replace(/[:\r\n]/g, ' ');
   console.error('::error title=' + title + '::' + file + ' - ' + title);
@@ -47,6 +62,19 @@ let manifest = {};
 try { manifest = JSON.parse(text(manifestFile)); } catch { fail('Resolver', 'generation-manifest-invalid'); }
 const stats = manifest.summary || {};
 if ((stats.transforms || 0) < 1) fail('Resolver', 'no-composed-transformations-produced');
+// Manifest generic candidates identify the exact absent original Lua files.
+// Do not claim coverage when source-dependent candidates were silently skipped.
+if (mode === 'initial') {
+  const needed = new Set();
+  for (const skipped of manifest.skipped || []) {
+    if (skipped && skipped.reason === 'Current deployed source file was not found.' &&
+        typeof skipped.file === 'string') {
+      if (sourceLocation(skipped.file)) needed.add(skipped.file);
+      else fail('Resolver', 'missing-original-file-path-unavailable');
+    }
+  }
+  for (const file of [...needed].sort()) missingOriginal(file);
+}
 if ((stats.generationFailures || 0) > 0) {
   for (const e of (manifest.skipOutcomes?.entries || []).filter(x => /FAIL|ERROR|PARTIAL|DRIFT/i.test(x.category || ''))) {
     fail(e.file || e.owner || 'Resolver', 'source-generation-failed-' + (e.ruleId || e.type || 'unknown'));
@@ -95,7 +123,7 @@ if (mode === 'initial') {
   }
   if (hasOriginalInit('illegal_mechanic_phase1a')) {
     const authorNpc = path.join(inputMods, 'illegal_mechanic_phase1a', 'physical_npc.lua');
-    if (!fs.existsSync(authorNpc)) fail('illegal_mechanic_phase1a/physical_npc.lua', 'required-original-source-missing');
+    if (!fs.existsSync(authorNpc)) missingOriginal('illegal_mechanic_phase1a/physical_npc.lua');
     else {
       const mechanic = path.join(prefix, 'illegal_mechanic_phase1a', 'physical_npc.lua');
       requireContains('illegal_mechanic_phase1a/physical_npc.lua', mechanic,
