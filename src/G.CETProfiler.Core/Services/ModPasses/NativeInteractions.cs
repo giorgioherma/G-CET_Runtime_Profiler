@@ -412,6 +412,7 @@ function M.update(dt, mod, manager, world, sceneLaunchPending, getQuests)
 
     local runManager = fullRate
     local runWorld = fullRate and not sceneActive
+    local reconcileAll = false
     if fullRate then
         worldElapsed, managerElapsed = 0.0, 0.0
         wasFullRate = true
@@ -419,6 +420,7 @@ function M.update(dt, mod, manager, world, sceneLaunchPending, getQuests)
         wasFullRate = false
         worldElapsed, managerElapsed = 0.0, 0.0
         runWorld, runManager = true, true
+        reconcileAll = true
     else
         local step = math.max(tonumber(dt) or 0, 0)
         worldElapsed = worldElapsed + step
@@ -439,7 +441,7 @@ function M.update(dt, mod, manager, world, sceneLaunchPending, getQuests)
     local position = player:GetWorldPosition()
     if not position then return end
     if runManager then
-        if fullRate then
+        if fullRate or reconcileAll then
             manager.update(position)
         else
             manager.updateDormant(position)
