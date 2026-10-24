@@ -289,32 +289,45 @@ internal static class SemanticPassGeneratorService
                     "NATIVE_SOURCE_COMPOSED","source-injection",
                     0.0,1,false,SourceIndependent:true);
                 var result=SemanticInjectors.Apply(rule,context);
-                if(!result.Applied || context.Changes.Count!=1)
-                    continue;
-                var change=context.Changes.Single();
-                var code=Encoding.UTF8.GetString(change.Bytes);
-                // A semantic stage may be complete through a structurally
-                // proven source adapter even though its legacy comment marker
-                // is absent. Treat each implementation's postcondition as
-                // independently authoritative, not the earlier template ID.
-                var hookComplete=code.Contains(item.Completion,StringComparison.Ordinal) ||
-                    NativeLocationStructuralSource.CompleteStage(item.Rule,new[]{code});
-                if(!hookComplete ||
-                   code.Contains("$"+"{opening}",StringComparison.Ordinal) ||
-                   code.Contains("$"+"{close}",StringComparison.Ordinal))
+                if (!result.Applied) continue;
+                var changes = context.Changes.ToList();
+                var source = changes.SingleOrDefault(change =>
+                    change.RelativeFile.Equals(relative, StringComparison.OrdinalIgnoreCase));
+                if (source is null)
+                    throw new InvalidOperationException(
+                        "Composed native location failed to rewrite its reviewed author source.");
+                // The source-proven native hook and its external coordinator are
+                // one atomic owner pass. Do not discard the worker by retaining
+                // the historical single-modified-file assumption.
+                ValidateSemanticOutput(rule, context);
+                var code = Encoding.UTF8.GetString(source.Bytes);
+                var hookComplete = code.Contains(item.Completion, StringComparison.Ordinal) ||
+                    NativeLocationStructuralSource.CompleteStage(item.Rule, new[] { code });
+                if (!hookComplete ||
+                    code.Contains("$"+"{opening}", StringComparison.Ordinal) ||
+                    code.Contains("$"+"{close}", StringComparison.Ordinal))
                     throw new InvalidOperationException(
                         "Composed native location source postcondition did not hold.");
-                var limit=LuaLocalBudgetAnalyzer.Analyze(change.Bytes);
-                if(limit.MaxActiveLocals>LuaLocalBudgetAnalyzer.Limit)
-                    throw new InvalidOperationException(
-                        "Composed native location exceeds the source's Lua local limit.");
-                var path=change.RelativeFile.Replace('\\','/');
-                if(!path.Equals(relative,StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidOperationException(
-                        "Composed native stage escaped its reviewed owner source.");
-                staged[path]=change.Bytes;
-                appliedTransformsByFile[path]=appliedTransformsByFile.TryGetValue(
-                    path,out var count)?count+1:1;
+                foreach (var change in changes)
+                {
+                    var path = change.RelativeFile.Replace('\\', '/');
+                    if (!context.IsOwnerPath(path) ||
+                        (!path.Equals(relative, StringComparison.OrdinalIgnoreCase) &&
+                         !context.IsOwnedCoordinator(path)))
+                        throw new InvalidOperationException(
+                            "Composed native stage escaped its reviewed owner source/worker.");
+                    var limit = LuaLocalBudgetAnalyzer.Analyze(change.Bytes);
+                    if (limit.MaxActiveLocals > LuaLocalBudgetAnalyzer.Limit)
+                        throw new InvalidOperationException(
+                            "Composed native stage exceeds the source's Lua local limit.");
+                }
+                foreach (var change in changes)
+                {
+                    var path = change.RelativeFile.Replace('\\', '/');
+                    staged[path] = change.Bytes;
+                    appliedTransformsByFile[path] =
+                        appliedTransformsByFile.TryGetValue(path, out var count) ? count + 1 : 1;
+                }
                 transformManifest.Add(new {
                     type="SEMANTIC_RULE",
                     ruleId=item.Rule,owner=item.Owner,
@@ -323,7 +336,7 @@ internal static class SemanticPassGeneratorService
                     runtimeMsPerSecond=(double?)null,
                     admissionEvidence="SOURCE_PROVEN_SAME_PASS_COMPOSITION",
                     patchStyle="source-injection",sourceProof=true,
-                    files=new[]{path},result.Note
+                    files=changes.Select(x=>x.RelativeFile.Replace('\\','/')).ToArray(),result.Note
                 });
                 applied++;
             }
