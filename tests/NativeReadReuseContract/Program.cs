@@ -250,7 +250,7 @@ try
     var scopedBudgetSource=authorChunk+scopedRegistrar+
         "('onUpdate', function(dt) end)\n";
     Check((int)peakProperty.GetValue(budgetMethod.Invoke(null,[overBudget])!)!>200 &&
-          (int)peakProperty.GetValue(budgetMethod.Invoke(null,[scopedBudgetSource])!)!<=200 &&
+          (int)peakProperty.GetValue(budgetMethod.Invoke(null,[scopedBudgetSource])!)! <=200 &&
           scopedRegistrar.Contains("MakeEventRegistrar",StringComparison.Ordinal) &&
           scopedRegistrar.Contains("return __gcetRegister end",StringComparison.Ordinal) &&
           scopedRegistrar.Contains("registerForEvent",StringComparison.Ordinal),
@@ -353,7 +353,7 @@ try
     var pristineSkips=new List<object>();
     object?[] pristineArgs=[pristineReadRoot,pristineStages,pristineCounts,
                             pristineManifest,pristineSkips,fullHeaders];
-    Check((int)workerStage.Invoke(null,pristineArgs)!==1 && pristineSkips.Count==0,
+    Check((int)workerStage.Invoke(null,pristineArgs)! ==1 && pristineSkips.Count==0,
         "Pristine AudioXL-style near-limit source must get a worker in ONE pass: "+
         string.Join("; ",pristineSkips.Select(x=>JsonSerializer.Serialize(x))));
     var pristineGenerated=Encoding.UTF8.GetString(
@@ -377,19 +377,19 @@ try
           pristineGenerated.Contains("-- Game.GetStatusEffectSystem()",
               StringComparison.Ordinal) &&
           (int)peakProperty.GetValue(
-              budgetMethod.Invoke(null,[pristineGenerated])!)!<=200 &&
+              budgetMethod.Invoke(null,[pristineGenerated])!)! <=200 &&
           File.ReadAllText(pristineReadPath)==pristineAudioSource,
         "Pristine read coordinator damaged author code, cue, local budget or input");
     var pristineRepeatManifest=new List<object>();
     object?[] pristineRepeatArgs=[pristineReadRoot,pristineStages,pristineCounts,
         pristineRepeatManifest,new List<object>(),fullHeaders];
-    Check((int)workerStage.Invoke(null,pristineRepeatArgs)!==0 &&
+    Check((int)workerStage.Invoke(null,pristineRepeatArgs)! ==0 &&
           pristineRepeatManifest.Count==0,
         "Pristine source coordinator duplicated on repeat pass");
     object?[] pristineNativeArgs=[document.RootElement,pristineReadRoot,
         pristineStages,pristineCounts,new List<object>(),new List<object>(),
         fullHeaders];
-    Check((int)stage.Invoke(null,pristineNativeArgs)!==0,
+    Check((int)stage.Invoke(null,pristineNativeArgs)! ==0,
         "Native-read stage must not duplicate or bypass a composed worker");
     Console.WriteLine("Pristine AudioXL-style 196-local five-provider source "+
         "-> owned worker; zero deferrals, idempotence and fallback: PASS");
