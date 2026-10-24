@@ -511,7 +511,11 @@ if(@($manifest.transforms | Where-Object {
     $type=$asm.GetType('GCETRuntimeProfiler.Core.Services.GenericInteractionUiTransform',$true)
     $method=$type.GetMethod('TryProveCrossFileCall',
       [Reflection.BindingFlags]'Static,NonPublic')
-    $callText="registerForEvent(\`"onDraw\`", function()\`n    ui.update()\`nend)"
+    $callText=@'
+registerForEvent("onDraw", function()
+    ui.update()
+end)
+'@
     $moduleText=Get-Content -LiteralPath (Join-Path $mods 'GenericBareOptionalUiFixture\modules\interactionUI.lua') -Raw
     $args=@([string]$callText,[string]$moduleText,[string]'GenericBareOptionalUiFixture/modules/interactionUI.lua',$null)
     $direct=[bool]$method.Invoke($null,[object[]]$args)
