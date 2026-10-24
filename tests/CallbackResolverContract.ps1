@@ -1746,15 +1746,23 @@ try {
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureDownstream/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureGatedDynamic/init.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/init.lua',
-        'bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/modules/ActionRouter.lua',
+        'bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/modules/G-CET/ActionRouter.lua',
         'bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/modules/Health.lua',
-        'bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/modules/Scheduler.lua'
+        'bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/modules/G-CET/Scheduler.lua'
     )) {
         if ($requiredEntry -notin $names) {
             throw "Generated pass ZIP is missing expected entry: $requiredEntry"
         }
     }
 
+    foreach ($upstreamName in @(
+        'bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/modules/ActionRouter.lua',
+        'bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/modules/Scheduler.lua'
+    )) {
+        if ($upstreamName -in $names) {
+            throw "Resolver generated an unwanted upstream-named module: $upstreamName"
+        }
+    }
     if ('G-CET_Pass_Manifest.json' -in $names) {
         throw 'Documentation manifest leaked into the deployable ZIP.'
     }
