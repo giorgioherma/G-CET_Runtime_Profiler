@@ -20,6 +20,12 @@ $ctor=@($contextType.GetConstructors([Reflection.BindingFlags]'Instance,NonPubli
 if(!$ctor){throw 'SemanticPatchContext 4-argument source constructor missing'}
 function Apply([string]$owner,[string]$relative,[string]$rule,[string]$method,[string]$fixture,[string[]]$need,[bool]$crlf=$false) {
   $mod=Join-Path $root $owner
+  # Each fixture starts from its own untreated source/worker state; a prior
+  # fixture's coordinator must not mask a missing fresh generated worker.
+  if($workerByRule.ContainsKey($rule)){
+    $previous=Join-Path $mod "GCET_Semantic/$($workerByRule[$rule])"
+    if(Test-Path $previous){Remove-Item $previous -Force}
+  }
   $path=Join-Path $mod ($relative.Replace('/',[IO.Path]::DirectorySeparatorChar))
   $parent=Split-Path $path -Parent
   New-Item -ItemType Directory -Force $parent | Out-Null
