@@ -99,10 +99,15 @@ internal static partial class SemanticInjectors
 
         // One mod-owned cadence coordinator; keep the author callback, Cron,
         // cooperative scene processing and all original lifecycle hooks inline.
-        var opening = FindOnUpdateOpening(init.Text, "dt");
-        var initText = ReplaceOnce(init.Text, opening,
-            "local __gcetNifCadence = require(\"GCET_Semantic/nativeinteractions_engine_worker\")\n\n" + opening,
-            "nativeInteractions source-owned worker import");
+        // Lua local scope begins at its declaration. The OnSessionStart/End
+        // closures are authored within the onInit callback, before onUpdate.
+        // Hoist the external coordinator ahead of mod:new(), otherwise those
+        // earlier closures resolve __gcetNifCadence as an unset GLOBAL.
+        var initText = ReplaceOnce(init.Text,
+            "function mod:new()\n",
+            "local __gcetNifCadence = require(\"GCET_Semantic/nativeinteractions_engine_worker\")\n\n" +
+            "function mod:new()\n",
+            "nativeInteractions lexical-scope-safe worker import");
 
         var originalBody =
             "        if self.runtimeData.inGame and not self.runtimeData.inMenu then\n" +
