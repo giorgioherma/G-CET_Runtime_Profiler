@@ -64,10 +64,11 @@ function Apply([string]$owner,[string]$relative,[string]$rule,[string]$method,[s
        !$output.Contains("GCET_Semantic/$($expected.Replace('.lua',''))")){
       throw "$owner worker ownership, native dependency or source bridge invalid"
     }
+    $compact=[regex]::Replace($w,'\s+','')
     if($rule -eq 'native-location-illegal' -and
-       (!$w.Contains('entry.__gcetNativeFar=false;state.nextUpdateAt=0') -or
-        !$w.Contains('entry.__gcetNativeFar=true;state.nextUpdateAt=0') -or
-        !$w.Contains('entry.__gcetNativeFar=false;state.nextUpdateAt=0;return true'))){
+       (!$compact.Contains('entry.__gcetNativeFar=false;state.nextUpdateAt=0') -or
+        !$compact.Contains('entry.__gcetNativeFar=true;state.nextUpdateAt=0') -or
+        !$compact.Contains('entry.__gcetNativeFar=false;state.nextUpdateAt=0;returntrue'))){
       throw 'Illegal Mechanic independent native site callbacks missing from worker'
     }
     $workerDisk=Join-Path $mod "GCET_Semantic/$expected"
