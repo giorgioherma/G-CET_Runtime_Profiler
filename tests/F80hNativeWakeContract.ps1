@@ -64,4 +64,135 @@ $refused=$false
 try { $null=ApplySource $source } catch { $refused=$true }
 if(!$refused){throw 'Foreign-owned coordinator was overwritten'}
 Write-Host 'f80h same-owner worker upgrade and foreign-owner protection: PASS'
+
+# Phase1+2 PASS8 was formerly inherited from an already optimized AudioXL
+# init. The SAME existing f80h active-GC source owner must now generate it
+# from an unmarked, original-shaped source, without a predecessor overlay.
+$pristineGc=@'
+local SWEEP_INTERVAL   = 1.5
+local PENDING_TTL      = 12.0
+local AUDIO_CHECK_INTERVAL = 1.0
+local scriptActive = false
+local rngSeeded = false
+local tracked = {}
+local pending = {}
+local pendingAppearance = {}
+local preActiveQueue = {}
+local anchorAudio = {}
+local audioCheckTimer = 0
+local sweepTimer = 0
+local function resetRuntime()
+  scriptActive = false
+  tracked = {}
+  pending = {}
+  preActiveQueue = {}
+  pendingAppearance = {}
+  sweepTimer = 0
+end
+
+---------------------------------------------------------
+-- UPDATE LOOP
+---------------------------------------------------------
+registerForEvent("onUpdate", function(delta)
+  Cron.Update(delta)
+
+  -- ensure we seed as soon as game time becomes available
+  if scriptActive and not rngSeeded then seedRngOnce() end
+  if not isEnabled() then return end
+  if not scriptActive then return end
+
+  -- Couple variance (time-based + random despawn)
+  if CoupleVariance and CoupleVariance.Update then
+    CoupleVariance.Update(
+      delta,
+      settings,
+      ANCHORS,
+      tracked,
+      function(npc)
+        if npc and npc.Dispose then
+          pcall(function() npc:Dispose() end)
+        end
+      end,
+      function(anchorName)
+        setAnchorWoman(anchorName, nil)
+      end
+    )
+  end
+
+  local womenByAnchor = {}   -- anchorName -> NPCPuppet
+  for _, entry in pairs(tracked) do
+    if entry.anchorName then womenByAnchor[entry.anchorName] = entry.entity end
+  end
+  for _, anchor in ipairs(ANCHORS) do
+    setAnchorWoman(anchor.name, womenByAnchor[anchor.name])
+  end
+
+  audioCheckTimer = audioCheckTimer + delta
+  sweepTimer = sweepTimer + delta
+  if sweepTimer < SWEEP_INTERVAL then return end
+  sweepTimer = 0
+
+  for hash, data in pairs(pending) do
+      data.since = data.since + delta
+  end
+  for hash, data in pairs(pendingAppearance) do
+      data.since = data.since + delta
+  end
+end)
+
+registerForEvent("onInit", function()
+  ObserveAfter("NPCPuppet", "OnDetach", function(self)
+    local id = self and self:GetEntityID()
+    if not id then return end
+    local entry = tracked[id.hash]
+    if entry and entry.activationTimer then
+      Cron.Halt(entry.activationTimer)
+    end
+    if entry and entry.entity then
+      deactivateLookAt(entry.entity)
+    end
+
+    tracked[id.hash] = nil
+    pending[id.hash] = nil
+    pendingAppearance[id.hash] = nil
+  end)
+end)
+'@
+$gcMethod=$inject.GetMethod('ApplyF80hActiveGcSweep',$flags)
+if(!$gcMethod){throw 'Existing f80h active-GC generating owner is missing'}
+function Test-GcPass([string]$lua) {
+ [IO.File]::WriteAllText((Join-Path $folder 'init.lua'),$lua,[Text.UTF8Encoding]::new($false))
+ $ctx=$ctor.Invoke([object[]]@([string]$root,[string]'f80h_aroused_expressions',[string]'f80h-active-gc-sweep',[Collections.Generic.Dictionary[string,byte[]]]::new()))
+ try{$result=$gcMethod.Invoke($null,[object[]]@($ctx))}
+ catch{throw "Existing f80h GC + PASS8 generation failed: $($_.Exception.InnerException.Message)"}
+ $rows=@($ctxType.GetProperty('Changes',[Reflection.BindingFlags]'Instance,NonPublic').GetValue($ctx))
+ return @{result=$result;rows=$rows}
+}
+$gcFirst=Test-GcPass $pristineGc
+if(!$gcFirst.result.Applied -or $gcFirst.rows.Count -ne 1){throw 'Pristine f80h did not generate both active GC and PASS8 in one owner'}
+$gcOutput=[Text.Encoding]::UTF8.GetString($gcFirst.rows[0].Bytes)
+foreach($token in @(
+'__gcetF80hActiveGcSweepV1',
+'local idleCronElapsed = 0.0',
+'idleCronElapsed >= 0.50',
+'next(preActiveQueue) ~= nil',
+'next(anchorAudio) ~= nil',
+'idleCronElapsed = 0.0',
+'G-CET f80h detach-safe-v1',
+'__gcetVarianceDispose',
+'data.since = data.since + __gcetSweepElapsed'
+)){
+ if(!$gcOutput.Contains($token)){throw "Pristine f80h one-pass output missing: $token"}
+}
+if($gcOutput -match '(?s)ObserveAfter\("NPCPuppet", "OnDetach".{0,400}deactivateLookAt\(entry.entity\)'){
+ throw 'f80h still calls the native look-at deactivator while streaming out'
+}
+$gcRepeat=Test-GcPass $gcOutput
+if($gcRepeat.result.Applied -or $gcRepeat.rows.Count -ne 0){throw 'f80h GC + PASS8 are not idempotent'}
+$gcDrift=$pristineGc.Replace('local preActiveQueue = {}','local preActiveQueue = getDynamicQueue()')
+$gcRefused=$false
+try{$null=Test-GcPass $gcDrift}catch{$gcRefused=$true}
+if(!$gcRefused){throw 'f80h changed runtime ownership must fail closed'}
+Write-Host 'f80h original-shaped GC + PASS8 one-pass, reset, detach, repeat and drift: PASS'
+
 Write-Host 'f80h native coordinator, bridge and idempotence: PASS'
