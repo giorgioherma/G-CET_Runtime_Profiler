@@ -139,32 +139,46 @@ internal static partial class SemanticInjectors
             text=text.Replace(reset,
                 "  pendingAppearance = {}\n  idleCronElapsed = 0.0\n  sweepTimer = 0",
                 StringComparison.Ordinal);
-            const string oldUpdate="  Cron.Update(delta)\n\n  -- ensure we seed as soon as game time becomes available";
+            // Capture the author's complete opening, not merely Cron.Update.
+            // Phase 1+2 deliberately stopped ALL inactive/disabled runtime
+            // maintenance, then seeded the RNG before the low-rate idle lane.
+            const string oldUpdate=
+                "  Cron.Update(delta)\n\n" +
+                "  -- ensure we seed as soon as game time becomes available\n" +
+                "  if scriptActive and not rngSeeded then\n" +
+                "    seedRngOnce()\n" +
+                "  end\n\n" +
+                "  if not isEnabled() then return end\n" +
+                "  if not scriptActive then return end\n";
             const string newUpdate= """
-  -- G-CET f80h idle-runtime-v1: no active entity, pending registration or
-  -- audio owner means only the original Cron maintenance needs periodic work.
-  -- Preserve all author realtime timer behavior while runtime is active.
-  if scriptActive and isEnabled() then
-    local __gcetRuntimeBusy = next(tracked) ~= nil
-      or next(pending) ~= nil or next(pendingAppearance) ~= nil
-      or next(preActiveQueue) ~= nil or next(anchorAudio) ~= nil
-    if not __gcetRuntimeBusy then
-      if not rngSeeded then seedRngOnce() end
-      idleCronElapsed = idleCronElapsed + (delta or 0)
-      if idleCronElapsed >= 0.50 then
-        Cron.Update(idleCronElapsed)
-        idleCronElapsed = 0.0
-      end
-      return
-    end
+  -- G-CET f80h idle-runtime-v1: preserve the authoritative PASS8
+  -- disabled/inactive short-circuit BEFORE Cron maintenance.
+  if not isEnabled() then return end
+  if not scriptActive then return end
+
+  -- Original session-start RNG initialization precedes dormancy.
+  if not rngSeeded then
+    seedRngOnce()
   end
+
+  local __gcetRuntimeBusy = next(tracked) ~= nil
+    or next(pending) ~= nil or next(pendingAppearance) ~= nil
+    or next(preActiveQueue) ~= nil or next(anchorAudio) ~= nil
+  if not __gcetRuntimeBusy then
+    idleCronElapsed = idleCronElapsed + delta
+    if idleCronElapsed >= 0.50 then
+      Cron.Update(idleCronElapsed)
+      idleCronElapsed = 0.0
+    end
+    return
+  end
+
   idleCronElapsed = 0.0
   Cron.Update(delta)
-
-  -- ensure we seed as soon as game time becomes available
 """;
             if(text.Split(oldUpdate,StringSplitOptions.None).Length!=2)
-                throw new InvalidOperationException("f80h update owner changed.");
+                throw new InvalidOperationException(
+                    "f80h onUpdate active/inactive/Cron owner drifted.");
             text=text.Replace(oldUpdate,newUpdate.TrimEnd('\r','\n'),
                 StringComparison.Ordinal);
         }
