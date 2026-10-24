@@ -64,6 +64,12 @@ function Apply([string]$owner,[string]$relative,[string]$rule,[string]$method,[s
        !$output.Contains("GCET_Semantic/$($expected.Replace('.lua',''))")){
       throw "$owner worker ownership, native dependency or source bridge invalid"
     }
+    if($rule -eq 'native-location-illegal' -and
+       (!$w.Contains('entry.__gcetNativeFar=false;state.nextUpdateAt=0') -or
+        !$w.Contains('entry.__gcetNativeFar=true;state.nextUpdateAt=0') -or
+        !$w.Contains('entry.__gcetNativeFar=false;state.nextUpdateAt=0;return true'))){
+      throw 'Illegal Mechanic independent native site callbacks missing from worker'
+    }
     $workerDisk=Join-Path $mod "GCET_Semantic/$expected"
     New-Item -ItemType Directory -Force (Split-Path $workerDisk -Parent)|Out-Null
     [IO.File]::WriteAllBytes($workerDisk,$workerRow.Bytes)
@@ -240,7 +246,6 @@ end
 $il=Apply 'illegal_mechanic_phase1a' 'physical_npc.lua' 'native-location-illegal' 'ApplyIllegalV3' $mechanic @(
   'G-CET native location:illegal-v3',
   'GCET_Semantic/illegal_mechanic_native_worker',
-  'entry.__gcetNativeFar=true;state.nextUpdateAt=0',
   'if not __gcetAnySiteActive then return end',
   'entry.__gcetNativeFar == true and not entry.spawnPending',
   'distance <= cfg.spawnDistance',
