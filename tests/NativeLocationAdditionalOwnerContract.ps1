@@ -543,11 +543,22 @@ if($matrixResult -ne 2 -or $matrixSkipped.Count -ne 0) {
  throw "Mixed-state composer failed: expected Poker/Dedka only, got $matrixResult; skipped=$($matrixSkipped.Count)"
 }
 foreach($check in @(
- @{path='StreetGamesPoker/init.lua';marker='G-CET native location:poker-structural-v1'},
- @{path='Dedka Auto Shop/init.lua';marker='G-CET native location:dedka-structural-v1'})) {
+ @{path='StreetGamesPoker/init.lua';marker='G-CET native location:poker-structural-v1';bridge='GCET_Semantic/poker_native_worker';worker='poker_native_worker.lua'},
+ @{path='Dedka Auto Shop/init.lua';marker='G-CET native location:dedka-structural-v1';bridge='GCET_Semantic/dedka_native_worker';worker='dedka_native_worker.lua'})) {
  $found=[Text.Encoding]::UTF8.GetString($matrix[$check.path])
- if(!$found.Contains($check.marker) -or !$found.Contains('attachCompiled(')) {
-  throw "Mixed state lost a source-proven native stage: $($check.path)"
+ if(!$found.Contains($check.marker) -or !$found.Contains($check.bridge) -or
+    $found.Contains('lookup:attachCompiled(')) {
+  throw "Mixed state lost externally-owned source-proven native stage: $($check.path)"
+ }
+ $owner=$check.path.Split('/')[0]
+ $workerKey="$owner/GCET_Semantic/$($check.worker)"
+ $worker=if($matrix.ContainsKey($workerKey)){
+   [Text.Encoding]::UTF8.GetString($matrix[$workerKey])
+ }else{
+   [IO.File]::ReadAllText((Join-Path $root $workerKey))
+ }
+ if(!$worker.Contains('host:attachCompiled(')){
+   throw "Mixed state lost external compiled native worker: $workerKey"
  }
 }
 try {$matrixSecond=$follow.Invoke($null,[object[]]@(
