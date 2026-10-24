@@ -22,7 +22,8 @@ internal static partial class SemanticInjectors
             // Existing external worker owns the cadence; never inline it.
             var worker = context.TryReadOwnedCoordinator("questrunner_engine_worker.lua");
             if (worker is null ||
-                !worker.StartsWith("-- G-CET semantic coordinator:questrunner-engine-worker", StringComparison.Ordinal) ||
+                !(worker.StartsWith("-- G-CET semantic coordinator:questrunner\n", StringComparison.Ordinal) ||
+                  worker.StartsWith("-- G-CET semantic coordinator:questrunner-engine-worker\n", StringComparison.Ordinal)) ||
                 !worker.Contains("managerIdleElapsed >= 0.20", StringComparison.Ordinal) ||
                 !worker.Contains("spawnerElapsed >= 0.25", StringComparison.Ordinal) ||
                 !source.Contains(workerImport, StringComparison.Ordinal) ||
@@ -76,7 +77,7 @@ internal static partial class SemanticInjectors
             "QuestRunner worker import");
 
         context.WriteCoordinator("questrunner_engine_worker.lua", """
--- G-CET semantic coordinator:questrunner-engine-worker
+-- G-CET semantic coordinator:questrunner
 -- One cadence owner; the author onUpdate remains the only frame callback.
 local M = {}
 local managerIdleElapsed = 0.0
