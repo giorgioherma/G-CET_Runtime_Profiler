@@ -6034,6 +6034,7 @@ internal static class CallbackResolverService
                 @"[ \t]*"+escapedReceiver+@"\s*=\s*\k<module>[ \t]*\r?\n"+
                 @"[ \t]*else\s*\r?\n"+
                 @"[ \t]*"+escapedReceiver+@"\s*=\s*\{(?<stub>.*?)^[ \t]*\}[ \t]*\r?\n"+
+                @"[ \t]*(?:print\(\s*[""'][^""'\r\n]*[""']\s*\)[ \t]*\r?\n)?"+
                 @"[ \t]*end\s*\r?\n"+
                 @"[ \t]*end\b",
                 RegexOptions.CultureInvariant);
