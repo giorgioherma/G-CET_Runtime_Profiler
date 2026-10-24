@@ -5927,18 +5927,10 @@ internal static class CallbackResolverService
             var callback = callbackSource.CallbackText
                 .Replace("\r\n", "\n", StringComparison.Ordinal)
                 .Replace('\r', '\n');
-            var call = Regex.Match(
-                callback,
-                @"(?ms)^[ \t]*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*[""']onDraw[""']\s*,\s*function\s*\(\s*\)\s*\r?\n" +
-                @"[ \t]*if\s+(?<receiver>[A-Za-z_]\w*)\s+and\s+\k<receiver>\.(?<method>[A-Za-z_]\w*)\s+then\s+\k<receiver>\.\k<method>\s*\(\s*\)\s+end\s*\r?\n" +
-                @"[ \t]*end\s*\)\s*;?\s*(?:--[^\r\n]*)?$",
-                RegexOptions.CultureInvariant);
-            if (!call.Success ||
-                call.Index != 0 ||
-                call.Length != callback.Length)
+            if(!GenericInteractionUiTransform.TryGetCallOnlyOnDrawBinding(
+                    callback,out var receiver,out _))
                 return false;
 
-            var receiver = call.Groups["receiver"].Value;
             if (!TryResolveRequiredModuleBinding(
                     callbackSource.FullText,
                     receiver,
