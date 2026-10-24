@@ -61,11 +61,19 @@ internal static class FixedZeroEngineRuntime
     private const string HostActionRouterModule =
         "modules/G-CET/ActionRouter.lua";
 
+    // Root-named Scheduler/ActionRouter payloads are only source templates.
+    // Deploy these Resolver-owned services under modules/G-CET, preserving
+    // any future upstream modules with the same root names.
     private static readonly string[] FixedModules =
     [
         "modules/ActionRouter.lua",
         "modules/Health.lua",
         "modules/Scheduler.lua"
+    ];
+
+    private static readonly string[] PackagedRootModules =
+    [
+        "modules/Health.lua"
     ];
 
     internal static FixedZeroEngineBuild Prepare(string modsRoot)
@@ -111,13 +119,14 @@ internal static class FixedZeroEngineRuntime
         }
 
         var runtimeRoot = Path.Combine(AppContext.BaseDirectory, "runtime", "0-Engine");
+        var ownedModuleSource = RouteLegacyGcetImportsToNamespace(sourceBytes);
 
         // Upgrade the CURRENT source by proven additive anchors instead
         // of recognizing an old install through an exact file hash and
         // replacing it with a bundled snapshot.
         try
         {
-            var sharedCurrent = AddSharedSystemAccessors(sourceBytes);
+            var sharedCurrent = AddSharedSystemAccessors(ownedModuleSource);
             var extendedCurrent =
                 AddNativeLocationBridge(AddWorkloadServices(sharedCurrent));
             var integratedCurrent = EnsureRuntimeApis(extendedCurrent);
@@ -142,7 +151,7 @@ internal static class FixedZeroEngineRuntime
         }
 
         if (!TryBuildHostCompatibilityInit(
-                sourceBytes,
+                ownedModuleSource,
                 out var compatibleInit,
                 out var compatibilityReason))
         {
@@ -406,32 +415,66 @@ end)
         string runtimeRoot, string liveRoot,
         Dictionary<string, byte[]> files)
     {
-        var init = Encoding.UTF8.GetString(files["0-Engine/init.lua"]);
-        if (init.Contains("modules/G-CET/ActionRouter", StringComparison.Ordinal))
-        {
-            var router = ReconcileHostModule(liveRoot,
-                HostActionRouterModule,
-                LoadBundledFixedModule(runtimeRoot, "modules/ActionRouter.lua"));
-            // An unrelated user-authored module at this namespaced path is
-            // never overwritten or used as proof of an operational router.
-            // Generated OnAction wrappers are pcall-guarded and retain their
-            // original Observe fallback when Subscribe/Dispatch is unavailable.
-            files["0-Engine/" + HostActionRouterModule] = router;
-        }
+        // The G-CET services are owned and shipped by Resolver regardless of
+        // the installed upstream module inventory. Bundled root-named files
+        // are templates, never deployable root-level Scheduler/ActionRouter.
+        var router = ReconcileHostModule(liveRoot,
+            HostActionRouterModule,
+            LoadBundledFixedModule(runtimeRoot, "modules/ActionRouter.lua"));
+        const string schedulePath = "modules/G-CET/Scheduler.lua";
+        var scheduler = ReconcileHostModule(liveRoot, schedulePath,
+            LoadBundledFixedModule(runtimeRoot, "modules/Scheduler.lua"));
+        var source = Encoding.UTF8.GetString(scheduler);
+        foreach (var method in new[] { "Init", "Update", "Every", "EveryFrames" })
+            if (!source.Contains("function Scheduler." + method, StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "Existing namespaced Scheduler is missing " + method);
+        files["0-Engine/" + HostActionRouterModule] = router;
+        files["0-Engine/" + schedulePath] = scheduler;
+    }
 
-        if (init.Contains("G-CET namespaced scheduler compatibility v1",
-                StringComparison.Ordinal))
-        {
-            const string schedulePath = "modules/G-CET/Scheduler.lua";
-            var bundled = LoadBundledFixedModule(runtimeRoot, "modules/Scheduler.lua");
-            var scheduler = ReconcileHostModule(liveRoot, schedulePath, bundled);
-            var source = Encoding.UTF8.GetString(scheduler);
-            foreach (var method in new[] { "Init", "Update", "Every", "EveryFrames" })
-                if (!source.Contains("function Scheduler." + method, StringComparison.Ordinal))
-                    throw new InvalidOperationException(
-                        "Existing namespaced Scheduler is missing " + method);
-            files["0-Engine/" + schedulePath] = scheduler;
-        }
+    // Version-fluid migration of G-CET's legacy root imports. Require both
+    // Scheduler and ActionRouter integration to be source-proven before moving
+    // their original G-CET-owned require paths. A future official 0-Engine
+    // Scheduler or ActionRouter import is never rewritten speculatively.
+    private static byte[] RouteLegacyGcetImportsToNamespace(byte[] source)
+    {
+        var hasBom = source.Length >= 3 &&
+            source[0] == 0xEF && source[1] == 0xBB && source[2] == 0xBF;
+        var text = hasBom ? Encoding.UTF8.GetString(source, 3, source.Length - 3)
+                          : Encoding.UTF8.GetString(source);
+        var scheduler = new Regex(
+            @"(?<head>\brequire\s*\(\s*['""])modules/Scheduler(?<tail>['""]\s*\))",
+            RegexOptions.CultureInvariant);
+        var router = new Regex(
+            @"(?<head>\brequire\s*\(\s*['""])modules/ActionRouter(?<tail>['""]\s*\))",
+            RegexOptions.CultureInvariant);
+        var schedulerHits = scheduler.Matches(text);
+        var routerHits = router.Matches(text);
+        if (schedulerHits.Count == 0 && routerHits.Count == 0)
+            return source;
+
+        if (schedulerHits.Count != 1 || routerHits.Count != 1 ||
+            !text.Contains("Scheduler.Init(Logger, Health)", StringComparison.Ordinal) ||
+            !text.Contains("ActionRouter.Init(Logger, Health", StringComparison.Ordinal) ||
+            !text.Contains("Scheduler.Update", StringComparison.Ordinal) ||
+            !text.Contains("ActionRouter.Dispatch", StringComparison.Ordinal) ||
+            !text.Contains("Engine.Schedule", StringComparison.Ordinal) ||
+            !text.Contains("Engine.SubscribeAction", StringComparison.Ordinal))
+            return source;
+
+        text = scheduler.Replace(text, match =>
+            match.Groups["head"].Value + "modules/G-CET/Scheduler" +
+            match.Groups["tail"].Value, 1);
+        text = router.Replace(text, match =>
+            match.Groups["head"].Value + "modules/G-CET/ActionRouter" +
+            match.Groups["tail"].Value, 1);
+        var body = Encoding.UTF8.GetBytes(text);
+        if (!hasBom) return body;
+        var result = new byte[3 + body.Length];
+        result[0] = 0xEF; result[1] = 0xBB; result[2] = 0xBF;
+        Buffer.BlockCopy(body, 0, result, 3, body.Length);
+        return result;
     }
 
     private static string? ResolveProfilerBackupInit(string modsRoot)
@@ -460,7 +503,7 @@ end)
             ["0-Engine/init.lua"] = sharedInit
         };
 
-        foreach (var module in FixedModules)
+        foreach (var module in PackagedRootModules)
         {
             files["0-Engine/" + module] =
                 ReconcileHostModule(liveRoot, module,
