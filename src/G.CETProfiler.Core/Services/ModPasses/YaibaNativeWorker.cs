@@ -1,7 +1,7 @@
 namespace GCETRuntimeProfiler.Core.Services;
 internal static partial class SemanticInjectors
 {
-    private static SemanticInjectionResult ApplyYaibaNativeWorker(SemanticPatchContext context)
+    internal static SemanticInjectionResult ApplyYaibaNativeWorker(SemanticPatchContext context)
     {
         var file=context.FindFile("bathtub.lua","function bathtub.init()","function bathtub.update(player, pPos)","__gcetBathNativeFar");
         const string marker="-- G-CET semantic:yaiba-native-worker-v1";
@@ -30,7 +30,8 @@ function M.attach(host, onKnown, onUnknown)
   return ok and attached == true
 end
 return M
-""");
+""".Replace("-- G-CET semantic coordinator:yaiba-native-worker\n",
+        "-- G-CET semantic coordinator:" + context.RuleId + "\n", StringComparison.Ordinal));
         return SemanticInjectionResult.Success(
             "Yaiba native bathtub proximity moved to worker; active UI/water and original UNKNOWN geometry remain.");
     }
