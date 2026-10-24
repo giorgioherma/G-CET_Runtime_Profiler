@@ -89,6 +89,24 @@ internal static class GenericInteractionUiTransform
         return true;
     }
 
+
+    internal static bool TryGetCallOnlyOnDrawBinding(
+        string callbackText,out string receiver,out string method)
+    {
+        receiver="";
+        method="";
+        var normalized=Normalize(callbackText);
+        var match=CallOnlyOnDraw.Match(normalized);
+        if(!match.Success || match.Index!=0 || match.Length!=normalized.Length)
+            match=BareCallOnlyOnDraw.Match(normalized);
+        if(!match.Success || match.Index!=0 || match.Length!=normalized.Length)
+            return false;
+        receiver=match.Groups["receiver"].Value;
+        method=match.Groups["method"].Value;
+        return !string.IsNullOrWhiteSpace(receiver) &&
+               !string.IsNullOrWhiteSpace(method);
+    }
+
     internal static bool TryProveCrossFileCall(
         string callbackText,
         string moduleText,
