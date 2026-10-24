@@ -350,7 +350,7 @@ internal static partial class SemanticInjectors
         // shared by manager and world on each due tick, with original getters
         // available when author code invokes world.update() independently.
         worldText = RegexReplaceOnce(worldText,
-            @"(?m)^function world\.update\(\)\r?\n[ \t]*if (?:Game\.GetQuestsSystem\(\)|__gcetGetQuestsSystem\(\)):GetFactStr\(""nif_scene_active""\) == 1 then return end[^\r\n]*\r?\n[ \t]*local posPlayer = GetPlayer\(\):GetWorldPosition\(\)\r?\n[ \t]*local playerForward = GetPlayer\(\):GetWorldForward\(\)",
+            @"(?m)^function world\.update\(\)\r?\n[ \t]*if (?:Game\.GetQuestsSystem\(\)|__gcetGetQuestsSystem\(\)):GetFactStr\(""nif_scene_active""\) == 1 then return end[^\r\n]*\r?\n\s*local posPlayer = GetPlayer\(\):GetWorldPosition\(\)\r?\n[ \t]*local playerForward = GetPlayer\(\):GetWorldForward\(\)",
             "function world.update(player, posPlayer, playerForward, quests)\n" +
             "    quests = quests or " + (world.Text.Contains("local function __gcetGetQuestsSystem()", StringComparison.Ordinal)
                 ? "__gcetGetQuestsSystem()" : "Game.GetQuestsSystem()") + "\n" +
