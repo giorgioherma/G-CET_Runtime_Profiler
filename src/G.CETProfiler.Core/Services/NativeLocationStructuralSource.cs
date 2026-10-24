@@ -123,8 +123,10 @@ internal static class NativeLocationStructuralSource
                 Regex.Matches(source,
                     @"require\s*\(\s*['""]GCET_Semantic/poker_native_worker['""]\s*\)\s*\.\s*attach\s*\(\s*lookup\s*,\s*#\s*StreetTables\.locations\s*,",Opt).Count==1) &&
                 texts.Any(worker =>
-                    worker.Replace("\r\n","\n",StringComparison.Ordinal).StartsWith(
-                        "-- G-CET semantic coordinator:poker-native-worker\n",StringComparison.Ordinal) &&
+                    (worker.Replace("\r\n","\n",StringComparison.Ordinal).StartsWith(
+                        "-- G-CET semantic coordinator:poker-native-worker\n",StringComparison.Ordinal) ||
+                     worker.Replace("\r\n","\n",StringComparison.Ordinal).StartsWith(
+                        "-- G-CET semantic coordinator:native-location-poker\n",StringComparison.Ordinal)) &&
                     Regex.Matches(worker,@"host\s*:\s*attachCompiled\s*\(\s*10031\s*,\s*count\s*,",Opt).Count==1 &&
                     worker.Contains("return ok and attached == true",StringComparison.Ordinal));
         }
@@ -140,8 +142,10 @@ internal static class NativeLocationStructuralSource
                 Regex.Matches(source,
                     @"require\s*\(\s*['""]GCET_Semantic/dedka_native_worker['""]\s*\)\s*\.\s*attach\s*\(\s*lookup\s*,",Opt).Count==1) &&
                 texts.Any(worker =>
-                    worker.Replace("\r\n","\n",StringComparison.Ordinal).StartsWith(
-                        "-- G-CET semantic coordinator:dedka-native-worker\n",StringComparison.Ordinal) &&
+                    (worker.Replace("\r\n","\n",StringComparison.Ordinal).StartsWith(
+                        "-- G-CET semantic coordinator:dedka-native-worker\n",StringComparison.Ordinal) ||
+                     worker.Replace("\r\n","\n",StringComparison.Ordinal).StartsWith(
+                        "-- G-CET semantic coordinator:native-location-dedka\n",StringComparison.Ordinal)) &&
                     Regex.Matches(worker,@"host\s*:\s*attachCompiled\s*\(\s*10034\s*,\s*2\s*,",Opt).Count==1 &&
                     worker.Contains("return ok and attached == true",StringComparison.Ordinal));
         }
