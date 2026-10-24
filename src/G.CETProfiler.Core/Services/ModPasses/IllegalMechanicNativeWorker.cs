@@ -1,7 +1,7 @@
 namespace GCETRuntimeProfiler.Core.Services;
 internal static partial class SemanticInjectors
 {
-    private static SemanticInjectionResult ApplyIllegalMechanicNativeWorker(SemanticPatchContext context)
+    internal static SemanticInjectionResult ApplyIllegalMechanicNativeWorker(SemanticPatchContext context)
     {
         var file=context.FindFile("physical_npc.lua","G-CET native location:illegal-v3","state.mechanics = result");
         const string marker="-- G-CET semantic:illegal-mechanic-native-worker-v1";
@@ -56,7 +56,8 @@ function M.attach(entries, state)
   return anyAttached
 end
 return M
-""");
+""".Replace("-- G-CET semantic coordinator:illegal-mechanic-native-worker\n",
+        "-- G-CET semantic coordinator:" + context.RuleId + "\n", StringComparison.Ordinal));
         return SemanticInjectionResult.Success(
             "Moved Illegal Mechanic v3 independent per-site native subscriptions to coordinator; exact NPC spawn/despawn, pending and UNKNOWN logic remain authored.");
     }
