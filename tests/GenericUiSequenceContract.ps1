@@ -300,12 +300,71 @@ function CallbackRow(
     }
 }
 
+
+# Pristine optional UI module with a strictly no-op stub fallback, as in the
+# user's invitation robot. Do not require an earlier G-CET onDraw wrapper.
+Write-ModFile 'GenericBareOptionalUiFixture' 'init.lua' @'
+local ui
+do
+    local ok, m = pcall(require, "modules/interactionUI")
+    if ok and m then
+        ui = m
+    else
+        ui = {
+            init = function() end,
+            update = function() end,
+            showHub = function() end
+        }
+        print("Optional UI module unavailable; no-op stub installed.")
+    end
+end
+registerForEvent("onDraw", function()
+    ui.update()
+end)
+'@
+Copy-Item -LiteralPath (Join-Path $mods 'GenericCrossFileUiFixture\modules\interactionUI.lua') -Destination (Join-Path $mods 'GenericBareOptionalUiFixture\modules\interactionUI.lua') -Force
+
+# Pristine source-shaped Cron + interaction UI. Both required files must be
+# emitted from one Resolver pass, never supplied by earlier optimized mods.
+Write-ModFile 'GenericCronUiFixture' 'init.lua' @'
+local Cron = require('modules/Cron')
+local interactionUI = require("modules/interactionUI")
+local elapsed = 0
+registerForEvent('onUpdate', function(delta)
+    Cron.Update(delta)
+    interactionUI.update()
+    elapsed = elapsed + delta
+end)
+'@
+Write-ModFile 'GenericCronUiFixture' 'modules/Cron.lua' @'
+local Cron = {}
+local timers = {}
+function Cron.After(sec,fn)
+    timers[#timers+1] = { delay = sec, callback=fn }
+end
+function Cron.Update(delta)
+    if #timers == 0 then return end
+    for i = #timers, 1, -1 do
+        local timer = timers[i]
+        timer.delay = timer.delay - delta
+        if timer.delay <= 0 then
+            timer.callback()
+            table.remove(timers,i)
+        end
+    end
+end
+return Cron
+'@
+Copy-Item -LiteralPath (Join-Path $mods 'GenericCrossFileUiFixture\modules\interactionUI.lua') -Destination (Join-Path $mods 'GenericCronUiFixture\modules\interactionUI.lua') -Force
+
 $uiLine=Find-Line (Join-Path $mods 'GenericUiDormancyFixture\init.lua') 'registerForEvent\("onDraw"'
 $crossUiLine=Find-Line (Join-Path $mods 'GenericCrossFileUiFixture\init.lua') 'registerForEvent\("onDraw"'
 $crossUiRejectLine=Find-Line (Join-Path $mods 'GenericCrossFileUiRejectFixture\init.lua') 'registerForEvent\("onDraw"'
 $seqLine=Find-Line (Join-Path $mods 'GenericSequenceFixture\init.lua') 'registerForEvent\("onUpdate"'
 $composedCrossUiLine=Find-Line (Join-Path $mods 'GenericCrossFileUiComposedFixture\init.lua') '__gcetRegisterEvent_9005\("onDraw"'
 $partialCrossUiLine=Find-Line (Join-Path $mods 'GenericCrossFileUiPartialRegistrarFixture\init.lua') '__gcetRegisterEvent_9006\("onDraw"'
+$bareOptionalUiLine=Find-Line (Join-Path $mods 'GenericBareOptionalUiFixture\init.lua') 'registerForEvent\("onDraw"'
+$cronUiLine=Find-Line (Join-Path $mods 'GenericCronUiFixture\init.lua') 'registerForEvent\(''onUpdate'''
 $generatedUnsafeCrossUiLine=Find-Line (Join-Path $mods 'GenericCrossFileUiGeneratedUnsafeFixture\init.lua') '__gcetRegisterEvent_9007\("onDraw"'
 
 $handoff=@{
@@ -317,7 +376,9 @@ $handoff=@{
         (CallbackRow 9004 'GenericCrossFileUiRejectFixture' 'event' 'onDraw' 'init.lua' $crossUiRejectLine 6.0 60),
         (CallbackRow 9005 'GenericCrossFileUiComposedFixture' 'event' 'onDraw' 'init.lua' $composedCrossUiLine 6.0 60),
         (CallbackRow 9006 'GenericCrossFileUiPartialRegistrarFixture' 'event' 'onDraw' 'init.lua' $partialCrossUiLine 6.0 60),
-        (CallbackRow 9007 'GenericCrossFileUiGeneratedUnsafeFixture' 'event' 'onDraw' 'init.lua' $generatedUnsafeCrossUiLine 6.0 60)
+        (CallbackRow 9007 'GenericCrossFileUiGeneratedUnsafeFixture' 'event' 'onDraw' 'init.lua' $generatedUnsafeCrossUiLine 6.0 60),
+        (CallbackRow 9008 'GenericBareOptionalUiFixture' 'event' 'onDraw' 'init.lua' $bareOptionalUiLine 6.0 60),
+        (CallbackRow 9009 'GenericCronUiFixture' 'event' 'onUpdate' 'init.lua' $cronUiLine 6.0 60)
     )
     optimizerEvidence=@()
 } | ConvertTo-Json -Depth 30
@@ -436,6 +497,14 @@ if(@($manifest.transforms | Where-Object {
 }).Count -ne 0) {
     throw 'Generated pass incorrectly emitted a cross-file UI guard for the reject fixture.'
 }
+
+if(@($manifest.transforms | Where-Object {
+    $_.type -eq 'CROSS_FILE_INTERACTION_UI_IDLE_CALL_GUARD' -and $_.owner -eq 'GenericBareOptionalUiFixture'
+}).Count -ne 1) { throw 'Pristine optional-ui source did not select generic call guard.' }
+if(@($manifest.transforms | Where-Object {
+    $_.type -eq 'GENERIC_CRON_AND_UI_IDLE' -and $_.owner -eq 'GenericCronUiFixture'
+}).Count -ne 1) { throw 'Pristine Cron/UI source did not select atomic generic stage.' }
+
 if(@($manifest.transforms | Where-Object {
     $_.type -eq 'CROSS_FILE_INTERACTION_UI_IDLE_CALL_GUARD' -and $_.owner -eq 'GenericCrossFileUiComposedFixture'
 }).Count -ne 1) {
@@ -475,6 +544,19 @@ try {
         throw 'Generated cross-file UI call guard is incomplete.'
     }
 
+    $bareUi=Read-ZipText ($base+'GenericBareOptionalUiFixture/init.lua')
+    if($bareUi -notmatch 'if ui and ui\.update and \(ui\.hubShown or ui\.input\)' -or
+       $bareUi -match 'registerForEvent\("onDraw"\s*,\s*function\(\)\s*ui\.update\(\)') {
+        throw 'Pristine optional-ui bare onDraw did not get source-owned guard.'
+    }
+    $cronUi=Read-ZipText ($base+'GenericCronUiFixture/init.lua')
+    $cronModule=Read-ZipText ($base+'GenericCronUiFixture/modules/Cron.lua')
+    if($cronUi -notmatch 'Cron.HasActiveTimers\(\)' -or
+       $cronUi -notmatch 'interactionUI.hubShown or interactionUI.input' -or
+       $cronModule -notmatch 'function Cron.HasActiveTimers\(\)' -or
+       $cronModule -notmatch 'return #timers > 0') {
+        throw 'Pristine Cron/UI source did not generate the required pair atomically.'
+    }
     $crossUiReject=Read-ZipText ($base+'GenericCrossFileUiRejectFixture/init.lua')
     if($crossUiReject -match 'ui\.hubShown or ui\.input') {
         throw 'Reject fixture received the cross-file UI call guard.'
