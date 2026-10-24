@@ -56,8 +56,8 @@ function M.attach(entries, state)
   return anyAttached
 end
 return M
-""".Replace("-- G-CET semantic coordinator:illegal-mechanic-native-worker\n",
-        "-- G-CET semantic coordinator:" + context.RuleId + "\n", StringComparison.Ordinal));
+""".Replace("-- G-CET semantic coordinator:illegal-mechanic-native-worker",
+        "-- G-CET semantic coordinator:" + context.RuleId, StringComparison.Ordinal));
         return SemanticInjectionResult.Success(
             "Moved Illegal Mechanic v3 independent per-site native subscriptions to coordinator; exact NPC spawn/despawn, pending and UNKNOWN logic remain authored.");
     }
