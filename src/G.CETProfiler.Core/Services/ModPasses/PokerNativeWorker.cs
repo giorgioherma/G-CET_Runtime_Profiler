@@ -48,8 +48,8 @@ function M.attach(host, count, onNear, onFar, onUnknown)
   return ok and attached == true
 end
 return M
-""".Replace("-- G-CET semantic coordinator:poker-native-worker\n",
-        "-- G-CET semantic coordinator:" + context.RuleId + "\n", StringComparison.Ordinal));
+""".Replace("-- G-CET semantic coordinator:poker-native-worker",
+        "-- G-CET semantic coordinator:" + context.RuleId, StringComparison.Ordinal));
         return SemanticInjectionResult.Success(
             "Poker owner 10031 native attach delegated to generated Lua worker; author NEAR, FAR, UNKNOWN, active hand, near-seat and fallback lifecycle retained.");
     }
