@@ -5927,9 +5927,17 @@ internal static class CallbackResolverService
             var callback = callbackSource.CallbackText
                 .Replace("\r\n", "\n", StringComparison.Ordinal)
                 .Replace('\r', '\n');
-            if(!GenericInteractionUiTransform.TryGetCallOnlyOnDrawBinding(
-                    callback,out var receiver,out _))
+            // This is only module-lookup preselection, not authorization:
+            // GenericInteractionUiTransform.TryProveCrossFileCall below
+            // validates the FULL callback, its module, its hidden branch and
+            // pending-input cleanup. Do not prematurely reject bare callbacks
+            // just because the original optional-ui idiom lacks a wrapper.
+            var updateCalls=Regex.Matches(callback,
+                @"\b(?<receiver>[A-Za-z_]\w*)\.update\s*\(\s*\)",
+                RegexOptions.CultureInvariant);
+            if(updateCalls.Count!=1)
                 return false;
+            var receiver=updateCalls[0].Groups["receiver"].Value;
 
             if (!TryResolveRequiredModuleBinding(
                     callbackSource.FullText,
