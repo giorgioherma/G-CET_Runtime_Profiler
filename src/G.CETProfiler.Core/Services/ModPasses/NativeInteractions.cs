@@ -77,17 +77,12 @@ internal static partial class SemanticInjectors
             "function manager.update()\n",
             "nativeInteractions realtime manager sentinel");
 
+        // One mod-owned cadence coordinator; keep the author callback, Cron,
+        // cooperative scene processing and all original lifecycle hooks inline.
         var opening = FindOnUpdateOpening(init.Text, "dt");
-        var initText = ReplaceOnce(
-            init.Text,
-            opening,
-            "local __gcetNifIdleWorldElapsed = 0.0\n" +
-            "local __gcetNifIdleManagerElapsed = 0.0\n" +
-            "local __gcetNifWasFullRate = true\n" +
-            "local __gcetNifIdleWorldInterval = 1 / 30\n" +
-            "local __gcetNifIdleManagerInterval = 1 / 12\n\n" +
-            opening,
-            "nativeInteractions dormant cadence state");
+        var initText = ReplaceOnce(init.Text, opening,
+            "local __gcetNifCadence = require(\"GCET_Semantic/nativeinteractions_engine_worker\")\n\n" + opening,
+            "nativeInteractions source-owned worker import");
 
         var originalBody =
             "        if self.runtimeData.inGame and not self.runtimeData.inMenu then\n" +
@@ -96,52 +91,88 @@ internal static partial class SemanticInjectors
             "            world.update()\n" +
             "            resourceHelper.onUpdate()\n" +
             "        end\n";
-
         var optimizedBody =
             "        if self.runtimeData.inGame and not self.runtimeData.inMenu then\n" +
             "            Cron.Update(dt)\n" +
             "            local sceneLaunchPending = #resourceHelper.sceneQueue > 0\n" +
-            "            resourceHelper.onUpdate()\n\n" +
-            "            local quests = Game.GetQuestsSystem()\n" +
-            "            if not quests then return end\n" +
-            "            local sceneActive = quests:GetFactStr(\"nif_scene_active\") == 1\n" +
-            "            local sceneStartPending = not sceneActive and quests:GetFactStr(\"nif_start_signal\") ~= 0\n" +
-            "            local interactionActive = next(world.activeInteractions) ~= nil\n" +
-            "            local fullRate = sceneActive or sceneStartPending or interactionActive or sceneLaunchPending\n" +
-            "            if not fullRate then fullRate = manager.hasRealtimeWork() end\n\n" +
-            "            local runWorld = fullRate and not sceneActive\n" +
-            "            local runManager = fullRate\n" +
-            "            if fullRate then\n" +
-            "                __gcetNifIdleWorldElapsed = 0.0\n" +
-            "                __gcetNifIdleManagerElapsed = 0.0\n" +
-            "                __gcetNifWasFullRate = true\n" +
-            "            elseif __gcetNifWasFullRate then\n" +
-            "                __gcetNifWasFullRate = false\n" +
-            "                __gcetNifIdleWorldElapsed = 0.0\n" +
-            "                __gcetNifIdleManagerElapsed = 0.0\n" +
-            "                runWorld = true\n" +
-            "                runManager = true\n" +
-            "            else\n" +
-            "                __gcetNifIdleWorldElapsed = __gcetNifIdleWorldElapsed + math.max(dt or 0, 0)\n" +
-            "                __gcetNifIdleManagerElapsed = __gcetNifIdleManagerElapsed + math.max(dt or 0, 0)\n" +
-            "                if __gcetNifIdleWorldElapsed >= __gcetNifIdleWorldInterval then\n" +
-            "                    __gcetNifIdleWorldElapsed = __gcetNifIdleWorldElapsed % __gcetNifIdleWorldInterval\n" +
-            "                    runWorld = true\n" +
-            "                end\n" +
-            "                if __gcetNifIdleManagerElapsed >= __gcetNifIdleManagerInterval then\n" +
-            "                    __gcetNifIdleManagerElapsed = __gcetNifIdleManagerElapsed % __gcetNifIdleManagerInterval\n" +
-            "                    runManager = true\n" +
-            "                end\n" +
-            "            end\n\n" +
-            "            if runManager then manager.update() end\n" +
-            "            if runWorld then world.update() end\n" +
+            "            resourceHelper.onUpdate()\n" +
+            "            __gcetNifCadence.update(dt, self, manager, world, sceneLaunchPending, " +
+            (init.Text.Contains("local function __gcetGetQuestsSystem()", StringComparison.Ordinal)
+                ? "__gcetGetQuestsSystem" : "Game.GetQuestsSystem") + ")\n" +
             "        end\n";
+        initText = ReplaceOnce(initText, originalBody, optimizedBody,
+            "nativeInteractions G-CET coordinator bridge");
 
-        initText = ReplaceOnce(
-            initText,
-            originalBody,
-            optimizedBody,
-            "nativeInteractions active/dormant onUpdate split");
+        var questGetter = init.Text.Contains("local function __gcetGetQuestsSystem()", StringComparison.Ordinal)
+            ? "__gcetGetQuestsSystem()" : "Game.GetQuestsSystem()";
+        initText = RegexReplaceOnce(initText,
+            @"(?m)^([ \t]*)CName\.add\(""nif""\)\r?\n[ \t]*(?:Game\.GetQuestsSystem\(\)|__gcetGetQuestsSystem\(\)):SetFactStr\(""nif_iguana_idle"", 0\)",
+            "$1CName.add(\"nif\")\n$1self.quests = " + questGetter +
+            "\n$1if self.quests then self.quests:SetFactStr(\"nif_iguana_idle\", 0) end",
+            "nativeInteractions initial session quest cache");
+        initText = RegexReplaceOnce(initText,
+            @"(?m)^([ \t]*)self\.runtimeData\.inGame = true\r?\n[ \t]*(?:Game\.GetQuestsSystem\(\)|__gcetGetQuestsSystem\(\)):SetFactStr\(""nif_iguana_idle"", 0\)\r?\n[ \t]*(?:Game\.GetQuestsSystem\(\)|__gcetGetQuestsSystem\(\)):SetFactStr\(""nif_scene_active"", 0\)",
+            "$1self.runtimeData.inGame = true\n$1self.quests = " + questGetter +
+            "\n$1if self.quests then\n$1    self.quests:SetFactStr(\"nif_iguana_idle\", 0)\n$1    self.quests:SetFactStr(\"nif_scene_active\", 0)\n$1end",
+            "nativeInteractions save-load quest handle refresh");
+        initText = ReplaceOnce(initText, "    player = nil,\n",
+            "    player = nil,\n    quests = nil,\n",
+            "nativeInteractions session-owned QuestsSystem field");
+        initText = ReplaceOnce(initText,
+            "            manager.sessionStart()\n            world.onSessionStart()\n",
+            "            __gcetNifCadence.reset()\n            manager.sessionStart()\n            world.onSessionStart()\n",
+            "nativeInteractions session cadence reset");
+        initText = ReplaceOnce(initText,
+            "            self.runtimeData.inGame = false\n            Cron.HaltAll()\n",
+            "            self.runtimeData.inGame = false\n            self.quests = nil\n            __gcetNifCadence.reset()\n            Cron.HaltAll()\n",
+            "nativeInteractions session exit owner invalidation");
+        initText = ReplaceOnce(initText,
+            "    registerForEvent(\"onShutdown\", function ()\n        world.shutdown()\n",
+            "    registerForEvent(\"onShutdown\", function ()\n        __gcetNifCadence.reset()\n        self.quests = nil\n        world.shutdown()\n",
+            "nativeInteractions worker shutdown lifecycle");
+
+        // Retain the author-created player position table but accept a shared
+        // sample; dormant groups each visit just one stable phase per tick.
+        managerText = ReplaceOnce(managerText,
+            "    mod = nil\n}",
+            "    mod = nil,\n    dormantPhase = 0\n}",
+            "nativeInteractions four-phase manager state");
+        managerText = ReplaceOnce(managerText,
+            "    manager.updateList = list\n",
+            "    manager.updateList = list\n    manager.dormantPhase = 0\n",
+            "nativeInteractions phased list rebuild reset");
+        managerText = ReplaceOnce(managerText,
+            "function manager.update()\n    local list = manager.updateList\n    local nUpdates = #list\n    if nUpdates == 0 then return end\n\n    local position = GetPlayer():GetWorldPosition()\n    playerPosition.x = position.x\n    playerPosition.y = position.y\n    playerPosition.z = position.z\n\n    for i = 1, nUpdates do\n        list[i]:onUpdate(playerPosition)\n    end\nend\n",
+            "local function sharedPosition(position)\n" +
+            "    if not position then\n" +
+            "        local player = GetPlayer()\n" +
+            "        if not player then return nil end\n" +
+            "        position = player:GetWorldPosition()\n" +
+            "    end\n" +
+            "    if not position then return nil end\n" +
+            "    playerPosition.x, playerPosition.y, playerPosition.z = position.x, position.y, position.z\n" +
+            "    return playerPosition\n" +
+            "end\n\n" +
+            "function manager.update(position)\n" +
+            "    local list = manager.updateList\n" +
+            "    if #list == 0 then return end\n" +
+            "    local pos = sharedPosition(position)\n" +
+            "    if not pos then return end\n" +
+            "    for i = 1, #list do list[i]:onUpdate(pos) end\n" +
+            "end\n\n" +
+            "function manager.updateDormant(position)\n" +
+            "    local list = manager.updateList\n" +
+            "    if #list == 0 then return end\n" +
+            "    local pos = sharedPosition(position)\n" +
+            "    if not pos then return end\n" +
+            "    manager.dormantPhase = (manager.dormantPhase % 4) + 1\n" +
+            "    for i = manager.dormantPhase, #list, 4 do list[i]:onUpdate(pos) end\n" +
+            "end\n",
+            "nativeInteractions shared position and four-phase dormant selection");
+        managerText = ReplaceOnce(managerText,
+            "function manager.sessionStart()\n",
+            "function manager.sessionStart()\n    manager.dormantPhase = 0\n",
+            "nativeInteractions dormant phase session reset");
 
         var worldText = ReplaceOnce(
             world.Text,
@@ -315,11 +346,97 @@ internal static partial class SemanticInjectors
             "return world",
             "nativeInteractions shutdown pin-index reset");
 
+        // The same native player position and QuestsSystem reference must be
+        // shared by manager and world on each due tick, with original getters
+        // available when author code invokes world.update() independently.
+        worldText = RegexReplaceOnce(worldText,
+            @"(?m)^function world\.update\(\)\r?\n[ \t]*if (?:Game\.GetQuestsSystem\(\)|__gcetGetQuestsSystem\(\)):GetFactStr\(""nif_scene_active""\) == 1 then return end[^\r\n]*\r?\n[ \t]*local posPlayer = GetPlayer\(\):GetWorldPosition\(\)\r?\n[ \t]*local playerForward = GetPlayer\(\):GetWorldForward\(\)",
+            "function world.update(player, posPlayer, playerForward, quests)\n" +
+            "    quests = quests or " + (world.Text.Contains("local function __gcetGetQuestsSystem()", StringComparison.Ordinal)
+                ? "__gcetGetQuestsSystem()" : "Game.GetQuestsSystem()") + "\n" +
+            "    if quests and quests:GetFactStr(\"nif_scene_active\") == 1 then return end\n" +
+            "    player = player or GetPlayer()\n" +
+            "    if not player then return end\n" +
+            "    posPlayer = posPlayer or player:GetWorldPosition()\n" +
+            "    if not posPlayer then return end\n" +
+            "    playerForward = playerForward or player:GetWorldForward()\n" +
+            "    if not playerForward then return end",
+            "nativeInteractions shared world position/forward/quest handle");
+
+        context.WriteCoordinator("nativeinteractions_engine_worker.lua", """
+-- G-CET semantic coordinator:nativeinteractions-engine-worker-v1
+-- Single per-mod active/dormant state owner; no additional CET registration.
+local M = {}
+local worldElapsed, managerElapsed = 0.0, 0.0
+local wasFullRate = true
+local WORLD_INTERVAL, MANAGER_INTERVAL = 1 / 30, 1 / 12
+
+function M.reset()
+    worldElapsed, managerElapsed = 0.0, 0.0
+    wasFullRate = true
+end
+
+function M.update(dt, mod, manager, world, sceneLaunchPending, getQuests)
+    local quests = mod.quests
+    if not quests then
+        quests = getQuests()
+        mod.quests = quests
+    end
+    if not quests then return end
+
+    local sceneActive = quests:GetFactStr("nif_scene_active") == 1
+    local sceneStartPending = not sceneActive and quests:GetFactStr("nif_start_signal") ~= 0
+    local interactionActive = next(world.activeInteractions) ~= nil
+    local fullRate = sceneActive or sceneStartPending or interactionActive or sceneLaunchPending
+    if not fullRate then fullRate = manager.hasRealtimeWork() end
+
+    local runManager = fullRate
+    local runWorld = fullRate and not sceneActive
+    if fullRate then
+        worldElapsed, managerElapsed = 0.0, 0.0
+        wasFullRate = true
+    elseif wasFullRate then
+        wasFullRate = false
+        worldElapsed, managerElapsed = 0.0, 0.0
+        runWorld, runManager = true, true
+    else
+        local step = math.max(tonumber(dt) or 0, 0)
+        worldElapsed = worldElapsed + step
+        managerElapsed = managerElapsed + step
+        if worldElapsed >= WORLD_INTERVAL then
+            worldElapsed = worldElapsed % WORLD_INTERVAL
+            runWorld = true
+        end
+        if managerElapsed >= MANAGER_INTERVAL then
+            managerElapsed = managerElapsed % MANAGER_INTERVAL
+            runManager = true
+        end
+    end
+    if not runManager and not runWorld then return end
+
+    local player = GetPlayer()
+    if not player then return end
+    local position = player:GetWorldPosition()
+    if not position then return end
+    if runManager then
+        if fullRate then
+            manager.update(position)
+        else
+            manager.updateDormant(position)
+        end
+    end
+    if runWorld then
+        local forward = player:GetWorldForward()
+        if forward then world.update(player, position, forward, quests) end
+    end
+end
+return M
+""");
         context.Write(init, initText);
         context.Write(manager, managerText);
         context.Write(world, worldText);
         return SemanticInjectionResult.Success(
-            "Kept scene/interaction work at rendered-frame cadence, moved dormant world discovery to ~30 Hz and manager maintenance to ~12 Hz with an immediate active-to-idle reconciliation tick, and indexed NIF mappins by ID while preserving a cold spatial fallback.");
+            "Source-owned NIF coordinator restores 30 Hz idle world, 12 Hz four-phase idle manager (~3 Hz per interaction), cached session quests, one player sample per due tick, immediate transitions and native pin index.");
     }
 
 
