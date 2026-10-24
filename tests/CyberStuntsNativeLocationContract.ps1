@@ -70,13 +70,23 @@ function TrySource([string]$sourceText) {
   try {$result=$apply.Invoke($null,[object[]]@($ctx))}
   catch {return @{Applied=$false;Error=$_.Exception.InnerException.Message;Output=''}}
   $changes=@($contextType.GetProperty('Changes',[Reflection.BindingFlags]'Instance,NonPublic').GetValue($ctx))
-  $output=if($changes.Count -eq 1){[Text.Encoding]::UTF8.GetString($changes[0].Bytes)}else{''}
-  return @{Applied=$result.Applied;Output=$output}
+  $sourceRow=@($changes|Where-Object{$_.RelativeFile -eq "$owner/init.lua"})[0]
+  $workerRow=@($changes|Where-Object{$_.RelativeFile -eq "$owner/GCET_Semantic/cyberstunts_native_worker.lua"})[0]
+  if($result.Applied -and (!$sourceRow -or !$workerRow)){
+    throw "Pristine CyberStunts must emit the source and external worker together"
+  }
+  $output=if($sourceRow){[Text.Encoding]::UTF8.GetString($sourceRow.Bytes)}else{''}
+  $worker=if($workerRow){[Text.Encoding]::UTF8.GetString($workerRow.Bytes)}else{''}
+  return @{Applied=$result.Applied;Output=$output;Worker=$worker}
 }
 $result=TrySource $source
 if(!$result.Applied){throw "Original CyberStunts source not staged: $($result.Error)"}
+if(!$result.Worker.StartsWith('-- G-CET semantic coordinator:native-location-cyberstunts'+[string][char]10) -or
+   !$result.Worker.Contains('host:attachCompiled(10039, count,')){
+  throw 'CyberStunts external coordinator lost reviewed native owner or source ownership'
+}
 foreach($required in @('G-CET native location:cyberstunts-v1',
- 'attachCompiled(10039,','__gcetStuntsNativeFar==true',
+ 'GCET_Semantic/cyberstunts_native_worker','__gcetStuntsNativeFar==true',
  '__gcetStuntsUserEdited=true','if wasVehicleAirborne==nil then wasVehicleAirborne=isAirborne end',
  'registerForEvent("onDraw"','registerForEvent("onOverlayOpen"')) {
  if(!$result.Output.Contains($required)){throw "Missing CyberStunts postcondition: $required"}
