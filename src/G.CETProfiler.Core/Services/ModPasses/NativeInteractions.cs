@@ -15,6 +15,26 @@ internal static partial class SemanticInjectors
         // original one-pass path below.
         var currentInit = context.FindFile("init.lua",
             "resourceHelper.onUpdate()", "self.runtimeData.inGame");
+        // A complete externally owned pass is idempotent. A bridge without its
+        // source-owned worker is a broken partial deployment, never satisfied.
+        if (currentInit.Text.Contains("GCET_Semantic/nativeinteractions_engine_worker", StringComparison.Ordinal))
+        {
+            var worker = context.TryReadOwnedCoordinator("nativeinteractions_engine_worker.lua");
+            if (worker is null ||
+                !worker.StartsWith("-- G-CET semantic coordinator:nativeinteractions-engine-worker-v1", StringComparison.Ordinal) ||
+                !worker.Contains("function M.reset()", StringComparison.Ordinal) ||
+                !worker.Contains("manager.updateDormant(position)", StringComparison.Ordinal) ||
+                !currentInit.Text.Contains("__gcetNifCadence.update(dt, self, manager, world, sceneLaunchPending,", StringComparison.Ordinal))
+                throw new InvalidOperationException("Native Interactions external cadence worker missing or incomplete.");
+            context.FindFile("modules/projectsManager.lua",
+                "function manager.updateDormant(position)",
+                "manager.dormantPhase = (manager.dormantPhase % 4) + 1");
+            context.FindFile("modules/utils/worldInteraction.lua",
+                "function world.update(player, posPlayer, playerForward, quests)",
+                "pinInteractions");
+            return SemanticInjectionResult.Skip(
+                "Native Interactions externally owned cadence and four-phase dependencies already installed.");
+        }
         if (currentInit.Text.Contains("local managerRealtime = manager.hasRealtimeWork()",
                                       StringComparison.Ordinal))
         {
