@@ -344,7 +344,9 @@ function Cron.After(sec,fn)
     timers[#timers+1] = { delay = sec, callback=fn }
 end
 function Cron.Update(delta)
-    if #timers == 0 then return end
+    if #timers == 0 then
+        return
+    end
     for i = #timers, 1, -1 do
         local timer = timers[i]
         timer.delay = timer.delay - delta
