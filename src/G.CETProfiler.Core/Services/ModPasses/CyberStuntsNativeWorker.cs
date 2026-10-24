@@ -1,7 +1,7 @@
 namespace GCETRuntimeProfiler.Core.Services;
 internal static partial class SemanticInjectors
 {
-    private static SemanticInjectionResult ApplyCyberStuntsNativeWorker(SemanticPatchContext context)
+    internal static SemanticInjectionResult ApplyCyberStuntsNativeWorker(SemanticPatchContext context)
     {
         var file=context.FindFile("init.lua","local __gcetStuntsFixedCount=#jumps","local function __gcetStuntsAttachNative()","__gcetStuntsLocationSleeping()");
         const string marker="-- G-CET semantic:cyberstunts-native-worker-v1";
@@ -31,7 +31,8 @@ function M.attach(host, count, onKnown, onUnknown)
   return ok and attached == true
 end
 return M
-""");
+""".Replace("-- G-CET semantic coordinator:cyberstunts-native-worker\n",
+        "-- G-CET semantic coordinator:" + context.RuleId + "\n", StringComparison.Ordinal));
         return SemanticInjectionResult.Success(
             "CyberStunts compiled fixed-jump native attach moved to Lua worker; custom jumps, vehicle airborne reset, scoring and UNKNOWN remain original.");
     }
