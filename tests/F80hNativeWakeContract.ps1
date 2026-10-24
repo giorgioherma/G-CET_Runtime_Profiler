@@ -187,6 +187,19 @@ foreach($token in @(
 if($gcOutput -match '(?s)ObserveAfter\("NPCPuppet", "OnDetach".{0,400}deactivateLookAt\(entry.entity\)'){
  throw 'f80h still calls the native look-at deactivator while streaming out'
 }
+# The Phase 1+2 authority stops disabled/inactive updates BEFORE any
+# Cron work; the pristine author source originally called Cron first.
+$gateDisabled=$gcOutput.IndexOf('  if not isEnabled() then return end')
+$gateInactive=$gcOutput.IndexOf('  if not scriptActive then return end')
+$seed=$gcOutput.IndexOf('  if not rngSeeded then')
+$idle=$gcOutput.IndexOf('  local __gcetRuntimeBusy =')
+$drain=$gcOutput.IndexOf('  Cron.Update(delta)')
+if($gateDisabled -lt 0 -or $gateInactive -le $gateDisabled -or
+   $seed -le $gateInactive -or $idle -le $seed -or
+   $drain -le $idle -or
+   $gcOutput.Contains('if scriptActive and isEnabled() then')) {
+ throw 'Pristine f80h PASS8 Cron ordering diverged from authoritative inactive-first Phase 1+2.'
+}
 $gcRepeat=Test-GcPass $gcOutput
 if($gcRepeat.result.Applied -or $gcRepeat.rows.Count -ne 0){throw 'f80h GC + PASS8 are not idempotent'}
 $gcDrift=$pristineGc.Replace('local preActiveQueue = {}','local preActiveQueue = getDynamicQueue()')
