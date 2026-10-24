@@ -1318,13 +1318,13 @@
         ],
         "alreadySatisfiedMarker": "G-CET semantic:questrunner",
         "expectedMarkerFileCount": 1,
-        "satisfiedAll": [
-          "local pass5ManagerIdleAccumulator = 0.0",
-          "local pass5SpawnerAccumulator = 0.0",
-          "if Manager.current then",
-          "if pass5ManagerIdleAccumulator >= 0.20 then",
-          "if pass5SpawnerAccumulator >= 0.25 then",
-          "Spawner.Update(elapsed)"
+        "satisfiedAnyGroups": [
+          ["local pass5ManagerIdleAccumulator = 0.0", "__gcetQuestCadence.update(dt, Manager, Spawner)"],
+          ["local pass5SpawnerAccumulator = 0.0", "GCET_Semantic/questrunner_engine_worker"],
+          ["if Manager.current then", "managerIdleElapsed >= 0.20"],
+          ["if pass5ManagerIdleAccumulator >= 0.20 then", "managerIdleElapsed >= 0.20"],
+          ["if pass5SpawnerAccumulator >= 0.25 then", "spawnerElapsed >= 0.25"],
+          ["Spawner.Update(elapsed)", "spawner.Update(elapsed)"]
         ]
       },
       "behavior": {
@@ -3376,7 +3376,8 @@
             "__gcetNifIdleWorldInterval",
             "IDLE_WORLD_INTERVAL",
             "idleWorldElapsed",
-            "nativeinteractions.world_idle"
+            "nativeinteractions.world_idle",
+            "GCET_Semantic/nativeinteractions_engine_worker"
           ],
           [
             "manager.hasRealtimeWork",
