@@ -1,7 +1,7 @@
 namespace GCETRuntimeProfiler.Core.Services;
 internal static partial class SemanticInjectors
 {
-    private static SemanticInjectionResult ApplyZiggyNativeWorker(SemanticPatchContext context)
+    internal static SemanticInjectionResult ApplyZiggyNativeWorker(SemanticPatchContext context)
     {
         var file=context.FindFile("init.lua","local function __gcetZiggyAttachNative()","local function __gcetZiggyOfferedFar()");
         const string marker="-- G-CET semantic:ziggy-native-worker-v1";
@@ -29,7 +29,8 @@ function M.attach(host, onKnown, onUnknown)
   return ok and attached == true
 end
 return M
-""");
+""".Replace("-- G-CET semantic coordinator:ziggy-native-worker\n",
+        "-- G-CET semantic coordinator:" + context.RuleId + "\n", StringComparison.Ordinal));
         return SemanticInjectionResult.Success(
             "Ziggy offered-site native subscription moved to coordinator; player identity, quest phase, 130m exact fallback and wake cadence preserved.");
     }
