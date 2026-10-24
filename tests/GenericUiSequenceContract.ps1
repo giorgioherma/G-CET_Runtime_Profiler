@@ -502,7 +502,14 @@ if(@($manifest.transforms | Where-Object {
 
 if(@($manifest.transforms | Where-Object {
     $_.type -eq 'CROSS_FILE_INTERACTION_UI_IDLE_CALL_GUARD' -and $_.owner -eq 'GenericBareOptionalUiFixture'
-}).Count -ne 1) { throw 'Pristine optional-ui source did not select generic call guard.' }
+}).Count -ne 1) {
+    $bareConsumer=@($resolver.callbackFamilies |
+      Where-Object { $_.target -eq 'onDraw' } |
+      ForEach-Object { $_.topConsumers } |
+      Where-Object { $_.owner -eq 'GenericBareOptionalUiFixture' })[0]
+    throw ("Pristine optional-ui source did not select generic call guard: "+
+      ($bareConsumer | ConvertTo-Json -Depth 12 -Compress))
+}
 if(@($manifest.transforms | Where-Object {
     $_.type -eq 'GENERIC_CRON_AND_UI_IDLE' -and $_.owner -eq 'GenericCronUiFixture'
 }).Count -ne 1) { throw 'Pristine Cron/UI source did not select atomic generic stage.' }
