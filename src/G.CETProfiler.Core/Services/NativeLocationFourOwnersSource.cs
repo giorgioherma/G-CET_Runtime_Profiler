@@ -374,15 +374,27 @@ internal static class NativeLocationFourOwnersSource
     // mechanic wake the other sites or bypass live-NPC cleanup.
     internal static SemanticInjectionResult ApplyIllegalV3(SemanticPatchContext context)
     {
+        // Completed source is not required to retain EVERY token from its
+        // untreated predecessor. Recognize the proven v3 owner and worker
+        // independently BEFORE enforcing the untouched-source callback graph.
+        var current=context.FindFile("physical_npc.lua");
+        if(current.Text.Contains("G-CET native location:illegal-v3",StringComparison.Ordinal))
+        {
+            if(current.Text.Contains("GCET_Semantic/illegal_mechanic_native_worker",StringComparison.Ordinal))
+            {
+                var worker=context.TryReadOwnedCoordinator("illegal_mechanic_native_worker.lua");
+                if(worker is null ||
+                   !(worker.StartsWith("-- G-CET semantic coordinator:native-location-illegal\n",StringComparison.Ordinal) ||
+                     worker.StartsWith("-- G-CET semantic coordinator:illegal-mechanic-native-worker\n",StringComparison.Ordinal)) ||
+                   !worker.Contains("host:attachCompiled(1003301 + index, 1,",StringComparison.Ordinal))
+                    throw new InvalidOperationException("Illegal Mechanic external native owner missing or incompatible.");
+            }
+            return SemanticInjectionResult.Skip("Independent mechanic native wake already installed.");
+        }
         var file=context.FindFile("physical_npc.lua",
             "function PhysicalNpc.Update(delta)", "state.mechanics = result",
             "GetMechanicCountForCET",
             "cfg.spawnDistance", "cfg.despawnDistance");
-        // A completed v3 source retains its authored pending work as an
-        // ELSEIF after the native FAR guard; do not require the pre-transform
-        // IF before the idempotence marker can be checked.
-        if(file.Text.Contains("G-CET native location:illegal-v3",StringComparison.Ordinal))
-            return SemanticInjectionResult.Skip("Independent mechanic native wake is already installed.");
         if(!file.Text.Contains("if entry.spawnPending then",StringComparison.Ordinal))
             throw new InvalidOperationException("Mechanic original pending spawn branch changed.");
         var legacy=file.Text.Contains("G-CET native location:illegal-v1",StringComparison.Ordinal) ||
