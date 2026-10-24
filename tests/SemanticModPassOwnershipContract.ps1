@@ -15,7 +15,7 @@ $count=0
 foreach($file in $files){
   $source=Get-Content $file.FullName -Raw
   if($source -notmatch 'internal static partial class SemanticInjectors'){throw "Not a shared partial class: $($file.Name)"}
-  $decls=@([regex]::Matches($source,'(?m)^\s*private static SemanticInjectionResult (Apply[A-Za-z0-9_]+)\('))
+  $decls=@([regex]::Matches($source,'(?m)^\s*(?:private|internal) static SemanticInjectionResult (Apply[A-Za-z0-9_]+)\('))
   if($decls.Count -eq 0){throw "Empty mod injector file $($file.Name)"}
   foreach($m in $decls){
     $name=$m.Groups[1].Value
