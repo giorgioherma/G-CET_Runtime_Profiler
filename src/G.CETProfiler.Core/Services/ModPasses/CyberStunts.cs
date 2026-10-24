@@ -93,6 +93,7 @@ end
             "$1\n    if __gcetStuntsLocationSleeping() then return end",
             "distant frame event");
         context.Write(file,crlf?src.Replace("\n","\r\n",StringComparison.Ordinal):src);
+        ApplyCyberStuntsNativeWorker(context);
         return SemanticInjectionResult.Success(
             "Compiled fixed launch points gate dormant vehicle/frame Lua work on known native FAR. "+
             "Active stunt, dynamic jumps, scoring and CET overlay remain author-owned; "+
