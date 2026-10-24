@@ -1252,6 +1252,10 @@ jobs:
         shell: pwsh
         run: ./tests/QuestRunnerPristineWorkerContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: Native Interactions external cadence ownership structure contract
+        shell: pwsh
+        run: ./tests/NativeInteractionsWorkerStructureContract.ps1
+
       - name: Cyberpsychos native worker completion and partial-source contract
         shell: pwsh
         run: ./tests/CyberpsychosWorkerCompletionContract.ps1 -ResolverRoot ./publish-resolver
