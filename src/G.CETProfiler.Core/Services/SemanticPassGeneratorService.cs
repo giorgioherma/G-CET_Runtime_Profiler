@@ -302,8 +302,12 @@ internal static class SemanticPassGeneratorService
                 ValidateSemanticOutput(rule, context);
                 var code = Encoding.UTF8.GetString(source.Bytes);
                 var hookComplete = code.Contains(item.Completion, StringComparison.Ordinal) ||
-                    NativeLocationStructuralSource.CompleteStage(item.Rule,
-                        changes.Select(change => Encoding.UTF8.GetString(change.Bytes)));
+                    // The external native worker may already exist unchanged
+                    // under the SAME reviewed owner in a staged/partial stack.
+                    // Completion must inspect source + owned worker, not only
+                    // this pass's changed bytes.
+                    NativeLocationStructuralSource.CompleteStageWithCoordinator(
+                        context, item.Rule, code);
                 if (!hookComplete ||
                     code.Contains("$"+"{opening}", StringComparison.Ordinal) ||
                     code.Contains("$"+"{close}", StringComparison.Ordinal))
