@@ -507,8 +507,21 @@ if(@($manifest.transforms | Where-Object {
       Where-Object { $_.target -eq 'onDraw' } |
       ForEach-Object { $_.topConsumers } |
       Where-Object { $_.owner -eq 'GenericBareOptionalUiFixture' })[0]
-    throw ("Pristine optional-ui source did not select generic call guard: "+
-      ($bareConsumer | ConvertTo-Json -Depth 12 -Compress))
+    $asm=[Reflection.Assembly]::LoadFrom((Join-Path $ResolverRoot 'G.CETProfiler.Core.dll'))
+    $type=$asm.GetType('GCETRuntimeProfiler.Core.Services.GenericInteractionUiTransform',$true)
+    $method=$type.GetMethod('TryProveCrossFileCall',
+      [Reflection.BindingFlags]'Static,NonPublic')
+    $callText="registerForEvent(\`"onDraw\`", function()\`n    ui.update()\`nend)"
+    $moduleText=Get-Content -LiteralPath (Join-Path $mods 'GenericBareOptionalUiFixture\modules\interactionUI.lua') -Raw
+    $args=@([string]$callText,[string]$moduleText,[string]'GenericBareOptionalUiFixture/modules/interactionUI.lua',$null)
+    $direct=[bool]$method.Invoke($null,[object[]]$args)
+    $shape=$type.GetMethod('TryGetCallOnlyOnDrawBinding',
+      [Reflection.BindingFlags]'Static,NonPublic')
+    $argShape=@([string]$callText,$null,$null)
+    $shapeOK=[bool]$shape.Invoke($null,[object[]]$argShape)
+    throw ("Pristine optional-ui source did not select generic call guard. "+
+      "DirectProof=$direct BareShape=$shapeOK Receiver=$($argShape[1]) "+
+      "Resolved="+($bareConsumer.generic | ConvertTo-Json -Depth 8 -Compress))
 }
 if(@($manifest.transforms | Where-Object {
     $_.type -eq 'GENERIC_CRON_AND_UI_IDLE' -and $_.owner -eq 'GenericCronUiFixture'
