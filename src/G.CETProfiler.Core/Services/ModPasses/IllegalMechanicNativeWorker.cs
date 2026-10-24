@@ -9,13 +9,18 @@ internal static partial class SemanticInjectors
             return SemanticInjectionResult.Skip("Illegal Mechanic native worker already installed.");
         var crlf=file.Text.Contains("\r\n",StringComparison.Ordinal);
         var s=file.Text.Replace("\r\n","\n",StringComparison.Ordinal);
-        const string begin="  -- G-CET native location:illegal-v3";
-        const string finish="  log(\"matrix loaded mechanics=";
-        var a=s.IndexOf(begin,StringComparison.Ordinal);
-        var b=a<0?-1:s.IndexOf(finish,a+begin.Length,StringComparison.Ordinal);
-        if(a<0||b<0||s.IndexOf(begin,a+begin.Length,StringComparison.Ordinal)>=0)
+        // The native helper is bounded by its own source-level host block.
+        // Logging after the registry build is an author-version detail, not
+        // part of the native wake behavior or an extraction prerequisite.
+        var region = new System.Text.RegularExpressions.Regex(
+            @"(?ms)^  -- G-CET native location:illegal-v3[^\n]*\n.*?^  end[ \t]*\n",
+            System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+        var blocks = region.Matches(s);
+        if(blocks.Count!=1)
             throw new InvalidOperationException("Illegal Mechanic v3 worker insertion boundary changed.");
-        var native=s[a..b];
+        var a=blocks[0].Index;
+        var b=a+blocks[0].Length;
+        var native=blocks[0].Value;
         foreach(var proof in new[]{"host:attachCompiled(1003301+index,1,","index>=0 and index<256",
             "entry.__gcetNativeFar=false;state.nextUpdateAt=0","entry.__gcetNativeFar=true;state.nextUpdateAt=0",
             "entry.__gcetNativeFar=false;state.nextUpdateAt=0;return true"})
