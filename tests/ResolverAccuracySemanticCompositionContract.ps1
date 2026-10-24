@@ -774,38 +774,81 @@ return GameSession
 '@
 
 Write-ModFile 'nativeInteractions' 'init.lua' @'
-local Cron={Update=function() end}
+local Cron={Update=function() end,HaltAll=function() end}
 local manager=require("modules/projectsManager")
 local world=require("modules/utils/worldInteraction")
 local resourceHelper={sceneQueue={},onUpdate=function() end}
-local self={runtimeData={inGame=true,inMenu=false}}
-registerForEvent("onUpdate", function (dt)
+local mod = {
+    player = nil,
+    runtimeData = {inGame = true, inMenu = false},
+    GameUI = {OnSessionStart=function() end, OnSessionEnd=function() end}
+}
+function mod:new()
+    registerForEvent("onInit", function()
+        CName.add("nif")
+        Game.GetQuestsSystem():SetFactStr("nif_iguana_idle", 0)
+    end)
+    self.GameUI.OnSessionStart(function()
+            self.runtimeData.inGame = true
+            Game.GetQuestsSystem():SetFactStr("nif_iguana_idle", 0)
+            Game.GetQuestsSystem():SetFactStr("nif_scene_active", 0)
+            manager.sessionStart()
+            world.onSessionStart()
+    end)
+    self.GameUI.OnSessionEnd(function()
+            self.runtimeData.inGame = false
+            Cron.HaltAll()
+    end)
+    registerForEvent("onUpdate", function (dt)
         if self.runtimeData.inGame and not self.runtimeData.inMenu then
             Cron.Update(dt)
             manager.update()
             world.update()
             resourceHelper.onUpdate()
         end
-end)
+    end)
+    registerForEvent("onShutdown", function ()
+        world.shutdown()
+    end)
+end
+return mod:new()
 '@
 
 Write-ModFile 'nativeInteractions' 'modules/projectsManager.lua' @'
-local manager={projects={},updateList={}}
-local function rebuild()
- for _, project in pairs(manager.projects) do
-  if project.enabled then
-   for _, interaction in pairs(project.interactions) do
-    if interaction.needsUpdate then table.insert(manager.updateList,interaction) end
-   end
-  end
- end
+local manager = {
+    projects = {},
+    updateList = {},
+    mod = nil
+}
+function manager.rebuildUpdateList()
+    local list = {}
+    for _, project in pairs(manager.projects) do
+        if project.enabled then
+            for _, interaction in pairs(project.interactions) do
+                if interaction.needsUpdate then table.insert(list, interaction) end
+            end
+        end
+    end
+    manager.updateList = list
 end
 local playerPosition = { x = 0, y = 0, z = 0 }
 
 function manager.update()
- for i=1,#manager.updateList do
-  local interaction=manager.updateList[i]
- end
+    local list = manager.updateList
+    local nUpdates = #list
+    if nUpdates == 0 then return end
+
+    local position = GetPlayer():GetWorldPosition()
+    playerPosition.x = position.x
+    playerPosition.y = position.y
+    playerPosition.z = position.z
+
+    for i = 1, nUpdates do
+        list[i]:onUpdate(playerPosition)
+    end
+end
+function manager.sessionStart()
+    for _, project in pairs(manager.projects) do project:sessionStart() end
 end
 return manager
 '@
@@ -866,6 +909,13 @@ function world.init()
 
         return false
     end)
+end
+function world.update()
+    if Game.GetQuestsSystem():GetFactStr("nif_scene_active") == 1 then return end -- Dont update if a scene is running
+
+    local posPlayer = GetPlayer():GetWorldPosition()
+    local playerForward = GetPlayer():GetWorldForward()
+    posPlayer.z = posPlayer.z + 1
 end
 function world.forceIcons()
     for interaction, _ in pairs(world.pinnedInteractions) do
@@ -1084,8 +1134,9 @@ try{
   $x=Z($b+'immersive_third_person/init.lua');if($x-notmatch'__gcetItppSupervisorElapsed' -or $x-notmatch'__gcetItppMaintenanceElapsed' -or $x-notmatch'if state\.enabled or state\.cameraTransition then' -or $x-notmatch'if state\.pendingFppCleanup then' -or $x-notmatch'pcall\(mod\.fallCommitTick, delta\)'){throw 'ITP split incomplete.'}
  $x=Z($b+'ImmersiveFirstPerson/Modules/Helpers.lua');if($x-notmatch'slowProbeElapsed' -or $x-notmatch'session\.slowProbe\.inWorkspot' -or $x-notmatch'Helpers\.RefreshPlayerState\(target, delta\)'){throw 'ImmersiveFirstPerson slow probe incomplete.'}
  $x=Z($b+'ImmersiveFirstPerson/init.lua');if($x-notmatch'collectPlayerState\(delta\)'){throw 'ImmersiveFirstPerson delta propagation incomplete.'}
- $x=Z($b+'nativeInteractions/init.lua');if($x-notmatch'__gcetNifIdleWorldInterval' -or $x-notmatch'manager\.hasRealtimeWork'){throw 'nativeInteractions cadence split incomplete.'}
- $x=Z($b+'nativeInteractions/modules/projectsManager.lua');if($x-notmatch'function manager\.hasRealtimeWork\(\)'){throw 'nativeInteractions realtime sentinel missing.'}
+ $x=Z($b+'nativeInteractions/init.lua');if($x-notmatch'GCET_Semantic/nativeinteractions_engine_worker' -or $x-notmatch'__gcetNifCadence\.update\(dt' -or $x-notmatch'__gcetNifCadence\.reset\(\)' -or $x-notmatch'resourceHelper\.onUpdate\(\)' -or $x-notmatch'Cron\.Update\(dt\)'){throw 'nativeInteractions external cadence bridge incomplete.'}
+  $x=Z($b+'nativeInteractions/GCET_Semantic/nativeinteractions_engine_worker.lua');if($x-notmatch'^-- G-CET semantic coordinator:nativeinteractions' -or $x-notmatch'manager\.updateDormant\(position\)' -or $x-notmatch'WORLD_INTERVAL, MANAGER_INTERVAL = 1 / 30, 1 / 12' -or $x-notmatch'reconcileAll = true'){throw 'nativeInteractions external worker dormant and wake cadence incomplete.'}
+ $x=Z($b+'nativeInteractions/modules/projectsManager.lua');if($x-notmatch'function manager\.hasRealtimeWork\(\)' -or $x-notmatch'function manager\.updateDormant\(position\)' -or $x-notmatch'dormantPhase % 4'){throw 'nativeInteractions realtime sentinel or four-phase manager missing.'}
  $x=Z($b+'nativeInteractions/modules/utils/worldInteraction.lua');if($x-notmatch'pinInteractions' -or $x-notmatch'findPinInteraction' -or $x-notmatch'indexPin\(interaction\)'){throw 'nativeInteractions pin index incomplete.'}
  $x=Z($b+'Minimap Widgets/init.lua');if($x-notmatch'__gcetMinimapFastDue' -or $x-notmatch'local isClamped = this:IsClamped\(\)' -or $x-notmatch'local hideEnemies = not MinimapWidgetsConfig\.ShowEnemies'){throw 'Minimap Widgets semantic optimization incomplete.'}
 }finally{$zip.Dispose()}
