@@ -89,7 +89,7 @@ return Engine
 
     // Older G-CET-integrated sources must migrate their private imports,
     // while unrelated future upstream module requires remain untouched.
-    var routeLegacy = frameworkType.GetMethod("RouteLegacyGcetImportsToNamespace", flags)!;
+    var routeLegacy = core.GetType("GCETRuntimeProfiler.Core.Services.FixedZeroEngineRuntime", true)!.GetMethod("RouteLegacyGcetImportsToNamespace", flags)!;
     string ResolveImports(string value) => Encoding.UTF8.GetString(
         (byte[])routeLegacy.Invoke(null, [Encoding.UTF8.GetBytes(value)])!);
     var legacyGcet = """
