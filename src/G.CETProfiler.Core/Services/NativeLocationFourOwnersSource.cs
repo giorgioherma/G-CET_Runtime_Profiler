@@ -376,10 +376,15 @@ internal static class NativeLocationFourOwnersSource
     {
         var file=context.FindFile("physical_npc.lua",
             "function PhysicalNpc.Update(delta)", "state.mechanics = result",
-            "if entry.spawnPending then", "GetMechanicCountForCET",
+            "GetMechanicCountForCET",
             "cfg.spawnDistance", "cfg.despawnDistance");
+        // A completed v3 source retains its authored pending work as an
+        // ELSEIF after the native FAR guard; do not require the pre-transform
+        // IF before the idempotence marker can be checked.
         if(file.Text.Contains("G-CET native location:illegal-v3",StringComparison.Ordinal))
             return SemanticInjectionResult.Skip("Independent mechanic native wake is already installed.");
+        if(!file.Text.Contains("if entry.spawnPending then",StringComparison.Ordinal))
+            throw new InvalidOperationException("Mechanic original pending spawn branch changed.");
         var legacy=file.Text.Contains("G-CET native location:illegal-v1",StringComparison.Ordinal) ||
             file.Text.Contains("G-CET native location:illegal-v2",StringComparison.Ordinal);
         var input=legacy?RestoreLegacyIllegalAggregateScanner(file.Text):file.Text;
