@@ -70,8 +70,8 @@ function M.attach(engine, count, onTransition)
   return ok and attached == true
 end
 return M
-""".Replace("-- G-CET semantic coordinator:card-collection-native-worker\n",
-        "-- G-CET semantic coordinator:" + context.RuleId + "\n", StringComparison.Ordinal));
+""".Replace("-- G-CET semantic coordinator:card-collection-native-worker",
+        "-- G-CET semantic coordinator:" + context.RuleId, StringComparison.Ordinal));
         return SemanticInjectionResult.Success(
             "Card Collection native source callbacks moved to separate 0-Engine worker; gameplay, pickup and spatial registration remain source-owned.");
     }
