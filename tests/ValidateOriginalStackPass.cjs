@@ -31,6 +31,11 @@ function allFiles(root) {
   return result;
 }
 function relative(p) { return path.relative(prefix, p).replace(/\\/g, '/'); }
+// An untouched init.lua is the authoritative presence marker for an installed CET mod.
+// Generated workers and framework files are outputs, not required original inputs.
+function hasOriginalInit(owner) {
+  return fs.existsSync(path.join(inputMods, owner, 'init.lua'));
+}
 function text(p) { return fs.readFileSync(p, 'utf8').replace(/^\uFEFF/, ''); }
 function requireContains(owner, file, needles) {
   if (!fs.existsSync(file)) return fail(owner, 'required-generated-source-missing');
@@ -79,7 +84,7 @@ if (mode === 'initial') {
     ['ziggy_last_play', 'ziggy_native_worker.lua'],
   ];
   for (const [owner, worker] of owners) {
-    if (!fs.existsSync(path.join(inputMods, owner))) continue;
+    if (!hasOriginalInit(owner)) continue;
     const generatedWorker = path.join(prefix, owner, 'GCET_Semantic', worker);
     if (!fs.existsSync(generatedWorker)) fail(owner, 'missing-one-pass-native-worker-' + worker);
     const fileSources = allFiles(path.join(prefix, owner))
@@ -88,13 +93,20 @@ if (mode === 'initial') {
     const reference = 'GCET_Semantic/' + worker.replace(/\.lua$/, '');
     if (!fileSources.some(f => text(f).includes(reference))) fail(owner, 'native-worker-source-bridge-missing-' + worker);
   }
-  const mechanic = path.join(prefix, 'illegal_mechanic_phase1a', 'physical_npc.lua');
-  requireContains('illegal_mechanic_phase1a/physical_npc.lua', mechanic,
-    ['local function loadMatrix(', 'local function distanceFromPlayer(', 'local function deleteEntry(',
-     'return true', 'GCET_Semantic/illegal_mechanic_native_worker']);
-  const stunts = path.join(prefix, 'CyberStunts-StuntJumps-CET', 'init.lua');
-  if (!fs.existsSync(stunts)) fail('CyberStunts-StuntJumps-CET/init.lua', 'native-stunt-source-missing');
-  else {
+  if (hasOriginalInit('illegal_mechanic_phase1a')) {
+    const authorNpc = path.join(inputMods, 'illegal_mechanic_phase1a', 'physical_npc.lua');
+    if (!fs.existsSync(authorNpc)) fail('illegal_mechanic_phase1a/physical_npc.lua', 'required-original-source-missing');
+    else {
+      const mechanic = path.join(prefix, 'illegal_mechanic_phase1a', 'physical_npc.lua');
+      requireContains('illegal_mechanic_phase1a/physical_npc.lua', mechanic,
+        ['local function loadMatrix(', 'local function distanceFromPlayer(', 'local function deleteEntry(',
+         'return true', 'GCET_Semantic/illegal_mechanic_native_worker']);
+    }
+  }
+  if (hasOriginalInit('CyberStunts-StuntJumps-CET')) {
+    const stunts = path.join(prefix, 'CyberStunts-StuntJumps-CET', 'init.lua');
+    if (!fs.existsSync(stunts)) fail('CyberStunts-StuntJumps-CET/init.lua', 'native-stunt-source-missing');
+    else {
     const source = text(stunts);
     const start = source.indexOf('registerForEvent("onUpdate"');
     const body = start >= 0 ? source.slice(start) : '';
@@ -108,6 +120,7 @@ if (mode === 'initial') {
         fail('CyberStunts-StuntJumps-CET/init.lua', 'expensive-native-reads-before-disabled-player-or-vehicle-guards');
       }
     }
+  }
   }
 }
 console.log('Original-source Resolver ' + mode + ' validation: ' + generated.length +
