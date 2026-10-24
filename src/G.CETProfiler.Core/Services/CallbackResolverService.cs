@@ -6026,22 +6026,22 @@ internal static class CallbackResolverService
             // owns the real UI; failure gives update=function() end, so the
             // source-safe draw guard cannot suppress any fallback behavior.
             var optionalStub = new Regex(
-                @"(?ms)^[ \\t]*local\\s+"+escapedReceiver+@"[ \\t]*\\r?\\n"+
-                @"[ \\t]*do[ \\t]*\\r?\\n"+
-                @"[ \\t]*local\\s+(?<ok>[A-Za-z_]\\w*)\\s*,\\s*(?<module>[A-Za-z_]\\w*)\\s*=\\s*"+
-                @"pcall\\s*\\(\\s*require\\s*,\\s*[""'](?<path>[^""']+)[""']\\s*\\)[ \\t]*\\r?\\n"+
-                @"[ \\t]*if\\s+\\k<ok>\\s+and\\s+\\k<module>\\s+then\\s*\\r?\\n"+
-                @"[ \\t]*"+escapedReceiver+@"\\s*=\\s*\\k<module>[ \\t]*\\r?\\n"+
-                @"[ \\t]*else\\s*\\r?\\n"+
-                @"[ \\t]*"+escapedReceiver+@"\\s*=\\s*\\{(?<stub>.*?)^[ \\t]*\\}[ \\t]*\\r?\\n"+
-                @"[ \\t]*end\\s*\\r?\\n"+
-                @"[ \\t]*end\\b",
+                @"(?ms)^[ \t]*local\s+"+escapedReceiver+@"[ \t]*\r?\n"+
+                @"[ \t]*do[ \t]*\r?\n"+
+                @"[ \t]*local\s+(?<ok>[A-Za-z_]\w*)\s*,\s*(?<module>[A-Za-z_]\w*)\s*=\s*"+
+                @"pcall\s*\(\s*require\s*,\s*[""'](?<path>[^""']+)[""']\s*\)[ \t]*\r?\n"+
+                @"[ \t]*if\s+\k<ok>\s+and\s+\k<module>\s+then\s*\r?\n"+
+                @"[ \t]*"+escapedReceiver+@"\s*=\s*\k<module>[ \t]*\r?\n"+
+                @"[ \t]*else\s*\r?\n"+
+                @"[ \t]*"+escapedReceiver+@"\s*=\s*\{(?<stub>.*?)^[ \t]*\}[ \t]*\r?\n"+
+                @"[ \t]*end\s*\r?\n"+
+                @"[ \t]*end\b",
                 RegexOptions.CultureInvariant);
             foreach(Match candidate in optionalStub.Matches(fullText))
             {
                 var stub=candidate.Groups["stub"].Value;
                 if(Regex.IsMatch(stub,
-                    @"(?m)^[ \\t]*update\\s*=\\s*function\\s*\\(\\s*\\)\\s*end\\s*,?[ \\t]*$",
+                    @"(?m)^[ \t]*update\s*=\s*function\s*\(\s*\)\s*end\s*,?[ \t]*$",
                     RegexOptions.CultureInvariant))
                     candidates.Add(candidate.Groups["path"].Value);
             }
