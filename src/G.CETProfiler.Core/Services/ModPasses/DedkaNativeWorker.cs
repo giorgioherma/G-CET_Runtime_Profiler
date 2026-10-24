@@ -38,8 +38,8 @@ function M.attach(host, onNear, onFar, onUnknown)
   return ok and attached == true
 end
 return M
-""".Replace("-- G-CET semantic coordinator:dedka-native-worker\n",
-        "-- G-CET semantic coordinator:" + context.RuleId + "\n", StringComparison.Ordinal));
+""".Replace("-- G-CET semantic coordinator:dedka-native-worker",
+        "-- G-CET semantic coordinator:" + context.RuleId, StringComparison.Ordinal));
         return SemanticInjectionResult.Success(
             "Dedka native two-zone registration delegated to generated Lua worker; zone retirement, restoration and shop detail callbacks retained.");
     }
