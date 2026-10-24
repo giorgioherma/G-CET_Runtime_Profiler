@@ -39,6 +39,16 @@ internal static class GenericInteractionUiTransform
         RegexOptions.Multiline |
         RegexOptions.Singleline);
 
+    // Author can dispatch the module update directly, without the
+    // Panam-style optional-ui wrapper. Both forms still require full
+    // cross-file module proof (visible branch and pending input cleanup).
+    private static readonly Regex BareCallOnlyOnDraw = new(
+        @"(?ms)^(?<opening>[ \\t]*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\\d+)\\s*\\(\\s*[""']onDraw[""']\\s*,\\s*function\\s*\\(\\s*\\)\\s*\\r?\\n)" +
+        @"(?<indent>[ \\t]*)(?<receiver>[A-Za-z_]\\w*)\\.(?<method>update)\\s*\\(\\s*\\)\\s*;?\\s*\\r?\\n" +
+        @"(?<close>[ \\t]*end\\s*\\)\\s*;?\\s*(?:--[^\\r\\n]*)?$)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant |
+        RegexOptions.Multiline | RegexOptions.Singleline);
+
     internal static bool TryProveForCallback(
         string fullText,
         string callbackText,
@@ -90,8 +100,10 @@ internal static class GenericInteractionUiTransform
 
         var normalizedCallback = Normalize(callbackText);
         var match = CallOnlyOnDraw.Match(normalizedCallback);
-        if (!match.Success ||
-            match.Index != 0 ||
+        if (!match.Success || match.Index != 0 ||
+            match.Length != normalizedCallback.Length)
+            match = BareCallOnlyOnDraw.Match(normalizedCallback);
+        if (!match.Success || match.Index != 0 ||
             match.Length != normalizedCallback.Length)
             return false;
 
@@ -158,6 +170,7 @@ internal static class GenericInteractionUiTransform
 
         var matches = CallOnlyOnDraw.Matches(normalized)
             .Cast<Match>()
+            .Concat(BareCallOnlyOnDraw.Matches(normalized).Cast<Match>())
             .Where(m =>
                 m.Groups["receiver"].Value.Equals(
                     expected.Receiver,
