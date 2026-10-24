@@ -1,7 +1,7 @@
 namespace GCETRuntimeProfiler.Core.Services;
 internal static partial class SemanticInjectors
 {
-    private static SemanticInjectionResult ApplyDedkaNativeWorker(SemanticPatchContext context)
+    internal static SemanticInjectionResult ApplyDedkaNativeWorker(SemanticPatchContext context)
     {
         var file=context.FindFile("init.lua","dedka_entrance1","dedka_entrance2_cluster","startShopDetail()");
         const string marker="-- G-CET semantic:dedka-native-worker-v1";
@@ -38,7 +38,8 @@ function M.attach(host, onNear, onFar, onUnknown)
   return ok and attached == true
 end
 return M
-""");
+""".Replace("-- G-CET semantic coordinator:dedka-native-worker\n",
+        "-- G-CET semantic coordinator:" + context.RuleId + "\n", StringComparison.Ordinal));
         return SemanticInjectionResult.Success(
             "Dedka native two-zone registration delegated to generated Lua worker; zone retirement, restoration and shop detail callbacks retained.");
     }
