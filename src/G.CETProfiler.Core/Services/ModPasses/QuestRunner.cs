@@ -28,13 +28,14 @@ internal static partial class SemanticInjectors
                 !source.Contains(workerImport, StringComparison.Ordinal) ||
                 !source.Contains(workerCall, StringComparison.Ordinal))
                 throw new InvalidOperationException("QuestRunner external worker missing or incompatible.");
-            var guarded = EnsureQuestRunnerUiPendingGuard(source);
+            var guarded = source.Contains("ui.update()", StringComparison.Ordinal)
+                ? EnsureQuestRunnerUiPendingGuard(source) : source;
             if (source != guarded)
             {
                 context.Write(liveFile, guarded);
                 return SemanticInjectionResult.Success("QuestRunner extracted worker retained; pending-input UI guard restored.");
             }
-            return SemanticInjectionResult.Skip("QuestRunner external worker and UI dormancy already satisfied.");
+            return SemanticInjectionResult.Skip("QuestRunner external worker already installed; existing supported UI state preserved.");
         }
 
         if (source.Contains("pass5ManagerIdleAccumulator", StringComparison.Ordinal))
