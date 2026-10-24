@@ -437,6 +437,124 @@ internal static class GenericInteractionUiTransform
                gate.Equals(expectedGate, StringComparison.Ordinal);
     }
 
+
+    // Source-proven idle helper composition is generic, not mod- or AudioXL-
+    // specific. Stage the Cron API atomically with its init caller.
+    internal static int TryStageCronAndUiIdle(
+        string modsRoot, IDictionary<string,byte[]> staged,
+        IDictionary<string,int> counts, IList<object> manifest)
+    {
+        var applied=0;
+        foreach(var folder in Directory.EnumerateDirectories(modsRoot))
+        {
+            var owner=Path.GetFileName(folder);
+            if(string.IsNullOrWhiteSpace(owner) ||
+               ModOptimizationBlacklist.IsBlacklistedOwner(owner))continue;
+            var initPath=Path.Combine(folder,"init.lua");
+            var cronPath=Path.Combine(folder,"modules","Cron.lua");
+            var uiPath=Path.Combine(folder,"modules","interactionUI.lua");
+            if(!File.Exists(initPath) || !File.Exists(cronPath) ||
+               !File.Exists(uiPath))continue;
+            var initRel=owner+"/init.lua";
+            var cronRel=owner+"/modules/Cron.lua";
+            if(ModOptimizationBlacklist.IsBlacklistedPath(initRel) ||
+               ModOptimizationBlacklist.IsBlacklistedPath(cronRel))continue;
+            var initBytes=staged.TryGetValue(initRel,out var eInit)
+                ?eInit:File.ReadAllBytes(initPath);
+            var cronBytes=staged.TryGetValue(cronRel,out var eCron)
+                ?eCron:File.ReadAllBytes(cronPath);
+            static string Read(byte[] b)=>System.Text.Encoding.UTF8
+                .GetString(b).TrimStart('\uFEFF')
+                .Replace("\r\n","\n",StringComparison.Ordinal);
+            var init=Read(initBytes);
+            var cron=Read(cronBytes);
+            var ui=Read(File.ReadAllBytes(uiPath));
+            if(Regex.Matches(init,@"(?m)^[ \t]*local\s+Cron\s*=\s*require\s*\(\s*['""]modules/Cron['""]\s*\)").Count!=1 ||
+               Regex.Matches(init,@"(?m)^[ \t]*local\s+interactionUI\s*=\s*require\s*\(\s*['""]modules/interactionUI['""]\s*\)").Count!=1 ||
+               !TryProveNamedFunction(ui,"ui.update",out var proof) ||
+               proof.GateExpression!="ui.hubShown" ||
+               proof.IdleResetStatement!="ui.input = false" ||
+               !cron.Contains("local timers = {}",StringComparison.Ordinal) ||
+               !cron.Contains("function Cron.Update(delta)",StringComparison.Ordinal) ||
+               !Regex.IsMatch(cron,@"if\s+#timers\s*==\s*0\s+then\s+return\s+end") ||
+               !cron.Contains("return Cron",StringComparison.Ordinal))
+                continue;
+
+            var timer=Regex.Matches(init,
+                @"(?m)^[ \t]*Cron\.Update\s*\(\s*delta\s*\)\s*$");
+            var uiCalls=Regex.Matches(init,
+                @"(?m)^[ \t]*interactionUI\.update\s*\(\s*\)\s*$");
+            var alreadyTimer=init.Contains("Cron.HasActiveTimers()",StringComparison.Ordinal);
+            var alreadyUi=init.Contains(
+                "interactionUI.hubShown or interactionUI.input",StringComparison.Ordinal);
+            var oldUi=Regex.IsMatch(init,
+                @"if\s+interactionUI\.hubShown\s+then\s+interactionUI\.update\(\)\s+end");
+            if((timer.Count!=1 && !alreadyTimer) ||
+               (uiCalls.Count!=1 && !alreadyUi && !oldUi))
+                continue;
+            if(timer.Count==1 && uiCalls.Count==1)
+            {
+                if(uiCalls[0].Index<=timer[0].Index ||
+                   uiCalls[0].Index-timer[0].Index>450 ||
+                   !Regex.IsMatch(init[..timer[0].Index],
+                     @"(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]\s*,\s*function\s*\(\s*delta\s*\)"))
+                    continue;
+            }
+            if(alreadyTimer &&
+               !cron.Contains("function Cron.HasActiveTimers()",StringComparison.Ordinal))
+                continue; // Never emit a caller without its actual API.
+            var newInit=init;
+            var newCron=cron;
+            if(timer.Count==1)
+            {
+                if(cron.Contains("function Cron.HasActiveTimers()",StringComparison.Ordinal))
+                    continue; // Different author implementation: fail closed.
+                newCron=cron.Replace("function Cron.Update(delta)",
+                    "function Cron.HasActiveTimers()\n"+
+                    "    return #timers > 0\n"+
+                    "end\n\nfunction Cron.Update(delta)",
+                    StringComparison.Ordinal);
+                newInit=Regex.Replace(newInit,
+                    @"(?m)^(?<pad>[ \t]*)Cron\.Update\s*\(\s*delta\s*\)\s*$",
+                    "$"+"{pad}-- G-CET source-proven timer/UI idle-v1\n"+
+                    "$"+"{pad}if Cron.HasActiveTimers() then Cron.Update(delta) end");
+            }
+            if(uiCalls.Count==1)
+                newInit=Regex.Replace(newInit,
+                    @"(?m)^(?<pad>[ \t]*)interactionUI\.update\s*\(\s*\)\s*$",
+                    "$"+"{pad}if interactionUI.hubShown or interactionUI.input then interactionUI.update() end");
+            else if(oldUi && !alreadyUi)
+                newInit=Regex.Replace(newInit,
+                    @"if\s+interactionUI\.hubShown\s+then\s+interactionUI\.update\(\)\s+end",
+                    "if interactionUI.hubShown or interactionUI.input then interactionUI.update() end");
+            if(newInit==init && newCron==cron)continue;
+            static byte[] Encode(byte[] reference,string value)
+            {
+                if(reference.Length>=3 && reference[0]==0xEF &&
+                   reference[1]==0xBB && reference[2]==0xBF)
+                    value="\uFEFF"+value;
+                if(System.Text.Encoding.UTF8.GetString(reference).Contains("\r\n",
+                       StringComparison.Ordinal))
+                    value=value.Replace("\n","\r\n",StringComparison.Ordinal);
+                return System.Text.Encoding.UTF8.GetBytes(value);
+            }
+            staged[initRel]=Encode(initBytes,newInit);
+            counts[initRel]=counts.TryGetValue(initRel,out var prior)?prior+1:1;
+            if(newCron!=cron)
+            {
+                staged[cronRel]=Encode(cronBytes,newCron);
+                counts[cronRel]=counts.TryGetValue(cronRel,out var prev)?prev+1:1;
+            }
+            manifest.Add(new {
+                type="GENERIC_CRON_AND_UI_IDLE", owner, file=initRel,
+                dependency=newCron!=cron?cronRel:null,
+                proof="Empty Cron registry returns immediately; hidden UI with no pending input only clears ui.input=false; author wake unchanged."
+            });
+            applied++;
+        }
+        return applied;
+    }
+
     private static string Normalize(string text) =>
         text.Replace("\r\n", "\n").Replace('\r', '\n');
 
