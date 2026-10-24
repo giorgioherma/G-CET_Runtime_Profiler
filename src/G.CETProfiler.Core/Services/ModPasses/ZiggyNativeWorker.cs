@@ -29,8 +29,8 @@ function M.attach(host, onKnown, onUnknown)
   return ok and attached == true
 end
 return M
-""".Replace("-- G-CET semantic coordinator:ziggy-native-worker\n",
-        "-- G-CET semantic coordinator:" + context.RuleId + "\n", StringComparison.Ordinal));
+""".Replace("-- G-CET semantic coordinator:ziggy-native-worker",
+        "-- G-CET semantic coordinator:" + context.RuleId, StringComparison.Ordinal));
         return SemanticInjectionResult.Success(
             "Ziggy offered-site native subscription moved to coordinator; player identity, quest phase, 130m exact fallback and wake cadence preserved.");
     }
