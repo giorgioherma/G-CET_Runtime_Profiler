@@ -126,6 +126,13 @@ public static class PassGeneratorService
         }
 
         var genericInfrastructureTransformCount = 0;
+        // Existing generic source proof: pair the optional empty-Cron timer
+        // fast path and hidden interaction UI guard with the required Cron
+        // module API. Compose from untouched mod files, without AudioXL or
+        // an earlier optimized init.lua prerequisite.
+        genericInfrastructureTransformCount +=
+            GenericInteractionUiTransform.TryStageCronAndUiIdle(
+                modsRoot,staged,appliedTransformsByFile,transformManifest);
 
         // GENERIC PHASE 2: finish source infrastructure and shared-read
         // rewrites before any semantic source injection.
