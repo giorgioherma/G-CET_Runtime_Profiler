@@ -4,6 +4,13 @@ All notable public changes to G-CET Runtime Profiler are recorded here.
 
 ## [Unreleased]
 
+## [1.3.1] — 2026-10-24 (development)
+- Coordinated Profiler and standalone Resolver package version to 1.3.1, including Windows assembly/file metadata and package manifest; keep native profiler and location-service binaries pinned as before.
+- Retained the G-CET Scheduler and ActionRouter exclusively in the `0-Engine/modules/G-CET/` namespace without distributing redundant upstream-named files.
+- Repaired the existing generic native-read coordinator's single-pass admission for supported pristine source at the LuaJIT local-variable limit, retaining original provider fallbacks and worker ownership.
+- Updated Phase 1+2 recovery acceptance: use corrected original AudioXL mod sources, not the contaminated historical reference, for gameplay/audio baselines. Full generated ZIP preservation and gameplay tests remain pending.
+
+
 ## [1.3.0] — 2026-10-21 (development)
 - Unified the Resolver's ordered passes: generic 0-Engine transformations, native state and compiled-location integration, then behavior-specific semantic stages against the final staged Lua.
 - Removed historical Lua SHA/fingerprint and provenance-label admission requirements across generic/native/semantic generation, while retaining source-structural proofs, per-stage fail-closed behavior, Lua local-budget checks, and existing stage preservation.

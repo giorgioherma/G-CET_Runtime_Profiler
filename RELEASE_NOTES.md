@@ -1,3 +1,17 @@
+# G-CET Runtime Profiler v1.3.1
+
+> Coordinated development packages on `dev/resolver-profiler-handoff`: G-CET Runtime Profiler and standalone Resolver **v1.3.1**. The CET profiler native DLL and native static-location runtime remain pinned to their existing verified binaries and hashes; no native rebuild or gameplay validation is implied by the version bump.
+
+## Included Resolver updates since v1.3.0
+- Preserve generated runtime module ownership under `0-Engine/modules/G-CET/` for the authoritative Scheduler and ActionRouter; no redundant root-level G-CET Scheduler/ActionRouter modules. Profiler-owned temporary `CETProfilerScheduler.lua` install/restore remains independent.
+- Repair generic source-first native-read coordinator admission for supported pristine mod sources near LuaJIT's 200-local limit, retaining reviewed original getter fallback behavior and avoiding duplicative worker generation.
+- Keep source-safe generic 0-Engine → native → semantic composition and the approved Phase 1+2 optimization preservation recovery. Historical AudioXL-contaminated Phase 1+2 mod files are not accepted as original gameplay or audio baselines.
+
+## Validation and limits
+CI confirms source/build and packaging contracts, not mod gameplay or total Phase 1+2 preservation. Regenerate and compare against the corrected AudioXL mod source, then validate the emitted workers and in-game behavior. The package version update makes no change to the native profiler binary, its SHA-256 identity, or the native location service.
+
+## Historical v1.3.0 release notes
+
 # G-CET Runtime Profiler v1.3.0
 
 > Development build on `dev/resolver-profiler-handoff`. Both Profiler and standalone Resolver use the same coordinated product version. The native CET profiler and compiled-location DLL dependencies remain the previously verified, pinned binaries.
