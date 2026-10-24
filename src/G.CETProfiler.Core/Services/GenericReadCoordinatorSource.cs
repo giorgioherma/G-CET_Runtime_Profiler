@@ -54,8 +54,15 @@ internal static class GenericReadCoordinatorSource
             // altering source, and extract our own provider helpers first.
             var hasProvider=source.Contains("-- G-CET shared provider: ",
                 StringComparison.Ordinal);
+            // A pristine author source has no G-CET provider helper yet.
+            // Its *projected* complete native-read rewrite may exceed the
+            // 200-local budget even when the original is below 197 locals.
+            // Move the source-proven fallbacks into our existing per-file
+            // coordinator before NativeReadReuseSource stages anything.
+            var hasAuthorGetters=!marked &&
+                NativeReadReuseSource.FindOperations(source).Length>0;
             var projectedOverflow=false;
-            if(!marked && sourcePeak<197 && hasProvider &&
+            if(!marked && sourcePeak<197 && (hasProvider||hasAuthorGetters) &&
                NativeReadReuseSource.TryTransform(source,headerForProvider,
                    out var projected,out var operations) &&
                operations.Length>0)
@@ -63,7 +70,7 @@ internal static class GenericReadCoordinatorSource
                     .MaxActiveLocals>LuaLocalBudgetAnalyzer.Limit;
             if(!marked && sourcePeak<197 && !projectedOverflow)
                 continue;
-            if(!marked && !hasProvider && !englishOnly)
+            if(!marked && !hasProvider && !englishOnly && !hasAuthorGetters)
                 continue;
             if(!TryRewrite(root,rel,source,staged,headerForProvider,
                 out var rewritten,out var worker,out var workerRel,
@@ -271,10 +278,14 @@ internal static class GenericReadCoordinatorSource
             if(Regex.IsMatch(code,@"\b"+Alias+@"\b"))
             {reason="Coordinator alias conflicts with existing source.";return false;}
             var existing=ProviderHeader.Matches(source).Cast<Match>().ToArray();
+            // No previously generated headers is the normal pristine Nexus
+            // case. Allow only exact authorized author getter calls; the
+            // worker below generates the SAME reviewed Game-getter fallbacks.
             if(existing.Length==0 && !(relative.Equals("hotscenes/init.lua",
                     StringComparison.OrdinalIgnoreCase) &&
                 source.Contains(HotscenesEnglishOnlySource.Marker,
-                    StringComparison.Ordinal)))
+                    StringComparison.Ordinal)) &&
+                NativeReadReuseSource.FindOperations(source).Length==0)
                 return false;
             foreach(var match in existing)
             {
