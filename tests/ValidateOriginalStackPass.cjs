@@ -45,7 +45,7 @@ function requireContains(owner, file, needles) {
 if (!fs.existsSync(manifestFile)) fail('Resolver', 'generation-manifest-missing');
 let manifest = {};
 try { manifest = JSON.parse(text(manifestFile)); } catch { fail('Resolver', 'generation-manifest-invalid'); }
-const stats = manifest.statistics || {};
+const stats = manifest.summary || {};
 if ((stats.transforms || 0) < 1) fail('Resolver', 'no-composed-transformations-produced');
 if ((stats.generationFailures || 0) > 0) {
   for (const e of (manifest.skipOutcomes?.entries || []).filter(x => /FAIL|ERROR|PARTIAL|DRIFT/i.test(x.category || ''))) {
