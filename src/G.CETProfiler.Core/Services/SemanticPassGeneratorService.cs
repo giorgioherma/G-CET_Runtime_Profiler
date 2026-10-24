@@ -302,7 +302,8 @@ internal static class SemanticPassGeneratorService
                 ValidateSemanticOutput(rule, context);
                 var code = Encoding.UTF8.GetString(source.Bytes);
                 var hookComplete = code.Contains(item.Completion, StringComparison.Ordinal) ||
-                    NativeLocationStructuralSource.CompleteStage(item.Rule, new[] { code });
+                    NativeLocationStructuralSource.CompleteStage(item.Rule,
+                        changes.Select(change => Encoding.UTF8.GetString(change.Bytes)));
                 if (!hookComplete ||
                     code.Contains("$"+"{opening}", StringComparison.Ordinal) ||
                     code.Contains("$"+"{close}", StringComparison.Ordinal))
