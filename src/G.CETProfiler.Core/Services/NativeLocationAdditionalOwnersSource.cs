@@ -62,6 +62,7 @@ end
             "  __gcetAttachCardNative()\n  Mod.Subscribe(\"PlayerReady\", registerSpatialSet)",
             "Card native initial registration");
         context.Write(file,useCrlf ? text.Replace("\n","\r\n",StringComparison.Ordinal) : text);
+        SemanticInjectors.ApplyCardCollectionNativeWorker(context);
         return SemanticInjectionResult.Success(
             "Native 100-site aggregate FAR parks the original 0-Engine card spatial set; NEAR/UNKNOWN restores exact 2m author collection callbacks and picked-state behavior.");
     }
@@ -183,6 +184,7 @@ end
             " local pos=p:GetWorldPosition()",
             "Ziggy native offered distance substitution after source safety guards");
         context.Write(file,useCrlf ? text.Replace("\n","\r\n",StringComparison.Ordinal) : text);
+        SemanticInjectors.ApplyZiggyNativeWorker(context);
         return SemanticInjectionResult.Success(
             "Existing Ziggy 130m offered-state FAR/NEAR probe now uses shared native transitions after player/session/dialogue guards; original math remains for UNKNOWN and 1Hz/active quest cadence is unchanged.");
     }
@@ -228,6 +230,7 @@ end
             "    end\n    ui.update()",
             "Bathtub fallback exact geometry retained");
         context.Write(file,useCrlf ? text.Replace("\n","\r\n",StringComparison.Ordinal) : text);
+        SemanticInjectors.ApplyYaibaNativeWorker(context);
         return SemanticInjectionResult.Success(
             "Native FAR replaces the existing dormant bathtub vector arithmetic; icon/hub/water active state and original UNKNOWN distance check remain unchanged.");
     }
