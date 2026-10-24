@@ -29,7 +29,7 @@ internal static partial class SemanticInjectors
         // observer but normalizes that trailing comment away. Recognize both
         // source-equivalent openings, never arbitrary observer bodies.
         var opening = new Regex(
-            @"(?m)^(?<indent>[ \\t]*)ObserveAfter\\(""BaseMappinBaseController"",[ \\t]*""UpdateRootState"",[ \\t]*function\\(this\\)(?:[ \\t]*-- Custom pin texture)?[ \\t]*$",
+            @"(?m)^(?<indent>[ \t]*)ObserveAfter\(""BaseMappinBaseController"",[ \t]*""UpdateRootState"",[ \t]*function\(this\)(?:[ \t]*-- Custom pin texture)?[ \t]*$",
             RegexOptions.CultureInvariant);
         if(opening.Matches(s).Count!=1 ||
            !s.Contains("world.pinnedInteractions = {}",StringComparison.Ordinal) ||
