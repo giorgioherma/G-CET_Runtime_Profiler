@@ -9,6 +9,14 @@
 **Mandatory engineering contracts:** [HANDOFF/CORE](HANDOFF/CORE.md), [Resolver PROJECT-CONTRACT](resolver/PROJECT-CONTRACT.md), [BUILD-PIPELINE](HANDOFF/BUILD-PIPELINE.md).  
 **Prior work, not the active task:** [archived native/Lua callback and 0-Engine allocation investigation](history/NATIVE-LUA-CALLBACK-LATEST-WORK-ARCHIVE-20261024.md). Its experimental GO/NO-GO and runtime gaps were not resolved merely by moving the notes.
 
+## 2026-10-25 reporting-only enhancement
+
+- CI's accepted minimal source-generation scope and pass/fail thresholds **unchanged**. No new validation, source-equivalence checks or performance measures.
+- `tests/ValidateOriginalStackPass.cjs` now emits actionable annotations and a private-source-safe Actions job summary using existing manifest evidence: stage, mod, rule ID, generator handler when available, exact affected/missing original CET file path, source-refusal reason, and the next existing generating component to investigate.
+- `.github/workflows/original-cet-source.yml` now captures Resolver CLI's structured failure reason and reports a bounded explanation even if the process exits before creating a manifest. Does not upload original Lua or capture data.
+- Diagnostics retain the earlier severities: missing required input or manifest-declared output remains an error; categorized semantic source refusals remain warnings (including CyberTrials). Runtime profiling remains separate.
+- Code changes on branch `dev/resolver-profiler-handoff`; reporting-only CI verification is pending. Previous original-source generation [#2035](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/40145774314) succeeded before this reporting enhancement.
+
 ## 2026-10-25 minimal untouched-source CI workflow (current design)
 
 - **User-approved scope:** Run the production Resolver once, starting from the private **untouched CET** source tree and fixed **base-stack** capture. Check the pass produced transformations, compare its claimed transform/output paths to files actually emitted in the ZIP, and report exactly which original Lua files are missing. No runtime performance checks (handled by the user's gameplay Profiler), no whole-mod directory requirement, no syntax parser, no second-pass CI gating, no fixed eight-worker list and no general behavioral-equivalence framework. New generated-only files are allowed without original counterparts.
