@@ -24,13 +24,15 @@ function sourcePath(relative) {
   if (!v || v === '.' || v.split('/').some(p => p === '.' || p === '..')) return null;
   return v.startsWith(prefix) ? v : prefix + v;
 }
-function overlayExists(relative) {
-  const p = sourcePath(relative);
-  return p !== null && fs.existsSync(path.join(overlayRoot, ...p.split('/')));
+function outputLocation(relative) {
+  if (typeof relative !== 'string') return null;
+  const p = relative.replace(/\\/g, '/').replace(/^\/+/, '');
+  if (!p || p.split('/').includes('..')) return null;
+  return p.startsWith('bin/') || p.startsWith('red4ext/') ? p : prefix + p;
 }
-function originalExists(relative) {
-  const p = sourcePath(relative);
-  return p !== null && fs.existsSync(path.join(modsRoot, ...p.slice(prefix.length).split('/')));
+function overlayExists(relative) {
+  const p = outputLocation(relative);
+  return p !== null && fs.existsSync(path.join(overlayRoot, ...p.split('/')));
 }
 function requiredOriginal(relative) {
   const p = sourcePath(relative);
@@ -50,28 +52,23 @@ if (!fs.existsSync(manifestFile)) {
     const outputs = Array.isArray(manifest.files) ? manifest.files : [];
     if (!transforms.length) report('error', 'Resolver', 'no transformations generated from untouched stack');
 
-    // Every claimed output must actually exist in the generated ZIP.
+    // All generated files are matched against the *actual* ZIP paths.
+    // File manifest paths for mod Lua are relative to the CET mods folder;
+    // native game-root artifacts are already game-root relative.
     for (const output of outputs) {
       if (typeof output.path !== 'string') continue;
-      const full = path.join(overlayRoot, ...output.path.replace(/\\/g, '/').split('/'));
-      if (!fs.existsSync(full)) report('error', output.path, 'manifest claimed output not generated');
+      if (!overlayExists(output.path))
+        report('error', outputLocation(output.path) || 'Resolver', 'manifest output not generated');
     }
 
-    // Verify each claimed source rewrite and external coordinator was emitted.
+    // A source rewrite or coordinator claimed by a successful rule must be
+    // present. New generated files are valid WITHOUT original counterparts.
     for (const t of transforms) {
       const paths = Array.isArray(t.files) ? t.files : (t.file ? [t.file] : []);
       for (const relative of paths) {
-        if (!sourcePath(relative)) continue; // non-CET asset, handled above
-        if (!overlayExists(relative)) report('error', sourcePath(relative), 'claimed transformation file not generated');
-        const normalized = sourcePath(relative);
-        // New GCET_Semantic files are authored by Resolver, not input files.
-        if (!normalized.includes('/GCET_Semantic/') && !originalExists(relative)) {
-          // A generated-only framework or native integration file is also valid;
-          // determine whether this is an author source rewrite using manifest metadata.
-          if (!outputs.some(o => o.path === normalized && o.fixedInfrastructure === true)) {
-            requiredOriginal(relative);
-          }
-        }
+        if (typeof relative !== 'string') continue;
+        if (!overlayExists(relative))
+          report('error', outputLocation(relative) || 'Resolver', 'claimed transformation file missing');
       }
     }
 
