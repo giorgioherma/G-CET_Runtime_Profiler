@@ -25,8 +25,18 @@ local function loadMatrix()
           function() entry.__gcetNativeFar=false;state.nextUpdateAt=0;return true end)
       end
     end
-  end
-  log("matrix loaded mechanics=" .. tostring(#result))
+  end  log("matrix loaded mechanics=" .. tostring(#result))
+  return true
+end
+-- This is the real source-boundary shape that the old worker regex erased.
+local function distanceFromPlayer(entry, player)
+  if player == nil then return nil end
+  return Vector4.Distance(player:GetWorldPosition(), anchorPosition(entry))
+end
+local function deleteEntry(entry, reason)
+  entry.entityID = nil
+  entry.entity = nil
+  entry.spawnPending = false
 end
 function PhysicalNpc.Update(delta)
   if #state.mechanics == 0 and not loadMatrix() then return end
@@ -60,7 +70,11 @@ $worker=@($first.rows|Where-Object{$_.RelativeFile -like '*/GCET_Semantic/illega
 if(!$bridge -or !$worker){throw 'Illegal Mechanic generated output missing'}
 $b=[Text.Encoding]::UTF8.GetString($bridge.Bytes)
 $w=[Text.Encoding]::UTF8.GetString($worker.Bytes)
-foreach($x in @('require("GCET_Semantic/illegal_mechanic_native_worker").attach(result, state)','function PhysicalNpc.Update(delta)','resolvePendingSpawn(entry)','log("matrix loaded mechanics="')){if(!$b.Contains($x)){throw "Mechanic bridge omitted $x"}}
+foreach($x in @('require("GCET_Semantic/illegal_mechanic_native_worker").attach(result, state)','function PhysicalNpc.Update(delta)','resolvePendingSpawn(entry)','log("matrix loaded mechanics="',
+  '  return true', 'local function distanceFromPlayer(entry, player)', 'local function deleteEntry(entry, reason)', 'entry.spawnPending = false')){if(!$b.Contains($x)){throw "Mechanic bridge omitted $x"}}
+if ($b.Contains('  end  log(')) {throw 'Native extraction left merged end/log boundary'}
+if ($b.IndexOf('local function distanceFromPlayer(') -lt $b.IndexOf('return true')) {throw 'Mechanic loadMatrix closure is out of order'}
+if ($b.IndexOf('local function deleteEntry(') -lt $b.IndexOf('local function distanceFromPlayer(')) {throw 'Mechanic original function ordering damaged'}
 foreach($x in @('host:attachCompiled(1003301 + index, 1','index >= 0 and index < 256','entry.__gcetNativeFar = true','state.nextUpdateAt = 0')){if(!$w.Contains($x)){throw "Mechanic worker omitted $x"}}
 New-Item -ItemType Directory -Force (Join-Path $owner 'GCET_Semantic')|Out-Null
 [IO.File]::WriteAllText((Join-Path $owner 'GCET_Semantic/illegal_mechanic_native_worker.lua'),$w,[Text.UTF8Encoding]::new($false))
