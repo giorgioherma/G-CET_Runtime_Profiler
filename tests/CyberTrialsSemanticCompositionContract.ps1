@@ -529,9 +529,11 @@ $variants = @(
         'if not Game.GetPlayer() then return end',
         'if not Game.GetPlayer() then return end -- equivalent author comment')
 )
+$variantNumber = 0
 foreach ($variant in $variants) {
+    $variantNumber++
     try { $result = [string]$rewriteWorld.Invoke($null,[object[]]@($variant)) }
-    catch { throw "CyberTrials valid pristine/native source refused: $($_.Exception.InnerException.Message)" }
+    catch { throw "CyberTrials valid source variant $variantNumber refused: $($_.Exception.InnerException.Message)" }
     if ($result -eq $variant -or
         $result -notmatch 'local function distanceSquared' -or
         $result -notmatch 'local transform = player:GetWorldTransform\(\)' -or

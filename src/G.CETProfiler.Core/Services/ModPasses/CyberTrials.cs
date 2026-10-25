@@ -279,8 +279,16 @@ internal static partial class SemanticInjectors
                 .Replace("__gcetGetPlayer()", player, StringComparison.Ordinal))
             .ToArray();
         if (!rows.SequenceEqual(expected, StringComparer.Ordinal))
+        {
+            var mismatch = 0;
+            while (mismatch < Math.Min(rows.Length, expected.Length) &&
+                string.Equals(rows[mismatch], expected[mismatch], StringComparison.Ordinal))
+                mismatch++;
             throw new InvalidOperationException(
-                "CyberTrials author world scan source drift: unsafe to replace existing gameplay.");
+                "CyberTrials author world scan source drift at statement " + mismatch +
+                " (source=" + rows.Length + ", expected=" + expected.Length +
+                "): unsafe to replace existing gameplay.");
+        }
 
         var playerGetter = body.Contains("__gcetGetPlayer()", StringComparison.Ordinal)
             ? "__gcetGetPlayer()" : player;
