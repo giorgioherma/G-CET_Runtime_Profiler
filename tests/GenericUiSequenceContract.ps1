@@ -386,7 +386,12 @@ return Cron
 '@
 New-Item -ItemType Directory -Force (Join-Path $mods 'GenericCronUiFixture\modules') | Out-Null
 Copy-Item -LiteralPath (Join-Path $mods 'GenericCrossFileUiFixture\modules\interactionUI.lua') -Destination (Join-Path $mods 'GenericCronUiFixture\modules\interactionUI.lua') -Force
-$uiFixture=Join-Path $mods 'GenericCronUiFixture\modules\interactionUI.lua'
+$debugOwner='GenericOptionalDebugUiFixture'
+New-Item -ItemType Directory -Force (Join-Path $mods "$debugOwner\modules") | Out-Null
+Copy-Item -LiteralPath (Join-Path $mods 'GenericCronUiFixture\init.lua') -Destination (Join-Path $mods "$debugOwner\init.lua") -Force
+Copy-Item -LiteralPath (Join-Path $mods 'GenericCronUiFixture\modules\Cron.lua') -Destination (Join-Path $mods "$debugOwner\modules\Cron.lua") -Force
+$uiFixture=Join-Path $mods "$debugOwner\modules\interactionUI.lua"
+Copy-Item -LiteralPath (Join-Path $mods 'GenericCronUiFixture\modules\interactionUI.lua') -Destination $uiFixture -Force
 $debugModule=Get-Content -LiteralPath $uiFixture -Raw
 $debugModule=@'
 local debug = true
@@ -616,7 +621,7 @@ try {
     }
     $cronUi=Read-ZipText ($base+'GenericCronUiFixture/init.lua')
     $cronModule=Read-ZipText ($base+'GenericCronUiFixture/modules/Cron.lua')
-    $debugModuleOut=Read-ZipText ($base+'GenericCronUiFixture/modules/interactionUI.lua')
+    $debugModuleOut=Read-ZipText ($base+'GenericOptionalDebugUiFixture/modules/interactionUI.lua')
     if($debugModuleOut -notmatch 'local debug = false' -or
        $debugModuleOut -notmatch 'eng.Log' -or
        $debugModuleOut -notmatch 'if not debug then return end') {
