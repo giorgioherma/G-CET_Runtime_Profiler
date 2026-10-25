@@ -1,0 +1,70 @@
+name: Optional Phase 1+2 Final Stack Audit
+
+# Deliberately independent from build.yml and original-cet-source.yml.
+# User triggers it only for final acceptance reviews.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  phase12-final-audit:
+    name: Advisory final source comparison
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout audit script
+        uses: actions/checkout@v4
+
+      - name: Checkout private reference and optional final source
+        uses: actions/checkout@v4
+        with:
+          repository: giorgioherma/original_cet_source
+          ref: main
+          token: ${{ secrets.GCET_STACK_SOURCES_TOKEN }}
+          persist-credentials: false
+          path: ci-private-stack
+
+      - name: Compare supplied final stack with Phase 1+2
+        shell: bash
+        run: |
+          set -euo pipefail
+          reference="ci-private-stack/PHASE1+2FINAL"
+          final="ci-private-stack/FINAL_AUDIT"
+          zip="ci-private-stack/FINAL_AUDIT.zip"
+          mods="bin/x64/plugins/cyber_engine_tweaks/mods"
+
+          if [ ! -d "$reference/$mods" ]; then
+            echo "::error title=Phase 1+2 reference unavailable::Missing PHASE1+2FINAL in private repository"
+            exit 1
+          fi
+
+          # Supply EITHER a game-root-relative FINAL_AUDIT folder or
+          # a FINAL_AUDIT.zip containing that same game-relative tree.
+          # The final source must be the user's final output, NOT a prior
+          # optimized stack used as an input to generate more optimizations.
+          if [ -f "$zip" ]; then
+            final="$RUNNER_TEMP/gcet-final-audit"
+            mkdir -p "$final"
+            unzip -q "$zip" -d "$final"
+          fi
+
+          if [ ! -d "$final/$mods" ] || ! find "$final/$mods" -type f -name '*.lua' -print -quit | grep -q .; then
+            {
+              echo "## Optional Phase 1+2 final audit — SKIPPED"
+              echo ""
+              echo "No supplied final stack. Add FINAL_AUDIT/bin/x64/plugins/cyber_engine_tweaks/mods/... or FINAL_AUDIT.zip to the private original_cet_source repository, then manually run this workflow."
+              echo ""
+              echo "Normal development CI and untouched-source generation remain unchanged."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "SKIPPED: no final stack supplied"
+            exit 0
+          fi
+
+          node tests/ReportPhase12FinalAudit.cjs "$reference" "$final"
+
+      - name: Remove temporary private files
+        if: always()
+        shell: bash
+        run: |
+          rm -rf ci-private-stack "$RUNNER_TEMP/gcet-final-audit"
