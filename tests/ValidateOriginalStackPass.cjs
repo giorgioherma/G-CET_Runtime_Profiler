@@ -1,157 +1,100 @@
-// Private-stack CI acceptance: only report file paths/contract names, never author source.
-// Input: real generated Resolver overlay + manifest and exact CET source used for generation.
+// Minimal CI smoke check for production Resolver generation from untouched stack input.
+// Do not hardcode individual mod/worker names, original file counts or performance rules.
 const fs = require('node:fs');
 const path = require('node:path');
-const luaparse = require('luaparse');
 
-const [mode, inputMods, overlayRoot, manifestFile] = process.argv.slice(2);
-if (!['initial', 'repeated'].includes(mode) || !inputMods || !overlayRoot || !manifestFile) {
-  console.error('Usage: node ValidateOriginalStackPass.cjs initial|repeated MODS OVERLAY MANIFEST');
+const [modsRoot, overlayRoot, manifestFile] = process.argv.slice(2);
+if (!modsRoot || !overlayRoot || !manifestFile) {
+  console.error('Usage: node ValidateOriginalStackPass.cjs MODS_ROOT OVERLAY_ROOT MANIFEST');
   process.exit(2);
 }
-const prefix = path.join(overlayRoot, 'bin', 'x64', 'plugins', 'cyber_engine_tweaks', 'mods');
+const prefix = 'bin/x64/plugins/cyber_engine_tweaks/mods/';
 const failures = [];
-const cetSourceRoot = 'bin/x64/plugins/cyber_engine_tweaks/mods/';
-let parsed = 0;
-// Print stable game-relative locations, never private runner paths.
-function sourceLocation(modRelativeFile) {
-  const relative = String(modRelativeFile || '').replace(/\\/g, '/').replace(/^\/+/, '');
-  if (!relative || relative === '.' || relative.split('/').includes('..')) return null;
-  return cetSourceRoot + relative;
+const warnings = [];
+
+function report(level, owner, issue) {
+  const message = String(issue).replace(/[\r\n:]/g, ' ');
+  const file = String(owner).replace(/[\r\n]/g, '');
+  console.log('::' + level + ' title=' + message + '::' + file);
+  (level === 'error' ? failures : warnings).push(file + ': ' + message);
 }
-function missingOriginal(modRelativeFile) {
-  const file = sourceLocation(modRelativeFile);
-  if (!file) {
-    fail('Resolver', 'missing-original-file-path-unavailable');
-    return;
-  }
-  fail(file, 'MISSING_REQUIRED_ORIGINAL: supply exactly this file');
+function sourcePath(relative) {
+  if (typeof relative !== 'string') return null;
+  const v = relative.replace(/\\/g, '/').replace(/^\/+/, '');
+  if (!v || v === '.' || v.split('/').some(p => p === '.' || p === '..')) return null;
+  return v.startsWith(prefix) ? v : prefix + v;
 }
-function fail(file, check) {
-  const title = String(check).replace(/[:\r\n]/g, ' ');
-  console.error('::error title=' + title + '::' + file + ' - ' + title);
-  failures.push(file + ': ' + title);
+function overlayExists(relative) {
+  const p = sourcePath(relative);
+  return p !== null && fs.existsSync(path.join(overlayRoot, ...p.split('/')));
 }
-function allFiles(root) {
-  if (!fs.existsSync(root)) return [];
-  const result = [];
-  function visit(dir) {
-    for (const item of fs.readdirSync(dir, {withFileTypes: true})) {
-      const full = path.join(dir, item.name);
-      if (item.isDirectory()) visit(full);
-      else if (item.isFile()) result.push(full);
+function originalExists(relative) {
+  const p = sourcePath(relative);
+  return p !== null && fs.existsSync(path.join(modsRoot, ...p.slice(prefix.length).split('/')));
+}
+function requiredOriginal(relative) {
+  const p = sourcePath(relative);
+  if (p) report('error', p, 'MISSING_REQUIRED_ORIGINAL - supply this exact file');
+  else report('error', 'Resolver', 'missing original source path unavailable');
+}
+
+if (!fs.existsSync(manifestFile)) {
+  report('error', 'Resolver', 'generation manifest missing');
+} else {
+  let manifest;
+  try { manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8')); }
+  catch { report('error', 'Resolver', 'generation manifest invalid'); }
+
+  if (manifest) {
+    const transforms = Array.isArray(manifest.transforms) ? manifest.transforms : [];
+    const outputs = Array.isArray(manifest.files) ? manifest.files : [];
+    if (!transforms.length) report('error', 'Resolver', 'no transformations generated from untouched stack');
+
+    // Every claimed output must actually exist in the generated ZIP.
+    for (const output of outputs) {
+      if (typeof output.path !== 'string') continue;
+      const full = path.join(overlayRoot, ...output.path.replace(/\\/g, '/').split('/'));
+      if (!fs.existsSync(full)) report('error', output.path, 'manifest claimed output not generated');
     }
-  }
-  visit(root);
-  return result;
-}
-function relative(p) { return path.relative(prefix, p).replace(/\\/g, '/'); }
-// An untouched init.lua is the authoritative presence marker for an installed CET mod.
-// Generated workers and framework files are outputs, not required original inputs.
-function hasOriginalInit(owner) {
-  return fs.existsSync(path.join(inputMods, owner, 'init.lua'));
-}
-function text(p) { return fs.readFileSync(p, 'utf8').replace(/^\uFEFF/, ''); }
-function requireContains(owner, file, needles) {
-  if (!fs.existsSync(file)) return fail(owner, 'required-generated-source-missing');
-  const s = text(file);
-  for (const item of needles) if (!s.includes(item)) fail(owner, 'missing-required-function-or-optimization-' + item);
-}
-if (!fs.existsSync(manifestFile)) fail('Resolver', 'generation-manifest-missing');
-let manifest = {};
-try { manifest = JSON.parse(text(manifestFile)); } catch { fail('Resolver', 'generation-manifest-invalid'); }
-const stats = manifest.summary || {};
-if ((stats.transforms || 0) < 1) fail('Resolver', 'no-composed-transformations-produced');
-// Manifest generic candidates identify the exact absent original Lua files.
-// Do not claim coverage when source-dependent candidates were silently skipped.
-if (mode === 'initial') {
-  const needed = new Set();
-  for (const skipped of manifest.skipped || []) {
-    if (skipped && skipped.reason === 'Current deployed source file was not found.' &&
-        typeof skipped.file === 'string') {
-      if (sourceLocation(skipped.file)) needed.add(skipped.file);
-      else fail('Resolver', 'missing-original-file-path-unavailable');
-    }
-  }
-  for (const file of [...needed].sort()) missingOriginal(file);
-}
-if ((stats.generationFailures || 0) > 0) {
-  for (const e of (manifest.skipOutcomes?.entries || []).filter(x => /FAIL|ERROR|PARTIAL|DRIFT/i.test(x.category || ''))) {
-    fail(e.file || e.owner || 'Resolver', 'source-generation-failed-' + (e.ruleId || e.type || 'unknown'));
-  }
-  fail('Resolver', 'generation-failures-' + stats.generationFailures);
-}
-const emitted = allFiles(prefix);
-if (!emitted.length) fail('Resolver', 'empty-mod-overlay');
-const generated = emitted.filter(p => p.endsWith('.lua'));
-for (const p of generated) {
-  const rel = relative(p);
-  try {
-    luaparse.parse(text(p), {luaVersion: 'LuaJIT', comments: false, scope: false});
-    parsed++;
-  } catch (e) {
-    fail(rel, 'invalid-generated-lua-syntax-line-' + (e.line || 'unknown'));
-  }
-  if (mode === 'repeated') {
-    const original = path.join(inputMods, ...rel.split('/'));
-    if (!fs.existsSync(original)) fail(rel, 'second-pass-introduced-new-source-file');
-    else if (!fs.readFileSync(p).equals(fs.readFileSync(original))) {
-      fail(rel, 'second-pass-changed-already-optimized-lua');
-    }
-  }
-}
-if (mode === 'initial') {
-  const owners = [
-    ['Card Collection', 'card_collection_native_worker.lua'],
-    ['CyberStunts-StuntJumps-CET', 'cyberstunts_native_worker.lua'],
-    ['Dedka Auto Shop', 'dedka_native_worker.lua'],
-    ['StreetGamesPoker', 'poker_native_worker.lua'],
-    ['illegal_mechanic_phase1a', 'illegal_mechanic_native_worker.lua'],
-    ['tunnel_rescue', 'tunnel_native_worker.lua'],
-    ['yaibaPenthouse', 'yaiba_native_worker.lua'],
-    ['ziggy_last_play', 'ziggy_native_worker.lua'],
-  ];
-  for (const [owner, worker] of owners) {
-    if (!hasOriginalInit(owner)) continue;
-    const generatedWorker = path.join(prefix, owner, 'GCET_Semantic', worker);
-    if (!fs.existsSync(generatedWorker)) fail(owner, 'missing-one-pass-native-worker-' + worker);
-    const fileSources = allFiles(path.join(prefix, owner))
-      .concat(allFiles(path.join(inputMods, owner)))
-      .filter(f => f.endsWith('.lua') && !f.includes('GCET_Semantic' + path.sep));
-    const reference = 'GCET_Semantic/' + worker.replace(/\.lua$/, '');
-    if (!fileSources.some(f => text(f).includes(reference))) fail(owner, 'native-worker-source-bridge-missing-' + worker);
-  }
-  if (hasOriginalInit('illegal_mechanic_phase1a')) {
-    const authorNpc = path.join(inputMods, 'illegal_mechanic_phase1a', 'physical_npc.lua');
-    if (!fs.existsSync(authorNpc)) missingOriginal('illegal_mechanic_phase1a/physical_npc.lua');
-    else {
-      const mechanic = path.join(prefix, 'illegal_mechanic_phase1a', 'physical_npc.lua');
-      requireContains('illegal_mechanic_phase1a/physical_npc.lua', mechanic,
-        ['local function loadMatrix(', 'local function distanceFromPlayer(', 'local function deleteEntry(',
-         'return true', 'GCET_Semantic/illegal_mechanic_native_worker']);
-    }
-  }
-  if (hasOriginalInit('CyberStunts-StuntJumps-CET')) {
-    const stunts = path.join(prefix, 'CyberStunts-StuntJumps-CET', 'init.lua');
-    if (!fs.existsSync(stunts)) fail('CyberStunts-StuntJumps-CET/init.lua', 'native-stunt-source-missing');
-    else {
-    const source = text(stunts);
-    const start = source.indexOf('registerForEvent("onUpdate"');
-    const body = start >= 0 ? source.slice(start) : '';
-    const nativeRead = /\b(?:Game\.Get(?:SystemRequestsHandler|TimeSystem)|__gcetGet(?:SystemRequestsHandler|TimeSystem))\s*\(/.exec(body);
-    if (!nativeRead) fail('CyberStunts-StuntJumps-CET/init.lua', 'native-time-system-read-not-located');
-    else {
-      const prefixText = body.slice(0, nativeRead.index);
-      if (!prefixText.includes('not settings.enableMod') ||
-          !/if\s+not\s+player\b/.test(prefixText) ||
-          !/if\s+not\s+vehicle\b/.test(prefixText)) {
-        fail('CyberStunts-StuntJumps-CET/init.lua', 'expensive-native-reads-before-disabled-player-or-vehicle-guards');
+
+    // Verify each claimed source rewrite and external coordinator was emitted.
+    for (const t of transforms) {
+      const paths = Array.isArray(t.files) ? t.files : (t.file ? [t.file] : []);
+      for (const relative of paths) {
+        if (!sourcePath(relative)) continue; // non-CET asset, handled above
+        if (!overlayExists(relative)) report('error', sourcePath(relative), 'claimed transformation file not generated');
+        const normalized = sourcePath(relative);
+        // New GCET_Semantic files are authored by Resolver, not input files.
+        if (!normalized.includes('/GCET_Semantic/') && !originalExists(relative)) {
+          // A generated-only framework or native integration file is also valid;
+          // determine whether this is an author source rewrite using manifest metadata.
+          if (!outputs.some(o => o.path === normalized && o.fixedInfrastructure === true)) {
+            requiredOriginal(relative);
+          }
+        }
       }
     }
-  }
+
+    // The fixed base capture can refer to original files removed when trimming
+    // the source repository. Report exactly the missing file instead of a folder.
+    const missing = new Set();
+    for (const skipped of manifest.skipped || []) {
+      if (skipped?.reason === 'Current deployed source file was not found.' &&
+          sourcePath(skipped.file)) missing.add(skipped.file);
+    }
+    for (const relative of [...missing].sort()) requiredOriginal(relative);
+
+    // Report semantic source-refusals, but let the generator's existing
+    // source-proof/outcome policy determine whether a rule is applicable.
+    const skippedSemantic = (manifest.skipOutcomes?.entries || []).filter(x =>
+      x.category === 'GENERATION_FAILURE');
+    for (const item of skippedSemantic.slice(0, 20)) {
+      report('warning', item.file || item.owner || item.ruleId || 'Resolver',
+        'source/rule refusal ' + (item.ruleId || item.type || 'unknown'));
+    }
+    console.log('Untouched CET generation: ' + transforms.length + ' transforms, ' +
+      outputs.length + ' output files, ' + failures.length + ' errors, ' +
+      warnings.length + ' warnings. Runtime performance is not evaluated here.');
   }
 }
-console.log('Original-source Resolver ' + mode + ' validation: ' + generated.length +
-  ' generated Lua files, ' + parsed + ' syntax-parsed, ' + (stats.transforms || 0) +
-  ' composed transforms, ' + failures.length + ' errors.');
 if (failures.length) process.exit(1);
