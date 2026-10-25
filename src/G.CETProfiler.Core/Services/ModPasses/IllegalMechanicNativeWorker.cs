@@ -9,11 +9,14 @@ internal static partial class SemanticInjectors
             return SemanticInjectionResult.Skip("Illegal Mechanic native worker already installed.");
         var crlf=file.Text.Contains("\r\n",StringComparison.Ordinal);
         var s=file.Text.Replace("\r\n","\n",StringComparison.Ordinal);
-        // The native helper is bounded by its own source-level host block.
-        // Logging after the registry build is an author-version detail, not
-        // part of the native wake behavior or an extraction prerequisite.
+        // Stop at the native host's two-space closing "end", NOT the
+        // next newline-terminated "end". Older staged output can contain
+        // "end  log(...)" on one line: consuming past it erased author
+        // loadMatrix(), distanceFromPlayer() and deleteEntry().
+        // The host shape and native callback proof below still fail closed
+        // if this no longer describes exactly one native binding.
         var region = new System.Text.RegularExpressions.Regex(
-            @"(?ms)^  -- G-CET native location:illegal-v3[^\n]*\n.*?^  end[ \t]*\n",
+            @"(?ms)^  -- G-CET native location:illegal-v3[^\n]*\n.*?^  end\b",
             System.Text.RegularExpressions.RegexOptions.CultureInvariant);
         var blocks = region.Matches(s);
         if(blocks.Count!=1)
