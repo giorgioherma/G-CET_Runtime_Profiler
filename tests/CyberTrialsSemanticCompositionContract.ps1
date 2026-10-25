@@ -551,6 +551,9 @@ foreach ($variant in $variants) {
     if ($result.Contains($crlf) -ne $variant.Contains($crlf)) {
         throw 'CyberTrials world scan failed newline-style preservation'
     }
+    if ($result.Contains([string][char]13+[string][char]13+[string][char]10)) {
+        throw 'CyberTrials source writer doubled the Windows CRLF carriage return'
+    }
     $second=[string]$rewriteWorld.Invoke($null,[object[]]@($result))
     if ($second -cne $result) { throw 'CyberTrials world scan must be idempotent' }
 }

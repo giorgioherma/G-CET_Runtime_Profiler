@@ -346,8 +346,10 @@ end
         var replacement = function
             .Replace("__GCET_PLAYER__", playerGetter, StringComparison.Ordinal)
             .Replace("__GCET_POSITION__", positionGetter, StringComparison.Ordinal)
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
             .Replace("\n", newline, StringComparison.Ordinal);
-        var helper = distanceHelper.Replace("\n", newline, StringComparison.Ordinal);
+        var helper = distanceHelper.Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace("\n", newline, StringComparison.Ordinal);
         var match = updates[0];
         return source[..match.Index] + helper + replacement + source[(match.Index + match.Length)..];
     }
