@@ -9,6 +9,13 @@
 **Mandatory engineering contracts:** [HANDOFF/CORE](HANDOFF/CORE.md), [Resolver PROJECT-CONTRACT](resolver/PROJECT-CONTRACT.md), [BUILD-PIPELINE](HANDOFF/BUILD-PIPELINE.md).  
 **Prior work, not the active task:** [archived native/Lua callback and 0-Engine allocation investigation](history/NATIVE-LUA-CALLBACK-LATEST-WORK-ARCHIVE-20261024.md). Its experimental GO/NO-GO and runtime gaps were not resolved merely by moving the notes.
 
+## 2026-10-25 CourierJobs optional final-audit exception
+
+- The user also selected `bin/x64/plugins/cyber_engine_tweaks/mods/CourierJobs/init.lua` for **manual Phase 1+2 reconciliation**. This is a **different reason** from the six wrong-base AudioXL files: CourierJobs v5 relocated prior v3.x Lua gameplay/update work into REDscript, and the historical optimized source/layout is not a valid required byte/marker shape for the new author version.
+- The separate optional `tests/ReportPhase12FinalAudit.cjs` now omits **only** this exact CourierJobs `init.lua` path from automatic reference file/hash/marker parity, labels it `CourierJobs author v5 / REDscript relocation` in the manual-review queue, and **continues comparing** other CourierJobs Lua, coordinators and dependencies normally. All established applicable G-CET optimization behavior remains mandatory; manually verify current v5 source-proven hooks instead of synthesizing old removed callbacks.
+- The earlier six exact AudioXL `init.lua` exceptions and explicit audio-related file exclusions remain. No mod-directory-wide exemption, routine build/original-source change, hard-blocking historical parity gate or additional semantic pass was added.
+- A deterministic local in-memory audit test verified CourierJobs `init.lua` is queued/excluded, its non-audio coordinator still surfaces missing optimization markers, contaminated AudioXL markers are excluded, and non-audio markers in affected mods still appear. **No real final-stack input has been supplied and no optional final audit has been run against that input.**
+
 ## 2026-10-25 precise AudioXL final-audit exclusion (user-corrected)
 
 - The **only six identified wrong-base historical AudioXL bridge files** are `bin/x64/plugins/cyber_engine_tweaks/mods/<owner>/init.lua` for: `DedraJNCJoytoy`, `Dedrapanamgoondate`, `f80h_aroused_expressions`, `FenixRebirth`, `ImmersiveVDialogueExpanded`, `rarobottruck_1`. The user's Windows absolute paths refer to this older mistaken source, **not** approved clean originals.
