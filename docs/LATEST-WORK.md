@@ -9,6 +9,13 @@
 **Mandatory engineering contracts:** [HANDOFF/CORE](HANDOFF/CORE.md), [Resolver PROJECT-CONTRACT](resolver/PROJECT-CONTRACT.md), [BUILD-PIPELINE](HANDOFF/BUILD-PIPELINE.md).  
 **Prior work, not the active task:** [archived native/Lua callback and 0-Engine allocation investigation](history/NATIVE-LUA-CALLBACK-LATEST-WORK-ARCHIVE-20261024.md). Its experimental GO/NO-GO and runtime gaps were not resolved merely by moving the notes.
 
+## 2026-10-25 precise AudioXL final-audit exclusion (user-corrected)
+
+- The **only six identified wrong-base historical AudioXL bridge files** are `bin/x64/plugins/cyber_engine_tweaks/mods/<owner>/init.lua` for: `DedraJNCJoytoy`, `Dedrapanamgoondate`, `f80h_aroused_expressions`, `FenixRebirth`, `ImmersiveVDialogueExpanded`, `rarobottruck_1`. The user's Windows absolute paths refer to this older mistaken source, **not** approved clean originals.
+- In the **separate manual final audit only**, exclude those six exact `init.lua` paths and explicitly audio-related paths from **automatic Phase 1+2 file/hash/marker parity findings**. **Do not exclude their entire mod directories**: non-audio modules, generated coordinators, other Lua and dependencies in these six mods remain subject to the normal final-audit comparison. A narrower correction replaced an earlier overbroad directory-wide exception.
+- **Optimization contract is unchanged:** G-CET optimizations previously carried inline in those six `init.lua` files remain authoritative; compare them **manually** against untouched current author source with the corrected AudioXL integration, including non-audio optimizations and equivalent relocated workers, rather than copy the old audio-contaminated Lua or mark them automatically accepted. No false hard lock on historic AudioXL gameplay/bridge code.
+- The routine `build.yml` and private untouched-source generation checks are **unchanged**. The manual workflow remains optional and skips when no `FINAL_AUDIT` input is supplied.
+
 ## 2026-10-25 optional final Phase 1+2 comparison (separate from normal CI)
 
 - **User-approved separation:** Keep normal `build.yml` plus `original-cet-source.yml` as the lightweight routine check: untouched source → one Resolver pass → emitted-file presence. Do **not** gate normal CI against Phase 1+2 completeness; the historical Phase 1+2 reference applies only to this final preservation task.
