@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   original-source-pass:
@@ -38,6 +39,37 @@ jobs:
       - name: Build actual Resolver
         shell: pwsh
         run: dotnet publish src/G.CETResolver.App/G.CETResolver.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o ci-resolver
+
+      - name: Import the main build's verified native location service
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Same pinned native service and checksum contract as build.yml.
+          $sourceSha = '71aace123a2fb77bbf5a50386a34dcd308606c5c'
+          $endpoint = 'repos/${{ github.repository }}/actions/workflows/native-static-locations.yml/runs?branch=dev%2Fnative-fixed-cache-player-state&per_page=100'
+          $runs = (& gh api $endpoint | ConvertFrom-Json).workflow_runs
+          if ($LASTEXITCODE -ne 0) { throw 'NATIVE_RUNTIME_INPUT_MISSING: cannot query pinned service CI runs' }
+          $matched = @($runs | Where-Object {
+            $_.head_sha -eq $sourceSha -and $_.status -eq 'completed' -and $_.conclusion -eq 'success'
+          } | Sort-Object run_started_at -Descending)
+          if ($matched.Count -lt 1) { throw 'NATIVE_RUNTIME_INPUT_MISSING: pinned native service CI run not available' }
+          $runId = [string]$matched[0].id
+          gh run download $runId --repo ${{ github.repository }} --name gcet-static-native-experimental --dir native-location-from-ci
+          if ($LASTEXITCODE -ne 0) { throw 'NATIVE_RUNTIME_INPUT_MISSING: cannot download native service artifact' }
+          $root = 'native-location-from-ci/red4ext/plugins/G-CET-StaticLocations'
+          $dll = Join-Path $root 'GCETStaticLocations.dll'
+          $sidecar = Join-Path $root 'SHA256.txt'
+          if (!(Test-Path $dll -PathType Leaf) -or !(Test-Path $sidecar -PathType Leaf)) {
+            throw 'NATIVE_RUNTIME_INPUT_MISSING: pinned DLL or checksum missing'
+          }
+          $actual = (Get-FileHash $dll -Algorithm SHA256).Hash.ToLowerInvariant()
+          $expected = (Get-Content $sidecar -Raw).Trim().ToLowerInvariant()
+          if (!$expected.StartsWith("$actual ")) { throw 'NATIVE_RUNTIME_HASH_MISMATCH' }
+          $dest = 'ci-resolver/runtime/native'
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Copy-Item $dll (Join-Path $dest 'GCETStaticLocations.dll')
 
       - name: Generate one complete pass from original CET
         shell: pwsh
