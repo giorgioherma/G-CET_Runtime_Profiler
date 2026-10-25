@@ -35,6 +35,16 @@ internal static partial class SemanticInjectors
                     !live.Text.Contains("runSitAnywhereFrame(dt)", StringComparison.Ordinal))
                     throw new InvalidOperationException(
                         "SitAnywhere scheduler source/worker is partially installed.");
+                var partialLogic = context.FindFile("modules/logic.lua",
+                    "function logic:onUpdate", "function logic:hideAllWorkspots");
+                var partialWorld = context.FindFile("modules/worldInteraction.lua",
+                    "world.interactions", "function world.update");
+                var completed = PreserveSitAnywhereSourceFastpaths(
+                    context, partialLogic.Text, partialWorld.Text);
+                if (completed.Logic != partialLogic.Text) context.Write(partialLogic, completed.Logic);
+                if (completed.World != partialWorld.Text) context.Write(partialWorld, completed.World);
+                if (completed.Logic != partialLogic.Text || completed.World != partialWorld.Text || completed.LoggerChanged)
+                    return SemanticInjectionResult.Success("Completed missing SitAnywhere source-local optimization stages without replacing the external worker.");
                 return SemanticInjectionResult.Skip(
                     "SitAnywhere complete scheduler and frame worker already installed.");
             }
@@ -332,10 +342,324 @@ return M
             ? initText.Replace("\n", "\r\n", StringComparison.Ordinal) : initText,
             originalCrLf ? ownedMarker.Replace("\n", "\r\n", StringComparison.Ordinal) : ownedMarker));
         context.Write(cron, MarkOwned(cronText, ownedMarker));
+        var preserved = PreserveSitAnywhereSourceFastpaths(context, logicText, worldText);
+        logicText = preserved.Logic;
+        worldText = preserved.World;
         context.Write(logic, MarkOwned(logicText, ownedMarker));
         context.Write(world, MarkOwned(worldText, ownedMarker));
         return SemanticInjectionResult.Success(
             "Made Sit Anywhere hard-dormant when scanner/workspot/transition/timer/hub/mappin state is fully idle, while preserving rendered-frame cadence for live scanner, world, timer and workspot work.");
+    }
+
+
+    // Integral to the authoritative SitAnywhere first-pass generator.
+    // These source-local fastpaths do not own a second scheduler and are
+    // independently upgradeable on a partially optimized installation.
+    private static (string Logic,string World,bool LoggerChanged) PreserveSitAnywhereSourceFastpaths(
+        SemanticPatchContext context, string logicInput, string worldInput)
+    {
+        static string NL(string source) => source.Replace("\r\n", "\n", StringComparison.Ordinal);
+        static string Restore(string original,string value) =>
+            original.Contains("\r\n",StringComparison.Ordinal)
+                ? value.Replace("\n","\r\n",StringComparison.Ordinal) : value;
+        static string ReplaceUnique(string input,string before,string after,string stage)
+        {
+            if (input.Split(before,StringSplitOptions.None).Length!=2)
+                throw new InvalidOperationException("SitAnywhere "+stage+" source drift.");
+            return input.Replace(before,after,StringComparison.Ordinal);
+        }
+        static string Method(string input,string signature,Func<string,string> transform)
+        {
+            var expr=new Regex(@"(?m)^"+Regex.Escape(signature)+
+                @"[^\n]*\n[\s\S]*?^end[ \t]*(?=\n|\z)",
+                RegexOptions.CultureInvariant);
+            var found=expr.Matches(input);
+            if(found.Count==0)
+            {
+                if(input.Contains(signature,StringComparison.Ordinal))
+                    throw new InvalidOperationException("SitAnywhere "+signature+" boundary drift.");
+                return input; // Older supported author source may omit this method.
+            }
+            if(found.Count!=1)
+                throw new InvalidOperationException("SitAnywhere "+signature+" ambiguous.");
+            var m=found[0];
+            var result=transform(m.Value);
+            return input[..m.Index]+result+input[(m.Index+m.Length)..];
+        }
+        var l=NL(logicInput);
+        var w=NL(worldInput);
+        var needsLogger = l.Contains("function logic:getHit(",StringComparison.Ordinal) ||
+            l.Contains("function logic:getTargetLocation(",StringComparison.Ordinal);
+        if(needsLogger)
+        {
+            l=Method(l,"function logic:isValidEnviroment()",body=>
+            {
+                if(body.Contains("local player = GetPlayer()",StringComparison.Ordinal))
+                {
+                    if(!body.Contains("local psm = player:GetPlayerStateMachineBlackboard()",StringComparison.Ordinal) ||
+                       !body.Contains("if not player then return false end",StringComparison.Ordinal))
+                        throw new InvalidOperationException("SitAnywhere partial environment caching.");
+                    return body;
+                }
+                const string zone="local zone = FromVariant(GetPlayer():GetPlayerStateMachineBlackboard():GetVariant(GetAllBlackboardDefs().PlayerStateMachine.SecurityZoneData))";
+                if(!body.Contains(zone,StringComparison.Ordinal) ||
+                   !body.Contains("GetPlayer():GetHudManager():IsBraindanceActive()",StringComparison.Ordinal))
+                    throw new InvalidOperationException("SitAnywhere environment control flow changed.");
+                body=body.Replace(zone,
+                    "local player = GetPlayer()\n    if not player then return false end\n"+
+                    "    local defs = GetAllBlackboardDefs()\n"+
+                    "    local psm = player:GetPlayerStateMachineBlackboard()\n"+
+                    "    if not psm then return false end\n"+
+                    "    local zone = FromVariant(psm:GetVariant(defs.PlayerStateMachine.SecurityZoneData))",
+                    StringComparison.Ordinal);
+                body=body.Replace("GetPlayer():GetPlayerStateMachineBlackboard()", "psm",
+                    StringComparison.Ordinal);
+                body=body.Replace("GetAllBlackboardDefs()", "defs",StringComparison.Ordinal);
+                // The newly generated local declarations are restored explicitly.
+                body=body.Replace("local defs = defs", "local defs = GetAllBlackboardDefs()",StringComparison.Ordinal)
+                         .Replace("local psm = psm","local psm = player:GetPlayerStateMachineBlackboard()",StringComparison.Ordinal);
+                body=body.Replace("GetPlayer()", "player",StringComparison.Ordinal)
+                         .Replace("local player = player", "local player = GetPlayer()",StringComparison.Ordinal);
+                return body;
+            });
+            l=Method(l,"function logic:getTargetLocation()",body=>
+            {
+                if(!body.Contains("local presetHit = nil",StringComparison.Ordinal))
+                    body=ReplaceUnique(body,
+                        "    local presetHit = self:getHit(\"preset\")",
+                        "    local presetHit = nil\n    if not groupHit then presetHit = self:getHit(\"preset\") end",
+                        "optional preset raycast");
+                if(!body.Contains("if logger.isActive() then",StringComparison.Ordinal))
+                    body=ReplaceUnique(body,
+                        "    logger.log(\"Lean yaw\", normal:ToRotation().yaw)\n"+
+                        "    logger.log(\"Player yaw\", GetPlayer():GetWorldForward():ToRotation().yaw + 180)",
+                        "    if logger.isActive() then\n"+
+                        "        logger.log(\"Lean yaw\", normal:ToRotation().yaw)\n"+
+                        "        logger.log(\"Player yaw\", GetPlayer():GetWorldForward():ToRotation().yaw + 180)\n"+
+                        "    end","lazy target diagnostics");
+                return body;
+            });
+            l=Method(l,"function logic:getHit(castType)",body=>
+            {
+                if(body.Contains("local valid = result:IsValid()",StringComparison.Ordinal))
+                {
+                    if(!body.Contains("if not valid then return end",StringComparison.Ordinal) ||
+                       !body.Contains("local resultPosition = Vector4.Vector3To4(result.position)",StringComparison.Ordinal) ||
+                       body.IndexOf("if not valid then return end",StringComparison.Ordinal)>
+                       body.IndexOf("local resultPosition = Vector4.Vector3To4(result.position)",StringComparison.Ordinal))
+                        throw new InvalidOperationException("SitAnywhere invalid partial raycast validation.");
+                    return body;
+                }
+                if(!body.Contains("if not result:IsValid() then return end",StringComparison.Ordinal) ||
+                   !body.Contains("logger.log(\"Cast normal pitch\",",StringComparison.Ordinal) ||
+                   !body.Contains("GetObjectClosestToCrosshair(",StringComparison.Ordinal))
+                    throw new InvalidOperationException("SitAnywhere raycast author behavior changed.");
+                var camera=Regex.Match(body,
+                    @"(?<getter>(?:Game\.GetCameraSystem|__gcetGetCameraSystem)\(\)):GetActiveCameraForward\(\)");
+                if(!camera.Success)
+                    throw new InvalidOperationException("SitAnywhere camera getter ownership changed.");
+                var getter=camera.Groups["getter"].Value;
+                body=ReplaceUnique(body,
+                    "    local playerHead = utils.addVector(GetPlayer():GetWorldPosition(), Vector4.new(0, 0, 1.6, 0))\n"+
+                    "    local from = utils.addVector(playerHead, utils.multVector("+getter+":GetActiveCameraForward(), forwardOffset))\n"+
+                    "    local to = utils.addVector(playerHead, utils.multVector("+getter+":GetActiveCameraForward(), 100))",
+                    "    local player = GetPlayer()\n    if not player then return end\n"+
+                    "    local playerPosition = player:GetWorldPosition()\n"+
+                    "    local cameraForward = "+getter+":GetActiveCameraForward()\n"+
+                    "    local playerHead = utils.addVector(playerPosition, Vector4.new(0, 0, 1.6, 0))\n"+
+                    "    local from = utils.addVector(playerHead, utils.multVector(cameraForward, forwardOffset))\n"+
+                    "    local to = utils.addVector(playerHead, utils.multVector(cameraForward, 100))",
+                    "cached raycast setup");
+                var oldLogs=
+                    "    logger.log(\"Cast castType\", castType)\n"+
+                    "    logger.log(\"Cast succes\", result:IsValid())\n"+
+                    "    logger.log(\"Cast distance\", Vector4.Vector3To4(result.position):Distance(GetPlayer():GetWorldPosition()))\n"+
+                    "    logger.log(\"Cast yDist\", Vector4.Vector3To4(result.position).z - GetPlayer():GetWorldPosition().z)\n"+
+                    "    logger.log(\"Cast normal pitch\", math.abs(Vector4.Vector3To4(result.normal):ToRotation().pitch))\n\n"+
+                    "    if not result:IsValid() then return end -- No hit";
+                var newLogs=
+                    "    local valid = result:IsValid()\n"+
+                    "    if logger.isActive() then\n"+
+                    "        logger.log(\"Cast castType\", castType)\n"+
+                    "        logger.log(\"Cast succes\", valid)\n"+
+                    "    end\n"+
+                    "    if not valid then return end -- No hit\n\n"+
+                    "    local resultPosition = Vector4.Vector3To4(result.position)\n"+
+                    "    local resultNormal = Vector4.Vector3To4(result.normal)\n"+
+                    "    if logger.isActive() then\n"+
+                    "        logger.log(\"Cast distance\", resultPosition:Distance(playerPosition))\n"+
+                    "        logger.log(\"Cast yDist\", resultPosition.z - playerPosition.z)\n"+
+                    "        logger.log(\"Cast normal pitch\", math.abs(resultNormal:ToRotation().pitch))\n"+
+                    "    end";
+                body=ReplaceUnique(body,oldLogs,newLogs,"raycast validation before debug");
+                body=ReplaceUnique(body,
+                    "Vector4.Vector3To4(result.position):Distance(GetPlayer():GetWorldPosition()) > 2.5",
+                    "resultPosition:Distance(playerPosition) > 2.5","distance cache");
+                body=ReplaceUnique(body,
+                    "local yDist = Vector4.Vector3To4(result.position).z - GetPlayer():GetWorldPosition().z",
+                    "local yDist = resultPosition.z - playerPosition.z","vertical cache");
+                body=ReplaceUnique(body,
+                    "if math.abs(Vector4.Vector3To4(result.normal):ToRotation().pitch) < 80 or math.abs(Vector4.Vector3To4(result.normal):ToRotation().pitch) > 95 then -- Try custom normals, given ones are sometimes faulty",
+                    "local normalPitch = math.abs(resultNormal:ToRotation().pitch)\n"+
+                    "    if normalPitch < 80 or normalPitch > 95 then -- Try custom normals, given ones are sometimes faulty","normal pitch cache");
+                body=ReplaceUnique(body,
+                    "        logger.log(\"Custom normal pitch\", math.abs(normal:ToRotation().pitch))\n"+
+                    "        logger.log(\"Custom normal z1\", p1.position.z)\n"+
+                    "        logger.log(\"Custom normal z2\", p2.position.z)\n"+
+                    "        logger.log(\"Custom normal z3\", p3.position.z)",
+                    "        if logger.isActive() then\n"+
+                    "            logger.log(\"Custom normal pitch\", math.abs(normal:ToRotation().pitch))\n"+
+                    "            logger.log(\"Custom normal z1\", p1.position.z)\n"+
+                    "            logger.log(\"Custom normal z2\", p2.position.z)\n"+
+                    "            logger.log(\"Custom normal z3\", p3.position.z)\n"+
+                    "        end","custom normal logging");
+                body=body.Replace("Vector4.Vector3To4(result.normal):ToRotation().pitch) < 80",
+                    "normal:ToRotation().pitch) < 80",StringComparison.Ordinal)
+                    .Replace("Vector4.Vector3To4(result.normal):ToRotation().pitch) > 95",
+                    "normal:ToRotation().pitch) > 95",StringComparison.Ordinal);
+                body=ReplaceUnique(body,
+                    "GetObjectClosestToCrosshair(GetPlayer(), TSQ_NPC())",
+                    "GetObjectClosestToCrosshair(player, TSQ_NPC())","NPC proximity player reuse");
+                body=ReplaceUnique(body,
+                    "target:GetWorldPosition():Distance(Vector4.Vector3To4(result.position))",
+                    "target:GetWorldPosition():Distance(resultPosition)","NPC proximity hit reuse");
+                return body;
+            });
+            l=Method(l,"function logic:getForwardNormals(origin, castType)",body=>
+            {
+                if(body.Contains("local player = GetPlayer()",StringComparison.Ordinal)) return body;
+                if(!body.Contains("GetPlayer():GetWorldForward():RotByAngleXY(angle)",StringComparison.Ordinal))
+                    throw new InvalidOperationException("SitAnywhere angled scan ownership changed.");
+                body=ReplaceUnique(body,"    local results = {}",
+                    "    local results = {}\n    local player = GetPlayer()\n    if not player then return end",
+                    "forward scan player cache");
+                return body.Replace("GetPlayer():GetWorldForward():RotByAngleXY(angle)",
+                    "player:GetWorldForward():RotByAngleXY(angle)",StringComparison.Ordinal);
+            });
+            l=Method(l,"function logic:onUpdate()",body=>
+            {
+                if(body.Contains("if logger.isActive() then",StringComparison.Ordinal)) return body;
+                return ReplaceUnique(body,
+                    "    logger.log(\"Status\", self.isScanning, self:isValidEnviroment(), self.interface)",
+                    "    if logger.isActive() then\n"+
+                    "        logger.log(\"Status\", self.isScanning, self:isValidEnviroment(), self.interface)\n"+
+                    "    end","expensive per-frame debug arguments");
+            });
+        }
+
+        var fullWorld=w.Contains("Vector4.Distance(posPlayer, interaction.pos)",StringComparison.Ordinal);
+        if(fullWorld)
+        {
+            w=Method(w,"function world.update()",body=>
+            {
+                if(body.Contains("local distSq = distanceSquared(",StringComparison.Ordinal))
+                    return body;
+                if(!body.Contains("local posPlayer = GetPlayer():GetWorldPosition()",StringComparison.Ordinal) ||
+                   !body.Contains("local playerForward = GetPlayer():GetWorldForward()",StringComparison.Ordinal))
+                    throw new InvalidOperationException("SitAnywhere position hotpath changed.");
+                body=ReplaceUnique(body,
+                    "    local posPlayer = GetPlayer():GetWorldPosition()\n    posPlayer.z = posPlayer.z + 1\n    local playerForward = GetPlayer():GetWorldForward()",
+                    "    local player = GetPlayer()\n    if not player then return end\n"+
+                    "    local posPlayer = player:GetWorldPosition()\n"+
+                    "    posPlayer.z = posPlayer.z + 1\n"+
+                    "    local playerForward = player:GetWorldForward()",
+                    "world player reuse");
+                body=ReplaceUnique(body,
+                    "        local update = interaction.shown",
+                    "        local update = interaction.shown\n"+
+                    "        local distSq = distanceSquared(posPlayer, interaction.pos)\n"+
+                    "        local interactionRange = interaction.interactionRange",
+                    "world distance once");
+                body=ReplaceUnique(body,
+                    "Vector4.Distance(posPlayer, interaction.pos) < interaction.interactionRange",
+                    "distSq < (interactionRange * interactionRange)",
+                    "world look-at range");
+                body=ReplaceUnique(body,
+                    "Vector4.Distance(posPlayer, interaction.pos) < interaction.iconRange",
+                    "distSq < (interaction.iconRange * interaction.iconRange)",
+                    "world optional icon range");
+                return body;
+            });
+        }
+        else if(w.Contains("local distSq = distanceSquared(",StringComparison.Ordinal))
+        {
+            if(!w.Contains("local player = GetPlayer()",StringComparison.Ordinal) ||
+               !w.Contains("if not player then return end",StringComparison.Ordinal))
+                throw new InvalidOperationException("SitAnywhere partial distance scan.");
+        }
+
+        if(w.Contains("function world.init()",StringComparison.Ordinal))
+        {
+            w=Method(w,"function world.init()",body=>
+            {
+                if(body.Contains("if not pos then pos = mappin:GetWorldPosition() end",StringComparison.Ordinal))
+                    return body;
+                if(!body.Contains("local pos = mappin:GetWorldPosition()",StringComparison.Ordinal) ||
+                   !body.Contains("Vector4.Distance(pos, interaction.pos) < 0.05 and interaction.shown",StringComparison.Ordinal))
+                {
+                    if(body.Contains("mappin:GetWorldPosition()",StringComparison.Ordinal))
+                        throw new InvalidOperationException("SitAnywhere mappin observer behavior drift.");
+                    return body;
+                }
+                body=ReplaceUnique(body,
+                    "        local pos = mappin:GetWorldPosition()",
+                    "        local pos = nil","defer native mappin position");
+                body=ReplaceUnique(body,
+                    "            if Vector4.Distance(pos, interaction.pos) < 0.05 and interaction.shown then",
+                    "            if interaction.shown then\n"+
+                    "                if not pos then pos = mappin:GetWorldPosition() end\n"+
+                    "                if distanceSquared(pos, interaction.pos) < 0.0025 then",
+                    "observer interaction prefilter");
+                var tint=Regex.Match(body,@"(?m)^(?<pad>[ \t]*)this\.iconWidget:SetTintColor\([^\n]*\)\s*$");
+                if(!tint.Success)
+                    throw new InvalidOperationException("SitAnywhere observer icon write drift.");
+                var tail=body[(tint.Index+tint.Length)..];
+                if(!tail.StartsWith("\n            end\n        end",StringComparison.Ordinal))
+                    throw new InvalidOperationException("SitAnywhere observer loop closure drift.");
+                body=body[..(tint.Index+tint.Length)]+
+                    "\n                end"+body[(tint.Index+tint.Length)..];
+                return body;
+            });
+        }
+        if((w.Contains("local distSq = distanceSquared(",StringComparison.Ordinal) ||
+             w.Contains("distanceSquared(pos, interaction.pos)",StringComparison.Ordinal)) &&
+           !w.Contains("local function distanceSquared(",StringComparison.Ordinal))
+        {
+            var i=w.IndexOf("function world.init()",StringComparison.Ordinal);
+            if(i<0) throw new InvalidOperationException("SitAnywhere distance helper owner missing.");
+            w=w[..i]+
+                "local function distanceSquared(a, b)\n"+
+                "    local dx = a.x - b.x\n"+
+                "    local dy = a.y - b.y\n"+
+                "    local dz = a.z - b.z\n"+
+                "    return dx * dx + dy * dy + dz * dz\n"+
+                "end\n\n"+w[i..];
+        }
+
+        var loggerChanged=false;
+        if(needsLogger)
+        {
+            var loggerFile=context.FindFile("modules/logger.lua",
+                "function logger.log", "local active");
+            var logger=NL(loggerFile.Text);
+            if(!logger.Contains("function logger.isActive()",StringComparison.Ordinal))
+            {
+                logger=ReplaceUnique(logger,
+                    "function logger.log(title, ...)",
+                    "function logger.isActive()\n    return active\nend\n\n"+
+                    "function logger.log(title, ...)","logger active getter");
+                loggerChanged=true;
+                var output=Restore(loggerFile.Text,logger);
+                if(!output.Contains("-- G-CET semantic:sitanywhere",StringComparison.Ordinal))
+                    output="-- G-CET semantic:sitanywhere\n"+output;
+                context.Write(loggerFile,output);
+            }
+            else if(!logger.Contains("function logger.isActive()\n    return active\nend",
+                    StringComparison.Ordinal))
+                throw new InvalidOperationException("SitAnywhere logger completion drift.");
+        }
+
+        return (Restore(logicInput,l),Restore(worldInput,w),loggerChanged);
     }
 
 

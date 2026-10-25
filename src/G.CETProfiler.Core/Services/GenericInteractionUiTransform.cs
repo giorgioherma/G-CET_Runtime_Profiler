@@ -486,7 +486,48 @@ internal static class GenericInteractionUiTransform
                 .Replace("\r\n","\n",StringComparison.Ordinal);
             var init=Read(initBytes);
             var cron=Read(cronBytes);
-            var ui=Read(File.ReadAllBytes(uiPath));
+            var uiRel=owner+"/modules/interactionUI.lua";
+            var uiBytes=staged.TryGetValue(uiRel,out var currentUi)
+                ?currentUi:File.ReadAllBytes(uiPath);
+            var ui=Read(uiBytes);
+            // Optional interaction diagnostic logger. Prove a source-local
+            // debug-only print helper before disabling its hot default; do not
+            // rewrite author interaction logic or attach a second worker.
+            // This is part of the existing generic interactionUI generator.
+            var logger=Regex.Matches(ui,
+                @"(?m)^(?<indent>[ \t]*)local\s+debug\s*=\s*true[ \t]*\n"+
+                @"\k<indent>local\s+function\s+log\s*\(\s*text\s*\)[ \t]*\n"+
+                @"[ \t]+if\s+not\s+debug\s+then\s+return\s+end[ \t]*\n"+
+                @"[ \t]+print\s*\(\s*text\s*\)[ \t]*\n"+
+                @"\k<indent>end[ \t]*(?=\n|\z)",
+                RegexOptions.CultureInvariant);
+            if(logger.Count==1 &&
+               Regex.Matches(ui,@"\bdebug\b",RegexOptions.CultureInvariant).Count==2 &&
+               Regex.Matches(ui,@"\blog\s*\(",RegexOptions.CultureInvariant).Count>1)
+            {
+                var label=owner.Replace("\\","\\\\",StringComparison.Ordinal)
+                    .Replace("\"","\\\"",StringComparison.Ordinal);
+                var transformed=ui[..logger[0].Index]+
+                    "local debug = false\n"+
+                    "local function log(text)\n"+
+                    "    if not debug then return end\n"+
+                    "    local ok, eng = pcall(GetMod, \"0-Engine\")\n"+
+                    "    if ok and type(eng) == \"table\" and type(eng.Log) == \"function\" then\n"+
+                    "        eng.Log(\""+label+"\", tostring(text), \"debug\")\n"+
+                    "    else\n"+
+                    "        print(text)\n"+
+                    "    end\n"+
+                    "end"+ui[(logger[0].Index+logger[0].Length)..];
+                if(uiBytes.Length>=3&&uiBytes[0]==0xef&&uiBytes[1]==0xbb&&uiBytes[2]==0xbf)
+                    transformed="\uFEFF"+transformed;
+                if(System.Text.Encoding.UTF8.GetString(uiBytes).Contains("\r\n",StringComparison.Ordinal))
+                    transformed=transformed.Replace("\n","\r\n",StringComparison.Ordinal);
+                staged[uiRel]=System.Text.Encoding.UTF8.GetBytes(transformed);
+                counts[uiRel]=counts.TryGetValue(uiRel,out var debugCount)?debugCount+1:1;
+                manifest.Add(new {type="GENERIC_INTERACTION_UI_DEBUG_LOG",owner,file=uiRel,
+                    proof="Source-verified isolated optional debug print helper; author UI behavior unchanged."});
+                applied++;
+            }
             if(Regex.Matches(init,@"(?m)^[ \t]*local\s+Cron\s*=\s*require\s*\(\s*['""]modules/Cron['""]\s*\)").Count!=1 ||
                Regex.Matches(init,@"(?m)^[ \t]*local\s+interactionUI\s*=\s*require\s*\(\s*['""]modules/interactionUI['""]\s*\)").Count!=1 ||
                !TryProveNamedFunction(ui,"ui.update",out var proof) ||
@@ -521,6 +562,26 @@ internal static class GenericInteractionUiTransform
             if(alreadyTimer &&
                !cron.Contains("function Cron.HasActiveTimers()",StringComparison.Ordinal))
                 continue; // Never emit a caller without its actual API.
+            // A counted registry is not the same as runnable timers. Paused
+            // timers remain registered; halted timers may await prune.
+            // Source-prove the lifecycle before changing the primary writer.
+            var supportedTimerLifecycle =
+                Regex.IsMatch(cron, @"if\s+timer\.active\s+then") &&
+                Regex.IsMatch(cron, @"if\s+not\s+timer\.halted\s+then") &&
+                Regex.IsMatch(cron, @"\bprune\s*=\s*true") &&
+                cron.Contains("timer.halted = true",StringComparison.Ordinal);
+            const string legacyProbe = "function Cron.HasActiveTimers()\n    return #timers > 0\nend";
+            const string provenProbe = "function Cron.HasActiveTimers()\n" +
+                "    for _, timer in ipairs(timers) do\n" +
+                "        if timer.active and not timer.halted then return true end\n" +
+                "    end\n" +
+                "    return prune\n" +
+                "end";
+            var requestedProbe = supportedTimerLifecycle ? provenProbe : legacyProbe;
+            var hadLegacyProbe=cron.Contains(legacyProbe,StringComparison.Ordinal);
+            if(cron.Contains("function Cron.HasActiveTimers()",StringComparison.Ordinal) &&
+               !hadLegacyProbe && !cron.Contains(provenProbe,StringComparison.Ordinal))
+                continue; // Distinct author-owned helper: refuse foreign semantics.
             var newInit=init;
             var newCron=cron;
             if(timer.Count==1 && !alreadyTimer)
@@ -528,15 +589,17 @@ internal static class GenericInteractionUiTransform
                 if(cron.Contains("function Cron.HasActiveTimers()",StringComparison.Ordinal))
                     continue; // Different author implementation: fail closed.
                 newCron=cron.Replace("function Cron.Update(delta)",
-                    "function Cron.HasActiveTimers()\n"+
-                    "    return #timers > 0\n"+
-                    "end\n\nfunction Cron.Update(delta)",
+                    requestedProbe + "\n\nfunction Cron.Update(delta)",
                     StringComparison.Ordinal);
                 newInit=Regex.Replace(newInit,
                     @"(?m)^(?<pad>[ \t]*)Cron\.Update\s*\(\s*delta\s*\)[ \t]*$",
                     "$"+"{pad}-- G-CET source-proven timer/UI idle-v1\n"+
                     "$"+"{pad}if Cron.HasActiveTimers() then Cron.Update(delta) end");
             }
+            // Upgrade a proven partially generated source in this SAME
+            // authoritative producer; no independent repair-only pass.
+            if(hadLegacyProbe && supportedTimerLifecycle)
+                newCron = newCron.Replace(legacyProbe, provenProbe, StringComparison.Ordinal);
             if(uiCalls.Count==1)
                 newInit=Regex.Replace(newInit,
                     @"(?m)^(?<pad>[ \t]*)interactionUI\.update\s*\(\s*\)[ \t]*$",

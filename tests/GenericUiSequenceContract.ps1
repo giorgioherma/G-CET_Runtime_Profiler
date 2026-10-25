@@ -340,19 +340,45 @@ end)
 Write-ModFile 'GenericCronUiFixture' 'modules/Cron.lua' @'
 local Cron = {}
 local timers = {}
+local prune = false
 function Cron.After(sec,fn)
-    timers[#timers+1] = { delay = sec, callback=fn }
+    timers[#timers+1] = { delay = sec, callback=fn, active=true, halted=false }
+end
+function Cron.Pause(id)
+    for _, timer in ipairs(timers) do
+        if timer.id == id then
+            if not timer.halted then timer.active = false end
+        end
+    end
+end
+function Cron.Halt(id)
+    for _, timer in ipairs(timers) do
+        if timer.id == id then
+            timer.active = false
+            timer.halted = true
+            prune = true
+        end
+    end
 end
 function Cron.Update(delta)
     if #timers == 0 then
         return
     end
-    for i = #timers, 1, -1 do
-        local timer = timers[i]
-        timer.delay = timer.delay - delta
-        if timer.delay <= 0 then
-            timer.callback()
-            table.remove(timers,i)
+    for _, timer in ipairs(timers) do
+        if timer.active then
+            timer.delay = timer.delay - delta
+            if timer.delay <= 0 then
+                timer.callback()
+                timer.active = false
+                timer.halted = true
+                prune = true
+            end
+        end
+    end
+    if prune then
+        prune = false
+        for i = #timers, 1, -1 do
+            if timers[i].halted then table.remove(timers,i) end
         end
     end
 end
@@ -360,6 +386,17 @@ return Cron
 '@
 New-Item -ItemType Directory -Force (Join-Path $mods 'GenericCronUiFixture\modules') | Out-Null
 Copy-Item -LiteralPath (Join-Path $mods 'GenericCrossFileUiFixture\modules\interactionUI.lua') -Destination (Join-Path $mods 'GenericCronUiFixture\modules\interactionUI.lua') -Force
+$uiFixture=Join-Path $mods 'GenericCronUiFixture\modules\interactionUI.lua'
+$debugModule=Get-Content -LiteralPath $uiFixture -Raw
+$debugModule=@'
+local debug = true
+local function log(text)
+    if not debug then return end
+    print(text)
+end
+
+'@ + $debugModule.Replace('    ui.input = false','    log("Diagnostics only")' + [char]10 + '    ui.input = false')
+[IO.File]::WriteAllText($uiFixture,$debugModule,[Text.UTF8Encoding]::new($false))
 
 $uiLine=Find-Line (Join-Path $mods 'GenericUiDormancyFixture\init.lua') 'registerForEvent\("onDraw"'
 $crossUiLine=Find-Line (Join-Path $mods 'GenericCrossFileUiFixture\init.lua') 'registerForEvent\("onDraw"'
@@ -579,10 +616,17 @@ try {
     }
     $cronUi=Read-ZipText ($base+'GenericCronUiFixture/init.lua')
     $cronModule=Read-ZipText ($base+'GenericCronUiFixture/modules/Cron.lua')
+    $debugModuleOut=Read-ZipText ($base+'GenericCronUiFixture/modules/interactionUI.lua')
+    if($debugModuleOut -notmatch 'local debug = false' -or
+       $debugModuleOut -notmatch 'eng.Log' -or
+       $debugModuleOut -notmatch 'if not debug then return end') {
+        throw 'Source-proven optional UI diagnostic logging suppression was lost.'
+    }
     if($cronUi -notmatch 'Cron.HasActiveTimers\(\)' -or
        $cronUi -notmatch 'interactionUI.hubShown or interactionUI.input' -or
        $cronModule -notmatch 'function Cron.HasActiveTimers\(\)' -or
-       $cronModule -notmatch 'return #timers > 0') {
+       $cronModule -notmatch 'if timer.active and not timer.halted then return true end' -or
+       $cronModule -notmatch 'return prune') {
         throw 'Pristine Cron/UI source did not generate the required pair atomically.'
     }
     $crossUiReject=Read-ZipText ($base+'GenericCrossFileUiRejectFixture/init.lua')
