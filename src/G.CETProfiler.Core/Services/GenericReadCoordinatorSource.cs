@@ -59,8 +59,29 @@ internal static class GenericReadCoordinatorSource
             // 200-local budget even when the original is below 197 locals.
             // Move the source-proven fallbacks into our existing per-file
             // coordinator before NativeReadReuseSource stages anything.
-            var hasAuthorGetters=!marked &&
-                NativeReadReuseSource.FindOperations(source).Length>0;
+            var sourceGetterOperations = !marked
+                ? NativeReadReuseSource.FindOperations(source)
+                : Array.Empty<NativeReadReuseSource.Operation>();
+            var hasAuthorGetters=!marked && sourceGetterOperations.Length>0;
+            // Many independent lazy provider caches constitute substantial
+            // persistent per-file optimization state, even when Lua's
+            // 200-local limit is not yet pressured. Keep such G-CET-owned
+            // state in one external source-owned worker, not a large preamble
+            // of inline helpers. This decision uses observed current-source
+            // getter families, never a mod name, filename inventory or an
+            // old generated artifact.
+            var currentProviderFamilies = new HashSet<string>(
+                ProviderHeader.Matches(source).Cast<Match>()
+                    .Select(m=>m.Groups["provider"].Value),
+                StringComparer.Ordinal);
+            foreach(var getter in sourceGetterOperations.Select(x=>x.Getter))
+            {
+                if(SharedProviderCatalog.ByGetter.TryGetValue(getter,out var family))
+                    currentProviderFamilies.Add(family.Provider);
+            }
+            const int substantialProviderBundleMinimum = 9;
+            var substantialProviderBundle = !marked &&
+                currentProviderFamilies.Count>=substantialProviderBundleMinimum;
             var projectedOverflow=false;
             if(!marked && sourcePeak<197 && (hasProvider||hasAuthorGetters) &&
                NativeReadReuseSource.TryTransform(source,headerForProvider,
@@ -68,7 +89,8 @@ internal static class GenericReadCoordinatorSource
                operations.Length>0)
                 projectedOverflow=LuaLocalBudgetAnalyzer.Analyze(projected)
                     .MaxActiveLocals>LuaLocalBudgetAnalyzer.Limit;
-            if(!marked && sourcePeak<197 && !projectedOverflow)
+            if(!marked && sourcePeak<197 && !projectedOverflow &&
+               !substantialProviderBundle)
                 continue;
             if(!marked && !hasProvider && !englishOnly && !hasAuthorGetters)
                 continue;

@@ -174,6 +174,146 @@ try
             ""
         };
     };
+    // Substantial multi-provider state is external even when source has
+    // ample remaining Lua locals. No named mod, author version, or prior
+    // optimized worker is necessary. Smaller read sets stay inline.
+    var bundledRoot=Path.Combine(root,"source-proven-provider-bundles");
+    Directory.CreateDirectory(bundledRoot);
+    var bundleFamilies=new [] {
+        ("PLAYER","GetPlayer"),
+        ("BLACKBOARD_SYSTEM","GetBlackboardSystem"),
+        ("MAPPIN_SYSTEM","GetMappinSystem"),
+        ("SCRIPTABLE_SYSTEMS_CONTAINER","GetScriptableSystemsContainer"),
+        ("STATUS_EFFECT_SYSTEM","GetStatusEffectSystem"),
+        ("TELEPORTATION_FACILITY","GetTeleportationFacility"),
+        ("TIME_SYSTEM","GetTimeSystem"),
+        ("TRANSACTION_SYSTEM","GetTransactionSystem"),
+        ("UI_SYSTEM","GetUISystem"),
+        ("DYNAMIC_ENTITY_SYSTEM","GetDynamicEntitySystem"),
+    };
+    Func<string,IEnumerable<string>> bundleHeaders=provider=>
+    {
+        var getter=bundleFamilies.Single(x=>x.Item1==provider).Item2;
+        return new [] {
+            "-- G-CET shared provider: "+provider,
+            "local __gcetProvider_"+getter+" = nil",
+            "local function __gcet"+getter+"()",
+            "    if __gcetProvider_"+getter+" == nil then",
+            "        local ok, engine = pcall(GetMod, \"0-Engine\")",
+            "        if ok and engine then __gcetProvider_"+getter+" = engine."+getter+" end",
+            "    end",
+            "    if __gcetProvider_"+getter+" ~= nil then",
+            "        local value = __gcetProvider_"+getter+"()",
+            "        if value ~= nil then return value end",
+            "    end",
+            "    return Game."+getter+"()",
+            "end",
+            ""
+        };
+    };
+    var bundleSource="local function keepAuthorAudio() return \"AudioXL-author-owned\" end\n"+
+        "local providers = { "+string.Join(", ",
+            bundleFamilies.Select(x=>"Game."+x.Item2+"()"))+" }\n"+
+        "return keepAuthorAudio(), providers\n";
+    var bundlePath=Path.Combine(bundledRoot,"Pristine","init.lua");
+    Directory.CreateDirectory(Path.GetDirectoryName(bundlePath)!);
+    File.WriteAllText(bundlePath,bundleSource,new UTF8Encoding(false));
+    var bundleStages=new Dictionary<string,byte[]>(StringComparer.OrdinalIgnoreCase);
+    var bundleCounts=new Dictionary<string,int>();
+    var bundleManifest=new List<object>();
+    var bundleSkipped=new List<object>();
+    object?[] bundleArgs=[bundledRoot,bundleStages,bundleCounts,bundleManifest,
+                          bundleSkipped,bundleHeaders];
+    Check((int)workerStage.Invoke(null,bundleArgs)! ==1 &&
+          bundleManifest.Count==1 && bundleSkipped.Count==0,
+        "Pristine source with substantial lazy-provider state was not externalized");
+    var bundledMain=Encoding.UTF8.GetString(bundleStages["Pristine/init.lua"]);
+    var bundledWorkerRel=bundleStages.Keys.Single(x=>
+        x.StartsWith("Pristine/GCET_Semantic/gcet_native_reads_",StringComparison.Ordinal));
+    var bundledWorker=Encoding.UTF8.GetString(bundleStages[bundledWorkerRel]);
+    Check(bundledMain.StartsWith("-- G-CET generic native reads coordinator:v1 ",
+              StringComparison.Ordinal) &&
+          bundledMain.Contains("local function keepAuthorAudio() return \"AudioXL-author-owned\" end",
+              StringComparison.Ordinal) &&
+          !bundledMain.Contains("-- G-CET shared provider: ",StringComparison.Ordinal) &&
+          bundleFamilies.All(x=>bundledMain.Contains("__gcetNativeReads."+x.Item2+"()",
+              StringComparison.Ordinal) &&
+              bundledWorker.Contains("return Game."+x.Item2+"()",StringComparison.Ordinal)) &&
+          File.ReadAllText(bundlePath)==bundleSource,
+        "Large provider bundle lost the source or source-owned worker fallback");
+    var sameBundle=new List<object>();
+    object?[] bundleRepeat=[bundledRoot,bundleStages,bundleCounts,sameBundle,
+                           new List<object>(),bundleHeaders];
+    Check((int)workerStage.Invoke(null,bundleRepeat)! ==0 && sameBundle.Count==0,
+        "Complete provider worker duplicated during a second pass");
+    bundleStages["Pristine/init.lua"]=Encoding.UTF8.GetBytes(bundledMain+
+        "\nlocal later = Game.GetStatsSystem()\n");
+    var extendedFamilies=bundleFamilies.Append(("STATS_SYSTEM","GetStatsSystem")).ToArray();
+    Func<string,IEnumerable<string>> extensionHeaders=provider=>
+    {
+        var getter=extendedFamilies.Single(x=>x.Item1==provider).Item2;
+        return bundleHeadersWithGetter(provider,getter);
+    };
+    static IEnumerable<string> bundleHeadersWithGetter(string provider,string getter) =>
+    [
+        "-- G-CET shared provider: "+provider,
+        "local __gcetProvider_"+getter+" = nil",
+        "local function __gcet"+getter+"()",
+        "    if __gcetProvider_"+getter+" == nil then",
+        "        local ok, engine = pcall(GetMod, \"0-Engine\")",
+        "        if ok and engine then __gcetProvider_"+getter+" = engine."+getter+" end",
+        "    end",
+        "    if __gcetProvider_"+getter+" ~= nil then",
+        "        local value = __gcetProvider_"+getter+"()",
+        "        if value ~= nil then return value end",
+        "    end",
+        "    return Game."+getter+"()",
+        "end",
+        ""
+    ];
+    var updatedBundle=new List<object>();
+    object?[] extendArgs=[bundledRoot,bundleStages,bundleCounts,updatedBundle,
+                         new List<object>(),extensionHeaders];
+    Check((int)workerStage.Invoke(null,extendArgs)! ==1 &&
+          updatedBundle.Count==1 &&
+          Encoding.UTF8.GetString(bundleStages["Pristine/init.lua"])
+              .Contains("__gcetNativeReads.GetStatsSystem()",StringComparison.Ordinal) &&
+          Encoding.UTF8.GetString(bundleStages[bundledWorkerRel])
+              .Contains("return Game.GetStatsSystem()",StringComparison.Ordinal) &&
+          bundleStages.Keys.Count(x=>x.Contains("/GCET_Semantic/gcet_native_reads_",
+              StringComparison.Ordinal))==1,
+        "Partial installation did not preserve and extend its existing worker");
+    bundleStages[bundledWorkerRel]=Encoding.UTF8.GetBytes(
+        Encoding.UTF8.GetString(bundleStages[bundledWorkerRel])
+        .Replace("return Game.GetPlayer()","return nil",StringComparison.Ordinal));
+    var corruptedSkips=new List<object>();
+    object?[] corruptArgs=[bundledRoot,bundleStages,bundleCounts,new List<object>(),
+                          corruptedSkips,extensionHeaders];
+    // Already complete worker with corruption cannot be "fixed" from markers.
+    // A pending source call prompts structural validation of the worker.
+    bundleStages["Pristine/init.lua"]=Encoding.UTF8.GetBytes(
+        Encoding.UTF8.GetString(bundleStages["Pristine/init.lua"])+
+        "\nlocal verify = Game.GetQuestsSystem()\n");
+    var corruptHeaders=new Func<string,IEnumerable<string>>(provider=>
+    {
+        var getter=provider=="QUESTS_SYSTEM"?"GetQuestsSystem":
+            extendedFamilies.Single(x=>x.Item1==provider).Item2;
+        return bundleHeadersWithGetter(provider,getter);
+    });
+    corruptArgs[5]=corruptHeaders;
+    Check((int)workerStage.Invoke(null,corruptArgs)! ==0 && corruptedSkips.Count>0,
+        "Corrupted previous provider fallback was silently accepted");
+    var smallRoot=Path.Combine(root,"small-inline-provider-state");
+    Directory.CreateDirectory(Path.Combine(smallRoot,"Small"));
+    File.WriteAllText(Path.Combine(smallRoot,"Small","init.lua"),
+        "return Game.GetPlayer(), Game.GetTimeSystem()\n");
+    Check((int)workerStage.Invoke(null,[smallRoot,
+        new Dictionary<string,byte[]>(),new Dictionary<string,int>(),
+        new List<object>(),new List<object>(),bundleHeaders])! ==0,
+        "Small source-local getter substitutions were incorrectly externalized");
+    Console.WriteLine("Pristine substantial provider ownership / existing worker "+
+        "/ partial upgrade / corrupted worker / small-inline differentiation PASS");
+
     var workerSource=string.Join("\n",workerHeaders("PLAYER"))+"\n"+
         "local "+string.Join(",",Enumerable.Range(1,198).Select(i=>"author"+i))+
         "\nreturn __gcetGetPlayer(), Game.GetQuestsSystem()\n";
