@@ -92,6 +92,39 @@ end
             @"(?m)^([ \t]*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*[""']onUpdate[""']\s*,\s*function\s*\(\s*dt\s*\))[ \t]*$",
             "$1\n    if __gcetStuntsLocationSleeping() then return end",
             "distant frame event");
+        // Phase 1+2 cheap-guard ordering belongs in the existing author-owned
+        // generation rule, after generic provider rewrites and before the
+        // external native worker is produced in this same composed pass.
+        // Synthetic author variants without a time-dilation path need no reorder.
+        if(src.Contains("oldTdValue",StringComparison.Ordinal))
+        {
+            src=CyberRegexOnce(src,
+                @"(?m)^[ \t]*local requests[ \t]*=[ \t]*(?<requests>(?:__gcetGetSystemRequestsHandler|Game\.GetSystemRequestsHandler)\(\))[ \t]*\n" +
+                @"^[ \t]*local timeSystem[ \t]*=[ \t]*(?<time>(?:__gcetGetTimeSystem|Game\.GetTimeSystem)\(\))[ \t]*\n" +
+                @"(?<dilation>^[ \t]*if not oldTdValue and timeSystem and timeSystem:GetActiveTimeDilation\(\) then[ \t]*\n" +
+                @"^[ \t]*oldTdValue = timeSystem:GetActiveTimeDilation\(\)[ \t]*\n^[ \t]*end[ \t]*\n)" +
+                @"^[ \t]*if requests:IsPreGame\(\) or requests:IsGamePaused\(\) then[ \t]*\n" +
+                @"^[ \t]*return[ \t]*\n^[ \t]*end[ \t]*\n\s*" +
+                @"^[ \t]*local player[ \t]*=[ \t]*(?<player>(?:__gcetGetPlayer|Game\.GetPlayer)\(\))[ \t]*\n" +
+                @"^[ \t]*if not settings.enableMod or not playerPos or not player then return end[ \t]*\n\s*" +
+                @"^[ \t]*local vehicle[ \t]*=[ \t]*player.mountedVehicle[ \t]*\n" +
+                @"^[ \t]*if not vehicle then[ \t]*\n^[ \t]*wasVehicleAirborne = false[ \t]*\n" +
+                @"^[ \t]*return[ \t]*\n^[ \t]*end\b",
+                "    if not settings.enableMod then return end\n" +
+                "    local player = ${player}\n" +
+                "    if not player then return end\n" +
+                "    local vehicle = player.mountedVehicle\n" +
+                "    if not vehicle then\n" +
+                "        wasVehicleAirborne = false\n" +
+                "        return\n" +
+                "    end\n" +
+                "    local requests = ${requests}\n" +
+                "    if requests:IsPreGame() or requests:IsGamePaused() then return end\n" +
+                "    local timeSystem = ${time}\n" +
+                "${dilation}" +
+                "    if not playerPos then return end",
+                "frame cheap guards before native system getters");
+        }
         context.Write(file,crlf?src.Replace("\n","\r\n",StringComparison.Ordinal):src);
         ApplyCyberStuntsNativeWorker(context);
         return SemanticInjectionResult.Success(
