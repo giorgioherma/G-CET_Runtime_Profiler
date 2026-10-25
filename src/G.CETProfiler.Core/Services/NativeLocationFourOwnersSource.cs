@@ -421,8 +421,11 @@ internal static class NativeLocationFourOwnersSource
     end
   end
 """.Replace("\r\n","\n",StringComparison.Ordinal);
+        // Keep the generated native block on its own lines. Without this
+        // separator, the untouched author's following log can become
+        // `end  log(...)`; worker extraction must never consume author code.
         text=Once(text,"  state.mechanics = result\n",
-                  "  state.mechanics = result\n"+helper,
+                  "  state.mechanics = result\n"+helper+"\n",
                   "Mechanic per-registry-index compiled listener subscription");
         text=Once(text,
                   "  if #state.mechanics == 0 and not loadMatrix() then return end\n"+
