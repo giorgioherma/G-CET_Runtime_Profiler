@@ -94,6 +94,61 @@ foreach($required in @('G-CET native location:cyberstunts-v1',
 if(([regex]::Matches($result.Output,'if __gcetStuntsLocationSleeping\(\) then return end')).Count -ne 2){
  throw 'Distant idling must cover DriveEvents and the frame scorer independently'
 }
+# Real onUpdate source has early SystemRequests/TimeSystem reads. Verify
+# that the single composed native-location rule moves those reads behind
+# the established disabled/player/mounted guards, both before and after
+# generic shared-provider replacement.
+$frameBlock=@'
+    local requests = Game.GetSystemRequestsHandler()
+    local timeSystem = Game.GetTimeSystem()
+    if not oldTdValue and timeSystem and timeSystem:GetActiveTimeDilation() then
+        oldTdValue = timeSystem:GetActiveTimeDilation()
+    end
+    if requests:IsPreGame() or requests:IsGamePaused() then
+        return
+    end
+
+    local player = Game.GetPlayer()
+    if not settings.enableMod or not playerPos or not player then return end
+
+    local vehicle = player.mountedVehicle
+    if not vehicle then
+        wasVehicleAirborne = false
+        return
+    end
+    if not isJumping then return end
+'@
+$pristineFrame=$source.Replace(' if not isJumping then return end',$frameBlock)
+$stagedFrame=$pristineFrame.Replace('Game.GetSystemRequestsHandler()','__gcetGetSystemRequestsHandler()').Replace('Game.GetTimeSystem()','__gcetGetTimeSystem()').Replace('Game.GetPlayer()','__gcetGetPlayer()')
+foreach($frameInput in @($pristineFrame,$stagedFrame)){
+  $framePass=TrySource $frameInput
+  if(!$framePass.Applied){throw "CyberStunts source-aware early guard order not generated: $($framePass.Error)"}
+  $frameStart=$framePass.Output.IndexOf('registerForEvent("onUpdate", function(dt)')
+  if($frameStart -lt 0){throw 'CyberStunts onUpdate owner missing'}
+  $callback=$framePass.Output.Substring($frameStart)
+  $checks=@(
+    'if not settings.enableMod then return end',
+    'local player = ',
+    'if not player then return end',
+    'local vehicle = player.mountedVehicle',
+    'if not vehicle then',
+    'local requests = ',
+    'if requests:IsPreGame() or requests:IsGamePaused() then return end',
+    'local timeSystem = ',
+    'if not playerPos then return end'
+  )
+  $last=-1
+  foreach($check in $checks){
+    $found=$callback.IndexOf($check,[StringComparison]::Ordinal)
+    if($found -lt 0 -or $found -le $last){
+      throw "CyberStunts native/system getter or guard order regressed: $check"
+    }
+    $last=$found
+  }
+  if(!$callback.Contains('oldTdValue = timeSystem:GetActiveTimeDilation()')){
+    throw 'CyberStunts prior dilation state recording lost'
+  }
+}
 $repeat=TrySource $result.Output
 if($repeat.Applied -or $repeat.Output){throw 'Repeated native dormancy was not idempotent'}
 $lf=[string][char]10
