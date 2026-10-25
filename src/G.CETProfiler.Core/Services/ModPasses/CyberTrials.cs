@@ -194,7 +194,7 @@ internal static partial class SemanticInjectors
     private static string RewriteCyberTrialsWorldScan(string source)
     {
         var updates = Regex.Matches(source,
-            @"(?m)^[ \t]*function[ \t]+world[ \t]*\.[ \t]*update[ \t]*\([ \t]*\)[ \t]*(?:--[^\r\n]*)?\r?\n(?<body>[\s\S]*?)^end[ \t]*(?:--[^\r\n]*)?\r?$",
+            @"(?m)^[ \t]*function[ \t]+world[ \t]*\.[ \t]*update[ \t]*\([ \t]*\)[ \t]*(?:--[^\r\n]*)?\r?\n(?<body>[\s\S]*?)^end[ \t]*(?:--[^\r\n]*)?(?=\r?\n|\z)",
             RegexOptions.CultureInvariant);
         if (updates.Count == 0)
         {
