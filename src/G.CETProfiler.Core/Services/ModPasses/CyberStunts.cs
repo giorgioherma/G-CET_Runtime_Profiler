@@ -34,9 +34,34 @@ internal static partial class SemanticInjectors
         const string marker="G-CET native location:cyberstunts-v1";
         if(file.Text.Contains(marker,StringComparison.Ordinal))
         {
-            if(file.Text.Contains("attachCompiled(10039,",StringComparison.Ordinal) &&
-                file.Text.Contains("__gcetStuntsLocationSleeping()",StringComparison.Ordinal))
-                return SemanticInjectionResult.Skip("CyberStunts native FAR stage already installed.");
+            var hasFarGate = file.Text.Contains("__gcetStuntsLocationSleeping()",StringComparison.Ordinal);
+            var hasInlineHost = file.Text.Contains("host:attachCompiled(10039,",StringComparison.Ordinal);
+            const string bridge = "require(\"GCET_Semantic/cyberstunts_native_worker\").attach(";
+            var hasExternalBridge = file.Text.Split(bridge,StringSplitOptions.None).Length==2 &&
+                file.Text.Contains("-- G-CET semantic:cyberstunts-native-worker-v1",StringComparison.Ordinal) &&
+                file.Text.Contains("function(near) __gcetStuntsNativeFar=not near;wasVehicleAirborne=nil end",StringComparison.Ordinal);
+            if(hasFarGate && hasExternalBridge && !hasInlineHost)
+            {
+                // The pristine native-location generator also extracts its
+                // subscription into an existing mod-owned worker. The old
+                // inline-only completion check incorrectly rejected this
+                // complete second-pass input as a partial native stage.
+                var worker = context.TryReadOwnedCoordinator("cyberstunts_native_worker.lua");
+                var normalized = worker?.Replace("\r\n","\n",StringComparison.Ordinal);
+                if(normalized is null ||
+                   !(normalized.StartsWith("-- G-CET semantic coordinator:native-location-cyberstunts\n",StringComparison.Ordinal) ||
+                     normalized.StartsWith("-- G-CET semantic coordinator:cyberstunts-native-worker\n",StringComparison.Ordinal)) ||
+                   !normalized.Contains("function M.attach(host, count, onKnown, onUnknown)",StringComparison.Ordinal) ||
+                   !normalized.Contains("return host:attachCompiled(10039, count,",StringComparison.Ordinal) ||
+                   !normalized.Contains("return ok and attached == true",StringComparison.Ordinal))
+                    throw new InvalidOperationException("CyberStunts external native worker missing or incomplete.");
+                return SemanticInjectionResult.Skip("CyberStunts native FAR and external worker already installed.");
+            }
+            // Historical native-location-only source remains a valid partial
+            // upgrade input for the existing worker extractor, not an input
+            // prerequisite for the pristine one-pass producer.
+            if(hasFarGate && hasInlineHost && !hasExternalBridge)
+                return SemanticInjectionResult.Skip("CyberStunts historical inline native FAR stage installed.");
             throw new InvalidOperationException("Partial CyberStunts native stage; preserved.");
         }
         if(CompiledNativeLocations.CyberStuntsFixedJumpCount(file.Text)==0)

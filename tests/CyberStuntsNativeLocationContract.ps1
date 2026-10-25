@@ -149,8 +149,39 @@ foreach($frameInput in @($pristineFrame,$stagedFrame)){
     throw 'CyberStunts prior dilation state recording lost'
   }
 }
+# A generated external bridge without its coordinator must refuse the
+# second pass, not be reported as successfully already satisfied.
+$missingWorker=TrySource $result.Output
+if($missingWorker.Applied -or $missingWorker.Error -notlike '*external native worker missing*'){
+ throw 'CyberStunts missing native worker was silently treated as complete'
+}
+$workerDir=Join-Path $modPath 'GCET_Semantic'
+$workerPath=Join-Path $workerDir 'cyberstunts_native_worker.lua'
+New-Item -ItemType Directory -Force $workerDir | Out-Null
+[IO.File]::WriteAllText($workerPath,$result.Worker,[Text.UTF8Encoding]::new($false))
 $repeat=TrySource $result.Output
-if($repeat.Applied -or $repeat.Output){throw 'Repeated native dormancy was not idempotent'}
+if($repeat.Applied -or $repeat.Output -or $repeat.Error){
+ throw "Complete external CyberStunts native worker was not idempotent: $($repeat.Error)"
+}
+# Older already-generated coordinator owner remains accepted when the native
+# host shape and source bridge are unchanged.
+$legacy=$result.Worker.Replace(
+ '-- G-CET semantic coordinator:native-location-cyberstunts',
+ '-- G-CET semantic coordinator:cyberstunts-native-worker')
+[IO.File]::WriteAllText($workerPath,$legacy,[Text.UTF8Encoding]::new($false))
+$legacyRepeat=TrySource $result.Output
+if($legacyRepeat.Applied -or $legacyRepeat.Output -or $legacyRepeat.Error){
+ throw "Historical CyberStunts native coordinator was not recognized: $($legacyRepeat.Error)"
+}
+# Owning the filename alone must never count as a completed native stage.
+$corrupt=$result.Worker.Replace('host:attachCompiled(10039, count,',
+ 'host:attachCompiled(10040, count,')
+[IO.File]::WriteAllText($workerPath,$corrupt,[Text.UTF8Encoding]::new($false))
+$corruptRepeat=TrySource $result.Output
+if($corruptRepeat.Applied -or $corruptRepeat.Error -notlike '*external native worker missing*'){
+ throw 'CyberStunts corrupted native owner was silently treated as complete'
+}
+Remove-Item -LiteralPath $workerPath
 $lf=[string][char]10
 $cr=[string][char]13
 $crlf=$cr+$lf
