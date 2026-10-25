@@ -14,6 +14,10 @@ const AUDIOXL_MANUAL_FILES = new Set([
   'f80h_aroused_expressions/init.lua', 'FenixRebirth/init.lua',
   'ImmersiveVDialogueExpanded/init.lua', 'rarobottruck_1/init.lua'
 ].map(p => prefix + p));
+// CourierJobs 5.0 relocated former Lua gameplay/update code into REDscript.
+// Its historical init.lua comparison is version-specific, not an AudioXL bug.
+const COURIER_MANUAL_FILE = prefix + 'CourierJobs/init.lua';
+const MANUAL_INIT_FILES = new Set([...AUDIOXL_MANUAL_FILES, COURIER_MANUAL_FILE]);
 function owner(relative) {
   return relative.startsWith(prefix)
     ? relative.slice(prefix.length).split('/')[0] : '[native/runtime]';
@@ -29,6 +33,7 @@ function isAudioFile(relative) {
 function manualReason(relative) {
   if (isAudioFile(relative)) return 'audio-related';
   if (AUDIOXL_MANUAL_FILES.has(relative)) return 'Wrong-base AudioXL init.lua reference';
+  if (relative === COURIER_MANUAL_FILE) return 'CourierJobs source-version and REDscript migration';
   return null;
 }
 
@@ -103,8 +108,9 @@ const common = [...comparableReference.keys()].filter(p => comparableFinal.has(p
 const identical = common.filter(p => comparableReference.get(p).hash === comparableFinal.get(p).hash);
 const refOnly = [...comparableReference.keys()].filter(p => !comparableFinal.has(p));
 const finalOnly = [...comparableFinal.keys()].filter(p => !comparableReference.has(p));
-const affected = [...AUDIOXL_MANUAL_FILES].sort().map(file => ({
+const affected = [...MANUAL_INIT_FILES].sort().map(file => ({
   file,
+  reason: file === COURIER_MANUAL_FILE ? 'CourierJobs author v5 / REDscript relocation' : 'Wrong-base AudioXL bridge',
   reference: referenceFiles.has(file),
   final: finalFiles.has(file)
 }));
@@ -132,9 +138,9 @@ const summary=[
   '',
   'Advisory manual audit only. Different files or implementations are NOT automatically regressions.',
   '',
-  '**AudioXL exception:** Exclude only the six explicitly identified wrong-base init.lua files and audio-related paths from automatic parity. Other Lua, GCET_Semantic workers and dependency files within those same six mods remain fully included. G-CET optimizations in the excluded init.lua files remain mandatory for manual source-aware review; none is deemed preserved or dispensable by this exception.',
+  '**Manual exceptions:** Exclude exactly six wrong-base AudioXL init.lua files, CourierJobs/init.lua (author-version/REDscript migration), and explicitly audio-related paths from automatic byte/marker parity. Other non-audio Lua, GCET_Semantic coordinators and dependencies under these seven mod owners remain compared normally. All G-CET optimization behavior in excluded init.lua files still requires manual source-aware review.',
   '',
-  '### Scope after audio exclusion',
+  '### Scope after narrow manual exclusions',
   '',
   '| Reference files (all) | Final files (all) | Comparable reference | Comparable final | Excluded unique paths |',
   '|---:|---:|---:|---:|---:|',
@@ -166,18 +172,20 @@ const summary=[
   ...(refOnly.length?refOnly.slice(0,70).map(p=>'- '+md(p)):['None.']),
   ...(refOnly.length>70?['Additional file paths omitted.']:[]),
   '',
-  '### AudioXL manual-review queue — excluded from automated parity',
+  '### Manual-review queue — seven exact init.lua exceptions',
   '',
-  '| Exact reference exception | Present in reference | Present in final | Required manual review |',
-  '|---|---|---|---|',
-  ...affected.map(v => '| '+[v.file,v.reference ? 'yes' : 'no',v.final ? 'yes' : 'no',
-    'Compare G-CET optimizations against untouched author source plus corrected AudioXL implementation'].map(md).join(' | ')+' |'),
+  '| Exact reference exception | Reason | Present in reference | Present in final | Required manual review |',
+  '|---|---|---|---|---|',
+  ...affected.map(v => '| '+[v.file,v.reason,v.reference ? 'yes' : 'no',v.final ? 'yes' : 'no',
+    v.file === COURIER_MANUAL_FILE
+      ? 'Compare source-proven v5 Lua hooks and REDscript ownership; do not recreate deprecated v3 callbacks'
+      : 'Compare G-CET optimizations against untouched author source plus corrected AudioXL implementation'].map(md).join(' | ')+' |'),
   '',
-  'Other audio-related paths excluded: '+excluded.filter(p => !AUDIOXL_MANUAL_FILES.has(p)).length+' (unique paths).',
+  'Other audio-related paths excluded: '+excluded.filter(p => !MANUAL_INIT_FILES.has(p)).length+' (unique paths).',
   '',
-  'No PASS/FAIL parity result is inferred for the six contaminated init.lua files or excluded audio-related paths. Other non-audio files in their mod directories are compared normally. Manual source-aware optimization review is required.',
+  'No PASS/FAIL parity result is inferred for the six wrong-base AudioXL init.lua files, CourierJobs/init.lua, or excluded audio paths. Other non-audio files in those mod directories remain compared normally. Manual source-aware optimization review is required.',
   '',
-  'Next: investigate non-audio optimization leads against untouched author sources, worker ownership, 0-Engine/native dependencies and Phase 1+2 intent. Manually review the six exact contaminated init.lua files. Gameplay and performance require separate verification.',
+  'Next: investigate comparable optimization leads against untouched author source and Phase 1+2 intent. Manually review the six AudioXL init.lua files and CourierJobs/init.lua against their corrected/current author sources. Gameplay and performance require separate verification.',
   ''
 ].join('\n');
 console.log('Final audit (non-audio): comparable-reference='+comparableReference.size+
