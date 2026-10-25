@@ -28,8 +28,17 @@ internal static partial class SemanticInjectors
                !worker.Contains("cybertrials.race_state",StringComparison.Ordinal) ||
                !init.Text.Contains("__gcetCyberTrialsPass4.TryAttach()",StringComparison.Ordinal))
                 throw new InvalidOperationException("CyberTrials five-job source/worker incomplete.");
+            var completedWorld = context.FindFile("modules/external/world.lua",
+                "BaseMappinBaseController", "UpdateRootState");
+            var upgradedScan = RewriteCyberTrialsWorldScan(completedWorld.Text);
+            if (!string.Equals(upgradedScan, completedWorld.Text, StringComparison.Ordinal))
+            {
+                context.Write(completedWorld, upgradedScan);
+                return SemanticInjectionResult.Success(
+                    "Preserved the complete five-job worker and generated the missing source-owned safe world scan.");
+            }
             return SemanticInjectionResult.Skip(
-                "CyberTrials five-job scheduler already created by the authoritative primary rule.");
+                "CyberTrials five-job scheduler and guarded world scan already complete.");
         }
 
         var initText = ReplaceSemanticObserverBlockOnce(
@@ -169,12 +178,171 @@ internal static partial class SemanticInjectors
             "world.interactions",
             "Vector4.Distance",
             "iconWidget");
+        worldText = RewriteCyberTrialsWorldScan(worldText);
         context.Write(world, worldText);
 
         return SemanticInjectionResult.Success(
             "Removed global mappin-driven hub refresh, made hub mappins state-driven and idempotent, gated world scans to 10 Hz outside realtime placement/race state, and added an owned-variant mappin prefilter.");
     }
 
+
+    // This is part of the existing CyberTrials generator, NOT a repair-only
+    // semantic rule. It runs after generic/native source composition.
+    // Original author code and generic/native source variants have the same
+    // exact executable control-flow shape once comments/spacing/API aliases
+    // are normalized. Unknown behavioral drift is refused.
+    private static string RewriteCyberTrialsWorldScan(string source)
+    {
+        var updates = Regex.Matches(source,
+            @"(?m)^[ \t]*function[ \t]+world[ \t]*\.[ \t]*update[ \t]*\([ \t]*\)[ \t]*(?:--[^\r\n]*)?\r?\n(?<body>[\s\S]*?)^end[ \t]*(?:--[^\r\n]*)?$",
+            RegexOptions.CultureInvariant);
+        if (updates.Count == 0)
+        {
+            if (Regex.IsMatch(source, @"\bfunction\s+world\s*\.\s*update\s*\(",
+                RegexOptions.CultureInvariant))
+                throw new InvalidOperationException("CyberTrials world.update source boundary changed.");
+            // Older compatible sources may only have the observer.
+            return source;
+        }
+        if (updates.Count != 1)
+            throw new InvalidOperationException("CyberTrials has ambiguous world update ownership.");
+
+        var body = updates[0].Groups["body"].Value;
+        var ownedSquaredDistance = Regex.IsMatch(source,
+            @"\blocal\s+function\s+distanceSquared\s*\(", RegexOptions.CultureInvariant);
+        if (body.Contains("local distSq = distanceSquared(", StringComparison.Ordinal))
+        {
+            // A completed or staged source is recognized by its behavior,
+            // never by the semantic owner marker alone.
+            if (!ownedSquaredDistance ||
+                !Regex.IsMatch(body, @"local\s+player\s*=\s*(?:__gcetGetPlayer|Game\.GetPlayer)\s*\(\s*\)") ||
+                !body.Contains("if not player or player.mountedVehicle or player:IsInCombat() then return false end", StringComparison.Ordinal) ||
+                !body.Contains("local transform = player:GetWorldTransform()", StringComparison.Ordinal) ||
+                !body.Contains("local update = (distSq < interactionRange * interactionRange) and not raceInProgress", StringComparison.Ordinal) ||
+                !body.Contains("return nearAny", StringComparison.Ordinal))
+                throw new InvalidOperationException("CyberTrials existing squared-distance scan is structurally incomplete.");
+            return source;
+        }
+        if (ownedSquaredDistance)
+            throw new InvalidOperationException("CyberTrials partial squared-distance helper ownership changed.");
+
+        // Prove the exact *behavioral* original scan, accepting generic 0-Engine
+        // player getters, native on-demand getter, comments, and whitespace.
+        // Do not erase new author statements when the state machine changes.
+        const string player = "Game.GetPlayer()";
+        const string pos = "Game.GetPlayer():GetWorldPosition()";
+        const string transform = "Game.GetPlayer():GetWorldTransform()";
+        const string transformPos = "Game.GetPlayer():GetWorldTransform():GetWorldPosition():ToVector4()";
+        const string fallback = "ToVector4({x=1,y=1,z=1,w=1})";
+        var expected = new[]
+        {
+            "ifnot"+player+"thenreturnend",
+            "if"+player+".mountedVehicleor"+player+":IsInCombat()thenreturnend",
+            "if"+player+"and"+pos+"then",
+            "posPlayer="+pos,
+            "posPlayer.z=posPlayer.z+1",
+            "elseif"+player+"andnot"+pos+"and"+transform+"and"+transformPos+"then",
+            "posPlayer="+transformPos,
+            "posPlayer.z=posPlayer.z+1",
+            "elseif"+player+"andnot"+pos+"andnot"+transform+"andnot"+transformPos+"then",
+            "posPlayer="+fallback,
+            "posPlayer.z=posPlayer.z+1",
+            "else",
+            "posPlayer="+fallback,
+            "posPlayer.z=posPlayer.z+1",
+            "end",
+            "for_,interactioninpairs(world.interactions)do",
+            "localupdate=interaction.shown",
+            "if(Vector4.Distance(posPlayer,interaction.pos)<interaction.interactionRange)andnotraceLogic.raceInProgressthen",
+            "update=true",
+            "else",
+            "update=false",
+            "end",
+            "ifupdate~=interaction.shownthen",
+            "interaction.shown=update",
+            "interaction.callback(interaction.shown)",
+            "end",
+            "ifinteraction.iconandVector4.Distance(posPlayer,interaction.pos)<interaction.iconRangethen",
+            "world.togglePin(interaction,true)",
+            "elseifinteraction.iconthen",
+            "world.togglePin(interaction,false)",
+            "end",
+            "end"
+        };
+        var rows = body.Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Split('\n')
+            .Select(line => Regex.Replace(line, @"--[^\r\n]*", ""))
+            .Select(line => Regex.Replace(line, @"\s+", ""))
+            .Where(line => line.Length > 0)
+            .Select(line => line
+                .Replace("__gcetNativePlayerWorldPosition()", pos, StringComparison.Ordinal)
+                .Replace("__gcetGetPlayer()", player, StringComparison.Ordinal))
+            .ToArray();
+        if (!rows.SequenceEqual(expected, StringComparer.Ordinal))
+            throw new InvalidOperationException(
+                "CyberTrials author world scan source drift: unsafe to replace existing gameplay.");
+
+        var playerGetter = body.Contains("__gcetGetPlayer()", StringComparison.Ordinal)
+            ? "__gcetGetPlayer()" : player;
+        var positionGetter = body.Contains("__gcetNativePlayerWorldPosition()", StringComparison.Ordinal)
+            ? "__gcetNativePlayerWorldPosition()" : "player:GetWorldPosition()";
+        const string function = """
+function world.update()
+    local player = __GCET_PLAYER__
+    if not player or player.mountedVehicle or player:IsInCombat() then return false end
+
+    local playerPos = __GCET_POSITION__
+    if not playerPos then
+        local transform = player:GetWorldTransform()
+        if transform then
+            local transformPos = transform:GetWorldPosition()
+            if transformPos then playerPos = transformPos:ToVector4() end
+        end
+    end
+    if playerPos then
+        posPlayer = playerPos
+    else
+        posPlayer = ToVector4({ x = 1, y = 1, z = 1, w = 1 })
+    end
+    posPlayer.z = posPlayer.z + 1
+
+    local nearAny = false
+    local raceInProgress = raceLogic.raceInProgress
+    for _, interaction in pairs(world.interactions) do
+        local distSq = distanceSquared(posPlayer, interaction.pos)
+        local interactionRange = interaction.interactionRange or 0
+        local update = (distSq < interactionRange * interactionRange) and not raceInProgress
+        if update then nearAny = true end
+        if update ~= interaction.shown then
+            interaction.shown = update
+            interaction.callback(interaction.shown)
+        end
+        if interaction.icon then
+            local iconRange = interaction.iconRange or 0
+            world.togglePin(interaction, distSq < iconRange * iconRange)
+        end
+    end
+    return nearAny
+end
+""";
+        const string distanceHelper = """
+local function distanceSquared(a, b)
+    local dx = a.x - b.x
+    local dy = a.y - b.y
+    local dz = a.z - b.z
+    return dx * dx + dy * dy + dz * dz
+end
+
+""";
+        var newline = source.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        var replacement = function
+            .Replace("__GCET_PLAYER__", playerGetter, StringComparison.Ordinal)
+            .Replace("__GCET_POSITION__", positionGetter, StringComparison.Ordinal)
+            .Replace("\n", newline, StringComparison.Ordinal);
+        var helper = distanceHelper.Replace("\n", newline, StringComparison.Ordinal);
+        var match = updates[0];
+        return source[..match.Index] + helper + replacement + source[(match.Index + match.Length)..];
+    }
 
     private static SemanticInjectionResult ApplyCyberTrialsClosedOverlayProvider(SemanticPatchContext context)
     {

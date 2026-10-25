@@ -470,3 +470,92 @@ foreach($registrar in @('registerForEvent','registerRuntimeEvent','__gcetRegiste
 }
 Write-Host 'CyberTrials original/runtime/generated onDraw, CRLF and idempotent overlay semantic PASS'
 
+
+# CyberTrials world scan had a nil-transform dereference that previously passed CI.
+# This generated-source fixture keeps the author callback/pin shape but contains
+# no copied source archive. Prove direct stock, generic/native, partial and drift.
+$rewriteWorld = $injectors.GetMethod('RewriteCyberTrialsWorldScan',
+    [Reflection.BindingFlags]'Static,NonPublic')
+if (!$rewriteWorld) { throw 'CyberTrials authoritative world scan generator missing' }
+$rawWorld = @'
+local posPlayer = { x = 1, y = 1, z = 1, w = 1 }
+local raceLogic = { raceInProgress = false }
+local world = { interactions = {} }
+function world.update()
+    if not Game.GetPlayer() then return end
+    if Game.GetPlayer().mountedVehicle or Game.GetPlayer():IsInCombat() then return end
+    if Game.GetPlayer() and Game.GetPlayer():GetWorldPosition() then
+        posPlayer = Game.GetPlayer():GetWorldPosition()
+        posPlayer.z = posPlayer.z + 1
+    elseif Game.GetPlayer() and not Game.GetPlayer():GetWorldPosition() and Game.GetPlayer():GetWorldTransform() and Game.GetPlayer():GetWorldTransform():GetWorldPosition():ToVector4() then
+        posPlayer = Game.GetPlayer():GetWorldTransform():GetWorldPosition():ToVector4()
+        posPlayer.z = posPlayer.z + 1
+    elseif Game.GetPlayer() and not Game.GetPlayer():GetWorldPosition() and not Game.GetPlayer():GetWorldTransform() and not Game.GetPlayer():GetWorldTransform():GetWorldPosition():ToVector4() then
+        posPlayer = ToVector4({ x = 1, y = 1, z = 1, w = 1 })
+        posPlayer.z = posPlayer.z + 1
+    else
+        posPlayer = ToVector4({ x = 1, y = 1, z = 1, w = 1 })
+        posPlayer.z = posPlayer.z + 1
+    end
+    for _, interaction in pairs(world.interactions) do
+        local update = interaction.shown
+        if (Vector4.Distance(posPlayer, interaction.pos) < interaction.interactionRange) and not raceLogic.raceInProgress then
+            update = true
+        else
+            update = false
+        end
+        if update ~= interaction.shown then
+            interaction.shown = update
+            interaction.callback(interaction.shown)
+        end
+        if interaction.icon and Vector4.Distance(posPlayer, interaction.pos) < interaction.iconRange then
+            world.togglePin(interaction, true)
+        elseif interaction.icon then
+            world.togglePin(interaction, false)
+        end
+    end
+end
+
+function world.togglePin(interaction, state)
+    return state
+end
+'@
+$lf = [string][char]10
+$crlf = [string][char]13 + [string][char]10
+$variants = @(
+    $rawWorld,
+    $rawWorld.Replace('Game.GetPlayer():GetWorldPosition()','__gcetNativePlayerWorldPosition()').Replace('Game.GetPlayer()','__gcetGetPlayer()'),
+    ($rawWorld.Replace($crlf,$lf).Replace($lf,$crlf)).Replace(
+        'if not Game.GetPlayer() then return end',
+        'if not Game.GetPlayer() then return end -- equivalent author comment')
+)
+foreach ($variant in $variants) {
+    try { $result = [string]$rewriteWorld.Invoke($null,[object[]]@($variant)) }
+    catch { throw "CyberTrials valid pristine/native source refused: $($_.Exception.InnerException.Message)" }
+    if ($result -eq $variant -or
+        $result -notmatch 'local function distanceSquared' -or
+        $result -notmatch 'local transform = player:GetWorldTransform\(\)' -or
+        $result -notmatch 'if transform then' -or
+        $result -notmatch 'local distSq = distanceSquared' -or
+        $result -notmatch 'interaction.callback\(interaction.shown\)' -or
+        $result -notmatch 'return nearAny' -or
+        $result -match 'not player:GetWorldTransform\(\).*and not player:GetWorldTransform\(\):') {
+        throw 'CyberTrials generated world scan lost source behavior or safe guards'
+    }
+    if ($variant.Contains('__gcetNativePlayerWorldPosition()') -and
+        $result -notmatch 'local playerPos = __gcetNativePlayerWorldPosition\(\)') {
+        throw 'CyberTrials source-owned world scan lost native stage'
+    }
+    if ($result.Contains($crlf) -ne $variant.Contains($crlf)) {
+        throw 'CyberTrials world scan failed newline-style preservation'
+    }
+    $second=[string]$rewriteWorld.Invoke($null,[object[]]@($result))
+    if ($second -cne $result) { throw 'CyberTrials world scan must be idempotent' }
+}
+$drift = $rawWorld.Replace('local update = interaction.shown',
+    'local authorExtraWork = ReadGameplayState()' + $lf + '        local update = interaction.shown')
+$refused = $false
+try { $null = $rewriteWorld.Invoke($null,[object[]]@($drift)) }
+catch { $refused = $true }
+if (!$refused) { throw 'CyberTrials unknown author world scan drift must fail closed' }
+Write-Host 'CyberTrials source-owned world scan original/native/partial/drift PASS'
