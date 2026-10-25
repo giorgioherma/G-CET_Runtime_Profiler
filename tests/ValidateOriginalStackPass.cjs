@@ -156,16 +156,16 @@ if (!fs.existsSync(manifestFile)) {
 if (process.env.GITHUB_STEP_SUMMARY) {
   const rows = diagnoses.slice(0, 40).map(d => '| ' +
     [d.level.toUpperCase(), d.stage, d.mod || '—', d.rule || '—',
-     d.file, d.reason || d.issue, d.action || 'Review CI annotation']
+     d.handler || '—', d.file, d.reason || d.issue, d.action || 'Review CI annotation']
       .map(md).join(' | ') + ' |');
   const header = [
     '### Original CET generation — fix directions',
     '',
     'Errors: **' + failures.length + '** | Warnings: **' + warnings.length + '**',
     '',
-    '| Status | Stage | Mod | Rule | File | Reason | Next action |',
-    '|---|---|---|---|---|---|---|',
-    ...(rows.length ? rows : ['| PASS | — | — | — | — | No reported issue | — |']),
+    '| Status | Stage | Mod | Rule | Generator handler | File | Reason | Next action |',
+    '|---|---|---|---|---|---|---|---|',
+    ...(rows.length ? rows : ['| PASS | — | — | — | — | — | No reported issue | — |']),
     diagnoses.length > 40 ? '\nOnly the first 40 diagnostics are shown here; see annotations for additional entries.' : '',
     '',
     'The check and its pass/fail criteria are unchanged. Runtime profiling is separate.',
