@@ -6,14 +6,14 @@ const crypto = require('node:crypto');
 const [referenceRoot, finalRoot] = process.argv.slice(2);
 const prefix = 'bin/x64/plugins/cyber_engine_tweaks/mods/';
 
-// Phase 1+2 contains older author audio source in these six owners. Their
-// *G-CET optimization behavior* remains authoritative, but the Lua bodies
-// cannot be used as a byte/marker oracle against the corrected AudioXL code.
-// Exclude from automatic parity leads, explicitly queue for manual review.
-const AUDIOXL_MANUAL_OWNERS = new Set([
-  'DedraJNCJoytoy', 'Dedrapanamgoondate', 'f80h_aroused_expressions',
-  'FenixRebirth', 'ImmersiveVDialogueExpanded', 'rarobottruck_1'
-]);
+// Exactly these six historical reference init.lua files contain a wrong-base
+// AudioXL bridge. Do not exclude the entire owner: other Lua coordinators,
+// dependency files and non-audio optimized code remain comparable.
+const AUDIOXL_MANUAL_FILES = new Set([
+  'DedraJNCJoytoy/init.lua', 'Dedrapanamgoondate/init.lua',
+  'f80h_aroused_expressions/init.lua', 'FenixRebirth/init.lua',
+  'ImmersiveVDialogueExpanded/init.lua', 'rarobottruck_1/init.lua'
+].map(p => prefix + p));
 function owner(relative) {
   return relative.startsWith(prefix)
     ? relative.slice(prefix.length).split('/')[0] : '[native/runtime]';
@@ -28,7 +28,7 @@ function isAudioFile(relative) {
 }
 function manualReason(relative) {
   if (isAudioFile(relative)) return 'audio-related';
-  if (AUDIOXL_MANUAL_OWNERS.has(owner(relative))) return 'AudioXL-contaminated Phase 1+2 owner';
+  if (AUDIOXL_MANUAL_FILES.has(relative)) return 'Wrong-base AudioXL init.lua reference';
   return null;
 }
 
@@ -103,10 +103,10 @@ const common = [...comparableReference.keys()].filter(p => comparableFinal.has(p
 const identical = common.filter(p => comparableReference.get(p).hash === comparableFinal.get(p).hash);
 const refOnly = [...comparableReference.keys()].filter(p => !comparableFinal.has(p));
 const finalOnly = [...comparableFinal.keys()].filter(p => !comparableReference.has(p));
-const affected = [...AUDIOXL_MANUAL_OWNERS].map(mod => ({
-  mod,
-  reference: [...referenceFiles.keys()].filter(p => owner(p) === mod && p.endsWith('.lua')).length,
-  final: [...finalFiles.keys()].filter(p => owner(p) === mod && p.endsWith('.lua')).length
+const affected = [...AUDIOXL_MANUAL_FILES].sort().map(file => ({
+  file,
+  reference: referenceFiles.has(file),
+  final: finalFiles.has(file)
 }));
 const rows=[], missingMarkers=[], missingImports=[];
 for(const mod of new Set([...ref.keys(),...fin.keys()])){
@@ -132,7 +132,7 @@ const summary=[
   '',
   'Advisory manual audit only. Different files or implementations are NOT automatically regressions.',
   '',
-  '**AudioXL exception:** All detected audio-related files and all files under the six historically contaminated AudioXL mod owners are excluded from automatic parity findings. Their G-CET optimizations are NOT waived or accepted: manually compare them against pristine current author source plus corrected AudioXL integration. No audio source or asset is required to match the old reference.',
+  '**AudioXL exception:** Exclude only the six explicitly identified wrong-base init.lua files and audio-related paths from automatic parity. Other Lua, GCET_Semantic workers and dependency files within those same six mods remain fully included. G-CET optimizations in the excluded init.lua files remain mandatory for manual source-aware review; none is deemed preserved or dispensable by this exception.',
   '',
   '### Scope after audio exclusion',
   '',
@@ -168,16 +168,16 @@ const summary=[
   '',
   '### AudioXL manual-review queue — excluded from automated parity',
   '',
-  '| Mod | Reference Lua files | Final Lua files | Required manual review |',
-  '|---|---:|---:|---|',
-  ...affected.map(v => '| '+[v.mod,v.reference,v.final,
-    'Compare G-CET optimization behavior on corrected author AudioXL source; do not copy historical gameplay/audio'].map(md).join(' | ')+' |'),
+  '| Exact reference exception | Present in reference | Present in final | Required manual review |',
+  '|---|---|---|---|',
+  ...affected.map(v => '| '+[v.file,v.reference ? 'yes' : 'no',v.final ? 'yes' : 'no',
+    'Compare G-CET optimizations against untouched author source plus corrected AudioXL implementation'].map(md).join(' | ')+' |'),
   '',
-  'Other audio-related paths excluded: '+excluded.filter(p => !AUDIOXL_MANUAL_OWNERS.has(owner(p))).length+' (count of unique paths).',
+  'Other audio-related paths excluded: '+excluded.filter(p => !AUDIOXL_MANUAL_FILES.has(p)).length+' (unique paths).',
   '',
-  'No audio comparison result (PASS/FAIL) is inferred. AudioXL-related marker changes, implementation differences and original audio source cannot certify or block Phase 1+2 parity; manual review is required.',
+  'No PASS/FAIL parity result is inferred for the six contaminated init.lua files or excluded audio-related paths. Other non-audio files in their mod directories are compared normally. Manual source-aware optimization review is required.',
   '',
-  'Next: review non-audio optimization leads against untouched author sources, worker ownership, 0-Engine/native dependencies and Phase 1+2 intent. Manually inspect the six AudioXL owners for optimization preservation. Gameplay and performance require separate verification.',
+  'Next: investigate non-audio optimization leads against untouched author sources, worker ownership, 0-Engine/native dependencies and Phase 1+2 intent. Manually review the six exact contaminated init.lua files. Gameplay and performance require separate verification.',
   ''
 ].join('\n');
 console.log('Final audit (non-audio): comparable-reference='+comparableReference.size+
