@@ -36,6 +36,9 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Generated Lua structural checker fixture contract
+        run: node tests/ValidateGeneratedLuaInvariantsContract.cjs
+
       - name: Build actual Resolver
         shell: pwsh
         run: dotnet publish src/G.CETResolver.App/G.CETResolver.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o ci-resolver
@@ -126,6 +129,10 @@ jobs:
           node tests/ValidateOriginalStackPass.cjs $mods $output $manifest
           if ($LASTEXITCODE -ne 0) {
             throw 'ORIGINAL_STACK_OUTPUT_CHECK_FAILED: see precise CI errors above'
+          }
+          node tests/ValidateGeneratedLuaInvariants.cjs $output
+          if ($LASTEXITCODE -ne 0) {
+            throw 'ORIGINAL_STACK_LUA_INVARIANT_FAILED: see precise CI errors above'
           }
 
       - name: Remove temporary private source
