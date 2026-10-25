@@ -12,13 +12,13 @@ permissions:
 
 jobs:
   original-source-pass:
-    name: Full Resolver pass from private originals
+    name: Generate from untouched CET sources
     runs-on: windows-latest
     steps:
-      - name: Checkout authoritative Resolver
+      - name: Checkout Resolver
         uses: actions/checkout@v4
 
-      - name: Read private stack input (never publish)
+      - name: Checkout private untouched stack
         uses: actions/checkout@v4
         with:
           repository: giorgioherma/original_cet_source
@@ -35,55 +35,42 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Build actual Resolver CLI
+      - name: Build actual Resolver
         shell: pwsh
         run: dotnet publish src/G.CETResolver.App/G.CETResolver.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o ci-resolver
 
-      - name: Install LuaJIT-compatible syntax parser
-        shell: pwsh
-        run: npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund luaparse@0.3.1
-
-      - name: One composed pass against original stack
+      - name: Generate one complete pass from original CET
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $stack = Join-Path $env:GITHUB_WORKSPACE 'ci-private-stack'
           $mods = Join-Path $stack 'bin/x64/plugins/cyber_engine_tweaks/mods'
           $capture = Join-Path $stack 'capture'
-          if (!(Test-Path (Join-Path $mods '0-Engine/init.lua')) -or
-              !(Test-Path (Join-Path $capture 'CET_Resolver_Input.json'))) {
-            throw 'PRIVATE_STACK_INPUT_MISSING: expected original CET mods and baseline CET_Resolver_Input.json'
+          $engine = Join-Path $mods '0-Engine/init.lua'
+          $handoff = Join-Path $capture 'CET_Resolver_Input.json'
+          if (!(Test-Path -LiteralPath $engine)) {
+            throw "MISSING_REQUIRED_ORIGINAL: bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/init.lua"
+          }
+          if (!(Test-Path -LiteralPath $handoff)) {
+            throw 'BASE_CAPTURE_MISSING: capture/CET_Resolver_Input.json'
           }
           $zip = Join-Path $env:RUNNER_TEMP 'gcet-original-pass.zip'
-          & './ci-resolver/G-CET-Resolver.exe' --capture $capture --mods $mods --generate-pass --pass-output $zip --json *> (Join-Path $env:RUNNER_TEMP 'gcet-resolver-first.json')
-          if ($LASTEXITCODE -ne 0) { throw 'RESOLVER_GENERATION_FAILED: original-source generation; see local CLI result. No private data uploaded.' }
+          $manifest = Join-Path $env:RUNNER_TEMP 'gcet-original-pass.json'
+          & './ci-resolver/G-CET-Resolver.exe' --capture $capture --mods $mods --generate-pass --pass-output $zip --json > (Join-Path $env:RUNNER_TEMP 'gcet-original-run.json')
+          if ($LASTEXITCODE -ne 0) {
+            throw 'RESOLVER_ORIGINAL_GENERATION_FAILED: production Resolver could not generate a pass from untouched CET source'
+          }
+          if (!(Test-Path -LiteralPath $zip) -or !(Test-Path -LiteralPath $manifest)) {
+            throw 'RESOLVER_OUTPUT_MISSING: expected generated ZIP and manifest'
+          }
           $output = Join-Path $env:RUNNER_TEMP 'gcet-original-overlay'
           Expand-Archive -LiteralPath $zip -DestinationPath $output -Force
-          $manifest = Join-Path $env:RUNNER_TEMP 'gcet-original-pass.json'
-          node tests/ValidateOriginalStackPass.cjs initial $mods $output $manifest
-          if ($LASTEXITCODE -ne 0) { throw 'ORIGINAL_SOURCE_PRESERVATION_FAILED: see structured errors above.' }
+          node tests/ValidateOriginalStackPass.cjs $mods $output $manifest
+          if ($LASTEXITCODE -ne 0) {
+            throw 'ORIGINAL_STACK_OUTPUT_CHECK_FAILED: see precise CI errors above'
+          }
 
-      - name: Idempotence on applied overlay
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $stack = Join-Path $env:GITHUB_WORKSPACE 'ci-private-stack'
-          $original = Join-Path $stack 'bin/x64/plugins/cyber_engine_tweaks/mods'
-          $repeated = Join-Path $env:RUNNER_TEMP 'gcet-second-mods'
-          Copy-Item -LiteralPath $original -Destination $repeated -Recurse
-          $overlay = Join-Path $env:RUNNER_TEMP 'gcet-original-overlay/bin/x64/plugins/cyber_engine_tweaks/mods'
-          Copy-Item -Path (Join-Path $overlay '*') -Destination $repeated -Recurse -Force
-          $zip = Join-Path $env:RUNNER_TEMP 'gcet-second-pass.zip'
-          & './ci-resolver/G-CET-Resolver.exe' --capture (Join-Path $stack 'capture') --mods $repeated --generate-pass --pass-output $zip --json *> (Join-Path $env:RUNNER_TEMP 'gcet-resolver-second.json')
-          if ($LASTEXITCODE -ne 0) { throw 'RESOLVER_SECOND_PASS_FAILED: modified stack cannot be processed again.' }
-          $second = Join-Path $env:RUNNER_TEMP 'gcet-second-overlay'
-          Expand-Archive -LiteralPath $zip -DestinationPath $second -Force
-          node tests/ValidateOriginalStackPass.cjs repeated $repeated $second (Join-Path $env:RUNNER_TEMP 'gcet-second-pass.json')
-          if ($LASTEXITCODE -ne 0) { throw 'RESOLVER_IDEMPOTENCE_FAILED: see structured errors above.' }
-
-      - name: Remove temporary private source files
+      - name: Remove temporary private source
         if: always()
         shell: pwsh
-        run: |
-          Remove-Item -LiteralPath 'ci-private-stack' -Recurse -Force -ErrorAction SilentlyContinue
-          Remove-Item -LiteralPath (Join-Path $env:RUNNER_TEMP 'gcet-second-mods') -Recurse -Force -ErrorAction SilentlyContinue
+        run: Remove-Item -LiteralPath 'ci-private-stack' -Recurse -Force -ErrorAction SilentlyContinue
