@@ -88,9 +88,35 @@ jobs:
           }
           $zip = Join-Path $env:RUNNER_TEMP 'gcet-original-pass.zip'
           $manifest = Join-Path $env:RUNNER_TEMP 'gcet-original-pass.json'
-          & './ci-resolver/G-CET-Resolver.exe' --capture $capture --mods $mods --generate-pass --pass-output $zip --json > (Join-Path $env:RUNNER_TEMP 'gcet-original-run.json')
+          # Capture the machine-readable Resolver failure reason for CI triage.
+          # No private source code or full capture file is uploaded or displayed.
+          $result = Join-Path $env:RUNNER_TEMP 'gcet-original-run.json'
+          & './ci-resolver/G-CET-Resolver.exe' --capture $capture --mods $mods --generate-pass --pass-output $zip --json *> $result
           if ($LASTEXITCODE -ne 0) {
-            throw 'RESOLVER_ORIGINAL_GENERATION_FAILED: production Resolver could not generate a pass from untouched CET source'
+            $diagnosis = 'Resolver exited without a parseable error reason.'
+            foreach ($line in @(Get-Content -LiteralPath $result -ErrorAction SilentlyContinue)) {
+              try {
+                $record = $line | ConvertFrom-Json -ErrorAction Stop
+                if ($record.ok -eq $false -and ![string]::IsNullOrWhiteSpace([string]$record.error)) {
+                  $diagnosis = [string]$record.error
+                  break
+                }
+              } catch { }
+            }
+            # Keep public Actions diagnostics small; do not emit private source excerpts.
+            $diagnosis = ($diagnosis -replace '[\r\n]+', ' ' -replace '::', ':').Trim()
+            if ($diagnosis.Length -gt 400) { $diagnosis = $diagnosis.Substring(0, 400) + '...' }
+            Write-Host "::error title=Resolver original-source generation failed::$diagnosis"
+            @(
+              '### Original CET generation — Resolver failure'
+              ''
+              'Stage: **production Resolver generation**'
+              ''
+              'Reason: ' + $diagnosis
+              ''
+              'Next: inspect the existing generating stage using the reported failure reason; do not add a repair-only semantic.'
+            ) | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+            throw 'RESOLVER_ORIGINAL_GENERATION_FAILED: see specific reason above'
           }
           if (!(Test-Path -LiteralPath $zip) -or !(Test-Path -LiteralPath $manifest)) {
             throw 'RESOLVER_OUTPUT_MISSING: expected generated ZIP and manifest'
