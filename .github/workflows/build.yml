@@ -1535,3 +1535,10 @@ jobs:
 
           Write-Host "Published canonical release $tag from commit $sha"
           Write-Host "Release asset SHA256: $env:PUBLIC_SHA256"
+
+  original-cet-source:
+    name: Original CET one-pass generation
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/dev/resolver-profiler-handoff'
+    uses: ./.github/workflows/original-cet-source.yml
+    secrets:
+      GCET_STACK_SOURCES_TOKEN: ${{ secrets.GCET_STACK_SOURCES_TOKEN }}
