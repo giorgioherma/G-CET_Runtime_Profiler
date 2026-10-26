@@ -50,8 +50,12 @@ if(!$historical.Contains("    -- ['OnSwitchToCredits'] = 'Credits', -- PASS8")) 
 if((Apply 'HistoricalMod/Modules/GameUI.lua' $historical).changed) {
   throw 'Completed Phase1+2 observer removal was reapplied'
 }
-$double=$gameUi.Replace("    ['OnSwitchToLoadGame']",
+$double=$gameUi.Replace($crlf,$lf).Replace("    ['OnSwitchToLoadGame']",
   "    ['OnSwitchToCredits'] = 'Credits',"+$lf+"    ['OnSwitchToLoadGame']")
+if($double -eq $gameUi -or
+   $double.Split("['OnSwitchToCredits'] = 'Credits',").Count -lt 4) {
+  throw 'Duplicate invalid observer fixture not constructed'
+}
 $refused=$false
 try { $null=Apply 'AmbiguousMod/GameUI.lua' $double } catch { $refused=$true }
 if(!$refused){throw 'Ambiguous duplicate invalid GameUI entries did not fail close'}
@@ -87,7 +91,7 @@ $unknown=$boss.Replace('if combatPhase >= 1 and activeBossRecord then',
 if((Apply 'OtherOwner/init.lua' $unknown).changed) {
   throw 'Unproven ScriptedPuppet hook should not be changed'
 }
-$check=Apply 'Another/GameUI.lua' ($gameUi.Replace($lf,$crlf))
+$check=Apply 'Another/GameUI.lua' ($gameUi.Replace($crlf,$lf).Replace($lf,$crlf))
 if(!$check.changed -or !$check.output.Contains($crlf)) {
   throw 'GameUI CRLF preservation failed'
 }
