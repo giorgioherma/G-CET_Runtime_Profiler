@@ -153,6 +153,51 @@ if($wake.Contains('api.__gcetDedraWakeBridgeV2') -or
    $wake.Contains('base.__gcetDedraWakeBridgeV2')){throw 'Read-only API probe persists'}
 if($wake.Contains('0.10') -or $wake.Contains('0.25') -or $wake.Contains('SetInterval') -or
    $wake.Contains('OnFrame(')){throw 'Dormant polling/timer introduced'}
+# Older optimized stacks have an external worker with a read-only public API
+# flag probe. It must be upgraded through this same generating rule, without
+# re-injecting author callbacks or moving the worker inline.
+$legacyWake=$wake.Replace($crlf,$nl)
+$legacyWake=$legacyWake.Replace('  local baseBridgeConfirmed = false' + $nl,'')
+$legacyWake=$legacyWake.Replace(
+  '    if not baseBridgeConfirmed or not linked or not api then',
+  '    if not linked or not api or api.__gcetDedraWakeBridgeV2 ~= true then')
+$legacyWake=$legacyWake.Replace(
+  '      type(base.perspective.get) ~= "function" then',
+  '      type(base.perspective.get) ~= "function" or' + $nl +
+  '      base.__gcetDedraWakeBridgeV2 ~= true then')
+$legacyWake=$legacyWake.Replace(
+  '  function M.Signal(proof)' + $nl +
+  '    if proof == "__gcetItpToggleWakeV2" then baseBridgeConfirmed = true end',
+  '  function M.Signal()')
+if(!$legacyWake.Contains('api.__gcetDedraWakeBridgeV2')) {
+  throw 'Prior generated Dedra worker fixture was not constructed'
+}
+$workerDir=Join-Path $dedra 'GCET_Semantic'
+New-Item -ItemType Directory -Force $workerDir|Out-Null
+$workerPath=Join-Path $workerDir 'dedra_camera_wake.lua'
+[IO.File]::WriteAllText($workerPath,$legacyWake,[Text.UTF8Encoding]::new($false))
+$workerUpgrade=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $lua $addon -StageInput
+if(!$workerUpgrade.Applied -or $workerUpgrade.Changes.Count -ne 1) {
+  throw 'Previously optimized Dedra worker did not upgrade in place'
+}
+$updatedWorker=[Text.Encoding]::UTF8.GetString($workerUpgrade.Changes[0].Bytes)
+if($updatedWorker -ne $wake -or
+  $workerUpgrade.Changes[0].RelativeFile -notlike '*/GCET_Semantic/dedra_camera_wake.lua') {
+  throw 'Prior worker update changed execution ownership or generated unexpected code'
+}
+[IO.File]::WriteAllText($workerPath,$updatedWorker,[Text.UTF8Encoding]::new($false))
+$workerTwice=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $lua $addon -StageInput
+if($workerTwice.Applied -or $workerTwice.Changes.Count -ne 0) {
+  throw 'Updated external worker was not idempotent'
+}
+$driftedWorker=$legacyWake.Replace('fallbackRegister("onUpdate",update)',
+  'fallbackRegister("onUpdate",nil)')
+[IO.File]::WriteAllText($workerPath,$driftedWorker,[Text.UTF8Encoding]::new($false))
+$refused=$false
+try { $null=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $lua $addon -StageInput }
+catch { $refused=$true }
+if(!$refused){throw 'Unknown external worker drift was silently overwritten'}
+
 if([IO.File]::ReadAllText((Join-Path $dedra 'init.lua')) -ne $dedraFixture){throw 'Installed source edited'}
 if([IO.File]::ReadAllText((Join-Path $itp 'init.lua')) -ne $itpFixture){throw 'Base live source edited'}
 Write-Host 'Paired base CET toggle and Dedra detached worker: no dormant polling, one callback, author fallback PASS'
