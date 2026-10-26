@@ -134,6 +134,14 @@ public static class PassGeneratorService
             GenericInteractionUiTransform.TryStageCronAndUiIdle(
                 modsRoot,staged,appliedTransformsByFile,transformManifest);
 
+        // Restore source-proven Phase1+2 hook compatibility directly from
+        // untouched mod files, before native integration and semantics. These
+        // author callbacks were previously preserved with a valid hook /
+        // disabled nonexistent GameUI event; never require old G-CET output.
+        genericInfrastructureTransformCount += StageUnsupportedGameHookCompatibility(
+            modsRoot,staged,appliedTransformsByFile,transformManifest);
+
+
         // GENERIC PHASE 2: finish source infrastructure and shared-read
         // rewrites before any semantic source injection.
         // Explicitly reviewed 0-Engine Stage A: the 12 immutable PSM
@@ -2172,6 +2180,115 @@ public static class PassGeneratorService
         public bool SequenceWrappedPcall { get; init; }
     }
 
+
+    // Generic one-pass source generation for two previously established
+    // Phase1+2 runtime-hook corrections. Applies to matching SOURCE STRUCTURES,
+    // not a fixed mod inventory. Do not reintroduce the invalid author hook
+    // simply because an original file, rather than old G-CET output, is used.
+    internal static bool TryTransformUnsupportedGameHooks(
+        string relative, string text, out string output, out string[] stages)
+    {
+        output=text;
+        var accepted=new List<string>();
+        if (Path.GetFileName(relative).Equals("GameUI.lua",StringComparison.OrdinalIgnoreCase))
+        {
+            // GameUI's pause menu contains a copied table of CET observers.
+            // OnSwitchToCredits is absent on MenuScenario_PauseMenu and CET
+            // logs an error for every attempted observer registration.
+            // Preserve the other entries; never invent a replacement event.
+            var menu=Regex.Matches(output,
+                @"(?m)^[ \t]*\[[ \t]*['""]MenuScenario_PauseMenu['""][ \t]*\][ \t]*=[ \t]*\{[ \t]*(?:--[^\r\n]*)?$",
+                RegexOptions.CultureInvariant);
+            if(menu.Count>1)
+                throw new InvalidOperationException("Ambiguous GameUI pause-menu observer table: "+relative);
+            if(menu.Count==1)
+            {
+                var begin=menu[0].Index+menu[0].Length;
+                var closing=Regex.Match(output[begin..],
+                    @"(?m)^[ \t]*\},[ \t]*(?:--[^\r\n]*)?$",
+                    RegexOptions.CultureInvariant);
+                if(!closing.Success || closing.Index>1500)
+                    throw new InvalidOperationException("GameUI pause-menu table drifted: "+relative);
+                var table=output.Substring(begin,closing.Index);
+                var entries=Regex.Matches(table,
+                    @"(?m)^(?<indent>[ \t]*)(?<entry>\[[ \t]*['""]OnSwitchToCredits['""][ \t]*\][ \t]*=[ \t]*['""]Credits['""][ \t]*,)(?<tail>[ \t]*(?:--[^\r\n]*)?)$",
+                    RegexOptions.CultureInvariant);
+                if(entries.Count>1)
+                    throw new InvalidOperationException("Ambiguous GameUI credits observer: "+relative);
+                if(entries.Count==1)
+                {
+                    var m=entries[0];
+                    var suffix=m.Groups["tail"].Value;
+                    var replaced=m.Groups["indent"].Value+"-- "+m.Groups["entry"].Value+
+                        suffix+(suffix.Contains("--",StringComparison.Ordinal)?"":
+                            " -- G-CET: nonexistent MenuScenario_PauseMenu game event");
+                    var i=begin+m.Index;
+                    output=output[..i]+replaced+output[(i+m.Length)..];
+                    accepted.Add("PAUSE_MENU_MISSING_CREDITS_OBSERVER");
+                }
+            }
+        }
+
+        // The prior optimized Exodus source already established this exact
+        // functional hook replacement. Its author-provided boss validation and
+        // death/cleanup callbacks must remain byte-for-byte unchanged.
+        var attaches=Regex.Matches(output,
+            @"Observe[ \t]*\([ \t]*['""]ScriptedPuppet['""][ \t]*,[ \t]*['""]OnAttach['""][ \t]*,[ \t]*function[ \t]*\([ \t]*self[ \t]*\)",
+            RegexOptions.CultureInvariant);
+        var qualified=attaches.Cast<Match>().Where(m=>
+        {
+            var tail=output.Substring(m.Index,Math.Min(1600,output.Length-m.Index));
+            return tail.Contains("if combatPhase >= 1 and activeBossRecord then",StringComparison.Ordinal) &&
+                tail.Contains("local selfIDStr = tostring(self:GetRecordID())",StringComparison.Ordinal) &&
+                tail.Contains("local isValidEnemy = false",StringComparison.Ordinal);
+        }).ToArray();
+        if(qualified.Length>1)
+            throw new InvalidOperationException("Ambiguous boss attachment observer: "+relative);
+        if(qualified.Length==1)
+        {
+            var m=qualified[0];
+            var rewritten=m.Value.Replace("OnAttach","OnGameAttached",StringComparison.Ordinal);
+            output=output[..m.Index]+rewritten+output[(m.Index+m.Length)..];
+            accepted.Add("SCRIPTED_PUPPET_BOSS_GAME_ATTACHED");
+        }
+        stages=accepted.ToArray();
+        return stages.Length>0;
+    }
+
+    private static int StageUnsupportedGameHookCompatibility(
+        string modsRoot,Dictionary<string,byte[]> staged,
+        Dictionary<string,int> appliedTransformsByFile,List<object> transformManifest)
+    {
+        var root=Path.GetFullPath(modsRoot);
+        var applied=0;
+        foreach(var path in Directory.EnumerateFiles(root,"*.lua",
+            SearchOption.AllDirectories).OrderBy(x=>x,StringComparer.OrdinalIgnoreCase))
+        {
+            var rel=Path.GetRelativePath(root,path).Replace('\\','/');
+            if(ModOptimizationBlacklist.IsBlacklistedPath(rel))continue;
+            var input=staged.TryGetValue(rel,out var previous)?previous:File.ReadAllBytes(path);
+            var hasBom=input.Length>=3&&input[0]==0xef&&input[1]==0xbb&&input[2]==0xbf;
+            var text=Encoding.UTF8.GetString(input,hasBom?3:0,input.Length-(hasBom?3:0));
+            if(!TryTransformUnsupportedGameHooks(rel,text,out var output,out var stages))continue;
+            var bytes=Encoding.UTF8.GetBytes(output);
+            if(hasBom)bytes=[0xef,0xbb,0xbf,..bytes];
+            staged[rel]=bytes;
+            appliedTransformsByFile[rel]=
+                appliedTransformsByFile.GetValueOrDefault(rel)+stages.Length;
+            foreach(var stage in stages)
+                transformManifest.Add(new {
+                    type="GENERIC_SOURCE_RUNTIME_HOOK",
+                    file=rel,
+                    stage,
+                    sourceProof="CURRENT_LUA_CALLSITE_AND_AUTHOR_CALLBACK",
+                    provenance="PHASE12_PRESERVED_BEHAVIOR",
+                    sourceState="ORIGINAL_OR_PREVIOUSLY_OPTIMIZED",
+                    originalCallbackBodyPreserved=true
+                });
+            applied+=stages.Length;
+        }
+        return applied;
+    }
 
     private sealed record TransformResult(byte[] Bytes, int AppliedTransforms);
 }
