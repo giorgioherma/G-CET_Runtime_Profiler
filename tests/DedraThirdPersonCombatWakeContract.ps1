@@ -58,6 +58,9 @@ local public = { events = { on = function() end }, perspective = { get = functio
 local function readOnly(t)
   return setmetatable({}, {__index=t, __newindex=function() error("the Immersive Third Person API table is read-only") end})
 end
+registerForEvent("onInit", function()
+  mod.captureConsumableTiming()
+end)
 mod.apiCore = { public = readOnly(public) }
 mod.api = mod.apiCore and mod.apiCore.public or nil
 return mod.api
