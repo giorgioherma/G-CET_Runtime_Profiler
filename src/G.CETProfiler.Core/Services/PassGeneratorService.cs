@@ -2235,9 +2235,10 @@ public static class PassGeneratorService
         var attaches=Regex.Matches(output,
             @"Observe[ \t]*\([ \t]*['""]ScriptedPuppet['""][ \t]*,[ \t]*['""]OnAttach['""][ \t]*,[ \t]*function[ \t]*\([ \t]*self[ \t]*\)",
             RegexOptions.CultureInvariant);
+        var candidateSource=output; // out parameters cannot be captured by LINQ lambdas
         var qualified=attaches.Cast<Match>().Where(m=>
         {
-            var tail=output.Substring(m.Index,Math.Min(1600,output.Length-m.Index));
+            var tail=candidateSource.Substring(m.Index,Math.Min(1600,candidateSource.Length-m.Index));
             return tail.Contains("if combatPhase >= 1 and activeBossRecord then",StringComparison.Ordinal) &&
                 tail.Contains("local selfIDStr = tostring(self:GetRecordID())",StringComparison.Ordinal) &&
                 tail.Contains("local isValidEnemy = false",StringComparison.Ordinal);
