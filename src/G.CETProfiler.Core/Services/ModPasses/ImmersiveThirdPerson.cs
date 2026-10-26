@@ -232,27 +232,53 @@ internal static partial class SemanticInjectors
             "pcall(autoTppHandleToggle)");
         var src=file.Text.Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
         const string marker="__gcetDedraToggleSignalV2";
-        // GetMod(\"immersive_third_person\") returns mod.api, NOT the
-        // internal mod table. The partner's worker must see the wake proof
-        // on that same public API. This is one producer-side semantic rule;
-        // do not require a later corrective semantic or optimized input.
+        // GetMod("immersive_third_person") returns a read-only public API.
+        // The base instead proves wake support through Dedra's mutable worker.
+        // This one producer supports pristine and previous partial output.
         const string apiAnchor = "mod.api = mod.apiCore and mod.apiCore.public or nil";
-        const string publicFlag = "mod.api.__gcetDedraWakeBridgeV2 = mod.__gcetDedraWakeBridgeV2 == true";
-        const string apiBridge = "\nif type(mod.api) == \"table\" then\n" +
-            "  " + publicFlag + "\nend";
+        // ITP's exported public API is a read-only proxy. Never mutate it.
+        const string oldApiBridge = "\nif type(mod.api) == \"table\" then\n" +
+            "  mod.api.__gcetDedraWakeBridgeV2 = mod.__gcetDedraWakeBridgeV2 == true\nend";
+        const string oldProofCall = "pcall(addon.__gcetWakeFromBase)";
+        const string proofCall = "pcall(addon.__gcetWakeFromBase, \"__gcetItpToggleWakeV2\")";
+        const string initAnchor = "registerForEvent(\"onInit\", function()\n  mod.captureConsumableTiming()";
+        const string initSignal = "registerForEvent(\"onInit\", function()\n" +
+            "  pcall(mod.__gcetDedraToggleSignalV2)\n  mod.captureConsumableTiming()";
         if(src.Contains(marker,StringComparison.Ordinal))
         {
             if(!src.Contains("pcall(mod.__gcetDedraToggleSignalV2)",StringComparison.Ordinal) ||
                !src.Contains("mod.__gcetDedraWakeBridgeV2 = true",StringComparison.Ordinal))
                 throw new InvalidOperationException("Incomplete base ITP toggle signal.");
-            if(src.Contains(publicFlag,StringComparison.Ordinal))
-                return SemanticInjectionResult.Skip("ITP public Dedra wake contract already present.");
             if(src.Split(apiAnchor,StringSplitOptions.None).Length!=2)
-                throw new InvalidOperationException("ITP public API assignment changed; no safe Dedra wake export.");
-            src=src.Replace(apiAnchor,apiAnchor+apiBridge,StringComparison.Ordinal);
+                throw new InvalidOperationException("ITP public API assignment changed.");
+            var before=src;
+            // Upgrade exactly our earlier generated source through the same
+            // authoritative producer. Unknown drift remains a hard refusal.
+            if(src.Contains("mod.api.__gcetDedraWakeBridgeV2",StringComparison.Ordinal))
+            {
+                if(src.Split(oldApiBridge,StringSplitOptions.None).Length!=2)
+                    throw new InvalidOperationException("Old ITP API bridge drifted.");
+                src=src.Replace(oldApiBridge,"",StringComparison.Ordinal);
+            }
+            if(src.Contains(oldProofCall,StringComparison.Ordinal))
+            {
+                if(src.Split(oldProofCall,StringSplitOptions.None).Length!=2)
+                    throw new InvalidOperationException("Old Dedra signal drifted.");
+                src=src.Replace(oldProofCall,proofCall,StringComparison.Ordinal);
+            }
+            if(!src.Contains(proofCall,StringComparison.Ordinal))
+                throw new InvalidOperationException("ITP wake capability proof missing.");
+            if(!src.Contains(initSignal,StringComparison.Ordinal))
+            {
+                if(src.Split(initAnchor,StringSplitOptions.None).Length!=2)
+                    throw new InvalidOperationException("ITP onInit lifecycle drifted.");
+                src=src.Replace(initAnchor,initSignal,StringComparison.Ordinal);
+            }
+            if(src==before)
+                return SemanticInjectionResult.Skip("Read-only-safe ITP wake already present.");
             context.Write(file,file.Text.Contains("\r\n",StringComparison.Ordinal)
                 ? src.Replace("\n","\r\n",StringComparison.Ordinal):src);
-            return SemanticInjectionResult.Success("Completed ITP public wake contract for an older partial source.");
+            return SemanticInjectionResult.Success("Upgraded ITP wake without mutating read-only API.");
         }
         const string binding =
             "registerInput(\"tpp_camera_toggle\", TEXT.bindToggle[1], function(keypress)\n" +
@@ -270,7 +296,7 @@ internal static partial class SemanticInjectors
           local ok, addon = pcall(GetMod, "DedraThirdPersonCombatAddon")
           if ok and type(addon) == "table" and
              type(addon.__gcetWakeFromBase) == "function" then
-            pcall(addon.__gcetWakeFromBase)
+            pcall(addon.__gcetWakeFromBase, "__gcetItpToggleWakeV2")
           end
         end
 
@@ -288,15 +314,16 @@ internal static partial class SemanticInjectors
             if(toggle>=0 && toggle-menu<400)
                 src=src[..toggle]+ui+"    pcall(mod.__gcetDedraToggleSignalV2)\n"+src[(toggle+ui.Length)..];
         }
-        if(src.Split(apiAnchor,StringSplitOptions.None).Length!=2)
-            throw new InvalidOperationException("ITP public API assignment changed; no safe Dedra wake export.");
-        src=src.Replace(apiAnchor,apiAnchor+apiBridge,StringComparison.Ordinal);
+        if(src.Split(apiAnchor,StringSplitOptions.None).Length!=2 ||
+           src.Split(initAnchor,StringSplitOptions.None).Length!=2)
+            throw new InvalidOperationException("ITP public API/onInit lifecycle changed.");
+        src=src.Replace(initAnchor,initSignal,StringComparison.Ordinal);
         if(file.Text.Contains("\r\n",StringComparison.Ordinal))
             src=src.Replace("\n","\r\n",StringComparison.Ordinal);
         context.Write(file,src);
         return SemanticInjectionResult.Success(
-            "Existing base CET and UI toggle notify the add-on of requested TPP state, " +
-            "even when combat or scene temporarily defers the visible camera switch.");
+            "Original CET and UI toggles plus onInit directly signal Dedra, " +
+            "preserving the read-only public API and deferred camera wake.");
     }
 
     private static SemanticInjectionResult ApplyImmersiveThirdPersonUpdatedLoop(

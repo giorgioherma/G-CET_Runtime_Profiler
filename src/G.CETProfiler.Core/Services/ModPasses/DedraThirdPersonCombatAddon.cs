@@ -112,6 +112,7 @@ internal static partial class SemanticInjectors
 local M = {}
 function M.Install(Dedra, step, fallbackRegister)
   local handle, api, linked = nil, nil, false
+  local baseBridgeConfirmed = false
   local pausable = false
   local kinds = { ""perspectiveChanged"", ""overrideChanged"", ""transitionStart"",
     ""transitionEnd"", ""sessionStart"", ""sessionEnd"" }
@@ -125,7 +126,7 @@ function M.Install(Dedra, step, fallbackRegister)
   end
   local function sync()
     if not pausable or not handle then return end
-    if not linked or not api or api.__gcetDedraWakeBridgeV2 ~= true then
+    if not baseBridgeConfirmed or not linked or not api then
       handle.Resume()  -- Older ITP builds fail open, never strand a toggle.
       return
     end
@@ -150,8 +151,7 @@ function M.Install(Dedra, step, fallbackRegister)
     if not ok or type(base) ~= ""table"" or
       type(base.events) ~= ""table"" or type(base.events.on) ~= ""function"" or
       type(base.perspective) ~= ""table"" or
-      type(base.perspective.get) ~= ""function"" or
-      base.__gcetDedraWakeBridgeV2 ~= true then
+      type(base.perspective.get) ~= ""function"" then
       linked = false
       if handle then handle.Resume() end
       return
@@ -195,7 +195,8 @@ function M.Install(Dedra, step, fallbackRegister)
   function M.Start()
     bind() -- One startup read; no dormant watchdog.
   end
-  function M.Signal()
+  function M.Signal(proof)
+    if proof == ""__gcetItpToggleWakeV2"" then baseBridgeConfirmed = true end
     if not linked then bind() else notify() end
   end
   function M.Stop()

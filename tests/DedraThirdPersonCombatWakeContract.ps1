@@ -54,7 +54,11 @@ registerInput("tpp_camera_toggle", TEXT.bindToggle[1], function(keypress)
 
   pcall(autoTppHandleToggle)
 end)
-mod.apiCore = { public = { events = { on = function() end }, perspective = { get = function() return {} end } } }
+local public = { events = { on = function() end }, perspective = { get = function() return {} end } }
+local function readOnly(t)
+  return setmetatable({}, {__index=t, __newindex=function() error("the Immersive Third Person API table is read-only") end})
+end
+mod.apiCore = { public = readOnly(public) }
 mod.api = mod.apiCore and mod.apiCore.public or nil
 return mod.api
 '@
@@ -76,7 +80,9 @@ $b=Run 'immersive_third_person' 'immersive-third-person-dedra-toggle-signal' $it
 if(!$b.Applied -or $b.Changes.Count -ne 1){throw 'Base should emit one source signal'}
 $bridge=[Text.Encoding]::UTF8.GetString($b.Changes[0].Bytes)
 if(!$bridge.Contains('mod.__gcetDedraWakeBridgeV2 = true') -or
-   !$bridge.Contains('mod.api.__gcetDedraWakeBridgeV2 = mod.__gcetDedraWakeBridgeV2 == true') -or
+   $bridge.Contains('mod.api.__gcetDedraWakeBridgeV2') -or
+   !$bridge.Contains('pcall(addon.__gcetWakeFromBase, "__gcetItpToggleWakeV2")') -or
+   !$bridge.Contains('mod.captureConsumableTiming()') -or
    !$bridge.Contains('return mod.api') -or
    !$bridge.Contains('pcall(mod.__gcetDedraToggleSignalV2)') -or
    $bridge.Contains('registerHotkey(') -or
@@ -107,10 +113,13 @@ if($lua.Contains('pcall(dedraStep, dt)') -or
   throw 'Original frame callback still present or doubled'
 }
 foreach($token in @('FrameListeners.MakeRegistrar','handle.Pause()','handle.Resume()',
+  'baseBridgeConfirmed','if proof == "__gcetItpToggleWakeV2"',
   'if p.userWantsThirdPerson == true','kind,owner,notify',
   'Original game-combat','linked','fallbackRegister("onUpdate",update)')){
   if(!$wake.Contains($token)){throw "Missing safe detached wake or fallback: $token"}
 }
+if($wake.Contains('api.__gcetDedraWakeBridgeV2') -or
+   $wake.Contains('base.__gcetDedraWakeBridgeV2')){throw 'Read-only API probe persists'}
 if($wake.Contains('0.10') -or $wake.Contains('0.25') -or $wake.Contains('SetInterval') -or
    $wake.Contains('OnFrame(')){throw 'Dormant polling/timer introduced'}
 if([IO.File]::ReadAllText((Join-Path $dedra 'init.lua')) -ne $dedraFixture){throw 'Installed source edited'}
