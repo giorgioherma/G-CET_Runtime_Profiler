@@ -29,7 +29,6 @@ gameUI.menuMethods = {
 return gameUI
 '@
 $a=Apply 'SomeOtherInstalledMod/Modules/GameUI.lua' $gameUi
-Write-Host ("DEBUG hook fixture: changed={0} stages={1} commented={2} otherMenu={3} preservedLoad={4}" -f $a.changed,$a.stages.Count,$a.output.Contains("    -- ['OnSwitchToCredits'] = 'Credits',"),$a.output.Contains("    ['OnSwitchToCredits'] = 'Credits',"),$a.output.Contains("    ['OnSwitchToLoadGame'] = 'LoadGame',"))
 if(!$a.changed -or $a.stages.Count -ne 1 -or
    !$a.output.Contains("    -- ['OnSwitchToCredits'] = 'Credits',") -or
    !$a.output.Contains("    ['OnSwitchToLoadGame'] = 'LoadGame',") -or
@@ -42,8 +41,12 @@ if((Apply 'SomeOtherInstalledMod/Modules/GameUI.lua' $a.output).changed) {
 if((Apply 'AnotherInstalledMod/metadata.lua' $gameUi).changed) {
   throw 'Observer removal incorrectly targets non-GameUI source'
 }
-$historical=$gameUi.Replace("    ['OnSwitchToCredits'] = 'Credits',"+$lf+"    ['OnSwitchToLoadGame']",
-  "    -- ['OnSwitchToCredits'] = 'Credits', -- PASS8: removed game method"+$lf+"    ['OnSwitchToLoadGame']")
+$search="    ['OnSwitchToCredits'] = 'Credits',"+$lf+"    ['OnSwitchToLoadGame']"
+$replace="    -- ['OnSwitchToCredits'] = 'Credits', -- PASS8: removed game method"+$lf+"    ['OnSwitchToLoadGame']"
+$historical=$gameUi.Replace($crlf,$lf).Replace($search,$replace)
+if(!$historical.Contains("    -- ['OnSwitchToCredits'] = 'Credits', -- PASS8")) {
+  throw 'Historical completed stage fixture not constructed'
+}
 if((Apply 'HistoricalMod/Modules/GameUI.lua' $historical).changed) {
   throw 'Completed Phase1+2 observer removal was reapplied'
 }
