@@ -96,6 +96,33 @@ if($twice.Applied -or $twice.Changes.Count -ne 0) {
   throw 'Public Dedra wake export was not idempotent'
 }
 
+# An earlier G-CET generation wrote a flag onto ITP's read-only public API.
+# Verify the SAME producer repairs that exact optimized/partial source.
+$nl=[string][char]10
+$old=$bridge.Replace('pcall(addon.__gcetWakeFromBase, "__gcetItpToggleWakeV2")',
+                     'pcall(addon.__gcetWakeFromBase)')
+$old=$old.Replace('  pcall(mod.__gcetDedraToggleSignalV2)' + $nl + '  mod.captureConsumableTiming()',
+                  '  mod.captureConsumableTiming()')
+$apiAnchor='mod.api = mod.apiCore and mod.apiCore.public or nil'
+$legacyApi=$apiAnchor + $nl +
+    'if type(mod.api) == "table" then' + $nl +
+    '  mod.api.__gcetDedraWakeBridgeV2 = mod.__gcetDedraWakeBridgeV2 == true' + $nl +
+    'end'
+$old=$old.Replace($apiAnchor,$legacyApi)
+if(!$old.Contains('mod.api.__gcetDedraWakeBridgeV2')){throw 'Broken legacy fixture not constructed'}
+$upgrade=Run 'immersive_third_person' 'immersive-third-person-dedra-toggle-signal' $old $base -StageInput
+if(!$upgrade.Applied -or $upgrade.Changes.Count -ne 1){throw 'Prior broken ITP bridge not upgraded'}
+$upgraded=[Text.Encoding]::UTF8.GetString($upgrade.Changes[0].Bytes)
+if($upgraded.Contains('mod.api.__gcetDedraWakeBridgeV2') -or
+   !$upgraded.Contains('pcall(addon.__gcetWakeFromBase, "__gcetItpToggleWakeV2")') -or
+   !$upgraded.Contains('  pcall(mod.__gcetDedraToggleSignalV2)' + $nl + '  mod.captureConsumableTiming()')) {
+    throw 'Legacy ITP crash and capability upgrade incomplete'
+}
+$upgradedAgain=Run 'immersive_third_person' 'immersive-third-person-dedra-toggle-signal' $upgraded $base -StageInput
+if($upgradedAgain.Applied -or $upgradedAgain.Changes.Count -ne 0) {
+    throw 'Read-only-safe ITP upgrade was not idempotent'
+}
+
 $a=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $dedraFixture $addon
 if(!$a.Applied -or $a.Changes.Count -ne 2){throw "Dedra expected init + separate worker, got $($a.Changes.Count)"}
 $init=$a.Changes|Where-Object{$_.RelativeFile -like '*/init.lua'}|Select-Object -First 1
