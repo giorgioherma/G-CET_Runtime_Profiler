@@ -25,7 +25,39 @@ internal static partial class SemanticInjectors
                !source.Contains("Dedra.__gcetWakeFromBase",StringComparison.Ordinal) ||
                owned is null || !owned.Contains(marker,StringComparison.Ordinal))
                 throw new InvalidOperationException("Dedra V2 partial stage or missing worker.");
-            return SemanticInjectionResult.Skip("Detached third-person wake already installed.");
+            // A previous G-CET pass installed a worker that read an impossible
+            // flag from ITP's read-only API. Match the exact authored worker
+            // contract, not its marker alone, and upgrade that worker in place.
+            // Never require this older output for pristine generation.
+            const string coordinatorHeader =
+                "-- G-CET semantic coordinator:dedra-third-person-combat-wake\n";
+            var expectedWorker = coordinatorHeader + WorkerBody;
+            var existingWorker = owned.Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
+            if(existingWorker==expectedWorker)
+                return SemanticInjectionResult.Skip("Read-only-safe detached wake already installed.");
+
+            var legacyWorker = coordinatorHeader + WorkerBody
+                .Replace("  local baseBridgeConfirmed = false\n","",StringComparison.Ordinal)
+                .Replace(
+                    "    if not baseBridgeConfirmed or not linked or not api then",
+                    "    if not linked or not api or api.__gcetDedraWakeBridgeV2 ~= true then",
+                    StringComparison.Ordinal)
+                .Replace(
+                    "      type(base.perspective.get) ~= \"function\" then",
+                    "      type(base.perspective.get) ~= \"function\" or\n" +
+                    "      base.__gcetDedraWakeBridgeV2 ~= true then",
+                    StringComparison.Ordinal)
+                .Replace(
+                    "  function M.Signal(proof)\n" +
+                    "    if proof == \"__gcetItpToggleWakeV2\" then baseBridgeConfirmed = true end",
+                    "  function M.Signal()",StringComparison.Ordinal);
+            if(existingWorker!=legacyWorker)
+                throw new InvalidOperationException(
+                    "Dedra worker differs from known generated versions; refuse unsafe overwrite.");
+            context.WriteCoordinator(workerFile,expectedWorker);
+            return SemanticInjectionResult.Success(
+                "Upgraded the existing external Dedra worker in place; " +
+                "preserved one wake owner and restored read-only-safe dormancy.");
         }
         if(source.Contains("__gcetDedraEventWakeV1",StringComparison.Ordinal))
         {
