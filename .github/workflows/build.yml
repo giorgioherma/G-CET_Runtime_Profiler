@@ -1220,6 +1220,10 @@ jobs:
         shell: pwsh
         run: ./tests/HotModGcFastpathsContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: Phase1+2 missing game hook preservation contract
+        shell: pwsh
+        run: ./tests/RuntimeMissingObserverContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: Dedra combat camera event wake source contract
         shell: pwsh
         run: ./tests/DedraThirdPersonCombatWakeContract.ps1 -ResolverRoot ./publish-resolver
