@@ -2197,7 +2197,7 @@ public static class PassGeneratorService
             // logs an error for every attempted observer registration.
             // Preserve the other entries; never invent a replacement event.
             var menu=Regex.Matches(output,
-                @"(?m)^[ \t]*\[[ \t]*['""]MenuScenario_PauseMenu['""][ \t]*\][ \t]*=[ \t]*\{[ \t]*(?:--[^\r\n]*)?$",
+                @"(?m)^[ \t]*\[[ \t]*['""]MenuScenario_PauseMenu['""][ \t]*\][ \t]*=[ \t]*\{[ \t]*(?:--[^\r\n]*)?(?=\r?$)",
                 RegexOptions.CultureInvariant);
             if(menu.Count>1)
                 throw new InvalidOperationException("Ambiguous GameUI pause-menu observer table: "+relative);
@@ -2205,13 +2205,13 @@ public static class PassGeneratorService
             {
                 var begin=menu[0].Index+menu[0].Length;
                 var closing=Regex.Match(output[begin..],
-                    @"(?m)^[ \t]*\},[ \t]*(?:--[^\r\n]*)?$",
+                    @"(?m)^[ \t]*\},[ \t]*(?:--[^\r\n]*)?(?=\r?$)",
                     RegexOptions.CultureInvariant);
                 if(!closing.Success || closing.Index>1500)
                     throw new InvalidOperationException("GameUI pause-menu table drifted: "+relative);
                 var table=output.Substring(begin,closing.Index);
                 var entries=Regex.Matches(table,
-                    @"(?m)^(?<indent>[ \t]*)(?<entry>\[[ \t]*['""]OnSwitchToCredits['""][ \t]*\][ \t]*=[ \t]*['""]Credits['""][ \t]*,)(?<tail>[ \t]*(?:--[^\r\n]*)?)$",
+                    @"(?m)^(?<indent>[ \t]*)(?<entry>\[[ \t]*['""]OnSwitchToCredits['""][ \t]*\][ \t]*=[ \t]*['""]Credits['""][ \t]*,)(?<tail>[ \t]*(?:--[^\r\n]*)?)(?=\r?$)",
                     RegexOptions.CultureInvariant);
                 if(entries.Count>1)
                     throw new InvalidOperationException("Ambiguous GameUI credits observer: "+relative);
