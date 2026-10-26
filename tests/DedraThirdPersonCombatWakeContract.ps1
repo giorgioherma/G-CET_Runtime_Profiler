@@ -102,7 +102,8 @@ if($twice.Applied -or $twice.Changes.Count -ne 0) {
 # An earlier G-CET generation wrote a flag onto ITP's read-only public API.
 # Verify the SAME producer repairs that exact optimized/partial source.
 $nl=[string][char]10
-$old=$bridge.Replace('pcall(addon.__gcetWakeFromBase, "__gcetItpToggleWakeV2")',
+$crlf=([string][char]13)+$nl
+$old=$bridge.Replace($crlf,$nl).Replace('pcall(addon.__gcetWakeFromBase, "__gcetItpToggleWakeV2")',
                      'pcall(addon.__gcetWakeFromBase)')
 $old=$old.Replace('  pcall(mod.__gcetDedraToggleSignalV2)' + $nl + '  mod.captureConsumableTiming()',
                   '  mod.captureConsumableTiming()')
