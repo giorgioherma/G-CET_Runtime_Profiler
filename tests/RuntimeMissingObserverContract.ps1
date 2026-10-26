@@ -29,6 +29,7 @@ gameUI.menuMethods = {
 return gameUI
 '@
 $a=Apply 'SomeOtherInstalledMod/Modules/GameUI.lua' $gameUi
+Write-Host ("DEBUG hook fixture: changed={0} stages={1} commented={2} otherMenu={3} preservedLoad={4}" -f $a.changed,$a.stages.Count,$a.output.Contains("    -- ['OnSwitchToCredits'] = 'Credits',"),$a.output.Contains("    ['OnSwitchToCredits'] = 'Credits',"),$a.output.Contains("    ['OnSwitchToLoadGame'] = 'LoadGame',"))
 if(!$a.changed -or $a.stages.Count -ne 1 -or
    !$a.output.Contains("    -- ['OnSwitchToCredits'] = 'Credits',") -or
    !$a.output.Contains("    ['OnSwitchToLoadGame'] = 'LoadGame',") -or
