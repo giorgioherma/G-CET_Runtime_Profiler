@@ -31,12 +31,17 @@ internal static partial class SemanticInjectors
             // Never require this older output for pristine generation.
             const string coordinatorHeader =
                 "-- G-CET semantic coordinator:dedra-third-person-combat-wake\n";
-            var expectedWorker = coordinatorHeader + WorkerBody;
+            // Verbatim C# source literals acquire the checkout's line endings;
+            // staged Lua is normalized to LF by SemanticTextFile. Compare those
+            // normalized representations, not Windows-vs-Unix source formatting.
+            var canonicalBody = WorkerBody.Replace("\r\n","\n",StringComparison.Ordinal)
+                .Replace('\r','\n');
+            var expectedWorker = coordinatorHeader + canonicalBody;
             var existingWorker = owned.Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
             if(existingWorker==expectedWorker)
                 return SemanticInjectionResult.Skip("Read-only-safe detached wake already installed.");
 
-            var legacyWorker = coordinatorHeader + WorkerBody
+            var legacyWorker = coordinatorHeader + canonicalBody
                 .Replace("  local baseBridgeConfirmed = false\n","",StringComparison.Ordinal)
                 .Replace(
                     "    if not baseBridgeConfirmed or not linked or not api then",
