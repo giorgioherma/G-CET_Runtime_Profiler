@@ -406,6 +406,8 @@ internal sealed class SemanticLibraryService
                 SemanticInjectors.IsImmersiveThirdPersonActionDormancyComplete(graph.OwnerFolder),
             "ITPP_DEDRA_PAIRED_WAKE_V3" =>
                 SemanticInjectors.IsImmersiveThirdPersonDedraWakeComplete(graph.OwnerFolder),
+            "DEDRA_ONINIT_FRAME_WAKE_V3" =>
+                SemanticInjectors.IsDedraThirdPersonCombatWakeComplete(graph.OwnerFolder),
             "IFP_FREELOOK_ACTION_DORMANCY_V2" =>
                 SemanticInjectors.IsImmersiveFirstPersonActionDormancyComplete(graph.OwnerFolder),
             "AUTOLOOT_DEFAULT_ACTION_DORMANCY_V2" =>
