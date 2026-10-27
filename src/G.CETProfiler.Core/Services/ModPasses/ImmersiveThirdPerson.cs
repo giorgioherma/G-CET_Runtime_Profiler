@@ -220,6 +220,28 @@ internal static partial class SemanticInjectors
     // Only hoist null-state guards already proven as first operation of each
     // owner function; all active work still runs every frame with original delta.
 
+    // The paired wake stage is complete only when BOTH author-owned files
+    // expose matching control and read-only capability. Old init-only output
+    // must remain upgradeable, never misclassified by a lone marker.
+    internal static bool IsImmersiveThirdPersonDedraWakeComplete(string ownerFolder)
+    {
+        var initPath = Path.Combine(ownerFolder, "init.lua");
+        var apiPath = Path.Combine(ownerFolder, "api.lua");
+        if (!File.Exists(initPath) || !File.Exists(apiPath))
+            return false;
+        var init = File.ReadAllText(initPath).Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
+        var api = File.ReadAllText(apiPath).Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
+        return init.Contains("mod.__gcetDedraWakeBridgeV2 = true",StringComparison.Ordinal) &&
+               init.Contains("gcetDedraWakeReady = function() return mod.__gcetDedraWakeBridgeV2 == true end",StringComparison.Ordinal) &&
+               init.Contains("pcall(addon.__gcetWakeFromBase, \"__gcetItpToggleWakeV2\")",StringComparison.Ordinal) &&
+               init.Contains("pcall(mod.__gcetDedraToggleSignalV2)",StringComparison.Ordinal) &&
+               init.Contains("registerInput(\"tpp_camera_toggle\"",StringComparison.Ordinal) &&
+               !init.Contains("mod.api.__gcetDedraWakeBridgeV2",StringComparison.Ordinal) &&
+               api.Contains("-- __gcetDedraWakeCapabilityV3: read-only startup proof",StringComparison.Ordinal) &&
+               api.Contains("return type(host.gcetDedraWakeReady) == \"function\" and host.gcetDedraWakeReady() == true",StringComparison.Ordinal) &&
+               api.Contains("gcetDedraWakeReady = function()",StringComparison.Ordinal);
+    }
+
     // A synchronous, read-only readiness proof solves CET onInit ordering:
     // Dedra can find that the original base toggle owns the wake signal even
     // if the one-shot base onInit notification ran before its own onInit.
