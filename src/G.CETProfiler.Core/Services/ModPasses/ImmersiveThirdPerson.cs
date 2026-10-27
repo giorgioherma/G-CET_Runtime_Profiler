@@ -220,6 +220,61 @@ internal static partial class SemanticInjectors
     // Only hoist null-state guards already proven as first operation of each
     // owner function; all active work still runs every frame with original delta.
 
+    // A synchronous, read-only readiness proof solves CET onInit ordering:
+    // Dedra can find that the original base toggle owns the wake signal even
+    // if the one-shot base onInit notification ran before its own onInit.
+    // Export from the author API builder BEFORE its read-only proxy is built;
+    // never write a flag onto the public proxy or register another input.
+    private static bool EnsureImmersiveThirdPersonDedraWakeCapability(
+        SemanticPatchContext context, ref string source)
+    {
+        const string hostAnchor = "    state = state,\n    system = function()";
+        const string hostLine =
+            "    gcetDedraWakeReady = function() return mod.__gcetDedraWakeBridgeV2 == true end,\n";
+        var changed = false;
+        if (!source.Contains(hostLine, StringComparison.Ordinal))
+        {
+            if (source.Split(hostAnchor, StringSplitOptions.None).Length != 2)
+                throw new InvalidOperationException("ITP API host construction drift; no Dedra wake capability.");
+            source = source.Replace(hostAnchor,
+                "    state = state,\n" + hostLine + "    system = function()",
+                StringComparison.Ordinal);
+            changed = true;
+        }
+        else if (source.Split(hostLine, StringSplitOptions.None).Length != 2)
+            throw new InvalidOperationException("Duplicate ITP Dedra wake capability host.");
+
+        var apiFile = context.FindFile("api.lua",
+            "core.public = readOnly(touching({",
+            "events = readOnly(touching(events)),");
+        var api = apiFile.Text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r','\n');
+        const string marker = "-- __gcetDedraWakeCapabilityV3: read-only startup proof";
+        const string apiAnchor = "    events = readOnly(touching(events)),\n";
+        const string apiAdd =
+            "    gcetDedraWakeReady = function()\n" +
+            "      return type(host.gcetDedraWakeReady) == \"function\" and host.gcetDedraWakeReady() == true\n" +
+            "    end,\n";
+        if (api.Contains(marker, StringComparison.Ordinal))
+        {
+            if (api.Split(apiAdd, StringSplitOptions.None).Length != 2 ||
+                api.Split(marker, StringSplitOptions.None).Length != 2)
+                throw new InvalidOperationException("ITP read-only wake capability is partial or drifted.");
+        }
+        else
+        {
+            if (api.Split(apiAnchor, StringSplitOptions.None).Length != 2 ||
+                api.Contains("gcetDedraWakeReady", StringComparison.Ordinal))
+                throw new InvalidOperationException("ITP public API table drift; refuse new wake capability.");
+            api = api.Replace(apiAnchor, apiAnchor + "    " + marker + "\n" + apiAdd,
+                StringComparison.Ordinal);
+            if (apiFile.Text.Contains("\r\n", StringComparison.Ordinal))
+                api = api.Replace("\n", "\r\n", StringComparison.Ordinal);
+            context.Write(apiFile, api);
+            changed = true;
+        }
+        return changed;
+    }
+
     // Signal the combat add-on from the base's ORIGINAL CET toggle. This does
     // not register F7, interpret the current camera view, or force a switch:
     // a user request can remain deferred during a combat/scene override.
@@ -274,11 +329,13 @@ internal static partial class SemanticInjectors
                     throw new InvalidOperationException("ITP onInit lifecycle drifted.");
                 src=src.Replace(initAnchor,initSignal,StringComparison.Ordinal);
             }
-            if(src==before)
+            var capabilityChanged = EnsureImmersiveThirdPersonDedraWakeCapability(context, ref src);
+            if(src==before && !capabilityChanged)
                 return SemanticInjectionResult.Skip("Read-only-safe ITP wake already present.");
-            context.Write(file,file.Text.Contains("\r\n",StringComparison.Ordinal)
-                ? src.Replace("\n","\r\n",StringComparison.Ordinal):src);
-            return SemanticInjectionResult.Success("Upgraded ITP wake without mutating read-only API.");
+            if (src != before)
+                context.Write(file,file.Text.Contains("\r\n",StringComparison.Ordinal)
+                    ? src.Replace("\n","\r\n",StringComparison.Ordinal):src);
+            return SemanticInjectionResult.Success("Upgraded ITP wake and read-only startup proof.");
         }
         const string binding =
             "registerInput(\"tpp_camera_toggle\", TEXT.bindToggle[1], function(keypress)\n" +
@@ -318,6 +375,7 @@ internal static partial class SemanticInjectors
            src.Split(initAnchor,StringSplitOptions.None).Length!=2)
             throw new InvalidOperationException("ITP public API/onInit lifecycle changed.");
         src=src.Replace(initAnchor,initSignal,StringComparison.Ordinal);
+        EnsureImmersiveThirdPersonDedraWakeCapability(context, ref src);
         if(file.Text.Contains("\r\n",StringComparison.Ordinal))
             src=src.Replace("\n","\r\n",StringComparison.Ordinal);
         context.Write(file,src);
