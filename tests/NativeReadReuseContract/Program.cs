@@ -512,9 +512,9 @@ try
     // Engine accessor alone is a false completion signal. Reproduce the
     // old stale adapter from the user's crash overlay without importing
     // their third-party original source or depending on exact file hashes.
-    var mixedStock = stockEngine.Replace("return Engine\\n",
+    var mixedStock = stockEngine.Replace("return Engine\n",
         hostSource.Replace(liveHost,cachedHost,StringComparison.Ordinal) +
-        "\\nreturn Engine\\n",StringComparison.Ordinal);
+        "\nreturn Engine\n",StringComparison.Ordinal);
     var mixedGenerated = Encoding.UTF8.GetString(MakeShared(mixedStock));
     Check(mixedGenerated.Contains(liveRequest,StringComparison.Ordinal) &&
           mixedGenerated.Contains(liveHost,StringComparison.Ordinal) &&
