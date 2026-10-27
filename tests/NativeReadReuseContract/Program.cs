@@ -507,6 +507,36 @@ try
           !hostSource.Contains(cachedHost,StringComparison.Ordinal) &&
           hostSource.Contains("function __gcetApi.GetQuestsSystem()",StringComparison.Ordinal),
         "Generic host compatibility bridge still memoizes menu-specific native context");
+    // The real live source carries BOTH exported Engine and Engine.GCET
+    // bridges. Native-read Lua chooses GCET first, so a fixed top-level
+    // Engine accessor alone is a false completion signal. Reproduce the
+    // old stale adapter from the user's crash overlay without importing
+    // their third-party original source or depending on exact file hashes.
+    var mixedStock = stockEngine.Replace("return Engine\\n",
+        hostSource.Replace(liveHost,cachedHost,StringComparison.Ordinal) +
+        "\\nreturn Engine\\n",StringComparison.Ordinal);
+    var mixedGenerated = Encoding.UTF8.GetString(MakeShared(mixedStock));
+    Check(mixedGenerated.Contains(liveRequest,StringComparison.Ordinal) &&
+          mixedGenerated.Contains(liveHost,StringComparison.Ordinal) &&
+          !mixedGenerated.Contains(cachedHost,StringComparison.Ordinal),
+        "Crash regression: known Engine plus preferred GCET adapter still caches a volatile native handler");
+    Check(Encoding.UTF8.GetString(MakeShared(mixedGenerated)) == mixedGenerated,
+        "Paired known-runtime host repair is not idempotent");
+    var mixedOlder = mixedGenerated
+        .Replace(liveRequest,oldCachedRequest,StringComparison.Ordinal)
+        .Replace(liveHost,cachedHost,StringComparison.Ordinal);
+    Check(Encoding.UTF8.GetString(MakeShared(mixedOlder)) == mixedGenerated,
+        "Previously optimized double-cached runtime did not upgrade both methods");
+    var mixedDrift=mixedOlder.Replace(cachedHost,
+        cachedHost.Replace("__gcetGetSharedProvider", "__unrecognized"),
+        StringComparison.Ordinal);
+    var mixedDriftRefused=false;
+    try { MakeShared(mixedDrift); }
+    catch(TargetInvocationException ex) when(ex.InnerException is InvalidOperationException)
+    { mixedDriftRefused=true; }
+    Check(mixedDriftRefused,
+        "Unrecognized live host adapter drift was accepted instead of refusing");
+
     var historicHost="local Mod={}\n"+hostSource.Replace(liveHost,cachedHost,
         StringComparison.Ordinal)+"\nreturn Mod\n";
     object?[] hostArgs=[Encoding.UTF8.GetBytes(historicHost),null,null];
