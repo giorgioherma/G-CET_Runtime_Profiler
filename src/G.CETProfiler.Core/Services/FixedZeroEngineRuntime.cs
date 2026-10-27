@@ -1293,12 +1293,11 @@ end)
         string source, string runtimeTable, bool required)
     {
         const string getter = "GetSystemRequestsHandler";
-        const string family = "SYSTEM_REQUESTS_HANDLER";
-        var methodPattern = @"(?m)^[ \\t]*function[ \\t]+" +
-            Regex.Escape(runtimeTable) + @"\\." + getter +
-            @"[ \\t]*\\([ \\t]*\\)[ \\t]*\\r?\\n" +
-            @"(?<body>[ \\t]*return[^\\r\\n]*)\\r?\\n" +
-            @"[ \\t]*end[ \\t]*\\r?$";
+        var methodPattern = @"(?m)^[ \t]*function[ \t]+" +
+            Regex.Escape(runtimeTable) + @"\." + getter +
+            @"[ \t]*\([ \t]*\)[ \t]*\r?\n" +
+            @"(?<body>[ \t]*return[^\r\n]*)\r?\n" +
+            @"[ \t]*end[ \t]*\r?$";
         var matches = Regex.Matches(source, methodPattern, RegexOptions.CultureInvariant);
         if (matches.Count == 0 && !required)
             return source;
