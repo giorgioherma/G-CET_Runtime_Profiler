@@ -138,6 +138,29 @@ local function updateFppRestoreWatchdog(delta)
   end
 end
 local function updateAutoPerspective(delta) end
+local function updateCameraTransition(delta)
+  local transition = state.cameraTransition
+  if not transition then
+    return
+  end
+  state.cameraTransition = nil
+end
+mod.updateProfileBlend = function(delta)
+  local b = state.profileBlend
+  if b == nil then return end
+  state.profileBlend = nil
+end
+mod.updateHeadLookIdleGate = function()
+  if not state.enabled then return end
+end
+mod.updateHolocallEyes = function()
+  if config.holocallEyes ~= true and not state.holocallEyes.owed then return end
+end
+mod.updateFppWrapperReassert = function(delta)
+  if not state.fppWrapperOwed or state.sceneWrapperUp then
+    return
+  end
+end
 local function updateThirdPersonCamera(delta) end
 mod.updateTppMaintenance = function(delta) end
 mod.headLookTick = function(delta) end
@@ -147,6 +170,12 @@ mod.pluginHeartbeat = function(delta) end
 registerForEvent('onUpdate', function(delta)
   mod.pluginHeartbeat(delta)
   guardStep("updateAutoPerspective", updateAutoPerspective, delta)
+  guardStep("updateHeadLookIdleGate", mod.updateHeadLookIdleGate)
+  if not state.menuHeld then
+    guardStep("updateCameraTransition", updateCameraTransition, delta)
+    guardStep("updateProfileBlend", mod.updateProfileBlend, delta)
+  end
+  guardStep("updateHolocallEyes", mod.updateHolocallEyes)
   guardStep("updateThirdPersonCamera", updateThirdPersonCamera, delta)
   guardStep("updateApi", mod.apiTick, delta)
   guardStep("updateMove360", mod.updateMove360Step, delta)
@@ -159,6 +188,8 @@ registerForEvent('onUpdate', function(delta)
   guardStep("updateFppRestoreWatchdog", updateFppRestoreWatchdog, delta)
   if state.enabled then
     guardStep("tppMaintenance", mod.updateTppMaintenance, delta)
+  else
+    guardStep("fppWrapperReassert", mod.updateFppWrapperReassert, delta)
   end
 end)
 '@
@@ -191,6 +222,12 @@ foreach($rule in @('immersive-third-person','immersive-third-person-action-routi
 }
 $patched=ZipSource $result.pass.ZipPath 'immersive_third_person/init.lua'
 if(!$patched.Contains('__gcetItppUpdatedPendingGatesV3') -or
+   !$patched.Contains('__gcetItppFppFastpathsV4') -or
+   !$patched.Contains('if state.enabled then' + [string][char]10 + '    guardStep("updateHeadLookIdleGate"') -or
+   !$patched.Contains('if state.cameraTransition then') -or
+   !$patched.Contains('if state.profileBlend then') -or
+   !$patched.Contains('if config.holocallEyes == true or state.holocallEyes.owed then') -or
+   !$patched.Contains('if state.fppWrapperOwed and not state.sceneWrapperUp then') -or
    !$patched.Contains('__gcetItppRoutedOnActionV3') -or
    !$patched.Contains('__gcetItppAlwaysListeningV3') -or
    !$patched.Contains('mod.gameCameraMoveSeen(action)') -or
@@ -251,6 +288,7 @@ if(@($wrappedManifest.skipped|Where-Object{
 }
 $wrappedOutput=ZipSource $wrappedPass.pass.ZipPath 'immersive_third_person/init.lua'
 if(!$wrappedOutput.Contains('__gcetItppUpdatedPendingGatesV3') -or
+   !$wrappedOutput.Contains('__gcetItppFppFastpathsV4') -or
    !$wrappedOutput.Contains('__gcetRegisterEvent_525') -or
    !$wrappedOutput.Contains('mod.pluginHeartbeat(delta)')){
    throw 'ITP upgraded generic registrar lost heartbeat/pending gates'
