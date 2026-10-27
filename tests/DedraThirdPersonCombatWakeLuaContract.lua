@@ -3,6 +3,7 @@
 -- capability, rejected API listeners, missing base and 0-Engine fallback.
 local file = assert(arg[1], "generated worker path required")
 local worker = assert(loadfile(file))()
+local frameLibrary = arg[2] and assert(loadfile(arg[2]))() or nil
 local function check(ok, why) assert(ok, why) end
 local function make(opts)
   opts = opts or {}
@@ -53,6 +54,36 @@ local function make(opts)
       end
     }
   }
+  -- Unlike the lightweight frame mock, this is the actual authoritative
+  -- 0-Engine FrameListeners implementation, including physical unsubscribe.
+  local pendingTasks = {}
+  if opts.realFrame then
+    check(frameLibrary and type(frameLibrary.New) == "function", "real module not supplied")
+    package.loaded["modules/GCETWorkloadProbe"] = {
+      Begin = function() return nil end, End = function() end
+    }
+    engine.FrameListeners = nil
+    engine.MakeEventRegistrar = function(owner, fallback)
+      return function(event, callback)
+        check(event == "onUpdate", "incorrect adopted event")
+        check(not frame, "duplicate active 0-Engine subscribers")
+        counters.registered = counters.registered + 1
+        frame = callback
+        return {unsubscribe = function()
+          check(frame == callback, "wrong callback unsubscribed")
+          frame = nil
+          counters.cancelled = counters.cancelled + 1
+        end}
+      end
+    end
+    engine.Schedule = {NextTick = function(_, callback)
+      local task = {cancelled = false}
+      function task.Cancel() task.cancelled = true end
+      pendingTasks[#pendingTasks + 1] = {run = callback, task = task}
+      return task
+    end}
+    engine.FrameListeners = frameLibrary.New(engine)
+  end
   if opts.noEngine then engine = nil end
   GetMod = function(name)
     if name == "0-Engine" then return engine end
@@ -69,7 +100,18 @@ local function make(opts)
     isActive = function() return active end,
     setRequested = function(v) requested = v end,
     emit = function(kind) if eventFns[kind] then eventFns[kind]() end end,
-    tick = function() if active and frame then frame(1 / 60) end end,
+    tick = function()
+      if (not opts.realFrame or active) and frame then frame(1 / 60) end
+    end,
+    flush = function()
+      local tasks = pendingTasks
+      pendingTasks = {}
+      for _, entry in ipairs(tasks) do
+        if not entry.task.cancelled then entry.run() end
+      end
+    end,
+    hasFrame = function() return frame ~= nil end,
+    diagnostics = function() return control.Diagnostics() end,
     calls = function() return calls end,
     fallbacks = function() return fallbackCalls end
   }
@@ -79,6 +121,10 @@ do
   local t = make({capability = true})
   check(not t.isActive() and t.counters.paused == 1,
     "supported FPP startup must pause without waiting for first toggle")
+  local d = t.diagnostics()
+  check(d.pausable == true and d.linked == true and d.bridge == true and
+        d.requested == false and d.listenerActive == false,
+    "read-only diagnostics do not explain valid FPP dormancy")
   t.tick()
   check(t.calls() == 0, "FPP dormancy executed author combat step")
   t.setRequested(true)
@@ -129,4 +175,26 @@ do
   check(t.fallbacks() == 1, "missing 0-Engine dropped original update fallback")
 end
 
-print("Dedra worker runtime: FPP startup pause, CET wake, cleanup, API fail-open and single ownership PASS")
+if frameLibrary then
+  do
+    local t = make({capability = true, realFrame = true})
+    check(t.diagnostics().pausable == true and t.fallbacks() == 0,
+      "actual 0-Engine frame implementation was not adopted")
+    t.flush() -- Pause physically unsubscribes, not merely skips callback work.
+    check(not t.hasFrame(), "FPP frame listener remained subscribed after pause")
+    t.setRequested(true)
+    t.control.Signal("__gcetItpToggleWakeV2")
+    check(t.hasFrame() and t.diagnostics().listenerActive == true,
+      "original CET toggle did not reattach the real listener")
+    t.tick()
+    check(t.calls() == 1, "real listener failed to run TPP author step")
+    t.setRequested(false)
+    t.control.Signal("__gcetItpToggleWakeV2")
+    t.flush()
+    check(not t.hasFrame(), "TPP OFF did not physically detach the real listener")
+    t.control.Stop()
+    t.flush()
+  end
+end
+
+print("Dedra worker runtime: FPP startup pause, CET wake, cleanup, API fail-open, real listener and single ownership PASS")
