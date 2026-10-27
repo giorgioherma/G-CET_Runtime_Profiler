@@ -199,9 +199,10 @@ foreach($token in @('Dedra.__gcetWakeController.Register()','Dedra.__gcetWakeCon
     'Dedra.__gcetWakeFromBase','dofile("GCET_Semantic/dedra_camera_wake.lua")')){
   if(!$lua.Contains($token)){throw "Missing source bridge: $token"}
 }
-if($lua.Contains('pcall(dedraStep, dt)') -or
-  ([regex]::Matches($lua,'Dedra.__gcetWakeController.Register\(\)')).Count -ne 1 -or
-  !$lua.Contains('registerForEvent("onInit", function()' + $nl +
+$normalizedInit=$lua.Replace($crlf,$nl)
+if($normalizedInit.Contains('pcall(dedraStep, dt)') -or
+  ([regex]::Matches($normalizedInit,'Dedra.__gcetWakeController.Register\(\)')).Count -ne 1 -or
+  !$normalizedInit.Contains('registerForEvent("onInit", function()' + $nl +
       '  Dedra.__gcetWakeController.Register()' + $nl +
       '  Dedra.__gcetWakeController.Start()')){
   throw 'Original frame callback still present, doubled, or registered before onInit'
@@ -209,7 +210,7 @@ if($lua.Contains('pcall(dedraStep, dt)') -or
 # Existing V2 optimized init called Register at module load time; the same
 # authoritative producer moves that ownership into onInit without producing a
 # second callback, while preserving source and the existing worker.
-$oldInit=$lua.Replace('registerForEvent("onInit", function()' + $nl +
+$oldInit=$normalizedInit.Replace('registerForEvent("onInit", function()' + $nl +
    '  Dedra.__gcetWakeController.Register()' + $nl +
    '  Dedra.__gcetWakeController.Start()',
    'registerForEvent("onInit", function()' + $nl +
@@ -293,7 +294,7 @@ $oldInitFile=$oldInitUpgrade.Changes|Where-Object{$_.RelativeFile -like '*/init.
 $oldWorkerFile=$oldInitUpgrade.Changes|Where-Object{$_.RelativeFile -like '*/GCET_Semantic/dedra_camera_wake.lua'}|Select-Object -First 1
 if(!$oldInitUpgrade.Applied -or $oldInitUpgrade.Changes.Count -ne 2 -or
    !$oldInitFile -or !$oldWorkerFile -or
-   [Text.Encoding]::UTF8.GetString($oldInitFile.Bytes) -ne $lua -or
+   [Text.Encoding]::UTF8.GetString($oldInitFile.Bytes).Replace($crlf,$nl) -ne $normalizedInit -or
    [Text.Encoding]::UTF8.GetString($oldWorkerFile.Bytes) -ne $wake){
   throw 'Previously optimized eager-registration owner did not upgrade atomically'
 }
