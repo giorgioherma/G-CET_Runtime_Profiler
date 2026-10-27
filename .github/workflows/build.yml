@@ -74,7 +74,7 @@ jobs:
               raise SystemExit('Dedra worker body changed unexpectedly')
           pathlib.Path('/tmp/gcet-dedra-camera-wake.lua').write_text(body)
           PY
-          lua5.4 tests/DedraThirdPersonCombatWakeLuaContract.lua /tmp/gcet-dedra-camera-wake.lua
+          lua5.4 tests/DedraThirdPersonCombatWakeLuaContract.lua /tmp/gcet-dedra-camera-wake.lua resolver-runtime/0-Engine/modules/GCETFrameListeners.lua
 
   # Compile and test the managed MEGAMIND evidence contract independently
   # of the hash-locked native payload refresh (which can take several minutes).
