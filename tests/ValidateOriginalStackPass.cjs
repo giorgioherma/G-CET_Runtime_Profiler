@@ -130,16 +130,17 @@ if (!fs.existsSync(manifestFile)) {
     for (const relative of [...missing.keys()].sort())
       requiredOriginal(relative, missing.get(relative));
 
-    // Report semantic source-refusals, but let the generator's existing
-    // source-proof/outcome policy determine whether a rule is applicable.
+    // A production-admitted semantic stage that fails generation is a hard
+    // output failure. File existence and green build jobs do not establish
+    // source-equivalent behavior when a required wake dependency was skipped.
     const skippedSemantic = (manifest.skipOutcomes?.entries || []).filter(x =>
       x.category === 'GENERATION_FAILURE');
     for (const item of skippedSemantic.slice(0, 20)) {
       const raw = (manifest.skipped || []).find(s =>
         (s.RuleId || s.ruleId || '') === (item.ruleId || '') &&
         (s.Owner || s.owner || '') === (item.owner || ''));
-      report('warning', item.file || item.owner || item.ruleId || 'Resolver',
-        'source/rule refusal', {
+      report('error', item.file || item.owner || item.ruleId || 'Resolver',
+        'required semantic generation failed', {
           stage: item.type === 'SEMANTIC_RULE' ? 'Semantic' : (item.type || 'Resolver'),
           mod: item.owner, rule: item.ruleId, handler: raw?.Handler || raw?.handler,
           reason: item.reason,
