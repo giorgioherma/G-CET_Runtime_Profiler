@@ -41,7 +41,21 @@ internal static partial class SemanticInjectors
             if(existingWorker==expectedWorker)
                 return SemanticInjectionResult.Skip("Read-only-safe detached wake already installed.");
 
-            var legacyWorker = coordinatorHeader + canonicalBody
+            // Recognize both the immediately preceding generated worker and
+            // the historic read-only-proxy mutation variant. Never require a
+            // previous output for generation from untouched originals.
+            const string readinessProbe =
+                "    -- Source-proven capability exported by the ITP generator. This is\n" +
+                "    -- read-only and can be checked during Dedra's own startup, even when\n" +
+                "    -- the base onInit proof signal was emitted earlier in load order.\n" +
+                "    -- Unmodified/partial ITP stays fail-open until a real toggle proof.\n" +
+                "    if not baseBridgeConfirmed and type(base.gcetDedraWakeReady) == \"function\" then\n" +
+                "      local okReady, ready = pcall(base.gcetDedraWakeReady)\n" +
+                "      if okReady and ready == true then baseBridgeConfirmed = true end\n" +
+                "    end\n";
+            var previousBody = canonicalBody.Replace(readinessProbe,"",StringComparison.Ordinal);
+            var previousWorker = coordinatorHeader + previousBody;
+            var legacyWorker = coordinatorHeader + previousBody
                 .Replace("  local baseBridgeConfirmed = false\n","",StringComparison.Ordinal)
                 .Replace(
                     "    if not baseBridgeConfirmed or not linked or not api then",
@@ -56,7 +70,7 @@ internal static partial class SemanticInjectors
                     "  function M.Signal(proof)\n" +
                     "    if proof == \"__gcetItpToggleWakeV2\" then baseBridgeConfirmed = true end",
                     "  function M.Signal()",StringComparison.Ordinal);
-            if(existingWorker!=legacyWorker)
+            if(existingWorker!=legacyWorker && existingWorker!=previousWorker)
                 throw new InvalidOperationException(
                     "Dedra worker differs from known generated versions; refuse unsafe overwrite.");
             context.WriteCoordinator(workerFile,expectedWorker);
@@ -192,6 +206,14 @@ function M.Install(Dedra, step, fallbackRegister)
       linked = false
       if handle then handle.Resume() end
       return
+    end
+    -- Source-proven capability exported by the ITP generator. This is
+    -- read-only and can be checked during Dedra's own startup, even when
+    -- the base onInit proof signal was emitted earlier in load order.
+    -- Unmodified/partial ITP stays fail-open until a real toggle proof.
+    if not baseBridgeConfirmed and type(base.gcetDedraWakeReady) == ""function"" then
+      local okReady, ready = pcall(base.gcetDedraWakeReady)
+      if okReady and ready == true then baseBridgeConfirmed = true end
     end
     Dedra.itp = base
     if linked and api == base then sync(); return end
