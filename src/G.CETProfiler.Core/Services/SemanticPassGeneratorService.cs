@@ -189,8 +189,30 @@ internal static class SemanticPassGeneratorService
                 .Where(change => !context.IsOwnedCoordinator(change.RelativeFile))
                 .ToList();
             if (authorChanges.Count == 0)
-                throw new InvalidOperationException(
-                    "Coordinator stage has no source bridge in the current pass.");
+            {
+                // An external worker can be the ONLY missing stage on an
+                // otherwise already optimized installation. Preserve that
+                // completed author bridge, but accept its worker-only upgrade
+                // solely when the authoritative mod-owned proof confirms
+                // exactly one onInit registration, import and lifecycle.
+                // Every other coordinator keeps the strict changed-source
+                // requirement until it supplies equivalent structural proof.
+                var sourceBridgeProven = false;
+                if (candidate.RuleId == "dedra-third-person-combat-wake")
+                {
+                    var current = context.FindFile("init.lua",
+                        "Dedra.__gcetWakeFromBase",
+                        "GCET_Semantic/dedra_camera_wake.lua");
+                    sourceBridgeProven = current.Text.Contains(
+                            "-- G-CET semantic:dedra-third-person-combat-wake",
+                            StringComparison.Ordinal) &&
+                        SemanticInjectors.HasDedraThirdPersonCombatAuthorBridge(
+                            current.Text);
+                }
+                if (!sourceBridgeProven)
+                    throw new InvalidOperationException(
+                        "Coordinator stage has no source bridge in the current pass.");
+            }
 
             var marker = "-- G-CET semantic:" + candidate.RuleId;
             var workerMarker = "-- G-CET semantic coordinator:" + candidate.RuleId + "\n";
