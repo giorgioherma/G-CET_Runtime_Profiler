@@ -32,7 +32,7 @@ local function make(opts)
   if opts.capability then
     base.gcetDedraWakeReady = function() return true end
   end
-  local engine = opts.noEngine and nil or {
+  local engine = {
     FrameListeners = {
       MakeRegistrar = function(owner, fallback)
         return function(event, callback)
@@ -53,6 +53,7 @@ local function make(opts)
       end
     }
   }
+  if opts.noEngine then engine = nil end
   GetMod = function(name)
     if name == "0-Engine" then return engine end
     if name == "immersive_third_person" then return opts.noBase and nil or base end
