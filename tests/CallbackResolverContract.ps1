@@ -1843,6 +1843,16 @@ try {
         $actionText -notmatch '__gcetRoutedName\s+or') {
         throw 'Generated exact action route did not reuse the router-decoded action name.'
     }
+    # 0-Engine invokes subscribers as (this, action, consumer, name, kind).
+    # The third argument of an author's two-argument callback MUST be reserved
+    # for consumer, or movement handlers see consumer instead of action name.
+    if ($actionText -notmatch 'local function __gcetOnAction_101\(self,\s*action,\s*consumer,\s*__gcetRoutedName\)') {
+        throw 'Three-argument OnAction handler lost the original consumer position.'
+    }
+    $cnameText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureCName/init.lua'
+    if ($cnameText -notmatch 'local function __gcetOnAction_105\(this,\s*action,\s*__gcetRoutedConsumer,\s*__gcetRoutedName\)') {
+        throw 'Two-argument OnAction handler misbound consumer to the routed action name.'
+    }
 
     $functionMapText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureFunctionActionMap/init.lua'
     foreach ($expectedFunctionMapAction in @('MoveY','AirBackflip_Backflip','AirBackflip_SwingOver')) {
