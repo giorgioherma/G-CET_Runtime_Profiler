@@ -99,7 +99,7 @@ function Run([string]$owner,[string]$rule,[string]$source,$handler,[switch]$Stag
   }
   $ctx=$ctor.Invoke([object[]]@([string]$root,[string]$owner,[string]$rule,$staged))
   try {$result=$handler.Invoke($null,[object[]]@($ctx))}
-  catch {throw "Rule $rule rejected: $($_.Exception.InnerException.Message)"}
+  catch {throw "Rule $rule [$script:dedraUpgradeCase] rejected: $($_.Exception.InnerException.Message)"}
   $changes=@($ctxT.GetProperty('Changes',[Reflection.BindingFlags]'Instance,NonPublic').GetValue($ctx))
   return @{Applied=$result.Applied;Changes=$changes}
 }
@@ -273,6 +273,7 @@ $workerDir=Join-Path $dedra 'GCET_Semantic'
 New-Item -ItemType Directory -Force $workerDir|Out-Null
 $workerPath=Join-Path $workerDir 'dedra_camera_wake.lua'
 [IO.File]::WriteAllText($workerPath,$legacyWake,[Text.UTF8Encoding]::new($false))
+$script:dedraUpgradeCase='legacy worker with canonical init'
 $workerUpgrade=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $lua $addon -StageInput
 if(!$workerUpgrade.Applied -or $workerUpgrade.Changes.Count -ne 1) {
   throw 'Previously optimized Dedra worker did not upgrade in place'
@@ -283,12 +284,14 @@ if($updatedWorker -ne $wake -or
   throw 'Prior worker update changed execution ownership or generated unexpected code'
 }
 [IO.File]::WriteAllText($workerPath,$previousWake,[Text.UTF8Encoding]::new($false))
+$script:dedraUpgradeCase='previous worker with canonical init'
 $previousUpgrade=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $lua $addon -StageInput
 if(!$previousUpgrade.Applied -or $previousUpgrade.Changes.Count -ne 1 -or
    [Text.Encoding]::UTF8.GetString($previousUpgrade.Changes[0].Bytes) -ne $wake) {
   throw 'Previously shipped V2 worker did not upgrade to source-proven startup wake'
 }
 [IO.File]::WriteAllText($workerPath,$previousWake,[Text.UTF8Encoding]::new($false))
+$script:dedraUpgradeCase='previous worker with eager old init'
 $oldInitUpgrade=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $oldInit $addon -StageInput
 $oldInitFile=$oldInitUpgrade.Changes|Where-Object{$_.RelativeFile -like '*/init.lua'}|Select-Object -First 1
 $oldWorkerFile=$oldInitUpgrade.Changes|Where-Object{$_.RelativeFile -like '*/GCET_Semantic/dedra_camera_wake.lua'}|Select-Object -First 1
@@ -299,6 +302,7 @@ if(!$oldInitUpgrade.Applied -or $oldInitUpgrade.Changes.Count -ne 2 -or
   throw 'Previously optimized eager-registration owner did not upgrade atomically'
 }
 [IO.File]::WriteAllText($workerPath,$updatedWorker,[Text.UTF8Encoding]::new($false))
+$script:dedraUpgradeCase='current canonical worker reapply'
 $workerTwice=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $lua $addon -StageInput
 if($workerTwice.Applied -or $workerTwice.Changes.Count -ne 0) {
   throw 'Updated external worker was not idempotent'
