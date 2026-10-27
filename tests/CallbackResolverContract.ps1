@@ -1849,11 +1849,6 @@ try {
     if ($actionText -notmatch 'local function __gcetOnAction_101\(self,\s*action,\s*consumer,\s*__gcetRoutedName\)') {
         throw 'Three-argument OnAction handler lost the original consumer position.'
     }
-    $cnameText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureCName/init.lua'
-    if ($cnameText -notmatch 'local function __gcetOnAction_105\(this,\s*action,\s*__gcetRoutedConsumer,\s*__gcetRoutedName\)') {
-        throw 'Two-argument OnAction handler misbound consumer to the routed action name.'
-    }
-
     $functionMapText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureFunctionActionMap/init.lua'
     foreach ($expectedFunctionMapAction in @('MoveY','AirBackflip_Backflip','AirBackflip_SwingOver')) {
         if ($functionMapText -notmatch [regex]::Escape($expectedFunctionMapAction)) {
@@ -1862,6 +1857,9 @@ try {
     }
     if ($functionMapText -notmatch 'SubscribeAction') {
         throw 'Function-valued action-map fixture was not emitted through generic action routing.'
+    }
+    if ($functionMapText -notmatch 'local function __gcetOnAction_144\(_,\s*action,\s*__gcetRoutedConsumer,\s*__gcetRoutedName\)') {
+        throw 'Two-argument OnAction handler misbound consumer to the routed action name.'
     }
 
     $frameText = Read-ZipText 'bin/x64/plugins/cyber_engine_tweaks/mods/FixtureFrame/init.lua'
