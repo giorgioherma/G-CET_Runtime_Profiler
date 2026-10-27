@@ -196,7 +196,8 @@ $lua=[Text.Encoding]::UTF8.GetString($init.Bytes)
 $wake=[Text.Encoding]::UTF8.GetString($worker.Bytes)
 foreach($token in @('Dedra.__gcetWakeController.Register()','Dedra.__gcetWakeController.Start()',
     'Dedra.__gcetWakeController.Signal()','Dedra.__gcetWakeController.Stop()',
-    'Dedra.__gcetWakeFromBase','dofile("GCET_Semantic/dedra_camera_wake.lua")')){
+    'Dedra.__gcetWakeFromBase','Dedra.__gcetWakeDiagnostics = function()',
+    'dofile("GCET_Semantic/dedra_camera_wake.lua")')){
   if(!$lua.Contains($token)){throw "Missing source bridge: $token"}
 }
 $normalizedInit=$lua.Replace($crlf,$nl)
@@ -218,6 +219,9 @@ $oldInit=$normalizedInit.Replace('registerForEvent("onInit", function()' + $nl +
 $oldInit=$oldInit.Replace('registerForEvent("onShutdown", function()',
    'Dedra.__gcetWakeController.Register()' + $nl +
    'registerForEvent("onShutdown", function()')
+$oldInit=$oldInit.Replace('Dedra.__gcetWakeDiagnostics = function()' + $nl +
+  '  return Dedra.__gcetWakeController.Diagnostics()' + $nl +
+  'end' + $nl,'')
 if($oldInit -eq $lua){throw 'Legacy eager-registration fixture unchanged'}
 foreach($token in @('function M.Diagnostics()','FrameListeners.MakeRegistrar','handle.Pause()','handle.Resume()',
   'baseBridgeConfirmed','base.gcetDedraWakeReady','if proof == "__gcetItpToggleWakeV2"',
@@ -229,6 +233,32 @@ if($wake.Contains('api.__gcetDedraWakeBridgeV2') -or
    $wake.Contains('base.__gcetDedraWakeBridgeV2')){throw 'Read-only API probe persists'}
 if($wake.Contains('0.10') -or $wake.Contains('0.25') -or $wake.Contains('SetInterval') -or
    $wake.Contains('OnFrame(')){throw 'Dormant polling/timer introduced'}
+# The catalog may suppress a fully installed semantic by source proof alone.
+# Prove that old eager init, missing coordinator, and prior worker version all
+# remain INCOMPLETE even though their historical marker is present.
+$dedraCompletion=$t.GetMethod('IsDedraThirdPersonCombatWakeComplete',$flags)
+if(!$dedraCompletion){throw 'Dedra onInit two-file completion verifier absent'}
+$completionRoot=Join-Path $root 'dedra-completion'
+$completionWorkerDir=Join-Path $completionRoot 'GCET_Semantic'
+New-Item -ItemType Directory -Force $completionWorkerDir|Out-Null
+$completionInitPath=Join-Path $completionRoot 'init.lua'
+$completionWorkerPath=Join-Path $completionWorkerDir 'dedra_camera_wake.lua'
+[IO.File]::WriteAllText($completionInitPath,$normalizedInit,[Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText($completionWorkerPath,$wake,[Text.UTF8Encoding]::new($false))
+if(!$dedraCompletion.Invoke($null,[object[]]@([string]$completionRoot))){
+  throw 'Current Dedra onInit source and pausable worker failed completion proof'
+}
+[IO.File]::WriteAllText($completionInitPath,$oldInit,[Text.UTF8Encoding]::new($false))
+if($dedraCompletion.Invoke($null,[object[]]@([string]$completionRoot))){
+  throw 'Old eager Dedra source falsely completed new dormancy'
+}
+[IO.File]::WriteAllText($completionInitPath,$normalizedInit,[Text.UTF8Encoding]::new($false))
+[IO.File]::Delete($completionWorkerPath)
+if($dedraCompletion.Invoke($null,[object[]]@([string]$completionRoot))){
+  throw 'Missing external Dedra worker falsely completed new dormancy'
+}
+[IO.File]::WriteAllText($completionWorkerPath,$wake,[Text.UTF8Encoding]::new($false))
+
 # Older optimized stacks have an external worker with a read-only public API
 # flag probe. It must be upgraded through this same generating rule, without
 # re-injecting author callbacks or moving the worker inline.
@@ -250,6 +280,10 @@ $readinessProbe=(
   '      if okReady and ready == true then baseBridgeConfirmed = true end' + $nl +
   '    end' + $nl)
 $previousWake=$previousWake.Replace($readinessProbe,'')
+[IO.File]::WriteAllText($completionWorkerPath,$previousWake,[Text.UTF8Encoding]::new($false))
+if($dedraCompletion.Invoke($null,[object[]]@([string]$completionRoot))){
+  throw 'Earlier detached Dedra worker falsely completed new onInit dormancy'
+}
 if($previousWake -eq $wake -or $previousWake.Contains('gcetDedraWakeReady')){
   throw 'Previous shipped worker fixture is not exact'
 }
