@@ -477,13 +477,13 @@ try
         BindingFlags.NonPublic|BindingFlags.Static)!;
     byte[] MakeShared(string text) =>
         (byte[])sharedAccessor.Invoke(null,[Encoding.UTF8.GetBytes(text)])!;
-    var stockEngine="local Engine={}\\nfunction Engine.GetPlayer()\\n    return GetPlayer()\\nend\\nreturn Engine\\n";
+    var stockEngine="local Engine={}\nfunction Engine.GetPlayer()\n    return GetPlayer()\nend\nreturn Engine\n";
     var shared=Encoding.UTF8.GetString(MakeShared(stockEngine));
-    const string liveRequest="function Engine.GetSystemRequestsHandler()\\n    return Game.GetSystemRequestsHandler()\\nend";
-    const string oldCachedRequest="function Engine.GetSystemRequestsHandler()\\n    return __gcetGetSharedProvider(\\\"SYSTEM_REQUESTS_HANDLER\\\")\\nend";
+    const string liveRequest="function Engine.GetSystemRequestsHandler()\n    return Game.GetSystemRequestsHandler()\nend";
+    const string oldCachedRequest="function Engine.GetSystemRequestsHandler()\n    return __gcetGetSharedProvider(\"SYSTEM_REQUESTS_HANDLER\")\nend";
     Check(shared.Contains(liveRequest,StringComparison.Ordinal) &&
           !shared.Contains(oldCachedRequest,StringComparison.Ordinal) &&
-          shared.Contains("function Engine.GetQuestsSystem()\\n    return __gcetGetSharedProvider(\\\"QUESTS_SYSTEM\\\")",StringComparison.Ordinal),
+          shared.Contains("function Engine.GetQuestsSystem()\n    return __gcetGetSharedProvider(\"QUESTS_SYSTEM\")",StringComparison.Ordinal),
         "Native requests must resolve fresh while unrelated providers retain source-proven caching");
     Check(Encoding.UTF8.GetString(MakeShared(shared)) == shared,
         "Fresh shared-provider generation is not idempotent");
@@ -492,7 +492,7 @@ try
     Check(Encoding.UTF8.GetString(MakeShared(historicShared)) == shared,
         "Previous cached runtime could not upgrade in its existing authoritative generator");
     var driftedShared=historicShared.Replace(oldCachedRequest,
-        "function Engine.GetSystemRequestsHandler()\\n    return Game.GetQuestsSystem()\\nend",
+        "function Engine.GetSystemRequestsHandler()\n    return Game.GetQuestsSystem()\nend",
         StringComparison.Ordinal);
     var refusedDrift=false;
     try { MakeShared(driftedShared); }
@@ -500,15 +500,15 @@ try
     { refusedDrift=true; }
     Check(refusedDrift,"Unrecognized native context getter drift was silently accepted");
 
-    var hostSource=(string)hostBuild.Invoke(null,["Mod","\\n"])!;
-    const string liveHost="function __gcetApi.GetSystemRequestsHandler()\\n            return Game.GetSystemRequestsHandler()\\n        end";
-    const string cachedHost="function __gcetApi.GetSystemRequestsHandler()\\n            return __gcetGetSharedProvider(\\\"SYSTEM_REQUESTS_HANDLER\\\")\\n        end";
+    var hostSource=(string)hostBuild.Invoke(null,["Mod","\n"])!;
+    const string liveHost="function __gcetApi.GetSystemRequestsHandler()\n            return Game.GetSystemRequestsHandler()\n        end";
+    const string cachedHost="function __gcetApi.GetSystemRequestsHandler()\n            return __gcetGetSharedProvider(\"SYSTEM_REQUESTS_HANDLER\")\n        end";
     Check(hostSource.Contains(liveHost,StringComparison.Ordinal) &&
           !hostSource.Contains(cachedHost,StringComparison.Ordinal) &&
           hostSource.Contains("function __gcetApi.GetQuestsSystem()",StringComparison.Ordinal),
         "Generic host compatibility bridge still memoizes menu-specific native context");
-    var historicHost="local Mod={}\\n"+hostSource.Replace(liveHost,cachedHost,
-        StringComparison.Ordinal)+"\\nreturn Mod\\n";
+    var historicHost="local Mod={}\n"+hostSource.Replace(liveHost,cachedHost,
+        StringComparison.Ordinal)+"\nreturn Mod\n";
     object?[] hostArgs=[Encoding.UTF8.GetBytes(historicHost),null,null];
     var hostOk=(bool)hostUpgrade.Invoke(null,hostArgs)!;
     var normalizedHost=Encoding.UTF8.GetString((byte[])hostArgs[1]!);
