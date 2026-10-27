@@ -3,6 +3,11 @@
 -- capability, rejected API listeners, missing base and 0-Engine fallback.
 local file = assert(arg[1], "generated worker path required")
 local worker = assert(loadfile(file))()
+if arg[2] then
+  package.loaded["modules/GCETWorkloadProbe"] = {
+    Begin = function() return nil end, End = function() end
+  }
+end
 local frameLibrary = arg[2] and assert(loadfile(arg[2]))() or nil
 local function check(ok, why) assert(ok, why) end
 local function make(opts)
