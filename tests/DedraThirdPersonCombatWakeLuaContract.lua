@@ -106,7 +106,7 @@ local function make(opts)
     setRequested = function(v) requested = v end,
     emit = function(kind) if eventFns[kind] then eventFns[kind]() end end,
     tick = function()
-      if (not opts.realFrame or active) and frame then frame(1 / 60) end
+      if frame and (opts.realFrame or active) then frame(1 / 60) end
     end,
     flush = function()
       local tasks = pendingTasks
