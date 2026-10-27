@@ -15,20 +15,7 @@ internal static partial class SemanticInjectors
             return false;
         var init = File.ReadAllText(initPath).Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
         var worker = File.ReadAllText(workerPath).Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
-        var correctLifecycle = Regex.IsMatch(init,
-            @"registerForEvent\s*\(\s*[""']onInit[""']\s*,\s*function\s*\(\s*\)\s*" +
-            @"Dedra\.__gcetWakeController\.Register\s*\(\s*\)\s*" +
-            @"Dedra\.__gcetWakeController\.Start\s*\(\s*\)",
-            RegexOptions.CultureInvariant);
-        return correctLifecycle &&
-            Regex.Matches(init,@"Dedra\.__gcetWakeController\.Register\s*\(\s*\)",
-                RegexOptions.CultureInvariant).Count == 1 &&
-            init.Contains("dofile(\"GCET_Semantic/dedra_camera_wake.lua\")",StringComparison.Ordinal) &&
-            init.Contains("Dedra.__gcetWakeFromBase = Dedra.__gcetWakeController.Signal",StringComparison.Ordinal) &&
-            init.Contains("Dedra.__gcetWakeDiagnostics = function()",StringComparison.Ordinal) &&
-            init.Contains("Dedra.__gcetWakeController.Stop()",StringComparison.Ordinal) &&
-            !Regex.IsMatch(init,@"(?:registerForEvent|__gcetRegisterEvent_\d+)\s*\(\s*[""']onUpdate[""']",
-                RegexOptions.CultureInvariant) &&
+        return HasDedraThirdPersonCombatAuthorBridge(init) &&
             worker.StartsWith("-- G-CET semantic coordinator:dedra-third-person-combat-wake\n",StringComparison.Ordinal) &&
             worker.Contains("FrameListeners.MakeRegistrar",StringComparison.Ordinal) &&
             worker.Contains("function M.Register()",StringComparison.Ordinal) &&
@@ -40,6 +27,28 @@ internal static partial class SemanticInjectors
             worker.Contains("handle.Pause()",StringComparison.Ordinal) &&
             worker.Contains("handle.Resume()",StringComparison.Ordinal) &&
             worker.Contains("fallbackRegister(\"onUpdate\",update)",StringComparison.Ordinal);
+    }
+
+    // Existing author bridge proves independent callback ownership even when
+    // only a missing/older external worker needs replacement. Never infer it
+    // from the marker alone.
+    internal static bool HasDedraThirdPersonCombatAuthorBridge(string init)
+    {
+        init=init.Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
+        return Regex.IsMatch(init,
+                @"registerForEvent\s*\(\s*[""']onInit[""']\s*,\s*function\s*\(\s*\)\s*" +
+                @"Dedra\.__gcetWakeController\.Register\s*\(\s*\)\s*" +
+                @"Dedra\.__gcetWakeController\.Start\s*\(\s*\)",
+                RegexOptions.CultureInvariant) &&
+            Regex.Matches(init,@"Dedra\.__gcetWakeController\.Register\s*\(\s*\)",
+                RegexOptions.CultureInvariant).Count == 1 &&
+            init.Contains("dofile(\"GCET_Semantic/dedra_camera_wake.lua\")",StringComparison.Ordinal) &&
+            init.Contains("Dedra.__gcetWakeFromBase = Dedra.__gcetWakeController.Signal",StringComparison.Ordinal) &&
+            init.Contains("Dedra.__gcetWakeDiagnostics = function()",StringComparison.Ordinal) &&
+            init.Contains("Dedra.__gcetWakeController.Stop()",StringComparison.Ordinal) &&
+            !Regex.IsMatch(init,
+                @"(?:registerForEvent|__gcetRegisterEvent_\d+)\s*\(\s*[""']onUpdate[""']",
+                RegexOptions.CultureInvariant);
     }
 
     // V2 supersedes V1 frame-probe design. Keep the original combat step and
@@ -61,7 +70,7 @@ internal static partial class SemanticInjectors
             if(!source.Contains("Dedra.__gcetWakeController.Register()",StringComparison.Ordinal) ||
                !source.Contains("Dedra.__gcetWakeController.Start()",StringComparison.Ordinal) ||
                !source.Contains("Dedra.__gcetWakeFromBase",StringComparison.Ordinal) ||
-               owned is null || !owned.Contains(marker,StringComparison.Ordinal))
+               (owned is not null && !owned.Contains(marker,StringComparison.Ordinal)))
                 throw new InvalidOperationException("Dedra V2 partial stage or missing worker.");
             // A previous G-CET pass installed a worker that read an impossible
             // flag from ITP's read-only API. Match the exact authored worker
@@ -75,7 +84,7 @@ internal static partial class SemanticInjectors
             var canonicalBody = WorkerBody.Replace("\r\n","\n",StringComparison.Ordinal)
                 .Replace('\r','\n');
             var expectedWorker = coordinatorHeader + canonicalBody;
-            var existingWorker = owned.Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
+            var existingWorker = owned?.Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
             // Previous output registered the fallback callback at Lua load
             // time, before the 0-Engine pausable API could be reliably
             // acquired. Move ONLY that registration into the original onInit
@@ -164,10 +173,13 @@ internal static partial class SemanticInjectors
                     "  function M.Signal(proof)\n" +
                     "    if proof == \"__gcetItpToggleWakeV2\" then baseBridgeConfirmed = true end",
                     "  function M.Signal()",StringComparison.Ordinal);
-            if(existingWorker!=legacyWorker && existingWorker!=previousWorker &&
-               existingWorker!=preCapabilityWorker)
+            if(owned is not null && existingWorker!=legacyWorker &&
+               existingWorker!=previousWorker && existingWorker!=preCapabilityWorker)
                 throw new InvalidOperationException(
                     "Dedra worker differs from known generated versions; refuse unsafe overwrite.");
+            if(owned is null && !HasDedraThirdPersonCombatAuthorBridge(source))
+                throw new InvalidOperationException(
+                    "Missing Dedra worker and unproven author bridge; refuse unsafe recovery.");
             context.WriteCoordinator(workerFile,expectedWorker);
             return SemanticInjectionResult.Success(
                 "Upgraded the existing external Dedra worker in place; " +
