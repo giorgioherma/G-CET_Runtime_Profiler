@@ -1500,9 +1500,29 @@ public static class PassGeneratorService
 
             var functionName = $"__gcetOnAction_{candidate.RegistrationId}";
             var callbackArgs = opening.Groups["args"].Value;
-            var routedCallbackArgs = string.IsNullOrWhiteSpace(callbackArgs)
-                ? "__gcetRoutedName"
-                : callbackArgs.TrimEnd() + ", __gcetRoutedName";
+            // 0-Engine dispatches (this, action, consumer, name, kind). When
+            // the author callback declares fewer than three parameters, reserve
+            // the omitted positional slots before receiving the routed name.
+            // Otherwise a non-nil consumer becomes the action name and silently
+            // disables movement/input branches (e.g. FreeFly).
+            var declaredArgs = callbackArgs.Trim();
+            if (!Regex.IsMatch(declaredArgs,
+                    @"^(?:[A-Za-z_][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*){0,2})?$",
+                    RegexOptions.CultureInvariant))
+            {
+                skipped.Add(Skip(candidate,
+                    "Unsupported OnAction callback parameter shape; refuse to shift routed arguments."));
+                continue;
+            }
+            var originalArgCount = declaredArgs.Length == 0
+                ? 0 : declaredArgs.Split(',').Length;
+            var routedCallbackArgs = originalArgCount switch
+            {
+                0 => "__gcetRoutedThis, __gcetRoutedAction, __gcetRoutedConsumer, __gcetRoutedName",
+                1 => declaredArgs + ", __gcetRoutedAction, __gcetRoutedConsumer, __gcetRoutedName",
+                2 => declaredArgs + ", __gcetRoutedConsumer, __gcetRoutedName",
+                _ => declaredArgs + ", __gcetRoutedName"
+            };
             var replaced =
                 segment[..opening.Index] +
                 $"local function {functionName}({routedCallbackArgs})" +
