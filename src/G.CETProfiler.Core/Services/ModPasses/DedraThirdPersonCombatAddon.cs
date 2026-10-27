@@ -73,7 +73,15 @@ internal static partial class SemanticInjectors
             // Recognize both the immediately preceding generated worker and
             // the historic read-only-proxy mutation variant. Never require a
             // previous output for generation from untouched originals.
-            var priorWorkerBody = canonicalBody.Replace(DiagnosticsMethod,"",StringComparison.Ordinal);
+            // On Windows, C# verbatim string constants keep CRLF from checkout.
+            // Normalize both operands before comparing known generated worker
+            // variants; otherwise a pristine build passes but staged upgrades
+            // incorrectly reject our own earlier worker.
+            var normalizedDiagnostics = DiagnosticsMethod
+                .Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
+            if (canonicalBody.Split(normalizedDiagnostics,StringSplitOptions.None).Length != 2)
+                throw new InvalidOperationException("Dedra diagnostics worker body drift.");
+            var priorWorkerBody = canonicalBody.Replace(normalizedDiagnostics,"",StringComparison.Ordinal);
             const string readinessProbe =
                 "    -- Source-proven capability exported by the ITP generator. This is\n" +
                 "    -- read-only and can be checked during Dedra's own startup, even when\n" +
