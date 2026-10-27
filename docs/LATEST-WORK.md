@@ -2,8 +2,8 @@
 
 **Active task: INCOMPLETE — no real-stack output acceptance yet.** Updated **2026-10-25**.  
 **Repository / branch:** `giorgioherma/G-CET_Runtime_Profiler` / `dev/resolver-profiler-handoff`.  
-**Shared Profiler + Resolver version:** **1.3.1** (do not bump without explicit user authorization).  
-**Latest verified implementation CI:** [main build #40259370013](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/40259370013), code/test commit `aaca5f30b45f2c2813c541902367492b8ad5fb7d`, **6/6 jobs successful**, including source-proven missing-hook preservation contract, paired ITP/Dedra wake regression, private pristine original-source one-pass generation, and generic/native tests. Shared Profiler + Resolver remains **v1.3.1**. **Not fresh real-user ZIP Phase1+2 parity or gameplay validation.**
+**Shared Profiler + Resolver version:** **1.3.2** (user-authorized October 27 promotion from green #2095).  
+**Latest verified implementation baseline:** [main CI #2095](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/40550265533), commit `933f532dde7fb707806750698d9aa9a67b72dd42`, **6/6 jobs green** including pristine-source one-pass generation and paired ITP/Dedra wake validation. Its produced packages were **v1.3.1**. The user authorized a **version-only v1.3.2 promotion** of this code; the new versioned build needs its own CI/artifact confirmation. **Not yet user-generated ZIP Phase1+2 parity or gameplay acceptance.**
 
 **Authoritative detailed task:** [Phase 1+2 preservation-recovery handoff](resolver/PHASE12-PRESERVATION-RECOVERY.md).  
 **Mandatory engineering contracts:** [HANDOFF/CORE](HANDOFF/CORE.md), [Resolver PROJECT-CONTRACT](resolver/PROJECT-CONTRACT.md), [BUILD-PIPELINE](HANDOFF/BUILD-PIPELINE.md).  
