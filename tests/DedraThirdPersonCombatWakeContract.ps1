@@ -61,10 +61,34 @@ end
 registerForEvent("onInit", function()
   mod.captureConsumableTiming()
 end)
+mod.apiBuild = function()
+  local Api = mod.loadModule("api")
+  return Api.new({
+    config = config,
+    state = state,
+    system = function() return nil end,
+  })
+end
 mod.apiCore = { public = readOnly(public) }
 mod.api = mod.apiCore and mod.apiCore.public or nil
 return mod.api
 '@
+$itpApiFixture=@'
+local Api={}
+function Api.new(host)
+  local core={}
+  local function readOnly(t) return t end
+  local function touching(t) return t end
+  local events={}
+  core.public = readOnly(touching({
+    events = readOnly(touching(events)),
+  }))
+  return core
+end
+return Api
+'@
+$itpApiPath=Join-Path $itp 'api.lua'
+[IO.File]::WriteAllText($itpApiPath,$itpApiFixture,[Text.UTF8Encoding]::new($false))
 function Run([string]$owner,[string]$rule,[string]$source,$handler,[switch]$StageInput) {
   $folder=Join-Path $root $owner
   $staged=[Collections.Generic.Dictionary[string,byte[]]]::new([StringComparer]::OrdinalIgnoreCase)
@@ -80,8 +104,18 @@ function Run([string]$owner,[string]$rule,[string]$source,$handler,[switch]$Stag
   return @{Applied=$result.Applied;Changes=$changes}
 }
 $b=Run 'immersive_third_person' 'immersive-third-person-dedra-toggle-signal' $itpFixture $base
-if(!$b.Applied -or $b.Changes.Count -ne 1){throw 'Base should emit one source signal'}
-$bridge=[Text.Encoding]::UTF8.GetString($b.Changes[0].Bytes)
+if(!$b.Applied -or $b.Changes.Count -ne 2){throw 'Base should emit init.lua signal and read-only api.lua capability'}
+$baseInitChange=$b.Changes|Where-Object{$_.RelativeFile -like '*/init.lua'}|Select-Object -First 1
+$baseApiChange=$b.Changes|Where-Object{$_.RelativeFile -like '*/api.lua'}|Select-Object -First 1
+if(!$baseInitChange -or !$baseApiChange){throw 'Paired base source changes not generated'}
+$bridge=[Text.Encoding]::UTF8.GetString($baseInitChange.Bytes)
+$apiExport=[Text.Encoding]::UTF8.GetString($baseApiChange.Bytes)
+if(!$apiExport.Contains('__gcetDedraWakeCapabilityV3') -or
+   !$apiExport.Contains('gcetDedraWakeReady = function()') -or
+   !$bridge.Contains('gcetDedraWakeReady = function() return mod.__gcetDedraWakeBridgeV2 == true end')) {
+  throw 'Read-only startup wake capability missing or incorrectly sourced'
+}
+[IO.File]::WriteAllText($itpApiPath,$apiExport,[Text.UTF8Encoding]::new($false))
 if(!$bridge.Contains('mod.__gcetDedraWakeBridgeV2 = true') -or
    $bridge.Contains('mod.api.__gcetDedraWakeBridgeV2') -or
    !$bridge.Contains('pcall(addon.__gcetWakeFromBase, "__gcetItpToggleWakeV2")') -or
@@ -144,7 +178,7 @@ if($lua.Contains('pcall(dedraStep, dt)') -or
   throw 'Original frame callback still present or doubled'
 }
 foreach($token in @('FrameListeners.MakeRegistrar','handle.Pause()','handle.Resume()',
-  'baseBridgeConfirmed','if proof == "__gcetItpToggleWakeV2"',
+  'baseBridgeConfirmed','base.gcetDedraWakeReady','if proof == "__gcetItpToggleWakeV2"',
   'if p.userWantsThirdPerson == true','kind,owner,notify',
   'Original game-combat','linked','fallbackRegister("onUpdate",update)')){
   if(!$wake.Contains($token)){throw "Missing safe detached wake or fallback: $token"}
@@ -156,7 +190,21 @@ if($wake.Contains('0.10') -or $wake.Contains('0.25') -or $wake.Contains('SetInte
 # Older optimized stacks have an external worker with a read-only public API
 # flag probe. It must be upgraded through this same generating rule, without
 # re-injecting author callbacks or moving the worker inline.
-$legacyWake=$wake.Replace($crlf,$nl)
+$previousWake=$wake.Replace($crlf,$nl)
+$readinessProbe=(
+  '    -- Source-proven capability exported by the ITP generator. This is' + $nl +
+  '    -- read-only and can be checked during Dedra''s own startup, even when' + $nl +
+  '    -- the base onInit proof signal was emitted earlier in load order.' + $nl +
+  '    -- Unmodified/partial ITP stays fail-open until a real toggle proof.' + $nl +
+  '    if not baseBridgeConfirmed and type(base.gcetDedraWakeReady) == "function" then' + $nl +
+  '      local okReady, ready = pcall(base.gcetDedraWakeReady)' + $nl +
+  '      if okReady and ready == true then baseBridgeConfirmed = true end' + $nl +
+  '    end' + $nl)
+$previousWake=$previousWake.Replace($readinessProbe,'')
+if($previousWake -eq $wake -or $previousWake.Contains('gcetDedraWakeReady')){
+  throw 'Previous shipped worker fixture is not exact'
+}
+$legacyWake=$previousWake
 $legacyWake=$legacyWake.Replace('  local baseBridgeConfirmed = false' + $nl,'')
 $legacyWake=$legacyWake.Replace(
   '    if not baseBridgeConfirmed or not linked or not api then',
@@ -184,6 +232,12 @@ $updatedWorker=[Text.Encoding]::UTF8.GetString($workerUpgrade.Changes[0].Bytes)
 if($updatedWorker -ne $wake -or
   $workerUpgrade.Changes[0].RelativeFile -notlike '*/GCET_Semantic/dedra_camera_wake.lua') {
   throw 'Prior worker update changed execution ownership or generated unexpected code'
+}
+[IO.File]::WriteAllText($workerPath,$previousWake,[Text.UTF8Encoding]::new($false))
+$previousUpgrade=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $lua $addon -StageInput
+if(!$previousUpgrade.Applied -or $previousUpgrade.Changes.Count -ne 1 -or
+   [Text.Encoding]::UTF8.GetString($previousUpgrade.Changes[0].Bytes) -ne $wake) {
+  throw 'Previously shipped V2 worker did not upgrade to source-proven startup wake'
 }
 [IO.File]::WriteAllText($workerPath,$updatedWorker,[Text.UTF8Encoding]::new($false))
 $workerTwice=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $lua $addon -StageInput
