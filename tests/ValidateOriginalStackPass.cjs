@@ -118,6 +118,22 @@ if (!fs.existsSync(manifestFile)) {
       }
     }
 
+    // SYSTEM_REQUESTS_HANDLER must not retain a player-epoch cached
+    // native menu context. Check the actual untouched-stack generated output.
+    if (overlayExists('0-Engine/init.lua')) {
+      const engine = fs.readFileSync(
+        path.join(overlayRoot, ...outputLocation('0-Engine/init.lua').split('/')), 'utf8');
+      const directKnown = /function\s+Engine\.GetSystemRequestsHandler\s*\(\s*\)\s*return\s+Game\.GetSystemRequestsHandler\s*\(\s*\)\s*end/.test(engine);
+      const directHost = /function\s+__gcetApi\.GetSystemRequestsHandler\s*\(\s*\)\s*return\s+Game\.GetSystemRequestsHandler\s*\(\s*\)\s*end/.test(engine);
+      const stale = /function\s+(?:Engine|__gcetApi)\.GetSystemRequestsHandler\s*\(\s*\)\s*return\s+__gcetGetSharedProvider\s*\(\s*["']SYSTEM_REQUESTS_HANDLER["']\s*\)/.test(engine);
+      if ((!directKnown && !directHost) || stale)
+        report('error', '0-Engine/init.lua', 'VOLATILE_SYSTEM_REQUESTS_HANDLER_NOT_LIVE',
+          {stage:'Generic 0-Engine', provider:'SYSTEM_REQUESTS_HANDLER',
+           reason:'Handler must use current Game native context, not player-epoch cache.'});
+    } else {
+      report('error', '0-Engine/init.lua', 'Required 0-Engine runtime output missing');
+    }
+
     // Validate an admitted paired wake stage using the untouched author's
     // exact CET toggle and published API signature as the applicability gate.
     // A filename count alone missed a real startup-wake regression: Dedra
