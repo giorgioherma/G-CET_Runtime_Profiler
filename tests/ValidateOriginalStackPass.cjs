@@ -118,6 +118,49 @@ if (!fs.existsSync(manifestFile)) {
       }
     }
 
+    // Validate an admitted paired wake stage using the untouched author's
+    // exact CET toggle and published API signature as the applicability gate.
+    // A filename count alone missed a real startup-wake regression: Dedra
+    // shipped but base ITP's read-only startup proof was omitted.
+    const itpInitOriginal = path.join(modsRoot, 'immersive_third_person', 'init.lua');
+    const itpApiOriginal = path.join(modsRoot, 'immersive_third_person', 'api.lua');
+    if (fs.existsSync(itpInitOriginal)) {
+      const original = fs.readFileSync(itpInitOriginal, 'utf8');
+      if (original.includes('registerInput("tpp_camera_toggle"') &&
+          original.includes('local function autoTppHandleToggle()')) {
+        if (!fs.existsSync(itpApiOriginal)) {
+          requiredOriginal('immersive_third_person/api.lua', {
+            owner: 'immersive_third_person',
+            ruleId: 'immersive-third-person-dedra-toggle-signal'
+          });
+        } else if (fs.readFileSync(itpApiOriginal, 'utf8').includes('core.public = readOnly(touching({')) {
+          const paired = transforms.filter(t => t.RuleId === 'immersive-third-person-dedra-toggle-signal' &&
+            t.type === 'SEMANTIC_RULE');
+          const required = ['immersive_third_person/init.lua', 'immersive_third_person/api.lua'];
+          const paths = paired.length === 1 && Array.isArray(paired[0].files) ? paired[0].files : [];
+          if (paired.length !== 1 || required.some(p => !paths.includes(p)))
+            report('error', 'immersive_third_person', 'ITP/Dedra paired wake not generated from original',
+              {stage:'Semantic',mod:'immersive_third_person',
+               rule:'immersive-third-person-dedra-toggle-signal',
+               reason:'Both init.lua and api.lua must be composed in one pass.'});
+          else {
+            const init = fs.readFileSync(path.join(overlayRoot, ...outputLocation(required[0]).split('/')), 'utf8');
+            const api = fs.readFileSync(path.join(overlayRoot, ...outputLocation(required[1]).split('/')), 'utf8');
+            if (!init.includes('mod.__gcetDedraWakeBridgeV2 = true') ||
+                !init.includes('gcetDedraWakeReady = function() return mod.__gcetDedraWakeBridgeV2 == true end') ||
+                !init.includes('pcall(addon.__gcetWakeFromBase, "__gcetItpToggleWakeV2")') ||
+                init.includes('mod.api.__gcetDedraWakeBridgeV2') ||
+                !api.includes('__gcetDedraWakeCapabilityV3') ||
+                !api.includes('return type(host.gcetDedraWakeReady) == "function" and host.gcetDedraWakeReady() == true'))
+              report('error', 'immersive_third_person', 'ITP/Dedra runtime wake dependency incomplete',
+                {stage:'Semantic',mod:'immersive_third_person',
+                 rule:'immersive-third-person-dedra-toggle-signal',
+                 reason:'Original CET keybind and read-only public API do not contain matching safe wake proofs.'});
+          }
+        }
+      }
+    }
+
     // The fixed base capture can refer to original files removed when trimming
     // the source repository. Report exactly the missing file instead of a folder.
     const missing = new Map();
