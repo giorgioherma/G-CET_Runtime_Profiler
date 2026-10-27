@@ -341,6 +341,18 @@ $workerTwice=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' 
 if($workerTwice.Applied -or $workerTwice.Changes.Count -ne 0) {
   throw 'Updated external worker was not idempotent'
 }
+# Partial install: the proven onInit source bridge can survive while its
+# external coordinator is missing. Recreate ONLY the worker; do not rewrite
+# completed author callbacks or require a previous optimized ZIP.
+[IO.File]::Delete($workerPath)
+$script:dedraUpgradeCase='missing worker, verified existing onInit author bridge'
+$missingWorker=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $lua $addon -StageInput
+if(!$missingWorker.Applied -or $missingWorker.Changes.Count -ne 1 -or
+   $missingWorker.Changes[0].RelativeFile -notlike '*/GCET_Semantic/dedra_camera_wake.lua' -or
+   [Text.Encoding]::UTF8.GetString($missingWorker.Changes[0].Bytes) -ne $wake){
+  throw 'Verified prior author bridge could not regenerate only the missing external worker'
+}
+[IO.File]::WriteAllText($workerPath,$updatedWorker,[Text.UTF8Encoding]::new($false))
 $driftedWorker=$legacyWake.Replace('fallbackRegister("onUpdate",update)',
   'fallbackRegister("onUpdate",nil)')
 [IO.File]::WriteAllText($workerPath,$driftedWorker,[Text.UTF8Encoding]::new($false))
