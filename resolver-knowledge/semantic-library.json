@@ -7869,12 +7869,17 @@
           "registerForEvent(\"onInit\", function()"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:dedra-third-person-combat-wake",
-        "expectedMarkerFileCount": 1,
+        "expectedMarkerFileCount": 2,
         "sourceCompletionAuthoritative": true,
+        "composablePartialStages": true,
+        "completionVerifier": "DEDRA_ONINIT_FRAME_WAKE_V3",
         "satisfiedAll": [
           "__gcetDedraDetachedWakeV2",
           "Dedra.__gcetWakeController.Register()",
-          "Dedra.__gcetWakeFromBase"
+          "Dedra.__gcetWakeFromBase",
+          "Dedra.__gcetWakeDiagnostics = function()",
+          "function M.Diagnostics()",
+          "FrameListeners.MakeRegistrar"
         ]
       },
       "behavior": {
