@@ -4,6 +4,44 @@ namespace GCETRuntimeProfiler.Core.Services;
 
 internal static partial class SemanticInjectors
 {
+    // Verify BOTH the author callback bridge and external frame listener.
+    // Old V2 markers cannot claim completion while Register() still runs
+    // before onInit, even if an existing worker has been generated.
+    internal static bool IsDedraThirdPersonCombatWakeComplete(string ownerFolder)
+    {
+        var initPath = Path.Combine(ownerFolder,"init.lua");
+        var workerPath = Path.Combine(ownerFolder,"GCET_Semantic","dedra_camera_wake.lua");
+        if (!File.Exists(initPath) || !File.Exists(workerPath))
+            return false;
+        var init = File.ReadAllText(initPath).Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
+        var worker = File.ReadAllText(workerPath).Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
+        var correctLifecycle = Regex.IsMatch(init,
+            @"registerForEvent\s*\(\s*[""']onInit[""']\s*,\s*function\s*\(\s*\)\s*" +
+            @"Dedra\.__gcetWakeController\.Register\s*\(\s*\)\s*" +
+            @"Dedra\.__gcetWakeController\.Start\s*\(\s*\)",
+            RegexOptions.CultureInvariant);
+        return correctLifecycle &&
+            Regex.Matches(init,@"Dedra\.__gcetWakeController\.Register\s*\(\s*\)",
+                RegexOptions.CultureInvariant).Count == 1 &&
+            init.Contains("dofile(\"GCET_Semantic/dedra_camera_wake.lua\")",StringComparison.Ordinal) &&
+            init.Contains("Dedra.__gcetWakeFromBase = Dedra.__gcetWakeController.Signal",StringComparison.Ordinal) &&
+            init.Contains("Dedra.__gcetWakeDiagnostics = function()",StringComparison.Ordinal) &&
+            init.Contains("Dedra.__gcetWakeController.Stop()",StringComparison.Ordinal) &&
+            !Regex.IsMatch(init,@"(?:registerForEvent|__gcetRegisterEvent_\d+)\s*\(\s*[""']onUpdate[""']",
+                RegexOptions.CultureInvariant) &&
+            worker.StartsWith("-- G-CET semantic coordinator:dedra-third-person-combat-wake\n",StringComparison.Ordinal) &&
+            worker.Contains("FrameListeners.MakeRegistrar",StringComparison.Ordinal) &&
+            worker.Contains("function M.Register()",StringComparison.Ordinal) &&
+            worker.Contains("function M.Start()",StringComparison.Ordinal) &&
+            worker.Contains("function M.Signal(proof)",StringComparison.Ordinal) &&
+            worker.Contains("function M.Stop()",StringComparison.Ordinal) &&
+            worker.Contains("function M.Diagnostics()",StringComparison.Ordinal) &&
+            worker.Contains("base.gcetDedraWakeReady",StringComparison.Ordinal) &&
+            worker.Contains("handle.Pause()",StringComparison.Ordinal) &&
+            worker.Contains("handle.Resume()",StringComparison.Ordinal) &&
+            worker.Contains("fallbackRegister(\"onUpdate\",update)",StringComparison.Ordinal);
+    }
+
     // V2 supersedes V1 frame-probe design. Keep the original combat step and
     // use a mod-owned separate coordinator for 0-Engine detach/resume.
     private static SemanticInjectionResult ApplyDedraThirdPersonCombatWake(
@@ -62,6 +100,23 @@ internal static partial class SemanticInjectors
             else if(!source.Contains(newInit,StringComparison.Ordinal) ||
                     source.Split("Dedra.__gcetWakeController.Register()",StringSplitOptions.None).Length != 2)
                 throw new InvalidOperationException("Dedra startup registration ownership drift.");
+            // Upgrades from the old eager-source variant must also expose
+            // the new on-demand gate status; this is the same owned bridge,
+            // never an additional update subscription or a repair pass.
+            const string bridgeOwner = "Dedra.__gcetWakeFromBase = Dedra.__gcetWakeController.Signal";
+            const string statusOwner =
+                "Dedra.__gcetWakeDiagnostics = function()\n" +
+                "  return Dedra.__gcetWakeController.Diagnostics()\n" +
+                "end";
+            if(!source.Contains(statusOwner,StringComparison.Ordinal))
+            {
+                if(source.Split(bridgeOwner,StringSplitOptions.None).Length!=2 ||
+                   source.Contains("Dedra.__gcetWakeDiagnostics",StringComparison.Ordinal))
+                    throw new InvalidOperationException("Dedra diagnostics bridge source drift.");
+                source=source.Replace(bridgeOwner,bridgeOwner+"\n"+statusOwner,
+                    StringComparison.Ordinal);
+                sourceChanged=true;
+            }
             if(sourceChanged)
                 context.Write(file,file.Text.Contains("\r\n",StringComparison.Ordinal)
                     ? source.Replace("\n","\r\n",StringComparison.Ordinal):source);
@@ -161,6 +216,9 @@ internal static partial class SemanticInjectors
         Dedra.__gcetWakeController = dofile("GCET_Semantic/dedra_camera_wake.lua").Install(
           Dedra, dedraStep, registerForEvent)
         Dedra.__gcetWakeFromBase = Dedra.__gcetWakeController.Signal
+        Dedra.__gcetWakeDiagnostics = function()
+          return Dedra.__gcetWakeController.Diagnostics()
+        end
 
         """;
         const string onInit="registerForEvent(\"onInit\", function()";
