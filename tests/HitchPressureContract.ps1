@@ -281,11 +281,20 @@ if (@($phaseEvidence.phaseRows).Count -ne 3 -or
     throw 'Native phase/slow-step/gross-allocation report attribution contract failed.'
 }
 $diagnosticHtml = Get-Content -LiteralPath (Join-Path $capture 'CET_Report.html') -Raw
+$longGcStart = $diagnosticHtml.IndexOf('Long LuaJIT collector operations', [StringComparison]::Ordinal)
+$longGcEnd = if($longGcStart -ge 0) {
+    $diagnosticHtml.IndexOf('</table>', $longGcStart, [StringComparison]::Ordinal)
+} else { -1 }
+$longGcTable = if($longGcEnd -gt $longGcStart) {
+    $diagnosticHtml.Substring($longGcStart, $longGcEnd - $longGcStart)
+} else { '' }
 if ($diagnosticHtml -notmatch 'Collector phase execution' -or
-    $diagnosticHtml -notmatch 'Slow internal GC operations' -or
+    $longGcStart -lt 0 -or
+    $longGcTable.Contains('<th>Callback</th>') -or
+    $longGcTable -notmatch 'unrelated mods long before' -or
     $diagnosticHtml -notmatch 'positive LuaJIT allocations by callback' -or
-    $diagnosticHtml -notmatch 'this is not allocation ownership') {
-    throw 'GC phase/allocation evidence missing or causality safety explanation lost.'
+    $diagnosticHtml -notmatch 'not allocation ownership') {
+    throw 'GC phase/allocation evidence missing or incidental callback falsely ranked as GC producer.'
 }
 
 $collector = $summary.collectorGc
