@@ -38,12 +38,42 @@ internal static partial class SemanticInjectors
                 .Replace('\r','\n');
             var expectedWorker = coordinatorHeader + canonicalBody;
             var existingWorker = owned.Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
+            // Previous output registered the fallback callback at Lua load
+            // time, before the 0-Engine pausable API could be reliably
+            // acquired. Move ONLY that registration into the original onInit
+            // lifecycle. Do not replace a failure with duplicate observers.
+            var oldInit = "registerForEvent(\"onInit\", function()\n" +
+                "  Dedra.__gcetWakeController.Start()";
+            var newInit = "registerForEvent(\"onInit\", function()\n" +
+                "  Dedra.__gcetWakeController.Register()\n" +
+                "  Dedra.__gcetWakeController.Start()";
+            var existingTop = "\nDedra.__gcetWakeController.Register()\n";
+            var sourceChanged = false;
+            if(source.Contains(oldInit,StringComparison.Ordinal))
+            {
+                if(source.Split(oldInit,StringSplitOptions.None).Length!=2 ||
+                   source.Split(existingTop,StringSplitOptions.None).Length!=2 ||
+                   !source.Contains("Dedra.__gcetWakeFromBase",StringComparison.Ordinal))
+                    throw new InvalidOperationException("Dedra prior startup registration drift.");
+                source=source.Replace(oldInit,newInit,StringComparison.Ordinal)
+                    .Replace(existingTop,"\n",StringComparison.Ordinal);
+                sourceChanged = true;
+            }
+            else if(!source.Contains(newInit,StringComparison.Ordinal) ||
+                    source.Split("Dedra.__gcetWakeController.Register()",StringSplitOptions.None).Length != 2)
+                throw new InvalidOperationException("Dedra startup registration ownership drift.");
+            if(sourceChanged)
+                context.Write(file,file.Text.Contains("\r\n",StringComparison.Ordinal)
+                    ? source.Replace("\n","\r\n",StringComparison.Ordinal):source);
             if(existingWorker==expectedWorker)
-                return SemanticInjectionResult.Skip("Read-only-safe detached wake already installed.");
+                return sourceChanged
+                    ? SemanticInjectionResult.Success("Deferred pausable callback ownership to original onInit.")
+                    : SemanticInjectionResult.Skip("Read-only-safe detached wake already installed.");
 
             // Recognize both the immediately preceding generated worker and
             // the historic read-only-proxy mutation variant. Never require a
             // previous output for generation from untouched originals.
+            var priorWorkerBody = canonicalBody.Replace(DiagnosticsMethod,"",StringComparison.Ordinal);
             const string readinessProbe =
                 "    -- Source-proven capability exported by the ITP generator. This is\n" +
                 "    -- read-only and can be checked during Dedra's own startup, even when\n" +
@@ -53,8 +83,9 @@ internal static partial class SemanticInjectors
                 "      local okReady, ready = pcall(base.gcetDedraWakeReady)\n" +
                 "      if okReady and ready == true then baseBridgeConfirmed = true end\n" +
                 "    end\n";
-            var previousBody = canonicalBody.Replace(readinessProbe,"",StringComparison.Ordinal);
-            var previousWorker = coordinatorHeader + previousBody;
+            var previousBody = priorWorkerBody.Replace(readinessProbe,"",StringComparison.Ordinal);
+            var previousWorker = coordinatorHeader + priorWorkerBody;
+            var preCapabilityWorker = coordinatorHeader + previousBody;
             var legacyWorker = coordinatorHeader + previousBody
                 .Replace("  local baseBridgeConfirmed = false\n","",StringComparison.Ordinal)
                 .Replace(
@@ -70,7 +101,8 @@ internal static partial class SemanticInjectors
                     "  function M.Signal(proof)\n" +
                     "    if proof == \"__gcetItpToggleWakeV2\" then baseBridgeConfirmed = true end",
                     "  function M.Signal()",StringComparison.Ordinal);
-            if(existingWorker!=legacyWorker && existingWorker!=previousWorker)
+            if(existingWorker!=legacyWorker && existingWorker!=previousWorker &&
+               existingWorker!=preCapabilityWorker)
                 throw new InvalidOperationException(
                     "Dedra worker differs from known generated versions; refuse unsafe overwrite.");
             context.WriteCoordinator(workerFile,expectedWorker);
@@ -126,12 +158,12 @@ internal static partial class SemanticInjectors
         const string onInit="registerForEvent(\"onInit\", function()";
         if(source.Split(onInit,StringSplitOptions.None).Length!=2)
             throw new InvalidOperationException("Dedra onInit callback ambiguous.");
-        source=source.Replace(onInit,bridge+onInit+"\n  Dedra.__gcetWakeController.Start()",
+        source=source.Replace(onInit,bridge+onInit+"\n  Dedra.__gcetWakeController.Register()\n  Dedra.__gcetWakeController.Start()",
             StringComparison.Ordinal);
         var call=callback[0].Value;
         if(source.Split(call,StringSplitOptions.None).Length!=2)
             throw new InvalidOperationException("Dedra update registration drifted.");
-        source=source.Replace(call,"Dedra.__gcetWakeController.Register()",StringComparison.Ordinal);
+        source=source.Replace(call,"",StringComparison.Ordinal);
         // The author OnGameAttached remains the event that refreshes the player
         // state; our worker rebinds/rechecks it without starting a timer.
         const string reset="    Dedra.armSent = nil\n  end)";
@@ -159,6 +191,27 @@ internal static partial class SemanticInjectors
             "override and session events provide wake. No dormant timer or frame probes; " +
             "without a proven ITP bridge/0-Engine, author cadence is preserved.");
     }
+    // Read-only, on-demand diagnostics: no timer, watcher, or per-frame
+    // allocation. Ask the loaded worker why its pausable path is unavailable.
+    private const string DiagnosticsMethod = @"  function M.Diagnostics()
+    local p = nil
+    local ok = false
+    if api and type(api.perspective) == ""table"" and
+      type(api.perspective.get) == ""function"" then
+      ok, p = pcall(api.perspective.get)
+    end
+    return {
+      registered = handle ~= nil, pausable = pausable,
+      bridge = baseBridgeConfirmed, linked = linked,
+      perspectiveReadable = ok and type(p) == ""table"",
+      requested = type(p) == ""table"" and p.userWantsThirdPerson or nil,
+      mode = type(p) == ""table"" and p.mode or nil,
+      transitioning = type(p) == ""table"" and p.transitioning or nil,
+      pendingCleanup = pending(p),
+      listenerActive = handle and type(handle.IsActive) == ""function"" and handle.IsActive() or nil
+    }
+  end
+";
     private const string WorkerBody = @"-- __gcetDedraDetachedWakeV2: original author step only when user requests TPP or cleanup is pending
 local M = {}
 function M.Install(Dedra, step, fallbackRegister)
@@ -257,6 +310,24 @@ function M.Install(Dedra, step, fallbackRegister)
   function M.Signal(proof)
     if proof == ""__gcetItpToggleWakeV2"" then baseBridgeConfirmed = true end
     if not linked then bind() else notify() end
+  end
+  function M.Diagnostics()
+    local p = nil
+    local ok = false
+    if api and type(api.perspective) == ""table"" and
+      type(api.perspective.get) == ""function"" then
+      ok, p = pcall(api.perspective.get)
+    end
+    return {
+      registered = handle ~= nil, pausable = pausable,
+      bridge = baseBridgeConfirmed, linked = linked,
+      perspectiveReadable = ok and type(p) == ""table"",
+      requested = type(p) == ""table"" and p.userWantsThirdPerson or nil,
+      mode = type(p) == ""table"" and p.mode or nil,
+      transitioning = type(p) == ""table"" and p.transitioning or nil,
+      pendingCleanup = pending(p),
+      listenerActive = handle and type(handle.IsActive) == ""function"" and handle.IsActive() or nil
+    }
   end
   function M.Stop()
     if api and type(api.events) == ""table"" and
