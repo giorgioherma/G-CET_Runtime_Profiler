@@ -171,19 +171,19 @@ $proofInit=Join-Path $proofRoot 'init.lua'
 $proofApi=Join-Path $proofRoot 'api.lua'
 [IO.File]::WriteAllText($proofInit,$bridge,[Text.UTF8Encoding]::new($false))
 [IO.File]::WriteAllText($proofApi,$itpApiFixture,[Text.UTF8Encoding]::new($false))
-if($proof.Invoke($null,[object[]]@($proofRoot))){
+if($proof.Invoke($null,[object[]]@([string]$proofRoot))){
     throw 'Init-only wake incorrectly classified as complete'
 }
 [IO.File]::WriteAllText($proofApi,$apiExport,[Text.UTF8Encoding]::new($false))
-if(!$proof.Invoke($null,[object[]]@($proofRoot))){
+if(!$proof.Invoke($null,[object[]]@([string]$proofRoot))){
     throw 'Paired init+api read-only wake not classified complete'
 }
 [IO.File]::WriteAllText($proofInit,$itpFixture,[Text.UTF8Encoding]::new($false))
-if($proof.Invoke($null,[object[]]@($proofRoot))){
+if($proof.Invoke($null,[object[]]@([string]$proofRoot))){
     throw 'API-only wake incorrectly classified as complete'
 }
 [IO.File]::WriteAllText($proofInit,$upgraded,[Text.UTF8Encoding]::new($false))
-if(!$proof.Invoke($null,[object[]]@($proofRoot))){
+if(!$proof.Invoke($null,[object[]]@([string]$proofRoot))){
     throw 'Legacy staged init upgrade lost paired completion proof'
 }
 
