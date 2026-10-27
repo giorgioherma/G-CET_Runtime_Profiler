@@ -26,7 +26,7 @@ internal static class SharedProviderCatalog
         new("GAME_EFFECT_SYSTEM", "GetGameEffectSystem", "SYSTEM_HANDLE"),
         new("NAVIGATION_SYSTEM", "GetNavigationSystem", "SYSTEM_HANDLE"),
         new("TELEPORTATION_FACILITY", "GetTeleportationFacility", "SYSTEM_HANDLE"),
-        new("SYSTEM_REQUESTS_HANDLER", "GetSystemRequestsHandler", "SYSTEM_HANDLE"),
+        new("SYSTEM_REQUESTS_HANDLER", "GetSystemRequestsHandler", "VOLATILE_SYSTEM_HANDLE"),
         new("MAPPIN_SYSTEM", "GetMappinSystem", "SYSTEM_HANDLE"),
         new("VEHICLE_SYSTEM", "GetVehicleSystem", "SYSTEM_HANDLE"),
         new("AUDIO_SYSTEM", "GetAudioSystem", "SYSTEM_HANDLE"),
@@ -48,6 +48,12 @@ internal static class SharedProviderCatalog
     internal static readonly HashSet<string> GenerationFamilies = new(
         Authorized.Select(x => x.Provider),
         StringComparer.OrdinalIgnoreCase);
+
+    // Game/menu request handlers are not player-epoch stable. They may change
+    // while the player instance is unchanged. Keep this family authorized for
+    // existing source-generated helpers, but NEVER memoize its native result.
+    internal static bool MustReadLive(SharedProviderAuthorization provider) =>
+        provider.Category.Equals("VOLATILE_SYSTEM_HANDLE", StringComparison.Ordinal);
 
     internal static IEnumerable<SharedProviderAuthorization> RuntimeProviders =>
         Authorized.Where(x => !x.Provider.Equals("PLAYER", StringComparison.OrdinalIgnoreCase));
