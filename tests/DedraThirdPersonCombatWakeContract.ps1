@@ -200,10 +200,25 @@ foreach($token in @('Dedra.__gcetWakeController.Register()','Dedra.__gcetWakeCon
   if(!$lua.Contains($token)){throw "Missing source bridge: $token"}
 }
 if($lua.Contains('pcall(dedraStep, dt)') -or
-  ([regex]::Matches($lua,'Dedra.__gcetWakeController.Register\(\)')).Count -ne 1){
-  throw 'Original frame callback still present or doubled'
+  ([regex]::Matches($lua,'Dedra.__gcetWakeController.Register\(\)')).Count -ne 1 -or
+  !$lua.Contains('registerForEvent("onInit", function()' + $nl +
+      '  Dedra.__gcetWakeController.Register()' + $nl +
+      '  Dedra.__gcetWakeController.Start()')){
+  throw 'Original frame callback still present, doubled, or registered before onInit'
 }
-foreach($token in @('FrameListeners.MakeRegistrar','handle.Pause()','handle.Resume()',
+# Existing V2 optimized init called Register at module load time; the same
+# authoritative producer moves that ownership into onInit without producing a
+# second callback, while preserving source and the existing worker.
+$oldInit=$lua.Replace('registerForEvent("onInit", function()' + $nl +
+   '  Dedra.__gcetWakeController.Register()' + $nl +
+   '  Dedra.__gcetWakeController.Start()',
+   'registerForEvent("onInit", function()' + $nl +
+   '  Dedra.__gcetWakeController.Start()')
+$oldInit=$oldInit.Replace('registerForEvent("onShutdown", function()',
+   'Dedra.__gcetWakeController.Register()' + $nl +
+   'registerForEvent("onShutdown", function()')
+if($oldInit -eq $lua){throw 'Legacy eager-registration fixture unchanged'}
+foreach($token in @('function M.Diagnostics()','FrameListeners.MakeRegistrar','handle.Pause()','handle.Resume()',
   'baseBridgeConfirmed','base.gcetDedraWakeReady','if proof == "__gcetItpToggleWakeV2"',
   'if p.userWantsThirdPerson == true','kind,owner,notify',
   'Original game-combat','linked','fallbackRegister("onUpdate",update)')){
@@ -217,6 +232,13 @@ if($wake.Contains('0.10') -or $wake.Contains('0.25') -or $wake.Contains('SetInte
 # flag probe. It must be upgraded through this same generating rule, without
 # re-injecting author callbacks or moving the worker inline.
 $previousWake=$wake.Replace($crlf,$nl)
+$diagnosticsStart=$previousWake.IndexOf('  function M.Diagnostics()' + $nl)
+$diagnosticsEnd=$previousWake.IndexOf('  function M.Stop()', $diagnosticsStart)
+if($diagnosticsStart -lt 0 -or $diagnosticsEnd -le $diagnosticsStart){
+  throw 'Read-only source worker diagnostics are missing or misowned'
+}
+$previousWake=$previousWake.Substring(0,$diagnosticsStart) +
+  $previousWake.Substring($diagnosticsEnd)
 $readinessProbe=(
   '    -- Source-proven capability exported by the ITP generator. This is' + $nl +
   '    -- read-only and can be checked during Dedra''s own startup, even when' + $nl +
@@ -264,6 +286,16 @@ $previousUpgrade=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wa
 if(!$previousUpgrade.Applied -or $previousUpgrade.Changes.Count -ne 1 -or
    [Text.Encoding]::UTF8.GetString($previousUpgrade.Changes[0].Bytes) -ne $wake) {
   throw 'Previously shipped V2 worker did not upgrade to source-proven startup wake'
+}
+[IO.File]::WriteAllText($workerPath,$previousWake,[Text.UTF8Encoding]::new($false))
+$oldInitUpgrade=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $oldInit $addon -StageInput
+$oldInitFile=$oldInitUpgrade.Changes|Where-Object{$_.RelativeFile -like '*/init.lua'}|Select-Object -First 1
+$oldWorkerFile=$oldInitUpgrade.Changes|Where-Object{$_.RelativeFile -like '*/GCET_Semantic/dedra_camera_wake.lua'}|Select-Object -First 1
+if(!$oldInitUpgrade.Applied -or $oldInitUpgrade.Changes.Count -ne 2 -or
+   !$oldInitFile -or !$oldWorkerFile -or
+   [Text.Encoding]::UTF8.GetString($oldInitFile.Bytes) -ne $lua -or
+   [Text.Encoding]::UTF8.GetString($oldWorkerFile.Bytes) -ne $wake){
+  throw 'Previously optimized eager-registration owner did not upgrade atomically'
 }
 [IO.File]::WriteAllText($workerPath,$updatedWorker,[Text.UTF8Encoding]::new($false))
 $workerTwice=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $lua $addon -StageInput
