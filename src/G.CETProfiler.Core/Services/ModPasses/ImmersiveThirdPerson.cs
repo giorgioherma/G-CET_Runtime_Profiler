@@ -399,8 +399,13 @@ internal static partial class SemanticInjectors
                 !text.Contains("if state.pendingFppRestore then", StringComparison.Ordinal))
                 throw new InvalidOperationException(
                     "Updated third-person pending-state gates are incomplete.");
-            return SemanticInjectionResult.Skip(
-                "Current ITP event-loop pending-state guards already applied.");
+            var upgraded = AddImmersiveThirdPersonFppFastpaths(text);
+            if (upgraded == text)
+                return SemanticInjectionResult.Skip(
+                    "Current ITP pending-state and first-person fastpaths already applied.");
+            context.Write(file, upgraded);
+            return SemanticInjectionResult.Success(
+                "Upgraded existing ITP source with safe first-person no-work call guards.");
         }
 
         if (!text.Contains("mod.move360CaptureNamed = function", StringComparison.Ordinal) ||
@@ -467,11 +472,81 @@ internal static partial class SemanticInjectors
         text = text.Insert(updateOwners[0].Index,
             "-- " + stage + ": author-verified absent-state fast guards only\n");
 
+        text = AddImmersiveThirdPersonFppFastpaths(text);
         context.Write(file, text);
         return SemanticInjectionResult.Success(
             "Current ITP API, movement, camera, heartbeat, native toggle and " +
-            "TPP maintenance remain original per-frame work. Six proven " +
-            "empty-state handler calls are skipped only when absent.");
+            "TPP maintenance remain original per-frame work. Six pending " +
+            "handlers and five source-proven idle no-work calls are guarded.");
+    }
+
+    // V4 is part of the existing ITP update producer, not a correction
+    // applied after broken output. Skip only calls whose author functions
+    // immediately return under EXACTLY the same source-owned conditions.
+    // Input, movement, API, native toggle, auto-perspective and cleanup stay
+    // on their original clock and preserve all wake responsibilities.
+    private static string AddImmersiveThirdPersonFppFastpaths(string text)
+    {
+        const string stage = "__gcetItppFppFastpathsV4";
+        var gates = new (string Proof, string Call, string Guard)[]
+        {
+            (
+                "mod.updateHeadLookIdleGate = function()\n  if not state.enabled then return end",
+                "  guardStep(\"updateHeadLookIdleGate\", mod.updateHeadLookIdleGate)\n",
+                "state.enabled"
+            ),
+            (
+                "local function updateCameraTransition(delta)\n  local transition = state.cameraTransition\n  if not transition then\n    return\n  end",
+                "    guardStep(\"updateCameraTransition\", updateCameraTransition, delta)\n",
+                "state.cameraTransition"
+            ),
+            (
+                "mod.updateProfileBlend = function(delta)\n  local b = state.profileBlend\n  if b == nil then return end",
+                "    guardStep(\"updateProfileBlend\", mod.updateProfileBlend, delta)\n",
+                "state.profileBlend"
+            ),
+            (
+                "mod.updateHolocallEyes = function()\n  if config.holocallEyes ~= true and not state.holocallEyes.owed then return end",
+                "  guardStep(\"updateHolocallEyes\", mod.updateHolocallEyes)\n",
+                "config.holocallEyes == true or state.holocallEyes.owed"
+            ),
+            (
+                "mod.updateFppWrapperReassert = function(delta)\n  if not state.fppWrapperOwed or state.sceneWrapperUp then\n    return\n  end",
+                "    guardStep(\"fppWrapperReassert\", mod.updateFppWrapperReassert, delta)\n",
+                "state.fppWrapperOwed and not state.sceneWrapperUp"
+            )
+        };
+        const string marker = "-- " + stage + ": source-proven no-work guards only\n";
+        if (text.Contains(stage, StringComparison.Ordinal))
+        {
+            if (text.Split(marker, StringSplitOptions.None).Length != 2)
+                throw new InvalidOperationException("ITP FPP fastpath marker drifted.");
+            foreach (var gate in gates)
+            {
+                var indentation = Regex.Match(gate.Call, @"^\s*").Value;
+                var guarded = indentation + "if " + gate.Guard + " then\n" +
+                              indentation + "  " + gate.Call.TrimStart() +
+                              indentation + "end\n";
+                if (!text.Contains(gate.Proof, StringComparison.Ordinal) ||
+                    text.Split(guarded, StringSplitOptions.None).Length != 2)
+                    throw new InvalidOperationException("ITP FPP fastpath partial or author drift: " + gate.Guard);
+            }
+            return text;
+        }
+        foreach (var gate in gates)
+        {
+            if (!text.Contains(gate.Proof, StringComparison.Ordinal) ||
+                text.Split(gate.Call, StringSplitOptions.None).Length != 2)
+                throw new InvalidOperationException("ITP FPP fastpath source drift: " + gate.Guard);
+            var indent = Regex.Match(gate.Call, @"^\s*").Value;
+            var guarded = indent + "if " + gate.Guard + " then\n" +
+                          indent + "  " + gate.Call.TrimStart() + indent + "end\n";
+            text = text.Replace(gate.Call, guarded, StringComparison.Ordinal);
+        }
+        const string owner = "-- __gcetItppUpdatedPendingGatesV3: author-verified absent-state fast guards only\n";
+        if (text.Split(owner, StringSplitOptions.None).Length != 2)
+            throw new InvalidOperationException("ITP update owner marker drift; refuse fastpath.");
+        return text.Replace(owner, owner + marker, StringComparison.Ordinal);
     }
 
     // Updated upstream action handler explicitly services game-camera movement
