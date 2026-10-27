@@ -204,11 +204,11 @@ internal static partial class SemanticInjectors
       registered = handle ~= nil, pausable = pausable,
       bridge = baseBridgeConfirmed, linked = linked,
       perspectiveReadable = ok and type(p) == ""table"",
-      requested = type(p) == ""table"" and p.userWantsThirdPerson or nil,
+      requested = type(p) == ""table"" and p.userWantsThirdPerson == true or false,
       mode = type(p) == ""table"" and p.mode or nil,
-      transitioning = type(p) == ""table"" and p.transitioning or nil,
+      transitioning = type(p) == ""table"" and p.transitioning == true or false,
       pendingCleanup = pending(p),
-      listenerActive = handle and type(handle.IsActive) == ""function"" and handle.IsActive() or nil
+      listenerActive = handle and type(handle.IsActive) == ""function"" and handle.IsActive() == true or false
     }
   end
 ";
@@ -322,11 +322,11 @@ function M.Install(Dedra, step, fallbackRegister)
       registered = handle ~= nil, pausable = pausable,
       bridge = baseBridgeConfirmed, linked = linked,
       perspectiveReadable = ok and type(p) == ""table"",
-      requested = type(p) == ""table"" and p.userWantsThirdPerson or nil,
+      requested = type(p) == ""table"" and p.userWantsThirdPerson == true or false,
       mode = type(p) == ""table"" and p.mode or nil,
-      transitioning = type(p) == ""table"" and p.transitioning or nil,
+      transitioning = type(p) == ""table"" and p.transitioning == true or false,
       pendingCleanup = pending(p),
-      listenerActive = handle and type(handle.IsActive) == ""function"" and handle.IsActive() or nil
+      listenerActive = handle and type(handle.IsActive) == ""function"" and handle.IsActive() == true or false
     }
   end
   function M.Stop()
