@@ -960,8 +960,21 @@ end)
             if (required.All(token =>
                     text.Contains(token, StringComparison.Ordinal)))
             {
-                compatibleBytes = sourceBytes;
-                return true;
+                try
+                {
+                    var updated = EnsureVolatileProviderAccessor(
+                        text, "__gcetApi", required: true);
+                    var updatedBody = Encoding.UTF8.GetBytes(updated);
+                    compatibleBytes = hasBom
+                        ? [0xef, 0xbb, 0xbf, ..updatedBody]
+                        : updatedBody;
+                    return true;
+                }
+                catch (InvalidOperationException ex)
+                {
+                    reason = ex.Message;
+                    return false;
+                }
             }
 
             reason = "a partial or foreign G-CET compatibility marker is present";
@@ -1231,8 +1244,9 @@ end)
         foreach (var provider in SharedProviderCatalog.RuntimeProviders)
         {
             lines.Add($"        function __gcetApi.{provider.Getter}()");
-            lines.Add(
-                $"            return __gcetGetSharedProvider(\"{provider.Provider}\")");
+            lines.Add(SharedProviderCatalog.MustReadLive(provider)
+                ? $"            return Game.{provider.Getter}()"
+                : $"            return __gcetGetSharedProvider(\"{provider.Provider}\")");
             lines.Add("        end");
             lines.Add(
                 $"        if type(__gcetHost.{provider.Getter}) ~= \"function\" then");
@@ -1272,11 +1286,46 @@ end)
         return string.Join(newline, lines);
     }
 
+    // Repair the SAME authoritative runtime producer, including installed
+    // earlier G-CET provider stages. A marker alone never establishes safe
+    // lifetime semantics for the live game/menu request handler.
+    private static string EnsureVolatileProviderAccessor(
+        string source, string runtimeTable, bool required)
+    {
+        const string getter = "GetSystemRequestsHandler";
+        const string family = "SYSTEM_REQUESTS_HANDLER";
+        var methodPattern = @"(?m)^[ \\t]*function[ \\t]+" +
+            Regex.Escape(runtimeTable) + @"\\." + getter +
+            @"[ \\t]*\\([ \\t]*\\)[ \\t]*\\r?\\n" +
+            @"(?<body>[ \\t]*return[^\\r\\n]*)\\r?\\n" +
+            @"[ \\t]*end[ \\t]*\\r?$";
+        var matches = Regex.Matches(source, methodPattern, RegexOptions.CultureInvariant);
+        if (matches.Count == 0 && !required)
+            return source;
+        if (matches.Count != 1)
+            throw new InvalidOperationException(
+                "0-Engine volatile system-requests accessor missing or duplicated for " +
+                runtimeTable);
+        var match = matches[0];
+        var body = match.Groups["body"].Value.Trim();
+        const string oldBody = "return __gcetGetSharedProvider(\"SYSTEM_REQUESTS_HANDLER\")";
+        const string newBody = "return Game.GetSystemRequestsHandler()";
+        if (body == newBody)
+            return source;
+        if (body != oldBody)
+            throw new InvalidOperationException(
+                "0-Engine system-requests accessor behavior drift; cannot prove safe upgrade.");
+        return source[..match.Groups["body"].Index] +
+            match.Groups["body"].Value.Replace(oldBody, newBody, StringComparison.Ordinal) +
+            source[(match.Groups["body"].Index + match.Groups["body"].Length)..];
+    }
+
     private static byte[] AddSharedSystemAccessors(byte[] baseline)
     {
         var text = Encoding.UTF8.GetString(baseline);
         if (text.Contains(SharedSystemMarker, StringComparison.Ordinal))
-            return baseline;
+            return Encoding.UTF8.GetBytes(
+                EnsureVolatileProviderAccessor(text, "Engine", required: true));
 
         var playerAccessor = Regex.Match(
             text,
@@ -1339,7 +1388,9 @@ end)
         foreach (var provider in SharedProviderCatalog.RuntimeProviders)
         {
             lines.Add($"function Engine.{provider.Getter}()");
-            lines.Add($"    return __gcetGetSharedProvider(\"{provider.Provider}\")");
+            lines.Add(SharedProviderCatalog.MustReadLive(provider)
+                ? $"    return Game.{provider.Getter}()"
+                : $"    return __gcetGetSharedProvider(\"{provider.Provider}\")");
             lines.Add("end");
             lines.Add("");
         }
