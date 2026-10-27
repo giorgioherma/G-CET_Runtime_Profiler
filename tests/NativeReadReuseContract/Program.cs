@@ -463,6 +463,64 @@ try
         }
         reviewedHeaders.Add(provider,(getter,header));
     }
+    // CyberStunts plus other unrelated authors used the current-context
+    // handler. A player-epoch-only cached native reference may become stale
+    // while loading menus without changing the PlayerPuppet identity.
+    // Prove the actual 0-Engine generator, not a handwritten expected snippet.
+    var fixedRuntime=core.GetType(
+        "GCETRuntimeProfiler.Core.Services.FixedZeroEngineRuntime",true)!;
+    var sharedAccessor=fixedRuntime.GetMethod("AddSharedSystemAccessors",
+        BindingFlags.NonPublic|BindingFlags.Static)!;
+    var hostBuild=fixedRuntime.GetMethod("BuildHostCompatibilityBlock",
+        BindingFlags.NonPublic|BindingFlags.Static)!;
+    var hostUpgrade=fixedRuntime.GetMethod("TryBuildHostCompatibilityInit",
+        BindingFlags.NonPublic|BindingFlags.Static)!;
+    byte[] MakeShared(string text) =>
+        (byte[])sharedAccessor.Invoke(null,[Encoding.UTF8.GetBytes(text)])!;
+    var stockEngine="local Engine={}\\nfunction Engine.GetPlayer()\\n    return GetPlayer()\\nend\\nreturn Engine\\n";
+    var shared=Encoding.UTF8.GetString(MakeShared(stockEngine));
+    const string liveRequest="function Engine.GetSystemRequestsHandler()\\n    return Game.GetSystemRequestsHandler()\\nend";
+    const string oldCachedRequest="function Engine.GetSystemRequestsHandler()\\n    return __gcetGetSharedProvider(\\\"SYSTEM_REQUESTS_HANDLER\\\")\\nend";
+    Check(shared.Contains(liveRequest,StringComparison.Ordinal) &&
+          !shared.Contains(oldCachedRequest,StringComparison.Ordinal) &&
+          shared.Contains("function Engine.GetQuestsSystem()\\n    return __gcetGetSharedProvider(\\\"QUESTS_SYSTEM\\\")",StringComparison.Ordinal),
+        "Native requests must resolve fresh while unrelated providers retain source-proven caching");
+    Check(Encoding.UTF8.GetString(MakeShared(shared)) == shared,
+        "Fresh shared-provider generation is not idempotent");
+    var historicShared=shared.Replace(liveRequest,oldCachedRequest,
+        StringComparison.Ordinal);
+    Check(Encoding.UTF8.GetString(MakeShared(historicShared)) == shared,
+        "Previous cached runtime could not upgrade in its existing authoritative generator");
+    var driftedShared=historicShared.Replace(oldCachedRequest,
+        "function Engine.GetSystemRequestsHandler()\\n    return Game.GetQuestsSystem()\\nend",
+        StringComparison.Ordinal);
+    var refusedDrift=false;
+    try { MakeShared(driftedShared); }
+    catch (TargetInvocationException ex) when (ex.InnerException is InvalidOperationException)
+    { refusedDrift=true; }
+    Check(refusedDrift,"Unrecognized native context getter drift was silently accepted");
+
+    var hostSource=(string)hostBuild.Invoke(null,["Mod","\\n"])!;
+    const string liveHost="function __gcetApi.GetSystemRequestsHandler()\\n            return Game.GetSystemRequestsHandler()\\n        end";
+    const string cachedHost="function __gcetApi.GetSystemRequestsHandler()\\n            return __gcetGetSharedProvider(\\\"SYSTEM_REQUESTS_HANDLER\\\")\\n        end";
+    Check(hostSource.Contains(liveHost,StringComparison.Ordinal) &&
+          !hostSource.Contains(cachedHost,StringComparison.Ordinal) &&
+          hostSource.Contains("function __gcetApi.GetQuestsSystem()",StringComparison.Ordinal),
+        "Generic host compatibility bridge still memoizes menu-specific native context");
+    var historicHost="local Mod={}\\n"+hostSource.Replace(liveHost,cachedHost,
+        StringComparison.Ordinal)+"\\nreturn Mod\\n";
+    object?[] hostArgs=[Encoding.UTF8.GetBytes(historicHost),null,null];
+    var hostOk=(bool)hostUpgrade.Invoke(null,hostArgs)!;
+    var normalizedHost=Encoding.UTF8.GetString((byte[])hostArgs[1]!);
+    Check(hostOk && normalizedHost.Contains(liveHost,StringComparison.Ordinal) &&
+          !normalizedHost.Contains(cachedHost,StringComparison.Ordinal),
+        "Existing host compatibility runtime did not upgrade cached native handler");
+    hostArgs=[Encoding.UTF8.GetBytes(normalizedHost),null,null];
+    Check((bool)hostUpgrade.Invoke(null,hostArgs)! &&
+          Encoding.UTF8.GetString((byte[])hostArgs[1]!)==normalizedHost,
+        "Host compatibility upgrade must be idempotent");
+    Console.WriteLine("Volatile requests-handler: current getter on menu transition, staged upgrade, host compatibility and drift refusal PASS");
+
     Check(reviewedHeaders.Count==26,
         "Unexpected 0-Engine shared-provider catalog size; re-review full recipes.");
     Console.WriteLine("26 shared provider recipes have fully resolved getter names "+
