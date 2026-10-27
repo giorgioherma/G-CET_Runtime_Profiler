@@ -1323,8 +1323,20 @@ end)
     {
         var text = Encoding.UTF8.GetString(baseline);
         if (text.Contains(SharedSystemMarker, StringComparison.Ordinal))
-            return Encoding.UTF8.GetBytes(
-                EnsureVolatileProviderAccessor(text, "Engine", required: true));
+        {
+            var upgraded = EnsureVolatileProviderAccessor(
+                text, "Engine", required: true);
+            // Real installed runtimes can contain BOTH the known Engine
+            // accessors and the earlier G-CET host compatibility adapter.
+            // Generated Lua prefers Engine.GCET when its getter exists. The
+            // previous repair fixed Engine but left that selected adapter
+            // returning a stale native context. Upgrade both from the same
+            // authoritative runtime source, never via a post-generation pass.
+            if (upgraded.Contains(HostCompatibilityMarker, StringComparison.Ordinal))
+                upgraded = EnsureVolatileProviderAccessor(
+                    upgraded, "__gcetApi", required: true);
+            return Encoding.UTF8.GetBytes(upgraded);
+        }
 
         var playerAccessor = Regex.Match(
             text,
@@ -1417,6 +1429,9 @@ end)
         var block = string.Join(newline, lines);
         var insertAt = playerAccessor.Index + playerAccessor.Length;
         var augmented = text.Insert(insertAt, block);
+        if (augmented.Contains(HostCompatibilityMarker, StringComparison.Ordinal))
+            augmented = EnsureVolatileProviderAccessor(
+                augmented, "__gcetApi", required: true);
         return Encoding.UTF8.GetBytes(augmented);
     }
 
