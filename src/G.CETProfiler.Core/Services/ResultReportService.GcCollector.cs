@@ -214,16 +214,16 @@ public static partial class ResultReportService
         }
         if (gc.SlowSteps.Count > 0)
         {
-            sb.Append("<h3>Slow internal GC operations (at least 2 ms)</h3>");
-            sb.Append("<div class=\"note\">The displayed registration was executing at the time; this is not allocation ownership. Phase timing is wall-clock and may include thread preemption. Slow operations are bounded to 2048 events; dropped: ")
+            sb.Append("<h3>Long LuaJIT collector operations (at least 2 ms)</h3>");
+            sb.Append("<div class=\"note\">This is collector timing and heap state, not a mod ranking. Garbage collected now may have been allocated by unrelated mods long before the operation. The active callback ID remains available as raw execution context in the GC slow-step CSV, but it cannot identify the garbage producer or justify rewriting that callback. Wall time can include thread preemption. Recorded operations are bounded to 2048; dropped: ")
                 .Append(gc.SlowDropped).Append(".</div>");
             sb.Append("<table><thead><tr><th>Capture</th><th>Duration</th><th>Phase</th>")
-                .Append("<th>Callback</th><th>Heap before → after</th><th>Pause / stepmul</th></tr></thead><tbody>");
+                .Append("<th>Heap before → after</th><th>Pause / stepmul</th></tr></thead><tbody>");
             foreach (var x in gc.SlowSteps.Take(30))
                 sb.Append("<tr><td>").Append(F(x.CaptureStartMs / 1000, 3)).Append(" s</td><td>")
                   .Append(F(x.DurationMs, 3)).Append(" ms</td><td>").Append(H(x.PhaseBefore))
-                  .Append(" → ").Append(H(x.PhaseAfter)).Append("</td><td>").Append(H(x.Callback))
-                  .Append("</td><td>").Append(F(x.HeapBeforeMiB, 1)).Append(" → ")
+                  .Append(" → ").Append(H(x.PhaseAfter)).Append("</td><td>")
+                  .Append(F(x.HeapBeforeMiB, 1)).Append(" → ")
                   .Append(F(x.HeapAfterMiB, 1)).Append(" MiB</td><td>").Append(x.Pause)
                   .Append(" / ").Append(x.StepMul).Append("</td></tr>");
             sb.Append("</tbody></table>");
