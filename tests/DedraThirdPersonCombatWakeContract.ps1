@@ -161,6 +161,32 @@ if($upgradedAgain.Applied -or $upgradedAgain.Changes.Count -ne 0) {
     throw 'Read-only-safe ITP upgrade was not idempotent'
 }
 
+# A previous init-only output is not paired completion. Both source files
+# must independently prove their wake roles; no marker-only acceptance.
+$proof=$t.GetMethod('IsImmersiveThirdPersonDedraWakeComplete',$flags)
+if(!$proof){throw 'Paired ITP wake source-completion verifier missing'}
+$proofRoot=Join-Path $root 'itp-paired-proof'
+New-Item -ItemType Directory -Force $proofRoot|Out-Null
+$proofInit=Join-Path $proofRoot 'init.lua'
+$proofApi=Join-Path $proofRoot 'api.lua'
+[IO.File]::WriteAllText($proofInit,$bridge,[Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText($proofApi,$itpApiFixture,[Text.UTF8Encoding]::new($false))
+if($proof.Invoke($null,[object[]]@($proofRoot))){
+    throw 'Init-only wake incorrectly classified as complete'
+}
+[IO.File]::WriteAllText($proofApi,$apiExport,[Text.UTF8Encoding]::new($false))
+if(!$proof.Invoke($null,[object[]]@($proofRoot))){
+    throw 'Paired init+api read-only wake not classified complete'
+}
+[IO.File]::WriteAllText($proofInit,$itpFixture,[Text.UTF8Encoding]::new($false))
+if($proof.Invoke($null,[object[]]@($proofRoot))){
+    throw 'API-only wake incorrectly classified as complete'
+}
+[IO.File]::WriteAllText($proofInit,$upgraded,[Text.UTF8Encoding]::new($false))
+if(!$proof.Invoke($null,[object[]]@($proofRoot))){
+    throw 'Legacy staged init upgrade lost paired completion proof'
+}
+
 $a=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $dedraFixture $addon
 if(!$a.Applied -or $a.Changes.Count -ne 2){throw "Dedra expected init + separate worker, got $($a.Changes.Count)"}
 $init=$a.Changes|Where-Object{$_.RelativeFile -like '*/init.lua'}|Select-Object -First 1
