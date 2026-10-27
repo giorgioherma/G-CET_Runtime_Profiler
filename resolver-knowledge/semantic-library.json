@@ -5777,6 +5777,11 @@
           "kind": "source",
           "target": "init.lua",
           "role": "base user-request edge notification"
+        },
+        {
+          "kind": "source",
+          "target": "api.lua",
+          "role": "read-only startup wake capability"
         }
       ],
       "sourceProof": {
@@ -5786,12 +5791,17 @@
           "pcall(autoTppHandleToggle)"
         ],
         "sourceCompletionAuthoritative": true,
+        "composablePartialStages": true,
+        "completionVerifier": "ITPP_DEDRA_PAIRED_WAKE_V3",
         "alreadySatisfiedMarker": "G-CET semantic:immersive-third-person-dedra-toggle-signal",
-        "expectedMarkerFileCount": 1,
+        "expectedMarkerFileCount": 2,
         "satisfiedAll": [
           "__gcetDedraToggleSignalV2",
           "mod.__gcetDedraWakeBridgeV2 = true",
-          "pcall(mod.__gcetDedraToggleSignalV2)"
+          "pcall(mod.__gcetDedraToggleSignalV2)",
+          "gcetDedraWakeReady = function() return mod.__gcetDedraWakeBridgeV2 == true end",
+          "__gcetDedraWakeCapabilityV3",
+          "return type(host.gcetDedraWakeReady) == \"function\" and host.gcetDedraWakeReady() == true"
         ]
       },
       "behavior": {
