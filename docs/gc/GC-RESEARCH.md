@@ -1,5 +1,7 @@
 # GC research — the remaining major opportunity
 
+> **Historical research, not current controller policy (2026-10-27).** This document's prior prohibition on automatic GC policy changes describes the existing capture-only/attribution phase. The newer user-approved, **still unimplemented** lightweight predictive heap-pressure assistance design is maintained in [G-GC-CONTROLLER.md](G-GC-CONTROLLER.md). Its implementation and gameplay validation have not started; no prior profiler measurements authorize arbitrary full collections or uncontrolled GC tuning.
+
 ## Current experimental next step — bounded unscoped producer evidence (2026-10-14)
 
 Following the clean 239.85 s capture showing ~242 MiB unattributed positive growth and ~99.89% of this VM_C, instrumentation was expanded **in one native + managed package milestone**. [Engineering design and game test](research/UNSCOPED-MULTI-AXIS-ATTRIBUTION-2026-10-14.md).
