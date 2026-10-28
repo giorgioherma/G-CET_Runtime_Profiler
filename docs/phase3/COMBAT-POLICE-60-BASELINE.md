@@ -1,6 +1,6 @@
 # COMBAT-POLICE-60 — standard Phase 3 gameplay stress baseline
 
-**Status (2026-10-28): USER-APPROVED TEST PROTOCOL; FIRST MEASURED BASELINE CAPTURE STILL PENDING.**
+**Status (2026-10-28): STANDARD PROTOCOL + FIRST OBSERVED ~60s CAPTURE; PHASE 3 SCHEDULER DATA NOT ACCEPTED AS BASELINE.**
 This is the default repeatable *combat-stress* comparison for G-CET Phase 3 allocation instrumentation and later optimization A/B. It replaces the earlier proposal to combine 1 minute idle + 2 minutes driving + 1 minute combat in a single run for per-job allocation comparisons. That earlier mixed scenario remains a separate possible test, **not** the standard stress baseline.
 
 ## Canonical test identity and scenario
@@ -9,8 +9,8 @@ This is the default repeatable *combat-stress* comparison for G-CET Phase 3 allo
 - **Game:** Cyberpunk 2077, current installed mod stack.
 - **Location:** the user's **apartment-area police fight** (user-selected repeatably laggy scenario). The exact apartment, street, map coordinates and save slot have **not yet been supplied**; do not invent them.
 - **Activity:** **one continuous 60-second police combat stress capture**. The goal is sustained combat throughout, not idle/traversal/drive time.
-- **Profiler control:** start with **F11** immediately before engaging; fight continuously; stop/export with **F11** at roughly 60 seconds. Start and end with no menus open. This is **one capture**, not three separate scenario profiles.
-- **Scenario markers:** optional; `CETProfiler_CombatTag` can label the combat segment if convenient, but is not necessary for this single-scenario capture. The new per-job allocations are **whole-capture aggregates**, not scenario-partitioned totals.
+- **Preferred Profiler control (new):** assign a CET key in the in-game CET Bindings menu to `CETProfiler_Police60` — **Profiler: COMBAT-POLICE-60 (start + auto stop/export)**. Press once immediately before combat. The existing `CETProfilerControls` `onUpdate` observes native captured time and automatically calls the same Pause + Dump as F11 at the first update on or after **60.000 captured seconds**. Normal frame cadence means a few extra milliseconds/one update of overshoot are possible; it is not an operating-system hard deadline. F11 remains manual start/stop and can abort an automated run early. **One capture**, not three profiles.
+- **Scenario markers:** the new timed start automatically emits `SCENARIO_COMBAT_START`; timed finish emits `SCENARIO_COMBAT_END` before exporting. It blocks manual scenario changes until the run finishes. In older captures, manual tags are optional. Per-job allocation rows are **whole-capture aggregates**, not scenario-partitioned totals.
 
 ## Reproducibility checklist
 
@@ -31,8 +31,8 @@ Before F11: load the save and let startup, streaming and mod initialization sett
 
 ## Status / dependencies
 
-- Instrumentation source commit `7259194`; managed CI **#2134 green (6/6)** and experimental native rebuild **#94 green** on 2026-10-28. These prove builds/tests, **not** in-game capture correctness.
-- User reports native instrumentation **installed**. Exact live ASI hash, full install/restore and in-game 60-second stress results have **not yet been inspected in this documentation**. Do not infer which package/run is live solely from the CI IDs.
+- Native instrumentation source commit `7259194`; managed CI **#2134 green (6/6)** and native rebuild **#94 green**. User-supplied real capture `CET-20261028-135900_NEW_INSTRUMENTATION - STANDARD 60s capture BASELINE.zip` ran **60.945835 seconds**, 966,622 CET callbacks, 1,928 0-Engine scheduler frames, with CapFrameX pairing. **However, all 23 registered scheduler jobs reported 0 Calls, all new per-job alloc counters were zero, and frame envelope was 0 bytes/ops.** Thus this capture is usable for existing callback/G-GC/frametime investigation but **does not validate Phase 3 scheduler allocation instrumentation or provide a Phase 3 per-job numerical baseline**. Do not interpret arithmetic `Reconciled:true` as meaningful execution coverage. Cause of all-zero scheduler job execution has not been established (runtime inactivity/paused registrations vs bridge failure).
+- User has installed experimental native instrumentation and provided a real in-game ZIP with new Phase 3 CSVs (confirming capture/export). The exact live ASI hash and full installation/restore test are not verified from that ZIP. The new timed CET binding and #94 native artifact are being packaged together for consistent future captures.
 - **Pending for complete reproducibility:** identify the exact apartment and save slot, wanted level, run path/engagement approach, FPS cap and chosen equipment from the first real test, then keep those settings fixed for future comparisons.
 - **No requirement to make multiple different scenario captures.** One qualifying stress capture per tested configuration is the standard. Additional repeats may quantify variability when needed, but should not become a default user burden.
 

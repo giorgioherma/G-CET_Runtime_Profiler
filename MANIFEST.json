@@ -1,10 +1,10 @@
 {
   "packageVersion": "1.3.3",
-  "profilerNativeVersion": "2.15.7-callsite-predispatch-attribution",
+  "profilerNativeVersion": "2.15.8-phase3-scheduler-allocation",
   "targetCET": {
     "version": "1.37.1",
     "officialSha256": "43a7b94698979703f9dfa2b0950607c9a88f53b84bbf09a8e593c7e218d41059",
-    "profilerSha256": "c9cca34d38ecbdf0b7f7fac6db676f3faee92cbe2d31e7d5e362ae575b172219",
+    "profilerSha256": "55271b92aabebc40c754bcb58aca2ad4cd2930990837004bc81f10641146b5ce",
     "profilerPackageFile": "cyber_engine_tweaks.PROFILER.dll",
     "profilerInstallFile": "cyber_engine_tweaks.asi"
   },

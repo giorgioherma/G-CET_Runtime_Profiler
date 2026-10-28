@@ -50,6 +50,24 @@ foreach ($report in (Run-Report)) {
         throw 'Inconsistent Phase3 frame envelope incorrectly reconciled'
     }
 }
+# A real capture reported scheduler frames and registered jobs, but all
+# job invocations were zero. Report coverage as UNVERIFIED, not successful.
+@'
+Frames,FramePositiveBytes,FrameAllocationOperations,RootJobPositiveBytes,RootJobAllocationOperations,OutsideRootJobsPositiveBytes,OutsideRootJobsAllocationOperations,DroppedOrUnpairedScopes,Interpretation
+1928,0,0,0,0,0,0,0,unassigned
+'@ | Set-Content $framework -Encoding utf8
+@'
+Owner,JobType,Job,IntervalValue,IntervalUnit,Calls,CallsPerSecond,TotalMs,MsPerSecond,MeasuredOneCorePct,AvgUs,MaxMs,ElapsedSeconds,Interpretation,InclusivePositiveBytes,InclusiveAllocationOperations,ExclusivePositiveBytes,ExclusiveAllocationOperations,ExclusiveOpsPerSecond,ExclusiveOpsPerCall,AllocationMeasurement
+0-Engine,frame,outer,1,frame,0,0,0,0,0,0,0,60,nonadditive,0,0,0,0,0,0,job-envelope
+'@ | Set-Content $jobs -Encoding utf8
+foreach ($report in (Run-Report)) {
+    $a=$report.phase3SchedulerAllocation
+    if (!$a -or $a.schedulerExecutionCoverage -ne 'UNVERIFIED_ZERO_JOB_INVOCATIONS_WITH_FRAMES' -or
+        $a.jobsWithRecordedExecutions -ne 0 -or $a.allZeroJobMeasurementsAreValidSavings) {
+        throw 'Empty scheduler activity was incorrectly promoted to valid evidence'
+    }
+}
+
 Remove-Item $framework -Force
 @'
 Owner,JobType,Job,IntervalValue,IntervalUnit,Calls,CallsPerSecond,TotalMs,MsPerSecond,MeasuredOneCorePct,AvgUs,MaxMs,ElapsedSeconds,Interpretation

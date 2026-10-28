@@ -52,6 +52,11 @@ local captureStartedAt = nil
 local captureBaseSeconds = 0
 local activeScenario = nil
 local hudErrorReported = false
+-- Dedicated one-key benchmark capture. Uses the existing onUpdate callback,
+-- native captured-time clock, and the ordinary Pause + Dump transaction.
+local timedCaptureActive = false
+local timedCaptureElapsed = 0
+local TIMED_CAPTURE_SECONDS = 60
 
 local function nowSeconds()
   if ImGui and type(ImGui.GetTime) == "function" then
@@ -104,6 +109,10 @@ local function finishActiveScenario()
 end
 
 local function toggleScenario(name)
+  if timedCaptureActive then
+    say("COMBAT-POLICE-60 is already tagging combat automatically.")
+    return
+  end
   local scenario = scenarios[name]
   if not scenario then return end
 
@@ -129,40 +138,79 @@ local function toggleScenario(name)
   end
 end
 
-local function toggleCapture()
+local function finishCapture()
+  if not isRunning() then
+    timedCaptureActive = false
+    timedCaptureElapsed = 0
+    return false
+  end
+
+  -- End the tagged combat segment before pausing the native capture.
+  finishActiveScenario()
+  local _, pausedOk = invoke("CETProfilerPause", CETProfilerPause)
+  if not pausedOk then return false end
+  timedCaptureActive = false
+  timedCaptureElapsed = 0
+
+  local _, dumpOk = invoke("CETProfilerDump", CETProfilerDump)
+  if dumpOk then
+    say("Capture stopped. CSV results exported automatically.")
+  end
+
+  captureStartedAt = nil
+  captureBaseSeconds = 0
+  activeScenario = nil
+  return dumpOk
+end
+
+local function startCapture(autoStop60)
   if isRunning() then
-    -- Keep scenario ranges structurally valid even if the user stops the
-    -- capture while one of the three tags is still active.
-    finishActiveScenario()
-
-    local _, pausedOk = invoke("CETProfilerPause", CETProfilerPause)
-    if not pausedOk then return end
-
-    local _, dumpOk = invoke("CETProfilerDump", CETProfilerDump)
-    if dumpOk then
-      say("Capture stopped. CSV results exported automatically.")
-    end
-
-    captureStartedAt = nil
-    captureBaseSeconds = 0
-    activeScenario = nil
-    return
+    say("Capture already running; stop and export it before starting another.")
+    return false
   end
 
   local conflict = activeKnownConflict()
   if conflict then
     say("Capture blocked: known profiler conflict detected (" .. conflict ..
         "). Disable it and restart Cyberpunk before profiling.")
-    return
+    return false
   end
 
   local _, ok = invoke("CETProfilerStart", CETProfilerStart)
-  if ok then
-    captureBaseSeconds = 0
-    captureStartedAt = nowSeconds()
-    activeScenario = nil
+  if not ok then return false end
+
+  captureBaseSeconds = 0
+  captureStartedAt = nowSeconds()
+  activeScenario = nil
+  timedCaptureActive = autoStop60 == true
+  timedCaptureElapsed = 0
+
+  if timedCaptureActive then
+    -- A dedicated 60s capture is entirely combat. Emit ordinary scenario
+    -- boundaries so Resolver and frametime reports agree with the run identity.
+    if marker("SCENARIO_COMBAT_START") then activeScenario = "COMBAT" end
+    say("COMBAT-POLICE-60 started; automatic stop/export at 60 captured seconds.")
+  else
     say("Fresh capture started.")
   end
+  return true
+end
+
+local function toggleCapture()
+  if isRunning() then
+    finishCapture()
+  else
+    startCapture(false)
+  end
+end
+
+local function startPolice60Capture()
+  -- A second press during a benchmark does not abort or restart it.
+  if isRunning() then
+    say("Capture already running; COMBAT-POLICE-60 start ignored.")
+    return
+  end
+  startCapture(true)
 end
 
 local hudDrawConfirmed = false
@@ -176,7 +224,9 @@ local function drawCaptureHud()
   end
 
   local elapsed = captureBaseSeconds + math.max(0, nowSeconds() - captureStartedAt)
-  local text = "G-CET CAPTURE  " .. formatTimer(elapsed)
+  local text = timedCaptureActive
+    and ("G-CET COMBAT-POLICE-60  " .. formatTimer(timedCaptureElapsed) .. " / 01:00")
+    or ("G-CET CAPTURE  " .. formatTimer(elapsed))
 
   if activeScenario and scenarios[activeScenario] then
     text = text .. "   |   " .. scenarios[activeScenario].label
@@ -227,9 +277,8 @@ registerForEvent("onInit", function()
     captureStartedAt = nowSeconds()
   end
 
-  say("loaded. F11 capture remains START / STOP + AUTO EXPORT. " ..
-      "Three optional scenario tags are available in CET bindings: " ..
-      "WORLD / IDLE, DRIVING and COMBAT.")
+  say("loaded. F11 = manual START/STOP; COMBAT-POLICE-60 = one-key " ..
+      "automatic 60-second capture. Scenario tags remain optional.")
 end)
 
 
@@ -290,6 +339,24 @@ local function observeWorkload()
 end
 
 local function observeLuaHeap(dt)
+  -- Reuse the already present profiler-controls onUpdate. The native elapsed
+  -- clock (not simulated game dt / HUD time) determines the stop boundary.
+  -- Stop on the first update at or after 60 seconds; exact wall duration is
+  -- bounded by the next game update, not an OS timer interrupt.
+  if timedCaptureActive then
+    if not isRunning() then
+      timedCaptureActive = false
+      timedCaptureElapsed = 0
+    else
+      timedCaptureElapsed = readCapturedSeconds()
+      if timedCaptureElapsed >= TIMED_CAPTURE_SECONDS then
+        say("COMBAT-POLICE-60 finished at " ..
+            string.format("%.3f", timedCaptureElapsed) .. " captured seconds.")
+        finishCapture()
+        return
+      end
+    end
+  end
   gcSampleAge = gcSampleAge + math.max(0, tonumber(dt) or 0)
   if gcSampleAge < 0.5 then return end
   local elapsed = gcSampleAge
@@ -358,6 +425,11 @@ registerForEvent("onDraw", drawCaptureHud)
 
 registerInput("CETProfiler_Toggle", "Profiler: START / STOP + AUTO EXPORT", function(isKeyDown)
   if isKeyDown then toggleCapture() end
+end)
+
+registerInput("CETProfiler_Police60",
+  "Profiler: COMBAT-POLICE-60 (start + auto stop/export)", function(isKeyDown)
+    if isKeyDown then startPolice60Capture() end
 end)
 
 registerInput("CETProfiler_WorldTag", "Profiler tag: WORLD / IDLE start / finish", function(isKeyDown)

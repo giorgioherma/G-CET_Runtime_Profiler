@@ -11,7 +11,7 @@
 
 ## Standard gameplay stress benchmark — COMBAT-POLICE-60
 
-**User-selected Phase 3 baseline protocol:** [COMBAT-POLICE-60](../phase3/COMBAT-POLICE-60-BASELINE.md). One **60-second sustained police fight at the user's apartment area**, start/stop with F11, same saved game, exact starting position, equipment, wanted level and stack across comparisons. The earlier 4-minute idle/driving/combat idea was superseded for *per-job allocation comparisons*, which currently aggregate the whole capture. **Protocol is agreed; a valid reference capture and exact save/location details are not yet documented.** Read the linked protocol in every new chat before asking for a stress test or comparing new Phase 3 captures. Do not confuse this gameplay benchmark with the fixed private-source Resolver CI capture.
+**User-selected Phase 3 baseline protocol:** [COMBAT-POLICE-60](../phase3/COMBAT-POLICE-60-BASELINE.md). One **60-second sustained police fight at the user's apartment area**, start with the new CET-binding `CETProfiler_Police60` for automatic native-clock stop/export at 60 seconds (F11 remains manual), same saved game, exact starting position, equipment, wanted level and stack across comparisons. The earlier 4-minute idle/driving/combat idea was superseded for *per-job allocation comparisons*, which currently aggregate the whole capture. **Protocol is agreed; a valid reference capture and exact save/location details are not yet documented.** Read the linked protocol in every new chat before asking for a stress test or comparing new Phase 3 captures. Do not confuse this gameplay benchmark with the fixed private-source Resolver CI capture.
 
 ## Phase 3 allocation control — successor to Phase 2 DORMANCY EXTENDED
 

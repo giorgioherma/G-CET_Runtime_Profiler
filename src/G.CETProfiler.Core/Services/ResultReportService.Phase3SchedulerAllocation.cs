@@ -39,6 +39,9 @@ public static partial class ResultReportService
         var frame = ReadPhase3SchedulerFrame(captureRoot);
         var measured = jobs.Where(x => x.ExclusiveOps.HasValue).ToArray();
         if (frame is null && measured.Length == 0) return null;
+        var executedJobs = measured.Count(x => x.Calls > 0);
+        var emptyJobEvidence = frame is { Frames: > 0 } &&
+            measured.Length > 0 && executedJobs == 0;
         return new
         {
             stage = "PHASE3_SCHEDULER_ALLOCATION_EXPERIMENTAL",
@@ -54,6 +57,12 @@ public static partial class ResultReportService
                 interpretation = "SCHEDULER_ENVELOPE_RESIDUAL_UNASSIGNED_NOT_PROVEN_FRAMEWORK_SOURCE_COST"
             },
             measuredJobCount = measured.Length,
+            jobsWithRecordedExecutions = executedJobs,
+            schedulerExecutionCoverage = emptyJobEvidence
+                ? "UNVERIFIED_ZERO_JOB_INVOCATIONS_WITH_FRAMES"
+                : executedJobs > 0 ? "JOB_EXECUTIONS_OBSERVED"
+                : "NO_JOB_EXECUTIONS_OBSERVED",
+            allZeroJobMeasurementsAreValidSavings = false,
             jobs = measured.OrderByDescending(x => x.ExclusiveOps).Select(x => new
             {
                 x.Owner, x.JobType, x.Job, x.Calls,
@@ -71,11 +80,19 @@ public static partial class ResultReportService
         var measured = jobs.Where(x => x.ExclusiveOps.HasValue)
             .OrderByDescending(x => x.ExclusiveOps).ToArray();
         if (frame is null && measured.Length == 0) return;
+        var emptyJobEvidence = frame is { Frames: > 0 } &&
+            measured.Length > 0 && measured.All(x => x.Calls == 0);
         sb.Append("<div class='section'><h2>Phase 3 Scheduler allocation evidence</h2>")
           .Append("<p class='note'>Positive LuaJIT allocation requests inside ")
           .Append("Scheduler.Update; nested with existing G-GC totals. ")
           .Append("Outside-job remainder includes scheduler scan, dispatch and profiler bridge. ")
           .Append("No source ownership, retained-heap or dormancy eligibility is inferred.</p>");
+        if (emptyJobEvidence)
+            sb.Append("<p class='note'><b>UNVERIFIED SCHEDULER COVERAGE:</b> ")
+              .Append("Scheduler frames and registered jobs were observed, but ZERO ")
+              .Append("job invocations were recorded. The zero allocation rows are ")
+              .Append("NOT evidence of zero work or savings; check whether jobs actually ")
+              .Append("ran and whether the runtime Scheduler bridge reached JobBegin/End.</p>");
         if (frame is not null)
             sb.Append("<p>Frames ").Append(N(frame.Frames))
               .Append("; ops in frame ").Append(N(frame.FrameOps))

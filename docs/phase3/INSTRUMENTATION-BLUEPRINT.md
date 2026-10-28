@@ -6,6 +6,12 @@
 
 **`COMBAT-POLICE-60`** is the canonical Phase 3 stress benchmark: one **60-second sustained police fight at the user's apartment area**, F11 start and F11 stop/export, same save, start position, wanted level, loadout, mod stack, settings and FPS cap. It replaces the proposed four-minute mixed idle/drive/combat test **for aggregate per-job allocation comparison**. The first real capture is pending; exact apartment/save details are not established. Read [the complete benchmark protocol](COMBAT-POLICE-60-BASELINE.md) before requesting a capture, interpreting it, or planning A/B optimization tests. No obligation to split into three separate profiles.
 
+## First uploaded ~60s capture: scheduler coverage unresolved
+
+User-provided `CET-20261028-135900_NEW_INSTRUMENTATION - STANDARD 60s capture BASELINE.zip`: native capture duration 60.945835 s, 966,622 CET callback invocations, CapFrameX correlated; Phase 3 CSV exists. **Scheduler_ByJob: 23 registrations, all 0 executions. FrameworkAllocation: 1,928 measured frames but all 0 bytes/operations.** No dropped spans. These zeros are not acceptable evidence that 0-Engine or mods allocate nothing. Managed report now marks `UNVERIFIED_ZERO_JOB_INVOCATIONS_WITH_FRAMES` when registered jobs have zero invocations amid scheduler frames. Establish whether jobs were actually paused/never dispatched, or whether the bridge is failing, before using per-job allocation measurements. Existing G-GC and CapFrameX evidence remains useful.
+
+**Timed capture control:** new `CETProfiler_Police60` keybind auto-starts, tags COMBAT, stops/dumps at first `onUpdate` reaching native captured 60 seconds, and uses no additional event hook. F11 remains manual. Exact 60.000 s termination cannot be guaranteed below one rendered update; record the actual elapsed seconds.
+
 ## Work backwards from decisions
 
 For each of the 35 semantic owners, capture **actual work**, not an inferred dormancy eligibility score:
