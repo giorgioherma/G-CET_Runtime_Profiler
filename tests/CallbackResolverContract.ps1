@@ -2297,8 +2297,8 @@ if ([string]$foreignManifest.fixedRuntime.FixedVersion -ne 'HOST-COMPAT-v1') {
 if ([string]$foreignManifest.fixedRuntime.mode -ne 'HOST_PRESERVING_ADAPTER' -or !$foreignManifest.fixedRuntime.hostPreserving) {
     throw 'Foreign 0-Engine manifest did not report host-preserving adapter mode.'
 }
-if ([int]$foreignManifest.summary.fixedRuntimeFiles -ne 10) {
-    throw "Foreign 0-Engine compatibility should ship init, private ActionRouter, namespaced Scheduler, root alias and 6 additive service modules, got $($foreignManifest.summary.fixedRuntimeFiles)."
+if ([int]$foreignManifest.summary.fixedRuntimeFiles -ne 9) {
+    throw "Foreign 0-Engine compatibility must preserve unknown root modules; expected init, private ActionRouter, namespaced Scheduler and 6 additive services, got $($foreignManifest.summary.fixedRuntimeFiles)."
 }
 
 $foreignZip = [System.IO.Compression.ZipFile]::OpenRead([string]$foreignResolved.pass.ZipPath)

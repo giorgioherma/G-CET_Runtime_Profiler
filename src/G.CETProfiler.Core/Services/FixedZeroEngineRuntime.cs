@@ -135,7 +135,8 @@ internal static class FixedZeroEngineRuntime
                 runtimeRoot, liveRoot, integratedCurrent)
                 .ToDictionary(x => x.Key, x => x.Value,
                     StringComparer.OrdinalIgnoreCase);
-            AddNamespacedRuntimeDependencies(runtimeRoot, liveRoot, liveFiles);
+            AddNamespacedRuntimeDependencies(runtimeRoot, liveRoot, liveFiles,
+                replaceRootScheduler: true);
             return new FixedZeroEngineBuild(
                 liveFiles,
                 statePrefix + "SOURCE_PROVEN_GCET_RUNTIME",
@@ -171,7 +172,8 @@ internal static class FixedZeroEngineRuntime
             ["0-Engine/init.lua"] = compatibleInit
         };
         AddWorkloadModules(runtimeRoot, liveRoot, hostFiles);
-        AddNamespacedRuntimeDependencies(runtimeRoot, liveRoot, hostFiles);
+        AddNamespacedRuntimeDependencies(runtimeRoot, liveRoot, hostFiles,
+            replaceRootScheduler: false);
 
         return new FixedZeroEngineBuild(
             hostFiles,
@@ -404,7 +406,8 @@ end)
 
     private static void AddNamespacedRuntimeDependencies(
         string runtimeRoot, string liveRoot,
-        Dictionary<string, byte[]> files)
+        Dictionary<string, byte[]> files,
+        bool replaceRootScheduler)
     {
         // The G-CET services are owned and shipped by Resolver regardless of
         // the installed upstream module inventory. Bundled root-named files
@@ -423,16 +426,20 @@ end)
         files["0-Engine/" + HostActionRouterModule] = router;
         files["0-Engine/" + schedulePath] = scheduler;
 
-        // Root module resolves to the canonical namespaced scheduler. Never
-        // deploy two copies of scheduler implementation: Lua require() caches
-        // modules/G-CET/Scheduler, and this alias returns that one object.
-        // This is generated from original input by Resolver (not a temporary
-        // profiler patch) and must remain installed after RESTORE.
-        const string rootSchedulerAlias =
-            "-- G-CET canonical scheduler alias v1\n" +
-            "return require('modules/G-CET/Scheduler')\n";
-        files["0-Engine/modules/Scheduler.lua"] =
-            Encoding.UTF8.GetBytes(rootSchedulerAlias);
+        // Only the source-proven G-CET fixed-runtime owner may replace the
+        // root module with its permanent alias. A foreign/structural host can
+        // have an independently meaningful author-owned modules/Scheduler.lua;
+        // preserve that file rather than redirect an unproven API.
+        if (replaceRootScheduler)
+        {
+            // Lua require() caches modules/G-CET/Scheduler and both import
+            // paths therefore return the SAME scheduler instance.
+            const string rootSchedulerAlias =
+                "-- G-CET canonical scheduler alias v1\n" +
+                "return require('modules/G-CET/Scheduler')\n";
+            files["0-Engine/modules/Scheduler.lua"] =
+                Encoding.UTF8.GetBytes(rootSchedulerAlias);
+        }
     }
 
     // Version-fluid migration of G-CET's legacy root imports. Require both

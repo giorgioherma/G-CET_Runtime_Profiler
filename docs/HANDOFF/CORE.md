@@ -15,7 +15,7 @@
 
 ## Canonical scheduler / restore invariant
 
-**2026-10-28 user decision:** The one authoritative Resolver scheduler lives at `0-Engine/modules/G-CET/Scheduler.lua`. Generated root `modules/Scheduler.lua` is only a persistent **alias** to that same cached module, never a second independently initialized implementation. When that source-proven host is installed, Profiler must **measure that instance** and skip its legacy temporary adaptive `CETProfilerScheduler.lua` injection. **Restore must not remove or overwrite either Resolver-owned scheduler file.** Preserve fallback legacy Profiler behavior for stacks without the namespaced integration; fail closed when a recognized namespaced runtime is incomplete. Details/validation in [Phase 3 blueprint](../phase3/INSTRUMENTATION-BLUEPRINT.md).
+**2026-10-28 user decision:** The one authoritative Resolver scheduler lives at `0-Engine/modules/G-CET/Scheduler.lua`. For the known G-CET-owned fixed runtime, generated root `modules/Scheduler.lua` is only a persistent **alias** to that same cached module, never a second independently initialized implementation. Unknown/foreign hosts keep their original root Scheduler unchanged and use namespaced-only G-CET integration. When that source-proven host is installed, Profiler must **measure that instance** and skip its legacy temporary adaptive `CETProfilerScheduler.lua` injection. **Restore must not remove or overwrite either Resolver-owned scheduler file.** Preserve fallback legacy Profiler behavior for stacks without the namespaced integration; fail closed when a recognized namespaced runtime is incomplete. Details/validation in [Phase 3 blueprint](../phase3/INSTRUMENTATION-BLUEPRINT.md).
 
 ## Phase 3 allocation control — successor to Phase 2 DORMANCY EXTENDED
 
