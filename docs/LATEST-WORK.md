@@ -10,6 +10,14 @@
 **Prior work, not the active task:** [archived native/Lua callback and 0-Engine allocation investigation](history/NATIVE-LUA-CALLBACK-LATEST-WORK-ARCHIVE-20261024.md). Its experimental GO/NO-GO and runtime gaps were not resolved merely by moving the notes.
 
 
+## 2026-10-28 00:31 Dedra-only C boot regression; D result explicitly unconfirmed
+
+- User clarified **C = Dedra-only crashes**; **D = ITP-only unknown/not accepted** (earlier brief "D crash" message was corrected). Do not count D as a validated ITP-only failure.
+- `Cyberpunk2077(4).dmp` matches the first three dumps exactly: CET `+0x57A23F`, `0xC0000005` read address `0x10`, R8=null. A (new 0-Engine only) still reported to boot. This proves the Dedra-only changes **suffice** to reproduce the original crash; exact Lua→CET native call remains unproven.
+- Bytewise comparison of Dedra-only diagnostic versus last bootable `20261027-133310.zip`: only Dedra `init.lua` and `GCET_Semantic/dedra_camera_wake.lua` differ. Important runtime behavior change: `Dedra.__gcetWakeController.Register()` moved from file-load to **inside CET `onInit`**; it can invoke 0-Engine's lazy onUpdate native `registerForEvent` through `MakeEventRegistrar` while CET dispatches onInit. That reentrant-registration explanation is plausible, NOT proven. Extra read-only diagnostics and base capability probe were also added.
+- Prepared an additional **single-variable, diagnostic-only** ZIP `GCET_DIAGNOSTIC_DEDRA_DEFERRED_START_20261028.zip` from C, changing **only** Dedra `init.lua` to defer `Register()+Start()` with the existing `0-Engine.SetNextTick` (stock Cron) past onInit dispatch. The tested existing 0-Engine in this stack has `SetNextTick`. This is not a production optimization or generator modification. If it boots when C crashes, repair the **existing Dedra generating rule**, including source-proof, fallback and one-shot lifecycle, and CI from untouched/partial originals before production release. If it still crashes, continue source isolation; do not presume that onInit reentrancy is established.
+- Keep broken generated overlays disabled and do not claim native crash fix or gameplay acceptance until boot proves it.
+
 ## 2026-10-28 00:22 isolated A/B boot result and third native crash
 
 - User reports **A (last working overlay + newest 0-Engine only) boots**, while **B (last working overlay + new ITP/Dedra only) loads CET and approaches main menu, then crashes**. The third user dump `Cyberpunk2077(3).dmp` verifies the exact previous signature: `0xC0000005` read `0x10` at CET `+0x57A23F`; exception-thread stack module offsets match the first two dumps. This isolates the repro to changed ITP/Dedra Lua **as a group** or its interplay with the baseline. It does NOT yet identify one mod or prove which Lua call caused the native fault. No further 0-Engine getter change is justified by this A/B.
