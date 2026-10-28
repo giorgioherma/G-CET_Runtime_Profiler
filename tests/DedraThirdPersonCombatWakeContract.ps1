@@ -376,7 +376,8 @@ $oldSync=@'
       handle.Pause() -- Unsubscribes from 0-Engine shared frame emitter.
     end
   end
-'@.Replace($crlf,$nl)
+'@
+$oldSync=$oldSync.Replace($crlf,$nl) + $nl
 $priorIdleWake=$priorIdleWake.Substring(0,$syncFrom) + $oldSync +
   $priorIdleWake.Substring($syncTo)
 if($priorIdleWake -eq $wake -or $priorIdleWake.Contains('fallbackActive')){
