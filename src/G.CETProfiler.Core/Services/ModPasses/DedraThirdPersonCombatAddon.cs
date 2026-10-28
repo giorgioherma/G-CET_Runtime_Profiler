@@ -110,7 +110,9 @@ internal static partial class SemanticInjectors
             if(source.Contains(crashingInit,StringComparison.Ordinal))
             {
                 if(source.Split(crashingInit,StringSplitOptions.None).Length!=2 ||
-                   source.Contains(topRegister,StringComparison.Ordinal) ||
+                   Regex.IsMatch(source,
+                       @"(?m)^Dedra\.__gcetWakeController\.Register\(\)[ \t]*$",
+                       RegexOptions.CultureInvariant) ||
                    source.Split(shutdownAnchor,StringSplitOptions.None).Length!=2)
                     throw new InvalidOperationException("Dedra crashing onInit registration source drift.");
                 source=source.Replace(crashingInit,safeInit,StringComparison.Ordinal)
