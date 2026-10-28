@@ -642,7 +642,7 @@ jobs:
           # overwrite them just to force the default F11 choice.
           $bindingsAfterInstall = Get-Content -LiteralPath (Join-Path $cet 'bindings.json') -Raw | ConvertFrom-Json
           if ([int64]$bindingsAfterInstall.CETProfilerControls.CETProfiler_Toggle -ne 123) { throw 'Install overwrote the user CET capture binding.' }
-          if ([int64]$bindingsAfterInstall.CETProfilerControls.CETProfiler_Police60 -ne 987) { throw 'Install overwrote the user's custom COMBAT-POLICE-60 key.' }
+          if ([int64]$bindingsAfterInstall.CETProfilerControls.CETProfiler_Police60 -ne 987) { throw 'Install overwrote an existing user-selected COMBAT-POLICE-60 key.' }
           if ([int64]$bindingsAfterInstall.CETProfilerControls.CETProfiler_Dump -ne 456) { throw 'Install rewrote unrelated existing CETProfilerControls bindings.' }
 
           # Every user-owned file/folder G-CET itself mutates still gets a verified
