@@ -4,6 +4,10 @@
 
 Before changing generators, read `docs/HANDOFF/CORE.md`, `docs/resolver/PROJECT-CONTRACT.md`, `docs/LATEST-WORK.md` and the relevant per-mod/source documentation. Follow the active task and user-approved architecture.
 
+## PHASE 3 ALLOCATION CONTROLL — required successor to Phase 2 DORMANCY EXTENDED
+
+**First read** [Phase 3 architecture and tests](docs/phase3/PHASE3-ALLOCATION-CONTROLL.md) and [complete 2026-10-28 generated-mod audit](docs/phase3/RESOLVER-PASS-20261028-MOD-AUDIT.md) when touching dormancy, native dispatch, scheduler, GC provenance or allocation reduction. Phase 3 **succeeds** Phase 2 DORMANCY EXTENDED: stop avoidable allocation requests/retained work as well as Lua callback CPU. **Never equate frame consolidation, an early return, or a generated semantic marker with a physically paused mod.** For each mod prove actual wake source, all lifecycle/cleanup, inactive per-registration and per-job calls/s, **allocation operations/s and bytes/s** (including ~50 tiny allocations per frame), shared CET pre-marshalling, and correct active reactivation. CET mods share one LuaJIT heap; callback-window bytes do not measure a mod's retained heap. Prioritize source-proven zero-waste, cheapest complete event wake and minimal-cost fallback probe; no blanket disabling of native observers and no inferred direct unsubscribe. Dedra did **not** physically sleep in an all-FPP 2026-10-28 run despite generated pause code; `sitanywhere.realtime`, `cybertrials.realtime` and `poker.realtime` remain never-paused frame jobs. Phase 3 status: **research/audit, not all-mod implementation**. G-GC Controller is separate and not shipped. Preserve existing generator ownership, untouched originals, full functionality, CI/gameplay split and Phase1+2 preservation.
+
 ## Normal development cycle
 
 The user profiles a running Cyberpunk 2077 mod stack, then we analyze measurements and agree on optimizations (generic, native/C++ handoff, cache, or mod-specific semantic A/B/C extensions). **Do not require original source archives during investigation or design.**

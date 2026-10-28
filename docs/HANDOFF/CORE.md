@@ -9,6 +9,10 @@
 - **Resolver:** a separate portable app that reads captured evidence plus the user's **current original/live CET mod files read-only**. Generates composable safe generic then source-proven semantic optimization overlays; does not silently edit live mods.
 - One Profiler, one Resolver. The internal Resolver decision-layer codename stays **internal** and must not appear in player-facing UI, reports, releases or installer text.
 
+## Phase 3 allocation control — successor to Phase 2 DORMANCY EXTENDED
+
+Read [PHASE 3 ALLOCATION CONTROLL](../phase3/PHASE3-ALLOCATION-CONTROLL.md) and its [complete per-mod generated pass inventory](../phase3/RESOLVER-PASS-20261028-MOD-AUDIT.md) before allocation/dormancy modifications. This phase extends extended-dormancy work into **allocation operations frequency (including ~50 tiny allocations/frame), bytes and source producer, native pre-dispatch marshalling, shared scheduler job ownership, retained-reference investigation and minimal independently provable wake triggers**. Phased success requires actual detached inactive work and reliable wake/cleanup; green CI, generic frame routing, early return or static semantic output are insufficient. CET uses a shared LuaJIT VM/GC across sandboxed mods; callback allocated bytes are not a mod-owned heap. The October 28 all-FPP capture shows **Dedra still running at ~45.21 updates/s** despite generated pausable worker; some source-generated `EveryFrame pause="never"` jobs also remain. This is open evidence, not solved. Phase 3 is **documented and pending implementation**; separately preserve Phase1+2 work and do not represent approved G-GC Controller design as shipped.
+
 ## Resolver optimization architecture — mandatory ownership design
 
 - **Generic AUTO stays cross-stack and centralized.** Generic frame dispatch, action routing/prefilters, source-proven shared-provider reads, and other mechanically safe reusable transformations belong to shared generic Resolver services. Do not duplicate global algorithms inside individual mod files or make generic eligibility depend on a named mod.

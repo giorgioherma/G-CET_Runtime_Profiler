@@ -1,3 +1,7 @@
+<!-- PHASE3_ALLOCATION_CONTROLL_20261028 -->
+> **New authorized workstream (2026-10-28): PHASE 3 ALLOCATION CONTROLL**, successor to **PHASE 2 DORMANCY EXTENDED**. See [Phase 3 authoritative research/test plan](phase3/PHASE3-ALLOCATION-CONTROLL.md) and [all 115 generated mod owners](phase3/RESOLVER-PASS-20261028-MOD-AUDIT.md). Documentation-only audit: 2026-10-28 all-FPP run **fails** Dedra physical dormancy (~45.21 onUpdate/s); other never-paused frame workers and high-frequency small allocations need exact wake/provenance audits. Do not claim code repair, updated overlay validation, or G-GC Controller implementation. Existing Phase1+2 restoration/functional-acceptance blockers below remain open and must not be silently closed.
+
+
 # LATEST WORK — Phase 1+2 optimization preservation recovery
 
 **Active task: INCOMPLETE — no real-stack output acceptance yet.** Updated **2026-10-25**.  
