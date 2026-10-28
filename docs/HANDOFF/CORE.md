@@ -9,6 +9,10 @@
 - **Resolver:** a separate portable app that reads captured evidence plus the user's **current original/live CET mod files read-only**. Generates composable safe generic then source-proven semantic optimization overlays; does not silently edit live mods.
 - One Profiler, one Resolver. The internal Resolver decision-layer codename stays **internal** and must not appear in player-facing UI, reports, releases or installer text.
 
+## Current experimental RC source optimization
+
+User authorized reviewing RC and RICA high-pressure Phase 3 scheduler jobs. The primary RC pristine-source semantic now gates **actual 17-site Lua sweeps** by compiled native far/near evidence, replay-count transitions, pending rewards and 30s safety audits; retains native state ticking, original fallback and paired phase ordering. Paused frame workers resume when needed. The RICA native scheduler/reward path is untouched pending wake proof. Refer to [Phase 3 baseline](../phase3/COMBAT-POLICE-60-BASELINE.md), [blueprint](../phase3/INSTRUMENTATION-BLUEPRINT.md) and [LATEST-WORK](../LATEST-WORK.md) for profiling evidence and required real gameplay validation.
+
 ## Standard gameplay stress benchmark — COMBAT-POLICE-60
 
 **User-selected Phase 3 baseline protocol:** [COMBAT-POLICE-60](../phase3/COMBAT-POLICE-60-BASELINE.md). One **60-second sustained police fight at the user's apartment area**, start with F10 (default for the new CET binding `CETProfiler_Police60`) for automatic native-clock stop/export at 60 seconds; CapFrameX also uses F10/60 s/0 delay; **F11 remains independent, unrestricted manual capture**, same saved game, exact starting position, equipment, wanted level and stack across comparisons. The earlier 4-minute idle/driving/combat idea was superseded for *per-job allocation comparisons*, which currently aggregate the whole capture. **Protocol is agreed; a valid reference capture and exact save/location details are not yet documented.** Read the linked protocol in every new chat before asking for a stress test or comparing new Phase 3 captures. Do not confuse this gameplay benchmark with the fixed private-source Resolver CI capture.

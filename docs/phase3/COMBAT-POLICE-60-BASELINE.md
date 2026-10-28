@@ -44,6 +44,14 @@ For a new baseline from the source-proven G-CET-owned fixed runtime, Resolver st
 
 **Acceptance:** Phase 3 per-job measurement **WORKING**, with accurate numeric source evidence, no dropped scopes and whole-frame/root/residual accounting. **Do not** describe the old zero-job runs as performance improvements or regressions; they were instrumentation coverage failures. This one capture is an attribution baseline, not sufficient alone to demonstrate FPS gains, authorize dormancy or establish A/B causality. Repeat identical COMBAT-POLICE-60 setup for later before/after changes.
 
+## Next A/B experiment — RC dormant sweep, RICA preserved
+
+On the first valid 2026-10-28 capture, the player did not engage a cyberpsycho but RC still ran roughly 1,900 alternating frame jobs and 476 presentation steps, while RICA emitted 240 reward polls and a single 167.23ms state-job outlier. RC's previous primary semantic treated **global available replay count** as justification to scan all 17 bosses 1Hz. That does **not** prove the player is anywhere near one.
+
+**Experimental source-owned RC change:** native compiled 17-site `Watchdog.nativeFar` evidence is the safe distant signal (all sites must be explicitly `true`; otherwise fail-open); every native 1Hz `RuntimeTick`, the 10s scheduler decision and save-load settings/reconciliation remain. The alternating combat/reward and watchdog frame jobs are now **actually paused** outside their bounded 17-site sweep and resumed together for near/pending/replay-count-change work; distant/unchanged 17-site sweeps have a 30s safety audit. Distant presentation runs only on aggregate replay-state/signature changes or a 30s safety audit; nearby/failure paths retain the previous cadence. The worker's pause API is strictly required on attach; missing support rejects the optimization and falls back to original source callback.
+
+**RICA intentionally not auto-dormant:** it owns a persistent native stronghold scheduler and pending body/completion rewards. `rica.state` total 201.98ms included a 167.23ms *single-call spike*; `rica.rewards` 240 calls used 4,800 alloc ops. Diagnose the spike and native pending-status API before removing reward/tick observations. Premature event-only conversion would risk missing cooldown or body rewards. Full notes: [LATEST-WORK](../LATEST-WORK.md).
+
 ## What to compare
 
 - **Positive LuaJIT allocation operations/s and bytes/s**, GC pressure/phases and major allocation producers.

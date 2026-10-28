@@ -106,6 +106,45 @@ foreach ($authorPath in @('modules/mappins.lua','modules/diagnostics.lua','modul
 foreach($id in @('runtime_combat_reward','runtime_watchdog','presentation_worker','runtime','presentation','scheduler')) {
   if (!$workResult.Contains('id = "cyberpsychos.' + $id + '"')) { throw "Missing source-owned job $id" }
 }
+# Native-proven far means no boss combat/reward activity. Both alternating
+# frame workers must actually sleep, and must wake together on pending
+# rewards, proximity or authoritative replay-count changes. Old fallback
+# still executes if the native vicinity owner is missing.
+foreach($required in @(
+  'local function allCyberpsychoSitesNativeFar()',
+  'if far[site.id] ~= true then return false end',
+  'or activeChanged or pendingCompletionRewards > 0',
+  'Mod.runtimeIdleSweepElapsed >= 30.0',
+  'local function setRuntimeWorkersActive(active)',
+  'setRuntimeWorkersActive(true)',
+  'setRuntimeWorkersActive(false)',
+  'Mod.presentationDistantElapsed < 30.0',
+  'Mod.presentationLastFingerprint == signature',
+  'local presentationWorkerJob, combatJob, watchdogJob = worker.attach',
+  'pass4RuntimeCombatRewardJob = combatJob',
+  'pass4RuntimeWatchdogJob = watchdogJob'
+)) {
+  if (!$initResult.Contains($required)) {
+    throw "Cyberpsychos source-owned dormant/native wake contract missing: $required"
+  }
+}
+foreach($required in @(
+  'id = "cyberpsychos.runtime_combat_reward",',
+  'id = "cyberpsychos.runtime_watchdog",',
+  'active = false,',
+  'offset = 0',
+  'offset = 1',
+  'return presentationWorkerJob, combatRewardWorkerJob, watchdogWorkerJob'
+)) {
+  if (!$workResult.Contains($required)) {
+    throw "Cyberpsychos paired worker source contract missing: $required"
+  }
+}
+if ($initResult.Contains('if activeReplayCount > 0 or wasActive') -or
+    !$initResult.Contains('pcall(function() system:RuntimeTick() end)') -or
+    !$initResult.Contains('if pass4Attached then return end')) {
+  throw 'Cyberpsychos dormancy guard changed native tick, duplicated owner, or preserved global replay-count wake bug.'
+}
 foreach($required in @('TryAttachRepeatablePass4()','if pass4Attached then return end','runtimeCoreTick','runRuntimeWatchdogStep','runPresentationWorkStep')) {
   if (!$initResult.Contains($required)) { throw "Primary source missing $required" }
 }

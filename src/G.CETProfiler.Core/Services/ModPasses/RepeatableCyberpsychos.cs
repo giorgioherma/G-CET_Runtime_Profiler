@@ -197,8 +197,10 @@ internal static partial class SemanticInjectors
     runtimeCompletionBudget = 0,
     runtimeQueuedElapsed = 0.0,
     runtimeLastActiveReplayCount = 0,
-    runtimeIdleSweepElapsed = 5.0,
+    runtimeIdleSweepElapsed = 30.0,
 
+    presentationDistantElapsed = 30.0,
+    presentationLastFingerprint = nil,
     presentationPhase = nil,
     presentationQueued = false,
     presentationFrameFlip = false,
@@ -468,6 +470,19 @@ end
 -- The two alternating runtime workers remain registered/active so their R4
 -- even/odd frame separation cannot collapse when a dormant cycle wakes.
 local pass4PresentationWorkerJob = nil
+local pass4RuntimeCombatRewardJob = nil
+local pass4RuntimeWatchdogJob = nil
+
+local function setRuntimeWorkersActive(active)
+    -- Both paired lanes wake/sleep together. Frame offsets 0 and 1 are
+    -- unchanged; no outstanding site phase may be abandoned.
+    for _, job in ipairs({pass4RuntimeCombatRewardJob, pass4RuntimeWatchdogJob}) do
+        if job then
+            local fn = active and job.Resume or job.Pause
+            if type(fn) == "function" then fn() end
+        end
+    end
+end
 
 local function setPresentationWorkerActive(active)
     local job = pass4PresentationWorkerJob
@@ -487,6 +502,7 @@ local function resetRuntimeWork(dropQueued)
     Mod.runtimeWorkStage = nil
     Mod.runtimeCompletionBudget = 0
     if dropQueued then Mod.runtimeQueuedElapsed = 0.0 end
+    setRuntimeWorkersActive(false)
 end
 
 local function beginQueuedRuntimeWork(elapsed)
@@ -494,6 +510,7 @@ local function beginQueuedRuntimeWork(elapsed)
     Mod.runtimeWorkStage = "combat_reward"
     Mod.runtimeWorkElapsed = elapsed or 1.0
     Mod.runtimeCompletionBudget = 5
+    setRuntimeWorkersActive(true)
 end
 
 local function startRuntimeWork(elapsed)
@@ -504,6 +521,18 @@ local function startRuntimeWork(elapsed)
     beginQueuedRuntimeWork(elapsed or 1.0)
 end
 
+-- The native location owner marks every source site far only when its
+-- compiled callbacks have proven distance. An absent/uninitialized
+-- owner fails open: preserve the original frequent safety checks.
+local function allCyberpsychoSitesNativeFar()
+    local far = BossWatchdog.nativeFar
+    if type(far) ~= "table" then return false end
+    for _, site in ipairs(Sites.list) do
+        if far[site.id] ~= true then return false end
+    end
+    return true
+end
+
 local function beginRuntimeCycle(elapsed)
     local system = runtimeCoreTick(elapsed)
     if not system then
@@ -511,26 +540,28 @@ local function beginRuntimeCycle(elapsed)
         return
     end
 
-    -- RuntimeTick remains exactly 1 Hz. The expensive cooperative 17-site sweep
-    -- stays at 1 Hz while a replay is active, on the first tick after it becomes
-    -- inactive, or while completion rewards are pending. Fully dormant systems
-    -- receive the exact same full sweep as a 5 s safety audit instead.
+    -- Native RuntimeTick still runs at 1 Hz and manages the actual mission
+    -- state. A replay being available somewhere in Night City does not mean
+    -- the player is near its boss. The expensive 17-site Lua sweep is needed
+    -- at 1 Hz only near a site, when rewards are pending, or after replay-count
+    -- transitions. Distant/unchanged states get a 30 s fallback audit.
     local activeReplayCount = 0
     local pendingCompletionRewards = 0
     pcall(function() activeReplayCount = math.max(0, system:GetActiveReplayCount()) end)
     pcall(function() pendingCompletionRewards = math.max(0, system:GetPendingCompletionRewards()) end)
 
-    local wasActive = (Mod.runtimeLastActiveReplayCount or 0) > 0
+    local activeChanged = activeReplayCount ~= (Mod.runtimeLastActiveReplayCount or 0)
     Mod.runtimeLastActiveReplayCount = activeReplayCount
 
-    if activeReplayCount > 0 or wasActive or pendingCompletionRewards > 0 then
+    if not allCyberpsychoSitesNativeFar()
+        or activeChanged or pendingCompletionRewards > 0 then
         Mod.runtimeIdleSweepElapsed = 0.0
         startRuntimeWork(elapsed or 1.0)
         return
     end
 
     Mod.runtimeIdleSweepElapsed = (Mod.runtimeIdleSweepElapsed or 0.0) + (elapsed or 1.0)
-    if Mod.runtimeIdleSweepElapsed >= 5.0 then
+    if Mod.runtimeIdleSweepElapsed >= 30.0 then
         Mod.runtimeIdleSweepElapsed = 0.0
         startRuntimeWork(elapsed or 1.0)
     end
@@ -567,6 +598,8 @@ local function finishRuntimeCycleOrStartQueued()
         local queued = Mod.runtimeQueuedElapsed
         Mod.runtimeQueuedElapsed = 0.0
         beginQueuedRuntimeWork(queued)
+    else
+        setRuntimeWorkersActive(false)
     end
 end
 
@@ -684,6 +717,34 @@ local function runPresentationWorkStep()
 end
 
 local function presentationTick()
+    -- Distant replay sites still need marker reconciliation eventually, and
+    -- the native scheduler may rotate sites without changing the aggregate
+    -- active count. Audit every 30 s even when the cheap counters agree.
+    local system = Bridge.system()
+    if system and Game.GetPlayer() and allCyberpsychoSitesNativeFar() then
+        local ok, active, eligible, tracked, pending, budget = pcall(function()
+            return system:GetActiveReplayCount(),
+                system:GetVanillaEligibleReplayCount(),
+                system:GetTrackedSiteCount(),
+                system:GetPendingCompletionRewards(),
+                system:GetEffectivePoolSize()
+        end)
+        if ok then
+            local signature = table.concat({
+                tostring(active), tostring(eligible), tostring(tracked),
+                tostring(pending), tostring(budget),
+                tostring(Mod.settings.general.changeMapMarkerColor)
+            }, ":")
+            if Mod.presentationLastFingerprint == signature
+                and (pending or 0) <= 0 then
+                Mod.presentationDistantElapsed =
+                    (Mod.presentationDistantElapsed or 0.0) + 5.0
+                if Mod.presentationDistantElapsed < 30.0 then return end
+            end
+            Mod.presentationLastFingerprint = signature
+        end
+    end
+    Mod.presentationDistantElapsed = 0.0
     startPresentationCycle()
 end
 
@@ -844,7 +905,7 @@ TryAttachRepeatablePass4 = function()
         end
 
         local worker = require("GCET_Semantic/cyberpsychos_engine_worker")
-        local presentationWorkerJob = worker.attach(client, created, {
+        local presentationWorkerJob, combatJob, watchdogJob = worker.attach(client, created, {
             combatReward = safeRuntimeCombatRewardTick,
             watchdog = safeRuntimeWatchdogTick,
             presentationWorker = safePresentationWorkerTick,
@@ -852,6 +913,16 @@ TryAttachRepeatablePass4 = function()
             presentation = safePresentationTick,
             scheduler = schedulerTick,
         })
+        -- Missing runtime pause handles must fail back to the original
+        -- author callback rather than silently strand boss/reward work.
+        for _, handle in ipairs({combatJob, watchdogJob}) do
+            if not handle or type(handle.Resume) ~= "function"
+                or type(handle.Pause) ~= "function" then
+                error("Cyberpsychos runtime worker pause API unavailable")
+            end
+        end
+        pass4RuntimeCombatRewardJob = combatJob
+        pass4RuntimeWatchdogJob = watchdogJob
         pass4PresentationWorkerJob = presentationWorkerJob
         pass4Attached = true
     end)
@@ -909,8 +980,11 @@ registerForEvent("onShutdown", function()
     Mod.runtimeCompletionBudget = 0
     Mod.runtimeQueuedElapsed = 0.0
     Mod.runtimeLastActiveReplayCount = 0
-    Mod.runtimeIdleSweepElapsed = 5.0
+    Mod.runtimeIdleSweepElapsed = 30.0
     Mod.schedulerIdleElapsed = 20.0
+    Mod.presentationDistantElapsed = 30.0
+    Mod.presentationLastFingerprint = nil
+    setRuntimeWorkersActive(false)
     Mod.presentationPhase = nil
     Mod.presentationQueued = false
     Mod.presentationIdleDiagnosticsCycles = 5
@@ -1523,6 +1597,7 @@ function M.attach(client, created, fn)
         -- watchdog work never shares a frame with combat/body-reward work.
         local combatRewardWorkerJob = client.Schedule.EveryFrames(2, {
             id = "cyberpsychos.runtime_combat_reward",
+            active = false,
             pause = "never",
             offset = 0
         }, function()
@@ -1532,6 +1607,7 @@ function M.attach(client, created, fn)
 
         local watchdogWorkerJob = client.Schedule.EveryFrames(2, {
             id = "cyberpsychos.runtime_watchdog",
+            active = false,
             pause = "never",
             offset = 1
         }, function()
@@ -1582,7 +1658,7 @@ function M.attach(client, created, fn)
         table.insert(created, schedulerJob)
 
 
-    return presentationWorkerJob
+    return presentationWorkerJob, combatRewardWorkerJob, watchdogWorkerJob
 end
 return M
 """;
