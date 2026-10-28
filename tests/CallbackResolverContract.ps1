@@ -2132,8 +2132,8 @@ try {
             throw 'Compiled native GCAS v1 header invalid.'
         }
     } finally {$manifestStream.Dispose()}
-    if ([int]$manifest.summary.fixedRuntimeFiles -ne 10) {
-        throw "Expected 10 fixed 0-Engine runtime files, got $($manifest.summary.fixedRuntimeFiles)."
+    if ([int]$manifest.summary.fixedRuntimeFiles -ne 11) {
+        throw "Expected 11 fixed 0-Engine runtime files including persistent root scheduler alias, got $($manifest.summary.fixedRuntimeFiles)."
     }
     if (!$manifest.fixedRuntime.included -or !$manifest.fixedRuntime.exception) {
         throw 'Generated pass did not mark 0-Engine as the fixed runtime exception.'
@@ -2297,8 +2297,8 @@ if ([string]$foreignManifest.fixedRuntime.FixedVersion -ne 'HOST-COMPAT-v1') {
 if ([string]$foreignManifest.fixedRuntime.mode -ne 'HOST_PRESERVING_ADAPTER' -or !$foreignManifest.fixedRuntime.hostPreserving) {
     throw 'Foreign 0-Engine manifest did not report host-preserving adapter mode.'
 }
-if ([int]$foreignManifest.summary.fixedRuntimeFiles -ne 9) {
-    throw "Foreign 0-Engine compatibility should ship init, private ActionRouter, namespaced Scheduler and 6 additive service modules, got $($foreignManifest.summary.fixedRuntimeFiles)."
+if ([int]$foreignManifest.summary.fixedRuntimeFiles -ne 10) {
+    throw "Foreign 0-Engine compatibility should ship init, private ActionRouter, namespaced Scheduler, root alias and 6 additive service modules, got $($foreignManifest.summary.fixedRuntimeFiles)."
 }
 
 $foreignZip = [System.IO.Compression.ZipFile]::OpenRead([string]$foreignResolved.pass.ZipPath)
