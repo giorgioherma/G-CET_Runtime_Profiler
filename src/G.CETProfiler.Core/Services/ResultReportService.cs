@@ -38,6 +38,7 @@ public static partial class ResultReportService
     private static readonly HashSet<string> SchedulerFiles = new(StringComparer.OrdinalIgnoreCase)
     {
         "CET_Runtime_Profile_Scheduler_ByJob.csv",
+        "CET_Runtime_Profile_Scheduler_FrameworkAllocation.csv",
         "CET_Runtime_Profile_Scheduler_Spikes.csv",
         "CET_Runtime_Profile_Scheduler_FrameBursts.csv"
     };
@@ -165,6 +166,7 @@ public static partial class ResultReportService
             nativeBoundaryCallsiteEvidence = BuildNativeBoundaryEvidence(captureRoot),
             callbackAllocatorPressure = BuildCallbackAllocatorPressureInterop(a.CallbackAllocatorPressure),
             zeroEngineAllocationFlow = BuildZeroEngineFlowInterop(a),
+            phase3SchedulerAllocation = BuildPhase3SchedulerAllocation(captureRoot, a.SchedulerJobs),
             dataProvenanceCandidates = BuildDataProvenanceCandidates(a.GcTracer),
             deepDataReuseCandidates = BuildDeepReuseCandidates(a.DeepReuse),
             scalarChangeObservations = BuildScalarObservations(a.ScalarObservations),

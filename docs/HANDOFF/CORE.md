@@ -11,6 +11,8 @@
 
 ## Phase 3 allocation control — successor to Phase 2 DORMANCY EXTENDED
 
+The [Phase 3 instrumentation blueprint](../phase3/INSTRUMENTATION-BLUEPRINT.md) documents the new experimental source-only native per-job allocation and 0-Engine scheduler-envelope data path, validation gates, and deferred wake ledger. It is not a deployed native DLL or a mod dormancy decision. Preserve stable native pin and original-capture gameplay.
+
 Read [PHASE 3 ALLOCATION CONTROLL](../phase3/PHASE3-ALLOCATION-CONTROLL.md) and its [complete per-mod generated pass inventory](../phase3/RESOLVER-PASS-20261028-MOD-AUDIT.md) before allocation/dormancy modifications. This phase extends extended-dormancy work into **allocation operations frequency (including ~50 tiny allocations/frame), bytes and source producer, native pre-dispatch marshalling, shared scheduler job ownership, retained-reference investigation and minimal independently provable wake triggers**. Phased success requires actual detached inactive work and reliable wake/cleanup; green CI, generic frame routing, early return or static semantic output are insufficient. CET uses a shared LuaJIT VM/GC across sandboxed mods; callback allocated bytes are not a mod-owned heap. The October 28 all-FPP capture shows **Dedra still running at ~45.21 updates/s** despite generated pausable worker; some source-generated `EveryFrame pause="never"` jobs also remain. This is open evidence, not solved. Phase 3 is **documented and pending implementation**; separately preserve Phase1+2 work and do not represent approved G-GC Controller design as shipped.
 
 ## Resolver optimization architecture — mandatory ownership design

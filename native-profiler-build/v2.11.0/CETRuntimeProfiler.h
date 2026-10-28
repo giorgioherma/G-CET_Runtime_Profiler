@@ -238,6 +238,8 @@ public:
         std::atomic<uint64_t> Calls{0};
         std::atomic<uint64_t> TotalNs{0};
         std::atomic<uint64_t> MaxNs{0};
+        std::atomic<uint64_t> AllocBytesInclusive{0}, AllocOpsInclusive{0};
+        std::atomic<uint64_t> AllocBytesOwn{0}, AllocOpsOwn{0};
     };
 
     struct SchedulerJobSample
@@ -274,6 +276,16 @@ public:
         std::chrono::steady_clock::time_point Start{};
         uint64_t TotalJobNs{};
         std::vector<SchedulerJobSample> Jobs;
+        uint64_t StartBytes{}, StartOps{}, RootJobBytes{}, RootJobOps{};
+    };
+    // Fixed TLS slots, no per-job heap allocations from the native spans.
+    struct SchedulerAllocSpan {
+        uint64_t Handle{}, Token{}, Bytes{}, Ops{}, ChildBytes{}, ChildOps{};
+    };
+    struct SchedulerAllocStack {
+        uint64_t Epoch{};
+        uint32_t Depth{};
+        SchedulerAllocSpan Spans[64]{};
     };
 
     enum class DeepSampleMode : uint8_t
@@ -1655,6 +1667,8 @@ public:
         state.Frame = aFrame;
         state.TotalJobNs = 0;
         state.Jobs.clear();
+        state.StartBytes = state.StartOps = 0;
+        state.RootJobBytes = state.RootJobOps = 0;
 
         if (!state.Active)
             return;
@@ -1662,6 +1676,8 @@ public:
         if (state.Jobs.capacity() < 64)
             state.Jobs.reserve(64);
         state.Start = Clock::now();
+        state.StartBytes = gcet_gc_alloc_bytes();
+        state.StartOps = gcet_gc_alloc_ops();
     }
 
     void SchedulerFrameEnd(uint64_t aFrame)
@@ -1706,6 +1722,21 @@ public:
             }
         }
 
+        // Scheduler.Update frame envelope; residual is unassigned scanning,
+        // dispatch and probe-bridge work, NOT proven intrinsic 0-Engine cost.
+        const uint64_t bytes = gcet_gc_alloc_bytes() - state.StartBytes;
+        const uint64_t ops = gcet_gc_alloc_ops() - state.StartOps;
+        m_schedulerFrameCount.fetch_add(1, std::memory_order_relaxed);
+        m_schedulerFrameBytes.fetch_add(bytes, std::memory_order_relaxed);
+        m_schedulerFrameOps.fetch_add(ops, std::memory_order_relaxed);
+        m_schedulerRootBytes.fetch_add(state.RootJobBytes, std::memory_order_relaxed);
+        m_schedulerRootOps.fetch_add(state.RootJobOps, std::memory_order_relaxed);
+        m_schedulerResidualBytes.fetch_add(
+            bytes >= state.RootJobBytes ? bytes - state.RootJobBytes : 0,
+            std::memory_order_relaxed);
+        m_schedulerResidualOps.fetch_add(
+            ops >= state.RootJobOps ? ops - state.RootJobOps : 0,
+            std::memory_order_relaxed);
         state.Active = false;
         state.Jobs.clear();
     }
@@ -1715,7 +1746,16 @@ public:
         if (!aHandle || !IsCapturing())
             return 0;
 
-        return static_cast<uint64_t>(ClockTicksNs(Clock::now()));
+        const auto token = static_cast<uint64_t>(ClockTicksNs(Clock::now()));
+        auto& stack = SchedulerAllocStateForThread();
+        const auto epoch = m_schedulerAllocEpoch.load(std::memory_order_relaxed);
+        if (stack.Epoch != epoch) { stack.Epoch = epoch; stack.Depth = 0; }
+        if (stack.Depth < 64)
+            stack.Spans[stack.Depth++] =
+                {aHandle, token, gcet_gc_alloc_bytes(), gcet_gc_alloc_ops(), 0, 0};
+        else
+            m_schedulerAllocDropped.fetch_add(1, std::memory_order_relaxed);
+        return token;
     }
 
     void SchedulerJobEnd(uint64_t aHandle,
@@ -1742,6 +1782,47 @@ public:
         counter->Calls.fetch_add(1, std::memory_order_relaxed);
         counter->TotalNs.fetch_add(elapsed, std::memory_order_relaxed);
         UpdateMax(counter->MaxNs, elapsed);
+
+        // Positive LuaJIT growth within the synchronous job envelope.
+        // Nested spans are child-subtracted; not retained heap/GC ownership.
+        const auto bytesEnd = gcet_gc_alloc_bytes();
+        const auto opsEnd = gcet_gc_alloc_ops();
+        auto& stack = SchedulerAllocStateForThread();
+        const bool matched =
+            stack.Epoch == m_schedulerAllocEpoch.load(std::memory_order_relaxed) &&
+            stack.Depth && stack.Spans[stack.Depth-1].Handle == aHandle &&
+            stack.Spans[stack.Depth-1].Token == aStartTicksNs;
+        if (matched)
+        {
+            const auto span = stack.Spans[--stack.Depth];
+            const auto bytes = bytesEnd - span.Bytes;
+            const auto ops = opsEnd - span.Ops;
+            const auto ownBytes = bytes >= span.ChildBytes ? bytes - span.ChildBytes : 0;
+            const auto ownOps = ops >= span.ChildOps ? ops - span.ChildOps : 0;
+            counter->AllocBytesInclusive.fetch_add(bytes, std::memory_order_relaxed);
+            counter->AllocOpsInclusive.fetch_add(ops, std::memory_order_relaxed);
+            counter->AllocBytesOwn.fetch_add(ownBytes, std::memory_order_relaxed);
+            counter->AllocOpsOwn.fetch_add(ownOps, std::memory_order_relaxed);
+            if (stack.Depth)
+            {
+                stack.Spans[stack.Depth-1].ChildBytes += bytes;
+                stack.Spans[stack.Depth-1].ChildOps += ops;
+            }
+            else
+            {
+                auto& frame = SchedulerFrameStateForThread();
+                if (frame.Active && frame.Frame == aFrame)
+                {
+                    frame.RootJobBytes += bytes;
+                    frame.RootJobOps += ops;
+                }
+            }
+        }
+        else
+        {
+            stack.Depth = 0;
+            m_schedulerAllocDropped.fetch_add(1, std::memory_order_relaxed);
+        }
 
         // GCET WorkQueue/PhasePlanner/StateSignals/FrameListeners are
         // nested client measurements, not additional Scheduler wall time.
@@ -2045,6 +2126,8 @@ public:
             uint64_t Calls{};
             uint64_t TotalNs{};
             uint64_t MaxNs{};
+            uint64_t AllocBytesInclusive{}, AllocOpsInclusive{};
+            uint64_t AllocBytesOwn{}, AllocOpsOwn{};
         };
 
         struct SchedulerSpikeRow
@@ -2334,7 +2417,11 @@ public:
                     counter->IntervalValue,
                     counter->Calls.load(std::memory_order_relaxed),
                     counter->TotalNs.load(std::memory_order_relaxed),
-                    counter->MaxNs.load(std::memory_order_relaxed)
+                    counter->MaxNs.load(std::memory_order_relaxed),
+                    counter->AllocBytesInclusive.load(std::memory_order_relaxed),
+                    counter->AllocOpsInclusive.load(std::memory_order_relaxed),
+                    counter->AllocBytesOwn.load(std::memory_order_relaxed),
+                    counter->AllocOpsOwn.load(std::memory_order_relaxed)
                 });
             }
 
@@ -3604,7 +3691,10 @@ public:
             {
                 f << "Owner,JobType,Job,IntervalValue,IntervalUnit,Calls,"
                      "CallsPerSecond,TotalMs,MsPerSecond,MeasuredOneCorePct,"
-                     "AvgUs,MaxMs,ElapsedSeconds,Interpretation\n";
+                     "AvgUs,MaxMs,ElapsedSeconds,Interpretation,"
+                     "InclusivePositiveBytes,InclusiveAllocationOperations,"
+                     "ExclusivePositiveBytes,ExclusiveAllocationOperations,"
+                     "ExclusiveOpsPerSecond,ExclusiveOpsPerCall,AllocationMeasurement\n";
                 f << std::fixed << std::setprecision(6);
 
                 for (const auto& row : schedulerJobRows)
@@ -3636,13 +3726,44 @@ public:
                       << avgUs << ','
                       << maxMs << ','
                       << elapsedSec << ','
-                      << "inclusive-inside-0-engine-do-not-add-to-mod-totals"
+                      << "inclusive-inside-0-engine-do-not-add-to-mod-totals" << ','
+                      << row.AllocBytesInclusive << ',' << row.AllocOpsInclusive << ','
+                      << row.AllocBytesOwn << ',' << row.AllocOpsOwn << ','
+                      << (static_cast<double>(row.AllocOpsOwn) / elapsedSec) << ','
+                      << (row.Calls ? static_cast<double>(row.AllocOpsOwn) /
+                          static_cast<double>(row.Calls) : 0.0) << ','
+                      << "positive-luajit-growth-job-envelope-not-retained-heap"
                       << '\n';
                 }
             }
         }
 
         // -----------------------------------------------------------------
+        // Phase 3: scheduler frame allocation envelope outside measured jobs.
+        // This does not prove source ownership and is NOT additive to G-GC.
+        {
+            const auto path = outputRoot /
+                "CET_Runtime_Profile_Scheduler_FrameworkAllocation.csv";
+            std::ofstream f(path, std::ios::trunc);
+            if (f)
+            {
+                f << "Frames,FramePositiveBytes,FrameAllocationOperations,"
+                     "RootJobPositiveBytes,RootJobAllocationOperations,"
+                     "OutsideRootJobsPositiveBytes,OutsideRootJobsAllocationOperations,"
+                     "DroppedOrUnpairedScopes,Interpretation\n";
+                f << m_schedulerFrameCount.load(std::memory_order_relaxed) << ','
+                  << m_schedulerFrameBytes.load(std::memory_order_relaxed) << ','
+                  << m_schedulerFrameOps.load(std::memory_order_relaxed) << ','
+                  << m_schedulerRootBytes.load(std::memory_order_relaxed) << ','
+                  << m_schedulerRootOps.load(std::memory_order_relaxed) << ','
+                  << m_schedulerResidualBytes.load(std::memory_order_relaxed) << ','
+                  << m_schedulerResidualOps.load(std::memory_order_relaxed) << ','
+                  << m_schedulerAllocDropped.load(std::memory_order_relaxed) << ','
+                  << "scheduler-envelope-residual-not-proven-intrinsic-0-engine"
+                  << '\n';
+            }
+        }
+
         // SCHEDULER SPIKES: individual jobs over the dedicated threshold.
         // -----------------------------------------------------------------
         {
@@ -4845,7 +4966,20 @@ private:
             counter->Calls.store(0, std::memory_order_relaxed);
             counter->TotalNs.store(0, std::memory_order_relaxed);
             counter->MaxNs.store(0, std::memory_order_relaxed);
+            counter->AllocBytesInclusive.store(0, std::memory_order_relaxed);
+            counter->AllocOpsInclusive.store(0, std::memory_order_relaxed);
+            counter->AllocBytesOwn.store(0, std::memory_order_relaxed);
+            counter->AllocOpsOwn.store(0, std::memory_order_relaxed);
         }
+        m_schedulerAllocEpoch.fetch_add(1, std::memory_order_relaxed);
+        m_schedulerAllocDropped.store(0, std::memory_order_relaxed);
+        m_schedulerFrameCount.store(0, std::memory_order_relaxed);
+        m_schedulerFrameBytes.store(0, std::memory_order_relaxed);
+        m_schedulerFrameOps.store(0, std::memory_order_relaxed);
+        m_schedulerRootBytes.store(0, std::memory_order_relaxed);
+        m_schedulerRootOps.store(0, std::memory_order_relaxed);
+        m_schedulerResidualBytes.store(0, std::memory_order_relaxed);
+        m_schedulerResidualOps.store(0, std::memory_order_relaxed);
 
         m_schedulerSpikeEvents.clear();
         m_schedulerFrameBursts.clear();
@@ -4864,6 +4998,12 @@ private:
     {
         static thread_local SchedulerFrameState state;
         return state;
+    }
+
+    static SchedulerAllocStack& SchedulerAllocStateForThread()
+    {
+        static thread_local SchedulerAllocStack stack;
+        return stack;
     }
 
     static int64_t ClockTicksNs(Clock::time_point aTime)
@@ -5130,6 +5270,12 @@ private:
     GCETGCStats m_gcCollectorPrevious{};
     uint64_t m_gcCollectorLastBoundaryNs{};
     std::unordered_map<std::string, std::unique_ptr<SchedulerJobCounter>> m_schedulerJobs;
+    mutable std::atomic<uint64_t> m_schedulerAllocDropped{0};
+    std::atomic<uint64_t> m_schedulerAllocEpoch{1};
+    std::atomic<uint64_t> m_schedulerFrameCount{0};
+    std::atomic<uint64_t> m_schedulerFrameBytes{0}, m_schedulerFrameOps{0};
+    std::atomic<uint64_t> m_schedulerRootBytes{0}, m_schedulerRootOps{0};
+    std::atomic<uint64_t> m_schedulerResidualBytes{0}, m_schedulerResidualOps{0};
     std::vector<SchedulerSpikeEvent> m_schedulerSpikeEvents;
     std::vector<SchedulerFrameBurstEvent> m_schedulerFrameBursts;
     std::unordered_map<std::string, DeepFunctionAggregate> m_deepFunctions;

@@ -102,6 +102,9 @@ jobs:
       - name: Validate automatic deep caller producer reports and reuse fail-closed gates
         shell: pwsh
         run: ./tests/DeepReuseReportContract.ps1 -PublishedRoot megamind-smoke
+      - name: Phase 3 Scheduler allocation CSV and legacy-safe reporting contract
+        shell: pwsh
+        run: ./tests/Phase3SchedulerAllocationReportContract.ps1 -PublishedRoot megamind-smoke
 
   build:
     runs-on: windows-latest

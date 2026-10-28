@@ -385,6 +385,7 @@ public static partial class ResultReportService
             nativeBoundaryCallsiteEvidence = BuildNativeBoundaryEvidence(captureRoot),
             callbackAllocatorPressure = BuildCallbackAllocatorPressureInterop(a.CallbackAllocatorPressure),
             zeroEngineAllocationFlow = BuildZeroEngineFlowInterop(a),
+            phase3SchedulerAllocation = BuildPhase3SchedulerAllocation(captureRoot, a.SchedulerJobs),
             dataProvenanceCandidates = BuildDataProvenanceCandidates(a.GcTracer),
             deepDataReuseCandidates = BuildDeepReuseCandidates(a.DeepReuse),
             scalarChangeObservations = BuildScalarObservations(a.ScalarObservations),

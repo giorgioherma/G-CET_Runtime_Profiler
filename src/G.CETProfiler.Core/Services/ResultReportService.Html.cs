@@ -111,6 +111,7 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
 
         if (a.WorkloadServices is not null)
             AppendWorkloadTelemetry(sb, a.WorkloadServices);
+        AppendPhase3SchedulerAllocation(sb, captureRoot, a.SchedulerJobs);
 
         if (a.ExplicitGc is not null)
             AppendExplicitGc(sb, a.ExplicitGc, a.FrameTime);

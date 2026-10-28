@@ -36,6 +36,7 @@
     "CET_Runtime_Profile_GGC_UnscopedTimeline.csv",
     "CET_Runtime_Profile_GGC_Functions.csv",
     "CET_Runtime_Profile_Scheduler_ByJob.csv",
+    "CET_Runtime_Profile_Scheduler_FrameworkAllocation.csv",
     "CET_Runtime_Profile_Scheduler_Spikes.csv",
     "CET_Runtime_Profile_Scheduler_FrameBursts.csv",
     "CET_Runtime_Profile_Deep_Registrations.csv",

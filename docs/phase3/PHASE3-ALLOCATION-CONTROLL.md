@@ -4,6 +4,8 @@
 
 ## First reads and invariant rules
 
+**Implementation checkpoint:** [Instrumentation blueprint](INSTRUMENTATION-BLUEPRINT.md) defines the capture evidence and current source-only per-job/frame allocation implementation, with clear separation between native source compiled/validated/deployed and planned wake-state tracing. The user's review determines dormancy eligibility; profiler reporting remains measurement-only.
+
 Read `AGENTS.md`, `docs/HANDOFF/CORE.md`, `docs/LATEST-WORK.md`, `docs/resolver/PROJECT-CONTRACT.md`, this document and [per-mod generated-pass audit](RESOLVER-PASS-20261028-MOD-AUDIT.md). Maintain current Phase 1+2 preservation recovery; a Phase 3 investigation is **not evidence of Phase 1+2 equivalence**. Work on `dev/resolver-profiler-handoff` unless user changes branch. **Fix the existing authoritative generating source**, not repair-only semantics; untouched Nexus source → one composed pass, correct generic/0-Engine → native → generic-finalization → final source-aware semantic order; partial/idempotent/source-drift tests; thin bridges to separate mod-owned workers, no duplicate dispatch or new CET input binding. No version bump without explicit user approval. No behavior/quest/camera/input/session/lifecycle regressions.
 
 ## Verified CET architecture — why early return is insufficient

@@ -176,7 +176,15 @@ public static partial class ResultReportService
                 CallsPerSecond = D(r, "CallsPerSecond"),
                 MsPerSecond = D(r, "MsPerSecond"),
                 AvgUs = D(r, "AvgUs"),
-                MaxMs = D(r, "MaxMs")
+                MaxMs = D(r, "MaxMs"),
+                InclusiveBytes = r.ContainsKey("InclusivePositiveBytes")
+                    ? L(r, "InclusivePositiveBytes") : (long?)null,
+                InclusiveOps = r.ContainsKey("InclusiveAllocationOperations")
+                    ? L(r, "InclusiveAllocationOperations") : (long?)null,
+                ExclusiveBytes = r.ContainsKey("ExclusivePositiveBytes")
+                    ? L(r, "ExclusivePositiveBytes") : (long?)null,
+                ExclusiveOps = r.ContainsKey("ExclusiveAllocationOperations")
+                    ? L(r, "ExclusiveAllocationOperations") : (long?)null
             })
             .Where(x => !string.IsNullOrWhiteSpace(x.Owner) || !string.IsNullOrWhiteSpace(x.Job))
             .OrderByDescending(x => x.MsPerSecond)
@@ -867,6 +875,10 @@ public static partial class ResultReportService
         public double MsPerSecond { get; init; }
         public double AvgUs { get; init; }
         public double MaxMs { get; init; }
+        public long? InclusiveBytes { get; init; }
+        public long? InclusiveOps { get; init; }
+        public long? ExclusiveBytes { get; init; }
+        public long? ExclusiveOps { get; init; }
     }
 
     private sealed class SchedulerBurstMetric
