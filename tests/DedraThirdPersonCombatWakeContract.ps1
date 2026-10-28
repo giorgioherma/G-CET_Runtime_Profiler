@@ -237,7 +237,7 @@ if($oldInit -eq $normalizedInit -or !$oldInit.Contains($eager)) {
 }
 foreach($token in @('function M.Diagnostics()','FrameListeners.MakeRegistrar','handle.Pause()','handle.Resume()',
   'baseBridgeConfirmed','base.gcetDedraWakeReady','if proof == "__gcetItpToggleWakeV2"',
-  'if p.userWantsThirdPerson == true','kind,owner,notify',
+  'fallbackActive = p.userWantsThirdPerson == true or','kind,owner,notify',
   'Original game-combat','linked','registrationPath','registrationReason',
   'no-pausable-handle:','fallbackActive','if not fallbackActive then return end',
   'fallbackRegister("onUpdate",update)')){
