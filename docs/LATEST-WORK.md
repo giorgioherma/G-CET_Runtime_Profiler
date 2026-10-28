@@ -10,6 +10,13 @@
 **Prior work, not the active task:** [archived native/Lua callback and 0-Engine allocation investigation](history/NATIVE-LUA-CALLBACK-LATEST-WORK-ARCHIVE-20261024.md). Its experimental GO/NO-GO and runtime gaps were not resolved merely by moving the notes.
 
 
+## 2026-10-28 00:43 Test E still native crashes; F isolates eager versus deferred subscription
+
+- User reports **E (Dedra register/start deferred using existing `0-Engine.SetNextTick`) still crashes**, with `Cyberpunk2077(5).dmp`: same native CET fault as dumps #1–4 (`0xC0000005`, read `0x10`, CET offset `+0x57A23F`). Do **not** promote the one-tick deferral as a fix.
+- Source-level clue: known `0-Engine/init.lua` host compatibility `__gcetEnsureUpdate()` lazily invokes **native** `registerForEvent("onUpdate", ...)` the first time a `FrameListeners.MakeRegistrar` owner requests an update. Calling Dedra Register inside `onInit` **or** via a Cron next-tick dispatched from `onUpdate` can therefore still trigger native registration inside an existing CET event callback. This is a plausible explanation for E; it is **not yet proven** by crash-stack symbols or boot results.
+- Prepared diagnostic-only `GCET_DIAGNOSTIC_DEDRA_EAGER_REGISTRATION_20261028.zip` (test F): byte-identical to crashing C in all 428 entries except `DedraThirdPersonCombatAddon/init.lua`, where `Dedra.__gcetWakeController.Register()` is moved back to file-load time, preserving new worker, `Start()` during onInit, and existing tests. Test F isolates registration timing from the added diagnostics and base capability probe. If F boots, investigate redesigning the **existing 0-Engine generic host compatibility** event registrar to attach to the **already owned** onUpdate dispatcher without late native registrations; preserve actual `dt`, native fallbacks, and all other owner ordering. Do not substitute `Engine.OnFrame` blindly: its callback receives **frame number**, not original `delta`, and only runs with a loaded session.
+- Restore last playable overlay for actual gameplay; F is test-only and does not claim true dormancy. Both ITP-only D result and causal symbol proof remain unconfirmed. **No code generator change or CI game acceptance claimed.**
+
 ## 2026-10-28 00:31 Dedra-only C boot regression; D result explicitly unconfirmed
 
 - User clarified **C = Dedra-only crashes**; **D = ITP-only unknown/not accepted** (earlier brief "D crash" message was corrected). Do not count D as a validated ITP-only failure.
