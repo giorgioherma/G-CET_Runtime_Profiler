@@ -121,14 +121,6 @@ internal static partial class SemanticInjectors
                     source.Split(topRegister,StringSplitOptions.None).Length!=2 ||
                     source.Split(shutdownAnchor,StringSplitOptions.None).Length!=2)
                 throw new InvalidOperationException("Dedra file-load registration source drift.");
-            if(!HasDedraThirdPersonCombatAuthorBridge(source) &&
-               !source.Contains("Dedra.__gcetWakeDiagnostics = function()",StringComparison.Ordinal))
-            {
-                // A preceding generated eager worker may lack only the
-                // diagnostics bridge, injected below into the same source.
-                if(!source.Contains("Dedra.__gcetWakeFromBase",StringComparison.Ordinal))
-                    throw new InvalidOperationException("Dedra incomplete wake source owner.");
-            }
             // Upgrades from the old eager-source variant must also expose
             // the new on-demand gate status; this is the same owned bridge,
             // never an additional update subscription or a repair pass.
@@ -146,6 +138,9 @@ internal static partial class SemanticInjectors
                     StringComparison.Ordinal);
                 sourceChanged=true;
             }
+            if(!HasDedraThirdPersonCombatAuthorBridge(source))
+                throw new InvalidOperationException(
+                    "Dedra safe eager registration or worker bridge postcondition failed.");
             if(sourceChanged)
                 context.Write(file,file.Text.Contains("\r\n",StringComparison.Ordinal)
                     ? source.Replace("\n","\r\n",StringComparison.Ordinal):source);
@@ -280,6 +275,9 @@ internal static partial class SemanticInjectors
             "Dedra.__gcetWakeController.Register()\n"+shutdown+
             "\n  Dedra.__gcetWakeController.Stop()",StringComparison.Ordinal);
 
+        if(!HasDedraThirdPersonCombatAuthorBridge(source))
+            throw new InvalidOperationException(
+                "Dedra pristine generation did not preserve the boot-safe lifecycle.");
         context.WriteCoordinator(workerFile,
             "-- G-CET semantic coordinator:dedra-third-person-combat-wake\n" +
             WorkerBody);
