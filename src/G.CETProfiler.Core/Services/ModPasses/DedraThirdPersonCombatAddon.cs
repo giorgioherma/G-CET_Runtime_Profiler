@@ -27,6 +27,12 @@ internal static partial class SemanticInjectors
             worker.Contains("base.gcetDedraWakeReady",StringComparison.Ordinal) &&
             worker.Contains("handle.Pause()",StringComparison.Ordinal) &&
             worker.Contains("handle.Resume()",StringComparison.Ordinal) &&
+            // Historical V2 source with the same header was unpausable at
+            // file-load. Do not mistake old diagnostics/markers for this
+            // separate FPP body-elimination stage.
+            worker.Contains("local fallbackActive = true",StringComparison.Ordinal) &&
+            worker.Contains("if not fallbackActive then return end",StringComparison.Ordinal) &&
+            worker.Contains("registrationReason = registrationReason",StringComparison.Ordinal) &&
             worker.Contains("fallbackRegister(\"onUpdate\",update)",StringComparison.Ordinal);
     }
 

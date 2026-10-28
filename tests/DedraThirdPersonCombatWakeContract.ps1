@@ -277,6 +277,16 @@ if($dedraCompletion.Invoke($null,[object[]]@([string]$completionRoot))){
 }
 [IO.File]::WriteAllText($completionWorkerPath,$wake,[Text.UTF8Encoding]::new($false))
 
+# A previously generated V2 worker with no fallback idle fast path is
+# incomplete even when the init bridge, ITP and other worker proof remain.
+$beforeIdleWake=$wake.Replace('    if not fallbackActive then return end -- CET fallback: no FPP author work.' + $nl, '')
+if($beforeIdleWake -eq $wake){throw 'Fallback-idle fixture did not remove hot guard'}
+[IO.File]::WriteAllText($completionWorkerPath,$beforeIdleWake,[Text.UTF8Encoding]::new($false))
+if($dedraCompletion.Invoke($null,[object[]]@([string]$completionRoot))){
+  throw 'Old per-frame CET fallback incorrectly marked as current FPP idle-complete'
+}
+[IO.File]::WriteAllText($completionWorkerPath,$wake,[Text.UTF8Encoding]::new($false))
+
 # Older optimized stacks have an external worker with a read-only public API
 # flag probe. It must be upgraded through this same generating rule, without
 # re-injecting author callbacks or moving the worker inline.
