@@ -17,3 +17,13 @@ In the supplied approximately 60-second 21:59 combat capture, measured callback-
 ## Standard acceptance
 
 Read `docs/HANDOFF/CORE.md`, `docs/resolver/PROJECT-CONTRACT.md`, `docs/phase3/PHASE3-ALLOCATION-CONTROLL.md`. For each actual implementation, change the existing mod-owned C# generator, source-prove pristine-original one-pass output, older/partial optimized upgrade, repeat/idempotence, formatting equivalents, missing native fallback and drift refusal, preserve external worker ownership, then pass relevant CI. Compare whole-game 60 s F10 COMBAT-POLICE-60 by mod callback bytes/s, ops/s, scheduler jobs, pre-Lua marshalling and CapFrameX. Test active/wake/cleanup plus world-map marker visibility, not just CI. No auto version bump or game-facing patch before source proof. Existing FPP/RC/RICA capture results are measurement, not blanket acceptance.
+
+## Live Dedra diagnostic — 2026-10-28
+
+User ran `GetMod("DedraThirdPersonCombatAddon").__gcetWakeDiagnostics()` while FPP active/TPP not requested:
+
+```json
+{"transitioning":false,"linked":true,"mode":"first","registered":false,"listenerActive":false,"pausable":false,"bridge":true,"perspectiveReadable":true,"requested":false,"pendingCleanup":false}
+```
+
+**Root category proven: acquisition/registration failure, not camera state or missing ITP wake bridge.** The current `M.Register()` in `ModPasses/DedraThirdPersonCombatAddon.cs` obtains `GetMod("0-Engine").FrameListeners.MakeRegistrar` at file-load; if engine/service isn't ready, registrar throws, or handle lacks `Pause`/`Resume`, it falls back to the unpausable original CET `onUpdate` path. The ~1,775 onUpdate calls from the 21:59 capture corroborate fallback. The present diagnostic does not record which registration failure occurred. **Next distinguish** `GetMod("0-Engine")`, `FrameListeners`, `MakeEventRegistrar`, `FrameListeners.MakeRegistrar` availability in the live console; if all exist after session load, instrument one-shot file-load failure reason and fix the original generator/host bootstrap without moving native registration into onInit/onUpdate (known startup crash). Any optimization must keep immediate input wake and original gameplay behavior. No runtime fix yet.
