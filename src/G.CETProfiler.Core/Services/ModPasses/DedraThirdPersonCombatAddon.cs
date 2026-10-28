@@ -190,8 +190,50 @@ internal static partial class SemanticInjectors
                     "  function M.Signal(proof)\n" +
                     "    if proof == \"__gcetItpToggleWakeV2\" then baseBridgeConfirmed = true end",
                     "  function M.Signal()",StringComparison.Ordinal);
+            // One-shot registration status is additive. Exact previous generated
+            // workers remain valid upgrade inputs, including old partial workers.
+            var currentRegStart=canonicalBody.IndexOf("  function M.Register()\n",StringComparison.Ordinal);
+            var currentRegEnd=canonicalBody.IndexOf("  function M.Start()\n",currentRegStart,StringComparison.Ordinal);
+            if(currentRegStart<0 || currentRegEnd<=currentRegStart)
+                throw new InvalidOperationException("Dedra registration diagnostic source drift.");
+            var currentReg=canonicalBody[currentRegStart..currentRegEnd];
+            const string enrichedState =
+                "  local pausable = false\n" +
+                "  -- One-time file-load decision; never queried or allocated in frame callbacks.\n" +
+                "  local registrationPath, registrationReason = \"not-attempted\", \"not-attempted\"\n";
+            var legacyDiagnostics=PriorDiagnosticsMethod
+                .Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
+            var oldCanonicalBody=canonicalBody
+                .Replace(enrichedState,"  local pausable = false\n",StringComparison.Ordinal)
+                .Replace(currentReg,PriorRegisterMethod.Replace("\r\n","\n",StringComparison.Ordinal),StringComparison.Ordinal)
+                .Replace(normalizedDiagnostics,legacyDiagnostics,StringComparison.Ordinal);
+            if(oldCanonicalBody==canonicalBody ||
+               oldCanonicalBody.Contains("registrationReason",StringComparison.Ordinal))
+                throw new InvalidOperationException("Dedra prior generated registration shape failed proof.");
+            var oldCanonicalWorker=coordinatorHeader+oldCanonicalBody;
+            var oldUndiagnosed=oldCanonicalBody.Replace(legacyDiagnostics,"",StringComparison.Ordinal);
+            var oldPreviousWorker=coordinatorHeader+oldUndiagnosed;
+            var oldPreCapabilityWorker=coordinatorHeader+
+                oldUndiagnosed.Replace(readinessProbe,"",StringComparison.Ordinal);
+            var oldLegacyWorker=coordinatorHeader+oldUndiagnosed
+                .Replace(readinessProbe,"",StringComparison.Ordinal)
+                .Replace("  local baseBridgeConfirmed = false\n","",StringComparison.Ordinal)
+                .Replace("    if not baseBridgeConfirmed or not linked or not api then",
+                    "    if not linked or not api or api.__gcetDedraWakeBridgeV2 ~= true then",
+                    StringComparison.Ordinal)
+                .Replace("      type(base.perspective.get) ~= \"function\" then",
+                    "      type(base.perspective.get) ~= \"function\" or\n" +
+                    "      base.__gcetDedraWakeBridgeV2 ~= true then",
+                    StringComparison.Ordinal)
+                .Replace("  function M.Signal(proof)\n" +
+                    "    if proof == \"__gcetItpToggleWakeV2\" then baseBridgeConfirmed = true end",
+                    "  function M.Signal()",StringComparison.Ordinal);
             if(owned is not null && existingWorker!=legacyWorker &&
-               existingWorker!=previousWorker && existingWorker!=preCapabilityWorker)
+               existingWorker!=previousWorker && existingWorker!=preCapabilityWorker &&
+               existingWorker!=oldCanonicalWorker &&
+               existingWorker!=oldPreviousWorker &&
+               existingWorker!=oldPreCapabilityWorker &&
+               existingWorker!=oldLegacyWorker)
                 throw new InvalidOperationException(
                     "Dedra worker differs from known generated versions; refuse unsafe overwrite.");
             if(owned is null && !HasDedraThirdPersonCombatAuthorBridge(source))
@@ -304,6 +346,48 @@ internal static partial class SemanticInjectors
     end
     return {
       registered = handle ~= nil, pausable = pausable,
+      registrationPath = registrationPath, registrationReason = registrationReason,
+      bridge = baseBridgeConfirmed, linked = linked,
+      perspectiveReadable = ok and type(p) == ""table"",
+      requested = type(p) == ""table"" and p.userWantsThirdPerson == true or false,
+      mode = type(p) == ""table"" and p.mode or nil,
+      transitioning = type(p) == ""table"" and p.transitioning == true or false,
+      pendingCleanup = pending(p),
+      listenerActive = handle and type(handle.IsActive) == ""function"" and handle.IsActive() == true or false
+    }
+  end
+";
+    private const string PriorRegisterMethod = @"  function M.Register()
+    if handle then return end
+    local ok, engine = pcall(GetMod, ""0-Engine"")
+    if ok and type(engine) == ""table"" and
+      type(engine.FrameListeners) == ""table"" and
+      type(engine.FrameListeners.MakeRegistrar) == ""function"" then
+      local good, registrar = pcall(engine.FrameListeners.MakeRegistrar,
+        ""DedraThirdPersonCombatAddon"", fallbackRegister)
+      if good and type(registrar) == ""function"" then
+        local made, h = pcall(registrar, ""onUpdate"", update)
+        if made and type(h) == ""table"" and
+          type(h.Pause) == ""function"" and
+          type(h.Resume) == ""function"" then
+          handle, pausable = h, true
+          return
+        end
+        if made then return end -- Already registered; never duplicate.
+      end
+    end
+    fallbackRegister(""onUpdate"",update) -- No 0-Engine: author's original cadence.
+  end
+";
+    private const string PriorDiagnosticsMethod = @"  function M.Diagnostics()
+    local p = nil
+    local ok = false
+    if api and type(api.perspective) == ""table"" and
+      type(api.perspective.get) == ""function"" then
+      ok, p = pcall(api.perspective.get)
+    end
+    return {
+      registered = handle ~= nil, pausable = pausable,
       bridge = baseBridgeConfirmed, linked = linked,
       perspectiveReadable = ok and type(p) == ""table"",
       requested = type(p) == ""table"" and p.userWantsThirdPerson == true or false,
@@ -320,6 +404,8 @@ function M.Install(Dedra, step, fallbackRegister)
   local handle, api, linked = nil, nil, false
   local baseBridgeConfirmed = false
   local pausable = false
+  -- One-time file-load decision; never queried or allocated in frame callbacks.
+  local registrationPath, registrationReason = ""not-attempted"", ""not-attempted""
   local kinds = { ""perspectiveChanged"", ""overrideChanged"", ""transitionStart"",
     ""transitionEnd"", ""sessionStart"", ""sessionEnd"" }
   local owner = ""gcet.dedra.detached.v2""
@@ -388,23 +474,40 @@ function M.Install(Dedra, step, fallbackRegister)
   function M.Register()
     if handle then return end
     local ok, engine = pcall(GetMod, ""0-Engine"")
-    if ok and type(engine) == ""table"" and
-      type(engine.FrameListeners) == ""table"" and
-      type(engine.FrameListeners.MakeRegistrar) == ""function"" then
+    if not ok then
+      registrationReason = ""engine-lookup-error""
+    elseif type(engine) ~= ""table"" then
+      registrationReason = ""engine-unavailable""
+    elseif type(engine.FrameListeners) ~= ""table"" then
+      registrationReason = ""frame-service-unavailable""
+    elseif type(engine.FrameListeners.MakeRegistrar) ~= ""function"" then
+      registrationReason = ""frame-registrar-unavailable""
+    else
       local good, registrar = pcall(engine.FrameListeners.MakeRegistrar,
         ""DedraThirdPersonCombatAddon"", fallbackRegister)
-      if good and type(registrar) == ""function"" then
+      if not good then
+        registrationReason = ""make-registrar-error""
+      elseif type(registrar) ~= ""function"" then
+        registrationReason = ""make-registrar-no-function""
+      else
         local made, h = pcall(registrar, ""onUpdate"", update)
         if made and type(h) == ""table"" and
           type(h.Pause) == ""function"" and
           type(h.Resume) == ""function"" then
           handle, pausable = h, true
+          registrationPath, registrationReason = ""frame-listener"", ""ok""
           return
         end
-        if made then return end -- Already registered; never duplicate.
+        if made then
+          registrationPath = ""unmanaged-registration""
+          registrationReason = ""no-pausable-handle:"" .. type(h)
+          return -- Already registered; never duplicate.
+        end
+        registrationReason = ""callback-registration-error""
       end
     end
-    fallbackRegister(""onUpdate"",update) -- No 0-Engine: author's original cadence.
+    registrationPath = ""cet-fallback""
+    fallbackRegister(""onUpdate"",update) -- No usable 0-Engine: author's original cadence.
   end
   function M.Start()
     bind() -- One startup read; no dormant watchdog.
@@ -422,6 +525,7 @@ function M.Install(Dedra, step, fallbackRegister)
     end
     return {
       registered = handle ~= nil, pausable = pausable,
+      registrationPath = registrationPath, registrationReason = registrationReason,
       bridge = baseBridgeConfirmed, linked = linked,
       perspectiveReadable = ok and type(p) == ""table"",
       requested = type(p) == ""table"" and p.userWantsThirdPerson == true or false,

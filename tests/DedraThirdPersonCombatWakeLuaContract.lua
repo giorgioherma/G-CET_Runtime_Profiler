@@ -46,6 +46,7 @@ local function make(opts)
           check(not frame, "duplicate frame subscription")
           counters.registered = counters.registered + 1
           frame = callback
+          if opts.nilHandle then return nil end
           return {
             Pause = function()
               if active then active = false; counters.paused = counters.paused + 1 end
@@ -89,6 +90,7 @@ local function make(opts)
     end}
     engine.FrameListeners = frameLibrary.New(engine)
   end
+  if opts.noFrameService then engine.FrameListeners = nil end
   if opts.noEngine then engine = nil end
   GetMod = function(name)
     if name == "0-Engine" then return engine end
@@ -202,4 +204,24 @@ if frameLibrary then
   end
 end
 
-print("Dedra worker runtime: FPP startup pause, CET wake, cleanup, API fail-open, real listener and single ownership PASS")
+do
+  local t = make({capability = true, noEngine = true})
+  check(t.fallbacks() == 1 and t.diagnostics().registrationPath == "cet-fallback" and
+        t.diagnostics().registrationReason == "engine-unavailable",
+    "missing 0-Engine must explain file-load CET fallback")
+end
+
+do
+  local t = make({capability = true, noFrameService = true})
+  check(t.fallbacks() == 1 and t.diagnostics().registrationReason == "frame-service-unavailable",
+    "absent startup frame service must be recorded")
+end
+
+do
+  local t = make({capability = true, nilHandle = true})
+  check(t.fallbacks() == 0 and t.diagnostics().registrationPath == "unmanaged-registration" and
+        t.diagnostics().registrationReason == "no-pausable-handle:nil",
+    "registered callback with no pausable handle must not double-register")
+end
+
+print("Dedra worker runtime: startup registration reason, FPP pause, CET wake, cleanup, API fallback, real listener PASS")
