@@ -212,13 +212,13 @@ internal static partial class SemanticInjectors
       return
     end
     local ok, p = pcall(api.perspective.get)
-    if not ok or type(p) ~= """"table"""" or
-      type(p.userWantsThirdPerson) ~= """"boolean"""" then
+    if not ok or type(p) ~= ""table"" or
+      type(p.userWantsThirdPerson) ~= ""boolean"" then
       handle.Resume()
       return
     end
     if p.userWantsThirdPerson == true or p.transitioning == true or
-       p.mode == """"transition"""" or pending(p) then
+       p.mode == ""transition"" or pending(p) then
       handle.Resume()
     else
       handle.Pause() -- Unsubscribes from 0-Engine shared frame emitter.

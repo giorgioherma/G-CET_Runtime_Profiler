@@ -345,6 +345,50 @@ if($updatedWorker -ne $wake -or
   $workerUpgrade.Changes[0].RelativeFile -notlike '*/GCET_Semantic/dedra_camera_wake.lua') {
   throw 'Prior worker update changed execution ownership or generated unexpected code'
 }
+# Exact prior CI #2146 diagnostic worker: the registrar reason exists, but
+# no FPP fallback suppression yet. This must upgrade with ONE worker write.
+$priorIdleWake=$wake.Replace(
+  '  local fallbackActive = true -- Fail open until author ITP wake proof is complete.' + $nl,'')
+$priorIdleWake=$priorIdleWake.Replace(
+  '    if not fallbackActive then return end -- CET fallback: no FPP author work.' + $nl,'')
+$syncFrom=$priorIdleWake.IndexOf('  local function sync()' + $nl)
+$syncTo=$priorIdleWake.IndexOf('  local function notify()' + $nl,$syncFrom)
+if($syncFrom -lt 0 -or $syncTo -le $syncFrom){
+  throw 'Prior diagnostic worker sync fixture missing'
+}
+$oldSync=@'
+  local function sync()
+    if not pausable or not handle then return end
+    if not baseBridgeConfirmed or not linked or not api then
+      handle.Resume()  -- Older ITP builds fail open, never strand a toggle.
+      return
+    end
+    local ok, p = pcall(api.perspective.get)
+    if not ok or type(p) ~= "table" or
+      type(p.userWantsThirdPerson) ~= "boolean" then
+      handle.Resume()
+      return
+    end
+    if p.userWantsThirdPerson == true or p.transitioning == true or
+       p.mode == "transition" or pending(p) then
+      handle.Resume()
+    else
+      handle.Pause() -- Unsubscribes from 0-Engine shared frame emitter.
+    end
+  end
+'@.Replace($crlf,$nl)
+$priorIdleWake=$priorIdleWake.Substring(0,$syncFrom) + $oldSync +
+  $priorIdleWake.Substring($syncTo)
+if($priorIdleWake -eq $wake -or $priorIdleWake.Contains('fallbackActive')){
+  throw 'Prior captured diagnostic worker fixture failed'
+}
+[IO.File]::WriteAllText($workerPath,$priorIdleWake,[Text.UTF8Encoding]::new($false))
+$script:dedraUpgradeCase='last boot-safe diagnostic worker with busy native fallback'
+$priorIdleUpgrade=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $lua $addon -StageInput
+if(!$priorIdleUpgrade.Applied -or $priorIdleUpgrade.Changes.Count -ne 1 -or
+   [Text.Encoding]::UTF8.GetString($priorIdleUpgrade.Changes[0].Bytes) -ne $wake){
+  throw 'Previously diagnosed fallthrough could not upgrade to idle-gated worker'
+}
 [IO.File]::WriteAllText($workerPath,$previousWake,[Text.UTF8Encoding]::new($false))
 $script:dedraUpgradeCase='previous worker with canonical init'
 $previousUpgrade=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $lua $addon -StageInput
