@@ -1755,13 +1755,24 @@ try {
         }
     }
 
-    foreach ($upstreamName in @(
-        'bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/modules/ActionRouter.lua',
-        'bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/modules/Scheduler.lua'
-    )) {
-        if ($upstreamName -in $names) {
-            throw "Resolver generated an unwanted upstream-named module: $upstreamName"
-        }
+    $rootAction = 'bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/modules/ActionRouter.lua'
+    if ($rootAction -in $names) {
+        throw "Resolver generated an unwanted upstream-named ActionRouter: $rootAction"
+    }
+    # The requested root Scheduler is a permanent single-module compatibility
+    # alias; it must never contain another dispatcher or duplicate implementation.
+    $rootSchedulerEntry = $zip.GetEntry(
+        'bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/modules/Scheduler.lua')
+    if (!$rootSchedulerEntry) {
+        throw 'Generated pass is missing persistent root Scheduler alias'
+    }
+    $rootReader = [IO.StreamReader]::new($rootSchedulerEntry.Open())
+    try { $rootSource = $rootReader.ReadToEnd().Trim() }
+    finally { $rootReader.Dispose() }
+    if (!$rootSource.EndsWith("return require('modules/G-CET/Scheduler')") -or
+        $rootSource.Contains('function Scheduler.Update') -or
+        $rootSource.Contains('registerForEvent')) {
+        throw 'Root Scheduler is not an exact single-instance namespaced alias'
     }
     if ('G-CET_Pass_Manifest.json' -in $names) {
         throw 'Documentation manifest leaked into the deployable ZIP.'
