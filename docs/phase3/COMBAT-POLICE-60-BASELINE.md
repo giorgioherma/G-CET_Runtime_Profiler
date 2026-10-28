@@ -1,6 +1,6 @@
 # COMBAT-POLICE-60 — standard Phase 3 gameplay stress baseline
 
-**Status (2026-10-28): STANDARD PROTOCOL + FIRST OBSERVED ~60s CAPTURE; PHASE 3 SCHEDULER DATA NOT ACCEPTED AS BASELINE.**
+**Status (2026-10-28): STANDARD PROTOCOL + FIRST VERIFIED PER-JOB PHASE 3 INSTRUMENTATION CAPTURE (source #2143, real ZIP received). A/B performance improvement NOT established.**
 This is the default repeatable *combat-stress* comparison for G-CET Phase 3 allocation instrumentation and later optimization A/B. It replaces the earlier proposal to combine 1 minute idle + 2 minutes driving + 1 minute combat in a single run for per-job allocation comparisons. That earlier mixed scenario remains a separate possible test, **not** the standard stress baseline.
 
 ## Canonical test identity and scenario
@@ -29,6 +29,20 @@ Before F10: load the save and let startup, streaming and mod initialization sett
 ## Scheduler runtime version gate
 
 For a new baseline from the source-proven G-CET-owned fixed runtime, Resolver stages **both** `0-Engine/modules/G-CET/Scheduler.lua` (canonical implementation) and root `0-Engine/modules/Scheduler.lua` (thin permanent alias returning that same module). Unrecognized foreign 0-Engine roots are preserved instead of overwritten. Profiler installation must detect **namespaced** integration; it must **not** deploy an independent `CETProfilerScheduler.lua` on this optimized stack. Both Resolver files remain after normal or emergency Profiler restore. Pre-fix captures had 23 registered jobs and 0 recorded executions; **do not classify them as valid per-job allocation baselines**. Confirm post-fix data shows actual per-job calls for runnable scheduler jobs before interpreting ops/s or bytes/s. Legacy non-Resolver stacks still have a different reversible Profiler integration path.
+
+## First validated scheduler measurement — 2026-10-28 at 19:13 CET
+
+**User-supplied evidence:** `CET-20261028-191326_SECOND_TEST_60S_INSTRUMENTATION.zip`, original title `SECOND_TEST_60S_INSTRUMENTATION`. This is the **first accepted Phase 3 scheduler-allocation measurement reference**, replacing the two earlier **unusable zero-job captures** for per-job analysis. It is not evidence that gameplay performance improved. Combat markers confirm the test interval; the exact save/location, difficulty, wanted level, deployed DLL hash and precise start offset against CapFrameX are not independently specified/verified.
+
+- Native CET capture **60.017046 s**; `SCENARIO_COMBAT_START` at **0.0998 ms**, `SCENARIO_COMBAT_END` at **60016.9383 ms**, `PAUSE` at **60017.0465 ms**.
+- CapFrameX v1.9.1.2 **60.016 s**, **1,898 frames**, **31.625 FPS mean**, **P99 70.0636 ms**, **233.3367 ms max**. Duration mismatch about **1.4 ms**. Report shows `sync.quality=GOOD`, relative-key-clock alignment; this alone does **not** independently establish a sub-frame absolute start offset.
+- **1,899 scheduler frames**, **23 registered jobs**, **20 jobs with executions**, **10,614 total invocations**. Three dormant Poker jobs with zero calls are explicitly recorded; **0 dropped/unpaired scopes**. The previous capture `CET-20261028-170533_60S-BASELINE_CAPTURE_AGREED_STANDARDISED_TEST.zip` recorded 1,971 frames, 23 jobs, **zero job invocations and zero allocation counts**. Thus the scheduler instrumentation coverage defect is resolved.
+- Scheduler frame positive LuaJIT growth: **6,368,040 B / 46,052 allocation operations** (about **6.07 MiB** or **767.3 ops/s**). Root-job exclusive: **1,609,420 B / 24,819 ops** (about **1.53 MiB**, **413.5 ops/s**). Outside-root residual: **4,758,620 B / 21,233 ops** (about **4.54 MiB**, **353.8 ops/s**). The two partitions reconcile to the frame envelope; **residual is UNASSIGNED, NOT demonstrated intrinsic 0-Engine cost**, and native/profiler bridge overhead is not subtracted. These counters are positive allocated-byte growth, **not retained heap**.
+- Scheduler job CPU totals ~**919.335 ms / minute (15.318 ms/s)**. Largest job allocations by exclusive ops: `RICA/rica.state` **7,009 ops / 362,040 B / 60 calls**, `RICA/rica.rewards` **4,800 ops / 302,880 B / 240 calls**, `RepeatableCyberpsychos/cyberpsychos.presentation_worker` **4,459 ops / 332,400 B / 476 calls**. Not yet a transformation authorization.
+- **Performance issue remains**: `RICA/rica.state` had a **167.2304 ms single scheduler job** (also a 19.5034 ms spike); the `RepeatableCyberpsychos` presentation worker regularly reached ~6–7 ms. Investigate whether the RICA spike is reproducible before optimizing. Correlation with frametime spikes does not prove single-job causality across clocks.
+- Captured deep-callsite CSV contains **589 rows (811 field occurrences)** referencing `G-CET\\Scheduler.lua` in `Deep_Callsites.csv`, with **none referencing `CETProfilerScheduler.lua`**. Confirms canonical foldered scheduler source reached while no separate adaptive file was observed in those text traces. Hash/package install provenance still needs independent validation when interpreting installation status.
+
+**Acceptance:** Phase 3 per-job measurement **WORKING**, with accurate numeric source evidence, no dropped scopes and whole-frame/root/residual accounting. **Do not** describe the old zero-job runs as performance improvements or regressions; they were instrumentation coverage failures. This one capture is an attribution baseline, not sufficient alone to demonstrate FPS gains, authorize dormancy or establish A/B causality. Repeat identical COMBAT-POLICE-60 setup for later before/after changes.
 
 ## What to compare
 
