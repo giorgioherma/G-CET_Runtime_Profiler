@@ -628,6 +628,7 @@ jobs:
             OtherMod = @{ SomeBinding = 77 }
             CETProfilerControls = @{
               CETProfiler_Toggle = 123
+              CETProfiler_Police60 = 987
               CETProfiler_Dump = 456
             }
           } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $cet 'bindings.json') -Encoding utf8
@@ -641,6 +642,7 @@ jobs:
           # overwrite them just to force the default F11 choice.
           $bindingsAfterInstall = Get-Content -LiteralPath (Join-Path $cet 'bindings.json') -Raw | ConvertFrom-Json
           if ([int64]$bindingsAfterInstall.CETProfilerControls.CETProfiler_Toggle -ne 123) { throw 'Install overwrote the user CET capture binding.' }
+          if ([int64]$bindingsAfterInstall.CETProfilerControls.CETProfiler_Police60 -ne 987) { throw 'Install overwrote the user's custom COMBAT-POLICE-60 key.' }
           if ([int64]$bindingsAfterInstall.CETProfilerControls.CETProfiler_Dump -ne 456) { throw 'Install rewrote unrelated existing CETProfilerControls bindings.' }
 
           # Every user-owned file/folder G-CET itself mutates still gets a verified
@@ -1045,6 +1047,13 @@ jobs:
           if ($templateStatus.captureReadyForCollection) { throw 'Header-only profiler templates were incorrectly classified as a completed capture.' }
           if ($templateStatus.captureKey -ne 'F11') { throw "Expected CET capture key F11, got $($templateStatus.captureKey)." }
           if (!$templateStatus.captureKeyIsDefaultF11) { throw 'Exact F11 binding was not recognized as the default capture key.' }
+          $templateBindings = Get-Content -LiteralPath (Join-Path $cet5 'bindings.json') -Raw | ConvertFrom-Json
+          if ([int64]$templateBindings.CETProfilerControls.CETProfiler_Toggle -ne 34339947158700032) {
+            throw 'Timed capture seeding changed unlimited F11.'
+          }
+          if ([int64]$templateBindings.CETProfilerControls.CETProfiler_Police60 -ne 34058472181989376) {
+            throw 'Timed capture F10 default missing from existing-F11 install.'
+          }
 
           $resultsBeforeTemplateClear = @(Get-ChildItem 'publish\RESULTS' -Directory -ErrorAction SilentlyContinue).Count
 

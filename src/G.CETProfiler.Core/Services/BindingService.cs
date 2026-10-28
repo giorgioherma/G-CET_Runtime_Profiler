@@ -7,6 +7,10 @@ namespace GCETRuntimeProfiler.Core.Services;
 internal sealed class BindingService
 {
     public const long F11BindCode = 34339947158700032L;
+    // Independent 60-second COMBAT-POLICE-60 shortcut. F11 remains unlimited.
+    // CET packs the Windows VK into the upper input-code byte:
+    // F10 (VK 0x79) => 0x0079000000000000.
+    public const long F10BindCode = 34058472181989376L;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -62,15 +66,23 @@ internal sealed class BindingService
             root["CETProfilerControls"] = node;
         }
 
-        // CET owns the user's binding choice. Seed F11 only for a brand-new
-        // profiler input; never overwrite a binding the user already selected.
-        if (node["CETProfiler_Toggle"] is not null)
-            return;
-
-        node["CETProfiler_Toggle"] = F11BindCode;
-        node.Remove("CETProfiler_Dump");
-
-        WriteBindings(paths, root);
+        // CET owns the user's binding choices. Seed only missing inputs:
+        // F11 = unrestricted manual start/stop, F10 = timed benchmark.
+        // Never change or erase an existing user-owned key assignment.
+        var changed = false;
+        if (node["CETProfiler_Toggle"] is null)
+        {
+            node["CETProfiler_Toggle"] = F11BindCode;
+            node.Remove("CETProfiler_Dump");
+            changed = true;
+        }
+        if (node["CETProfiler_Police60"] is null)
+        {
+            node["CETProfiler_Police60"] = F10BindCode;
+            changed = true;
+        }
+        if (changed)
+            WriteBindings(paths, root);
     }
 
     private static JsonObject ReadBindingsObject(ProfilerPaths paths)
