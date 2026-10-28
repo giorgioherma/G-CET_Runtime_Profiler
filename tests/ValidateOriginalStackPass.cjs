@@ -177,6 +177,49 @@ if (!fs.existsSync(manifestFile)) {
       }
     }
 
+    // Regression from user-reproduced CET startup crash (#2126/#2127):
+    // Dedra's frame listener MUST be registered at module load, not from
+    // inside CET's onInit dispatcher. The same external worker remains the
+    // single pausable frame owner. Prove this on real untouched-stack output,
+    // not only a synthetic producer fixture.
+    const dedraOriginal = path.join(modsRoot, 'DedraThirdPersonCombatAddon', 'init.lua');
+    if (fs.existsSync(dedraOriginal)) {
+      const original = fs.readFileSync(dedraOriginal, 'utf8');
+      if (original.includes('local function dedraStep(dt)') &&
+          original.includes('registerForEvent("onInit", function()')) {
+        const owner = 'DedraThirdPersonCombatAddon';
+        const initRelative = owner + '/init.lua';
+        const workerRelative = owner + '/GCET_Semantic/dedra_camera_wake.lua';
+        const selected = transforms.some(t =>
+          t.RuleId === 'dedra-third-person-combat-wake' &&
+          t.type === 'SEMANTIC_RULE');
+        if (!selected || !overlayExists(initRelative) || !overlayExists(workerRelative)) {
+          report('error', owner, 'DEDRA_SAFE_WAKE_NOT_COMPOSED',
+            {stage:'Semantic',mod:owner,rule:'dedra-third-person-combat-wake',
+             reason:'Pristine Dedra source must generate one author bridge and external wake worker.'});
+        } else {
+          const init = fs.readFileSync(path.join(overlayRoot,
+            ...outputLocation(initRelative).split('/')), 'utf8');
+          const worker = fs.readFileSync(path.join(overlayRoot,
+            ...outputLocation(workerRelative).split('/')), 'utf8');
+          const hasFileLoad = /^Dedra\.__gcetWakeController\.Register\(\)\r?\nregisterForEvent\s*\(\s*["']onShutdown["']/m.test(init);
+          const hasStart = /registerForEvent\s*\(\s*["']onInit["']\s*,\s*function\(\)\s*Dedra\.__gcetWakeController\.Start\(\)/.test(init);
+          const registrations = (init.match(/Dedra\.__gcetWakeController\.Register\(\)/g) || []).length;
+          if (!hasFileLoad || !hasStart || registrations !== 1 ||
+              /registerForEvent\s*\(\s*["']onUpdate["']\s*,\s*function\(dt\)/.test(init) ||
+              !init.includes('Dedra.__gcetWakeController.Stop()') ||
+              !worker.includes('FrameListeners.MakeRegistrar') ||
+              !worker.includes('handle.Pause()') ||
+              !worker.includes('handle.Resume()') ||
+              !worker.includes('fallbackRegister("onUpdate",update)')) {
+            report('error', owner, 'DEDRA_CET_INIT_REGISTRATION_CRASH_REGRESSION',
+              {stage:'Semantic',mod:owner,rule:'dedra-third-person-combat-wake',
+               reason:'Dedra must acquire its single pausable frame owner outside onInit, with original fallback and shutdown.'});
+          }
+        }
+      }
+    }
+
     // The fixed base capture can refer to original files removed when trimming
     // the source repository. Report exactly the missing file instead of a folder.
     const missing = new Map();
