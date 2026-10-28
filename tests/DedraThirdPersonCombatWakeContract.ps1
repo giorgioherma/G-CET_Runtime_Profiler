@@ -201,28 +201,40 @@ foreach($token in @('Dedra.__gcetWakeController.Register()','Dedra.__gcetWakeCon
   if(!$lua.Contains($token)){throw "Missing source bridge: $token"}
 }
 $normalizedInit=$lua.Replace($crlf,$nl)
+# 2026-10-28 game-boot regression: registering during CET onInit
+# crashes the native CET event dispatcher. In diagnostic F, EXACTLY the
+# same worker booted with file-load Register after the author's onInit
+# declaration, before shutdown. This ordering is a required postcondition.
+$safeInit='registerForEvent("onInit", function()' + $nl +
+    '  Dedra.__gcetWakeController.Start()'
+$lateInit='registerForEvent("onInit", function()' + $nl +
+    '  Dedra.__gcetWakeController.Register()' + $nl +
+    '  Dedra.__gcetWakeController.Start()'
+$eager='Dedra.__gcetWakeController.Register()' + $nl +
+    'registerForEvent("onShutdown", function()'
 if($normalizedInit.Contains('pcall(dedraStep, dt)') -or
   ([regex]::Matches($normalizedInit,'Dedra.__gcetWakeController.Register\(\)')).Count -ne 1 -or
-  !$normalizedInit.Contains('registerForEvent("onInit", function()' + $nl +
-      '  Dedra.__gcetWakeController.Register()' + $nl +
-      '  Dedra.__gcetWakeController.Start()')){
-  throw 'Original frame callback still present, doubled, or registered before onInit'
+  !$normalizedInit.Contains($safeInit) -or
+  !$normalizedInit.Contains($eager) -or
+  $normalizedInit.Contains($lateInit)) {
+  throw 'Dedra pristine generation lost file-load-only registration or doubled callback'
 }
-# Existing V2 optimized init called Register at module load time; the same
-# authoritative producer moves that ownership into onInit without producing a
-# second callback, while preserving source and the existing worker.
-$oldInit=$normalizedInit.Replace('registerForEvent("onInit", function()' + $nl +
-   '  Dedra.__gcetWakeController.Register()' + $nl +
-   '  Dedra.__gcetWakeController.Start()',
-   'registerForEvent("onInit", function()' + $nl +
-   '  Dedra.__gcetWakeController.Start()')
-$oldInit=$oldInit.Replace('registerForEvent("onShutdown", function()',
-   'Dedra.__gcetWakeController.Register()' + $nl +
-   'registerForEvent("onShutdown", function()')
-$oldInit=$oldInit.Replace('Dedra.__gcetWakeDiagnostics = function()' + $nl +
+# Reproduce the crashing #2126 onInit source, with the canonical external
+# worker. The same authoritative producer must upgrade this incomplete
+# installed stage in place; no previously optimized input is required.
+$crashingInit=$normalizedInit.Replace($safeInit,$lateInit).Replace(
+    $eager,'registerForEvent("onShutdown", function()')
+if($crashingInit -eq $normalizedInit -or $crashingInit.Contains($eager)) {
+  throw 'Crash regression fixture did not reproduce the late-registration defect'
+}
+# Historical bootable worker lacked the diagnostics adapter; the new
+# generating rule adds that bridge without moving its owner back onInit.
+$oldInit=$normalizedInit.Replace('Dedra.__gcetWakeDiagnostics = function()' + $nl +
   '  return Dedra.__gcetWakeController.Diagnostics()' + $nl +
   'end' + $nl,'')
-if($oldInit -eq $lua){throw 'Legacy eager-registration fixture unchanged'}
+if($oldInit -eq $normalizedInit -or !$oldInit.Contains($eager)) {
+  throw 'Legacy eager-registration source fixture unchanged'
+}
 foreach($token in @('function M.Diagnostics()','FrameListeners.MakeRegistrar','handle.Pause()','handle.Resume()',
   'baseBridgeConfirmed','base.gcetDedraWakeReady','if proof == "__gcetItpToggleWakeV2"',
   'if p.userWantsThirdPerson == true','kind,owner,notify',
@@ -250,7 +262,11 @@ if(!$dedraCompletion.Invoke($null,[object[]]@([string]$completionRoot))){
 }
 [IO.File]::WriteAllText($completionInitPath,$oldInit,[Text.UTF8Encoding]::new($false))
 if($dedraCompletion.Invoke($null,[object[]]@([string]$completionRoot))){
-  throw 'Old eager Dedra source falsely completed new dormancy'
+  throw 'Incomplete prior Dedra source incorrectly completed current dormancy'
+}
+[IO.File]::WriteAllText($completionInitPath,$crashingInit,[Text.UTF8Encoding]::new($false))
+if($dedraCompletion.Invoke($null,[object[]]@([string]$completionRoot))){
+  throw 'Crashing onInit registration falsely passed safe-generation completion proof'
 }
 [IO.File]::WriteAllText($completionInitPath,$normalizedInit,[Text.UTF8Encoding]::new($false))
 [IO.File]::Delete($completionWorkerPath)
@@ -325,7 +341,7 @@ if(!$previousUpgrade.Applied -or $previousUpgrade.Changes.Count -ne 1 -or
   throw 'Previously shipped V2 worker did not upgrade to source-proven startup wake'
 }
 [IO.File]::WriteAllText($workerPath,$previousWake,[Text.UTF8Encoding]::new($false))
-$script:dedraUpgradeCase='previous worker with eager old init'
+$script:dedraUpgradeCase='previous worker with bootable eager old init'
 $oldInitUpgrade=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $oldInit $addon -StageInput
 $oldInitFile=$oldInitUpgrade.Changes|Where-Object{$_.RelativeFile -like '*/init.lua'}|Select-Object -First 1
 $oldWorkerFile=$oldInitUpgrade.Changes|Where-Object{$_.RelativeFile -like '*/GCET_Semantic/dedra_camera_wake.lua'}|Select-Object -First 1
@@ -334,6 +350,17 @@ if(!$oldInitUpgrade.Applied -or $oldInitUpgrade.Changes.Count -ne 2 -or
    [Text.Encoding]::UTF8.GetString($oldInitFile.Bytes).Replace($crlf,$nl) -ne $normalizedInit -or
    [Text.Encoding]::UTF8.GetString($oldWorkerFile.Bytes) -ne $wake){
   throw 'Previously optimized eager-registration owner did not upgrade atomically'
+}
+# Previously shipped v1.3.3 source registered the pausable frame owner
+# inside onInit. Its complete worker must be preserved and its file-load
+# registration restored without introducing a duplicate or an extra worker.
+[IO.File]::WriteAllText($workerPath,$updatedWorker,[Text.UTF8Encoding]::new($false))
+$script:dedraUpgradeCase='crashing onInit owner with current external worker'
+$crashUpgrade=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $crashingInit $addon -StageInput
+if(!$crashUpgrade.Applied -or $crashUpgrade.Changes.Count -ne 1 -or
+   $crashUpgrade.Changes[0].RelativeFile -notlike '*/init.lua' -or
+   [Text.Encoding]::UTF8.GetString($crashUpgrade.Changes[0].Bytes).Replace($crlf,$nl) -ne $normalizedInit){
+  throw 'Crashing onInit registration was not safely upgraded to bootable file-load ownership'
 }
 [IO.File]::WriteAllText($workerPath,$updatedWorker,[Text.UTF8Encoding]::new($false))
 $script:dedraUpgradeCase='current canonical worker reapply'
