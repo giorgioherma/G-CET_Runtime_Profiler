@@ -71,11 +71,17 @@ public sealed class ProfilerService : IProfilerService
             : new ZeroFileState("absent", "0-ENGINE NOT FOUND");
 
         var schedulerText = "-";
-        var schedulerPresent = zeroPresent && File.Exists(paths.ZeroScheduler);
-        var schedulerIntegrated = zeroPresent && zeroEngine.IsSchedulerIntegrated(paths.ZeroInit);
-        var schedulerState = schedulerPresent
-            ? zeroEngine.GetSchedulerState(paths)
-            : new ZeroFileState("absent", "ABSENT");
+        var namespaced = initState.Kind == "namespaced";
+        var schedulerPresent = zeroPresent &&
+            (File.Exists(paths.ZeroScheduler) ||
+             (namespaced && File.Exists(paths.ZeroNamespacedScheduler)));
+        var schedulerIntegrated = zeroPresent &&
+            (namespaced || zeroEngine.IsSchedulerIntegrated(paths.ZeroInit));
+        var schedulerState = namespaced
+            ? zeroEngine.GetNamespacedSchedulerState(paths)
+            : File.Exists(paths.ZeroScheduler)
+                ? zeroEngine.GetSchedulerState(paths)
+                : new ZeroFileState("absent", "ABSENT");
         var schedulerProfilerAware = schedulerState.Kind == "aware";
         var adaptiveProfilerSchedulerPresent =
             zeroPresent &&
@@ -86,7 +92,7 @@ public sealed class ProfilerService : IProfilerService
         {
             schedulerText = initState.Kind switch
             {
-                "integrated" => schedulerState.Text,
+                "integrated" or "namespaced" => schedulerState.Text,
                 "adaptive" or "profiler-bridge" => zeroEngine.GetAdaptiveSchedulerState(paths).Text,
                 _ => "CHECK CORE PROFILER MODE"
             };
@@ -628,6 +634,28 @@ public sealed class ProfilerService : IProfilerService
 
         var initState = zeroEngine.GetInitState(paths);
         state.ZeroEngine.Init.OriginalHash = FileSystemService.Sha256(paths.ZeroInit);
+
+        if (initState.Kind == "namespaced")
+        {
+            // This is the real Resolver scheduler, already frame-ticked from
+            // the existing 0-Engine host. No duplicate CET onUpdate, no
+            // CETProfilerScheduler.lua injection, no root Scheduler replacement.
+            // The canonical namespaced file stays installed on RESTORE.
+            var canonical = zeroEngine.GetNamespacedSchedulerState(paths);
+            if (canonical.Kind != "aware")
+                throw new InvalidOperationException(
+                    "Resolver's canonical 0-Engine/modules/G-CET/Scheduler.lua is " +
+                    "missing or lacks the native profiler hooks. Refusing to install " +
+                    "a second adaptive scheduler; repair the Resolver-generated runtime first.");
+
+            state.ZeroEngine.Mode = "namespaced";
+            state.ZeroEngine.Init.Mode = "left-untouched";
+            state.ZeroEngine.Init.InstalledHash = state.ZeroEngine.Init.OriginalHash;
+            state.ZeroEngine.Scheduler.Mode = "left-untouched";
+            state.ZeroEngine.AdaptiveScheduler.Mode = "left-untouched";
+            SaveState(paths, state);
+            return;
+        }
 
         if (initState.Kind == "integrated")
         {

@@ -1144,6 +1144,61 @@ jobs:
             throw 'Restore created an unexpected extra result archive after the real capture was already collected.'
           }
 
+          # G-CET-owned namespaced Scheduler is the single runtime. The
+          # Profiler MUST NOT inject a second adaptive scheduler, replace the
+          # canonical module, or remove the persistent root alias on restore.
+          $fixture6 = Join-Path $env:RUNNER_TEMP 'gcet-canonical-scheduler-fixture'
+          if (Test-Path $fixture6) { Remove-Item $fixture6 -Recurse -Force }
+          $plugins6 = Join-Path $fixture6 'bin\x64\plugins'
+          $mods6 = Join-Path $plugins6 'cyber_engine_tweaks\mods'
+          $zero6 = Join-Path $mods6 '0-Engine'
+          New-Item -ItemType Directory -Force (Join-Path $zero6 'modules\G-CET') | Out-Null
+          Copy-Item 'publish\payload\cyber_engine_tweaks.PROFILER.dll' (Join-Path $plugins6 'cyber_engine_tweaks.asi')
+          @'
+          local Engine = {}
+          -- G-CET namespaced scheduler compatibility v1
+          local __scheduler = require('modules/G-CET/Scheduler')
+          Engine.__gcetScheduleDriver = function(ctx)
+              return __scheduler.Update(ctx)
+          end
+          return Engine
+          '@ | Set-Content -LiteralPath (Join-Path $zero6 'init.lua') -Encoding utf8
+          @'
+          -- G-CET canonical scheduler alias v1
+          return require('modules/G-CET/Scheduler')
+          '@ | Set-Content -LiteralPath (Join-Path $zero6 'modules\Scheduler.lua') -Encoding utf8
+          Copy-Item 'publish\payload\0-Engine\modules\Scheduler.lua' (Join-Path $zero6 'modules\G-CET\Scheduler.lua')
+          $namespacedHash = (Get-FileHash (Join-Path $zero6 'modules\G-CET\Scheduler.lua') -Algorithm SHA256).Hash
+          $rootAliasHash = (Get-FileHash (Join-Path $zero6 'modules\Scheduler.lua') -Algorithm SHA256).Hash
+          $rootInitHash = (Get-FileHash (Join-Path $zero6 'init.lua') -Algorithm SHA256).Hash
+          $namespacedBefore = (& $exe --status --game $fixture6 --json | ConvertFrom-Json)
+          if ($namespacedBefore.zeroEngineInitKind -ne 'namespaced' -or
+              !$namespacedBefore.schedulerProfilerAware -or
+              !$namespacedBefore.schedulerIntegrated) {
+            throw 'Canonical namespaced scheduler was not identified before install.'
+          }
+          $namespacedInstall = (& $exe --install --game $fixture6 --json | ConvertFrom-Json)
+          if ($namespacedInstall.managedMode -ne 'namespaced') {
+            throw "Profiler launched a second scheduler instead of adopting the canonical one: $($namespacedInstall.managedMode)"
+          }
+          if (Test-Path -LiteralPath (Join-Path $zero6 'modules\CETProfilerScheduler.lua')) {
+            throw 'Canonical profiler installation created a duplicate adaptive scheduler.'
+          }
+          if ((Get-FileHash (Join-Path $zero6 'init.lua') -Algorithm SHA256).Hash -ne $rootInitHash -or
+              (Get-FileHash (Join-Path $zero6 'modules\Scheduler.lua') -Algorithm SHA256).Hash -ne $rootAliasHash -or
+              (Get-FileHash (Join-Path $zero6 'modules\G-CET\Scheduler.lua') -Algorithm SHA256).Hash -ne $namespacedHash) {
+            throw 'Canonical profiler install mutated the Resolver-owned scheduler runtime.'
+          }
+          & $exe --restore --game $fixture6 --json | Out-Null
+          if ((Get-FileHash (Join-Path $zero6 'init.lua') -Algorithm SHA256).Hash -ne $rootInitHash -or
+              (Get-FileHash (Join-Path $zero6 'modules\Scheduler.lua') -Algorithm SHA256).Hash -ne $rootAliasHash -or
+              (Get-FileHash (Join-Path $zero6 'modules\G-CET\Scheduler.lua') -Algorithm SHA256).Hash -ne $namespacedHash) {
+            throw 'Profiler restore removed or rewrote the permanent Resolver scheduler.'
+          }
+          if (Test-Path -LiteralPath (Join-Path $zero6 'modules\CETProfilerScheduler.lua')) {
+            throw 'Profiler restore left an unnecessary adaptive scheduler behind.'
+          }
+
           # Smoke tests use the package-local RESULTS path; do not ship their fixtures.
           Remove-Item publish\RESULTS -Recurse -Force
           New-Item -ItemType Directory -Force publish\RESULTS | Out-Null

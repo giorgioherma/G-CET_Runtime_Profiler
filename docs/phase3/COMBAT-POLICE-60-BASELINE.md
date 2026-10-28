@@ -26,6 +26,10 @@ Before F10: load the save and let startup, streaming and mod initialization sett
 
 **Capture title convention:** `COMBAT-POLICE-60` (or `COMBAT-POLICE-60_<run label>` where the Profiler title allows it). Keep the original raw CSVs, `CET_Summary.json`, `CET_Resolver_Input.json`, full Profiler capture archive, the exact deployed Resolver pass report and CapFrameX capture if available. The user's first *actual* valid capture becomes the measured reference; do not manufacture measured numbers from this protocol.
 
+## Scheduler runtime version gate
+
+For a new baseline, Resolver must have staged **both** `0-Engine/modules/G-CET/Scheduler.lua` (canonical implementation) and root `0-Engine/modules/Scheduler.lua` (thin permanent alias returning that same module). Profiler installation must detect **namespaced** integration; it must **not** deploy an independent `CETProfilerScheduler.lua` on this optimized stack. Both Resolver files remain after normal or emergency Profiler restore. Pre-fix captures had 23 registered jobs and 0 recorded executions; **do not classify them as valid per-job allocation baselines**. Confirm post-fix data shows actual per-job calls for runnable scheduler jobs before interpreting ops/s or bytes/s. Legacy non-Resolver stacks still have a different reversible Profiler integration path.
+
 ## What to compare
 
 - **Positive LuaJIT allocation operations/s and bytes/s**, GC pressure/phases and major allocation producers.

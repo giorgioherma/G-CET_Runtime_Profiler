@@ -9,6 +9,7 @@ internal sealed class ProfilerPaths
     public required string ZeroRoot { get; init; }
     public required string ZeroInit { get; init; }
     public required string ZeroScheduler { get; init; }
+    public required string ZeroNamespacedScheduler { get; init; }
     public required string ZeroAdaptiveScheduler { get; init; }
     public required string Controls { get; init; }
     public required string CaptureTitle { get; init; }
@@ -42,6 +43,7 @@ internal sealed class ProfilerPaths
             ZeroRoot = zeroRoot,
             ZeroInit = Path.Combine(zeroRoot, "init.lua"),
             ZeroScheduler = Path.Combine(zeroRoot, "modules", "Scheduler.lua"),
+            ZeroNamespacedScheduler = Path.Combine(zeroRoot, "modules", "G-CET", "Scheduler.lua"),
             ZeroAdaptiveScheduler = Path.Combine(zeroRoot, "modules", "CETProfilerScheduler.lua"),
             Controls = Path.Combine(mods, "CETProfilerControls"),
             CaptureTitle = Path.Combine(mods, "CETProfilerControls", "CaptureTitle.txt"),

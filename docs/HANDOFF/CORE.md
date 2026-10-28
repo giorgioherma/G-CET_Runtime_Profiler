@@ -13,6 +13,10 @@
 
 **User-selected Phase 3 baseline protocol:** [COMBAT-POLICE-60](../phase3/COMBAT-POLICE-60-BASELINE.md). One **60-second sustained police fight at the user's apartment area**, start with F10 (default for the new CET binding `CETProfiler_Police60`) for automatic native-clock stop/export at 60 seconds; CapFrameX also uses F10/60 s/0 delay; **F11 remains independent, unrestricted manual capture**, same saved game, exact starting position, equipment, wanted level and stack across comparisons. The earlier 4-minute idle/driving/combat idea was superseded for *per-job allocation comparisons*, which currently aggregate the whole capture. **Protocol is agreed; a valid reference capture and exact save/location details are not yet documented.** Read the linked protocol in every new chat before asking for a stress test or comparing new Phase 3 captures. Do not confuse this gameplay benchmark with the fixed private-source Resolver CI capture.
 
+## Canonical scheduler / restore invariant
+
+**2026-10-28 user decision:** The one authoritative Resolver scheduler lives at `0-Engine/modules/G-CET/Scheduler.lua`. Generated root `modules/Scheduler.lua` is only a persistent **alias** to that same cached module, never a second independently initialized implementation. When that source-proven host is installed, Profiler must **measure that instance** and skip its legacy temporary adaptive `CETProfilerScheduler.lua` injection. **Restore must not remove or overwrite either Resolver-owned scheduler file.** Preserve fallback legacy Profiler behavior for stacks without the namespaced integration; fail closed when a recognized namespaced runtime is incomplete. Details/validation in [Phase 3 blueprint](../phase3/INSTRUMENTATION-BLUEPRINT.md).
+
 ## Phase 3 allocation control — successor to Phase 2 DORMANCY EXTENDED
 
 The [Phase 3 instrumentation blueprint](../phase3/INSTRUMENTATION-BLUEPRINT.md) documents the new experimental source-only native per-job allocation and 0-Engine scheduler-envelope data path, validation gates, and deferred wake ledger. It is not a deployed native DLL or a mod dormancy decision. Preserve stable native pin and original-capture gameplay.

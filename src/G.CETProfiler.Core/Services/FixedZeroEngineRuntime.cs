@@ -61,9 +61,10 @@ internal static class FixedZeroEngineRuntime
     private const string HostActionRouterModule =
         "modules/G-CET/ActionRouter.lua";
 
-    // Root-named Scheduler/ActionRouter payloads are only source templates.
-    // Deploy these Resolver-owned services under modules/G-CET, preserving
-    // any future upstream modules with the same root names.
+    // G-CET Scheduler is canonical under modules/G-CET. Emit a root alias
+    // pointing at the SAME Lua module instance, rather than an independent
+    // root Scheduler implementation. The root alias is Resolver-owned and
+    // persists after Profiler restore. ActionRouter stays namespaced.
     private static readonly string[] FixedModules =
     [
         "modules/ActionRouter.lua",
@@ -421,6 +422,17 @@ end)
                     "Existing namespaced Scheduler is missing " + method);
         files["0-Engine/" + HostActionRouterModule] = router;
         files["0-Engine/" + schedulePath] = scheduler;
+
+        // Root module resolves to the canonical namespaced scheduler. Never
+        // deploy two copies of scheduler implementation: Lua require() caches
+        // modules/G-CET/Scheduler, and this alias returns that one object.
+        // This is generated from original input by Resolver (not a temporary
+        // profiler patch) and must remain installed after RESTORE.
+        const string rootSchedulerAlias =
+            "-- G-CET canonical scheduler alias v1\n" +
+            "return require('modules/G-CET/Scheduler')\n";
+        files["0-Engine/modules/Scheduler.lua"] =
+            Encoding.UTF8.GetBytes(rootSchedulerAlias);
     }
 
     // Version-fluid migration of G-CET's legacy root imports. Require both

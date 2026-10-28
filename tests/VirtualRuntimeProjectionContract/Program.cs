@@ -71,12 +71,20 @@ return Engine
     Check(files.ContainsKey("0-Engine/modules/G-CET/ActionRouter.lua"),
         "Bundled namespaced ActionRouter dependency missing");
 
-    foreach (var rootName in new[] {
-        "0-Engine/modules/Scheduler.lua",
-        "0-Engine/modules/ActionRouter.lua"
-    })
-        Check(!files.ContainsKey(rootName),
-            "Resolver overlay must not ship upstream module path: " + rootName);
+    // The Resolver now owns a root compatibility alias, not a second
+    // Scheduler implementation. Root imports return the same cached module
+    // instance as G-CET imports; the persistent alias survives Profiler restore.
+    Check(files.ContainsKey("0-Engine/modules/Scheduler.lua"),
+        "Persistent root scheduler compatibility alias missing");
+    var rootScheduler = Encoding.UTF8.GetString(
+        files["0-Engine/modules/Scheduler.lua"]);
+    Check(rootScheduler.Trim().EndsWith(
+            "return require('modules/G-CET/Scheduler')", StringComparison.Ordinal) &&
+          !rootScheduler.Contains("function Scheduler.Update", StringComparison.Ordinal) &&
+          !rootScheduler.Contains("registerForEvent", StringComparison.Ordinal),
+        "Root Scheduler must delegate to namespaced module, not dispatch twice");
+    Check(!files.ContainsKey("0-Engine/modules/ActionRouter.lua"),
+        "Resolver overlay must not overwrite upstream root ActionRouter");
     var namespacedScheduler = Encoding.UTF8.GetString(
         files["0-Engine/modules/G-CET/Scheduler.lua"]);
     foreach (var instrumentation in new[] {
