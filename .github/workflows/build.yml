@@ -183,9 +183,19 @@ jobs:
           }
           $checks = @(
             @{ Path = 'payload\cyber_engine_tweaks.PROFILER.dll'; Expected = [string]$manifest.targetCET.profilerSha256 },
-            @{ Path = 'payload\0-Engine\modules\Scheduler.lua'; Expected = [string]$manifest.zeroEngine.profilerSchedulerSha256 },
-            @{ Path = 'payload\0-Engine\modules\CETProfilerScheduler.lua'; Expected = [string]$manifest.zeroEngine.profilerAdaptiveSchedulerSha256 }
+            @{ Path = 'payload\0-Engine\modules\G-CET\Scheduler.lua'; Expected = [string]$manifest.zeroEngine.profilerSchedulerSha256 }
           )
+          if ([string]$manifest.zeroEngine.profilerSchedulerFile -ne 'modules/G-CET/Scheduler.lua') {
+            throw 'Manifest must point to the canonical namespaced Profiler scheduler payload.'
+          }
+          foreach ($deprecated in @(
+            'payload\0-Engine\modules\Scheduler.lua',
+            'payload\0-Engine\modules\CETProfilerScheduler.lua'
+          )) {
+            if (Test-Path -LiteralPath $deprecated -PathType Leaf) {
+              throw "Duplicate root-level Profiler scheduler payload must not ship: $deprecated"
+            }
+          }
           foreach ($check in $checks) {
             $actual = (Get-FileHash -LiteralPath $check.Path -Algorithm SHA256).Hash.ToLowerInvariant()
             $expected = $check.Expected.ToLowerInvariant()
@@ -1167,7 +1177,7 @@ jobs:
           -- G-CET canonical scheduler alias v1
           return require('modules/G-CET/Scheduler')
           '@ | Set-Content -LiteralPath (Join-Path $zero6 'modules\Scheduler.lua') -Encoding utf8
-          Copy-Item 'publish\payload\0-Engine\modules\Scheduler.lua' (Join-Path $zero6 'modules\G-CET\Scheduler.lua')
+          Copy-Item 'publish\payload\0-Engine\modules\G-CET\Scheduler.lua' (Join-Path $zero6 'modules\G-CET\Scheduler.lua')
           $namespacedHash = (Get-FileHash (Join-Path $zero6 'modules\G-CET\Scheduler.lua') -Algorithm SHA256).Hash
           $rootAliasHash = (Get-FileHash (Join-Path $zero6 'modules\Scheduler.lua') -Algorithm SHA256).Hash
           $rootInitHash = (Get-FileHash (Join-Path $zero6 'init.lua') -Algorithm SHA256).Hash

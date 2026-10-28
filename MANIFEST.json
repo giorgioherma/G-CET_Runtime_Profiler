@@ -9,12 +9,12 @@
     "profilerInstallFile": "cyber_engine_tweaks.asi"
   },
   "zeroEngine": {
-    "policy": "unverified-by-default; preserve existing integrated Scheduler; adaptively inject into recognized user init.lua; optional core-profiler fallback leaves 0-Engine completely untouched",
+    "policy": "recognize and preserve the active Resolver namespaced Scheduler; other supported 0-Engine forms retain reversible integrated/adaptive capture integration; core-only mode leaves 0-Engine untouched",
     "profilerBridgeMarker": "CET_RUNTIME_PROFILER_ADAPTIVE_SCHEDULER_BEGIN v2",
+    "profilerSchedulerFile": "modules/G-CET/Scheduler.lua",
     "profilerSchedulerSha256": "4030ef6d8fa743f7a4accf00406c2110f70162261232b564469d3eaa0b7c78cb",
     "profilerSchedulerVersion": "0.3.1 profiler-aware",
-    "profilerAdaptiveSchedulerSha256": "4030ef6d8fa743f7a4accf00406c2110f70162261232b564469d3eaa0b7c78cb",
-    "profilerAdaptiveSchedulerFile": "modules/CETProfilerScheduler.lua"
+    "legacyAdaptiveInstallFile": "modules/CETProfilerScheduler.lua"
   },
   "liveResultFiles": [
     "CET_Runtime_Profile_ByMod.csv",
@@ -79,8 +79,9 @@
     "0-Engine core-only mode is presented as a fallback only when safe Scheduler integration is unavailable or fails",
     "Core profiler fallback leaves the user's 0-Engine folder and Scheduler completely untouched and loaded normally",
     "recognized unintegrated/custom 0-Engine versions are patched transactionally using their own init.lua",
-    "adaptive mode uses unique modules/CETProfilerScheduler.lua to avoid colliding with 0-Engine Scheduler.lua",
-    "existing PASS/Scheduler-integrated 0-Engine keeps the proven Scheduler.lua swap path",
+    "one canonical payload/0-Engine/modules/G-CET/Scheduler.lua is hash verified; no root Scheduler.lua or CETProfilerScheduler.lua duplicate is packaged",
+    "adaptive mode transactionally installs that source as unique modules/CETProfilerScheduler.lua to avoid colliding with 0-Engine Scheduler.lua",
+    "legacy root Scheduler-integrated 0-Engine retains transactional Scheduler.lua swap-and-restore from canonical packaged source; G-CET namespaced runtime needs no scheduler patch",
     "CETProfilerControls remains temporary profiler-owned UI and is removed on restore"
   ],
   "liveResultPatterns": [

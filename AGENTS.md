@@ -4,6 +4,8 @@
 
 Before changing generators, read `docs/HANDOFF/CORE.md`, `docs/resolver/PROJECT-CONTRACT.md`, `docs/LATEST-WORK.md` and the relevant per-mod/source documentation. Follow the active task and user-approved architecture.
 
+**Profiler payload scheduler:** ship ONE canonical source at `payload/0-Engine/modules/G-CET/Scheduler.lua`. Do not ship `payload/0-Engine/modules/Scheduler.lua` or a duplicate `payload/0-Engine/modules/CETProfilerScheduler.lua`. The legacy integrated/adaptive installer reuses the same hash-verified source for reversible deployments; it does not add another source file. This asset-layout change does **not** remove the Resolver's temporary generated root alias for recognized fixed G-CET runtimes, or touch unknown author-owned root schedulers.
+
 **Mandatory Phase 3 gameplay benchmark — `COMBAT-POLICE-60`:** Read [the user-approved reproducible benchmark protocol](docs/phase3/COMBAT-POLICE-60-BASELINE.md) before planning captures, evaluating allocation/GC changes or comparing optimized stacks. It is **one 60-second sustained apartment-area police combat capture** (F10 default for one-key `CETProfiler_Police60` auto-stop at native 60s, shared with CapFrameX F10/60 s; **F11 remains manual and unlimited**; same save/position/gear/wanted level/stack/settings), not a mixed idle/driving/combat profile. New per-job allocations are whole-capture aggregates. Exact apartment/save details and a **valid per-job scheduler baseline** are pending: first captured 60.946s ZIP contained 1,928 scheduler frames and 23 registered jobs but ZERO job executions/allocations. Treat this as unverified coverage, not savings; do not invent results or substitute a generic 90-second test.
 
 ## Canonical 0-Engine scheduler ownership — mandatory

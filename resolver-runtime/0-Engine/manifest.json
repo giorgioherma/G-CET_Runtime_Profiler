@@ -59,7 +59,7 @@
       "modules/G-CET/Scheduler.lua",
       "modules/G-CET/ActionRouter.lua"
     ],
-    "upstreamModulePolicy": "Never stage root modules/Scheduler.lua or modules/ActionRouter.lua. The bundled source templates are deployed exclusively under modules/G-CET; preserve foreign/upstream root modules."
+    "upstreamModulePolicy": "The known fixed G-CET runtime may generate a temporary root modules/Scheduler.lua alias returning modules/G-CET/Scheduler; it must never generate a second scheduler implementation. Foreign/unknown 0-Engine hosts retain their original root Scheduler.lua. The root ActionRouter remains reserved to its original author."
   },
   "hostCompatibility": {
     "version": "HOST-COMPAT-v1",
@@ -92,6 +92,6 @@
       "structurally-compatible-final-export",
       "profiler-managed-original-of-any-state-above"
     ],
-    "namespaceOwner": "G-CET; Profiler modules/CETProfilerScheduler.lua is a temporary install/restore tool and not part of Resolver payload"
+    "namespaceOwner": "G-CET; Profiler packages a single modules/G-CET/Scheduler.lua source. Legacy temporary CETProfilerScheduler.lua is deployed only during Profiler install and removed on restore, never part of Resolver payload."
   }
 }

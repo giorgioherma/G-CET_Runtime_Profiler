@@ -46,7 +46,4 @@ public sealed class ZeroEngineManifest
 
     [JsonPropertyName("profilerSchedulerSha256")]
     public string ProfilerSchedulerSha256 { get; set; } = "";
-
-    [JsonPropertyName("profilerAdaptiveSchedulerSha256")]
-    public string ProfilerAdaptiveSchedulerSha256 { get; set; } = "";
 }

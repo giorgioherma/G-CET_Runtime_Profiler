@@ -8,11 +8,19 @@ $ErrorActionPreference = 'Stop'
 $PublishedRoot = (Resolve-Path $PublishedRoot).Path
 $exe = Join-Path $PublishedRoot 'G-CET-Runtime-Profiler.exe'
 $profilerPayload = Join-Path $PublishedRoot 'payload\cyber_engine_tweaks.PROFILER.dll'
-$awareScheduler = Join-Path $PublishedRoot 'payload\0-Engine\modules\Scheduler.lua'
+$awareScheduler = Join-Path $PublishedRoot 'payload\0-Engine\modules\G-CET\Scheduler.lua'
 
 if (!(Test-Path -LiteralPath $exe -PathType Leaf)) { throw "Profiler executable not found: $exe" }
 if (!(Test-Path -LiteralPath $profilerPayload -PathType Leaf)) { throw "Profiler payload not found: $profilerPayload" }
 if (!(Test-Path -LiteralPath $awareScheduler -PathType Leaf)) { throw "Profiler-aware Scheduler payload not found: $awareScheduler" }
+foreach ($retiredPayload in @(
+    'payload\0-Engine\modules\Scheduler.lua',
+    'payload\0-Engine\modules\CETProfilerScheduler.lua'
+)) {
+    if (Test-Path -LiteralPath (Join-Path $PublishedRoot $retiredPayload) -PathType Leaf) {
+        throw "Duplicate root-level Scheduler payload still packaged: $retiredPayload"
+    }
+}
 
 function New-ResolverFixture([string]$Name, [bool]$WithZeroEngine = $true) {
     $root = Join-Path $env:RUNNER_TEMP $Name
