@@ -96,4 +96,23 @@ New-Item -ItemType Directory -Force (Join-Path $folder 'GCET_Semantic')|Out-Null
 [IO.File]::WriteAllText((Join-Path $folder 'GCET_Semantic/rica_engine_worker.lua'),$w,[Text.UTF8Encoding]::new($false))
 $again=Apply $b
 if($again.result.Applied){throw 'RICA worker injected twice'}
+# The pristine RICA source generator retains quarter-second reward handling
+# when native pending hints are set. Empty ticks may skip costly entity
+# resolution, but every fourth tick MUST run a full author-equivalent poll.
+$primarySource = Get-Content -LiteralPath 'src/G.CETProfiler.Core/Services/ModPasses/RepeatableIncreasedCriminalActivity.cs' -Raw
+foreach ($required in @(
+    'G-CET original-1Hz-safe RICA reward idle prefilter v1',
+    'GetPendingBodyRewardSiteID(), system:GetPendingRewardSerial()',
+    'if ricaRewardIdleChecks < 4 then return end',
+    'processBodyRewards(system, 4)',
+    'processCompletionRewards(system, 1)'
+)) {
+    if (!$primarySource.Contains($required)) {
+        throw "RICA pristine owner lost 1Hz reward fail-open guarantee: $required"
+    }
+}
+if (!$primarySource.Contains('type(completionSerial) == \"number\"') -or
+    !$primarySource.Contains('local ok, bodySite, completionSerial = pcall(function()')) {
+    throw 'RICA native reward pending-hint guard must fail open on invalid native responses'
+}
 Write-Host 'RICA six-job worker and idempotent bridge: PASS'

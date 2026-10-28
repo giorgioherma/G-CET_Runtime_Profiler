@@ -11,7 +11,7 @@
 
 ## Current experimental RC source optimization
 
-User authorized reviewing RC and RICA high-pressure Phase 3 scheduler jobs. The primary RC pristine-source semantic now gates **actual 17-site Lua sweeps** by compiled native far/near evidence, replay-count transitions, pending rewards and 30s safety audits; retains native state ticking, original fallback and paired phase ordering. Paused frame workers resume when needed. The RICA native scheduler/reward path is untouched pending wake proof. Refer to [Phase 3 baseline](../phase3/COMBAT-POLICE-60-BASELINE.md), [blueprint](../phase3/INSTRUMENTATION-BLUEPRINT.md) and [LATEST-WORK](../LATEST-WORK.md) for profiling evidence and required real gameplay validation.
+User authorized reviewing RC and RICA high-pressure Phase 3 scheduler jobs. The primary RC pristine-source semantic now gates **actual 17-site Lua sweeps** by compiled native far/near evidence, replay-count transitions, pending rewards and 30s safety audits; retains native state ticking, original fallback and paired phase ordering. Paused frame workers resume when needed. The RICA native scheduler and recurring state checks remain untouched; its primary pristine reward generator now uses a fail-open pending-hint empty fast path with full original-author 1Hz auditing (pending/unknown status retains 0.25s processing). Refer to [Phase 3 baseline](../phase3/COMBAT-POLICE-60-BASELINE.md), [blueprint](../phase3/INSTRUMENTATION-BLUEPRINT.md) and [LATEST-WORK](../LATEST-WORK.md) for profiling evidence and required real gameplay validation.
 
 ## Standard gameplay stress benchmark — COMBAT-POLICE-60
 

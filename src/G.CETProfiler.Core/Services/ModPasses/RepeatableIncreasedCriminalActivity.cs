@@ -81,9 +81,22 @@ internal static partial class SemanticInjectors
             "    Diagnostics.snapshot(system, Sites, Mod.settings, Mappins)\n" +
             "end\n",
             "end\n\n" +
+            "-- G-CET original-1Hz-safe RICA reward idle prefilter v1\n" +
+            "local ricaRewardIdleChecks = 0\n" +
             "local function rewardTick()\n" +
             "    local system = Bridge.system()\n" +
             "    if not system or not Game.GetPlayer() then return end\n" +
+            "    local ok, bodySite, completionSerial = pcall(function()\n" +
+            "        return system:GetPendingBodyRewardSiteID(), system:GetPendingRewardSerial()\n" +
+            "    end)\n" +
+            "    if ok and (bodySite == nil or bodySite == \"\")\n" +
+            "        and type(completionSerial) == \"number\" and completionSerial <= 0 then\n" +
+            "        ricaRewardIdleChecks = ricaRewardIdleChecks + 1\n" +
+            "        -- Author fallback remains a complete 1Hz poll. Native status\n" +
+            "        -- getters are hints only: a missed signal cannot suppress rewards.\n" +
+            "        if ricaRewardIdleChecks < 4 then return end\n" +
+            "    end\n" +
+            "    ricaRewardIdleChecks = 0\n" +
             "    processBodyRewards(system, 4)\n" +
             "    processCompletionRewards(system, 1)\n" +
             "end\n\n" +

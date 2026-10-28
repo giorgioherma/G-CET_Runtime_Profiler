@@ -10,7 +10,7 @@
 
 The primary pristine-source rule for `repeatable_cyberpsychos` now reuses already generated compiled native boss-site far/near notifications. All 17 sites explicitly far => pause the two alternating frame-job handles between sweeps, keep cheap native 1Hz RuntimeTick and scheduler semantics, and run a full Lua safety sweep every 30s. Near/pending reward or global replay-count transition wakes the normal 17-site worker. Presentation replaces pointless 5s distant full walks with aggregate-count fingerprint and a 30s fallback. Missing native location evidence or invalid scheduler pause handles keeps the old behavior. RC is *not* fully event-only; this is bounded work reduction preserving lifecycle.
 
-RICA remains unchanged until reliable body/completion reward/cooldown wake is proven. Its 167ms state job is a single outlier, not proof of a 167ms periodic tick. New runtime tests and A/B captures are required before claiming savings.
+RICA's authoritative pristine generator now implements only a *fail-open empty-reward prefilter* inside the existing 0.25s lane: native pending body-site plus pending completion-serial must both report empty; even then run the complete reward path once per second (original author frequency). Pending/unknown responses use full quarter-second handling. Its native `system:Tick` and Lua state/mappin jobs are deliberately unchanged; true reward-event dormancy still requires separate wake proof. Its 167ms state job is a single outlier, not proof of a 167ms periodic tick. New runtime tests and A/B captures are required before claiming savings.
 
 ## Single canonical Profiler scheduler asset
 
