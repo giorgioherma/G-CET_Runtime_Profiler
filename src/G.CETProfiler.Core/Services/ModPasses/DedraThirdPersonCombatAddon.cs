@@ -246,35 +246,16 @@ internal static partial class SemanticInjectors
                 "  local registrationPath, registrationReason = \"not-attempted\", \"not-attempted\"\n";
             var legacyDiagnostics=PriorDiagnosticsMethod
                 .Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
-            var oldCanonicalBody=canonicalBody
-                .Replace(enrichedState,"  local pausable = false\n",StringComparison.Ordinal)
-                .Replace(currentReg,PriorRegisterMethod.Replace("\r\n","\n",StringComparison.Ordinal),StringComparison.Ordinal)
-                .Replace(normalizedDiagnostics,legacyDiagnostics,StringComparison.Ordinal);
-            if(oldCanonicalBody==canonicalBody ||
-               oldCanonicalBody.Contains("registrationReason",StringComparison.Ordinal))
-                throw new InvalidOperationException("Dedra prior generated registration shape failed proof.");
-            var oldCanonicalWorker=coordinatorHeader+oldCanonicalBody;
-            var oldUndiagnosed=oldCanonicalBody.Replace(legacyDiagnostics,"",StringComparison.Ordinal);
-            var oldPreviousWorker=coordinatorHeader+oldUndiagnosed;
-            var oldPreCapabilityWorker=coordinatorHeader+
-                oldUndiagnosed.Replace(readinessProbe,"",StringComparison.Ordinal);
-            var oldLegacyWorker=coordinatorHeader+oldUndiagnosed
-                .Replace(readinessProbe,"",StringComparison.Ordinal)
-                .Replace("  local baseBridgeConfirmed = false\n","",StringComparison.Ordinal)
-                .Replace("    if not baseBridgeConfirmed or not linked or not api then",
-                    "    if not linked or not api or api.__gcetDedraWakeBridgeV2 ~= true then",
-                    StringComparison.Ordinal)
-                .Replace("      type(base.perspective.get) ~= \"function\" then",
-                    "      type(base.perspective.get) ~= \"function\" or\n" +
-                    "      base.__gcetDedraWakeBridgeV2 ~= true then",
-                    StringComparison.Ordinal)
-                .Replace("  function M.Signal(proof)\n" +
-                    "    if proof == \"__gcetItpToggleWakeV2\" then baseBridgeConfirmed = true end",
-                    "  function M.Signal()",StringComparison.Ordinal);
             var priorFullDiagnosticBody=preIdleWorkerBody
                 .Replace(enrichedState,"  local pausable = false\n",StringComparison.Ordinal)
                 .Replace(currentReg,PriorRegisterMethod.Replace("\r\n","\n",StringComparison.Ordinal),StringComparison.Ordinal)
                 .Replace(normalizedDiagnostics,legacyDiagnostics,StringComparison.Ordinal);
+            if(priorFullDiagnosticBody==preIdleWorkerBody ||
+               priorFullDiagnosticBody.Contains("registrationReason",StringComparison.Ordinal) ||
+               !preIdleWorkerBody.Contains(enrichedState,StringComparison.Ordinal) ||
+               !preIdleWorkerBody.Contains(currentReg,StringComparison.Ordinal) ||
+               !preIdleWorkerBody.Contains(normalizedDiagnostics,StringComparison.Ordinal))
+                throw new InvalidOperationException("Dedra prior generated registration shape failed proof.");
             var priorFullDiagnosticWorker=coordinatorHeader+priorFullDiagnosticBody;
             var priorUndiagnosedBody=priorFullDiagnosticBody.Replace(legacyDiagnostics,"",StringComparison.Ordinal);
             var priorPreviousWorker=coordinatorHeader+priorUndiagnosedBody;
@@ -295,10 +276,6 @@ internal static partial class SemanticInjectors
                     "  function M.Signal()",StringComparison.Ordinal);
             if(owned is not null && existingWorker!=legacyWorker &&
                existingWorker!=previousWorker && existingWorker!=preCapabilityWorker &&
-               existingWorker!=oldCanonicalWorker &&
-               existingWorker!=oldPreviousWorker &&
-               existingWorker!=oldPreCapabilityWorker &&
-               existingWorker!=oldLegacyWorker &&
                existingWorker!=preIdleWorker &&
                existingWorker!=priorFullDiagnosticWorker &&
                existingWorker!=priorPreviousWorker &&
