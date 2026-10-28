@@ -4,6 +4,8 @@
 
 Before changing generators, read `docs/HANDOFF/CORE.md`, `docs/resolver/PROJECT-CONTRACT.md`, `docs/LATEST-WORK.md` and the relevant per-mod/source documentation. Follow the active task and user-approved architecture.
 
+**Mandatory Phase 3 gameplay benchmark — `COMBAT-POLICE-60`:** Read [the user-approved reproducible benchmark protocol](docs/phase3/COMBAT-POLICE-60-BASELINE.md) before planning captures, evaluating allocation/GC changes or comparing optimized stacks. It is **one 60-second sustained apartment-area police combat capture** (F11 start/stop, same save/position/gear/wanted level/stack/settings), not a mixed idle/driving/combat profile. New per-job allocations are whole-capture aggregates. Exact apartment/save and first measured reference are still pending; do not invent results or replace the protocol with a 90-second generic test.
+
 ## PHASE 3 ALLOCATION CONTROLL — required successor to Phase 2 DORMANCY EXTENDED
 
 **Current instrumentation implementation:** first read [Phase 3 instrumentation blueprint and checkpoint](docs/phase3/INSTRUMENTATION-BLUEPRINT.md). Experimental native scheduler allocation scopes and managed reports are source-only until validated: preserve pinned stable v2.15 DLL, all existing metrics, capture/restore and explicit human dormancy decisions. Do not treat Scheduler.Update residual as proven intrinsic 0-Engine allocations or sum it with nested mod/GGC data.

@@ -1,6 +1,10 @@
 # PHASE 3 ALLOCATION CONTROLL — instrumentation blueprint and execution ledger
 
-**2026-10-28.** Successor to Phase 2 **DORMANCY EXTENDED**. Active branch `dev/resolver-profiler-handoff`. Source research and one native/managed instrumentation slice are implemented in this branch; **the native code is experimental and not yet built, pinned or proven in-game**. No mod wake or gameplay optimization is authorized by telemetry alone. The user makes the human decision whether a mod can safely sleep.
+**2026-10-28.** Successor to Phase 2 **DORMANCY EXTENDED**. Active branch `dev/resolver-profiler-handoff`. First instrumentation slice source commit `7259194`; **managed CI #2134 and experimental native rebuild #94 passed**, but native game/runtime measurement and installed binary identity have not been independently validated here. No mod wake or gameplay optimization is authorized by telemetry alone. The user makes the human decision whether a mod can safely sleep.
+
+## User-approved reproducible gameplay stress baseline
+
+**`COMBAT-POLICE-60`** is the canonical Phase 3 stress benchmark: one **60-second sustained police fight at the user's apartment area**, F11 start and F11 stop/export, same save, start position, wanted level, loadout, mod stack, settings and FPS cap. It replaces the proposed four-minute mixed idle/drive/combat test **for aggregate per-job allocation comparison**. The first real capture is pending; exact apartment/save details are not established. Read [the complete benchmark protocol](COMBAT-POLICE-60-BASELINE.md) before requesting a capture, interpreting it, or planning A/B optimization tests. No obligation to split into three separate profiles.
 
 ## Work backwards from decisions
 
@@ -58,4 +62,4 @@ Use existing native pre-Lua marshalling evidence first. If it still cannot disti
 - Added native scope/counter source and additional CSV fields; added native scheduler frame-envelope CSV.
 - Added managed report reader for the new fields and HTML/Summary/Resolver JSON output.
 - Added synthetic contract for nested inclusive/exclusive, frame accounting drift, and legacy missing telemetry.
-- **Pending:** validation of branch CI, experimental native rebuild and game boot, true 0-Engine source-phase ownership, wake transition ledger, real capture A/B. No mod optimization or product release claimed.
+- **Completed:** managed CI #2134 (6/6) and experimental native rebuild #94. **Pending:** game boot/capture/restore validation with the actual live binary, first `COMBAT-POLICE-60` capture, true 0-Engine source-phase ownership and wake transition ledger. No mod optimization or product release claimed.

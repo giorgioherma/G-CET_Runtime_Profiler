@@ -9,6 +9,10 @@
 - **Resolver:** a separate portable app that reads captured evidence plus the user's **current original/live CET mod files read-only**. Generates composable safe generic then source-proven semantic optimization overlays; does not silently edit live mods.
 - One Profiler, one Resolver. The internal Resolver decision-layer codename stays **internal** and must not appear in player-facing UI, reports, releases or installer text.
 
+## Standard gameplay stress benchmark — COMBAT-POLICE-60
+
+**User-selected Phase 3 baseline protocol:** [COMBAT-POLICE-60](../phase3/COMBAT-POLICE-60-BASELINE.md). One **60-second sustained police fight at the user's apartment area**, start/stop with F11, same saved game, exact starting position, equipment, wanted level and stack across comparisons. The earlier 4-minute idle/driving/combat idea was superseded for *per-job allocation comparisons*, which currently aggregate the whole capture. **Protocol is agreed; a valid reference capture and exact save/location details are not yet documented.** Read the linked protocol in every new chat before asking for a stress test or comparing new Phase 3 captures. Do not confuse this gameplay benchmark with the fixed private-source Resolver CI capture.
+
 ## Phase 3 allocation control — successor to Phase 2 DORMANCY EXTENDED
 
 The [Phase 3 instrumentation blueprint](../phase3/INSTRUMENTATION-BLUEPRINT.md) documents the new experimental source-only native per-job allocation and 0-Engine scheduler-envelope data path, validation gates, and deferred wake ledger. It is not a deployed native DLL or a mod dormancy decision. Preserve stable native pin and original-capture gameplay.
