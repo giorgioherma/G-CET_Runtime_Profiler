@@ -239,7 +239,8 @@ foreach($token in @('function M.Diagnostics()','FrameListeners.MakeRegistrar','h
   'baseBridgeConfirmed','base.gcetDedraWakeReady','if proof == "__gcetItpToggleWakeV2"',
   'if p.userWantsThirdPerson == true','kind,owner,notify',
   'Original game-combat','linked','registrationPath','registrationReason',
-  'no-pausable-handle:','fallbackRegister("onUpdate",update)')){
+  'no-pausable-handle:','fallbackActive','if not fallbackActive then return end',
+  'fallbackRegister("onUpdate",update)')){
   if(!$wake.Contains($token)){throw "Missing safe detached wake or fallback: $token"}
 }
 if($wake.Contains('api.__gcetDedraWakeBridgeV2') -or
