@@ -5,7 +5,8 @@ $t=$asm.GetType('GCETRuntimeProfiler.Core.Services.SemanticInjectors',$true)
 $flags=[Reflection.BindingFlags]'Static,NonPublic'
 $ifp=$t.GetMethod('ReuseImmersiveFirstPersonCameraMath',$flags)
 $itp=$t.GetMethod('ReuseImmersiveThirdPersonLiteralIds',$flags)
-if(!$ifp -or !$itp){throw 'Camera owned source generators are missing'}
+$latches=$t.GetMethod('ReuseImmersiveThirdPersonLatches',$flags)
+if(!$ifp -or !$itp -or !$latches){throw 'Camera owned source generators are missing'}
 function Rewrite($method,[string]$s){return [string]$method.Invoke($null,[object[]]@($s))}
 function Refuse($method,[string]$s,[string]$reason){
   try{$null=Rewrite $method $s}
@@ -100,4 +101,66 @@ foreach($row in @(@($ifp,$originalFp),@($itp,$originalTp))){
  $out=Rewrite $row[0] $source
  if((Rewrite $row[0] $out) -cne $out){throw 'CRLF camera variant not idempotent'}
 }
-Write-Host 'IFP camera scratch and ITP literal cache structural source contracts PASS'
+$latchOriginal=@'
+local function autoUpdateLatches(raw)
+  local autoPerspective = state.autoPerspective
+  local cfg = config.autoPerspective
+  local now = autoPerspective.clock
+  local enterDelay = { vehicle = 0, scene = 0, combat = 0, interaction = cfg.interactionEnterDelay or 0.10 }
+  local exitDelay = {
+    vehicle = cfg.vehicleExitDelay or 0.40,
+    scene = cfg.sceneExitDelay or 0.50,
+    combat = cfg.combatExitDelay or 1.25,
+    interaction = cfg.interactionExitDelay or 1.00
+  }
+  if autoPerspective.combatWeaponOnly then
+    exitDelay.combat = cfg.combatHolsterExitDelay or 0.30
+  end
+  if autoPerspective.sceneQuickExit then
+    exitDelay.scene = cfg.sceneQuickExitDelay or 0.30
+  end
+  for _, name in ipairs(mod.autoPriority) do
+    local active = raw[name]
+    if active then
+      if not autoPerspective.latched[name] and (now - autoPerspective.rawSince[name]) >= enterDelay[name] then
+        autoPerspective.latched[name] = true
+      end
+    else
+      if autoPerspective.latched[name] and (now - autoPerspective.rawClearSince[name]) >= exitDelay[name] then
+        autoPerspective.latched[name] = false
+      end
+    end
+  end
+end
+'@
+$latchOutput=Rewrite $latches $latchOriginal
+foreach($v in @('local __gcetItppLatchTablesV1 = {',
+  'local enterDelay = __gcetItppLatchTablesV1.enter',
+  'local exitDelay = __gcetItppLatchTablesV1.exit',
+  'enterDelay.interaction = cfg.interactionEnterDelay or 0.10',
+  'exitDelay.vehicle = cfg.vehicleExitDelay or 0.40',
+  'exitDelay.combat = cfg.combatExitDelay or 1.25',
+  'exitDelay.interaction = cfg.interactionExitDelay or 1.00',
+  'exitDelay.combat = cfg.combatHolsterExitDelay or 0.30',
+  'exitDelay.scene = cfg.sceneQuickExitDelay or 0.30')){
+  if(!$latchOutput.Contains($v)){throw ('TPP dynamic latch delay lost: '+$v)}
+}
+if($latchOutput.Contains('local enterDelay = { vehicle = 0') -or
+   $latchOutput.Contains('local exitDelay = {')){
+  throw 'ITP latch still creates temporary tables per sample'
+}
+if((Rewrite $latches $latchOutput) -cne $latchOutput){throw 'ITP latch source is not idempotent'}
+Refuse $latches ($latchOriginal.Replace('cfg.sceneExitDelay or 0.50','cfg.sceneExitDelay or 0.70')) 'ITP changed scene delay'
+Refuse $latches ($latchOutput.Replace('exitDelay.interaction = cfg.interactionExitDelay or 1.00',
+                                     'exitDelay.interaction = 1.00')) 'ITP no longer tracks settings'
+$crlfLatch=$latchOriginal.Replace([string][char]10,([string][char]13)+([string][char]10))
+$cachedLatch=Rewrite $latches $crlfLatch
+if((Rewrite $latches $cachedLatch) -cne $cachedLatch){throw 'ITP CRLF latch not idempotent'}
+$combined=Rewrite $latches ($originalTp + $latchOriginal)
+$combined=Rewrite $itp $combined
+if(!$combined.Contains('local __gcetItppLatchTablesV1 = {') -or
+   !$combined.Contains('local __gcetItppLiteralTweakIdsV1 = {}')){
+  throw 'ITP combined existing generator does not compose independent allocation stages'
+}
+
+Write-Host 'IFP scratch and ITP literal-ID/latch-table garbage contracts PASS'
