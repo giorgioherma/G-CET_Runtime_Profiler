@@ -48,6 +48,7 @@ internal static partial class SemanticInjectors
             "native-location-vehicle-mileage-pumps" or
             "native-location-cyberpsychos" or
             "npc-outfit-manager-radar-gc" or
+            "elm-immersiveway-idle-gc" or
             "appearance-menu-mod-preset-once" or
             "better-loot-markers-category-no-temporary-table" or
             "native-location-f80h-aroused" or
@@ -147,6 +148,7 @@ internal static partial class SemanticInjectors
             "better-loot-markers" => ApplyBetterLootMarkers(context),
             "npc-outfit-manager-idle-state" => NpcOutfitManagerSource.Apply(context),
             "npc-outfit-manager-radar-gc" => ApplyNpcOutfitRadarGc(context),
+            "elm-immersiveway-idle-gc" => ApplyElmIdleGc(context),
             "npc-outfit-manager-id-normalization" => NpcOutfitManagerSource.ApplyRecordIdNormalization(context),
             "gigcore-blackboard-once" => ApplyGigCoreBlackboardReuse(context),
             "specter-recovery-prerequisite-reads" => ApplySpecterRecoveryPrerequisites(context),

@@ -8317,6 +8317,66 @@
       "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
       "presencePolicy": "REQUIRE_LIVE_MOD_FOLDER",
       "referenceOverrideAllowed": false
+    },
+    {
+      "id": "elm-immersiveway-idle-gc",
+      "identityHints": [
+        "ELM_ImmersiveWay"
+      ],
+      "policyClass": "SOURCE_PROVEN_INACTIVE_INTERACTION_SCENE_GC",
+      "callbacks": [
+        {
+          "kind": "source",
+          "target": "init.lua",
+          "role": "inactive-owned-maintenance"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "SceneInteraction.Update()",
+          "EarnXP.Tick(delta)",
+          "ToiletEffect.Tick(delta)",
+          "function SceneInteraction.Show(choiceUniqueID)",
+          "function EarnXP.Start(rawConfig)"
+        ],
+        "alreadySatisfiedMarker": "G-CET semantic:elm-immersiveway-idle-gc-v1",
+        "expectedMarkerFileCount": 1,
+        "sourceCompletionAuthoritative": true,
+        "satisfiedAll": [
+          "G-CET semantic:elm-immersiveway-idle-gc-v1",
+          "function SceneInteraction.GCET_IsUiActive()",
+          "function EarnXP.GCET_IsActive()"
+        ]
+      },
+      "behavior": {
+        "handler": "SEMANTIC_ELM_SOURCE_OWNED_IDLE_GC",
+        "concepts": [
+          "retainNativeInteractionObservers",
+          "retainLiveUiInput",
+          "protectAllSceneAndEarningTimers",
+          "skipEmptyMaintenance"
+        ],
+        "note": "Original world interaction Show/Hide exports and native observers stay active. Guard only when no author scene/UI/delayed job/XP/earnings/toilet state is active; not a native unsubscribe or frame listener pause."
+      },
+      "generation": {
+        "enabled": true,
+        "sourceIndependentAdmission": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 3,
+        "measuredPeakExclusiveMsPerSecond": 0.494138,
+        "admitted": true,
+        "evidenceStack": "CET-20261029-204841_F80F_AUTOLOOT"
+      },
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false
     }
   ],
   "catalog": {
