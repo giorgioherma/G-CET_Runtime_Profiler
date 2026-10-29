@@ -136,7 +136,7 @@ public static partial class ResultReportService
     {
         static string Measured(double? v, string unit, int digits = 2) =>
             v is null ? "NOT MEASURED" : v.Value.ToString("F" + digits) + unit;
-        static string Measured(long? v) =>
+        static string MeasuredCount(long? v) =>
             v is null ? "NOT MEASURED" : N(v.Value);
 
         sb.Append("<div class=\"section\"><h2>Phase 3 — GC &amp; allocation pressure</h2>");
@@ -161,7 +161,7 @@ public static partial class ResultReportService
 
         sb.Append("<h3>Collector work and completion</h3><div class=\"grid\">");
         MetricCard(sb, "Completed GC cycles",
-            Measured(p.collector?.completedCycles),
+            MeasuredCount(p.collector?.completedCycles),
             "Zero is measured only when collector frames exist");
         MetricCard(sb, "Collector ms/s",
             Measured(p.collector?.measuredCollectorMsPerSecond, " ms/s", 3),
@@ -189,7 +189,7 @@ public static partial class ResultReportService
             Measured(p.heap?.netChangeMiB, " MiB", 1),
             "Last minus first sampled heap");
         MetricCard(sb, "Observed heap shrinks",
-            Measured(p.heap?.observedShrinkEvents),
+            MeasuredCount(p.heap?.observedShrinkEvents),
             "Thresholded sampled events; not total reclaimed bytes");
         sb.Append("</div>");
 
