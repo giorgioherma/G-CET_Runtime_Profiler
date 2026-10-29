@@ -510,6 +510,14 @@ internal static partial class SemanticInjectors
     // existing updated ITP source generator; it adds no new callback/ticker.
     private static string ReuseImmersiveThirdPersonLiteralIds(string source)
     {
+        var usesCrLf = source.Contains("\r\n", StringComparison.Ordinal);
+        var normalized = usesCrLf ? source.Replace("\r\n", "\n", StringComparison.Ordinal) : source;
+        var changed = ReuseImmersiveThirdPersonLiteralIdsLf(normalized);
+        return usesCrLf ? changed.Replace("\n", "\r\n", StringComparison.Ordinal) : changed;
+    }
+
+    private static string ReuseImmersiveThirdPersonLiteralIdsLf(string source)
+    {
         const string cache = "__gcetItppLiteralTweakIdsV1";
         const string current = "local function makeTweakDBID(value)\n" +
             "  if TweakDBID and TweakDBID.new then\n" +
