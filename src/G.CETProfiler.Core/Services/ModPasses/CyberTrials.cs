@@ -669,7 +669,7 @@ return M
         var secondEnd=text.IndexOf('\n',first+1);
         if(secondEnd>first &&
            text.AsSpan(first+1,secondEnd-first-1).TrimStart()
-               .StartsWith("--",StringComparison.Ordinal))
+               .StartsWith("-- Authored state logic is retained",StringComparison.Ordinal))
             text=text[..(first+1)]+text[(secondEnd+1)..];
         return text;
     }
