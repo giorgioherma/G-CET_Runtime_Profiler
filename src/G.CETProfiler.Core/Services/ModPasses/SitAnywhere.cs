@@ -43,10 +43,18 @@ internal static partial class SemanticInjectors
                 var logicV2 = SitAnywhereLogicWakeSource(completed.Logic);
                 if (logicV2 != partialLogic.Text) context.Write(partialLogic, logicV2);
                 if (completed.World != partialWorld.Text) context.Write(partialWorld, completed.World);
-                var prior = worker?.Replace("\r\n","\n",StringComparison.Ordinal);
+                // C# raw string constants follow source checkout line endings
+                // (CRLF on Windows CI), while staged Lua is normalized to LF.
+                // Compare canonical text, not platform newline representation.
+                static string CanonicalWorker(string value) =>
+                    value.Replace("\r\n","\n",StringComparison.Ordinal)
+                         .Replace('\r','\n').TrimEnd();
+                var prior = worker is null ? null : CanonicalWorker(worker);
                 var workerV2 = SitAnywhereWorkerV2();
-                var needsWorker = prior is null || prior.TrimEnd() != workerV2.TrimEnd();
-                if (worker is not null && needsWorker && prior!.TrimEnd() != SitAnywhereWorkerV1.TrimEnd())
+                var needsWorker = prior is null ||
+                    prior != CanonicalWorker(workerV2);
+                if (worker is not null && needsWorker &&
+                    prior != CanonicalWorker(SitAnywhereWorkerV1))
                 {
                     var expected=SitAnywhereWorkerV1.TrimEnd();
                     var actual=prior.TrimEnd();
