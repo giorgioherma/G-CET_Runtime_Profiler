@@ -106,6 +106,21 @@ foreach($token in @('Schedule.EveryFrame','sitanywhere.realtime',
  'created[#created + 1] = job')) {
  if(!$worker.Contains($token)){throw "Pristine worker incomplete: $token"}
 }
+
+foreach($token in @('local function shouldRunSitAnywhereFrame()',
+  'created, runSitAnywhereFrame, shouldRunSitAnywhereFrame)',
+  'self.__gcetWakeRealtime = function()',
+  'self.runtimeData.forceScan = true')) {
+  if(!$init.Contains($token)){throw "SitAnywhere pausable source missing $token"}
+}
+foreach($token in @('sitanywhere.wake','Schedule.Every(0.10',
+  'job.Pause()','job.Resume()','created[#created + 1] = probe')) {
+  if(!$worker.Contains($token)){throw "SitAnywhere wake worker missing $token"}
+}
+$logicWake=[Text.Encoding]::UTF8.GetString($staged['sitAnywhere/modules/logic.lua'])
+if(([regex]::Matches($logicWake,'self.mod.__gcetWakeRealtime\(\)')).Count -ne 2){
+  throw 'SitAnywhere original ScannerOpen/Close missing immediate wake'
+}
 $second=MakeCtx $staged
 $secondResult=$method.Invoke($null,[object[]]@($second))
 if($secondResult.Applied -or $secondResult.Reason -notlike '*already installed*') {
