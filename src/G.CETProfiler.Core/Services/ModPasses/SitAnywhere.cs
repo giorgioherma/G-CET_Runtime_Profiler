@@ -28,8 +28,7 @@ internal static partial class SemanticInjectors
                 var expectedOwner = currentStage
                     ? "-- G-CET semantic coordinator:sitanywhere\n"
                     : "-- G-CET semantic coordinator:sitanywhere-engine-worker\n";
-                if (worker is null ||
-                    !worker.StartsWith(expectedOwner, StringComparison.Ordinal) ||
+                if ((worker is not null && !worker.StartsWith(expectedOwner, StringComparison.Ordinal)) ||
                     !live.Text.Contains("if pass4Attached then return end", StringComparison.Ordinal) ||
                     !live.Text.Contains("TryAttachSitAnywherePass4()", StringComparison.Ordinal) ||
                     !live.Text.Contains("runSitAnywhereFrame(dt)", StringComparison.Ordinal))
@@ -44,24 +43,21 @@ internal static partial class SemanticInjectors
                 var logicV2 = SitAnywhereLogicWakeSource(completed.Logic);
                 if (logicV2 != partialLogic.Text) context.Write(partialLogic, logicV2);
                 if (completed.World != partialWorld.Text) context.Write(partialWorld, completed.World);
-                var prior = worker.Replace("\r\n","\n",StringComparison.Ordinal);
+                var prior = worker?.Replace("\r\n","\n",StringComparison.Ordinal);
                 var workerV2 = SitAnywhereWorkerV2();
-                var needsWorker = prior.TrimEnd() != workerV2.TrimEnd();
-                if (needsWorker && prior.TrimEnd() != SitAnywhereWorkerV1.TrimEnd())
+                var needsWorker = prior is null || prior.TrimEnd() != workerV2.TrimEnd();
+                if (worker is not null && needsWorker && prior!.TrimEnd() != SitAnywhereWorkerV1.TrimEnd())
                     throw new InvalidOperationException(
                         "SitAnywhere prior coordinator drift; refuse unproven wake migration.");
                 var initV2 = SitAnywhereRealtimeWakeSource(live.Text);
                 var needsInit = initV2 != live.Text;
-                if (needsWorker != needsInit)
-                    throw new InvalidOperationException(
-                        "SitAnywhere realtime source and worker partial state mismatch.");
+                // A prior pass can contain either proved stage without the
+                // other. Only the missing source and coordinator are emitted.
                 if (needsWorker)
-                {
                     context.WriteCoordinator("sitanywhere_engine_worker.lua",workerV2);
-                    context.Write(live,initV2);
-                }
+                if (needsInit) context.Write(live,initV2);
                 if (logicV2 != partialLogic.Text || completed.World != partialWorld.Text ||
-                    completed.LoggerChanged || needsWorker)
+                    completed.LoggerChanged || needsWorker || needsInit)
                     return SemanticInjectionResult.Success(
                         "Completed SitAnywhere source-local optimization and pausable frame owner.");
                 return SemanticInjectionResult.Skip(
