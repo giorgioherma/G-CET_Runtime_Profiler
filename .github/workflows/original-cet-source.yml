@@ -205,6 +205,51 @@ jobs:
             }
           }
 
+          # Phase 3: assert the same original-source producers are optimized
+          # by the existing AutoLoot and f80h rules, not by a repair layer.
+          $lootOriginal = Join-Path $mods 'AutoLoot/modules/logic.lua'
+          if (Test-Path -LiteralPath $lootOriginal) {
+            $original = Get-Content -LiteralPath $lootOriginal -Raw
+            if ($original.Contains('pcall(function() gameObjOwner = gameObj:GetOwner() end)')) {
+              $file = Join-Path $output 'bin/x64/plugins/cyber_engine_tweaks/mods/AutoLoot/modules/logic.lua'
+              if (!(Test-Path -LiteralPath $file)) {
+                throw 'AUTOLOOT_GC_OUTPUT_MISSING: pristine protected owner path not generated'
+              }
+              $lua = Get-Content -LiteralPath $file -Raw
+              if (!$lua.Contains('local function __gcetAutoLootProtectedOwnerV1(obj)') -or
+                  !$lua.Contains('pcall(__gcetAutoLootProtectedOwnerV1, gameObj)') -or
+                  !$lua.Contains('if __gcetOwnerOk then gameObjOwner = __gcetOwnerValue end') -or
+                  $lua.Contains('pcall(function() gameObjOwner = gameObj:GetOwner() end)') -or
+                  !$lua.Contains('transactionSystem:GetItemList(gameObjOwner)')) {
+                throw 'AUTOLOOT_GC_OUTPUT_INCOMPLETE: lost protected native owner fallback or original inventory query'
+              }
+              Write-Host 'AutoLoot pristine: protected native owner lookup allocation and inventory semantics verified'
+            }
+          }
+          $f80hOriginal = Join-Path $mods 'f80h_aroused_expressions/init.lua'
+          if (Test-Path -LiteralPath $f80hOriginal) {
+            $original = Get-Content -LiteralPath $f80hOriginal -Raw
+            if ($original.Contains('local rule = resolveAllowRule(app, anchor)') -and
+                $original.Contains('local p = safeGetPos(self)')) {
+              $file = Join-Path $output 'bin/x64/plugins/cyber_engine_tweaks/mods/f80h_aroused_expressions/init.lua'
+              if (!(Test-Path -LiteralPath $file)) {
+                throw 'F80H_LOCATION_GC_OUTPUT_MISSING: pristine NPC anchor registration not generated'
+              }
+              $lua = Get-Content -LiteralPath $file -Raw
+              if (!$lua.Contains('__gcetF80hAnchorPositionV1') -or
+                  !$lua.Contains('local __gcetAnchorDistSquared = distSq(p, anchor)') -or
+                  !$lua.Contains('and resolveAllowRule(app, anchor) or nil') -or
+                  !$lua.Contains('pending[id.hash] = { npc = self, anchor = anchor, since = 0 }') -or
+                  !$lua.Contains('startTrackingNPC(self, anchor, rule)') -or
+                  !$lua.Contains('__gcetF80hCanSkipNew()') -or
+                  !$lua.Contains('__gcetVarianceDispose') -or
+                  $lua.Contains('local at   = isAtAnchor(self, anchor)')) {
+                throw 'F80H_LOCATION_GC_OUTPUT_INCOMPLETE: native wake, pending, tracked or safe local matching lost'
+              }
+              Write-Host 'f80h pristine: native FAR bridge, active-GC and NPC-local anchor check preserved'
+            }
+          }
+
       - name: Remove temporary private source
         if: always()
         shell: pwsh
