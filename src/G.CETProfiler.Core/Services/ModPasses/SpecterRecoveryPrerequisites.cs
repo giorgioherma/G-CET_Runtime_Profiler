@@ -176,8 +176,7 @@ internal static partial class SemanticInjectors
         var ownedMusic = context.TryReadComposedModFile(
             context.Owner, "specter_mission_music.lua");
         var musicText = ownedMusic is null ? "" :
-            System.Text.Encoding.UTF8.GetString(ownedMusic).Replace(
-                "\r\n", "\n", StringComparison.Ordinal);
+            ownedMusic.Replace("\r\n", "\n", StringComparison.Ordinal);
         var provenMusic = musicText.Contains("pending={}", StringComparison.Ordinal) &&
                           musicText.Contains("local function flush(bus)", StringComparison.Ordinal) &&
                           musicText.Contains("function M.update(delta,bus,contract,stage,state,playerPresent,arrived)",
