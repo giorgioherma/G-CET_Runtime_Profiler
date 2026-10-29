@@ -398,11 +398,56 @@ foreach($id in @('cybertrials.world_far','cybertrials.world_near',
 if(!$workerCode.StartsWith('-- G-CET semantic coordinator:cybertrials'+[char]10)){
   throw 'CyberTrials generated coordinator has the wrong authoritative rule'
 }
+
+foreach($token in @('cybertrials.wake','frame.Pause()','frame.Resume()',
+  'dispatch(0,"realtime_required")')) {
+  if(!$workerCode.Contains($token)){throw "CyberTrials pausable worker missing $token"}
+}
+foreach($token in @('if mode == "realtime_required" then',
+  'Cron.HasActiveTimers()', 'raceLogic.raceInProgress == true',
+  'readyToPlace == true', 'interactionUI.hubShown == true')) {
+  if(!$compiled.Contains($token)){throw "CyberTrials authored wake source missing $token"}
+}
+
 foreach($change in $changes){$stage[$change.RelativeFile]=$change.Bytes}
 $again=$ctor.Invoke([object[]]@([string]$mods,'CyberTrials','cybertrials',$stage))
 if($method.Invoke($null,[object[]]@($again)).Applied){
   throw 'CyberTrials complete five-job original-source pass was not idempotent'
 }
+
+# V1 from our own earlier generator must migrate source and worker together.
+# Unknown worker drift is rejected rather than overwritten by its marker.
+$legacyField=$inject.GetField('CyberTrialsWorkerV1',[Reflection.BindingFlags]'Static,NonPublic')
+if(!$legacyField){throw 'CyberTrials prior worker compatibility definition missing'}
+$priorWorker=[string]$legacyField.GetRawConstantValue()
+$probeStart=$compiled.IndexOf('    -- Source-owned activity test:')
+$probeEnd=$compiled.IndexOf('    if mode == "world_far" or mode == "world_near" then',$probeStart)
+if($probeStart -lt 0 -or $probeEnd -le $probeStart){
+  throw 'CyberTrials source-owned realtime probe boundary unverified'
+}
+$priorInit=$compiled.Remove($probeStart,$probeEnd-$probeStart)
+$stage['CyberTrials/init.lua']=[Text.Encoding]::UTF8.GetBytes($priorInit)
+$stage['CyberTrials/GCET_Semantic/cybertrials_engine_worker.lua']=[Text.Encoding]::UTF8.GetBytes($priorWorker)
+$legacyCtx=$ctor.Invoke([object[]]@([string]$mods,'CyberTrials','cybertrials',$stage))
+$legacyResult=$method.Invoke($null,[object[]]@($legacyCtx))
+$legacyChanges=@($ctxType.GetProperty('Changes',[Reflection.BindingFlags]'Instance,NonPublic').GetValue($legacyCtx))
+if(!$legacyResult.Applied -or $legacyChanges.Count -ne 2){
+  throw 'CyberTrials V1 source+worker migration did not compose both owners'
+}
+foreach($change in $legacyChanges){$stage[$change.RelativeFile]=$change.Bytes}
+$regenerated=[Text.Encoding]::UTF8.GetString($stage['CyberTrials/GCET_Semantic/cybertrials_engine_worker.lua'])
+if($regenerated.TrimEnd() -ne $workerCode.TrimEnd()){
+  throw 'CyberTrials V1 worker failed regeneration from the authoritative generator'
+}
+$malformed=$priorWorker.Replace('id = "cybertrials.realtime"','id = "foreign.realtime"')
+$stage['CyberTrials/GCET_Semantic/cybertrials_engine_worker.lua']=[Text.Encoding]::UTF8.GetBytes($malformed)
+$driftCtx=$ctor.Invoke([object[]]@([string]$mods,'CyberTrials','cybertrials',$stage))
+$refused=$false
+try{$null=$method.Invoke($null,[object[]]@($driftCtx))}
+catch{if($_.Exception.ToString() -match 'coordinator changed'){$refused=$true}}
+if(!$refused){throw 'CyberTrials foreign worker drift was silently adopted'}
+$stage['CyberTrials/GCET_Semantic/cybertrials_engine_worker.lua']=[Text.Encoding]::UTF8.GetBytes($workerCode)
+
 if([IO.File]::ReadAllText($initPath) -ne $fullCyber -or
    [IO.File]::ReadAllText($cronPath) -ne $originalCron) {
   throw 'CyberTrials pristine init or Cron was mutated rather than staged'
