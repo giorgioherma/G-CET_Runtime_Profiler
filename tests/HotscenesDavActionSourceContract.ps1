@@ -162,6 +162,16 @@ function Core:SetInputListener()
         wrapped_method()
     end)
 end
+function Core:SetMappinController()
+    ObserveAfter("BaseMappinBaseController", "IsTracked", function(this)
+        local mappin = this:GetMappin()
+        self:SetCustomMappin(mappin)
+    end)
+    ObserveAfter("BaseMappinBaseController", "UpdateRootState", function(this)
+        local mappin = this:GetMappin()
+        self:SetCustomMappin(mappin)
+    end)
+end
 '@
 $event=@'
 local Event={}
@@ -247,8 +257,12 @@ if(!$dCore.Contains('phase = "before"') -or !$dCore.Contains('actions = "*"') -o
    !$dCore.Contains('self:StorePlayerAction(action_name, action_type, action_value)') -or
    !$dCore.Contains('Observe("PlayerPuppet", "OnAction", __gcetDAVOnAction)') -or
    !$dEvt.Contains('DAV.core_obj:SyncActionListener()') -or
-   !$dInit.Contains('__gcetSituation')){
- throw 'DAV wildcard, before-phase fallback, source writer or prior B stage incomplete'
+   !$dInit.Contains('__gcetSituation') -or
+   !$dCore.Contains('__gcetDAVMappinGateV3') -or
+   !$dCore.Contains('local mappinActive = mappinSituation == Def.Situation.InVehicle') -or
+   !$dCore.Contains('SetMappinDestination(Vector4.Zero())') -or
+   ([regex]::Matches($dCore, 'if self.__gcetDAVMappinActive ~= true then return end')).Count -ne 2){
+ throw 'DAV wildcard, source writer, and flight-only mappin stages incomplete'
 }
 foreach($p in $known){
  if((Get-FileHash $p -Algorithm SHA256).Hash -ne $hashes[$p]){
@@ -334,8 +348,10 @@ $sc=ZipText $stagedResult.pass.ZipPath 'DriveAerialVehicle/Modules/core.lua'
 $se=ZipText $stagedResult.pass.ZipPath 'DriveAerialVehicle/Modules/event.lua'
 if(!$sc.Contains('__gcetDAVActionGateV2') -or !$sc.Contains('phase = "before"') -or
    !$sc.Contains('local __gcetIdleEventTick = 0') -or
-   !$se.Contains('DAV.core_obj:SyncActionListener()')){
- throw 'DAV staged output lacks native action stage, B-stage or wake'
+   !$se.Contains('DAV.core_obj:SyncActionListener()') -or
+   !$sc.Contains('__gcetDAVMappinGateV3') -or
+   ([regex]::Matches($sc, 'if self.__gcetDAVMappinActive ~= true then return end')).Count -ne 2){
+ throw 'DAV staged output lacks native action, B-stage, flight mappin or wake'
 }
 if(!$sc.Contains($crlf) -or !$se.Contains($crlf)){
  throw 'DAV stage upgrade lost original CRLF EOL convention'
