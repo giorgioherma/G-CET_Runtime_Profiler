@@ -172,6 +172,11 @@ internal static partial class SemanticInjectors
             text = text[..lootSpan.Start] + lootSource + text[lootSpan.End..];
         }
 
+        // Preserve the existing radius-first and pin rules. Eliminate only
+        // its short-lived protected owner-call closure, leaving the same
+        // pcall/exception swallowing and native GetOwner behavior intact.
+        text = ReuseAutoLootProtectedOwnerGetter(text);
+
         // An entirely already-optimized but unmarked variant is not rewritten.
         if (text == file.Text)
             return SemanticInjectionResult.Skip(
@@ -181,6 +186,45 @@ internal static partial class SemanticInjectors
         return SemanticInjectionResult.Success(
             "Preserved original transfer, quest, shard, visibility and marker code; " +
             "applied only missing world-pin scalar selection and early radius gate.");
+    }
+
+    private static string ReuseAutoLootProtectedOwnerGetter(string text)
+    {
+        var crlf = text.Contains("\r\n", StringComparison.Ordinal);
+        var source = crlf ? text.Replace("\r\n", "\n", StringComparison.Ordinal) : text;
+        const string marker = "__gcetAutoLootProtectedOwnerV1";
+        const string sourceCall = "pcall(function() gameObjOwner = gameObj:GetOwner() end)";
+        const string protectedCall =
+            "local __gcetOwnerOk, __gcetOwnerValue = pcall(" + marker + ", gameObj)\n" +
+            "\t\t\t\t\t\tif __gcetOwnerOk then gameObjOwner = __gcetOwnerValue end";
+        const string helper =
+            "-- G-CET: same protected native owner lookup; no new Lua closure per candidate.\n" +
+            "local function " + marker + "(obj)\n" +
+            "\treturn obj:GetOwner()\n" +
+            "end\n";
+        if (source.Contains(marker, StringComparison.Ordinal))
+        {
+            if (source.Split("local function " + marker + "(obj)", StringSplitOptions.None).Length != 2 ||
+                source.Split(protectedCall, StringSplitOptions.None).Length != 2 ||
+                source.Contains(sourceCall, StringComparison.Ordinal))
+                throw new InvalidOperationException("AutoLoot protected owner getter stage is partial or drifted.");
+            return text;
+        }
+        // Compact supported tests and versions without this guarded native
+        // call have no additional allocation work to generate here.
+        if (!source.Contains(sourceCall, StringComparison.Ordinal))
+            return text;
+        if (source.Split(sourceCall, StringSplitOptions.None).Length != 2 ||
+            source.Split("function logic.lootInRange(", StringSplitOptions.None).Length != 2 ||
+            !source.Contains("local gameObjOwner = nil\n", StringComparison.Ordinal) ||
+            !source.Contains("if gameObjOwner then result, items = transactionSystem:GetItemList(gameObjOwner) end",
+                StringComparison.Ordinal) ||
+            !source.Contains("local takeIt = true", StringComparison.Ordinal))
+            throw new InvalidOperationException("AutoLoot author protected GetOwner call flow changed.");
+        source = source.Replace("function logic.lootInRange(", helper + "function logic.lootInRange(",
+                    StringComparison.Ordinal)
+            .Replace(sourceCall, protectedCall, StringComparison.Ordinal);
+        return crlf ? source.Replace("\n", "\r\n", StringComparison.Ordinal) : source;
     }
 
     private static SemanticInjectionResult ApplyAutoLoot(
