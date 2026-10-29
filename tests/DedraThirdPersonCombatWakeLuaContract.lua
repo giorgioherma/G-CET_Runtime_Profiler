@@ -51,8 +51,8 @@ local function harness(opts)
       return client
     end}
   GetMod=function(name)
-    if name=="0-Engine" then return opts.noEngine and nil or host end
-    if name=="immersive_third_person" then return opts.noItp and nil or base end
+    if name=="0-Engine" then if opts.noEngine then return nil end; return host end
+    if name=="immersive_third_person" then if opts.noItp then return nil end; return base end
   end
   registerForEvent=function(...) nativeRegistrations=nativeRegistrations+1 end
   local module=worker.Install(addon,function(dt)
