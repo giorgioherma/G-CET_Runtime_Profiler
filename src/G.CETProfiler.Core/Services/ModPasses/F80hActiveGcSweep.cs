@@ -2,6 +2,51 @@ namespace GCETRuntimeProfiler.Core.Services;
 
 internal static partial class SemanticInjectors
 {
+    // The author already fetched the NPC's world position and checked it
+    // for nil before scanning the anchor array. Re-reading the SAME native
+    // position two more times for every matching anchor creates Lua/CET
+    // objects without changing the decision. A cheap scalar radius prefilter
+    // also avoids lowercasing/comparing location-specific appearance rules
+    // when the NPC is nowhere near that anchor. Keep the original iteration
+    // order, pending/near transition, active spawn and random roll intact.
+    private static string OptimizeF80hAnchorRegistration(string source)
+    {
+        const string marker = "__gcetF80hAnchorPositionV1";
+        const string original =
+            "    local rule = resolveAllowRule(app, anchor)\n" +
+            "    if rule then\n" +
+            "      local at   = isAtAnchor(self, anchor)\n" +
+            "      local near = (not at) and isNearAnchor(self, anchor)\n";
+        const string optimized =
+            "    -- " + marker + ": one NPC position sample, per-anchor scalar test.\n" +
+            "    local __gcetAnchorDistSquared = distSq(p, anchor)\n" +
+            "    local __gcetOuterRadius = anchor.radius + OUTER_MARGIN\n" +
+            "    local rule = __gcetAnchorDistSquared <= __gcetOuterRadius * __gcetOuterRadius\n" +
+            "      and resolveAllowRule(app, anchor) or nil\n" +
+            "    if rule then\n" +
+            "      local at = __gcetAnchorDistSquared <= anchor.radius * anchor.radius\n" +
+            "      local near = (not at) and __gcetAnchorDistSquared <= __gcetOuterRadius * __gcetOuterRadius\n";
+        if (source.Contains(marker, StringComparison.Ordinal))
+        {
+            if (source.Split(optimized, StringSplitOptions.None).Length != 2 ||
+                source.Contains(original, StringComparison.Ordinal) ||
+                !source.Contains("local p = safeGetPos(self)\nif not p then", StringComparison.Ordinal))
+                throw new InvalidOperationException("f80h anchor position reuse is partial or drifted.");
+            return source;
+        }
+        // Some older minimal fixtures do not have this registration flow.
+        // They retain the original active-GC and PASS8 transformations.
+        if (!source.Contains("local function tryRegisterNPC(self)", StringComparison.Ordinal))
+            return source;
+        if (!source.Contains("local p = safeGetPos(self)\nif not p then", StringComparison.Ordinal) ||
+            source.Split(original, StringSplitOptions.None).Length != 2 ||
+            !source.Contains("local function distSq(p, a)", StringComparison.Ordinal) ||
+            !source.Contains("pending[id.hash] = { npc = self, anchor = anchor, since = 0 }",
+                StringComparison.Ordinal))
+            throw new InvalidOperationException("f80h original single-NPC registration location flow drifted.");
+        return source.Replace(original, optimized, StringComparison.Ordinal);
+    }
+
     private static SemanticInjectionResult ApplyF80hActiveGcSweep(SemanticPatchContext context)
     {
         var file=context.FindFile("init.lua",
@@ -11,6 +56,9 @@ internal static partial class SemanticInjectors
             "CoupleVariance.Update(",
             "for hash, data in pairs(pendingAppearance) do");
         var text=file.Text.Replace("\r\n","\n",StringComparison.Ordinal);
+        // Position/anchor filtering belongs to the SAME source-owned GC stage.
+        // Run on final native/generic-composed source, never as a repair pass.
+        text=OptimizeF80hAnchorRegistration(text);
         const string marker="__gcetF80hActiveGcSweepV1";
         var activeGcComplete=text.Contains(marker,StringComparison.Ordinal);
         if(activeGcComplete &&
@@ -102,7 +150,7 @@ internal static partial class SemanticInjectors
             text.Contains("local idleCronElapsed =",StringComparison.Ordinal);
         if(!pass8RuntimeOwner)
         {
-            if(activeGcComplete)
+            if(activeGcComplete && text == file.Text.Replace("\r\n","\n",StringComparison.Ordinal))
                 return SemanticInjectionResult.Skip("Original active GC stage already complete; no PASS8 runtime owner.");
             if(file.Text.Contains("\r\n",StringComparison.Ordinal))
                 text=text.Replace("\n","\r\n",StringComparison.Ordinal);
@@ -206,6 +254,7 @@ internal static partial class SemanticInjectors
             throw new InvalidOperationException("f80h OnDetach cleanup no longer source-proven.");
 
         if(activeGcComplete && idleComplete &&
+           text == file.Text.Replace("\r\n","\n",StringComparison.Ordinal) &&
            (file.Text.Contains("G-CET f80h detach-safe-v1",StringComparison.Ordinal) ||
             file.Text.Contains("PASS8: OnDetach already",StringComparison.Ordinal)))
             return SemanticInjectionResult.Skip("f80h active GC and PASS8 idle/detach already complete.");
