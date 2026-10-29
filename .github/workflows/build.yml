@@ -1460,6 +1460,10 @@ jobs:
         shell: pwsh
         run: ./tests/JoytoysSemanticCompositionContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: AutoLoot and f80h source-owned allocation contracts
+        shell: pwsh
+        run: ./tests/AutoLootF80hAllocationContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: AutoLoot GC source-preserving semantic contract
         shell: pwsh
         run: ./tests/AutoLootGcSemanticContract.ps1 -ResolverRoot ./publish-resolver
