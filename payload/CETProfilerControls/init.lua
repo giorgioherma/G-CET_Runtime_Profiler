@@ -56,7 +56,7 @@ local hudErrorReported = false
 -- native captured-time clock, and the ordinary Pause + Dump transaction.
 local timedCaptureActive = false
 local timedCaptureElapsed = 0
-local TIMED_CAPTURE_SECONDS = 60
+local TIMED_CAPTURE_SECONDS = 120
 
 local function nowSeconds()
   if ImGui and type(ImGui.GetTime) == "function" then
@@ -110,7 +110,7 @@ end
 
 local function toggleScenario(name)
   if timedCaptureActive then
-    say("COMBAT-POLICE-60 is already tagging combat automatically.")
+    say("COMBAT-POLICE-120 is already tagging combat automatically.")
     return
   end
   local scenario = scenarios[name]
@@ -163,7 +163,7 @@ local function finishCapture()
   return dumpOk
 end
 
-local function startCapture(autoStop60)
+local function startCapture(autoStop120)
   if isRunning() then
     say("Capture already running; stop and export it before starting another.")
     return false
@@ -182,14 +182,14 @@ local function startCapture(autoStop60)
   captureBaseSeconds = 0
   captureStartedAt = nowSeconds()
   activeScenario = nil
-  timedCaptureActive = autoStop60 == true
+  timedCaptureActive = autoStop120 == true
   timedCaptureElapsed = 0
 
   if timedCaptureActive then
-    -- A dedicated 60s capture is entirely combat. Emit ordinary scenario
+    -- A dedicated 120s capture is entirely combat. Emit ordinary scenario
     -- boundaries so Resolver and frametime reports agree with the run identity.
     if marker("SCENARIO_COMBAT_START") then activeScenario = "COMBAT" end
-    say("COMBAT-POLICE-60 started; automatic stop/export at 60 captured seconds.")
+    say("COMBAT-POLICE-120 started; automatic stop/export at 120 captured seconds.")
   else
     say("Fresh capture started.")
   end
@@ -204,10 +204,10 @@ local function toggleCapture()
   end
 end
 
-local function startPolice60Capture()
+local function startPolice120Capture()
   -- A second press during a benchmark does not abort or restart it.
   if isRunning() then
-    say("Capture already running; COMBAT-POLICE-60 start ignored.")
+    say("Capture already running; COMBAT-POLICE-120 start ignored.")
     return
   end
   startCapture(true)
@@ -225,7 +225,7 @@ local function drawCaptureHud()
 
   local elapsed = captureBaseSeconds + math.max(0, nowSeconds() - captureStartedAt)
   local text = timedCaptureActive
-    and ("G-CET COMBAT-POLICE-60  " .. formatTimer(timedCaptureElapsed) .. " / 01:00")
+    and ("G-CET COMBAT-POLICE-120  " .. formatTimer(timedCaptureElapsed) .. " / 02:00")
     or ("G-CET CAPTURE  " .. formatTimer(elapsed))
 
   if activeScenario and scenarios[activeScenario] then
@@ -277,8 +277,8 @@ registerForEvent("onInit", function()
     captureStartedAt = nowSeconds()
   end
 
-  say("loaded. F11 = manual START/STOP; COMBAT-POLICE-60 = one-key " ..
-      "automatic 60-second capture. Scenario tags remain optional.")
+  say("loaded. F11 = manual START/STOP; COMBAT-POLICE-120 = one-key " ..
+      "automatic 120-second capture. Scenario tags remain optional.")
 end)
 
 
@@ -341,7 +341,7 @@ end
 local function observeLuaHeap(dt)
   -- Reuse the already present profiler-controls onUpdate. The native elapsed
   -- clock (not simulated game dt / HUD time) determines the stop boundary.
-  -- Stop on the first update at or after 60 seconds; exact wall duration is
+  -- Stop on the first update at or after 120 seconds; exact wall duration is
   -- bounded by the next game update, not an OS timer interrupt.
   if timedCaptureActive then
     if not isRunning() then
@@ -350,7 +350,7 @@ local function observeLuaHeap(dt)
     else
       timedCaptureElapsed = readCapturedSeconds()
       if timedCaptureElapsed >= TIMED_CAPTURE_SECONDS then
-        say("COMBAT-POLICE-60 finished at " ..
+        say("COMBAT-POLICE-120 finished at " ..
             string.format("%.3f", timedCaptureElapsed) .. " captured seconds.")
         finishCapture()
         return
@@ -427,9 +427,10 @@ registerInput("CETProfiler_Toggle", "Profiler: START / STOP + AUTO EXPORT", func
   if isKeyDown then toggleCapture() end
 end)
 
+-- Preserve legacy binding ID so an existing user-mapped F10 remains intact.
 registerInput("CETProfiler_Police60",
-  "Profiler: COMBAT-POLICE-60 (start + auto stop/export)", function(isKeyDown)
-    if isKeyDown then startPolice60Capture() end
+  "Profiler: COMBAT-POLICE-120 (start + auto stop/export)", function(isKeyDown)
+    if isKeyDown then startPolice120Capture() end
 end)
 
 registerInput("CETProfiler_WorldTag", "Profiler tag: WORLD / IDLE start / finish", function(isKeyDown)
