@@ -315,6 +315,7 @@ internal static partial class SemanticInjectors
         static string MarkOwned(string source, string marker) =>
             source.StartsWith(marker, StringComparison.Ordinal)
                 ? source : marker + source;
+        initText = SitAnywhereRealtimeWakeSource(initText);
         context.Write(init, MarkOwned(originalCrLf
             ? initText.Replace("\n", "\r\n", StringComparison.Ordinal) : initText,
             originalCrLf ? ownedMarker.Replace("\n", "\r\n", StringComparison.Ordinal) : ownedMarker));
@@ -752,6 +753,59 @@ return M
                 "        or type(client.Schedule.Every) ~= \"function\" then",
                 StringComparison.Ordinal)
             .Replace(before,after,StringComparison.Ordinal);
+    }
+
+    private static string SitAnywhereRealtimeWakeSource(string source)
+    {
+        const string marker = "local function shouldRunSitAnywhereFrame()";
+        if (source.Contains(marker,StringComparison.Ordinal)) return source;
+        var t = source.Replace("\r\n","\n",StringComparison.Ordinal);
+        const string frame = "local function runSitAnywhereFrame(dt)\n";
+        const string probe = """
+local function shouldRunSitAnywhereFrame()
+    if not sitAnywhereBaseInitialized or not self.logic then return true end
+    if self.runtimeData.inMenu or not self.runtimeData.inGame then return false end
+    if not self.logic.sittables[0] or not self.logic.sittables[1] then return true end
+    if self.logic.isScanning or self.runtimeData.forceScan or
+        self.logic:inWorkspot() or self.logic:inTransition() or
+        interaction.hubShown or not self.logic.workspotsHidden then return true end
+    if type(Cron.HasActiveTimers) ~= "function" or Cron.HasActiveTimers() then return true end
+    for _, spot in pairs(self.logic.sittables) do
+        local w = spot.workspot
+        if w.enableCamera or w.camTransition or w.slide then return true end
+    end
+    return world.hasVisibleState()
+end
+
+""";
+        if (t.Split(frame,StringSplitOptions.None).Length!=2)
+            throw new InvalidOperationException("SitAnywhere source-owned frame drift.");
+        t=t.Replace(frame,probe+frame,StringComparison.Ordinal);
+        const string call="created, runSitAnywhereFrame)";
+        if (t.Split(call,StringSplitOptions.None).Length!=2)
+            throw new InvalidOperationException("SitAnywhere worker arguments drift.");
+        t=t.Replace(call,"created, runSitAnywhereFrame, shouldRunSitAnywhereFrame)",
+            StringComparison.Ordinal);
+        const string handle="    local pass4FrameJob = nil\n";
+        if (t.Split(handle,StringSplitOptions.None).Length!=2)
+            throw new InvalidOperationException("SitAnywhere worker handle drift.");
+        t=t.Replace(handle,handle+
+            "    self.__gcetWakeRealtime = function()\n"+
+            "        if pass4FrameJob and type(pass4FrameJob.Resume) == \"function\" then\n"+
+            "            pass4FrameJob.Resume()\n"+
+            "        end\n"+
+            "    end\n",StringComparison.Ordinal);
+        foreach (var state in new[] {"true","false"})
+        {
+            var anchor="            self.runtimeData.forceScan = "+state+"\n";
+            if (t.Split(anchor,StringSplitOptions.None).Length!=2)
+                throw new InvalidOperationException("SitAnywhere keybind source drift.");
+            t=t.Replace(anchor,anchor+
+                "            if self.__gcetWakeRealtime then self.__gcetWakeRealtime() end\n",
+                StringComparison.Ordinal);
+        }
+        return source.Contains("\r\n",StringComparison.Ordinal)
+            ? t.Replace("\n","\r\n",StringComparison.Ordinal) : t;
     }
 
 }
