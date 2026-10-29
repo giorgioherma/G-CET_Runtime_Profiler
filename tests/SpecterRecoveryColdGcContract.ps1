@@ -160,7 +160,7 @@ if($first.Contains('pcall(function() return core.State.get(ns,key,default) end)'
 }
 $firstPath=Join-Path $dir 'init.lua'
 [IO.File]::WriteAllText($firstPath,$first,[Text.UTF8Encoding]::new($false))
-if(-not $complete.Invoke($null,[object[]]@($dir))){
+if(-not $complete.Invoke($null,[object[]]@([string]$dir))){
   throw 'Specter source-completion verifier rejected complete source'
 }
 $again=Apply $first
