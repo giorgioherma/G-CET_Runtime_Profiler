@@ -31,12 +31,29 @@ internal static partial class SemanticInjectors
             var completedWorld = context.FindFile("modules/external/world.lua",
                 "BaseMappinBaseController", "UpdateRootState");
             var upgradedScan = RewriteCyberTrialsWorldScan(completedWorld.Text);
-            if (!string.Equals(upgradedScan, completedWorld.Text, StringComparison.Ordinal))
+            var scanNeeded = !string.Equals(upgradedScan, completedWorld.Text,
+                StringComparison.Ordinal);
+            if (scanNeeded) context.Write(completedWorld, upgradedScan);
+            var workerV2 = CyberTrialsWorkerV2();
+            var v1 = worker.Replace("\r\n", "\n", StringComparison.Ordinal);
+            var workerNeeded = !string.Equals(v1, workerV2, StringComparison.Ordinal);
+            if (workerNeeded && !string.Equals(v1, CyberTrialsWorkerV1,
+                StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "CyberTrials existing coordinator changed; refuse unproven wake migration.");
+            var initV2 = CyberTrialsProbeSource(init.Text);
+            var sourceNeeded = initV2 != init.Text;
+            if (workerNeeded != sourceNeeded)
+                throw new InvalidOperationException(
+                    "CyberTrials realtime wake source/worker do not form a complete stage.");
+            if (workerNeeded)
             {
-                context.Write(completedWorld, upgradedScan);
-                return SemanticInjectionResult.Success(
-                    "Preserved the complete five-job worker and generated the missing source-owned safe world scan.");
+                context.WriteCoordinator("cybertrials_engine_worker.lua", workerV2);
+                context.Write(init, initV2);
             }
+            if (scanNeeded || workerNeeded)
+                return SemanticInjectionResult.Success(
+                    "CyberTrials source-owned world-scan and physically pausable realtime jobs composed.");
             return SemanticInjectionResult.Skip(
                 "CyberTrials five-job scheduler and guarded world scan already complete.");
         }
@@ -541,48 +558,8 @@ end
             "    __gcetCyberTrialsPass4.Dispatch(dt,\"fallback\")\n"+
             "end)";
         s=s[..begin]+replacement+s[(close+callbackClose.Length)..];
-        context.WriteCoordinator("cybertrials_engine_worker.lua", """
--- G-CET semantic coordinator:cybertrials
--- Authored state logic is retained in the single source dispatcher.
-local M = {}
-function M.attach(created, dispatch, legacyTick, realtime)
-    local ok, engine = pcall(GetMod,"0-Engine")
-    if not ok or type(engine) ~= "table" or type(engine.Register) ~= "function" then
-        error("CyberTrials 0-Engine not ready")
-    end
-    local client = engine.Register("CyberTrials")
-    if type(client) ~= "table" or type(client.Schedule) ~= "table" or
-       type(client.Schedule.Every) ~= "function" or
-       type(client.Schedule.EveryFrame) ~= "function" then
-        error("CyberTrials Scheduler missing")
-    end
-    local function add(handle)
-        if type(handle) ~= "table" then error("Scheduler refused CyberTrials job") end
-        created[#created + 1] = handle
-    end
-    add(client.Schedule.Every(1.0, {
-        id = "cybertrials.world_far", pause = "never",
-        clock = "game", catchUp = false
-    }, function() dispatch(1.0,"world_far") end))
-    add(client.Schedule.Every(0.10, {
-        id = "cybertrials.world_near", pause = "never",
-        clock = "game", catchUp = false
-    }, function() dispatch(0.10,"world_near") end))
-    add(client.Schedule.Every(0.25, {
-        id = "cybertrials.system_state", pause = "never",
-        clock = "real", catchUp = false
-    }, function() dispatch(0.25,"system") end))
-    add(client.Schedule.Every(0.10, {
-        id = "cybertrials.race_state", pause = "never",
-        clock = "game", catchUp = false
-    }, function(ctx) dispatch(ctx.elapsed or 0.10,"race") end))
-    add(client.Schedule.EveryFrame({
-        id = "cybertrials.realtime", pause = "never"
-    }, function(ctx) realtime(ctx.dt or 0) end))
-    return true
-end
-return M
-""");
+        context.WriteCoordinator("cybertrials_engine_worker.lua", CyberTrialsWorkerV2());
+        s=CyberTrialsProbeSource(s);
         ComposeCyberTrialsCronActiveTimerGate(context);
         return crlf?s.Replace("\n","\r\n",StringComparison.Ordinal):s;
     }
@@ -627,6 +604,121 @@ end
         if(index<0)index=source.IndexOf(anchor,StringComparison.Ordinal);
         var patched=source.Insert(index,accessor);
         context.Write(file,crlf?patched.Replace("\n","\r\n",StringComparison.Ordinal):patched);
+    }
+
+    // Canonical V1 source is retained solely to recognize already-generated
+    // partial installs. One authoritative generator owns the V2 worker.
+    private const string CyberTrialsWorkerV1 = """
+-- G-CET semantic coordinator:cybertrials
+-- Authored state logic is retained in the single source dispatcher.
+local M = {}
+function M.attach(created, dispatch, legacyTick, realtime)
+    local ok, engine = pcall(GetMod,"0-Engine")
+    if not ok or type(engine) ~= "table" or type(engine.Register) ~= "function" then
+        error("CyberTrials 0-Engine not ready")
+    end
+    local client = engine.Register("CyberTrials")
+    if type(client) ~= "table" or type(client.Schedule) ~= "table" or
+       type(client.Schedule.Every) ~= "function" or
+       type(client.Schedule.EveryFrame) ~= "function" then
+        error("CyberTrials Scheduler missing")
+    end
+    local function add(handle)
+        if type(handle) ~= "table" then error("Scheduler refused CyberTrials job") end
+        created[#created + 1] = handle
+    end
+    add(client.Schedule.Every(1.0, {
+        id = "cybertrials.world_far", pause = "never",
+        clock = "game", catchUp = false
+    }, function() dispatch(1.0,"world_far") end))
+    add(client.Schedule.Every(0.10, {
+        id = "cybertrials.world_near", pause = "never",
+        clock = "game", catchUp = false
+    }, function() dispatch(0.10,"world_near") end))
+    add(client.Schedule.Every(0.25, {
+        id = "cybertrials.system_state", pause = "never",
+        clock = "real", catchUp = false
+    }, function() dispatch(0.25,"system") end))
+    add(client.Schedule.Every(0.10, {
+        id = "cybertrials.race_state", pause = "never",
+        clock = "game", catchUp = false
+    }, function(ctx) dispatch(ctx.elapsed or 0.10,"race") end))
+    add(client.Schedule.EveryFrame({
+        id = "cybertrials.realtime", pause = "never"
+    }, function(ctx) realtime(ctx.dt or 0) end))
+    return true
+end
+return M
+""";
+
+    private static string CyberTrialsWorkerV2()
+    {
+        const string oldFrame = """
+    add(client.Schedule.EveryFrame({
+        id = "cybertrials.realtime", pause = "never"
+    }, function(ctx) realtime(ctx.dt or 0) end))
+""";
+        const string parkedFrame = """
+    local frame = nil
+    local active = true
+    frame = client.Schedule.EveryFrame({
+        id = "cybertrials.realtime", pause = "never"
+    }, function(ctx)
+        realtime(ctx.dt or 0)
+        if not dispatch(0,"realtime_required") then
+            frame.Pause()
+            active = false
+        end
+    end)
+    add(frame)
+    add(client.Schedule.Every(0.10, {
+        id = "cybertrials.wake", pause = "never",
+        clock = "game", catchUp = false
+    }, function()
+        local required = dispatch(0,"realtime_required")
+        if required and not active then
+            frame.Resume()
+            active = true
+        elseif not required and active then
+            frame.Pause()
+            active = false
+        end
+    end))
+""";
+        if (!CyberTrialsWorkerV1.Contains(oldFrame, StringComparison.Ordinal))
+            throw new InvalidOperationException("CyberTrials canonical V1 worker drift.");
+        return CyberTrialsWorkerV1.Replace(oldFrame, parkedFrame,
+            StringComparison.Ordinal);
+    }
+
+    private static string CyberTrialsProbeSource(string source)
+    {
+        const string anchor = "function __gcetCyberTrialsPass4.Dispatch(dt, mode)\n";
+        const string probe = """
+    -- Source-owned activity test: never suppress race, editor, timer or hub.
+    if mode == "realtime_required" then
+        if timeTrials.runtimeData.inMenu or not timeTrials.runtimeData.inGame then
+            return false
+        end
+        if raceLogic.raceInProgress == true or readyToPlace == true
+            or placingProp == true or timeTrials.runtimeData.inEditor == true
+            or interactionUI.hubShown == true or keyPressed == true
+            or centerKeyPressed == true or leftKeyPressed == true
+            or rightKeyPressed == true or isPlacingKey1 == true
+            or isPlacingKey2 == true or isPlacingKey3 == true
+            or isPlacingKey4 == true then return true end
+        -- Unknown Cron capability fails open. Real timers need original
+        -- render-frame Cron.Update and catch up after menu/session reload.
+        return type(Cron.HasActiveTimers) ~= "function" or
+            Cron.HasActiveTimers()
+    end
+""";
+        if (source.Contains("if mode == \"realtime_required\" then",
+            StringComparison.Ordinal)) return source;
+        if (source.Split(anchor, StringSplitOptions.None).Length != 2)
+            throw new InvalidOperationException("CyberTrials runtime dispatcher boundary drift.");
+        return source.Replace(anchor, anchor + probe + "\n",
+            StringComparison.Ordinal);
     }
 
 }
