@@ -20,13 +20,13 @@ internal static partial class SemanticInjectors
             var worker=context.TryReadOwnedCoordinator("cybertrials_engine_worker.lua");
             var cron=context.FindFile("modules/external/Cron.lua",
                 "function Cron.HasActiveTimers()", "local timers = {}");
-            if(worker is null ||
-               !worker.StartsWith("-- G-CET semantic coordinator:cybertrials\n",
+            if ((worker is not null && (
+                !worker.StartsWith("-- G-CET semantic coordinator:cybertrials\\n",
                     StringComparison.Ordinal) ||
-               !cron.Text.Contains("if timer.active then",StringComparison.Ordinal) ||
-               !worker.Contains("cybertrials.realtime",StringComparison.Ordinal) ||
-               !worker.Contains("cybertrials.race_state",StringComparison.Ordinal) ||
-               !init.Text.Contains("__gcetCyberTrialsPass4.TryAttach()",StringComparison.Ordinal))
+                !worker.Contains("cybertrials.realtime",StringComparison.Ordinal) ||
+                !worker.Contains("cybertrials.race_state",StringComparison.Ordinal))) ||
+                !cron.Text.Contains("if timer.active then",StringComparison.Ordinal) ||
+                !init.Text.Contains("__gcetCyberTrialsPass4.TryAttach()",StringComparison.Ordinal))
                 throw new InvalidOperationException("CyberTrials five-job source/worker incomplete.");
             var completedWorld = context.FindFile("modules/external/world.lua",
                 "BaseMappinBaseController", "UpdateRootState");
@@ -35,9 +35,9 @@ internal static partial class SemanticInjectors
                 StringComparison.Ordinal);
             if (scanNeeded) context.Write(completedWorld, upgradedScan);
             var workerV2 = CyberTrialsWorkerV2();
-            var v1 = WorkerExecutable(worker);
+            var v1 = worker is null ? null : WorkerExecutable(worker);
             var workerNeeded = !string.Equals(v1, WorkerExecutable(workerV2), StringComparison.Ordinal);
-            if (workerNeeded && !string.Equals(v1, WorkerExecutable(CyberTrialsWorkerV1),
+            if (worker is not null && workerNeeded && !string.Equals(v1, WorkerExecutable(CyberTrialsWorkerV1),
                 StringComparison.Ordinal))
             {
                 var expected=workerV2.TrimEnd();
@@ -51,15 +51,12 @@ internal static partial class SemanticInjectors
             }
             var initV2 = CyberTrialsProbeSource(init.Text);
             var sourceNeeded = initV2 != init.Text;
-            if (workerNeeded != sourceNeeded)
-                throw new InvalidOperationException(
-                    "CyberTrials realtime wake source/worker do not form a complete stage.");
+            // Complete individually proven partial stages; never require
+            // a previous full optimizer overlay as input.
             if (workerNeeded)
-            {
                 context.WriteCoordinator("cybertrials_engine_worker.lua", workerV2);
-                context.Write(init, initV2);
-            }
-            if (scanNeeded || workerNeeded)
+            if (sourceNeeded) context.Write(init, initV2);
+            if (scanNeeded || workerNeeded || sourceNeeded)
                 return SemanticInjectionResult.Success(
                     "CyberTrials source-owned world-scan and physically pausable realtime jobs composed.");
             return SemanticInjectionResult.Skip(
