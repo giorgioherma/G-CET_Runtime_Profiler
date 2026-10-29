@@ -36,7 +36,7 @@ internal static partial class SemanticInjectors
             if (scanNeeded) context.Write(completedWorld, upgradedScan);
             var workerV2 = CyberTrialsWorkerV2();
             var v1 = WorkerExecutable(worker);
-            var workerNeeded = !string.Equals(v1.TrimEnd(), workerV2.TrimEnd(), StringComparison.Ordinal);
+            var workerNeeded = !string.Equals(v1, WorkerExecutable(workerV2), StringComparison.Ordinal);
             if (workerNeeded && !string.Equals(v1.TrimEnd(), CyberTrialsWorkerV1.TrimEnd(),
                 StringComparison.Ordinal))
             {
