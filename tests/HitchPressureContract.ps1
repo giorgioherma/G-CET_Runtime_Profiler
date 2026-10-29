@@ -148,10 +148,47 @@ $cap | ConvertTo-Json -Depth 8 -Compress | Set-Content -LiteralPath (Join-Path $
 '2,OwnerB,event,onUpdate,167772160,800,500,250,8,0,6,419430,200000,0,1'
 ) | Set-Content -LiteralPath (Join-Path $capture 'CET_Runtime_Profile_GGC_Registrations.csv') -Encoding utf8
 
+# Native pre-dispatch records overlap GGC unscoped bytes; a separate
+# scorecard entry must NEVER be summed into the 245 MiB total.
+@(
+'Boundary,MethodGroup,Calls,OwnerZeroPositiveBytes,OwnerZeroPositiveOps',
+'CET_FUNCTION_OVERRIDE_PURE,OnAction,100,1048576,33'
+) | Set-Content -LiteralPath (Join-Path $capture 'CET_Runtime_Profile_Native_PreDispatchPressure.csv') -Encoding utf8
+
 $result = (& $profilerExe --report --capture $capture --json | ConvertFrom-Json)
 if (!$result.ok) { throw 'Profiler report generation failed.' }
 
 $summary = Get-Content -LiteralPath (Join-Path $capture 'CET_Summary.json') -Raw | ConvertFrom-Json
+# Phase 3 grouped pressure must exactly reuse its source counters.
+# It is additive REPORTING, not additive allocator accounting.
+$p3 = $summary.phase3PressureScorecard
+if ($null -eq $p3 -or
+    $p3.measurement -ne 'OBSERVED_POSITIVE_LUAJIT_ALLOCATION_AND_GC_PRESSURE' -or
+    [math]::Abs([double]$p3.allocation.positiveAllocatedMiB - 245) -gt 0.001 -or
+    [long]$p3.allocation.allocationRequests -ne 3250 -or
+    [long]$p3.allocation.observedGcObjectBirths -ne 2520 -or
+    [math]::Abs([double]$p3.allocation.unscopedAndOverflowMiB - 5) -gt 0.001 -or
+    @($p3.allocation.topScopedProducers)[0].mod -ne 'OwnerB' -or
+    [long]$p3.collector.completedCycles -ne 1 -or
+    [math]::Abs([double]$p3.collector.measuredCollectorMs - 4.8) -gt 0.001 -or
+    [math]::Abs([double]$p3.collector.firstCompletedCycleFrameEndSeconds - 1.010) -gt 0.001 -or
+    $null -eq $p3.heap -or
+    [math]::Abs([double]$p3.heap.firstMiB - (400000/1024)) -gt 0.002 -or
+    [math]::Abs([double]$p3.heap.lastMiB - (375000/1024)) -gt 0.002 -or
+    $p3.frameDelivery.p999Ms -lt $p3.frameDelivery.p99Ms -or
+    @($p3.nativePreDispatch).Count -ne 1 -or
+    [math]::Abs([double]$p3.nativePreDispatch[0].ownerZeroPositiveMiB - 1) -gt 0.001 -or
+    [long]$p3.nativePreDispatch[0].ownerZeroPositiveRequests -ne 33 -or
+    $p3.nativeSemantics -notmatch 'NOT additive') {
+    throw 'Phase 3 scorecard disagrees with native source metrics or double-counts pre-dispatch.'
+}
+$p3Html = Get-Content -LiteralPath (Join-Path $capture 'CET_Report.html') -Raw
+if (-not $p3Html.Contains('Phase 3 — GC &amp; allocation pressure') -or
+    -not $p3Html.Contains('245.00 MiB') -or
+    -not $p3Html.Contains('Native pre-dispatch windows (NON-ADDITIVE)') -or
+    -not $p3Html.Contains('First completed cycle')) {
+    throw 'Phase 3 grouped pressure HTML missing or inconsistent with JSON.'
+}
 $ggc = $summary.gcTracer
 if ($null -eq $ggc -or
     !$ggc.dynamicFiveByBytesAndFiveDistinctByAllocationOperations -or
@@ -532,6 +569,37 @@ $legacySummary = Get-Content (Join-Path $legacyGcCapture 'CET_Summary.json') -Ra
 $legacyResolver = Get-Content (Join-Path $legacyGcCapture 'CET_Resolver_Input.json') -Raw | ConvertFrom-Json
 if ($null -ne $legacySummary.gcTracer -or $null -ne $legacyResolver.gcTracer) {
     throw 'Legacy capture invented G-GC Tracer provenance without source CSVs.'
+}
+if ($null -ne $legacySummary.phase3PressureScorecard.allocation) {
+    throw 'Phase 3 scorecard invented allocator zero from missing legacy GGC data.'
+}
+
+# Missing collector telemetry is not equivalent to a measured zero-cycle run.
+$missingCollector = Join-Path $root 'phase3-no-collector'
+Copy-Item -LiteralPath $capture -Destination $missingCollector -Recurse -Force
+Remove-Item -LiteralPath (Join-Path $missingCollector 'CET_Runtime_Profile_GC_Collector.csv') -Force
+$missingRun = (& $profilerExe --report --capture $missingCollector --json | ConvertFrom-Json)
+if (!$missingRun.ok) { throw 'Legacy no-collector scorecard report failed.' }
+$missingSummary = Get-Content -LiteralPath (Join-Path $missingCollector 'CET_Summary.json') -Raw | ConvertFrom-Json
+if ($null -ne $missingSummary.phase3PressureScorecard.collector -or
+    $null -eq $missingSummary.phase3PressureScorecard.allocation) {
+    throw 'Absent collector was reported as a measured zero or allocation evidence disappeared.'
+}
+
+# A REAL zero-cycle collector window must retain zero and missing first-cycle time.
+$zeroCycle = Join-Path $root 'phase3-zero-cycle'
+Copy-Item -LiteralPath $capture -Destination $zeroCycle -Recurse -Force
+$gcCsv = Join-Path $zeroCycle 'CET_Runtime_Profile_GC_Collector.csv'
+(Get-Content -LiteralPath $gcCsv -Raw).Replace('3.5,1,0,0,3.5', '3.5,0,0,0,3.5') |
+    Set-Content -LiteralPath $gcCsv -Encoding utf8
+$zeroRun = (& $profilerExe --report --capture $zeroCycle --json | ConvertFrom-Json)
+if (!$zeroRun.ok) { throw 'Measured zero-cycle scorecard report failed.' }
+$zeroSummary = Get-Content -LiteralPath (Join-Path $zeroCycle 'CET_Summary.json') -Raw | ConvertFrom-Json
+if ($null -eq $zeroSummary.phase3PressureScorecard.collector -or
+    [long]$zeroSummary.phase3PressureScorecard.collector.completedCycles -ne 0 -or
+    $null -ne $zeroSummary.phase3PressureScorecard.collector.firstCompletedCycleFrameEndSeconds -or
+    [double]$zeroSummary.phase3PressureScorecard.collector.measuredCollectorMs -le 0) {
+    throw 'Measured collector work with zero completed cycles was misrepresented.'
 }
 
 # Repeat with a collector-heavy bucket overlapping a long callback.
