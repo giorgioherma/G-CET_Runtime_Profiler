@@ -159,8 +159,17 @@ internal static partial class SemanticInjectors
             lootSource.Contains(fragment, StringComparison.Ordinal) ||
             Regex.IsMatch(lootSource, BuildFlexibleLiteralPattern(fragment),
                 RegexOptions.CultureInvariant | RegexOptions.Singleline);
+        // The radius-first owner guard remains semantically identical after
+        // the same generating rule removes its short-lived protected closure.
+        // Accept BOTH forms, otherwise reapplying would falsely flag its own
+        // fully optimized source as ambiguous drift.
+        var cachedOwnerNewGate = newGate.Replace(
+            "pcall(function() gameObjOwner = gameObj:GetOwner() end)",
+            Native("local __gcetOwnerOk, __gcetOwnerValue = pcall(__gcetAutoLootProtectedOwnerV1, gameObj)\n" +
+                   "\t\t\t\t\t\tif __gcetOwnerOk then gameObjOwner = __gcetOwnerValue end"),
+            StringComparison.Ordinal);
         var hasOldGate = MatchesShape(oldGate);
-        var hasNewGate = MatchesShape(newGate);
+        var hasNewGate = MatchesShape(newGate) || MatchesShape(cachedOwnerNewGate);
         if (hasOldGate == hasNewGate)
             throw new InvalidOperationException(
                 "AutoLoot radius-first ordering is missing or ambiguous; refusing to change inventories.");
