@@ -230,6 +230,14 @@ internal static partial class SemanticInjectors
     // state or the frame dispatcher. Neutral free-offset values are immutable.
     private static string ReuseImmersiveFirstPersonCameraMath(string source)
     {
+        var usesCrLf = source.Contains("\r\n", StringComparison.Ordinal);
+        var normalized = usesCrLf ? source.Replace("\r\n", "\n", StringComparison.Ordinal) : source;
+        var changed = ReuseImmersiveFirstPersonCameraMathLf(normalized);
+        return usesCrLf ? changed.Replace("\n", "\r\n", StringComparison.Ordinal) : changed;
+    }
+
+    private static string ReuseImmersiveFirstPersonCameraMathLf(string source)
+    {
         const string marker = "__gcetIfpBodyScratchV1";
         const string neutral = "__gcetIfpNeutralFreeV1";
         if (source.Contains(marker, StringComparison.Ordinal) ||
