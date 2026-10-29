@@ -131,12 +131,14 @@ if($secondResult.Applied -or $secondResult.Reason -notlike '*already installed*'
 $priorField=$inj.GetField('SitAnywhereWorkerV1',$flags)
 if(!$priorField){throw 'SitAnywhere legacy owned worker proof absent'}
 $priorWorker=[string]$priorField.GetRawConstantValue()
-$wakeStart=$init.IndexOf('local function shouldRunSitAnywhereFrame()')
-$wakeEnd=$init.IndexOf('local function runSitAnywhereFrame(dt)',$wakeStart)
+$normalizedInit=$init.Replace([string][char]13+[char]10,[string][char]10)
+$normalizedLogic=$logicWake.Replace([string][char]13+[char]10,[string][char]10)
+$wakeStart=$normalizedInit.IndexOf('local function shouldRunSitAnywhereFrame()')
+$wakeEnd=$normalizedInit.IndexOf('local function runSitAnywhereFrame(dt)',$wakeStart)
 if($wakeStart -lt 0 -or $wakeEnd -le $wakeStart){
   throw 'SitAnywhere generated source wake boundary drift'
 }
-$oldInit=$init.Remove($wakeStart,$wakeEnd-$wakeStart)
+$oldInit=$normalizedInit.Remove($wakeStart,$wakeEnd-$wakeStart)
 $oldInit=$oldInit.Replace('created, runSitAnywhereFrame, shouldRunSitAnywhereFrame)',
   'created, runSitAnywhereFrame)')
 $wakeBlock=@'
@@ -151,7 +153,7 @@ if(!$oldInit.Contains($wakeBlock)){throw 'SitAnywhere scanner wake callback shap
 $oldInit=$oldInit.Replace($wakeBlock,'')
 $oldInit=[regex]::Replace($oldInit,
   '(?m)^            if self.__gcetWakeRealtime then self.__gcetWakeRealtime\(\) end\r?\n','')
-$oldLogic=[regex]::Replace($logicWake,
+$oldLogic=[regex]::Replace($normalizedLogic,
   '(?m)^        if self.mod.__gcetWakeRealtime then self.mod.__gcetWakeRealtime\(\) end\r?\n','')
 $staged['sitAnywhere/init.lua']=[Text.Encoding]::UTF8.GetBytes($oldInit)
 $staged['sitAnywhere/modules/logic.lua']=[Text.Encoding]::UTF8.GetBytes($oldLogic)
