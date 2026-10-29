@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 
 namespace GCETRuntimeProfiler.Core.Services;
@@ -15,15 +16,15 @@ public static partial class ResultReportService
         double ownerZeroPositiveMiB, long ownerZeroPositiveRequests);
 
     private sealed record PressureAllocator(
-        double positiveAllocatedMiB, double positiveAllocatedMiBPerSecond,
-        long allocationRequests, double allocationRequestsPerSecond,
-        long observedGcObjectBirths, double observedGcObjectBirthsPerSecond,
+        double positiveAllocatedMiB, double? positiveAllocatedMiBPerSecond,
+        long allocationRequests, double? allocationRequestsPerSecond,
+        long observedGcObjectBirths, double? observedGcObjectBirthsPerSecond,
         double unscopedAndOverflowMiB, double unscopedAndOverflowSharePct,
         IReadOnlyList<PressureProducer> topScopedProducers);
 
     private sealed record PressureCollector(
         long completedCycles, double measuredCollectorMs,
-        double measuredCollectorMsPerSecond, double incrementalMs,
+        double? measuredCollectorMsPerSecond, double incrementalMs,
         long incrementalCalls, double maximumObservedFrameBucketMs,
         double maximumRecordedIncrementalStepMs,
         double? firstCompletedCycleFrameEndSeconds);
@@ -62,9 +63,9 @@ public static partial class ResultReportService
                 .Sum(x => x.AllocatedMiB);
             allocator = new PressureAllocator(
                 Round(totalMiB, 6),
-                seconds > 0 ? Round(totalMiB / seconds, 6) : 0,
-                requests, seconds > 0 ? Round(requests / seconds, 3) : 0,
-                births, seconds > 0 ? Round((double)births / seconds, 3) : 0,
+                seconds > 0 ? Round(totalMiB / seconds, 6) : (double?)null,
+                requests, seconds > 0 ? Round(requests / seconds, 3) : (double?)null,
+                births, seconds > 0 ? Round((double)births / seconds, 3) : (double?)null,
                 Round(unknown, 6), totalMiB > 0
                     ? Round(unknown * 100 / totalMiB, 3) : 0,
                 gc.Mods.Where(x => x.Mod is not ("<unattributed>" or "<registration-overflow>"))
@@ -82,7 +83,7 @@ public static partial class ResultReportService
             var first = c.Frames.FirstOrDefault(x => x.CompletedCycles > 0);
             collector = new PressureCollector(
                 c.CompletedCycles, Round(c.TotalMs, 6),
-                seconds > 0 ? Round(c.TotalMs / seconds, 6) : 0,
+                seconds > 0 ? Round(c.TotalMs / seconds, 6) : (double?)null,
                 Round(c.StepMs, 6), c.StepCalls,
                 Round(c.MaxObservedFrameMs, 6),
                 Round(c.MaxStepToDateMs, 6),
@@ -102,7 +103,8 @@ public static partial class ResultReportService
             var hp = ft.HitchPressure;
             delivery = new PressureFrameDelivery(
                 Round(ft.P99FrameMs, 6),
-                Round(Percentile(ft.Frames.Select(x => x.FrameMs), 0.999), 6),
+                Round(Percentile(ft.Frames.Select(x => x.FrameMs)
+                    .Where(x => x > 0 && double.IsFinite(x)), 0.999), 6),
                 Round(ft.MaxFrameMs, 6), ft.FramesOver50Ms, ft.FramesOver100Ms,
                 hp?.EpisodeCount,
                 hp is null ? null : Round(hp.EpisodesPerMinute, 6),
@@ -135,7 +137,7 @@ public static partial class ResultReportService
         StringBuilder sb, Phase3PressureScorecard p)
     {
         static string Measured(double? v, string unit, int digits = 2) =>
-            v is null ? "NOT MEASURED" : v.Value.ToString("F" + digits) + unit;
+            v is null ? "NOT MEASURED" : v.Value.ToString("F" + digits, CultureInfo.InvariantCulture) + unit;
         static string MeasuredCount(long? v) =>
             v is null ? "NOT MEASURED" : N(v.Value);
 
