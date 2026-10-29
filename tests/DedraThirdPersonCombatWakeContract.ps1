@@ -281,6 +281,8 @@ $legacyInit=$lua.Replace(
    '-- G-CET semantic:dedra-third-person-combat-wake' + $nl +
    '-- __gcetDedraSharedScheduleV3: uses existing 0-Engine frame owner.',
    '-- __gcetDedraDetachedWakeV2: worker owns pausable frame subscription.')
+$legacyInit=$legacyInit.Replace('  Dedra, dedraStep)',
+ '  Dedra, dedraStep, registerForEvent)')
 $legacyInit=$legacyInit.Replace('registerForEvent("onShutdown", function()',
  'Dedra.__gcetWakeController.Register()' + $nl +
  'registerForEvent("onShutdown", function()')
