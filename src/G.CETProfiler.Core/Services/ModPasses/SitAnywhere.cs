@@ -308,30 +308,7 @@ internal static partial class SemanticInjectors
             initialization +
             "        sitAnywhereBaseInitialized = true\n" +
             "        TryAttachSitAnywherePass4()\n", StringComparison.Ordinal);
-        context.WriteCoordinator("sitanywhere_engine_worker.lua", """
--- G-CET semantic coordinator:sitanywhere
--- Author frame logic remains in init.lua; one 0-Engine frame job.
-local M = {}
-function M.attach(created, onFrame)
-    local ok, engine = pcall(GetMod, "0-Engine")
-    if not ok or type(engine) ~= "table" or type(engine.Register) ~= "function" then
-        error("0-Engine Register API not ready")
-    end
-    local client = engine.Register("sitAnywhere")
-    if type(client) ~= "table" or type(client.Schedule) ~= "table"
-        or type(client.Schedule.EveryFrame) ~= "function" then
-        error("0-Engine Scheduler API not ready")
-    end
-    local job = client.Schedule.EveryFrame({
-        id = "sitanywhere.realtime", pause = "never"
-    }, function(ctx)
-        onFrame(ctx.dt or 0)
-    end)
-    created[#created + 1] = job
-    return job
-end
-return M
-""");
+        context.WriteCoordinator("sitanywhere_engine_worker.lua", SitAnywhereWorkerV2());
         // All edited files are part of ONE authoritative sitanywhere rule,
         // including the source-owned worker. Keep atomic ownership proof intact.
         const string ownedMarker = "-- G-CET semantic:sitanywhere\n";
@@ -702,4 +679,79 @@ return M
         return SemanticInjectionResult.Success(
             "Preserved the native mappin observer and shown-interaction icon wake; skipped GetMappin/GetWorldPosition when no custom SitAnywhere interaction is shown.");
     }
+    private const string SitAnywhereWorkerV1 = """
+-- G-CET semantic coordinator:sitanywhere
+-- Author frame logic remains in init.lua; one 0-Engine frame job.
+local M = {}
+function M.attach(created, onFrame)
+    local ok, engine = pcall(GetMod, "0-Engine")
+    if not ok or type(engine) ~= "table" or type(engine.Register) ~= "function" then
+        error("0-Engine Register API not ready")
+    end
+    local client = engine.Register("sitAnywhere")
+    if type(client) ~= "table" or type(client.Schedule) ~= "table"
+        or type(client.Schedule.EveryFrame) ~= "function" then
+        error("0-Engine Scheduler API not ready")
+    end
+    local job = client.Schedule.EveryFrame({
+        id = "sitanywhere.realtime", pause = "never"
+    }, function(ctx)
+        onFrame(ctx.dt or 0)
+    end)
+    created[#created + 1] = job
+    return job
+end
+return M
+""";
+
+    private static string SitAnywhereWorkerV2()
+    {
+        const string before = """
+    local job = client.Schedule.EveryFrame({
+        id = "sitanywhere.realtime", pause = "never"
+    }, function(ctx)
+        onFrame(ctx.dt or 0)
+    end)
+    created[#created + 1] = job
+    return job
+""";
+        const string after = """
+    local job = nil
+    local active = true
+    job = client.Schedule.EveryFrame({
+        id = "sitanywhere.realtime", pause = "never"
+    }, function(ctx)
+        onFrame(ctx.dt or 0)
+        if not required() then job.Pause(); active = false end
+    end)
+    created[#created + 1] = job
+    local probe = client.Schedule.Every(0.10, {
+        id = "sitanywhere.wake", pause = "never",
+        clock = "game", catchUp = false
+    }, function()
+        local needed = required()
+        if needed and not active then
+            job.Resume()
+            active = true
+        elseif not needed and active then
+            job.Pause()
+            active = false
+        end
+    end)
+    created[#created + 1] = probe
+    return job
+""";
+        if (!SitAnywhereWorkerV1.Contains(before,StringComparison.Ordinal))
+            throw new InvalidOperationException("SitAnywhere worker V1 drift.");
+        return SitAnywhereWorkerV1
+            .Replace("function M.attach(created, onFrame)",
+                "function M.attach(created, onFrame, required)",
+                StringComparison.Ordinal)
+            .Replace("or type(client.Schedule.EveryFrame) ~= \"function\" then",
+                "or type(client.Schedule.EveryFrame) ~= \"function\"\n" +
+                "        or type(client.Schedule.Every) ~= \"function\" then",
+                StringComparison.Ordinal)
+            .Replace(before,after,StringComparison.Ordinal);
+    }
+
 }
