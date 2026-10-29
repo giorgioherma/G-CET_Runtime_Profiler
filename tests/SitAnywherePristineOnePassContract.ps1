@@ -126,6 +126,52 @@ $secondResult=$method.Invoke($null,[object[]]@($second))
 if($secondResult.Applied -or $secondResult.Reason -notlike '*already installed*') {
  throw 'Complete one-pass scheduler must be idempotent'
 }
+# V1 generated installs must regenerate only the missing worker and source
+# wake stage, never duplicate the existing callback owner.
+$priorField=$inj.GetField('SitAnywhereWorkerV1',$flags)
+if(!$priorField){throw 'SitAnywhere legacy owned worker proof absent'}
+$priorWorker=[string]$priorField.GetRawConstantValue()
+$wakeStart=$init.IndexOf('local function shouldRunSitAnywhereFrame()')
+$wakeEnd=$init.IndexOf('local function runSitAnywhereFrame(dt)',$wakeStart)
+if($wakeStart -lt 0 -or $wakeEnd -le $wakeStart){
+  throw 'SitAnywhere generated source wake boundary drift'
+}
+$oldInit=$init.Remove($wakeStart,$wakeEnd-$wakeStart)
+$oldInit=$oldInit.Replace('created, runSitAnywhereFrame, shouldRunSitAnywhereFrame)',
+  'created, runSitAnywhereFrame)')
+$wakeBlock=@'
+    self.__gcetWakeRealtime = function()
+        if pass4FrameJob and type(pass4FrameJob.Resume) == "function" then
+            pass4FrameJob.Resume()
+        end
+    end
+'@
+$wakeBlock=$wakeBlock.TrimEnd() + [char]10
+if(!$oldInit.Contains($wakeBlock)){throw 'SitAnywhere scanner wake callback shape drift'}
+$oldInit=$oldInit.Replace($wakeBlock,'')
+$oldInit=[regex]::Replace($oldInit,
+  '(?m)^            if self.__gcetWakeRealtime then self.__gcetWakeRealtime\(\) end\r?\n','')
+$oldLogic=[regex]::Replace($logicWake,
+  '(?m)^        if self.mod.__gcetWakeRealtime then self.mod.__gcetWakeRealtime\(\) end\r?\n','')
+$staged['sitAnywhere/init.lua']=[Text.Encoding]::UTF8.GetBytes($oldInit)
+$staged['sitAnywhere/modules/logic.lua']=[Text.Encoding]::UTF8.GetBytes($oldLogic)
+$staged['sitAnywhere/GCET_Semantic/sitanywhere_engine_worker.lua']=[Text.Encoding]::UTF8.GetBytes($priorWorker)
+$legacyCtx=MakeCtx $staged
+$legacyResult=$method.Invoke($null,[object[]]@($legacyCtx))
+$legacyChanges=@($ctxType.GetProperty('Changes',[Reflection.BindingFlags]'Instance,NonPublic').GetValue($legacyCtx))
+if(!$legacyResult.Applied -or $legacyChanges.Count -ne 3){
+  throw 'SitAnywhere prior V1 worker/init/scanner migration failed'
+}
+foreach($change in $legacyChanges){$staged[$change.RelativeFile]=$change.Bytes}
+$regenerated=[Text.Encoding]::UTF8.GetString($staged['sitAnywhere/GCET_Semantic/sitanywhere_engine_worker.lua'])
+if($regenerated.TrimEnd() -ne $worker.TrimEnd()){
+  throw 'SitAnywhere prior coordinator failed to regenerate'
+}
+# Restore the originally proven complete stage for missing-worker test.
+$staged['sitAnywhere/init.lua']=[Text.Encoding]::UTF8.GetBytes($init)
+$staged['sitAnywhere/modules/logic.lua']=[Text.Encoding]::UTF8.GetBytes($logicWake)
+$staged['sitAnywhere/GCET_Semantic/sitanywhere_engine_worker.lua']=[Text.Encoding]::UTF8.GetBytes($worker)
+
 $staged.Remove('sitAnywhere/GCET_Semantic/sitanywhere_engine_worker.lua')|Out-Null
 $missing=MakeCtx $staged
 $refused=$false
