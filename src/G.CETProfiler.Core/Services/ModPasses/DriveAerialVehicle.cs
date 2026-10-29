@@ -217,6 +217,11 @@ end
             "        end\n" +
             "    end\n" +
             "    local h = self.__gcetDAVActionHandle";
+        // Older supported author variants without any mappin owner must
+        // still get the existing physics/action stages. A partially present
+        // mappin observer is unsafe and cannot be silently treated as absent.
+        if (coreText.Contains("function Core:SetMappinController()", StringComparison.Ordinal))
+        {
         if (!coreText.Contains(davGateTag, StringComparison.Ordinal))
         {
             coreText = ReplaceOnce(coreText, davSyncStart, davMappinSync,
@@ -251,6 +256,11 @@ end
                      RegexOptions.CultureInvariant).Count != 2)
             throw new InvalidOperationException(
                 "DAV phase 3 flight-only mappin stage partial or drifted; fail closed.");
+        }
+        else if (coreText.Contains("BaseMappinBaseController", StringComparison.Ordinal) ||
+                 coreText.Contains(davGateTag, StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "DAV found a partial or renamed global mappin owner; fail closed.");
 
         context.Write(core, coreCrLf
             ? coreText.Replace("\n", "\r\n", StringComparison.Ordinal) : coreText);
