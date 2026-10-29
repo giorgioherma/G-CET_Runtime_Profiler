@@ -187,219 +187,125 @@ if(!$proof.Invoke($null,[object[]]@([string]$proofRoot))){
     throw 'Legacy staged init upgrade lost paired completion proof'
 }
 
+# The source-only semantic may adopt a frame owner ONLY if 0-Engine's
+# actual, currently COMPOSED author onUpdate has the namespaced driver.
+# These minimal host bytes exercise that proof without prior G-CET output.
+$hostRoot=Join-Path $root '0-Engine'
+New-Item -ItemType Directory -Force $hostRoot|Out-Null
+$hostPath=Join-Path $hostRoot 'init.lua'
+$hostFixture=@'
+registerForEvent("onUpdate", function(delta)
+    pcall(UpdateFrame, delta)
+    Engine.__gcetScheduleDriver({
+        frame = currentFrame, dt = delta
+    })
+end)
+__host.__gcetScheduleDriver = function(ctx)
+    pcall(__scheduler.Update, ctx)
+end
+'@
+[IO.File]::WriteAllText($hostPath,$hostFixture,[Text.UTF8Encoding]::new($false))
+$nl=[string][char]10
+$crlf=([string][char]13)+$nl
 $a=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $dedraFixture $addon
-if(!$a.Applied -or $a.Changes.Count -ne 2){throw "Dedra expected init + separate worker, got $($a.Changes.Count)"}
+if(!$a.Applied -or $a.Changes.Count -ne 2) {
+  throw "Dedra pristine output must contain one init bridge and one worker: $($a.Changes.Count)"
+}
 $init=$a.Changes|Where-Object{$_.RelativeFile -like '*/init.lua'}|Select-Object -First 1
 $worker=$a.Changes|Where-Object{$_.RelativeFile -like '*/GCET_Semantic/dedra_camera_wake.lua'}|Select-Object -First 1
-if(!$init -or !$worker){throw 'Missing source owner or detached wake worker'}
-$lua=[Text.Encoding]::UTF8.GetString($init.Bytes)
-$wake=[Text.Encoding]::UTF8.GetString($worker.Bytes)
-foreach($token in @('Dedra.__gcetWakeController.Register()','Dedra.__gcetWakeController.Start()',
-    'Dedra.__gcetWakeController.Signal()','Dedra.__gcetWakeController.Stop()',
-    'Dedra.__gcetWakeFromBase','Dedra.__gcetWakeDiagnostics = function()',
-    'dofile("GCET_Semantic/dedra_camera_wake.lua")')){
-  if(!$lua.Contains($token)){throw "Missing source bridge: $token"}
+if(!$init -or !$worker){throw 'Dedra generated dependencies missing'}
+$lua=[Text.Encoding]::UTF8.GetString($init.Bytes).Replace($crlf,$nl)
+$wake=[Text.Encoding]::UTF8.GetString($worker.Bytes).Replace($crlf,$nl)
+foreach($token in @(
+  '-- G-CET semantic:dedra-third-person-combat-wake',
+  '-- __gcetDedraSharedScheduleV3:',
+  'Dedra.__gcetWakeController.Start()',
+  'Dedra.__gcetWakeController.Signal()',
+  'Dedra.__gcetWakeController.Stop()',
+  'Dedra.__gcetWakeFromBase',
+  'dofile("GCET_Semantic/dedra_camera_wake.lua")')) {
+  if(!$lua.Contains($token)) {throw "Dedra bridge missing $token"}
 }
-$normalizedInit=$lua.Replace($crlf,$nl)
-# 2026-10-28 game-boot regression: registering during CET onInit
-# crashes the native CET event dispatcher. In diagnostic F, EXACTLY the
-# same worker booted with file-load Register after the author's onInit
-# declaration, before shutdown. This ordering is a required postcondition.
-$safeInit='registerForEvent("onInit", function()' + $nl +
-    '  Dedra.__gcetWakeController.Start()'
-$lateInit='registerForEvent("onInit", function()' + $nl +
-    '  Dedra.__gcetWakeController.Register()' + $nl +
-    '  Dedra.__gcetWakeController.Start()'
-$eager='Dedra.__gcetWakeController.Register()' + $nl +
-    'registerForEvent("onShutdown", function()'
-if($normalizedInit.Contains('pcall(dedraStep, dt)') -or
-  ([regex]::Matches($normalizedInit,'Dedra.__gcetWakeController.Register\(\)')).Count -ne 1 -or
-  !$normalizedInit.Contains($safeInit) -or
-  !$normalizedInit.Contains($eager) -or
-  $normalizedInit.Contains($lateInit)) {
-  throw 'Dedra pristine generation lost file-load-only registration or doubled callback'
+foreach($token in @(
+  '-- __gcetDedraSharedScheduleV3:',
+  'schedule.EveryFrame(', 'schedule.Every(0.25,',
+  'type(host.__gcetScheduleDriver) ~= "function"',
+  'AimStateChanged','WeaponStateChanged','UpperBodyStateChanged',
+  'CombatStateChanged', 'PlayerReady','PlayerInvalidated',
+  'function M.Start()', 'function M.Stop()', 'function M.Signal()',
+  'pcall(step, dt)', 'tryStep(ctx,false)', 'tryStep(ctx,true)')) {
+  if(!$wake.Contains($token)){throw "Dedra scheduler or core maintenance missing: $token"}
 }
-# Reproduce the crashing #2126 onInit source, with the canonical external
-# worker. The same authoritative producer must upgrade this incomplete
-# installed stage in place; no previously optimized input is required.
-$crashingInit=$normalizedInit.Replace($safeInit,$lateInit).Replace(
-    $eager,'registerForEvent("onShutdown", function()')
-if($crashingInit -eq $normalizedInit -or $crashingInit.Contains($eager)) {
-  throw 'Crash regression fixture did not reproduce the late-registration defect'
+if($lua.Contains('Dedra.__gcetWakeController.Register()') -or
+   $wake.Contains('FrameListeners.MakeRegistrar') -or
+   $wake.Contains('fallbackRegister("onUpdate"') -or
+   $wake.Contains('registerForEvent(') -or
+   ([regex]::Matches($lua,'(?:registerForEvent|__gcetRegisterEvent_[0-9]+)\(["'']onUpdate["'']')).Count -ne 0) {
+  throw 'Dedra emitted a second/late native frame registrar'
 }
-# Historical bootable worker lacked the diagnostics adapter; the new
-# generating rule adds that bridge without moving its owner back onInit.
-$oldInit=$normalizedInit.Replace('Dedra.__gcetWakeDiagnostics = function()' + $nl +
-  '  return Dedra.__gcetWakeController.Diagnostics()' + $nl +
-  'end' + $nl,'')
-if($oldInit -eq $normalizedInit -or !$oldInit.Contains($eager)) {
-  throw 'Legacy eager-registration source fixture unchanged'
+if(!$wake.Contains('Dedra.on ~= false') -or
+   !$wake.Contains('Dedra.armSent ~= false') -or
+   !$wake.Contains('Dedra.planeHeld == true')) {
+  throw 'Dedra ignored REDscript/cleanup debt'
 }
-foreach($token in @('function M.Diagnostics()','FrameListeners.MakeRegistrar','handle.Pause()','handle.Resume()',
-  'baseBridgeConfirmed','base.gcetDedraWakeReady','if proof == "__gcetItpToggleWakeV2"',
-  'if p.userWantsThirdPerson == true','kind,owner,notify',
-  'Original game-combat','linked','registrationPath','registrationReason',
-  'no-pausable-handle:','fallbackRegister("onUpdate",update)')){
-  if(!$wake.Contains($token)){throw "Missing safe detached wake or fallback: $token"}
-}
-if($wake.Contains('api.__gcetDedraWakeBridgeV2') -or
-   $wake.Contains('base.__gcetDedraWakeBridgeV2')){throw 'Read-only API probe persists'}
-if($wake.Contains('0.10') -or $wake.Contains('0.25') -or $wake.Contains('SetInterval') -or
-   $wake.Contains('OnFrame(')){throw 'Dormant polling/timer introduced'}
-# 2026-10-29 real gameplay regression: the prior FPP-idle gate skipped
-# dedraStep entirely, including authoritative 0.5s REDscript State(),
-# first-person animation/head maintenance and cleanup. A green CI is not
-# evidence that camera mode alone licenses full body elimination.
-# Keep the exact original reconciler running until an alternative wake graph
-# independently proves every REDscript/state transition and game boot.
-if(!$wake.Contains('  local function update(dt)' + $nl +
-    '    pcall(step, dt) -- Original game-combat and cleanup behavior unchanged.' + $nl) -or
-   $wake.Contains('if not fallbackActive then return end')){
-  throw 'Dedra FPP camera state may not suppress original core/animation reconciler'
-}
-# The catalog may suppress a fully installed semantic by source proof alone.
-# Prove that old eager init, missing coordinator, and prior worker version all
-# remain INCOMPLETE even though their historical marker is present.
-$dedraCompletion=$t.GetMethod('IsDedraThirdPersonCombatWakeComplete',$flags)
-if(!$dedraCompletion){throw 'Dedra onInit two-file completion verifier absent'}
-$completionRoot=Join-Path $root 'dedra-completion'
-$completionWorkerDir=Join-Path $completionRoot 'GCET_Semantic'
-New-Item -ItemType Directory -Force $completionWorkerDir|Out-Null
-$completionInitPath=Join-Path $completionRoot 'init.lua'
-$completionWorkerPath=Join-Path $completionWorkerDir 'dedra_camera_wake.lua'
-[IO.File]::WriteAllText($completionInitPath,$normalizedInit,[Text.UTF8Encoding]::new($false))
-[IO.File]::WriteAllText($completionWorkerPath,$wake,[Text.UTF8Encoding]::new($false))
-if(!$dedraCompletion.Invoke($null,[object[]]@([string]$completionRoot))){
-  throw 'Current Dedra onInit source and pausable worker failed completion proof'
-}
-[IO.File]::WriteAllText($completionInitPath,$oldInit,[Text.UTF8Encoding]::new($false))
-if($dedraCompletion.Invoke($null,[object[]]@([string]$completionRoot))){
-  throw 'Incomplete prior Dedra source incorrectly completed current dormancy'
-}
-[IO.File]::WriteAllText($completionInitPath,$crashingInit,[Text.UTF8Encoding]::new($false))
-if($dedraCompletion.Invoke($null,[object[]]@([string]$completionRoot))){
-  throw 'Crashing onInit registration falsely passed safe-generation completion proof'
-}
-[IO.File]::WriteAllText($completionInitPath,$normalizedInit,[Text.UTF8Encoding]::new($false))
-[IO.File]::Delete($completionWorkerPath)
-if($dedraCompletion.Invoke($null,[object[]]@([string]$completionRoot))){
-  throw 'Missing external Dedra worker falsely completed new dormancy'
-}
-[IO.File]::WriteAllText($completionWorkerPath,$wake,[Text.UTF8Encoding]::new($false))
-
-# Older optimized stacks have an external worker with a read-only public API
-# flag probe. It must be upgraded through this same generating rule, without
-# re-injecting author callbacks or moving the worker inline.
-$previousWake=$wake.Replace($crlf,$nl)
-$diagnosticsStart=$previousWake.IndexOf('  function M.Diagnostics()' + $nl)
-$diagnosticsEnd=$previousWake.IndexOf('  function M.Stop()', $diagnosticsStart)
-if($diagnosticsStart -lt 0 -or $diagnosticsEnd -le $diagnosticsStart){
-  throw 'Read-only source worker diagnostics are missing or misowned'
-}
-$previousWake=$previousWake.Substring(0,$diagnosticsStart) +
-  $previousWake.Substring($diagnosticsEnd)
-$readinessProbe=(
-  '    -- Source-proven capability exported by the ITP generator. This is' + $nl +
-  '    -- read-only and can be checked during Dedra''s own startup, even when' + $nl +
-  '    -- the base onInit proof signal was emitted earlier in load order.' + $nl +
-  '    -- Unmodified/partial ITP stays fail-open until a real toggle proof.' + $nl +
-  '    if not baseBridgeConfirmed and type(base.gcetDedraWakeReady) == "function" then' + $nl +
-  '      local okReady, ready = pcall(base.gcetDedraWakeReady)' + $nl +
-  '      if okReady and ready == true then baseBridgeConfirmed = true end' + $nl +
-  '    end' + $nl)
-$previousWake=$previousWake.Replace($readinessProbe,'')
-[IO.File]::WriteAllText($completionWorkerPath,$previousWake,[Text.UTF8Encoding]::new($false))
-if($dedraCompletion.Invoke($null,[object[]]@([string]$completionRoot))){
-  throw 'Earlier detached Dedra worker falsely completed new onInit dormancy'
-}
-if($previousWake -eq $wake -or $previousWake.Contains('gcetDedraWakeReady')){
-  throw 'Previous shipped worker fixture is not exact'
-}
-$legacyWake=$previousWake
-$legacyWake=$legacyWake.Replace('  local baseBridgeConfirmed = false' + $nl,'')
-$legacyWake=$legacyWake.Replace(
-  '    if not baseBridgeConfirmed or not linked or not api then',
-  '    if not linked or not api or api.__gcetDedraWakeBridgeV2 ~= true then')
-$legacyWake=$legacyWake.Replace(
-  '      type(base.perspective.get) ~= "function" then',
-  '      type(base.perspective.get) ~= "function" or' + $nl +
-  '      base.__gcetDedraWakeBridgeV2 ~= true then')
-$legacyWake=$legacyWake.Replace(
-  '  function M.Signal(proof)' + $nl +
-  '    if proof == "__gcetItpToggleWakeV2" then baseBridgeConfirmed = true end',
-  '  function M.Signal()')
-if(!$legacyWake.Contains('api.__gcetDedraWakeBridgeV2')) {
-  throw 'Prior generated Dedra worker fixture was not constructed'
-}
+$proof=$t.GetMethod('IsDedraThirdPersonCombatWakeComplete',$flags)
+if(!$proof){throw 'Dedra two-file complete proof missing'}
 $workerDir=Join-Path $dedra 'GCET_Semantic'
 New-Item -ItemType Directory -Force $workerDir|Out-Null
 $workerPath=Join-Path $workerDir 'dedra_camera_wake.lua'
-[IO.File]::WriteAllText($workerPath,$legacyWake,[Text.UTF8Encoding]::new($false))
-$script:dedraUpgradeCase='legacy worker with canonical init'
-$workerUpgrade=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $lua $addon -StageInput
-if(!$workerUpgrade.Applied -or $workerUpgrade.Changes.Count -ne 1) {
-  throw 'Previously optimized Dedra worker did not upgrade in place'
-}
-$updatedWorker=[Text.Encoding]::UTF8.GetString($workerUpgrade.Changes[0].Bytes)
-if($updatedWorker -ne $wake -or
-  $workerUpgrade.Changes[0].RelativeFile -notlike '*/GCET_Semantic/dedra_camera_wake.lua') {
-  throw 'Prior worker update changed execution ownership or generated unexpected code'
-}
-[IO.File]::WriteAllText($workerPath,$previousWake,[Text.UTF8Encoding]::new($false))
-$script:dedraUpgradeCase='previous worker with canonical init'
-$previousUpgrade=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $lua $addon -StageInput
-if(!$previousUpgrade.Applied -or $previousUpgrade.Changes.Count -ne 1 -or
-   [Text.Encoding]::UTF8.GetString($previousUpgrade.Changes[0].Bytes) -ne $wake) {
-  throw 'Previously shipped V2 worker did not upgrade to source-proven startup wake'
-}
-[IO.File]::WriteAllText($workerPath,$previousWake,[Text.UTF8Encoding]::new($false))
-$script:dedraUpgradeCase='previous worker with bootable eager old init'
-$oldInitUpgrade=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $oldInit $addon -StageInput
-$oldInitFile=$oldInitUpgrade.Changes|Where-Object{$_.RelativeFile -like '*/init.lua'}|Select-Object -First 1
-$oldWorkerFile=$oldInitUpgrade.Changes|Where-Object{$_.RelativeFile -like '*/GCET_Semantic/dedra_camera_wake.lua'}|Select-Object -First 1
-if(!$oldInitUpgrade.Applied -or $oldInitUpgrade.Changes.Count -ne 2 -or
-   !$oldInitFile -or !$oldWorkerFile -or
-   [Text.Encoding]::UTF8.GetString($oldInitFile.Bytes).Replace($crlf,$nl) -ne $normalizedInit -or
-   [Text.Encoding]::UTF8.GetString($oldWorkerFile.Bytes) -ne $wake){
-  throw 'Previously optimized eager-registration owner did not upgrade atomically'
-}
-# Previously shipped v1.3.3 source registered the pausable frame owner
-# inside onInit. Its complete worker must be preserved and its file-load
-# registration restored without introducing a duplicate or an extra worker.
-[IO.File]::WriteAllText($workerPath,$updatedWorker,[Text.UTF8Encoding]::new($false))
-$script:dedraUpgradeCase='crashing onInit owner with current external worker'
-$crashUpgrade=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $crashingInit $addon -StageInput
-if(!$crashUpgrade.Applied -or $crashUpgrade.Changes.Count -ne 1 -or
-   $crashUpgrade.Changes[0].RelativeFile -notlike '*/init.lua' -or
-   [Text.Encoding]::UTF8.GetString($crashUpgrade.Changes[0].Bytes).Replace($crlf,$nl) -ne $normalizedInit){
-  throw 'Crashing onInit registration was not safely upgraded to bootable file-load ownership'
-}
-[IO.File]::WriteAllText($workerPath,$updatedWorker,[Text.UTF8Encoding]::new($false))
-$script:dedraUpgradeCase='current canonical worker reapply'
-$workerTwice=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $lua $addon -StageInput
-if($workerTwice.Applied -or $workerTwice.Changes.Count -ne 0) {
-  throw 'Updated external worker was not idempotent'
-}
-# Partial install: the proven onInit source bridge can survive while its
-# external coordinator is missing. Recreate ONLY the worker; do not rewrite
-# completed author callbacks or require a previous optimized ZIP.
+[IO.File]::WriteAllText((Join-Path $dedra 'init.lua'),$lua,[Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText($workerPath,$wake,[Text.UTF8Encoding]::new($false))
+if(!$proof.Invoke($null,[object[]]@([string]$dedra))){throw 'Finished V3 source+worker not complete'}
+$reapply=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $lua $addon -StageInput
+if($reapply.Applied -or $reapply.Changes.Count -ne 0){throw 'Finished V3 not idempotent'}
 [IO.File]::Delete($workerPath)
-$script:dedraUpgradeCase='missing worker, verified existing onInit author bridge'
-$missingWorker=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $lua $addon -StageInput
-if(!$missingWorker.Applied -or $missingWorker.Changes.Count -ne 1 -or
-   $missingWorker.Changes[0].RelativeFile -notlike '*/GCET_Semantic/dedra_camera_wake.lua' -or
-   [Text.Encoding]::UTF8.GetString($missingWorker.Changes[0].Bytes) -ne $wake){
-  throw 'Verified prior author bridge could not regenerate only the missing external worker'
+if($proof.Invoke($null,[object[]]@([string]$dedra))){throw 'Missing worker passed completion proof'}
+$rebuild=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $lua $addon -StageInput
+if(!$rebuild.Applied -or $rebuild.Changes.Count -ne 1 -or
+   $rebuild.Changes[0].RelativeFile -notlike '*/GCET_Semantic/dedra_camera_wake.lua'){
+  throw 'Missing V3 worker could not regenerate without changing completed Lua'}
+[IO.File]::WriteAllText($workerPath,$wake,[Text.UTF8Encoding]::new($false))
+$drift=$wake.Replace('pcall(step, dt)','pcall(step, nil)')
+[IO.File]::WriteAllText($workerPath,$drift,[Text.UTF8Encoding]::new($false))
+$rejected=$false
+try{$null=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $lua $addon -StageInput}
+catch{$rejected=$true}
+if(!$rejected){throw 'Unknown optimized worker drift was silently rewritten'}
+# Exact user-installed previous V2 coordinator and bridge are supported
+# without recreating the obsolete CET frame registration path.
+$legacyField=$t.GetField('WorkerBody',$flags)
+if(!$legacyField){throw 'No verified V2 upgrade template in authoritative generator'}
+$legacyWake='-- G-CET semantic coordinator:dedra-third-person-combat-wake' + $nl +
+  ([string]$legacyField.GetRawConstantValue()).Replace($crlf,$nl)
+$legacyInit=$lua.Replace(
+   '-- G-CET semantic:dedra-third-person-combat-wake' + $nl +
+   '-- __gcetDedraSharedScheduleV3: uses existing 0-Engine frame owner.',
+   '-- __gcetDedraDetachedWakeV2: worker owns pausable frame subscription.')
+$legacyInit=$legacyInit.Replace('registerForEvent("onShutdown", function()',
+ 'Dedra.__gcetWakeController.Register()' + $nl +
+ 'registerForEvent("onShutdown", function()')
+if($legacyInit -eq $lua -or !$legacyInit.Contains('__gcetDedraDetachedWakeV2')) {
+  throw 'Prior V2 source fixture construction failed'
 }
-[IO.File]::WriteAllText($workerPath,$updatedWorker,[Text.UTF8Encoding]::new($false))
-$driftedWorker=$legacyWake.Replace('fallbackRegister("onUpdate",update)',
-  'fallbackRegister("onUpdate",nil)')
-[IO.File]::WriteAllText($workerPath,$driftedWorker,[Text.UTF8Encoding]::new($false))
-$refused=$false
-try { $null=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $lua $addon -StageInput }
-catch { $refused=$true }
-if(!$refused){throw 'Unknown external worker drift was silently overwritten'}
-
-if([IO.File]::ReadAllText((Join-Path $dedra 'init.lua')) -ne $dedraFixture){throw 'Installed source edited'}
-if([IO.File]::ReadAllText((Join-Path $itp 'init.lua')) -ne $itpFixture){throw 'Base live source edited'}
-Write-Host 'Paired base CET toggle and Dedra detached worker: no dormant polling, one callback, author fallback PASS'
+[IO.File]::WriteAllText($workerPath,$legacyWake,[Text.UTF8Encoding]::new($false))
+$script:dedraUpgradeCase='V2 diagnostic worker and boot-safe init'
+$upgrade=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $legacyInit $addon -StageInput
+$upInit=$upgrade.Changes|Where-Object{$_.RelativeFile -like '*/init.lua'}|Select-Object -First 1
+$upWorker=$upgrade.Changes|Where-Object{$_.RelativeFile -like '*/GCET_Semantic/dedra_camera_wake.lua'}|Select-Object -First 1
+if(!$upgrade.Applied -or $upgrade.Changes.Count -ne 2 -or !$upInit -or !$upWorker -or
+  [Text.Encoding]::UTF8.GetString($upInit.Bytes).Replace($crlf,$nl) -ne $lua -or
+  [Text.Encoding]::UTF8.GetString($upWorker.Bytes).Replace($crlf,$nl) -ne $wake){
+  throw 'Source exact previous V2 install did not upgrade atomically to V3'
+}
+# A stack with no 0-Engine adopted driver must preserve stock CET callback.
+Remove-Item $hostPath -Force
+[IO.File]::WriteAllText($workerPath,$wake,[Text.UTF8Encoding]::new($false))
+$noHost=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $dedraFixture $addon -StageInput
+if($noHost.Applied -or $noHost.Changes.Count -ne 0){
+  throw 'Unverified 0-Engine incorrectly adopted Dedra update'
+}
+[IO.File]::WriteAllText($hostPath,$hostFixture,[Text.UTF8Encoding]::new($false))
+if([IO.File]::ReadAllText((Join-Path $itp 'init.lua')) -ne $itpFixture){
+  throw 'ITP author source unexpectedly edited'
+}
+Write-Host 'Dedra V3: source-proven shared host, pristine+V2 upgrade, one execution owner, drift, missing host PASS'
