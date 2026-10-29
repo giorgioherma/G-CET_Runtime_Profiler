@@ -37,7 +37,7 @@ internal static partial class SemanticInjectors
             var workerV2 = CyberTrialsWorkerV2();
             var v1 = worker.Replace("\r\n", "\n", StringComparison.Ordinal);
             var workerNeeded = !string.Equals(v1.TrimEnd(), workerV2.TrimEnd(), StringComparison.Ordinal);
-            if (workerNeeded && !string.Equals(v1, CyberTrialsWorkerV1,
+            if (workerNeeded && !string.Equals(v1.TrimEnd(), CyberTrialsWorkerV1.TrimEnd(),
                 StringComparison.Ordinal))
                 throw new InvalidOperationException(
                     "CyberTrials existing coordinator changed; refuse unproven wake migration.");
