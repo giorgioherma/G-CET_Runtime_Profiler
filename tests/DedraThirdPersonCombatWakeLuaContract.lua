@@ -6,6 +6,7 @@ local function check(ok, message) assert(ok, message) end
 local function harness(opts)
   opts = opts or {}
   local requested = opts.requested == true
+  local cameraMode, cameraOverride, transitioning = opts.mode, opts.override, false
   local events, engineEvents, jobs = {}, {}, {}
   local frames, calls, quietCalls, nativeRegistrations = 0, 0, 0, 0
   local addon = {takeover=false,on=nil,armSent=nil,standIn=nil}
@@ -21,8 +22,8 @@ local function harness(opts)
     perspective={
       get=function()
         return {userWantsThirdPerson=requested,
-          mode=requested and "third" or "first",
-          transitioning=false,override="none"}
+          mode=cameraMode or (requested and "third" or "first"),
+          transitioning=transitioning,override=cameraOverride or "none"}
       end
     },
     gcetDedraWakeReady=function() return opts.noCapability~=true end
@@ -83,6 +84,9 @@ local function harness(opts)
     tick=tick,
     run=function(count,dt) for _=1,count do tick(dt or 0.1) end end,
     setRequested=function(v) requested=v end,
+    setMode=function(v) cameraMode=v end,
+    setOverride=function(v) cameraOverride=v end,
+    setTransitioning=function(v) transitioning=v end,
     event=function(name)
       if events[name] then events[name]() end
     end,
@@ -175,6 +179,92 @@ do
   check(not t.diagnostics().activeJob and not t.diagnostics().quietJob,
     "shutdown left scheduler jobs running")
   check(t.nativeCount()==0,"late CET registration occurred")
+end
+
+-- Captured regression: sustained FPP combat emitted OnAction/weapon/aim
+-- wakes for most of 60s; no user TPP request, no camera takeover or debt.
+-- An ITP combat override does NOT mean Dedra owns a third-person camera.
+do
+  local t=harness({override="combat",autoSettle=false})
+  t.start()
+  t.run(12,0.1)
+  local start=t.calls()
+  for i=1,120 do
+    t.engineEvent("WeaponStateChanged")
+    t.engineEvent("AimStateChanged")
+    t.engineEvent("UpperBodyStateChanged")
+    t.engineEvent("CombatStateChanged")
+    t.event("overrideChanged")
+    t.tick(0.05)
+    local d=t.diagnostics()
+    check(d.mode=="quiet" and not d.activeJob and d.quietJob,
+      "FPP combat wakes reactivated full-frame Dedra without a camera request")
+    check(d.activeReason=="quiet" and d.settle==0,
+      "FPP combat override or event extended the full-rate settle window")
+  end
+  local d=t.diagnostics()
+  check(t.calls()-start<=30 and d.quietCalls>0,
+    "FPP combat performed more than the bounded 0.25s Core audit")
+  check(d.signals.engine>=480 and d.signals.itp>=120,
+    "FPP combat signal coverage missing in runtime test")
+  check(d.perspective and d.perspective.requested==false and
+    d.perspective.override=="combat","FPP override proof missing")
+  check(t.nativeCount()==0,"FPP combat registered a native callback")
+  t.stop()
+end
+
+-- ADS may force the CAMERA to FPP while the player still requests TPP.
+-- That must continue to run every frame for Dedra's combat takeover.
+do
+  local t=harness({requested=true,mode="first",override="combat"})
+  t.start()
+  t.run(8,0.1)
+  check(t.diagnostics().activeReason=="third-person-requested" and
+    t.diagnostics().activeJob,"ADS-forced first-person hid TPP intent")
+  t.setRequested(false)
+  t.engineEvent("AimStateChanged")
+  t.run(15,0.1)
+  check(t.diagnostics().mode=="quiet",
+    "explicit FPP request did not release TPP combat cadence")
+  t.stop()
+end
+
+-- Only an actual camera toggle gets the short pre-transition wake bridge.
+do
+  local t=harness()
+  t.start()
+  t.run(12,0.1)
+  t.module.Signal("__gcetItpToggleWakeV2")
+  check(t.diagnostics().mode=="active" and
+    t.diagnostics().activeReason=="explicit-toggle-settle",
+    "ITP user-toggle signal did not bridge transient camera state")
+  t.run(15,0.1)
+  check(t.diagnostics().mode=="quiet" and
+    t.diagnostics().signals.toggle==1,
+    "explicit camera transition failed to settle back into FPP")
+  t.stop()
+end
+
+-- Unknown ITP state and confirmed hold/transition still fail OPEN to
+-- full author cadence, not a forced schedule sleep.
+do
+  local t=harness()
+  t.start()
+  t.setMode("transition")
+  t.event("transitionStart")
+  check(t.diagnostics().activeReason=="camera-transition" and
+    t.diagnostics().activeJob,"real camera transition slept")
+  t.setMode("first")
+  t.setTransitioning(false)
+  t.event("transitionEnd")
+  t.run(12,0.1)
+  check(t.diagnostics().mode=="quiet","completed camera transition stayed active")
+  t.setMode("unknown")
+  t.event("perspectiveChanged")
+  check(t.diagnostics().activeJob and
+    t.diagnostics().activeReason=="non-first-person-camera",
+    "unknown camera mode did not fail open")
+  t.stop()
 end
 
 do

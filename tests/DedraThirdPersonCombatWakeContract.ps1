@@ -232,7 +232,7 @@ foreach($token in @(
   'type(host.__gcetScheduleDriver) ~= "function"',
   'AimStateChanged','WeaponStateChanged','UpperBodyStateChanged',
   'CombatStateChanged', 'PlayerReady','PlayerInvalidated',
-  'function M.Start()', 'function M.Stop()', 'function M.Signal()',
+  'function M.Start()', 'function M.Stop()', 'function M.Signal(proof, event)',
   'pcall(step, dt)', 'tryStep(ctx,false)', 'tryStep(ctx,true)')) {
   if(!$wake.Contains($token)){throw "Dedra scheduler or core maintenance missing: $token"}
 }
@@ -243,9 +243,13 @@ if($lua.Contains('Dedra.__gcetWakeController.Register()') -or
    ([regex]::Matches($lua,'(?:registerForEvent|__gcetRegisterEvent_[0-9]+)\(["'']onUpdate["'']')).Count -ne 0) {
   throw 'Dedra emitted a second/late native frame registrar'
 }
-if(!$wake.Contains('Dedra.on ~= false') -or
-   !$wake.Contains('Dedra.armSent ~= false') -or
-   !$wake.Contains('Dedra.planeHeld == true')) {
+if(!$wake.Contains('Dedra.on == true') -or
+   !$wake.Contains('Dedra.armSent == true') -or
+   !$wake.Contains('Dedra.planeHeld == true') -or
+   !$wake.Contains('p.userWantsThirdPerson then return "third-person-requested"') -or
+   $wake.Contains('p.override == "combat"') -or
+   !$wake.Contains('proof == "__gcetItpToggleWakeV2"') -or
+   !$wake.Contains('M.Signal("engine", name)')) {
   throw 'Dedra ignored REDscript/cleanup debt'
 }
 $proof=$t.GetMethod('IsDedraThirdPersonCombatWakeComplete',$flags)
