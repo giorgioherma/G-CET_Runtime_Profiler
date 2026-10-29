@@ -615,6 +615,21 @@ internal sealed class SemanticPatchContext
         };
     }
 
+    // Read the final composed output of an independently owned mod. A semantic
+    // may depend on a generated 0-Engine service only after confirming the
+    // current staged bytes, never an earlier/assumed optimization pass.
+    internal string? TryReadComposedModFile(string mod, string relative)
+    {
+        if (string.IsNullOrWhiteSpace(mod) || mod != Path.GetFileName(mod) ||
+            relative.Split('/', '\\').Any(part => part.Length == 0 || part == "." || part == ".."))
+            return null;
+        var key = mod + "/" + relative.Replace('\\','/');
+        if (_staged.TryGetValue(key,out var staged))
+            return SemanticTextFile.From(key,staged).Text;
+        var path=Path.Combine(_modsRoot,mod,relative.Replace('/',Path.DirectorySeparatorChar));
+        return File.Exists(path) ? File.ReadAllText(path) : null;
+    }
+
     // New, author-scoped modules are allowed ONLY for a reviewed semantic
     // injector. They do not create a new mod, change arbitrary user files,
     // or bypass the per-file Lua budget and final overlay manifest.
