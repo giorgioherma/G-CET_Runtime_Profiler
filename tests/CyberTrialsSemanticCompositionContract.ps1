@@ -472,8 +472,11 @@ $stage['CyberTrials/GCET_Semantic/cybertrials_engine_worker.lua']=[Text.Encoding
 $driftCtx=$ctor.Invoke([object[]]@([string]$mods,'CyberTrials','cybertrials',$stage))
 $refused=$false
 try{$null=$method.Invoke($null,[object[]]@($driftCtx))}
-catch{if($_.Exception.ToString() -match 'coordinator changed'){$refused=$true}}
+catch{$refused=$true; $driftFailure=$_.Exception.ToString()}
 if(!$refused){throw 'CyberTrials foreign worker drift was silently adopted'}
+if($driftFailure -notmatch 'coordinator changed'){
+  throw "CyberTrials unknown coordinator refusal category: $driftFailure"
+}
 $stage['CyberTrials/GCET_Semantic/cybertrials_engine_worker.lua']=[Text.Encoding]::UTF8.GetBytes($workerCode)
 
 if([IO.File]::ReadAllText($initPath) -ne $fullCyber -or
