@@ -177,11 +177,9 @@ if (!fs.existsSync(manifestFile)) {
       }
     }
 
-    // Regression from user-reproduced CET startup crash (#2126/#2127):
-    // Dedra's frame listener MUST be registered at module load, not from
-    // inside CET's onInit dispatcher. The same external worker remains the
-    // single pausable frame owner. Prove this on real untouched-stack output,
-    // not only a synthetic producer fixture.
+    // The earlier crash occurred when new CET frame registrars were created
+    // from onInit. V3 must instead use the one already-adopted 0-Engine
+    // author frame callback, keeping full REDscript reconciliation at 0.25s.
     const dedraOriginal = path.join(modsRoot, 'DedraThirdPersonCombatAddon', 'init.lua');
     if (fs.existsSync(dedraOriginal)) {
       const original = fs.readFileSync(dedraOriginal, 'utf8');
@@ -191,30 +189,39 @@ if (!fs.existsSync(manifestFile)) {
         const initRelative = owner + '/init.lua';
         const workerRelative = owner + '/GCET_Semantic/dedra_camera_wake.lua';
         const selected = transforms.some(t =>
-          t.RuleId === 'dedra-third-person-combat-wake' &&
-          t.type === 'SEMANTIC_RULE');
+          t.RuleId === 'dedra-third-person-combat-wake' && t.type === 'SEMANTIC_RULE');
         if (!selected || !overlayExists(initRelative) || !overlayExists(workerRelative)) {
-          report('error', owner, 'DEDRA_SAFE_WAKE_NOT_COMPOSED',
-            {stage:'Semantic',mod:owner,rule:'dedra-third-person-combat-wake',
-             reason:'Pristine Dedra source must generate one author bridge and external wake worker.'});
+          report('error',owner,'DEDRA_SHARED_SCHEDULE_NOT_COMPOSED',{
+            stage:'Semantic',mod:owner,rule:'dedra-third-person-combat-wake',
+            reason:'Untouched Dedra must generate both the source-owned bridge and its scheduler worker.'
+          });
         } else {
           const init = fs.readFileSync(path.join(overlayRoot,
             ...outputLocation(initRelative).split('/')), 'utf8');
           const worker = fs.readFileSync(path.join(overlayRoot,
             ...outputLocation(workerRelative).split('/')), 'utf8');
-          const hasFileLoad = /^Dedra\.__gcetWakeController\.Register\(\)\r?\nregisterForEvent\s*\(\s*["']onShutdown["']/m.test(init);
+          const enginePath = path.join(overlayRoot,...outputLocation('0-Engine/init.lua').split('/'));
+          const host = fs.existsSync(enginePath) ? fs.readFileSync(enginePath,'utf8') : '';
           const hasStart = /registerForEvent\s*\(\s*["']onInit["']\s*,\s*function\(\)\s*Dedra\.__gcetWakeController\.Start\(\)/.test(init);
-          const registrations = (init.match(/Dedra\.__gcetWakeController\.Register\(\)/g) || []).length;
-          if (!hasFileLoad || !hasStart || registrations !== 1 ||
-              /registerForEvent\s*\(\s*["']onUpdate["']\s*,\s*function\(dt\)/.test(init) ||
+          const authorUpdate = /(?:registerForEvent|__gcetRegisterEvent_\d+)\s*\(\s*["']onUpdate["']/.test(init);
+          const schedulerOwnsFrame = host.includes('__host.__gcetScheduleDriver = function(ctx)') &&
+            host.includes('Engine.__gcetScheduleDriver({') &&
+            host.includes('registerForEvent("onUpdate", function(delta)');
+          if (!hasStart || authorUpdate || !schedulerOwnsFrame ||
+              init.includes('Dedra.__gcetWakeController.Register()') ||
               !init.includes('Dedra.__gcetWakeController.Stop()') ||
-              !worker.includes('FrameListeners.MakeRegistrar') ||
-              !worker.includes('handle.Pause()') ||
-              !worker.includes('handle.Resume()') ||
-              !worker.includes('fallbackRegister("onUpdate",update)')) {
-            report('error', owner, 'DEDRA_CET_INIT_REGISTRATION_CRASH_REGRESSION',
-              {stage:'Semantic',mod:owner,rule:'dedra-third-person-combat-wake',
-               reason:'Dedra must acquire its single pausable frame owner outside onInit, with original fallback and shutdown.'});
+              !init.includes('-- __gcetDedraSharedScheduleV3:') ||
+              !worker.includes('schedule.EveryFrame(') ||
+              !worker.includes('schedule.Every(0.25,') ||
+              !worker.includes('pcall(step, dt)') ||
+              !worker.includes('type(host.__gcetScheduleDriver) ~= "function"') ||
+              worker.includes('FrameListeners.MakeRegistrar') ||
+              worker.includes('fallbackRegister("onUpdate"') ||
+              worker.includes('registerForEvent(')) {
+            report('error',owner,'DEDRA_SHARED_FRAME_OWNERSHIP_REGRESSION',{
+              stage:'Semantic',mod:owner,rule:'dedra-third-person-combat-wake',
+              reason:'Dedra must use the already adopted source-proven 0-Engine dispatcher with fast/quiet maintenance and zero new CET frame registrations.'
+            });
           }
         }
       }
