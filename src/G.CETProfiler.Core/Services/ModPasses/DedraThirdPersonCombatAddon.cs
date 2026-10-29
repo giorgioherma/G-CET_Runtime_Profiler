@@ -218,11 +218,54 @@ internal static partial class SemanticInjectors
                 .Replace("  function M.Signal(proof)\n" +
                     "    if proof == \"__gcetItpToggleWakeV2\" then baseBridgeConfirmed = true end",
                     "  function M.Signal()",StringComparison.Ordinal);
+            // The briefly shipped #2152 V2 worker incorrectly suppressed ALL
+            // original REDscript reconciliation during FPP. Recognize its
+            // exact emitted shape for recovery, but never generate it again.
+            const string badFallbackSync = @"  local function sync()
+    -- Snapshot the known camera wake on ITP transitions and activation.
+    -- CET fallback registration was created at module load, but does not
+    -- run the expensive author step while this proved state is dormant.
+    if not baseBridgeConfirmed or not linked or not api then
+      fallbackActive = true
+    else
+      local ok, p = pcall(api.perspective.get)
+      if not ok or type(p) ~= ""table"" or
+        type(p.userWantsThirdPerson) ~= ""boolean"" then
+        fallbackActive = true
+      else
+        fallbackActive = p.userWantsThirdPerson == true or
+          p.transitioning == true or p.mode == ""transition"" or pending(p)
+      end
+    end
+    if handle then
+      if fallbackActive then handle.Resume() else handle.Pause() end
+    end
+  end
+";
+            var oldSyncStart=canonicalBody.IndexOf("  local function sync()\n",StringComparison.Ordinal);
+            var oldSyncEnd=canonicalBody.IndexOf("  local function notify()\n",oldSyncStart,StringComparison.Ordinal);
+            if(oldSyncStart<0 || oldSyncEnd<=oldSyncStart)
+                throw new InvalidOperationException("Dedra historical fallback sync drift.");
+            var oldSync=canonicalBody[oldSyncStart..oldSyncEnd];
+            var unsafeBody=canonicalBody
+                .Replace("  local pausable = false\n",
+                    "  local pausable = false\n" +
+                    "  local fallbackActive = true -- Fail open until author ITP wake proof is complete.\n",
+                    StringComparison.Ordinal)
+                .Replace(oldSync,badFallbackSync.Replace("\r\n","\n",StringComparison.Ordinal),StringComparison.Ordinal)
+                .Replace("  local function update(dt)\n",
+                    "  local function update(dt)\n" +
+                    "    if not fallbackActive then return end -- CET fallback: no FPP author work.\n",
+                    StringComparison.Ordinal);
+            if(unsafeBody==canonicalBody ||
+               !unsafeBody.Contains("if not fallbackActive then return end",StringComparison.Ordinal))
+                throw new InvalidOperationException("Dedra previous unsafe worker proof drift.");
+            var unsafePriorWorker=coordinatorHeader+unsafeBody;
             if(current!=coordinatorHeader+canonicalBody &&
                current!=legacyWorker && current!=previousWorker &&
                current!=preCapabilityWorker && current!=oldCanonicalWorker &&
                current!=oldPreviousWorker && current!=oldPreCapabilityWorker &&
-               current!=oldLegacyWorker)
+               current!=oldLegacyWorker && current!=unsafePriorWorker)
                 throw new InvalidOperationException(
                     "Dedra previous coordinator source not recognized; refuse unsafe migration.");
             const string formerBridge=
