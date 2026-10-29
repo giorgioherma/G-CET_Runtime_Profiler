@@ -154,6 +154,11 @@ $cap | ConvertTo-Json -Depth 8 -Compress | Set-Content -LiteralPath (Join-Path $
 'Boundary,MethodGroup,Calls,OwnerZeroPositiveBytes,OwnerZeroPositiveOps',
 'CET_FUNCTION_OVERRIDE_PURE,OnAction,100,1048576,33'
 ) | Set-Content -LiteralPath (Join-Path $capture 'CET_Runtime_Profile_Native_PreDispatchPressure.csv') -Encoding utf8
+@(
+'Stage,NativeMethodHash,Calls,OwnerZeroPositiveBytes,OwnerZeroPositiveOps,DroppedStageCalls,ClassAttribution,SubscriberAttribution,Measurement',
+'PURE_ARGUMENTS,9658066991423262154,100,1048576,33,0,NOT_PROVEN,NOT_PROVEN,NON_ADDITIVE',
+'OVERRIDE_ROOT_NEXT_CLOSURE,9658066991423262154,50,524288,15,0,NOT_PROVEN,NOT_PROVEN,NON_ADDITIVE'
+) | Set-Content -LiteralPath (Join-Path $capture 'CET_Runtime_Profile_Native_MethodStages.csv') -Encoding utf8
 
 $result = (& $profilerExe --report --capture $capture --json | ConvertFrom-Json)
 if (!$result.ok) { throw 'Profiler report generation failed.' }
@@ -177,6 +182,11 @@ if ($null -eq $p3 -or
     [math]::Abs([double]$p3.heap.lastMiB - (375000/1024)) -gt 0.002 -or
     $p3.frameDelivery.p999Ms -lt $p3.frameDelivery.p99Ms -or
     @($p3.nativePreDispatch).Count -ne 1 -or
+    @($p3.nativeMethodStages).Count -ne 2 -or
+    @($p3.nativeMethodStages | Where-Object { $_.stage -eq 'PURE_ARGUMENTS' -and
+      [math]::Abs([double]$_.ownerZeroPositiveMiB - 1) -le 0.001 }).Count -ne 1 -or
+    @($p3.nativeMethodStages | Where-Object { $_.stage -eq 'OVERRIDE_ROOT_NEXT_CLOSURE' -and
+      [long]$_.ownerZeroPositiveRequests -eq 15 }).Count -ne 1 -or
     [math]::Abs([double]$p3.nativePreDispatch[0].ownerZeroPositiveMiB - 1) -gt 0.001 -or
     [long]$p3.nativePreDispatch[0].ownerZeroPositiveRequests -ne 33 -or
     $p3.nativeSemantics -notmatch 'NOT additive') {
@@ -186,6 +196,7 @@ $p3Html = Get-Content -LiteralPath (Join-Path $capture 'CET_Report.html') -Raw
 if (-not $p3Html.Contains('Phase 3 — GC &amp; allocation pressure') -or
     -not $p3Html.Contains('245.00 MiB') -or
     -not $p3Html.Contains('Native pre-dispatch windows (NON-ADDITIVE)') -or
+    -not $p3Html.Contains('Native method-stage windows (NON-ADDITIVE)') -or
     -not $p3Html.Contains('First completed cycle')) {
     throw 'Phase 3 grouped pressure HTML missing or inconsistent with JSON.'
 }
