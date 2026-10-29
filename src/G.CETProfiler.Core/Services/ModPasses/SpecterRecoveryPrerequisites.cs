@@ -240,7 +240,15 @@ internal static partial class SemanticInjectors
             if (text.Contains("present(\"HUD update\",HUD.Update)",
                     StringComparison.Ordinal) ||
                 text.Contains("active and {id=\"recovery_counter_isolation\"} or nil",
-                    StringComparison.Ordinal))
+                    StringComparison.Ordinal) ||
+                (text.Contains("Music.update(", StringComparison.Ordinal) &&
+                 !text.Contains("local __gcetRecoveryMusicContract = {id=\"recovery_counter_isolation\"}",
+                     StringComparison.Ordinal)))
+                return false;
+            if (text.Contains("HUD update", StringComparison.Ordinal) &&
+                Regex.Matches(text,
+                    @"if HUD\.IsActive\(\) then present\(""HUD update"",HUD\.Update\) end",
+                    RegexOptions.CultureInvariant).Count != 2)
                 return false;
             if (text.Contains("local function metricGet(ns,key,default)\n",
                     StringComparison.Ordinal) &&
