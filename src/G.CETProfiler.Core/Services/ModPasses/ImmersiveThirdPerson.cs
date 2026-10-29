@@ -421,8 +421,9 @@ internal static partial class SemanticInjectors
                 !text.Contains("if state.pendingFppRestore then", StringComparison.Ordinal))
                 throw new InvalidOperationException(
                     "Updated third-person pending-state gates are incomplete.");
-            var upgraded = ReuseImmersiveThirdPersonLiteralIds(
-                AddImmersiveThirdPersonFppFastpaths(text));
+            var upgraded = ReuseImmersiveThirdPersonLatches(
+                ReuseImmersiveThirdPersonLiteralIds(
+                    AddImmersiveThirdPersonFppFastpaths(text)));
             if (upgraded == text)
                 return SemanticInjectionResult.Skip(
                     "Current ITP pending-state and first-person fastpaths already applied.");
@@ -495,8 +496,9 @@ internal static partial class SemanticInjectors
         text = text.Insert(updateOwners[0].Index,
             "-- " + stage + ": author-verified absent-state fast guards only\n");
 
-        text = ReuseImmersiveThirdPersonLiteralIds(
-            AddImmersiveThirdPersonFppFastpaths(text));
+        text = ReuseImmersiveThirdPersonLatches(
+            ReuseImmersiveThirdPersonLiteralIds(
+                AddImmersiveThirdPersonFppFastpaths(text)));
         context.Write(file, text);
         return SemanticInjectionResult.Success(
             "Current ITP API, movement, camera, heartbeat, native toggle and " +
@@ -577,6 +579,61 @@ internal static partial class SemanticInjectors
             "  return value\n" +
             "end";
         return source.Replace(current, replacement, StringComparison.Ordinal);
+    }
+
+    // Source-owned GC reduction: one private table per delay class, populated
+    // with current settings on EACH invocation. The original latch equations,
+    // branch precedence, source cadence and public state remain untouched.
+    private static string ReuseImmersiveThirdPersonLatches(string source)
+    {
+        var crlf = source.Contains("\r\n", StringComparison.Ordinal);
+        var text = crlf ? source.Replace("\r\n", "\n", StringComparison.Ordinal) : source;
+        const string marker = "__gcetItppLatchTablesV1";
+        const string old = "local function autoUpdateLatches(raw)\n" +
+            "  local autoPerspective = state.autoPerspective\n" +
+            "  local cfg = config.autoPerspective\n" +
+            "  local now = autoPerspective.clock\n" +
+            "  local enterDelay = { vehicle = 0, scene = 0, combat = 0, interaction = cfg.interactionEnterDelay or 0.10 }\n" +
+            "  local exitDelay = {\n" +
+            "    vehicle = cfg.vehicleExitDelay or 0.40,\n" +
+            "    scene = cfg.sceneExitDelay or 0.50,\n" +
+            "    combat = cfg.combatExitDelay or 1.25,\n" +
+            "    interaction = cfg.interactionExitDelay or 1.00\n" +
+            "  }\n";
+        if (text.Contains(marker, StringComparison.Ordinal))
+        {
+            if (Regex.Matches(text, @"\blocal\s+" + marker + @"\s*=\s*\{").Count != 1 ||
+                !text.Contains("local enterDelay = " + marker + ".enter", StringComparison.Ordinal) ||
+                !text.Contains("local exitDelay = " + marker + ".exit", StringComparison.Ordinal) ||
+                !text.Contains("enterDelay.interaction = cfg.interactionEnterDelay or 0.10", StringComparison.Ordinal) ||
+                !text.Contains("exitDelay.interaction = cfg.interactionExitDelay or 1.00", StringComparison.Ordinal) ||
+                !text.Contains("if autoPerspective.combatWeaponOnly then", StringComparison.Ordinal) ||
+                !text.Contains("if autoPerspective.sceneQuickExit then", StringComparison.Ordinal) ||
+                text.Contains(old, StringComparison.Ordinal))
+                throw new InvalidOperationException("ITP latch-table reuse partially installed or author source drifted.");
+            return source;
+        }
+        if (!text.Contains("local function autoUpdateLatches(", StringComparison.Ordinal))
+            return source; // Older supported camera without new latch pipeline.
+        if (text.Split(old, StringSplitOptions.None).Length != 2)
+            throw new InvalidOperationException("ITP latch delay definitions have changed; refuse rewrite.");
+        const string updated =
+            "-- G-CET: zero temporary latch tables per camera signal check.\n" +
+            "local " + marker + " = { enter = {vehicle = 0, scene = 0, combat = 0, interaction = 0},\n" +
+            "    exit = {vehicle = 0, scene = 0, combat = 0, interaction = 0} }\n" +
+            "local function autoUpdateLatches(raw)\n" +
+            "  local autoPerspective = state.autoPerspective\n" +
+            "  local cfg = config.autoPerspective\n" +
+            "  local now = autoPerspective.clock\n" +
+            "  local enterDelay = " + marker + ".enter\n" +
+            "  enterDelay.interaction = cfg.interactionEnterDelay or 0.10\n" +
+            "  local exitDelay = " + marker + ".exit\n" +
+            "  exitDelay.vehicle = cfg.vehicleExitDelay or 0.40\n" +
+            "  exitDelay.scene = cfg.sceneExitDelay or 0.50\n" +
+            "  exitDelay.combat = cfg.combatExitDelay or 1.25\n" +
+            "  exitDelay.interaction = cfg.interactionExitDelay or 1.00\n";
+        text = text.Replace(old, updated, StringComparison.Ordinal);
+        return crlf ? text.Replace("\n", "\r\n", StringComparison.Ordinal) : text;
     }
 
     // V4 is part of the existing ITP update producer, not a correction
