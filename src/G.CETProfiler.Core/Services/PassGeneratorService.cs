@@ -225,7 +225,8 @@ public static class PassGeneratorService
                 staged,
                 appliedTransformsByFile,
                 transformManifest,
-                skipped);
+                skipped,
+                fixedRuntime.Files);
 
         // Fail closed if a future stage bypasses the central owner policy.
         var forbiddenOutput = staged.Keys.FirstOrDefault(ModOptimizationBlacklist.IsBlacklistedPath);

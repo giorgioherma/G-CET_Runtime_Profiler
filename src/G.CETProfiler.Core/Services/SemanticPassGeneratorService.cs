@@ -14,7 +14,8 @@ internal static class SemanticPassGeneratorService
         Dictionary<string, byte[]> staged,
         Dictionary<string, int> appliedTransformsByFile,
         List<object> transformManifest,
-        List<object> skipped)
+        List<object> skipped,
+        IReadOnlyDictionary<string,byte[]> composedHostFiles)
     {
         var candidates = ReadCandidates(resolverRoot)
             .GroupBy(x => x.Owner + "\n" + x.RuleId, StringComparer.OrdinalIgnoreCase)
@@ -39,7 +40,8 @@ internal static class SemanticPassGeneratorService
                 modsRoot,
                 candidate.Owner,
                 candidate.RuleId,
-                staged);
+                staged,
+                composedHostFiles);
 
             try
             {
@@ -549,6 +551,7 @@ internal sealed class SemanticPatchContext
 
     private readonly string _modsRoot;
     private readonly Dictionary<string, byte[]> _staged;
+    private readonly IReadOnlyDictionary<string,byte[]> _composedHostFiles;
     private readonly Dictionary<string, SemanticFileChange> _changes =
         new(StringComparer.OrdinalIgnoreCase);
     private string? _ownerFolder;
@@ -564,11 +567,23 @@ internal sealed class SemanticPatchContext
         string owner,
         string ruleId,
         Dictionary<string, byte[]> staged)
+        : this(modsRoot,owner,ruleId,staged,
+            new Dictionary<string,byte[]>(StringComparer.OrdinalIgnoreCase))
+    {
+    }
+
+    internal SemanticPatchContext(
+        string modsRoot,
+        string owner,
+        string ruleId,
+        Dictionary<string, byte[]> staged,
+        IReadOnlyDictionary<string,byte[]> composedHostFiles)
     {
         _modsRoot = Path.GetFullPath(modsRoot);
         Owner = owner;
         RuleId = ruleId;
         _staged = staged;
+        _composedHostFiles = composedHostFiles;
     }
 
     internal SemanticTextFile FindFile(
@@ -626,6 +641,8 @@ internal sealed class SemanticPatchContext
         var key = mod + "/" + relative.Replace('\\','/');
         if (_staged.TryGetValue(key,out var staged))
             return SemanticTextFile.From(key,staged).Text;
+        if (_composedHostFiles.TryGetValue(key,out var host))
+            return SemanticTextFile.From(key,host).Text;
         var path=Path.Combine(_modsRoot,mod,relative.Replace('/',Path.DirectorySeparatorChar));
         return File.Exists(path) ? File.ReadAllText(path) : null;
     }
