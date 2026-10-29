@@ -1252,6 +1252,10 @@ jobs:
         shell: pwsh
         run: ./tests/HitchPressureContract.ps1 -PublishedRoot ./publish
 
+      - name: Specter recovery idle allocation source contract
+        shell: pwsh
+        run: ./tests/SpecterRecoveryColdGcContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: Callback-first resolver contract
         shell: pwsh
         run: ./tests/CallbackResolverContract.ps1 -ResolverRoot ./publish-resolver
@@ -1511,10 +1515,6 @@ jobs:
       - name: CallList pristine one-pass source contract
         shell: pwsh
         run: ./tests/CallListPristineSourceContract.ps1 -ResolverRoot ./publish-resolver
-
-      - name: Specter recovery idle allocation source contract
-        shell: pwsh
-        run: ./tests/SpecterRecoveryColdGcContract.ps1 -ResolverRoot ./publish-resolver
 
       - name: GigCore SPECTER variant source-generation contract
         shell: pwsh
