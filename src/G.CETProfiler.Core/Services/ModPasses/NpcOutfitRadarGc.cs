@@ -20,7 +20,11 @@ internal static partial class SemanticInjectors
                !s.Contains("radarTimer + delta >= 1.0",StringComparison.Ordinal) ||
                !s.Contains("__gcetRadarRecordCache[entId] = nil",StringComparison.Ordinal))
                 throw new InvalidOperationException("Partial NPC outfit radar stage.");
-            return SemanticInjectionResult.Skip("NPC outfit radar stage already present.");
+            s=UpgradeRadarQueueV2(s);
+            if(file.Text.Contains("\r\n",StringComparison.Ordinal))
+                s=s.Replace("\n","\r\n",StringComparison.Ordinal);
+            context.Write(file,s);
+            return SemanticInjectionResult.Success("Upgraded existing NPC outfit radar to attachment-owned candidate scanning with bounded fallback.");
         }
         static string Once(string s,string old,string newer,string what)
         {
@@ -56,6 +60,7 @@ internal static partial class SemanticInjectors
             "    if (__gcetHasAutoOutfitRules and radarTimer + delta >= 1.0)\n" +
             "        or isCustomizeWindowOpen or isCameraModeActive",
             "passive look-at fallback");
+        s=UpgradeRadarQueueV2(s);
         if(file.Text.Contains("\r\n",StringComparison.Ordinal))
             s=s.Replace("\n","\r\n",StringComparison.Ordinal);
         context.Write(file,s);
@@ -64,5 +69,88 @@ internal static partial class SemanticInjectors
             "and invalid NPC cleanup; passive look-at fallback runs at the existing " +
             "1 Hz radar cadence, while open UI, live animations, camera, naked " +
             "retries and shop target acquisition retain immediate timing.");
+    }
+
+    // An author attach event queues only changed entities. Exact automatic
+    // outfit rule mutations force a full scan; a bounded ten-second full scan
+    // retains the original safety net for missed native streaming events.
+    // The author 1Hz radar tick and UI target acquisition stay unchanged.
+    private static string UpgradeRadarQueueV2(string source)
+    {
+        const string stage="__gcetNpcRadarQueueV2";
+        if(source.Contains(stage,StringComparison.Ordinal))
+        {
+            if(!source.Contains("__gcetNpcRadarQueueV2[entId] = self",StringComparison.Ordinal) ||
+               !source.Contains("__gcetNpcRadarSweepV2 >= 10.0",StringComparison.Ordinal) ||
+               !source.Contains("__gcetNpcRadarRulesChangedV2()",StringComparison.Ordinal) ||
+               !source.Contains("__gcetNpcRadarQueueV2[entIdStr] = nil",StringComparison.Ordinal))
+                throw new InvalidOperationException("NPC Outfit queue stage incomplete.");
+            return source;
+        }
+        static string Once(string s,string old,string replacement,string why)
+        {
+            if(s.Split(old,StringSplitOptions.None).Length!=2)
+                throw new InvalidOperationException("NPC Outfit v2 "+why+" author source drift.");
+            return s.Replace(old,replacement,StringComparison.Ordinal);
+        }
+        source=Once(source,
+            "local __gcetRadarRecordCache = {}\nlocal function ProcessRadarOutfits()",
+            "local __gcetRadarRecordCache = {}\n" +
+            "local __gcetNpcRadarQueueV2 = {}\n" +
+            "local __gcetNpcRadarSweepV2 = 10.0\n" +
+            "local __gcetNpcRadarRuleStateV2 = {}\n" +
+            "local function __gcetNpcRadarRulesChangedV2()\n" +
+            "    local rules = autoOutfitsData and autoOutfitsData.outfits\n" +
+            "    if type(rules) ~= 'table' then return false end\n" +
+            "    local changed = false\n" +
+            "    for key, value in pairs(rules) do\n" +
+            "        if __gcetNpcRadarRuleStateV2[key] ~= value then\n" +
+            "            __gcetNpcRadarRuleStateV2[key] = value\n" +
+            "            changed = true\n" +
+            "        end\n" +
+            "    end\n" +
+            "    for key in pairs(__gcetNpcRadarRuleStateV2) do\n" +
+            "        if rules[key] == nil then\n" +
+            "            __gcetNpcRadarRuleStateV2[key] = nil\n" +
+            "            changed = true\n" +
+            "        end\n" +
+            "    end\n" +
+            "    return changed\n" +
+            "end\n" +
+            "local function ProcessRadarOutfits()",
+            "scanner and state owner");
+        source=Once(source,"    for entIdStr, npc in pairs(activeNPCs) do",
+            "    if __gcetNpcRadarRulesChangedV2() then __gcetNpcRadarSweepV2 = 10.0 end\n" +
+            "    local fullSweep = __gcetNpcRadarSweepV2 >= 10.0\n" +
+            "    local scan = fullSweep and activeNPCs or __gcetNpcRadarQueueV2\n" +
+            "    if fullSweep then __gcetNpcRadarSweepV2 = 0.0 end\n" +
+            "    for entIdStr, npc in pairs(scan) do\n" +
+            "        __gcetNpcRadarQueueV2[entIdStr] = nil",
+            "scan ownership");
+        source=Once(source,
+            "                    activeNPCs[entId] = self\n                    __gcetRadarRecordCache[entId] = nil",
+            "                    activeNPCs[entId] = self\n                    __gcetRadarRecordCache[entId] = nil\n" +
+            "                    __gcetNpcRadarQueueV2[entId] = self",
+            "attach wake");
+        source=Once(source,
+            "                    activeNPCs[entId] = nil\n                    __gcetRadarRecordCache[entId] = nil",
+            "                    activeNPCs[entId] = nil\n                    __gcetRadarRecordCache[entId] = nil\n" +
+            "                    __gcetNpcRadarQueueV2[entId] = nil",
+            "detach cleanup");
+        source=Once(source,
+            "            activeNPCs[entIdStr] = nil\n            __gcetRadarRecordCache[entIdStr] = nil",
+            "            activeNPCs[entIdStr] = nil\n            __gcetRadarRecordCache[entIdStr] = nil\n" +
+            "            __gcetNpcRadarQueueV2[entIdStr] = nil",
+            "invalid entity cleanup");
+        const string target="            activeNPCs[entIdStr] = currentTarget";
+        if(source.Contains(target,StringComparison.Ordinal))
+            source=Once(source,target,
+                target+"\n            __gcetNpcRadarQueueV2[entIdStr] = currentTarget",
+                "look-at fallback");
+        source=Once(source,"    radarTimer = radarTimer + delta",
+            "    __gcetNpcRadarSweepV2 = __gcetNpcRadarSweepV2 + (delta or 0.0)\n" +
+            "    radarTimer = radarTimer + delta",
+            "full sweep clock");
+        return source;
     }
 }

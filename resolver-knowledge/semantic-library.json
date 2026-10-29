@@ -8055,16 +8055,23 @@
         ],
         "alreadySatisfiedMarker": "G-CET semantic:npc-outfit-manager-radar-gc",
         "expectedMarkerFileCount": 1,
-        "sourceCompletionAuthoritative": true
+        "sourceCompletionAuthoritative": true,
+        "satisfiedAll": [
+          "__gcetNpcRadarQueueV2",
+          "__gcetNpcRadarSweepV2 >= 10.0",
+          "__gcetNpcRadarRulesChangedV2()"
+        ]
       },
       "behavior": {
         "handler": "SEMANTIC_SOURCE_OWNED_ALLOCATION_FASTPATH",
         "concepts": [
           "preserveRealtimeAndAuthorCallbacks",
           "avoidUnnecessaryLuaNativeReads",
-          "versionFluidSourceProof"
+          "versionFluidSourceProof",
+          "eventCandidateQueueWithTenSecondFallback",
+          "liveRuleMutationRevalidation"
         ],
-        "note": "Preserve attach/detach owned NPC discovery, acquire passive looked-at NPC at existing one-second radar tick, and cache only radar GetRecordID by live entity hash, invalidated on attach/detach."
+        "note": "Source-owned v2: attach events queue candidates for the existing 1 Hz scanner, rule mutations trigger full revalidation, a ten-second scan preserves a safety fallback; no new hooks or changes to active outfit application."
       },
       "generation": {
         "enabled": true,
