@@ -1,6 +1,6 @@
 # COMBAT-POLICE-60 — standard Phase 3 gameplay stress baseline
 
-**Status (2026-10-28): STANDARD PROTOCOL + FIRST VERIFIED PER-JOB PHASE 3 INSTRUMENTATION CAPTURE (source #2143, real ZIP received). A/B performance improvement NOT established.**
+**Status (updated 2026-10-29): STANDARD PROTOCOL, VERIFIED PER-JOB MEASUREMENT, AND USER-CONFIRMED CONTROLLED A/B COMBAT CAPTURE WITH MEASURED FPS/P99 DIFFERENCES. Individual changed-mod contributions are not isolated.**
 This is the default repeatable *combat-stress* comparison for G-CET Phase 3 allocation instrumentation and later optimization A/B. It replaces the earlier proposal to combine 1 minute idle + 2 minutes driving + 1 minute combat in a single run for per-job allocation comparisons. That earlier mixed scenario remains a separate possible test, **not** the standard stress baseline.
 
 ## Canonical test identity and scenario
@@ -43,6 +43,22 @@ For a new baseline from the source-proven G-CET-owned fixed runtime, Resolver st
 - Captured deep-callsite CSV contains **589 rows (811 field occurrences)** referencing `G-CET\\Scheduler.lua` in `Deep_Callsites.csv`, with **none referencing `CETProfilerScheduler.lua`**. Confirms canonical foldered scheduler source reached while no separate adaptive file was observed in those text traces. Hash/package install provenance still needs independent validation when interpreting installation status.
 
 **Acceptance:** Phase 3 per-job measurement **WORKING**, with accurate numeric source evidence, no dropped scopes and whole-frame/root/residual accounting. **Do not** describe the old zero-job runs as performance improvements or regressions; they were instrumentation coverage failures. This one capture is an attribution baseline, not sufficient alone to demonstrate FPS gains, authorize dormancy or establish A/B causality. Repeat identical COMBAT-POLICE-60 setup for later before/after changes.
+
+## User-confirmed controlled Phase 3 comparison — 2026-10-29
+
+**CONTROLLED A/B (user-confirmed):** The user explicitly confirms the Phase 3 combat captures used the established controlled `COMBAT-POLICE-60` scenario. Do **not** call the sessions uncontrolled solely because their save/position/gear details were not all independently enumerated in the ZIP reports. The distinction is between the controlled gameplay procedure (user-confirmed), the observed configuration-level performance differences (measured), and attribution to any *single* changed mod (not isolated).
+
+| Metric | 2026-10-28 19:13 first valid measurement | 2026-10-29 14:47 Dedra / CyberTrials / Sit Anywhere test |
+| --- | ---: | ---: |
+| CET captured duration | 60.017046 s | 60.0057 s |
+| CapFrameX captured duration | 60.016 s | 60.004 s |
+| CapFrameX average FPS | 31.625 | 34.498 (**+9.1%**) |
+| CapFrameX P99 frametime | 70.0636 ms | 50.736 ms (**−27.6%**) |
+| CapFrameX recorded frames | 1,898 | 2,070 |
+| Registered scheduler jobs / executed jobs | 23 / 20 | 27 / 21 |
+| Dropped scheduler scopes | 0 | 0 |
+
+The latest test archive is `CET-20261029-144740_DEDRA_SITANYWHERE_CYBERTRIALS.zip`. The new runtime shows **zero** calls and **zero** positive LuaJIT allocation ops for each targeted paused `dedra.active`, `cybertrials.realtime`, and `sitanywhere.realtime` job; corresponding quiet/wake probes continue at their approved bounded cadence, and the user confirms that all three mod features work. Dedra's immediately preceding same-scenario FPP combat record `CET-20261029-034947_NO_DEDRA_PLZ.zip` had **2,182 `dedra.active` calls / 169,922 positive allocation ops** over its 60s interval. This supports targeted before/after dormancy and a **controlled scenario-level** performance comparison. It does not isolate how much of the overall FPS/P99 change belongs to each mod or establish the activation-transition timing and every lifecycle edge case. Keep hook ingress distinct from paused scheduled workers.
 
 ## Next A/B experiment — RC dormant sweep, RICA preserved
 
