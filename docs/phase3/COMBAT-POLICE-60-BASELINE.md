@@ -1,4 +1,7 @@
-# COMBAT-POLICE-60 — standard Phase 3 gameplay stress baseline
+# COMBAT-POLICE-60 — archived 2026-10-28/29 controlled baseline
+
+> **HISTORICAL ONLY (superseded 2026-10-29):** New captures use [COMBAT-POLICE-120](COMBAT-POLICE-120-BASELINE.md). This page retains the original 60-second measurements and original 60s procedures verbatim as past evidence, not current F10 instructions. The F10 controller now runs **120 seconds** and the user's existing `CETProfiler_Police60` binding ID remains mapped. Do **not** compare raw 60s/120s totals as a controlled A/B; establish a first new 120s reference.
+
 
 **Status (updated 2026-10-29): STANDARDIZED F10 60-SECOND PROTOCOL, VERIFIED PER-JOB MEASUREMENT, USER-CONFIRMED CONTROLLED A/B, BETTER P99 BUT A WORSE SINGLE-FRAME EXTREME.** Whole-configuration changes are measurable; single-mod contribution and matched GC-rate reduction are not separately isolated.
 This is the default repeatable *combat-stress* comparison for G-CET Phase 3 allocation instrumentation and later optimization A/B. It replaces the earlier proposal to combine 1 minute idle + 2 minutes driving + 1 minute combat in a single run for per-job allocation comparisons. That earlier mixed scenario remains a separate possible test, **not** the standard stress baseline.
@@ -108,4 +111,4 @@ On the first valid 2026-10-28 capture, the player did not engage a cyberpsycho b
 
 ## Handoff rule
 
-Every new G-CET agent/chat must treat **COMBAT-POLICE-60** as the user-chosen, canonical **Phase 3 combat-stress baseline protocol**. Read this document before interpreting or requesting a Phase 3 stress capture. Do not substitute an idle+drive+combat mixed capture, an invented location, generic 90-second fight, or an unverified measured baseline. Preserve the distinction between (1) protocol established, (2) measured reference captured and validated, and (3) per-version comparison accepted.
+Every new G-CET agent/chat must treat **COMBAT-POLICE-120** as the user-chosen, current **Phase 3 combat-stress baseline protocol**, as documented in [its new canonical file](COMBAT-POLICE-120-BASELINE.md). This COMBAT-POLICE-60 document is retained strictly as historical run evidence. Read this document before interpreting or requesting a Phase 3 stress capture. Do not substitute an idle+drive+combat mixed capture, an invented location, generic 90-second fight, or an unverified measured baseline. Preserve the distinction between (1) protocol established, (2) measured reference captured and validated, and (3) per-version comparison accepted.
