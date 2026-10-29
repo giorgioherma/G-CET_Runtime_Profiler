@@ -7,7 +7,7 @@ namespace GCETRuntimeProfiler.Core.Services;
 internal sealed class BindingService
 {
     public const long F11BindCode = 34339947158700032L;
-    // Independent 60-second COMBAT-POLICE-60 shortcut. F11 remains unlimited.
+    // Independent 120-second COMBAT-POLICE-120 shortcut. Keep legacy input ID for existing user F10 mappings; F11 remains unlimited.
     // CET packs the Windows VK into the upper input-code byte:
     // F10 (VK 0x79) => 0x0079000000000000.
     public const long F10BindCode = 34058472181989376L;
@@ -67,7 +67,7 @@ internal sealed class BindingService
         }
 
         // CET owns the user's binding choices. Seed only missing inputs:
-        // F11 = unrestricted manual start/stop, F10 = timed benchmark.
+        // F11 = unrestricted manual start/stop, F10 = 120s timed benchmark (legacy Police60 ID).
         // Never change or erase an existing user-owned key assignment.
         var changed = false;
         if (node["CETProfiler_Toggle"] is null)
