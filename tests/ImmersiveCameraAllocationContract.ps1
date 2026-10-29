@@ -97,7 +97,7 @@ Refuse $itp ($tp.Replace('local id = __gcetItppLiteralTweakIdsV1[value]','local 
 Refuse $itp ($tp.Replace('__gcetItppLiteralTweakIdsV1[value] = id','__gcetItppLiteralTweakIdsV1[value] = nil')) 'ITP lost cache ownership'
 $crlf=([string][char]13)+([string][char]10)
 foreach($row in @(@($ifp,$originalFp),@($itp,$originalTp))){
- $source=([string]$row[1]).Replace([string][char]10,$crlf)
+ $source=([string]$row[1]).Replace(([string][char]13)+([string][char]10),[string][char]10).Replace([string][char]10,$crlf)
  $out=Rewrite $row[0] $source
  if((Rewrite $row[0] $out) -cne $out){throw 'CRLF camera variant not idempotent'}
 }
@@ -153,7 +153,7 @@ if((Rewrite $latches $latchOutput) -cne $latchOutput){throw 'ITP latch source is
 Refuse $latches ($latchOriginal.Replace('cfg.sceneExitDelay or 0.50','cfg.sceneExitDelay or 0.70')) 'ITP changed scene delay'
 Refuse $latches ($latchOutput.Replace('exitDelay.interaction = cfg.interactionExitDelay or 1.00',
                                      'exitDelay.interaction = 1.00')) 'ITP no longer tracks settings'
-$crlfLatch=$latchOriginal.Replace([string][char]10,([string][char]13)+([string][char]10))
+$crlfLatch=$latchOriginal.Replace(([string][char]13)+([string][char]10),[string][char]10).Replace([string][char]10,([string][char]13)+([string][char]10))
 $cachedLatch=Rewrite $latches $crlfLatch
 if((Rewrite $latches $cachedLatch) -cne $cachedLatch){throw 'ITP CRLF latch not idempotent'}
 $combined=Rewrite $latches ($originalTp + $latchOriginal)
