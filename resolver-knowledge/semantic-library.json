@@ -5205,7 +5205,7 @@
           "local function computePauseState()"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:gigcore-blackboard-once",
-        "expectedMarkerFileCount": 1,
+        "expectedMarkerFileCount": 2,
         "satisfiedAll": [
           "local __gcetGigBoards = Game.GetBlackboardSystem()",
           "__gcetGigBoards:Get(defs.UI_System)",
@@ -5260,9 +5260,10 @@
           "perFrameClosureReuse",
           "pristineOnePassComplete",
           "partialStageUpgrade",
-          "phoneIsOpenSameFrameNoPerTickPcallClosure"
+          "phoneIsOpenSameFrameNoPerTickPcallClosure",
+        "subscriberlessVehicleDamageBackstopDormancy"
         ],
-        "note": "The single authoritative rule applies BOTH invocation-local blackboard reuse and protected pause-refresh closure reuse from untouched GigCore source. Already-optimized and partially optimized source upgrades only missing stages; original tick timing, pcall protection and gig lifecycle are preserved. Same-pass generic SHARED_PROVIDER_READ rewrites are accepted as proven getter equivalents. Legacy direct-assignment frame drivers require only the board optimization; guarded drivers additionally reuse the protected closure. Added incremental Lua lane A closure reuse in author phone-open probe; PhoneSystem queries and phone/menu wake remain per-frame, no cross-session native handle cached, failed accessor still returns false. Historical author variants lacking the phone function retain original A/B one-pass generation; the separate phone v2 completion verifier treats the absent subsystem as not applicable, not mandatory. Do not infer the absent service from markers."
+        "note": "The single authoritative rule applies BOTH invocation-local blackboard reuse and protected pause-refresh closure reuse from untouched GigCore source. Already-optimized and partially optimized source upgrades only missing stages; original tick timing, pcall protection and gig lifecycle are preserved. Same-pass generic SHARED_PROVIDER_READ rewrites are accepted as proven getter equivalents. Legacy direct-assignment frame drivers require only the board optimization; guarded drivers additionally reuse the protected closure. Added incremental Lua lane A closure reuse in author phone-open probe; PhoneSystem queries and phone/menu wake remain per-frame, no cross-session native handle cached, failed accessor still returns false. Historical author variants lacking the phone function retain original A/B one-pass generation; the separate phone v2 completion verifier treats the absent subsystem as not applicable, not mandatory. Do not infer the absent service from markers. Phase 3 adds a second optional source-owned file for current author layouts with core/vehicle_damage.lua: source-verified subscriberless damage drain skips unsafe mounted-vehicle/Health backstop and clears stale coalescer entries, while active subscribers keep original full-rate processing. Completion verifier must check both installed author stages, not init.lua's marker alone; older author layouts without the module remain supported."
       },
       "runtimeAdmission": {
         "thresholdMsPerSecond": 3,
