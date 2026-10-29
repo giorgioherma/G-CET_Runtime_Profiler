@@ -421,7 +421,8 @@ internal static partial class SemanticInjectors
                 !text.Contains("if state.pendingFppRestore then", StringComparison.Ordinal))
                 throw new InvalidOperationException(
                     "Updated third-person pending-state gates are incomplete.");
-            var upgraded = AddImmersiveThirdPersonFppFastpaths(text);
+            var upgraded = ReuseImmersiveThirdPersonLiteralIds(
+                AddImmersiveThirdPersonFppFastpaths(text));
             if (upgraded == text)
                 return SemanticInjectionResult.Skip(
                     "Current ITP pending-state and first-person fastpaths already applied.");
@@ -494,12 +495,80 @@ internal static partial class SemanticInjectors
         text = text.Insert(updateOwners[0].Index,
             "-- " + stage + ": author-verified absent-state fast guards only\n");
 
-        text = AddImmersiveThirdPersonFppFastpaths(text);
+        text = ReuseImmersiveThirdPersonLiteralIds(
+            AddImmersiveThirdPersonFppFastpaths(text));
         context.Write(file, text);
         return SemanticInjectionResult.Success(
             "Current ITP API, movement, camera, heartbeat, native toggle and " +
             "TPP maintenance remain original per-frame work. Six pending " +
             "handlers and five source-proven idle no-work calls are guarded.");
+    }
+
+    // Static source-inspected TweakDBID literals are immutable identifiers.
+    // Keep the existing author wrapper as their ONLY constructor/fallback and
+    // retain dynamic strings as uncached live lookups. This is part of the
+    // existing updated ITP source generator; it adds no new callback/ticker.
+    private static string ReuseImmersiveThirdPersonLiteralIds(string source)
+    {
+        const string cache = "__gcetItppLiteralTweakIdsV1";
+        const string current = "local function makeTweakDBID(value)\n" +
+            "  if TweakDBID and TweakDBID.new then\n" +
+            "    return TweakDBID.new(value)\n" +
+            "  end\n\n" +
+            "  return value\n" +
+            "end";
+        // Fixed-value callers may shift between supported author revisions,
+        // but their set is bounded by explicit literals in the CURRENT source.
+        var literals = Regex.Matches(source,
+            @"\bmakeTweakDBID\s*\(\s*(?<quote>['""])(?<id>(?:AttachmentSlots|BaseStatusEffect)\.[A-Za-z0-9_]+)\k<quote>\s*\)",
+            RegexOptions.CultureInvariant)
+            .Select(x => x.Groups["id"].Value)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(x => x, StringComparer.Ordinal)
+            .ToArray();
+        if (source.Contains(cache, StringComparison.Ordinal))
+        {
+            if (Regex.Matches(source, @"\blocal\s+" + cache + @"\s*=\s*\{\s*\}").Count != 1 ||
+                !source.Contains("local id = " + cache + "[value]", StringComparison.Ordinal) ||
+                !source.Contains(cache + "[value] = id", StringComparison.Ordinal) ||
+                !source.Contains("if __gcetItppLiteralKeySetV1[value] then", StringComparison.Ordinal) ||
+                !source.Contains("return TweakDBID.new(value)", StringComparison.Ordinal) ||
+                !source.Contains("  return value\nend", StringComparison.Ordinal) ||
+                source.Contains(current, StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "ITP cached literal TweakDBIDs are partially installed or unsafe.");
+            return source;
+        }
+        if (source.Contains("__gcetItppLiteralKeySetV1", StringComparison.Ordinal))
+            throw new InvalidOperationException("ITP TweakDBID key set without cache stage.");
+        if (!source.Contains("local function makeTweakDBID(", StringComparison.Ordinal))
+            return source; // Historical compact camera architecture.
+        if (literals.Length == 0)
+            return source; // No static native identifiers on this author revision.
+        if (source.Split(current, StringSplitOptions.None).Length != 2)
+            throw new InvalidOperationException(
+                "ITP original TweakDBID fallback owner changed; refusing caching.");
+
+        var keys = string.Join("\n", literals.Select(key => "  [\"" + key + "\"] = true,"));
+        var replacement =
+            "-- G-CET: source-proven immutable TweakDBID keys, no dynamic caching.\n" +
+            "local __gcetItppLiteralKeySetV1 = {\n" + keys + "\n}\n" +
+            "local " + cache + " = {}\n" +
+            "local function makeTweakDBID(value)\n" +
+            "  if TweakDBID and TweakDBID.new then\n" +
+            "    if __gcetItppLiteralKeySetV1[value] then\n" +
+            "      local id = " + cache + "[value]\n" +
+            "      if id == nil then\n" +
+            "        id = TweakDBID.new(value)\n" +
+            "        " + cache + "[value] = id\n" +
+            "      end\n" +
+            "      return id\n" +
+            "    end\n" +
+            "    return TweakDBID.new(value)\n" +
+            "  end\n\n" +
+            "  return value\n" +
+            "end";
+        return source.Replace(current, replacement, StringComparison.Ordinal);
     }
 
     // V4 is part of the existing ITP update producer, not a correction
