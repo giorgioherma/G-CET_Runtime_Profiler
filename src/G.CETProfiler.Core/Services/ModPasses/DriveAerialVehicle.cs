@@ -193,6 +193,65 @@ end
                  !coreText.Contains("Observe(\"PlayerPuppet\", \"OnAction\", __gcetDAVOnAction)", StringComparison.Ordinal))
             throw new InvalidOperationException("DAV partial action gate; fail closed.");
 
+        // Phase 3: DAV no longer mirrors the player's custom map marker while on
+        // foot. The game owns ordinary map tracking. Only an occupied aerial
+        // vehicle can use the author SetCustomMappin->autopilot destination path.
+        // SyncActionListener is invoked by the seven source-proven situation
+        // writers and the SessionStart/SessionEnd direct reset paths, whether
+        // or not the shared action router itself was available.
+        const string davGateTag = "__gcetDAVMappinGateV3";
+        const string davSyncStart =
+            "function Core:SyncActionListener()\n" +
+            "    local h = self.__gcetDAVActionHandle";
+        const string davMappinSync =
+            "function Core:SyncActionListener()\n" +
+            "    -- __gcetDAVMappinGateV3: only an occupied aerial vehicle owns a destination cache.\n" +
+            "    local mappinSituation = self.event_obj and self.event_obj.current_situation\n" +
+            "    local mappinActive = mappinSituation == Def.Situation.InVehicle\n" +
+            "    if self.__gcetDAVMappinActive ~= mappinActive then\n" +
+            "        self.__gcetDAVMappinActive = mappinActive\n" +
+            "        self.is_custom_mappin = false\n" +
+            "        self.current_custom_mappin_position = Vector4.Zero()\n" +
+            "        if self.av_obj and self.av_obj.navigation_obj then\n" +
+            "            self.av_obj.navigation_obj:SetMappinDestination(Vector4.Zero())\n" +
+            "        end\n" +
+            "    end\n" +
+            "    local h = self.__gcetDAVActionHandle";
+        if (!coreText.Contains(davGateTag, StringComparison.Ordinal))
+        {
+            coreText = ReplaceOnce(coreText, davSyncStart, davMappinSync,
+                "DAV flight-only mappin lifecycle, including CET action fallback");
+
+            // The native-to-Lua ObserveAfter hooks themselves remain installed
+            // until a separately approved native ownership design exists.
+            // This cheap primitive gate prevents ALL source-owned GetMappin,
+            // SetCustomMappin and nearest-fast-travel allocations off-flight.
+            foreach (var method in new[] { "IsTracked", "UpdateRootState" })
+            {
+                var hook = "ObserveAfter(\"BaseMappinBaseController\", \"" +
+                    method + "\", function(this)\n" +
+                    "        local mappin = this:GetMappin()";
+                var gated = "ObserveAfter(\"BaseMappinBaseController\", \"" +
+                    method + "\", function(this)\n" +
+                    "        if self.__gcetDAVMappinActive ~= true then return end\n" +
+                    "        local mappin = this:GetMappin()";
+                coreText = ReplaceOnce(coreText, hook, gated,
+                    "DAV inactive " + method + " body gate");
+            }
+        }
+        else if (!coreText.Contains(
+                     "local mappinActive = mappinSituation == Def.Situation.InVehicle",
+                     StringComparison.Ordinal) ||
+                 !coreText.Contains("self.av_obj.navigation_obj:SetMappinDestination(Vector4.Zero())",
+                     StringComparison.Ordinal) ||
+                 !coreText.Contains("if self.__gcetDAVMappinActive ~= true then return end",
+                     StringComparison.Ordinal) ||
+                 Regex.Matches(coreText,
+                     @"if self\.__gcetDAVMappinActive ~= true then return end",
+                     RegexOptions.CultureInvariant).Count != 2)
+            throw new InvalidOperationException(
+                "DAV phase 3 flight-only mappin stage partial or drifted; fail closed.");
+
         context.Write(core, coreCrLf
             ? coreText.Replace("\n", "\r\n", StringComparison.Ordinal) : coreText);
         context.Write(events, eventCrLf
