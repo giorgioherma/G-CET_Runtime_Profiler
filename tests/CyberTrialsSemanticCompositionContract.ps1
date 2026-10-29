@@ -439,6 +439,33 @@ $regenerated=[Text.Encoding]::UTF8.GetString($stage['CyberTrials/GCET_Semantic/c
 if($regenerated.TrimEnd() -ne $workerCode.TrimEnd()){
   throw 'CyberTrials V1 worker failed regeneration from the authoritative generator'
 }
+# Source and external worker are independent, source-proven stages.
+# Upgrade V1 worker with V2 init and V1 init with V2 worker.
+$stage['CyberTrials/init.lua']=[Text.Encoding]::UTF8.GetBytes($compiled)
+$stage['CyberTrials/GCET_Semantic/cybertrials_engine_worker.lua']=[Text.Encoding]::UTF8.GetBytes($priorWorker)
+$partialWorker=$ctor.Invoke([object[]]@([string]$mods,'CyberTrials','cybertrials',$stage))
+$null=$method.Invoke($null,[object[]]@($partialWorker))
+$pw=@($ctxType.GetProperty('Changes',[Reflection.BindingFlags]'Instance,NonPublic').GetValue($partialWorker))
+if($pw.Count -ne 1 -or $pw[0].RelativeFile -notlike '*/cybertrials_engine_worker.lua'){
+  throw 'CyberTrials source-complete partial did not regenerate only its worker'
+}
+$stage['CyberTrials/init.lua']=[Text.Encoding]::UTF8.GetBytes($priorInit)
+$stage['CyberTrials/GCET_Semantic/cybertrials_engine_worker.lua']=[Text.Encoding]::UTF8.GetBytes($workerCode)
+$partialSource=$ctor.Invoke([object[]]@([string]$mods,'CyberTrials','cybertrials',$stage))
+$null=$method.Invoke($null,[object[]]@($partialSource))
+$ps=@($ctxType.GetProperty('Changes',[Reflection.BindingFlags]'Instance,NonPublic').GetValue($partialSource))
+if($ps.Count -ne 1 -or $ps[0].RelativeFile -notlike '*/init.lua'){
+  throw 'CyberTrials worker-complete partial did not regenerate only its source'
+}
+$stage['CyberTrials/init.lua']=[Text.Encoding]::UTF8.GetBytes($compiled)
+$stage.Remove('CyberTrials/GCET_Semantic/cybertrials_engine_worker.lua')|Out-Null
+$missing=$ctor.Invoke([object[]]@([string]$mods,'CyberTrials','cybertrials',$stage))
+$null=$method.Invoke($null,[object[]]@($missing))
+$mw=@($ctxType.GetProperty('Changes',[Reflection.BindingFlags]'Instance,NonPublic').GetValue($missing))
+if($mw.Count -ne 1 -or $mw[0].RelativeFile -notlike '*/cybertrials_engine_worker.lua'){
+  throw 'CyberTrials missing worker source owner did not regenerate only the worker'
+}
+
 $malformed=$priorWorker.Replace('id = "cybertrials.realtime"','id = "foreign.realtime"')
 $stage['CyberTrials/init.lua']=[Text.Encoding]::UTF8.GetBytes($priorInit)
 $stage['CyberTrials/GCET_Semantic/cybertrials_engine_worker.lua']=[Text.Encoding]::UTF8.GetBytes($malformed)
