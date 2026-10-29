@@ -715,10 +715,17 @@ return M
 """;
         if (source.Contains("if mode == \"realtime_required\" then",
             StringComparison.Ordinal)) return source;
-        if (source.Split(anchor, StringSplitOptions.None).Length != 2)
-            throw new InvalidOperationException("CyberTrials runtime dispatcher boundary drift.");
-        return source.Replace(anchor, anchor + probe + "\n",
+        // Source may be LF or staged CRLF; locate the function line once,
+        // never assume the source string's line ending shape.
+        var normalized=source.Replace("\r\n","\n",StringComparison.Ordinal);
+        var count=normalized.Split(anchor,StringSplitOptions.None).Length - 1;
+        if (count != 1)
+            throw new InvalidOperationException(
+                "CyberTrials runtime dispatcher boundary drift; owner count="+count);
+        var updated=normalized.Replace(anchor,anchor+probe+"\n",
             StringComparison.Ordinal);
+        return source.Contains("\r\n",StringComparison.Ordinal)
+            ? updated.Replace("\n","\r\n",StringComparison.Ordinal) : updated;
     }
 
 }
