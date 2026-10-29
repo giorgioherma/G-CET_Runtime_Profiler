@@ -10,7 +10,7 @@ The native per-job/frame allocator scopes were **compiled and validated in gamep
 
 ## User-approved reproducible gameplay stress baseline
 
-**`COMBAT-POLICE-60`** is the canonical Phase 3 stress benchmark: one **60-second sustained police fight at the user's apartment area**, **F10 starts both CET and CapFrameX** with independent 60-second auto-stop/export, **F11 remains unlimited manual**, same save, position, wanted level, loadout, mod stack, settings and FPS cap. It replaces the four-minute mixed idle/drive/combat proposal for aggregate per-job comparisons. **First valid scheduler-allocation capture received 2026-10-28**; exact apartment/save details are not established. Read [the complete benchmark protocol](COMBAT-POLICE-60-BASELINE.md) before interpreting or planning A/B. No obligation to split into three profiles.
+**`COMBAT-POLICE-120`** is the new canonical Phase 3 stress benchmark (2026-10-29): one **120-second sustained police fight at the user's apartment area**, **F10 starts both CET and CapFrameX** with independent 120-second auto-stop/export, **F11 remains unlimited manual**, same save, position, wanted level, loadout, mod stack, settings and FPS cap. It replaces the four-minute mixed idle/drive/combat proposal for aggregate per-job comparisons. **First valid scheduler-allocation capture received 2026-10-28**; exact apartment/save details are not established. Read [the current benchmark protocol](COMBAT-POLICE-120-BASELINE.md) before interpreting or planning NEW 120s A/B; [60s baseline](COMBAT-POLICE-60-BASELINE.md) is archived history. No obligation to split into three profiles.
 
 ## Experimental RC far-state gating, not quest disable
 
@@ -30,7 +30,7 @@ Package exactly one profiler-aware Scheduler under `payload/0-Engine/modules/G-C
 
 User-provided `CET-20261028-135900_NEW_INSTRUMENTATION - STANDARD 60s capture BASELINE.zip`: native capture duration 60.945835 s, 966,622 CET callback invocations, CapFrameX correlated; Phase 3 CSV exists. **Scheduler_ByJob: 23 registrations, all 0 executions. FrameworkAllocation: 1,928 measured frames but all 0 bytes/operations.** No dropped spans. These zeros are not acceptable evidence that 0-Engine or mods allocate nothing. Managed report now marks `UNVERIFIED_ZERO_JOB_INVOCATIONS_WITH_FRAMES` when registered jobs have zero invocations amid scheduler frames. **Historical incident is closed for this instrumentation path:** later canonical scheduler gameplay capture proves executing jobs and usable allocations. Do not reuse this all-zero archive as a valid per-job baseline. Existing G-GC and CapFrameX evidence remains useful.
 
-**Timed capture control:** new `CETProfiler_Police60` keybind auto-starts, tags COMBAT, stops/dumps at first `onUpdate` reaching native captured 60 seconds, and uses no additional event hook. F11 remains manual. Exact 60.000 s termination cannot be guaranteed below one rendered update; record the actual elapsed seconds.
+**Timed capture control (updated 2026-10-29):** retained `CETProfiler_Police60` **internal key ID** to preserve user's F10 mapping, now displayed as COMBAT-POLICE-120; auto-starts, tags COMBAT, stops/dumps at first `onUpdate` reaching native captured **120 seconds**, with no additional event hook. F11 remains unlimited manual. Actual stop can overshoot by one rendered update; record elapsed seconds.
 
 ## Work backwards from decisions
 
