@@ -323,7 +323,8 @@ $badSync=@'
       if fallbackActive then handle.Resume() else handle.Pause() end
     end
   end
-'@.Replace($crlf,$nl) + $nl
+'@
+$badSync=$badSync.Replace($crlf,$nl) + $nl
 $syncStart=$legacyWake.IndexOf('  local function sync()' + $nl)
 $syncEnd=$legacyWake.IndexOf('  local function notify()' + $nl,$syncStart)
 if($syncStart -lt 0 -or $syncEnd -lt 0){throw 'V2 sync fixture drift'}
