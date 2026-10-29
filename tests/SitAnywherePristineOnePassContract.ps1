@@ -174,11 +174,16 @@ $staged['sitAnywhere/GCET_Semantic/sitanywhere_engine_worker.lua']=[Text.Encodin
 
 $staged.Remove('sitAnywhere/GCET_Semantic/sitanywhere_engine_worker.lua')|Out-Null
 $missing=MakeCtx $staged
-$refused=$false
-try{$null=$method.Invoke($null,[object[]]@($missing))}catch{
- if($_.Exception.ToString() -match 'partially installed'){$refused=$true}
+$recovered=$method.Invoke($null,[object[]]@($missing))
+$rebuilt=@($ctxType.GetProperty('Changes',[Reflection.BindingFlags]'Instance,NonPublic').GetValue($missing))
+if(!$recovered.Applied -or $rebuilt.Count -ne 1 -or
+   $rebuilt[0].RelativeFile -ne 'sitAnywhere/GCET_Semantic/sitanywhere_engine_worker.lua'){
+  throw 'SitAnywhere missing owned worker was not regenerated independently'
 }
-if(!$refused){throw 'Missing worker was silently considered complete'}
+if(([Text.Encoding]::UTF8.GetString($rebuilt[0].Bytes)).TrimEnd() -ne $worker.TrimEnd()){
+  throw 'SitAnywhere missing worker recovery did not reproduce source-owned V2 worker'
+}
+foreach($change in $rebuilt){$staged[$change.RelativeFile]=$change.Bytes}
 foreach($f in $files) {
  if((Get-FileHash (Join-Path $mod $f) -Algorithm SHA256).Hash -ne $sha[$f]){
    throw "Generator touched original file: $f"
