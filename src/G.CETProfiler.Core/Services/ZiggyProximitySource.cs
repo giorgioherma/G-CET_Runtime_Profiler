@@ -147,7 +147,14 @@ end
             return text;
         }
         if(text.Split(oldCall,StringSplitOptions.None).Length!=2)
-            throw new InvalidOperationException("Ziggy protected update source drifted.");
+        {
+            // A supported compact/older author controller invokes update(dt)
+            // directly and has no per-frame protected closures to eliminate.
+            // An unknown xpcall handler is NOT equivalent; refuse drift.
+            if(text.Contains("xpcall(function()update(dt)end",StringComparison.Ordinal))
+                throw new InvalidOperationException("Ziggy protected update error handler drifted.");
+            return text;
+        }
         return text.Replace(oldCall,"-- "+marker+"\n  "+newCall,StringComparison.Ordinal);
     }
 
@@ -159,11 +166,16 @@ end
             var nav = File.ReadAllText(Path.Combine(ownerFolder, "navigation.lua"));
             if (!init.Contains("G-CET semantic:ziggy-unaccepted-far-1hz", StringComparison.Ordinal) ||
                 !init.Contains("G-CET semantic:ziggy-passive-ui-v5", StringComparison.Ordinal) ||
-                !init.Contains("G-CET semantic:ziggy-no-frame-closure-v7", StringComparison.Ordinal) ||
                 !init.Contains("H.__gcetPuzzleWasShown", StringComparison.Ordinal) ||
                 !init.Contains("H.__gcetPromptWasShown", StringComparison.Ordinal) ||
                 !nav.Contains("G-CET semantic:ziggy-passive-ui-v5", StringComparison.Ordinal) ||
                 !nav.Contains("missingScanAge", StringComparison.Ordinal))
+                return false;
+            if(init.Contains("xpcall(function()update(dt)end",StringComparison.Ordinal))
+                return false; // this source still needs the new v7 closure stage
+            if(init.Contains("G-CET semantic:ziggy-no-frame-closure-v7",StringComparison.Ordinal) &&
+               (!init.Contains("local ok,err=pcall(update,dt)",StringComparison.Ordinal) ||
+                !init.Contains("if not ok then err=tostring(err) end",StringComparison.Ordinal)))
                 return false;
             // Historical supported test/author versions without the
             // original snapshot-writing function cannot need this B stage.

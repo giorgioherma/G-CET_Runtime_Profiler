@@ -134,6 +134,11 @@ registerForEvent("onUpdate",function(delta)
         or isShopSystemActive then
         currentTarget = GetLookAtNPC()
     end
+    radarTimer = radarTimer + delta
+    if radarTimer >= 1.0 then
+        radarTimer = 0.0
+        ProcessRadarOutfits()
+    end
 end)
 '@
 Check 'NPC Outfit Manager' 'npc-outfit-manager-radar-gc' 'ApplyNpcOutfitRadarGc' $npc @(

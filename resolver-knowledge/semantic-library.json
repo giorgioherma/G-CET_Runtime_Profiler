@@ -4960,8 +4960,7 @@
           "G-CET semantic:ziggy-unaccepted-far-1hz",
           "G-CET semantic:ziggy-passive-ui-v5",
           "H.__gcetPuzzleWasShown",
-          "G-CET semantic:ziggy-native-snapshot-manager-v6",
-          "G-CET semantic:ziggy-no-frame-closure-v7"
+          "G-CET semantic:ziggy-native-snapshot-manager-v6"
         ],
         "sourceCompletionAuthoritative": true,
         "composablePartialStages": true,
@@ -4974,8 +4973,7 @@
           "__gcetZiggyOfferedFar",
           "G-CET semantic:ziggy-unaccepted-far-1hz",
           "G-CET semantic:ziggy-passive-ui-v5",
-          "H.__gcetPuzzleWasShown",
-          "G-CET semantic:ziggy-no-frame-closure-v7"
+          "H.__gcetPuzzleWasShown"
         ]
       },
       "behavior": {
