@@ -21,7 +21,7 @@ internal static partial class SemanticInjectors
             var cron=context.FindFile("modules/external/Cron.lua",
                 "function Cron.HasActiveTimers()", "local timers = {}");
             if ((worker is not null && (
-                !worker.StartsWith("-- G-CET semantic coordinator:cybertrials\\n",
+                !worker.StartsWith("-- G-CET semantic coordinator:cybertrials\n",
                     StringComparison.Ordinal) ||
                 !worker.Contains("cybertrials.realtime",StringComparison.Ordinal) ||
                 !worker.Contains("cybertrials.race_state",StringComparison.Ordinal))) ||
