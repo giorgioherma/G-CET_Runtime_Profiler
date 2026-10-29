@@ -300,6 +300,9 @@ if(!$upgrade.Applied -or $upgrade.Changes.Count -ne 2 -or !$upInit -or !$upWorke
 # A stack with no 0-Engine adopted driver must preserve stock CET callback.
 Remove-Item $hostPath -Force
 [IO.File]::WriteAllText($workerPath,$wake,[Text.UTF8Encoding]::new($false))
+if($proof.Invoke($null,[object[]]@([string]$dedra))){
+  throw 'Current Dedra worker without its 0-Engine driver falsely passed completion proof'
+}
 $noHost=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $dedraFixture $addon -StageInput
 if($noHost.Applied -or $noHost.Changes.Count -ne 0){
   throw 'Unverified 0-Engine incorrectly adopted Dedra update'
