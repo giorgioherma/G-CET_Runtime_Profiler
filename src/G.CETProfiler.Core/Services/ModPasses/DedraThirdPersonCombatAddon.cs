@@ -17,8 +17,15 @@ internal static partial class SemanticInjectors
         var worker=File.ReadAllText(workerPath).Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
         var canonical="-- G-CET semantic coordinator:dedra-third-person-combat-wake\n"+
             WorkerV3.Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
+        var modsRoot=Directory.GetParent(ownerFolder)?.FullName;
+        var hostPath=modsRoot is null ? "" : Path.Combine(modsRoot,"0-Engine","init.lua");
+        if(!File.Exists(hostPath))return false;
+        var host=File.ReadAllText(hostPath).Replace("\r\n","\n",StringComparison.Ordinal);
         return HasDedraThirdPersonCombatAuthorBridge(init) &&
-            worker.Equals(canonical,StringComparison.Ordinal);
+            worker.Equals(canonical,StringComparison.Ordinal) &&
+            host.Contains("Engine.__gcetScheduleDriver({",StringComparison.Ordinal) &&
+            host.Contains("__host.__gcetScheduleDriver = function(ctx)",StringComparison.Ordinal) &&
+            host.Contains("registerForEvent(\"onUpdate\", function(delta)",StringComparison.Ordinal);
     }
 
     // Existing author bridge proves independent callback ownership even when
