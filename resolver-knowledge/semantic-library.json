@@ -3257,14 +3257,17 @@
           "StatusEffectSystem.ObjectHasStatusEffectOfType"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:immersivefirstperson",
-        "expectedMarkerFileCount": 3,
+        "expectedMarkerFileCount": 4,
         "satisfiedAll": [
           "slowProbeElapsed",
           "slowProbe = {",
           "Helpers.RefreshPlayerState(target, delta)",
           "collectPlayerState(delta)",
           "__gcetIFPBlackboardSystem:Get(blackboardDefs.UI_System)",
-          "__gcetIFPBlackboardSystem:Get(blackboardDefs.PhotoMode)"
+          "__gcetIFPBlackboardSystem:Get(blackboardDefs.PhotoMode)",
+          "__gcetIfpBodyScratchV1",
+          "__gcetIfpNeutralFreeV1",
+          "function CameraCore.EvaluateBody(nativePitch, crouching, out)"
         ],
         "completeStages": [
           {
@@ -3285,6 +3288,14 @@
               "local __gcetIFPBlackboardSystem = Game.GetBlackboardSystem()",
               "__gcetIFPBlackboardSystem:Get(blackboardDefs.UI_System)",
               "__gcetIFPBlackboardSystem:Get(blackboardDefs.PhotoMode)"
+            ]
+          },
+          {
+            "function": "CameraCore.EvaluateBody",
+            "includes": [
+              "out = out or {}",
+              "out.progress = progress",
+              "return out"
             ]
           }
         ],
@@ -3319,7 +3330,7 @@
           "ACTION_ROUTING_*",
           "SHARED_PROVIDER_READ"
         ],
-        "note": "Authoritative one-pass implementation includes original 20 Hz slow state probe and invocation-local UI/PhotoMode blackboard system reuse; existing partial stages recognized by source rather than marker."
+        "note": "Authoritative one-pass implementation includes original 20 Hz slow state probe invocation-local UI/PhotoMode blackboard reuse, and source-verified private camera scratch; existing partial stages recognized by source rather than marker."
       },
       "generation": {
         "enabled": true,
