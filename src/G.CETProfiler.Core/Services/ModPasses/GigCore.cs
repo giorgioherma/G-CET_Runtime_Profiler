@@ -320,6 +320,29 @@ internal static partial class SemanticInjectors
         try
         {
             var source = File.ReadAllText(Path.Combine(ownerFolder, "init.lua"));
+            // Existing and new GigCore stages are independently optional by
+            // authored source layout. A completed init.lua does NOT prove the
+            // damage subservice's own stage in a modern installed version.
+            var damagePath = Path.Combine(ownerFolder, "core", "vehicle_damage.lua");
+            if (File.Exists(damagePath))
+            {
+                var damage = File.ReadAllText(damagePath);
+                var tickStart = damage.IndexOf("function VD.tick(dt)", StringComparison.Ordinal);
+                if (tickStart < 0)
+                    return false;
+                var tickEnd = damage.IndexOf("\nend", tickStart, StringComparison.Ordinal);
+                if (tickEnd < 0)
+                    return false;
+                var tickBody = damage[tickStart..tickEnd];
+                if (!tickBody.Contains("__gcetGigDamageNoSubscribersV1", StringComparison.Ordinal) ||
+                    !tickBody.Contains("if #subs == 0 then", StringComparison.Ordinal) ||
+                    !tickBody.Contains("healthVid, healthPrev = nil, nil", StringComparison.Ordinal) ||
+                    !tickBody.Contains("for k in pairs(accum) do accum[k] = nil end",
+                        StringComparison.Ordinal) ||
+                    !tickBody.Contains("backstopPoll()", StringComparison.Ordinal) ||
+                    !tickBody.Contains("flushDue()", StringComparison.Ordinal))
+                    return false;
+            }
             var phone = Regex.IsMatch(source,
                 @"(?m)^[ \t]*local function phoneIsOpen\(\)",
                 RegexOptions.CultureInvariant);
