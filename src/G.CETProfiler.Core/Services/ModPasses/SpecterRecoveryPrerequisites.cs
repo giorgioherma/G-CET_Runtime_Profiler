@@ -265,6 +265,9 @@ internal static partial class SemanticInjectors
                     StringComparison.Ordinal)))
                 return false;
             var musicPath = Path.Combine(folder, "specter_mission_music.lua");
+            if (text.Contains("Music.update(", StringComparison.Ordinal) &&
+                !File.Exists(musicPath))
+                return false; // Referenced author music owner is missing.
             if (File.Exists(musicPath))
             {
                 var music = File.ReadAllText(musicPath);
