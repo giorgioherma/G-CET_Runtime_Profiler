@@ -1082,6 +1082,31 @@ Replace-LiteralOnce -Path $npC `
 '@ `
     -Label "NativeProxy pre-dispatch allocation boundary"
 
+
+# Measure only native next-closure construction, NEVER Lua invocation or
+# trampoline execution. No RAII across LuaJIT longjmp/Windows SEH.
+Replace-LiteralOnce `
+    -Path $foC `
+    -Old '        const auto luaWrapped = WrapNextOverride(aChain, 0, luaState, luaContext, luaArgs, pRealFunction, apContext, aLock);' `
+    -New @'
+        const auto gcetRootNextStart = CETRuntimeProfiler::BeginPreDispatch();
+        const auto luaWrapped = WrapNextOverride(aChain, 0, luaState, luaContext, luaArgs, pRealFunction, apContext, aLock);
+        CETRuntimeProfiler::Get().RecordNativeStage(
+            3, pRealFunction->fullName.hash, gcetRootNextStart);
+'@ `
+    -Label "Override root next-wrapper allocation stage"
+
+Replace-LiteralOnce `
+    -Path $foC `
+    -Old '            auto next = WrapNextOverride(aChain, aStep + 1, aLuaState, aLuaContext, aLuaArgs, apRealFunction, apRealContext, aLock);' `
+    -New @'
+            const auto gcetChainNextStart = CETRuntimeProfiler::BeginPreDispatch();
+            auto next = WrapNextOverride(aChain, aStep + 1, aLuaState, aLuaContext, aLuaArgs, apRealFunction, apRealContext, aLock);
+            CETRuntimeProfiler::Get().RecordNativeStage(
+                4, apRealFunction->fullName.hash, gcetChainNextStart);
+'@ `
+    -Label "Override chain next-wrapper allocation stage"
+
 # Hard safety checks.
 $foHHashAfter = (Get-FileHash -Algorithm SHA256 $foH).Hash
 if ($foHHashAfter -ne $foHHashBefore) {

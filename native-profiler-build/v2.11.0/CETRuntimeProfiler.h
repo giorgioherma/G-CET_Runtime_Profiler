@@ -564,6 +564,50 @@ public:
         row.Calls.fetch_add(1, std::memory_order_relaxed);
         row.PositiveBytes.fetch_add(bytes - start.Bytes, std::memory_order_relaxed);
         row.Operations.fetch_add(ops - start.Ops, std::memory_order_relaxed);
+        RecordNativeStage(boundary - 6, methodHash, start);
+    }
+
+    // Exact per-method native stages. Bounded owner-zero LuaJIT allocator
+    // windows, not retained memory, subscriber ownership or native heap.
+    static constexpr uint32_t NativeStageCount = 5;
+    static constexpr uint32_t NativeStageSlots = 256;
+    struct NativeMethodStage {
+        std::atomic<uint64_t> MethodHash{0};
+        std::atomic<uint64_t> Calls{0}, PositiveBytes{0}, Operations{0};
+    };
+    void RecordNativeStage(uint32_t stage, uint64_t methodHash,
+                           const PreDispatchSnapshot& start) noexcept {
+        if (!start.Active || !IsCapturing() || stage >= NativeStageCount) return;
+        if (!methodHash) {
+            m_nativeStageDrops[stage].fetch_add(1, std::memory_order_relaxed);
+            return;
+        }
+        const uint64_t bytes = gcet_gc_unscoped_thread_bytes();
+        const uint64_t ops = gcet_gc_unscoped_thread_ops();
+        if (bytes < start.Bytes || ops < start.Ops) return;
+        const uint32_t index = static_cast<uint32_t>(
+            (methodHash ^ (methodHash >> 32) ^ (methodHash >> 17)) &
+            (NativeStageSlots - 1));
+        for (uint32_t offset = 0; offset < NativeStageSlots; ++offset) {
+            auto& row = m_nativeMethodStages[stage][
+                (index + offset) & (NativeStageSlots - 1)];
+            uint64_t identity = row.MethodHash.load(std::memory_order_acquire);
+            if (!identity) {
+                uint64_t empty = 0;
+                row.MethodHash.compare_exchange_strong(
+                    empty, methodHash, std::memory_order_acq_rel,
+                    std::memory_order_acquire);
+                identity = row.MethodHash.load(std::memory_order_acquire);
+            }
+            if (identity != methodHash) continue;
+            row.Calls.fetch_add(1, std::memory_order_relaxed);
+            row.PositiveBytes.fetch_add(bytes - start.Bytes,
+                                        std::memory_order_relaxed);
+            row.Operations.fetch_add(ops - start.Ops,
+                                     std::memory_order_relaxed);
+            return;
+        }
+        m_nativeStageDrops[stage].fetch_add(1, std::memory_order_relaxed);
     }
 
     // Scope tracks both inclusive and exclusive callback time.
@@ -1263,6 +1307,7 @@ public:
         ResetSchedulerLocked();
         ResetDeepLocked();
         ResetPreDispatch();
+        ResetNativeStages();
         m_scalarObservations.clear();
         m_droppedScalarObservations = 0;
         m_accumulatedCapture = std::chrono::nanoseconds::zero();
@@ -1324,6 +1369,7 @@ public:
         ResetSchedulerLocked();
         ResetDeepLocked();
         ResetPreDispatch();
+        ResetNativeStages();
         m_scalarObservations.clear();
         m_droppedScalarObservations = 0;
         m_accumulatedCapture = std::chrono::nanoseconds::zero();
@@ -3668,6 +3714,37 @@ public:
             }
         }
 
+        // Bounded exact-method native stages; overlapping broader native
+        // boundaries are intentionally NOT additive.
+        {
+            std::ofstream f(outputRoot / "CET_Runtime_Profile_Native_MethodStages.csv",
+                            std::ios::trunc);
+            if (f) {
+                f << "Stage,NativeMethodHash,Calls,OwnerZeroPositiveBytes,"
+                     "OwnerZeroPositiveOps,DroppedStageCalls,ClassAttribution,"
+                     "SubscriberAttribution,Measurement\n";
+                const char* stageNames[] = {"PURE_ARGUMENTS", "OVERRIDDEN_ARGUMENTS",
+                    "NATIVE_PROXY_ARGUMENTS", "OVERRIDE_ROOT_NEXT_CLOSURE",
+                    "OVERRIDE_CHAIN_NEXT_CLOSURE"};
+                for (uint32_t stage = 0; stage < NativeStageCount; ++stage) {
+                    const uint64_t dropped = m_nativeStageDrops[stage].load(
+                        std::memory_order_relaxed);
+                    for (uint32_t slot = 0; slot < NativeStageSlots; ++slot) {
+                        const auto& row = m_nativeMethodStages[stage][slot];
+                        const uint64_t methodHash = row.MethodHash.load(
+                            std::memory_order_acquire);
+                        if (!methodHash) continue;
+                        f << stageNames[stage] << ',' << methodHash << ','
+                          << row.Calls.load(std::memory_order_relaxed) << ','
+                          << row.PositiveBytes.load(std::memory_order_relaxed) << ','
+                          << row.Operations.load(std::memory_order_relaxed) << ','
+                          << dropped << ",NOT_PROVEN,NOT_PROVEN,"
+                          << "OWNER_ZERO_POSITIVE_LUAJIT_GROWTH_STAGE_WINDOW_NOT_ADDITIVE\n";
+                    }
+                }
+            }
+        }
+
         // -----------------------------------------------------------------
         // SCHEDULER BY JOB: cooperative 0-Engine child attribution.
         //
@@ -5246,6 +5323,20 @@ private:
           << elapsedSec << ','
           << "events+observe+override-exclusive+capture-gated"
           << '\n';
+    }
+
+    NativeMethodStage m_nativeMethodStages[NativeStageCount][NativeStageSlots]{};
+    std::atomic<uint64_t> m_nativeStageDrops[NativeStageCount]{};
+    void ResetNativeStages() noexcept {
+        for (uint32_t stage = 0; stage < NativeStageCount; ++stage) {
+            m_nativeStageDrops[stage].store(0, std::memory_order_relaxed);
+            for (auto& row : m_nativeMethodStages[stage]) {
+                row.MethodHash.store(0, std::memory_order_relaxed);
+                row.Calls.store(0, std::memory_order_relaxed);
+                row.PositiveBytes.store(0, std::memory_order_relaxed);
+                row.Operations.store(0, std::memory_order_relaxed);
+            }
+        }
     }
 
     PreDispatchPressure m_preDispatch[3][2]{};

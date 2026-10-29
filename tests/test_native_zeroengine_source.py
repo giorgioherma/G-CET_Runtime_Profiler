@@ -49,7 +49,7 @@ assert 'gcet_gc_unscoped_thread_bytes' in native and 'ResetPreDispatch();' in na
 assert 'gcet_unscoped_thread_bytes += newSize - oldSize' in Path('native-profiler-build/v2.11.0/Patch-LuaJIT-GC-Source.ps1').read_text(encoding='utf-8')
 patch_text = Path('native-profiler-build/v2.11.0/Patch-CET-v1.37.1.ps1').read_text(encoding='utf-8')
 assert patch_text.count('EndPreDispatch(') == 3
-assert patch_text.count('BeginPreDispatch()') == 3
+assert patch_text.count('BeginPreDispatch()') == 5
 
 # CI #91 regression: the earlier MethodScope patch modifies the same
 # Overridden block before this new pre-dispatch patch runs.
@@ -64,3 +64,16 @@ overridden_snapshot = """    -Old @'
 """
 assert overridden_snapshot.replace('\\`', '`') in patch_text, "Overridden snapshot must match prior MethodScope insertion"
 assert patch_text.index('-Label "OverriddenScript argument marshalling native boundary"') < patch_text.index('-Label "Overridden pre-dispatch allocation snapshot"')
+
+# Exact native method-stage attribution, capture-only and bounded.
+assert "NativeStageCount = 5" in native
+assert "NativeStageSlots = 256" in native
+assert "CET_Runtime_Profile_Native_MethodStages.csv" in native
+assert "OWNER_ZERO_POSITIVE_LUAJIT_GROWTH_STAGE_WINDOW_NOT_ADDITIVE" in native
+assert "RecordNativeStage(boundary - 6, methodHash, start)" in native
+assert native.count("ResetNativeStages();") == 2
+assert patch.count('RecordNativeStage(') == 2
+assert patch.count('BeginPreDispatch()') == 5
+assert patch.count('EndPreDispatch(') == 3
+assert 'No RAII across LuaJIT longjmp/Windows SEH' in patch
+print("native exact-method stage source contract passed")
