@@ -33,7 +33,28 @@ internal static partial class SemanticInjectors
     // Existing author bridge proves independent callback ownership even when
     // only a missing/older external worker needs replacement. Never infer it
     // from the marker alone.
+    // Verifies source execution ownership, not only a semantic marker.
+    // The 0-Engine scheduler has its own stock file-load CET callback;
+    // Dedra must have no native frame callback of its own.
     internal static bool HasDedraThirdPersonCombatAuthorBridge(string init)
+    {
+        init=init.Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
+        return init.Contains("-- __gcetDedraSharedScheduleV3:",StringComparison.Ordinal) &&
+            init.Contains("-- G-CET semantic:dedra-third-person-combat-wake",StringComparison.Ordinal) &&
+            init.Contains("dofile(\"GCET_Semantic/dedra_camera_wake.lua\")",StringComparison.Ordinal) &&
+            init.Contains("Dedra.__gcetWakeFromBase = Dedra.__gcetWakeController.Signal",StringComparison.Ordinal) &&
+            init.Contains("Dedra.__gcetWakeDiagnostics = function()",StringComparison.Ordinal) &&
+            init.Contains("Dedra.__gcetWakeController.Stop()",StringComparison.Ordinal) &&
+            init.Contains("Dedra.__gcetWakeController.Start()",StringComparison.Ordinal) &&
+            !init.Contains("Dedra.__gcetWakeController.Register()",StringComparison.Ordinal) &&
+            Regex.Matches(init,@"(?m)^\s*Dedra\.__gcetWakeController\.Start\(\)",RegexOptions.CultureInvariant).Count==1 &&
+            Regex.Matches(init,@"(?m)^\s*Dedra\.__gcetWakeController\.Stop\(\)",RegexOptions.CultureInvariant).Count==1 &&
+            !Regex.IsMatch(init,
+                @"(?:registerForEvent|__gcetRegisterEvent_[0-9]+)\s*\(\s*[""']onUpdate[""']",
+                RegexOptions.CultureInvariant);
+    }
+
+    private static bool HasLegacyDedraThirdPersonCombatAuthorBridge(string init)
     {
         init=init.Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
         // Verified bootable Test F: Register() is a top-level source
@@ -199,15 +220,6 @@ internal static partial class SemanticInjectors
                 .Replace("  function M.Signal(proof)\n" +
                     "    if proof == \"__gcetItpToggleWakeV2\" then baseBridgeConfirmed = true end",
                     "  function M.Signal()",StringComparison.Ordinal);
-            if(owned is not null && existingWorker!=legacyWorker &&
-               existingWorker!=previousWorker && existingWorker!=preCapabilityWorker &&
-               existingWorker!=oldCanonicalWorker &&
-               existingWorker!=oldPreviousWorker &&
-               existingWorker!=oldPreCapabilityWorker &&
-               existingWorker!=oldLegacyWorker)
-                throw new InvalidOperationException(
-                    "Dedra worker differs from known generated versions; refuse unsafe overwrite.");
-
             if(current!=coordinatorHeader+canonicalBody &&
                current!=legacyWorker && current!=previousWorker &&
                current!=preCapabilityWorker && current!=oldCanonicalWorker &&
@@ -318,6 +330,157 @@ end
             "Dedra uses the established 0-Engine driver with exclusive active/quiet lanes; " +
             "all author step/REDscript maintenance remains, with event wake and no late native event registration.");
     }
+    // Scheduler-only runtime; module file-load performs no native/API calls.
+    // REDscript/author reconciliation still runs at 0.25s in quiet FPP.
+    private const string WorkerV3 = @"-- __gcetDedraSharedScheduleV3: one 0-Engine-owned driver, two exclusive lanes
+local M = {}
+function M.Install(Dedra, step)
+  local fast, slow, engine, client, api = nil, nil, nil, nil, nil
+  local started, linked, bridge = false, false, false
+  local mode, lastFrame, calls, quietCalls = ""startup"", -1, 0, 0
+  local baseListeners, engineListeners = {}, {}
+  local names = { ""perspectiveChanged"", ""overrideChanged"",
+    ""transitionStart"", ""transitionEnd"", ""sessionStart"", ""sessionEnd"" }
+  local owner = ""gcet.dedra.shared.v3""
+  local settle = 0
+  local function debts()
+    return Dedra.takeover == true or Dedra.easeOut ~= nil or
+      Dedra.aimAsk ~= nil or Dedra.planeHeld == true or
+      Dedra.headLookHeld == true or Dedra.on ~= false or
+      Dedra.armSent ~= false or
+      (Dedra.standIn ~= nil and Dedra.standIn ~= """")
+  end
+  local function wantFast()
+    if not started or not linked or not bridge or not api or debts()
+      or settle > 0 then return true end
+    local ok, p = pcall(api.perspective.get)
+    if not ok or type(p) ~= ""table"" or
+      type(p.userWantsThirdPerson) ~= ""boolean"" then return true end
+    return p.userWantsThirdPerson or p.transitioning == true or
+      p.mode ~= ""first"" or p.override == ""combat"" or
+      p.override == 3
+  end
+  local function route()
+    local active = wantFast()
+    local nextMode = active and ""active"" or ""quiet""
+    if mode == nextMode then return end
+    mode = nextMode
+    if active then
+      if slow then slow.Pause() end
+      if fast then fast.Resume() end
+    else
+      if fast then fast.Pause() end
+      if slow then slow.Resume() end
+    end
+  end
+  local function tryStep(ctx, full)
+    if not started or not ctx or lastFrame == ctx.frame then return end
+    if (full and mode ~= ""active"") or
+      (not full and mode ~= ""quiet"") then return end
+    lastFrame = ctx.frame
+    local dt = full and (ctx.dt or 0) or (ctx.elapsed or 0.25)
+    if dt < 0 then dt = 0 end
+    pcall(step, dt) -- The complete original author-owned reconciler.
+    calls = calls + 1
+    if not full then quietCalls = quietCalls + 1 end
+    if settle > 0 then settle = math.max(0, settle - dt) end
+    route() -- Finish source cleanup BEFORE pausing the fast lane.
+  end
+  local function bind()
+    if linked then return end
+    local ok, base = pcall(GetMod, ""immersive_third_person"")
+    if not ok or type(base) ~= ""table"" or
+      type(base.events) ~= ""table"" or
+      type(base.events.on) ~= ""function"" or
+      type(base.events.off) ~= ""function"" or
+      type(base.perspective) ~= ""table"" or
+      type(base.perspective.get) ~= ""function"" then return end
+    local count = 0
+    for _, name in ipairs(names) do
+      local registered, id = pcall(base.events.on,name,owner,function() M.Signal() end)
+      if registered and type(id) == ""number"" and id >= 0 then
+        count = count + 1
+      else
+        for j = 1, count do pcall(base.events.off,names[j],owner) end
+        return
+      end
+    end
+    api, linked = base, true
+    local okReady, ready = pcall(function()
+      return type(base.gcetDedraWakeReady) == ""function"" and
+        base.gcetDedraWakeReady() == true
+    end)
+    bridge = okReady and ready == true
+  end
+  function M.Signal()
+    settle = math.max(settle, 0.5)
+    if started then
+      if not linked then bind() end
+      if api and not bridge then
+        local ok, ready = pcall(api.gcetDedraWakeReady)
+        if ok and ready == true then bridge = true end
+      end
+      route()
+    end
+  end
+  function M.Start()
+    if started then return end
+    local ok, host = pcall(GetMod, ""0-Engine"")
+    if not ok or type(host) ~= ""table"" or
+      type(host.__gcetScheduleDriver) ~= ""function"" or
+      type(host.Register) ~= ""function"" then
+      error(""Dedra: verified shared 0-Engine scheduler missing at onInit"")
+    end
+    local ownerClient = host.Register(""DedraThirdPersonCombatAddon"")
+    local schedule = ownerClient and ownerClient.Schedule
+    if type(schedule) ~= ""table"" or
+      type(schedule.EveryFrame) ~= ""function"" or
+      type(schedule.Every) ~= ""function"" or
+      type(ownerClient.Subscribe) ~= ""function"" then
+      error(""Dedra: composed 0-Engine schedule or event API missing"")
+    end
+    engine, client, started = host, ownerClient, true
+    fast = schedule.EveryFrame({ id=""dedra.active"", pause=""never"",
+      active=true },function(ctx) tryStep(ctx,true) end)
+    slow = schedule.Every(0.25,{ id=""dedra.quiet"", pause=""never"",
+      active=false, clock=""game"", catchUp=false, spread=false },
+      function(ctx) tryStep(ctx,false) end)
+    local events = { ""AimStateChanged"", ""WeaponStateChanged"",
+      ""UpperBodyStateChanged"", ""CombatStateChanged"",
+      ""PlayerReady"", ""PlayerInvalidated"" }
+    for _, name in ipairs(events) do
+      local subscription = ownerClient.Subscribe(name,function() M.Signal() end)
+      engineListeners[#engineListeners + 1] = subscription
+    end
+    bind()
+    M.Signal()
+  end
+  function M.Stop()
+    started = false
+    if fast then fast.Cancel() end
+    if slow then slow.Cancel() end
+    if api and api.events then
+      for _, name in ipairs(names) do pcall(api.events.off,name,owner) end
+    end
+    for _, h in ipairs(engineListeners) do
+      if h and type(h.unsubscribe) == ""function"" then pcall(h.unsubscribe) end
+    end
+    api, fast, slow, linked, bridge = nil, nil, nil, false, false
+    mode = ""stopped""
+  end
+  function M.Diagnostics()
+    return { registrationPath=""shared-0-engine-schedule"",
+      nativeDedraUpdate=false, mode=mode, linked=linked,
+      bridge=bridge, started=started, pendingCleanup=debts(),
+      activeJob=fast and fast.IsActive() or false,
+      quietJob=slow and slow.IsActive() or false,
+      calls=calls, quietCalls=quietCalls,
+      settle=settle }
+  end
+  return M
+end
+return M
+";
     // Read-only, on-demand diagnostics: no timer, watcher, or per-frame
     // allocation. Ask the loaded worker why its pausable path is unavailable.
     private const string DiagnosticsMethod = @"  function M.Diagnostics()
