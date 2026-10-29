@@ -46,8 +46,8 @@ internal static partial class SemanticInjectors
                 if (completed.World != partialWorld.Text) context.Write(partialWorld, completed.World);
                 var prior = worker.Replace("\r\n","\n",StringComparison.Ordinal);
                 var workerV2 = SitAnywhereWorkerV2();
-                var needsWorker = prior != workerV2;
-                if (needsWorker && prior != SitAnywhereWorkerV1)
+                var needsWorker = prior.TrimEnd() != workerV2.TrimEnd();
+                if (needsWorker && prior.TrimEnd() != SitAnywhereWorkerV1.TrimEnd())
                     throw new InvalidOperationException(
                         "SitAnywhere prior coordinator drift; refuse unproven wake migration.");
                 var initV2 = SitAnywhereRealtimeWakeSource(live.Text);
