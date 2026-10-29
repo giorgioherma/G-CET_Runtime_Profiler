@@ -422,3 +422,5 @@ User explicitly requested **an actual newly compiled native DLL shipped in a Pro
 - User requested binary import: source `bce9ec5` is already in dev ancestry; [native #95](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/40794412835) successful with DLL SHA256 `c2974d29444862ec23a6955c628ac6ca20148bc88cd5f0226241eb24ebe7ccaa`, paired PDB SHA256 `b57846386d6ad37b32613d0372fb06059e57cadada84f8a33fb1a573725d414a`.
 - Main build pin and manifest now select run #95, retain product v1.3.3, archive raw `CET_Runtime_Profile_Native_MethodStages.csv` and verify new DLL markers. PDB stays developer-only. Native #94 is the rollback reference.
 - Native-only build and managed CI are distinct from actual cold-boot/capture/restore/COMBAT-POLICE-60 gameplay evidence. Telemetry addition does not reduce allocations.
+
+- [Main CI #2155](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/40796437960) commit `1ed5169`: **completed SUCCESS 6/6**, native #95 SHA import and compiled marker checks passed; Profiler+Resolver v1.3.3 artifacts published. Cold game validation pending.
