@@ -157,16 +157,17 @@ if($wakeStart -lt 0 -or $wakeEnd -le $wakeStart){
 $oldInit=$normalizedInit.Remove($wakeStart,$wakeEnd-$wakeStart)
 $oldInit=$oldInit.Replace('created, runSitAnywhereFrame, shouldRunSitAnywhereFrame)',
   'created, runSitAnywhereFrame)')
-$wakeBlock=@'
-    self.__gcetWakeRealtime = function()
-        if pass4FrameJob and type(pass4FrameJob.Resume) == "function" then
-            pass4FrameJob.Resume()
-        end
-    end
-'@
-$wakeBlock=$wakeBlock.TrimEnd() + [char]10
-if(!$oldInit.Contains($wakeBlock)){throw 'SitAnywhere scanner wake callback shape drift'}
-$oldInit=$oldInit.Replace($wakeBlock,'')
+# The Windows PowerShell here-string uses runner CRLF while staged source
+# is LF-normalized. Prove the exact complete callback shape, irrespective of
+# line ending, rather than comparing formatting-dependent here-string bytes.
+$wakePattern='(?m)^    self\.__gcetWakeRealtime = function\(\)\r?\n'+
+  '        if pass4FrameJob and type\(pass4FrameJob\.Resume\) == "function" then\r?\n'+
+  '            pass4FrameJob\.Resume\(\)\r?\n'+
+  '        end\r?\n'+
+  '    end\r?\n'
+$wakeMatches=[regex]::Matches($oldInit,$wakePattern)
+if($wakeMatches.Count -ne 1){throw 'SitAnywhere scanner wake callback shape drift'}
+$oldInit=[regex]::Replace($oldInit,$wakePattern,'')
 $oldInit=[regex]::Replace($oldInit,
   '(?m)^            if self.__gcetWakeRealtime then self.__gcetWakeRealtime\(\) end\r?\n','')
 $oldLogic=[regex]::Replace($normalizedLogic,
