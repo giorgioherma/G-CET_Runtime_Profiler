@@ -1,0 +1,25 @@
+# COMBAT-POLICE-120 — canonical Phase 3 controlled gameplay benchmark
+
+**Approved 2026-10-29; NEW BASELINE NOT YET CAPTURED.** Supersedes [historical COMBAT-POLICE-60](COMBAT-POLICE-60-BASELINE.md) prospectively. This is a duration and reporting change, **not a new gameplay route or different stress scenario**. The historical 60s captures are retained as valid evidence of their own configuration; they are not the comparison baseline for future 120s results.
+
+## Reproduction and controls
+
+- **Scenario:** one continuous **120-second sustained police combat** in the same apartment-area engagement used in the user-controlled 60s tests. Use the same starting save, player position, equipment, wanted-level setup, difficulty, graphics/FPS cap, 0-Engine settings, mod stack and deployed Profiler/Resolver identity as the new 120s baseline, except documented optimization changes. Capture only combat; if the fight ends or an unrelated transition contaminates the two minutes, note it rather than silently compare mixed intervals.
+- **Single-key F10:** CET `CETProfiler_Police60` is the **legacy internal binding identifier, deliberately preserved** so existing F10 mappings survive. Its new display name is **Profiler: COMBAT-POLICE-120**. The existing CET Profiler Controls `onUpdate` uses **native captured seconds** to finish at the **first frame at or after 120.000s**, emits `SCENARIO_COMBAT_END`, pauses and dumps exactly once. At start it emits `SCENARIO_COMBAT_START`. This is bounded by frame cadence; record actual elapsed time.
+- **CapFrameX:** capture hotkey **F10**, capture time **120 seconds**, delay **0**. One physical F10 press starts CET and CapFrameX, each with its own independent clock and 120s stop. Check pairing/overlap in their raw data. Keep F11 exclusively as manual, unlimited CET START/STOP (also permits early abort of an automated run). Do not assign F11 to CapFrameX.
+- **Profiler capture title:** label the new run `COMBAT-POLICE-120_BASELINE` (and subsequent captures `COMBAT-POLICE-120_<variant>`) when setting the capture title. Archive the raw CSV/JSON/CapFrameX data, current generated pass report, implementation commit and native DLL checksum. Do not invent an automated title override; the title is distinct from the fixed F10 benchmark markers.
+- **User-confirmed controlled A/B:** the user's standardized test is controlled. A missing written configuration field in the archive is `NOT_RECORDED`, not evidence that the run was uncontrolled. Record real deviations. One qualifying run per configuration is accepted; repeat if greater confidence is desired.
+
+## Why 120 seconds replaces 60
+
+The latest 60s DAV + GigCore combat capture had **zero completed GC cycles**, compared to two completed cycles in the preceding 60s capture. Source-owned DAV allocations fell sharply while global positive allocated bytes/requests increased; **this could indicate delayed major collection pressure, not a faster completed collection**. A 120s capture provides longer visibility into collection scheduling, **but cannot guarantee a complete GC cycle** and never forces collection or changes GC policy.
+
+**Phase 3 interpretation order:** (1) frametime/hitch episodes and severity (P99/P99.9, >50/>100ms, worst frame and excess stall time), (2) GC collector time, phase timing, number of completed cycles, largest pause, object births and time-to-first-completed-cycle when timestamped, (3) positive allocator **requests/s and bytes/s**, per-mod/job allocation and unscoped owner-zero, (4) native-to-Lua argument/Next-wrapper stages, (5) average FPS/CPU. Do not add overlapping allocator windows or infer a mod owns retained heap from a GC overlap.
+
+**Comparison rule:** compare **120s vs 120s**, with a new first accepted 120s capture as baseline. Rates per second support historical context but don't turn a 60s sample into a controlled 120s A/B. Where raw timeline telemetry supports it, also inspect **first minute vs second minute within the same 120s run** to observe GC accumulation and hitches; do not invent per-minute counts from whole-capture aggregates. Distinguish GC cycles *completed within the window* from collector work (incremental phases) that may continue between cycles and from true per-cycle CPU duration.
+
+## Gates
+
+- **Implementation:** `payload/CETProfilerControls/init.lua` contains one constant `TIMED_CAPTURE_SECONDS = 120`; all text/HUD reflects 120 seconds; legacy input ID remains; manual F11 is unchanged. No native DLL, game mod, scheduler or Resolver transformation changes.
+- **Regression:** `tests/ProfilerTimedCaptureLuaContract.lua` proves F10 remains active past 60.02s and 119.99s, finishes just over 120s, emits the correct markers once, preserves no duplicate registrations and keeps F11 unrestricted.
+- **Runtime/new baseline:** first real 120s user-controlled gameplay capture, CapFrameX correlation, genuine per-job data, no dropped scopes and collector/hitch metrics. **Until this run exists the 120s baseline is NOT MEASURED.** Preserve all 60s captures as historical references.
