@@ -440,6 +440,7 @@ if($regenerated.TrimEnd() -ne $workerCode.TrimEnd()){
   throw 'CyberTrials V1 worker failed regeneration from the authoritative generator'
 }
 $malformed=$priorWorker.Replace('id = "cybertrials.realtime"','id = "foreign.realtime"')
+$stage['CyberTrials/init.lua']=[Text.Encoding]::UTF8.GetBytes($priorInit)
 $stage['CyberTrials/GCET_Semantic/cybertrials_engine_worker.lua']=[Text.Encoding]::UTF8.GetBytes($malformed)
 $driftCtx=$ctor.Invoke([object[]]@([string]$mods,'CyberTrials','cybertrials',$stage))
 $refused=$false
