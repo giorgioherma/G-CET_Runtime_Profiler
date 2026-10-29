@@ -24,7 +24,7 @@ In the supplied approximately 60-second 21:59 combat capture, measured callback-
 
 ## Standard acceptance
 
-Read `docs/HANDOFF/CORE.md`, `docs/resolver/PROJECT-CONTRACT.md`, `docs/phase3/PHASE3-ALLOCATION-CONTROLL.md`. For each actual implementation, change the existing mod-owned C# generator, source-prove pristine-original one-pass output, older/partial optimized upgrade, repeat/idempotence, formatting equivalents, missing native fallback and drift refusal, preserve external worker ownership, then pass relevant CI. Compare whole-game 60 s F10 COMBAT-POLICE-60 by mod callback bytes/s, ops/s, scheduler jobs, pre-Lua marshalling and CapFrameX. Test active/wake/cleanup plus world-map marker visibility, not just CI. No auto version bump or game-facing patch before source proof. Existing FPP/RC/RICA capture results are measurement, not blanket acceptance.
+Read `docs/HANDOFF/CORE.md`, `docs/resolver/PROJECT-CONTRACT.md`, `docs/phase3/PHASE3-ALLOCATION-CONTROLL.md`. For each actual implementation, change the existing mod-owned C# generator, source-prove pristine-original one-pass output, older/partial optimized upgrade, repeat/idempotence, formatting equivalents, missing native fallback and drift refusal, preserve external worker ownership, then pass relevant CI. For NEW runs compare whole-game **120 s F10 COMBAT-POLICE-120** captures against the new 120s baseline, using per-mod bytes/s, ops/s, scheduler jobs, native ingress, collector phases and CapFrameX hitch-tail; older 60s runs remain historical. Test active/wake/cleanup plus world-map marker visibility, not just CI. No auto version bump or game-facing patch before source proof. Existing FPP/RC/RICA capture results are measurement, not blanket acceptance.
 
 ## Live Dedra diagnostic — 2026-10-28
 
