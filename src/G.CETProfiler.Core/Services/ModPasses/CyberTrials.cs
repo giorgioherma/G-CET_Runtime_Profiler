@@ -41,7 +41,7 @@ internal static partial class SemanticInjectors
                 StringComparison.Ordinal))
             {
                 var expected=workerV2.TrimEnd();
-                var actual=v1.TrimEnd();
+                var actual=v1 ?? string.Empty;
                 var n=Math.Min(actual.Length,expected.Length);
                 var first=0;
                 while (first<n && actual[first]==expected[first]) first++;
