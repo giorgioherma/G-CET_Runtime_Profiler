@@ -299,6 +299,58 @@ if(!$upgrade.Applied -or $upgrade.Changes.Count -ne 2 -or !$upInit -or !$upWorke
   [Text.Encoding]::UTF8.GetString($upWorker.Bytes).Replace($crlf,$nl) -ne $wake){
   throw 'Source exact previous V2 install did not upgrade atomically to V3'
 }
+# The shipped #2152 diagnostic worker incorrectly skipped the entire author
+# step in FPP, including REDscript State() reconciliation. An installed copy
+# must upgrade directly to V3; previously generated output is never required.
+$badSync=@'
+  local function sync()
+    -- Snapshot the known camera wake on ITP transitions and activation.
+    -- CET fallback registration was created at module load, but does not
+    -- run the expensive author step while this proved state is dormant.
+    if not baseBridgeConfirmed or not linked or not api then
+      fallbackActive = true
+    else
+      local ok, p = pcall(api.perspective.get)
+      if not ok or type(p) ~= "table" or
+        type(p.userWantsThirdPerson) ~= "boolean" then
+        fallbackActive = true
+      else
+        fallbackActive = p.userWantsThirdPerson == true or
+          p.transitioning == true or p.mode == "transition" or pending(p)
+      end
+    end
+    if handle then
+      if fallbackActive then handle.Resume() else handle.Pause() end
+    end
+  end
+'@.Replace($crlf,$nl) + $nl
+$syncStart=$legacyWake.IndexOf('  local function sync()' + $nl)
+$syncEnd=$legacyWake.IndexOf('  local function notify()' + $nl,$syncStart)
+if($syncStart -lt 0 -or $syncEnd -lt 0){throw 'V2 sync fixture drift'}
+$unsafeWake=$legacyWake.Replace(
+  '  local pausable = false' + $nl,
+  '  local pausable = false' + $nl +
+  '  local fallbackActive = true -- Fail open until author ITP wake proof is complete.' + $nl)
+$unsafeWake=$unsafeWake.Replace(
+  $legacyWake.Substring($syncStart,$syncEnd-$syncStart),$badSync)
+$unsafeWake=$unsafeWake.Replace('  local function update(dt)' + $nl,
+  '  local function update(dt)' + $nl +
+  '    if not fallbackActive then return end -- CET fallback: no FPP author work.' + $nl)
+if(!$unsafeWake.Contains('if not fallbackActive then return end')) {
+  throw 'Unsafe historical V2 regression was not constructed'
+}
+[IO.File]::WriteAllText($workerPath,$unsafeWake,[Text.UTF8Encoding]::new($false))
+$script:dedraUpgradeCase='unsafe prior V2 whole-step FPP gate'
+$unsafeUpgrade=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $legacyInit $addon -StageInput
+$unsafeSource=$unsafeUpgrade.Changes|Where-Object{$_.RelativeFile -like '*/init.lua'}|Select-Object -First 1
+$unsafeWorker=$unsafeUpgrade.Changes|Where-Object{$_.RelativeFile -like '*/GCET_Semantic/dedra_camera_wake.lua'}|Select-Object -First 1
+if(!$unsafeUpgrade.Applied -or $unsafeUpgrade.Changes.Count -ne 2 -or
+   !$unsafeSource -or !$unsafeWorker -or
+   [Text.Encoding]::UTF8.GetString($unsafeSource.Bytes).Replace($crlf,$nl) -ne $lua -or
+   [Text.Encoding]::UTF8.GetString($unsafeWorker.Bytes).Replace($crlf,$nl) -ne $wake) {
+  throw 'Unsafe historical Dedra fallback was not upgraded to full REDscript reconciliation'
+}
+
 # A stack with no 0-Engine adopted driver must preserve stock CET callback.
 Remove-Item $hostPath -Force
 [IO.File]::WriteAllText($workerPath,$wake,[Text.UTF8Encoding]::new($false))
