@@ -418,6 +418,8 @@ internal sealed class SemanticLibraryService
                 ZiggyProximitySource.IsNativeSnapshotCompletionSatisfied(graph.OwnerFolder),
             "GIGCORE_PHONE_GUARD_V2" =>
                 SemanticInjectors.IsGigCorePhoneClosureComplete(graph.OwnerFolder),
+            "SPECTER_RECOVERY_COLD_GC_V3" =>
+                SemanticInjectors.IsSpecterRecoveryColdGcComplete(graph.OwnerFolder),
             _ => false
         };
         if (verifiedCompletion.HasValue)
