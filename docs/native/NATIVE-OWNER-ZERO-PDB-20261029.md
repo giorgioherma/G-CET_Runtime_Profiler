@@ -27,4 +27,11 @@ The new native-only Windows verification checks that the compiled DLL contains t
 4. Inspect native proxy method hash `12899831133459796585` and root/recursive wrapper stages, which should distinguish conversion from closure creation, but not yet reveal the mod owner. Use source-only additional provenance if necessary, not pointer/RTTI guesses.
 5. **Separate follow-up discussion**: whether CET can avoid repeated `WeakReference`/`StrongReference` materialization. Never share/copy invocation-captured `next` closures, suppress global OnAction, or cache native handles without proven alias, lifetime, reentrancy and subscriber guarantees.
 
-Status at source implementation: **code committed; native #95 compilation in progress; gameplay/performance unverified.**
+Status (2026-10-29 00:42 UTC): **native #95 GREEN, gameplay/performance unverified**. Compiler, original CET rebuild, native verification, binary CSV marker and both artifacts succeeded.
+
+## Exact native-only build artifacts (CI #95)
+
+- DLL: [native payload](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/40794412835/artifacts/12863403445) — SHA256 `c2974d29444862ec23a6955c628ac6ca20148bc88cd5f0226241eb24ebe7ccaa`.
+- Matching developer-only PDB: [native debug symbols](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/40794412835/artifacts/12863059414) — SHA256 `b57846386d6ad37b32613d0372fb06059e57cadada84f8a33fb1a573725d414a`.
+- GitHub runner confirmed both output archives, historical linker validation, source asserts and DLL-resident `CET_Runtime_Profile_Native_MethodStages.csv` marker. This establishes compiled instrumentation, **not** a successful boot/capture, safe native dispatch optimization, or allocation savings.
+- Do not change main `MANIFEST.json` pin / Profiler / Resolver packages or claim official release.
