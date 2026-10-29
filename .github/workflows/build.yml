@@ -68,7 +68,7 @@ jobs:
           python3 - <<'PY'
           import pathlib, re
           source = pathlib.Path('src/G.CETProfiler.Core/Services/ModPasses/DedraThirdPersonCombatAddon.cs').read_text()
-          match = re.search(r'private const string WorkerBody\s*=\s*@"(.*?)";\s*\n}', source, re.S)
+          match = re.search(r'private const string WorkerV3\s*=\s*@"(.*?)";', source, re.S)
           if not match:
               raise SystemExit('Authoritative Dedra worker source missing')
           body = match.group(1).replace('""', '"')
@@ -76,7 +76,7 @@ jobs:
               raise SystemExit('Dedra worker body changed unexpectedly')
           pathlib.Path('/tmp/gcet-dedra-camera-wake.lua').write_text(body)
           PY
-          lua5.4 tests/DedraThirdPersonCombatWakeLuaContract.lua /tmp/gcet-dedra-camera-wake.lua resolver-runtime/0-Engine/modules/GCETFrameListeners.lua
+          lua5.4 tests/DedraThirdPersonCombatWakeLuaContract.lua /tmp/gcet-dedra-camera-wake.lua
 
   # Compile and test the managed MEGAMIND evidence contract independently
   # of the hash-locked native payload refresh (which can take several minutes).
