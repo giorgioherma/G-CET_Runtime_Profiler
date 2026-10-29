@@ -1492,6 +1492,10 @@ jobs:
         shell: pwsh
         run: ./tests/CallbackAllocatorPressureReportContract.ps1 -PublishedRoot ./publish
 
+      - name: Immersive FPP and TPP source-owned allocation contracts
+        shell: pwsh
+        run: ./tests/ImmersiveCameraAllocationContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: GigCore pause guard one-pass source contract
         shell: pwsh
         run: ./tests/GigCorePauseGuardOnePassContract.ps1 -ResolverRoot ./publish-resolver
