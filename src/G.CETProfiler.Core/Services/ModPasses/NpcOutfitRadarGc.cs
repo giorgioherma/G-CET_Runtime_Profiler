@@ -14,6 +14,11 @@ internal static partial class SemanticInjectors
             "local __gcetHasAutoOutfitRules");
         var s=file.Text.Replace("\r\n","\n",StringComparison.Ordinal);
         const string marker="__gcetNpcRadarGcV1";
+        if(s.Contains("__gcetNpcRadarQueueV2",StringComparison.Ordinal))
+        {
+            UpgradeRadarQueueV2(s); // verifies completed state, refuses broken partial.
+            return SemanticInjectionResult.Skip("NPC Outfit queue v2 already complete.");
+        }
         if(s.Contains(marker,StringComparison.Ordinal))
         {
             if(!s.Contains("__gcetRadarRecordCache[entIdStr]",StringComparison.Ordinal) ||

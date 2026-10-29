@@ -138,7 +138,8 @@ end)
 '@
 Check 'NPC Outfit Manager' 'npc-outfit-manager-radar-gc' 'ApplyNpcOutfitRadarGc' $npc @(
  '__gcetNpcRadarGcV1','__gcetRadarRecordCache[entIdStr]',
- 'radarTimer + delta >= 1.0') 'local function ProcessRadarOutfits()'
+ 'radarTimer + delta >= 1.0','__gcetNpcRadarQueueV2',
+ '__gcetNpcRadarSweepV2 >= 10.0','__gcetNpcRadarRulesChangedV2()') 'local function ProcessRadarOutfits()'
 $amm=@'
 local AMM={}
 local Util={}

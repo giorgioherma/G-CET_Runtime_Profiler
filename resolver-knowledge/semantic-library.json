@@ -8336,8 +8336,7 @@
           "SceneInteraction.Update()",
           "EarnXP.Tick(delta)",
           "ToiletEffect.Tick(delta)",
-          "function SceneInteraction.Show(choiceUniqueID)",
-          "function EarnXP.Start(rawConfig)"
+          "updateDarkFutureInfoPanelFollow"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:elm-immersiveway-idle-gc-v1",
         "expectedMarkerFileCount": 1,

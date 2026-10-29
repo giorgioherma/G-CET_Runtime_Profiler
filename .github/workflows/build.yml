@@ -1347,6 +1347,10 @@ jobs:
       - name: Hot mod GC and lifecycle fastpath source contract
         shell: pwsh
         run: ./tests/HotModGcFastpathsContract.ps1 -ResolverRoot ./publish-resolver
+      - name: ELM world interaction source-owned idle contract
+        run: ./tests/ElmImmersiveWayIdleGcContract.ps1 -ResolverRoot ./publish-resolver
+      - name: Ziggy protected update producer contract
+        run: ./tests/ZiggyProtectedUpdateGcContract.ps1 -ResolverRoot ./publish-resolver
 
       - name: Phase1+2 missing game hook preservation contract
         shell: pwsh
