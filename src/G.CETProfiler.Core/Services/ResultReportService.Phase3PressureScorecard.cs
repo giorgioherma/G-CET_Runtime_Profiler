@@ -15,6 +15,10 @@ public static partial class ResultReportService
         string boundary, string methodGroup, long calls,
         double ownerZeroPositiveMiB, long ownerZeroPositiveRequests);
 
+    private sealed record PressureNativeStage(
+        string stage, long calls, double ownerZeroPositiveMiB,
+        long ownerZeroPositiveRequests);
+
     private sealed record PressureAllocator(
         double positiveAllocatedMiB, double? positiveAllocatedMiBPerSecond,
         long allocationRequests, double? allocationRequestsPerSecond,
@@ -45,6 +49,7 @@ public static partial class ResultReportService
         PressureAllocator? allocation, PressureCollector? collector,
         PressureHeap? heap, PressureFrameDelivery? frameDelivery,
         IReadOnlyList<PressureNativeBoundary> nativePreDispatch,
+        IReadOnlyList<PressureNativeStage> nativeMethodStages,
         string allocationSemantics, string collectionSemantics,
         string nativeSemantics, string absentTelemetryPolicy);
 
@@ -124,9 +129,21 @@ public static partial class ResultReportService
                 L(x, "OwnerZeroPositiveOps")))
             .ToArray();
 
+        var methodStages = ReadCsv(FindProfilerFile(captureRoot,
+            "CET_Runtime_Profile_Native_MethodStages.csv"))
+            .Where(x => !string.IsNullOrWhiteSpace(S(x, "Stage")))
+            .GroupBy(x => S(x, "Stage"), StringComparer.Ordinal)
+            .Select(g => new PressureNativeStage(
+                g.Key, g.Sum(x => L(x, "Calls")),
+                Round(g.Sum(x => L(x, "OwnerZeroPositiveBytes")) / 1048576.0, 6),
+                g.Sum(x => L(x, "OwnerZeroPositiveOps"))))
+            .OrderByDescending(x => x.ownerZeroPositiveRequests)
+            .Take(6).ToArray();
+
         return new Phase3PressureScorecard(
             "OBSERVED_POSITIVE_LUAJIT_ALLOCATION_AND_GC_PRESSURE",
             Round(seconds, 6), allocator, collector, heap, delivery, boundaries,
+            methodStages,
             "Positive allocator-request growth, NOT total garbage or retained heap; object births are a distinct counter.",
             "Completed cycles count completed cycles within capture, not collector speed. First-cycle time is the end of its recorded frame bucket, not exact GC completion timestamp.",
             "Native pre-dispatch rows overlap unscoped allocation totals; they are NOT additive or per-mod ownership.",
@@ -252,6 +269,23 @@ public static partial class ResultReportService
         }
         else
             sb.Append("<p class=\"muted\">Native pre-dispatch telemetry: NOT MEASURED.</p>");
+
+        if (p.nativeMethodStages.Count > 0)
+        {
+            sb.Append("<h3>Native method-stage windows (NON-ADDITIVE)</h3>")
+              .Append("<table><thead><tr><th>Stage</th><th>Calls</th>")
+              .Append("<th>Positive MiB (overlap)</th><th>Requests (overlap)</th>")
+              .Append("</tr></thead><tbody>");
+            foreach (var n in p.nativeMethodStages)
+                sb.Append("<tr><td>").Append(H(n.stage)).Append("</td><td>")
+                  .Append(N(n.calls)).Append("</td><td>")
+                  .Append(Measured(n.ownerZeroPositiveMiB, "", 3))
+                  .Append("</td><td>").Append(N(n.ownerZeroPositiveRequests))
+                  .Append("</td></tr>");
+            sb.Append("</tbody></table>");
+        }
+        else
+            sb.Append("<p class=\"muted\">Native method-stage telemetry: NOT MEASURED.</p>");
 
         sb.Append("<p class=\"note\">Do not add native windows, scheduled jobs, ")
           .Append("sampled C functions or collector work to the allocator total. ")
