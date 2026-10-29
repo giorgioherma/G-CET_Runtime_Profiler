@@ -95,7 +95,14 @@ internal static partial class SemanticInjectors
   if #jobs == 0
      and active.cloneID == nil and active.clone == nil
      and active.workspotID == nil and active.workspotSpawn == nil
+     and active.workspot == nil and active.sceneLocation == nil
+     and active.anim == nil and active.cameraInitRequest == nil
+     and active.interactionID == nil and not active.freeflyActiveForScene
+     and not flushingEtiquetteShowerActive
      and not active.darkFutureActive and active.dfInfoPanelSpawnRaw == nil
+     and active.darkFutureRepeatTimer == nil
+     and active.darkFutureFirstDelayTimer == nil
+     and active.dfInfoPanelEntity == nil
      and not editorLiveMoveQueued
      and not SceneInteraction.GCET_IsUiActive()
      and not (EarnMoney and EarnMoney.IsActive and EarnMoney.IsActive())

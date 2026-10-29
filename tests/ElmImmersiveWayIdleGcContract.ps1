@@ -14,6 +14,7 @@ New-Item -ItemType Directory -Force $owner|Out-Null
 $init=@'
 local active={cloneID=nil,clone=nil,workspotID=nil,workspotSpawn=nil,darkFutureActive=false,dfInfoPanelSpawnRaw=nil}
 local editorLiveMoveQueued=false
+local flushingEtiquetteShowerActive=false
 local jobs={}
 local function updateDarkFutureInfoPanelFollow(delta) end
 local EarnMoney={}
