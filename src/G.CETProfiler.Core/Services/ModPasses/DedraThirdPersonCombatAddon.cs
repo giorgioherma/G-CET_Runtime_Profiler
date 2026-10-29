@@ -230,10 +230,14 @@ internal static partial class SemanticInjectors
             if(source.Split(formerBridge,StringSplitOptions.None).Length!=2 ||
                source.Split("Dedra.__gcetWakeController.Register()\n",StringSplitOptions.None).Length!=2)
                 throw new InvalidOperationException("Prior Dedra worker boot-owner layout drift.");
+            const string oldInstall="  Dedra, dedraStep, registerForEvent)";
+            if(source.Split(oldInstall,StringSplitOptions.None).Length!=2)
+                throw new InvalidOperationException("Dedra V2 bridge still owns a native registrar.");
             source=source.Replace(formerBridge,
                 "-- G-CET semantic:dedra-third-person-combat-wake\n" +
-                "-- __gcetDedraSharedScheduleV3: shared 0-Engine frame execution.",
+                "-- __gcetDedraSharedScheduleV3: uses existing 0-Engine frame owner.",
                 StringComparison.Ordinal)
+                .Replace(oldInstall,"  Dedra, dedraStep)",StringComparison.Ordinal)
                 .Replace("Dedra.__gcetWakeController.Register()\n","",StringComparison.Ordinal);
         }
         else
