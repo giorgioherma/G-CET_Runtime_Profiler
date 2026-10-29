@@ -135,6 +135,29 @@ jobs:
             throw 'ORIGINAL_STACK_LUA_INVARIANT_FAILED: see precise CI errors above'
           }
 
+          # Check the real composed source behavior without exposing private Lua.
+          $minimapAuthor = Join-Path $mods 'Minimap Widgets/init.lua'
+          if (Test-Path -LiteralPath $minimapAuthor -PathType Leaf) {
+            $authorText = Get-Content -LiteralPath $minimapAuthor -Raw
+            if ($authorText.Contains('CreateMappinUIProfile') -and
+                $authorText.Contains("TweakDBID.new('MinimapMappinUIProfile.Default')")) {
+              $minimapOutput = Join-Path $output 'bin/x64/plugins/cyber_engine_tweaks/mods/Minimap Widgets/init.lua'
+              if (!(Test-Path -LiteralPath $minimapOutput -PathType Leaf)) {
+                throw 'MINIMAP_PROFILE_OUTPUT_MISSING: untouched source has no generated profile stage'
+              }
+              $produced = Get-Content -LiteralPath $minimapOutput -Raw
+              if (([regex]::Matches($produced, 'local __gcetMinimapProfileIdsV1 = \{\}')).Count -ne 1 -or
+                  ([regex]::Matches($produced, 'local function __gcetMinimapProfileIdV1\(')).Count -ne 1 -or
+                  !$produced.Contains("__gcetMinimapProfileIdV1('MinimapMappinUIProfile.Default')") -or
+                  !$produced.Contains('MappinUIProfile.Create') -or
+                  !$produced.Contains("Enum.new('gamedataMappinVariant'") -or
+                  $produced.Contains("local defaultRuntimeProfile = TweakDBID.new('MinimapMappinUIProfile.Default')")) {
+                throw 'MINIMAP_PROFILE_STAGE_INCOMPLETE: ID reuse, pin constructors or variant checks lost'
+              }
+              Write-Host 'Minimap profile IDs and pin constructors preserved from untouched source'
+            }
+          }
+
       - name: Remove temporary private source
         if: always()
         shell: pwsh
