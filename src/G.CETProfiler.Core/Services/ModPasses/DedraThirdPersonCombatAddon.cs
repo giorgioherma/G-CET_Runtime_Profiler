@@ -388,6 +388,8 @@ function M.Install(Dedra, step)
     ""transitionStart"", ""transitionEnd"", ""sessionStart"", ""sessionEnd"" }
   local owner = ""gcet.dedra.shared.v3""
   local settle = 0
+  local engineWakes, itpWakes, toggleWakes = 0, 0, 0
+  local lastSignal = ""startup""
   local function debts()
     -- Author-owned on/armSent start nil on player attach. Nil means the
     -- native write is unconfirmed, not that a wrapper/arm hold is ACTIVE.
@@ -398,15 +400,27 @@ function M.Install(Dedra, step)
       Dedra.armSent == true or
       (Dedra.standIn ~= nil and Dedra.standIn ~= """")
   end
-  local function wantFast()
-    if not started or not linked or not bridge or not api or debts()
-      or settle > 0 then return true end
+  -- One shared proof for scheduling and on-demand diagnostics. The ITP
+  -- combat override is not a TPP request: first-person fights can carry
+  -- override=""combat"" for minutes without Dedra owning camera/animations.
+  local function fastReason()
+    if not started then return ""not-started"" end
+    if not linked or not bridge or not api then return ""itp-unproven"" end
+    if debts() then return ""author-cleanup"" end
+    if settle > 0 then return ""explicit-toggle-settle"" end
     local ok, p = pcall(api.perspective.get)
     if not ok or type(p) ~= ""table"" or
-      type(p.userWantsThirdPerson) ~= ""boolean"" then return true end
-    return p.userWantsThirdPerson or p.transitioning == true or
-      p.mode ~= ""first"" or p.override == ""combat"" or
-      p.override == 3
+      type(p.userWantsThirdPerson) ~= ""boolean"" or
+      type(p.mode) ~= ""string"" then return ""perspective-unknown"" end
+    if p.userWantsThirdPerson then return ""third-person-requested"" end
+    if p.transitioning == true or p.mode == ""transition"" then
+      return ""camera-transition""
+    end
+    if p.mode ~= ""first"" then return ""non-first-person-camera"" end
+    return nil
+  end
+  local function wantFast()
+    return fastReason() ~= nil
   end
   local function route()
     local active = wantFast()
@@ -445,7 +459,9 @@ function M.Install(Dedra, step)
       type(base.perspective.get) ~= ""function"" then return end
     local count = 0
     for _, name in ipairs(names) do
-      local registered, id = pcall(base.events.on,name,owner,function() M.Signal() end)
+      local registered, id = pcall(base.events.on,name,owner,function()
+        M.Signal(""itp:"" .. name)
+      end)
       if registered and type(id) == ""number"" and id >= 0 then
         count = count + 1
       else
@@ -460,8 +476,22 @@ function M.Install(Dedra, step)
     end)
     bridge = okReady and ready == true
   end
-  function M.Signal()
-    settle = math.max(settle, 0.5)
+  function M.Signal(proof)
+    -- The original CET camera toggle can notify before ITP publishes the
+    -- new request. Only that explicit toggle needs a short transition
+    -- bridge. Routine combat/aim/weapon events just re-evaluate routing;
+    -- they never manufacture 0.5s of full-frame FPP work.
+    if proof == ""__gcetItpToggleWakeV2"" then
+      settle = math.max(settle, 0.5)
+      toggleWakes = toggleWakes + 1
+    elseif type(proof) == ""string"" and
+      proof:sub(1,4) == ""itp:"" then
+      itpWakes = itpWakes + 1
+    elseif type(proof) == ""string"" and
+      proof:sub(1,7) == ""engine:"" then
+      engineWakes = engineWakes + 1
+    end
+    lastSignal = proof or ""direct""
     if started then
       if not linked then bind() end
       if api and not bridge then
@@ -497,7 +527,9 @@ function M.Install(Dedra, step)
       ""UpperBodyStateChanged"", ""CombatStateChanged"",
       ""PlayerReady"", ""PlayerInvalidated"" }
     for _, name in ipairs(events) do
-      local subscription = ownerClient.Subscribe(name,function() M.Signal() end)
+      local subscription = ownerClient.Subscribe(name,function()
+        M.Signal(""engine:"" .. name)
+      end)
       engineListeners[#engineListeners + 1] = subscription
     end
     bind()
@@ -517,13 +549,25 @@ function M.Install(Dedra, step)
     mode = ""stopped""
   end
   function M.Diagnostics()
+    local perspective = nil
+    if api and type(api.perspective) == ""table"" and
+      type(api.perspective.get) == ""function"" then
+      local ok, p = pcall(api.perspective.get)
+      if ok and type(p) == ""table"" then
+        perspective = { mode=p.mode, requested=p.userWantsThirdPerson,
+          transitioning=p.transitioning, override=p.override }
+      end
+    end
     return { registrationPath=""shared-0-engine-schedule"",
       nativeDedraUpdate=false, mode=mode, linked=linked,
       bridge=bridge, started=started, pendingCleanup=debts(),
       activeJob=fast and fast.IsActive() or false,
       quietJob=slow and slow.IsActive() or false,
       calls=calls, quietCalls=quietCalls,
-      settle=settle,
+      settle=settle, activeReason=fastReason() or ""quiet"",
+      lastSignal=lastSignal, signals={
+        engine=engineWakes, itp=itpWakes, toggle=toggleWakes },
+      perspective=perspective,
       debts={ takeover=Dedra.takeover == true,
         easeOut=Dedra.easeOut ~= nil, aimAsk=Dedra.aimAsk ~= nil,
         planeHeld=Dedra.planeHeld == true,
