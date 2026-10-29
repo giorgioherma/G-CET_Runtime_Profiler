@@ -44,6 +44,7 @@ internal static partial class SemanticInjectors
                !ui.Contains("    shown = false",StringComparison.Ordinal))
                 throw new InvalidOperationException("ELM Show/Hide ownership drifted.");
             ui=ui.Replace(anchor,
+                "-- G-CET semantic:elm-immersiveway-idle-gc-v1\n"+
                 "-- G-CET read-only authored native interaction visibility.\n"+
                 uiName+"\n"+
                 "  return shown or ui.hubShown or ui.refreshPending or ui.input\n"+
@@ -62,6 +63,7 @@ internal static partial class SemanticInjectors
                !e.Contains("  active = false",StringComparison.Ordinal))
                 throw new InvalidOperationException("ELM XP lifecycle drifted.");
             e=e.Replace(anchor,
+                "-- G-CET semantic:elm-immersiveway-idle-gc-v1\n"+
                 "-- G-CET read-only authored XP timer activity.\n"+
                 xpName+"\n"+
                 "  return active == true\n"+

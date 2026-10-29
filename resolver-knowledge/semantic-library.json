@@ -8337,13 +8337,14 @@
           "updateDarkFutureInfoPanelFollow"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:elm-immersiveway-idle-gc-v1",
-        "expectedMarkerFileCount": 1,
+        "expectedMarkerFileCount": 3,
         "sourceCompletionAuthoritative": true,
         "satisfiedAll": [
           "G-CET semantic:elm-immersiveway-idle-gc-v1",
           "function SceneInteraction.GCET_IsUiActive()",
           "function EarnXP.GCET_IsActive()"
-        ]
+        ],
+        "composablePartialStages": true
       },
       "behavior": {
         "handler": "SEMANTIC_ELM_SOURCE_OWNED_IDLE_GC",
