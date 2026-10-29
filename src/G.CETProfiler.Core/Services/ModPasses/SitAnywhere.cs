@@ -41,10 +41,29 @@ internal static partial class SemanticInjectors
                     "world.interactions", "function world.update");
                 var completed = PreserveSitAnywhereSourceFastpaths(
                     context, partialLogic.Text, partialWorld.Text);
-                if (completed.Logic != partialLogic.Text) context.Write(partialLogic, completed.Logic);
+                var logicV2 = SitAnywhereLogicWakeSource(completed.Logic);
+                if (logicV2 != partialLogic.Text) context.Write(partialLogic, logicV2);
                 if (completed.World != partialWorld.Text) context.Write(partialWorld, completed.World);
-                if (completed.Logic != partialLogic.Text || completed.World != partialWorld.Text || completed.LoggerChanged)
-                    return SemanticInjectionResult.Success("Completed missing SitAnywhere source-local optimization stages without replacing the external worker.");
+                var prior = worker.Replace("\r\n","\n",StringComparison.Ordinal);
+                var workerV2 = SitAnywhereWorkerV2();
+                var needsWorker = prior != workerV2;
+                if (needsWorker && prior != SitAnywhereWorkerV1)
+                    throw new InvalidOperationException(
+                        "SitAnywhere prior coordinator drift; refuse unproven wake migration.");
+                var initV2 = SitAnywhereRealtimeWakeSource(live.Text);
+                var needsInit = initV2 != live.Text;
+                if (needsWorker != needsInit)
+                    throw new InvalidOperationException(
+                        "SitAnywhere realtime source and worker partial state mismatch.");
+                if (needsWorker)
+                {
+                    context.WriteCoordinator("sitanywhere_engine_worker.lua",workerV2);
+                    context.Write(live,initV2);
+                }
+                if (logicV2 != partialLogic.Text || completed.World != partialWorld.Text ||
+                    completed.LoggerChanged || needsWorker)
+                    return SemanticInjectionResult.Success(
+                        "Completed SitAnywhere source-local optimization and pausable frame owner.");
                 return SemanticInjectionResult.Skip(
                     "SitAnywhere complete scheduler and frame worker already installed.");
             }
