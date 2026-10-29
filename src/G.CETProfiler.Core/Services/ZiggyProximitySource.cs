@@ -69,6 +69,7 @@ internal static class ZiggyProximitySource
                                StringComparison.Ordinal))
                 text=ReducePassivePresentation(text);
             text=ReuseZiggyNativeQuestManagerForSave(text);
+            text=ReduceProtectedUpdateAllocations(text);
             context.Write(file,text);
             return SemanticInjectionResult.Success(
                 "Upgraded existing Ziggy v3/v4 without duplicate callback wrappers: " +
@@ -123,12 +124,33 @@ end
         text="-- G-CET semantic:ziggy-unaccepted-far-1hz\n"+text;
         text=ReducePassivePresentation(text);
         text=ReuseZiggyNativeQuestManagerForSave(text);
+        text=ReduceProtectedUpdateAllocations(text);
         context.Write(file,text);
         return SemanticInjectionResult.Success(
             "V2 navigation preserved; the unaccepted offered/far quest controller runs at 1 Hz " +
             "beyond 130m, while near giver, dialogue, session transitions and all active phases " +
             "keep original frame cadence. State and timer elapsed time are preserved.");
     }
+
+    // The authored error handler only normalizes errors to strings. Reuse
+    // pcall's argument passing instead of constructing two closures/frame.
+    private static string ReduceProtectedUpdateAllocations(string text)
+    {
+        const string marker="G-CET semantic:ziggy-no-frame-closure-v7";
+        const string oldCall="local ok,err=xpcall(function()update(dt)end,function(e)return tostring(e)end)";
+        const string newCall="local ok,err=pcall(update,dt)\n  if not ok then err=tostring(err) end";
+        if(text.Contains(marker,StringComparison.Ordinal))
+        {
+            if(text.Contains(oldCall,StringComparison.Ordinal) ||
+               !text.Contains(newCall,StringComparison.Ordinal))
+                throw new InvalidOperationException("Partial Ziggy protected update.");
+            return text;
+        }
+        if(text.Split(oldCall,StringSplitOptions.None).Length!=2)
+            throw new InvalidOperationException("Ziggy protected update source drifted.");
+        return text.Replace(oldCall,"-- "+marker+"\n  "+newCall,StringComparison.Ordinal);
+    }
+
     internal static bool IsNativeSnapshotCompletionSatisfied(string ownerFolder)
     {
         try
@@ -137,6 +159,7 @@ end
             var nav = File.ReadAllText(Path.Combine(ownerFolder, "navigation.lua"));
             if (!init.Contains("G-CET semantic:ziggy-unaccepted-far-1hz", StringComparison.Ordinal) ||
                 !init.Contains("G-CET semantic:ziggy-passive-ui-v5", StringComparison.Ordinal) ||
+                !init.Contains("G-CET semantic:ziggy-no-frame-closure-v7", StringComparison.Ordinal) ||
                 !init.Contains("H.__gcetPuzzleWasShown", StringComparison.Ordinal) ||
                 !init.Contains("H.__gcetPromptWasShown", StringComparison.Ordinal) ||
                 !nav.Contains("G-CET semantic:ziggy-passive-ui-v5", StringComparison.Ordinal) ||

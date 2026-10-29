@@ -1319,12 +1319,30 @@
         "alreadySatisfiedMarker": "G-CET semantic:questrunner",
         "expectedMarkerFileCount": 1,
         "satisfiedAnyGroups": [
-          ["local pass5ManagerIdleAccumulator = 0.0", "__gcetQuestCadence.update(dt, Manager, Spawner)"],
-          ["local pass5SpawnerAccumulator = 0.0", "GCET_Semantic/questrunner_engine_worker"],
-          ["if Manager.current then", "managerIdleElapsed >= 0.20"],
-          ["if pass5ManagerIdleAccumulator >= 0.20 then", "managerIdleElapsed >= 0.20"],
-          ["if pass5SpawnerAccumulator >= 0.25 then", "spawnerElapsed >= 0.25"],
-          ["Spawner.Update(elapsed)", "spawner.Update(elapsed)"]
+          [
+            "local pass5ManagerIdleAccumulator = 0.0",
+            "__gcetQuestCadence.update(dt, Manager, Spawner)"
+          ],
+          [
+            "local pass5SpawnerAccumulator = 0.0",
+            "GCET_Semantic/questrunner_engine_worker"
+          ],
+          [
+            "if Manager.current then",
+            "managerIdleElapsed >= 0.20"
+          ],
+          [
+            "if pass5ManagerIdleAccumulator >= 0.20 then",
+            "managerIdleElapsed >= 0.20"
+          ],
+          [
+            "if pass5SpawnerAccumulator >= 0.25 then",
+            "spawnerElapsed >= 0.25"
+          ],
+          [
+            "Spawner.Update(elapsed)",
+            "spawner.Update(elapsed)"
+          ]
         ]
       },
       "behavior": {
@@ -4942,7 +4960,8 @@
           "G-CET semantic:ziggy-unaccepted-far-1hz",
           "G-CET semantic:ziggy-passive-ui-v5",
           "H.__gcetPuzzleWasShown",
-          "G-CET semantic:ziggy-native-snapshot-manager-v6"
+          "G-CET semantic:ziggy-native-snapshot-manager-v6",
+          "G-CET semantic:ziggy-no-frame-closure-v7"
         ],
         "sourceCompletionAuthoritative": true,
         "composablePartialStages": true,
@@ -4955,7 +4974,8 @@
           "__gcetZiggyOfferedFar",
           "G-CET semantic:ziggy-unaccepted-far-1hz",
           "G-CET semantic:ziggy-passive-ui-v5",
-          "H.__gcetPuzzleWasShown"
+          "H.__gcetPuzzleWasShown",
+          "G-CET semantic:ziggy-no-frame-closure-v7"
         ]
       },
       "behavior": {
@@ -4978,9 +4998,10 @@
           "farOfferedIdle1Hz",
           "instantNearWake",
           "ownedHudAndPromptTransitionCleanup",
-          "invocationLocalQuestManagerReuseForSnapshotSaves"
+          "invocationLocalQuestManagerReuseForSnapshotSaves",
+          "noPerFrameProtectedCallClosures"
         ],
-        "note": "Preserve existing v2 targeted 2-second journal/mappin probe and bounded missing-pin scan. In init.lua, while phase is offered, the session is stable, no dialogue and player more than 130 m from Milo, run the full controller at 4 Hz with elapsed dt catch-up. All active states and near/wake transitions remain full-frame; a failed probe falls back to full-frame. Original, v1 and already optimized v2 navigation source supported. Fourth capture upgrade: already optimized v3 4Hz passive far-unaccepted phase becomes 1Hz, and original author archives can generate the same new 1Hz stage. Same every-frame near-area reentry, dialogue and active full frame. First-frame and state-transition-only own puzzle HidePuzzle; owned prompt ClearPrompt similarly transitions only; active ShowPuzzle, StoryChoices, wake cadence unchanged. Native B v6: during each save() snapshot only, acquire QuestsSystem once for all original fact writes (never persist a native manager handle across frames). Ingame/native savings still need post-install validation."
+        "note": "Preserve existing v2 targeted 2-second journal/mappin probe and bounded missing-pin scan. In init.lua, while phase is offered, the session is stable, no dialogue and player more than 130 m from Milo, run the full controller at 4 Hz with elapsed dt catch-up. All active states and near/wake transitions remain full-frame; a failed probe falls back to full-frame. Original, v1 and already optimized v2 navigation source supported. Fourth capture upgrade: already optimized v3 4Hz passive far-unaccepted phase becomes 1Hz, and original author archives can generate the same new 1Hz stage. Same every-frame near-area reentry, dialogue and active full frame. First-frame and state-transition-only own puzzle HidePuzzle; owned prompt ClearPrompt similarly transitions only; active ShowPuzzle, StoryChoices, wake cadence unchanged. Native B v6: during each save() snapshot only, acquire QuestsSystem once for all original fact writes (never persist a native manager handle across frames). Ingame/native savings still need post-install validation. V7 replaces two per-frame xpcall closures with pcall(update,dt), preserving author recovery and error string normalization."
       },
       "generation": {
         "enabled": true,
@@ -5274,7 +5295,7 @@
           "pristineOnePassComplete",
           "partialStageUpgrade",
           "phoneIsOpenSameFrameNoPerTickPcallClosure",
-        "subscriberlessVehicleDamageBackstopDormancy"
+          "subscriberlessVehicleDamageBackstopDormancy"
         ],
         "note": "The single authoritative rule applies BOTH invocation-local blackboard reuse and protected pause-refresh closure reuse from untouched GigCore source. Already-optimized and partially optimized source upgrades only missing stages; original tick timing, pcall protection and gig lifecycle are preserved. Same-pass generic SHARED_PROVIDER_READ rewrites are accepted as proven getter equivalents. Legacy direct-assignment frame drivers require only the board optimization; guarded drivers additionally reuse the protected closure. Added incremental Lua lane A closure reuse in author phone-open probe; PhoneSystem queries and phone/menu wake remain per-frame, no cross-session native handle cached, failed accessor still returns false. Historical author variants lacking the phone function retain original A/B one-pass generation; the separate phone v2 completion verifier treats the absent subsystem as not applicable, not mandatory. Do not infer the absent service from markers. Phase 3 adds a second optional source-owned file for current author layouts with core/vehicle_damage.lua: source-verified subscriberless damage drain skips unsafe mounted-vehicle/Health backstop and clears stale coalescer entries, while active subscribers keep original full-rate processing. Completion verifier must check both installed author stages, not init.lua's marker alone; older author layouts without the module remain supported."
       },
