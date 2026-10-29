@@ -269,6 +269,11 @@ internal static partial class SemanticInjectors
     {
         const string marker = "__gcetMinimapProfileIdsV1";
         const string getter = "__gcetMinimapProfileIdV1";
+        // Older/minimal supported layouts may have no profile override.
+        // Its absence is not grounds to break an otherwise valid timer and
+        // elevation optimization. A PRESENT but drifted override fails closed.
+        if (!text.Contains("CreateMappinUIProfile", StringComparison.Ordinal))
+            return text;
         var callback = new Regex(
             @"(?ms)^(?<indent>[ \t]*)ObserveAfter\s*\(\s*['""]MinimapContainerController['""]" +
             @"\s*,\s*['""]CreateMappinUIProfile['""]\s*,\s*function\s*\(" +
