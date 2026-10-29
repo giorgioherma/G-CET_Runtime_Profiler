@@ -163,6 +163,11 @@ $firstPath=Join-Path $dir 'init.lua'
 if(-not $complete.Invoke($null,[object[]]@([string]$dir))){
   throw 'Specter source-completion verifier rejected complete source'
 }
+Remove-Item -LiteralPath $music -Force
+if($complete.Invoke($null,[object[]]@([string]$dir))){
+  throw 'Specter falsely accepted a complete source without its required authored music module'
+}
+[IO.File]::WriteAllText($music,$musicSource,[Text.UTF8Encoding]::new($false))
 $again=Apply $first
 if($again.result.Applied -or $again.rows.Count -ne 0){
   throw 'Specter complete source reapplied or emitted a duplicate'
