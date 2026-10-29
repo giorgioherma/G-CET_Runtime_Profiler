@@ -194,6 +194,14 @@ function logic:new(mod)
  self.__index=self
  return setmetatable(o,self)
 end
+function logic:init()
+    GameUI.Observe("ScannerOpen", function()
+        self.isScanning = true
+    end)
+    GameUI.Observe("ScannerClose", function()
+        self.isScanning = false
+    end)
+end
 function logic:inWorkspot() return false end
 function logic:inTransition() return false end
 function logic:hideAllWorkspots()
@@ -240,6 +248,13 @@ function sit:new()
                 spot.workspot.pitch = self.pitch
                 spot:update(dt)
             end
+        end
+    end)
+    registerInput("sitAnywhere", "[Optional] Hold to scan for sittable surface", function(down)
+        if down then
+            self.runtimeData.forceScan = true
+        else
+            self.runtimeData.forceScan = false
         end
     end)
 end
