@@ -25,6 +25,34 @@ function Check([string]$version,[bool]$drift=$false){
   $zip=[IO.Compression.GZipStream]::new($inp,[IO.Compression.CompressionMode]::Decompress)
   $out=[IO.MemoryStream]::new()
   try{$zip.CopyTo($out);[IO.File]::WriteAllBytes((Join-Path $engine 'init.lua'),$out.ToArray())}finally{$out.Dispose();$zip.Dispose();$inp.Dispose()}
+  $withDamage=($version -eq 'damage')
+  $damageSource=Join-Path $gig 'core/vehicle_damage.lua'
+  if($withDamage) {
+    New-Item -ItemType Directory -Force (Split-Path $damageSource -Parent)|Out-Null
+    @'
+local VD={}
+local subs        = {}
+local healthVid, healthPrev
+local now=0
+local accum={}
+local Bus={takeDamageEvent=function() return -1 end}
+local function backstopPoll() end
+local function flushDue() end
+function VD.tick(dt)
+  now = now + (dt or 0)
+  local guard = 0
+  while guard < 64 do
+    guard = guard + 1
+    local ki = Bus.takeDamageEvent()
+    if not ki or ki < 0 then break end
+    local amt = Bus.lastDamageAmount() or 0.0
+  end
+  backstopPoll()
+  flushDue()
+end
+return VD
+'@ | Set-Content -LiteralPath $damageSource -Encoding utf8
+  }
   $registration=if($version -eq 'live'){'__gcetRegisterEvent_413'}else{'registerForEvent'}
   $snippet=@"
 local pausedThisFrame=false
@@ -91,6 +119,18 @@ end)
     throw "Unexpected GigCore frame guard output: $version"
   }
   if((Get-FileHash $src -Algorithm SHA256).Hash -ne $old){throw 'Live GigCore mutated by Resolver'}
+  if($withDamage) {
+    $damageOut=ZipText $result.pass.ZipPath 'GigCore/core/vehicle_damage.lua'
+    if(!$damageOut.Contains('__gcetGigDamageNoSubscribersV1') -or
+       !$damageOut.Contains('if #subs == 0 then') -or
+       !$damageOut.Contains('healthVid, healthPrev = nil, nil') -or
+       !$damageOut.Contains('Bus.takeDamageEvent()') -or
+       !$damageOut.Contains('backstopPoll()') -or
+       !$damageOut.Contains('flushDue()')){
+      throw 'GigCore idle damage stage lost empty-subscription drain or original active detector'
+    }
+    $damageOut|Set-Content -LiteralPath $damageSource -Encoding utf8
+  }
   $text|Set-Content -LiteralPath $src -Encoding utf8
   $again=(& $exe --capture $capture --mods $mods --generate-pass --json|ConvertFrom-Json)
   if(!(Test-Path -LiteralPath $src)) {throw "GigCore source disappeared on rerun: $version"}
@@ -104,4 +144,5 @@ end)
 }
 Check 'original'
 Check 'live'
+Check 'damage'
 Check 'drift' $true
