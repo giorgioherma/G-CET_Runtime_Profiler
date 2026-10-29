@@ -288,6 +288,79 @@ jobs:
             }
           }
 
+
+          # Phase 3 targeted source proof: archive inventory is not enough.
+          # Verify this combined pass emitted all source-owned hotpath stages
+          # directly from the private original stack, never an optimized input.
+          $ziggyOriginal = Join-Path $mods 'ziggy_last_play/init.lua'
+          if (Test-Path -LiteralPath $ziggyOriginal) {
+            $author = Get-Content -LiteralPath $ziggyOriginal -Raw
+            if ($author.Contains('xpcall(function()update(dt)end,function(e)return tostring(e)end)')) {
+              $file = Join-Path $output 'bin/x64/plugins/cyber_engine_tweaks/mods/ziggy_last_play/init.lua'
+              if (!(Test-Path -LiteralPath $file)) { throw 'ZIGGY_GC_OUTPUT_MISSING' }
+              $lua = Get-Content -LiteralPath $file -Raw
+              if (!$lua.Contains('G-CET semantic:ziggy-no-frame-closure-v7') -or
+                  !$lua.Contains('local ok,err=pcall(update,dt)') -or
+                  !$lua.Contains('if not ok then err=tostring(err) end') -or
+                  !$lua.Contains('__gcetZiggyOfferedFarAcc') -or
+                  !$lua.Contains('__gcetZiggyNativeOfferedFar') -or
+                  $lua.Contains('xpcall(function()update(dt)end')) {
+                throw 'ZIGGY_GC_OUTPUT_INCOMPLETE: author error recovery or native wake lost'
+              }
+              Write-Host 'Ziggy pristine: native offered-far wake and no-frame-closure error handling PASS'
+            }
+          }
+          $npcOriginal = Join-Path $mods 'NPC Outfit Manager/init.lua'
+          if (Test-Path -LiteralPath $npcOriginal) {
+            $author = Get-Content -LiteralPath $npcOriginal -Raw
+            if ($author.Contains('local function ProcessRadarOutfits()') -and
+                $author.Contains('activeNPCs[entId] = self')) {
+              $file = Join-Path $output 'bin/x64/plugins/cyber_engine_tweaks/mods/NPC Outfit Manager/init.lua'
+              if (!(Test-Path -LiteralPath $file)) { throw 'NPC_OUTFIT_RADAR_OUTPUT_MISSING' }
+              $lua = Get-Content -LiteralPath $file -Raw
+              if (!$lua.Contains('local __gcetNpcRadarQueueV2 = {}') -or
+                  !$lua.Contains('local scan = fullSweep and activeNPCs or __gcetNpcRadarQueueV2') -or
+                  !$lua.Contains('__gcetNpcRadarSweepV2 >= 10.0') -or
+                  !$lua.Contains('__gcetNpcRadarRulesChangedV2()') -or
+                  !$lua.Contains('__gcetNpcRadarQueueV2[entId] = self') -or
+                  !$lua.Contains('__gcetNpcRadarQueueV2[entId] = nil') -or
+                  !$lua.Contains('ProcessRadarOutfits()') -or
+                  !$lua.Contains('ApplyLookByIndex(npc, lookupId, slotStr, true)')) {
+                throw 'NPC_OUTFIT_RADAR_INCOMPLETE: event/rule wake or outfit application lost'
+              }
+              Write-Host 'NPC Outfit Manager pristine: candidate queue, rule mutation, fallback and application PASS'
+            }
+          }
+          $elmOriginal = Join-Path $mods 'ELM_ImmersiveWay/init.lua'
+          if (Test-Path -LiteralPath $elmOriginal) {
+            $author = Get-Content -LiteralPath $elmOriginal -Raw
+            if ($author.Contains('    SceneInteraction.Update()') -and
+                $author.Contains('    safeCall("DarkFuture TickScene"')) {
+              $base = Join-Path $output 'bin/x64/plugins/cyber_engine_tweaks/mods/ELM_ImmersiveWay'
+              $generatedInit = Join-Path $base 'init.lua'
+              $generatedScene = Join-Path $base 'elm_scene_interaction.lua'
+              $generatedXp = Join-Path $base 'elm_earnxp.lua'
+              foreach ($file in @($generatedInit,$generatedScene,$generatedXp)) {
+                if (!(Test-Path -LiteralPath $file)) { throw 'ELM_GC_OUTPUT_MISSING: incomplete owned 3-file emission' }
+              }
+              $main = Get-Content -LiteralPath $generatedInit -Raw
+              $scene = Get-Content -LiteralPath $generatedScene -Raw
+              $xp = Get-Content -LiteralPath $generatedXp -Raw
+              if (!$main.Contains('G-CET semantic:elm-immersiveway-idle-gc-v1') -or
+                  !$main.Contains('SceneInteraction.GCET_IsUiActive()') -or
+                  !$main.Contains('EarnXP.GCET_IsActive()') -or
+                  !$main.Contains('    SceneInteraction.Update()') -or
+                  !$scene.Contains('return shown or ui.hubShown or ui.refreshPending or ui.input') -or
+                  !$scene.Contains('function SceneInteraction.Show(choiceUniqueID)') -or
+                  !$scene.Contains('function SceneInteraction.Hide()') -or
+                  !$xp.Contains('function EarnXP.GCET_IsActive()') -or
+                  !$xp.Contains('function EarnXP.Tick(delta)')) {
+                throw 'ELM_GC_OUTPUT_INCOMPLETE: native choices, active UI or XP timer path lost'
+              }
+              Write-Host 'ELM pristine: active custom interaction and earned timers plus idle fast path PASS'
+            }
+          }
+
       - name: Remove temporary private source
         if: always()
         shell: pwsh
