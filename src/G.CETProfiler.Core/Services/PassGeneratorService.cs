@@ -219,7 +219,7 @@ public static class PassGeneratorService
         // including OPTIONAL Lua subscriptions to already-inventoried
         // static native owners. No generic or native-geometry pass follows.
         var semanticTransformCount = genericInfrastructureTransformCount +
-            SemanticPassGeneratorService.Apply(
+            SemanticPassGeneratorService.ApplyWithComposedRuntime(
                 resolver.RootElement,
                 modsRoot,
                 staged,

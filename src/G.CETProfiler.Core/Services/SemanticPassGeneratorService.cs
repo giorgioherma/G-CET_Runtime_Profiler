@@ -8,7 +8,21 @@ internal static class SemanticPassGeneratorService
 {
     internal const double MaterialThresholdMsPerSecond = 3.0;
 
+    // Keep original reflection/API entrypoint for independent mod contracts.
+    // Runtime-bearing production generation calls the SAME implementation
+    // below with the already-composed fixed host, never a repair pass.
     internal static int Apply(
+        JsonElement resolverRoot,
+        string modsRoot,
+        Dictionary<string, byte[]> staged,
+        Dictionary<string, int> appliedTransformsByFile,
+        List<object> transformManifest,
+        List<object> skipped)
+        => ApplyWithComposedRuntime(resolverRoot,modsRoot,staged,
+            appliedTransformsByFile,transformManifest,skipped,
+            new Dictionary<string,byte[]>(StringComparer.OrdinalIgnoreCase));
+
+    internal static int ApplyWithComposedRuntime(
         JsonElement resolverRoot,
         string modsRoot,
         Dictionary<string, byte[]> staged,
