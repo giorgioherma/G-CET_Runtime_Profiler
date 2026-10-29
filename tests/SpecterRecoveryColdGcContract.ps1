@@ -186,7 +186,15 @@ $crText=[Text.Encoding]::UTF8.GetString($cr.rows[0].Bytes)
 if((Apply $crText).result.Applied){throw 'CRLF Specter is not idempotent'}
 # The original module may be old/compact and lacks bus-state ownership:
 # metric work should still compose, not infer an unsafe music wake.
-[IO.File]::WriteAllText($music,'local M={}; function M.update(delta,bus,contract,stage,state,playerPresent,arrived) return nil end; return M',[Text.UTF8Encoding]::new($false))
+$compactMusic=@'
+local M={}
+function M.update(delta,bus,contract,stage,state,playerPresent,arrived)
+  local id=contract and contract.id
+  return id
+end
+return M
+'@
+[IO.File]::WriteAllText($music,$compactMusic,[Text.UTF8Encoding]::new($false))
 $oldMusic=Apply $original
 if(!$oldMusic.result.Applied){throw 'Specter minimal older music variant not optimized'}
 $older=[Text.Encoding]::UTF8.GetString($oldMusic.rows[0].Bytes)
