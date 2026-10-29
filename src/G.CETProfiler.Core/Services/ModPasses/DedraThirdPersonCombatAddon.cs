@@ -15,19 +15,10 @@ internal static partial class SemanticInjectors
         if(!File.Exists(initPath) || !File.Exists(workerPath))return false;
         var init=File.ReadAllText(initPath).Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
         var worker=File.ReadAllText(workerPath).Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
+        var canonical="-- G-CET semantic coordinator:dedra-third-person-combat-wake\n"+
+            WorkerV3.Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
         return HasDedraThirdPersonCombatAuthorBridge(init) &&
-            worker.StartsWith("-- G-CET semantic coordinator:dedra-third-person-combat-wake\n",
-                StringComparison.Ordinal) &&
-            worker.Contains("-- __gcetDedraSharedScheduleV3:",StringComparison.Ordinal) &&
-            worker.Contains("function M.Start()",StringComparison.Ordinal) &&
-            worker.Contains("function M.Signal()",StringComparison.Ordinal) &&
-            worker.Contains("function M.Stop()",StringComparison.Ordinal) &&
-            worker.Contains("function M.Diagnostics()",StringComparison.Ordinal) &&
-            worker.Contains("schedule.EveryFrame(",StringComparison.Ordinal) &&
-            worker.Contains("schedule.Every(0.25,",StringComparison.Ordinal) &&
-            worker.Contains("pcall(step, dt)",StringComparison.Ordinal) &&
-            !worker.Contains("FrameListeners.MakeRegistrar",StringComparison.Ordinal) &&
-            !worker.Contains("fallbackRegister(\"onUpdate\"",StringComparison.Ordinal);
+            worker.Equals(canonical,StringComparison.Ordinal);
     }
 
     // Existing author bridge proves independent callback ownership even when
