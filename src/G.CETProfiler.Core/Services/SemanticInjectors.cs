@@ -20,6 +20,7 @@ internal static partial class SemanticInjectors
         var versionFluidUpgrade = candidate.RuleId is
             "repeatable-cyberpsychos" or
             "sitanywhere" or
+            "cybertrials" or
             "hotscenes-ui-action-dormancy" or
             "driveaerialvehicle" or
             "tunnel-rescue-v3" or
