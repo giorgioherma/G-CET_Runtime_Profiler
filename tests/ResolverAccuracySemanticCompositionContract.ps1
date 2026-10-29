@@ -788,6 +788,50 @@ end
 return GameSession
 '@
 
+# Fourth authoritative IFP source: camera math stays a per-frame dependency.
+# Keep a standalone author-shaped original instead of weakening file-budget proof.
+Write-ModFile 'ImmersiveFirstPerson' 'Modules/CameraCore.lua' @'
+local CameraCore = {}
+local Vars = { BODY = {} }
+function CameraCore.EvaluateBody(nativePitch, crouching)
+    local progress, forward, vertical, pitchCorrection = 0, 0, 0, 0
+    return {
+        progress = progress,
+        lateral = 0.0,
+        forward = forward,
+        vertical = vertical,
+        pitch = pitchCorrection,
+    }
+end
+
+local function getFreeLookLimits(hasWeapon)
+    return 0
+end
+
+local function composeAndWrite(fpp, context)
+    local bodyDriverPitch = 0
+    local body = CameraCore.EvaluateBody(
+        bodyDriverPitch,
+        context.crouching
+    )
+    local freeOffset = {
+        yaw = 0.0,
+        pitch = 0.0,
+        sideProgress = 0.0,
+        backProgress = 0.0,
+        lateral = 0.0,
+        forward = 0.0,
+        vertical = 0.0,
+        roll = 0.0,
+    }
+    if runtime.mode == MODE.FREELOOK or runtime.mode == MODE.RETURNING then
+        freeOffset = CameraCore.EvaluateFreeLook(runtime.freeYaw, 0, false)
+    end
+    return body, freeOffset
+end
+return CameraCore
+'@
+
 Write-ModFile 'nativeInteractions' 'init.lua' @'
 local Cron={Update=function() end,HaltAll=function() end}
 local manager=require("modules/projectsManager")
@@ -1149,6 +1193,16 @@ try{
   $x=Z($b+'immersive_third_person/init.lua');if($x-notmatch'__gcetItppSupervisorElapsed' -or $x-notmatch'__gcetItppMaintenanceElapsed' -or $x-notmatch'if state\.enabled or state\.cameraTransition then' -or $x-notmatch'if state\.pendingFppCleanup then' -or $x-notmatch'pcall\(mod\.fallCommitTick, delta\)'){throw 'ITP split incomplete.'}
  $x=Z($b+'ImmersiveFirstPerson/Modules/Helpers.lua');if($x-notmatch'slowProbeElapsed' -or $x-notmatch'session\.slowProbe\.inWorkspot' -or $x-notmatch'Helpers\.RefreshPlayerState\(target, delta\)'){throw 'ImmersiveFirstPerson slow probe incomplete.'}
  $x=Z($b+'ImmersiveFirstPerson/init.lua');if($x-notmatch'collectPlayerState\(delta\)'){throw 'ImmersiveFirstPerson delta propagation incomplete.'}
+ $x=Z($b+'ImmersiveFirstPerson/Modules/CameraCore.lua')
+ if(!$x.Contains('local __gcetIfpBodyScratchV1 = {}') -or
+    !$x.Contains('local __gcetIfpNeutralFreeV1 = {') -or
+    !$x.Contains('function CameraCore.EvaluateBody(nativePitch, crouching, out)') -or
+    !$x.Contains('out = out or {}') -or
+    !$x.Contains('local freeOffset = __gcetIfpNeutralFreeV1') -or
+    !$x.Contains('freeOffset = CameraCore.EvaluateFreeLook(')){
+    throw 'ImmersiveFirstPerson source-owned camera scratch and active FreeLook path incomplete.'
+ }
+
  $x=Z($b+'nativeInteractions/init.lua');if($x-notmatch'GCET_Semantic/nativeinteractions_engine_worker' -or $x-notmatch'__gcetNifCadence\.update\(dt' -or $x-notmatch'__gcetNifCadence\.reset\(\)' -or $x-notmatch'resourceHelper\.onUpdate\(\)' -or $x-notmatch'Cron\.Update\(dt\)'){throw 'nativeInteractions external cadence bridge incomplete.'}
  if($x.IndexOf('local __gcetNifCadence = require(',[StringComparison]::Ordinal) -lt 0 -or $x.IndexOf('local __gcetNifCadence = require(',[StringComparison]::Ordinal) -gt $x.IndexOf('function mod:new()', [StringComparison]::Ordinal)) {throw 'nativeInteractions worker imported too late for onInit session closures.'}
   $x=Z($b+'nativeInteractions/GCET_Semantic/nativeinteractions_engine_worker.lua');if($x-notmatch'^-- G-CET semantic coordinator:nativeinteractions' -or $x-notmatch'manager\.updateDormant\(position\)' -or $x-notmatch'WORLD_INTERVAL, MANAGER_INTERVAL = 1 / 30, 1 / 12' -or $x-notmatch'reconcileAll = true'){throw 'nativeInteractions external worker dormant and wake cadence incomplete.'}
