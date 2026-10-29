@@ -245,11 +245,97 @@ internal static partial class SemanticInjectors
             "$1" + visibilityGate,
             "Minimap Widgets Update visibility prefilter");
 
+        // This is the SAME authoritative Minimap Widgets semantic, not a
+        // corrective second pass. Stable TweakDBID literals are lazily reused
+        // per CET onInit lifecycle; live mappin controller events, variants,
+        // visibility, spawn profiles and distance decisions are unchanged.
+        text = ReuseMinimapMappinProfileIds(text);
+
         context.Write(file, text);
         return SemanticInjectionResult.Success(
             "Moved widget timers ahead of native-system acquisition so dormant frames exit before Game getters, deferred elevation queries until unclamped, and added a version-open visibility prefilter that skips stealth-mappin native work when no hide option is enabled.");
     }
 
+
+    /// <summary>
+    /// Cache only immutable, literal TweakDBIDs used to instantiate actual
+    /// mappin UI profiles. Do not cache controllers/widget handles or use
+    /// player-distance gating: minimap icons may be tracked/clamped when the
+    /// underlying world position is FAR, and the native location table does
+    /// not own these dynamic pin controllers. This stage is inside the
+    /// existing Minimap Widgets semantic generator.
+    /// </summary>
+    private static string ReuseMinimapMappinProfileIds(string text)
+    {
+        const string marker = "__gcetMinimapProfileIdsV1";
+        const string getter = "__gcetMinimapProfileIdV1";
+        var callback = new Regex(
+            @"(?ms)^(?<indent>[ \t]*)ObserveAfter\s*\(\s*['""]MinimapContainerController['""]" +
+            @"\s*,\s*['""]CreateMappinUIProfile['""]\s*,\s*function\s*\(" +
+            @"\s*this\s*,\s*mappin\s*,\s*mappinVariant\s*,\s*customData\s*\)" +
+            @"(?<body>.*?)^(?<close>[ \t]*end\s*\)[ \t]*(?:--[^\r\n]*)?$)",
+            RegexOptions.CultureInvariant | RegexOptions.Multiline);
+        var matches = callback.Matches(text);
+        if (matches.Count != 1)
+            throw new InvalidOperationException(
+                "Minimap profile constructor is missing or ambiguous; refusing cache rewrite.");
+        var m = matches[0];
+        var body = m.Groups["body"].Value;
+        var ids = new Regex(
+            @"TweakDBID\.new\s*\(\s*(?<quote>['""])" +
+            @"(?<id>(?:MinimapMappinUIProfile|MappinUISpawnProfile)\.[A-Za-z0-9_]+)" +
+            @"\k<quote>\s*\)",
+            RegexOptions.CultureInvariant);
+        var raw = ids.Matches(body);
+        var hasMarker = text.Contains(marker, StringComparison.Ordinal);
+        if (hasMarker)
+        {
+            // Strong structural postcondition: marker AND the actual producer
+            // sites replaced. A stale/partial stage must never count as done.
+            if (Regex.Matches(text, @"\blocal\s+" + marker + @"\s*=\s*\{\s*\}").Count != 1 ||
+                Regex.Matches(text, @"\blocal\s+function\s+" + getter + @"\s*\(").Count != 1 ||
+                raw.Count != 0 ||
+                Regex.Matches(body, @"\b" + getter + @"\s*\(").Count < 2 ||
+                !text.Contains(marker + "[key] = value", StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "Minimap profile-ID cache is incomplete or drifted; refusing duplicated execution.");
+            return text;
+        }
+        // The original callback has a default profile plus many branch-local
+        // constant IDs; never cache dynamic strings or unrelated constructors.
+        if (raw.Count < 2 ||
+            !body.Contains("MappinUIProfile.Create", StringComparison.Ordinal) ||
+            !body.Contains("TweakDBID.new('MinimapMappinUIProfile.Default')",
+                           StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "Minimap immutable profile-ID sources have drifted; refusing cache rewrite.");
+        var allIds = Regex.Matches(body, @"TweakDBID\.new\s*\(").Count;
+        if (allIds != raw.Count)
+            throw new InvalidOperationException(
+                "Minimap profile constructor contains non-literal TweakDBIDs; refusing partial cache.");
+        var fixedBody = ids.Replace(body,
+            x => getter + "(" + x.Groups["quote"].Value +
+                 x.Groups["id"].Value + x.Groups["quote"].Value + ")");
+        var newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        var indent = m.Groups["indent"].Value;
+        var declaration = string.Join(newline, new[]
+        {
+            indent + "-- G-CET source-owned lazy profile IDs: immutable TweakDBID values only.",
+            indent + "local " + marker + " = {}",
+            indent + "local function " + getter + "(key)",
+            indent + "    local value = " + marker + "[key]",
+            indent + "    if value == nil then",
+            indent + "        value = TweakDBID.new(key)",
+            indent + "        " + marker + "[key] = value",
+            indent + "    end",
+            indent + "    return value",
+            indent + "end",
+            ""
+        });
+        return text[..m.Index] + declaration + newline +
+               m.Value.Replace(body, fixedBody, StringComparison.Ordinal) +
+               text[(m.Index + m.Length)..];
+    }
 
     private static SemanticInjectionResult ApplyMinimapTimeWeatherSnapshot(SemanticPatchContext context)
     {
