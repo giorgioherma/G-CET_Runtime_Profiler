@@ -1,3 +1,5 @@
+**Current gameplay standard:** [COMBAT-POLICE-120](phase3/COMBAT-POLICE-120-BASELINE.md) — F10 synchronized CET+CapFrameX 120s, new measured baseline pending. [Older 60s controlled results](phase3/COMBAT-POLICE-60-BASELINE.md) remain historical.
+
 <!-- PHASE3_ALLOCATION_CONTROLL_20261028 -->
 **Active research:** [PHASE 3 ALLOCATION CONTROLL](phase3/PHASE3-ALLOCATION-CONTROLL.md), successor to **Phase 2 DORMANCY EXTENDED**, with a [115-mod 2026-10-28 generated-pass dormancy audit](phase3/RESOLVER-PASS-20261028-MOD-AUDIT.md). Covers wake-trigger maps, inactive allocation frequency/size, native CET marshalling and reproducible tests.
 
