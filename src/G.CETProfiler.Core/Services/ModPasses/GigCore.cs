@@ -135,15 +135,107 @@ internal static partial class SemanticInjectors
         // do NOT cache PhoneSystem across sessions or gate the phone wake.
         text = ReduceGigCorePhoneClosure(text);
 
-        if (text == original)
+        // Phase 3 source-owned idle service. This module is optional on
+        // older supported author layouts; their prior stages still compose.
+        bool damageChanged = false;
+        if (context.TryReadComposedModFile(context.Owner,
+                "core/vehicle_damage.lua") is not null)
+        {
+            var damage = context.FindFile(
+                "core/vehicle_damage.lua",
+                "function VD.tick(dt)",
+                "local subs",
+                "Bus.takeDamageEvent()",
+                "backstopPoll()");
+            var damageText = ReduceGigCoreUnsubscribedDamageWork(damage.Text);
+            damageChanged = damageText != damage.Text;
+            if (damageChanged)
+                context.Write(damage, damageText);
+        }
+
+        if (text == original && !damageChanged)
             return SemanticInjectionResult.Skip(
-                "GigCore blackboard and pause-guard source stages are already complete.");
+                "GigCore blackboard, pause, phone and idle damage stages are already complete.");
         context.Write(file, text);
         return SemanticInjectionResult.Success(
-            "Resolved one blackboard system for UI/photo probes per invocation " +
-            "and reused one protected pause-update function per frame; existing " +
-            "gig timers, session/reconcile logic, callback order and exception " +
-            "handling are preserved.");
+            "Reused blackboards and protected pause/phone thunks; eliminated idle " +
+            "vehicle-handle/stat health polling and subscriberless coalescer work " +
+            "while retaining reds event draining, active damage processing, " +
+            "gig timers, markers, commands, session cleanup and reconcile.");
+    }
+
+    private static string ReduceGigCoreUnsubscribedDamageWork(string text)
+    {
+        const string stage = "__gcetGigDamageNoSubscribersV1";
+        if (text.Contains(stage, StringComparison.Ordinal))
+        {
+            var start = text.IndexOf("function VD.tick(dt)", StringComparison.Ordinal);
+            var end = start < 0 ? -1 : text.IndexOf("\nend", start, StringComparison.Ordinal);
+            if (end < 0)
+                throw new InvalidOperationException("GigCore damage idle stage unbounded.");
+            var body = text[start..end];
+            if (!body.Contains("if #subs == 0 then", StringComparison.Ordinal) ||
+                !body.Contains("healthVid, healthPrev = nil, nil", StringComparison.Ordinal) ||
+                !body.Contains("Bus.takeDamageEvent()", StringComparison.Ordinal) ||
+                !body.Contains("for k in pairs(accum) do accum[k] = nil end",
+                    StringComparison.Ordinal) ||
+                !body.Contains("backstopPoll()", StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "GigCore damage idle marker exists but source postconditions fail.");
+            return text;
+        }
+
+        var tick = new Regex(
+            @"(?m)^function VD\.tick\(dt\)\r?\n" +
+            @"[ \t]*now\s*=\s*now\s*\+\s*\(dt or 0\)\r?\n" +
+            @"[ \t]*local guard = 0",
+            RegexOptions.CultureInvariant);
+        if (tick.Matches(text).Count != 1)
+            throw new InvalidOperationException(
+                "GigCore vehicle damage tick source changed; cannot prove one owner.");
+
+        var startIndex = text.IndexOf("function VD.tick(dt)", StringComparison.Ordinal);
+        var afterTick = text.IndexOf("\nend", startIndex, StringComparison.Ordinal);
+        if (afterTick < 0)
+            throw new InvalidOperationException("GigCore damage tick is unbounded.");
+        var originalTick = text[startIndex..afterTick];
+        if (!originalTick.Contains("local ki = Bus.takeDamageEvent()", StringComparison.Ordinal) ||
+            !originalTick.Contains("local amt = Bus.lastDamageAmount()", StringComparison.Ordinal) ||
+            !originalTick.Contains("backstopPoll()", StringComparison.Ordinal) ||
+            !originalTick.Contains("flushDue()", StringComparison.Ordinal) ||
+            !text.Contains("local subs        = {}", StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "GigCore damage queue/backstop ownership drifted; refuse idle optimization.");
+
+        // Without subscribers the old native mounted-vehicle health backstop
+        // cannot reach a consumer. Still drain the REDS event stream so stale
+        // damage never reaches a later subscriber, and reset any prior pending
+        // coalesced samples and health baseline. Active subscribers use the
+        // unmodified full-rate author path.
+        const string inserted =
+            "  -- __gcetGigDamageNoSubscribersV1: keep REDS drained without native Health reads.\n" +
+            "  if #subs == 0 then\n" +
+            "    healthVid, healthPrev = nil, nil\n" +
+            "    local drained = 0\n" +
+            "    while drained < 64 do\n" +
+            "      drained = drained + 1\n" +
+            "      local ki = Bus.takeDamageEvent()\n" +
+            "      if not ki or ki < 0 then break end\n" +
+            "    end\n" +
+            "    for k in pairs(accum) do accum[k] = nil end\n" +
+            "    return\n" +
+            "  end\n";
+        var m = tick.Match(text);
+        var matchText = m.Value;
+        var newLine = matchText.Contains("\r\n", StringComparison.Ordinal)
+            ? "\r\n" : "\n";
+        var guardLine = matchText.LastIndexOf('\n') + 1;
+        if (guardLine == 0)
+            throw new InvalidOperationException("GigCore damage guard line not bounded.");
+        var replacement = matchText[..guardLine] +
+            inserted.Replace("\n", newLine, StringComparison.Ordinal) +
+            matchText[guardLine..];
+        return text[..m.Index] + replacement + text[(m.Index + m.Length)..];
     }
 
     private static string ReduceGigCorePhoneClosure(string text)
