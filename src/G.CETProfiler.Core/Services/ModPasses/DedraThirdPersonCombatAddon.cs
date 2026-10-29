@@ -389,7 +389,7 @@ function M.Install(Dedra, step)
   local owner = ""gcet.dedra.shared.v3""
   local settle = 0
   local engineWakes, itpWakes, toggleWakes = 0, 0, 0
-  local lastSignal = ""startup""
+  local lastSignal, lastEvent = ""startup"", nil
   local function debts()
     -- Author-owned on/armSent start nil on player attach. Nil means the
     -- native write is unconfirmed, not that a wrapper/arm hold is ACTIVE.
@@ -460,7 +460,7 @@ function M.Install(Dedra, step)
     local count = 0
     for _, name in ipairs(names) do
       local registered, id = pcall(base.events.on,name,owner,function()
-        M.Signal(""itp:"" .. name)
+        M.Signal(""itp"", name)
       end)
       if registered and type(id) == ""number"" and id >= 0 then
         count = count + 1
@@ -476,7 +476,7 @@ function M.Install(Dedra, step)
     end)
     bridge = okReady and ready == true
   end
-  function M.Signal(proof)
+  function M.Signal(proof, event)
     -- The original CET camera toggle can notify before ITP publishes the
     -- new request. Only that explicit toggle needs a short transition
     -- bridge. Routine combat/aim/weapon events just re-evaluate routing;
@@ -484,14 +484,12 @@ function M.Install(Dedra, step)
     if proof == ""__gcetItpToggleWakeV2"" then
       settle = math.max(settle, 0.5)
       toggleWakes = toggleWakes + 1
-    elseif type(proof) == ""string"" and
-      proof:sub(1,4) == ""itp:"" then
+    elseif proof == ""itp"" then
       itpWakes = itpWakes + 1
-    elseif type(proof) == ""string"" and
-      proof:sub(1,7) == ""engine:"" then
+    elseif proof == ""engine"" then
       engineWakes = engineWakes + 1
     end
-    lastSignal = proof or ""direct""
+    lastSignal, lastEvent = proof or ""direct"", event
     if started then
       if not linked then bind() end
       if api and not bridge then
@@ -528,7 +526,7 @@ function M.Install(Dedra, step)
       ""PlayerReady"", ""PlayerInvalidated"" }
     for _, name in ipairs(events) do
       local subscription = ownerClient.Subscribe(name,function()
-        M.Signal(""engine:"" .. name)
+        M.Signal(""engine"", name)
       end)
       engineListeners[#engineListeners + 1] = subscription
     end
@@ -565,7 +563,7 @@ function M.Install(Dedra, step)
       quietJob=slow and slow.IsActive() or false,
       calls=calls, quietCalls=quietCalls,
       settle=settle, activeReason=fastReason() or ""quiet"",
-      lastSignal=lastSignal, signals={
+      lastSignal=lastSignal, lastEvent=lastEvent, signals={
         engine=engineWakes, itp=itpWakes, toggle=toggleWakes },
       perspective=perspective,
       debts={ takeover=Dedra.takeover == true,
