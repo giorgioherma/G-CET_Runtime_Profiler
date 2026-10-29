@@ -33,6 +33,13 @@ function sit:new()
             end
         end
     end)
+    registerInput("sitAnywhere", "[Optional] Hold to scan for sittable surface", function(down)
+        if down then
+            self.runtimeData.forceScan = true
+        else
+            self.runtimeData.forceScan = false
+        end
+    end)
 end
 '@
 Put 'init.lua' $original
@@ -43,10 +50,19 @@ function Cron.Halt() end
 '@
 Put 'modules/logic.lua' @'
 local logic = {}
-function logic:new()
+function logic:new(mod)
     local o = {}
+    o.mod = mod
     o.sittables = {}
     return o
+end
+function logic:init()
+    GameUI.Observe("ScannerOpen", function()
+        self.isScanning = true
+    end)
+    GameUI.Observe("ScannerClose", function()
+        self.isScanning = false
+    end)
 end
 function logic:hideAllWorkspots()
     self.sittables = {}
