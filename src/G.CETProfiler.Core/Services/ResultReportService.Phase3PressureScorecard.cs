@@ -237,7 +237,7 @@ public static partial class ResultReportService
         }
         if (p.nativePreDispatch.Count > 0)
         {
-            sb.Append("<h3>Observed native pre-dispatch windows (NON-ADDITIVE)</h3>")
+            sb.Append("<h3>Native pre-dispatch windows (NON-ADDITIVE)</h3>")
               .Append("<table><thead><tr><th>Boundary</th><th>Method</th>")
               .Append("<th>Calls</th><th>Positive MiB (overlap)</th>")
               .Append("<th>Requests (overlap)</th></tr></thead><tbody>");
