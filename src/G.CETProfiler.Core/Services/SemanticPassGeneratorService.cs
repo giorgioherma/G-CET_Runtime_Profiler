@@ -40,8 +40,8 @@ internal static class SemanticPassGeneratorService
                 modsRoot,
                 candidate.Owner,
                 candidate.RuleId,
-                staged,
-                composedHostFiles);
+                staged);
+            context.UseComposedHostFiles(composedHostFiles);
 
             try
             {
@@ -551,7 +551,8 @@ internal sealed class SemanticPatchContext
 
     private readonly string _modsRoot;
     private readonly Dictionary<string, byte[]> _staged;
-    private readonly IReadOnlyDictionary<string,byte[]> _composedHostFiles;
+    private IReadOnlyDictionary<string,byte[]> _composedHostFiles =
+        new Dictionary<string,byte[]>(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, SemanticFileChange> _changes =
         new(StringComparer.OrdinalIgnoreCase);
     private string? _ownerFolder;
@@ -567,24 +568,19 @@ internal sealed class SemanticPatchContext
         string owner,
         string ruleId,
         Dictionary<string, byte[]> staged)
-        : this(modsRoot,owner,ruleId,staged,
-            new Dictionary<string,byte[]>(StringComparer.OrdinalIgnoreCase))
-    {
-    }
-
-    internal SemanticPatchContext(
-        string modsRoot,
-        string owner,
-        string ruleId,
-        Dictionary<string, byte[]> staged,
-        IReadOnlyDictionary<string,byte[]> composedHostFiles)
     {
         _modsRoot = Path.GetFullPath(modsRoot);
         Owner = owner;
         RuleId = ruleId;
         _staged = staged;
-        _composedHostFiles = composedHostFiles;
     }
+
+    // Fixed runtime is precomposed before semantic generation; its files
+    // are assembled into the ZIP later so unrelated generic stages cannot
+    // overwrite them. Do not change the legacy four-arg context constructor
+    // used by existing independent mod regression contracts.
+    internal void UseComposedHostFiles(IReadOnlyDictionary<string,byte[]> files)
+        => _composedHostFiles = files;
 
     internal SemanticTextFile FindFile(
         string preferredRelative,
