@@ -37,7 +37,7 @@ internal static partial class SemanticInjectors
             var workerV2 = CyberTrialsWorkerV2();
             var v1 = WorkerExecutable(worker);
             var workerNeeded = !string.Equals(v1, WorkerExecutable(workerV2), StringComparison.Ordinal);
-            if (workerNeeded && !string.Equals(v1.TrimEnd(), CyberTrialsWorkerV1.TrimEnd(),
+            if (workerNeeded && !string.Equals(v1, WorkerExecutable(CyberTrialsWorkerV1),
                 StringComparison.Ordinal))
             {
                 var expected=workerV2.TrimEnd();
@@ -658,6 +658,21 @@ function M.attach(created, dispatch, legacyTick, realtime)
 end
 return M
 """;
+
+    // Ignore non-executable leading commentary only. All executable worker
+    // statements and ownership remain byte-for-byte proven after normalization.
+    private static string WorkerExecutable(string value)
+    {
+        var text=value.Replace("\r\n","\n",StringComparison.Ordinal).TrimEnd();
+        var first=text.IndexOf('\n');
+        if(first<0) return text;
+        var secondEnd=text.IndexOf('\n',first+1);
+        if(secondEnd>first &&
+           text.AsSpan(first+1,secondEnd-first-1).TrimStart()
+               .StartsWith("--",StringComparison.Ordinal))
+            text=text[..(first+1)]+text[(secondEnd+1)..];
+        return text;
+    }
 
     private static string CyberTrialsWorkerV2()
     {
