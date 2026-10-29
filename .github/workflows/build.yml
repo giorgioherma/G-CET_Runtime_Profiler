@@ -1472,6 +1472,10 @@ jobs:
         shell: pwsh
         run: ./tests/MinimapStealthWidgetLocalityContract.ps1 -ResolverRoot ./publish-resolver
 
+      - name: Minimap immutable profile-ID cache source contract
+        shell: pwsh
+        run: ./tests/MinimapProfileIdCacheContract.ps1 -ResolverRoot ./publish-resolver
+
       - name: Yaiba apartment distant-bathtub semantic contract
         shell: pwsh
         run: ./tests/YaibaApartmentDormancyContract.ps1 -ResolverRoot ./publish-resolver
