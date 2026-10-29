@@ -1,3 +1,5 @@
+> **CURRENT DEBRA V3 CANDIDATE (2026-10-29):** The old V2 `FrameListeners.MakeRegistrar` / unconditional CET fallback and #2152 unsafe whole-step FPP gate are superseded by an actual source-generated shared 0-Engine scheduler implementation. [CI #2176](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/40800050549) **GREEN 6/6**, boot/gameplay still **UNVERIFIED**. See [Dedra V3](DEDRA-CORE-SCHEDULER-INTEGRATION-PROPOSAL-20261029.md). Historical notes below describe previous failed generations, not current generation.
+
 > **SUPERSEDED / REGRESSION — 2026-10-29:** The #2152 FPP-idle mitigation documented below is unsafe for this stack and is rolled back. Green CI did not prove safety. See the final crash section for the actual source maintenance and dump findings.
 
 # Phase 3 — source-owned hotspot dormancy and allocation plan (2026-10-28)
