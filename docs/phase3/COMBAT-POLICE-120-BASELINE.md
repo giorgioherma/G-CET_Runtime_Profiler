@@ -1,6 +1,6 @@
 # COMBAT-POLICE-120 — canonical Phase 3 controlled gameplay benchmark
 
-**Approved 2026-10-29; NEW BASELINE NOT YET CAPTURED.** Supersedes [historical COMBAT-POLICE-60](COMBAT-POLICE-60-BASELINE.md) prospectively. This is a duration and reporting change, **not a new gameplay route or different stress scenario**. The historical 60s captures are retained as valid evidence of their own configuration; they are not the comparison baseline for future 120s results.
+**Approved 2026-10-29; FIRST MEASURED 120s REFERENCE CAPTURED 2026-10-29 19:51 local filename timestamp.** Supersedes [historical COMBAT-POLICE-60](COMBAT-POLICE-60-BASELINE.md) prospectively. This is a duration and reporting change, **not a new gameplay route or different stress scenario**. The historical 60s captures are retained as valid evidence of their own configuration; they are not the comparison baseline for future 120s results.
 
 ## Reproduction and controls
 
@@ -22,4 +22,27 @@ The latest 60s DAV + GigCore combat capture had **zero completed GC cycles**, co
 
 - **Implementation:** `payload/CETProfilerControls/init.lua` contains one constant `TIMED_CAPTURE_SECONDS = 120`; all text/HUD reflects 120 seconds; legacy input ID remains; manual F11 is unchanged. No native DLL, game mod, scheduler or Resolver transformation changes.
 - **Regression:** `tests/ProfilerTimedCaptureLuaContract.lua` proves F10 remains active past 60.02s and 119.99s, finishes just over 120s, emits the correct markers once, preserves no duplicate registrations and keeps F11 unrestricted.
-- **Runtime/new baseline:** first real 120s user-controlled gameplay capture, CapFrameX correlation, genuine per-job data, no dropped scopes and collector/hitch metrics. **Until this run exists the 120s baseline is NOT MEASURED.** Preserve all 60s captures as historical references.
+- **Runtime/new baseline:** first real 120s user-controlled gameplay capture, CapFrameX correlation, genuine per-job data, no dropped scopes and collector/hitch metrics. **The first 120s capture now exists and is measured; source-level and in-game camera feature validation remain separate, and the exact starting save/gear are NOT_RECORDED in telemetry.** Preserve all 60s captures as historical references.
+
+## First measured 120s reference — 2026-10-29
+
+**User archive:** `CET-20261029-195149_FPC_TPC_AND_MINIMAP_GCRESULTS.zip`. F10 `SCENARIO_COMBAT_START` marker and CapFrameX association; CET **120.008372s**, CapFrameX **120.005s** and **4,677 presented frames**, correlation `GOOD / exactAlignment=true`, 3.496ms duration difference. User reports substantially smoother play apart from a brief heavier GC stall; whether the exact same saved gear/wanted level were used is `NOT_RECORDED`, not a reason to reject a user-controlled run. **This is the first baseline for future 120s-vs-120s comparisons, not a causal A/B for the newly optimized camera mods.**
+
+| Whole-capture counter | Measured value |
+|---|---:|
+| Positive LuaJIT allocator growth (not necessarily garbage) | **397.893360 MiB = 3.315547 MiB/s** |
+| Positive allocator requests | **3,491,135 = 29,090.762/s** |
+| New GC-managed object births | **901,456 = 7,511.609/s** |
+| Unknown/unattributed positive allocations | **196.638250 MiB = 49.420%** |
+| Collector execution (includes incremental GC, not a faster completed cycle) | **2,954.3086ms / 120s = 24.6175ms/s** |
+| Completed GC cycles | **2**: first observed frame end **63.514703s**, second **65.330284s** |
+| Explicit Lua collectgarbage calls | **0** |
+| Lua heap samples | first **620.921 MiB**, peak **780.730 MiB**, last **613.668 MiB**; last minus first **−7.253 MiB** |
+| CapFrameX frame delivery | P95 **33.768ms**, P99 **46.046ms**, P99.9 **109.135ms**, worst **478.836ms**, **7** frames >100ms |
+| Grouped adaptive hitch episodes | **59 / 120s = 29.499/min**; hitch excess **2,492.216ms** |
+
+**Time structure:** The first 60s had **0 completed cycles**, **1,377.895ms** collector execution, **35** grouped hitch episodes and **1** frame >100ms; the second 60s had **2 completed cycles**, **1,576.413ms** collector execution, **24** grouped episodes and **6** frames >100ms. The narrow **63–66s** window alone had **1,469.080ms collector work**, **both completed cycles**, and two catastrophic grouped episodes: **478.836ms** worst frame near 63s; **313.458ms** worst frame near 64–65s. Together those two episodes generated **1,318.503ms = 52.90%** of full-run hitch excess. The first overlaps **444.153ms collector work bucket** and `f80h_aroused_expressions` `onUpdate` (444.744ms raw callback); the second overlaps more collector work and `AutoLoot` `onUpdate` (244.305ms raw callback) plus the 0-Engine frame lane. **Overlapping callbacks are the GC trigger site / raw wall time, not proof they allocated the garbage.** After 66s, the remaining 54 seconds had **P99 40.587ms**, only **8** frames >50ms and **no frames >100ms**, consistent with user-perceived longer smooth stretches. GC phase includes two >99ms *atomic* operations around **47.35s (116.027ms)** and **64.015s (99.821ms)** and cannot be ascribed to a mod without source proof.
+
+**Historical 60-second, contextual rates (NOT matched 120s A/B):** Against the 2026-10-29 17:14 `DAV_GIGCORE` capture, 120s **Minimap Widgets** measured **0.125694MiB/s, 922.98 ops/s, 76.49 GC births/s** vs prior **0.156754MiB/s, 1,174.7 ops/s, 118.4 births/s**, consistent with a useful reduction but not single-mod causality. **Immersive Third Person** measured **0.089381MiB/s, 332.54 ops/s, 9.94 births/s** vs prior **0.097502MiB/s, 351.8 ops/s, 29.9 births/s**, also favorable. **Immersive First Person** measured **0.168730MiB/s, 1,273.33 ops/s, 157.64 births/s** vs **0.144525MiB/s, 1,069.9 ops/s, 142.7 births/s**, not an unambiguous reduction per second. Framerate also changed from **33.962→38.973FPS**; therefore investigate **ops/frame** and hot callsites before attributing IFP behavior to the optimized scratch source. **Global positive growth and requests/s are higher than the prior 60s**, so do NOT claim a measured stack-wide allocation reduction from this cross-duration comparison.
+
+**Next steps:** Preserve this ZIP, raw GC buckets, CapFrameX run and time-aligned evidence; verify FPP FreeLook/crouch/aiming and TPP toggles/restore and Minimap pin visibility in actual gameplay. Match future captures to **this 120s baseline**, inspect the first-minute and second-minute view and 63–66s GC cluster, and isolate sustained producer sources rather than patching a GC-overlapped callback or changing GC parameters to hide the stall. Native-to-Lua redesign is still unimplemented.
