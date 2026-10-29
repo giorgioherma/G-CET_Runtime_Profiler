@@ -1,227 +1,172 @@
--- Run against the worker extracted from the authoritative C# producer.
--- Simulates FPP startup, keybind wake, TPP combat/ADS cleanup, missing
--- capability, rejected API listeners, missing base and 0-Engine fallback.
-local file = assert(arg[1], "generated worker path required")
+-- Execute the actual V3 worker extracted from the authoritative source.
+-- CET registration must NEVER occur inside Start() or frame/event callbacks.
+local file = assert(arg[1], "generated Dedra scheduler worker required")
 local worker = assert(loadfile(file))()
-if arg[2] then
-  package.loaded["modules/GCETWorkloadProbe"] = {
-    Begin = function() return nil end, End = function() end
-  }
-end
-local frameLibrary = arg[2] and assert(loadfile(arg[2]))() or nil
-local function check(ok, why) assert(ok, why) end
-local function make(opts)
+local function check(ok, message) assert(ok, message) end
+local function harness(opts)
   opts = opts or {}
   local requested = opts.requested == true
-  local pending = false
-  local eventFns, calls, frame, fallbackCalls = {}, 0, nil, 0
-  local counters = {paused = 0, resumed = 0, registered = 0, cancelled = 0}
-  local active = true
+  local events, engineEvents, jobs = {}, {}, {}
+  local frames, calls, quietCalls, nativeRegistrations = 0, 0, 0, 0
+  local addon = {takeover=false,on=nil,armSent=nil,standIn=nil}
   local base = {
-    events = {
-      on = function(kind, owner, fn)
-        eventFns[kind] = fn
-        return opts.rejectListener and -3 or 2
+    events={
+      on=function(kind,owner,fn)
+        if opts.rejectListener then return -3 end
+        events[kind]=fn
+        return 2
       end,
-      off = function(kind, owner) eventFns[kind] = nil end
+      off=function(kind,owner) events[kind]=nil end
     },
-    perspective = {
-      get = function()
-        return {
-          userWantsThirdPerson = requested,
-          mode = requested and "third" or "first",
-          transitioning = false
-        }
+    perspective={
+      get=function()
+        return {userWantsThirdPerson=requested,
+          mode=requested and "third" or "first",
+          transitioning=false,override="none"}
       end
-    }
+    },
+    gcetDedraWakeReady=function() return opts.noCapability~=true end
   }
-  if opts.capability then
-    base.gcetDedraWakeReady = function() return true end
+  local schedule={}
+  local function makeJob(kind,interval,options,fn)
+    local job={kind=kind,interval=interval,fn=fn,
+      active=options.active~=false,elapsed=0,next=interval,cancelled=false}
+    function job.Pause() job.active=false end
+    function job.Resume() if not job.cancelled then job.active=true end end
+    function job.Cancel() job.active=false;job.cancelled=true end
+    function job.IsActive() return job.active and not job.cancelled end
+    jobs[#jobs+1]=job
+    return job
   end
-  local engine = {
-    FrameListeners = {
-      MakeRegistrar = function(owner, fallback)
-        return function(event, callback)
-          check(event == "onUpdate", "wrong worker event")
-          check(not frame, "duplicate frame subscription")
-          counters.registered = counters.registered + 1
-          frame = callback
-          if opts.nilHandle then return nil end
-          return {
-            Pause = function()
-              if active then active = false; counters.paused = counters.paused + 1 end
-            end,
-            Resume = function()
-              if not active then active = true; counters.resumed = counters.resumed + 1 end
-            end,
-            Cancel = function() counters.cancelled = counters.cancelled + 1 end
-          }
+  schedule.EveryFrame=function(options,fn) return makeJob("frame",0,options,fn) end
+  schedule.Every=function(interval,options,fn) return makeJob("timed",interval,options,fn) end
+  local client={Schedule=schedule,
+    Subscribe=function(name,fn)
+      engineEvents[name]=fn
+      return {unsubscribe=function() engineEvents[name]=nil end}
+    end}
+  local host={__gcetScheduleDriver=function() end,
+    Register=function(name)
+      check(name=="DedraThirdPersonCombatAddon","unexpected scheduler owner")
+      return client
+    end}
+  GetMod=function(name)
+    if name=="0-Engine" then return opts.noEngine and nil or host end
+    if name=="immersive_third_person" then return opts.noItp and nil or base end
+  end
+  registerForEvent=function(...) nativeRegistrations=nativeRegistrations+1 end
+  local module=worker.Install(addon,function(dt)
+    calls=calls+1
+    if dt >= 0.2 then quietCalls=quietCalls+1 end
+    -- A real author step reconciles and releases RESET states.
+    if opts.autoSettle~=false then
+      addon.on=false;addon.armSent=false;addon.standIn=""
+    end
+  end)
+  local function tick(dt)
+    frames=frames+1
+    for _, job in ipairs(jobs) do
+      if job.IsActive() then
+        job.elapsed=job.elapsed+dt
+        if job.kind=="frame" or job.elapsed>=job.interval-1e-6 then
+          local elapsed=job.elapsed
+          job.elapsed=0
+          job.fn({frame=frames,dt=dt,elapsed=elapsed})
         end
       end
-    }
-  }
-  -- Unlike the lightweight frame mock, this is the actual authoritative
-  -- 0-Engine FrameListeners implementation, including physical unsubscribe.
-  local pendingTasks = {}
-  if opts.realFrame then
-    check(frameLibrary and type(frameLibrary.New) == "function", "real module not supplied")
-    package.loaded["modules/GCETWorkloadProbe"] = {
-      Begin = function() return nil end, End = function() end
-    }
-    engine.FrameListeners = nil
-    engine.MakeEventRegistrar = function(owner, fallback)
-      return function(event, callback)
-        check(event == "onUpdate", "incorrect adopted event")
-        check(not frame, "duplicate active 0-Engine subscribers")
-        counters.registered = counters.registered + 1
-        frame = callback
-        return {unsubscribe = function()
-          check(frame == callback, "wrong callback unsubscribed")
-          frame = nil
-          counters.cancelled = counters.cancelled + 1
-        end}
-      end
     end
-    engine.Schedule = {NextTick = function(_, callback)
-      local task = {cancelled = false}
-      function task.Cancel() task.cancelled = true end
-      pendingTasks[#pendingTasks + 1] = {run = callback, task = task}
-      return task
-    end}
-    engine.FrameListeners = frameLibrary.New(engine)
   end
-  if opts.noFrameService then engine.FrameListeners = nil end
-  if opts.noEngine then engine = nil end
-  GetMod = function(name)
-    if name == "0-Engine" then return engine end
-    if name == "immersive_third_person" then return opts.noBase and nil or base end
-    return nil
-  end
-  local addon = {takeover = false}
-  local control = worker.Install(addon, function(dt) calls = calls + 1 end,
-    function(event, callback) fallbackCalls = fallbackCalls + 1; frame = callback end)
-  control.Register()
-  control.Start()
   return {
-    state = addon, control = control, base = base, counters = counters,
-    isActive = function() return active end,
-    setRequested = function(v) requested = v end,
-    emit = function(kind) if eventFns[kind] then eventFns[kind]() end end,
-    tick = function()
-      if frame and (opts.realFrame or active) then frame(1 / 60) end
+    start=function() module.Start() end,
+    stop=function() module.Stop() end,
+    addon=addon,module=module,
+    tick=tick,
+    run=function(count,dt) for _=1,count do tick(dt or 0.1) end end,
+    setRequested=function(v) requested=v end,
+    event=function(name)
+      if events[name] then events[name]() end
     end,
-    flush = function()
-      local tasks = pendingTasks
-      pendingTasks = {}
-      for _, entry in ipairs(tasks) do
-        if not entry.task.cancelled then entry.run() end
-      end
+    engineEvent=function(name)
+      check(engineEvents[name]~=nil,"missing engine wake "..name)
+      engineEvents[name]()
     end,
-    hasFrame = function() return frame ~= nil end,
-    diagnostics = function() return control.Diagnostics() end,
-    calls = function() return calls end,
-    fallbacks = function() return fallbackCalls end
+    calls=function() return calls end,
+    quietCalls=function() return quietCalls end,
+    nativeCount=function() return nativeRegistrations end,
+    jobs=function() return jobs end,
+    diagnostics=function() return module.Diagnostics() end
   }
 end
 
 do
-  local t = make({capability = true})
-  check(not t.isActive() and t.counters.paused == 1,
-    "supported FPP startup must pause without waiting for first toggle")
-  local d = t.diagnostics()
-  check(d.pausable == true and d.linked == true and d.bridge == true and
-        d.requested == false and d.listenerActive == false,
-    "read-only diagnostics do not explain valid FPP dormancy")
-  t.tick()
-  check(t.calls() == 0, "FPP dormancy executed author combat step")
+  local t=harness()
+  t.start()
+  check(#t.jobs()==2,"Dedra did not use two existing schedule lanes")
+  check(t.nativeCount()==0,"Dedra registered native callback during onInit")
+  t.run(12,0.1)
+  local d=t.diagnostics()
+  check(d.mode=="quiet" and not d.activeJob and d.quietJob,
+    "steady FPP with completed REDscript cleanup did not park active lane")
+  local before=t.calls()
+  t.run(2,0.1)
+  check(t.calls()-before<=1,"quiet FPP performed per-frame combat work")
+  t.run(3,0.1)
+  check(t.calls()>before,"quiet FPP dropped necessary REDscript reconciliation")
+  local slowCount=t.diagnostics().quietCalls
+  check(slowCount>0,"quiet maintenance never executed")
   t.setRequested(true)
-  t.control.Signal("__gcetItpToggleWakeV2")
-  check(t.isActive() and t.counters.resumed == 1, "CET toggle did not synchronously wake")
-  t.tick()
-  check(t.calls() == 1, "TPP did not run full author update")
-  t.state.takeover = true
+  t.event("perspectiveChanged")
+  check(t.diagnostics().activeJob and not t.diagnostics().quietJob,
+    "ITP F7/slider request did not wake full-frame lane")
+  local wakeBefore=t.calls()
+  t.tick(0.1)
+  check(t.calls()==wakeBefore+1,"TPP wake did not execute author step")
+  t.addon.takeover=true
   t.setRequested(false)
-  t.control.Signal("__gcetItpToggleWakeV2")
-  check(t.isActive(), "combat cleanup was prematurely paused")
-  t.tick()
-  t.state.takeover = false
-  t.emit("perspectiveChanged")
-  check(not t.isActive(), "completed FPP cleanup did not go dormant")
-  t.control.Stop()
-  check(t.counters.cancelled == 1 and t.counters.registered == 1,
-    "worker has duplicate ownership or missing shutdown cancellation")
+  t.event("transitionEnd")
+  t.run(10,0.1)
+  check(t.diagnostics().mode=="active",
+    "combat takeover cleanup incorrectly entered dormant FPP")
+  t.addon.takeover=false
+  t.engineEvent("WeaponStateChanged")
+  t.run(15,0.1)
+  check(t.diagnostics().mode=="quiet","event wake never settled into FPP")
+  t.stop()
+  check(not t.diagnostics().activeJob and not t.diagnostics().quietJob,
+    "shutdown left scheduler jobs running")
+  check(t.nativeCount()==0,"late CET registration occurred")
 end
 
 do
-  local t = make({capability = true, requested = true})
-  check(t.isActive(), "saved TPP request was wrongly paused on startup")
-  t.setRequested(false)
-  t.emit("perspectiveChanged")
-  check(not t.isActive(), "base perspective OFF event did not pause")
+  local t=harness({noItp=true})
+  t.start()
+  t.run(20)
+  check(t.diagnostics().mode=="active","standalone mod failed open to original cadence")
+  check(t.calls()==20,"missing ITP dropped author updates")
+  t.stop()
 end
 
 do
-  local t = make({capability = false})
-  check(t.isActive() and t.counters.paused == 0,
-    "unverified original/partial ITP was unsafely detached")
+  local t=harness({rejectListener=true})
+  t.start()
+  t.run(15)
+  check(t.diagnostics().mode=="active","partially rejecting ITP listener slept unsafely")
+  t.stop()
 end
 
 do
-  local t = make({capability = true, rejectListener = true})
-  check(t.isActive() and t.counters.paused == 0,
-    "rejected event wake subscription allowed unsafe pause")
+  local t=harness({noCapability=true})
+  t.start()
+  t.run(15)
+  check(t.diagnostics().mode=="active","unproven read-only ITP capability slept unsafely")
+  t.stop()
 end
 
 do
-  local t = make({capability = false, noBase = true})
-  check(t.isActive(), "missing ITP stranded standalone addon")
+  local t=harness({noEngine=true})
+  local ok=pcall(t.start)
+  check(not ok,"missing composed 0-Engine silently lost execution")
+  check(t.nativeCount()==0,"worker attempted crashing late registration fallback")
 end
 
-do
-  local t = make({capability = true, noEngine = true})
-  check(t.fallbacks() == 1, "missing 0-Engine dropped original update fallback")
-end
-
-if frameLibrary then
-  do
-    local t = make({capability = true, realFrame = true})
-    check(t.diagnostics().pausable == true and t.fallbacks() == 0,
-      "actual 0-Engine frame implementation was not adopted")
-    t.flush() -- Pause physically unsubscribes, not merely skips callback work.
-    check(not t.hasFrame(), "FPP frame listener remained subscribed after pause")
-    t.setRequested(true)
-    t.control.Signal("__gcetItpToggleWakeV2")
-    check(t.hasFrame() and t.diagnostics().listenerActive == true,
-      "original CET toggle did not reattach the real listener")
-    t.tick()
-    check(t.calls() == 1, "real listener failed to run TPP author step")
-    t.setRequested(false)
-    t.control.Signal("__gcetItpToggleWakeV2")
-    t.flush()
-    check(not t.hasFrame(), "TPP OFF did not physically detach the real listener")
-    t.control.Stop()
-    t.flush()
-  end
-end
-
-do
-  local t = make({capability = true, noEngine = true})
-  check(t.fallbacks() == 1 and t.diagnostics().registrationPath == "cet-fallback" and
-        t.diagnostics().registrationReason == "engine-unavailable",
-    "missing 0-Engine must explain file-load CET fallback")
-end
-
-do
-  local t = make({capability = true, noFrameService = true})
-  check(t.fallbacks() == 1 and t.diagnostics().registrationReason == "frame-service-unavailable",
-    "absent startup frame service must be recorded")
-end
-
-do
-  local t = make({capability = true, nilHandle = true})
-  check(t.fallbacks() == 0 and t.diagnostics().registrationPath == "unmanaged-registration" and
-        t.diagnostics().registrationReason == "no-pausable-handle:nil",
-    "registered callback with no pausable handle must not double-register")
-end
-
-print("Dedra worker runtime: startup registration reason, FPP pause, CET wake, cleanup, API fallback, real listener PASS")
+print("Dedra shared schedule runtime: FPP quiet 0.25s, full TPP wake, cleanup, REDscript audit, fallback and zero late native registrations PASS")
