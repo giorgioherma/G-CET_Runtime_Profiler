@@ -250,6 +250,44 @@ jobs:
             }
           }
 
+          # SPECTER is a campaign plus persistent interceptor; the M10
+          # recovery sidecar must keep every-frame story handoff but skip
+          # unnecessary unrelated owner/PhoneSystem lookups when inactive.
+          $specterOriginal = Join-Path $mods 'SpecterM11RecoveryDev/init.lua'
+          if (Test-Path -LiteralPath $specterOriginal) {
+            $author = Get-Content -LiteralPath $specterOriginal -Raw
+            if ($author.Contains('local function metricGet(ns,key,default)') -and
+                $author.Contains('local seq=metricGet(STORY_NS,"specter_story_sequence",0)')) {
+              $emittedPath = Join-Path $output 'bin/x64/plugins/cyber_engine_tweaks/mods/SpecterM11RecoveryDev/init.lua'
+              if (!(Test-Path -LiteralPath $emittedPath)) {
+                throw 'SPECTER_RECOVERY_GC_OUTPUT_MISSING: expected untouched recovery source transformation'
+              }
+              $produced = Get-Content -LiteralPath $emittedPath -Raw
+              if (!$produced.Contains('__gcetSpecterMetricCoreOnlyV1') -or
+                  !$produced.Contains('pcall(core.State.get,ns,key,default)') -or
+                  !$produced.Contains('pcall(core.Bus.getMetric,ns,key,default)') -or
+                  !$produced.Contains('if seq==9 and rainbowDone==1 and recoveryDone==0 then') -or
+                  !$produced.Contains('refresh()') -or
+                  !$produced.Contains('autoStartClock>=0.75') -or
+                  $produced.Contains('pcall(function() return core.State.get(ns,key,default) end)')) {
+                throw 'SPECTER_RECOVERY_GC_INCOMPLETE: core metric shortcut or same-frame M9 handoff lost'
+              }
+              $musicOriginal = Join-Path $mods 'SpecterM11RecoveryDev/specter_mission_music.lua'
+              if (Test-Path -LiteralPath $musicOriginal) {
+                $originalMusic = Get-Content -LiteralPath $musicOriginal -Raw
+                if ($originalMusic.Contains('pending={}') -and
+                    $originalMusic.Contains('local function flush(bus)') -and
+                    $originalMusic.Contains('if M.owner then M.stop(bus) else flush(bus) end')) {
+                  if (!$produced.Contains('__gcetSpecterIdleMusicBusV1') -or
+                      !$produced.Contains('next(Music.pending) ~= nil) and phoneBus() or nil')) {
+                    throw 'SPECTER_MUSIC_WAKE_INCOMPLETE: active or pending music no longer proven'
+                  }
+                }
+              }
+              Write-Host 'SPECTER source-owned core-only metric read, active handoff and pending music bus proof PASS'
+            }
+          }
+
       - name: Remove temporary private source
         if: always()
         shell: pwsh
