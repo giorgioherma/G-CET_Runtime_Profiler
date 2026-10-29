@@ -98,6 +98,46 @@ local function harness(opts)
   }
 end
 
+
+-- Real Dedra author state: OnGameAttached sets on=nil, armSent=nil.
+-- Both are NOT active holds. An unavailable Core can leave nil in place,
+-- so the original 0.25s reconciliation must continue without a frame job.
+do
+  local t=harness({autoSettle=false})
+  t.start()
+  t.run(15,0.1)
+  local d=t.diagnostics()
+  check(d.mode=="quiet" and d.quietJob and not d.activeJob,
+    "author nil state kept Dedra active forever while FPP was idle")
+  check(d.initialState.on and d.initialState.armSent and not d.pendingCleanup,
+    "unconfirmed native writer state was incorrectly classified as a live hold")
+  local prior=t.calls()
+  t.run(10,0.1)
+  check(t.calls()>prior and t.diagnostics().quietCalls>0,
+    "unconfirmed Core state lost the conservative full step audit")
+  check(t.nativeCount()==0,"nil-author recovery registered a late native hook")
+  t.stop()
+end
+
+-- A *confirmed active* REDscript/animation hold, unlike nil, must keep
+-- full-frame cleanup until the author marks it released.
+do
+  local t=harness({autoSettle=false})
+  t.addon.on=true
+  t.addon.armSent=true
+  t.start()
+  t.run(15,0.1)
+  check(t.diagnostics().mode=="active" and t.diagnostics().pendingCleanup,
+    "live animation/arm hold slept before releasing Core inputs")
+  t.addon.on=false
+  t.addon.armSent=false
+  t.engineEvent("WeaponStateChanged")
+  t.run(15,0.1)
+  check(t.diagnostics().mode=="quiet",
+    "confirmed released hold did not permit FPP dormancy")
+  t.stop()
+end
+
 do
   local t=harness()
   t.start()
