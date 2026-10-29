@@ -45,6 +45,10 @@ internal static partial class SemanticInjectors
         // version-specific Music.update literal.
         var currentMusicCall=PreserveGenericGetters(text,musicCall);
         var currentOptimizedCall=PreserveGenericGetters(text,optimizedCall);
+        var currentBusGatedMusicCall=PreserveGenericGetters(text,
+            optimizedCall.Replace("Music.update(delta, phoneBus(),",
+                "Music.update(delta, (active or Music.owner ~= nil or next(Music.pending) ~= nil) and phoneBus() or nil,",
+                StringComparison.Ordinal));
         if (text.Contains(currentMusicCall, StringComparison.Ordinal))
         {
             var music = context.FindFile(
@@ -67,7 +71,8 @@ internal static partial class SemanticInjectors
                 "SPECTER per-frame music contract reuse");
         }
         else if (text.Contains("Music.update(", StringComparison.Ordinal) &&
-                 !text.Contains(currentOptimizedCall, StringComparison.Ordinal))
+                 !text.Contains(currentOptimizedCall, StringComparison.Ordinal) &&
+                 !text.Contains(currentBusGatedMusicCall, StringComparison.Ordinal))
             throw new InvalidOperationException(
                 "Recovery music update changed shape; refusing source rewrite.");
 
