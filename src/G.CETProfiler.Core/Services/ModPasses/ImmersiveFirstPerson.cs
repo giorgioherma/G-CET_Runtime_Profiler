@@ -199,16 +199,129 @@ internal static partial class SemanticInjectors
             "\tlocal blackboardPM = __gcetIFPBlackboardSystem:Get(blackboardDefs.PhotoMode)",
             "ImmersiveFirstPerson single invocation UI and PhotoMode provider");
 
+        // CameraCore's public EvaluateBody still returns a fresh table when
+        // called by external consumers. Only the existing internal hot path
+        // supplies a reusable output, so nested callers keep author semantics.
+        var camera = context.FindFile(
+            "Modules/CameraCore.lua",
+            "function CameraCore.EvaluateBody(nativePitch, crouching)",
+            "local function composeAndWrite(",
+            "local freeOffset = {");
+        var cameraText = ReuseImmersiveFirstPersonCameraMath(camera.Text);
+
         if (initText == init.Text && helperText == helpers.Text &&
-            gameSessionText == gameSession.Text)
+            gameSessionText == gameSession.Text &&
+            cameraText == camera.Text)
             return SemanticInjectionResult.Skip(
                 "All ImmersiveFirstPerson source stages are already complete.");
 
         context.Write(init, initText);
         context.Write(helpers, helperText);
         context.Write(gameSession, gameSessionText);
+        if (cameraText != camera.Text)
+            context.Write(camera, cameraText);
         return SemanticInjectionResult.Success(
             "Preserved rendered-frame camera/height work, but sampled expensive mounted/workspot/inspection/crouch/knockdown probes at 20 Hz using the validated optimized reference. Frame registration and action routing remain generic Resolver responsibilities.");
+    }
+
+    // Source-owned allocation reduction in the authoritative IFP generator:
+    // eliminate two fresh Lua tables/frame on the active FPP camera path.
+    // CameraCore.EvaluateBody remains public and returns a new table by default;
+    // only composeAndWrite supplies a scratch table, never retained by author
+    // state or the frame dispatcher. Neutral free-offset values are immutable.
+    private static string ReuseImmersiveFirstPersonCameraMath(string source)
+    {
+        const string marker = "__gcetIfpBodyScratchV1";
+        const string neutral = "__gcetIfpNeutralFreeV1";
+        if (source.Contains(marker, StringComparison.Ordinal) ||
+            source.Contains(neutral, StringComparison.Ordinal))
+        {
+            if (Regex.Matches(source, @"local " + marker + @"\s*=\s*\{\s*\}",
+                    RegexOptions.CultureInvariant).Count != 1 ||
+                Regex.Matches(source, @"local " + neutral + @"\s*=\s*\{",
+                    RegexOptions.CultureInvariant).Count != 1 ||
+                !source.Contains("function CameraCore.EvaluateBody(nativePitch, crouching, out)", StringComparison.Ordinal) ||
+                !source.Contains("out = out or {}", StringComparison.Ordinal) ||
+                !source.Contains("return out", StringComparison.Ordinal) ||
+                !source.Contains("local body = CameraCore.EvaluateBody(", StringComparison.Ordinal) ||
+                !source.Contains("        context.crouching,", StringComparison.Ordinal) ||
+                !source.Contains("        " + marker, StringComparison.Ordinal) ||
+                !source.Contains("local freeOffset = " + neutral, StringComparison.Ordinal) ||
+                source.Contains("local freeOffset = {", StringComparison.Ordinal))
+                throw new InvalidOperationException("IFP CameraCore scratch table stage is incomplete; refusing source drift.");
+            return source;
+        }
+
+        const string entry = "function CameraCore.EvaluateBody(nativePitch, crouching)\n";
+        const string replacement = "function CameraCore.EvaluateBody(nativePitch, crouching, out)\n";
+        if (source.Split(entry, StringSplitOptions.None).Length != 2)
+            throw new InvalidOperationException("IFP public body evaluation source changed.");
+        var bodyReturn = string.Join("\n", new[] {
+            "    return {",
+            "        progress = progress,",
+            "        lateral = 0.0,",
+            "        forward = forward,",
+            "        vertical = vertical,",
+            "        pitch = pitchCorrection,",
+            "    }",
+            "end",
+            "",
+            "local function getFreeLookLimits"
+        });
+        var outReturn = string.Join("\n", new[] {
+            "    out = out or {}",
+            "    out.progress = progress",
+            "    out.lateral = 0.0",
+            "    out.forward = forward",
+            "    out.vertical = vertical",
+            "    out.pitch = pitchCorrection",
+            "    return out",
+            "end",
+            "",
+            "local function getFreeLookLimits"
+        });
+        if (source.Split(bodyReturn, StringSplitOptions.None).Length != 2)
+            throw new InvalidOperationException("IFP EvaluateBody output structure changed.");
+        source = source.Replace(entry, replacement, StringComparison.Ordinal)
+                       .Replace(bodyReturn, outReturn, StringComparison.Ordinal);
+        const string call = "    local body = CameraCore.EvaluateBody(\n" +
+                            "        bodyDriverPitch,\n" +
+                            "        context.crouching\n" +
+                            "    )";
+        const string hot = "    local body = CameraCore.EvaluateBody(\n" +
+                           "        bodyDriverPitch,\n" +
+                           "        context.crouching,\n" +
+                           "        " + marker + "\n" +
+                           "    )";
+        if (source.Split(call, StringSplitOptions.None).Length != 2)
+            throw new InvalidOperationException("IFP internal EvaluateBody call drifted.");
+        source = source.Replace(call, hot, StringComparison.Ordinal);
+        const string free = "    local freeOffset = {\n" +
+                            "        yaw = 0.0,\n" +
+                            "        pitch = 0.0,\n" +
+                            "        sideProgress = 0.0,\n" +
+                            "        backProgress = 0.0,\n" +
+                            "        lateral = 0.0,\n" +
+                            "        forward = 0.0,\n" +
+                            "        vertical = 0.0,\n" +
+                            "        roll = 0.0,\n" +
+                            "    }";
+        if (source.Split(free, StringSplitOptions.None).Length != 2 ||
+            source.Split("local function composeAndWrite(", StringSplitOptions.None).Length != 2)
+            throw new InvalidOperationException("IFP free-offset source structure changed.");
+        source = source.Replace(free, "    local freeOffset = " + neutral, StringComparison.Ordinal);
+        var declaration = string.Join("\n", new[] {
+            "-- G-CET: reusable internal camera arithmetic only; external APIs still return fresh values.",
+            "local " + marker + " = {}",
+            "local " + neutral + " = {",
+            "    yaw = 0.0, pitch = 0.0, sideProgress = 0.0, backProgress = 0.0,",
+            "    lateral = 0.0, forward = 0.0, vertical = 0.0, roll = 0.0,",
+            "}",
+            "",
+        });
+        source = source.Replace("local function composeAndWrite(",
+            declaration + "local function composeAndWrite(", StringComparison.Ordinal);
+        return source;
     }
 
     internal static bool IsImmersiveFirstPersonActionDormancyComplete(string ownerFolder)
