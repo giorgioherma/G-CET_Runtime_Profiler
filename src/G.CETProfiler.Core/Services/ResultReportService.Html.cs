@@ -5,7 +5,7 @@ namespace GCETRuntimeProfiler.Core.Services;
 
 public static partial class ResultReportService
 {
-    private static string BuildHtml(ResultAnalysis a, string captureRoot)
+    private static string BuildHtml(ResultAnalysis a, string captureRoot, Phase3PressureScorecard pressure)
     {
         var sb = new StringBuilder(64_000);
         sb.Append("""
@@ -71,6 +71,8 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
                 .Append(" ms/s spent inside LuaJIT GC. It can be nested in CET and Scheduler wall times. ")
                 .Append("Raw  callback totals are not GC-free CPU costs; flagged spikes below need attribution review. ")
                 .Append("This is not permission to subtract all GC from any one mod.</div>");
+
+        AppendPhase3PressureScorecard(sb, pressure);
 
         sb.Append("<div class=\"section\"><h2>What stands out</h2>");
         if (a.Findings.Count == 0)
