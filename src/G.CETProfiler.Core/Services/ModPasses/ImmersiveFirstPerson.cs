@@ -205,8 +205,7 @@ internal static partial class SemanticInjectors
         var camera = context.FindFile(
             "Modules/CameraCore.lua",
             "function CameraCore.EvaluateBody(nativePitch, crouching)",
-            "local function composeAndWrite(",
-            "local freeOffset = {");
+            "local function composeAndWrite(");
         var cameraText = ReuseImmersiveFirstPersonCameraMath(camera.Text);
 
         if (initText == init.Text && helperText == helpers.Text &&
