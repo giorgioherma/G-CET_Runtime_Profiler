@@ -283,6 +283,13 @@ if ($worldOriginalStart -lt 0 -or $worldOriginalEnd -lt 0 -or
 }
 $worldOriginal = $originalText.Substring($worldOriginalStart,$worldOriginalEnd-$worldOriginalStart)
 $worldOptimized = $optimized.Substring($worldOptimizedStart,$worldOptimizedEnd-$worldOptimizedStart)
+# The new *independent* GC owner helper is inserted immediately BEFORE the
+# lootInRange function. This world-pin-only historical fixture must carry
+# only the world-pin stage, not half of the newer protected-owner stage.
+$ownerHelperStart = $worldOptimized.IndexOf('-- G-CET: same protected native owner lookup;', [StringComparison]::Ordinal)
+if ($ownerHelperStart -ge 0) {
+    $worldOptimized = $worldOptimized.Substring(0, $ownerHelperStart)
+}
 $legacy = "-- G-CET semantic:autoloot-world-pin-allocation-scan`n" +
     $originalText.Replace($worldOriginal,$worldOptimized)
 $legacy | Set-Content -LiteralPath $sourcePath -Encoding utf8
