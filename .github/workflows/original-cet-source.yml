@@ -158,6 +158,53 @@ jobs:
             }
           }
 
+          # Verify actual produced source for both camera owners. No private
+          # original content is published or included in workflow artifacts.
+          $ifpAuthor = Join-Path $mods 'ImmersiveFirstPerson/Modules/CameraCore.lua'
+          if (Test-Path -LiteralPath $ifpAuthor -PathType Leaf) {
+            $author = Get-Content -LiteralPath $ifpAuthor -Raw
+            if ($author.Contains('function CameraCore.EvaluateBody(nativePitch, crouching)') -and
+                $author.Contains('local freeOffset = {')) {
+              $outputCamera = Join-Path $output 'bin/x64/plugins/cyber_engine_tweaks/mods/ImmersiveFirstPerson/Modules/CameraCore.lua'
+              if (!(Test-Path -LiteralPath $outputCamera)) {
+                throw 'IFP_CAMERA_SCRATCH_OUTPUT_MISSING: original realtime camera not generated'
+              }
+              $actual = Get-Content -LiteralPath $outputCamera -Raw
+              if (!$actual.Contains('local __gcetIfpBodyScratchV1 = {}') -or
+                  !$actual.Contains('local __gcetIfpNeutralFreeV1 = {') -or
+                  !$actual.Contains('function CameraCore.EvaluateBody(nativePitch, crouching, out)') -or
+                  !$actual.Contains('out = out or {}') -or
+                  !$actual.Contains('local freeOffset = __gcetIfpNeutralFreeV1') -or
+                  !$actual.Contains('freeOffset = CameraCore.EvaluateFreeLook(')) {
+                throw 'IFP_CAMERA_SCRATCH_INCOMPLETE: public API or active FreeLook path changed'
+              }
+              Write-Host 'IFP original camera source: private arithmetic reuse and active FreeLook path verified'
+            }
+          }
+          $itpAuthor = Join-Path $mods 'immersive_third_person/init.lua'
+          if (Test-Path -LiteralPath $itpAuthor -PathType Leaf) {
+            $author = Get-Content -LiteralPath $itpAuthor -Raw
+            if ($author.Contains('local function makeTweakDBID(value)') -and
+                $author.Contains('mod.pluginHeartbeat(delta)') -and
+                $author.Contains('makeTweakDBID("AttachmentSlots.TppHead")')) {
+              $outputCamera = Join-Path $output 'bin/x64/plugins/cyber_engine_tweaks/mods/immersive_third_person/init.lua'
+              if (!(Test-Path -LiteralPath $outputCamera)) {
+                throw 'ITP_LITERAL_IDS_OUTPUT_MISSING: original updated camera was not generated'
+              }
+              $actual = Get-Content -LiteralPath $outputCamera -Raw
+              if (!$actual.Contains('local __gcetItppLiteralTweakIdsV1 = {}') -or
+                  !$actual.Contains('local __gcetItppLiteralKeySetV1 = {') -or
+                  !$actual.Contains('if __gcetItppLiteralKeySetV1[value] then') -or
+                  !$actual.Contains('return TweakDBID.new(value)') -or
+                  !$actual.Contains('return value') -or
+                  !$actual.Contains('mod.pluginHeartbeat(delta)') -or
+                  !$actual.Contains('mod.updateMove360Step, delta')) {
+                throw 'ITP_LITERAL_IDS_INCOMPLETE: native constructor fallback or update paths changed'
+              }
+              Write-Host 'ITP original camera source: literal ID cache and original per-frame work verified'
+            }
+          }
+
       - name: Remove temporary private source
         if: always()
         shell: pwsh
