@@ -104,6 +104,7 @@ public static partial class ResultReportService
         var resolverInputPath = Path.Combine(captureRoot, ResolverInputFileName);
         var reportPath = Path.Combine(captureRoot, ReportFileName);
 
+        var phase3Scorecard = BuildPhase3PressureScorecard(a, captureRoot);
         var summary = new
         {
             schemaVersion = "1.5",
@@ -159,6 +160,7 @@ public static partial class ResultReportService
                         maxMs = Round(x.MaxMs, 3)
                     })
             },
+            phase3PressureScorecard = phase3Scorecard,
             gcTracer = a.GcTracer is null ? null : BuildGcTracerInterop(a.GcTracer),
             unknownAllocationCoverage = BuildUnknownAllocationCoverageInterop(a),
             unscopedProducerDiagnostics = BuildUnscopedDiagnosticsInterop(a.UnscopedDiagnostics),
@@ -591,7 +593,7 @@ public static partial class ResultReportService
 
         File.WriteAllText(
             reportPath,
-            BuildHtml(a, captureRoot),
+            BuildHtml(a, captureRoot, phase3Scorecard),
             new UTF8Encoding(false));
 
         return new ResultReportBuildResult(
