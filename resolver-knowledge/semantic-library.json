@@ -3175,7 +3175,7 @@
           [
             "__gcetItppHasStandbyWork",
             "itpp.realtime",
-            "__gcetItppUpdatedPendingGatesV3"
+            "__gcetItppLiteralTweakIdsV1"
           ]
         ]
       },
@@ -3211,7 +3211,7 @@
             "seconds": 0.25
           }
         ],
-        "note": "Original event-loop adaptive 10 Hz / 2 Hz supervisor and 4 Hz maintenance is retained only for proven older source. The new upstream API/move360/game-camera architecture must keep original frame cadence; source-proven V3 only skips six pending-state handlers when their own first operation returns on empty state. Never throttle pluginHeartbeat, native-toggle, API, camera, gameCamera, move360 or maintenance on the updated source."
+        "note": "Original event-loop adaptive 10 Hz / 2 Hz supervisor and 4 Hz maintenance is retained only for proven older source. The new upstream API/move360/game-camera architecture must keep original frame cadence; source-proven V3 retains the source-derived immutable TweakDBID cache and only skips six pending-state handlers when their own first operation returns on empty state. Never throttle pluginHeartbeat, native-toggle, API, camera, gameCamera, move360 or maintenance on the updated source."
       },
       "generation": {
         "enabled": true,
