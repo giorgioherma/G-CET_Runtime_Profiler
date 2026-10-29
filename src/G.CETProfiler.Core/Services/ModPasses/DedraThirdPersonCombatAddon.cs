@@ -60,6 +60,9 @@ internal static partial class SemanticInjectors
 
     // V2 supersedes V1 frame-probe design. Keep the original combat step and
     // use a mod-owned separate coordinator for 0-Engine detach/resume.
+    // A single source-owned pass emits a shared scheduler bridge from stock
+    // source or upgrades an exact known former G-CET worker. No CET event
+    // registration is attempted during onInit, onUpdate or a schedule callback.
     private static SemanticInjectionResult ApplyDedraThirdPersonCombatWake(
         SemanticPatchContext context)
     {
@@ -68,89 +71,57 @@ internal static partial class SemanticInjectors
             "local function dedraStep(dt)",
             "local function dedraLeaveTakeover(player, backToFirst)",
             "registerForEvent(\"onInit\", function()");
-        var source=file.Text.Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
-        const string marker="__gcetDedraDetachedWakeV2";
+        var original=file.Text;
+        var crlf=original.Contains("\r\n",StringComparison.Ordinal);
+        var source=original.Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
+        const string oldMarker="__gcetDedraDetachedWakeV2";
+        const string marker="__gcetDedraSharedScheduleV3";
         const string workerFile="dedra_camera_wake.lua";
+        const string workerHeader="-- G-CET semantic coordinator:dedra-third-person-combat-wake\n";
+        var canonical=workerHeader+WorkerV3.Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
         var owned=context.TryReadOwnedCoordinator(workerFile);
+        var current=owned?.Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
+
+        // The composed 0-Engine host must actually adopt its ONE original
+        // CET frame source. Never trust only module inventory or API names.
+        var host=context.TryReadComposedModFile("0-Engine","init.lua");
+        var hostProven=host is not null &&
+            host.Contains("Engine.__gcetScheduleDriver({",StringComparison.Ordinal) &&
+            host.Contains("__host.__gcetScheduleDriver = function(ctx)",StringComparison.Ordinal) &&
+            host.Contains("pcall(UpdateFrame, delta)",StringComparison.Ordinal) &&
+            host.Contains("registerForEvent(\"onUpdate\", function(delta)",StringComparison.Ordinal);
+        if(!hostProven)
+        {
+            if(source.Contains(marker,StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "Installed Dedra shared scheduler has no proven composed 0-Engine driver.");
+            return SemanticInjectionResult.Skip(
+                "Dedra retains the original file-load CET callback: shared 0-Engine scheduler not source-proven.");
+        }
+
         if(source.Contains(marker,StringComparison.Ordinal))
         {
-            if(!source.Contains("Dedra.__gcetWakeController.Register()",StringComparison.Ordinal) ||
-               !source.Contains("Dedra.__gcetWakeController.Start()",StringComparison.Ordinal) ||
-               !source.Contains("Dedra.__gcetWakeFromBase",StringComparison.Ordinal) ||
-               (owned is not null && !owned.Contains(marker,StringComparison.Ordinal)))
-                throw new InvalidOperationException("Dedra V2 partial stage or missing worker.");
-            // A previous G-CET pass installed a worker that read an impossible
-            // flag from ITP's read-only API. Match the exact authored worker
-            // contract, not its marker alone, and upgrade that worker in place.
-            // Never require this older output for pristine generation.
+            if(!HasDedraThirdPersonCombatAuthorBridge(source))
+                throw new InvalidOperationException("Dedra V3 bridge drift or duplicate update owner.");
+            if(current==canonical)
+                return SemanticInjectionResult.Skip("Dedra shared scheduler and external worker complete.");
+            if(current is not null)
+                throw new InvalidOperationException("Dedra V3 owned coordinator drift; refuse replacement.");
+            context.WriteCoordinator(workerFile,canonical);
+            return SemanticInjectionResult.Success("Restored missing Dedra-owned scheduler worker.");
+        }
+
+        if(source.Contains(oldMarker,StringComparison.Ordinal))
+        {
+            if(!HasLegacyDedraThirdPersonCombatAuthorBridge(source))
+                throw new InvalidOperationException("Dedra historical callback bridge has drifted.");
+            if(current is null)
+                throw new InvalidOperationException("Prior optimized Dedra worker missing; refuse unsafe migration.");
+            // Source-exact compatibility, not marker-only, for all prior
+            // G-CET V2 registration/diagnostic/wake versions.
             const string coordinatorHeader =
                 "-- G-CET semantic coordinator:dedra-third-person-combat-wake\n";
-            // Verbatim C# source literals acquire the checkout's line endings;
-            // staged Lua is normalized to LF by SemanticTextFile. Compare those
-            // normalized representations, not Windows-vs-Unix source formatting.
-            var canonicalBody = WorkerBody.Replace("\r\n","\n",StringComparison.Ordinal)
-                .Replace('\r','\n');
-            var expectedWorker = coordinatorHeader + canonicalBody;
-            var existingWorker = owned?.Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
-            // User boot isolation: the onInit registration introduced the
-            // native CET 0x57A23F null-pointer crash. Test F booted with
-            // precisely the same worker and a file-load Register() instead.
-            // Keep the original source's lifecycle: declare onInit first,
-            // attach the worker at file load, Start/bind onInit, stop onShutdown.
-            // This is one authoritative generation path for pristine, staged
-            // and already optimized inputs, never a corrective later pass.
-            var crashingInit = "registerForEvent(\"onInit\", function()\n" +
-                "  Dedra.__gcetWakeController.Register()\n" +
-                "  Dedra.__gcetWakeController.Start()";
-            var safeInit = "registerForEvent(\"onInit\", function()\n" +
-                "  Dedra.__gcetWakeController.Start()";
-            var topRegister = "Dedra.__gcetWakeController.Register()\n";
-            const string shutdownAnchor = "registerForEvent(\"onShutdown\", function()";
-            var sourceChanged = false;
-            if(source.Contains(crashingInit,StringComparison.Ordinal))
-            {
-                if(source.Split(crashingInit,StringSplitOptions.None).Length!=2 ||
-                   Regex.IsMatch(source,
-                       @"(?m)^Dedra\.__gcetWakeController\.Register\(\)[ \t]*$",
-                       RegexOptions.CultureInvariant) ||
-                   source.Split(shutdownAnchor,StringSplitOptions.None).Length!=2)
-                    throw new InvalidOperationException("Dedra crashing onInit registration source drift.");
-                source=source.Replace(crashingInit,safeInit,StringComparison.Ordinal)
-                    .Replace(shutdownAnchor,topRegister+shutdownAnchor,StringComparison.Ordinal);
-                sourceChanged = true;
-            }
-            else if(!source.Contains(safeInit,StringComparison.Ordinal) ||
-                    source.Split(topRegister,StringSplitOptions.None).Length!=2 ||
-                    source.Split(shutdownAnchor,StringSplitOptions.None).Length!=2)
-                throw new InvalidOperationException("Dedra file-load registration source drift.");
-            // Upgrades from the old eager-source variant must also expose
-            // the new on-demand gate status; this is the same owned bridge,
-            // never an additional update subscription or a repair pass.
-            const string bridgeOwner = "Dedra.__gcetWakeFromBase = Dedra.__gcetWakeController.Signal";
-            const string statusOwner =
-                "Dedra.__gcetWakeDiagnostics = function()\n" +
-                "  return Dedra.__gcetWakeController.Diagnostics()\n" +
-                "end";
-            if(!source.Contains(statusOwner,StringComparison.Ordinal))
-            {
-                if(source.Split(bridgeOwner,StringSplitOptions.None).Length!=2 ||
-                   source.Contains("Dedra.__gcetWakeDiagnostics",StringComparison.Ordinal))
-                    throw new InvalidOperationException("Dedra diagnostics bridge source drift.");
-                source=source.Replace(bridgeOwner,bridgeOwner+"\n"+statusOwner,
-                    StringComparison.Ordinal);
-                sourceChanged=true;
-            }
-            if(!HasDedraThirdPersonCombatAuthorBridge(source))
-                throw new InvalidOperationException(
-                    "Dedra safe eager registration or worker bridge postcondition failed.");
-            if(sourceChanged)
-                context.Write(file,file.Text.Contains("\r\n",StringComparison.Ordinal)
-                    ? source.Replace("\n","\r\n",StringComparison.Ordinal):source);
-            if(existingWorker==expectedWorker)
-                return sourceChanged
-                    ? SemanticInjectionResult.Success("Restored boot-safe file-load registration without duplicate frame ownership.")
-                    : SemanticInjectionResult.Skip("Read-only-safe detached wake already installed.");
-
+            var canonicalBody=WorkerBody.Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
             // Recognize both the immediately preceding generated worker and
             // the historic read-only-proxy mutation variant. Never require a
             // previous output for generation from untouched originals.
@@ -236,14 +207,27 @@ internal static partial class SemanticInjectors
                existingWorker!=oldLegacyWorker)
                 throw new InvalidOperationException(
                     "Dedra worker differs from known generated versions; refuse unsafe overwrite.");
-            if(owned is null && !HasDedraThirdPersonCombatAuthorBridge(source))
+
+            if(current!=coordinatorHeader+canonicalBody &&
+               current!=legacyWorker && current!=previousWorker &&
+               current!=preCapabilityWorker && current!=oldCanonicalWorker &&
+               current!=oldPreviousWorker && current!=oldPreCapabilityWorker &&
+               current!=oldLegacyWorker)
                 throw new InvalidOperationException(
-                    "Missing Dedra worker and unproven author bridge; refuse unsafe recovery.");
-            context.WriteCoordinator(workerFile,expectedWorker);
-            return SemanticInjectionResult.Success(
-                "Upgraded the existing external Dedra worker in place; " +
-                "preserved one wake owner and restored read-only-safe dormancy.");
+                    "Dedra previous coordinator source not recognized; refuse unsafe migration.");
+            const string formerBridge=
+                "-- __gcetDedraDetachedWakeV2: worker owns pausable frame subscription.";
+            if(source.Split(formerBridge,StringSplitOptions.None).Length!=2 ||
+               source.Split("Dedra.__gcetWakeController.Register()\n",StringSplitOptions.None).Length!=2)
+                throw new InvalidOperationException("Prior Dedra worker boot-owner layout drift.");
+            source=source.Replace(formerBridge,
+                "-- G-CET semantic:dedra-third-person-combat-wake\n" +
+                "-- __gcetDedraSharedScheduleV3: shared 0-Engine frame execution.",
+                StringComparison.Ordinal)
+                .Replace("Dedra.__gcetWakeController.Register()\n","",StringComparison.Ordinal);
         }
+        else
+        {
         if(source.Contains("__gcetDedraEventWakeV1",StringComparison.Ordinal))
         {
             var start=source.IndexOf("-- __gcetDedraEventWakeV1:",StringComparison.Ordinal);
@@ -267,73 +251,72 @@ internal static partial class SemanticInjectors
                source.Contains("__gcetDedraWake",StringComparison.Ordinal))
                 throw new InvalidOperationException("Dedra V1 leftovers prevent clean replacement.");
         }
-        // Only the one author callback is adopted. Existing generic 0-Engine
-        // registerForEvent helper may remain unused; no duplicate registration.
-        var callback=Regex.Matches(source,
-            @"(?m)^[ \t]*(?:registerForEvent|__gcetRegisterEvent_[0-9]+)\([""']onUpdate[""'],[ \t]*function\(dt\)\s*\n[ \t]*pcall\(dedraStep,[ \t]*dt\)\s*\n[ \t]*end\)",
-            RegexOptions.CultureInvariant);
-        if(callback.Count!=1 ||
-           !source.Contains("Dedra.cfg.combatTpp and wantsTpp and combatFirst and not blocked",
-                StringComparison.Ordinal) ||
-           !source.Contains("pcall(dedraLeaveTakeover, player, true)",StringComparison.Ordinal) ||
-           !source.Contains("Dedra.itp.perspective.release(\"dedra.aim\")",StringComparison.Ordinal) ||
-           !source.Contains("  Observe(\"PlayerPuppet\", \"OnGameAttached\", function()",StringComparison.Ordinal))
-            throw new InvalidOperationException("Dedra camera/gameplay lifecycle drift; no detached wake.");
-        if(owned is not null && !owned.Contains(marker,StringComparison.Ordinal))
-            throw new InvalidOperationException("Different coordinator owns Dedra wake filename.");
 
-        const string bridge = """
-        -- __gcetDedraDetachedWakeV2: worker owns pausable frame subscription.
-        Dedra.__gcetWakeController = dofile("GCET_Semantic/dedra_camera_wake.lua").Install(
-          Dedra, dedraStep, registerForEvent)
-        Dedra.__gcetWakeFromBase = Dedra.__gcetWakeController.Signal
-        Dedra.__gcetWakeDiagnostics = function()
-          return Dedra.__gcetWakeController.Diagnostics()
-        end
+            var callback=Regex.Matches(source,
+                @"(?m)^[ \t]*(?:registerForEvent|__gcetRegisterEvent_[0-9]+)\([""']onUpdate[""'],[ \t]*function\(dt\)\s*\n[ \t]*pcall\(dedraStep,[ \t]*dt\)\s*\n[ \t]*end\)",
+                RegexOptions.CultureInvariant);
+            if(callback.Count!=1 ||
+               !source.Contains("Dedra.cfg.combatTpp and wantsTpp and combatFirst and not blocked",StringComparison.Ordinal) ||
+               !source.Contains("pcall(dedraLeaveTakeover, player, true)",StringComparison.Ordinal) ||
+               !source.Contains("Dedra.itp.perspective.release(\"dedra.aim\")",StringComparison.Ordinal) ||
+               !source.Contains("  Observe(\"PlayerPuppet\", \"OnGameAttached\", function()",StringComparison.Ordinal))
+                throw new InvalidOperationException("Dedra original gameplay/author callback drift.");
 
-        """;
-        const string onInit="registerForEvent(\"onInit\", function()";
-        if(source.Split(onInit,StringSplitOptions.None).Length!=2)
-            throw new InvalidOperationException("Dedra onInit callback ambiguous.");
-        source=source.Replace(onInit,bridge+onInit+"\n  Dedra.__gcetWakeController.Start()",
-            StringComparison.Ordinal);
-        var call=callback[0].Value;
-        if(source.Split(call,StringSplitOptions.None).Length!=2)
-            throw new InvalidOperationException("Dedra update registration drifted.");
-        source=source.Replace(call,"",StringComparison.Ordinal);
-        // The author OnGameAttached remains the event that refreshes the player
-        // state; our worker rebinds/rechecks it without starting a timer.
-        const string reset="    Dedra.armSent = nil\n  end)";
-        if(source.Split(reset,StringSplitOptions.None).Length!=2)
-            throw new InvalidOperationException("Dedra player reset hook changed.");
-        source=source.Replace(reset,
-            "    Dedra.armSent = nil\n    Dedra.__gcetWakeController.Signal()\n  end)",
-            StringComparison.Ordinal);
-        const string shutdown="registerForEvent(\"onShutdown\", function()";
-        if(source.Split(shutdown,StringSplitOptions.None).Length!=2)
-            throw new InvalidOperationException("Dedra shutdown hook changed.");
-        // The proven working startup loads the complete external worker at
-        // module load, after the author onInit registration. Do not register a
-        // native frame listener from within CET's onInit callback.
-        source=source.Replace(shutdown,
-            "Dedra.__gcetWakeController.Register()\n"+shutdown+
-            "\n  Dedra.__gcetWakeController.Stop()",StringComparison.Ordinal);
+            const string beforeInit="registerForEvent(\"onInit\", function()";
+            if(source.Split(beforeInit,StringSplitOptions.None).Length!=2)
+                throw new InvalidOperationException("Dedra onInit registration ambiguous.");
+            const string bridge= """
+-- G-CET semantic:dedra-third-person-combat-wake
+-- __gcetDedraSharedScheduleV3: uses existing 0-Engine frame owner.
+Dedra.__gcetWakeController = dofile("GCET_Semantic/dedra_camera_wake.lua").Install(
+  Dedra, dedraStep)
+Dedra.__gcetWakeFromBase = Dedra.__gcetWakeController.Signal
+Dedra.__gcetWakeDiagnostics = function()
+  return Dedra.__gcetWakeController.Diagnostics()
+end
 
+""";
+            source=source.Replace(beforeInit,bridge+beforeInit+
+                "\n  Dedra.__gcetWakeController.Start()",StringComparison.Ordinal);
+            var originalCallback=callback[0].Value;
+            if(source.Split(originalCallback,StringSplitOptions.None).Length!=2)
+                throw new InvalidOperationException("Dedra author callback duplicated.");
+            source=source.Replace(originalCallback,"",StringComparison.Ordinal);
+            const string attach="    Dedra.armSent = nil\n  end)";
+            if(source.Split(attach,StringSplitOptions.None).Length!=2)
+                throw new InvalidOperationException("Dedra source attach reset drift.");
+            source=source.Replace(attach,
+                "    Dedra.armSent = nil\n    Dedra.__gcetWakeController.Signal()\n  end)",
+                StringComparison.Ordinal);
+            const string shutdown="registerForEvent(\"onShutdown\", function()";
+            if(source.Split(shutdown,StringSplitOptions.None).Length!=2)
+                throw new InvalidOperationException("Dedra source shutdown drift.");
+            source=source.Replace(shutdown,shutdown+
+                "\n  Dedra.__gcetWakeController.Stop()",StringComparison.Ordinal);
+        }
+        // The author settings callbacks are the highest-fidelity local wake.
+        // Do not manufacture a separate UI or native observer.
+        const string settingCombat=
+            "  Dedra.cfg.combatTpp = state\n  Dedra.reassert = 0\n  dedraSaveConfig()";
+        const string settingAnims=
+            "  Dedra.cfg.anims[key] = state\n  Dedra.reassert = 0\n  dedraSaveConfig()";
+        if(source.Contains("local function dedraSetCombatTpp(state)",StringComparison.Ordinal))
+        {
+            if(source.Split(settingCombat,StringSplitOptions.None).Length!=2 ||
+               source.Split(settingAnims,StringSplitOptions.None).Length!=2)
+                throw new InvalidOperationException("Dedra author settings wake source drift.");
+            source=source.Replace(settingCombat,
+                settingCombat+"\n  Dedra.__gcetWakeController.Signal()",StringComparison.Ordinal)
+                .Replace(settingAnims,
+                settingAnims+"\n  Dedra.__gcetWakeController.Signal()",StringComparison.Ordinal);
+        }
         if(!HasDedraThirdPersonCombatAuthorBridge(source))
-            throw new InvalidOperationException(
-                "Dedra pristine generation did not preserve the boot-safe lifecycle.");
-        context.WriteCoordinator(workerFile,
-            "-- G-CET semantic coordinator:dedra-third-person-combat-wake\n" +
-            WorkerBody);
-        if(file.Text.Contains("\r\n",StringComparison.Ordinal))
-            source=source.Replace("\n","\r\n",StringComparison.Ordinal);
-        context.Write(file,source);
+            throw new InvalidOperationException("Dedra new shared scheduler callback ownership failed proof.");
+        context.Write(file,crlf?source.Replace("\n","\r\n",StringComparison.Ordinal):source);
+        context.WriteCoordinator(workerFile,canonical);
         return SemanticInjectionResult.Success(
-            "Dedra combat update is detached from shared frame emitter while " +
-            "TPP is not requested and cleanup is complete. Original base CET toggle " +
-            "signals user intent even during deferred combat camera; base perspective, " +
-            "override and session events provide wake. No dormant timer or frame probes; " +
-            "without a proven ITP bridge/0-Engine, author cadence is preserved.");
+            "Dedra uses the established 0-Engine driver with exclusive active/quiet lanes; " +
+            "all author step/REDscript maintenance remains, with event wake and no late native event registration.");
     }
     // Read-only, on-demand diagnostics: no timer, watcher, or per-frame
     // allocation. Ask the loaded worker why its pausable path is unavailable.
