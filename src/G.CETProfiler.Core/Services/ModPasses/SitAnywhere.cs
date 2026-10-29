@@ -47,8 +47,16 @@ internal static partial class SemanticInjectors
                 var workerV2 = SitAnywhereWorkerV2();
                 var needsWorker = prior is null || prior.TrimEnd() != workerV2.TrimEnd();
                 if (worker is not null && needsWorker && prior!.TrimEnd() != SitAnywhereWorkerV1.TrimEnd())
+                {
+                    var expected=SitAnywhereWorkerV1.TrimEnd();
+                    var actual=prior.TrimEnd();
+                    var n=Math.Min(actual.Length,expected.Length);
+                    var first=0;
+                    while(first<n && actual[first]==expected[first]) first++;
                     throw new InvalidOperationException(
-                        "SitAnywhere prior coordinator drift; refuse unproven wake migration.");
+                        "SitAnywhere prior coordinator drift; refuse unproven wake migration. "+
+                        "actual="+actual.Length+" expected="+expected.Length+" firstDiff="+first);
+                }
                 var initV2 = SitAnywhereRealtimeWakeSource(live.Text);
                 var needsInit = initV2 != live.Text;
                 // A prior pass can contain either proved stage without the
