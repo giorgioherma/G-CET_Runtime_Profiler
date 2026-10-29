@@ -236,8 +236,9 @@ internal static partial class SemanticInjectors
                     "local recoveryDone=(seq==9 and rainbowDone==1) and metricGet(STORY_NS,",
                     StringComparison.Ordinal))
                 return false;
-            if (text.Contains("present(\"HUD update\",HUD.Update)",
-                    StringComparison.Ordinal) ||
+            if (Regex.IsMatch(text,
+                    @"(?m)^[ \t]*present\(""HUD update"",HUD\.Update\)",
+                    RegexOptions.CultureInvariant) ||
                 text.Contains("active and {id=\"recovery_counter_isolation\"} or nil",
                     StringComparison.Ordinal) ||
                 (text.Contains("Music.update(", StringComparison.Ordinal) &&
