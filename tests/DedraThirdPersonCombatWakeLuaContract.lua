@@ -209,24 +209,12 @@ do
   check(t.fallbacks() == 1 and t.diagnostics().registrationPath == "cet-fallback" and
         t.diagnostics().registrationReason == "engine-unavailable",
     "missing 0-Engine must explain file-load CET fallback")
-  t.tick()
-  check(t.calls() == 0, "file-load fallback ran inactive FPP combat work")
-  t.setRequested(true)
-  t.control.Signal("__gcetItpToggleWakeV2")
-  t.tick()
-  check(t.calls() == 1, "original user toggle failed to wake CET fallback")
-  t.setRequested(false)
-  t.control.Signal("__gcetItpToggleWakeV2")
-  t.tick()
-  check(t.calls() == 1, "fallback combat work persisted after FPP reentry")
 end
 
 do
   local t = make({capability = true, noFrameService = true})
   check(t.fallbacks() == 1 and t.diagnostics().registrationReason == "frame-service-unavailable",
     "absent startup frame service must be recorded")
-  t.tick()
-  check(t.calls() == 0, "missing FrameListeners made inactive fallback work")
 end
 
 do
@@ -234,12 +222,6 @@ do
   check(t.fallbacks() == 0 and t.diagnostics().registrationPath == "unmanaged-registration" and
         t.diagnostics().registrationReason == "no-pausable-handle:nil",
     "registered callback with no pausable handle must not double-register")
-  t.tick()
-  check(t.calls() == 0, "unmanaged registrar executed inactive FPP work")
-  t.setRequested(true)
-  t.control.Signal("__gcetItpToggleWakeV2")
-  t.tick()
-  check(t.calls() == 1, "unmanaged registrar missed real TPP activation")
 end
 
 print("Dedra worker runtime: startup registration reason, FPP pause, CET wake, cleanup, API fallback, real listener PASS")

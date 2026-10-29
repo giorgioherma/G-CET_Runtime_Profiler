@@ -237,16 +237,26 @@ if($oldInit -eq $normalizedInit -or !$oldInit.Contains($eager)) {
 }
 foreach($token in @('function M.Diagnostics()','FrameListeners.MakeRegistrar','handle.Pause()','handle.Resume()',
   'baseBridgeConfirmed','base.gcetDedraWakeReady','if proof == "__gcetItpToggleWakeV2"',
-  'fallbackActive = p.userWantsThirdPerson == true or','kind,owner,notify',
+  'if p.userWantsThirdPerson == true','kind,owner,notify',
   'Original game-combat','linked','registrationPath','registrationReason',
-  'no-pausable-handle:','fallbackActive','if not fallbackActive then return end',
-  'fallbackRegister("onUpdate",update)')){
+  'no-pausable-handle:','fallbackRegister("onUpdate",update)')){
   if(!$wake.Contains($token)){throw "Missing safe detached wake or fallback: $token"}
 }
 if($wake.Contains('api.__gcetDedraWakeBridgeV2') -or
    $wake.Contains('base.__gcetDedraWakeBridgeV2')){throw 'Read-only API probe persists'}
 if($wake.Contains('0.10') -or $wake.Contains('0.25') -or $wake.Contains('SetInterval') -or
    $wake.Contains('OnFrame(')){throw 'Dormant polling/timer introduced'}
+# 2026-10-29 real gameplay regression: the prior FPP-idle gate skipped
+# dedraStep entirely, including authoritative 0.5s REDscript State(),
+# first-person animation/head maintenance and cleanup. A green CI is not
+# evidence that camera mode alone licenses full body elimination.
+# Keep the exact original reconciler running until an alternative wake graph
+# independently proves every REDscript/state transition and game boot.
+if(!$wake.Contains('  local function update(dt)' + $nl +
+    '    pcall(step, dt) -- Original game-combat and cleanup behavior unchanged.' + $nl) -or
+   $wake.Contains('if not fallbackActive then return end')){
+  throw 'Dedra FPP camera state may not suppress original core/animation reconciler'
+}
 # The catalog may suppress a fully installed semantic by source proof alone.
 # Prove that old eager init, missing coordinator, and prior worker version all
 # remain INCOMPLETE even though their historical marker is present.
@@ -274,16 +284,6 @@ if($dedraCompletion.Invoke($null,[object[]]@([string]$completionRoot))){
 [IO.File]::Delete($completionWorkerPath)
 if($dedraCompletion.Invoke($null,[object[]]@([string]$completionRoot))){
   throw 'Missing external Dedra worker falsely completed new dormancy'
-}
-[IO.File]::WriteAllText($completionWorkerPath,$wake,[Text.UTF8Encoding]::new($false))
-
-# A previously generated V2 worker with no fallback idle fast path is
-# incomplete even when the init bridge, ITP and other worker proof remain.
-$beforeIdleWake=$wake.Replace('    if not fallbackActive then return end -- CET fallback: no FPP author work.' + $nl, '')
-if($beforeIdleWake -eq $wake){throw 'Fallback-idle fixture did not remove hot guard'}
-[IO.File]::WriteAllText($completionWorkerPath,$beforeIdleWake,[Text.UTF8Encoding]::new($false))
-if($dedraCompletion.Invoke($null,[object[]]@([string]$completionRoot))){
-  throw 'Old per-frame CET fallback incorrectly marked as current FPP idle-complete'
 }
 [IO.File]::WriteAllText($completionWorkerPath,$wake,[Text.UTF8Encoding]::new($false))
 
@@ -344,51 +344,6 @@ $updatedWorker=[Text.Encoding]::UTF8.GetString($workerUpgrade.Changes[0].Bytes)
 if($updatedWorker -ne $wake -or
   $workerUpgrade.Changes[0].RelativeFile -notlike '*/GCET_Semantic/dedra_camera_wake.lua') {
   throw 'Prior worker update changed execution ownership or generated unexpected code'
-}
-# Exact prior CI #2146 diagnostic worker: the registrar reason exists, but
-# no FPP fallback suppression yet. This must upgrade with ONE worker write.
-$priorIdleWake=$wake.Replace(
-  '  local fallbackActive = true -- Fail open until author ITP wake proof is complete.' + $nl,'')
-$priorIdleWake=$priorIdleWake.Replace(
-  '    if not fallbackActive then return end -- CET fallback: no FPP author work.' + $nl,'')
-$syncFrom=$priorIdleWake.IndexOf('  local function sync()' + $nl)
-$syncTo=$priorIdleWake.IndexOf('  local function notify()' + $nl,$syncFrom)
-if($syncFrom -lt 0 -or $syncTo -le $syncFrom){
-  throw 'Prior diagnostic worker sync fixture missing'
-}
-$oldSync=@'
-  local function sync()
-    if not pausable or not handle then return end
-    if not baseBridgeConfirmed or not linked or not api then
-      handle.Resume()  -- Older ITP builds fail open, never strand a toggle.
-      return
-    end
-    local ok, p = pcall(api.perspective.get)
-    if not ok or type(p) ~= "table" or
-      type(p.userWantsThirdPerson) ~= "boolean" then
-      handle.Resume()
-      return
-    end
-    if p.userWantsThirdPerson == true or p.transitioning == true or
-       p.mode == "transition" or pending(p) then
-      handle.Resume()
-    else
-      handle.Pause() -- Unsubscribes from 0-Engine shared frame emitter.
-    end
-  end
-'@
-$oldSync=$oldSync.Replace($crlf,$nl) + $nl
-$priorIdleWake=$priorIdleWake.Substring(0,$syncFrom) + $oldSync +
-  $priorIdleWake.Substring($syncTo)
-if($priorIdleWake -eq $wake -or $priorIdleWake.Contains('fallbackActive')){
-  throw 'Prior captured diagnostic worker fixture failed'
-}
-[IO.File]::WriteAllText($workerPath,$priorIdleWake,[Text.UTF8Encoding]::new($false))
-$script:dedraUpgradeCase='last boot-safe diagnostic worker with busy native fallback'
-$priorIdleUpgrade=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $lua $addon -StageInput
-if(!$priorIdleUpgrade.Applied -or $priorIdleUpgrade.Changes.Count -ne 1 -or
-   [Text.Encoding]::UTF8.GetString($priorIdleUpgrade.Changes[0].Bytes) -ne $wake){
-  throw 'Previously diagnosed fallthrough could not upgrade to idle-gated worker'
 }
 [IO.File]::WriteAllText($workerPath,$previousWake,[Text.UTF8Encoding]::new($false))
 $script:dedraUpgradeCase='previous worker with canonical init'

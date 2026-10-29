@@ -27,12 +27,6 @@ internal static partial class SemanticInjectors
             worker.Contains("base.gcetDedraWakeReady",StringComparison.Ordinal) &&
             worker.Contains("handle.Pause()",StringComparison.Ordinal) &&
             worker.Contains("handle.Resume()",StringComparison.Ordinal) &&
-            // Historical V2 source with the same header was unpausable at
-            // file-load. Do not mistake old diagnostics/markers for this
-            // separate FPP body-elimination stage.
-            worker.Contains("local fallbackActive = true",StringComparison.Ordinal) &&
-            worker.Contains("if not fallbackActive then return end",StringComparison.Ordinal) &&
-            worker.Contains("registrationReason = registrationReason",StringComparison.Ordinal) &&
             worker.Contains("fallbackRegister(\"onUpdate\",update)",StringComparison.Ordinal);
     }
 
@@ -196,43 +190,6 @@ internal static partial class SemanticInjectors
                     "  function M.Signal(proof)\n" +
                     "    if proof == \"__gcetItpToggleWakeV2\" then baseBridgeConfirmed = true end",
                     "  function M.Signal()",StringComparison.Ordinal);
-            // The October 28 bootable diagnostic worker still executed its
-            // fallback author step every frame after a file-load GetMod failure.
-            // This is a source-equivalent prior form: only the three idle-state
-            // changes are removed, never a new native registration.
-            var originalSyncBegin=canonicalBody.IndexOf("  local function sync()\n",StringComparison.Ordinal);
-            var originalSyncEnd=canonicalBody.IndexOf("  local function notify()\n",originalSyncBegin,StringComparison.Ordinal);
-            if(originalSyncBegin<0 || originalSyncEnd<=originalSyncBegin)
-                throw new InvalidOperationException("Dedra fallback sync source drift.");
-            var currentSync=canonicalBody[originalSyncBegin..originalSyncEnd];
-            const string priorSync = @"  local function sync()
-    if not pausable or not handle then return end
-    if not baseBridgeConfirmed or not linked or not api then
-      handle.Resume()  -- Older ITP builds fail open, never strand a toggle.
-      return
-    end
-    local ok, p = pcall(api.perspective.get)
-    if not ok or type(p) ~= ""table"" or
-      type(p.userWantsThirdPerson) ~= ""boolean"" then
-      handle.Resume()
-      return
-    end
-    if p.userWantsThirdPerson == true or p.transitioning == true or
-       p.mode == ""transition"" or pending(p) then
-      handle.Resume()
-    else
-      handle.Pause() -- Unsubscribes from 0-Engine shared frame emitter.
-    end
-  end
-";
-            var preIdleWorkerBody=canonicalBody
-                .Replace("  local fallbackActive = true -- Fail open until author ITP wake proof is complete.\n","",StringComparison.Ordinal)
-                .Replace(currentSync,priorSync.Replace("\r\n","\n",StringComparison.Ordinal),StringComparison.Ordinal)
-                .Replace("    if not fallbackActive then return end -- CET fallback: no FPP author work.\n","",StringComparison.Ordinal);
-            if(preIdleWorkerBody==canonicalBody ||
-               preIdleWorkerBody.Contains("fallbackActive",StringComparison.Ordinal))
-                throw new InvalidOperationException("Dedra previous boot-safe worker source proof drift.");
-            var preIdleWorker=coordinatorHeader+preIdleWorkerBody;
             // One-shot registration status is additive. Exact previous generated
             // workers remain valid upgrade inputs, including old partial workers.
             var currentRegStart=canonicalBody.IndexOf("  function M.Register()\n",StringComparison.Ordinal);
@@ -246,22 +203,19 @@ internal static partial class SemanticInjectors
                 "  local registrationPath, registrationReason = \"not-attempted\", \"not-attempted\"\n";
             var legacyDiagnostics=PriorDiagnosticsMethod
                 .Replace("\r\n","\n",StringComparison.Ordinal).Replace('\r','\n');
-            var priorFullDiagnosticBody=preIdleWorkerBody
+            var oldCanonicalBody=canonicalBody
                 .Replace(enrichedState,"  local pausable = false\n",StringComparison.Ordinal)
                 .Replace(currentReg,PriorRegisterMethod.Replace("\r\n","\n",StringComparison.Ordinal),StringComparison.Ordinal)
                 .Replace(normalizedDiagnostics,legacyDiagnostics,StringComparison.Ordinal);
-            if(priorFullDiagnosticBody==preIdleWorkerBody ||
-               priorFullDiagnosticBody.Contains("registrationReason",StringComparison.Ordinal) ||
-               !preIdleWorkerBody.Contains(enrichedState,StringComparison.Ordinal) ||
-               !preIdleWorkerBody.Contains(currentReg,StringComparison.Ordinal) ||
-               !preIdleWorkerBody.Contains(normalizedDiagnostics,StringComparison.Ordinal))
+            if(oldCanonicalBody==canonicalBody ||
+               oldCanonicalBody.Contains("registrationReason",StringComparison.Ordinal))
                 throw new InvalidOperationException("Dedra prior generated registration shape failed proof.");
-            var priorFullDiagnosticWorker=coordinatorHeader+priorFullDiagnosticBody;
-            var priorUndiagnosedBody=priorFullDiagnosticBody.Replace(legacyDiagnostics,"",StringComparison.Ordinal);
-            var priorPreviousWorker=coordinatorHeader+priorUndiagnosedBody;
-            var priorPreCapabilityWorker=coordinatorHeader+
-                priorUndiagnosedBody.Replace(readinessProbe,"",StringComparison.Ordinal);
-            var priorLegacyWorker=coordinatorHeader+priorUndiagnosedBody
+            var oldCanonicalWorker=coordinatorHeader+oldCanonicalBody;
+            var oldUndiagnosed=oldCanonicalBody.Replace(legacyDiagnostics,"",StringComparison.Ordinal);
+            var oldPreviousWorker=coordinatorHeader+oldUndiagnosed;
+            var oldPreCapabilityWorker=coordinatorHeader+
+                oldUndiagnosed.Replace(readinessProbe,"",StringComparison.Ordinal);
+            var oldLegacyWorker=coordinatorHeader+oldUndiagnosed
                 .Replace(readinessProbe,"",StringComparison.Ordinal)
                 .Replace("  local baseBridgeConfirmed = false\n","",StringComparison.Ordinal)
                 .Replace("    if not baseBridgeConfirmed or not linked or not api then",
@@ -276,11 +230,10 @@ internal static partial class SemanticInjectors
                     "  function M.Signal()",StringComparison.Ordinal);
             if(owned is not null && existingWorker!=legacyWorker &&
                existingWorker!=previousWorker && existingWorker!=preCapabilityWorker &&
-               existingWorker!=preIdleWorker &&
-               existingWorker!=priorFullDiagnosticWorker &&
-               existingWorker!=priorPreviousWorker &&
-               existingWorker!=priorPreCapabilityWorker &&
-               existingWorker!=priorLegacyWorker)
+               existingWorker!=oldCanonicalWorker &&
+               existingWorker!=oldPreviousWorker &&
+               existingWorker!=oldPreCapabilityWorker &&
+               existingWorker!=oldLegacyWorker)
                 throw new InvalidOperationException(
                     "Dedra worker differs from known generated versions; refuse unsafe overwrite.");
             if(owned is null && !HasDedraThirdPersonCombatAuthorBridge(source))
@@ -451,7 +404,6 @@ function M.Install(Dedra, step, fallbackRegister)
   local handle, api, linked = nil, nil, false
   local baseBridgeConfirmed = false
   local pausable = false
-  local fallbackActive = true -- Fail open until author ITP wake proof is complete.
   -- One-time file-load decision; never queried or allocated in frame callbacks.
   local registrationPath, registrationReason = ""not-attempted"", ""not-attempted""
   local kinds = { ""perspectiveChanged"", ""overrideChanged"", ""transitionStart"",
@@ -465,23 +417,22 @@ function M.Install(Dedra, step, fallbackRegister)
       or Dedra.headLookHeld == true or (Dedra.standIn ~= nil and Dedra.standIn ~= """")
   end
   local function sync()
-    -- Snapshot the known camera wake on ITP transitions and activation.
-    -- CET fallback registration was created at module load, but does not
-    -- run the expensive author step while this proved state is dormant.
+    if not pausable or not handle then return end
     if not baseBridgeConfirmed or not linked or not api then
-      fallbackActive = true
-    else
-      local ok, p = pcall(api.perspective.get)
-      if not ok or type(p) ~= ""table"" or
-        type(p.userWantsThirdPerson) ~= ""boolean"" then
-        fallbackActive = true
-      else
-        fallbackActive = p.userWantsThirdPerson == true or
-          p.transitioning == true or p.mode == ""transition"" or pending(p)
-      end
+      handle.Resume()  -- Older ITP builds fail open, never strand a toggle.
+      return
     end
-    if handle then
-      if fallbackActive then handle.Resume() else handle.Pause() end
+    local ok, p = pcall(api.perspective.get)
+    if not ok or type(p) ~= ""table"" or
+      type(p.userWantsThirdPerson) ~= ""boolean"" then
+      handle.Resume()
+      return
+    end
+    if p.userWantsThirdPerson == true or p.transitioning == true or
+       p.mode == ""transition"" or pending(p) then
+      handle.Resume()
+    else
+      handle.Pause() -- Unsubscribes from 0-Engine shared frame emitter.
     end
   end
   local function notify()
@@ -517,7 +468,6 @@ function M.Install(Dedra, step, fallbackRegister)
     sync()
   end
   local function update(dt)
-    if not fallbackActive then return end -- CET fallback: no FPP author work.
     pcall(step, dt) -- Original game-combat and cleanup behavior unchanged.
     if not linked then bind() else sync() end
   end
