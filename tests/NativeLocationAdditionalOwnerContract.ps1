@@ -863,7 +863,7 @@ $orderedPipeline=@(
  'NativePlayerVectorStage.TryStage(',
  'NativeReadReuseSource.TryStage(',
  'var availableLocations=CompiledNativeLocations.Compile(modsRoot,staged);',
- 'SemanticPassGeneratorService.Apply(',
+ 'SemanticPassGeneratorService.ApplyWithComposedRuntime(',
  'Whole-overlay Lua budget validation',
  'var fileManifest = staged'
 )
@@ -874,6 +874,9 @@ foreach($stage in $orderedPipeline){
   throw "GENERIC -> GENERIC -> NATIVE LOCATIONS -> SEMANTIC ordering violation: $stage ($index after $previous)"
  }
  $previous=$index
+}
+if(!$passGeneratorSource.Contains('fixedRuntime.Files);')) {
+  throw 'Semantic may not assume an uncomposed 0-Engine host'
 }
 if(!$passGeneratorSource.Contains('LuaLocalBudgetAnalyzer.Analyze(pair.Value)') -or
    !$passGeneratorSource.Contains('budget.MaxActiveLocals > LuaLocalBudgetAnalyzer.Limit')){
