@@ -182,6 +182,8 @@ internal static partial class SemanticInjectors
                 "sitAnywhere workspot wake state");
         }
 
+        logicText = SitAnywhereLogicWakeSource(logicText);
+
         var eventRegex = new Regex(
             @"(?ms)^(?<indent>[ \t]*)(?<registrar>registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]\s*,\s*function\s*\(\s*dt\s*\)\s*\r?\n(?<body>.*?)^\k<indent>end\s*\)\s*$",
             RegexOptions.CultureInvariant | RegexOptions.Multiline | RegexOptions.Singleline);
@@ -802,6 +804,24 @@ end
                 throw new InvalidOperationException("SitAnywhere keybind source drift.");
             t=t.Replace(anchor,anchor+
                 "            if self.__gcetWakeRealtime then self.__gcetWakeRealtime() end\n",
+                StringComparison.Ordinal);
+        }
+        return source.Contains("\r\n",StringComparison.Ordinal)
+            ? t.Replace("\n","\r\n",StringComparison.Ordinal) : t;
+    }
+
+    private static string SitAnywhereLogicWakeSource(string source)
+    {
+        if (source.Contains("self.mod.__gcetWakeRealtime()",StringComparison.Ordinal))
+            return source;
+        var t=source.Replace("\r\n","\n",StringComparison.Ordinal);
+        foreach (var state in new[] {"true","false"})
+        {
+            var anchor="        self.isScanning = "+state+"\n";
+            if (t.Split(anchor,StringSplitOptions.None).Length!=2)
+                throw new InvalidOperationException("SitAnywhere scanner GameUI source drift.");
+            t=t.Replace(anchor,anchor+
+                "        if self.mod.__gcetWakeRealtime then self.mod.__gcetWakeRealtime() end\n",
                 StringComparison.Ordinal);
         }
         return source.Contains("\r\n",StringComparison.Ordinal)
