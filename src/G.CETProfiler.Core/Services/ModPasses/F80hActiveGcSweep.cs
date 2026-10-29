@@ -11,6 +11,14 @@ internal static partial class SemanticInjectors
     // order, pending/near transition, active spawn and random roll intact.
     private static string OptimizeF80hAnchorRegistration(string source)
     {
+        var crlf = source.Contains("\r\n", StringComparison.Ordinal);
+        var normalized = crlf ? source.Replace("\r\n", "\n", StringComparison.Ordinal) : source;
+        var output = OptimizeF80hAnchorRegistrationLf(normalized);
+        return crlf ? output.Replace("\n", "\r\n", StringComparison.Ordinal) : output;
+    }
+
+    private static string OptimizeF80hAnchorRegistrationLf(string source)
+    {
         const string marker = "__gcetF80hAnchorPositionV1";
         const string original =
             "    local rule = resolveAllowRule(app, anchor)\n" +
