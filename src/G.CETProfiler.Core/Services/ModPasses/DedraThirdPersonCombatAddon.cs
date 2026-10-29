@@ -389,10 +389,13 @@ function M.Install(Dedra, step)
   local owner = ""gcet.dedra.shared.v3""
   local settle = 0
   local function debts()
+    -- Author-owned on/armSent start nil on player attach. Nil means the
+    -- native write is unconfirmed, not that a wrapper/arm hold is ACTIVE.
+    -- Keep the 0.25s Core audit to retry unconfirmed states.
     return Dedra.takeover == true or Dedra.easeOut ~= nil or
       Dedra.aimAsk ~= nil or Dedra.planeHeld == true or
-      Dedra.headLookHeld == true or Dedra.on ~= false or
-      Dedra.armSent ~= false or
+      Dedra.headLookHeld == true or Dedra.on == true or
+      Dedra.armSent == true or
       (Dedra.standIn ~= nil and Dedra.standIn ~= """")
   end
   local function wantFast()
@@ -520,7 +523,14 @@ function M.Install(Dedra, step)
       activeJob=fast and fast.IsActive() or false,
       quietJob=slow and slow.IsActive() or false,
       calls=calls, quietCalls=quietCalls,
-      settle=settle }
+      settle=settle,
+      debts={ takeover=Dedra.takeover == true,
+        easeOut=Dedra.easeOut ~= nil, aimAsk=Dedra.aimAsk ~= nil,
+        planeHeld=Dedra.planeHeld == true,
+        headLookHeld=Dedra.headLookHeld == true,
+        on=Dedra.on == true, armSent=Dedra.armSent == true,
+        standIn=Dedra.standIn ~= nil and Dedra.standIn ~= """" },
+      initialState={ on=Dedra.on == nil, armSent=Dedra.armSent == nil } }
   end
   return M
 end
