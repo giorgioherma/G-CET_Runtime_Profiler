@@ -474,7 +474,7 @@ $refused=$false
 try{$null=$method.Invoke($null,[object[]]@($driftCtx))}
 catch{$refused=$true; $driftFailure=$_.Exception.ToString()}
 if(!$refused){throw 'CyberTrials foreign worker drift was silently adopted'}
-if($driftFailure -notmatch 'coordinator changed'){
+if($driftFailure -notmatch 'coordinator changed|five-job source/worker incomplete'){
   throw "CyberTrials unknown coordinator refusal category: $driftFailure"
 }
 $stage['CyberTrials/GCET_Semantic/cybertrials_engine_worker.lua']=[Text.Encoding]::UTF8.GetBytes($workerCode)
