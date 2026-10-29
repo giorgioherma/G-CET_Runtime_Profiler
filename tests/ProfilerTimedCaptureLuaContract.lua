@@ -1,4 +1,4 @@
--- COMBAT-POLICE-60 regression: reuse existing onUpdate, native capture clock,
+-- COMBAT-POLICE-120 regression: reuse existing onUpdate, native capture clock,
 -- one-key auto start/stop/export, original F11 and scenario-bind behavior.
 local filename = assert(arg[1], "CETProfilerControls/init.lua required")
 local events, inputs, marks = {}, {}, {}
@@ -49,7 +49,7 @@ assert(eventCount == 3, "Timer must reuse existing onInit/onUpdate/onDraw")
 assert(events.onUpdate and events.onDraw and events.onInit)
 events.onInit()
 
--- Start 60s benchmark once; repeated start while capturing must do nothing.
+-- Start 120s benchmark once; repeated start while capturing must do nothing.
 inputs.CETProfiler_Police60(true)
 assert(capturing and starts == 1 and pauses == 0 and dumps == 0)
 assert(marks[1] == "SCENARIO_COMBAT_START", "Combat tag must start automatically")
@@ -64,12 +64,15 @@ for i = 1, 60 do
     events.onUpdate(0.01)
 end
 assert(capturing and starts == 1 and pauses == 0, "Capture stopped too early")
-seconds = 59.99
-events.onUpdate(20.0)
-assert(capturing, "Game dt must not terminate the capture early")
 seconds = 60.02
 events.onUpdate(0)
-assert(not capturing and pauses == 1 and dumps == 1, "Native 60s stop/export failed")
+assert(capturing, "Regression: F10 benchmark still stops at the retired 60-second boundary")
+seconds = 119.99
+events.onUpdate(20.0)
+assert(capturing, "Game dt must not terminate the capture early")
+seconds = 120.02
+events.onUpdate(0)
+assert(not capturing and pauses == 1 and dumps == 1, "Native 120s stop/export failed")
 assert(marks[#marks] == "SCENARIO_COMBAT_END", "Auto end marker missing")
 events.onUpdate(5)
 assert(dumps == 1 and pauses == 1, "Double dump after timer end")
@@ -79,20 +82,20 @@ inputs.CETProfiler_Toggle(true)
 assert(capturing and starts == 2)
 inputs.CETProfiler_Police60(true)
 assert(capturing and starts == 2, "Timed key replaced an existing manual capture")
-seconds = 120
+seconds = 180
 events.onUpdate(0.2)
 assert(capturing, "Manual capture unexpectedly auto-stopped")
 inputs.CETProfiler_Toggle(true)
 assert(not capturing and dumps == 2 and pauses == 2, "Manual stop/export regression")
 
--- F11 may stop a timed capture early; it must cancel the pending 60s stop.
+-- F11 may stop a timed capture early; it must cancel the pending 120s stop.
 inputs.CETProfiler_Police60(true)
 seconds = 12
 events.onUpdate(0.03)
 inputs.CETProfiler_Toggle(true)
 assert(not capturing and starts == 3 and dumps == 3 and pauses == 3)
-seconds = 70
+seconds = 130
 events.onUpdate(0.5)
 assert(dumps == 3, "Timed capture was left armed after manual stop")
 
-print("COMBAT-POLICE-60 native-time stop/export, scenario markers, manual coexistence, no extra event PASS")
+print("COMBAT-POLICE-120 native-time stop/export, scenario markers, manual coexistence, no extra event PASS")
