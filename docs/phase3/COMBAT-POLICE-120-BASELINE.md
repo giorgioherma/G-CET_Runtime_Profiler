@@ -46,3 +46,43 @@ The latest 60s DAV + GigCore combat capture had **zero completed GC cycles**, co
 **Historical 60-second, contextual rates (NOT matched 120s A/B):** Against the 2026-10-29 17:14 `DAV_GIGCORE` capture, 120s **Minimap Widgets** measured **0.125694MiB/s, 922.98 ops/s, 76.49 GC births/s** vs prior **0.156754MiB/s, 1,174.7 ops/s, 118.4 births/s**, consistent with a useful reduction but not single-mod causality. **Immersive Third Person** measured **0.089381MiB/s, 332.54 ops/s, 9.94 births/s** vs prior **0.097502MiB/s, 351.8 ops/s, 29.9 births/s**, also favorable. **Immersive First Person** measured **0.168730MiB/s, 1,273.33 ops/s, 157.64 births/s** vs **0.144525MiB/s, 1,069.9 ops/s, 142.7 births/s**, not an unambiguous reduction per second. Framerate also changed from **33.962→38.973FPS**; therefore investigate **ops/frame** and hot callsites before attributing IFP behavior to the optimized scratch source. **Global positive growth and requests/s are higher than the prior 60s**, so do NOT claim a measured stack-wide allocation reduction from this cross-duration comparison.
 
 **Next steps:** Preserve this ZIP, raw GC buckets, CapFrameX run and time-aligned evidence; verify FPP FreeLook/crouch/aiming and TPP toggles/restore and Minimap pin visibility in actual gameplay. Match future captures to **this 120s baseline**, inspect the first-minute and second-minute view and 63–66s GC cluster, and isolate sustained producer sources rather than patching a GC-overlapped callback or changing GC parameters to hide the stall. Native-to-Lua redesign is still unimplemented.
+
+<!-- PHASE3_120S_AUTOLOOT_F80H_COMPARISON_20261029 -->
+## First post-baseline 120s comparison — AutoLoot + f80h, 2026-10-29
+
+**Capture:** `CET-20261029-204841_F80F_AUTOLOOT.zip`, CET **120.001091s**, CapFrameX **120.001s**, **4,284 frames**, `sync.quality=GOOD`, `exactAlignment=true`; compare the earlier `195149_FPC_TPC_AND_MINIMAP_GCRESULTS` **120.008372s / 4,677 frames**. Both report **139 active owners**, and both are F10-combined CapFrameX recordings. These are whole-*configuration* observations, not isolated individual producer causal tests; first/last heap and gameplay frame rate differ. User reports reduced noticeable allocation pressure and longer smooth stretches.
+
+| Metric (120s capture total unless /s) | Earlier 19:51 | New 20:48 | Change |
+|---|---:|---:|---:|
+| Positive LuaJIT allocations, MiB | 397.893360 | 356.083752 | **−10.51%** |
+| LuaJIT allocator requests | 3,491,135 | 3,161,250 | **−9.45%** |
+| GC object births | 901,456 | 858,998 | **−4.71%** |
+| Positive allocations, MiB/s | 3.315547 | 2.967338 | **−10.50%** |
+| Requests/s | 29,090.762 | 26,343.510 | **−9.45%** |
+| GC object births/s | 7,511.609 | 7,158.252 | **−4.70%** |
+| Unattributed scope-zero allocated MiB | 196.638250 | 173.570500 | **−11.73%** |
+| AutoLoot allocated MiB | 10.469672 | 4.953659 | **−52.69%** |
+| AutoLoot requests | 83,469 | 44,447 | **−46.75%** |
+| AutoLoot GC births | 14,859 | 13,882 | **−6.58%** |
+| f80h_aroused_expressions allocated MiB | 3.849519 | 2.481037 | **−35.55%** |
+| f80h requests | 67,307 | 42,012 | **−37.58%** |
+| f80h GC births | 30,100 | 21,764 | **−27.69%** |
+| Collector execution, ms | 2,954.309 | 3,257.809 | **+10.27%** |
+| Completed collector cycles | 2 at 63.515/65.330s | 2 at 47.232/49.182s | **Earlier, not fewer** |
+| Largest single recorded collector step | 116.033ms | 149.494ms | **+28.84%** |
+| Largest collector frame bucket | 444.153ms | 280.442ms | **−36.86%** |
+| Lua heap first / peak / last | 620.921 / 780.730 / 613.668 MiB | 700.604 / 785.506 / 627.081 MiB | Starts +79.683 MiB |
+| CapFrameX P99 | 46.046ms | 57.549ms | **+24.98%** |
+| CapFrameX worst frame | 478.836ms | 319.466ms | **−33.28%** |
+| Frames over 100ms | 7 | 16 | **Worse** |
+| Grouped hitch episodes | 59 | 73 | **Worse** |
+| Grouped hitch excess | 2,492.216ms | 3,756.244ms | **+50.72%** |
+| FPS average | 38.973 | 35.700 | **−8.40%** |
+
+**Critical targeted callback evidence:** `AutoLoot onUpdate` 57,743→19,714 allocator requests (−65.86%), 7.489→2.090 positive MiB, 446.896→51.603ms total exclusive CPU; `f80h onUpdate` 26,326→731 requests (−97.22%), 1.442→0.043 positive MiB and 584.850→24.929ms exclusive CPU. These raw callback CPU totals include changing GC overlap and number of rendered updates (4,678→4,285), so not all improvement is intrinsic Lua work, and **callback CPU is not collector time**. Native attachment/detach f80h still produces most of its remaining own allocation requests: `OnGameAttached` 18,590 and `OnDetach` 22,691, while `onUpdate` is 731. No native/detach work was intentionally disabled by the new source generator.
+
+**Collector timing and experience:** First cycle observed **47.231503s**, second **49.181880s**. All **3,257.809ms** of recorded collector execution and both completed cycles occurred in the **first 60 seconds**; none in 60–120s. In contrast the earlier baseline had 1,377.895ms in minute 1 and 1,576.413ms in minute 2, with both completed cycles at 63–66s. The new 45–50s burst has about 1.56 seconds of collector work (frame-bucket inclusion); largest new frametime spike **319.466ms at ~46.93s**, overlapping large collector activity and `BetterLootMarkers` raw callback. Other >100ms frames occur at ~25.72s, ~47–49s and ~93.47s (last one no recorded GC). Do NOT blame `BetterLootMarkers`, `0-Engine`, `nativeInteractions` or another overlapping callback for creating the collector's garbage; attribution is to shared timing until a specific allocator site is proven. The second half still has **3 frames >100ms** and is **not** wholly hitch-free. Different starting heap (new 700.604MiB vs 620.921MiB) and gameplay mix make early completed cycles **not evidence that allocation reduction failed**. Explicit forced Lua collection calls remain **zero**.
+
+**Remaining named GC object-birth contributors:** `0-Engine` 78,171 (shared infrastructure; do not attribute all to intrinsic scheduler), `GigCore` 42,830, `SpecterM11RecoveryDev` 38,565, `InfiniteGigs` 31,793, `NPC Outfit Manager` 25,727, `ELM_ImmersiveWay` 25,712, `ziggy_last_play` 25,299, f80h 21,764, `ImmersiveFirstPerson` 20,254, `nativeInteractions` 19,616. The **unattributed scope-zero** is larger than any named mod: **173.5705 MiB / 1,413,137 allocator requests / 270,658 births**, and is not a distinct mod or proof of waste. Further prioritization should inspect author source and per-call behavior; no new native-to-Lua intervention authorized by this capture.
+
+**Decision:** AutoLoot/f80h source-GC optimization shows strong target-specific and positive total allocation savings. New 120s run does **not** show improved GC-stall *frequency* or frame-tail distribution. Keep the 19:51 capture as the first reference; compare subsequent 120s against both appropriately, investigate the time-clustered collector phases and next source-owned GC objects. **Gameplay equivalence of proximity/expressions and loot behavior is still user verification**, even after green source CI.
