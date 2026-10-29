@@ -3816,6 +3816,7 @@
             "function": "logic.lootInRange",
             "includes": [
               "if isNpcSafeToLoot(gameObj) then",
+              "if __gcetOwnerOk then gameObjOwner = __gcetOwnerValue end",
               "result, items = transactionSystem:GetItemList(gameObj)",
               "takeIt = vectorDistanceSquared(playerPos, gameObjPos) <= rangeSquared"
             ],
@@ -3840,6 +3841,7 @@
           "preserveGlobalDistanceOutputsForMultipleCandidates",
           "rejectOutOfRangeBeforeGameObjAndOwnerInventory",
           "keepAuthorLootTransfersShardQuestAndMarkerLogic",
+          "reuseProtectedOwnerFunctionWithoutCallbackClosure",
           "composeWithExistingWorldPinOnlyOrRadiusOnly",
           "noCrossFrameCache",
           "independentScopedStageCompletionBeforeMarker",
@@ -7973,7 +7975,8 @@
           "__gcetF80hActiveGcSweepV1",
           "__gcetSweepElapsed",
           "__gcetVarianceDispose",
-          "audioCheckTimer + delta >= AUDIO_CHECK_INTERVAL"
+          "audioCheckTimer + delta >= AUDIO_CHECK_INTERVAL",
+          "__gcetF80hAnchorPositionV1"
         ]
       },
       "behavior": {
@@ -7981,6 +7984,7 @@
         "concepts": [
           "fixedPendingExpiry",
           "noPerFrameVarianceClosureAlloc",
+          "oneNpcPositionSampleBeforeAnchorAppearanceMatch",
           "sameAudioDistanceCadence",
           "realtimeFacialRetained"
         ],
