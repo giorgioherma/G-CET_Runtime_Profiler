@@ -1124,6 +1124,12 @@ internal static partial class SemanticInjectors
         "    return worker.Install(\n" +
         "      mod, state, config, __gcetItppFrameStepV1, __gcetItppRuntimeV1)";
 
+    private const string ItppPriorFileLoadRegisterBridge =
+        "  if ok and controller and type(controller.Register) == \"function\" then\n" +
+        "    local registered, ready = pcall(controller.Register)\n" +
+        "    if registered and ready == true then mod.__gcetItppDormancyV1 = controller end\n" +
+        "  end";
+
     private const string ItppFileLoadRegisterBridgeV2 =
         "  if ok and controller and type(controller.Register) == \"function\" then\n" +
         "    local registered, ready = pcall(controller.Register)\n" +
@@ -1589,8 +1595,17 @@ internal static partial class SemanticInjectors
             else if (!HasImmersiveThirdPersonFrameDormancyBridge(normalized))
                 throw new InvalidOperationException("ITP current frame bridge lacks file-load Register proof.");
             if (usesOldRelativeLoader)
+            {
+                if (!isPriorBridge)
+                {
+                    if (normalized.Split(ItppPriorFileLoadRegisterBridge, StringSplitOptions.None).Length != 2)
+                        throw new InvalidOperationException("ITP old file-load Register body drifted.");
+                    normalized = normalized.Replace(ItppPriorFileLoadRegisterBridge,
+                        ItppFileLoadRegisterBridgeV2, StringComparison.Ordinal);
+                }
                 normalized = normalized.Replace(ItppLegacyRelativeWorkerLoader,
                     ItppAuthorWorkerLoader, StringComparison.Ordinal);
+            }
             // Upgrading a known previous bridge also installs a one-time
             // reason in the ORIGINAL fallback branch; do not add a polling
             // observer or repair layer.
