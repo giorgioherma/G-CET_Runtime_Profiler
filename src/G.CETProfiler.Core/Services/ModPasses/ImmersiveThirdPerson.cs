@@ -1793,7 +1793,7 @@ if not __gcetItppWorkerFactoryV3 then
         // The composed Lua source is normalized to LF before this insertion:
         // normalize the authoritative emitter, never accept mismatched output.
         text = text.Replace(loadAnchor,
-            body.Replace("\\r\\n", "\\n", StringComparison.Ordinal).Replace('\\r', '\\n') +
+            body.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n') +
                 loadAnchor, StringComparison.Ordinal);
         // Pristine source receives Dedra's startup signal later; an older
         // optimized input already has it. Both must generate the same order.
