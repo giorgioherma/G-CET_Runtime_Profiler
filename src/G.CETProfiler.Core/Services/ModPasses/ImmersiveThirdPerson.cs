@@ -1201,11 +1201,7 @@ internal static partial class SemanticInjectors
         return text.Contains("-- __gcetItppDormantFrameV1:", StringComparison.Ordinal)
             && text.Contains("local function __gcetItppFrameStepV1(delta)", StringComparison.Ordinal)
             && text.Contains("-- __gcetItppSessionRestoreBoundedV1:", StringComparison.Ordinal)
-            && text.Contains("-- __gcetItppReloadMenuCacheV1:", StringComparison.Ordinal)
-            && text.Contains("  mod.gcetItppForgetSessionUi()\n  mod.captureConsumableTiming()", StringComparison.Ordinal)
-            && text.Contains("  mod.gcetItppForgetSessionUi()\n  state.frameSeq = (state.frameSeq or 0) + 1", StringComparison.Ordinal)
-            && text.Contains("  watch(\'LoadGameMenuGameController\', \'LoadGame\', function(_, item)\n  mod.gcetItppForgetSessionUi()", StringComparison.Ordinal)
-            && text.Contains("    mod.gcetItppForgetSessionUi()\n    if menu.m_isModded", StringComparison.Ordinal)
+            && HasItppReloadMenuCacheReset(text)
             && text.Contains("    if hardCapped and not ready then\n      state.pendingSessionTppRestore = nil", StringComparison.Ordinal)
             && text.Contains("local __gcetItppWorkerFactoryV3 = nil", StringComparison.Ordinal)
             && text.Contains("if not __gcetItppWorkerFactoryV3 then", StringComparison.Ordinal)
@@ -1656,6 +1652,50 @@ if not __gcetItppWorkerFactoryV3 then
     // while the cached UI_System blackboard belongs to the previous save.
     // Rebind UI/menu references at EXISTING native/menu/load lifecycle edges.
     // Keep IsInMenu and IsGamePaused guards intact: never force TPP in menus.
+    // Authoritative source-level proof: the existing reset must execute
+    // once at each load/session entry, before the original owner reads UI state.
+    // Dedra and the detached worker can add preceding lifecycle statements.
+    private static bool HasItppReloadMenuCacheReset(string text)
+    {
+        const string marker = "-- __gcetItppReloadMenuCacheV1:";
+        const string helper = "mod.gcetItppForgetSessionUi = function()\n" +
+            "  state.uiBb, state.uiInMenuId = nil, nil\n" +
+            "  state.srHandler = nil\n" +
+            "  state.inMenuSeq, state.inMenuCached = nil, nil\n" +
+            "  state.menuHeld, state.menuWasOpen = false, false\n" +
+            "  state.uiReadyAt = nil\n" +
+            "end\n";
+        const string call = "  mod.gcetItppForgetSessionUi()\n";
+        const string nestedCall = "    mod.gcetItppForgetSessionUi()\n";
+        if (text.Split(marker, StringSplitOptions.None).Length != 2 ||
+            text.Split(helper, StringSplitOptions.None).Length != 2 ||
+            Regex.Matches(text, @"(?m)^  mod\.gcetItppForgetSessionUi\(\)$").Count != 3 ||
+            Regex.Matches(text, @"(?m)^    mod\.gcetItppForgetSessionUi\(\)$").Count != 1)
+            return false;
+        var helperAt = text.IndexOf(helper, StringComparison.Ordinal);
+        var loaderAt = text.IndexOf("mod.observeLoads = function()\n", StringComparison.Ordinal);
+        if (helperAt < 0 || loaderAt <= helperAt)
+            return false;
+
+        bool Before(string callback, string authorFirst, string reset)
+        {
+            if (text.Split(callback, StringSplitOptions.None).Length != 2)
+                return false;
+            var start = text.IndexOf(callback, StringComparison.Ordinal) + callback.Length;
+            var end = text.IndexOf(authorFirst, start, StringComparison.Ordinal);
+            var at = text.IndexOf(reset, start, StringComparison.Ordinal);
+            return end >= start && at >= start && at < end;
+        }
+        return Before("registerForEvent(\"onInit\", function()\n",
+                      "  mod.captureConsumableTiming()\n", call)
+            && Before("registerForEvent(\"onShutdown\", function()\n",
+                      "  state.frameSeq = (state.frameSeq or 0) + 1\n", call)
+            && Before("  watch('LoadGameMenuGameController', 'LoadGame', function(_, item)\n",
+                      "    local name = item.m_metadata.internalName\n", call)
+            && Before("    if string.find(word, \"QuickLoad\", 1, true) == nil then\n      return\n    end\n",
+                      "    if menu.m_isModded == true", nestedCall);
+    }
+
     private static string EnsureItppReloadMenuCacheReset(string text)
     {
         const string marker = "-- __gcetItppReloadMenuCacheV1:";
@@ -1692,30 +1732,21 @@ if not __gcetItppWorkerFactoryV3 then
             "          state.uiBb = bb\n",
             "      elseif inMenu then\n",
             "      state.uiBb = nil\n",
-            "    state.menuHeld = inMenuNow and not state.overlayOpen", // see below
             "mod.observeUiReady = function()\n",
             loadAnchor, onInit, shutdown, loadGame, quickLoad
         })
         {
-            if (proof == "    state.menuHeld = inMenuNow and not state.overlayOpen") continue;
             if (!text.Contains(proof, StringComparison.Ordinal))
                 throw new InvalidOperationException("ITP menu cache/reset author source drift: " + proof);
         }
         const string menuHeldProof = "  state.menuHeld = inMenuNow and not state.overlayOpen and not state.photoModeWasActive\n";
         if (!text.Contains(menuHeldProof, StringComparison.Ordinal))
             throw new InvalidOperationException("ITP menu state owner drifted.");
-        var calls = new[] {
-            call + "  mod.captureConsumableTiming()\n",
-            call + "  state.frameSeq = (state.frameSeq or 0) + 1\n",
-            loadGame + call,
-            quickLoad + nestedCall
-        };
         if (text.Contains(marker, StringComparison.Ordinal))
         {
-            if (text.Split(marker, StringSplitOptions.None).Length != 2 ||
-                !text.Contains(body + loadAnchor, StringComparison.Ordinal) ||
-                calls.Any(x => !text.Contains(x, StringComparison.Ordinal)))
-                throw new InvalidOperationException("ITP reload cache lifecycle incomplete/unsafe.");
+            if (!HasItppReloadMenuCacheReset(text))
+                throw new InvalidOperationException(
+                    "ITP reload cache lifecycle incomplete/unsafe: reset or lifecycle owner drift.");
             return text;
         }
         if (text.Contains("mod.gcetItppForgetSessionUi", StringComparison.Ordinal))
@@ -1728,12 +1759,20 @@ if not __gcetItppWorkerFactoryV3 then
         // One authoritative state-reset function, called only by the author's
         // existing lifecycle paths. No extra CET events, scheduler or timers.
         text = text.Replace(loadAnchor, body + loadAnchor, StringComparison.Ordinal);
-        text = text.Replace(onInit, onInit + call, StringComparison.Ordinal);
-        text = text.Replace(shutdown, shutdown + call, StringComparison.Ordinal);
+        // Pristine source receives Dedra's startup signal later; an older
+        // optimized input already has it. Both must generate the same order.
+        const string dedraInit = onInit + "  pcall(mod.__gcetDedraToggleSignalV2)\n";
+        text = text.Contains(dedraInit, StringComparison.Ordinal)
+            ? text.Replace(dedraInit, dedraInit + call, StringComparison.Ordinal)
+            : text.Replace(onInit, onInit + call, StringComparison.Ordinal);
+        const string priorStop = shutdown +
+            "  if mod.__gcetItppDormancyV1 then mod.__gcetItppDormancyV1.Stop() end\n";
+        text = text.Contains(priorStop, StringComparison.Ordinal)
+            ? text.Replace(priorStop, priorStop + call, StringComparison.Ordinal)
+            : text.Replace(shutdown, shutdown + call, StringComparison.Ordinal);
         text = text.Replace(loadGame, loadGame + call, StringComparison.Ordinal);
         text = text.Replace(quickLoad, quickLoad + nestedCall, StringComparison.Ordinal);
-        if (!text.Contains(body + loadAnchor, StringComparison.Ordinal) ||
-            calls.Any(x => !text.Contains(x, StringComparison.Ordinal)))
+        if (!HasItppReloadMenuCacheReset(text))
             throw new InvalidOperationException("ITP reload cache source postcondition failed.");
         return text;
     }

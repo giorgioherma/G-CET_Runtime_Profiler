@@ -38,6 +38,13 @@ try {
       !$completeSource.Contains('__gcetItppAttachOnInitV3 = function()') -or
       !$completeSource.Contains('-- __gcetItppSessionRestoreBoundedV1:') -or
       !$completeSource.Contains('-- __gcetItppReloadMenuCacheV1:') -or
+      !$completeSource.Contains('  pcall(mod.__gcetDedraToggleSignalV2)' + "`n" +
+        '  mod.gcetItppForgetSessionUi()' + "`n" +
+        '  mod.captureConsumableTiming()') -or
+      !$completeSource.Contains('registerForEvent("onShutdown", function()' + "`n" +
+        '  if mod.__gcetItppDormancyV1 then mod.__gcetItppDormancyV1.Stop() end' + "`n" +
+        '  mod.gcetItppForgetSessionUi()' + "`n" +
+        '  state.frameSeq = (state.frameSeq or 0) + 1') -or
       !$completeSource.Contains('mod.gcetItppForgetSessionUi = function()') -or
       !$completeSource.Contains('    if hardCapped and not ready then' + [char]10 +
         '      state.pendingSessionTppRestore = nil') -or
