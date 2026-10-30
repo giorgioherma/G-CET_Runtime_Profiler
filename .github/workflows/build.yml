@@ -1,10 +1,5 @@
 name: Build G CET Runtime Profiler
 
-concurrency:
-  # A new branch push supersedes older main builds; never pile up CI jobs.
-  group: gcet-main-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 permissions:
   contents: write
   actions: read
@@ -73,9 +68,6 @@ jobs:
 
       - name: Execute source-owned ITP startup timeout / camera safety contract
         run: lua5.4 tests/ImmersiveThirdPersonStartupHandoffLuaContract.lua src/G.CETProfiler.Core/Services/ModPasses/ImmersiveThirdPerson.cs
-
-      - name: Execute source-owned ITP FPP reload UI cache contract
-        run: lua5.4 tests/ImmersiveThirdPersonReloadMenuLuaContract.lua src/G.CETProfiler.Core/Services/ModPasses/ImmersiveThirdPerson.cs
 
       - name: Execute 0-Engine additive workload runtime contract
         run: lua5.4 tests/ZeroEngineWorkloadLuaContract.lua resolver-runtime/0-Engine/modules

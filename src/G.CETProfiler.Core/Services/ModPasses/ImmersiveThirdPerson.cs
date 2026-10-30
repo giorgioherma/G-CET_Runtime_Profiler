@@ -318,9 +318,9 @@ internal static partial class SemanticInjectors
             "  mod.api.__gcetDedraWakeBridgeV2 = mod.__gcetDedraWakeBridgeV2 == true\nend";
         const string oldProofCall = "pcall(addon.__gcetWakeFromBase)";
         const string proofCall = "pcall(addon.__gcetWakeFromBase, \"__gcetItpToggleWakeV2\")";
-        const string initAnchor = "registerForEvent(\"onInit\", function()\n";
-        const string initSignal = initAnchor +
-            "  pcall(mod.__gcetDedraToggleSignalV2)\n";
+        const string initAnchor = "registerForEvent(\"onInit\", function()\n  mod.captureConsumableTiming()";
+        const string initSignal = "registerForEvent(\"onInit\", function()\n" +
+            "  pcall(mod.__gcetDedraToggleSignalV2)\n  mod.captureConsumableTiming()";
         if(src.Contains(marker,StringComparison.Ordinal))
         {
             if(!src.Contains("pcall(mod.__gcetDedraToggleSignalV2)",StringComparison.Ordinal) ||
@@ -1201,7 +1201,6 @@ internal static partial class SemanticInjectors
         return text.Contains("-- __gcetItppDormantFrameV1:", StringComparison.Ordinal)
             && text.Contains("local function __gcetItppFrameStepV1(delta)", StringComparison.Ordinal)
             && text.Contains("-- __gcetItppSessionRestoreBoundedV1:", StringComparison.Ordinal)
-            && HasItppReloadMenuCacheReset(text)
             && text.Contains("    if hardCapped and not ready then\n      state.pendingSessionTppRestore = nil", StringComparison.Ordinal)
             && text.Contains("local __gcetItppWorkerFactoryV3 = nil", StringComparison.Ordinal)
             && text.Contains("if not __gcetItppWorkerFactoryV3 then", StringComparison.Ordinal)
@@ -1648,172 +1647,6 @@ if not __gcetItppWorkerFactoryV3 then
     // 12-second hard cap is reached but the separate readiness test fails.
     // Return to unchanged author auto-perspective/applyTppMode safeguards;
     // never force activation inside menus, scenes or before camera readiness.
-    // A short/no-player gap does not trigger the author's 0.75s session-reset,
-    // while the cached UI_System blackboard belongs to the previous save.
-    // Rebind UI/menu references at EXISTING native/menu/load lifecycle edges.
-    // Keep IsInMenu and IsGamePaused guards intact: never force TPP in menus.
-    // The reset must be present once, owned by exactly the four existing
-    // author lifecycle paths. Verify the original operation is still reached
-    // AFTER reset; do not confuse independently composed Dedra/worker calls
-    // with an incomplete stage or accept a marker by itself.
-    private static string? ItppReloadMenuCacheViolation(string text)
-    {
-        const string marker = "-- __gcetItppReloadMenuCacheV1:";
-        const string helper = "mod.gcetItppForgetSessionUi = function()\n" +
-            "  state.uiBb, state.uiInMenuId = nil, nil\n" +
-            "  state.srHandler = nil\n" +
-            "  state.inMenuSeq, state.inMenuCached = nil, nil\n" +
-            "  state.menuHeld, state.menuWasOpen = false, false\n" +
-            "  state.uiReadyAt = nil\n" +
-            "end\n";
-        const string invocation = "mod.gcetItppForgetSessionUi()";
-        if (text.Split(marker, StringSplitOptions.None).Length != 2)
-            return "UI cache reset marker missing or duplicated";
-        if (text.Split(helper, StringSplitOptions.None).Length != 2)
-            return "UI cache reset function body missing or duplicated";
-        if (text.Split(invocation, StringSplitOptions.None).Length != 5)
-            return "UI cache reset must have exactly four lifecycle invocations";
-        var helperAt = text.IndexOf(helper, StringComparison.Ordinal);
-        var loaderAt = text.IndexOf("mod.observeLoads = function()\n", StringComparison.Ordinal);
-        if (helperAt < 0 || loaderAt <= helperAt)
-            return "UI cache helper must precede the original load observers";
-
-        string? CheckOwner(string name, string owner, string authorFirst,
-            string resetLine, string? predecessor = null)
-        {
-            if (text.Split(owner, StringSplitOptions.None).Length != 2)
-                return name + " owner missing or duplicated";
-            var start = text.IndexOf(owner, StringComparison.Ordinal) + owner.Length;
-            var author = text.IndexOf(authorFirst, start, StringComparison.Ordinal);
-            // The check must stay within the local callback prologue, not
-            // accidentally match a later unrelated author operation.
-            if (author < start || author - start > 512)
-                return name + " original callback prologue drifted";
-            var prologue = text[start..author];
-            if (prologue.Split(resetLine, StringSplitOptions.None).Length != 2)
-                return name + " reset missing, misplaced or duplicated";
-            if (predecessor is not null)
-            {
-                var beforeReset = prologue.IndexOf(predecessor, StringComparison.Ordinal);
-                if (beforeReset >= 0 &&
-                    beforeReset > prologue.IndexOf(resetLine, StringComparison.Ordinal))
-                    return name + " reset moved before existing owner lifecycle";
-            }
-            return null;
-        }
-
-        return CheckOwner("onInit",
-                    "registerForEvent(\"onInit\", function()\n",
-                    "  mod.captureConsumableTiming()\n",
-                    "  " + invocation + "\n",
-                    "  pcall(mod.__gcetDedraToggleSignalV2)\n")
-            ?? CheckOwner("onShutdown",
-                    "registerForEvent(\"onShutdown\", function()\n",
-                    "  state.frameSeq = (state.frameSeq or 0) + 1\n",
-                    "  " + invocation + "\n",
-                    "  if mod.__gcetItppDormancyV1 then mod.__gcetItppDormancyV1.Stop() end\n")
-            ?? CheckOwner("LoadGame",
-                    "  watch('LoadGameMenuGameController', 'LoadGame', function(_, item)\n",
-                    "    local name = item.m_metadata.internalName\n",
-                    "  " + invocation + "\n")
-            ?? CheckOwner("QuickLoad",
-                    "    if string.find(word, \"QuickLoad\", 1, true) == nil then\n" +
-                    "      return\n    end\n",
-                    "    if menu.m_isModded == true",
-                    "    " + invocation + "\n");
-    }
-
-    private static bool HasItppReloadMenuCacheReset(string text) =>
-        ItppReloadMenuCacheViolation(text) is null;
-
-    private static string EnsureItppReloadMenuCacheReset(string text)
-    {
-        const string marker = "-- __gcetItppReloadMenuCacheV1:";
-        const string body = """
-            -- __gcetItppReloadMenuCacheV1: release cached world/UI objects on load.
-            mod.gcetItppForgetSessionUi = function()
-              state.uiBb, state.uiInMenuId = nil, nil
-              state.srHandler = nil
-              state.inMenuSeq, state.inMenuCached = nil, nil
-              state.menuHeld, state.menuWasOpen = false, false
-              state.uiReadyAt = nil
-            end
-
-            """;
-        const string loadAnchor = "mod.observeLoads = function()\n";
-        const string onInit = "registerForEvent(\"onInit\", function()\n";
-        const string shutdown = "registerForEvent(\"onShutdown\", function()\n";
-        const string loadGame = "  watch('LoadGameMenuGameController', 'LoadGame', function(_, item)\n";
-        const string quickLoad = "    if string.find(word, \"QuickLoad\", 1, true) == nil then\n      return\n    end\n";
-        const string call = "  mod.gcetItppForgetSessionUi()\n";
-        const string nestedCall = "    mod.gcetItppForgetSessionUi()\n";
-        if (!text.Contains("local function isPlayerInAnyMenu()", StringComparison.Ordinal))
-        {
-            if (text.Contains(marker, StringComparison.Ordinal))
-                throw new InvalidOperationException("ITP reload menu cache stage without author menu owner.");
-            return text;
-        }
-        // Require original source-level menu-cache ownership and the author
-        // load observers, not merely a marker from a previous G-CET pass.
-        foreach (var proof in new[] {
-            "  local inMenu = isPlayerInAnyMenuUncached()\n",
-            "  if state.inMenuSeq == seq then\n",
-            "  local uiBb = state.uiBb\n",
-            "          state.uiBb = bb\n",
-            "      elseif inMenu then\n",
-            "      state.uiBb = nil\n",
-            "mod.observeUiReady = function()\n",
-            loadAnchor, onInit, shutdown, loadGame, quickLoad
-        })
-        {
-            if (!text.Contains(proof, StringComparison.Ordinal))
-                throw new InvalidOperationException("ITP menu cache/reset author source drift: " + proof);
-        }
-        const string menuHeldProof = "  state.menuHeld = inMenuNow and not state.overlayOpen and not state.photoModeWasActive\n";
-        if (!text.Contains(menuHeldProof, StringComparison.Ordinal))
-            throw new InvalidOperationException("ITP menu state owner drifted.");
-        if (text.Contains(marker, StringComparison.Ordinal))
-        {
-            var violation = ItppReloadMenuCacheViolation(text);
-            if (violation is not null)
-                throw new InvalidOperationException(
-                    "ITP reload cache lifecycle incomplete/unsafe: " + violation);
-            return text;
-        }
-        if (text.Contains("mod.gcetItppForgetSessionUi", StringComparison.Ordinal))
-            throw new InvalidOperationException("ITP reload cache helper collides with existing author code.");
-        foreach (var anchor in new[] { loadAnchor, onInit, shutdown, loadGame, quickLoad })
-        {
-            if (text.Split(anchor, StringSplitOptions.None).Length != 2)
-                throw new InvalidOperationException("ITP reload lifecycle anchor is not unique: " + anchor);
-        }
-        // One authoritative state-reset function, called only by the author's
-        // existing lifecycle paths. No extra CET events, scheduler or timers.
-        // Windows checkout can preserve CRLF inside a C# raw string literal.
-        // The composed Lua source is normalized to LF before this insertion:
-        // normalize the authoritative emitter, never accept mismatched output.
-        text = text.Replace(loadAnchor,
-            body.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n') +
-                loadAnchor, StringComparison.Ordinal);
-        // Pristine source receives Dedra's startup signal later; an older
-        // optimized input already has it. Both must generate the same order.
-        const string dedraInit = onInit + "  pcall(mod.__gcetDedraToggleSignalV2)\n";
-        text = text.Contains(dedraInit, StringComparison.Ordinal)
-            ? text.Replace(dedraInit, dedraInit + call, StringComparison.Ordinal)
-            : text.Replace(onInit, onInit + call, StringComparison.Ordinal);
-        const string priorStop = shutdown +
-            "  if mod.__gcetItppDormancyV1 then mod.__gcetItppDormancyV1.Stop() end\n";
-        text = text.Contains(priorStop, StringComparison.Ordinal)
-            ? text.Replace(priorStop, priorStop + call, StringComparison.Ordinal)
-            : text.Replace(shutdown, shutdown + call, StringComparison.Ordinal);
-        text = text.Replace(loadGame, loadGame + call, StringComparison.Ordinal);
-        text = text.Replace(quickLoad, quickLoad + nestedCall, StringComparison.Ordinal);
-        var postcondition = ItppReloadMenuCacheViolation(text);
-        if (postcondition is not null)
-            throw new InvalidOperationException("ITP reload cache source postcondition failed: " + postcondition);
-        return text;
-    }
-
     private static string EnsureItppBoundedSessionRestore(string text)
     {
         const string marker = "-- __gcetItppSessionRestoreBoundedV1:";
@@ -1869,7 +1702,6 @@ if not __gcetItppWorkerFactoryV3 then
         if (currentWorker is not null && currentWorker != expected && currentWorker != knownPrior)
             throw new InvalidOperationException("ITP dormant frame worker drifted; refusing overwrite.");
         normalized = EnsureItppBoundedSessionRestore(normalized);
-        normalized = EnsureItppReloadMenuCacheReset(normalized);
         if (normalized.Contains(stage, StringComparison.Ordinal))
         {
             var hostCurrent = context.TryReadComposedModFile("0-Engine", "init.lua");

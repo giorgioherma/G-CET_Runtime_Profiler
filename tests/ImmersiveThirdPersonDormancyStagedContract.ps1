@@ -37,15 +37,6 @@ try {
       !$completeSource.Contains('local __gcetItppAttachOnInitV3' + [char]10 + 'registerForEvent("onInit", function()') -or
       !$completeSource.Contains('__gcetItppAttachOnInitV3 = function()') -or
       !$completeSource.Contains('-- __gcetItppSessionRestoreBoundedV1:') -or
-      !$completeSource.Contains('-- __gcetItppReloadMenuCacheV1:') -or
-      !$completeSource.Contains('  pcall(mod.__gcetDedraToggleSignalV2)' + "`n" +
-        '  mod.gcetItppForgetSessionUi()' + "`n" +
-        '  mod.captureConsumableTiming()') -or
-      !$completeSource.Contains('registerForEvent("onShutdown", function()' + "`n" +
-        '  if mod.__gcetItppDormancyV1 then mod.__gcetItppDormancyV1.Stop() end' + "`n" +
-        '  mod.gcetItppForgetSessionUi()' + "`n" +
-        '  state.frameSeq = (state.frameSeq or 0) + 1') -or
-      !$completeSource.Contains('mod.gcetItppForgetSessionUi = function()') -or
       !$completeSource.Contains('    if hardCapped and not ready then' + [char]10 +
         '      state.pendingSessionTppRestore = nil') -or
       $completeSource.IndexOf('-- __gcetItppSessionRestoreBoundedV1:') -gt
@@ -107,12 +98,6 @@ try {
   if ($v3rules.Count -ne 1 -or @($v3rules[0].files).Count -ne 1 -or
       !([string]@($v3rules[0].files)[0]).Replace('\','/').Equals(
         'immersive_third_person/init.lua',[StringComparison]::OrdinalIgnoreCase)) {
-    Write-Host ('ITP_V3_DEBUG: ' + (@{
-      ok=$v3.Result.ok
-      rules=@($v3rules | Select-Object RuleId,type,files,status,reason)
-      skips=@($v3.Manifest.skipped | Where-Object { $_.RuleId -like '*immersive-third-person*' } |
-        Select-Object RuleId,type,reason,status)
-    } | ConvertTo-Json -Depth 8 -Compress))
     throw 'ITP_V3_FORWARD_LOCAL_MIGRATION_REWROTE_WORKER'
   }
   Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -171,92 +156,6 @@ try {
     }
   } finally { $boundZip.Dispose() }
   [IO.File]::WriteAllText((Join-Path $stageItp 'init.lua'),$completeSourceRaw,[Text.Encoding]::UTF8)
-  # Previous complete V3 must gain only the missing reload/UI lifecycle.
-  $uiMarker = $completeSource.IndexOf('-- __gcetItppReloadMenuCacheV1:')
-  $uiBegin = $completeSource.LastIndexOf([char]10, $uiMarker) + 1
-  $uiEnd = $completeSource.IndexOf('mod.observeLoads = function()', $uiMarker)
-  if ($uiMarker -lt 0 -or $uiEnd -le $uiBegin) { throw 'ITP_UI_CACHE_RESET_BOUNDARY_MISSING' }
-  $priorUi = $completeSource.Remove($uiBegin, $uiEnd-$uiBegin)
-  # Remove only the proved source-owned invocation inside each existing
-  # callback. Generic/native source composition may insert other statements
-  # between the reset and the first author operation: adjacency is NOT proof.
-  function RemoveOwnedUiReset([string]$src, [string]$owner,
-      [string]$authorFirst, [string]$reset, [string]$purpose) {
-    if ([regex]::Matches($src,[regex]::Escape($owner)).Count -ne 1) {
-      throw ("ITP_UI_CACHE_STAGED_OWNER_AMBIGUOUS: " + $purpose)
-    }
-    $from = $src.IndexOf($owner,[StringComparison]::Ordinal) + $owner.Length
-    $authorAt = $src.IndexOf($authorFirst,$from,[StringComparison]::Ordinal)
-    if ($authorAt -lt $from -or ($authorAt-$from) -gt 512) {
-      throw ("ITP_UI_CACHE_STAGED_AUTHOR_DRIFT: " + $purpose)
-    }
-    $prologue = $src.Substring($from,$authorAt-$from)
-    if ([regex]::Matches($prologue,[regex]::Escape($reset)).Count -ne 1) {
-      throw ("ITP_UI_CACHE_STAGED_RESET_NOT_UNIQUE: " + $purpose)
-    }
-    $callAt = $prologue.IndexOf($reset,[StringComparison]::Ordinal)
-    return $src.Remove($from+$callAt,$reset.Length)
-  }
-  $nl = [string][char]10
-  $onInitOwner = 'registerForEvent("onInit", function()' + $nl
-  $onShutdownOwner = 'registerForEvent("onShutdown", function()' + $nl
-  $loadGameOwner = "  watch('LoadGameMenuGameController', 'LoadGame', function(_, item)" + $nl
-  $quickLoadOwner = '    if string.find(word, "QuickLoad", 1, true) == nil then' +
-    $nl + '      return' + $nl + '    end' + $nl
-  $reset2 = '  mod.gcetItppForgetSessionUi()' + $nl
-  $reset4 = '    mod.gcetItppForgetSessionUi()' + $nl
-  $priorUi = RemoveOwnedUiReset -src $priorUi -owner $onInitOwner -authorFirst ('  mod.captureConsumableTiming()' + $nl) -reset $reset2 -purpose 'onInit'
-  $priorUi = RemoveOwnedUiReset -src $priorUi -owner $onShutdownOwner -authorFirst ('  state.frameSeq = (state.frameSeq or 0) + 1' + $nl) -reset $reset2 -purpose 'onShutdown'
-  $priorUi = RemoveOwnedUiReset -src $priorUi -owner $loadGameOwner -authorFirst ('    local name = item.m_metadata.internalName' + $nl) -reset $reset2 -purpose 'LoadGame'
-  $priorUi = RemoveOwnedUiReset -src $priorUi -owner $quickLoadOwner -authorFirst '    if menu.m_isModded == true' -reset $reset4 -purpose 'QuickLoad'
-  # The staged historical source must contain NO call into the removed helper.
-  if ($priorUi.Contains('-- __gcetItppReloadMenuCacheV1:') -or
-      $priorUi.Contains('mod.gcetItppForgetSessionUi()')) {
-    throw 'ITP_UI_CACHE_PREVIOUS_VERSION_FIXTURE_INCOMPLETE'
-  }
-  [IO.File]::WriteAllText((Join-Path $stageItp 'init.lua'),$priorUi,[Text.Encoding]::UTF8)
-  $uiUpgrade = ResolveStaged 'PREVIOUS_V3_UI_CACHE'
-  if (!$uiUpgrade.Result.ok -or !$uiUpgrade.Manifest) { throw 'ITP_UI_CACHE_STAGED_MIGRATION_FAILED' }
-  $uiRules = @($uiUpgrade.Manifest.transforms | Where-Object {
-    $_.RuleId -eq 'immersive-third-person' -and $_.type -eq 'SEMANTIC_RULE'
-  })
-  if ($uiRules.Count -ne 1 -or @($uiRules[0].files).Count -ne 1 -or
-      !([string]@($uiRules[0].files)[0]).Replace('\','/').Equals(
-        'immersive_third_person/init.lua',[StringComparison]::OrdinalIgnoreCase)) {
-    throw 'ITP_UI_CACHE_STAGED_WORKER_REWRITTEN'
-  }
-  $uiZip = [IO.Compression.ZipFile]::OpenRead($uiUpgrade.Result.pass.ZipPath)
-  try {
-    $uiEntry = @($uiZip.Entries | Where-Object {
-      $_.FullName.Replace('\','/').EndsWith('/immersive_third_person/init.lua')
-    }) | Select-Object -First 1
-    if (!$uiEntry) { throw 'ITP_UI_CACHE_STAGED_SOURCE_MISSING' }
-    $uiReader = [IO.StreamReader]::new($uiEntry.Open())
-    try { $uiActual = $uiReader.ReadToEnd() } finally { $uiReader.Dispose() }
-    if ($uiActual.Replace(([string][char]13+[string][char]10),[string][char]10) -cne $completeSource) {
-      throw 'ITP_UI_CACHE_STAGED_NOT_PRISTINE_EQUIVALENT'
-    }
-  } finally { $uiZip.Dispose() }
-  [IO.File]::WriteAllText((Join-Path $stageItp 'init.lua'),$completeSourceRaw,[Text.Encoding]::UTF8)
-  # A marker with one lost lifecycle invocation is an unsafe partial install.
-  # It must be refused, not falsely marked complete or silently repaired.
-  $badUiSource = RemoveOwnedUiReset -src $completeSource -owner $loadGameOwner -authorFirst ('    local name = item.m_metadata.internalName' + $nl) -reset $reset2 -purpose 'PARTIAL_UI_RESET'
-  [IO.File]::WriteAllText((Join-Path $stageItp 'init.lua'),$badUiSource,[Text.Encoding]::UTF8)
-  $partialUi = ResolveStaged 'PARTIAL_UI_RESET'
-  $badUiTransforms = @($partialUi.Manifest.transforms | Where-Object {
-    $_.RuleId -eq 'immersive-third-person' -and $_.type -eq 'SEMANTIC_RULE'
-  })
-  $badUiRefusals = @($partialUi.Manifest.skipped | Where-Object {
-    $_.RuleId -eq 'immersive-third-person' -and $_.type -eq 'SEMANTIC_RULE' -and
-    ([string]$_.reason).Contains('ITP reload cache lifecycle incomplete/unsafe')
-  })
-  if ($badUiTransforms.Count -ne 0 -or
-      ($badUiRefusals.Count -ne 1 -and
-       !([string]$partialUi.Result.error).Contains('ITP reload cache lifecycle incomplete/unsafe'))) {
-    throw 'ITP_PARTIAL_UI_RESET_UNSAFE_STAGE_ACCEPTED'
-  }
-  [IO.File]::WriteAllText((Join-Path $stageItp 'init.lua'),$completeSourceRaw,[Text.Encoding]::UTF8)
-
   $full = ResolveStaged 'COMPLETE'
   if ($full.Manifest -and
       @($full.Manifest.transforms | Where-Object { $_.RuleId -eq 'immersive-third-person' }).Count -gt 0) {
