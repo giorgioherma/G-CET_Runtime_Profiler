@@ -166,7 +166,7 @@ try {
   $priorUi = $completeSource.Remove($uiBegin, $uiEnd-$uiBegin)
   foreach ($expr in @(
     '  mod.gcetItppForgetSessionUi()' + "`n" + '  mod.captureConsumableTiming()',
-    'registerForEvent("onShutdown", function()' + "`n" + '  mod.gcetItppForgetSessionUi()',
+    '  mod.gcetItppForgetSessionUi()' + "`n" + '  state.frameSeq = (state.frameSeq or 0) + 1',
     'watch(''LoadGameMenuGameController'', ''LoadGame'', function(_, item)' + "`n" + '  mod.gcetItppForgetSessionUi()',
     '    mod.gcetItppForgetSessionUi()' + "`n" + '    if menu.m_isModded'
   )) {
