@@ -1172,6 +1172,10 @@ internal static partial class SemanticInjectors
           if not handle.IsActive() then handle.Resume() end
         elseif handle.IsActive() then
           handle.Pause()
+          -- modClock does not advance during physical sleep. Keep the
+          -- first later author CET keypress from being rejected as a
+          -- phantom duplicate of the last active-frame toggle.
+          state.lastToggleAt = nil
           pauses = pauses + 1
         end
       end

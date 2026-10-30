@@ -38,8 +38,10 @@ assert(scheduleCount==1 and frame.IsActive())
 local function ticks(n)
  for i=1,n do if frame.IsActive() then frame.callback({dt=0.016,frame=i}) end end
 end
+state.lastToggleAt=0.05
 ticks(2)
 assert(not frame.IsActive() and called==2, "idle never detached")
+assert(state.lastToggleAt==nil, "frozen modClock would reject next CET toggle")
 ticks(150)
 assert(called==2, "idle frame kept executing")
 local quiet=ctrl.Diagnostics()
