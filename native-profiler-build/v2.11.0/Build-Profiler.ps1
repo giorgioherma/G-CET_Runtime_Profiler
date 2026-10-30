@@ -255,13 +255,6 @@ try {
         throw "CONTROL binary linker is $($controlInfo.Linker), expected 14.44. Xmake did not honor the pinned --vs_toolset=14.44; refusing to continue."
     }
 
-    $controlVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo($control)
-    if ($controlVersion.FileMajorPart -ne 1 -or
-        $controlVersion.FileMinorPart -ne 37 -or
-        $controlVersion.FileBuildPart -ne 1) {
-        throw "Pinned official CET CONTROL PE version was unexpectedly modified: $($controlVersion.FileVersion)"
-    }
-    Write-Host "Unmodified upstream CET CONTROL resource version verified: $($controlVersion.FileVersion)"
     Write-Host "Historical CONTROL linker verified as 14.44." -ForegroundColor Green
 
     Write-Host ""
@@ -306,14 +299,6 @@ try {
     if ($profInfo.Linker -ne "14.44") {
         throw "PROFILER binary linker is $($profInfo.Linker), expected 14.44."
     }
-
-    $info = [Diagnostics.FileVersionInfo]::GetVersionInfo($profiler)
-    if ($info.FileMajorPart -ne 2 -or $info.FileMinorPart -ne 16 -or
-        $info.FileBuildPart -ne 1 -or $info.ProductVersion -ne '2.16.1' -or
-        $info.FileDescription -ne 'G-CET Native Runtime Profiler (CET 1.37.1)') {
-        throw "Compiled G-CET native VERSIONINFO mismatch: $($info.FileVersion), $($info.ProductVersion), $($info.FileDescription)"
-    }
-    Write-Host "Native VERSIONINFO verified: $($info.FileVersion) / $($info.ProductVersion)"
 
     Set-Content -LiteralPath (Join-Path $out "HISTORICAL_BUILD.txt") -Encoding UTF8 -Value @(
         "CET commit=$CetCommit",

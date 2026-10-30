@@ -1107,43 +1107,6 @@ Replace-LiteralOnce `
 '@ `
     -Label "Override chain next-wrapper allocation stage"
 
-# The official CET CONTROL is already compiled and staged unchanged.
-# Only the experimental profiler gets a distinct Windows PE VERSIONINFO.
-# Do NOT change CET_VERSION C++ macros or runtime compatibility (CET 1.37.1).
-# Update both Xmake's original template and generated compiled resource;
-# reconfiguration must not silently replace the generated native identity.
-$gcetNativeVersion = '2.16.1'
-$rcTemplate = Join-Path $src 'src\xmake\Resource.rc.in'
-$rcGenerated = Join-Path $src 'src\config\Resource.rc'
-foreach ($rcPath in @($rcTemplate, $rcGenerated)) {
-    if (!(Test-Path -LiteralPath $rcPath -PathType Leaf)) {
-        throw "Missing pinned CET resource input: $rcPath"
-    }
-    if ($rcPath -eq $rcTemplate) {
-        $expectedNumeric = '$' + '{CET_VERSION_MAJOR},' + '$' + '{CET_VERSION_MINOR},' + '$' + '{CET_VERSION_PATCH},0'
-        $expectedFile = '$' + '{CET_VERSION_SIMPLE}'
-        $expectedProduct = '$' + '{CET_VERSION_FULL}'
-    }
-    else {
-        $expectedNumeric = '1,37,1,0'
-        $expectedFile = '1.37.1'
-        $productMatch = [regex]::Matches((Read-Utf8 $rcPath), '(?m)^\s*VALUE\s+"ProductVersion",\s+"([^"]+)"\s*$')
-        if ($productMatch.Count -ne 1 -or
-            $productMatch[0].Groups[1].Value -notmatch '^(?:v)?1\.37\.1(?:-\d+-g[0-9a-f]+)?\s+\[[^\]]+\]$') {
-            throw "Unexpected pinned CET generated ProductVersion: $rcPath"
-        }
-        $expectedProduct = $productMatch[0].Groups[1].Value
-    }
-    foreach ($field in @('FILEVERSION', 'PRODUCTVERSION')) {
-        Replace-RegexOnce -Path $rcPath -Pattern ('(?m)^(\s*' + $field + '\s+)' + [regex]::Escape($expectedNumeric) + '\s*$') -Replacement ('$' + '{1}2,16,1,0') -Label "Native $field $rcPath"
-    }
-    Replace-RegexOnce -Path $rcPath -Pattern ('(?m)^(\s*VALUE\s+"FileVersion",\s+)"' + [regex]::Escape($expectedFile) + '"\s*$') -Replacement ('$1' + '"2.16.1.0"') -Label "Native FileVersion string $rcPath"
-    Replace-RegexOnce -Path $rcPath -Pattern ('(?m)^(\s*VALUE\s+"ProductVersion",\s+)"' + [regex]::Escape($expectedProduct) + '"\s*$') -Replacement ('$1' + '"2.16.1"') -Label "Native ProductVersion string $rcPath"
-    Replace-RegexOnce -Path $rcPath -Pattern '(?m)^(\s*VALUE\s+"FileDescription",\s+)"[^"]*"\s*$' -Replacement ('$1' + '"G-CET Native Runtime Profiler (CET 1.37.1)"') -Label "Native FileDescription $rcPath"
-    Replace-RegexOnce -Path $rcPath -Pattern '(?m)^(\s*VALUE\s+"ProductName",\s+)"[^"]*"\s*$' -Replacement ('$1' + '"G-CET Native Runtime Profiler"') -Label "Native ProductName $rcPath"
-}
-Write-Host "Experimental G-CET native VERSIONINFO $gcetNativeVersion; CET runtime 1.37.1 unchanged"
-
 # Hard safety checks.
 $foHHashAfter = (Get-FileHash -Algorithm SHA256 $foH).Hash
 if ($foHHashAfter -ne $foHHashBefore) {

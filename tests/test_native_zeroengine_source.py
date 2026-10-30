@@ -20,13 +20,6 @@ assert "std::min(MaxDeepHotRegistrations, candidates.size())" in native
 assert "DeepSelected.store(" in native
 assert "CET_Runtime_Profile_ZeroEngine_SourceAttribution.csv" in native
 assert "CET_Runtime_Profile_ZeroEngine_Callsites.csv" in native
-assert "CET_Runtime_Profile_ZeroEngine_ProducerAttribution.csv" in native
-assert "CET_Runtime_Profile_ZeroEngine_ConsumerCallsites.csv" in native
-assert "PHASE3_ZERO_ENGINE_PRODUCER_V1" in native
-assert 'callsite.ChildSourceFile = frame.SourceFile' in native
-assert 'callsite.SampledChildOwnPositiveBytes += ownBytes' in native
-assert 'callsite.SampledChildOwnPositiveOps += ownOps' in native
-assert 'SAMPLED_CHILD_EXCLUSIVE_NOT_ADDITIVE_WITH_PARENT' in native
 assert 'zeroRegistration.count(row.RegistrationId)' in native
 assert 'row->SampledExclusiveAllocBytes' in native
 assert 'row->SampledExclusiveAllocations' in native
@@ -41,8 +34,6 @@ assert "dev/resolver-profiler-handoff" in normal
 assert "Verify 0-Engine source attribution contract" in normal
 assert "CET_Runtime_Profile_ZeroEngine_SourceAttribution.csv" in normal
 assert "CET_Runtime_Profile_ZeroEngine_Callsites.csv" in normal
-assert "CET_Runtime_Profile_ZeroEngine_ProducerAttribution.csv" in normal
-assert "CET_Runtime_Profile_ZeroEngine_ConsumerCallsites.csv" in normal
 assert "native-profiler-build/v2.11.0/Build-Profiler.ps1" in normal
 assert "Get-CETPEInfo.ps1" in normal
 assert "DLL_SHA256.txt" in normal
@@ -86,21 +77,3 @@ assert patch.count('BeginPreDispatch()') == 5
 assert patch.count('EndPreDispatch(') == 3
 assert 'No RAII across LuaJIT longjmp/Windows SEH' in patch
 print("native exact-method stage source contract passed")
-
-# Native PE VERSIONINFO is built into the real DLL, not a renamed artifact.
-assert "$gcetNativeVersion = '2.16.1'" in patch
-assert "src\\xmake\\Resource.rc.in" in patch
-assert "src\\config\\Resource.rc" in patch
-assert "G-CET Native Runtime Profiler (CET 1.37.1)" in patch
-assert "Do NOT change CET_VERSION C++ macros" in patch
-# Reject accidental duplication or corruption of the existing generating script.
-assert patch.count("$gcetNativeVersion = '2.16.1'") == 1
-assert patch.count("$foHHashAfter = (Get-FileHash -Algorithm SHA256 $foH).Hash") == 1
-assert patch.count('Write-Host "No files under cyber_engine_tweaks\\mods were touched."') == 1
-assert "('$' + '{1}2,16,1,0')" in patch
-assert "('$1' + '2,16,1,0')" not in patch
-build_script = Path('native-profiler-build/v2.11.0/Build-Profiler.ps1').read_text(encoding='utf-8')
-assert "Compiled G-CET native VERSIONINFO mismatch" in build_script
-assert "Compiled native VERSIONINFO mismatch" in normal
-assert "NATIVE_VERSION.txt" in normal
-print("native resource version 2.16.1 compiler and workflow source contracts passed")
