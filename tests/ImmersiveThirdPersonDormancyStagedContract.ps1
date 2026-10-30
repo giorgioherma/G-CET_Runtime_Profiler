@@ -36,6 +36,11 @@ try {
   if ($completeSource.Contains('pcall(controller.Register)') -or
       !$completeSource.Contains('local __gcetItppAttachOnInitV3' + [char]10 + 'registerForEvent("onInit", function()') -or
       !$completeSource.Contains('__gcetItppAttachOnInitV3 = function()') -or
+      !$completeSource.Contains('-- __gcetItppSessionRestoreBoundedV1:') -or
+      !$completeSource.Contains('    if hardCapped and not ready then' + [char]10 +
+        '      state.pendingSessionTppRestore = nil') -or
+      $completeSource.IndexOf('-- __gcetItppSessionRestoreBoundedV1:') -gt
+        $completeSource.IndexOf('    if pending.stablePolls >= 10 or (hardCapped and ready) then') -or
       $completeSource.Contains('local function __gcetItppAttachOnInitV3()') -or
       $completeSource.IndexOf('local __gcetItppAttachOnInitV3' + [char]10) -gt
         $completeSource.IndexOf('registerForEvent("onInit", function()') -or
@@ -113,6 +118,44 @@ try {
   # Restore the original staged input text, including its original CRLF layout.
   [IO.File]::WriteAllText((Join-Path $stageItp 'init.lua'),$completeSourceRaw,[Text.Encoding]::UTF8)
 
+  # Prior shipped V3 had no bounded release: an unready startup pending
+  # request could own ITP indefinitely. Upgrade ONLY init.lua and preserve
+  # the external frame worker; require pristine-equivalent generated source.
+  $marker = '-- __gcetItppSessionRestoreBoundedV1:'
+  $oldStart = $completeSource.IndexOf('    ' + $marker)
+  $oldEnd = $completeSource.IndexOf('    if pending.stablePolls >= 10 or (hardCapped and ready) then',$oldStart)
+  if ($oldStart -lt 0 -or $oldEnd -le $oldStart) { throw 'ITP_BOUNDED_RELEASE_SOURCE_UNPROVEN' }
+  $oldBlock = $completeSource.Substring($oldStart,$oldEnd-$oldStart)
+  if (!$oldBlock.Contains('if hardCapped and not ready then') -or
+      !$oldBlock.Contains('state.pendingSessionTppRestore = nil') -or
+      !$oldBlock.Contains('state.uiReadyAt = state.uiReadyAt')) {
+    throw 'ITP_BOUNDED_RELEASE_BEHAVIOR_UNPROVEN'
+  }
+  $priorUnbounded = $completeSource.Remove($oldStart,$oldEnd-$oldStart)
+  [IO.File]::WriteAllText((Join-Path $stageItp 'init.lua'),$priorUnbounded,[Text.Encoding]::UTF8)
+  $boundedUpgrade = ResolveStaged 'PREVIOUS_UNBOUNDED_V3'
+  if (!$boundedUpgrade.Result.ok -or !$boundedUpgrade.Manifest) { throw 'ITP_UNBOUNDED_V3_NOT_RECONCILED' }
+  $boundedRule = @($boundedUpgrade.Manifest.transforms | Where-Object {
+    $_.RuleId -eq 'immersive-third-person' -and $_.type -eq 'SEMANTIC_RULE'
+  })
+  if ($boundedRule.Count -ne 1 -or @($boundedRule[0].files).Count -ne 1 -or
+      !([string]@($boundedRule[0].files)[0]).Replace('\','/').Equals(
+        'immersive_third_person/init.lua',[StringComparison]::OrdinalIgnoreCase)) {
+    throw 'ITP_UNBOUNDED_V3_MUST_BE_SOURCE_ONLY'
+  }
+  $boundZip=[IO.Compression.ZipFile]::OpenRead($boundedUpgrade.Result.pass.ZipPath)
+  try {
+    $boundEntry = @($boundZip.Entries | Where-Object {
+      $_.FullName.Replace('\','/').EndsWith('/immersive_third_person/init.lua')
+    }) | Select-Object -First 1
+    if (!$boundEntry) { throw 'ITP_BOUNDED_OUTPUT_MISSING' }
+    $boundReader=[IO.StreamReader]::new($boundEntry.Open())
+    try { $boundActual=$boundReader.ReadToEnd() } finally { $boundReader.Dispose() }
+    if ($boundActual.Replace(([string][char]13+[string][char]10),[string][char]10) -cne $completeSource) {
+      throw 'ITP_BOUNDED_V3_MIGRATION_NOT_PRISTINE_EQUIVALENT'
+    }
+  } finally { $boundZip.Dispose() }
+  [IO.File]::WriteAllText((Join-Path $stageItp 'init.lua'),$completeSourceRaw,[Text.Encoding]::UTF8)
   $full = ResolveStaged 'COMPLETE'
   if ($full.Manifest -and
       @($full.Manifest.transforms | Where-Object { $_.RuleId -eq 'immersive-third-person' }).Count -gt 0) {
