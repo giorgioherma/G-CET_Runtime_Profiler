@@ -1136,6 +1136,17 @@ internal static partial class SemanticInjectors
                 @"(?:registerForEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]\s*,\s*function\("))
             return false;
 
+        var hostDir = Directory.GetParent(ownerFolder)?.FullName;
+        if (hostDir == null) return false;
+        var hostPath = Path.Combine(hostDir, "0-Engine", "init.lua");
+        if (!File.Exists(hostPath)) return false;
+        var host = File.ReadAllText(hostPath).Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n');
+        if (!host.Contains("Engine.__gcetScheduleDriver({", StringComparison.Ordinal)
+            || !host.Contains("__host.__gcetScheduleDriver = function(ctx)", StringComparison.Ordinal)
+            || !host.Contains("registerForEvent(\"onUpdate\", function(delta)", StringComparison.Ordinal))
+            return false;
+
         var workerPath = Path.Combine(ownerFolder, "GCET_Semantic", "itp_frame_dormancy.lua");
         if (!File.Exists(workerPath)) return false;
         var worker = File.ReadAllText(workerPath).Replace("\r\n", "\n", StringComparison.Ordinal)
@@ -1310,6 +1321,13 @@ internal static partial class SemanticInjectors
             throw new InvalidOperationException("ITP dormant frame worker drifted; refusing overwrite.");
         if (normalized.Contains(stage, StringComparison.Ordinal))
         {
+            var hostCurrent = context.TryReadComposedModFile("0-Engine", "init.lua");
+            if (hostCurrent is null ||
+                !hostCurrent.Contains("Engine.__gcetScheduleDriver({", StringComparison.Ordinal) ||
+                !hostCurrent.Contains("__host.__gcetScheduleDriver = function(ctx)", StringComparison.Ordinal) ||
+                !hostCurrent.Contains("registerForEvent(\"onUpdate\", function(delta)", StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "Existing ITP detached frame controller has no proven composed 0-Engine driver.");
             if (!normalized.Contains("local function __gcetItppFrameStepV1(delta)", StringComparison.Ordinal) ||
                 !normalized.Contains("mod.__gcetItppDormancyV1.Start()", StringComparison.Ordinal) ||
                 !normalized.Contains("mod.__gcetItppDormancyV1.Stop()", StringComparison.Ordinal) ||

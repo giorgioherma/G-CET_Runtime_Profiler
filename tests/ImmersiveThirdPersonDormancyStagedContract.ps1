@@ -18,6 +18,13 @@ $stageItp = Join-Path $stage 'immersive_third_person'
 New-Item -ItemType Directory -Path $stage -Force | Out-Null
 try {
   Copy-Item -LiteralPath (Join-Path $OriginalMods '0-Engine') -Destination (Join-Path $stage '0-Engine') -Recurse
+  # Reconcile the actually emitted host overlay, not a stock host with no
+  # shared schedule driver. Completed ITP source is only valid alongside it.
+  $hostOverlay = Join-Path $GeneratedRoot 'bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine'
+  if (!(Test-Path -LiteralPath (Join-Path $hostOverlay 'init.lua'))) {
+    throw 'ITP_COMPOSED_HOST_DEPENDENCY_MISSING'
+  }
+  Copy-Item -Path (Join-Path $hostOverlay '*') -Destination (Join-Path $stage '0-Engine') -Recurse -Force
   Copy-Item -LiteralPath $source -Destination $stageItp -Recurse
   Copy-Item -LiteralPath (Join-Path $generated 'init.lua') -Destination (Join-Path $stageItp 'init.lua') -Force
   $worker = Join-Path $stageItp 'GCET_Semantic/itp_frame_dormancy.lua'
