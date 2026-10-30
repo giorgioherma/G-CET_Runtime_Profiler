@@ -1705,7 +1705,7 @@ if not __gcetItppWorkerFactoryV3 then
         if (!text.Contains(menuHeldProof, StringComparison.Ordinal))
             throw new InvalidOperationException("ITP menu state owner drifted.");
         var calls = new[] {
-            onInit + call,
+            call + "  mod.captureConsumableTiming()\n",
             shutdown + call,
             loadGame + call,
             quickLoad + nestedCall
