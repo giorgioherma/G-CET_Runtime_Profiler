@@ -37,6 +37,8 @@ try {
       !$completeSource.Contains('local __gcetItppAttachOnInitV3' + [char]10 + 'registerForEvent("onInit", function()') -or
       !$completeSource.Contains('__gcetItppAttachOnInitV3 = function()') -or
       !$completeSource.Contains('-- __gcetItppSessionRestoreBoundedV1:') -or
+      !$completeSource.Contains('-- __gcetItppReloadMenuCacheV1:') -or
+      !$completeSource.Contains('mod.gcetItppForgetSessionUi = function()') -or
       !$completeSource.Contains('    if hardCapped and not ready then' + [char]10 +
         '      state.pendingSessionTppRestore = nil') -or
       $completeSource.IndexOf('-- __gcetItppSessionRestoreBoundedV1:') -gt
