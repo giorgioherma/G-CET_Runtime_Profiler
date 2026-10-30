@@ -217,6 +217,12 @@ jobs:
                     !$code.Contains('handle.Resume()') -or
                     !$code.Contains('nativeKeyFallback = hasNativeBindings()') -or
                     !$code.Contains('id="itp.frame"') -or
+                    !$code.Contains('function M.Register()') -or
+                    !$code.Contains('active=false') -or
+                    !$actual.Contains('pcall(controller.Register)') -or
+                    $actual.IndexOf('pcall(controller.Register)',[StringComparison]::Ordinal) -gt
+                      $actual.IndexOf('registerForEvent("onInit"', [StringComparison]::Ordinal) -or
+                    $code.Contains('handle.Cancel()') -or
                     $code.Contains('schedule.Every(')) {
                   throw 'ITP_IDLE_WORKER_INCOMPLETE: active frame, direct wake or native fallback lost'
                 }

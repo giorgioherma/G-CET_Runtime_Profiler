@@ -10,7 +10,7 @@ local state = {
 }
 local config = {camera={move360=false, spatialAudio=false},
  autoPerspective={}, apiAccess=false, nativeToggleKey=""}
-local active, ended, called = true, false, 0
+local active, ended, called = false, false, 0
 local subscriptions, scheduleCount = {}, 0
 local frame = {}
 function frame.IsActive() return active end
@@ -20,7 +20,7 @@ function frame.Cancel() ended=true; active=false end
 local schedule = {
  EveryFrame = function(options, callback)
   scheduleCount=scheduleCount+1
-  assert(options.id == "itp.frame" and options.active == true)
+  assert(options.id == "itp.frame" and options.active == false)
   frame.callback=callback
   return frame
  end
@@ -35,6 +35,8 @@ local ctrl=assert(M.Install({},state,config,function(dt)
  state.modClock=state.modClock+dt
  called=called+1
 end,client))
+ctrl.Register() -- Runs at file-load, before CET onInit.
+assert(scheduleCount==1 and not frame.IsActive(), "ITP registered an active job before onInit")
 ctrl.Start()
 assert(scheduleCount==1 and frame.IsActive())
 local function ticks(n)
@@ -90,15 +92,17 @@ assert(frame.IsActive(), "session 0.75s guard lost to two-frame sleep")
 ticks(70)
 assert(not frame.IsActive(), "session settle never slept")
 ctrl.Stop()
-assert(ended and not frame.IsActive() and next(subscriptions)==nil)
+assert(not ended and not frame.IsActive() and next(subscriptions)~=nil,
+  "onShutdown must pause without cancelling the file-load owner")
 ctrl.Start()
-assert(frame.IsActive(), "worker cannot restart after onShutdown/onInit lifecycle")
+assert(scheduleCount==1 and frame.IsActive(),
+  "onInit restart must resume the SAME file-load job")
 ticks(2)
 assert(not frame.IsActive(), "restarted worker did not restore dormancy")
 ctrl.Stop()
 local noWake = assert(M.Install({},state,config,function() end,
-  {Schedule={EveryFrame=function()
-    local h={active=true}
+  {Schedule={EveryFrame=function(options)
+    local h={active=options.active ~= false}
     function h.IsActive() return h.active end
     function h.Pause() h.active=false end
     function h.Resume() h.active=true end
@@ -106,8 +110,10 @@ local noWake = assert(M.Install({},state,config,function() end,
     noWakeFrame=h
     return h
   end}}))
+noWake.Register()
+assert(not noWakeFrame.IsActive(), "no-wake job was active before onInit")
 noWake.Start()
 assert(noWakeFrame.IsActive() and noWake.Diagnostics().sessionWakeProven==false,
   "missing independent session events must fail open, not strand ITP")
 noWake.Stop()
-print("ITP physically dormant job, native-key fail-open, active cadence, cleanup, session wake PASS")
+print("ITP file-load one-time registration, cold onInit, reload, native-key fail-open, full cadence PASS")
