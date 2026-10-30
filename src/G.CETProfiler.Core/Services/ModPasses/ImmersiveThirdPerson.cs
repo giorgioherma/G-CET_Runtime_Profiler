@@ -1200,6 +1200,8 @@ internal static partial class SemanticInjectors
         text = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
         return text.Contains("-- __gcetItppDormantFrameV1:", StringComparison.Ordinal)
             && text.Contains("local function __gcetItppFrameStepV1(delta)", StringComparison.Ordinal)
+            && text.Contains("-- __gcetItppSessionRestoreBoundedV1:", StringComparison.Ordinal)
+            && text.Contains("    if hardCapped and not ready then\n      state.pendingSessionTppRestore = nil", StringComparison.Ordinal)
             && text.Contains("local __gcetItppWorkerFactoryV3 = nil", StringComparison.Ordinal)
             && text.Contains("if not __gcetItppWorkerFactoryV3 then", StringComparison.Ordinal)
             && text.Contains("mod.loadModule(\"GCET_Semantic/itp_frame_dormancy\")", StringComparison.Ordinal)
@@ -1641,6 +1643,49 @@ if not __gcetItppWorkerFactoryV3 then
             StringComparison.Ordinal);
     }
 
+    // A user TPP request can remain pinned forever when the authored
+    // 12-second hard cap is reached but the separate readiness test fails.
+    // Return to unchanged author auto-perspective/applyTppMode safeguards;
+    // never force activation inside menus, scenes or before camera readiness.
+    private static string EnsureItppBoundedSessionRestore(string text)
+    {
+        const string marker = "-- __gcetItppSessionRestoreBoundedV1:";
+        const string anchor = "    if pending.stablePolls >= 10 or (hardCapped and ready) then\n";
+        const string sourceProof =
+            "    if clean then\n" +
+            "      pending.stablePolls = (pending.stablePolls or 0) + 1\n" +
+            "    else\n" +
+            "      pending.stablePolls = 0\n" +
+            "    end\n";
+        const string body = """
+                -- __gcetItppSessionRestoreBoundedV1: release expired startup ownership.
+                -- Normal author camera safety checks remain in control.
+                if hardCapped and not ready then
+                  state.pendingSessionTppRestore = nil
+                  state.uiReadyAt = state.uiReadyAt
+                    or (state.modClock - (config.sessionRestoreDelay or 1.0))
+                  return
+                end
+            """.Replace("\r\n", "\n", StringComparison.Ordinal) + "\n";
+        if (!text.Contains("local function updateSessionGuard(delta)\n", StringComparison.Ordinal))
+        {
+            if (text.Contains(marker, StringComparison.Ordinal))
+                throw new InvalidOperationException("ITP startup guard marker without its owner.");
+            return text;
+        }
+        if (text.Split(anchor, StringSplitOptions.None).Length != 2 ||
+            text.Split(sourceProof, StringSplitOptions.None).Length != 2)
+            throw new InvalidOperationException("ITP author's session restore safety handoff drifted.");
+        if (text.Contains(marker, StringComparison.Ordinal))
+        {
+            if (text.Split(marker, StringSplitOptions.None).Length != 2 ||
+                !text.Contains(body + anchor, StringComparison.Ordinal))
+                throw new InvalidOperationException("ITP bounded startup handoff drifted.");
+            return text;
+        }
+        return text.Replace(anchor, body + anchor, StringComparison.Ordinal);
+    }
+
     private static string ApplyImmersiveThirdPersonDetachedDormancy(
         SemanticPatchContext context, string text, out bool recoveredWorker)
     {
@@ -1656,6 +1701,7 @@ if not __gcetItppWorkerFactoryV3 then
         var currentWorker = existing?.Replace("\r\n", "\n", StringComparison.Ordinal);
         if (currentWorker is not null && currentWorker != expected && currentWorker != knownPrior)
             throw new InvalidOperationException("ITP dormant frame worker drifted; refusing overwrite.");
+        normalized = EnsureItppBoundedSessionRestore(normalized);
         if (normalized.Contains(stage, StringComparison.Ordinal))
         {
             var hostCurrent = context.TryReadComposedModFile("0-Engine", "init.lua");
@@ -1672,7 +1718,9 @@ if not __gcetItppWorkerFactoryV3 then
                     context.WriteCoordinator(coordinator, ItppDormancyWorkerV1);
                     recoveredWorker = true;
                 }
-                return text; // Proven fully optimized source; recover worker only.
+                return text.Contains("\r\n", StringComparison.Ordinal)
+                    ? normalized.Replace("\n", "\r\n", StringComparison.Ordinal)
+                    : normalized; // Preserve completed work; repair missing startup handoff.
             }
             if (normalized.Contains("local function __gcetItppAttachOnInitV3()", StringComparison.Ordinal))
             {
