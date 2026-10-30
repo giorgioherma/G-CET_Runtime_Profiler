@@ -34,7 +34,13 @@ try {
   $completeSource = $completeSourceRaw.Replace("`r`n","`n")
   $completeWorker = Get-Content -LiteralPath $worker -Raw
   if ($completeSource.Contains('pcall(controller.Register)') -or
-      !$completeSource.Contains('local function __gcetItppAttachOnInitV3()') -or
+      !$completeSource.Contains('local __gcetItppAttachOnInitV3' + [char]10 + 'registerForEvent("onInit", function()') -or
+      !$completeSource.Contains('__gcetItppAttachOnInitV3 = function()') -or
+      $completeSource.Contains('local function __gcetItppAttachOnInitV3()') -or
+      $completeSource.IndexOf('local __gcetItppAttachOnInitV3' + [char]10) -gt
+        $completeSource.IndexOf('registerForEvent("onInit", function()') -or
+      $completeSource.IndexOf('  __gcetItppAttachOnInitV3()') -gt
+        $completeSource.IndexOf('__gcetItppAttachOnInitV3 = function()') -or
       !$completeSource.Contains('local ready = controller.Register()') -or
       !$completeSource.Contains('if not __gcetItppWorkerFactoryV3 then') -or
       !$completeSource.Contains('mod.loadModule("GCET_Semantic/itp_frame_dormancy")') -or
@@ -66,6 +72,45 @@ try {
     }
     return @{ Result = $json; Manifest = $manifest }
   }
+
+  # Real deployed V3 had a local defined after the onInit callback.
+  # It resolved as a nil global. Prove staged source-only recovery of that
+  # exact generator-owned defect without changing the working external worker.
+  $forwardAnchor = 'local __gcetItppAttachOnInitV3' + [char]10 +
+    'registerForEvent("onInit", function()'
+  if ([regex]::Matches($completeSource,[regex]::Escape($forwardAnchor)).Count -ne 1) {
+    throw 'ITP_FORWARD_LOCAL_NOT_UNIQUE'
+  }
+  $brokenV3 = $completeSource.Replace($forwardAnchor,'registerForEvent("onInit", function()')
+  $brokenV3 = $brokenV3.Replace('__gcetItppAttachOnInitV3 = function()',
+    'local function __gcetItppAttachOnInitV3()')
+  [IO.File]::WriteAllText((Join-Path $stageItp 'init.lua'),$brokenV3,[Text.Encoding]::UTF8)
+  $v3 = ResolveStaged 'BROKEN_V3_FORWARD_REFERENCE'
+  if (!$v3.Result.ok -or !$v3.Manifest) { throw 'ITP_V3_FORWARD_LOCAL_NOT_REPAIRED' }
+  $v3rules = @($v3.Manifest.transforms | Where-Object {
+    $_.RuleId -eq 'immersive-third-person' -and $_.type -eq 'SEMANTIC_RULE'
+  })
+  if ($v3rules.Count -ne 1 -or @($v3rules[0].files).Count -ne 1 -or
+      !([string]@($v3rules[0].files)[0]).Replace('\','/').Equals(
+        'immersive_third_person/init.lua',[StringComparison]::OrdinalIgnoreCase)) {
+    throw 'ITP_V3_FORWARD_LOCAL_MIGRATION_REWROTE_WORKER'
+  }
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+  $v3zip = [IO.Compression.ZipFile]::OpenRead($v3.Result.pass.ZipPath)
+  try {
+    $entry = @($v3zip.Entries | Where-Object {
+      $_.FullName.Replace('\','/').EndsWith('/immersive_third_person/init.lua')
+    }) | Select-Object -First 1
+    if (!$entry) { throw 'ITP_V3_FORWARD_LOCAL_OUTPUT_MISSING' }
+    $reader = [IO.StreamReader]::new($entry.Open())
+    try { $v3actual = $reader.ReadToEnd() } finally { $reader.Dispose() }
+    $crlf = ([string][char]13 + [string][char]10)
+    $lf = [string][char]10
+    if ($v3actual.Replace($crlf,$lf) -cne $completeSource) {
+      throw 'ITP_V3_MIGRATION_OUTPUT_NOT_EQUAL_TO_PRISTINE'
+    }
+  } finally { $v3zip.Dispose() }
+  [IO.File]::WriteAllText((Join-Path $stageItp 'init.lua'),$completeSource,[Text.Encoding]::UTF8)
 
   $full = ResolveStaged 'COMPLETE'
   if ($full.Manifest -and
@@ -190,6 +235,7 @@ end
   $oldSource = $completeSource.Substring(0,$newBegin) +
     $oldBridge + $completeSource.Substring($newEnd)
   $oldSource = $oldSource.Replace($currentInit,$previousInit)
+  $oldSource = $oldSource.Replace($forwardAnchor,'registerForEvent("onInit", function()')
   [IO.File]::WriteAllText((Join-Path $stageItp 'init.lua'),$oldSource,[Text.Encoding]::UTF8)
   [IO.File]::WriteAllText($worker,$completeWorker,[Text.Encoding]::UTF8)
   $upgrade = ResolveStaged 'KNOWN_FILE_LOAD'
