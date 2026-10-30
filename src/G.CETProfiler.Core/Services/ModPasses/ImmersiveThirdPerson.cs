@@ -1652,10 +1652,11 @@ if not __gcetItppWorkerFactoryV3 then
     // while the cached UI_System blackboard belongs to the previous save.
     // Rebind UI/menu references at EXISTING native/menu/load lifecycle edges.
     // Keep IsInMenu and IsGamePaused guards intact: never force TPP in menus.
-    // Authoritative source-level proof: the existing reset must execute
-    // once at each load/session entry, before the original owner reads UI state.
-    // Dedra and the detached worker can add preceding lifecycle statements.
-    private static bool HasItppReloadMenuCacheReset(string text)
+    // The reset must be present once, owned by exactly the four existing
+    // author lifecycle paths. Verify the original operation is still reached
+    // AFTER reset; do not confuse independently composed Dedra/worker calls
+    // with an incomplete stage or accept a marker by itself.
+    private static string? ItppReloadMenuCacheViolation(string text)
     {
         const string marker = "-- __gcetItppReloadMenuCacheV1:";
         const string helper = "mod.gcetItppForgetSessionUi = function()\n" +
@@ -1665,36 +1666,65 @@ if not __gcetItppWorkerFactoryV3 then
             "  state.menuHeld, state.menuWasOpen = false, false\n" +
             "  state.uiReadyAt = nil\n" +
             "end\n";
-        const string call = "  mod.gcetItppForgetSessionUi()\n";
-        const string nestedCall = "    mod.gcetItppForgetSessionUi()\n";
-        if (text.Split(marker, StringSplitOptions.None).Length != 2 ||
-            text.Split(helper, StringSplitOptions.None).Length != 2 ||
-            Regex.Matches(text, @"(?m)^  mod\.gcetItppForgetSessionUi\(\)$").Count != 3 ||
-            Regex.Matches(text, @"(?m)^    mod\.gcetItppForgetSessionUi\(\)$").Count != 1)
-            return false;
+        const string invocation = "mod.gcetItppForgetSessionUi()";
+        if (text.Split(marker, StringSplitOptions.None).Length != 2)
+            return "UI cache reset marker missing or duplicated";
+        if (text.Split(helper, StringSplitOptions.None).Length != 2)
+            return "UI cache reset function body missing or duplicated";
+        if (text.Split(invocation, StringSplitOptions.None).Length != 5)
+            return "UI cache reset must have exactly four lifecycle invocations";
         var helperAt = text.IndexOf(helper, StringComparison.Ordinal);
         var loaderAt = text.IndexOf("mod.observeLoads = function()\n", StringComparison.Ordinal);
         if (helperAt < 0 || loaderAt <= helperAt)
-            return false;
+            return "UI cache helper must precede the original load observers";
 
-        bool Before(string callback, string authorFirst, string reset)
+        string? CheckOwner(string name, string owner, string authorFirst,
+            string resetLine, string? predecessor = null)
         {
-            if (text.Split(callback, StringSplitOptions.None).Length != 2)
-                return false;
-            var start = text.IndexOf(callback, StringComparison.Ordinal) + callback.Length;
-            var end = text.IndexOf(authorFirst, start, StringComparison.Ordinal);
-            var at = text.IndexOf(reset, start, StringComparison.Ordinal);
-            return end >= start && at >= start && at < end;
+            if (text.Split(owner, StringSplitOptions.None).Length != 2)
+                return name + " owner missing or duplicated";
+            var start = text.IndexOf(owner, StringComparison.Ordinal) + owner.Length;
+            var author = text.IndexOf(authorFirst, start, StringComparison.Ordinal);
+            // The check must stay within the local callback prologue, not
+            // accidentally match a later unrelated author operation.
+            if (author < start || author - start > 512)
+                return name + " original callback prologue drifted";
+            var prologue = text[start..author];
+            if (prologue.Split(resetLine, StringSplitOptions.None).Length != 2)
+                return name + " reset missing, misplaced or duplicated";
+            if (predecessor is not null)
+            {
+                var beforeReset = prologue.IndexOf(predecessor, StringComparison.Ordinal);
+                if (beforeReset >= 0 &&
+                    beforeReset > prologue.IndexOf(resetLine, StringComparison.Ordinal))
+                    return name + " reset moved before existing owner lifecycle";
+            }
+            return null;
         }
-        return Before("registerForEvent(\"onInit\", function()\n",
-                      "  mod.captureConsumableTiming()\n", call)
-            && Before("registerForEvent(\"onShutdown\", function()\n",
-                      "  state.frameSeq = (state.frameSeq or 0) + 1\n", call)
-            && Before("  watch('LoadGameMenuGameController', 'LoadGame', function(_, item)\n",
-                      "    local name = item.m_metadata.internalName\n", call)
-            && Before("    if string.find(word, \"QuickLoad\", 1, true) == nil then\n      return\n    end\n",
-                      "    if menu.m_isModded == true", nestedCall);
+
+        return CheckOwner("onInit",
+                    "registerForEvent(\"onInit\", function()\n",
+                    "  mod.captureConsumableTiming()\n",
+                    "  " + invocation + "\n",
+                    "  pcall(mod.__gcetDedraToggleSignalV2)\n")
+            ?? CheckOwner("onShutdown",
+                    "registerForEvent(\"onShutdown\", function()\n",
+                    "  state.frameSeq = (state.frameSeq or 0) + 1\n",
+                    "  " + invocation + "\n",
+                    "  if mod.__gcetItppDormancyV1 then mod.__gcetItppDormancyV1.Stop() end\n")
+            ?? CheckOwner("LoadGame",
+                    "  watch('LoadGameMenuGameController', 'LoadGame', function(_, item)\n",
+                    "    local name = item.m_metadata.internalName\n",
+                    "  " + invocation + "\n")
+            ?? CheckOwner("QuickLoad",
+                    "    if string.find(word, \"QuickLoad\", 1, true) == nil then\n" +
+                    "      return\n    end\n",
+                    "    if menu.m_isModded == true",
+                    "    " + invocation + "\n");
     }
+
+    private static bool HasItppReloadMenuCacheReset(string text) =>
+        ItppReloadMenuCacheViolation(text) is null;
 
     private static string EnsureItppReloadMenuCacheReset(string text)
     {
@@ -1744,9 +1774,10 @@ if not __gcetItppWorkerFactoryV3 then
             throw new InvalidOperationException("ITP menu state owner drifted.");
         if (text.Contains(marker, StringComparison.Ordinal))
         {
-            if (!HasItppReloadMenuCacheReset(text))
+            var violation = ItppReloadMenuCacheViolation(text);
+            if (violation is not null)
                 throw new InvalidOperationException(
-                    "ITP reload cache lifecycle incomplete/unsafe: reset or lifecycle owner drift.");
+                    "ITP reload cache lifecycle incomplete/unsafe: " + violation);
             return text;
         }
         if (text.Contains("mod.gcetItppForgetSessionUi", StringComparison.Ordinal))
@@ -1772,8 +1803,9 @@ if not __gcetItppWorkerFactoryV3 then
             : text.Replace(shutdown, shutdown + call, StringComparison.Ordinal);
         text = text.Replace(loadGame, loadGame + call, StringComparison.Ordinal);
         text = text.Replace(quickLoad, quickLoad + nestedCall, StringComparison.Ordinal);
-        if (!HasItppReloadMenuCacheReset(text))
-            throw new InvalidOperationException("ITP reload cache source postcondition failed.");
+        var postcondition = ItppReloadMenuCacheViolation(text);
+        if (postcondition is not null)
+            throw new InvalidOperationException("ITP reload cache source postcondition failed: " + postcondition);
         return text;
     }
 

@@ -180,11 +180,19 @@ try {
   foreach ($expr in @(
     '  mod.gcetItppForgetSessionUi()' + "`n" + '  mod.captureConsumableTiming()',
     '  mod.gcetItppForgetSessionUi()' + "`n" + '  state.frameSeq = (state.frameSeq or 0) + 1',
-    'watch(''LoadGameMenuGameController'', ''LoadGame'', function(_, item)' + "`n" + '  mod.gcetItppForgetSessionUi()',
+    'watch(''LoadGameMenuGameController'', ''LoadGame'', function(_, item)' + "`n" +
+      '  mod.gcetItppForgetSessionUi()' + "`n" + '    local name = item.m_metadata.internalName',
     '    mod.gcetItppForgetSessionUi()' + "`n" + '    if menu.m_isModded'
   )) {
     if ([regex]::Matches($priorUi,[regex]::Escape($expr)).Count -ne 1) { throw 'ITP_UI_CACHE_STAGED_OWNER_AMBIGUOUS' }
     $priorUi = $priorUi.Replace($expr, $expr.Replace('    mod.gcetItppForgetSessionUi()' + "`n", '').Replace('  mod.gcetItppForgetSessionUi()' + "`n", ''))
+  }
+  # Exactly the previous source, not a partial active call to a removed helper.
+  if ($priorUi.Contains('-- __gcetItppReloadMenuCacheV1:') -or
+      $priorUi.Contains('mod.gcetItppForgetSessionUi()') -or
+      !$priorUi.Contains("watch('LoadGameMenuGameController', 'LoadGame', function(_, item)" + "`n" +
+        '    local name = item.m_metadata.internalName')) {
+    throw 'ITP_UI_CACHE_PREVIOUS_VERSION_FIXTURE_INCOMPLETE'
   }
   [IO.File]::WriteAllText((Join-Path $stageItp 'init.lua'),$priorUi,[Text.Encoding]::UTF8)
   $uiUpgrade = ResolveStaged 'PREVIOUS_V3_UI_CACHE'
@@ -210,6 +218,33 @@ try {
     }
   } finally { $uiZip.Dispose() }
   [IO.File]::WriteAllText((Join-Path $stageItp 'init.lua'),$completeSourceRaw,[Text.Encoding]::UTF8)
+  # A marker with one lost lifecycle invocation is an unsafe partial install.
+  # It must be refused, not falsely marked complete or silently repaired.
+  $goodLoad = "  watch('LoadGameMenuGameController', 'LoadGame', function(_, item)" + "`n" +
+    '  mod.gcetItppForgetSessionUi()' + "`n" +
+    '    local name = item.m_metadata.internalName'
+  $badLoad = "  watch('LoadGameMenuGameController', 'LoadGame', function(_, item)" + "`n" +
+    '    local name = item.m_metadata.internalName'
+  if ([regex]::Matches($completeSource,[regex]::Escape($goodLoad)).Count -ne 1) {
+    throw 'ITP_PARTIAL_UI_RESET_SOURCE_BOUNDARY_UNPROVEN'
+  }
+  $badUiSource = $completeSource.Replace($goodLoad,$badLoad)
+  [IO.File]::WriteAllText((Join-Path $stageItp 'init.lua'),$badUiSource,[Text.Encoding]::UTF8)
+  $partialUi = ResolveStaged 'PARTIAL_UI_RESET'
+  $badUiTransforms = @($partialUi.Manifest.transforms | Where-Object {
+    $_.RuleId -eq 'immersive-third-person' -and $_.type -eq 'SEMANTIC_RULE'
+  })
+  $badUiRefusals = @($partialUi.Manifest.skipped | Where-Object {
+    $_.RuleId -eq 'immersive-third-person' -and $_.type -eq 'SEMANTIC_RULE' -and
+    ([string]$_.reason).Contains('ITP reload cache lifecycle incomplete/unsafe')
+  })
+  if ($badUiTransforms.Count -ne 0 -or
+      ($badUiRefusals.Count -ne 1 -and
+       !([string]$partialUi.Result.error).Contains('ITP reload cache lifecycle incomplete/unsafe'))) {
+    throw 'ITP_PARTIAL_UI_RESET_UNSAFE_STAGE_ACCEPTED'
+  }
+  [IO.File]::WriteAllText((Join-Path $stageItp 'init.lua'),$completeSourceRaw,[Text.Encoding]::UTF8)
+
   $full = ResolveStaged 'COMPLETE'
   if ($full.Manifest -and
       @($full.Manifest.transforms | Where-Object { $_.RuleId -eq 'immersive-third-person' }).Count -gt 0) {
