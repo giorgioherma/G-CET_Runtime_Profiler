@@ -213,7 +213,9 @@ jobs:
                     !$actual.Contains('mod.__gcetItppDormancyV1.Stop()') -or
                     !$actual.Contains('mod.__gcetItppDormancyV1.Signal("toggle")') -or
                     !$actual.Contains('if not __gcetItppWorkerFactoryV3 then') -or
-                    !$actual.Contains('local function __gcetItppAttachOnInitV3()') -or
+                    !$actual.Contains('local __gcetItppAttachOnInitV3' + [char]10 + 'registerForEvent("onInit", function()') -or
+                    !$actual.Contains('__gcetItppAttachOnInitV3 = function()') -or
+                    $actual.Contains('local function __gcetItppAttachOnInitV3()') -or
                     !$actual.Contains('local ready = controller.Register()') -or
                     !$actual.Contains('host.__gcetScheduleDriver') -or
                     $actual.Contains('pcall(controller.Register)') -or
@@ -231,7 +233,11 @@ jobs:
                     $actual.IndexOf('local ready = controller.Register()', [StringComparison]::Ordinal) -gt
                       $actual.IndexOf('local UI = {',[StringComparison]::Ordinal) -or
                     $actual.IndexOf('local ready = controller.Register()', [StringComparison]::Ordinal) -lt
-                      $actual.IndexOf('local function __gcetItppAttachOnInitV3()', [StringComparison]::Ordinal) -or
+                      $actual.IndexOf('__gcetItppAttachOnInitV3 = function()', [StringComparison]::Ordinal) -or
+                    $actual.IndexOf('local __gcetItppAttachOnInitV3' + [char]10, [StringComparison]::Ordinal) -gt
+                      $actual.IndexOf('registerForEvent("onInit", function()', [StringComparison]::Ordinal) -or
+                    $actual.IndexOf('  __gcetItppAttachOnInitV3()', [StringComparison]::Ordinal) -gt
+                      $actual.IndexOf('__gcetItppAttachOnInitV3 = function()', [StringComparison]::Ordinal) -or
                     $code.Contains('handle.Cancel()') -or
                     $code.Contains('schedule.Every(')) {
                   $state = [ordered]@{
