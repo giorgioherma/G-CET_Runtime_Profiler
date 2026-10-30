@@ -1657,7 +1657,7 @@ if not __gcetItppWorkerFactoryV3 then
             "    else\n" +
             "      pending.stablePolls = 0\n" +
             "    end\n";
-        const string body = """
+        var body = """
                 -- __gcetItppSessionRestoreBoundedV1: release expired startup ownership.
                 -- Normal author camera safety checks remain in control.
                 if hardCapped and not ready then
