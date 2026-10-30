@@ -1671,8 +1671,8 @@ if not __gcetItppWorkerFactoryV3 then
                 RegexOptions.CultureInvariant);
             if (oldFrameRegistration.Count != 1)
                 throw new InvalidOperationException("ITP prior CET fallback owner not uniquely proven.");
-            var owner = oldFrameRegistration[0];
-            var newBlock = BuildItppDeferredBridgeV3(owner.Groups["reg"].Value, owner.Groups["q"].Value);
+            var priorOwner = oldFrameRegistration[0];
+            var newBlock = BuildItppDeferredBridgeV3(priorOwner.Groups["reg"].Value, priorOwner.Groups["q"].Value);
             normalized = normalized[..bridgeStart] + newBlock + normalized[bridgeEnd..];
             const string initTail = "  if mod.__gcetItppDormancyV1 then mod.__gcetItppDormancyV1.Start() end\nend)";
             if (normalized.Split(initTail, StringSplitOptions.None).Length != 2)
