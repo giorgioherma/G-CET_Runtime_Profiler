@@ -1111,6 +1111,19 @@ internal static partial class SemanticInjectors
 
     // The same author-side structural proof governs worker-only recovery.
     // A missing external coordinator does not invalidate a completed bridge.
+    // Use ITP's author-owned relative-to-source module loader rather than
+    // plain dofile, whose relative path depends on the CET working directory.
+    private const string ItppLegacyRelativeWorkerLoader =
+        "    return dofile(\"GCET_Semantic/itp_frame_dormancy.lua\").Install(\n" +
+        "      mod, state, config, __gcetItppFrameStepV1, __gcetItppRuntimeV1)";
+    private const string ItppAuthorWorkerLoader =
+        "    local worker, reason = mod.loadModule(\"GCET_Semantic/itp_frame_dormancy\")\n" +
+        "    if type(worker) ~= \"table\" or type(worker.Install) ~= \"function\" then\n" +
+        "      error(reason or \"ITP external worker interface missing\")\n" +
+        "    end\n" +
+        "    return worker.Install(\n" +
+        "      mod, state, config, __gcetItppFrameStepV1, __gcetItppRuntimeV1)";
+
     private const string ItppFileLoadRegisterBridgeV2 =
         "  if ok and controller and type(controller.Register) == \"function\" then\n" +
         "    local registered, ready = pcall(controller.Register)\n" +
@@ -1119,6 +1132,16 @@ internal static partial class SemanticInjectors
 
     // Old complete source may be upgraded only when the original author
     // bridge is structurally intact and no duplicate frame owner exists.
+    // Prior file-load bridge, only recognized for source-safe migration.
+    private static bool HasImmersiveThirdPersonFrameDormancyBridgeV2(string text)
+    {
+        var normalized = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r','\n');
+        return normalized.Contains(ItppLegacyRelativeWorkerLoader, StringComparison.Ordinal)
+            && !normalized.Contains(ItppAuthorWorkerLoader, StringComparison.Ordinal)
+            && HasImmersiveThirdPersonFrameDormancyBridge(normalized.Replace(
+                ItppLegacyRelativeWorkerLoader, ItppAuthorWorkerLoader, StringComparison.Ordinal));
+    }
+
     private static bool HasImmersiveThirdPersonFrameDormancyBridgeV1(string text)
     {
         text = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
@@ -1149,7 +1172,7 @@ internal static partial class SemanticInjectors
                text.IndexOf("local UI = {", StringComparison.Ordinal)
             || !text.Contains("mod.__gcetItppDormancyV1.Signal(\"toggle\")", StringComparison.Ordinal)
             || !text.Contains("if not mod.__gcetItppDormancyV1 then", StringComparison.Ordinal)
-            || !text.Contains("itp_frame_dormancy.lua", StringComparison.Ordinal)
+            || !text.Contains("mod.loadModule(\"GCET_Semantic/itp_frame_dormancy\")", StringComparison.Ordinal)
             || Regex.IsMatch(text,
                 @"(?:registerForEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]\s*,\s*function\("));
     }
@@ -1535,27 +1558,39 @@ internal static partial class SemanticInjectors
                 !normalized.Contains("mod.__gcetItppDormancyV1.Start()", StringComparison.Ordinal) ||
                 !normalized.Contains("mod.__gcetItppDormancyV1.Stop()", StringComparison.Ordinal) ||
                 !normalized.Contains("mod.__gcetItppDormancyV1.Signal(\"toggle\")", StringComparison.Ordinal) ||
-                !normalized.Contains("itp_frame_dormancy.lua", StringComparison.Ordinal) ||
+                !normalized.Contains("GCET_Semantic/itp_frame_dormancy", StringComparison.Ordinal) ||
                 !normalized.Contains("if not mod.__gcetItppDormancyV1 then", StringComparison.Ordinal) ||
                 Regex.IsMatch(normalized,
                     @"(?:registerForEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]\s*,\s*function\("))
                 throw new InvalidOperationException("ITP dormant frame stage incomplete or has duplicate owner.");
             const string oldBridge = "  if ok and controller then mod.__gcetItppDormancyV1 = controller end";
             var isPriorBridge = normalized.Contains(oldBridge, StringComparison.Ordinal);
+            var usesOldRelativeLoader = normalized.Contains(ItppLegacyRelativeWorkerLoader, StringComparison.Ordinal);
+            var usesAuthorLoader = normalized.Contains(ItppAuthorWorkerLoader, StringComparison.Ordinal);
+            if (usesOldRelativeLoader == usesAuthorLoader)
+                throw new InvalidOperationException("ITP worker load path incomplete, duplicate or drifted.");
             if (isPriorBridge)
             {
                 if (!HasImmersiveThirdPersonFrameDormancyBridgeV1(normalized))
                     throw new InvalidOperationException("ITP prior frame bridge drifted; refusing unsafe migration.");
                 normalized = normalized.Replace(oldBridge, ItppFileLoadRegisterBridgeV2, StringComparison.Ordinal);
             }
+            else if (usesOldRelativeLoader)
+            {
+                if (!HasImmersiveThirdPersonFrameDormancyBridgeV2(normalized))
+                    throw new InvalidOperationException("ITP prior file-load bridge drifted; refusing loader upgrade.");
+            }
             else if (!HasImmersiveThirdPersonFrameDormancyBridge(normalized))
                 throw new InvalidOperationException("ITP current frame bridge lacks file-load Register proof.");
+            if (usesOldRelativeLoader)
+                normalized = normalized.Replace(ItppLegacyRelativeWorkerLoader,
+                    ItppAuthorWorkerLoader, StringComparison.Ordinal);
             if (currentWorker != expected)
             {
                 context.WriteCoordinator(coordinator, ItppDormancyWorkerV1);
                 recoveredWorker = true;
             }
-            return isPriorBridge
+            return isPriorBridge || usesOldRelativeLoader
                 ? text.Contains("\r\n", StringComparison.Ordinal)
                     ? normalized.Replace("\n", "\r\n", StringComparison.Ordinal)
                     : normalized
@@ -1563,7 +1598,8 @@ internal static partial class SemanticInjectors
         }
         // Full current original only: compact test/historical input retains
         // its existing conservative frame loop. Unknown layouts fail closed.
-        if (!normalized.Contains("mod.nativeSettingsSaveTick = function(delta)", StringComparison.Ordinal) ||
+        if (!normalized.Contains("mod.loadModule = function(name)", StringComparison.Ordinal) ||
+            !normalized.Contains("mod.nativeSettingsSaveTick = function(delta)", StringComparison.Ordinal) ||
             !normalized.Contains("mod.pollNativeToggle = function(delta)", StringComparison.Ordinal) ||
             !normalized.Contains("registerInput(\"tpp_camera_toggle\"", StringComparison.Ordinal) ||
             !normalized.Contains("mod.applyConsumableTiming(\"FPP\", \"init\")", StringComparison.Ordinal) ||
@@ -1624,8 +1660,7 @@ internal static partial class SemanticInjectors
             "end\n" +
             "if __gcetItppRuntimeV1 then\n" +
             "  local ok, controller = pcall(function()\n" +
-            "    return dofile(\"GCET_Semantic/itp_frame_dormancy.lua\").Install(\n" +
-            "      mod, state, config, __gcetItppFrameStepV1, __gcetItppRuntimeV1)\n" +
+            ItppAuthorWorkerLoader + "\n" +
             "  end)\n" +
             ItppFileLoadRegisterBridgeV2 + "\n" +
             "end\n" +
