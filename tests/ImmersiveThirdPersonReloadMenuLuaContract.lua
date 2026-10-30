@@ -3,8 +3,21 @@ local file = assert(io.open(assert(arg[1], "generator source required"), "rb"))
 local source = assert(file:read("*a")); file:close()
 local start = assert(source:find("private static string EnsureItppReloadMenuCacheReset", 1, true))
 local finish = assert(source:find("private static string EnsureItppBoundedSessionRestore", start, true))
-local body = assert(source:sub(start, finish):match('const string body = """(.-)""";'),
+local producer = source:sub(start, finish)
+local body = assert(producer:match('const string body = """(.-)""";'),
   "authoritative Lua reload reset missing")
+-- Regression for the Windows runner: C# multiline raw strings can carry
+-- CRLF even though the composed Resolver text was normalized to LF.
+local normalizedEmitter =
+  'body.Replace("\\r\\n", "\\n", StringComparison.Ordinal).Replace(' ..
+  "'\\r', '\\n')"
+assert(producer:find(normalizedEmitter, 1, true),
+  "ITP source generator must normalize CRLF raw Lua body before emission")
+local windowsBody = body:gsub("\n", "\r\n")
+assert(windowsBody:find("\r\n", 1, true))
+local normalizedBody = windowsBody:gsub("\r\n", "\n"):gsub("\r", "\n")
+assert(normalizedBody == body,
+  "generated reset body must preserve exact Lua content across Windows and Unix checkouts")
 local chunk, err = load("return function(mod,state)\n" .. body .. "\nend", "@itp-reload-source")
 assert(chunk,err)
 local oldBb, oldHandler = {}, {}

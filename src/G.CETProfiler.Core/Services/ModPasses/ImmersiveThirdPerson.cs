@@ -1789,7 +1789,12 @@ if not __gcetItppWorkerFactoryV3 then
         }
         // One authoritative state-reset function, called only by the author's
         // existing lifecycle paths. No extra CET events, scheduler or timers.
-        text = text.Replace(loadAnchor, body + loadAnchor, StringComparison.Ordinal);
+        // Windows checkout can preserve CRLF inside a C# raw string literal.
+        // The composed Lua source is normalized to LF before this insertion:
+        // normalize the authoritative emitter, never accept mismatched output.
+        text = text.Replace(loadAnchor,
+            body.Replace("\\r\\n", "\\n", StringComparison.Ordinal).Replace('\\r', '\\n') +
+                loadAnchor, StringComparison.Ordinal);
         // Pristine source receives Dedra's startup signal later; an older
         // optimized input already has it. Both must generate the same order.
         const string dedraInit = onInit + "  pcall(mod.__gcetDedraToggleSignalV2)\n";
