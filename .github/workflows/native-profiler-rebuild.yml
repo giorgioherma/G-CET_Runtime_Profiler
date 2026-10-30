@@ -55,6 +55,8 @@ jobs:
           $hash = (Get-FileHash native-rebuild-artifact\cyber_engine_tweaks.PROFILER.dll -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash  cyber_engine_tweaks.PROFILER.dll" | Set-Content native-rebuild-artifact\SHA256.txt -Encoding ascii
           Write-Host "Rebuilt profiler SHA256: $hash"
+          @('NativeProfilerVersion=2.16.1', 'CETCompatibility=1.37.1', "DLL_SHA256=$hash") |
+            Set-Content native-rebuild-artifact/NATIVE_VERSION.txt -Encoding ascii
           # Experimental developer symbols are a separate artifact, never imported
           # into the player-facing Profiler/Resolver packages.
           $pdb = 'native-profiler-build/v2.11.0/BUILD_OUTPUT/cyber_engine_tweaks.PROFILER.pdb'
@@ -76,6 +78,12 @@ jobs:
           $actual = (Get-FileHash -LiteralPath $native -Algorithm SHA256).Hash.ToLowerInvariant()
           $hashLine = (Get-Content native-rebuild-artifact/SHA256.txt -Raw).Trim()
           if (!$hashLine.StartsWith($actual + ' ')) { throw 'Native artifact SHA sidecar does not match DLL.' }
+          $nativeInfo = [Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path $native).Path)
+          if ($nativeInfo.FileMajorPart -ne 2 -or $nativeInfo.FileMinorPart -ne 16 -or
+              $nativeInfo.FileBuildPart -ne 1 -or $nativeInfo.ProductVersion -ne '2.16.1' -or
+              $nativeInfo.FileDescription -ne 'G-CET Native Runtime Profiler (CET 1.37.1)') {
+            throw "Compiled native VERSIONINFO mismatch: $($nativeInfo.FileVersion) / $($nativeInfo.ProductVersion)"
+          }
           $pe = ./native-profiler-build/v2.11.0/Get-CETPEInfo.ps1 -Path $native
           if ($pe.Linker -ne '14.44') { throw "Native linker differs from the historical toolchain: $($pe.Linker)" }
           $source = Get-Content native-profiler-build/v2.11.0/CETRuntimeProfiler.h -Raw
@@ -99,6 +107,8 @@ jobs:
           foreach ($marker in @(
               'CET_Runtime_Profile_ZeroEngine_SourceAttribution.csv',
               'CET_Runtime_Profile_ZeroEngine_Callsites.csv',
+              'CET_Runtime_Profile_ZeroEngine_ProducerAttribution.csv',
+              'CET_Runtime_Profile_ZeroEngine_ConsumerCallsites.csv',
               'CET_Runtime_Profile_LuaNative_Callsites.csv',
               'CET_Runtime_Profile_Native_PreDispatchPressure.csv',
               'CET_Runtime_Profile_Native_MethodStages.csv',
@@ -106,6 +116,12 @@ jobs:
             if (!$source.Contains($marker) -or !$binary.Contains($marker)) {
               throw "Compiled 0-Engine attribution marker missing: $marker"
             }
+          }
+          # Report signing status explicitly; a version stamp is not a security verdict.
+          $signature = Get-AuthenticodeSignature -FilePath $native
+          Write-Host "Experimental native Authenticode status: $($signature.Status)"
+          if ($signature.Status -ne 'Valid') {
+            Write-Warning 'Unsigned/untrusted native DLL may trigger browser reputation warnings. Do not bypass security warnings.'
           }
           Write-Host "Compiled native DLL verified: $actual"
 

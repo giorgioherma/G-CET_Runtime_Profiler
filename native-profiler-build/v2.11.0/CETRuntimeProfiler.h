@@ -335,8 +335,12 @@ public:
         int CallerLine{};
         std::string ParentFunctionKey;
         std::string ChildFunctionKey;
+        std::string ChildSourceFile;
+        std::string ChildFunctionName;
         uint64_t Calls{};
         uint64_t ChildInclusiveNs{};
+        uint64_t SampledChildOwnPositiveBytes{};
+        uint64_t SampledChildOwnPositiveOps{};
         uint64_t SampledCFunctionOwnPositiveBytes{};
         uint64_t SampledCFunctionOwnPositiveOps{};
         uint64_t SampledCFunctionCalls{};
@@ -3660,6 +3664,125 @@ public:
                       << '\n';
                 }
             }
+
+            // PHASE3_ZERO_ENGINE_PRODUCER_V1: provenance from the existing
+            // bounded native LuaJIT deep samples; no extra Lua callbacks.
+            auto producerSource = [](const std::string& source)
+                -> std::pair<std::string, std::string>
+            {
+                std::string path = source;
+                std::replace(path.begin(), path.end(), '\\', '/');
+                std::string relative;
+                const auto installed = path.find("/mods/");
+                if (installed != std::string::npos)
+                    relative = path.substr(installed + 6);
+                else if (path.compare(0, 5, "mods/") == 0)
+                    relative = path.substr(5);
+                else if (path.compare(0, 9, "0-Engine/") == 0)
+                    relative = path;
+                else
+                    return {"UNRESOLVED", "UNRESOLVED"};
+                const auto slash = relative.find('/');
+                if (slash == std::string::npos || slash == 0)
+                    return {"UNRESOLVED", "UNRESOLVED"};
+                const auto owner = relative.substr(0, slash);
+                if (owner != "0-Engine")
+                    return {owner, "MOD_CONSUMER"};
+                const auto tail = relative.substr(slash + 1);
+                if (tail == "init.lua")
+                    return {"0-Engine", "HostInit"};
+                const auto lastSlash = tail.find_last_of('/');
+                const auto file = tail.substr(lastSlash == std::string::npos
+                    ? 0 : lastSlash + 1);
+                if (file.size() < 5 ||
+                    file.compare(file.size() - 4, 4, ".lua") != 0)
+                    return {"0-Engine", "FRAMEWORK_OTHER"};
+                return {"0-Engine", file.substr(0, file.size() - 4)};
+            };
+
+            std::vector<const DeepFunctionAggregate*> producerRows = sourceRows;
+            std::sort(producerRows.begin(), producerRows.end(),
+                [](const DeepFunctionAggregate* a, const DeepFunctionAggregate* b)
+                {
+                    if (a->SampledExclusiveAllocations != b->SampledExclusiveAllocations)
+                        return a->SampledExclusiveAllocations > b->SampledExclusiveAllocations;
+                    if (a->SampledExclusiveAllocBytes != b->SampledExclusiveAllocBytes)
+                        return a->SampledExclusiveAllocBytes > b->SampledExclusiveAllocBytes;
+                    return a->FunctionKey < b->FunctionKey;
+                });
+            std::ofstream producers(outputRoot /
+                "CET_Runtime_Profile_ZeroEngine_ProducerAttribution.csv",
+                std::ios::trunc);
+            if (producers)
+            {
+                producers << "RegistrationId,ProfileEpoch,ProducerOwner,FrameworkService,"
+                             "SourceFile,SourceLineStart,FunctionName,FunctionKey,"
+                             "SampledCalls,SampledExclusivePositiveBytes,"
+                             "SampledExclusivePositiveOps,SampledExclusiveMs,"
+                             "SourceProof,Interpretation\n";
+                producers << std::fixed << std::setprecision(6);
+                for (const auto* row : producerRows)
+                {
+                    const auto producer = producerSource(row->SourceFile);
+                    producers << row->RegistrationId << ','
+                              << row->ProfileEpoch << ','
+                              << Csv(producer.first) << ','
+                              << Csv(producer.second) << ','
+                              << Csv(row->SourceFile) << ','
+                              << row->SourceLineStart << ','
+                              << Csv(row->FunctionName) << ','
+                              << Csv(row->FunctionKey) << ','
+                              << row->Calls << ','
+                              << row->SampledExclusiveAllocBytes << ','
+                              << row->SampledExclusiveAllocations << ','
+                              << (static_cast<double>(row->ExclusiveNs) / 1'000'000.0)
+                              << ','
+                              << (producer.first == "UNRESOLVED" ?
+                                  "UNRESOLVED_SOURCE" : "SOURCE_PATH_ONLY")
+                              << ",BOUNDED_SAMPLE_NOT_FULL_CAPTURE_OR_RETAINED_HEAP\n";
+                }
+            }
+
+            std::ofstream consumerEdges(outputRoot /
+                "CET_Runtime_Profile_ZeroEngine_ConsumerCallsites.csv",
+                std::ios::trunc);
+            if (consumerEdges)
+            {
+                consumerEdges << "RegistrationId,ProfileEpoch,SampleSequence,Frame,"
+                                 "CallerSourceFile,CallerLine,CallerOwner,CallerService,"
+                                 "ChildSourceFile,ChildFunctionName,ChildFunctionKey,"
+                                 "ChildSourceOwner,SampledCalls,SampledChildOwnPositiveBytes,"
+                                 "SampledChildOwnPositiveOps,ChildInclusiveMs,"
+                                 "SourceProof,Interpretation\n";
+                consumerEdges << std::fixed << std::setprecision(6);
+                for (const auto& row : deepCallsiteRows)
+                {
+                    if (!zeroRegistration.count(row.RegistrationId))
+                        continue;
+                    const auto caller = producerSource(row.CallerSourceFile);
+                    const auto child = producerSource(row.ChildSourceFile);
+                    consumerEdges << row.RegistrationId << ','
+                                  << row.ProfileEpoch << ','
+                                  << row.SampleSequence << ','
+                                  << row.Frame << ','
+                                  << Csv(row.CallerSourceFile) << ','
+                                  << row.CallerLine << ','
+                                  << Csv(caller.first) << ','
+                                  << Csv(caller.second) << ','
+                                  << Csv(row.ChildSourceFile) << ','
+                                  << Csv(row.ChildFunctionName) << ','
+                                  << Csv(row.ChildFunctionKey) << ','
+                                  << Csv(child.first) << ','
+                                  << row.Calls << ','
+                                  << row.SampledChildOwnPositiveBytes << ','
+                                  << row.SampledChildOwnPositiveOps << ','
+                                  << (static_cast<double>(row.ChildInclusiveNs) /
+                                      1'000'000.0) << ','
+                                  << (child.first == "UNRESOLVED" ?
+                                      "UNRESOLVED_CHILD" : "CHILD_SOURCE_PATH_ONLY")
+                                  << ",SAMPLED_CHILD_EXCLUSIVE_NOT_ADDITIVE_WITH_PARENT\n";
+                }
+            }
         }
 
         // Bounded sampled Lua->C own allocation at the resolved Lua caller line.
@@ -4371,9 +4494,14 @@ private:
                     callsite.CallerLine = frame.CallsiteLine;
                     callsite.ParentFunctionKey = frame.ParentFunctionKey;
                     callsite.ChildFunctionKey = frame.FunctionKey;
+                    callsite.ChildSourceFile = frame.SourceFile;
+                    callsite.ChildFunctionName = frame.FunctionName;
                 }
                 ++callsite.Calls;
                 callsite.ChildInclusiveNs += inclusiveNs;
+                // Count THIS sampled child's exclusive allocator work, once.
+                callsite.SampledChildOwnPositiveBytes += ownBytes;
+                callsite.SampledChildOwnPositiveOps += ownOps;
                 // Attribute only this sampled C frame's own allocation;
                 // do NOT duplicate whole-function allocation across callers.
                 if (frame.What == "C" && frame.SourceFile == "=[C]") {
