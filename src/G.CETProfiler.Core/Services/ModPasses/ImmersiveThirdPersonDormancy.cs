@@ -33,7 +33,11 @@ internal static partial class SemanticInjectors
           or state.pendingSceneTppReapply or state.pendingFppCleanup or state.pendingFppRestore
           or state.fppRestoreWatchdog or state.pendingTppRepReassert
           or state.pendingMirrorHeadVerify or state.pendingFacialMute
-          or state.pendingTppAnimPoke or state.photoModeWasActive
+          or state.pendingTppAnimPoke or state.pendingTppDeactivate
+          or state.pendingTakeoverHandoff or state.pendingTakeoverHeadCheck
+          or state.boneResyncPending or state.moveAlignEdgePending
+          or state.sprintStopFollowPending or state.vaultSprintPending
+          or state.mirrorChoicePending or state.photoModeWasActive
           or state.photoModeHeadRestore or state.pendingFaultNotice
           or state.pickupPulseUntil or state.consumableIdleUntil
           or state.consumableGateUntil or state.consumableGraceUntil
@@ -41,11 +45,13 @@ internal static partial class SemanticInjectors
           or state.sceneWrapperUp or state.fppWrapperOwed
           or state.takeoverFppHandoff or state.headGuardApplied
           or state.headLookActive or state.headLookHeld or state.headGateOn
+          or state.headGateOffAt
           or state.turnWindowLive or state.turnWindowWanted
           or state.spatialAudio.turned or state.bodySliders.on
           or state.groundLevel.owed or state.holocallEyes.owed
           or state.pickupRange.wasOn or state.move360.wasOn
-          or state.armHeal.deactivateNext then return true end
+          or state.armHeal.deactivateNext or state.armHeal.dueAt
+          or state.consumableTimingPending then return true end
         -- The REDscript native key relay has no proven Lua event wake:
         -- retain original frame polling whenever any native key is configured.
         if hasNativeBindings() then return true end
@@ -56,7 +62,8 @@ internal static partial class SemanticInjectors
           or auto.sceneTpp == true or auto.interactionTpp == true
           or auto.elevatorTpp == true or auto.alertTpp == true then return true end
         if state.overlayOpen or state.sessionGapActive or not state.turnWindowStartCleared
-          or state.nativeSettingsDirty then return true end
+          or state.nativeSettingsDirty
+          or not (state.depGuard and state.depGuard.done == true) then return true end
         return false
       end
       local function route()

@@ -3,7 +3,7 @@ local workerPath = assert(arg[1], "worker path required")
 local M = assert(dofile(workerPath))
 local state = {
  enabled=false, requestedMode="FPP", autoPerspective={userWantsTpp=false},
- turnWindowStartCleared=true, nativeSettingsDirty=false,
+ turnWindowStartCleared=true, nativeSettingsDirty=false, depGuard={done=true},
  pickupRange={}, move360={}, armHeal={},
  spatialAudio={}, bodySliders={}, groundLevel={}, holocallEyes={}
 }
@@ -63,6 +63,10 @@ ctrl.Signal("restore")
 ticks(10)
 assert(frame.IsActive(), "paused before FPP cleanup")
 state.pendingFppCleanup=nil
+state.pendingTppDeactivate={delay=0.35}
+ticks(2)
+assert(frame.IsActive(), "pending TPP deactivation was suppressed")
+state.pendingTppDeactivate=nil
 ticks(1)
 assert(not frame.IsActive(), "cleanup completed but active work not paused")
 assert(type(subscriptions.PlayerReady)=="function")
