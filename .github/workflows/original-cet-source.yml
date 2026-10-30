@@ -201,6 +201,27 @@ jobs:
                   !$actual.Contains('mod.updateMove360Step, delta')) {
                 throw 'ITP_LITERAL_IDS_INCOMPLETE: native constructor fallback or update paths changed'
               }
+              if ($author.Contains('mod.nativeSettingsSaveTick = function(delta)') -and
+                  $author.Contains('mod.pollNativeToggle = function(delta)') -and
+                  $author.Contains('mod.applyConsumableTiming("FPP", "init")')) {
+                $worker = Join-Path $output 'bin/x64/plugins/cyber_engine_tweaks/mods/immersive_third_person/GCET_Semantic/itp_frame_dormancy.lua'
+                if (!(Test-Path -LiteralPath $worker)) { throw 'ITP_IDLE_WORKER_MISSING: untouched source must create pausable owner' }
+                $code = Get-Content -LiteralPath $worker -Raw
+                if (!$actual.Contains('__gcetItppDormantFrameV1') -or
+                    !$actual.Contains('local function __gcetItppFrameStepV1(delta)') -or
+                    !$actual.Contains('mod.__gcetItppDormancyV1.Start()') -or
+                    !$actual.Contains('mod.__gcetItppDormancyV1.Stop()') -or
+                    !$actual.Contains('mod.__gcetItppDormancyV1.Signal("toggle")') -or
+                    !$actual.Contains('if not mod.__gcetItppDormancyV1 then') -or
+                    !$code.Contains('handle.Pause()') -or
+                    !$code.Contains('handle.Resume()') -or
+                    !$code.Contains('nativeKeyFallback = hasNativeBindings()') -or
+                    !$code.Contains('id="itp.frame"') -or
+                    $code.Contains('schedule.Every(')) {
+                  throw 'ITP_IDLE_WORKER_INCOMPLETE: active frame, direct wake or native fallback lost'
+                }
+                Write-Host 'ITP untouched original: one pausable frame job, direct CET wake and native-key fail-open PASS'
+              }
               Write-Host 'ITP original camera source: literal ID cache and original per-frame work verified'
             }
           }
