@@ -13,6 +13,7 @@ internal static partial class SemanticInjectors
     function M.Install(mod, state, config, step, client)
       local handle, started, stopped = nil, false, false
       local calls, pauses, wakes, wakeReason, warm = 0, 0, 0, "init", 2
+      local sessionWarm = 0.0
       local subscriptions = {}
       local function hasNativeBindings()
         return (config.nativeToggleKey or "") ~= ""
@@ -60,7 +61,7 @@ internal static partial class SemanticInjectors
       end
       local function route()
         if not started or stopped or not handle then return end
-        if warm > 0 or needFrame() then
+        if warm > 0 or sessionWarm > 0 or needFrame() then
           if not handle.IsActive() then handle.Resume() end
         elseif handle.IsActive() then
           handle.Pause()
@@ -72,10 +73,13 @@ internal static partial class SemanticInjectors
         wakes = wakes + 1
         wakeReason = reason or "direct"
         warm = math.max(warm, 2)
+        if reason == "PlayerInvalidated" then sessionWarm = math.max(sessionWarm, 0.85) end
         route()
       end
       function M.Start()
-        if started or stopped then return end
+        if started then return end
+        stopped = false
+        warm, sessionWarm = 2, 0.0
         local schedule = client.Schedule
         assert(type(schedule) == "table" and type(schedule.EveryFrame) == "function",
           "ITP: source-proven shared frame driver unavailable")
@@ -86,6 +90,7 @@ internal static partial class SemanticInjectors
             step(dt)
             calls = calls + 1
             if warm > 0 then warm = warm - 1 end
+            if sessionWarm > 0 then sessionWarm = math.max(0, sessionWarm - dt) end
             route() -- Finish author cleanup on the same frame before sleeping.
           end)
         if type(client.Subscribe) == "function" then
@@ -121,8 +126,9 @@ internal static partial class SemanticInjectors
     """;
 
     private static string ApplyImmersiveThirdPersonDetachedDormancy(
-        SemanticPatchContext context, string text)
+        SemanticPatchContext context, string text, out bool recoveredWorker)
     {
+        recoveredWorker = false;
         const string stage = "__gcetItppDormantFrameV1";
         const string coordinator = "itp_frame_dormancy.lua";
         var existing = context.TryReadOwnedCoordinator(coordinator);
@@ -143,7 +149,11 @@ internal static partial class SemanticInjectors
                 Regex.IsMatch(normalized,
                     @"(?:registerForEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]\s*,\s*function\("))
                 throw new InvalidOperationException("ITP dormant frame stage incomplete or has duplicate owner.");
-            if (existing == null) context.WriteCoordinator(coordinator, ItppDormancyWorkerV1);
+            if (existing == null)
+            {
+                context.WriteCoordinator(coordinator, ItppDormancyWorkerV1);
+                recoveredWorker = true;
+            }
             return text;
         }
         // Full current original only: compact test/historical input retains

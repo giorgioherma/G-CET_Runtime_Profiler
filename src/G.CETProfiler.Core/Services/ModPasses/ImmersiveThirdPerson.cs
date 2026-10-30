@@ -424,8 +424,8 @@ internal static partial class SemanticInjectors
             var upgraded = ApplyImmersiveThirdPersonDetachedDormancy(context,
                 ReuseImmersiveThirdPersonLatches(
                     ReuseImmersiveThirdPersonLiteralIds(
-                        AddImmersiveThirdPersonFppFastpaths(text))));
-            if (upgraded == text)
+                        AddImmersiveThirdPersonFppFastpaths(text))), out var recoveredWorker);
+            if (upgraded == text && !recoveredWorker)
                 return SemanticInjectionResult.Skip(
                     "Current ITP pending-state and first-person fastpaths already applied.");
             context.Write(file, upgraded);
@@ -500,7 +500,7 @@ internal static partial class SemanticInjectors
         text = ApplyImmersiveThirdPersonDetachedDormancy(context,
             ReuseImmersiveThirdPersonLatches(
                 ReuseImmersiveThirdPersonLiteralIds(
-                    AddImmersiveThirdPersonFppFastpaths(text))));
+                    AddImmersiveThirdPersonFppFastpaths(text))), out _);
         context.Write(file, text);
         return SemanticInjectionResult.Success(
             "Current ITP API, movement, camera, heartbeat, native toggle and " +
