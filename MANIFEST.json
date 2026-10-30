@@ -1,10 +1,10 @@
 {
   "packageVersion": "1.3.4",
-  "profilerNativeVersion": "2.15.9-native-method-stages",
+  "profilerNativeVersion": "2.15.10-zeroengine-producer-attribution",
   "targetCET": {
     "version": "1.37.1",
     "officialSha256": "43a7b94698979703f9dfa2b0950607c9a88f53b84bbf09a8e593c7e218d41059",
-    "profilerSha256": "c2974d29444862ec23a6955c628ac6ca20148bc88cd5f0226241eb24ebe7ccaa",
+    "profilerSha256": "1f8644e885b95dc06f348173325b367bd52e7dd638949e6f333e49531b32b9ee",
     "profilerPackageFile": "cyber_engine_tweaks.PROFILER.dll",
     "profilerInstallFile": "cyber_engine_tweaks.asi"
   },
@@ -53,6 +53,8 @@
     "CET_Runtime_Profile_GGC_UnscopedNativeSamples.csv",
     "CET_Runtime_Profile_ZeroEngine_SourceAttribution.csv",
     "CET_Runtime_Profile_ZeroEngine_Callsites.csv",
+    "CET_Runtime_Profile_ZeroEngine_ProducerAttribution.csv",
+    "CET_Runtime_Profile_ZeroEngine_ConsumerCallsites.csv",
     "CET_Runtime_Profile_LuaNative_Callsites.csv",
     "CET_Runtime_Profile_Native_PreDispatchPressure.csv",
     "CET_Runtime_Profile_Native_MethodStages.csv"

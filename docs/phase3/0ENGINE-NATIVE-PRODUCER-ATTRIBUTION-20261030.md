@@ -1,6 +1,6 @@
 # Phase 3 — 0-Engine native producer and consumer attribution (2026-10-30)
 
-**Status:** Native-only implementation committed at `3932166064ce` on `dev/resolver-profiler-handoff`; native CI compilation and gameplay validation are separate gates. Existing proven native CI #95 (`40794412835`, source `bce9ec519be`) remains the historical baseline. Main managed native DLL pin and product version are unchanged.
+**Status:** Native-only instrumentation commit `3932166064ce` [native CI #40995476421](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/40995476421) **GREEN**, DLL SHA-256 `1f8644e885b95dc06f348173325b367bd52e7dd638949e6f333e49531b32b9ee`, matching PDB separately published. **User-requested native bump** `2.15.9-native-method-stages` → `2.15.10-zeroengine-producer-attribution`; main Profiler/Resolver build now pins this DLL by CI run and checksum, while shared package version remains `1.3.4`. The old native CI #95 is the previous compilation baseline, not the imported DLL. Main package CI and gameplay capture remain separate acceptance gates.
 
 ## Evidence and reason for the extension
 
