@@ -220,6 +220,9 @@ jobs:
                     !$code.Contains('function M.Register()') -or
                     !$code.Contains('active=false') -or
                     !$actual.Contains('pcall(controller.Register)') -or
+                    !$actual.Contains('mod.loadModule("GCET_Semantic/itp_frame_dormancy")') -or
+                    $actual.Contains('return dofile("GCET_Semantic/itp_frame_dormancy.lua").Install') -or
+                    !$actual.Contains('[G-CET ITP] detached frame fallback:') -or
                     !$actual.Contains('  if mod.__gcetItppDormancyV1 then mod.__gcetItppDormancyV1.Start() end' + "`n" + 'end)') -or
                     $actual.IndexOf('pcall(controller.Register)',[StringComparison]::Ordinal) -lt
                       $actual.IndexOf('  if mod.__gcetItppDormancyV1 then mod.__gcetItppDormancyV1.Start() end' + "`n" + 'end)',[StringComparison]::Ordinal) -or

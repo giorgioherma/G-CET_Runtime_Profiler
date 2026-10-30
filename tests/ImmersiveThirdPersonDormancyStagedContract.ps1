@@ -34,6 +34,9 @@ try {
   $completeSource = $completeSourceRaw.Replace("`r`n","`n")
   $completeWorker = Get-Content -LiteralPath $worker -Raw
   if (!$completeSource.Contains('pcall(controller.Register)') -or
+      !$completeSource.Contains('mod.loadModule("GCET_Semantic/itp_frame_dormancy")') -or
+      $completeSource.Contains('return dofile("GCET_Semantic/itp_frame_dormancy.lua").Install') -or
+      !$completeSource.Contains('[G-CET ITP] detached frame fallback:') -or
       !$completeSource.Contains('  if mod.__gcetItppDormancyV1 then mod.__gcetItppDormancyV1.Start() end' + "`n" + 'end)') -or
       $completeSource.IndexOf('pcall(controller.Register)') -lt
         $completeSource.IndexOf('  if mod.__gcetItppDormancyV1 then mod.__gcetItppDormancyV1.Start() end' + "`n" + 'end)') -or
@@ -126,14 +129,14 @@ try {
   # onInit. The SAME authoritative source generator must upgrade both the
   # preexisting bridge and worker to file-load-only registration.
   $legacyBridge = '  if ok and controller then mod.__gcetItppDormancyV1 = controller end'
-  # Match the four exact reviewed statements rather than assuming LF-only
-  # indentation of a private, generically composed source file.
-  $bridgePattern = '(?m)^[ \t]*if ok and controller and type\(controller\.Register\) == "function" then\r?\n' +
-    '[ \t]*local registered, ready = pcall\(controller\.Register\)\r?\n' +
-    '[ \t]*if registered and ready == true then mod\.__gcetItppDormancyV1 = controller end\r?\n' +
-    '[ \t]*end(?=\r?\n)'
+  # Match the complete reviewed file-load registration block, including
+  # the single-shot fallback reason, without depending on CRLF formatting.
+  $bridgePattern = '(?ms)^  if ok and controller and type\(controller\.Register\) == "function" then\n' +
+    '(?<body>.*?)\n  end(?=\nend\nif not mod\.__gcetItppDormancyV1 then)'
   $newBridges = [regex]::Matches($completeSource,$bridgePattern)
-  if ($newBridges.Count -ne 1 -or $completeSource.Contains($legacyBridge)) {
+  if ($newBridges.Count -ne 1 -or $completeSource.Contains($legacyBridge) -or
+      !$newBridges[0].Value.Contains('pcall(controller.Register)') -or
+      !$newBridges[0].Value.Contains('__gcetItppLoadFailureV1')) {
     throw "ITP_LEGACY_BRIDGE_SETUP_FAILED: reviewed registration shape count=$($newBridges.Count)"
   }
   $newBridge = $newBridges[0].Value
@@ -178,7 +181,62 @@ try {
   } finally { $migZip.Dispose() }
   [IO.File]::WriteAllText((Join-Path $stageItp 'init.lua'),
     $completeSource,[Text.Encoding]::UTF8)
-  Set-Content -LiteralPath $worker -Value '-- incompatible ITP worker source drift' -Encoding utf8
+  # Previous v2 had correct file-load Register ownership, but its plain
+  # dofile path could silently fail from a different CET working directory.
+  $authorLoader = @'
+    local worker, reason = mod.loadModule("GCET_Semantic/itp_frame_dormancy")
+    if type(worker) ~= "table" or type(worker.Install) ~= "function" then
+      error(reason or "ITP external worker interface missing")
+    end
+    return worker.Install(
+      mod, state, config, __gcetItppFrameStepV1, __gcetItppRuntimeV1)
+'@.TrimEnd()
+  $priorLoader = @'
+    return dofile("GCET_Semantic/itp_frame_dormancy.lua").Install(
+      mod, state, config, __gcetItppFrameStepV1, __gcetItppRuntimeV1)
+'@.TrimEnd()
+  $priorBridge = @'
+  if ok and controller and type(controller.Register) == "function" then
+    local registered, ready = pcall(controller.Register)
+    if registered and ready == true then mod.__gcetItppDormancyV1 = controller end
+  end
+'@.TrimEnd()
+  if ($completeSource.Split($authorLoader).Count -ne 2) {
+    throw 'ITP_SOURCE_AWARE_LOADER_INCOMPLETE'
+  }
+  $v2Source = $completeSource.Replace($authorLoader,$priorLoader).Replace($newBridge,$priorBridge)
+  [IO.File]::WriteAllText((Join-Path $stageItp 'init.lua'),$v2Source,[Text.Encoding]::UTF8)
+  [IO.File]::WriteAllText($worker,$completeWorker,[Text.Encoding]::UTF8)
+  $upgrade = ResolveStaged 'V2_RELATIVE_LOADER'
+  if (!$upgrade.Result.ok -or !$upgrade.Manifest -or
+      @($upgrade.Manifest.transforms | Where-Object {
+        $_.RuleId -eq 'immersive-third-person' -and $_.type -eq 'SEMANTIC_RULE'
+      }).Count -ne 1) {
+    $skip = @($upgrade.Manifest.skipped | Where-Object { $_.RuleId -eq 'immersive-third-person' } |
+      Select-Object -First 3 reason)
+    Write-Host ("ITP_V2_UPGRADE_DEBUG: " + ($skip|ConvertTo-Json -Compress -Depth 3))
+    throw 'ITP_V2_RELATIVE_WORKER_LOADER_NOT_UPGRADED'
+  }
+  $upgradeFiles = @($upgrade.Manifest.transforms | Where-Object { $_.RuleId -eq 'immersive-third-person' })[0].files
+  if (@($upgradeFiles).Count -ne 1 -or
+      !([string]@($upgradeFiles)[0]).Replace('\\','/').Equals(
+        'immersive_third_person/init.lua',[StringComparison]::OrdinalIgnoreCase)) {
+    throw 'ITP_V2_UPGRADE_REWROTE_WORKER'
+  }
+  $upgradeZip=[IO.Compression.ZipFile]::OpenRead($upgrade.Result.pass.ZipPath)
+  try {
+    $entry=@($upgradeZip.Entries | Where-Object {
+      $_.FullName.Replace('\\','/').EndsWith('/immersive_third_person/init.lua')}) |
+      Select-Object -First 1
+    if (!$entry) { throw 'ITP_V2_UPGRADE_MISSING_INIT' }
+    $reader=[IO.StreamReader]::new($entry.Open())
+    try { $actualUpgraded=$reader.ReadToEnd() } finally { $reader.Dispose() }
+    if ($actualUpgraded.Replace("`r`n","`n") -cne $completeSource) {
+      throw 'ITP_V2_UPGRADE_SOURCE_NOT_EQUIVALENT'
+    }
+  } finally { $upgradeZip.Dispose() }
+  [IO.File]::WriteAllText((Join-Path $stageItp 'init.lua'),$completeSource,[Text.Encoding]::UTF8)
+    Set-Content -LiteralPath $worker -Value '-- incompatible ITP worker source drift' -Encoding utf8
   $drift = ResolveStaged 'DRIFT'
   if ($drift.Manifest -and @($drift.Manifest.transforms | Where-Object {
     $_.RuleId -eq 'immersive-third-person' -and $_.type -eq 'SEMANTIC_RULE'
