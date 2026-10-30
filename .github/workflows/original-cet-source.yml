@@ -191,7 +191,7 @@ jobs:
               if (!(Test-Path -LiteralPath $outputCamera)) {
                 throw 'ITP_LITERAL_IDS_OUTPUT_MISSING: original updated camera was not generated'
               }
-              $actual = Get-Content -LiteralPath $outputCamera -Raw
+              $actual = (Get-Content -LiteralPath $outputCamera -Raw).Replace("`r`n","`n")
               if (!$actual.Contains('local __gcetItppLiteralTweakIdsV1 = {}') -or
                   !$actual.Contains('local __gcetItppLiteralKeySetV1 = {') -or
                   !$actual.Contains('if __gcetItppLiteralKeySetV1[value] then') -or

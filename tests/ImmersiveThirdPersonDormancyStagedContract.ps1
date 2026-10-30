@@ -30,7 +30,7 @@ try {
   $worker = Join-Path $stageItp 'GCET_Semantic/itp_frame_dormancy.lua'
   New-Item -Path (Split-Path $worker) -ItemType Directory -Force | Out-Null
   Copy-Item -LiteralPath (Join-Path $generated 'GCET_Semantic/itp_frame_dormancy.lua') -Destination $worker -Force
-  $completeSource = Get-Content -LiteralPath (Join-Path $stageItp 'init.lua') -Raw
+  $completeSource = (Get-Content -LiteralPath (Join-Path $stageItp 'init.lua') -Raw).Replace("`r`n","`n")
   $completeWorker = Get-Content -LiteralPath $worker -Raw
   if (!$completeSource.Contains('pcall(controller.Register)') -or
       !$completeSource.Contains('  if mod.__gcetItppDormancyV1 then mod.__gcetItppDormancyV1.Start() end' + "`n" + 'end)') -or
