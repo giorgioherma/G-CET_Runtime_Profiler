@@ -1150,7 +1150,7 @@ internal static partial class SemanticInjectors
         var normalized = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r','\n');
         return normalized.Contains(ItppLegacyRelativeWorkerLoader, StringComparison.Ordinal)
             && !normalized.Contains(ItppAuthorWorkerLoader, StringComparison.Ordinal)
-            && HasImmersiveThirdPersonFrameDormancyBridge(normalized.Replace(
+            && HasImmersiveThirdPersonFrameDormancyBridgeFileLoad(normalized.Replace(
                 ItppLegacyRelativeWorkerLoader, ItppAuthorWorkerLoader, StringComparison.Ordinal));
     }
 
@@ -1169,7 +1169,7 @@ internal static partial class SemanticInjectors
                 @"(?:registerForEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]\s*,\s*function\(");
     }
 
-    internal static bool HasImmersiveThirdPersonFrameDormancyBridge(string text)
+    private static bool HasImmersiveThirdPersonFrameDormancyBridgeFileLoad(string text)
     {
         text = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
         return !(!text.Contains("-- __gcetItppDormantFrameV1:", StringComparison.Ordinal)
@@ -1187,6 +1187,85 @@ internal static partial class SemanticInjectors
             || !text.Contains("mod.loadModule(\"GCET_Semantic/itp_frame_dormancy\")", StringComparison.Ordinal)
             || Regex.IsMatch(text,
                 @"(?:registerForEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]\s*,\s*function\("));
+    }
+
+
+    // The shared scheduler is initialized during CET onInit, exactly as in
+    // Dedra's proven 0-Engine-owned worker. Lua FILE LOAD may resolve only the
+    // author module file; it must NOT ask GetMod("0-Engine") for its schedule.
+    // No new CET event registration occurs at onInit. The source-proven shared
+    // 0-Engine onUpdate owns the sole frame dispatch.
+    internal static bool HasImmersiveThirdPersonFrameDormancyBridge(string text)
+    {
+        text = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        return text.Contains("-- __gcetItppDormantFrameV1:", StringComparison.Ordinal)
+            && text.Contains("local function __gcetItppFrameStepV1(delta)", StringComparison.Ordinal)
+            && text.Contains("local __gcetItppWorkerFactoryV3 = nil", StringComparison.Ordinal)
+            && text.Contains("if not __gcetItppWorkerFactoryV3 then", StringComparison.Ordinal)
+            && text.Contains("mod.loadModule(\"GCET_Semantic/itp_frame_dormancy\")", StringComparison.Ordinal)
+            && text.Contains("local function __gcetItppAttachOnInitV3()", StringComparison.Ordinal)
+            && text.Contains("local controller = __gcetItppWorkerFactoryV3.Install(", StringComparison.Ordinal)
+            && text.Contains("local ready = controller.Register()", StringComparison.Ordinal)
+            && text.Contains("host.__gcetScheduleDriver", StringComparison.Ordinal)
+            && text.Contains("  __gcetItppAttachOnInitV3()\n  if mod.__gcetItppDormancyV1 then mod.__gcetItppDormancyV1.Start() end\nend)", StringComparison.Ordinal)
+            && text.IndexOf("local function __gcetItppAttachOnInitV3()", StringComparison.Ordinal) <
+               text.IndexOf("local UI = {", StringComparison.Ordinal)
+            && text.Contains("mod.__gcetItppDormancyV1.Stop()", StringComparison.Ordinal)
+            && text.Contains("mod.__gcetItppDormancyV1.Signal(\"toggle\")", StringComparison.Ordinal)
+            && !text.Contains("pcall(controller.Register)", StringComparison.Ordinal)
+            && !Regex.IsMatch(text,
+                @"(?:registerForEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]\s*,\s*function\(");
+    }
+
+    private static string BuildItppDeferredBridgeV3(string registrar, string quote)
+    {
+        if (!Regex.IsMatch(registrar, @"^(?:registerForEvent|__gcetRegisterEvent_\d+)$") ||
+            (quote != "\"" && quote != "'"))
+            throw new InvalidOperationException("ITP callback registrar provenance drift.");
+        return """
+local __gcetItppWorkerFactoryV3 = nil
+local __gcetItppLoadFailureV1 = nil
+do
+  -- Resolve the author-owned module at file load, not 0-Engine's onInit API.
+  local ok, worker = pcall(function()
+    local worker, reason = mod.loadModule("GCET_Semantic/itp_frame_dormancy")
+    if type(worker) ~= "table" or type(worker.Install) ~= "function" then
+      error(reason or "ITP external worker interface missing")
+    end
+    return worker
+  end)
+  if ok then
+    __gcetItppWorkerFactoryV3 = worker
+  else
+    __gcetItppLoadFailureV1 = tostring(worker)
+  end
+end
+local function __gcetItppAttachOnInitV3()
+  if mod.__gcetItppDormancyV1 or not __gcetItppWorkerFactoryV3 then return end
+  -- Dedra's working pattern: obtain client and create source-owned schedule
+  -- in onInit after 0-Engine init. Neither Register nor Subscribe creates a
+  -- second native CET onUpdate: the shared driver was created at file load.
+  local host = GetMod("0-Engine")
+  assert(type(host) == "table" and type(host.__gcetScheduleDriver) == "function"
+      and type(host.Register) == "function",
+    "[G-CET ITP] 0-Engine driver unavailable at onInit")
+  local client = host.Register("immersive_third_person")
+  assert(type(client) == "table" and type(client.Schedule) == "table"
+      and type(client.Schedule.EveryFrame) == "function",
+    "[G-CET ITP] shared frame scheduler unavailable at onInit")
+  local controller = __gcetItppWorkerFactoryV3.Install(
+    mod, state, config, __gcetItppFrameStepV1, client)
+  assert(type(controller) == "table" and type(controller.Register) == "function",
+    "[G-CET ITP] source-owned worker invalid")
+  local ready = controller.Register()
+  assert(ready == true, "[G-CET ITP] shared frame owner rejected registration")
+  mod.__gcetItppDormancyV1 = controller
+end
+if not __gcetItppWorkerFactoryV3 then
+  -- Dependency fails before onInit: retain original author's frame handler.
+  -- This native CET registration happens at FILE LOAD, never from onInit.
+  print("[G-CET ITP] detached frame fallback: " .. tostring(__gcetItppLoadFailureV1))
+"""+ "\n  " + registrar + "(" + quote + "onUpdate" + quote + ", __gcetItppFrameStepV1)\nend";
     }
 
     // Complete only when the actual detached frame owner, both lifecycle
@@ -1566,78 +1645,50 @@ internal static partial class SemanticInjectors
                 !hostCurrent.Contains("registerForEvent(\"onUpdate\", function(delta)", StringComparison.Ordinal))
                 throw new InvalidOperationException(
                     "Existing ITP detached frame controller has no proven composed 0-Engine driver.");
-            if (!normalized.Contains("local function __gcetItppFrameStepV1(delta)", StringComparison.Ordinal) ||
-                !normalized.Contains("mod.__gcetItppDormancyV1.Start()", StringComparison.Ordinal) ||
-                !normalized.Contains("mod.__gcetItppDormancyV1.Stop()", StringComparison.Ordinal) ||
-                !normalized.Contains("mod.__gcetItppDormancyV1.Signal(\"toggle\")", StringComparison.Ordinal) ||
-                !normalized.Contains("GCET_Semantic/itp_frame_dormancy", StringComparison.Ordinal) ||
-                !normalized.Contains("if not mod.__gcetItppDormancyV1 then", StringComparison.Ordinal) ||
-                Regex.IsMatch(normalized,
-                    @"(?:registerForEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]\s*,\s*function\("))
-                throw new InvalidOperationException("ITP dormant frame stage incomplete or has duplicate owner.");
-            const string oldBridge = "  if ok and controller then mod.__gcetItppDormancyV1 = controller end";
-            var isPriorBridge = normalized.Contains(oldBridge, StringComparison.Ordinal);
-            var usesOldRelativeLoader = normalized.Contains(ItppLegacyRelativeWorkerLoader, StringComparison.Ordinal);
-            var usesAuthorLoader = normalized.Contains(ItppAuthorWorkerLoader, StringComparison.Ordinal);
-            if (usesOldRelativeLoader == usesAuthorLoader)
-                throw new InvalidOperationException("ITP worker load path incomplete, duplicate or drifted.");
-            if (isPriorBridge)
+            if (HasImmersiveThirdPersonFrameDormancyBridge(normalized))
             {
-                if (!HasImmersiveThirdPersonFrameDormancyBridgeV1(normalized))
-                    throw new InvalidOperationException("ITP prior frame bridge drifted; refusing unsafe migration.");
-                normalized = normalized.Replace(oldBridge, ItppFileLoadRegisterBridgeV2, StringComparison.Ordinal);
-            }
-            else if (usesOldRelativeLoader)
-            {
-                if (!HasImmersiveThirdPersonFrameDormancyBridgeV2(normalized))
-                    throw new InvalidOperationException("ITP prior file-load bridge drifted; refusing loader upgrade.");
-            }
-            else if (!HasImmersiveThirdPersonFrameDormancyBridge(normalized))
-                throw new InvalidOperationException("ITP current frame bridge lacks file-load Register proof.");
-            if (usesOldRelativeLoader)
-            {
-                if (!isPriorBridge)
+                if (currentWorker != expected)
                 {
-                    if (normalized.Split(ItppPriorFileLoadRegisterBridge, StringSplitOptions.None).Length != 2)
-                        throw new InvalidOperationException("ITP old file-load Register body drifted.");
-                    normalized = normalized.Replace(ItppPriorFileLoadRegisterBridge,
-                        ItppFileLoadRegisterBridgeV2, StringComparison.Ordinal);
+                    context.WriteCoordinator(coordinator, ItppDormancyWorkerV1);
+                    recoveredWorker = true;
                 }
-                normalized = normalized.Replace(ItppLegacyRelativeWorkerLoader,
-                    ItppAuthorWorkerLoader, StringComparison.Ordinal);
+                return text; // Proven fully optimized source; recover worker only.
             }
-            // Upgrading a known previous bridge also installs a one-time
-            // reason in the ORIGINAL fallback branch; do not add a polling
-            // observer or repair layer.
-            const string legacyRuntime = "local __gcetItppRuntimeV1 = nil\n";
-            const string reasonDeclaration = "local __gcetItppLoadFailureV1 = \"0-Engine scoped schedule unavailable at module load\"\n";
-            if (!normalized.Contains(reasonDeclaration, StringComparison.Ordinal))
-            {
-                if (normalized.Split(legacyRuntime, StringSplitOptions.None).Length != 2)
-                    throw new InvalidOperationException("ITP historical runtime local drifted.");
-                normalized = normalized.Replace(legacyRuntime, legacyRuntime + reasonDeclaration, StringComparison.Ordinal);
-            }
-            var diagnosticFallback = "if not mod.__gcetItppDormancyV1 then\n" +
-                "  if type(print) == \"function\" then\n" +
-                "    print(\"[G-CET ITP] detached frame fallback: \" .. tostring(__gcetItppLoadFailureV1))\n" +
-                "  end\n";
-            if (!normalized.Contains(diagnosticFallback, StringComparison.Ordinal))
-            {
-                const string fallbackHead = "if not mod.__gcetItppDormancyV1 then\n";
-                if (normalized.Split(fallbackHead, StringSplitOptions.None).Length != 2)
-                    throw new InvalidOperationException("ITP historical fallback owner drifted.");
-                normalized = normalized.Replace(fallbackHead, diagnosticFallback, StringComparison.Ordinal);
-            }
+            var oldV1 = HasImmersiveThirdPersonFrameDormancyBridgeV1(normalized);
+            var oldV2 = HasImmersiveThirdPersonFrameDormancyBridgeV2(normalized);
+            var oldFileLoad = HasImmersiveThirdPersonFrameDormancyBridgeFileLoad(normalized);
+            if (!oldV1 && !oldV2 && !oldFileLoad)
+                throw new InvalidOperationException("ITP existing frame source drifted; refusing unsafe migration.");
+            const string oldRuntimeAnchor = "local __gcetItppRuntimeV1 = nil\n";
+            var bridgeStart = normalized.IndexOf(oldRuntimeAnchor, StringComparison.Ordinal);
+            var bridgeEnd = bridgeStart < 0 ? -1 :
+                normalized.IndexOf("\n\nlocal UI = {", bridgeStart, StringComparison.Ordinal);
+            if (bridgeStart < 0 || bridgeEnd < 0)
+                throw new InvalidOperationException("ITP prior bridge boundaries drifted.");
+            var oldBlock = normalized[bridgeStart..bridgeEnd];
+            var oldFrameRegistration = Regex.Matches(oldBlock,
+                @"(?m)^[ \t]*(?<reg>registerForEvent|__gcetRegisterEvent_\d+)\((?<q>['""])onUpdate\k<q>, __gcetItppFrameStepV1\)\nend$",
+                RegexOptions.CultureInvariant);
+            if (oldFrameRegistration.Count != 1)
+                throw new InvalidOperationException("ITP prior CET fallback owner not uniquely proven.");
+            var owner = oldFrameRegistration[0];
+            var newBlock = BuildItppDeferredBridgeV3(owner.Groups["reg"].Value, owner.Groups["q"].Value);
+            normalized = normalized[..bridgeStart] + newBlock + normalized[bridgeEnd..];
+            const string initTail = "  if mod.__gcetItppDormancyV1 then mod.__gcetItppDormancyV1.Start() end\nend)";
+            if (normalized.Split(initTail, StringSplitOptions.None).Length != 2)
+                throw new InvalidOperationException("ITP prior onInit startup anchor drifted.");
+            normalized = normalized.Replace(initTail,
+                "  __gcetItppAttachOnInitV3()\n" + initTail, StringComparison.Ordinal);
+            if (!HasImmersiveThirdPersonFrameDormancyBridge(normalized))
+                throw new InvalidOperationException("ITP migrated deferred bridge failed structural ownership proof.");
             if (currentWorker != expected)
             {
                 context.WriteCoordinator(coordinator, ItppDormancyWorkerV1);
                 recoveredWorker = true;
             }
-            return normalized != text.Replace("\r\n", "\n", StringComparison.Ordinal)
-                ? text.Contains("\r\n", StringComparison.Ordinal)
-                    ? normalized.Replace("\n", "\r\n", StringComparison.Ordinal)
-                    : normalized
-                : text;
+            return text.Contains("\r\n", StringComparison.Ordinal)
+                ? normalized.Replace("\n", "\r\n", StringComparison.Ordinal)
+                : normalized;
         }
         // Full current original only: compact test/historical input retains
         // its existing conservative frame loop. Unknown layouts fail closed.
@@ -1689,33 +1740,7 @@ internal static partial class SemanticInjectors
         var frameBody = cb[header.Length..];
         var emitter = "-- " + stage + ": one pausable shared frame owner\n" +
             "local function __gcetItppFrameStepV1(delta)\n" + frameBody + "\nend\n" +
-            "local __gcetItppRuntimeV1 = nil\n" +
-            "local __gcetItppLoadFailureV1 = \"0-Engine scoped schedule unavailable at module load\"\n" +
-            "do\n" +
-            "  local ok, host = pcall(GetMod, \"0-Engine\")\n" +
-            "  if ok and type(host) == \"table\" and type(host.__gcetScheduleDriver) == \"function\"\n" +
-            "     and type(host.Register) == \"function\" then\n" +
-            "    local okClient, client = pcall(host.Register, \"immersive_third_person\")\n" +
-            "    if okClient and type(client) == \"table\" and type(client.Schedule) == \"table\"\n" +
-            "       and type(client.Schedule.EveryFrame) == \"function\" then\n" +
-            "      __gcetItppRuntimeV1 = client\n" +
-            "    end\n" +
-            "  end\n" +
-            "end\n" +
-            "if __gcetItppRuntimeV1 then\n" +
-            "  local ok, controller = pcall(function()\n" +
-            ItppAuthorWorkerLoader + "\n" +
-            "  end)\n" +
-            ItppFileLoadRegisterBridgeV2 + "\n" +
-            "end\n" +
-            "if not mod.__gcetItppDormancyV1 then\n" +
-            "  if type(print) == \"function\" then\n" +
-            "    print(\"[G-CET ITP] detached frame fallback: \" .. tostring(__gcetItppLoadFailureV1))\n" +
-            "  end\n" +
-            "  " + owner.Groups["registrar"].Value +
-            "(" + owner.Groups["q"].Value + "onUpdate" + owner.Groups["q"].Value +
-            ", __gcetItppFrameStepV1)\n" +
-            "end";
+            BuildItppDeferredBridgeV3(owner.Groups["registrar"].Value, owner.Groups["q"].Value);
         normalized = normalized[..owner.Index] + emitter + normalized[(ending + "\nend)".Length)..];
 
         string ReplaceOne(string oldValue, string newValue, string purpose)
@@ -1727,6 +1752,7 @@ internal static partial class SemanticInjectors
         }
         ReplaceOne("  mod.applyConsumableTiming(\"FPP\", \"init\")\nend)",
             "  mod.applyConsumableTiming(\"FPP\", \"init\")\n" +
+            "  __gcetItppAttachOnInitV3()\n" +
             "  if mod.__gcetItppDormancyV1 then mod.__gcetItppDormancyV1.Start() end\nend)",
             "onInit startup");
         ReplaceOne("registerForEvent(\"onShutdown\", function()\n",
