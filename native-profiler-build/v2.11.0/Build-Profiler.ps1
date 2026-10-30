@@ -255,6 +255,13 @@ try {
         throw "CONTROL binary linker is $($controlInfo.Linker), expected 14.44. Xmake did not honor the pinned --vs_toolset=14.44; refusing to continue."
     }
 
+    $controlVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo($control)
+    if ($controlVersion.FileMajorPart -ne 1 -or
+        $controlVersion.FileMinorPart -ne 37 -or
+        $controlVersion.FileBuildPart -ne 1) {
+        throw "Pinned official CET CONTROL PE version was unexpectedly modified: $($controlVersion.FileVersion)"
+    }
+    Write-Host "Unmodified upstream CET CONTROL resource version verified: $($controlVersion.FileVersion)"
     Write-Host "Historical CONTROL linker verified as 14.44." -ForegroundColor Green
 
     Write-Host ""
