@@ -214,8 +214,8 @@ jobs:
                     !$actual.Contains('mod.gcetItppForgetSessionUi = function()') -or
                     !$actual.Contains('  mod.gcetItppForgetSessionUi()' + [char]10 +
                       '  mod.captureConsumableTiming()') -or
-                    !$actual.Contains('registerForEvent("onShutdown", function()' + [char]10 +
-                      '  mod.gcetItppForgetSessionUi()') -or
+                    !$actual.Contains('  mod.gcetItppForgetSessionUi()' + [char]10 +
+                      '  state.frameSeq = (state.frameSeq or 0) + 1') -or
                     !$actual.Contains("watch('LoadGameMenuGameController', 'LoadGame', function(_, item)" + [char]10 +
                       '  mod.gcetItppForgetSessionUi()') -or
                     !$actual.Contains('    mod.gcetItppForgetSessionUi()' + [char]10 +
