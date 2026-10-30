@@ -227,6 +227,29 @@ jobs:
                       $actual.IndexOf('local UI = {',[StringComparison]::Ordinal) -or
                     $code.Contains('handle.Cancel()') -or
                     $code.Contains('schedule.Every(')) {
+                  $state = [ordered]@{
+                    marker=$actual.Contains('__gcetItppDormantFrameV1')
+                    frameBody=$actual.Contains('local function __gcetItppFrameStepV1(delta)')
+                    start=$actual.Contains('mod.__gcetItppDormancyV1.Start()')
+                    stop=$actual.Contains('mod.__gcetItppDormancyV1.Stop()')
+                    toggle=$actual.Contains('mod.__gcetItppDormancyV1.Signal("toggle")')
+                    fallback=$actual.Contains('if not mod.__gcetItppDormancyV1 then')
+                    pause=$code.Contains('handle.Pause()')
+                    resume=$code.Contains('handle.Resume()')
+                    nativeFallback=$code.Contains('nativeKeyFallback = hasNativeBindings()')
+                    frameJob=$code.Contains('id="itp.frame"')
+                    register=$code.Contains('function M.Register()')
+                    inactive=$code.Contains('active=false')
+                    fileLoadRegister=$actual.Contains('pcall(controller.Register)')
+                    startBody=$actual.Contains('  if mod.__gcetItppDormancyV1 then mod.__gcetItppDormancyV1.Start() end' + "`n" + 'end)')
+                    afterOnInit=$actual.IndexOf('pcall(controller.Register)',[StringComparison]::Ordinal) -gt
+                        $actual.IndexOf('  if mod.__gcetItppDormancyV1 then mod.__gcetItppDormancyV1.Start() end' + "`n" + 'end)',[StringComparison]::Ordinal)
+                    beforeUi=$actual.IndexOf('pcall(controller.Register)',[StringComparison]::Ordinal) -lt
+                        $actual.IndexOf('local UI = {',[StringComparison]::Ordinal)
+                    noCancel=!$code.Contains('handle.Cancel()')
+                    noTimedJob=!$code.Contains('schedule.Every(')
+                  }
+                  Write-Host ('ITP_OUTPUT_PROOF_FLAGS: ' + ($state|ConvertTo-Json -Compress))
                   throw 'ITP_IDLE_WORKER_INCOMPLETE: active frame, direct wake or native fallback lost'
                 }
                 Write-Host 'ITP untouched original: one pausable frame job, direct CET wake and native-key fail-open PASS'
