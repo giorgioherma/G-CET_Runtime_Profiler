@@ -220,8 +220,11 @@ jobs:
                     !$code.Contains('function M.Register()') -or
                     !$code.Contains('active=false') -or
                     !$actual.Contains('pcall(controller.Register)') -or
+                    !$actual.Contains('  if mod.__gcetItppDormancyV1 then mod.__gcetItppDormancyV1.Start() end' + "`n" + 'end)') -or
+                    $actual.IndexOf('pcall(controller.Register)',[StringComparison]::Ordinal) -lt
+                      $actual.IndexOf('  if mod.__gcetItppDormancyV1 then mod.__gcetItppDormancyV1.Start() end' + "`n" + 'end)',[StringComparison]::Ordinal) -or
                     $actual.IndexOf('pcall(controller.Register)',[StringComparison]::Ordinal) -gt
-                      $actual.IndexOf('registerForEvent("onInit"', [StringComparison]::Ordinal) -or
+                      $actual.IndexOf('local UI = {',[StringComparison]::Ordinal) -or
                     $code.Contains('handle.Cancel()') -or
                     $code.Contains('schedule.Every(')) {
                   throw 'ITP_IDLE_WORKER_INCOMPLETE: active frame, direct wake or native fallback lost'

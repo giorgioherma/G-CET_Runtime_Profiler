@@ -33,8 +33,11 @@ try {
   $completeSource = Get-Content -LiteralPath (Join-Path $stageItp 'init.lua') -Raw
   $completeWorker = Get-Content -LiteralPath $worker -Raw
   if (!$completeSource.Contains('pcall(controller.Register)') -or
+      !$completeSource.Contains('  if mod.__gcetItppDormancyV1 then mod.__gcetItppDormancyV1.Start() end' + "`n" + 'end)') -or
+      $completeSource.IndexOf('pcall(controller.Register)') -lt
+        $completeSource.IndexOf('  if mod.__gcetItppDormancyV1 then mod.__gcetItppDormancyV1.Start() end' + "`n" + 'end)') -or
       $completeSource.IndexOf('pcall(controller.Register)') -gt
-        $completeSource.IndexOf('registerForEvent("onInit"') -or
+        $completeSource.IndexOf('local UI = {') -or
       !$completeWorker.Contains('function M.Register()') -or
       !$completeWorker.Contains('active=false') -or
       $completeWorker.Contains('handle.Cancel()')) {

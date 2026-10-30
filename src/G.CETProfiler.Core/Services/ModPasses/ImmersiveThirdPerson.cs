@@ -1142,8 +1142,11 @@ internal static partial class SemanticInjectors
             || !text.Contains("mod.__gcetItppDormancyV1.Start()", StringComparison.Ordinal)
             || !text.Contains("mod.__gcetItppDormancyV1.Stop()", StringComparison.Ordinal)
             || !text.Contains("pcall(controller.Register)", StringComparison.Ordinal)
+            || !text.Contains("  if mod.__gcetItppDormancyV1 then mod.__gcetItppDormancyV1.Start() end\nend)", StringComparison.Ordinal)
+            || text.IndexOf("pcall(controller.Register)", StringComparison.Ordinal) <
+               text.IndexOf("  if mod.__gcetItppDormancyV1 then mod.__gcetItppDormancyV1.Start() end\nend)", StringComparison.Ordinal)
             || text.IndexOf("pcall(controller.Register)", StringComparison.Ordinal) >
-               text.IndexOf("registerForEvent(\"onInit\"", StringComparison.Ordinal)
+               text.IndexOf("local UI = {", StringComparison.Ordinal)
             || !text.Contains("mod.__gcetItppDormancyV1.Signal(\"toggle\")", StringComparison.Ordinal)
             || !text.Contains("if not mod.__gcetItppDormancyV1 then", StringComparison.Ordinal)
             || !text.Contains("itp_frame_dormancy.lua", StringComparison.Ordinal)
