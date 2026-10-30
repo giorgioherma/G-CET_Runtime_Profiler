@@ -91,4 +91,18 @@ assert(frame.IsActive(), "worker cannot restart after onShutdown/onInit lifecycl
 ticks(2)
 assert(not frame.IsActive(), "restarted worker did not restore dormancy")
 ctrl.Stop()
+local noWake = assert(M.Install({},state,config,function() end,
+  {Schedule={EveryFrame=function()
+    local h={active=true}
+    function h.IsActive() return h.active end
+    function h.Pause() h.active=false end
+    function h.Resume() h.active=true end
+    function h.Cancel() h.active=false end
+    noWakeFrame=h
+    return h
+  end}}))
+noWake.Start()
+assert(noWakeFrame.IsActive() and noWake.Diagnostics().sessionWakeProven==false,
+  "missing independent session events must fail open, not strand ITP")
+noWake.Stop()
 print("ITP physically dormant job, native-key fail-open, active cadence, cleanup, session wake PASS")

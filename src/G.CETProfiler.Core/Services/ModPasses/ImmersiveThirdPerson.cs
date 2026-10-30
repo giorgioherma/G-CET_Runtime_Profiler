@@ -1115,6 +1115,7 @@ internal static partial class SemanticInjectors
       local calls, pauses, wakes, wakeReason, warm = 0, 0, 0, "init", 2
       local sessionWarm = 0.0
       local subscriptions = {}
+      local sessionWakeProven = false
       local function hasNativeBindings()
         return (config.nativeToggleKey or "") ~= ""
           or (config.nativeQuickFppKey or "") ~= ""
@@ -1168,7 +1169,7 @@ internal static partial class SemanticInjectors
       end
       local function route()
         if not started or stopped or not handle then return end
-        if warm > 0 or sessionWarm > 0 or needFrame() then
+        if not sessionWakeProven or warm > 0 or sessionWarm > 0 or needFrame() then
           if not handle.IsActive() then handle.Resume() end
         elseif handle.IsActive() then
           handle.Pause()
@@ -1204,11 +1205,16 @@ internal static partial class SemanticInjectors
             if sessionWarm > 0 then sessionWarm = math.max(0, sessionWarm - dt) end
             route() -- Finish author cleanup on the same frame before sleeping.
           end)
-        if type(client.Subscribe) == "function" then
+        sessionWakeProven = type(client.Subscribe) == "function"
+        if sessionWakeProven then
           for _, name in ipairs({ "PlayerReady", "PlayerInvalidated" }) do
             local ok, h = pcall(client.Subscribe, name,
               function() M.Signal(name) end)
-            if ok and h then subscriptions[#subscriptions + 1] = h end
+            if ok and type(h) == "table" and type(h.unsubscribe) == "function" then
+              subscriptions[#subscriptions + 1] = h
+            else
+              sessionWakeProven = false
+            end
           end
         end
         route()
@@ -1221,6 +1227,7 @@ internal static partial class SemanticInjectors
           if h and type(h.unsubscribe) == "function" then pcall(h.unsubscribe) end
         end
         subscriptions, handle = {}, nil
+        sessionWakeProven = false
       end
       function M.Diagnostics()
         return { mode = stopped and "stopped" or
@@ -1229,6 +1236,7 @@ internal static partial class SemanticInjectors
           started = started, calls = calls, pauses = pauses,
           wakes = wakes, lastWake = wakeReason,
           pendingCleanup = needFrame(), nativeKeyFallback = hasNativeBindings(),
+          sessionWakeProven = sessionWakeProven,
           registrationPath = "shared-0-engine-schedule", nativeItpUpdate = false }
       end
       return M
