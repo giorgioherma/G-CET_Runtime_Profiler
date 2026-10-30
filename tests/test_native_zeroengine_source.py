@@ -86,3 +86,15 @@ assert patch.count('BeginPreDispatch()') == 5
 assert patch.count('EndPreDispatch(') == 3
 assert 'No RAII across LuaJIT longjmp/Windows SEH' in patch
 print("native exact-method stage source contract passed")
+
+# Native PE VERSIONINFO is built into the real DLL, not a renamed artifact.
+assert "$gcetNativeVersion = '2.16.1'" in patch
+assert "src\\xmake\\Resource.rc.in" in patch
+assert "src\\config\\Resource.rc" in patch
+assert "G-CET Native Runtime Profiler (CET 1.37.1)" in patch
+assert "CET_VERSION C++ macros (1.37.1)" in patch
+build_script = Path('native-profiler-build/v2.11.0/Build-Profiler.ps1').read_text(encoding='utf-8')
+assert "Compiled G-CET native VERSIONINFO mismatch" in build_script
+assert "Compiled native VERSIONINFO mismatch" in normal
+assert "NATIVE_VERSION.txt" in normal
+print("native resource version 2.16.1 compiler and workflow source contracts passed")

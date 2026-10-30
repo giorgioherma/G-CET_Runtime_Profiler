@@ -1107,6 +1107,856 @@ Replace-LiteralOnce `
 '@ `
     -Label "Override chain next-wrapper allocation stage"
 
+
+# The official CET CONTROL has already been built unchanged. This changes only
+# the experimental G-CET profiler DLL's PE resource identity. Retain upstream
+# CET_VERSION C++ macros (1.37.1), which are runtime compatibility values.
+# Patch the Xmake template and generated input: either can feed the compiler.
+$gcetNativeVersion = '2.16.1'
+$rcTemplate = Join-Path $src 'src\xmake\Resource.rc.in'
+$rcGenerated = Join-Path $src 'src\config\Resource.rc'
+foreach ($rcPath in @($rcTemplate, $rcGenerated)) {
+    if (!(Test-Path -LiteralPath $rcPath -PathType Leaf)) {
+        throw "Expected native resource input is missing: $rcPath"
+    }
+    if ($rcPath -eq $rcTemplate) {
+        $expectedNum = ' (Get-FileHash -Algorithm SHA256 $foH).Hash
+if ($foHHashAfter -ne $foHHashBefore) {
+    throw "v2.10.0 safety failure: FunctionOverride.h was modified."
+}
+
+$foCText = Read-Utf8 $foC
+
+foreach ($marker in @(
+    "ResolveProfilerCounter",
+    "if (!profiler.IsCapturing())",
+    "if (!CETRuntimeProfiler::Get().IsCapturing())",
+    "BindCallback(",
+    "ResolveCallback(",
+    "AttachSource(",
+    "ClearCallbackBindings",
+    "CETRuntimeProfiler::Scope profileScope",
+    "CETRuntimeProfiler::DeepTraceScope"
+)) {
+    if (-not $foCText.Contains($marker)) {
+        throw "FunctionOverride v2.10.0 profiler marker missing after patch: $marker"
+    }
+}
+
+# Regression guard for the exact v2.8 crash source. There must be no profiler
+# registration-time Environment lookup following pContext->Forward.
+if ($foCText -match 'pContext->Forward = !aAbsolute;[\s\S]{0,1200}pContext->Environment\["__logger"\]') {
+    throw "v2.10.0 safety failure: registration-time Environment logger lookup is still present."
+}
+
+$scriptingText = Read-Utf8 $scriptingC
+foreach ($marker in @(
+    "CETProfilerStart",
+    "CETProfilerPause",
+    "CETProfilerResume",
+    "CETProfilerStop",
+    "CETProfilerStatus",
+    "CETProfilerSetSpikeThresholdMs",
+    "CETProfilerGetSpikeThresholdMs",
+    "CETProfilerSetTimelineBucketMs",
+    "CETProfilerGetTimelineBucketMs",
+    "CETProfilerMark",
+    "CETProfilerObserveScalar",
+    "CETProfilerSchedulerRegisterJob",
+    "CETProfilerSchedulerFrameBegin",
+    "CETProfilerSchedulerFrameEnd",
+    "CETProfilerSchedulerJobBegin",
+    "CETProfilerSchedulerJobEnd",
+    "CETProfilerSetSchedulerJobSpikeThresholdMs",
+    "CETProfilerGetSchedulerJobSpikeThresholdMs",
+    "CETProfilerSetSchedulerFrameBurstThresholdMs",
+    "CETProfilerGetSchedulerFrameBurstThresholdMs",
+    "CETRuntimeProfiler::Get().BeginGameFrame()"
+)) {
+    if (-not $scriptingText.Contains($marker)) {
+        throw "v2.10.0 control API marker missing after patch: $marker"
+    }
+}
+
+Write-Host ""
+Write-Host "CET v1.37.1 FULL CALLBACK profiler v2.11.0 patch applied successfully." -ForegroundColor Green
+Write-Host "Validated source commit: $expectedHead"
+Write-Host "Coverage: events + Observe + ObserveAfter + Override" -ForegroundColor Green
+Write-Host "FunctionOverride::Context: VERIFIED UNCHANGED" -ForegroundColor Green
+Write-Host "Registration-time Lua/Sol access: NONE" -ForegroundColor Green
+Write-Host "Callback ownership: lazy resolution during valid locked execution" -ForegroundColor Green
+Write-Host "Capture OFF: FunctionOverride profiling fully bypassed" -ForegroundColor Green
+Write-Host "Callback identity/source: registration ID + Lua source line range + closure identity" -ForegroundColor Green
+Write-Host "Adaptive deep profiling: runtime hotset + sampled Lua call/return trees + callsites" -ForegroundColor Green
+Write-Host "Exact frame telemetry: per-callback multiplicity from Scripting::TriggerOnUpdate" -ForegroundColor Green
+Write-Host "Override downstream next()/native time: conservatively included; no RAII downstream boundary" -ForegroundColor Yellow
+Write-Host "Capture control: Start / Pause / Resume / Stop / Reset / Dump / Status" -ForegroundColor Green
+Write-Host "CSV rates use captured time only (paused time excluded)" -ForegroundColor Green
+Write-Host "Scheduler bridge API: per-job timing + individual spikes + combined frame bursts" -ForegroundColor Green
+Write-Host "No files under cyber_engine_tweaks\mods were touched."
+ + '{CET_VERSION_MAJOR},' + ' (Get-FileHash -Algorithm SHA256 $foH).Hash
+if ($foHHashAfter -ne $foHHashBefore) {
+    throw "v2.10.0 safety failure: FunctionOverride.h was modified."
+}
+
+$foCText = Read-Utf8 $foC
+
+foreach ($marker in @(
+    "ResolveProfilerCounter",
+    "if (!profiler.IsCapturing())",
+    "if (!CETRuntimeProfiler::Get().IsCapturing())",
+    "BindCallback(",
+    "ResolveCallback(",
+    "AttachSource(",
+    "ClearCallbackBindings",
+    "CETRuntimeProfiler::Scope profileScope",
+    "CETRuntimeProfiler::DeepTraceScope"
+)) {
+    if (-not $foCText.Contains($marker)) {
+        throw "FunctionOverride v2.10.0 profiler marker missing after patch: $marker"
+    }
+}
+
+# Regression guard for the exact v2.8 crash source. There must be no profiler
+# registration-time Environment lookup following pContext->Forward.
+if ($foCText -match 'pContext->Forward = !aAbsolute;[\s\S]{0,1200}pContext->Environment\["__logger"\]') {
+    throw "v2.10.0 safety failure: registration-time Environment logger lookup is still present."
+}
+
+$scriptingText = Read-Utf8 $scriptingC
+foreach ($marker in @(
+    "CETProfilerStart",
+    "CETProfilerPause",
+    "CETProfilerResume",
+    "CETProfilerStop",
+    "CETProfilerStatus",
+    "CETProfilerSetSpikeThresholdMs",
+    "CETProfilerGetSpikeThresholdMs",
+    "CETProfilerSetTimelineBucketMs",
+    "CETProfilerGetTimelineBucketMs",
+    "CETProfilerMark",
+    "CETProfilerObserveScalar",
+    "CETProfilerSchedulerRegisterJob",
+    "CETProfilerSchedulerFrameBegin",
+    "CETProfilerSchedulerFrameEnd",
+    "CETProfilerSchedulerJobBegin",
+    "CETProfilerSchedulerJobEnd",
+    "CETProfilerSetSchedulerJobSpikeThresholdMs",
+    "CETProfilerGetSchedulerJobSpikeThresholdMs",
+    "CETProfilerSetSchedulerFrameBurstThresholdMs",
+    "CETProfilerGetSchedulerFrameBurstThresholdMs",
+    "CETRuntimeProfiler::Get().BeginGameFrame()"
+)) {
+    if (-not $scriptingText.Contains($marker)) {
+        throw "v2.10.0 control API marker missing after patch: $marker"
+    }
+}
+
+Write-Host ""
+Write-Host "CET v1.37.1 FULL CALLBACK profiler v2.11.0 patch applied successfully." -ForegroundColor Green
+Write-Host "Validated source commit: $expectedHead"
+Write-Host "Coverage: events + Observe + ObserveAfter + Override" -ForegroundColor Green
+Write-Host "FunctionOverride::Context: VERIFIED UNCHANGED" -ForegroundColor Green
+Write-Host "Registration-time Lua/Sol access: NONE" -ForegroundColor Green
+Write-Host "Callback ownership: lazy resolution during valid locked execution" -ForegroundColor Green
+Write-Host "Capture OFF: FunctionOverride profiling fully bypassed" -ForegroundColor Green
+Write-Host "Callback identity/source: registration ID + Lua source line range + closure identity" -ForegroundColor Green
+Write-Host "Adaptive deep profiling: runtime hotset + sampled Lua call/return trees + callsites" -ForegroundColor Green
+Write-Host "Exact frame telemetry: per-callback multiplicity from Scripting::TriggerOnUpdate" -ForegroundColor Green
+Write-Host "Override downstream next()/native time: conservatively included; no RAII downstream boundary" -ForegroundColor Yellow
+Write-Host "Capture control: Start / Pause / Resume / Stop / Reset / Dump / Status" -ForegroundColor Green
+Write-Host "CSV rates use captured time only (paused time excluded)" -ForegroundColor Green
+Write-Host "Scheduler bridge API: per-job timing + individual spikes + combined frame bursts" -ForegroundColor Green
+Write-Host "No files under cyber_engine_tweaks\mods were touched."
+ + '{CET_VERSION_MINOR},' + ' (Get-FileHash -Algorithm SHA256 $foH).Hash
+if ($foHHashAfter -ne $foHHashBefore) {
+    throw "v2.10.0 safety failure: FunctionOverride.h was modified."
+}
+
+$foCText = Read-Utf8 $foC
+
+foreach ($marker in @(
+    "ResolveProfilerCounter",
+    "if (!profiler.IsCapturing())",
+    "if (!CETRuntimeProfiler::Get().IsCapturing())",
+    "BindCallback(",
+    "ResolveCallback(",
+    "AttachSource(",
+    "ClearCallbackBindings",
+    "CETRuntimeProfiler::Scope profileScope",
+    "CETRuntimeProfiler::DeepTraceScope"
+)) {
+    if (-not $foCText.Contains($marker)) {
+        throw "FunctionOverride v2.10.0 profiler marker missing after patch: $marker"
+    }
+}
+
+# Regression guard for the exact v2.8 crash source. There must be no profiler
+# registration-time Environment lookup following pContext->Forward.
+if ($foCText -match 'pContext->Forward = !aAbsolute;[\s\S]{0,1200}pContext->Environment\["__logger"\]') {
+    throw "v2.10.0 safety failure: registration-time Environment logger lookup is still present."
+}
+
+$scriptingText = Read-Utf8 $scriptingC
+foreach ($marker in @(
+    "CETProfilerStart",
+    "CETProfilerPause",
+    "CETProfilerResume",
+    "CETProfilerStop",
+    "CETProfilerStatus",
+    "CETProfilerSetSpikeThresholdMs",
+    "CETProfilerGetSpikeThresholdMs",
+    "CETProfilerSetTimelineBucketMs",
+    "CETProfilerGetTimelineBucketMs",
+    "CETProfilerMark",
+    "CETProfilerObserveScalar",
+    "CETProfilerSchedulerRegisterJob",
+    "CETProfilerSchedulerFrameBegin",
+    "CETProfilerSchedulerFrameEnd",
+    "CETProfilerSchedulerJobBegin",
+    "CETProfilerSchedulerJobEnd",
+    "CETProfilerSetSchedulerJobSpikeThresholdMs",
+    "CETProfilerGetSchedulerJobSpikeThresholdMs",
+    "CETProfilerSetSchedulerFrameBurstThresholdMs",
+    "CETProfilerGetSchedulerFrameBurstThresholdMs",
+    "CETRuntimeProfiler::Get().BeginGameFrame()"
+)) {
+    if (-not $scriptingText.Contains($marker)) {
+        throw "v2.10.0 control API marker missing after patch: $marker"
+    }
+}
+
+Write-Host ""
+Write-Host "CET v1.37.1 FULL CALLBACK profiler v2.11.0 patch applied successfully." -ForegroundColor Green
+Write-Host "Validated source commit: $expectedHead"
+Write-Host "Coverage: events + Observe + ObserveAfter + Override" -ForegroundColor Green
+Write-Host "FunctionOverride::Context: VERIFIED UNCHANGED" -ForegroundColor Green
+Write-Host "Registration-time Lua/Sol access: NONE" -ForegroundColor Green
+Write-Host "Callback ownership: lazy resolution during valid locked execution" -ForegroundColor Green
+Write-Host "Capture OFF: FunctionOverride profiling fully bypassed" -ForegroundColor Green
+Write-Host "Callback identity/source: registration ID + Lua source line range + closure identity" -ForegroundColor Green
+Write-Host "Adaptive deep profiling: runtime hotset + sampled Lua call/return trees + callsites" -ForegroundColor Green
+Write-Host "Exact frame telemetry: per-callback multiplicity from Scripting::TriggerOnUpdate" -ForegroundColor Green
+Write-Host "Override downstream next()/native time: conservatively included; no RAII downstream boundary" -ForegroundColor Yellow
+Write-Host "Capture control: Start / Pause / Resume / Stop / Reset / Dump / Status" -ForegroundColor Green
+Write-Host "CSV rates use captured time only (paused time excluded)" -ForegroundColor Green
+Write-Host "Scheduler bridge API: per-job timing + individual spikes + combined frame bursts" -ForegroundColor Green
+Write-Host "No files under cyber_engine_tweaks\mods were touched."
+ + '{CET_VERSION_PATCH},0'
+        $expectedFile = ' (Get-FileHash -Algorithm SHA256 $foH).Hash
+if ($foHHashAfter -ne $foHHashBefore) {
+    throw "v2.10.0 safety failure: FunctionOverride.h was modified."
+}
+
+$foCText = Read-Utf8 $foC
+
+foreach ($marker in @(
+    "ResolveProfilerCounter",
+    "if (!profiler.IsCapturing())",
+    "if (!CETRuntimeProfiler::Get().IsCapturing())",
+    "BindCallback(",
+    "ResolveCallback(",
+    "AttachSource(",
+    "ClearCallbackBindings",
+    "CETRuntimeProfiler::Scope profileScope",
+    "CETRuntimeProfiler::DeepTraceScope"
+)) {
+    if (-not $foCText.Contains($marker)) {
+        throw "FunctionOverride v2.10.0 profiler marker missing after patch: $marker"
+    }
+}
+
+# Regression guard for the exact v2.8 crash source. There must be no profiler
+# registration-time Environment lookup following pContext->Forward.
+if ($foCText -match 'pContext->Forward = !aAbsolute;[\s\S]{0,1200}pContext->Environment\["__logger"\]') {
+    throw "v2.10.0 safety failure: registration-time Environment logger lookup is still present."
+}
+
+$scriptingText = Read-Utf8 $scriptingC
+foreach ($marker in @(
+    "CETProfilerStart",
+    "CETProfilerPause",
+    "CETProfilerResume",
+    "CETProfilerStop",
+    "CETProfilerStatus",
+    "CETProfilerSetSpikeThresholdMs",
+    "CETProfilerGetSpikeThresholdMs",
+    "CETProfilerSetTimelineBucketMs",
+    "CETProfilerGetTimelineBucketMs",
+    "CETProfilerMark",
+    "CETProfilerObserveScalar",
+    "CETProfilerSchedulerRegisterJob",
+    "CETProfilerSchedulerFrameBegin",
+    "CETProfilerSchedulerFrameEnd",
+    "CETProfilerSchedulerJobBegin",
+    "CETProfilerSchedulerJobEnd",
+    "CETProfilerSetSchedulerJobSpikeThresholdMs",
+    "CETProfilerGetSchedulerJobSpikeThresholdMs",
+    "CETProfilerSetSchedulerFrameBurstThresholdMs",
+    "CETProfilerGetSchedulerFrameBurstThresholdMs",
+    "CETRuntimeProfiler::Get().BeginGameFrame()"
+)) {
+    if (-not $scriptingText.Contains($marker)) {
+        throw "v2.10.0 control API marker missing after patch: $marker"
+    }
+}
+
+Write-Host ""
+Write-Host "CET v1.37.1 FULL CALLBACK profiler v2.11.0 patch applied successfully." -ForegroundColor Green
+Write-Host "Validated source commit: $expectedHead"
+Write-Host "Coverage: events + Observe + ObserveAfter + Override" -ForegroundColor Green
+Write-Host "FunctionOverride::Context: VERIFIED UNCHANGED" -ForegroundColor Green
+Write-Host "Registration-time Lua/Sol access: NONE" -ForegroundColor Green
+Write-Host "Callback ownership: lazy resolution during valid locked execution" -ForegroundColor Green
+Write-Host "Capture OFF: FunctionOverride profiling fully bypassed" -ForegroundColor Green
+Write-Host "Callback identity/source: registration ID + Lua source line range + closure identity" -ForegroundColor Green
+Write-Host "Adaptive deep profiling: runtime hotset + sampled Lua call/return trees + callsites" -ForegroundColor Green
+Write-Host "Exact frame telemetry: per-callback multiplicity from Scripting::TriggerOnUpdate" -ForegroundColor Green
+Write-Host "Override downstream next()/native time: conservatively included; no RAII downstream boundary" -ForegroundColor Yellow
+Write-Host "Capture control: Start / Pause / Resume / Stop / Reset / Dump / Status" -ForegroundColor Green
+Write-Host "CSV rates use captured time only (paused time excluded)" -ForegroundColor Green
+Write-Host "Scheduler bridge API: per-job timing + individual spikes + combined frame bursts" -ForegroundColor Green
+Write-Host "No files under cyber_engine_tweaks\mods were touched."
+ + '{CET_VERSION_SIMPLE}'
+        $expectedProduct = ' (Get-FileHash -Algorithm SHA256 $foH).Hash
+if ($foHHashAfter -ne $foHHashBefore) {
+    throw "v2.10.0 safety failure: FunctionOverride.h was modified."
+}
+
+$foCText = Read-Utf8 $foC
+
+foreach ($marker in @(
+    "ResolveProfilerCounter",
+    "if (!profiler.IsCapturing())",
+    "if (!CETRuntimeProfiler::Get().IsCapturing())",
+    "BindCallback(",
+    "ResolveCallback(",
+    "AttachSource(",
+    "ClearCallbackBindings",
+    "CETRuntimeProfiler::Scope profileScope",
+    "CETRuntimeProfiler::DeepTraceScope"
+)) {
+    if (-not $foCText.Contains($marker)) {
+        throw "FunctionOverride v2.10.0 profiler marker missing after patch: $marker"
+    }
+}
+
+# Regression guard for the exact v2.8 crash source. There must be no profiler
+# registration-time Environment lookup following pContext->Forward.
+if ($foCText -match 'pContext->Forward = !aAbsolute;[\s\S]{0,1200}pContext->Environment\["__logger"\]') {
+    throw "v2.10.0 safety failure: registration-time Environment logger lookup is still present."
+}
+
+$scriptingText = Read-Utf8 $scriptingC
+foreach ($marker in @(
+    "CETProfilerStart",
+    "CETProfilerPause",
+    "CETProfilerResume",
+    "CETProfilerStop",
+    "CETProfilerStatus",
+    "CETProfilerSetSpikeThresholdMs",
+    "CETProfilerGetSpikeThresholdMs",
+    "CETProfilerSetTimelineBucketMs",
+    "CETProfilerGetTimelineBucketMs",
+    "CETProfilerMark",
+    "CETProfilerObserveScalar",
+    "CETProfilerSchedulerRegisterJob",
+    "CETProfilerSchedulerFrameBegin",
+    "CETProfilerSchedulerFrameEnd",
+    "CETProfilerSchedulerJobBegin",
+    "CETProfilerSchedulerJobEnd",
+    "CETProfilerSetSchedulerJobSpikeThresholdMs",
+    "CETProfilerGetSchedulerJobSpikeThresholdMs",
+    "CETProfilerSetSchedulerFrameBurstThresholdMs",
+    "CETProfilerGetSchedulerFrameBurstThresholdMs",
+    "CETRuntimeProfiler::Get().BeginGameFrame()"
+)) {
+    if (-not $scriptingText.Contains($marker)) {
+        throw "v2.10.0 control API marker missing after patch: $marker"
+    }
+}
+
+Write-Host ""
+Write-Host "CET v1.37.1 FULL CALLBACK profiler v2.11.0 patch applied successfully." -ForegroundColor Green
+Write-Host "Validated source commit: $expectedHead"
+Write-Host "Coverage: events + Observe + ObserveAfter + Override" -ForegroundColor Green
+Write-Host "FunctionOverride::Context: VERIFIED UNCHANGED" -ForegroundColor Green
+Write-Host "Registration-time Lua/Sol access: NONE" -ForegroundColor Green
+Write-Host "Callback ownership: lazy resolution during valid locked execution" -ForegroundColor Green
+Write-Host "Capture OFF: FunctionOverride profiling fully bypassed" -ForegroundColor Green
+Write-Host "Callback identity/source: registration ID + Lua source line range + closure identity" -ForegroundColor Green
+Write-Host "Adaptive deep profiling: runtime hotset + sampled Lua call/return trees + callsites" -ForegroundColor Green
+Write-Host "Exact frame telemetry: per-callback multiplicity from Scripting::TriggerOnUpdate" -ForegroundColor Green
+Write-Host "Override downstream next()/native time: conservatively included; no RAII downstream boundary" -ForegroundColor Yellow
+Write-Host "Capture control: Start / Pause / Resume / Stop / Reset / Dump / Status" -ForegroundColor Green
+Write-Host "CSV rates use captured time only (paused time excluded)" -ForegroundColor Green
+Write-Host "Scheduler bridge API: per-job timing + individual spikes + combined frame bursts" -ForegroundColor Green
+Write-Host "No files under cyber_engine_tweaks\mods were touched."
+ + '{CET_VERSION_FULL}'
+    }
+    else {
+        $expectedNum = '1,37,1,0'
+        $expectedFile = '1.37.1'
+        $productMatch = [regex]::Matches((Read-Utf8 $rcPath), '(?m)^\s*VALUE\s+"ProductVersion",\s+"([^"]+)"\s* (Get-FileHash -Algorithm SHA256 $foH).Hash
+if ($foHHashAfter -ne $foHHashBefore) {
+    throw "v2.10.0 safety failure: FunctionOverride.h was modified."
+}
+
+$foCText = Read-Utf8 $foC
+
+foreach ($marker in @(
+    "ResolveProfilerCounter",
+    "if (!profiler.IsCapturing())",
+    "if (!CETRuntimeProfiler::Get().IsCapturing())",
+    "BindCallback(",
+    "ResolveCallback(",
+    "AttachSource(",
+    "ClearCallbackBindings",
+    "CETRuntimeProfiler::Scope profileScope",
+    "CETRuntimeProfiler::DeepTraceScope"
+)) {
+    if (-not $foCText.Contains($marker)) {
+        throw "FunctionOverride v2.10.0 profiler marker missing after patch: $marker"
+    }
+}
+
+# Regression guard for the exact v2.8 crash source. There must be no profiler
+# registration-time Environment lookup following pContext->Forward.
+if ($foCText -match 'pContext->Forward = !aAbsolute;[\s\S]{0,1200}pContext->Environment\["__logger"\]') {
+    throw "v2.10.0 safety failure: registration-time Environment logger lookup is still present."
+}
+
+$scriptingText = Read-Utf8 $scriptingC
+foreach ($marker in @(
+    "CETProfilerStart",
+    "CETProfilerPause",
+    "CETProfilerResume",
+    "CETProfilerStop",
+    "CETProfilerStatus",
+    "CETProfilerSetSpikeThresholdMs",
+    "CETProfilerGetSpikeThresholdMs",
+    "CETProfilerSetTimelineBucketMs",
+    "CETProfilerGetTimelineBucketMs",
+    "CETProfilerMark",
+    "CETProfilerObserveScalar",
+    "CETProfilerSchedulerRegisterJob",
+    "CETProfilerSchedulerFrameBegin",
+    "CETProfilerSchedulerFrameEnd",
+    "CETProfilerSchedulerJobBegin",
+    "CETProfilerSchedulerJobEnd",
+    "CETProfilerSetSchedulerJobSpikeThresholdMs",
+    "CETProfilerGetSchedulerJobSpikeThresholdMs",
+    "CETProfilerSetSchedulerFrameBurstThresholdMs",
+    "CETProfilerGetSchedulerFrameBurstThresholdMs",
+    "CETRuntimeProfiler::Get().BeginGameFrame()"
+)) {
+    if (-not $scriptingText.Contains($marker)) {
+        throw "v2.10.0 control API marker missing after patch: $marker"
+    }
+}
+
+Write-Host ""
+Write-Host "CET v1.37.1 FULL CALLBACK profiler v2.11.0 patch applied successfully." -ForegroundColor Green
+Write-Host "Validated source commit: $expectedHead"
+Write-Host "Coverage: events + Observe + ObserveAfter + Override" -ForegroundColor Green
+Write-Host "FunctionOverride::Context: VERIFIED UNCHANGED" -ForegroundColor Green
+Write-Host "Registration-time Lua/Sol access: NONE" -ForegroundColor Green
+Write-Host "Callback ownership: lazy resolution during valid locked execution" -ForegroundColor Green
+Write-Host "Capture OFF: FunctionOverride profiling fully bypassed" -ForegroundColor Green
+Write-Host "Callback identity/source: registration ID + Lua source line range + closure identity" -ForegroundColor Green
+Write-Host "Adaptive deep profiling: runtime hotset + sampled Lua call/return trees + callsites" -ForegroundColor Green
+Write-Host "Exact frame telemetry: per-callback multiplicity from Scripting::TriggerOnUpdate" -ForegroundColor Green
+Write-Host "Override downstream next()/native time: conservatively included; no RAII downstream boundary" -ForegroundColor Yellow
+Write-Host "Capture control: Start / Pause / Resume / Stop / Reset / Dump / Status" -ForegroundColor Green
+Write-Host "CSV rates use captured time only (paused time excluded)" -ForegroundColor Green
+Write-Host "Scheduler bridge API: per-job timing + individual spikes + combined frame bursts" -ForegroundColor Green
+Write-Host "No files under cyber_engine_tweaks\mods were touched."
+)
+        if ($productMatch.Count -ne 1 -or -not $productMatch[0].Groups[1].Value.StartsWith('1.37.1')) {
+            throw "Unknown CET ProductVersion in native version resource: $rcPath"
+        }
+        $expectedProduct = $productMatch[0].Groups[1].Value
+    }
+    foreach ($field in @('FILEVERSION', 'PRODUCTVERSION')) {
+        Replace-RegexOnce -Path $rcPath -Pattern ('(?m)^(\s*' + $field + '\s+)' + [regex]::Escape($expectedNum) + '\s* (Get-FileHash -Algorithm SHA256 $foH).Hash
+if ($foHHashAfter -ne $foHHashBefore) {
+    throw "v2.10.0 safety failure: FunctionOverride.h was modified."
+}
+
+$foCText = Read-Utf8 $foC
+
+foreach ($marker in @(
+    "ResolveProfilerCounter",
+    "if (!profiler.IsCapturing())",
+    "if (!CETRuntimeProfiler::Get().IsCapturing())",
+    "BindCallback(",
+    "ResolveCallback(",
+    "AttachSource(",
+    "ClearCallbackBindings",
+    "CETRuntimeProfiler::Scope profileScope",
+    "CETRuntimeProfiler::DeepTraceScope"
+)) {
+    if (-not $foCText.Contains($marker)) {
+        throw "FunctionOverride v2.10.0 profiler marker missing after patch: $marker"
+    }
+}
+
+# Regression guard for the exact v2.8 crash source. There must be no profiler
+# registration-time Environment lookup following pContext->Forward.
+if ($foCText -match 'pContext->Forward = !aAbsolute;[\s\S]{0,1200}pContext->Environment\["__logger"\]') {
+    throw "v2.10.0 safety failure: registration-time Environment logger lookup is still present."
+}
+
+$scriptingText = Read-Utf8 $scriptingC
+foreach ($marker in @(
+    "CETProfilerStart",
+    "CETProfilerPause",
+    "CETProfilerResume",
+    "CETProfilerStop",
+    "CETProfilerStatus",
+    "CETProfilerSetSpikeThresholdMs",
+    "CETProfilerGetSpikeThresholdMs",
+    "CETProfilerSetTimelineBucketMs",
+    "CETProfilerGetTimelineBucketMs",
+    "CETProfilerMark",
+    "CETProfilerObserveScalar",
+    "CETProfilerSchedulerRegisterJob",
+    "CETProfilerSchedulerFrameBegin",
+    "CETProfilerSchedulerFrameEnd",
+    "CETProfilerSchedulerJobBegin",
+    "CETProfilerSchedulerJobEnd",
+    "CETProfilerSetSchedulerJobSpikeThresholdMs",
+    "CETProfilerGetSchedulerJobSpikeThresholdMs",
+    "CETProfilerSetSchedulerFrameBurstThresholdMs",
+    "CETProfilerGetSchedulerFrameBurstThresholdMs",
+    "CETRuntimeProfiler::Get().BeginGameFrame()"
+)) {
+    if (-not $scriptingText.Contains($marker)) {
+        throw "v2.10.0 control API marker missing after patch: $marker"
+    }
+}
+
+Write-Host ""
+Write-Host "CET v1.37.1 FULL CALLBACK profiler v2.11.0 patch applied successfully." -ForegroundColor Green
+Write-Host "Validated source commit: $expectedHead"
+Write-Host "Coverage: events + Observe + ObserveAfter + Override" -ForegroundColor Green
+Write-Host "FunctionOverride::Context: VERIFIED UNCHANGED" -ForegroundColor Green
+Write-Host "Registration-time Lua/Sol access: NONE" -ForegroundColor Green
+Write-Host "Callback ownership: lazy resolution during valid locked execution" -ForegroundColor Green
+Write-Host "Capture OFF: FunctionOverride profiling fully bypassed" -ForegroundColor Green
+Write-Host "Callback identity/source: registration ID + Lua source line range + closure identity" -ForegroundColor Green
+Write-Host "Adaptive deep profiling: runtime hotset + sampled Lua call/return trees + callsites" -ForegroundColor Green
+Write-Host "Exact frame telemetry: per-callback multiplicity from Scripting::TriggerOnUpdate" -ForegroundColor Green
+Write-Host "Override downstream next()/native time: conservatively included; no RAII downstream boundary" -ForegroundColor Yellow
+Write-Host "Capture control: Start / Pause / Resume / Stop / Reset / Dump / Status" -ForegroundColor Green
+Write-Host "CSV rates use captured time only (paused time excluded)" -ForegroundColor Green
+Write-Host "Scheduler bridge API: per-job timing + individual spikes + combined frame bursts" -ForegroundColor Green
+Write-Host "No files under cyber_engine_tweaks\mods were touched."
+) -Replacement ('$1' + '2,16,1,0') -Label "G-CET native $field $rcPath"
+    }
+    Replace-RegexOnce -Path $rcPath -Pattern ('(?m)^(\s*VALUE\s+"FileVersion",\s+)"' + [regex]::Escape($expectedFile) + '"\s* (Get-FileHash -Algorithm SHA256 $foH).Hash
+if ($foHHashAfter -ne $foHHashBefore) {
+    throw "v2.10.0 safety failure: FunctionOverride.h was modified."
+}
+
+$foCText = Read-Utf8 $foC
+
+foreach ($marker in @(
+    "ResolveProfilerCounter",
+    "if (!profiler.IsCapturing())",
+    "if (!CETRuntimeProfiler::Get().IsCapturing())",
+    "BindCallback(",
+    "ResolveCallback(",
+    "AttachSource(",
+    "ClearCallbackBindings",
+    "CETRuntimeProfiler::Scope profileScope",
+    "CETRuntimeProfiler::DeepTraceScope"
+)) {
+    if (-not $foCText.Contains($marker)) {
+        throw "FunctionOverride v2.10.0 profiler marker missing after patch: $marker"
+    }
+}
+
+# Regression guard for the exact v2.8 crash source. There must be no profiler
+# registration-time Environment lookup following pContext->Forward.
+if ($foCText -match 'pContext->Forward = !aAbsolute;[\s\S]{0,1200}pContext->Environment\["__logger"\]') {
+    throw "v2.10.0 safety failure: registration-time Environment logger lookup is still present."
+}
+
+$scriptingText = Read-Utf8 $scriptingC
+foreach ($marker in @(
+    "CETProfilerStart",
+    "CETProfilerPause",
+    "CETProfilerResume",
+    "CETProfilerStop",
+    "CETProfilerStatus",
+    "CETProfilerSetSpikeThresholdMs",
+    "CETProfilerGetSpikeThresholdMs",
+    "CETProfilerSetTimelineBucketMs",
+    "CETProfilerGetTimelineBucketMs",
+    "CETProfilerMark",
+    "CETProfilerObserveScalar",
+    "CETProfilerSchedulerRegisterJob",
+    "CETProfilerSchedulerFrameBegin",
+    "CETProfilerSchedulerFrameEnd",
+    "CETProfilerSchedulerJobBegin",
+    "CETProfilerSchedulerJobEnd",
+    "CETProfilerSetSchedulerJobSpikeThresholdMs",
+    "CETProfilerGetSchedulerJobSpikeThresholdMs",
+    "CETProfilerSetSchedulerFrameBurstThresholdMs",
+    "CETProfilerGetSchedulerFrameBurstThresholdMs",
+    "CETRuntimeProfiler::Get().BeginGameFrame()"
+)) {
+    if (-not $scriptingText.Contains($marker)) {
+        throw "v2.10.0 control API marker missing after patch: $marker"
+    }
+}
+
+Write-Host ""
+Write-Host "CET v1.37.1 FULL CALLBACK profiler v2.11.0 patch applied successfully." -ForegroundColor Green
+Write-Host "Validated source commit: $expectedHead"
+Write-Host "Coverage: events + Observe + ObserveAfter + Override" -ForegroundColor Green
+Write-Host "FunctionOverride::Context: VERIFIED UNCHANGED" -ForegroundColor Green
+Write-Host "Registration-time Lua/Sol access: NONE" -ForegroundColor Green
+Write-Host "Callback ownership: lazy resolution during valid locked execution" -ForegroundColor Green
+Write-Host "Capture OFF: FunctionOverride profiling fully bypassed" -ForegroundColor Green
+Write-Host "Callback identity/source: registration ID + Lua source line range + closure identity" -ForegroundColor Green
+Write-Host "Adaptive deep profiling: runtime hotset + sampled Lua call/return trees + callsites" -ForegroundColor Green
+Write-Host "Exact frame telemetry: per-callback multiplicity from Scripting::TriggerOnUpdate" -ForegroundColor Green
+Write-Host "Override downstream next()/native time: conservatively included; no RAII downstream boundary" -ForegroundColor Yellow
+Write-Host "Capture control: Start / Pause / Resume / Stop / Reset / Dump / Status" -ForegroundColor Green
+Write-Host "CSV rates use captured time only (paused time excluded)" -ForegroundColor Green
+Write-Host "Scheduler bridge API: per-job timing + individual spikes + combined frame bursts" -ForegroundColor Green
+Write-Host "No files under cyber_engine_tweaks\mods were touched."
+) -Replacement ('$1' + '"2.16.1.0"') -Label "G-CET FileVersion string $rcPath"
+    Replace-RegexOnce -Path $rcPath -Pattern ('(?m)^(\s*VALUE\s+"ProductVersion",\s+)"' + [regex]::Escape($expectedProduct) + '"\s* (Get-FileHash -Algorithm SHA256 $foH).Hash
+if ($foHHashAfter -ne $foHHashBefore) {
+    throw "v2.10.0 safety failure: FunctionOverride.h was modified."
+}
+
+$foCText = Read-Utf8 $foC
+
+foreach ($marker in @(
+    "ResolveProfilerCounter",
+    "if (!profiler.IsCapturing())",
+    "if (!CETRuntimeProfiler::Get().IsCapturing())",
+    "BindCallback(",
+    "ResolveCallback(",
+    "AttachSource(",
+    "ClearCallbackBindings",
+    "CETRuntimeProfiler::Scope profileScope",
+    "CETRuntimeProfiler::DeepTraceScope"
+)) {
+    if (-not $foCText.Contains($marker)) {
+        throw "FunctionOverride v2.10.0 profiler marker missing after patch: $marker"
+    }
+}
+
+# Regression guard for the exact v2.8 crash source. There must be no profiler
+# registration-time Environment lookup following pContext->Forward.
+if ($foCText -match 'pContext->Forward = !aAbsolute;[\s\S]{0,1200}pContext->Environment\["__logger"\]') {
+    throw "v2.10.0 safety failure: registration-time Environment logger lookup is still present."
+}
+
+$scriptingText = Read-Utf8 $scriptingC
+foreach ($marker in @(
+    "CETProfilerStart",
+    "CETProfilerPause",
+    "CETProfilerResume",
+    "CETProfilerStop",
+    "CETProfilerStatus",
+    "CETProfilerSetSpikeThresholdMs",
+    "CETProfilerGetSpikeThresholdMs",
+    "CETProfilerSetTimelineBucketMs",
+    "CETProfilerGetTimelineBucketMs",
+    "CETProfilerMark",
+    "CETProfilerObserveScalar",
+    "CETProfilerSchedulerRegisterJob",
+    "CETProfilerSchedulerFrameBegin",
+    "CETProfilerSchedulerFrameEnd",
+    "CETProfilerSchedulerJobBegin",
+    "CETProfilerSchedulerJobEnd",
+    "CETProfilerSetSchedulerJobSpikeThresholdMs",
+    "CETProfilerGetSchedulerJobSpikeThresholdMs",
+    "CETProfilerSetSchedulerFrameBurstThresholdMs",
+    "CETProfilerGetSchedulerFrameBurstThresholdMs",
+    "CETRuntimeProfiler::Get().BeginGameFrame()"
+)) {
+    if (-not $scriptingText.Contains($marker)) {
+        throw "v2.10.0 control API marker missing after patch: $marker"
+    }
+}
+
+Write-Host ""
+Write-Host "CET v1.37.1 FULL CALLBACK profiler v2.11.0 patch applied successfully." -ForegroundColor Green
+Write-Host "Validated source commit: $expectedHead"
+Write-Host "Coverage: events + Observe + ObserveAfter + Override" -ForegroundColor Green
+Write-Host "FunctionOverride::Context: VERIFIED UNCHANGED" -ForegroundColor Green
+Write-Host "Registration-time Lua/Sol access: NONE" -ForegroundColor Green
+Write-Host "Callback ownership: lazy resolution during valid locked execution" -ForegroundColor Green
+Write-Host "Capture OFF: FunctionOverride profiling fully bypassed" -ForegroundColor Green
+Write-Host "Callback identity/source: registration ID + Lua source line range + closure identity" -ForegroundColor Green
+Write-Host "Adaptive deep profiling: runtime hotset + sampled Lua call/return trees + callsites" -ForegroundColor Green
+Write-Host "Exact frame telemetry: per-callback multiplicity from Scripting::TriggerOnUpdate" -ForegroundColor Green
+Write-Host "Override downstream next()/native time: conservatively included; no RAII downstream boundary" -ForegroundColor Yellow
+Write-Host "Capture control: Start / Pause / Resume / Stop / Reset / Dump / Status" -ForegroundColor Green
+Write-Host "CSV rates use captured time only (paused time excluded)" -ForegroundColor Green
+Write-Host "Scheduler bridge API: per-job timing + individual spikes + combined frame bursts" -ForegroundColor Green
+Write-Host "No files under cyber_engine_tweaks\mods were touched."
+) -Replacement ('$1' + '"2.16.1"') -Label "G-CET ProductVersion string $rcPath"
+    Replace-RegexOnce -Path $rcPath -Pattern '(?m)^(\s*VALUE\s+"FileDescription",\s+)"[^"]*"\s* (Get-FileHash -Algorithm SHA256 $foH).Hash
+if ($foHHashAfter -ne $foHHashBefore) {
+    throw "v2.10.0 safety failure: FunctionOverride.h was modified."
+}
+
+$foCText = Read-Utf8 $foC
+
+foreach ($marker in @(
+    "ResolveProfilerCounter",
+    "if (!profiler.IsCapturing())",
+    "if (!CETRuntimeProfiler::Get().IsCapturing())",
+    "BindCallback(",
+    "ResolveCallback(",
+    "AttachSource(",
+    "ClearCallbackBindings",
+    "CETRuntimeProfiler::Scope profileScope",
+    "CETRuntimeProfiler::DeepTraceScope"
+)) {
+    if (-not $foCText.Contains($marker)) {
+        throw "FunctionOverride v2.10.0 profiler marker missing after patch: $marker"
+    }
+}
+
+# Regression guard for the exact v2.8 crash source. There must be no profiler
+# registration-time Environment lookup following pContext->Forward.
+if ($foCText -match 'pContext->Forward = !aAbsolute;[\s\S]{0,1200}pContext->Environment\["__logger"\]') {
+    throw "v2.10.0 safety failure: registration-time Environment logger lookup is still present."
+}
+
+$scriptingText = Read-Utf8 $scriptingC
+foreach ($marker in @(
+    "CETProfilerStart",
+    "CETProfilerPause",
+    "CETProfilerResume",
+    "CETProfilerStop",
+    "CETProfilerStatus",
+    "CETProfilerSetSpikeThresholdMs",
+    "CETProfilerGetSpikeThresholdMs",
+    "CETProfilerSetTimelineBucketMs",
+    "CETProfilerGetTimelineBucketMs",
+    "CETProfilerMark",
+    "CETProfilerObserveScalar",
+    "CETProfilerSchedulerRegisterJob",
+    "CETProfilerSchedulerFrameBegin",
+    "CETProfilerSchedulerFrameEnd",
+    "CETProfilerSchedulerJobBegin",
+    "CETProfilerSchedulerJobEnd",
+    "CETProfilerSetSchedulerJobSpikeThresholdMs",
+    "CETProfilerGetSchedulerJobSpikeThresholdMs",
+    "CETProfilerSetSchedulerFrameBurstThresholdMs",
+    "CETProfilerGetSchedulerFrameBurstThresholdMs",
+    "CETRuntimeProfiler::Get().BeginGameFrame()"
+)) {
+    if (-not $scriptingText.Contains($marker)) {
+        throw "v2.10.0 control API marker missing after patch: $marker"
+    }
+}
+
+Write-Host ""
+Write-Host "CET v1.37.1 FULL CALLBACK profiler v2.11.0 patch applied successfully." -ForegroundColor Green
+Write-Host "Validated source commit: $expectedHead"
+Write-Host "Coverage: events + Observe + ObserveAfter + Override" -ForegroundColor Green
+Write-Host "FunctionOverride::Context: VERIFIED UNCHANGED" -ForegroundColor Green
+Write-Host "Registration-time Lua/Sol access: NONE" -ForegroundColor Green
+Write-Host "Callback ownership: lazy resolution during valid locked execution" -ForegroundColor Green
+Write-Host "Capture OFF: FunctionOverride profiling fully bypassed" -ForegroundColor Green
+Write-Host "Callback identity/source: registration ID + Lua source line range + closure identity" -ForegroundColor Green
+Write-Host "Adaptive deep profiling: runtime hotset + sampled Lua call/return trees + callsites" -ForegroundColor Green
+Write-Host "Exact frame telemetry: per-callback multiplicity from Scripting::TriggerOnUpdate" -ForegroundColor Green
+Write-Host "Override downstream next()/native time: conservatively included; no RAII downstream boundary" -ForegroundColor Yellow
+Write-Host "Capture control: Start / Pause / Resume / Stop / Reset / Dump / Status" -ForegroundColor Green
+Write-Host "CSV rates use captured time only (paused time excluded)" -ForegroundColor Green
+Write-Host "Scheduler bridge API: per-job timing + individual spikes + combined frame bursts" -ForegroundColor Green
+Write-Host "No files under cyber_engine_tweaks\mods were touched."
+ -Replacement ('$1' + '"G-CET Native Runtime Profiler (CET 1.37.1)"') -Label "G-CET FileDescription $rcPath"
+    Replace-RegexOnce -Path $rcPath -Pattern '(?m)^(\s*VALUE\s+"ProductName",\s+)"[^"]*"\s* (Get-FileHash -Algorithm SHA256 $foH).Hash
+if ($foHHashAfter -ne $foHHashBefore) {
+    throw "v2.10.0 safety failure: FunctionOverride.h was modified."
+}
+
+$foCText = Read-Utf8 $foC
+
+foreach ($marker in @(
+    "ResolveProfilerCounter",
+    "if (!profiler.IsCapturing())",
+    "if (!CETRuntimeProfiler::Get().IsCapturing())",
+    "BindCallback(",
+    "ResolveCallback(",
+    "AttachSource(",
+    "ClearCallbackBindings",
+    "CETRuntimeProfiler::Scope profileScope",
+    "CETRuntimeProfiler::DeepTraceScope"
+)) {
+    if (-not $foCText.Contains($marker)) {
+        throw "FunctionOverride v2.10.0 profiler marker missing after patch: $marker"
+    }
+}
+
+# Regression guard for the exact v2.8 crash source. There must be no profiler
+# registration-time Environment lookup following pContext->Forward.
+if ($foCText -match 'pContext->Forward = !aAbsolute;[\s\S]{0,1200}pContext->Environment\["__logger"\]') {
+    throw "v2.10.0 safety failure: registration-time Environment logger lookup is still present."
+}
+
+$scriptingText = Read-Utf8 $scriptingC
+foreach ($marker in @(
+    "CETProfilerStart",
+    "CETProfilerPause",
+    "CETProfilerResume",
+    "CETProfilerStop",
+    "CETProfilerStatus",
+    "CETProfilerSetSpikeThresholdMs",
+    "CETProfilerGetSpikeThresholdMs",
+    "CETProfilerSetTimelineBucketMs",
+    "CETProfilerGetTimelineBucketMs",
+    "CETProfilerMark",
+    "CETProfilerObserveScalar",
+    "CETProfilerSchedulerRegisterJob",
+    "CETProfilerSchedulerFrameBegin",
+    "CETProfilerSchedulerFrameEnd",
+    "CETProfilerSchedulerJobBegin",
+    "CETProfilerSchedulerJobEnd",
+    "CETProfilerSetSchedulerJobSpikeThresholdMs",
+    "CETProfilerGetSchedulerJobSpikeThresholdMs",
+    "CETProfilerSetSchedulerFrameBurstThresholdMs",
+    "CETProfilerGetSchedulerFrameBurstThresholdMs",
+    "CETRuntimeProfiler::Get().BeginGameFrame()"
+)) {
+    if (-not $scriptingText.Contains($marker)) {
+        throw "v2.10.0 control API marker missing after patch: $marker"
+    }
+}
+
+Write-Host ""
+Write-Host "CET v1.37.1 FULL CALLBACK profiler v2.11.0 patch applied successfully." -ForegroundColor Green
+Write-Host "Validated source commit: $expectedHead"
+Write-Host "Coverage: events + Observe + ObserveAfter + Override" -ForegroundColor Green
+Write-Host "FunctionOverride::Context: VERIFIED UNCHANGED" -ForegroundColor Green
+Write-Host "Registration-time Lua/Sol access: NONE" -ForegroundColor Green
+Write-Host "Callback ownership: lazy resolution during valid locked execution" -ForegroundColor Green
+Write-Host "Capture OFF: FunctionOverride profiling fully bypassed" -ForegroundColor Green
+Write-Host "Callback identity/source: registration ID + Lua source line range + closure identity" -ForegroundColor Green
+Write-Host "Adaptive deep profiling: runtime hotset + sampled Lua call/return trees + callsites" -ForegroundColor Green
+Write-Host "Exact frame telemetry: per-callback multiplicity from Scripting::TriggerOnUpdate" -ForegroundColor Green
+Write-Host "Override downstream next()/native time: conservatively included; no RAII downstream boundary" -ForegroundColor Yellow
+Write-Host "Capture control: Start / Pause / Resume / Stop / Reset / Dump / Status" -ForegroundColor Green
+Write-Host "CSV rates use captured time only (paused time excluded)" -ForegroundColor Green
+Write-Host "Scheduler bridge API: per-job timing + individual spikes + combined frame bursts" -ForegroundColor Green
+Write-Host "No files under cyber_engine_tweaks\mods were touched."
+ -Replacement ('$1' + '"G-CET Native Runtime Profiler"') -Label "G-CET ProductName $rcPath"
+}
+Write-Host "G-CET experimental DLL VERSIONINFO $gcetNativeVersion; CET runtime API 1.37.1 preserved"
+
 # Hard safety checks.
 $foHHashAfter = (Get-FileHash -Algorithm SHA256 $foH).Hash
 if ($foHHashAfter -ne $foHHashBefore) {

@@ -300,6 +300,14 @@ try {
         throw "PROFILER binary linker is $($profInfo.Linker), expected 14.44."
     }
 
+    $info = [Diagnostics.FileVersionInfo]::GetVersionInfo($profiler)
+    if ($info.FileMajorPart -ne 2 -or $info.FileMinorPart -ne 16 -or
+        $info.FileBuildPart -ne 1 -or $info.ProductVersion -ne '2.16.1' -or
+        $info.FileDescription -ne 'G-CET Native Runtime Profiler (CET 1.37.1)') {
+        throw "Compiled G-CET native VERSIONINFO mismatch: $($info.FileVersion), $($info.ProductVersion), $($info.FileDescription)"
+    }
+    Write-Host "Native VERSIONINFO verified: $($info.FileVersion) / $($info.ProductVersion)"
+
     Set-Content -LiteralPath (Join-Path $out "HISTORICAL_BUILD.txt") -Encoding UTF8 -Value @(
         "CET commit=$CetCommit",
         "Official release workflow run=18073224933",
