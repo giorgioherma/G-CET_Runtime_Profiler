@@ -7,7 +7,7 @@ internal static partial class SemanticInjectors
     // This is an owned part of the CURRENT ITP semantic generator, not a
     // second repair semantic. Never run without prior generic/native stages.
     private const string ItppDormancyWorkerV1 = """
-    -- G-CET semantic coordinator:immersive-third-person-idle-dormancy
+    -- G-CET semantic coordinator:immersive-third-person
     -- __gcetItppDormantFrameV1: one shared 0-Engine frame owner, no quiet timer.
     local M = {}
     function M.Install(mod, state, config, step, client)
@@ -186,8 +186,6 @@ internal static partial class SemanticInjectors
         // Only one execution owner: the original body is moved unchanged.
         // Without a verified runtime driver at file load, restore the same
         // author/generic registrar as a native CET fallback (not a second job).
-        var rest = normalized[(owner.Index + owner.Groups["registrar"].Length)..ending];
-        var open = "(\'onUpdate\', function(delta)\n"; // no string rewriting inside body
         var cb = normalized[owner.Index..ending];
         var header = owner.Groups["registrar"].Value +
             "(" + owner.Groups["q"].Value + "onUpdate" + owner.Groups["q"].Value +
