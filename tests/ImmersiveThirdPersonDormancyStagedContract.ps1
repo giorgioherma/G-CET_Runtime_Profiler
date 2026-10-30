@@ -75,6 +75,17 @@ try {
     $_.RuleId -eq 'immersive-third-person' -and $_.type -eq 'SEMANTIC_RULE'
   })
   if ($owners.Count -ne 1) {
+    $relevantTransforms = @($partial.Manifest.transforms | Where-Object {
+      $_.RuleId -like '*immersive-third-person*'
+    } | Select-Object -First 8 RuleId, type, status, reason)
+    $relevantSkips = @($partial.Manifest.skipped | Where-Object {
+      $_.RuleId -like '*immersive-third-person*' -or
+      [string]$_.owner -like '*immersive_third_person*'
+    } | Select-Object -First 12 RuleId, category, reason)
+    $admitted = @($partial.Manifest.transforms | Where-Object { $_.type -eq 'SEMANTIC_RULE' }).Count
+    Write-Host ("ITP_STAGE_ADMISSION_DEBUG: resultOk={0} semanticTransforms={1} itpTransforms={2} itpSkips={3}" -f
+      $partial.Result.ok, $admitted, ($relevantTransforms | ConvertTo-Json -Compress -Depth 5),
+      ($relevantSkips | ConvertTo-Json -Compress -Depth 5))
     throw "ITP_PARTIAL_WORKER_NOT_GENERATED: expected one owned rule, got $($owners.Count)"
   }
   Add-Type -AssemblyName System.IO.Compression.FileSystem
