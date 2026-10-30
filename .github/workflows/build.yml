@@ -56,7 +56,7 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-          source=Path('src/G.CETProfiler.Core/Services/ModPasses/ImmersiveThirdPersonDormancy.cs').read_text()
+          source=Path('src/G.CETProfiler.Core/Services/ModPasses/ImmersiveThirdPerson.cs').read_text()
           open_at=source.index('private const string ItppDormancyWorkerV1 = """')
           content=source[open_at:].split('"""',2)[1].strip('\n')
           lines=content.splitlines()
