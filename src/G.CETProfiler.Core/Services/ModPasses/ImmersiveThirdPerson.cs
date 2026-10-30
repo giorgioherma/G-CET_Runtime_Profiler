@@ -1706,7 +1706,7 @@ if not __gcetItppWorkerFactoryV3 then
             throw new InvalidOperationException("ITP menu state owner drifted.");
         var calls = new[] {
             call + "  mod.captureConsumableTiming()\n",
-            shutdown + call,
+            call + "  state.frameSeq = (state.frameSeq or 0) + 1\n",
             loadGame + call,
             quickLoad + nestedCall
         };
