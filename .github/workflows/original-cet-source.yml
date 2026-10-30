@@ -210,6 +210,20 @@ jobs:
                 if (!$actual.Contains('__gcetItppDormantFrameV1') -or
                     !$actual.Contains('local function __gcetItppFrameStepV1(delta)') -or
                     !$actual.Contains('-- __gcetItppSessionRestoreBoundedV1:') -or
+                    !$actual.Contains('-- __gcetItppReloadMenuCacheV1:') -or
+                    !$actual.Contains('mod.gcetItppForgetSessionUi = function()') -or
+                    !$actual.Contains('registerForEvent("onInit", function()' + [char]10 +
+                      '  mod.gcetItppForgetSessionUi()') -or
+                    !$actual.Contains('registerForEvent("onShutdown", function()' + [char]10 +
+                      '  mod.gcetItppForgetSessionUi()') -or
+                    !$actual.Contains("watch('LoadGameMenuGameController', 'LoadGame', function(_, item)" + [char]10 +
+                      '  mod.gcetItppForgetSessionUi()') -or
+                    !$actual.Contains('    mod.gcetItppForgetSessionUi()' + [char]10 +
+                      '    if menu.m_isModded') -or
+                    !$actual.Contains('state.uiBb, state.uiInMenuId = nil, nil') -or
+                    !$actual.Contains('state.inMenuSeq, state.inMenuCached = nil, nil') -or
+                    !$actual.Contains('state.menuHeld, state.menuWasOpen = false, false') -or
+                    !$actual.Contains('state.uiReadyAt = nil') -or
                     !$actual.Contains('    if hardCapped and not ready then' + [char]10 +
                       '      state.pendingSessionTppRestore = nil') -or
                     $actual.IndexOf('-- __gcetItppSessionRestoreBoundedV1:') -gt
