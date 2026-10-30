@@ -318,9 +318,9 @@ internal static partial class SemanticInjectors
             "  mod.api.__gcetDedraWakeBridgeV2 = mod.__gcetDedraWakeBridgeV2 == true\nend";
         const string oldProofCall = "pcall(addon.__gcetWakeFromBase)";
         const string proofCall = "pcall(addon.__gcetWakeFromBase, \"__gcetItpToggleWakeV2\")";
-        const string initAnchor = "registerForEvent(\"onInit\", function()\n  mod.captureConsumableTiming()";
-        const string initSignal = "registerForEvent(\"onInit\", function()\n" +
-            "  pcall(mod.__gcetDedraToggleSignalV2)\n  mod.captureConsumableTiming()";
+        const string initAnchor = "registerForEvent(\"onInit\", function()\n";
+        const string initSignal = initAnchor +
+            "  pcall(mod.__gcetDedraToggleSignalV2)\n";
         if(src.Contains(marker,StringComparison.Ordinal))
         {
             if(!src.Contains("pcall(mod.__gcetDedraToggleSignalV2)",StringComparison.Ordinal) ||
