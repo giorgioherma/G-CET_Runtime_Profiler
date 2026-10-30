@@ -88,6 +88,14 @@ try {
       ($relevantSkips | ConvertTo-Json -Compress -Depth 5))
     throw "ITP_PARTIAL_WORKER_NOT_GENERATED: expected one owned rule, got $($owners.Count)"
   }
+  # The missing-worker upgrade must not re-emit unchanged author init.lua.
+  $changedFiles = @($owners[0].files)
+  if ($changedFiles.Count -ne 1 -or
+      !([string]$changedFiles[0]).Replace('\\','/').EndsWith(
+        '/immersive_third_person/GCET_Semantic/itp_frame_dormancy.lua',
+        [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'ITP_WORKER_ONLY_RECOVERY_REWROTE_AUTHOR_SOURCE'
+  }
   Add-Type -AssemblyName System.IO.Compression.FileSystem
   $zip = [IO.Compression.ZipFile]::OpenRead($partial.Result.pass.ZipPath)
   try {
@@ -109,10 +117,27 @@ try {
   }).Count -gt 0) {
     throw 'ITP_UNSAFE_WORKER_DRIFT_WAS_OVERWRITTEN'
   }
-  if ($drift.Result.ok -and $drift.Manifest -and
-      @($drift.Manifest.skipped | Where-Object {
-        $_.RuleId -eq 'immersive-third-person' -and $_.category -eq 'GENERATION_FAILURE'
-      }).Count -eq 0) {
+  # The Resolver records source-aware fail-closed refusals in the
+  # semantic manifest as skipped SEMANTIC_RULE with an explicit reason.
+  # The legacy 'category=GENERATION_FAILURE' predicate was never populated
+  # on these entries and therefore rejected a correct hard refusal.
+  $unsafeRefusals = @()
+  if ($drift.Manifest) {
+    $unsafeRefusals = @($drift.Manifest.skipped | Where-Object {
+      $_.RuleId -eq 'immersive-third-person' -and
+      $_.type -eq 'SEMANTIC_RULE' -and
+      ([string]$_.reason).Contains('ITP dormant frame worker drifted')
+    })
+  }
+  $explicitFailure = !$drift.Result.ok -and
+    ([string]$drift.Result.error).Contains('ITP dormant frame worker drifted')
+  if ($unsafeRefusals.Count -ne 1 -and !$explicitFailure) {
+    $actualRefusals = @($drift.Manifest.skipped | Where-Object {
+      $_.RuleId -eq 'immersive-third-person'
+    } | Select-Object -First 3 RuleId, type, reason)
+    Write-Host ("ITP_STAGE_DRIFT_DEBUG: resultOk={0} resultError={1} itpSkips={2}" -f
+      $drift.Result.ok, $drift.Result.error,
+      ($actualRefusals | ConvertTo-Json -Compress -Depth 4))
     throw 'ITP_UNSAFE_WORKER_DRIFT_NOT_REPORTED'
   }
   Write-Host 'ITP pristine/complete/missing worker/unsafe drift: one owned generator, structurally checked and read-only PASS'
