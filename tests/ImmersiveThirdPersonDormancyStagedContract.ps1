@@ -177,21 +177,41 @@ try {
   $uiEnd = $completeSource.IndexOf('mod.observeLoads = function()', $uiMarker)
   if ($uiMarker -lt 0 -or $uiEnd -le $uiBegin) { throw 'ITP_UI_CACHE_RESET_BOUNDARY_MISSING' }
   $priorUi = $completeSource.Remove($uiBegin, $uiEnd-$uiBegin)
-  foreach ($expr in @(
-    '  mod.gcetItppForgetSessionUi()' + "`n" + '  mod.captureConsumableTiming()',
-    '  mod.gcetItppForgetSessionUi()' + "`n" + '  state.frameSeq = (state.frameSeq or 0) + 1',
-    'watch(''LoadGameMenuGameController'', ''LoadGame'', function(_, item)' + "`n" +
-      '  mod.gcetItppForgetSessionUi()' + "`n" + '    local name = item.m_metadata.internalName',
-    '    mod.gcetItppForgetSessionUi()' + "`n" + '    if menu.m_isModded'
-  )) {
-    if ([regex]::Matches($priorUi,[regex]::Escape($expr)).Count -ne 1) { throw 'ITP_UI_CACHE_STAGED_OWNER_AMBIGUOUS' }
-    $priorUi = $priorUi.Replace($expr, $expr.Replace('    mod.gcetItppForgetSessionUi()' + "`n", '').Replace('  mod.gcetItppForgetSessionUi()' + "`n", ''))
+  # Remove only the proved source-owned invocation inside each existing
+  # callback. Generic/native source composition may insert other statements
+  # between the reset and the first author operation: adjacency is NOT proof.
+  function RemoveOwnedUiReset([string]$src, [string]$owner,
+      [string]$authorFirst, [string]$reset, [string]$purpose) {
+    if ([regex]::Matches($src,[regex]::Escape($owner)).Count -ne 1) {
+      throw ("ITP_UI_CACHE_STAGED_OWNER_AMBIGUOUS: " + $purpose)
+    }
+    $from = $src.IndexOf($owner,[StringComparison]::Ordinal) + $owner.Length
+    $authorAt = $src.IndexOf($authorFirst,$from,[StringComparison]::Ordinal)
+    if ($authorAt -lt $from -or ($authorAt-$from) -gt 512) {
+      throw ("ITP_UI_CACHE_STAGED_AUTHOR_DRIFT: " + $purpose)
+    }
+    $prologue = $src.Substring($from,$authorAt-$from)
+    if ([regex]::Matches($prologue,[regex]::Escape($reset)).Count -ne 1) {
+      throw ("ITP_UI_CACHE_STAGED_RESET_NOT_UNIQUE: " + $purpose)
+    }
+    $callAt = $prologue.IndexOf($reset,[StringComparison]::Ordinal)
+    return $src.Remove($from+$callAt,$reset.Length)
   }
-  # Exactly the previous source, not a partial active call to a removed helper.
+  $nl = [string][char]10
+  $onInitOwner = 'registerForEvent("onInit", function()' + $nl
+  $onShutdownOwner = 'registerForEvent("onShutdown", function()' + $nl
+  $loadGameOwner = "  watch('LoadGameMenuGameController', 'LoadGame', function(_, item)" + $nl
+  $quickLoadOwner = '    if string.find(word, "QuickLoad", 1, true) == nil then' +
+    $nl + '      return' + $nl + '    end' + $nl
+  $reset2 = '  mod.gcetItppForgetSessionUi()' + $nl
+  $reset4 = '    mod.gcetItppForgetSessionUi()' + $nl
+  $priorUi = RemoveOwnedUiReset -src $priorUi -owner $onInitOwner -authorFirst ('  mod.captureConsumableTiming()' + $nl) -reset $reset2 -purpose 'onInit'
+  $priorUi = RemoveOwnedUiReset -src $priorUi -owner $onShutdownOwner -authorFirst ('  state.frameSeq = (state.frameSeq or 0) + 1' + $nl) -reset $reset2 -purpose 'onShutdown'
+  $priorUi = RemoveOwnedUiReset -src $priorUi -owner $loadGameOwner -authorFirst ('    local name = item.m_metadata.internalName' + $nl) -reset $reset2 -purpose 'LoadGame'
+  $priorUi = RemoveOwnedUiReset -src $priorUi -owner $quickLoadOwner -authorFirst '    if menu.m_isModded == true' -reset $reset4 -purpose 'QuickLoad'
+  # The staged historical source must contain NO call into the removed helper.
   if ($priorUi.Contains('-- __gcetItppReloadMenuCacheV1:') -or
-      $priorUi.Contains('mod.gcetItppForgetSessionUi()') -or
-      !$priorUi.Contains("watch('LoadGameMenuGameController', 'LoadGame', function(_, item)" + "`n" +
-        '    local name = item.m_metadata.internalName')) {
+      $priorUi.Contains('mod.gcetItppForgetSessionUi()')) {
     throw 'ITP_UI_CACHE_PREVIOUS_VERSION_FIXTURE_INCOMPLETE'
   }
   [IO.File]::WriteAllText((Join-Path $stageItp 'init.lua'),$priorUi,[Text.Encoding]::UTF8)
@@ -220,15 +240,7 @@ try {
   [IO.File]::WriteAllText((Join-Path $stageItp 'init.lua'),$completeSourceRaw,[Text.Encoding]::UTF8)
   # A marker with one lost lifecycle invocation is an unsafe partial install.
   # It must be refused, not falsely marked complete or silently repaired.
-  $goodLoad = "  watch('LoadGameMenuGameController', 'LoadGame', function(_, item)" + "`n" +
-    '  mod.gcetItppForgetSessionUi()' + "`n" +
-    '    local name = item.m_metadata.internalName'
-  $badLoad = "  watch('LoadGameMenuGameController', 'LoadGame', function(_, item)" + "`n" +
-    '    local name = item.m_metadata.internalName'
-  if ([regex]::Matches($completeSource,[regex]::Escape($goodLoad)).Count -ne 1) {
-    throw 'ITP_PARTIAL_UI_RESET_SOURCE_BOUNDARY_UNPROVEN'
-  }
-  $badUiSource = $completeSource.Replace($goodLoad,$badLoad)
+  $badUiSource = RemoveOwnedUiReset -src $completeSource -owner $loadGameOwner -authorFirst ('    local name = item.m_metadata.internalName' + $nl) -reset $reset2 -purpose 'PARTIAL_UI_RESET'
   [IO.File]::WriteAllText((Join-Path $stageItp 'init.lua'),$badUiSource,[Text.Encoding]::UTF8)
   $partialUi = ResolveStaged 'PARTIAL_UI_RESET'
   $badUiTransforms = @($partialUi.Manifest.transforms | Where-Object {
