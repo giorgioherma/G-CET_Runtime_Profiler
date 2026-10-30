@@ -91,8 +91,8 @@ try {
   # The missing-worker upgrade must not re-emit unchanged author init.lua.
   $changedFiles = @($owners[0].files)
   if ($changedFiles.Count -ne 1 -or
-      !([string]$changedFiles[0]).Replace('\\','/').EndsWith(
-        '/immersive_third_person/GCET_Semantic/itp_frame_dormancy.lua',
+      !([string]$changedFiles[0]).Replace('\\','/').Equals(
+        'immersive_third_person/GCET_Semantic/itp_frame_dormancy.lua',
         [StringComparison]::OrdinalIgnoreCase)) {
     throw 'ITP_WORKER_ONLY_RECOVERY_REWROTE_AUTHOR_SOURCE'
   }
