@@ -92,7 +92,13 @@ assert "$gcetNativeVersion = '2.16.1'" in patch
 assert "src\\xmake\\Resource.rc.in" in patch
 assert "src\\config\\Resource.rc" in patch
 assert "G-CET Native Runtime Profiler (CET 1.37.1)" in patch
-assert "CET_VERSION C++ macros (1.37.1)" in patch
+assert "Do NOT change CET_VERSION C++ macros" in patch
+# Reject accidental duplication or corruption of the existing generating script.
+assert patch.count("$gcetNativeVersion = '2.16.1'") == 1
+assert patch.count("$foHHashAfter = (Get-FileHash -Algorithm SHA256 $foH).Hash") == 1
+assert patch.count('Write-Host "No files under cyber_engine_tweaks\\mods were touched."') == 1
+assert "('$' + '{1}2,16,1,0')" in patch
+assert "('$1' + '2,16,1,0')" not in patch
 build_script = Path('native-profiler-build/v2.11.0/Build-Profiler.ps1').read_text(encoding='utf-8')
 assert "Compiled G-CET native VERSIONINFO mismatch" in build_script
 assert "Compiled native VERSIONINFO mismatch" in normal
