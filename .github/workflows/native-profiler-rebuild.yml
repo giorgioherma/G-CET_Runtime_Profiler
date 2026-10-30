@@ -117,6 +117,12 @@ jobs:
               throw "Compiled 0-Engine attribution marker missing: $marker"
             }
           }
+          # Report signing status explicitly; a version stamp is not a security verdict.
+          $signature = Get-AuthenticodeSignature -FilePath $native
+          Write-Host "Experimental native Authenticode status: $($signature.Status)"
+          if ($signature.Status -ne 'Valid') {
+            Write-Warning 'Unsigned/untrusted native DLL may trigger browser reputation warnings. Do not bypass security warnings.'
+          }
           Write-Host "Compiled native DLL verified: $actual"
 
       - name: Upload rebuilt native payload
