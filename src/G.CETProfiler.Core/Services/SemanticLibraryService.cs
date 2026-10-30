@@ -404,6 +404,8 @@ internal sealed class SemanticLibraryService
                 PokerPass4Source.IsComplete(graph.OwnerFolder),
             "ITPP_ACTION_DORMANCY_V2" =>
                 SemanticInjectors.IsImmersiveThirdPersonActionDormancyComplete(graph.OwnerFolder),
+            "ITPP_FRAME_DORMANCY_V1" =>
+                SemanticInjectors.IsImmersiveThirdPersonFrameDormancyComplete(graph.OwnerFolder),
             "ITPP_DEDRA_PAIRED_WAKE_V3" =>
                 SemanticInjectors.IsImmersiveThirdPersonDedraWakeComplete(graph.OwnerFolder),
             "DEDRA_ONINIT_FRAME_WAKE_V3" =>

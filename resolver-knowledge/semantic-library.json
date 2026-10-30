@@ -3179,6 +3179,8 @@
         ],
         "alreadySatisfiedMarker": "G-CET semantic:immersive-third-person",
         "expectedMarkerFileCount": 1,
+        "sourceCompletionAuthoritative": true,
+        "completionVerifier": "ITPP_FRAME_DORMANCY_V1",
         "satisfiedAnyGroups": [
           [
             "__gcetItppSupervisorElapsed",
@@ -3229,10 +3231,11 @@
             "seconds": 0.25
           }
         ],
-        "note": "Original event-loop adaptive 10 Hz / 2 Hz supervisor and 4 Hz maintenance is retained only for proven older source. The new upstream API/move360/game-camera architecture must keep original frame cadence; source-proven V3 retains the source-derived immutable TweakDBID cache and only skips six pending-state handlers when their own first operation returns on empty state. Never throttle pluginHeartbeat, native-toggle, API, camera, gameCamera, move360 or maintenance on the updated source."
+        "note": "Older ITP retains its existing source-owned adaptive supervisor. Current upstream uses one pausable shared 0-Engine itp.frame job with full original active frame body, inactive no-timer pause only after proved no-work and cleanup settlement, CET/event wake, session subscriber proof and original native-key/optional-FPP fail-open. Source-owned V3 null-state guards, native TweakDBID reuse and FPP action routing remain preserved. No claim that native Lua ingress or gameplay wake is validated by CI."
       },
       "generation": {
         "enabled": true,
+        "sourceIndependentAdmission": true,
         "patchStyle": "source-injection",
         "shipReferenceOverride": false,
         "requiresCurrentSourceProof": true,
@@ -3245,7 +3248,7 @@
         "evidenceStack": "G_COLLECTION_RAW",
         "admitted": true
       },
-      "cadenceGroup": "REALTIME_PLUS_10HZ_2HZ_SUPERVISOR_4HZ_MAINTENANCE",
+      "cadenceGroup": "ACTIVE_FRAME_PLUS_SOURCE_PROVEN_INACTIVE_PAUSE",
       "catalogRole": "SEMANTIC_HOT_MOD",
       "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
       "presencePolicy": "REQUIRE_CAPTURE_OWNER_AND_LIVE_MOD_FOLDER",

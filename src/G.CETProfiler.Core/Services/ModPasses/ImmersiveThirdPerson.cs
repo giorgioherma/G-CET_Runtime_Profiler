@@ -1104,6 +1104,55 @@ internal static partial class SemanticInjectors
 
 
 
+    // Complete only when the actual detached frame owner, both lifecycle
+    // hooks and its external pausable worker coexist. The native callback
+    // must not execute in parallel with the shared scheduler.
+    internal static bool IsImmersiveThirdPersonFrameDormancyComplete(string ownerFolder)
+    {
+        var initPath = Path.Combine(ownerFolder, "init.lua");
+        if (!File.Exists(initPath)) return false;
+        var text = File.ReadAllText(initPath).Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n');
+
+        // Older ITP source has its established inline supervisor ownership;
+        // never demand the NEW detached worker from the historical author
+        // architecture. Its own three independent stages remain the proof.
+        if (!text.Contains("mod.pluginHeartbeat(delta)", StringComparison.Ordinal))
+            return text.Contains("local __gcetItppSupervisorElapsed = 0.0", StringComparison.Ordinal)
+                && text.Contains("local __gcetItppMaintenanceElapsed = 0.0", StringComparison.Ordinal)
+                && text.Contains("local function __gcetItppHasStandbyWork()", StringComparison.Ordinal)
+                && text.Contains("__gcetItppSupervisorElapsed >= __gcetItppSupervisorInterval",
+                    StringComparison.Ordinal)
+                && text.Contains("__gcetItppMaintenanceElapsed >= 0.25", StringComparison.Ordinal);
+
+        if (!text.Contains("-- __gcetItppDormantFrameV1:", StringComparison.Ordinal)
+            || !text.Contains("local function __gcetItppFrameStepV1(delta)", StringComparison.Ordinal)
+            || !text.Contains("mod.__gcetItppDormancyV1.Start()", StringComparison.Ordinal)
+            || !text.Contains("mod.__gcetItppDormancyV1.Stop()", StringComparison.Ordinal)
+            || !text.Contains("mod.__gcetItppDormancyV1.Signal(\"toggle\")", StringComparison.Ordinal)
+            || !text.Contains("if not mod.__gcetItppDormancyV1 then", StringComparison.Ordinal)
+            || !text.Contains("itp_frame_dormancy.lua", StringComparison.Ordinal)
+            || Regex.IsMatch(text,
+                @"(?:registerForEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]\s*,\s*function\("))
+            return false;
+
+        var workerPath = Path.Combine(ownerFolder, "GCET_Semantic", "itp_frame_dormancy.lua");
+        if (!File.Exists(workerPath)) return false;
+        var worker = File.ReadAllText(workerPath).Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n');
+        return worker.Contains("-- G-CET semantic coordinator:immersive-third-person\n",
+                   StringComparison.Ordinal)
+            && worker.Contains("function M.Install(mod, state, config, step, client)",
+                StringComparison.Ordinal)
+            && worker.Contains("schedule.EveryFrame({ id=\"itp.frame\"", StringComparison.Ordinal)
+            && worker.Contains("handle.Pause()", StringComparison.Ordinal)
+            && worker.Contains("handle.Resume()", StringComparison.Ordinal)
+            && worker.Contains("sessionWakeProven", StringComparison.Ordinal)
+            && worker.Contains("PlayerInvalidated", StringComparison.Ordinal)
+            && worker.Contains("PlayerReady", StringComparison.Ordinal)
+            && worker.Contains("hasNativeBindings()", StringComparison.Ordinal);
+    }
+
     // This is an owned part of the CURRENT ITP semantic generator, not a
     // second repair semantic. Never run without prior generic/native stages.
     private const string ItppDormancyWorkerV1 = """
