@@ -183,27 +183,25 @@ try {
     $completeSource,[Text.Encoding]::UTF8)
   # Previous v2 had correct file-load Register ownership, but its plain
   # dofile path could silently fail from a different CET working directory.
-  $authorLoader = @'
-    local worker, reason = mod.loadModule("GCET_Semantic/itp_frame_dormancy")
-    if type(worker) ~= "table" or type(worker.Install) ~= "function" then
-      error(reason or "ITP external worker interface missing")
-    end
-    return worker.Install(
-      mod, state, config, __gcetItppFrameStepV1, __gcetItppRuntimeV1)
-'@.TrimEnd()
-  $priorLoader = @'
-    return dofile("GCET_Semantic/itp_frame_dormancy.lua").Install(
-      mod, state, config, __gcetItppFrameStepV1, __gcetItppRuntimeV1)
-'@.TrimEnd()
+  $authorLoaderPattern = '(?m)^(?<indent>[ \t]*)local worker, reason = mod\.loadModule\("GCET_Semantic/itp_frame_dormancy"\)\n' +
+    '[ \t]*if type\(worker\) ~= "table" or type\(worker\.Install\) ~= "function" then\n' +
+    '[ \t]*error\(reason or "ITP external worker interface missing"\)\n' +
+    '[ \t]*end\n' +
+    '[ \t]*return worker\.Install\(\n' +
+    '[ \t]*mod, state, config, __gcetItppFrameStepV1, __gcetItppRuntimeV1\)'
+  $matches = [regex]::Matches($completeSource,$authorLoaderPattern)
+  if ($matches.Count -ne 1 -or $matches[0].Groups['indent'].Value -cne '    ') {
+    throw "ITP_SOURCE_AWARE_LOADER_INCOMPLETE: reviewed loader matches=$($matches.Count)"
+  }
+  $authorLoader = $matches[0].Value
+  $priorLoader = '    return dofile("GCET_Semantic/itp_frame_dormancy.lua").Install(' + "`n" +
+    '      mod, state, config, __gcetItppFrameStepV1, __gcetItppRuntimeV1)'
   $priorBridge = @'
   if ok and controller and type(controller.Register) == "function" then
     local registered, ready = pcall(controller.Register)
     if registered and ready == true then mod.__gcetItppDormancyV1 = controller end
   end
 '@.TrimEnd()
-  if ([regex]::Matches($completeSource,[regex]::Escape($authorLoader)).Count -ne 1) {
-    throw 'ITP_SOURCE_AWARE_LOADER_INCOMPLETE'
-  }
   $v2Source = $completeSource.Replace($authorLoader,$priorLoader).Replace($newBridge,$priorBridge)
   [IO.File]::WriteAllText((Join-Path $stageItp 'init.lua'),$v2Source,[Text.Encoding]::UTF8)
   [IO.File]::WriteAllText($worker,$completeWorker,[Text.Encoding]::UTF8)
