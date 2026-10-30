@@ -100,6 +100,12 @@ try {
   if ($v3rules.Count -ne 1 -or @($v3rules[0].files).Count -ne 1 -or
       !([string]@($v3rules[0].files)[0]).Replace('\','/').Equals(
         'immersive_third_person/init.lua',[StringComparison]::OrdinalIgnoreCase)) {
+    Write-Host ('ITP_V3_DEBUG: ' + (@{
+      ok=$v3.Result.ok
+      rules=@($v3rules | Select-Object RuleId,type,files,status,reason)
+      skips=@($v3.Manifest.skipped | Where-Object { $_.RuleId -like '*immersive-third-person*' } |
+        Select-Object RuleId,type,reason,status)
+    } | ConvertTo-Json -Depth 8 -Compress))
     throw 'ITP_V3_FORWARD_LOCAL_MIGRATION_REWROTE_WORKER'
   }
   Add-Type -AssemblyName System.IO.Compression.FileSystem
