@@ -22,7 +22,7 @@ jobs:
     timeout-minutes: 90
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Record native source identity
         shell: pwsh
@@ -126,14 +126,14 @@ jobs:
           Write-Host "Compiled native DLL verified: $actual"
 
       - name: Upload rebuilt native payload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: gcet-native-experimental-scalar-observations
           path: native-rebuild-artifact/
           if-no-files-found: error
 
       - name: Upload developer-only matching debug symbols
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: gcet-native-experimental-debug-symbols
           path: native-debug-symbols/

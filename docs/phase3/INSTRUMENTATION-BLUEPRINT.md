@@ -1,4 +1,4 @@
-> **2026-10-30 experimental Phase 3 Slice B native source tracing:** Bounded 0-Engine native deep Lua samples now emit source-proven producer and child-exclusive consumer callsite allocation CSVs (native CI and gameplay pending). This does not resolve full-population 0-Engine service cost or assign native owner-zero allocations. [Detailed evidence and acceptance](0ENGINE-NATIVE-PRODUCER-ATTRIBUTION-20261030.md).
+> **2026-10-30 experimental Phase 3 Slice B native source tracing:** Bounded 0-Engine native deep Lua samples now emit source-proven producer and child-exclusive consumer callsite allocation CSVs (native CI #96 passed; v1.3.4 main CI #2363 imported the pinned DLL; live producer/consumer CSV coverage and gameplay remain unverified). This does not resolve full-population 0-Engine service cost or assign native owner-zero allocations. [Detailed evidence and acceptance](0ENGINE-NATIVE-PRODUCER-ATTRIBUTION-20261030.md).
 
 # PHASE 3 ALLOCATION CONTROLL — instrumentation blueprint and execution ledger
 

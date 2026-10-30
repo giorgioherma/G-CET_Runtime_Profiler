@@ -28,8 +28,8 @@ jobs:
   native-read-reuse-contract:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '8.0.x'
       - name: Method-level 0-Engine API lookup contract
@@ -44,8 +44,8 @@ jobs:
   deep-reuse-contract:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - name: Validate bounded deep-callsite attribution and fail-closed reuse
@@ -54,7 +54,7 @@ jobs:
   zero-engine-lua-contract:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install Lua interpreter for development smoke test
         run: sudo apt-get update -qq && sudo apt-get install -y -qq lua5.4
       - name: Test ITP detached frame lifecycle (no idle polling)
@@ -102,8 +102,8 @@ jobs:
   megamind-evidence-contract:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '8.0.x'
       - name: Compile shared Profiler and Resolver evidence models
@@ -131,10 +131,10 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up .NET 8
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '8.0.x'
 
@@ -1633,14 +1633,14 @@ jobs:
           Write-Host "SHA256: $hash"
 
       - name: Upload portable Windows artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: G-CET-Runtime-Profiler-v${{ steps.product_version.outputs.version }}
           path: portable/
           if-no-files-found: error
 
       - name: Upload standalone G-CET resolver artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: G-CET-Resolver-v${{ steps.product_version.outputs.version }}
           path: publish-resolver/

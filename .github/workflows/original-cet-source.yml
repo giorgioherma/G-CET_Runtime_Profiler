@@ -17,10 +17,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout Resolver
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Checkout private untouched stack
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: giorgioherma/original_cet_source
           ref: main
@@ -28,13 +28,14 @@ jobs:
           persist-credentials: false
           path: ci-private-stack
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '8.0.x'
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
+          package-manager-cache: false
 
       - name: Generated Lua structural checker fixture contract
         run: node tests/ValidateGeneratedLuaInvariantsContract.cjs
