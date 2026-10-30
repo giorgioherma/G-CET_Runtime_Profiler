@@ -1111,6 +1111,29 @@ internal static partial class SemanticInjectors
 
     // The same author-side structural proof governs worker-only recovery.
     // A missing external coordinator does not invalidate a completed bridge.
+    private const string ItppFileLoadRegisterBridgeV2 =
+        "  if ok and controller and type(controller.Register) == \"function\" then\n" +
+        "    local registered, ready = pcall(controller.Register)\n" +
+        "    if registered and ready == true then mod.__gcetItppDormancyV1 = controller end\n" +
+        "  end";
+
+    // Old complete source may be upgraded only when the original author
+    // bridge is structurally intact and no duplicate frame owner exists.
+    private static bool HasImmersiveThirdPersonFrameDormancyBridgeV1(string text)
+    {
+        text = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        return text.Contains("-- __gcetItppDormantFrameV1:", StringComparison.Ordinal)
+            && text.Contains("local function __gcetItppFrameStepV1(delta)", StringComparison.Ordinal)
+            && text.Contains("mod.__gcetItppDormancyV1.Start()", StringComparison.Ordinal)
+            && text.Contains("mod.__gcetItppDormancyV1.Stop()", StringComparison.Ordinal)
+            && text.Contains("mod.__gcetItppDormancyV1.Signal(\"toggle\")", StringComparison.Ordinal)
+            && text.Contains("  if ok and controller then mod.__gcetItppDormancyV1 = controller end", StringComparison.Ordinal)
+            && text.Contains("if not mod.__gcetItppDormancyV1 then", StringComparison.Ordinal)
+            && !text.Contains("pcall(controller.Register)", StringComparison.Ordinal)
+            && !Regex.IsMatch(text,
+                @"(?:registerForEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]\s*,\s*function\(");
+    }
+
     internal static bool HasImmersiveThirdPersonFrameDormancyBridge(string text)
     {
         text = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
@@ -1118,6 +1141,9 @@ internal static partial class SemanticInjectors
             || !text.Contains("local function __gcetItppFrameStepV1(delta)", StringComparison.Ordinal)
             || !text.Contains("mod.__gcetItppDormancyV1.Start()", StringComparison.Ordinal)
             || !text.Contains("mod.__gcetItppDormancyV1.Stop()", StringComparison.Ordinal)
+            || !text.Contains("pcall(controller.Register)", StringComparison.Ordinal)
+            || text.IndexOf("pcall(controller.Register)", StringComparison.Ordinal) >
+               text.IndexOf("registerForEvent(\"onInit\"", StringComparison.Ordinal)
             || !text.Contains("mod.__gcetItppDormancyV1.Signal(\"toggle\")", StringComparison.Ordinal)
             || !text.Contains("if not mod.__gcetItppDormancyV1 then", StringComparison.Ordinal)
             || !text.Contains("itp_frame_dormancy.lua", StringComparison.Ordinal)
@@ -1168,7 +1194,10 @@ internal static partial class SemanticInjectors
                    StringComparison.Ordinal)
             && worker.Contains("function M.Install(mod, state, config, step, client)",
                 StringComparison.Ordinal)
-            && worker.Contains("schedule.EveryFrame({ id=\"itp.frame\"", StringComparison.Ordinal)
+            && worker.Contains("function M.Register()", StringComparison.Ordinal)
+            && worker.Contains("schedule.EveryFrame({ id=\"itp.frame\", pause=\"never\", active=false }", StringComparison.Ordinal)
+            && worker.Contains("if handle then handle.Pause() end", StringComparison.Ordinal)
+            && !worker.Contains("handle.Cancel()", StringComparison.Ordinal)
             && worker.Contains("handle.Pause()", StringComparison.Ordinal)
             && worker.Contains("handle.Resume()", StringComparison.Ordinal)
             && worker.Contains("sessionWakeProven", StringComparison.Ordinal)
@@ -1180,6 +1209,161 @@ internal static partial class SemanticInjectors
     // This is an owned part of the CURRENT ITP semantic generator, not a
     // second repair semantic. Never run without prior generic/native stages.
     private const string ItppDormancyWorkerV1 = """
+    -- G-CET semantic coordinator:immersive-third-person
+    -- __gcetItppDormantFrameV1: one shared 0-Engine frame owner, no quiet timer.
+    local M = {}
+    function M.Install(mod, state, config, step, client)
+      local handle, started, stopped = nil, false, false
+      local calls, pauses, wakes, wakeReason, warm = 0, 0, 0, "init", 2
+      local sessionWarm = 0.0
+      local subscriptions = {}
+      local sessionWakeProven = false
+      local function hasNativeBindings()
+        return (config.nativeToggleKey or "") ~= ""
+          or (config.nativeQuickFppKey or "") ~= ""
+          or (config.nativeFreelookKey or "") ~= ""
+          or (config.nativeShoulderKey or "") ~= ""
+          or (config.nativeFrontKey or "") ~= ""
+          or (config.nativeProfileNextKey or "") ~= ""
+          or (config.nativeProfilePrevKey or "") ~= ""
+      end
+      local function needFrame()
+        local ap, camera = state.autoPerspective, config.camera
+        local auto = config.autoPerspective
+        if state.enabled or state.requestedMode ~= "FPP" then return true end
+        -- An authored toggle timestamp is measured in modClock time.
+        -- Let its original debounce interval finish before freezing that clock.
+        if state.lastToggleAt ~= nil and
+          ((state.modClock or 0) - state.lastToggleAt) < 0.25 then return true end
+        if ap.userWantsTpp == true or ap.pendingSessionTppRestore then return true end
+        if state.cameraTransition or state.quickFppEngaged or state.pendingSessionTppRestore
+          or state.pendingSceneTppReapply or state.pendingFppCleanup or state.pendingFppRestore
+          or state.fppRestoreWatchdog or state.pendingTppRepReassert
+          or state.pendingMirrorHeadVerify or state.pendingFacialMute
+          or state.pendingTppAnimPoke or state.pendingTppDeactivate
+          or state.pendingTakeoverHandoff or state.pendingTakeoverHeadCheck
+          or state.boneResyncPending or state.moveAlignEdgePending
+          or state.sprintStopFollowPending or state.vaultSprintPending
+          or state.mirrorChoicePending or state.photoModeWasActive
+          or state.photoModeHeadRestore or state.pendingFaultNotice
+          or state.pickupPulseUntil or state.consumableIdleUntil
+          or state.consumableGateUntil or state.consumableGraceUntil
+          or state.gameCameraHold or state.cameraDebtRestore or state.cameraDebtPop
+          or state.sceneWrapperUp or state.fppWrapperOwed
+          or state.takeoverFppHandoff or state.headGuardApplied
+          or state.headLookActive or state.headLookHeld or state.headGateOn
+          or state.headGateOffAt
+          or state.turnWindowLive or state.turnWindowWanted
+          or state.spatialAudio.turned or state.bodySliders.on
+          or state.groundLevel.owed or state.holocallEyes.owed
+          or state.pickupRange.wasOn or state.move360.wasOn
+          or state.armHeal.deactivateNext or state.armHeal.dueAt
+          or state.consumableTimingPending then return true end
+        -- The REDscript native key relay has no proven Lua event wake:
+        -- retain original frame polling whenever any native key is configured.
+        if hasNativeBindings() then return true end
+        -- These independent FPP-capable services need their original cadence.
+        if config.apiAccess == true or camera.move360 == true
+          or camera.spatialAudio == true or config.headToNpc == true
+          or config.idleBreakTalk == true or config.holocallEyes == true
+          or auto.sceneTpp == true or auto.interactionTpp == true
+          or auto.elevatorTpp == true or auto.alertTpp == true then return true end
+        if state.overlayOpen or state.sessionGapActive or not state.turnWindowStartCleared
+          or state.nativeSettingsDirty
+          or not (state.depGuard and state.depGuard.done == true) then return true end
+        return false
+      end
+      local function route()
+        if not started or stopped or not handle then return end
+        if not sessionWakeProven or warm > 0 or sessionWarm > 0 or needFrame() then
+          if not handle.IsActive() then handle.Resume() end
+        elseif handle.IsActive() then
+          handle.Pause()
+          -- An outstanding toggle debounce keeps the frame job active.
+          -- Once settled, modClock can freeze without rejecting later keys.
+          pauses = pauses + 1
+        end
+      end
+      function M.Signal(reason)
+        if stopped then return end
+        wakes = wakes + 1
+        wakeReason = reason or "direct"
+        warm = math.max(warm, 2)
+        if reason == "PlayerInvalidated" then sessionWarm = math.max(sessionWarm, 0.85) end
+        route()
+      end
+      -- All scheduler and event registration happens exactly once at Lua
+      -- FILE LOAD, never from CET onInit/onUpdate/onShutdown dispatch.
+      function M.Register()
+        if handle then return true end
+        local schedule = client.Schedule
+        assert(type(schedule) == "table" and type(schedule.EveryFrame) == "function",
+          "ITP: source-proven shared frame driver unavailable")
+        handle = schedule.EveryFrame({ id="itp.frame", pause="never", active=false },
+          function(ctx)
+            if not started or stopped then return end
+            local dt = ctx and ctx.dt or 0
+            step(dt)
+            calls = calls + 1
+            if warm > 0 then warm = warm - 1 end
+            if sessionWarm > 0 then sessionWarm = math.max(0, sessionWarm - dt) end
+            route() -- Finish author cleanup on the same frame before sleeping.
+          end)
+        assert(type(handle) == "table" and type(handle.Pause) == "function"
+          and type(handle.Resume) == "function" and type(handle.IsActive) == "function",
+          "ITP: source-proven pausable scheduler handle unavailable")
+        -- Preserve the same persistent event subscriptions across a session
+        -- shutdown/restart. No native registrations may occur on restart.
+        sessionWakeProven = type(client.Subscribe) == "function"
+        if sessionWakeProven then
+          for _, name in ipairs({ "PlayerReady", "PlayerInvalidated" }) do
+            local ok, h = pcall(client.Subscribe, name,
+              function() M.Signal(name) end)
+            if ok and type(h) == "table" and type(h.unsubscribe) == "function" then
+              subscriptions[#subscriptions + 1] = h
+            else
+              sessionWakeProven = false
+            end
+          end
+        end
+        return true
+      end
+      function M.Start()
+        if started then return end
+        -- Never create a shared/native frame registration from onInit.
+        assert(handle, "ITP: missing file-load frame registration")
+        stopped = false
+        warm, sessionWarm = 2, 0.0
+        started = true
+        route()
+      end
+      function M.Stop()
+        if stopped then return end
+        stopped, started = true, false
+        if handle then handle.Pause() end
+        -- Pausing keeps exactly one registered job through world reload.
+        -- M.Signal ignores shutdown signals; the owner is not cancelled or
+        -- re-registered from the next onInit.
+      end
+      function M.Diagnostics()
+        return { mode = stopped and "stopped" or
+          (handle and handle.IsActive() and "active" or "dormant"),
+          activeJob = handle and handle.IsActive() or false,
+          started = started, calls = calls, pauses = pauses,
+          wakes = wakes, lastWake = wakeReason,
+          pendingCleanup = needFrame(), nativeKeyFallback = hasNativeBindings(),
+          sessionWakeProven = sessionWakeProven,
+          registrationPath = "shared-0-engine-schedule", nativeItpUpdate = false }
+      end
+      return M
+    end
+    return M
+    """;
+
+    // Previously generated file-load source could schedule from onInit.
+    // Recognize only its exact generated source for a safe in-place upgrade.
+    // Never deploy or execute this historical worker.
+    private const string ItppLateRegisterWorkerV1 = """
     -- G-CET semantic coordinator:immersive-third-person
     -- __gcetItppDormantFrameV1: one shared 0-Engine frame owner, no quiet timer.
     local M = {}
@@ -1319,6 +1503,7 @@ internal static partial class SemanticInjectors
     return M
     """;
 
+
     private static string ApplyImmersiveThirdPersonDetachedDormancy(
         SemanticPatchContext context, string text, out bool recoveredWorker)
     {
@@ -1330,7 +1515,9 @@ internal static partial class SemanticInjectors
         var expected = ItppDormancyWorkerV1.Replace("\r\n", "\n", StringComparison.Ordinal);
         // The stage is never permitted to depend on an earlier generated
         // worker, including partially installed output.
-        if (existing != null && existing.Replace("\r\n", "\n", StringComparison.Ordinal) != expected)
+        var knownPrior = ItppLateRegisterWorkerV1.Replace("\r\n", "\n", StringComparison.Ordinal);
+        var currentWorker = existing?.Replace("\r\n", "\n", StringComparison.Ordinal);
+        if (currentWorker is not null && currentWorker != expected && currentWorker != knownPrior)
             throw new InvalidOperationException("ITP dormant frame worker drifted; refusing overwrite.");
         if (normalized.Contains(stage, StringComparison.Ordinal))
         {
@@ -1350,12 +1537,26 @@ internal static partial class SemanticInjectors
                 Regex.IsMatch(normalized,
                     @"(?:registerForEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]\s*,\s*function\("))
                 throw new InvalidOperationException("ITP dormant frame stage incomplete or has duplicate owner.");
-            if (existing == null)
+            const string oldBridge = "  if ok and controller then mod.__gcetItppDormancyV1 = controller end";
+            var isPriorBridge = normalized.Contains(oldBridge, StringComparison.Ordinal);
+            if (isPriorBridge)
+            {
+                if (!HasImmersiveThirdPersonFrameDormancyBridgeV1(normalized))
+                    throw new InvalidOperationException("ITP prior frame bridge drifted; refusing unsafe migration.");
+                normalized = normalized.Replace(oldBridge, ItppFileLoadRegisterBridgeV2, StringComparison.Ordinal);
+            }
+            else if (!HasImmersiveThirdPersonFrameDormancyBridge(normalized))
+                throw new InvalidOperationException("ITP current frame bridge lacks file-load Register proof.");
+            if (currentWorker != expected)
             {
                 context.WriteCoordinator(coordinator, ItppDormancyWorkerV1);
                 recoveredWorker = true;
             }
-            return text;
+            return isPriorBridge
+                ? text.Contains("\r\n", StringComparison.Ordinal)
+                    ? normalized.Replace("\n", "\r\n", StringComparison.Ordinal)
+                    : normalized
+                : text;
         }
         // Full current original only: compact test/historical input retains
         // its existing conservative frame loop. Unknown layouts fail closed.
@@ -1423,7 +1624,7 @@ internal static partial class SemanticInjectors
             "    return dofile(\"GCET_Semantic/itp_frame_dormancy.lua\").Install(\n" +
             "      mod, state, config, __gcetItppFrameStepV1, __gcetItppRuntimeV1)\n" +
             "  end)\n" +
-            "  if ok and controller then mod.__gcetItppDormancyV1 = controller end\n" +
+            ItppFileLoadRegisterBridgeV2 + "\n" +
             "end\n" +
             "if not mod.__gcetItppDormancyV1 then\n" +
             "  " + owner.Groups["registrar"].Value +
