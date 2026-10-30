@@ -1203,12 +1203,19 @@ internal static partial class SemanticInjectors
             && text.Contains("local __gcetItppWorkerFactoryV3 = nil", StringComparison.Ordinal)
             && text.Contains("if not __gcetItppWorkerFactoryV3 then", StringComparison.Ordinal)
             && text.Contains("mod.loadModule(\"GCET_Semantic/itp_frame_dormancy\")", StringComparison.Ordinal)
-            && text.Contains("local function __gcetItppAttachOnInitV3()", StringComparison.Ordinal)
+            && text.Contains("local __gcetItppAttachOnInitV3\nregisterForEvent(\"onInit\", function()", StringComparison.Ordinal)
+            && text.Contains("__gcetItppAttachOnInitV3 = function()", StringComparison.Ordinal)
             && text.Contains("local controller = __gcetItppWorkerFactoryV3.Install(", StringComparison.Ordinal)
             && text.Contains("local ready = controller.Register()", StringComparison.Ordinal)
             && text.Contains("host.__gcetScheduleDriver", StringComparison.Ordinal)
             && text.Contains("  __gcetItppAttachOnInitV3()\n  if mod.__gcetItppDormancyV1 then mod.__gcetItppDormancyV1.Start() end\nend)", StringComparison.Ordinal)
-            && text.IndexOf("local function __gcetItppAttachOnInitV3()", StringComparison.Ordinal) <
+            && text.IndexOf("local __gcetItppAttachOnInitV3\n", StringComparison.Ordinal) <
+               text.IndexOf("registerForEvent(\"onInit\", function()", StringComparison.Ordinal)
+            && text.IndexOf("registerForEvent(\"onInit\", function()", StringComparison.Ordinal) <
+               text.IndexOf("  __gcetItppAttachOnInitV3()", StringComparison.Ordinal)
+            && text.IndexOf("  __gcetItppAttachOnInitV3()", StringComparison.Ordinal) <
+               text.IndexOf("__gcetItppAttachOnInitV3 = function()", StringComparison.Ordinal)
+            && text.IndexOf("__gcetItppAttachOnInitV3 = function()", StringComparison.Ordinal) <
                text.IndexOf("local UI = {", StringComparison.Ordinal)
             && text.Contains("mod.__gcetItppDormancyV1.Stop()", StringComparison.Ordinal)
             && text.Contains("mod.__gcetItppDormancyV1.Signal(\"toggle\")", StringComparison.Ordinal)
@@ -1240,7 +1247,7 @@ do
     __gcetItppLoadFailureV1 = tostring(worker)
   end
 end
-local function __gcetItppAttachOnInitV3()
+__gcetItppAttachOnInitV3 = function()
   if mod.__gcetItppDormancyV1 or not __gcetItppWorkerFactoryV3 then return end
   -- Dedra's working pattern: obtain client and create source-owned schedule
   -- in onInit after 0-Engine init. Neither Register nor Subscribe creates a
@@ -1621,6 +1628,19 @@ if not __gcetItppWorkerFactoryV3 then
     """;
 
 
+    // onInit is registered before the original author's per-frame body.
+    // A local declared only alongside that later body is NOT visible to the
+    // earlier callback's lexical environment. Bind the same local up front.
+    private static string ForwardDeclareItppAttachOnInit(string text)
+    {
+        const string anchor = "registerForEvent(\"onInit\", function()\n";
+        if (text.Split(anchor, StringSplitOptions.None).Length != 2 ||
+            text.Contains("local __gcetItppAttachOnInitV3\n", StringComparison.Ordinal))
+            throw new InvalidOperationException("ITP onInit lexical owner ambiguous; refusing source drift.");
+        return text.Replace(anchor, "local __gcetItppAttachOnInitV3\n" + anchor,
+            StringComparison.Ordinal);
+    }
+
     private static string ApplyImmersiveThirdPersonDetachedDormancy(
         SemanticPatchContext context, string text, out bool recoveredWorker)
     {
@@ -1654,6 +1674,28 @@ if not __gcetItppWorkerFactoryV3 then
                 }
                 return text; // Proven fully optimized source; recover worker only.
             }
+            if (normalized.Contains("local function __gcetItppAttachOnInitV3()", StringComparison.Ordinal))
+            {
+                // Source-proven shipped V3: its onInit callback captured an
+                // undefined global instead of the later local function.
+                // Migrate in this authoritative producer, without a new pass
+                // or changing the established external worker.
+                const string oldLocal = "local function __gcetItppAttachOnInitV3()";
+                if (normalized.Split(oldLocal, StringSplitOptions.None).Length != 2)
+                    throw new InvalidOperationException("ITP prior V3 attach owner ambiguous.");
+                var upgradedV3 = ForwardDeclareItppAttachOnInit(normalized.Replace(
+                    oldLocal, "__gcetItppAttachOnInitV3 = function()", StringComparison.Ordinal));
+                if (!HasImmersiveThirdPersonFrameDormancyBridge(upgradedV3))
+                    throw new InvalidOperationException("ITP prior V3 bridge drifted; refusing migration.");
+                if (currentWorker != expected)
+                {
+                    context.WriteCoordinator(coordinator, ItppDormancyWorkerV1);
+                    recoveredWorker = true;
+                }
+                return text.Contains("\r\n", StringComparison.Ordinal)
+                    ? upgradedV3.Replace("\n", "\r\n", StringComparison.Ordinal)
+                    : upgradedV3;
+            }
             var oldV1 = HasImmersiveThirdPersonFrameDormancyBridgeV1(normalized);
             var oldV2 = HasImmersiveThirdPersonFrameDormancyBridgeV2(normalized);
             var oldFileLoad = HasImmersiveThirdPersonFrameDormancyBridgeFileLoad(normalized);
@@ -1679,6 +1721,7 @@ if not __gcetItppWorkerFactoryV3 then
                 throw new InvalidOperationException("ITP prior onInit startup anchor drifted.");
             normalized = normalized.Replace(initTail,
                 "  __gcetItppAttachOnInitV3()\n" + initTail, StringComparison.Ordinal);
+            normalized = ForwardDeclareItppAttachOnInit(normalized);
             if (!HasImmersiveThirdPersonFrameDormancyBridge(normalized))
                 throw new InvalidOperationException("ITP migrated deferred bridge failed structural ownership proof.");
             if (currentWorker != expected)
@@ -1755,6 +1798,7 @@ if not __gcetItppWorkerFactoryV3 then
             "  __gcetItppAttachOnInitV3()\n" +
             "  if mod.__gcetItppDormancyV1 then mod.__gcetItppDormancyV1.Start() end\nend)",
             "onInit startup");
+        normalized = ForwardDeclareItppAttachOnInit(normalized);
         ReplaceOne("registerForEvent(\"onShutdown\", function()\n",
             "registerForEvent(\"onShutdown\", function()\n" +
             "  if mod.__gcetItppDormancyV1 then mod.__gcetItppDormancyV1.Stop() end\n",
