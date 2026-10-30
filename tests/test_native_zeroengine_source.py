@@ -20,6 +20,13 @@ assert "std::min(MaxDeepHotRegistrations, candidates.size())" in native
 assert "DeepSelected.store(" in native
 assert "CET_Runtime_Profile_ZeroEngine_SourceAttribution.csv" in native
 assert "CET_Runtime_Profile_ZeroEngine_Callsites.csv" in native
+assert "CET_Runtime_Profile_ZeroEngine_ProducerAttribution.csv" in native
+assert "CET_Runtime_Profile_ZeroEngine_ConsumerCallsites.csv" in native
+assert "PHASE3_ZERO_ENGINE_PRODUCER_V1" in native
+assert 'callsite.ChildSourceFile = frame.SourceFile' in native
+assert 'callsite.SampledChildOwnPositiveBytes += ownBytes' in native
+assert 'callsite.SampledChildOwnPositiveOps += ownOps' in native
+assert 'SAMPLED_CHILD_EXCLUSIVE_NOT_ADDITIVE_WITH_PARENT' in native
 assert 'zeroRegistration.count(row.RegistrationId)' in native
 assert 'row->SampledExclusiveAllocBytes' in native
 assert 'row->SampledExclusiveAllocations' in native
@@ -34,6 +41,8 @@ assert "dev/resolver-profiler-handoff" in normal
 assert "Verify 0-Engine source attribution contract" in normal
 assert "CET_Runtime_Profile_ZeroEngine_SourceAttribution.csv" in normal
 assert "CET_Runtime_Profile_ZeroEngine_Callsites.csv" in normal
+assert "CET_Runtime_Profile_ZeroEngine_ProducerAttribution.csv" in normal
+assert "CET_Runtime_Profile_ZeroEngine_ConsumerCallsites.csv" in normal
 assert "native-profiler-build/v2.11.0/Build-Profiler.ps1" in normal
 assert "Get-CETPEInfo.ps1" in normal
 assert "DLL_SHA256.txt" in normal

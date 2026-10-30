@@ -99,6 +99,8 @@ jobs:
           foreach ($marker in @(
               'CET_Runtime_Profile_ZeroEngine_SourceAttribution.csv',
               'CET_Runtime_Profile_ZeroEngine_Callsites.csv',
+              'CET_Runtime_Profile_ZeroEngine_ProducerAttribution.csv',
+              'CET_Runtime_Profile_ZeroEngine_ConsumerCallsites.csv',
               'CET_Runtime_Profile_LuaNative_Callsites.csv',
               'CET_Runtime_Profile_Native_PreDispatchPressure.csv',
               'CET_Runtime_Profile_Native_MethodStages.csv',
