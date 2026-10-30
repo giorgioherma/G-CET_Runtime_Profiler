@@ -201,7 +201,7 @@ try {
     if registered and ready == true then mod.__gcetItppDormancyV1 = controller end
   end
 '@.TrimEnd()
-  if ($completeSource.Split($authorLoader).Count -ne 2) {
+  if ([regex]::Matches($completeSource,[regex]::Escape($authorLoader)).Count -ne 1) {
     throw 'ITP_SOURCE_AWARE_LOADER_INCOMPLETE'
   }
   $v2Source = $completeSource.Replace($authorLoader,$priorLoader).Replace($newBridge,$priorBridge)
