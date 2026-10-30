@@ -171,7 +171,7 @@ try {
     '    mod.gcetItppForgetSessionUi()' + "`n" + '    if menu.m_isModded'
   )) {
     if ([regex]::Matches($priorUi,[regex]::Escape($expr)).Count -ne 1) { throw 'ITP_UI_CACHE_STAGED_OWNER_AMBIGUOUS' }
-    $priorUi = $priorUi.Replace($expr, $expr.Replace('  mod.gcetItppForgetSessionUi()' + "`n", '').Replace('    mod.gcetItppForgetSessionUi()' + "`n", ''))
+    $priorUi = $priorUi.Replace($expr, $expr.Replace('    mod.gcetItppForgetSessionUi()' + "`n", '').Replace('  mod.gcetItppForgetSessionUi()' + "`n", ''))
   }
   [IO.File]::WriteAllText((Join-Path $stageItp 'init.lua'),$priorUi,[Text.Encoding]::UTF8)
   $uiUpgrade = ResolveStaged 'PREVIOUS_V3_UI_CACHE'
