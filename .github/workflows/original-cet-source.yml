@@ -209,6 +209,11 @@ jobs:
                 $code = Get-Content -LiteralPath $worker -Raw
                 if (!$actual.Contains('__gcetItppDormantFrameV1') -or
                     !$actual.Contains('local function __gcetItppFrameStepV1(delta)') -or
+                    !$actual.Contains('-- __gcetItppSessionRestoreBoundedV1:') -or
+                    !$actual.Contains('    if hardCapped and not ready then' + [char]10 +
+                      '      state.pendingSessionTppRestore = nil') -or
+                    $actual.IndexOf('-- __gcetItppSessionRestoreBoundedV1:') -gt
+                      $actual.IndexOf('    if pending.stablePolls >= 10 or (hardCapped and ready) then') -or
                     !$actual.Contains('mod.__gcetItppDormancyV1.Start()') -or
                     !$actual.Contains('mod.__gcetItppDormancyV1.Stop()') -or
                     !$actual.Contains('mod.__gcetItppDormancyV1.Signal("toggle")') -or
