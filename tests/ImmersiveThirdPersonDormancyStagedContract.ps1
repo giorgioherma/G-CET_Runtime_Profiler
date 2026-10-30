@@ -158,6 +158,45 @@ try {
     }
   } finally { $boundZip.Dispose() }
   [IO.File]::WriteAllText((Join-Path $stageItp 'init.lua'),$completeSourceRaw,[Text.Encoding]::UTF8)
+  # Previous complete V3 must gain only the missing reload/UI lifecycle.
+  $uiMarker = $completeSource.IndexOf('-- __gcetItppReloadMenuCacheV1:')
+  $uiBegin = $completeSource.LastIndexOf([char]10, $uiMarker) + 1
+  $uiEnd = $completeSource.IndexOf('mod.observeLoads = function()', $uiMarker)
+  if ($uiMarker -lt 0 -or $uiEnd -le $uiBegin) { throw 'ITP_UI_CACHE_RESET_BOUNDARY_MISSING' }
+  $priorUi = $completeSource.Remove($uiBegin, $uiEnd-$uiBegin)
+  foreach ($expr in @(
+    'registerForEvent("onInit", function()' + "`n" + '  mod.gcetItppForgetSessionUi()',
+    'registerForEvent("onShutdown", function()' + "`n" + '  mod.gcetItppForgetSessionUi()',
+    'watch(''LoadGameMenuGameController'', ''LoadGame'', function(_, item)' + "`n" + '  mod.gcetItppForgetSessionUi()',
+    '    mod.gcetItppForgetSessionUi()' + "`n" + '    if menu.m_isModded'
+  )) {
+    if ([regex]::Matches($priorUi,[regex]::Escape($expr)).Count -ne 1) { throw 'ITP_UI_CACHE_STAGED_OWNER_AMBIGUOUS' }
+    $priorUi = $priorUi.Replace($expr, $expr.Replace('  mod.gcetItppForgetSessionUi()' + "`n", '').Replace('    mod.gcetItppForgetSessionUi()' + "`n", ''))
+  }
+  [IO.File]::WriteAllText((Join-Path $stageItp 'init.lua'),$priorUi,[Text.Encoding]::UTF8)
+  $uiUpgrade = ResolveStaged 'PREVIOUS_V3_UI_CACHE'
+  if (!$uiUpgrade.Result.ok -or !$uiUpgrade.Manifest) { throw 'ITP_UI_CACHE_STAGED_MIGRATION_FAILED' }
+  $uiRules = @($uiUpgrade.Manifest.transforms | Where-Object {
+    $_.RuleId -eq 'immersive-third-person' -and $_.type -eq 'SEMANTIC_RULE'
+  })
+  if ($uiRules.Count -ne 1 -or @($uiRules[0].files).Count -ne 1 -or
+      !([string]@($uiRules[0].files)[0]).Replace('\','/').Equals(
+        'immersive_third_person/init.lua',[StringComparison]::OrdinalIgnoreCase)) {
+    throw 'ITP_UI_CACHE_STAGED_WORKER_REWRITTEN'
+  }
+  $uiZip = [IO.Compression.ZipFile]::OpenRead($uiUpgrade.Result.pass.ZipPath)
+  try {
+    $uiEntry = @($uiZip.Entries | Where-Object {
+      $_.FullName.Replace('\','/').EndsWith('/immersive_third_person/init.lua')
+    }) | Select-Object -First 1
+    if (!$uiEntry) { throw 'ITP_UI_CACHE_STAGED_SOURCE_MISSING' }
+    $uiReader = [IO.StreamReader]::new($uiEntry.Open())
+    try { $uiActual = $uiReader.ReadToEnd() } finally { $uiReader.Dispose() }
+    if ($uiActual.Replace(([string][char]13+[string][char]10),[string][char]10) -cne $completeSource) {
+      throw 'ITP_UI_CACHE_STAGED_NOT_PRISTINE_EQUIVALENT'
+    }
+  } finally { $uiZip.Dispose() }
+  [IO.File]::WriteAllText((Join-Path $stageItp 'init.lua'),$completeSourceRaw,[Text.Encoding]::UTF8)
   $full = ResolveStaged 'COMPLETE'
   if ($full.Manifest -and
       @($full.Manifest.transforms | Where-Object { $_.RuleId -eq 'immersive-third-person' }).Count -gt 0) {
