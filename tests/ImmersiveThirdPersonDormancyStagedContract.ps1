@@ -126,15 +126,17 @@ try {
   # onInit. The SAME authoritative source generator must upgrade both the
   # preexisting bridge and worker to file-load-only registration.
   $legacyBridge = '  if ok and controller then mod.__gcetItppDormancyV1 = controller end'
-  $newBridge = @'
-  if ok and controller and type(controller.Register) == "function" then
-    local registered, ready = pcall(controller.Register)
-    if registered and ready == true then mod.__gcetItppDormancyV1 = controller end
-  end
-'@.TrimEnd()
-  if (!$completeSource.Contains($newBridge) -or $completeSource.Contains($legacyBridge)) {
-    throw 'ITP_LEGACY_BRIDGE_SETUP_FAILED'
+  # Match the four exact reviewed statements rather than assuming LF-only
+  # indentation of a private, generically composed source file.
+  $bridgePattern = '(?m)^[ \t]*if ok and controller and type\(controller\.Register\) == "function" then\r?\n' +
+    '[ \t]*local registered, ready = pcall\(controller\.Register\)\r?\n' +
+    '[ \t]*if registered and ready == true then mod\.__gcetItppDormancyV1 = controller end\r?\n' +
+    '[ \t]*end(?=\r?\n)'
+  $newBridges = [regex]::Matches($completeSource,$bridgePattern)
+  if ($newBridges.Count -ne 1 -or $completeSource.Contains($legacyBridge)) {
+    throw "ITP_LEGACY_BRIDGE_SETUP_FAILED: reviewed registration shape count=$($newBridges.Count)"
   }
+  $newBridge = $newBridges[0].Value
   $priorText = Get-Content 'src/G.CETProfiler.Core/Services/ModPasses/ImmersiveThirdPerson.cs' -Raw
   $legacyBlock = [regex]::Match($priorText,
     '(?s)private const string ItppLateRegisterWorkerV1 = """\r?\n(?<body>.*?)\r?\n    """;')
