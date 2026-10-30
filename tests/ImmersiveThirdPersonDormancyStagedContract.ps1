@@ -142,7 +142,7 @@ try {
     '(?s)private const string ItppLateRegisterWorkerV1 = """\r?\n(?<body>.*?)\r?\n    """;')
   if (!$legacyBlock.Success) { throw 'ITP_LEGACY_GENERATOR_WORKER_MISSING' }
   $priorWorker = (($legacyBlock.Groups['body'].Value -split "\r?\n" |
-     ForEach-Object { if ($_.StartsWith('    ')) { $_.Substring(4) } else { $_ } }) -join "`n") + "`n"
+     ForEach-Object { if ($_.StartsWith('    ')) { $_.Substring(4) } else { $_ } }) -join "`n")
   [IO.File]::WriteAllText((Join-Path $stageItp 'init.lua'),
     $completeSource.Replace($newBridge,$legacyBridge), [Text.Encoding]::UTF8)
   [IO.File]::WriteAllText($worker,$priorWorker,[Text.Encoding]::UTF8)
