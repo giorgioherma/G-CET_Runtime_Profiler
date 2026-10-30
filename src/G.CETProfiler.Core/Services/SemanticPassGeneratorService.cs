@@ -225,6 +225,19 @@ internal static class SemanticPassGeneratorService
                         SemanticInjectors.HasDedraThirdPersonCombatAuthorBridge(
                             current.Text);
                 }
+                if (candidate.RuleId == "immersive-third-person")
+                {
+                    var current = context.FindFile("init.lua",
+                        "local function __gcetItppFrameStepV1(delta)",
+                        "mod.__gcetItppDormancyV1.Start()");
+                    var host = context.TryReadComposedModFile("0-Engine", "init.lua");
+                    sourceBridgeProven =
+                        SemanticInjectors.HasImmersiveThirdPersonFrameDormancyBridge(current.Text) &&
+                        host is not null &&
+                        host.Contains("Engine.__gcetScheduleDriver({", StringComparison.Ordinal) &&
+                        host.Contains("__host.__gcetScheduleDriver = function(ctx)", StringComparison.Ordinal) &&
+                        host.Contains("registerForEvent(\"onUpdate\", function(delta)", StringComparison.Ordinal);
+                }
                 if (!sourceBridgeProven)
                     throw new InvalidOperationException(
                         "Coordinator stage has no source bridge in the current pass.");

@@ -30,6 +30,7 @@ internal static partial class SemanticInjectors
             "calllist-action-lazy-display-query" or
             "dedra-third-person-combat-wake" or
             "immersive-third-person-action-routing" or
+            "immersive-third-person" or
             "backstep-duo" or
             "specter-recovery-prerequisite-reads" or
             "nativeinteractions" or

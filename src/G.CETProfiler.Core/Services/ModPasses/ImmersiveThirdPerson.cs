@@ -428,9 +428,14 @@ internal static partial class SemanticInjectors
             if (upgraded == text && !recoveredWorker)
                 return SemanticInjectionResult.Skip(
                     "Current ITP pending-state and first-person fastpaths already applied.");
-            context.Write(file, upgraded);
+            // When only the external worker is missing, generate only that
+            // worker; the already-proven author bridge is left byte-identical.
+            if (upgraded != text)
+                context.Write(file, upgraded);
             return SemanticInjectionResult.Success(
-                "Upgraded existing ITP source with safe first-person no-work call guards.");
+                recoveredWorker && upgraded == text
+                    ? "Recovered missing ITP frame worker, preserving the completed author source."
+                    : "Upgraded existing ITP source with safe first-person no-work call guards.");
         }
 
         if (!text.Contains("mod.move360CaptureNamed = function", StringComparison.Ordinal) ||
@@ -1104,6 +1109,22 @@ internal static partial class SemanticInjectors
 
 
 
+    // The same author-side structural proof governs worker-only recovery.
+    // A missing external coordinator does not invalidate a completed bridge.
+    internal static bool HasImmersiveThirdPersonFrameDormancyBridge(string text)
+    {
+        text = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        return !(!text.Contains("-- __gcetItppDormantFrameV1:", StringComparison.Ordinal)
+            || !text.Contains("local function __gcetItppFrameStepV1(delta)", StringComparison.Ordinal)
+            || !text.Contains("mod.__gcetItppDormancyV1.Start()", StringComparison.Ordinal)
+            || !text.Contains("mod.__gcetItppDormancyV1.Stop()", StringComparison.Ordinal)
+            || !text.Contains("mod.__gcetItppDormancyV1.Signal(\"toggle\")", StringComparison.Ordinal)
+            || !text.Contains("if not mod.__gcetItppDormancyV1 then", StringComparison.Ordinal)
+            || !text.Contains("itp_frame_dormancy.lua", StringComparison.Ordinal)
+            || Regex.IsMatch(text,
+                @"(?:registerForEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]\s*,\s*function\("));
+    }
+
     // Complete only when the actual detached frame owner, both lifecycle
     // hooks and its external pausable worker coexist. The native callback
     // must not execute in parallel with the shared scheduler.
@@ -1125,15 +1146,7 @@ internal static partial class SemanticInjectors
                     StringComparison.Ordinal)
                 && text.Contains("__gcetItppMaintenanceElapsed >= 0.25", StringComparison.Ordinal);
 
-        if (!text.Contains("-- __gcetItppDormantFrameV1:", StringComparison.Ordinal)
-            || !text.Contains("local function __gcetItppFrameStepV1(delta)", StringComparison.Ordinal)
-            || !text.Contains("mod.__gcetItppDormancyV1.Start()", StringComparison.Ordinal)
-            || !text.Contains("mod.__gcetItppDormancyV1.Stop()", StringComparison.Ordinal)
-            || !text.Contains("mod.__gcetItppDormancyV1.Signal(\"toggle\")", StringComparison.Ordinal)
-            || !text.Contains("if not mod.__gcetItppDormancyV1 then", StringComparison.Ordinal)
-            || !text.Contains("itp_frame_dormancy.lua", StringComparison.Ordinal)
-            || Regex.IsMatch(text,
-                @"(?:registerForEvent|__gcetRegisterEvent_\d+)\s*\(\s*['""]onUpdate['""]\s*,\s*function\("))
+        if (!HasImmersiveThirdPersonFrameDormancyBridge(text))
             return false;
 
         var hostDir = Directory.GetParent(ownerFolder)?.FullName;
