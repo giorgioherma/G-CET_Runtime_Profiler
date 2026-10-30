@@ -110,7 +110,8 @@ try {
       throw 'ITP_V3_MIGRATION_OUTPUT_NOT_EQUAL_TO_PRISTINE'
     }
   } finally { $v3zip.Dispose() }
-  [IO.File]::WriteAllText((Join-Path $stageItp 'init.lua'),$completeSource,[Text.Encoding]::UTF8)
+  # Restore the original staged input text, including its original CRLF layout.
+  [IO.File]::WriteAllText((Join-Path $stageItp 'init.lua'),$completeSourceRaw,[Text.Encoding]::UTF8)
 
   $full = ResolveStaged 'COMPLETE'
   if ($full.Manifest -and
