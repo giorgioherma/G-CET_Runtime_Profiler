@@ -212,22 +212,26 @@ jobs:
                     !$actual.Contains('mod.__gcetItppDormancyV1.Start()') -or
                     !$actual.Contains('mod.__gcetItppDormancyV1.Stop()') -or
                     !$actual.Contains('mod.__gcetItppDormancyV1.Signal("toggle")') -or
-                    !$actual.Contains('if not mod.__gcetItppDormancyV1 then') -or
+                    !$actual.Contains('if not __gcetItppWorkerFactoryV3 then') -or
+                    !$actual.Contains('local function __gcetItppAttachOnInitV3()') -or
+                    !$actual.Contains('local ready = controller.Register()') -or
+                    !$actual.Contains('host.__gcetScheduleDriver') -or
+                    $actual.Contains('pcall(controller.Register)') -or
                     !$code.Contains('handle.Pause()') -or
                     !$code.Contains('handle.Resume()') -or
                     !$code.Contains('nativeKeyFallback = hasNativeBindings()') -or
                     !$code.Contains('id="itp.frame"') -or
                     !$code.Contains('function M.Register()') -or
                     !$code.Contains('active=false') -or
-                    !$actual.Contains('pcall(controller.Register)') -or
                     !$actual.Contains('mod.loadModule("GCET_Semantic/itp_frame_dormancy")') -or
                     $actual.Contains('return dofile("GCET_Semantic/itp_frame_dormancy.lua").Install') -or
                     !$actual.Contains('[G-CET ITP] detached frame fallback:') -or
-                    !$actual.Contains('  if mod.__gcetItppDormancyV1 then mod.__gcetItppDormancyV1.Start() end' + "`n" + 'end)') -or
-                    $actual.IndexOf('pcall(controller.Register)',[StringComparison]::Ordinal) -lt
-                      $actual.IndexOf('  if mod.__gcetItppDormancyV1 then mod.__gcetItppDormancyV1.Start() end' + "`n" + 'end)',[StringComparison]::Ordinal) -or
-                    $actual.IndexOf('pcall(controller.Register)',[StringComparison]::Ordinal) -gt
+                    !$actual.Contains('  __gcetItppAttachOnInitV3()' + "`n" +
+                      '  if mod.__gcetItppDormancyV1 then mod.__gcetItppDormancyV1.Start() end' + "`n" + 'end)') -or
+                    $actual.IndexOf('local ready = controller.Register()', [StringComparison]::Ordinal) -gt
                       $actual.IndexOf('local UI = {',[StringComparison]::Ordinal) -or
+                    $actual.IndexOf('local ready = controller.Register()', [StringComparison]::Ordinal) -lt
+                      $actual.IndexOf('local function __gcetItppAttachOnInitV3()', [StringComparison]::Ordinal) -or
                     $code.Contains('handle.Cancel()') -or
                     $code.Contains('schedule.Every(')) {
                   $state = [ordered]@{
@@ -236,24 +240,24 @@ jobs:
                     start=$actual.Contains('mod.__gcetItppDormancyV1.Start()')
                     stop=$actual.Contains('mod.__gcetItppDormancyV1.Stop()')
                     toggle=$actual.Contains('mod.__gcetItppDormancyV1.Signal("toggle")')
-                    fallback=$actual.Contains('if not mod.__gcetItppDormancyV1 then')
+                    fallback=$actual.Contains('if not __gcetItppWorkerFactoryV3 then')
                     pause=$code.Contains('handle.Pause()')
                     resume=$code.Contains('handle.Resume()')
                     nativeFallback=$code.Contains('nativeKeyFallback = hasNativeBindings()')
                     frameJob=$code.Contains('id="itp.frame"')
                     register=$code.Contains('function M.Register()')
                     inactive=$code.Contains('active=false')
-                    fileLoadRegister=$actual.Contains('pcall(controller.Register)')
+                    deferredRegister=$actual.Contains('local ready = controller.Register()')
                     startBody=$actual.Contains('  if mod.__gcetItppDormancyV1 then mod.__gcetItppDormancyV1.Start() end' + "`n" + 'end)')
-                    afterOnInit=$actual.IndexOf('pcall(controller.Register)',[StringComparison]::Ordinal) -gt
+                    afterOnInit=$actual.IndexOf('local ready = controller.Register()', [StringComparison]::Ordinal) -gt
                         $actual.IndexOf('  if mod.__gcetItppDormancyV1 then mod.__gcetItppDormancyV1.Start() end' + "`n" + 'end)',[StringComparison]::Ordinal)
-                    beforeUi=$actual.IndexOf('pcall(controller.Register)',[StringComparison]::Ordinal) -lt
+                    beforeUi=$actual.IndexOf('local ready = controller.Register()', [StringComparison]::Ordinal) -lt
                         $actual.IndexOf('local UI = {',[StringComparison]::Ordinal)
                     noCancel=!$code.Contains('handle.Cancel()')
                     noTimedJob=!$code.Contains('schedule.Every(')
                   }
                   Write-Host ('ITP_OUTPUT_PROOF_FLAGS: ' + ($state|ConvertTo-Json -Compress))
-                  throw 'ITP_IDLE_WORKER_INCOMPLETE: active frame, direct wake or native fallback lost'
+                  throw 'ITP_IDLE_WORKER_INCOMPLETE: active frame, deferred onInit source owner, direct wake or fallback lost'
                 }
                 Write-Host 'ITP untouched original: one pausable frame job, direct CET wake and native-key fail-open PASS'
               }
