@@ -421,9 +421,10 @@ internal static partial class SemanticInjectors
                 !text.Contains("if state.pendingFppRestore then", StringComparison.Ordinal))
                 throw new InvalidOperationException(
                     "Updated third-person pending-state gates are incomplete.");
-            var upgraded = ReuseImmersiveThirdPersonLatches(
-                ReuseImmersiveThirdPersonLiteralIds(
-                    AddImmersiveThirdPersonFppFastpaths(text)));
+            var upgraded = ApplyImmersiveThirdPersonDetachedDormancy(context,
+                ReuseImmersiveThirdPersonLatches(
+                    ReuseImmersiveThirdPersonLiteralIds(
+                        AddImmersiveThirdPersonFppFastpaths(text))));
             if (upgraded == text)
                 return SemanticInjectionResult.Skip(
                     "Current ITP pending-state and first-person fastpaths already applied.");
@@ -496,9 +497,10 @@ internal static partial class SemanticInjectors
         text = text.Insert(updateOwners[0].Index,
             "-- " + stage + ": author-verified absent-state fast guards only\n");
 
-        text = ReuseImmersiveThirdPersonLatches(
-            ReuseImmersiveThirdPersonLiteralIds(
-                AddImmersiveThirdPersonFppFastpaths(text)));
+        text = ApplyImmersiveThirdPersonDetachedDormancy(context,
+            ReuseImmersiveThirdPersonLatches(
+                ReuseImmersiveThirdPersonLiteralIds(
+                    AddImmersiveThirdPersonFppFastpaths(text))));
         context.Write(file, text);
         return SemanticInjectionResult.Success(
             "Current ITP API, movement, camera, heartbeat, native toggle and " +
