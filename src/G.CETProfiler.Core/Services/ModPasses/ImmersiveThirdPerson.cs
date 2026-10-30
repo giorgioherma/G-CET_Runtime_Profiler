@@ -1127,7 +1127,13 @@ internal static partial class SemanticInjectors
     private const string ItppFileLoadRegisterBridgeV2 =
         "  if ok and controller and type(controller.Register) == \"function\" then\n" +
         "    local registered, ready = pcall(controller.Register)\n" +
-        "    if registered and ready == true then mod.__gcetItppDormancyV1 = controller end\n" +
+        "    if registered and ready == true then\n" +
+        "      mod.__gcetItppDormancyV1 = controller\n" +
+        "    else\n" +
+        "      __gcetItppLoadFailureV1 = \"frame Register failed: \" .. tostring(ready)\n" +
+        "    end\n" +
+        "  else\n" +
+        "    __gcetItppLoadFailureV1 = \"worker failed to load: \" .. tostring(controller)\n" +
         "  end";
 
     // Old complete source may be upgraded only when the original author
@@ -1585,12 +1591,34 @@ internal static partial class SemanticInjectors
             if (usesOldRelativeLoader)
                 normalized = normalized.Replace(ItppLegacyRelativeWorkerLoader,
                     ItppAuthorWorkerLoader, StringComparison.Ordinal);
+            // Upgrading a known previous bridge also installs a one-time
+            // reason in the ORIGINAL fallback branch; do not add a polling
+            // observer or repair layer.
+            const string legacyRuntime = "local __gcetItppRuntimeV1 = nil\n";
+            const string reasonDeclaration = "local __gcetItppLoadFailureV1 = \"0-Engine scoped schedule unavailable at module load\"\n";
+            if (!normalized.Contains(reasonDeclaration, StringComparison.Ordinal))
+            {
+                if (normalized.Split(legacyRuntime, StringSplitOptions.None).Length != 2)
+                    throw new InvalidOperationException("ITP historical runtime local drifted.");
+                normalized = normalized.Replace(legacyRuntime, legacyRuntime + reasonDeclaration, StringComparison.Ordinal);
+            }
+            var diagnosticFallback = "if not mod.__gcetItppDormancyV1 then\n" +
+                "  if type(print) == \"function\" then\n" +
+                "    print(\"[G-CET ITP] detached frame fallback: \" .. tostring(__gcetItppLoadFailureV1))\n" +
+                "  end\n";
+            if (!normalized.Contains(diagnosticFallback, StringComparison.Ordinal))
+            {
+                const string fallbackHead = "if not mod.__gcetItppDormancyV1 then\n";
+                if (normalized.Split(fallbackHead, StringSplitOptions.None).Length != 2)
+                    throw new InvalidOperationException("ITP historical fallback owner drifted.");
+                normalized = normalized.Replace(fallbackHead, diagnosticFallback, StringComparison.Ordinal);
+            }
             if (currentWorker != expected)
             {
                 context.WriteCoordinator(coordinator, ItppDormancyWorkerV1);
                 recoveredWorker = true;
             }
-            return isPriorBridge || usesOldRelativeLoader
+            return normalized != text.Replace("\r\n", "\n", StringComparison.Ordinal)
                 ? text.Contains("\r\n", StringComparison.Ordinal)
                     ? normalized.Replace("\n", "\r\n", StringComparison.Ordinal)
                     : normalized
@@ -1647,6 +1675,7 @@ internal static partial class SemanticInjectors
         var emitter = "-- " + stage + ": one pausable shared frame owner\n" +
             "local function __gcetItppFrameStepV1(delta)\n" + frameBody + "\nend\n" +
             "local __gcetItppRuntimeV1 = nil\n" +
+            "local __gcetItppLoadFailureV1 = \"0-Engine scoped schedule unavailable at module load\"\n" +
             "do\n" +
             "  local ok, host = pcall(GetMod, \"0-Engine\")\n" +
             "  if ok and type(host) == \"table\" and type(host.__gcetScheduleDriver) == \"function\"\n" +
@@ -1665,6 +1694,9 @@ internal static partial class SemanticInjectors
             ItppFileLoadRegisterBridgeV2 + "\n" +
             "end\n" +
             "if not mod.__gcetItppDormancyV1 then\n" +
+            "  if type(print) == \"function\" then\n" +
+            "    print(\"[G-CET ITP] detached frame fallback: \" .. tostring(__gcetItppLoadFailureV1))\n" +
+            "  end\n" +
             "  " + owner.Groups["registrar"].Value +
             "(" + owner.Groups["q"].Value + "onUpdate" + owner.Groups["q"].Value +
             ", __gcetItppFrameStepV1)\n" +
