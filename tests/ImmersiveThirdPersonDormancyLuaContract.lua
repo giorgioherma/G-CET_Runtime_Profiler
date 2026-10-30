@@ -30,13 +30,19 @@ local client={Schedule=schedule,
   subscriptions[event]=callback
   return {unsubscribe=function() subscriptions[event]=nil end}
  end}
-local ctrl=assert(M.Install({},state,config,function(dt)
+-- At Lua file load, only the author worker factory is resolved.
+-- Exactly as Dedra, the shared scheduler client is not yet initialized.
+local factory=M
+assert(scheduleCount==0, "ITP scheduled before 0-Engine onInit")
+-- At CET onInit the existing 0-Engine host provides the shared client.
+local ctrl=assert(factory.Install({},state,config,function(dt)
  assert(type(dt)=="number")
  state.modClock=state.modClock+dt
  called=called+1
 end,client))
-ctrl.Register() -- Runs at file-load, before CET onInit.
-assert(scheduleCount==1 and not frame.IsActive(), "ITP registered an active job before onInit")
+assert(scheduleCount==0, "Install created a native or shared frame owner early")
+ctrl.Register()
+assert(scheduleCount==1 and not frame.IsActive(), "ITP onInit must create one initially paused job")
 ctrl.Start()
 assert(scheduleCount==1 and frame.IsActive())
 local function ticks(n)
@@ -116,4 +122,4 @@ noWake.Start()
 assert(noWakeFrame.IsActive() and noWake.Diagnostics().sessionWakeProven==false,
   "missing independent session events must fail open, not strand ITP")
 noWake.Stop()
-print("ITP file-load one-time registration, cold onInit, reload, native-key fail-open, full cadence PASS")
+print("ITP Dedra-order onInit registration, cold boot, reload, native-key fail-open, full cadence PASS")
