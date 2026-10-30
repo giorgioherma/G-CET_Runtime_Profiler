@@ -165,7 +165,7 @@ try {
   if ($uiMarker -lt 0 -or $uiEnd -le $uiBegin) { throw 'ITP_UI_CACHE_RESET_BOUNDARY_MISSING' }
   $priorUi = $completeSource.Remove($uiBegin, $uiEnd-$uiBegin)
   foreach ($expr in @(
-    '  mod.gcetItppForgetSessionUi()' + "`n" + '  mod.gcetItppForgetSessionUi()',
+    '  mod.gcetItppForgetSessionUi()' + "`n" + '  mod.captureConsumableTiming()',
     'registerForEvent("onShutdown", function()' + "`n" + '  mod.gcetItppForgetSessionUi()',
     'watch(''LoadGameMenuGameController'', ''LoadGame'', function(_, item)' + "`n" + '  mod.gcetItppForgetSessionUi()',
     '    mod.gcetItppForgetSessionUi()' + "`n" + '    if menu.m_isModded'
