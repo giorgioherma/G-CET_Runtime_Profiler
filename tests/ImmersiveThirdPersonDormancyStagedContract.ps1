@@ -149,6 +149,16 @@ try {
   $migrate = ResolveStaged 'KNOWN_LATE_REGISTER'
   if (!$migrate.Result.ok -or !$migrate.Manifest -or
       @($migrate.Manifest.transforms | Where-Object { $_.RuleId -eq 'immersive-third-person' }).Count -ne 1) {
+    $itpSkips = @($migrate.Manifest.skipped | Where-Object {
+      $_.RuleId -eq 'immersive-third-person'
+    } | Select-Object -First 3 type, RuleId, reason)
+    $itpTransforms = @($migrate.Manifest.transforms | Where-Object {
+      $_.RuleId -eq 'immersive-third-person'
+    } | Select-Object -First 3 type, RuleId, Note)
+    Write-Host ("ITP_LEGACY_MIGRATION_DEBUG: resultOk={0}; error={1}; skips={2}; transforms={3}" -f
+      $migrate.Result.ok, $migrate.Result.error,
+      ($itpSkips|ConvertTo-Json -Compress -Depth 4),
+      ($itpTransforms|ConvertTo-Json -Compress -Depth 4))
     throw 'ITP_LEGACY_FILE_LOAD_MIGRATION_FAILED'
   }
   $migZip = [IO.Compression.ZipFile]::OpenRead($migrate.Result.pass.ZipPath)
