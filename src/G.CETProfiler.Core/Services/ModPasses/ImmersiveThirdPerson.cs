@@ -1129,6 +1129,10 @@ internal static partial class SemanticInjectors
         local ap, camera = state.autoPerspective, config.camera
         local auto = config.autoPerspective
         if state.enabled or state.requestedMode ~= "FPP" then return true end
+        -- An authored toggle timestamp is measured in modClock time.
+        -- Let its original debounce interval finish before freezing that clock.
+        if state.lastToggleAt ~= nil and
+          ((state.modClock or 0) - state.lastToggleAt) < 0.25 then return true end
         if ap.userWantsTpp == true or ap.pendingSessionTppRestore then return true end
         if state.cameraTransition or state.quickFppEngaged or state.pendingSessionTppRestore
           or state.pendingSceneTppReapply or state.pendingFppCleanup or state.pendingFppRestore
@@ -1173,10 +1177,8 @@ internal static partial class SemanticInjectors
           if not handle.IsActive() then handle.Resume() end
         elseif handle.IsActive() then
           handle.Pause()
-          -- modClock does not advance during physical sleep. Keep the
-          -- first later author CET keypress from being rejected as a
-          -- phantom duplicate of the last active-frame toggle.
-          state.lastToggleAt = nil
+          -- An outstanding toggle debounce keeps the frame job active.
+          -- Once settled, modClock can freeze without rejecting later keys.
           pauses = pauses + 1
         end
       end

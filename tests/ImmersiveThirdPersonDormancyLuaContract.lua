@@ -3,6 +3,7 @@ local workerPath = assert(arg[1], "worker path required")
 local M = assert(dofile(workerPath))
 local state = {
  enabled=false, requestedMode="FPP", autoPerspective={userWantsTpp=false},
+ modClock=1.0,
  turnWindowStartCleared=true, nativeSettingsDirty=false, depGuard={done=true},
  pickupRange={}, move360={}, armHeal={},
  spatialAudio={}, bodySliders={}, groundLevel={}, holocallEyes={}
@@ -31,6 +32,7 @@ local client={Schedule=schedule,
  end}
 local ctrl=assert(M.Install({},state,config,function(dt)
  assert(type(dt)=="number")
+ state.modClock=state.modClock+dt
  called=called+1
 end,client))
 ctrl.Start()
@@ -41,7 +43,7 @@ end
 state.lastToggleAt=0.05
 ticks(2)
 assert(not frame.IsActive() and called==2, "idle never detached")
-assert(state.lastToggleAt==nil, "frozen modClock would reject next CET toggle")
+assert(state.lastToggleAt==0.05, "original toggle debounce timestamp lost")
 ticks(150)
 assert(called==2, "idle frame kept executing")
 local quiet=ctrl.Diagnostics()
@@ -69,8 +71,11 @@ state.pendingTppDeactivate={delay=0.35}
 ticks(2)
 assert(frame.IsActive(), "pending TPP deactivation was suppressed")
 state.pendingTppDeactivate=nil
-ticks(1)
-assert(not frame.IsActive(), "cleanup completed but active work not paused")
+state.lastToggleAt=state.modClock
+ticks(10)
+assert(frame.IsActive(), "original toggle debounce did not finish before sleep")
+ticks(10)
+assert(not frame.IsActive(), "cleanup and 0.25s toggle debounce settled but job stayed active")
 assert(type(subscriptions.PlayerReady)=="function")
 subscriptions.PlayerReady()
 assert(frame.IsActive(), "lost session event wake")
