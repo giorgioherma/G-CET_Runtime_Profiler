@@ -382,6 +382,11 @@ jobs:
             }
           }
 
+          # Use the ACTUAL generated current-source ITP, not a stock-only
+          # synthetic marker fixture, to verify idempotence, missing-worker
+          # recovery and unsafe drift handling.
+          ./tests/ImmersiveThirdPersonDormancyStagedContract.ps1 -ResolverExe './ci-resolver/G-CET-Resolver.exe' -OriginalMods $mods -Capture $capture -GeneratedRoot $output
+
       - name: Remove temporary private source
         if: always()
         shell: pwsh
