@@ -132,7 +132,7 @@ public static partial class ResultReportService
         // Use the FULL captured timeline for synchronization and raw evidence.
         // Apply one fixed tail selection to every gameplay-derived statistic.
         // Short diagnostic captures must retain all of their usable frames.
-        var excludedTailCount = parsed.Frames.Count > CaptureEndGuardFrameCount + 1
+        var excludedTailCount = parsed.Frames.Count > CaptureEndGuardFrameCount * 5
             ? CaptureEndGuardFrameCount : 0;
         var gameplayFrames = parsed.Frames.Take(parsed.Frames.Count - excludedTailCount).ToList();
         var excludedTailFrames = parsed.Frames.Skip(gameplayFrames.Count).ToList();
