@@ -459,6 +459,37 @@ if ($null -eq $handoff.hitchPressure -or [bool]$handoff.hitchPressure.authorizes
 
 
 
+# Capture-stop overhead may be recorded as one or more huge final frames.
+# Keep raw samples; guard every gameplay statistic and hitch episode.
+$endCapture = Join-Path $root 'capture-stop-guard'
+Copy-Item -LiteralPath $capture -Destination $endCapture -Recurse -Force
+$endFile = Join-Path $endCapture 'FrameTime\CapFrameX-test.json'
+$endData = Get-Content -LiteralPath $endFile -Raw | ConvertFrom-Json
+$endMs = $endData.Runs[0].CaptureData.MsBetweenPresents
+$endBad = @(33.0, 80.0, 160.0, 400.0, 1927.6)
+for ($n=0; $n -lt 5; $n++) { $endMs[$endMs.Count - 5 + $n] = $endBad[$n] }
+$endData | ConvertTo-Json -Depth 8 -Compress | Set-Content -LiteralPath $endFile -Encoding utf8
+$endReport = (& $profilerExe --report --capture $endCapture --json | ConvertFrom-Json)
+if (!$endReport.ok) { throw 'Capture-stop fixture report generation failed.' }
+$endSummary = Get-Content -LiteralPath (Join-Path $endCapture 'CET_Summary.json') -Raw | ConvertFrom-Json
+$ef = $endSummary.frameTime.frames
+if ($null -eq $ef -or
+    [int]$ef.capturedCount -ne 220 -or [int]$ef.count -ne 215 -or
+    [int]$ef.excludedCaptureEndCount -ne 5 -or
+    $ef.captureEndExclusionPolicy -ne 'LAST_FIVE_VALID_CAPFRAMEX_FRAMES_REPORT_ONLY' -or
+    @($ef.excludedCaptureEndSamples).Count -ne 5 -or
+    [math]::Abs([double]$ef.excludedCaptureEndSamples[-1].frameMs - 1927.6) -gt 0.001 -or
+    [double]$ef.maxMs -ge 100.0 -or [int]$ef.over100Ms -ne 0 -or
+    [int]$endSummary.frameTime.hitchPressure.frequency.episodes -ne 3 -or
+    @($endSummary.frameTime.worstFrames | Where-Object { $_.frameIndex -ge 215 }).Count -ne 0) {
+    throw 'Capture-stop tail polluted gameplay statistics or exclusion metadata.'
+}
+$endHtml = Get-Content -LiteralPath (Join-Path $endCapture 'CET_Report.html') -Raw
+if ($endHtml -notmatch 'Capture-end frame guard' -or
+    $endHtml -notmatch '215 analyzed / 220 captured') {
+    throw 'Capture-stop exclusion not disclosed in HTML.'
+}
+
 # DATA PROVENANCE STAGE A: source-file+line+function overlap across two
 # different mod registrations is an investigative candidate, never evidence
 # that result values, input parameters or cache lifetimes are equivalent.

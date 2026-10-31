@@ -156,6 +156,13 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
         MetricCard(sb, "P95 / P99", F(ft.P95FrameMs) + " / " + F(ft.P99FrameMs) + " ms", "Median " + F(ft.MedianFrameMs) + " ms");
         MetricCard(sb, "Worst frame", F(ft.MaxFrameMs) + " ms", "≥50 ms " + N(ft.FramesOver50Ms) + " · ≥100 ms " + N(ft.FramesOver100Ms));
         MetricCard(sb, "Frames ≥33.3 ms", N(ft.FramesOver33Ms), "≥25 ms " + N(ft.FramesOver25Ms));
+        sb.Append("<div class=\"note\"><b>Capture-end frame guard:</b> ")
+            .Append(N(ft.ExcludedCaptureEndCount))
+            .Append(" final frames excluded from gameplay FPS, tails, hitch episodes, worst-frame and CET overlap statistics (")
+            .Append(N(ft.FrameCount)).Append(" analyzed / ")
+            .Append(N(ft.CapturedFrameCount)).Append(" captured). ")
+            .Append("All raw CapFrameX frames remain unchanged under FrameTime/; all CET and allocation evidence is retained. ")
+            .Append("The full capture duration is still used for synchronization.</div>");
         sb.Append("</div>");
 
         sb.Append("<div class=\"two\"><div class=\"card\"><h3>CapFrameX capture</h3>")

@@ -5,6 +5,9 @@ namespace GCETRuntimeProfiler.Core.Services;
 
 public static partial class ResultReportService
 {
+    // Report-only guard for capture/export stop stalls. Original raw data is never modified.
+    private const int CaptureEndGuardFrameCount = 5;
+
     private sealed class FrameTimeAnalysis
     {
         public string SourceFile { get; init; } = "";
@@ -21,7 +24,11 @@ public static partial class ResultReportService
         public double DurationDeltaMs { get; init; }
         public double RecordLagMs { get; init; }
         public int FrameCount { get; init; }
+        public int CapturedFrameCount { get; init; }
+        public int ExcludedCaptureEndCount { get; init; }
+        public List<CapFrameMetric> ExcludedCaptureEndSamples { get; init; } = [];
         public double DurationSeconds { get; init; }
+        public double AnalyzedDurationSeconds { get; init; }
         public double MeanFrameMs { get; init; }
         public double MedianFrameMs { get; init; }
         public double P95FrameMs { get; init; }
@@ -122,9 +129,16 @@ public static partial class ResultReportService
         if (parsed is null || parsed.Frames.Count == 0)
             return null;
 
-        var frameTimes = parsed.Frames.Select(x => x.FrameMs).Where(x => x > 0 && double.IsFinite(x)).ToList();
-        var cpuTimes = parsed.Frames.Select(x => x.CpuActiveMs).Where(x => x > 0 && double.IsFinite(x)).ToList();
-        var gpuTimes = parsed.Frames.Select(x => x.GpuActiveMs).Where(x => x > 0 && double.IsFinite(x)).ToList();
+        // Use the FULL captured timeline for synchronization and raw evidence.
+        // Apply one fixed tail selection to every gameplay-derived statistic.
+        // Short diagnostic captures must retain all of their usable frames.
+        var excludedTailCount = parsed.Frames.Count > CaptureEndGuardFrameCount + 1
+            ? CaptureEndGuardFrameCount : 0;
+        var gameplayFrames = parsed.Frames.Take(parsed.Frames.Count - excludedTailCount).ToList();
+        var excludedTailFrames = parsed.Frames.Skip(gameplayFrames.Count).ToList();
+        var frameTimes = gameplayFrames.Select(x => x.FrameMs).Where(x => x > 0 && double.IsFinite(x)).ToList();
+        var cpuTimes = gameplayFrames.Select(x => x.CpuActiveMs).Where(x => x > 0 && double.IsFinite(x)).ToList();
+        var gpuTimes = gameplayFrames.Select(x => x.GpuActiveMs).Where(x => x > 0 && double.IsFinite(x)).ToList();
 
         var capDurationMs = parsed.Frames.Max(x => x.RelativeStartMs + x.FrameMs);
         var cetStartUnix = FindCetStartUnixMs(markers);
@@ -170,9 +184,11 @@ public static partial class ResultReportService
             ? "shared capture-key relative clocks"
             : "none";
 
-        var alignedFrames = parsed.Frames;
-
-        var orderedWindows = allWindows.OrderBy(x => x.StartMs).ToList();
+        var alignedFrames = gameplayFrames;
+        var analyzedEndMs = alignedFrames.Max(x => x.RelativeStartMs + x.FrameMs);
+        // Do not correlate CET-only tail windows against missing gameplay frames.
+        var orderedWindows = allWindows.Where(x => x.EndMs <= analyzedEndMs)
+            .OrderBy(x => x.StartMs).ToList();
         var positiveCet = orderedWindows.Select(x => x.ExclusiveMs).Where(x => x > 0).OrderBy(x => x).ToList();
         var highCetThreshold = positiveCet.Count == 0 ? 0 : Percentile(positiveCet, 0.90);
 
@@ -251,7 +267,11 @@ public static partial class ResultReportService
             DurationDeltaMs = durationDeltaMs,
             RecordLagMs = recordLagMs,
             FrameCount = frameTimes.Count,
+            CapturedFrameCount = parsed.Frames.Count,
+            ExcludedCaptureEndCount = excludedTailCount,
+            ExcludedCaptureEndSamples = excludedTailFrames,
             DurationSeconds = capDurationMs / 1000.0,
+            AnalyzedDurationSeconds = (analyzedEndMs - alignedFrames.Min(x => x.RelativeStartMs)) / 1000.0,
             MeanFrameMs = frameTimes.Count == 0 ? 0 : frameTimes.Average(),
             MedianFrameMs = Percentile(frameTimes, 0.50),
             P95FrameMs = Percentile(frameTimes, 0.95),

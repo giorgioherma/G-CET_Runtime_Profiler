@@ -451,7 +451,17 @@ public static partial class ResultReportService
                     frames = new
                     {
                         count = a.FrameTime.FrameCount,
+                        capturedCount = a.FrameTime.CapturedFrameCount,
+                        excludedCaptureEndCount = a.FrameTime.ExcludedCaptureEndCount,
+                        captureEndExclusionPolicy = "LAST_FIVE_VALID_CAPFRAMEX_FRAMES_REPORT_ONLY",
+                        excludedCaptureEndSamples = a.FrameTime.ExcludedCaptureEndSamples.Select(x => new
+                        {
+                            frameIndex = x.Index,
+                            startMs = Round(x.RelativeStartMs, 3),
+                            frameMs = Round(x.FrameMs, 6)
+                        }),
                         durationSeconds = Round(a.FrameTime.DurationSeconds, 3),
+                        analyzedDurationSeconds = Round(a.FrameTime.AnalyzedDurationSeconds, 3),
                         averageFps = Round(a.FrameTime.AverageFps, 3),
                         meanMs = Round(a.FrameTime.MeanFrameMs, 6),
                         medianMs = Round(a.FrameTime.MedianFrameMs, 6),
