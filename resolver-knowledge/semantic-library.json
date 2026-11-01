@@ -5240,7 +5240,7 @@
           "local function computePauseState()"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:gigcore-blackboard-once",
-        "expectedMarkerFileCount": 2,
+        "expectedMarkerFileCount": 3,
         "satisfiedAll": [
           "local __gcetGigBoards = Game.GetBlackboardSystem()",
           "__gcetGigBoards:Get(defs.UI_System)",

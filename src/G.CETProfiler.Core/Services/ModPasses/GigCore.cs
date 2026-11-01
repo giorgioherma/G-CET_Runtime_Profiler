@@ -413,6 +413,34 @@ internal static partial class SemanticInjectors
                     !tickBody.Contains("flushDue()", StringComparison.Ordinal))
                     return false;
             }
+            // The GigCore marker/NPC service pumps are an optional pair on
+            // supported older layouts. Where both original pumps exist, an
+            // init-only phone/damage marker is not complete: prove the source
+            // guard and its independently owned NPC queue getter as a unit.
+            var markerPump = source.Contains(
+                "pcall(Marker.tickAll, delta, activeGigId)",StringComparison.Ordinal);
+            var npcPump = source.Contains(
+                "pcall(NPC.tick, delta)",StringComparison.Ordinal);
+            if (markerPump && npcPump)
+            {
+                var init=source.Replace("\r\n","\n",StringComparison.Ordinal);
+                const string markerGuard =
+                    "if #Marker._bound > 0 then\n" +
+                    "    local okMk, errMk = pcall(Marker.tickAll, delta, activeGigId)";
+                const string npcGuard =
+                    "if NPC.hasPendingNeutralise() then\n" +
+                    "    local okNp, errNp = pcall(NPC.tick, delta)";
+                if (!init.Contains("-- G-CET semantic:gigcore-empty-service-pumps-v1",StringComparison.Ordinal) ||
+                    !init.Contains(markerGuard,StringComparison.Ordinal) ||
+                    !init.Contains(npcGuard,StringComparison.Ordinal))
+                    return false;
+                var npcPath=Path.Combine(ownerFolder,"core","npc.lua");
+                if (!File.Exists(npcPath)) return false;
+                var npc=File.ReadAllText(npcPath).Replace("\r\n","\n",StringComparison.Ordinal);
+                if (!npc.Contains("function NPC.hasPendingNeutralise()\n  return #pendingNeutralise > 0\nend",
+                    StringComparison.Ordinal))
+                    return false;
+            }
             var phone = Regex.IsMatch(source,
                 @"(?m)^[ \t]*local function phoneIsOpen\(\)",
                 RegexOptions.CultureInvariant);
