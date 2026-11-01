@@ -287,7 +287,7 @@ $priorV3Route=@'
     end
   end
 '@
-$priorV3Route=$priorV3Route.Replace($crlf,$nl)+$nl
+$priorV3Route=$priorV3Route.Replace($crlf,$nl).TrimEnd()+$nl
 $modernStart=$wake.IndexOf('  -- Core State(false) is an idempotent')
 $modernEnd=$wake.IndexOf('  local function tryStep(ctx, full)',$modernStart)
 if($modernStart -lt 0 -or $modernEnd -le $modernStart){throw 'Dormant route source fixture drift'}
