@@ -170,10 +170,10 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           # Native CI builds. This workflow packages the Profiler + Resolver.
-          # Pin green Phase 3 producer/consumer native build 40995476421,
-          # source 3932166064ce (native #95 method stages remain present).
-          # Experimental telemetry only; boot/gameplay NOT established by native CI.
-          gh run download 40995476421 --repo ${{ github.repository }} --name gcet-native-experimental-scalar-observations --dir native-from-ci
+          # Pin GREEN Phase 3 0-Engine pressure-discovery native #104,
+          # source ed79408c3e79335a379b2078416b4f244961a3a5.
+          # This is a verified native build; gameplay/runtime acceptance is separate.
+          gh run download 41358056913 --repo ${{ github.repository }} --name gcet-native-experimental-scalar-observations --dir native-from-ci
           if ($LASTEXITCODE -ne 0) { throw 'Failed downloading the native CI DLL.' }
           $dll = 'native-from-ci/cyber_engine_tweaks.PROFILER.dll'
           $sidecar = 'native-from-ci/SHA256.txt'
@@ -227,17 +227,17 @@ jobs:
 
           # A source-only native change is not a distributable feature. Refuse
           # to ship v2.12 with an old, hash-valid v2.11 profiler payload.
-          if ([string]$manifest.profilerNativeVersion -in @('2.12.0', '2.13.0', '2.14.0', '2.15.0', '2.15.1-scalar', '2.15.1-scalar-vm-context', '2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling', '2.15.5-callback-allocator-attribution', '2.15.6-zeroengine-source-attribution', '2.15.7-callsite-predispatch-attribution', '2.15.8-phase3-scheduler-allocation', '2.15.9-native-method-stages', '2.15.10-zeroengine-producer-attribution', '2.16.0')) {
+          if ([string]$manifest.profilerNativeVersion -in @('2.12.0', '2.13.0', '2.14.0', '2.15.0', '2.15.1-scalar', '2.15.1-scalar-vm-context', '2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling', '2.15.5-callback-allocator-attribution', '2.15.6-zeroengine-source-attribution', '2.15.7-callsite-predispatch-attribution', '2.15.8-phase3-scheduler-allocation', '2.15.9-native-method-stages', '2.15.10-zeroengine-producer-attribution', '2.16.1', '2.16.0')) {
             $payload = [IO.File]::ReadAllBytes((Resolve-Path 'payload\cyber_engine_tweaks.PROFILER.dll').Path)
             $binaryText = [Text.Encoding]::Latin1.GetString($payload)
             if (-not $binaryText.Contains('CET_Runtime_Profile_GC_Explicit.csv')) {
               throw 'Native GC explicit-call timing payload missing; refuse incomplete release.'
             }
-            if ([string]$manifest.profilerNativeVersion -in @('2.13.0', '2.14.0', '2.15.0', '2.15.1-scalar', '2.15.1-scalar-vm-context', '2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling', '2.15.5-callback-allocator-attribution', '2.15.6-zeroengine-source-attribution', '2.15.7-callsite-predispatch-attribution', '2.15.8-phase3-scheduler-allocation', '2.15.9-native-method-stages', '2.15.10-zeroengine-producer-attribution', '2.16.0') -and
+            if ([string]$manifest.profilerNativeVersion -in @('2.13.0', '2.14.0', '2.15.0', '2.15.1-scalar', '2.15.1-scalar-vm-context', '2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling', '2.15.5-callback-allocator-attribution', '2.15.6-zeroengine-source-attribution', '2.15.7-callsite-predispatch-attribution', '2.15.8-phase3-scheduler-allocation', '2.15.9-native-method-stages', '2.15.10-zeroengine-producer-attribution', '2.16.1', '2.16.0') -and
                 -not $binaryText.Contains('CET_Runtime_Profile_GC_Collector.csv')) {
               throw 'Native 2.13 collector probe is not rebuilt and hash locked; refuse incomplete release.'
             }
-            if ([string]$manifest.profilerNativeVersion -in @('2.14.0', '2.15.0', '2.15.1-scalar', '2.15.1-scalar-vm-context', '2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling', '2.15.5-callback-allocator-attribution', '2.15.6-zeroengine-source-attribution', '2.15.7-callsite-predispatch-attribution', '2.15.8-phase3-scheduler-allocation', '2.15.9-native-method-stages', '2.15.10-zeroengine-producer-attribution', '2.16.0')) {
+            if ([string]$manifest.profilerNativeVersion -in @('2.14.0', '2.15.0', '2.15.1-scalar', '2.15.1-scalar-vm-context', '2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling', '2.15.5-callback-allocator-attribution', '2.15.6-zeroengine-source-attribution', '2.15.7-callsite-predispatch-attribution', '2.15.8-phase3-scheduler-allocation', '2.15.9-native-method-stages', '2.15.10-zeroengine-producer-attribution', '2.16.1', '2.16.0')) {
               foreach ($required in @('CET_Runtime_Profile_GC_Phases.csv',
                                       'CET_Runtime_Profile_GC_SlowSteps.csv',
                                       'CET_Runtime_Profile_Lua_Allocations.csv')) {
@@ -246,7 +246,7 @@ jobs:
                 }
               }
             }
-            if ([string]$manifest.profilerNativeVersion -in @('2.15.0', '2.15.1-scalar', '2.15.1-scalar-vm-context', '2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling', '2.15.5-callback-allocator-attribution', '2.15.6-zeroengine-source-attribution', '2.15.7-callsite-predispatch-attribution', '2.15.8-phase3-scheduler-allocation', '2.15.9-native-method-stages', '2.15.10-zeroengine-producer-attribution', '2.16.0')) {
+            if ([string]$manifest.profilerNativeVersion -in @('2.15.0', '2.15.1-scalar', '2.15.1-scalar-vm-context', '2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling', '2.15.5-callback-allocator-attribution', '2.15.6-zeroengine-source-attribution', '2.15.7-callsite-predispatch-attribution', '2.15.8-phase3-scheduler-allocation', '2.15.9-native-method-stages', '2.15.10-zeroengine-producer-attribution', '2.16.1', '2.16.0')) {
               if (-not $binaryText.Contains('G_GC_TRACER_NATIVE_2_15_FINALIZER_CALL_NESTED_SCOPE_V1')) {
                 throw 'Native G-GC Tracer compiled revision marker missing; refuse stale DLL.'
               }
@@ -254,7 +254,7 @@ jobs:
                   -not $binaryText.Contains('GGC_MEGAMIND_PROVENANCE_NATIVE_2_16_V1')) {
                 throw 'Native 2.16 MEGAMIND caller provenance contract missing in rebuilt DLL.'
               }
-              if ([string]$manifest.profilerNativeVersion -in @('2.15.1-scalar', '2.15.1-scalar-vm-context', '2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling', '2.15.5-callback-allocator-attribution', '2.15.6-zeroengine-source-attribution', '2.15.7-callsite-predispatch-attribution', '2.15.8-phase3-scheduler-allocation', '2.15.9-native-method-stages', '2.15.10-zeroengine-producer-attribution')) {
+              if ([string]$manifest.profilerNativeVersion -in @('2.15.1-scalar', '2.15.1-scalar-vm-context', '2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling', '2.15.5-callback-allocator-attribution', '2.15.6-zeroengine-source-attribution', '2.15.7-callsite-predispatch-attribution', '2.15.8-phase3-scheduler-allocation', '2.15.9-native-method-stages', '2.15.10-zeroengine-producer-attribution', '2.16.1')) {
                 foreach ($required in @('CET_Runtime_Profile_Scalar_Observations.csv',
                                         'CETProfilerObserveScalar')) {
                   if (-not $binaryText.Contains($required)) {
@@ -262,7 +262,7 @@ jobs:
                   }
                 }
               }
-              if ([string]$manifest.profilerNativeVersion -in @('2.15.1-scalar-vm-context', '2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling', '2.15.5-callback-allocator-attribution', '2.15.6-zeroengine-source-attribution', '2.15.7-callsite-predispatch-attribution', '2.15.8-phase3-scheduler-allocation', '2.15.9-native-method-stages', '2.15.10-zeroengine-producer-attribution')) {
+              if ([string]$manifest.profilerNativeVersion -in @('2.15.1-scalar-vm-context', '2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling', '2.15.5-callback-allocator-attribution', '2.15.6-zeroengine-source-attribution', '2.15.7-callsite-predispatch-attribution', '2.15.8-phase3-scheduler-allocation', '2.15.9-native-method-stages', '2.15.10-zeroengine-producer-attribution', '2.16.1')) {
                 foreach ($required in @('CET_Runtime_Profile_GGC_UnscopedContexts.csv',
                                         'CET_Runtime_Profile_GGC_UnscopedTimeline.csv')) {
                   if (-not $binaryText.Contains($required)) {
@@ -270,7 +270,7 @@ jobs:
                   }
                 }
               }
-              if ([string]$manifest.profilerNativeVersion -in @('2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling', '2.15.5-callback-allocator-attribution', '2.15.6-zeroengine-source-attribution', '2.15.7-callsite-predispatch-attribution', '2.15.8-phase3-scheduler-allocation', '2.15.9-native-method-stages', '2.15.10-zeroengine-producer-attribution')) {
+              if ([string]$manifest.profilerNativeVersion -in @('2.15.2-unscoped-native-callpaths', '2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling', '2.15.5-callback-allocator-attribution', '2.15.6-zeroengine-source-attribution', '2.15.7-callsite-predispatch-attribution', '2.15.8-phase3-scheduler-allocation', '2.15.9-native-method-stages', '2.15.10-zeroengine-producer-attribution', '2.16.1')) {
                 foreach ($required in @(
                   'CET_Runtime_Profile_GGC_UnscopedShapes.csv',
                   'CET_Runtime_Profile_GGC_UnscopedBoundaries.csv',
@@ -281,7 +281,7 @@ jobs:
                     }
                 }
               }
-              if ([string]$manifest.profilerNativeVersion -in @('2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling', '2.15.5-callback-allocator-attribution', '2.15.6-zeroengine-source-attribution', '2.15.7-callsite-predispatch-attribution', '2.15.8-phase3-scheduler-allocation', '2.15.9-native-method-stages', '2.15.10-zeroengine-producer-attribution')) {
+              if ([string]$manifest.profilerNativeVersion -in @('2.15.3-unscoped-realloc-context', '2.15.4-method-time-sampling', '2.15.5-callback-allocator-attribution', '2.15.6-zeroengine-source-attribution', '2.15.7-callsite-predispatch-attribution', '2.15.8-phase3-scheduler-allocation', '2.15.9-native-method-stages', '2.15.10-zeroengine-producer-attribution', '2.16.1')) {
                  foreach ($required in @(
                      'CET_Runtime_Profile_GGC_UnscopedReallocOrigins.csv',
                      'OLD_SIZE_ZERO', 'OLD_SIZE_NONZERO',
@@ -292,7 +292,7 @@ jobs:
                    }
                  }
                }
-              if ([string]$manifest.profilerNativeVersion -in @('2.15.4-method-time-sampling', '2.15.5-callback-allocator-attribution', '2.15.6-zeroengine-source-attribution', '2.15.7-callsite-predispatch-attribution', '2.15.8-phase3-scheduler-allocation', '2.15.9-native-method-stages', '2.15.10-zeroengine-producer-attribution')) {
+              if ([string]$manifest.profilerNativeVersion -in @('2.15.4-method-time-sampling', '2.15.5-callback-allocator-attribution', '2.15.6-zeroengine-source-attribution', '2.15.7-callsite-predispatch-attribution', '2.15.8-phase3-scheduler-allocation', '2.15.9-native-method-stages', '2.15.10-zeroengine-producer-attribution', '2.16.1')) {
                 foreach ($required in @('CET_Runtime_Profile_GGC_UnscopedNativeSamples.csv',
                                          'NativeMethodHash',
                                          'CET_FUNCTION_OVERRIDE_PURE',
@@ -303,7 +303,7 @@ jobs:
                   }
                 }
               }
-              if ([string]$manifest.profilerNativeVersion -in @('2.15.5-callback-allocator-attribution', '2.15.6-zeroengine-source-attribution', '2.15.7-callsite-predispatch-attribution', '2.15.8-phase3-scheduler-allocation', '2.15.9-native-method-stages', '2.15.10-zeroengine-producer-attribution')) {
+              if ([string]$manifest.profilerNativeVersion -in @('2.15.5-callback-allocator-attribution', '2.15.6-zeroengine-source-attribution', '2.15.7-callsite-predispatch-attribution', '2.15.8-phase3-scheduler-allocation', '2.15.9-native-method-stages', '2.15.10-zeroengine-producer-attribution', '2.16.1')) {
                 foreach ($required in @('CET_Runtime_Profile_GGC_CallbackAllocatorPressure.csv',
                                         'CET_Runtime_Profile_GGC_Registrations.csv')) {
                   if (-not $binaryText.Contains($required)) {
@@ -311,7 +311,7 @@ jobs:
                   }
                 }
               }
-               if ([string]$manifest.profilerNativeVersion -in @('2.15.6-zeroengine-source-attribution', '2.15.7-callsite-predispatch-attribution', '2.15.8-phase3-scheduler-allocation', '2.15.9-native-method-stages', '2.15.10-zeroengine-producer-attribution')) {
+               if ([string]$manifest.profilerNativeVersion -in @('2.15.6-zeroengine-source-attribution', '2.15.7-callsite-predispatch-attribution', '2.15.8-phase3-scheduler-allocation', '2.15.9-native-method-stages', '2.15.10-zeroengine-producer-attribution', '2.16.1')) {
                  foreach ($required in @(
                    'CET_Runtime_Profile_ZeroEngine_SourceAttribution.csv',
                    'CET_Runtime_Profile_ZeroEngine_Callsites.csv',
@@ -321,7 +321,7 @@ jobs:
                    }
                  }
                }
-               if ([string]$manifest.profilerNativeVersion -in @('2.15.7-callsite-predispatch-attribution', '2.15.8-phase3-scheduler-allocation', '2.15.9-native-method-stages', '2.15.10-zeroengine-producer-attribution')) {
+               if ([string]$manifest.profilerNativeVersion -in @('2.15.7-callsite-predispatch-attribution', '2.15.8-phase3-scheduler-allocation', '2.15.9-native-method-stages', '2.15.10-zeroengine-producer-attribution', '2.16.1')) {
                  foreach ($required in @(
                    'CET_Runtime_Profile_LuaNative_Callsites.csv',
                    'CET_Runtime_Profile_Native_PreDispatchPressure.csv',
@@ -339,7 +339,7 @@ jobs:
                    }
                  }
                }
-               if ([string]$manifest.profilerNativeVersion -in @('2.15.8-phase3-scheduler-allocation', '2.15.9-native-method-stages', '2.15.10-zeroengine-producer-attribution')) {
+               if ([string]$manifest.profilerNativeVersion -in @('2.15.8-phase3-scheduler-allocation', '2.15.9-native-method-stages', '2.15.10-zeroengine-producer-attribution', '2.16.1')) {
                 foreach ($required in @(
                   'CET_Runtime_Profile_Scheduler_FrameworkAllocation.csv',
                   'InclusivePositiveBytes',
@@ -355,7 +355,7 @@ jobs:
                 }
               }
               # Native #95: new owner-zero method-stage raw CSV, NOT a savings claim.
-              if ([string]$manifest.profilerNativeVersion -in @('2.15.9-native-method-stages', '2.15.10-zeroengine-producer-attribution')) {
+              if ([string]$manifest.profilerNativeVersion -in @('2.15.9-native-method-stages', '2.15.10-zeroengine-producer-attribution', '2.16.1')) {
                 foreach ($required in @(
                   'CET_Runtime_Profile_Native_MethodStages.csv',
                   'PURE_ARGUMENTS',
@@ -372,7 +372,7 @@ jobs:
               }
               # Native 2.15.10 is not interchangeable with the #95 DLL.
               # Require the new compiled feature and archive files together.
-              if ([string]$manifest.profilerNativeVersion -eq '2.15.10-zeroengine-producer-attribution') {
+              if ([string]$manifest.profilerNativeVersion -in @('2.15.10-zeroengine-producer-attribution', '2.16.1')) {
                 foreach ($required in @(
                   'CET_Runtime_Profile_ZeroEngine_ProducerAttribution.csv',
                   'CET_Runtime_Profile_ZeroEngine_ConsumerCallsites.csv',
@@ -387,6 +387,32 @@ jobs:
                   if (-not ($manifest.liveResultFiles -contains $required)) {
                     throw "Native 2.15.10 archive manifest missing: $required"
                   }
+                }
+              }
+              # Native CI #104: compiled 0-Engine pressure discovery requires
+              # ALL earlier native attribution, scheduler and method-stage
+              # provenance plus the new ranked output.
+              if ([string]$manifest.profilerNativeVersion -eq '2.16.1') {
+                $nativeInfo = [Diagnostics.FileVersionInfo]::GetVersionInfo(
+                  (Resolve-Path 'payload\cyber_engine_tweaks.PROFILER.dll').Path)
+                if ($nativeInfo.FileMajorPart -ne 2 -or
+                    $nativeInfo.FileMinorPart -ne 16 -or
+                    $nativeInfo.FileBuildPart -ne 1 -or
+                    $nativeInfo.ProductVersion -ne '2.16.1' -or
+                    $nativeInfo.FileDescription -ne 'G-CET Native Runtime Profiler (CET 1.37.1)') {
+                  throw "Pinned #104 native resource identity mismatch: $($nativeInfo.FileVersion) / $($nativeInfo.ProductVersion)"
+                }
+                foreach ($required in @(
+                  'CET_Runtime_Profile_ZeroEngine_PressureCandidates.csv',
+                  'DIRECT_MOD_SOURCE_PATH',
+                  'CALLER_MOD_CONTEXT_ONLY',
+                  'BOUNDED_SAMPLED_CHILD_EXCLUSIVE_NO_RATE_EXTRAPOLATION_')) {
+                  if (-not $binaryText.Contains($required)) {
+                    throw "Pinned native #104 compiled pressure attribution marker missing: $required"
+                  }
+                }
+                if (-not ($manifest.liveResultFiles -contains 'CET_Runtime_Profile_ZeroEngine_PressureCandidates.csv')) {
+                  throw 'Native #104 ranked pressure candidate output missing from archive manifest.'
                 }
               }
               foreach ($required in @('CET_Runtime_Profile_GGC_Registrations.csv',
