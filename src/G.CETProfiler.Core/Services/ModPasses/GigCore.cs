@@ -137,6 +137,7 @@ internal static partial class SemanticInjectors
 
         bool npcChanged = false;
         text = ReduceGigCoreEmptyServicePumps(context,text,out npcChanged);
+        text = ReduceGigCoreIdleAuthoringBridge(context,text);
 
         // Phase 3 source-owned idle service. This module is optional on
         // older supported author layouts; their prior stages still compose.
@@ -169,6 +170,54 @@ internal static partial class SemanticInjectors
 
     // Same authoritative producer. No independent worker, registrar or clock.
     // Marker.bind / NPC.spawnNeutralised change these states synchronously.
+    // MapTags authoring is a separate developer-only service. The original
+    // core/bridge.lua exported enabled/show fields; its tick/draw return with
+    // zero side effects when disabled. A settings toggle changes these fields
+    // immediately. Keep GigCore's normal shared onUpdate/onDraw registration.
+    private static string ReduceGigCoreIdleAuthoringBridge(
+        SemanticPatchContext context, string input)
+    {
+        const string marker="-- G-CET semantic:gigcore-authoring-bridge-sleep-v1";
+        const string oldTick="  Bridge.tick(delta or 0)   -- MapTags authoring bridge (no-op unless enabled in settings)";
+        const string oldDraw="  Bridge.draw()   -- MapTags authoring bridge status window (no-op unless enabled)";
+        const string newTick="  "+marker+"\n  if Bridge.enabled then Bridge.tick(delta or 0) end";
+        const string newDraw="  if Bridge.enabled and Bridge.show then Bridge.draw() end";
+        bool windows=input.Contains("\r\n",StringComparison.Ordinal);
+        string source=input.Replace("\r\n","\n",StringComparison.Ordinal);
+        var bridge=context.TryReadComposedModFile(context.Owner,"core/bridge.lua");
+        if(bridge is null)
+        {
+            if(source.Contains(marker,StringComparison.Ordinal))
+                throw new InvalidOperationException("GigCore MapTags bridge stage missing author source.");
+            return input;
+        }
+        var owned=bridge.Replace("\r\n","\n",StringComparison.Ordinal);
+        bool proven=owned.Contains("local Bridge = {\n  enabled = false, show = false",StringComparison.Ordinal) &&
+            owned.Contains("function Bridge.setEnabled(on)",StringComparison.Ordinal) &&
+            owned.Contains("  Bridge.enabled = on and true or false",StringComparison.Ordinal) &&
+            owned.Contains("function Bridge.tick(dt)\n  if not Bridge.enabled then return end",StringComparison.Ordinal) &&
+            owned.Contains("function Bridge.draw()\n  if not (Bridge.enabled and Bridge.show) then return end",StringComparison.Ordinal);
+        if(source.Contains(marker,StringComparison.Ordinal))
+        {
+            if(!proven || source.Split(marker,StringSplitOptions.None).Length!=2 ||
+               !source.Contains(newTick,StringComparison.Ordinal) ||
+               !source.Contains(newDraw,StringComparison.Ordinal) ||
+               source.Contains(oldTick,StringComparison.Ordinal) ||
+               source.Contains(oldDraw,StringComparison.Ordinal))
+                throw new InvalidOperationException("GigCore completed authoring bridge source drift.");
+            return input;
+        }
+        if(!source.Contains(oldTick,StringComparison.Ordinal) &&
+           !source.Contains(oldDraw,StringComparison.Ordinal))
+            return input; // Older supported authors do not expose this tool.
+        if(!proven || source.Split(oldTick,StringSplitOptions.None).Length!=2 ||
+           source.Split(oldDraw,StringSplitOptions.None).Length!=2)
+            throw new InvalidOperationException("GigCore MapTags authoring state or call ownership drift.");
+        source=source.Replace(oldTick,newTick,StringComparison.Ordinal)
+                     .Replace(oldDraw,newDraw,StringComparison.Ordinal);
+        return windows?source.Replace("\n","\r\n",StringComparison.Ordinal):source;
+    }
+
     private static string ReduceGigCoreEmptyServicePumps(
         SemanticPatchContext context, string input, out bool npcChanged)
     {
@@ -439,6 +488,26 @@ internal static partial class SemanticInjectors
                 var npc=File.ReadAllText(npcPath).Replace("\r\n","\n",StringComparison.Ordinal);
                 if (!npc.Contains("function NPC.hasPendingNeutralise()\n  return #pendingNeutralise > 0\nend",
                     StringComparison.Ordinal))
+                    return false;
+            }
+            // Only modern GigCore editions with the developer MapTags bridge
+            // require this optional dormant-service stage; older variants
+            // retain their original source and are not made dependent on it.
+            var bridgePath=Path.Combine(ownerFolder,"core","bridge.lua");
+            if(File.Exists(bridgePath))
+            {
+                var bridge=File.ReadAllText(bridgePath).Replace("\r\n","\n",StringComparison.Ordinal);
+                bool supportsIdle=bridge.Contains(
+                    "function Bridge.tick(dt)\n  if not Bridge.enabled then return end",
+                    StringComparison.Ordinal) &&
+                    bridge.Contains(
+                    "function Bridge.draw()\n  if not (Bridge.enabled and Bridge.show) then return end",
+                    StringComparison.Ordinal);
+                if(supportsIdle &&
+                   source.Contains("Bridge.tick(delta or 0)",StringComparison.Ordinal) &&
+                   (!source.Contains("-- G-CET semantic:gigcore-authoring-bridge-sleep-v1",StringComparison.Ordinal) ||
+                    !source.Contains("if Bridge.enabled then Bridge.tick(delta or 0) end",StringComparison.Ordinal) ||
+                    !source.Contains("if Bridge.enabled and Bridge.show then Bridge.draw() end",StringComparison.Ordinal)))
                     return false;
             }
             var phone = Regex.IsMatch(source,

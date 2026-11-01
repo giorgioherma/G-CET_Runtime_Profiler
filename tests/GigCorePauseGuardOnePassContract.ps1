@@ -27,6 +27,7 @@ function Check([string]$version,[bool]$drift=$false){
   try{$zip.CopyTo($out);[IO.File]::WriteAllBytes((Join-Path $engine 'init.lua'),$out.ToArray())}finally{$out.Dispose();$zip.Dispose();$inp.Dispose()}
   $withDamage=($version -eq 'damage')
   $withPumps=($version -eq 'pumps')
+  $withBridge=($version -eq 'bridge')
   $damageSource=Join-Path $gig 'core/vehicle_damage.lua'
   if($withDamage) {
     New-Item -ItemType Directory -Force (Split-Path $damageSource -Parent)|Out-Null
@@ -78,6 +79,28 @@ end
 return NPC
 '@ | Set-Content -LiteralPath (Join-Path $core 'npc.lua') -Encoding utf8
   }
+
+  if($withBridge){
+    $core=Join-Path $gig 'core'
+    New-Item -ItemType Directory -Force $core | Out-Null
+    @'
+local Bridge = {
+  enabled = false, show = false, acc = 0,
+}
+function Bridge.setEnabled(on)
+  Bridge.enabled = on and true or false
+end
+function Bridge.tick(dt)
+  if not Bridge.enabled then return end
+  Bridge.acc = Bridge.acc + (dt or 0)
+end
+function Bridge.draw()
+  if not (Bridge.enabled and Bridge.show) then return end
+  ImGui.Text("active authoring bridge")
+end
+return Bridge
+'@ | Set-Content -LiteralPath (Join-Path $core 'bridge.lua') -Encoding utf8
+  }
   $registration=if($version -eq 'live'){'__gcetRegisterEvent_413'}else{'registerForEvent'}
   $snippet=@"
 local pausedThisFrame=false
@@ -117,6 +140,17 @@ end)
       '  if not okNp then crumb("onUpdate GUARD: NPC.tick threw: " .. tostring(errNp)) end'+
       [string][char]10+'  local okVd, errVd = pcall(VehicleDamage.tick, delta)')
   }
+
+  if($withBridge){
+    $snippet=$snippet.Replace('  Marker.tickAll(delta)',
+      '  Marker.tickAll(delta)'+[string][char]10+
+      '  Bridge.tick(delta or 0)   -- MapTags authoring bridge (no-op unless enabled in settings)')
+    $snippet=$snippet.Replace('end)'+[string][char]10,
+      'end)'+[string][char]10, [StringComparison]::Ordinal)
+    $snippet+='registerForEvent("onDraw", function()'+[string][char]10+
+      '  Bridge.draw()   -- MapTags authoring bridge status window (no-op unless enabled)'+
+      [string][char]10+'end)'+[string][char]10
+  }
   $src=Join-Path $gig 'init.lua'
   $snippet | Set-Content -LiteralPath $src -Encoding utf8
   $old=(Get-FileHash $src -Algorithm SHA256).Hash
@@ -154,6 +188,17 @@ end)
      !$text.Contains('pcall(Marker.tickAll, delta, activeGigId)') -or
      !$text.Contains('__gcetGigBoards:Get(defs.PhotoMode)')){
     throw "Unexpected GigCore frame guard output: $version"
+  }
+
+  if($withBridge){
+    if(!$text.Contains('-- G-CET semantic:gigcore-authoring-bridge-sleep-v1') -or
+       !$text.Contains('if Bridge.enabled then Bridge.tick(delta or 0) end') -or
+       !$text.Contains('if Bridge.enabled and Bridge.show then Bridge.draw() end')){
+      throw 'GigCore MapTags authoring bridge still runs while disabled'
+    }
+    if(!$text.Contains('local function __gcetGigCoreRefreshPausedFrame()')){
+      throw 'GigCore previous pause state and session-owner stage lost'
+    }
   }
   if($withPumps){
     if(!$text.Contains('-- G-CET semantic:gigcore-empty-service-pumps-v1') -or
@@ -197,4 +242,5 @@ Check 'original'
 Check 'live'
 Check 'damage'
 Check 'pumps'
+Check 'bridge'
 Check 'drift' $true
