@@ -255,3 +255,86 @@ Check 'tunnel_rescue' 'tunnel-missing-hooks-diagnostics' 'ApplyTunnelMissingHook
  '__gcetTunnelMissingHooksReported=false') 'Native TRQHooks unavailable. Native scripts need to reload.'
 Write-Host 'Six GC/idle source-safe mod stages PASS'
 
+
+# JNC Joytoy original onDraw is the top measured current draw allocator.
+# Its author ui.update() still needs to clear ui.input every frame, but
+# hidden custom hubs cannot affect choice hubs. No duplicate observers.
+$joy=Join-Path $root 'DedraJNCJoytoy'
+$joyModule=Join-Path $joy 'modules'
+New-Item -ItemType Directory -Force $joyModule | Out-Null
+$joyInit=@'
+local ui = require("modules/interactionUI")
+registerForEvent("onShutdown", function() end)
+registerForEvent("onDraw", function()
+  if shuttingDown then return end
+  if not sessionActive then return end
+
+  ui.update()
+end)
+'@
+$joyUi=@'
+local ui={hubShown=false,input=false}
+local function getDialogChoiceHubs() return {} end
+function ui.showHub() ui.hubShown=true end
+function ui.hideHub() ui.hubShown=false end
+function ui.update() -- Run ever frame to avoid unwanted changes
+    local hubs = getDialogChoiceHubs()
+
+    if ui.hubShown and ui.customHubSelected and #hubs == 0 then
+        updateSelectedHub(ui.hub.id)
+        updateSelectedIndex(ui.selectedIndex)
+    elseif ui.hubShown then
+        ui.customHubSelected = getActiveChoiceHubID() == ui.hub.id
+        local hubs = getDialogChoiceHubs()
+        if #hubs == 0 then
+            updateSelectedHub(ui.hub.id)
+            updateSelectedIndex(0)
+            ui.customHubSelected = true
+            ui.selectedIndex = 0
+        end
+    end
+    ui.input = false -- Avoid double input
+end
+
+return ui
+'@
+[IO.File]::WriteAllText((Join-Path $joy 'init.lua'),$joyInit,[Text.UTF8Encoding]::new($false))
+$joyFile=Join-Path $joyModule 'interactionUI.lua'
+[IO.File]::WriteAllText($joyFile,$joyUi,[Text.UTF8Encoding]::new($false))
+$joyMethod=$t.GetMethod('ApplyDedraJncJoytoyInactiveUiDraw',$flags)
+if(!$joyMethod){throw 'Missing JNC Joytoy source-owned UI generator'}
+$joyStaged=[Collections.Generic.Dictionary[string,byte[]]]::new([StringComparer]::OrdinalIgnoreCase)
+$joyContext=$ctor.Invoke([object[]]@([string]$root,[string]'DedraJNCJoytoy',
+  [string]'dedra-jnc-joytoy-inactive-ui-draw',$joyStaged))
+try{$joyApplied=$joyMethod.Invoke($null,[object[]]@($joyContext))}
+catch{throw "JNC Joytoy pristine original refused: $($_.Exception.InnerException.Message)"}
+$joyChanges=@($ctxT.GetProperty('Changes',[Reflection.BindingFlags]'Instance,NonPublic').GetValue($joyContext))
+if(!$joyApplied.Applied -or $joyChanges.Count -ne 1){throw 'JNC Joytoy hidden UI not generated in one source pass'}
+$joyOut=[Text.Encoding]::UTF8.GetString($joyChanges[0].Bytes)
+if(!$joyOut.Contains('__gcetDedraJncInactiveDrawV1') -or
+   !$joyOut.Contains('if not ui.hubShown then') -or
+   !$joyOut.Contains('ui.input = false -- preserve per-frame double-input latch reset') -or
+   !$joyOut.Contains('local hubs = getDialogChoiceHubs()') -or
+   !$joyOut.Contains('ui.customHubSelected = getActiveChoiceHubID() == ui.hub.id') -or
+   !$joyOut.Contains('ui.input = false -- Avoid double input')){
+  throw 'JNC Joytoy hidden/visible path or input reset lost'
+}
+if([IO.File]::ReadAllText($joyFile) -cne $joyUi){throw 'JNC Joytoy original file was modified'}
+[IO.File]::WriteAllText($joyFile,$joyOut,[Text.UTF8Encoding]::new($false))
+$joyAgain=$ctor.Invoke([object[]]@([string]$root,[string]'DedraJNCJoytoy',
+  [string]'dedra-jnc-joytoy-inactive-ui-draw',
+  [Collections.Generic.Dictionary[string,byte[]]]::new([StringComparer]::OrdinalIgnoreCase)))
+$joyAgainResult=$joyMethod.Invoke($null,[object[]]@($joyAgain))
+if($joyAgainResult.Applied -or
+   @($ctxT.GetProperty('Changes',[Reflection.BindingFlags]'Instance,NonPublic').GetValue($joyAgain)).Count -ne 0){
+  throw 'JNC Joytoy completed source was applied twice'
+}
+[IO.File]::WriteAllText($joyFile,$joyUi.Replace('local hubs = getDialogChoiceHubs()','local hubs = getUnexpectedHubs()'),[Text.UTF8Encoding]::new($false))
+$joyReject=$ctor.Invoke([object[]]@([string]$root,[string]'DedraJNCJoytoy',
+  [string]'dedra-jnc-joytoy-inactive-ui-draw',
+  [Collections.Generic.Dictionary[string,byte[]]]::new([StringComparer]::OrdinalIgnoreCase)))
+$joyRejected=$false
+try{[void]$joyMethod.Invoke($null,[object[]]@($joyReject))}
+catch{$joyRejected=$true}
+if(!$joyRejected){throw 'JNC Joytoy unknown author draw source drift was accepted'}
+Write-Host 'JNC Joytoy original hidden onDraw fastpath, visible path, input reset, idempotence, source drift PASS'

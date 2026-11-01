@@ -105,6 +105,7 @@ internal static partial class SemanticInjectors
             "questrunner-engine-worker" => ApplyQuestRunnerEngineWorker(context),
             "driveaerialvehicle" => ApplyDriveAerialVehicle(context),
             "hotscenes-ui-action-dormancy" => ApplyHotscenesAfterActionUi(context),
+            "dedra-jnc-joytoy-inactive-ui-draw" => ApplyDedraJncJoytoyInactiveUiDraw(context),
             "roulette" => ApplyRoulette(context),
             "blackjack" => ApplyBlackjack(context),
             "illegal-mechanic" => ApplyIllegalMechanic(context),

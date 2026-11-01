@@ -5873,6 +5873,67 @@
       "referenceOverrideAllowed": false
     },
     {
+      "id": "dedra-jnc-joytoy-inactive-ui-draw",
+      "identityHints": [
+        "DedraJNCJoytoy"
+      ],
+      "policyClass": "SOURCE_PROVEN_HIDDEN_HUB_ALLOCATION_FASTPATH",
+      "callbacks": [
+        {
+          "kind": "event",
+          "target": "onDraw",
+          "role": "source-owned hidden custom-hub UI"
+        }
+      ],
+      "sourceProof": {
+        "ownerAll": [
+          "function ui.update() -- Run ever frame to avoid unwanted changes",
+          "local hubs = getDialogChoiceHubs()",
+          "ui.hubShown",
+          "ui.input = false -- Avoid double input"
+        ],
+        "alreadySatisfiedMarker": "__gcetDedraJncInactiveDrawV1",
+        "expectedMarkerFileCount": 1,
+        "sourceCompletionAuthoritative": true,
+        "satisfiedAll": [
+          "__gcetDedraJncInactiveDrawV1",
+          "if not ui.hubShown then",
+          "ui.input = false -- preserve per-frame double-input latch reset"
+        ]
+      },
+      "behavior": {
+        "handler": "SEMANTIC_SOURCE_OWNED_ALLOCATION_FASTPATH",
+        "concepts": [
+          "hiddenHubNoBlackboardQuery",
+          "originalPerFrameInputLatchReset",
+          "visibleHubNativeNavigationUnchanged",
+          "originalDrawEventOwnerPreserved",
+          "genericFrameComposedBeforeSemantic"
+        ],
+        "note": "When no custom hub is visible, the original per-frame update has no effect except resetting the input latch; prevent unnecessary dialog-choice blackboard / FromVariant reads. Visible hub, gameplay activation, OnAction and native fallbacks are unchanged."
+      },
+      "generation": {
+        "enabled": true,
+        "sourceIndependentAdmission": true,
+        "patchStyle": "source-injection",
+        "shipReferenceOverride": false,
+        "requiresCurrentSourceProof": true,
+        "requiresIdempotenceMarker": true,
+        "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
+      },
+      "runtimeAdmission": {
+        "thresholdMsPerSecond": 0,
+        "measuredPeakExclusiveMsPerSecond": 0,
+        "admitted": true,
+        "evidenceStack": "CET-20261101-055039_ADDITIONAL_WORK_ON_SAME_FUCKERS_WHO_KNOWS_WHAT",
+        "rationale": "568.16s capture: 24,091 onDraw calls and 242,420 positive allocation operations in JNC Joytoy callback windows (426.66 ops/s), from hidden custom-hub UI update source. Optimizes source-proven unnecessary native reads; expected saving is unverified."
+      },
+      "catalogRole": "SEMANTIC_HOT_MOD",
+      "deliveryPolicy": "LIVE_SOURCE_INJECTION_ONLY",
+      "presencePolicy": "REQUIRE_LIVE_MOD_FOLDER",
+      "referenceOverrideAllowed": false
+    },
+    {
       "id": "hotscenes-ui-action-dormancy",
       "identityHints": [
         "hotscenes"
