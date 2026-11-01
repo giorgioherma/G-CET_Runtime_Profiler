@@ -5922,8 +5922,8 @@
         "implementationStatus": "ACTIVE_SOURCE_INJECTOR"
       },
       "runtimeAdmission": {
-        "thresholdMsPerSecond": 0,
-        "measuredPeakExclusiveMsPerSecond": 0,
+        "thresholdMsPerSecond": 1,
+        "measuredPeakExclusiveMsPerSecond": 4.424306,
         "admitted": true,
         "evidenceStack": "CET-20261101-055039_ADDITIONAL_WORK_ON_SAME_FUCKERS_WHO_KNOWS_WHAT",
         "rationale": "568.16s capture: 24,091 onDraw calls and 242,420 positive allocation operations in JNC Joytoy callback windows (426.66 ops/s), from hidden custom-hub UI update source. Optimizes source-proven unnecessary native reads; expected saving is unverified."
