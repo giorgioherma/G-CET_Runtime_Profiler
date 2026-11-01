@@ -10,18 +10,35 @@ normal = (root / ".github/workflows/native-profiler-rebuild.yml").read_text(enco
 assert 'counter->Mod == "0-Engine"' in native
 assert 'counter->Mod == "CETProfilerControls" || calls < 2' in native
 assert 'counter->Mod == "0-Engine" ||' not in native, "0-Engine deep sampling is still excluded"
-assert "MaxZeroEngineDeepRegistrations = 1" in native
+assert "MaxZeroEngineDeepRegistrations = 2" in native, "Frame and action slots must remain independent"
 assert "MaxDeepHotRegistrations = 6" in native, "Normal mod quota must remain unchanged"
 assert "ZeroEngineDeepTargetSamples = 20" in native
 assert "std::vector<Candidate> zeroEngineCandidates;" in native
 assert "zeroEngineCandidates.push_back({" in native
-assert "std::min(MaxZeroEngineDeepRegistrations," in native
+assert "MaxZeroEngineProfileEpochs = 5" in native
+assert "ZeroEngineResampleAfterNs = 90'000'000'000ULL" in native
+assert "DeepCompletedAtCaptureNs" in native
+assert 'counter->DeepCompletedAtCaptureNs.store(' in native
+assert "chosenFamilies.emplace(family, true)" in native
+assert "std::find(selectedZero.begin(), selectedZero.end()," in native
+assert "zeroEngineCandidates[i].CounterPtr->DeepSelected" not in native
+assert 'counter->DeepProfileEpoch.load(std::memory_order_relaxed) <' in native
 assert "std::min(MaxDeepHotRegistrations, candidates.size())" in native
 assert "DeepSelected.store(" in native
 assert "CET_Runtime_Profile_ZeroEngine_SourceAttribution.csv" in native
 assert "CET_Runtime_Profile_ZeroEngine_Callsites.csv" in native
 assert "CET_Runtime_Profile_ZeroEngine_ProducerAttribution.csv" in native
 assert "CET_Runtime_Profile_ZeroEngine_ConsumerCallsites.csv" in native
+assert "CET_Runtime_Profile_ZeroEngine_PressureCandidates.csv" in native
+assert "DIRECT_MOD_SOURCE_PATH" in native
+assert "CALLER_MOD_CONTEXT_ONLY" in native
+assert "FRAMEWORK_SOURCE_PATH" in native
+assert "UNRESOLVED_SOURCE" in native
+assert "BOUNDED_SAMPLED_CHILD_EXCLUSIVE_NO_RATE_EXTRAPOLATION_" in native
+assert "if (!zeroRegistration.count(row.RegistrationId))" in native
+assert "entry.OwnPositiveOps += row.SampledChildOwnPositiveOps;" in native
+assert "entry.CFunctionPositiveOps +=" in native
+assert "MaxDeepHotRegistrations = 6" in native
 assert "PHASE3_ZERO_ENGINE_PRODUCER_V1" in native
 assert 'callsite.ChildSourceFile = frame.SourceFile' in native
 assert 'callsite.SampledChildOwnPositiveBytes += ownBytes' in native
@@ -43,6 +60,7 @@ assert "CET_Runtime_Profile_ZeroEngine_SourceAttribution.csv" in normal
 assert "CET_Runtime_Profile_ZeroEngine_Callsites.csv" in normal
 assert "CET_Runtime_Profile_ZeroEngine_ProducerAttribution.csv" in normal
 assert "CET_Runtime_Profile_ZeroEngine_ConsumerCallsites.csv" in normal
+assert "CET_Runtime_Profile_ZeroEngine_PressureCandidates.csv" in normal
 assert "native-profiler-build/v2.11.0/Build-Profiler.ps1" in normal
 assert "Get-CETPEInfo.ps1" in normal
 assert "DLL_SHA256.txt" in normal
