@@ -221,6 +221,38 @@ internal static partial class SemanticInjectors
         else if (provenMusic && text.Contains("Music.update(", StringComparison.Ordinal))
             throw new InvalidOperationException(
                 "SPECTER proven music module exists but update call source drifted.");
+
+        // The authored M.update() inactive branch only flushes pending stops
+        // and clears blocked music. With owner=nil, blocked=nil and no pending
+        // stops it is a pure no-op. Preserve EVERY active chapter, stop retry,
+        // blocked-state release, missing-player and save/load path.
+        const string updateMarker = "__gcetSpecterDormantMusicUpdateV1";
+        var exactInactive = provenMusic &&
+            musicText.Contains("M.blocked=suppress and (M.owner or M.blocked) or nil",StringComparison.Ordinal) &&
+            musicText.Contains("  M.owner=nil;M.event=nil;M.elapsed=0;M.retry=0",StringComparison.Ordinal) &&
+            musicText.Contains("    if M.owner then M.stop(bus) else flush(bus) end\n    if M.blocked~=id or not playerPresent then M.blocked=nil end\n    return\n  end",StringComparison.Ordinal) &&
+            musicText.Contains("  for event in pairs(M.pending) do",StringComparison.Ordinal) &&
+            musicText.Contains("  return next(M.pending)==nil",StringComparison.Ordinal) &&
+            musicText.Contains("function M.update(delta,bus,contract,stage,state,playerPresent,arrived)",StringComparison.Ordinal);
+        const string updateGuard =
+            "  if active or Music.owner ~= nil or Music.blocked ~= nil or next(Music.pending) ~= nil then\n";
+        const string updateEnd = "\n  end -- " + updateMarker;
+        var updateCall = PreserveGenericGetters(text,
+            "Music.update(delta, (active or Music.owner ~= nil or next(Music.pending) ~= nil) and phoneBus() or nil, active and __gcetRecoveryMusicContract or nil, stage, active and \"recovery\" or \"idle\", Game.GetPlayer() ~= nil, active)");
+        var updateLine = "  " + updateCall;
+        var guardedCall = updateGuard + "  " + updateLine + updateEnd;
+        if (text.Contains(updateMarker,StringComparison.Ordinal))
+        {
+            if (!exactInactive || text.Split(guardedCall,StringSplitOptions.None).Length != 2)
+                throw new InvalidOperationException(
+                    "SPECTER dormant music-update source postconditions drifted.");
+        }
+        else if (exactInactive)
+        {
+            if(text.Split(updateLine,StringSplitOptions.None).Length != 2)
+                throw new InvalidOperationException("SPECTER author music update call drifted.");
+            text=text.Replace(updateLine,guardedCall,StringComparison.Ordinal);
+        }
         return nl == "\r\n" ? text.Replace("\n", "\r\n", StringComparison.Ordinal) : text;
     }
 
@@ -271,6 +303,16 @@ internal static partial class SemanticInjectors
             if (File.Exists(musicPath))
             {
                 var music = File.ReadAllText(musicPath);
+
+                if (music.Contains("M.blocked=suppress and (M.owner or M.blocked) or nil",
+                        StringComparison.Ordinal) &&
+                    music.Contains("    if M.owner then M.stop(bus) else flush(bus) end\n    if M.blocked~=id or not playerPresent then M.blocked=nil end\n    return\n  end",
+                        StringComparison.Ordinal) &&
+                    music.Contains("  for event in pairs(M.pending) do",StringComparison.Ordinal) &&
+                    text.Contains("Music.update(",StringComparison.Ordinal) &&
+                    (!text.Contains("__gcetSpecterDormantMusicUpdateV1",StringComparison.Ordinal) ||
+                     !text.Contains("if active or Music.owner ~= nil or Music.blocked ~= nil or next(Music.pending) ~= nil then",StringComparison.Ordinal)))
+                    return false;
                 if (music.Contains("pending={}", StringComparison.Ordinal) &&
                     music.Contains("local function flush(bus)", StringComparison.Ordinal) &&
                     music.Contains("if M.owner then M.stop(bus) else flush(bus) end",

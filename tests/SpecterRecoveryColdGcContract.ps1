@@ -28,8 +28,9 @@ local function flush(bus)
   end
   return next(M.pending)==nil
 end
-function M.stop(bus)
-  M.owner=nil
+function M.stop(bus,suppress)
+  M.blocked=suppress and (M.owner or M.blocked) or nil
+  M.owner=nil;M.event=nil;M.elapsed=0;M.retry=0
   return flush(bus)
 end
 function M.update(delta,bus,contract,stage,state,playerPresent,arrived)
@@ -37,6 +38,7 @@ function M.update(delta,bus,contract,stage,state,playerPresent,arrived)
   local active=playerPresent and id and state~="idle"
   if not active then
     if M.owner then M.stop(bus) else flush(bus) end
+    if M.blocked~=id or not playerPresent then M.blocked=nil end
     return
   end
   return id
@@ -146,6 +148,8 @@ foreach($token in @(
   'pcall(core.State.get,ns,key,default)',
   'pcall(core.Bus.getMetric,ns,key,default)',
   '__gcetSpecterIdleMusicBusV1',
+  '__gcetSpecterDormantMusicUpdateV1',
+  'if active or Music.owner ~= nil or Music.blocked ~= nil or next(Music.pending) ~= nil then',
   'Music.owner ~= nil or next(Music.pending) ~= nil',
   'if HUD.IsActive() then present("HUD update",HUD.Update) end',
   'autoStartClock>=0.75',
@@ -174,6 +178,8 @@ if($again.result.Applied -or $again.rows.Count -ne 0){
 }
 Reject ($first.Replace('pcall(core.State.get,ns,key,default)',
                        'pcall(function() return core.State.get(ns,key,default) end)')) 'metric half-reversion'
+Reject ($first.Replace('Music.blocked ~= nil or next(Music.pending) ~= nil then',
+                        'Music.blocked == nil or next(Music.pending) ~= nil then')) 'lost blocked music wake'
 Reject ($first.Replace('next(Music.pending) ~= nil',
                        'next(Music.pending) == nil')) 'lost pending-stop music guarantee'
 Reject ($original.Replace('      refresh()','      owner=nil')) 'same-frame owner wake removed'
