@@ -26,6 +26,7 @@ function Check([string]$version,[bool]$drift=$false){
   $out=[IO.MemoryStream]::new()
   try{$zip.CopyTo($out);[IO.File]::WriteAllBytes((Join-Path $engine 'init.lua'),$out.ToArray())}finally{$out.Dispose();$zip.Dispose();$inp.Dispose()}
   $withDamage=($version -eq 'damage')
+  $withPumps=($version -eq 'pumps')
   $damageSource=Join-Path $gig 'core/vehicle_damage.lua'
   if($withDamage) {
     New-Item -ItemType Directory -Force (Split-Path $damageSource -Parent)|Out-Null
@@ -53,6 +54,30 @@ end
 return VD
 '@ | Set-Content -LiteralPath $damageSource -Encoding utf8
   }
+  if($withPumps){
+    $core=Join-Path $gig 'core'
+    New-Item -ItemType Directory -Force $core|Out-Null
+    @'
+local Marker={}
+Marker._bound = {}
+function Marker.tickAll(dt, activeGigId)
+  for _,m in ipairs(Marker._bound) do m:tick(dt) end
+end
+return Marker
+'@ | Set-Content -LiteralPath (Join-Path $core 'marker.lua') -Encoding utf8
+    @'
+local NPC={}
+local pendingNeutralise = {}
+function NPC.spawnNeutralised()
+  pendingNeutralise[#pendingNeutralise + 1] = {}
+end
+function NPC.tick(dt)
+  local n = #pendingNeutralise
+  if n == 0 then return end
+end
+return NPC
+'@ | Set-Content -LiteralPath (Join-Path $core 'npc.lua') -Encoding utf8
+  }
   $registration=if($version -eq 'live'){'__gcetRegisterEvent_413'}else{'registerForEvent'}
   $snippet=@"
 local pausedThisFrame=false
@@ -79,6 +104,18 @@ end)
   if($version -eq 'live'){
     $snippet=$snippet.Replace('  local ui   = Game.GetBlackboardSystem():Get(defs.UI_System)',"  local __gcetGigBoards = Game.GetBlackboardSystem()`n  local ui   = __gcetGigBoards:Get(defs.UI_System)")
     $snippet=$snippet.Replace('  local pm = Game.GetBlackboardSystem():Get(defs.PhotoMode)','  local pm = __gcetGigBoards:Get(defs.PhotoMode)')
+  }
+  if($withPumps){
+    $snippet=$snippet.Replace('local Marker={tickAll=function() end}',
+      'local Marker={tickAll=function() end, _bound={}}'+[string][char]10+
+      'local NPC={tick=function() end}')
+    $snippet=$snippet.Replace('  local okMk, errMk = pcall(Marker.tickAll, delta, activeGigId)',
+      '  local okMk, errMk = pcall(Marker.tickAll, delta, activeGigId)'+[string][char]10+
+      '  if not okMk then crumb("onUpdate GUARD: Marker.tickAll threw: " .. tostring(errMk)) end')
+    $snippet=$snippet.Replace('  local okVd, errVd = pcall(VehicleDamage.tick, delta)',
+      '  local okNp, errNp = pcall(NPC.tick, delta)'+[string][char]10+
+      '  if not okNp then crumb("onUpdate GUARD: NPC.tick threw: " .. tostring(errNp)) end'+
+      [string][char]10+'  local okVd, errVd = pcall(VehicleDamage.tick, delta)')
   }
   $src=Join-Path $gig 'init.lua'
   $snippet | Set-Content -LiteralPath $src -Encoding utf8
@@ -118,6 +155,20 @@ end)
      !$text.Contains('__gcetGigBoards:Get(defs.PhotoMode)')){
     throw "Unexpected GigCore frame guard output: $version"
   }
+  if($withPumps){
+    if(!$text.Contains('-- G-CET semantic:gigcore-empty-service-pumps-v1') -or
+       !$text.Contains('if #Marker._bound > 0 then') -or
+       !$text.Contains('if NPC.hasPendingNeutralise() then')){
+      throw 'GigCore empty service guard missing from full original-source output'
+    }
+    $npcOut=ZipText $result.pass.ZipPath 'GigCore/core/npc.lua'
+    if(!$npcOut.Contains('function NPC.hasPendingNeutralise()') -or
+       !$npcOut.Contains('return #pendingNeutralise > 0') -or
+       !$npcOut.Contains('pendingNeutralise[#pendingNeutralise + 1]')){
+      throw 'GigCore queue wake getter missing from original-source output'
+    }
+    $npcOut|Set-Content -LiteralPath (Join-Path $gig 'core/npc.lua') -Encoding utf8
+  }
   if((Get-FileHash $src -Algorithm SHA256).Hash -ne $old){throw 'Live GigCore mutated by Resolver'}
   if($withDamage) {
     $damageOut=ZipText $result.pass.ZipPath 'GigCore/core/vehicle_damage.lua'
@@ -145,4 +196,5 @@ end)
 Check 'original'
 Check 'live'
 Check 'damage'
+Check 'pumps'
 Check 'drift' $true

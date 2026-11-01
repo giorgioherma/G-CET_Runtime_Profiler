@@ -135,6 +135,9 @@ internal static partial class SemanticInjectors
         // do NOT cache PhoneSystem across sessions or gate the phone wake.
         text = ReduceGigCorePhoneClosure(text);
 
+        bool npcChanged = false;
+        text = ReduceGigCoreEmptyServicePumps(context,text,out npcChanged);
+
         // Phase 3 source-owned idle service. This module is optional on
         // older supported author layouts; their prior stages still compose.
         bool damageChanged = false;
@@ -153,15 +156,82 @@ internal static partial class SemanticInjectors
                 context.Write(damage, damageText);
         }
 
-        if (text == original && !damageChanged)
+        if (text == original && !damageChanged && !npcChanged)
             return SemanticInjectionResult.Skip(
                 "GigCore blackboard, pause, phone and idle damage stages are already complete.");
-        context.Write(file, text);
+        if (text != original) context.Write(file, text);
         return SemanticInjectionResult.Success(
             "Reused blackboards and protected pause/phone thunks; eliminated idle " +
             "vehicle-handle/stat health polling and subscriberless coalescer work " +
             "while retaining reds event draining, active damage processing, " +
             "gig timers, markers, commands, session cleanup and reconcile.");
+    }
+
+    // Same authoritative producer. No independent worker, registrar or clock.
+    // Marker.bind / NPC.spawnNeutralised change these states synchronously.
+    private static string ReduceGigCoreEmptyServicePumps(
+        SemanticPatchContext context, string input, out bool npcChanged)
+    {
+        npcChanged=false;
+        const string marker="-- G-CET semantic:gigcore-empty-service-pumps-v1";
+        const string mOld="  local okMk, errMk = pcall(Marker.tickAll, delta, activeGigId)\n"+
+            "  if not okMk then crumb(\"onUpdate GUARD: Marker.tickAll threw: \" .. tostring(errMk)) end";
+        const string nOld="  local okNp, errNp = pcall(NPC.tick, delta)\n"+
+            "  if not okNp then crumb(\"onUpdate GUARD: NPC.tick threw: \" .. tostring(errNp)) end";
+        bool crlf=input.Contains("\r\n",StringComparison.Ordinal);
+        string source=input.Replace("\r\n","\n",StringComparison.Ordinal);
+        bool installed=source.Contains(marker,StringComparison.Ordinal);
+        bool hasMarker=source.Contains(mOld,StringComparison.Ordinal);
+        bool hasNpc=source.Contains(nOld,StringComparison.Ordinal);
+        if(!installed && !hasMarker && !hasNpc) return input;
+        if(!installed && (!hasMarker || !hasNpc))
+            throw new InvalidOperationException("GigCore partial idle pump source drift.");
+        var mk=context.FindFile("core/marker.lua",
+            "Marker._bound = {}","function Marker.tickAll(");
+        var nf=context.FindFile("core/npc.lua",
+            "local pendingNeutralise = {}","pendingNeutralise[#pendingNeutralise + 1]",
+            "function NPC.tick(dt)");
+        if(mk.Text.Split("Marker._bound = {}",StringSplitOptions.None).Length!=2)
+            throw new InvalidOperationException("GigCore marker registry ownership drift.");
+        bool nc=nf.Text.Contains("\r\n",StringComparison.Ordinal);
+        string npc=nf.Text.Replace("\r\n","\n",StringComparison.Ordinal);
+        const string getter="function NPC.hasPendingNeutralise()\n  return #pendingNeutralise > 0\nend\n\n";
+        const string tick="function NPC.tick(dt)";
+        if(!npc.Contains(getter,StringComparison.Ordinal))
+        {
+            if(npc.Contains("function NPC.hasPendingNeutralise(",StringComparison.Ordinal) ||
+               npc.Split(tick,StringSplitOptions.None).Length!=2)
+                throw new InvalidOperationException("GigCore NPC queue getter drift.");
+            string next=npc.Replace(tick,getter+tick,StringComparison.Ordinal);
+            context.Write(nf,nc?next.Replace("\n","\r\n",StringComparison.Ordinal):next);
+            npcChanged=true;
+        }
+        const string mNew="  "+marker+"\n"+
+            "  if #Marker._bound > 0 then\n"+
+            "    local okMk, errMk = pcall(Marker.tickAll, delta, activeGigId)\n"+
+            "    if not okMk then crumb(\"onUpdate GUARD: Marker.tickAll threw: \" .. tostring(errMk)) end\n"+
+            "  end";
+        const string nNew=
+            "  if NPC.hasPendingNeutralise() then\n"+
+            "    local okNp, errNp = pcall(NPC.tick, delta)\n"+
+            "    if not okNp then crumb(\"onUpdate GUARD: NPC.tick threw: \" .. tostring(errNp)) end\n"+
+            "  end";
+        if(installed)
+        {
+            if(source.Split(marker,StringSplitOptions.None).Length!=2 ||
+               !source.Contains(mNew,StringComparison.Ordinal) ||
+               !source.Contains(nNew,StringComparison.Ordinal))
+                throw new InvalidOperationException("GigCore completed empty pump source drift.");
+        }
+        else
+        {
+            if(source.Split(mOld,StringSplitOptions.None).Length!=2 ||
+               source.Split(nOld,StringSplitOptions.None).Length!=2)
+                throw new InvalidOperationException("GigCore duplicate pump owner drift.");
+            source=source.Replace(mOld,mNew,StringComparison.Ordinal)
+                         .Replace(nOld,nNew,StringComparison.Ordinal);
+        }
+        return crlf?source.Replace("\n","\r\n",StringComparison.Ordinal):source;
     }
 
     private static string ReduceGigCoreUnsubscribedDamageWork(string text)
