@@ -653,6 +653,7 @@ local function gcetRicaRuntimeSettingsSignature()
     values.siteCount = #Sites.list
     return values
 end
+
 """;
 
     private static string UpgradeRicaRuntimeSettingsCache(string input)
