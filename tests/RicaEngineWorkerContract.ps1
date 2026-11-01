@@ -130,4 +130,38 @@ foreach($piece in @(
 )) {
     if(!$owner.Contains($piece)){throw "RICA empty marker source safety proof missing: $piece"}
 }
+# Source-exact support for previously emitted RICA settings signatures.
+# A stable primitive snapshot must avoid all former 53-value table.concat work
+# while preserving retry on the next update if settings apply fails.
+$settingsUpgrade=$inject.GetMethod('UpgradeRicaRuntimeSettingsCache',$flags)
+$priorField=$inject.GetField('RicaRuntimeSignaturePrevious',$flags)
+if(!$settingsUpgrade -or !$priorField){throw 'RICA original and previous settings source proof missing'}
+$prior=[string]$priorField.GetRawConstantValue()
+$existing=$prior + @'
+function Mod.applyRuntimeSettings(force)
+    local runtimeSignature=gcetRicaRuntimeSettingsSignature()
+    if force ~= true and Mod.lastAppliedRuntimeSignature == runtimeSignature then
+        return true
+    end
+    Mod.lastAppliedRuntimeSignature = runtimeSignature
+end
+'@
+$improved=[string]$settingsUpgrade.Invoke($null,[object[]]@($existing))
+foreach($needle in @('gcetRicaRuntimeSettingsMatches(previous)',
+    'previous.siteCount ~= #Sites.list','previous.sites[2 * i - 1]',
+    'Mod.lastAppliedRuntimeSignature = gcetRicaRuntimeSettingsSignature()')){
+    if(!$improved.Contains($needle)){throw "RICA primitive snapshot upgrade incomplete: $needle"}
+}
+if($improved.Contains('return table.concat(values, ":")') -or
+   $improved.Contains('local runtimeSignature=gcetRicaRuntimeSettingsSignature()')){
+   throw 'RICA still allocates the old settings-string and table each idle second'
+}
+$repeat=[string]$settingsUpgrade.Invoke($null,[object[]]@($improved))
+if($repeat -ne $improved){throw 'RICA primitive snapshot stage re-applies on completed source'}
+$bad=$existing.Replace('return table.concat(values, ":")',
+  'return table.concat(values, "|")')
+$refused=$false
+try{[void]$settingsUpgrade.Invoke($null,[object[]]@($bad))}
+catch{$refused=$_.Exception.InnerException.Message -like '*source drift*'}
+if(!$refused){throw 'RICA unknown prior settings code was silently accepted'}
 Write-Host 'RICA six-job worker and idempotent bridge: PASS'

@@ -119,7 +119,7 @@ foreach($required in @(
   'setRuntimeWorkersActive(true)',
   'setRuntimeWorkersActive(false)',
   'Mod.presentationDistantElapsed < 30.0',
-  'Mod.presentationLastFingerprint == signature',
+  'local same = type(previous) == "table"',
   'local presentationWorkerJob, combatJob, watchdogJob = worker.attach',
   'pass4RuntimeCombatRewardJob = combatJob',
   'pass4RuntimeWatchdogJob = watchdogJob'
@@ -127,6 +127,11 @@ foreach($required in @(
   if (!$initResult.Contains($required)) {
     throw "Cyberpsychos source-owned dormant/native wake contract missing: $required"
   }
+}
+if($initResult.Contains('local signature = table.concat({') -or
+   !$initResult.Contains('if not same then') -or
+   !$initResult.Contains('Mod.presentationLastFingerprint = {')){
+   throw 'Cyberpsychos canonical generator still allocates a temporary signature per 5s idle tick'
 }
 foreach($required in @(
   'id = "cyberpsychos.runtime_combat_reward",',
