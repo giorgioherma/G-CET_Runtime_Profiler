@@ -302,7 +302,7 @@ internal static partial class SemanticInjectors
                 return false; // Referenced author music owner is missing.
             if (File.Exists(musicPath))
             {
-                var music = File.ReadAllText(musicPath);
+                var music = File.ReadAllText(musicPath).Replace("\r\n","\n",StringComparison.Ordinal);
 
                 if (music.Contains("M.blocked=suppress and (M.owner or M.blocked) or nil",
                         StringComparison.Ordinal) &&
