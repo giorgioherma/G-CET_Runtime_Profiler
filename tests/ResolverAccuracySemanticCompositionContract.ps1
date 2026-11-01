@@ -394,6 +394,38 @@ end
 return Diagnostics
 '@
 
+# RICA's marker source is a gameplay dependency of its primary author
+# module; include an original-shaped module in this synthetic stack rather
+# than treating an omitted native-state dependency as optional.
+Write-ModFile 'repeatable_increased_criminal_activity' 'modules/mappins.lua' @'
+local Mappins = { owned = {}, registered = 0, discovered = 0, lastSummary = nil }
+function Mappins.discover(sites) Mappins.discovered = #sites.list end
+function Mappins.sync(system, sites)
+    if not system then return end
+    if Mappins.discovered ~= #sites.list then Mappins.discover(sites) end
+    local active = 0
+    for _, site in ipairs(sites.list) do
+        local shouldExist = false
+        pcall(function() shouldExist = system:GetStatus(site.id) == 1 end)
+        if shouldExist then active = active + 1 end
+        if shouldExist and not Mappins.owned[site.id] then
+            Mappins.owned[site.id] = { id = site.id }
+        elseif not shouldExist and Mappins.owned[site.id] then
+            Mappins.owned[site.id] = nil
+        end
+    end
+    Mappins.registered = 0
+    for _ in pairs(Mappins.owned) do Mappins.registered = Mappins.registered + 1 end
+    Mappins.schedulerActive = active
+end
+function Mappins.clear()
+    Mappins.owned = {}
+    Mappins.registered = 0
+    Mappins.lastSummary = nil
+end
+return Mappins
+'@
+
 Write-ModFile 'Dedka Auto Shop' 'init.lua' @'
 local ui={update=function() end}
 local state={showing=false,atEntrance=false,atEntrance2=false,atShopExit=false,phase="root"}
