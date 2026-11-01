@@ -486,8 +486,8 @@ public:
     static constexpr uint64_t GcTracerRebalanceNs = 5'000'000'000ULL;
     static constexpr uint64_t DeepRebalanceNs = 1'000'000'000ULL;
     static constexpr size_t MaxDeepHotRegistrations = 6;
-    // One independent bounded sampling slot for 0-Engine; it cannot evict
-    // the normal six-mod hotset. Only active during an explicit capture.
+    // Two bounded 0-Engine sampling slots (independent callback families);
+    // they cannot evict the normal six-mod hotset. Capture-gated only.
     static constexpr size_t MaxZeroEngineDeepRegistrations = 2;
     static constexpr uint64_t ZeroEngineDeepTargetSamples = 20;
     static constexpr uint32_t MaxZeroEngineProfileEpochs = 5;
@@ -4993,8 +4993,8 @@ private:
 
             // Prior versions excluded 0-Engine entirely. That prevented the
             // deep function/line/callsite trace from explaining its aggregate
-            // cost. Reserve one bounded callback slot without consuming any
-            // of the six normal user-mod hotset slots.
+            // cost. Reserve two bounded family-diverse callback slots without
+            // consuming any of the six normal user-mod hotset slots.
             if (counter->Mod == "0-Engine")
             {
                 const double maxMs = static_cast<double>(
@@ -5119,7 +5119,14 @@ private:
         {
             if (selectedZero.size() >= MaxZeroEngineDeepRegistrations) break;
             const auto* c = candidate.CounterPtr;
-            const std::string family = c->Kind + "\x1f" + c->Target;
+            // Group by real framework ingress family, not one registration's
+            // exact string. Before/after OnAction subscribers are one native
+            // method family; frame updates and drawing remain separate.
+            const std::string family =
+                c->Target.find("OnAction") != std::string::npos ? "action" :
+                c->Target.find("onUpdate") != std::string::npos ? "update" :
+                c->Target.find("onDraw") != std::string::npos ? "draw" :
+                c->Kind;
             if (!chosenFamilies.emplace(family, true).second) continue;
             selectedZero.push_back(candidate.CounterPtr);
         }
