@@ -660,9 +660,11 @@ end
     {
         bool crlf=input.Contains("\r\n",StringComparison.Ordinal);
         var source=input.Replace("\r\n","\n",StringComparison.Ordinal);
+        var prior=RicaRuntimeSignaturePrevious.Replace("\r\n","\n",StringComparison.Ordinal);
+        var current=RicaRuntimeSignatureCurrent.Replace("\r\n","\n",StringComparison.Ordinal);
         if(source.Contains("local function gcetRicaRuntimeSettingsMatches(previous)",StringComparison.Ordinal))
         {
-            if(source.Split(RicaRuntimeSignatureCurrent,StringSplitOptions.None).Length!=2 ||
+            if(source.Split(current,StringSplitOptions.None).Length!=2 ||
                !source.Contains("    if force ~= true and gcetRicaRuntimeSettingsMatches(Mod.lastAppliedRuntimeSignature) then",StringComparison.Ordinal) ||
                !source.Contains("    Mod.lastAppliedRuntimeSignature = gcetRicaRuntimeSettingsSignature()",StringComparison.Ordinal))
                 throw new InvalidOperationException("RICA primitive settings cache source drift.");
@@ -670,11 +672,11 @@ end
         }
         if(!source.Contains("local function gcetRicaRuntimeSettingsSignature()",StringComparison.Ordinal))
             return input;
-        if(source.Split(RicaRuntimeSignaturePrevious,StringSplitOptions.None).Length!=2 ||
+        if(source.Split(prior,StringSplitOptions.None).Length!=2 ||
            source.Split("    local runtimeSignature=gcetRicaRuntimeSettingsSignature()\n    if force ~= true and Mod.lastAppliedRuntimeSignature == runtimeSignature then",StringSplitOptions.None).Length!=2 ||
            source.Split("    Mod.lastAppliedRuntimeSignature = runtimeSignature",StringSplitOptions.None).Length!=2)
             throw new InvalidOperationException("RICA prior generated runtime settings signature source drift.");
-        source=source.Replace(RicaRuntimeSignaturePrevious,RicaRuntimeSignatureCurrent,StringComparison.Ordinal)
+        source=source.Replace(prior,current,StringComparison.Ordinal)
             .Replace("    local runtimeSignature=gcetRicaRuntimeSettingsSignature()\n    if force ~= true and Mod.lastAppliedRuntimeSignature == runtimeSignature then","    if force ~= true and gcetRicaRuntimeSettingsMatches(Mod.lastAppliedRuntimeSignature) then",StringComparison.Ordinal)
             .Replace("    Mod.lastAppliedRuntimeSignature = runtimeSignature","    Mod.lastAppliedRuntimeSignature = gcetRicaRuntimeSettingsSignature()",StringComparison.Ordinal);
         return crlf?source.Replace("\n","\r\n",StringComparison.Ordinal):source;
@@ -696,7 +698,7 @@ end
            s.Split(detach,StringSplitOptions.None).Length!=2)
             throw new InvalidOperationException(
                 "RICA author settings state/apply/attachment transitions do not prove safe memoization.");
-        var signature=RicaRuntimeSignatureCurrent;
+        var signature=RicaRuntimeSignatureCurrent.Replace("\r\n","\n",StringComparison.Ordinal);
         s=s.Replace(fields,
             "    lastScheduleSignature = nil,\n"+
             "    lastAppliedRuntimeSignature = nil,\n"+
