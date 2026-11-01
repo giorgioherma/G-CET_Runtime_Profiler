@@ -123,9 +123,35 @@ internal static partial class SemanticInjectors
             if(!HasDedraThirdPersonCombatAuthorBridge(source))
                 throw new InvalidOperationException("Dedra V3 bridge drift or duplicate update owner.");
             if(current==canonical)
-                return SemanticInjectionResult.Skip("Dedra shared scheduler and external worker complete.");
+                return SemanticInjectionResult.Skip("Dedra shared scheduler and confirmed-idle dormant worker complete.");
             if(current is not null)
-                throw new InvalidOperationException("Dedra V3 owned coordinator drift; refuse replacement.");
+            {
+                // Recognize the exact previously emitted V3 quiet worker, not
+                // arbitrary source drift. Upgrade through THIS producer only.
+                const string priorRoute=@"  local function route()
+    local active = wantFast()
+    local nextMode = active and ""active"" or ""quiet""
+    if mode == nextMode then return end
+    mode = nextMode
+    if active then
+      if slow then slow.Pause() end
+      if fast then fast.Resume() end
+    else
+      if fast then fast.Pause() end
+      if slow then slow.Resume() end
+    end
+  end
+";
+                var begin=canonical.IndexOf("  -- Core State(false) is an idempotent",StringComparison.Ordinal);
+                var end=begin<0 ? -1 : canonical.IndexOf("  local function tryStep(ctx, full)",begin,StringComparison.Ordinal);
+                if(begin<0 || end<=begin)
+                    throw new InvalidOperationException("Dedra dormant route generation drift.");
+                var priorCanonical=canonical[..begin]+priorRoute+canonical[end..];
+                if(current!=priorCanonical)
+                    throw new InvalidOperationException("Dedra V3 owned coordinator drift; refuse replacement.");
+                context.WriteCoordinator(workerFile,canonical);
+                return SemanticInjectionResult.Success("Upgraded previous V3 quiet audit to confirmed idle detachment.");
+            }
             context.WriteCoordinator(workerFile,canonical);
             return SemanticInjectionResult.Success("Restored missing Dedra-owned scheduler worker.");
         }
@@ -376,7 +402,8 @@ end
             "all author step/REDscript maintenance remains, with event wake and no late native event registration.");
     }
     // Scheduler-only runtime; module file-load performs no native/API calls.
-    // REDscript/author reconciliation still runs at 0.25s in quiet FPP.
+    // REDscript/author reconciliation retries at 0.25s only while Core and
+    // both native releases are unconfirmed; fully proven FPP sleeps.
     private const string WorkerV3 = @"-- __gcetDedraSharedScheduleV3: one 0-Engine-owned driver, two exclusive lanes
 local M = {}
 function M.Install(Dedra, step)
@@ -422,17 +449,28 @@ function M.Install(Dedra, step)
   local function wantFast()
     return fastReason() ~= nil
   end
+  -- Core State(false) is an idempotent readiness/fact reconciliation,
+  -- not a heartbeat. Do not park until Core and both native releases agree.
+  local function idleConfirmed()
+    return linked and bridge and api and Dedra.core == 1 and
+      Dedra.mode == ""first"" and Dedra.on == false and
+      Dedra.armSent == false and not debts()
+  end
   local function route()
     local active = wantFast()
-    local nextMode = active and ""active"" or ""quiet""
+    local nextMode = active and ""active"" or
+      (idleConfirmed() and ""dormant"" or ""quiet"")
     if mode == nextMode then return end
     mode = nextMode
     if active then
       if slow then slow.Pause() end
       if fast then fast.Resume() end
-    else
+    elseif nextMode == ""quiet"" then
       if fast then fast.Pause() end
       if slow then slow.Resume() end
+    else
+      if fast then fast.Pause() end
+      if slow then slow.Pause() end
     end
   end
   local function tryStep(ctx, full)

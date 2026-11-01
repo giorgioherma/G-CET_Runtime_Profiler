@@ -62,6 +62,7 @@ local function harness(opts)
     -- A real author step reconciles and releases RESET states.
     if opts.autoSettle~=false then
       addon.on=false;addon.armSent=false;addon.standIn=""
+      addon.core=(opts.coreUnready and 0 or 1); addon.mode="first"
     end
   end)
   local function tick(dt)
@@ -123,6 +124,44 @@ do
   t.stop()
 end
 
+-- Ordinary FPP combat/aim/weapon events must not revive the full author step.
+do
+  local t=harness()
+  t.start()
+  t.run(12,0.1)
+  check(t.diagnostics().mode=="dormant","FPP startup failed to detach both workers")
+  local prior=t.calls()
+  for i=1,100 do
+    t.engineEvent("WeaponStateChanged")
+    t.engineEvent("AimStateChanged")
+    t.engineEvent("CombatStateChanged")
+    t.event("overrideChanged")
+    t.tick(0.05)
+  end
+  check(t.calls()==prior and t.diagnostics().mode=="dormant" and
+    not t.diagnostics().quietJob and not t.diagnostics().activeJob,
+    "routine FPP combat reactivated the full Dedra author step")
+  t.addon.on=nil;t.addon.armSent=nil
+  t.module.Signal("attach")
+  check(t.diagnostics().mode=="quiet" and t.diagnostics().quietJob,
+    "new player attachment did not restore required unconfirmed recovery")
+  t.run(12,0.1)
+  check(t.diagnostics().mode=="dormant",
+    "Core/arm recovery never returned to physical sleep")
+  t.stop()
+end
+
+-- Missing/unready REDscript Core may not be misclassified as confirmed idle.
+do
+  local t=harness({coreUnready=true})
+  t.start()
+  t.run(20,0.1)
+  local d=t.diagnostics()
+  check(d.mode=="quiet" and d.quietJob and d.quietCalls>0,
+    "unready Core lost the original conservative audit")
+  t.stop()
+end
+
 -- A *confirmed active* REDscript/animation hold, unlike nil, must keep
 -- full-frame cleanup until the author marks it released.
 do
@@ -149,15 +188,13 @@ do
   check(t.nativeCount()==0,"Dedra registered native callback during onInit")
   t.run(12,0.1)
   local d=t.diagnostics()
-  check(d.mode=="quiet" and not d.activeJob and d.quietJob,
-    "steady FPP with completed REDscript cleanup did not park active lane")
+  check(d.mode=="dormant" and not d.activeJob and not d.quietJob,
+    "confirmed FPP still executes the original full quiet worker")
   local before=t.calls()
-  t.run(2,0.1)
-  check(t.calls()-before<=1,"quiet FPP performed per-frame combat work")
-  t.run(3,0.1)
-  check(t.calls()>before,"quiet FPP dropped necessary REDscript reconciliation")
+  t.run(20,0.1)
+  check(t.calls()==before,"confirmed dormant FPP executed author reconciliation")
   local slowCount=t.diagnostics().quietCalls
-  check(slowCount>0,"quiet maintenance never executed")
+  check(slowCount>0,"initial Core reconciliation was omitted")
   t.setRequested(true)
   t.event("perspectiveChanged")
   check(t.diagnostics().activeJob and not t.diagnostics().quietJob,
@@ -174,7 +211,7 @@ do
   t.addon.takeover=false
   t.engineEvent("WeaponStateChanged")
   t.run(15,0.1)
-  check(t.diagnostics().mode=="quiet","event wake never settled into FPP")
+  check(t.diagnostics().mode=="dormant","event wake never settled into dormant FPP")
   t.stop()
   check(not t.diagnostics().activeJob and not t.diagnostics().quietJob,
     "shutdown left scheduler jobs running")
@@ -224,7 +261,7 @@ do
   t.setRequested(false)
   t.engineEvent("AimStateChanged")
   t.run(15,0.1)
-  check(t.diagnostics().mode=="quiet",
+  check(t.diagnostics().mode=="dormant",
     "explicit FPP request did not release TPP combat cadence")
   t.stop()
 end
@@ -239,7 +276,7 @@ do
     t.diagnostics().activeReason=="explicit-toggle-settle",
     "ITP user-toggle signal did not bridge transient camera state")
   t.run(15,0.1)
-  check(t.diagnostics().mode=="quiet" and
+  check(t.diagnostics().mode=="dormant" and
     t.diagnostics().signals.toggle==1,
     "explicit camera transition failed to settle back into FPP")
   t.stop()
@@ -258,7 +295,7 @@ do
   t.setTransitioning(false)
   t.event("transitionEnd")
   t.run(12,0.1)
-  check(t.diagnostics().mode=="quiet","completed camera transition stayed active")
+  check(t.diagnostics().mode=="dormant","completed camera transition stayed active")
   t.setMode("unknown")
   t.event("perspectiveChanged")
   check(t.diagnostics().activeJob and
@@ -299,4 +336,4 @@ do
   check(t.nativeCount()==0,"worker attempted crashing late registration fallback")
 end
 
-print("Dedra shared schedule runtime: FPP quiet 0.25s, full TPP wake, cleanup, REDscript audit, fallback and zero late native registrations PASS")
+print("Dedra runtime: confirmed FPP parked; unready Core retries; TPP and lifecycle wake PASS")

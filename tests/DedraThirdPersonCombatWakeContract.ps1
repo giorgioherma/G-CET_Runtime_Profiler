@@ -233,7 +233,10 @@ foreach($token in @(
   'AimStateChanged','WeaponStateChanged','UpperBodyStateChanged',
   'CombatStateChanged', 'PlayerReady','PlayerInvalidated',
   'function M.Start()', 'function M.Stop()', 'function M.Signal(proof, event)',
-  'pcall(step, dt)', 'tryStep(ctx,false)', 'tryStep(ctx,true)')) {
+  'pcall(step, dt)', 'tryStep(ctx,false)', 'tryStep(ctx,true)',
+  'local function idleConfirmed()', 'Dedra.core == 1',
+  'Dedra.on == false', 'Dedra.armSent == false',
+  'if slow then slow.Pause() end')) {
   if(!$wake.Contains($token)){throw "Dedra scheduler or core maintenance missing: $token"}
 }
 if($lua.Contains('Dedra.__gcetWakeController.Register()') -or
@@ -268,6 +271,36 @@ $rebuild=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $lua
 if(!$rebuild.Applied -or $rebuild.Changes.Count -ne 1 -or
    $rebuild.Changes[0].RelativeFile -notlike '*/GCET_Semantic/dedra_camera_wake.lua'){
   throw 'Missing V3 worker could not regenerate without changing completed Lua'}
+[IO.File]::WriteAllText($workerPath,$wake,[Text.UTF8Encoding]::new($false))
+$priorV3Route=@'
+  local function route()
+    local active = wantFast()
+    local nextMode = active and "active" or "quiet"
+    if mode == nextMode then return end
+    mode = nextMode
+    if active then
+      if slow then slow.Pause() end
+      if fast then fast.Resume() end
+    else
+      if fast then fast.Pause() end
+      if slow then slow.Resume() end
+    end
+  end
+'@
+$priorV3Route=$priorV3Route.Replace($crlf,$nl)+$nl
+$modernStart=$wake.IndexOf('  -- Core State(false) is an idempotent')
+$modernEnd=$wake.IndexOf('  local function tryStep(ctx, full)',$modernStart)
+if($modernStart -lt 0 -or $modernEnd -le $modernStart){throw 'Dormant route source fixture drift'}
+$priorV3Wake=$wake.Substring(0,$modernStart)+$priorV3Route+$wake.Substring($modernEnd)
+[IO.File]::WriteAllText($workerPath,$priorV3Wake,[Text.UTF8Encoding]::new($false))
+$script:dedraUpgradeCase='previous V3 quiet worker'
+$priorV3Upgrade=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $lua $addon -StageInput
+$priorV3Change=@($priorV3Upgrade.Changes|Where-Object{$_.RelativeFile -like '*/GCET_Semantic/dedra_camera_wake.lua'})
+if(!$priorV3Upgrade.Applied -or $priorV3Upgrade.Changes.Count -ne 1 -or
+   $priorV3Change.Count -ne 1 -or
+   [Text.Encoding]::UTF8.GetString($priorV3Change[0].Bytes).Replace($crlf,$nl) -ne $wake){
+  throw 'Previous complete V3 quiet worker was not upgraded in its author generator'
+}
 [IO.File]::WriteAllText($workerPath,$wake,[Text.UTF8Encoding]::new($false))
 $drift=$wake.Replace('pcall(step, dt)','pcall(step, nil)')
 [IO.File]::WriteAllText($workerPath,$drift,[Text.UTF8Encoding]::new($false))
