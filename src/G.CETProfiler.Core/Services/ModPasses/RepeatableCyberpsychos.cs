@@ -152,18 +152,20 @@ internal static partial class SemanticInjectors
             end
 """;
         var normalized=input.Replace("\r\n","\n",StringComparison.Ordinal);
-        if(normalized.Contains(newBlock,StringComparison.Ordinal))
+        var previous=oldBlock.Replace("\r\n","\n",StringComparison.Ordinal);
+        var current=newBlock.Replace("\r\n","\n",StringComparison.Ordinal);
+        if(normalized.Contains(current,StringComparison.Ordinal))
         {
-            if(normalized.Split(newBlock,StringSplitOptions.None).Length!=2 ||
+            if(normalized.Split(current,StringSplitOptions.None).Length!=2 ||
                normalized.Contains("local signature = table.concat({",StringComparison.Ordinal))
                 throw new InvalidOperationException("Cyberpsychos presentation signature stage drift.");
             return input;
         }
         if(!normalized.Contains("local function presentationTick()",StringComparison.Ordinal))
             return input;
-        if(normalized.Split(oldBlock,StringSplitOptions.None).Length!=2)
+        if(normalized.Split(previous,StringSplitOptions.None).Length!=2)
             throw new InvalidOperationException("Cyberpsychos previous presentation signature is not source-proven.");
-        var changed=normalized.Replace(oldBlock,newBlock,StringComparison.Ordinal);
+        var changed=normalized.Replace(previous,current,StringComparison.Ordinal);
         return input.Contains("\r\n",StringComparison.Ordinal)
             ? changed.Replace("\n","\r\n",StringComparison.Ordinal) : changed;
     }
