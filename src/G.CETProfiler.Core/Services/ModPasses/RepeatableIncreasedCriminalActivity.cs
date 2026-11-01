@@ -31,9 +31,12 @@ internal static partial class SemanticInjectors
                     throw new InvalidOperationException(
                         "RICA pristine source contains six-lane marker without its owned scheduler worker.");
             }
-            if (ComposeRicaEmptyMarkerWork(context))
+            var revised=UpgradeRicaRuntimeSettingsCache(liveFile.Text);
+            if(revised!=liveFile.Text) context.Write(liveFile,revised);
+            var markers=ComposeRicaEmptyMarkerWork(context);
+            if(revised!=liveFile.Text || markers)
                 return SemanticInjectionResult.Success(
-                    "RICA completed PASS4: skipped unnecessary empty map scans; unchanged native timing.");
+                    "RICA complete PASS4: eliminates idle settings materialization and empty marker scans.");
             return SemanticInjectionResult.Skip("RICA current live PASS4 already provides multi-rate 0-Engine scheduling; preserve existing source.");
         }
 
@@ -552,23 +555,9 @@ end
         context.Write(file,crlf?merged.Replace("\n","\r\n",StringComparison.Ordinal):merged);
     }
 
-    private static string ComposeRicaRuntimeSettingsSignature(string source)
-    {
-        var crlf=source.Contains("\r\n",StringComparison.Ordinal);
-        var s=source.Replace("\r\n","\n",StringComparison.Ordinal);
-        const string fields="    lastScheduleSignature = nil,\n    playerAttached = false,";
-        const string fn="function Mod.applyRuntimeSettings()\n    local system = Bridge.system()\n    if not system then return false end\n";
-        const string success="    Mod.lastSettingsError = nil\n\n    local signature = ";
-        const string stateCall="    Mod.applyRuntimeSettings()\n    if not Mod.playerAttached then";
-        const string detach="            Mod.playerAttached = false\n        end\n        return\n    end";
-        if(s.Split(fields,StringSplitOptions.None).Length!=2 ||
-           s.Split(fn,StringSplitOptions.None).Length!=2 ||
-           s.Split(success,StringSplitOptions.None).Length!=2 ||
-           s.Split(stateCall,StringSplitOptions.None).Length!=2 ||
-           s.Split(detach,StringSplitOptions.None).Length!=2)
-            throw new InvalidOperationException(
-                "RICA author settings state/apply/attachment transitions do not prove safe memoization.");
-        const string signature= """
+    // Previous emitted exact source is a supported input, never required
+    // to generate the optimization from untouched authored source.
+    private const string RicaRuntimeSignaturePrevious = """
 local function gcetRicaRuntimeSettingsSignature()
     local settings = Mod.settings
     local schedule, combat, general = settings.schedule, settings.combat, settings.general
@@ -593,6 +582,120 @@ local function gcetRicaRuntimeSettingsSignature()
 end
 
 """;
+    private const string RicaRuntimeSignatureCurrent = """
+local function gcetRicaRuntimeSettingsMatches(previous)
+    if type(previous) ~= "table" then return false end
+    local settings = Mod.settings
+    local schedule, combat, general = settings.schedule, settings.combat, settings.general
+    if previous[1] ~= schedule.enabled then return false end
+    if previous[2] ~= schedule.poolSize then return false end
+    if previous[3] ~= schedule.cooldownHours then return false end
+    if previous[4] ~= schedule.rosterPercent then return false end
+    if previous[5] ~= schedule.reinforcements then return false end
+    if previous[6] ~= schedule.cleanupSeconds then return false end
+    if previous[7] ~= schedule.cleanupDistance then return false end
+    if previous[8] ~= general.changeMapMarkerColor then return false end
+    if previous[9] ~= combat.heightenedAwareness then return false end
+    if previous[10] ~= combat.regularHealth then return false end
+    if previous[11] ~= combat.regularDamage then return false end
+    if previous[12] ~= combat.regularArmor then return false end
+    if previous[13] ~= combat.regularQuickhack then return false end
+    if previous[14] ~= combat.bossHealth then return false end
+    if previous[15] ~= combat.bossDamage then return false end
+    if previous[16] ~= combat.bossArmor then return false end
+    if previous[17] ~= combat.bossQuickhack then return false end
+    if previous[18] ~= combat.growthPerClear then return false end
+    if previous[19] ~= combat.growthCap then return false end
+    if type(previous.sites) ~= "table" or previous.siteCount ~= #Sites.list then return false end
+    for i, site in ipairs(Sites.list) do
+        local config = settings.sites[site.id]
+        if previous.sites[2 * i - 1] ~= config.enabled
+            or previous.sites[2 * i] ~= config.cooldownOverrideHours then
+            return false
+        end
+    end
+    return true
+end
+
+local function gcetRicaRuntimeSettingsSignature()
+    -- Capture a new primitive snapshot only after settings have been applied.
+    -- Steady gameplay compares primitives without tables or strings.
+    local settings = Mod.settings
+    local schedule, combat, general = settings.schedule, settings.combat, settings.general
+    local values = {
+        schedule.enabled,
+        schedule.poolSize,
+        schedule.cooldownHours,
+        schedule.rosterPercent,
+        schedule.reinforcements,
+        schedule.cleanupSeconds,
+        schedule.cleanupDistance,
+        general.changeMapMarkerColor,
+        combat.heightenedAwareness,
+        combat.regularHealth,
+        combat.regularDamage,
+        combat.regularArmor,
+        combat.regularQuickhack,
+        combat.bossHealth,
+        combat.bossDamage,
+        combat.bossArmor,
+        combat.bossQuickhack,
+        combat.growthPerClear,
+        combat.growthCap
+    }
+    local sites = {}
+    for i, site in ipairs(Sites.list) do
+        local config = settings.sites[site.id]
+        sites[2 * i - 1] = config.enabled
+        sites[2 * i] = config.cooldownOverrideHours
+    end
+    values.sites = sites
+    values.siteCount = #Sites.list
+    return values
+end
+""";
+
+    private static string UpgradeRicaRuntimeSettingsCache(string input)
+    {
+        bool crlf=input.Contains("\r\n",StringComparison.Ordinal);
+        var source=input.Replace("\r\n","\n",StringComparison.Ordinal);
+        if(source.Contains("local function gcetRicaRuntimeSettingsMatches(previous)",StringComparison.Ordinal))
+        {
+            if(source.Split(RicaRuntimeSignatureCurrent,StringSplitOptions.None).Length!=2 ||
+               !source.Contains("    if force ~= true and gcetRicaRuntimeSettingsMatches(Mod.lastAppliedRuntimeSignature) then",StringComparison.Ordinal) ||
+               !source.Contains("    Mod.lastAppliedRuntimeSignature = gcetRicaRuntimeSettingsSignature()",StringComparison.Ordinal))
+                throw new InvalidOperationException("RICA primitive settings cache source drift.");
+            return input;
+        }
+        if(!source.Contains("local function gcetRicaRuntimeSettingsSignature()",StringComparison.Ordinal))
+            return input;
+        if(source.Split(RicaRuntimeSignaturePrevious,StringSplitOptions.None).Length!=2 ||
+           source.Split("    local runtimeSignature=gcetRicaRuntimeSettingsSignature()\n    if force ~= true and Mod.lastAppliedRuntimeSignature == runtimeSignature then",StringSplitOptions.None).Length!=2 ||
+           source.Split("    Mod.lastAppliedRuntimeSignature = runtimeSignature",StringSplitOptions.None).Length!=2)
+            throw new InvalidOperationException("RICA prior generated runtime settings signature source drift.");
+        source=source.Replace(RicaRuntimeSignaturePrevious,RicaRuntimeSignatureCurrent,StringComparison.Ordinal)
+            .Replace("    local runtimeSignature=gcetRicaRuntimeSettingsSignature()\n    if force ~= true and Mod.lastAppliedRuntimeSignature == runtimeSignature then","    if force ~= true and gcetRicaRuntimeSettingsMatches(Mod.lastAppliedRuntimeSignature) then",StringComparison.Ordinal)
+            .Replace("    Mod.lastAppliedRuntimeSignature = runtimeSignature","    Mod.lastAppliedRuntimeSignature = gcetRicaRuntimeSettingsSignature()",StringComparison.Ordinal);
+        return crlf?source.Replace("\n","\r\n",StringComparison.Ordinal):source;
+    }
+
+    private static string ComposeRicaRuntimeSettingsSignature(string source)
+    {
+        var crlf=source.Contains("\r\n",StringComparison.Ordinal);
+        var s=source.Replace("\r\n","\n",StringComparison.Ordinal);
+        const string fields="    lastScheduleSignature = nil,\n    playerAttached = false,";
+        const string fn="function Mod.applyRuntimeSettings()\n    local system = Bridge.system()\n    if not system then return false end\n";
+        const string success="    Mod.lastSettingsError = nil\n\n    local signature = ";
+        const string stateCall="    Mod.applyRuntimeSettings()\n    if not Mod.playerAttached then";
+        const string detach="            Mod.playerAttached = false\n        end\n        return\n    end";
+        if(s.Split(fields,StringSplitOptions.None).Length!=2 ||
+           s.Split(fn,StringSplitOptions.None).Length!=2 ||
+           s.Split(success,StringSplitOptions.None).Length!=2 ||
+           s.Split(stateCall,StringSplitOptions.None).Length!=2 ||
+           s.Split(detach,StringSplitOptions.None).Length!=2)
+            throw new InvalidOperationException(
+                "RICA author settings state/apply/attachment transitions do not prove safe memoization.");
+        var signature=RicaRuntimeSignatureCurrent;
         s=s.Replace(fields,
             "    lastScheduleSignature = nil,\n"+
             "    lastAppliedRuntimeSignature = nil,\n"+
@@ -601,13 +704,12 @@ end
             "function Mod.applyRuntimeSettings(force)\n"+
             "    local system = Bridge.system()\n"+
             "    if not system then return false end\n"+
-            "    local runtimeSignature=gcetRicaRuntimeSettingsSignature()\n"+
-            "    if force ~= true and Mod.lastAppliedRuntimeSignature == runtimeSignature then\n"+
+            "    if force ~= true and gcetRicaRuntimeSettingsMatches(Mod.lastAppliedRuntimeSignature) then\n"+
             "        return true\n"+
             "    end\n",StringComparison.Ordinal);
         s=s.Replace(success,
             "    Mod.lastSettingsError = nil\n"+
-            "    Mod.lastAppliedRuntimeSignature = runtimeSignature\n\n"+
+            "    Mod.lastAppliedRuntimeSignature = gcetRicaRuntimeSettingsSignature()\n\n"+
             "    local signature = ",StringComparison.Ordinal);
         s=s.Replace(stateCall,
             "    if not Mod.playerAttached then\n"+
