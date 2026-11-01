@@ -378,3 +378,53 @@ Write-Host 'DAV complete 3-file source recognized idempotently without new patch
 Write-Host 'DAV 2/3 marked live-shaped CRLF -> complete native action upgrade passed.'
 
 Write-Host 'Experimental two-mod one-pass source contract passed; live gameplay/source bytes remain independent validation.'
+
+# Source-owned DAV nonflight unmount optimization: normal vehicles bypass
+# both player/native materialization and the original AV-specific predicate.
+# Original wrappers remain the only callback owners; unknown source drift
+# must still fail closed without introducing another Observer.
+$inject=[Reflection.Assembly]::LoadFrom((Join-Path (Resolve-Path $ResolverRoot).Path 'G.CETProfiler.Core.dll')).GetType('GCETRuntimeProfiler.Core.Services.SemanticInjectors',$true)
+$unmount=$inject.GetMethod('OptimizeDavNonFlightUnmount',[Reflection.BindingFlags]'Static,NonPublic')
+if(!$unmount){throw 'DAV nonflight source-owned unmount optimizer missing'}
+$uOriginal=@'
+local Event={}
+function Event:IsInVehicle()
+    if self.current_situation == Def.Situation.InVehicle and self.av_obj:IsPlayerIn() then return true
+    else return false end
+end
+function Event:SetOverride()
+    Override("VehicleTransition", "IsUnmountDirectionClosest", function(this, state_context, unmount_direction, wrapped_method)
+        local player = Game.GetPlayer()
+        if player == nil then
+            self.log_obj:Record(LogLevel.Warning, "No Player detected")
+            return wrapped_method(state_context, unmount_direction)
+        end
+        if self:IsInVehicle() and not player:PSIsInDriverCombat() then return true end
+        return wrapped_method(state_context, unmount_direction)
+    end)
+    Override("VehicleTransition", "IsUnmountDirectionOpposite", function(this, state_context, unmount_direction, wrapped_method)
+        local player = Game.GetPlayer()
+        if player == nil then
+            self.log_obj:Record(LogLevel.Warning, "No Player detected")
+            return wrapped_method(state_context, unmount_direction)
+        end
+        if self:IsInVehicle() and not player:PSIsInDriverCombat() then return false end
+        return wrapped_method(state_context, unmount_direction)
+    end)
+end
+'@
+$uAfter=[string]$unmount.Invoke($null,[object[]]@($uOriginal))
+if(([regex]::Matches($uAfter,'__gcetDAVNonFlightUnmountV1')).Count -ne 2 -or
+   ([regex]::Matches($uAfter,'if self.current_situation ~= Def.Situation.InVehicle then')).Count -ne 2 -or
+   ([regex]::Matches($uAfter,'local player = Game.GetPlayer\(\)')).Count -ne 2){
+  throw 'DAV author unmount source no-work guards not generated for both methods'
+}
+$uAgain=[string]$unmount.Invoke($null,[object[]]@($uAfter))
+if($uAgain -cne $uAfter){throw 'DAV unmount no-work optimization not idempotent'}
+$uWithout=$uOriginal.Replace('function Event:IsInVehicle()','function Event:UnknownPredicate()')
+$uRefused=$false
+try{[void]$unmount.Invoke($null,[object[]]@($uWithout))}
+catch{$uRefused=$_.Exception.InnerException.Message -like '*not proven*'}
+if(!$uRefused){throw 'DAV unmount guessed unproven source predicate'}
+Write-Host 'DAV nonflight unmount: source predicate, both callbacks, staged idempotence, drift refusal PASS'
+

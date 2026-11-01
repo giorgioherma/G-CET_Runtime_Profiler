@@ -6,6 +6,71 @@ namespace GCETRuntimeProfiler.Core.Services;
 // Mod-owned source transformations. Shared proof/replace helpers remain in SemanticInjectors.cs.
 internal static partial class SemanticInjectors
 {
+    // This is DAV's existing event.lua owner; the global vehicle-unmount
+    // overrides must remain registered to affect DAV immediately after
+    // boarding. Their ordinary-vehicle callbacks need not materialize the
+    // player when the source-owned situation cannot be InVehicle.
+    private static string OptimizeDavNonFlightUnmount(string input)
+    {
+        var crlf=input.Contains("\r\n",StringComparison.Ordinal);
+        var source=input.Replace("\r\n","\n",StringComparison.Ordinal);
+        const string tag="-- __gcetDAVNonFlightUnmountV1";
+        var methods=new[] {"IsUnmountDirectionClosest","IsUnmountDirectionOpposite"};
+        const string prelude=
+            "        local player = Game.GetPlayer()\n"+
+            "        if player == nil then\n"+
+            "            self.log_obj:Record(LogLevel.Warning, \"No Player detected\")\n"+
+            "            return wrapped_method(state_context, unmount_direction)\n"+
+            "        end\n";
+        const string shortcut=
+            "        "+tag+": original IsInVehicle() first checks current_situation.\n"+
+            "        if self.current_situation ~= Def.Situation.InVehicle then\n"+
+            "            return wrapped_method(state_context, unmount_direction)\n"+
+            "        end\n";
+        var present=methods.Count(method=>source.Contains(
+            "Override(\"VehicleTransition\", \""+method+"\"",StringComparison.Ordinal));
+        if(present==0)
+        {
+            if(source.Contains(tag,StringComparison.Ordinal))
+                throw new InvalidOperationException("DAV nonflight unmount guard orphaned.");
+            return input; // supported older variants without these hooks
+        }
+        if(present!=2)
+            throw new InvalidOperationException("DAV unmount override pair incomplete.");
+        // Critical: no engine reads or side effects from author's predicate
+        // for Normal/Idle/Waiting; do not infer from marker-only evidence.
+        var pure=source.Contains(
+            "function Event:IsInVehicle()\n    if self.current_situation == Def.Situation.InVehicle and self.av_obj:IsPlayerIn() then",
+            StringComparison.Ordinal);
+        if(!pure)
+            throw new InvalidOperationException("DAV unmount predicate source is not proven.");
+        var result=source;
+        foreach(var method in methods)
+        {
+            var prefix="Override(\"VehicleTransition\", \""+method+"\"";
+            var start=result.IndexOf(prefix,StringComparison.Ordinal);
+            var end=result.IndexOf("\n    end)",start,StringComparison.Ordinal);
+            if(start<0 || end<start)
+                throw new InvalidOperationException("DAV unmount override boundary drift.");
+            var body=result[start..end];
+            if(body.Contains(tag,StringComparison.Ordinal))
+            {
+                if(body.Split(tag,StringSplitOptions.None).Length!=2 ||
+                   !body.Contains(shortcut+prelude,StringComparison.Ordinal) ||
+                   !body.Contains("if self:IsInVehicle()",StringComparison.Ordinal))
+                    throw new InvalidOperationException("DAV completed unmount shortcut drift.");
+                continue;
+            }
+            if(body.Split(prelude,StringSplitOptions.None).Length!=2 ||
+               !body.Contains("if self:IsInVehicle() and not player:PSIsInDriverCombat() then",
+                   StringComparison.Ordinal))
+                throw new InvalidOperationException("DAV unmount player-read ownership drift.");
+            body=body.Replace(prelude,shortcut+prelude,StringComparison.Ordinal);
+            result=result[..start]+body+result[end..];
+        }
+        return crlf?result.Replace("\n","\r\n",StringComparison.Ordinal):result;
+    }
+
     private static SemanticInjectionResult ApplyDriveAerialVehicle(
         SemanticPatchContext context)
     {
@@ -262,6 +327,7 @@ end
             throw new InvalidOperationException(
                 "DAV found a partial or renamed global mappin owner; fail closed.");
 
+        eventText = OptimizeDavNonFlightUnmount(eventText);
         context.Write(core, coreCrLf
             ? coreText.Replace("\n", "\r\n", StringComparison.Ordinal) : coreText);
         context.Write(events, eventCrLf
