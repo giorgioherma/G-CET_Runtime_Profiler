@@ -115,4 +115,19 @@ if (!$primarySource.Contains('type(completionSerial) == \"number\"') -or
     !$primarySource.Contains('local ok, bodySite, completionSerial = pcall(function()')) {
     throw 'RICA native reward pending-hint guard must fail open on invalid native responses'
 }
+# The current source's marker fast path is owned by the same primary RICA
+# generator. Confirm it is guarded by both the native state proof and by
+# absence of a marker awaiting removal; rejected native responses fail open.
+$owner = Get-Content -LiteralPath 'src/G.CETProfiler.Core/Services/ModPasses/RepeatableIncreasedCriminalActivity.cs' -Raw
+foreach($piece in @(
+    'ComposeRicaEmptyMarkerWork(context)',
+    'next(Mappins.owned) == nil',
+    'pcall(system.GetActiveReplayCount, system)',
+    'skipEmpty = ok and type(count) == "number" and count == 0',
+    'if not skipEmpty then',
+    'if shouldExist and not Mappins.owned[site.id] then',
+    'elseif not shouldExist and Mappins.owned[site.id] then'
+)) {
+    if(!$owner.Contains($piece)){throw "RICA empty marker source safety proof missing: $piece"}
+}
 Write-Host 'RICA six-job worker and idempotent bridge: PASS'

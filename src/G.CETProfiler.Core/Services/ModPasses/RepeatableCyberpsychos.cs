@@ -20,6 +20,13 @@ internal static partial class SemanticInjectors
             var mappins=context.FindFile("modules/mappins.lua","Mappins.beginSync","Mappins.syncStep");
             var diagnostics=context.FindFile("modules/diagnostics.lua","Diagnostics.beginSnapshot","Diagnostics.snapshotStep");
             var watchdogProof=context.FindFile("modules/boss_watchdog.lua","Watchdog.syncSite","syncSiteWithPosition");
+            var revised=OptimizeCyberpsychoIdlePresentationSignature(file.Text);
+            if(revised!=file.Text)
+            {
+                context.Write(file,revised);
+                return SemanticInjectionResult.Success(
+                    "Cyberpsychos complete scheduler: replaced allocative distant-idle fingerprint only.");
+            }
             return SemanticInjectionResult.Skip("Cyberpsychos complete scheduler and incremental source already installed.");
         }
         // The historical two-lane cadence is not completion. Explicitly refuse
@@ -41,7 +48,15 @@ internal static partial class SemanticInjectors
             const string oldHandoff="    TryAttachRepeatablePass4()\n\n    Mod.tickElapsed = Mod.tickElapsed + delta";
             const string fixedHandoff="    TryAttachRepeatablePass4()\n    if pass4Attached then return end\n\n    Mod.tickElapsed = Mod.tickElapsed + delta";
             if(file.Text.Contains(fixedHandoff,StringComparison.Ordinal))
+            {
+                var upgraded=OptimizeCyberpsychoIdlePresentationSignature(file.Text);
+                if(upgraded!=file.Text)
+                {
+                    context.Write(file,upgraded);
+                    return SemanticInjectionResult.Success("Cyberpsychos prior PASS4 presentation fingerprint upgraded.");
+                }
                 return SemanticInjectionResult.Skip("Cyberpsychos older full PASS4 source and handoff verified.");
+            }
             if(!file.Text.Contains(oldHandoff,StringComparison.Ordinal))
                 throw new InvalidOperationException("Cyberpsychos existing PASS4 handoff drifted.");
             context.Write(file,CyberpsychoReplaceExact(file.Text,oldHandoff,fixedHandoff,"PASS4 handoff"));
@@ -58,7 +73,7 @@ internal static partial class SemanticInjectors
         init=CyberpsychoReplaceExact(init,"    playerAttached = false,",CyberpsychoFields(),"player-state");
         var hasSharedPlayer=init.Contains("local function __gcetGetPlayer()",StringComparison.Ordinal);
         var originalPrelude=CyberpsychoPreludeOld();
-        var enhancedPrelude=CyberpsychoPreludeNew();
+        var enhancedPrelude=OptimizeCyberpsychoIdlePresentationSignature(CyberpsychoPreludeNew());
         if(hasSharedPlayer) enhancedPrelude=enhancedPrelude.Replace("Game.GetPlayer()","__gcetGetPlayer()",StringComparison.Ordinal);
         init=CyberpsychoReplaceBlock(init,"local function processBodyRewards(system)","registerForEvent(\"onInit\"",originalPrelude,enhancedPrelude,"runtime source");
         var initStart=init.IndexOf("registerForEvent(\"onInit\"",StringComparison.Ordinal);
@@ -93,6 +108,64 @@ internal static partial class SemanticInjectors
         context.Write(watchdog,RestoreCyberpsychoLineEndings(dog,crlfDog));
         context.WriteCoordinator("cyberpsychos_engine_worker.lua",CyberpsychoWorker());
         return SemanticInjectionResult.Success("Cyberpsychos pristine source: source-proven six-job 0-Engine scheduler, two alternating runtime workers, incremental mappins/diagnostics, native wake anchors and author fallback.");
+    }
+
+    private static string OptimizeCyberpsychoIdlePresentationSignature(string input)
+    {
+        // Historical source shape only; no new runtime or callback owner.
+        // This is the same generating logic for pristine and prior G-CET
+        // staged sources. Unknown source drift is refused.
+        const string oldBlock = """
+            local signature = table.concat({
+                tostring(active), tostring(eligible), tostring(tracked),
+                tostring(pending), tostring(budget),
+                tostring(Mod.settings.general.changeMapMarkerColor)
+            }, ":")
+            if Mod.presentationLastFingerprint == signature
+                and (pending or 0) <= 0 then
+                Mod.presentationDistantElapsed =
+                    (Mod.presentationDistantElapsed or 0.0) + 5.0
+                if Mod.presentationDistantElapsed < 30.0 then return end
+            end
+            Mod.presentationLastFingerprint = signature
+""";
+        const string newBlock = """
+            -- Compare the same native-state identity without allocating a
+            -- temporary array, six strings and a joined signature each tick.
+            -- The saved snapshot only changes when the source state changes.
+            local previous = Mod.presentationLastFingerprint
+            local same = type(previous) == "table"
+                and previous[1] == active and previous[2] == eligible
+                and previous[3] == tracked and previous[4] == pending
+                and previous[5] == budget
+                and previous[6] == Mod.settings.general.changeMapMarkerColor
+            if same and (pending or 0) <= 0 then
+                Mod.presentationDistantElapsed =
+                    (Mod.presentationDistantElapsed or 0.0) + 5.0
+                if Mod.presentationDistantElapsed < 30.0 then return end
+            end
+            if not same then
+                Mod.presentationLastFingerprint = {
+                    active, eligible, tracked, pending, budget,
+                    Mod.settings.general.changeMapMarkerColor
+                }
+            end
+""";
+        var normalized=input.Replace("\r\n","\n",StringComparison.Ordinal);
+        if(normalized.Contains(newBlock,StringComparison.Ordinal))
+        {
+            if(normalized.Split(newBlock,StringSplitOptions.None).Length!=2 ||
+               normalized.Contains("local signature = table.concat({",StringComparison.Ordinal))
+                throw new InvalidOperationException("Cyberpsychos presentation signature stage drift.");
+            return input;
+        }
+        if(!normalized.Contains("local function presentationTick()",StringComparison.Ordinal))
+            return input;
+        if(normalized.Split(oldBlock,StringSplitOptions.None).Length!=2)
+            throw new InvalidOperationException("Cyberpsychos previous presentation signature is not source-proven.");
+        var changed=normalized.Replace(oldBlock,newBlock,StringComparison.Ordinal);
+        return input.Contains("\r\n",StringComparison.Ordinal)
+            ? changed.Replace("\n","\r\n",StringComparison.Ordinal) : changed;
     }
 
     private static string NormalizeCyberpsychoLineEndings(string s,out bool crlf)

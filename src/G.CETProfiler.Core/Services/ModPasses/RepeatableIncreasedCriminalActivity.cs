@@ -31,6 +31,9 @@ internal static partial class SemanticInjectors
                     throw new InvalidOperationException(
                         "RICA pristine source contains six-lane marker without its owned scheduler worker.");
             }
+            if (ComposeRicaEmptyMarkerWork(context))
+                return SemanticInjectionResult.Success(
+                    "RICA completed PASS4: skipped unnecessary empty map scans; unchanged native timing.");
             return SemanticInjectionResult.Skip("RICA current live PASS4 already provides multi-rate 0-Engine scheduling; preserve existing source.");
         }
 
@@ -164,9 +167,66 @@ internal static partial class SemanticInjectors
         text = ComposeRicaRuntimeSettingsSignature(text);
         text = ComposeRicaPristineScheduler(context, text);
         ComposeRicaIncrementalDiagnostics(context);
+        ComposeRicaEmptyMarkerWork(context);
         context.Write(file, text);
         return SemanticInjectionResult.Success(
             "RICA pristine source: composed bounded reward/state/mappin/diagnostic/system lanes and an owned six-job 0-Engine Scheduler coordinator with author callback fallback.");
+    }
+
+    // REDscript GetActiveReplayCount() counts vanilla-eligible states whose
+    // status is Active. GetStatus(site.id)==1 is the exact marker predicate.
+    // A zero active count plus an empty owned registry proves the entire
+    // source-order registration/unregistration loop is a no-op. All summary
+    // counters and failure recovery still execute. Unknown native read -> scan.
+    // This belongs to the existing RICA semantic owner, not another rule.
+    private static bool ComposeRicaEmptyMarkerWork(SemanticPatchContext context)
+    {
+        var file=context.FindFile("modules/mappins.lua",
+            "function Mappins.sync(system, sites)","Mappins.owned","Mappins.registered");
+        var crlf=file.Text.Contains("\r\n",StringComparison.Ordinal);
+        var text=file.Text.Replace("\r\n","\n",StringComparison.Ordinal);
+        const string marker="-- G-CET semantic:repeatable-increased-criminal-activity";
+        const string changed="-- __gcetRicaEmptyMarkerWorkV1: native zero + empty owned registry";
+        var start=text.IndexOf("function Mappins.sync(system, sites)",StringComparison.Ordinal);
+        var end=text.IndexOf("\nfunction Mappins.clear()",start,StringComparison.Ordinal);
+        if(start<0 || end<=start)
+            throw new InvalidOperationException("RICA marker synchronization ownership drift.");
+        var body=text[start..end];
+        const string oldStart="    local active = 0\n    for _, site in ipairs(sites.list) do\n";
+        const string newStart="    local active = 0\n" +
+            "    "+changed+"\n" +
+            "    local skipEmpty = false\n" +
+            "    if next(Mappins.owned) == nil then\n" +
+            "        local ok, count = pcall(system.GetActiveReplayCount, system)\n" +
+            "        skipEmpty = ok and type(count) == \"number\" and count == 0\n" +
+            "    end\n" +
+            "    if not skipEmpty then\n" +
+            "    for _, site in ipairs(sites.list) do\n";
+        const string oldEnd="    end\n    Mappins.registered = 0\n";
+        const string newEnd="    end\n    end\n    Mappins.registered = 0\n";
+        if(body.Contains(changed,StringComparison.Ordinal))
+        {
+            if(body.Split(changed,StringSplitOptions.None).Length!=2 ||
+                !body.Contains(newStart,StringComparison.Ordinal) ||
+                !body.Contains(newEnd,StringComparison.Ordinal) ||
+                body.Contains("skipEmpty = true",StringComparison.Ordinal))
+                throw new InvalidOperationException("RICA empty marker work postconditions drifted.");
+            return false;
+        }
+        if(body.Split(oldStart,StringSplitOptions.None).Length!=2 ||
+            body.Split(oldEnd,StringSplitOptions.None).Length!=2 ||
+            !body.Contains("pcall(function() shouldExist = system:GetStatus(site.id) == 1 end)",
+                StringComparison.Ordinal) ||
+            !body.Contains("if shouldExist and not Mappins.owned[site.id] then",StringComparison.Ordinal) ||
+            !body.Contains("elseif not shouldExist and Mappins.owned[site.id] then",StringComparison.Ordinal))
+            throw new InvalidOperationException("RICA marker original active/cleanup structure drifted.");
+        body=body.Replace(oldStart,newStart,StringComparison.Ordinal)
+            .Replace(oldEnd,newEnd,StringComparison.Ordinal);
+        var revised=text[..start]+body+text[end..];
+        if(!revised.Split('\n').Any(line=>line.Trim().Equals(marker,StringComparison.Ordinal)))
+            revised=marker+"\n"+revised;
+        context.Write(file,crlf?revised.Replace("\n","\r\n",StringComparison.Ordinal):revised);
+        return true;
     }
 
     private static string ComposeRicaPristineScheduler(

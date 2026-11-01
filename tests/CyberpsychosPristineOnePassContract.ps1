@@ -176,4 +176,26 @@ $refused = $false
 try { [void]$fn.Invoke($null,[object[]]@((NewCtx 'repeatable-cyberpsychos' $drift))) }
 catch { $refused = $_.Exception.InnerException.Message -like '*source drifted*' }
 if (!$refused) { throw 'Executable source drift incorrectly accepted.' }
+# Existing native-far 5s presentation audit still has identical inputs and
+# 30-second fallback, but its idle comparison must not allocate a transient
+# table + joined strings each tick. The same producer upgrades old generated
+# source rather than creating a correction rule.
+$optimized=Raw 'PreludeNew'
+$fnSignature=$t.GetMethod('OptimizeCyberpsychoIdlePresentationSignature',$flags)
+if(!$fnSignature){throw 'Cyberpsychos source-owned idle signature generator missing'}
+$fast=[string]$fnSignature.Invoke($null,[object[]]@($optimized))
+if($fast.Contains('local signature = table.concat({') -or
+    !$fast.Contains('local same = type(previous) == "table"') -or
+    !$fast.Contains('Mod.presentationLastFingerprint = {') -or
+    !$fast.Contains('if Mod.presentationDistantElapsed < 30.0 then return end')){
+    throw 'Cyberpsychos source-owned nonallocating idle presentation shape missing'
+}
+$onceMore=[string]$fnSignature.Invoke($null,[object[]]@($fast))
+if($onceMore -ne $fast){throw 'Cyberpsychos steady idle signature not idempotent'}
+$drifted=$optimized.Replace('Mod.presentationLastFingerprint = signature',
+  'Mod.presentationLastFingerprint = "corrupted"')
+$refused=$false
+try{[void]$fnSignature.Invoke($null,[object[]]@($drifted))}
+catch{$refused=$_.Exception.InnerException.Message -like '*source-proven*'}
+if(!$refused){throw 'Cyberpsychos stale signature drift must fail closed'}
 Write-Host 'Cyberpsychos pristine six-job source, native consumer, exact author fallback, idempotence, source variation and drift refusal PASS'
