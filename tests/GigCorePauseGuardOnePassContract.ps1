@@ -142,12 +142,13 @@ end)
   }
 
   if($withBridge){
-    $snippet=$snippet.Replace('  Marker.tickAll(delta)',
-      '  Marker.tickAll(delta)'+[string][char]10+
+    $snippet=$snippet.Replace('local Marker={tickAll=function() end}',
+      'local Bridge=require("core/bridge.lua")'+[string][char]10+
+      'local Marker={tickAll=function() end}')
+    $snippet=$snippet.Replace('  local okMk, errMk = pcall(Marker.tickAll, delta, activeGigId)',
+      '  local okMk, errMk = pcall(Marker.tickAll, delta, activeGigId)'+[string][char]10+
       '  Bridge.tick(delta or 0)   -- MapTags authoring bridge (no-op unless enabled in settings)')
-    $snippet=$snippet.Replace('end)'+[string][char]10,
-      'end)'+[string][char]10, [StringComparison]::Ordinal)
-    $snippet+='registerForEvent("onDraw", function()'+[string][char]10+
+    $snippet+=[string][char]10+'registerForEvent("onDraw", function()'+[string][char]10+
       '  Bridge.draw()   -- MapTags authoring bridge status window (no-op unless enabled)'+
       [string][char]10+'end)'+[string][char]10
   }
