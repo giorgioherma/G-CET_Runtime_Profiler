@@ -123,7 +123,7 @@ foreach($piece in @(
     'ComposeRicaEmptyMarkerWork(context)',
     'next(Mappins.owned) == nil',
     'pcall(system.GetActiveReplayCount, system)',
-    'skipEmpty = ok and type(count) == "number" and count == 0',
+    'skipEmpty = ok and type(count) == \"number\" and count == 0',
     'if not skipEmpty then',
     'if shouldExist and not Mappins.owned[site.id] then',
     'elseif not shouldExist and Mappins.owned[site.id] then'
