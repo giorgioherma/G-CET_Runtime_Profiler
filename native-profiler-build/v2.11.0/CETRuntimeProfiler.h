@@ -132,6 +132,8 @@ public:
         std::atomic<bool> DeepComplete{false};
         std::atomic<uint32_t> DeepProfileEpoch{1};
         std::atomic<uint64_t> DeepSamples{0};
+        // Native 0-Engine samples rotate across bounded gameplay epochs.
+        std::atomic<uint64_t> DeepCompletedAtCaptureNs{0};
         std::atomic<uint64_t> DeepTargetSamples{0};
         std::atomic<uint64_t> DeepSampleStride{1};
         std::atomic<uint64_t> DeepSampleTicker{0};
@@ -486,8 +488,10 @@ public:
     static constexpr size_t MaxDeepHotRegistrations = 6;
     // One independent bounded sampling slot for 0-Engine; it cannot evict
     // the normal six-mod hotset. Only active during an explicit capture.
-    static constexpr size_t MaxZeroEngineDeepRegistrations = 1;
+    static constexpr size_t MaxZeroEngineDeepRegistrations = 2;
     static constexpr uint64_t ZeroEngineDeepTargetSamples = 20;
+    static constexpr uint32_t MaxZeroEngineProfileEpochs = 5;
+    static constexpr uint64_t ZeroEngineResampleAfterNs = 90'000'000'000ULL;
     static constexpr uint64_t DefaultDeepTargetSamples = 24;
     static constexpr uint64_t ReusedDeepTargetSamples = 6;
     static constexpr uint32_t DeepDriftWindowsRequired = 3;
@@ -1235,6 +1239,8 @@ public:
                         std::memory_order_relaxed);
                 }
 
+                counter->DeepCompletedAtCaptureNs.store(
+                    captureEndNs, std::memory_order_relaxed);
                 counter->DeepComplete.store(true, std::memory_order_release);
                 counter->DeepSelected.store(false, std::memory_order_release);
                 counter->DeepSpikeArmed.store(true, std::memory_order_release);
@@ -3743,6 +3749,129 @@ public:
                 }
             }
 
+
+            // Rank sampled 0-Engine consumers by the actual child-exclusive
+            // work, including C frames. This reuses existing sampled callsite
+            // evidence: there is NO extra Lua hook, subscriber wrapper or
+            // instrumentation allocation in the unprofiled Lua execution path.
+            // Source owner is assigned ONLY from an explicit installed mod
+            // source path. An ambiguous init.lua, modules/*.lua, or =[C] is
+            // deliberately unresolved; a known caller is a CONTEXT, not proof
+            // that its mod created the native object.
+            struct PressureCandidate
+            {
+                uint64_t RegistrationId{};
+                std::string CandidateOwner, SourceProof, CallerOwner;
+                std::string CallerService, CallerSourceFile, ChildSourceFile;
+                std::string ChildFunctionName, ChildFunctionKey;
+                int CallerLine{};
+                uint64_t SampledCallsiteRows{}, SampledCalls{};
+                uint64_t OwnPositiveBytes{}, OwnPositiveOps{}, ChildInclusiveNs{};
+                uint64_t CFunctionPositiveBytes{}, CFunctionPositiveOps{};
+            };
+            std::unordered_map<std::string, PressureCandidate> pressure;
+            for (const auto& row : deepCallsiteRows)
+            {
+                if (!zeroRegistration.count(row.RegistrationId))
+                    continue;
+                const auto caller = producerSource(row.CallerSourceFile);
+                const auto child = producerSource(row.ChildSourceFile);
+                const bool provenMod =
+                    child.first != "UNRESOLVED" && child.first != "0-Engine";
+                const bool framework = child.first == "0-Engine";
+                const bool knownCaller =
+                    caller.first != "UNRESOLVED" && caller.first != "0-Engine";
+                const std::string candidateOwner =
+                    provenMod || framework ? child.first : "UNRESOLVED";
+                const std::string sourceProof = provenMod
+                    ? "DIRECT_MOD_SOURCE_PATH"
+                    : framework ? "FRAMEWORK_SOURCE_PATH"
+                    : knownCaller ? "CALLER_MOD_CONTEXT_ONLY"
+                    : "UNRESOLVED_SOURCE";
+                const std::string key =
+                    std::to_string(row.RegistrationId) + "\x1f" +
+                    row.CallerSourceFile + "\x1f" +
+                    std::to_string(row.CallerLine) + "\x1f" +
+                    row.ChildFunctionKey;
+                auto& entry = pressure[key];
+                if (entry.ChildFunctionKey.empty())
+                {
+                    entry.RegistrationId = row.RegistrationId;
+                    entry.CandidateOwner = candidateOwner;
+                    entry.SourceProof = sourceProof;
+                    entry.CallerOwner = caller.first;
+                    entry.CallerService = caller.second;
+                    entry.CallerSourceFile = row.CallerSourceFile;
+                    entry.CallerLine = row.CallerLine;
+                    entry.ChildSourceFile = row.ChildSourceFile;
+                    entry.ChildFunctionName = row.ChildFunctionName;
+                    entry.ChildFunctionKey = row.ChildFunctionKey;
+                }
+                ++entry.SampledCallsiteRows;
+                entry.SampledCalls += row.Calls;
+                entry.OwnPositiveBytes += row.SampledChildOwnPositiveBytes;
+                entry.OwnPositiveOps += row.SampledChildOwnPositiveOps;
+                entry.ChildInclusiveNs += row.ChildInclusiveNs;
+                // Lua libraries also have C frames: this is not a claim
+                // that every C call is a CET native getter.
+                if (row.ChildSourceFile == "=[C]")
+                {
+                    entry.CFunctionPositiveBytes +=
+                        row.SampledCFunctionOwnPositiveBytes;
+                    entry.CFunctionPositiveOps +=
+                        row.SampledCFunctionOwnPositiveOps;
+                }
+            }
+            std::vector<const PressureCandidate*> rankedPressure;
+            rankedPressure.reserve(pressure.size());
+            for (const auto& [_, entry] : pressure)
+                rankedPressure.push_back(&entry);
+            std::sort(rankedPressure.begin(), rankedPressure.end(),
+                [](const PressureCandidate* a, const PressureCandidate* b)
+                {
+                    if (a->OwnPositiveOps != b->OwnPositiveOps)
+                        return a->OwnPositiveOps > b->OwnPositiveOps;
+                    if (a->OwnPositiveBytes != b->OwnPositiveBytes)
+                        return a->OwnPositiveBytes > b->OwnPositiveBytes;
+                    return a->ChildInclusiveNs > b->ChildInclusiveNs;
+                });
+            std::ofstream pressureFile(outputRoot /
+                "CET_Runtime_Profile_ZeroEngine_PressureCandidates.csv",
+                std::ios::trunc);
+            if (pressureFile)
+            {
+                pressureFile <<
+                    "RegistrationId,CandidateOwner,SourceProof,CallerOwner,"
+                    "CallerService,CallerSourceFile,CallerLine,ChildSourceFile,"
+                    "ChildFunctionName,ChildFunctionKey,SampledCallsiteRows,"
+                    "SampledCalls,SampledChildOwnPositiveOps,"
+                    "SampledChildOwnPositiveBytes,SampledChildInclusiveMs,"
+                    "SampledCFunctionOwnPositiveOps,SampledCFunctionOwnPositiveBytes,"
+                    "Interpretation\n";
+                pressureFile << std::fixed << std::setprecision(6);
+                for (const auto* row : rankedPressure)
+                    pressureFile << row->RegistrationId << ','
+                        << Csv(row->CandidateOwner) << ','
+                        << Csv(row->SourceProof) << ','
+                        << Csv(row->CallerOwner) << ','
+                        << Csv(row->CallerService) << ','
+                        << Csv(row->CallerSourceFile) << ','
+                        << row->CallerLine << ','
+                        << Csv(row->ChildSourceFile) << ','
+                        << Csv(row->ChildFunctionName) << ','
+                        << Csv(row->ChildFunctionKey) << ','
+                        << row->SampledCallsiteRows << ','
+                        << row->SampledCalls << ','
+                        << row->OwnPositiveOps << ','
+                        << row->OwnPositiveBytes << ','
+                        << (static_cast<double>(row->ChildInclusiveNs) /
+                            1'000'000.0) << ','
+                        << row->CFunctionPositiveOps << ','
+                        << row->CFunctionPositiveBytes << ','
+                        << "BOUNDED_SAMPLED_CHILD_EXCLUSIVE_NO_RATE_EXTRAPOLATION_"
+                           "C_SUBSET_NOT_ADDITIVE_NOT_RETAINED_HEAP\n";
+            }
+
             std::ofstream consumerEdges(outputRoot /
                 "CET_Runtime_Profile_ZeroEngine_ConsumerCallsites.csv",
                 std::ios::trunc);
@@ -4753,6 +4882,34 @@ private:
             counter->DeepSpikeProbeStride.store(
                 spikeStride, std::memory_order_relaxed);
 
+            // 0-Engine hosts many unrelated consumers over a gameplay session.
+            // Rotate only its two reserved native deep slots across at most five
+            // capture epochs, so a startup-only sample does not decide the ranking.
+            // This does not install a persistent Lua hook or affect the six-mod hotset.
+            if (counter->Mod == "0-Engine" &&
+                counter->DeepComplete.load(std::memory_order_relaxed) &&
+                counter->DeepProfileEpoch.load(std::memory_order_relaxed) <
+                    MaxZeroEngineProfileEpochs)
+            {
+                const auto completedAt = counter->DeepCompletedAtCaptureNs.load(
+                    std::memory_order_relaxed);
+                if (completedAt && captureNs >= completedAt &&
+                    captureNs - completedAt >= ZeroEngineResampleAfterNs)
+                {
+                    counter->DeepComplete.store(false, std::memory_order_relaxed);
+                    counter->DeepSpikeArmed.store(false, std::memory_order_relaxed);
+                    counter->DeepSamples.store(0, std::memory_order_relaxed);
+                    counter->DeepSampleTicker.store(0, std::memory_order_relaxed);
+                    counter->DeepEpochStartCalls.store(0, std::memory_order_relaxed);
+                    counter->DeepEpochStartExclusiveNs.store(0, std::memory_order_relaxed);
+                    counter->DeepBaselineAvgExclusiveNs.store(0, std::memory_order_relaxed);
+                    counter->DeepCompletedAtCaptureNs.store(0, std::memory_order_relaxed);
+                    counter->DeepDriftWindows.store(0, std::memory_order_relaxed);
+                    counter->DeepDriftDirection.store(0, std::memory_order_relaxed);
+                    counter->DeepProfileEpoch.fetch_add(1, std::memory_order_relaxed);
+                }
+            }
+
             if (counter->DeepComplete.load(std::memory_order_relaxed))
             {
                 const uint64_t baseline =
@@ -4953,14 +5110,28 @@ private:
                           return a.Score > b.Score;
                       return a.WindowCallsPerSecond > b.WindowCallsPerSecond;
                   });
-        const size_t selectedZero =
-            std::min(MaxZeroEngineDeepRegistrations,
-                     zeroEngineCandidates.size());
-        for (size_t i = 0; i < selectedZero; ++i)
+        // Prefer different 0-Engine registration families (frame vs action
+        // routing), rather than using both slots on one repeated callback type.
+        // If only one family exists, fill the remaining slot by score.
+        std::vector<Counter*> selectedZero;
+        std::unordered_map<std::string, bool> chosenFamilies;
+        for (const auto& candidate : zeroEngineCandidates)
         {
-            zeroEngineCandidates[i].CounterPtr->DeepSelected.store(
-                true, std::memory_order_release);
+            if (selectedZero.size() >= MaxZeroEngineDeepRegistrations) break;
+            const auto* c = candidate.CounterPtr;
+            const std::string family = c->Kind + "\x1f" + c->Target;
+            if (!chosenFamilies.emplace(family, true).second) continue;
+            selectedZero.push_back(candidate.CounterPtr);
         }
+        for (const auto& candidate : zeroEngineCandidates)
+        {
+            if (selectedZero.size() >= MaxZeroEngineDeepRegistrations) break;
+            if (std::find(selectedZero.begin(), selectedZero.end(),
+                          candidate.CounterPtr) == selectedZero.end())
+                selectedZero.push_back(candidate.CounterPtr);
+        }
+        for (auto* counter : selectedZero)
+            counter->DeepSelected.store(true, std::memory_order_release);
 
         const size_t selected =
             std::min(MaxDeepHotRegistrations, candidates.size());
@@ -4995,6 +5166,7 @@ private:
             counter->DeepSamples.store(0, std::memory_order_relaxed);
             counter->DeepTargetSamples.store(
                 DefaultDeepTargetSamples, std::memory_order_relaxed);
+            counter->DeepCompletedAtCaptureNs.store(0, std::memory_order_relaxed);
             counter->DeepSampleStride.store(1, std::memory_order_relaxed);
             counter->DeepSampleTicker.store(0, std::memory_order_relaxed);
             counter->DeepHookConflicts.store(0, std::memory_order_relaxed);
