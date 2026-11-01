@@ -146,7 +146,8 @@ internal static partial class SemanticInjectors
                 var end=begin<0 ? -1 : canonical.IndexOf("  local function tryStep(ctx, full)",begin,StringComparison.Ordinal);
                 if(begin<0 || end<=begin)
                     throw new InvalidOperationException("Dedra dormant route generation drift.");
-                var priorCanonical=canonical[..begin]+priorRoute+canonical[end..];
+                var priorCanonical=canonical[..begin]+
+                    priorRoute.Replace("\r\n","\n",StringComparison.Ordinal)+canonical[end..];
                 if(current!=priorCanonical)
                     throw new InvalidOperationException("Dedra V3 owned coordinator drift; refuse replacement.");
                 context.WriteCoordinator(workerFile,canonical);
