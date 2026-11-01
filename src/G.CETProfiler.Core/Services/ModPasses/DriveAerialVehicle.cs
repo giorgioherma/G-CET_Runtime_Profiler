@@ -53,19 +53,23 @@ internal static partial class SemanticInjectors
             if(start<0 || end<start)
                 throw new InvalidOperationException("DAV unmount override boundary drift.");
             var body=result[start..end];
+            // Generic native/provider reuse runs before source semantics.
+            // Require the exact already-proven generic getter spelling on
+            // composed source, rather than matching pristine source alone.
+            var currentPrelude=PreserveGenericGetters(result,prelude);
             if(body.Contains(tag,StringComparison.Ordinal))
             {
                 if(body.Split(tag,StringSplitOptions.None).Length!=2 ||
-                   !body.Contains(shortcut+prelude,StringComparison.Ordinal) ||
+                   !body.Contains(shortcut+currentPrelude,StringComparison.Ordinal) ||
                    !body.Contains("if self:IsInVehicle()",StringComparison.Ordinal))
                     throw new InvalidOperationException("DAV completed unmount shortcut drift.");
                 continue;
             }
-            if(body.Split(prelude,StringSplitOptions.None).Length!=2 ||
+            if(body.Split(currentPrelude,StringSplitOptions.None).Length!=2 ||
                !body.Contains("if self:IsInVehicle() and not player:PSIsInDriverCombat() then",
                    StringComparison.Ordinal))
                 throw new InvalidOperationException("DAV unmount player-read ownership drift.");
-            body=body.Replace(prelude,shortcut+prelude,StringComparison.Ordinal);
+            body=body.Replace(currentPrelude,shortcut+currentPrelude,StringComparison.Ordinal);
             result=result[..start]+body+result[end..];
         }
         return crlf?result.Replace("\n","\r\n",StringComparison.Ordinal):result;
