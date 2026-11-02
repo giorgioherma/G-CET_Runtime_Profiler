@@ -79,7 +79,15 @@ local function harness(opts)
     end
   end
   return {
-    start=function() module.Start() end,
+    start=function()
+      module.Start()
+      -- Existing tests model a fully loaded world unless explicitly testing
+      -- the real post-menu warmup boundary below.
+      if not opts.deferPlayerReady then
+        check(engineEvents.PlayerReady~=nil,"missing canonical PlayerReady subscription")
+        engineEvents.PlayerReady()
+      end
+    end,
     stop=function() module.Stop() end,
     addon=addon,module=module,
     tick=tick,
@@ -103,6 +111,44 @@ local function harness(opts)
   }
 end
 
+
+-- Regression for the actual crash window: CET onInit can run in the
+-- main menu, and a REDscript Core=1 / FPP state is not proof that the newly
+-- loading game world finished 0-Engine's PlayerReady warmup. Retain the
+-- conservative 0.25s reconciler until PlayerReady and resume on teardown.
+do
+  local t=harness({deferPlayerReady=true})
+  t.start()
+  t.run(16,0.1)
+  local loading=t.diagnostics()
+  check(loading.mode=="quiet" and loading.quietJob and
+      not loading.activeJob and not loading.playerReady and
+      t.calls()>0 and t.nativeCount()==0,
+      "main-menu-to-world load parked Dedra before PlayerReady")
+  t.engineEvent("PlayerReady")
+  t.run(12,0.1)
+  local ready=t.diagnostics()
+  check(ready.playerReady and ready.mode=="dormant" and
+      not ready.quietJob and not ready.activeJob,
+      "after warmup Dedra could not enter confirmed idle")
+  t.engineEvent("PlayerInvalidated")
+  check(not t.diagnostics().playerReady and
+      t.diagnostics().mode=="quiet" and t.diagnostics().quietJob,
+      "session invalidation did not restore the safety audit")
+  t.run(12,0.1)
+  check(t.diagnostics().mode=="quiet",
+      "unready player incorrectly permitted re-dormancy")
+  t.engineEvent("PlayerReady")
+  t.run(12,0.1)
+  check(t.diagnostics().mode=="dormant",
+      "new game world readiness did not permit dormancy")
+  t.event("sessionEnd")
+  check(t.diagnostics().mode=="quiet" and
+      not t.diagnostics().playerReady,
+      "ITP session end left the worker dormant with a stale player")
+  t.stop()
+  check(t.nativeCount()==0,"lifecycle gating introduced late CET native registration")
+end
 
 -- Real Dedra author state: OnGameAttached sets on=nil, armSent=nil.
 -- Both are NOT active holds. An unavailable Core can leave nil in place,
