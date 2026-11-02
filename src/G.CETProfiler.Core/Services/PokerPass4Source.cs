@@ -251,7 +251,11 @@ internal static class PokerPass4Source
             !body.Contains("        if visible and not spot.spot_showingInteractUI then showPrompt(spot)",
                 StringComparison.Ordinal))
             throw new InvalidOperationException(
-                "Poker seat-prompt functional/source proof changed; refuse transformation.");
+                "Poker seat-prompt functional/source proof changed; refuse transformation. " +
+                "bodyAuthorFragmentCount=" + body.Split(original,StringSplitOptions.None).Length +
+                " activeSpotGuard=" + body.Contains("    if SeatController.activeSpotId then return end\n",StringComparison.Ordinal) +
+                " promptBranch=" + body.Contains("        if visible and not spot.spot_showingInteractUI then showPrompt(spot)",StringComparison.Ordinal) +
+                " originalSpan=" + original.Length + " bodyLength=" + body.Length);
         body=body.Replace(original,optimized,StringComparison.Ordinal);
         var result=text[..start]+body+text[finish..];
         if(!IsSeatScannerComplete(result))
