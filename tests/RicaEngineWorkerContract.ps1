@@ -194,8 +194,11 @@ return Diagnostics
 '@
 $cache=$inject.GetMethod('ComposeRicaConfigurationIdleCache',$flags)
 if(!$cache){throw 'RICA primary 1Hz diagnostics cache missing'}
-function OptimizeDiag([string]$input){
- [IO.File]::WriteAllText($diagPath,$input,[Text.UTF8Encoding]::new($false))
+function OptimizeDiag([string]$luaSource){
+ # $input is a reserved PowerShell automatic pipeline variable; using it
+ # as this parameter caused the fixture file to be written empty.
+ if ([string]::IsNullOrWhiteSpace($luaSource)) { throw 'RICA diagnostics fixture unexpectedly empty' }
+ [IO.File]::WriteAllText($diagPath,$luaSource,[Text.UTF8Encoding]::new($false))
  $context=$ctor.Invoke([object[]]@([string]$root,[string]'repeatable_increased_criminal_activity',
      [string]'repeatable-increased-criminal-activity',
      [Collections.Generic.Dictionary[string,byte[]]]::new()))
