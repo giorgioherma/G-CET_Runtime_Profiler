@@ -343,6 +343,7 @@ end)
 Write-ModFile 'repeatable_increased_criminal_activity' 'modules/diagnostics.lua' @'
 local Diagnostics = {
     enabled = true,
+    lastConfiguration = nil,
     lastSnapshot = nil,
     lastSnapshotAt = 0,
 }
@@ -352,6 +353,24 @@ function Diagnostics.event(event, payload, force) end
 function Diagnostics.init()
     Diagnostics.lastSnapshotAt = 0
     rotateIfLarge()
+end
+-- Source-equivalent author configuration logging is independently optimized
+-- by the RICA primary semantic. Omitting it from a synthetic fixture is not
+-- a supported source variant and must not weaken the generator.
+function Diagnostics.configuration(settings, force)
+    if not Diagnostics.enabled and not force then return end
+    local payload = {
+        schedule = settings.schedule,
+        sites = settings.sites,
+        combat = settings.combat,
+        reward = settings.reward,
+        diagnostics = settings.diagnostics,
+    }
+    local raw = encode(payload)
+    if force or raw ~= Diagnostics.lastConfiguration then
+        Diagnostics.event("configuration", payload, force)
+        Diagnostics.lastConfiguration = raw
+    end
 end
 local function read(system, fallback, fn)
     return fallback
