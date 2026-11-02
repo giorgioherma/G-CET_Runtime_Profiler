@@ -81,8 +81,8 @@ local function harness(opts)
   return {
     start=function()
       module.Start()
-      -- Existing tests model a fully loaded world unless explicitly testing
-      -- the real post-menu warmup boundary below.
+      -- The older worker still accepts canonical PlayerReady signals but
+      -- does not require them for proven idle routing.
       if not opts.deferPlayerReady then
         check(engineEvents.PlayerReady~=nil,"missing canonical PlayerReady subscription")
         engineEvents.PlayerReady()
@@ -112,42 +112,27 @@ local function harness(opts)
 end
 
 
--- Regression for the actual crash window: CET onInit can run in the
--- main menu, and a REDscript Core=1 / FPP state is not proof that the newly
--- loading game world finished 0-Engine's PlayerReady warmup. Retain the
--- conservative 0.25s reconciler until PlayerReady and resume on teardown.
+-- Rollback regression: the gameplay-working November 1 worker parks only
+-- after the actual author/Core/native release state is proven. It does not
+-- introduce the later PlayerReady-dependent full-dormancy transition.
 do
   local t=harness({deferPlayerReady=true})
   t.start()
   t.run(16,0.1)
-  local loading=t.diagnostics()
-  check(loading.mode=="quiet" and loading.quietJob and
-      not loading.activeJob and not loading.playerReady and
+  local idle=t.diagnostics()
+  check(idle.mode=="dormant" and not idle.quietJob and
+      not idle.activeJob and idle.playerReady==nil and
       t.calls()>0 and t.nativeCount()==0,
-      "main-menu-to-world load parked Dedra before PlayerReady")
+      "November 1 confirmed FPP worker failed its known idle path")
   t.engineEvent("PlayerReady")
-  t.run(12,0.1)
-  local ready=t.diagnostics()
-  check(ready.playerReady and ready.mode=="dormant" and
-      not ready.quietJob and not ready.activeJob,
-      "after warmup Dedra could not enter confirmed idle")
   t.engineEvent("PlayerInvalidated")
-  check(not t.diagnostics().playerReady and
-      t.diagnostics().mode=="quiet" and t.diagnostics().quietJob,
-      "session invalidation did not restore the safety audit")
-  t.run(12,0.1)
-  check(t.diagnostics().mode=="quiet",
-      "unready player incorrectly permitted re-dormancy")
-  t.engineEvent("PlayerReady")
-  t.run(12,0.1)
-  check(t.diagnostics().mode=="dormant",
-      "new game world readiness did not permit dormancy")
   t.event("sessionEnd")
-  check(t.diagnostics().mode=="quiet" and
-      not t.diagnostics().playerReady,
-      "ITP session end left the worker dormant with a stale player")
+  t.run(12,0.1)
+  check(t.diagnostics().mode=="dormant" and
+      not t.diagnostics().quietJob and not t.diagnostics().activeJob,
+      "Rollback unexpectedly changed source-proven idle state on signal")
   t.stop()
-  check(t.nativeCount()==0,"lifecycle gating introduced late CET native registration")
+  check(t.nativeCount()==0,"rollback introduced late CET native registration")
 end
 
 -- Real Dedra author state: OnGameAttached sets on=nil, armSent=nil.
@@ -382,4 +367,4 @@ do
   check(t.nativeCount()==0,"worker attempted crashing late registration fallback")
 end
 
-print("Dedra runtime: confirmed FPP parked; unready Core retries; TPP and lifecycle wake PASS")
+print("Dedra runtime: November 1 V3 idle routing; unready Core retries; TPP and lifecycle wake PASS")
