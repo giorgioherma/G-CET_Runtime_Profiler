@@ -400,7 +400,7 @@ internal sealed class SemanticLibraryService
                 SemanticInjectors.IsBackStepDuoDormancyComplete(graph.OwnerFolder),
             "AIR_BACKFLIP_DORMANCY_V2" =>
                 SemanticInjectors.IsAirBackFlipDormancyComplete(graph.OwnerFolder),
-            "POKER_PASS4_TWO_FILE" =>
+            "POKER_PASS4_THREE_FILE" =>
                 PokerPass4Source.IsComplete(graph.OwnerFolder),
             "ITPP_ACTION_DORMANCY_V2" =>
                 SemanticInjectors.IsImmersiveThirdPersonActionDormancyComplete(graph.OwnerFolder),
