@@ -604,12 +604,22 @@ function Diagnostics.configuration(settings, force)
     end
 end
 """;
-        if(source.Split(original,StringSplitOptions.None).Length!=2)
-            throw new InvalidOperationException("RICA author configuration serializer changed: occurrences=" +
-                (source.Split(original,StringSplitOptions.None).Length-1) +
-                " sourceLength=" + source.Length +
-                " hasFunction=" + source.Contains("function Diagnostics.configuration(settings, force)",StringComparison.Ordinal) +
-                " hasEncode=" + source.Contains("    local raw = encode(payload)",StringComparison.Ordinal));
+        // Generic 0-Engine/native composition may normalize Lua whitespace
+        // before semantics. Match the complete executable author function,
+        // not an exact serialization of its indentation. Any changed token,
+        // added statement or reordered payload field still fails closed.
+        var matches=Regex.Matches(source,
+            @"(?ms)^function Diagnostics\.configuration\(settings, force\)[ \t]*\n.*?^end[ \t]*(?=\n|$)",
+            RegexOptions.CultureInvariant);
+        var exact=(matches.Count==1 &&
+            Regex.Replace(matches[0].Value,@"\s+","",RegexOptions.CultureInvariant)==
+            Regex.Replace(original,@"\s+","",RegexOptions.CultureInvariant));
+        if(!exact)
+            throw new InvalidOperationException("RICA author configuration serializer changed: matches=" +
+                matches.Count + " sourceLength=" + source.Length +
+                " sourceFunction=" + (matches.Count==1
+                    ? matches[0].Value[..Math.Min(720,matches[0].Value.Length)].Replace("\n","\\n",StringComparison.Ordinal)
+                    : "AMBIGUOUS_OR_ABSENT"));
         const string replacement="""
 -- G-CET semantic:rica-configuration-idle-cache-v1
 local gcetRicaConfigSnapshot = nil
@@ -662,7 +672,8 @@ function Diagnostics.configuration(settings, force)
     gcetRicaConfigSnapshot = valid and snapshot or nil
 end
 """;
-        var result=source.Replace(original,replacement,StringComparison.Ordinal);
+        var result=source[..matches[0].Index]+replacement.TrimEnd('\n')+
+            source[(matches[0].Index+matches[0].Length)..];
         context.Write(file,crlf?result.Replace("\n","\r\n",StringComparison.Ordinal):result);
         return true;
     }
