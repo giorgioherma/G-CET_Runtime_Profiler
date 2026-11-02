@@ -605,7 +605,11 @@ function Diagnostics.configuration(settings, force)
 end
 """;
         if(source.Split(original,StringSplitOptions.None).Length!=2)
-            throw new InvalidOperationException("RICA author configuration serializer changed.");
+            throw new InvalidOperationException("RICA author configuration serializer changed: occurrences=" +
+                (source.Split(original,StringSplitOptions.None).Length-1) +
+                " sourceLength=" + source.Length +
+                " hasFunction=" + source.Contains("function Diagnostics.configuration(settings, force)",StringComparison.Ordinal) +
+                " hasEncode=" + source.Contains("    local raw = encode(payload)",StringComparison.Ordinal));
         const string replacement="""
 -- G-CET semantic:rica-configuration-idle-cache-v1
 local gcetRicaConfigSnapshot = nil
