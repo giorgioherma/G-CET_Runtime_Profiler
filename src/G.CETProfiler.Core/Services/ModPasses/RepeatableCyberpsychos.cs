@@ -179,17 +179,42 @@ end
                 throw new InvalidOperationException("Cyberpsychos runtime settings cache source drift.");
             return input;
         }
-        if(source.Split(oldSignature,StringSplitOptions.None).Length!=2 ||
-           source.Split(oldCheck,StringSplitOptions.None).Length!=2 ||
+        // The native/generic pass may reformat a previous PASS4 function.
+        // Verify the full six author settings and check expressions as ordered
+        // executable tokens; unchanged formatting is not a source drift.
+        var signatureMatch=Regex.Matches(source,
+            @"(?ms)^local function runtimeSettingsSignature\(\)[ \t]*\n.*?^end[ \t]*(?=\n|$)",
+            RegexOptions.CultureInvariant);
+        var checkMatch=Regex.Matches(source,
+            @"(?m)^[ \t]*local currentSignature[ \t]*=[ \t]*runtimeSettingsSignature\(\)[ \t]*\n[ \t]*if firstAttach or currentSignature ~= lastRuntimeSettingsSignature then",
+            RegexOptions.CultureInvariant);
+        var signatureEqual=signatureMatch.Count==1 &&
+            Regex.Replace(signatureMatch[0].Value,@"\s+","",RegexOptions.CultureInvariant)==
+            Regex.Replace(oldSignature,@"\s+","",RegexOptions.CultureInvariant);
+        var checkEqual=checkMatch.Count==1 &&
+            Regex.Replace(checkMatch[0].Value,@"\s+","",RegexOptions.CultureInvariant)==
+            Regex.Replace(oldCheck,@"\s+","",RegexOptions.CultureInvariant);
+        if(!signatureEqual || !checkEqual ||
            source.Split("lastRuntimeSettingsSignature = runtimeSettingsSignature()",
                     StringSplitOptions.None).Length!=2)
             throw new InvalidOperationException(
-                "Cyberpsychos original runtime signature or apply/attach ownership drift: signatureCount=" +
-                (source.Split(oldSignature,StringSplitOptions.None).Length-1) +
-                " checkCount=" + (source.Split(oldCheck,StringSplitOptions.None).Length-1) +
-                " assignmentCount=" + (source.Split("lastRuntimeSettingsSignature = runtimeSettingsSignature()",StringSplitOptions.None).Length-1));
-        source=source.Replace(oldSignature,newSignature,StringComparison.Ordinal)
-            .Replace(oldCheck,newCheck,StringComparison.Ordinal);
+                "Cyberpsychos original runtime signature or apply/attach ownership drift: signatures=" +
+                signatureMatch.Count + " signatureEquivalent=" + signatureEqual +
+                " checks=" + checkMatch.Count + " checkEquivalent=" + checkEqual +
+                " signatureSource=" + (signatureMatch.Count==1
+                    ? signatureMatch[0].Value[..Math.Min(680,signatureMatch[0].Length)].Replace("\n","\\n",StringComparison.Ordinal)
+                    : "ABSENT_OR_AMBIGUOUS") +
+                " checkSource=" + (checkMatch.Count==1
+                    ? checkMatch[0].Value.Replace("\n","\\n",StringComparison.Ordinal)
+                    : "ABSENT_OR_AMBIGUOUS"));
+        source=source[..signatureMatch[0].Index]+newSignature.TrimEnd('\n')+
+            source[(signatureMatch[0].Index+signatureMatch[0].Length)..];
+        // Requery after the first replacement; original match positions may shift.
+        var checkedMatch=Regex.Match(source,
+            @"(?m)^[ \t]*local currentSignature[ \t]*=[ \t]*runtimeSettingsSignature\(\)[ \t]*\n[ \t]*if firstAttach or currentSignature ~= lastRuntimeSettingsSignature then",
+            RegexOptions.CultureInvariant);
+        source=source[..checkedMatch.Index]+newCheck.TrimEnd('\n')+
+            source[(checkedMatch.Index+checkedMatch.Length)..];
         return crlf?source.Replace("\n","\r\n",StringComparison.Ordinal):source;
     }
 
