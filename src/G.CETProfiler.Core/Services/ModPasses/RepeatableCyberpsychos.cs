@@ -171,29 +171,51 @@ end
         const string marker="-- G-CET semantic:cyberpsychos-runtime-settings-idle-cache-v1";
         if(source.Contains(marker,StringComparison.Ordinal))
         {
-            // Completion proof is executable-source aware: the same update
-            // can be normalized by a generic/native stage between Resolver
-            // runs. Compare the entire generated six-field function and the
-            // caller condition after whitespace normalization, not a bytewise
-            // multiline string (which falsely rejects valid staged output).
+            // Confirm both entire generated functions and the caller. Generic
+            // or native source composition may insert an empty line between
+            // the two functions; one contiguous regex is not completion proof.
+            const string matchHeader="local function runtimeSettingsMatch(previous)";
+            const string signatureHeader="local function runtimeSettingsSignature()";
             var match=Regex.Matches(source,
-                @"(?ms)^-- G-CET semantic:cyberpsychos-runtime-settings-idle-cache-v1[ \t]*\nlocal function runtimeSettingsMatch\(previous\)[ \t]*\n.*?^end[ \t]*\nlocal function runtimeSettingsSignature\(\)[ \t]*\n.*?^end[ \t]*(?=\n|$)",
+                @"(?ms)^local function runtimeSettingsMatch\(previous\)[ \t]*\n.*?^end[ \t]*(?=\n|$)",
+                RegexOptions.CultureInvariant);
+            var signature=Regex.Matches(source,
+                @"(?ms)^local function runtimeSettingsSignature\(\)[ \t]*\n.*?^end[ \t]*(?=\n|$)",
                 RegexOptions.CultureInvariant);
             var check=Regex.Matches(source,
                 @"(?m)^[ \t]*if firstAttach or not runtimeSettingsMatch\(lastRuntimeSettingsSignature\) then",
                 RegexOptions.CultureInvariant);
-            var complete=match.Count==1 && check.Count==1 &&
-                Regex.Replace(match[0].Value,@"\s+","",RegexOptions.CultureInvariant)==
-                Regex.Replace(newSignature,@"\s+","",RegexOptions.CultureInvariant) &&
-                Regex.Replace(check[0].Value,@"\s+","",RegexOptions.CultureInvariant)==
-                Regex.Replace(newCheck,@"\s+","",RegexOptions.CultureInvariant) &&
+            var expectedBody=newSignature.Replace(marker+"\n","",StringComparison.Ordinal);
+            var expectedIndex=expectedBody.IndexOf(signatureHeader,StringComparison.Ordinal);
+            if(expectedIndex<0)throw new InvalidOperationException("Cyberpsychos generated signature reference malformed.");
+            var expectedMatch=expectedBody[..expectedIndex].Trim();
+            var expectedSignature=expectedBody[expectedIndex..].Trim();
+            static string Tokens(string value)=>
+                Regex.Replace(value,@"\s+","",RegexOptions.CultureInvariant);
+            var oneMarker=source.Split(marker,StringSplitOptions.None).Length==2;
+            var fullMatch=match.Count==1 && Tokens(match[0].Value)==Tokens(expectedMatch);
+            var fullSignature=signature.Count==1 &&
+                Tokens(signature[0].Value)==Tokens(expectedSignature);
+            // Ensure there is no extra executable statement between the
+            // dedicated stage marker, the matcher, and snapshot function.
+            var contiguous=oneMarker && match.Count==1 && signature.Count==1 &&
+                source.IndexOf(marker,StringComparison.Ordinal)<match[0].Index &&
+                source[(
+                    source.IndexOf(marker,StringComparison.Ordinal)+marker.Length
+                )..match[0].Index].Trim().Length==0 &&
+                signature[0].Index>=match[0].Index+match[0].Length &&
+                source[(match[0].Index+match[0].Length)..signature[0].Index].Trim().Length==0;
+            var complete=contiguous && fullMatch && fullSignature &&
+                check.Count==1 && Tokens(check[0].Value)==Tokens(newCheck) &&
                 source.Split("lastRuntimeSettingsSignature = runtimeSettingsSignature()",
                     StringSplitOptions.None).Length==2 &&
                 !source.Contains(oldCheck,StringComparison.Ordinal);
             if(!complete)
                 throw new InvalidOperationException(
-                    "Cyberpsychos runtime settings cache source drift: match=" + match.Count +
-                    " check=" + check.Count +
+                    "Cyberpsychos runtime settings cache source drift: " +
+                    "match=" + match.Count + " matchEqual=" + fullMatch +
+                    " signature=" + signature.Count + " signatureEqual=" + fullSignature +
+                    " contiguous=" + contiguous + " check=" + check.Count +
                     " assignment=" +
                     (source.Split("lastRuntimeSettingsSignature = runtimeSettingsSignature()",
                         StringSplitOptions.None).Length-1) +
