@@ -203,4 +203,42 @@ $refused=$false
 try{[void]$fnSignature.Invoke($null,[object[]]@($drifted))}
 catch{$refused=$_.Exception.InnerException.Message -like '*source-proven*'}
 if(!$refused){throw 'Cyberpsychos stale signature drift must fail closed'}
+
+# Source-owned runtime settings optimization: native RuntimeTick and all
+# original six settings are preserved, but stable 1Hz checks must not build
+# a joined string or table. Ensure original + staged idempotence and drift
+# refusal through the authoritative primary generator's own helper.
+foreach($token in @(
+ 'G-CET semantic:cyberpsychos-runtime-settings-idle-cache-v1',
+ 'local function runtimeSettingsMatch(previous)',
+ 'if firstAttach or not runtimeSettingsMatch(lastRuntimeSettingsSignature) then',
+ 'lastRuntimeSettingsSignature = runtimeSettingsSignature()',
+ 'system:RuntimeTick()',
+ 'schedule.cooldownHours',
+ 'schedule.lockdownPoolSize',
+ 'general.changeMapMarkerColor',
+ 'combat.blockStealthTakedowns'
+)){
+ if(!$initResult.Contains($token)){throw "RC runtime signature stage missing $token"}
+}
+if($initResult.Contains('local currentSignature = runtimeSettingsSignature()') -or
+    $initResult.Contains('return table.concat({')){
+ throw 'RC still builds per-second runtime settings signature'
+}
+$runtimeHelper=$t.GetMethod('OptimizeCyberpsychoRuntimeSettingsSignature',$flags)
+if(!$runtimeHelper){throw 'RC original runtime signature transform missing'}
+$prior=Raw 'PreludeNew'
+$runtimeOnce=[string]$runtimeHelper.Invoke($null,[object[]]@($prior))
+if(!$runtimeOnce.Contains('runtimeSettingsMatch(lastRuntimeSettingsSignature)') -or
+    $runtimeOnce.Contains('local currentSignature = runtimeSettingsSignature()')){
+ throw 'RC previous generated source did not upgrade runtime cache'
+}
+$runtimeAgain=[string]$runtimeHelper.Invoke($null,[object[]]@($runtimeOnce))
+if($runtimeAgain -ne $runtimeOnce){throw 'RC runtime cache reapplied to completed source'}
+$runtimeBad=$prior.Replace('tostring(schedule.poolSize)', 'tostring(schedule.poolSize + 1)')
+$runtimeRefused=$false
+try{[void]$runtimeHelper.Invoke($null,[object[]]@($runtimeBad))}
+catch{$runtimeRefused=$_.Exception.InnerException.Message -like '*drift*'}
+if(!$runtimeRefused){throw 'RC modified runtime settings signature was not rejected'}
+
 Write-Host 'Cyberpsychos pristine six-job source, native consumer, exact author fallback, idempotence, source variation and drift refusal PASS'
