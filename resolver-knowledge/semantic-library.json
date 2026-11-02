@@ -513,7 +513,7 @@
         }
       ],
       "sourceProof": {
-        "completionVerifier": "POKER_PASS4_TWO_FILE",
+        "completionVerifier": "POKER_PASS4_THREE_FILE",
         "composablePartialStages": true,
         "sourceCompletionAuthoritative": true,
         "ownerAll": [
@@ -533,7 +533,7 @@
           "traceApproach"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:streetgamespoker",
-        "expectedMarkerFileCount": 2,
+        "expectedMarkerFileCount": 3,
         "satisfiedAll": [
           "poker.realtime",
           "poker.world_far",
@@ -546,13 +546,13 @@
       "behavior": {
         "handler": "SEMANTIC_PASS4_FOUR_LANE_SCHEDULER",
         "concepts": [
-          "twoFileSourceProof",
+          "threeFileSourceProof",
           "distanceAwareWorldScan",
           "squareDistanceNoSqrt",
           "wake25m",
           "nearFarStateTransition",
           "realtimeGameplayFrame",
-          "seat100ms",
+          "seat100msLazyCameraAndAngle",
           "worldNear200ms",
           "worldFar1000ms",
           "authorFallback",
@@ -580,7 +580,7 @@
             "seconds": 1
           }
         ],
-        "note": "Two-file, structurally source-proven PASS4/PASS4C: 0-Engine schedule (realtime / 0.1s seat / 0.2s near-world / 1s far-world), coupled to 25m squared-distance wake and original chair spawn/despawn/trace. Preserve original lifecycle callbacks and map pin registration, fail closed on altered distance semantics. No version or callback registration numbers hard-coded."
+        "note": "Three-file, structurally source-proven PASS4/PASS4C+seat distance gate: 0-Engine schedule (realtime / 0.1s seat / 0.2s near-world / 1s far-world), coupled to 25m squared-distance wake and original chair spawn/despawn/trace. Preserve original 2m seat prompt/dismissal, lazy camera/angle within range, lifecycle callbacks and map pin registration, fail closed on altered distance semantics. No version or callback registration numbers hard-coded."
       },
       "generation": {
         "enabled": true,
