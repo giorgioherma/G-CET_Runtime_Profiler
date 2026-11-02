@@ -98,6 +98,48 @@ registerForEvent("onDraw", function()
     PokerHUD.draw()
 end)
 '@ | Set-Content -LiteralPath $path -Encoding utf8
+$seatPath=Join-Path $poker 'SeatController.lua'
+# Exercise the unchanged author seat contract as well as scheduler and world
+# source. Camera getters and vector/angle work should run only for a seat
+# within its authored interaction range; all prompt hide paths remain.
+@'
+local SeatController = {spots={},activeSpotId=nil,forcedCam=false,activeCam=nil}
+local function player() return GetPlayer() end
+local function setCamera() end
+local function showPrompt() end
+local function hidePrompt() end
+function SeatController.update()
+    local p = player()
+    if not p then return end
+    if SeatController.forcedCam and SeatController.activeCam then
+        local entry = SeatController.spots[SeatController.activeCam]
+        if entry then
+            setCamera(true, entry.spotObject)
+        end
+        return
+    end
+    if SeatController.activeSpotId then return end
+    local position = p:GetWorldPosition()
+    local forward = p:GetWorldForward()
+    local pitch = Game.GetCameraSystem():GetActiveCameraData().rotation:ToEulerAngles().pitch
+    for _, entry in pairs(SeatController.spots) do
+        local spot = entry.spotObject
+        local marker = spot.mappin_worldPosition
+        local distance = Vector4.Distance(position, marker)
+        local difference = Vector4.new(position.x - marker.x, position.y - marker.y, position.z - marker.z, 0)
+        local angle = 180 - Vector4.GetAngleBetween(forward, difference)
+        local visible = distance < (spot.mappin_interactionRange or 2)
+            and angle < (spot.mappin_interactionAngle or 90)
+            and pitch > (spot.mappin_pitchMin or -75)
+            and pitch < (spot.mappin_pitchMax or 5)
+        if visible and not spot.spot_showingInteractUI then showPrompt(spot)
+        elseif not visible and spot.spot_showingInteractUI then hidePrompt(spot) end
+    end
+end
+function SeatController.changeSpotData(allSpots, changes, spotId) end
+return SeatController
+'@ | Set-Content -LiteralPath $seatPath -Encoding utf8
+$authorSeat=Get-Content -LiteralPath $seatPath -Raw
 $authorInit=Get-Content -LiteralPath $path -Raw
 $authorTables=Get-Content -LiteralPath $tablesPath -Raw
 $input=@{schemaVersion='1.8';callbacks=@(
@@ -135,8 +177,8 @@ try {
     $m=Get-Content -LiteralPath $unmeasured.pass.ManifestPath -Raw | ConvertFrom-Json
     $t=@($m.transforms | Where-Object {$_.RuleId -eq 'streetgamespoker'})
     if($t.Count -ne 1 -or $t[0].admissionEvidence -ne 'SOURCE_PROVEN_NO_CAPTURE' -or
-       $null -ne $t[0].runtimeMsPerSecond -or @($t[0].files).Count -ne 2){
-        throw 'Poker source-only admission did not generate both files with null runtime'
+       $null -ne $t[0].runtimeMsPerSecond -or @($t[0].files).Count -ne 3){
+        throw 'Poker source-only admission did not generate three files with null runtime'
     }
 }
 finally {
@@ -178,6 +220,25 @@ try {
     $reader2=[System.IO.StreamReader]::new($entry2.Open())
     try{$tablesOut=$reader2.ReadToEnd()}finally{$reader2.Dispose()}
 }finally{$zip2.Dispose()}
+# Verify the third authoritative source is emitted from untouched author seat
+# behavior, including exact final distance and prompt cleanup.
+$zipSeat=[System.IO.Compression.ZipFile]::OpenRead([string]$first.pass.ZipPath)
+try{
+    $entry=$zipSeat.GetEntry('bin/x64/plugins/cyber_engine_tweaks/mods/StreetGamesPoker/SeatController.lua')
+    if(!$entry){throw 'Poker seat source not generated'}
+    $reader=[IO.StreamReader]::new($entry.Open())
+    try{$seatOut=$reader.ReadToEnd()}finally{$reader.Dispose()}
+}finally{$zipSeat.Dispose()}
+foreach($token in @('poker-seat-squared-distance-prefilter-v1',
+  'if dx * dx + dy * dy + dz * dz < range * range then',
+  'if distance < range then','if not forward then forward = p:GetWorldForward() end',
+  'if visible and not spot.spot_showingInteractUI then showPrompt(spot)',
+  'elseif not visible and spot.spot_showingInteractUI then hidePrompt(spot)')){
+    if(!$seatOut.Contains($token)){throw "Poker seat scan missing $token"}
+}
+if($seatOut.Contains('local forward = p:GetWorldForward()')){
+    throw 'Poker seat source still performs unconditional camera/angle work'
+}
 foreach($token in @('__gcetPokerWakeSq','__gcetPokerNearAny','__gcetPokerDistanceSq',
  'StreetTables.update(dt, wakeRadius)','spawnChair(loc)','despawnChair(loc)',
  'pcall(traceApproach, loc, player, pos)')){
@@ -186,11 +247,12 @@ foreach($token in @('__gcetPokerWakeSq','__gcetPokerNearAny','__gcetPokerDistanc
 if($tablesOut.Contains('math.sqrt(dx * dx + dy * dy + dz * dz)')){
   throw 'Expensive distance sqrt still present'
 }
-if(@($manifest.transforms | Where-Object {$_.RuleId -eq 'streetgamespoker'} | ForEach-Object {$_.files}).Count -ne 2){
+if(@($manifest.transforms | Where-Object {$_.RuleId -eq 'streetgamespoker'} | ForEach-Object {$_.files}).Count -ne 3){
   throw 'Poker semantic must patch init and world scan together'
 }
 $generated | Set-Content -LiteralPath $path -Encoding utf8
 $tablesOut | Set-Content -LiteralPath $tablesPath -Encoding utf8
+$seatOut | Set-Content -LiteralPath $seatPath -Encoding utf8
 # A fully satisfied pass intentionally produces no ZIP. Analyze the optimized
 # live source directly rather than requiring an unrelated transform to exist.
 $second=(& $exe --capture $capture --mods $mods --json | ConvertFrom-Json)
@@ -210,6 +272,7 @@ if(!$semantic.Count){throw 'Resolver did not recognize both optimized files as a
 # independently upgraded; likewise a completed sweep survives controller reset.
 $generated | Set-Content -LiteralPath $path -Encoding utf8
 $authorTables | Set-Content -LiteralPath $tablesPath -Encoding utf8
+$seatOut | Set-Content -LiteralPath $seatPath -Encoding utf8
 $partialWorld = Generate
 $mWorld = Get-Content $partialWorld.pass.ManifestPath -Raw | ConvertFrom-Json
 $tWorld = @($mWorld.transforms | Where-Object {$_.RuleId -eq 'streetgamespoker'})
@@ -220,6 +283,7 @@ if ($tWorld.Count -ne 1 -or @($tWorld[0].files).Count -ne 1 -or
 
 $authorInit | Set-Content -LiteralPath $path -Encoding utf8
 $tablesOut | Set-Content -LiteralPath $tablesPath -Encoding utf8
+$seatOut | Set-Content -LiteralPath $seatPath -Encoding utf8
 $partialController = Generate
 $mController = Get-Content $partialController.pass.ManifestPath -Raw | ConvertFrom-Json
 $tController = @($mController.transforms | Where-Object {$_.RuleId -eq 'streetgamespoker'})
@@ -242,6 +306,7 @@ $legacyTables = $tablesOut.Replace('__gcetPokerWakeRadius','wake').
     Replace('__gcetPokerDistanceSq','dSq') -replace '(?m)^-- G-CET semantic:streetgamespoker\r?\n',''
 $legacyInit | Set-Content -LiteralPath $path -Encoding utf8
 $legacyTables | Set-Content -LiteralPath $tablesPath -Encoding utf8
+$seatOut | Set-Content -LiteralPath $seatPath -Encoding utf8
 $legacy = (& $exe --capture $capture --mods $mods --json | ConvertFrom-Json)
 if (!$legacy.ok) { throw 'Historical Poker source could not be analyzed' }
 $legacyReport = Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
@@ -265,6 +330,7 @@ if (@($driftMatches | Where-Object { $_.semantic.AlreadySatisfied }).Count -gt 0
 }
 $authorInit | Set-Content -LiteralPath $path -Encoding utf8
 $authorTables | Set-Content -LiteralPath $tablesPath -Encoding utf8
+$authorSeat | Set-Content -LiteralPath $seatPath -Encoding utf8
 
 # Version-variation regression: cosmetic source changes and a different dt
 # parameter name must remain eligible. The Resolver must still alter both files
@@ -283,6 +349,7 @@ $variantTables=$authorTables.Replace(
     'traceClock = traceClock + (deltaTime or 0)')
 $variantInit | Set-Content -LiteralPath $path -Encoding utf8
 $variantTables | Set-Content -LiteralPath $tablesPath -Encoding utf8
+$authorSeat | Set-Content -LiteralPath $seatPath -Encoding utf8
 $variation=Generate
 $vManifest=Get-Content -LiteralPath $variation.pass.ManifestPath -Raw | ConvertFrom-Json
 if(@($vManifest.transforms | Where-Object {$_.RuleId -eq 'streetgamespoker'}).Count -ne 1){
@@ -316,10 +383,11 @@ if (!$vectorWorld.Contains('Vector4.Distance') -or $vectorWorld.Contains('math.s
 }
 $authorInit | Set-Content -LiteralPath $path -Encoding utf8
 $vectorWorld | Set-Content -LiteralPath $tablesPath -Encoding utf8
+$authorSeat | Set-Content -LiteralPath $seatPath -Encoding utf8
 $vector = Generate
 $vectorManifest = Get-Content $vector.pass.ManifestPath -Raw | ConvertFrom-Json
 $vectorRule = @($vectorManifest.transforms | Where-Object {$_.RuleId -eq 'streetgamespoker'})
-if ($vectorRule.Count -ne 1 -or @($vectorRule[0].files).Count -ne 2) {
+if ($vectorRule.Count -ne 1 -or @($vectorRule[0].files).Count -ne 3) {
     throw 'Pristine Vector4.Distance world source did not receive complete Poker PASS4'
 }
 $vectorZip = [System.IO.Compression.ZipFile]::OpenRead([string]$vector.pass.ZipPath)
