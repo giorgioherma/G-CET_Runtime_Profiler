@@ -284,64 +284,78 @@ function Replace-DedraKnown([string]$text,[string]$old,[string]$new) {
   return $text.Remove($at,$old.Length).Insert($at,$new)
 }
 $worldReadyWake=$wake
-$worldReadyWake=Replace-DedraKnown $worldReadyWake (@'
+$before0=@'
   local engineWakes, itpWakes, toggleWakes = 0, 0, 0
-'@).Replace($crlf,$nl) + $nl (@'
+'@
+$after0=@'
   -- 0-Engine PlayerReady follows a session-loaded player warmup. REDscript
   -- State(1) alone does not prove a world-attachment has finished.
   local playerReadyConfirmed = false
   local engineWakes, itpWakes, toggleWakes = 0, 0, 0
-'@).Replace($crlf,$nl) + $nl
-$worldReadyWake=Replace-DedraKnown $worldReadyWake (@'
+'@
+$worldReadyWake=Replace-DedraKnown $worldReadyWake ($before0.Replace($crlf,$nl)+$nl) ($after0.Replace($crlf,$nl)+$nl)
+$before1=@'
   -- Core State(false) is an idempotent readiness/fact reconciliation,
   -- not a heartbeat. Do not park until Core and both native releases agree.
   local function idleConfirmed()
     return linked and bridge and api and Dedra.core == 1 and
-'@).Replace($crlf,$nl) (@'
+'@
+$after1=@'
   -- Core State(false) is not a world-load barrier. No full dormancy until
   -- the canonical 0-Engine warmup has announced PlayerReady, Core and both
   -- native releases agree. Before that, preserve the conservative quiet audit.
   local function idleConfirmed()
     return playerReadyConfirmed and linked and bridge and api and Dedra.core == 1 and
-'@).Replace($crlf,$nl)
-$worldReadyWake=Replace-DedraKnown $worldReadyWake (@'
+'@
+$worldReadyWake=Replace-DedraKnown $worldReadyWake ($before1.Replace($crlf,$nl)) ($after1.Replace($crlf,$nl))
+$before2=@'
       itpWakes = itpWakes + 1
-'@).Replace($crlf,$nl) + $nl (@'
+'@
+$after2=@'
       itpWakes = itpWakes + 1
       if event == "sessionEnd" then playerReadyConfirmed = false end
-'@).Replace($crlf,$nl) + $nl
-$worldReadyWake=Replace-DedraKnown $worldReadyWake (@'
+'@
+$worldReadyWake=Replace-DedraKnown $worldReadyWake ($before2.Replace($crlf,$nl)+$nl) ($after2.Replace($crlf,$nl)+$nl)
+$before3=@'
       engineWakes = engineWakes + 1
-'@).Replace($crlf,$nl) + $nl (@'
+'@
+$after3=@'
       engineWakes = engineWakes + 1
       if event == "PlayerReady" then
         playerReadyConfirmed = true
       elseif event == "PlayerInvalidated" then
         playerReadyConfirmed = false
       end
-'@).Replace($crlf,$nl) + $nl
-$worldReadyWake=Replace-DedraKnown $worldReadyWake (@'
+'@
+$worldReadyWake=Replace-DedraKnown $worldReadyWake ($before3.Replace($crlf,$nl)+$nl) ($after3.Replace($crlf,$nl)+$nl)
+$before4=@'
   function M.Start()
     if started then return end
-'@).Replace($crlf,$nl) + $nl (@'
+'@
+$after4=@'
   function M.Start()
     if started then return end
     playerReadyConfirmed = false
-'@).Replace($crlf,$nl) + $nl
-$worldReadyWake=Replace-DedraKnown $worldReadyWake (@'
+'@
+$worldReadyWake=Replace-DedraKnown $worldReadyWake ($before4.Replace($crlf,$nl)+$nl) ($after4.Replace($crlf,$nl)+$nl)
+$before5=@'
   function M.Stop()
     started = false
-'@).Replace($crlf,$nl) + $nl (@'
+'@
+$after5=@'
   function M.Stop()
     started = false
     playerReadyConfirmed = false
-'@).Replace($crlf,$nl) + $nl
-$worldReadyWake=Replace-DedraKnown $worldReadyWake (@'
+'@
+$worldReadyWake=Replace-DedraKnown $worldReadyWake ($before5.Replace($crlf,$nl)+$nl) ($after5.Replace($crlf,$nl)+$nl)
+$before6=@'
 bridge=bridge, started=started, pendingCleanup=debts(),
-'@).Replace($crlf,$nl) + $nl (@'
+'@
+$after6=@'
 bridge=bridge, started=started, playerReady=playerReadyConfirmed,
       pendingCleanup=debts(),
-'@).Replace($crlf,$nl) + $nl
+'@
+$worldReadyWake=Replace-DedraKnown $worldReadyWake ($before6.Replace($crlf,$nl)+$nl) ($after6.Replace($crlf,$nl)+$nl)
 if($worldReadyWake -eq $wake -or !$worldReadyWake.Contains('playerReadyConfirmed')) {
   throw 'Prior world-ready worker fixture was not reconstructed'
 }
