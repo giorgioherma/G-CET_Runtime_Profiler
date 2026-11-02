@@ -20,7 +20,7 @@ internal static partial class SemanticInjectors
             var mappins=context.FindFile("modules/mappins.lua","Mappins.beginSync","Mappins.syncStep");
             var diagnostics=context.FindFile("modules/diagnostics.lua","Diagnostics.beginSnapshot","Diagnostics.snapshotStep");
             var watchdogProof=context.FindFile("modules/boss_watchdog.lua","Watchdog.syncSite","syncSiteWithPosition");
-            var revised=OptimizeCyberpsychoIdlePresentationSignature(file.Text);
+            var revised=OptimizeCyberpsychoRuntimeSettingsSignature(OptimizeCyberpsychoIdlePresentationSignature(file.Text));
             if(revised!=file.Text)
             {
                 context.Write(file,revised);
@@ -49,7 +49,7 @@ internal static partial class SemanticInjectors
             const string fixedHandoff="    TryAttachRepeatablePass4()\n    if pass4Attached then return end\n\n    Mod.tickElapsed = Mod.tickElapsed + delta";
             if(file.Text.Contains(fixedHandoff,StringComparison.Ordinal))
             {
-                var upgraded=OptimizeCyberpsychoIdlePresentationSignature(file.Text);
+                var upgraded=OptimizeCyberpsychoRuntimeSettingsSignature(OptimizeCyberpsychoIdlePresentationSignature(file.Text));
                 if(upgraded!=file.Text)
                 {
                     context.Write(file,upgraded);
@@ -59,7 +59,9 @@ internal static partial class SemanticInjectors
             }
             if(!file.Text.Contains(oldHandoff,StringComparison.Ordinal))
                 throw new InvalidOperationException("Cyberpsychos existing PASS4 handoff drifted.");
-            context.Write(file,CyberpsychoReplaceExact(file.Text,oldHandoff,fixedHandoff,"PASS4 handoff"));
+            var fixedSource=CyberpsychoReplaceExact(file.Text,oldHandoff,fixedHandoff,"PASS4 handoff");
+            fixedSource=OptimizeCyberpsychoRuntimeSettingsSignature(OptimizeCyberpsychoIdlePresentationSignature(fixedSource));
+            context.Write(file,fixedSource);
             return SemanticInjectionResult.Success("Completed older PASS4 source: repaired only same-frame scheduler takeover.");
         }
         if(file.Text.Contains("cyberpsychos.runtime_combat_reward",StringComparison.Ordinal))
@@ -73,7 +75,7 @@ internal static partial class SemanticInjectors
         init=CyberpsychoReplaceExact(init,"    playerAttached = false,",CyberpsychoFields(),"player-state");
         var hasSharedPlayer=init.Contains("local function __gcetGetPlayer()",StringComparison.Ordinal);
         var originalPrelude=CyberpsychoPreludeOld();
-        var enhancedPrelude=OptimizeCyberpsychoIdlePresentationSignature(CyberpsychoPreludeNew());
+        var enhancedPrelude=OptimizeCyberpsychoRuntimeSettingsSignature(OptimizeCyberpsychoIdlePresentationSignature(CyberpsychoPreludeNew()));
         if(hasSharedPlayer) enhancedPrelude=enhancedPrelude.Replace("Game.GetPlayer()","__gcetGetPlayer()",StringComparison.Ordinal);
         init=CyberpsychoReplaceBlock(init,"local function processBodyRewards(system)","registerForEvent(\"onInit\"",originalPrelude,enhancedPrelude,"runtime source");
         var initStart=init.IndexOf("registerForEvent(\"onInit\"",StringComparison.Ordinal);
@@ -108,6 +110,84 @@ internal static partial class SemanticInjectors
         context.Write(watchdog,RestoreCyberpsychoLineEndings(dog,crlfDog));
         context.WriteCoordinator("cyberpsychos_engine_worker.lua",CyberpsychoWorker());
         return SemanticInjectionResult.Success("Cyberpsychos pristine source: source-proven six-job 0-Engine scheduler, two alternating runtime workers, incremental mappins/diagnostics, native wake anchors and author fallback.");
+    }
+
+
+    // Native RuntimeTick remains authoritative and runs every second for
+    // replay eligibility/rewards. Only the unnecessary six-field string/table
+    // signature is removed from its otherwise unchanged settings check.
+    // A snapshot is rebuilt only when the author applies settings.
+    private static string OptimizeCyberpsychoRuntimeSettingsSignature(string input)
+    {
+        var crlf=input.Contains("\r\n",StringComparison.Ordinal);
+        var source=input.Replace("\r\n","\n",StringComparison.Ordinal);
+        const string oldSignature="""
+local function runtimeSettingsSignature()
+    local schedule = Mod.settings.schedule
+    local general = Mod.settings.general
+    local combat = Mod.settings.combat
+    return table.concat({
+        tostring(schedule.cooldownHours),
+        tostring(schedule.lockdownPoolSize),
+        tostring(schedule.poolSize),
+        tostring(general.changeMapMarkerColor),
+        tostring(combat.heightenedAwareness),
+        tostring(combat.blockStealthTakedowns),
+    }, "|")
+end
+""";
+        const string newSignature="""
+-- G-CET semantic:cyberpsychos-runtime-settings-idle-cache-v1
+local function runtimeSettingsMatch(previous)
+    if type(previous) ~= "table" then return false end
+    local schedule = Mod.settings.schedule
+    local general = Mod.settings.general
+    local combat = Mod.settings.combat
+    return previous[1] == schedule.cooldownHours
+        and previous[2] == schedule.lockdownPoolSize
+        and previous[3] == schedule.poolSize
+        and previous[4] == general.changeMapMarkerColor
+        and previous[5] == combat.heightenedAwareness
+        and previous[6] == combat.blockStealthTakedowns
+end
+local function runtimeSettingsSignature()
+    local schedule = Mod.settings.schedule
+    local general = Mod.settings.general
+    local combat = Mod.settings.combat
+    return {
+        schedule.cooldownHours, schedule.lockdownPoolSize,
+        schedule.poolSize, general.changeMapMarkerColor,
+        combat.heightenedAwareness, combat.blockStealthTakedowns
+    }
+end
+""";
+        const string oldCheck="""
+    local currentSignature = runtimeSettingsSignature()
+    if firstAttach or currentSignature ~= lastRuntimeSettingsSignature then
+""";
+        const string newCheck="""
+    if firstAttach or not runtimeSettingsMatch(lastRuntimeSettingsSignature) then
+""";
+        const string marker="-- G-CET semantic:cyberpsychos-runtime-settings-idle-cache-v1";
+        if(source.Contains(marker,StringComparison.Ordinal))
+        {
+            if(source.Split(newSignature,StringSplitOptions.None).Length!=2 ||
+               source.Split(newCheck,StringSplitOptions.None).Length!=2 ||
+               !source.Contains("lastRuntimeSettingsSignature = runtimeSettingsSignature()",
+                    StringComparison.Ordinal) ||
+               source.Contains(oldCheck,StringComparison.Ordinal))
+                throw new InvalidOperationException("Cyberpsychos runtime settings cache source drift.");
+            return input;
+        }
+        if(source.Split(oldSignature,StringSplitOptions.None).Length!=2 ||
+           source.Split(oldCheck,StringSplitOptions.None).Length!=2 ||
+           source.Split("lastRuntimeSettingsSignature = runtimeSettingsSignature()",
+                    StringSplitOptions.None).Length!=2)
+            throw new InvalidOperationException(
+                "Cyberpsychos original runtime signature or apply/attach ownership drift.");
+        source=source.Replace(oldSignature,newSignature,StringComparison.Ordinal)
+            .Replace(oldCheck,newCheck,StringComparison.Ordinal);
+        return crlf?source.Replace("\n","\r\n",StringComparison.Ordinal):source;
     }
 
     private static string OptimizeCyberpsychoIdlePresentationSignature(string input)
