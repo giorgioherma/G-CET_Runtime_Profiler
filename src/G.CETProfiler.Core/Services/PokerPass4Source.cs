@@ -18,7 +18,8 @@ internal static class PokerPass4Source
         try
         {
             return IsControllerComplete(File.ReadAllText(Path.Combine(ownerFolder, "init.lua"))) &&
-                IsWorldComplete(File.ReadAllText(Path.Combine(ownerFolder, "StreetTables.lua")));
+                IsWorldComplete(File.ReadAllText(Path.Combine(ownerFolder, "StreetTables.lua"))) &&
+                IsSeatScannerComplete(File.ReadAllText(Path.Combine(ownerFolder, "SeatController.lua")));
         }
         catch (IOException) { return false; }
         catch (UnauthorizedAccessException) { return false; }
