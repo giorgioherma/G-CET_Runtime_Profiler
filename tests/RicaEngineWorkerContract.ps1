@@ -164,4 +164,79 @@ $refused=$false
 try{[void]$settingsUpgrade.Invoke($null,[object[]]@($bad))}
 catch{$refused=$_.Exception.InnerException.Message -like '*source drift*'}
 if(!$refused){throw 'RICA unknown prior settings code was silently accepted'}
+
+# The same primary RICA generator must remove 1Hz unchanged diagnostic JSON
+# materialization from pristine and previous PASS4 sources. This is not a
+# separate corrective semantic or a new execution owner.
+$diagDir=Join-Path $folder 'modules'
+New-Item -ItemType Directory -Force $diagDir | Out-Null
+$diagPath=Join-Path $diagDir 'diagnostics.lua'
+$diagOriginal=@'
+local Diagnostics = {enabled=true, lastConfiguration=nil}
+local function encode(value) return json.encode(value) end
+function Diagnostics.event(name, payload, force) end
+function Diagnostics.configuration(settings, force)
+    if not Diagnostics.enabled and not force then return end
+    local payload = {
+        schedule = settings.schedule,
+        sites = settings.sites,
+        combat = settings.combat,
+        reward = settings.reward,
+        diagnostics = settings.diagnostics,
+    }
+    local raw = encode(payload)
+    if force or raw ~= Diagnostics.lastConfiguration then
+        Diagnostics.event("configuration", payload, force)
+        Diagnostics.lastConfiguration = raw
+    end
+end
+return Diagnostics
+'@
+$cache=$inject.GetMethod('ComposeRicaConfigurationIdleCache',$flags)
+if(!$cache){throw 'RICA primary 1Hz diagnostics cache missing'}
+function OptimizeDiag([string]$input){
+ [IO.File]::WriteAllText($diagPath,$input,[Text.UTF8Encoding]::new($false))
+ $context=$ctor.Invoke([object[]]@([string]$root,[string]'repeatable_increased_criminal_activity',
+     [string]'repeatable-increased-criminal-activity',
+     [Collections.Generic.Dictionary[string,byte[]]]::new()))
+ try {$result=[bool]$cache.Invoke($null,[object[]]@($context))}
+ catch {throw "RICA primary diagnostics cache refused: $($_.Exception.InnerException.Message)"}
+ $changes=@($ctxType.GetProperty('Changes',[Reflection.BindingFlags]'Instance,NonPublic').GetValue($context))
+ return @{applied=$result;changes=$changes}
+}
+$diagFirst=OptimizeDiag $diagOriginal
+if(!$diagFirst.applied -or $diagFirst.changes.Count -ne 1){
+  throw 'RICA original configuration source did not receive exactly one owned change'
+}
+$diagChanged=[Text.Encoding]::UTF8.GetString($diagFirst.changes[0].Bytes)
+foreach($text in @(
+ 'G-CET semantic:rica-configuration-idle-cache-v1',
+ 'gcetRicaConfigEqual(settings, gcetRicaConfigSnapshot, 0)',
+ 'if not force and gcetRicaConfigSnapshot ~= nil',
+ 'if depth > 8 or getmetatable(a) ~= nil',
+ 'local snapshot, valid = gcetRicaConfigCopy(settings, 0)',
+ 'gcetRicaConfigSnapshot = valid and snapshot or nil',
+ 'if force or raw ~= Diagnostics.lastConfiguration then',
+ 'schedule = settings.schedule',
+ 'sites = settings.sites',
+ 'reward = settings.reward',
+ 'diagnostics = settings.diagnostics')){
+ if(!$diagChanged.Contains($text)){throw "RICA configuration lifecycle or proof missing: $text"}
+}
+if($diagChanged.IndexOf('gcetRicaConfigEqual(settings, gcetRicaConfigSnapshot, 0)') -ge
+   $diagChanged.IndexOf('local raw = encode(payload)')){
+ throw 'RICA settings equality guard must occur before diagnostics JSON encode'
+}
+$diagAgain=OptimizeDiag $diagChanged
+if($diagAgain.applied -or $diagAgain.changes.Count -ne 0){
+ throw 'RICA already-optimized diagnostics JSON stage duplicated'
+}
+$driftDiag=$diagOriginal.Replace('raw ~= Diagnostics.lastConfiguration',
+    'raw ~= Diagnostics.otherConfiguration')
+$driftRefused=$false
+try {[void](OptimizeDiag $driftDiag)}catch{
+ $driftRefused=$_.Exception.Message -like '*author configuration serializer changed*'
+}
+if(!$driftRefused){throw 'RICA unknown settings exporter drift must refuse optimization'}
+
 Write-Host 'RICA six-job worker and idempotent bridge: PASS'
