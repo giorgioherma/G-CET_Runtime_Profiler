@@ -34,7 +34,8 @@ internal static partial class SemanticInjectors
             var revised=UpgradeRicaRuntimeSettingsCache(liveFile.Text);
             if(revised!=liveFile.Text) context.Write(liveFile,revised);
             var markers=ComposeRicaEmptyMarkerWork(context);
-            if(revised!=liveFile.Text || markers)
+            var diagnosticsCache=ComposeRicaConfigurationIdleCache(context);
+            if(revised!=liveFile.Text || markers || diagnosticsCache)
                 return SemanticInjectionResult.Success(
                     "RICA complete PASS4: eliminates idle settings materialization and empty marker scans.");
             return SemanticInjectionResult.Skip("RICA current live PASS4 already provides multi-rate 0-Engine scheduling; preserve existing source.");
@@ -171,6 +172,7 @@ internal static partial class SemanticInjectors
         text = ComposeRicaPristineScheduler(context, text);
         ComposeRicaIncrementalDiagnostics(context);
         ComposeRicaEmptyMarkerWork(context);
+        ComposeRicaConfigurationIdleCache(context);
         context.Write(file, text);
         return SemanticInjectionResult.Success(
             "RICA pristine source: composed bounded reward/state/mappin/diagnostic/system lanes and an owned six-job 0-Engine Scheduler coordinator with author callback fallback.");
@@ -553,6 +555,112 @@ end
             .Replace(reset,"    Diagnostics.lastSnapshotAt = 0\n    Diagnostics.snapshotWork = nil\n    rotateIfLarge()",StringComparison.Ordinal)
             .Replace(shutdown,"function Diagnostics.shutdown()\n    Diagnostics.snapshotWork = nil\n",StringComparison.Ordinal);
         context.Write(file,crlf?merged.Replace("\n","\r\n",StringComparison.Ordinal):merged);
+    }
+
+
+    // The author calls Diagnostics.configuration every 1Hz in runtimeTick,
+    // including after the runtime settings snapshot was already applied.
+    // The original serializes an unchanged nested JSON tree before comparing
+    // it with the previous JSON. Compare ALL author config keys without
+    // allocation, but still serialize on any change, forced export, unfamiliar
+    // table/metatable or excessive nesting. Never treat only schedule settings
+    // as complete: reward/diagnostic/site changes also belong to this log.
+    private static bool ComposeRicaConfigurationIdleCache(SemanticPatchContext context)
+    {
+        var file=context.FindFile("modules/diagnostics.lua",
+            "function Diagnostics.configuration(settings, force)",
+            "Diagnostics.lastConfiguration", "Diagnostics.event");
+        var crlf=file.Text.Contains("\r\n",StringComparison.Ordinal);
+        var source=file.Text.Replace("\r\n","\n",StringComparison.Ordinal);
+        const string marker="-- G-CET semantic:rica-configuration-idle-cache-v1";
+        if(source.Contains(marker,StringComparison.Ordinal))
+        {
+            if(source.Split(marker,StringSplitOptions.None).Length!=2 ||
+               !source.Contains("gcetRicaConfigEqual(settings, gcetRicaConfigSnapshot, 0)",
+                   StringComparison.Ordinal) ||
+               !source.Contains("local snapshot, valid = gcetRicaConfigCopy(settings, 0)",
+                   StringComparison.Ordinal) ||
+               !source.Contains("gcetRicaConfigSnapshot = valid and snapshot or nil",
+                   StringComparison.Ordinal) ||
+               !source.Contains("if force or raw ~= Diagnostics.lastConfiguration then",
+                   StringComparison.Ordinal))
+                throw new InvalidOperationException("RICA configuration cache structurally incomplete.");
+            return false;
+        }
+        const string original="""
+function Diagnostics.configuration(settings, force)
+    if not Diagnostics.enabled and not force then return end
+    local payload = {
+        schedule = settings.schedule,
+        sites = settings.sites,
+        combat = settings.combat,
+        reward = settings.reward,
+        diagnostics = settings.diagnostics,
+    }
+    local raw = encode(payload)
+    if force or raw ~= Diagnostics.lastConfiguration then
+        Diagnostics.event("configuration", payload, force)
+        Diagnostics.lastConfiguration = raw
+    end
+end
+""";
+        if(source.Split(original,StringSplitOptions.None).Length!=2)
+            throw new InvalidOperationException("RICA author configuration serializer changed.");
+        const string replacement="""
+-- G-CET semantic:rica-configuration-idle-cache-v1
+local gcetRicaConfigSnapshot = nil
+local function gcetRicaConfigEqual(a, b, depth)
+    if type(a) ~= type(b) then return false end
+    if type(a) ~= "table" then return a == b end
+    if depth > 8 or getmetatable(a) ~= nil or getmetatable(b) ~= nil then return false end
+    for k, v in pairs(a) do
+        if not gcetRicaConfigEqual(v, b[k], depth + 1) then return false end
+    end
+    for k in pairs(b) do
+        if a[k] == nil then return false end
+    end
+    return true
+end
+local function gcetRicaConfigCopy(value, depth)
+    if type(value) ~= "table" then
+        if type(value) == "number" or type(value) == "boolean"
+            or type(value) == "string" or value == nil then return value, true end
+        return nil, false
+    end
+    if depth > 8 or getmetatable(value) ~= nil then return nil, false end
+    local copy = {}
+    for key, item in pairs(value) do
+        if type(key) ~= "string" and type(key) ~= "number" then return nil, false end
+        local cloned, valid = gcetRicaConfigCopy(item, depth + 1)
+        if not valid then return nil, false end
+        copy[key] = cloned
+    end
+    return copy, true
+end
+
+function Diagnostics.configuration(settings, force)
+    if not Diagnostics.enabled and not force then return end
+    if not force and gcetRicaConfigSnapshot ~= nil
+        and gcetRicaConfigEqual(settings, gcetRicaConfigSnapshot, 0) then return end
+    local payload = {
+        schedule = settings.schedule,
+        sites = settings.sites,
+        combat = settings.combat,
+        reward = settings.reward,
+        diagnostics = settings.diagnostics,
+    }
+    local raw = encode(payload)
+    if force or raw ~= Diagnostics.lastConfiguration then
+        Diagnostics.event("configuration", payload, force)
+        Diagnostics.lastConfiguration = raw
+    end
+    local snapshot, valid = gcetRicaConfigCopy(settings, 0)
+    gcetRicaConfigSnapshot = valid and snapshot or nil
+end
+""";
+        var result=source.Replace(original,replacement,StringComparison.Ordinal);
+        context.Write(file,crlf?result.Replace("\n","\r\n",StringComparison.Ordinal):result);
+        return true;
     }
 
     // Previous emitted exact source is a supported input, never required
