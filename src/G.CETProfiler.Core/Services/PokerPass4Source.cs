@@ -245,18 +245,32 @@ internal static class PokerPass4Source
             end
         end
 """).Replace("__CAMERA__",getter,StringComparison.Ordinal);
-        if (body.Split(original,StringSplitOptions.None).Length!=2 ||
+        // Generic source composition can reformat the author Lua. Require
+        // complete ordered executable equivalence of the camera/angle section,
+        // allowing only whitespace differences; never drop a new statement.
+        var seatStart=body.IndexOf("    local forward = p:GetWorldForward()",StringComparison.Ordinal);
+        var lastLine="and pitch < (spot.mappin_pitchMax or 5)";
+        var seatEnd=seatStart<0 ? -1 :
+            body.IndexOf(lastLine,seatStart,StringComparison.Ordinal);
+        if(seatEnd>=0) seatEnd+=lastLine.Length;
+        var observed=seatStart>=0 && seatEnd>seatStart
+            ? body[seatStart..seatEnd] : "";
+        var expectedTokens=Regex.Replace(original,@"\\s+","",RegexOptions.CultureInvariant);
+        var observedTokens=Regex.Replace(observed,@"\\s+","",RegexOptions.CultureInvariant);
+        if (seatStart<0 || seatEnd<=seatStart ||
+            observedTokens!=expectedTokens ||
             !body.Contains("    if SeatController.activeSpotId then return end\n",
                 StringComparison.Ordinal) ||
             !body.Contains("        if visible and not spot.spot_showingInteractUI then showPrompt(spot)",
+                StringComparison.Ordinal) ||
+            !body.Contains("        elseif not visible and spot.spot_showingInteractUI then hidePrompt(spot)",
                 StringComparison.Ordinal))
             throw new InvalidOperationException(
                 "Poker seat-prompt functional/source proof changed; refuse transformation. " +
-                "bodyAuthorFragmentCount=" + body.Split(original,StringSplitOptions.None).Length +
-                " activeSpotGuard=" + body.Contains("    if SeatController.activeSpotId then return end\n",StringComparison.Ordinal) +
-                " promptBranch=" + body.Contains("        if visible and not spot.spot_showingInteractUI then showPrompt(spot)",StringComparison.Ordinal) +
-                " originalSpan=" + original.Length + " bodyLength=" + body.Length);
-        body=body.Replace(original,optimized,StringComparison.Ordinal);
+                "seatStart=" + seatStart + " seatEnd=" + seatEnd +
+                " expectedTokens=" + expectedTokens.Length + " observedTokens=" + observedTokens.Length +
+                " observed=" + observed[..Math.Min(650,observed.Length)].Replace("\n","\\n",StringComparison.Ordinal));
+        body=body[..seatStart]+optimized.TrimEnd('\n')+body[seatEnd..];
         var result=text[..start]+body+text[finish..];
         if(!IsSeatScannerComplete(result))
             throw new InvalidOperationException("Poker seat-distance postcondition failed.");
