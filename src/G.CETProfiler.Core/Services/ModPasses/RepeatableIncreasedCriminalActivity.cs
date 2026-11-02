@@ -567,12 +567,11 @@ end
     // as complete: reward/diagnostic/site changes also belong to this log.
     private static bool ComposeRicaConfigurationIdleCache(SemanticPatchContext context)
     {
-        // Resolve the sole author-owned configuration function by its actual
-        // source signature. The complete function-body proof below validates
-        // Diagnostics.event, lastConfiguration, payload order and encode; these
-        // tokens must not act as a premature discovery filter on partial input.
+        // Resolve the author configuration function with its event/cache
+        // dependencies, then prove the complete executable function below.
         var file=context.FindFile("modules/diagnostics.lua",
-            "function Diagnostics.configuration(settings, force)");
+            "function Diagnostics.configuration(settings, force)",
+            "Diagnostics.lastConfiguration", "Diagnostics.event");
         var crlf=file.Text.Contains("\r\n",StringComparison.Ordinal);
         var source=file.Text.Replace("\r\n","\n",StringComparison.Ordinal);
         const string marker="-- G-CET semantic:rica-configuration-idle-cache-v1";
