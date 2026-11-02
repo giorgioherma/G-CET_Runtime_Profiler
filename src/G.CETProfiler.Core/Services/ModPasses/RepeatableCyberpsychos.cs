@@ -214,6 +214,11 @@ end
                 throw new InvalidOperationException(
                     "Cyberpsychos runtime settings cache source drift: " +
                     "match=" + match.Count + " matchEqual=" + fullMatch +
+                    " actualMatch=" + (match.Count==1
+                        ? match[0].Value.Replace("\n","\\n",StringComparison.Ordinal)[..
+                            Math.Min(1100,match[0].Value.Replace("\n","\\n",StringComparison.Ordinal).Length)]
+                        : "ABSENT") +
+                    " expectedMatch=" + expectedMatch.Replace("\n","\\n",StringComparison.Ordinal) +
                     " signature=" + signature.Count + " signatureEqual=" + fullSignature +
                     " contiguous=" + contiguous + " check=" + check.Count +
                     " assignment=" +
