@@ -184,7 +184,10 @@ end
            source.Split("lastRuntimeSettingsSignature = runtimeSettingsSignature()",
                     StringSplitOptions.None).Length!=2)
             throw new InvalidOperationException(
-                "Cyberpsychos original runtime signature or apply/attach ownership drift.");
+                "Cyberpsychos original runtime signature or apply/attach ownership drift: signatureCount=" +
+                (source.Split(oldSignature,StringSplitOptions.None).Length-1) +
+                " checkCount=" + (source.Split(oldCheck,StringSplitOptions.None).Length-1) +
+                " assignmentCount=" + (source.Split("lastRuntimeSettingsSignature = runtimeSettingsSignature()",StringSplitOptions.None).Length-1));
         source=source.Replace(oldSignature,newSignature,StringComparison.Ordinal)
             .Replace(oldCheck,newCheck,StringComparison.Ordinal);
         return crlf?source.Replace("\n","\r\n",StringComparison.Ordinal):source;
