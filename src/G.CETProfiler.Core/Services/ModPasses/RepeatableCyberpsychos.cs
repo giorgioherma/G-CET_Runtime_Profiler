@@ -185,11 +185,15 @@ end
             var check=Regex.Matches(source,
                 @"(?m)^[ \t]*if firstAttach or not runtimeSettingsMatch\(lastRuntimeSettingsSignature\) then",
                 RegexOptions.CultureInvariant);
-            var expectedBody=newSignature.Replace(marker+"\n","",StringComparison.Ordinal);
-            var expectedIndex=expectedBody.IndexOf(signatureHeader,StringComparison.Ordinal);
-            if(expectedIndex<0)throw new InvalidOperationException("Cyberpsychos generated signature reference malformed.");
-            var expectedMatch=expectedBody[..expectedIndex].Trim();
-            var expectedSignature=expectedBody[expectedIndex..].Trim();
+            // Slice by function declarations instead of assuming the
+            // compiler's raw-literal newline encoding matches marker+"\\n".
+            // The source marker is independently verified below.
+            var matcherStart=newSignature.IndexOf(matchHeader,StringComparison.Ordinal);
+            var expectedIndex=newSignature.IndexOf(signatureHeader,StringComparison.Ordinal);
+            if(matcherStart<0 || expectedIndex<=matcherStart)
+                throw new InvalidOperationException("Cyberpsychos generated signature reference malformed.");
+            var expectedMatch=newSignature[matcherStart..expectedIndex].Trim();
+            var expectedSignature=newSignature[expectedIndex..].Trim();
             static string Tokens(string value)=>
                 Regex.Replace(value,@"\s+","",RegexOptions.CultureInvariant);
             var oneMarker=source.Split(marker,StringSplitOptions.None).Length==2;
