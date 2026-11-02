@@ -235,6 +235,8 @@ foreach($token in @(
   'function M.Start()', 'function M.Stop()', 'function M.Signal(proof, event)',
   'pcall(step, dt)', 'tryStep(ctx,false)', 'tryStep(ctx,true)',
   'local function idleConfirmed()', 'Dedra.core == 1',
+  'playerReadyConfirmed and linked', 'if event == "PlayerReady" then',
+  'if event == "PlayerInvalidated" then', 'if event == "sessionEnd" then',
   'Dedra.on == false', 'Dedra.armSent == false',
   'if slow then slow.Pause() end')) {
   if(!$wake.Contains($token)){throw "Dedra scheduler or core maintenance missing: $token"}
@@ -272,6 +274,67 @@ if(!$rebuild.Applied -or $rebuild.Changes.Count -ne 1 -or
    $rebuild.Changes[0].RelativeFile -notlike '*/GCET_Semantic/dedra_camera_wake.lua'){
   throw 'Missing V3 worker could not regenerate without changing completed Lua'}
 [IO.File]::WriteAllText($workerPath,$wake,[Text.UTF8Encoding]::new($false))
+# Reconstruct the exactly known previously emitted dormant worker, then
+# prove this source-owning generator upgrades it without changing init.lua.
+$priorDormantWake=$wake
+$sourceReadyHeader=@'
+  -- 0-Engine PlayerReady follows a session-loaded player warmup. REDscript
+  -- State(1) alone does not prove a world-attachment has finished.
+  local playerReadyConfirmed = false
+'@
+$sourceReadyHeader=$sourceReadyHeader.Replace($crlf,$nl).TrimEnd()+$nl
+$priorDormantWake=$priorDormantWake.Replace($sourceReadyHeader,'')
+$newIdle=@'
+  -- Core State(false) is not a world-load barrier. No full dormancy until
+  -- the canonical 0-Engine warmup has announced PlayerReady, Core and both
+  -- native releases agree. Before that, preserve the conservative quiet audit.
+  local function idleConfirmed()
+    return playerReadyConfirmed and linked and bridge and api and Dedra.core == 1 and
+'@
+$oldIdle=@'
+  -- Core State(false) is an idempotent readiness/fact reconciliation,
+  -- not a heartbeat. Do not park until Core and both native releases agree.
+  local function idleConfirmed()
+    return linked and bridge and api and Dedra.core == 1 and
+'@
+$priorDormantWake=$priorDormantWake.Replace(
+  $newIdle.Replace($crlf,$nl),$oldIdle.Replace($crlf,$nl))
+$priorDormantWake=$priorDormantWake.Replace(
+  '      if event == "sessionEnd" then playerReadyConfirmed = false end'+$nl,'')
+$signal=@'
+      if event == "PlayerReady" then
+        playerReadyConfirmed = true
+      elseif event == "PlayerInvalidated" then
+        playerReadyConfirmed = false
+      end
+'@
+$priorDormantWake=$priorDormantWake.Replace(
+  $signal.Replace($crlf,$nl).TrimEnd()+$nl,'')
+$priorDormantWake=$priorDormantWake.Replace(
+  '  function M.Start()'+$nl+'    if started then return end'+$nl+
+  '    playerReadyConfirmed = false'+$nl,
+  '  function M.Start()'+$nl+'    if started then return end'+$nl)
+$priorDormantWake=$priorDormantWake.Replace(
+  '  function M.Stop()'+$nl+'    started = false'+$nl+
+  '    playerReadyConfirmed = false'+$nl,
+  '  function M.Stop()'+$nl+'    started = false'+$nl)
+$priorDormantWake=$priorDormantWake.Replace(
+  'bridge=bridge, started=started, playerReady=playerReadyConfirmed,'+$nl+
+  '      pendingCleanup=debts(),',
+  'bridge=bridge, started=started, pendingCleanup=debts(),')
+if($priorDormantWake -eq $wake -or $priorDormantWake.Contains('playerReadyConfirmed')){
+  throw 'Old dormant V3 fixture was not derived exactly'
+}
+[IO.File]::WriteAllText($workerPath,$priorDormantWake,[Text.UTF8Encoding]::new($false))
+$script:dedraUpgradeCase='previous V3 dormant worker before PlayerReady'
+$oldDormantUpgrade=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $lua $addon -StageInput
+$oldDormantChanges=@($oldDormantUpgrade.Changes|Where-Object{
+  $_.RelativeFile -like '*/GCET_Semantic/dedra_camera_wake.lua'})
+if(!$oldDormantUpgrade.Applied -or $oldDormantChanges.Count -ne 1 -or
+  [Text.Encoding]::UTF8.GetString($oldDormantChanges[0].Bytes).Replace($crlf,$nl) -ne $wake){
+  throw 'Earlier dormant V3 did not receive the in-place world-ready safety fix'
+}
+[IO.File]::WriteAllText($workerPath,$wake,[Text.UTF8Encoding]::new($false))
 $priorV3Route=@'
   local function route()
     local active = wantFast()
@@ -288,10 +351,10 @@ $priorV3Route=@'
   end
 '@
 $priorV3Route=$priorV3Route.Replace($crlf,$nl).TrimEnd()+$nl
-$modernStart=$wake.IndexOf('  -- Core State(false) is an idempotent')
-$modernEnd=$wake.IndexOf('  local function tryStep(ctx, full)',$modernStart)
+$modernStart=$priorDormantWake.IndexOf('  -- Core State(false) is an idempotent')
+$modernEnd=$priorDormantWake.IndexOf('  local function tryStep(ctx, full)',$modernStart)
 if($modernStart -lt 0 -or $modernEnd -le $modernStart){throw 'Dormant route source fixture drift'}
-$priorV3Wake=$wake.Substring(0,$modernStart)+$priorV3Route+$wake.Substring($modernEnd)
+$priorV3Wake=$priorDormantWake.Substring(0,$modernStart)+$priorV3Route+$priorDormantWake.Substring($modernEnd)
 [IO.File]::WriteAllText($workerPath,$priorV3Wake,[Text.UTF8Encoding]::new($false))
 $script:dedraUpgradeCase='previous V3 quiet worker'
 $priorV3Upgrade=Run 'DedraThirdPersonCombatAddon' 'dedra-third-person-combat-wake' $lua $addon -StageInput
