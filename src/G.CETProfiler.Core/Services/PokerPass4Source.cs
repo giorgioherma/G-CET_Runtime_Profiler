@@ -121,9 +121,13 @@ internal static class PokerPass4Source
             "StreetTables.locations", "function StreetTables.update",
             "CHAIR_SPAWN_RANGE", "CHAIR_DESPAWN_RANGE", "TRACE_RANGE",
             "traceApproach", "spawnChair", "despawnChair");
+        var seat=context.FindFile("SeatController.lua",
+            "function SeatController.update()", "SeatController.activeSpotId",
+            "spot.mappin_interactionRange", "hidePrompt(spot)");
         var controllerComplete = IsControllerComplete(init.Text);
         var worldComplete = IsWorldComplete(tables.Text);
-        if (controllerComplete && worldComplete)
+        var seatComplete = IsSeatScannerComplete(seat.Text);
+        if (controllerComplete && worldComplete && seatComplete)
             return SemanticInjectionResult.Skip(
                 "Both Poker scheduler and world-wake stages already hold in current source.");
 
@@ -145,14 +149,113 @@ internal static class PokerPass4Source
 
         var tableText = worldComplete ? tables.Text : TransformWorldSweep(tables.Text);
         var initText = controllerComplete ? init.Text : TransformController(init.Text);
-        if (!IsControllerComplete(initText) || !IsWorldComplete(tableText))
+        var seatText = seatComplete ? seat.Text : TransformSeatScanner(seat.Text);
+        if (!IsControllerComplete(initText) || !IsWorldComplete(tableText) ||
+            !IsSeatScannerComplete(seatText))
             throw new InvalidOperationException(
                 "Poker completed-source postconditions did not hold after composition.");
-        context.Write(init, initText);
-        context.Write(tables, tableText);
+        if (!controllerComplete) context.Write(init, initText);
+        if (!worldComplete) context.Write(tables, tableText);
+        if (!seatComplete) context.Write(seat, seatText);
         return SemanticInjectionResult.Success(
-            "Composed missing Poker controller/world stages with completed live stages. " +
-            "Kept 1Hz far / 5Hz near / 10Hz seat / per-frame active gameplay, wake and original fallback.");
+            "Composed missing Poker controller/world/seat-distance stages from owned source. " +
+            "Preserved 1Hz far / 5Hz near / 10Hz seat / per-frame active gameplay, wake, prompt cleanup and fallback.");
+    }
+
+
+    // The original near-seat scan runs at 10Hz for any street table within
+    // a 25m wake radius. Camera getters, Vector4.new and angular checks are
+    // necessary only near an actual spot's individual interaction range.
+    // Preserve the exact author Vector4.Distance as the final range gate:
+    // the squared XYZ prefilter can only accept extra candidates (e.g. w
+    // differences); it cannot reject a spot the original range test accepted.
+    private static bool IsSeatScannerComplete(string text)
+    {
+        var normalized=text.Replace("\r\n","\n",StringComparison.Ordinal);
+        const string marker="-- G-CET semantic:poker-seat-squared-distance-prefilter-v1";
+        return normalized.Split(marker,StringSplitOptions.None).Length==2 &&
+            normalized.Contains("if dx * dx + dy * dy + dz * dz < range * range then",
+                StringComparison.Ordinal) &&
+            normalized.Contains("local distance = Vector4.Distance(position, marker)",
+                StringComparison.Ordinal) &&
+            normalized.Contains("if distance < range then",StringComparison.Ordinal) &&
+            normalized.Contains("if not forward then forward = p:GetWorldForward() end",
+                StringComparison.Ordinal) &&
+            normalized.Contains("if visible and not spot.spot_showingInteractUI then showPrompt(spot)",
+                StringComparison.Ordinal) &&
+            normalized.Contains("elseif not visible and spot.spot_showingInteractUI then hidePrompt(spot)",
+                StringComparison.Ordinal);
+    }
+
+    private static string TransformSeatScanner(string input)
+    {
+        if (input.Contains("poker-seat-squared-distance-prefilter",StringComparison.Ordinal))
+            throw new InvalidOperationException("Poker partial/unknown seat prefilter: refuse unsafe drift.");
+        var crlf=input.Contains("\r\n",StringComparison.Ordinal);
+        var text=input.Replace("\r\n","\n",StringComparison.Ordinal);
+        const string begin="function SeatController.update()\n";
+        const string end="\nfunction SeatController.changeSpotData(";
+        if (text.Split(begin,StringSplitOptions.None).Length!=2 ||
+            text.Split(end,StringSplitOptions.None).Length!=2)
+            throw new InvalidOperationException("Poker seat-update author boundary changed.");
+        var start=text.IndexOf(begin,StringComparison.Ordinal);
+        var finish=text.IndexOf(end,start+begin.Length,StringComparison.Ordinal);
+        if (finish<start) throw new InvalidOperationException("Poker seat update missing terminal boundary.");
+        var body=text[start..finish];
+        var camera=Regex.Match(body,
+            @"(?m)^    local pitch = (?<getter>(?:Game\.GetCameraSystem\(\)|__gcetGetCameraSystem\(\)))\:GetActiveCameraData\(\)\.rotation\:ToEulerAngles\(\)\.pitch$",
+            RegexOptions.CultureInvariant);
+        if (!camera.Success || camera.NextMatch().Success)
+            throw new InvalidOperationException("Poker source camera getter changed.");
+        var getter=camera.Groups["getter"].Value;
+        var original=("""
+    local forward = p:GetWorldForward()
+    local pitch = __CAMERA__:GetActiveCameraData().rotation:ToEulerAngles().pitch
+    for _, entry in pairs(SeatController.spots) do
+        local spot = entry.spotObject
+        local marker = spot.mappin_worldPosition
+        local distance = Vector4.Distance(position, marker)
+        local difference = Vector4.new(position.x - marker.x, position.y - marker.y, position.z - marker.z, 0)
+        local angle = 180 - Vector4.GetAngleBetween(forward, difference)
+        local visible = distance < (spot.mappin_interactionRange or 2)
+            and angle < (spot.mappin_interactionAngle or 90)
+            and pitch > (spot.mappin_pitchMin or -75)
+            and pitch < (spot.mappin_pitchMax or 5)
+""").Replace("__CAMERA__",getter,StringComparison.Ordinal);
+        var optimized=("""
+    -- G-CET semantic:poker-seat-squared-distance-prefilter-v1
+    local forward, pitch = nil, nil
+    for _, entry in pairs(SeatController.spots) do
+        local spot = entry.spotObject
+        local marker = spot.mappin_worldPosition
+        local range = spot.mappin_interactionRange or 2
+        local dx, dy, dz = position.x - marker.x, position.y - marker.y, position.z - marker.z
+        local visible = false
+        if dx * dx + dy * dy + dz * dz < range * range then
+            local distance = Vector4.Distance(position, marker)
+            if distance < range then
+                if not forward then forward = p:GetWorldForward() end
+                if pitch == nil then pitch = __CAMERA__:GetActiveCameraData().rotation:ToEulerAngles().pitch end
+                local difference = Vector4.new(dx, dy, dz, 0)
+                local angle = 180 - Vector4.GetAngleBetween(forward, difference)
+                visible = angle < (spot.mappin_interactionAngle or 90)
+                    and pitch > (spot.mappin_pitchMin or -75)
+                    and pitch < (spot.mappin_pitchMax or 5)
+            end
+        end
+""").Replace("__CAMERA__",getter,StringComparison.Ordinal);
+        if (body.Split(original,StringSplitOptions.None).Length!=2 ||
+            !body.Contains("    if SeatController.activeSpotId then return end\n",
+                StringComparison.Ordinal) ||
+            !body.Contains("        if visible and not spot.spot_showingInteractUI then showPrompt(spot)",
+                StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "Poker seat-prompt functional/source proof changed; refuse transformation.");
+        body=body.Replace(original,optimized,StringComparison.Ordinal);
+        var result=text[..start]+body+text[finish..];
+        if(!IsSeatScannerComplete(result))
+            throw new InvalidOperationException("Poker seat-distance postcondition failed.");
+        return crlf?result.Replace("\n","\r\n",StringComparison.Ordinal):result;
     }
 
     private static string TransformController(string text)
