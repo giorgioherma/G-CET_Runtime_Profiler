@@ -267,9 +267,9 @@ if(!$pokerRows.Count){throw 'Optimized Poker owner missing from Resolver report'
 $semantic=@($pokerRows | Where-Object {
     $_.semantic.RuleId -eq 'streetgamespoker' -and
     $_.semantic.AlreadySatisfied -eq $true -and
-    $_.semantic.MarkerFileCount -eq 2
+    $_.semantic.MarkerFileCount -eq 3
 })
-if(!$semantic.Count){throw 'Resolver did not recognize both optimized files as already satisfied'}
+if(!$semantic.Count){throw 'Resolver did not recognize all three optimized files as already satisfied'}
 
 # A completed controller must be retained while an original world sweep is
 # independently upgraded; likewise a completed sweep survives controller reset.
@@ -295,9 +295,9 @@ if ($tController.Count -ne 1 -or @($tController[0].files).Count -ne 1 -or
     throw 'Poker original controller was not independently upgraded'
 }
 
-# Prior live PASS4 used different local symbol names but identical lane and
-# squared-distance wake behavior. A complete source does not need G-CET
-# generated stage markers to be classified already-satisfied.
+# Historical PASS4 controller/world uses different local names and no canonical
+# marker. Its two independent proven stages can coexist with the new seat-stage
+# marker. All THREE stages must still be complete for already-satisfied status.
 $legacyInit = $generated.Replace('__gcetPokerAttachPass4','TryAttachPokerPass4').
     Replace('__gcetPokerAttached','pass4Attached') -replace '(?m)^-- G-CET semantic:streetgamespoker\r?\n',''
 $legacyTables = $tablesOut.Replace('__gcetPokerWakeRadius','wake').
@@ -316,8 +316,8 @@ $legacyReport = Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.jso
 $legacyMatches = @($legacyReport.callbackFamilies | ForEach-Object { $_.topConsumers } |
     Where-Object { $_.semantic.RuleId -eq 'streetgamespoker' })
 if (@($legacyMatches | Where-Object { $_.semantic.AlreadySatisfied -and
-        $_.semantic.MarkerFileCount -eq 0 }).Count -lt 1) {
-    throw 'Unmarked historical Poker four-lane source was not recognized as complete'
+        $_.semantic.MarkerFileCount -eq 1 }).Count -lt 1) {
+    throw 'Unmarked historical Poker controller/world with completed seat stage not recognized as complete'
 }
 
 # A missing wake return makes the same historical source INCOMPLETE. Merely
