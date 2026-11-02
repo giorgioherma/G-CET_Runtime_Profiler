@@ -123,7 +123,48 @@ internal static partial class SemanticInjectors
             if(!HasDedraThirdPersonCombatAuthorBridge(source))
                 throw new InvalidOperationException("Dedra V3 bridge drift or duplicate update owner.");
             if(current==canonical)
-                return SemanticInjectionResult.Skip("Dedra shared scheduler and confirmed-idle dormant worker complete.");
+                return SemanticInjectionResult.Skip("Dedra shared scheduler, world-ready lifecycle and confirmed idle worker complete.");
+            // Accept only the immediately previous source-proven V3 dormant
+            // output. Upgrade in this producer; never repair a broken pass
+            // with a second semantic or weaken the preexisting source proof.
+            var previousDormant=canonical;
+            foreach(var pair in new (string Current,string Prior)[] {
+                ("  -- 0-Engine PlayerReady follows a session-loaded player warmup. REDscript\\n" +
+                 "  -- State(1) alone does not prove a world-attachment has finished.\\n" +
+                 "  local playerReadyConfirmed = false\\n", ""),
+                ("  -- Core State(false) is not a world-load barrier. No full dormancy until\\n" +
+                 "  -- the canonical 0-Engine warmup has announced PlayerReady, Core and both\\n" +
+                 "  -- native releases agree. Before that, preserve the conservative quiet audit.\\n" +
+                 "  local function idleConfirmed()\\n" +
+                 "    return playerReadyConfirmed and linked and bridge and api and Dedra.core == 1 and",
+                 "  -- Core State(false) is an idempotent readiness/fact reconciliation,\\n" +
+                 "  -- not a heartbeat. Do not park until Core and both native releases agree.\\n" +
+                 "  local function idleConfirmed()\\n" +
+                 "    return linked and bridge and api and Dedra.core == 1 and"),
+                ("      if event == \"sessionEnd\" then playerReadyConfirmed = false end\\n", ""),
+                ("      if event == \"PlayerReady\" then\\n" +
+                 "        playerReadyConfirmed = true\\n" +
+                 "      elseif event == \"PlayerInvalidated\" then\\n" +
+                 "        playerReadyConfirmed = false\\n" +
+                 "      end\\n", ""),
+                ("  function M.Start()\\n    if started then return end\\n    playerReadyConfirmed = false\\n",
+                 "  function M.Start()\\n    if started then return end\\n"),
+                ("  function M.Stop()\\n    started = false\\n    playerReadyConfirmed = false\\n",
+                 "  function M.Stop()\\n    started = false\\n"),
+                ("bridge=bridge, started=started, playerReady=playerReadyConfirmed,\\n      pendingCleanup=debts(),",
+                 "bridge=bridge, started=started, pendingCleanup=debts(),")
+            }) {
+                var currentText=pair.Current.Replace("\\n","\n",StringComparison.Ordinal);
+                var priorText=pair.Prior.Replace("\\n","\n",StringComparison.Ordinal);
+                if(previousDormant.Split(currentText,StringSplitOptions.None).Length!=2)
+                    throw new InvalidOperationException("Dedra world-ready migration source proof drift.");
+                previousDormant=previousDormant.Replace(currentText,priorText,StringComparison.Ordinal);
+            }
+            if(current==previousDormant) {
+                context.WriteCoordinator(workerFile,canonical);
+                return SemanticInjectionResult.Success(
+                    "Upgraded prior dormant worker with 0-Engine PlayerReady load barrier.");
+            }
             if(current is not null)
             {
                 // Recognize the exact previously emitted V3 quiet worker, not
@@ -142,12 +183,12 @@ internal static partial class SemanticInjectors
     end
   end
 ";
-                var begin=canonical.IndexOf("  -- Core State(false) is an idempotent",StringComparison.Ordinal);
-                var end=begin<0 ? -1 : canonical.IndexOf("  local function tryStep(ctx, full)",begin,StringComparison.Ordinal);
+                var begin=previousDormant.IndexOf("  -- Core State(false) is an idempotent",StringComparison.Ordinal);
+                var end=begin<0 ? -1 : previousDormant.IndexOf("  local function tryStep(ctx, full)",begin,StringComparison.Ordinal);
                 if(begin<0 || end<=begin)
                     throw new InvalidOperationException("Dedra dormant route generation drift.");
-                var priorCanonical=canonical[..begin]+
-                    priorRoute.Replace("\r\n","\n",StringComparison.Ordinal)+canonical[end..];
+                var priorCanonical=previousDormant[..begin]+
+                    priorRoute.Replace("\r\n","\n",StringComparison.Ordinal)+previousDormant[end..];
                 if(current!=priorCanonical)
                     throw new InvalidOperationException("Dedra V3 owned coordinator drift; refuse replacement.");
                 context.WriteCoordinator(workerFile,canonical);
@@ -416,6 +457,9 @@ function M.Install(Dedra, step)
     ""transitionStart"", ""transitionEnd"", ""sessionStart"", ""sessionEnd"" }
   local owner = ""gcet.dedra.shared.v3""
   local settle = 0
+  -- 0-Engine PlayerReady follows a session-loaded player warmup. REDscript
+  -- State(1) alone does not prove a world-attachment has finished.
+  local playerReadyConfirmed = false
   local engineWakes, itpWakes, toggleWakes = 0, 0, 0
   local lastSignal, lastEvent = ""startup"", nil
   local function debts()
@@ -450,10 +494,11 @@ function M.Install(Dedra, step)
   local function wantFast()
     return fastReason() ~= nil
   end
-  -- Core State(false) is an idempotent readiness/fact reconciliation,
-  -- not a heartbeat. Do not park until Core and both native releases agree.
+  -- Core State(false) is not a world-load barrier. No full dormancy until
+  -- the canonical 0-Engine warmup has announced PlayerReady, Core and both
+  -- native releases agree. Before that, preserve the conservative quiet audit.
   local function idleConfirmed()
-    return linked and bridge and api and Dedra.core == 1 and
+    return playerReadyConfirmed and linked and bridge and api and Dedra.core == 1 and
       Dedra.mode == ""first"" and Dedra.on == false and
       Dedra.armSent == false and not debts()
   end
@@ -525,8 +570,14 @@ function M.Install(Dedra, step)
       toggleWakes = toggleWakes + 1
     elseif proof == ""itp"" then
       itpWakes = itpWakes + 1
+      if event == ""sessionEnd"" then playerReadyConfirmed = false end
     elseif proof == ""engine"" then
       engineWakes = engineWakes + 1
+      if event == ""PlayerReady"" then
+        playerReadyConfirmed = true
+      elseif event == ""PlayerInvalidated"" then
+        playerReadyConfirmed = false
+      end
     end
     lastSignal, lastEvent = proof or ""direct"", event
     if started then
@@ -540,6 +591,7 @@ function M.Install(Dedra, step)
   end
   function M.Start()
     if started then return end
+    playerReadyConfirmed = false
     local ok, host = pcall(GetMod, ""0-Engine"")
     if not ok or type(host) ~= ""table"" or
       type(host.__gcetScheduleDriver) ~= ""function"" or
@@ -574,6 +626,7 @@ function M.Install(Dedra, step)
   end
   function M.Stop()
     started = false
+    playerReadyConfirmed = false
     if fast then fast.Cancel() end
     if slow then slow.Cancel() end
     if api and api.events then
@@ -597,7 +650,8 @@ function M.Install(Dedra, step)
     end
     return { registrationPath=""shared-0-engine-schedule"",
       nativeDedraUpdate=false, mode=mode, linked=linked,
-      bridge=bridge, started=started, pendingCleanup=debts(),
+      bridge=bridge, started=started, playerReady=playerReadyConfirmed,
+      pendingCleanup=debts(),
       activeJob=fast and fast.IsActive() or false,
       quietJob=slow and slow.IsActive() or false,
       calls=calls, quietCalls=quietCalls,
