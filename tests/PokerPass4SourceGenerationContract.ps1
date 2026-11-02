@@ -178,7 +178,10 @@ try {
     $t=@($m.transforms | Where-Object {$_.RuleId -eq 'streetgamespoker'})
     if($t.Count -ne 1 -or $t[0].admissionEvidence -ne 'SOURCE_PROVEN_NO_CAPTURE' -or
        $null -ne $t[0].runtimeMsPerSecond -or @($t[0].files).Count -ne 3){
-        throw 'Poker source-only admission did not generate three files with null runtime'
+        throw ('Poker source-only admission incomplete: transforms='+$t.Count+
+            ' files='+(@($t[0].files) -join ';')+
+            ' admission='+$t[0].admissionEvidence+
+            ' runtime='+[string]$t[0].runtimeMsPerSecond)
     }
 }
 finally {
