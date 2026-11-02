@@ -255,8 +255,8 @@ internal static class PokerPass4Source
         if(seatEnd>=0) seatEnd+=lastLine.Length;
         var observed=seatStart>=0 && seatEnd>seatStart
             ? body[seatStart..seatEnd] : "";
-        var expectedTokens=Regex.Replace(original,@"\\s+","",RegexOptions.CultureInvariant);
-        var observedTokens=Regex.Replace(observed,@"\\s+","",RegexOptions.CultureInvariant);
+        var expectedTokens=Regex.Replace(original,@"\s+","",RegexOptions.CultureInvariant);
+        var observedTokens=Regex.Replace(observed,@"\s+","",RegexOptions.CultureInvariant);
         if (seatStart<0 || seatEnd<=seatStart ||
             observedTokens!=expectedTokens ||
             !body.Contains("    if SeatController.activeSpotId then return end\n",
