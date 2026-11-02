@@ -171,12 +171,33 @@ end
         const string marker="-- G-CET semantic:cyberpsychos-runtime-settings-idle-cache-v1";
         if(source.Contains(marker,StringComparison.Ordinal))
         {
-            if(source.Split(newSignature,StringSplitOptions.None).Length!=2 ||
-               source.Split(newCheck,StringSplitOptions.None).Length!=2 ||
-               !source.Contains("lastRuntimeSettingsSignature = runtimeSettingsSignature()",
-                    StringComparison.Ordinal) ||
-               source.Contains(oldCheck,StringComparison.Ordinal))
-                throw new InvalidOperationException("Cyberpsychos runtime settings cache source drift.");
+            // Completion proof is executable-source aware: the same update
+            // can be normalized by a generic/native stage between Resolver
+            // runs. Compare the entire generated six-field function and the
+            // caller condition after whitespace normalization, not a bytewise
+            // multiline string (which falsely rejects valid staged output).
+            var match=Regex.Matches(source,
+                @"(?ms)^-- G-CET semantic:cyberpsychos-runtime-settings-idle-cache-v1[ \t]*\nlocal function runtimeSettingsMatch\(previous\)[ \t]*\n.*?^end[ \t]*\nlocal function runtimeSettingsSignature\(\)[ \t]*\n.*?^end[ \t]*(?=\n|$)",
+                RegexOptions.CultureInvariant);
+            var check=Regex.Matches(source,
+                @"(?m)^[ \t]*if firstAttach or not runtimeSettingsMatch\(lastRuntimeSettingsSignature\) then",
+                RegexOptions.CultureInvariant);
+            var complete=match.Count==1 && check.Count==1 &&
+                Regex.Replace(match[0].Value,@"\s+","",RegexOptions.CultureInvariant)==
+                Regex.Replace(newSignature,@"\s+","",RegexOptions.CultureInvariant) &&
+                Regex.Replace(check[0].Value,@"\s+","",RegexOptions.CultureInvariant)==
+                Regex.Replace(newCheck,@"\s+","",RegexOptions.CultureInvariant) &&
+                source.Split("lastRuntimeSettingsSignature = runtimeSettingsSignature()",
+                    StringSplitOptions.None).Length==2 &&
+                !source.Contains(oldCheck,StringComparison.Ordinal);
+            if(!complete)
+                throw new InvalidOperationException(
+                    "Cyberpsychos runtime settings cache source drift: match=" + match.Count +
+                    " check=" + check.Count +
+                    " assignment=" +
+                    (source.Split("lastRuntimeSettingsSignature = runtimeSettingsSignature()",
+                        StringSplitOptions.None).Length-1) +
+                    " oldCheck=" + source.Contains(oldCheck,StringComparison.Ordinal));
             return input;
         }
         // The native/generic pass may reformat a previous PASS4 function.
