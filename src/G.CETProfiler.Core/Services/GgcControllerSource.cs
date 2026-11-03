@@ -75,7 +75,24 @@ internal static class GgcControllerSource
             !required.All(token => source.Contains(token, StringComparison.Ordinal)))
             return false;
         if (relative.Equals(RuntimePath, StringComparison.OrdinalIgnoreCase))
-            return source.TrimEnd() == Runtime.Replace("\r\n", "\n").TrimEnd();
+        {
+            if (source.TrimEnd() == Runtime.Replace("\r\n", "\n").TrimEnd())
+                return true;
+            // Structural-equivalence migration from the one previous
+            // Resolver-generated G-GC runtime. This is an inert historical
+            // source reference, not a second worker or corrective pass.
+            // Unknown/manual changes are refused, including marker-bearing
+            // appended Lua.
+            var assembly = typeof(GgcControllerSource).Assembly;
+            using var legacy = assembly.GetManifestResourceStream(
+                "GCETRuntimeProfiler.GgcGeneratedRuntimeV1.reference.lua");
+            if (legacy is null)
+                throw new InvalidOperationException(
+                    "G-GC source migration reference missing from Resolver package.");
+            using var reader = new StreamReader(legacy, Encoding.UTF8);
+            var previous = reader.ReadToEnd().Replace("\r\n", "\n");
+            return source.TrimEnd() == previous.TrimEnd();
+        }
         if (!relative.Equals(CalibrationPath, StringComparison.OrdinalIgnoreCase))
             return false;
         // Config values legitimately change on each new capture, but only a
