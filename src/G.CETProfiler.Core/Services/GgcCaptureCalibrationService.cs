@@ -65,6 +65,24 @@ internal static class GgcCaptureCalibrationService
         // exact GC-trigger region is asserted from these samples.
         var evidenceValid = validFrames && observedHeap.Count > 0;
 
+        // Measured frame tolerance sets the ceiling, never the demanded GC
+        // work. The starting controls are deliberately conservative heuristics
+        // proportional to AVAILABLE headroom after a substantial reserve.
+        // Actual request size is decided later from the live heap.
+        var frameRoom = validFrames ? tolerance!.Value - medianFrame!.Value : 0.0;
+        var reserve = validFrames ? Math.Max(4.0, frameRoom * 0.60) : 0.0;
+        var usableRoom = Math.Max(0.0, frameRoom - reserve);
+        var roomFraction = validFrames
+            ? Math.Clamp(usableRoom / (tolerance!.Value * 0.20), 0.0, 1.0)
+            : 0.0;
+        var canAssist = evidenceValid && usableRoom > 0;
+        var permittedBudgetMsPerSecond = canAssist
+            ? Math.Clamp(frameRoom * 0.12, 0.15, 2.0) : 0.0;
+        var recommendedIntensity = canAssist
+            ? (int)Math.Round(20 + 25 * roomFraction) : 0;
+        var recommendedFrequencyMs = canAssist
+            ? (int)(50 * Math.Round((1700 - 700 * roomFraction) / 50)) : 5000;
+
         return JsonSerializer.SerializeToNode(new
         {
             schemaVersion = 1,
@@ -93,12 +111,25 @@ internal static class GgcCaptureCalibrationService
                 observedHeapP75MiB = upperHeap,
                 interpretation = "SLOW_STEP_HEAP_SNAPSHOTS_NOT_EXACT_NATURAL_TRIGGER"
             },
+            assistance = new
+            {
+                policy = "CAPTURE_DEFINES_CEILING_LIVE_HEAP_DEFINES_DEMAND",
+                frameReserveMs = validFrames ? reserve : (double?)null,
+                usableFrameMarginMs = validFrames ? usableRoom : (double?)null,
+                maxAssistCpuMsPerSecond = evidenceValid
+                    ? permittedBudgetMsPerSecond : (double?)null,
+                recommendedIntensityPercent = evidenceValid
+                    ? recommendedIntensity : (int?)null,
+                recommendedMinFrequencyMs = evidenceValid
+                    ? recommendedFrequencyMs : (int?)null,
+                calibrationStatus = "PROVISIONAL_NOT_MEASURED_SAFE_GC_STEP_COST"
+            },
             systemInstalledRamMiB = (double?)null,
             systemRamStatus = "NOT_MEASURED_IN_RESOLVER_HANDOFF",
             control = new
             {
                 intensityAndFrequencyAreRuntimeAdjustable = true,
-                enabledByDefault = false,
+                enabledByDefault = canAssist,
                 rateLimitAndMeasuredStepCostRequired = true
             },
             generator = new
