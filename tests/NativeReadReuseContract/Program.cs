@@ -486,7 +486,7 @@ try
         Set("Provider",provider);
         Set("FrameEvent",evt);
         Set("LineStart",1);
-        Set("LineEnd",lua.Split('\\n').Length);
+        Set("LineEnd",lua.Split('\n').Length);
         if(kind=="Frame")Set("ApplyFrameDispatch",true);
         return candidate;
     }
@@ -509,8 +509,8 @@ try
         providerIndex++;
         var fallback="return Game."+pair.Getter+"()";
         var helper="__gcet"+pair.Getter+"()";
-        var source=pair.Header+"\\nlocal authorValue = Game."+
-            pair.Getter+"()\\n";
+        var source=pair.Header+"\nlocal authorValue = Game."+
+            pair.Getter+"()\n";
         var first=GenerateGeneric(source,NewCandidate("SharedProvider",
             "ProviderRegression","ProviderRegression/init.lua",provider,
             "",source,providerIndex));
@@ -526,7 +526,7 @@ try
         Check(repeat.Applied==0 && repeat.Result==first.Result,
             "Repeated generic shared-provider optimization mutated "+
             provider+" already-complete stage");
-        var onlyFallback=pair.Header+"\\n";
+        var onlyFallback=pair.Header+"\n";
         var unchanged=GenerateGeneric(onlyFallback,NewCandidate("SharedProvider",
             "ProviderRegression","ProviderRegression/init.lua",provider,
             "",onlyFallback,providerIndex));
@@ -536,7 +536,7 @@ try
 
     // One-pass pristine source must emit complete generic helper and re-entry
     // must preserve that helper when no original callsite remains.
-    var pristineProvider="local sourceValue = Game.GetMappinSystem()\\n";
+    var pristineProvider="local sourceValue = Game.GetMappinSystem()\n";
     var pristineCandidate=NewCandidate("SharedProvider","Pristine",
         "Pristine/init.lua","MAPPIN_SYSTEM","",pristineProvider,9101);
     var pristinePass=GenerateGeneric(pristineProvider,pristineCandidate);
@@ -556,24 +556,24 @@ try
     // source-proven owner registrar, irrespective of subsequent capture IDs.
     const string frameOwner = "FrameRegression";
     var oldFrameHeader =
-        "-- G-CET generated frame registrar: source-selected from resolver evidence.\\n"+
-        "local __gcetRegisterEvent_254 = registerForEvent\\n"+
-        "do\\n"+
-        "    local __gcetOk, __gcetEngine = pcall(GetMod, \\"0-Engine\\")\\n"+
-        "    local __gcetApi = __gcetEngine\\n"+
-        "    if __gcetOk and type(__gcetApi) == \\"table\\" and type(__gcetApi.MakeEventRegistrar) == \\"function\\" then\\n"+
-        "        __gcetRegisterEvent_254 = __gcetApi.MakeEventRegistrar(\\"FrameRegression\\", registerForEvent)\\n"+
-        "    end\\n"+
-        "end\\n";
+        "-- G-CET generated frame registrar: source-selected from resolver evidence.\n"+
+        "local __gcetRegisterEvent_254 = registerForEvent\n"+
+        "do\n"+
+        "    local __gcetOk, __gcetEngine = pcall(GetMod, \"0-Engine\")\n"+
+        "    local __gcetApi = __gcetEngine\n"+
+        "    if __gcetOk and type(__gcetApi) == \"table\" and type(__gcetApi.MakeEventRegistrar) == \"function\" then\n"+
+        "        __gcetRegisterEvent_254 = __gcetApi.MakeEventRegistrar(\"FrameRegression\", registerForEvent)\n"+
+        "    end\n"+
+        "end\n";
     var previouslyOptimized=oldFrameHeader+
-        "__gcetRegisterEvent_254(\\"onDraw\\", function() end)\\n"+
-        "registerForEvent(\\"onUpdate\\", function(dt) end)\\n";
+        "__gcetRegisterEvent_254(\"onDraw\", function() end)\n"+
+        "registerForEvent(\"onUpdate\", function(dt) end)\n";
     var registered=GenerateGeneric(previouslyOptimized,
         NewCandidate("Frame",frameOwner,"FrameRegression/init.lua","",
             "onUpdate",previouslyOptimized,800001));
     Check(registered.Applied==1 &&
           registered.Result.Contains(
-              "__gcetRegisterEvent_254(\\"onUpdate\\", function(dt) end)") &&
+              "__gcetRegisterEvent_254(\"onUpdate\", function(dt) end)") &&
           registered.Result.Split(
               "G-CET generated frame registrar:").Length==2 &&
           !registered.Result.Contains("__gcetRegisterEvent_800001"),
