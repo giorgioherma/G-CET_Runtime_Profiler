@@ -2554,6 +2554,7 @@ Write-Host 'Profiler-managed foreign 0-Engine contract passed.'
 # One physical bare frame callback can be admitted by source-first proof
 # and measured evidence with different captured line spans. Coalesce only
 # the exact same current registrar, not a neighboring callback.
+$assembly=[Reflection.Assembly]::LoadFrom((Join-Path $ResolverRoot 'G.CETProfiler.Core.dll'))
 $passType=$assembly.GetType('GCETRuntimeProfiler.Core.Services.PassGeneratorService',$true)
 $privateStatic=[Reflection.BindingFlags]'NonPublic,Static'
 $kindType=$passType.GetNestedType('CandidateKind',[Reflection.BindingFlags]'NonPublic')
