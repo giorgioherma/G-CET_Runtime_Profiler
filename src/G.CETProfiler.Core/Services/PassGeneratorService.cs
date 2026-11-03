@@ -122,9 +122,18 @@ public static class PassGeneratorService
             var relative = group.Key.Replace('\\', '/');
             var originalBytes = staged.TryGetValue(relative, out var prepared)
                 ? prepared : File.ReadAllBytes(livePath);
+            // Resolve source-first and captured frame admissions to the SAME
+            // active registrar in the current source before any candidate
+            // mutates it. Captured line spans can drift while still enclosing
+            // the correct physical registrar (PhotoModeNPCWardrobe onDraw).
+            // Never deduplicate by owner/event or approximate proximity:
+            // adjacent independent callbacks must survive.
+            var selectedCandidates = CoalesceCurrentFrameSites(
+                NativeReadReuseSource.Decode(originalBytes),
+                group.OrderByDescending(x => x.LineStart).ToList());
             var transformed = TransformFile(
                 originalBytes,
-                group.OrderByDescending(x => x.LineStart).ToList(),
+                selectedCandidates,
                 modsRoot,
                 transformManifest,
                 skipped);
@@ -1786,6 +1795,92 @@ public static class PassGeneratorService
         withBom[2] = 0xBF;
         Buffer.BlockCopy(body, 0, withBom, 3, body.Length);
         return new TransformResult(withBom, applied);
+    }
+
+    // A source-first and a capture-derived frame candidate may use different
+    // stale line spans yet describe exactly one current bare registration.
+    // Coalesce by proven token identity, not line-range equality/overlap.
+    // This is admission inside the authoritative generic generator, BEFORE
+    // the transformation; no repair of already broken generated output.
+    private static List<PassCandidate> CoalesceCurrentFrameSites(
+        string currentSource, List<PassCandidate> candidates)
+    {
+        if (!candidates.Any(c => c.Kind == CandidateKind.Frame &&
+                                 c.ApplyFrameDispatch && c.SourceFirst))
+            return candidates;
+
+        var source = currentSource.Replace("\r\n", "\n", StringComparison.Ordinal);
+        var masked = NativeReadReuseSource.MaskNonCode(source);
+        if (masked.Length != source.Length)
+            return candidates; // no unverifiable source-offset mapping
+
+        var lineOffsets = new List<int> { 0 };
+        for (var i = 0; i < source.Length; i++)
+            if (source[i] == '\n') lineOffsets.Add(i + 1);
+
+        int? Site(PassCandidate candidate)
+        {
+            if (candidate.Kind != CandidateKind.Frame || !candidate.ApplyFrameDispatch ||
+                candidate.LineStart < 1 || candidate.LineEnd < candidate.LineStart ||
+                candidate.LineStart > lineOffsets.Count ||
+                candidate.LineEnd > lineOffsets.Count + 1)
+                return null;
+
+            var start = lineOffsets[candidate.LineStart - 1];
+            var endLine = Math.Min(candidate.LineEnd, lineOffsets.Count);
+            var end = endLine < lineOffsets.Count
+                ? lineOffsets[endLine] - 1 : source.Length;
+            if (end < start) return null;
+            var segment = source.Substring(start, end - start);
+            var regex = new Regex(
+                @"\b(?<registrar>registerForEvent|registerRuntimeEvent)\s*\(\s*(?<quote>['""])" +
+                Regex.Escape(candidate.FrameEvent) + @"\k<quote>",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant |
+                RegexOptions.Singleline);
+            int? unique = null;
+            foreach (Match match in regex.Matches(segment))
+            {
+                var offset = match.Groups["registrar"].Index;
+                var absolute = start + offset;
+                if (absolute >= masked.Length ||
+                    masked[absolute] != source[absolute] ||
+                    !IsBareRegistrarStatement(segment, offset))
+                    continue;
+                if (unique is not null)
+                    return null; // ambiguous: never suppress a callback
+                unique = absolute;
+            }
+            return unique;
+        }
+
+        var sourceFirstSites = candidates
+            .Where(c => c.SourceFirst && c.Kind == CandidateKind.Frame &&
+                        c.ApplyFrameDispatch)
+            .Select(c => (Candidate: c, Position: Site(c)))
+            .Where(x => x.Position is not null)
+            .GroupBy(x => (x.Candidate.FrameEvent, x.Position))
+            .Where(group => group.Count() == 1)
+            .Select(group => group.Key)
+            .ToHashSet();
+
+        if (sourceFirstSites.Count == 0) return candidates;
+
+        return candidates.Where(candidate =>
+        {
+            // Other independently approved generic work on a measured frame
+            // must not disappear as a side-effect of frame-site coalescence.
+            if (candidate.SourceFirst || candidate.Kind != CandidateKind.Frame ||
+                !candidate.ApplyFrameDispatch ||
+                candidate.ApplyInteractionUiIdleGuard ||
+                candidate.ApplyCrossFileInteractionUiIdleCallGuard ||
+                candidate.ApplyUiVisibilityDormancy ||
+                candidate.ApplySequenceFirstPolling ||
+                candidate.ApplyHardDormantGuardHoist)
+                return true;
+            var site = Site(candidate);
+            return site is null ||
+                !sourceFirstSites.Contains((candidate.FrameEvent, site));
+        }).ToList();
     }
 
     private static bool IsBareRegistrarStatement(
