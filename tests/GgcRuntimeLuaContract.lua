@@ -1,5 +1,5 @@
 -- Execute actual Resolver G-GC generated source inside mocked CET.
--- Regression: direct 0..256KiB, 50..500ms sliders and real 90s A/B phases.
+-- Regression: direct 0..256KiB, 1..500ms sliders and real 90s A/B phases.
 local runtime = assert(arg[1], "generated G-GC Lua runtime required")
 local hooks, rendered, marks, logged, steps = {}, {}, {}, {}, {}
 local heapKiB, active = 583 * 1024, true
@@ -114,9 +114,9 @@ local shown = draw()
 assert(sliders["Step size (KiB)"].min == 0 and
        sliders["Step size (KiB)"].max == 256,
   "GC size slider is not 0..256 KiB")
-assert(sliders["Interval (ms)"].min == 50 and
+assert(sliders["Interval (ms)"].min == 1 and
        sliders["Interval (ms)"].max == 500,
-  "GC interval slider is not 50..500 ms")
+  "GC interval slider is not 1..500 ms")
 assert(shown:find("Lua heap",1,true) and
        shown:find("net growth",1,true) and
        shown:find("Step CPU",1,true) and
@@ -152,6 +152,36 @@ shown = draw()
 assert(shown:find("Observed spacing",1,true) and
        shown:find("Step CPU",1,true),
   "current / previous step timings not visible")
+
+-- Verify sub-frame interval is capped at one request per onUpdate.
+-- 1ms is a scheduling floor, not an additional real-time thread or spin loop.
+selectedSize, selectedInterval = 16, 1
+draw()
+hooks.onOverlayClose()
+local perFrameStart = stepCount()
+advance(1, 0.02) -- 50 FPS; 1ms requests still produce <= 50 steps.
+local perFrameCount = stepCount() - perFrameStart
+assert(perFrameCount >= 45 and perFrameCount <= 50,
+  "1ms setting failed to request at most one GC step per eligible frame")
+shown = draw()
+assert(shown:find("frame-limited", 1, true),
+  "CET does not explain sub-frame GC scheduling")
+-- At 100 FPS, compare a 20ms interval against 1ms to prove cadence.
+selectedInterval = 20
+draw()
+hooks.onOverlayClose()
+local slowerStart = stepCount()
+advance(1, 0.01)
+local slowerCount = stepCount() - slowerStart
+selectedInterval = 1
+draw()
+hooks.onOverlayClose()
+local fasterStart = stepCount()
+advance(1, 0.01)
+local fasterCount = stepCount() - fasterStart
+assert(fasterCount >= 90 and fasterCount <= 100 and
+       fasterCount > slowerCount * 1.7,
+  "1ms manual interval is not frame-limited or faster than 20ms")
 
 -- Configure a different manual preset, then arm the experiment in CET.
 -- Nothing starts while the overlay is still open. The ten-second delay
@@ -240,4 +270,4 @@ assert(stepCount() == beforeHeavy,
   "G-GC ignored repeated severe frame backoff")
 
 os, print = actualOs, oldPrint
-print("G-GC 0..256KiB / 50..500ms, 90s phase test, timing, HUD and safety PASS")
+print("G-GC 0..256KiB / 1..500ms, per-frame floor, 90s phases, HUD and safety PASS")

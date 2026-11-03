@@ -98,7 +98,7 @@ internal static class GgcControllerSource
             // the complete exact previously emitted source; any manual drift
             // refuses overwrite. All output still has one authoritative owner.
             var assembly = typeof(GgcControllerSource).Assembly;
-            foreach (var legacyVersion in new[] { "V1", "V2", "V3", "V4", "V5" })
+            foreach (var legacyVersion in new[] { "V1", "V2", "V3", "V4", "V5", "V6" })
             {
                 using var legacy = assembly.GetManifestResourceStream(
                     "GCETRuntimeProfiler.GgcGeneratedRuntime" + legacyVersion + ".reference.lua");
@@ -337,7 +337,8 @@ return {
     internal const string Runtime = """
 -- GGC_RUNTIME_V1_RESOLVER_OWNED
 -- Single Resolver-generated G-GC runtime. No profiler DLL required.
--- Player controls request 0..256 KiB per step and 50..500 ms interval.
+-- Player controls request 0..256 KiB per step and 1..500 ms interval.
+-- Sub-frame intervals mean one attempt per eligible CET onUpdate, not a timer.
 -- The dev experiment overrides both settings for measured 30s phases.
 local config = require("threshold")
 if type(config) ~= "table" or config.schema ~= 3
@@ -353,7 +354,7 @@ end
 -- Resolver's conservative percentage and cadence estimate are starting
 -- values only. Map them into explicit, user-editable units.
 local manualKiB = clamp(math.floor((config.defaultIntensity or 0) * 2.56 + 0.5), 0, 256)
-local manualIntervalMs = clamp(math.floor((config.defaultFrequencyMs or 500) + 0.5), 50, 500)
+local manualIntervalMs = clamp(math.floor((config.defaultFrequencyMs or 500) + 0.5), 1, 500)
 local overlayOpen = false
 local heapSampleAge, sinceStep, sinceActualStep = 0, 0, 0
 local haveCompletedStep = false
@@ -608,12 +609,12 @@ registerForEvent("onDraw", function()
 
     if testState == "idle" then
       local newSize = ImGui.SliderInt("Step size (KiB)", manualKiB, 0, 256)
-      local newDelay = ImGui.SliderInt("Interval (ms)", manualIntervalMs, 50, 500)
+      local newDelay = ImGui.SliderInt("Interval (ms)", manualIntervalMs, 1, 500)
       if type(newSize) == "number" then
         manualKiB = clamp(math.floor(newSize), 0, 256)
       end
       if type(newDelay) == "number" then
-        manualIntervalMs = clamp(math.floor(newDelay), 50, 500)
+        manualIntervalMs = clamp(math.floor(newDelay), 1, 500)
       end
     else
       ImGui.Text(string.format("Manual setting %d KiB / %d ms (test override)",
@@ -627,6 +628,7 @@ registerForEvent("onDraw", function()
       lastCpuMs, previousCpuMs, maximumCpuMs))
     ImGui.Text(string.format("Observed spacing %.0f ms last / %.0f ms previous",
       lastIntervalMs, previousIntervalMs))
+    ImGui.Text("Sub-frame interval = one attempt per eligible onUpdate (frame-limited)")
 
     if testState == "idle" then
       if ImGui.Button("DEV: Start 90s A/B test") then startTest() end

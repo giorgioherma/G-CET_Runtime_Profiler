@@ -5,6 +5,9 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="Services/Reference/GgcGeneratedRuntimeV6.reference.lua">
+      <LogicalName>GCETRuntimeProfiler.GgcGeneratedRuntimeV6.reference.lua</LogicalName>
+    </EmbeddedResource>
     <EmbeddedResource Include="Services/Reference/GgcGeneratedRuntimeV5.reference.lua">
       <LogicalName>GCETRuntimeProfiler.GgcGeneratedRuntimeV5.reference.lua</LogicalName>
     </EmbeddedResource>
