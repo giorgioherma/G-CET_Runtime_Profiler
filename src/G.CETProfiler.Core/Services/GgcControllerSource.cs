@@ -176,11 +176,12 @@ internal static class GgcControllerSource
         }
         var capture = sourceCapture.GetString() ?? "unknown";
         var count = (int)sampleCount;
+        double median = 0, p25 = 0, p75 = 0;
         var hasObservedRegion =
             count > 0 &&
-            TryNumber(pressure, "observedHeapMedianMiB", out var median) &&
-            TryNumber(pressure, "observedHeapP25MiB", out var p25) &&
-            TryNumber(pressure, "observedHeapP75MiB", out var p75);
+            TryNumber(pressure, "observedHeapMedianMiB", out median) &&
+            TryNumber(pressure, "observedHeapP25MiB", out p25) &&
+            TryNumber(pressure, "observedHeapP75MiB", out p75);
         if (count < 0 || (count > 0 && !hasObservedRegion))
         {
             refusal = "G-GC optional observed pressure region is inconsistent.";
