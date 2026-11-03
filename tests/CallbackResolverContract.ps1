@@ -648,7 +648,7 @@ $handoff = @{
         (CallbackRow 124 'FixtureDormantBackground' 'observe' 'PlayerPuppet::FixtureBackgroundTick' 60 6.0 1.2 'init.lua' 1 3),
         (CallbackRow 129 'FixtureOtherStructural' 'ObserveAfter' 'PlayerPuppet::FixtureStructuralObserve' 120 12.0 3.0 'init.lua' 1 19),
         (CallbackRow 102 'FixtureFrame' 'event' 'onUpdate' 60 5.0 1.0 'init.lua' 2 7),
-        (CallbackRow 147 'FixtureZeroMeasuredFrame' 'event' 'onUpdate' 60 0.0 0.0 'init.lua' 1 3),
+        (CallbackRow 147 'FixtureZeroMeasuredFrame' 'event' 'onUpdate' 0 0.0 0.0 'init.lua' 1 3),
         (CallbackRow 140 'FixtureDraw' 'event' 'onDraw' 60 4.8 0.9 'init.lua' 1 3),
         (CallbackRow 145 'FixtureLocalLimitExact' 'event' 'onDraw' 60 4.6 0.85 'init.lua' 200 202),
         (CallbackRow 146 'FixtureLocalLimitOverflow' 'event' 'onDraw' 60 4.5 0.84 'init.lua' 201 203),
@@ -1388,8 +1388,8 @@ if ([int]$result.summary.frameDispatchOnlyMaterialResidual -lt 1 -or
 $zeroMeasured = @($onUpdate.topConsumers | Where-Object {
     $_.owner -eq 'FixtureZeroMeasuredFrame'
 }) | Select-Object -First 1
-if ($null -eq $zeroMeasured -or $zeroMeasured.generic.Automatable) {
-    throw 'Zero-cost measured callback should remain restricted in measured evidence.'
+if ($null -ne $zeroMeasured) {
+    throw 'Zero-call callback was improperly promoted into measured workload.'
 }
 $zeroSourceFirst = @($result.callbackFamilies |
     Where-Object { $_.resolverFamily -eq 'ONUPDATE' -and $_.sourceFirst } |
