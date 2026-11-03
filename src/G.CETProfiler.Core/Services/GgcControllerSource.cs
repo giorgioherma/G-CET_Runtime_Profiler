@@ -127,8 +127,10 @@ internal static class GgcControllerSource
                 if (value.Length < 2 || value[0] != '"' || value[^1] != '"' ||
                     value[1..^1].Contains('"')) return false;
             }
-            else if (value == "nil" && keys[i] is
-                     "pressureReferenceMiB" or "pressureStartMiB" or "pressureHighMiB")
+            else if (value == "nil" &&
+                     (keys[i] == "pressureReferenceMiB" ||
+                      keys[i] == "pressureStartMiB" ||
+                      keys[i] == "pressureHighMiB"))
                 missingPriorFields++;
             else if (!double.TryParse(value,
                          NumberStyles.Float, CultureInfo.InvariantCulture, out var number) ||
