@@ -1,112 +1,125 @@
--- Mocked CET runtime test of the actual Resolver-owned controller source.
--- Does not claim real LuaJIT phase latency or in-game gameplay acceptance.
-local runtime = assert(arg[1], "runtime .lua path required")
-local hooks, marks = {}, {}
-local kib, active, stepCount, collectCount = 350 * 1024, true, 0, 0
-local stepSizes = {}
-local clock, intensity, frequency, uiActive = 0, 0, 1000, false
+-- Mocked CET execution of the real source emitted by the Resolver.
+-- A stale October stock-stack heap prior cannot silence the current stack.
+local runtime = assert(arg[1], "generated G-GC Lua runtime required")
+local hooks, marks, rendered = {}, {}, {}
+local kib, active, steps, fulls = 583 * 1024, true, {}, 0
+local simulatedCpu, selectedIntensity, selectedFrequency = 0, 37, 1250
+
 package.preload["threshold"] = function() return {
-  schema = 1, capture = "MOCK_CAPTURE",
-  baselineFrameMs = 20, hitchToleranceMs = 45, frameReserveMs = 10,
-  pressureStartMiB = 600, pressureHighMiB = 660,
-  maxAssistCpuMsPerSecond = 2,
+  schema = 1, capture = "CET-20261023-035144_TEST_RESOLVER_STOCK_STACK",
+  baselineFrameMs = 22.4354, hitchToleranceMs = 33.6531,
+  frameReserveMs = 6.73062, maxAssistCpuMsPerSecond = 1.346124,
+  pressureReferenceMiB = 863.808, pressureStartMiB = 794.70336,
+  pressureHighMiB = 932.91264,
   defaultIntensity = 37, defaultFrequencyMs = 1250
 } end
+
 registerForEvent = function(name, fn)
-  assert(not hooks[name], "duplicate G-GC hook " .. name)
+  assert(hooks[name] == nil, "duplicate G-GC event: " .. name)
   hooks[name] = fn
 end
 Game = { GetPlayer = function() return active and {} or nil end }
-CETProfilerMark = function(mark) marks[#marks+1] = mark end
-collectgarbage = function(command, size)
-  if command == "count" then
-    kib = kib + 1024
-    return kib
-  elseif command == "step" then
-    assert(type(size) == "number" and size >= 1 and size <= 32,
-      "unbounded incremental work")
-    stepCount = stepCount + 1
-    stepSizes[#stepSizes + 1] = size
-    clock = clock + 0.00005
+CETProfilerMark = function(label) marks[#marks + 1] = label end
+collectgarbage = function(command, amount)
+  if command == "count" then return kib end
+  if command == "step" then
+    assert(type(amount) == "number" and amount >= 1 and amount <= 128,
+      "incremental step argument exceeded safety cap")
+    steps[#steps + 1] = amount
+    simulatedCpu = simulatedCpu + 0.00005
     return false
-  elseif command == "collect" then
-    collectCount = collectCount + 1
-    error("G-GC must not force full collection")
   end
-  error("unsupported GC command " .. tostring(command))
+  if command == "collect" then fulls = fulls + 1 end
+  error("unexpected GC command " .. tostring(command))
 end
-local realOs = os
-os = { clock = function() return clock end }
+local actualOs = os
+os = { clock = function() return simulatedCpu end }
 ImGui = {
-  Begin = function() return true end, End = function() end,
-  Text = function() end,
-  SliderInt = function(name, value)
-    if name == "Intensity (%)" then return intensity end
-    if name == "Frequency (ms)" then return frequency end
-    error("unexpected slider")
+  Begin = function() return true end,
+  End = function() end,
+  Text = function(s) rendered[#rendered+1] = s end,
+  SliderInt = function(label, current)
+    if label == "Intensity (%)" then return selectedIntensity, true end
+    if label == "Frequency (ms)" then return selectedFrequency, true end
+    error("unexpected slider " .. tostring(label))
   end
 }
 assert(loadfile(runtime))()
 assert(type(hooks.onUpdate) == "function" and type(hooks.onDraw) == "function")
 assert(type(hooks.onOverlayOpen) == "function" and
-       type(hooks.onOverlayClose) == "function")
-local function advance(count, dt)
-  for _ = 1, count do hooks.onUpdate(dt) end
+  type(hooks.onOverlayClose) == "function")
+local function advance(n, dt)
+  for _ = 1,n do hooks.onUpdate(dt or 0.020) end
+end
+local function draw()
+  rendered = {}
+  hooks.onOverlayOpen()
+  hooks.onDraw()
+  hooks.onOverlayClose()
+  return table.concat(rendered, "\n")
+end
+local function getLearned()
+  local shown = draw()
+  local n = shown:match("learned (%d+)")
+  assert(n, "G-GC live learning/diagnostics are not visible")
+  return tonumber(n), shown
 end
 
--- Resolver's nonzero initial allowance must NOT cause work at low pressure.
-advance(100, 0.025)
-assert(stepCount == 0, "nonzero default ran GC with no heap pressure")
-assert(collectCount == 0, "controller forced full GC")
+-- Stale historical prior, low heap, and rising heap: no premature GC steps.
+advance(50)
+assert(#steps == 0, "old capture caused unneeded low-pressure collection")
+kib = 655 * 1024
+advance(50)
+assert(#steps == 0, "stale stock-stack threshold was incorrectly treated as live demand")
 
--- The SAME generated starting cap should deploy modest help as pressure rises,
--- then more assistance when the live heap reaches the high-pressure region.
-kib = 630 * 1024
-advance(160, 0.025)
-assert(stepCount > 0, "calibrated nonzero default did not help rising heap")
-local moderateKb = stepSizes[#stepSizes]
-local afterModerate = stepCount
-kib = 720 * 1024
-advance(160, 0.025)
-assert(stepCount > afterModerate, "high-pressure region did not request GC assistance")
-assert(stepSizes[#stepSizes] > moderateKb,
-       "requested effort did not adapt to live pressure")
-assert(#marks > 0, "automatic capture-derived setting not marked")
-local afterAutomatic = stepCount
+-- Observe a natural current-stack collection peak around 680 MiB, despite
+-- the old 863 MiB prior. Do not require an exact trigger timestamp.
+kib = 680 * 1024
+advance(50)
+kib = 662 * 1024
+advance(50)
+local learned, shown = getLearned()
+assert(learned == 1, "natural current-stack heap drop did not recalibrate")
+assert(shown:find("LIVE reference 680.0 MiB",1,true),
+       "live heap reference did not replace stale captured region")
+assert(#steps == 0, "natural GC drop caused immediate inappropriate assistance")
 
--- Player manual 0% is an unconditional off switch even with high pressure.
-intensity = 0
-hooks.onOverlayOpen()
-hooks.onDraw()
-hooks.onOverlayClose()
-advance(100, 0.025)
-assert(stepCount == afterAutomatic, "manual 0% did not disable assistance")
+-- Let the episode settle and the live heap rise into the learned band.
+kib = 590 * 1024
+advance(450)
+kib = 650 * 1024
+advance(130)
+assert(#steps > 0, "calibrated starting intensity never executed live assistance")
+local at37, size37 = #steps, steps[#steps]
+assert(size37 > 1, "generated default did not request an incremental step")
 
--- Intensity and frequency can be tuned during the SAME capture.
-intensity, frequency = 75, 250
-hooks.onOverlayOpen()
-hooks.onDraw()
-hooks.onOverlayClose()
-advance(100, 0.025)
-assert(stepCount > afterAutomatic, "manual settings did not resume assistance")
-local afterGood = stepCount
+-- Slider has a real range. Same heap; manual 100% and faster cadence must
+-- request more/larger steps while staying within captured CPU allowance.
+selectedIntensity, selectedFrequency = 100, 250
+shown = draw()
+assert(shown:find("APPLIED: intensity 100%%") and shown:find("interval 250 ms"),
+       "CET slider selections did not bind to live settings")
+advance(130)
+assert(#steps > at37, "100% settings did not increase assistance")
+assert(steps[#steps] > size37, "100% intensity requested no more work than 37%")
+assert(marks[#marks]:find("GGC_V2_",1,true), "changes were not marked for Profiler")
 
--- Sudden expensive frames suppress assistance despite high pressure.
-advance(100, 0.047)
-assert(stepCount == afterGood, "backoff ignored expensive gameplay frames")
+-- Slider zero suppresses actual GC work even at high pressure.
+selectedIntensity = 0
+draw()
+local beforeDisabled = #steps
+advance(140)
+assert(#steps == beforeDisabled, "0% slider failed to disable assistance")
 
--- Loading/no-player state must not permit GC assistance.
+-- Even 100% must respect heavy gameplay and loading.
+selectedIntensity = 100
+draw()
+local beforeHeavy = #steps
+advance(120, 0.047)
+assert(#steps == beforeHeavy, "heavy gameplay was ignored by controller")
 active = false
-advance(250, 0.025)
-assert(stepCount == afterGood, "assistance ran without valid game world")
-
--- The 0% slider must stay authoritative after loading or transitions.
-active, intensity = true, 0
-hooks.onOverlayOpen()
-hooks.onDraw()
-hooks.onOverlayClose()
-advance(100, 0.025)
-assert(stepCount == afterGood, "intensity 0 did not disable assistance")
-assert(collectCount == 0, "full GC was invoked")
-os = realOs
-print("G-GC capture-derived defaults, heap demand, headroom, sliders and lifecycle PASS")
+advance(250)
+assert(#steps == beforeHeavy, "assist ran with no valid world")
+assert(fulls == 0, "G-GC forced a full collection")
+os = actualOs
+print("G-GC stale capture recovery, real sliders, live heap, cost and loading PASS")
