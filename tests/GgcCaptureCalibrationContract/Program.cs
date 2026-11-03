@@ -118,6 +118,11 @@ try
         "maxAssistCpuMsPerSecond", "pcall(collectgarbage, \"step\"", "backoffSeconds",
         "frameReserveMs", "growthMiBps"})
         Check(lua.Contains(text), "G-GC runtime missing " + text);
+    Check(lua.Contains("CONTINUOUS assistance") &&
+          lua.Contains("0.10 + 0.90 * demand") &&
+          !lua.Contains("if pressure <= 0 then") &&
+          !lua.Contains("if learnCooldown > 0 then lastBlock"),
+          "Generated worker still gates assistance on an approximate GC threshold");
     Check(!lua.Contains("collectgarbage(\"collect\""),
         "G-GC must not schedule full garbage collection");
     Check(threshold.Contains("43.91805") && threshold.Contains("29.2787"),
@@ -134,23 +139,24 @@ try
         Directory.CreateDirectory(Path.GetDirectoryName(file)!);
         File.WriteAllBytes(file, item.Value);
     }
-    // A previous Resolver-generated V1 controller was already deployed by
-    // users. Upgrade that exact known source in one pass; never require manual
-    // deletion or mistake source ownership for a string marker alone.
+    // Recognize both exact previously deployed G-GC runtimes directly in
+    // the authoritative generator: V1 first release and V2 pressure-gated.
+    // No duplicate worker, marker-only trust or manual removal required.
     var assembly = typeof(ResolverService).Assembly;
-    using (var priorStream = assembly.GetManifestResourceStream(
-        "GCETRuntimeProfiler.GgcGeneratedRuntimeV1.reference.lua"))
+    foreach (var version in new[] { "V1", "V2" })
     {
-        Check(priorStream is not null, "Published Resolver lacks legacy source proof");
+        using var priorStream = assembly.GetManifestResourceStream(
+            "GCETRuntimeProfiler.GgcGeneratedRuntime" + version + ".reference.lua");
+        Check(priorStream is not null, "Resolver lacks " + version + " source proof");
         using var priorReader = new StreamReader(priorStream!);
         var priorSource = priorReader.ReadToEnd();
         var deployedInit = Path.Combine(tempRoot, "G-GC", "init.lua");
         File.WriteAllText(deployedInit, priorSource);
         var upgraded = new Dictionary<string, byte[]>();
         Check(Stage(first, tempRoot, upgraded, new List<object>()),
-            "Previously deployed real V1 G-GC controller cannot be upgraded");
+            "Previously deployed " + version + " G-GC cannot be upgraded");
         Check(upgraded["G-GC/init.lua"].SequenceEqual(generated["G-GC/init.lua"]),
-            "Upgrade produced a second implementation instead of the current worker");
+            version + " migration emitted a duplicate or outdated runtime");
         File.WriteAllBytes(deployedInit, upgraded["G-GC/init.lua"]);
     }
     var repeated = new Dictionary<string, byte[]>();
