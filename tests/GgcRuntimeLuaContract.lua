@@ -113,7 +113,9 @@ assert(#steps > afterGrowth,
 selectedIntensity = 0
 draw()
 local beforeOff = #steps
-advance(100)
+-- The estimator admits only genuinely unassisted collection peaks:
+-- let 10 seconds elapse after the last helper step before inferring a peak.
+advance(650)
 assert(#steps == beforeOff, "0% must disable collection")
 kib = 680 * 1024
 advance(50)
