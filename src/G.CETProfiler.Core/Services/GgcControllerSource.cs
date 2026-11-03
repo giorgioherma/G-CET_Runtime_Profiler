@@ -98,13 +98,13 @@ internal static class GgcControllerSource
             // the complete exact previously emitted source; any manual drift
             // refuses overwrite. All output still has one authoritative owner.
             var assembly = typeof(GgcControllerSource).Assembly;
-            foreach (var version in new[] { "V1", "V2", "V3", "V4" })
+            foreach (var legacyVersion in new[] { "V1", "V2", "V3", "V4" })
             {
                 using var legacy = assembly.GetManifestResourceStream(
-                    "GCETRuntimeProfiler.GgcGeneratedRuntime" + version + ".reference.lua");
+                    "GCETRuntimeProfiler.GgcGeneratedRuntime" + legacyVersion + ".reference.lua");
                 if (legacy is null)
                     throw new InvalidOperationException(
-                        "G-GC runtime migration reference missing: " + version);
+                        "G-GC runtime migration reference missing: " + legacyVersion);
                 using var reader = new StreamReader(legacy, Encoding.UTF8);
                 var previous = reader.ReadToEnd().Replace("\r\n", "\n");
                 if (source.TrimEnd() == previous.TrimEnd())
