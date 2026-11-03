@@ -1,0 +1,357 @@
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
+
+namespace GCETRuntimeProfiler.Core.Services;
+
+/// <summary>
+/// One authoritative G-GC owner generated from THIS admitted Resolver capture.
+/// No standalone installation, no historical thresholds and no per-mod GC workers.
+/// The bundled runtime is source-independent; all hardware/latency assumptions are
+/// generated from current measurements, not encoded into the hot loop.
+/// </summary>
+internal static class GgcControllerSource
+{
+    internal const string RuntimePath = "G-GC/init.lua";
+    internal const string CalibrationPath = "G-GC/threshold.lua";
+    private const string RuntimeSignature = "-- GGC_RUNTIME_V1_RESOLVER_OWNED";
+    private const string CalibrationSignature = "-- GGC_CAPTURE_CALIBRATION_V1";
+
+    internal static bool TryStage(
+        JsonElement resolverRoot,
+        string modsRoot,
+        Dictionary<string, byte[]> staged,
+        Dictionary<string, int> appliedTransformsByFile,
+        List<object> manifest,
+        List<object> skipped)
+    {
+        // Capture-only evidence; a missing CapFrameX/hitch signal must NOT
+        // silently become a made-up threshold or an uncalibrated helper.
+        if (!TryCalibrate(resolverRoot, out var calibration, out var refusal))
+        {
+            skipped.Add(new { type = "GC_CONTROLLER_NOT_GENERATED",
+                reason = refusal, owner = "G-GC" });
+            return false;
+        }
+
+        // An existing foreign G-GC installation must never be replaced.
+        // Generated sources are recognized by both their signature and shape.
+        if (!CompatibleLive(modsRoot, RuntimePath, RuntimeSignature,
+                "registerForEvent(\"onUpdate\"", "collectgarbage(\"step\"") ||
+            !CompatibleLive(modsRoot, CalibrationPath, CalibrationSignature,
+                "return {", "pressureReferenceMiB"))
+        {
+            skipped.Add(new { type = "GC_CONTROLLER_SOURCE_DRIFT",
+                reason = "G-GC exists but is not the recognized Resolver-owned runtime. " +
+                         "Refusing to overwrite user or modified Lua.",
+                owner = "G-GC" });
+            return false;
+        }
+
+        staged[RuntimePath] = Encoding.UTF8.GetBytes(Runtime);
+        staged[CalibrationPath] = Encoding.UTF8.GetBytes(calibration);
+        appliedTransformsByFile[RuntimePath] = 0;
+        appliedTransformsByFile[CalibrationPath] = 0;
+        manifest.Add(new
+        {
+            type = "GC_CONTROLLER",
+            owner = "G-GC",
+            stage = "CAPTURE_CALIBRATED_RUNTIME_V1",
+            files = new[] {RuntimePath, CalibrationPath},
+            captureEvidence = "CURRENT_RESOLVER_INPUT_ONLY",
+            control = "PRESSURE_AND_FRAME_HEADROOM_BUDGET_WITH_LIVE_INTENSITY_FREQUENCY",
+            provenGameplay = false
+        });
+        return true;
+    }
+
+    private static bool CompatibleLive(
+        string modsRoot, string relative, string signature, params string[] required)
+    {
+        var path = Path.Combine(modsRoot, relative.Replace('/', Path.DirectorySeparatorChar));
+        if (!File.Exists(path)) return true;
+        var source = File.ReadAllText(path);
+        return source.Contains(signature, StringComparison.Ordinal) &&
+               required.All(token => source.Contains(token, StringComparison.Ordinal));
+    }
+
+    private static bool TryCalibrate(JsonElement root, out string lua, out string refusal)
+    {
+        lua = "";
+        refusal = "";
+        if (!root.TryGetProperty("quality", out var quality) ||
+            !TryBool(quality, "frameNormalizationAvailable") ||
+            !root.TryGetProperty("hitchPressure", out var hitch) ||
+            !TryNumber(hitch, "baselineFrameMs", out var baseline) ||
+            !TryNumber(hitch, "toleranceFrameMs", out var tolerance) ||
+            !double.IsFinite(baseline) || !double.IsFinite(tolerance) ||
+            baseline < 2 || baseline > 200 ||
+            tolerance < baseline + 1 || tolerance > 300)
+        {
+            refusal = "Measured CapFrameX frame baseline/tolerance is absent or invalid. " +
+                      "No G-GC budget generated.";
+            return false;
+        }
+        if (!root.TryGetProperty("garbageCollection", out var gc) ||
+            !TryBool(gc, "automaticLuaJitTiming") ||
+            !TryNumber(gc, "internalCollectorFullCalls", out var fullCalls) ||
+            fullCalls > 0 ||
+            !gc.TryGetProperty("slowOperations", out var slow) ||
+            slow.ValueKind != JsonValueKind.Array)
+        {
+            refusal = "Unassisted native GC phase observations are absent or include full-GC " +
+                      "requests. No pressure region inferred.";
+            return false;
+        }
+
+        // An atomic -> sweepstring transition is a nearby pressure
+        // observation, NOT the literal point at which LuaJIT began a cycle.
+        // It is deliberately not trained on heap drops or cumulative bytes.
+        var heaps = new List<double>();
+        foreach (var entry in slow.EnumerateArray())
+        {
+            if (!TryString(entry, "PhaseBefore", out var before) ||
+                !TryString(entry, "PhaseAfter", out var after) ||
+                !before.Equals("atomic", StringComparison.OrdinalIgnoreCase) ||
+                !after.Equals("sweepstring", StringComparison.OrdinalIgnoreCase) ||
+                !TryNumber(entry, "heapBeforeMiB", out var heap) ||
+                !double.IsFinite(heap) || heap < 64 || heap > 16384) continue;
+            heaps.Add(heap);
+        }
+        if (heaps.Count == 0)
+        {
+            refusal = "No native atomic-to-sweepstring heap observation in this capture; " +
+                      "G-GC cannot calibrate pressure without inventing a heap limit.";
+            return false;
+        }
+        heaps.Sort();
+        var mid = heaps.Count / 2;
+        var median = heaps.Count % 2 == 0
+            ? (heaps[mid - 1] + heaps[mid]) / 2 : heaps[mid];
+
+        // Deliberately broad approximate band; current live heap and slope
+        // are the real controls. Calibrated conservatively during gameplay.
+        var slack = Math.Max(32.0, median * 0.08);
+        var pressureStart = Math.Max(64.0, median - slack);
+        var pressureHigh = median + slack;
+        var room = tolerance - baseline;
+        // Initial allowance is a PROVISIONAL engineering budget, not a
+        // measured safe incremental-step duration. Player tests establish it.
+        var cpuBudgetMsPerSecond = Math.Clamp(room * 0.12, 0.4, 2.0);
+        var reserveMs = Math.Max(4.0, room * 0.60);
+        var capture = "unknown";
+        if (root.TryGetProperty("capture", out var c))
+            TryString(c, "title", out capture);
+        capture = (capture ?? "unknown").Replace("\\", "_")
+            .Replace("\"", "_").Replace("\n", "_").Replace("\r", "_");
+
+        static string N(double value) =>
+            value.ToString("0.######", CultureInfo.InvariantCulture);
+        lua = $$"""
+-- GGC_CAPTURE_CALIBRATION_V1
+-- Generated by G-CET Resolver from the current capture. Do not edit;
+-- a new Resolver pass replaces this exact configuration.
+return {
+  schema = 1,
+  capture = "{{capture}}",
+  baselineFrameMs = {{N(baseline)}},
+  hitchToleranceMs = {{N(tolerance)}},
+  pressureReferenceMiB = {{N(median)}},
+  pressureStartMiB = {{N(pressureStart)}},
+  pressureHighMiB = {{N(pressureHigh)}},
+  pressureSampleCount = {{heaps.Count}},
+  frameReserveMs = {{N(reserveMs)}},
+  maxAssistCpuMsPerSecond = {{N(cpuBudgetMsPerSecond)}},
+  defaultIntensity = 0,
+  defaultFrequencyMs = 1000,
+}
+""";
+        return true;
+    }
+
+    private static bool TryBool(JsonElement json, string key) =>
+        json.ValueKind == JsonValueKind.Object &&
+        json.TryGetProperty(key, out var value) &&
+        value.ValueKind == JsonValueKind.True;
+
+    private static bool TryString(JsonElement json, string key, out string text)
+    {
+        text = "";
+        if (json.ValueKind != JsonValueKind.Object ||
+            !json.TryGetProperty(key, out var value) ||
+            value.ValueKind != JsonValueKind.String) return false;
+        text = value.GetString() ?? "";
+        return true;
+    }
+
+    private static bool TryNumber(JsonElement json, string key, out double number)
+    {
+        number = 0;
+        return json.ValueKind == JsonValueKind.Object &&
+               json.TryGetProperty(key, out var value) &&
+               value.ValueKind == JsonValueKind.Number &&
+               value.TryGetDouble(out number);
+    }
+
+    // One live controller. onDraw builds UI only while the CET overlay is open.
+    // No synchronous full collections, new game observers or mod-owned workers.
+    // All numbers here are runtime safety bounds; the user's actual budget is
+    // generated above from measured frametime tolerance.
+    internal const string Runtime = """
+-- GGC_RUNTIME_V1_RESOLVER_OWNED
+local config = require("threshold")
+if type(config) ~= "table" or config.schema ~= 1
+    or type(config.pressureStartMiB) ~= "number"
+    or type(config.hitchToleranceMs) ~= "number"
+    or type(config.maxAssistCpuMsPerSecond) ~= "number" then
+  print("[G-GC] Invalid Resolver calibration; assistance disabled.")
+  return
+end
+
+local intensity = math.max(0, math.min(100, config.defaultIntensity or 0))
+local frequencyMs = math.max(250, math.min(5000, config.defaultFrequencyMs or 1000))
+local overlayOpen = false
+local age, sinceStep, windowAge, windowUsedMs = 0, 0, 0, 0
+local heapMiB, previousHeap, growthMiBps = 0, nil, 0
+local frameEmaMs, backoffSeconds = config.baselineFrameMs, 0
+local lastStepCpuMs, maximumStepCpuMs = 0, 0
+local stepCount, completedCycles, rejectedSteps = 0, 0, 0
+local settingsDirty, firstMark = true, true
+local activeWorld = false
+
+local function markSettings()
+  if type(CETProfilerMark) == "function" then
+    pcall(CETProfilerMark, "GGC_V1_I" .. intensity .. "_F" .. frequencyMs)
+  end
+end
+
+local function observe(dt)
+  local ok, kib = pcall(collectgarbage, "count")
+  if not ok or type(kib) ~= "number" or kib ~= kib or kib < 0 then
+    backoffSeconds = 30
+    return
+  end
+  heapMiB = kib / 1024
+  if previousHeap then
+    local slope = (heapMiB - previousHeap) / dt
+    if slope > -4096 and slope < 4096 then
+      growthMiBps = growthMiBps * 0.70 + slope * 0.30
+    end
+  end
+  previousHeap = heapMiB
+
+  -- Once per observation, not per frame. No native player handle retained.
+  activeWorld = false
+  if type(Game) == "table" and type(Game.GetPlayer) == "function" then
+    local playerOk, player = pcall(Game.GetPlayer)
+    activeWorld = playerOk and player ~= nil
+  end
+end
+
+local function tick(dt)
+  if type(dt) ~= "number" or dt <= 0 or dt > 0.50 then
+    -- A loading stall must not be converted into imaginary spare budget.
+    backoffSeconds = 3
+    return
+  end
+  local frame = dt * 1000 -- CET onUpdate delta is seconds.
+  frameEmaMs = frameEmaMs * 0.90 + frame * 0.10
+  if frame >= config.hitchToleranceMs * 0.85 then
+    backoffSeconds = math.max(backoffSeconds, 2)
+  end
+  if backoffSeconds > 0 then backoffSeconds = math.max(0, backoffSeconds - dt) end
+  age = age + dt
+  sinceStep = sinceStep + dt
+  windowAge = windowAge + dt
+  if windowAge >= 1 then
+    windowAge, windowUsedMs = 0, 0
+  end
+  if age < 0.75 then return end
+  local observedSeconds = age
+  age = 0
+  observe(observedSeconds)
+  if settingsDirty or firstMark then
+    markSettings()
+    settingsDirty, firstMark = false, false
+  end
+  if intensity <= 0 or not activeWorld or backoffSeconds > 0 then return end
+  if sinceStep * 1000 < frequencyMs then return end
+
+  -- Physical pressure takes priority over a speculative time-to-GC forecast.
+  local pressureRange = config.pressureHighMiB - config.pressureStartMiB
+  if pressureRange <= 0 then return end
+  local pressure = (heapMiB - config.pressureStartMiB) / pressureRange
+  if pressure <= 0 then return end
+  if pressure > 1 then pressure = 1 end
+  if growthMiBps <= 0 and pressure < 1 then return end
+
+  -- Leave most of the user's measured margin available for heavier gameplay.
+  local available = config.hitchToleranceMs - config.frameReserveMs - frameEmaMs
+  if available <= 0 then return end
+  if windowUsedMs >= config.maxAssistCpuMsPerSecond then return end
+
+  local effort = (intensity / 100) * pressure
+  local stepKb = math.max(1, math.floor(1 + effort * 31))
+  sinceStep = 0
+  local t0 = os.clock()
+  local ok, cycle = pcall(collectgarbage, "step", stepKb)
+  local cpuMs = math.max(0, (os.clock() - t0) * 1000)
+  windowUsedMs = windowUsedMs + cpuMs
+  lastStepCpuMs = cpuMs
+  maximumStepCpuMs = math.max(maximumStepCpuMs, cpuMs)
+  if not ok then
+    rejectedSteps = rejectedSteps + 1
+    backoffSeconds = 30
+    intensity = 0
+    settingsDirty = true
+    return
+  end
+  stepCount = stepCount + 1
+  if cycle == true then completedCycles = completedCycles + 1 end
+  if cpuMs > math.min(available * 0.20, config.maxAssistCpuMsPerSecond) then
+    -- os.clock gives CPU, not a hard wall-time bound. The native profiler
+    -- must separately validate GC step duration and visible frame tails.
+    backoffSeconds = 5
+  end
+end
+
+registerForEvent("onUpdate", tick)
+registerForEvent("onOverlayOpen", function() overlayOpen = true end)
+registerForEvent("onOverlayClose", function() overlayOpen = false end)
+registerForEvent("onShutdown", function()
+  activeWorld = false
+  previousHeap = nil
+  growthMiBps = 0
+end)
+
+registerForEvent("onDraw", function()
+  if not overlayOpen then return end
+  local shown = ImGui.Begin("G-GC | G-CET adaptive collector")
+  if shown then
+    ImGui.Text("Capture: " .. config.capture)
+    ImGui.Text(string.format("Heap %.1f MiB | Pressure starts %.1f MiB",
+      heapMiB, config.pressureStartMiB))
+    ImGui.Text(string.format("Baseline %.1f ms | Tolerance %.1f ms | Reserve %.1f ms",
+      config.baselineFrameMs, config.hitchToleranceMs, config.frameReserveMs))
+    local newIntensity = ImGui.SliderInt("Intensity (%)", intensity, 0, 100)
+    local newFrequency = ImGui.SliderInt("Frequency (ms)", frequencyMs, 250, 5000)
+    if type(newIntensity) == "number" and newIntensity ~= intensity then
+      intensity = math.floor(newIntensity)
+      settingsDirty = true
+    end
+    if type(newFrequency) == "number" and newFrequency ~= frequencyMs then
+      frequencyMs = math.floor(newFrequency)
+      settingsDirty = true
+    end
+    ImGui.Text(string.format("Steps %d | Cycles %d | Failed %d",
+      stepCount, completedCycles, rejectedSteps))
+    ImGui.Text(string.format("Last step CPU %.3f ms | Max %.3f ms | Growth %.2f MiB/s",
+      lastStepCpuMs, maximumStepCpuMs, growthMiBps))
+    if intensity == 0 then ImGui.Text("Assistance OFF (observe-only)") end
+    if backoffSeconds > 0 then ImGui.Text("Headroom/cost backoff active") end
+    ImGui.Text("Adjust live; next Resolver pass refreshes calibration.")
+  end
+  ImGui.End()
+end)
+""";
+}
