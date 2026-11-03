@@ -519,6 +519,12 @@ local function tick(dt)
 
   advanceTest(dt)
   local amount, intervalMs, phase = requestedStep()
+  -- Opening CET during the experiment pauses BOTH its phase clock and
+  -- incremental collector calls, keeping the capture comparisons aligned.
+  if testState ~= "idle" and overlayOpen then
+    lastBlock = "test paused in CET"
+    return
+  end
   if previousHeap == nil then lastBlock = "awaiting heap sample"; return end
   if amount <= 0 then lastBlock = "assistance off"; return end
   if not activeWorld then lastBlock = "outside gameplay"; return end
