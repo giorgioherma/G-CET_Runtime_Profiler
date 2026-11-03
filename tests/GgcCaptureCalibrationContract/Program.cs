@@ -123,6 +123,11 @@ try
     Check(!Stage("""{"hitchPressure":{"baselineFrameMs":20}}""", tempRoot, missingOverlay, skip)
           && missingOverlay.Count == 0 && skip.Count == 1,
         "Missing capture evidence silently produced a runtime");
+    var generatedInit = Path.Combine(tempRoot, "G-GC", "init.lua");
+    File.AppendAllText(generatedInit, "\nprint('source drift')\n");
+    var modified = new Dictionary<string, byte[]>();
+    Check(!Stage(first, tempRoot, modified, new List<object>()) && modified.Count == 0,
+        "Marker-bearing, modified G-GC code was silently overwritten");
     File.WriteAllText(Path.Combine(tempRoot,"G-GC","init.lua"), "-- foreign G-GC");
     var drift = new Dictionary<string, byte[]>();
     Check(!Stage(first, tempRoot, drift, new List<object>()) && drift.Count == 0,
