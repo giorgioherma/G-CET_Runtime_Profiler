@@ -260,7 +260,8 @@ local blockNames = {
   "world/player unavailable", "frame backoff",
   "minimum step interval", "heap pressure below band",
   "heap not rising", "no spare frametime",
-  "CPU assistance allowance exhausted", "assistance executed"
+  "CPU assistance allowance exhausted", "assistance executed",
+  "natural GC episode cooldown"
 }
 
 -- A captured slow-step heap is NOT necessarily a GC start threshold. It is
@@ -374,6 +375,8 @@ local function tick(dt)
   if intensity <= 0 then lastBlock = 2; return end
   if not activeWorld then lastBlock = 3; return end
   if backoffSeconds > 0 then lastBlock = 4; return end
+  -- Never push more collector work during the natural drop/settle episode.
+  if learnCooldown > 0 then lastBlock = 11; return end
   if sinceStep * 1000 < frequencyMs then lastBlock = 5; return end
 
   -- CURRENT heap and net growth estimate the requested work. The reference
