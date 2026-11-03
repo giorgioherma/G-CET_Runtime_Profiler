@@ -145,7 +145,7 @@ end)
   $r2=(& $exe --capture $capture --mods $mods --generate-pass --json|ConvertFrom-Json)
   if(!$r2.ok) {
     if([string]$r2.error -notmatch 'no applicable generic or source-proven semantic transforms'){
-      throw "Unexpected Resolver rerun failure $version"
+      throw "Unexpected Resolver rerun failure $version : $([string]$r2.error)"
     }
     # An already-complete source correctly generates no second ZIP.
     $global:LASTEXITCODE=0
