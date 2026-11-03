@@ -5,8 +5,8 @@ namespace GCETRuntimeProfiler.Core.Services;
 
 /// <summary>
 /// Interprets the ONE capture selected for the current Resolver run.
-/// This is measured evidence for a future persistent G-GC controller, not a
-/// GC policy, install permission, or a substitute for the native runtime.
+/// This is measured evidence feeding the one source-owned G-GC generator. The
+/// capture alone is not proof of safe runtime GC step wall cost.
 /// </summary>
 internal static class GgcCaptureCalibrationService
 {
@@ -103,9 +103,11 @@ internal static class GgcCaptureCalibrationService
             },
             generator = new
             {
-                controllerRuntimeAvailable = false,
-                installAuthorized = false,
-                reason = "PERSISTENT_NATIVE_G_GC_RUNTIME_NOT_YET_BUILT_OR_VALIDATED"
+                controllerRuntimeAvailable = true,
+                installAuthorized = evidenceValid,
+                reason = evidenceValid
+                    ? "EXPERIMENTAL_CAPTURE_CALIBRATED_RUNTIME;_GAMEPLAY_VALIDATION_PENDING"
+                    : "MISSING_MEASURED_HITCH_OR_GC_PRESSURE_EVIDENCE"
             }
         })!;
     }
