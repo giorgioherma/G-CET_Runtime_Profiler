@@ -254,7 +254,7 @@ local intensity = math.max(0, math.min(100, config.defaultIntensity or 0))
 local frequencyMs = math.max(250, math.min(5000, config.defaultFrequencyMs or 1000))
 local overlayOpen = false
 local age, sinceStep, windowAge, windowUsedMs = 0, 0, 0, 0
-local heapMiB, previousHeap, growthMiBps = 0, nil, 0
+local heapMiB, previousHeap, growthMiBps, heapFloorMiB = 0, nil, 0, nil
 local frameEmaMs, backoffSeconds = config.baselineFrameMs, 0
 local lastStepCpuMs, maximumStepCpuMs, totalStepCpuMs = 0, 0, 0
 local stepCount, completedCycles, rejectedSteps = 0, 0, 0
@@ -303,6 +303,11 @@ local function observe(dt)
     return
   end
   heapMiB = kib / 1024
+  -- Recent live low-water mark measures how much heap has accumulated
+  -- since a local trough. This never depends on the predicted GC trigger.
+  if heapFloorMiB == nil or heapMiB < heapFloorMiB then
+    heapFloorMiB = heapMiB
+  end
   if previousHeap then
     local slope = (heapMiB - previousHeap) / dt
     if slope > -4096 and slope < 4096 then
@@ -311,6 +316,11 @@ local function observe(dt)
     -- Coalesce consecutive sweep/drop samples: the first substantial drop
     -- in an episode learns one approximate natural peak, not many triggers.
     local drop = previousHeap - heapMiB
+    if drop >= math.max(8, previousHeap * 0.012) then
+      -- Refresh accumulation baseline after a substantial heap reduction;
+      -- do not require proof of a natural cycle for ordinary heap accounting.
+      heapFloorMiB = heapMiB
+    end
     if learnCooldown <= 0 and drop >= math.max(8, previousHeap * 0.012)
         and livePeakMiB and lastAssistAge >= 10 then
       local peak = livePeakMiB
@@ -385,16 +395,18 @@ local function tick(dt)
 
   -- Always offer a small incremental step at the permitted cadence while
   -- the player is in-world and the measured frame/CPU budget allows it.
-  -- Live heap and net growth adjust SIZE, not permission to do baseline work.
-  -- The approximate collection region is only a soft urgency estimate.
+  -- Live accumulation since a heap trough and net growth scale step SIZE.
+  -- The approximate LuaJIT collection region is display/prediction ONLY.
   local range = math.max(1, pressureHighMiB - pressureStartMiB)
-  local pressure = math.max(0, math.min(1,
+  local predictedRegion = math.max(0, math.min(1,
     (heapMiB - pressureStartMiB) / range))
+  local riseMiB = math.max(0, heapMiB - (heapFloorMiB or heapMiB))
+  local riseSignal = math.min(1, riseMiB / math.max(24, heapMiB * 0.10))
   local positiveGrowth = math.max(0, growthMiBps)
   local slopeSignal = math.min(1,
-    positiveGrowth / math.max(1, pressureHighMiB * 0.015))
-  local demand = math.max(pressure, slopeSignal * 0.75)
-  lastPressure, lastDemand = pressure, demand
+    positiveGrowth / math.max(1, heapMiB * 0.015))
+  local demand = math.max(riseSignal * 0.85, slopeSignal * 0.75)
+  lastPressure, lastDemand = predictedRegion, demand
 
   -- Capture-derived cost allowance is a hard permission gate, not a demand
   -- signal. Leave most of the measured margin for sudden heavy gameplay.
@@ -409,7 +421,8 @@ local function tick(dt)
     config.frameReserveMs - config.baselineFrameMs
   local headroomFactor = math.min(1, available / math.max(0.5, nominalHeadroom))
   -- Ten percent of permitted intensity is the small continuous baseline;
-  -- the remaining ninety percent scales smoothly as live pressure rises.
+  -- the rest scales with actual heap accumulation and net growth, not
+  -- any guessed natural-collection threshold.
   -- Even a stale October heap prior cannot suppress all useful work.
   local effort = (intensity / 100) * headroomFactor * (0.10 + 0.90 * demand)
   local stepKb = math.max(1, math.min(128, math.floor(1 + effort * 127)))
@@ -444,7 +457,7 @@ registerForEvent("onOverlayOpen", function() overlayOpen = true end)
 registerForEvent("onOverlayClose", function() overlayOpen = false end)
 registerForEvent("onShutdown", function()
   activeWorld = false
-  previousHeap = nil
+  previousHeap, heapFloorMiB = nil, nil
   livePeakMiB = nil
   growthMiBps = 0
   learnCooldown, lastAssistAge = 0, 1e6
@@ -457,7 +470,7 @@ registerForEvent("onDraw", function()
     ImGui.Text("Capture: " .. config.capture)
     ImGui.Text(string.format("Heap %.1f MiB | predicted GC region %.0f%% | net growth %.2f MiB/s",
       heapMiB, lastPressure * 100, growthMiBps))
-    ImGui.Text(string.format("CONTINUOUS assistance | requested demand %.0f%%",
+    ImGui.Text(string.format("CONTINUOUS assistance | live heap demand %.0f%%",
       lastDemand * 100))
     ImGui.Text(string.format("Capture prior %.1f | LIVE reference %s | learned %d",
       config.pressureReferenceMiB,
