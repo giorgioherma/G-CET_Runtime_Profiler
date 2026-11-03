@@ -71,9 +71,13 @@ var stage = runtimeType.GetMethod("TryStage", BindingFlags.Static | BindingFlags
 bool Stage(string json, string folder, Dictionary<string, byte[]> result, List<object> skipped)
 {
     using var doc = JsonDocument.Parse(json);
+    var calibration = method.Invoke(null, new object[]
+        { doc.RootElement, "CURRENT_CAPTURE" }) as JsonNode;
+    var decision = new JsonObject { ["gGcCaptureCalibration"] = calibration!.DeepClone() };
+    using var decisionDoc = JsonDocument.Parse(decision.ToJsonString());
     return (bool)stage.Invoke(null, new object[]
     {
-        doc.RootElement, folder, result, new Dictionary<string, int>(),
+        decisionDoc.RootElement, folder, result, new Dictionary<string, int>(),
         new List<object>(), skipped
     })!;
 }
