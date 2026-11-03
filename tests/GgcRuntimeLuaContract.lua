@@ -7,9 +7,14 @@ local simulatedCpu, selectedIntensity, selectedFrequency = 0, 37, 1250
 local priorStart, priorHigh, priorReference = 794.70336, 932.91264, 863.808
 
 package.preload["threshold"] = function() return {
-  schema = 1, capture = "CET-20261023-035144_TEST_RESOLVER_STOCK_STACK",
+  schema = 2, capture = "CET-20261023-035144_TEST_RESOLVER_STOCK_STACK",
   baselineFrameMs = 22.4354, hitchToleranceMs = 33.6531,
-  frameReserveMs = 6.73062, maxAssistCpuMsPerSecond = 1.346124,
+  frameReserveMs = 6.73062,
+  estimatedOriginalCetMsPerSecond = 120,
+  estimatedOptimizedCetMsPerSecond = 60,
+  estimatedFreedCetMsPerSecond = 60,
+  estimatedGgcStartingCpuMsPerSecond = 0.00001,
+  assumedOptimizedFraction = 0.5,
   pressureReferenceMiB = priorReference, pressureStartMiB = priorStart,
   pressureHighMiB = priorHigh,
   defaultIntensity = 37, defaultFrequencyMs = 1250
@@ -76,6 +81,9 @@ assert(low37Size > 1 and low37Size <= 8,
   "low-heap continuous maintenance should request small, intensity-scaled work")
 local _, shown = getLearned()
 assert(shown:find("CONTINUOUS assistance", 1, true), "UI misstates pressure as gating")
+assert(shown:find("Resolver DEFAULT", 1, true) and
+       shown:find("Starting allowance estimate", 1, true),
+       "User cannot distinguish estimated default from manually applied tuning")
 assert(shown:find("not a gate", 1, true), "UI misstates natural collection region")
 
 -- The same low heap and gameplay headroom respond to slider changes. With
@@ -89,9 +97,11 @@ assert(shown:find("APPLIED: intensity 100%", 1, true) and
 advance(160)
 assert(#steps > low37Count + 5,
   "high frequency did not increase the number of maintenance attempts")
+assert(#steps > 20,
+  "tiny estimated starting allowance incorrectly capped manual 100% tuning")
 assert(steps[#steps] > low37Size,
   "100% did not request more work than captured default at same low heap")
-assert(marks[#marks]:find("GGC_V3_",1,true),
+assert(marks[#marks]:find("GGC_V4_",1,true),
   "slider change did not produce versioned Profiler marker")
 local low100Size = steps[#steps]
 
