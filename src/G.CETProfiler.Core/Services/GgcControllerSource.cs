@@ -79,30 +79,37 @@ internal static class GgcControllerSource
     {
         lua = "";
         refusal = "";
-        var capture = "unknown";
-        if (root.TryGetProperty("capture", out var c) &&
-            c.ValueKind == JsonValueKind.Object &&
-            c.TryGetProperty("title", out var title) &&
-            title.ValueKind == JsonValueKind.String)
-            capture = title.GetString() ?? "unknown";
-        // The existing Resolver calibration is authoritative for medians,
-        // source status, and measured-frame admission. Never recalculate
-        // another incompatible 'GC trigger' estimate in the generator.
-        var evidence = GgcCaptureCalibrationService.Build(root, capture);
-        if (evidence["available"]?.GetValue<bool>() != true)
+        // GENERATE reads G-CET_Resolver.json, not CET_Resolver_Input.json.
+        // Its gGcCaptureCalibration was derived once by ResolverService
+        // from the selected capture. Do not reinterpret a second source.
+        if (!root.TryGetProperty("gGcCaptureCalibration", out var evidence) ||
+            evidence.ValueKind != JsonValueKind.Object ||
+            !evidence.TryGetProperty("available", out var admitted) ||
+            admitted.ValueKind != JsonValueKind.True ||
+            !evidence.TryGetProperty("generator", out var generator) ||
+            !generator.TryGetProperty("installAuthorized", out var authorized) ||
+            authorized.ValueKind != JsonValueKind.True)
         {
-            refusal = "Selected capture has insufficient measured CapFrameX and " +
-                      "collector heap evidence for G-GC. No default invented.";
+            refusal = "Selected Resolver decision has no valid, admitted G-GC " +
+                      "capture calibration. Run ANALYZE on a measured Profiler capture.";
             return false;
         }
-        var game = evidence["gameplay"]!;
-        var pressure = evidence["gcPressure"]!;
-        var baseline = game["medianFrameMs"]!.GetValue<double>();
-        var tolerance = game["hitchToleranceMs"]!.GetValue<double>();
-        var median = pressure["observedHeapMedianMiB"]!.GetValue<double>();
-        var p25 = pressure["observedHeapP25MiB"]!.GetValue<double>();
-        var p75 = pressure["observedHeapP75MiB"]!.GetValue<double>();
-        var count = pressure["observedSlowStepSamples"]!.GetValue<int>();
+        if (!evidence.TryGetProperty("gameplay", out var game) ||
+            !evidence.TryGetProperty("gcPressure", out var pressure) ||
+            !evidence.TryGetProperty("capture", out var sourceCapture) ||
+            !TryNumber(game, "medianFrameMs", out var baseline) ||
+            !TryNumber(game, "hitchToleranceMs", out var tolerance) ||
+            !TryNumber(pressure, "observedHeapMedianMiB", out var median) ||
+            !TryNumber(pressure, "observedHeapP25MiB", out var p25) ||
+            !TryNumber(pressure, "observedHeapP75MiB", out var p75) ||
+            !TryNumber(pressure, "observedSlowStepSamples", out var sampleCount) ||
+            sourceCapture.ValueKind != JsonValueKind.String)
+        {
+            refusal = "G-GC capture calibration is incomplete or structurally invalid.";
+            return false;
+        }
+        var capture = sourceCapture.GetString() ?? "unknown";
+        var count = (int)sampleCount;
         if (baseline < 2 || baseline >= tolerance || tolerance > 300 ||
             median < 64 || median > 16384 || count == 0)
         {
@@ -145,6 +152,16 @@ return {
 }
 """;
         return true;
+    }
+
+    private static bool TryNumber(JsonElement json, string key, out double number)
+    {
+        number = 0;
+        return json.ValueKind == JsonValueKind.Object &&
+               json.TryGetProperty(key, out var value) &&
+               value.ValueKind == JsonValueKind.Number &&
+               value.TryGetDouble(out number) &&
+               double.IsFinite(number);
     }
 
     // One live controller. onDraw builds UI only while the CET overlay is open.
