@@ -134,6 +134,25 @@ try
         Directory.CreateDirectory(Path.GetDirectoryName(file)!);
         File.WriteAllBytes(file, item.Value);
     }
+    // A previous Resolver-generated V1 controller was already deployed by
+    // users. Upgrade that exact known source in one pass; never require manual
+    // deletion or mistake source ownership for a string marker alone.
+    var assembly = typeof(ResolverService).Assembly;
+    using (var priorStream = assembly.GetManifestResourceStream(
+        "GCETRuntimeProfiler.GgcGeneratedRuntimeV1.reference.lua"))
+    {
+        Check(priorStream is not null, "Published Resolver lacks legacy source proof");
+        using var priorReader = new StreamReader(priorStream!);
+        var priorSource = priorReader.ReadToEnd();
+        var deployedInit = Path.Combine(tempRoot, "G-GC", "init.lua");
+        File.WriteAllText(deployedInit, priorSource);
+        var upgraded = new Dictionary<string, byte[]>();
+        Check(Stage(first, tempRoot, upgraded, new List<object>()),
+            "Previously deployed real V1 G-GC controller cannot be upgraded");
+        Check(upgraded["G-GC/init.lua"].SequenceEqual(generated["G-GC/init.lua"]),
+            "Upgrade produced a second implementation instead of the current worker");
+        File.WriteAllBytes(deployedInit, upgraded["G-GC/init.lua"]);
+    }
     var repeated = new Dictionary<string, byte[]>();
     Check(Stage(first, tempRoot, repeated, new List<object>()),
         "G-GC previously generated sources were refused");
