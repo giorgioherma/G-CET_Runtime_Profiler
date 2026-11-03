@@ -37,7 +37,7 @@ internal static class GgcControllerSource
         // An existing foreign G-GC installation must never be replaced.
         // Generated sources are recognized by both their signature and shape.
         if (!CompatibleLive(modsRoot, RuntimePath, RuntimeSignature,
-                "registerForEvent(\"onUpdate\"", "collectgarbage(\"step\"") ||
+                "registerForEvent(\"onUpdate\"", "pcall(collectgarbage, \"step\"") ||
             !CompatibleLive(modsRoot, CalibrationPath, CalibrationSignature,
                 "return {", "pressureReferenceMiB"))
         {
