@@ -355,7 +355,8 @@ end
 local manualKiB = clamp(math.floor((config.defaultIntensity or 0) * 2.56 + 0.5), 0, 256)
 local manualIntervalMs = clamp(math.floor((config.defaultFrequencyMs or 500) + 0.5), 50, 500)
 local overlayOpen = false
-local heapSampleAge, sinceStep = 0, 0
+local heapSampleAge, sinceStep, sinceActualStep = 0, 0, 0
+local haveCompletedStep = false
 local heapMiB, previousHeap, growthMiBps = 0, nil, 0
 local activeWorld, backoffSeconds = false, 0
 local stepCount, completedCycles, rejectedSteps = 0, 0, 0
@@ -511,6 +512,7 @@ local function tick(dt)
   end
   if backoffSeconds > 0 then backoffSeconds = math.max(0, backoffSeconds - dt) end
   heapSampleAge, sinceStep = heapSampleAge + dt, sinceStep + dt
+  sinceActualStep = sinceActualStep + dt
   if heapSampleAge >= 0.75 then
     local seconds = heapSampleAge
     heapSampleAge = 0
@@ -534,7 +536,6 @@ local function tick(dt)
   -- This is actual gameplay time since the last step attempt, not the
   -- configured nominal interval. os.clock below measures approximate CPU
   -- time of the call, not a hard wall-time deadline.
-  previousIntervalMs, lastIntervalMs = lastIntervalMs, sinceStep * 1000
   sinceStep = 0
   local beforeOK, beforeKiB = pcall(collectgarbage, "count")
   local t0 = os.clock()
@@ -558,6 +559,9 @@ local function tick(dt)
   end
 
   lastStepKiB = amount
+  previousIntervalMs = lastIntervalMs
+  lastIntervalMs = haveCompletedStep and sinceActualStep * 1000 or 0
+  sinceActualStep, haveCompletedStep = 0, true
   stepCount, totalRequestedKiB = stepCount + 1, totalRequestedKiB + amount
   if cycle == true then completedCycles = completedCycles + 1 end
   lastHeapDropKiB = 0
@@ -620,7 +624,7 @@ registerForEvent("onDraw", function()
       totalRequestedKiB / 1024, totalHeapDropKiB / 1024))
     ImGui.Text(string.format("Step CPU %.3f ms current / %.3f ms previous | max %.3f",
       lastCpuMs, previousCpuMs, maximumCpuMs))
-    ImGui.Text(string.format("Step spacing %.0f ms last / %.0f ms previous",
+    ImGui.Text(string.format("Observed spacing %.0f ms last / %.0f ms previous",
       lastIntervalMs, previousIntervalMs))
 
     if testState == "idle" then
