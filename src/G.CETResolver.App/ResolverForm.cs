@@ -204,7 +204,8 @@ internal sealed class ResolverForm : Form
     {
         return result.GenericResolvedCount > 0 ||
                result.OptimizationCoverage.ReadyModCount > 0 ||
-               result.SharedProviderReadyCallbackCount > 0;
+               result.SharedProviderReadyCallbackCount > 0 ||
+               result.GgcControllerReady;
     }
 
     private void UpdateSummary(ResolverBuildResult result)
