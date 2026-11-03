@@ -118,10 +118,10 @@ try
         "New capture refused previously generated runtime");
     Check(!fresh["G-GC/threshold.lua"].SequenceEqual(generated["G-GC/threshold.lua"]),
         "G-GC retained stale calibration on latest capture");
-    var missing = new Dictionary<string, byte[]>();
+    var missingOverlay = new Dictionary<string, byte[]>();
     var skip = new List<object>();
-    Check(!Stage("""{"hitchPressure":{"baselineFrameMs":20}}""", tempRoot, missing, skip)
-          && missing.Count == 0 && skip.Count == 1,
+    Check(!Stage("""{"hitchPressure":{"baselineFrameMs":20}}""", tempRoot, missingOverlay, skip)
+          && missingOverlay.Count == 0 && skip.Count == 1,
         "Missing capture evidence silently produced a runtime");
     File.WriteAllText(Path.Combine(tempRoot,"G-GC","init.lua"), "-- foreign G-GC");
     var drift = new Dictionary<string, byte[]>();
