@@ -77,6 +77,14 @@ public static class ResolverService
         var coverage = OptimizationClassCountService.Analyze(
             JsonSerializer.SerializeToElement(augmented));
         augmented["optimizationClassCoverage"] = JsonSerializer.SerializeToNode(coverage);
+        // G-GC evidence is always derived anew from THIS selected capture.
+        // It does not authorize installation before the persistent native
+        // controller and runtime-cost protections are independently validated.
+        using (var selectedHandoff = JsonDocument.Parse(File.ReadAllText(handoff)))
+        {
+            augmented["gGcCaptureCalibration"] = GgcCaptureCalibrationService.Build(
+                selectedHandoff.RootElement, new DirectoryInfo(captureRoot).Name);
+        }
 
         // A blacklisted mod is still profiled, but must not inflate the
         // displayed Ready/Generate button counts. Retain other owners' counts.
