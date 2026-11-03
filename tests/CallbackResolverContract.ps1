@@ -436,6 +436,12 @@ registerRuntimeEvent(
 local existingSchedulerJobId = "fixture.frame.scheduled"
 '@
 
+Write-Mod 'FixtureZeroMeasuredFrame' @'
+registerForEvent("onUpdate", function(delta)
+    DoZeroMeasuredFrame(delta)
+end)
+'@
+
 Write-Mod 'FixtureDraw' @'
 registerForEvent("onDraw", function()
     DrawFixture()
@@ -642,6 +648,7 @@ $handoff = @{
         (CallbackRow 124 'FixtureDormantBackground' 'observe' 'PlayerPuppet::FixtureBackgroundTick' 60 6.0 1.2 'init.lua' 1 3),
         (CallbackRow 129 'FixtureOtherStructural' 'ObserveAfter' 'PlayerPuppet::FixtureStructuralObserve' 120 12.0 3.0 'init.lua' 1 19),
         (CallbackRow 102 'FixtureFrame' 'event' 'onUpdate' 60 5.0 1.0 'init.lua' 2 7),
+        (CallbackRow 147 'FixtureZeroMeasuredFrame' 'event' 'onUpdate' 60 0.0 0.0 'init.lua' 1 3),
         (CallbackRow 140 'FixtureDraw' 'event' 'onDraw' 60 4.8 0.9 'init.lua' 1 3),
         (CallbackRow 145 'FixtureLocalLimitExact' 'event' 'onDraw' 60 4.6 0.85 'init.lua' 200 202),
         (CallbackRow 146 'FixtureLocalLimitOverflow' 'event' 'onDraw' 60 4.5 0.84 'init.lua' 201 203),
@@ -1375,6 +1382,31 @@ if ([int]$result.summary.frameDispatchOnlyMaterialResidual -lt 1 -or
     [double]$result.summary.frameDispatchOnlyMaterialResidualMsPerSecond -lt 5.0) {
     throw 'Resolver summary hid material work behind frame-dispatch-only AUTO.'
 }
+# Captured coordinates exist but zero exclusive CPU suppresses the measured
+# generic decision. Source-first must still admit the same current bare
+# callback on this FIRST generation, with no duplicate measured transform.
+$zeroMeasured = @($onUpdate.topConsumers | Where-Object {
+    $_.owner -eq 'FixtureZeroMeasuredFrame'
+}) | Select-Object -First 1
+if ($null -eq $zeroMeasured -or $zeroMeasured.generic.Automatable) {
+    throw 'Zero-cost measured callback should remain restricted in measured evidence.'
+}
+$zeroSourceFirst = @($result.callbackFamilies |
+    Where-Object { $_.resolverFamily -eq 'ONUPDATE' -and $_.sourceFirst } |
+    ForEach-Object { $_.topConsumers } |
+    Where-Object { $_.owner -eq 'FixtureZeroMeasuredFrame' })
+if ($zeroSourceFirst.Count -ne 1 -or
+    !$zeroSourceFirst[0].generic.Automatable -or
+    @($zeroSourceFirst[0].generic.RecipeFamilies) -notcontains 'FRAME_DISPATCH_CONSOLIDATION') {
+    throw 'First-pass source-first admission wrongly suppressed a structurally proven bare frame.'
+}
+$duplicateMeasuredFrame = @($result.callbackFamilies |
+    Where-Object { $_.resolverFamily -eq 'ONUPDATE' -and $_.sourceFirst } |
+    ForEach-Object { $_.topConsumers } |
+    Where-Object { $_.owner -eq 'FixtureFrame' })
+if ($duplicateMeasuredFrame.Count -ne 0) {
+    throw 'Already-admitted measured frame was redundantly admitted source-first.'
+}
 if ($frame.source.MatchMode -ne 'profiler-owner-relative') {
     throw 'onUpdate bare init.lua did not use owner-relative source mapping.'
 }
@@ -1655,6 +1687,13 @@ $expectedSharedTransforms = @(
 # narrowly recorded transforms only if the generator revalidated the current
 # Lua source shape and the exact authorized Game.Get...() operation.
 $generatedManifest = Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
+$zeroFirstPassStage = @($generatedManifest.transforms | Where-Object {
+    $_.type -eq 'FRAME_DISPATCH_CONSOLIDATION' -and
+    $_.owner -eq 'FixtureZeroMeasuredFrame'
+})
+if ($zeroFirstPassStage.Count -ne 1) {
+    throw 'Zero-cost measured callback was left for an unnecessary later generic pass.'
+}
 $nativeReadReuseTransforms = @($generatedManifest.transforms | Where-Object {
     $_.type -eq 'NATIVE_READ_REUSE'
 })

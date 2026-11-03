@@ -93,6 +93,12 @@ internal static class CallbackResolverService
             .ToList();
 
         var familyDocuments = new List<object>();
+        // A measured callback suppresses its source-first counterpart only
+        // when its CURRENT source and the same generic registration stage
+        // were independently admitted. Nearby measured coordinates alone
+        // are not a completion proof (zero-CPU callbacks are restricted).
+        var admittedMeasuredRegistrars = new List<(
+            string Owner, string Family, string File, int LineStart)>();
         var rankedCount = 0;
         var genericResolved = 0;
         var nonFrameOnlyAuto = 0;
@@ -148,6 +154,17 @@ internal static class CallbackResolverService
                     schedulerIntegration);
                 if (callback.ExclusiveMsPerSecond <= 0)
                     generic = RestrictZeroCostToNativeDispatch(generic);
+                if (generic.Automatable &&
+                    generic.Source is { LineStart: int currentLine } source &&
+                    (generic.RecipeFamilies.Any(recipe => recipe.Equals(
+                        "FRAME_DISPATCH_CONSOLIDATION",
+                        StringComparison.OrdinalIgnoreCase)) ||
+                     generic.Pattern.StartsWith("ACTION_ROUTING",
+                         StringComparison.OrdinalIgnoreCase)))
+                    admittedMeasuredRegistrars.Add((
+                        callback.Owner,
+                        ClassifyCallbackFamily(callback.Kind, callback.Target),
+                        source.RelativeFile, currentLine));
                 var semantic = semanticLibrary.Match(
                     callback.Owner,
                     callback.Kind,
@@ -636,16 +653,16 @@ internal static class CallbackResolverService
         // measured callback rows solely for workload attribution; these new
         // source-only rows are deliberately not assigned fabricated CPU data.
         var sourceFirstGenericFamilies = DiscoverSourceFirstRegistrations(modsRoot)
-            .Where(callback => !allCapturedCallbacks.Any(measured =>
-                measured.Owner.Equals(callback.Owner, StringComparison.OrdinalIgnoreCase) &&
-                ClassifyCallbackFamily(measured.Kind, measured.Target) ==
-                    ClassifyCallbackFamily(callback.Kind, callback.Target) &&
-                measured.SourceLineStart.HasValue &&
+            .Where(callback => !admittedMeasuredRegistrars.Any(admitted =>
+                admitted.Owner.Equals(callback.Owner,
+                    StringComparison.OrdinalIgnoreCase) &&
+                admitted.Family.Equals(
+                    ClassifyCallbackFamily(callback.Kind, callback.Target),
+                    StringComparison.OrdinalIgnoreCase) &&
+                admitted.File.Equals(callback.SourceFile,
+                    StringComparison.OrdinalIgnoreCase) &&
                 callback.SourceLineStart.HasValue &&
-                Math.Abs(measured.SourceLineStart.Value - callback.SourceLineStart.Value) <= 2 &&
-                (string.IsNullOrWhiteSpace(measured.SourceFile) ||
-                 callback.SourceFile.EndsWith(measured.SourceFile.Replace('\\', '/'),
-                     StringComparison.OrdinalIgnoreCase))))
+                Math.Abs(admitted.LineStart - callback.SourceLineStart.Value) <= 2))
             .Select(callback => new
             {
                 Callback = callback,
