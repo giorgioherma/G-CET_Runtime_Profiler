@@ -65,61 +65,78 @@ local function getLearned()
   return tonumber(n), shown
 end
 
--- Stale historical prior, low heap, and rising heap: no premature GC steps.
-advance(50)
-assert(#steps == 0, "old capture caused unneeded low-pressure collection")
-kib = 655 * 1024
-advance(50)
-assert(#steps == 0, "stale stock-stack threshold was incorrectly treated as live demand")
+-- The captured October GC region is above the current heap. It must NOT
+-- block low-cost maintenance: at >0% the helper regularly does small steps
+-- even with a flat, low heap and no natural collection episode.
+advance(160)
+assert(#steps > 0, "nonzero default skipped continuous maintenance below GC band")
+local low37Count, low37Size = #steps, steps[#steps]
+assert(low37Size > 1 and low37Size <= 8,
+  "low-heap continuous maintenance should request small, intensity-scaled work")
+local _, shown = getLearned()
+assert(shown:find("CONTINUOUS assistance", 1, true), "UI misstates pressure as gating")
+assert(shown:find("not a gate", 1, true), "UI misstates natural collection region")
 
--- Observe a natural current-stack collection peak around 680 MiB, despite
--- the old 863 MiB prior. Do not require an exact trigger timestamp.
-kib = 680 * 1024
-advance(50)
-kib = 662 * 1024
-advance(50)
-local learned, shown = getLearned()
-assert(learned == 1, "natural current-stack heap drop did not recalibrate")
-assert(shown:find("LIVE reference 680.0 MiB",1,true),
-       "live heap reference did not replace stale captured region")
-assert(#steps == 0, "natural GC drop caused immediate inappropriate assistance")
-
--- Let the episode settle and the live heap rise into the learned band.
-kib = 590 * 1024
-advance(450)
-kib = 650 * 1024
-advance(130)
-assert(#steps > 0, "calibrated starting intensity never executed live assistance")
-local at37, size37 = #steps, steps[#steps]
-assert(size37 > 1, "generated default did not request an incremental step")
-
--- Slider has a real range. Same heap; manual 100% and faster cadence must
--- request more/larger steps while staying within captured CPU allowance.
+-- The same low heap and gameplay headroom respond to slider changes. With
+-- 100% intensity and 250ms interval, there must be both MORE and LARGER
+-- calls. This catches the original 0-vs-100 inert slider regression.
 selectedIntensity, selectedFrequency = 100, 250
 shown = draw()
-assert(shown:find("APPLIED: intensity 100%%") and shown:find("interval 250 ms"),
-       "CET slider selections did not bind to live settings")
-advance(130)
-assert(#steps > at37, "100% settings did not increase assistance")
-assert(steps[#steps] > size37, "100% intensity requested no more work than 37%")
-assert(marks[#marks]:find("GGC_V2_",1,true), "changes were not marked for Profiler")
+assert(shown:find("APPLIED: intensity 100%", 1, true) and
+       shown:find("interval 250 ms", 1, true),
+       "slider values were not applied by CET")
+advance(160)
+assert(#steps > low37Count + 5,
+  "high frequency did not increase the number of maintenance attempts")
+assert(steps[#steps] > low37Size,
+  "100% did not request more work than captured default at same low heap")
+assert(marks[#marks]:find("GGC_V3_",1,true),
+  "slider change did not produce versioned Profiler marker")
+local low100Size = steps[#steps]
 
--- Slider zero suppresses actual GC work even at high pressure.
+-- A high live-heap growth slope asks for more work BEFORE the captured
+-- collection region; the historical region only supplies urgency context.
+kib = 705 * 1024
+advance(160)
+assert(steps[#steps] > low100Size,
+  "high live growth did not scale assistance ahead of estimated GC region")
+local afterGrowth = #steps
+
+-- Falling/flat heap is NOT a switch that turns off scheduled maintenance.
+kib = 620 * 1024
+advance(160)
+assert(#steps > afterGrowth,
+  "non-growing heap disabled positive-intensity continuous assistance")
+
+-- Optional observed natural GC peaks may refine an approximate prediction,
+-- but a new episode must never be required to keep the helper running.
 selectedIntensity = 0
 draw()
-local beforeDisabled = #steps
-advance(140)
-assert(#steps == beforeDisabled, "0% slider failed to disable assistance")
+local beforeOff = #steps
+advance(100)
+assert(#steps == beforeOff, "0% must disable collection")
+kib = 680 * 1024
+advance(50)
+kib = 660 * 1024
+advance(50)
+local learned = getLearned()
+assert(learned >= 1, "natural collection reference stopped updating in off mode")
+local beforeRestart = #steps
+selectedIntensity = 37
+draw()
+advance(160)
+assert(#steps > beforeRestart,
+  "learning cooldown or approximate trigger incorrectly blocked maintenance")
 
--- Even 100% must respect heavy gameplay and loading.
+-- CPU/frame budget and loading still override continuous requested work.
 selectedIntensity = 100
 draw()
 local beforeHeavy = #steps
 advance(120, 0.047)
-assert(#steps == beforeHeavy, "heavy gameplay was ignored by controller")
+assert(#steps == beforeHeavy, "heavy gameplay backoff ignored")
 active = false
 advance(250)
-assert(#steps == beforeHeavy, "assist ran with no valid world")
-assert(fulls == 0, "G-GC forced a full collection")
+assert(#steps == beforeHeavy, "assistance ran without valid world")
+assert(fulls == 0, "helper forced full GC")
 os = actualOs
-print("G-GC stale capture recovery, real sliders, live heap, cost and loading PASS")
+print("G-GC continuous baseline, live scaling, sliders, GC prediction context, safety PASS")
