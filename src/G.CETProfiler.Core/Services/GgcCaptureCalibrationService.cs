@@ -77,34 +77,13 @@ internal static class GgcCaptureCalibrationService
         var roomFraction = validFrames
             ? Math.Clamp(usableRoom / (tolerance!.Value * 0.20), 0.0, 1.0)
             : 0.0;
-        // The expected 50% reduction is a USER-APPROVED experimental
-        // assumption about measured CET callback work, NOT a prediction that
-        // whole-game frame time or collector pauses will halve. Never use
-        // inclusive/nested scheduler+GC envelopes as additive CPU savings.
+        // ANALYZE has not generated anything yet. It may report the original
+        // measured CET callback cost, but must NOT pretend the entire stack
+        // receives a 50% reduction. Only GENERATE knows which source-proven
+        // semantic stages actually composed successfully.
         var capture = Child(handoff, "capture");
         var originalCetMsPerSecond = Number(capture, "exclusiveMsPerSecond");
         var hasCetWorkload = originalCetMsPerSecond is >= 0 and <= 1000;
-        var projectedCetMsPerSecond = hasCetWorkload
-            ? originalCetMsPerSecond!.Value * 0.50 : (double?)null;
-        var estimatedFreedCetMsPerSecond = hasCetWorkload
-            ? originalCetMsPerSecond!.Value - projectedCetMsPerSecond!.Value
-            : (double?)null;
-        // Reserve 92% of any estimated saving for gameplay. The remaining
-        // 8% is a sizing REFERENCE for the INITIAL sliders only, not a
-        // per-second runtime CPU throttle or a verified GC step time.
-        var initialGgcReferenceMsPerSecond = estimatedFreedCetMsPerSecond * 0.08;
-        var safeMarginScale = validFrames
-            ? Math.Clamp(usableRoom / Math.Max(1.0, tolerance!.Value * 0.12), 0, 1)
-            : 0.0;
-        var canAssist = evidenceValid && usableRoom > 0 && hasCetWorkload
-            && originalCetMsPerSecond > 0;
-        var tuningBasis = canAssist
-            ? initialGgcReferenceMsPerSecond!.Value * safeMarginScale : 0.0;
-        var recommendedIntensity = canAssist
-            ? (int)Math.Clamp(Math.Round(12 + 4 * tuningBasis), 1, 80) : 0;
-        var recommendedFrequencyMs = canAssist
-            ? (int)(50 * Math.Round(
-                Math.Clamp(1700 - 100 * tuningBasis, 300, 3000) / 50)) : 5000;
 
         return JsonSerializer.SerializeToNode(new
         {
@@ -139,30 +118,30 @@ internal static class GgcCaptureCalibrationService
             },
             assistance = new
             {
-                policy = "CAPTURE_ESTIMATED_POST_OPTIMIZATION_DEFAULTS_MANUAL_CET_TUNING",
+                policy = "MEASURED_CET_WORK_APPLIED_SOURCE_PROOF_ESTIMATES_DEFAULTS",
                 frameReserveMs = validFrames ? reserve : (double?)null,
                 usableFrameMarginMs = validFrames ? usableRoom : (double?)null,
                 measuredOriginalCetMsPerSecond = hasCetWorkload
                     ? originalCetMsPerSecond : null,
-                estimatedOptimizedCetMsPerSecond = projectedCetMsPerSecond,
-                estimatedFreedCetMsPerSecond = estimatedFreedCetMsPerSecond,
-                estimatedGgcStartingCpuMsPerSecond = initialGgcReferenceMsPerSecond,
-                assumedOptimizationReductionPercent = 50,
+                estimatedCoveredCetMsPerSecond = (double?)null,
+                estimatedOptimizedCetMsPerSecond = (double?)null,
+                estimatedFreedCetMsPerSecond = (double?)null,
+                estimatedGgcStartingCpuMsPerSecond = (double?)null,
+                historicalCoveredWorkReductionPercent = 50,
+                conservativeCreditingFractionPercent = 50,
                 estimatedSavingsAllocatedPercent = 8,
-                recommendedIntensityPercent = evidenceValid
-                    ? recommendedIntensity : (int?)null,
-                recommendedMinFrequencyMs = evidenceValid
-                    ? recommendedFrequencyMs : (int?)null,
+                recommendedIntensityPercent = evidenceValid ? 0 : (int?)null,
+                recommendedMinFrequencyMs = evidenceValid ? 5000 : (int?)null,
                 calibrationStatus = !hasCetWorkload
                     ? "CET_WORKLOAD_NOT_MEASURED_DEFAULTS_OFF"
-                    : "EXPERIMENTAL_ESTIMATE_ONLY_NOT_VERIFIED_POST_OPTIMIZATION_RUNTIME"
+                    : "AWAITING_ACTUALLY_COMPOSED_SOURCE_PROVEN_RULES"
             },
             systemInstalledRamMiB = (double?)null,
             systemRamStatus = "NOT_MEASURED_IN_RESOLVER_HANDOFF",
             control = new
             {
                 intensityAndFrequencyAreRuntimeAdjustable = true,
-                enabledByDefault = canAssist,
+                enabledByDefault = false, // Only source-proven GENERATE may recommend ON.
                 manualOverridesNotCappedByEstimatedSaving = true,
                 runtimeCpuProbingRequired = false
             },
@@ -178,4 +157,126 @@ internal static class GgcCaptureCalibrationService
             }
         })!;
     }
+    /// <summary>
+    /// GENERATE-time, source-proven provisional initial settings. Credit only
+    /// measured callback work linked to a SEMANTIC_RULE actually applied by
+    /// the authoritative composed pass. The measured owner budget can never
+    /// be counted twice, and unknown/unoptimized/previously complete work
+    /// receives zero claimed savings.
+    /// </summary>
+    internal sealed record AppliedDefaults(
+        double? MeasuredOriginalCetMsPerSecond,
+        double MeasuredCoveredCetMsPerSecond,
+        double EstimatedFreedCetMsPerSecond,
+        double? EstimatedOptimizedCetMsPerSecond,
+        double? EstimatedGgcStartingCpuMsPerSecond,
+        int CreditedAppliedRules,
+        int CreditedOwners,
+        int DefaultIntensityPercent,
+        int DefaultFrequencyMs,
+        string EstimateStatus);
+
+    internal static AppliedDefaults EstimateAppliedDefaults(
+        JsonElement resolverRoot, IReadOnlyCollection<object> appliedManifest)
+    {
+        static double? Number(JsonElement element, string key)
+        {
+            if (element.ValueKind != JsonValueKind.Object ||
+                !element.TryGetProperty(key, out var v) ||
+                v.ValueKind != JsonValueKind.Number ||
+                !v.TryGetDouble(out var number) ||
+                !double.IsFinite(number))
+                return null;
+            return number;
+        }
+
+        if (!resolverRoot.TryGetProperty("gGcCaptureCalibration", out var evidence) ||
+            !evidence.TryGetProperty("assistance", out var assist) ||
+            !evidence.TryGetProperty("gameplay", out var gameplay))
+            return new(null, 0, 0, null, null, 0, 0, 0, 5000,
+                "MISSING_RESOLVER_CAPTURE_CALIBRATION");
+
+        var original = Number(assist, "measuredOriginalCetMsPerSecond");
+        var baseline = Number(gameplay, "medianFrameMs");
+        var tolerance = Number(gameplay, "hitchToleranceMs");
+        var reserve = Number(assist, "frameReserveMs");
+        var coveredByOwner = new Dictionary<string, double>(
+            StringComparer.OrdinalIgnoreCase);
+        var creditedRules = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (original is > 0 and <= 1000)
+        {
+            foreach (var item in appliedManifest)
+            {
+                var stage = JsonSerializer.SerializeToElement(item);
+                if (stage.ValueKind != JsonValueKind.Object ||
+                    !stage.TryGetProperty("type", out var type) ||
+                    type.GetString() != "SEMANTIC_RULE" ||
+                    !stage.TryGetProperty("sourceProof", out var proof) ||
+                    proof.ValueKind != JsonValueKind.True ||
+                    !stage.TryGetProperty("admissionEvidence", out var admission) ||
+                    admission.GetString() != "CAPTURE_MATCHED_SOURCE_PROVEN" ||
+                    !stage.TryGetProperty("runtimeMsPerSecond", out var cost) ||
+                    cost.ValueKind != JsonValueKind.Number ||
+                    !cost.TryGetDouble(out var measuredCost) ||
+                    !double.IsFinite(measuredCost) ||
+                    measuredCost <= 0 || measuredCost > original)
+                    continue;
+
+                var owner = stage.TryGetProperty("Owner", out var ownerUpper)
+                    ? ownerUpper.GetString()
+                    : stage.TryGetProperty("owner", out var ownerLower)
+                        ? ownerLower.GetString() : null;
+                if (string.IsNullOrWhiteSpace(owner))
+                    continue;
+                // Multiple rules for the same owner can refer to the same
+                // measured callback or nested work. Max, never SUM.
+                if (!coveredByOwner.TryGetValue(owner, out var previous) ||
+                    measuredCost > previous)
+                    coveredByOwner[owner] = measuredCost;
+                var rule = stage.TryGetProperty("RuleId", out var upperRule)
+                    ? upperRule.GetString()
+                    : stage.TryGetProperty("ruleId", out var lowerRule)
+                        ? lowerRule.GetString() : null;
+                if (!string.IsNullOrWhiteSpace(rule))
+                    creditedRules.Add(owner + "\0" + rule);
+            }
+        }
+
+        var covered = original is > 0
+            ? Math.Min(original.Value, coveredByOwner.Values.Sum())
+            : 0;
+        // 50% is the user's historical SEMANTIC improvement reference,
+        // NOT a promise for every mod. Credit only half of that for measured,
+        // genuinely generated candidate work: at most 25% of covered work.
+        // All unsupported/unmeasured/generic-only work stays unchanged.
+        var saved = Math.Round(covered * 0.50 * 0.50, 6);
+        var projected = original is >= 0
+            ? Math.Max(0, original.Value - saved) : (double?)null;
+        var startingReference = original is >= 0 ? saved * 0.08 : (double?)null;
+
+        var usableFrame = baseline is > 0 && tolerance > baseline && reserve >= 0
+            ? Math.Max(0, tolerance.Value - baseline.Value - reserve.Value) : 0;
+        var risk = tolerance is > 0
+            ? Math.Clamp(usableFrame / Math.Max(1, tolerance.Value * 0.12), 0, 1)
+            : 0;
+        var hasCreditableWork = saved > 0 && risk > 0;
+        var basis = hasCreditableWork ? startingReference!.Value * risk : 0.0;
+        var defaultIntensity = hasCreditableWork
+            ? (int)Math.Clamp(Math.Round(12 + 4 * basis), 1, 80) : 0;
+        var defaultFrequency = hasCreditableWork
+            ? (int)(50 * Math.Round(
+                Math.Clamp(1700 - 100 * basis, 300, 3000) / 50)) : 5000;
+        var status = original is null
+            ? "NO_MEASURED_EXCLUSIVE_CET_WORK"
+            : coveredByOwner.Count == 0
+                ? "NO_NEW_APPLIED_MEASURED_SEMANTIC_WORK_DEFAULT_OFF"
+                : !hasCreditableWork
+                    ? "NO_SAFE_STARTING_FRAME_MARGIN_DEFAULT_OFF"
+                    : "HEURISTIC_GENERATION_PROVEN_COVERED_WORK_DEFAULTS_ONLY";
+        return new(original, Math.Round(covered, 6), saved,
+            projected, startingReference, creditedRules.Count,
+            coveredByOwner.Count, defaultIntensity, defaultFrequency, status);
+    }
+
 }
