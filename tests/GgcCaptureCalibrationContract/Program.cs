@@ -41,6 +41,17 @@ Check(a["generator"]!["installAuthorized"]!.GetValue<bool>(),
     "Capture-qualified experimental G-GC runtime was not admitted");
 Check(a["capture"]!.GetValue<string>().Contains("20261103"),
     "Selected capture provenance lost");
+Check(a["assistance"]!["policy"]!.GetValue<string>() ==
+    "CAPTURE_DEFINES_CEILING_LIVE_HEAP_DEFINES_DEMAND",
+    "Live heap demand and captured cost allowance were conflated");
+Check(a["assistance"]!["recommendedIntensityPercent"]!.GetValue<int>() == 37,
+    "Starting intensity must be nonzero and calculated from reserved headroom");
+Check(a["assistance"]!["recommendedMinFrequencyMs"]!.GetValue<int>() == 1250,
+    "Starting frequency must derive from the capture allowance");
+Check(a["assistance"]!["frameReserveMs"]!.GetValue<double>() > 8,
+    "The heavy-gameplay frametime reserve was discarded");
+Check(a["control"]!["enabledByDefault"]!.GetValue<bool>(),
+    "Qualified capture with room for assistance remained observe-only");
 var b = Interpret(
     """
     {
@@ -52,6 +63,18 @@ Check(b["gameplay"]!["hitchToleranceMs"]!.GetValue<double>() == 28,
     "Captured limits are incorrectly hardcoded");
 Check(b["gcPressure"]!["observedHeapMedianMiB"]!.GetValue<double>() == 512,
     "Pressure context is reused from an old capture");
+Check(b["assistance"]!["recommendedIntensityPercent"]!.GetValue<int>() == 34 &&
+      b["assistance"]!["recommendedMinFrequencyMs"]!.GetValue<int>() == 1300,
+    "Starting controls were copied from the previous capture");
+var littleRoom = Interpret(
+    """
+    {"hitchPressure":{"baselineFrameMs":24,"toleranceFrameMs":26},
+     "garbageCollection":{"slowOperations":[{"heapBeforeMiB":600,"wallMs":8}]}}
+    """, "NO_SPARE_FRAME_BUDGET");
+Check(littleRoom["available"]!.GetValue<bool>() &&
+      littleRoom["assistance"]!["recommendedIntensityPercent"]!.GetValue<int>() == 0 &&
+      littleRoom["assistance"]!["maxAssistCpuMsPerSecond"]!.GetValue<double>() == 0,
+    "A valid capture without safe headroom was assigned collector work");
 var missing = Interpret(
     """{"hitchPressure":{"baselineFrameMs":21},"garbageCollection":{"slowOperations":[]}}""",
     "NO_CAPFRAMEX");
@@ -99,8 +122,12 @@ try
         "G-GC must not schedule full garbage collection");
     Check(threshold.Contains("43.91805") && threshold.Contains("29.2787"),
         "Generated calibration does not preserve actual captured frametimes");
-    Check(threshold.Contains("defaultIntensity = 0"),
-        "Unvalidated G-GC must default to observe-only");
+    Check(threshold.Contains("defaultIntensity = 37") &&
+          threshold.Contains("defaultFrequencyMs = 1250"),
+        "Generator discarded capture-derived initial assistance settings");
+    Check(threshold.Contains("frameReserveMs = 8.78361") &&
+          threshold.Contains("maxAssistCpuMsPerSecond = 1.756722"),
+        "Generated runtime budget does not preserve measured headroom policy");
     foreach (var item in generated)
     {
         var file = Path.Combine(tempRoot, item.Key.Replace('/', Path.DirectorySeparatorChar));
