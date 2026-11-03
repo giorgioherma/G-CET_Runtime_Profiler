@@ -102,6 +102,7 @@ internal static class GgcControllerSource
         // Config values legitimately change on each new capture, but only a
         // complete, inert scalar schema-v1 configuration may be replaced.
         var lines = source.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var missingPriorFields = 0;
         string[] keys =
         [
             "schema", "capture", "baselineFrameMs", "hitchToleranceMs",
@@ -126,12 +127,16 @@ internal static class GgcControllerSource
                 if (value.Length < 2 || value[0] != '"' || value[^1] != '"' ||
                     value[1..^1].Contains('"')) return false;
             }
+            else if (value == "nil" && keys[i] is
+                     "pressureReferenceMiB" or "pressureStartMiB" or "pressureHighMiB")
+                missingPriorFields++;
             else if (!double.TryParse(value,
                          NumberStyles.Float, CultureInfo.InvariantCulture, out var number) ||
                      !double.IsFinite(number) || number < 0)
                 return false;
         }
-        return true;
+        // Optional forecast must be wholly present or wholly absent.
+        return missingPriorFields is 0 or 3;
     }
 
     private static bool TryCalibrate(JsonElement root, out string lua, out string refusal)
@@ -163,9 +168,6 @@ internal static class GgcControllerSource
             !TryNumber(allowance, "recommendedMinFrequencyMs", out var initialFrequencyMs) ||
             !TryNumber(game, "medianFrameMs", out var baseline) ||
             !TryNumber(game, "hitchToleranceMs", out var tolerance) ||
-            !TryNumber(pressure, "observedHeapMedianMiB", out var median) ||
-            !TryNumber(pressure, "observedHeapP25MiB", out var p25) ||
-            !TryNumber(pressure, "observedHeapP75MiB", out var p75) ||
             !TryNumber(pressure, "observedSlowStepSamples", out var sampleCount) ||
             sourceCapture.ValueKind != JsonValueKind.String)
         {
@@ -174,8 +176,18 @@ internal static class GgcControllerSource
         }
         var capture = sourceCapture.GetString() ?? "unknown";
         var count = (int)sampleCount;
+        var hasObservedRegion =
+            count > 0 &&
+            TryNumber(pressure, "observedHeapMedianMiB", out var median) &&
+            TryNumber(pressure, "observedHeapP25MiB", out var p25) &&
+            TryNumber(pressure, "observedHeapP75MiB", out var p75);
+        if (count < 0 || (count > 0 && !hasObservedRegion))
+        {
+            refusal = "G-GC optional observed pressure region is inconsistent.";
+            return false;
+        }
         if (baseline < 2 || baseline >= tolerance || tolerance > 300 ||
-            median < 64 || median > 16384 || count == 0 ||
+            (hasObservedRegion && (median < 64 || median > 16384)) ||
             reserveMs < 0 || budgetMsPerSecond < 0 || budgetMsPerSecond > 2 ||
             initialIntensity < 0 || initialIntensity > 100 ||
             initialFrequencyMs < 250 || initialFrequencyMs > 5000 ||
@@ -187,9 +199,11 @@ internal static class GgcControllerSource
 
         // Broad empirical pressure band, explicitly NOT a trigger time.
         // Capture-specific dispersion enlarges rather than narrows the slack.
-        var slack = Math.Max(Math.Max(32.0, median * 0.08), (p75 - p25) * 0.75);
-        var pressureStart = Math.Max(64, median - slack);
-        var pressureHigh = median + slack;
+        var slack = hasObservedRegion
+            ? Math.Max(Math.Max(32.0, median * 0.08), (p75 - p25) * 0.75)
+            : 0.0;
+        var pressureStart = hasObservedRegion ? Math.Max(64, median - slack) : 0.0;
+        var pressureHigh = hasObservedRegion ? median + slack : 0.0;
         // The Resolver's selected-capture allowance is authoritative.
         // This generator writes it verbatim; it cannot invent independent
         // tuning values or reset the recommended assist level to zero.
@@ -207,9 +221,9 @@ return {
   capture = "{{capture}}",
   baselineFrameMs = {{N(baseline)}},
   hitchToleranceMs = {{N(tolerance)}},
-  pressureReferenceMiB = {{N(median)}},
-  pressureStartMiB = {{N(pressureStart)}},
-  pressureHighMiB = {{N(pressureHigh)}},
+  pressureReferenceMiB = {{hasObservedRegion ? N(median) : "nil"}},
+  pressureStartMiB = {{hasObservedRegion ? N(pressureStart) : "nil"}},
+  pressureHighMiB = {{hasObservedRegion ? N(pressureHigh) : "nil"}},
   pressureSampleCount = {{count}},
   frameReserveMs = {{N(reserveMs)}},
   maxAssistCpuMsPerSecond = {{N(budgetMsPerSecond)}},
@@ -242,8 +256,6 @@ return {
 -- threshold. No scheduled full GC.
 local config = require("threshold")
 if type(config) ~= "table" or config.schema ~= 1
-    or type(config.pressureStartMiB) ~= "number"
-    or type(config.pressureHighMiB) ~= "number"
     or type(config.hitchToleranceMs) ~= "number"
     or type(config.maxAssistCpuMsPerSecond) ~= "number" then
   print("[G-GC] Invalid Resolver calibration; assistance disabled.")
@@ -280,7 +292,9 @@ local pressureStartMiB, pressureHighMiB =
   config.pressureStartMiB, config.pressureHighMiB
 
 local function updatePressureBand(reference)
-  local captureSlack = config.pressureHighMiB - config.pressureReferenceMiB
+  local captureSlack = (config.pressureHighMiB and config.pressureReferenceMiB)
+    and (config.pressureHighMiB - config.pressureReferenceMiB)
+    or (reference * 0.08)
   local slack = math.max(24, math.min(reference * 0.12,
     math.max(reference * 0.07, captureSlack * 0.7)))
   pressureStartMiB = math.max(64, reference - slack)
@@ -397,9 +411,13 @@ local function tick(dt)
   -- the player is in-world and the measured frame/CPU budget allows it.
   -- Live accumulation since a heap trough and net growth scale step SIZE.
   -- The approximate LuaJIT collection region is display/prediction ONLY.
-  local range = math.max(1, pressureHighMiB - pressureStartMiB)
-  local predictedRegion = math.max(0, math.min(1,
-    (heapMiB - pressureStartMiB) / range))
+  local predictedRegion = 0
+  if pressureStartMiB and pressureHighMiB and
+      pressureHighMiB > pressureStartMiB then
+    local range = pressureHighMiB - pressureStartMiB
+    predictedRegion = math.max(0, math.min(1,
+      (heapMiB - pressureStartMiB) / range))
+  end
   local riseMiB = math.max(0, heapMiB - (heapFloorMiB or heapMiB))
   local riseSignal = math.min(1, riseMiB / math.max(24, heapMiB * 0.10))
   local positiveGrowth = math.max(0, growthMiBps)
@@ -472,12 +490,17 @@ registerForEvent("onDraw", function()
       heapMiB, lastPressure * 100, growthMiBps))
     ImGui.Text(string.format("CONTINUOUS assistance | live heap demand %.0f%%",
       lastDemand * 100))
-    ImGui.Text(string.format("Capture prior %.1f | LIVE reference %s | learned %d",
-      config.pressureReferenceMiB,
+    ImGui.Text(string.format("Capture GC forecast %s | LIVE reference %s | learned %d",
+      config.pressureReferenceMiB and
+        string.format("%.1f MiB", config.pressureReferenceMiB) or "not observed",
       liveReferenceMiB and string.format("%.1f MiB", liveReferenceMiB) or "awaiting natural GC",
       learnedEpisodes))
-    ImGui.Text(string.format("Approximate natural GC region (not a gate): %.1f to %.1f MiB",
-      pressureStartMiB, pressureHighMiB))
+    if pressureStartMiB and pressureHighMiB then
+      ImGui.Text(string.format("Approximate natural GC region (not a gate): %.1f to %.1f MiB",
+        pressureStartMiB, pressureHighMiB))
+    else
+      ImGui.Text("Natural GC region: NOT OBSERVED (maintenance still active)")
+    end
     ImGui.Text(string.format("Frame baseline %.1f / hitch %.1f / reserved %.1f ms",
       config.baselineFrameMs, config.hitchToleranceMs, config.frameReserveMs))
     local newIntensity = ImGui.SliderInt("Intensity (%)", intensity, 0, 100)
