@@ -79,71 +79,49 @@ internal static class GgcControllerSource
     {
         lua = "";
         refusal = "";
-        if (!root.TryGetProperty("quality", out var quality) ||
-            !TryBool(quality, "frameNormalizationAvailable") ||
-            !root.TryGetProperty("hitchPressure", out var hitch) ||
-            !TryNumber(hitch, "baselineFrameMs", out var baseline) ||
-            !TryNumber(hitch, "toleranceFrameMs", out var tolerance) ||
-            !double.IsFinite(baseline) || !double.IsFinite(tolerance) ||
-            baseline < 2 || baseline > 200 ||
-            tolerance < baseline + 1 || tolerance > 300)
-        {
-            refusal = "Measured CapFrameX frame baseline/tolerance is absent or invalid. " +
-                      "No G-GC budget generated.";
-            return false;
-        }
-        if (!root.TryGetProperty("garbageCollection", out var gc) ||
-            !TryBool(gc, "automaticLuaJitTiming") ||
-            !TryNumber(gc, "internalCollectorFullCalls", out var fullCalls) ||
-            fullCalls > 0 ||
-            !gc.TryGetProperty("slowOperations", out var slow) ||
-            slow.ValueKind != JsonValueKind.Array)
-        {
-            refusal = "Unassisted native GC phase observations are absent or include full-GC " +
-                      "requests. No pressure region inferred.";
-            return false;
-        }
-
-        // An atomic -> sweepstring transition is a nearby pressure
-        // observation, NOT the literal point at which LuaJIT began a cycle.
-        // It is deliberately not trained on heap drops or cumulative bytes.
-        var heaps = new List<double>();
-        foreach (var entry in slow.EnumerateArray())
-        {
-            if (!TryString(entry, "PhaseBefore", out var before) ||
-                !TryString(entry, "PhaseAfter", out var after) ||
-                !before.Equals("atomic", StringComparison.OrdinalIgnoreCase) ||
-                !after.Equals("sweepstring", StringComparison.OrdinalIgnoreCase) ||
-                !TryNumber(entry, "heapBeforeMiB", out var heap) ||
-                !double.IsFinite(heap) || heap < 64 || heap > 16384) continue;
-            heaps.Add(heap);
-        }
-        if (heaps.Count == 0)
-        {
-            refusal = "No native atomic-to-sweepstring heap observation in this capture; " +
-                      "G-GC cannot calibrate pressure without inventing a heap limit.";
-            return false;
-        }
-        heaps.Sort();
-        var mid = heaps.Count / 2;
-        var median = heaps.Count % 2 == 0
-            ? (heaps[mid - 1] + heaps[mid]) / 2 : heaps[mid];
-
-        // Deliberately broad approximate band; current live heap and slope
-        // are the real controls. Calibrated conservatively during gameplay.
-        var slack = Math.Max(32.0, median * 0.08);
-        var pressureStart = Math.Max(64.0, median - slack);
-        var pressureHigh = median + slack;
-        var room = tolerance - baseline;
-        // Initial allowance is a PROVISIONAL engineering budget, not a
-        // measured safe incremental-step duration. Player tests establish it.
-        var cpuBudgetMsPerSecond = Math.Clamp(room * 0.12, 0.4, 2.0);
-        var reserveMs = Math.Max(4.0, room * 0.60);
         var capture = "unknown";
-        if (root.TryGetProperty("capture", out var c))
-            TryString(c, "title", out capture);
-        capture = (capture ?? "unknown").Replace("\\", "_")
-            .Replace("\"", "_").Replace("\n", "_").Replace("\r", "_");
+        if (root.TryGetProperty("capture", out var c) &&
+            c.ValueKind == JsonValueKind.Object &&
+            c.TryGetProperty("title", out var title) &&
+            title.ValueKind == JsonValueKind.String)
+            capture = title.GetString() ?? "unknown";
+        // The existing Resolver calibration is authoritative for medians,
+        // source status, and measured-frame admission. Never recalculate
+        // another incompatible 'GC trigger' estimate in the generator.
+        var evidence = GgcCaptureCalibrationService.Build(root, capture);
+        if (evidence["available"]?.GetValue<bool>() != true)
+        {
+            refusal = "Selected capture has insufficient measured CapFrameX and " +
+                      "collector heap evidence for G-GC. No default invented.";
+            return false;
+        }
+        var game = evidence["gameplay"]!;
+        var pressure = evidence["gcPressure"]!;
+        var baseline = game["medianFrameMs"]!.GetValue<double>();
+        var tolerance = game["hitchToleranceMs"]!.GetValue<double>();
+        var median = pressure["observedHeapMedianMiB"]!.GetValue<double>();
+        var p25 = pressure["observedHeapP25MiB"]!.GetValue<double>();
+        var p75 = pressure["observedHeapP75MiB"]!.GetValue<double>();
+        var count = pressure["observedSlowStepSamples"]!.GetValue<int>();
+        if (baseline < 2 || baseline >= tolerance || tolerance > 300 ||
+            median < 64 || median > 16384 || count == 0)
+        {
+            refusal = "Measured G-GC calibration is outside safe experimental bounds.";
+            return false;
+        }
+
+        // Broad empirical pressure band, explicitly NOT a trigger time.
+        // Capture-specific dispersion enlarges rather than narrows the slack.
+        var slack = Math.Max(Math.Max(32.0, median * 0.08), (p75 - p25) * 0.75);
+        var pressureStart = Math.Max(64, median - slack);
+        var pressureHigh = median + slack;
+        var frameRoom = tolerance - baseline;
+        // Provisional engineering allowance: actual safe step wall time and
+        // runtime cost MUST be established through in-game A/B.
+        var budgetMsPerSecond = Math.Clamp(frameRoom * 0.12, 0.4, 2.0);
+        var reserveMs = Math.Max(4, frameRoom * 0.60);
+        capture = capture.Replace("\\", "_").Replace("\"", "_")
+            .Replace("\n", "_").Replace("\r", "_");
 
         static string N(double value) =>
             value.ToString("0.######", CultureInfo.InvariantCulture);
@@ -159,38 +137,14 @@ return {
   pressureReferenceMiB = {{N(median)}},
   pressureStartMiB = {{N(pressureStart)}},
   pressureHighMiB = {{N(pressureHigh)}},
-  pressureSampleCount = {{heaps.Count}},
+  pressureSampleCount = {{count}},
   frameReserveMs = {{N(reserveMs)}},
-  maxAssistCpuMsPerSecond = {{N(cpuBudgetMsPerSecond)}},
+  maxAssistCpuMsPerSecond = {{N(budgetMsPerSecond)}},
   defaultIntensity = 0,
   defaultFrequencyMs = 1000,
 }
 """;
         return true;
-    }
-
-    private static bool TryBool(JsonElement json, string key) =>
-        json.ValueKind == JsonValueKind.Object &&
-        json.TryGetProperty(key, out var value) &&
-        value.ValueKind == JsonValueKind.True;
-
-    private static bool TryString(JsonElement json, string key, out string text)
-    {
-        text = "";
-        if (json.ValueKind != JsonValueKind.Object ||
-            !json.TryGetProperty(key, out var value) ||
-            value.ValueKind != JsonValueKind.String) return false;
-        text = value.GetString() ?? "";
-        return true;
-    }
-
-    private static bool TryNumber(JsonElement json, string key, out double number)
-    {
-        number = 0;
-        return json.ValueKind == JsonValueKind.Object &&
-               json.TryGetProperty(key, out var value) &&
-               value.ValueKind == JsonValueKind.Number &&
-               value.TryGetDouble(out number);
     }
 
     // One live controller. onDraw builds UI only while the CET overlay is open.
