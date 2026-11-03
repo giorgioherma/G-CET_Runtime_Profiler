@@ -120,7 +120,7 @@ assert(sliders["Interval (ms)"].min == 50 and
 assert(shown:find("Lua heap",1,true) and
        shown:find("net growth",1,true) and
        shown:find("Step CPU",1,true) and
-       shown:find("Step spacing",1,true) and
+       shown:find("Observed spacing",1,true) and
        shown:find("step heap drop",1,true),
   "compact CET UI missing useful heap / step statistics")
 assert(not shown:find("predicted GC region",1,true) and
@@ -149,7 +149,7 @@ for i = beforeOff + 1, stepCount() do
     "the 256-KiB slider still scales step size or exceeds its limit")
 end
 shown = draw()
-assert(shown:find("Step spacing",1,true) and
+assert(shown:find("Observed spacing",1,true) and
        shown:find("Step CPU",1,true),
   "current / previous step timings not visible")
 
