@@ -1,241 +1,279 @@
 using System.Reflection;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using GCETRuntimeProfiler.Core.Services;
 
-static void Check(bool yes, string message)
+static void Check(bool ok, string why)
 {
-    if (!yes) throw new InvalidOperationException(message);
+    if (!ok) throw new InvalidOperationException(why);
 }
-var cls = typeof(ResolverService).Assembly.GetType(
+
+var assembly = typeof(ResolverService).Assembly;
+var calibrationType = assembly.GetType(
     "GCETRuntimeProfiler.Core.Services.GgcCaptureCalibrationService", true)!;
-var method = cls.GetMethod("Build", BindingFlags.Static | BindingFlags.NonPublic)!;
-JsonNode Interpret(string json, string name)
+var calibrate = calibrationType.GetMethod(
+    "Build", BindingFlags.NonPublic | BindingFlags.Static)!;
+var controllerType = assembly.GetType(
+    "GCETRuntimeProfiler.Core.Services.GgcControllerSource", true)!;
+var stage = controllerType.GetMethod(
+    "TryStage", BindingFlags.NonPublic | BindingFlags.Static)!;
+var estimate = calibrationType.GetMethod(
+    "EstimateAppliedDefaults", BindingFlags.NonPublic | BindingFlags.Static)!;
+
+JsonNode Interpret(string handoff, string name = "CURRENT_CAPTURE")
 {
-    using var doc = JsonDocument.Parse(json);
-    return (JsonNode)method.Invoke(null, new object[] { doc.RootElement, name })!;
+    using var doc = JsonDocument.Parse(handoff);
+    return (JsonNode)calibrate.Invoke(null,
+        new object[] { doc.RootElement, name })!;
 }
-const string first = """
+
+const string untouched = """
 {
   "capture": { "exclusiveMsPerSecond": 120 },
   "hitchPressure": { "toleranceFrameMs": 43.91805, "baselineFrameMs": 29.2787 },
   "garbageCollection": { "slowOperations": [
-    { "phaseBefore": "atomic", "heapBeforeMiB": 713, "wallMs": 120 },
-    { "phaseBefore": "propagate", "heapBeforeMiB": 665, "wallMs": 8 },
-    { "phaseBefore": "sweep", "heapBeforeMiB": 705, "wallMs": 20 },
-    { "phaseBefore": "propagate", "heapBeforeMiB": 687, "wallMs": 0 }
+    { "heapBeforeMiB": 713, "wallMs": 120 },
+    { "heapBeforeMiB": 665, "wallMs": 8 },
+    { "heapBeforeMiB": 705, "wallMs": 20 },
+    { "heapBeforeMiB": 687, "wallMs": 0 }
   ] }
 }
 """;
-var a = Interpret(first, "CET-20261103-000232_NEW_STACK_PERFORMANCE_TEST");
-Check(a["available"]!.GetValue<bool>(), "Measured capture not calibrated");
-Check(a["gameplay"]!["hitchToleranceMs"]!.GetValue<double>() == 43.91805,
-    "Ignored the user's actual frame tolerance");
-Check(a["gcPressure"]!["observedSlowStepSamples"]!.GetValue<int>() == 3,
-    "Invalid slow observation was counted");
-Check(a["gcPressure"]!["observedHeapMedianMiB"]!.GetValue<double>() == 705,
-    "Median observed pressure calculation incorrect");
-Check(a["gcPressure"]!["observedHeapP25MiB"]!.GetValue<double>() == 685,
-    "Slack/dispersion context incorrect");
-Check(a["systemInstalledRamMiB"] is null, "Process RAM mistaken for installed system RAM");
-Check(a["generator"]!["installAuthorized"]!.GetValue<bool>(),
-    "Capture-qualified experimental G-GC runtime was not admitted");
-Check(a["capture"]!.GetValue<string>().Contains("20261103"),
-    "Selected capture provenance lost");
-Check(a["assistance"]!["policy"]!.GetValue<string>() ==
-    "CAPTURE_ESTIMATED_POST_OPTIMIZATION_DEFAULTS_MANUAL_CET_TUNING",
-    "Captured pre-optimization performance is still treated as a live runtime cap");
-Check(a["assistance"]!["measuredOriginalCetMsPerSecond"]!.GetValue<double>() == 120 &&
-      a["assistance"]!["estimatedOptimizedCetMsPerSecond"]!.GetValue<double>() == 60 &&
-      a["assistance"]!["estimatedFreedCetMsPerSecond"]!.GetValue<double>() == 60 &&
-      Math.Abs(a["assistance"]!["estimatedGgcStartingCpuMsPerSecond"]!.GetValue<double>() - 4.8) < 0.000001,
-    "CET-work 50%-reduction and 8%-of-saving estimate is not capture-derived");
-Check(a["assistance"]!["recommendedIntensityPercent"]!.GetValue<int>() == 31 &&
-      a["assistance"]!["recommendedMinFrequencyMs"]!.GetValue<int>() == 1200,
-    "CET workload reduction did not determine starting sliders");
-Check(a["control"]!["manualOverridesNotCappedByEstimatedSaving"]!.GetValue<bool>() &&
-      !a["control"]!["runtimeCpuProbingRequired"]!.GetValue<bool>(),
-    "Manual CET adjustment was subjected to estimated saving as a hard cap");
-Check(a["assistance"]!["frameReserveMs"]!.GetValue<double>() > 8,
-    "The heavy-gameplay frametime reserve was discarded");
-Check(a["control"]!["enabledByDefault"]!.GetValue<bool>(),
-    "Qualified capture with room for assistance remained observe-only");
-var b = Interpret(
-    """
-    {
-      "capture": {"exclusiveMsPerSecond": 300},
-      "hitchPressure": {"toleranceFrameMs": 28, "baselineFrameMs": 20},
-      "garbageCollection": {"slowOperations":[{"heapBeforeMiB": 512, "wallMs": 3}]}
-    }
-    """, "NEW_CAPTURE");
-Check(b["gameplay"]!["hitchToleranceMs"]!.GetValue<double>() == 28,
-    "Captured limits are incorrectly hardcoded");
-Check(b["gcPressure"]!["observedHeapMedianMiB"]!.GetValue<double>() == 512,
-    "Pressure context is reused from an old capture");
-Check(b["assistance"]!["recommendedIntensityPercent"]!.GetValue<int>() == 58 &&
-      b["assistance"]!["recommendedMinFrequencyMs"]!.GetValue<int>() == 550 &&
-      b["assistance"]!["estimatedFreedCetMsPerSecond"]!.GetValue<double>() == 150,
-    "300ms/s measured CET -> 150ms/s estimated CET did not affect defaults");
-var littleRoom = Interpret(
-    """
-    {"capture":{"exclusiveMsPerSecond":120},
-     "hitchPressure":{"baselineFrameMs":24,"toleranceFrameMs":26},
-     "garbageCollection":{"slowOperations":[{"heapBeforeMiB":600,"wallMs":8}]}}
-    """, "NO_SPARE_FRAME_BUDGET");
-Check(littleRoom["available"]!.GetValue<bool>() &&
-      littleRoom["assistance"]!["recommendedIntensityPercent"]!.GetValue<int>() == 0 &&
-      littleRoom["assistance"]!["estimatedFreedCetMsPerSecond"]!.GetValue<double>() == 60,
-    "Measured CET savings should remain documented despite no safe default frame margin");
-// No natural GC cycle in a valid frame capture must not block the ongoing
-// helper. The GC region is informational; never invent a MiB threshold.
-const string frameOnlyCapture = """
-{"capture":{"exclusiveMsPerSecond":100},
- "hitchPressure":{"baselineFrameMs":19,"toleranceFrameMs":31},
- "garbageCollection":{"slowOperations":[]}}
-""";
-var frameOnly = Interpret(frameOnlyCapture, "VALID_FRAME_NO_GC_CYCLE");
-Check(frameOnly["available"]!.GetValue<bool>() &&
-      frameOnly["gcPressure"]!["observedSlowStepSamples"]!.GetValue<int>() == 0 &&
-      frameOnly["gcPressure"]!["observedHeapMedianMiB"] is null &&
-      frameOnly["generator"]!["installAuthorized"]!.GetValue<bool>() &&
-      frameOnly["assistance"]!["recommendedIntensityPercent"]!.GetValue<int>() > 0,
-    "Optional GC forecast wrongly blocks a capture-calibrated continuous helper");
-var missing = Interpret(
-    """{"hitchPressure":{"baselineFrameMs":21},"garbageCollection":{"slowOperations":[]}}""",
-    "NO_CAPFRAMEX");
-Check(!missing["available"]!.GetValue<bool>(), "Missing data was silently admitted");
-Check(missing["gameplay"]!["hitchToleranceMs"] is null,
-    "Fallback tolerance fabricated from missing CapFrameX evidence");
-Check(!missing["generator"]!["installAuthorized"]!.GetValue<bool>(),
-    "Missing evidence installed a collector");
 
-const string secondCapture = """
-{"capture":{"exclusiveMsPerSecond":300},
- "hitchPressure":{"toleranceFrameMs":28,"baselineFrameMs":20},
- "garbageCollection":{"slowOperations":[{"heapBeforeMiB":512,"wallMs":3}]}}
-""";
-var runtimeType = typeof(ResolverService).Assembly.GetType(
-    "GCETRuntimeProfiler.Core.Services.GgcControllerSource", true)!;
-var stage = runtimeType.GetMethod("TryStage", BindingFlags.Static | BindingFlags.NonPublic)!;
-bool Stage(string json, string folder, Dictionary<string, byte[]> result, List<object> skipped)
+const string callbacks = """
 {
-    using var doc = JsonDocument.Parse(json);
-    var calibration = method.Invoke(null, new object[]
-        { doc.RootElement, "CURRENT_CAPTURE" }) as JsonNode;
-    var decision = new JsonObject { ["gGcCaptureCalibration"] = calibration!.DeepClone() };
-    using var decisionDoc = JsonDocument.Parse(decision.ToJsonString());
-    return (bool)stage.Invoke(null, new object[]
-    {
-        decisionDoc.RootElement, folder, result, new Dictionary<string, int>(),
-        new List<object>(), skipped
-    })!;
+  "callbackFamilies": [
+    { "resolverFamily": "ONUPDATE", "topConsumers": [
+      { "owner": "ModDormant", "registrationId": 101,
+        "runtime": { "exclusiveMsPerSecond": 80, "callsPerSecond": 60 } },
+      { "owner": "ModGeneric", "registrationId": 201,
+        "runtime": { "exclusiveMsPerSecond": 20, "callsPerSecond": 60 } },
+      { "owner": "ModGeneric", "registrationId": 202,
+        "runtime": { "exclusiveMsPerSecond": 15, "callsPerSecond": 60 } },
+      { "owner": "ModGeneric", "registrationId": 203,
+        "runtime": { "exclusiveMsPerSecond": 5, "callsPerSecond": 60 } }
+    ] }
+  ]
 }
-var tempRoot = Path.Combine(Path.GetTempPath(), "gcet-ggc-contract-" + Guid.NewGuid().ToString("N"));
+""";
+
+var applied = new List<object>
+{
+    new { type="SEMANTIC_RULE", Owner="ModDormant", RuleId="dormant-when-idle",
+        Handler="DORMANCY_WITH_WAKE", PolicyClass="SOURCE_PROVEN",
+        runtimeMsPerSecond=80.0, sourceProof=true,
+        admissionEvidence="CAPTURE_MATCHED_SOURCE_PROVEN" },
+    new { type="FRAME_DISPATCH_CONSOLIDATION", owner="ModGeneric",
+        registrationId=201L, eventTarget="onUpdate" },
+    new { type="FRAME_DISPATCH_CONSOLIDATION", owner="ModGeneric",
+        registrationId=202L, eventTarget="onUpdate" },
+    new { type="FRAME_DISPATCH_CONSOLIDATION", owner="ModGeneric",
+        registrationId=203L, eventTarget="onUpdate" },
+    new { type="UI_VISIBILITY_DORMANCY", owner="ModGeneric",
+        registrationId=201L },
+    new { type="SHARED_PROVIDER_READ", owner="ModGeneric",
+        registrationId=201L, replacedOccurrences=5 },
+    // Measured callback omitted: cannot claim benefits from arbitrary work.
+    new { type="SEMANTIC_RULE", Owner="Unsupported", RuleId="no-evidence",
+        Handler="DORMANCY_WITH_WAKE", runtimeMsPerSecond=(double?)null,
+        sourceProof=true, admissionEvidence="SOURCE_PROVEN_NO_CAPTURE" }
+};
+
+JsonNode Decision(string handoff, bool withCallbacks)
+{
+    var root = new JsonObject {
+        ["gGcCaptureCalibration"] = Interpret(handoff).DeepClone()
+    };
+    if (withCallbacks)
+    {
+        var cb = JsonNode.Parse(callbacks)!;
+        root["callbackFamilies"] = cb["callbackFamilies"]!.DeepClone();
+    }
+    return root;
+}
+
+dynamic Calculate(JsonNode decision, List<object> manifest)
+{
+    using var doc = JsonDocument.Parse(decision.ToJsonString());
+    return estimate.Invoke(null, new object[]{doc.RootElement, manifest})!;
+}
+
+bool Stage(JsonNode decision, string folder,
+    Dictionary<string, byte[]> result, List<object> skips,
+    List<object>? sourceManifest = null, List<object>? finalManifest = null)
+{
+    using var doc = JsonDocument.Parse(decision.ToJsonString());
+    var composed = new List<object>(sourceManifest ?? new List<object>());
+    var ok = (bool)stage.Invoke(null, new object[]{
+        doc.RootElement, folder, result, new Dictionary<string,int>(),
+        composed, skips
+    })!;
+    finalManifest?.AddRange(composed);
+    return ok;
+}
+
+var observed = Interpret(untouched);
+Check(observed["available"]!.GetValue<bool>(),
+    "Measured hitch capture not available");
+Check(observed["gameplay"]!["hitchToleranceMs"]!.GetValue<double>() == 43.91805,
+    "Hitch tolerance lost");
+Check(observed["gcPressure"]!["observedSlowStepSamples"]!.GetValue<int>() == 3 &&
+      observed["gcPressure"]!["observedHeapMedianMiB"]!.GetValue<double>() == 705,
+    "Slow GC region calculated incorrectly");
+Check(observed["assistance"]!["measuredOriginalCetMsPerSecond"]!.GetValue<double>() == 120 &&
+      observed["assistance"]!["estimatedFreedCetMsPerSecond"] is null &&
+      observed["assistance"]!["recommendedIntensityPercent"]!.GetValue<int>() == 0,
+    "ANALYZE wrongly predicted savings without actually applying sources");
+
+var decision = Decision(untouched, true);
+dynamic values = Calculate(decision, applied);
+Check(Math.Abs((double)values.EstimatedFreedCetMsPerSecond - 26.64) < 1e-6,
+    "Per-stage semantic and generic savings not credited conservatively");
+Check(Math.Abs((double)values.EstimatedSemanticSavingMsPerSecond - 24) < 1e-6 &&
+      Math.Abs((double)values.EstimatedGenericSavingMsPerSecond - 2.64) < 1e-6,
+    "Generic/semantic attribution wrong");
+Check((int)values.DefaultIntensityPercent == 21 &&
+      (int)values.DefaultFrequencyMs == 1500,
+    "Estimated savings did not determine conservative initial sliders");
+Check((int)values.AppliedSemanticRules == 2 &&
+      (int)values.AppliedGenericRules == 3,
+    "Applied rule counts lost");
+Check(((System.Collections.IEnumerable)values.RuleEstimates).Cast<object>().Count() == 5,
+    "Per-rule audit was lost or included unsupported fake savings");
+
+dynamic none = Calculate(decision, new List<object>());
+Check((double)none.EstimatedFreedCetMsPerSecond == 0 &&
+      (int)none.DefaultIntensityPercent == 0 &&
+      (double)none.EstimatedOptimizedCetMsPerSecond == 120,
+    "Unsupported/non-generated work was treated as optimized");
+var duplicated = new List<object>(applied);
+duplicated.AddRange(applied);
+dynamic noDouble = Calculate(decision, duplicated);
+Check(Math.Abs((double)noDouble.EstimatedFreedCetMsPerSecond - 26.64) < 1e-6,
+    "Repeated manifests inflated measured CPU savings");
+
+// Identical generic/semantic rules can hit overlapping callback work.
+// The owner-overlap rule must take the greater saving, never their sum.
+var sameOwner = new List<object> {
+    new { type="SEMANTIC_RULE", Owner="ModGeneric", RuleId="wake",
+        Handler="DORMANCY_WITH_WAKE", runtimeMsPerSecond=20.0,
+        sourceProof=true, admissionEvidence="CAPTURE_MATCHED_SOURCE_PROVEN" },
+    new { type="UI_VISIBILITY_DORMANCY", owner="ModGeneric",
+        registrationId=201L }
+};
+dynamic overlap = Calculate(decision, sameOwner);
+Check(Math.Abs((double)overlap.EstimatedFreedCetMsPerSecond - 6) < 1e-6,
+    "Overlapping generic and semantic stages were added twice");
+
+// Single frame registration must never be credited as eliminated dispatch.
+dynamic singleFrame = Calculate(decision, new List<object> {
+    new { type="FRAME_DISPATCH_CONSOLIDATION", owner="ModGeneric",
+        registrationId=201L, eventTarget="onUpdate" }
+});
+Check((double)singleFrame.EstimatedFreedCetMsPerSecond == 0,
+    "Consolidation with only one registration invented CPU savings");
+
+var tempRoot = Path.Combine(Path.GetTempPath(),
+    "gcet-ggc-rule-estimate-" + Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(tempRoot);
 try
 {
-    var generated = new Dictionary<string, byte[]>();
-    Check(Stage(first, tempRoot, generated, new List<object>()),
-        "Measured selected capture failed to generate G-GC");
-    Check(generated.Count == 2, "G-GC must generate exactly two owned files");
-    var lua = System.Text.Encoding.UTF8.GetString(generated["G-GC/init.lua"]);
-    var threshold = System.Text.Encoding.UTF8.GetString(generated["G-GC/threshold.lua"]);
-    foreach (var text in new[] {"registerForEvent(\"onUpdate\"", "ImGui.SliderInt",
-        "estimatedOriginalCetMsPerSecond", "pcall(collectgarbage, \"step\"",
-        "backoffSeconds", "growthMiBps"})
-        Check(lua.Contains(text), "G-GC runtime missing " + text);
-    Check(lua.Contains("CONTINUOUS assistance") &&
-          lua.Contains("0.10 + 0.90 * demand") &&
-          !lua.Contains("if pressure <= 0 then") &&
-          !lua.Contains("if learnCooldown > 0 then lastBlock"),
-          "Generated worker still gates assistance on an approximate GC threshold");
-    Check(!lua.Contains("collectgarbage(\"collect\""),
-        "G-GC must not schedule full garbage collection");
-    Check(threshold.Contains("43.91805") && threshold.Contains("29.2787"),
-        "Generated calibration does not preserve actual captured frametimes");
-    Check(threshold.Contains("schema = 2") &&
-          threshold.Contains("defaultIntensity = 31") &&
-          threshold.Contains("defaultFrequencyMs = 1200") &&
-          threshold.Contains("estimatedOriginalCetMsPerSecond = 120") &&
-          threshold.Contains("estimatedOptimizedCetMsPerSecond = 60") &&
-          threshold.Contains("estimatedFreedCetMsPerSecond = 60") &&
-          threshold.Contains("estimatedGgcStartingCpuMsPerSecond = 4.8") &&
-          threshold.Contains("assumedOptimizedFraction = 0.5"),
-        "Generator discarded the selected-capture savings estimate and defaults");
-    Check(!lua.Contains("if windowUsedMs >=") &&
-          !lua.Contains("headroomFactor") &&
-          !lua.Contains("frameEmaMs") &&
-          !lua.Contains("config.maxAssistCpuMsPerSecond"),
-        "Old pre-optimization CPU throttle still overrides user CET sliders");
+    var generated = new Dictionary<string,byte[]>();
+    var composed = new List<object>();
+    Check(Stage(decision,tempRoot,generated,new List<object>(),applied,composed),
+        "Capture-qualified applied rule estimate did not generate");
+    Check(generated.Count == 2 && composed.Count == applied.Count + 1,
+        "G-GC created extra owner or lost manifest");
+    var source = Encoding.UTF8.GetString(generated["G-GC/init.lua"]);
+    var threshold = Encoding.UTF8.GetString(generated["G-GC/threshold.lua"]);
+    foreach (var token in new[] {
+        "schema = 3", "estimatedOriginalCetMsPerSecond = 120",
+        "estimatedCoveredCetMsPerSecond = 100",
+        "estimatedOptimizedCetMsPerSecond = 93.36",
+        "estimatedFreedCetMsPerSecond = 26.64",
+        "estimatedGgcStartingCpuMsPerSecond = 2.1312",
+        "estimatedSemanticSavingMsPerSecond = 24",
+        "estimatedGenericSavingMsPerSecond = 2.64",
+        "defaultIntensity = 21", "defaultFrequencyMs = 1500"
+    })
+        Check(threshold.Contains(token), "Missing rule-based config: " + token);
+    Check(source.Contains("CONTINUOUS assistance") &&
+          source.Contains("ImGui.SliderInt") &&
+          !source.Contains("config.maxAssistCpuMsPerSecond") &&
+          !source.Contains("frameEmaMs") &&
+          !source.Contains("if pressure <= 0 then"),
+        "Generated runtime still throttles player sliders or waits on GC region");
+    var doc = JsonSerializer.SerializeToElement(composed[^1]);
+    Check(doc.GetProperty("type").GetString() == "GC_CONTROLLER" &&
+          doc.GetProperty("perRuleEstimates").GetArrayLength() == 5 &&
+          Math.Abs(doc.GetProperty("estimatedFreedCetMsPerSecond").GetDouble()-26.64)<1e-6,
+        "Pass manifest lacks verifiable per-rule savings evidence");
+
     foreach (var item in generated)
     {
-        var file = Path.Combine(tempRoot, item.Key.Replace('/', Path.DirectorySeparatorChar));
-        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
-        File.WriteAllBytes(file, item.Value);
+        var path = Path.Combine(tempRoot, item.Key.Replace('/',Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllBytes(path,item.Value);
     }
-    // Recognize both exact previously deployed G-GC runtimes directly in
-    // the authoritative generator: V1 first release and V2 pressure-gated.
-    // No duplicate worker, marker-only trust or manual removal required.
-    var assembly = typeof(ResolverService).Assembly;
-    foreach (var version in new[] { "V1", "V2", "V3" })
+    // Source-proven upgrade for all previously generated single-controller
+    // versions, never marker-only trust or a second independent worker.
+    foreach(var version in new[]{"V1","V2","V3","V4"})
     {
-        using var priorStream = assembly.GetManifestResourceStream(
-            "GCETRuntimeProfiler.GgcGeneratedRuntime" + version + ".reference.lua");
-        Check(priorStream is not null, "Resolver lacks " + version + " source proof");
-        using var priorReader = new StreamReader(priorStream!);
-        var priorSource = priorReader.ReadToEnd();
-        var deployedInit = Path.Combine(tempRoot, "G-GC", "init.lua");
-        File.WriteAllText(deployedInit, priorSource);
-        var upgraded = new Dictionary<string, byte[]>();
-        Check(Stage(first, tempRoot, upgraded, new List<object>()),
-            "Previously deployed " + version + " G-GC cannot be upgraded");
+        using var stream=assembly.GetManifestResourceStream(
+            "GCETRuntimeProfiler.GgcGeneratedRuntime"+version+".reference.lua");
+        Check(stream is not null,"Missing historical source "+version);
+        using var reader=new StreamReader(stream!);
+        File.WriteAllText(Path.Combine(tempRoot,"G-GC","init.lua"),reader.ReadToEnd());
+        var upgraded=new Dictionary<string,byte[]>();
+        Check(Stage(decision,tempRoot,upgraded,new List<object>(),applied),
+            "Source-proven "+version+" upgrade failed");
         Check(upgraded["G-GC/init.lua"].SequenceEqual(generated["G-GC/init.lua"]),
-            version + " migration emitted a duplicate or outdated runtime");
-        File.WriteAllBytes(deployedInit, upgraded["G-GC/init.lua"]);
+            "Version "+version+" upgrade altered generated ownership");
     }
-    var repeated = new Dictionary<string, byte[]>();
-    Check(Stage(first, tempRoot, repeated, new List<object>()),
-        "G-GC previously generated sources were refused");
-    Check(repeated.Count == generated.Count &&
-          repeated.All(e => e.Value.SequenceEqual(generated[e.Key])),
-        "Repeated same-capture G-GC generation was not identical");
-    var fresh = new Dictionary<string, byte[]>();
-    Check(Stage(secondCapture, tempRoot, fresh, new List<object>()),
-        "New capture refused previously generated runtime");
-    Check(!fresh["G-GC/threshold.lua"].SequenceEqual(generated["G-GC/threshold.lua"]),
-        "G-GC retained stale calibration on latest capture");
-    var noCycleOverlay = new Dictionary<string, byte[]>();
-    Check(Stage(frameOnlyCapture, tempRoot, noCycleOverlay, new List<object>()),
-        "No-GC-cycle capture failed to deploy continuous frame-bounded G-GC");
-    var noCycleThreshold = System.Text.Encoding.UTF8.GetString(
-        noCycleOverlay["G-GC/threshold.lua"]);
-    foreach (var field in new[] { "pressureReferenceMiB = nil",
-        "pressureStartMiB = nil", "pressureHighMiB = nil",
-        "pressureSampleCount = 0" })
-        Check(noCycleThreshold.Contains(field),
-            "Missing GC observation was fabricated instead of set to nil: " + field);
-    // Install the nullable threshold, then prove regeneration still recognizes
-    // it as owned G-GC output without requiring a prior capture.
-    File.WriteAllBytes(Path.Combine(tempRoot, "G-GC", "threshold.lua"),
-        noCycleOverlay["G-GC/threshold.lua"]);
-    Check(Stage(frameOnlyCapture, tempRoot,
-        new Dictionary<string, byte[]>(), new List<object>()),
-        "Nullable collector forecast broke same-source re-generation");
-    var missingOverlay = new Dictionary<string, byte[]>();
-    var skip = new List<object>();
-    Check(!Stage("""{"hitchPressure":{"baselineFrameMs":20}}""", tempRoot, missingOverlay, skip)
-          && missingOverlay.Count == 0 && skip.Count == 1,
-        "Missing capture evidence silently produced a runtime");
-    var generatedInit = Path.Combine(tempRoot, "G-GC", "init.lua");
-    File.AppendAllText(generatedInit, "\nprint('source drift')\n");
-    var modified = new Dictionary<string, byte[]>();
-    Check(!Stage(first, tempRoot, modified, new List<object>()) && modified.Count == 0,
-        "Marker-bearing, modified G-GC code was silently overwritten");
-    File.WriteAllText(Path.Combine(tempRoot,"G-GC","init.lua"), "-- foreign G-GC");
-    var drift = new Dictionary<string, byte[]>();
-    Check(!Stage(first, tempRoot, drift, new List<object>()) && drift.Count == 0,
-        "Foreign G-GC was overwritten");
-}
-finally { Directory.Delete(tempRoot, true); }
+    File.WriteAllBytes(Path.Combine(tempRoot,"G-GC","init.lua"),generated["G-GC/init.lua"]);
+    var repeated=new Dictionary<string,byte[]>();
+    Check(Stage(decision,tempRoot,repeated,new List<object>(),applied) &&
+        generated.All(x=>x.Value.SequenceEqual(repeated[x.Key])),
+        "Same capture and installed source did not regenerate idempotently");
 
-Console.WriteLine("G-GC selected-capture calibration evidence contract PASSED");
+    var noRuleFiles=new Dictionary<string,byte[]>();
+    Check(Stage(decision,tempRoot,noRuleFiles,new List<object>()),
+        "Fully optimized/current stack should still emit a safe controller");
+    var noRuleThreshold=Encoding.UTF8.GetString(noRuleFiles["G-GC/threshold.lua"]);
+    Check(noRuleThreshold.Contains("defaultIntensity = 0") &&
+          noRuleThreshold.Contains("estimatedFreedCetMsPerSecond = 0") &&
+          noRuleThreshold.Contains("estimatedOptimizedCetMsPerSecond = 120"),
+        "Already-optimized no-new-rule run fabricated fresh savings");
+
+    var noCycle=Decision(
+        """{"capture":{"exclusiveMsPerSecond":100},"hitchPressure":{"baselineFrameMs":19,"toleranceFrameMs":31},"garbageCollection":{"slowOperations":[]}}""",false);
+    var noCycleFiles=new Dictionary<string,byte[]>();
+    Check(Stage(noCycle,tempRoot,noCycleFiles,new List<object>()),
+        "No collector cycle incorrectly prevented safe generation");
+    var noCycleThreshold=Encoding.UTF8.GetString(noCycleFiles["G-GC/threshold.lua"]);
+    Check(noCycleThreshold.Contains("pressureStartMiB = nil") &&
+          noCycleThreshold.Contains("pressureSampleCount = 0"),
+        "No-cycle generation fabricated an observed trigger");
+    File.WriteAllBytes(Path.Combine(tempRoot,"G-GC","threshold.lua"),
+        noCycleFiles["G-GC/threshold.lua"]);
+    Check(Stage(noCycle,tempRoot,new Dictionary<string,byte[]>(),new List<object>()),
+        "Nullable GC region failed re-generation");
+
+    var missing=Decision("""{"capture":{"exclusiveMsPerSecond":120},"hitchPressure":{"baselineFrameMs":21},"garbageCollection":{"slowOperations":[]}}""",false);
+    var missingFiles=new Dictionary<string,byte[]>();var skips=new List<object>();
+    Check(!Stage(missing,tempRoot,missingFiles,skips) &&
+          missingFiles.Count==0 && skips.Count==1,
+        "Missing measured hitch tolerance silently deployed controller");
+
+    var init=Path.Combine(tempRoot,"G-GC","init.lua");
+    File.AppendAllText(init,"\nprint('source drift')\n");
+    var modified=new Dictionary<string,byte[]>();
+    Check(!Stage(decision,tempRoot,modified,new List<object>(),applied) &&
+        modified.Count==0,"Marker-bearing manual drift was overwritten");
+    File.WriteAllText(init,"-- foreign user controller");
+    Check(!Stage(decision,tempRoot,new Dictionary<string,byte[]>(),
+          new List<object>(),applied),"Foreign G-GC was overwritten");
+}
+finally { Directory.Delete(tempRoot,true); }
+Console.WriteLine("G-GC applied per-rule estimates, current-source idempotence, drift and defaults PASSED");
