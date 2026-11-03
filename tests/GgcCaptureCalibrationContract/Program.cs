@@ -137,13 +137,13 @@ Check(observed["assistance"]!["measuredOriginalCetMsPerSecond"]!.GetValue<double
 
 var decision = Decision(untouched, true);
 object values = Calculate(decision, applied);
-Check(Math.Abs(Val(values,"EstimatedFreedCetMsPerSecond") - 26.64) < 1e-6,
+Check(Math.Abs(Val(values,"EstimatedFreedCetMsPerSecond") - 28.24) < 1e-6,
     "Per-stage semantic and generic savings not credited conservatively");
 Check(Math.Abs(Val(values,"EstimatedSemanticSavingMsPerSecond") - 24) < 1e-6 &&
-      Math.Abs(Val(values,"EstimatedGenericSavingMsPerSecond") - 2.64) < 1e-6,
+      Math.Abs(Val(values,"EstimatedGenericSavingMsPerSecond") - 4.24) < 1e-6,
     "Generic/semantic attribution wrong");
 Check(Count(values,"DefaultIntensityPercent") == 21 &&
-      Count(values,"DefaultFrequencyMs") == 1500,
+      Count(values,"DefaultFrequencyMs") == 1450,
     "Estimated savings did not determine conservative initial sliders");
 Check(Count(values,"AppliedSemanticRules") == 2 &&
       Count(values,"AppliedGenericRules") == 3,
@@ -159,7 +159,7 @@ Check(Val(none,"EstimatedFreedCetMsPerSecond") == 0 &&
 var duplicated = new List<object>(applied);
 duplicated.AddRange(applied);
 object noDouble = Calculate(decision, duplicated);
-Check(Math.Abs(Val(noDouble,"EstimatedFreedCetMsPerSecond") - 26.64) < 1e-6,
+Check(Math.Abs(Val(noDouble,"EstimatedFreedCetMsPerSecond") - 28.24) < 1e-6,
     "Repeated manifests inflated measured CPU savings");
 
 // Identical generic/semantic rules can hit overlapping callback work.
@@ -199,12 +199,12 @@ try
     foreach (var token in new[] {
         "schema = 3", "estimatedOriginalCetMsPerSecond = 120",
         "estimatedCoveredCetMsPerSecond = 100",
-        "estimatedOptimizedCetMsPerSecond = 93.36",
-        "estimatedFreedCetMsPerSecond = 26.64",
-        "estimatedGgcStartingCpuMsPerSecond = 2.1312",
+        "estimatedOptimizedCetMsPerSecond = 91.76",
+        "estimatedFreedCetMsPerSecond = 28.24",
+        "estimatedGgcStartingCpuMsPerSecond = 2.2592",
         "estimatedSemanticSavingMsPerSecond = 24",
-        "estimatedGenericSavingMsPerSecond = 2.64",
-        "defaultIntensity = 21", "defaultFrequencyMs = 1500"
+        "estimatedGenericSavingMsPerSecond = 4.24",
+        "defaultIntensity = 21", "defaultFrequencyMs = 1450"
     })
         Check(threshold.Contains(token), "Missing rule-based config: " + token);
     Check(source.Contains("CONTINUOUS assistance") &&
@@ -216,7 +216,7 @@ try
     var doc = JsonSerializer.SerializeToElement(composed[^1]);
     Check(doc.GetProperty("type").GetString() == "GC_CONTROLLER" &&
           doc.GetProperty("perRuleEstimates").GetArrayLength() == 5 &&
-          Math.Abs(doc.GetProperty("estimatedFreedCetMsPerSecond").GetDouble()-26.64)<1e-6,
+          Math.Abs(doc.GetProperty("estimatedFreedCetMsPerSecond").GetDouble()-28.24)<1e-6,
         "Pass manifest lacks verifiable per-rule savings evidence");
 
     foreach (var item in generated)
