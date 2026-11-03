@@ -99,7 +99,9 @@ assert(shown:find("APPLIED: intensity 100%", 1, true) and
 advance(160)
 assert(#steps > low37Count + 5,
   "high frequency did not increase the number of maintenance attempts")
-assert(#steps > 20,
+-- 160 frames at 20 ms with 250 ms minimum spacing permits roughly
+-- twelve attempts; the historical 20-step assertion exceeded elapsed time.
+assert(#steps - low37Count >= 10,
   "tiny estimated starting allowance incorrectly capped manual 100% tuning")
 assert(steps[#steps] > low37Size,
   "100% did not request more work than captured default at same low heap")
