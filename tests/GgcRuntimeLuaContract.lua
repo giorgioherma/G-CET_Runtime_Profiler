@@ -193,7 +193,7 @@ assert(hasMark("GGC_TEST_P3_128K_50MS"),
 local fastStart = stepCount()
 advance(29.6)
 local fastEnd = stepCount()
-assert(fastEnd - fastStart > slowEnd - slowStart * 0.90,
+assert(fastEnd - fastStart > (slowEnd - slowStart) * 1.45,
   "50ms phase did not increase request frequency over 100ms")
 assert(fastEnd - fastStart >= 380,
   "50ms phase failed to deliver frequent requested GC steps")
