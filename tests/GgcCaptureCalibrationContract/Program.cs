@@ -146,8 +146,9 @@ Check(Count(values,"DefaultIntensityPercent") == 21 &&
       Count(values,"DefaultFrequencyMs") == 1450,
     "Estimated savings did not determine conservative initial sliders");
 Check(Count(values,"AppliedSemanticRules") == 2 &&
-      Count(values,"AppliedGenericRules") == 3,
-    "Applied rule counts lost");
+      Count(values,"AppliedGenericRules") == 5 &&
+      Count(values,"CreditedOwners") == 2,
+    "Applied stage counts or uniquely credited owners were misrepresented");
 Check(Rows(values,"RuleEstimates").Cast<object>().Count() == 5,
     "Per-rule audit was lost or included unsupported fake savings");
 
