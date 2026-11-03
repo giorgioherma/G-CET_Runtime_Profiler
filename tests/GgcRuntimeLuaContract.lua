@@ -161,7 +161,12 @@ local function withPrior(startMiB, highMiB, referenceMiB)
 end
 local aQuiet, aRising = withPrior(794, 932, 864)
 local bQuiet, bRising = withPrior(275, 360, 315)
-assert(aQuiet == bQuiet and aRising == bRising,
-  "approximate natural GC region changed step sizing at equal live heap")
+local cQuiet, cRising = withPrior(nil, nil, nil)
+assert(aQuiet == bQuiet and aRising == bRising and
+       aQuiet == cQuiet and aRising == cRising,
+  "optional or changed natural GC region altered actual assistance")
+local noForecast = draw()
+assert(noForecast:find("NOT OBSERVED", 1, true),
+  "no-GC-cycle helper incorrectly asserts a predicted collection region")
 os = actualOs
 print("G-GC continuous baseline, live scaling, sliders, GC prediction context, safety PASS")
