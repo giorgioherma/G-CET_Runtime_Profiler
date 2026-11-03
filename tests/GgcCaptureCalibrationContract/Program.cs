@@ -17,6 +17,7 @@ JsonNode Interpret(string json, string name)
 }
 const string first = """
 {
+  "capture": { "exclusiveMsPerSecond": 120 },
   "hitchPressure": { "toleranceFrameMs": 43.91805, "baselineFrameMs": 29.2787 },
   "garbageCollection": { "slowOperations": [
     { "phaseBefore": "atomic", "heapBeforeMiB": 713, "wallMs": 120 },
@@ -42,12 +43,19 @@ Check(a["generator"]!["installAuthorized"]!.GetValue<bool>(),
 Check(a["capture"]!.GetValue<string>().Contains("20261103"),
     "Selected capture provenance lost");
 Check(a["assistance"]!["policy"]!.GetValue<string>() ==
-    "CAPTURE_DEFINES_CEILING_LIVE_HEAP_DEFINES_DEMAND",
-    "Live heap demand and captured cost allowance were conflated");
-Check(a["assistance"]!["recommendedIntensityPercent"]!.GetValue<int>() == 37,
-    "Starting intensity must be nonzero and calculated from reserved headroom");
-Check(a["assistance"]!["recommendedMinFrequencyMs"]!.GetValue<int>() == 1250,
-    "Starting frequency must derive from the capture allowance");
+    "CAPTURE_ESTIMATED_POST_OPTIMIZATION_DEFAULTS_MANUAL_CET_TUNING",
+    "Captured pre-optimization performance is still treated as a live runtime cap");
+Check(a["assistance"]!["measuredOriginalCetMsPerSecond"]!.GetValue<double>() == 120 &&
+      a["assistance"]!["estimatedOptimizedCetMsPerSecond"]!.GetValue<double>() == 60 &&
+      a["assistance"]!["estimatedFreedCetMsPerSecond"]!.GetValue<double>() == 60 &&
+      Math.Abs(a["assistance"]!["estimatedGgcStartingCpuMsPerSecond"]!.GetValue<double>() - 4.8) < 0.000001,
+    "CET-work 50%-reduction and 8%-of-saving estimate is not capture-derived");
+Check(a["assistance"]!["recommendedIntensityPercent"]!.GetValue<int>() == 31 &&
+      a["assistance"]!["recommendedMinFrequencyMs"]!.GetValue<int>() == 1200,
+    "CET workload reduction did not determine starting sliders");
+Check(a["control"]!["manualOverridesNotCappedByEstimatedSaving"]!.GetValue<bool>() &&
+      !a["control"]!["runtimeCpuProbingRequired"]!.GetValue<bool>(),
+    "Manual CET adjustment was subjected to estimated saving as a hard cap");
 Check(a["assistance"]!["frameReserveMs"]!.GetValue<double>() > 8,
     "The heavy-gameplay frametime reserve was discarded");
 Check(a["control"]!["enabledByDefault"]!.GetValue<bool>(),
@@ -55,6 +63,7 @@ Check(a["control"]!["enabledByDefault"]!.GetValue<bool>(),
 var b = Interpret(
     """
     {
+      "capture": {"exclusiveMsPerSecond": 300},
       "hitchPressure": {"toleranceFrameMs": 28, "baselineFrameMs": 20},
       "garbageCollection": {"slowOperations":[{"heapBeforeMiB": 512, "wallMs": 3}]}
     }
@@ -63,22 +72,25 @@ Check(b["gameplay"]!["hitchToleranceMs"]!.GetValue<double>() == 28,
     "Captured limits are incorrectly hardcoded");
 Check(b["gcPressure"]!["observedHeapMedianMiB"]!.GetValue<double>() == 512,
     "Pressure context is reused from an old capture");
-Check(b["assistance"]!["recommendedIntensityPercent"]!.GetValue<int>() == 34 &&
-      b["assistance"]!["recommendedMinFrequencyMs"]!.GetValue<int>() == 1300,
-    "Starting controls were copied from the previous capture");
+Check(b["assistance"]!["recommendedIntensityPercent"]!.GetValue<int>() == 58 &&
+      b["assistance"]!["recommendedMinFrequencyMs"]!.GetValue<int>() == 550 &&
+      b["assistance"]!["estimatedFreedCetMsPerSecond"]!.GetValue<double>() == 150,
+    "300ms/s measured CET -> 150ms/s estimated CET did not affect defaults");
 var littleRoom = Interpret(
     """
-    {"hitchPressure":{"baselineFrameMs":24,"toleranceFrameMs":26},
+    {"capture":{"exclusiveMsPerSecond":120},
+     "hitchPressure":{"baselineFrameMs":24,"toleranceFrameMs":26},
      "garbageCollection":{"slowOperations":[{"heapBeforeMiB":600,"wallMs":8}]}}
     """, "NO_SPARE_FRAME_BUDGET");
 Check(littleRoom["available"]!.GetValue<bool>() &&
       littleRoom["assistance"]!["recommendedIntensityPercent"]!.GetValue<int>() == 0 &&
-      littleRoom["assistance"]!["maxAssistCpuMsPerSecond"]!.GetValue<double>() == 0,
-    "A valid capture without safe headroom was assigned collector work");
+      littleRoom["assistance"]!["estimatedFreedCetMsPerSecond"]!.GetValue<double>() == 60,
+    "Measured CET savings should remain documented despite no safe default frame margin");
 // No natural GC cycle in a valid frame capture must not block the ongoing
 // helper. The GC region is informational; never invent a MiB threshold.
 const string frameOnlyCapture = """
-{"hitchPressure":{"baselineFrameMs":19,"toleranceFrameMs":31},
+{"capture":{"exclusiveMsPerSecond":100},
+ "hitchPressure":{"baselineFrameMs":19,"toleranceFrameMs":31},
  "garbageCollection":{"slowOperations":[]}}
 """;
 var frameOnly = Interpret(frameOnlyCapture, "VALID_FRAME_NO_GC_CYCLE");
@@ -98,7 +110,8 @@ Check(!missing["generator"]!["installAuthorized"]!.GetValue<bool>(),
     "Missing evidence installed a collector");
 
 const string secondCapture = """
-{"hitchPressure":{"toleranceFrameMs":28,"baselineFrameMs":20},
+{"capture":{"exclusiveMsPerSecond":300},
+ "hitchPressure":{"toleranceFrameMs":28,"baselineFrameMs":20},
  "garbageCollection":{"slowOperations":[{"heapBeforeMiB":512,"wallMs":3}]}}
 """;
 var runtimeType = typeof(ResolverService).Assembly.GetType(
@@ -128,8 +141,8 @@ try
     var lua = System.Text.Encoding.UTF8.GetString(generated["G-GC/init.lua"]);
     var threshold = System.Text.Encoding.UTF8.GetString(generated["G-GC/threshold.lua"]);
     foreach (var text in new[] {"registerForEvent(\"onUpdate\"", "ImGui.SliderInt",
-        "maxAssistCpuMsPerSecond", "pcall(collectgarbage, \"step\"", "backoffSeconds",
-        "frameReserveMs", "growthMiBps"})
+        "estimatedOriginalCetMsPerSecond", "pcall(collectgarbage, \"step\"",
+        "backoffSeconds", "growthMiBps"})
         Check(lua.Contains(text), "G-GC runtime missing " + text);
     Check(lua.Contains("CONTINUOUS assistance") &&
           lua.Contains("0.10 + 0.90 * demand") &&
@@ -140,12 +153,20 @@ try
         "G-GC must not schedule full garbage collection");
     Check(threshold.Contains("43.91805") && threshold.Contains("29.2787"),
         "Generated calibration does not preserve actual captured frametimes");
-    Check(threshold.Contains("defaultIntensity = 37") &&
-          threshold.Contains("defaultFrequencyMs = 1250"),
-        "Generator discarded capture-derived initial assistance settings");
-    Check(threshold.Contains("frameReserveMs = 8.78361") &&
-          threshold.Contains("maxAssistCpuMsPerSecond = 1.756722"),
-        "Generated runtime budget does not preserve measured headroom policy");
+    Check(threshold.Contains("schema = 2") &&
+          threshold.Contains("defaultIntensity = 31") &&
+          threshold.Contains("defaultFrequencyMs = 1200") &&
+          threshold.Contains("estimatedOriginalCetMsPerSecond = 120") &&
+          threshold.Contains("estimatedOptimizedCetMsPerSecond = 60") &&
+          threshold.Contains("estimatedFreedCetMsPerSecond = 60") &&
+          threshold.Contains("estimatedGgcStartingCpuMsPerSecond = 4.8") &&
+          threshold.Contains("assumedOptimizedFraction = 0.5"),
+        "Generator discarded the selected-capture savings estimate and defaults");
+    Check(!lua.Contains("if windowUsedMs >=") &&
+          !lua.Contains("headroomFactor") &&
+          !lua.Contains("frameEmaMs") &&
+          !lua.Contains("config.maxAssistCpuMsPerSecond"),
+        "Old pre-optimization CPU throttle still overrides user CET sliders");
     foreach (var item in generated)
     {
         var file = Path.Combine(tempRoot, item.Key.Replace('/', Path.DirectorySeparatorChar));
@@ -156,7 +177,7 @@ try
     // the authoritative generator: V1 first release and V2 pressure-gated.
     // No duplicate worker, marker-only trust or manual removal required.
     var assembly = typeof(ResolverService).Assembly;
-    foreach (var version in new[] { "V1", "V2" })
+    foreach (var version in new[] { "V1", "V2", "V3" })
     {
         using var priorStream = assembly.GetManifestResourceStream(
             "GCETRuntimeProfiler.GgcGeneratedRuntime" + version + ".reference.lua");
