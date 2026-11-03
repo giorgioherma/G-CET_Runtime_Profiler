@@ -2550,4 +2550,71 @@ $global:LASTEXITCODE = 0
 
 Write-Host 'Profiler-managed foreign 0-Engine contract passed.'
 
+
+# One physical bare frame callback can be admitted by source-first proof
+# and measured evidence with different captured line spans. Coalesce only
+# the exact same current registrar, not a neighboring callback.
+$passType=$assembly.GetType('GCETRuntimeProfiler.Core.Services.PassGeneratorService',$true)
+$privateStatic=[Reflection.BindingFlags]'NonPublic,Static'
+$kindType=$passType.GetNestedType('CandidateKind',[Reflection.BindingFlags]'NonPublic')
+$candidateType=$passType.GetNestedType('PassCandidate',[Reflection.BindingFlags]'NonPublic')
+$coalesce=$passType.GetMethod('CoalesceCurrentFrameSites',$privateStatic)
+if(!$candidateType -or !$coalesce -or !$kindType) {
+ throw 'Source-site frame coalescing in authoritative pass generator is missing'
+}
+$listType=[Collections.Generic.List[int]].GetGenericTypeDefinition().MakeGenericType($candidateType)
+$frameKind=[Enum]::Parse($kindType,'Frame')
+function New-FrameProof([long]$id,[bool]$first,[int]$start,[int]$end) {
+ $item=[Activator]::CreateInstance($candidateType,$true)
+ foreach($pair in @(
+   @('Kind',$frameKind),
+   @('RegistrationId',$id),
+   @('SourceFirst',$first),
+   @('Owner','FixtureFrameSite'),
+   @('RelativeFile','FixtureFrameSite/init.lua'),
+   @('LineStart',$start),
+   @('LineEnd',$end),
+   @('FrameEvent','onDraw'),
+   @('ApplyFrameDispatch',$true))) {
+   $candidateType.GetProperty([string]$pair[0]).SetValue($item,$pair[1])
+ }
+ return $item
+}
+$sourceLines=New-Object string[] 45
+$sourceLines[14]='--[['
+$sourceLines[16]='registerForEvent("onDraw", function() -- inert block comment'
+$sourceLines[18]=']]'
+$sourceLines[20]='registerForEvent("onDraw", function()'
+$sourceLines[21]='    drawFirst()'
+$sourceLines[22]='end)'
+$sourceLines[25]='registerForEvent("onDraw", function()'
+$sourceLines[26]='    drawSecond()'
+$sourceLines[27]='end)'
+$sourceText=$sourceLines -join [Environment]::NewLine
+function Run-FrameCoalescing($items) {
+ $list=[Activator]::CreateInstance($listType)
+ $append=$listType.GetMethod('Add')
+ foreach($item in $items) { [void]$append.Invoke($list,[object[]]@($item)) }
+ return @($coalesce.Invoke($null,[object[]]@($sourceText,$list)))
+}
+# Current source: 21..23, captured: 10..22. Both contain the same
+# registrar at line 21. A second independent callback at 26 must survive.
+$first=New-FrameProof 1500000111 $true 21 23
+$stale=New-FrameProof 822 $false 10 22
+$second=New-FrameProof 999 $false 26 28
+$reconciled=Run-FrameCoalescing @($stale,$second,$first)
+$ids=@($reconciled|ForEach-Object {$_.RegistrationId})
+if($reconciled.Count -ne 2 -or
+   1500000111 -notin $ids -or 999 -notin $ids -or 822 -in $ids) {
+ throw 'Stale captured duplicate was not coalesced by exact current onDraw site'
+}
+# A capture covering two actual registrars is ambiguous. Do not hide it by
+# nearest range, line overlap, event, owner, or an old callback ID.
+$ambiguous=New-FrameProof 823 $false 10 27
+$unresolved=Run-FrameCoalescing @($first,$ambiguous,$second)
+if(@($unresolved).Count -ne 3) {
+ throw 'Frame source-site coalescing suppressed an ambiguous second callback'
+}
+Write-Host 'Current-source frame sites: stale source-first/capture duplicate removed; separate and ambiguous callbacks preserved: PASS'
+
 Write-Host 'Callback-first resolver + V1 pass generator contract passed.'
