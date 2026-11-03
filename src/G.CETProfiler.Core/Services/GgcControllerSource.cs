@@ -201,14 +201,15 @@ internal static class GgcControllerSource
         }
         var capture = sourceCapture.GetString() ?? "unknown";
         var count = (int)sampleCount;
+        double originalCet = 0, optimizedCet = 0, freedCet = 0, initialGgcCpu = 0;
         var hasMeasuredWork = TryNumber(allowance,
-            "measuredOriginalCetMsPerSecond", out var originalCet) &&
+            "measuredOriginalCetMsPerSecond", out originalCet) &&
             TryNumber(allowance,
-            "estimatedOptimizedCetMsPerSecond", out var optimizedCet) &&
+            "estimatedOptimizedCetMsPerSecond", out optimizedCet) &&
             TryNumber(allowance,
-            "estimatedFreedCetMsPerSecond", out var freedCet) &&
+            "estimatedFreedCetMsPerSecond", out freedCet) &&
             TryNumber(allowance,
-            "estimatedGgcStartingCpuMsPerSecond", out var initialGgcCpu);
+            "estimatedGgcStartingCpuMsPerSecond", out initialGgcCpu);
         if (!hasMeasuredWork && initialIntensity > 0)
         {
             refusal = "Nonzero G-GC defaults require measured CET workload.";
