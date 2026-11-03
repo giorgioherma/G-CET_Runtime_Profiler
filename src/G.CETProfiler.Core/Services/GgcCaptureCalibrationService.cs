@@ -77,13 +77,34 @@ internal static class GgcCaptureCalibrationService
         var roomFraction = validFrames
             ? Math.Clamp(usableRoom / (tolerance!.Value * 0.20), 0.0, 1.0)
             : 0.0;
-        var canAssist = evidenceValid && usableRoom > 0;
-        var permittedBudgetMsPerSecond = canAssist
-            ? Math.Clamp(frameRoom * 0.12, 0.15, 2.0) : 0.0;
+        // The expected 50% reduction is a USER-APPROVED experimental
+        // assumption about measured CET callback work, NOT a prediction that
+        // whole-game frame time or collector pauses will halve. Never use
+        // inclusive/nested scheduler+GC envelopes as additive CPU savings.
+        var capture = Child(handoff, "capture");
+        var originalCetMsPerSecond = Number(capture, "exclusiveMsPerSecond");
+        var hasCetWorkload = originalCetMsPerSecond is >= 0 and <= 1000;
+        var projectedCetMsPerSecond = hasCetWorkload
+            ? originalCetMsPerSecond!.Value * 0.50 : (double?)null;
+        var estimatedFreedCetMsPerSecond = hasCetWorkload
+            ? originalCetMsPerSecond!.Value - projectedCetMsPerSecond!.Value
+            : (double?)null;
+        // Reserve 92% of any estimated saving for gameplay. The remaining
+        // 8% is a sizing REFERENCE for the INITIAL sliders only, not a
+        // per-second runtime CPU throttle or a verified GC step time.
+        var initialGgcReferenceMsPerSecond = estimatedFreedCetMsPerSecond * 0.08;
+        var safeMarginScale = validFrames
+            ? Math.Clamp(usableRoom / Math.Max(1.0, tolerance!.Value * 0.12), 0, 1)
+            : 0.0;
+        var canAssist = evidenceValid && usableRoom > 0 && hasCetWorkload
+            && originalCetMsPerSecond > 0;
+        var tuningBasis = canAssist
+            ? initialGgcReferenceMsPerSecond!.Value * safeMarginScale : 0.0;
         var recommendedIntensity = canAssist
-            ? (int)Math.Round(20 + 25 * roomFraction) : 0;
+            ? (int)Math.Clamp(Math.Round(12 + 4 * tuningBasis), 1, 80) : 0;
         var recommendedFrequencyMs = canAssist
-            ? (int)(50 * Math.Round((1700 - 700 * roomFraction) / 50)) : 5000;
+            ? (int)(50 * Math.Round(
+                Math.Clamp(1700 - 100 * tuningBasis, 300, 3000) / 50)) : 5000;
 
         return JsonSerializer.SerializeToNode(new
         {
@@ -118,16 +139,23 @@ internal static class GgcCaptureCalibrationService
             },
             assistance = new
             {
-                policy = "CAPTURE_DEFINES_CEILING_LIVE_HEAP_DEFINES_DEMAND",
+                policy = "CAPTURE_ESTIMATED_POST_OPTIMIZATION_DEFAULTS_MANUAL_CET_TUNING",
                 frameReserveMs = validFrames ? reserve : (double?)null,
                 usableFrameMarginMs = validFrames ? usableRoom : (double?)null,
-                maxAssistCpuMsPerSecond = evidenceValid
-                    ? permittedBudgetMsPerSecond : (double?)null,
+                measuredOriginalCetMsPerSecond = hasCetWorkload
+                    ? originalCetMsPerSecond : null,
+                estimatedOptimizedCetMsPerSecond = projectedCetMsPerSecond,
+                estimatedFreedCetMsPerSecond = estimatedFreedCetMsPerSecond,
+                estimatedGgcStartingCpuMsPerSecond = initialGgcReferenceMsPerSecond,
+                assumedOptimizationReductionPercent = 50,
+                estimatedSavingsAllocatedPercent = 8,
                 recommendedIntensityPercent = evidenceValid
                     ? recommendedIntensity : (int?)null,
                 recommendedMinFrequencyMs = evidenceValid
                     ? recommendedFrequencyMs : (int?)null,
-                calibrationStatus = "PROVISIONAL_NOT_MEASURED_SAFE_GC_STEP_COST"
+                calibrationStatus = !hasCetWorkload
+                    ? "CET_WORKLOAD_NOT_MEASURED_DEFAULTS_OFF"
+                    : "EXPERIMENTAL_ESTIMATE_ONLY_NOT_VERIFIED_POST_OPTIMIZATION_RUNTIME"
             },
             systemInstalledRamMiB = (double?)null,
             systemRamStatus = "NOT_MEASURED_IN_RESOLVER_HANDOFF",
@@ -135,7 +163,8 @@ internal static class GgcCaptureCalibrationService
             {
                 intensityAndFrequencyAreRuntimeAdjustable = true,
                 enabledByDefault = canAssist,
-                rateLimitAndMeasuredStepCostRequired = true
+                manualOverridesNotCappedByEstimatedSaving = true,
+                runtimeCpuProbingRequired = false
             },
             generator = new
             {
