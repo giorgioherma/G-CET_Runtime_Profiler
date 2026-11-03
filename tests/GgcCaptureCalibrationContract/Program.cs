@@ -208,12 +208,21 @@ try
         "defaultIntensity = 21", "defaultFrequencyMs = 1450"
     })
         Check(threshold.Contains(token), "Missing rule-based config: " + token);
-    Check(source.Contains("CONTINUOUS assistance") &&
-          source.Contains("ImGui.SliderInt") &&
+    Check(source.Contains("ImGui.SliderInt(\"Step size (KiB)\", manualKiB, 0, 256)") &&
+          source.Contains("ImGui.SliderInt(\"Interval (ms)\", manualIntervalMs, 50, 500)") &&
+          source.Contains("DEV: Start 90s A/B test") &&
+          source.Contains("beginPhase(\"off\")") &&
+          source.Contains("beginPhase(\"slow\")") &&
+          source.Contains("beginPhase(\"fast\")") &&
+          source.Contains("GGC_TEST_DONE") &&
+          source.Contains("SimpleScreenMessage.new()") &&
+          source.Contains("Step CPU") &&
+          source.Contains("Step spacing") &&
           !source.Contains("config.maxAssistCpuMsPerSecond") &&
           !source.Contains("frameEmaMs") &&
-          !source.Contains("if pressure <= 0 then"),
-        "Generated runtime still throttles player sliders or waits on GC region");
+          !source.Contains("if pressure <= 0 then") &&
+          !source.Contains("1536"),
+        "Generated G-GC lost fixed step sliders, staged experiment, HUD notice, or no-cap policy");
     var doc = JsonSerializer.SerializeToElement(composed[^1]);
     Check(doc.GetProperty("type").GetString() == "GC_CONTROLLER" &&
           doc.GetProperty("perRuleEstimates").GetArrayLength() == 5 &&
@@ -228,7 +237,7 @@ try
     }
     // Source-proven upgrade for all previously generated single-controller
     // versions, never marker-only trust or a second independent worker.
-    foreach(var version in new[]{"V1","V2","V3","V4"})
+    foreach(var version in new[]{"V1","V2","V3","V4","V5"})
     {
         using var stream=assembly.GetManifestResourceStream(
             "GCETRuntimeProfiler.GgcGeneratedRuntime"+version+".reference.lua");
