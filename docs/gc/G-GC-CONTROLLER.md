@@ -1,5 +1,7 @@
 # G-GC Controller — approved lightweight heap-pressure assistance design
 
+**Latest verified source/package CI:** [#41701892534](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/41701892534), commit `c73a806edb59e0960db5e2ea7cdfe27fab8766ea`, **6/6 success**. Resolver artifact 13264206220; Profiler artifact 13264710980. No real game-load, in-world HUD signal, GC step latency or hitch reduction has yet been proven. Supersedes the earlier CI checkpoint below.
+
 **CI checkpoint:** New source/package code commit `98a27863593b9e544b302e94a8c4718ae4773760` completed [main CI #41681601176](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/41681601176) **6/6 SUCCESS**, including source-only, staged-upgrade, overlap and unsupported-work estimate contracts, full untouched CET one-pass generation and Windows Resolver/Profiler packaging (Resolver artifact 13254470202; Profiler artifact 13254450270). Actual gameplay/step-cost validation remains unproven. This is not a native-owned persistent controller.
 
 ## 2026-11-03 — compact CET controls and manually triggered 90-second collector experiment
