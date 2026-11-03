@@ -331,6 +331,12 @@ internal static class GgcCaptureCalibrationService
                 continue;
             }
 
+            var appliedId = Id(stage);
+            if (appliedId is not null &&
+                (kind == "FRAME_DISPATCH_CONSOLIDATION" ||
+                 GenericFraction(kind) > 0))
+                appliedGeneric.Add(owner + "\0" + kind + "\0" + appliedId);
+
             if (kind == "FRAME_DISPATCH_CONSOLIDATION")
             {
                 var id = Id(stage);
@@ -389,6 +395,7 @@ internal static class GgcCaptureCalibrationService
         var owners = estimates.Select(x => x.Owner).Distinct(
             StringComparer.OrdinalIgnoreCase).ToArray();
         double semanticTotal = 0, genericTotal = 0;
+        var creditedOwners = 0;
         foreach (var owner in owners)
         {
             var genericSaved = genericByRegistration.Values
@@ -405,6 +412,7 @@ internal static class GgcCaptureCalibrationService
                 semanticMeasuredByOwner.GetValueOrDefault(owner));
             var credited = Math.Min(measuredOwner, Math.Max(
                 semanticSaved, genericSaved)); // overlap is not additive
+            if (credited > 0) creditedOwners++;
             if (semanticSaved >= genericSaved)
                 semanticTotal += credited;
             else
@@ -442,7 +450,7 @@ internal static class GgcCaptureCalibrationService
         return new(original, originalCredited, savedTotal, projected,
             startingReference, Math.Round(semanticTotal, 6),
             Math.Round(genericTotal, 6), appliedRules.Count,
-            genericByRegistration.Count, owners.Length, intensity, frequency,
+            appliedGeneric.Count, creditedOwners, intensity, frequency,
             status, estimates.OrderBy(x => x.Owner, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(x => x.Stage).ThenBy(x => x.Rule).ToArray());
     }
