@@ -135,6 +135,11 @@ internal static class GgcControllerSource
         if (!evidence.TryGetProperty("gameplay", out var game) ||
             !evidence.TryGetProperty("gcPressure", out var pressure) ||
             !evidence.TryGetProperty("capture", out var sourceCapture) ||
+            !evidence.TryGetProperty("assistance", out var allowance) ||
+            !TryNumber(allowance, "frameReserveMs", out var reserveMs) ||
+            !TryNumber(allowance, "maxAssistCpuMsPerSecond", out var budgetMsPerSecond) ||
+            !TryNumber(allowance, "recommendedIntensityPercent", out var initialIntensity) ||
+            !TryNumber(allowance, "recommendedMinFrequencyMs", out var initialFrequencyMs) ||
             !TryNumber(game, "medianFrameMs", out var baseline) ||
             !TryNumber(game, "hitchToleranceMs", out var tolerance) ||
             !TryNumber(pressure, "observedHeapMedianMiB", out var median) ||
@@ -149,7 +154,11 @@ internal static class GgcControllerSource
         var capture = sourceCapture.GetString() ?? "unknown";
         var count = (int)sampleCount;
         if (baseline < 2 || baseline >= tolerance || tolerance > 300 ||
-            median < 64 || median > 16384 || count == 0)
+            median < 64 || median > 16384 || count == 0 ||
+            reserveMs < 0 || budgetMsPerSecond < 0 || budgetMsPerSecond > 2 ||
+            initialIntensity < 0 || initialIntensity > 100 ||
+            initialFrequencyMs < 250 || initialFrequencyMs > 5000 ||
+            (tolerance - baseline - reserveMs <= 0 && initialIntensity > 0))
         {
             refusal = "Measured G-GC calibration is outside safe experimental bounds.";
             return false;
@@ -160,11 +169,9 @@ internal static class GgcControllerSource
         var slack = Math.Max(Math.Max(32.0, median * 0.08), (p75 - p25) * 0.75);
         var pressureStart = Math.Max(64, median - slack);
         var pressureHigh = median + slack;
-        var frameRoom = tolerance - baseline;
-        // Provisional engineering allowance: actual safe step wall time and
-        // runtime cost MUST be established through in-game A/B.
-        var budgetMsPerSecond = Math.Clamp(frameRoom * 0.12, 0.4, 2.0);
-        var reserveMs = Math.Max(4, frameRoom * 0.60);
+        // The Resolver's selected-capture allowance is authoritative.
+        // This generator writes it verbatim; it cannot invent independent
+        // tuning values or reset the recommended assist level to zero.
         capture = capture.Replace("\\", "_").Replace("\"", "_")
             .Replace("\n", "_").Replace("\r", "_");
 
@@ -185,8 +192,8 @@ return {
   pressureSampleCount = {{count}},
   frameReserveMs = {{N(reserveMs)}},
   maxAssistCpuMsPerSecond = {{N(budgetMsPerSecond)}},
-  defaultIntensity = 0,
-  defaultFrequencyMs = 1000,
+  defaultIntensity = {{N(initialIntensity)}},
+  defaultFrequencyMs = {{N(initialFrequencyMs)}},
 }
 """;
         return true;
