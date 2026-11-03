@@ -386,12 +386,13 @@ local function announce(label, message)
   mark(label)
 end
 
-local function notifyFinished()
+local function notifyFinished(failed)
   -- Standard CET HUD warning-message blackboard, guarded for installations
   -- where the game's notification objects are not available.
   local success = pcall(function()
     local message = SimpleScreenMessage.new()
-    message.message = "G-GC 90s test DONE - stop recording"
+    message.message = failed and "G-GC test ABORTED - stop recording"
+      or "G-GC 90s test DONE - stop recording"
     message.isShown = true
     message.duration = 8
     local definitions = Game.GetAllBlackboardDefs()
@@ -419,7 +420,7 @@ local function beginPhase(state)
   elseif state == "done" then
     announce("GGC_TEST_DONE",
       "90s test COMPLETE. Stop capture. Assistance OFF until restored.")
-    notifyFinished()
+    notifyFinished(false)
   end
 end
 
@@ -465,8 +466,8 @@ local function observe(seconds)
 end
 
 local function advanceTest(dt)
-  if testState == "idle" or testState == "done" or
-      overlayOpen or not activeWorld then return end
+  if testState == "idle" or testState == "done" or testState == "failed"
+      or overlayOpen or not activeWorld then return end
 
   if testState == "armed" then
     testState, countdownAge = "countdown", 0
@@ -547,10 +548,10 @@ local function tick(dt)
     rejectedSteps = rejectedSteps + 1
     backoffSeconds = 30
     if phase > 0 then
-      testState = "done"
+      testState = "failed"
       announce("GGC_TEST_FAILED",
         "90s test ABORTED because a GC step failed; stop capture.")
-      notifyFinished()
+      notifyFinished(true)
     else
       manualKiB = 0
     end
@@ -636,8 +637,10 @@ registerForEvent("onDraw", function()
       ImGui.Text(string.format("TEST: starting in %.0f s (after closing overlay)",
         math.max(0, 10 - countdownAge)))
       if ImGui.Button("Cancel test") then restoreSettings() end
-    elseif testState == "done" then
-      ImGui.Text("TEST DONE: stop capture. Assistance is OFF.")
+    elseif testState == "done" or testState == "failed" then
+      ImGui.Text(testState == "failed" and
+        "TEST ABORTED: stop capture. Assistance is OFF." or
+        "TEST DONE: stop capture. Assistance is OFF.")
       ImGui.Text(string.format("100ms steps %d | 50ms steps %d",
         testSteps[2], testSteps[3]))
       if ImGui.Button("Restore manual settings") then restoreSettings() end
