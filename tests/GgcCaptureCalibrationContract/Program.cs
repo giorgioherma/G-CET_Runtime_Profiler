@@ -217,7 +217,7 @@ try
           source.Contains("GGC_TEST_DONE") &&
           source.Contains("SimpleScreenMessage.new()") &&
           source.Contains("Step CPU") &&
-          source.Contains("Step spacing") &&
+          source.Contains("Observed spacing") &&
           !source.Contains("config.maxAssistCpuMsPerSecond") &&
           !source.Contains("frameEmaMs") &&
           !source.Contains("if pressure <= 0 then") &&
