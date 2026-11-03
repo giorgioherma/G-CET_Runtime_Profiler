@@ -1,5 +1,7 @@
 # G-GC Controller — approved lightweight heap-pressure assistance design
 
+**CI checkpoint:** New source/package code commit `98a27863593b9e544b302e94a8c4718ae4773760` completed [main CI #41681601176](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/41681601176) **6/6 SUCCESS**, including source-only, staged-upgrade, overlap and unsupported-work estimate contracts, full untouched CET one-pass generation and Windows Resolver/Profiler packaging (Resolver artifact 13254470202; Profiler artifact 13254450270). Actual gameplay/step-cost validation remains unproven. This is not a native-owned persistent controller.
+
 ## November 3 — Source-proven per-rule savings estimate for INITIAL CET controls (current)
 
 **User-approved model:** G-GC's defaults are a **conservative post-optimization estimate**, not a prediction of measured FPS, a fixed 50% reduction for every stack, or a runtime throttle. The user's repeated ~50% semantic improvements are useful historical context but cannot be transferred automatically to unsupported or already-complete mods. The Resolver must derive a speculative saving **only from transformations actually generated in the current composed pass**, with the original Profiler capture supplying exclusive callback costs and frequency evidence.
