@@ -92,7 +92,7 @@ try
     var lua = System.Text.Encoding.UTF8.GetString(generated["G-GC/init.lua"]);
     var threshold = System.Text.Encoding.UTF8.GetString(generated["G-GC/threshold.lua"]);
     foreach (var text in new[] {"registerForEvent(\"onUpdate\"", "ImGui.SliderInt",
-        "maxAssistCpuMsPerSecond", "collectgarbage(\"step\"", "backoffSeconds",
+        "maxAssistCpuMsPerSecond", "pcall(collectgarbage, \"step\"", "backoffSeconds",
         "frameReserveMs", "growthMiBps"})
         Check(lua.Contains(text), "G-GC runtime missing " + text);
     Check(!lua.Contains("collectgarbage(\"collect\""),
