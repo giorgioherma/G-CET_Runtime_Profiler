@@ -75,6 +75,19 @@ Check(littleRoom["available"]!.GetValue<bool>() &&
       littleRoom["assistance"]!["recommendedIntensityPercent"]!.GetValue<int>() == 0 &&
       littleRoom["assistance"]!["maxAssistCpuMsPerSecond"]!.GetValue<double>() == 0,
     "A valid capture without safe headroom was assigned collector work");
+// No natural GC cycle in a valid frame capture must not block the ongoing
+// helper. The GC region is informational; never invent a MiB threshold.
+const string frameOnlyCapture = """
+{"hitchPressure":{"baselineFrameMs":19,"toleranceFrameMs":31},
+ "garbageCollection":{"slowOperations":[]}}
+""";
+var frameOnly = Interpret(frameOnlyCapture, "VALID_FRAME_NO_GC_CYCLE");
+Check(frameOnly["available"]!.GetValue<bool>() &&
+      frameOnly["gcPressure"]!["observedSlowStepSamples"]!.GetValue<int>() == 0 &&
+      frameOnly["gcPressure"]!["observedHeapMedianMiB"] is null &&
+      frameOnly["generator"]!["installAuthorized"]!.GetValue<bool>() &&
+      frameOnly["assistance"]!["recommendedIntensityPercent"]!.GetValue<int>() > 0,
+    "Optional GC forecast wrongly blocks a capture-calibrated continuous helper");
 var missing = Interpret(
     """{"hitchPressure":{"baselineFrameMs":21},"garbageCollection":{"slowOperations":[]}}""",
     "NO_CAPFRAMEX");
@@ -170,6 +183,23 @@ try
         "New capture refused previously generated runtime");
     Check(!fresh["G-GC/threshold.lua"].SequenceEqual(generated["G-GC/threshold.lua"]),
         "G-GC retained stale calibration on latest capture");
+    var noCycleOverlay = new Dictionary<string, byte[]>();
+    Check(Stage(frameOnlyCapture, tempRoot, noCycleOverlay, new List<object>()),
+        "No-GC-cycle capture failed to deploy continuous frame-bounded G-GC");
+    var noCycleThreshold = System.Text.Encoding.UTF8.GetString(
+        noCycleOverlay["G-GC/threshold.lua"]);
+    foreach (var field in new[] { "pressureReferenceMiB = nil",
+        "pressureStartMiB = nil", "pressureHighMiB = nil",
+        "pressureSampleCount = 0" })
+        Check(noCycleThreshold.Contains(field),
+            "Missing GC observation was fabricated instead of set to nil: " + field);
+    // Install the nullable threshold, then prove regeneration still recognizes
+    // it as owned G-GC output without requiring a prior capture.
+    File.WriteAllBytes(Path.Combine(tempRoot, "G-GC", "threshold.lua"),
+        noCycleOverlay["G-GC/threshold.lua"]);
+    Check(Stage(frameOnlyCapture, tempRoot,
+        new Dictionary<string, byte[]>(), new List<object>()),
+        "Nullable collector forecast broke same-source re-generation");
     var missingOverlay = new Dictionary<string, byte[]>();
     var skip = new List<object>();
     Check(!Stage("""{"hitchPressure":{"baselineFrameMs":20}}""", tempRoot, missingOverlay, skip)
