@@ -87,11 +87,11 @@ try
     Check(generated.Count == 2, "G-GC must generate exactly two owned files");
     var lua = System.Text.Encoding.UTF8.GetString(generated["G-GC/init.lua"]);
     var threshold = System.Text.Encoding.UTF8.GetString(generated["G-GC/threshold.lua"]);
-    foreach (var text in new[] {"registerForEvent(\\\"onUpdate\\\"", "ImGui.SliderInt",
-        "maxAssistCpuMsPerSecond", "collectgarbage(\\\"step\\\"", "backoffSeconds",
+    foreach (var text in new[] {"registerForEvent(\"onUpdate\"", "ImGui.SliderInt",
+        "maxAssistCpuMsPerSecond", "collectgarbage(\"step\"", "backoffSeconds",
         "frameReserveMs", "growthMiBps"})
         Check(lua.Contains(text), "G-GC runtime missing " + text);
-    Check(!lua.Contains("collectgarbage(\\\"collect\\\""),
+    Check(!lua.Contains("collectgarbage(\"collect\""),
         "G-GC must not schedule full garbage collection");
     Check(threshold.Contains("43.91805") && threshold.Contains("29.2787"),
         "Generated calibration does not preserve actual captured frametimes");
