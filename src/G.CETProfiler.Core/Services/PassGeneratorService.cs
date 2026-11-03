@@ -74,7 +74,9 @@ public static class PassGeneratorService
         var fixedRuntime = effectiveRuntime.RequireFramework();
 
         var candidates = ReadCandidates(resolver.RootElement)
-            .Where(c => !ModOptimizationBlacklist.IsBlacklistedOwner(c.Owner) &&
+            .Where(c => !c.Owner.Equals("G-GC", StringComparison.OrdinalIgnoreCase) &&
+                !c.RelativeFile.Replace('\\', '/').StartsWith("G-GC/", StringComparison.OrdinalIgnoreCase) &&
+                !ModOptimizationBlacklist.IsBlacklistedOwner(c.Owner) &&
                 !ModOptimizationBlacklist.IsBlacklistedPath(c.RelativeFile))
             .ToList();
 
