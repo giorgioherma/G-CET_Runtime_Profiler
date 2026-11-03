@@ -93,11 +93,20 @@ JsonNode Decision(string handoff, bool withCallbacks)
     return root;
 }
 
-dynamic Calculate(JsonNode decision, List<object> manifest)
+object Calculate(JsonNode decision, List<object> manifest)
 {
     using var doc = JsonDocument.Parse(decision.ToJsonString());
     return estimate.Invoke(null, new object[]{doc.RootElement, manifest})!;
 }
+double Val(object value, string name) => Convert.ToDouble(
+    value.GetType().GetProperty(name,BindingFlags.Public|BindingFlags.Instance)!
+        .GetValue(value));
+int Count(object value, string name) => Convert.ToInt32(
+    value.GetType().GetProperty(name,BindingFlags.Public|BindingFlags.Instance)!
+        .GetValue(value));
+System.Collections.IEnumerable Rows(object value,string name) =>
+    (System.Collections.IEnumerable)value.GetType().GetProperty(name,
+        BindingFlags.Public|BindingFlags.Instance)!.GetValue(value)!;
 
 bool Stage(JsonNode decision, string folder,
     Dictionary<string, byte[]> result, List<object> skips,
@@ -127,30 +136,30 @@ Check(observed["assistance"]!["measuredOriginalCetMsPerSecond"]!.GetValue<double
     "ANALYZE wrongly predicted savings without actually applying sources");
 
 var decision = Decision(untouched, true);
-dynamic values = Calculate(decision, applied);
-Check(Math.Abs((double)values.EstimatedFreedCetMsPerSecond - 26.64) < 1e-6,
+object values = Calculate(decision, applied);
+Check(Math.Abs(Val(values,"EstimatedFreedCetMsPerSecond") - 26.64) < 1e-6,
     "Per-stage semantic and generic savings not credited conservatively");
-Check(Math.Abs((double)values.EstimatedSemanticSavingMsPerSecond - 24) < 1e-6 &&
-      Math.Abs((double)values.EstimatedGenericSavingMsPerSecond - 2.64) < 1e-6,
+Check(Math.Abs(Val(values,"EstimatedSemanticSavingMsPerSecond") - 24) < 1e-6 &&
+      Math.Abs(Val(values,"EstimatedGenericSavingMsPerSecond") - 2.64) < 1e-6,
     "Generic/semantic attribution wrong");
-Check((int)values.DefaultIntensityPercent == 21 &&
-      (int)values.DefaultFrequencyMs == 1500,
+Check(Count(values,"DefaultIntensityPercent") == 21 &&
+      Count(values,"DefaultFrequencyMs") == 1500,
     "Estimated savings did not determine conservative initial sliders");
-Check((int)values.AppliedSemanticRules == 2 &&
-      (int)values.AppliedGenericRules == 3,
+Check(Count(values,"AppliedSemanticRules") == 2 &&
+      Count(values,"AppliedGenericRules") == 3,
     "Applied rule counts lost");
-Check(((System.Collections.IEnumerable)values.RuleEstimates).Cast<object>().Count() == 5,
+Check(Rows(values,"RuleEstimates").Cast<object>().Count() == 5,
     "Per-rule audit was lost or included unsupported fake savings");
 
-dynamic none = Calculate(decision, new List<object>());
-Check((double)none.EstimatedFreedCetMsPerSecond == 0 &&
-      (int)none.DefaultIntensityPercent == 0 &&
-      (double)none.EstimatedOptimizedCetMsPerSecond == 120,
+object none = Calculate(decision, new List<object>());
+Check(Val(none,"EstimatedFreedCetMsPerSecond") == 0 &&
+      Count(none,"DefaultIntensityPercent") == 0 &&
+      Val(none,"EstimatedOptimizedCetMsPerSecond") == 120,
     "Unsupported/non-generated work was treated as optimized");
 var duplicated = new List<object>(applied);
 duplicated.AddRange(applied);
-dynamic noDouble = Calculate(decision, duplicated);
-Check(Math.Abs((double)noDouble.EstimatedFreedCetMsPerSecond - 26.64) < 1e-6,
+object noDouble = Calculate(decision, duplicated);
+Check(Math.Abs(Val(noDouble,"EstimatedFreedCetMsPerSecond") - 26.64) < 1e-6,
     "Repeated manifests inflated measured CPU savings");
 
 // Identical generic/semantic rules can hit overlapping callback work.
@@ -162,16 +171,16 @@ var sameOwner = new List<object> {
     new { type="UI_VISIBILITY_DORMANCY", owner="ModGeneric",
         registrationId=201L }
 };
-dynamic overlap = Calculate(decision, sameOwner);
-Check(Math.Abs((double)overlap.EstimatedFreedCetMsPerSecond - 6) < 1e-6,
+object overlap = Calculate(decision, sameOwner);
+Check(Math.Abs(Val(overlap,"EstimatedFreedCetMsPerSecond") - 6) < 1e-6,
     "Overlapping generic and semantic stages were added twice");
 
 // Single frame registration must never be credited as eliminated dispatch.
-dynamic singleFrame = Calculate(decision, new List<object> {
+object singleFrame = Calculate(decision, new List<object> {
     new { type="FRAME_DISPATCH_CONSOLIDATION", owner="ModGeneric",
         registrationId=201L, eventTarget="onUpdate" }
 });
-Check((double)singleFrame.EstimatedFreedCetMsPerSecond == 0,
+Check(Val(singleFrame,"EstimatedFreedCetMsPerSecond") == 0,
     "Consolidation with only one registration invented CPU savings");
 
 var tempRoot = Path.Combine(Path.GetTempPath(),
