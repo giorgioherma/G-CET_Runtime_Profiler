@@ -20,7 +20,8 @@ public sealed record ResolverBuildResult(
     int AlreadySatisfiedCount,
     int UnresolvedCount,
     ResolverOptimizationCoverage OptimizationCoverage,
-    string[] BlacklistedMods);
+    string[] BlacklistedMods,
+    bool GgcControllerReady);
 
 /// <summary>
 /// Top-level G-CET resolver. Callback families are the primary unit of work.
@@ -78,8 +79,8 @@ public static class ResolverService
             JsonSerializer.SerializeToElement(augmented));
         augmented["optimizationClassCoverage"] = JsonSerializer.SerializeToNode(coverage);
         // G-GC evidence is always derived anew from THIS selected capture.
-        // It does not authorize installation before the persistent native
-        // controller and runtime-cost protections are independently validated.
+        // Its result authorizes capture-calibrated experimental generation;
+        // production safety and gameplay acceptance still require runtime tests.
         using (var selectedHandoff = JsonDocument.Parse(File.ReadAllText(handoff)))
         {
             augmented["gGcCaptureCalibration"] = GgcCaptureCalibrationService.Build(
@@ -179,7 +180,8 @@ public static class ResolverService
             result.AlreadySatisfiedCount,
             result.UnresolvedCount,
             coverage,
-            blacklistedMods);
+            blacklistedMods,
+            augmented["gGcCaptureCalibration"]?["generator"]?["installAuthorized"]?.GetValue<bool>() == true);
     }
     public static PassBuildResult GeneratePass(
         string captureRoot,
