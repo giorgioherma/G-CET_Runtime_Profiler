@@ -37,8 +37,8 @@ Check(a["gcPressure"]!["observedHeapMedianMiB"]!.GetValue<double>() == 705,
 Check(a["gcPressure"]!["observedHeapP25MiB"]!.GetValue<double>() == 685,
     "Slack/dispersion context incorrect");
 Check(a["systemInstalledRamMiB"] is null, "Process RAM mistaken for installed system RAM");
-Check(!a["generator"]!["installAuthorized"]!.GetValue<bool>(),
-    "Incomplete native controller was silently shipped");
+Check(a["generator"]!["installAuthorized"]!.GetValue<bool>(),
+    "Capture-qualified experimental G-GC runtime was not admitted");
 Check(a["capture"]!.GetValue<string>().Contains("20261103"),
     "Selected capture provenance lost");
 var b = Interpret(
@@ -60,4 +60,70 @@ Check(missing["gameplay"]!["hitchToleranceMs"] is null,
     "Fallback tolerance fabricated from missing CapFrameX evidence");
 Check(!missing["generator"]!["installAuthorized"]!.GetValue<bool>(),
     "Missing evidence installed a collector");
+
+const string secondCapture = """
+{"hitchPressure":{"toleranceFrameMs":28,"baselineFrameMs":20},
+ "garbageCollection":{"slowOperations":[{"heapBeforeMiB":512,"wallMs":3}]}}
+""";
+var runtimeType = typeof(ResolverService).Assembly.GetType(
+    "GCETRuntimeProfiler.Core.Services.GgcControllerSource", true)!;
+var stage = runtimeType.GetMethod("TryStage", BindingFlags.Static | BindingFlags.NonPublic)!;
+bool Stage(string json, string folder, Dictionary<string, byte[]> result, List<object> skipped)
+{
+    using var doc = JsonDocument.Parse(json);
+    return (bool)stage.Invoke(null, new object[]
+    {
+        doc.RootElement, folder, result, new Dictionary<string, int>(),
+        new List<object>(), skipped
+    })!;
+}
+var tempRoot = Path.Combine(Path.GetTempPath(), "gcet-ggc-contract-" + Guid.NewGuid().ToString("N"));
+Directory.CreateDirectory(tempRoot);
+try
+{
+    var generated = new Dictionary<string, byte[]>();
+    Check(Stage(first, tempRoot, generated, new List<object>()),
+        "Measured selected capture failed to generate G-GC");
+    Check(generated.Count == 2, "G-GC must generate exactly two owned files");
+    var lua = System.Text.Encoding.UTF8.GetString(generated["G-GC/init.lua"]);
+    var threshold = System.Text.Encoding.UTF8.GetString(generated["G-GC/threshold.lua"]);
+    foreach (var text in new[] {"registerForEvent(\\\"onUpdate\\\"", "ImGui.SliderInt",
+        "maxAssistCpuMsPerSecond", "collectgarbage(\\\"step\\\"", "backoffSeconds",
+        "frameReserveMs", "growthMiBps"})
+        Check(lua.Contains(text), "G-GC runtime missing " + text);
+    Check(!lua.Contains("collectgarbage(\\\"collect\\\""),
+        "G-GC must not schedule full garbage collection");
+    Check(threshold.Contains("43.91805") && threshold.Contains("29.2787"),
+        "Generated calibration does not preserve actual captured frametimes");
+    Check(threshold.Contains("defaultIntensity = 0"),
+        "Unvalidated G-GC must default to observe-only");
+    foreach (var item in generated)
+    {
+        var file = Path.Combine(tempRoot, item.Key.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        File.WriteAllBytes(file, item.Value);
+    }
+    var repeated = new Dictionary<string, byte[]>();
+    Check(Stage(first, tempRoot, repeated, new List<object>()),
+        "G-GC previously generated sources were refused");
+    Check(repeated.Count == generated.Count &&
+          repeated.All(e => e.Value.SequenceEqual(generated[e.Key])),
+        "Repeated same-capture G-GC generation was not identical");
+    var fresh = new Dictionary<string, byte[]>();
+    Check(Stage(secondCapture, tempRoot, fresh, new List<object>()),
+        "New capture refused previously generated runtime");
+    Check(!fresh["G-GC/threshold.lua"].SequenceEqual(generated["G-GC/threshold.lua"]),
+        "G-GC retained stale calibration on latest capture");
+    var missing = new Dictionary<string, byte[]>();
+    var skip = new List<object>();
+    Check(!Stage("""{"hitchPressure":{"baselineFrameMs":20}}""", tempRoot, missing, skip)
+          && missing.Count == 0 && skip.Count == 1,
+        "Missing capture evidence silently produced a runtime");
+    File.WriteAllText(Path.Combine(tempRoot,"G-GC","init.lua"), "-- foreign G-GC");
+    var drift = new Dictionary<string, byte[]>();
+    Check(!Stage(first, tempRoot, drift, new List<object>()) && drift.Count == 0,
+        "Foreign G-GC was overwritten");
+}
+finally { Directory.Delete(tempRoot, true); }
+
 Console.WriteLine("G-GC selected-capture calibration evidence contract PASSED");
