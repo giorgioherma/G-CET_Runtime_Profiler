@@ -3,13 +3,14 @@
 local runtime = assert(arg[1], "runtime .lua path required")
 local hooks, marks = {}, {}
 local kib, active, stepCount, collectCount = 350 * 1024, true, 0, 0
+local stepSizes = {}
 local clock, intensity, frequency, uiActive = 0, 0, 1000, false
 package.preload["threshold"] = function() return {
   schema = 1, capture = "MOCK_CAPTURE",
   baselineFrameMs = 20, hitchToleranceMs = 45, frameReserveMs = 10,
   pressureStartMiB = 600, pressureHighMiB = 660,
   maxAssistCpuMsPerSecond = 2,
-  defaultIntensity = 0, defaultFrequencyMs = 1000
+  defaultIntensity = 37, defaultFrequencyMs = 1250
 } end
 registerForEvent = function(name, fn)
   assert(not hooks[name], "duplicate G-GC hook " .. name)
@@ -25,6 +26,7 @@ collectgarbage = function(command, size)
     assert(type(size) == "number" and size >= 1 and size <= 32,
       "unbounded incremental work")
     stepCount = stepCount + 1
+    stepSizes[#stepSizes + 1] = size
     clock = clock + 0.00005
     return false
   elseif command == "collect" then
@@ -52,20 +54,41 @@ local function advance(count, dt)
   for _ = 1, count do hooks.onUpdate(dt) end
 end
 
--- When disabled, even rising/high heap must never cause a step.
-kib = 720 * 1024
+-- Resolver's nonzero initial allowance must NOT cause work at low pressure.
 advance(100, 0.025)
-assert(stepCount == 0, "observe-only mode performed a GC step")
-assert(collectCount == 0, "observe-only forced full GC")
+assert(stepCount == 0, "nonzero default ran GC with no heap pressure")
+assert(collectCount == 0, "controller forced full GC")
 
--- Adjust both independent controls through the CET overlay.
+-- The SAME generated starting cap should deploy modest help as pressure rises,
+-- then more assistance when the live heap reaches the high-pressure region.
+kib = 630 * 1024
+advance(160, 0.025)
+assert(stepCount > 0, "calibrated nonzero default did not help rising heap")
+local moderateKb = stepSizes[#stepSizes]
+local afterModerate = stepCount
+kib = 720 * 1024
+advance(160, 0.025)
+assert(stepCount > afterModerate, "high-pressure region did not request GC assistance")
+assert(stepSizes[#stepSizes] > moderateKb,
+       "requested effort did not adapt to live pressure")
+assert(#marks > 0, "automatic capture-derived setting not marked")
+local afterAutomatic = stepCount
+
+-- Player manual 0% is an unconditional off switch even with high pressure.
+intensity = 0
+hooks.onOverlayOpen()
+hooks.onDraw()
+hooks.onOverlayClose()
+advance(100, 0.025)
+assert(stepCount == afterAutomatic, "manual 0% did not disable assistance")
+
+-- Intensity and frequency can be tuned during the SAME capture.
 intensity, frequency = 75, 250
 hooks.onOverlayOpen()
 hooks.onDraw()
 hooks.onOverlayClose()
 advance(100, 0.025)
-assert(stepCount > 0, "high heap and spare headroom never received assistance")
-assert(#marks > 0, "runtime setting changes not marked for Profiler comparisons")
+assert(stepCount > afterAutomatic, "manual settings did not resume assistance")
 local afterGood = stepCount
 
 -- Sudden expensive frames suppress assistance despite high pressure.
@@ -77,7 +100,7 @@ active = false
 advance(250, 0.025)
 assert(stepCount == afterGood, "assistance ran without valid game world")
 
--- The 0% slider is an unconditional off switch.
+-- The 0% slider must stay authoritative after loading or transitions.
 active, intensity = true, 0
 hooks.onOverlayOpen()
 hooks.onDraw()
@@ -86,4 +109,4 @@ advance(100, 0.025)
 assert(stepCount == afterGood, "intensity 0 did not disable assistance")
 assert(collectCount == 0, "full GC was invoked")
 os = realOs
-print("G-GC runtime pressure, budget, sliders, disabled and lifecycle PASS")
+print("G-GC capture-derived defaults, heap demand, headroom, sliders and lifecycle PASS")
