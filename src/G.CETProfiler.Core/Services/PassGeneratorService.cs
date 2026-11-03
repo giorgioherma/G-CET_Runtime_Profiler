@@ -951,19 +951,53 @@ public static class PassGeneratorService
                 .Take(effectiveLineEnd - candidate.LineStart + 1)
                 .ToArray();
             var segment = string.Join("\n", sourceLines);
-            var matches = providerRecipe.SourceRegex.Matches(segment).Count;
+
+            // Staged/fully optimized inputs can contain a previously generated
+            // shared-provider helper at the old capture's callback coordinates.
+            // Its Game getter is the fallback, NOT a new replacement candidate.
+            // Require the complete reviewed helper body before excluding it.
+            var fallbackStart = -1;
+            var fallbackEnd = -1;
+            if (helperAlreadyPresent)
+            {
+                var current = string.Join("\n", lines);
+                var reviewed = string.Join("\n",
+                    BuildSharedProviderHeader(providerRecipe)).TrimEnd('\r', '\n');
+                if (!GenericReadCoordinatorSource.TryFindProviderBlock(
+                        current, providerRecipe.Provider, providerRecipe.GameGetter,
+                        reviewed, out var ownedBlock, out var reason))
+                {
+                    skipped.Add(Skip(candidate,
+                        "Existing G-CET provider helper failed structural proof: " + reason));
+                    continue;
+                }
+                fallbackStart = current.IndexOf(ownedBlock, StringComparison.Ordinal);
+                fallbackEnd = fallbackStart + ownedBlock.Length;
+            }
+
+            var rangeOffset = 0;
+            for (var line = 0; line < candidate.LineStart - 1; line++)
+                rangeOffset += lines[line].Length + 1;
+            var eligibleMatches = providerRecipe.SourceRegex.Matches(segment)
+                .Cast<Match>()
+                .Where(m => fallbackStart < 0 ||
+                    rangeOffset + m.Index < fallbackStart ||
+                    rangeOffset + m.Index >= fallbackEnd)
+                .ToArray();
+            var matches = eligibleMatches.Length;
             if (matches == 0)
             {
-                skipped.Add(Skip(
-                    candidate,
-                    $"Exact Game.{providerRecipe.GameGetter}() provider read could not be revalidated in the recorded source range."));
+                skipped.Add(Skip(candidate,
+                    $"No remaining author Game.{providerRecipe.GameGetter}() callsite " +
+                    "inside the captured range; previously generated fallback preserved."));
                 continue;
             }
 
-            var replaced = providerRecipe.SourceRegex.Replace(
-                segment,
-                providerRecipe.HelperName + "()");
-            var replacementLines = replaced.Split('\n').ToList();
+            var replaced = new StringBuilder(segment);
+            foreach (var match in eligibleMatches.Reverse())
+                replaced.Remove(match.Index, match.Length)
+                    .Insert(match.Index, providerRecipe.HelperName + "()");
+            var replacementLines = replaced.ToString().Split('\n').ToList();
             if (replacementLines.Count != sourceLines.Length)
             {
                 skipped.Add(Skip(
@@ -1049,7 +1083,17 @@ public static class PassGeneratorService
                         }
                         else
                         {
-                            var token = $"__gcetRegisterEvent_{candidate.RegistrationId}";
+                            // Source-proven existing owner registrar can route
+                            // another genuinely bare callback. Reuse that one
+                            // MakeEventRegistrar instance; never create a second
+                            // per-owner bridge merely because capture IDs differ.
+                            var existingOwnerToken =
+                                FindExistingFrameRegistrarToken(text, candidate.Owner) ??
+                                frameHelpers.FirstOrDefault(x =>
+                                    x.Candidate.Owner.Equals(candidate.Owner,
+                                        StringComparison.OrdinalIgnoreCase)).Token;
+                            var token = existingOwnerToken ??
+                                $"__gcetRegisterEvent_{candidate.RegistrationId}";
                             var registrar = frameOpening.Groups["registrar"].Value;
                             var registrarOffset = frameOpening.Groups["registrar"].Index;
                             if (string.IsNullOrWhiteSpace(registrar) || registrarOffset < 0)
@@ -1071,7 +1115,8 @@ public static class PassGeneratorService
                                     effectiveLineEnd - candidate.LineStart + 1);
                                 lines.InsertRange(candidate.LineStart - 1, frameReplacementLines);
 
-                                frameHelpers.Add((candidate, token));
+                                if (existingOwnerToken is null)
+                                    frameHelpers.Add((candidate, token));
                                 transformManifest.Add(new
                                 {
                                     registrationId = candidate.RegistrationId,
@@ -1079,7 +1124,8 @@ public static class PassGeneratorService
                                     type = "FRAME_DISPATCH_CONSOLIDATION",
                                     eventTarget = candidate.FrameEvent,
                                     file = candidate.RelativeFile,
-                                    sourceLines = new[] { candidate.LineStart, candidate.LineEnd }
+                                    sourceLines = new[] { candidate.LineStart, candidate.LineEnd },
+                                    reusedExistingOwnerRegistrar = existingOwnerToken is not null
                                 });
                                 applied++;
                             }
@@ -1756,6 +1802,26 @@ public static class PassGeneratorService
             "then __gcetRegister = __gcetApi.MakeEventRegistrar(" +
             LuaQuote(owner) + ", registerForEvent) end; " +
             "return __gcetRegister end)())";
+    }
+
+    private static string? FindExistingFrameRegistrarToken(string text, string owner)
+    {
+        // Only G-CET's unindented, source-owned registrar declarations qualify.
+        // A similarly named author helper or scoped local cannot be reused.
+        if (!text.Contains(
+                "-- G-CET generated frame registrar: source-selected from resolver evidence.",
+                StringComparison.Ordinal))
+            return null;
+        var declarations = Regex.Matches(
+            text, @"(?m)^local[ \t]+(?<token>__gcetRegisterEvent_\d+)[ \t]*=[ \t]*registerForEvent[ \t]*\r?$",
+            RegexOptions.CultureInvariant);
+        foreach (Match declaration in declarations)
+        {
+            var token = declaration.Groups["token"].Value;
+            if (HasExistingFrameHelper(text, token, owner))
+                return token;
+        }
+        return null;
     }
 
     private static bool HasExistingFrameHelper(

@@ -463,6 +463,128 @@ try
         }
         reviewedHeaders.Add(provider,(getter,header));
     }
+
+    // Real staged-pass regression: previously installed shared-provider helpers
+    // retain their Game.* fallback, even when a stale callback range includes
+    // the entire helper. Newly discovered author callsites remain eligible.
+    var frameGenerator = typeof(PassGeneratorService).GetMethod("TransformFile",
+        BindingFlags.NonPublic|BindingFlags.Static)!;
+    var candidateType = typeof(PassGeneratorService).GetNestedType(
+        "PassCandidate",BindingFlags.NonPublic)!;
+    var kindType = typeof(PassGeneratorService).GetNestedType(
+        "CandidateKind",BindingFlags.NonPublic)!;
+    object NewCandidate(string kind, string owner, string file,
+        string provider, string evt, string lua, long id)
+    {
+        var candidate = Activator.CreateInstance(candidateType,true)!;
+        void Set(string property,object value) =>
+            candidateType.GetProperty(property)!.SetValue(candidate,value);
+        Set("Kind",Enum.Parse(kindType,kind));
+        Set("Owner",owner);
+        Set("RelativeFile",file);
+        Set("RegistrationId",id);
+        Set("Provider",provider);
+        Set("FrameEvent",evt);
+        Set("LineStart",1);
+        Set("LineEnd",lua.Split('\\n').Length);
+        if(kind=="Frame")Set("ApplyFrameDispatch",true);
+        return candidate;
+    }
+    (string Result,int Applied) GenerateGeneric(string lua,object candidate)
+    {
+        var listType=typeof(List<>).MakeGenericType(candidateType);
+        var list=(System.Collections.IList)Activator.CreateInstance(listType)!;
+        list.Add(candidate);
+        var manifest=new List<object>();
+        var skips=new List<object>();
+        var value=frameGenerator.Invoke(null,[
+            Encoding.UTF8.GetBytes(lua),list,mods,manifest,skips])!;
+        var bytes=(byte[])value.GetType().GetProperty("Bytes")!.GetValue(value)!;
+        var applied=(int)value.GetType().GetProperty("AppliedTransforms")!.GetValue(value)!;
+        return (Encoding.UTF8.GetString(bytes),applied);
+    }
+    var providerIndex=0L;
+    foreach(var (provider, pair) in reviewedHeaders)
+    {
+        providerIndex++;
+        var fallback="return Game."+pair.Getter+"()";
+        var helper="__gcet"+pair.Getter+"()";
+        var source=pair.Header+"\\nlocal authorValue = Game."+
+            pair.Getter+"()\\n";
+        var first=GenerateGeneric(source,NewCandidate("SharedProvider",
+            "ProviderRegression","ProviderRegression/init.lua",provider,
+            "",source,providerIndex));
+        Check(first.Applied==1 &&
+              first.Result.Contains(fallback,StringComparison.Ordinal) &&
+              first.Result.Contains("local authorValue = "+helper,
+                  StringComparison.Ordinal) &&
+              !first.Result.Contains("return "+helper,StringComparison.Ordinal),
+            "Previously optimized "+provider+" helper recursively rewrote its fallback");
+        var repeat=GenerateGeneric(first.Result,NewCandidate("SharedProvider",
+            "ProviderRegression","ProviderRegression/init.lua",provider,
+            "",first.Result,providerIndex));
+        Check(repeat.Applied==0 && repeat.Result==first.Result,
+            "Repeated generic shared-provider optimization mutated "+
+            provider+" already-complete stage");
+        var onlyFallback=pair.Header+"\\n";
+        var unchanged=GenerateGeneric(onlyFallback,NewCandidate("SharedProvider",
+            "ProviderRegression","ProviderRegression/init.lua",provider,
+            "",onlyFallback,providerIndex));
+        Check(unchanged.Applied==0 && unchanged.Result==onlyFallback,
+            "Old capture source range reprocessed "+provider+" fallback");
+    }
+
+    // One-pass pristine source must emit complete generic helper and re-entry
+    // must preserve that helper when no original callsite remains.
+    var pristineProvider="local sourceValue = Game.GetMappinSystem()\\n";
+    var pristineCandidate=NewCandidate("SharedProvider","Pristine",
+        "Pristine/init.lua","MAPPIN_SYSTEM","",pristineProvider,9101);
+    var pristinePass=GenerateGeneric(pristineProvider,pristineCandidate);
+    Check(pristinePass.Applied==1 &&
+          pristinePass.Result.Contains("return Game.GetMappinSystem()") &&
+          pristinePass.Result.Contains(
+              "sourceValue = __gcetGetMappinSystem()"),
+        "Pristine generic pass did not generate a safe full helper");
+    var pristineRepeat=GenerateGeneric(pristinePass.Result,
+        NewCandidate("SharedProvider","Pristine","Pristine/init.lua",
+            "MAPPIN_SYSTEM","",pristinePass.Result,9101));
+    Check(pristineRepeat.Applied==0 &&
+          pristineRepeat.Result==pristinePass.Result,
+        "Newly generated helper was reapplied on the next pass");
+
+    // Multiple callbacks in one already optimized mod must use its single
+    // source-proven owner registrar, irrespective of subsequent capture IDs.
+    const string frameOwner = "FrameRegression";
+    var oldFrameHeader =
+        "-- G-CET generated frame registrar: source-selected from resolver evidence.\\n"+
+        "local __gcetRegisterEvent_254 = registerForEvent\\n"+
+        "do\\n"+
+        "    local __gcetOk, __gcetEngine = pcall(GetMod, \\"0-Engine\\")\\n"+
+        "    local __gcetApi = __gcetEngine\\n"+
+        "    if __gcetOk and type(__gcetApi) == \\"table\\" and type(__gcetApi.MakeEventRegistrar) == \\"function\\" then\\n"+
+        "        __gcetRegisterEvent_254 = __gcetApi.MakeEventRegistrar(\\"FrameRegression\\", registerForEvent)\\n"+
+        "    end\\n"+
+        "end\\n";
+    var previouslyOptimized=oldFrameHeader+
+        "__gcetRegisterEvent_254(\\"onDraw\\", function() end)\\n"+
+        "registerForEvent(\\"onUpdate\\", function(dt) end)\\n";
+    var registered=GenerateGeneric(previouslyOptimized,
+        NewCandidate("Frame",frameOwner,"FrameRegression/init.lua","",
+            "onUpdate",previouslyOptimized,800001));
+    Check(registered.Applied==1 &&
+          registered.Result.Contains(
+              "__gcetRegisterEvent_254(\\"onUpdate\\", function(dt) end)") &&
+          registered.Result.Split(
+              "G-CET generated frame registrar:").Length==2 &&
+          !registered.Result.Contains("__gcetRegisterEvent_800001"),
+        "Later callback inserted duplicate frame-registration owner");
+    var registeredAgain=GenerateGeneric(registered.Result,
+        NewCandidate("Frame",frameOwner,"FrameRegression/init.lua","",
+            "onUpdate",registered.Result,800002));
+    Check(registeredAgain.Applied==0 && registeredAgain.Result==registered.Result,
+        "Second regeneration duplicated already routed frame callback");
+    Console.WriteLine("Generic source-complete provider fallback and single-owner frame rerun: PASS");
+
     // CyberStunts plus other unrelated authors used the current-context
     // handler. A player-epoch-only cached native reference may become stale
     // while loading menus without changing the PlayerPuppet identity.
