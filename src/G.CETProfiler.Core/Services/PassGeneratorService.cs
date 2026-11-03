@@ -95,6 +95,15 @@ public static class PassGeneratorService
             skipped.Add(new {type = "MOD_BLACKLIST", category = "MOD_BLACKLIST",
                 owner, reason = ModOptimizationBlacklist.Warning});
 
+        // Personal Hotscenes opt-in is part of the SAME composed generic
+        // generation, not a later capacity-repair pass. Its reviewed removals
+        // retain the original line count and add the marker on an existing
+        // comment line, so ANALYZE's source-proven callback coordinates remain
+        // valid. No second checkbox or source-prepared prerequisite.
+        var englishOnlyHotscenes = HotscenesEnglishOnlySource.TryStage(
+            hotscenesEnglishOnly, modsRoot, staged, appliedTransformsByFile,
+            transformManifest, skipped);
+
         foreach (var group in groups)
         {
         // Match current installed Lua code, not a captured fingerprint.
@@ -108,7 +117,11 @@ public static class PassGeneratorService
                 continue;
             }
 
-            var originalBytes = File.ReadAllBytes(livePath);
+            // Use the CURRENT composed generic source: Hotscenes language
+            // removal releases local capacity before frame dispatch creation.
+            var relative = group.Key.Replace('\\', '/');
+            var originalBytes = staged.TryGetValue(relative, out var prepared)
+                ? prepared : File.ReadAllBytes(livePath);
             var transformed = TransformFile(
                 originalBytes,
                 group.OrderByDescending(x => x.LineStart).ToList(),
@@ -119,7 +132,6 @@ public static class PassGeneratorService
             if (transformed.AppliedTransforms == 0)
                 continue;
 
-            var relative = group.Key.Replace('\\', '/');
             staged[relative] = transformed.Bytes;
             appliedTransformsByFile[relative] =
                 appliedTransformsByFile.TryGetValue(relative, out var priorCount)
@@ -171,16 +183,10 @@ public static class PassGeneratorService
             modsRoot,staged,appliedTransformsByFile,
             transformManifest,skipped);
 
-        // Recover Lua local capacity before shared-read adoption. Move only
-        // exact G-CET-generated provider helpers into a source-owned Lua
-        // worker; original author locals, callbacks, and 0-Engine fallback
-        // behavior remain unchanged.
-        // Only explicitly requested personal source cuts remove localization.
-        // The generator reads no configuration file from CET's mods root.
-        var englishOnlyHotscenes = HotscenesEnglishOnlySource.TryStage(
-            hotscenesEnglishOnly, modsRoot, staged, appliedTransformsByFile,
-            transformManifest, skipped);
-
+        // Hotscenes personal opt-in was already applied before captured generic
+        // dispatch, so local capacity is available on the FIRST generation.
+        // The downstream read coordinator still extracts source-proven
+        // 0-Engine/Game fallback helpers, without replacing author gameplay.
         // Fix historical G-CET provider-template interpolation in already
         // optimized Lua BEFORE any current-source generic/semantic rewrite.
         // Each repaired helper is checked against the canonical 0-Engine

@@ -77,7 +77,19 @@ internal static class HotscenesEnglishOnlySource
                 throw new InvalidOperationException(
                     "Hotscenes English-only source drift at "+identity+
                     ": expected "+expected+" anchor(s), observed "+matches.Count+".");
-            return regex.Replace(source,_=>replacement);
+            // This opt-in runs before captured generic dispatch. Keep author
+            // callback line coordinates stable by preserving newline count
+            // in every removed source range. Empty lines are inert Lua, and
+            // all actual translation/local definitions are still removed.
+            return regex.Replace(source,match=>
+            {
+                var removedLines=match.Value.Count(ch=>ch=='\n');
+                var insertedLines=replacement.Count(ch=>ch=='\n');
+                if(insertedLines>removedLines)
+                    throw new InvalidOperationException(
+                        "Hotscenes English-only line-map drift at "+identity);
+                return replacement+new string('\n',removedLines-insertedLines);
+            });
         }
         source=Replace(source,
             @"^function saveTextFile\(text, fileName\)\n.*?^end\n\n",
@@ -131,7 +143,20 @@ internal static class HotscenesEnglishOnlySource
             if(source.Contains(removed,StringComparison.Ordinal))
                 throw new InvalidOperationException(
                     "Hotscenes English-only still references removed feature: "+removed);
-        output=Marker+"\n"+source;
+        // Keep the same number of lines as the original input, including the
+        // marker. The supported author source starts with a comment. Never
+        // shift the measured onUpdate/onDraw anchors or alter executable Lua
+        // just to record the opt-in state.
+        var firstLineEnd=source.IndexOf('\n');
+        if(firstLineEnd<0 || !source[..firstLineEnd].TrimStart().StartsWith(
+            "--",StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "Hotscenes English-only source header is not a reviewable Lua comment.");
+        output=source[..firstLineEnd]+" "+Marker+source[firstLineEnd..];
+        if(output.Count(ch=>ch=='\n')!=input.Replace("\r\n","\n",
+               StringComparison.Ordinal).Count(ch=>ch=='\n'))
+            throw new InvalidOperationException(
+                "Hotscenes English-only did not preserve callback source line coordinates.");
         return true;
     }
 }

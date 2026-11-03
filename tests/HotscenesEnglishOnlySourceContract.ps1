@@ -10,6 +10,7 @@ $root=Join-Path $env:RUNNER_TEMP 'gcet-english-optin'
 if(Test-Path $root){Remove-Item $root -Recurse -Force}
 New-Item -ItemType Directory -Force (Join-Path $root 'hotscenes')|Out-Null
 $src=@'
+-- Source-owned Hotscenes test header
 function saveTextFile(text, fileName)
   print(text,fileName)
 end
@@ -131,6 +132,22 @@ if($result -ne 1 -or $errors.Count -gt 0){
  throw "English-only opt-in refused: $($errors | ConvertTo-Json -Depth 4)"
 }
 $out=[Text.Encoding]::UTF8.GetString($staged['hotscenes/init.lua'])
+# The personal stage now precedes generic registration composition. It MUST
+# retain exact original line offsets despite removing translation bodies.
+# Any shifted line can turn a previously measured callback into a new pass.
+if(($src -split "`n").Count -ne ($out -split "`n").Count) {
+ throw 'Hotscenes personal opt-in changed captured callback line count'
+}
+$sourceLines=@($src -split "`n")
+$outLines=@($out -split "`n")
+foreach($anchor in @('registerForEvent("onInit",function()', 'function setObservers()',
+                      'local translation = scenePerformers[performer]')) {
+ $oldLine=[Array]::FindIndex($sourceLines,[Predicate[string]]{param($line) $line.Contains($anchor)})
+ $newLine=[Array]::FindIndex($outLines,[Predicate[string]]{param($line) $line.Contains($anchor.Replace('currentUiLanguage','"en-us"'))})
+ if($oldLine -lt 0 -or $newLine -ne $oldLine) {
+  throw "Hotscenes personal source line drift at $anchor : $oldLine -> $newLine"
+ }
+}
 foreach($required in @('personal:hotscenes-english-only-v1','local uiDefaultStrings',
   'performerFullNameTranslations["en-us"]','nativeUI.updateUiStrings','updatePerformers()')){
  if(!$out.Contains($required)){throw "Lost retained English/scene behavior: $required"}

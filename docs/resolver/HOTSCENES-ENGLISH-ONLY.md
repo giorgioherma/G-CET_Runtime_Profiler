@@ -36,6 +36,15 @@ observer ordering, addon behavior and runtime wake signals.
 
 ## Composition
 
+This specialized stage now runs **before generic frame/action source dispatch**,
+while retaining each untouched source line position by replacing removed
+translation bodies with inert blank lines and placing its opt-in marker on
+an existing author comment line. Captured source coordinates therefore remain
+usable in the same generation. When the option is off, both the English-only
+cut and its early capacity release are disabled; no additional checkbox.
+This prevents the observed 200→201 local-variable rejection caused by
+creating a G-CET registrar before freeing the reviewed Hotscenes locals.
+
 This specialized stage precedes `GenericReadCoordinatorSource`.
 The reduced main Lua needs only a **single local module import** to
 adopt the 13 deferred generic native getter families; their worker
