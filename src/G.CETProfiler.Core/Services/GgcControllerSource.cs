@@ -70,17 +70,17 @@ internal static class GgcControllerSource
     {
         var path = Path.Combine(modsRoot, relative.Replace('/', Path.DirectorySeparatorChar));
         if (!File.Exists(path)) return true;
-        var source = File.ReadAllText(path).Replace("\\r\\n", "\\n");
+        var source = File.ReadAllText(path).Replace("\r\n", "\n");
         if (!source.StartsWith(signature, StringComparison.Ordinal) ||
             !required.All(token => source.Contains(token, StringComparison.Ordinal)))
             return false;
         if (relative.Equals(RuntimePath, StringComparison.OrdinalIgnoreCase))
-            return source.TrimEnd() == Runtime.Replace("\\r\\n", "\\n").TrimEnd();
+            return source.TrimEnd() == Runtime.Replace("\r\n", "\n").TrimEnd();
         if (!relative.Equals(CalibrationPath, StringComparison.OrdinalIgnoreCase))
             return false;
         // Config values legitimately change on each new capture, but only a
         // complete, inert scalar schema-v1 configuration may be replaced.
-        var lines = source.Split('\\n', StringSplitOptions.RemoveEmptyEntries);
+        var lines = source.Split('\n', StringSplitOptions.RemoveEmptyEntries);
         string[] keys =
         [
             "schema", "capture", "baselineFrameMs", "hitchToleranceMs",
