@@ -420,6 +420,36 @@ jobs:
           # recovery and unsafe drift handling.
           ./tests/ImmersiveThirdPersonDormancyStagedContract.ps1 -ResolverExe './ci-resolver/G-CET-Resolver.exe' -OriginalMods $mods -Capture $capture -GeneratedRoot $output
 
+      - name: Verify Hotscenes opted-in first-pass capacity from originals
+        shell: pwsh
+        run: |
+          $stack = Join-Path $env:GITHUB_WORKSPACE 'ci-private-stack'
+          $mods = Join-Path $stack 'bin/x64/plugins/cyber_engine_tweaks/mods'
+          $capture = Join-Path $stack 'capture'
+          $zip = Join-Path $env:RUNNER_TEMP 'gcet-hotscenes-optin.zip'
+          $result = (& './ci-resolver/G-CET-Resolver.exe' --capture $capture --mods $mods --generate-pass --hotscenes-english-only --pass-output $zip --json | ConvertFrom-Json)
+          if ($LASTEXITCODE -ne 0 -or !$result.ok -or !$result.pass) { throw 'HOTSCENES_OPTIN_GENERATION_FAILED' }
+          $manifest = Get-Content -LiteralPath $result.pass.ManifestPath -Raw | ConvertFrom-Json
+          if (@($manifest.skipped | Where-Object { $_.type -eq 'LUA_LOCAL_LIMIT' -and $_.file -eq 'hotscenes/init.lua' }).Count -ne 0) {
+            throw 'HOTSCENES_OPTIN_200_LOCAL_LIMIT_STILL_DEFERRED'
+          }
+          if (@($manifest.transforms | Where-Object { $_.type -eq 'PERSONAL_HOTSCENES_ENGLISH_ONLY' -and $_.file -eq 'hotscenes/init.lua' }).Count -ne 1) {
+            throw 'HOTSCENES_OPTIN_ENGLISH_CAPACITY_NOT_GENERATED'
+          }
+          $resolver = Get-Content -LiteralPath (Join-Path $capture 'G-CET_Resolver.json') -Raw | ConvertFrom-Json
+          $expected = @($resolver.callbackFamilies | ForEach-Object { $_.topConsumers } | Where-Object {
+            $_.owner -eq 'hotscenes' -and $_.generic.Automatable -and
+            @($_.generic.RecipeFamilies) -contains 'FRAME_DISPATCH_CONSOLIDATION' -and
+            $_.source.RelativeFile -eq 'hotscenes/init.lua'
+          })
+          $generated = @($manifest.transforms | Where-Object {
+            $_.owner -eq 'hotscenes' -and $_.type -eq 'FRAME_DISPATCH_CONSOLIDATION' -and
+            $_.file -eq 'hotscenes/init.lua'
+          })
+          if ($generated.Count -ne $expected.Count) {
+            throw "HOTSCENES_OPTIN_FIRST_PASS_FRAME_MISMATCH: expected=$($expected.Count) actual=$($generated.Count)"
+          }
+          Write-Host ('Hotscenes real original opt-in first-pass: '+$generated.Count+' frame stages; no local limit')
       - name: Remove temporary private source
         if: always()
         shell: pwsh
