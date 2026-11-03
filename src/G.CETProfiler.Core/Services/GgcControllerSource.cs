@@ -56,10 +56,10 @@ internal static class GgcControllerSource
         {
             type = "GC_CONTROLLER",
             owner = "G-GC",
-            stage = "CAPTURE_CALIBRATED_RUNTIME_V1",
+            stage = "CAPTURE_CALIBRATED_CONTINUOUS_RUNTIME_V3",
             files = new[] {RuntimePath, CalibrationPath},
             captureEvidence = "CURRENT_RESOLVER_INPUT_ONLY",
-            control = "PRESSURE_AND_FRAME_HEADROOM_BUDGET_WITH_LIVE_INTENSITY_FREQUENCY",
+            control = "CONTINUOUS_INCREMENTAL_ASSISTANCE_LIVE_HEAP_SCALING_CAPTURE_BUDGET",
             provenGameplay = false
         });
         return true;
@@ -78,20 +78,24 @@ internal static class GgcControllerSource
         {
             if (source.TrimEnd() == Runtime.Replace("\r\n", "\n").TrimEnd())
                 return true;
-            // Structural-equivalence migration from the one previous
-            // Resolver-generated G-GC runtime. This is an inert historical
-            // source reference, not a second worker or corrective pass.
-            // Unknown/manual changes are refused, including marker-bearing
-            // appended Lua.
+            // Historical deployed V1/V2 are inert source-equivalence
+            // references, never executable fallback workers. Recognize only
+            // the complete exact previously emitted source; any manual drift
+            // refuses overwrite. All output still has one authoritative owner.
             var assembly = typeof(GgcControllerSource).Assembly;
-            using var legacy = assembly.GetManifestResourceStream(
-                "GCETRuntimeProfiler.GgcGeneratedRuntimeV1.reference.lua");
-            if (legacy is null)
-                throw new InvalidOperationException(
-                    "G-GC source migration reference missing from Resolver package.");
-            using var reader = new StreamReader(legacy, Encoding.UTF8);
-            var previous = reader.ReadToEnd().Replace("\r\n", "\n");
-            return source.TrimEnd() == previous.TrimEnd();
+            foreach (var version in new[] { "V1", "V2" })
+            {
+                using var legacy = assembly.GetManifestResourceStream(
+                    "GCETRuntimeProfiler.GgcGeneratedRuntime" + version + ".reference.lua");
+                if (legacy is null)
+                    throw new InvalidOperationException(
+                        "G-GC runtime migration reference missing: " + version);
+                using var reader = new StreamReader(legacy, Encoding.UTF8);
+                var previous = reader.ReadToEnd().Replace("\r\n", "\n");
+                if (source.TrimEnd() == previous.TrimEnd())
+                    return true;
+            }
+            return false;
         }
         if (!relative.Equals(CalibrationPath, StringComparison.OrdinalIgnoreCase))
             return false;
@@ -232,8 +236,10 @@ return {
     // generated above from measured frametime tolerance.
     internal const string Runtime = """
 -- GGC_RUNTIME_V1_RESOLVER_OWNED
--- G-GC source-owned controller: measured capture sets the ceiling,
--- live heap observations determine demand. No scheduled full GC.
+-- G-GC source-owned controller: Resolver captures define allowed cost.
+-- Continuous small assistance scales with live heap pressure and growth.
+-- The approximate LuaJIT collection region is timing context, NOT an on/off
+-- threshold. No scheduled full GC.
 local config = require("threshold")
 if type(config) ~= "table" or config.schema ~= 1
     or type(config.pressureStartMiB) ~= "number"
@@ -253,20 +259,20 @@ local frameEmaMs, backoffSeconds = config.baselineFrameMs, 0
 local lastStepCpuMs, maximumStepCpuMs, totalStepCpuMs = 0, 0, 0
 local stepCount, completedCycles, rejectedSteps = 0, 0, 0
 local settingsDirty, firstMark, heartbeatAge = true, true, 0
-local activeWorld, lastStepKb, lastPressure = false, 0, 0
+local activeWorld, lastStepKb, lastPressure, lastDemand = false, 0, 0, 0
 local lastBlock = 1
 local blockNames = {
   "waiting for live heap sample", "assist disabled by user",
   "world/player unavailable", "frame backoff",
-  "minimum step interval", "heap pressure below band",
-  "heap not rising", "no spare frametime",
+  "minimum step interval", "maintenance assistance",
+  "rising heap assistance", "no spare frametime",
   "CPU assistance allowance exhausted", "assistance executed",
-  "natural GC episode cooldown"
+  "natural GC episode observed"
 }
 
 -- A captured slow-step heap is NOT necessarily a GC start threshold. It is
--- a rough prior only. Observe the current installation's natural heap peak
--- before a significant drop and adapt the pressure band to that peak.
+-- a rough contextual prior only. Learning a natural peak refines the displayed
+-- estimate but can NEVER enable/disable the ongoing incremental helper.
 local liveReferenceMiB = nil
 local livePeakMiB = nil
 local learnedEpisodes, learnCooldown, lastAssistAge = 0, 0, 1e6
@@ -284,7 +290,7 @@ end
 local function markSettings()
   if type(CETProfilerMark) == "function" then
     pcall(CETProfilerMark,
-      "GGC_V2_I" .. intensity .. "_F" .. frequencyMs ..
+      "GGC_V3_I" .. intensity .. "_F" .. frequencyMs ..
       "_S" .. stepCount .. "_L" .. learnedEpisodes)
   end
 end
@@ -375,19 +381,20 @@ local function tick(dt)
   if intensity <= 0 then lastBlock = 2; return end
   if not activeWorld then lastBlock = 3; return end
   if backoffSeconds > 0 then lastBlock = 4; return end
-  -- Never push more collector work during the natural drop/settle episode.
-  if learnCooldown > 0 then lastBlock = 11; return end
   if sinceStep * 1000 < frequencyMs then lastBlock = 5; return end
 
-  -- CURRENT heap and net growth estimate the requested work. The reference
-  -- is an empirical live pressure band when available, never an exact trigger.
-  local range = pressureHighMiB - pressureStartMiB
-  if range <= 0 then lastBlock = 6; return end
-  local pressure = (heapMiB - pressureStartMiB) / range
-  if pressure <= 0 then lastPressure = 0; lastBlock = 6; return end
-  pressure = math.min(1, pressure)
-  lastPressure = pressure
-  if growthMiBps <= 0 and pressure < 1 then lastBlock = 7; return end
+  -- Always offer a small incremental step at the permitted cadence while
+  -- the player is in-world and the measured frame/CPU budget allows it.
+  -- Live heap and net growth adjust SIZE, not permission to do baseline work.
+  -- The approximate collection region is only a soft urgency estimate.
+  local range = math.max(1, pressureHighMiB - pressureStartMiB)
+  local pressure = math.max(0, math.min(1,
+    (heapMiB - pressureStartMiB) / range))
+  local positiveGrowth = math.max(0, growthMiBps)
+  local slopeSignal = math.min(1,
+    positiveGrowth / math.max(1, pressureHighMiB * 0.015))
+  local demand = math.max(pressure, slopeSignal * 0.75)
+  lastPressure, lastDemand = pressure, demand
 
   -- Capture-derived cost allowance is a hard permission gate, not a demand
   -- signal. Leave most of the measured margin for sudden heavy gameplay.
@@ -401,7 +408,10 @@ local function tick(dt)
   local nominalHeadroom = config.hitchToleranceMs -
     config.frameReserveMs - config.baselineFrameMs
   local headroomFactor = math.min(1, available / math.max(0.5, nominalHeadroom))
-  local effort = (intensity / 100) * pressure * headroomFactor
+  -- Ten percent of permitted intensity is the small continuous baseline;
+  -- the remaining ninety percent scales smoothly as live pressure rises.
+  -- Even a stale October heap prior cannot suppress all useful work.
+  local effort = (intensity / 100) * headroomFactor * (0.10 + 0.90 * demand)
   local stepKb = math.max(1, math.min(128, math.floor(1 + effort * 127)))
   sinceStep, lastAssistAge, lastStepKb = 0, 0, stepKb
   -- The step argument is incremental GC work, NOT milliseconds. os.clock is
@@ -421,7 +431,7 @@ local function tick(dt)
     lastBlock = 4
     return
   end
-  lastBlock = 10
+  lastBlock = demand <= 0.05 and 6 or (demand < 0.50 and 7 or 10)
   stepCount = stepCount + 1
   if cycle == true then completedCycles = completedCycles + 1 end
   if cpuMs > math.min(available * 0.20, config.maxAssistCpuMsPerSecond) then
@@ -445,13 +455,15 @@ registerForEvent("onDraw", function()
   local shown = ImGui.Begin("G-GC | G-CET adaptive collector")
   if shown then
     ImGui.Text("Capture: " .. config.capture)
-    ImGui.Text(string.format("Heap %.1f MiB | pressure %.0f%% | net growth %.2f MiB/s",
+    ImGui.Text(string.format("Heap %.1f MiB | predicted GC region %.0f%% | net growth %.2f MiB/s",
       heapMiB, lastPressure * 100, growthMiBps))
+    ImGui.Text(string.format("CONTINUOUS assistance | requested demand %.0f%%",
+      lastDemand * 100))
     ImGui.Text(string.format("Capture prior %.1f | LIVE reference %s | learned %d",
       config.pressureReferenceMiB,
       liveReferenceMiB and string.format("%.1f MiB", liveReferenceMiB) or "awaiting natural GC",
       learnedEpisodes))
-    ImGui.Text(string.format("Live pressure band %.1f to %.1f MiB",
+    ImGui.Text(string.format("Approximate natural GC region (not a gate): %.1f to %.1f MiB",
       pressureStartMiB, pressureHighMiB))
     ImGui.Text(string.format("Frame baseline %.1f / hitch %.1f / reserved %.1f ms",
       config.baselineFrameMs, config.hitchToleranceMs, config.frameReserveMs))
@@ -475,7 +487,8 @@ registerForEvent("onDraw", function()
       lastStepCpuMs, maximumStepCpuMs, totalStepCpuMs))
     ImGui.Text(string.format("Current second used %.3f / permitted %.3f CPU ms",
       windowUsedMs, config.maxAssistCpuMsPerSecond))
-    ImGui.Text("100% means max allowed assistance, not forced full GC.")
+    ImGui.Text("0%=off; >0%=regular assistance. Heap pressure scales step size.")
+    ImGui.Text("100%=max captured allowance, not forced full GC.")
   end
   ImGui.End()
 end)
