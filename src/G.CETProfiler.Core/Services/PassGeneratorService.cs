@@ -817,14 +817,23 @@ public static class PassGeneratorService
             .Where(candidate => candidate.SourceFirst &&
                 (candidate.Kind == CandidateKind.Action ||
                  candidate.Kind == CandidateKind.Frame))
-            .Select(candidate => string.Join("|", candidate.RelativeFile,
-                candidate.Kind, candidate.FrameEvent))
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            .ToArray();
+        // A mod may register multiple distinct onUpdate/onDraw callbacks in
+        // the SAME Lua file. Only a source-first candidate for the SAME exact
+        // callback span supersedes a measured candidate. File/event-wide
+        // suppression silently discarded other admitted stages on the first
+        // pass; comparing current-source coordinates preserves those owners.
         nonShared.RemoveAll(candidate => !candidate.SourceFirst &&
             (candidate.Kind == CandidateKind.Action ||
              candidate.Kind == CandidateKind.Frame) &&
-            sourceFirstSites.Contains(string.Join("|", candidate.RelativeFile,
-                candidate.Kind, candidate.FrameEvent)));
+            sourceFirstSites.Any(proven =>
+                proven.RelativeFile.Equals(candidate.RelativeFile,
+                    StringComparison.OrdinalIgnoreCase) &&
+                proven.Kind == candidate.Kind &&
+                proven.FrameEvent.Equals(candidate.FrameEvent,
+                    StringComparison.OrdinalIgnoreCase) &&
+                proven.LineStart == candidate.LineStart &&
+                proven.LineEnd == candidate.LineEnd));
         return nonShared;
     }
 

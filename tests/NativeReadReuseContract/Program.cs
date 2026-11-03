@@ -598,6 +598,50 @@ try
             "onUpdate",registered.Result,800002));
     Check(registeredAgain.Applied==0 && registeredAgain.Result==registered.Result,
         "Second regeneration duplicated already routed frame callback");
+    // A newly discovered source-first onUpdate must NOT suppress a different
+    // measured onUpdate in the same Lua file. This used to discard an entire
+    // measured frame stage just because both shared file/event identity.
+    var readCandidates=typeof(PassGeneratorService).GetMethod(
+        "ReadCandidates",BindingFlags.NonPublic|BindingFlags.Static)!;
+    string DistinctStageDecision(int secondLine) => JsonSerializer.Serialize(new
+    {
+        callbackFamilies = new[] { new
+        {
+            resolverFamily="ONUPDATE",
+            topConsumers = new object[] {
+                new {
+                    registrationId=103L,owner="TwoCallbacks",
+                    sourceFirst=false,
+                    source=new { RelativeFile="TwoCallbacks/init.lua",LineStart=1,LineEnd=3 },
+                    generic=new {
+                        Automatable=true,Pattern="FRAME_DISPATCH_CONSOLIDATION",
+                        RecipeFamilies=new[]{"FRAME_DISPATCH_CONSOLIDATION"}
+                    }
+                },
+                new {
+                    registrationId=104L,owner="TwoCallbacks",
+                    sourceFirst=true,
+                    source=new { RelativeFile="TwoCallbacks/init.lua",
+                        LineStart=secondLine,LineEnd=secondLine+2 },
+                    generic=new {
+                        Automatable=true,Pattern="FRAME_DISPATCH_CONSOLIDATION",
+                        RecipeFamilies=new[]{"FRAME_DISPATCH_CONSOLIDATION"}
+                    }
+                }
+            }
+        }}
+    });
+    int CandidateCount(string decision) {
+        using var j=JsonDocument.Parse(decision);
+        var list=(System.Collections.ICollection)readCandidates.Invoke(
+            null,[j.RootElement])!;
+        return list.Count;
+    }
+    Check(CandidateCount(DistinctStageDecision(5))==2,
+        "Distinct source-first callback in same file/event discarded measured stage");
+    Check(CandidateCount(DistinctStageDecision(1))==1,
+        "Same source callback was admitted through both measured and source-first paths");
+    Console.WriteLine("Distinct source-first / measured callback coalescing: PASS");
     Console.WriteLine("Generic source-complete provider fallback and single-owner frame rerun: PASS");
 
     // CyberStunts plus other unrelated authors used the current-context
