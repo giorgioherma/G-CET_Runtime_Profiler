@@ -237,14 +237,17 @@ local function tick(dt)
   if windowAge >= 1 then
     windowAge, windowUsedMs = 0, 0
   end
-  if age < 0.75 then return end
-  local observedSeconds = age
-  age = 0
-  observe(observedSeconds)
-  if settingsDirty or firstMark then
-    markSettings()
-    settingsDirty, firstMark = false, false
+  if age >= 0.75 then
+    local observedSeconds = age
+    age = 0
+    observe(observedSeconds)
+    if settingsDirty or firstMark then
+      markSettings()
+      settingsDirty, firstMark = false, false
+    end
   end
+  -- Do not couple assistance frequency to heap observation frequency:
+  -- a cached pressure sample is sufficient between cheap observations.
   if intensity <= 0 or not activeWorld or backoffSeconds > 0 then return end
   if sinceStep * 1000 < frequencyMs then return end
 
