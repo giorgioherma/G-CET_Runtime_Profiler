@@ -228,6 +228,14 @@ public static class PassGeneratorService
                 skipped,
                 fixedRuntime.Files);
 
+        // One separately owned G-GC runtime, configured only from THIS capture.
+        // It is deliberately independent of mod-specific semantic admission.
+        // Incomplete profiler evidence leaves existing generic/semantic output
+        // available, with an explicit non-generation reason in the manifest.
+        var ggcGenerated = GgcControllerSource.TryStage(
+            resolver.RootElement, modsRoot, staged,
+            appliedTransformsByFile, transformManifest, skipped);
+
         // Fail closed if a future stage bypasses the central owner policy.
         var forbiddenOutput = staged.Keys.FirstOrDefault(ModOptimizationBlacklist.IsBlacklistedPath);
         if (forbiddenOutput is not null)
@@ -394,6 +402,8 @@ public static class PassGeneratorService
                 personalEnglishOnlyHotscenesStages = englishOnlyHotscenes,
                 sourceOwnedMalformedProviderFilesRepaired = repairedProviderFiles,
                 personalEnglishOnlyHotscenesRequested = hotscenesEnglishOnly,
+                ggcGeneratedFromCurrentCapture = ggcGenerated,
+                ggcRuntimeOwner = ggcGenerated ? "G-GC" : null,
                 legacyMethodLookupRepairOccurrences = methodLookupRepairs,
                 nativeReadReuseBypassesCallbackCpuGate = true,
                 nativeReadReuseBackend = "0-Engine:existing-shared-provider",
