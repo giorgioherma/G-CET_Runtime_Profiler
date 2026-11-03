@@ -61,9 +61,11 @@ internal static class GgcCaptureCalibrationService
         double? medianHeap = observedHeap.Count > 0 ? Percentile(observedHeap, 0.5) : null;
         double? lowerHeap = observedHeap.Count > 0 ? Percentile(observedHeap, 0.25) : null;
         double? upperHeap = observedHeap.Count > 0 ? Percentile(observedHeap, 0.75) : null;
-        // Observed snapshots may be biased toward slow collector phases; no
-        // exact GC-trigger region is asserted from these samples.
-        var evidenceValid = validFrames && observedHeap.Count > 0;
+        // Slow GC snapshots are optional FORECAST CONTEXT, never mandatory
+        // admission for the constant helper. Capture-derived frame headroom
+        // is the prerequisite; no observed collector cycle is not a defect.
+        var observedRegion = observedHeap.Count > 0;
+        var evidenceValid = validFrames;
 
         // Measured frame tolerance sets the ceiling, never the demanded GC
         // work. The starting controls are deliberately conservative heuristics
@@ -88,9 +90,10 @@ internal static class GgcCaptureCalibrationService
             schemaVersion = 1,
             source = "SELECTED_PROFILER_CAPTURE",
             capture = captureName,
-            status = evidenceValid
-                ? "MEASURED_EXPERIMENTAL_CALIBRATION"
-                : "INSUFFICIENT_MEASURED_EVIDENCE",
+            status = !evidenceValid
+                ? "INSUFFICIENT_MEASURED_FRAME_EVIDENCE"
+                : observedRegion ? "MEASURED_EXPERIMENTAL_CALIBRATION"
+                : "MEASURED_FRAME_ALLOWANCE_GC_REGION_UNOBSERVED",
             available = evidenceValid,
             gameplay = new
             {
@@ -109,7 +112,9 @@ internal static class GgcCaptureCalibrationService
                 observedHeapMedianMiB = medianHeap,
                 observedHeapP25MiB = lowerHeap,
                 observedHeapP75MiB = upperHeap,
-                interpretation = "SLOW_STEP_HEAP_SNAPSHOTS_NOT_EXACT_NATURAL_TRIGGER"
+                interpretation = observedRegion
+                    ? "OPTIONAL_SLOW_STEP_HEAP_REGION_NOT_EXACT_NATURAL_TRIGGER"
+                    : "NOT_OBSERVED_FORECAST_OPTIONAL"
             },
             assistance = new
             {
@@ -136,9 +141,11 @@ internal static class GgcCaptureCalibrationService
             {
                 controllerRuntimeAvailable = true,
                 installAuthorized = evidenceValid,
-                reason = evidenceValid
-                    ? "EXPERIMENTAL_CAPTURE_CALIBRATED_RUNTIME;_GAMEPLAY_VALIDATION_PENDING"
-                    : "MISSING_MEASURED_HITCH_OR_GC_PRESSURE_EVIDENCE"
+                reason = !evidenceValid
+                    ? "MISSING_MEASURED_FRAME_TOLERANCE"
+                    : observedRegion
+                        ? "CAPTURE_FRAME_ALLOWANCE_WITH_OPTIONAL_GC_FORECAST_EXPERIMENTAL"
+                        : "CAPTURE_FRAME_ALLOWANCE_WITHOUT_GC_FORECAST_EXPERIMENTAL"
             }
         })!;
     }
