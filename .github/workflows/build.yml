@@ -57,6 +57,18 @@ jobs:
       - uses: actions/checkout@v5
       - name: Install Lua interpreter for development smoke test
         run: sudo apt-get update -qq && sudo apt-get install -y -qq lua5.4
+      - name: Test source-generated G-GC CET controls, idle cost and pressure budget
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          source=Path('src/G.CETProfiler.Core/Services/GgcControllerSource.cs').read_text()
+          anchor='internal const string Runtime = """'
+          assert anchor in source, 'Authoritative G-GC Lua source is missing'
+          runtime=source.split(anchor,1)[1].split('""";',1)[0].lstrip('\\n')
+          Path('/tmp/gcet-ggc-runtime.lua').write_text(runtime)
+          PY
+          lua5.4 tests/GgcRuntimeLuaContract.lua /tmp/gcet-ggc-runtime.lua
+
       - name: Test ITP detached frame lifecycle (no idle polling)
         run: |
           python - <<'PY'
