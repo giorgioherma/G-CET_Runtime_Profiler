@@ -978,7 +978,15 @@ public static class PassGeneratorService
             var rangeOffset = 0;
             for (var line = 0; line < candidate.LineStart - 1; line++)
                 rangeOffset += lines[line].Length + 1;
-            var eligibleMatches = providerRecipe.SourceRegex.Matches(segment)
+            // Match only Lua executable tokens. Captured ranges may cover
+            // comments or strings (including a --[[ disabled callback ]]),
+            // and a segment-local mask cannot know a block comment began on
+            // an earlier line. Mask the FULL current source first, retaining
+            // the exact character offsets for the captured range.
+            var executable = NativeReadReuseSource.MaskNonCode(
+                string.Join("\n", lines));
+            var eligibleMatches = providerRecipe.SourceRegex.Matches(
+                    executable.Substring(rangeOffset, segment.Length))
                 .Cast<Match>()
                 .Where(m => fallbackStart < 0 ||
                     rangeOffset + m.Index < fallbackStart ||

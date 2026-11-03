@@ -510,7 +510,9 @@ try
         var fallback="return Game."+pair.Getter+"()";
         var helper="__gcet"+pair.Getter+"()";
         var source=pair.Header+"\nlocal authorValue = Game."+
-            pair.Getter+"()\n";
+            pair.Getter+"()\n"+
+            "--[[\nGame."+pair.Getter+"()\n]]\n"+
+            "local authorString = \"Game."+pair.Getter+"()\"\n";
         var first=GenerateGeneric(source,NewCandidate("SharedProvider",
             "ProviderRegression","ProviderRegression/init.lua",provider,
             "",source,providerIndex));
@@ -518,8 +520,13 @@ try
               first.Result.Contains(fallback,StringComparison.Ordinal) &&
               first.Result.Contains("local authorValue = "+helper,
                   StringComparison.Ordinal) &&
-              !first.Result.Contains("return "+helper,StringComparison.Ordinal),
-            "Previously optimized "+provider+" helper recursively rewrote its fallback");
+              !first.Result.Contains("return "+helper,StringComparison.Ordinal) &&
+              first.Result.Contains("--[[\nGame."+pair.Getter+"()\n]]",
+                  StringComparison.Ordinal) &&
+              first.Result.Contains("authorString = \"Game."+pair.Getter+"()\"",
+                  StringComparison.Ordinal),
+            "Previously optimized "+provider+
+            " helper recursively rewrote its fallback or changed inert Lua");
         var repeat=GenerateGeneric(first.Result,NewCandidate("SharedProvider",
             "ProviderRegression","ProviderRegression/init.lua",provider,
             "",first.Result,providerIndex));
@@ -533,6 +540,14 @@ try
         Check(unchanged.Applied==0 && unchanged.Result==onlyFallback,
             "Old capture source range reprocessed "+provider+" fallback");
     }
+
+    var commentedOnly = "--[[\nGame.GetMappinSystem()\n]]\n"+
+        "local authorString = \"Game.GetMappinSystem()\"\n";
+    var commentedNoop=GenerateGeneric(commentedOnly,
+        NewCandidate("SharedProvider","CommentOnly","CommentOnly/init.lua",
+            "MAPPIN_SYSTEM","",commentedOnly,8500));
+    Check(commentedNoop.Applied==0 && commentedNoop.Result==commentedOnly,
+        "Shared provider rewrote Game getter text inside non-executable Lua");
 
     // One-pass pristine source must emit complete generic helper and re-entry
     // must preserve that helper when no original callsite remains.
