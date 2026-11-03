@@ -1,186 +1,243 @@
--- Mocked CET execution of the real source emitted by the Resolver.
--- A stale October stock-stack heap prior cannot silence the current stack.
+-- Execute actual Resolver G-GC generated source inside mocked CET.
+-- Regression: direct 0..256KiB, 50..500ms sliders and real 90s A/B phases.
 local runtime = assert(arg[1], "generated G-GC Lua runtime required")
-local hooks, marks, rendered = {}, {}, {}
-local kib, active, steps, fulls = 583 * 1024, true, {}, 0
-local simulatedCpu, selectedIntensity, selectedFrequency = 0, 37, 1250
-local priorStart, priorHigh, priorReference = 794.70336, 932.91264, 863.808
+local hooks, rendered, marks, logged, steps = {}, {}, {}, {}, {}
+local heapKiB, active = 583 * 1024, true
+local simulatedCpu, fullCollections, hudNotifications = 0, 0, 0
+local selectedSize, selectedInterval, clicked = nil, nil, nil
+local sliders = {}
+local prevPrint = print
 
 package.preload["threshold"] = function() return {
-  schema = 3, capture = "CET-20261023-035144_TEST_RESOLVER_STOCK_STACK",
+  schema = 3, capture = "UNTAMPERED_STOCK_STACK",
   baselineFrameMs = 22.4354, hitchToleranceMs = 33.6531,
-  frameReserveMs = 6.73062,
-  estimatedOriginalCetMsPerSecond = 120,
-  estimatedCoveredCetMsPerSecond = 100,
-  estimatedOptimizedCetMsPerSecond = 93.36,
-  estimatedFreedCetMsPerSecond = 26.64,
-  estimatedGgcStartingCpuMsPerSecond = 0.00001,
-  estimatedSemanticSavingMsPerSecond = 24,
-  estimatedGenericSavingMsPerSecond = 2.64,
-  pressureReferenceMiB = priorReference, pressureStartMiB = priorStart,
-  pressureHighMiB = priorHigh,
-  defaultIntensity = 37, defaultFrequencyMs = 1250
+  defaultIntensity = 37, defaultFrequencyMs = 1250,
+  pressureReferenceMiB = 863, pressureStartMiB = 800,
+  pressureHighMiB = 935
 } end
-
 registerForEvent = function(name, fn)
-  assert(hooks[name] == nil, "duplicate G-GC event: " .. name)
+  assert(hooks[name] == nil, "duplicate G-GC callback: " .. name)
   hooks[name] = fn
 end
-Game = { GetPlayer = function() return active and {} or nil end }
+Game = {
+  GetPlayer = function() return active and {} or nil end,
+  GetAllBlackboardDefs = function()
+    return { UI_Notifications = {WarningMessage = 77} }
+  end,
+  GetBlackboardSystem = function()
+    return { Get = function()
+      return {SetVariant = function(_, key, value, notify)
+        assert(key == 77 and notify and value.message:find("DONE"),
+          "invalid completion HUD notification")
+        hudNotifications = hudNotifications + 1
+      end}
+    end}
+  end
+}
+SimpleScreenMessage = { new = function() return {} end }
+ToVariant = function(x) return x end
 CETProfilerMark = function(label) marks[#marks + 1] = label end
 collectgarbage = function(command, amount)
-  if command == "count" then return kib end
+  if command == "count" then return heapKiB end
   if command == "step" then
-    assert(type(amount) == "number" and amount >= 1 and amount <= 128,
-      "incremental step argument exceeded safety cap")
+    assert(type(amount) == "number" and amount > 0 and amount <= 256,
+      "out-of-range / zero / full collector step requested")
     steps[#steps + 1] = amount
-    simulatedCpu = simulatedCpu + 0.00005
+    -- Deterministic mock step CPU and net heap reduction; requested GC
+    -- work is not assumed equal to memory reclaimed.
+    simulatedCpu = simulatedCpu + amount * 0.0000005
+    heapKiB = math.max(64, heapKiB - math.min(32, amount / 4))
     return false
   end
-  if command == "collect" then fulls = fulls + 1 end
+  if command == "collect" then fullCollections = fullCollections + 1 end
   error("unexpected GC command " .. tostring(command))
 end
-local actualOs = os
+local actualOs, oldPrint = os, print
 os = { clock = function() return simulatedCpu end }
+print = function(message) logged[#logged + 1] = message end
 ImGui = {
-  Begin = function() return true end,
-  End = function() end,
-  Text = function(s) rendered[#rendered+1] = s end,
-  SliderInt = function(label, current)
-    if label == "Intensity (%)" then return selectedIntensity, true end
-    if label == "Frequency (ms)" then return selectedFrequency, true end
-    error("unexpected slider " .. tostring(label))
+  Begin = function() return true end, End = function() end,
+  Text = function(x) rendered[#rendered + 1] = x end,
+  SliderInt = function(label, value, minimum, maximum)
+    sliders[label] = {min=minimum, max=maximum}
+    if label == "Step size (KiB)" then
+      return selectedSize or value, selectedSize ~= nil
+    elseif label == "Interval (ms)" then
+      return selectedInterval or value, selectedInterval ~= nil
+    end
+    error("unknown slider: " .. tostring(label))
+  end,
+  Button = function(label)
+    if label == clicked then clicked = nil; return true end
+    return false
   end
 }
 assert(loadfile(runtime))()
-assert(type(hooks.onUpdate) == "function" and type(hooks.onDraw) == "function")
-assert(type(hooks.onOverlayOpen) == "function" and
-  type(hooks.onOverlayClose) == "function")
-local function advance(n, dt)
-  for _ = 1,n do hooks.onUpdate(dt or 0.020) end
+assert(type(hooks.onUpdate) == "function" and
+  type(hooks.onDraw) == "function" and
+  type(hooks.onOverlayOpen) == "function" and
+  type(hooks.onOverlayClose) == "function" and
+  type(hooks.onShutdown) == "function",
+  "missing unique G-GC lifecycle hooks")
+
+local function advance(seconds, dt)
+  dt = dt or 0.02
+  local n = math.floor(seconds / dt + 0.5)
+  for _ = 1, n do hooks.onUpdate(dt) end
 end
 local function draw()
   rendered = {}
   hooks.onOverlayOpen()
   hooks.onDraw()
-  hooks.onOverlayClose()
   return table.concat(rendered, "\n")
 end
-local function getLearned()
+local function press(label)
+  clicked = label
   local shown = draw()
-  local n = shown:match("learned (%d+)")
-  assert(n, "G-GC live learning/diagnostics are not visible")
-  return tonumber(n), shown
+  assert(clicked == nil, "CET action did not execute: " .. label)
+  return shown
+end
+local function stepCount()
+  return #steps
+end
+local function hasMark(label)
+  for _, x in ipairs(marks) do
+    if x == label then return true end
+  end
+  return false
 end
 
--- The captured October GC region is above the current heap. It must NOT
--- block low-cost maintenance: at >0% the helper regularly does small steps
--- even with a flat, low heap and no natural collection episode.
-advance(160)
-assert(#steps > 0, "nonzero default skipped continuous maintenance below GC band")
-local low37Count, low37Size = #steps, steps[#steps]
-assert(low37Size > 1 and low37Size <= 8,
-  "low-heap continuous maintenance should request small, intensity-scaled work")
-local _, shown = getLearned()
-assert(shown:find("CONTINUOUS assistance", 1, true), "UI misstates pressure as gating")
-assert(shown:find("Resolver DEFAULT", 1, true) and
-       shown:find("Starting allowance estimate", 1, true),
-       "User cannot distinguish estimated default from manually applied tuning")
-assert(shown:find("not a gate", 1, true), "UI misstates natural collection region")
+-- Initial Resolver intensity/cadence are mapped into the user's actual
+-- hardware-independent slider units, not a hard CPU budget.
+advance(1)
+local shown = draw()
+assert(sliders["Step size (KiB)"].min == 0 and
+       sliders["Step size (KiB)"].max == 256,
+  "GC size slider is not 0..256 KiB")
+assert(sliders["Interval (ms)"].min == 50 and
+       sliders["Interval (ms)"].max == 500,
+  "GC interval slider is not 50..500 ms")
+assert(shown:find("Lua heap",1,true) and
+       shown:find("net growth",1,true) and
+       shown:find("Step CPU",1,true) and
+       shown:find("Step spacing",1,true) and
+       shown:find("step heap drop",1,true),
+  "compact CET UI missing useful heap / step statistics")
+assert(not shown:find("predicted GC region",1,true) and
+       not shown:find("semantic ",1,true) and
+       not shown:find("Starting allowance estimate",1,true),
+  "unnecessary diagnostic/forecast text still crowds the UI")
 
--- The same low heap and gameplay headroom respond to slider changes. With
--- 100% intensity and 250ms interval, there must be both MORE and LARGER
--- calls. This catches the original 0-vs-100 inert slider regression.
-selectedIntensity, selectedFrequency = 100, 250
+-- Zero must make NO collector invocation, unlike LuaJIT step(0).
+selectedSize, selectedInterval = 0, 50
+draw()
+hooks.onOverlayClose()
+local beforeOff = stepCount()
+advance(1)
+assert(stepCount() == beforeOff, "zero-size slider still calls collector")
+
+-- Player selection must give EXACT fixed KiB requests, unaffected by
+-- natural GC region and not capped by initial Resolver estimates.
+selectedSize, selectedInterval = 256, 50
+draw()
+hooks.onOverlayClose()
+advance(2)
+assert(stepCount() >= beforeOff + 25,
+  "manual 50ms cadence did not perform frequent steps")
+for i = beforeOff + 1, stepCount() do
+  assert(steps[i] == 256,
+    "the 256-KiB slider still scales step size or exceeds its limit")
+end
 shown = draw()
-assert(shown:find("APPLIED: intensity 100%", 1, true) and
-       shown:find("interval 250 ms", 1, true),
-       "slider values were not applied by CET")
-advance(160)
-assert(#steps > low37Count + 5,
-  "high frequency did not increase the number of maintenance attempts")
--- 160 frames at 20 ms with 250 ms minimum spacing permits roughly
--- twelve attempts; the historical 20-step assertion exceeded elapsed time.
-assert(#steps - low37Count >= 10,
-  "tiny estimated starting allowance incorrectly capped manual 100% tuning")
-assert(steps[#steps] > low37Size,
-  "100% did not request more work than captured default at same low heap")
-assert(marks[#marks]:find("GGC_V4_",1,true),
-  "slider change did not produce versioned Profiler marker")
-local low100Size = steps[#steps]
+assert(shown:find("Step spacing",1,true) and
+       shown:find("Step CPU",1,true),
+  "current / previous step timings not visible")
 
--- A high live-heap growth slope asks for more work BEFORE the captured
--- collection region; the historical region only supplies urgency context.
-kib = 705 * 1024
-advance(160)
-assert(steps[#steps] > low100Size,
-  "high live growth did not scale assistance ahead of estimated GC region")
-local afterGrowth = #steps
-
--- Falling/flat heap is NOT a switch that turns off scheduled maintenance.
-kib = 620 * 1024
-advance(160)
-assert(#steps > afterGrowth,
-  "non-growing heap disabled positive-intensity continuous assistance")
-
--- Optional observed natural GC peaks may refine an approximate prediction,
--- but a new episode must never be required to keep the helper running.
-selectedIntensity = 0
+-- Configure a different manual preset, then arm the experiment in CET.
+-- Nothing starts while the overlay is still open. The ten-second delay
+-- begins only after returning to live gameplay.
+selectedSize, selectedInterval = 60, 250
 draw()
-local beforeOff = #steps
--- The estimator admits only genuinely unassisted collection peaks:
--- let 10 seconds elapse after the last helper step before inferring a peak.
-advance(650)
-assert(#steps == beforeOff, "0% must disable collection")
-kib = 680 * 1024
-advance(50)
-kib = 660 * 1024
-advance(50)
-local learned = getLearned()
-assert(learned >= 1, "natural collection reference stopped updating in off mode")
-local beforeRestart = #steps
-selectedIntensity = 37
-draw()
-advance(160)
-assert(#steps > beforeRestart,
-  "learning cooldown or approximate trigger incorrectly blocked maintenance")
-
--- CPU/frame budget and loading still override continuous requested work.
-selectedIntensity = 100
-draw()
-local beforeHeavy = #steps
-advance(120, 0.047)
-assert(#steps == beforeHeavy, "heavy gameplay backoff ignored")
-active = false
-advance(250)
-assert(#steps == beforeHeavy, "assistance ran without valid world")
-assert(fulls == 0, "helper forced full GC")
--- Same live heap and same frame-cost allowance MUST produce the same
--- incremental work, even when capture-derived NATURAL collection estimates
--- are wildly different. That estimate is information, not operating policy.
-local function withPrior(startMiB, highMiB, referenceMiB)
-  priorStart, priorHigh, priorReference = startMiB, highMiB, referenceMiB
-  package.loaded["threshold"] = nil
-  hooks, marks, steps = {}, {}, {}
-  simulatedCpu, selectedIntensity, selectedFrequency = 0, 37, 1250
-  active, kib = true, 583 * 1024
-  assert(loadfile(runtime))()
-  advance(160)
-  local quiet = steps[#steps]
-  assert(quiet, "constant assistance unexpectedly requires natural trigger")
-  kib = 675 * 1024
-  advance(160)
-  local rising = steps[#steps]
-  return quiet, rising
+local baselineCount = stepCount()
+press("DEV: Start 90s A/B test")
+advance(15)
+assert(stepCount() == baselineCount and hasMark("GGC_TEST_ARMED"),
+  "armed test ran while player was still in CET overlay")
+assert(draw():find("TEST ARMED",1,true),
+  "CET does not explain why the test is waiting")
+hooks.onOverlayClose()
+advance(9.9)
+assert(stepCount() == baselineCount and hasMark("GGC_TEST_COUNTDOWN"),
+  "countdown leaked assistance or did not begin in gameplay")
+advance(0.2)
+assert(hasMark("GGC_TEST_P1_OFF"),
+  "ten-second countdown did not begin first 30-second phase")
+advance(29.8)
+assert(stepCount() == baselineCount,
+  "baseline OFF phase executed helper work")
+advance(0.3)
+assert(hasMark("GGC_TEST_P2_128K_100MS"),
+  "100ms phase transition did not occur at 30s")
+local slowStart = stepCount()
+advance(29.7)
+local slowEnd = stepCount()
+assert(slowEnd - slowStart >= 220 and slowEnd - slowStart <= 305,
+  "100ms phase did not deliver approximately 10 requests/s")
+for i = slowStart + 1, slowEnd do
+  assert(steps[i] == 128,
+    "100ms experiment step size deviated from fixed 128KiB")
 end
-local aQuiet, aRising = withPrior(794, 932, 864)
-local bQuiet, bRising = withPrior(275, 360, 315)
-local cQuiet, cRising = withPrior(nil, nil, nil)
-assert(aQuiet == bQuiet and aRising == bRising and
-       aQuiet == cQuiet and aRising == cRising,
-  "optional or changed natural GC region altered actual assistance")
-local noForecast = draw()
-assert(noForecast:find("NOT OBSERVED", 1, true),
-  "no-GC-cycle helper incorrectly asserts a predicted collection region")
-os = actualOs
-print("G-GC continuous baseline, live scaling, sliders, GC prediction context, safety PASS")
+advance(0.4)
+assert(hasMark("GGC_TEST_P3_128K_50MS"),
+  "50ms phase transition did not occur at 60s")
+local fastStart = stepCount()
+advance(29.6)
+local fastEnd = stepCount()
+assert(fastEnd - fastStart > slowEnd - slowStart * 0.90,
+  "50ms phase did not increase request frequency over 100ms")
+assert(fastEnd - fastStart >= 380,
+  "50ms phase failed to deliver frequent requested GC steps")
+for i = fastStart + 1, fastEnd do
+  assert(steps[i] == 128,
+    "50ms experiment step size deviated from fixed 128KiB")
+end
+advance(0.5)
+assert(hasMark("GGC_TEST_DONE") and hudNotifications == 1,
+  "90s test did not notify the player of completion")
+local afterDone = stepCount()
+advance(2)
+assert(stepCount() == afterDone,
+  "test restarted previous manual assistance before the player stopped capture")
+shown = draw()
+assert(shown:find("TEST DONE",1,true) and
+       shown:find("100ms steps",1,true) and
+       shown:find("50ms steps",1,true),
+  "completion UI lacks stop-capture prompt or delivered-step counts")
+assert(#marks >= 6 and marks[1] ~= nil,
+  "capture-facing phase markers missing")
+assert(fullCollections == 0, "G-GC issued a forced full collection")
+
+-- Player can explicitly restore previous settings only after stopping.
+press("Restore manual settings")
+hooks.onOverlayClose()
+local resumed = stepCount()
+advance(1)
+assert(stepCount() > resumed and steps[#steps] == 60,
+  "test failed to restore saved manual step/cadence on request")
+
+-- World loss and heavy-frame safety remain effective.
+active = false
+advance(2)
+local lostWorld = stepCount()
+advance(1)
+assert(stepCount() == lostWorld,
+  "G-GC executed without an active player")
+active = true
+advance(1)
+local beforeHeavy = stepCount()
+advance(3, 0.047)
+assert(stepCount() == beforeHeavy,
+  "G-GC ignored repeated severe frame backoff")
+
+os, print = actualOs, oldPrint
+print("G-GC 0..256KiB / 50..500ms, 90s phase test, timing, HUD and safety PASS")
