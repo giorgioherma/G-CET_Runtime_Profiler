@@ -74,7 +74,7 @@ Two captures were **entirely first-person gameplay**. Both began with approximat
 
 **Selected-capture verification:** The new November 3 handoff measures baseline 19.9047ms, tolerance 29.85705ms and median slow-step heap 654.481MiB. The current provisional generator formula would produce approx **602.12 MiB pressure start, 706.84 MiB high**, reserve ~5.97ms, budget ~1.19 CPU ms/s, default 37%/1250ms **if the user selects that new capture**. This is NOT a generated pass from that capture yet, and the real on-device effectiveness has not been measured. No forced full-collection calls were added.
 
-**Status:** Source fix and dedicated tests are implemented; gameplay A/B and collector wall-time effects are **not yet proven**. The native-owned persistent-controller design requirement remains separately outstanding from this experimental CET Lua-owned runtime.
+**Status:** The new code/test commit `9c01518dae937d89721a2634637cb0061c47c5b9` passed **all 6/6 main CI jobs** in [#41567648125](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/41567648125), producing Resolver v1.3.4 artifact **13199438666** and Profiler v1.3.4 artifact **13200083668**. Source-level regression and packaging are validated; gameplay A/B and collector wall-time effects are **not yet proven**. The native-owned persistent-controller design requirement remains separately outstanding from this experimental CET Lua-owned runtime.
 
 ## November 3 correction — capture allowance, live heap demand
 
