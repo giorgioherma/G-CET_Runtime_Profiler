@@ -201,7 +201,18 @@ try{
 $forward=$generated.IndexOf('local __gcetPokerAttachPass4')
 $onInit=$generated.IndexOf('registerForEvent("onInit"')
 $assigned=$generated.IndexOf('__gcetPokerAttachPass4=function()')
-$onUpdate=$generated.IndexOf('registerForEvent("onUpdate"')
+# Generic runs before source-aware Poker PASS4 and can source-proven route
+# the author onUpdate through a single existing 0-Engine frame registrar.
+# The lexical startup constraint applies to the actual onUpdate callsite,
+# regardless of which *proven* source-safe registrar owns it.
+$onUpdateCalls=[regex]::Matches($generated,
+    '(?m)^[ \t]*(?:registerForEvent|registerRuntimeEvent|__gcetRegisterEvent_\d+)\s*\(\s*["'']onUpdate["'']')
+$onUpdate=if($onUpdateCalls.Count -eq 1){$onUpdateCalls[0].Index}else{-1}
+if($generated -match '(?m)^[ \t]*__gcetRegisterEvent_\d+\s*\(\s*["'']onUpdate["'']' -and
+   ($generated -notmatch 'G-CET generated frame registrar: source-selected' -or
+    $generated -notmatch '__gcetApi.MakeEventRegistrar\("StreetGamesPoker", registerForEvent\)')){
+    throw 'Generic frame registrar does not prove its original owner and CET fallback'
+}
 if($forward -lt 0 -or $onInit -lt 0 -or $assigned -lt 0 -or $onUpdate -lt 0 -or
   $forward -ge $onInit -or $assigned -le $onInit -or $assigned -ge $onUpdate){
   throw 'PASS4 startup lexical scope/order incorrect'
