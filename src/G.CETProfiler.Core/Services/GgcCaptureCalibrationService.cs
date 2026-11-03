@@ -158,31 +158,40 @@ internal static class GgcCaptureCalibrationService
         })!;
     }
     /// <summary>
-    /// GENERATE-time, source-proven provisional initial settings. Credit only
-    /// measured callback work linked to a SEMANTIC_RULE actually applied by
-    /// the authoritative composed pass. The measured owner budget can never
-    /// be counted twice, and unknown/unoptimized/previously complete work
-    /// receives zero claimed savings.
+    /// Conservative pre/post CET-work estimate from the ACTUAL composed
+    /// transform manifest, not from eligible rules or a fixed mod inventory.
+    /// All credit is speculative. Deduplicate callback registration work and
+    /// do not add concurrent generic + semantic claims on the same owner.
+    /// Unsupported and unmeasured sources contribute zero hypothetical saving.
     /// </summary>
+    internal sealed record RuleEstimate(
+        string Stage, string Rule, string Owner, long? RegistrationId,
+        double MeasuredCallbackMsPerSecond, double EstimatedSavingMsPerSecond,
+        double HeuristicFraction, string Evidence);
+
     internal sealed record AppliedDefaults(
         double? MeasuredOriginalCetMsPerSecond,
-        double MeasuredCoveredCetMsPerSecond,
+        double EstimatedCoveredCetMsPerSecond,
         double EstimatedFreedCetMsPerSecond,
         double? EstimatedOptimizedCetMsPerSecond,
         double? EstimatedGgcStartingCpuMsPerSecond,
-        int CreditedAppliedRules,
+        double EstimatedSemanticSavingMsPerSecond,
+        double EstimatedGenericSavingMsPerSecond,
+        int AppliedSemanticRules,
+        int AppliedGenericRules,
         int CreditedOwners,
         int DefaultIntensityPercent,
         int DefaultFrequencyMs,
-        string EstimateStatus);
+        string EstimateStatus,
+        IReadOnlyList<RuleEstimate> RuleEstimates);
 
     internal static AppliedDefaults EstimateAppliedDefaults(
         JsonElement resolverRoot, IReadOnlyCollection<object> appliedManifest)
     {
-        static double? Number(JsonElement element, string key)
+        static double? Number(JsonElement item, string key)
         {
-            if (element.ValueKind != JsonValueKind.Object ||
-                !element.TryGetProperty(key, out var v) ||
+            if (item.ValueKind != JsonValueKind.Object ||
+                !item.TryGetProperty(key, out var v) ||
                 v.ValueKind != JsonValueKind.Number ||
                 !v.TryGetDouble(out var number) ||
                 !double.IsFinite(number))
@@ -190,93 +199,252 @@ internal static class GgcCaptureCalibrationService
             return number;
         }
 
-        if (!resolverRoot.TryGetProperty("gGcCaptureCalibration", out var evidence) ||
-            !evidence.TryGetProperty("assistance", out var assist) ||
-            !evidence.TryGetProperty("gameplay", out var gameplay))
-            return new(null, 0, 0, null, null, 0, 0, 0, 5000,
-                "MISSING_RESOLVER_CAPTURE_CALIBRATION");
+        static string? String(JsonElement item, string key) =>
+            item.ValueKind == JsonValueKind.Object &&
+            item.TryGetProperty(key, out var value) &&
+            value.ValueKind == JsonValueKind.String
+                ? value.GetString() : null;
 
-        var original = Number(assist, "measuredOriginalCetMsPerSecond");
-        var baseline = Number(gameplay, "medianFrameMs");
-        var tolerance = Number(gameplay, "hitchToleranceMs");
-        var reserve = Number(assist, "frameReserveMs");
-        var coveredByOwner = new Dictionary<string, double>(
-            StringComparer.OrdinalIgnoreCase);
-        var creditedRules = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        static long? Id(JsonElement item) =>
+            item.ValueKind == JsonValueKind.Object &&
+            item.TryGetProperty("registrationId", out var value) &&
+            value.ValueKind == JsonValueKind.Number &&
+            value.TryGetInt64(out var id) && id > 0 ? id : null;
 
-        if (original is > 0 and <= 1000)
+        static double SemanticFraction(string handler, string policy)
         {
-            foreach (var item in appliedManifest)
-            {
-                var stage = JsonSerializer.SerializeToElement(item);
-                if (stage.ValueKind != JsonValueKind.Object ||
-                    !stage.TryGetProperty("type", out var type) ||
-                    type.GetString() != "SEMANTIC_RULE" ||
-                    !stage.TryGetProperty("sourceProof", out var proof) ||
-                    proof.ValueKind != JsonValueKind.True ||
-                    !stage.TryGetProperty("admissionEvidence", out var admission) ||
-                    admission.GetString() != "CAPTURE_MATCHED_SOURCE_PROVEN" ||
-                    !stage.TryGetProperty("runtimeMsPerSecond", out var cost) ||
-                    cost.ValueKind != JsonValueKind.Number ||
-                    !cost.TryGetDouble(out var measuredCost) ||
-                    !double.IsFinite(measuredCost) ||
-                    measuredCost <= 0 || measuredCost > original)
-                    continue;
-
-                var owner = stage.TryGetProperty("Owner", out var ownerUpper)
-                    ? ownerUpper.GetString()
-                    : stage.TryGetProperty("owner", out var ownerLower)
-                        ? ownerLower.GetString() : null;
-                if (string.IsNullOrWhiteSpace(owner))
-                    continue;
-                // Multiple rules for the same owner can refer to the same
-                // measured callback or nested work. Max, never SUM.
-                if (!coveredByOwner.TryGetValue(owner, out var previous) ||
-                    measuredCost > previous)
-                    coveredByOwner[owner] = measuredCost;
-                var rule = stage.TryGetProperty("RuleId", out var upperRule)
-                    ? upperRule.GetString()
-                    : stage.TryGetProperty("ruleId", out var lowerRule)
-                        ? lowerRule.GetString() : null;
-                if (!string.IsNullOrWhiteSpace(rule))
-                    creditedRules.Add(owner + "\0" + rule);
-            }
+            var family = handler + " " + policy;
+            if (family.Contains("DORMAN", StringComparison.OrdinalIgnoreCase) ||
+                family.Contains("WAKE", StringComparison.OrdinalIgnoreCase))
+                return 0.30;
+            if (family.Contains("CADENCE", StringComparison.OrdinalIgnoreCase) ||
+                family.Contains("SCHEDUL", StringComparison.OrdinalIgnoreCase))
+                return 0.22;
+            if (family.Contains("FAST_PATH", StringComparison.OrdinalIgnoreCase) ||
+                family.Contains("POLL", StringComparison.OrdinalIgnoreCase) ||
+                family.Contains("GATE", StringComparison.OrdinalIgnoreCase))
+                return 0.18;
+            if (family.Contains("CACHE", StringComparison.OrdinalIgnoreCase) ||
+                family.Contains("NATIVE", StringComparison.OrdinalIgnoreCase) ||
+                family.Contains("READ", StringComparison.OrdinalIgnoreCase))
+                return 0.12;
+            return 0.10;
         }
 
-        var covered = original is > 0
-            ? Math.Min(original.Value, coveredByOwner.Values.Sum())
-            : 0;
-        // 50% is the user's historical SEMANTIC improvement reference,
-        // NOT a promise for every mod. Credit only half of that for measured,
-        // genuinely generated candidate work: at most 25% of covered work.
-        // All unsupported/unmeasured/generic-only work stays unchanged.
-        var saved = Math.Round(covered * 0.50 * 0.50, 6);
-        var projected = original is >= 0
-            ? Math.Max(0, original.Value - saved) : (double?)null;
-        var startingReference = original is >= 0 ? saved * 0.08 : (double?)null;
+        static double GenericFraction(string kind) => kind switch
+        {
+            "UI_VISIBILITY_DORMANCY" => 0.20,
+            "SEQUENCE_FIRST_SCRIPTABLE_SYSTEM_POLL" => 0.16,
+            "HARD_DORMANT_GUARD_HOIST" => 0.14,
+            "INTERACTION_UI_IDLE_GUARD" => 0.12,
+            "CROSS_FILE_INTERACTION_UI_IDLE_CALL_GUARD" => 0.12,
+            "ACTION_OVERRIDE_EXACT_PREFILTER" => 0.10,
+            "SHARED_PROVIDER_READ" => 0.025,
+            _ when kind.StartsWith("ACTION_ROUTING", StringComparison.Ordinal) => 0.05,
+            _ => 0.0
+        };
 
+        static AppliedDefaults Empty(string status, double? original) =>
+            new(original, 0, 0, original, original is null ? null : 0,
+                0, 0, 0, 0, 0, 0, 5000, status,
+                Array.Empty<RuleEstimate>());
+
+        if (!resolverRoot.TryGetProperty("gGcCaptureCalibration", out var evidence) ||
+            !evidence.TryGetProperty("assistance", out var assistance) ||
+            !evidence.TryGetProperty("gameplay", out var gameplay))
+            return Empty("MISSING_RESOLVER_CAPTURE_CALIBRATION", null);
+        var original = Number(assistance, "measuredOriginalCetMsPerSecond");
+        var baseline = Number(gameplay, "medianFrameMs");
+        var tolerance = Number(gameplay, "hitchToleranceMs");
+        var reserve = Number(assistance, "frameReserveMs");
+        if (original is null or < 0 or > 1000)
+            return Empty("NO_MEASURED_EXCLUSIVE_CET_WORK", null);
+
+        // These rows are already exclusive sampled callback costs. Each
+        // registration is counted once, never per generic transformation.
+        var measured = new Dictionary<(string Owner, long Id), (double Cpu, double Calls)>();
+        if (resolverRoot.TryGetProperty("callbackFamilies", out var families) &&
+            families.ValueKind == JsonValueKind.Array)
+            foreach (var family in families.EnumerateArray())
+            {
+                if (!family.TryGetProperty("topConsumers", out var rows) ||
+                    rows.ValueKind != JsonValueKind.Array) continue;
+                foreach (var row in rows.EnumerateArray())
+                {
+                    var owner = String(row, "owner");
+                    var id = Id(row);
+                    if (string.IsNullOrWhiteSpace(owner) || id is null ||
+                        !row.TryGetProperty("runtime", out var runtime)) continue;
+                    var cost = Number(runtime, "exclusiveMsPerSecond");
+                    var calls = Number(runtime, "callsPerSecond");
+                    if (cost is null or < 0 || calls is null or < 0) continue;
+                    var key = (owner.ToLowerInvariant(), id.Value);
+                    if (!measured.TryGetValue(key, out var old) || cost > old.Cpu)
+                        measured[key] = (cost.Value, calls.Value);
+                }
+            }
+
+        var estimates = new List<RuleEstimate>();
+        var appliedRules = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var appliedGeneric = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var semanticByOwner = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        var semanticMeasuredByOwner = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        // A registration can undergo multiple generic stages. Credit only
+        // the single largest hypothesized saving for that registration.
+        var genericByRegistration = new Dictionary<(string Owner, long Id), RuleEstimate>();
+        var frameRegistrations = new Dictionary<(string Owner, string Event),
+            List<(long Id, double Cpu, double Calls)>>();
+
+        foreach (var item in appliedManifest)
+        {
+            var stage = JsonSerializer.SerializeToElement(item);
+            if (stage.ValueKind != JsonValueKind.Object) continue;
+            var kind = String(stage, "type") ?? "";
+            var owner = String(stage, "Owner") ?? String(stage, "owner");
+            if (string.IsNullOrWhiteSpace(owner)) continue;
+
+            if (kind == "SEMANTIC_RULE")
+            {
+                var rule = String(stage, "RuleId") ?? String(stage, "ruleId") ?? "";
+                var key = owner + "\0" + rule;
+                if (rule.Length == 0 || !appliedRules.Add(key)) continue;
+                var cost = Number(stage, "runtimeMsPerSecond");
+                var provenance = String(stage, "admissionEvidence") ?? "NOT_MEASURED";
+                var fraction = SemanticFraction(
+                    String(stage, "Handler") ?? String(stage, "handler") ?? "",
+                    String(stage, "PolicyClass") ?? String(stage, "policyClass") ?? "");
+                var credible = provenance == "CAPTURE_MATCHED_SOURCE_PROVEN" &&
+                    stage.TryGetProperty("sourceProof", out var proof) &&
+                    proof.ValueKind == JsonValueKind.True &&
+                    cost is > 0 && cost <= original;
+                var saved = credible ? Math.Round(cost!.Value * fraction, 6) : 0;
+                estimates.Add(new("SEMANTIC_RULE", rule, owner, null,
+                    credible ? cost!.Value : 0, saved, fraction,
+                    credible ? provenance : "NO_UNIQUE_MEASURED_APPLIED_WORK"));
+                if (credible)
+                {
+                    semanticByOwner[owner] = Math.Max(
+                        semanticByOwner.GetValueOrDefault(owner), saved);
+                    semanticMeasuredByOwner[owner] = Math.Max(
+                        semanticMeasuredByOwner.GetValueOrDefault(owner), cost!.Value);
+                }
+                continue;
+            }
+
+            if (kind == "FRAME_DISPATCH_CONSOLIDATION")
+            {
+                var id = Id(stage);
+                if (id is not null &&
+                    measured.TryGetValue((owner.ToLowerInvariant(), id.Value),
+                        out var measuredRow))
+                {
+                    var eventName = String(stage, "eventTarget") ?? "onUpdate";
+                    var group = (owner.ToLowerInvariant(), eventName.ToLowerInvariant());
+                    if (!frameRegistrations.TryGetValue(group, out var members))
+                        frameRegistrations[group] = members = new();
+                    if (members.All(x => x.Id != id.Value))
+                        members.Add((id.Value, measuredRow.Cpu, measuredRow.Calls));
+                }
+            }
+
+            var registration = Id(stage);
+            var fractionGeneric = GenericFraction(kind);
+            if (fractionGeneric <= 0 || registration is null ||
+                !measured.TryGetValue((owner.ToLowerInvariant(), registration.Value),
+                    out var callback)) continue;
+            var actualSaving = Math.Round(callback.Cpu * fractionGeneric, 6);
+            var entry = new RuleEstimate("GENERIC", kind, owner, registration,
+                callback.Cpu, actualSaving, fractionGeneric,
+                "ACTUALLY_APPLIED_CAPTURE_MATCHED_REGISTRATION_HEURISTIC");
+            var registrationKey = (owner.ToLowerInvariant(), registration.Value);
+            if (!genericByRegistration.TryGetValue(registrationKey, out var oldEntry) ||
+                entry.EstimatedSavingMsPerSecond > oldEntry.EstimatedSavingMsPerSecond)
+                genericByRegistration[registrationKey] = entry;
+        }
+
+        // Frame registration savings are dispatch overhead, NOT eliminated
+        // callback bodies. Credit only registrations beyond one per owner/event,
+        // and cap each at 5% of measured exclusive callback CPU. One 0-Engine
+        // registration does not qualify as eliminated dispatch traffic.
+        foreach (var (group, registrations) in frameRegistrations)
+        {
+            foreach (var callback in registrations
+                .OrderByDescending(x => x.Calls).ThenBy(x => x.Id).Skip(1))
+            {
+                var saved = Math.Round(Math.Min(
+                    callback.Cpu * 0.05,
+                    callback.Calls * 0.002), 6); // 2 microseconds per avoided dispatch
+                var entry = new RuleEstimate("GENERIC",
+                    "FRAME_DISPATCH_CONSOLIDATION", group.Owner, callback.Id,
+                    callback.Cpu, saved, callback.Cpu > 0 ? saved / callback.Cpu : 0,
+                    "APPLIED_EXTRA_REGISTRATION_DISPATCH_ONLY_NOT_CALLBACK_BODY");
+                var registrationKey = (group.Owner, callback.Id);
+                if (!genericByRegistration.TryGetValue(registrationKey, out var oldEntry) ||
+                    entry.EstimatedSavingMsPerSecond > oldEntry.EstimatedSavingMsPerSecond)
+                    genericByRegistration[registrationKey] = entry;
+            }
+        }
+        estimates.AddRange(genericByRegistration.Values);
+
+        var owners = estimates.Select(x => x.Owner).Distinct(
+            StringComparer.OrdinalIgnoreCase).ToArray();
+        double semanticTotal = 0, genericTotal = 0;
+        foreach (var owner in owners)
+        {
+            var genericSaved = genericByRegistration.Values
+                .Where(x => x.Owner.Equals(owner, StringComparison.OrdinalIgnoreCase))
+                .Sum(x => x.EstimatedSavingMsPerSecond);
+            var semanticSaved = semanticByOwner.GetValueOrDefault(owner);
+            // Approximate measured owner ceiling from distinct registrations.
+            // A semantic matched callback may not be among the topConsumer
+            // rows, so its own captured cost is an admissible lower bound.
+            var measuredOwner = Math.Max(
+                measured.Where(x => x.Key.Owner.Equals(
+                    owner, StringComparison.OrdinalIgnoreCase))
+                    .Sum(x => x.Value.Cpu),
+                semanticMeasuredByOwner.GetValueOrDefault(owner));
+            var credited = Math.Min(measuredOwner, Math.Max(
+                semanticSaved, genericSaved)); // overlap is not additive
+            if (semanticSaved >= genericSaved)
+                semanticTotal += credited;
+            else
+                genericTotal += credited;
+        }
+
+        // A modest additional upper bound prevents overclaiming when
+        // callback samples overlap at the owner, family, or native envelope.
+        var savedTotal = Math.Round(Math.Min(original.Value * 0.35,
+            semanticTotal + genericTotal), 6);
+        var originalCredited = Math.Round(
+            Math.Min(original.Value, estimates
+                .Where(x => x.EstimatedSavingMsPerSecond > 0)
+                .GroupBy(x => x.Owner, StringComparer.OrdinalIgnoreCase)
+                .Sum(group => group.Max(x => x.MeasuredCallbackMsPerSecond))), 6);
+        var projected = Math.Round(Math.Max(0, original.Value - savedTotal), 6);
+        var startingReference = Math.Round(savedTotal * 0.08, 6);
         var usableFrame = baseline is > 0 && tolerance > baseline && reserve >= 0
             ? Math.Max(0, tolerance.Value - baseline.Value - reserve.Value) : 0;
         var risk = tolerance is > 0
             ? Math.Clamp(usableFrame / Math.Max(1, tolerance.Value * 0.12), 0, 1)
             : 0;
-        var hasCreditableWork = saved > 0 && risk > 0;
-        var basis = hasCreditableWork ? startingReference!.Value * risk : 0.0;
-        var defaultIntensity = hasCreditableWork
+        var usable = savedTotal > 0 && risk > 0;
+        var basis = usable ? startingReference * risk : 0;
+        var intensity = usable
             ? (int)Math.Clamp(Math.Round(12 + 4 * basis), 1, 80) : 0;
-        var defaultFrequency = hasCreditableWork
+        var frequency = usable
             ? (int)(50 * Math.Round(
                 Math.Clamp(1700 - 100 * basis, 300, 3000) / 50)) : 5000;
-        var status = original is null
-            ? "NO_MEASURED_EXCLUSIVE_CET_WORK"
-            : coveredByOwner.Count == 0
-                ? "NO_NEW_APPLIED_MEASURED_SEMANTIC_WORK_DEFAULT_OFF"
-                : !hasCreditableWork
-                    ? "NO_SAFE_STARTING_FRAME_MARGIN_DEFAULT_OFF"
-                    : "HEURISTIC_GENERATION_PROVEN_COVERED_WORK_DEFAULTS_ONLY";
-        return new(original, Math.Round(covered, 6), saved,
-            projected, startingReference, creditedRules.Count,
-            coveredByOwner.Count, defaultIntensity, defaultFrequency, status);
+        var status = !usable
+            ? savedTotal <= 0
+                ? "NO_CREDITABLE_NEW_MEASURED_OPTIMIZATION_DEFAULT_OFF"
+                : "NO_SAFE_INITIAL_FRAME_MARGIN_DEFAULT_OFF"
+            : "CONSERVATIVE_ACTUALLY_GENERATED_RULE_HEURISTICS_DEFAULTS_ONLY";
+        return new(original, originalCredited, savedTotal, projected,
+            startingReference, Math.Round(semanticTotal, 6),
+            Math.Round(genericTotal, 6), appliedRules.Count,
+            genericByRegistration.Count, owners.Length, intensity, frequency,
+            status, estimates.OrderBy(x => x.Owner, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(x => x.Stage).ThenBy(x => x.Rule).ToArray());
     }
 
 }
