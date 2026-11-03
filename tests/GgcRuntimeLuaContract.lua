@@ -7,14 +7,16 @@ local simulatedCpu, selectedIntensity, selectedFrequency = 0, 37, 1250
 local priorStart, priorHigh, priorReference = 794.70336, 932.91264, 863.808
 
 package.preload["threshold"] = function() return {
-  schema = 2, capture = "CET-20261023-035144_TEST_RESOLVER_STOCK_STACK",
+  schema = 3, capture = "CET-20261023-035144_TEST_RESOLVER_STOCK_STACK",
   baselineFrameMs = 22.4354, hitchToleranceMs = 33.6531,
   frameReserveMs = 6.73062,
   estimatedOriginalCetMsPerSecond = 120,
-  estimatedOptimizedCetMsPerSecond = 60,
-  estimatedFreedCetMsPerSecond = 60,
+  estimatedCoveredCetMsPerSecond = 100,
+  estimatedOptimizedCetMsPerSecond = 93.36,
+  estimatedFreedCetMsPerSecond = 26.64,
   estimatedGgcStartingCpuMsPerSecond = 0.00001,
-  assumedOptimizedFraction = 0.5,
+  estimatedSemanticSavingMsPerSecond = 24,
+  estimatedGenericSavingMsPerSecond = 2.64,
   pressureReferenceMiB = priorReference, pressureStartMiB = priorStart,
   pressureHighMiB = priorHigh,
   defaultIntensity = 37, defaultFrequencyMs = 1250
