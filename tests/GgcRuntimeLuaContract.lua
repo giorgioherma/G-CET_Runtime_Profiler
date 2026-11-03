@@ -4,13 +4,14 @@ local runtime = assert(arg[1], "generated G-GC Lua runtime required")
 local hooks, marks, rendered = {}, {}, {}
 local kib, active, steps, fulls = 583 * 1024, true, {}, 0
 local simulatedCpu, selectedIntensity, selectedFrequency = 0, 37, 1250
+local priorStart, priorHigh, priorReference = 794.70336, 932.91264, 863.808
 
 package.preload["threshold"] = function() return {
   schema = 1, capture = "CET-20261023-035144_TEST_RESOLVER_STOCK_STACK",
   baselineFrameMs = 22.4354, hitchToleranceMs = 33.6531,
   frameReserveMs = 6.73062, maxAssistCpuMsPerSecond = 1.346124,
-  pressureReferenceMiB = 863.808, pressureStartMiB = 794.70336,
-  pressureHighMiB = 932.91264,
+  pressureReferenceMiB = priorReference, pressureStartMiB = priorStart,
+  pressureHighMiB = priorHigh,
   defaultIntensity = 37, defaultFrequencyMs = 1250
 } end
 
@@ -140,5 +141,27 @@ active = false
 advance(250)
 assert(#steps == beforeHeavy, "assistance ran without valid world")
 assert(fulls == 0, "helper forced full GC")
+-- Same live heap and same frame-cost allowance MUST produce the same
+-- incremental work, even when capture-derived NATURAL collection estimates
+-- are wildly different. That estimate is information, not operating policy.
+local function withPrior(startMiB, highMiB, referenceMiB)
+  priorStart, priorHigh, priorReference = startMiB, highMiB, referenceMiB
+  package.loaded["threshold"] = nil
+  hooks, marks, steps = {}, {}, {}
+  simulatedCpu, selectedIntensity, selectedFrequency = 0, 37, 1250
+  active, kib = true, 583 * 1024
+  assert(loadfile(runtime))()
+  advance(160)
+  local quiet = steps[#steps]
+  assert(quiet, "constant assistance unexpectedly requires natural trigger")
+  kib = 675 * 1024
+  advance(160)
+  local rising = steps[#steps]
+  return quiet, rising
+end
+local aQuiet, aRising = withPrior(794, 932, 864)
+local bQuiet, bRising = withPrior(275, 360, 315)
+assert(aQuiet == bQuiet and aRising == bRising,
+  "approximate natural GC region changed step sizing at equal live heap")
 os = actualOs
 print("G-GC continuous baseline, live scaling, sliders, GC prediction context, safety PASS")
