@@ -297,14 +297,14 @@ return {
     // generated above from measured frametime tolerance.
     internal const string Runtime = """
 -- GGC_RUNTIME_V1_RESOLVER_OWNED
--- G-GC source-owned controller: Resolver captures define allowed cost.
+-- G-GC source-owned controller: capture evidence estimates post-optimized
+-- CET work, and only selects STARTING slider values. Player owns tuning.
 -- Continuous small assistance scales with live heap pressure and growth.
 -- The approximate LuaJIT collection region is timing context, NOT an on/off
 -- threshold. No scheduled full GC.
 local config = require("threshold")
-if type(config) ~= "table" or config.schema ~= 1
-    or type(config.hitchToleranceMs) ~= "number"
-    or type(config.maxAssistCpuMsPerSecond) ~= "number" then
+if type(config) ~= "table" or config.schema ~= 2
+    or type(config.hitchToleranceMs) ~= "number" then
   print("[G-GC] Invalid Resolver calibration; assistance disabled.")
   return
 end
@@ -314,7 +314,7 @@ local frequencyMs = math.max(250, math.min(5000, config.defaultFrequencyMs or 10
 local overlayOpen = false
 local age, sinceStep, windowAge, windowUsedMs = 0, 0, 0, 0
 local heapMiB, previousHeap, growthMiBps, heapFloorMiB = 0, nil, 0, nil
-local frameEmaMs, backoffSeconds = config.baselineFrameMs, 0
+local backoffSeconds = 0
 local lastStepCpuMs, maximumStepCpuMs, totalStepCpuMs = 0, 0, 0
 local stepCount, completedCycles, rejectedSteps = 0, 0, 0
 local settingsDirty, firstMark, heartbeatAge = true, true, 0
@@ -324,9 +324,8 @@ local blockNames = {
   "waiting for live heap sample", "assist disabled by user",
   "world/player unavailable", "frame backoff",
   "minimum step interval", "maintenance assistance",
-  "rising heap assistance", "no spare frametime",
-  "CPU assistance allowance exhausted", "assistance executed",
-  "natural GC episode observed"
+  "rising heap assistance", "high live demand",
+  "temporary step-cost backoff"
 }
 
 -- A captured slow-step heap is NOT necessarily a GC start threshold. It is
@@ -351,7 +350,7 @@ end
 local function markSettings()
   if type(CETProfilerMark) == "function" then
     pcall(CETProfilerMark,
-      "GGC_V3_I" .. intensity .. "_F" .. frequencyMs ..
+      "GGC_V4_I" .. intensity .. "_F" .. frequencyMs ..
       "_S" .. stepCount .. "_L" .. learnedEpisodes)
   end
 end
@@ -423,9 +422,10 @@ local function tick(dt)
     lastBlock = 4
     return
   end
+  -- CET already gives us delta time for scheduling. This single severe
+  -- frame guard is NOT a game-thread CPU utilisation measurement.
   local frame = dt * 1000
-  frameEmaMs = frameEmaMs * 0.90 + frame * 0.10
-  if frame >= config.hitchToleranceMs * 0.85 then
+  if frame >= config.hitchToleranceMs then
     backoffSeconds = math.max(backoffSeconds, 2)
   end
   if backoffSeconds > 0 then backoffSeconds = math.max(0, backoffSeconds - dt) end
@@ -454,8 +454,8 @@ local function tick(dt)
   if backoffSeconds > 0 then lastBlock = 4; return end
   if sinceStep * 1000 < frequencyMs then lastBlock = 5; return end
 
-  -- Always offer a small incremental step at the permitted cadence while
-  -- the player is in-world and the measured frame/CPU budget allows it.
+  -- Always offer a small incremental step at the player-selected cadence
+  -- while the player is in-world. The captured estimate is DEFAULTS ONLY.
   -- Live accumulation since a heap trough and net growth scale step SIZE.
   -- The approximate LuaJIT collection region is display/prediction ONLY.
   local predictedRegion = 0
@@ -473,23 +473,11 @@ local function tick(dt)
   local demand = math.max(riseSignal * 0.85, slopeSignal * 0.75)
   lastPressure, lastDemand = predictedRegion, demand
 
-  -- Capture-derived cost allowance is a hard permission gate, not a demand
-  -- signal. Leave most of the measured margin for sudden heavy gameplay.
-  local available = config.hitchToleranceMs - config.frameReserveMs - frameEmaMs
-  if available <= 0 then lastBlock = 8; return end
-  if windowUsedMs >= config.maxAssistCpuMsPerSecond then
-    lastBlock = 9
-    return
-  end
-
-  local nominalHeadroom = config.hitchToleranceMs -
-    config.frameReserveMs - config.baselineFrameMs
-  local headroomFactor = math.min(1, available / math.max(0.5, nominalHeadroom))
-  -- Ten percent of permitted intensity is the small continuous baseline;
-  -- the rest scales with actual heap accumulation and net growth, not
-  -- any guessed natural-collection threshold.
-  -- Even a stale October heap prior cannot suppress all useful work.
-  local effort = (intensity / 100) * headroomFactor * (0.10 + 0.90 * demand)
+  -- The Resolver's 50% expected optimization and 8% saved-work allocation
+  -- shape the INITIAL sliders only. There is deliberately no fixed budget
+  -- throttle from the original pre-optimization capture. CET users may tune.
+  -- Ten percent of manually selected intensity is continuous baseline.
+  local effort = (intensity / 100) * (0.10 + 0.90 * demand)
   local stepKb = math.max(1, math.min(128, math.floor(1 + effort * 127)))
   sinceStep, lastAssistAge, lastStepKb = 0, 0, stepKb
   -- The step argument is incremental GC work, NOT milliseconds. os.clock is
@@ -509,11 +497,14 @@ local function tick(dt)
     lastBlock = 4
     return
   end
-  lastBlock = demand <= 0.05 and 6 or (demand < 0.50 and 7 or 10)
+  lastBlock = demand <= 0.05 and 6 or (demand < 0.50 and 7 or 8)
   stepCount = stepCount + 1
   if cycle == true then completedCycles = completedCycles + 1 end
-  if cpuMs > math.min(available * 0.20, config.maxAssistCpuMsPerSecond) then
+  -- Emergency-only self-protection after an unexpectedly expensive step.
+  -- This is NOT a continuous CPU probe or capture-derived throughput cap.
+  if cpuMs > math.max(4, config.hitchToleranceMs * 0.25) then
     backoffSeconds = 5
+    lastBlock = 9
   end
 end
 
@@ -548,8 +539,23 @@ registerForEvent("onDraw", function()
     else
       ImGui.Text("Natural GC region: NOT OBSERVED (maintenance still active)")
     end
-    ImGui.Text(string.format("Frame baseline %.1f / hitch %.1f / reserved %.1f ms",
-      config.baselineFrameMs, config.hitchToleranceMs, config.frameReserveMs))
+    ImGui.Text(string.format("Original frame %.1f / hitch %.1f ms (reference only)",
+      config.baselineFrameMs, config.hitchToleranceMs))
+    ImGui.Text("Resolver default assumes 50% less CET callback work")
+    if config.estimatedOriginalCetMsPerSecond then
+      ImGui.Text(string.format(
+        "CET measured %.1f -> est. optimized %.1f ms/s | estimated saving %.1f ms/s",
+        config.estimatedOriginalCetMsPerSecond,
+        config.estimatedOptimizedCetMsPerSecond,
+        config.estimatedFreedCetMsPerSecond))
+      ImGui.Text(string.format(
+        "Starting allowance estimate %.2f ms/s (8%% of saving; not enforced)",
+        config.estimatedGgcStartingCpuMsPerSecond))
+    else
+      ImGui.Text("CET workload not measured: initial assistance OFF")
+    end
+    ImGui.Text(string.format("Resolver DEFAULT: intensity %d%% / interval %d ms",
+      config.defaultIntensity, config.defaultFrequencyMs))
     local newIntensity = ImGui.SliderInt("Intensity (%)", intensity, 0, 100)
     local newFrequency = ImGui.SliderInt("Frequency (ms)", frequencyMs, 250, 5000)
     if type(newIntensity) == "number" and newIntensity ~= intensity then
@@ -568,10 +574,10 @@ registerForEvent("onDraw", function()
       stepCount, lastStepKb, completedCycles, rejectedSteps))
     ImGui.Text(string.format("CPU cost: last %.3f, max %.3f, total %.2f ms (provisional)",
       lastStepCpuMs, maximumStepCpuMs, totalStepCpuMs))
-    ImGui.Text(string.format("Current second used %.3f / permitted %.3f CPU ms",
-      windowUsedMs, config.maxAssistCpuMsPerSecond))
-    ImGui.Text("0%=off; >0%=regular assistance. Heap pressure scales step size.")
-    ImGui.Text("100%=max captured allowance, not forced full GC.")
+    ImGui.Text(string.format("Observed step CPU this second %.3f ms (diagnostic)",
+      windowUsedMs))
+    ImGui.Text("0%=off. All >0 settings are user-controlled (no capture cap).")
+    ImGui.Text("Only invalid world, severe frames, or costly steps cause backoff.")
   end
   ImGui.End()
 end)
