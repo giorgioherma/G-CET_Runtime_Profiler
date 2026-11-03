@@ -142,7 +142,13 @@ end)
   if((Get-FileHash $gPath -Algorithm SHA256).Hash -ne $gHash -or (Get-FileHash $sPath -Algorithm SHA256).Hash -ne $sHash){throw 'Modified live source'}
   $g|Set-Content $gPath -Encoding utf8
   $s|Set-Content $sPath -Encoding utf8
-  $r2=(& $exe --capture $capture --mods $mods --generate-pass --json|ConvertFrom-Json)
+  # The Resolver writes error-mode JSON to stderr. Capture that stream
+  # explicitly: a no-op generation is expected ONLY when source proof says
+  # every stage is complete; do not mistake an empty stdout for such proof.
+  $rerunJson=(& $exe --capture $capture --mods $mods --generate-pass --json 2>&1 | Out-String).Trim()
+  if([string]::IsNullOrWhiteSpace($rerunJson)){throw "Empty Resolver rerun output $version"}
+  try {$r2=$rerunJson|ConvertFrom-Json -ErrorAction Stop}
+  catch {throw "Non-JSON Resolver rerun output $version : $rerunJson"}
   if(!$r2.ok) {
     if([string]$r2.error -notmatch 'no applicable generic or source-proven semantic transforms'){
       throw "Unexpected Resolver rerun failure $version : $([string]$r2.error)"
