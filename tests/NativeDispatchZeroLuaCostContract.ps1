@@ -174,8 +174,18 @@ foreach ($name in @('NativeZeroFrame','NativeZeroDraw','NativeZeroGuard','Native
                      'NativeAlreadyRouted','NativeWrapped')) {
     if ($null -eq (Consumer $name)) { throw "Measured native callback was discarded: $name" }
 }
-foreach ($name in @('NativeSilent','NativeOther')) {
-    if ($null -ne (Consumer $name)) { throw "Non-eligible zero-cost callback was admitted: $name" }
+# A silent installed bare frame is not measured workload, but its current
+# source independently authorizes first-pass generic frame consolidation.
+$silentSourceFirst = @($consumers | Where-Object {
+    $_.owner -eq 'NativeSilent' -and $_.sourceFirst -and
+    $_.generic.Automatable -and
+    @($_.generic.RecipeFamilies) -contains 'FRAME_DISPATCH_CONSOLIDATION'
+})
+if ($silentSourceFirst.Count -ne 1) {
+    throw 'Silent installed bare frame lacked exactly one source-first admission.'
+}
+if ($null -ne (Consumer 'NativeOther')) {
+    throw 'Unsupported unrelated native callback was generically admitted.'
 }
 foreach ($name in @('NativeZeroFrame','NativeZeroDraw','NativeZeroGuard')) {
     $row = Consumer $name
@@ -204,14 +214,14 @@ Write-Host ("NativeZeroAction fixture line count: " + @(Get-Content -LiteralPath
 $manifest = Get-Content -LiteralPath $run.pass.ManifestPath -Raw |
     ConvertFrom-Json
 $transforms = @($manifest.transforms)
-foreach ($name in @('NativeZeroFrame','NativeZeroDraw','NativeZeroGuard','NativeZeroAction')) {
+foreach ($name in @('NativeZeroFrame','NativeZeroDraw','NativeZeroGuard','NativeZeroAction','NativeSilent')) {
     if (@($transforms | Where-Object { $_.owner -eq $name }).Count -eq 0) {
         $skipRows = @($manifest.skipped | Where-Object { $_.owner -eq $name })
         $skipDetails = ($skipRows | ConvertTo-Json -Depth 12 -Compress)
         throw "Expected native consolidation did not produce an overlay: $name; skips=$skipDetails"
     }
 }
-foreach ($name in @('NativeSilent','NativeOther','NativeWrapped','NativeAlreadyRouted')) {
+foreach ($name in @('NativeOther','NativeWrapped','NativeAlreadyRouted')) {
     if (@($transforms | Where-Object { $_.owner -eq $name }).Count -ne 0) {
         throw "Unexpected native dispatch rewrite: $name"
     }
@@ -233,6 +243,14 @@ try {
     if ((Zip-Text 'NativeZeroDraw') -notmatch 'MakeEventRegistrar') {
         throw 'Dormant onDraw still uses an independent CET draw registration.'
     }
+    $silentGenerated=Zip-Text 'NativeSilent'
+    if ($silentGenerated -notmatch 'MakeEventRegistrar' -or
+        @($transforms | Where-Object {
+            $_.owner -eq 'NativeSilent' -and
+            $_.type -eq 'FRAME_DISPATCH_CONSOLIDATION'
+        }).Count -ne 1) {
+        throw 'Silent source-first frame did not receive exactly one first-pass owner registrar.'
+    }
     $guardText=Zip-Text 'NativeZeroGuard'
     # The source-first READ_REUSE lane may substitute the exact getter while
     # leaving this zero-cost callback's original guard position unchanged.
@@ -253,7 +271,7 @@ try {
         $routed -notmatch 'if not __gcetRouted_\d+ then Observe\("PlayerPuppet", "OnAction"') {
         throw 'OnAction shared native route or fail-safe original observer is missing.'
     }
-    foreach ($name in @('NativeSilent','NativeOther','NativeWrapped','NativeAlreadyRouted')) {
+    foreach ($name in @('NativeOther','NativeWrapped','NativeAlreadyRouted')) {
         if ($zip.GetEntry($prefix+$name+'/init.lua')) {
             throw "Unexpected ZIP overlay for $name"
         }
