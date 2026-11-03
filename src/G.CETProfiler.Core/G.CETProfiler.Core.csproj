@@ -5,6 +5,9 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="Services/Reference/GgcGeneratedRuntimeV1.reference.lua">
+      <LogicalName>GCETRuntimeProfiler.GgcGeneratedRuntimeV1.reference.lua</LogicalName>
+    </EmbeddedResource>
     <EmbeddedResource Include="..\..\assets\g-cet-icon.png">
       <LogicalName>GCETRuntimeProfiler.GCetIcon.png</LogicalName>
     </EmbeddedResource>
