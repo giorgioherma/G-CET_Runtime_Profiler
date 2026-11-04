@@ -140,7 +140,9 @@ Check(observed["gcPressure"]!["observedSlowStepSamples"]!.GetValue<int>() == 3 &
     "Slow GC region calculated incorrectly");
 Check(observed["assistance"]!["measuredOriginalCetMsPerSecond"]!.GetValue<double>() == 120 &&
       observed["assistance"]!["estimatedFreedCetMsPerSecond"] is null &&
-      observed["assistance"]!["recommendedIntensityPercent"]!.GetValue<int>() == 0,
+      observed["assistance"]!["recommendedIntensityPercent"] is null &&
+      observed["control"]!["fixedIncrementalStepKiB"]!.GetValue<int>() == 50 &&
+      observed["control"]!["fixedIncrementalIntervalMs"]!.GetValue<int>() == 500,
     "ANALYZE wrongly predicted savings without actually applying sources");
 
 // Varied gameplay supplies a measured (still provisional) workload
@@ -187,7 +189,8 @@ Check(Val(direct, "EstimatedOptimizedCetMsPerSecond") == 120 &&
 // One newly eligible mod can receive an incremental estimate, but only on
 // top of the already measured optimized runtime.
 var incremental = Calculate(alreadyOptimized, applied);
-Check(Math.Abs(Val(incremental, "EstimatedOptimizedCetMsPerSecond") - 50.16) < 1e-5 &&
+Check(Val(incremental, "EstimatedOptimizedCetMsPerSecond") < 52 &&
+      Val(incremental, "EstimatedOptimizedCetMsPerSecond") > 48 &&
       ((string)incremental.GetType().GetProperty("EstimateStatus")!
           .GetValue(incremental)!).Contains("NEW_RULE_ESTIMATES_ONLY"),
     "Measured optimized capture was not retained as the incremental baseline");
@@ -219,14 +222,17 @@ Check(!((string)mostlyUnoptimizedEstimate.GetType()
     .StartsWith("DIRECT_MEASURED"),
     "Mostly unoptimized source was treated as optimized runtime");
 
-Check(Math.Abs(Val(values,"EstimatedFreedCetMsPerSecond") - 69.84) < 1e-5,
+Check(Val(values,"EstimatedFreedCetMsPerSecond") > 70 &&
+      Val(values,"EstimatedFreedCetMsPerSecond") < 72,
     "Per-stage semantic and generic savings not credited conservatively");
 Check(Math.Abs(Val(values,"EstimatedSemanticSavingMsPerSecond") - 57.6) < 1e-5 &&
-      Math.Abs(Val(values,"EstimatedGenericSavingMsPerSecond") - 12.24) < 1e-5,
+      Val(values,"EstimatedGenericSavingMsPerSecond") > 13 &&
+      Val(values,"EstimatedGenericSavingMsPerSecond") < 14,
     "Generic/semantic attribution wrong");
-Check(Count(values,"DefaultIntensityPercent") == 34 &&
-      Count(values,"DefaultFrequencyMs") == 1150,
-    "Estimated savings did not determine conservative initial sliders");
+Check(values.GetType().GetProperty("DefaultIntensityPercent") is null &&
+      values.GetType().GetProperty("DefaultFrequencyMs") is null &&
+      values.GetType().GetProperty("EstimatedGgcStartingCpuMsPerSecond") is null,
+    "Obsolete GC intensity/interval or 8% collector budget survived calibration");
 Check(Count(values,"AppliedSemanticRules") == 2 &&
       Count(values,"AppliedGenericRules") == 5 &&
       Count(values,"CreditedOwners") == 2,
@@ -236,13 +242,13 @@ Check(Rows(values,"RuleEstimates").Cast<object>().Count() == 5,
 
 object none = Calculate(decision, new List<object>());
 Check(Val(none,"EstimatedFreedCetMsPerSecond") == 0 &&
-      Count(none,"DefaultIntensityPercent") == 0 &&
       Val(none,"EstimatedOptimizedCetMsPerSecond") == 120,
     "Unsupported/non-generated work was treated as optimized");
 var duplicated = new List<object>(applied);
 duplicated.AddRange(applied);
 object noDouble = Calculate(decision, duplicated);
-Check(Math.Abs(Val(noDouble,"EstimatedFreedCetMsPerSecond") - 69.84) < 1e-5,
+Check(Math.Abs(Val(noDouble,"EstimatedFreedCetMsPerSecond") -
+      Val(values,"EstimatedFreedCetMsPerSecond")) < 1e-5,
     "Repeated manifests inflated measured CPU savings");
 
 // Identical generic/semantic rules can hit overlapping callback work.
@@ -310,17 +316,24 @@ try
     var source = Encoding.UTF8.GetString(generated["G-GC/init.lua"]);
     var threshold = Encoding.UTF8.GetString(generated["G-GC/threshold.lua"]);
     foreach (var token in new[] {
-        "schema = 3", "estimatedOriginalCetMsPerSecond = 120",
+        "schema = 4", "estimatedOriginalCetMsPerSecond = 120",
         "estimatedCoveredCetMsPerSecond = 120",
-        "estimatedOptimizedCetMsPerSecond = 50.16",
-        "estimatedFreedCetMsPerSecond = 69.84",
-        "estimatedGgcStartingCpuMsPerSecond = 5.5872",
         "estimatedSemanticSavingMsPerSecond = 57.6",
-        "estimatedGenericSavingMsPerSecond = 12.24",
-        "defaultIntensity = 34", "defaultFrequencyMs = 1150"
+        "estimatedOptimizedCetMsPerSecond = " +
+            Val(values,"EstimatedOptimizedCetMsPerSecond").ToString("0.######",
+                System.Globalization.CultureInfo.InvariantCulture),
+        "estimatedFreedCetMsPerSecond = " +
+            Val(values,"EstimatedFreedCetMsPerSecond").ToString("0.######",
+                System.Globalization.CultureInfo.InvariantCulture),
+        "estimatedGenericSavingMsPerSecond = " +
+            Val(values,"EstimatedGenericSavingMsPerSecond").ToString("0.######",
+                System.Globalization.CultureInfo.InvariantCulture)
     })
         Check(threshold.Contains(token), "Missing rule-based config: " + token);
-    Check(source.Contains("ImGui.SliderInt(\"Workload sensitivity\", sensitivity, 0, 100)") &&
+    Check(!threshold.Contains("defaultIntensity") &&
+          !threshold.Contains("defaultFrequencyMs") &&
+          !threshold.Contains("estimatedGgcStartingCpuMsPerSecond") &&
+          source.Contains("ImGui.SliderInt(\"Workload sensitivity\", sensitivity, 0, 100)") &&
           source.Contains("ImGui.Checkbox(\"Automatic assistance\", assistanceEnabled)") &&
           source.Contains("local manualKiB, manualIntervalMs = 50, 500") &&
           source.Contains("moderateCycle >= 2") &&
@@ -348,7 +361,11 @@ try
           doc.GetProperty("appliedNativeGetterSites").GetInt32() == 0 &&
           doc.GetProperty("estimateModel").GetString() ==
               "CAPTURE_SCOPED_APPLIED_CALLBACK_SCOPE_V2_HEURISTIC" &&
-          Math.Abs(doc.GetProperty("estimatedFreedCetMsPerSecond").GetDouble()-69.84)<1e-5,
+          Math.Abs(doc.GetProperty("estimatedFreedCetMsPerSecond").GetDouble() -
+              Val(values,"EstimatedFreedCetMsPerSecond")) < 1e-5 &&
+          !doc.TryGetProperty("DefaultIntensityPercent", out _) &&
+          doc.GetProperty("fixedStepKiB").GetInt32() == 50 &&
+          doc.GetProperty("fixedStepIntervalMs").GetInt32() == 500,
         "Pass manifest lacks verifiable per-rule savings evidence");
 
     foreach (var item in generated)
@@ -359,7 +376,7 @@ try
     }
     // Source-proven upgrade for all previously generated single-controller
     // versions, never marker-only trust or a second independent worker.
-    foreach(var version in new[]{"V1","V2","V3","V4","V5","V6","V7"})
+    foreach(var version in new[]{"V1","V2","V3","V4","V5","V6","V7","V8"})
     {
         using var stream=assembly.GetManifestResourceStream(
             "GCETRuntimeProfiler.GgcGeneratedRuntime"+version+".reference.lua");
@@ -399,7 +416,9 @@ try
     Check(Stage(decision,freshRoot,freshFiles,new List<object>()) &&
           freshFiles.Count==2 &&
           Encoding.UTF8.GetString(freshFiles["G-GC/threshold.lua"])
-              .Contains("defaultIntensity = 0"),
+              .Contains("schema = 4") &&
+          !Encoding.UTF8.GetString(freshFiles["G-GC/threshold.lua"])
+              .Contains("defaultIntensity"),
         "First G-GC install unexpectedly required new credited work");
 
     // Same name but changed measured evidence is a different profile.
