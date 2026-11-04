@@ -345,8 +345,21 @@ internal static class GgcCaptureCalibrationService
         // Distinct measured callback costs on one owner can be additive.
         var uniqueSemanticCallbacks = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var semanticMeasuredByOwner = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
-        // A registration can undergo multiple generic stages. Credit only
-        // the single largest hypothesized saving for that registration.
+        // Different applied generic kinds can improve the same measured
+        // callback. Deduplicate by kind, compose their *remaining* work.
+        var genericStages = new Dictionary<(string Owner, long Id),
+            Dictionary<string, RuleEstimate>>();
+        void AddGeneric(RuleEstimate row)
+        {
+            if (row.RegistrationId is not > 0 || row.EstimatedSavingMsPerSecond <= 0)
+                return;
+            var key = (row.Owner.ToLowerInvariant(), row.RegistrationId.Value);
+            if (!genericStages.TryGetValue(key, out var kinds))
+                genericStages[key] = kinds = new(StringComparer.OrdinalIgnoreCase);
+            if (!kinds.TryGetValue(row.Rule, out var old) ||
+                row.EstimatedSavingMsPerSecond > old.EstimatedSavingMsPerSecond)
+                kinds[row.Rule] = row;
+        }
         var genericByRegistration = new Dictionary<(string Owner, long Id), RuleEstimate>();
         var frameRegistrations = new Dictionary<(string Owner, string Event),
             List<(long Id, double Cpu, double Calls)>>();
@@ -446,10 +459,7 @@ internal static class GgcCaptureCalibrationService
             var entry = new RuleEstimate("GENERIC", kind, owner, registration,
                 callback.Cpu, actualSaving, fractionGeneric,
                 "ACTUALLY_APPLIED_CAPTURE_MATCHED_REGISTRATION_HEURISTIC");
-            var registrationKey = (owner.ToLowerInvariant(), registration.Value);
-            if (!genericByRegistration.TryGetValue(registrationKey, out var oldEntry) ||
-                entry.EstimatedSavingMsPerSecond > oldEntry.EstimatedSavingMsPerSecond)
-                genericByRegistration[registrationKey] = entry;
+            AddGeneric(entry);
         }
 
         // Frame registration savings are dispatch overhead, NOT eliminated
@@ -468,10 +478,7 @@ internal static class GgcCaptureCalibrationService
                     "FRAME_DISPATCH_CONSOLIDATION", group.Owner, callback.Id,
                     callback.Cpu, saved, callback.Cpu > 0 ? saved / callback.Cpu : 0,
                     "APPLIED_EXTRA_REGISTRATION_DISPATCH_ONLY_NOT_CALLBACK_BODY");
-                var registrationKey = (group.Owner, callback.Id);
-                if (!genericByRegistration.TryGetValue(registrationKey, out var oldEntry) ||
-                    entry.EstimatedSavingMsPerSecond > oldEntry.EstimatedSavingMsPerSecond)
-                    genericByRegistration[registrationKey] = entry;
+                AddGeneric(entry);
             }
         }
         // Count rewrites against *measured* callback-source files only.
@@ -488,9 +495,27 @@ internal static class GgcCaptureCalibrationService
                 key.Owner, key.Id, callback.Cpu,
                 Math.Round(callback.Cpu * fraction, 6), fraction,
                 "APPLIED_GETTER_SITES_IN_MEASURED_CALLBACK_SOURCE_FILE; ESTIMATED_NOT_MEASURED");
-            if (!genericByRegistration.TryGetValue(key, out var previous) ||
-                estimate.EstimatedSavingMsPerSecond > previous.EstimatedSavingMsPerSecond)
-                genericByRegistration[key] = estimate;
+            AddGeneric(estimate);
+        }
+        foreach (var (key, kinds) in genericStages)
+        {
+            if (!measured.TryGetValue(key, out var callback) || callback.Cpu <= 0)
+                continue;
+            var remaining = 1.0;
+            var names = new List<string>();
+            foreach (var rule in kinds.Values.OrderBy(x => x.Rule,
+                         StringComparer.OrdinalIgnoreCase))
+            {
+                var fraction = Math.Clamp(
+                    rule.EstimatedSavingMsPerSecond / callback.Cpu, 0, 0.70);
+                remaining *= 1.0 - fraction;
+                names.Add(rule.Rule);
+            }
+            var combined = Math.Min(0.75, 1.0 - remaining);
+            genericByRegistration[key] = new RuleEstimate("GENERIC",
+                string.Join("+", names), key.Owner, key.Id, callback.Cpu,
+                Math.Round(callback.Cpu * combined, 6), combined,
+                "DISTINCT_APPLIED_GENERIC_TYPES_RESIDUAL_CALLBACK_SCOPE_HEURISTIC");
         }
         estimates.AddRange(genericByRegistration.Values);
 
