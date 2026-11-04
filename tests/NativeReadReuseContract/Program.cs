@@ -579,7 +579,7 @@ try
     var missingRead=InspectProvider(partialRead);
     Check(missingRead.Length==1 &&
           (string)missingRead[0].GetType().GetProperty("Provider")!
-              .GetValue(missingRead[0])!=="MAPPIN_SYSTEM",
+              .GetValue(missingRead[0])! == "MAPPIN_SYSTEM",
         "ANALYZE failed to admit a genuinely missing getter in a partial mod");
     var spoofed=reviewedMap.Replace("return Game.GetMappinSystem()",
         "return Game.GetPlayer()",StringComparison.Ordinal)+
