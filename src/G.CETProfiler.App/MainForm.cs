@@ -812,12 +812,23 @@ public sealed class MainForm : Form
         }
     }
 
+    private static bool NeedsProfilerScheduler(ProfilerStatus snapshot) =>
+        snapshot.ZeroEnginePresent &&
+        snapshot.ManagedMode != "core-only" &&
+        snapshot.ManagedMode != "absent";
+
+    private static bool HasReadyProfilerScheduler(ProfilerStatus snapshot) =>
+        !NeedsProfilerScheduler(snapshot) ||
+        snapshot.SchedulerProfilerAware ||
+        snapshot.AdaptiveProfilerSchedulerPresent;
+
     private bool IsProfilerReady(ProfilerStatus? snapshot) =>
         snapshot is not null &&
         snapshot.Managed &&
         snapshot.CetState == "PROFILER_ACTIVE" &&
         snapshot.ControlsPresent &&
-        snapshot.CaptureTitlePresent;
+        snapshot.CaptureTitlePresent &&
+        HasReadyProfilerScheduler(snapshot);
 
     private static bool HasCriticalProfilerError(ProfilerStatus? snapshot) =>
         snapshot is null ||
@@ -825,7 +836,8 @@ public sealed class MainForm : Form
         (snapshot.Managed &&
          (snapshot.CetState != "PROFILER_ACTIVE" ||
           !snapshot.ControlsPresent ||
-          !snapshot.CaptureTitlePresent));
+          !snapshot.CaptureTitlePresent ||
+          !HasReadyProfilerScheduler(snapshot)));
 
     private void RenderReadyState(ProfilerStatus? snapshot)
     {
@@ -1070,6 +1082,8 @@ public sealed class MainForm : Form
                 problems.Add("- CETProfilerControls is missing.");
             if (!snapshot.CaptureTitlePresent)
                 problems.Add("- CaptureTitle.txt is missing.");
+            if (!HasReadyProfilerScheduler(snapshot))
+                problems.Add("- Required 0-Engine profiler scheduler is missing or not profiler-aware.");
 
             return
                 "INSTALL COMPLETED, BUT THE PROFILER IS NOT READY.\r\n\r\n" +
