@@ -1549,21 +1549,12 @@ if (!$structural.semantic.AlreadySatisfied -or
     throw "Equivalent manual semantic result was not recognized from source postconditions: $semanticDebug"
 }
 
-$absentSemantic = @($onUpdate.topConsumers | Where-Object { $_.owner -eq 'FixtureAbsentSemantic' }) | Select-Object -First 1
-if ($null -eq $absentSemantic) {
-    throw 'Absent semantic fixture was not ranked inside onUpdate.'
-}
-if (!$absentSemantic.semantic.Matched) {
-    throw 'Absent semantic fixture did not match the catalog identity/callback selector.'
-}
-if ($absentSemantic.semantic.SourceProofSatisfied) {
-    throw 'A semantic rule passed source proof even though its live mod folder does not exist.'
-}
-if ($absentSemantic.semantic.GenerationReady) {
-    throw 'An absent live mod was incorrectly marked semantic-generation ready.'
-}
-if ($absentSemantic.disposition -ne 'SEMANTIC_RULE_NEEDS_SOURCE_PROOF') {
-    throw "Absent semantic fixture received wrong disposition: $($absentSemantic.disposition)"
+# A capture row for an owner removed from the live CET tree must NOT
+# appear as an admitted generic/semantic candidate. Source proof is not a
+# substitute for installed ownership, even when the catalog matches.
+$absentSemantic = @($onUpdate.topConsumers | Where-Object { $_.owner -eq 'FixtureAbsentSemantic' })
+if ($absentSemantic.Count -ne 0) {
+    throw 'Historical absent mod was ranked despite missing live CET entrypoint.'
 }
 
 $discoveryAuthor = @($onUpdate.topConsumers | Where-Object { $_.owner -eq 'FixtureDiscoveryAuthorRate' }) | Select-Object -First 1
