@@ -9,7 +9,7 @@ internal static partial class SemanticInjectors
         const string marker="-- G-CET semantic:card-collection-native-worker-v1";
         if(file.Text.Contains(marker,StringComparison.Ordinal))
         {
-            if (!NativeLocationAdditionalOwnersSource.CardsBridgeComplete(file.Text))
+            if (!CardWorkerSourceComplete(file.Text))
                 throw new InvalidOperationException(
                     "Card Collection native source bridge is incomplete.");
             var worker=context.TryReadOwnedCoordinator("card_collection_native_worker.lua");
@@ -74,6 +74,26 @@ end
         return SemanticInjectionResult.Success(
             "Card Collection native source callbacks moved to separate 0-Engine worker; gameplay, pickup and spatial registration remain source-owned.");
     }
+    // The Card worker can already be complete on a source that has not yet
+    // received the separate native card spatial-set gate. Preserve that
+    // independent completed stage and allow the missing gate to compose.
+    private static bool CardWorkerSourceComplete(string input)
+    {
+        var source=input.Replace("\r\n","\n",StringComparison.Ordinal);
+        return source.Split("-- G-CET semantic:card-collection-native-worker-v1",
+                   StringSplitOptions.None).Length==2 &&
+            source.Contains("local function __gcetAttachCardNative()",StringComparison.Ordinal) &&
+            source.Contains("return require(\"GCET_Semantic/card_collection_native_worker\").attach(",
+                StringComparison.Ordinal) &&
+            source.Contains("(#buildSpatialEntries() > 0) and 100 or 0",
+                StringComparison.Ordinal) &&
+            source.Contains("__gcetCardNativeFar = far == true",StringComparison.Ordinal) &&
+            source.Contains("if __gcetCardNativeFar then",StringComparison.Ordinal) &&
+            source.Contains("unregisterSpatialSet()",StringComparison.Ordinal) &&
+            source.Contains("elseif engine.IsPlaying() then",StringComparison.Ordinal) &&
+            source.Contains("registerSpatialSet()",StringComparison.Ordinal);
+    }
+
     private static bool CardWorkerComplete(string worker, string rule)
     {
         var source=worker.Replace("\r\n","\n",StringComparison.Ordinal);
