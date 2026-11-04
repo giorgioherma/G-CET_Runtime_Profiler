@@ -258,36 +258,42 @@ internal static class GgcCaptureCalibrationService
             value.ValueKind == JsonValueKind.Number &&
             value.TryGetInt64(out var id) && id > 0 ? id : null;
 
+        // Estimated fractions are applied-stage heuristics on measured
+        // callback CPU, not claims of observed after-pass savings.
         static double SemanticFraction(string handler, string policy)
         {
-            var family = handler + " " + policy;
-            if (family.Contains("DORMAN", StringComparison.OrdinalIgnoreCase) ||
-                family.Contains("WAKE", StringComparison.OrdinalIgnoreCase))
-                return 0.30;
-            if (family.Contains("CADENCE", StringComparison.OrdinalIgnoreCase) ||
-                family.Contains("SCHEDUL", StringComparison.OrdinalIgnoreCase))
-                return 0.22;
-            if (family.Contains("FAST_PATH", StringComparison.OrdinalIgnoreCase) ||
-                family.Contains("POLL", StringComparison.OrdinalIgnoreCase) ||
-                family.Contains("GATE", StringComparison.OrdinalIgnoreCase))
-                return 0.18;
-            if (family.Contains("CACHE", StringComparison.OrdinalIgnoreCase) ||
-                family.Contains("NATIVE", StringComparison.OrdinalIgnoreCase) ||
-                family.Contains("READ", StringComparison.OrdinalIgnoreCase))
-                return 0.12;
-            return 0.10;
+            var name = (handler + " " + policy).ToUpperInvariant();
+            if (name.Contains("REALTIME") || name.Contains("MULTI_RATE") ||
+                name.Contains("DORMAN") || name.Contains("ACTIVE_IDLE") ||
+                name.Contains("ACTIVITY_GATE") || name.Contains("ACTIVE_STATE_GATE") ||
+                name.Contains("ACTIVE_FRAME_DORMANT") || name.Contains("SLEEP"))
+                return 0.72;
+            if (name.Contains("BRIDGE_SENTINEL") || name.Contains("ZONE_PLUS_NEARBY"))
+                return 0.65;
+            if (name.Contains("ACTION_ROUT"))
+                return 0.35;
+            if (name.Contains("PREFILTER") || name.Contains("SHORT_CIRCUIT") ||
+                name.Contains("PREREQUISITE") || name.Contains("GATE"))
+                return 0.50;
+            if (name.Contains("SWEEP") || name.Contains("ALLOC") ||
+                name.Contains("WORLD_PIN"))
+                return 0.46;
+            if (name.Contains("REUSE") || name.Contains("CACHE") ||
+                name.Contains("NATIVE") || name.Contains("READ"))
+                return 0.23;
+            return 0.30;
         }
 
         static double GenericFraction(string kind) => kind switch
         {
-            "UI_VISIBILITY_DORMANCY" => 0.20,
-            "SEQUENCE_FIRST_SCRIPTABLE_SYSTEM_POLL" => 0.16,
-            "HARD_DORMANT_GUARD_HOIST" => 0.14,
-            "INTERACTION_UI_IDLE_GUARD" => 0.12,
-            "CROSS_FILE_INTERACTION_UI_IDLE_CALL_GUARD" => 0.12,
-            "ACTION_OVERRIDE_EXACT_PREFILTER" => 0.10,
-            "SHARED_PROVIDER_READ" => 0.025,
-            _ when kind.StartsWith("ACTION_ROUTING", StringComparison.Ordinal) => 0.05,
+            "UI_VISIBILITY_DORMANCY" => 0.60,
+            "SEQUENCE_FIRST_SCRIPTABLE_SYSTEM_POLL" => 0.35,
+            "HARD_DORMANT_GUARD_HOIST" => 0.38,
+            "INTERACTION_UI_IDLE_GUARD" => 0.35,
+            "CROSS_FILE_INTERACTION_UI_IDLE_CALL_GUARD" => 0.35,
+            "ACTION_OVERRIDE_EXACT_PREFILTER" => 0.26,
+            "SHARED_PROVIDER_READ" => 0.10,
+            _ when kind.StartsWith("ACTION_ROUTING", StringComparison.Ordinal) => 0.22,
             _ => 0.0
         };
 
@@ -337,6 +343,9 @@ internal static class GgcCaptureCalibrationService
         var appliedRules = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var appliedGeneric = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var semanticByOwner = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        // Two semantic rules measured against the same callback may overlap.
+        // Distinct measured callback costs on one owner can be additive.
+        var uniqueSemanticCallbacks = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var semanticMeasuredByOwner = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
         // A registration can undergo multiple generic stages. Credit only
         // the single largest hypothesized saving for that registration.
@@ -372,8 +381,11 @@ internal static class GgcCaptureCalibrationService
                     credible ? provenance : "NO_UNIQUE_MEASURED_APPLIED_WORK"));
                 if (credible)
                 {
-                    semanticByOwner[owner] = Math.Max(
-                        semanticByOwner.GetValueOrDefault(owner), saved);
+                    var measuredCallback = owner + "\0" +
+                        cost!.Value.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture);
+                    if (uniqueSemanticCallbacks.Add(measuredCallback))
+                        semanticByOwner[owner] =
+                            semanticByOwner.GetValueOrDefault(owner) + saved;
                     semanticMeasuredByOwner[owner] = Math.Max(
                         semanticMeasuredByOwner.GetValueOrDefault(owner), cost!.Value);
                 }
@@ -407,6 +419,12 @@ internal static class GgcCaptureCalibrationService
             if (fractionGeneric <= 0 || registration is null ||
                 !measured.TryGetValue((owner.ToLowerInvariant(), registration.Value),
                     out var callback)) continue;
+            if (kind == "SHARED_PROVIDER_READ")
+            {
+                var replacements = Number(stage, "replacedOccurrences") ?? 0;
+                fractionGeneric = Math.Min(0.18,
+                    fractionGeneric + 0.015 * Math.Log(1 + Math.Clamp(replacements, 0, 1000)));
+            }
             var actualSaving = Math.Round(callback.Cpu * fractionGeneric, 6);
             var entry = new RuleEstimate("GENERIC", kind, owner, registration,
                 callback.Cpu, actualSaving, fractionGeneric,
@@ -459,19 +477,28 @@ internal static class GgcCaptureCalibrationService
                     owner, StringComparison.OrdinalIgnoreCase))
                     .Sum(x => x.Value.Cpu),
                 semanticMeasuredByOwner.GetValueOrDefault(owner));
-            var credited = Math.Min(measuredOwner, Math.Max(
-                semanticSaved, genericSaved)); // overlap is not additive
-            if (credited > 0) creditedOwners++;
-            if (semanticSaved >= genericSaved)
-                semanticTotal += credited;
-            else
-                genericTotal += credited;
+            if (measuredOwner <= 0) continue;
+            var semanticCredit = Math.Min(measuredOwner * 0.85, semanticSaved);
+            // Generic can improve only the CPU time remaining after
+            // semantic gating; they must not both claim the same body time.
+            var genericCredit = Math.Min(measuredOwner - semanticCredit,
+                genericSaved * (1 - semanticCredit / measuredOwner));
+            var raw = semanticCredit + genericCredit;
+            if (raw <= 0) continue;
+            var scale = Math.Min(1.0, measuredOwner * 0.85 / raw);
+            semanticTotal += semanticCredit * scale;
+            genericTotal += genericCredit * scale;
+            creditedOwners++;
         }
 
         // A modest additional upper bound prevents overclaiming when
         // callback samples overlap at the owner, family, or native envelope.
-        var savedTotal = Math.Round(Math.Min(original.Value * 0.35,
-            semanticTotal + genericTotal), 6);
+        var rawSaved = semanticTotal + genericTotal;
+        var globalScale = rawSaved > 0
+            ? Math.Min(1.0, original.Value * 0.85 / rawSaved) : 1.0;
+        semanticTotal = Math.Round(semanticTotal * globalScale, 6);
+        genericTotal = Math.Round(genericTotal * globalScale, 6);
+        var savedTotal = Math.Round(semanticTotal + genericTotal, 6);
         var originalCredited = Math.Round(
             Math.Min(original.Value, estimates
                 .Where(x => x.EstimatedSavingMsPerSecond > 0)
