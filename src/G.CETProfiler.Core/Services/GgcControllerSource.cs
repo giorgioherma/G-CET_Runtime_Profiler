@@ -58,12 +58,7 @@ internal static class GgcControllerSource
             Path.DirectorySeparatorChar));
         var installedCalibration = Path.Combine(modsRoot, CalibrationPath.Replace('/',
             Path.DirectorySeparatorChar));
-        if (File.Exists(installedRuntime) && File.Exists(installedCalibration) &&
-            File.ReadAllText(installedRuntime).Replace("\r\n", "\n",
-                StringComparison.Ordinal).TrimEnd() ==
-            Runtime.Replace("\r\n", "\n", StringComparison.Ordinal).TrimEnd() &&
-            HasSameCapturedMeasurements(
-                File.ReadAllText(installedCalibration), calibration))
+        if (IsExistingSameCapture(modsRoot, calibration))
         {
             skipped.Add(new { type = "GC_CONTROLLER",
                 category = "ALREADY_IMPLEMENTED", owner = "G-GC",
@@ -100,6 +95,37 @@ internal static class GgcControllerSource
             provenGameplay = false
         });
         return true;
+    }
+
+    // ANALYZE must not advertise the already-calibrated G-GC runtime as
+    // new work. The proposed measured evidence is identical to GENERATE's
+    // except for pass-specific estimated savings, which are intentionally
+    // excluded by the shared proof below.
+    internal static bool IsCurrentCaptureInstalled(
+        JsonElement resolverRoot, string modsRoot)
+    {
+        var emptyManifest = new List<object>();
+        var defaults = GgcCaptureCalibrationService.EstimateAppliedDefaults(
+            resolverRoot, emptyManifest);
+        return TryCalibrate(resolverRoot, defaults, out var proposed, out _) &&
+            IsExistingSameCapture(modsRoot, proposed);
+    }
+
+    private static bool IsExistingSameCapture(string modsRoot, string proposed)
+    {
+        var runtime = Path.Combine(modsRoot,
+            RuntimePath.Replace('/', Path.DirectorySeparatorChar));
+        var configuration = Path.Combine(modsRoot,
+            CalibrationPath.Replace('/', Path.DirectorySeparatorChar));
+        return File.Exists(runtime) && File.Exists(configuration) &&
+            CompatibleLive(modsRoot, RuntimePath, RuntimeSignature,
+                "registerForEvent(\"onUpdate\"", "pcall(collectgarbage, \"step\"") &&
+            CompatibleLive(modsRoot, CalibrationPath, CalibrationSignature,
+                "return {", "pressureReferenceMiB") &&
+            File.ReadAllText(runtime).Replace("\r\n", "\n",
+                StringComparison.Ordinal).TrimEnd() ==
+            Runtime.Replace("\r\n", "\n", StringComparison.Ordinal).TrimEnd() &&
+            HasSameCapturedMeasurements(File.ReadAllText(configuration), proposed);
     }
 
     // Capture-derived inputs establish freshness, not pass-specific savings.

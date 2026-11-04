@@ -21,7 +21,8 @@ public sealed record ResolverBuildResult(
     int UnresolvedCount,
     ResolverOptimizationCoverage OptimizationCoverage,
     string[] BlacklistedMods,
-    bool GgcControllerReady);
+    bool GgcControllerReady,
+    int SourceGenericReadyFileCount);
 
 /// <summary>
 /// Top-level G-CET resolver. Callback families are the primary unit of work.
@@ -158,6 +159,11 @@ public static class ResolverService
             providerFamilies = providerFamilies.Where(retainedFamilies.Contains).ToArray();
         }
 
+        // Native source-first optimizations do not require a measured callback.
+        // A newly installed untouched CET mod can still receive these even
+        // when the selected capture has no entry for that owner.
+        var sourceGenericReady = NativeReadReuseSource.Analyze(modsRoot).Length;
+
         var resolverPath = Path.Combine(captureRoot, ResultReportService.ResolverResolutionFileName);
         File.WriteAllText(
             resolverPath,
@@ -181,7 +187,10 @@ public static class ResolverService
             result.UnresolvedCount,
             coverage,
             blacklistedMods,
-            augmented["gGcCaptureCalibration"]?["generator"]?["installAuthorized"]?.GetValue<bool>() == true);
+            augmented["gGcCaptureCalibration"]?["generator"]?["installAuthorized"]?.GetValue<bool>() == true &&
+                !GgcControllerSource.IsCurrentCaptureInstalled(
+                    JsonSerializer.SerializeToElement(augmented), modsRoot),
+            sourceGenericReady);
     }
     public static PassBuildResult GeneratePass(
         string captureRoot,

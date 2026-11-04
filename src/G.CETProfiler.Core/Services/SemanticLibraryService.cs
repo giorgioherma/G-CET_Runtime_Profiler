@@ -107,6 +107,10 @@ internal sealed class SemanticLibraryService
     private readonly List<SemanticRule> _entries;
     private readonly Dictionary<string, ModSourceGraph?> _graphs =
         new(StringComparer.OrdinalIgnoreCase);
+    // One read-only injector completion check per owner/rule for this
+    // ANALYZE invocation. The user's live sources are never modified here.
+    private readonly Dictionary<string, bool> _sourceCompletion =
+        new(StringComparer.OrdinalIgnoreCase);
 
     internal bool Loaded { get; }
     internal int EntryCount => _entries.Count;
@@ -454,6 +458,32 @@ internal sealed class SemanticLibraryService
                        : rule.Proof.SourceCompletionAuthoritative ? "SOURCE_POSTCONDITION"
                        : markerSatisfied ? "MARKER" : "SOURCE_POSTCONDITION"
             : "";
+
+        // Some first-pass semantic layouts satisfy the actual authoritative
+        // injector but are not recognized by the catalog's simpler scoped
+        // anchor projection. Before reporting a new optimization, ask that
+        // SAME injector to prove it has zero remaining work. Never rely on
+        // the marker alone: any missing/partial/drifted stage remains ready
+        // for safe generation or explicit fail-closed diagnostics.
+        if (!alreadySatisfied && markerCount > 0 && missing.Count == 0 &&
+            rule.Generation.Enabled)
+        {
+            var cacheKey = graph.OwnerFolder + "|" + rule.Id;
+            if (!_sourceCompletion.TryGetValue(cacheKey, out var proven))
+            {
+                proven = SemanticPassGeneratorService.IsAlreadyCompleteFromLiveSource(
+                    _modsRoot, Path.GetFileName(graph.OwnerFolder), rule.Id,
+                    rule.Handler, rule.PolicyClass, rule.Generation.PatchStyle,
+                    expectedMarkerFileCount, composed);
+                _sourceCompletion[cacheKey] = proven;
+            }
+            if (proven)
+            {
+                alreadySatisfied = true;
+                satisfiedBySourcePostcondition = true;
+                alreadySatisfiedMode = "INJECTOR_SOURCE_POSTCONDITION";
+            }
+        }
         // A recognized, incomplete composite is UPGRADEABLE. Ambiguous or
         // foreign edits still fail closed inside its source injector.
         var partialState = !composed && !rule.Proof.SourceCompletionAuthoritative && !alreadySatisfied &&

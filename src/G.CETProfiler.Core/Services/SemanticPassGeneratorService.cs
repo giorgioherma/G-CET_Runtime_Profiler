@@ -8,6 +8,40 @@ internal static class SemanticPassGeneratorService
 {
     internal const double MaterialThresholdMsPerSecond = 3.0;
 
+    // ANALYZE uses the authoritative source injector read-only when broad
+    // catalog markers/scoped anchors cannot prove a completed stage. This is
+    // not a separate implementation or corrective pass: it runs the SAME
+    // injector against the current source without writing a live mod or
+    // staging output. Partial state stays eligible; failed source proof
+    // remains a real generation blocker.
+    internal static bool IsAlreadyCompleteFromLiveSource(
+        string modsRoot, string owner, string ruleId, string handler,
+        string policyClass, string patchStyle, int expectedMarkerFiles,
+        bool composed)
+    {
+        var staged = new Dictionary<string,byte[]>(
+            StringComparer.OrdinalIgnoreCase);
+        var context = new SemanticPatchContext(
+            modsRoot, owner, ruleId, staged);
+        if (!context.IsInstalledOwner) return false;
+        var candidate = new SemanticCandidate(ruleId, owner, handler,
+            policyClass, patchStyle, 0, expectedMarkerFiles, composed, true);
+        try
+        {
+            var result = SemanticInjectors.Apply(candidate, context);
+            if (result.Applied || context.Changes.Count != 0)
+                return false;
+            return PassSkipSummaryService.FromSkipped(new object[] {
+                new { type = "SEMANTIC_RULE", reason = result.Reason }
+            }).AlreadyImplementedCount == 1;
+        }
+        catch (Exception error) when (error is InvalidOperationException or
+               IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            return false;
+        }
+    }
+
     // Keep original reflection/API entrypoint for independent mod contracts.
     // Runtime-bearing production generation calls the SAME implementation
     // below with the already-composed fixed host, never a repair pass.

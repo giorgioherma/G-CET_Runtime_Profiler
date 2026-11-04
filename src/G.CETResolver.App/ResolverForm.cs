@@ -205,6 +205,7 @@ internal sealed class ResolverForm : Form
         return result.GenericResolvedCount > 0 ||
                result.OptimizationCoverage.ReadyModCount > 0 ||
                result.SharedProviderReadyCallbackCount > 0 ||
+               result.SourceGenericReadyFileCount > 0 ||
                result.GgcControllerReady;
     }
 
@@ -286,7 +287,7 @@ internal sealed class ResolverForm : Form
 
             _status.Text = _passReady
                 ? $"Complete — {result.RankedCallbackCount} measured callback consumers inspected. Pass ready."
-                : $"Complete — {result.RankedCallbackCount} measured callback consumers inspected. No applicable pass changes.";
+                : $"Complete — {result.RankedCallbackCount} measured callback consumers inspected. No new optimizations available.";
             _output.Text =
                 $"G-CET resolver output:\r\n{result.ResolverPath}\r\n\r\n" +
                 "Live CET sources were inspected read-only. No mod files were changed.\r\n\r\n" +
@@ -333,10 +334,10 @@ internal sealed class ResolverForm : Form
 
             if (!_passReady)
             {
-                _status.Text = "No applicable pass changes remain after live-source revalidation.";
+                _status.Text = "No new optimizations available for the current live CET stack.";
                 _output.Text =
                     $"G-CET resolver output:\r\n{resolved.ResolverPath}\r\n\r\n" +
-                    "No pass ZIP was generated because the current live stack has no applicable changes." +
+                    "No pass ZIP was generated: every currently source-proven stage is already complete or no new rule is applicable." +
                     ModOptimizationBlacklist.FormatWarning(resolved.BlacklistedMods);
                 return;
             }
