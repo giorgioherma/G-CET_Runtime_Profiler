@@ -30,9 +30,22 @@ internal static class GgcCaptureCalibrationService
         var hitch = Child(handoff, "hitchPressure");
         var tolerance = Number(hitch, "toleranceFrameMs");
         var medianFrame = Number(hitch, "baselineFrameMs");
-        var validFrames = tolerance is > 0 and < 10000 &&
+        var measuredOnset = Number(hitch, "workloadSuggestedHeavyMs");
+        var relaxedP90 = Number(hitch, "workloadRelaxedP90Ms");
+        var demandingP90 = Number(hitch, "workloadDemandingP90Ms");
+        var workloadStatus = Child(hitch, "workloadCalibrationStatus");
+        var workloadVaried = workloadStatus.ValueKind == JsonValueKind.String &&
+            workloadStatus.GetString() == "MEASURED_WINDOW_VARIATION_PROVISIONAL" &&
+            measuredOnset is > 0 and < 300 &&
+            relaxedP90 is > 0 && demandingP90 > relaxedP90 &&
+            medianFrame is > 0 && measuredOnset > medianFrame + 2;
+        // Frame-stall tolerance remains distinct in Profiler reports. The
+        // controller's initial workload upper boundary can use a GC-resilient
+        // two-second-window estimate when genuinely varied evidence exists.
+        var workloadCeiling = workloadVaried ? measuredOnset : tolerance;
+        var validFrames = workloadCeiling is > 0 and < 10000 &&
                           medianFrame is > 0 and < 10000 &&
-                          tolerance >= medianFrame;
+                          workloadCeiling >= medianFrame;
 
         // Slow-step snapshots are NOT the instant LuaJIT's natural GC cycle
         // began. They only provide an approximate observed pressure region.
@@ -71,11 +84,11 @@ internal static class GgcCaptureCalibrationService
         // work. The starting controls are deliberately conservative heuristics
         // proportional to AVAILABLE headroom after a substantial reserve.
         // Actual request size is decided later from the live heap.
-        var frameRoom = validFrames ? tolerance!.Value - medianFrame!.Value : 0.0;
+        var frameRoom = validFrames ? workloadCeiling!.Value - medianFrame!.Value : 0.0;
         var reserve = validFrames ? Math.Max(4.0, frameRoom * 0.60) : 0.0;
         var usableRoom = Math.Max(0.0, frameRoom - reserve);
         var roomFraction = validFrames
-            ? Math.Clamp(usableRoom / (tolerance!.Value * 0.20), 0.0, 1.0)
+            ? Math.Clamp(usableRoom / (workloadCeiling!.Value * 0.20), 0.0, 1.0)
             : 0.0;
         // ANALYZE has not generated anything yet. It may report the original
         // measured CET callback cost, but must NOT pretend the entire stack
@@ -98,10 +111,14 @@ internal static class GgcCaptureCalibrationService
             gameplay = new
             {
                 medianFrameMs = validFrames ? medianFrame : null,
-                hitchToleranceMs = validFrames ? tolerance : null,
-                toleranceSource = validFrames
-                    ? "CAPFRAMEX_HITCH_PRESSURE_ADAPTIVE_THRESHOLD"
-                    : "NOT_MEASURED",
+                hitchToleranceMs = validFrames ? workloadCeiling : null,
+                toleranceSource = !validFrames ? "NOT_MEASURED" :
+                    workloadVaried ? "CAPFRAMEX_WORKLOAD_WINDOW_P90_PROVISIONAL"
+                    : "CAPFRAMEX_HITCH_PRESSURE_ADAPTIVE_THRESHOLD_FALLBACK",
+                workloadCalibrationStatus = workloadVaried
+                    ? "MEASURED_WINDOW_VARIATION_PROVISIONAL" : "NOT_ENOUGH_VARIATION",
+                workloadRelaxedP90Ms = workloadVaried ? relaxedP90 : null,
+                workloadDemandingP90Ms = workloadVaried ? demandingP90 : null,
                 // The available tolerance is a frame-stall boundary, NOT all
                 // spare CPU time that the controller is allowed to spend.
                 headroomReserveRequired = true

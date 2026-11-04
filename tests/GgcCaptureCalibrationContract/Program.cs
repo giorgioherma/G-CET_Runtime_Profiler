@@ -143,6 +143,31 @@ Check(observed["assistance"]!["measuredOriginalCetMsPerSecond"]!.GetValue<double
       observed["assistance"]!["recommendedIntensityPercent"]!.GetValue<int>() == 0,
     "ANALYZE wrongly predicted savings without actually applying sources");
 
+// Varied gameplay supplies a measured (still provisional) workload
+// separation, not an invented post-optimization FPS gain. Sparse or
+// unvaried older captures retain the original hitch threshold fallback.
+var varied = Interpret("""
+{"capture":{"exclusiveMsPerSecond":120},
+ "hitchPressure":{"baselineFrameMs":26.5,"toleranceFrameMs":39.75,
+   "workloadCalibrationStatus":"MEASURED_WINDOW_VARIATION_PROVISIONAL",
+   "workloadRelaxedP90Ms":26.9,"workloadDemandingP90Ms":46.5,
+   "workloadSuggestedHeavyMs":38.268},
+ "garbageCollection":{"slowOperations":[]}}
+""");
+Check(varied["gameplay"]!["hitchToleranceMs"]!.GetValue<double>() == 38.268 &&
+      varied["gameplay"]!["toleranceSource"]!.GetValue<string>() ==
+          "CAPFRAMEX_WORKLOAD_WINDOW_P90_PROVISIONAL",
+    "Measured varied-gameplay workload anchor was discarded");
+var unvaried = Interpret("""
+{"capture":{"exclusiveMsPerSecond":120},
+ "hitchPressure":{"baselineFrameMs":26.5,"toleranceFrameMs":39.75,
+   "workloadCalibrationStatus":"INSUFFICIENT_VARIATION",
+   "workloadRelaxedP90Ms":null,"workloadSuggestedHeavyMs":null},
+ "garbageCollection":{"slowOperations":[]}}
+""");
+Check(unvaried["gameplay"]!["hitchToleranceMs"]!.GetValue<double>() == 39.75,
+    "Unvaried workload invented a measured cutoff");
+
 var decision = Decision(untouched, true);
 object values = Calculate(decision, applied);
 Check(Math.Abs(Val(values,"EstimatedFreedCetMsPerSecond") - 28.24) < 1e-6,

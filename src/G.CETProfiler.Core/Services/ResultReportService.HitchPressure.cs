@@ -11,6 +11,13 @@ public static partial class ResultReportService
         public string VocabularyVersion { get; init; } = "1.0";
         public double BaselineFrameMs { get; init; }
         public double ToleranceFrameMs { get; init; }
+        // GC-resilient two-second P90 gameplay-window variation. This is a
+        // provisional workload separation, NOT measured CPU saturation.
+        public string WorkloadCalibrationStatus { get; init; } = "INSUFFICIENT_VARIATION";
+        public int WorkloadWindowCount { get; init; }
+        public double? WorkloadRelaxedP90Ms { get; init; }
+        public double? WorkloadDemandingP90Ms { get; init; }
+        public double? WorkloadSuggestedHeavyMs { get; init; }
         public double BaselineMultiplier { get; init; }
         public double MinimumAbsoluteThresholdMs { get; init; }
         public double EpisodeMergeGapMs { get; init; }
@@ -92,6 +99,28 @@ public static partial class ResultReportService
             HitchMinimumAbsoluteThresholdMs,
             baseline * HitchBaselineMultiplier);
 
+        // Classify 2s windows, not isolated hitch frames. Per-window P90
+        // resists rare automatic LuaJIT stalls; very large individual frames
+        // are discarded from this *workload* model, not from hitch reporting.
+        // Do not claim a precise cutoff from an all-idle or all-combat capture.
+        var workloadWindows = validFrames
+            .Where(x => x.FrameMs < Math.Max(100.0, tolerance * 2.5))
+            .GroupBy(x => (long)Math.Floor(x.RelativeStartMs / 2000.0))
+            .Where(g => g.Count() >= 15)
+            .Select(g => Percentile(g.Select(x => x.FrameMs), 0.90))
+            .Where(x => double.IsFinite(x) && x > 0)
+            .OrderBy(x => x)
+            .ToList();
+        var workloadLow = workloadWindows.Count >= 12
+            ? Percentile(workloadWindows, 0.20) : 0;
+        var workloadHigh = workloadWindows.Count >= 12
+            ? Percentile(workloadWindows, 0.80) : 0;
+        var separation = workloadHigh - workloadLow;
+        var estimatedOnset = workloadLow + separation * 0.58;
+        var workloadVaried = workloadWindows.Count >= 12 &&
+            separation >= Math.Max(6.0, workloadLow * 0.15) &&
+            estimatedOnset > baseline + 2 &&
+            estimatedOnset < 300;
         var hitchFrames = validFrames
             .Where(x => x.FrameMs >= tolerance)
             .ToList();
@@ -266,6 +295,13 @@ public static partial class ResultReportService
         {
             BaselineFrameMs = baseline,
             ToleranceFrameMs = tolerance,
+            WorkloadCalibrationStatus = workloadVaried
+                ? "MEASURED_WINDOW_VARIATION_PROVISIONAL"
+                : "INSUFFICIENT_VARIATION",
+            WorkloadWindowCount = workloadWindows.Count,
+            WorkloadRelaxedP90Ms = workloadVaried ? workloadLow : null,
+            WorkloadDemandingP90Ms = workloadVaried ? workloadHigh : null,
+            WorkloadSuggestedHeavyMs = workloadVaried ? estimatedOnset : null,
             BaselineMultiplier = HitchBaselineMultiplier,
             MinimumAbsoluteThresholdMs = HitchMinimumAbsoluteThresholdMs,
             EpisodeMergeGapMs = HitchEpisodeMergeGapMs,

@@ -560,6 +560,14 @@ public static partial class ResultReportService
                     semantics = "FRAME_EXCESS_OVER_ADAPTIVE_TOLERANCE; RUNTIME_OVERLAP_IS_CORRELATION_NOT_CAUSATION",
                     toleranceFrameMs = Round(a.FrameTime.HitchPressure.ToleranceFrameMs, 6),
                     baselineFrameMs = Round(a.FrameTime.HitchPressure.BaselineFrameMs, 6),
+                    workloadCalibrationStatus = a.FrameTime.HitchPressure.WorkloadCalibrationStatus,
+                    workloadWindowCount = a.FrameTime.HitchPressure.WorkloadWindowCount,
+                    workloadRelaxedP90Ms = a.FrameTime.HitchPressure.WorkloadRelaxedP90Ms is double relaxed
+                        ? Round(relaxed, 6) : (double?)null,
+                    workloadDemandingP90Ms = a.FrameTime.HitchPressure.WorkloadDemandingP90Ms is double demanding
+                        ? Round(demanding, 6) : (double?)null,
+                    workloadSuggestedHeavyMs = a.FrameTime.HitchPressure.WorkloadSuggestedHeavyMs is double onset
+                        ? Round(onset, 6) : (double?)null,
                     episodeMergeGapMs = a.FrameTime.HitchPressure.EpisodeMergeGapMs,
                     episodes = a.FrameTime.HitchPressure.EpisodeCount,
                     severeEpisodes = a.FrameTime.HitchPressure.SevereEpisodeCount,
