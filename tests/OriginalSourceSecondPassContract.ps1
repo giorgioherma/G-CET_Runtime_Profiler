@@ -93,7 +93,11 @@ try {
     }
     if($new.Count -gt 0){
         $types=@($new | ForEach-Object {$_.type} | Select-Object -Unique)
-        throw ("SECOND_PASS_DUPLICATED_TRANSFORMS: count=$($new.Count) types=$($types -join ',')")
+        $identities=@($new | ForEach-Object {
+            [string]$_.type + ':' + [string]$_.file + ':' + [string]$_.owner
+        })
+        throw ("SECOND_PASS_DUPLICATED_TRANSFORMS: count=$($new.Count) types=$($types -join ',')" +
+            " stageIds=$($identities -join ',')")
     }
     if(@($second.files | Where-Object {$_.path -like 'G-GC/*'}).Count -gt 0){
         throw 'SECOND_PASS_REGENERATED_UNCHANGED_GGC'
