@@ -555,6 +555,40 @@ try
               StringComparison.Ordinal),
         "Malformed marked fallback was treated as fully optimized");
 
+    // Verify the Resolver's actual shared-provider admission method,
+    // not just the generator's mask in isolation.
+    var resolverModel=core.GetType(
+        "GCETRuntimeProfiler.Core.Services.CallbackResolverService",true)!;
+    var sourceModel=resolverModel.GetNestedType("ResolvedSource",
+        BindingFlags.NonPublic)!;
+    var inspectProvider=resolverModel.GetMethod("DetectSharedProviderSourceMatches",
+        BindingFlags.Static|BindingFlags.NonPublic)!;
+    object[] InspectProvider(string lua)
+    {
+        var model=Activator.CreateInstance(sourceModel,true)!;
+        var length=lua.Replace("\r\n","\n",StringComparison.Ordinal).Split('\n').Length;
+        sourceModel.GetProperty("FullText")!.SetValue(model,lua);
+        sourceModel.GetProperty("CallbackText")!.SetValue(model,lua);
+        sourceModel.GetProperty("LineStart")!.SetValue(model,(int?)1);
+        sourceModel.GetProperty("LineEnd")!.SetValue(model,(int?)length);
+        return ((System.Collections.IEnumerable)inspectProvider.Invoke(null,
+            [model,MaskRead(lua)])!).Cast<object>().ToArray();
+    }
+    Check(InspectProvider(firstRead).Length==0,
+        "ANALYZE admitted a completed shared-provider fallback");
+    var missingRead=InspectProvider(partialRead);
+    Check(missingRead.Length==1 &&
+          (string)missingRead[0].GetType().GetProperty("Provider")!
+              .GetValue(missingRead[0])!=="MAPPIN_SYSTEM",
+        "ANALYZE failed to admit a genuinely missing getter in a partial mod");
+    var spoofed=reviewedMap.Replace("return Game.GetMappinSystem()",
+        "return Game.GetPlayer()",StringComparison.Ordinal)+
+        "\nlocal missing = Game.GetMappinSystem()\n";
+    Check(InspectProvider(spoofed).Any(row =>
+          (string)row.GetType().GetProperty("Provider")!.GetValue(row)! ==
+              "MAPPIN_SYSTEM"),
+        "ANALYZE accepted a marker-bearing malformed helper as complete");
+
     var providerIndex=0L;
     foreach(var (provider, pair) in reviewedHeaders)
     {

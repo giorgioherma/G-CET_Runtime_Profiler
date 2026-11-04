@@ -1076,6 +1076,10 @@ internal static class CallbackResolverService
         var deepEvidence = ReadSharedProviderDeepEvidence(handoffRoot);
         var byProvider = new Dictionary<string, List<SharedProviderCallbackEvidence>>(
             StringComparer.OrdinalIgnoreCase);
+        // Many callbacks share one physical Lua file. Verify and mask
+        // source-owned provider fallbacks once per source during ANALYZE.
+        var maskedSources = new Dictionary<string,string>(
+            StringComparer.OrdinalIgnoreCase);
 
         foreach (var callback in callbacks)
         {
@@ -1085,9 +1089,17 @@ internal static class CallbackResolverService
                 : SharedProviderDeepCallbackEvidence.Empty;
 
             var source = sourceIndex.Resolve(callback);
-            var matches = source is null
-                ? new List<SharedProviderSourceMatch>()
-                : DetectSharedProviderSourceMatches(source);
+            var matches = new List<SharedProviderSourceMatch>();
+            if (source is not null)
+            {
+                if (!maskedSources.TryGetValue(source.Path, out var masked))
+                {
+                    masked = PassGeneratorService.MaskVerifiedSharedProviderFallbacks(
+                        source.FullText);
+                    maskedSources[source.Path] = masked;
+                }
+                matches = DetectSharedProviderSourceMatches(source, masked);
+            }
 
             var sourceProviders = matches
                 .Select(x => x.Provider)
@@ -1236,7 +1248,7 @@ internal static class CallbackResolverService
     }
 
     private static List<SharedProviderSourceMatch> DetectSharedProviderSourceMatches(
-        ResolvedSource source)
+        ResolvedSource source, string maskedFull)
     {
         var result = new List<SharedProviderSourceMatch>();
         var text = source.CallbackText;
@@ -1293,8 +1305,6 @@ internal static class CallbackResolverService
         // Match against the FULL current Lua with exact generated helper
         // fallbacks masked by the generator's own structural verifier.
         // Remaining author Game getters stay discoverable for partial mods.
-        var maskedFull = PassGeneratorService.MaskVerifiedSharedProviderFallbacks(
-            source.FullText);
         var maskedLines = maskedFull.Split('\n');
         var start = Math.Clamp(source.LineStart.GetValueOrDefault(1),
             1, maskedLines.Length);

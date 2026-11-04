@@ -18,6 +18,8 @@ var controllerType = assembly.GetType(
     "GCETRuntimeProfiler.Core.Services.GgcControllerSource", true)!;
 var stage = controllerType.GetMethod(
     "TryStage", BindingFlags.NonPublic | BindingFlags.Static)!;
+var currentCapture = controllerType.GetMethod(
+    "IsCurrentCaptureInstalled", BindingFlags.NonPublic | BindingFlags.Static)!;
 var estimate = calibrationType.GetMethod(
     "EstimateAppliedDefaults", BindingFlags.NonPublic | BindingFlags.Static)!;
 
@@ -120,6 +122,12 @@ bool Stage(JsonNode decision, string folder,
     })!;
     finalManifest?.AddRange(composed);
     return ok;
+}
+
+bool CurrentCaptureInstalled(JsonNode decision, string folder)
+{
+    using var doc = JsonDocument.Parse(decision.ToJsonString());
+    return (bool)currentCapture.Invoke(null,[doc.RootElement,folder])!;
 }
 
 var observed = Interpret(untouched);
@@ -251,6 +259,8 @@ try
             "Version "+version+" upgrade altered generated ownership");
     }
     File.WriteAllBytes(Path.Combine(tempRoot,"G-GC","init.lua"),generated["G-GC/init.lua"]);
+    Check(CurrentCaptureInstalled(decision,tempRoot),
+        "ANALYZE still offers an unchanged G-GC as a new installation");
     var repeated=new Dictionary<string,byte[]>();
     var repeatedSkips=new List<object>();
     Check(!Stage(decision,tempRoot,repeated,repeatedSkips,applied) &&
@@ -282,6 +292,8 @@ try
     var changedEvidence=Decision(
         """{"capture":{"exclusiveMsPerSecond":120},"hitchPressure":{"baselineFrameMs":20,"toleranceFrameMs":35},"garbageCollection":{"slowOperations":[{"heapBeforeMiB":713,"wallMs":120}]}}""",
         true);
+    Check(!CurrentCaptureInstalled(changedEvidence,tempRoot),
+        "ANALYZE hid a newly measured profile with reused capture name");
     var changedFiles=new Dictionary<string,byte[]>();
     Check(Stage(changedEvidence,tempRoot,changedFiles,new List<object>(),applied) &&
           changedFiles.ContainsKey("G-GC/threshold.lua") &&

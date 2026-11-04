@@ -54,10 +54,6 @@ internal static class GgcControllerSource
         // authorize new G-GC defaults just because the second overlay has
         // fewer new rules to credit. Preserve the first source-proven
         // calibration and its runtime byte-for-byte.
-        var installedRuntime = Path.Combine(modsRoot, RuntimePath.Replace('/',
-            Path.DirectorySeparatorChar));
-        var installedCalibration = Path.Combine(modsRoot, CalibrationPath.Replace('/',
-            Path.DirectorySeparatorChar));
         if (IsExistingSameCapture(modsRoot, calibration))
         {
             skipped.Add(new { type = "GC_CONTROLLER",
