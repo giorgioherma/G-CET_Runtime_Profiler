@@ -7203,7 +7203,9 @@
           "pass4AttachInProgress = false"
         ],
         "alreadySatisfiedMarker": "G-CET semantic:rica-engine-worker-v1",
-        "expectedMarkerFileCount": 1
+        "expectedMarkerFileCount": 1,
+      "completionVerifier": "RICA_ENGINE_WORKER_GRAPH",
+      "sourceCompletionAuthoritative": true
       },
       "behavior": {
         "handler": "SEMANTIC_SOURCE_COORDINATOR",

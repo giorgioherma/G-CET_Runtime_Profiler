@@ -117,6 +117,11 @@ internal static class CallbackResolverService
         var belowThreshold = 0;
         var semanticMatches = 0;
         var semanticSourceProven = 0;
+        // Read the physical current CET registrations once. Captured source
+        // line coordinates can move after generic/native/semantic composition;
+        // only a currently executable, source-first-proven frame site may be
+        // counted as new frame-dispatch work.
+        var currentBareRegistrations = DiscoverSourceFirstRegistrations(modsRoot);
         var semanticReadyRules = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var semanticSoftReadyRules = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var semanticCpuReadyRules = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -152,10 +157,18 @@ internal static class CallbackResolverService
                     out var schedulerIntegration);
                 schedulerIntegration ??= SchedulerIntegration.None;
 
-                var generic = ResolveGeneric(
-                    callback,
-                    sourceIndex,
-                    schedulerIntegration);
+                var generic = IsInfrastructureOptimizationOwner(callback.Owner)
+                    ? new GenericResolution
+                    {
+                        Status = "INFRASTRUCTURE_OWNED",
+                        Automatable = false,
+                        Pattern = "SEPARATELY_OWNED_RUNTIME",
+                        Blockers = new[] { "Installed framework/GC controller is owned by its authoritative runtime generator, never generic mod frame rewriting." }
+                    }
+                    : RestrictMeasuredFrameToCurrentSite(
+                        callback,
+                        ResolveGeneric(callback, sourceIndex, schedulerIntegration),
+                        currentBareRegistrations);
                 if (callback.ExclusiveMsPerSecond <= 0)
                     generic = RestrictZeroCostToNativeDispatch(generic);
                 if (generic.Automatable &&
@@ -656,7 +669,7 @@ internal static class CallbackResolverService
         // adoption MUST use the currently installed Lua instead. Preserve
         // measured callback rows solely for workload attribution; these new
         // source-only rows are deliberately not assigned fabricated CPU data.
-        var sourceFirstGenericFamilies = DiscoverSourceFirstRegistrations(modsRoot)
+        var sourceFirstGenericFamilies = currentBareRegistrations
             .Where(callback => !admittedMeasuredRegistrars.Any(admitted =>
                 admitted.Owner.Equals(callback.Owner,
                     StringComparison.OrdinalIgnoreCase) &&
@@ -5420,8 +5433,7 @@ internal static class CallbackResolverService
             var owner = relative.Split('/')[0];
             if (!CetModPresence.HasInstalledSource(modsRoot, relative)) continue;
             if (ModOptimizationBlacklist.IsBlacklistedOwner(owner))continue;
-            if (owner.Equals("0-Engine", StringComparison.OrdinalIgnoreCase) ||
-                owner.StartsWith("G-CET", StringComparison.OrdinalIgnoreCase))
+            if (IsInfrastructureOptimizationOwner(owner))
                 continue;
             string source;
             try
@@ -5551,6 +5563,68 @@ internal static class CallbackResolverService
     // Newly admitted zero-exclusive rows exist solely to remove redundant
     // CET native dispatch. They must NOT incidentally unlock Lua work rewrites,
     // UI queries, guard hoists, or transparent-Override prefilters.
+    private static bool IsInfrastructureOptimizationOwner(string owner) =>
+        owner.Equals("0-Engine", StringComparison.OrdinalIgnoreCase) ||
+        owner.Equals("G-GC", StringComparison.OrdinalIgnoreCase) ||
+        owner.StartsWith("G-CET", StringComparison.OrdinalIgnoreCase);
+
+    // A measured callback's original line range is only workload evidence.
+    // A separately discovered CURRENT bare frame site is the authority for
+    // whether it may enter GENERATE. The measured registration is admitted
+    // only when its source range identifies one unique live registrar; when
+    // coordinates drift, source-first carries that physical site instead.
+    // Never suppress independent non-frame generic recipes on that callback.
+    private static GenericResolution RestrictMeasuredFrameToCurrentSite(
+        CallbackMetric callback, GenericResolution result,
+        IReadOnlyList<CallbackMetric> physicalRegistrations)
+    {
+        if (!result.Automatable || !result.RecipeFamilies.Any(recipe =>
+            recipe.Equals("FRAME_DISPATCH_CONSOLIDATION",
+                StringComparison.OrdinalIgnoreCase)))
+            return result;
+
+        var source = result.Source;
+        var sites = source is null || !source.LineStart.HasValue ||
+            !source.LineEnd.HasValue
+            ? Array.Empty<CallbackMetric>()
+            : physicalRegistrations.Where(row =>
+                row.Owner.Equals(callback.Owner,
+                    StringComparison.OrdinalIgnoreCase) &&
+                row.SourceFile.Equals(source.RelativeFile,
+                    StringComparison.OrdinalIgnoreCase) &&
+                ClassifyCallbackFamily(row.Kind,row.Target).Equals(
+                    ClassifyCallbackFamily(callback.Kind,callback.Target),
+                    StringComparison.OrdinalIgnoreCase) &&
+                row.SourceLineStart.HasValue &&
+                row.SourceLineStart.Value >= source.LineStart.Value - 2 &&
+                row.SourceLineStart.Value <= source.LineEnd.Value + 2)
+                .Take(2).ToArray();
+
+        if (sites.Length == 1)
+            return result;
+
+        var remaining = result.RecipeFamilies.Where(recipe =>
+            !recipe.Equals("FRAME_DISPATCH_CONSOLIDATION",
+                StringComparison.OrdinalIgnoreCase)).ToArray();
+        return new GenericResolution
+        {
+            Status = remaining.Length == 0
+                ? "NO_CURRENT_FRAME_REGISTRAR" : "RESOLVED",
+            Automatable = remaining.Length > 0,
+            Pattern = remaining.Length == 0
+                ? "FRAME_SOURCE_SITE_ABSENT_OR_AMBIGUOUS"
+                : string.Join("_PLUS_",remaining),
+            RecipeFamilies = remaining,
+            Facts = result.Facts,
+            Evidence = result.Evidence,
+            Blockers = result.Blockers.Concat(new[]
+            {
+                "Captured frame coordinates do not identify exactly one executable current bare registrar. Source-first discovery authorizes independent current sites; no stale measured frame transformation is admitted."
+            }).ToArray(),
+            Source = result.Source
+        };
+    }
+
     private static GenericResolution RestrictZeroCostToNativeDispatch(
         GenericResolution result)
     {
