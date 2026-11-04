@@ -213,9 +213,10 @@ mostlyUntouched["optimizationClassCoverage"] = JsonNode.Parse("""
 {"AlreadySourceProvenRuleCount":2,"AlreadySatisfiedCallbackCount":1,
  "ReadyRuleCount":9,"GenericReadyModCount":5}
 """);
-Check(!((string)Calculate(mostlyUntouched, new List<object>())
-    .GetType().GetProperty("EstimateStatus")!.GetValue(
-        Calculate(mostlyUntouched, new List<object>))!).StartsWith("DIRECT_MEASURED"),
+var mostlyUnoptimizedEstimate = Calculate(mostlyUntouched, new List<object>());
+Check(!((string)mostlyUnoptimizedEstimate.GetType()
+    .GetProperty("EstimateStatus")!.GetValue(mostlyUnoptimizedEstimate)!)
+    .StartsWith("DIRECT_MEASURED"),
     "Mostly unoptimized source was treated as optimized runtime");
 
 object values = Calculate(decision, applied);
