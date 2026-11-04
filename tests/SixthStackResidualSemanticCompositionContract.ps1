@@ -267,6 +267,12 @@ registerForEvent("onUpdate", function(dt)
 end)
 '@
 
+# A submodule can only be optimized while its CET owner is installed.
+# Match the live-entrypoint contract; the old capture alone must not
+# resurrect a removed Drone Companions folder.
+Write-ModFile 'Drone Companions (Revamp)' 'init.lua' @'
+-- Installed Drone Companions CET entrypoint
+'@
 Write-ModFile 'Drone Companions (Revamp)' 'DroneLogic/Drone AI - Mech.lua' @'
 local function __gcetGetPlayer() return Game.GetPlayer() end
 local DCO = {}
