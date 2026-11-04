@@ -1618,6 +1618,173 @@ try
     } catch(TargetInvocationException e) when(e.InnerException is InvalidOperationException) {}
     Console.WriteLine("GCET semantic coordinator packaging/source/local-budget PASS");
 
+
+    // Previously generated source may still contain every native bridge
+    // while a worker file is missing, or may contain a marker with damaged
+    // runtime semantics. ANALYZE and GENERATE must use the same authoritative
+    // injector for independent source/worker proof and incremental recovery.
+    var nativeLocationType=core.GetType(
+        "GCETRuntimeProfiler.Core.Services.NativeLocationAdditionalOwnersSource",true)!;
+    var nativeInjectors=core.GetType(
+        "GCETRuntimeProfiler.Core.Services.SemanticInjectors",true)!;
+    const BindingFlags internalStatic=BindingFlags.Static|
+        BindingFlags.NonPublic|BindingFlags.Public;
+    object NewNativeContext(string owner,string rule) =>
+        Activator.CreateInstance(semanticContext,
+            BindingFlags.Instance|BindingFlags.NonPublic|BindingFlags.Public,
+            null,new object[]{mods,owner,rule,
+                new Dictionary<string,byte[]>(StringComparer.OrdinalIgnoreCase)},
+            null)!;
+    object[] NativeChanges(object context)=>
+        ((System.Collections.IEnumerable)semanticContext.GetProperty(
+            "Changes",BindingFlags.Instance|BindingFlags.NonPublic|
+                      BindingFlags.Public)!.GetValue(context)!).Cast<object>().ToArray();
+    bool NativeApplied(object result)=>(bool)result.GetType().GetProperty(
+        "Applied")!.GetValue(result)!;
+    string NativeChangePath(object change)=>(string)change.GetType()
+        .GetProperty("RelativeFile")!.GetValue(change)!;
+    byte[] NativeChangeBytes(object change)=>(byte[])change.GetType()
+        .GetProperty("Bytes")!.GetValue(change)!;
+
+    var cardSource = """
+        -- G-CET native location:card-collection-v1
+        local __gcetCardNativeFar=false
+        local spatialHandle
+        local Mod={}
+        local engine={}
+        local function buildSpatialEntries() return {} end
+        local function collectCard(entry) return entry end
+        local function registerSpatialSet()
+          if __gcetCardNativeFar or spatialHandle then return end
+          spatialHandle = Mod.RegisterSpatialSet("card_collection", {}, {})
+        end
+        local function unregisterSpatialSet()
+          if spatialHandle then spatialHandle:unregister() end
+        end
+        -- G-CET semantic:card-collection-native-worker-v1
+        local function __gcetAttachCardNative()
+          return require("GCET_Semantic/card_collection_native_worker").attach(
+            engine, (#buildSpatialEntries() > 0) and 100 or 0,
+            function(far)
+              __gcetCardNativeFar = far == true
+              if __gcetCardNativeFar then
+                unregisterSpatialSet()
+              elseif engine.IsPlaying() then
+                registerSpatialSet()
+              end
+            end)
+        end
+        registerForEvent("onInit", function()
+          __gcetAttachCardNative()
+        end)
+        """;
+    var cardsBridge=nativeLocationType.GetMethod(
+        "CardsBridgeComplete",internalStatic)!;
+    Check((bool)cardsBridge.Invoke(null,[cardSource])! &&
+          !(bool)cardsBridge.Invoke(null,[cardSource.Replace(
+              "if __gcetCardNativeFar or spatialHandle then return end",
+              "if spatialHandle then return end",StringComparison.Ordinal)])!,
+        "Card marker incorrectly completed a broken FAR guard");
+    Save("Card Collection/init.lua",cardSource);
+    var cards=nativeLocationType.GetMethod("ApplyCards",internalStatic)!;
+    var cardContext=NewNativeContext("Card Collection",
+        "native-location-card-collection");
+    Check(NativeApplied(cards.Invoke(null,[cardContext])!) &&
+          NativeChanges(cardContext).Length==1 &&
+          NativeChangePath(NativeChanges(cardContext)[0]) ==
+             "Card Collection/GCET_Semantic/card_collection_native_worker.lua",
+        "Card partial installation did not regenerate ONLY missing worker");
+    var cardWorker=NativeChangeBytes(NativeChanges(cardContext)[0]);
+    Save("Card Collection/GCET_Semantic/card_collection_native_worker.lua",
+        Encoding.UTF8.GetString(cardWorker));
+    cardContext=NewNativeContext("Card Collection","native-location-card-collection");
+    Check(!NativeApplied(cards.Invoke(null,[cardContext])!) &&
+          NativeChanges(cardContext).Length==0,
+        "Complete Card native bridge and worker were treated as new work");
+    Save("Card Collection/GCET_Semantic/card_collection_native_worker.lua",
+        Encoding.UTF8.GetString(cardWorker).Replace(
+            "host:attachCompiled(10035, count,",
+            "host:attachCompiled(10034, count,",StringComparison.Ordinal));
+    bool cardDriftRefused=false;
+    try {cards.Invoke(null,[NewNativeContext("Card Collection",
+        "native-location-card-collection")]);}
+    catch(TargetInvocationException ex) when(ex.InnerException is InvalidOperationException)
+    {cardDriftRefused=true;}
+    Check(cardDriftRefused,"Card worker drift was called ALREADY_IMPLEMENTED");
+    Save("Card Collection/GCET_Semantic/card_collection_native_worker.lua",
+        Encoding.UTF8.GetString(cardWorker));
+
+    Save("yaibaPenthouse/init.lua","-- installed source entrypoint\n");
+    var bathSource = """
+        local bathtub={}
+        local CONFIG={iconRange=2}
+        local ui={}
+        local function togglePin(near) end
+        bathtub.waterApplied=false
+        -- G-CET native location:yaiba-bathtub-v1
+        local __gcetBathNativeFar=nil
+        function bathtub.init()
+            ui.init()
+            local ok,engine=pcall(GetMod,"0-Engine")
+            local lookup=ok and engine and engine.GCET and engine.GCET.NativeLocationHost
+            if lookup and type(lookup.attachCompiled)=="function" then
+                -- G-CET semantic:yaiba-native-worker-v1
+                require("GCET_Semantic/yaiba_native_worker").attach(lookup,
+                    function(near) __gcetBathNativeFar=not near end,
+                    function() __gcetBathNativeFar=nil;return true end)
+            end
+        end
+        function bathtub.update(player, pPos)
+            -- G-CET semantic:yaiba-penthouse-distant-bathtub
+            if player and pPos and not bathtub.hubVisible and not ui.hubShown and not bathtub.pinID and not bathtub.waterApplied then
+                if __gcetBathNativeFar == true then return end
+                if __gcetBathNativeFar == nil then
+                local __gcetBathPos = CONFIG.position
+                local __gcetDx = pPos.x - __gcetBathPos.x
+                local __gcetDy = pPos.y - __gcetBathPos.y
+                local __gcetDz = pPos.z + 1.0 - __gcetBathPos.z
+                if __gcetDx * __gcetDx + __gcetDy * __gcetDy + __gcetDz * __gcetDz > (CONFIG.iconRange + 1.0)^2 then return end
+                end -- original distance check used only until first native snapshot / UNKNOWN
+            end
+            ui.update()
+        end
+        """;
+    var bathtubProof=nativeLocationType.GetMethod(
+        "BathtubBridgeComplete",internalStatic)!;
+    Check((bool)bathtubProof.Invoke(null,[bathSource])! &&
+          !(bool)bathtubProof.Invoke(null,[bathSource.Replace(
+              "if __gcetBathNativeFar == nil then",
+              "if false then",StringComparison.Ordinal)])!,
+        "Bathtub marker incorrectly completed missing UNKNOWN fallback");
+    Save("yaibaPenthouse/bathtub.lua",bathSource);
+    var bathtub=nativeLocationType.GetMethod("ApplyBathtub",internalStatic)!;
+    var bathContext=NewNativeContext("yaibaPenthouse",
+        "native-location-yaiba-bathtub");
+    Check(NativeApplied(bathtub.Invoke(null,[bathContext])!) &&
+          NativeChanges(bathContext).Length==1 &&
+          NativeChangePath(NativeChanges(bathContext)[0]) ==
+              "yaibaPenthouse/GCET_Semantic/yaiba_native_worker.lua",
+        "Bath partial installation did not regenerate ONLY missing worker");
+    var bathWorker=NativeChangeBytes(NativeChanges(bathContext)[0]);
+    Save("yaibaPenthouse/GCET_Semantic/yaiba_native_worker.lua",
+        Encoding.UTF8.GetString(bathWorker));
+    bathContext=NewNativeContext("yaibaPenthouse","native-location-yaiba-bathtub");
+    Check(!NativeApplied(bathtub.Invoke(null,[bathContext])!) &&
+          NativeChanges(bathContext).Length==0,
+        "Complete Bath native bridge and worker were not recognized");
+    Save("yaibaPenthouse/GCET_Semantic/yaiba_native_worker.lua",
+        Encoding.UTF8.GetString(bathWorker).Replace(
+            "host:attachCompiled(10037, 1,",
+            "host:attachCompiled(10036, 1,",StringComparison.Ordinal));
+    bool bathDriftRefused=false;
+    try {bathtub.Invoke(null,[NewNativeContext("yaibaPenthouse",
+        "native-location-yaiba-bathtub")]);}
+    catch(TargetInvocationException ex) when(ex.InnerException is InvalidOperationException)
+    {bathDriftRefused=true;}
+    Check(bathDriftRefused,"Bath worker drift was called ALREADY_IMPLEMENTED");
+
+    Console.WriteLine("Native card/bathtub same-source completion, isolated worker restore and drift refusal PASS");
+
     Console.WriteLine("GCET NativeReadReuse source-first contracts PASS");
 }
 finally { Directory.Delete(root,true); }
