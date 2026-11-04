@@ -4,6 +4,10 @@ $root=Join-Path $env:RUNNER_TEMP 'gcet-illegal-worker'
 $owner=Join-Path $root 'Illegal Mechanic'
 if(Test-Path $root){Remove-Item -Recurse -Force $root}
 New-Item -ItemType Directory -Force $owner|Out-Null
+# physical_npc.lua is a source-owned module of the installed CET mod.
+# A lone leftover submodule is not a valid owner without root init.lua.
+'-- Illegal Mechanic installed CET entrypoint' |
+    Set-Content -LiteralPath (Join-Path $owner 'init.lua') -Encoding utf8
 $source=@'
 local state={}
 local function loadMatrix()
