@@ -91,7 +91,7 @@ internal static class GgcControllerSource
         {
             type = "GC_CONTROLLER",
             owner = "G-GC",
-            stage = "ADAPTIVE_FIXED_50K_500MS_RUNTIME_V7",
+            stage = "ADAPTIVE_FIXED_50K_500MS_RUNTIME_V8",
             files = new[] {RuntimePath, CalibrationPath},
             captureEvidence = "CURRENT_CAPTURE_AND_GENERATED_SOURCE_PROOF",
             control = "CAPTURE_ANCHORED_LIVE_WORKLOAD_MANUAL_SENSITIVITY",
@@ -104,8 +104,9 @@ internal static class GgcControllerSource
             defaults.AppliedSemanticRules,
             defaults.AppliedGenericRules,
             defaults.CreditedOwners,
-            defaults.DefaultIntensityPercent,
-            defaults.DefaultFrequencyMs,
+            fixedStepKiB = 50,
+            fixedStepIntervalMs = 500,
+            defaultWorkloadSensitivity = 50,
             defaults.EstimateStatus,
             estimateModel = "CAPTURE_SCOPED_APPLIED_CALLBACK_SCOPE_V2_HEURISTIC",
             estimateConfidence = "UNVALIDATED_FORECAST_REQUIRES_POST_PASS_CAPTURE",
@@ -179,7 +180,7 @@ internal static class GgcControllerSource
             return lines.Length == 1 ? lines[0][prefix.Length..^1] : null;
         }
 
-        if (Field(installed, "schema") != "3")
+        if (Field(installed, "schema") != "4")
             return false;
         foreach (var field in new[] {
             "capture", "baselineFrameMs", "hitchToleranceMs",
@@ -214,7 +215,7 @@ internal static class GgcControllerSource
             // the complete exact previously emitted source; any manual drift
             // refuses overwrite. All output still has one authoritative owner.
             var assembly = typeof(GgcControllerSource).Assembly;
-            foreach (var legacyVersion in new[] { "V1", "V2", "V3", "V4", "V5", "V6", "V7" })
+            foreach (var legacyVersion in new[] { "V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8" })
             {
                 using var legacy = assembly.GetManifestResourceStream(
                     "GCETRuntimeProfiler.GgcGeneratedRuntime" + legacyVersion + ".reference.lua");
@@ -238,12 +239,25 @@ internal static class GgcControllerSource
         var version = lines.Length > 4
             ? lines[4].Trim() switch
             {
+                "schema = 4," => 4,
                 "schema = 3," => 3,
                 "schema = 2," => 2,
                 "schema = 1," => 1,
                 _ => 0
             } : 0;
-        string[] keys = version == 3
+        string[] keys = version == 4
+            ? [
+                "schema", "capture", "baselineFrameMs", "hitchToleranceMs",
+                "pressureReferenceMiB", "pressureStartMiB", "pressureHighMiB",
+                "pressureSampleCount", "frameReserveMs",
+                "estimatedOriginalCetMsPerSecond",
+                "estimatedCoveredCetMsPerSecond",
+                "estimatedOptimizedCetMsPerSecond",
+                "estimatedFreedCetMsPerSecond",
+                "estimatedSemanticSavingMsPerSecond",
+                "estimatedGenericSavingMsPerSecond"
+              ]
+            : version == 3
             ? [
                 "schema", "capture", "baselineFrameMs", "hitchToleranceMs",
                 "pressureReferenceMiB", "pressureStartMiB", "pressureHighMiB",
@@ -302,7 +316,7 @@ internal static class GgcControllerSource
                      (keys[i] == "estimatedOriginalCetMsPerSecond" ||
                       keys[i] == "estimatedOptimizedCetMsPerSecond" ||
                       keys[i] == "estimatedFreedCetMsPerSecond" ||
-                      keys[i] == "estimatedGgcStartingCpuMsPerSecond"))
+                      (version < 4 && keys[i] == "estimatedGgcStartingCpuMsPerSecond")))
                 missingWorkFields++;
             else if (!double.TryParse(value,
                          NumberStyles.Float, CultureInfo.InvariantCulture, out var number) ||
@@ -313,7 +327,8 @@ internal static class GgcControllerSource
         // Historical source and new scalar configuration both require proof
         // of complete, inert structure, including optional evidence fields.
         return (missingPriorFields is 0 or 3) &&
-               (missingWorkFields is 0 or 4);
+               (missingWorkFields == 0 ||
+                missingWorkFields == (version >= 4 ? 3 : 4));
     }
 
     private static bool TryCalibrate(
@@ -352,20 +367,11 @@ internal static class GgcControllerSource
         }
         var capture = sourceCapture.GetString() ?? "unknown";
         var count = (int)sampleCount;
-        var initialIntensity = defaults.DefaultIntensityPercent;
-        var initialFrequencyMs = defaults.DefaultFrequencyMs;
         var hasMeasuredWork = defaults.MeasuredOriginalCetMsPerSecond is >= 0 &&
-            defaults.EstimatedOptimizedCetMsPerSecond is >= 0 &&
-            defaults.EstimatedGgcStartingCpuMsPerSecond is >= 0;
+            defaults.EstimatedOptimizedCetMsPerSecond is >= 0;
         var originalCet = defaults.MeasuredOriginalCetMsPerSecond ?? 0;
         var optimizedCet = defaults.EstimatedOptimizedCetMsPerSecond ?? 0;
         var freedCet = defaults.EstimatedFreedCetMsPerSecond;
-        var initialGgcCpu = defaults.EstimatedGgcStartingCpuMsPerSecond ?? 0;
-        if (!hasMeasuredWork && initialIntensity > 0)
-        {
-            refusal = "Nonzero G-GC defaults require measured CET workload.";
-            return false;
-        }
         double median = 0, p25 = 0, p75 = 0;
         var hasObservedRegion =
             count > 0 &&
@@ -383,11 +389,7 @@ internal static class GgcControllerSource
             (hasMeasuredWork && (originalCet > 1000 ||
                 optimizedCet > originalCet ||
                 freedCet < 0 || freedCet > originalCet ||
-                Math.Abs(optimizedCet - (originalCet - freedCet)) > 0.00001 ||
-                Math.Abs(initialGgcCpu - freedCet * 0.08) > 0.00001)) ||
-            initialIntensity < 0 || initialIntensity > 100 ||
-            initialFrequencyMs < 250 || initialFrequencyMs > 5000 ||
-            (tolerance - baseline - reserveMs <= 0 && initialIntensity > 0))
+                Math.Abs(optimizedCet - (originalCet - freedCet)) > 0.00001))
         {
             refusal = "Measured G-GC calibration is outside safe experimental bounds.";
             return false;
@@ -400,9 +402,8 @@ internal static class GgcControllerSource
             : 0.0;
         var pressureStart = hasObservedRegion ? Math.Max(64, median - slack) : 0.0;
         var pressureHigh = hasObservedRegion ? median + slack : 0.0;
-        // The Resolver's selected-capture allowance is authoritative.
-        // This generator writes it verbatim; it cannot invent independent
-        // tuning values or reset the recommended assist level to zero.
+        // Resolver supplies captured workload evidence only; maintenance
+        // stays fixed at 50 KiB / 500 ms and sensitivity is player-owned.
         capture = capture.Replace("\\", "_").Replace("\"", "_")
             .Replace("\n", "_").Replace("\r", "_");
 
@@ -413,7 +414,7 @@ internal static class GgcControllerSource
 -- Generated by G-CET Resolver from the current capture. Do not edit;
 -- a new Resolver pass replaces this exact configuration.
 return {
-  schema = 3,
+  schema = 4,
   capture = "{{capture}}",
   baselineFrameMs = {{N(baseline)}},
   hitchToleranceMs = {{N(tolerance)}},
@@ -426,11 +427,8 @@ return {
   estimatedCoveredCetMsPerSecond = {{N(defaults.EstimatedCoveredCetMsPerSecond)}},
   estimatedOptimizedCetMsPerSecond = {{(hasMeasuredWork ? N(optimizedCet) : "nil")}},
   estimatedFreedCetMsPerSecond = {{(hasMeasuredWork ? N(freedCet) : "nil")}},
-  estimatedGgcStartingCpuMsPerSecond = {{(hasMeasuredWork ? N(initialGgcCpu) : "nil")}},
   estimatedSemanticSavingMsPerSecond = {{N(defaults.EstimatedSemanticSavingMsPerSecond)}},
   estimatedGenericSavingMsPerSecond = {{N(defaults.EstimatedGenericSavingMsPerSecond)}},
-  defaultIntensity = {{N(initialIntensity)}},
-  defaultFrequencyMs = {{N(initialFrequencyMs)}},
 }
 """;
         return true;
@@ -456,7 +454,7 @@ return {
 -- Adaptive normal maintenance: 50 KiB / 500 ms when workload permits.
 -- No runtime Profiler requirement; only the developer test overrides cadence.
 local config = require("threshold")
-if type(config) ~= "table" or config.schema ~= 3
+if type(config) ~= "table" or config.schema ~= 4
     or type(config.hitchToleranceMs) ~= "number" then
   print("[G-GC] Invalid Resolver calibration; assistance disabled.")
   return
