@@ -15,10 +15,24 @@ internal static partial class SemanticInjectors
         const string marker = "G-CET native location:vehicle-mileage-pumps-v1";
         var hasInit = init.Text.Contains(marker, StringComparison.Ordinal);
         var hasGas = gas.Text.Contains(marker, StringComparison.Ordinal);
-        if(hasInit && hasGas)
-            return SemanticInjectionResult.Skip("VehicleMileage native pump stage already installed.");
         if(hasInit != hasGas)
             throw new InvalidOperationException("VehicleMileage partial native pump stage.");
+        if(hasInit)
+        {
+            if(!BridgeComplete(init.Text,gas.Text))
+                throw new InvalidOperationException("Vehicle native bridge is structurally incomplete.");
+            var current=context.TryReadOwnedCoordinator("vehicle_native_pumps.lua");
+            if(current is not null)
+            {
+                if(!WorkerComplete(current,context.RuleId))
+                    throw new InvalidOperationException("Vehicle native worker source drift.");
+                return SemanticInjectionResult.Skip(
+                    "Source-proven Vehicle native stage already complete.");
+            }
+            WriteVehicleWorker(context);
+            return SemanticInjectionResult.Success(
+                "Regenerated missing Vehicle native wake worker.");
+        }
 
         var crlfInit=init.Text.Contains("\r\n",StringComparison.Ordinal);
         var crlfGas=gas.Text.Contains("\r\n",StringComparison.Ordinal);
@@ -55,6 +69,48 @@ function M.update(dt, helpers)
   -- Registration is delegated to a 0-Engine-hosted worker.
   require("GCET_Semantic/vehicle_native_pumps").attach(Engine, Mod, GAS)
 """;
+        WriteVehicleWorker(context);
+        i=i.Replace(initAttach,nativeAttach+"\n"+initAttach,StringComparison.Ordinal);
+        context.Write(init,crlfInit ? i.Replace("\n","\r\n",StringComparison.Ordinal) : i);
+        context.Write(gas,crlfGas ? g.Replace("\n","\r\n",StringComparison.Ordinal) : g);
+        return SemanticInjectionResult.Success(
+            "Native compiled pump FAR parks only station discovery; NEAR/UNKNOWN preserves original exact pump lookup and refuel lifecycle. Mount, fuel, mileage, economy and player signals unchanged.");
+    }
+
+    private static bool BridgeComplete(string init,string gas)
+    {
+        var i=init.Replace("\r\n","\n",StringComparison.Ordinal);
+        var g=gas.Replace("\r\n","\n",StringComparison.Ordinal);
+        return i.Split("G-CET native location:vehicle-mileage-pumps-v1",StringSplitOptions.None).Length==2 &&
+            g.Split("G-CET native location:vehicle-mileage-pumps-v1",StringSplitOptions.None).Length==2 &&
+            i.Contains("require(\"GCET_Semantic/vehicle_native_pumps\").attach(Engine, Mod, GAS)",StringComparison.Ordinal) &&
+            i.Contains("Mod.Subscribe(\"VehicleMount\", on_vehicle_mount)",StringComparison.Ordinal) &&
+            i.Contains("Mod.Subscribe(\"VehicleUnmount\", on_vehicle_unmount)",StringComparison.Ordinal) &&
+            g.Contains("function M.__gcetSetNativeFar(far)",StringComparison.Ordinal) &&
+            g.Contains("M.__gcetNativeFar = far == true",StringComparison.Ordinal) &&
+            g.Contains("if M.__gcetNativeFar then",StringComparison.Ordinal) &&
+            g.Contains("stopAudioEvent(M.opts.sound_event, M.opts.sound_stop_event)",StringComparison.Ordinal) &&
+            g.Contains("M._wasInRange = false",StringComparison.Ordinal) &&
+            g.Contains("M._lastPointIdx = nil",StringComparison.Ordinal) &&
+            g.Contains("local pointIdx, gasPoint = findGasPoint(px, py, pz)",StringComparison.Ordinal);
+    }
+
+    private static bool WorkerComplete(string worker,string rule)
+    {
+        var w=worker.Replace("\r\n","\n",StringComparison.Ordinal);
+        return w.StartsWith("-- G-CET semantic coordinator:"+rule+"\n",StringComparison.Ordinal) &&
+            w.Contains("function M.attach(engine, mod, gas)",StringComparison.Ordinal) &&
+            w.Contains("host:attachCompiled(10040, #gas.points,",StringComparison.Ordinal) &&
+            w.Contains("function() gas.__gcetSetNativeFar(false) end",StringComparison.Ordinal) &&
+            w.Contains("function() gas.__gcetSetNativeFar(true) end",StringComparison.Ordinal) &&
+            w.Contains("function() gas.__gcetSetNativeFar(false); return true end",StringComparison.Ordinal) &&
+            w.Contains("if not ok or not attached then gas.__gcetSetNativeFar(false) end",StringComparison.Ordinal) &&
+            w.Contains("return ok and attached == true",StringComparison.Ordinal) &&
+            w.TrimEnd().EndsWith("return M",StringComparison.Ordinal);
+    }
+
+    private static void WriteVehicleWorker(SemanticPatchContext context)
+    {
         context.WriteCoordinator("vehicle_native_pumps.lua", """
 -- G-CET semantic coordinator:native-location-vehicle-mileage-pumps
 -- Native pump vicinity worker; the original fuel loop remains the authority.
@@ -76,10 +132,5 @@ function M.attach(engine, mod, gas)
 end
 return M
 """);
-        i=i.Replace(initAttach,nativeAttach+"\n"+initAttach,StringComparison.Ordinal);
-        context.Write(init,crlfInit ? i.Replace("\n","\r\n",StringComparison.Ordinal) : i);
-        context.Write(gas,crlfGas ? g.Replace("\n","\r\n",StringComparison.Ordinal) : g);
-        return SemanticInjectionResult.Success(
-            "Native compiled pump FAR parks only station discovery; NEAR/UNKNOWN preserves original exact pump lookup and refuel lifecycle. Mount, fuel, mileage, economy and player signals unchanged.");
     }
 }

@@ -12,7 +12,14 @@ internal static partial class SemanticInjectors
         const string marker="__gcetAmmPresetTimerV1";
         if(text.Contains(marker,StringComparison.Ordinal))
         {
-            if(!text.Contains("AMM.__gcetPresetTimerTicket == ticket",StringComparison.Ordinal) ||
+            if(text.Split("-- __gcetAmmPresetTimerV1",StringSplitOptions.None).Length!=2 ||
+               !text.Contains("AMM.__gcetPresetTimerTicket == ticket",StringComparison.Ordinal) ||
+               !text.Contains("if not AMM.__gcetPresetTimerArmed then",StringComparison.Ordinal) ||
+               !text.Contains("AMM.__gcetPresetTimerArmed = true",StringComparison.Ordinal) ||
+               !text.Contains("AMM.__gcetPresetTimerTicket = ticket",StringComparison.Ordinal) ||
+               !text.Contains("Cron.After(5, function()",StringComparison.Ordinal) ||
+               !text.Contains("AMM.Props.presetLoadInProgress = false",StringComparison.Ordinal) ||
+               !text.Contains("Util:RemovePlayerEffects()",StringComparison.Ordinal) ||
                !text.Contains("AMM.__gcetPresetTimerArmed = false",StringComparison.Ordinal))
                 throw new InvalidOperationException("Partial AMM preset timer state.");
             return SemanticInjectionResult.Skip("AMM preset one-shot timer already installed.");

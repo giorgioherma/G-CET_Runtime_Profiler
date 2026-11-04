@@ -49,8 +49,8 @@ internal static partial class SemanticInjectors
             "BetterLootMarkers.GetItemScore",
             "RPGManager.IsItemIconic(item)");
         const string marker = "G-CET semantic:better-loot-markers-category-no-temporary-table";
-        if (file.Text.Contains(marker, StringComparison.Ordinal))
-            return SemanticInjectionResult.Skip("BetterLootMarkers category-allocation stage already present.");
+        // Completion of this replacement is proven after its exact
+        // score-and-count-preserving body has been defined below.
         const string original =
             "        local newItem = {\n" +
             "            quality = quality,\n" +
@@ -92,6 +92,15 @@ internal static partial class SemanticInjectors
             "            end\n" +
             "        end";
         var normalized = file.Text.Replace("\r\n", "\n", StringComparison.Ordinal);
+        if (normalized.Contains(marker,StringComparison.Ordinal))
+        {
+            if (normalized.Split(replacement,StringSplitOptions.None).Length != 2 ||
+                normalized.Contains("local newItem = {",StringComparison.Ordinal))
+                throw new InvalidOperationException(
+                    "BetterLootMarkers optimized category count/score source drift.");
+            return SemanticInjectionResult.Skip(
+                "Source-proven BetterLootMarkers category allocation already complete.");
+        }
         if (normalized.Split(original, StringSplitOptions.None).Length != 2 ||
             normalized.Split("function BetterLootMarkers.GetItemScore(itemData)",
                 StringSplitOptions.None).Length != 2)

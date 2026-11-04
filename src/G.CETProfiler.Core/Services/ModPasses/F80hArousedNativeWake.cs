@@ -14,7 +14,21 @@ internal static partial class SemanticInjectors
             "registerForEvent(\"onInit\", function()");
         const string marker="-- G-CET native location:f80h-aroused-v1";
         if(file.Text.Contains(marker,StringComparison.Ordinal))
-            return SemanticInjectionResult.Skip("f80h native vicinity stage already installed.");
+        {
+            if(!BridgeComplete(file.Text))
+                throw new InvalidOperationException("F80h native bridge is structurally incomplete.");
+            var current=context.TryReadOwnedCoordinator("f80h_native_wake.lua");
+            if(current is not null)
+            {
+                if(!WorkerComplete(current,context.RuleId))
+                    throw new InvalidOperationException("F80h native worker source drift.");
+                return SemanticInjectionResult.Skip(
+                    "Source-proven F80h native stage already complete.");
+            }
+            WriteF80hWorker(context);
+            return SemanticInjectionResult.Success(
+                "Regenerated missing F80h native wake worker.");
+        }
         var crlf=file.Text.Contains("\r\n",StringComparison.Ordinal);
         var source=crlf?file.Text.Replace("\r\n","\n",StringComparison.Ordinal):file.Text;
         const string helperAnchor="local function tryRegisterNPC(self)\n";
@@ -49,6 +63,43 @@ end
   -- 0-Engine remains the single lifecycle/native host authority.
   __gcetF80hWorker.attach(#ANCHORS)
 """;
+        WriteF80hWorker(context);
+        source=source.Replace(initAnchor,initAnchor+attach+"\n",StringComparison.Ordinal);
+        context.Write(file,crlf?source.Replace("\n","\r\n",StringComparison.Ordinal):source);
+        return SemanticInjectionResult.Success(
+            "Coordinator-owned native wake: installed source anchors compiled to native coarse FAR; only new distant NPC attach/registration is bypassed when all pending/tracked queues are empty. PASS8 frame, NPC lifecycle and audio remain unchanged.");
+    }
+ 
+    private static bool BridgeComplete(string input)
+    {
+        var s=input.Replace("\r\n","\n",StringComparison.Ordinal);
+        return s.Split("-- G-CET native location:f80h-aroused-v1",StringSplitOptions.None).Length==2 &&
+            s.Contains("local __gcetF80hWorker = require(\"GCET_Semantic/f80h_native_wake\")",StringComparison.Ordinal) &&
+            s.Contains("__gcetF80hWorker.isFar()",StringComparison.Ordinal) &&
+            s.Contains("next(tracked) == nil and next(pending) == nil",StringComparison.Ordinal) &&
+            s.Contains("next(pendingAppearance) == nil and next(preActiveQueue) == nil",StringComparison.Ordinal) &&
+            s.Contains("local function tryRegisterNPC(self)\n  if __gcetF80hCanSkipNew() then return end",StringComparison.Ordinal) &&
+            s.Contains("if scriptActive and __gcetF80hCanSkipNew() then return end",StringComparison.Ordinal) &&
+            s.Contains("__gcetF80hWorker.attach(#ANCHORS)",StringComparison.Ordinal);
+    }
+
+    private static bool WorkerComplete(string worker,string rule)
+    {
+        var w=worker.Replace("\r\n","\n",StringComparison.Ordinal);
+        return w.StartsWith("-- G-CET semantic coordinator:"+rule+"\n",StringComparison.Ordinal) &&
+            w.Contains("function M.isFar() return far == true end",StringComparison.Ordinal) &&
+            w.Contains("function M.attach(count)",StringComparison.Ordinal) &&
+            w.Contains("host:attachCompiled(10042, count,",StringComparison.Ordinal) &&
+            w.Contains("function() far = false end",StringComparison.Ordinal) &&
+            w.Contains("function() far = true end",StringComparison.Ordinal) &&
+            w.Contains("function() far = false; return true end",StringComparison.Ordinal) &&
+            w.Contains("if not ok or not attached then far = false end",StringComparison.Ordinal) &&
+            w.Contains("return ok and attached == true",StringComparison.Ordinal) &&
+            w.TrimEnd().EndsWith("return M",StringComparison.Ordinal);
+    }
+
+    private static void WriteF80hWorker(SemanticPatchContext context)
+    {
         context.WriteCoordinator("f80h_native_wake.lua", """
 -- G-CET semantic coordinator:native-location-f80h-aroused
 -- Private native FAR worker; no independent scheduler or gameplay hooks.
@@ -73,9 +124,5 @@ function M.attach(count)
 end
 return M
 """);
-        source=source.Replace(initAnchor,initAnchor+attach+"\n",StringComparison.Ordinal);
-        context.Write(file,crlf?source.Replace("\n","\r\n",StringComparison.Ordinal):source);
-        return SemanticInjectionResult.Success(
-            "Coordinator-owned native wake: installed source anchors compiled to native coarse FAR; only new distant NPC attach/registration is bypassed when all pending/tracked queues are empty. PASS8 frame, NPC lifecycle and audio remain unchanged.");
     }
 }
