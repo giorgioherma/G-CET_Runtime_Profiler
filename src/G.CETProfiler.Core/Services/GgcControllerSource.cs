@@ -63,6 +63,26 @@ internal static class GgcControllerSource
             return false;
         }
 
+        var appliedStages = manifest
+            .Select(x => JsonSerializer.SerializeToElement(x)).ToArray();
+        static bool IsStage(JsonElement row, string kind) =>
+            row.ValueKind == JsonValueKind.Object &&
+            row.TryGetProperty("type", out var type) &&
+            type.ValueKind == JsonValueKind.String &&
+            type.GetString() == kind;
+        var consolidatedCallbacks = appliedStages.Count(row =>
+            IsStage(row, "FRAME_DISPATCH_CONSOLIDATION"));
+        var appliedNativeReadStages = appliedStages.Count(row =>
+            IsStage(row, "NATIVE_READ_REUSE"));
+        var appliedNativeGetterSites = appliedStages
+            .Where(row => IsStage(row, "NATIVE_READ_REUSE"))
+            .Sum(row => row.TryGetProperty("replacedOccurrences", out var value) &&
+                        value.ValueKind == JsonValueKind.Number &&
+                        value.TryGetInt32(out var count) && count > 0
+                ? count : 0);
+        var sourceProvenSemanticRules = appliedStages.Count(row =>
+            IsStage(row, "SEMANTIC_RULE"));
+
         staged[RuntimePath] = Encoding.UTF8.GetBytes(Runtime);
         staged[CalibrationPath] = Encoding.UTF8.GetBytes(calibration);
         appliedTransformsByFile[RuntimePath] = 0;
@@ -87,6 +107,17 @@ internal static class GgcControllerSource
             defaults.DefaultIntensityPercent,
             defaults.DefaultFrequencyMs,
             defaults.EstimateStatus,
+            estimateModel = "CAPTURE_SCOPED_APPLIED_CALLBACK_SCOPE_V2_HEURISTIC",
+            estimateConfidence = "UNVALIDATED_FORECAST_REQUIRES_POST_PASS_CAPTURE",
+            appliedFrameCallbacksConsolidated = consolidatedCallbacks,
+            appliedNativeReadStages,
+            appliedNativeGetterSites,
+            appliedSourceProvenSemanticRules = sourceProvenSemanticRules,
+            creditedMeasuredGenericCallbackRegistrations = defaults.RuleEstimates
+                .Where(item => item.Stage == "GENERIC" && item.RegistrationId is > 0 &&
+                    item.EstimatedSavingMsPerSecond > 0)
+                .Select(item => (item.Owner, item.RegistrationId))
+                .Distinct().Count(),
             captureRuntimeInterpretation = resolverRoot.TryGetProperty(
                 "captureRuntimeInterpretation", out var runtimeInterpretation)
                 ? runtimeInterpretation.Clone() : (JsonElement?)null,
