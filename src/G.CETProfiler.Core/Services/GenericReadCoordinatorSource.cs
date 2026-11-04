@@ -19,7 +19,7 @@ internal static class GenericReadCoordinatorSource
         @"(?<![A-Za-z0-9_\.:])Game\s*\.\s*(?<getter>Get[A-Za-z0-9_]+)\s*\(\s*\)",
         RegexOptions.CultureInvariant);
     private static string Norm(string s) => s.Replace("\r\n","\n",StringComparison.Ordinal);
-    private static string WorkerName(string relative) =>
+    internal static string WorkerName(string relative) =>
         "gcet_native_reads_"+Convert.ToHexString(
             SHA256.HashData(Encoding.UTF8.GetBytes(relative.ToLowerInvariant())))
             [..10].ToLowerInvariant()+".lua";

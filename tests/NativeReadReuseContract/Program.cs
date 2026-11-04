@@ -493,6 +493,73 @@ try
         reviewedHeaders.Add(provider,(getter,header));
     }
 
+    // Source-aware semantics reuse the exact already-generated player
+    // provider, whether inline or in an externally owned generic coordinator.
+    {
+        var patchType=core.GetType(
+            "GCETRuntimeProfiler.Core.Services.SemanticPatchContext",true)!;
+        var luaType=core.GetType(
+            "GCETRuntimeProfiler.Core.Services.SemanticTextFile",true)!;
+        var patchCtor=patchType.GetConstructors(
+            BindingFlags.Instance|BindingFlags.NonPublic)
+            .Single(x=>x.GetParameters().Length==4);
+        var fromLua=luaType.GetMethod("From",
+            BindingFlags.Static|BindingFlags.NonPublic)!;
+        var call=typeof(PassGeneratorService).GetMethod(
+            "ComposedSharedProviderCall",
+            BindingFlags.Static|BindingFlags.NonPublic)!;
+        var relative="TunnelFixture/init.lua";
+        Save(relative,"local p=Game.GetPlayer()\n");
+        object Lua(string source)=>fromLua.Invoke(null,
+            [relative,Encoding.UTF8.GetBytes(source)])!;
+        object Patch(Dictionary<string,byte[]> pending)=>
+            patchCtor.Invoke([mods,"TunnelFixture","tunnel-rescue",pending]);
+        string Player(object context,string source)=>
+            (string)call.Invoke(null,[context,Lua(source),"PLAYER"])!;
+        var pristine="local p=Game.GetPlayer()\n";
+        Check(Player(Patch(new(StringComparer.OrdinalIgnoreCase)),pristine)==
+            "Game.GetPlayer()","Author fallback must be preserved");
+        var inline=reviewedHeaders["PLAYER"].Header+"\n"+
+            "local p=__gcetGetPlayer()\n";
+        Check(Player(Patch(new(StringComparer.OrdinalIgnoreCase)),inline)==
+            "__gcetGetPlayer()","Tunnel failed to reuse verified inline provider");
+        var coordType=core.GetType(
+            "GCETRuntimeProfiler.Core.Services.GenericReadCoordinatorSource",true)!;
+        var rewrite=coordType.GetMethod("TryRewrite",
+            BindingFlags.Static|BindingFlags.NonPublic)!;
+        var pending=new Dictionary<string,byte[]>(
+            StringComparer.OrdinalIgnoreCase);
+        object?[] args=[mods,relative,pristine,pending,actualRecipes,
+            null,null,null,0,0,0,null];
+        Check((bool)rewrite.Invoke(null,args)!,
+            "Cannot create reviewed coordinator fixture");
+        var source=(string)args[5]!;
+        var worker=(string)args[6]!;
+        var workerRel=(string)args[7]!;
+        pending[workerRel]=Encoding.UTF8.GetBytes(worker);
+        Check(Player(Patch(pending),source)=="__gcetNativeReads.GetPlayer()",
+            "Tunnel failed to reuse proven external coordinator getter");
+        var missing=false;
+        try { Player(Patch(new(StringComparer.OrdinalIgnoreCase)),source); }
+        catch(TargetInvocationException e)
+        {
+            missing=e.InnerException?.Message.Contains(
+                "dependency is missing",StringComparison.Ordinal)==true;
+        }
+        Check(missing,"Missing read-coordinator worker was silently accepted");
+        var drift=false;
+        var bad=inline.Replace(
+            "return Game.GetPlayer()","return nil",StringComparison.Ordinal);
+        try { Player(Patch(new(StringComparer.OrdinalIgnoreCase)),bad); }
+        catch(TargetInvocationException e)
+        {
+            drift=e.InnerException?.Message.Contains(
+                "helper drifted",StringComparison.Ordinal)==true;
+        }
+        Check(drift,"Drifted current provider fallback was silently accepted");
+        Console.WriteLine("Tunnel source-aware player provider first-pass contract PASS");
+    }
+
     // Real staged-pass regression: previously installed shared-provider helpers
     // retain their Game.* fallback, even when a stale callback range includes
     // the entire helper. Newly discovered author callsites remain eligible.

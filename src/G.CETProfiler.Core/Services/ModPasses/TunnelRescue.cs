@@ -25,6 +25,8 @@ internal static partial class SemanticInjectors
             "system:GetAllMappins()");
 
         var text = file.Text;
+        var playerRead = PassGeneratorService.ComposedSharedProviderCall(
+            context, file, "PLAYER");
 
         // v2 is deliberately upgrade-safe over the earlier tunnel semantic.
         // If the quest-session outer split is already present, retain it and
@@ -198,7 +200,7 @@ ${close}" + "\n",
                 " local site=L.rescue and L.rescue.surface\n" +
                 " local giver=L.rescue and L.rescue.brother\n" +
                 " if type(site)~='table' or type(giver)~='table' then return false end\n" +
-                " local player=Game.GetPlayer()\n" +
+                " local player="+playerRead+"\n" +
                 " if not valid(player) or not player:IsAttached() then return false end\n" +
                 " local p=player:GetWorldPosition()\n" +
                 " if not p then return false end\n" +

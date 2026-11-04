@@ -119,7 +119,7 @@ try {
                 ' hasInlinePlayer=' + $t.Contains('-- G-CET shared provider: PLAYER') +
                 ' hasSemanticFar=' + $t.Contains('local function __gcetTunnelFarOutside()') +
                 ' inlineProviderCount=' + ([regex]::Matches($t,'-- G-CET shared provider:')).Count +
-                ' rawGamePlayerCount=' + ([regex]::Matches($t,'Game[.]GetPlayer\\s*\\(')).Count
+                ' rawGamePlayerCount=' + ([regex]::Matches($t,'Game[.]GetPlayer\s*\(')).Count
         }
         throw ("SECOND_PASS_DUPLICATED_TRANSFORMS: count=$($new.Count) types=$($types -join ',')" +
             " stageIds=$($identities -join ',')" + $tunnelSummary)

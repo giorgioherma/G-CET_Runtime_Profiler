@@ -905,6 +905,69 @@ public static class PassGeneratorService
     // is mandatory for correctness, not a newly available optimization.
     // Mask ONLY fully reviewed generated helpers. Marker-only/foreign
     // lookalikes remain visible so their drift cannot be called complete.
+    // Source-aware semantics execute only AFTER generic/native finalization.
+    // Reuse an existing proven provider rather than introducing a new raw
+    // getter that would be re-optimized only on the next Resolver pass.
+    internal static string ComposedSharedProviderCall(
+        SemanticPatchContext context, SemanticTextFile file, string provider)
+    {
+        if(!SharedProviderRecipes.TryGetValue(provider,out var recipe))
+            throw new InvalidOperationException("Unsupported G-CET provider: "+provider);
+        var source=file.Text.Replace("\r\n","\n",StringComparison.Ordinal);
+        var reviewed=string.Join("\n",BuildSharedProviderHeader(recipe))
+            .TrimEnd('\r','\n');
+        if(source.Contains(GenericReadCoordinatorSource.Marker,StringComparison.Ordinal))
+        {
+            var name=GenericReadCoordinatorSource.WorkerName(file.RelativeFile);
+            var module="GCET_Semantic/"+Path.GetFileNameWithoutExtension(name);
+            var bridge=GenericReadCoordinatorSource.Marker+module+"\n";
+            var import="local __gcetNativeReads = require(\""+module+"\")";
+            if(source.Split(bridge,StringSplitOptions.None).Length!=2 ||
+                source.Split(import,StringSplitOptions.None).Length!=2)
+                throw new InvalidOperationException(
+                    "Existing shared-provider source/worker bridge changed.");
+            var worker=context.TryReadOwnedCoordinator(name)
+                ?? throw new InvalidOperationException(
+                    "Existing shared-provider worker dependency is missing.");
+            var owner=file.RelativeFile.Split('/')[0];
+            var virtualWorker=new Dictionary<string,byte[]>(
+                StringComparer.OrdinalIgnoreCase)
+            {
+                [owner+"/GCET_Semantic/"+name]=Encoding.UTF8.GetBytes(worker)
+            };
+            // This is a read-only invocation of the SAME generic verifier.
+            // It checks the real bridge, full worker, and exact Game fallback.
+            GenericReadCoordinatorSource.TryRewrite(
+                ".",file.RelativeFile,source,virtualWorker,
+                p=>SharedProviderRecipes.TryGetValue(p,out var r)
+                    ? BuildSharedProviderHeader(r) : Array.Empty<string>(),
+                out _,out _,out _,out _,out _,out _,out var reason);
+            if(reason is not null ||
+                !GenericReadCoordinatorSource.TryFindProviderBlock(
+                    worker,provider,recipe.GameGetter,reviewed,
+                    out _,out _) ||
+                !Regex.IsMatch(worker,
+                    @"\b"+Regex.Escape(recipe.GameGetter)+
+                    @"\s*=\s*"+Regex.Escape(recipe.HelperName)+@"\b",
+                    RegexOptions.CultureInvariant))
+                throw new InvalidOperationException(
+                    "Existing generic worker lacks the reviewed "+
+                    provider+" provider or has source drift: "+reason);
+            return "__gcetNativeReads."+recipe.GameGetter+"()";
+        }
+        if(source.Contains(recipe.Marker,StringComparison.Ordinal))
+        {
+            if(!GenericReadCoordinatorSource.TryFindProviderBlock(
+                source,provider,recipe.GameGetter,reviewed,out _,out _))
+                throw new InvalidOperationException(
+                    "Existing inline shared-provider helper drifted: "+provider);
+            return recipe.HelperName+"()";
+        }
+        // If generic did not establish a player provider, preserve the
+        // original Game getter. Never invent a native state snapshot.
+        return "Game."+recipe.GameGetter+"()";
+    }
+
     internal static string MaskVerifiedSharedProviderFallbacks(string fullSource)
     {
         var normalized = fullSource.Replace("\r\n", "\n",
