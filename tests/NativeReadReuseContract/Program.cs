@@ -557,6 +557,10 @@ try
                 "helper drifted",StringComparison.Ordinal)==true;
         }
         Check(drift,"Drifted current provider fallback was silently accepted");
+        // Fixture has a real installed owner so source/worker proof is valid.
+        // Remove it before the later broad native-read discovery assertions:
+        // this test must not create an unrelated extra generic candidate.
+        Directory.Delete(Path.Combine(mods,"TunnelFixture"),true);
         Console.WriteLine("Tunnel source-aware player provider first-pass contract PASS");
     }
 
