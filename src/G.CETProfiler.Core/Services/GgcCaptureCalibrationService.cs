@@ -87,9 +87,6 @@ internal static class GgcCaptureCalibrationService
         var frameRoom = validFrames ? workloadCeiling!.Value - medianFrame!.Value : 0.0;
         var reserve = validFrames ? Math.Max(4.0, frameRoom * 0.60) : 0.0;
         var usableRoom = Math.Max(0.0, frameRoom - reserve);
-        var roomFraction = validFrames
-            ? Math.Clamp(usableRoom / (workloadCeiling!.Value * 0.20), 0.0, 1.0)
-            : 0.0;
         // ANALYZE has not generated anything yet. It may report the original
         // measured CET callback cost, but must NOT pretend the entire stack
         // receives a 50% reduction. Only GENERATE knows which source-proven
@@ -135,7 +132,7 @@ internal static class GgcCaptureCalibrationService
             },
             assistance = new
             {
-                policy = "MEASURED_CET_WORK_APPLIED_SOURCE_PROOF_ESTIMATES_DEFAULTS",
+                policy = "APPLIED_RULE_WORKLOAD_FORECAST_FIXED_GC_CADENCE",
                 frameReserveMs = validFrames ? reserve : (double?)null,
                 usableFrameMarginMs = validFrames ? usableRoom : (double?)null,
                 measuredOriginalCetMsPerSecond = hasCetWorkload
@@ -143,24 +140,20 @@ internal static class GgcCaptureCalibrationService
                 estimatedCoveredCetMsPerSecond = (double?)null,
                 estimatedOptimizedCetMsPerSecond = (double?)null,
                 estimatedFreedCetMsPerSecond = (double?)null,
-                estimatedGgcStartingCpuMsPerSecond = (double?)null,
-                historicalCoveredWorkReductionPercent = 50,
-                conservativeCreditingFractionPercent = 50,
-                estimatedSavingsAllocatedPercent = 8,
-                recommendedIntensityPercent = evidenceValid ? 0 : (int?)null,
-                recommendedMinFrequencyMs = evidenceValid ? 5000 : (int?)null,
+
                 calibrationStatus = !hasCetWorkload
-                    ? "CET_WORKLOAD_NOT_MEASURED_DEFAULTS_OFF"
+                    ? "CET_WORKLOAD_NOT_MEASURED_NO_SAVINGS_FORECAST"
                     : "AWAITING_ACTUALLY_COMPOSED_SOURCE_PROVEN_RULES"
             },
             systemInstalledRamMiB = (double?)null,
             systemRamStatus = "NOT_MEASURED_IN_RESOLVER_HANDOFF",
             control = new
             {
-                intensityAndFrequencyAreRuntimeAdjustable = true,
-                enabledByDefault = false, // Only source-proven GENERATE may recommend ON.
-                manualOverridesNotCappedByEstimatedSaving = true,
-                runtimeCpuProbingRequired = false
+                workloadSensitivityPlayerControlled = true,
+                fixedIncrementalStepKiB = 50,
+                fixedIncrementalIntervalMs = 500,
+                enabledByDefault = true,
+                directGcCostSafetyMonitored = true
             },
             generator = new
             {
