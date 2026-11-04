@@ -322,6 +322,10 @@ $modsRoot=Join-Path $game 'bin/x64/plugins/cyber_engine_tweaks/mods'
 $mechRoot=Join-Path $modsRoot 'illegal_mechanic_phase1a'
 $redsRoot=Join-Path $game 'r6/scripts/zzz_illegal_mechanic_phase1a'
 New-Item -ItemType Directory -Force $mechRoot,$redsRoot | Out-Null
+# Compiled native geometry must belong to a truly installed CET mod;
+# a leftover physical_npc.lua without the root init is not admissible.
+'-- installed illegal_mechanic_phase1a CET entrypoint' |
+    Set-Content -LiteralPath (Join-Path $mechRoot 'init.lua') -Encoding utf8
 [IO.File]::WriteAllText((Join-Path $mechRoot 'physical_npc.lua'),@'
 -- G-CET native location:illegal-v3
 local function attachMechanic(lookup,index,near,far,fallback)
