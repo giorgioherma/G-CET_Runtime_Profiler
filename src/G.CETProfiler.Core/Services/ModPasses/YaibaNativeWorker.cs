@@ -7,7 +7,7 @@ internal static partial class SemanticInjectors
         const string marker="-- G-CET semantic:yaiba-native-worker-v1";
         if(file.Text.Contains(marker,StringComparison.Ordinal))
         {
-            if (!NativeLocationAdditionalOwnersSource.BathtubBridgeComplete(file.Text))
+            if (!YaibaWorkerSourceComplete(file.Text))
                 throw new InvalidOperationException(
                     "Yaiba native source bridge is incomplete.");
             var worker=context.TryReadOwnedCoordinator("yaiba_native_worker.lua");
@@ -37,6 +37,29 @@ internal static partial class SemanticInjectors
         return SemanticInjectionResult.Success(
             "Yaiba native bathtub proximity moved to worker; active UI/water and original UNKNOWN geometry remain.");
     }
+    // The worker rule is independently composable: a previous source can
+    // already own the worker while the separate native-location/UNKNOWN
+    // optimization is still absent. Verify only this stage's source bridge
+    // here. The native-location injector proves its additional FAR guards.
+    private static bool YaibaWorkerSourceComplete(string input)
+    {
+        var source=input.Replace("\r\n","\n",StringComparison.Ordinal);
+        return source.Split("-- G-CET semantic:yaiba-native-worker-v1",
+                   StringSplitOptions.None).Length==2 &&
+            source.Contains("require(\"GCET_Semantic/yaiba_native_worker\").attach(lookup,",
+                StringComparison.Ordinal) &&
+            source.Contains("function(near) __gcetBathNativeFar=not near end",
+                StringComparison.Ordinal) &&
+            source.Contains("function() __gcetBathNativeFar=nil;return true end",
+                StringComparison.Ordinal) &&
+            source.Contains("function bathtub.init()",StringComparison.Ordinal) &&
+            source.Contains("function bathtub.update(player, pPos)",StringComparison.Ordinal) &&
+            source.Contains("if __gcetBathNativeFar == true then return end",
+                StringComparison.Ordinal) &&
+            source.Contains("if __gcetBathNativeFar == nil then",StringComparison.Ordinal) &&
+            source.Contains("ui.update()",StringComparison.Ordinal);
+    }
+
     private static bool YaibaWorkerComplete(string worker, string rule)
     {
         var source=worker.Replace("\r\n","\n",StringComparison.Ordinal);
