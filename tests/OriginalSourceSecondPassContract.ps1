@@ -38,13 +38,25 @@ try {
     $manifest=Join-Path $root 'repeated.json'
     if(!(Test-Path -LiteralPath $manifest)){throw 'SECOND_PASS_MANIFEST_MISSING'}
     $second=Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
+    $analysis = Get-Content -LiteralPath $secondResult.ResolverPath -Raw | ConvertFrom-Json
+    $readySemantic = @($analysis.semanticSourceOnlyCandidates | Where-Object {
+        $_.sourceProofSatisfied -and !$_.alreadySatisfied
+    } | ForEach-Object { [string]$_.owner + '/' + [string]$_.ruleId })
+    $readyGeneric = @($analysis.callbackFamilies | ForEach-Object {
+        $_.topConsumers
+    } | Where-Object { $_.generic.Automatable } | ForEach-Object {
+        [string]$_.owner + '/' + [string]$_.registrationId + '/' +
+        (@($_.generic.RecipeFamilies) -join '+')
+    })
     if ([int]$secondResult.SemanticReadyRuleCount -ne 0 -or
         [int]$secondResult.GenericResolvedCount -ne 0 -or
         [int]$secondResult.OptimizationCoverage.ReadyRuleCount -ne 0) {
         throw ('SECOND_PASS_ANALYZE_STILL_ADVERTISES_COMPLETE_RULES: semantic=' +
             $secondResult.SemanticReadyRuleCount + ' generic=' +
             $secondResult.GenericResolvedCount + ' catalog=' +
-            $secondResult.OptimizationCoverage.ReadyRuleCount)
+            $secondResult.OptimizationCoverage.ReadyRuleCount +
+            ' semanticIds=' + ($readySemantic -join ',') +
+            ' genericIds=' + ($readyGeneric -join ','))
     }
     $new=@($second.transforms)
     $fail=@($second.skipOutcomes.entries | Where-Object {$_.category -eq 'GENERATION_FAILURE'})
