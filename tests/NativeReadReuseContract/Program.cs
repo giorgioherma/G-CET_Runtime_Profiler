@@ -39,6 +39,8 @@ try
     // helper-only Vortex leftovers are NOT legitimate native-read candidates.
     Save("Other/init.lua","-- installed CET entrypoint\n");
     Save("Other/helper.lua","return Game.GetTransactionSystem()\n");
+    // Generated semantic-owned workers are not fresh generic candidates.
+    Save("Other/GCET_Semantic/worker.lua","return Game.GetPlayer()\n");
     Save("VortexOrphan/modules/remaining.lua","return Game.GetTransactionSystem()\n");
     Save("VortexOrphan/init.lua.vortex_backup","-- removed entrypoint backup\n");
     Save("0-Engine/init.lua","return Game.GetPlayer()\n");

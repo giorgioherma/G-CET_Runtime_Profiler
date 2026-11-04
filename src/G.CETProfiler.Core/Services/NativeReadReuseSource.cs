@@ -48,6 +48,12 @@ internal static class NativeReadReuseSource
     }
     private static bool IsInfrastructure(string relative)
     {
+        // Semantic workers are generated last, through their authoritative
+        // source owner. Never reclassify a prior semantic worker's original
+        // Game fallback as a newly available generic rewrite on pass two.
+        if (relative.Replace('\\', '/').Contains("/GCET_Semantic/",
+                StringComparison.OrdinalIgnoreCase))
+            return true;
         var first=relative.Split('/')[0];
         return first.Equals("0-Engine",StringComparison.OrdinalIgnoreCase) ||
                first.Equals("G-CET",StringComparison.OrdinalIgnoreCase) ||
