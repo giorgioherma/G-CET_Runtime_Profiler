@@ -4,6 +4,10 @@ $root=Join-Path $env:RUNNER_TEMP 'gcet-yaiba-native-worker'
 $folder=Join-Path $root 'Yaiba'
 if(Test-Path $root){Remove-Item -Recurse -Force $root}
 New-Item -ItemType Directory -Force $folder | Out-Null
+# Yaiba's bathtub.lua is a submodule of an installed CET owner. An orphaned
+# bathtub.lua with no root entrypoint is not a valid current installation.
+'-- Yaiba installed CET entrypoint' |
+    Set-Content -LiteralPath (Join-Path $folder 'init.lua') -Encoding utf8
 $fixture=@'
 local __gcetBathNativeFar=nil
 function bathtub.init()
