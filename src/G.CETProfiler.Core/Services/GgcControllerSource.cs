@@ -389,7 +389,7 @@ internal static class GgcControllerSource
             (hasMeasuredWork && (originalCet > 1000 ||
                 optimizedCet > originalCet ||
                 freedCet < 0 || freedCet > originalCet ||
-                Math.Abs(optimizedCet - (originalCet - freedCet)) > 0.00001))
+                Math.Abs(optimizedCet - (originalCet - freedCet)) > 0.00001)))
         {
             refusal = "Measured G-GC calibration is outside safe experimental bounds.";
             return false;
