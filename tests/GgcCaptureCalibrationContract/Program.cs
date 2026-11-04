@@ -311,7 +311,7 @@ try
     var threshold = Encoding.UTF8.GetString(generated["G-GC/threshold.lua"]);
     foreach (var token in new[] {
         "schema = 3", "estimatedOriginalCetMsPerSecond = 120",
-        "estimatedCoveredCetMsPerSecond = 100",
+        "estimatedCoveredCetMsPerSecond = 120",
         "estimatedOptimizedCetMsPerSecond = 50.16",
         "estimatedFreedCetMsPerSecond = 69.84",
         "estimatedGgcStartingCpuMsPerSecond = 5.5872",
@@ -343,6 +343,11 @@ try
     var doc = JsonSerializer.SerializeToElement(composed[^1]);
     Check(doc.GetProperty("type").GetString() == "GC_CONTROLLER" &&
           doc.GetProperty("perRuleEstimates").GetArrayLength() == 5 &&
+          doc.GetProperty("appliedFrameCallbacksConsolidated").GetInt32() == 3 &&
+          doc.GetProperty("appliedSourceProvenSemanticRules").GetInt32() == 2 &&
+          doc.GetProperty("appliedNativeGetterSites").GetInt32() == 0 &&
+          doc.GetProperty("estimateModel").GetString() ==
+              "CAPTURE_SCOPED_APPLIED_CALLBACK_SCOPE_V2_HEURISTIC" &&
           Math.Abs(doc.GetProperty("estimatedFreedCetMsPerSecond").GetDouble()-69.84)<1e-5,
         "Pass manifest lacks verifiable per-rule savings evidence");
 
