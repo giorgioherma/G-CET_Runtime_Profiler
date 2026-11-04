@@ -187,7 +187,7 @@ Check(Val(direct, "EstimatedOptimizedCetMsPerSecond") == 120 &&
 // One newly eligible mod can receive an incremental estimate, but only on
 // top of the already measured optimized runtime.
 var incremental = Calculate(alreadyOptimized, applied);
-Check(Math.Abs(Val(incremental, "EstimatedOptimizedCetMsPerSecond") - 91.76) < 1e-6 &&
+Check(Math.Abs(Val(incremental, "EstimatedOptimizedCetMsPerSecond") - 50.16) < 1e-5 &&
       ((string)incremental.GetType().GetProperty("EstimateStatus")!
           .GetValue(incremental)!).Contains("NEW_RULE_ESTIMATES_ONLY"),
     "Measured optimized capture was not retained as the incremental baseline");
@@ -219,13 +219,13 @@ Check(!((string)mostlyUnoptimizedEstimate.GetType()
     .StartsWith("DIRECT_MEASURED"),
     "Mostly unoptimized source was treated as optimized runtime");
 
-Check(Math.Abs(Val(values,"EstimatedFreedCetMsPerSecond") - 28.24) < 1e-6,
+Check(Math.Abs(Val(values,"EstimatedFreedCetMsPerSecond") - 69.84) < 1e-5,
     "Per-stage semantic and generic savings not credited conservatively");
-Check(Math.Abs(Val(values,"EstimatedSemanticSavingMsPerSecond") - 24) < 1e-6 &&
-      Math.Abs(Val(values,"EstimatedGenericSavingMsPerSecond") - 4.24) < 1e-6,
+Check(Math.Abs(Val(values,"EstimatedSemanticSavingMsPerSecond") - 57.6) < 1e-5 &&
+      Math.Abs(Val(values,"EstimatedGenericSavingMsPerSecond") - 12.24) < 1e-5,
     "Generic/semantic attribution wrong");
-Check(Count(values,"DefaultIntensityPercent") == 21 &&
-      Count(values,"DefaultFrequencyMs") == 1450,
+Check(Count(values,"DefaultIntensityPercent") == 34 &&
+      Count(values,"DefaultFrequencyMs") == 1150,
     "Estimated savings did not determine conservative initial sliders");
 Check(Count(values,"AppliedSemanticRules") == 2 &&
       Count(values,"AppliedGenericRules") == 5 &&
@@ -242,7 +242,7 @@ Check(Val(none,"EstimatedFreedCetMsPerSecond") == 0 &&
 var duplicated = new List<object>(applied);
 duplicated.AddRange(applied);
 object noDouble = Calculate(decision, duplicated);
-Check(Math.Abs(Val(noDouble,"EstimatedFreedCetMsPerSecond") - 28.24) < 1e-6,
+Check(Math.Abs(Val(noDouble,"EstimatedFreedCetMsPerSecond") - 69.84) < 1e-5,
     "Repeated manifests inflated measured CPU savings");
 
 // Identical generic/semantic rules can hit overlapping callback work.
@@ -255,8 +255,38 @@ var sameOwner = new List<object> {
         registrationId=201L }
 };
 object overlap = Calculate(decision, sameOwner);
-Check(Math.Abs(Val(overlap,"EstimatedFreedCetMsPerSecond") - 6) < 1e-6,
-    "Overlapping generic and semantic stages were added twice");
+Check(Val(overlap,"EstimatedFreedCetMsPerSecond") >= 14.4 &&
+      Val(overlap,"EstimatedFreedCetMsPerSecond") < 26.4,
+    "Overlapping generic and semantic stages were added without residual cap");
+
+// Native-read rewrites count only for measured callbacks in the same live
+// source file, not every source-only getter elsewhere in the mod.
+var measuredNative = (JsonObject)Decision(untouched, true);
+var providerCallback = (JsonObject)measuredNative["callbackFamilies"]![0]!
+    ["topConsumers"]![1]!;
+providerCallback["source"] = JsonNode.Parse("""
+{"RelativeFile":"ModGeneric/init.lua","LineStart":12,"LineEnd":58}
+""");
+var nativeRewrite = new {
+    type = "NATIVE_READ_REUSE", file = "ModGeneric/init.lua",
+    operation = "GetPlayer", replacedOccurrences = 50
+};
+var outsideRewrite = new {
+    type = "NATIVE_READ_REUSE", file = "ModGeneric/unmeasured.lua",
+    operation = "GetPlayer", replacedOccurrences = 999
+};
+var nativeEstimate = Calculate(measuredNative, new List<object>{nativeRewrite});
+Check(Val(nativeEstimate,"EstimatedGenericSavingMsPerSecond") > 0 &&
+      Val(nativeEstimate,"EstimatedGenericSavingMsPerSecond") <= 3,
+    "Native reads were not bounded to measured callback-file exposure");
+Check(Val(Calculate(measuredNative, new List<object>{outsideRewrite}),
+        "EstimatedFreedCetMsPerSecond") == 0,
+    "Unmeasured native getter rewrite fabricated callback CPU savings");
+Check(Math.Abs(Val(Calculate(measuredNative,
+        new List<object>{nativeRewrite,nativeRewrite}),
+        "EstimatedFreedCetMsPerSecond") -
+      Val(nativeEstimate,"EstimatedFreedCetMsPerSecond")) < 1e-6,
+    "Duplicate native getter stages inflated estimated savings");
 
 // Single frame registration must never be credited as eliminated dispatch.
 object singleFrame = Calculate(decision, new List<object> {
@@ -282,12 +312,12 @@ try
     foreach (var token in new[] {
         "schema = 3", "estimatedOriginalCetMsPerSecond = 120",
         "estimatedCoveredCetMsPerSecond = 100",
-        "estimatedOptimizedCetMsPerSecond = 91.76",
-        "estimatedFreedCetMsPerSecond = 28.24",
-        "estimatedGgcStartingCpuMsPerSecond = 2.2592",
-        "estimatedSemanticSavingMsPerSecond = 24",
-        "estimatedGenericSavingMsPerSecond = 4.24",
-        "defaultIntensity = 21", "defaultFrequencyMs = 1450"
+        "estimatedOptimizedCetMsPerSecond = 50.16",
+        "estimatedFreedCetMsPerSecond = 69.84",
+        "estimatedGgcStartingCpuMsPerSecond = 5.5872",
+        "estimatedSemanticSavingMsPerSecond = 57.6",
+        "estimatedGenericSavingMsPerSecond = 12.24",
+        "defaultIntensity = 34", "defaultFrequencyMs = 1150"
     })
         Check(threshold.Contains(token), "Missing rule-based config: " + token);
     Check(source.Contains("ImGui.SliderInt(\"Workload sensitivity\", sensitivity, 0, 100)") &&
@@ -313,7 +343,7 @@ try
     var doc = JsonSerializer.SerializeToElement(composed[^1]);
     Check(doc.GetProperty("type").GetString() == "GC_CONTROLLER" &&
           doc.GetProperty("perRuleEstimates").GetArrayLength() == 5 &&
-          Math.Abs(doc.GetProperty("estimatedFreedCetMsPerSecond").GetDouble()-28.24)<1e-6,
+          Math.Abs(doc.GetProperty("estimatedFreedCetMsPerSecond").GetDouble()-69.84)<1e-5,
         "Pass manifest lacks verifiable per-rule savings evidence");
 
     foreach (var item in generated)
