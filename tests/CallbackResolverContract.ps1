@@ -442,6 +442,22 @@ registerForEvent("onUpdate", function(delta)
 end)
 '@
 
+# Simulate a removed Vortex mod: only its old auxiliary Lua and a Vortex
+# backup survive. Old Profiler rows MUST NOT make this mod installed.
+$orphan = Join-Path $mods 'FixtureVortexOrphan'
+New-Item -ItemType Directory -Force (Join-Path $orphan 'modules') | Out-Null
+@'
+registerForEvent("onDraw", function()
+    local player = Game.GetPlayer()
+    LegacyDraw(player)
+end)
+'@ | Set-Content -LiteralPath (Join-Path $orphan 'modules\leftover.lua') -Encoding utf8
+'-- backup of removed Vortex entrypoint' |
+    Set-Content -LiteralPath (Join-Path $orphan 'init.lua.vortex_backup') -Encoding utf8
+if (Test-Path (Join-Path $orphan 'init.lua')) {
+    throw 'Orphan fixture accidentally contains an installed CET entrypoint.'
+}
+
 Write-Mod 'FixtureDraw' @'
 registerForEvent("onDraw", function()
     DrawFixture()
@@ -649,6 +665,7 @@ $handoff = @{
         (CallbackRow 129 'FixtureOtherStructural' 'ObserveAfter' 'PlayerPuppet::FixtureStructuralObserve' 120 12.0 3.0 'init.lua' 1 19),
         (CallbackRow 102 'FixtureFrame' 'event' 'onUpdate' 60 5.0 1.0 'init.lua' 2 7),
         (CallbackRow 147 'FixtureZeroMeasuredFrame' 'event' 'onUpdate' 0 0.0 0.0 'init.lua' 1 3),
+        (CallbackRow 148 'FixtureVortexOrphan' 'event' 'onDraw' 400 10.0 2.0 'modules/leftover.lua' 1 4),
         (CallbackRow 140 'FixtureDraw' 'event' 'onDraw' 60 4.8 0.9 'init.lua' 1 3),
         (CallbackRow 145 'FixtureLocalLimitExact' 'event' 'onDraw' 60 4.6 0.85 'init.lua' 200 202),
         (CallbackRow 146 'FixtureLocalLimitOverflow' 'event' 'onDraw' 60 4.5 0.84 'init.lua' 201 203),
@@ -847,6 +864,17 @@ if (!(Test-Path -LiteralPath $outPath -PathType Leaf)) {
 }
 
 $result = Get-Content -LiteralPath $outPath -Raw | ConvertFrom-Json
+
+# Stale capture data cannot resurrect an uninstalled CET mod. This must
+# hold for measured generic candidates AND source-first native reads.
+$orphanConsumers = @($result.callbackFamilies |
+    ForEach-Object { $_.topConsumers } |
+    Where-Object { $_.owner -eq 'FixtureVortexOrphan' })
+$orphanReads = @($result.nativeReadReuse.files |
+    Where-Object { $_.relativeFile -like 'FixtureVortexOrphan/*' })
+if ($orphanConsumers.Count -ne 0 -or $orphanReads.Count -ne 0) {
+    throw 'Vortex orphan was admitted from stale capture or auxiliary source.'
+}
 # Receiver ownership tagging is derived offline from existing callback
 # metadata and source. Callback class context never proves an inner getter.
 $nativeCatalog=$result.nativePlayerAdoptionCatalog
@@ -1687,6 +1715,14 @@ $expectedSharedTransforms = @(
 # narrowly recorded transforms only if the generator revalidated the current
 # Lua source shape and the exact authorized Game.Get...() operation.
 $generatedManifest = Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
+$orphanChanges = @($generatedManifest.transforms | Where-Object {
+    $_.owner -eq 'FixtureVortexOrphan' -or
+    [string]$_.file -like 'FixtureVortexOrphan/*' -or
+    @($_.files | Where-Object { $_ -like 'FixtureVortexOrphan/*' }).Count -gt 0
+})
+if ($orphanChanges.Count -ne 0) {
+    throw 'Removed Vortex mod still generated source changes from old capture.'
+}
 $zeroFirstPassStage = @($generatedManifest.transforms | Where-Object {
     $_.type -eq 'FRAME_DISPATCH_CONSOLIDATION' -and
     $_.owner -eq 'FixtureZeroMeasuredFrame'
