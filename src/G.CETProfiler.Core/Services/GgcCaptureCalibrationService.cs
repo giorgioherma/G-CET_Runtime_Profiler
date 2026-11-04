@@ -318,6 +318,7 @@ internal static class GgcCaptureCalibrationService
         // These rows are already exclusive sampled callback costs. Each
         // registration is counted once, never per generic transformation.
         var measured = new Dictionary<(string Owner, long Id), (double Cpu, double Calls)>();
+        var measuredSourceFiles = new Dictionary<(string Owner, long Id), string>();
         if (resolverRoot.TryGetProperty("callbackFamilies", out var families) &&
             families.ValueKind == JsonValueKind.Array)
             foreach (var family in families.EnumerateArray())
@@ -336,6 +337,13 @@ internal static class GgcCaptureCalibrationService
                     var key = (owner.ToLowerInvariant(), id.Value);
                     if (!measured.TryGetValue(key, out var old) || cost > old.Cpu)
                         measured[key] = (cost.Value, calls.Value);
+                    if (row.TryGetProperty("source", out var source) &&
+                        source.ValueKind == JsonValueKind.Object)
+                    {
+                        var file = String(source, "RelativeFile");
+                        if (!string.IsNullOrWhiteSpace(file))
+                            measuredSourceFiles[key] = file.Replace('\\', '/').ToLowerInvariant();
+                    }
                 }
             }
 
@@ -352,12 +360,31 @@ internal static class GgcCaptureCalibrationService
         var genericByRegistration = new Dictionary<(string Owner, long Id), RuleEstimate>();
         var frameRegistrations = new Dictionary<(string Owner, string Event),
             List<(long Id, double Cpu, double Calls)>>();
+        var nativeReadByFile = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var seenNativeRead = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var item in appliedManifest)
         {
             var stage = JsonSerializer.SerializeToElement(item);
             if (stage.ValueKind != JsonValueKind.Object) continue;
             var kind = String(stage, "type") ?? "";
+            if (kind == "NATIVE_READ_REUSE")
+            {
+                // These stages have FILE ownership, not a registration id.
+                // Count getter callsites only once per applied operation, then
+                // match that source file against actually observed callbacks.
+                var file = String(stage, "file")?.Replace('\\', '/').ToLowerInvariant();
+                var operation = String(stage, "operation") ?? "";
+                var count = Number(stage, "replacedOccurrences");
+                if (!string.IsNullOrWhiteSpace(file) &&
+                    count is > 0 and < 100000 &&
+                    seenNativeRead.Add(file + "\0" + operation))
+                {
+                    nativeReadByFile[file] = Math.Min(100000,
+                        nativeReadByFile.GetValueOrDefault(file) + (int)count.Value);
+                    appliedGeneric.Add("NATIVE_READ_REUSE\0" + file + "\0" + operation);
+                }
+            }
             var owner = String(stage, "Owner") ?? String(stage, "owner");
             if (string.IsNullOrWhiteSpace(owner)) continue;
 
@@ -456,6 +483,24 @@ internal static class GgcCaptureCalibrationService
                     entry.EstimatedSavingMsPerSecond > oldEntry.EstimatedSavingMsPerSecond)
                     genericByRegistration[registrationKey] = entry;
             }
+        }
+        // Count rewrites against *measured* callback-source files only.
+        // Rewritten getters elsewhere in the mod do not establish that
+        // their cost occurs during this capture. Even matched files use only
+        // a capped structural-exposure heuristic (not measured savings).
+        foreach (var (key, file) in measuredSourceFiles)
+        {
+            if (!nativeReadByFile.TryGetValue(file, out var occurrences) ||
+                !measured.TryGetValue(key, out var callback) || callback.Cpu <= 0)
+                continue;
+            var fraction = Math.Min(0.15, 0.02 * Math.Log(1 + occurrences));
+            var estimate = new RuleEstimate("GENERIC", "NATIVE_READ_REUSE",
+                key.Owner, key.Id, callback.Cpu,
+                Math.Round(callback.Cpu * fraction, 6), fraction,
+                "APPLIED_GETTER_SITES_IN_MEASURED_CALLBACK_SOURCE_FILE; ESTIMATED_NOT_MEASURED");
+            if (!genericByRegistration.TryGetValue(key, out var previous) ||
+                estimate.EstimatedSavingMsPerSecond > previous.EstimatedSavingMsPerSecond)
+                genericByRegistration[key] = estimate;
         }
         estimates.AddRange(genericByRegistration.Values);
 
