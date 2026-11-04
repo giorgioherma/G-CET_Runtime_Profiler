@@ -1304,6 +1304,48 @@ jobs:
             throw 'Profiler restore left an unnecessary adaptive scheduler behind.'
           }
 
+          # Missing canonical scheduler must be automatically deployed by
+          # INSTALL before the FIRST capture and removed on RESTORE. No extra
+          # CETProfilerScheduler driver and no root 0-Engine edits.
+          $fixture7 = Join-Path $env:RUNNER_TEMP 'gcet-missing-canonical-scheduler-fixture'
+          if (Test-Path $fixture7) { Remove-Item $fixture7 -Recurse -Force }
+          $plugins7 = Join-Path $fixture7 'bin\x64\plugins'
+          $mods7 = Join-Path $plugins7 'cyber_engine_tweaks\mods'
+          $zero7 = Join-Path $mods7 '0-Engine'
+          New-Item -ItemType Directory -Force (Join-Path $zero7 'modules') | Out-Null
+          Copy-Item 'publish\payload\cyber_engine_tweaks.PROFILER.dll' (Join-Path $plugins7 'cyber_engine_tweaks.asi')
+          Copy-Item (Join-Path $zero6 'init.lua') (Join-Path $zero7 'init.lua')
+          Copy-Item (Join-Path $zero6 'modules\Scheduler.lua') (Join-Path $zero7 'modules\Scheduler.lua')
+          $root7Hash = (Get-FileHash (Join-Path $zero7 'init.lua') -Algorithm SHA256).Hash
+          $alias7Hash = (Get-FileHash (Join-Path $zero7 'modules\Scheduler.lua') -Algorithm SHA256).Hash
+          $canonical7 = Join-Path $zero7 'modules\G-CET\Scheduler.lua'
+          $before7 = (& $exe --status --game $fixture7 --json | ConvertFrom-Json)
+          if ($before7.zeroEngineInitKind -ne 'namespaced' -or $before7.schedulerProfilerAware) {
+            throw 'Missing-canonical fixture incorrectly classified before profiler installation.'
+          }
+          $installed7 = (& $exe --install --game $fixture7 --json | ConvertFrom-Json)
+          if (!$installed7.managed -or $installed7.managedMode -ne 'namespaced' -or
+              !$installed7.schedulerProfilerAware -or !$installed7.schedulerIntegrated -or
+              !(Test-Path -LiteralPath $canonical7)) {
+            throw 'INSTALL did not deploy the canonical scheduler before first profiling.'
+          }
+          if ([string]$installed7.state.zeroEngine.namespacedScheduler.mode -ne 'added' -or
+              (Test-Path -LiteralPath (Join-Path $zero7 'modules\CETProfilerScheduler.lua'))) {
+            throw 'Missing-canonical install did not record one exclusively owned scheduler.'
+          }
+          $payloadSchedulerHash = (Get-FileHash 'publish\payload\0-Engine\modules\G-CET\Scheduler.lua' -Algorithm SHA256).Hash
+          if ((Get-FileHash $canonical7 -Algorithm SHA256).Hash -ne $payloadSchedulerHash -or
+              (Get-FileHash (Join-Path $zero7 'init.lua') -Algorithm SHA256).Hash -ne $root7Hash -or
+              (Get-FileHash (Join-Path $zero7 'modules\Scheduler.lua') -Algorithm SHA256).Hash -ne $alias7Hash) {
+            throw 'Profiler installer damaged existing host/alias or shipped wrong scheduler.'
+          }
+          & $exe --restore --game $fixture7 --json | Out-Null
+          if ((Test-Path $canonical7) -or
+              (Get-FileHash (Join-Path $zero7 'init.lua') -Algorithm SHA256).Hash -ne $root7Hash -or
+              (Get-FileHash (Join-Path $zero7 'modules\Scheduler.lua') -Algorithm SHA256).Hash -ne $alias7Hash) {
+            throw 'Profiler restore failed to remove its scheduler and preserve source owner.'
+          }
+
           # Smoke tests use the package-local RESULTS path; do not ship their fixtures.
           Remove-Item publish\RESULTS -Recurse -Force
           New-Item -ItemType Directory -Force publish\RESULTS | Out-Null

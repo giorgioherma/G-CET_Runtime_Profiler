@@ -228,6 +228,25 @@ public sealed class ProfilerService : IProfilerService
 
             InstallAsi(paths, state, profilerSource, liveHash, profilerHash);
             InstallZeroEngine(paths, state, coreProfilerOnly, schedulerSource);
+            if (zeroPresentBefore && !coreProfilerOnly)
+            {
+                // A first capture must never start with a missing profiler
+                // scheduler. Prove the installed live scheduler and its
+                // dispatch route, not just the success of a copy operation.
+                var zeroMode = zeroEngine.GetInitState(paths).Kind;
+                var schedulerReady = zeroMode switch
+                {
+                    "namespaced" => zeroEngine.GetNamespacedSchedulerState(paths).Kind == "aware",
+                    "integrated" => zeroEngine.GetSchedulerState(paths).Kind == "aware",
+                    "adaptive" or "profiler-bridge" =>
+                        zeroEngine.GetAdaptiveSchedulerState(paths).Kind == "aware",
+                    _ => false
+                };
+                if (!schedulerReady)
+                    throw new InvalidOperationException(
+                        "Profiler scheduler installation did not verify against the live 0-Engine host. " +
+                        "The install will be rolled back before a first capture.");
+            }
 
             FileSystemService.CopyDirectoryExact(controlsSource, paths.Controls);
             if (!File.Exists(Path.Combine(paths.Controls, "init.lua")) ||
@@ -534,6 +553,15 @@ public sealed class ProfilerService : IProfilerService
                 actions,
                 manual,
                 ref failed);
+
+            EmergencyRestoreFile(
+                "0-Engine G-CET/Scheduler.lua",
+                paths.ZeroNamespacedScheduler,
+                paths.BackupZeroNamespacedScheduler,
+                state.ZeroEngine.NamespacedScheduler,
+                actions,
+                manual,
+                ref failed);
         }
 
         if (state.Asi.Mode == "replaced")
@@ -641,11 +669,10 @@ public sealed class ProfilerService : IProfilerService
             // CETProfilerScheduler.lua injection, no root Scheduler replacement.
             // The canonical namespaced file stays installed on RESTORE.
             var canonical = zeroEngine.GetNamespacedSchedulerState(paths);
-            if (canonical.Kind != "aware")
+            if (canonical.Kind == "other")
                 throw new InvalidOperationException(
-                    "Resolver's canonical 0-Engine/modules/G-CET/Scheduler.lua is " +
-                    "missing or lacks the native profiler hooks. Refusing to install " +
-                    "a second adaptive scheduler; repair the Resolver-generated runtime first.");
+                    "The existing G-CET/Scheduler.lua lacks required profiler hooks. " +
+                    "Refusing to replace an unknown Resolver-owned scheduler.");
 
             state.ZeroEngine.Mode = "namespaced";
             state.ZeroEngine.Init.Mode = "left-untouched";
@@ -653,6 +680,20 @@ public sealed class ProfilerService : IProfilerService
             state.ZeroEngine.Scheduler.Mode = "left-untouched";
             state.ZeroEngine.AdaptiveScheduler.Mode = "left-untouched";
             SaveState(paths, state);
+
+            // A Resolver-owned namespaced host may be deployed without its
+            // canonical worker. Install the ONE already-packaged scheduler
+            // into the host's existing import path; the host remains its
+            // only frame dispatcher. Restore removes our file if we added it.
+            InstallSchedulerFile(
+                paths.ZeroNamespacedScheduler,
+                paths.BackupZeroNamespacedScheduler,
+                schedulerSource,
+                manifest.ZeroEngine.ProfilerSchedulerSha256,
+                state.ZeroEngine.NamespacedScheduler,
+                canonical,
+                paths,
+                state);
             return;
         }
 
@@ -789,6 +830,14 @@ public sealed class ProfilerService : IProfilerService
             "Original CETProfilerScheduler.lua backup hash is wrong. Restore aborted before changing anything.",
             "CETProfilerScheduler.lua changed after profiler installation. Restore aborted to avoid overwriting user changes.");
 
+        ValidateRestoreFile(
+            paths.ZeroNamespacedScheduler,
+            paths.BackupZeroNamespacedScheduler,
+            state.ZeroEngine.NamespacedScheduler,
+            "Original G-CET/Scheduler.lua backup is missing. Restore aborted before changing anything.",
+            "Original G-CET/Scheduler.lua backup hash is wrong. Restore aborted before changing anything.",
+            "G-CET/Scheduler.lua changed after profiler installation. Restore aborted to avoid overwriting user changes.");
+
         ValidateControlsRestore(paths, state.Controls);
     }
 
@@ -850,6 +899,8 @@ public sealed class ProfilerService : IProfilerService
         RestoreFile(paths.ZeroScheduler, paths.BackupZeroScheduler, state.ZeroEngine.Scheduler, "Scheduler.lua restoration failed verification.");
         RestoreFile(paths.ZeroAdaptiveScheduler, paths.BackupZeroAdaptiveScheduler, state.ZeroEngine.AdaptiveScheduler,
             "CETProfilerScheduler.lua restoration failed verification.");
+        RestoreFile(paths.ZeroNamespacedScheduler, paths.BackupZeroNamespacedScheduler, state.ZeroEngine.NamespacedScheduler,
+            "G-CET/Scheduler.lua restoration failed verification.");
     }
 
     private static void RestoreFile(string livePath, string backupPath, FileTransactionState transaction, string verifyMessage)

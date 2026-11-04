@@ -21,6 +21,7 @@ internal sealed class ProfilerPaths
     public required string BackupZeroRoot { get; init; }
     public required string BackupZeroInit { get; init; }
     public required string BackupZeroScheduler { get; init; }
+    public required string BackupZeroNamespacedScheduler { get; init; }
     public required string BackupZeroAdaptiveScheduler { get; init; }
     public required string BackupControlsRoot { get; init; }
     public required string BackupBindings { get; init; }
@@ -55,6 +56,7 @@ internal sealed class ProfilerPaths
             BackupZeroRoot = Path.Combine(stateRoot, "0-Engine.FULL.ORIGINAL"),
             BackupZeroInit = Path.Combine(stateRoot, "0-Engine.init.ORIGINAL.lua"),
             BackupZeroScheduler = Path.Combine(stateRoot, "0-Engine.Scheduler.ORIGINAL.lua"),
+            BackupZeroNamespacedScheduler = Path.Combine(stateRoot, "0-Engine.NamespacedScheduler.ORIGINAL.lua"),
             BackupZeroAdaptiveScheduler = Path.Combine(stateRoot, "0-Engine.CETProfilerScheduler.ORIGINAL.lua"),
             BackupControlsRoot = Path.Combine(stateRoot, "CETProfilerControls.ORIGINAL"),
             BackupBindings = Path.Combine(stateRoot, "bindings.ORIGINAL.json")

@@ -69,6 +69,9 @@ public sealed class ZeroEngineTransactionState
 
     [JsonPropertyName("adaptiveScheduler")]
     public FileTransactionState AdaptiveScheduler { get; set; } = new();
+
+    [JsonPropertyName("namespacedScheduler")]
+    public FileTransactionState NamespacedScheduler { get; set; } = new();
 }
 
 public sealed class BindingTransactionState
