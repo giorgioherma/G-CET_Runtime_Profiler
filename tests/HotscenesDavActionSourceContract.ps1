@@ -105,6 +105,9 @@ local function attach()
 	end)
 end
 '@
+# Hotscenes is an installed CET mod, not an orphaned auxiliary Lua.
+# Its callback owner is gated by its live root entrypoint during ANALYZE.
+Put (Join-Path $hs 'init.lua') '-- installed Hotscenes CET entrypoint'
 Put (Join-Path $hs 'hotscenes_native_ui.lua') $native
 
 # Minimal pristine DriveAerialVehicle source with authentic author listener
@@ -217,6 +220,7 @@ Put (Join-Path $dav 'init.lua') $init
 Put (Join-Path $dav 'Modules\core.lua') $core
 Put (Join-Path $dav 'Modules\event.lua') $event
 $known=@(
+  (Join-Path $hs 'init.lua'),
   (Join-Path $hs 'hotscenes_native_ui.lua'),
   (Join-Path $dav 'init.lua'),
   (Join-Path $dav 'Modules\core.lua'),
