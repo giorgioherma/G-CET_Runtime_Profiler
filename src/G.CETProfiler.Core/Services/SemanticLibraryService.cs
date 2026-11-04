@@ -465,8 +465,9 @@ internal sealed class SemanticLibraryService
         // SAME injector to prove it has zero remaining work. Never rely on
         // the marker alone: any missing/partial/drifted stage remains ready
         // for safe generation or explicit fail-closed diagnostics.
-        if (!alreadySatisfied && markerCount > 0 && missing.Count == 0 &&
-            rule.Generation.Enabled)
+        if (!alreadySatisfied &&
+            (markerCount > 0 || rule.Proof.SourceCompletionAuthoritative) &&
+            missing.Count == 0 && rule.Generation.Enabled)
         {
             var cacheKey = graph.OwnerFolder + "|" + rule.Id;
             if (!_sourceCompletion.TryGetValue(cacheKey, out var proven))
