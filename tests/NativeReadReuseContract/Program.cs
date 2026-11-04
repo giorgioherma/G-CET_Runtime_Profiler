@@ -993,6 +993,12 @@ try
     {
         var folder=Path.Combine(liveCasesRoot,x.Owner);
         Directory.CreateDirectory(folder);
+        // Source helpers may reside in author submodules, but the current
+        // CET inventory still requires the mod's root entrypoint. A Vortex
+        // orphan without it must not be discovered as an installed owner.
+        if (!x.File.Equals("init.lua",StringComparison.OrdinalIgnoreCase))
+            File.WriteAllText(Path.Combine(folder,"init.lua"),
+                "-- valid installed CET owner\n",new UTF8Encoding(false));
         var helpers=string.Join("\n\n",x.Families.Select(
             family=>string.Join("\n",actualRecipes(family)).TrimEnd('\r','\n')));
         var source=helpers+"\n\nlocal "+
