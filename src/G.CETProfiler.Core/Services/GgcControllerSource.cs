@@ -483,7 +483,7 @@ local function limits()
   return relaxedReferenceMs + margin * (0.40 - bias * 0.10),
          relaxedReferenceMs + margin * (0.75 - bias * 0.20),
          relaxedReferenceMs + margin * (0.22 - bias * 0.08),
-         relaxedReferenceMs + margin * (0.48 - bias * 0.12)
+         relaxedReferenceMs + margin * (0.70 - bias * 0.16)
 end
 
 -- Test states: idle -> armed -> countdown -> off -> slow -> fast -> done.
@@ -652,7 +652,8 @@ local function measureWorkload(dt)
       math.min(0.03, dt / 12) * (recentFrameMs - relaxedReferenceMs)
   end
   local medium, high, relaxed, leaveHeavy = limits()
-  local slow = frameMs >= medium and 1 or 0
+  -- Medium frames are not heavy: count frames above the heavy cutoff.
+  local slow = frameMs >= high and 1 or 0
   slowFrameShare = slowFrameShare +
     math.min(0.12, dt / 1.8) * (slow - slowFrameShare)
   local severe = recentFrameMs >= high or slowFrameShare >= 0.55
