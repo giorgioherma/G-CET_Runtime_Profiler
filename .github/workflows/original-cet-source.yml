@@ -420,6 +420,15 @@ jobs:
           # recovery and unsafe drift handling.
           ./tests/ImmersiveThirdPersonDormancyStagedContract.ps1 -ResolverExe './ci-resolver/G-CET-Resolver.exe' -OriginalMods $mods -Capture $capture -GeneratedRoot $output
 
+      - name: Verify actual repeated pass and newly installed source-first mod
+        shell: pwsh
+        run: |
+          $stack = Join-Path $env:GITHUB_WORKSPACE 'ci-private-stack'
+          $mods = Join-Path $stack 'bin/x64/plugins/cyber_engine_tweaks/mods'
+          $capture = Join-Path $stack 'capture'
+          $overlay = Join-Path $env:RUNNER_TEMP 'gcet-original-overlay'
+          ./tests/OriginalSourceSecondPassContract.ps1 -ResolverExe './ci-resolver/G-CET-Resolver.exe' -OriginalMods $mods -Capture $capture -FirstOverlayRoot $overlay
+
       - name: Verify Hotscenes opted-in first-pass capacity from originals
         shell: pwsh
         run: |
