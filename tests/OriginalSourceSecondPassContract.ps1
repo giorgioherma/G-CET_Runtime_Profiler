@@ -38,6 +38,14 @@ try {
     $manifest=Join-Path $root 'repeated.json'
     if(!(Test-Path -LiteralPath $manifest)){throw 'SECOND_PASS_MANIFEST_MISSING'}
     $second=Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
+    if ([int]$secondResult.SemanticReadyRuleCount -ne 0 -or
+        [int]$secondResult.GenericResolvedCount -ne 0 -or
+        [int]$secondResult.OptimizationCoverage.ReadyRuleCount -ne 0) {
+        throw ('SECOND_PASS_ANALYZE_STILL_ADVERTISES_COMPLETE_RULES: semantic=' +
+            $secondResult.SemanticReadyRuleCount + ' generic=' +
+            $secondResult.GenericResolvedCount + ' catalog=' +
+            $secondResult.OptimizationCoverage.ReadyRuleCount)
+    }
     $new=@($second.transforms)
     $fail=@($second.skipOutcomes.entries | Where-Object {$_.category -eq 'GENERATION_FAILURE'})
     if($fail.Count -gt 0){
