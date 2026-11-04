@@ -77,7 +77,8 @@ public static class PassGeneratorService
             .Where(c => !c.Owner.Equals("G-GC", StringComparison.OrdinalIgnoreCase) &&
                 !c.RelativeFile.Replace('\\', '/').StartsWith("G-GC/", StringComparison.OrdinalIgnoreCase) &&
                 !ModOptimizationBlacklist.IsBlacklistedOwner(c.Owner) &&
-                !ModOptimizationBlacklist.IsBlacklistedPath(c.RelativeFile))
+                !ModOptimizationBlacklist.IsBlacklistedPath(c.RelativeFile) &&
+                CetModPresence.HasInstalledSource(modsRoot, c.RelativeFile))
             .ToList();
 
         var groups = candidates
@@ -2483,7 +2484,8 @@ public static class PassGeneratorService
             SearchOption.AllDirectories).OrderBy(x=>x,StringComparer.OrdinalIgnoreCase))
         {
             var rel=Path.GetRelativePath(root,path).Replace('\\','/');
-            if(ModOptimizationBlacklist.IsBlacklistedPath(rel))continue;
+            if(ModOptimizationBlacklist.IsBlacklistedPath(rel) ||
+               !CetModPresence.HasInstalledSource(root, rel))continue;
             var input=staged.TryGetValue(rel,out var previous)?previous:File.ReadAllBytes(path);
             var hasBom=input.Length>=3&&input[0]==0xef&&input[1]==0xbb&&input[2]==0xbf;
             var text=Encoding.UTF8.GetString(input,hasBom?3:0,input.Length-(hasBom?3:0));

@@ -55,6 +55,8 @@ internal static class SemanticPassGeneratorService
                 candidate.Owner,
                 candidate.RuleId,
                 staged);
+            // A capture cannot authorize source injection for an absent mod.
+            if (!context.IsInstalledOwner) continue;
             context.UseComposedHostFiles(composedHostFiles);
 
             try
@@ -589,6 +591,7 @@ internal sealed class SemanticPatchContext
 
     internal IReadOnlyCollection<SemanticFileChange> Changes =>
         _changes.Values;
+    internal bool IsInstalledOwner => ResolveOwnerFolder() is not null;
 
     internal SemanticPatchContext(
         string modsRoot,
@@ -917,10 +920,11 @@ internal sealed class SemanticPatchContext
                     Owner,
                     StringComparison.OrdinalIgnoreCase));
         if (exact is not null)
-            return _ownerFolder = exact;
+            return CetModPresence.HasEntrypoint(exact) ? _ownerFolder = exact : null;
 
         var normalized = Normalize(Owner);
         var matches = Directory.EnumerateDirectories(_modsRoot)
+            .Where(CetModPresence.HasEntrypoint)
             .Where(path => Normalize(Path.GetFileName(path)) == normalized)
             .Take(2)
             .ToList();

@@ -502,6 +502,7 @@ internal sealed class SemanticLibraryService
         try
         {
             owners = Directory.EnumerateDirectories(_modsRoot)
+                .Where(CetModPresence.HasEntrypoint)
                 .Take(2000)
                 .Select(Path.GetFileName)
                 .Where(name => !string.IsNullOrWhiteSpace(name))
@@ -724,7 +725,7 @@ internal sealed class SemanticLibraryService
             return cached;
 
         var folder = ResolveOwnerFolder(owner);
-        if (folder is null)
+        if (folder is null || !CetModPresence.HasEntrypoint(folder))
         {
             _graphs[owner] = null;
             return null;

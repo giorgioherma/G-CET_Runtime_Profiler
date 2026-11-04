@@ -56,7 +56,12 @@ internal static class CallbackResolverService
         // is independently proven by the current mod source. Generic AUTO
         // remains measured/source-constrained; arbitrary zero-call rows are
         // not promoted into the ranked workload.
-        var allCapturedCallbacks = ReadCallbacks(handoff.RootElement);
+        // The current live CET entrypoints define installed owners. An old
+        // Profiler capture provides measurements, never installation evidence.
+        var sourceIndex = new LiveSourceIndex(modsRoot);
+        var allCapturedCallbacks = ReadCallbacks(handoff.RootElement)
+            .Where(row => sourceIndex.IsInstalledOwner(row.Owner))
+            .ToList();
         var callbacks = allCapturedCallbacks
             .Where(x => !x.Infrastructure &&
                 (x.ExclusiveMsPerSecond > 0 ||
@@ -65,7 +70,6 @@ internal static class CallbackResolverService
             .OrderByDescending(x => x.ExclusiveMsPerSecond)
             .ThenByDescending(x => x.CallsPerSecond)
             .ToList();
-        var sourceIndex = new LiveSourceIndex(modsRoot);
         var schedulerJobs = ReadSchedulerJobs(handoff.RootElement, handoffPath);
         var collectorSpikeEvidence = ReadCollectorSpikeEvidence(handoff.RootElement);
         var megaMindGc = ReadMegaMindGcEvidence(handoff.RootElement);
@@ -5390,6 +5394,7 @@ internal static class CallbackResolverService
         {
             var relative = Path.GetRelativePath(modsRoot, file).Replace('\\', '/');
             var owner = relative.Split('/')[0];
+            if (!CetModPresence.HasInstalledSource(modsRoot, relative)) continue;
             if (ModOptimizationBlacklist.IsBlacklistedOwner(owner))continue;
             if (owner.Equals("0-Engine", StringComparison.OrdinalIgnoreCase) ||
                 owner.StartsWith("G-CET", StringComparison.OrdinalIgnoreCase))
@@ -5857,11 +5862,23 @@ internal static class CallbackResolverService
             return false;
         }
 
+        public bool IsInstalledOwner(string owner) =>
+            ResolveOwnerFolder(owner) is not null;
+
         public ResolvedSource? Resolve(CallbackMetric callback)
         {
             var source = (callback.SourceFile ?? "").Trim().TrimStart('@')
                 .Replace('/', Path.DirectorySeparatorChar);
             var ownerFolder = ResolveOwnerFolder(callback.Owner);
+            if (ownerFolder is null) return null;
+
+            // Do not remap an old capture's bare "init.lua" to a different
+            // installed mod during global fallback source lookup.
+            bool IsOwnedFile(string path) =>
+                Path.GetFullPath(path).StartsWith(
+                    ownerFolder.TrimEnd(Path.DirectorySeparatorChar) +
+                        Path.DirectorySeparatorChar,
+                    StringComparison.OrdinalIgnoreCase);
 
             // Registration source frequently arrives as only "init.lua". That is
             // ambiguous across the whole CET tree but unambiguous inside the
@@ -5872,13 +5889,14 @@ internal static class CallbackResolverService
                 ownerFolder is not null)
             {
                 var ownerRelative = Path.Combine(ownerFolder, source);
-                if (File.Exists(ownerRelative))
+                if (IsOwnedFile(ownerRelative) && File.Exists(ownerRelative))
                     return BuildResolvedSource(ownerRelative, "profiler-owner-relative", callback);
             }
 
             if (!string.IsNullOrWhiteSpace(source))
             {
-                if (Path.IsPathRooted(source) && File.Exists(source) && IsInsideMods(source))
+                if (Path.IsPathRooted(source) && File.Exists(source) &&
+                    IsInsideMods(source) && IsOwnedFile(source))
                     return BuildResolvedSource(source, "profiler-absolute", callback);
 
                 var normalized = source.Replace('\\', '/');
@@ -5888,16 +5906,17 @@ internal static class CallbackResolverService
                     var relative = normalized[(modsIndex + "/mods/".Length)..]
                         .Replace('/', Path.DirectorySeparatorChar);
                     var direct = Path.Combine(_modsRoot, relative);
-                    if (File.Exists(direct))
+                    if (IsOwnedFile(direct) && File.Exists(direct))
                         return BuildResolvedSource(direct, "profiler-mods-relative", callback);
                 }
 
                 var combined = Path.Combine(_modsRoot, source);
-                if (File.Exists(combined))
+                if (IsOwnedFile(combined) && File.Exists(combined))
                     return BuildResolvedSource(combined, "profiler-relative", callback);
 
                 var suffix = normalized.TrimStart('/');
                 var suffixMatches = _luaFiles
+                    .Where(IsOwnedFile)
                     .Where(x => x.Replace('\\', '/').EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .Take(3)
@@ -6323,10 +6342,11 @@ internal static class CallbackResolverService
             var exact = Directory.EnumerateDirectories(_modsRoot)
                 .FirstOrDefault(x => Path.GetFileName(x).Equals(owner, StringComparison.OrdinalIgnoreCase));
             if (exact is not null)
-                return exact;
+                return CetModPresence.HasEntrypoint(exact) ? exact : null;
 
             var normalized = Normalize(owner);
             var matches = Directory.EnumerateDirectories(_modsRoot)
+                .Where(CetModPresence.HasEntrypoint)
                 .Where(x => Normalize(Path.GetFileName(x)) == normalized)
                 .Take(2)
                 .ToList();
