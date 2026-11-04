@@ -102,7 +102,6 @@ internal static partial class SemanticInjectors
                  StringComparison.Ordinal)))return false;
         var mainRequired=new[]{
             "TryAttachRicaPass4 = function()",
-            "if pass4Attached then return",
             "if pass4AttachInProgress then return false end",
             "pass4AttachInProgress = true",
             "pass4AttachInProgress = false",
@@ -113,10 +112,18 @@ internal static partial class SemanticInjectors
             "scheduledDiagnosticsTick =", "schedulerTick =",
             "pass4Attached = true",
             "for _, handle in ipairs(created) do",
-            "pcall(handle.Cancel)",
+            "pcall(handle.Cancel)"
+        };
+        // The pristine primary rule owns additional lifecycle state (and an
+        // explicit failed-attach reset). The standalone worker rule must
+        // recognize the author's distinct, already complete PASS4 layout.
+        var primaryRequired=new[]{
+            "if pass4Attached then return",
             "pass4DiagnosticsWorkerJob = nil"
         };
-        if(mainRequired.Any(term=>!source.Contains(term,StringComparison.Ordinal)) ||
+        if((primary && primaryRequired.Any(term=>
+                !source.Contains(term,StringComparison.Ordinal))) ||
+           mainRequired.Any(term=>!source.Contains(term,StringComparison.Ordinal)) ||
             source.Split("pass4DiagnosticsWorkerJob = worker.attach(created, {",
                 StringSplitOptions.None).Length!=2)
             return false;

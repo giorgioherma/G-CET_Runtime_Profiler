@@ -48,6 +48,30 @@ try {
         [string]$_.owner + '/' + [string]$_.registrationId + '/' +
         (@($_.generic.RecipeFamilies) -join '+')
     })
+    # Diagnosing a failed source-first contract may log only structural
+    # metadata, never third-party Lua source or the private capture body.
+    $firstManifest=Join-Path $env:RUNNER_TEMP 'gcet-original-pass.json'
+    $hFirst=@()
+    $hSkipped=@()
+    if(Test-Path -LiteralPath $firstManifest){
+        $first=Get-Content -LiteralPath $firstManifest -Raw | ConvertFrom-Json
+        $hFirst=@($first.transforms | Where-Object {
+            ([string]$_.file).StartsWith('hotscenes/',[StringComparison]::OrdinalIgnoreCase)
+        } | ForEach-Object { [string]$_.type + ':' + [string]$_.file })
+        $hSkipped=@($first.skipped | Where-Object {
+            ([string]$_.file).StartsWith('hotscenes/',[StringComparison]::OrdinalIgnoreCase)
+        } | ForEach-Object { [string]$_.type + ':' + [string]$_.reason })
+    }
+    $hotscenes=Join-Path $live 'hotscenes/init.lua'
+    $hCurrent=@()
+    if(Test-Path -LiteralPath $hotscenes){
+        $lines=[IO.File]::ReadAllLines($hotscenes)
+        for($index=0;$index -lt $lines.Length;$index++){
+            if($lines[$index] -match '^[ ]*registerForEvent\\s*\\(\\s*["'']on(Update|Draw)["'']'){
+                $hCurrent+=([string]($index+1) + ':' + $Matches[1])
+            }
+        }
+    }
     if ([int]$secondResult.SemanticReadyRuleCount -ne 0 -or
         [int]$secondResult.GenericResolvedCount -ne 0 -or
         [int]$secondResult.OptimizationCoverage.ReadyRuleCount -ne 0) {
@@ -56,7 +80,10 @@ try {
             $secondResult.GenericResolvedCount + ' catalog=' +
             $secondResult.OptimizationCoverage.ReadyRuleCount +
             ' semanticIds=' + ($readySemantic -join ',') +
-            ' genericIds=' + ($readyGeneric -join ','))
+            ' genericIds=' + ($readyGeneric -join ',') +
+            ' hotscenesBare=' + ($hCurrent -join ',') +
+            ' firstHotscenesTransforms=' + ($hFirst -join ',') +
+            ' firstHotscenesSkipped=' + ($hSkipped -join '|'))
     }
     $new=@($second.transforms)
     $fail=@($second.skipOutcomes.entries | Where-Object {$_.category -eq 'GENERATION_FAILURE'})
