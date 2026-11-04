@@ -1,12 +1,22 @@
 -- Execute actual Resolver G-GC generated source inside mocked CET.
--- Regression: direct 0..256KiB, 1..500ms sliders and real 90s A/B phases.
+-- Regression: adaptive three-state workload gate, fixed 50KiB/500ms and developer A/B.
 local runtime = assert(arg[1], "generated G-GC Lua runtime required")
 local hooks, rendered, marks, logged, steps = {}, {}, {}, {}, {}
 local heapKiB, active = 583 * 1024, true
 local simulatedCpu, fullCollections, hudNotifications = 0, 0, 0
-local selectedSize, selectedInterval, clicked = nil, nil, nil
-local sliders = {}
-local prevPrint = print
+local selectedSensitivity, selectedEnabled, clicked = nil, nil, nil
+local sliders, savedSettings = {}, nil
+local prevPrint, oldIO = print, io
+io = { open = function(path, mode)
+  assert(path == "user_settings.txt", "unexpected preference path")
+  if mode == "r" then
+    if savedSettings == nil then return nil end
+    return { read = function() return savedSettings end, close = function() end }
+  end
+  assert(mode == "w")
+  return { write = function(_, value) savedSettings = value end,
+           close = function() end }
+end }
 
 package.preload["threshold"] = function() return {
   schema = 3, capture = "UNTAMPERED_STOCK_STACK",
@@ -60,12 +70,15 @@ ImGui = {
   Text = function(x) rendered[#rendered + 1] = x end,
   SliderInt = function(label, value, minimum, maximum)
     sliders[label] = {min=minimum, max=maximum}
-    if label == "Step size (KiB)" then
-      return selectedSize or value, selectedSize ~= nil
-    elseif label == "Interval (ms)" then
-      return selectedInterval or value, selectedInterval ~= nil
-    end
-    error("unknown slider: " .. tostring(label))
+    assert(label == "Workload sensitivity")
+    return selectedSensitivity or value, selectedSensitivity ~= nil
+  end,
+  Checkbox = function(label, value)
+    assert(label == "Automatic assistance")
+    if selectedEnabled == nil then return value, false end
+    local chosen = selectedEnabled
+    selectedEnabled = nil
+    return chosen, chosen ~= value
   end,
   Button = function(label)
     if label == clicked then clicked = nil; return true end
@@ -107,86 +120,88 @@ local function hasMark(label)
   return false
 end
 
--- Initial Resolver intensity/cadence are mapped into the user's actual
--- hardware-independent slider units, not a hard CPU budget.
+-- The controller must function without Profiler hooks.
 advance(1)
 local shown = draw()
-assert(sliders["Step size (KiB)"].min == 0 and
-       sliders["Step size (KiB)"].max == 256,
-  "GC size slider is not 0..256 KiB")
-assert(sliders["Interval (ms)"].min == 1 and
-       sliders["Interval (ms)"].max == 500,
-  "GC interval slider is not 1..500 ms")
-assert(shown:find("Lua heap",1,true) and
-       shown:find("net growth",1,true) and
-       shown:find("Step CPU",1,true) and
-       shown:find("Observed spacing",1,true) and
-       shown:find("step heap drop",1,true),
-  "compact CET UI missing useful heap / step statistics")
-assert(not shown:find("predicted GC region",1,true) and
-       not shown:find("semantic ",1,true) and
-       not shown:find("Starting allowance estimate",1,true),
-  "unnecessary diagnostic/forecast text still crowds the UI")
+assert(sliders["Workload sensitivity"].min == 0 and
+       sliders["Workload sensitivity"].max == 100)
+assert(not sliders["Step size (KiB)"] and not sliders["Interval (ms)"])
+assert(shown:find("Workload: HEAVY", 1, true))
+assert(shown:find("Maintenance 50 KiB / 500 ms", 1, true))
+hooks.onOverlayClose()
+local initial = stepCount()
+advance(12)
+shown = draw()
+assert(shown:find("Workload: RELAXED", 1, true),
+  "calm gameplay did not clear five-second recovery")
+assert(stepCount() > initial and steps[#steps] == 50,
+  "relaxed state did not run fixed 50KiB maintenance")
+hooks.onOverlayClose()
 
--- Zero must make NO collector invocation, unlike LuaJIT step(0).
-selectedSize, selectedInterval = 0, 50
+-- Sustained heavy load should prohibit helper work.
+advance(3, 0.045)
+shown = draw()
+assert(shown:find("Workload: HEAVY", 1, true))
+hooks.onOverlayClose()
+local heavyStart = stepCount()
+advance(3, 0.045)
+assert(stepCount() == heavyStart, "HEAVY allowed helper steps")
+advance(4)
+shown = draw()
+assert(shown:find("Workload: MODERATE", 1, true),
+  "HEAVY must recover to MODERATE after 3s")
+hooks.onOverlayClose()
+advance(6)
+shown = draw()
+assert(shown:find("Workload: RELAXED", 1, true),
+  "MODERATE must recover to RELAXED after 5s")
+hooks.onOverlayClose()
+
+-- Demand between the boundaries is stable MODERATE, not oscillating HEAVY.
+advance(5, 0.029)
+shown = draw()
+assert(shown:find("Workload: MODERATE", 1, true),
+  "mid-intensity workload did not enter MODERATE")
+hooks.onOverlayClose()
+local dutyStart = stepCount()
+advance(15, 0.029)
+local dutyCount = stepCount() - dutyStart
+assert(dutyCount > 3 and dutyCount < 22,
+  "MODERATE duty cycle misbehaved: " .. dutyCount)
+advance(12)
+shown = draw()
+assert(shown:find("Workload: RELAXED", 1, true))
+hooks.onOverlayClose()
+
+-- Settings belong to the player, never to Resolver's threshold.lua.
+selectedSensitivity = 70
+draw()
+assert(savedSettings:match("^70%s+1%s*$"))
+selectedSensitivity = nil
+selectedEnabled = false
+draw()
+assert(savedSettings:match("^70%s+0%s*$"))
+hooks.onOverlayClose()
+local disabled = stepCount()
+advance(6)
+assert(stepCount() == disabled, "OFF switch did not stop steps")
+selectedEnabled = true
 draw()
 hooks.onOverlayClose()
-local beforeOff = stepCount()
+advance(10)
+assert(stepCount() > disabled, "ON switch did not restart maintenance")
+
+-- One large natural collector hitch must not become sustained game pressure.
+hooks.onUpdate(0.20)
 advance(1)
-assert(stepCount() == beforeOff, "zero-size slider still calls collector")
-
--- Player selection must give EXACT fixed KiB requests, unaffected by
--- natural GC region and not capped by initial Resolver estimates.
-selectedSize, selectedInterval = 256, 50
-draw()
-hooks.onOverlayClose()
-advance(2)
-assert(stepCount() >= beforeOff + 25,
-  "manual 50ms cadence did not perform frequent steps")
-for i = beforeOff + 1, stepCount() do
-  assert(steps[i] == 256,
-    "the 256-KiB slider still scales step size or exceeds its limit")
-end
 shown = draw()
-assert(shown:find("Observed spacing",1,true) and
-       shown:find("Step CPU",1,true),
-  "current / previous step timings not visible")
-
--- Verify sub-frame interval is capped at one request per onUpdate.
--- 1ms is a scheduling floor, not an additional real-time thread or spin loop.
-selectedSize, selectedInterval = 16, 1
-draw()
+assert(not shown:find("Workload: HEAVY", 1, true),
+  "single natural collector event caused workload reclassification")
 hooks.onOverlayClose()
-local perFrameStart = stepCount()
-advance(1, 0.02) -- 50 FPS; 1ms requests still produce <= 50 steps.
-local perFrameCount = stepCount() - perFrameStart
-assert(perFrameCount >= 45 and perFrameCount <= 50,
-  "1ms setting failed to request at most one GC step per eligible frame")
-shown = draw()
-assert(shown:find("frame-limited", 1, true),
-  "CET does not explain sub-frame GC scheduling")
--- At 100 FPS, compare a 20ms interval against 1ms to prove cadence.
-selectedInterval = 20
-draw()
-hooks.onOverlayClose()
-local slowerStart = stepCount()
-advance(1, 0.01)
-local slowerCount = stepCount() - slowerStart
-selectedInterval = 1
-draw()
-hooks.onOverlayClose()
-local fasterStart = stepCount()
-advance(1, 0.01)
-local fasterCount = stepCount() - fasterStart
-assert(fasterCount >= 90 and fasterCount <= 100 and
-       fasterCount > slowerCount * 1.7,
-  "1ms manual interval is not frame-limited or faster than 20ms")
 
 -- Configure a different manual preset, then arm the experiment in CET.
 -- Nothing starts while the overlay is still open. The ten-second delay
 -- begins only after returning to live gameplay.
-selectedSize, selectedInterval = 60, 250
 draw()
 local baselineCount = stepCount()
 press("DEV: Start 90s A/B test")
@@ -252,7 +267,7 @@ press("Restore manual settings")
 hooks.onOverlayClose()
 local resumed = stepCount()
 advance(1)
-assert(stepCount() > resumed and steps[#steps] == 60,
+assert(stepCount() > resumed and steps[#steps] == 50,
   "test failed to restore saved manual step/cadence on request")
 
 -- World loss and heavy-frame safety remain effective.
@@ -269,5 +284,5 @@ advance(3, 0.047)
 assert(stepCount() == beforeHeavy,
   "G-GC ignored repeated severe frame backoff")
 
-os, print = actualOs, oldPrint
-print("G-GC 0..256KiB / 1..500ms, per-frame floor, 90s phases, HUD and safety PASS")
+os, print, io = actualOs, oldPrint, oldIO
+print("G-GC adaptive 3-state, fixed maintenance, preferences, 90s developer phases PASS")

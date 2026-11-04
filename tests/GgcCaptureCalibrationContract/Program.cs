@@ -216,8 +216,13 @@ try
         "defaultIntensity = 21", "defaultFrequencyMs = 1450"
     })
         Check(threshold.Contains(token), "Missing rule-based config: " + token);
-    Check(source.Contains("ImGui.SliderInt(\"Step size (KiB)\", manualKiB, 0, 256)") &&
-          source.Contains("ImGui.SliderInt(\"Interval (ms)\", manualIntervalMs, 1, 500)") &&
+    Check(source.Contains("ImGui.SliderInt(\"Workload sensitivity\", sensitivity, 0, 100)") &&
+          source.Contains("ImGui.Checkbox(\"Automatic assistance\", assistanceEnabled)") &&
+          source.Contains("local manualKiB, manualIntervalMs = 50, 500") &&
+          source.Contains("moderateCycle >= 2") &&
+          source.Contains("workloadState == \"HEAVY\"") &&
+          !source.Contains("ImGui.SliderInt(\"Step size (KiB)\"") &&
+          !source.Contains("ImGui.SliderInt(\"Interval (ms)\"") &&
           source.Contains("DEV: Start 90s A/B test") &&
           source.Contains("beginPhase(\"off\")") &&
           source.Contains("beginPhase(\"slow\")") &&
@@ -245,7 +250,7 @@ try
     }
     // Source-proven upgrade for all previously generated single-controller
     // versions, never marker-only trust or a second independent worker.
-    foreach(var version in new[]{"V1","V2","V3","V4","V5","V6"})
+    foreach(var version in new[]{"V1","V2","V3","V4","V5","V6","V7"})
     {
         using var stream=assembly.GetManifestResourceStream(
             "GCETRuntimeProfiler.GgcGeneratedRuntime"+version+".reference.lua");
