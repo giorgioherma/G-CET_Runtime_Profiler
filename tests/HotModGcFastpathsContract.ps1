@@ -206,6 +206,10 @@ Check 'BetterLootMarkers' 'better-loot-markers-category-no-temporary-table' 'App
 $nifOwner=Join-Path $root 'nativeInteractions'
 $nifFolder=Join-Path $nifOwner 'modules/utils'
 New-Item -ItemType Directory -Force $nifFolder|Out-Null
+# Native Interactions is installed via its top-level CET entrypoint;
+# worldInteraction.lua alone would be a removed-mod orphan.
+'-- Installed nativeInteractions CET entrypoint' |
+    Set-Content -LiteralPath (Join-Path $nifOwner 'init.lua') -Encoding utf8
 $nifPath=Join-Path $nifFolder 'worldInteraction.lua'
 $nif=@'
 local world={pinInteractions={},pinnedInteractions={}}
