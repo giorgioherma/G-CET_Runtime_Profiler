@@ -386,7 +386,7 @@ public sealed class MainForm : Form
         readyCaptureInstructions.Font = new Font("Segoe UI", 9.5F);
         readyCaptureInstructions.AutoSize = false;
         readyCaptureInstructions.Text =
-            "2. Run your Frame-time Capture Tool if you're using one and enter the game.\r\n" +
+            "2. For G-GC, use frame-time pairing and include calm, busy city, driving and combat.\r\n" +
             "3. To start measurement press your shared capture key (F11 by default). To stop capture and prep the results press the same key again.\r\n" +
             "4. Return to installer and COLLECT RESULTS.\r\n" +
             "5. After usage RESTORE ORIGINAL STATE to finish.";
