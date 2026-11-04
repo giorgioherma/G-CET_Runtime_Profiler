@@ -67,7 +67,7 @@ try {
     if(Test-Path -LiteralPath $hotscenes){
         $lines=[IO.File]::ReadAllLines($hotscenes)
         for($index=0;$index -lt $lines.Length;$index++){
-            if($lines[$index] -match '^[ ]*registerForEvent\\s*\\(\\s*["'']on(Update|Draw)["'']'){
+            if($lines[$index] -match '^[ ]*registerForEvent\s*\(\s*["'']on(Update|Draw)["'']'){
                 $hCurrent+=([string]($index+1) + ':' + $Matches[1])
             }
         }
