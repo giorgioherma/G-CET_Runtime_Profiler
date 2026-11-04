@@ -917,7 +917,14 @@ if (!$result.policy.callbackOriented) { throw 'Resolver is not marked callback-o
 if (!$result.policy.familyFirst) { throw 'Resolver is not marked callback-family-first.' }
 if (!$result.policy.genericPatternsBeforeSemanticLibrary) { throw 'Semantic library is not gated behind generic pattern resolution.' }
 if (!$result.policy.exhaustiveMeasuredCallbacks) { throw 'Resolver is not marked exhaustive over measured callbacks.' }
-$expectedMeasuredCallbacks = @(($handoff | ConvertFrom-Json).callbacks | Where-Object { !$_.infrastructure -and [double]$_.exclusiveMsPerSecond -gt 0 }).Count
+# The old capture can contain owners removed from the user's live CET
+# installation. Exhaustiveness applies to measured callbacks of installed
+# owners only, as proven by their current root init.lua.
+$expectedMeasuredCallbacks = @(($handoff | ConvertFrom-Json).callbacks | Where-Object {
+    !$_.infrastructure -and
+    [double]$_.exclusiveMsPerSecond -gt 0 -and
+    (Test-Path -LiteralPath (Join-Path $mods ([string]$_.owner + '\init.lua')) -PathType Leaf)
+}).Count
 if ([int]$result.summary.rankedCallbackCount -ne $expectedMeasuredCallbacks) {
     throw "Resolver did not inspect every measured callback: expected $expectedMeasuredCallbacks, got $($result.summary.rankedCallbackCount)."
 }
