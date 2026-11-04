@@ -219,7 +219,6 @@ Check(!((string)mostlyUnoptimizedEstimate.GetType()
     .StartsWith("DIRECT_MEASURED"),
     "Mostly unoptimized source was treated as optimized runtime");
 
-object values = Calculate(decision, applied);
 Check(Math.Abs(Val(values,"EstimatedFreedCetMsPerSecond") - 28.24) < 1e-6,
     "Per-stage semantic and generic savings not credited conservatively");
 Check(Math.Abs(Val(values,"EstimatedSemanticSavingMsPerSecond") - 24) < 1e-6 &&
