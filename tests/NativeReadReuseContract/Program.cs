@@ -529,13 +529,13 @@ try
             BindingFlags.Static|BindingFlags.NonPublic)!;
         var pending=new Dictionary<string,byte[]>(
             StringComparer.OrdinalIgnoreCase);
-        object?[] args=[mods,relative,pristine,pending,actualRecipes,
+        object?[] coordinatorArgs=[mods,relative,pristine,pending,actualRecipes,
             null,null,null,0,0,0,null];
-        Check((bool)rewrite.Invoke(null,args)!,
+        Check((bool)rewrite.Invoke(null,coordinatorArgs)!,
             "Cannot create reviewed coordinator fixture");
-        var source=(string)args[5]!;
-        var worker=(string)args[6]!;
-        var workerRel=(string)args[7]!;
+        var source=(string)coordinatorArgs[5]!;
+        var worker=(string)coordinatorArgs[6]!;
+        var workerRel=(string)coordinatorArgs[7]!;
         pending[workerRel]=Encoding.UTF8.GetBytes(worker);
         Check(Player(Patch(pending),source)=="__gcetNativeReads.GetPlayer()",
             "Tunnel failed to reuse proven external coordinator getter");
