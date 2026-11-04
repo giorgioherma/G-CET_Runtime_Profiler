@@ -50,6 +50,28 @@ internal static class GgcControllerSource
             return false;
         }
 
+        // Re-running Resolver with the SAME measured capture does not
+        // authorize new G-GC defaults just because the second overlay has
+        // fewer new rules to credit. Preserve the first source-proven
+        // calibration and its runtime byte-for-byte.
+        var installedRuntime = Path.Combine(modsRoot, RuntimePath.Replace('/',
+            Path.DirectorySeparatorChar));
+        var installedCalibration = Path.Combine(modsRoot, CalibrationPath.Replace('/',
+            Path.DirectorySeparatorChar));
+        if (File.Exists(installedRuntime) && File.Exists(installedCalibration) &&
+            File.ReadAllText(installedRuntime).Replace("\r\n", "\n",
+                StringComparison.Ordinal).TrimEnd() ==
+            Runtime.Replace("\r\n", "\n", StringComparison.Ordinal).TrimEnd() &&
+            HasSameCapturedMeasurements(
+                File.ReadAllText(installedCalibration), calibration))
+        {
+            skipped.Add(new { type = "GC_CONTROLLER",
+                category = "ALREADY_IMPLEMENTED", owner = "G-GC",
+                reason = "G-GC already installed from the same measured " +
+                         "Profiler capture; preserving its calibration unchanged." });
+            return false;
+        }
+
         staged[RuntimePath] = Encoding.UTF8.GetBytes(Runtime);
         staged[CalibrationPath] = Encoding.UTF8.GetBytes(calibration);
         appliedTransformsByFile[RuntimePath] = 0;
@@ -77,6 +99,41 @@ internal static class GgcControllerSource
             perRuleEstimates = defaults.RuleEstimates,
             provenGameplay = false
         });
+        return true;
+    }
+
+    // Capture-derived inputs establish freshness, not pass-specific savings.
+    // Compare measured values AND capture identity: a changed recording that
+    // reuses a filename must still recalibrate. Only skip current complete
+    // schema/current runtime; proven historical versions remain upgradeable.
+    private static bool HasSameCapturedMeasurements(
+        string installed, string proposed)
+    {
+        static string? Field(string source, string name)
+        {
+            var prefix = "  " + name + " = ";
+            var lines = source.Replace("\r\n", "\n", StringComparison.Ordinal)
+                .Split('\n')
+                .Where(line => line.StartsWith(prefix, StringComparison.Ordinal) &&
+                               line.EndsWith(",", StringComparison.Ordinal))
+                .ToArray();
+            return lines.Length == 1 ? lines[0][prefix.Length..^1] : null;
+        }
+
+        if (Field(installed, "schema") != "3")
+            return false;
+        foreach (var field in new[] {
+            "capture", "baselineFrameMs", "hitchToleranceMs",
+            "pressureReferenceMiB", "pressureStartMiB", "pressureHighMiB",
+            "pressureSampleCount", "frameReserveMs",
+            "estimatedOriginalCetMsPerSecond" })
+        {
+            var previous = Field(installed, field);
+            if (previous is null ||
+                !string.Equals(previous, Field(proposed, field),
+                    StringComparison.Ordinal))
+                return false;
+        }
         return true;
     }
 

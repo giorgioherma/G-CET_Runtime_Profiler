@@ -252,18 +252,42 @@ try
     }
     File.WriteAllBytes(Path.Combine(tempRoot,"G-GC","init.lua"),generated["G-GC/init.lua"]);
     var repeated=new Dictionary<string,byte[]>();
-    Check(Stage(decision,tempRoot,repeated,new List<object>(),applied) &&
-        generated.All(x=>x.Value.SequenceEqual(repeated[x.Key])),
-        "Same capture and installed source did not regenerate idempotently");
+    var repeatedSkips=new List<object>();
+    Check(!Stage(decision,tempRoot,repeated,repeatedSkips,applied) &&
+          repeated.Count==0 && repeatedSkips.Any(row =>
+              JsonSerializer.SerializeToElement(row).GetProperty("category")
+                  .GetString()=="ALREADY_IMPLEMENTED"),
+        "Same capture should preserve installed GC calibration without overlay");
 
+    // The existing FIRST-PASS calibration remains authoritative. The next
+    // run sees zero NEW rule credits but must not reset its initial settings.
     var noRuleFiles=new Dictionary<string,byte[]>();
-    Check(Stage(decision,tempRoot,noRuleFiles,new List<object>()),
-        "Fully optimized/current stack should still emit a safe controller");
-    var noRuleThreshold=Encoding.UTF8.GetString(noRuleFiles["G-GC/threshold.lua"]);
-    Check(noRuleThreshold.Contains("defaultIntensity = 0") &&
-          noRuleThreshold.Contains("estimatedFreedCetMsPerSecond = 0") &&
-          noRuleThreshold.Contains("estimatedOptimizedCetMsPerSecond = 120"),
-        "Already-optimized no-new-rule run fabricated fresh savings");
+    Check(!Stage(decision,tempRoot,noRuleFiles,new List<object>()) &&
+          noRuleFiles.Count==0 &&
+          File.ReadAllBytes(Path.Combine(tempRoot,"G-GC","threshold.lua"))
+              .SequenceEqual(generated["G-GC/threshold.lua"]),
+        "Second no-new-rule pass reset the previous G-GC calibration");
+
+    // Fresh installs still produce a controller even without credited work.
+    var freshRoot=Path.Combine(tempRoot,"fresh");
+    Directory.CreateDirectory(freshRoot);
+    var freshFiles=new Dictionary<string,byte[]>();
+    Check(Stage(decision,freshRoot,freshFiles,new List<object>()) &&
+          freshFiles.Count==2 &&
+          Encoding.UTF8.GetString(freshFiles["G-GC/threshold.lua"])
+              .Contains("defaultIntensity = 0"),
+        "First G-GC install unexpectedly required new credited work");
+
+    // Same name but changed measured evidence is a different profile.
+    var changedEvidence=Decision(
+        """{"capture":{"exclusiveMsPerSecond":120},"hitchPressure":{"baselineFrameMs":20,"toleranceFrameMs":35},"garbageCollection":{"slowOperations":[{"heapBeforeMiB":713,"wallMs":120}]}}""",
+        true);
+    var changedFiles=new Dictionary<string,byte[]>();
+    Check(Stage(changedEvidence,tempRoot,changedFiles,new List<object>(),applied) &&
+          changedFiles.ContainsKey("G-GC/threshold.lua") &&
+          !changedFiles["G-GC/threshold.lua"]
+              .SequenceEqual(generated["G-GC/threshold.lua"]),
+        "Changed measurements under the same capture name were ignored");
 
     var noCycle=Decision(
         """{"capture":{"exclusiveMsPerSecond":100},"hitchPressure":{"baselineFrameMs":19,"toleranceFrameMs":31},"garbageCollection":{"slowOperations":[]}}""",false);
@@ -276,8 +300,10 @@ try
         "No-cycle generation fabricated an observed trigger");
     File.WriteAllBytes(Path.Combine(tempRoot,"G-GC","threshold.lua"),
         noCycleFiles["G-GC/threshold.lua"]);
-    Check(Stage(noCycle,tempRoot,new Dictionary<string,byte[]>(),new List<object>()),
-        "Nullable GC region failed re-generation");
+    var sameNoCycle=new Dictionary<string,byte[]>();
+    Check(!Stage(noCycle,tempRoot,sameNoCycle,new List<object>()) &&
+          sameNoCycle.Count==0,
+        "Same no-GC-cycle evidence needlessly regenerated G-GC");
 
     var missing=Decision("""{"capture":{"exclusiveMsPerSecond":120},"hitchPressure":{"baselineFrameMs":21},"garbageCollection":{"slowOperations":[]}}""",false);
     var missingFiles=new Dictionary<string,byte[]>();var skips=new List<object>();

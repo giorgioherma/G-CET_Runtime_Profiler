@@ -42,6 +42,8 @@ try
     Save("VortexOrphan/modules/remaining.lua","return Game.GetTransactionSystem()\n");
     Save("VortexOrphan/init.lua.vortex_backup","-- removed entrypoint backup\n");
     Save("0-Engine/init.lua","return Game.GetPlayer()\n");
+    // G-GC source is exclusively owned by its dedicated generator.
+    Save("G-GC/init.lua","local x=Game.GetAllBlackboardDefs()\nlocal y=Game.GetBlackboardSystem()\n");
     Save("Shadow/init.lua","local Game = require('Game')\nreturn Game.GetPlayer()\n");
     Save("OnlyComments/init.lua","-- Game.GetPlayer()\nreturn 'Game.GetPlayer()'\n");
     Save("HelperCollision/init.lua","local function __gcetGetPlayer() return nil end\nreturn Game.GetPlayer()\n");
@@ -50,7 +52,7 @@ try
     // Scanner must see exact code calls, ignore literals, disallow local Game
     // shadowing, and preserve direct derived Vector4 semantics.
     var plans=(Array)analyze.Invoke(null,[mods])!;
-    Check(plans.Length==3,"Expected three candidates; never framework/shadow/comments/helper-collision");
+    Check(plans.Length==3,"Expected three candidates; never framework/G-GC/shadow/comments/helper-collision");
     var mainPlan=plans.Cast<object>().Single(x=>
        ((string)x.GetType().GetProperty("RelativeFile")!.GetValue(x)!) == "Example/init.lua");
     var operations=(Array)mainPlan.GetType().GetProperty("Operations")!.GetValue(mainPlan)!;

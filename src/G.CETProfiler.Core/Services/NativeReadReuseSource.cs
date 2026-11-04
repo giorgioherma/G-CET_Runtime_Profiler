@@ -51,7 +51,9 @@ internal static class NativeReadReuseSource
         var first=relative.Split('/')[0];
         return first.Equals("0-Engine",StringComparison.OrdinalIgnoreCase) ||
                first.Equals("G-CET",StringComparison.OrdinalIgnoreCase) ||
-               first.Equals("G-CET-Profiler",StringComparison.OrdinalIgnoreCase);
+               first.Equals("G-CET-Profiler",StringComparison.OrdinalIgnoreCase) ||
+               // G-GC's sole owner is GgcControllerSource, not generic reads.
+               first.Equals("G-GC",StringComparison.OrdinalIgnoreCase);
     }
     // Mask only complete, previously generated provider functions (and the
     // native Vector4 live helper). Their author fallback must remain exactly

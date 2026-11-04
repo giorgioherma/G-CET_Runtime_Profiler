@@ -39,7 +39,7 @@ internal static class GenericReadCoordinatorSource
                !CetModPresence.HasInstalledSource(root,rel))continue;
             var owner=rel.Split('/')[0];
             if(!rel.Contains('/') ||
-               owner is "0-Engine" or "G-CET" or "G-CET-Profiler" ||
+               owner is "0-Engine" or "G-CET" or "G-CET-Profiler" or "G-GC" ||
                rel.Contains("/GCET_Semantic/",StringComparison.OrdinalIgnoreCase))
                 continue;
             var original=staged.TryGetValue(rel,out var cached)?cached:File.ReadAllBytes(file);
