@@ -251,6 +251,55 @@ Check(Math.Abs(Val(noDouble,"EstimatedFreedCetMsPerSecond") -
       Val(values,"EstimatedFreedCetMsPerSecond")) < 1e-5,
     "Repeated manifests inflated measured CPU savings");
 
+// Portable stack prediction: only measured cost and successfully applied
+// source-proven work determine magnitude. Identical kinds never multiply;
+// two distinct compatible generic rules compound on residual callback work.
+var genericUI = new {type="UI_VISIBILITY_DORMANCY",owner="ModGeneric",registrationId=201L};
+var genericRead = new {type="SHARED_PROVIDER_READ",owner="ModGeneric",
+    registrationId=201L,replacedOccurrences=5};
+var singleGeneric = Calculate(decision, new List<object>{genericUI});
+var combinedGeneric = Calculate(decision, new List<object>{genericUI,genericRead});
+var duplicateGeneric = Calculate(decision,
+    new List<object>{genericUI,genericRead,genericUI,genericRead});
+Check(Val(combinedGeneric,"EstimatedGenericSavingMsPerSecond") >
+      Val(singleGeneric,"EstimatedGenericSavingMsPerSecond") &&
+      Val(combinedGeneric,"EstimatedGenericSavingMsPerSecond") < 20 &&
+      Math.Abs(Val(combinedGeneric,"EstimatedGenericSavingMsPerSecond") -
+               Val(duplicateGeneric,"EstimatedGenericSavingMsPerSecond")) < 1e-6,
+    "Distinct applied generic rules were ignored or duplicates inflated savings");
+
+var halfStack = (JsonObject)Decision(untouched,true);
+halfStack["gGcCaptureCalibration"]!["assistance"]!
+    ["measuredOriginalCetMsPerSecond"] = 60.0;
+foreach (var family in halfStack["callbackFamilies"]!.AsArray())
+foreach (var row in family!["topConsumers"]!.AsArray())
+{
+    var runtime = row!["runtime"]!;
+    runtime["exclusiveMsPerSecond"] =
+        runtime["exclusiveMsPerSecond"]!.GetValue<double>() * 0.5;
+}
+var mixedFull = new List<object> {
+    new {type="SEMANTIC_RULE",Owner="ModDormant",RuleId="idle-dormancy",
+        Handler="DORMANCY_WITH_WAKE",PolicyClass="SOURCE_PROVEN",
+        runtimeMsPerSecond=80.0,sourceProof=true,
+        admissionEvidence="CAPTURE_MATCHED_SOURCE_PROVEN"},
+    genericUI, genericRead
+};
+var mixedHalf = new List<object> {
+    new {type="SEMANTIC_RULE",Owner="ModDormant",RuleId="idle-dormancy",
+        Handler="DORMANCY_WITH_WAKE",PolicyClass="SOURCE_PROVEN",
+        runtimeMsPerSecond=40.0,sourceProof=true,
+        admissionEvidence="CAPTURE_MATCHED_SOURCE_PROVEN"},
+    genericUI, genericRead
+};
+var fullEstimate = Calculate(decision,mixedFull);
+var halfEstimate = Calculate(halfStack,mixedHalf);
+Check(Math.Abs(Val(halfEstimate,"EstimatedFreedCetMsPerSecond") * 2 -
+               Val(fullEstimate,"EstimatedFreedCetMsPerSecond")) < 0.00001 &&
+      Math.Abs(Val(halfEstimate,"EstimatedOptimizedCetMsPerSecond") * 2 -
+               Val(fullEstimate,"EstimatedOptimizedCetMsPerSecond")) < 0.00001,
+    "Forecast magnitude was fixed to one stack rather than scaling with its measured work");
+
 // Identical generic/semantic rules can hit overlapping callback work.
 // The owner-overlap rule must take the greater saving, never their sum.
 var sameOwner = new List<object> {
