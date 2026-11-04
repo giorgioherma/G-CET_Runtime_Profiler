@@ -35,7 +35,12 @@ try
         local xyz = actor:GetWorldPosition()
         local data = Game.GetPlayer():GetWorldPosition()
         """.Replace("\n","\r\n"));
+    // A multi-file installed CET mod requires its own root entrypoint;
+    // helper-only Vortex leftovers are NOT legitimate native-read candidates.
+    Save("Other/init.lua","-- installed CET entrypoint\n");
     Save("Other/helper.lua","return Game.GetTransactionSystem()\n");
+    Save("VortexOrphan/modules/remaining.lua","return Game.GetTransactionSystem()\n");
+    Save("VortexOrphan/init.lua.vortex_backup","-- removed entrypoint backup\n");
     Save("0-Engine/init.lua","return Game.GetPlayer()\n");
     Save("Shadow/init.lua","local Game = require('Game')\nreturn Game.GetPlayer()\n");
     Save("OnlyComments/init.lua","-- Game.GetPlayer()\nreturn 'Game.GetPlayer()'\n");
