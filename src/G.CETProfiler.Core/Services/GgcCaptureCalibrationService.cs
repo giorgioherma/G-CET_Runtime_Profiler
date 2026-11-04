@@ -544,11 +544,28 @@ internal static class GgcCaptureCalibrationService
         semanticTotal = Math.Round(semanticTotal * globalScale, 6);
         genericTotal = Math.Round(genericTotal * globalScale, 6);
         var savedTotal = Math.Round(semanticTotal + genericTotal, 6);
+        // "Covered" means distinct measured callback registrations reached,
+        // not the single largest callback per mod. This is exposure, not the
+        // amount claimed as saved. Semantics without unique registration IDs
+        // can match measured callback CPU only by a capture-scoped owner+cost
+        // signature; unmatched ones stay a conservative per-owner lower bound.
+        var coveredRegistrations = genericByRegistration.Keys.ToHashSet();
+        foreach (var (key, callback) in measured)
+        {
+            var signature = key.Owner + "\0" +
+                callback.Cpu.ToString("0.######",
+                    System.Globalization.CultureInfo.InvariantCulture);
+            if (uniqueSemanticCallbacks.Contains(signature))
+                coveredRegistrations.Add(key);
+        }
+        var coveredCallbackCpu = coveredRegistrations.Sum(key =>
+            measured.TryGetValue(key, out var callback) ? callback.Cpu : 0);
+        var fallbackSemanticCpu = semanticMeasuredByOwner
+            .Where(item => !coveredRegistrations.Any(key =>
+                key.Owner.Equals(item.Key, StringComparison.OrdinalIgnoreCase)))
+            .Sum(item => item.Value);
         var originalCredited = Math.Round(
-            Math.Min(original.Value, estimates
-                .Where(x => x.EstimatedSavingMsPerSecond > 0)
-                .GroupBy(x => x.Owner, StringComparer.OrdinalIgnoreCase)
-                .Sum(group => group.Max(x => x.MeasuredCallbackMsPerSecond))), 6);
+            Math.Min(original.Value, coveredCallbackCpu + fallbackSemanticCpu), 6);
         var projected = Math.Round(Math.Max(0, original.Value - savedTotal), 6);
         var startingReference = Math.Round(savedTotal * 0.08, 6);
         var usableFrame = baseline is > 0 && tolerance > baseline && reserve >= 0
