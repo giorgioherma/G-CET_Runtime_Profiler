@@ -79,6 +79,26 @@ public static class ResolverService
         var coverage = OptimizationClassCountService.Analyze(
             JsonSerializer.SerializeToElement(augmented));
         augmented["optimizationClassCoverage"] = JsonSerializer.SerializeToNode(coverage);
+        // Reuse the already-established source-proven optimization detector:
+        // measured captured CET is optimized runtime, not a hypothetical
+        // pre-optimization figure, when completed stages dominate.
+        // Captures do not embed full live-source hashes; expose that caveat.
+        var optimizedCapture = GgcCaptureCalibrationService
+            .RecognizesPredominantlyOptimizedStack(
+                JsonSerializer.SerializeToElement(augmented));
+        augmented["captureRuntimeInterpretation"] = new JsonObject
+        {
+            ["mode"] = optimizedCapture
+                ? "DIRECT_MEASURED_OPTIMIZED_STACK"
+                : "CAPTURE_MEASURED_BASELINE_WITH_NEW_RULE_PROJECTION",
+            ["source"] = "EXISTING_SOURCE_PROVEN_OPTIMIZATION_COVERAGE",
+            ["captureMatchesLiveSourceVerified"] = false,
+            ["note"] = optimizedCapture
+                ? "Selected capture is treated as the current optimized runtime. " +
+                  "Do not use an older unoptimized capture for this live stack."
+                : "Measured selected capture; post-generation savings apply only " +
+                  "to actually new source-proven transforms."
+        };
         // G-GC evidence is always derived anew from THIS selected capture.
         // Its result authorizes capture-calibrated experimental generation;
         // production safety and gameplay acceptance still require runtime tests.
@@ -86,6 +106,12 @@ public static class ResolverService
         {
             augmented["gGcCaptureCalibration"] = GgcCaptureCalibrationService.Build(
                 selectedHandoff.RootElement, new DirectoryInfo(captureRoot).Name);
+            augmented["gGcCaptureCalibration"]!["measuredRuntimeMode"] =
+                optimizedCapture ? "DIRECT_MEASURED_OPTIMIZED_STACK" :
+                    "CAPTURE_MEASURED_BASELINE";
+            augmented["gGcCaptureCalibration"]!["measuredCetMsPerSecond"] =
+                augmented["gGcCaptureCalibration"]!["assistance"]?
+                    ["measuredOriginalCetMsPerSecond"]?.DeepClone();
         }
 
         // A blacklisted mod is still profiled, but must not inflate the

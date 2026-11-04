@@ -202,6 +202,36 @@ internal static class GgcCaptureCalibrationService
         string EstimateStatus,
         IReadOnlyList<RuleEstimate> RuleEstimates);
 
+    /// <summary>
+    /// Reuse existing Resolver source-proof counts. A predominantly completed
+    /// stack's selected capture is direct measured runtime evidence, PROVIDED
+    /// the user captured that installed stack. Counts do not prove that an
+    /// older recording and the current live folder have identical contents.
+    /// Never infer optimized state simply from zero READY candidates.
+    /// </summary>
+    internal static bool RecognizesPredominantlyOptimizedStack(
+        JsonElement resolverRoot)
+    {
+        if (!resolverRoot.TryGetProperty("optimizationClassCoverage",
+                out var coverage) || coverage.ValueKind != JsonValueKind.Object)
+            return false;
+        static int Count(JsonElement item, string name) =>
+            item.TryGetProperty(name, out var value) &&
+            value.ValueKind == JsonValueKind.Number &&
+            value.TryGetInt32(out var count) && count >= 0 ? count : 0;
+
+        var completedRules = Count(coverage, "AlreadySourceProvenRuleCount");
+        var completedCallbacks = Count(coverage, "AlreadySatisfiedCallbackCount");
+        var pendingRules = Count(coverage, "ReadyRuleCount");
+        var pendingGenericMods = Count(coverage, "GenericReadyModCount");
+        // Both measurements originate in the established source-aware
+        // Resolver analysis. Callback completions may overlap semantic rules:
+        // max(), not sum(), avoids inflating the completed percentage.
+        var completed = Math.Max(completedRules, completedCallbacks);
+        var pending = pendingRules + pendingGenericMods;
+        return completed > 0 && completed >= pending;
+    }
+
     internal static AppliedDefaults EstimateAppliedDefaults(
         JsonElement resolverRoot, IReadOnlyCollection<object> appliedManifest)
     {
@@ -271,6 +301,8 @@ internal static class GgcCaptureCalibrationService
             !evidence.TryGetProperty("gameplay", out var gameplay))
             return Empty("MISSING_RESOLVER_CAPTURE_CALIBRATION", null);
         var original = Number(assistance, "measuredOriginalCetMsPerSecond");
+        var measuredOptimizedCapture =
+            RecognizesPredominantlyOptimizedStack(resolverRoot);
         var baseline = Number(gameplay, "medianFrameMs");
         var tolerance = Number(gameplay, "hitchToleranceMs");
         var reserve = Number(assistance, "frameReserveMs");
@@ -459,11 +491,15 @@ internal static class GgcCaptureCalibrationService
         var frequency = usable
             ? (int)(50 * Math.Round(
                 Math.Clamp(1700 - 100 * basis, 300, 3000) / 50)) : 5000;
-        var status = !usable
+        var status = measuredOptimizedCapture
             ? savedTotal <= 0
-                ? "NO_CREDITABLE_NEW_MEASURED_OPTIMIZATION_DEFAULT_OFF"
-                : "NO_SAFE_INITIAL_FRAME_MARGIN_DEFAULT_OFF"
-            : "CONSERVATIVE_ACTUALLY_GENERATED_RULE_HEURISTICS_DEFAULTS_ONLY";
+                ? "DIRECT_MEASURED_PREDOMINANTLY_OPTIMIZED_CAPTURE_NO_NEW_RULE_ESTIMATES"
+                : "DIRECT_MEASURED_OPTIMIZED_CAPTURE_WITH_NEW_RULE_ESTIMATES_ONLY"
+            : !usable
+                ? savedTotal <= 0
+                    ? "NO_CREDITABLE_NEW_MEASURED_OPTIMIZATION_DEFAULT_OFF"
+                    : "NO_SAFE_INITIAL_FRAME_MARGIN_DEFAULT_OFF"
+                : "CONSERVATIVE_ACTUALLY_GENERATED_RULE_HEURISTICS_DEFAULTS_ONLY";
         return new(original, originalCredited, savedTotal, projected,
             startingReference, Math.Round(semanticTotal, 6),
             Math.Round(genericTotal, 6), appliedRules.Count,

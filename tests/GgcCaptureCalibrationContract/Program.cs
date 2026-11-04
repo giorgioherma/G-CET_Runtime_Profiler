@@ -170,6 +170,55 @@ Check(unvaried["gameplay"]!["hitchToleranceMs"]!.GetValue<double>() == 39.75,
 
 var decision = Decision(untouched, true);
 object values = Calculate(decision, applied);
+// The established Resolver optimization-coverage counters are authoritative.
+// A completed stack's capture is measured optimized workload; the Resolver
+// must not predict and subtract historical completed rules a second time.
+var alreadyOptimized = (JsonObject)Decision(untouched, true);
+alreadyOptimized["optimizationClassCoverage"] = JsonNode.Parse("""
+{"AlreadySourceProvenRuleCount":27,"AlreadySatisfiedCallbackCount":46,
+ "ReadyRuleCount":0,"GenericReadyModCount":0}
+""");
+var direct = Calculate(alreadyOptimized, new List<object>());
+Check(Val(direct, "EstimatedOptimizedCetMsPerSecond") == 120 &&
+      Val(direct, "EstimatedFreedCetMsPerSecond") == 0 &&
+      (string)direct.GetType().GetProperty("EstimateStatus")!.GetValue(direct)! ==
+         "DIRECT_MEASURED_PREDOMINANTLY_OPTIMIZED_CAPTURE_NO_NEW_RULE_ESTIMATES",
+    "Optimized capture was treated as a hypothetical pre-optimization baseline");
+// One newly eligible mod can receive an incremental estimate, but only on
+// top of the already measured optimized runtime.
+var incremental = Calculate(alreadyOptimized, applied);
+Check(Math.Abs(Val(incremental, "EstimatedOptimizedCetMsPerSecond") - 91.76) < 1e-6 &&
+      ((string)incremental.GetType().GetProperty("EstimateStatus")!
+          .GetValue(incremental)!).Contains("NEW_RULE_ESTIMATES_ONLY"),
+    "Measured optimized capture was not retained as the incremental baseline");
+// A completely pristine stack with zero ready work is NOT 'optimized'.
+var pristineNoCandidates = (JsonObject)Decision(untouched, true);
+pristineNoCandidates["optimizationClassCoverage"] = JsonNode.Parse("""
+{"AlreadySourceProvenRuleCount":0,"AlreadySatisfiedCallbackCount":0,
+ "ReadyRuleCount":0,"GenericReadyModCount":0}
+""");
+var notOptimized = Calculate(pristineNoCandidates, new List<object>());
+Check(!(bool)calibrationType.GetMethod(
+    "RecognizesPredominantlyOptimizedStack",
+    BindingFlags.NonPublic | BindingFlags.Static)!
+    .Invoke(null, new object[]{JsonSerializer.SerializeToElement(pristineNoCandidates)})!,
+    "Zero-work pristine stack was mistaken for an optimized capture");
+Check(!((string)notOptimized.GetType().GetProperty("EstimateStatus")!
+    .GetValue(notOptimized)!).StartsWith("DIRECT_MEASURED"),
+    "Missing source-optimized proof fabricated a direct optimized calibration");
+// Pending work dominating completed source-proven stages is not a
+// predominantly optimized stack.
+var mostlyUntouched = (JsonObject)Decision(untouched, true);
+mostlyUntouched["optimizationClassCoverage"] = JsonNode.Parse("""
+{"AlreadySourceProvenRuleCount":2,"AlreadySatisfiedCallbackCount":1,
+ "ReadyRuleCount":9,"GenericReadyModCount":5}
+""");
+Check(!((string)Calculate(mostlyUntouched, new List<object>())
+    .GetType().GetProperty("EstimateStatus")!.GetValue(
+        Calculate(mostlyUntouched, new List<object>))!).StartsWith("DIRECT_MEASURED"),
+    "Mostly unoptimized source was treated as optimized runtime");
+
+object values = Calculate(decision, applied);
 Check(Math.Abs(Val(values,"EstimatedFreedCetMsPerSecond") - 28.24) < 1e-6,
     "Per-stage semantic and generic savings not credited conservatively");
 Check(Math.Abs(Val(values,"EstimatedSemanticSavingMsPerSecond") - 24) < 1e-6 &&
