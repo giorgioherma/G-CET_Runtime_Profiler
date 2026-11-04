@@ -253,6 +253,26 @@ try
                            new List<object>(),bundleHeaders];
     Check((int)workerStage.Invoke(null,bundleRepeat)! ==0 && sameBundle.Count==0,
         "Complete provider worker duplicated during a second pass");
+    // A source-aware semantic, applied LAST, may add an owned header before
+    // the existing generic coordinator marker. This must remain a no-op,
+    // not a generation failure. Unreviewed author code before the marker
+    // must still refuse source ownership.
+    bundleStages["Pristine/init.lua"]=Encoding.UTF8.GetBytes(
+        "-- G-CET semantic:reviewed-stage\n"+bundledMain);
+    var semanticRepeatSkips=new List<object>();
+    Check((int)workerStage.Invoke(null,[bundledRoot,bundleStages,bundleCounts,
+          new List<object>(),semanticRepeatSkips,bundleHeaders])! ==0 &&
+          semanticRepeatSkips.Count==0,
+        "Complete coordinator was rejected behind a source-aware semantic header");
+    bundleStages["Pristine/init.lua"]=Encoding.UTF8.GetBytes(
+        "local foreignOwner = true\n"+bundledMain);
+    var foreignPrefixSkips=new List<object>();
+    Check((int)workerStage.Invoke(null,[bundledRoot,bundleStages,bundleCounts,
+          new List<object>(),foreignPrefixSkips,bundleHeaders])! ==0 &&
+          foreignPrefixSkips.Any(row=>JsonSerializer.Serialize(row)
+              .Contains("Read coordinator source bridge changed.",
+                  StringComparison.Ordinal)),
+        "Foreign source statements before a coordinator were silently accepted");
     bundleStages["Pristine/init.lua"]=Encoding.UTF8.GetBytes(bundledMain+
         "\nlocal later = Game.GetStatsSystem()\n");
     var extendedFamilies=bundleFamilies.Append(("STATS_SYSTEM","GetStatsSystem")).ToArray();
@@ -510,6 +530,31 @@ try
         var applied=(int)value.GetType().GetProperty("AppliedTransforms")!.GetValue(value)!;
         return (Encoding.UTF8.GetString(bytes),applied);
     }
+    // ANALYZE must use identical source-owned helper proof to GENERATE.
+    // A capture's obsolete callback span must not re-admit the generated
+    // Game fallback, but a genuinely new author getter remains eligible.
+    var maskVerified=typeof(PassGeneratorService).GetMethod(
+        "MaskVerifiedSharedProviderFallbacks",
+        BindingFlags.NonPublic|BindingFlags.Static)!;
+    var reviewedMap=reviewedHeaders["MAPPIN_SYSTEM"].Header;
+    var firstRead=reviewedMap+"\nlocal current = __gcetGetMappinSystem()\n";
+    string MaskRead(string source) => (string)maskVerified.Invoke(null,[source])!;
+    Check(!MaskRead(firstRead).Contains("Game.GetMappinSystem()",
+              StringComparison.Ordinal) &&
+          MaskRead(firstRead).Contains("current = __gcetGetMappinSystem()",
+              StringComparison.Ordinal),
+        "ANALYZE rediscovered the preserved Game fallback as new work");
+    var partialRead=firstRead+"local additional = Game.GetMappinSystem()\n";
+    Check(MaskRead(partialRead).Contains("additional = Game.GetMappinSystem()",
+              StringComparison.Ordinal),
+        "ANALYZE suppressed an independently missing author getter");
+    var driftRead=firstRead.Replace(
+        "if __gcetProvider_GetMappinSystem == nil then",
+        "if false then",StringComparison.Ordinal);
+    Check(MaskRead(driftRead).Contains("return Game.GetMappinSystem()",
+              StringComparison.Ordinal),
+        "Malformed marked fallback was treated as fully optimized");
+
     var providerIndex=0L;
     foreach(var (provider, pair) in reviewedHeaders)
     {

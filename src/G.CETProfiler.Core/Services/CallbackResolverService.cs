@@ -1288,7 +1288,21 @@ internal static class CallbackResolverService
             }
         }
 
-        foreach (Match match in GenericGameGetterSourceRegex.Matches(text))
+        // The selected Profiler line range may refer to a now-moved callback,
+        // or to a generated provider helper inserted above that callback.
+        // Match against the FULL current Lua with exact generated helper
+        // fallbacks masked by the generator's own structural verifier.
+        // Remaining author Game getters stay discoverable for partial mods.
+        var maskedFull = PassGeneratorService.MaskVerifiedSharedProviderFallbacks(
+            source.FullText);
+        var maskedLines = maskedFull.Split('\n');
+        var start = Math.Clamp(source.LineStart.GetValueOrDefault(1),
+            1, maskedLines.Length);
+        var end = Math.Clamp(source.LineEnd.GetValueOrDefault(start),
+            start, maskedLines.Length);
+        var executableCallback = string.Join("\n",
+            maskedLines.Skip(start - 1).Take(end - start + 1));
+        foreach (Match match in GenericGameGetterSourceRegex.Matches(executableCallback))
         {
             var getter = match.Groups["getter"].Value;
             var provider = SharedProviderKeyForGameGetter(getter);

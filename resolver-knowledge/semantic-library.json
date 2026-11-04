@@ -3320,7 +3320,7 @@
             ]
           }
         ],
-        "completionVerifier": "IFP_FREELOOK_ACTION_DORMANCY_V2",
+        "completionVerifier": "IFP_ALL_SOURCE_STAGES",
         "composablePartialStages": true
       },
       "behavior": {

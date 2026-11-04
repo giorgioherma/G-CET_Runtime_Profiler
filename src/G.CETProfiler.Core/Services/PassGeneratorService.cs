@@ -899,6 +899,35 @@ public static class PassGeneratorService
         };
     }
 
+    // ANALYZE and GENERATE must use the SAME exact source-owned helper
+    // verification. Old callback coordinates can land on the original
+    // Game.Get* fallback in a previously generated helper. That fallback
+    // is mandatory for correctness, not a newly available optimization.
+    // Mask ONLY fully reviewed generated helpers. Marker-only/foreign
+    // lookalikes remain visible so their drift cannot be called complete.
+    internal static string MaskVerifiedSharedProviderFallbacks(string fullSource)
+    {
+        var normalized = fullSource.Replace("\r\n", "\n",
+            StringComparison.Ordinal).Replace('\r', '\n');
+        var masked = NativeReadReuseSource.MaskNonCode(normalized).ToCharArray();
+        foreach (var recipe in SharedProviderRecipes.Values)
+        {
+            if (!normalized.Contains(recipe.Marker, StringComparison.Ordinal))
+                continue;
+            var reviewed = string.Join("\n", BuildSharedProviderHeader(recipe))
+                .TrimEnd('\r', '\n');
+            if (!GenericReadCoordinatorSource.TryFindProviderBlock(
+                normalized, recipe.Provider, recipe.GameGetter,
+                reviewed, out var block, out _))
+                continue;
+            var start = normalized.IndexOf(block, StringComparison.Ordinal);
+            if (start < 0) continue;
+            for (var i = start; i < start + block.Length; i++)
+                if (masked[i] != '\n' && masked[i] != '\r') masked[i] = ' ';
+        }
+        return new string(masked);
+    }
+
     private static TransformResult TransformFile(
         byte[] originalBytes,
         IReadOnlyList<PassCandidate> candidates,
@@ -1020,9 +1049,30 @@ public static class PassGeneratorService
             var matches = eligibleMatches.Length;
             if (matches == 0)
             {
-                skipped.Add(Skip(candidate,
-                    $"No remaining author Game.{providerRecipe.GameGetter}() callsite " +
-                    "inside the captured range; previously generated fallback preserved."));
+                // A stale ANALYZE document may still nominate an already
+                // deployed helper. Complete source proof requires BOTH the
+                // independently reviewed helper (checked above) and a live
+                // consumer outside its fallback body. Do not label foreign or
+                // removed author calls as successfully optimized.
+                var completed = helperAlreadyPresent &&
+                    Regex.Matches(executable,
+                        @"\b" + Regex.Escape(providerRecipe.HelperName) + @"\s*\(",
+                        RegexOptions.CultureInvariant).Cast<Match>().Any(m =>
+                            m.Index < fallbackStart || m.Index >= fallbackEnd);
+                if (completed)
+                {
+                    skipped.Add(new {
+                        type = "SHAREDPROVIDER",
+                        category = PassSkipSummaryService.AlreadyImplemented,
+                        candidate.Owner, file = candidate.RelativeFile,
+                        provider = providerRecipe.Provider,
+                        reason = "Exact shared-provider helper, source consumer and " +
+                                 "original Game getter fallback already verified." });
+                }
+                else
+                    skipped.Add(Skip(candidate,
+                        $"No remaining author Game.{providerRecipe.GameGetter}() callsite " +
+                        "inside the captured range; no verified completed consumer."));
                 continue;
             }
 

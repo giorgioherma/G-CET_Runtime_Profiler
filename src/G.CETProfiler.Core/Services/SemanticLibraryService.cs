@@ -410,8 +410,9 @@ internal sealed class SemanticLibraryService
                 SemanticInjectors.IsImmersiveThirdPersonDedraWakeComplete(graph.OwnerFolder),
             "DEDRA_ONINIT_FRAME_WAKE_V3" =>
                 SemanticInjectors.IsDedraThirdPersonCombatWakeComplete(graph.OwnerFolder),
-            "IFP_FREELOOK_ACTION_DORMANCY_V2" =>
-                SemanticInjectors.IsImmersiveFirstPersonActionDormancyComplete(graph.OwnerFolder),
+            "IFP_ALL_SOURCE_STAGES" =>
+                SemanticInjectors.IsImmersiveFirstPersonSourceComplete(
+                    _modsRoot, graph.OwnerFolder),
             "AUTOLOOT_DEFAULT_ACTION_DORMANCY_V2" =>
                 SemanticInjectors.IsAutoLootDefaultActionDormancyComplete(graph.OwnerFolder),
             "AMM_CACHED_GTA_TRAVEL_LOOKUP_V2" =>
@@ -432,7 +433,14 @@ internal sealed class SemanticLibraryService
         // missing stage; the injector will add only what is absent.
         var composed = rule.Proof.CompleteStages.Length > 0 ||
             rule.Proof.ComposablePartialStages;
-        if (rule.Proof.CompleteStages.Length > 0)
+        if (rule.Proof.CompletionVerifier == "IFP_ALL_SOURCE_STAGES")
+        {
+            // The reviewed IFP injector itself verifies every actual stage.
+            // Function-scoped static anchors are advisory for this rule:
+            // its preserved public camera signature changes after generation.
+            satisfiedBySourcePostcondition = verifiedCompletion == true;
+        }
+        else if (rule.Proof.CompleteStages.Length > 0)
             satisfiedBySourcePostcondition =
                 rule.Proof.CompleteStages.All(stage =>
                     SemanticScopedStages.IsComplete(graph.FileTexts, stage)) &&

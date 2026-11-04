@@ -261,7 +261,17 @@ internal static class GenericReadCoordinatorSource
         var functions=new Dictionary<string,string>(StringComparer.Ordinal);
         if(exists)
         {
-            if(!source.StartsWith(Marker+module+"\n",StringComparison.Ordinal) ||
+            // Final source-aware semantics prepend their own source marker
+            // AFTER generic finalization. A second pass must recognize this
+            // precise, composed source ordering. Never accept executable
+            // author statements or unreviewed comments before our bridge.
+            var bridge = Marker+module+"\n";
+            var bridgeStart=source.IndexOf(bridge,StringComparison.Ordinal);
+            var prefix=bridgeStart>=0?source[..bridgeStart]:"";
+            var safeSemanticPrefix=Regex.IsMatch(prefix,
+                @"\A(?:-- G-CET semantic:[^\n]*\n)*\z",
+                RegexOptions.CultureInvariant);
+            if(bridgeStart<0 || !safeSemanticPrefix ||
                !Regex.IsMatch(NativeReadReuseSource.MaskNonCode(source),
                    @"\blocal\s+"+Alias+@"\s*=\s*require\s*\("))
             {reason="Read coordinator source bridge changed.";return false;}

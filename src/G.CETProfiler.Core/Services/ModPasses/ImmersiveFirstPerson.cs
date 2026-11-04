@@ -204,7 +204,10 @@ internal static partial class SemanticInjectors
         // supplies a reusable output, so nested callers keep author semantics.
         var camera = context.FindFile(
             "Modules/CameraCore.lua",
-            "function CameraCore.EvaluateBody(nativePitch, crouching)",
+            // Both untouched two-parameter and completed three-parameter
+            // API signatures share this prefix; the injector below verifies
+            // the complete structure before accepting either state.
+            "function CameraCore.EvaluateBody(nativePitch, crouching",
             "local function composeAndWrite(");
         var cameraText = ReuseImmersiveFirstPersonCameraMath(camera.Text);
 
@@ -329,6 +332,30 @@ internal static partial class SemanticInjectors
         source = source.Replace("local function composeAndWrite(",
             declaration + "local function composeAndWrite(", StringComparison.Ordinal);
         return source;
+    }
+
+    // Authoritative source-level completion proof: invoke the SAME IFP
+    // injector read-only. It returns no changes only when ALL current source
+    // stages (helpers, action wake, UI provider and camera scratch) are
+    // already satisfied. Partial sources remain eligible; source drift is
+    // not misclassified as completion.
+    internal static bool IsImmersiveFirstPersonSourceComplete(
+        string modsRoot, string ownerFolder)
+    {
+        try
+        {
+            var context = new SemanticPatchContext(modsRoot,
+                Path.GetFileName(ownerFolder), "immersivefirstperson",
+                new Dictionary<string,byte[]>(StringComparer.OrdinalIgnoreCase));
+            var result = ApplyImmersiveFirstPerson(context);
+            return !result.Applied && context.Changes.Count == 0 &&
+                result.Reason == "All ImmersiveFirstPerson source stages are already complete.";
+        }
+        catch (Exception error) when (error is InvalidOperationException or
+               IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            return false;
+        }
     }
 
     internal static bool IsImmersiveFirstPersonActionDormancyComplete(string ownerFolder)
