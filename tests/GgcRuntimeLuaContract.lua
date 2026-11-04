@@ -19,9 +19,8 @@ io = { open = function(path, mode)
 end }
 
 package.preload["threshold"] = function() return {
-  schema = 3, capture = "UNTAMPERED_STOCK_STACK",
+  schema = 4, capture = "UNTAMPERED_STOCK_STACK",
   baselineFrameMs = 22.4354, hitchToleranceMs = 33.6531,
-  defaultIntensity = 37, defaultFrequencyMs = 1250,
   pressureReferenceMiB = 863, pressureStartMiB = 800,
   pressureHighMiB = 935
 } end
