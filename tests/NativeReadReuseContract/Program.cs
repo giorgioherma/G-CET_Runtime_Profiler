@@ -591,6 +591,57 @@ try
               "MAPPIN_SYSTEM"),
         "ANALYZE accepted a marker-bearing malformed helper as complete");
 
+    // One owner may register both frame events in a main chunk already
+    // holding the LuaJIT maximum of 200 author locals. The authoritative
+    // generator must compose BOTH callbacks in one pass without adding any
+    // main-chunk local and without duplicating either callback.
+    var saturatedOwner = "SaturatedFrameOwner";
+    var saturatedLocals = "local " +
+        string.Join(",", Enumerable.Range(1,200).Select(i=>"author"+i))+"\n";
+    var saturatedSource = saturatedLocals +
+        "registerForEvent(\"onUpdate\", function(delta) return delta end)\n" +
+        "registerForEvent(\"onDraw\", function() return true end)\n";
+    var saturatedFrameCandidates = (System.Collections.IList)
+        Activator.CreateInstance(typeof(List<>).MakeGenericType(candidateType))!;
+    saturatedFrameCandidates.Add(NewCandidate("Frame",saturatedOwner,
+        saturatedOwner+"/init.lua","", "onUpdate", saturatedSource,34101));
+    saturatedFrameCandidates.Add(NewCandidate("Frame",saturatedOwner,
+        saturatedOwner+"/init.lua","", "onDraw", saturatedSource,34102));
+    candidateType.GetProperty("LineStart")!.SetValue(saturatedFrameCandidates[0],2);
+    candidateType.GetProperty("LineEnd")!.SetValue(saturatedFrameCandidates[0],2);
+    candidateType.GetProperty("LineStart")!.SetValue(saturatedFrameCandidates[1],3);
+    candidateType.GetProperty("LineEnd")!.SetValue(saturatedFrameCandidates[1],3);
+    var saturatedManifest=new List<object>();
+    var saturatedSkips=new List<object>();
+    var saturatedResult=frameGenerator.Invoke(null,[
+        Encoding.UTF8.GetBytes(saturatedSource),saturatedFrameCandidates,
+        mods,saturatedManifest,saturatedSkips])!;
+    var saturatedBytes=(byte[])saturatedResult.GetType()
+        .GetProperty("Bytes")!.GetValue(saturatedResult)!;
+    var saturatedOutput=Encoding.UTF8.GetString(saturatedBytes);
+    Check((int)saturatedResult.GetType()
+        .GetProperty("AppliedTransforms")!.GetValue(saturatedResult)!==2 &&
+        saturatedManifest.Count==2 && saturatedSkips.Count==0 &&
+        saturatedOutput.StartsWith(saturatedLocals,StringComparison.Ordinal) &&
+        saturatedOutput.Split("MakeEventRegistrar(\""+saturatedOwner+"\"",
+            StringSplitOptions.None).Length==3 &&
+        !saturatedOutput.Contains("__gcetRegisterEvent_34101(",
+            StringComparison.Ordinal) &&
+        !saturatedOutput.Contains("registerForEvent(\"onUpdate\"",
+            StringComparison.Ordinal) &&
+        !saturatedOutput.Contains("registerForEvent(\"onDraw\"",
+            StringComparison.Ordinal) &&
+        saturatedOutput.Contains("function(delta) return delta end)",
+            StringComparison.Ordinal) &&
+        saturatedOutput.Contains("function() return true end)",
+            StringComparison.Ordinal) &&
+        (int)peakProperty.GetValue(
+            budgetMethod.Invoke(null,[saturatedOutput])!)!<=200,
+        "Two frame callbacks in a 200-local author chunk were not both "+
+        "consolidated in one source-safe scoped pass.");
+    Console.WriteLine("200-local author chunk with onUpdate+onDraw: "+
+        "two exact scoped registrations; no new main locals PASS");
+
     var providerIndex=0L;
     foreach(var (provider, pair) in reviewedHeaders)
     {

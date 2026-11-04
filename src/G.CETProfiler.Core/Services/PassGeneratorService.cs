@@ -956,6 +956,12 @@ public static class PassGeneratorService
 
         var applied = 0;
         var frameHelpers = new List<(PassCandidate Candidate, string Token)>();
+        // One owner-specific registrar may be shared by multiple frame events
+        // in a source-local saturated chunk. Track exactly how many callsites
+        // THIS generator rewrites, not how often a token occurs in arbitrary
+        // author text or comments.
+        var generatedFrameCalls = new Dictionary<string,int>(
+            StringComparer.Ordinal);
         var sharedProvidersApplied = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         // Shared-provider substitutions are expression-only and preserve line
@@ -1200,6 +1206,8 @@ public static class PassGeneratorService
 
                                 if (existingOwnerToken is null)
                                     frameHelpers.Add((candidate, token));
+                                generatedFrameCalls[token] =
+                                    generatedFrameCalls.GetValueOrDefault(token) + 1;
                                 transformManifest.Add(new
                                 {
                                     registrationId = candidate.RegistrationId,
@@ -1775,20 +1783,31 @@ public static class PassGeneratorService
            insertedFrameHeaderCount>0)
         {
             // Move only generated frame registrar locals into one-time local
-            // closures at the original callsites. No author code/scope changes.
+            // closures at every EXACTLY authored callsite. One installed owner
+            // may have both onUpdate and onDraw sharing one registrar token.
+            // Do not refuse or silently drop the entire saturated mod merely
+            // because there are two real callsites. Mask inert Lua and prove
+            // that every token call was inserted by THIS generating stage.
             var scoped=string.Join(newline,lines.Skip(insertedFrameHeaderCount));
             var proven=true;
             foreach(var item in frameHelpers)
             {
-                var call=item.Token+"(";
-                if(scoped.Split(call,StringSplitOptions.None).Length!=2)
+                var code=NativeReadReuseSource.MaskNonCode(scoped);
+                var calls=Regex.Matches(code,
+                    @"(?<![A-Za-z0-9_])"+Regex.Escape(item.Token)+@"\(",
+                    RegexOptions.CultureInvariant).Cast<Match>().ToArray();
+                if(!generatedFrameCalls.TryGetValue(item.Token,out var expected) ||
+                   calls.Length!=expected || expected<1)
                 {
                     proven=false;
                     break;
                 }
-                scoped=scoped.Replace(call,
-                    BuildScopedFrameRegistrar(item.Candidate.Owner)+"(",
-                    StringComparison.Ordinal);
+                var replacement=BuildScopedFrameRegistrar(item.Candidate.Owner)+"(";
+                var rewritten=new StringBuilder(scoped);
+                foreach(var call in calls.Reverse())
+                    rewritten.Remove(call.Index,call.Length)
+                        .Insert(call.Index,replacement);
+                scoped=rewritten.ToString();
             }
             if(proven)
             {
