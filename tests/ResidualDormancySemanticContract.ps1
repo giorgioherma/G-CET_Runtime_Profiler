@@ -75,6 +75,13 @@ end
 return ui
 '@
 
+# FPVDrone's measured submodule belongs to an installed CET owner in this
+# contract. A leftover fpv/bindings.lua without the entrypoint would be an
+# uninstalled mod and must be excluded by Resolver's live-inventory gate.
+Write-ModFile 'FPVDrone' 'init.lua' @'
+-- Installed FPVDrone CET entrypoint; module callbacks are loaded by the mod
+require("fpv/bindings")
+'@
 Write-ModFile 'FPVDrone' 'fpv/bindings.lua' @'
 registerForEvent("onUpdate", function(deltaTime)
     updateFPVController(deltaTime)
