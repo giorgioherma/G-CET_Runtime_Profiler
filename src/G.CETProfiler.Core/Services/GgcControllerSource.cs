@@ -87,12 +87,12 @@ internal static class GgcControllerSource
             defaults.DefaultIntensityPercent,
             defaults.DefaultFrequencyMs,
             defaults.EstimateStatus,
-            captureRuntimeInterpretation = root.TryGetProperty(
+            captureRuntimeInterpretation = resolverRoot.TryGetProperty(
                 "captureRuntimeInterpretation", out var runtimeInterpretation)
                 ? runtimeInterpretation.Clone() : default(JsonElement),
             measuredCaptureCetMsPerSecond = defaults.MeasuredOriginalCetMsPerSecond,
             measuredOptimizedRuntime = GgcCaptureCalibrationService
-                .RecognizesPredominantlyOptimizedStack(root),
+                .RecognizesPredominantlyOptimizedStack(resolverRoot),
             perRuleEstimates = defaults.RuleEstimates,
             provenGameplay = false
         });
