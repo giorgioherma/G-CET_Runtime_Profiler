@@ -31,6 +31,14 @@ function Apply([string]$owner,[string]$relative,[string]$rule,[string]$method,[s
   New-Item -ItemType Directory -Force $parent | Out-Null
   if($crlf){$fixture=$fixture.Replace("`r`n","`n").Replace("`n","`r`n")}
   [IO.File]::WriteAllText($path,$fixture,[Text.UTF8Encoding]::new($false))
+  # A positive source-generation test is an INSTALLED CET owner. Its
+  # source stage may be in a submodule, but Vortex-orphan submodules with
+  # no root init.lua must not be considered installed.
+  $entrypoint=Join-Path $mod 'init.lua'
+  if (!(Test-Path -LiteralPath $entrypoint -PathType Leaf)) {
+    '-- Installed CET entrypoint for source-owned submodule test' |
+        Set-Content -LiteralPath $entrypoint -Encoding utf8
+  }
   $staged=[Collections.Generic.Dictionary[string,byte[]]]::new()
   try {
     $args4=[object[]]@([string]$root,[string]$owner,[string]$rule,$staged)

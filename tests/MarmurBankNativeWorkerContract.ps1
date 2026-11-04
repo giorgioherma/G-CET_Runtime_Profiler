@@ -4,6 +4,9 @@ $root=Join-Path $env:RUNNER_TEMP 'gcet-marmur-native-worker'
 $folder=Join-Path $root 'Marmur Bank'
 if(Test-Path $root){Remove-Item -Recurse -Force $root}
 New-Item -ItemType Directory -Force (Join-Path $folder 'module')|Out-Null
+# Bank.lua is a submodule; an installed CET owner has its own root entrypoint.
+'-- Marmur Bank installed CET entrypoint' |
+    Set-Content -LiteralPath (Join-Path $folder 'init.lua') -Encoding utf8
 $source=@'
 function bank:registerSpatialSet()
   if not self.engine or self.__gcetNativeFar then return end
