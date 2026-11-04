@@ -96,8 +96,33 @@ try {
         $identities=@($new | ForEach-Object {
             [string]$_.type + ':' + [string]$_.file + ':' + [string]$_.owner
         })
+        # Structural CI metadata only; never emit private source contents.
+        $tunnelFile=Join-Path $live 'tunnel_rescue/init.lua'
+        $tunnelSummary=''
+        if(Test-Path -LiteralPath $tunnelFile){
+            $t=[IO.File]::ReadAllText($tunnelFile)
+            $firstManifest=Join-Path $env:RUNNER_TEMP 'gcet-original-pass.json'
+            $firstTunnel=@()
+            $firstSkipped=@()
+            if(Test-Path -LiteralPath $firstManifest){
+                $f=Get-Content -LiteralPath $firstManifest -Raw | ConvertFrom-Json
+                $firstTunnel=@($f.transforms | Where-Object {
+                    [string]$_.file -eq 'tunnel_rescue/init.lua'
+                } | ForEach-Object {[string]$_.type})
+                $firstSkipped=@($f.skipped | Where-Object {
+                    [string]$_.file -eq 'tunnel_rescue/init.lua'
+                } | ForEach-Object {[string]$_.type + ':' + [string]$_.reason})
+            }
+            $tunnelSummary=' firstTunnel=['+($firstTunnel -join ',')+']' +
+                ' firstTunnelSkipped=['+($firstSkipped -join ',')+']' +
+                ' hasCoordinator=' + $t.Contains('-- G-CET generic native reads coordinator:v1 ') +
+                ' hasInlinePlayer=' + $t.Contains('-- G-CET shared provider: PLAYER') +
+                ' hasSemanticFar=' + $t.Contains('local function __gcetTunnelFarOutside()') +
+                ' inlineProviderCount=' + ([regex]::Matches($t,'-- G-CET shared provider:')).Count +
+                ' rawGamePlayerCount=' + ([regex]::Matches($t,'Game[.]GetPlayer\\s*\\(')).Count
+        }
         throw ("SECOND_PASS_DUPLICATED_TRANSFORMS: count=$($new.Count) types=$($types -join ',')" +
-            " stageIds=$($identities -join ',')")
+            " stageIds=$($identities -join ',')" + $tunnelSummary)
     }
     if(@($second.files | Where-Object {$_.path -like 'G-GC/*'}).Count -gt 0){
         throw 'SECOND_PASS_REGENERATED_UNCHANGED_GGC'
