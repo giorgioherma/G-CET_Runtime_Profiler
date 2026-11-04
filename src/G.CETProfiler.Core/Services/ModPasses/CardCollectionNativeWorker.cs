@@ -8,7 +8,25 @@ internal static partial class SemanticInjectors
             "local function registerSpatialSet()", "local function unregisterSpatialSet()");
         const string marker="-- G-CET semantic:card-collection-native-worker-v1";
         if(file.Text.Contains(marker,StringComparison.Ordinal))
-            return SemanticInjectionResult.Skip("Card Collection native coordinator already installed.");
+        {
+            if (!NativeLocationAdditionalOwnersSource.CardsBridgeComplete(file.Text))
+                throw new InvalidOperationException(
+                    "Card Collection native source bridge is incomplete.");
+            var worker=context.TryReadOwnedCoordinator("card_collection_native_worker.lua");
+            if (worker is not null)
+            {
+                if (!WorkerComplete(worker,context.RuleId))
+                    throw new InvalidOperationException(
+                        "Card Collection native worker source drift.");
+                return SemanticInjectionResult.Skip(
+                    "Source-proven Card Collection native worker already complete.");
+            }
+            // A partial deployment can retain the bridge but lose the worker.
+            // Restore ONLY that source-owned dependency; no duplicate callback.
+            WriteCardWorker(context);
+            return SemanticInjectionResult.Success(
+                "Restored missing Card Collection native coordinator.");
+        }
         var crlf=file.Text.Contains("\r\n",StringComparison.Ordinal);
         var source=file.Text.Replace("\r\n","\n",StringComparison.Ordinal);
         // Locate the unique original helper by its bounded CET init registration,
@@ -52,6 +70,25 @@ end
 """;
         source=source[..start]+bridge+"\n"+source[end..];
         context.Write(file,crlf?source.Replace("\n","\r\n",StringComparison.Ordinal):source);
+        WriteCardWorker(context);
+        return SemanticInjectionResult.Success(
+            "Card Collection native source callbacks moved to separate 0-Engine worker; gameplay, pickup and spatial registration remain source-owned.");
+    }
+    private static bool WorkerComplete(string worker, string rule)
+    {
+        var source=worker.Replace("\r\n","\n",StringComparison.Ordinal);
+        return source.StartsWith("-- G-CET semantic coordinator:"+rule+"\n",StringComparison.Ordinal) &&
+            source.Contains("function M.attach(engine, count, onTransition)",StringComparison.Ordinal) &&
+            source.Contains("host:attachCompiled(10035, count,",StringComparison.Ordinal) &&
+            source.Contains("function() onTransition(false) end",StringComparison.Ordinal) &&
+            source.Contains("function() onTransition(true) end",StringComparison.Ordinal) &&
+            source.Contains("function() onTransition(false); return true end",StringComparison.Ordinal) &&
+            source.Contains("return ok and attached == true",StringComparison.Ordinal) &&
+            source.TrimEnd().EndsWith("return M",StringComparison.Ordinal);
+    }
+
+    private static void WriteCardWorker(SemanticPatchContext context)
+    {
         context.WriteCoordinator("card_collection_native_worker.lua", """
 -- G-CET semantic coordinator:card-collection-native-worker
 -- 0-Engine native subscription only; source owns card states and exact spatial set.
@@ -72,7 +109,5 @@ end
 return M
 """.Replace("-- G-CET semantic coordinator:card-collection-native-worker",
         "-- G-CET semantic coordinator:" + context.RuleId, StringComparison.Ordinal));
-        return SemanticInjectionResult.Success(
-            "Card Collection native source callbacks moved to separate 0-Engine worker; gameplay, pickup and spatial registration remain source-owned.");
     }
 }

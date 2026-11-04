@@ -13,6 +13,42 @@ internal static class NativeLocationAdditionalOwnersSource
         return text[..first]+newValue+text[(first+oldValue.Length)..];
     }
 
+    // Native FAR is an optional coarse wake. Completion proves the actual
+    // main-source bridge and the original exact spatial interaction path.
+    internal static bool CardsBridgeComplete(string input)
+    {
+        var s=input.Replace("\r\n","\n",StringComparison.Ordinal);
+        static bool Once(string source,string token) =>
+            source.Split(token,StringSplitOptions.None).Length == 2;
+        return Once(s,"-- G-CET native location:card-collection-v1") &&
+            Once(s,"-- G-CET semantic:card-collection-native-worker-v1") &&
+            Once(s,"local function __gcetAttachCardNative()") &&
+            Once(s,"return require(\"GCET_Semantic/card_collection_native_worker\").attach(") &&
+            Once(s,"  __gcetAttachCardNative()") &&
+            Once(s,"if __gcetCardNativeFar or spatialHandle then return end") &&
+            s.Contains("Mod.RegisterSpatialSet(\"card_collection\"",StringComparison.Ordinal) &&
+            s.Contains("if __gcetCardNativeFar then\n        unregisterSpatialSet()",StringComparison.Ordinal) &&
+            s.Contains("elseif engine.IsPlaying() then\n        registerSpatialSet()",StringComparison.Ordinal) &&
+            s.Contains("(#buildSpatialEntries() > 0) and 100 or 0",StringComparison.Ordinal);
+    }
+
+    internal static bool BathtubBridgeComplete(string input)
+    {
+        var s=input.Replace("\r\n","\n",StringComparison.Ordinal);
+        static bool Once(string source,string token) =>
+            source.Split(token,StringSplitOptions.None).Length == 2;
+        return Once(s,"-- G-CET native location:yaiba-bathtub-v1") &&
+            Once(s,"-- G-CET semantic:yaiba-native-worker-v1") &&
+            Once(s,"require(\"GCET_Semantic/yaiba_native_worker\").attach(lookup,") &&
+            s.Contains("function(near) __gcetBathNativeFar=not near end",StringComparison.Ordinal) &&
+            s.Contains("function() __gcetBathNativeFar=nil;return true end",StringComparison.Ordinal) &&
+            s.Contains("if __gcetBathNativeFar == true then return end",StringComparison.Ordinal) &&
+            s.Contains("if __gcetBathNativeFar == nil then",StringComparison.Ordinal) &&
+            s.Contains("if __gcetDx * __gcetDx + __gcetDy * __gcetDy + __gcetDz * __gcetDz > (CONFIG.iconRange + 1.0)^2 then return end",StringComparison.Ordinal) &&
+            s.Contains("end -- original distance check used only until first native snapshot / UNKNOWN",StringComparison.Ordinal) &&
+            s.Contains("ui.update()",StringComparison.Ordinal);
+    }
+
     internal static SemanticInjectionResult ApplyCards(SemanticPatchContext context)
     {
         var file=context.FindFile("init.lua","local function buildSpatialEntries()",
@@ -20,7 +56,12 @@ internal static class NativeLocationAdditionalOwnersSource
             "Mod.RegisterSpatialSet(\"card_collection\"","local function unregisterSpatialSet()");
         const string marker="G-CET native location:card-collection-v1";
         if (file.Text.Contains(marker,StringComparison.Ordinal))
-            return SemanticInjectionResult.Skip("Native card collection coarse wake already installed.");
+        {
+            if (!CardsBridgeComplete(file.Text))
+                throw new InvalidOperationException(
+                    "Card Collection compiled vicinity source bridge is incomplete.");
+            return SemanticInjectors.ApplyCardCollectionNativeWorker(context);
+        }
         var useCrlf=file.Text.Contains("\r\n",StringComparison.Ordinal);
         var text=useCrlf ? file.Text.Replace("\r\n","\n",StringComparison.Ordinal) : file.Text;
         text=Once(text,
@@ -198,7 +239,12 @@ end
             "togglePin(near)","bathtub.waterApplied");
         const string marker="G-CET native location:yaiba-bathtub-v1";
         if (file.Text.Contains(marker,StringComparison.Ordinal))
-            return SemanticInjectionResult.Skip("Native bathtub location gate already installed.");
+        {
+            if (!BathtubBridgeComplete(file.Text))
+                throw new InvalidOperationException(
+                    "Yaiba bathtub native lifecycle/UNKNOWN source bridge is incomplete.");
+            return SemanticInjectors.ApplyYaibaNativeWorker(context);
+        }
         var useCrlf=file.Text.Contains("\r\n",StringComparison.Ordinal);
         var text=useCrlf ? file.Text.Replace("\r\n","\n",StringComparison.Ordinal) : file.Text;
         text=Once(text,
