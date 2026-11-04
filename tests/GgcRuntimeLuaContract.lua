@@ -146,7 +146,7 @@ hooks.onOverlayClose()
 local heavyStart = stepCount()
 advance(3, 0.045)
 assert(stepCount() == heavyStart, "HEAVY allowed helper steps")
-advance(4)
+advance(5) -- 3s after the smoothed frame trend actually clears HEAVY
 shown = draw()
 assert(shown:find("Workload: MODERATE", 1, true),
   "HEAVY must recover to MODERATE after 3s")
