@@ -19,12 +19,12 @@ internal static partial class SemanticInjectors
             throw new InvalidOperationException("VehicleMileage partial native pump stage.");
         if(hasInit)
         {
-            if(!BridgeComplete(init.Text,gas.Text))
+            if(!VehiclePumpsBridgeComplete(init.Text,gas.Text))
                 throw new InvalidOperationException("Vehicle native bridge is structurally incomplete.");
             var current=context.TryReadOwnedCoordinator("vehicle_native_pumps.lua");
             if(current is not null)
             {
-                if(!WorkerComplete(current,context.RuleId))
+                if(!VehiclePumpsWorkerComplete(current,context.RuleId))
                     throw new InvalidOperationException("Vehicle native worker source drift.");
                 return SemanticInjectionResult.Skip(
                     "Source-proven Vehicle native stage already complete.");
@@ -77,7 +77,7 @@ function M.update(dt, helpers)
             "Native compiled pump FAR parks only station discovery; NEAR/UNKNOWN preserves original exact pump lookup and refuel lifecycle. Mount, fuel, mileage, economy and player signals unchanged.");
     }
 
-    private static bool BridgeComplete(string init,string gas)
+    private static bool VehiclePumpsBridgeComplete(string init,string gas)
     {
         var i=init.Replace("\r\n","\n",StringComparison.Ordinal);
         var g=gas.Replace("\r\n","\n",StringComparison.Ordinal);
@@ -95,7 +95,7 @@ function M.update(dt, helpers)
             g.Contains("local pointIdx, gasPoint = findGasPoint(px, py, pz)",StringComparison.Ordinal);
     }
 
-    private static bool WorkerComplete(string worker,string rule)
+    private static bool VehiclePumpsWorkerComplete(string worker,string rule)
     {
         var w=worker.Replace("\r\n","\n",StringComparison.Ordinal);
         return w.StartsWith("-- G-CET semantic coordinator:"+rule+"\n",StringComparison.Ordinal) &&

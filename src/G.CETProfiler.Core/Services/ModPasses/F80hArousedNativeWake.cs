@@ -15,12 +15,12 @@ internal static partial class SemanticInjectors
         const string marker="-- G-CET native location:f80h-aroused-v1";
         if(file.Text.Contains(marker,StringComparison.Ordinal))
         {
-            if(!BridgeComplete(file.Text))
+            if(!F80hBridgeComplete(file.Text))
                 throw new InvalidOperationException("F80h native bridge is structurally incomplete.");
             var current=context.TryReadOwnedCoordinator("f80h_native_wake.lua");
             if(current is not null)
             {
-                if(!WorkerComplete(current,context.RuleId))
+                if(!F80hWorkerComplete(current,context.RuleId))
                     throw new InvalidOperationException("F80h native worker source drift.");
                 return SemanticInjectionResult.Skip(
                     "Source-proven F80h native stage already complete.");
@@ -70,7 +70,7 @@ end
             "Coordinator-owned native wake: installed source anchors compiled to native coarse FAR; only new distant NPC attach/registration is bypassed when all pending/tracked queues are empty. PASS8 frame, NPC lifecycle and audio remain unchanged.");
     }
  
-    private static bool BridgeComplete(string input)
+    private static bool F80hBridgeComplete(string input)
     {
         var s=input.Replace("\r\n","\n",StringComparison.Ordinal);
         return s.Split("-- G-CET native location:f80h-aroused-v1",StringSplitOptions.None).Length==2 &&
@@ -83,7 +83,7 @@ end
             s.Contains("__gcetF80hWorker.attach(#ANCHORS)",StringComparison.Ordinal);
     }
 
-    private static bool WorkerComplete(string worker,string rule)
+    private static bool F80hWorkerComplete(string worker,string rule)
     {
         var w=worker.Replace("\r\n","\n",StringComparison.Ordinal);
         return w.StartsWith("-- G-CET semantic coordinator:"+rule+"\n",StringComparison.Ordinal) &&

@@ -13,7 +13,7 @@ internal static partial class SemanticInjectors
             var worker=context.TryReadOwnedCoordinator("yaiba_native_worker.lua");
             if (worker is not null)
             {
-                if (!WorkerComplete(worker,context.RuleId))
+                if (!YaibaWorkerComplete(worker,context.RuleId))
                     throw new InvalidOperationException(
                         "Yaiba native worker source drift.");
                 return SemanticInjectionResult.Skip(
@@ -37,7 +37,7 @@ internal static partial class SemanticInjectors
         return SemanticInjectionResult.Success(
             "Yaiba native bathtub proximity moved to worker; active UI/water and original UNKNOWN geometry remain.");
     }
-    private static bool WorkerComplete(string worker, string rule)
+    private static bool YaibaWorkerComplete(string worker, string rule)
     {
         var source=worker.Replace("\r\n","\n",StringComparison.Ordinal);
         return source.StartsWith("-- G-CET semantic coordinator:"+rule+"\n",StringComparison.Ordinal) &&

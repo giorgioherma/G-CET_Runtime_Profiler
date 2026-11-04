@@ -15,7 +15,7 @@ internal static partial class SemanticInjectors
             var worker=context.TryReadOwnedCoordinator("card_collection_native_worker.lua");
             if (worker is not null)
             {
-                if (!WorkerComplete(worker,context.RuleId))
+                if (!CardWorkerComplete(worker,context.RuleId))
                     throw new InvalidOperationException(
                         "Card Collection native worker source drift.");
                 return SemanticInjectionResult.Skip(
@@ -74,7 +74,7 @@ end
         return SemanticInjectionResult.Success(
             "Card Collection native source callbacks moved to separate 0-Engine worker; gameplay, pickup and spatial registration remain source-owned.");
     }
-    private static bool WorkerComplete(string worker, string rule)
+    private static bool CardWorkerComplete(string worker, string rule)
     {
         var source=worker.Replace("\r\n","\n",StringComparison.Ordinal);
         return source.StartsWith("-- G-CET semantic coordinator:"+rule+"\n",StringComparison.Ordinal) &&
