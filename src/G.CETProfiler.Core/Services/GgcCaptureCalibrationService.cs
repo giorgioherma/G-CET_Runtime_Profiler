@@ -184,14 +184,11 @@ internal static class GgcCaptureCalibrationService
         double EstimatedCoveredCetMsPerSecond,
         double EstimatedFreedCetMsPerSecond,
         double? EstimatedOptimizedCetMsPerSecond,
-        double? EstimatedGgcStartingCpuMsPerSecond,
         double EstimatedSemanticSavingMsPerSecond,
         double EstimatedGenericSavingMsPerSecond,
         int AppliedSemanticRules,
         int AppliedGenericRules,
         int CreditedOwners,
-        int DefaultIntensityPercent,
-        int DefaultFrequencyMs,
         string EstimateStatus,
         IReadOnlyList<RuleEstimate> RuleEstimates);
 
@@ -291,8 +288,8 @@ internal static class GgcCaptureCalibrationService
         };
 
         static AppliedDefaults Empty(string status, double? original) =>
-            new(original, 0, 0, original, original is null ? null : 0,
-                0, 0, 0, 0, 0, 0, 5000, status,
+            new(original, 0, 0, original,
+                0, 0, 0, 0, 0, status,
                 Array.Empty<RuleEstimate>());
 
         if (!resolverRoot.TryGetProperty("gGcCaptureCalibration", out var evidence) ||
@@ -560,32 +557,17 @@ internal static class GgcCaptureCalibrationService
         var originalCredited = Math.Round(
             Math.Min(original.Value, coveredCallbackCpu + fallbackSemanticCpu), 6);
         var projected = Math.Round(Math.Max(0, original.Value - savedTotal), 6);
-        var startingReference = Math.Round(savedTotal * 0.08, 6);
-        var usableFrame = baseline is > 0 && tolerance > baseline && reserve >= 0
-            ? Math.Max(0, tolerance.Value - baseline.Value - reserve.Value) : 0;
-        var risk = tolerance is > 0
-            ? Math.Clamp(usableFrame / Math.Max(1, tolerance.Value * 0.12), 0, 1)
-            : 0;
-        var usable = savedTotal > 0 && risk > 0;
-        var basis = usable ? startingReference * risk : 0;
-        var intensity = usable
-            ? (int)Math.Clamp(Math.Round(12 + 4 * basis), 1, 80) : 0;
-        var frequency = usable
-            ? (int)(50 * Math.Round(
-                Math.Clamp(1700 - 100 * basis, 300, 3000) / 50)) : 5000;
         var status = measuredOptimizedCapture
             ? savedTotal <= 0
                 ? "DIRECT_MEASURED_PREDOMINANTLY_OPTIMIZED_CAPTURE_NO_NEW_RULE_ESTIMATES"
                 : "DIRECT_MEASURED_OPTIMIZED_CAPTURE_WITH_NEW_RULE_ESTIMATES_ONLY"
-            : !usable
-                ? savedTotal <= 0
-                    ? "NO_CREDITABLE_NEW_MEASURED_OPTIMIZATION_DEFAULT_OFF"
-                    : "NO_SAFE_INITIAL_FRAME_MARGIN_DEFAULT_OFF"
-                : "CONSERVATIVE_ACTUALLY_GENERATED_RULE_HEURISTICS_DEFAULTS_ONLY";
+            : savedTotal <= 0
+                ? "NO_APPLIED_RULE_SAVINGS_ESTIMATED_CAPTURE_MEASURED"
+                : "APPLIED_RULE_SCOPE_FORECAST_FIXED_GC_RUNTIME";
         return new(original, originalCredited, savedTotal, projected,
-            startingReference, Math.Round(semanticTotal, 6),
+            Math.Round(semanticTotal, 6),
             Math.Round(genericTotal, 6), appliedRules.Count,
-            appliedGeneric.Count, creditedOwners, intensity, frequency,
+            appliedGeneric.Count, creditedOwners,
             status, estimates.OrderBy(x => x.Owner, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(x => x.Stage).ThenBy(x => x.Rule).ToArray());
     }
