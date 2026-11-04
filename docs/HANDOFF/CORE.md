@@ -2,6 +2,8 @@
 
 **First read:** this file → [LATEST-WORK.md](../LATEST-WORK.md) (**active task; continue until completed or redirected**) → [BUILD-PIPELINE.md](BUILD-PIPELINE.md) → [documentation index](../README.md). This file is a stable entrypoint, **not a snapshot of any release**. Keep task status, dated captures and current blockers in LATEST-WORK / subsystem records—not here.
 
+**New unified application:** [G's Cyberpunk 2077 Total Optimization Generator — migration and ownership](../integration/UNIFIED-OPTIMIZER-MIGRATION.md). This is a separate new-repository user-facing product. CET profiling/Resolver code in this repository remains authoritative; do not duplicate the generator or overwrite this handoff's task order.
+
 ## Project identity
 
 - Repository: `giorgioherma/G-CET_Runtime_Profiler`; development branch: `dev/resolver-profiler-handoff`. Always query current GitHub HEAD and the current user request.
