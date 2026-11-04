@@ -138,6 +138,18 @@ assert(stepCount() > initial and steps[#steps] == 50,
   "relaxed state did not run fixed 50KiB maintenance")
 hooks.onOverlayClose()
 
+-- Ordinary relaxed gameplay has variable frame pacing, not identical
+-- 20ms frames. A real garage replay exposed the previous strict recovery
+-- threshold as too sensitive to ordinary 20-35ms jitter.
+local quietDeltas = {0.020, 0.024, 0.027, 0.030, 0.021, 0.025, 0.023}
+for i = 1, 950 do
+  hooks.onUpdate(quietDeltas[(i - 1) % #quietDeltas + 1])
+end
+shown = draw()
+assert(shown:find("Workload: RELAXED", 1, true),
+  "realistic frame jitter prevented relaxed gameplay recovery")
+hooks.onOverlayClose()
+
 -- Sustained heavy load should prohibit helper work.
 advance(3, 0.045)
 shown = draw()

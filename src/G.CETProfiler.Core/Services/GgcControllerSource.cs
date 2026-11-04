@@ -480,10 +480,12 @@ local recommendation = "Collecting gameplay evidence"
 local function limits()
   local margin = math.max(4, config.hitchToleranceMs - relaxedReferenceMs)
   local bias = (sensitivity - 50) / 50
-  return relaxedReferenceMs + margin * (0.40 - bias * 0.10),
-         relaxedReferenceMs + margin * (0.75 - bias * 0.20),
-         relaxedReferenceMs + margin * (0.22 - bias * 0.08),
-         relaxedReferenceMs + margin * (0.70 - bias * 0.16)
+  -- Distinct workload bands with room for ordinary frame jitter.
+  -- Higher player sensitivity lowers the thresholds (more protection).
+  return relaxedReferenceMs + margin * (0.55 - bias * 0.12),
+         relaxedReferenceMs + margin * (0.85 - bias * 0.15),
+         relaxedReferenceMs + margin * (0.42 - bias * 0.10),
+         relaxedReferenceMs + margin * (0.72 - bias * 0.14)
 end
 
 -- Test states: idle -> armed -> countdown -> off -> slow -> fast -> done.
@@ -660,11 +662,13 @@ local function measureWorkload(dt)
   local busy = recentFrameMs >= medium or slowFrameShare >= 0.25
   heavyFor = severe and heavyFor + dt or 0
   busyFor = busy and busyFor + dt or 0
-  -- Recovery timers count consecutive genuinely lighter frames. The
-  -- 3s/5s requirement itself supplies hysteresis, without extra EMA delay.
-  -- The isolated severe-frame and own-step exclusions above do not reset it.
-  easierFor = frameMs < leaveHeavy and easierFor + dt or 0
-  relaxedFor = frameMs < relaxed and relaxedFor + dt or 0
+  -- Count sustained lighter *workload trend*, not each individual
+  -- frametime. Strict per-frame recovery falsely remained MODERATE/HEAVY
+  -- during quiet real-world playback with ordinary 20-35ms frame jitter.
+  -- The separate 3s/5s timers supply the requested stable recovery.
+  -- Excluded rare collector hitches and own-step aftermath do not reset it.
+  easierFor = recentFrameMs < leaveHeavy and easierFor + dt or 0
+  relaxedFor = recentFrameMs < relaxed and relaxedFor + dt or 0
   if workloadState ~= "HEAVY" and heavyFor >= 1 then
     setWorkloadState("HEAVY")
   elseif workloadState == "RELAXED" and busyFor >= 1.5 then
