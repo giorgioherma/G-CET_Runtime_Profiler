@@ -105,7 +105,8 @@ internal static class NativePlayerVectorStage
         foreach(var path in liveFiles)
         {
             var relative=Path.GetRelativePath(root,path).Replace('\\','/');
-            if(ModOptimizationBlacklist.IsBlacklistedPath(relative))continue;
+            if(ModOptimizationBlacklist.IsBlacklistedPath(relative) ||
+               !CetModPresence.HasInstalledSource(root,relative))continue;
             var first=relative.Split('/')[0];
             if(first.Equals("0-Engine",StringComparison.OrdinalIgnoreCase) ||
                first.StartsWith("G-CET",StringComparison.OrdinalIgnoreCase))

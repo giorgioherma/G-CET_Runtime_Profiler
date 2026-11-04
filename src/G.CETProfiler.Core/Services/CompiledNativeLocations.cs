@@ -93,6 +93,10 @@ internal sealed record CompiledNativeLocations(byte[] Bytes,
         bool Has(string relative) => Read(relative) is not null;
 
         string? Read(string relative) {
+            // Orphaned auxiliary files cannot compile native geometry for
+            // a removed CET mod whose top-level init.lua is absent.
+            if (!CetModPresence.HasInstalledSource(modsRoot,relative))
+                return null;
             var path=Path.Combine(modsRoot,
                 relative.Replace('/',Path.DirectorySeparatorChar));
             if (staged.TryGetValue(relative,out var data))
