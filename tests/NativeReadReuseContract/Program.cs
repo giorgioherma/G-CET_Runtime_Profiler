@@ -620,7 +620,7 @@ try
         .GetProperty("Bytes")!.GetValue(saturatedResult)!;
     var saturatedOutput=Encoding.UTF8.GetString(saturatedBytes);
     Check((int)saturatedResult.GetType()
-        .GetProperty("AppliedTransforms")!.GetValue(saturatedResult)!==2 &&
+        .GetProperty("AppliedTransforms")!.GetValue(saturatedResult)! == 2 &&
         saturatedManifest.Count==2 && saturatedSkips.Count==0 &&
         saturatedOutput.StartsWith(saturatedLocals,StringComparison.Ordinal) &&
         saturatedOutput.Split("MakeEventRegistrar(\""+saturatedOwner+"\"",
