@@ -660,10 +660,11 @@ local function measureWorkload(dt)
   local busy = recentFrameMs >= medium or slowFrameShare >= 0.25
   heavyFor = severe and heavyFor + dt or 0
   busyFor = busy and busyFor + dt or 0
-  easierFor = (recentFrameMs < leaveHeavy and slowFrameShare < 0.28)
-    and easierFor + dt or 0
-  relaxedFor = (recentFrameMs < relaxed and slowFrameShare < 0.12)
-    and relaxedFor + dt or 0
+  -- Recovery timers count consecutive genuinely lighter frames. The
+  -- 3s/5s requirement itself supplies hysteresis, without extra EMA delay.
+  -- The isolated severe-frame and own-step exclusions above do not reset it.
+  easierFor = frameMs < leaveHeavy and easierFor + dt or 0
+  relaxedFor = frameMs < relaxed and relaxedFor + dt or 0
   if workloadState ~= "HEAVY" and heavyFor >= 1 then
     setWorkloadState("HEAVY")
   elseif workloadState == "RELAXED" and busyFor >= 1.5 then
