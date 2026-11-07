@@ -7,8 +7,13 @@ permissions:
 
 on:
   workflow_dispatch:
-  # The branch's full 2.5 package workflow owns automatic native rebuilds.
-  # Manual native-only rebuild remains available for isolated diagnostics.
+  push:
+    branches: [ cyberpunk-2.5-cet-1.38.1 ]
+    paths:
+      - 'native-profiler-build/**'
+      - '.github/workflows/native-profiler-rebuild.yml'
+
+# Native rebuilds are separate from fast packaging: no main release updates.
 
 jobs:
   rebuild:
