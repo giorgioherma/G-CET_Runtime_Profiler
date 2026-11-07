@@ -115,7 +115,10 @@ Copy-Item `
 
 # v2.10.0 safety invariant: FunctionOverride::Context must remain exactly
 # upstream. The v2.8 crash was caused by invasive registration-time handling.
-$foHHashBefore = (Get-FileHash -Algorithm SHA256 $foH).Hash
+$foHContextBefore = [regex]::Match((Read-Utf8 $foH), 'struct Context\s*\{[\s\S]*?\};').Value
+if ([string]::IsNullOrWhiteSpace($foHContextBefore)) {
+    throw "Upstream FunctionOverride::Context missing before patch."
+}
 
 # --------------------------------------------------------------------------
 # ScriptContext.h
@@ -430,6 +433,41 @@ Replace-LiteralOnce `
     -New "#include `"FunctionOverride.h`"`n#include `"CETRuntimeProfiler.h`"" `
     -Label "FunctionOverride profiler include"
 
+
+# CET 1.38.1 can defer hook registration. Carry the requested script type
+# through PendingOverride: native RTTI names may differ from Lua names.
+# The original Context structure (and its callback ABI) is preserved.
+Replace-LiteralOnce `
+    -Path $foH `
+    -Old 'std::string FullName;' `
+    -New "std::string FullName;`n        std::string RequestedTypeName;" `
+    -Label "Deferred request type field"
+Replace-LiteralOnce `
+    -Path $foH `
+    -Old 'const std::string& acFullName, sol::protected_function aFunction, sol::environment aEnvironment,' `
+    -New 'const std::string& acFullName, const std::string& acTypeName, sol::protected_function aFunction, sol::environment aEnvironment,' `
+    -Label "Deferred request type signature"
+Replace-LiteralOnce `
+    -Path $foC `
+    -Old 'ApplyOverride(pClassType, pRealFunction, acFullName, std::move(aFunction),' `
+    -New 'ApplyOverride(pClassType, pRealFunction, acFullName, acTypeName, std::move(aFunction),' `
+    -Label "Immediate hook type provenance"
+Replace-LiteralOnce `
+    -Path $foC `
+    -Old 'm_pending.push_back({pClassType, pRealFunction, acFullName, std::move(aFunction),' `
+    -New 'm_pending.push_back({pClassType, pRealFunction, acFullName, acTypeName, std::move(aFunction),' `
+    -Label "Deferred hook type provenance"
+Replace-LiteralOnce `
+    -Path $foC `
+    -Old 'pending.pClassType, pending.pRealFunction, pending.FullName, std::move(pending.Function),' `
+    -New 'pending.pClassType, pending.pRealFunction, pending.FullName, pending.RequestedTypeName, std::move(pending.Function),' `
+    -Label "Deferred hook type replay"
+Replace-LiteralOnce `
+    -Path $foC `
+    -Old 'const std::string& acFullName, sol::protected_function aFunction, sol::environment aEnvironment,' `
+    -New 'const std::string& acFullName, const std::string& acTypeName, sol::protected_function aFunction, sol::environment aEnvironment,' `
+    -Label "ApplyOverride source signature"
+
 # Add a tiny native-only resolver in the existing anonymous namespace.
 # Environment access is guarded by lua_state() and happens only at execution.
 Replace-RegexOnce `
@@ -506,7 +544,7 @@ $1
         const std::string profilerKind =
             aAbsolute ? "Override" : (aAfter ? "ObserveAfter" : "Observe");
         const std::string profilerTarget =
-            std::string(pClassType->name.ToString()) + "::" + acFullName;
+            acTypeName + "::" + acFullName;
 
         CETRuntimeProfiler::Get().BindCallback(
             pContext.get(),
@@ -608,9 +646,12 @@ $1            auto result = [&]() {
     -Label "Override capture-gated callback timing"
 
 # Hard safety checks.
-$foHHashAfter = (Get-FileHash -Algorithm SHA256 $foH).Hash
-if ($foHHashAfter -ne $foHHashBefore) {
-    throw "v2.10.0 safety failure: FunctionOverride.h was modified."
+$foHContextAfter = [regex]::Match((Read-Utf8 $foH), 'struct Context\s*\{[\s\S]*?\};').Value
+if ($foHContextAfter -ne $foHContextBefore) {
+    throw "CET 1.38.1 safety failure: FunctionOverride::Context changed."
+}
+if (-not (Read-Utf8 $foH).Contains('std::string RequestedTypeName;')) {
+    throw "CET 1.38.1 deferred callback class provenance missing."
 }
 
 $foCText = Read-Utf8 $foC
