@@ -1,0 +1,868 @@
+name: G-CET Profiler Cyberpunk 2.5 full native and portable package
+
+permissions:
+  contents: read
+  actions: read
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ cyberpunk-2.5-cet-1.38.1 ]
+    paths:
+      - 'native-profiler-build/**'
+      - 'validation/CET-1.38.1/**'
+      - '.github/workflows/cet-2.5-profiler-package.yml'
+      - 'src/G.CETProfiler.Core/**'
+      - 'src/G.CETProfiler.App/**'
+      - 'src/G.CETProfiler.Launcher/**'
+      - 'MANIFEST.json'
+      - 'tests/CET25PortContract.ps1'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Rebuild unmodified CET 1.38.1 and instrumented profiler from source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./native-profiler-build/v2.11.0/Build-Profiler.ps1 -WorkRoot "$env:RUNNER_TEMP\gcet-cp25-native"
+
+      - name: Verify native 2.5 hook instrumentation and deferred registration
+        shell: pwsh
+        run: ./tests/CET25PortContract.ps1 -SourceRoot "$env:RUNNER_TEMP\gcet-cp25-native\CyberEngineTweaks"
+
+      - name: Assemble hash-locked 2.5 manifest from THIS native build
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $nativeOutput = 'native-profiler-build\v2.11.0\BUILD_OUTPUT'
+          $profiler = Join-Path $nativeOutput 'cyber_engine_tweaks.PROFILER.asi'
+          $control = Join-Path $nativeOutput 'cyber_engine_tweaks.CONTROL.asi'
+          if (!(Test-Path $profiler -PathType Leaf) -or !(Test-Path $control -PathType Leaf)) {
+            throw 'CET 1.38.1 CONTROL + PROFILER were not both built.'
+          }
+          $profilerHash = (Get-FileHash $profiler -Algorithm SHA256).Hash.ToLowerInvariant()
+          Copy-Item -LiteralPath $profiler -Destination 'payload\cyber_engine_tweaks.PROFILER.dll' -Force
+          $copied = (Get-FileHash 'payload\cyber_engine_tweaks.PROFILER.dll' -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($copied -ne $profilerHash) {
+            throw 'Compiled profiler artifact was altered when copying into the public payload.'
+          }
+          $manifest = Get-Content 'MANIFEST.json' -Raw | ConvertFrom-Json
+          $manifest.targetCET.version = '1.38.1'
+          # The user-supplied official CET 1.38.1 ASI from the 2.5 frameworks archive.
+          $manifest.targetCET.officialSha256 = 'f0acdad154bd0033583e0f6e675ea18b4bdb60cda28133d792a4674e6d7f228a'
+          $manifest.targetCET.profilerSha256 = $profilerHash
+          $manifest | ConvertTo-Json -Depth 30 | Set-Content 'MANIFEST.json' -Encoding utf8
+          $manifestCheck = Get-Content 'MANIFEST.json' -Raw | ConvertFrom-Json
+          if ($manifestCheck.targetCET.version -ne '1.38.1' -or $manifestCheck.targetCET.profilerSha256 -ne $copied) {
+            throw '2.5 manifest identity disagrees with the compiled native payload.'
+          }
+          Write-Host "CET 1.38.1 profiler SHA256: $profilerHash"
+
+      - name: Load and verify product version
+        id: product_version
+        shell: pwsh
+        run: |
+          $version = (Get-Content VERSION.txt -Raw).Trim()
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw 'VERSION.txt is empty.'
+          }
+
+          $manifest = Get-Content MANIFEST.json -Raw | ConvertFrom-Json
+          [xml]$props = Get-Content Directory.Build.props -Raw
+          $manifestVersion = [string]$manifest.packageVersion
+          $msbuildVersion = [string]$props.Project.PropertyGroup.Version
+
+          if ($manifestVersion -ne $version) {
+            throw "Version mismatch: VERSION.txt=$version MANIFEST.json=$manifestVersion"
+          }
+          if ($msbuildVersion -ne $version) {
+            throw "Version mismatch: VERSION.txt=$version Directory.Build.props=$msbuildVersion"
+          }
+
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "PRODUCT_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Canonical product version: $version"
+
+      - name: Verify hash-locked payload bytes
+        shell: pwsh
+        run: |
+          $manifest = Get-Content MANIFEST.json -Raw | ConvertFrom-Json
+          $checks = @(
+            @{ Path = 'payload\cyber_engine_tweaks.PROFILER.dll'; Expected = [string]$manifest.targetCET.profilerSha256 },
+            @{ Path = 'payload\0-Engine\modules\Scheduler.lua'; Expected = [string]$manifest.zeroEngine.profilerSchedulerSha256 },
+            @{ Path = 'payload\0-Engine\modules\CETProfilerScheduler.lua'; Expected = [string]$manifest.zeroEngine.profilerAdaptiveSchedulerSha256 }
+          )
+          foreach ($check in $checks) {
+            $actual = (Get-FileHash -LiteralPath $check.Path -Algorithm SHA256).Hash.ToLowerInvariant()
+            $expected = $check.Expected.ToLowerInvariant()
+            Write-Host "$($check.Path) SHA256 $actual"
+            if ($actual -ne $expected) {
+              throw "Hash mismatch for $($check.Path): expected $expected, got $actual"
+            }
+          }
+
+      - name: Build
+        run: dotnet build G-CET-Runtime-Profiler.sln -c Release
+
+      - name: Publish self-contained managed app
+        run: dotnet publish src/G.CETProfiler.App/G.CETProfiler.App.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=false -p:DebugType=None -p:DebugSymbols=false -o publish-app
+
+      - name: Build native root launcher
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          if (!(Test-Path -LiteralPath $vswhere -PathType Leaf)) {
+            throw 'vswhere.exe was not found on the Windows runner.'
+          }
+
+          $vs = (& $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath).Trim()
+          if ([string]::IsNullOrWhiteSpace($vs)) {
+            throw 'A Visual Studio installation with the x64 C++ toolchain was not found.'
+          }
+
+          $vcvars = Join-Path $vs 'VC\Auxiliary\Build\vcvars64.bat'
+          if (!(Test-Path -LiteralPath $vcvars -PathType Leaf)) {
+            throw "vcvars64.bat was not found: $vcvars"
+          }
+
+          $buildDir = Join-Path (Get-Location) 'launcher-build'
+          New-Item -ItemType Directory -Force $buildDir | Out-Null
+
+          $src = (Resolve-Path 'src\G.CETProfiler.Launcher\launcher.c').Path
+          $rc = (Resolve-Path 'src\G.CETProfiler.Launcher\launcher.rc').Path
+          $obj = Join-Path $buildDir 'launcher.obj'
+          $res = Join-Path $buildDir 'launcher.res'
+          $out = Join-Path $buildDir 'G-CET-Runtime-Profiler.exe'
+          $script = Join-Path $buildDir 'build-launcher.cmd'
+
+          @"
+          @echo off
+          call "$vcvars" >nul
+          if errorlevel 1 exit /b %errorlevel%
+          rc.exe /nologo /fo"$res" "$rc"
+          if errorlevel 1 exit /b %errorlevel%
+          cl.exe /nologo /O2 /MT /DUNICODE /D_UNICODE /Fo:"$obj" "$src" "$res" /link /SUBSYSTEM:WINDOWS user32.lib /OUT:"$out"
+          exit /b %errorlevel%
+          "@ | Set-Content -LiteralPath $script -Encoding ascii
+
+          & $script
+          if ($LASTEXITCODE -ne 0) {
+            throw "Native launcher build failed with exit code $LASTEXITCODE."
+          }
+          if (!(Test-Path -LiteralPath $out -PathType Leaf)) {
+            throw 'Native launcher output is missing.'
+          }
+
+      - name: Stage normal Windows app layout
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          if (Test-Path publish) { Remove-Item publish -Recurse -Force }
+
+          New-Item -ItemType Directory -Force publish\app | Out-Null
+          New-Item -ItemType Directory -Force publish\docs | Out-Null
+          New-Item -ItemType Directory -Force publish\RESULTS | Out-Null
+
+          # Keep framework/runtime plumbing available, but out of the public root.
+          Copy-Item publish-app\* publish\app -Recurse -Force
+
+          # The profiler UI is English-only. Do not ship WindowsDesktop satellite
+          # resource packs for languages the application does not expose.
+          $satelliteDirs = @(
+            'cs','de','es','fr','it','ja','ko','pl','pt-BR','ru','tr','zh-Hans','zh-Hant'
+          )
+          foreach ($name in $satelliteDirs) {
+            $candidate = Join-Path 'publish\app' $name
+            if (Test-Path -LiteralPath $candidate -PathType Container) {
+              Remove-Item -LiteralPath $candidate -Recurse -Force
+            }
+          }
+
+          # Public release symbols are kept out of the normal portable package.
+          Get-ChildItem publish\app -Recurse -File -Filter '*.pdb' -ErrorAction SilentlyContinue |
+            Remove-Item -Force
+
+          Copy-Item launcher-build\G-CET-Runtime-Profiler.exe publish\G-CET-Runtime-Profiler.exe
+          Copy-Item MANIFEST.json publish\MANIFEST.json
+          Copy-Item VERSION.txt publish\VERSION.txt
+          Copy-Item payload publish\payload -Recurse -Force
+
+          Copy-Item README.md publish\docs\README.md
+          Copy-Item CHANGELOG.md publish\docs\CHANGELOG.md
+          Copy-Item RELEASE_NOTES.md publish\docs\RELEASE_NOTES.md
+
+          @'
+          G-CET Runtime Profiler stores collected captures in this folder.
+
+          Capture folders are created automatically by COLLECT RESULTS.
+          '@ | Set-Content -LiteralPath publish\RESULTS\README.txt -Encoding utf8
+
+      - name: Verify public package layout
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          $badScripts = @(Get-ChildItem publish -Recurse -File | Where-Object { $_.Extension -in '.ps1','.vbs','.cmd' })
+          if ($badScripts.Count -gt 0) {
+            $badScripts | ForEach-Object { Write-Error $_.FullName }
+            throw 'Public package unexpectedly contains manager scripts.'
+          }
+
+          $allowedRootFiles = @(
+            'G-CET-Runtime-Profiler.exe',
+            'MANIFEST.json',
+            'VERSION.txt'
+          )
+          $allowedRootDirs = @('app','payload','RESULTS','docs')
+
+          $unexpectedFiles = @(Get-ChildItem publish -File | Where-Object { $_.Name -notin $allowedRootFiles })
+          $unexpectedDirs = @(Get-ChildItem publish -Directory | Where-Object { $_.Name -notin $allowedRootDirs })
+          if ($unexpectedFiles.Count -gt 0 -or $unexpectedDirs.Count -gt 0) {
+            $unexpectedFiles | ForEach-Object { Write-Error "Unexpected public root file: $($_.Name)" }
+            $unexpectedDirs | ForEach-Object { Write-Error "Unexpected public root directory: $($_.Name)" }
+            throw 'Public package root is not clean.'
+          }
+
+          $required = @(
+            'publish\G-CET-Runtime-Profiler.exe',
+            'publish\MANIFEST.json',
+            'publish\VERSION.txt',
+            'publish\app\G-CET-Runtime-Profiler.App.exe',
+            'publish\app\G-CET-Runtime-Profiler.App.dll',
+            'publish\app\G-CET-Runtime-Profiler.App.deps.json',
+            'publish\app\G-CET-Runtime-Profiler.App.runtimeconfig.json',
+            'publish\app\G.CETProfiler.Core.dll',
+            'publish\app\hostfxr.dll',
+            'publish\app\hostpolicy.dll',
+            'publish\app\coreclr.dll',
+            'publish\payload\cyber_engine_tweaks.PROFILER.dll',
+            'publish\docs\README.md',
+            'publish\RESULTS\README.txt'
+          )
+          foreach ($path in $required) {
+            if (!(Test-Path -LiteralPath $path -PathType Leaf)) {
+              throw "Required package file is missing: $path"
+            }
+          }
+
+          if (@(Get-ChildItem publish -File -Filter '*.dll').Count -gt 0) {
+            throw 'Runtime/managed DLLs leaked into the public root.'
+          }
+          if (@(Get-ChildItem publish -Recurse -File -Filter '*.pdb').Count -gt 0) {
+            throw 'Public PDBs leaked into the portable package.'
+          }
+          if (Test-Path -LiteralPath 'publish\app\MANIFEST.json' -PathType Leaf) {
+            throw 'Package MANIFEST.json leaked into app\; it belongs only at the public package root.'
+          }
+          if (Test-Path -LiteralPath 'publish\app\payload' -PathType Container) {
+            throw 'Profiler payload leaked into app\; it belongs only at the public package root.'
+          }
+
+          $forbiddenSatelliteDirs = @(
+            'cs','de','es','fr','it','ja','ko','pl','pt-BR','ru','tr','zh-Hans','zh-Hant'
+          )
+          foreach ($name in $forbiddenSatelliteDirs) {
+            if (Test-Path -LiteralPath (Join-Path 'publish\app' $name) -PathType Container) {
+              throw "Unexpected satellite resource directory remains: app\$name"
+            }
+          }
+
+          $launcherLength = (Get-Item publish\G-CET-Runtime-Profiler.exe).Length
+          if ($launcherLength -gt 2MB) {
+            throw "Root launcher is unexpectedly large: $launcherLength bytes"
+          }
+
+          $publishedVersion = (Get-Content publish\VERSION.txt -Raw).Trim()
+          $publishedManifest = Get-Content publish\MANIFEST.json -Raw | ConvertFrom-Json
+          $productVersion = (Get-Item publish\app\G-CET-Runtime-Profiler.App.exe).VersionInfo.ProductVersion
+
+          if ($publishedVersion -ne $env:PRODUCT_VERSION) {
+            throw "Published VERSION.txt mismatch: expected $env:PRODUCT_VERSION, got $publishedVersion"
+          }
+          if ([string]$publishedManifest.packageVersion -ne $env:PRODUCT_VERSION) {
+            throw "Published MANIFEST.json mismatch: expected $env:PRODUCT_VERSION, got $($publishedManifest.packageVersion)"
+          }
+          if ([string]::IsNullOrWhiteSpace($productVersion) -or !$productVersion.StartsWith($env:PRODUCT_VERSION, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Managed app ProductVersion mismatch: expected prefix $env:PRODUCT_VERSION, got $productVersion"
+          }
+
+      - name: C# lifecycle integration smoke test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = (Resolve-Path 'publish\G-CET-Runtime-Profiler.exe').Path
+
+          # Status must remain safe before CET has created its own subdirectory.
+          $missingCetFixture = Join-Path $env:RUNNER_TEMP 'gcet-missing-cet-fixture'
+          if (Test-Path $missingCetFixture) { Remove-Item $missingCetFixture -Recurse -Force }
+          New-Item -ItemType Directory -Force (Join-Path $missingCetFixture 'bin\x64\plugins') | Out-Null
+          $missingCetStatus = (& $exe --status --game $missingCetFixture --json | ConvertFrom-Json)
+          if ($missingCetStatus.cet -ne 'MISSING') { throw 'Status did not report MISSING when CET root was absent.' }
+          if ([int]$missingCetStatus.liveResultCount -ne 0) { throw 'Missing CET root unexpectedly reported live profiler output.' }
+
+          # Prove the managed app can still resolve the package root when invoked
+          # directly from app\ (the launcher normally supplies it explicitly).
+          $internalExe = (Resolve-Path 'publish\app\G-CET-Runtime-Profiler.App.exe').Path
+          $directStatus = (& $internalExe --status --game $missingCetFixture --json | ConvertFrom-Json)
+          if ($directStatus.cet -ne 'MISSING') { throw 'Direct internal app invocation failed package-root resolution.' }
+
+          $fixture = Join-Path $env:RUNNER_TEMP 'gcet-fixture'
+          if (Test-Path $fixture) { Remove-Item $fixture -Recurse -Force }
+
+          $plugins = Join-Path $fixture 'bin\x64\plugins'
+          $cet = Join-Path $plugins 'cyber_engine_tweaks'
+          $mods = Join-Path $cet 'mods'
+          $zero = Join-Path $mods '0-Engine'
+          New-Item -ItemType Directory -Force (Join-Path $zero 'modules') | Out-Null
+
+          Copy-Item 'publish\payload\cyber_engine_tweaks.PROFILER.dll' (Join-Path $plugins 'cyber_engine_tweaks.asi')
+
+          @'
+          local Engine = {}
+          function Engine.Register(name)
+              local Mod = {}
+              return Mod
+          end
+          return Engine
+          '@ | Set-Content -LiteralPath (Join-Path $zero 'init.lua') -Encoding utf8
+
+          $originalInitHash = (Get-FileHash (Join-Path $zero 'init.lua') -Algorithm SHA256).Hash
+
+          $oldControls = Join-Path $mods 'CETProfilerControls'
+          New-Item -ItemType Directory -Force $oldControls | Out-Null
+          'KEEP-ME' | Set-Content -LiteralPath (Join-Path $oldControls 'existing.txt') -Encoding utf8
+
+          @{
+            OtherMod = @{ SomeBinding = 77 }
+            CETProfilerControls = @{
+              CETProfiler_Toggle = 123
+              CETProfiler_Dump = 456
+            }
+          } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $cet 'bindings.json') -Encoding utf8
+          $fixtureBindingsOriginalHash = (Get-FileHash (Join-Path $cet 'bindings.json') -Algorithm SHA256).Hash
+
+          $install = (& $exe --install --game $fixture --json | ConvertFrom-Json)
+          if (!$install.managed) { throw 'Install did not create managed state.' }
+          if ($install.managedMode -ne 'adaptive') { throw "Expected adaptive mode, got $($install.managedMode)" }
+
+          # Existing user capture bindings are authoritative. Install must not
+          # overwrite them just to force the default F11 choice.
+          $bindingsAfterInstall = Get-Content -LiteralPath (Join-Path $cet 'bindings.json') -Raw | ConvertFrom-Json
+          if ([int64]$bindingsAfterInstall.CETProfilerControls.CETProfiler_Toggle -ne 123) { throw 'Install overwrote the user CET capture binding.' }
+          if ([int64]$bindingsAfterInstall.CETProfilerControls.CETProfiler_Dump -ne 456) { throw 'Install rewrote unrelated existing CETProfilerControls bindings.' }
+
+          # Every user-owned file/folder G-CET itself mutates still gets a verified
+          # original backup before the live mutation is accepted.
+          $stateRoot = Join-Path $plugins '.cet_runtime_profiler'
+          $initBackup = Join-Path $stateRoot '0-Engine.init.ORIGINAL.lua'
+          $controlsBackup = Join-Path $stateRoot 'CETProfilerControls.ORIGINAL\existing.txt'
+          if (!(Test-Path -LiteralPath $initBackup -PathType Leaf)) { throw 'Original init.lua backup missing after install.' }
+          if ((Get-FileHash $initBackup -Algorithm SHA256).Hash -ne $originalInitHash) { throw 'Original init.lua backup is not byte-identical.' }
+          if (!(Test-Path -LiteralPath $controlsBackup -PathType Leaf)) { throw 'Original CETProfilerControls backup missing after install.' }
+          if ((Get-Content -LiteralPath $controlsBackup -Raw).Trim() -ne 'KEEP-ME') { throw 'Original CETProfilerControls backup content is wrong.' }
+          if (Test-Path -LiteralPath (Join-Path $stateRoot 'bindings.ORIGINAL.json') -PathType Leaf) { throw 'Bindings should no longer be snapshotted for restore.' }
+
+          $patchedInitHash = (Get-FileHash (Join-Path $zero 'init.lua') -Algorithm SHA256).Hash
+          if ($patchedInitHash -eq $originalInitHash) { throw 'Adaptive init.lua was not patched.' }
+
+          @(
+            'Mod,Calls,CallsPerSecond,InclusiveTotalMs,ExclusiveTotalMs,InclusiveMsPerSecond,ExclusiveMsPerSecond,MeasuredOneCorePct,AvgExclusiveUs,MaxInclusiveMs,MaxExclusiveMs,MeasuredExclusiveSharePct,ElapsedSeconds,Coverage',
+            '0-Engine,1000,100,500,500,50,50,5,500,6,5,66.6667,10,FULL',
+            'Repeatable Cyberpsychos,5000,500,200,150,20,15,1.5,30,4.5,4,20,10,FULL',
+            'Native Interactions,1000,100,120,100,12,10,1,100,2,1.5,13.3333,10,FULL'
+          ) | Set-Content -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_ByMod.csv') -Encoding utf8
+
+          @(
+            'Mod,Kind,Target,Calls,CallsPerSecond,InclusiveTotalMs,ExclusiveTotalMs,InclusiveMsPerSecond,ExclusiveMsPerSecond,MeasuredOneCorePct,AvgExclusiveUs,MaxInclusiveMs,MaxExclusiveMs,MeasuredExclusiveSharePct,ElapsedSeconds,Coverage',
+            'Repeatable Cyberpsychos,Observe,PlayerPuppet::OnAction,3000,300,90,80,9,8,0.8,26.7,2.2,2,10.6667,10,FULL',
+            'Native Interactions,Observe,PlayerPuppet::OnAction,800,80,40,30,4,3,0.3,37.5,1.2,1,4,10,FULL',
+            'Third Mod,Observe,PlayerPuppet::OnAction,500,50,20,10,2,1,0.1,20,0.8,0.7,1.3333,10,FULL',
+            '0-Engine,Event,onUpdate,1000,100,500,500,50,50,5,500,6,5,66.6667,10,FULL'
+          ) | Set-Content -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_Detail.csv') -Encoding utf8
+
+          @(
+            'BucketIndex,BucketStartMs,BucketEndMs,Mod,Calls,ExclusiveMs,MaxExclusiveMs,BucketWidthMs,DroppedTimelineRowsAtDump,Interpretation',
+            '1,0,50,0-Engine,100,3.1,1.0,50,0,continuous-per-mod-correlation',
+            '1,0,50,Repeatable Cyberpsychos,250,1.4,0.4,50,0,continuous-per-mod-correlation',
+            '2,50,100,0-Engine,110,4.2,1.2,50,0,continuous-per-mod-correlation',
+            '2,50,100,Repeatable Cyberpsychos,280,2.0,0.5,50,0,continuous-per-mod-correlation',
+            '3,100,150,0-Engine,90,2.8,0.9,50,0,continuous-per-mod-correlation',
+            '3,100,150,Native Interactions,80,1.1,0.4,50,0,continuous-per-mod-correlation',
+            '4,150,200,0-Engine,120,5.0,1.4,50,0,continuous-per-mod-correlation',
+            '4,150,200,Repeatable Cyberpsychos,300,2.4,0.6,50,0,continuous-per-mod-correlation'
+          ) | Set-Content -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_Timeline.csv') -Encoding utf8
+
+          @(
+            'Sequence,CaptureStartMs,CaptureEndMs,InclusiveMs,ExclusiveMs,ChildMs,Mod,Kind,Target,ThreadId,ThresholdMs,DroppedEventsAtDump,Interpretation',
+            '1,155,160,5.5,4.8,0.7,Repeatable Cyberpsychos,Observe,PlayerPuppet::OnAction,1,1,0,callback-spike'
+          ) | Set-Content -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_Spikes.csv') -Encoding utf8
+
+          @(
+            'Sequence,CaptureMs,UnixEpochMs,Label,DroppedMarkersAtDump',
+            '1,0,1770000000000,START,0',
+            '2,10000,1770000010000,STOP,0'
+          ) | Set-Content -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_Markers.csv') -Encoding utf8
+
+          @(
+            'Owner,JobType,Job,IntervalValue,IntervalUnit,Calls,CallsPerSecond,TotalMs,MsPerSecond,MeasuredOneCorePct,AvgUs,MaxMs,ElapsedSeconds,Interpretation',
+            'Repeatable Cyberpsychos,timed,refresh,1,s,10,1,15,1.5,0.15,1500,2.2,10,inclusive-inside-0-engine-do-not-add-to-mod-totals',
+            'Native Interactions,timed,update,1,s,10,1,12,1.2,0.12,1200,1.9,10,inclusive-inside-0-engine-do-not-add-to-mod-totals',
+            'Third Mod,timed,cleanup,5,s,2,0.2,8,0.8,0.08,4000,2.0,10,inclusive-inside-0-engine-do-not-add-to-mod-totals'
+          ) | Set-Content -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_Scheduler_ByJob.csv') -Encoding utf8
+
+          @(
+            'Sequence,Frame,CaptureStartMs,CaptureEndMs,DurationMs,Owner,JobType,Job,IntervalValue,IntervalUnit,ThresholdMs,DroppedEventsAtDump,Interpretation',
+            '1,4242,5000,5002.2,2.2,Repeatable Cyberpsychos,timed,refresh,1,s,2,0,scheduler-job-inclusive-wall-time-inside-0-engine'
+          ) | Set-Content -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_Scheduler_Spikes.csv') -Encoding utf8
+
+          @(
+            'BurstSequence,Frame,CaptureStartMs,CaptureEndMs,SchedulerWallMs,TotalJobMs,JobCount,SampleIndex,Owner,JobType,Job,IntervalValue,IntervalUnit,JobMs,JobSharePct,ThresholdMs,DroppedBurstsAtDump,Interpretation',
+            '1,4242,5000,5005.1,5.3,5.1,3,1,Repeatable Cyberpsychos,timed,refresh,1,s,2.0,39.2,5,0,all-jobs-in-combined-scheduler-burst-frame',
+            '1,4242,5000,5005.1,5.3,5.1,3,2,Native Interactions,timed,update,1,s,1.8,35.3,5,0,all-jobs-in-combined-scheduler-burst-frame',
+            '1,4242,5000,5005.1,5.3,5.1,3,3,Third Mod,timed,cleanup,5,s,1.3,25.5,5,0,all-jobs-in-combined-scheduler-burst-frame'
+          ) | Set-Content -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_Scheduler_FrameBursts.csv') -Encoding utf8
+
+          '{"capture":"metadata-test"}' | Set-Content -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_Metadata.json') -Encoding utf8
+          'unrelated-user-file' | Set-Content -LiteralPath (Join-Path $cet 'keep_me.txt') -Encoding utf8
+
+          $collected = (& $exe --collect --game $fixture --json | ConvertFrom-Json)
+          if ([string]::IsNullOrWhiteSpace([string]$collected.destination)) { throw 'Collect returned no destination.' }
+          if (!(Test-Path -LiteralPath $collected.destination -PathType Container)) { throw 'Collected result folder missing.' }
+          $collectedName = Split-Path -Leaf ([string]$collected.destination)
+          if ($collectedName -notlike 'CET-????????-??????_*') {
+            throw "Collected CET folder does not use the CET-YYYYMMDD-HHMMSS_TITLE naming contract: $collectedName"
+          }
+          if (Test-Path -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_Markers.csv')) { throw 'Verified live result was not cleared.' }
+          if (Test-Path -LiteralPath (Join-Path $cet 'CET_Runtime_Profile_Metadata.json')) { throw 'Scripted metadata output was not cleared.' }
+          if (!(Test-Path -LiteralPath (Join-Path $collected.destination 'Data\Runtime\CET_Runtime_Profile_ByMod.csv') -PathType Leaf)) { throw 'Runtime profiler CSV was not organized under Data\Runtime.' }
+          if (!(Test-Path -LiteralPath (Join-Path $collected.destination 'Data\Scheduler\CET_Runtime_Profile_Scheduler_ByJob.csv') -PathType Leaf)) { throw 'Scheduler profiler CSV was not organized under Data\Scheduler.' }
+          if (!(Test-Path -LiteralPath (Join-Path $collected.destination 'Data\Metadata\CET_Runtime_Profile_Metadata.json') -PathType Leaf)) { throw 'Scripted metadata output was not archived under Data\Metadata.' }
+          if (!(Test-Path -LiteralPath (Join-Path $collected.destination 'CET_Report.html') -PathType Leaf)) { throw 'Human-readable CET report was not generated.' }
+          if (!(Test-Path -LiteralPath (Join-Path $collected.destination 'CET_Summary.json') -PathType Leaf)) { throw 'Machine-readable CET summary was not generated.' }
+
+          $reportText = Get-Content -LiteralPath (Join-Path $collected.destination 'CET_Report.html') -Raw
+          if ($reportText -notmatch 'CET Scheduler spike') { throw 'Report did not surface the Scheduler burst finding.' }
+          if ($reportText -notmatch '3 scheduled jobs ran in one frame') { throw 'Report did not explain the Scheduler job pile-up.' }
+          if ($reportText -notmatch '2 of them belong to the 1 s cadence group') { throw 'Report did not identify the dominant Scheduler cadence group.' }
+          if ($reportText -notmatch 'Highest CET call volume') { throw 'Report did not surface call-volume analysis.' }
+          if ($reportText -notmatch 'Shared hot callback') { throw 'Report did not surface shared callback analysis.' }
+          if ($reportText -notmatch 'Repeatable Cyberpsychos') { throw 'Report lost owner attribution.' }
+
+          # Add a real-shape CapFrameX JSON companion after CET collection, then
+          # exercise the standalone report rebuild contract. This proves that the
+          # optional companion becomes a presentation/correlation layer without
+          # changing the native CET capture.
+          $frameRoot = Join-Path $collected.destination 'FrameTime'
+          New-Item -ItemType Directory -Force $frameRoot | Out-Null
+          @'
+          {
+            "Hash":"test",
+            "Info":{
+              "AppVersion":"1.9.1.2",
+              "Id":"test",
+              "Processor":"AMD Ryzen 9 3900X",
+              "GameName":"Cyberpunk 2077",
+              "ProcessName":"Cyberpunk2077.exe",
+              "CreationDate":"2026-02-02T02:40:12.000Z",
+              "GPU":"AMD Radeon RX 6900 XT"
+            },
+            "Runs":[{
+              "Hash":"run",
+              "CaptureData":{
+                "TimeInSeconds":[0.0,0.016,0.032,0.048,0.064,0.080,0.096,0.112,0.128,0.144,0.199,5.000,9.950],
+                "MsBetweenPresents":[16,16,16,16,16,16,16,16,16,55,16,60,50],
+                "CpuActive":[11,11,12,12,13,12,12,13,14,48,13,52,42],
+                "GpuActive":[8,8,8,9,9,9,10,9,10,12,9,14,11],
+                "PcLatency":[45,45,46,46,47,46,46,47,48,78,46,82,70],
+                "Dropped":[false,false,false,false,false,false,false,false,false,false,false,false,false],
+                "FrameType":["Application","Application","Application","Application","Application","Application","Application","Application","Application","Application","Application","Application","Application"]
+              },
+              "SensorData":{},
+              "SensorData2":{},
+              "RTSSFrameTimes":null,
+              "PmdGpuPower":null,
+              "PmdCpuPower":null,
+              "PmdSystemPower":null,
+              "SampleTime":0
+            }]
+          }
+          '@ | Set-Content -LiteralPath (Join-Path $frameRoot 'CapFrameX-Cyberpunk2077.exe-test.json') -Encoding utf8
+
+          @'
+          {
+            "collectedUtc":"2026-02-02T02:40:13.000Z",
+            "profiler":"CapFrameX",
+            "kind":"capframex",
+            "detectedStartKey":"F11",
+            "startKeyKnown":true,
+            "startKeyIsF11":true,
+            "sourceDeleted":false
+          }
+          '@ | Set-Content -LiteralPath (Join-Path $frameRoot 'CompanionManifest.json') -Encoding utf8
+
+          $rebuilt = (& $exe --report --capture $collected.destination --json | ConvertFrom-Json)
+          if (!$rebuilt.ok) { throw 'Standalone report rebuild failed.' }
+          if (!$rebuilt.hasFrameTimeData) { throw 'CapFrameX data was not detected by the result report.' }
+
+          $reportText = Get-Content -LiteralPath (Join-Path $collected.destination 'CET_Report.html') -Raw
+          if ($reportText -notmatch 'CET \+ CapFrameX capture report') { throw 'Report did not enter CET + CapFrameX presentation mode.' }
+          if ($reportText -notmatch 'Frametime &amp; CET overlap') { throw 'Report did not render the frametime correlation section.' }
+          if ($reportText -notmatch 'Worst frametime events') { throw 'Report did not render worst-frame evidence.' }
+          if ($reportText -notmatch 'CPU active') { throw 'Report did not expose CapFrameX CPU Active readings.' }
+          if ($reportText -notmatch 'GPU active') { throw 'Report did not expose CapFrameX GPU Active readings.' }
+          if ($reportText -notmatch 'Repeatable Cyberpsychos callback spike') { throw 'Worst-frame evidence did not correlate the exact CET callback spike.' }
+          if ($reportText -notmatch 'Scheduler burst') { throw 'Worst-frame evidence did not expose the aligned Scheduler burst.' }
+
+          $summary = Get-Content -LiteralPath (Join-Path $collected.destination 'CET_Summary.json') -Raw | ConvertFrom-Json
+          if ($null -eq $summary.frameTime) { throw 'CET_Summary.json contains no frameTime section.' }
+          if (!$summary.frameTime.sync.correlated) { throw 'Synthetic F11-aligned CapFrameX capture did not correlate.' }
+          if ($summary.frameTime.sync.quality -ne 'GOOD') { throw "Expected GOOD CapFrameX sync, got $($summary.frameTime.sync.quality)" }
+          if ($summary.frameTime.sync.alignmentMethod -ne 'shared capture-key relative clocks') { throw "Unexpected CapFrameX alignment method: $($summary.frameTime.sync.alignmentMethod)" }
+          if ($summary.frameTime.sync.PSObject.Properties.Name -contains 'startDeltaMs') { throw 'Obsolete startDeltaMs field leaked back into CET_Summary.json.' }
+          $recordLagMs = [double]$summary.frameTime.sync.recordLagMs
+          if ($recordLagMs -lt 1900 -or $recordLagMs -gt 2100) { throw "Expected ~2000 ms CapFrameX record/save lag, got $recordLagMs ms" }
+          $cetStartIso = ([datetimeoffset]$summary.frameTime.sync.cetStartUtc).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss')
+          if ($cetStartIso -ne '2026-02-02T02:40:00') { throw "CET START marker was not preserved: $cetStartIso" }
+          if ($reportText -notmatch 'CapFrameX record/save time') { throw 'Report did not label CapFrameX CreationDate as record/save metadata.' }
+          if ([int]$summary.frameTime.correlation.slowFramesExactCallback -lt 1) { throw 'Exact callback/stall overlap was not counted.' }
+          if ([int]$summary.frameTime.correlation.slowFramesSchedulerBurst -lt 1) { throw 'Scheduler-burst/stall overlap was not counted.' }
+
+          if (!(Test-Path -LiteralPath (Join-Path $cet 'keep_me.txt') -PathType Leaf)) { throw 'Unrelated CET-directory file was incorrectly deleted.' }
+
+          $restore = (& $exe --restore --game $fixture --json | ConvertFrom-Json)
+          if ($restore.status.managed) { throw 'Restore left managed state active.' }
+
+          $restoredInitHash = (Get-FileHash (Join-Path $zero 'init.lua') -Algorithm SHA256).Hash
+          if ($restoredInitHash -ne $originalInitHash) { throw 'init.lua did not restore exactly.' }
+
+          if ((Get-Content -LiteralPath (Join-Path $oldControls 'existing.txt') -Raw).Trim() -ne 'KEEP-ME') {
+            throw 'Pre-existing CETProfilerControls directory was not restored.'
+          }
+
+          $bindings = Get-Content -LiteralPath (Join-Path $cet 'bindings.json') -Raw | ConvertFrom-Json
+          if ([int64]$bindings.CETProfilerControls.CETProfiler_Toggle -ne 123) { throw 'Restore changed the user CET capture binding.' }
+          if ([int64]$bindings.CETProfilerControls.CETProfiler_Dump -ne 456) { throw 'Restore changed unrelated CETProfilerControls binding data.' }
+          if ([int64]$bindings.OtherMod.SomeBinding -ne 77) { throw 'Restore changed unrelated CET binding data.' }
+          if (Test-Path -LiteralPath (Join-Path $plugins '.cet_runtime_profiler')) { throw 'Managed state directory remained after restore.' }
+
+          # Core-only path: deliberately unsafe 0-Engine must remain byte-identical.
+          $fixture2 = Join-Path $env:RUNNER_TEMP 'gcet-core-only-fixture'
+          if (Test-Path $fixture2) { Remove-Item $fixture2 -Recurse -Force }
+          $plugins2 = Join-Path $fixture2 'bin\x64\plugins'
+          $cet2 = Join-Path $plugins2 'cyber_engine_tweaks'
+          $zero2 = Join-Path $cet2 'mods\0-Engine'
+          New-Item -ItemType Directory -Force $zero2 | Out-Null
+          Copy-Item 'publish\payload\cyber_engine_tweaks.PROFILER.dll' (Join-Path $plugins2 'cyber_engine_tweaks.asi')
+          '-- deliberately unsupported custom init' | Set-Content -LiteralPath (Join-Path $zero2 'init.lua') -Encoding utf8
+          $coreHash = (Get-FileHash (Join-Path $zero2 'init.lua') -Algorithm SHA256).Hash
+
+          $coreInstall = (& $exe --install --game $fixture2 --core-only --json | ConvertFrom-Json)
+          if ($coreInstall.managedMode -ne 'core-only') { throw 'Core-only install did not report core-only mode.' }
+          if ((Get-FileHash (Join-Path $zero2 'init.lua') -Algorithm SHA256).Hash -ne $coreHash) { throw 'Core-only mode changed 0-Engine.' }
+
+          & $exe --restore --game $fixture2 --json | Out-Null
+          if ((Get-FileHash (Join-Path $zero2 'init.lua') -Algorithm SHA256).Hash -ne $coreHash) { throw 'Core-only restore changed 0-Engine.' }
+
+          # Regression: runtime changes inside profiler-owned files/folders and a
+          # user keybind change must NEVER trap the user in managed state.
+          $fixture3 = Join-Path $env:RUNNER_TEMP 'gcet-authoritative-restore-fixture'
+          if (Test-Path $fixture3) { Remove-Item $fixture3 -Recurse -Force }
+          $plugins3 = Join-Path $fixture3 'bin\x64\plugins'
+          $cet3 = Join-Path $plugins3 'cyber_engine_tweaks'
+          $mods3 = Join-Path $cet3 'mods'
+          $zero3 = Join-Path $mods3 '0-Engine'
+          New-Item -ItemType Directory -Force (Join-Path $zero3 'modules') | Out-Null
+          Copy-Item 'publish\payload\cyber_engine_tweaks.PROFILER.dll' (Join-Path $plugins3 'cyber_engine_tweaks.asi')
+
+          @'
+          local Engine = {}
+          function Engine.Register(name)
+              local Mod = {}
+              return Mod
+          end
+          return Engine
+          '@ | Set-Content -LiteralPath (Join-Path $zero3 'init.lua') -Encoding utf8
+          $restoreFixtureInitHash = (Get-FileHash (Join-Path $zero3 'init.lua') -Algorithm SHA256).Hash
+
+          @{
+            OtherMod = @{ SomeBinding = 88 }
+            CETProfilerControls = @{ CETProfiler_Toggle = 234 }
+          } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $cet3 'bindings.json') -Encoding utf8
+
+          $restoreFixtureInstall = (& $exe --install --game $fixture3 --json | ConvertFrom-Json)
+          if (!$restoreFixtureInstall.managed) { throw 'Authoritative restore fixture install failed.' }
+
+          # Simulate exactly the class of real-world changes that previously made
+          # RESTORE ORIGINAL STATE refuse to run.
+          $changedScheduler = Join-Path $zero3 'modules\CETProfilerScheduler.lua'
+          '-- runtime/external change after profiler installation' | Set-Content -LiteralPath $changedScheduler -Encoding utf8
+
+          $controls3 = Join-Path $mods3 'CETProfilerControls'
+          'runtime-created-or-changed-file' | Set-Content -LiteralPath (Join-Path $controls3 'runtime-change.txt') -Encoding utf8
+
+          $bindings3 = Get-Content -LiteralPath (Join-Path $cet3 'bindings.json') -Raw | ConvertFrom-Json
+          $bindings3.CETProfilerControls.CETProfiler_Toggle = 987654321
+          $bindings3 | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $cet3 'bindings.json') -Encoding utf8
+
+          $authoritativeRestore = (& $exe --restore --game $fixture3 --json | ConvertFrom-Json)
+          if ($authoritativeRestore.status.managed) { throw 'Authoritative restore left managed state active.' }
+          if (Test-Path -LiteralPath (Join-Path $plugins3 '.cet_runtime_profiler')) { throw 'Authoritative restore left recovery state behind.' }
+
+          if ((Get-FileHash (Join-Path $zero3 'init.lua') -Algorithm SHA256).Hash -ne $restoreFixtureInitHash) {
+            throw 'Authoritative restore did not restore the original 0-Engine init.lua.'
+          }
+          if (Test-Path -LiteralPath $changedScheduler -PathType Leaf) {
+            throw 'Authoritative restore did not remove the profiler-added Scheduler file.'
+          }
+          if (Test-Path -LiteralPath $controls3 -PathType Container) {
+            throw 'Authoritative restore did not remove the profiler-added CETProfilerControls folder after it changed at runtime.'
+          }
+
+          $bindingsAfterRestore3 = Get-Content -LiteralPath (Join-Path $cet3 'bindings.json') -Raw | ConvertFrom-Json
+          if ([int64]$bindingsAfterRestore3.CETProfilerControls.CETProfiler_Toggle -ne 987654321) {
+            throw 'Restore overwrote the keybind selected by the user while profiling.'
+          }
+          if ([int64]$bindingsAfterRestore3.OtherMod.SomeBinding -ne 88) {
+            throw 'Restore changed unrelated CET binding data.'
+          }
+
+          # Explicit Scheduler status semantics: PRESENT / INTEGRATED / PROFILER-AWARE.
+          $fixture4 = Join-Path $env:RUNNER_TEMP 'gcet-integrated-scheduler-fixture'
+          if (Test-Path $fixture4) { Remove-Item $fixture4 -Recurse -Force }
+          $plugins4 = Join-Path $fixture4 'bin\x64\plugins'
+          $cet4 = Join-Path $plugins4 'cyber_engine_tweaks'
+          $zero4 = Join-Path $cet4 'mods\0-Engine'
+          New-Item -ItemType Directory -Force (Join-Path $zero4 'modules') | Out-Null
+          Copy-Item 'publish\payload\cyber_engine_tweaks.PROFILER.dll' (Join-Path $plugins4 'cyber_engine_tweaks.asi')
+
+          @'
+          local Engine = {}
+          local Mod = {}
+          local Scheduler = require('modules/Scheduler')
+          Scheduler.Init(nil, nil)
+          Scheduler.Update(nil)
+          Engine.Schedule = {}
+          Mod.Schedule = {}
+          return Engine
+          '@ | Set-Content -LiteralPath (Join-Path $zero4 'init.lua') -Encoding utf8
+
+          '-- ordinary pre-existing scheduler' | Set-Content -LiteralPath (Join-Path $zero4 'modules\Scheduler.lua') -Encoding utf8
+          $ordinarySchedulerHash = (Get-FileHash (Join-Path $zero4 'modules\Scheduler.lua') -Algorithm SHA256).Hash
+
+          $schedulerBefore = (& $exe --status --game $fixture4 --json | ConvertFrom-Json)
+          if (!$schedulerBefore.schedulerPresent) { throw 'Scheduler PRESENT should be YES for the integrated fixture.' }
+          if (!$schedulerBefore.schedulerIntegrated) { throw 'Scheduler INTEGRATED should be YES for the integrated fixture.' }
+          if ($schedulerBefore.schedulerProfilerAware) { throw 'Ordinary Scheduler incorrectly reported profiler-aware before install.' }
+
+          $integratedInstall = (& $exe --install --game $fixture4 --json | ConvertFrom-Json)
+          if ($integratedInstall.managedMode -ne 'integrated') { throw "Expected integrated mode, got $($integratedInstall.managedMode)" }
+          if (!$integratedInstall.schedulerPresent) { throw 'Scheduler PRESENT changed unexpectedly after integrated install.' }
+          if (!$integratedInstall.schedulerIntegrated) { throw 'Scheduler INTEGRATED changed unexpectedly after integrated install.' }
+          if (!$integratedInstall.schedulerProfilerAware) { throw 'Profiler-aware Scheduler was not reported after replacement.' }
+
+          & $exe --restore --game $fixture4 --json | Out-Null
+          if ((Get-FileHash (Join-Path $zero4 'modules\Scheduler.lua') -Algorithm SHA256).Hash -ne $ordinarySchedulerHash) {
+            throw 'Integrated Scheduler fixture did not restore its original Scheduler.lua.'
+          }
+
+          # Regression: legacy/header-only profiler CSV shells are not a completed
+          # capture. CLEAR LIVE must remove them without archiving, INSTALL must
+          # auto-clear them instead of trapping the user, and a real F11 binding
+          # must still be reported as F11 rather than generic/custom.
+          $fixture5 = Join-Path $env:RUNNER_TEMP 'gcet-template-output-fixture'
+          if (Test-Path $fixture5) { Remove-Item $fixture5 -Recurse -Force }
+          $plugins5 = Join-Path $fixture5 'bin\x64\plugins'
+          $cet5 = Join-Path $plugins5 'cyber_engine_tweaks'
+          New-Item -ItemType Directory -Force $cet5 | Out-Null
+          Copy-Item 'publish\payload\cyber_engine_tweaks.PROFILER.dll' (Join-Path $plugins5 'cyber_engine_tweaks.asi')
+
+          @{
+            CETProfilerControls = @{ CETProfiler_Toggle = 34339947158700032 }
+          } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $cet5 'bindings.json') -Encoding utf8
+
+          $templateInstall = (& $exe --install --game $fixture5 --json | ConvertFrom-Json)
+          if (!$templateInstall.managed) { throw 'Template-output fixture install failed.' }
+
+          $templateFiles = @{
+            'CET_Runtime_Profile_ByMod.csv' = 'Mod,Calls,CallsPerSecond'
+            'CET_Runtime_Profile_ByModKind.csv' = 'Mod,Kind,Calls'
+            'CET_Runtime_Profile_Detail.csv' = 'Mod,Kind,Target,Calls'
+            'CET_Runtime_Profile_Spikes.csv' = 'Sequence,CaptureStartMs,CaptureEndMs'
+            'CET_Runtime_Profile_Timeline.csv' = 'BucketIndex,BucketStartMs,BucketEndMs'
+            'CET_Runtime_Profile_Markers.csv' = 'Sequence,CaptureMs,UnixEpochMs,Label,DroppedMarkersAtDump'
+            'CET_Runtime_Profile_Scheduler_ByJob.csv' = 'Owner,JobType,Job'
+            'CET_Runtime_Profile_Scheduler_Spikes.csv' = 'Sequence,Frame,DurationMs'
+            'CET_Runtime_Profile_Scheduler_FrameBursts.csv' = 'Sequence,Frame,TotalJobMs'
+          }
+          foreach ($entry in $templateFiles.GetEnumerator()) {
+            $entry.Value | Set-Content -LiteralPath (Join-Path $cet5 $entry.Key) -Encoding utf8
+          }
+
+          $templateStatus = (& $exe --status --game $fixture5 --json | ConvertFrom-Json)
+          if ([int]$templateStatus.liveResultCount -ne 9) { throw "Expected 9 profiler template files, got $($templateStatus.liveResultCount)." }
+          if ($templateStatus.captureReadyForCollection) { throw 'Header-only profiler templates were incorrectly classified as a completed capture.' }
+          if ($templateStatus.captureKey -ne 'F11') { throw "Expected CET capture key F11, got $($templateStatus.captureKey)." }
+          if (!$templateStatus.captureKeyIsDefaultF11) { throw 'Exact F11 binding was not recognized as the default capture key.' }
+
+          $resultsBeforeTemplateClear = @(Get-ChildItem 'publish\RESULTS' -Directory -ErrorAction SilentlyContinue).Count
+
+          # CLEAR LIVE must be available/useful even though these files are not a
+          # completed capture. It must delete them, not manufacture an archive.
+          $templateClear = (& $exe --reset --game $fixture5 --json | ConvertFrom-Json)
+          if ($null -ne $templateClear.archived) { throw 'Template-only CLEAR LIVE incorrectly archived scratch output.' }
+          if ([int]$templateClear.status.liveResultCount -ne 0) { throw 'Template-only CLEAR LIVE did not remove profiler-owned CSV shells.' }
+          if ($templateClear.status.captureReadyForCollection) { throw 'Template-only CLEAR LIVE left a capture collectable.' }
+
+          foreach ($name in $templateFiles.Keys) {
+            if (Test-Path -LiteralPath (Join-Path $cet5 $name) -PathType Leaf) {
+              throw "Template-only CLEAR LIVE left profiler-owned file behind: $name"
+            }
+          }
+
+          if (@(Get-ChildItem 'publish\RESULTS' -Directory -ErrorAction SilentlyContinue).Count -ne $resultsBeforeTemplateClear) {
+            throw 'Template-only CLEAR LIVE incorrectly created a collected result archive.'
+          }
+
+          # Restore to an unmanaged state, then recreate legacy scratch shells.
+          $templateRestore = (& $exe --restore --game $fixture5 --json | ConvertFrom-Json)
+          if ($templateRestore.status.managed) { throw 'Template-output restore left managed state active.' }
+
+          foreach ($entry in $templateFiles.GetEnumerator()) {
+            $entry.Value | Set-Content -LiteralPath (Join-Path $cet5 $entry.Key) -Encoding utf8
+          }
+
+          # INSTALL must auto-clear template-only output. A completed capture would
+          # still block installation, but scratch shells must never trap the user.
+          $reinstallWithTemplates = (& $exe --install --game $fixture5 --json | ConvertFrom-Json)
+          if (!$reinstallWithTemplates.managed) { throw 'INSTALL did not proceed with template-only live output present.' }
+          if ([int]$reinstallWithTemplates.liveResultCount -ne 0) { throw 'INSTALL did not auto-clear template-only live output.' }
+          if ($reinstallWithTemplates.captureReadyForCollection) { throw 'Template-only reinstall incorrectly produced a completed capture.' }
+
+          foreach ($name in $templateFiles.Keys) {
+            if (Test-Path -LiteralPath (Join-Path $cet5 $name) -PathType Leaf) {
+              throw "INSTALL left template-only profiler file behind: $name"
+            }
+          }
+
+          # Regression: a real native capture uses CAPTURE_START when started and
+          # PAUSE when CETProfilerControls stops it before Dump(). The manager must
+          # classify that pair as a completed capture and COLLECT it, never clear it
+          # through the template/scratch path.
+          $captureEpoch = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+          @(
+            'Sequence,CaptureMs,UnixEpochMs,Label,DroppedMarkersAtDump'
+            "1,0.000000,$captureEpoch,`"CAPTURE_START`",0"
+            "2,1000.000000,$($captureEpoch + 1000),`"PAUSE`",0"
+          ) | Set-Content -LiteralPath (Join-Path $cet5 'CET_Runtime_Profile_Markers.csv') -Encoding utf8
+
+          @(
+            'Mod,Kind,Target,Calls,CallsPerSecond,InclusiveTotalMs,ExclusiveTotalMs,InclusiveMsPerSecond,ExclusiveMsPerSecond,MeasuredOneCorePct,AvgExclusiveUs,MaxInclusiveMs,MaxExclusiveMs,MeasuredExclusiveSharePct,ElapsedSeconds,Coverage'
+            'FixtureMod,onUpdate,onUpdate,60,60,1,1,1,1,0.1,16.666667,0.1,0.1,100,1,native'
+          ) | Set-Content -LiteralPath (Join-Path $cet5 'CET_Runtime_Profile_Detail.csv') -Encoding utf8
+
+          $realCaptureStatus = (& $exe --status --game $fixture5 --json | ConvertFrom-Json)
+          if (!$realCaptureStatus.captureReadyForCollection) {
+            throw 'CAPTURE_START + PAUSE native marker pair was not classified as a completed capture.'
+          }
+
+          $resultsBeforeRealCollect = @(Get-ChildItem 'publish\RESULTS' -Directory -ErrorAction SilentlyContinue).Count
+          $realCollect = (& $exe --collect --game $fixture5 --json | ConvertFrom-Json)
+          if ([string]::IsNullOrWhiteSpace([string]$realCollect.destination)) {
+            throw 'Real native capture COLLECT did not return a destination.'
+          }
+          if (!(Test-Path -LiteralPath $realCollect.destination -PathType Container)) {
+            throw "Real native capture destination was not created: $($realCollect.destination)"
+          }
+          if ([int]$realCollect.status.liveResultCount -ne 0) {
+            throw 'Real native capture COLLECT left live profiler output behind.'
+          }
+          if ($realCollect.status.captureReadyForCollection) {
+            throw 'Real native capture remained collectable after COLLECT.'
+          }
+          if (@(Get-ChildItem -LiteralPath $realCollect.destination -Recurse -Filter 'CET_Runtime_Profile_Markers.csv' -File).Count -ne 1) {
+            throw 'Collected result does not contain the verified native marker file.'
+          }
+
+          $resultsAfterRealCollect = @(Get-ChildItem 'publish\RESULTS' -Directory -ErrorAction SilentlyContinue).Count
+          if ($resultsAfterRealCollect -ne ($resultsBeforeRealCollect + 1)) {
+            throw 'Real native capture COLLECT did not create exactly one result archive.'
+          }
+
+          & $exe --restore --game $fixture5 --json | Out-Null
+          if (@(Get-ChildItem 'publish\RESULTS' -Directory -ErrorAction SilentlyContinue).Count -ne $resultsAfterRealCollect) {
+            throw 'Restore created an unexpected extra result archive after the real capture was already collected.'
+          }
+
+          # Smoke tests use the package-local RESULTS path; do not ship their fixtures.
+          Remove-Item publish\RESULTS -Recurse -Force
+          New-Item -ItemType Directory -Force publish\RESULTS | Out-Null
+          @'
+          G-CET Runtime Profiler stores collected captures in this folder.
+
+          Capture folders are created automatically by COLLECT RESULTS.
+          '@ | Set-Content -LiteralPath publish\RESULTS\README.txt -Encoding utf8
+
+          Write-Host 'C# lifecycle integration smoke test passed.'
+
+      - name: Alpha6b resolver and handoff regression contract
+        shell: pwsh
+        run: ./tests/ResolverHandoffContract.ps1 -PublishedRoot ./publish
+
+      - name: Stage portable release ZIP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $portableRoot = 'portable'
+          $productRoot = Join-Path $portableRoot 'G-CET-Runtime-Profiler'
+          if (Test-Path $portableRoot) { Remove-Item $portableRoot -Recurse -Force }
+          New-Item -ItemType Directory -Force $productRoot | Out-Null
+
+          Copy-Item publish\* $productRoot -Recurse -Force
+
+          $instructions = Join-Path $portableRoot 'Install_Instructions.html'
+          Copy-Item Install_Instructions.html $instructions -Force
+          # The test fixture ships next to the product and is NOT auto-installed.
+          $validation = Join-Path $portableRoot 'CET-2.5-Validation'
+          New-Item -ItemType Directory -Force $validation | Out-Null
+          Copy-Item 'validation\CET-1.38.1\*' $validation -Recurse -Force
+          if (!(Test-Path -LiteralPath $instructions -PathType Leaf)) {
+            throw 'Install_Instructions.html is missing from the portable release root.'
+          }
+
+          # Isolated Cyberpunk 2.5 test ZIP; no official release/tag update.
+          $asset = "G-CET-Runtime-Profiler-CET-1.38.1-CP2077-2.5.zip"
+          if (Test-Path $asset) { Remove-Item $asset -Force }
+          Compress-Archive -Path $productRoot,$instructions,$validation -DestinationPath $asset -CompressionLevel Optimal
+
+          $hash = (Get-FileHash -LiteralPath $asset -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $asset" | Set-Content -Encoding ASCII "$asset.sha256.txt"
+
+          "PUBLIC_ASSET=$asset" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "PUBLIC_SHA256=$hash" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+          Write-Host "Portable release: $asset"
+          Write-Host "SHA256: $hash"
+
+      - name: Upload portable Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: G-CET-Runtime-Profiler-CET-1.38.1-CP2077-2.5-TEST
+          path: |
+            G-CET-Runtime-Profiler-CET-1.38.1-CP2077-2.5.zip
+            G-CET-Runtime-Profiler-CET-1.38.1-CP2077-2.5.zip.sha256.txt
+          if-no-files-found: error
+
