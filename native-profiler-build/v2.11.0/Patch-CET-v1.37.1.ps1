@@ -444,8 +444,8 @@ Replace-LiteralOnce `
     -Label "Deferred request type field"
 Replace-LiteralOnce `
     -Path $foH `
-    -Old 'const std::string& acFullName, sol::protected_function aFunction, sol::environment aEnvironment,' `
-    -New 'const std::string& acFullName, const std::string& acTypeName, sol::protected_function aFunction, sol::environment aEnvironment,' `
+    -Old 'RED4ext::CClass* apClassType, RED4ext::CClassFunction* apRealFunction, const std::string& acFullName, sol::protected_function aFunction, sol::environment aEnvironment,' `
+    -New 'RED4ext::CClass* apClassType, RED4ext::CClassFunction* apRealFunction, const std::string& acFullName, const std::string& acTypeName, sol::protected_function aFunction, sol::environment aEnvironment,' `
     -Label "Deferred request type signature"
 Replace-LiteralOnce `
     -Path $foC `
@@ -464,8 +464,8 @@ Replace-LiteralOnce `
     -Label "Deferred hook type replay"
 Replace-LiteralOnce `
     -Path $foC `
-    -Old 'const std::string& acFullName, sol::protected_function aFunction, sol::environment aEnvironment,' `
-    -New 'const std::string& acFullName, const std::string& acTypeName, sol::protected_function aFunction, sol::environment aEnvironment,' `
+    -Old 'RED4ext::CClass* pClassType, RED4ext::CClassFunction* pRealFunction, const std::string& acFullName, sol::protected_function aFunction, sol::environment aEnvironment,' `
+    -New 'RED4ext::CClass* pClassType, RED4ext::CClassFunction* pRealFunction, const std::string& acFullName, const std::string& acTypeName, sol::protected_function aFunction, sol::environment aEnvironment,' `
     -Label "ApplyOverride source signature"
 
 # Add a tiny native-only resolver in the existing anonymous namespace.
