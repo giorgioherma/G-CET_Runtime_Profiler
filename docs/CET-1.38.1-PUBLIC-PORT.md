@@ -24,7 +24,9 @@ This is an **isolated test branch**. It does not replace the 2.31 public release
 
 New workflow: .github/workflows/cet-2.5-profiler-package.yml.
 
-It builds a CET 1.38.1 CONTROL and instrumented profiler from the same source, validates the patched native hook sites, computes the actual profiler DLL SHA256, and applies the branch-specific CET 1.38.1 manifest only to the staged test package. Then it reuses the existing .NET 8 app/launcher build and package/transaction/restore smoke tests. It generates a **test ZIP**, never updates main, release tags, or Nexus.
+Native code changes are built separately by `.github/workflows/native-profiler-rebuild.yml`. The portable workflow reuses the exact hash-locked native-only artifact (currently build #42412154720, commit `ce934864`, SHA256 `5ab31ef87b5e469372249c37d6cbb58854309925355e38800c60a606806ce9b4`). The packaging build proves the native generating source is unchanged from that successful build commit and refuses source drift rather than silently importing stale binaries. The patched CET native hook structure was verified in successful full-package run #42412422208; new native revisions must repeat this verification and update the pin before packaging.
+
+The portable workflow applies the CET 1.38.1 target and exact profiler hash to the staged manifest, builds the .NET 8 app and launcher, and runs the existing install/collect/restore and regression smoke tests. It uploads **the staged directory directly** to GitHub Actions. GitHub Actions creates the download ZIP itself, so only **one extraction** is needed; no nested release ZIP or redundant `Compress-Archive` exists. The artifact includes the optional validation mod beside the app. The isolated test build never modifies main, release tags or Nexus.
 
 This iteration accepts the exact official CET ASI supplied in CP2077-2.5_port.zip (sha256 f0acdad154bd0033583e0f6e675ea18b4bdb60cda28133d792a4674e6d7f228a). It is **not proof** that every independently packaged CET distribution is byte-identical.
 
