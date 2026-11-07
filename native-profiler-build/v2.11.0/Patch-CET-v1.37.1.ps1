@@ -1,3 +1,5 @@
+# Port of the existing public G-CET v2.11.0 native profiler to CET 1.38.1 / Cyberpunk 2.5.
+# Callback registration now takes place in upstream ApplyOverride(), preserving deferred hook locking.
 param(
     [Parameter(Mandatory=$true)]
     [string]$SourceRoot
@@ -87,7 +89,7 @@ finally {
     Pop-Location
 }
 
-$expectedHead = "61bd6214f0f5f8748589c9e476538614a13908c0"
+$expectedHead = "213151fa22c79182922a08a44e4a44d44739d1cd"
 if ($head -ne $expectedHead) {
     throw "Unexpected CET revision. Expected $expectedHead, got $head."
 }
@@ -504,7 +506,7 @@ $1
         const std::string profilerKind =
             aAbsolute ? "Override" : (aAfter ? "ObserveAfter" : "Observe");
         const std::string profilerTarget =
-            acTypeName + "::" + acFullName;
+            std::string(pClassType->name.ToString()) + "::" + acFullName;
 
         CETRuntimeProfiler::Get().BindCallback(
             pContext.get(),
@@ -662,7 +664,7 @@ foreach ($marker in @(
 }
 
 Write-Host ""
-Write-Host "CET v1.37.1 FULL CALLBACK profiler v2.11.0 patch applied successfully." -ForegroundColor Green
+Write-Host "CET v1.38.1 FULL CALLBACK profiler v2.11.0 patch applied successfully." -ForegroundColor Green
 Write-Host "Validated source commit: $expectedHead"
 Write-Host "Coverage: events + Observe + ObserveAfter + Override" -ForegroundColor Green
 Write-Host "FunctionOverride::Context: VERIFIED UNCHANGED" -ForegroundColor Green
