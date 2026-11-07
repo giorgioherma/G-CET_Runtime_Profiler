@@ -1,4 +1,4 @@
-name: G-CET Profiler Cyberpunk 2.5 full native and portable package
+name: G-CET Profiler Cyberpunk 2.5 verified portable package
 
 permissions:
   contents: read
@@ -9,14 +9,19 @@ on:
   push:
     branches: [ cyberpunk-2.5-cet-1.38.1 ]
     paths:
-      - 'native-profiler-build/**'
       - 'validation/CET-1.38.1/**'
       - '.github/workflows/cet-2.5-profiler-package.yml'
       - 'src/G.CETProfiler.Core/**'
       - 'src/G.CETProfiler.App/**'
       - 'src/G.CETProfiler.Launcher/**'
       - 'MANIFEST.json'
+      - 'VERSION.txt'
+      - 'Directory.Build.props'
       - 'tests/CET25PortContract.ps1'
+
+concurrency:
+  group: cp25-portable-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -25,49 +30,78 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up .NET 8
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
 
-      - name: Rebuild unmodified CET 1.38.1 and instrumented profiler from source
+      # The published native-only workflow owns the CET C++ compilation.
+      # Native sources must be identical to the verified source commit.
+      - name: Verify pinned CET 1.38.1 native source unchanged
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          ./native-profiler-build/v2.11.0/Build-Profiler.ps1 -WorkRoot "$env:RUNNER_TEMP\gcet-cp25-native"
-
-      - name: Verify native 2.5 hook instrumentation and deferred registration
-        shell: pwsh
-        run: ./tests/CET25PortContract.ps1 -SourceRoot "$env:RUNNER_TEMP\gcet-cp25-native\CyberEngineTweaks"
-
-      - name: Assemble hash-locked 2.5 manifest from THIS native build
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $nativeOutput = 'native-profiler-build\v2.11.0\BUILD_OUTPUT'
-          $profiler = Join-Path $nativeOutput 'cyber_engine_tweaks.PROFILER.asi'
-          $control = Join-Path $nativeOutput 'cyber_engine_tweaks.CONTROL.asi'
-          if (!(Test-Path $profiler -PathType Leaf) -or !(Test-Path $control -PathType Leaf)) {
-            throw 'CET 1.38.1 CONTROL + PROFILER were not both built.'
+          $pinnedSourceCommit = 'ce934864b9217a92f3e355e535173716212a8bb0'
+          git diff --exit-code $pinnedSourceCommit $env:GITHUB_SHA -- native-profiler-build/v2.11.0
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Native sources changed. Rebuild in the native-only workflow, validate, and update the native source/run/hash pins first.'
           }
-          $profilerHash = (Get-FileHash $profiler -Algorithm SHA256).Hash.ToLowerInvariant()
+          Write-Host "Source matches verified native build $pinnedSourceCommit"
+
+      - name: Download verified CET 1.38.1 native build
+        uses: actions/download-artifact@v4
+        with:
+          name: gcet-native-profiler-cet-1.38.1-cp-2.5
+          repository: ${{ github.repository }}
+          run-id: 42412154720
+          github-token: ${{ github.token }}
+          path: native-rebuild-artifact
+
+      - name: Verify pinned DLL and stage CET 1.38.1 manifest
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $native = 'native-rebuild-artifact'
+          $profiler = Join-Path $native 'cyber_engine_tweaks.PROFILER.dll'
+          $control = Join-Path $native 'cyber_engine_tweaks.CONTROL.asi'
+          $pdb = Join-Path $native 'cyber_engine_tweaks.PROFILER.pdb'
+          $checksum = Join-Path $native 'SHA256.txt'
+          foreach ($file in @($profiler, $control, $pdb, $checksum)) {
+            if (!(Test-Path -LiteralPath $file -PathType Leaf)) {
+              throw "Pinned native artifact file missing: $file"
+            }
+          }
+          $expected = '5ab31ef87b5e469372249c37d6cbb58854309925355e38800c60a606806ce9b4'
+          $actual = (Get-FileHash -LiteralPath $profiler -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) {
+            throw "Wrong CET 1.38.1 native build; expected $expected, got $actual"
+          }
+          $checks = Get-Content -LiteralPath $checksum -Raw
+          if (!$checks.Contains("$expected  cyber_engine_tweaks.PROFILER.dll")) {
+            throw 'Native archive SHA256 manifest does not match pinned DLL'
+          }
+          $pdbHash = (Get-FileHash -LiteralPath $pdb -Algorithm SHA256).Hash.ToLowerInvariant()
+          if (!$checks.Contains("$pdbHash  cyber_engine_tweaks.PROFILER.pdb")) {
+            throw 'Native PDB differs from published checksum'
+          }
           Copy-Item -LiteralPath $profiler -Destination 'payload\cyber_engine_tweaks.PROFILER.dll' -Force
-          $copied = (Get-FileHash 'payload\cyber_engine_tweaks.PROFILER.dll' -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($copied -ne $profilerHash) {
-            throw 'Compiled profiler artifact was altered when copying into the public payload.'
+          $staged = (Get-FileHash -LiteralPath 'payload\cyber_engine_tweaks.PROFILER.dll' -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($staged -ne $expected) {
+            throw 'Native payload changed during packaging'
           }
           $manifest = Get-Content 'MANIFEST.json' -Raw | ConvertFrom-Json
           $manifest.targetCET.version = '1.38.1'
-          # The user-supplied official CET 1.38.1 ASI from the 2.5 frameworks archive.
           $manifest.targetCET.officialSha256 = 'f0acdad154bd0033583e0f6e675ea18b4bdb60cda28133d792a4674e6d7f228a'
-          $manifest.targetCET.profilerSha256 = $profilerHash
+          $manifest.targetCET.profilerSha256 = $expected
           $manifest | ConvertTo-Json -Depth 30 | Set-Content 'MANIFEST.json' -Encoding utf8
-          $manifestCheck = Get-Content 'MANIFEST.json' -Raw | ConvertFrom-Json
-          if ($manifestCheck.targetCET.version -ne '1.38.1' -or $manifestCheck.targetCET.profilerSha256 -ne $copied) {
-            throw '2.5 manifest identity disagrees with the compiled native payload.'
+          $check = Get-Content 'MANIFEST.json' -Raw | ConvertFrom-Json
+          if ($check.targetCET.version -ne '1.38.1' -or $check.targetCET.profilerSha256 -ne $staged) {
+            throw '2.5 test package manifest native identity verification failed'
           }
-          Write-Host "CET 1.38.1 profiler SHA256: $profilerHash"
+          Write-Host "Verified native profiler reuse: $expected"
 
       - name: Load and verify product version
         id: product_version
@@ -822,7 +856,7 @@ jobs:
         shell: pwsh
         run: ./tests/ResolverHandoffContract.ps1 -PublishedRoot ./publish
 
-      - name: Stage portable release ZIP
+      - name: Stage single-extraction portable package
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -830,39 +864,47 @@ jobs:
           $productRoot = Join-Path $portableRoot 'G-CET-Runtime-Profiler'
           if (Test-Path $portableRoot) { Remove-Item $portableRoot -Recurse -Force }
           New-Item -ItemType Directory -Force $productRoot | Out-Null
-
           Copy-Item publish\* $productRoot -Recurse -Force
-
           $instructions = Join-Path $portableRoot 'Install_Instructions.html'
           Copy-Item Install_Instructions.html $instructions -Force
-          # The test fixture ships next to the product and is NOT auto-installed.
+          # The optional test mod stays next to the manager, not inside CET.
           $validation = Join-Path $portableRoot 'CET-2.5-Validation'
           New-Item -ItemType Directory -Force $validation | Out-Null
           Copy-Item 'validation\CET-1.38.1\*' $validation -Recurse -Force
-          if (!(Test-Path -LiteralPath $instructions -PathType Leaf)) {
-            throw 'Install_Instructions.html is missing from the portable release root.'
+          $required = @(
+            (Join-Path $productRoot 'G-CET-Runtime-Profiler.exe'),
+            (Join-Path $productRoot 'MANIFEST.json'),
+            (Join-Path $productRoot 'payload\cyber_engine_tweaks.PROFILER.dll'),
+            (Join-Path $productRoot 'payload\0-Engine\modules\Scheduler.lua'),
+            (Join-Path $productRoot 'payload\0-Engine\modules\CETProfilerScheduler.lua'),
+            (Join-Path $validation 'GCET_25_Validation\init.lua'),
+            $instructions
+          )
+          foreach ($file in $required) {
+            if (!(Test-Path -LiteralPath $file -PathType Leaf)) {
+              throw "Portable package missing required file: $file"
+            }
           }
+          # upload-artifact makes its own ZIP. No archive inside that archive.
+          if (@(Get-ChildItem -LiteralPath $portableRoot -File -Recurse -Filter '*.zip').Count -ne 0) {
+            throw 'Unexpected nested ZIP in single-extraction package'
+          }
+          $manifest = Get-Content (Join-Path $productRoot 'MANIFEST.json') -Raw | ConvertFrom-Json
+          if ($manifest.packageVersion -ne $env:PRODUCT_VERSION -or $manifest.targetCET.version -ne '1.38.1') {
+            throw 'Package version or CET target mismatch'
+          }
+          $dll = Join-Path $productRoot 'payload\cyber_engine_tweaks.PROFILER.dll'
+          $dllHash = (Get-FileHash -LiteralPath $dll -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($dllHash -ne $manifest.targetCET.profilerSha256) {
+            throw 'Package native profiler hash differs from manifest'
+          }
+          "$dllHash  G-CET-Runtime-Profiler/payload/cyber_engine_tweaks.PROFILER.dll" |
+            Set-Content -LiteralPath (Join-Path $portableRoot 'SHA256.txt') -Encoding ascii
+          Write-Host "One-extraction v$env:PRODUCT_VERSION package verified"
 
-          # Isolated Cyberpunk 2.5 test ZIP; no official release/tag update.
-          $asset = "G-CET-Runtime-Profiler-v$($env:PRODUCT_VERSION)-CET-1.38.1-CP2077-2.5.zip"
-          if (Test-Path $asset) { Remove-Item $asset -Force }
-          Compress-Archive -Path $productRoot,$instructions,$validation -DestinationPath $asset -CompressionLevel Optimal
-
-          $hash = (Get-FileHash -LiteralPath $asset -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  $asset" | Set-Content -Encoding ASCII "$asset.sha256.txt"
-
-          "PUBLIC_ASSET=$asset" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "PUBLIC_SHA256=$hash" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-
-          Write-Host "Portable release: $asset"
-          Write-Host "SHA256: $hash"
-
-      - name: Upload portable Windows artifact
+      - name: Upload single-ZIP GitHub Actions artifact
         uses: actions/upload-artifact@v4
         with:
           name: G-CET-Runtime-Profiler-v${{ steps.product_version.outputs.version }}-CET-1.38.1-CP2077-2.5-TEST
-          path: |
-            G-CET-Runtime-Profiler-v${{ steps.product_version.outputs.version }}-CET-1.38.1-CP2077-2.5.zip
-            G-CET-Runtime-Profiler-v${{ steps.product_version.outputs.version }}-CET-1.38.1-CP2077-2.5.zip.sha256.txt
+          path: portable/
           if-no-files-found: error
-
