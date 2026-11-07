@@ -600,25 +600,18 @@ $1            const auto result = [&]() {
 # time to the currently active mod callback. Nested profiler scopes remain
 # children of this boundary, avoiding double subtraction.
 #
-# The root CET invocation also enters one of these lambdas, but with no active
-# mod callback parent, so it contributes nothing to attribution.
+# Limit downstream timing to calls that return through C++ normally.
+# luaL_error uses longjmp; RAII must NOT span CET error-logging branches.
 Replace-RegexOnce `
     -Path $foC `
-    -Pattern '(\[&\]\(sol::variadic_args aWrapArgs, sol::this_state aState\) -> sol::variadic_results\s*\r?\n[ \t]*\{\s*\r?\n)([ \t]*std::string errorMessage;)' `
+    -Pattern '([ \t]*)sol::variadic_results results = RTTIHelper::Get\(\)\.ExecuteFunction\(apRealFunction, apRealContext, aWrapArgs, 0, errorMessage\);' `
     -Replacement @'
-$1            CETRuntimeProfiler::Scope profilerDownstreamBoundary(nullptr);
-$2
+$1sol::variadic_results results = [&]() {
+$1    CETRuntimeProfiler::Scope profilerDownstreamBoundary(nullptr);
+$1    return RTTIHelper::Get().ExecuteFunction(apRealFunction, apRealContext, aWrapArgs, 0, errorMessage);
+$1}();
 '@ `
-    -Label "Override terminal next()/real-function attribution boundary"
-
-Replace-RegexOnce `
-    -Path $foC `
-    -Pattern '(\[&, aStep\]\(sol::variadic_args aWrapArgs, sol::this_state aState\) -> sol::variadic_results\s*\r?\n[ \t]*\{\s*\r?\n)([ \t]*const auto call = \(aChain\.Overrides\.rbegin\(\) \+ aStep\)->get\(\);)' `
-    -Replacement @'
-$1            CETRuntimeProfiler::Scope profilerDownstreamBoundary(nullptr);
-$2
-'@ `
-    -Label "Override chained next() attribution boundary"
+    -Label "Override terminal protected native-call timing"
 
 # Override. The resolver runs after CET has already entered the valid locked
 # Lua execution path. v2.11.0 downstream boundaries make exclusive time mean
@@ -629,6 +622,8 @@ Replace-RegexOnce `
     -Pattern '([ \t]*auto next = WrapNextOverride\(aChain, aStep \+ 1, aLuaState, aLuaContext, aLuaArgs, apRealFunction, apRealContext, aLock\);\s*\r?\n)([ \t]*auto result = aLuaContext == sol::nil \? call->ScriptFunction\(as_args\(aLuaArgs\), next\) : call->ScriptFunction\(aLuaContext, as_args\(aLuaArgs\), next\);)' `
     -Replacement @'
 $1            auto result = [&]() {
+                // This scope exits before CET's luaL_error error handler.
+                CETRuntimeProfiler::Scope profilerDownstreamBoundary(nullptr);
                 if (!CETRuntimeProfiler::Get().IsCapturing())
                 {
                     return aLuaContext == sol::nil
