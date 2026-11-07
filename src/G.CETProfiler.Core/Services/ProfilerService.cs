@@ -170,14 +170,13 @@ public sealed class ProfilerService : IProfilerService
                 $"Installed CET ASI is neither the exact supported official CET {manifest.TargetCet.Version} binary nor this profiler binary. No files were changed.");
 
         var profilerSource = Path.Combine(payloadRoot, manifest.TargetCet.ProfilerPackageFile);
-        var schedulerSource = Path.Combine(payloadRoot, "0-Engine", "modules", "Scheduler.lua");
-        var adaptiveSchedulerSource = Path.Combine(payloadRoot, "0-Engine", "modules", "CETProfilerScheduler.lua");
+        // One verified bundled implementation. Live destination depends on the
+        // source-proven legacy integrated/adaptive 0-Engine layout.
+        var schedulerSource = Path.Combine(payloadRoot, "0-Engine", "modules", "CETProfilerScheduler.lua");
         var controlsSource = Path.Combine(payloadRoot, "CETProfilerControls");
 
         VerifyPayload(profilerSource, profilerHash, "Bundled native profiler payload failed its manifest hash check.");
         VerifyPayload(schedulerSource, manifest.ZeroEngine.ProfilerSchedulerSha256,
-            "Bundled profiler-aware Scheduler.lua failed its manifest hash check.");
-        VerifyPayload(adaptiveSchedulerSource, manifest.ZeroEngine.ProfilerAdaptiveSchedulerSha256,
             "Bundled CETProfilerScheduler.lua failed its manifest hash check.");
         if (!Directory.Exists(controlsSource))
             throw new InvalidOperationException("Bundled CETProfilerControls is missing.");
@@ -230,7 +229,7 @@ public sealed class ProfilerService : IProfilerService
             SaveState(paths, state);
 
             InstallAsi(paths, state, profilerSource, liveHash, profilerHash);
-            InstallZeroEngine(paths, state, coreProfilerOnly, schedulerSource, adaptiveSchedulerSource);
+            InstallZeroEngine(paths, state, coreProfilerOnly, schedulerSource);
 
             FileSystemService.CopyDirectoryExact(controlsSource, paths.Controls);
             if (!File.Exists(Path.Combine(paths.Controls, "init.lua")) ||
@@ -562,8 +561,7 @@ public sealed class ProfilerService : IProfilerService
         ProfilerPaths paths,
         ProfilerState state,
         bool coreProfilerOnly,
-        string schedulerSource,
-        string adaptiveSchedulerSource)
+        string schedulerSource)
     {
         if (!state.ZeroEngine.PresentBefore)
         {
@@ -644,8 +642,8 @@ public sealed class ProfilerService : IProfilerService
             InstallSchedulerFile(
                 paths.ZeroAdaptiveScheduler,
                 paths.BackupZeroAdaptiveScheduler,
-                adaptiveSchedulerSource,
-                manifest.ZeroEngine.ProfilerAdaptiveSchedulerSha256,
+                schedulerSource,
+                manifest.ZeroEngine.ProfilerSchedulerSha256,
                 state.ZeroEngine.AdaptiveScheduler,
                 adaptiveState,
                 paths,

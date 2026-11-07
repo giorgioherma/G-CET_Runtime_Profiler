@@ -13,7 +13,6 @@
     "profilerBridgeMarker": "CET_RUNTIME_PROFILER_ADAPTIVE_SCHEDULER_BEGIN v2",
     "profilerSchedulerSha256": "4030ef6d8fa743f7a4accf00406c2110f70162261232b564469d3eaa0b7c78cb",
     "profilerSchedulerVersion": "0.3.1 profiler-aware",
-    "profilerAdaptiveSchedulerSha256": "4030ef6d8fa743f7a4accf00406c2110f70162261232b564469d3eaa0b7c78cb",
     "profilerAdaptiveSchedulerFile": "modules/CETProfilerScheduler.lua"
   },
   "liveResultFiles": [

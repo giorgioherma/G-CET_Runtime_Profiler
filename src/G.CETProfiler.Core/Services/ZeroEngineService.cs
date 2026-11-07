@@ -47,7 +47,7 @@ internal sealed class ZeroEngineService
 
     public ZeroFileState GetAdaptiveSchedulerState(ProfilerPaths paths)
     {
-        var aware = manifest.ZeroEngine.ProfilerAdaptiveSchedulerSha256.ToLowerInvariant();
+        var aware = manifest.ZeroEngine.ProfilerSchedulerSha256.ToLowerInvariant();
         if (!File.Exists(paths.ZeroAdaptiveScheduler))
             return new ZeroFileState("absent", "WILL ADD CETProfilerScheduler");
 

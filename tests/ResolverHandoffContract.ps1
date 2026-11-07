@@ -8,11 +8,14 @@ $ErrorActionPreference = 'Stop'
 $PublishedRoot = (Resolve-Path $PublishedRoot).Path
 $exe = Join-Path $PublishedRoot 'G-CET-Runtime-Profiler.exe'
 $profilerPayload = Join-Path $PublishedRoot 'payload\cyber_engine_tweaks.PROFILER.dll'
-$awareScheduler = Join-Path $PublishedRoot 'payload\0-Engine\modules\Scheduler.lua'
+$awareScheduler = Join-Path $PublishedRoot 'payload\0-Engine\modules\CETProfilerScheduler.lua'
 
 if (!(Test-Path -LiteralPath $exe -PathType Leaf)) { throw "Profiler executable not found: $exe" }
 if (!(Test-Path -LiteralPath $profilerPayload -PathType Leaf)) { throw "Profiler payload not found: $profilerPayload" }
 if (!(Test-Path -LiteralPath $awareScheduler -PathType Leaf)) { throw "Profiler-aware Scheduler payload not found: $awareScheduler" }
+$obsoleteSchedulerPayload = Join-Path $PublishedRoot 'payload\0-Engine\modules\Scheduler.lua'
+if (Test-Path -LiteralPath $obsoleteSchedulerPayload -PathType Leaf) { throw "Duplicated root Scheduler.lua payload is forbidden." }
+if (@(Get-ChildItem (Join-Path $PublishedRoot 'payload\0-Engine\modules') -File -Filter '*.lua').Count -ne 1) { throw "Expected exactly one bundled Lua Scheduler implementation." }
 
 function New-ResolverFixture([string]$Name, [bool]$WithZeroEngine = $true) {
     $root = Join-Path $env:RUNNER_TEMP $Name
@@ -68,6 +71,26 @@ function Assert-True([bool]$Value, [string]$Message) {
 function Assert-False([bool]$Value, [string]$Message) {
     if ($Value) { throw $Message }
 }
+
+Write-Host 'Resolver contract: untouched adaptive host receives only the CETProfilerScheduler.lua live file'
+$originalHost = New-ResolverFixture 'gcet-resolver-original-host'
+@'
+local Engine = {}
+function Engine.Register(name)
+    return {}
+end
+return Engine
+'@ | Set-Content -LiteralPath (Join-Path $originalHost.Zero 'init.lua') -Encoding utf8
+$originalHostInitHash = (Get-FileHash (Join-Path $originalHost.Zero 'init.lua') -Algorithm SHA256).Hash
+$originalHostInstall = Install-Normal $originalHost
+Assert-Equal $originalHostInstall.managedMode 'adaptive' 'Untouched host did not select adaptive mode.'
+Assert-True ([bool]$originalHostInstall.adaptiveProfilerSchedulerPresent) 'Untouched host CET Scheduler was not deployed.'
+$originalHostScheduler = Join-Path $originalHost.Zero 'modules\CETProfilerScheduler.lua'
+Assert-Equal (Get-FileHash $originalHostScheduler -Algorithm SHA256).Hash (Get-FileHash $awareScheduler -Algorithm SHA256).Hash 'Untouched host deployed wrong Scheduler bytes.'
+Assert-False (Test-Path (Join-Path $originalHost.Zero 'modules\Scheduler.lua') -PathType Leaf) 'Untouched host received duplicate root Scheduler.'
+$originalHostRestore = Restore-Normal $originalHost
+Assert-False (Test-Path $originalHostScheduler -PathType Leaf) 'Untouched host restore left CET Scheduler installed.'
+Assert-Equal (Get-FileHash (Join-Path $originalHost.Zero 'init.lua') -Algorithm SHA256).Hash $originalHostInitHash 'Untouched host init was not restored.'
 
 Write-Host 'Resolver contract: adaptive handoff must preserve the user Scheduler.lua'
 $adaptive = New-ResolverFixture 'gcet-resolver-adaptive'
