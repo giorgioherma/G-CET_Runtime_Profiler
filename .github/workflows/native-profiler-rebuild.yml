@@ -1,13 +1,14 @@
+# This 2.5 branch only uploads test artifacts. Never commits or overwrites the 2.31 main payload.
 name: Rebuild G-CET native profiler
 
 permissions:
-  contents: write
+  contents: read
   actions: read
 
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [ cyberpunk-2.5-cet-1.38.1 ]
     paths:
       - 'native-profiler-build/**'
       - '.github/workflows/native-profiler-rebuild.yml'
@@ -37,6 +38,9 @@ jobs:
 
           New-Item -ItemType Directory -Force native-rebuild-artifact | Out-Null
           Copy-Item $source native-rebuild-artifact\cyber_engine_tweaks.PROFILER.dll -Force
+          $control = "native-profiler-build\v2.11.0\BUILD_OUTPUT\cyber_engine_tweaks.CONTROL.asi"
+          if (!(Test-Path -LiteralPath $control -PathType Leaf)) { throw "Unmodified CET control build missing" }
+          Copy-Item $control native-rebuild-artifact\cyber_engine_tweaks.CONTROL.asi -Force
           $pdb = 'native-profiler-build\v2.11.0\BUILD_OUTPUT\cyber_engine_tweaks.PROFILER.pdb'
           if (!(Test-Path -LiteralPath $pdb -PathType Leaf)) {
             throw "Matching profiler PDB was not found: $pdb"
@@ -49,49 +53,9 @@ jobs:
           "$pdbHash  cyber_engine_tweaks.PROFILER.pdb" | Add-Content native-rebuild-artifact\SHA256.txt -Encoding ascii
           Write-Host "Rebuilt profiler SHA256: $hash"
 
-      - name: Commit rebuilt payload to resolver branch
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-
-          $rebuilt = 'native-rebuild-artifact\cyber_engine_tweaks.PROFILER.dll'
-          if (!(Test-Path -LiteralPath $rebuilt -PathType Leaf)) {
-            throw "Rebuilt profiler payload is missing: $rebuilt"
-          }
-
-          Copy-Item $rebuilt 'payload\cyber_engine_tweaks.PROFILER.dll' -Force
-          $hash = (Get-FileHash 'payload\cyber_engine_tweaks.PROFILER.dll' -Algorithm SHA256).Hash.ToLowerInvariant()
-
-          $manifestPath = 'MANIFEST.json'
-          $manifest = Get-Content -LiteralPath $manifestPath -Raw
-          $updated = [regex]::Replace(
-            $manifest,
-            '"profilerSha256"\s*:\s*"[0-9a-fA-F]{64}"',
-            ('"profilerSha256": "' + $hash + '"'),
-            1)
-
-          if ($updated -eq $manifest) {
-            throw 'Could not update profilerSha256 in MANIFEST.json.'
-          }
-
-          Set-Content -LiteralPath $manifestPath -Value $updated -Encoding utf8 -NoNewline
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- payload/cyber_engine_tweaks.PROFILER.dll MANIFEST.json
-
-          git diff --cached --quiet
-          if ($LASTEXITCODE -eq 0) {
-            Write-Host 'Rebuilt payload already matches the branch.'
-          }
-          else {
-            git commit -m "build: refresh v1.0.2 native profiler payload"
-            git push origin HEAD:main
-          }
-
       - name: Upload rebuilt native payload
         uses: actions/upload-artifact@v4
         with:
-          name: gcet-native-profiler-main-v1.0.2
+          name: gcet-native-profiler-cet-1.38.1-cp-2.5
           path: native-rebuild-artifact/
           if-no-files-found: error
