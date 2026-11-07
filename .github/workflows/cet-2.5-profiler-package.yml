@@ -844,7 +844,7 @@ jobs:
           }
 
           # Isolated Cyberpunk 2.5 test ZIP; no official release/tag update.
-          $asset = "G-CET-Runtime-Profiler-v$env:PRODUCT_VERSION-CET-1.38.1-CP2077-2.5.zip"
+          $asset = "G-CET-Runtime-Profiler-v$($env:PRODUCT_VERSION)-CET-1.38.1-CP2077-2.5.zip"
           if (Test-Path $asset) { Remove-Item $asset -Force }
           Compress-Archive -Path $productRoot,$instructions,$validation -DestinationPath $asset -CompressionLevel Optimal
 
