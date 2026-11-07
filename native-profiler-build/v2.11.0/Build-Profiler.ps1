@@ -213,6 +213,21 @@ try {
         -SourceRoot $repo `
         -HistoricalRepo $histRepo
 
+    # CET 1.38.1 upstream uses set_xmakever("3.1"), which Xmake 3.1.1
+    # rejects as a malformed (non-semver) version. Normalize only this
+    # build-declaration token in the fetched CET source, not the release DLL.
+    $cetXmakeFile = Join-Path $repo 'xmake.lua'
+    $cetXmake = [IO.File]::ReadAllText($cetXmakeFile)
+    $badXmakeVersion = 'set_xmakever("3.1")'
+    if ($cetXmake.Split(@($badXmakeVersion), [StringSplitOptions]::None).Length -ne 2) {
+        throw 'CET 1.38.1 xmake version declaration changed; review before building.'
+    }
+    [IO.File]::WriteAllText(
+        $cetXmakeFile,
+        $cetXmake.Replace($badXmakeVersion, 'set_xmakever("3.1.0")'),
+        [Text.UTF8Encoding]::new($false))
+
+
     Write-Host ""
     Write-Host "============================================================" -ForegroundColor Cyan
     Write-Host "PHASE A: HISTORICAL CONTROL CET" -ForegroundColor Cyan
