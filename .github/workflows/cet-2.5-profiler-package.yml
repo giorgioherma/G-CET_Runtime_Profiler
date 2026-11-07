@@ -844,7 +844,7 @@ jobs:
           }
 
           # Isolated Cyberpunk 2.5 test ZIP; no official release/tag update.
-          $asset = "G-CET-Runtime-Profiler-CET-1.38.1-CP2077-2.5.zip"
+          $asset = "G-CET-Runtime-Profiler-v$env:PRODUCT_VERSION-CET-1.38.1-CP2077-2.5.zip"
           if (Test-Path $asset) { Remove-Item $asset -Force }
           Compress-Archive -Path $productRoot,$instructions,$validation -DestinationPath $asset -CompressionLevel Optimal
 
@@ -860,9 +860,9 @@ jobs:
       - name: Upload portable Windows artifact
         uses: actions/upload-artifact@v4
         with:
-          name: G-CET-Runtime-Profiler-CET-1.38.1-CP2077-2.5-TEST
+          name: G-CET-Runtime-Profiler-v${{ steps.product_version.outputs.version }}-CET-1.38.1-CP2077-2.5-TEST
           path: |
-            G-CET-Runtime-Profiler-CET-1.38.1-CP2077-2.5.zip
-            G-CET-Runtime-Profiler-CET-1.38.1-CP2077-2.5.zip.sha256.txt
+            G-CET-Runtime-Profiler-v${{ steps.product_version.outputs.version }}-CET-1.38.1-CP2077-2.5.zip
+            G-CET-Runtime-Profiler-v${{ steps.product_version.outputs.version }}-CET-1.38.1-CP2077-2.5.zip.sha256.txt
           if-no-files-found: error
 
