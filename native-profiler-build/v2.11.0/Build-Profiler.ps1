@@ -1,3 +1,5 @@
+# Port build: CET v1.38.1 (Cyberpunk 2.5). Retains the existing public G-CET profiler.
+# Reconstructs CONTROL and PROFILER from the same upstream source and toolchain.
 param(
     [string]$WorkRoot = "$env:USERPROFILE\Desktop\CET-Native-Profiler-Build-v2.11.0"
 )
@@ -5,9 +7,9 @@ param(
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
-$CetCommit = "61bd6214f0f5f8748589c9e476538614a13908c0"
-$ReleaseTime = "2025-09-28T10:48:33Z"
-$XmakeVersion = "3.0.3"
+$CetCommit = "213151fa22c79182922a08a44e4a44d44739d1cd"
+$ReleaseTime = "2026-10-26T01:28:00Z"
+$XmakeVersion = "3.1.1"
 $RequiredSDK = "10.0.26100.0"
 
 function Require-Command([string]$Name) {
@@ -36,7 +38,7 @@ function Import-CmdEnvironment([string]$Command) {
     }
 }
 
-function Find-VsDevCmd144 {
+function Find-VsDevCmd {
     $roots = @(
         "${env:ProgramFiles}\Microsoft Visual Studio",
         "${env:ProgramFiles(x86)}\Microsoft Visual Studio"
@@ -51,7 +53,7 @@ function Find-VsDevCmd144 {
             $msvcRoot = Join-Path $instance "VC\Tools\MSVC"
             if (Test-Path $msvcRoot) {
                 $match = Get-ChildItem $msvcRoot -Directory -ErrorAction SilentlyContinue |
-                    Where-Object { $_.Name -like "14.44.*" } |
+                    Where-Object { $_.Name -match "^14\.\d+\." } |
                     Sort-Object Name -Descending |
                     Select-Object -First 1
                 if ($match) {
@@ -92,18 +94,12 @@ function Copy-BuildArtifacts([string]$Repo, [string]$Out, [string]$Stem) {
 Require-Command git
 
 Write-Host "Checking historical CET release toolchain..." -ForegroundColor Cyan
-$vs = Find-VsDevCmd144
+$vs = Find-VsDevCmd
 if (!$vs) {
     throw @"
 MSVC 14.44 was not found.
 
-The known-good official CET binary was linked by linker 14.44.
-Install:
-  MSVC v143 - VS 2022 C++ x64/x86 build tools (v14.44-17.14)
-Component ID:
-  Microsoft.VisualStudio.Component.VC.14.44.17.14.x86.x64
-
-Then rerun this build.
+Install MSVC v143 C++ x64/x86 build tools and rerun this build.
 "@
 }
 
@@ -111,6 +107,7 @@ if (!(Test-Path "${env:ProgramFiles(x86)}\Windows Kits\10\Include\$RequiredSDK")
     throw "Windows SDK $RequiredSDK was not found."
 }
 
+$toolsetMajorMinor = ($vs.Toolset -split '\.')[0..1] -join '.'
 Write-Host "Using Visual Studio instance: $($vs.Instance)"
 Write-Host "Using MSVC toolset       : $($vs.Toolset)"
 
@@ -120,7 +117,7 @@ $vcBatch = $vs.VsDevCmd
 # Passing a string that already begins with a quote caused cmd /s /c to see:
 #   ""C:\Program Files\...
 # and fail before VsDevCmd could run.
-$vcCommand = "call `"$vcBatch`" -arch=x64 -host_arch=x64 -vcvars_ver=14.44 >nul"
+$vcCommand = "call `"$vcBatch`" -arch=x64 -host_arch=x64 -vcvars_ver=$toolsetMajorMinor >nul"
 Import-CmdEnvironment $vcCommand
 
 $cl = Get-Command cl.exe -ErrorAction Stop
@@ -135,8 +132,8 @@ Write-Host "link.exe : $($link.Source)"
 # treating cl.exe's diagnostic exit behavior as a build failure.
 $clVersion = (& $env:ComSpec /d /c "cl.exe 2>&1" | Select-Object -First 2) -join " "
 Write-Host "Compiler banner: $clVersion"
-if ($clVersion -notmatch "19\.44\.") {
-    throw "Historical environment activation failed: expected MSVC 19.44, got: $clVersion"
+if ($clVersion -notmatch "19\.") {
+    throw "MSVC environment activation failed: $clVersion"
 }
 
 $repo = Join-Path $WorkRoot "CyberEngineTweaks"
@@ -175,8 +172,8 @@ if (!(Test-Path $xmake)) {
 
 $xmakeBanner = (& $xmake --version 2>&1 | Select-Object -First 1)
 Write-Host "Xmake: $xmakeBanner"
-if ($xmakeBanner -notmatch "3\.0\.3") {
-    throw "Expected Xmake 3.0.3."
+if ($xmakeBanner -notmatch ([regex]::Escape($XmakeVersion))) {
+    throw "Expected Xmake $XmakeVersion."
 }
 
 Write-Host ""
@@ -199,7 +196,7 @@ finally {
 Write-Host "Historical xmake-repo commit: $histCommit"
 
 Write-Host ""
-Write-Host "Cloning official CET v1.37.1 source..."
+Write-Host "Cloning official CET v1.38.1 source..."
 git clone https://github.com/maximegmd/CyberEngineTweaks.git $repo
 if ($LASTEXITCODE -ne 0) { throw "CET clone failed" }
 
@@ -226,7 +223,7 @@ try {
     # Visual Studio 2026 with its newest 14.51 toolset. Explicitly pin the
     # MSVC toolset so Xmake and all Xmake-built dependencies use 14.44.
     & $xmake f -y -m release -p windows -a x64 `
-        --vs_toolset=14.44 `
+        --vs_toolset=$toolsetMajorMinor `
         --vs_sdkver=$RequiredSDK
     if ($LASTEXITCODE -ne 0) { throw "historical CONTROL configure failed" }
 
@@ -246,11 +243,11 @@ try {
     $controlInfo = & (Join-Path $PSScriptRoot "Get-CETPEInfo.ps1") -Path $control
     $controlInfo | Format-List
 
-    if ($controlInfo.Linker -ne "14.44") {
-        throw "CONTROL binary linker is $($controlInfo.Linker), expected 14.44. Xmake did not honor the pinned --vs_toolset=14.44; refusing to continue."
+    if ($controlInfo.Linker -ne $toolsetMajorMinor) {
+        throw "CONTROL binary linker is $($controlInfo.Linker), expected $toolsetMajorMinor. Xmake did not honor the selected MSVC toolset; refusing to continue."
     }
 
-    Write-Host "Historical CONTROL linker verified as 14.44." -ForegroundColor Green
+    Write-Host "CONTROL linker verified as $toolsetMajorMinor." -ForegroundColor Green
 
     Write-Host ""
     Write-Host "============================================================" -ForegroundColor Cyan
@@ -270,8 +267,8 @@ try {
 
     $profiler = Join-Path $out "cyber_engine_tweaks.PROFILER.asi"
     $profInfo = & (Join-Path $PSScriptRoot "Get-CETPEInfo.ps1") -Path $profiler
-    if ($profInfo.Linker -ne "14.44") {
-        throw "PROFILER binary linker is $($profInfo.Linker), expected 14.44."
+    if ($profInfo.Linker -ne $toolsetMajorMinor) {
+        throw "PROFILER binary linker is $($profInfo.Linker), expected $toolsetMajorMinor."
     }
 
     Set-Content -LiteralPath (Join-Path $out "HISTORICAL_BUILD.txt") -Encoding UTF8 -Value @(
