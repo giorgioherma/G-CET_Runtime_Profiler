@@ -95,6 +95,20 @@ Assert-Equal $adaptiveInstall.managedMode 'adaptive' 'Adaptive fixture did not i
 Assert-Equal $adaptiveInstall.state.zeroEngine.init.mode 'patched-adaptive' 'Adaptive init.lua transaction mode is wrong.'
 Assert-Equal $adaptiveInstall.state.zeroEngine.scheduler.mode 'not-applicable' 'Adaptive mode incorrectly claimed the user Scheduler.lua.'
 Assert-True ([bool]$adaptiveInstall.adaptiveProfilerSchedulerPresent) 'Adaptive profiler scheduler was not installed.'
+
+# Regression: a live file can disappear while transaction state still records
+# "added". The app must NOT treat that record as a currently healthy install.
+$adaptiveLiveProfilerScheduler = Join-Path $adaptive.Zero 'modules\CETProfilerScheduler.lua'
+Remove-Item -LiteralPath $adaptiveLiveProfilerScheduler -Force
+$adaptiveMissing = Read-Status $adaptive
+Assert-True ([bool]$adaptiveMissing.managed) 'Missing live Scheduler unexpectedly cleared the transaction.'
+Assert-False ([bool]$adaptiveMissing.adaptiveProfilerSchedulerPresent) 'Missing live Scheduler was reported as present.'
+Assert-Equal $adaptiveMissing.scheduler 'LIVE CETProfilerScheduler.lua MISSING' 'Missing live Scheduler was not diagnosed.'
+$verifiedAdaptivePayload = Join-Path $PublishedRoot 'payload\0-Engine\modules\CETProfilerScheduler.lua'
+Copy-Item -LiteralPath $verifiedAdaptivePayload -Destination $adaptiveLiveProfilerScheduler -Force
+$adaptiveReverified = Read-Status $adaptive
+Assert-True ([bool]$adaptiveReverified.adaptiveProfilerSchedulerPresent) 'Restored Scheduler was not recognized from live SHA256.'
+
 Assert-Equal ((Get-FileHash (Join-Path $adaptive.Zero 'modules\Scheduler.lua') -Algorithm SHA256).Hash) $adaptiveSchedulerOriginal 'Adaptive install changed the user Scheduler.lua.'
 if ((Get-FileHash (Join-Path $adaptive.Zero 'init.lua') -Algorithm SHA256).Hash -eq $adaptiveInitOriginal) {
     throw 'Adaptive install did not patch the recognized init.lua.'

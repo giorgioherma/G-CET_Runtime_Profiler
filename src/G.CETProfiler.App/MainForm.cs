@@ -686,7 +686,9 @@ public sealed class MainForm : Form
                     ? state.ZeroEngine.AdaptiveScheduler
                     : state.ZeroEngine.Scheduler;
 
-                schedulerLine = schedulerState.Mode switch
+                schedulerLine = HasSchedulerIntegrityFailure(snapshot)
+                    ? "Scheduler: " + snapshot.Scheduler + " ❌"
+                    : schedulerState.Mode switch
                 {
                     "replaced" => "Scheduler: original backed up · profiler-aware scheduler deployed ✅",
                     "added" => "Scheduler: profiler-aware scheduler added ✅",
@@ -802,12 +804,28 @@ public sealed class MainForm : Form
         }
     }
 
+    // Check the *current* CET files. Transaction state can truthfully say
+    // "added" even after the deployed Scheduler has gone missing.
+    private static bool HasSchedulerIntegrityFailure(ProfilerStatus? snapshot) =>
+        snapshot is not null &&
+        snapshot.Managed &&
+        snapshot.ZeroEnginePresent &&
+        (snapshot.ManagedMode switch
+        {
+            "adaptive" => snapshot.ZeroEngineInitKind != "profiler-bridge" ||
+                          !snapshot.AdaptiveProfilerSchedulerPresent,
+            "integrated" => snapshot.ZeroEngineInitKind != "integrated" ||
+                            !snapshot.SchedulerProfilerAware,
+            _ => false
+        });
+
     private bool IsProfilerReady(ProfilerStatus? snapshot) =>
         snapshot is not null &&
         snapshot.Managed &&
         snapshot.CetState == "PROFILER_ACTIVE" &&
         snapshot.ControlsPresent &&
-        snapshot.CaptureTitlePresent;
+        snapshot.CaptureTitlePresent &&
+        !HasSchedulerIntegrityFailure(snapshot);
 
     private static bool HasCriticalProfilerError(ProfilerStatus? snapshot) =>
         snapshot is null ||
@@ -815,7 +833,8 @@ public sealed class MainForm : Form
         (snapshot.Managed &&
          (snapshot.CetState != "PROFILER_ACTIVE" ||
           !snapshot.ControlsPresent ||
-          !snapshot.CaptureTitlePresent));
+          !snapshot.CaptureTitlePresent ||
+          HasSchedulerIntegrityFailure(snapshot)));
 
     private void RenderReadyState(ProfilerStatus? snapshot)
     {
@@ -859,6 +878,9 @@ public sealed class MainForm : Form
 
         if (snapshot.Managed && !snapshot.CaptureTitlePresent)
             return "CaptureTitle.txt is missing from CETProfilerControls. RESTORE ORIGINAL STATE first, then install again.";
+
+        if (HasSchedulerIntegrityFailure(snapshot))
+            return "The saved Scheduler transaction disagrees with live CET. RESTORE ORIGINAL STATE before reinstalling. Do not start another capture.";
 
         if (snapshot.Managed && !IsProfilerReady(snapshot))
             return "Managed install is incomplete. RESTORE ORIGINAL STATE first, then install again; do not start a capture yet.";

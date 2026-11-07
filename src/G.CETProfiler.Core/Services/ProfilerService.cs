@@ -90,6 +90,17 @@ public sealed class ProfilerService : IProfilerService
                 "adaptive" or "profiler-bridge" => zeroEngine.GetAdaptiveSchedulerState(paths).Text,
                 _ => "CHECK CORE PROFILER MODE"
             };
+
+            // A successful transaction record is historical evidence, not live
+            // proof. Detect Scheduler removal or drift while CET stays installed.
+            if (state?.ZeroEngine.Mode == "adaptive" && !adaptiveProfilerSchedulerPresent)
+                schedulerText = File.Exists(paths.ZeroAdaptiveScheduler)
+                    ? "LIVE CETProfilerScheduler.lua HAS WRONG SHA256"
+                    : "LIVE CETProfilerScheduler.lua MISSING";
+            else if (state?.ZeroEngine.Mode == "integrated" && !schedulerProfilerAware)
+                schedulerText = File.Exists(paths.ZeroScheduler)
+                    ? "LIVE Scheduler.lua HAS WRONG SHA256"
+                    : "LIVE Scheduler.lua MISSING";
         }
 
         var captureBinding = bindings.InspectCaptureBinding(paths);
@@ -232,7 +243,20 @@ public sealed class ProfilerService : IProfilerService
             bindings.EnsureDefaultF11IfMissing(paths);
 
             SaveState(paths, state);
-            return GetStatus(paths.Root);
+            var installed = GetStatus(paths.Root);
+            // Verify the composed installation, not only the individual copy
+            // operation. Never report READY on a missing/mismatched Scheduler.
+            if (state.ZeroEngine.Mode == "adaptive" &&
+                (installed.ZeroEngineInitKind != "profiler-bridge" ||
+                 !installed.AdaptiveProfilerSchedulerPresent))
+                throw new InvalidOperationException(
+                    "Adaptive 0-Engine Scheduler integration failed live postcondition verification.");
+            if (state.ZeroEngine.Mode == "integrated" &&
+                (installed.ZeroEngineInitKind != "integrated" ||
+                 !installed.SchedulerProfilerAware))
+                throw new InvalidOperationException(
+                    "Integrated 0-Engine Scheduler failed live postcondition verification.");
+            return installed;
         }
         catch (Exception installError)
         {
