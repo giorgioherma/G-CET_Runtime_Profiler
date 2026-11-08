@@ -49,3 +49,11 @@ The JSON contract should remain stable enough for TOTAL Profiler to consume with
 Every user-owned file or directory that the profiler replaces or edits must have recoverable original state recorded **before** the mutation. Added profiler-only files are tracked as additions rather than pretending an original existed.
 
 Normal restore validates the integrity of all required original backups before restoring the managed transaction. Emergency restore remains a component-by-component recovery path for missing or corrupt recovery material.
+
+## CET native rebuild/ASI pin policy (mandatory, 2026-11-08)
+
+The portable Cyberpunk 2.5 CET Profiler consumes the SHA256-verified, already-compiled ASI pinned in `.github/workflows/cet-2.5-profiler-package.yml`. All edits to Lua, 0-Engine Scheduler, C#, installer, UI, reports, tests, validation fixtures and documentation **MUST reuse it**, with zero native CET rebuilds. Native rebuilds are **manual only** and require a real change in the native generating inputs; the workflow checks those inputs against the pinned ASI's source commit before invoking the CET builder.
+
+For an intentional C++/native-source revision: batch changes, run source-level checks, dispatch one native build, read its actual resulting SHA256, then update the packaging artifact run, source SHA and expected binary hash together. Package CI must block stale native source and incorrect binary hashes; it must never compile CET as a fallback. No automatic native build on push. This rule applies regardless of gameplay acceptance status and does not change the original CET restore and install contracts.
+
+See [the exact branch pin and workflow rule](CET-1.38.1-PUBLIC-PORT.md#native-asi-reuse-contract--2026-11-08).

@@ -5,14 +5,15 @@ permissions:
   contents: read
   actions: read
 
+# MANUAL ONLY. Editing Lua/C#/docs/tests never queues a CET C++ rebuild.
+# The verified, SHA256-pinned ASI remains the packaging input until deliberately changed.
 on:
   workflow_dispatch:
-  push:
-    branches: [ cyberpunk-2.5-cet-1.38.1 ]
-    paths:
-      - 'native-profiler-build/**'
 
 # Native rebuilds are separate from fast packaging: no main release updates.
+concurrency:
+  group: gcet-cp25-native-manual
+  cancel-in-progress: false
 
 jobs:
   rebuild:
@@ -21,6 +22,34 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Refuse rebuild without changed CET native generating inputs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:GITHUB_REF -ne 'refs/heads/cyberpunk-2.5-cet-1.38.1') {
+            throw '2.5 native rebuild only accepts its isolated 2.5 source branch.'
+          }
+          # This commit produced the currently pinned and successfully built ASI.
+          # Ordinary app/Lua/test/docs changes must NEVER trigger recompilation.
+          $nativeSourcePin = '8b7f743c3aa9874cc16c58b2efa4ce950f5b6a1f'
+          $nativeGeneratingInputs = @(
+            'native-profiler-build/v2.11.0/CETRuntimeProfiler.h',
+            'native-profiler-build/v2.11.0/Patch-CET-v1.37.1.ps1',
+            'native-profiler-build/v2.11.0/Patch-CET-HistoricalBuild.ps1',
+            'native-profiler-build/v2.11.0/Patch-CET-BuildDependencies.ps1',
+            'native-profiler-build/v2.11.0/Build-Profiler.ps1',
+            'native-profiler-build/v2.11.0/Check-Historical-Toolchain.ps1'
+          )
+          $changed = @(git diff --name-only $nativeSourcePin HEAD -- $nativeGeneratingInputs)
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot compare native generating inputs to pinned ASI source.' }
+          if ($changed.Count -eq 0) {
+            throw 'No native generating input changed since the pinned ASI. Refusing expensive CET recompilation.'
+          }
+          Write-Host 'Explicit native rebuild authorized by source changes:'
+          $changed | ForEach-Object { Write-Host "  $_" }
 
       - name: Rebuild native profiler from pinned CET source
         shell: pwsh
