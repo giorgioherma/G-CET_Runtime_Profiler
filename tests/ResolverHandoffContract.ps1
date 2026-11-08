@@ -8,14 +8,18 @@ $ErrorActionPreference = 'Stop'
 $PublishedRoot = (Resolve-Path $PublishedRoot).Path
 $exe = Join-Path $PublishedRoot 'G-CET-Runtime-Profiler.exe'
 $profilerPayload = Join-Path $PublishedRoot 'payload\cyber_engine_tweaks.PROFILER.dll'
-$awareScheduler = Join-Path $PublishedRoot 'payload\0-Engine\modules\CETProfilerScheduler.lua'
+$awareScheduler = Join-Path $PublishedRoot 'payload\0-Engine\modules\G-CET\Scheduler.lua'
 
 if (!(Test-Path -LiteralPath $exe -PathType Leaf)) { throw "Profiler executable not found: $exe" }
 if (!(Test-Path -LiteralPath $profilerPayload -PathType Leaf)) { throw "Profiler payload not found: $profilerPayload" }
 if (!(Test-Path -LiteralPath $awareScheduler -PathType Leaf)) { throw "Profiler-aware Scheduler payload not found: $awareScheduler" }
-$obsoleteSchedulerPayload = Join-Path $PublishedRoot 'payload\0-Engine\modules\Scheduler.lua'
-if (Test-Path -LiteralPath $obsoleteSchedulerPayload -PathType Leaf) { throw "Duplicated root Scheduler.lua payload is forbidden." }
-if (@(Get-ChildItem (Join-Path $PublishedRoot 'payload\0-Engine\modules') -File -Filter '*.lua').Count -ne 1) { throw "Expected exactly one bundled Lua Scheduler implementation." }
+foreach ($duplicate in @('Scheduler.lua', 'CETProfilerScheduler.lua')) {
+    $obsolete = Join-Path $PublishedRoot "payload\0-Engine\modules\$duplicate"
+    if (Test-Path -LiteralPath $obsolete -PathType Leaf) { throw "Duplicated $duplicate payload is forbidden." }
+}
+if (@(Get-ChildItem (Join-Path $PublishedRoot 'payload\0-Engine\modules') -Recurse -File -Filter '*.lua').Count -ne 1) {
+    throw "Expected exactly one bundled Lua Scheduler implementation."
+}
 
 function New-ResolverFixture([string]$Name, [bool]$WithZeroEngine = $true) {
     $root = Join-Path $env:RUNNER_TEMP $Name

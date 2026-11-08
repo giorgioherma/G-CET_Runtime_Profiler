@@ -136,7 +136,7 @@ jobs:
           $manifest = Get-Content MANIFEST.json -Raw | ConvertFrom-Json
           $checks = @(
             @{ Path = 'payload\cyber_engine_tweaks.PROFILER.dll'; Expected = [string]$manifest.targetCET.profilerSha256 },
-            @{ Path = 'payload\0-Engine\modules\CETProfilerScheduler.lua'; Expected = [string]$manifest.zeroEngine.profilerSchedulerSha256 }
+            @{ Path = 'payload\0-Engine\modules\G-CET\Scheduler.lua'; Expected = [string]$manifest.zeroEngine.profilerSchedulerSha256 }
           )
           foreach ($check in $checks) {
             $actual = (Get-FileHash -LiteralPath $check.Path -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -151,10 +151,12 @@ jobs:
         shell: pwsh
         run: |
           $modules = 'payload\0-Engine\modules'
-          if (Test-Path -LiteralPath (Join-Path $modules 'Scheduler.lua') -PathType Leaf) {
-            throw 'Do not package duplicate modules/Scheduler.lua.'
+          foreach ($duplicate in @('Scheduler.lua','CETProfilerScheduler.lua')) {
+            if (Test-Path -LiteralPath (Join-Path $modules $duplicate) -PathType Leaf) {
+              throw "Do not package duplicate $duplicate."
+            }
           }
-          if (@(Get-ChildItem -LiteralPath $modules -Filter '*.lua' -File).Count -ne 1) {
+          if (@(Get-ChildItem -LiteralPath $modules -Filter '*.lua' -File -Recurse).Count -ne 1) {
             throw 'Exactly one Lua Scheduler source must be packaged.'
           }
 
@@ -887,7 +889,7 @@ jobs:
             (Join-Path $productRoot 'G-CET-Runtime-Profiler.exe'),
             (Join-Path $productRoot 'MANIFEST.json'),
             (Join-Path $productRoot 'payload\cyber_engine_tweaks.PROFILER.dll'),
-            (Join-Path $productRoot 'payload\0-Engine\modules\CETProfilerScheduler.lua'),
+            (Join-Path $productRoot 'payload\0-Engine\modules\G-CET\Scheduler.lua'),
             (Join-Path $validation 'GCET_25_Validation\init.lua'),
             $instructions
           )

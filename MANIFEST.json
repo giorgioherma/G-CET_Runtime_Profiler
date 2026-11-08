@@ -13,7 +13,8 @@
     "profilerBridgeMarker": "CET_RUNTIME_PROFILER_ADAPTIVE_SCHEDULER_BEGIN v2",
     "profilerSchedulerSha256": "4030ef6d8fa743f7a4accf00406c2110f70162261232b564469d3eaa0b7c78cb",
     "profilerSchedulerVersion": "0.3.1 profiler-aware",
-    "profilerAdaptiveSchedulerFile": "modules/CETProfilerScheduler.lua"
+    "profilerSchedulerFile": "modules/G-CET/Scheduler.lua",
+    "legacyAdaptiveInstallFile": "modules/CETProfilerScheduler.lua"
   },
   "liveResultFiles": [
     "CET_Runtime_Profile_ByMod.csv",
@@ -49,6 +50,8 @@
     "0-Engine core-only mode is presented as a fallback only when safe Scheduler integration is unavailable or fails",
     "Core profiler fallback leaves the user's 0-Engine folder and Scheduler completely untouched and loaded normally",
     "recognized unintegrated/custom 0-Engine versions are patched transactionally using their own init.lua",
+    "one canonical payload/0-Engine/modules/G-CET/Scheduler.lua is hash verified; legacy live destinations reuse the same source without packaging duplicates",
+    "source-proven G-CET namespaced hosts reuse their actual Scheduler without a second onUpdate or init.lua mutation",
     "adaptive mode uses unique modules/CETProfilerScheduler.lua to avoid colliding with 0-Engine Scheduler.lua",
     "existing PASS/Scheduler-integrated 0-Engine keeps the proven Scheduler.lua swap path",
     "CETProfilerControls remains temporary profiler-owned UI and is removed on restore"

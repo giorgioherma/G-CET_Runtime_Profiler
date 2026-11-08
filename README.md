@@ -126,7 +126,7 @@ The user's `init.lua` stays untouched. If its Scheduler is not already profiler-
 
 ### Recognized unintegrated/custom 0-Engine
 
-The original `init.lua` is copied and hash-verified before a temporary adaptive profiler bridge is inserted. The package ships **one** verified Lua scheduler implementation (`payload/0-Engine/modules/CETProfilerScheduler.lua`): adaptive hosts deploy it to `modules/CETProfilerScheduler.lua`, preserving any user `Scheduler.lua`; recognized legacy integrated hosts temporarily deploy the same bytes at the existing `modules/Scheduler.lua` path and restore the original.
+The original `init.lua` is copied and hash-verified before a temporary adaptive profiler bridge is inserted. The package ships **one** canonical verified Lua scheduler (`payload/0-Engine/modules/G-CET/Scheduler.lua`). Original unintegrated hosts temporarily deploy it as `modules/CETProfilerScheduler.lua` and preserve any user `Scheduler.lua`; recognized legacy integrated hosts temporarily use `modules/Scheduler.lua` and restore the original. Source-proven G-CET namespaced hosts reuse their existing live scheduler and dispatch with no parallel worker or init.lua patch; an otherwise valid namespaced host missing its canonical module receives that one missing module, transactionally.
 
 ### Core-profiler fallback
 

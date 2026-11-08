@@ -682,9 +682,12 @@ public sealed class MainForm : Form
                     _ => "0-Engine: Present ✅"
                 };
 
-                var schedulerState = state.ZeroEngine.Mode == "adaptive"
-                    ? state.ZeroEngine.AdaptiveScheduler
-                    : state.ZeroEngine.Scheduler;
+                var schedulerState = state.ZeroEngine.Mode switch
+                {
+                    "adaptive" => state.ZeroEngine.AdaptiveScheduler,
+                    "namespaced" => state.ZeroEngine.NamespacedScheduler,
+                    _ => state.ZeroEngine.Scheduler
+                };
 
                 schedulerLine = HasSchedulerIntegrityFailure(snapshot)
                     ? "Scheduler: " + snapshot.Scheduler + " ❌"
@@ -815,6 +818,8 @@ public sealed class MainForm : Form
             "adaptive" => snapshot.ZeroEngineInitKind != "profiler-bridge" ||
                           !snapshot.AdaptiveProfilerSchedulerPresent,
             "integrated" => snapshot.ZeroEngineInitKind != "integrated" ||
+                            !snapshot.SchedulerProfilerAware,
+            "namespaced" => snapshot.ZeroEngineInitKind != "namespaced" ||
                             !snapshot.SchedulerProfilerAware,
             _ => false
         });

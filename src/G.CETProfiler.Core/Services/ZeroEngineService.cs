@@ -24,6 +24,12 @@ internal sealed class ZeroEngineService
         if (text.Contains(manifest.ZeroEngine.ProfilerBridgeMarker, StringComparison.Ordinal))
             return new ZeroFileState("profiler-bridge", "ADAPTIVE PROFILER BRIDGE PRESENT");
 
+        // The current Resolver runtime owns one namespaced Scheduler, with
+        // its own Update dispatch. Never install a second adaptive profiler
+        // scheduler alongside it.
+        if (IsNamespacedSchedulerIntegrated(paths.ZeroInit))
+            return new ZeroFileState("namespaced", "G-CET NAMESPACED SCHEDULER INTEGRATION");
+
         if (IsSchedulerIntegrated(paths.ZeroInit))
             return new ZeroFileState("integrated", "EXISTING SCHEDULER INTEGRATION");
 
@@ -35,26 +41,79 @@ internal sealed class ZeroEngineService
 
     public ZeroFileState GetSchedulerState(ProfilerPaths paths)
     {
-        var aware = manifest.ZeroEngine.ProfilerSchedulerSha256.ToLowerInvariant();
         if (!File.Exists(paths.ZeroScheduler))
             return new ZeroFileState("absent", "ABSENT - WILL ADD");
 
+        var source = File.ReadAllText(paths.ZeroScheduler);
+        var aware = HasProfilerSchedulerApi(source);
         var hash = FileSystemService.Sha256(paths.ZeroScheduler);
-        return string.Equals(hash, aware, StringComparison.OrdinalIgnoreCase)
-            ? new ZeroFileState("aware", "PROFILER-AWARE", hash)
-            : new ZeroFileState("other", "PRESENT - WILL BACKUP + REPLACE", hash);
+        return aware
+            ? new ZeroFileState("aware", "PROFILER-AWARE (SOURCE-VERIFIED)", hash)
+            : new ZeroFileState("other", "SCHEDULER NEEDS PROFILER BRIDGE - BACKUP BEFORE REPLACE", hash);
+    }
+
+    public ZeroFileState GetNamespacedSchedulerState(ProfilerPaths paths)
+    {
+        if (!File.Exists(paths.ZeroNamespacedScheduler))
+            return new ZeroFileState("absent", "G-CET CANONICAL SCHEDULER MISSING");
+
+        var source = File.ReadAllText(paths.ZeroNamespacedScheduler);
+        var hash = FileSystemService.Sha256(paths.ZeroNamespacedScheduler);
+        return HasProfilerSchedulerApi(source)
+            ? new ZeroFileState("aware", "CANONICAL G-CET SCHEDULER PROFILER-AWARE", hash)
+            : new ZeroFileState("other", "CANONICAL SCHEDULER MISSING PROFILER HOOKS", hash);
+    }
+
+    public bool IsNamespacedSchedulerIntegrated(string initPath)
+    {
+        if (!File.Exists(initPath)) return false;
+        var source = File.ReadAllText(initPath);
+        // Require the actual imported module AND a dispatch path; merely
+        // having a namespace string in an unrelated comment is insufficient.
+        var required = Regex.IsMatch(source,
+            @"require\s*\(\s*['""]modules/G-CET/Scheduler['""]\s*\)",
+            RegexOptions.CultureInvariant);
+        var hostAdapter = source.Contains("-- G-CET namespaced scheduler compatibility v1",
+                StringComparison.Ordinal) &&
+            source.Contains("modules/G-CET/Scheduler", StringComparison.Ordinal) &&
+            source.Contains("__scheduler.Update", StringComparison.Ordinal) &&
+            (source.Contains("__gcetScheduleDriver", StringComparison.Ordinal) ||
+             source.Contains("registerForEvent(\"onUpdate\"", StringComparison.Ordinal));
+        var directRuntime = required &&
+            Regex.IsMatch(source, @"\bScheduler\.(?:Init|Update)\s*\(",
+                RegexOptions.CultureInvariant) &&
+            source.Contains("Scheduler.Update", StringComparison.Ordinal);
+        return hostAdapter || directRuntime;
     }
 
     public ZeroFileState GetAdaptiveSchedulerState(ProfilerPaths paths)
     {
-        var aware = manifest.ZeroEngine.ProfilerSchedulerSha256.ToLowerInvariant();
         if (!File.Exists(paths.ZeroAdaptiveScheduler))
             return new ZeroFileState("absent", "WILL ADD CETProfilerScheduler");
 
+        var source = File.ReadAllText(paths.ZeroAdaptiveScheduler);
+        var aware = HasProfilerSchedulerApi(source);
         var hash = FileSystemService.Sha256(paths.ZeroAdaptiveScheduler);
-        return string.Equals(hash, aware, StringComparison.OrdinalIgnoreCase)
-            ? new ZeroFileState("aware", "CETProfilerScheduler READY", hash)
-            : new ZeroFileState("other", "CUSTOM CETProfilerScheduler - WILL BACKUP", hash);
+        return aware
+            ? new ZeroFileState("aware", "CETProfilerScheduler READY (SOURCE-VERIFIED)", hash)
+            : new ZeroFileState("other", "CETProfilerScheduler NEEDS PROFILER BRIDGE - BACKUP BEFORE REPLACE", hash);
+    }
+
+    private static bool HasProfilerSchedulerApi(string source)
+    {
+        // The profiler manager must recognize customized Scheduler files with
+        // the same runtime measurement integration. A released-file digest is
+        // irrelevant to whether the methods are implemented.
+        return Regex.IsMatch(source,
+                   @"\bfunction\s+Scheduler\.Init\s*\(", RegexOptions.CultureInvariant) &&
+               Regex.IsMatch(source,
+                   @"\bfunction\s+Scheduler\.Update\s*\(", RegexOptions.CultureInvariant) &&
+               source.Contains("CETProfilerIsRunning", StringComparison.Ordinal) &&
+               source.Contains("CETProfilerSchedulerRegisterJob", StringComparison.Ordinal) &&
+               source.Contains("CETProfilerSchedulerFrameBegin", StringComparison.Ordinal) &&
+               source.Contains("CETProfilerSchedulerFrameEnd", StringComparison.Ordinal) &&
+               source.Contains("CETProfilerSchedulerJobBegin", StringComparison.Ordinal) &&
+               source.Contains("CETProfilerSchedulerJobEnd", StringComparison.Ordinal);
     }
 
     public bool IsSchedulerIntegrated(string initPath)
