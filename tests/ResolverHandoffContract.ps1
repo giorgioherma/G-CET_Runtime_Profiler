@@ -147,6 +147,106 @@ Assert-Equal ((Get-FileHash (Join-Path $adaptive.Zero 'init.lua') -Algorithm SHA
 Assert-Equal ((Get-FileHash (Join-Path $adaptive.Zero 'modules\Scheduler.lua') -Algorithm SHA256).Hash) $adaptiveSchedulerOriginal 'Adaptive restore changed the user Scheduler.lua.'
 Assert-False (Test-Path -LiteralPath (Join-Path $adaptive.Zero 'modules\CETProfilerScheduler.lua') -PathType Leaf) 'Adaptive restore left the profiler-only Scheduler bridge behind.'
 
+
+Write-Host 'Resolver contract: existing canonical namespaced Scheduler is reused without a second dispatcher'
+$namespaced = New-ResolverFixture 'gcet-resolver-namespaced'
+$namedInit = @'
+local Engine = {}
+-- G-CET namespaced scheduler compatibility v1
+local __scheduler = require('modules/G-CET/Scheduler')
+local __gcetScheduleDriver = true
+registerForEvent("onUpdate", function(dt) __scheduler.Update(dt) end)
+return Engine
+'@
+$namedInit | Set-Content -LiteralPath (Join-Path $namespaced.Zero 'init.lua') -Encoding utf8
+New-Item -ItemType Directory -Force (Join-Path $namespaced.Zero 'modules\G-CET') | Out-Null
+$namespacedCanonical = Join-Path $namespaced.Zero 'modules\G-CET\Scheduler.lua'
+$namespacedAlias = Join-Path $namespaced.Zero 'modules\Scheduler.lua'
+Copy-Item -LiteralPath $awareScheduler -Destination $namespacedCanonical
+Add-Content -LiteralPath $namespacedCanonical -Value '-- user-modified but profiler-aware: preserve this exact source'
+"return require('modules/G-CET/Scheduler')" | Set-Content -LiteralPath $namespacedAlias -Encoding utf8
+$namedInitHash = (Get-FileHash (Join-Path $namespaced.Zero 'init.lua') -Algorithm SHA256).Hash
+$namedCanonicalHash = (Get-FileHash $namespacedCanonical -Algorithm SHA256).Hash
+$namedAliasHash = (Get-FileHash $namespacedAlias -Algorithm SHA256).Hash
+Assert-False ($namedCanonicalHash -eq (Get-FileHash $awareScheduler -Algorithm SHA256).Hash) 'Namespaced fixture must verify non-hash-locked custom source.'
+$namedBefore = Read-Status $namespaced
+Assert-Equal $namedBefore.zeroEngineInitKind 'namespaced' 'Namespaced host was not detected by its actual dispatch.'
+Assert-True ([bool]$namedBefore.schedulerProfilerAware) 'Custom source with real profiler hooks was not recognized.'
+$namedInstall = Install-Normal $namespaced
+Assert-Equal $namedInstall.managedMode 'namespaced' 'Namespaced host was misclassified after INSTALL.'
+Assert-Equal $namedInstall.state.zeroEngine.namespacedScheduler.mode 'preexisting-profiler' 'Existing namespaced Scheduler was claimed as profiler-owned.'
+Assert-Equal $namedInstall.state.zeroEngine.init.mode 'left-untouched' 'Namespaced host init was not preserved.'
+Assert-Equal (Get-FileHash (Join-Path $namespaced.Zero 'init.lua') -Algorithm SHA256).Hash $namedInitHash 'Namespaced init.lua was modified.'
+Assert-Equal (Get-FileHash $namespacedCanonical -Algorithm SHA256).Hash $namedCanonicalHash 'Namespaced canonical Scheduler was overwritten.'
+Assert-Equal (Get-FileHash $namespacedAlias -Algorithm SHA256).Hash $namedAliasHash 'Namespaced root alias was overwritten.'
+Assert-False (Test-Path (Join-Path $namespaced.Zero 'modules\CETProfilerScheduler.lua') -PathType Leaf) 'Namespaced host got an extra adaptive Scheduler.'
+Assert-False (Test-Path (Join-Path $namespaced.StateRoot '0-Engine.NamespacedScheduler.ORIGINAL.lua') -PathType Leaf) 'Existing namespaced Scheduler was unnecessarily backed up for replacement.'
+$namedRestore = Restore-Normal $namespaced
+Assert-False ([bool]$namedRestore.status.managed) 'Namespaced restore left managed state behind.'
+Assert-Equal (Get-FileHash (Join-Path $namespaced.Zero 'init.lua') -Algorithm SHA256).Hash $namedInitHash 'Namespaced restore changed init.'
+Assert-Equal (Get-FileHash $namespacedCanonical -Algorithm SHA256).Hash $namedCanonicalHash 'Namespaced restore changed the canonical Scheduler.'
+Assert-Equal (Get-FileHash $namespacedAlias -Algorithm SHA256).Hash $namedAliasHash 'Namespaced restore changed the root alias.'
+
+Write-Host 'Resolver contract: partial namespaced host receives only its missing canonical Scheduler'
+$namedPartial = New-ResolverFixture 'gcet-resolver-namespaced-partial'
+$namedInit | Set-Content -LiteralPath (Join-Path $namedPartial.Zero 'init.lua') -Encoding utf8
+$partialInitHash = (Get-FileHash (Join-Path $namedPartial.Zero 'init.lua') -Algorithm SHA256).Hash
+$partialAlias = Join-Path $namedPartial.Zero 'modules\Scheduler.lua'
+"return require('modules/G-CET/Scheduler')" | Set-Content -LiteralPath $partialAlias -Encoding utf8
+$partialAliasHash = (Get-FileHash $partialAlias -Algorithm SHA256).Hash
+$partialCanonical = Join-Path $namedPartial.Zero 'modules\G-CET\Scheduler.lua'
+$partialBefore = Read-Status $namedPartial
+Assert-Equal $partialBefore.zeroEngineInitKind 'namespaced' 'Missing canonical worker did not retain host source recognition.'
+Assert-False ([bool]$partialBefore.schedulerPresent) 'Missing canonical worker was incorrectly reported present due to root alias.'
+$partialInstall = Install-Normal $namedPartial
+Assert-Equal $partialInstall.managedMode 'namespaced' 'Partial namespaced host selected wrong mode.'
+Assert-Equal $partialInstall.state.zeroEngine.namespacedScheduler.mode 'added' 'Missing canonical source was not recorded as added.'
+Assert-True ([bool]$partialInstall.schedulerProfilerAware) 'Newly deployed namespaced Scheduler not recognized.'
+Assert-Equal (Get-FileHash $partialCanonical -Algorithm SHA256).Hash (Get-FileHash $awareScheduler -Algorithm SHA256).Hash 'Wrong Scheduler source deployed into the namespaced import.'
+Assert-Equal (Get-FileHash $partialAlias -Algorithm SHA256).Hash $partialAliasHash 'Partial host compatibility alias was changed.'
+Assert-Equal (Get-FileHash (Join-Path $namedPartial.Zero 'init.lua') -Algorithm SHA256).Hash $partialInitHash 'Partial host init.lua was changed.'
+Assert-False (Test-Path (Join-Path $namedPartial.Zero 'modules\CETProfilerScheduler.lua') -PathType Leaf) 'Partial host was given a duplicate CET callback owner.'
+Remove-Item -LiteralPath $partialCanonical -Force
+$partialMissing = Read-Status $namedPartial
+Assert-Equal $partialMissing.scheduler 'LIVE G-CET/Scheduler.lua MISSING' 'Live removal of canonical Scheduler was not detected.'
+Assert-False ([bool]$partialMissing.schedulerProfilerAware) 'Live removal still reported profiler-aware.'
+$partialRestore = Restore-Normal $namedPartial
+Assert-False (Test-Path $partialCanonical -PathType Leaf) 'Restore did not remove profiler-added canonical Scheduler.'
+Assert-Equal (Get-FileHash $partialAlias -Algorithm SHA256).Hash $partialAliasHash 'Restore changed the partial host alias.'
+Assert-Equal (Get-FileHash (Join-Path $namedPartial.Zero 'init.lua') -Algorithm SHA256).Hash $partialInitHash 'Restore changed the partial host init.'
+
+Write-Host 'Resolver contract: unsafe namespaced Scheduler source drift fails closed'
+$namedDrift = New-ResolverFixture 'gcet-resolver-namespaced-drift'
+$namedInit | Set-Content -LiteralPath (Join-Path $namedDrift.Zero 'init.lua') -Encoding utf8
+New-Item -ItemType Directory -Force (Join-Path $namedDrift.Zero 'modules\G-CET') | Out-Null
+$driftCanonical = Join-Path $namedDrift.Zero 'modules\G-CET\Scheduler.lua'
+'return { Update = function() end } -- missing profile measurement hooks' |
+    Set-Content -LiteralPath $driftCanonical -Encoding utf8
+$driftHash = (Get-FileHash $driftCanonical -Algorithm SHA256).Hash
+$driftOut = (& $exe --install --game $namedDrift.Root --json 2>&1 | Out-String)
+if ($driftOut -notmatch 'lacks required profiler hooks') {
+    throw "Unsafe namespaced Scheduler was not rejected: $driftOut"
+}
+Assert-Equal (Get-FileHash $driftCanonical -Algorithm SHA256).Hash $driftHash 'Unsafe namespaced Scheduler was overwritten.'
+Assert-False (Test-Path -LiteralPath $namedDrift.StateRoot -PathType Container) 'Unsafe namespaced install left a managed transaction behind.'
+
+Write-Host 'Resolver contract: failed install rolls back newly added namespaced Scheduler'
+$namedAbort = New-ResolverFixture 'gcet-resolver-namespaced-abort'
+$namedInit | Set-Content -LiteralPath (Join-Path $namedAbort.Zero 'init.lua') -Encoding utf8
+$abortCanonical = Join-Path $namedAbort.Zero 'modules\G-CET\Scheduler.lua'
+$abortInitHash = (Get-FileHash (Join-Path $namedAbort.Zero 'init.lua') -Algorithm SHA256).Hash
+# Block the controls directory only after the canonical Scheduler deployment
+# so that transaction rollback must clean up the newly added worker.
+'prevent controls directory creation' |
+    Set-Content -LiteralPath (Join-Path $namedAbort.Mods 'CETProfilerControls') -Encoding utf8
+$abortOut = (& $exe --install --game $namedAbort.Root --json 2>&1 | Out-String)
+if ($abortOut -notmatch 'error|fail|exists|directory') {
+    throw "Expected an intentional controls-directory failure: $abortOut"
+}
+Assert-False (Test-Path $abortCanonical -PathType Leaf) 'Failed install leaked profiler-added namespaced Scheduler.'
+Assert-Equal (Get-FileHash (Join-Path $namedAbort.Zero 'init.lua') -Algorithm SHA256).Hash $abortInitHash 'Failed install changed original namespaced init.'
+Assert-False (Test-Path -LiteralPath $namedAbort.StateRoot -PathType Container) 'Failed install left managed state behind.'
+
 Write-Host 'Resolver contract: integrated handoff must preserve init.lua and transactionally swap Scheduler.lua'
 $integrated = New-ResolverFixture 'gcet-resolver-integrated'
 @'
@@ -200,6 +300,9 @@ Mod.Schedule = {}
 return Engine
 '@ | Set-Content -LiteralPath (Join-Path $aware.Zero 'init.lua') -Encoding utf8
 Copy-Item -LiteralPath $awareScheduler -Destination (Join-Path $aware.Zero 'modules\Scheduler.lua')
+Add-Content -LiteralPath (Join-Path $aware.Zero 'modules\Scheduler.lua') -Value '-- a safe source-level variation preserving all hooks'
+$customAwareHash = (Get-FileHash (Join-Path $aware.Zero 'modules\Scheduler.lua') -Algorithm SHA256).Hash
+Assert-False ($customAwareHash -eq $awareSchedulerHash) 'Source-level recognition requires a non-identical Scheduler fixture.'
 
 $awareInitOriginal = (Get-FileHash (Join-Path $aware.Zero 'init.lua') -Algorithm SHA256).Hash
 $awareBefore = Read-Status $aware
@@ -209,12 +312,12 @@ $awareInstall = Install-Normal $aware
 Assert-Equal $awareInstall.managedMode 'integrated' 'Profiler-aware integrated fixture changed resolver mode.'
 Assert-Equal $awareInstall.state.zeroEngine.scheduler.mode 'preexisting-profiler' 'Pre-existing profiler-aware Scheduler should not be claimed as replaced.'
 Assert-Equal ((Get-FileHash (Join-Path $aware.Zero 'init.lua') -Algorithm SHA256).Hash) $awareInitOriginal 'Profiler-aware integrated install changed init.lua.'
-Assert-Equal ((Get-FileHash (Join-Path $aware.Zero 'modules\Scheduler.lua') -Algorithm SHA256).Hash) $awareSchedulerHash 'Profiler-aware Scheduler changed unexpectedly.'
+Assert-Equal ((Get-FileHash (Join-Path $aware.Zero 'modules\Scheduler.lua') -Algorithm SHA256).Hash) $customAwareHash 'Profiler-aware Scheduler changed unexpectedly.'
 Assert-False (Test-Path -LiteralPath (Join-Path $aware.StateRoot '0-Engine.Scheduler.ORIGINAL.lua') -PathType Leaf) 'Profiler-aware Scheduler unexpectedly received a replacement backup.'
 
 $awareRestore = Restore-Normal $aware
 Assert-False ([bool]$awareRestore.status.managed) 'Profiler-aware restore left managed state active.'
-Assert-Equal ((Get-FileHash (Join-Path $aware.Zero 'modules\Scheduler.lua') -Algorithm SHA256).Hash) $awareSchedulerHash 'Profiler-aware Scheduler changed during restore.'
+Assert-Equal ((Get-FileHash (Join-Path $aware.Zero 'modules\Scheduler.lua') -Algorithm SHA256).Hash) $customAwareHash 'Profiler-aware Scheduler changed during restore.'
 
 Write-Host 'Resolver contract: pre-existing adaptive bridge marker is recognized without rewriting init.lua'
 $bridge = New-ResolverFixture 'gcet-resolver-bridge'
