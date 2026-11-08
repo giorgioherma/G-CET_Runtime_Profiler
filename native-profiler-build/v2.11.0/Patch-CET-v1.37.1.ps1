@@ -489,32 +489,53 @@ CETRuntimeProfiler::Counter* ResolveProfilerCounter(
     if (!profiler.IsCapturing())
         return nullptr;
 
-    // Never push an environment whose reference has no Lua state.
-    if (!apContext->Environment.lua_state())
+    // Source ownership belongs to the Lua callback function itself. CET's
+    // sol::this_environment metadata can be a different/default environment
+    // when Observe/Override is invoked through pcall(), including delayed
+    // onInit registrations. The callback's Lua 5.1 function environment
+    // survives that indirection and contains the originating mod's __logger.
+    // Never inspect it at registration: only under CET's execution state lock.
+    if (!apContext->ScriptFunction.lua_state())
         return nullptr;
 
     std::string modName = "<unknown>";
+    const auto readOwner = [&](const sol::environment& env)
+    {
+        if (!env.valid() || !env.lua_state())
+            return;
+        const sol::object loggerObject = env["__logger"];
+        if (!loggerObject.valid() ||
+            !loggerObject.is<std::shared_ptr<spdlog::logger>>())
+            return;
+        const auto logger =
+            loggerObject.as<std::shared_ptr<spdlog::logger>>();
+        if (logger && !logger->name().empty())
+            modName = logger->name();
+    };
 
-    // This executes only from CET callback execution paths after
-    // GetLockedState() has established a live Lua state.
-    // A live lua_State does not guarantee that __logger exists or has
-    // the expected sol type. Never let diagnostic ownership lookup bring
-    // down the game when capture is enabled. Unknown is still profileable.
     try
     {
-        const sol::object loggerObject = apContext->Environment["__logger"];
-        if (loggerObject.valid() &&
-            loggerObject.is<std::shared_ptr<spdlog::logger>>())
-        {
-            const auto logger =
-                loggerObject.as<std::shared_ptr<spdlog::logger>>();
-            if (logger)
-                modName = logger->name();
-        }
+        const sol::environment functionEnvironment =
+            sol::get_environment(apContext->ScriptFunction);
+        readOwner(functionEnvironment);
     }
     catch (const std::exception&)
     {
-        // Profiler metadata is best-effort; preserve actual callback execution.
+        // Optional source metadata must not prevent an executing callback.
+    }
+
+    // Some CET-created callbacks do not carry a Lua-owned function
+    // environment. Retain the previously supported Context fallback.
+    if (modName == "<unknown>" && apContext->Environment.lua_state())
+    {
+        try
+        {
+            readOwner(apContext->Environment);
+        }
+        catch (const std::exception&)
+        {
+            // Preserve actual callback execution and report unknown owner.
+        }
     }
 
     return profiler.ResolveCallback(apContext, modName);

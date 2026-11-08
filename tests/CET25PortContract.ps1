@@ -33,6 +33,9 @@ Must ([regex]::Matches($foC, 'ResolveProfilerCounter\(call').Count -eq 3) 'Exact
 
 # Ownership stays lazy and capture-gated. No Lua environment reads at hook registration.
 Must ($foC.Contains('if (!profiler.IsCapturing())')) 'Capture-off ownership bypass missing.'
+Must ($foC.Contains('sol::get_environment(apContext->ScriptFunction)')) 'Real callback function environment ownership lookup missing.'
+Must ($foC.Contains('readOwner(apContext->Environment)')) 'Safe CET Context fallback for callbacks without function environment missing.'
+Must ($foC.Contains('if (!apContext->ScriptFunction.lua_state())')) 'Callback environment must be checked for valid Lua state before read.'
 $regMatch = [regex]::Match($foC, '(?s)pContext->Forward = !aAbsolute;(.{0,800}?)pEntry->Overrides')
 Must ($regMatch.Success) 'Hook registration metadata sequence missing.'
 Must (!$regMatch.Groups[1].Value.Contains('["__logger"]')) 'Hook registration dereferences a Lua environment before execution.'
