@@ -19,7 +19,9 @@ on:
       - 'Directory.Build.props'
       - 'tests/CET25PortContract.ps1'
       - 'tests/ResolverHandoffContract.ps1'
+      - 'tests/ProfilerTimedCaptureLuaContract.lua'
       - 'payload/0-Engine/**'
+      - 'payload/CETProfilerControls/**'
 
 concurrency:
   group: cp25-portable-${{ github.ref }}
