@@ -414,6 +414,7 @@ jobs:
           $bindingsAfterInstall = Get-Content -LiteralPath (Join-Path $cet 'bindings.json') -Raw | ConvertFrom-Json
           if ([int64]$bindingsAfterInstall.CETProfilerControls.CETProfiler_Toggle -ne 123) { throw 'Install overwrote the user CET capture binding.' }
           if ([int64]$bindingsAfterInstall.CETProfilerControls.CETProfiler_Dump -ne 456) { throw 'Install rewrote unrelated existing CETProfilerControls bindings.' }
+          if ([int64]$bindingsAfterInstall.CETProfilerControls.CETProfiler_Police60 -ne 34058472181989376) { throw 'Installer did not seed the 120-second F10 capture alongside a custom F11.' }
 
           # Every user-owned file/folder G-CET itself mutates still gets a verified
           # original backup before the live mutation is accepted.
@@ -606,6 +607,7 @@ jobs:
           $bindings = Get-Content -LiteralPath (Join-Path $cet 'bindings.json') -Raw | ConvertFrom-Json
           if ([int64]$bindings.CETProfilerControls.CETProfiler_Toggle -ne 123) { throw 'Restore changed the user CET capture binding.' }
           if ([int64]$bindings.CETProfilerControls.CETProfiler_Dump -ne 456) { throw 'Restore changed unrelated CETProfilerControls binding data.' }
+          if ([int64]$bindings.CETProfilerControls.CETProfiler_Police60 -ne 34058472181989376) { throw 'Restore changed CET-owned F10 capture binding.' }
           if ([int64]$bindings.OtherMod.SomeBinding -ne 77) { throw 'Restore changed unrelated CET binding data.' }
           if (Test-Path -LiteralPath (Join-Path $plugins '.cet_runtime_profiler')) { throw 'Managed state directory remained after restore.' }
 
