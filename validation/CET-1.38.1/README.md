@@ -9,7 +9,7 @@ This temporary mod is **not part of the public profiler runtime**. It independen
 3. Launch Cyberpunk 2.5, load a save, and enable a manual profiler capture (existing F11 toggle).
 4. Play for 2–3 minutes: walking/movement, vehicle entering or driving, and combat if practical.
 5. Press the profiler toggle to stop/export, then collect through the G-CET manager.
-6. The fixture writes `CET_Runtime_Profile_Validation_Counters.csv` beside CET's normal native CSVs, so the manager's existing `CET_Runtime_Profile_*.csv` collection pattern collects it.
+6. The fixture records bounded `GCET25_V1_*` counter snapshots in the native `CET_Runtime_Profile_Markers.csv`. Use the first marker after F11 as baseline; compare snapshot deltas to capture-scoped profiler results.
 7. Remove this fixture mod after testing.
 
 The fixture never edits a gameplay value. Its `Override.PlayerPuppet::IsInCombat` hook calls the original method and returns its original result.
@@ -38,3 +38,7 @@ This fixture counts full mod runtime, whereas native profiler counts only **capt
 - Native event/timeline/spike/Scheduler CSV formats and existing controls stay unchanged.
 
 This fixture does not prove game-wide overhead or all third-party mod behavior. Report those as separate gameplay checks.
+
+## Independent 0-Engine Scheduler probe
+
+For the final 0-Engine integration test, use the standalone `GCET_25_SchedulerProbe/` CET mod, **not** incompatible 2.31-dependent gameplay mods. Read [the Scheduler probe instructions](GCET_25_SchedulerProbe/README.md). It creates three initial Scheduler jobs and two capture-scoped jobs, emits independent native counter checkpoints, and tests cancellation, pause/resume, repeat capture and cleanup. It does not edit 0-Engine files. This is a manual test fixture and **must be removed before publishing to Nexus**.

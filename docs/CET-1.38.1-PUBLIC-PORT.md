@@ -62,3 +62,7 @@ The optional GCET_25_Validation mod now exports independent callback-count check
 - Native source and managed package builds are separate operations. Source checking, static contracts, and .NET-only tests should run without a native rebuild. Native compile success and gameplay safety are distinct evidence, but they do not require repeated recompilation of unchanged source.
 
 **The native ASI is not a routine CI output. Reuse the already-built verified bytes.**
+
+## 2026-11-08 final 0-Engine Scheduler gameplay test
+
+The first 2.5 modded capture verified correct named CET callback attribution but did not contain Scheduler-registered 0-Engine jobs. Existing 2.31-dependent gameplay mods are not used to validate the 2.5 port. A separate test-only mod, `validation/CET-1.38.1/GCET_25_SchedulerProbe/`, registers five known jobs through `GetMod("0-Engine")` / the host's scoped Scheduler API and emits independent periodic marker counters. It has no gameplay hooks and never modifies 0-Engine source. Two jobs register when capturing starts so their execution is guaranteed to be inside the test window; pause/resume, cancellation, repeated F11 captures and cleanup are independently checked. Its real-Scheduler Lua regression runs in the portable workflow before the managed package build. The optional fixture is staged beside the manager, not installed automatically. See `validation/CET-1.38.1/GCET_25_SchedulerProbe/README.md` for installation and interpretation. Only an actual game capture proves runtime integration; no native ASI rebuild is involved.

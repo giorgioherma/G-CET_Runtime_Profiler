@@ -18,6 +18,7 @@ on:
       - 'VERSION.txt'
       - 'Directory.Build.props'
       - 'tests/CET25PortContract.ps1'
+      - 'tests/CET25SchedulerProbeContract.lua'
       - 'tests/ResolverHandoffContract.ps1'
       - 'tests/ProfilerTimedCaptureLuaContract.lua'
       - 'payload/0-Engine/**'
@@ -28,7 +29,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  scheduler-probe-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lua 5.4 for standalone Scheduler regression
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq lua5.4
+      - name: Verify 0-Engine Scheduler probe against the exact packaged Scheduler source
+        run: lua5.4 tests/CET25SchedulerProbeContract.lua payload/0-Engine/modules/G-CET/Scheduler.lua
+
   build:
+    needs: scheduler-probe-contract
     runs-on: windows-latest
     timeout-minutes: 120
 
@@ -891,6 +903,13 @@ jobs:
           if ($bridge -notmatch 'if __CETRP_AuthorOnUpdate == nil') {
             throw 'Composed dispatcher lost original-zero-handler fallback'
           }
+          $schedulerProbe = Get-Content 'validation/CET-1.38.1/GCET_25_SchedulerProbe/init.lua' -Raw
+          if ($schedulerProbe -match 'io\.open\(' -or
+              $schedulerProbe -notmatch 'GetMod, "0-Engine"' -or
+              $schedulerProbe -notmatch 'GCET25_SCHED_V1_F10_' -or
+              $schedulerProbe -notmatch 'cleanCaptureJobs\(\)') {
+            throw 'Standalone Scheduler probe lost ownership, checkpoints or safe cleanup'
+          }
           $validation = Get-Content 'validation/CET-1.38.1/GCET_25_Validation/init.lua' -Raw
           if ($validation -match '(?m)^\s*local\s+fh\s*=|io\.open\(') {
             throw 'Validation fixture still uses unsupported sandbox filesystem IO'
@@ -925,6 +944,7 @@ jobs:
             (Join-Path $productRoot 'payload\cyber_engine_tweaks.PROFILER.dll'),
             (Join-Path $productRoot 'payload\0-Engine\modules\G-CET\Scheduler.lua'),
             (Join-Path $validation 'GCET_25_Validation\init.lua'),
+            (Join-Path $validation 'GCET_25_SchedulerProbe\init.lua'),
             $instructions
           )
           foreach ($file in $required) {
