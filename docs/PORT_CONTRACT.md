@@ -9,9 +9,10 @@ Future changes should preserve these behavioral invariants unless the standalone
 ## Invariants
 
 - Guided two-page standalone workflow: SETUP, then INSTALL -> CAPTURE -> RESTORE.
-- One CET input, default F11.
-- F11 #1 starts a fresh capture.
-- F11 #2 stops capture and automatically exports CSV results.
+- Two independent CET capture controls: unrestricted manual F11 and optional F10 COMBAT-POLICE-120 auto-stop. Existing user assignments remain authoritative.
+- F11 #1 starts a fresh capture; F11 #2 stops and automatically exports CSV results.
+- F10 starts a new 120-second native-clock capture and automatically stops/exports; a second press while capturing does not restart it.
+- The live capture HUD shows elapsed time; scenario/heap checkpoints share the existing profiler callback and marker API.
 - No separate F12 export action.
 - CET owns its own binding and its own result lifecycle.
 - Native profiler live output remains in the normal CET location until `Collect`.
@@ -21,7 +22,7 @@ Future changes should preserve these behavioral invariants unless the standalone
 - Install/restore state is game-side under `bin/x64/plugins/.cet_runtime_profiler/` and survives application restart.
 - Exact original CET ASI / 0-Engine files are backed up before changes and hash-verified.
 - Existing Scheduler-integrated 0-Engine uses the known scheduler path.
-- Recognized unintegrated/custom 0-Engine gets the temporary profiler bridge + `CETProfilerScheduler.lua` path.
+- Recognized unintegrated/custom 0-Engine gets a v3 composed bridge + temporary `CETProfilerScheduler.lua`; the original onUpdate handler and Scheduler tick use one CET registration. Obsolete v2 bridges must be restored first.
 - Core-only mode leaves 0-Engine completely untouched and is presented as a fallback only when normal Scheduler integration is unavailable or fails safely.
 - Restore uses the verified original backups for G-CET-managed files.
 - CET keybinds are user-controlled. F11 is seeded only when no existing `CETProfiler_Toggle` binding exists, and restore leaves the current binding untouched.
