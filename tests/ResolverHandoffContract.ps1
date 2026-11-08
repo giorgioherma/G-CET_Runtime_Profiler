@@ -131,7 +131,7 @@ $adaptiveMissing = Read-Status $adaptive
 Assert-True ([bool]$adaptiveMissing.managed) 'Missing live Scheduler unexpectedly cleared the transaction.'
 Assert-False ([bool]$adaptiveMissing.adaptiveProfilerSchedulerPresent) 'Missing live Scheduler was reported as present.'
 Assert-Equal $adaptiveMissing.scheduler 'LIVE CETProfilerScheduler.lua MISSING' 'Missing live Scheduler was not diagnosed.'
-$verifiedAdaptivePayload = Join-Path $PublishedRoot 'payload\0-Engine\modules\CETProfilerScheduler.lua'
+$verifiedAdaptivePayload = $awareScheduler
 Copy-Item -LiteralPath $verifiedAdaptivePayload -Destination $adaptiveLiveProfilerScheduler -Force
 $adaptiveReverified = Read-Status $adaptive
 Assert-True ([bool]$adaptiveReverified.adaptiveProfilerSchedulerPresent) 'Restored Scheduler was not recognized from live SHA256.'
