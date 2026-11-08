@@ -887,6 +887,14 @@ jobs:
           if ($bridge -notmatch 'if __CETRP_AuthorOnUpdate == nil') {
             throw 'Composed dispatcher lost original-zero-handler fallback'
           }
+          $validation = Get-Content 'validation/CET-1.38.1/GCET_25_Validation/init.lua' -Raw
+          if ($validation -match '(?m)^\s*local\s+fh\s*=|io\.open\(') {
+            throw 'Validation fixture still uses unsupported sandbox filesystem IO'
+          }
+          if ($validation -notmatch 'GCET25_V1_BEFORE_' -or
+              $validation -notmatch 'pcall\(CETProfilerMark, label\)') {
+            throw 'Independent validation callback marker snapshots not present'
+          }
 
       - name: Alpha6b resolver and handoff regression contract
         shell: pwsh

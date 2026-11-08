@@ -21,49 +21,41 @@ local function hit(key)
     row.last = elapsed
 end
 
+-- CET's mod sandbox has no io.open or debug.getinfo. Use the profiler's
+-- existing native markers for independent, capture-scoped checkpoints.
+-- This is a test mod only; it is not installed by the standalone manager.
+local snapshotCount = 0
+local MAX_SNAPSHOTS = 90
+
+local function count(name)
+    return rows[name] and rows[name].calls or 0
+end
+
 local function save()
-    local names = {}
-    for k in pairs(rows) do names[#names + 1] = k end
-    for k in pairs(registered) do
-        if not rows[k] then names[#names + 1] = k end
-    end
-    table.sort(names)
+    if snapshotCount >= MAX_SNAPSHOTS or
+        type(CETProfilerMark) ~= "function" or
+        type(CETProfilerIsRunning) ~= "function" then return end
+    local runningOK, running = pcall(CETProfilerIsRunning)
+    if not runningOK or not running then return end
 
-    -- Locate the real CET root from this mod's source path, independently
-    -- of the game's working directory. Fallback to the CET process cwd.
-    local target = "CET_Runtime_Profile_Validation_Counters.csv"
-    if debug and debug.getinfo then
-        local ok, info = pcall(debug.getinfo, 1, "S")
-        if ok and info and type(info.source) == "string" then
-            local source = info.source:gsub("^@", ""):gsub("\\", "/")
-            local cet = source:match("^(.-)/mods/[^/]+/init%.lua$")
-            if cet then target = cet .. "/" .. target end
-        end
+    local errorCount = 0
+    for _ in pairs(errors) do errorCount = errorCount + 1 end
+    -- The first marker after F11 is the baseline. Subtract successive labels
+    -- to verify native owner/method counters independently of registration age.
+    local label = string.format(
+        "GCET25_V1_BEFORE_%d_LATE_%d_AFTER_%d_OVERRIDE_%d_UPDATE_%d_DRAW_%d_ERRORS_%d",
+        count("Observe.PlayerPuppet::OnAction"),
+        count("ObserveDelayed.PlayerPuppet::OnAction"),
+        count("ObserveAfter.PlayerPuppet::OnAction"),
+        count("Override.PlayerPuppet::IsInCombat"),
+        count("event.onUpdate"),
+        count("event.onDraw"),
+        errorCount)
+    local ok, result = pcall(CETProfilerMark, label)
+    if ok and not (type(result) == "string" and
+        result:find("buffer full", 1, true)) then
+        snapshotCount = snapshotCount + 1
     end
-
-    local fh, err = io.open(target, "w")
-    if not fh then
-        if not errors.output then
-            errors.output = tostring(err)
-            print(M .. ": could not write " .. target .. ": " .. tostring(err))
-        end
-        return
-    end
-    fh:write("Test,Calls,FirstSeconds,LastSeconds,Registered,Error\n")
-    for _, k in ipairs(names) do
-        local row = rows[k] or {calls = 0, first = -1, last = -1}
-        fh:write(string.format("%s,%d,%.6f,%.6f,%s,%s\n",
-            k, row.calls, row.first, row.last,
-            registered[k] and "yes" or "no",
-            errors[k] and ("\""..tostring(errors[k]):gsub('"', '""').."\"") or ""))
-    end
-    for k, v in pairs(errors) do
-        if not rows[k] and not registered[k] then
-            fh:write(string.format("%s,0,-1,-1,no,\"%s\"\n",
-                k, tostring(v):gsub('"', '""')))
-        end
-    end
-    fh:close()
 end
 
 local function safeHook(name, api, className, method, cb)
@@ -100,9 +92,20 @@ registerForEvent("onInit", function()
     save()
 end)
 
+local wasCapturing = false
 registerForEvent("onUpdate", function(dt)
     hit("event.onUpdate")
     elapsed = elapsed + (tonumber(dt) or 0)
+    local capturing = false
+    if type(CETProfilerIsRunning) == "function" then
+        local ok, value = pcall(CETProfilerIsRunning)
+        capturing = ok and value == true
+    end
+    if capturing and not wasCapturing then
+        snapshotCount = 0
+        save()
+    end
+    wasCapturing = capturing
     if elapsed >= 3 and not lateHook then
         lateHook = true
         -- Source-level proof for CET 1.38.1's try_lock + pending queue.
