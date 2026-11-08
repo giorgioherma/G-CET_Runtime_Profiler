@@ -1,0 +1,84 @@
+name: Publish G-CET Runtime Profiler v1.0.3 for Cyberpunk 2.5
+
+# Explicit one-time release workflow. Compiled CET 1.38.1 ASI is reused.
+on:
+  push:
+    branches: [ cyberpunk-2.5-cet-1.38.1 ]
+    paths:
+      - '.github/workflows/publish-cet-2.5-v1.0.3.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: gcet-cet25-v103-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Verify CI provenance and download pinned successful portable artifact
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/42443720194" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $run.conclusion -ne 'success' -or $run.head_sha -ne 'a78729380b46a4f8960092fe54dc3f523ff16d6d') {
+            throw 'Pinned CI provenance/success mismatch.'
+          }
+          gh run download 42443720194 --repo $env:GITHUB_REPOSITORY --name G-CET-Runtime-Profiler-v1.0.3-CET-1.38.1-CP2077-2.5-TEST --dir ci-artifact
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot download pinned CI package.' }
+
+      - name: Build final clean ZIP without building or modifying the native ASI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install --disable-pip-version-check Pillow==11.3.0
+          if ($LASTEXITCODE -ne 0) { throw 'Icon packaging dependency setup failed.' }
+          python scripts/package-cet-2.5-release.py --source ci-artifact --icon-source assets/g-cet-app-icon.png --out release-assets
+          if ($LASTEXITCODE -ne 0) { throw 'Release asset packaging or checksum verification failed.' }
+
+      - name: Publish v1.0.3 as Latest, keeping the older 2.31 release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zip = 'release-assets/G-CET-Runtime-Profiler-v1.0.3-CP2077-2.5-CET-1.38.1.zip'
+          $sha = "$zip.sha256.txt"
+          foreach ($path in @($zip, $sha)) {
+            if (!(Test-Path -LiteralPath $path -PathType Leaf)) { throw "Release asset missing: $path" }
+          }
+          gh release create v1.0.3 $zip $sha --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title 'G-CET Runtime Profiler v1.0.3 - Cyberpunk 2077 2.5 / CET 1.38.1' --notes-file docs/releases/CET25-v1.0.3.md --latest
+          if ($LASTEXITCODE -ne 0) { throw 'GitHub release publication failed.' }
+
+      - name: Verify Latest compatibility notes and uploaded ZIP/checksum assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $latest = gh api "repos/$env:GITHUB_REPOSITORY/releases/latest" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $latest.tag_name -ne 'v1.0.3' -or $latest.draft -or $latest.prerelease) {
+            throw 'v1.0.3 is not the Latest published stable release.'
+          }
+          if ($latest.body -notmatch '0-Engine remains a dependency' -or $latest.body -notmatch 'Cyberpunk 2077 2.31 / CET 1.37.1') {
+            throw 'Release notes lost the 0-Engine advanced profiler dependency or older game compatibility.'
+          }
+          $assets = @($latest.assets | ForEach-Object { $_.name })
+          foreach ($name in @(
+            'G-CET-Runtime-Profiler-v1.0.3-CP2077-2.5-CET-1.38.1.zip',
+            'G-CET-Runtime-Profiler-v1.0.3-CP2077-2.5-CET-1.38.1.zip.sha256.txt')) {
+            if ($name -notin $assets) { throw "Published release asset missing: $name" }
+          }
+          Write-Host "Verified Latest release: $($latest.html_url)"
