@@ -6,15 +6,10 @@ permissions:
 
 # Native CI only compiles and uploads the native DLL and checksum.
 # The Profiler/Resolver build consumes a pinned successful native artifact.
+# Deliberate, MANUAL ONLY CET C++ build. All routine edits reuse the pinned ASI.
+# Never auto-compile CET on push (including native source changes).
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - dev/resolver-profiler-handoff
-    paths:
-      - 'native-profiler-build/v2.11.0/**'
-      - '!native-profiler-build/v2.11.0/**/*.md'
-      - '!native-profiler-build/v2.11.0/*.md'
 
 jobs:
   rebuild:
@@ -23,6 +18,35 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Block native rebuild without a source delta against pinned package ASI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:GITHUB_REF -ne 'refs/heads/dev/resolver-profiler-handoff') {
+            throw 'Native development builds must use the authoritative dev branch.'
+          }
+          # Last deliberately pinned native DLL's source commit, as recorded in
+          # .github/workflows/build.yml. Packaging never recompiles CET.
+          $pinnedNativeSource = 'ed79408c3e79335a379b2078416b4f244961a3a5'
+          $sourceInputs = @(
+            'native-profiler-build/v2.11.0/Build-Profiler.ps1',
+            'native-profiler-build/v2.11.0/CETRuntimeProfiler.h',
+            'native-profiler-build/v2.11.0/Check-Historical-Toolchain.ps1',
+            'native-profiler-build/v2.11.0/Patch-CET-BuildDependencies.ps1',
+            'native-profiler-build/v2.11.0/Patch-CET-HistoricalBuild.ps1',
+            'native-profiler-build/v2.11.0/Patch-CET-v1.37.1.ps1',
+            'native-profiler-build/v2.11.0/Patch-LuaJIT-GC-Source.ps1'
+          )
+          $changed = @(git diff --name-only $pinnedNativeSource HEAD -- $sourceInputs)
+          if ($LASTEXITCODE -ne 0) { throw 'Could not verify native source changes against the pinned compiled ASI.' }
+          if ($changed.Count -eq 0) {
+            throw 'Native generating source is unchanged from the pinned compiled ASI. Reuse it; no CET rebuild allowed.'
+          }
+          Write-Host 'Manual native rebuild requested with generating-source changes:'
+          $changed | ForEach-Object { Write-Host "  $_" }
 
       - name: Record native source identity
         shell: pwsh
