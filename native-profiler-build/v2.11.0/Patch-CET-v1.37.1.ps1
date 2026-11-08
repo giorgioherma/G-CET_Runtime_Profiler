@@ -489,6 +489,12 @@ CETRuntimeProfiler::Counter* ResolveProfilerCounter(
     if (!profiler.IsCapturing())
         return nullptr;
 
+    // Once a native Context has a profiler counter, reuse it directly.
+    // Hot callbacks must never re-enter Sol/Lua ownership lookup on every
+    // invocation (TESTICKI recorded >1.5 million such hook calls).
+    if (auto* cached = profiler.GetResolvedCallback(apContext))
+        return cached;
+
     // Source ownership belongs to the Lua callback function itself. CET's
     // sol::this_environment metadata can be a different/default environment
     // when Observe/Override is invoked through pcall(), including delayed

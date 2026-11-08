@@ -276,6 +276,20 @@ public:
         binding.ResolvedCounter = nullptr;
     }
 
+    // Cheap cached result for hot callbacks: resolution happens exactly once
+    // per bound Context. The counter remains valid through ResetCountersLocked,
+    // which clears measurements in place; ClearCallbackBindings invalidates
+    // bindings on CET reload. The lookup never touches Lua or Sol.
+    Counter* GetResolvedCallback(const void* aContext)
+    {
+        if (!aContext)
+            return nullptr;
+        std::lock_guard lock(m_mutex);
+        const auto it = m_callbackBindings.find(aContext);
+        return it == m_callbackBindings.end() ? nullptr
+                                             : it->second.ResolvedCounter;
+    }
+
     // Called lazily only while CET is already executing a callback under a
     // valid locked Lua state. The caller resolves the mod name; this class
     // itself never touches Lua/Sol.
