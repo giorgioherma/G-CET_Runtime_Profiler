@@ -8,6 +8,10 @@ internal sealed record ZeroFileState(string Kind, string Text, string? Hash = nu
 
 internal sealed class ZeroEngineService
 {
+    // The old v2 bridge registered a second onUpdate and displaced the
+    // original 0-Engine callback in CET 1.38.1. It must never be adopted.
+    private const string LegacyAdaptiveBridgeMarker =
+        "CET_RUNTIME_PROFILER_ADAPTIVE_SCHEDULER_BEGIN v2";
     private readonly PackageManifest manifest;
 
     public ZeroEngineService(PackageManifest manifest)
@@ -22,7 +26,9 @@ internal sealed class ZeroEngineService
 
         var text = File.ReadAllText(paths.ZeroInit);
         if (text.Contains(manifest.ZeroEngine.ProfilerBridgeMarker, StringComparison.Ordinal))
-            return new ZeroFileState("profiler-bridge", "ADAPTIVE PROFILER BRIDGE PRESENT");
+            return new ZeroFileState("profiler-bridge", "COMPOSED ADAPTIVE PROFILER BRIDGE PRESENT");
+        if (text.Contains(LegacyAdaptiveBridgeMarker, StringComparison.Ordinal))
+            return new ZeroFileState("unsafe", "OBSOLETE v2 PROFILER BRIDGE - RESTORE ORIGINAL STATE");
 
         // The current Resolver runtime owns one namespaced Scheduler, with
         // its own Update dispatch. Never install a second adaptive profiler
@@ -140,6 +146,8 @@ internal sealed class ZeroEngineService
         var text = File.ReadAllText(initPath);
         if (text.Contains(manifest.ZeroEngine.ProfilerBridgeMarker, StringComparison.Ordinal))
             return true;
+        if (text.Contains(LegacyAdaptiveBridgeMarker, StringComparison.Ordinal))
+            return false;
 
         var hasReturn = Regex.IsMatch(text, @"(?m)^[ \t]*return[ \t]+Engine[ \t]*\r?$");
         var hasEngineTable = Regex.IsMatch(text, @"(?m)^\s*(local\s+)?Engine\s*=\s*\{");
@@ -151,6 +159,9 @@ internal sealed class ZeroEngineService
         var text = File.ReadAllText(initPath);
         if (text.Contains(manifest.ZeroEngine.ProfilerBridgeMarker, StringComparison.Ordinal))
             return;
+        if (text.Contains(LegacyAdaptiveBridgeMarker, StringComparison.Ordinal))
+            throw new InvalidOperationException(
+                "Obsolete v2 adaptive bridge must be restored from its original backup before installing v3.");
 
         if (!IsAdaptiveCompatible(initPath))
             throw new InvalidOperationException(
@@ -162,7 +173,12 @@ internal sealed class ZeroEngineService
             throw new InvalidOperationException("0-Engine export anchor was not found.");
 
         var anchor = matches[^1];
-        var patched = text[..anchor.Index] + AdaptiveBridge + text[anchor.Index..];
+        // Source-safe composition: capture the author's last onUpdate callback
+        // before it registers with CET. The original callback and Scheduler
+        // tick then share the one CET dispatch slot (CET uses replacement, not
+        // multicast, semantics for registerForEvent("onUpdate", ...)).
+        var patched = AdaptiveDispatcherPrelude +
+            text[..anchor.Index] + AdaptiveBridge + text[anchor.Index..];
 
         File.WriteAllText(initPath, patched, new UTF8Encoding(false));
 
@@ -170,8 +186,30 @@ internal sealed class ZeroEngineService
             throw new InvalidOperationException("Adaptive 0-Engine profiler bridge verification failed.");
     }
 
+    private const string AdaptiveDispatcherPrelude = """
+-- CET_RUNTIME_PROFILER_COMPOSED_DISPATCHER_BEGIN v3
+local __CETRP_RegisterForEvent = registerForEvent
+local __CETRP_AuthorOnUpdate = nil
+local __CETRP_SchedulerOnUpdate = nil
+local function __CETRP_ComposedOnUpdate(...)
+    -- CET's original last-registration-wins semantics remain intact.
+    -- Run the author callback first, then the profiler-owned worker.
+    if __CETRP_AuthorOnUpdate then __CETRP_AuthorOnUpdate(...) end
+    if __CETRP_SchedulerOnUpdate then __CETRP_SchedulerOnUpdate(...) end
+end
+registerForEvent = function(name, callback)
+    if name == "onUpdate" and type(callback) == "function" then
+        __CETRP_AuthorOnUpdate = callback
+        return __CETRP_RegisterForEvent(name, __CETRP_ComposedOnUpdate)
+    end
+    return __CETRP_RegisterForEvent(name, callback)
+end
+-- CET_RUNTIME_PROFILER_COMPOSED_DISPATCHER_END v3
+
+""";
+
     private const string AdaptiveBridge = """
--- CET_RUNTIME_PROFILER_ADAPTIVE_SCHEDULER_BEGIN v2
+-- CET_RUNTIME_PROFILER_ADAPTIVE_SCHEDULER_BEGIN v3
 -- Temporary profiler integration. Profiler Manager restores this exact init.lua from backup.
 -- The profiler module has a unique filename so it cannot collide with 0-Engine's own Scheduler.lua.
 local __CETRP_Scheduler = require('modules/CETProfilerScheduler')
@@ -262,7 +300,7 @@ end
 local __CETRP_Frame = 0
 local __CETRP_GameClock = 0
 local __CETRP_LastRealClock = os.clock()
-registerForEvent("onUpdate", function(delta)
+__CETRP_SchedulerOnUpdate = function(delta)
     delta = tonumber(delta) or 0
     __CETRP_Frame = __CETRP_Frame + 1
     __CETRP_GameClock = __CETRP_GameClock + delta
@@ -301,8 +339,14 @@ registerForEvent("onUpdate", function(delta)
         player = player,
         state = state
     })
-end)
--- CET_RUNTIME_PROFILER_ADAPTIVE_SCHEDULER_END v2
+end
+-- If the original did not register onUpdate, create exactly one CET dispatch.
+if __CETRP_AuthorOnUpdate == nil then
+    __CETRP_RegisterForEvent("onUpdate", __CETRP_ComposedOnUpdate)
+end
+-- Restore the game's registrar for the rest of mod initialization.
+registerForEvent = __CETRP_RegisterForEvent
+-- CET_RUNTIME_PROFILER_ADAPTIVE_SCHEDULER_END v3
 
 """;
 }

@@ -10,7 +10,7 @@
   },
   "zeroEngine": {
     "policy": "unverified-by-default; preserve existing integrated Scheduler; adaptively inject into recognized user init.lua; optional core-profiler fallback leaves 0-Engine completely untouched",
-    "profilerBridgeMarker": "CET_RUNTIME_PROFILER_ADAPTIVE_SCHEDULER_BEGIN v2",
+    "profilerBridgeMarker": "CET_RUNTIME_PROFILER_ADAPTIVE_SCHEDULER_BEGIN v3",
     "profilerSchedulerSha256": "4030ef6d8fa743f7a4accf00406c2110f70162261232b564469d3eaa0b7c78cb",
     "profilerSchedulerVersion": "0.3.1 profiler-aware",
     "profilerSchedulerFile": "modules/G-CET/Scheduler.lua",

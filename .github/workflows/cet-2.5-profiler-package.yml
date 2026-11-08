@@ -866,6 +866,28 @@ jobs:
 
           Write-Host 'C# lifecycle integration smoke test passed.'
 
+      - name: Capture control and composed bridge source contract
+        shell: pwsh
+        run: |
+          $controls = Get-Content 'payload/CETProfilerControls/init.lua' -Raw
+          $bridge = Get-Content 'src/G.CETProfiler.Core/Services/ZeroEngineService.cs' -Raw
+          if ($controls -notmatch 'TIMED_CAPTURE_SECONDS\s*=\s*120' -or
+              $controls -notmatch 'registerInput\("CETProfiler_Police60"' -or
+              $controls -notmatch 'registerForEvent\("onDraw", drawCaptureHud\)' -or
+              $controls -notmatch 'registerForEvent\("onUpdate", observeLuaHeap\)') {
+            throw 'Proven capture timer controls or HUD missing'
+          }
+          if (@([regex]::Matches($controls, 'registerForEvent\("onUpdate"')).Count -ne 1) {
+            throw 'CETProfilerControls has duplicate onUpdate handlers'
+          }
+          if ($bridge -notmatch '__CETRP_AuthorOnUpdate\.\.\.' -and
+              $bridge -notmatch '__CETRP_AuthorOnUpdate\(\.\.\.\)') {
+            throw 'Composed dispatcher lost author onUpdate'
+          }
+          if ($bridge -notmatch 'if __CETRP_AuthorOnUpdate == nil') {
+            throw 'Composed dispatcher lost original-zero-handler fallback'
+          }
+
       - name: Alpha6b resolver and handoff regression contract
         shell: pwsh
         run: ./tests/ResolverHandoffContract.ps1 -PublishedRoot ./publish

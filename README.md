@@ -73,7 +73,7 @@ Neither 0-Engine nor a frame-time profiler is required for a normal CET profiler
 
 ## Capture contract
 
-The profiler owns one CET capture input. **F11 is the initial default**, while the current CET binding remains user-controlled:
+The profiler supports two independent CET capture inputs. **F11 is unlimited manual START/STOP** and **F10 is a timed 120-second capture**; existing CET key assignments remain user-controlled. The in-game HUD shows elapsed capture time. Optional WORLD/DRIVING/COMBAT tags and passive heap markers come from the proven development profiler:
 
 ```text
 Configured capture key #1 -> START fresh capture
@@ -126,7 +126,7 @@ The user's `init.lua` stays untouched. If its Scheduler is not already profiler-
 
 ### Recognized unintegrated/custom 0-Engine
 
-The original `init.lua` is copied and hash-verified before a temporary adaptive profiler bridge is inserted. The package ships **one** canonical verified Lua scheduler (`payload/0-Engine/modules/G-CET/Scheduler.lua`). Original unintegrated hosts temporarily deploy it as `modules/CETProfilerScheduler.lua` and preserve any user `Scheduler.lua`; recognized legacy integrated hosts temporarily use `modules/Scheduler.lua` and restore the original. Source-proven G-CET namespaced hosts reuse their existing live scheduler and dispatch with no parallel worker or init.lua patch; an otherwise valid namespaced host missing its canonical module receives that one missing module, transactionally.
+The original `init.lua` is copied and hash-verified before a temporary adaptive profiler bridge is inserted. CET supports only one active `onUpdate` handler per mod: the v3 adaptive bridge composes the original 0-Engine handler with the profiler scheduler inside a single registered callback. Legacy v2 bridges are rejected until their original source is restored. The package ships **one** canonical verified Lua scheduler (`payload/0-Engine/modules/G-CET/Scheduler.lua`). Original unintegrated hosts temporarily deploy it as `modules/CETProfilerScheduler.lua` and preserve any user `Scheduler.lua`; recognized legacy integrated hosts temporarily use `modules/Scheduler.lua` and restore the original. Source-proven G-CET namespaced hosts reuse their existing live scheduler and dispatch with no parallel worker or init.lua patch; an otherwise valid namespaced host missing its canonical module receives that one missing module, transactionally.
 
 ### Core-profiler fallback
 

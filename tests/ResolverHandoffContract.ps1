@@ -96,6 +96,43 @@ $originalHostRestore = Restore-Normal $originalHost
 Assert-False (Test-Path $originalHostScheduler -PathType Leaf) 'Untouched host restore left CET Scheduler installed.'
 Assert-Equal (Get-FileHash (Join-Path $originalHost.Zero 'init.lua') -Algorithm SHA256).Hash $originalHostInitHash 'Untouched host init was not restored.'
 
+Write-Host 'Resolver contract: composed onUpdate preserves author execution and rejects obsolete v2 bridge'
+$authorHost = New-ResolverFixture 'gcet-resolver-author-onupdate'
+@'
+local Engine = {}
+local authorTicks = 0
+registerForEvent("onUpdate", function(dt)
+    authorTicks = authorTicks + 1
+    Engine.LastAuthorDt = dt
+end)
+return Engine
+'@ | Set-Content -LiteralPath (Join-Path $authorHost.Zero 'init.lua') -Encoding utf8
+$authorOriginal = (Get-FileHash (Join-Path $authorHost.Zero 'init.lua') -Algorithm SHA256).Hash
+$authorInstalled = Install-Normal $authorHost
+Assert-Equal $authorInstalled.managedMode 'adaptive' 'Original onUpdate fixture was not installed adaptively.'
+$composed = Get-Content -LiteralPath (Join-Path $authorHost.Zero 'init.lua') -Raw
+Assert-True ($composed.Contains('CET_RUNTIME_PROFILER_COMPOSED_DISPATCHER_BEGIN v3')) 'Composed callback capture was not injected.'
+Assert-True ($composed.Contains('__CETRP_AuthorOnUpdate(...)')) 'Original author callback was not preserved.'
+Assert-True ($composed.Contains('__CETRP_SchedulerOnUpdate(...)')) 'Scheduler was not composed into the same event dispatch.'
+Assert-False ($composed.Contains('registerForEvent("onUpdate", function(delta)')) 'Second overriding CET update handler was left in the bridge.'
+Assert-Equal $authorInstalled.zeroEngineInitKind 'profiler-bridge' 'Live v3 bridge classification failed.'
+$authorRestored = Restore-Normal $authorHost
+Assert-Equal (Get-FileHash (Join-Path $authorHost.Zero 'init.lua') -Algorithm SHA256).Hash $authorOriginal 'Author onUpdate source was not restored byte-exact.'
+
+$v2 = New-ResolverFixture 'gcet-resolver-obsolete-bridge'
+@'
+local Engine = {}
+-- CET_RUNTIME_PROFILER_ADAPTIVE_SCHEDULER_BEGIN v2
+registerForEvent("onUpdate", function() end)
+return Engine
+'@ | Set-Content -LiteralPath (Join-Path $v2.Zero 'init.lua') -Encoding utf8
+$v2Hash = (Get-FileHash (Join-Path $v2.Zero 'init.lua') -Algorithm SHA256).Hash
+Assert-Equal (Read-Status $v2).zeroEngineInitKind 'unsafe' 'Legacy v2 must not be accepted as composed.'
+$v2Result = (& $exe --install --game $v2.Root --json 2>&1 | Out-String)
+if ($v2Result -notmatch 'not recognized as safe') { throw "Obsolete v2 bridge was not rejected: $v2Result" }
+Assert-False (Test-Path -LiteralPath $v2.StateRoot -PathType Container) 'Obsolete bridge rejection left a managed transaction.'
+Assert-Equal (Get-FileHash (Join-Path $v2.Zero 'init.lua') -Algorithm SHA256).Hash $v2Hash 'Obsolete bridge rejection changed source.'
+
 Write-Host 'Resolver contract: adaptive handoff must preserve the user Scheduler.lua'
 $adaptive = New-ResolverFixture 'gcet-resolver-adaptive'
 @'
@@ -323,7 +360,7 @@ Write-Host 'Resolver contract: pre-existing adaptive bridge marker is recognized
 $bridge = New-ResolverFixture 'gcet-resolver-bridge'
 @'
 local Engine = {}
--- CET_RUNTIME_PROFILER_ADAPTIVE_SCHEDULER_BEGIN v2
+-- CET_RUNTIME_PROFILER_ADAPTIVE_SCHEDULER_BEGIN v3
 -- pre-existing recognized profiler bridge marker
 return Engine
 '@ | Set-Content -LiteralPath (Join-Path $bridge.Zero 'init.lua') -Encoding utf8

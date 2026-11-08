@@ -41,3 +41,9 @@ Optional independent Lua counter fixture: validation/CET-1.38.1/GCET_25_Validati
 - Do not claim game stability, fps gains or exact callback count equivalence without live capture.
 
 See the CI run/artifact itself for the build result; job success alone is not proof of gameplay.
+
+## 2026-11-08 backport: composed adaptive dispatcher and developed capture controls
+
+The v2 adaptive bridge registered a second onUpdate inside the 0-Engine sandbox. CET 1.38.1 replaces the previous handler; the v3 installer instead captures and dispatches the original callback plus its temporary Scheduler in the same CET registration, with original last-registration-wins semantics. The installed source is restored transactionally. Preexisting unsafe v2 bridges are refused; restore the original installation before applying this build.
+
+ProfilerControls adopts the developed in-game timer HUD and existing native-clock COMBAT-POLICE-120 F10 auto-stop, preserving independent unlimited F11 and optional scenario tags. It also carries passive half-second heap sampling with bounded native markers and established 0-Engine workload snapshots (only when all four related services exist). CI scripts verify installation and Lua structure; gameplay timer draw and native callback attribution remain separate live validation gates.
