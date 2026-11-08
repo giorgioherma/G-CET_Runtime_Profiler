@@ -48,7 +48,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $pinnedSourceCommit = 'ce934864b9217a92f3e355e535173716212a8bb0'
+          $pinnedSourceCommit = '8b7f743c3aa9874cc16c58b2efa4ce950f5b6a1f'
           git diff --exit-code $pinnedSourceCommit $env:GITHUB_SHA -- native-profiler-build/v2.11.0
           if ($LASTEXITCODE -ne 0) {
             throw 'Native sources changed. Rebuild in the native-only workflow, validate, and update the native source/run/hash pins first.'
@@ -60,7 +60,7 @@ jobs:
         with:
           name: gcet-native-profiler-cet-1.38.1-cp-2.5
           repository: ${{ github.repository }}
-          run-id: 42412154720
+          run-id: 42437606920
           github-token: ${{ github.token }}
           path: native-rebuild-artifact
 
@@ -78,7 +78,7 @@ jobs:
               throw "Pinned native artifact file missing: $file"
             }
           }
-          $expected = '5ab31ef87b5e469372249c37d6cbb58854309925355e38800c60a606806ce9b4'
+          $expected = 'f06d00a684f57c93bcf90c9f8fbeb1c4ba56a9ada25904d98cee6a55621b370f'
           $actual = (Get-FileHash -LiteralPath $profiler -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($actual -ne $expected) {
             throw "Wrong CET 1.38.1 native build; expected $expected, got $actual"
