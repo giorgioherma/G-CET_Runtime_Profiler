@@ -2,54 +2,43 @@
 
 This document describes how the **public G-CET manager and launcher** are built from this repository and documents the provenance of the native CET profiler payload.
 
-The canonical automated build is:
+For **v1.0.3 targeting Cyberpunk 2077 2.5 / CET 1.38.1**, the authoritative workflows are:
 
-`.github/workflows/build.yml`
+- [Manual native-only rebuild](.github/workflows/native-profiler-rebuild.yml) — CET C++ compilation when the native source intentionally changes.
+- [Verified 2.5 portable package](.github/workflows/cet-2.5-profiler-package.yml) — reuses the pinned native artifact and builds the manager/launcher.
+- [v1.0.3 release publication](.github/workflows/publish-cet-2.5-v1.0.3.yml) — creates the clean public ZIP from the validated portable artifact.
 
-## Build scope
+The generic `.github/workflows/build.yml` is **not** the authoritative v1.0.3 publication path; historical 1.37.1 build information belongs to the earlier 2.31 release.
 
-The repository contains source for:
+## Build scope and v1.0.3 native provenance
 
-- `G-CET-Runtime-Profiler.exe` — small native Windows launcher in `src/G.CETProfiler.Launcher/launcher.c`
-- `G-CET-Runtime-Profiler.App.exe` — .NET 8 WinForms application in `src/G.CETProfiler.App/`
-- `G.CETProfiler.Core.dll` — lifecycle, install/restore, collection, and report logic in `src/G.CETProfiler.Core/`
-- Lua integration payloads under `payload/0-Engine/` and `payload/CETProfilerControls/`
+The repository provides source for:
 
-The repository also contains the custom native profiler payload:
+- `G-CET-Runtime-Profiler.exe` — small native Windows launcher in `src/G.CETProfiler.Launcher/launcher.c`.
+- `app/G-CET-Runtime-Profiler.App.exe` — .NET 8 WinForms application under `src/G.CETProfiler.App/`.
+- `app/G.CETProfiler.Core.dll` — installation/restore, result collection and reporting logic under `src/G.CETProfiler.Core/`.
+- Lua integrations under `payload/0-Engine/` and `payload/CETProfilerControls/`.
+- Custom native CET profiler builder and source under `native-profiler-build/v2.11.0/`.
 
-- `payload/cyber_engine_tweaks.PROFILER.dll`
-
-The current ASI was produced through a **PowerShell-based historical CET reconstruction/build pipeline**. The recovered v2.11.0 builder does not patch an opaque executable: it clones the official Cyber Engine Tweaks source, checks out the exact CET v1.37.1 source commit, reconstructs the historical package/toolchain environment, applies the profiler source patch, then compiles a new `cyber_engine_tweaks.PROFILER.asi`.
-
-Verified native build inputs from the recovered builder:
-
-```text
-CET source commit:      61bd6214f0f5f8748589c9e476538614a13908c0
-Official CET SHA-256:   43a7b94698979703f9dfa2b0950607c9a88f53b84bbf09a8e593c7e218d41059
-Xmake:                  3.0.3
-MSVC toolset:           14.44 / compiler 19.44
-Windows SDK:            10.0.26100.0
-Profiler source patch:  Patch-CET-v1.37.1.ps1
-Profiler implementation:CETRuntimeProfiler.h
-```
-
-The official CET SHA-256 above is the same `officialSha256` recorded by the current G-CET `MANIFEST.json`.
-
-The recovered builder source is now published directly under [`native-profiler-build/v2.11.0/`](native-profiler-build/v2.11.0/) and documented in [docs/NATIVE_PROFILER_BUILD_PROVENANCE.md](docs/NATIVE_PROFILER_BUILD_PROVENANCE.md). The current public G-CET CI still treats the already-built ASI as a hash-locked release input rather than rebuilding the native ASI on every manager build.
-
-Current manifest identity:
+The **shipped v1.0.3 native ASI** is compiled from upstream CET 1.38.1 commit `213151fa22c79182922a08a44e4a44d44739d1cd`, using Xmake `3.1.1`, Windows SDK `10.0.26100.0`, and the Windows CI-selected MSVC toolset (see the native build logs). Although the builder directory name and one patch script filename retain old version labels, `Build-Profiler.ps1` on this branch explicitly pins CET 1.38.1. See [the 2.5 port documentation](docs/CET-1.38.1-PUBLIC-PORT.md).
 
 ```text
-Native profiler version: 2.11.0
-Target CET version:      1.37.1
-Profiler ASI SHA-256:    3400a55fe6824519ec8882c924154b288aa43c969bb5a082bb4c8f8bc4071ddb
+Native generating-source pin: 8b7f743c3aa9874cc16c58b2efa4ce950f5b6a1f
+Native CI run:               42437606920
+Native profiler SHA-256:      f06d00a684f57c93bcf90c9f8fbeb1c4ba56a9ada25904d98cee6a55621b370f
+Tested official CET ASI:     f0acdad154bd0033583e0f6e675ea18b4bdb60cda28133d792a4674e6d7f228a
+Portable package CI run:     42443720194
 ```
 
-This distinction is intentional and is stated explicitly for security/moderation review. The ASI is a custom source-built CET binary produced by the recovered historical reconstruction pipeline; it is separate from the C# manager/launcher build.
+The official CET reference hash refers to the **specific CET ASI tested**, not an assertion that all independently packaged CET builds are byte-identical.
+
+**Checked-in vs. shipped values:** the tracked `MANIFEST.json` and tracked `payload/cyber_engine_tweaks.PROFILER.dll` on this branch still contain older 1.37.1 baseline data. The [2.5 portable workflow](.github/workflows/cet-2.5-profiler-package.yml) retrieves the verified 1.38.1 native DLL from the pinned native CI run, checks its SHA-256, refuses changes to native generating sources since the source pin, replaces the staged payload, and sets the **release-staged** `MANIFEST.json` to `targetCET.version = 1.38.1`, native hash `f06d00...` and reference official CET hash `f0acda...`. The **manifest inside the published v1.0.3 ZIP** is authoritative for what ships. Routine C#/Lua/docs edits do not trigger native recompilation.
+
+The earlier CET 1.37.1 historical reconstruction instructions apply to [v1.0.2](https://github.com/giorgioherma/G-CET_Runtime_Profiler/releases/tag/v1.0.2) and must not be used for Cyberpunk 2.5.
 
 ## Prerequisites
 
-The canonical CI build runs on `windows-latest` and uses:
+The 2.5 portable CI runs on Windows and uses:
 
 - .NET 8 SDK
 - Visual Studio / MSVC x64 C++ build tools
@@ -65,7 +54,7 @@ From the repository root:
 dotnet build G-CET-Runtime-Profiler.sln -c Release
 ```
 
-The release workflow publishes the WinForms application as a self-contained x64 application:
+The 2.5 portable workflow publishes the WinForms application as a self-contained x64 application:
 
 ```powershell
 dotnet publish src/G.CETProfiler.App/G.CETProfiler.App.csproj `
@@ -105,39 +94,50 @@ cl.exe /nologo /O2 /MT /DUNICODE /D_UNICODE ^
 
 The launcher resolves the package directory, sets `G_CET_PROFILER_PACKAGE_ROOT`, and starts `app\G-CET-Runtime-Profiler.App.exe`. It does not contain the profiler implementation.
 
-## Release staging
+## Release staging and final package
 
-CI stages this layout:
+The [2.5 portable CI](.github/workflows/cet-2.5-profiler-package.yml) stages the root launcher, self-contained .NET 8 application, 1.38.1 hash-locked profiler DLL, updated manifest, Lua integrations and illustrated installation instructions. It exercises installation, collection, restoration and Scheduler checks. Its **intermediate test artifact** may contain optional validation fixtures.
+
+The [v1.0.3 publisher](.github/workflows/publish-cet-2.5-v1.0.3.yml) calls [the clean release packager](scripts/package-cet-2.5-release.py) to produce the final public ZIP **without rebuilding CET**:
 
 ```text
-G-CET-Runtime-Profiler\
-├─ G-CET-Runtime-Profiler.exe
-├─ MANIFEST.json
-├─ VERSION.txt
-├─ app\
-├─ payload\
-├─ RESULTS\
-└─ docs\
+G-CET-Runtime-Profiler-v1.0.3-CP2077-2.5-CET-1.38.1.zip
+├─ Install_Instructions.html
+└─ G-CET-Runtime-Profiler/
+   ├─ G-CET-Runtime-Profiler.exe
+   ├─ G-CET-Runtime-Profiler.ico
+   ├─ MANIFEST.json        # staged CET 1.38.1 values
+   ├─ VERSION.txt
+   ├─ app/                 # self-contained .NET 8 application/runtime
+   ├─ payload/             # verified CET DLL and Lua integrations
+   └─ RESULTS/
 ```
 
-`Install_Instructions.html` is placed beside the product folder in the final ZIP.
-
-The workflow also verifies that the public package does not contain `.ps1`, `.vbs`, or `.cmd` manager scripts.
+The final ZIP excludes developer documentation, validation mods, redundant nested archives, and internal checksum sidecars. The release ZIP checksum is a **separate GitHub release asset**.
 
 ## Hash verification
 
-Verify a downloaded release with PowerShell:
+[Published v1.0.3 release](https://github.com/giorgioherma/G-CET_Runtime_Profiler/releases/tag/v1.0.3):
 
-```powershell
-Get-FileHash ".\G-CET-Runtime-Profiler-v1.0.1.zip" -Algorithm SHA256
+```text
+ZIP:     G-CET-Runtime-Profiler-v1.0.3-CP2077-2.5-CET-1.38.1.zip
+SHA-256: 6d729fb85c389cb310967c6805a44ebd7517394aeefd616fb7de75278ecda86c
+ASI:     f06d00a684f57c93bcf90c9f8fbeb1c4ba56a9ada25904d98cee6a55621b370f
 ```
 
-The canonical GitHub release publishes a matching `.sha256.txt` asset beside the ZIP. That release-side checksum is authoritative because a same-version maintenance refresh necessarily changes the ZIP bytes.
+Verify downloaded and extracted files with PowerShell:
+
+```powershell
+Get-FileHash '.\G-CET-Runtime-Profiler-v1.0.3-CP2077-2.5-CET-1.38.1.zip' -Algorithm SHA256
+Get-FileHash '.\G-CET-Runtime-Profiler\payload\cyber_engine_tweaks.PROFILER.dll' -Algorithm SHA256
+```
+
+Compare the ZIP hash to its separately published `.zip.sha256.txt`, and the extracted DLL hash to the pinned native ASI hash. Nexus Mods and VirusTotal reports about the **ZIP** must be matched against its ZIP hash, not against the different DLL hash.
 
 ## Reproducibility and review
 
-For the manager/launcher, the source and exact build workflow are public in this repository.
+The manager and launcher source and exact build workflows are public. [Native build #42437606920](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/42437606920) establishes the compiled 1.38.1 ASI provenance. [Portable CI #42443720194](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/42443720194) verifies the pinned source/binary, staged package, install/collect/restore behavior and Scheduler regression checks. The release publisher independently checks the native DLL hash while assembling the final v1.0.3 ZIP.
 
-For `cyber_engine_tweaks.PROFILER.asi`, the current repository provides the exact shipped binary, its version, its target CET version, and its locked SHA-256. The complete clean recovered build source is inspectable under [`native-profiler-build/v2.11.0/`](native-profiler-build/v2.11.0/). The recovered builder establishes the exact upstream CET commit, historical toolchain, source patch and profiler implementation used to create the native profiler. The manager CI verifies the resulting ASI bytes rather than recompiling that native component on every release-manager build.
+Native compilation and game-runtime validation are separate forms of evidence. The [v1.0.3 release notes](docs/releases/CET25-v1.0.3.md) describe the actual in-game test configuration and results; they do not guarantee compatibility with every third-party mod.
 
-Security reviewers should therefore evaluate the manager/launcher source and CI build separately from the native profiler ASI provenance described in [SECURITY.md](SECURITY.md).
+For security and moderation review, see [SECURITY.md](SECURITY.md), [the CET 1.38.1 port documentation](docs/CET-1.38.1-PUBLIC-PORT.md) and the canonical [v1.0.3 release](https://github.com/giorgioherma/G-CET_Runtime_Profiler/releases/tag/v1.0.3).
