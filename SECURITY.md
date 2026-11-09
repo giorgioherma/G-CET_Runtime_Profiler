@@ -1,6 +1,6 @@
 # Security and Binary Provenance
 
-This document is intended for users, antivirus/security reviewers, and platform moderators reviewing the G-CET Runtime Profiler portable Windows package.
+This document is intended for users, antivirus/security reviewers, and platform moderators reviewing the G-CET Runtime Profiler portable Windows package. **On the `cyberpunk-2.5-cet-1.38.1` branch, the current public release is v1.0.3 for Cyberpunk 2077 2.5 / CET 1.38.1.** The earlier v1.0.2 release targets Cyberpunk 2.31 / CET 1.37.1.
 
 ## What the application does
 
@@ -25,7 +25,7 @@ These operations are part of the documented profiler lifecycle. The architecture
 | `app\G-CET-Runtime-Profiler.App.exe` | Built from `src/G.CETProfiler.App/` using .NET 8 |
 | `app\G.CETProfiler.Core.dll` | Built from `src/G.CETProfiler.Core/` using .NET 8 |
 | Lua integration payloads | Stored as source in `payload/` |
-| `payload\cyber_engine_tweaks.PROFILER.dll` | Custom source-built native profiler; recovered builder/source is published under `native-profiler-build/v2.11.0/` and exact release bytes are version/hash locked by `MANIFEST.json` |
+| `payload\cyber_engine_tweaks.PROFILER.dll` | Custom CET 1.38.1 native profiler; ported build source is in `native-profiler-build/v2.11.0/` and the **release-staged** `MANIFEST.json` locks the shipped binary hash |
 
 The complete manager/launcher build procedure is documented in [BUILDING.md](BUILDING.md).
 
@@ -41,36 +41,42 @@ During an explicit profiler installation, G-CET copies those **same hash-verifie
 
 This is a filename change only; the native profiler binary itself is unchanged.
 
-## Native profiler ASI provenance
+## Native profiler ASI provenance — v1.0.3 / Cyberpunk 2.5
 
-The shipped native profiler payload is:
-
-```text
-File:                  payload\cyber_engine_tweaks.PROFILER.asi
-Native profiler ver.:  2.11.0
-Target CET ver.:       1.37.1
-SHA-256:               3400a55fe6824519ec8882c924154b288aa43c969bb5a082bb4c8f8bc4071ddb
-```
-
-The v2.11.0 ASI was built through a recovered **PowerShell-based historical CET reconstruction pipeline**. The builder clones official Cyber Engine Tweaks source at commit `61bd6214f0f5f8748589c9e476538614a13908c0`, reconstructs the historical xmake package state, pins Xmake 3.0.3, MSVC 14.44 / compiler 19.44 and Windows SDK 10.0.26100.0, applies the profiler source patch, and compiles the resulting CET ASI.
-
-The builder records the official CET v1.37.1 reference SHA-256 as:
+The **published v1.0.3 ZIP**, not the branch's historical tracked payload, is authoritative for the actual installed profiler binary:
 
 ```text
-43a7b94698979703f9dfa2b0950607c9a88f53b84bbf09a8e593c7e218d41059
+Shipped file:            G-CET-Runtime-Profiler/payload/cyber_engine_tweaks.PROFILER.dll
+Installed CET filename:  bin/x64/plugins/cyber_engine_tweaks.asi
+Target game:             Cyberpunk 2077 2.5
+Target CET:              1.38.1
+Native ASI SHA-256:      f06d00a684f57c93bcf90c9f8fbeb1c4ba56a9ada25904d98cee6a55621b370f
+Upstream CET commit:     213151fa22c79182922a08a44e4a44d44739d1cd
+Xmake:                   3.1.1
+Windows SDK:             10.0.26100.0
+MSVC:                    Windows CI-selected toolset (see build log)
 ```
 
-That value matches `targetCET.officialSha256` in the current G-CET `MANIFEST.json`.
+The native builder clones the pinned official CET 1.38.1 source, initializes submodules, applies the published profiler source changes, and builds a new native profiler ASI. The source directory retains its historical `v2.11.0` name and some filenames retain `v1.37.1` labels; these labels are **not** the shipped v1.0.3 CET target. See the [CET 1.38.1 port notes](docs/CET-1.38.1-PUBLIC-PORT.md) and [native builder source](native-profiler-build/v2.11.0/).
 
-The public manager GitHub Actions workflow does not re-run this historical native reconstruction for every manager build. Instead, the completed ASI is committed as a release input, `MANIFEST.json` records its expected profiler SHA-256, and CI fails if the shipped bytes differ.
+The successful [native-only build #42437606920](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/42437606920) used source pin `8b7f743c3aa9874cc16c58b2efa4ce950f5b6a1f` and produced the native DLL identified by the SHA-256 above. The 2.5 package workflow retrieves those exact bytes, verifies their checksum and the pinned generating source, and does **not** rebuild CET for ordinary manager/Lua/documentation changes.
 
-The clean recovered builder/source is published directly under [`native-profiler-build/v2.11.0/`](native-profiler-build/v2.11.0/). Its provenance and recovered source hashes are documented in [docs/NATIVE_PROFILER_BUILD_PROVENANCE.md](docs/NATIVE_PROFILER_BUILD_PROVENANCE.md).
+**Important checked-in vs. release-staged distinction:** the checked-in `MANIFEST.json` and `payload/cyber_engine_tweaks.PROFILER.dll` on this branch still contain older CET 1.37.1 baseline values. During the [2.5 package workflow](.github/workflows/cet-2.5-profiler-package.yml), CI replaces the staged DLL with the validated 1.38.1 native artifact and updates the staged `MANIFEST.json` to:
+
+```text
+targetCET.version:        1.38.1
+targetCET.profilerSha256: f06d00a684f57c93bcf90c9f8fbeb1c4ba56a9ada25904d98cee6a55621b370f
+targetCET.officialSha256: f0acdad154bd0033583e0f6e675ea18b4bdb60cda28133d792a4674e6d7f228a
+```
+
+The official reference hash identifies the **specific CET 1.38.1 ASI used in testing**, not every third-party CET distribution. The earlier 1.37.1 build is for [v1.0.2](https://github.com/giorgioherma/G-CET_Runtime_Profiler/releases/tag/v1.0.2); do not interchange its native binary with v1.0.3.
 
 ## Package controls
 
-The release workflow performs checks intended to make the public package inspectable and deterministic:
+The [2.5 packaging workflow](.github/workflows/cet-2.5-profiler-package.yml) and [v1.0.3 publisher](.github/workflows/publish-cet-2.5-v1.0.3.yml) perform checks intended to make the public package inspectable and deterministic:
 
-- verifies the hash-locked profiler ASI and integration payloads before building;
+- downloads and verifies the pinned CET 1.38.1 native ASI rather than rebuilding unchanged source;
+- verifies the release-staged manifest and integration payload hashes before building;
 - builds the public manager from repository source;
 - builds the native launcher from repository source;
 - uses a normal ZIP rather than a self-extracting package;
@@ -78,7 +84,8 @@ The release workflow performs checks intended to make the public package inspect
 - rejects public `.ps1`, `.vbs`, and `.cmd` manager scripts;
 - removes public PDB files;
 - verifies expected package paths before release staging;
-- publishes a SHA-256 checksum beside the GitHub release ZIP.
+- excludes validation fixtures and obsolete documentation from the final v1.0.3 ZIP;
+- publishes a SHA-256 checksum as a **separate** GitHub release asset.
 
 ## File safety
 
@@ -92,29 +99,30 @@ External frame-time captures are copy-only; the source capture owned by the exte
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the detailed transaction and recovery model.
 
-## v1.0.1 canonical release identity
+## v1.0.3 canonical release identity
 
-Canonical GitHub release ZIP:
+[Canonical v1.0.3 GitHub release](https://github.com/giorgioherma/G-CET_Runtime_Profiler/releases/tag/v1.0.3):
 
-`G-CET-Runtime-Profiler-v1.0.1.zip`
+```text
+ZIP:     G-CET-Runtime-Profiler-v1.0.3-CP2077-2.5-CET-1.38.1.zip
+SHA-256: 6d729fb85c389cb310967c6805a44ebd7517394aeefd616fb7de75278ecda86c
+```
 
-The canonical release publishes a matching `.sha256.txt` asset beside the ZIP. That release-side checksum is the authoritative identity for the current v1.0.1 maintenance build.
-
-A scanner or moderation report should be matched against that published checksum before it is treated as a report for the current canonical release.
+The matching `.zip.sha256.txt` is a separate release asset, **not** included in the archive. Compare the full ZIP hash to the Nexus or antivirus scan; the native DLL hash is different. The v1.0.2 / CET 1.37.1 release remains separately available.
 
 ## Notes for Nexus Mods / security reviewers
 
-For a compiled-code review, the relevant public material is:
+For a compiled-code review of **v1.0.3 / CET 1.38.1**, inspect:
 
-1. repository source under `src/`;
-2. native profiler build source under [`native-profiler-build/v2.11.0/`](native-profiler-build/v2.11.0/);
-3. [BUILDING.md](BUILDING.md);
-4. the canonical CI definition at `.github/workflows/build.yml`;
-5. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md);
-6. `MANIFEST.json`, which locks the native profiler/integration payload identities;
-7. the canonical GitHub release ZIP and its published SHA-256 file.
+1. Manager and launcher source under `src/`.
+2. [Native build source](native-profiler-build/v2.11.0/) and [CET 1.38.1 port notes](docs/CET-1.38.1-PUBLIC-PORT.md).
+3. [BUILDING.md](BUILDING.md), including the tracked-versus-staged manifest distinction.
+4. [Native-only build workflow](.github/workflows/native-profiler-rebuild.yml), [2.5 package workflow](.github/workflows/cet-2.5-profiler-package.yml), and [v1.0.3 publisher](.github/workflows/publish-cet-2.5-v1.0.3.yml).
+5. [Architecture and restore rules](docs/ARCHITECTURE.md).
+6. The **staged** `MANIFEST.json` extracted from the canonical v1.0.3 ZIP, and the public ZIP/ASI checksums above.
+7. [Native CI #42437606920](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/42437606920) and [portable CI #42443720194](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/42443720194).
 
-The manager and launcher can be traced directly to source in this repository. The native profiler ASI should be reviewed as a custom source-built CET binary produced by the pinned historical reconstruction pipeline described above and in [docs/NATIVE_PROFILER_BUILD_PROVENANCE.md](docs/NATIVE_PROFILER_BUILD_PROVENANCE.md).
+The custom CET binary, temporary file replacement, backup/restore, output collection, and optional supported 0-Engine Lua integration are documented profiling operations. The package is not a conventional loose-file gameplay mod.
 
 ## Reporting a security concern
 
