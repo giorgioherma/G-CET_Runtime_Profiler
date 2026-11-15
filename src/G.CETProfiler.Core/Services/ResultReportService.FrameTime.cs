@@ -10,6 +10,12 @@ public static partial class ResultReportService
 
     private sealed class FrameTimeAnalysis
     {
+        public string Provider { get; init; } = "CAPFRAMEX";
+        public string IntervalSemantics { get; init; } = "MS_BETWEEN_PRESENTS";
+        public bool CpuBusyCaptured { get; init; } = true;
+        public bool GpuBusyCaptured { get; init; } = true;
+        public bool PcLatencyCaptured { get; init; } = true;
+        public bool FrameTypeCaptured { get; init; } = true;
         public string SourceFile { get; init; } = "";
         public string AppVersion { get; init; } = "";
         public string GameName { get; init; } = "";
@@ -108,6 +114,10 @@ public static partial class ResultReportService
 
     private sealed class ParsedCapFrameX
     {
+        public string Provider { get; init; } = "CAPFRAMEX";
+        public bool AlignedByGco { get; init; }
+        public bool CpuActiveCaptured { get; init; } = true;
+        public bool GpuActiveCaptured { get; init; } = true;
         public string SourceFile { get; init; } = "";
         public string AppVersion { get; init; } = "";
         public string GameName { get; init; } = "";
@@ -125,14 +135,17 @@ public static partial class ResultReportService
         IReadOnlyList<SchedulerBurstMetric> schedulerBursts,
         double cetCaptureSeconds)
     {
-        var parsed = TryReadCapFrameX(captureRoot);
+        // Verified GCO frame evidence overrides legacy CapFrameX only in the
+        // disposable GCO CET capture workspace. Standalone stays unchanged.
+        var parsed = TryReadGcoPresentMon(captureRoot) ?? TryReadCapFrameX(captureRoot);
         if (parsed is null || parsed.Frames.Count == 0)
             return null;
 
         // Use the FULL captured timeline for synchronization and raw evidence.
         // Apply one fixed tail selection to every gameplay-derived statistic.
         // Short diagnostic captures must retain all of their usable frames.
-        var excludedTailCount = parsed.Frames.Count > CaptureEndGuardFrameCount * 5
+        var excludedTailCount = parsed.AlignedByGco ? 0 :
+            parsed.Frames.Count > CaptureEndGuardFrameCount * 5
             ? CaptureEndGuardFrameCount : 0;
         var gameplayFrames = parsed.Frames.Take(parsed.Frames.Count - excludedTailCount).ToList();
         var excludedTailFrames = parsed.Frames.Skip(gameplayFrames.Count).ToList();
@@ -150,14 +163,14 @@ public static partial class ResultReportService
         // CapFrameX builds, not the F11 capture-start timestamp. Never use it as
         // an absolute start-clock anchor.
 
-        var durationDeltaMs = cetCaptureSeconds > 0
+        var durationDeltaMs = !parsed.AlignedByGco && cetCaptureSeconds > 0
             ? capDurationMs - cetCaptureSeconds * 1000.0
             : double.NaN;
 
         // CreationDate is useful as a sanity/debug timestamp only. If the two
         // relative timelines start together, this is how long after the inferred
         // CapFrameX end the finished record was written.
-        var recordLagMs = parsed.RecordUtc is not null && cetStartUtc is not null
+        var recordLagMs = !parsed.AlignedByGco && parsed.RecordUtc is not null && cetStartUtc is not null
             ? (parsed.RecordUtc.Value - cetStartUtc.Value).TotalMilliseconds - capDurationMs
             : double.NaN;
 
@@ -173,16 +186,19 @@ public static partial class ResultReportService
             ? Math.Clamp(cetCaptureSeconds * 1000.0 * 0.03, 750.0, 2500.0)
             : 750.0;
         var sharedKeyAvailable = companion.StartKeyKnown;
-        var correlated = sharedKeyAvailable && absDuration <= durationToleranceMs;
-        var exactAlignment = correlated && absDuration <= 1000.0;
-        var syncQuality = correlated
-            ? exactAlignment ? "GOOD" : "COARSE"
-            : !sharedKeyAvailable
-                ? "NO SHARED KEY"
-                : "DURATION MISMATCH";
-        var alignmentMethod = correlated
-            ? "shared capture-key relative clocks"
-            : "none";
+        var correlated = parsed.AlignedByGco ||
+            sharedKeyAvailable && absDuration <= durationToleranceMs;
+        // PresentMon's Present event clock is absolute QPC, but its interval
+        // does NOT represent exact CET callback execution boundaries.
+        var exactAlignment = !parsed.AlignedByGco &&
+            correlated && absDuration <= 1000.0;
+        var syncQuality = parsed.AlignedByGco
+            ? "QPC_F11_CET_WINDOWS_ONLY"
+            : correlated ? exactAlignment ? "GOOD" : "COARSE"
+            : !sharedKeyAvailable ? "NO SHARED KEY" : "DURATION MISMATCH";
+        var alignmentMethod = parsed.AlignedByGco
+            ? "GCO GRSP QPC/Unix F11 anchors + CET start; Present event intervals"
+            : correlated ? "shared capture-key relative clocks" : "none";
 
         var alignedFrames = gameplayFrames;
         var analyzedEndMs = alignedFrames.Max(x => x.RelativeStartMs + x.FrameMs);
@@ -210,7 +226,9 @@ public static partial class ResultReportService
                     GpuActiveMs = x.GpuActiveMs,
                     PcLatencyMs = x.PcLatencyMs,
                     FrameType = x.FrameType,
-                    Evidence = "CapFrameX only — CET clocks were not aligned."
+                    Evidence = parsed.AlignedByGco
+                        ? "PresentMon clock not exact callback-aligned."
+                        : "CapFrameX only — CET clocks were not aligned."
                 })
                 .ToList();
 
@@ -253,6 +271,14 @@ public static partial class ResultReportService
 
         return new FrameTimeAnalysis
         {
+            Provider = parsed.Provider,
+            IntervalSemantics = parsed.AlignedByGco
+                ? "MS_BETWEEN_PRESENT_EVENTS_NOT_DISPLAYED_FRAME_TIME"
+                : "MS_BETWEEN_PRESENTS_CAPFRAMEX",
+            CpuBusyCaptured = parsed.CpuActiveCaptured,
+            GpuBusyCaptured = parsed.GpuActiveCaptured,
+            PcLatencyCaptured = !parsed.AlignedByGco,
+            FrameTypeCaptured = !parsed.AlignedByGco,
             SourceFile = parsed.SourceFile,
             AppVersion = parsed.AppVersion,
             GameName = parsed.GameName,
