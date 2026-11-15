@@ -552,6 +552,21 @@ public static partial class ResultReportService
                 measuredOneCorePct = Round(a.TotalOneCorePct, 6),
                 averageFps = averageFps is double fps ? Round(fps, 3) : (double?)null
             },
+            frameEvidence = a.FrameTime is null ? null : new
+            {
+                provider = a.FrameTime.Provider,
+                intervalSemantics = a.FrameTime.IntervalSemantics,
+                correlation = a.FrameTime.Provider == "PRESENTMON_2_6"
+                    ? a.FrameTime.Correlated
+                        ? "QPC_F11_CET_WINDOW_CORRELATION_ONLY" : "NOT_ALIGNED"
+                    : a.FrameTime.SyncQuality,
+                exactCallbackAttribution = a.FrameTime.ExactAlignment,
+                pcLatency = a.FrameTime.PcLatencyCaptured ? "CAPTURED" : "NOT_CAPTURED",
+                frameType = a.FrameTime.FrameTypeCaptured ? "CAPTURED" : "NOT_CAPTURED",
+                cpuBusy = a.FrameTime.CpuBusyCaptured ? "CAPTURED" : "NOT_CAPTURED",
+                gpuBusy = a.FrameTime.GpuBusyCaptured ? "CAPTURED" : "NOT_CAPTURED",
+                sourceFile = a.FrameTime.SourceFile
+            },
             hitchPressure = a.FrameTime?.HitchPressure is null
                 ? null
                 : new
