@@ -117,7 +117,9 @@ public static partial class ResultReportService
             },
             scope = a.FrameTime is null
                 ? "CET-side runtime workload only"
-                : "CET-side runtime workload with optional CapFrameX frametime correlation",
+                : a.FrameTime.Provider == "PRESENTMON_2_6"
+                    ? "CET-side runtime workload with GCO F11 QPC-aligned PresentMon intervals"
+                    : "CET-side runtime workload with optional CapFrameX frametime correlation",
             capture = new
             {
                 title = ReadCaptureTitle(captureRoot),
@@ -433,6 +435,12 @@ public static partial class ResultReportService
                 : new
                 {
                     source = a.FrameTime.SourceFile,
+                    provider = a.FrameTime.Provider,
+                    intervalSemantics = a.FrameTime.IntervalSemantics,
+                    pcLatencyStatus = a.FrameTime.PcLatencyCaptured ? "CAPTURED" : "NOT_CAPTURED",
+                    frameTypeStatus = a.FrameTime.FrameTypeCaptured ? "CAPTURED" : "NOT_CAPTURED",
+                    cpuBusyStatus = a.FrameTime.CpuBusyCaptured ? "CAPTURED" : "NOT_CAPTURED",
+                    gpuBusyStatus = a.FrameTime.GpuBusyCaptured ? "CAPTURED" : "NOT_CAPTURED",
                     appVersion = a.FrameTime.AppVersion,
                     game = a.FrameTime.GameName,
                     gpu = a.FrameTime.GPU,
@@ -453,7 +461,8 @@ public static partial class ResultReportService
                         count = a.FrameTime.FrameCount,
                         capturedCount = a.FrameTime.CapturedFrameCount,
                         excludedCaptureEndCount = a.FrameTime.ExcludedCaptureEndCount,
-                        captureEndExclusionPolicy = "LAST_FIVE_VALID_CAPFRAMEX_FRAMES_REPORT_ONLY",
+                        captureEndExclusionPolicy = a.FrameTime.Provider == "PRESENTMON_2_6"
+                            ? "NONE_GCO_F11_TRIMMED" : "LAST_FIVE_VALID_CAPFRAMEX_FRAMES_REPORT_ONLY",
                         excludedCaptureEndSamples = a.FrameTime.ExcludedCaptureEndSamples.Select(x => new
                         {
                             frameIndex = x.Index,
@@ -472,10 +481,16 @@ public static partial class ResultReportService
                         over33_3Ms = a.FrameTime.FramesOver33Ms,
                         over50Ms = a.FrameTime.FramesOver50Ms,
                         over100Ms = a.FrameTime.FramesOver100Ms,
-                        meanCpuActiveMs = Round(a.FrameTime.MeanCpuActiveMs, 6),
-                        p95CpuActiveMs = Round(a.FrameTime.P95CpuActiveMs, 6),
-                        meanGpuActiveMs = Round(a.FrameTime.MeanGpuActiveMs, 6),
-                        p95GpuActiveMs = Round(a.FrameTime.P95GpuActiveMs, 6)
+                        cpuMetric = a.FrameTime.Provider == "PRESENTMON_2_6" ? "MsCPUBusy" : "CpuActive",
+                        gpuMetric = a.FrameTime.Provider == "PRESENTMON_2_6" ? "MsGPUBusy" : "GpuActive",
+                        meanCpuActiveMs = a.FrameTime.CpuBusyCaptured
+                            ? Round(a.FrameTime.MeanCpuActiveMs, 6) : (double?)null,
+                        p95CpuActiveMs = a.FrameTime.CpuBusyCaptured
+                            ? Round(a.FrameTime.P95CpuActiveMs, 6) : (double?)null,
+                        meanGpuActiveMs = a.FrameTime.GpuBusyCaptured
+                            ? Round(a.FrameTime.MeanGpuActiveMs, 6) : (double?)null,
+                        p95GpuActiveMs = a.FrameTime.GpuBusyCaptured
+                            ? Round(a.FrameTime.P95GpuActiveMs, 6) : (double?)null
                     },
                     hitchPressure = a.FrameTime.HitchPressure is null
                         ? null
@@ -556,8 +571,9 @@ public static partial class ResultReportService
                         frameMs = Round(x.FrameMs, 6),
                         cpuActiveMs = Round(x.CpuActiveMs, 6),
                         gpuActiveMs = Round(x.GpuActiveMs, 6),
-                        pcLatencyMs = Round(x.PcLatencyMs, 6),
-                        frameType = x.FrameType,
+                        pcLatencyMs = a.FrameTime.PcLatencyCaptured
+                            ? Round(x.PcLatencyMs, 6) : (double?)null,
+                        frameType = a.FrameTime.FrameTypeCaptured ? x.FrameType : null,
                         cetWindowMs = Round(x.CetWindowMs, 6),
                         topCetOwner = x.TopCetOwner,
                         topCetOwnerMs = Round(x.TopCetOwnerMs, 6),
