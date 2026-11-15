@@ -43,7 +43,18 @@ internal static class GgcCaptureCalibrationService
         // controller's initial workload upper boundary can use a GC-resilient
         // two-second-window estimate when genuinely varied evidence exists.
         var workloadCeiling = workloadVaried ? measuredOnset : tolerance;
-        var validFrames = workloadCeiling is > 0 and < 10000 &&
+        var frameEvidence = Child(handoff, "frameEvidence");
+        var provider = Child(frameEvidence, "provider");
+        var presentMon = provider.ValueKind == JsonValueKind.String &&
+            provider.GetString() == "PRESENTMON_2_6";
+        var correlation = Child(frameEvidence, "correlation");
+        // A malformed/unproven GCO frame source cannot authorize G-GC.
+        // Standalone legacy CapFrameX calibration behavior is unchanged.
+        var presentMonAligned = !presentMon ||
+            correlation.ValueKind == JsonValueKind.String &&
+            correlation.GetString() == "QPC_F11_CET_WINDOW_CORRELATION_ONLY";
+        var validFrames = presentMonAligned &&
+                          workloadCeiling is > 0 and < 10000 &&
                           medianFrame is > 0 and < 10000 &&
                           workloadCeiling >= medianFrame;
 
@@ -110,8 +121,11 @@ internal static class GgcCaptureCalibrationService
                 medianFrameMs = validFrames ? medianFrame : null,
                 hitchToleranceMs = validFrames ? workloadCeiling : null,
                 toleranceSource = !validFrames ? "NOT_MEASURED" :
-                    workloadVaried ? "CAPFRAMEX_WORKLOAD_WINDOW_P90_PROVISIONAL"
-                    : "CAPFRAMEX_HITCH_PRESSURE_ADAPTIVE_THRESHOLD_FALLBACK",
+                    presentMon
+                        ? workloadVaried ? "PRESENTMON_QPC_WORKLOAD_WINDOW_P90_PROVISIONAL"
+                            : "PRESENTMON_QPC_HITCH_PRESSURE_THRESHOLD_FALLBACK"
+                        : workloadVaried ? "CAPFRAMEX_WORKLOAD_WINDOW_P90_PROVISIONAL"
+                            : "CAPFRAMEX_HITCH_PRESSURE_ADAPTIVE_THRESHOLD_FALLBACK",
                 workloadCalibrationStatus = workloadVaried
                     ? "MEASURED_WINDOW_VARIATION_PROVISIONAL" : "NOT_ENOUGH_VARIATION",
                 workloadRelaxedP90Ms = workloadVaried ? relaxedP90 : null,
