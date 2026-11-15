@@ -79,9 +79,9 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $stack = Join-Path $env:GITHUB_WORKSPACE 'ci-private-stack/GCO-Capture-15112026_021913'
+          $stack = Join-Path $env:GITHUB_WORKSPACE 'ci-private-stack'
           $mods = Join-Path $stack 'bin/x64/plugins/cyber_engine_tweaks/mods'
-          $capture = Join-Path $env:GITHUB_WORKSPACE 'ci-private-stack/capture'
+          $capture = Join-Path $stack 'capture'
           $engine = Join-Path $mods '0-Engine/init.lua'
           $handoff = Join-Path $capture 'CET_Resolver_Input.json'
           if (!(Test-Path -LiteralPath $engine)) {
@@ -423,18 +423,18 @@ jobs:
       - name: Verify actual repeated pass and newly installed source-first mod
         shell: pwsh
         run: |
-          $stack = Join-Path $env:GITHUB_WORKSPACE 'ci-private-stack/GCO-Capture-15112026_021913'
+          $stack = Join-Path $env:GITHUB_WORKSPACE 'ci-private-stack'
           $mods = Join-Path $stack 'bin/x64/plugins/cyber_engine_tweaks/mods'
-          $capture = Join-Path $env:GITHUB_WORKSPACE 'ci-private-stack/capture'
+          $capture = Join-Path $stack 'capture'
           $overlay = Join-Path $env:RUNNER_TEMP 'gcet-original-overlay'
           ./tests/OriginalSourceSecondPassContract.ps1 -ResolverExe './ci-resolver/G-CET-Resolver.exe' -OriginalMods $mods -Capture $capture -FirstOverlayRoot $overlay
 
       - name: Verify Hotscenes opted-in first-pass capacity from originals
         shell: pwsh
         run: |
-          $stack = Join-Path $env:GITHUB_WORKSPACE 'ci-private-stack/GCO-Capture-15112026_021913'
+          $stack = Join-Path $env:GITHUB_WORKSPACE 'ci-private-stack'
           $mods = Join-Path $stack 'bin/x64/plugins/cyber_engine_tweaks/mods'
-          $capture = Join-Path $env:GITHUB_WORKSPACE 'ci-private-stack/capture'
+          $capture = Join-Path $stack 'capture'
           $zip = Join-Path $env:RUNNER_TEMP 'gcet-hotscenes-optin.zip'
           $result = (& './ci-resolver/G-CET-Resolver.exe' --capture $capture --mods $mods --generate-pass --hotscenes-english-only --pass-output $zip --json | ConvertFrom-Json)
           if ($LASTEXITCODE -ne 0 -or !$result.ok -or !$result.pass) { throw 'HOTSCENES_OPTIN_GENERATION_FAILED' }
