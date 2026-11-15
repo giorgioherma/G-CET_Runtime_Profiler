@@ -46,14 +46,16 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
         if (!string.IsNullOrWhiteSpace(logoDataUri))
             sb.Append("<img class=\"brandmark\" src=\"").Append(logoDataUri).Append("\" alt=\"G-CET\">");
         sb.Append("<div><h1>G-CET Runtime Profiler</h1><div class=\"sub\">")
-            .Append(a.FrameTime is null ? "CET capture report" : "CET + CapFrameX capture report")
+            .Append(a.FrameTime is null ? "CET capture report" : a.FrameTime.Provider == "PRESENTMON_2_6" ? "CET + PresentMon capture report" : "CET + CapFrameX capture report")
             .Append("</div>");
         sb.Append("<div class=\"scope\">What CET was doing during this capture: sustained workload, call volume, callback hotspots, heavy CET windows, recorded callback spikes and 0-Engine Scheduler activity.");
         if (a.FrameTime is not null)
-            sb.Append(" CapFrameX adds actual frametime, CPU/GPU active readings and synchronized stall overlap.");
+            sb.Append(a.FrameTime.Provider == "PRESENTMON_2_6"
+                ? " PresentMon adds QPC-anchored present intervals and CPU/GPU busy time; displayed latency and exact callback attribution are NOT_CAPTURED."
+                : " CapFrameX adds actual frametime, CPU/GPU active readings and synchronized stall overlap.");
         sb.Append("</div></div></div>");
         sb.Append("<div><span class=\"badge\">")
-            .Append(a.FrameTime is null ? "CET-SIDE MEASUREMENT" : "CET + CAPFRAMEX")
+            .Append(a.FrameTime is null ? "CET-SIDE MEASUREMENT" : a.FrameTime.Provider == "PRESENTMON_2_6" ? "CET + PRESENTMON" : "CET + CAPFRAMEX")
             .Append("</span></div></div>");
 
         sb.Append("<div class=\"grid\">");
@@ -143,43 +145,48 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
             AppendScheduler(sb, a);
 
         AppendDataLinks(sb, captureRoot);
-        sb.Append("<div class=\"footer\">CET measurements describe observed CET/Lua work. CapFrameX, when present, is the rendered-frametime layer. Synchronized overlap is evidence of timing coincidence, not a subtraction budget or automatic proof of causation.</div>");
+        sb.Append("<div class=\"footer\">CET measures CET/Lua workload; PresentMon records present intervals and CPU/GPU busy time, and legacy CapFrameX remains supported. Synchronized overlap is coincidence evidence, never additive CPU or causation.</div>");
         sb.Append("</div></body></html>");
         return sb.ToString();
     }
 
     private static void AppendFrameTime(StringBuilder sb, FrameTimeAnalysis ft)
     {
+        var presentMon = ft.Provider == "PRESENTMON_2_6";
+        var provider = presentMon ? "PresentMon 2.6" : "CapFrameX";
         sb.Append("<div class=\"section\"><h2>Frametime &amp; CET overlap</h2>");
         sb.Append("<div class=\"grid\">");
         MetricCard(sb, "Average", F(ft.AverageFps, 1) + " FPS", F(ft.MeanFrameMs) + " ms mean · " + N(ft.FrameCount) + " frames");
         MetricCard(sb, "P95 / P99", F(ft.P95FrameMs) + " / " + F(ft.P99FrameMs) + " ms", "Median " + F(ft.MedianFrameMs) + " ms");
-        MetricCard(sb, "Worst frame", F(ft.MaxFrameMs) + " ms", "≥50 ms " + N(ft.FramesOver50Ms) + " · ≥100 ms " + N(ft.FramesOver100Ms));
+        MetricCard(sb, presentMon ? "Worst present interval" : "Worst frame", F(ft.MaxFrameMs) + " ms", "≥50 ms " + N(ft.FramesOver50Ms) + " · ≥100 ms " + N(ft.FramesOver100Ms));
         MetricCard(sb, "Frames ≥33.3 ms", N(ft.FramesOver33Ms), "≥25 ms " + N(ft.FramesOver25Ms));
         sb.Append("<div class=\"note\"><b>Capture-end frame guard:</b> ")
             .Append(N(ft.ExcludedCaptureEndCount))
             .Append(" final frames excluded from gameplay FPS, tails, hitch episodes, worst-frame and CET overlap statistics (")
             .Append(N(ft.FrameCount)).Append(" analyzed / ")
             .Append(N(ft.CapturedFrameCount)).Append(" captured). ")
-            .Append("All raw CapFrameX frames remain unchanged under FrameTime/; all CET and allocation evidence is retained. ")
+            .Append(presentMon
+                ? "GCO already trimmed PresentMon to the CET/GRSP F11 overlap; no report-only tail is removed. The sealed CSV is unchanged. "
+                : "All raw CapFrameX frames remain unchanged under FrameTime/; all CET and allocation evidence is retained. ")
             .Append("The full capture duration is still used for synchronization.</div>");
         sb.Append("</div>");
 
-        sb.Append("<div class=\"two\"><div class=\"card\"><h3>CapFrameX capture</h3>")
+        sb.Append("<div class=\"two\"><div class=\"card\"><h3>").Append(provider).Append(" capture</h3>")
             .Append("<div class=\"healthline\"><span class=\"muted\">Source</span><span>").Append(H(ft.SourceFile)).Append("</span></div>")
             .Append("<div class=\"healthline\"><span class=\"muted\">Game</span><span>").Append(H(ft.GameName)).Append("</span></div>")
             .Append("<div class=\"healthline\"><span class=\"muted\">GPU</span><span>").Append(H(ft.GPU)).Append("</span></div>")
-            .Append("<div class=\"healthline\"><span class=\"muted\">CPU active</span><span>").Append(F(ft.MeanCpuActiveMs)).Append(" ms mean · ").Append(F(ft.P95CpuActiveMs)).Append(" ms P95</span></div>")
-            .Append("<div class=\"healthline\"><span class=\"muted\">GPU active</span><span>").Append(F(ft.MeanGpuActiveMs)).Append(" ms mean · ").Append(F(ft.P95GpuActiveMs)).Append(" ms P95</span></div></div>");
+            .Append("<div class=\"healthline\"><span class=\"muted\">").Append(presentMon ? "CPU busy" : "CPU active").Append("</span><span>").Append(ft.CpuBusyCaptured ? F(ft.MeanCpuActiveMs) + " ms mean · " + F(ft.P95CpuActiveMs) + " ms P95" : "NOT_CAPTURED").Append("</span></div>")
+            .Append("<div class=\"healthline\"><span class=\"muted\">").Append(presentMon ? "GPU busy" : "GPU active").Append("</span><span>").Append(ft.GpuBusyCaptured ? F(ft.MeanGpuActiveMs) + " ms mean · " + F(ft.P95GpuActiveMs) + " ms P95" : "NOT_CAPTURED").Append("</span></div></div>");
 
-        var syncClass = ft.SyncQuality == "GOOD" ? "syncgood" : ft.SyncQuality == "COARSE" ? "synccoarse" : "syncbad";
+        var syncClass = ft.SyncQuality == "GOOD" ? "syncgood" :
+            ft.SyncQuality == "COARSE" || presentMon ? "synccoarse" : "syncbad";
         var capRecordLocal = ft.CapFrameXRecordUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fff zzz") ?? "unknown";
         var cetStartLocal = ft.CetStartUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fff zzz") ?? "unknown";
         sb.Append("<div class=\"card\"><h3>Synchronization</h3>")
             .Append("<div class=\"healthline\"><span class=\"muted\">Status</span><span class=\"").Append(syncClass).Append("\"><b>").Append(H(ft.SyncQuality)).Append("</b></span></div>")
             .Append("<div class=\"healthline\"><span class=\"muted\">Method</span><span>").Append(H(ft.AlignmentMethod)).Append("</span></div>")
             .Append("<div class=\"healthline\"><span class=\"muted\">CET capture start</span><span>").Append(H(cetStartLocal)).Append(" <span class=\"muted\">(local)</span></span></div>")
-            .Append("<div class=\"healthline\"><span class=\"muted\">CapFrameX record/save time</span><span>").Append(H(capRecordLocal)).Append(" <span class=\"muted\">(local)</span></span></div>");
+            .Append(presentMon ? "" : "<div class=\"healthline\"><span class=\"muted\">CapFrameX record/save time</span><span>" + H(capRecordLocal) + " <span class=\"muted\">(local)</span></span></div>");
 
         if (double.IsFinite(ft.DurationDeltaMs))
             sb.Append("<div class=\"healthline\"><span class=\"muted\">Duration difference</span><span>").Append(F(ft.DurationDeltaMs, 1)).Append(" ms</span></div>");
@@ -247,7 +254,9 @@ details{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
             .Append("<span class=\"zoomhint\">Shift + mouse wheel over graph: zoom</span>")
             .Append("</div><canvas id=\"gcetFtChart\"></canvas><div id=\"gcetFtTip\" class=\"charttip\"></div>")
             .Append("<div class=\"legend\"><span><i class=\"sw ft\"></i>Max frametime / CET 50 ms window</span><span><i class=\"sw cpu\"></i>CPU active max</span><span><i class=\"sw gpu\"></i>GPU active max</span><span><i class=\"sw cet\"></i>Measured CET work / 50 ms window</span></div></div>")
-            .Append("<div class=\"note\"><b>Read the layers together; do not add or subtract them.</b> CapFrameX is actual rendered frametime. CET is observed script-side work aggregated into the same 50 ms clock windows.</div>");
+            .Append(presentMon
+                ? "<div class=\"note\"><b>Present-to-present interval is not displayed-frame latency.</b> GRSP QPC anchors verify CET+GRSP F11 coincidence; exact callback attribution is disabled. PC latency, dropped frames and frame-generation flags are NOT_CAPTURED.</div>"
+                : "<div class=\"note\"><b>Read the layers together; do not add or subtract them.</b> CapFrameX is actual rendered frametime. CET is observed script-side work aggregated into the same 50 ms clock windows.</div>");
 
         if (ft.WorstFrames.Count > 0)
         {
