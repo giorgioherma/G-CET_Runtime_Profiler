@@ -1,3 +1,8 @@
+## 2026-11-22 — Standalone private CET source checkout repair
+
+- CET CI [#2607](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/44975517234), source `976c1662077f67e5e69b978d19cd2332f35ce2e9`: generated G-GC Lua contract passed; untouched private fixture checkout failed on Windows with `Filename too long` for deeply nested mod JSON files, not an authentication or G-GC execution failure.
+- Enabled and verified Git for Windows `core.longpaths=true` before the private fixture checkout in `.github/workflows/original-cet-source.yml`, mirroring GCO's established checkout setup. No fixture edits, skipped tests or native rebuild. Success of the replacement checkout/generation lane is pending CI.
+
 ## 2026-11-22 — Player-selectable G-GC maintenance (source update; validation pending)
 
 - Owner-approved step buttons: 50 KiB, 150 KiB, 4 MiB (4096 KiB), 8 MiB (8192 KiB). Nonlinear interval slider OFF, 30s, 20s, 10s, 5s, 3s, 2s, 1500ms, 1000ms, 750ms, 500ms, 400ms, 300ms, 250ms, 200ms, 150ms, 100ms, 75ms, 50ms. Default 50 KiB/500ms. Large steps are experimental; requested work is not reclaimed bytes and a single LuaJIT operation may hitch.

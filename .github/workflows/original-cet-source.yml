@@ -19,6 +19,14 @@ jobs:
       - name: Checkout Resolver
         uses: actions/checkout@v5
 
+      - name: Enable long paths for Windows Git fixture checkout
+        shell: pwsh
+        run: |
+          git config --global core.longpaths true
+          if ($LASTEXITCODE -ne 0 -or (git config --global --get core.longpaths).Trim() -ne 'true') {
+            throw 'Windows Git long-path support could not be enabled.'
+          }
+
       - name: Checkout private untouched stack
         uses: actions/checkout@v5
         with:
