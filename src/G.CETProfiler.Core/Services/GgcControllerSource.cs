@@ -63,6 +63,15 @@ internal static class GgcControllerSource
             return false;
         }
 
+        // Distinguish an actual recognized installed-runtime upgrade from
+        // calibration-only support refreshes and first-time support emission.
+        // CompatibleLive above already proved the installed source's identity.
+        var runtimeFile = Path.Combine(modsRoot,
+            RuntimePath.Replace('/', Path.DirectorySeparatorChar));
+        var runtimeUpgrade = File.Exists(runtimeFile) &&
+            File.ReadAllText(runtimeFile).Replace("\r\n", "\n", StringComparison.Ordinal).TrimEnd() !=
+                Runtime.Replace("\r\n", "\n", StringComparison.Ordinal).TrimEnd();
+
         var appliedStages = manifest
             .Select(x => JsonSerializer.SerializeToElement(x)).ToArray();
         static bool IsStage(JsonElement row, string kind) =>
@@ -92,6 +101,7 @@ internal static class GgcControllerSource
             type = "GC_CONTROLLER",
             owner = "G-GC",
             stage = "SELECTABLE_CADENCE_RUNTIME_V10",
+            runtimeUpgrade,
             files = new[] {RuntimePath, CalibrationPath},
             captureEvidence = "CURRENT_CAPTURE_AND_GENERATED_SOURCE_PROOF",
             control = "PLAYER_SELECTED_STEP_AND_INTERVAL_OPTIONAL_WORKLOAD_PROTECTION",

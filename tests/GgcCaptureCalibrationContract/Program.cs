@@ -404,6 +404,7 @@ try
         "Generated G-GC lost selectable cadence, staged experiment, HUD notice, or no-cap policy");
     var doc = JsonSerializer.SerializeToElement(composed[^1]);
     Check(doc.GetProperty("type").GetString() == "GC_CONTROLLER" &&
+          !doc.GetProperty("runtimeUpgrade").GetBoolean() &&
           doc.GetProperty("perRuleEstimates").GetArrayLength() == 5 &&
           doc.GetProperty("appliedFrameCallbacksConsolidated").GetInt32() == 3 &&
           doc.GetProperty("appliedSourceProvenSemanticRules").GetInt32() == 2 &&
@@ -434,8 +435,12 @@ try
         using var reader=new StreamReader(stream!);
         File.WriteAllText(Path.Combine(tempRoot,"G-GC","init.lua"),reader.ReadToEnd());
         var upgraded=new Dictionary<string,byte[]>();
-        Check(Stage(decision,tempRoot,upgraded,new List<object>(),applied),
+        var upgradeManifest=new List<object>();
+        Check(Stage(decision,tempRoot,upgraded,new List<object>(),applied,upgradeManifest),
             "Source-proven "+version+" upgrade failed");
+        Check(JsonSerializer.SerializeToElement(upgradeManifest[^1])
+            .GetProperty("runtimeUpgrade").GetBoolean(),
+            "Recognized installed runtime upgrade was treated as calibration-only");
         Check(upgraded["G-GC/init.lua"].SequenceEqual(generated["G-GC/init.lua"]),
             "Version "+version+" upgrade altered generated ownership");
     }
