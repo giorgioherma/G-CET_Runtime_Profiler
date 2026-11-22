@@ -1,3 +1,7 @@
+## 2026-11-22 — Direct manual G-GC observation (supersedes normal-operation safety backoff below)
+
+Owner reports frequent cooldown resets even idle, preventing controlled testing. Normal operation now has no frame/cost cooldown or recovery multiplier. Optional workload protection remains independently selectable (OFF means selected cadence only, subject to valid updates, active world and successful GC calls). Expensive calls are still measured and may hitch; user may stop collection at any time. Historical developer A/B protection and phase cadence remain unchanged. V11 upgrade admits exact V10 source and preserves player preferences. CI and actual gameplay behavior pending.
+
 ## 2026-11-22 — Player-selectable G-GC maintenance (source update; validation pending)
 
 - Owner-approved step buttons: 50 KiB, 150 KiB, 4 MiB (4096 KiB), 8 MiB (8192 KiB). Nonlinear interval slider OFF, 30s, 20s, 10s, 5s, 3s, 2s, 1500ms, 1000ms, 750ms, 500ms, 400ms, 300ms, 250ms, 200ms, 150ms, 100ms, 75ms, 50ms. Default 50 KiB/500ms. Large steps are experimental; requested work is not reclaimed bytes and a single LuaJIT operation may hitch.

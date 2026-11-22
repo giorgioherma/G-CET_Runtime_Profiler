@@ -1,3 +1,7 @@
+## 2026-11-22 — Owner-requested manual G-GC experiment without hidden cooldown
+
+- Normal player-selected maintenance no longer pauses for individual frame hitches, expensive steps or sustained helper CPU cost, and no recovery multiplier changes the selected interval. Optional workload protection retains RELAXED/MODERATE/HEAVY behavior; switch it off for direct cadence. Retain valid-update/world guards, OFF, step error disable, diagnostic step/heap/CPU counters, preferences, and original developer A/B safety and phase timing. No new profiler requirement. V10 exact generated runtime is retained as inert migration evidence; V11 output is generated from the canonical owner and retains schema-4 calibration compatibility. CI/gameplay validation pending.
+
 ## 2026-11-22 — Standalone private CET source checkout repair
 
 - CET CI [#2607](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/44975517234), source `976c1662077f67e5e69b978d19cd2332f35ce2e9`: generated G-GC Lua contract passed; untouched private fixture checkout failed on Windows with `Filename too long` for deeply nested mod JSON files, not an authentication or G-GC execution failure.

@@ -427,7 +427,7 @@ try
     }
     // Source-proven upgrade for all previously generated single-controller
     // versions, never marker-only trust or a second independent worker.
-    foreach(var version in new[]{"V1","V2","V3","V4","V5","V6","V7","V8","V9"})
+    foreach(var version in new[]{"V1","V2","V3","V4","V5","V6","V7","V8","V9","V10"})
     {
         using var stream=assembly.GetManifestResourceStream(
             "GCETRuntimeProfiler.GgcGeneratedRuntime"+version+".reference.lua");

@@ -100,7 +100,7 @@ internal static class GgcControllerSource
         {
             type = "GC_CONTROLLER",
             owner = "G-GC",
-            stage = "SELECTABLE_CADENCE_RUNTIME_V10",
+            stage = "SELECTABLE_CADENCE_RUNTIME_V11",
             runtimeUpgrade,
             files = new[] {RuntimePath, CalibrationPath},
             captureEvidence = "CURRENT_CAPTURE_AND_GENERATED_SOURCE_PROOF",
@@ -227,7 +227,7 @@ internal static class GgcControllerSource
             // the complete exact previously emitted source; any manual drift
             // refuses overwrite. All output still has one authoritative owner.
             var assembly = typeof(GgcControllerSource).Assembly;
-            foreach (var legacyVersion in new[] { "V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8", "V9" })
+            foreach (var legacyVersion in new[] { "V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8", "V9", "V10" })
             {
                 using var legacy = assembly.GetManifestResourceStream(
                     "GCETRuntimeProfiler.GgcGeneratedRuntime" + legacyVersion + ".reference.lua");
@@ -464,7 +464,7 @@ return {
 -- GGC_RUNTIME_V1_RESOLVER_OWNED
 -- Single Resolver-generated G-GC runtime. No profiler DLL required.
 -- Player-selected maintenance, default 50 KiB / 500 ms; optional workload protection.
--- No runtime Profiler requirement; only the developer test overrides cadence.
+-- No runtime Profiler requirement; normal operation has no frame/cost cooldown.
 local config = require("threshold")
 if type(config) ~= "table" or config.schema ~= 4
     or type(config.hitchToleranceMs) ~= "number" then
@@ -529,7 +529,7 @@ local overlayOpen = false
 local heapSampleAge, sinceStep, sinceActualStep = 0, 0, 0
 local haveCompletedStep = false
 local heapMiB, previousHeap, growthMiBps = 0, nil, 0
-local activeWorld, backoffSeconds = false, 0
+local activeWorld, testBackoffSeconds = false, 0
 local stepCount, completedCycles, rejectedSteps = 0, 0, 0
 local lastStepKiB, totalRequestedKiB = 0, 0
 local lastHeapDropKiB, totalHeapDropKiB = 0, 0
@@ -540,9 +540,7 @@ local workloadState, relaxedReferenceMs = "HEAVY", config.baselineFrameMs
 local recentFrameMs, slowFrameShare = config.baselineFrameMs, 0
 local heavyFor, busyFor, easierFor, relaxedFor = 0, 0, 0, 0
 local skipOwnStepFrame = false
-local recoveryFactor, recoveryCheapSteps = 1, 0
 local validGameplaySeconds, costlySteps = 0, 0
-local costWindowSeconds, costWindowMs = 0, 0
 local recommendation = "Collecting gameplay evidence"
 local function limits()
   local margin = math.max(4, config.hitchToleranceMs - relaxedReferenceMs)
@@ -617,7 +615,7 @@ local function startTest()
   testState, countdownAge, phaseAge, testStarted = "armed", 0, 0, false
   testSteps, testRequestedKiB = {0, 0, 0}, {0, 0, 0}
   testCostMs, testMaximumCostMs = {0, 0, 0}, {0, 0, 0}
-  sinceStep = 0
+  sinceStep, testBackoffSeconds = 0, 0
   announce("GGC_TEST_ARMED",
     "90s test armed. Close CET overlay; 10s countdown then 30/30/30s.")
 end
@@ -627,14 +625,14 @@ local function restoreSettings()
     manualKiB, manualIntervalMs = testSaveKiB, testSaveIntervalMs
   end
   testState, phaseAge, countdownAge = "idle", 0, 0
-  sinceStep = 0
+  sinceStep, testBackoffSeconds = 0, 0
 end
 
 local function observe(seconds)
   local ok, kib = pcall(collectgarbage, "count")
   if not ok or type(kib) ~= "number" or kib ~= kib or kib < 0 then
     activeWorld = false
-    backoffSeconds = 30
+    if testState ~= "idle" then testBackoffSeconds = 30 end
     return
   end
   heapMiB = kib / 1024
@@ -686,7 +684,7 @@ local function effectiveInterval()
   if manualIntervalMs == 0 then return 0 end
   if automaticProtection and workloadState == "HEAVY" then return 0 end
   local workloadFactor = automaticProtection and workloadState == "MODERATE" and 2 or 1
-  return manualIntervalMs * workloadFactor * recoveryFactor
+  return manualIntervalMs * workloadFactor
 end
 
 local function requestedStep()
@@ -717,7 +715,6 @@ local function measureWorkload(dt)
   -- Isolated LuaJIT/natural collector hitches are real but not a sustained
   -- workload classification. Ignore their impact on the relaxed reference.
   if frameMs >= math.max(100, config.hitchToleranceMs * 2.5) then
-    backoffSeconds = math.max(backoffSeconds, 1)
     return
   end
   validGameplaySeconds = validGameplaySeconds + dt
@@ -756,30 +753,25 @@ local function measureWorkload(dt)
 end
 
 local function tick(dt)
-  if type(dt) ~= "number" or dt <= 0 or dt > 0.50 then
-    backoffSeconds = math.max(backoffSeconds, 3)
+  if type(dt) ~= "number" or dt ~= dt or dt <= 0 or dt > 0.50 then
+    if testState ~= "idle" then
+      testBackoffSeconds = math.max(testBackoffSeconds, 3)
+    end
     sinceStep = 0
     lastBlock = "invalid/heavy frame"
     return
   end
-  if dt * 1000 >= config.hitchToleranceMs then
-    backoffSeconds = math.max(backoffSeconds, 2)
+  -- The historical developer A/B retains its original protective cadence.
+  -- Normal maintenance is controlled only by the selected interval and
+  -- optional workload protection; frame/step costs are observations.
+  if testState ~= "idle" then
+    if dt * 1000 >= config.hitchToleranceMs then
+      testBackoffSeconds = math.max(testBackoffSeconds, 2)
+    end
+    testBackoffSeconds = math.max(0, testBackoffSeconds - dt)
   end
-  if backoffSeconds > 0 then backoffSeconds = math.max(0, backoffSeconds - dt) end
   heapSampleAge, sinceStep = heapSampleAge + dt, sinceStep + dt
   sinceActualStep = sinceActualStep + dt
-  costWindowSeconds = costWindowSeconds + dt
-  if costWindowSeconds >= 10 then
-    local maxCost = math.max(1.5, math.min(3, config.baselineFrameMs * 0.08))
-    if testState == "idle" and costWindowMs / costWindowSeconds > maxCost then
-      backoffSeconds = math.max(backoffSeconds, 5)
-      costlySteps = costlySteps + 1
-      recoveryFactor = math.min(8, math.max(2, recoveryFactor * 2))
-      recoveryCheapSteps = 0
-      lastBlock = "sustained helper cost"
-    end
-    costWindowSeconds, costWindowMs = 0, 0
-  end
   if heapSampleAge >= 0.75 then
     local seconds = heapSampleAge
     heapSampleAge = 0
@@ -803,11 +795,8 @@ local function tick(dt)
       and "heavy workload" or "assistance off"
     return
   end
-  if backoffSeconds > 0 then
-    -- Do not accumulate maintenance debt while blocked. Keep the historical
-    -- development A/B's cadence unchanged for comparison.
-    if testState == "idle" then sinceStep = 0 end
-    lastBlock = "frame/GC cost backoff"
+  if testState ~= "idle" and testBackoffSeconds > 0 then
+    lastBlock = "developer test frame/GC cost backoff"
     return
   end
   if sinceStep * 1000 < intervalMs then lastBlock = "step interval"; return end
@@ -824,12 +813,11 @@ local function tick(dt)
   maximumCpuMs = math.max(maximumCpuMs, cpuMs)
   if testState == "idle" then
     skipOwnStepFrame = true
-    costWindowMs = costWindowMs + cpuMs
   end
   if not ok then
     rejectedSteps = rejectedSteps + 1
-    backoffSeconds = 30
     if phase > 0 then
+      testBackoffSeconds = 30
       testState = "failed"
       announce("GGC_TEST_FAILED",
         "90s test ABORTED because a GC step failed; stop capture.")
@@ -864,24 +852,13 @@ local function tick(dt)
     testMaximumCostMs[phase] = math.max(testMaximumCostMs[phase], cpuMs)
   end
   lastBlock = "running"
-  -- One indivisible LuaJIT collector phase can exceed the nominal cost.
-  -- Cool down AFTER such a step; never force a full collection.
+  -- Expensive steps are diagnostic in normal manual operation. The
+  -- historical developer test retains its five-second protective pause.
   if cpuMs > math.max(2.5, config.hitchToleranceMs * 0.08) then
-    backoffSeconds = 5
     costlySteps = costlySteps + 1
-    if testState == "idle" then
-      recoveryFactor = math.min(8, math.max(2, recoveryFactor * 2))
-      recoveryCheapSteps = 0
-      -- This expensive request has already been penalized. Do not trigger a
-      -- second sustained-cost cooldown from that same request during recovery.
-      costWindowMs, costWindowSeconds = 0, 0
-    end
-    lastBlock = "expensive-step backoff"
-  elseif testState == "idle" and recoveryFactor > 1 then
-    recoveryCheapSteps = recoveryCheapSteps + 1
-    if recoveryCheapSteps >= 3 then
-      recoveryFactor = math.max(1, recoveryFactor / 2)
-      recoveryCheapSteps = 0
+    if testState ~= "idle" then
+      testBackoffSeconds = 5
+      lastBlock = "developer test expensive-step backoff"
     end
   end
   if validGameplaySeconds >= 300 then
@@ -902,7 +879,7 @@ registerForEvent("onShutdown", function()
   workloadState, recentFrameMs = "HEAVY", config.baselineFrameMs
   heavyFor, busyFor, easierFor, relaxedFor = 0, 0, 0, 0
   skipOwnStepFrame = false
-  recoveryFactor, recoveryCheapSteps, sinceStep = 1, 0, 0
+  testBackoffSeconds, sinceStep = 0, 0
 end)
 
 registerForEvent("onDraw", function()
@@ -958,8 +935,9 @@ registerForEvent("onDraw", function()
       lastCpuMs, previousCpuMs, maximumCpuMs))
     ImGui.Text(string.format("Observed spacing %.0f ms last / %.0f ms previous",
       lastIntervalMs, previousIntervalMs))
-    ImGui.Text(string.format("Safety cooldown %.1f s | recovery multiplier %dx",
-      backoffSeconds, recoveryFactor))
+    if testState ~= "idle" then
+      ImGui.Text(string.format("Developer test safety cooldown %.1f s", testBackoffSeconds))
+    end
 
     if testState == "idle" then
       if ImGui.Button("DEV: Start 90s A/B test") then startTest() end

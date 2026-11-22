@@ -228,23 +228,21 @@ selectedAutomatic = false
 draw()
 hooks.onOverlayClose()
 assert(savedSettings == "v2 50 500 0\n")
--- Short severe-frame backoff still works even with automatic protection off.
-hooks.onUpdate(0.2)
+-- Manual cadence must remain under player control despite repeated slow
+-- frames or expensive collector calls. No hidden frame/cost cooldown or
+-- recovery multiplier may stretch the chosen interval.
 local safe = stepCount()
-advance(1)
-assert(stepCount() == safe, "Manual mode bypassed hard frame safety")
-advance(2)
-assert(stepCount() > safe, "Manual mode failed to resume after safety backoff")
--- An expensive actual step applies cooldown, followed by a full slower interval.
+advance(3, 0.047)
+assert(stepCount() - safe >= 5, "Repeated slow frames suppressed manual maintenance")
 expensiveNext = true
 advance(0.6)
 local costly = stepCount()
-advance(5)
-assert(stepCount() == costly, "Expensive-step cooldown released too early")
-advance(1.5)
-assert(stepCount() > costly, "Expensive-step recovery never resumed")
-assert(stepTimes[costly+1] - stepTimes[costly] >= 5.9,
-  "Recovered at original cadence or caught up immediately")
+advance(1.1)
+assert(stepCount() - costly >= 2, "Expensive step suppressed manual maintenance")
+assert(stepTimes[costly+1] - stepTimes[costly] < 0.6,
+  "Expensive step silently changed manual cadence")
+assert(draw():find("effective 500 ms", 1, true), "Manual effective interval changed")
+hooks.onOverlayClose()
 selectedAutomatic = true
 draw()
 hooks.onOverlayClose()
@@ -330,7 +328,7 @@ advance(1)
 assert(stepCount() > resumed and steps[#steps] == 50,
   "test failed to restore saved manual step/cadence on request")
 
--- World loss and heavy-frame safety remain effective.
+-- World loss and explicitly enabled workload protection remain effective.
 active = false
 advance(2)
 local lostWorld = stepCount()
@@ -342,7 +340,7 @@ advance(1)
 local beforeHeavy = stepCount()
 advance(3, 0.047)
 assert(stepCount() == beforeHeavy,
-  "G-GC ignored repeated severe frame backoff")
+  "G-GC ignored enabled heavy workload protection")
 
 os, print, io = actualOs, oldPrint, oldIO
-print("G-GC selectable maintenance, even moderate cadence, safety recovery, preferences, 90s developer phases PASS")
+print("G-GC selectable maintenance, even moderate cadence, unthrottled manual control, preferences, 90s developer phases PASS")
