@@ -693,7 +693,7 @@ local function setWorkloadState(value)
   if workloadState == value then return end
   workloadState = value
   heavyFor, busyFor, easierFor, relaxedFor = 0, 0, 0, 0
-  sinceStep = 0
+  if automaticProtection then sinceStep = 0 end
   mark("GGC_WORKLOAD_" .. value)
 end
 
@@ -862,6 +862,9 @@ local function tick(dt)
     if testState == "idle" then
       recoveryFactor = math.min(8, math.max(2, recoveryFactor * 2))
       recoveryCheapSteps = 0
+      -- This expensive request has already been penalized. Do not trigger a
+      -- second sustained-cost cooldown from that same request during recovery.
+      costWindowMs, costWindowSeconds = 0, 0
     end
     lastBlock = "expensive-step backoff"
   elseif testState == "idle" and recoveryFactor > 1 then
