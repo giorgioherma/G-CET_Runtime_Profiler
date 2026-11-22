@@ -163,9 +163,12 @@ internal static class GgcCaptureCalibrationService
             systemRamStatus = "NOT_MEASURED_IN_RESOLVER_HANDOFF",
             control = new
             {
-                workloadSensitivityPlayerControlled = true,
-                fixedIncrementalStepKiB = 50,
-                fixedIncrementalIntervalMs = 500,
+                stepAndIntervalPlayerControlled = true,
+                defaultIncrementalStepKiB = 50,
+                defaultIncrementalIntervalMs = 500,
+                selectableStepKiB = new[] { 50, 150, 4096, 8192 },
+                selectableIntervalMs = new[] { 0, 30000, 20000, 10000, 5000, 3000, 2000, 1500, 1000, 750, 500, 400, 300, 250, 200, 150, 100, 75, 50 },
+                automaticWorkloadProtectionByDefault = true,
                 enabledByDefault = true,
                 directGcCostSafetyMonitored = true
             },

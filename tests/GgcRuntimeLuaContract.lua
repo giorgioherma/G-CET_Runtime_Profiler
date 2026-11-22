@@ -1,11 +1,13 @@
 -- Execute actual Resolver G-GC generated source inside mocked CET.
--- Regression: adaptive three-state workload gate, fixed 50KiB/500ms and developer A/B.
+-- Regression: selectable cadence, optional workload guard, legacy preferences and developer A/B.
 local runtime = assert(arg[1], "generated G-GC Lua runtime required")
 local hooks, rendered, marks, logged, steps = {}, {}, {}, {}, {}
 local heapKiB, active = 583 * 1024, true
 local simulatedCpu, fullCollections, hudNotifications = 0, 0, 0
-local selectedSensitivity, selectedEnabled, clicked = nil, nil, nil
-local sliders, savedSettings = {}, nil
+local selectedInterval, selectedAutomatic, clicked = nil, nil, nil
+local sliders, savedSettings = {}, "70 1\n"
+local expensiveNext = false
+local elapsed, stepTimes = 0, {}
 local prevPrint, oldIO = print, io
 io = { open = function(path, mode)
   assert(path == "user_settings.txt", "unexpected preference path")
@@ -49,12 +51,14 @@ CETProfilerMark = function(label) marks[#marks + 1] = label end
 collectgarbage = function(command, amount)
   if command == "count" then return heapKiB end
   if command == "step" then
-    assert(type(amount) == "number" and amount > 0 and amount <= 256,
+    assert(type(amount) == "number" and amount > 0 and amount <= 8192,
       "out-of-range / zero / full collector step requested")
     steps[#steps + 1] = amount
     -- Deterministic mock step CPU and net heap reduction; requested GC
     -- work is not assumed equal to memory reclaimed.
-    simulatedCpu = simulatedCpu + amount * 0.0000005
+    stepTimes[#stepTimes + 1] = elapsed
+    simulatedCpu = simulatedCpu + (expensiveNext and 0.020 or 0.00005)
+    expensiveNext = false
     heapKiB = math.max(64, heapKiB - math.min(32, amount / 4))
     return false
   end
@@ -69,16 +73,17 @@ ImGui = {
   Text = function(x) rendered[#rendered + 1] = x end,
   SliderInt = function(label, value, minimum, maximum)
     sliders[label] = {min=minimum, max=maximum}
-    assert(label == "Workload sensitivity")
-    return selectedSensitivity or value, selectedSensitivity ~= nil
+    assert(label == "##Collection interval")
+    return selectedInterval or value, selectedInterval ~= nil
   end,
   Checkbox = function(label, value)
-    assert(label == "Automatic assistance")
-    if selectedEnabled == nil then return value, false end
-    local chosen = selectedEnabled
-    selectedEnabled = nil
+    assert(label == "Automatic workload protection")
+    if selectedAutomatic == nil then return value, false end
+    local chosen = selectedAutomatic
+    selectedAutomatic = nil
     return chosen, chosen ~= value
   end,
+  SameLine = function() end,
   Button = function(label)
     if label == clicked then clicked = nil; return true end
     return false
@@ -95,7 +100,7 @@ assert(type(hooks.onUpdate) == "function" and
 local function advance(seconds, dt)
   dt = dt or 0.02
   local n = math.floor(seconds / dt + 0.5)
-  for _ = 1, n do hooks.onUpdate(dt) end
+  for _ = 1, n do elapsed = elapsed + dt; hooks.onUpdate(dt) end
 end
 local function draw()
   rendered = {}
@@ -122,11 +127,11 @@ end
 -- The controller must function without Profiler hooks.
 advance(1)
 local shown = draw()
-assert(sliders["Workload sensitivity"].min == 0 and
-       sliders["Workload sensitivity"].max == 100)
-assert(not sliders["Step size (KiB)"] and not sliders["Interval (ms)"])
+assert(sliders["##Collection interval"].min == 1 and
+       sliders["##Collection interval"].max == 19)
 assert(shown:find("Workload: HEAVY", 1, true))
-assert(shown:find("Maintenance 50 KiB / 500 ms", 1, true))
+assert(shown:find("Collection interval: 500 ms", 1, true))
+assert(shown:find("Preferences: legacy restored", 1, true))
 hooks.onOverlayClose()
 local initial = stepCount()
 advance(12)
@@ -178,29 +183,73 @@ local dutyStart = stepCount()
 advance(15, 0.029)
 local dutyCount = stepCount() - dutyStart
 assert(dutyCount > 3 and dutyCount < 22,
-  "MODERATE duty cycle misbehaved: " .. dutyCount)
+  "MODERATE spacing misbehaved: " .. dutyCount)
+for i = dutyStart + 2, #stepTimes do
+  assert(stepTimes[i] - stepTimes[i-1] >= 0.99,
+    "MODERATE used burst collection instead of even spacing")
+end
 advance(12)
 shown = draw()
 assert(shown:find("Workload: RELAXED", 1, true))
 hooks.onOverlayClose()
 
 -- Settings belong to the player, never to Resolver's threshold.lua.
-selectedSensitivity = 70
-draw()
-assert(savedSettings:match("^70%s+1%s*$"))
-selectedSensitivity = nil
-selectedEnabled = false
-draw()
-assert(savedSettings:match("^70%s+0%s*$"))
-hooks.onOverlayClose()
+local function interval(index)
+  selectedInterval = index
+  draw()
+  selectedInterval = nil
+  hooks.onOverlayClose()
+end
+interval(1)
+assert(savedSettings == "v2 50 0 1\n")
 local disabled = stepCount()
 advance(6)
-assert(stepCount() == disabled, "OFF switch did not stop steps")
-selectedEnabled = true
+assert(stepCount() == disabled, "OFF issued a GC step")
+interval(2)
+local slowStart = stepCount()
+advance(29)
+assert(stepCount() == slowStart, "30-second selection ran early")
+advance(1.2)
+assert(stepCount() == slowStart + 1, "30-second selection never ran")
+interval(19)
+for _, preset in ipairs({{"150 KiB",150},{"4 MiB",4096},{"8 MiB",8192}}) do
+  press(preset[1])
+  hooks.onOverlayClose()
+  local before = stepCount()
+  advance(0.2)
+  assert(stepCount() > before and steps[#steps] == preset[2],
+    "Selected size not delivered: " .. preset[1])
+end
+assert(savedSettings == "v2 8192 50 1\n")
+press("50 KiB")
+hooks.onOverlayClose()
+interval(11)
+selectedAutomatic = false
 draw()
 hooks.onOverlayClose()
-advance(10)
-assert(stepCount() > disabled, "ON switch did not restart maintenance")
+assert(savedSettings == "v2 50 500 0\n")
+-- Short severe-frame backoff still works even with automatic protection off.
+hooks.onUpdate(0.2)
+local safe = stepCount()
+advance(1)
+assert(stepCount() == safe, "Manual mode bypassed hard frame safety")
+advance(2)
+assert(stepCount() > safe, "Manual mode failed to resume after safety backoff")
+-- An expensive actual step applies cooldown, followed by a full slower interval.
+expensiveNext = true
+advance(0.6)
+local costly = stepCount()
+advance(5)
+assert(stepCount() == costly, "Expensive-step cooldown released too early")
+advance(1.5)
+assert(stepCount() > costly, "Expensive-step recovery never resumed")
+assert(stepTimes[costly+1] - stepTimes[costly] >= 5.9,
+  "Recovered at original cadence or caught up immediately")
+selectedAutomatic = true
+draw()
+hooks.onOverlayClose()
+advance(8)
+assert(savedSettings == "v2 50 500 1\n")
 
 -- One large natural collector hitch must not become sustained game pressure.
 hooks.onUpdate(0.20)
@@ -296,4 +345,4 @@ assert(stepCount() == beforeHeavy,
   "G-GC ignored repeated severe frame backoff")
 
 os, print, io = actualOs, oldPrint, oldIO
-print("G-GC adaptive 3-state, fixed maintenance, preferences, 90s developer phases PASS")
+print("G-GC selectable maintenance, even moderate cadence, safety recovery, preferences, 90s developer phases PASS")

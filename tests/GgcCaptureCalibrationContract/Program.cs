@@ -141,8 +141,8 @@ Check(observed["gcPressure"]!["observedSlowStepSamples"]!.GetValue<int>() == 3 &
 Check(observed["assistance"]!["measuredOriginalCetMsPerSecond"]!.GetValue<double>() == 120 &&
       observed["assistance"]!["estimatedFreedCetMsPerSecond"] is null &&
       observed["assistance"]!["recommendedIntensityPercent"] is null &&
-      observed["control"]!["fixedIncrementalStepKiB"]!.GetValue<int>() == 50 &&
-      observed["control"]!["fixedIncrementalIntervalMs"]!.GetValue<int>() == 500,
+      observed["control"]!["defaultIncrementalStepKiB"]!.GetValue<int>() == 50 &&
+      observed["control"]!["defaultIncrementalIntervalMs"]!.GetValue<int>() == 500,
     "ANALYZE wrongly predicted savings without actually applying sources");
 
 // Varied gameplay supplies a measured (still provisional) workload
@@ -382,13 +382,13 @@ try
     Check(!threshold.Contains("defaultIntensity") &&
           !threshold.Contains("defaultFrequencyMs") &&
           !threshold.Contains("estimatedGgcStartingCpuMsPerSecond") &&
-          source.Contains("ImGui.SliderInt(\"Workload sensitivity\", sensitivity, 0, 100)") &&
-          source.Contains("ImGui.Checkbox(\"Automatic assistance\", assistanceEnabled)") &&
+          source.Contains("local stepSizes = {50, 150, 4096, 8192}") &&
+          source.Contains("ImGui.Checkbox(\"Automatic workload protection\", automaticProtection)") &&
           source.Contains("local manualKiB, manualIntervalMs = 50, 500") &&
-          source.Contains("moderateCycle >= 2") &&
+          source.Contains("workloadState == \"MODERATE\" and 2 or 1") &&
           source.Contains("workloadState == \"HEAVY\"") &&
-          !source.Contains("ImGui.SliderInt(\"Step size (KiB)\"") &&
-          !source.Contains("ImGui.SliderInt(\"Interval (ms)\"") &&
+          !source.Contains("moderateCycle") &&
+          !source.Contains("Workload sensitivity") &&
           source.Contains("DEV: Start 90s A/B test") &&
           source.Contains("beginPhase(\"off\")") &&
           source.Contains("beginPhase(\"slow\")") &&
@@ -401,7 +401,7 @@ try
           !source.Contains("frameEmaMs") &&
           !source.Contains("if pressure <= 0 then") &&
           !source.Contains("1536"),
-        "Generated G-GC lost fixed step sliders, staged experiment, HUD notice, or no-cap policy");
+        "Generated G-GC lost selectable cadence, staged experiment, HUD notice, or no-cap policy");
     var doc = JsonSerializer.SerializeToElement(composed[^1]);
     Check(doc.GetProperty("type").GetString() == "GC_CONTROLLER" &&
           doc.GetProperty("perRuleEstimates").GetArrayLength() == 5 &&
@@ -413,8 +413,9 @@ try
           Math.Abs(doc.GetProperty("estimatedFreedCetMsPerSecond").GetDouble() -
               Val(values,"EstimatedFreedCetMsPerSecond")) < 1e-5 &&
           !doc.TryGetProperty("DefaultIntensityPercent", out _) &&
-          doc.GetProperty("fixedStepKiB").GetInt32() == 50 &&
-          doc.GetProperty("fixedStepIntervalMs").GetInt32() == 500,
+          doc.GetProperty("defaultStepKiB").GetInt32() == 50 &&
+          doc.GetProperty("defaultStepIntervalMs").GetInt32() == 500 &&
+          doc.GetProperty("selectableStepKiB").EnumerateArray().Select(x => x.GetInt32()).SequenceEqual(new[] { 50, 150, 4096, 8192 }),
         "Pass manifest lacks verifiable per-rule savings evidence");
 
     foreach (var item in generated)
@@ -425,7 +426,7 @@ try
     }
     // Source-proven upgrade for all previously generated single-controller
     // versions, never marker-only trust or a second independent worker.
-    foreach(var version in new[]{"V1","V2","V3","V4","V5","V6","V7","V8"})
+    foreach(var version in new[]{"V1","V2","V3","V4","V5","V6","V7","V8","V9"})
     {
         using var stream=assembly.GetManifestResourceStream(
             "GCETRuntimeProfiler.GgcGeneratedRuntime"+version+".reference.lua");
