@@ -1,106 +1,82 @@
--- Execute actual Resolver G-GC generated source inside mocked CET.
--- Regression: selectable cadence, optional workload guard, legacy preferences and developer A/B.
+-- Execute the current source-generated G-GC Lua inside mocked CET.
+-- Validate manual controls, 0-KiB steps, previous preference migration,
+-- real delivered cadence, world guards, honest diagnostics and no A/B.
 local runtime = assert(arg[1], "generated G-GC Lua runtime required")
-local hooks, rendered, marks, logged, steps = {}, {}, {}, {}, {}
+local hooks, rendered, steps, stepTimes = {}, {}, {}, {}
 local heapKiB, active = 583 * 1024, true
-local simulatedCpu, fullCollections, hudNotifications = 0, 0, 0
-local selectedInterval, selectedAutomatic, clicked = nil, nil, nil
-local sliders, savedSettings = {}, "70 1\n"
-local expensiveNext = false
-local elapsed, stepTimes = 0, {}
-local prevPrint, oldIO = print, io
+local simulatedCpu, fullCollections, elapsed = 0, 0, 0
+local sliders, savedSettings = {}, nil
+local selectedInterval, clicked, expensiveNext = nil, nil, false
+
+local realPrint, realIO, realOS = print, io, os
 io = { open = function(path, mode)
   assert(path == "user_settings.txt", "unexpected preference path")
   if mode == "r" then
     if savedSettings == nil then return nil end
-    return { read = function() return savedSettings end, close = function() end }
+    return {read = function() return savedSettings end, close = function() end}
   end
   assert(mode == "w")
-  return { write = function(_, value) savedSettings = value end,
-           close = function() end }
+  return {write = function(_, value) savedSettings = value end,
+          close = function() end}
 end }
-
 package.preload["threshold"] = function() return {
-  schema = 4, capture = "UNTAMPERED_STOCK_STACK",
-  baselineFrameMs = 22.4354, hitchToleranceMs = 33.6531,
-  pressureReferenceMiB = 863, pressureStartMiB = 800,
-  pressureHighMiB = 935
+  schema=4, capture="STOCK_STACK", baselineFrameMs=32.1,
+  hitchToleranceMs=48.2, pressureReferenceMiB=863
 } end
 registerForEvent = function(name, fn)
-  assert(hooks[name] == nil, "duplicate G-GC callback: " .. name)
+  assert(hooks[name] == nil, "duplicate callback: " .. name)
   hooks[name] = fn
 end
-Game = {
-  GetPlayer = function() return active and {} or nil end,
-  GetAllBlackboardDefs = function()
-    return { UI_Notifications = {WarningMessage = 77} }
-  end,
-  GetBlackboardSystem = function()
-    return { Get = function()
-      return {SetVariant = function(_, key, value, notify)
-        assert(key == 77 and notify and value.message:find("DONE"),
-          "invalid completion HUD notification")
-        hudNotifications = hudNotifications + 1
-      end}
-    end}
-  end
-}
-SimpleScreenMessage = { new = function() return {} end }
-ToVariant = function(x) return x end
-CETProfilerMark = function(label) marks[#marks + 1] = label end
+Game = {GetPlayer = function() return active and {} or nil end}
 collectgarbage = function(command, amount)
   if command == "count" then return heapKiB end
   if command == "step" then
-    assert(type(amount) == "number" and amount > 0 and amount <= 8192,
-      "out-of-range / zero / full collector step requested")
+    assert(type(amount) == "number" and amount >= 0 and amount <= 200,
+      "out-of-range / full collector step requested")
     steps[#steps + 1] = amount
-    -- Deterministic mock step CPU and net heap reduction; requested GC
-    -- work is not assumed equal to memory reclaimed.
     stepTimes[#stepTimes + 1] = elapsed
-    simulatedCpu = simulatedCpu + (expensiveNext and 0.020 or 0.00005)
+    simulatedCpu = simulatedCpu + (expensiveNext and .020 or .00005)
     expensiveNext = false
     heapKiB = math.max(64, heapKiB - math.min(32, amount / 4))
-    return false
+    return false -- Natural collector cycles are not counted by this helper.
   end
   if command == "collect" then fullCollections = fullCollections + 1 end
-  error("unexpected GC command " .. tostring(command))
+  error("unexpected GC command: " .. tostring(command))
 end
-local actualOs, oldPrint = os, print
-os = { clock = function() return simulatedCpu end }
-print = function(message) logged[#logged + 1] = message end
+os = {clock = function() return simulatedCpu end}
+print = function() end
 ImGui = {
   Begin = function() return true end, End = function() end,
-  Text = function(x) rendered[#rendered + 1] = x end,
-  SliderInt = function(label, value, minimum, maximum)
-    sliders[label] = {min=minimum, max=maximum}
+  Text = function(s) rendered[#rendered + 1] = s end,
+  SliderInt = function(label, value, lo, hi)
     assert(label == "##Collection interval")
-    return selectedInterval or value, selectedInterval ~= nil
+    sliders[label] = {lo=lo, hi=hi}
+    return selectedInterval or value
   end,
-  Checkbox = function(label, value)
-    assert(label == "Automatic workload protection")
-    if selectedAutomatic == nil then return value, false end
-    local chosen = selectedAutomatic
-    selectedAutomatic = nil
-    return chosen, chosen ~= value
-  end,
+  Checkbox = function() error("Automatic helper inhibition must be removed") end,
   SameLine = function() end,
   Button = function(label)
-    if label == clicked then clicked = nil; return true end
+    assert(not label:find("DEV:") and not label:find("test"),
+      "Built-in A/B UI must be removed")
+    if clicked == label then clicked = nil; return true end
     return false
   end
 }
-assert(loadfile(runtime))()
-assert(type(hooks.onUpdate) == "function" and
-  type(hooks.onDraw) == "function" and
-  type(hooks.onOverlayOpen) == "function" and
-  type(hooks.onOverlayClose) == "function" and
-  type(hooks.onShutdown) == "function",
-  "missing unique G-GC lifecycle hooks")
-
+local function load(prefs)
+  hooks, steps, stepTimes, sliders = {}, {}, {}, {}
+  heapKiB, active, simulatedCpu, elapsed = 583*1024, true, 0, 0
+  savedSettings, selectedInterval, clicked, expensiveNext = prefs, nil, nil, false
+  assert(loadfile(runtime))()
+  for _, name in ipairs({"onUpdate","onDraw","onOverlayOpen","onOverlayClose","onShutdown"}) do
+    assert(type(hooks[name]) == "function", "missing hook " .. name)
+  end
+end
 local function advance(seconds, dt)
-  dt = dt or 0.02
-  local n = math.floor(seconds / dt + 0.5)
-  for _ = 1, n do elapsed = elapsed + dt; hooks.onUpdate(dt) end
+  dt = dt or .02
+  for _ = 1, math.floor(seconds / dt + .5) do
+    elapsed = elapsed + dt
+    hooks.onUpdate(dt)
+  end
 end
 local function draw()
   rendered = {}
@@ -108,239 +84,154 @@ local function draw()
   hooks.onDraw()
   return table.concat(rendered, "\n")
 end
+local function close() hooks.onOverlayClose() end
 local function press(label)
   clicked = label
-  local shown = draw()
-  assert(clicked == nil, "CET action did not execute: " .. label)
-  return shown
+  draw()
+  assert(clicked == nil, "button missing " .. label)
+  close()
 end
-local function stepCount()
-  return #steps
-end
-local function hasMark(label)
-  for _, x in ipairs(marks) do
-    if x == label then return true end
-  end
-  return false
-end
-
--- The controller must function without Profiler hooks.
-advance(1)
-local shown = draw()
-assert(sliders["##Collection interval"].min == 1 and
-       sliders["##Collection interval"].max == 19)
-assert(shown:find("Workload: HEAVY", 1, true))
-assert(shown:find("Collection interval: 500 ms", 1, true))
-assert(shown:find("Preferences: legacy restored", 1, true))
-hooks.onOverlayClose()
-local initial = stepCount()
-advance(12)
-shown = draw()
-assert(shown:find("Workload: RELAXED", 1, true),
-  "calm gameplay did not clear five-second recovery")
-assert(stepCount() > initial and steps[#steps] == 50,
-  "relaxed state did not run fixed 50KiB maintenance")
-hooks.onOverlayClose()
-
--- Ordinary relaxed gameplay has variable frame pacing, not identical
--- 20ms frames. A real garage replay exposed the previous strict recovery
--- threshold as too sensitive to ordinary 20-35ms jitter.
-local quietDeltas = {0.020, 0.024, 0.027, 0.030, 0.021, 0.025, 0.023}
-for i = 1, 950 do
-  hooks.onUpdate(quietDeltas[(i - 1) % #quietDeltas + 1])
-end
-shown = draw()
-assert(shown:find("Workload: RELAXED", 1, true),
-  "realistic frame jitter prevented relaxed gameplay recovery")
-hooks.onOverlayClose()
-
--- Sustained heavy load should prohibit helper work.
-advance(3, 0.045)
-shown = draw()
-assert(shown:find("Workload: HEAVY", 1, true))
-hooks.onOverlayClose()
-local heavyStart = stepCount()
-advance(3, 0.045)
-assert(stepCount() == heavyStart, "HEAVY allowed helper steps")
-advance(5) -- 3s after the smoothed frame trend actually clears HEAVY
-shown = draw()
-assert(shown:find("Workload: MODERATE", 1, true),
-  "HEAVY must recover to MODERATE after 3s")
-hooks.onOverlayClose()
-advance(6)
-shown = draw()
-assert(shown:find("Workload: RELAXED", 1, true),
-  "MODERATE must recover to RELAXED after 5s")
-hooks.onOverlayClose()
-
--- Demand between the boundaries is stable MODERATE, not oscillating HEAVY.
-advance(5, 0.029)
-shown = draw()
-assert(shown:find("Workload: MODERATE", 1, true),
-  "mid-intensity workload did not enter MODERATE")
-hooks.onOverlayClose()
-local dutyStart = stepCount()
-advance(15, 0.029)
-local dutyCount = stepCount() - dutyStart
-assert(dutyCount > 3 and dutyCount < 22,
-  "MODERATE spacing misbehaved: " .. dutyCount)
-for i = dutyStart + 2, #stepTimes do
-  assert(stepTimes[i] - stepTimes[i-1] >= 0.99,
-    "MODERATE used burst collection instead of even spacing")
-end
-advance(12)
-shown = draw()
-assert(shown:find("Workload: RELAXED", 1, true))
-hooks.onOverlayClose()
-
--- Settings belong to the player, never to Resolver's threshold.lua.
-local function interval(index)
+local function setInterval(index)
   selectedInterval = index
   draw()
   selectedInterval = nil
-  hooks.onOverlayClose()
+  close()
 end
-interval(1)
-assert(savedSettings == "v2 50 0 1\n")
-local disabled = stepCount()
-advance(6)
-assert(stepCount() == disabled, "OFF issued a GC step")
-interval(2)
-local slowStart = stepCount()
-advance(29)
-assert(stepCount() == slowStart, "30-second selection ran early")
-advance(1.2)
-assert(stepCount() == slowStart + 1, "30-second selection never ran")
-interval(19)
-for _, preset in ipairs({{"150 KiB",150},{"4 MiB",4096},{"8 MiB",8192}}) do
-  press(preset[1])
-  hooks.onOverlayClose()
-  local before = stepCount()
-  advance(0.2)
-  assert(stepCount() > before and steps[#steps] == preset[2],
-    "Selected size not delivered: " .. preset[1])
+
+load(nil)
+advance(1)
+local output = draw()
+assert(sliders["##Collection interval"].lo == 1 and
+       sliders["##Collection interval"].hi == 11,
+  "unexpected interval control range")
+assert(output:find("Collection interval: 3000 ms", 1, true),
+  "default must be 3 seconds")
+assert(output:find("Requested GC step argument: 50 KiB", 1, true))
+assert(output:find("Cycles completed BY helper calls", 1, true))
+assert(output:find("Natural LuaJIT cycles: NOT MEASURED", 1, true))
+assert(output:find("Sampled heap low / high", 1, true))
+assert(not output:find("Workload:", 1, true) and
+       not output:find("Developer test", 1, true),
+  "obsolete workload or A/B UI is still displayed")
+close()
+local before = #steps
+advance(2.1)
+assert(#steps == before + 1 and steps[#steps] == 50,
+  "50 KiB / 3 s default failed")
+assert(savedSettings == nil, "default should not rewrite preferences")
+
+-- OFF is an interval, whereas size zero is an actual LuaJIT step request.
+setInterval(1)
+assert(savedSettings == "v3 50 0\n", "OFF must persist unambiguously")
+before = #steps
+advance(12)
+assert(#steps == before, "OFF executed a collector call")
+setInterval(4) -- 3 seconds
+press("0 KiB")
+before = #steps
+advance(3.2)
+assert(#steps == before + 1 and steps[#steps] == 0,
+  "0 KiB did not request an incremental collector step")
+assert(draw():find("0 KiB STILL requests", 1, true))
+close()
+
+-- All five size choices pass exactly the requested KiB parameter,
+-- including zero. No additional / hidden adaptive collector.
+setInterval(11) -- 50ms
+for _, choice in ipairs({{"0 KiB",0},{"1 KiB",1},{"10 KiB",10},
+                        {"50 KiB",50},{"200 KiB",200}}) do
+  press(choice[1])
+  before = #steps
+  advance(.2, .01)
+  assert(#steps > before and steps[#steps] == choice[2],
+    "incorrect selected size: " .. choice[1])
 end
-assert(savedSettings == "v2 8192 50 1\n")
-press("50 KiB")
-hooks.onOverlayClose()
-interval(11)
-selectedAutomatic = false
-draw()
-hooks.onOverlayClose()
-assert(savedSettings == "v2 50 500 0\n")
--- Manual cadence must remain under player control despite repeated slow
--- frames or expensive collector calls. No hidden frame/cost cooldown or
--- recovery multiplier may stretch the chosen interval.
-local safe = stepCount()
-advance(3, 0.047)
-assert(stepCount() - safe >= 5, "Repeated slow frames suppressed manual maintenance")
+assert(savedSettings == "v3 200 50\n")
+
+-- Interval slider is exact and does not interpolate or create a busy loop.
+local periods = {0,10000,5000,3000,2000,1000,500,300,200,100,50}
+press("1 KiB")
+for index, ms in ipairs(periods) do
+  setInterval(index)
+  before = #steps
+  if ms == 0 then
+    advance(1)
+    assert(#steps == before, "OFF produced steps")
+  else
+    advance(ms / 1000 + .12, .01)
+    assert(#steps > before, "selected interval failed: " .. ms)
+    for i = before + 2, #stepTimes do
+      assert(stepTimes[i] - stepTimes[i-1] >= ms/1000 - .000001,
+        "period was shorter than requested: " .. ms)
+    end
+  end
+end
+
+-- Repeated slow updates and expensive explicit steps must not silently
+-- suspend or retime manual maintenance.
+setInterval(8) -- 300ms
+before = #steps
+advance(3, .047)
+assert(#steps - before >= 8, "slow frames inhibited manual cadence")
 expensiveNext = true
-advance(0.6)
-local costly = stepCount()
-advance(1.1)
-assert(stepCount() - costly >= 2, "Expensive step suppressed manual maintenance")
-assert(stepTimes[costly+1] - stepTimes[costly] < 0.6,
-  "Expensive step silently changed manual cadence")
-assert(draw():find("effective 500 ms", 1, true), "Manual effective interval changed")
-hooks.onOverlayClose()
-selectedAutomatic = true
-draw()
-hooks.onOverlayClose()
-advance(8)
-assert(savedSettings == "v2 50 500 1\n")
+advance(.36, .02)
+local costly = #steps
+advance(.65, .02)
+assert(#steps - costly >= 2, "expensive step inserted a hidden cooldown")
+output = draw()
+assert(output:find("Approx step CPU peak / sum", 1, true))
+assert(output:find("Observed step spacing", 1, true))
+assert(output:find("Helper calls / min of enabled gameplay", 1, true))
+assert(output:find("Last GC request: 1 KiB (not bytes reclaimed)", 1, true))
+close()
 
--- One large natural collector hitch must not become sustained game pressure.
-hooks.onUpdate(0.20)
-advance(1)
-shown = draw()
-assert(not shown:find("Workload: HEAVY", 1, true),
-  "single natural collector event caused workload reclassification")
-hooks.onOverlayClose()
-
--- Configure a different manual preset, then arm the experiment in CET.
--- Nothing starts while the overlay is still open. The ten-second delay
--- begins only after returning to live gameplay.
-draw()
-local baselineCount = stepCount()
-press("DEV: Start 90s A/B test")
-advance(15)
-assert(stepCount() == baselineCount and hasMark("GGC_TEST_ARMED"),
-  "armed test ran while player was still in CET overlay")
-assert(draw():find("TEST ARMED",1,true),
-  "CET does not explain why the test is waiting")
-hooks.onOverlayClose()
-advance(9.9)
-assert(stepCount() == baselineCount and hasMark("GGC_TEST_COUNTDOWN"),
-  "countdown leaked assistance or did not begin in gameplay")
-advance(0.2)
-assert(hasMark("GGC_TEST_P1_OFF"),
-  "ten-second countdown did not begin first 30-second phase")
-advance(29.8)
-assert(stepCount() == baselineCount,
-  "baseline OFF phase executed helper work")
-advance(0.3)
-assert(hasMark("GGC_TEST_P2_128K_100MS"),
-  "100ms phase transition did not occur at 30s")
-local slowStart = stepCount()
-advance(29.7)
-local slowEnd = stepCount()
-assert(slowEnd - slowStart >= 220 and slowEnd - slowStart <= 305,
-  "100ms phase did not deliver approximately 10 requests/s")
-for i = slowStart + 1, slowEnd do
-  assert(steps[i] == 128,
-    "100ms experiment step size deviated from fixed 128KiB")
-end
-advance(0.4)
-assert(hasMark("GGC_TEST_P3_128K_50MS"),
-  "50ms phase transition did not occur at 60s")
-local fastStart = stepCount()
-advance(29.6)
-local fastEnd = stepCount()
-assert(fastEnd - fastStart > (slowEnd - slowStart) * 1.45,
-  "50ms phase did not increase request frequency over 100ms")
-assert(fastEnd - fastStart >= 380,
-  "50ms phase failed to deliver frequent requested GC steps")
-for i = fastStart + 1, fastEnd do
-  assert(steps[i] == 128,
-    "50ms experiment step size deviated from fixed 128KiB")
-end
-advance(0.5)
-assert(hasMark("GGC_TEST_DONE") and hudNotifications == 1,
-  "90s test did not notify the player of completion")
-local afterDone = stepCount()
-advance(2)
-assert(stepCount() == afterDone,
-  "test restarted previous manual assistance before the player stopped capture")
-shown = draw()
-assert(shown:find("TEST DONE",1,true) and
-       shown:find("100ms steps",1,true) and
-       shown:find("50ms steps",1,true),
-  "completion UI lacks stop-capture prompt or delivered-step counts")
-assert(#marks >= 6 and marks[1] ~= nil,
-  "capture-facing phase markers missing")
-assert(fullCollections == 0, "G-GC issued a forced full collection")
-
--- Player can explicitly restore previous settings only after stopping.
-press("Restore manual settings")
-hooks.onOverlayClose()
-local resumed = stepCount()
-advance(1)
-assert(stepCount() > resumed and steps[#steps] == 50,
-  "test failed to restore saved manual step/cadence on request")
-
--- World loss and explicitly enabled workload protection remain effective.
+-- Gameplay loss prohibits steps, preserving original source-owned guard.
 active = false
-advance(2)
-local lostWorld = stepCount()
 advance(1)
-assert(stepCount() == lostWorld,
-  "G-GC executed without an active player")
+before = #steps
+advance(2)
+assert(#steps == before, "helper ran outside game world")
 active = true
 advance(1)
-local beforeHeavy = stepCount()
-advance(3, 0.047)
-assert(stepCount() == beforeHeavy,
-  "G-GC ignored enabled heavy workload protection")
+assert(#steps > before, "helper failed to recover after world return")
+assert(fullCollections == 0, "forced full collection issued")
 
-os, print, io = actualOs, oldPrint, oldIO
-print("G-GC selectable maintenance, even moderate cadence, unthrottled manual control, preferences, 90s developer phases PASS")
+-- Every successful step(0) still counts as a helper call; zero helper
+-- completed cycles does NOT mean zero natural GC cycles.
+setInterval(11)
+press("0 KiB")
+before = #steps
+advance(.3, .01)
+assert(#steps > before and steps[#steps] == 0)
+output = draw()
+assert(output:find("Cycles completed BY helper calls: 0", 1, true))
+close()
+
+-- Upgrade previous v2 preferences without restoring automatic gating.
+load("v2 8192 30000 1\n")
+advance(1)
+output = draw()
+assert(output:find("Requested GC step argument: 200 KiB", 1, true))
+assert(output:find("Collection interval: 10000 ms", 1, true))
+assert(savedSettings == "v3 200 10000\n")
+close()
+-- Persist the old user's manual OFF regardless of the obsolete auto flag.
+load("v2 50 0 1\n")
+advance(1)
+assert(savedSettings == "v3 50 0\n")
+before = #steps
+advance(4)
+assert(#steps == before, "old OFF preference was re-enabled")
+-- Load current v3 preference, including step(0), without modification.
+load("v3 0 1000\n")
+advance(2.2)
+assert(#steps >= 2 and steps[#steps] == 0)
+assert(savedSettings == "v3 0 1000\n")
+-- Legacy 2-token preference preserves explicit OFF.
+load("70 0\n")
+advance(4)
+assert(savedSettings == "v3 50 0\n" and #steps == 0)
+hooks.onShutdown()
+
+os, print, io = realOS, realPrint, realIO
+print("G-GC V12 manual controls, 0-KiB GC nudge, honest reporting, safe preferences, world guard PASS")
