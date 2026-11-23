@@ -100,11 +100,11 @@ internal static class GgcControllerSource
         {
             type = "GC_CONTROLLER",
             owner = "G-GC",
-            stage = "SELECTABLE_CADENCE_RUNTIME_V11",
+            stage = "SELECTABLE_CADENCE_RUNTIME_V12",
             runtimeUpgrade,
             files = new[] {RuntimePath, CalibrationPath},
             captureEvidence = "CURRENT_CAPTURE_AND_GENERATED_SOURCE_PROOF",
-            control = "PLAYER_SELECTED_STEP_AND_INTERVAL_OPTIONAL_WORKLOAD_PROTECTION",
+            control = "PLAYER_SELECTED_STEP_AND_INTERVAL_NO_WORKLOAD_GATE",
             measuredOriginalCetMsPerSecond = defaults.MeasuredOriginalCetMsPerSecond,
             estimatedCoveredCetMsPerSecond = defaults.EstimatedCoveredCetMsPerSecond,
             estimatedFreedCetMsPerSecond = defaults.EstimatedFreedCetMsPerSecond,
@@ -115,10 +115,9 @@ internal static class GgcControllerSource
             defaults.AppliedGenericRules,
             defaults.CreditedOwners,
             defaultStepKiB = 50,
-            defaultStepIntervalMs = 500,
-            selectableStepKiB = new[] { 50, 150, 4096, 8192 },
-            selectableIntervalMs = new[] { 0, 30000, 20000, 10000, 5000, 3000, 2000, 1500, 1000, 750, 500, 400, 300, 250, 200, 150, 100, 75, 50 },
-            defaultAutomaticWorkloadProtection = true,
+            defaultStepIntervalMs = 3000,
+            selectableStepKiB = new[] { 0, 1, 10, 50, 200 },
+            selectableIntervalMs = new[] { 0, 10000, 5000, 3000, 2000, 1000, 500, 300, 200, 100, 50 },
             defaults.EstimateStatus,
             estimateModel = "CAPTURE_SCOPED_APPLIED_CALLBACK_SCOPE_V2_HEURISTIC",
             estimateConfidence = "UNVALIDATED_FORECAST_REQUIRES_POST_PASS_CAPTURE",
@@ -227,7 +226,7 @@ internal static class GgcControllerSource
             // the complete exact previously emitted source; any manual drift
             // refuses overwrite. All output still has one authoritative owner.
             var assembly = typeof(GgcControllerSource).Assembly;
-            foreach (var legacyVersion in new[] { "V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8", "V9", "V10" })
+            foreach (var legacyVersion in new[] { "V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8", "V9", "V10", "V11" })
             {
                 using var legacy = assembly.GetManifestResourceStream(
                     "GCETRuntimeProfiler.GgcGeneratedRuntime" + legacyVersion + ".reference.lua");
@@ -462,9 +461,9 @@ return {
     // generated above from measured frametime tolerance.
     internal const string Runtime = """
 -- GGC_RUNTIME_V1_RESOLVER_OWNED
--- Single Resolver-generated G-GC runtime. No profiler DLL required.
--- Player-selected maintenance, default 50 KiB / 500 ms; optional workload protection.
--- No runtime Profiler requirement; normal operation has no frame/cost cooldown.
+-- Single Resolver-generated G-GC runtime. No Profiler DLL required.
+-- Manual incremental GC requests; OFF is an interval, NOT a step size.
+-- A 0 KiB step still advances LuaJIT's GC. Requested KiB is not reclaimed memory.
 local config = require("threshold")
 if type(config) ~= "table" or config.schema ~= 4
     or type(config.hitchToleranceMs) ~= "number" then
@@ -476,25 +475,40 @@ local function clamp(x, lo, hi)
   return math.max(lo, math.min(hi, x))
 end
 
--- Pre-optimization capture data anchors the initial relative thresholds;
--- live optimized gameplay decides whether optional collection can run.
-local stepSizes = {50, 150, 4096, 8192}
-local intervals = {0, 30000, 20000, 10000, 5000, 3000, 2000, 1500, 1000,
-  750, 500, 400, 300, 250, 200, 150, 100, 75, 50}
+local stepSizes = {0, 1, 10, 50, 200}
+local stepLabels = {"0 KiB", "1 KiB", "10 KiB", "50 KiB", "200 KiB"}
+local intervals = {0, 10000, 5000, 3000, 2000, 1000, 500, 300, 200, 100, 50}
 local function choiceIndex(values, value)
   for i = 1, #values do
     if values[i] == value then return i end
   end
   return nil
 end
-local manualKiB, manualIntervalMs = 50, 500
-local automaticProtection = true
+
+local function safeMigratedSize(value)
+  if choiceIndex(stepSizes, value) then return value end
+  for _, size in ipairs(stepSizes) do
+    if size >= value then return size end
+  end
+  return stepSizes[#stepSizes]
+end
+
+local function safeMigratedInterval(value)
+  if value == 0 then return 0 end
+  -- Round old unsupported intervals upward (never more frequent) where
+  -- possible. Old 20s/30s choices use the new slowest 10s option.
+  for i = #intervals, 2, -1 do
+    if intervals[i] >= value then return intervals[i] end
+  end
+  return intervals[2]
+end
+
+local manualKiB, manualIntervalMs = 50, 3000
 local settingsStatus = "defaults"
 local function savePreferences()
   local ok = pcall(function()
     local file = assert(io.open("user_settings.txt", "w"))
-    file:write(string.format("v2 %d %d %d\n", manualKiB,
-      manualIntervalMs, automaticProtection and 1 or 0))
+    file:write(string.format("v3 %d %d\n", manualKiB, manualIntervalMs))
     file:close()
   end)
   settingsStatus = ok and "saved" or "not saved (CET file I/O unavailable)"
@@ -508,134 +522,58 @@ local function loadPreferences()
     return value
   end)
   if not ok or type(data) ~= "string" then return end
-  local size, interval, automatic = data:match("^v2%s+(%d+)%s+(%d+)%s+([01])%s*$")
+  local size, interval = data:match("^v3%s+(%d+)%s+(%d+)%s*$")
   size, interval = tonumber(size), tonumber(interval)
   if choiceIndex(stepSizes, size) and choiceIndex(intervals, interval) then
     manualKiB, manualIntervalMs = size, interval
-    automaticProtection = automatic == "1"
     settingsStatus = "restored"
     return
   end
-  -- Migrate the old sensitivity/enable pair without re-enabling an OFF user.
+  -- V2 had a third automatic-protection flag. Ignore it completely:
+  -- workload-based inhibition is not part of G-GC any more.
+  local oldSize, oldInterval = data:match("^v2%s+(%d+)%s+(%d+)%s+[01]%s*$")
+  oldSize, oldInterval = tonumber(oldSize), tonumber(oldInterval)
+  if oldSize and oldInterval and oldSize >= 50 and oldSize <= 8192
+      and oldInterval >= 0 and oldInterval <= 30000 then
+    manualKiB = safeMigratedSize(oldSize)
+    manualIntervalMs = safeMigratedInterval(oldInterval)
+    savePreferences()
+    settingsStatus = "v2 preferences migrated"
+    return
+  end
+  -- Pre-V2 sensitivity/enable setting: preserve the explicit OFF choice.
   local percent, enabled = data:match("^(%d+)%s+([01])%s*$")
   percent = tonumber(percent)
   if percent and percent >= 0 and percent <= 100 then
-    manualIntervalMs = enabled == "1" and 500 or 0
-    settingsStatus = "legacy restored"
+    manualIntervalMs = enabled == "1" and 3000 or 0
+    savePreferences()
+    settingsStatus = "legacy preferences migrated"
   end
 end
 loadPreferences()
+
 local overlayOpen = false
 local heapSampleAge, sinceStep, sinceActualStep = 0, 0, 0
 local haveCompletedStep = false
 local heapMiB, previousHeap, growthMiBps = 0, nil, 0
-local activeWorld, testBackoffSeconds = false, 0
-local stepCount, completedCycles, rejectedSteps = 0, 0, 0
-local lastStepKiB, totalRequestedKiB = 0, 0
-local lastHeapDropKiB, totalHeapDropKiB = 0, 0
-local lastCpuMs, previousCpuMs, maximumCpuMs = 0, 0, 0
+local sampledLowMiB, sampledHighMiB = nil, nil
+local activeWorld = false
+local stepCount, helperCompletedCycles, rejectedSteps = 0, 0, 0
+local lastStepKiB = 0
+local lastCpuMs, previousCpuMs, maximumCpuMs, totalCpuMs = 0, 0, 0, 0
 local lastIntervalMs, previousIntervalMs = 0, 0
+local enabledGameplaySeconds = 0
 local lastBlock = "awaiting heap sample"
-local workloadState, relaxedReferenceMs = "HEAVY", config.baselineFrameMs
-local recentFrameMs, slowFrameShare = config.baselineFrameMs, 0
-local heavyFor, busyFor, easierFor, relaxedFor = 0, 0, 0, 0
-local skipOwnStepFrame = false
-local validGameplaySeconds, costlySteps = 0, 0
-local recommendation = "Collecting gameplay evidence"
-local function limits()
-  local margin = math.max(4, config.hitchToleranceMs - relaxedReferenceMs)
-  -- Distinct workload bands with room for ordinary frame jitter.
-  return relaxedReferenceMs + margin * 0.55,
-         relaxedReferenceMs + margin * 0.85,
-         relaxedReferenceMs + margin * 0.42,
-         relaxedReferenceMs + margin * 0.72
-end
-
--- Test states: idle -> armed -> countdown -> off -> slow -> fast -> done.
--- All stage durations use actual CET gameplay delta; no timers or worker
--- subscriptions, and no phase clock advancement with the overlay open.
-local testState, phaseAge, countdownAge = "idle", 0, 0
-local testSaveKiB, testSaveIntervalMs = nil, nil
-local testSteps, testRequestedKiB = {0, 0, 0}, {0, 0, 0}
-local testCostMs, testMaximumCostMs = {0, 0, 0}, {0, 0, 0}
-local testStarted = false
-
-local function mark(label)
-  if type(CETProfilerMark) == "function" then
-    pcall(CETProfilerMark, label)
-  end
-end
-
-local function announce(label, message)
-  print("[G-GC] " .. message)
-  mark(label)
-end
-
-local function notifyFinished(failed)
-  -- Standard CET HUD warning-message blackboard, guarded for installations
-  -- where the game's notification objects are not available.
-  local success = pcall(function()
-    local message = SimpleScreenMessage.new()
-    message.message = failed and "G-GC test ABORTED - stop recording"
-      or "G-GC 90s test DONE - stop recording"
-    message.isShown = true
-    message.duration = 8
-    local definitions = Game.GetAllBlackboardDefs()
-    local board = Game.GetBlackboardSystem():Get(definitions.UI_Notifications)
-    board:SetVariant(definitions.UI_Notifications.WarningMessage,
-      ToVariant(message), true)
-  end)
-  if not success then
-    print("[G-GC] HUD notification unavailable; completion is shown in CET.")
-  end
-end
-
-local function beginPhase(state)
-  testState, phaseAge, sinceStep = state, 0, 0
-  if state == "off" then
-    testStarted = true
-    announce("GGC_TEST_P1_OFF",
-      "90s test START / phase 1: assistance OFF for 30s.")
-  elseif state == "slow" then
-    announce("GGC_TEST_P2_128K_100MS",
-      "90s test phase 2: 128 KiB every 100 ms for 30s.")
-  elseif state == "fast" then
-    announce("GGC_TEST_P3_128K_50MS",
-      "90s test phase 3: 128 KiB every 50 ms for 30s.")
-  elseif state == "done" then
-    announce("GGC_TEST_DONE",
-      "90s test COMPLETE. Stop capture. Assistance OFF until restored.")
-    notifyFinished(false)
-  end
-end
-
-local function startTest()
-  if testState ~= "idle" and testState ~= "done" then return end
-  testSaveKiB, testSaveIntervalMs = manualKiB, manualIntervalMs
-  testState, countdownAge, phaseAge, testStarted = "armed", 0, 0, false
-  testSteps, testRequestedKiB = {0, 0, 0}, {0, 0, 0}
-  testCostMs, testMaximumCostMs = {0, 0, 0}, {0, 0, 0}
-  sinceStep, testBackoffSeconds = 0, 0
-  announce("GGC_TEST_ARMED",
-    "90s test armed. Close CET overlay; 10s countdown then 30/30/30s.")
-end
-
-local function restoreSettings()
-  if testSaveKiB ~= nil then
-    manualKiB, manualIntervalMs = testSaveKiB, testSaveIntervalMs
-  end
-  testState, phaseAge, countdownAge = "idle", 0, 0
-  sinceStep, testBackoffSeconds = 0, 0
-end
 
 local function observe(seconds)
   local ok, kib = pcall(collectgarbage, "count")
   if not ok or type(kib) ~= "number" or kib ~= kib or kib < 0 then
     activeWorld = false
-    if testState ~= "idle" then testBackoffSeconds = 30 end
     return
   end
   heapMiB = kib / 1024
+  sampledLowMiB = sampledLowMiB and math.min(sampledLowMiB, heapMiB) or heapMiB
+  sampledHighMiB = sampledHighMiB and math.max(sampledHighMiB, heapMiB) or heapMiB
   if previousHeap then
     local slope = (heapMiB - previousHeap) / seconds
     if slope > -4096 and slope < 4096 then
@@ -650,222 +588,66 @@ local function observe(seconds)
   end
 end
 
-local function advanceTest(dt)
-  if testState == "idle" or testState == "done" or testState == "failed"
-      or overlayOpen or not activeWorld then return end
-
-  if testState == "armed" then
-    testState, countdownAge = "countdown", 0
-    announce("GGC_TEST_COUNTDOWN", "10s test countdown started in gameplay.")
-    return
-  end
-  if testState == "countdown" then
-    countdownAge = countdownAge + dt
-    if countdownAge >= 10 then beginPhase("off") end
-    return
-  end
-
-  -- Transition based on gameplay elapsed time, NOT scheduled-step count.
-  -- An expensive step or heavy-frame backoff cannot silently lengthen
-  -- a phase or alter the preset workload.
-  phaseAge = phaseAge + dt
-  if phaseAge >= 30 then
-    if testState == "off" then
-      beginPhase("slow")
-    elseif testState == "slow" then
-      beginPhase("fast")
-    elseif testState == "fast" then
-      beginPhase("done")
-    end
-  end
-end
-
-local function effectiveInterval()
-  if manualIntervalMs == 0 then return 0 end
-  if automaticProtection and workloadState == "HEAVY" then return 0 end
-  local workloadFactor = automaticProtection and workloadState == "MODERATE" and 2 or 1
-  return manualIntervalMs * workloadFactor
-end
-
-local function requestedStep()
-  if testState == "idle" then
-    local interval = effectiveInterval()
-    return interval > 0 and manualKiB or 0, interval, 0
-  end
-  if testState == "slow" then return 128, 100, 2 end
-  if testState == "fast" then return 128, 50, 3 end
-  return 0, 500, 0
-end
-
-local function setWorkloadState(value)
-  if workloadState == value then return end
-  workloadState = value
-  heavyFor, busyFor, easierFor, relaxedFor = 0, 0, 0, 0
-  if automaticProtection then sinceStep = 0 end
-  mark("GGC_WORKLOAD_" .. value)
-end
-
-local function measureWorkload(dt)
-  if testState ~= "idle" or overlayOpen or not activeWorld then return end
-  if skipOwnStepFrame then
-    skipOwnStepFrame = false
-    return
-  end
-  local frameMs = dt * 1000
-  -- Isolated LuaJIT/natural collector hitches are real but not a sustained
-  -- workload classification. Ignore their impact on the relaxed reference.
-  if frameMs >= math.max(100, config.hitchToleranceMs * 2.5) then
-    return
-  end
-  validGameplaySeconds = validGameplaySeconds + dt
-  recentFrameMs = recentFrameMs +
-    math.min(0.20, dt / 1.2) * (frameMs - recentFrameMs)
-  -- Only learn faster relaxed performance, never normalize sustained combat.
-  if recentFrameMs < relaxedReferenceMs - 0.5 and slowFrameShare < 0.15 then
-    relaxedReferenceMs = relaxedReferenceMs +
-      math.min(0.03, dt / 12) * (recentFrameMs - relaxedReferenceMs)
-  end
-  local medium, high, relaxed, leaveHeavy = limits()
-  -- Medium frames are not heavy: count frames above the heavy cutoff.
-  local slow = frameMs >= high and 1 or 0
-  slowFrameShare = slowFrameShare +
-    math.min(0.12, dt / 1.8) * (slow - slowFrameShare)
-  local severe = recentFrameMs >= high or slowFrameShare >= 0.55
-  local busy = recentFrameMs >= medium or slowFrameShare >= 0.25
-  heavyFor = severe and heavyFor + dt or 0
-  busyFor = busy and busyFor + dt or 0
-  -- Count sustained lighter *workload trend*, not each individual
-  -- frametime. Strict per-frame recovery falsely remained MODERATE/HEAVY
-  -- during quiet real-world playback with ordinary 20-35ms frame jitter.
-  -- The separate 3s/5s timers supply the requested stable recovery.
-  -- Excluded rare collector hitches and own-step aftermath do not reset it.
-  easierFor = recentFrameMs < leaveHeavy and easierFor + dt or 0
-  relaxedFor = recentFrameMs < relaxed and relaxedFor + dt or 0
-  if workloadState ~= "HEAVY" and heavyFor >= 1 then
-    setWorkloadState("HEAVY")
-  elseif workloadState == "RELAXED" and busyFor >= 1.5 then
-    setWorkloadState("MODERATE")
-  elseif workloadState == "HEAVY" and easierFor >= 3 then
-    setWorkloadState("MODERATE")
-  elseif workloadState == "MODERATE" and relaxedFor >= 5 then
-    setWorkloadState("RELAXED")
-  end
-end
-
 local function tick(dt)
   if type(dt) ~= "number" or dt ~= dt or dt <= 0 or dt > 0.50 then
-    if testState ~= "idle" then
-      testBackoffSeconds = math.max(testBackoffSeconds, 3)
-    end
-    sinceStep = 0
-    lastBlock = "invalid/heavy frame"
+    lastBlock = "invalid update"
     return
   end
-  -- The historical developer A/B retains its original protective cadence.
-  -- Normal maintenance is controlled only by the selected interval and
-  -- optional workload protection; frame/step costs are observations.
-  if testState ~= "idle" then
-    if dt * 1000 >= config.hitchToleranceMs then
-      testBackoffSeconds = math.max(testBackoffSeconds, 2)
-    end
-    testBackoffSeconds = math.max(0, testBackoffSeconds - dt)
-  end
-  heapSampleAge, sinceStep = heapSampleAge + dt, sinceStep + dt
+  heapSampleAge = heapSampleAge + dt
   sinceActualStep = sinceActualStep + dt
   if heapSampleAge >= 0.75 then
     local seconds = heapSampleAge
     heapSampleAge = 0
     observe(seconds)
   end
-
-  advanceTest(dt)
-  measureWorkload(dt)
-  local amount, intervalMs, phase = requestedStep()
-  -- Opening CET during the experiment pauses BOTH its phase clock and
-  -- incremental collector calls, keeping the capture comparisons aligned.
-  if testState ~= "idle" and overlayOpen then
-    lastBlock = "test paused in CET"
-    return
-  end
-  if previousHeap == nil then sinceStep = 0; lastBlock = "awaiting heap sample"; return end
-  if not activeWorld then sinceStep = 0; lastBlock = "outside gameplay"; return end
-  if amount <= 0 then
+  if previousHeap == nil then
     sinceStep = 0
-    lastBlock = testState == "idle" and manualIntervalMs > 0
-      and "heavy workload" or "assistance off"
+    lastBlock = "awaiting heap sample"
     return
   end
-  if testState ~= "idle" and testBackoffSeconds > 0 then
-    lastBlock = "developer test frame/GC cost backoff"
+  if not activeWorld then
+    sinceStep = 0
+    lastBlock = "outside gameplay"
     return
   end
-  if sinceStep * 1000 < intervalMs then lastBlock = "step interval"; return end
+  if manualIntervalMs == 0 then
+    sinceStep = 0
+    lastBlock = "OFF (no GC calls)"
+    return
+  end
+  -- Valid gameplay only; no frame-rate workload classification, automatic
+  -- HEAVY suspension, costly-step backoff, or catch-up bursts.
+  sinceStep = sinceStep + dt
+  enabledGameplaySeconds = enabledGameplaySeconds + dt
+  if sinceStep * 1000 < manualIntervalMs then
+    lastBlock = "waiting for selected interval"
+    return
+  end
 
-  -- This is actual gameplay time since the last step attempt, not the
-  -- configured nominal interval. os.clock below measures approximate CPU
-  -- time of the call, not a hard wall-time deadline.
   sinceStep = 0
-  local beforeOK, beforeKiB = pcall(collectgarbage, "count")
   local t0 = os.clock()
-  local ok, cycle = pcall(collectgarbage, "step", amount)
+  local ok, finished = pcall(collectgarbage, "step", manualKiB)
   local cpuMs = math.max(0, (os.clock() - t0) * 1000)
   previousCpuMs, lastCpuMs = lastCpuMs, cpuMs
   maximumCpuMs = math.max(maximumCpuMs, cpuMs)
-  if testState == "idle" then
-    skipOwnStepFrame = true
-  end
   if not ok then
     rejectedSteps = rejectedSteps + 1
-    if phase > 0 then
-      testBackoffSeconds = 30
-      testState = "failed"
-      announce("GGC_TEST_FAILED",
-        "90s test ABORTED because a GC step failed; stop capture.")
-      notifyFinished(true)
-    else
-      manualIntervalMs = 0
-      savePreferences()
-    end
+    manualIntervalMs = 0
+    savePreferences()
     lastBlock = "GC error / disabled"
     return
   end
 
-  lastStepKiB = amount
   previousIntervalMs = lastIntervalMs
   lastIntervalMs = haveCompletedStep and sinceActualStep * 1000 or 0
   sinceActualStep, haveCompletedStep = 0, true
-  stepCount, totalRequestedKiB = stepCount + 1, totalRequestedKiB + amount
-  if cycle == true then completedCycles = completedCycles + 1 end
-  lastHeapDropKiB = 0
-  if beforeOK and type(beforeKiB) == "number" then
-    local afterOK, afterKiB = pcall(collectgarbage, "count")
-    if afterOK and type(afterKiB) == "number" then
-      lastHeapDropKiB = math.max(0, beforeKiB - afterKiB)
-      totalHeapDropKiB = totalHeapDropKiB + lastHeapDropKiB
-    end
-  end
-
-  if phase > 0 then
-    testSteps[phase] = testSteps[phase] + 1
-    testRequestedKiB[phase] = testRequestedKiB[phase] + amount
-    testCostMs[phase] = testCostMs[phase] + cpuMs
-    testMaximumCostMs[phase] = math.max(testMaximumCostMs[phase], cpuMs)
-  end
+  lastStepKiB = manualKiB
+  stepCount = stepCount + 1
+  totalCpuMs = totalCpuMs + cpuMs
+  -- A true return means THIS helper call completed a cycle. Natural
+  -- LuaJIT cycles are unobserved here, so zero is not zero overall.
+  if finished == true then helperCompletedCycles = helperCompletedCycles + 1 end
   lastBlock = "running"
-  -- Expensive steps are diagnostic in normal manual operation. The
-  -- historical developer test retains its five-second protective pause.
-  if cpuMs > math.max(2.5, config.hitchToleranceMs * 0.08) then
-    costlySteps = costlySteps + 1
-    if testState ~= "idle" then
-      testBackoffSeconds = 5
-      lastBlock = "developer test expensive-step backoff"
-    end
-  end
-  if validGameplaySeconds >= 300 then
-    recommendation = costlySteps >= 3
-      and "Consider a smaller step or longer interval: repeated expensive helper steps"
-      or "No tuning change supported by current evidence"
-  end
 end
 
 registerForEvent("onUpdate", tick)
@@ -874,107 +656,63 @@ registerForEvent("onOverlayClose", function() overlayOpen = false end)
 registerForEvent("onShutdown", function()
   activeWorld = false
   previousHeap = nil
-  growthMiBps = 0
-  testState = "idle"
-  workloadState, recentFrameMs = "HEAVY", config.baselineFrameMs
-  heavyFor, busyFor, easierFor, relaxedFor = 0, 0, 0, 0
-  skipOwnStepFrame = false
-  testBackoffSeconds, sinceStep = 0, 0
+  heapSampleAge, sinceStep, sinceActualStep = 0, 0, 0
+  haveCompletedStep = false
 end)
 
 registerForEvent("onDraw", function()
   if not overlayOpen then return end
   local shown = ImGui.Begin("G-GC")
   if shown then
-    ImGui.Text(string.format("Lua heap %.1f MiB  |  net growth %+.2f MiB/s",
+    ImGui.Text(string.format("Sampled Lua heap: %.1f MiB | net trend %+.2f MiB/s",
       heapMiB, growthMiBps))
-
-    if testState == "idle" then
-      ImGui.Text(string.format("Step size: %d KiB", manualKiB))
-      local labels = {"50 KiB", "150 KiB", "4 MiB", "8 MiB"}
-      for i, size in ipairs(stepSizes) do
-        if i > 1 then ImGui.SameLine() end
-        if ImGui.Button(labels[i]) and manualKiB ~= size then
-          manualKiB, sinceStep = size, 0
-          savePreferences()
-        end
-      end
-      local intervalIndex = choiceIndex(intervals, manualIntervalMs) or 1
-      local intervalLabel = manualIntervalMs == 0 and "OFF" or
-        string.format("%d ms", manualIntervalMs)
-      ImGui.Text("Collection interval: " .. intervalLabel)
-      local nextIndex = ImGui.SliderInt("##Collection interval", intervalIndex, 1, #intervals)
-      if type(nextIndex) == "number" and nextIndex ~= intervalIndex then
-        manualIntervalMs = intervals[clamp(math.floor(nextIndex), 1, #intervals)]
-        sinceStep = 0
-        savePreferences()
-      end
-      ImGui.Text("OFF / 30 s (slow) to 50 ms (fast)")
-      local nextAutomatic, changed = ImGui.Checkbox("Automatic workload protection", automaticProtection)
-      if changed then
-        automaticProtection, sinceStep = nextAutomatic == true, 0
-        savePreferences()
-      end
-      local effective = effectiveInterval()
-      ImGui.Text(string.format("Workload: %s | recent %.1f ms | effective %s",
-        workloadState, recentFrameMs, effective == 0 and "OFF" or
-        string.format("%d ms", effective)))
-      if manualKiB >= 4096 then
-        ImGui.Text("Experimental large step: may cause severe collector hitches.")
-      end
-      ImGui.Text("Recommendation: " .. recommendation)
-      ImGui.Text("Preferences: " .. settingsStatus)
-    else
-      ImGui.Text("Developer test override; saved manual settings unchanged")
+    if sampledLowMiB ~= nil then
+      ImGui.Text(string.format("Sampled heap low / high: %.1f / %.1f MiB",
+        sampledLowMiB, sampledHighMiB))
     end
-    ImGui.Text(string.format("Steps %d | last %d KiB | cycles %d",
-      stepCount, lastStepKiB, completedCycles))
-    ImGui.Text(string.format("GC requested %.2f MiB | step heap drop ~%.2f MiB",
-      totalRequestedKiB / 1024, totalHeapDropKiB / 1024))
-    ImGui.Text(string.format("Step CPU %.3f ms current / %.3f ms previous | max %.3f",
-      lastCpuMs, previousCpuMs, maximumCpuMs))
-    ImGui.Text(string.format("Observed spacing %.0f ms last / %.0f ms previous",
+    ImGui.Text(string.format("Requested GC step argument: %d KiB", manualKiB))
+    for i, size in ipairs(stepSizes) do
+      if i > 1 then ImGui.SameLine() end
+      if ImGui.Button(stepLabels[i]) and manualKiB ~= size then
+        manualKiB, sinceStep, sinceActualStep = size, 0, 0
+        haveCompletedStep = false
+        savePreferences()
+      end
+    end
+    local intervalIndex = choiceIndex(intervals, manualIntervalMs) or 1
+    local intervalLabel = manualIntervalMs == 0 and "OFF" or
+      string.format("%d ms", manualIntervalMs)
+    ImGui.Text("Collection interval: " .. intervalLabel)
+    local nextIndex = ImGui.SliderInt("##Collection interval", intervalIndex, 1, #intervals)
+    if type(nextIndex) == "number" and nextIndex ~= intervalIndex then
+      manualIntervalMs = intervals[clamp(math.floor(nextIndex), 1, #intervals)]
+      sinceStep, sinceActualStep, haveCompletedStep = 0, 0, false
+      savePreferences()
+    end
+    ImGui.Text("OFF disables calls. 0 KiB STILL requests a LuaJIT GC step.")
+    ImGui.Text("Selected cadence is not modified by FPS or workload.")
+    ImGui.Text(string.format("Successful helper calls: %d | rejected: %d",
+      stepCount, rejectedSteps))
+    ImGui.Text(string.format("Cycles completed BY helper calls: %d",
+      helperCompletedCycles))
+    ImGui.Text("Natural LuaJIT cycles: NOT MEASURED by helper")
+    ImGui.Text(string.format("Last GC request: %d KiB (not bytes reclaimed)",
+      lastStepKiB))
+    ImGui.Text(string.format("Approx step CPU current / previous: %.3f / %.3f ms",
+      lastCpuMs, previousCpuMs))
+    ImGui.Text(string.format("Approx step CPU peak / sum: %.3f / %.3f ms",
+      maximumCpuMs, totalCpuMs))
+    ImGui.Text(string.format("Observed step spacing last / previous: %.0f / %.0f ms",
       lastIntervalMs, previousIntervalMs))
-    if testState ~= "idle" then
-      ImGui.Text(string.format("Developer test safety cooldown %.1f s", testBackoffSeconds))
-    end
-
-    if testState == "idle" then
-      if ImGui.Button("DEV: Start 90s A/B test") then startTest() end
-    elseif testState == "armed" then
-      ImGui.Text("TEST ARMED: close CET overlay to start 10s countdown")
-      if ImGui.Button("Cancel test") then restoreSettings() end
-    elseif testState == "countdown" then
-      ImGui.Text(string.format("TEST: starting in %.0f s (after closing overlay)",
-        math.max(0, 10 - countdownAge)))
-      if ImGui.Button("Cancel test") then restoreSettings() end
-    elseif testState == "done" or testState == "failed" then
-      ImGui.Text(testState == "failed" and
-        "TEST ABORTED: stop capture. Assistance is OFF." or
-        "TEST DONE: stop capture. Assistance is OFF.")
-      ImGui.Text(string.format("100ms steps %d | 50ms steps %d",
-        testSteps[2], testSteps[3]))
-      if ImGui.Button("Restore manual settings") then restoreSettings() end
-    else
-      local phaseName = testState == "off" and "OFF"
-        or testState == "slow" and "128 KiB / 100ms"
-        or "128 KiB / 50ms"
-      ImGui.Text(string.format("TEST: %s | %.0f / 30 s",
-        phaseName, phaseAge))
-      if ImGui.Button("Abort test") then
-        announce("GGC_TEST_ABORTED", "90s test cancelled by user.")
-        restoreSettings()
-      end
-    end
-
-    if rejectedSteps > 0 then
-      ImGui.Text(string.format("Failed GC steps: %d", rejectedSteps))
-    end
-    if lastBlock ~= "running" then
-      ImGui.Text("Status: " .. lastBlock)
-    end
+    local delivered = enabledGameplaySeconds > 0 and
+      stepCount * 60 / enabledGameplaySeconds or 0
+    ImGui.Text(string.format("Helper calls / min of enabled gameplay: %.1f", delivered))
+    ImGui.Text("Step CPU excludes callback overhead; heap changes include natural GC.")
+    ImGui.Text("Preferences: " .. settingsStatus)
+    if lastBlock ~= "running" then ImGui.Text("Status: " .. lastBlock) end
   end
   ImGui.End()
 end)
+
 """;
 }
