@@ -382,26 +382,26 @@ try
     Check(!threshold.Contains("defaultIntensity") &&
           !threshold.Contains("defaultFrequencyMs") &&
           !threshold.Contains("estimatedGgcStartingCpuMsPerSecond") &&
-          source.Contains("local stepSizes = {50, 150, 4096, 8192}") &&
-          source.Contains("ImGui.Checkbox(\"Automatic workload protection\", automaticProtection)") &&
-          source.Contains("local manualKiB, manualIntervalMs = 50, 500") &&
-          source.Contains("workloadState == \"MODERATE\" and 2 or 1") &&
-          source.Contains("workloadState == \"HEAVY\"") &&
-          !source.Contains("moderateCycle") &&
-          !source.Contains("Workload sensitivity") &&
-          source.Contains("DEV: Start 90s A/B test") &&
-          source.Contains("beginPhase(\"off\")") &&
-          source.Contains("beginPhase(\"slow\")") &&
-          source.Contains("beginPhase(\"fast\")") &&
-          source.Contains("GGC_TEST_DONE") &&
-          source.Contains("SimpleScreenMessage.new()") &&
-          source.Contains("Step CPU") &&
-          source.Contains("Observed spacing") &&
+          source.Contains("local stepSizes = {0, 1, 10, 50, 200}") &&
+          source.Contains("local intervals = {0, 10000, 5000, 3000, 2000, 1000, 500, 300, 200, 100, 50}") &&
+          source.Contains("local manualKiB, manualIntervalMs = 50, 3000") &&
+          source.Contains("pcall(collectgarbage, \"step\", manualKiB)") &&
+          source.Contains("if manualIntervalMs == 0 then") &&
+          source.Contains("Natural LuaJIT cycles: NOT MEASURED by helper") &&
+          source.Contains("Cycles completed BY helper calls:") &&
+          source.Contains("Sampled heap low / high:") &&
+          source.Contains("Approx step CPU peak / sum:") &&
+          source.Contains("Observed step spacing") &&
+          !source.Contains("Automatic workload protection") &&
+          !source.Contains("workloadState") &&
+          !source.Contains("DEV: Start 90s A/B test") &&
+          !source.Contains("GGC_TEST_") &&
+          !source.Contains("SimpleScreenMessage.new()") &&
           !source.Contains("config.maxAssistCpuMsPerSecond") &&
           !source.Contains("frameEmaMs") &&
           !source.Contains("if pressure <= 0 then") &&
           !source.Contains("1536"),
-        "Generated G-GC lost selectable cadence, staged experiment, HUD notice, or no-cap policy");
+        "Generated G-GC lost exact manual GC controls, honest counters or no-auto/no-A-B behavior");
     var doc = JsonSerializer.SerializeToElement(composed[^1]);
     Check(doc.GetProperty("type").GetString() == "GC_CONTROLLER" &&
           !doc.GetProperty("runtimeUpgrade").GetBoolean() &&
@@ -415,8 +415,10 @@ try
               Val(values,"EstimatedFreedCetMsPerSecond")) < 1e-5 &&
           !doc.TryGetProperty("DefaultIntensityPercent", out _) &&
           doc.GetProperty("defaultStepKiB").GetInt32() == 50 &&
-          doc.GetProperty("defaultStepIntervalMs").GetInt32() == 500 &&
-          doc.GetProperty("selectableStepKiB").EnumerateArray().Select(x => x.GetInt32()).SequenceEqual(new[] { 50, 150, 4096, 8192 }),
+          doc.GetProperty("defaultStepIntervalMs").GetInt32() == 3000 &&
+          doc.GetProperty("selectableStepKiB").EnumerateArray().Select(x => x.GetInt32()).SequenceEqual(new[] { 0, 1, 10, 50, 200 }) &&
+          doc.GetProperty("selectableIntervalMs").EnumerateArray().Select(x => x.GetInt32()).SequenceEqual(new[] { 0, 10000, 5000, 3000, 2000, 1000, 500, 300, 200, 100, 50 }) &&
+          !doc.TryGetProperty("defaultAutomaticWorkloadProtection", out _) &&
         "Pass manifest lacks verifiable per-rule savings evidence");
 
     foreach (var item in generated)
@@ -427,7 +429,7 @@ try
     }
     // Source-proven upgrade for all previously generated single-controller
     // versions, never marker-only trust or a second independent worker.
-    foreach(var version in new[]{"V1","V2","V3","V4","V5","V6","V7","V8","V9","V10"})
+    foreach(var version in new[]{"V1","V2","V3","V4","V5","V6","V7","V8","V9","V10","V11"})
     {
         using var stream=assembly.GetManifestResourceStream(
             "GCETRuntimeProfiler.GgcGeneratedRuntime"+version+".reference.lua");
