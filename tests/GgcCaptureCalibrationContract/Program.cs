@@ -418,7 +418,7 @@ try
           doc.GetProperty("defaultStepIntervalMs").GetInt32() == 3000 &&
           doc.GetProperty("selectableStepKiB").EnumerateArray().Select(x => x.GetInt32()).SequenceEqual(new[] { 0, 1, 10, 50, 200 }) &&
           doc.GetProperty("selectableIntervalMs").EnumerateArray().Select(x => x.GetInt32()).SequenceEqual(new[] { 0, 10000, 5000, 3000, 2000, 1000, 500, 300, 200, 100, 50 }) &&
-          !doc.TryGetProperty("defaultAutomaticWorkloadProtection", out _) &&
+          !doc.TryGetProperty("defaultAutomaticWorkloadProtection", out _),
         "Pass manifest lacks verifiable per-rule savings evidence");
 
     foreach (var item in generated)
