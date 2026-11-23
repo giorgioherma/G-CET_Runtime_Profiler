@@ -115,7 +115,7 @@ assert(not output:find("Workload:", 1, true) and
   "obsolete workload or A/B UI is still displayed")
 close()
 local before = #steps
-advance(2.1)
+advance(3.1)
 assert(#steps == before + 1 and steps[#steps] == 50,
   "50 KiB / 3 s default failed")
 assert(savedSettings == nil, "default should not rewrite preferences")
@@ -224,7 +224,7 @@ advance(4)
 assert(#steps == before, "old OFF preference was re-enabled")
 -- Load current v3 preference, including step(0), without modification.
 load("v3 0 1000\n")
-advance(2.2)
+advance(3.2)
 assert(#steps >= 2 and steps[#steps] == 0)
 assert(savedSettings == "v3 0 1000\n")
 -- Legacy 2-token preference preserves explicit OFF.
