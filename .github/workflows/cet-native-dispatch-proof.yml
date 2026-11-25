@@ -7,6 +7,7 @@ on:
     paths:
       - 'native-static-locations/research/**'
       - 'native-static-locations/include/CETObserverBinding.hpp'
+      - 'native-static-locations/include/CETStacklessGate.hpp'
       - '.github/workflows/cet-native-dispatch-proof.yml'
   workflow_dispatch:
 
@@ -77,4 +78,8 @@ jobs:
         run: |
           & 'build/entry-proof/Release/gcet_observer_binding_proof.exe'
           if ($LASTEXITCODE -ne 0) { throw 'observer binding proof failed' }
-
+      - name: Execute both emitted x64 pre-marshalling sleep gates
+        shell: pwsh
+        run: |
+          & 'build/entry-proof/Release/gcet_stackless_gate_proof.exe'
+          if ($LASTEXITCODE -ne 0) { throw 'stackless gate proof failed' }

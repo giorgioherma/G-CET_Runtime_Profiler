@@ -14,10 +14,10 @@ namespace gcet::cet_dispatch {
 static_assert(sizeof(uintptr_t)==8,"official CET target is x64");
 
 struct SoleBeforeIdentity {
-    uintptr_t chain=0, trampoline=0, scripting=0, context=0;
+    uintptr_t chain=0, trampoline=0, scripting=0, context=0, storage=0;
     bool operator==(const SoleBeforeIdentity&) const = default;
     explicit operator bool() const noexcept {
-        return chain&&trampoline&&scripting&&context;
+        return chain&&trampoline&&scripting&&context&&storage;
     }
 };
 
@@ -37,7 +37,7 @@ public:
         const auto b=Vector(bytes,Before),a=Vector(bytes,After),o=Vector(bytes,Overrides);
         if(!b.Valid()||!a.Valid()||!o.Valid()||b.last-b.first!=8||
             a.first!=a.last||o.first!=o.last)return {};
-        SoleBeforeIdentity result{chain,ReadWord(bytes,0),ReadWord(bytes,8),0};
+        SoleBeforeIdentity result{chain,ReadWord(bytes,0),ReadWord(bytes,8),0,b.first};
         if(!readPointer(b.first,result.context)||!result||((result.context|result.trampoline|result.scripting)&7))
             return {};
         return result;
@@ -92,6 +92,10 @@ public:
         return a;
     }
     bool Matches(Token token) const noexcept {return token&&Current()==token;}
+    // Read-only access for a verified x64 machine gate. The epoch remains
+    // authoritative here; no separate invalidation mirror.
+    const std::atomic<Token>& EpochWord() const noexcept {return epoch_;}
+    const std::atomic<uint64_t>& ClearDepthWord() const noexcept {return clearDepth_;}
 private:
     void Advance() noexcept {
         auto v=epoch_.load(std::memory_order_relaxed);
@@ -113,7 +117,15 @@ class ObserverBinding {
 public:
     using Handle=uint64_t;
     using Thread=uint64_t;
-    ObserverBinding(const DispatchEpoch& epoch,Thread owner) noexcept:epoch_(epoch),owner_(owner){}
+    struct GuardState {
+        const Thread owner;
+        Handle handle=0;
+        DispatchEpoch::Token token=0;
+        SoleBeforeIdentity identity{};
+        uint8_t active=1;
+    };
+    const GuardState& Guard() const noexcept {return state_;}
+    ObserverBinding(const DispatchEpoch& epoch,Thread owner) noexcept:epoch_(epoch),state_{owner}{}
     ObserverBinding(const ObserverBinding&)=delete;
     ObserverBinding& operator=(const ObserverBinding&)=delete;
 
@@ -123,38 +135,35 @@ public:
     // Binding initially remains active; a separate demand transition may sleep.
     Handle Bind(Thread thread,DispatchEpoch::Token token,SoleBeforeIdentity identity) noexcept {
         if(!Owner(thread)||!identity||!epoch_.Matches(token))return 0;
-        if(handle_&&epoch_.Matches(token_)){
+        if(state_.handle&&epoch_.Matches(state_.token)){
             // Never replace or reset an existing live binding silently.
-            return identity_==identity?handle_:0;
+            return state_.identity==identity?state_.handle:0;
         }
         if(next_==std::numeric_limits<Handle>::max())return 0;
-        token_=token;identity_=identity;active_=true;handle_=++next_;
-        return handle_;
+        state_.token=token;state_.identity=identity;state_.active=true;state_.handle=++next_;
+        return state_.handle;
     }
     bool SetDemand(Thread thread,Handle handle,bool active) noexcept {
         if(!Owner(thread)||!Valid(handle))return false;
-        active_=active;
+        state_.active=active;
         return true;
     }
     bool Release(Thread thread,Handle handle) noexcept {
         if(!Owner(thread)||!Valid(handle))return false;
-        handle_=0;token_=0;identity_={};active_=true;
+        state_.handle=0;state_.token=0;state_.identity={};state_.active=true;
         return true;
     }
     bool CanBypass(Thread thread,SoleBeforeIdentity actual) const noexcept {
         // Actual membership is sampled under CET's own existing shared
         // lock on THIS dispatch. If a foreign observer was appended, a
         // callback changed, GC is owed, or the chain moved, retain stock.
-        return Owner(thread)&&actual&&handle_&&!active_&&actual==identity_&&epoch_.Matches(token_);
+        return Owner(thread)&&actual&&state_.handle&&!state_.active&&actual==state_.identity&&epoch_.Matches(state_.token);
     }
 private:
-    bool Owner(Thread thread) const noexcept {return owner_&&thread==owner_;}
-    bool Valid(Handle handle) const noexcept {return handle&&handle==handle_&&epoch_.Matches(token_);}
+    bool Owner(Thread thread) const noexcept {return state_.owner&&thread==state_.owner;}
+    bool Valid(Handle handle) const noexcept {return handle&&handle==state_.handle&&epoch_.Matches(state_.token);}
     const DispatchEpoch& epoch_;
-    const Thread owner_;
-    Handle next_=0,handle_=0;
-    DispatchEpoch::Token token_=0;
-    SoleBeforeIdentity identity_{};
-    bool active_=true;
+    GuardState state_;
+    Handle next_=0;
 };
 }

@@ -447,6 +447,46 @@ def branch_proof(pe, matches, layouts):
                     "instruction": f"{i.mnemonic} {i.op_str}",
                     "reads": [i.reg_name(r) for r in reads],
                     "writes": [i.reg_name(r) for r in writes]}
+        # RAX is the ONLY scratch register allowed by the proposed stackless
+        # gate. Walk each original successor until a full RAX write or a
+        # Win64 call (RAX not an argument register). Refuse any prior read,
+        # indirect/unknown control flow, return, or undecoded path.
+        aliases = {"rax", "eax", "ax", "al", "ah"}
+        full = {"rax", "eax"}
+        def prove_rax_dead(entry):
+            pending, seen, killers = [entry], set(), []
+            while pending:
+                at = pending.pop()
+                if at in seen:
+                    continue
+                seen.add(at)
+                ins = by_addr.get(at)
+                require(ins is not None, f"{name}: unknown RAX path at {at:#x}")
+                reads, writes = ins.regs_access()
+                require(not aliases.intersection(ins.reg_name(r) for r in reads),
+                        f"{name}: RAX live at {at:#x}: {ins.mnemonic} {ins.op_str}")
+                require(not ins.group(CS_GRP_RET), f"{name}: RAX reaches return")
+                if full.intersection(ins.reg_name(r) for r in writes) or ins.group(CS_GRP_CALL):
+                    killers.append(hex(at))
+                    continue
+                if ins.group(CS_GRP_JUMP):
+                    require(ins.operands and ins.operands[0].type == X86_OP_IMM,
+                            f"{name}: unknown branch before RAX kill")
+                    pending.append(ins.operands[0].imm)
+                    if ins.mnemonic == "jmp":
+                        continue
+                pending.append(ins.address + ins.size)
+            require(killers, f"{name}: no RAX kill proven")
+            return sorted(killers)
+        require(by_addr[empty].mnemonic == "cmp" and
+                by_addr[empty].operands[0].type == X86_OP_MEM and
+                by_addr[empty].operands[0].mem.disp == layouts["FunctionOverride::CallChain"]["fields"]["CollectGarbage"]["offset"],
+                f"{name}: empty successor does not immediately reset flags at GC check")
+        require(not any(ins.group(CS_GRP_JUMP) and ins.operands and
+                        ins.operands[0].type == X86_OP_IMM and
+                        guard < ins.operands[0].imm < active
+                        for ins in instructions), f"{name}: incoming branch inside guard")
+        result[name]["rax_dead_before_use"] = {"active": prove_rax_dead(active), "empty": prove_rax_dead(empty)}
         result[name]["guard_bytes"] = pe.read_rva(guard, active - guard).hex()
         result[name]["guard_context"] = [describe(i) for i in instructions
                                          if guard - 48 <= i.address < active + 64]
