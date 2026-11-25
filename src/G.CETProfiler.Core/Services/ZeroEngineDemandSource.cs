@@ -638,8 +638,8 @@ end
             source.Contains("__gcetScheduleIdle", StringComparison.Ordinal))
             return false;
         var candidate = source;
-        if (!ReplaceUnique(ref candidate, originalContext, idleContext) ||
-            !ReplaceUnique(ref candidate, driver, idleDriver))
+        if (!ReplaceUniqueLines(ref candidate, originalContext, idleContext) ||
+            !ReplaceUniqueLines(ref candidate, driver, idleDriver))
             return false;
         next = candidate;
         return true;
@@ -803,6 +803,20 @@ end
         anchor = Newlines(source, anchor);
         if (Count(source, anchor) != 1) return false;
         source = source.Replace(anchor, Newlines(source, replacement), StringComparison.Ordinal);
+        return true;
+    }
+    // Existing generated hosts can contain CRCRLF inside the author
+    // adapter (historical Windows raw-string conversion). Match equivalent
+    // line boundaries only in the proven block; do not normalize unrelated
+    // author/custom source. The replacement uses ordinary source newlines.
+    private static bool ReplaceUniqueLines(ref string source, string anchor, string replacement)
+    {
+        var pattern = string.Join(@"\r*\n", NormalizeLf(anchor).Split('\n').Select(Regex.Escape));
+        var matches = Regex.Matches(source, pattern, RegexOptions.CultureInvariant);
+        if (matches.Count != 1) return false;
+        var match = matches[0];
+        source = source.Remove(match.Index, match.Length)
+            .Insert(match.Index, Newlines(source, replacement));
         return true;
     }
     private static bool BeforeLine(ref string source, string anchor, string before) =>

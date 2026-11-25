@@ -385,8 +385,12 @@ end
     end
 end)
 """;
+            // The C# raw string may contain CRLF on a Windows checkout.
+            // Normalize it before converting the composed host back to the
+            // author's line endings, otherwise CRCRLF is emitted.
             normalizedHost = normalizedHost.Replace(
-                authorUpdate, authorReplacement, StringComparison.Ordinal);
+                authorUpdate, authorReplacement.Replace("\r\n", "\n", StringComparison.Ordinal),
+                StringComparison.Ordinal);
             text = text.Contains("\r\n", StringComparison.Ordinal)
                 ? normalizedHost.Replace("\n", "\r\n", StringComparison.Ordinal)
                 : normalizedHost;

@@ -144,6 +144,16 @@ return SpatialHash
     var idleHostFixture = File.ReadAllText("tests/ZeroEngineDemandContract/IdleHostFixture.lua");
     Check(ZeroEngineDemandSource.TryIdleScheduler(scheduler, out var idleScheduler), "canonical scheduler active job accounting proof");
     Check(ZeroEngineDemandSource.TryIdleHost(idleHostFixture, out var idleHost), "canonical idle host proof");
+    // Historical Windows generation produced CRCRLF only in the callback
+    // block. This compatible source must still be admitted; preserve custom
+    // unrelated contents and complete without duplicated adapters.
+    var historicalHost = idleHostFixture.Replace("\r\n", "\n").Replace("\n", "\r\r\n");
+    Check(ZeroEngineDemandSource.TryIdleHost(historicalHost, out var historicalIdle) &&
+        historicalIdle.Contains("-- G-CET scheduler idle host v1"), "historical Windows host admission");
+    var customizedHost = "-- custom header\r\n" + historicalHost + "\r\n-- custom trailer";
+    Check(ZeroEngineDemandSource.TryIdleHost(customizedHost, out var customizedIdle) &&
+        customizedIdle.StartsWith("-- custom header\r\n") &&
+        customizedIdle.EndsWith("\r\n-- custom trailer"), "compatible custom host preservation");
     Check(ZeroEngineDemandSource.TryIdleScheduler(idleScheduler, out var idleRepeat) &&
         idleRepeat == idleScheduler, "idle scheduler idempotence");
     Check(ZeroEngineDemandSource.TryIdleHost(idleHost, out var idleHostRepeat) &&
