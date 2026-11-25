@@ -5,6 +5,7 @@
 #include <windows.h>
 #include <detours.h>
 #include "CETDispatchIdentity.hpp"
+#include "GuardRedirectProof.hpp"
 #include <array>
 #include <cstdint>
 #include <cstring>
@@ -86,9 +87,17 @@ void CheckOfficialEntries(const std::filesystem::path& path){
     const auto* dos=reinterpret_cast<const IMAGE_DOS_HEADER*>(bytes);
     const auto* nt=reinterpret_cast<const IMAGE_NT_HEADERS64*>(bytes+dos->e_lfanew);
     const size_t size=nt->OptionalHeader.SizeOfImage;
-    Image copy{VirtualAlloc(nullptr,size,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE)};
+    // Extra private pages adjacent to the copied image: never a live CET allocation.
+    Image copy{VirtualAlloc(nullptr,size+8192,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE)};
     Check(copy.p!=nullptr,"allocate private test image");
     auto* image=static_cast<unsigned char*>(copy.p);
+    // Preserve the full image, including .pdata/.xdata for read-only unwind proof.
+    for(unsigned i=0;i<nt->FileHeader.NumberOfSections;++i){
+        const auto& section=IMAGE_FIRST_SECTION(nt)[i];
+        Check(section.VirtualAddress<=size&&section.SizeOfRawData<=size-section.VirtualAddress,
+              "section exceeds private image");
+        if(section.SizeOfRawData)std::memcpy(image+section.VirtualAddress,bytes+section.VirtualAddress,section.SizeOfRawData);
+    }
     std::memcpy(image,bytes,nt->OptionalHeader.SizeOfHeaders);
     const auto* sections=IMAGE_FIRST_SECTION(nt);
     for(unsigned i=0;i<nt->FileHeader.NumberOfSections;++i){
@@ -147,6 +156,7 @@ void CheckOfficialEntries(const std::filesystem::path& path){
         }
         checkRestored();
     }
+    gcet::research::CheckGuardRedirect(path,image,size);
     executeOriginal=nullptr;clearOriginal=nullptr;
     std::cout<<"Official CET ExecuteChain/Clear entry transaction abort, attach and exact restoration PASS\n";
 }
