@@ -257,9 +257,13 @@ return Engine
         "canonical shared-provider session lifetime");
     Check(ZeroEngineDemandSource.TrySharedProviderLifecycle(sessionNext,out var sessionAgain)&&sessionAgain==sessionNext,
         "provider session repeat");
-    Check(ZeroEngineDemandSource.TrySharedProviderLifecycle(sessionNext.Replace(
-        "    Engine.__gcetObserveProviderSession(loaded)\n",""),out var sessionPartial)&&sessionPartial==sessionNext,
+    Check(ZeroEngineDemandSource.TrySharedProviderLifecycle(sessionNext.Replace("\r\n","\n").Replace(
+        "    Engine.__gcetObserveProviderSession(loaded)\n",""),out var sessionPartial)&&sessionPartial==sessionNext.Replace("\r\n","\n"),
         "provider session missing event transition");
+    var missingReset=System.Text.RegularExpressions.Regex.Replace(sessionNext.Replace("\r\n","\n"),
+        @"(?m)^function Engine\.__gcetResetSharedProviderCaches\(\)\n    __gcetSharedProviderEpoch = nil\n    __gcetSharedProviderValues = \{\}\n    __gcetScriptableSystemValues = \{\}\nend\n\n","");
+    Check(missingReset!=sessionNext.Replace("\r\n","\n")&&ZeroEngineDemandSource.TrySharedProviderLifecycle(missingReset,out var recoveredReset)&&
+        recoveredReset==sessionNext.Replace("\r\n","\n"),"provider session missing reset function");
     Check(!ZeroEngineDemandSource.TrySharedProviderLifecycle(sessionHost.Replace(
         "value = getter()","value = customGetter()"),out _),"unknown provider getter must remain stock");
     if(!privateSource){

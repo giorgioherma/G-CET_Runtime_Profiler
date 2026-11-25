@@ -1278,10 +1278,10 @@ local function __gcetGetSharedProvider(key)
 end
 """;
     private static string ProviderCacheCurrent =>
-        ProviderCacheOld.Replace("value = getter()\n            if value ~= nil then\n                __gcetSharedProviderValues[key] = value",
+        NormalizeLf(ProviderCacheOld).Replace("value = getter()\n            if value ~= nil then\n                __gcetSharedProviderValues[key] = value",
             "local values = __gcetSharedProviderValues\n            value = getter()\n            if value ~= nil and values == __gcetSharedProviderValues then\n                values[key] = value",
             StringComparison.Ordinal);
-    private static string ProviderNamedOld(string api)=>"""
+    private static string ProviderNamedOld(string api)=>NormalizeLf("""
 function API.GetScriptableSystem(name)
     __gcetSyncSharedProviderEpoch()
     local key = tostring(name or "")
@@ -1297,20 +1297,20 @@ function API.GetScriptableSystem(name)
     end
     return nil
 end
-""".Replace("API",api,StringComparison.Ordinal);
+""").Replace("API",api,StringComparison.Ordinal);
     private static string ProviderNamedCurrent(string api)=>ProviderNamedOld(api)
         .Replace("local container = "+api+".GetScriptableSystemsContainer()",
             "local values = __gcetScriptableSystemValues\n    local container = "+api+".GetScriptableSystemsContainer()",StringComparison.Ordinal)
         .Replace("__gcetScriptableSystemValues[key] = resolved",
             "if values == __gcetScriptableSystemValues then values[key] = resolved end",StringComparison.Ordinal);
-    private static string ProviderReset(string api,bool both)=>"""
+    private static string ProviderReset(string api,bool both)=>NormalizeLf("""
 function API.__gcetResetSharedProviderCaches()
     __gcetSharedProviderEpoch = nil
     __gcetSharedProviderValues = {}
     __gcetScriptableSystemValues = {}
 ADAPTER
 end
-""".Replace("API",api,StringComparison.Ordinal).Replace("\nADAPTER",
+""").Replace("API",api,StringComparison.Ordinal).Replace("\nADAPTER",
         both?"\n    local api = Engine.GCET\n    if type(api) == \"table\" and type(api.__gcetResetSharedProviderCaches) == \"function\" then\n        api.__gcetResetSharedProviderCaches()\n    end":"",StringComparison.Ordinal);
     private const string ProviderSessionObserver = """
 function Engine.__gcetObserveProviderSession(loaded)
@@ -1331,13 +1331,17 @@ end
         var hasAdapter=source.Contains("-- G-CET host compatibility bridge v1",StringComparison.Ordinal);
         var frame=Regex.Matches(source,@"(?m)^local function UpdateFrame\([A-Za-z_]\w*\)[ \t]*(?=\r*$)");
         var root=Regex.Matches(source,@"(?m)^local function __gcetGetSharedProvider\(key\)[ \t]*(?=\r*$)");
+        var code=WithoutLuaTrivia(source);
         if(frame.Count!=1||root.Count!=1||frame[0].Index>=root[0].Index||
            Count(WithoutLuaTrivia(source),"local okLive, liveLoaded = pcall(GameSession.IsLoaded)")!=1||
            Count(WithoutLuaTrivia(source),"isSessionLoaded = liveLoaded")!=1||
            Count(WithoutLuaTrivia(source),"GameSession.On(function(state)")!=1||
            Count(WithoutLuaTrivia(source),"local loaded = state.isLoaded")!=1||
            Count(WithoutLuaTrivia(source),"local sessionState = GameSession.GetState()")!=1||
-           Count(WithoutLuaTrivia(source),"DerivedState.Reset()")!=1)
+           Count(code,"DerivedState.Reset()")!=1||
+           !Regex.IsMatch(code,@"local okLive, liveLoaded = pcall\(GameSession\.IsLoaded\)\s+if okLive then\s+isSessionLoaded = liveLoaded")||
+           !Regex.IsMatch(code,@"GameSession\.On\(function\(state\)\s+local loaded = state\.isLoaded")||
+           !Regex.IsMatch(code,@"Events\.PlayerInvalidated:subscribe\(function\(\)\s+DerivedState\.Reset\(\)"))
             return false;
         var candidate=source;
         bool Upgrade(string old,string current)
@@ -1352,7 +1356,7 @@ end
             var line=Line(anchor).Matches(candidate);
             if(line.Count!=1)return false;
             var expected=line[0].Groups["indent"].Value+NormalizeLf(fragment).Replace("\n","\n"+line[0].Groups["indent"].Value);
-            var following=Proof(candidate[line[0].Index+line[0].Length..]);
+            var following=Proof(candidate[(line[0].Index+line[0].Length)..]);
             if(following.StartsWith("\n"+expected,StringComparison.Ordinal))return true;
             if(Count(Proof(candidate),expected)!=0)return false;
             return AfterLine(ref candidate,anchor,fragment);
@@ -1366,11 +1370,13 @@ end
         bool AfterBlock(string body,string addition)
         {
             var all=Proof(candidate);
-            if(Count(all,NormalizeLf(body)+"\n\n"+NormalizeLf(addition))==1)return true;
+            if(Count(all,NormalizeLf(body)+"\n\n"+NormalizeLf(addition))==1)
+                return Count(all,NormalizeLf(addition))==1;
             if(Count(all,NormalizeLf(addition))!=0)return false;
             return ReplaceUniqueLines(ref candidate,body,body+"\n\n"+addition);
         }
-        if(!AfterBlock(ProviderCacheCurrent,ProviderReset("Engine",hasAdapter)+"\n\n"+ProviderSessionObserver))return false;
+        if(!AfterBlock(ProviderCacheCurrent,ProviderReset("Engine",hasAdapter))||
+           !AfterBlock(ProviderReset("Engine",hasAdapter),NormalizeLf(ProviderSessionObserver)))return false;
         if(hasAdapter&&!AfterBlock(Indent(ProviderCacheCurrent,8),Indent(ProviderReset("__gcetApi",false),8)))return false;
         var frameAnchor=frame[0].Value;
         if(Count(candidate,ProviderSessionLocal)==0)

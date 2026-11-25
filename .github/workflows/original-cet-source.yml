@@ -177,6 +177,18 @@ jobs:
             throw 'CENTRAL_IDLE_PRODUCTION_MISSING: composed known host and scheduler must share idle context demand'
           }
           Write-Host 'Production central idle context integration verified'
+          if (([regex]::Matches($idleHost, '-- G-CET shared provider session lifetime v1')).Count -ne 1 -or
+              ([regex]::Matches($idleHost, 'function Engine\.__gcetResetSharedProviderCaches\(')).Count -ne 1 -or
+              !$idleHost.Contains('Engine.__gcetObserveProviderSession(loaded)') -or
+              !$idleHost.Contains('Engine.__gcetObserveProviderSession(sessionState.isLoaded)') -or
+              !$idleHost.Contains('values == __gcetSharedProviderValues')) {
+            throw 'SHARED_PROVIDER_LIFETIME_PRODUCTION_MISSING: generated host must invalidate on existing session transitions'
+          }
+          if ($idleHost.Contains('-- G-CET host compatibility bridge v1') -and
+              ([regex]::Matches($idleHost, 'function __gcetApi\.__gcetResetSharedProviderCaches\(')).Count -ne 1) {
+            throw 'SHARED_PROVIDER_ADAPTER_LIFETIME_MISSING'
+          }
+          Write-Host 'Production shared provider session lifetime verified'
 
           # This stack has the proven legacy PlayerAction emitter. Assert
           # actual output using the same native ABI as the packaged Resolver.
