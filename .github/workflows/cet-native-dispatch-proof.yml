@@ -1,11 +1,11 @@
 name: CET 1.37.1 native dispatch attachment evidence
 
-# Developer-only read-only release/PDB analysis. No native compile or product pin.
+# Developer-only release/PDB and private-copy entry lifecycle proof. No product pin.
 on:
   push:
     branches: [dev/native-fixed-cache-player-state]
     paths:
-      - 'native-static-locations/research/inspect_cet_dispatch.py'
+      - 'native-static-locations/research/**'
       - '.github/workflows/cet-native-dispatch-proof.yml'
   workflow_dispatch:
 
@@ -40,3 +40,34 @@ jobs:
         run: |
           set -euo pipefail
           python native-static-locations/research/inspect_cet_dispatch.py "$RUNNER_TEMP/cet_1.37.1.zip" "$RUNNER_TEMP/windows-latest-x64-release-pdb.zip" --pdbutil "$(command -v llvm-pdbutil)"
+  entry-lifecycle-windows:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Download exact official CET release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archive = Join-Path $env:RUNNER_TEMP 'cet_1.37.1.zip'
+          $release = Join-Path $env:RUNNER_TEMP 'cet-entry-proof'
+          Invoke-WebRequest -Uri 'https://github.com/maximegmd/CyberEngineTweaks/releases/download/v1.37.1/cet_1.37.1.zip' -OutFile $archive
+          if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne '1855017796a27f518199f5b7d7210ef1db7a5c5f0af468c68e04e6e666ad248c') { throw 'Official CET release archive identity mismatch' }
+          Expand-Archive -LiteralPath $archive -DestinationPath $release
+      - name: Build isolated entry-lifecycle proof with actual RED4ext Detours revision
+        shell: pwsh
+        run: |
+          cmake -S native-static-locations/research -B build/entry-proof -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'entry proof configuration failed' }
+          cmake --build build/entry-proof --config Release --parallel 2
+          if ($LASTEXITCODE -ne 0) { throw 'entry proof build failed' }
+      - name: Verify actual CET entry patch and restoration, callable ABI
+        shell: pwsh
+        run: |
+          $asi = @(Get-ChildItem -LiteralPath (Join-Path $env:RUNNER_TEMP 'cet-entry-proof') -Recurse -File -Filter 'cyber_engine_tweaks.asi')
+          if ($asi.Count -ne 1) { throw 'official ASI missing or ambiguous' }
+          & 'build/entry-proof/Release/gcet_dispatch_entry_proof.exe' $asi[0].FullName
+          if ($LASTEXITCODE -ne 0) { throw 'entry-lifecycle proof failed' }

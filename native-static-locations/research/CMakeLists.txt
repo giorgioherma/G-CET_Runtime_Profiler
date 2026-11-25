@@ -1,0 +1,21 @@
+cmake_minimum_required(VERSION 3.21)
+project(GCETDispatchEntryProof LANGUAGES CXX)
+if(NOT WIN32 OR NOT MSVC OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+  message(FATAL_ERROR "Native dispatch entry proof requires Windows MSVC x64")
+endif()
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+# Match RED4ext v1.30.0's actual Detours dependency. Developer-only.
+# Never link this research executable into the production native DLL.
+include(FetchContent)
+FetchContent_Declare(Detours
+  GIT_REPOSITORY https://github.com/microsoft/Detours.git
+  GIT_TAG 9764cebcb1a75940e68fa83d6730ffaf0f669401)
+FetchContent_MakeAvailable(Detours)
+file(GLOB_RECURSE detour_sources "${detours_SOURCE_DIR}/src/*.cpp")
+list(REMOVE_ITEM detour_sources "${detours_SOURCE_DIR}/src/uimports.cpp")
+add_library(gcet_research_detours STATIC ${detour_sources})
+target_include_directories(gcet_research_detours PUBLIC "${detours_SOURCE_DIR}/src")
+add_executable(gcet_dispatch_entry_proof EntryLifecycleProof.cpp ../src/CETDispatchIdentity.cpp)
+target_include_directories(gcet_dispatch_entry_proof PRIVATE ../include)
+target_link_libraries(gcet_dispatch_entry_proof PRIVATE gcet_research_detours bcrypt)
