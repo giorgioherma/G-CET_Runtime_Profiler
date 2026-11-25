@@ -36,7 +36,15 @@ int wmain(int argc,wchar_t** argv){
         Check(mapping.value!=nullptr,"create non-executable PE mapping");
         View view{MapViewOfFile(mapping.value,FILE_MAP_READ,0,0,0)};
         Check(view.value!=nullptr,"map release ASI");
-        Check(CheckImage(path,view.value)==Identity::ExactImage,"official mapped CET identity rejected");
+        gcet::cet_dispatch::ProbeDetail detail;
+        auto official=CheckImage(path,view.value,&detail);
+        if(official!=Identity::ExactImage){
+            std::cerr<<"Identity "<<static_cast<int>(official)<<" stage="<<detail.stage
+                <<" rva=0x"<<std::hex<<detail.rva<<" offset=0x"<<detail.offset
+                <<" expected=0x"<<unsigned(detail.expected)<<" actual=0x"<<unsigned(detail.actual)
+                <<" error="<<std::dec<<detail.error<<"\n";
+        }
+        Check(official==Identity::ExactImage,"official mapped CET identity rejected");
         Check(CheckImage(path,nullptr)==Identity::LoadedCodeMismatch,"invalid loaded image accepted");
         // Independent scratch copy of the image header and all inspected code.
         // Deliberately do not write to the release mapping or a loaded module.

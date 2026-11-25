@@ -49,27 +49,45 @@ template<class T> bool ReadAt(const std::vector<unsigned char>& bytes,size_t off
     if(offset>bytes.size()||sizeof(T)>bytes.size()-offset)return false;
     std::memcpy(&value,bytes.data()+offset,sizeof(T));return true;
 }
-bool EqualMapped(const void* mapped,uint32_t rva,const unsigned char* expected,size_t count) {
+bool EqualMapped(const void* mapped,uint32_t rva,const unsigned char* expected,size_t count,
+                 ProbeDetail* detail) {
+    if(detail)detail->rva=rva;
     auto address=reinterpret_cast<uintptr_t>(mapped);
     if(!address||rva>kImageSize||count>kImageSize-rva||address>UINTPTR_MAX-rva)return false;
     std::vector<unsigned char> live(count);
     SIZE_T read=0;
-    return ReadProcessMemory(GetCurrentProcess(),reinterpret_cast<const void*>(address+rva),
-        live.data(),count,&read)&&read==count&&std::memcmp(live.data(),expected,count)==0;
+    if(!ReadProcessMemory(GetCurrentProcess(),reinterpret_cast<const void*>(address+rva),
+        live.data(),count,&read)||read!=count){
+        if(detail)detail->error=GetLastError();
+        return false;
+    }
+    for(size_t i=0;i<count;++i){
+        if(live[i]==expected[i])continue;
+        if(detail){detail->offset=static_cast<uint32_t>(i);detail->expected=expected[i];detail->actual=live[i];}
+        return false;
+    }
+    return true;
 }
 }
 
-Identity CheckImage(const std::filesystem::path& file,const void* mappedImage) noexcept {
+Identity CheckImage(const std::filesystem::path& file,const void* mappedImage,ProbeDetail* detail) noexcept {
+    if(detail)*detail={};
+    auto stage=[detail](const char* name){if(detail)detail->stage=name;};
     try {
+        stage("open");
         std::ifstream in(file,std::ios::binary|std::ios::ate);
         if(!in)return Identity::ReadFailure;
+        stage("size");
         auto length=in.tellg();
         if(length<=0||length>32*1024*1024)return Identity::UnsupportedFile;
         std::vector<unsigned char> bytes(static_cast<size_t>(length));
+        stage("read");
         in.seekg(0);
         if(!in.read(reinterpret_cast<char*>(bytes.data()),static_cast<std::streamsize>(bytes.size())))
             return Identity::ReadFailure;
+        stage("sha256");
         if(!HashMatches(bytes))return Identity::UnsupportedFile;
+        stage("PE header");
         IMAGE_DOS_HEADER dos{};
         IMAGE_NT_HEADERS64 nt{};
         if(!ReadAt(bytes,0,dos)||dos.e_magic!=IMAGE_DOS_SIGNATURE||dos.e_lfanew<0||
@@ -78,11 +96,13 @@ Identity CheckImage(const std::filesystem::path& file,const void* mappedImage) n
             nt.OptionalHeader.Magic!=IMAGE_NT_OPTIONAL_HDR64_MAGIC||
             nt.OptionalHeader.SizeOfImage!=kImageSize)
             return Identity::UnsupportedFile;
+        stage("mapped headers");
         auto headers=nt.OptionalHeader.SizeOfHeaders;
-        if(!headers||headers>bytes.size()||!EqualMapped(mappedImage,0,bytes.data(),headers))
+        if(!headers||headers>bytes.size()||!EqualMapped(mappedImage,0,bytes.data(),headers,detail))
             return Identity::LoadedCodeMismatch;
         size_t sectionStart=static_cast<size_t>(dos.e_lfanew)+sizeof(DWORD)+
             sizeof(IMAGE_FILE_HEADER)+nt.FileHeader.SizeOfOptionalHeader;
+        stage("mapped dispatch code");
         for(auto range:kRanges){
             bool found=false;
             for(uint16_t i=0;i<nt.FileHeader.NumberOfSections;++i){
@@ -96,12 +116,13 @@ Identity CheckImage(const std::filesystem::path& file,const void* mappedImage) n
                 if(offset>section.SizeOfRawData||count>section.SizeOfRawData-offset)continue;
                 size_t raw=static_cast<size_t>(section.PointerToRawData)+offset;
                 if(raw>bytes.size()||count>bytes.size()-raw)return Identity::UnsupportedFile;
-                if(!EqualMapped(mappedImage,range.begin,bytes.data()+raw,count))
+                if(!EqualMapped(mappedImage,range.begin,bytes.data()+raw,count,detail))
                     return Identity::LoadedCodeMismatch;
                 found=true;break;
             }
             if(!found)return Identity::UnsupportedFile;
         }
+        stage("verified");
         return Identity::ExactImage;
     }catch(...){return Identity::ReadFailure;}
 }

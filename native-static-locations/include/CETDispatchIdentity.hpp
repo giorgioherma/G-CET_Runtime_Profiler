@@ -16,5 +16,13 @@ enum class Identity : int32_t {
 // Explicit developer probe. No module load, no writes, no recurring work.
 Identity CheckLoadedCET() noexcept;
 // Same read-only gate used for official image mapping tests.
-Identity CheckImage(const std::filesystem::path& file, const void* mappedImage) noexcept;
+struct ProbeDetail {
+    const char* stage = "not started";
+    uint32_t rva = 0;
+    uint32_t offset = 0;
+    uint32_t error = 0;
+    uint8_t expected = 0, actual = 0;
+};
+Identity CheckImage(const std::filesystem::path& file, const void* mappedImage,
+                    ProbeDetail* detail = nullptr) noexcept;
 }
