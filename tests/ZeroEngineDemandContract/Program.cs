@@ -281,8 +281,16 @@ return Engine
         .Replace("local player = GetPlayer()","local player = __gcetApi.GetPlayer()",StringComparison.Ordinal);
     var adapterBlock="\n-- G-CET host compatibility bridge v1\ndo\n    local __gcetApi = {}\n    Engine.GCET = __gcetApi\n"+
         string.Join("\n",adapterSource.TrimEnd('\n').Split('\n').Select(line=>"        "+line))+"\nend\n";
-    string AddAdapter(string host)=>host.Replace("\r\n","\n").Replace("return Engine\n",adapterBlock+"return Engine\n",StringComparison.Ordinal);
-    Check(ZeroEngineDemandSource.TrySharedProviderLifecycle(AddAdapter(sessionHost),out var dualNext),
+    string AddAdapter(string host)
+    {
+        host=host.Replace("\r\n","\n");
+        var at=host.LastIndexOf("return Engine",StringComparison.Ordinal);
+        if(at<0)throw new InvalidOperationException("provider fixture root return missing");
+        return host.Insert(at,adapterBlock);
+    }
+    Check(ZeroEngineDemandSource.TrySharedProviderLifecycle(AddAdapter(sessionHost),out var dualNext)&&
+        dualNext.Contains("function __gcetApi.__gcetResetSharedProviderCaches()",StringComparison.Ordinal)&&
+        dualNext.Contains("api.__gcetResetSharedProviderCaches()",StringComparison.Ordinal),
         "root and compatibility cache lifetime");
     Check(ZeroEngineDemandSource.TrySharedProviderLifecycle(AddAdapter(sessionNext),out var dualPartial)&&dualPartial==dualNext,
         "root-only partial gains adapter without duplicate reset");
