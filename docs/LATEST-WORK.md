@@ -1,3 +1,6 @@
+## 2026-11-25 — Adaptive profiler correctness validation GREEN
+- [Owner CI #2618 SUCCESS, 6/6 jobs](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/45559976515), code 60c4cd50a0cf14ba8f270053480ed40e87bdd4c1. Actual generated Lua execution, private untouched 0-Engine composition, unchanged Alpha6b handoff, lifecycle/install/restore, existing contracts and untouched-source repeat generation all PASS. Profiler artifact 14997811014 and Resolver artifact 14996758877 verified present/unexpired. Native #104 unchanged. GCO CET_profiler_integrity pins this validated code/artifact run; GCO package and corrected gameplay baseline pending. Do not claim full performance validation; separate Resolver shutdown replacement audit is recorded in GCO investigation.
+
 ## 2026-11-25 — Narrow legacy adaptive handoff admission
 - Owner CI #2617 new generated Lua and private untouched source checks PASS; existing Alpha6b handoff failed because initial safety gate rejected a harmless preexisting marker-only fixture. Preserve that contract unchanged. Recognize old marker-only/nonconflicting legacy handoffs without claiming or rewriting source; reject actual appended legacy update when a prior update or indirect loader can have installed one. Extend only the new focused test for both cases. Full owner revalidation required; existing native binary unchanged.
 
