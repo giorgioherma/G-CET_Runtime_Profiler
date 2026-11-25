@@ -221,6 +221,16 @@ return Router
         observerRouter,scheduler);
     Check(ZeroEngineObserverDemandSource.TryStage(ref mixed,true,out integrated)==0&&!integrated,
         "independent author observer must prevent native attachment");
+    // An additive host adapter delegates to an unknown host registry.
+    // Even if its fallback observer has the expected body, it does not
+    // establish demand ownership over the foreign host.
+    var foreignObserverHost=observerHost.Replace(
+        "local Router = require(\"modules/G-CET/ActionRouter\")",
+        "local ok, candidate = pcall(require, \"modules/G-CET/ActionRouter\")\nlocal Router = candidate");
+    var foreignObserver=ObserverFramework(foreignObserverHost,observerRouter,scheduler);
+    Check(ZeroEngineObserverDemandSource.TryStage(ref foreignObserver,true,out integrated)==0&&!integrated&&
+        Encoding.UTF8.GetString(foreignObserver.Files[ZeroEngineObserverDemandSource.RouterPath])==observerRouter,
+        "foreign compatibility bridge must not modify the author router");
     var drift=ObserverFramework(observerHost,observerRouter.Replace("if beforeActive == 0 then return end",
         "print('author work')\n    if beforeActive == 0 then return end"),scheduler);
     Check(ZeroEngineObserverDemandSource.TryStage(ref drift,true,out integrated)==0&&!integrated,

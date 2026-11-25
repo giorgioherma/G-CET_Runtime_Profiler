@@ -72,18 +72,14 @@ internal static class ZeroEngineObserverDemandSource
         if (!IsIdentifier(router)||!At(t,body,router,".","Dispatch","(",a,",",b,",",c,")","end",")"))
             return false;
         int close=body+11;
-        // Both actual existing host import shapes: direct module local, or
-        // the compatibility adapter's protected require and assignment.
+        // A compatibility adapter may delegate to a foreign host's own
+        // SubscribeAction before using our router. A matching wrapper alone
+        // is not a producer/consumer ownership proof. Leave that additive
+        // bridge and its author-owned support modules unchanged.
         const string module="modules/G-CET/ActionRouter";
         bool direct = Enumerable.Range(0,t.Length).Any(j =>
             At(t,j,"local",router,"=","require","(",module,")"));
-        bool adapter = Enumerable.Range(0,t.Length).Any(j =>
-            j+8<t.Length && At(t,j,"local") && IsIdentifier(t[j+1].Value) &&
-            At(t,j+2,",") && IsIdentifier(t[j+3].Value) &&
-            At(t,j+4,"=","pcall","(","require",",",module,")") &&
-            Enumerable.Range(j+11,Math.Max(0,t.Length-j-11)).Any(k =>
-                At(t,k,router,"=",t[j+3].Value)));
-        if (!direct&&!adapter) return false;
+        if (!direct) return false;
         // Do not insert a statement into an expression or before trailing
         // executable code on the registration's closing line.
         var openLine=source.LastIndexOf('\n',t[start].Index)+1;
