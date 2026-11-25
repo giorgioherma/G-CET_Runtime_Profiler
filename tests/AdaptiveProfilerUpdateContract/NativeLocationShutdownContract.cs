@@ -74,6 +74,11 @@ internal static class NativeLocationShutdownContract
         Execute("host without original shutdown", "local Engine={}\nfunction Engine.Register() end\nreturn Engine", "empty", 1);
         Execute("conditional registration", "local Engine={}\nfunction Engine.Register() end\nif false then registerForEvent('onShutdown', function() error('not registered') end) end\nreturn Engine", "empty", 1);
         Execute("mixed historical newlines", stock.Replace("\n", "\r\r\n"), "stock", 1);
+        var mixedPrefix = "local Engine = {}\nfunction Engine.Register() return {} end\r\n";
+        var mixed = mixedPrefix + stock[(stock.IndexOf("local Storage", StringComparison.Ordinal))..];
+        var mixedGenerated = Encoding.UTF8.GetString(FixedZeroEngineRuntime.AddNativeLocationBridge(Encoding.UTF8.GetBytes(mixed)));
+        Check(mixedGenerated.Contains(mixedPrefix, StringComparison.Ordinal),
+            "unrelated mixed source line endings were rewritten");
         var ambiguous = Encoding.UTF8.GetBytes("local Engine={}\nlocal register=registerForEvent\nregister('onShutdown', function() end)\nreturn Engine");
         Check(ambiguous.SequenceEqual(FixedZeroEngineRuntime.AddNativeLocationBridge(ambiguous)),
             "ambiguous alias must not gain a competing cleanup");

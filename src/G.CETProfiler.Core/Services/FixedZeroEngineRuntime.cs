@@ -641,16 +641,19 @@ end)
         var last = exports[^1];
         if (!Regex.IsMatch(text[(last.Index + last.Length)..],
                 @"\A(?:\s|--[^\r\n]*)*\z", RegexOptions.CultureInvariant))
+        {
+            if (hasBridge) return source;
             throw new InvalidOperationException("0-Engine export cannot safely host native location bridge.");
+        }
         var name = last.Groups["name"].Value;
         if (hasBridge)
         {
             // Complete a previously generated bridge in the current source,
             // rather than restoring an old host or adding a corrective pass.
             return TryComposeNativeLocationShutdown(text, name, marker, out var composed)
-                && composed != text ? EncodeLikeOriginal(source, composed) : source;
+                && composed != text ? EncodeLikeOriginal(source, composed, normalizeNewlines: false) : source;
         }
-        var block = $"""
+        var block = $$"""
             {{marker}}
             do
                 local runtime={{name}}
@@ -679,12 +682,14 @@ end)
             end)
 
             """;
-        var inserted = text.Insert(last.Index, block + "\n");
+        var nl = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        var inserted = text.Insert(last.Index, block.Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace("\n", nl, StringComparison.Ordinal) + nl);
         // A host with ambiguous native registration ownership must not receive
         // a competing cleanup registration. Its other generic work can proceed.
         if (!TryComposeNativeLocationShutdown(inserted, name, marker, out var next))
             return source;
-        return EncodeLikeOriginal(source, next);
+        return EncodeLikeOriginal(source, next, normalizeNewlines: false);
     }
 
     private const string NativeShutdownMarker = "-- G-CET native location composed shutdown v1";
@@ -710,7 +715,7 @@ end)
             .Where(t => !t.Groups["comment"].Success).ToArray();
         // Recognize the actual former source-generated cleanup body. Never
         // mistake a customized author's shutdown for our removable callback.
-        var cleanupShape = $"""
+        var cleanupShape = $$"""
             registerForEvent("onShutdown",function()
                 if type({{name}})=="table" and type({{name}}.GCET)=="table" and
                     type({{name}}.GCET.NativeLocationHost)=="table" then
@@ -968,7 +973,7 @@ end)
         return EncodeLikeOriginal(live,amended);
     }
 
-    private static byte[] EncodeLikeOriginal(byte[] original, string text)
+    private static byte[] EncodeLikeOriginal(byte[] original, string text, bool normalizeNewlines = true)
     {
         // Avoid BOM / newline churn when adding a proven stage.
         var hasBom = original.Length >= 3 && original[0] == 0xEF &&
@@ -976,7 +981,7 @@ end)
         var source = hasBom
             ? Encoding.UTF8.GetString(original, 3, original.Length - 3)
             : Encoding.UTF8.GetString(original);
-        var output = source.Contains("\r\n", StringComparison.Ordinal)
+        var output = normalizeNewlines && source.Contains("\r\n", StringComparison.Ordinal)
             ? text.Replace("\r\n", "\n", StringComparison.Ordinal)
                   .Replace("\n", "\r\n", StringComparison.Ordinal)
             : text;
