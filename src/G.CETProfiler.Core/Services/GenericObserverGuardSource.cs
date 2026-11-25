@@ -79,7 +79,9 @@ internal static class GenericObserverGuardSource
         if(i+2>=t.Length||!At(t,i+1,"=")||!Literal(t[i+2])||
             !StartsLine(s,t[i])||!EndsStatement(s,t,i+2))return false;
         if(i==0)return false;
-        return t[i-1].Value is not ("local" or "for" or "function" or "," or "." or ":" or "{" or "[");
+        // A semicolon may be a table-field separator, not a statement
+        // boundary. Until the full enclosing expression is proven, refuse.
+        return t[i-1].Value is not ("local" or "for" or "function" or "," or "." or ":" or "{" or "[" or ";");
     }
     private static bool SimpleRead(Match[] t,int i)
     {

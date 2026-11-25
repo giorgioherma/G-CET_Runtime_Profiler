@@ -606,6 +606,7 @@ end)
         (genericGuard.Replace("enabled = true","local enabled = true"),"UNPROVEN_USE_SHADOW_OR_WRITE"),
         (genericGuard.Replace("enabled = true","local a, enabled = true, false"),"UNPROVEN_USE_SHADOW_OR_WRITE"),
         (genericGuard.Replace("enabled = true","local t = {\n        enabled = true\n    }"),"UNPROVEN_USE_SHADOW_OR_WRITE"),
+        (genericGuard.Replace("enabled = true","local t = { a = false;\n        enabled = true;\n    }"),"UNPROVEN_USE_SHADOW_OR_WRITE"),
         (genericGuard.Replace("enabled = true","other, enabled = true, false"),"UNPROVEN_USE_SHADOW_OR_WRITE"),
         (genericGuard+"\nlocal a = debug.setupvalue","REFLECTION_OR_DYNAMIC_ENVIRONMENT"),
         (genericGuard+"\nlocal original = Observe","OBSERVER_API_ALIAS_OR_REBIND"),
