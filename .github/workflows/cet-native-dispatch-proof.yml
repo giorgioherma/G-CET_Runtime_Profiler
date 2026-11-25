@@ -88,3 +88,8 @@ jobs:
         run: |
           & 'build/entry-proof/Release/gcet_live_lifecycle_proof.exe'
           if ($LASTEXITCODE -ne 0) { throw 'live lifecycle proof failed' }
+      - name: Execute compiler-generated GS FH4 catch and RAII lifecycle
+        shell: pwsh
+        run: |
+          & 'build/entry-proof/Release/gcet_fh4_lifecycle_proof.exe'
+          if ($LASTEXITCODE -ne 0) { throw 'GS FH4 lifecycle proof failed' }
