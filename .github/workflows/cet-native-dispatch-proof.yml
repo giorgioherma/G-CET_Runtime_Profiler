@@ -92,4 +92,9 @@ jobs:
         shell: pwsh
         run: |
           & 'build/entry-proof/Release/gcet_fh4_lifecycle_proof.exe'
-          if ($LASTEXITCODE -ne 0) { throw 'GS FH4 lifecycle proof failed' }
+          if ($LASTEXITCODE -ne 0) {
+            Get-ChildItem build/entry-proof -Recurse -Filter 'gcet_fh4_lifecycle_proof.map' | ForEach-Object {
+              Select-String -LiteralPath $_.FullName -Pattern 'GSHandlerCheck|CxxFrameHandler|\?Fixture@|\?Thrower@'
+            }
+            throw 'GS FH4 lifecycle proof failed'
+          }

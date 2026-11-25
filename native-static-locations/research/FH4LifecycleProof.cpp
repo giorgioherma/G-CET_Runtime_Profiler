@@ -36,6 +36,8 @@ __declspec(noinline) int Thrower(int mode){
 }
 // Keep the patch site on its own executable image section. Only the
 // single-threaded fixture's own code is writable during the transaction.
+#pragma strict_gs_check(push, on)
+#pragma optimize("", off)
 #pragma code_seg(push,".gctest")
 __declspec(noinline) int Fixture(int mode){
     char buf[64];
@@ -52,6 +54,8 @@ __declspec(noinline) int Fixture(int mode){
     }
 }
 #pragma code_seg(pop)
+#pragma optimize("", on)
+#pragma strict_gs_check(pop)
 int Invoke(int mode){
     Marker nearSide{3};
     try{return Fixture(mode);}
@@ -183,6 +187,10 @@ int main(){
     const unsigned padded=(info[2]+1)&~1u;
     uint32_t handler=0;std::memcpy(&handler,info+4+padded*2,4);
     auto personality=reinterpret_cast<PEXCEPTION_ROUTINE>(base+handler);
+    std::cout<<"Fixture runtime function RVA=0x"<<std::hex<<original->BeginAddress
+             <<" unwind=0x"<<original->UnwindData<<" flags="<<unsigned(info[0]>>3)
+             <<" actual personality=0x"<<handler<<" expected GS/FH4=0x"
+             <<(reinterpret_cast<Address>(&__GSHandlerCheck_EH4)-base)<<std::dec<<std::endl;
     Check(personality==&__GSHandlerCheck_EH4,"compiled fixture is not CET's GS/FH4 personality");
     auto runtime=GetModuleHandleW(L"vcruntime140_1.dll");
     Check(runtime&&GetProcAddress(runtime,"__CxxFrameHandler4"),"FH4 runtime import unavailable");
