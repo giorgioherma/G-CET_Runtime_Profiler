@@ -625,7 +625,7 @@ def lock_proof(pe, matches, layouts, branches, pdb, pdb_path, pdbutil):
             target = op.imm
             names = symbols.get(target, [])
             # Confirm the actual imported symbol, not merely a PDB name.
-            first = next(cs.disasm(pe.read_rva(target, 6), target), None)
+            first = next(cs.disasm(pe.read_rva(target, 15), target), None)
             if not first or first.mnemonic != "jmp" or not first.operands:
                 return None
             op = first.operands[0]
