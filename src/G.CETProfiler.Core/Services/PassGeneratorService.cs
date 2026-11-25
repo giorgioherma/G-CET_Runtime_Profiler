@@ -185,6 +185,12 @@ public static class PassGeneratorService
             captureRoot, modsRoot, staged,
             appliedTransformsByFile, transformManifest, skipped);
 
+        // Central scheduler demand uses the current composed producer source.
+        // This precedes native inventory and mod-specific semantics.
+        genericInfrastructureTransformCount += ZeroEngineDemandSource.TryStage(
+            modsRoot, ref fixedRuntime, staged, appliedTransformsByFile,
+            transformManifest, skipped);
+
         // Direct, source-proven Game.GetPlayer():GetWorldPosition() only:
         // typed native forced-live getter plus original fail-open fallback.
         // Runs BEFORE generic GetPlayer shared-read replacement, otherwise

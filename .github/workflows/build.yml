@@ -88,6 +88,8 @@ jobs:
           PY
           lua5.4 tests/ImmersiveThirdPersonDormancyLuaContract.lua /tmp/gcet-itpp-frame-dormancy.lua
 
+      - name: Execute generated central scheduler demand and producer contracts
+        run: dotnet run --project tests/ZeroEngineDemandContract/ZeroEngineDemandContract.csproj -c Release
       - name: Execute 0-Engine additive workload runtime contract
         run: lua5.4 tests/ZeroEngineWorkloadLuaContract.lua resolver-runtime/0-Engine/modules
       - name: Validate COMBAT-POLICE-60 timed capture and legacy F11 preservation
