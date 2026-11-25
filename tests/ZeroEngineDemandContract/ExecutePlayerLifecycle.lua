@@ -49,5 +49,5 @@ assert(a==b and a==c and a==d,"lifecycle or Blackboard delivery changed")
 assert(cr==ar and dr==ar,"mixed overlay must preserve original getters")
 assert(bf[18]==2 and bf[19]==2 and bf[28]==2 and bf[29]==2 and bf[30]==2 and bf[60]==2,
     "transition/error paths must retain the second native getter")
-assert(bf[1]==1 and bf[20]==1 and br<ar,"stable observations not shared")
+assert(bf[1]==1 and bf[21]==1 and br<ar,"stable observations not shared")
 print("Lifecycle native GetPlayer reads "..ar.." -> "..br.."; exact transitions, retry and mixed overlay PASS")
