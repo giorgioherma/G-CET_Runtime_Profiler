@@ -1,6 +1,7 @@
 // Actual release mapped without loading CET or executing DllMain.
 #define NOMINMAX
 #include "CETDispatchIdentity.hpp"
+#include "CETLiveObserver.hpp"
 #include <windows.h>
 #include <filesystem>
 #include <cstring>
@@ -64,6 +65,11 @@ static void CheckOwnerContract(){
 int wmain(int argc,wchar_t** argv){
     try {
         Check(CheckLoadedCET()==Identity::Unavailable,"probe must not load missing CET");
+        Check(!gcet::cet_dispatch::PrepareObserver(0x1000,0x1234)&&
+              gcet::cet_dispatch::BindObserver()==0&&
+              !gcet::cet_dispatch::SetObserverDemand(1,false)&&
+              !gcet::cet_dispatch::ReleaseObserver(1),
+              "absent CET must not publish native attachment");
         Check(gcet::cet_dispatch::CheckLoadedOwner()==gcet::cet_dispatch::OwnerStatus::AbsentModule,"owner probe must not load CET");
         CheckOwnerContract();
         if(argc==1){std::cout<<"Absent-module probe PASS\n";return 0;}

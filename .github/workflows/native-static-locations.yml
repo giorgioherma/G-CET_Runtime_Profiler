@@ -122,7 +122,10 @@ jobs:
           if (!$binary.Contains('GCETPlayerVector4')) {
             throw 'Compiled plugin DLL does not contain GCETPlayerVector4 exported RTTI method.'
           }
-          Write-Host 'Compiled native typed Vector4 ABI verified.'
+          foreach ($api in @('GCETObserverPrepare','GCETObserverBind','GCETObserverSetDemand','GCETObserverRelease','GCETObserverRetire')) {
+            if (!$binary.Contains($api)) { throw "Compiled observer lifecycle ABI missing $api" }
+          }
+          Write-Host 'Compiled native typed Vector4 and observer lifecycle ABI verified.'
       - name: Stage isolated native payload
         shell: pwsh
         run: |

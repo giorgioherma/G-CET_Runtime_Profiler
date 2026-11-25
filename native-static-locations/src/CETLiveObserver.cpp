@@ -83,13 +83,13 @@ bool ExecuteScope(const void* chain,void* lock,void* context,void* args,void* re
                   void* out,void* stack,void* frame,char* code,uint8_t parameter){
     const auto original=originalEntry.load(std::memory_order_acquire);
     auto* s=session.load(std::memory_order_acquire);
-    if(!s||s->retiring.load(std::memory_order_acquire))
+    if(!s||s->retiring.load(std::memory_order_acquire)||
+       s->owner!=GetCurrentThreadId()||!s->discovery->armed.load(std::memory_order_acquire)||
+       !Target(*s,Chain(chain)))
         return original(chain,lock,context,args,result,out,stack,frame,code,parameter);
     const void* previous=currentChain;
     s->scopes.fetch_add(1,std::memory_order_acq_rel);
-    currentChain=nullptr;
-    if(s->owner==GetCurrentThreadId()&&s->discovery->armed.load(std::memory_order_acquire)&&
-       Target(*s,Chain(chain)))currentChain=chain;
+    currentChain=chain;
     bool answer=false;
     __try {answer=original(chain,lock,context,args,result,out,stack,frame,code,parameter);}
     __finally {currentChain=previous;s->scopes.fetch_sub(1,std::memory_order_release);}

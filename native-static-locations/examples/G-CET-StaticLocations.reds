@@ -101,3 +101,4 @@ public native func GCETObserverPrepare(klass: CName, method: CName) -> Bool;
 public native func GCETObserverBind() -> Int32;
 public native func GCETObserverSetDemand(handle: Int32, active: Bool) -> Bool;
 public native func GCETObserverRelease(handle: Int32) -> Bool;
+public native func GCETObserverRetire() -> Void;

@@ -440,6 +440,11 @@ namespace {
         int32_t handle=0;RED4ext::GetParameter(f,&handle);f->code++;
         *out=gcet::cet_dispatch::ReleaseObserver(handle);
     }
+    // Called by the canonical Scheduler's one-shot cleanup outside a
+    // callback when a discovered native chain cannot be admitted.
+    void ObserverRetire(RED4ext::IScriptable*,RED4ext::CStackFrame* f,void*,int64_t) {
+        f->code++;gcet::cet_dispatch::RetireObserver();
+    }
     template <typename T>
     void RegisterFunction(const char* name, RED4ext::ScriptingFunction_t<T> handler,
                           const char* outType, const char* const* paramNames,
@@ -469,6 +474,7 @@ namespace {
         RegisterFunction("GCETObserverBind",ObserverBind,"Int32",nullptr,nullptr,0);
         RegisterFunction("GCETObserverSetDemand",ObserverDemand,"Bool",demandNames,demandTypes,2);
         RegisterFunction("GCETObserverRelease",ObserverRelease,"Bool",handleNames,intTypes,1);
+        RegisterFunction("GCETObserverRetire",ObserverRetire,nullptr,nullptr,nullptr,0);
         RegisterFunction("GCETStaticCoordinatorState",CoordinatorStatus,"Int32",nullptr,nullptr,0);
         RegisterFunction("GCETStaticLastPlayerError",LastPlayerCode,"Int32",nullptr,nullptr,0);
         const char* radiusNames[]={"radius"};
