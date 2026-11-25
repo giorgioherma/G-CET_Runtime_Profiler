@@ -83,3 +83,8 @@ jobs:
         run: |
           & 'build/entry-proof/Release/gcet_stackless_gate_proof.exe'
           if ($LASTEXITCODE -ne 0) { throw 'stackless gate proof failed' }
+      - name: Execute real Windows exceptions and concurrent native dispatch lifecycle
+        shell: pwsh
+        run: |
+          & 'build/entry-proof/Release/gcet_live_lifecycle_proof.exe'
+          if ($LASTEXITCODE -ne 0) { throw 'live lifecycle proof failed' }
