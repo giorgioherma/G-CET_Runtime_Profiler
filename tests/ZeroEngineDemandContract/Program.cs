@@ -315,6 +315,54 @@ return Engine
     Check(scalarHost.SequenceEqual(scalarFramework.Files[ZeroEngineDemandSource.InitPath]) &&
         scalarScheduler.SequenceEqual(scalarFramework.Files[ZeroEngineDemandSource.SchedulerPath]) &&
         scalarModule.SequenceEqual(scalarStage["0-Engine/modules/DerivedState.lua"]), "scalar repeat changed bytes");
+
+    // Independent, actual pure scalar producer fields; original six-frame
+    // offer cadence and raw backing-table exposure must survive.
+    var cadenceDerived=privateSource?derived:File.ReadAllText("tests/ZeroEngineDemandContract/CadencedDerivedFixture.lua");
+    var cadenceHost=privateSource?derivedHost:derivedHost.Replace(
+        "local valid = true","local valid = true\nlocal function GetPlayer()\n    return State.player()\nend")
+        .Replace("local State = {derived = {}}","local State = {derived = {}, player = function() return TestPlayer end}")
+        .Replace("local player = {}","local player = GetPlayer()");
+    Check(ZeroEngineDemandSource.TryDerivedProducer(cadenceDerived,out var cadencePitch),
+        "cadence scalar base module proof");
+    Check(ZeroEngineDemandSource.TryDerivedHost(cadenceHost,out var cadencePitchHost),
+        "cadence scalar base host proof");
+    Check(ZeroEngineDemandSource.TrySampleController(Encoding.UTF8.GetString(generatedScheduler),out var cadencePitchScheduler),
+        "cadence scalar base controller proof");
+    Check(ZeroEngineDemandSource.TryCadencedDerivedProducer(cadencePitch,out var cadenceModuleNext)&&cadenceModuleNext!=cadencePitch,
+        "pure cadenced fields admission");
+    Check(ZeroEngineDemandSource.TryCadencedDerivedHost(cadencePitchHost,out var cadenceHostNext)&&cadenceHostNext!=cadencePitchHost,
+        "pure cadenced fields host admission");
+    Check(ZeroEngineDemandSource.TryCadencedController(cadencePitchScheduler,out var cadenceSchedulerNext),
+        "cadenced sample controller admission");
+    Check(ZeroEngineDemandSource.TryCadencedDerivedProducer(cadenceModuleNext,out var cadenceRepeat)&&cadenceRepeat==cadenceModuleNext&&
+        ZeroEngineDemandSource.TryCadencedDerivedHost(cadenceHostNext,out var cadenceHostRepeat)&&cadenceHostRepeat==cadenceHostNext&&
+        ZeroEngineDemandSource.TryCadencedController(cadenceSchedulerNext,out var cadenceSchedulerRepeat)&&cadenceSchedulerRepeat==cadenceSchedulerNext,
+        "cadenced scalar repeat generation");
+    Check(!ZeroEngineDemandSource.TryCadencedDerivedProducer(cadencePitch.Replace(
+        "cached.hasWeapon = resolveHasWeapon(player)","cached.hasWeapon = resolveHasWeapon(player)\n        externalConsumer(cached.hasWeapon)"),out _),
+        "internal field dependency must stay eager");
+    if(!privateSource){
+        var cadenceRoot=Path.Combine(root,"cadenced");
+        var cadenceModules=Path.Combine(cadenceRoot,"modules");
+        Directory.CreateDirectory(Path.Combine(cadenceModules,"G-CET"));
+        File.WriteAllText(Path.Combine(cadenceModules,"DerivedState.lua"),cadenceModuleNext);
+        File.WriteAllText(Path.Combine(cadenceModules,"Lifecycle.lua"),Encoding.UTF8.GetString(scalarLifecycle));
+        File.WriteAllText(Path.Combine(cadenceModules,"G-CET","Scheduler.lua"),cadenceSchedulerNext);
+        File.WriteAllText(Path.Combine(cadenceRoot,"init.lua"),cadenceHostNext);
+        File.WriteAllText(Path.Combine(cadenceRoot,"stock-module.lua"),cadencePitch);
+        File.WriteAllText(Path.Combine(cadenceRoot,"stock-host.lua"),cadencePitchHost);
+        File.WriteAllText(Path.Combine(cadenceRoot,"stock-scheduler.lua"),cadencePitchScheduler);
+        foreach(var scenario in new[]{"no-demand","mixed-fields","raw","reset","old-module","old-host","old-scheduler"}){
+            var cadencePsi=new ProcessStartInfo("lua5.4"){UseShellExecute=false};
+            cadencePsi.ArgumentList.Add("tests/ZeroEngineDemandContract/ExecuteCadencedDerived.lua");
+            cadencePsi.ArgumentList.Add(cadenceRoot);
+            cadencePsi.ArgumentList.Add(scenario);
+            using var cadenceProcess=Process.Start(cadencePsi)!;cadenceProcess.WaitForExit();
+            Check(cadenceProcess.ExitCode==0,"cadenced scalar execution: "+scenario);
+        }
+    }
+
     Check(!ZeroEngineDemandSource.TryDerivedProducer(derived.Replace(
         "cached.lookPitch = resolveLookPitch()", "cached.lookPitch = resolveLookPitch()\n    print(cached.lookPitch)"),
         out _), "internal scalar dependency must refuse");

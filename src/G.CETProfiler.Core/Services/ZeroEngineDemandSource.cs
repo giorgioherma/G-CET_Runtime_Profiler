@@ -878,6 +878,225 @@ function DerivedState.__gcetExpose(tbl)
 end
 """;
 
+
+    // Additional pure getter-only fields use the existing scheduler-owned
+    // sample registry. The original six-successful-frame offer remains the
+    // maximum recurring cadence; no lookup occurs until a field is requested.
+    // Raw backing-table exposure pins only these fields to original offers.
+    // As for lookPitch, a first deferred read is a live sample, not an attempt
+    // to reconstruct an unobserved historical engine value.
+    private const string CadencedSampleMarker="-- G-CET cadenced sample slots v1";
+    internal const string CadencedSampleController = """
+-- G-CET cadenced sample slots v1
+demand.CadencedSampleVersion = 1
+function demand.DefineCadencedSample(key, produce, valid, getPlayer)
+    if samples[key] or type(produce) ~= "function" or type(valid) ~= "function" or type(getPlayer) ~= "function" then return nil end
+    local sample = {}
+    local pending, exposed = false, false
+    function sample.Read(player)
+        if not pending or not valid() then return end
+        player = player or getPlayer()
+        if not player then return end
+        pending = false
+        produce(player)
+    end
+    function sample.Offer(player)
+        pending = true
+        if exposed then sample.Read(player) end
+    end
+    function sample.Expose()
+        exposed = true
+        sample.Read()
+    end
+    function sample.Reset()
+        pending = false
+    end
+    samples[key] = sample
+    return sample
+end
+""";
+    internal static bool TryCadencedController(string source,out string next)
+    {
+        next=source;
+        if(!source.Contains(SampleMarker,StringComparison.Ordinal)||
+           Count(source,"local samples = {}")!=1||
+           Count(source,"demand.SampleEpochVersion = 1")!=1)return false;
+        if(source.Contains(CadencedSampleMarker,StringComparison.Ordinal))
+            return Count(NormalizeLf(source),NormalizeLf(CadencedSampleController))==1;
+        if(source.Contains("DefineCadencedSample",StringComparison.Ordinal))return false;
+        return BeforeLine(ref next,"Scheduler.Demand = demand",CadencedSampleController);
+    }
+
+    private const string CadencedDerivedMarker="-- G-CET cadenced player scalar demand v1";
+    private const string CadencedDerivedHostMarker="-- G-CET cadenced player scalar host v1";
+    private const string CadencedLocals = """
+-- G-CET cadenced player scalar demand v1
+local __gcetPlayerSamples, __gcetCadencedClock, __gcetCadencedEpoch
+local function __gcetExposePlayerSamples()
+    if __gcetPlayerSamples then
+        for _, sample in pairs(__gcetPlayerSamples) do sample.Expose() end
+    end
+end
+local function __gcetResetPlayerSamples()
+    __gcetCadencedEpoch = nil
+    if __gcetPlayerSamples then
+        for _, sample in pairs(__gcetPlayerSamples) do sample.Reset() end
+    end
+end
+""";
+    private const string CadencedAdapter = """
+function DerivedState.__gcetEnableCadencedDemand(controller, epoch, getPlayer)
+    if __gcetPlayerSamples then return true end
+    if type(controller) ~= "table" or controller.CadencedSampleVersion ~= 1 or
+        type(controller.DefineCadencedSample) ~= "function" or type(epoch) ~= "function" or type(getPlayer) ~= "function" then return false end
+    local function valid() return __gcetCadencedEpoch ~= nil and __gcetCadencedEpoch == epoch() end
+    local fields = {
+        hasWeapon = controller.DefineCadencedSample("DerivedState.hasWeapon", function(player)
+            cached.hasWeapon = resolveHasWeapon(player)
+        end, valid, getPlayer),
+        isInWorkspot = controller.DefineCadencedSample("DerivedState.isInWorkspot", function(player)
+            cached.isInWorkspot = resolveIsInWorkspot(player)
+        end, valid, getPlayer)
+    }
+    if next(fields) == nil then return false end
+    __gcetPlayerSamples, __gcetCadencedClock = fields, epoch
+    if __gcetRawExposed then __gcetExposePlayerSamples() end
+    return true
+end
+""";
+    private const string HasWeaponReader = """
+local function resolveHasWeapon(player)
+    local ok, result = pcall(function()
+        if not weaponSlotID then
+            weaponSlotID = TweakDBID.new("AttachmentSlots.WeaponRight")
+        end
+        local ts = Game.GetTransactionSystem()
+        if not ts then return false end
+        return ts:GetItemInSlot(player, weaponSlotID) ~= nil
+    end)
+    return ok and result or false
+end
+""";
+    private const string WorkspotReader = """
+local function resolveIsInWorkspot(player)
+    local ok, result = pcall(function()
+        local ws = Game.GetWorkspotSystem()
+        if not ws then return false end
+        return ws:IsActorInWorkspot(player)
+    end)
+    return ok and result or false
+end
+""";
+    private const string CadencedWeaponOffer =
+        "if __gcetPlayerSamples and __gcetPlayerSamples.hasWeapon then __gcetPlayerSamples.hasWeapon.Offer(player) else cached.hasWeapon = resolveHasWeapon(player) end";
+    private const string CadencedWorkspotOffer =
+        "if __gcetPlayerSamples and __gcetPlayerSamples.isInWorkspot then __gcetPlayerSamples.isInWorkspot.Offer(player) else cached.isInWorkspot = resolveIsInWorkspot(player) end";
+    private const string CadencedMark =
+        "if __gcetCadencedClock then __gcetCadencedEpoch = __gcetCadencedClock() end";
+    private const string CadencedAdvance =
+        "if __gcetCadencedClock and pollFrameCounter < pollThrottle then __gcetCadencedEpoch = __gcetCadencedClock() end";
+    private const string CadencedRead = """
+if tbl == cached and __gcetPlayerSamples then
+    local sample = __gcetPlayerSamples[key]
+    if sample then sample.Read() end
+end
+""";
+    internal static bool TryCadencedDerivedProducer(string source,out string next)
+    {
+        next=source;
+        if(!TryDerivedProducer(source,out var pitch)||pitch!=source)return false;
+        // Only pure independent scalar readers are eligible: no additional
+        // field uses, transition events, prior-value dependency or custom
+        // native side effects. Weapon type, death, cover, time and district
+        // remain at their original phase and cadence.
+        var normalized=NormalizeLf(source);
+        if(Count(normalized,NormalizeLf(HasWeaponReader))!=1||
+           Count(normalized,NormalizeLf(WorkspotReader))!=1||
+           Count(source,"local pollThrottle = 6")!=1||
+           Count(source,"pollFrameCounter = pollFrameCounter + 1")!=1||
+           Count(source,"if pollFrameCounter >= pollThrottle then")!=1||
+           Count(source,"local weaponSlotID = nil")!=1)return false;
+        if(source.Contains(CadencedDerivedMarker,StringComparison.Ordinal))
+        {
+            return Count(normalized,NormalizeLf(CadencedLocals))==1&&
+                Count(normalized,NormalizeLf(CadencedAdapter))==1&&
+                Count(source,CadencedWeaponOffer)==1&&Count(source,CadencedWorkspotOffer)==1&&
+                Count(source,CadencedMark)==1&&Count(source,CadencedAdvance)==1&&
+                Count(source,"__gcetExposePlayerSamples()")==4&&
+                Count(source,"__gcetResetPlayerSamples()")==3&&
+                Count(source,"local sample = __gcetPlayerSamples[key]")==1;
+        }
+        var code=WithoutLuaTrivia(source);
+        if(Regex.Matches(code,@"\bhasWeapon\b").Count!=3||
+           Regex.Matches(code,@"\bisInWorkspot\b").Count!=3||
+           Regex.Matches(code,@"\bresolveHasWeapon\b").Count!=2||
+           Regex.Matches(code,@"\bresolveIsInWorkspot\b").Count!=2||
+           source.Contains("__gcetPlayerSamples",StringComparison.Ordinal))return false;
+        // The original field order inside the six-frame phase matters,
+        // especially when the subsequent CoverDirectionChanged callback
+        // reads state. Do not move any of the remaining producers.
+        if(!Regex.IsMatch(code,@"if pollFrameCounter >= pollThrottle then\s+pollFrameCounter = 0[\s\S]*?cached\.hasWeapon = resolveHasWeapon\(player\)\s+cached\.isInWorkspot = resolveIsInWorkspot\(player\)\s+local coverDir = resolveCoverDirection\(player\)"))
+            return false;
+        var candidate=source;
+        if(!AfterLine(ref candidate,"local __gcetPitchSample, __gcetRawExposed = nil, false",CadencedLocals)||
+           !AfterLine(ref candidate,"pollFrameCounter = pollFrameCounter + 1",CadencedAdvance)||
+           !ReplaceLine(ref candidate,"cached.hasWeapon = resolveHasWeapon(player)",CadencedMark+"\n"+CadencedWeaponOffer)||
+           !ReplaceLine(ref candidate,"cached.isInWorkspot = resolveIsInWorkspot(player)",CadencedWorkspotOffer)||
+           !AfterLine(ref candidate,"cached.hasWeapon = false","__gcetResetPlayerSamples()")||
+           !AfterLine(ref candidate,"cached.isLoading = loading == true","if loading == true then __gcetResetPlayerSamples() end")||
+           !AfterLine(ref candidate,"function DerivedState.Get()","__gcetExposePlayerSamples()")||
+           !AfterLine(ref candidate,"function DerivedState.__gcetReadField(tbl, key)",CadencedRead)||
+           !AfterLine(ref candidate,"if tbl == nil or tbl == cached then","__gcetExposePlayerSamples()")||
+           !BeforeLine(ref candidate,"return DerivedState",CadencedAdapter))return false;
+        next=candidate;return true;
+    }
+
+    internal static bool TryCadencedDerivedHost(string source,out string next)
+    {
+        next=source;
+        if(!TryDerivedHost(source,out var pitch)||pitch!=source||
+           Count(source,"local function GetPlayer()")!=1||
+           Count(source,"return State.player()")!=1)return false;
+        const string bridge = """
+-- G-CET cadenced player scalar host v1
+if __gcetDerivedDemand and type(DerivedState.__gcetEnableCadencedDemand) == "function" then
+    DerivedState.__gcetEnableCadencedDemand(__gcetDemand, function() return currentFrame end, GetPlayer)
+end
+""";
+        if(source.Contains(CadencedDerivedHostMarker,StringComparison.Ordinal))
+            return Count(NormalizeLf(source),NormalizeLf(bridge))==1;
+        if(source.Contains("__gcetEnableCadencedDemand",StringComparison.Ordinal))return false;
+        var handshake=Regex.Matches(source,@"(?m)^(?<line>__gcetDerivedDemand = [^\r\n]+DerivedState\.__gcetEnableDemand\(__gcetDemand, function\(\) return currentFrame end\))[ \t]*(?=\r*$)");
+        if(handshake.Count!=1)return false;
+        return AfterLine(ref next,handshake[0].Groups["line"].Value,bridge);
+    }
+
+    internal static int TryStageCadencedDerived(string modsRoot,ref FixedZeroEngineBuild framework,
+        Dictionary<string,byte[]> staged,Dictionary<string,int> counts,List<object> manifest)
+    {
+        const string relative="0-Engine/modules/DerivedState.lua";
+        var path=Path.Combine(modsRoot,"0-Engine","modules","DerivedState.lua");
+        if(!File.Exists(path)||!framework.Files.TryGetValue(InitPath,out var hb)||
+           !framework.Files.TryGetValue(SchedulerPath,out var sb))return 0;
+        var module=Encoding.UTF8.GetString(staged.TryGetValue(relative,out var pb)?pb:File.ReadAllBytes(path));
+        var host=Encoding.UTF8.GetString(hb);var scheduler=Encoding.UTF8.GetString(sb);
+        if(!TryCadencedDerivedProducer(module,out var mn)||!TryCadencedDerivedHost(host,out var hn)||
+           !TryCadencedController(scheduler,out var sn)||(module==mn&&host==hn&&scheduler==sn))return 0;
+        if(module!=mn){
+            staged[relative]=Encoding.UTF8.GetBytes(mn);
+            counts[relative]=counts.GetValueOrDefault(relative)+1;
+        }
+        var files=framework.Files.ToDictionary(x=>x.Key,x=>x.Value,StringComparer.OrdinalIgnoreCase);
+        files[InitPath]=Encoding.UTF8.GetBytes(hn);files[SchedulerPath]=Encoding.UTF8.GetBytes(sn);
+        framework=framework with{Files=files,FixedInitSha256=Convert.ToHexString(
+            SHA256.HashData(files[InitPath])).ToLowerInvariant()};
+        manifest.Add(new{type="FRAMEWORK_CADENCED_SCALAR_DEMAND",Owner="0-Engine",file=relative,
+            contract="GCET_CADENCED_SCALAR_DEMAND_V1",sourceProof=true,
+            fields=new[]{"hasWeapon","isInWorkspot"},rawExposureRetainsOriginalCadence=true,
+            callbackOrCadenceChanged=false,policy="GETTER_ONLY_LIVE_SAMPLE_ON_DEMAND"});
+        return 1;
+    }
+
     private const string IdleMarker = "-- G-CET scheduler active-work demand v1";
     private const string IdleHostMarker = "-- G-CET scheduler idle host v1";
 
