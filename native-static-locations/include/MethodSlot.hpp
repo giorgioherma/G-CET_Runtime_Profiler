@@ -13,17 +13,28 @@ class MethodSlot final {
     struct Level {Class* cls=nullptr;const void* storage=nullptr;uint32_t size=0;};
 public:
     void Reset(){count_=0;method_=nullptr;owner_=0;slot_=0;}
-    template<class Check>
-    Method* Get(Class* root,bool isStatic,Check&& check) const {
+    template<class Check,class Matches,class SameName>
+    Method* Get(Class* root,bool isStatic,Check&& check,Matches&& matches,SameName&& sameName) const {
         if(!method_||!root||isStatic!=static_)return nullptr;
         auto* cur=root;
+        Method* first=nullptr;
         for(size_t i=0;i<count_;++i){
             const auto& l=levels_[i];
             if(!cur||cur!=l.cls||Adapter::Size(cur,isStatic)!=l.size||
                Adapter::Storage(cur,isStatic)!=l.storage)return nullptr;
+            // Shape/selected-slot identity cannot detect an in-place change
+            // to another candidate, or a same-size replacement that shadows
+            // our previous binding. Until a real RTTI mutation epoch exists,
+            // recheck the relevant name set in live author resolution order.
+            for(uint32_t j=0;j<l.size;++j){
+                auto* candidate=Adapter::At(cur,isStatic,j);
+                if(!candidate||!matches(candidate))continue;
+                if(!first)first=candidate;
+                if(first!=method_||!sameName(method_,candidate))return nullptr;
+            }
             cur=Adapter::Parent(cur);
         }
-        if(cur||owner_>=count_)return nullptr;
+        if(cur||owner_>=count_||first!=method_)return nullptr;
         auto* cls=levels_[owner_].cls;
         if(slot_>=levels_[owner_].size||Adapter::At(cls,isStatic,slot_)!=method_)return nullptr;
         return check(method_)?method_:nullptr;
@@ -34,6 +45,7 @@ public:
         for(auto* cur=root;cur;cur=Adapter::Parent(cur)){
             if(count_==MaxDepth){Reset();return false;}
             const auto size=Adapter::Size(cur,isStatic);
+            if(size>8192){Reset();return false;}
             if(cur==owner){
                 if(slot>=size||Adapter::At(cur,isStatic,slot)!=method){Reset();return false;}
                 owner_=count_;slot_=slot;method_=method;
