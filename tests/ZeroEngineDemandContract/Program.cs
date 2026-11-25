@@ -353,7 +353,7 @@ return Engine
         File.WriteAllText(Path.Combine(cadenceRoot,"stock-module.lua"),cadencePitch);
         File.WriteAllText(Path.Combine(cadenceRoot,"stock-host.lua"),cadencePitchHost);
         File.WriteAllText(Path.Combine(cadenceRoot,"stock-scheduler.lua"),cadencePitchScheduler);
-        foreach(var scenario in new[]{"no-demand","mixed-fields","raw","reset","old-module","old-host","old-scheduler"}){
+        foreach(var scenario in new[]{"stock","no-demand","mixed-fields","raw","reset","old-module","old-host","old-scheduler"}){
             var cadencePsi=new ProcessStartInfo("lua5.4"){UseShellExecute=false};
             cadencePsi.ArgumentList.Add("tests/ZeroEngineDemandContract/ExecuteCadencedDerived.lua");
             cadencePsi.ArgumentList.Add(cadenceRoot);

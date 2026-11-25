@@ -922,7 +922,8 @@ end
            Count(source,"local samples = {}")!=1||
            Count(source,"demand.SampleEpochVersion = 1")!=1)return false;
         if(source.Contains(CadencedSampleMarker,StringComparison.Ordinal))
-            return Count(NormalizeLf(source),NormalizeLf(CadencedSampleController))==1;
+            return Count(Regex.Replace(NormalizeLf(source),@"(?m)^[ \t]+",""),
+                Regex.Replace(NormalizeLf(CadencedSampleController),@"(?m)^[ \t]+",""))==1;
         if(source.Contains("DefineCadencedSample",StringComparison.Ordinal))return false;
         return BeforeLine(ref next,"Scheduler.Demand = demand",CadencedSampleController);
     }
@@ -1024,7 +1025,9 @@ end
                 Count(source,CadencedMark)==1&&Count(source,CadencedAdvance)==1&&
                 Count(source,"__gcetExposePlayerSamples()")==4&&
                 Count(source,"__gcetResetPlayerSamples()")==3&&
-                Count(source,"local sample = __gcetPlayerSamples[key]")==1;
+                Count(source,"local sample = __gcetPlayerSamples[key]")==1&&
+                Count(WithoutLuaTrivia(source),"cached.hasWeapon")==3&&
+                Count(WithoutLuaTrivia(source),"cached.isInWorkspot")==3;
         }
         var code=WithoutLuaTrivia(source);
         if(Regex.Matches(code,@"\bhasWeapon\b").Count!=3||

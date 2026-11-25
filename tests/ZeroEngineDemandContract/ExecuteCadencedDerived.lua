@@ -22,7 +22,7 @@ Game={
         end}
     end
 }
-if scenario=="old-module" then package.loaded["modules/DerivedState"]=dofile(root.."/stock-module.lua") end
+if scenario=="old-module" or scenario=="stock" then package.loaded["modules/DerivedState"]=dofile(root.."/stock-module.lua") end
 if scenario=="old-scheduler" then package.loaded["modules/G-CET/Scheduler"]=dofile(root.."/stock-scheduler.lua") end
 local E=dofile(root..(scenario=="old-host" and "/stock-host.lua" or "/init.lua"))
 local D=require("modules/DerivedState")
@@ -34,7 +34,11 @@ if scenario:find("^old%-") then
     print("Cadenced scalar mixed runtime fallback PASS: "..scenario)
     return
 end
-if scenario=="raw" then
+if scenario=="stock" then
+    tick(120)
+    assert(transaction==20 and slot==20 and workspot==20 and actor==20,"stock native read baseline")
+    print("Stock pure scalar native calls: "..(transaction+slot+workspot+actor))
+elseif scenario=="raw" then
     local _,raw=pairs(E.GetState())
     armed=true;inWorkspot=true;tick(6)
     assert(raw.derived.hasWeapon and raw.derived.isInWorkspot and transaction==1 and workspot==1)
@@ -47,7 +51,7 @@ if scenario=="raw" then
 elseif scenario=="no-demand" then
     tick(120)
     assert(transaction==0 and slot==0 and workspot==0 and actor==0,"unrequested fields executed native readers")
-    print("Cadenced scalar: 80 stock native getter/system invocations -> 0 in 120 unrequested frames")
+    print("Cadenced scalar: 0 native getter/system invocations in 120 unrequested frames")
 elseif scenario=="mixed-fields" then
     armed=true;tick(6)
     local retained=E.GetState().derived
