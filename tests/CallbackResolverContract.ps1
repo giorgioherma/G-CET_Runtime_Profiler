@@ -1765,8 +1765,36 @@ foreach ($entry in $readCoordinatorTransforms) {
 # All counted source-proven callback, shared-provider and native-read
 # transformations are independent here. The old minus-one overlap no longer
 # exists and undercounted the verified 25 + 11 + 1 result.
+# The fixed host pose reader is a separately admitted infrastructure
+# transformation, not a callback recipe or shared-provider candidate.
+# Require the concrete generated code and unchanged pose failure barrier.
+$poseReaderTransforms = @($generatedManifest.transforms | Where-Object {
+    $_.type -eq 'FRAMEWORK_POSE_READER'
+})
+if ($poseReaderTransforms.Count -ne 1) {
+    throw 'Expected exactly one source-proven pose reader on the stock host fixture.'
+}
+$poseEntry = $poseReaderTransforms[0]
+if ([string]$poseEntry.contract -ne 'GCET_FRAMEWORK_POSE_READER_V1' -or
+    [string]$poseEntry.file -ne '0-Engine/init.lua' -or
+    !$poseEntry.sourceProof -or $poseEntry.nativeReadCountChanged -or
+    $poseEntry.callbackOrCadenceChanged) {
+    throw 'Pose reader manifest misstates ownership or native behavior.'
+}
+$poseArchive = [IO.Compression.ZipFile]::OpenRead($resolved.pass.ZipPath)
+try {
+    $poseHostEntry = $poseArchive.GetEntry('bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/init.lua')
+    if ($null -eq $poseHostEntry) { throw 'Generated pose host missing.' }
+    $poseReader = [IO.StreamReader]::new($poseHostEntry.Open())
+    try { $poseHost = $poseReader.ReadToEnd() } finally { $poseReader.Dispose() }
+    if ([regex]::Matches($poseHost, 'local function __gcetReadPlayerPose\(').Count -ne 1 -or
+        [regex]::Matches($poseHost, 'pcall\(__gcetReadPlayerPose,\s*player\)').Count -ne 1 -or
+        $poseHost -notmatch 'if not posOriOk then return end') {
+        throw 'Packaged pose helper or original failure barrier missing.'
+    }
+} finally { $poseArchive.Dispose() }
 $expectedPassTransforms = $expectedGenericTransforms + $expectedSharedTransforms +
-    $nativeReadReuseTransforms.Count + $readCoordinatorTransforms.Count
+    $nativeReadReuseTransforms.Count + $readCoordinatorTransforms.Count + $poseReaderTransforms.Count
 if ([int]$resolved.pass.TransformCount -ne $expectedPassTransforms) {
     if (Test-Path -LiteralPath $resolved.pass.ManifestPath -PathType Leaf) {
         $failedManifest = Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json

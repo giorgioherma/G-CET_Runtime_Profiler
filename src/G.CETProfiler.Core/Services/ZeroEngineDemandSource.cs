@@ -206,7 +206,8 @@ internal static class ZeroEngineDemandSource
         files[InitPath]=Encoding.UTF8.GetBytes(next);
         framework=framework with{Files=files,FixedInitSha256=Convert.ToHexString(
             SHA256.HashData(files[InitPath])).ToLowerInvariant()};
-        manifest.Add(new{type="SEMANTIC_RULE",Owner="0-Engine",RuleId="0engine-shared-pose-reader",
+        manifest.Add(new{type="FRAMEWORK_POSE_READER",Owner="0-Engine",RuleId="0engine-shared-pose-reader",
+            file=InitPath,contract="GCET_FRAMEWORK_POSE_READER_V1",
             Handler="ZeroEngineDemandSource",PolicyClass="SAME_PHASE_REUSE_PROTECTED_FUNCTION",
             sourceProof=true,nativeReadCountChanged=false,callbackOrCadenceChanged=false});
         return 1;
