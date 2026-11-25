@@ -76,7 +76,7 @@ public:
         if(!owner_)return GuardResult::Refused;
         cet_dispatch::ExistingMutexLease lease(owner_->native_handle());
         if(!lease)return GuardResult::Busy;
-        if(install==installed_)return install?GuardResult::Refused:GuardResult::Success;
+        if(install&&installed_)return GuardResult::Refused;
         SYSTEM_INFO info{};GetSystemInfo(&info);
         const auto pageSize=static_cast<uintptr_t>(info.dwPageSize);
         if(!pageSize)return GuardResult::Refused;
@@ -98,6 +98,7 @@ public:
         const auto a=reinterpret_cast<uintptr_t>(edits_[0].address);
         const auto b=reinterpret_cast<uintptr_t>(edits_[1].address);
         if((a<=b?b-a:a-b)<edits_[0].stock.size())return GuardResult::Refused;
+        if(!install&&!installed_)return GuardResult::Success;
         size_t opened=0;
         auto closePages=[&](){
             bool ok=true;
@@ -228,6 +229,19 @@ inline void CheckSynchronizedGuardLifetime(){
         Require(tx.Change(true)==GuardResult::Success&&first()==2&&second()==2,"pair install");
         Require(tx.Change(false,1)==GuardResult::RolledBack&&first()==2&&second()==2,"restore rollback");
         Require(tx.Change(false)==GuardResult::Success&&first()==1&&second()==1,"pair restore");
+        // Repeated restore must not claim success on foreign bytes even
+        // when the transaction already considers itself retired.
+        DWORD prior=0,discard=0;
+        Require(VirtualProtect(p,4096,PAGE_EXECUTE_READWRITE,&prior)!=0,"foreign stock test protection");
+        p[33]=3;
+        Require(VirtualProtect(p,4096,prior,&discard)!=0&&
+                FlushInstructionCache(GetCurrentProcess(),p+32,11)!=0,"foreign stock test RX");
+        Require(tx.Change(false)==GuardResult::Refused&&p[33]==3,"retired restore accepted foreign stock");
+        Require(VirtualProtect(p,4096,PAGE_EXECUTE_READWRITE,&prior)!=0,"repair scratch test protection");
+        p[33]=1;
+        Require(VirtualProtect(p,4096,prior,&discard)!=0&&
+                FlushInstructionCache(GetCurrentProcess(),p+32,11)!=0,"repair scratch test RX");
+        Require(tx.Change(false)==GuardResult::Success,"verified repeated restore");
         std::thread worker([&]{
             while(!stop.load(std::memory_order_acquire)){
                 {std::shared_lock read(*retained);
@@ -259,7 +273,7 @@ inline void CheckSynchronizedGuardLifetime(){
         retained.reset();
         Require(!weak.expired(),"owner retired before transaction destruction");
         std::cout<<"Synchronized two-site attach/restore, owner retention, busy and rollback, "
-                 <<calls.load()<<" guarded and "<<unrelatedCalls.load()<<" unrelated RX-page calls PASS\\n";
+                 <<calls.load()<<" guarded and "<<unrelatedCalls.load()<<" unrelated RX-page calls PASS\n";
     }
     Require(weak.expired(),"restored transaction retained owner indefinitely");
 }

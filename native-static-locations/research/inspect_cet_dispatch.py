@@ -729,6 +729,86 @@ def check_pair(pe, pdb):
     require(pe.identity == pdb.identity, "PE/PDB GUID or age mismatch")
 
 
+def owner_layout_proof(pe, pdb, pdb_path, pdbutil, layouts, locks):
+    """Prove compiled embedded owner identity, not its runtime lifetime."""
+    from capstone import Cs, CS_ARCH_X86, CS_MODE_64, CS_AC_WRITE
+    from capstone.x86_const import X86_OP_MEM, X86_REG_RIP
+
+    types = TypeLayouts(pdb, pdb_path, pdbutil)
+    owner = types.named("CET")
+    vm = types.named("LuaVM")
+    scripting = types.named("Scripting")
+    override = layouts["FunctionOverride"]
+    chain = ((owner, "m_vm", vm), (vm, "m_scripting", scripting),
+             (scripting, "m_override", override))
+    members = []
+    relative = 0
+    for outer, name, inner in chain:
+        require(name in outer["fields"], f"{outer['name']}.{name} not found")
+        member = outer["fields"][name]
+        require(types.full_index(types.member_index(member)) == int(inner["type_index"], 16),
+                f"{outer['name']}.{name} is not embedded {inner['name']}")
+        require(member["offset"] + inner["size"] <= outer["size"],
+                f"{outer['name']}.{name} exceeds enclosing object")
+        members.append({"owner": outer["name"], "member": name, "offset": member["offset"],
+                        "embedded_type": inner["name"], "embedded_size": inner["size"]})
+        relative += member["offset"]
+    owner_offset, owner_index = types.field(int(owner["type_index"], 16),
+                                           ("m_vm", "m_scripting", "m_override"))
+    require(owner_offset == relative and types.full_index(owner_index) == int(override["type_index"], 16),
+            "nested owner path inconsistent")
+    lock_offset, lock_type = types.field(int(owner["type_index"], 16),
+                                        ("m_vm", "m_scripting", "m_override", "m_lock"))
+    mutex = types.layout(lock_type)
+    require(lock_offset == relative + override["fields"]["m_lock"]["offset"] and
+            mutex["size"] == locks["mutex"]["size"] and lock_offset + mutex["size"] <= owner["size"],
+            "nested lock does not match verified dispatcher mutex")
+    back = override["fields"]["m_pScripting"]
+    require(types.full_index(types.pointer_target(types.member_index(back))) == int(scripting["type_index"], 16),
+            "FunctionOverride back pointer does not identify enclosing Scripting")
+    # Targeted compiled evidence for the source-defined lifetime functions.
+    # Inlining and indirect stores can conceal writes: never treat absence
+    # here as proof of no other writer, or as permission for live attachment.
+    slot = int(locks["singleton_slot"], 16)
+    prefixes = {"FunctionOverride ctor": "??0FunctionOverride@@",
+                "FunctionOverride dtor": "??1FunctionOverride@@",
+                "Scripting ctor": "??0Scripting@@", "Scripting dtor": "??1Scripting@@",
+                "LuaVM ctor": "??0LuaVM@@", "LuaVM dtor": "??1LuaVM@@",
+                "CET ctor": "??0CET@@", "CET dtor": "??1CET@@",
+                "CET Initialize": "?Initialize@CET@@", "CET Shutdown": "?Shutdown@CET@@"}
+    candidates = {key: [] for key in prefixes}
+    for name, section, offset in pdb.public_records(pe):
+        for label, prefix in prefixes.items():
+            if not name.startswith(prefix):
+                continue
+            item = pe.function(section, offset)
+            item["symbol"] = name
+            if item not in candidates[label]:
+                candidates[label].append(item)
+    cs = Cs(CS_ARCH_X86, CS_MODE_64)
+    cs.detail = True
+    for matches in candidates.values():
+        for item in matches:
+            start = int(item["rva"], 16)
+            try:
+                _, end = pe.function_extent(start)
+            except ValueError:
+                item["scope"] = "no exact runtime-function extent; not inspected"
+                continue
+            instructions = list(cs.disasm(pe.read_rva(start, end-start), start))
+            item["singleton_references"] = [
+                {"rva": hex(ins.address), "instruction": f"{ins.mnemonic} {ins.op_str}",
+                 "write": bool(op.access & CS_AC_WRITE)}
+                for ins in instructions for op in ins.operands
+                if op.type == X86_OP_MEM and op.mem.base == X86_REG_RIP and
+                ins.address + ins.size + op.mem.disp == slot]
+    return {"embedded_members": members, "cet_size": owner["size"],
+            "override_relative_offset": relative, "mutex_relative_offset": lock_offset,
+            "scripting_back_pointer_offset": back["offset"], "singleton_slot": hex(slot),
+            "lifetime_symbol_evidence": candidates,
+            "scope": "compiled embedding and targeted symbol references; live owner lifetime and complete writer graph NOT PROVEN"}
+
+
 def inspect(release, symbols, pdbutil=None):
     with checked_archive(release, RELEASE["cet_1.37.1.zip"]) as z:
         names = [n for n in z.namelist()
@@ -763,7 +843,7 @@ def inspect(release, symbols, pdbutil=None):
                 evidence["symbol"] = name
                 if evidence not in matches[target]:
                     matches[target].append(evidence)
-    layouts, branches, personalities, locks = None, None, None, None
+    layouts, branches, personalities, locks, ownership = None, None, None, None, None
     if pdbutil is not None:
         require(all(len(v) == 1 for v in matches.values()), "unresolved dispatcher symbols")
         with tempfile.TemporaryDirectory() as tmp:
@@ -778,6 +858,8 @@ def inspect(release, symbols, pdbutil=None):
             pdb_path = Path(tmp) / "verified.pdb"
             pdb_path.write_bytes(pdb.data)
             locks = lock_proof(pe, matches, layouts, branches, pdb, pdb_path, pdbutil)
+            ownership = owner_layout_proof(pe, pdb, pdb_path, pdbutil, layouts, locks)
+        print("VERIFIED COMPILED OWNER EMBEDDING:", json.dumps(ownership), flush=True)
         print("VERIFIED DISPATCH LOCK:", json.dumps(locks), flush=True)
         field = layouts["FunctionOverride::CallChain"]["fields"]["IsEmpty"]
         original_offset = field["offset"]
@@ -795,6 +877,7 @@ def inspect(release, symbols, pdbutil=None):
         "pre_marshalling_branches": branches,
         "exception_personalities": personalities,
         "dispatch_lock": locks,
+        "embedded_owner": ownership,
         "wrong_offset_negative_test": "PASS" if pdbutil is not None else "NOT_RUN",
         "source_commit": SOURCE,
         "asi_sha256": sha(image),
