@@ -577,6 +577,59 @@ return Router
             Check(process.ExitCode==0,"legacy generated observer execution failed: "+scenario);
         }
     }
+    // Generic leading-guard recognition: no method/class/mod/name allowlist.
+    var genericGuard="""
+local enabled = false
+Observe("ArbitraryClass", "AnyEvent", function(...)
+    if not enabled then return end
+    work(...)
+end)
+ObserveBefore("AnotherClass", "UnrelatedEvent", function()
+    if enabled then return end
+    other()
+end)
+registerForEvent("onInit", function()
+    enabled = true
+end)
+registerForEvent("onShutdown", function()
+    enabled = nil
+end)
+""";
+    var gs=GenericObserverGuardSource.Analyze(genericGuard);
+    Check(gs.Count==2&&gs.All(x=>x.SourceProven&&x.Writes.Count==2)&&gs[0].ActiveWhenTruthy&&!gs[1].ActiveWhenTruthy,
+        "generic simple state recognition, polarity and every literal write");
+    foreach(var (changed,reason) in new[]{
+        (genericGuard.Replace("local enabled = false","enabled = false"),"NO_UNIQUE_CHUNK_LITERAL_LOCAL"),
+        (genericGuard.Replace("function(...)","function(enabled)"),"CALLBACK_PARAMETER_SHADOW"),
+        (genericGuard.Replace("enabled = true","enabled = readState()"),"UNPROVEN_USE_SHADOW_OR_WRITE"),
+        (genericGuard.Replace("enabled = true","enabled = true\n    and readState()"),"UNPROVEN_USE_SHADOW_OR_WRITE"),
+        (genericGuard.Replace("enabled = true","local enabled = true"),"UNPROVEN_USE_SHADOW_OR_WRITE"),
+        (genericGuard.Replace("enabled = true","local a, enabled = true, false"),"UNPROVEN_USE_SHADOW_OR_WRITE"),
+        (genericGuard.Replace("enabled = true","local t = {\n        enabled = true\n    }"),"UNPROVEN_USE_SHADOW_OR_WRITE"),
+        (genericGuard.Replace("enabled = true","other, enabled = true, false"),"UNPROVEN_USE_SHADOW_OR_WRITE"),
+        (genericGuard+"\nlocal a = debug.setupvalue","REFLECTION_OR_DYNAMIC_ENVIRONMENT"),
+        (genericGuard+"\nlocal original = Observe","OBSERVER_API_ALIAS_OR_REBIND"),
+        (genericGuard.Replace("if not enabled then return end","if not enabled then return 7 end"),"COMPLEX_OR_NONEMPTY_RETURN")
+    }) Check(GenericObserverGuardSource.Analyze(changed).First().Reason==reason,"generic refusal: "+reason);
+    Check(GenericObserverGuardSource.Analyze("-- Observe('X','Y',function() if not state then return end end)\n"+genericGuard).Count==2,
+        "comments are not registrations");
+    Check(GenericObserverGuardSource.Analyze(genericGuard.Replace("ObserveBefore(","ObserveAfter("))[1].Reason=="AFTER_SOURCE_PROVEN_NATIVE_PENDING",
+        "After proof separate from native admission");
+    Console.WriteLine("Generic simple lexical observer guard proof PASS");
+    if(privateSource)
+    {
+        var collection=Directory.GetParent(Path.GetFullPath(args[1]))!.FullName;
+        var sites=new List<GenericObserverGuardSource.Site>();
+        var luaFiles=0;
+        foreach(var file in Directory.EnumerateFiles(collection,"*.lua",SearchOption.AllDirectories))
+        {
+            luaFiles++;
+            sites.AddRange(GenericObserverGuardSource.Analyze(File.ReadAllText(file)));
+        }
+        Console.WriteLine($"Generic observer source audit: {luaFiles} Lua files, {sites.Count} literal registration sites; source proof only, native admission not established.");
+        foreach(var g in sites.GroupBy(x=>x.Reason).OrderBy(x=>x.Key))
+            Console.WriteLine($"Observer source audit {g.Key}: {g.Count()}");
+    }
     if (privateSource)
     {
         Console.WriteLine("Private stock 0-Engine central demand generation and idempotence PASS");
