@@ -266,6 +266,28 @@ return Engine
         recoveredReset==sessionNext.Replace("\r\n","\n"),"provider session missing reset function");
     Check(!ZeroEngineDemandSource.TrySharedProviderLifecycle(sessionHost.Replace(
         "value = getter()","value = customGetter()"),out _),"unknown provider getter must remain stock");
+    Check(!ZeroEngineDemandSource.TrySharedProviderLifecycle(sessionNext.Replace(
+        "function Engine.__gcetResetSharedProviderCaches()","function Engine.__gcetResetSharedProviderCaches()\n    customReset()"),out _),
+        "unknown reset must refuse rather than duplicate");
+    // Former root-only generated host can acquire the known compatibility
+    // namespace. Check the full source composition, including partial roots.
+    var canonicalSession=sessionHost.Replace("\r\n","\n");
+    var providerStart=canonicalSession.IndexOf("local __gcetSharedProviderValues = {}",StringComparison.Ordinal);
+    var providerEnd=canonicalSession.IndexOf("function Engine.Init(Events)",providerStart,StringComparison.Ordinal);
+    var namedStart=canonicalSession.IndexOf("function Engine.GetScriptableSystem(name)",StringComparison.Ordinal);
+    var namedEnd=canonicalSession.IndexOf("local Events=",namedStart,StringComparison.Ordinal);
+    var adapterSource=canonicalSession[providerStart..providerEnd]+canonicalSession[namedStart..namedEnd];
+    adapterSource=adapterSource.Replace("Engine.","__gcetApi.",StringComparison.Ordinal)
+        .Replace("local player = GetPlayer()","local player = __gcetApi.GetPlayer()",StringComparison.Ordinal);
+    var adapterBlock="\n-- G-CET host compatibility bridge v1\ndo\n    local __gcetApi = {}\n    Engine.GCET = __gcetApi\n"+
+        string.Join("\n",adapterSource.TrimEnd('\n').Split('\n').Select(line=>"        "+line))+"\nend\n";
+    string AddAdapter(string host)=>host.Replace("\r\n","\n").Replace("return Engine\n",adapterBlock+"return Engine\n",StringComparison.Ordinal);
+    Check(ZeroEngineDemandSource.TrySharedProviderLifecycle(AddAdapter(sessionHost),out var dualNext),
+        "root and compatibility cache lifetime");
+    Check(ZeroEngineDemandSource.TrySharedProviderLifecycle(AddAdapter(sessionNext),out var dualPartial)&&dualPartial==dualNext,
+        "root-only partial gains adapter without duplicate reset");
+    Check(ZeroEngineDemandSource.TrySharedProviderLifecycle(dualNext,out var dualRepeat)&&dualRepeat==dualNext,
+        "dual namespace repeat");
     if(!privateSource){
         File.WriteAllText(Path.Combine(root,"provider-session.lua"),sessionNext);
         var providerPsi=new ProcessStartInfo("lua5.4"){UseShellExecute=false};

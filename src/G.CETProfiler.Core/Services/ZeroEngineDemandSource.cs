@@ -1378,13 +1378,31 @@ end
             if(Count(all,NormalizeLf(addition))!=0)return false;
             return ReplaceUniqueLines(ref candidate,body,body+"\n\n"+addition);
         }
-        if(!AfterBlock(ProviderCacheCurrent,ProviderReset("Engine",hasAdapter))||
-           !AfterBlock(ProviderReset("Engine",hasAdapter),NormalizeLf(ProviderSessionObserver)))return false;
-        if(hasAdapter&&!AfterBlock(Indent(ProviderCacheCurrent,8),Indent(ProviderReset("__gcetApi",false),8)))return false;
+        var rootReset=ProviderReset("Engine",hasAdapter);
+        var alternateReset=ProviderReset("Engine",!hasAdapter);
+        // An installed host can acquire or lose the known compatibility
+        // adapter after an earlier generation. Upgrade the owned root
+        // function in place, rather than let a duplicate shadow it.
+        var rootDefinitions=Regex.Matches(WithoutLuaTrivia(candidate),@"\bfunction\s+Engine\.__gcetResetSharedProviderCaches\s*\(").Count;
+        if(rootDefinitions>1)return false;
+        if(rootDefinitions==1&&Count(Proof(candidate),rootReset)!=1)
+        {
+            if(Count(Proof(candidate),alternateReset)!=1||
+                !ReplaceUniqueLines(ref candidate,alternateReset,rootReset))return false;
+        }
+        var observerDefinitions=Regex.Matches(WithoutLuaTrivia(candidate),@"\bfunction\s+Engine\.__gcetObserveProviderSession\s*\(").Count;
+        if(observerDefinitions>1||(observerDefinitions==1&&Count(Proof(candidate),NormalizeLf(ProviderSessionObserver))!=1))return false;
+        var adapterReset=Indent(ProviderReset("__gcetApi",false),8);
+        var adapterDefinitions=Regex.Matches(WithoutLuaTrivia(candidate),@"\bfunction\s+__gcetApi\.__gcetResetSharedProviderCaches\s*\(").Count;
+        if(adapterDefinitions>1||(adapterDefinitions==1&&(!hasAdapter||Count(Proof(candidate),adapterReset)!=1)))return false;
+        if(!AfterBlock(ProviderCacheCurrent,rootReset)||
+           !AfterBlock(rootReset,NormalizeLf(ProviderSessionObserver)))return false;
+        if(hasAdapter&&!AfterBlock(Indent(ProviderCacheCurrent,8),adapterReset))return false;
         var frameAnchor=frame[0].Value;
         if(Count(candidate,ProviderSessionLocal)==0)
         {
-            if(!BeforeLine(ref candidate,frameAnchor,ProviderSessionLocal))return false;
+            if(Regex.IsMatch(WithoutLuaTrivia(candidate),@"\blocal\s+__gcetProviderSessionLoaded\b")||
+               !BeforeLine(ref candidate,frameAnchor,ProviderSessionLocal))return false;
         }
         else if(Count(candidate,ProviderSessionLocal)!=1||
             !Proof(candidate).Contains(ProviderSessionLocal+"\n"+frameAnchor,StringComparison.Ordinal))return false;
