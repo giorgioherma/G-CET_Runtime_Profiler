@@ -224,37 +224,49 @@ def numeric(data, pos):
     return unpack(fmt, data, pos + 2)[0], pos + 2 + struct.calcsize(fmt)
 
 
-def class_layouts(pdb, pdb_path, pdbutil):
-    targets = {
-        "FunctionOverride": ("m_functions", "m_trampolines", "m_pScripting", "m_lock"),
-        "FunctionOverride::CallChain": ("Trampoline", "pScripting", "Before", "After", "Overrides", "IsEmpty", "CollectGarbage"),
-        "FunctionOverride::Context": ("ScriptFunction", "Environment", "Forward"),
-    }
-    types = pdb.type_records()
-    candidates = {name: [] for name in targets}
-    for index, (kind, data) in types.items():
-        if kind not in (0x1504, 0x1505):
-            continue
-        _, props, fields, _, _ = unpack("<HHIII", data, 0)
-        if props & 0x80 or not fields:
-            continue
-        size, off = numeric(data, 16)
-        name = data[off:].split(b"\0", 1)[0].decode("utf-8", errors="replace")
-        if name in candidates:
-            candidates[name].append((index, fields, size))
-    result = {}
-    for name, expected in targets.items():
-        unique = list(dict.fromkeys(candidates[name]))
-        require(len(unique) == 1, f"missing or ambiguous full PDB type: {name}: {unique}")
-        index, fields, size = unique[0]
+class TypeLayouts:
+    """Decode the actual PDB class/field records, never a guessed STL ABI."""
+    def __init__(self, pdb, pdb_path, pdbutil):
+        self.types = pdb.type_records()
+        self.pdb_path, self.pdbutil = pdb_path, pdbutil
+        self.classes = {}
+        self.by_name = {}
+        self.cache = {}
+        for index, (kind, data) in self.types.items():
+            if kind not in (0x1504, 0x1505):
+                continue
+            _, props, fields, _, _ = unpack("<HHIII", data, 0)
+            size, off = numeric(data, 16)
+            name = data[off:].split(b"\0", 1)[0].decode("utf-8", errors="replace")
+            self.classes[index] = (name, fields, size)
+            if not (props & 0x80) and fields:
+                self.by_name.setdefault(name, []).append(index)
+
+    def full_index(self, index):
+        require(index in self.classes, f"type {index:#x} is not a class")
+        name, _, _ = self.classes[index]
+        candidates = self.by_name.get(name, [])
+        require(len(candidates) == 1, f"missing or ambiguous full PDB type: {name}: {candidates}")
+        return candidates[0]
+
+    def named(self, name):
+        candidates = self.by_name.get(name, [])
+        require(len(candidates) == 1, f"missing or ambiguous full PDB type: {name}: {candidates}")
+        return self.layout(candidates[0])
+
+    def layout(self, index):
+        index = self.full_index(index)
+        if index in self.cache:
+            return self.cache[index]
+        name, fields, size = self.classes[index]
         seen, members, queue = set(), {}, [fields]
         while queue:
             field_index = queue.pop()
             require(field_index not in seen, "cyclic field-list continuation")
             seen.add(field_index)
-            require(types[field_index][0] == 0x1203, "not a field list")
+            require(self.types[field_index][0] == 0x1203, "not a field list")
             output = subprocess.check_output(
-                [pdbutil, "dump", "-types", f"-type-index=0x{field_index:x}", str(pdb_path)],
+                [self.pdbutil, "dump", "-types", f"-type-index=0x{field_index:x}", str(self.pdb_path)],
                 text=True, stderr=subprocess.STDOUT)
             for match in re.finditer(r"\[name = \x60([^\x60]+)\x60, Type = ([^,]+), offset = (0x[0-9a-fA-F]+|\d+), attrs =", output):
                 member, member_type, off = match.groups()
@@ -263,9 +275,93 @@ def class_layouts(pdb, pdb_path, pdbutil):
                 require(member not in members, f"duplicate field {name}.{member}")
                 members[member] = {"offset": offset, "type": member_type}
             queue.extend(int(x, 16) for x in re.findall(r"continuation = (0x[0-9a-fA-F]+)", output))
-        missing = set(expected) - members.keys()
-        require(not missing, f"missing PDB members: {name}: {sorted(missing)}; field dump: {output[:1800]}")
-        result[name] = {"size": size, "type_index": hex(index), "fields": members}
+        result = {"name": name, "size": size, "type_index": hex(index), "fields": members}
+        self.cache[index] = result
+        return result
+
+    @staticmethod
+    def member_index(member):
+        m = re.match(r"0x([0-9a-fA-F]+)\b", member["type"])
+        require(m is not None, f"unresolved member type {member}")
+        return int(m.group(1), 16)
+
+    def field(self, index, path):
+        root = self.layout(index)
+        offset = 0
+        layout = root
+        for step, field in enumerate(path):
+            require(field in layout["fields"], f"missing {layout['name']}.{field}: {layout['fields']}")
+            member = layout["fields"][field]
+            offset += member["offset"]
+            index = self.member_index(member)
+            if step + 1 != len(path):
+                child = self.layout(index)
+                require(member["offset"] + child["size"] <= layout["size"], "embedded member exceeds class size")
+                layout = child
+        require(offset < root["size"], "member path outside root")
+        return offset, index
+
+    def pointer_target(self, index):
+        kind, data = self.types[index]
+        require(kind == 0x1002, f"{index:#x} is not LF_POINTER")
+        target, attrs = unpack("<II", data, 0)
+        require((attrs & 0x1f) == 0x0c and ((attrs >> 5) & 7) == 0
+                and ((attrs >> 13) & 0x3f) == 8, "not an ordinary x64 pointer")
+        return target
+
+
+def class_layouts(pdb, pdb_path, pdbutil):
+    targets = {
+        "FunctionOverride": ("m_functions", "m_trampolines", "m_pScripting", "m_lock"),
+        "FunctionOverride::CallChain": ("Trampoline", "pScripting", "Before", "After", "Overrides", "IsEmpty", "CollectGarbage"),
+        "FunctionOverride::Context": ("ScriptFunction", "Environment", "Forward"),
+    }
+    types = TypeLayouts(pdb, pdb_path, pdbutil)
+    result = {}
+    for name, expected in targets.items():
+        layout = types.named(name)
+        missing = set(expected) - layout["fields"].keys()
+        require(not missing, f"missing PDB members: {name}: {sorted(missing)}")
+        result[name] = layout
+
+    # A narrow future gate needs to prove exactly one managed Before
+    # callback and zero After/Overrides without scanning or mutating CET's
+    # vectors. Derive begin/end/capacity and element ownership from the
+    # embedded concrete types in the matched release PDB.
+    chain = result["FunctionOverride::CallChain"]
+    context = result["FunctionOverride::Context"]
+    vectors = [chain["fields"][name] for name in ("Before", "After", "Overrides")]
+    indices = [types.full_index(types.member_index(v)) for v in vectors]
+    require(len(set(indices)) == 1, "callback vector types differ")
+    vi = indices[0]
+    vector = types.layout(vi)
+    pointers = {}
+    element_types = []
+    for name in ("_Myfirst", "_Mylast", "_Myend"):
+        offset, ti = types.field(vi, ("_Mypair", "_Myval2", name))
+        require(offset % 8 == 0 and offset + 8 <= vector["size"], "invalid vector pointer position")
+        pointers[name] = offset
+        element_types.append(types.full_index(types.pointer_target(ti)))
+    require(len(set(pointers.values())) == 3 and len(set(element_types)) == 1,
+            "inconsistent callback vector storage")
+    ei = element_types[0]
+    element = types.layout(ei)
+    ptr_offset, ti = types.field(ei, ("_Mypair", "_Myval2"))
+    require(ptr_offset % 8 == 0 and ptr_offset + 8 <= element["size"], "invalid Context owner pointer position")
+    require(types.full_index(types.pointer_target(ti)) == int(context["type_index"], 16),
+            "callback vector element does not own the exact Context type")
+    for v in vectors:
+        require(v["offset"] + vector["size"] <= chain["size"], "callback vector exceeds chain")
+    result["CallbackVectorMembership"] = {
+        "vector_type": vector["name"], "vector_size": vector["size"],
+        "pointer_offsets": pointers, "element_type": element["name"],
+        "element_stride": element["size"], "context_pointer_offset": ptr_offset,
+        "chain_relative": {
+            name: {key: v["offset"] + value for key, value in pointers.items()}
+            for name, v in zip(("Before", "After", "Overrides"), vectors)
+        },
+        "scope": "read-only compiled membership layout; runtime identity/lifetime not proven",
+    }
     return result
 
 
