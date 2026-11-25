@@ -77,6 +77,7 @@ namespace {
         return 0;
     }
     bool RunningEnter(RED4ext::CGameApplication*){
+        gcet::producer::ResetProducerReads();
         g_onDemandPosition.Reset();g_positionLastReadValid=false;
         // Player snapshot is independent of location manifest readiness.
         g_playerSnapshot.Enter();
@@ -145,6 +146,7 @@ namespace {
         return false;
     }
     bool RunningExit(RED4ext::CGameApplication*){
+        gcet::producer::ResetProducerReads();
         g_onDemandPosition.Reset();g_positionLastReadValid=false;
         g_playerSnapshot.Exit();
         if(g_loaded) {
@@ -587,6 +589,7 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle handle,
         }
         RED4ext::CRTTISystem::Get()->AddPostRegisterCallback(PostRegisterTypes);
     } else if (reason == RED4ext::v1::EMainReason::Unload) {
+        gcet::producer::ResetProducerReads();
         gcet::cet_dispatch::RetireObserver();
         g_onDemandPosition.Reset();g_positionLastReadValid=false;
         g_playerSnapshot.Exit();g_coordinator.Exit(); g_index.Clear(); g_loaded=false;

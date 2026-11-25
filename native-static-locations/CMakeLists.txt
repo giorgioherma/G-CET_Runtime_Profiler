@@ -23,6 +23,9 @@ add_test(NAME native_demand_frame_cache COMMAND gcet_demand_frame_cache_test)
 add_executable(gcet_ordered_producer_read_test tests/OrderedProducerReadTests.cpp)
 target_include_directories(gcet_ordered_producer_read_test PRIVATE include)
 add_test(NAME native_ordered_producer_read COMMAND gcet_ordered_producer_read_test)
+add_executable(gcet_method_slot_test tests/MethodSlotTests.cpp)
+target_include_directories(gcet_method_slot_test PRIVATE include)
+add_test(NAME native_producer_method_slot COMMAND gcet_method_slot_test)
 # The native identity proof does not require the game SDK. Run it before
 # downloading/compiling the large SDK, then test the actual linked build too.
 if(WIN32)
