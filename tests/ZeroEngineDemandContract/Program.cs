@@ -346,10 +346,12 @@ return Engine
         .Replace("controller.CadencedSampleVersion ~= 2","controller.CadencedSampleVersion ~= 1");
     var legacyScheduler=cadenceSchedulerNext.Replace("demand.SampleEpochVersion = 2","demand.SampleEpochVersion = 1")
         .Replace("demand.CadencedSampleVersion = 2","demand.CadencedSampleVersion = 1");
+    legacyScheduler=legacyScheduler.Replace("available, sampled = true, true","available, sampled = true, false");
     legacyScheduler=System.Text.RegularExpressions.Regex.Replace(legacyScheduler,
-        @"(offeredEpoch = epoch\(\)\r*\n[ \t]*)sample\.Read\(\)","$1if exposed then sample.Read() end");
+        @"(offeredEpoch = epoch\(\)\r*\n[ \t]*)produce\(\)","$1if exposed then sample.Read() end");
     legacyScheduler=System.Text.RegularExpressions.Regex.Replace(legacyScheduler,
-        @"(pending = true\r*\n[ \t]*)sample\.Read\(player\)","$1if exposed then sample.Read(player) end");
+        @"(function sample\.Offer\(player\)\r*\n)([ \t]*)-- The author's receiver[^\r\n]*\r*\n[ \t]*-- A preceding getter[^\r\n]*\r*\n[ \t]*-- clock;[^\r\n]*\r*\n[ \t]*pending = false\r*\n[ \t]*produce\(player\)",
+        "$1$2pending = true\n$2if exposed then sample.Read(player) end");
     Check(ZeroEngineDemandSource.TryDerivedProducer(legacyModule,out var migratedPitch)&&
         ZeroEngineDemandSource.TryCadencedDerivedProducer(migratedPitch,out var migratedModule)&&migratedModule==cadenceModuleNext,
         "former deferred module must upgrade in one generation");
@@ -397,7 +399,7 @@ return Engine
         File.WriteAllText(Path.Combine(cadenceRoot,"stock-scheduler.lua"),cadencePitchScheduler);
         File.WriteAllText(Path.Combine(cadenceRoot,"legacy-module.lua"),legacyModule);
         File.WriteAllText(Path.Combine(cadenceRoot,"legacy-scheduler.lua"),legacyScheduler);
-        foreach(var scenario in new[]{"stock","no-demand","mixed-fields","raw","reset","old-module","old-host","old-scheduler","legacy-module","legacy-scheduler"}){
+        foreach(var scenario in new[]{"stock","no-demand","mixed-fields","raw","reset","old-module","old-host","old-scheduler","legacy-module","legacy-scheduler","reentrant","stock-reentrant"}){
             var cadencePsi=new ProcessStartInfo("lua5.4"){UseShellExecute=false};
             cadencePsi.ArgumentList.Add("tests/ZeroEngineDemandContract/ExecuteCadencedDerived.lua");
             cadencePsi.ArgumentList.Add(cadenceRoot);

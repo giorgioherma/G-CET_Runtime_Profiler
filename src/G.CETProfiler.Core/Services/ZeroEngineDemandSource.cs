@@ -621,15 +621,30 @@ if not pcOk then pcOk, pc = pcall(Game.GetPlayer) end
                 if (Count(sample, "local offeredEpoch") != 1 ||
                     Count(sample, "offeredEpoch = epoch()") != 1 ||
                     Count(sample, "offeredEpoch ~= epoch()") != 1) return false;
-                if (Count(source, "demand.SampleEpochVersion = 2") == 1)
-                    return Count(sample, "if exposed then sample.Read() end") == 0 &&
-                        Count(sample, "sample.Read()") == 3 &&
-                        Regex.IsMatch(sample, @"offeredEpoch = epoch\(\)\s+sample\.Read\(\)");
-                if (Count(source, "demand.SampleEpochVersion = 1") != 1 ||
-                    Count(sample, "if exposed then sample.Read() end") != 1) return false;
-                var upgraded = source;
-                if (!ReplaceLine(ref upgraded, "demand.SampleEpochVersion = 1", "demand.SampleEpochVersion = 2") ||
-                    !ReplaceLine(ref upgraded, "if exposed then sample.Read() end", "sample.Read()")) return false;
+                var v2 = Count(source, "demand.SampleEpochVersion = 2") == 1;
+                if (v2 && Count(sample, "available, sampled = true, true") == 1 &&
+                    Count(sample, "sample.Read()") == 2 &&
+                    Regex.IsMatch(sample, @"offeredEpoch = epoch\(\)\s+produce\(\)")) return true;
+                var oldOffer = v2 ? "sample.Read()" : "if exposed then sample.Read() end";
+                if ((!v2 && Count(source, "demand.SampleEpochVersion = 1") != 1) ||
+                    Count(sample, "available, sampled = true, false") != 1 ||
+                    !Regex.IsMatch(sample, @"offeredEpoch = epoch\(\)\s+" + Regex.Escape(oldOffer))) return false;
+                var upgradedSample = sample;
+                // Scope the rewrite to Offer; Expose also calls Read.
+                if (!ReplaceLine(ref upgradedSample, "available, sampled = true, false", "available, sampled = true, true") ||
+                    !ReplaceUniqueLines(ref upgradedSample, "        offeredEpoch = epoch()\n        " + oldOffer,
+                        "        offeredEpoch = epoch()\n        produce()"))
+                {
+                    // Existing generation indents the complete slot by the
+                    // enclosing do block. Preserve that exact indentation.
+                    var indent = scope[0].Groups["indent"].Value;
+                    upgradedSample = sample;
+                    if (!ReplaceLine(ref upgradedSample, "available, sampled = true, false", "available, sampled = true, true") ||
+                        !ReplaceUniqueLines(ref upgradedSample, indent + "        offeredEpoch = epoch()\n" + indent + "        " + oldOffer,
+                            indent + "        offeredEpoch = epoch()\n" + indent + "        produce()")) return false;
+                }
+                var upgraded = source.Remove(scope[0].Index, scope[0].Length).Insert(scope[0].Index, upgradedSample);
+                if (!v2 && !ReplaceLine(ref upgraded, "demand.SampleEpochVersion = 1", "demand.SampleEpochVersion = 2")) return false;
                 next = upgraded;
                 return true;
             }
@@ -644,9 +659,9 @@ if not pcOk then pcOk, pc = pcall(Game.GetPlayer) end
                 !AfterLine(ref candidate, "local available, sampled, exposed = false, false, false", "local offeredEpoch") ||
                 !ReplaceLine(ref candidate, "if not available or sampled then return end",
                     "if not available or sampled or offeredEpoch ~= epoch() then return end") ||
-                !AfterLine(ref candidate, "available, sampled = true, false", "offeredEpoch = epoch()") ||
+                !ReplaceLine(ref candidate, "available, sampled = true, false", "available, sampled = true, true\nofferedEpoch = epoch()") ||
                 !AfterLine(ref candidate, "available, sampled = false, false", "offeredEpoch = nil") ||
-                !ReplaceLine(ref candidate, "if exposed then sample.Read() end", "sample.Read()"))
+                !ReplaceLine(ref candidate, "if exposed then sample.Read() end", "produce()"))
                 return false;
             next = candidate;
             return true;
@@ -857,9 +872,9 @@ function demand.DefineSample(key, produce, epoch)
         produce()
     end
     function sample.Offer()
-        available, sampled = true, false
+        available, sampled = true, true
         offeredEpoch = epoch()
-        sample.Read()
+        produce()
     end
     function sample.Expose()
         -- A raw reference has no unsubscribe handle. Preserve future
@@ -929,8 +944,11 @@ function demand.DefineCadencedSample(key, produce, valid, getPlayer)
         produce(player)
     end
     function sample.Offer(player)
-        pending = true
-        sample.Read(player)
+        -- The author's receiver and phase are already established here.
+        -- A preceding getter may have re-entered the host and advanced its
+        -- clock; that is not permission to skip this historical sample.
+        pending = false
+        produce(player)
     end
     function sample.Expose()
         exposed = true
@@ -953,12 +971,37 @@ end
         {
             string Flat(string value) => Regex.Replace(NormalizeLf(value),@"(?m)^[ \t]+","");
             if(Count(Flat(source),Flat(CadencedSampleController))==1)return true;
-            var legacy=CadencedSampleController.Replace("demand.CadencedSampleVersion = 2","demand.CadencedSampleVersion = 1",StringComparison.Ordinal)
+            var directOffer = """
+    function sample.Offer(player)
+        -- The author's receiver and phase are already established here.
+        -- A preceding getter may have re-entered the host and advanced its
+        -- clock; that is not permission to skip this historical sample.
+        pending = false
+        produce(player)
+    end
+""";
+            var initialV2Offer = """
+    function sample.Offer(player)
+        pending = true
+        sample.Read(player)
+    end
+""";
+            var initialV2=CadencedSampleController.Replace(NormalizeLf(directOffer),NormalizeLf(initialV2Offer),StringComparison.Ordinal);
+            var legacy=initialV2.Replace("demand.CadencedSampleVersion = 2","demand.CadencedSampleVersion = 1",StringComparison.Ordinal)
                 .Replace("        sample.Read(player)","        if exposed then sample.Read(player) end",StringComparison.Ordinal);
-            if(Count(Flat(source),Flat(legacy))!=1)return false;
+            var v2=Count(Flat(source),Flat(initialV2))==1;
+            var v1=Count(Flat(source),Flat(legacy))==1;
+            if(v2==v1)return false;
             var upgraded=source;
-            if(!ReplaceLine(ref upgraded,"demand.CadencedSampleVersion = 1","demand.CadencedSampleVersion = 2")||
-               !ReplaceLine(ref upgraded,"if exposed then sample.Read(player) end","sample.Read(player)"))return false;
+            if(v1&&!ReplaceLine(ref upgraded,"demand.CadencedSampleVersion = 1","demand.CadencedSampleVersion = 2"))return false;
+            var previous=v2?initialV2Offer:initialV2Offer.Replace("sample.Read(player)\n","if exposed then sample.Read(player) end\n",StringComparison.Ordinal);
+            // Replace the single proven old Offer block, preserving its
+            // generated enclosing indentation and all unrelated source.
+            var offer=Regex.Matches(upgraded,@"(?m)^(?<indent>[ \t]*)function sample\.Offer\(player\)[ \t]*(?=\r*$)");
+            if(offer.Count!=1)return false;
+            var indent=offer[0].Groups["indent"].Value;
+            string IndentOffer(string block) => string.Join("\n",NormalizeLf(block).Split('\n').Select(l=>indent+l[4..]));
+            if(!ReplaceUniqueLines(ref upgraded,IndentOffer(previous),IndentOffer(directOffer)))return false;
             next=upgraded;return true;
         }
         if(source.Contains("DefineCadencedSample",StringComparison.Ordinal))return false;

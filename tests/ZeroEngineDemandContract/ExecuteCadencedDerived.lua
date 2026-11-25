@@ -2,7 +2,8 @@ local root, scenario=arg[1],arg[2]
 package.path=root.."/?.lua;"..package.path
 local transaction,slot,workspot,actor=0,0,0,0
 local armed,inWorkspot,fail=false,false,false
-local E,checkOrder
+local E,checkOrder,reenter
+local orderChecks,orderBad=0,0
 TestPlayer={}
 TweakDBID={new=function(k)return k end}
 Game={
@@ -13,20 +14,25 @@ Game={
         return {GetItemInSlot=function(_,p,k)
             assert(p==TestPlayer and k=="AttachmentSlots.WeaponRight")
             slot=slot+1
+            if reenter then
+                reenter=false
+                E.SetValid(false);E.Tick(1/60);E.SetValid(true)
+            end
             return armed and {} or nil
         end}
     end,
     GetWorkspotSystem=function()
         workspot=workspot+1
         if checkOrder then
-            assert(E.GetState().derived.hasWeapon==armed,"weapon publication precedes workspot lookup")
+            orderChecks=orderChecks+1
+            if E.GetState().derived.hasWeapon~=armed then orderBad=orderBad+1 end
         end
         return {IsActorInWorkspot=function(_,p)
             assert(p==TestPlayer);actor=actor+1;return inWorkspot
         end}
     end
 }
-if scenario=="old-module" or scenario=="stock" then package.loaded["modules/DerivedState"]=dofile(root.."/stock-module.lua") end
+if scenario=="old-module" or scenario=="stock" or scenario=="stock-reentrant" then package.loaded["modules/DerivedState"]=dofile(root.."/stock-module.lua") end
 if scenario=="old-scheduler" then package.loaded["modules/G-CET/Scheduler"]=dofile(root.."/stock-scheduler.lua") end
 if scenario=="legacy-module" then package.loaded["modules/DerivedState"]=dofile(root.."/legacy-module.lua") end
 if scenario=="legacy-scheduler" then package.loaded["modules/G-CET/Scheduler"]=dofile(root.."/legacy-scheduler.lua") end
@@ -37,6 +43,14 @@ if scenario=="stock" or scenario=="no-demand" then
     tick(120)
     assert(transaction==20 and slot==20 and workspot==20 and actor==20,"historical producer must retain original count")
     print("Historical scalar native calls: "..(transaction+slot+workspot+actor))
+elseif scenario=="reentrant" or scenario=="stock-reentrant" then
+    armed=true;inWorkspot=true;reenter=true;tick(6)
+    assert(transaction==1 and slot==1 and workspot==1 and actor==1,
+        "reentrant invalid frame must not suppress later original-phase getter")
+    armed=false;inWorkspot=false
+    local retained=E.GetState().derived
+    assert(retained.hasWeapon and retained.isInWorkspot and transaction==1 and workspot==1,
+        "reentrant phase sample must remain historical")
 elseif scenario=="raw" then
     armed=true;inWorkspot=true;tick(6)
     armed=false;inWorkspot=false;tick(2)
@@ -71,6 +85,7 @@ else
     checkOrder=true;tick(4)
     assert(not retained.hasWeapon and not retained.isInWorkspot and transaction==2 and workspot==2,
         "original six-frame phase and publication order")
+    assert(orderChecks==1 and orderBad==0,"weapon publication precedes workspot lookup")
     armed=true;fail=true;checkOrder=false;tick(6)
     fail=false
     assert(not retained.hasWeapon and transaction==3 and slot==2,"scheduled failure must not be replayed")

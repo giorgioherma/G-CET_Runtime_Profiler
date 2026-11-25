@@ -26,9 +26,8 @@ local retained=state.derived
 assert(retained.district=="Watson" and cameras==10 and forwards==10)
 -- Change the engine AFTER the producer phase, before the first observation.
 pitch=35
-assert(near(retained.lookPitch,15) and cameras==10,"historical first observation, not a live query")
-assert(near(state.derived.lookPitch,15) and cameras==10,"shared cached scalar")
 if scenario=="invalid-epoch" then
+    assert(near(retained.lookPitch,15) and cameras==10,"historical first observation, not a live query")
     E.SetValid(false); tick(1)
     assert(near(retained.lookPitch,15) and cameras==10,"invalid frame retains snapshot")
     E.SetValid(true); tick(1)
@@ -38,6 +37,8 @@ if scenario=="invalid-epoch" then
     E.SetLoading(false); tick(1)
     assert(near(retained.lookPitch,30) and cameras==12)
 elseif scenario=="scalar" or scenario:find("^old%-") then
+    assert(near(retained.lookPitch,15) and cameras==10,"historical first observation, not a live query")
+    assert(near(state.derived.lookPitch,15) and cameras==10,"shared cached scalar")
     tick(10)
     assert(cameras==20 and near(retained.lookPitch,35))
     E.Reset()
