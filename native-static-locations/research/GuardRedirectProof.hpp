@@ -3,6 +3,7 @@
 // loaded module. It does not install a game hook or execute copied CET code.
 #include "CETDispatchIdentity.hpp"
 #include "CETStacklessGate.hpp"
+#include "GuardUnwindProof.hpp"
 #include <windows.h>
 #include <array>
 #include <cstring>
@@ -97,6 +98,7 @@ inline void CheckGuardRedirect(const std::filesystem::path& path,uint8_t* image,
     auto* code=image+imageSize;
     auto* data=new(code+4096) GuardData;
     std::array<uintptr_t,2> islands{};
+    std::array<uint32_t,2> gateSizes{};
     for(size_t i=0;i<2;++i){
         auto site=Sites[i];
         islands[i]=reinterpret_cast<uintptr_t>(code+i*1024);
@@ -104,10 +106,16 @@ inline void CheckGuardRedirect(const std::filesystem::path& path,uint8_t* image,
             reinterpret_cast<uintptr_t>(image+site.active),reinterpret_cast<uintptr_t>(image+site.empty));
         Require(gate.Code().size()<1024,"island capacity");
         std::memcpy(code+i*1024,gate.Code().data(),gate.Code().size());
+        gateSizes[i]=static_cast<uint32_t>(gate.Code().size());
+        // Chained metadata will live in the separate private data page.
     }
     DWORD old=0;
     Require(VirtualProtect(code,4096,PAGE_EXECUTE_READ,&old)!=0,"private island W^X");
     Require(FlushInstructionCache(GetCurrentProcess(),code,4096)!=0,"flush private islands");
+    for(size_t i=0;i<2;++i){
+        CheckChainedUnwind(image,Sites[i].guard,static_cast<uint32_t>(imageSize+i*1024),
+            gateSizes[i],static_cast<uint32_t>(imageSize+4096+2048+i*32));
+    }
     // The address-range contract must refuse rather than truncate.
     bool refused=false;
     try{(void)Redirect(0x10000,0x80010006ull);}catch(const std::runtime_error&){refused=true;}
