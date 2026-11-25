@@ -57,8 +57,9 @@ jobs:
         run: |
           $engine = Join-Path $env:GITHUB_WORKSPACE 'ci-private-stack/bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine'
           dotnet run --project tests/ZeroEngineDemandContract/ZeroEngineDemandContract.csproj -c Release -- --stock $engine
-          dotnet run --project tests/BlackboardPsmStageAContract/BlackboardPsmStageAContract.csproj -c Release -- --stock $engine
           if ($LASTEXITCODE -ne 0) { throw 'Central demand original-source generation failed.' }
+          dotnet run --project tests/BlackboardPsmStageAContract/BlackboardPsmStageAContract.csproj -c Release -- --stock $engine
+          if ($LASTEXITCODE -ne 0) { throw 'PSM definition-cache original-source generation failed.' }
 
       - name: Generated Lua structural checker fixture contract
         run: node tests/ValidateGeneratedLuaInvariantsContract.cjs

@@ -213,6 +213,66 @@ return Engine
     }
     Console.WriteLine("DerivedState existing shared-provider dependencies: five stable families, independent refusal, partial and repeat PASS");
 
+    // Actual canonical provider body, source-shaped original session hooks.
+    var sessionHost=sharedHost.Replace("local __gcetSharedProviderValues = {}","""
+local isSessionLoaded
+local function UpdateFrame()
+    local okLive, liveLoaded = pcall(GameSession.IsLoaded)
+    if okLive then
+        isSessionLoaded = liveLoaded
+    end
+end
+local __gcetSharedProviderValues = {}
+""");
+    sessionHost=sessionHost.Replace("return Engine", """
+function Engine.GetScriptableSystem(name)
+    __gcetSyncSharedProviderEpoch()
+    local key = tostring(name or "")
+    if key == "" then return nil end
+    local value = __gcetScriptableSystemValues[key]
+    if value ~= nil then return value end
+    local container = Engine.GetScriptableSystemsContainer()
+    if container == nil then return nil end
+    local ok, resolved = pcall(function() return container:Get(CName.new(key)) end)
+    if ok and resolved ~= nil then
+        __gcetScriptableSystemValues[key] = resolved
+        return resolved
+    end
+    return nil
+end
+local Events={PlayerInvalidated={subscribe=function(_,fn) Engine.Invalidate=fn end}}
+GameSession.On(function(state)
+    local loaded = state.isLoaded
+    isSessionLoaded = loaded
+end)
+local sessionState = GameSession.GetState()
+isSessionLoaded = sessionState.isLoaded
+Events.PlayerInvalidated:subscribe(function()
+    DerivedState.Reset()
+end)
+Engine.Tick=UpdateFrame
+return Engine
+""");
+    Check(ZeroEngineDemandSource.TrySharedProviderLifecycle(sessionHost,out var sessionNext)&&sessionNext!=sessionHost,
+        "canonical shared-provider session lifetime");
+    Check(ZeroEngineDemandSource.TrySharedProviderLifecycle(sessionNext,out var sessionAgain)&&sessionAgain==sessionNext,
+        "provider session repeat");
+    Check(ZeroEngineDemandSource.TrySharedProviderLifecycle(sessionNext.Replace(
+        "    Engine.__gcetObserveProviderSession(loaded)\n",""),out var sessionPartial)&&sessionPartial==sessionNext,
+        "provider session missing event transition");
+    Check(!ZeroEngineDemandSource.TrySharedProviderLifecycle(sessionHost.Replace(
+        "value = getter()","value = customGetter()"),out _),"unknown provider getter must remain stock");
+    if(!privateSource){
+        File.WriteAllText(Path.Combine(root,"provider-session.lua"),sessionNext);
+        var providerPsi=new ProcessStartInfo("lua5.4"){UseShellExecute=false};
+        providerPsi.ArgumentList.Add("tests/ZeroEngineDemandContract/ExecuteProviderLifecycle.lua");
+        providerPsi.ArgumentList.Add(root);
+        using var providerProc=Process.Start(providerPsi)!;providerProc.WaitForExit();
+        Check(providerProc.ExitCode==0,"shared provider session execution");
+    }
+    Console.WriteLine("Shared provider session invalidation: source, partial, repeat and drift PASS");
+
+
     // Actual pose closure from the installed host. Verify generated output
     // keeps the receiver, call order, nil handling and failure barrier.
     var poseFixture="""
