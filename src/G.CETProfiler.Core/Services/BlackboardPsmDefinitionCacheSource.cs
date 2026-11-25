@@ -80,93 +80,152 @@ internal static class BlackboardPsmDefinitionCacheSource
         TryTransformCore(source, out result, out reason);
 
     // The SAME exact shape checks apply in tests and production.
-    internal static bool TryTransformCore(byte[] source,
-        out byte[] result, out string reason)
+    internal static bool TryTransformCore(byte[] source, out byte[] result, out string reason)
     {
         result = source;
         var text = Encoding.UTF8.GetString(source);
-        if (text.Contains(Marker, StringComparison.Ordinal))
+        var code = NativeReadReuseSource.MaskNonCode(text);
+        var nl = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        const string cache = "__gcetPsmFields";
+        const string defs = "PlayerStateDefs";
+        var edits = new List<(int Start, int Length, string Value)>();
+        var known = new List<(int Start, int Length)>();
+        bool Refuse(string message, out string why) { why = message; return false; }
+        Match? Unique(string pattern)
         {
-            // A comment is not sufficient proof. Partial or subsequently
-            // edited player-state snapshots must not silently pass as complete.
-            var complete =
-                text.Split(Marker, StringSplitOptions.None).Length == 2 &&
-                text.Contains("function BlackboardCache.Init(events)", StringComparison.Ordinal) &&
-                text.Contains("function BlackboardCache.Attach(player)", StringComparison.Ordinal) &&
-                text.Contains("function BlackboardCache.Reset()", StringComparison.Ordinal) &&
-                Regex.Matches(text, @"\b__gcetPsmFields\s*=\s*\{").Count == 1 &&
-                Reads.All(read =>
-                    Regex.Matches(text, @"\b" + Regex.Escape(read.Field) +
-                        @"\s*=\s*PlayerStateDefs\." + Regex.Escape(read.Field) +
-                        @"\s*[,}]").Count == 1 &&
-                    Regex.Matches(text, @"\blocal\s+" + Regex.Escape(read.Name) +
-                        @"\s*=\s*playerBB:" + read.Getter +
-                        @"\(\s*__gcetPsmFields\." + Regex.Escape(read.Field) +
-                        @"\s*\)").Count == 1);
-            reason = complete ? "ALREADY_SATISFIED" :
-                "PARTIAL_PSM_STAGE_SOURCE_POSTCONDITION_FAILED";
-            return false;
+            var matches = Regex.Matches(code, pattern, RegexOptions.CultureInvariant);
+            return matches.Count == 1 ? matches[0] : null;
         }
-        if (!text.Contains("function BlackboardCache.Init(events)", StringComparison.Ordinal) ||
-            !text.Contains("function BlackboardCache.Attach(player)", StringComparison.Ordinal) ||
-            !text.Contains("function BlackboardCache.Reset()", StringComparison.Ordinal) ||
-            !text.Contains("if not playerBB then return end", StringComparison.Ordinal))
+        void Own(Match m) => known.Add((m.Index, m.Length));
+        // The original private definition object has only three lifecycle
+        // uses: declaration, Init assignment, and Attach's board definition.
+        // All further uses must be the proven key reads or our own snapshot.
+        var declaration = Unique(@"(?m)^[ \t]*local[ \t]+PlayerStateDefs[ \t]*=[ \t]*nil[ \t]*(?=\r?$)");
+        var init = Unique(@"(?m)^[ \t]*PlayerStateDefs[ \t]*=[ \t]*GetAllBlackboardDefs[ \t]*\([ \t]*\)[ \t]*\.[ \t]*PlayerStateMachine[ \t]*(?=\r?$)");
+        var updateStart = Unique(@"(?m)^function[ \t]+BlackboardCache\.Update[ \t]*\([ \t]*player[ \t]*\)[ \t]*(?=\r?$)");
+        var initStart = Unique(@"(?m)^function[ \t]+BlackboardCache\.Init[ \t]*\([ \t]*events[ \t]*\)[ \t]*(?=\r?$)");
+        var attachStart = Unique(@"(?m)^function[ \t]+BlackboardCache\.Attach[ \t]*\([ \t]*player[ \t]*\)[ \t]*(?=\r?$)");
+        var reset = Unique(@"(?m)^function[ \t]+BlackboardCache\.Reset[ \t]*\([ \t]*\)[ \t]*(?=\r?$)");
+        var attach = Unique(@":GetLocalInstanced\s*\(\s*player:GetEntityID\s*\(\s*\)\s*,\s*PlayerStateDefs\s*\)");
+        int FunctionEnd(Match m)
         {
-            reason = "Required player/blackboard lifecycle anchors missing.";
-            return false;
+            var e = Regex.Match(code[(m.Index+m.Length)..], @"(?m)^end[ \t]*(?=\r?$)");
+            return e.Success ? m.Index+m.Length+e.Index : -1;
         }
+        if (declaration is null || init is null || initStart is null || updateStart is null ||
+            attachStart is null || attach is null || reset is null ||
+            declaration.Index >= Math.Min(initStart.Index, updateStart.Index) ||
+            init.Index <= initStart.Index || init.Index >= FunctionEnd(initStart) ||
+            attach.Index <= attachStart.Index || attach.Index >= FunctionEnd(attachStart))
+            return Refuse("Definition initialization, update or Attach ownership is ambiguous.", out reason);
+        var updateEnd = FunctionEnd(updateStart);
+        if (updateEnd < 0 || !Regex.IsMatch(code[updateStart.Index..updateEnd],
+            @"\bif\s+not\s+playerBB\s+then\s+return\s+end\b"))
+            return Refuse("Required live blackboard guard missing.", out reason);
+        Own(declaration); Own(init); Own(attach);
 
-        // Preserve original line endings. Only insert a fixed local table in
-        // Init; never alter Update frequency, game getters, or the event graph.
-        var newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
-        const string declaration = "local PlayerStateDefs = nil";
-        const string init = "    PlayerStateDefs = GetAllBlackboardDefs().PlayerStateMachine";
-        if (Count(text, declaration) != 1 || Count(text, init) != 1)
+        var markerCount = Count(text, Marker);
+        if (markerCount > 1)
+            return Refuse("Multiple generated definition-cache markers.", out reason);
+        var localMatches = Regex.Matches(code, @"(?m)^[ \t]*local[ \t]+__gcetPsmFields[ \t]*=[ \t]*nil[ \t]*(?=\r?$)");
+        if (localMatches.Count > 1 || (localMatches.Count == 1 &&
+            localMatches[0].Index >= Math.Min(initStart.Index, updateStart.Index)))
+            return Refuse("Ambiguous definition-cache declaration.", out reason);
+        if (localMatches.Count == 1) Own(localMatches[0]);
+        // An existing snapshot may contain only a subset of keys. Recognize
+        // the exact private initializer, not a version marker or whole hash.
+        var blocks = Regex.Matches(code, @"\b__gcetPsmFields[ \t]*=[ \t]*\{(?<body>[^{}]*)\}");
+        if (blocks.Count > 1)
+            return Refuse("Ambiguous definition-cache initializer.", out reason);
+        var keys = new HashSet<string>(StringComparer.Ordinal);
+        if (blocks.Count == 1)
         {
-            reason = "Definition source/initialization is ambiguous.";
-            return false;
-        }
-
-        var updated = text.Replace(declaration,
-            declaration + newline + "local __gcetPsmFields = nil  " + Marker,
-            StringComparison.Ordinal);
-        var snapshot = new StringBuilder();
-        snapshot.Append(init).Append(newline)
-            .Append("    __gcetPsmFields = {").Append(newline);
-        foreach (var read in Reads)
-            snapshot.Append("        ").Append(read.Field).Append(" = PlayerStateDefs.")
-                .Append(read.Field).Append(',').Append(newline);
-        snapshot.Append("    }");
-        updated = updated.Replace(init, snapshot.ToString(), StringComparison.Ordinal);
-
-        foreach (var read in Reads)
-        {
-            var pattern = new Regex(
-                @"(?m)^(?<indent>[ \t]*)local[ \t]+" + Regex.Escape(read.Name) +
-                @"[ \t]*=[ \t]*playerBB:" + read.Getter +
-                @"\([ \t]*PlayerStateDefs\." + read.Field + @"[ \t]*\)(?<end>\r?$)",
+            var block = blocks[0];
+            if (block.Index < init.Index+init.Length || block.Index >= FunctionEnd(initStart) ||
+                !string.IsNullOrWhiteSpace(code[(init.Index+init.Length)..block.Index]))
+                return Refuse("Definition-cache initializer is not immediately after the original Init assignment.", out reason);
+            var body = block.Groups["body"];
+            var fieldPattern = new Regex(@"\G\s*(?<key>[A-Za-z_]\w*)\s*=\s*PlayerStateDefs\s*\.\s*\k<key>(?<rhsEnd>)\s*(?<comma>,|(?=\s*$))",
                 RegexOptions.CultureInvariant);
-            if (pattern.Matches(updated).Count != 1)
+            int at = 0; Match? last = null;
+            while (!string.IsNullOrWhiteSpace(body.Value[at..]))
             {
-                reason = "Exact 12-read source proof failed for " + read.Name;
-                return false;
+                var field = fieldPattern.Match(body.Value, at);
+                if (!field.Success || field.Index != at ||
+                    !Reads.Any(r => r.Field == field.Groups["key"].Value) ||
+                    !keys.Add(field.Groups["key"].Value))
+                    return Refuse("Unknown, duplicate or changed snapshot key.", out reason);
+                last = field; at = field.Index+field.Length;
             }
-            updated = pattern.Replace(updated, match =>
-                match.Groups["indent"].Value + "local " + read.Name +
-                " = playerBB:" + read.Getter +
-                "(__gcetPsmFields." + read.Field + ")" +
-                match.Groups["end"].Value);
+            Own(block);
+            var missing = Reads.Where(r => !keys.Contains(r.Field)).ToArray();
+            if (missing.Length > 0)
+            {
+                // Preserve existing entries and comments; insert only missing
+                // keys before the existing closing brace. Add a separator if
+                // a manually edited final field omitted its trailing comma.
+                if (last is not null && last.Groups["comma"].Length == 0)
+                    edits.Add((body.Index+last.Groups["rhsEnd"].Index,0,","));
+                int closing = block.Index+block.Length-1;
+                int lineStart = text.LastIndexOf('\n',Math.Max(0,closing-1))+1;
+                bool ownLine = string.IsNullOrWhiteSpace(code[lineStart..closing]) &&
+                               string.IsNullOrWhiteSpace(text[lineStart..closing]);
+                var insert = string.Concat(missing.Select(r => "        "+r.Field+" = "+defs+"."+r.Field+","+nl));
+                edits.Add((ownLine?lineStart:closing,0,(ownLine?"":nl)+insert+(ownLine?"":"    ")));
+            }
         }
-        if (Count(updated, "playerBB:GetInt(") < 11 ||
-            Count(updated, "playerBB:GetBool(") < 1 ||
-            Count(updated, "__gcetPsmFields.") != Reads.Length ||
-            Count(updated, Marker) != 1)
+        else
         {
-            reason = "Transformed call-count/postcondition mismatch.";
-            return false;
+            var block = nl+"    "+cache+" = {"+nl+
+                string.Concat(Reads.Select(r => "        "+r.Field+" = "+defs+"."+r.Field+","+nl))+"    }";
+            // Insert after original assignment line (including its comment).
+            var eol = text.IndexOf('\n',init.Index);
+            int at = eol<0?text.Length:eol-(eol>0&&text[eol-1]=='\r'?1:0);
+            edits.Add((at,0,block));
         }
-        result = Encoding.UTF8.GetBytes(updated);
-        reason = "APPLIED";
+        foreach (var read in Reads)
+        {
+            // Recognize each original OR previously cached key read. Only
+            // the definition receiver changes, never the native call, result
+            // local, original order, or the transition/derivation body.
+            var pattern = @"(?m)^[ \t]*local[ \t]+"+Regex.Escape(read.Name)+
+                @"[ \t]*=[ \t]*playerBB[ \t]*:[ \t]*"+read.Getter+
+                @"[ \t]*\([ \t]*(?<owner>PlayerStateDefs|__gcetPsmFields)[ \t]*\.[ \t]*"+
+                Regex.Escape(read.Field)+@"[ \t]*\)[ \t]*(?=\r?$)";
+            var match=Unique(pattern);
+            if (match is null || match.Index <= updateStart.Index || match.Index >= updateEnd)
+                return Refuse("Exact PSM read proof failed for "+read.Name, out reason);
+            Own(match);
+            var owner=match.Groups["owner"];
+            if (owner.Value==defs) edits.Add((owner.Index,owner.Length,cache));
+        }
+        // No new alias, field write, reflective access or reference escape
+        // may invalidate the initialization-time definition snapshot. Refuse
+        // only this cache optimization, leaving the rest of the module intact.
+        var unowned = code.ToCharArray();
+        foreach (var span in known)
+            for (int i=span.Start;i<span.Start+span.Length;i++) unowned[i]=' ';
+        if (Regex.IsMatch(new string(unowned),@"\b(?:PlayerStateDefs|__gcetPsmFields)\b"))
+            return Refuse("Definition or generated snapshot has an unproven use/write.", out reason);
+        if (localMatches.Count == 0)
+        {
+            var eol=text.IndexOf('\n',declaration.Index);
+            int at=eol<0?text.Length:eol-(eol>0&&text[eol-1]=='\r'?1:0);
+            edits.Add((at,0,nl+"local "+cache+" = nil"+(markerCount==0?"  "+Marker:"")));
+        }
+        else if(markerCount==0)
+        {
+            // Comment-only ownership marker; retain the manual declaration.
+            var eol=text.IndexOf('\n',localMatches[0].Index);
+            int at=eol<0?text.Length:eol-(eol>0&&text[eol-1]=='\r'?1:0);
+            edits.Add((at,0,nl+Marker));
+        }
+        if (edits.Count==0){reason="ALREADY_SATISFIED";return false;}
+        var output = new StringBuilder(text);
+        foreach (var edit in edits.OrderByDescending(e=>e.Start))
+            output.Remove(edit.Start,edit.Length).Insert(edit.Start,edit.Value);
+        result=Encoding.UTF8.GetBytes(output.ToString());
+        reason="APPLIED";
         return true;
     }
 
@@ -184,10 +243,7 @@ internal static class BlackboardPsmDefinitionCacheSource
         var original = File.ReadAllBytes(livePath);
         var current = staged.TryGetValue(Relative,out var earlierStage)
             ? earlierStage : original;
-        // A completed cache is recognized without requiring current profiler
-        // samples. For missing stages, retain the original evidence gate.
-        if (NativeReadReuseSource.Decode(current).Contains(Marker,StringComparison.Ordinal))
-            return false;
+        // Always re-prove the current source: a marker alone is not completion.
         // Historical capture established the benefit. Admission for updated
         // sources is governed by the complete 12-key source/lifecycle proof,
         // not by captured line numbers or current-session activity.

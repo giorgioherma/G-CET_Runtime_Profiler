@@ -80,6 +80,55 @@ var drift = before.ToString().Replace(
     "playerBB:GetInt(PlayerStateDefs.SomethingElse)");
 object?[] invalid = [Encoding.UTF8.GetBytes(drift), null, null];
 Check(!(bool)transform.Invoke(null, invalid)!, "Structural drift was not rejected");
+// Partial cache: existing declaration/table, missing entries, stock reads,
+// and complete-cache marker must converge from the original generator.
+string Rewrite(string input)
+{
+    object?[] args2=[Encoding.UTF8.GetBytes(input),null,null];
+    Check((bool)transform.Invoke(null,args2)!, "Expected compatible incomplete cache: "+args2[2]);
+    return Encoding.UTF8.GetString((byte[])args2[1]!);
+}
+void Complete(string input,string label)
+{
+    var generated=Rewrite(input);
+    foreach(var (_,key,getter) in defs)
+        Check(generated.Contains("playerBB:"+getter+"(__gcetPsmFields."+key+")")&&
+            generated.Contains(key+" = PlayerStateDefs."+key),label+": "+key);
+    object?[] repeat=[Encoding.UTF8.GetBytes(generated),null,null];
+    Check(!(bool)transform.Invoke(null,repeat)!&&(string)repeat[2]! == "ALREADY_SATISFIED",
+        label+": generated result did not converge: "+repeat[2]);
+}
+var partial=after.Replace("playerBB:GetInt(__gcetPsmFields.Weapon)","playerBB:GetInt(PlayerStateDefs.Weapon)")
+    .Replace("        Weapon = PlayerStateDefs.Weapon,"+Environment.NewLine,"");
+Complete(partial,"partial snapshot and read");
+Complete(after.Replace("local __gcetPsmFields = nil  -- G-CET PSM_DEFS_STAGE_A_V1","-- G-CET PSM_DEFS_STAGE_A_V1"),"missing local declaration");
+Complete(after.Replace("  -- G-CET PSM_DEFS_STAGE_A_V1",""),"manual complete cache missing marker");
+Complete(before.ToString().Replace("playerBB:GetInt(PlayerStateDefs.Weapon)","playerBB:GetInt( PlayerStateDefs . Weapon )"),"whitespace variant");
+var noComma=partial.Replace("MountedToVehicle = PlayerStateDefs.MountedToVehicle,","MountedToVehicle = PlayerStateDefs.MountedToVehicle");
+Complete(noComma,"last key without trailing comma");
+foreach(var bad in new[]{
+    after+"\nPlayerStateDefs = otherDefs",
+    after+"\n__gcetPsmFields.Weapon = otherKey",
+    after.Replace("Weapon = PlayerStateDefs.Weapon","Weapon = PlayerStateDefs.Vision"),
+    before.ToString()+"\nlocal alias = PlayerStateDefs",
+    after.Replace("local __gcetPsmFields = nil","local __gcetPsmFields = {}")
+})
+{
+    object?[] refused=[Encoding.UTF8.GetBytes(bad),null,null];
+    Check(!(bool)transform.Invoke(null,refused)!&&(string)refused[2]!="ALREADY_SATISFIED",
+        "unproved definition ownership admitted");
+}
+if(args.Length==2&&args[0]=="--stock")
+{
+    var stock=File.ReadAllText(Path.Combine(args[1],"modules","BlackboardCache2.lua"));
+    var generated=Rewrite(stock);
+    Complete(generated.Replace("playerBB:GetInt(__gcetPsmFields.Weapon)","playerBB:GetInt(PlayerStateDefs.Weapon)")
+        .Replace("        Weapon = PlayerStateDefs.Weapon,"+ (generated.Contains("\r\n")?"\r\n":"\n"),""),"actual stock partial");
+    Check(generated.Split("playerBB:GetInt(").Length==stock.Split("playerBB:GetInt(").Length&&
+        generated.Split("playerBB:GetBool(").Length==stock.Split("playerBB:GetBool(").Length,
+        "actual PSM mutable state reads changed");
+    Console.WriteLine("Actual original PSM definition-cache partial completion PASS");
+}
 var folder = Path.Combine(Path.GetTempPath(), "gcet-psm-defs-" + Guid.NewGuid().ToString("N"));
 try
 {
