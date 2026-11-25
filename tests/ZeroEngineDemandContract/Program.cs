@@ -341,6 +341,21 @@ return Engine
         "cadenced scalar repeat generation");
     Check(ZeroEngineDemandSource.TrySampleController(cadenceSchedulerNext,out var originalSampleRepeat)&&
         originalSampleRepeat==cadenceSchedulerNext,"original scalar scope must compose with cadence slots");
+    // Upgrade the exact formerly deferred v1 components at their source owners.
+    var legacyModule=cadenceModuleNext.Replace("controller.SampleEpochVersion ~= 2","controller.SampleEpochVersion ~= 1")
+        .Replace("controller.CadencedSampleVersion ~= 2","controller.CadencedSampleVersion ~= 1");
+    var legacyScheduler=cadenceSchedulerNext.Replace("demand.SampleEpochVersion = 2","demand.SampleEpochVersion = 1")
+        .Replace("demand.CadencedSampleVersion = 2","demand.CadencedSampleVersion = 1");
+    legacyScheduler=System.Text.RegularExpressions.Regex.Replace(legacyScheduler,
+        @"(offeredEpoch = epoch\(\)\r*\n[ \t]*)sample\.Read\(\)","$1if exposed then sample.Read() end");
+    legacyScheduler=System.Text.RegularExpressions.Regex.Replace(legacyScheduler,
+        @"(pending = true\r*\n[ \t]*)sample\.Read\(player\)","$1if exposed then sample.Read(player) end");
+    Check(ZeroEngineDemandSource.TryDerivedProducer(legacyModule,out var migratedPitch)&&
+        ZeroEngineDemandSource.TryCadencedDerivedProducer(migratedPitch,out var migratedModule)&&migratedModule==cadenceModuleNext,
+        "former deferred module must upgrade in one generation");
+    Check(ZeroEngineDemandSource.TrySampleController(legacyScheduler,out var migratedController)&&
+        ZeroEngineDemandSource.TryCadencedController(migratedController,out var migratedScheduler)&&migratedScheduler==cadenceSchedulerNext,
+        "former deferred scheduler must upgrade in one generation");
     // Exercise the production stage with every independent missing
     // component, then repeat the complete output through its real entrypoint.
     var cadenceStageRoot=Path.Combine(root,"cadence-stage");
@@ -380,7 +395,9 @@ return Engine
         File.WriteAllText(Path.Combine(cadenceRoot,"stock-module.lua"),cadencePitch);
         File.WriteAllText(Path.Combine(cadenceRoot,"stock-host.lua"),cadencePitchHost);
         File.WriteAllText(Path.Combine(cadenceRoot,"stock-scheduler.lua"),cadencePitchScheduler);
-        foreach(var scenario in new[]{"stock","no-demand","mixed-fields","raw","reset","old-module","old-host","old-scheduler"}){
+        File.WriteAllText(Path.Combine(cadenceRoot,"legacy-module.lua"),legacyModule);
+        File.WriteAllText(Path.Combine(cadenceRoot,"legacy-scheduler.lua"),legacyScheduler);
+        foreach(var scenario in new[]{"stock","no-demand","mixed-fields","raw","reset","old-module","old-host","old-scheduler","legacy-module","legacy-scheduler"}){
             var cadencePsi=new ProcessStartInfo("lua5.4"){UseShellExecute=false};
             cadencePsi.ArgumentList.Add("tests/ZeroEngineDemandContract/ExecuteCadencedDerived.lua");
             cadencePsi.ArgumentList.Add(cadenceRoot);

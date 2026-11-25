@@ -595,8 +595,9 @@ if not pcOk then pcOk, pc = pcall(Game.GetPlayer) end
     private const string DerivedHostMarker = "-- G-CET derived sample host v1";
 
     // Extend the same scheduler-owned demand table. A sample is offered
-    // at its original producer phase. Scalar getters resolve only when
-    // requested; an escaped raw table requires continuous original sampling.
+    // at its original producer phase. Legacy public cached fields carry
+    // historical snapshot demand even before their first observable read.
+    // Do not defer these samples without a separately proven consumer contract.
     internal static bool TrySampleController(string source, out string next)
     {
         next = source;
@@ -614,14 +615,28 @@ if not pcOk then pcOk, pc = pcall(Game.GetPlayer) end
                 Count(sample, "function sample.Read(") != 1 ||
                 Count(sample, "function sample.Expose(") != 1 ||
                 Count(sample, "function sample.Reset(") != 1) return false;
-            if (source.Contains("demand.SampleEpochVersion = 1", StringComparison.Ordinal))
-                return Count(sample, "local offeredEpoch") == 1 &&
-                    Count(sample, "offeredEpoch = epoch()") == 1 &&
-                    Count(sample, "offeredEpoch ~= epoch()") == 1;
+            if (source.Contains("demand.SampleEpochVersion = 1", StringComparison.Ordinal) ||
+                source.Contains("demand.SampleEpochVersion = 2", StringComparison.Ordinal))
+            {
+                if (Count(sample, "local offeredEpoch") != 1 ||
+                    Count(sample, "offeredEpoch = epoch()") != 1 ||
+                    Count(sample, "offeredEpoch ~= epoch()") != 1) return false;
+                if (Count(source, "demand.SampleEpochVersion = 2") == 1)
+                    return Count(sample, "if exposed then sample.Read() end") == 0 &&
+                        Count(sample, "sample.Read()") == 3 &&
+                        Regex.IsMatch(sample, @"offeredEpoch = epoch\(\)\s+sample\.Read\(\)");
+                if (Count(source, "demand.SampleEpochVersion = 1") != 1 ||
+                    Count(sample, "if exposed then sample.Read() end") != 1) return false;
+                var upgraded = source;
+                if (!ReplaceLine(ref upgraded, "demand.SampleEpochVersion = 1", "demand.SampleEpochVersion = 2") ||
+                    !ReplaceLine(ref upgraded, "if exposed then sample.Read() end", "sample.Read()")) return false;
+                next = upgraded;
+                return true;
+            }
             // Complete the earlier development sample slot in place.
             // Epoch identity comes from the existing host frame clock.
             var candidate = source;
-            if (!AfterLine(ref candidate, "local samples = {}", "demand.SampleEpochVersion = 1") ||
+            if (!AfterLine(ref candidate, "local samples = {}", "demand.SampleEpochVersion = 2") ||
                 !ReplaceLine(ref candidate, "function demand.DefineSample(key, produce)",
                     "function demand.DefineSample(key, produce, epoch)") ||
                 !ReplaceLine(ref candidate, "if samples[key] or type(produce) ~= \"function\" then return nil end",
@@ -630,7 +645,8 @@ if not pcOk then pcOk, pc = pcall(Game.GetPlayer) end
                 !ReplaceLine(ref candidate, "if not available or sampled then return end",
                     "if not available or sampled or offeredEpoch ~= epoch() then return end") ||
                 !AfterLine(ref candidate, "available, sampled = true, false", "offeredEpoch = epoch()") ||
-                !AfterLine(ref candidate, "available, sampled = false, false", "offeredEpoch = nil"))
+                !AfterLine(ref candidate, "available, sampled = false, false", "offeredEpoch = nil") ||
+                !ReplaceLine(ref candidate, "if exposed then sample.Read() end", "sample.Read()"))
                 return false;
             next = candidate;
             return true;
@@ -656,17 +672,24 @@ if not pcOk then pcOk, pc = pcall(Game.GetPlayer) end
                 Count(source, "function DerivedState.__gcetExpose(") != 1 ||
                 Count(source, "__gcetPitchSample.Offer()") != 1 ||
                 Count(source, "__gcetPitchSample.Expose()") != 3) return false;
-            if (source.Contains("controller.SampleEpochVersion ~= 1", StringComparison.Ordinal))
-                return Count(source, loadingReset) == 1 &&
-                    Count(source, "__gcetPitchSample.Reset()") == 2 &&
-                    Count(source, "function DerivedState.__gcetEnableDemand(controller, epoch)") == 1;
+            if (source.Contains("controller.SampleEpochVersion ~= 1", StringComparison.Ordinal) ||
+                source.Contains("controller.SampleEpochVersion ~= 2", StringComparison.Ordinal))
+            {
+                if (Count(source, loadingReset) != 1 ||
+                    Count(source, "__gcetPitchSample.Reset()") != 2 ||
+                    Count(source, "function DerivedState.__gcetEnableDemand(controller, epoch)") != 1)
+                    return false;
+                if (Count(source, "controller.SampleEpochVersion ~= 2") == 1)
+                    return Count(source, "controller.SampleEpochVersion ~= 1") == 0;
+                return ReplaceUnique(ref next, "controller.SampleEpochVersion ~= 1", "controller.SampleEpochVersion ~= 2");
+            }
             var candidate = source;
             if (Count(source, "__gcetPitchSample.Reset()") != 1 ||
                 !ReplaceLine(ref candidate, "function DerivedState.__gcetEnableDemand(controller)",
                     "function DerivedState.__gcetEnableDemand(controller, epoch)") ||
                 !ReplaceLine(ref candidate,
                     "if type(controller) ~= \"table\" or type(controller.DefineSample) ~= \"function\" then return false end",
-                    "if type(controller) ~= \"table\" or controller.SampleEpochVersion ~= 1 or type(controller.DefineSample) ~= \"function\" or type(epoch) ~= \"function\" then return false end") ||
+                    "if type(controller) ~= \"table\" or controller.SampleEpochVersion ~= 2 or type(controller.DefineSample) ~= \"function\" or type(epoch) ~= \"function\" then return false end") ||
                 !ReplaceUnique(ref candidate, "    end)\n    if not __gcetPitchSample then return false end",
                     "    end, epoch)\n    if not __gcetPitchSample then return false end") ||
                 !AfterLine(ref candidate, loading, loadingReset)) return false;
@@ -822,7 +845,7 @@ end
     internal const string SampleController = """
 -- G-CET demand sample slots v1
 local samples = {}
-demand.SampleEpochVersion = 1
+demand.SampleEpochVersion = 2
 function demand.DefineSample(key, produce, epoch)
     if samples[key] or type(produce) ~= "function" or type(epoch) ~= "function" then return nil end
     local sample = {}
@@ -836,7 +859,7 @@ function demand.DefineSample(key, produce, epoch)
     function sample.Offer()
         available, sampled = true, false
         offeredEpoch = epoch()
-        if exposed then sample.Read() end
+        sample.Read()
     end
     function sample.Expose()
         -- A raw reference has no unsubscribe handle. Preserve future
@@ -857,7 +880,7 @@ end
     internal const string DerivedAdapter = """
 function DerivedState.__gcetEnableDemand(controller, epoch)
     if __gcetPitchSample then return true end
-    if type(controller) ~= "table" or controller.SampleEpochVersion ~= 1 or type(controller.DefineSample) ~= "function" or type(epoch) ~= "function" then return false end
+    if type(controller) ~= "table" or controller.SampleEpochVersion ~= 2 or type(controller.DefineSample) ~= "function" or type(epoch) ~= "function" then return false end
     __gcetPitchSample = controller.DefineSample("DerivedState.lookPitch", function()
         cached.lookPitch = resolveLookPitch()
     end, epoch)
@@ -886,16 +909,14 @@ end
 """;
 
 
-    // Additional pure getter-only fields use the existing scheduler-owned
-    // sample registry. The original six-successful-frame offer remains the
-    // maximum recurring cadence; no lookup occurs until a field is requested.
-    // Raw backing-table exposure pins only these fields to original offers.
-    // As for lookPitch, a first deferred read is a live sample, not an attempt
-    // to reconstruct an unobserved historical engine value.
+    // Legacy cached weapon/workspot state is observable after its original
+    // six-successful-frame sample. Until exact historical tracking is proven,
+    // the existing scheduler-owned slots must sample synchronously at Offer.
+    // Version 2 deliberately refuses the former lazy mixed-runtime contract.
     private const string CadencedSampleMarker="-- G-CET cadenced sample slots v1";
     internal const string CadencedSampleController = """
 -- G-CET cadenced sample slots v1
-demand.CadencedSampleVersion = 1
+demand.CadencedSampleVersion = 2
 function demand.DefineCadencedSample(key, produce, valid, getPlayer)
     if samples[key] or type(produce) ~= "function" or type(valid) ~= "function" or type(getPlayer) ~= "function" then return nil end
     local sample = {}
@@ -909,7 +930,7 @@ function demand.DefineCadencedSample(key, produce, valid, getPlayer)
     end
     function sample.Offer(player)
         pending = true
-        if exposed then sample.Read(player) end
+        sample.Read(player)
     end
     function sample.Expose()
         exposed = true
@@ -927,10 +948,19 @@ end
         next=source;
         if(!source.Contains(SampleMarker,StringComparison.Ordinal)||
            Count(source,"local samples = {}")!=1||
-           Count(source,"demand.SampleEpochVersion = 1")!=1)return false;
+           Count(source,"demand.SampleEpochVersion = 2")!=1)return false;
         if(source.Contains(CadencedSampleMarker,StringComparison.Ordinal))
-            return Count(Regex.Replace(NormalizeLf(source),@"(?m)^[ \t]+",""),
-                Regex.Replace(NormalizeLf(CadencedSampleController),@"(?m)^[ \t]+",""))==1;
+        {
+            string Flat(string value) => Regex.Replace(NormalizeLf(value),@"(?m)^[ \t]+","");
+            if(Count(Flat(source),Flat(CadencedSampleController))==1)return true;
+            var legacy=CadencedSampleController.Replace("demand.CadencedSampleVersion = 2","demand.CadencedSampleVersion = 1",StringComparison.Ordinal)
+                .Replace("        sample.Read(player)","        if exposed then sample.Read(player) end",StringComparison.Ordinal);
+            if(Count(Flat(source),Flat(legacy))!=1)return false;
+            var upgraded=source;
+            if(!ReplaceLine(ref upgraded,"demand.CadencedSampleVersion = 1","demand.CadencedSampleVersion = 2")||
+               !ReplaceLine(ref upgraded,"if exposed then sample.Read(player) end","sample.Read(player)"))return false;
+            next=upgraded;return true;
+        }
         if(source.Contains("DefineCadencedSample",StringComparison.Ordinal))return false;
         return BeforeLine(ref next,"Scheduler.Demand = demand",CadencedSampleController);
     }
@@ -955,7 +985,7 @@ end
     private const string CadencedAdapter = """
 function DerivedState.__gcetEnableCadencedDemand(controller, epoch, getPlayer)
     if __gcetPlayerSamples then return true end
-    if type(controller) ~= "table" or controller.CadencedSampleVersion ~= 1 or
+    if type(controller) ~= "table" or controller.CadencedSampleVersion ~= 2 or
         type(controller.DefineCadencedSample) ~= "function" or type(epoch) ~= "function" or type(getPlayer) ~= "function" then return false end
     local function valid() return __gcetCadencedEpoch ~= nil and __gcetCadencedEpoch == epoch() end
     local fields = {
@@ -1026,15 +1056,19 @@ end
            Count(source,"local weaponSlotID = nil")!=1)return false;
         if(source.Contains(CadencedDerivedMarker,StringComparison.Ordinal))
         {
-            return Count(normalized,NormalizeLf(CadencedLocals))==1&&
-                Count(normalized,NormalizeLf(CadencedAdapter))==1&&
+            var legacyAdapter=CadencedAdapter.Replace("controller.CadencedSampleVersion ~= 2","controller.CadencedSampleVersion ~= 1",StringComparison.Ordinal);
+            var current=Count(normalized,NormalizeLf(CadencedAdapter))==1;
+            var legacy=Count(normalized,NormalizeLf(legacyAdapter))==1;
+            if(current==legacy)return false;
+            if(!(Count(normalized,NormalizeLf(CadencedLocals))==1&&
                 Count(source,CadencedWeaponOffer)==1&&Count(source,CadencedWorkspotOffer)==1&&
                 Count(source,CadencedMark)==1&&Count(source,CadencedAdvance)==1&&
                 Count(source,"__gcetExposePlayerSamples()")==4&&
                 Count(source,"__gcetResetPlayerSamples()")==3&&
                 Count(source,"local sample = __gcetPlayerSamples[key]")==1&&
                 Count(WithoutLuaTrivia(source),"cached.hasWeapon")==3&&
-                Count(WithoutLuaTrivia(source),"cached.isInWorkspot")==3;
+                Count(WithoutLuaTrivia(source),"cached.isInWorkspot")==3))return false;
+            return current||ReplaceUnique(ref next,"controller.CadencedSampleVersion ~= 1","controller.CadencedSampleVersion ~= 2");
         }
         var code=WithoutLuaTrivia(source);
         if(Regex.Matches(code,@"\bhasWeapon\b").Count!=3||
@@ -1101,9 +1135,9 @@ end
         framework=framework with{Files=files,FixedInitSha256=Convert.ToHexString(
             SHA256.HashData(files[InitPath])).ToLowerInvariant()};
         manifest.Add(new{type="FRAMEWORK_CADENCED_SCALAR_DEMAND",Owner="0-Engine",file=relative,
-            contract="GCET_CADENCED_SCALAR_DEMAND_V1",sourceProof=true,
+            contract="GCET_CADENCED_SCALAR_SNAPSHOT_V2",sourceProof=true,
             fields=new[]{"hasWeapon","isInWorkspot"},rawExposureRetainsOriginalCadence=true,
-            callbackOrCadenceChanged=false,policy="GETTER_ONLY_LIVE_SAMPLE_ON_DEMAND"});
+            callbackOrCadenceChanged=false,nativeReadCountChanged=false,policy="ORIGINAL_PHASE_HISTORICAL_SNAPSHOT"});
         return 1;
     }
 
@@ -1410,7 +1444,8 @@ end
                     applied++;
                     manifest.Add(new { type = "SEMANTIC_RULE", Owner = "0-Engine",
                         RuleId = "0engine-demand-derived-scalar-sample", sourceProof = true,
-                        Handler = "ZeroEngineDemandSource", PolicyClass = "CENTRAL_ON_DEMAND_SCALAR",
+                        Handler = "ZeroEngineDemandSource", PolicyClass = "ORIGINAL_PHASE_HISTORICAL_SNAPSHOT",
+                        nativeReadCountChanged = false,
                         gameplayVerification = "PENDING_COMBINED_BATCH" });
                 }
                 host = hostNext;
