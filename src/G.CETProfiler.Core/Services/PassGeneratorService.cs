@@ -190,12 +190,15 @@ public static class PassGeneratorService
         var centralDemandTransforms = ZeroEngineDemandSource.TryStage(
             modsRoot, ref fixedRuntime, staged, appliedTransformsByFile,
             transformManifest, skipped);
-        centralDemandTransforms += ZeroEngineDemandSource.TryStagePose(ref fixedRuntime, transformManifest);
+        var poseReaderTransforms = ZeroEngineDemandSource.TryStagePose(ref fixedRuntime, transformManifest);
+        centralDemandTransforms += poseReaderTransforms;
         var observerDemandTransforms = ZeroEngineObserverDemandSource.TryStage(
             ref fixedRuntime, effectiveRuntime.Native?.HasObserverDemand == true,
             out var observerDemandIntegrated);
         centralDemandTransforms += observerDemandTransforms;
-        genericInfrastructureTransformCount += centralDemandTransforms;
+        // The pose reader is a mechanical generic transform, not a semantic rule.
+        // It still participates in framework-only generation eligibility.
+        genericInfrastructureTransformCount += centralDemandTransforms - poseReaderTransforms;
 
         // Direct, source-proven Game.GetPlayer():GetWorldPosition() only:
         // typed native forced-live getter plus original fail-open fallback.
