@@ -34,7 +34,7 @@ class StacklessGate {
     }
     void NE(){Branch(0x85,fallback_);}
     void E(){Branch(0x84,fallback_);}
-    void Jump(uintptr_t target){Bytes({0xe9});Rip(target);}
+    void Exit(uint8_t condition,uintptr_t target){Bytes({0x0f,condition});Rip(target);}
     uint8_t ModRM() const {return r15_?0x47:0x46;}
     void Load(uint8_t off){Bytes({0x49,0x8b,ModRM(),off});} // mov rax,[r14/r15+disp8]
     void CmpChain(uint8_t off){Bytes({0x49,0x3b,ModRM(),off});}
@@ -102,9 +102,15 @@ public:
         Load(24);Bytes({0x48,0x8b,0});CmpState(id+offsetof(SoleBeforeIdentity,context));NE();
         Epoch(ep,depth,token);
         const auto empty=base_+code_.size();
-        Jump(emptyEdge);
+        // Windows x64 recognizes an unconditional tail jump as an epilogue,
+        // even though this island did not unwind CET's frame. A conditional
+        // branch is not an epilogue instruction. Empty edge resets flags
+        // immediately; CMP EAX,EAX makes the JE unconditional in meaning.
+        Bytes({0x39,0xc0});Exit(0x84,emptyEdge);
         const auto fallback=base_+code_.size();
-        StockCompare();Jump(activeEdge); // restore original flags
+        StockCompare(); // restore the actual original branch flags
+        Exit(0x84,activeEdge);
+        Exit(0x85,emptyEdge); // exhaustive original compare outcome
         for(auto at:fallback_)Fix(at,fallback);
         for(auto at:sleep_)Fix(at,empty);
     }

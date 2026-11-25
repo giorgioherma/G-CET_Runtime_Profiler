@@ -48,8 +48,8 @@ inline bool SameFrame(const UnwindResult& a,const UnwindResult& b){
 }
 // The island does not establish a new frame; CHAININFO refers to the
 // already-established original CET frame and its original handler data.
-// Windows may recognize a terminal jump as an epilogue, so explicitly
-// test the two emitted terminal rel32 jump PCs as well as the entry.
+// Windows recognizes an unconditional terminal jump as an epilogue.
+// The revised emitter uses conditional exits; test every exit PC.
 inline void CheckChainedUnwind(uint8_t* image,uint32_t guard,uint32_t island,
                                uint32_t size,uint32_t metadata){
     auto original=FindRuntimeFunction(image,guard);
@@ -76,10 +76,13 @@ inline void CheckChainedUnwind(uint8_t* image,uint32_t guard,uint32_t island,
     initial.Rbp=0x1122334455667788ull;initial.Rbx=0x2233445566778899ull;
     initial.Rsi=0x3333;initial.Rdi=0x4444;
     initial.R12=0x1212;initial.R13=0x1313;initial.R14=0x1414;initial.R15=0x1515;
-    UnwindRequire(size>=15,"short gate");
-    // Emitter tail: sleep jmp, original cmp (5 bytes), active jmp.
-    const uint32_t pcs[]={island,island+size-15,island+size-5};
-    UnwindRequire(image[pcs[1]]==0xe9&&image[pcs[2]]==0xe9,"unexpected gate tail");
+    UnwindRequire(size>=25,"short gate");
+    // Emitter tail: CMP EAX,EAX; JE empty; original CMP; JE active; JNE empty.
+    const uint32_t pcs[]={island,island+size-25,island+size-23,
+                         island+size-17,island+size-12,island+size-6};
+    UnwindRequire(image[pcs[1]]==0x39&&image[pcs[2]]==0x0f&&image[pcs[2]+1]==0x84&&
+        image[pcs[3]]==0x41&&image[pcs[4]]==0x0f&&image[pcs[4]+1]==0x84&&
+        image[pcs[5]]==0x0f&&image[pcs[5]+1]==0x85,"unexpected conditional gate tail");
     for(DWORD kind:{DWORD{UNW_FLAG_NHANDLER},DWORD{UNW_FLAG_EHANDLER},DWORD{UNW_FLAG_UHANDLER}}){
         auto expected=UnwindAt(image,original,guard,initial,kind);
         UnwindRequire(expected.context.Rsp>initial.Rsp&&expected.context.Rsp<
