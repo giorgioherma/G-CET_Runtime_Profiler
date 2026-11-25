@@ -198,6 +198,10 @@ public static class PassGeneratorService
         var observerDemandTransforms = ZeroEngineObserverDemandSource.TryStage(
             ref fixedRuntime, effectiveRuntime.Native?.HasObserverDemand == true,
             out var observerDemandIntegrated);
+        if(!observerDemandIntegrated)
+            observerDemandTransforms += ZeroEngineObserverDemandSource.TryLegacyStage(
+                modsRoot,ref fixedRuntime,staged,effectiveRuntime.Native?.HasObserverDemand==true,
+                out observerDemandIntegrated);
         centralDemandTransforms += observerDemandTransforms;
         // The pose reader is a mechanical generic transform, not a semantic rule.
         // It still participates in framework-only generation eligibility.

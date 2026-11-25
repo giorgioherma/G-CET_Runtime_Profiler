@@ -542,6 +542,41 @@ return Router
             Check(process.ExitCode==0,"generated observer execution failed: "+scenario);
         }
     }
+    // Legacy notification path uses the same scheduler and native gate.
+    var legacyHost=privateSource?host:File.ReadAllText("tests/ZeroEngineDemandContract/LegacyPlayerActionFixture.lua");
+    var legacyEmitter=File.ReadAllText(privateSource?Path.Combine(args[1],"modules","EventEmitter.lua"):
+        "tests/ZeroEngineDemandContract/LegacyPlayerActionEmitterFixture.lua");
+    Check(ZeroEngineObserverDemandSource.LegacyEmitterProof(legacyEmitter),"legacy emitter ownership proof");
+    Check(ZeroEngineObserverDemandSource.TryLegacyHost(legacyHost,out var legacyNext),"legacy PlayerAction host proof");
+    Check(ZeroEngineObserverDemandSource.TryLegacyHost(legacyNext,out var legacyRepeat)&&legacyRepeat==legacyNext,
+        "legacy PlayerAction idempotence");
+    Check(!ZeroEngineObserverDemandSource.TryLegacyHost(legacyHost.Replace("return Engine","local escaped = Events\nreturn Engine"),out _),
+        "escaped event bus must refuse native suppression");
+    Check(!ZeroEngineObserverDemandSource.LegacyEmitterProof(legacyEmitter.Replace("local n = #listeners","local n = #listeners + 1")),
+        "changed emitter behavior must refuse native suppression");
+    if(privateSource)
+    {
+        foreach(var (name,file) in new[]{("Lifecycle","Lifecycle"),("DerivedState","DerivedState"),("BlackboardCache","BlackboardCache2")})
+            Check(ZeroEngineObserverDemandSource.LegacyBusRecipientProof(File.ReadAllText(Path.Combine(args[1],"modules",file+".lua")),name),
+                "legacy event bus recipient proof: "+name);
+    }
+    if(!privateSource)
+    {
+        Check(ZeroEngineObserverDemandSource.TryScheduler(scheduler,out var legacyController),"legacy canonical observer controller");
+        var legacyDir=Path.Combine(root,"legacy-observer");
+        Directory.CreateDirectory(Path.Combine(legacyDir,"modules","G-CET"));
+        File.WriteAllText(Path.Combine(legacyDir,"init.lua"),legacyNext);
+        File.WriteAllText(Path.Combine(legacyDir,"modules","EventEmitter.lua"),legacyEmitter);
+        File.WriteAllText(Path.Combine(legacyDir,"modules","G-CET","Scheduler.lua"),legacyController);
+        foreach(var scenario in new[]{"complete","pre-init","mixed","missing-native","wake-refused"})
+        {
+            var psi=new ProcessStartInfo("lua5.4"){UseShellExecute=false};
+            psi.ArgumentList.Add("tests/ZeroEngineDemandContract/ExecuteLegacyPlayerAction.lua");
+            psi.ArgumentList.Add(legacyDir);psi.ArgumentList.Add(scenario);
+            using var process=Process.Start(psi)!;process.WaitForExit();
+            Check(process.ExitCode==0,"legacy generated observer execution failed: "+scenario);
+        }
+    }
     if (privateSource)
     {
         Console.WriteLine("Private stock 0-Engine central demand generation and idempotence PASS");

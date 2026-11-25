@@ -187,7 +187,12 @@ internal static class ZeroEngineObserverDemandSource
         if(!ZeroEngineDemandSource.TryScheduler(source,out var candidate))return false;
         if(candidate.Contains(Marker,StringComparison.Ordinal))
         {
-            if(Count(candidate,NL(candidate,SchedulerHelper))!=1)return false;
+            if(Count(candidate,NL(candidate,SchedulerHelper))!=1)
+            {
+                var old=NL(candidate,LegacySchedulerHelper);
+                if(Count(candidate,old)!=1)return false;
+                candidate=candidate.Replace(old,NL(candidate,SchedulerHelper),StringComparison.Ordinal);
+            }
         }
         else if(candidate.Contains("OwnObserver",StringComparison.Ordinal)||
                 !InsertScheduler(ref candidate))
@@ -213,6 +218,333 @@ internal static class ZeroEngineObserverDemandSource
         integrated=true;return h==hn&&r==rn&&s==sn?0:1;
     }
 
+
+    private const string LegacyMarker="-- G-CET legacy PlayerAction demand v1";
+    private const string LegacySubscribeLine="if eventName == \"PlayerAction\" then return __gcetLegacySubscribe(proxy, fn, source) end";
+    private const string LegacyEnterLine="if __gcetLegacyEnter then __gcetLegacyEnter() end";
+    private const string LegacyOwnLine="__gcetLegacyOwn()";
+    private const string LegacySubscribeShape="""
+function Engine.Subscribe(eventName, fn, source)
+    local proxy = Events[eventName]
+    if proxy then
+        return proxy:subscribe(fn, source)
+    else
+        Logger.Log("0-Engine", "Unknown event: " .. tostring(eventName), "warn")
+        return { unsubscribe = function() end }
+    end
+end
+""";
+    private const string LegacyObserveShape="""
+Observe("PlayerPuppet", "OnAction", function(_, action)
+    if not isPlaying or State.inMenu then return end
+    Events.PlayerAction:trigger(action)
+end)
+""";
+    private const string LegacyHelper="""
+-- G-CET legacy PlayerAction demand v1
+local __gcetLegacyLane, __gcetLegacyEnter
+local function __gcetLegacyRefresh()
+    if __gcetLegacyLane then
+        -- next, not #, is deliberately conservative for a sparse listener
+        -- array during an original reentrant unsubscribe.
+        __gcetLegacyLane.SetActive(next(Events.PlayerAction.listeners) ~= nil)
+    end
+end
+local function __gcetLegacySubscribe(proxy, fn, source)
+    -- Wake BEFORE mutation: source labelling or a reentrant callback may
+    -- enter CET before the original subscribe function returns.
+    if __gcetLegacyLane and type(fn) == "function" then
+        __gcetLegacyLane.SetActive(true)
+    end
+    local handle = proxy:subscribe(fn, source)
+    local original = handle.unsubscribe
+    handle.unsubscribe = function()
+        original()
+        __gcetLegacyRefresh()
+    end
+    __gcetLegacyRefresh()
+    return handle
+end
+local function __gcetLegacyOwn()
+    if __gcetLegacyLane then return end
+    local ok, scheduler = pcall(require, "modules/G-CET/Scheduler")
+    local demand = ok and type(scheduler) == "table" and scheduler.Demand
+    local schedule = Engine.Schedule and Engine.Schedule.NextTick
+    if type(demand) ~= "table" or type(demand.OwnObserver) ~= "function" or
+       type(schedule) ~= "function" then return end
+    local accepted, lane = pcall(demand.OwnObserver, "PlayerPuppet", "OnAction", function(fn)
+        __gcetLegacyEnter = fn
+    end, schedule)
+    if accepted and lane then
+        __gcetLegacyLane = lane
+        __gcetLegacyRefresh()
+    end
+end
+""";
+
+    private static string[] Shape(string source) => Tokens(source).Select(Value).ToArray();
+    private static int ShapeCount(Match[] tokens,string shape)
+    {
+        var pattern=Shape(shape);
+        return Enumerable.Range(0,tokens.Length).Count(i=>At(tokens,i,pattern));
+    }
+    // These are the actual mutable emitter operations, not a file fingerprint.
+    // Reject alternate return handles, raw exports or altered trigger semantics.
+    internal static bool LegacyEmitterProof(string source)
+    {
+        var t=Tokens(source);
+        const string create="""
+function EventEmitter.new()
+    local self = setmetatable({}, EventEmitter)
+    self.listeners = {}
+    self.listenerSources = {}
+    self._firing = false
+    self._dirty = false
+    return self
+end
+""";
+        const string subscribe="""
+function EventEmitter:subscribe(callback, source)
+    if type(callback) ~= "function" then
+        Logger.Log("0-Engine", "EventEmitter: Attempted to subscribe with non-function", "warn")
+        return { unsubscribe = function() end }
+    end
+    table.insert(self.listeners, callback)
+    table.insert(self.listenerSources, source or getSourceLabel(callback))
+    return {
+        unsubscribe = function()
+            for i, listener in ipairs(self.listeners) do
+                if listener == callback then
+                    if self._firing then
+                        self.listeners[i] = nil
+                        self.listenerSources[i] = nil
+                        self._dirty = true
+                    else
+                        table.remove(self.listeners, i)
+                        table.remove(self.listenerSources, i)
+                    end
+                    break
+                end
+            end
+        end
+    }
+end
+""";
+        const string trigger="""
+function EventEmitter:trigger(...)
+    local listeners = self.listeners
+    local n = #listeners
+    if n == 0 then return end
+    self._firing = true
+    for i = 1, n do
+        local listener = listeners[i]
+        if listener then
+            local success, err = pcall(listener, ...)
+            if not success then
+                Logger.Log("0-Engine", "EventEmitter: Error in listener: " .. tostring(err), "error")
+            end
+        end
+    end
+    self._firing = false
+    if self._dirty then
+        self._dirty = false
+        local sources = self.listenerSources
+        local j = 0
+        for i = 1, #listeners do
+            if listeners[i] then
+                j = j + 1
+                listeners[j] = listeners[i]
+                sources[j] = sources[i]
+            end
+        end
+        for i = j + 1, #listeners do
+            listeners[i] = nil
+            sources[i] = nil
+        end
+    end
+end
+""";
+        const string count="function EventEmitter:getListenerCount() return #self.listeners end";
+        const string sources="""
+function EventEmitter:getListenerSources()
+    local result = {}
+    for i = 1, #self.listenerSources do
+        result[i] = self.listenerSources[i]
+    end
+    return result
+end
+""";
+        var known=new[]{create,subscribe,trigger,count,sources};
+        if(known.Any(k=>ShapeCount(t,k)!=1))return false;
+        foreach(var word in new[]{"listeners","listenerSources","_firing","_dirty"})
+            if(t.Count(x=>x.Value==word)!=known.Sum(k=>Shape(k).Count(x=>x==word)))return false;
+        // No extra methods replacing or returning the mutable listener table.
+        return ShapeCount(t,"EventEmitter.__index = EventEmitter")==1 &&
+            t.Count(x=>x.Value=="EventEmitter")==known.Sum(k=>Shape(k).Count(x=>x=="EventEmitter"))+4;
+    }
+
+    // Validate the existing Event bus recipients, rather than assuming that
+    // an arbitrary module receiving the whole bus cannot mutate the emitter.
+    internal static bool LegacyBusRecipientProof(string source,string module)
+    {
+        var t=Tokens(source);
+        bool board=module=="BlackboardCache";
+        string init=module=="Lifecycle"?"function Lifecycle.Init(events, state, logger) Events = events":
+            "function "+module+".Init(events) Events = events";
+        if(ShapeCount(t,init)!=1||ShapeCount(t,"local Events = nil")!=1||
+           t.Count(x=>x.Value=="events")!=2)return false;
+        const string dispatch="local function Trigger(eventName, value) if Events and Events[eventName] then Events[eventName]:trigger(value) end end";
+        if(board)
+            return ShapeCount(t,dispatch)==1&&t.Count(x=>x.Value=="Events")==5;
+        var allowed=module=="Lifecycle"?new[]{"PlayerInvalidated","PlayerReady","PlayerRecreated"}:
+            new[]{"CoverDirectionChanged","DistrictChanged"};
+        for(int i=0;i<t.Length;++i)
+        {
+            if(t[i].Value!="Events")continue;
+            if(At(t,i-1,"local","Events","=","nil")||At(t,i,"Events","=","events"))continue;
+            if(allowed.Any(n=>At(t,i,"Events","and","Events",".",n,"then")))continue;
+            if(i+2>=t.Length||!allowed.Contains(t[i+2].Value)||!At(t,i+1,"."))return false;
+            var eventName=t[i+2].Value;
+            if(At(t,i,"Events",".",eventName,":","trigger","("))continue;
+            if(At(t,i,"Events","and","Events",".",eventName,"then"))continue;
+            if(At(t,i-2,"Events","and","Events",".",eventName,"then"))continue;
+            return false;
+        }
+        return true;
+    }
+    private static bool LegacyHostProof(string source)
+    {
+        var t=Tokens(source);
+        if(ShapeCount(t,LegacySubscribeShape)!=1||ShapeCount(t,LegacyObserveShape)!=1||
+           ShapeCount(t,"local Events = { PlayerAction = EventEmitter.new() ,")!=1||
+           ShapeCount(t,"local EventEmitter = require('modules/EventEmitter')")!=1)return false;
+        // Engine.Subscribe is the only dynamic event lookup. The diagnostic
+        // enumeration may read counts/source labels but cannot expose the bus.
+        const string list="for name, _ in pairs(Events) do table.insert(names, name) end";
+        const string overlay="for name, emitter in pairs(Events) do local count = emitter:getListenerCount() totalSubs = totalSubs + count table.insert(names, { name = name, count = count, emitter = emitter }) end";
+        if(ShapeCount(t,list)!=1||ShapeCount(t,overlay)!=1)return false;
+        if(ShapeCount(t,"Lifecycle.Init(Events, State, Logger)")!=1||
+           ShapeCount(t,"DerivedState.Init(Events)")!=1||ShapeCount(t,"BlackboardCache.Init(Events)")!=1)return false;
+        for(int i=0;i<t.Length;++i)
+        {
+            if(t[i].Value=="EventEmitter" &&
+               !At(t,i-1,"local","EventEmitter","=")&&!At(t,i,"EventEmitter",".","new","(",")"))return false;
+            if(t[i].Value!="Events")continue;
+            if(At(t,i-1,"local","Events","=","{")||At(t,i-3,"local","proxy","=","Events","[","eventName","]"))continue;
+            if(At(t,i-3,"Lifecycle",".","Init","(","Events",",","State",",","Logger",")"))continue;
+            if(At(t,i-4,"Lifecycle",".","Init","(","Events",",","State",",","Logger",")"))continue;
+            if(At(t,i-4,"DerivedState",".","Init","(","Events",")")||
+               At(t,i-4,"BlackboardCache",".","Init","(","Events",")"))continue;
+            if(At(t,i-2,"pairs","(","Events",")"))continue;
+            if(i+4<t.Length&&At(t,i+1,".")&&IsIdentifier(t[i+2].Value)&&
+               (At(t,i+3,":","trigger","(")||At(t,i+3,":","subscribe","("))&&
+               (t[i+2].Value!="PlayerAction"||At(t,i+3,":","trigger","(")))continue;
+            return false;
+        }
+        // No direct second legacy trigger or assignment. Other OnAction
+        // observers keep their original registration and are checked by the
+        // actual native chain gate, not a static count of registration sites.
+        return ShapeCount(t,"Events.PlayerAction:trigger(")==1&&
+            ShapeCount(t,"entry.emitter:getListenerSources()")>=1&&
+            Enumerable.Range(0,t.Length).Where(i=>t[i].Value=="emitter").All(i=>
+                At(t,i-2,"for","name","emitter")||At(t,i-3,"for","name",",","emitter")||
+                At(t,i-3,"for","interval",",","emitter")||
+                At(t,i,"emitter",":","getListenerCount","(",")")||
+                At(t,i,"emitter","=","emitter","}")||At(t,i-2,"emitter","=","emitter")||
+                At(t,i-2,"entry",".","emitter",":","getListenerSources","(",")"));
+    }
+    // Remove exactly the owned generated fragments only in a proof copy.
+    // All source edits are additive at original statement anchors.
+    private static bool RemoveShape(ref string source,string shape,out bool found)
+    {
+        var t=Tokens(source);var pattern=Shape(shape);
+        var hits=Enumerable.Range(0,t.Length).Where(i=>At(t,i,pattern)).ToArray();
+        found=hits.Length==1;
+        if(hits.Length>1)return false;
+        if(!found)return true;
+        int i=hits[0],start=t[i].Index,end=t[i+pattern.Length-1].Index+t[i+pattern.Length-1].Length;
+        source=source.Remove(start,end-start);
+        return true;
+    }
+    internal static bool TryLegacyHost(string source,out string next)
+    {
+        next=source;
+        var proof=source;
+        // Remove the full owned helper, preserving author source outside it.
+        var helper=source.Contains(LegacyMarker,StringComparison.Ordinal);
+        if(helper)
+        {
+            if(!RemoveShape(ref proof,LegacyHelper,out var found)||!found)return false;
+        }
+        if(!RemoveShape(ref proof,LegacySubscribeLine,out var sub)||
+           !RemoveShape(ref proof,LegacyEnterLine,out var enter)||
+           !RemoveShape(ref proof,LegacyOwnLine,out var own))return false;
+        if(!helper&&(sub||enter||own))return false;
+        if(!LegacyHostProof(proof))return false;
+        var candidate=source;
+        if(!helper&&!BeforeLine(ref candidate,"function Engine.Subscribe(eventName, fn, source)",LegacyHelper.Replace("\r\n","\n",StringComparison.Ordinal)))return false;
+        if(!sub&&!BeforeLine(ref candidate,"return proxy:subscribe(fn, source)",LegacySubscribeLine))return false;
+        if(!enter)
+        {
+            var t=Tokens(candidate);
+            var shape=Shape(LegacyObserveShape);
+            var hits=Enumerable.Range(0,t.Length).Where(i=>At(t,i,shape)).ToArray();
+            if(hits.Length!=1)return false;
+            var guard=hits[0]+Array.IndexOf(shape,"if");
+            int line=candidate.LastIndexOf('\n',t[guard].Index)+1;
+            var indent=candidate[line..t[guard].Index];
+            if(!string.IsNullOrWhiteSpace(indent))return false;
+            candidate=candidate.Insert(line,NL(candidate,indent+LegacyEnterLine+"\n"));
+        }
+        if(!own)
+        {
+            var t=Tokens(candidate);
+            var dispatch=Shape("Events.PlayerAction:trigger(action) end)");
+            var hits=Enumerable.Range(0,t.Length).Where(i=>At(t,i,dispatch)).ToArray();
+            if(hits.Length!=1)return false;
+            int close=hits[0]+dispatch.Length-1;
+            int end=t[close].Index+t[close].Length;
+            int lineEnd=candidate.IndexOf('\n',end);if(lineEnd<0)lineEnd=candidate.Length;
+            if(!Regex.IsMatch(candidate[end..lineEnd],@"\A[ \t\r]*(?:--[^\r\n]*)?\z"))return false;
+            int line=candidate.LastIndexOf('\n',t[close-1].Index)+1;
+            var indent=candidate[line..t[close-1].Index];
+            if(!string.IsNullOrWhiteSpace(indent))return false;
+            while(lineEnd>end&&candidate[lineEnd-1]=='\r')lineEnd--;
+            candidate=candidate.Insert(lineEnd,NL(candidate,"\n"+indent+LegacyOwnLine));
+        }
+        next=candidate;return true;
+    }
+    internal static int TryLegacyStage(string modsRoot,ref FixedZeroEngineBuild framework,
+        Dictionary<string,byte[]> staged,bool nativeAvailable,out bool integrated)
+    {
+        integrated=false;
+        if(!nativeAvailable||!framework.Files.TryGetValue(ZeroEngineDemandSource.InitPath,out var hb)||
+           !framework.Files.TryGetValue(ZeroEngineDemandSource.SchedulerPath,out var sb))return 0;
+        // The host may already have other independent ActionRouter callbacks;
+        // the sole native gate refuses the actual mixed chain without edits.
+        var host=Encoding.UTF8.GetString(hb);var scheduler=Encoding.UTF8.GetString(sb);
+        string? Load(string name)
+        {
+            var relative="0-Engine/modules/"+name+".lua";
+            if(framework.Files.TryGetValue(relative,out var bytes)||staged.TryGetValue(relative,out bytes))
+                return Encoding.UTF8.GetString(bytes);
+            var path=Path.Combine(modsRoot,"0-Engine","modules",name+".lua");
+            return File.Exists(path)?File.ReadAllText(path):null;
+        }
+        var emitter=Load("EventEmitter");var lifecycle=Load("Lifecycle");
+        var derived=Load("DerivedState");var board=Load("BlackboardCache2");
+        if(emitter==null||lifecycle==null||derived==null||board==null||
+           !LegacyEmitterProof(emitter)||!LegacyBusRecipientProof(lifecycle,"Lifecycle")||
+           !LegacyBusRecipientProof(derived,"DerivedState")||!LegacyBusRecipientProof(board,"BlackboardCache")||
+           !TryLegacyHost(host,out var hn)||!TryScheduler(scheduler,out var sn))return 0;
+        var files=framework.Files.ToDictionary(p=>p.Key,p=>p.Value,StringComparer.OrdinalIgnoreCase);
+        files[ZeroEngineDemandSource.InitPath]=Encoding.UTF8.GetBytes(hn);
+        files[ZeroEngineDemandSource.SchedulerPath]=Encoding.UTF8.GetBytes(sn);
+        framework=framework with {Files=files,FixedInitSha256=Convert.ToHexString(
+            SHA256.HashData(files[ZeroEngineDemandSource.InitPath])).ToLowerInvariant()};
+        integrated=true;return host==hn&&scheduler==sn?0:1;
+    }
+
     private const string RouterHelper = """
 -- G-CET native observer demand v1
 local __gcetObserverLane
@@ -231,12 +563,17 @@ local function __gcetObserverChanged()
 end
 """;
 
-    // One event-owned lane, not a recurring job. Prepare only on the first
-    // transition to idle after an actual subscription. Bind once inside the
-    // original observer. All subsequent updates are boolean transitions.
+    // One event-owned lane, not a recurring job. The original router still
+    // prepares on its first idle transition. Legacy notifications can start
+    // idle and use the host's canonical scheduler activation wrapper.
+    private static string LegacySchedulerHelper => SchedulerHelper.Replace("\r\n","\n",StringComparison.Ordinal)
+        .Replace("setEntry, schedule)", "setEntry)", StringComparison.Ordinal)
+        .Replace("    schedule = schedule or Scheduler.NextTick\n", "", StringComparison.Ordinal)
+        .Replace("schedule({owner=", "Scheduler.NextTick({owner=", StringComparison.Ordinal);
     private const string SchedulerHelper = """
 -- G-CET native observer demand v1
-function demand.OwnObserver(klass, method, setEntry)
+function demand.OwnObserver(klass, method, setEntry, schedule)
+    schedule = schedule or Scheduler.NextTick
     local active, attempted, prepared, handle = true, false, false, 0
     local pending, native
     local function fallback()
@@ -245,7 +582,7 @@ function demand.OwnObserver(klass, method, setEntry)
         handle = 0
         if prepared then
             prepared = false
-            Scheduler.NextTick({owner="0-Engine", id="observer-retire", pause="never", clock="real"},
+            schedule({owner="0-Engine", id="observer-retire", pause="never", clock="real"},
                 function() pcall(native.retire) end)
         end
     end
@@ -290,7 +627,7 @@ function demand.OwnObserver(klass, method, setEntry)
         elseif active then
             if pending then pending.Cancel(); pending = nil end
         elseif not attempted and not pending then
-            pending = Scheduler.NextTick({owner="0-Engine", id="observer-prepare", pause="never", clock="real"}, prepare)
+            pending = schedule({owner="0-Engine", id="observer-prepare", pause="never", clock="real"}, prepare)
         end
     end}
 end
