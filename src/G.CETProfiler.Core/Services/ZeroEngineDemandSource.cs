@@ -141,6 +141,77 @@ internal static class ZeroEngineDemandSource
         return true;
     }
 
+
+    // The grouped pose read is a dependency of every downstream UpdateFrame
+    // operation. Until those dependencies are proven dormant, keep the exact
+    // original position/orientation/Euler reads and failure return. Reuse the
+    // protected function itself: its only captured variable is the current
+    // receiver, now an explicit argument. No retained entity or pose cache.
+    private const string PoseReaderName = "__gcetReadPlayerPose";
+    private const string PoseReaderMarker = "-- G-CET shared pose reader v1";
+    private static readonly Regex PoseBody = new(
+        @"(?m)^(?<indent>[ \t]*)local (?<ok>[A-Za-z_]\w*),[ \t]*(?<position>[A-Za-z_]\w*),[ \t]*(?<orientation>[A-Za-z_]\w*),[ \t]*(?<yaw>[A-Za-z_]\w*)[ \t]*=[ \t]*pcall\(function\(\)[ \t]*\r*\n[ \t]*local (?<p>[A-Za-z_]\w*)[ \t]*=[ \t]*(?<player>[A-Za-z_]\w*):GetWorldPosition\(\)[ \t]*\r*\n[ \t]*local (?<o>[A-Za-z_]\w*)[ \t]*=[ \t]*\k<player>:GetWorldOrientation\(\)[ \t]*\r*\n[ \t]*return \k<p>,[ \t]*\k<o>,[ \t]*\k<o>:ToEulerAngles\(\)\.yaw[ \t]*\r*\n\k<indent>end\)[ \t]*(?=\r*$)",
+        RegexOptions.CultureInvariant);
+    internal static bool TryPoseReader(string source, out string next)
+    {
+        next = source;
+        var frame = Regex.Matches(source, @"(?m)^local function UpdateFrame\([A-Za-z_]\w*\)[ \t]*(?=\r*$)");
+        if (frame.Count != 1) return false;
+        var frameEnd = Regex.Match(source[frame[0].Index..], @"(?m)^end[ \t]*(?=\r*$)");
+        if (!frameEnd.Success) return false;
+        var body = source.Substring(frame[0].Index, frameEnd.Index+frameEnd.Length);
+        // Recognize an existing equivalent local helper/explicit argument.
+        // Neither a second helper nor a corrective pass is needed.
+        if (source.Contains(PoseReaderName, StringComparison.Ordinal) ||
+            source.Contains(PoseReaderMarker, StringComparison.Ordinal))
+        {
+            var helper = Regex.Matches(source, @"(?m)^local function "+PoseReaderName+
+                @"\((?<r>[A-Za-z_]\w*)\)[ \t]*\r*\n[ \t]*local (?<p>[A-Za-z_]\w*) = \k<r>:GetWorldPosition\(\)\r*\n[ \t]*local (?<o>[A-Za-z_]\w*) = \k<r>:GetWorldOrientation\(\)\r*\n[ \t]*return \k<p>, \k<o>, \k<o>:ToEulerAngles\(\)\.yaw\r*\nend(?=\r*$)");
+            return helper.Count==1 && helper[0].Index<frame[0].Index &&
+                Regex.Matches(body,@"\bpcall\("+PoseReaderName+@",[ \t]*[A-Za-z_]\w*\)").Count==1 &&
+                Count(source,PoseReaderName)==2 && PoseBody.Matches(body).Count==0;
+        }
+        var matches = PoseBody.Matches(body);
+        if(matches.Count!=1)return false;
+        var m=matches[0];
+        string V(string name)=>m.Groups[name].Value;
+        // Only the original receiver and the two local results occur in
+        // the closure. Refuse name collisions (which would change binding).
+        if(new[]{V("player"),V("p"),V("o")}.Distinct(StringComparer.Ordinal).Count()!=3)return false;
+        var tail=body[(m.Index+m.Length)..];
+        var expected=new[]{"if not "+V("ok")+" then return end",
+            "State.pos = "+V("position"),"State.orientation = "+V("orientation"),
+            "State.yaw = "+V("yaw")};
+        var tailCode=WithoutLuaTrivia(tail);
+        var ordered=string.Join(@"\s+",expected.Select(Regex.Escape));
+        if(!Regex.IsMatch(tailCode,@"\A\s*"+ordered,RegexOptions.CultureInvariant))return false;
+        var receiver=V("player");
+        var replacement=V("indent")+"local "+V("ok")+", "+V("position")+", "+V("orientation")+", "+V("yaw")+
+            " = pcall("+PoseReaderName+", "+receiver+")";
+        var helperSource=PoseReaderMarker+"\nlocal function "+PoseReaderName+"("+receiver+")\n"+
+            "    local "+V("p")+" = "+receiver+":GetWorldPosition()\n"+
+            "    local "+V("o")+" = "+receiver+":GetWorldOrientation()\n"+
+            "    return "+V("p")+", "+V("o")+", "+V("o")+":ToEulerAngles().yaw\nend\n\n";
+        next=source.Remove(frame[0].Index+m.Index,m.Length).Insert(frame[0].Index+m.Index,replacement)
+            .Insert(frame[0].Index,Newlines(source,helperSource));
+        return true;
+    }
+
+    internal static int TryStagePose(ref FixedZeroEngineBuild framework,List<object> manifest)
+    {
+        if(!framework.Files.TryGetValue(InitPath,out var bytes))return 0;
+        var source=Encoding.UTF8.GetString(bytes);
+        if(!TryPoseReader(source,out var next)||next==source)return 0;
+        var files=framework.Files.ToDictionary(p=>p.Key,p=>p.Value,StringComparer.OrdinalIgnoreCase);
+        files[InitPath]=Encoding.UTF8.GetBytes(next);
+        framework=framework with{Files=files,FixedInitSha256=Convert.ToHexString(
+            SHA256.HashData(files[InitPath])).ToLowerInvariant()};
+        manifest.Add(new{type="SEMANTIC_RULE",Owner="0-Engine",RuleId="0engine-shared-pose-reader",
+            Handler="ZeroEngineDemandSource",PolicyClass="SAME_PHASE_REUSE_PROTECTED_FUNCTION",
+            sourceProof=true,nativeReadCountChanged=false,callbackOrCadenceChanged=false});
+        return 1;
+    }
+
     private const string DerivedMarker = "-- G-CET derived sample demand v1";
     private const string SampleMarker = "-- G-CET demand sample slots v1";
     private const string DerivedHostMarker = "-- G-CET derived sample host v1";

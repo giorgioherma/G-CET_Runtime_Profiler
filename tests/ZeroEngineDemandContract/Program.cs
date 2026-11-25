@@ -114,6 +114,58 @@ return SpatialHash
     Check(!ZeroEngineDemandSource.TryProducer(proximity.Replace(
         "zones[zoneCounter] = zone", "zones[zoneCounter] = zone\n    zones[999] = zone"),
         "Proximity", out _), "unproved extra registry mutation accepted");
+
+    // Actual pose closure from the installed host. Verify generated output
+    // keeps the receiver, call order, nil handling and failure barrier.
+    var poseFixture="""
+local function UpdateFrame(delta)
+    local player = CurrentPlayer()
+    if not player then return end
+    local posOriOk, pos, orientation, yaw = pcall(function()
+        local p = player:GetWorldPosition()
+        local o = player:GetWorldOrientation()
+        return p, o, o:ToEulerAngles().yaw
+    end)
+    if not posOriOk then return end
+    State.pos = pos
+    State.orientation = orientation
+    State.yaw = yaw
+    downstream()
+end
+return UpdateFrame
+""";
+    Check(ZeroEngineDemandSource.TryPoseReader(poseFixture,out var poseNext)&&poseNext!=poseFixture,
+        "pose protected function reuse");
+    Check(ZeroEngineDemandSource.TryPoseReader(poseNext,out var poseRepeat)&&poseRepeat==poseNext,
+        "pose reader idempotence");
+    var poseCustom="-- compatible header\r\n"+poseFixture.Replace("\n","\r\n")+"\r\n-- custom trailer";
+    Check(ZeroEngineDemandSource.TryPoseReader(poseCustom,out var poseCustomNext)&&
+        poseCustomNext.StartsWith("-- compatible header\r\n")&&
+        poseCustomNext.EndsWith("\r\n-- custom trailer"),"pose custom source preservation");
+    Check(!ZeroEngineDemandSource.TryPoseReader(poseFixture.Replace(
+        "return p, o, o:ToEulerAngles().yaw","audit(player)\n        return p, o, o:ToEulerAngles().yaw"),out _),
+        "unknown closure body must remain original");
+    if(privateSource)
+    {
+        var poseStock=new FixedZeroEngineBuild(new Dictionary<string,byte[]>{
+            [ZeroEngineDemandSource.InitPath]=generatedHost
+        },"","","","");
+        Check(ZeroEngineDemandSource.TryStagePose(ref poseStock,new())==1,
+            "actual private host pose stage");
+        Check(ZeroEngineDemandSource.TryStagePose(ref poseStock,new())==0,
+            "actual private pose stage repeat");
+    }
+    else
+    {
+        File.WriteAllText(Path.Combine(root,"pose-original.lua"),poseFixture);
+        File.WriteAllText(Path.Combine(root,"pose-generated.lua"),poseNext);
+        var posePsi=new ProcessStartInfo("lua5.4"){UseShellExecute=false};
+        posePsi.ArgumentList.Add("tests/ZeroEngineDemandContract/ExecutePose.lua");
+        posePsi.ArgumentList.Add(root);
+        using var poseProcess=Process.Start(posePsi)!;poseProcess.WaitForExit();
+        Check(poseProcess.ExitCode==0,"generated pose execution failed");
+    }
+
     // Keep the existing spatial fixture independent; exercise the new
     // scalar transformation using the same production generator stage.
     File.WriteAllText(Path.Combine(moduleDir, "DerivedState.lua"), derived);

@@ -190,6 +190,7 @@ public static class PassGeneratorService
         var centralDemandTransforms = ZeroEngineDemandSource.TryStage(
             modsRoot, ref fixedRuntime, staged, appliedTransformsByFile,
             transformManifest, skipped);
+        centralDemandTransforms += ZeroEngineDemandSource.TryStagePose(ref fixedRuntime, transformManifest);
         var observerDemandTransforms = ZeroEngineObserverDemandSource.TryStage(
             ref fixedRuntime, effectiveRuntime.Native?.HasObserverDemand == true,
             out var observerDemandIntegrated);
