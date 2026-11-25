@@ -429,6 +429,222 @@ function DerivedState.__gcetExpose(tbl)
 end
 """;
 
+    private const string IdleMarker = "-- G-CET scheduler active-work demand v1";
+    private const string IdleHostMarker = "-- G-CET scheduler idle host v1";
+
+    // The canonical scheduler owns active work and necessary cleanup. Keep
+    // phase clocks and profiler frame scopes even with no runnable work.
+    // No new host timer, no context creation for a completely idle frame.
+    internal static bool TryIdleScheduler(string source, out string next)
+    {
+        next = source;
+        if (source.Contains(IdleMarker, StringComparison.Ordinal))
+            return Count(source, "function Scheduler.HasPendingWork()") == 1 &&
+                Count(source, "function Scheduler.TryIdleFrame(") == 1 &&
+                Count(source, "local function beginFrame(") == 1 &&
+                Count(source, "local function cancelJob(") == 1 &&
+                Count(source, "local function setJobActive(") == 1 &&
+                Count(source, "if job.active then activeJobs = activeJobs + 1 end") == 2 &&
+                Count(source, "cancelJob(job)") == 4;
+        if (source.Contains("Scheduler.TryIdleFrame", StringComparison.Ordinal) ||
+            source.Contains("Scheduler.HasPendingWork", StringComparison.Ordinal) ||
+            source.Contains("local activeJobs", StringComparison.Ordinal) ||
+            source.Contains("local function cancelJob(", StringComparison.Ordinal) ||
+            source.Contains("local function beginFrame(", StringComparison.Ordinal))
+            return false;
+
+        // Prove every stock job state mutation before using an O(1) count.
+        // The internal job records must stay owned by these private queues.
+        var code = WithoutLuaTrivia(source);
+        if (Regex.Matches(code, @"\.\s*active\s*=(?!=)").Count != 5 ||
+            Regex.Matches(code, @"\.\s*cancelled\s*=(?!=)").Count != 3 ||
+            Regex.Matches(code, @"\blocal\s+(?:frameBuckets|timedJobs)\b\s*=(?!=)").Count != 2 ||
+            Regex.Matches(code, @"\b(?:frameBuckets|timedJobs)\b\s*=(?!=)").Count != 3 ||
+            Count(code, "bucket[#bucket + 1] = job") != 1 ||
+            Count(code, "timedJobs[#timedJobs + 1] = job") != 1 ||
+            Count(code, "return makeHandle(job)") != 2 ||
+            Count(code, "active = options.active ~= false") != 2 ||
+            Count(code, "cancelled = false") != 2 ||
+            Count(code, "function Scheduler.Update(ctx)") != 1)
+            return false;
+
+        const string handles = """
+local function makeHandle(job)
+    local handle = {}
+    function handle.Cancel() job.cancelled = true; job.active = false end
+    handle.unsubscribe = handle.Cancel
+    function handle.Pause() if not job.cancelled then job.active = false end end
+    function handle.Resume() if not job.cancelled then job.active = true end end
+    function handle.SetActive(value) if not job.cancelled then job.active = value == true end end
+    function handle.IsActive() return job.active and not job.cancelled end
+    return handle
+end
+""";
+        const string countedHandles = """
+local function makeHandle(job)
+    local handle = {}
+    function handle.Cancel() cancelJob(job) end
+    handle.unsubscribe = handle.Cancel
+    function handle.Pause() if not job.cancelled then setJobActive(job, false) end end
+    function handle.Resume() if not job.cancelled then setJobActive(job, true) end end
+    function handle.SetActive(value) if not job.cancelled then setJobActive(job, value == true) end end
+    function handle.IsActive() return job.active and not job.cancelled end
+    return handle
+end
+""";
+        const string updateStart = """
+function Scheduler.Update(ctx)
+    lastFrame = ctx.frame
+
+    local profileActive = Profiler.enabled and Profiler.isRunning()
+    if profileActive then
+        Profiler.frameBegin(ctx.frame)
+    end
+
+    local gameNow = tonumber(ctx.now)
+    if gameNow ~= nil then
+        phaseGameClock = gameNow
+    else
+        phaseGameClock = phaseGameClock + (ctx.dt or 0)
+    end
+    phaseRealClock = phaseRealClock + (ctx.realDt or ctx.dt or 0)
+""";
+        const string updateShared = """
+local function beginFrame(frame, dt, realDt, now)
+    lastFrame = frame
+
+    local profileActive = Profiler.enabled and Profiler.isRunning()
+    if profileActive then
+        Profiler.frameBegin(frame)
+    end
+
+    local gameNow = tonumber(now)
+    if gameNow ~= nil then
+        phaseGameClock = gameNow
+    else
+        phaseGameClock = phaseGameClock + (dt or 0)
+    end
+    phaseRealClock = phaseRealClock + (realDt or dt or 0)
+    return profileActive
+end
+
+function Scheduler.HasPendingWork()
+    return activeJobs ~= 0 or pendingCleanup
+end
+
+function Scheduler.TryIdleFrame(frame, dt, realDt, now)
+    if Scheduler.HasPendingWork() then return false end
+    local profileActive = beginFrame(frame, dt, realDt, now)
+    if profileActive then Profiler.frameEnd(frame) end
+    return true
+end
+
+function Scheduler.Update(ctx)
+    local profileActive = beginFrame(ctx.frame, ctx.dt, ctx.realDt, ctx.now)
+    if not Scheduler.HasPendingWork() then
+        if profileActive then Profiler.frameEnd(ctx.frame) end
+        return
+    end
+    -- Cancellations during this scan may need the next scan to compact
+    -- an already-visited bucket. Keep that cleanup demand until handled.
+    pendingCleanup = false
+""";
+        const string counts = """
+-- G-CET scheduler active-work demand v1
+local activeJobs = 0
+local pendingCleanup = false
+local function setJobActive(job, value)
+    if job.active == value then return end
+    job.active = value
+    activeJobs = activeJobs + (value and 1 or -1)
+end
+local function cancelJob(job)
+    if job.cancelled then return end
+    setJobActive(job, false)
+    job.cancelled = true
+    pendingCleanup = true
+end
+""";
+        var candidate = source;
+        if (!BeforeLine(ref candidate, "local function makeHandle(job)", counts) ||
+            !ReplaceUnique(ref candidate, handles, countedHandles) ||
+            !AfterLine(ref candidate, "bucket[#bucket + 1] = job", "if job.active then activeJobs = activeJobs + 1 end") ||
+            !AfterLine(ref candidate, "timedJobs[#timedJobs + 1] = job", "if job.active then activeJobs = activeJobs + 1 end") ||
+            !ReplaceLine(ref candidate,
+                "if job.generationScoped and job.generation ~= generation then job.cancelled = true; return false end",
+                "if job.generationScoped and job.generation ~= generation then cancelJob(job); return false end") ||
+            !ReplaceUnique(ref candidate,
+                "                    job.cancelled = true\n                    job.active = false",
+                "                    cancelJob(job)") ||
+            !ReplaceUnique(ref candidate, updateStart, updateShared))
+            return false;
+        next = candidate;
+        return true;
+    }
+
+    internal static bool TryIdleHost(string source, out string next)
+    {
+        next = source;
+        const string originalContext = """
+        local __gcetPlayer = State.player()
+        Engine.__gcetScheduleDriver({
+            frame = currentFrame, dt = delta, realDt = delta,
+            now = State.time, generation = 0, playing = isPlaying,
+            inMenu = State.inMenu, player = __gcetPlayer,
+            state = Engine.GetState()
+        })
+""";
+        const string idleContext = """
+        if not Engine.__gcetScheduleIdle or not Engine.__gcetScheduleIdle(currentFrame, delta, State.time) then
+            local __gcetPlayer = State.player()
+            Engine.__gcetScheduleDriver({
+                frame = currentFrame, dt = delta, realDt = delta,
+                now = State.time, generation = 0, playing = isPlaying,
+                inMenu = State.inMenu, player = __gcetPlayer,
+                state = Engine.GetState()
+            })
+        end
+""";
+        const string driver = """
+            local __lastRealClock = os.clock()
+            __host.__gcetScheduleDriver = function(ctx)
+""";
+        const string idleDriver = """
+            local __lastRealClock = os.clock()
+            -- G-CET scheduler idle host v1
+            __host.__gcetScheduleIdle = function(frame, dt, now)
+                if type(__scheduler.HasPendingWork) ~= "function" or
+                    type(__scheduler.TryIdleFrame) ~= "function" or
+                    __scheduler.HasPendingWork() then return false end
+                local __realClock = os.clock()
+                local __realDt = __realClock - __lastRealClock
+                __lastRealClock = __realClock
+                __frame = __frame + 1
+                -- Same error boundary and phase-clock semantics as Update.
+                pcall(__scheduler.TryIdleFrame, frame, dt, __realDt, now)
+                return true
+            end
+            __host.__gcetScheduleDriver = function(ctx)
+""";
+        if (source.Contains(IdleHostMarker, StringComparison.Ordinal))
+            return Count(source, "__host.__gcetScheduleIdle = function(") == 1 &&
+                Count(source, "Engine.__gcetScheduleIdle(currentFrame, delta, State.time)") == 1 &&
+                Count(source, "pcall(__scheduler.TryIdleFrame, frame, dt, __realDt, now)") == 1 &&
+                Count(source, "pcall(__scheduler.Update, ctx)") == 1;
+        if (Count(source, "Engine.__gcetScheduleDriver({") != 1 ||
+            Count(source, "__host.__gcetScheduleDriver = function(ctx)") != 1 ||
+            Count(source, "pcall(__scheduler.Update, ctx)") != 1 ||
+            Count(source, "local __lastRealClock = os.clock()") != 1 ||
+            source.Contains("__gcetScheduleIdle", StringComparison.Ordinal))
+            return false;
+        var candidate = source;
+        if (!ReplaceUnique(ref candidate, originalContext, idleContext) ||
+            !ReplaceUnique(ref candidate, driver, idleDriver))
+            return false;
+        next = candidate;
+        return true;
+    }
+
     // Compose on top of the actual staged generic module, never replace a
     // live module with a historical copy. Commit a service only when all three
     // pieces (scheduler, registry and host) are proved. No demand API emitted
@@ -528,6 +744,30 @@ end
                     RuleId = "0engine-demand-derived-scalar-sample",
                     reason = "Camera scalar/proxy access, raw Lifecycle state ownership or sample controller not proven; preserve original sampling." });
             }
+        }
+        // Context demand belongs to the same existing scheduler. No new
+        // native callback or recurring producer; old/mixed runtime fallback.
+        if (host.Contains("__gcetScheduleDriver", StringComparison.Ordinal))
+        {
+            if (TryIdleScheduler(schedulerText, out var idleScheduler) &&
+                TryIdleHost(host, out var idleHost))
+            {
+                compatible++;
+                if (idleHost != host || idleScheduler != schedulerText)
+                {
+                    applied++;
+                    manifest.Add(new { type = "SEMANTIC_RULE", Owner = "0-Engine",
+                        RuleId = "0engine-demand-scheduler-idle-context", sourceProof = true,
+                        Handler = "ZeroEngineDemandSource", PolicyClass = "CENTRAL_ACTIVE_WORK_CONTEXT",
+                        gameplayVerification = "PENDING_COMBINED_BATCH" });
+                }
+                host = idleHost;
+                schedulerText = idleScheduler;
+            }
+            else
+                skipped.Add(new { type = "SEMANTIC_RULE", Owner = "0-Engine",
+                    RuleId = "0engine-demand-scheduler-idle-context",
+                    reason = "Canonical job lifecycle or host context driver not structurally proven; preserve existing dispatch." });
         }
         if (compatible > 0)
         {

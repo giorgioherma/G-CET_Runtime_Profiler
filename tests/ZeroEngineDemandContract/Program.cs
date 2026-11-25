@@ -141,6 +141,38 @@ return SpatialHash
     Check(!ZeroEngineDemandSource.TryDerivedProducer(derived.Replace(
         "cached.lookPitch = resolveLookPitch()", "cached.lookPitch = resolveLookPitch()\n    print(cached.lookPitch)"),
         out _), "internal scalar dependency must refuse");
+    var idleHostFixture = File.ReadAllText("tests/ZeroEngineDemandContract/IdleHostFixture.lua");
+    Check(ZeroEngineDemandSource.TryIdleScheduler(scheduler, out var idleScheduler), "canonical scheduler active job accounting proof");
+    Check(ZeroEngineDemandSource.TryIdleHost(idleHostFixture, out var idleHost), "canonical idle host proof");
+    Check(ZeroEngineDemandSource.TryIdleScheduler(idleScheduler, out var idleRepeat) &&
+        idleRepeat == idleScheduler, "idle scheduler idempotence");
+    Check(ZeroEngineDemandSource.TryIdleHost(idleHost, out var idleHostRepeat) &&
+        idleHostRepeat == idleHost, "idle host idempotence");
+    Check(!ZeroEngineDemandSource.TryIdleScheduler(scheduler.Replace(
+        "function Scheduler.SetGeneration(value)", "function Scheduler.SetGeneration(value)\n    job.active = false"),
+        out _), "unproved job state mutation must refuse");
+    // Independent framework-only stage, including missing host/scheduler.
+    var idleRoot = Path.Combine(root, "idle");
+    Directory.CreateDirectory(idleRoot);
+    FixedZeroEngineBuild IdleFramework(string h, string s) => new(new Dictionary<string, byte[]> {
+        [ZeroEngineDemandSource.InitPath] = Encoding.UTF8.GetBytes(h),
+        [ZeroEngineDemandSource.SchedulerPath] = Encoding.UTF8.GetBytes(s)
+    }, "", "", "", "");
+    var idleBuild = IdleFramework(idleHostFixture, scheduler);
+    Check(ZeroEngineDemandSource.TryStage(idleRoot, ref idleBuild, new(), new(), new(), new()) == 1,
+        "framework-only idle scheduler stage");
+    var idleFullScheduler = Encoding.UTF8.GetString(idleBuild.Files[ZeroEngineDemandSource.SchedulerPath]);
+    foreach (var partialPair in new[] { (idleHost, scheduler), (idleHostFixture, idleFullScheduler) })
+    {
+        var incomplete = IdleFramework(partialPair.Item1, partialPair.Item2);
+        Check(ZeroEngineDemandSource.TryStage(idleRoot, ref incomplete, new(), new(), new(), new()) == 1,
+            "complete missing idle integration");
+        Check(incomplete.Files[ZeroEngineDemandSource.InitPath].SequenceEqual(idleBuild.Files[ZeroEngineDemandSource.InitPath]) &&
+            incomplete.Files[ZeroEngineDemandSource.SchedulerPath].SequenceEqual(idleBuild.Files[ZeroEngineDemandSource.SchedulerPath]),
+            "partial idle completion output differs");
+    }
+    Check(ZeroEngineDemandSource.TryStage(idleRoot, ref idleBuild, new(), new(), new(), new()) == 0,
+        "repeat framework-only idle stage");
     if (privateSource)
     {
         Console.WriteLine("Private stock 0-Engine central demand generation and idempotence PASS");
@@ -196,5 +228,20 @@ return SpatialHash
     File.WriteAllText(Path.Combine(root, "0-Engine", "init.lua"), derivedHost);
     File.WriteAllBytes(Path.Combine(ns, "Scheduler.lua"), scalarScheduler);
     RunScalar("old-host");
+    var idleSchedulerPath = Path.Combine(ns, "Scheduler.lua");
+    File.WriteAllBytes(idleSchedulerPath, idleBuild.Files[ZeroEngineDemandSource.SchedulerPath]);
+    File.WriteAllText(Path.Combine(root, "idle-original.lua"), scheduler);
+    File.WriteAllText(Path.Combine(root, "idle-host-original.lua"), idleHostFixture);
+    File.WriteAllBytes(Path.Combine(root, "idle-host-generated.lua"), idleBuild.Files[ZeroEngineDemandSource.InitPath]);
+    var idlePsi = new ProcessStartInfo("lua5.4") { UseShellExecute = false };
+    idlePsi.ArgumentList.Add("tests/ZeroEngineDemandContract/ExecuteIdle.lua");
+    idlePsi.ArgumentList.Add(root);
+    idlePsi.ArgumentList.Add(idleSchedulerPath);
+    using (var idleProcess = Process.Start(idlePsi)!)
+    {
+        idleProcess.WaitForExit();
+        Check(idleProcess.ExitCode == 0, "generated idle scheduler execution");
+    }
+
 }
 finally { Directory.Delete(root, true); }

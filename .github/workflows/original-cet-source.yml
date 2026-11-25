@@ -158,6 +158,19 @@ jobs:
             throw 'ORIGINAL_STACK_LUA_INVARIANT_FAILED: see precise CI errors above'
           }
 
+          # Verify the actual production-composed central host and canonical
+          # scheduler, not just the isolated source transformation fixture.
+          $generatedEngine = Join-Path $output 'bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine'
+          $idleHost = Get-Content -Raw -LiteralPath (Join-Path $generatedEngine 'init.lua')
+          $idleScheduler = Get-Content -Raw -LiteralPath (Join-Path $generatedEngine 'modules/G-CET/Scheduler.lua')
+          if (([regex]::Matches($idleHost, 'function\(frame, dt, now\)')).Count -lt 1 -or
+              ([regex]::Matches($idleHost, '-- G-CET scheduler idle host v1')).Count -ne 1 -or
+              ([regex]::Matches($idleScheduler, '-- G-CET scheduler active-work demand v1')).Count -ne 1 -or
+              !$idleScheduler.Contains('function Scheduler.TryIdleFrame(')) {
+            throw 'CENTRAL_IDLE_PRODUCTION_MISSING: composed known host and scheduler must share idle context demand'
+          }
+          Write-Host 'Production central idle context integration verified'
+
           # Check the real composed source behavior without exposing private Lua.
           $minimapAuthor = Join-Path $mods 'Minimap Widgets/init.lua'
           if (Test-Path -LiteralPath $minimapAuthor -PathType Leaf) {
