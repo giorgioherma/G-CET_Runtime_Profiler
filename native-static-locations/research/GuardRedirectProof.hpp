@@ -114,7 +114,9 @@ inline void CheckGuardRedirect(const std::filesystem::path& path,uint8_t* image,
     Require(FlushInstructionCache(GetCurrentProcess(),code,4096)!=0,"flush private islands");
     for(size_t i=0;i<2;++i){
         CheckChainedUnwind(image,Sites[i].guard,static_cast<uint32_t>(imageSize+i*1024),
-            gateSizes[i],static_cast<uint32_t>(imageSize+4096+2048+i*32));
+            gateSizes[i],static_cast<uint32_t>(imageSize+4096+2048+i*128));
+        CheckChainedUnwind(image,Sites[i].guard,static_cast<uint32_t>(imageSize+i*1024),
+            gateSizes[i],static_cast<uint32_t>(imageSize+4096+2304+i*128),true);
     }
     // The address-range contract must refuse rather than truncate.
     bool refused=false;

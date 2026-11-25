@@ -12,6 +12,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <limits>
+#include "CETCompletedUnwind.hpp"
 
 extern "C" EXCEPTION_DISPOSITION __GSHandlerCheck_EH4(PEXCEPTION_RECORD,PVOID,PCONTEXT,PVOID);
 namespace {
@@ -105,59 +106,17 @@ uint8_t* AllocateAfterImage(Address base){
     }
     return nullptr;
 }
-struct Context {
-    Address base=0,originalReturn=0,islandReturn=0;
-    RUNTIME_FUNCTION original{},island{};
-    PEXCEPTION_ROUTINE personality=nullptr;
-    void* handlerData=nullptr;
+struct Context : gcet::cet_dispatch::PersonalityMap {
     unsigned search=0,unwind=0;
 } state;
 EXCEPTION_DISPOSITION NTAPI Bridge(PEXCEPTION_RECORD record,PVOID frame,
                                    PCONTEXT context,PVOID opaque){
     auto* dispatch=static_cast<PDISPATCHER_CONTEXT>(opaque);
-    Check(dispatch->ImageBase==state.base,"FH4 island image base mismatch");
-    const auto pc=dispatch->ControlPc;
-    // The relocated call has the same logical return address as the
-    // original. Preserve any one-byte control-PC adjustment by the OS.
-    Check(pc==state.islandReturn||pc+1==state.islandReturn,
-          "unexpected FH4 control PC in test island");
-    DISPATCHER_CONTEXT mapped=*dispatch;
-    mapped.ControlPc=state.originalReturn-(state.islandReturn-pc);
-    mapped.FunctionEntry=&state.original;
-    mapped.HandlerData=state.handlerData;
-    mapped.LanguageHandler=state.personality;
+    DISPATCHER_CONTEXT mapped{};
+    Check(state.Translate(*dispatch,mapped),"unexpected FH4 control PC or function identity");
     if(record->ExceptionFlags&(EXCEPTION_UNWINDING|EXCEPTION_EXIT_UNWIND))++state.unwind;
     else ++state.search;
-    // Forward the original stack-cookie-protected CRT personality. Do not
-    // decode, copy or rewrite compressed FuncInfo4 or GS cookie data.
-    const auto result=state.personality(record,frame,context,&mapped);
-    dispatch->ScopeIndex=mapped.ScopeIndex;
-    return result;
-}
-void BuildUnwind(uint8_t* info,const uint8_t* original,uint32_t handler){
-    Check((original[0]&7)==1&&(original[0]>>3)==3,"fixture must have EH+UH unwind");
-    const unsigned count=original[2],padded=(count+1)&~1u;
-    Check(count&&padded<=64,"unsupported fixture unwind slot count");
-    std::memcpy(info,original,4+2*padded);
-    // The island begins AFTER the original frame is fully established.
-    // Reuse all original stack restoration operations with offset zero.
-    // Extra operand slots must not be interpreted as operations.
-    info[1]=0;
-    for(unsigned i=0;i<count;){
-        auto* code=info+4+i*2;
-        const unsigned op=code[1]&15,opinfo=code[1]>>4;
-        unsigned slots=1;
-        switch(op){
-        case 0:case 2:case 3:case 10:break;
-        case 1:Check(opinfo<=1,"unsupported large allocation");slots=opinfo?3:2;break;
-        case 4:case 8:slots=2;break;
-        case 5:case 9:slots=3;break;
-        default:Check(false,"unsupported unwind operation");
-        }
-        Check(i+slots<=count,"truncated unwind operation");
-        code[0]=0;i+=slots;
-    }
-    Dword(info+4+2*padded,handler);
+    return state.Forward(record,frame,context,*dispatch,mapped);
 }
 void WriteCallsite(uint8_t* site,const std::array<uint8_t,5>& bytes){
     DWORD old=0,unused=0;
@@ -194,8 +153,9 @@ int main(){
     Check(personality==&__GSHandlerCheck_EH4,"compiled fixture is not CET's GS/FH4 personality");
     auto runtime=GetModuleHandleW(L"vcruntime140_1.dll");
     Check(runtime&&GetProcAddress(runtime,"__CxxFrameHandler4"),"FH4 runtime import unavailable");
-    state.base=base;state.originalReturn=ret;state.original=*original;
-    state.personality=personality;state.handlerData=const_cast<uint8_t*>(info+8+padded*2);
+    state.imageBase=base;state.originalPc=ret;state.original=*original;
+    state.originalHandler=personality;state.originalHandlerData=const_cast<uint8_t*>(info+8+padded*2);
+    state.mode=gcet::cet_dispatch::ControlPcMode::RelocatedReturn;
 
     auto* island=AllocateAfterImage(base);
     Check(island!=nullptr,"cannot allocate isolated island near fixture image");
@@ -211,7 +171,12 @@ int main(){
     const uint8_t absolute[]={0x48,0xb8,0,0,0,0,0,0,0,0,0xff,0xe0};
     std::memcpy(island+thunk,absolute,sizeof(absolute));
     auto bridge=reinterpret_cast<Address>(&Bridge);std::memcpy(island+thunk+2,&bridge,8);
-    BuildUnwind(island+metadata,info,Rva(base,addr+thunk));
+    std::vector<uint8_t> completed;
+    Check(gcet::cet_dispatch::BuildCompletedFrameUnwind(
+        std::span<const uint8_t>(info,8+padded*2),Rva(base,addr+thunk),completed),
+        "complete original FH4 unwind frame");
+    Check(metadata+completed.size()<4096,"fixture unwind capacity");
+    std::memcpy(island+metadata,completed.data(),completed.size());
     state.islandReturn=addr+5;
     state.island={Rva(base,addr),Rva(base,addr+15),Rva(base,addr+metadata)};
     DWORD old=0;Check(VirtualProtect(island,4096,PAGE_EXECUTE_READ,&old)!=0,"island RX");

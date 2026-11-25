@@ -8,6 +8,7 @@
 #include <cstring>
 #include <iostream>
 #include <stdexcept>
+#include "CETCompletedUnwind.hpp"
 
 namespace gcet::research {
 inline void UnwindRequire(bool ok,const char* what){
@@ -51,16 +52,38 @@ inline bool SameFrame(const UnwindResult& a,const UnwindResult& b){
 // Windows recognizes an unconditional terminal jump as an epilogue.
 // The revised emitter uses conditional exits; test every exit PC.
 inline void CheckChainedUnwind(uint8_t* image,uint32_t guard,uint32_t island,
-                               uint32_t size,uint32_t metadata){
+                               uint32_t size,uint32_t metadata,bool translated=false){
     auto original=FindRuntimeFunction(image,guard);
     const auto* info=image+original.UnwindData;
     UnwindRequire((info[0]&7)==1&&(info[0]>>3)==3&&guard-original.BeginAddress>info[1],
                   "unexpected original CET unwind flags/prologue");
     UnwindRequire(info[3]==0,"unexpected frame register");
     auto* chain=image+metadata;
-    // version 1, UNW_FLAG_CHAININFO, zero local prologue/codes/frame.
-    chain[0]=0x21;chain[1]=0;chain[2]=0;chain[3]=0;
-    std::memcpy(chain+4,&original,sizeof(original));
+    const unsigned padded=(info[2]+1)&~1u;
+    const size_t originalSize=8+padded*2;
+    // The private copied image is never executed. This reserved handler
+    // address is only an OS-returned identity in the synthetic proof.
+    const uint32_t handlerRva=island+size+16;
+    size_t completedSize=0;
+    if(translated){
+        std::vector<uint8_t> completed;
+        UnwindRequire(cet_dispatch::BuildCompletedFrameUnwind(
+            std::span<const uint8_t>(info,originalSize),handlerRva,completed),
+            "build completed actual CET frame");
+        completedSize=completed.size();
+        UnwindRequire(completedSize<=128,"private metadata capacity");
+        std::memcpy(chain,completed.data(),completedSize);
+        // The adapter must reject malformed/truncated and unsupported
+        // unwind data without replacing the last valid output.
+        auto unchanged=completed;
+        UnwindRequire(!cet_dispatch::BuildCompletedFrameUnwind(
+            std::span<const uint8_t>(info,originalSize-1),handlerRva,completed)&&
+            completed==unchanged,"truncated unwind input accepted");
+    }else{
+        // Preserve the existing independent CHAININFO comparison.
+        chain[0]=0x21;chain[1]=0;chain[2]=0;chain[3]=0;
+        std::memcpy(chain+4,&original,sizeof(original));
+    }
     RUNTIME_FUNCTION entry{island,island+size,metadata};
     const DWORD64 base=reinterpret_cast<DWORD64>(image);
     UnwindRequire(RtlAddFunctionTable(&entry,1,base)!=FALSE,"register private chained unwind");
@@ -95,9 +118,30 @@ inline void CheckChainedUnwind(uint8_t* image,uint32_t guard,uint32_t island,
                           found->EndAddress==island+size,"island function-table lookup");
             auto actual=UnwindAt(image,*found,pc,initial,kind);
             const bool frame=SameFrame(expected,actual);
-            const bool handler=actual.handler==expected.handler&&
-                               (!kind||actual.handlerData==expected.handlerData);
-            std::cout<<"Chained unwind guard=0x"<<std::hex<<guard<<" pc=0x"<<pc<<std::dec
+            bool handler=false;
+            if(!translated||!kind){
+                handler=actual.handler==expected.handler&&(!kind||actual.handlerData==expected.handlerData);
+            }else{
+                using namespace cet_dispatch;
+                PersonalityMap map;
+                map.imageBase=base;map.original=original;map.island=entry;
+                map.originalHandler=expected.handler;map.originalHandlerData=expected.handlerData;
+                map.originalPc=base+guard;
+                DISPATCHER_CONTEXT source{},mapped{};
+                source.ImageBase=base;source.ControlPc=base+pc;source.FunctionEntry=found;
+                source.LanguageHandler=actual.handler;source.HandlerData=actual.handlerData;
+                source.ScopeIndex=7;
+                handler=actual.handler==reinterpret_cast<PEXCEPTION_ROUTINE>(base+handlerRva)&&
+                    actual.handlerData==chain+completedSize&&map.Translate(source,mapped)&&
+                    mapped.ControlPc==base+guard&&mapped.FunctionEntry==&map.original&&
+                    mapped.HandlerData==expected.handlerData&&mapped.LanguageHandler==expected.handler&&
+                    mapped.ScopeIndex==7&&source.ControlPc==base+pc;
+                auto foreign=source;foreign.ControlPc=base+guard;
+                UnwindRequire(!map.Translate(foreign,mapped),"foreign ControlPc admitted");
+                foreign=source;foreign.FunctionEntry=&original;
+                UnwindRequire(!map.Translate(foreign,mapped),"foreign runtime-function record admitted");
+            }
+            std::cout<<(translated?"Completed mapped unwind guard=0x":"Chained unwind guard=0x")<<std::hex<<guard<<" pc=0x"<<pc<<std::dec
                      <<" kind="<<kind<<" frame="<<frame<<" handler="<<handler<<"\n";
             // This is an evidence gate, not a proof of language-handler
             // semantics. If a jump is interpreted as an epilogue, reject
@@ -105,7 +149,7 @@ inline void CheckChainedUnwind(uint8_t* image,uint32_t guard,uint32_t island,
             UnwindRequire(frame&&handler,"chained island unwind differs from original guard");
         }
     }
-    std::cout<<"Official CET guard frame/handler-data chained unwind PASS\n";
+    std::cout<<(translated?"Official CET guard completed frame and personality mapping PASS\n":"Official CET guard frame/handler-data chained unwind PASS\n");
     // Even matching handler pointer/data is NOT sufficient: the language
     // handler's dispatcher ControlPc still points outside its original
     // function. It needs separately proven state translation.
