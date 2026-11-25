@@ -243,6 +243,17 @@ return UpdateFrame
     Check(!ZeroEngineDemandSource.TryPoseReader(poseFixture.Replace(
         "return p, o, o:ToEulerAngles().yaw","audit(player)\n        return p, o, o:ToEulerAngles().yaw"),out _),
         "unknown closure body must remain original");
+    Check(ZeroEngineDemandSource.TryComposePoseReader(poseFixture,true,out var typedPose)&&
+        typedPose.Contains("Game.GCETReadPlayerPoseV1"),"typed pose source admission");
+    Check(ZeroEngineDemandSource.TryComposePoseReader(typedPose,true,out var typedRepeat)&&
+        typedRepeat==typedPose,"typed pose repeat");
+    Check(ZeroEngineDemandSource.TryComposePoseReader(typedPose,false,out var typedDowngrade)&&
+        typedDowngrade==poseNext,"older native bundle must restore original protected helper");
+    Check(ZeroEngineDemandSource.TryComposePoseReader(typedPose.Replace(
+        "local __gcetPoseNative, __gcetPoseNativeResolved -- G-CET typed pose backend v1\n",""),
+        true,out var typedPartial)&&typedPartial==typedPose,"missing typed pose state must converge");
+    Check(!ZeroEngineDemandSource.TryComposePoseReader(typedPose.Replace(
+        "if status ~= 0 then","if status ~= 2 then"),true,out _),"changed native status protocol refused");
     if(privateSource)
     {
         var poseStock=new FixedZeroEngineBuild(new Dictionary<string,byte[]>{
@@ -252,11 +263,19 @@ return UpdateFrame
             "actual private host pose stage");
         Check(ZeroEngineDemandSource.TryStagePose(ref poseStock,new())==0,
             "actual private pose stage repeat");
+        Check(ZeroEngineDemandSource.TryStagePose(ref poseStock,new(),true)==1,
+            "actual private typed pose stage");
+        Check(ZeroEngineDemandSource.TryStagePose(ref poseStock,new(),true)==0,
+            "actual private typed pose repeat");
+        Check(ZeroEngineDemandSource.TryStagePose(ref poseStock,new(),false)==1&&
+            ZeroEngineDemandSource.TryStagePose(ref poseStock,new(),false)==0,
+            "actual private old-bundle downgrade");
     }
     else
     {
         File.WriteAllText(Path.Combine(root,"pose-original.lua"),poseFixture);
         File.WriteAllText(Path.Combine(root,"pose-generated.lua"),poseNext);
+        File.WriteAllText(Path.Combine(root,"pose-typed.lua"),typedPose);
         var posePsi=new ProcessStartInfo("lua5.4"){UseShellExecute=false};
         posePsi.ArgumentList.Add("tests/ZeroEngineDemandContract/ExecutePose.lua");
         posePsi.ArgumentList.Add(root);

@@ -12,6 +12,12 @@ internal sealed record NativeRuntimeBundle(byte[] Bytes, string Sha256)
     internal const string GameRootRelativePath =
         "red4ext/plugins/G-CET-StaticLocations/GCETStaticLocations.dll";
 
+    // Only an intentionally packaged native artifact can admit this
+    // optional backend. The current #88 package does not contain it.
+    // Capability is not loaded-game parity or release authorization.
+    internal bool HasTypedPoseRead =>
+        Encoding.Latin1.GetString(Bytes).Contains("GCETReadPlayerPoseV1",StringComparison.Ordinal);
+
     internal bool HasObserverDemand
     {
         get

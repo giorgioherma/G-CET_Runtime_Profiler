@@ -197,11 +197,77 @@ internal static class ZeroEngineDemandSource
         return true;
     }
 
-    internal static int TryStagePose(ref FixedZeroEngineBuild framework,List<object> manifest)
+    // Optional ordered native backend already implemented by the isolated
+    // RED4ext producer service. The current production bundle lacks this
+    // capability. No new hook, cache, observer, clock or retained player.
+    // CET v1.37.1 RTTIHelper::ExecuteFunction returns the native return value
+    // first, followed by out parameters in declaration order.
+    private const string TypedPoseState =
+        "local __gcetPoseNative, __gcetPoseNativeResolved -- G-CET typed pose backend v1";
+    private static string TypedPoseBody(string receiver) => """
+    if not __gcetPoseNativeResolved then
+        __gcetPoseNativeResolved = true
+        local ok, native = pcall(function() return Game.GCETReadPlayerPoseV1 end)
+        if ok and type(native) == "function" then __gcetPoseNative = native end
+    end
+    if __gcetPoseNative then
+        local status, position, orientation, yaw = __gcetPoseNative(RECEIVER)
+        if status == 1 then
+            if position == nil or orientation == nil or type(yaw) ~= "number" then
+                error("G-CET typed pose result invalid", 0)
+            end
+            return position, orientation, yaw
+        end
+        if status ~= 0 then error("G-CET typed pose read failed", 0) end
+        -- Unsupported is returned only before any getter executes.
+        -- Failed, an exception, or an unknown result must NEVER replay.
+    end
+""".Replace("RECEIVER",receiver,StringComparison.Ordinal);
+    internal static bool TryComposePoseReader(string source,bool nativeAvailable,out string next)
+    {
+        next=source;
+        var normalized=NormalizeLf(source);
+        var declarations=Regex.Matches(normalized,@"(?m)^local function "+PoseReaderName+@"\((?<receiver>[A-Za-z_]\w*)\)[ \t]*$");
+        var candidate=source;
+        if(declarations.Count==1)
+        {
+            var receiver=declarations[0].Groups["receiver"].Value;
+            var body=Newlines(source,TypedPoseBody(receiver));
+            var state=Newlines(source,TypedPoseState+"\n");
+            // Normalize only complete known owner fragments, including
+            // independently missing declaration/body (partial overlays).
+            // No arbitrary source or hand-modified backend is overwritten.
+            if(Count(candidate,state)>1||Count(candidate,body)>1)return false;
+            if(Count(candidate,state)==1)candidate=candidate.Replace(state,"",StringComparison.Ordinal);
+            if(Count(candidate,body)==1)
+            {
+                if(!ReplaceUnique(ref candidate, declarations[0].Value+"\n"+TypedPoseBody(receiver)+"\n",
+                    declarations[0].Value+"\n"))return false;
+            }
+        }
+        // A collision or substantively altered partial backend is unsafe.
+        if(Regex.IsMatch(WithoutLuaTrivia(candidate),@"\b__gcetPoseNative(?:Resolved)?\b"))
+            return false;
+        if(!TryPoseReader(candidate,out var plain))return false;
+        if(!nativeAvailable){next=plain;return true;}
+        // Only the local explicit receiver and original protected phase are
+        // supported. The grouped host publication/failure barrier remains.
+        if(Regex.IsMatch(WithoutLuaTrivia(plain),@"\b(?:local\s+Game\b|Game\s*=)"))
+            return false;
+        var helper=Regex.Matches(plain,@"(?m)^local function "+PoseReaderName+@"\((?<receiver>[A-Za-z_]\w*)\)[ \t]*(?=\r?$)");
+        if(helper.Count!=1)return false;
+        var name=helper[0].Groups["receiver"].Value;
+        var header=helper[0].Value;
+        if(!ReplaceUnique(ref plain,header+"\n",TypedPoseState+"\n"+header+"\n"+TypedPoseBody(name)+"\n"))
+            return false;
+        next=plain;return true;
+    }
+
+    internal static int TryStagePose(ref FixedZeroEngineBuild framework,List<object> manifest,bool nativeAvailable=false)
     {
         if(!framework.Files.TryGetValue(InitPath,out var bytes))return 0;
         var source=Encoding.UTF8.GetString(bytes);
-        if(!TryPoseReader(source,out var next)||next==source)return 0;
+        if(!TryComposePoseReader(source,nativeAvailable,out var next)||next==source)return 0;
         var files=framework.Files.ToDictionary(p=>p.Key,p=>p.Value,StringComparer.OrdinalIgnoreCase);
         files[InitPath]=Encoding.UTF8.GetBytes(next);
         framework=framework with{Files=files,FixedInitSha256=Convert.ToHexString(
@@ -209,7 +275,9 @@ internal static class ZeroEngineDemandSource
         manifest.Add(new{type="FRAMEWORK_POSE_READER",Owner="0-Engine",RuleId="0engine-shared-pose-reader",
             file=InitPath,contract="GCET_FRAMEWORK_POSE_READER_V1",
             Handler="ZeroEngineDemandSource",PolicyClass="SAME_PHASE_REUSE_PROTECTED_FUNCTION",
-            sourceProof=true,nativeReadCountChanged=false,callbackOrCadenceChanged=false});
+            sourceProof=true,nativeReadCountChanged=false,callbackOrCadenceChanged=false,
+            backend=nativeAvailable?"OPTIONAL_ORDERED_TYPED_POSE_V1":"ORIGINAL_CET_READS",
+            runtimePerformance="NOT_MEASURED"});
         return 1;
     }
 
