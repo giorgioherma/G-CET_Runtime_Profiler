@@ -122,8 +122,13 @@ internal static class ZeroEngineObserverDemandSource
         // Count every occurrence of an assignment to the private counter.
         // These are its initializer and the three original ownership
         // mutations. Unknown writers/exports cannot safely mirror demand.
+        // GetInfo exports the count as a named field, not a write to the
+        // private local. Exclude only that exact read-only field shape.
+        var infoFields=Enumerable.Range(0,tokens.Length).Where(i =>
+            At(tokens,i,"beforeActive","=","beforeActive",",","afterActive","=","afterActive",",")).ToArray();
+        if(infoFields.Length!=1)return false;
         var assignments=Enumerable.Range(0,tokens.Length).Count(i =>
-            At(tokens,i,"beforeActive","=") && !At(tokens,i,"beforeActive","=","="));
+            At(tokens,i,"beforeActive","=") && !At(tokens,i,"beforeActive","=","=") && i!=infoFields[0]);
         var dispatch=Enumerable.Range(0,tokens.Length).Where(i=>At(tokens,i,"function","ActionRouter",".","Dispatch","(","this",",","action",",","consumer",")","if","beforeActive","=","=","0","then","return","end")).ToArray();
         if(dispatch.Length!=1||assignments!=4||
            Count(source,"local beforeActive = 0")!=1||
