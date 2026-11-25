@@ -17,6 +17,9 @@ function DerivedState.Update(player)
     cached.lookPitch = resolveLookPitch()
     cached.district = "Watson"
 end
+function DerivedState.SetLoading(loading)
+    cached.isLoading = loading == true
+end
 function DerivedState.Get()
     return cached
 end

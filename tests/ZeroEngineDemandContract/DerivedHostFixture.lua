@@ -25,7 +25,11 @@ local function DeepReadOnly(tbl, path)
     return proxy
 end
 local stateProxy = nil
+local currentFrame = 0
+local valid = true
 local function UpdateFrame(delta)
+    currentFrame = currentFrame + 1
+    if not valid then return end
     local player = {}
     local stateOk = pcall(DerivedState.Update, player)
     if not stateOk then return end
@@ -39,4 +43,6 @@ function Engine.GetState()
 end
 Engine.Tick = UpdateFrame
 Engine.Reset = DerivedState.Reset
+Engine.SetLoading = DerivedState.SetLoading
+function Engine.SetValid(value) valid = value end
 return Engine

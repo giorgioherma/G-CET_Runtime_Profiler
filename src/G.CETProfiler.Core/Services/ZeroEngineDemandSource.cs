@@ -152,11 +152,33 @@ internal static class ZeroEngineDemandSource
     {
         next = source;
         if (source.Contains(SampleMarker, StringComparison.Ordinal))
-            return Count(source, "function demand.DefineSample(") == 1 &&
-                Count(source, "function sample.Offer(") == 1 &&
-                Count(source, "function sample.Read(") == 1 &&
-                Count(source, "function sample.Expose(") == 1 &&
-                Count(source, "function sample.Reset(") == 1;
+        {
+            if (Count(source, "function demand.DefineSample(") != 1 ||
+                Count(source, "function sample.Offer(") != 1 ||
+                Count(source, "function sample.Read(") != 1 ||
+                Count(source, "function sample.Expose(") != 1 ||
+                Count(source, "function sample.Reset(") != 1) return false;
+            if (source.Contains("demand.SampleEpochVersion = 1", StringComparison.Ordinal))
+                return Count(source, "local offeredEpoch") == 1 &&
+                    Count(source, "offeredEpoch = epoch()") == 1 &&
+                    Count(source, "offeredEpoch ~= epoch()") == 1;
+            // Complete the earlier development sample slot in place.
+            // Epoch identity comes from the existing host frame clock.
+            var candidate = source;
+            if (!AfterLine(ref candidate, "local samples = {}", "demand.SampleEpochVersion = 1") ||
+                !ReplaceLine(ref candidate, "function demand.DefineSample(key, produce)",
+                    "function demand.DefineSample(key, produce, epoch)") ||
+                !ReplaceLine(ref candidate, "if samples[key] or type(produce) ~= \"function\" then return nil end",
+                    "if samples[key] or type(produce) ~= \"function\" or type(epoch) ~= \"function\" then return nil end") ||
+                !AfterLine(ref candidate, "local available, sampled, exposed = false, false, false", "local offeredEpoch") ||
+                !ReplaceLine(ref candidate, "if not available or sampled then return end",
+                    "if not available or sampled or offeredEpoch ~= epoch() then return end") ||
+                !AfterLine(ref candidate, "available, sampled = true, false", "offeredEpoch = epoch()") ||
+                !AfterLine(ref candidate, "available, sampled = false, false", "offeredEpoch = nil"))
+                return false;
+            next = candidate;
+            return true;
+        }
         if (source.Contains("DefineSample", StringComparison.Ordinal)) return false;
         return BeforeLine(ref next, "Scheduler.Demand = demand", SampleController);
     }
@@ -168,14 +190,33 @@ internal static class ZeroEngineDemandSource
         const string update = "cached.lookPitch = resolveLookPitch()";
         const string reset = "cached.lookPitch = 0";
         const string export = "return DerivedState";
+        const string loading = "cached.isLoading = loading == true";
+        const string loadingReset = "if loading == true and __gcetPitchSample then __gcetPitchSample.Reset() end";
         if (source.Contains(DerivedMarker, StringComparison.Ordinal))
-            return Count(source, "function DerivedState.__gcetEnableDemand(") == 1 &&
-                Count(source, "function DerivedState.__gcetPeek(") == 1 &&
-                Count(source, "function DerivedState.__gcetReadField(") == 1 &&
-                Count(source, "function DerivedState.__gcetExpose(") == 1 &&
-                Count(source, "__gcetPitchSample.Offer()") == 1 &&
-                Count(source, "__gcetPitchSample.Reset()") == 1 &&
-                Count(source, "__gcetPitchSample.Expose()") == 3;
+        {
+            if (Count(source, "function DerivedState.__gcetEnableDemand(") != 1 ||
+                Count(source, "function DerivedState.__gcetPeek(") != 1 ||
+                Count(source, "function DerivedState.__gcetReadField(") != 1 ||
+                Count(source, "function DerivedState.__gcetExpose(") != 1 ||
+                Count(source, "__gcetPitchSample.Offer()") != 1 ||
+                Count(source, "__gcetPitchSample.Expose()") != 3) return false;
+            if (source.Contains("controller.SampleEpochVersion ~= 1", StringComparison.Ordinal))
+                return Count(source, loadingReset) == 1 &&
+                    Count(source, "__gcetPitchSample.Reset()") == 2 &&
+                    Count(source, "function DerivedState.__gcetEnableDemand(controller, epoch)") == 1;
+            var candidate = source;
+            if (Count(source, "__gcetPitchSample.Reset()") != 1 ||
+                !ReplaceLine(ref candidate, "function DerivedState.__gcetEnableDemand(controller)",
+                    "function DerivedState.__gcetEnableDemand(controller, epoch)") ||
+                !ReplaceLine(ref candidate,
+                    "if type(controller) ~= \"table\" or type(controller.DefineSample) ~= \"function\" then return false end",
+                    "if type(controller) ~= \"table\" or controller.SampleEpochVersion ~= 1 or type(controller.DefineSample) ~= \"function\" or type(epoch) ~= \"function\" then return false end") ||
+                !ReplaceUnique(ref candidate, "    end)\n    if not __gcetPitchSample then return false end",
+                    "    end, epoch)\n    if not __gcetPitchSample then return false end") ||
+                !AfterLine(ref candidate, loading, loadingReset)) return false;
+            next = candidate;
+            return true;
+        }
         // The admitted producer is a pure scalar camera read with no
         // transition event, internal consumer or native reference retained.
         // Unproved changes to its body/other accesses retain original polling.
@@ -201,6 +242,8 @@ end
             Regex.Matches(source, @"\bresolveLookPitch\b").Count != 2 ||
             Count(source, "function DerivedState.Update(player)") != 1 ||
             Count(source, "function DerivedState.Reset()") != 1 ||
+            Count(source, "function DerivedState.SetLoading(loading)") != 1 ||
+            source.IndexOf("function DerivedState.SetLoading(loading)", StringComparison.Ordinal) < source.IndexOf("function DerivedState.Update(player)", StringComparison.Ordinal) ||
             Count(source, getter) != 1 ||
             Count(source, "return cached\n") + Count(source, "return cached\r\n") != 1 ||
             Count(normalized, getter + "\n    return cached\nend") != 1 ||
@@ -213,6 +256,7 @@ end
             !ReplaceLine(ref next, update,
                 "if __gcetPitchSample then __gcetPitchSample.Offer() else " + update + " end") ||
             !AfterLine(ref next, reset, "if __gcetPitchSample then __gcetPitchSample.Reset() end") ||
+            !AfterLine(ref next, loading, loadingReset) ||
             !AfterLine(ref next, getter,
                 "__gcetRawExposed = true\nif __gcetPitchSample then __gcetPitchSample.Expose() end") ||
             !BeforeLine(ref next, export, DerivedAdapter))
@@ -264,7 +308,8 @@ end
         const string read = "local v = tbl[k]";
         const string raw = "return next, tbl, nil";
         const string update = "State.derived = DerivedState.Get()";
-        const string baseHandshake = "__gcetDerivedDemand = type(DerivedState.__gcetEnableDemand) == 'function' and type(DerivedState.__gcetPeek) == 'function' and type(DerivedState.__gcetReadField) == 'function' and type(DerivedState.__gcetExpose) == 'function' and DerivedState.__gcetEnableDemand(__gcetDemand)";
+        const string legacyHandshake = "__gcetDerivedDemand = type(DerivedState.__gcetEnableDemand) == 'function' and type(DerivedState.__gcetPeek) == 'function' and type(DerivedState.__gcetReadField) == 'function' and type(DerivedState.__gcetExpose) == 'function' and DerivedState.__gcetEnableDemand(__gcetDemand)";
+        var baseHandshake = legacyHandshake.Replace("(__gcetDemand)", "(__gcetDemand, function() return currentFrame end)", StringComparison.Ordinal);
         var lifecycleRequired = source.Contains("Lifecycle.Init(Events, State, Logger)", StringComparison.Ordinal);
         var handshake = lifecycleRequired
             ? baseHandshake.Replace("= type(DerivedState.", "= Lifecycle.__gcetDerivedStateSafe == true and type(DerivedState.", StringComparison.Ordinal)
@@ -279,13 +324,16 @@ end
                 !HasProvenRawStatePaths(source.Replace(readHook, "", StringComparison.Ordinal)
                     .Replace(rawHook, "", StringComparison.Ordinal))) return false;
             if (Count(source, handshake) == 1) return true;
-            // Complete the first development form when the raw Lifecycle
-            // compatibility capability is missing, without another binding.
-            return lifecycleRequired && ReplaceLine(ref next, baseHandshake, handshake);
+            // Complete earlier host forms without creating another binding.
+            var gatedLegacy = legacyHandshake.Replace("= type(DerivedState.", "= Lifecycle.__gcetDerivedStateSafe == true and type(DerivedState.", StringComparison.Ordinal);
+            return ReplaceLine(ref next, legacyHandshake, handshake) ||
+                (lifecycleRequired && ReplaceLine(ref next, gatedLegacy, handshake));
         }
         // Admit the original proxy/raw-iteration contract. Unknown direct
         // reads and escapes cannot safely be made lazy by this transform.
         if (!HasProvenRawStatePaths(source) ||
+            Count(source, "local currentFrame = 0") != 1 ||
+            Count(source, "currentFrame = currentFrame + 1") != 1 ||
             Count(source, "local function DeepReadOnly(tbl, path)") != 1 ||
             Count(source, "local function UpdateFrame(delta)") != 1 ||
             Count(source, "local stateProxy = nil") != 1 ||
@@ -318,17 +366,20 @@ end
     internal const string SampleController = """
 -- G-CET demand sample slots v1
 local samples = {}
-function demand.DefineSample(key, produce)
-    if samples[key] or type(produce) ~= "function" then return nil end
+demand.SampleEpochVersion = 1
+function demand.DefineSample(key, produce, epoch)
+    if samples[key] or type(produce) ~= "function" or type(epoch) ~= "function" then return nil end
     local sample = {}
     local available, sampled, exposed = false, false, false
+    local offeredEpoch
     function sample.Read()
-        if not available or sampled then return end
+        if not available or sampled or offeredEpoch ~= epoch() then return end
         sampled = true
         produce()
     end
     function sample.Offer()
         available, sampled = true, false
+        offeredEpoch = epoch()
         if exposed then sample.Read() end
     end
     function sample.Expose()
@@ -339,6 +390,7 @@ function demand.DefineSample(key, produce)
     end
     function sample.Reset()
         available, sampled = false, false
+        offeredEpoch = nil
         -- Keep exposure: the author resets the same retained table.
     end
     samples[key] = sample
@@ -347,12 +399,12 @@ end
 """;
 
     internal const string DerivedAdapter = """
-function DerivedState.__gcetEnableDemand(controller)
+function DerivedState.__gcetEnableDemand(controller, epoch)
     if __gcetPitchSample then return true end
-    if type(controller) ~= "table" or type(controller.DefineSample) ~= "function" then return false end
+    if type(controller) ~= "table" or controller.SampleEpochVersion ~= 1 or type(controller.DefineSample) ~= "function" or type(epoch) ~= "function" then return false end
     __gcetPitchSample = controller.DefineSample("DerivedState.lookPitch", function()
         cached.lookPitch = resolveLookPitch()
-    end)
+    end, epoch)
     if not __gcetPitchSample then return false end
     if __gcetRawExposed then __gcetPitchSample.Expose() end
     return true
@@ -504,6 +556,13 @@ end
         var indent = match.Groups["indent"].Value;
         var body = Newlines(source, indent + NormalizeLf(replacement).Replace("\n", "\n" + indent));
         source = source.Remove(match.Index, match.Length).Insert(match.Index, body);
+        return true;
+    }
+    private static bool ReplaceUnique(ref string source, string anchor, string replacement)
+    {
+        anchor = Newlines(source, anchor);
+        if (Count(source, anchor) != 1) return false;
+        source = source.Replace(anchor, Newlines(source, replacement), StringComparison.Ordinal);
         return true;
     }
     private static bool BeforeLine(ref string source, string anchor, string before) =>

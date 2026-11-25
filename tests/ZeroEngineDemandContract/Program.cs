@@ -182,7 +182,7 @@ return SpatialHash
         using var process = Process.Start(psi)!; process.WaitForExit();
         Check(process.ExitCode == 0, "generated scalar execution failed: " + scenario);
     }
-    foreach (var scenario in new[] { "scalar", "raw-root", "raw-derived", "raw-module", "raw-root-before-update" })
+    foreach (var scenario in new[] { "scalar", "invalid-epoch", "raw-root", "raw-derived", "raw-module", "raw-root-before-update" })
         RunScalar(scenario);
     File.WriteAllText(Path.Combine(moduleDir, "DerivedState.lua"), derived);
     RunScalar("old-producer");

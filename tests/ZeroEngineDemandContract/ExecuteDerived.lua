@@ -34,7 +34,19 @@ if scenario:find("^old%-") then
     return
 end
 assert(cameras==0 and forwards==0, "unrequested camera producer ran")
-if scenario=="scalar" then
+if scenario=="invalid-epoch" then
+    assert(near(retained.lookPitch,15) and cameras==1)
+    pitch=20; tick(1) -- unobserved valid offer
+    E.SetValid(false); tick(1)
+    assert(near(retained.lookPitch,15) and cameras==1,"invalid frame must not invoke deferred native read")
+    E.SetValid(true); tick(1)
+    assert(near(retained.lookPitch,20) and cameras==2,"valid frame resumes sampling")
+    pitch=30; tick(1)
+    E.SetLoading(true)
+    assert(near(retained.lookPitch,20) and cameras==2,"loading transition invalidates pending sample")
+    E.SetLoading(false); tick(1)
+    assert(near(retained.lookPitch,30) and cameras==3,"new loaded epoch")
+elseif scenario=="scalar" then
     assert(near(retained.lookPitch,15) and cameras==1 and forwards==1, "first-use sample")
     assert(near(state.derived.lookPitch,15) and cameras==1, "shared scalar sample")
     pitch=30; tick(10)
