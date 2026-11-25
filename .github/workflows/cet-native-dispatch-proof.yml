@@ -1,0 +1,34 @@
+name: CET 1.37.1 native dispatch attachment evidence
+
+# Developer-only read-only release/PDB analysis. No native compile or product pin.
+on:
+  push:
+    branches: [dev/native-fixed-cache-player-state]
+    paths:
+      - 'native-static-locations/research/inspect_cet_dispatch.py'
+      - '.github/workflows/cet-native-dispatch-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-pdb-proof:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Download the exact official CET and symbol release
+        shell: bash
+        run: |
+          set -euo pipefail
+          base=https://github.com/maximegmd/CyberEngineTweaks/releases/download/v1.37.1
+          curl -fL --retry 3 "$base/cet_1.37.1.zip" -o "$RUNNER_TEMP/cet_1.37.1.zip"
+          curl -fL --retry 3 "$base/windows-latest-x64-release-pdb.zip" -o "$RUNNER_TEMP/windows-latest-x64-release-pdb.zip"
+      - name: Verify ASI and PDB identity and locate dispatcher symbols
+        shell: bash
+        run: |
+          set -euo pipefail
+          python native-static-locations/research/inspect_cet_dispatch.py "$RUNNER_TEMP/cet_1.37.1.zip" "$RUNNER_TEMP/windows-latest-x64-release-pdb.zip"
