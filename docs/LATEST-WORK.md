@@ -1,3 +1,6 @@
+## 2026-11-25 — Native mapped PE identity refinement
+- [Native #77](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/45590941862) preflight correctly stopped before expensive SDK compile: exact disk SHA accepted, mapped-header mismatch at byte 0x14a (0x00→0x33), no read error. Recognize only the precise PE OptionalHeader.ImageBase address field derived with offsetof; require nonzero 64KiB-aligned mapped value; compare every other header byte and all existing code ranges exactly. Print disk/mapped base and offset to verify the real loader change; add unrelated header and invalid unaligned ImageBase negative controls. No broad header-mask or code-check relaxation. Successor native CI pending.
+
 ## 2026-11-25 — Native identity probe #76 rejected official mapped image
 - [Native CI #76](https://github.com/giorgioherma/G-CET_Runtime_Profiler/actions/runs/45590122043): Linux core PASS, Windows RED4ext DLL compilation and 4/4 CTest PASS, actual official SEC_IMAGE_NO_EXECUTE image identity rejected. The generic assertion did not distinguish file/crypto/PE/read/byte mismatch. Add exact stage/RVA/offset/expected/actual/error diagnostics, run the same SDK-independent native identity test before the costly SDK build, and retain the actual compiled-build test after it. No admission relaxation. Native #76 artifact not produced; do not pin.
 

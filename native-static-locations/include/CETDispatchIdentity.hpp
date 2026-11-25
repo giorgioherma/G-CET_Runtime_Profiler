@@ -22,6 +22,8 @@ struct ProbeDetail {
     uint32_t offset = 0;
     uint32_t error = 0;
     uint8_t expected = 0, actual = 0;
+    uint32_t imageBaseOffset = 0;
+    uint64_t diskImageBase = 0, mappedImageBase = 0;
 };
 Identity CheckImage(const std::filesystem::path& file, const void* mappedImage,
                     ProbeDetail* detail = nullptr) noexcept;

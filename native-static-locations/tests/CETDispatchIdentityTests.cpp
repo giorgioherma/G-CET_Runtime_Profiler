@@ -44,6 +44,9 @@ int wmain(int argc,wchar_t** argv){
                 <<" expected=0x"<<unsigned(detail.expected)<<" actual=0x"<<unsigned(detail.actual)
                 <<" error="<<std::dec<<detail.error<<"\n";
         }
+        std::cout<<"PE ImageBase field offset=0x"<<std::hex<<detail.imageBaseOffset
+            <<" disk=0x"<<detail.diskImageBase<<" mapped=0x"<<detail.mappedImageBase
+            <<" view=0x"<<reinterpret_cast<uintptr_t>(view.value)<<std::dec<<"\n";
         Check(official==Identity::ExactImage,"official mapped CET identity rejected");
         Check(CheckImage(path,nullptr)==Identity::LoadedCodeMismatch,"invalid loaded image accepted");
         // Independent scratch copy of the image header and all inspected code.
@@ -60,6 +63,12 @@ int wmain(int argc,wchar_t** argv){
                 std::memcpy(scratch.data()+s.VirtualAddress,image+s.VirtualAddress,s.SizeOfRawData);
         }
         Check(CheckImage(path,scratch.data())==Identity::ExactImage,"scratch identity baseline");
+        scratch[0]^=1;
+        Check(CheckImage(path,scratch.data())==Identity::LoadedCodeMismatch,"unrelated header change accepted");
+        scratch[0]^=1;
+        scratch[detail.imageBaseOffset]^=1;
+        Check(CheckImage(path,scratch.data())==Identity::LoadedCodeMismatch,"invalid unaligned ImageBase accepted");
+        scratch[detail.imageBaseOffset]^=1;
         for(size_t guard:{size_t{0x10834f},size_t{0x108b41}}){
             scratch[guard]^=1;
             Check(CheckImage(path,scratch.data())==Identity::LoadedCodeMismatch,"changed dispatcher accepted");

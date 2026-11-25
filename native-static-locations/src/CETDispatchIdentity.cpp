@@ -4,6 +4,7 @@
 #include <bcrypt.h>
 #include <array>
 #include <cstring>
+#include <cstddef>
 #include <fstream>
 #include <vector>
 #include <stdexcept>
@@ -98,7 +99,33 @@ Identity CheckImage(const std::filesystem::path& file,const void* mappedImage,Pr
             return Identity::UnsupportedFile;
         stage("mapped headers");
         auto headers=nt.OptionalHeader.SizeOfHeaders;
-        if(!headers||headers>bytes.size()||!EqualMapped(mappedImage,0,bytes.data(),headers,detail))
+        if(!headers||headers>bytes.size()||!mappedImage)return Identity::LoadedCodeMismatch;
+        // Windows' image-section mapper can rewrite the preferred ImageBase
+        // for ASLR. It is an address, not image identity. Prove the precise
+        // PE field and normalize ONLY that aligned nonzero 64-bit address.
+        // Every other header byte, exact on-disk SHA and code range stay strict.
+        const size_t baseOffset=static_cast<size_t>(dos.e_lfanew)+
+            offsetof(IMAGE_NT_HEADERS64,OptionalHeader)+offsetof(IMAGE_OPTIONAL_HEADER64,ImageBase);
+        if(baseOffset>headers||sizeof(uint64_t)>headers-baseOffset)
+            return Identity::UnsupportedFile;
+        uint64_t liveBase=0;
+        SIZE_T read=0;
+        if(detail){
+            detail->imageBaseOffset=static_cast<uint32_t>(baseOffset);
+            detail->diskImageBase=nt.OptionalHeader.ImageBase;
+        }
+        auto address=reinterpret_cast<uintptr_t>(mappedImage);
+        if(address>UINTPTR_MAX-baseOffset||
+            !ReadProcessMemory(GetCurrentProcess(),reinterpret_cast<const void*>(address+baseOffset),
+                               &liveBase,sizeof(liveBase),&read)||read!=sizeof(liveBase)){
+            if(detail)detail->error=GetLastError();
+            return Identity::LoadedCodeMismatch;
+        }
+        if(detail)detail->mappedImageBase=liveBase;
+        if(!liveBase||(liveBase&0xffff)!=0)return Identity::LoadedCodeMismatch;
+        std::vector<unsigned char> expectedHeader(bytes.begin(),bytes.begin()+headers);
+        std::memcpy(expectedHeader.data()+baseOffset,&liveBase,sizeof(liveBase));
+        if(!EqualMapped(mappedImage,0,expectedHeader.data(),headers,detail))
             return Identity::LoadedCodeMismatch;
         size_t sectionStart=static_cast<size_t>(dos.e_lfanew)+sizeof(DWORD)+
             sizeof(IMAGE_FILE_HEADER)+nt.FileHeader.SizeOfOptionalHeader;
