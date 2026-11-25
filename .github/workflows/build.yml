@@ -462,7 +462,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           # Pin the independent native source commit, NOT the mutable latest run.
-          $sourceSha = '71aace123a2fb77bbf5a50386a34dcd308606c5c'
+          $sourceSha = '531f89f4c95be56e12856dfcc49b494ebf21ce18'
           $endpoint = 'repos/${{ github.repository }}/actions/workflows/native-static-locations.yml/runs?branch=dev%2Fnative-fixed-cache-player-state&per_page=100'
           $runsJson = & gh api $endpoint
           if ($LASTEXITCODE -ne 0) { throw 'Cannot query native location CI runs.' }

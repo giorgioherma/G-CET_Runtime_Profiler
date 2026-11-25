@@ -190,6 +190,10 @@ public static class PassGeneratorService
         var centralDemandTransforms = ZeroEngineDemandSource.TryStage(
             modsRoot, ref fixedRuntime, staged, appliedTransformsByFile,
             transformManifest, skipped);
+        var observerDemandTransforms = ZeroEngineObserverDemandSource.TryStage(
+            ref fixedRuntime, effectiveRuntime.Native?.HasObserverDemand == true,
+            out var observerDemandIntegrated);
+        centralDemandTransforms += observerDemandTransforms;
         genericInfrastructureTransformCount += centralDemandTransforms;
 
         // Direct, source-proven Game.GetPlayer():GetWorldPosition() only:
@@ -322,7 +326,7 @@ public static class PassGeneratorService
         // Package the ALREADY-COMPILED native inventory. A semantic Lua
         // subscriber is optional, but cannot silently add or remove geometry.
         // The immutable native DLL is taken from CI, never the player's game.
-        var requiresNative = availableLocations.OwnerCounts.Count>0 ||
+        var requiresNative = observerDemandIntegrated || availableLocations.OwnerCounts.Count>0 ||
             nativePlayerVectorCount > 0 || staged.Any(pair =>
             !pair.Key.StartsWith("0-Engine/", StringComparison.OrdinalIgnoreCase) &&
             (Encoding.UTF8.GetString(pair.Value).Contains(

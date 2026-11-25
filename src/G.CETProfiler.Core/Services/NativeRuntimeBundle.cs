@@ -12,6 +12,17 @@ internal sealed record NativeRuntimeBundle(byte[] Bytes, string Sha256)
     internal const string GameRootRelativePath =
         "red4ext/plugins/G-CET-StaticLocations/GCETStaticLocations.dll";
 
+    internal bool HasObserverDemand
+    {
+        get
+        {
+            var content=Encoding.Latin1.GetString(Bytes);
+            return new[]{"GCETObserverPrepare","GCETObserverBind","GCETObserverSetDemand",
+                "GCETObserverRelease","GCETObserverRetire"}
+                .All(api=>content.Contains(api,StringComparison.Ordinal));
+        }
+    }
+
     internal static NativeRuntimeBundle? TryLoad(bool required)
     {
         var file = Path.Combine(AppContext.BaseDirectory, "runtime",

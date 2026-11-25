@@ -183,6 +183,70 @@ return SpatialHash
     }
     Check(ZeroEngineDemandSource.TryStage(idleRoot, ref idleBuild, new(), new(), new(), new()) == 0,
         "repeat framework-only idle stage");
+    // Actual bundled router + production transform, not a hand-written
+    // approximation of the generated demand lane.
+    var observerRouter=Encoding.UTF8.GetString(Convert.FromBase64String(
+        File.ReadAllText("resolver-runtime/0-Engine/modules/ActionRouter.lua.b64")));
+    var observerHost="""
+local Router = require("modules/G-CET/ActionRouter")
+Observe("PlayerPuppet", "OnAction", function(player, action, consumer)
+    Router.Dispatch(player, action, consumer)
+end)
+return Router
+""";
+    FixedZeroEngineBuild ObserverFramework(string h,string r,string sc) => new(
+        new Dictionary<string,byte[]>{
+            [ZeroEngineDemandSource.InitPath]=Encoding.UTF8.GetBytes(h),
+            [ZeroEngineObserverDemandSource.RouterPath]=Encoding.UTF8.GetBytes(r),
+            [ZeroEngineDemandSource.SchedulerPath]=Encoding.UTF8.GetBytes(sc)
+        },"","","","");
+    var observerBuild=ObserverFramework(observerHost,observerRouter,scheduler);
+    Check(ZeroEngineObserverDemandSource.TryStage(ref observerBuild,true,out var integrated)==1&&integrated,
+        "sole managed observer integration");
+    var observerGenerated=observerBuild.Files.ToDictionary(p=>p.Key,p=>p.Value);
+    Check(ZeroEngineObserverDemandSource.TryStage(ref observerBuild,true,out integrated)==0&&integrated&&
+        observerGenerated.All(p=>p.Value.SequenceEqual(observerBuild.Files[p.Key])),
+        "observer repeat generation must be byte-identical");
+    foreach(var partialPath in observerGenerated.Keys)
+    {
+        var partialFiles=observerGenerated.ToDictionary(p=>p.Key,p=>p.Value);
+        partialFiles[partialPath]=ObserverFramework(observerHost,observerRouter,scheduler).Files[partialPath];
+        var incomplete=observerBuild with {Files=partialFiles};
+        Check(ZeroEngineObserverDemandSource.TryStage(ref incomplete,true,out integrated)==1&&integrated&&
+            observerGenerated.All(p=>p.Value.SequenceEqual(incomplete.Files[p.Key])),
+            "observer partial completion failed: "+partialPath);
+    }
+    var mixed=ObserverFramework(observerHost.Replace("return Router",
+        "Observe('PlayerPuppet','OnAction',function(_, action) Events.PlayerAction:trigger(action) end)\nreturn Router"),
+        observerRouter,scheduler);
+    Check(ZeroEngineObserverDemandSource.TryStage(ref mixed,true,out integrated)==0&&!integrated,
+        "independent author observer must prevent native attachment");
+    var drift=ObserverFramework(observerHost,observerRouter.Replace("if beforeActive == 0 then return end",
+        "print('author work')\n    if beforeActive == 0 then return end"),scheduler);
+    Check(ZeroEngineObserverDemandSource.TryStage(ref drift,true,out integrated)==0&&!integrated,
+        "author work before idle guard must not be suppressed");
+    var oldNative=ObserverFramework(observerHost,observerRouter,scheduler);
+    Check(ZeroEngineObserverDemandSource.TryStage(ref oldNative,false,out integrated)==0&&!integrated,
+        "old DLL must not emit incomplete integration");
+    if(!privateSource)
+    {
+        var observerDir=Path.Combine(root,"observer");
+        foreach(var pair in observerGenerated)
+        {
+            var dest=Path.Combine(observerDir,pair.Key);
+            Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+            File.WriteAllBytes(dest,pair.Value);
+        }
+        foreach(var scenario in new[]{"complete","missing-native","prepare-refused","bind-refused","wake-refused","cancel-before-prepare"})
+        {
+            var psi=new ProcessStartInfo("lua5.4"){UseShellExecute=false};
+            psi.ArgumentList.Add("tests/ZeroEngineDemandContract/ExecuteObserver.lua");
+            psi.ArgumentList.Add(Path.Combine(observerDir,"0-Engine"));
+            psi.ArgumentList.Add(scenario);
+            using var process=Process.Start(psi)!;process.WaitForExit();
+            Check(process.ExitCode==0,"generated observer execution failed: "+scenario);
+        }
+    }
     if (privateSource)
     {
         Console.WriteLine("Private stock 0-Engine central demand generation and idempotence PASS");

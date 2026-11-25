@@ -7,5 +7,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../src/G.CETProfiler.Core/Services/ZeroEngineDemandSource.cs" Link="ZeroEngineDemandSource.cs" />
+    <Compile Include="../../src/G.CETProfiler.Core/Services/ZeroEngineObserverDemandSource.cs" Link="ZeroEngineObserverDemandSource.cs" />
   </ItemGroup>
 </Project>
