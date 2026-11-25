@@ -92,7 +92,7 @@ void Complete(string input,string label)
 {
     var generated=Rewrite(input);
     foreach(var (_,key,getter) in defs)
-        Check(generated.Contains("playerBB:"+getter+"(__gcetPsmFields."+key+")")&&
+        Check(System.Text.RegularExpressions.Regex.IsMatch(generated,@"playerBB\s*:\s*"+getter+@"\s*\(\s*__gcetPsmFields\s*\.\s*"+key+@"\s*\)")&&
             generated.Contains(key+" = PlayerStateDefs."+key),label+": "+key);
     object?[] repeat=[Encoding.UTF8.GetBytes(generated),null,null];
     Check(!(bool)transform.Invoke(null,repeat)!&&(string)repeat[2]! == "ALREADY_SATISFIED",
