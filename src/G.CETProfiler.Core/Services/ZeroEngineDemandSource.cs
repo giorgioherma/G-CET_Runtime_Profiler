@@ -338,6 +338,258 @@ local __gcetFrameDemandReady = type(__gcetDemand) == "table" and
         return 1;
     }
 
+
+    // Reuse the *same* live player observation only on the two successful
+    // lifecycle paths which cannot run author callbacks (warmup pending,
+    // stable player). Ready/recreated/invalidation, failure and unknown
+    // source always retain the host's original second GetPlayer call.
+    private const string PlayerReuseMarker = "-- G-CET lifecycle same-phase player observation v1";
+    private const string PlayerReuseHostMarker = "-- G-CET lifecycle Blackboard player reuse v1";
+    private const string PlayerUpdateStock = """
+    local ok, player = pcall(Game.GetPlayer)
+    if not ok then player = nil end
+    if player then
+        local ok2, id = pcall(player.GetEntityID, player)
+        if not ok2 or not id then
+            player = nil
+        end
+    end
+    local hash = GetPlayerHash(player)
+""";
+    private const string PlayerUpdateChecked = """
+    local ok, player = pcall(Game.GetPlayer)
+    if not ok then player = nil end
+    local checkedId = nil
+    if player then
+        local ok2, id = pcall(player.GetEntityID, player)
+        if not ok2 or not id then
+            player = nil
+        else
+            checkedId = id
+        end
+    end
+    local hash = GetPlayerHash(checkedId)
+""";
+    private const string PlayerUpdateTail = """
+    if not hash then
+        if State.inMenu then
+            failFrames = 0
+            return
+        end
+        if warmupFrames > 0 then
+            warmupFrames = 0
+            warmupPlayer = nil
+            warmupHash = nil
+        end
+        failFrames = failFrames + 1
+        if playerValid and failFrames >= failThreshold then
+            playerValid = false
+            lastPlayerHash = nil
+            failFrames = 0
+            State.player:set(nil)
+            Events.PlayerInvalidated:trigger()
+        end
+        return
+    end
+    failFrames = 0
+    if not playerValid then
+        if warmupFrames == 0 then
+            warmupPlayer = player
+            warmupHash = hash
+        end
+        if hash ~= warmupHash then
+            warmupFrames = 0
+            warmupPlayer = player
+            warmupHash = hash
+        end
+        warmupFrames = warmupFrames + 1
+        if warmupFrames >= warmupThreshold then
+            playerValid = true
+            lastPlayerHash = warmupHash
+            State.player:set(warmupPlayer)
+            warmupFrames = 0
+            warmupPlayer = nil
+            warmupHash = nil
+            Events.PlayerReady:trigger(player)
+        end
+        return
+    end
+    if hash ~= lastPlayerHash then
+        lastPlayerHash = hash
+        State.player:set(player)
+        Events.PlayerRecreated:trigger(player)
+    end
+""";
+    private const string PlayerUpdateOptimizedTail = """
+    if not hash then
+        if State.inMenu then
+            failFrames = 0
+            return
+        end
+        if warmupFrames > 0 then
+            warmupFrames = 0
+            warmupPlayer = nil
+            warmupHash = nil
+        end
+        failFrames = failFrames + 1
+        if playerValid and failFrames >= failThreshold then
+            playerValid = false
+            lastPlayerHash = nil
+            failFrames = 0
+            State.player:set(nil)
+            Events.PlayerInvalidated:trigger()
+        end
+        return
+    end
+    failFrames = 0
+    if not playerValid then
+        if warmupFrames == 0 then
+            warmupPlayer = player
+            warmupHash = hash
+        end
+        if hash ~= warmupHash then
+            warmupFrames = 0
+            warmupPlayer = player
+            warmupHash = hash
+        end
+        warmupFrames = warmupFrames + 1
+        if warmupFrames >= warmupThreshold then
+            playerValid = true
+            lastPlayerHash = warmupHash
+            State.player:set(warmupPlayer)
+            warmupFrames = 0
+            warmupPlayer = nil
+            warmupHash = nil
+            Events.PlayerReady:trigger(player)
+            return
+        end
+        return player
+    end
+    if hash ~= lastPlayerHash then
+        lastPlayerHash = hash
+        State.player:set(player)
+        Events.PlayerRecreated:trigger(player)
+        return
+    end
+    return player
+""";
+    private const string PlayerWrapper = """
+function Lifecycle.Update()
+    __gcetLifecycleUpdateCore()
+end
+function Lifecycle.__gcetUpdateForBlackboard()
+    return __gcetLifecycleUpdateCore()
+end
+""";
+    private static string ProofTokens(string text) =>
+        Regex.Replace(WithoutLuaTrivia(text),@"\s+"," ").Trim();
+
+    internal static bool TryLifecyclePlayerReuse(string source,out string next)
+    {
+        next=source;
+        var done=source.Contains(PlayerReuseMarker,StringComparison.Ordinal);
+        var name=done?"local function __gcetLifecycleUpdateCore()":"function Lifecycle.Update()";
+        var body=Regex.Matches(source,@"(?m)^"+Regex.Escape(name)+
+            @"[ \t]*\r*\n(?<body>[\s\S]*?)^end[ \t]*(?=\r*$)");
+        if(body.Count!=1)return false;
+        var expected=done?PlayerUpdateOptimizedTail:PlayerUpdateTail;
+        var actual=ProofTokens(body[0].Groups["body"].Value);
+        var stock=actual==ProofTokens(PlayerUpdateStock+"\n"+expected);
+        var checkedId=actual==ProofTokens(PlayerUpdateChecked+"\n"+expected);
+        if(!stock&&!checkedId)return false;
+        var helper=Regex.Matches(source,@"(?m)^local function GetPlayerHash\((?:player|id)\)[ \t]*\r*\n(?<body>[\s\S]*?)^end[ \t]*(?=\r*$)");
+        if(helper.Count!=1)return false;
+        var hash=ProofTokens(helper[0].Groups["body"].Value);
+        if(stock && hash!="if not player then return nil end local ok, id = pcall(player.GetEntityID, player) if not ok or not id then return nil end return id.hash")return false;
+        if(checkedId && hash!="if not id then return nil end return id.hash")return false;
+        if(done)
+            return Count(source,PlayerReuseMarker)==1 &&
+                Count(source,"__gcetLifecycleUpdateCore")==3 &&
+                Count(source,"__gcetUpdateForBlackboard")==1 &&
+                Count(NormalizeLf(source),NormalizeLf(PlayerWrapper))==1;
+        if(source.Contains("__gcetLifecycleUpdateCore",StringComparison.Ordinal)||
+           source.Contains("__gcetUpdateForBlackboard",StringComparison.Ordinal))return false;
+        // Preserve comments/custom formatting in the admitted function.
+        var updated=body[0].Value;
+        if(!ReplaceLine(ref updated,name,"local function __gcetLifecycleUpdateCore()")||
+           !AfterLine(ref updated,"Events.PlayerReady:trigger(player)","return")||
+           !AfterLine(ref updated,"Events.PlayerRecreated:trigger(player)","return"))return false;
+        // The warmup return is the only bare return immediately before
+        // the enclosing end and Player recreated block. Match its actual
+        // structural position, not an occurrence elsewhere in the file.
+        var m=Regex.Matches(updated,@"(?m)^        return[ \t]*(?=\r*\n    end[ \t]*\r*\n(?:[ \t]*\r*\n|[ \t]*--[^\r\n]*\r*\n)*    if hash ~= lastPlayerHash then)");
+        if(m.Count!=1)return false;
+        updated=updated.Remove(m[0].Index,m[0].Length).Insert(m[0].Index,"        return player");
+        var last=Regex.Match(updated,@"(?m)^end[ \t]*\r*$");
+        if(!last.Success)return false;
+        updated=updated.Insert(last.Index,Newlines(source,"    return player\n"));
+        var replacement=PlayerReuseMarker+"\n"+updated+"\n\n"+PlayerWrapper;
+        next=source.Remove(body[0].Index,body[0].Length)
+            .Insert(body[0].Index,Newlines(source,replacement));
+        return true;
+    }
+
+    internal static bool TryLifecyclePlayerHost(string source,out string next)
+    {
+        next=source;
+        const string first="Lifecycle.Update()";
+        const string second="local pcOk, pc = pcall(Game.GetPlayer)";
+        const string a="""
+-- G-CET lifecycle Blackboard player reuse v1
+local pc
+if type(Lifecycle.__gcetUpdateForBlackboard) == "function" then
+    pc = Lifecycle.__gcetUpdateForBlackboard()
+else
+    Lifecycle.Update()
+end
+""";
+        const string b="""
+local pcOk = pc ~= nil
+if not pcOk then pcOk, pc = pcall(Game.GetPlayer) end
+""";
+        var normalized=NormalizeLf(source);
+        if(source.Contains(PlayerReuseHostMarker,StringComparison.Ordinal))
+            return Count(source,PlayerReuseHostMarker)==1 &&
+                Count(source,"pc = Lifecycle.__gcetUpdateForBlackboard()")==1 &&
+                Count(source,"if not pcOk then pcOk, pc = pcall(Game.GetPlayer) end")==1;
+        // Between lifecycle and the original lookup there must be no
+        // executable code, only comments. Prove the actual BB callsite.
+        if(Count(source,first)!=1||Count(source,second)!=1||
+           Count(source,"pcall(BlackboardCache.Update, pc)")!=1||
+           source.Contains("__gcetUpdateForBlackboard",StringComparison.Ordinal))return false;
+        if(!Regex.IsMatch(WithoutLuaTrivia(normalized),
+            @"Lifecycle\.Update\(\)\s*local pcOk, pc = pcall\(Game\.GetPlayer\)\s*if pcOk and pc then\s*pcall\(BlackboardCache\.Update, pc\)"))return false;
+        var candidate=source;
+        if(!ReplaceLine(ref candidate,first,a)||!ReplaceLine(ref candidate,second,b))return false;
+        next=candidate;return true;
+    }
+
+    internal static int TryStageLifecyclePlayer(string modsRoot,ref FixedZeroEngineBuild framework,
+        Dictionary<string,byte[]> staged,Dictionary<string,int> counts,List<object> manifest)
+    {
+        const string relative="0-Engine/modules/Lifecycle.lua";
+        var path=Path.Combine(modsRoot,"0-Engine","modules","Lifecycle.lua");
+        if(!File.Exists(path)||!framework.Files.TryGetValue(InitPath,out var hb))return 0;
+        var module=Encoding.UTF8.GetString(staged.TryGetValue(relative,out var pb)?pb:File.ReadAllBytes(path));
+        var host=Encoding.UTF8.GetString(hb);
+        if(!TryLifecyclePlayerReuse(module,out var mn)||!TryLifecyclePlayerHost(host,out var hn)||
+           (module==mn&&host==hn))return 0;
+        if(module!=mn){
+            staged[relative]=Encoding.UTF8.GetBytes(mn);
+            counts[relative]=counts.GetValueOrDefault(relative)+1;
+        }
+        if(host!=hn){
+            var files=framework.Files.ToDictionary(x=>x.Key,x=>x.Value,StringComparer.OrdinalIgnoreCase);
+            files[InitPath]=Encoding.UTF8.GetBytes(hn);
+            framework=framework with{Files=files,FixedInitSha256=Convert.ToHexString(
+                SHA256.HashData(files[InitPath])).ToLowerInvariant()};
+        }
+        manifest.Add(new{type="FRAMEWORK_PLAYER_OBSERVATION_REUSE",Owner="0-Engine",file=relative,
+            contract="GCET_LIFECYCLE_PLAYER_OBSERVATION_V1",sourceProof=true,
+            callbackOrCadenceChanged=false,policy="SAME_PHASE_NO_CALLBACK_REUSE"});
+        return 1;
+    }
+
     private const string DerivedMarker = "-- G-CET derived sample demand v1";
     private const string SampleMarker = "-- G-CET demand sample slots v1";
     private const string DerivedHostMarker = "-- G-CET derived sample host v1";

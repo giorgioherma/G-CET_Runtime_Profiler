@@ -257,6 +257,40 @@ return Engine
         Check(frameProcess.ExitCode==0,"generated frame emitter execution");
     }
 
+
+    // Real author lifecycle body with all transition paths. Exercise the
+    // source generator against the live module as well as generated Lua.
+    var playerLifecycle=File.ReadAllText("tests/ZeroEngineDemandContract/PlayerLifecycleFixture.lua");
+    var playerHost=File.ReadAllText("tests/ZeroEngineDemandContract/PlayerLifecycleHostFixture.lua");
+    if(privateSource){
+        playerLifecycle=lifecycle;
+        playerHost=host;
+    }
+    Check(ZeroEngineDemandSource.TryLifecyclePlayerReuse(playerLifecycle,out var playerLifecycleNext)&&
+        playerLifecycleNext!=playerLifecycle,"same-phase lifecycle observation admission");
+    Check(ZeroEngineDemandSource.TryLifecyclePlayerHost(playerHost,out var playerHostNext)&&
+        playerHostNext!=playerHost,"same-phase host observation admission");
+    Check(ZeroEngineDemandSource.TryLifecyclePlayerReuse(playerLifecycleNext,out var playerLifecycleRepeat)&&
+        playerLifecycleRepeat==playerLifecycleNext,"same-phase lifecycle repeat");
+    Check(ZeroEngineDemandSource.TryLifecyclePlayerHost(playerHostNext,out var playerHostRepeat)&&
+        playerHostRepeat==playerHostNext,"same-phase host repeat");
+    Check(!ZeroEngineDemandSource.TryLifecyclePlayerReuse(playerLifecycle.Replace(
+        "failFrames = 0  -- valid frame, reset counter","failFrames = 0  -- valid frame, reset counter\n    externalCallback()"),out _),
+        "unproven callback path must not reuse player observation");
+    if(!privateSource){
+        var playerRoot=Path.Combine(root,"player-reuse");
+        Directory.CreateDirectory(playerRoot);
+        File.WriteAllText(Path.Combine(playerRoot,"stock-module.lua"),playerLifecycle);
+        File.WriteAllText(Path.Combine(playerRoot,"stock-host.lua"),playerHost);
+        File.WriteAllText(Path.Combine(playerRoot,"module.lua"),playerLifecycleNext);
+        File.WriteAllText(Path.Combine(playerRoot,"host.lua"),playerHostNext);
+        var playerPsi=new ProcessStartInfo("lua5.4"){UseShellExecute=false};
+        playerPsi.ArgumentList.Add("tests/ZeroEngineDemandContract/ExecutePlayerLifecycle.lua");
+        playerPsi.ArgumentList.Add(playerRoot);
+        using var playerProcess=Process.Start(playerPsi)!;playerProcess.WaitForExit();
+        Check(playerProcess.ExitCode==0,"same-phase player observation execution");
+    }
+
     // Keep the existing spatial fixture independent; exercise the new
     // scalar transformation using the same production generator stage.
     File.WriteAllText(Path.Combine(moduleDir, "DerivedState.lua"), derived);
