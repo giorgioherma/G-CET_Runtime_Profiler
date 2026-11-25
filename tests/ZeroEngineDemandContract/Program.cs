@@ -204,6 +204,7 @@ end
 Engine.UpdateFrame=UpdateFrame
 return Engine
 """;
+    frameEmitterHost=frameEmitterHost.Replace("\r\n","\n",StringComparison.Ordinal);
     Check(ZeroEngineDemandSource.TryFrameEmitters(frameEmitterHost,out var frameEmitterNext)&&
         frameEmitterNext!=frameEmitterHost,"frame emitter producer demand");
     Check(ZeroEngineDemandSource.TryFrameEmitters(frameEmitterNext,out var frameEmitterRepeat)&&

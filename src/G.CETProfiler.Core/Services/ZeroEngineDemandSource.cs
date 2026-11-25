@@ -297,10 +297,10 @@ local __gcetFrameDemandReady = type(__gcetDemand) == "table" and
             Count(code,"table.insert(intervals, { interval = interval, listeners = emitter:getListenerCount(), emitter = emitter })") != 1)
             return false;
         var normalized = Regex.Replace(candidate,@"\r+\n","\n");
-        bool state = normalized.Contains(FrameDemandState,StringComparison.Ordinal);
-        bool created = normalized.Contains(FrameEmitterCreateTracked,StringComparison.Ordinal);
-        bool removed = normalized.Contains(FrameEmitterRemoveTracked,StringComparison.Ordinal);
-        bool loop = normalized.Contains(FrameEmitterLoopTracked,StringComparison.Ordinal);
+        bool state = normalized.Contains(NormalizeLf(FrameDemandState),StringComparison.Ordinal);
+        bool created = normalized.Contains(NormalizeLf(FrameEmitterCreateTracked),StringComparison.Ordinal);
+        bool removed = normalized.Contains(NormalizeLf(FrameEmitterRemoveTracked),StringComparison.Ordinal);
+        bool loop = normalized.Contains(NormalizeLf(FrameEmitterLoopTracked),StringComparison.Ordinal);
         // Each generated fragment can exist independently; complete only
         // missing fragments. Do not duplicate partially customized helpers.
         if (Count(source,FrameDemandMarker)!=(state?1:0) ||
