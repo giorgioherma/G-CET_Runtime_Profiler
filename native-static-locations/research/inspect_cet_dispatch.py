@@ -70,6 +70,7 @@ class PE:
                 "PE lacks debug data directory")
         self.image_size, = unpack("<I", data, opt + 56)
         self.exception_directory = unpack("<II", data, opt + 112 + 3 * 8)
+        self.import_directory = unpack("<II", data, opt + 112 + 8)
         self.sections = []
         for i in range(count):
             off = opt + optional_size + 40 * i
@@ -97,6 +98,35 @@ class PE:
             if base <= rva and rva - base + size <= rawsize:
                 return take(self.data, pointer + rva - base, size)
         raise ValueError("RVA not backed by PE section bytes")
+
+    def cstring(self, rva):
+        result = bytearray()
+        for i in range(4096):
+            char = self.read_rva(rva + i, 1)
+            if char == b"\0":
+                return result.decode("ascii")
+            result.extend(char)
+        raise ValueError("unterminated PE string")
+
+    def imports(self):
+        rva, size = self.import_directory
+        require(rva and size >= 20, "missing import directory")
+        result = {}
+        for i in range(size // 20):
+            original, stamp, forwarder, name, iat = unpack("<IIIII", self.read_rva(rva + i * 20, 20), 0)
+            if not any((original, stamp, forwarder, name, iat)):
+                return result
+            require(name and iat, "invalid import descriptor")
+            dll = self.cstring(name)
+            for j in range(65536):
+                value, = unpack("<Q", self.read_rva((original or iat) + j * 8, 8), 0)
+                if not value:
+                    break
+                symbol = f"ordinal:{value & 0xffff}" if value >> 63 else self.cstring(value + 2)
+                result[iat + j * 8] = f"{dll}!{symbol}"
+            else:
+                raise ValueError("unterminated import thunk array")
+        raise ValueError("unterminated import descriptor array")
 
     def function_extent(self, start):
         rva, size = self.exception_directory
@@ -507,6 +537,64 @@ def branch_proof(pe, matches, layouts):
     return result
 
 
+def personality_proof(pe, matches, pdb):
+    from capstone import Cs, CS_ARCH_X86, CS_MODE_64, CS_GRP_CALL, CS_GRP_JUMP
+    from capstone.x86_const import X86_OP_MEM, X86_OP_IMM, X86_REG_RIP
+    cs = Cs(CS_ARCH_X86, CS_MODE_64)
+    cs.detail = True
+    imports = pe.imports()
+    records = list(struct.iter_unpack("<III", pe.read_rva(*pe.exception_directory)))
+    by_start = {begin: (end, unwind) for begin, end, unwind in records}
+    symbols = {}
+    for name, section, offset in pdb.public_records(pe):
+        if 1 <= section <= len(pe.sections):
+            symbols.setdefault(pe.sections[section-1][2] + offset, []).append(name)
+
+    def trace(start, depth=0, seen=None):
+        seen = set() if seen is None else seen
+        if start in seen or depth > 3:
+            return {"rva": hex(start), "limited": True}
+        seen.add(start)
+        end = by_start.get(start, (start + 16, 0))[0]
+        size = min(end - start, 512)
+        result = {"rva": hex(start), "symbols": symbols.get(start, []), "edges": []}
+        for ins in cs.disasm(pe.read_rva(start, size), start):
+            if not (ins.group(CS_GRP_CALL) or ins.group(CS_GRP_JUMP)) or not ins.operands:
+                continue
+            op = ins.operands[0]
+            if op.type == X86_OP_MEM and op.mem.base == X86_REG_RIP:
+                target = ins.address + ins.size + op.mem.disp
+                if target in imports:
+                    result["edges"].append({"at": hex(ins.address), "import": imports[target]})
+            elif op.type == X86_OP_IMM and (ins.group(CS_GRP_CALL) or ins.mnemonic == "jmp"):
+                target = op.imm
+                if start <= target < end:
+                    continue
+                try:
+                    result["edges"].append({"at": hex(ins.address), "target": trace(target, depth+1, seen)})
+                except ValueError:
+                    result["edges"].append({"at": hex(ins.address), "unresolved_rva": hex(target)})
+        return result
+
+    result = {}
+    for name in ("HookRunPureScriptFunction", "HandleOverridenFunction", "ExecuteChain", "Clear"):
+        start = int(matches[name][0]["rva"], 16)
+        require(start in by_start, f"missing unwind record: {name}")
+        end, unwind = by_start[start]
+        header = pe.read_rva(unwind, 4)
+        flags = header[0] >> 3
+        item = {"function_rva": hex(start), "unwind_rva": hex(unwind), "flags": flags}
+        if flags & 3 and not flags & 4:
+            tail = unwind + 4 + ((header[2]+1)&~1)*2
+            handler, = unpack("<I", pe.read_rva(tail, 4), 0)
+            item.update(handler_rva=hex(handler), handler_data_rva=hex(tail+4),
+                        handler_data_prefix=pe.read_rva(tail+4, 16).hex(),
+                        handler=trace(handler))
+        result[name] = item
+    return {"exception_imports": sorted(v for v in imports.values()
+        if any(k in v.lower() for k in ("handler", "cxxthrow", "unwind"))), "functions": result}
+
+
 def check_pair(pe, pdb):
     require(pe.identity == pdb.identity, "PE/PDB GUID or age mismatch")
 
@@ -545,7 +633,7 @@ def inspect(release, symbols, pdbutil=None):
                 evidence["symbol"] = name
                 if evidence not in matches[target]:
                     matches[target].append(evidence)
-    layouts, branches = None, None
+    layouts, branches, personalities = None, None, None
     if pdbutil is not None:
         require(all(len(v) == 1 for v in matches.values()), "unresolved dispatcher symbols")
         with tempfile.TemporaryDirectory() as tmp:
@@ -554,6 +642,8 @@ def inspect(release, symbols, pdbutil=None):
             layouts = class_layouts(pdb, pdb_path, pdbutil)
         print("VERIFIED COMPILED LAYOUTS:", json.dumps(layouts), flush=True)
         branches = branch_proof(pe, matches, layouts)
+        personalities = personality_proof(pe, matches, pdb)
+        print("VERIFIED EXCEPTION PERSONALITIES:", json.dumps(personalities), flush=True)
         field = layouts["FunctionOverride::CallChain"]["fields"]["IsEmpty"]
         original_offset = field["offset"]
         field["offset"] = layouts["FunctionOverride::CallChain"]["size"] + 4096
@@ -568,6 +658,7 @@ def inspect(release, symbols, pdbutil=None):
     return {
         "layouts": layouts,
         "pre_marshalling_branches": branches,
+        "exception_personalities": personalities,
         "wrong_offset_negative_test": "PASS" if pdbutil is not None else "NOT_RUN",
         "source_commit": SOURCE,
         "asi_sha256": sha(image),
