@@ -435,6 +435,35 @@ def branch_proof(pe, matches, layouts):
                                    "active": active, "empty": empty})
         require(len(candidates) == 1, f"{name}: expected one pre-marshalling branch, found {len(candidates)}")
         result[name] = {"extent": [hex(start), hex(end)], **candidates[0]}
+        guard = int(candidates[0]["compare_rva"], 16)
+        active = int(candidates[0]["active_edge"], 16)
+        empty = int(candidates[0]["empty_edge"], 16)
+        # A branch-island design must not assume arbitrary volatile registers
+        # are dead at an interior point. Show both successors and the exact
+        # surrounding instructions with explicit register access.
+        def describe(i):
+            reads, writes = i.regs_access()
+            return {"rva": hex(i.address), "bytes": i.bytes.hex(),
+                    "instruction": f"{i.mnemonic} {i.op_str}",
+                    "reads": [i.reg_name(r) for r in reads],
+                    "writes": [i.reg_name(r) for r in writes]}
+        result[name]["guard_bytes"] = pe.read_rva(guard, active - guard).hex()
+        result[name]["guard_context"] = [describe(i) for i in instructions
+                                         if guard - 48 <= i.address < active + 64]
+        result[name]["empty_context"] = [describe(i) for i in instructions
+                                         if empty <= i.address < empty + 96]
+        directory_rva, directory_size = pe.exception_directory
+        records = [row for row in struct.iter_unpack("<III", pe.read_rva(directory_rva, directory_size))
+                   if row[0] == start and row[1] == end]
+        require(len(records) == 1, f"no unique unwind record for {name}")
+        unwind = records[0][2]
+        header = pe.read_rva(unwind, 4)
+        count = header[2]
+        result[name]["unwind"] = {"rva": hex(unwind), "version": header[0] & 7,
+                                  "flags": header[0] >> 3, "prologue_size": header[1],
+                                  "slot_count": count, "frame": header[3],
+                                  "header_and_slots": pe.read_rva(unwind, 4 + ((count + 1) & ~1) * 2).hex()}
+
     return result
 
 
