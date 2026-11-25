@@ -1,6 +1,9 @@
 local DerivedState = require("modules/DerivedState")
+local Lifecycle = require("modules/Lifecycle")
+local Events, Logger = {}, {}
 local Engine = {}
 local State = {derived = {}}
+Lifecycle.Init(Events, State, Logger)
 local proxyCache = {}
 local function DeepReadOnly(tbl, path)
     if proxyCache[tbl] then return proxyCache[tbl] end

@@ -196,12 +196,13 @@ local function resolveLookPitch()
 end
 """;
         var normalized = source.Replace("\r\n", "\n", StringComparison.Ordinal);
-        if (Count(normalized, pureReader) != 1 || Count(normalized, protectedReader) != 1 ||
+        if (Count(normalized, NormalizeLf(pureReader)) != 1 || Count(normalized, NormalizeLf(protectedReader)) != 1 ||
             Regex.Matches(source, @"\blookPitch\b").Count != 3 ||
             Regex.Matches(source, @"\bresolveLookPitch\b").Count != 2 ||
             Count(source, "function DerivedState.Update(player)") != 1 ||
             Count(source, "function DerivedState.Reset()") != 1 ||
             Count(source, getter) != 1 ||
+            Count(source, "return cached\n") + Count(source, "return cached\r\n") != 1 ||
             Count(normalized, getter + "\n    return cached\nend") != 1 ||
             source.Contains("__gcetPitch", StringComparison.Ordinal))
             return false;
@@ -222,6 +223,40 @@ end
         return true;
     }
 
+    // The host gives Lifecycle a raw State table. Admit only a module
+    // which proves that the raw reference is private and uses unrelated
+    // fields. Its runtime capability protects mixed overlays.
+    internal static bool TryDerivedLifecycle(string source, out string next)
+    {
+        next = source;
+        const string capability = "Lifecycle.__gcetDerivedStateSafe = true";
+        var code = WithoutLuaTrivia(source);
+        if (Count(code, "function Lifecycle.Init(events, state, logger)") != 1 ||
+            Count(code, "local State = nil") != 1 ||
+            Count(code, "State = state") != 1 ||
+            Regex.Matches(code, @"\bstate\b").Count != 2)
+            return false;
+        code = Regex.Replace(code, @"\blocal\s+State\s*=\s*nil|\bState\s*=\s*state|\bState\s*\.\s*(?:player|inMenu)\b", "");
+        if (Regex.IsMatch(code, @"\bState\b")) return false;
+        if (Count(source, capability) == 1) return true;
+        if (source.Contains("__gcetDerivedStateSafe", StringComparison.Ordinal)) return false;
+        return BeforeLine(ref next, "return Lifecycle", capability);
+    }
+
+    // Ignore comments and literal contents when checking for an additional
+    // raw State alias. Quoted/dynamic State indexing is not admitted.
+    private static string WithoutLuaTrivia(string source) => Regex.Replace(source,
+        """--\[(?<ce>=*)\[.*?\]\k<ce>\]|--[^\r\n]*|\[(?<le>=*)\[.*?\]\k<le>\]|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'""",
+        " ", RegexOptions.Singleline | RegexOptions.CultureInvariant);
+
+    private static bool HasProvenRawStatePaths(string source)
+    {
+        var code = WithoutLuaTrivia(source);
+        code = Regex.Replace(code,
+            @"\blocal\s+State\s*=|\bDeepReadOnly\s*\(\s*State\s*,|\bLifecycle\.Init\s*\(\s*Events\s*,\s*State\s*,|\bState\s*\.\s*[A-Za-z_][A-Za-z0-9_]*", "");
+        return !Regex.IsMatch(code, @"\bState\b");
+    }
+
     internal static bool TryDerivedHost(string source, out string next)
     {
         next = source;
@@ -229,17 +264,29 @@ end
         const string read = "local v = tbl[k]";
         const string raw = "return next, tbl, nil";
         const string update = "State.derived = DerivedState.Get()";
-        const string handshake = "__gcetDerivedDemand = type(DerivedState.__gcetEnableDemand) == 'function' and type(DerivedState.__gcetPeek) == 'function' and type(DerivedState.__gcetReadField) == 'function' and type(DerivedState.__gcetExpose) == 'function' and DerivedState.__gcetEnableDemand(__gcetDemand)";
+        const string baseHandshake = "__gcetDerivedDemand = type(DerivedState.__gcetEnableDemand) == 'function' and type(DerivedState.__gcetPeek) == 'function' and type(DerivedState.__gcetReadField) == 'function' and type(DerivedState.__gcetExpose) == 'function' and DerivedState.__gcetEnableDemand(__gcetDemand)";
+        var lifecycleRequired = source.Contains("Lifecycle.Init(Events, State, Logger)", StringComparison.Ordinal);
+        var handshake = lifecycleRequired
+            ? baseHandshake.Replace("= type(DerivedState.", "= Lifecycle.__gcetDerivedStateSafe == true and type(DerivedState.", StringComparison.Ordinal)
+            : baseHandshake;
         const string readHook = "if __gcetDerivedDemand and tbl == State.derived then DerivedState.__gcetReadField(tbl, k) end";
         const string rawHook = "if __gcetDerivedDemand then if tbl == State then DerivedState.__gcetExpose() elseif tbl == State.derived then DerivedState.__gcetExpose(tbl) end end";
         const string peek = "State.derived = __gcetDerivedDemand and DerivedState.__gcetPeek() or DerivedState.Get()";
         if (source.Contains(DerivedHostMarker, StringComparison.Ordinal))
-            return Count(source, handshake) == 1 && Count(source, readHook) == 1 &&
-                Count(source, rawHook) == 1 && Count(source, peek) == 1 &&
-                Count(source, "local __gcetDerivedDemand = false") == 1;
+        {
+            if (Count(source, readHook) != 1 || Count(source, rawHook) != 1 ||
+                Count(source, peek) != 1 || Count(source, "local __gcetDerivedDemand = false") != 1 ||
+                !HasProvenRawStatePaths(source.Replace(readHook, "", StringComparison.Ordinal)
+                    .Replace(rawHook, "", StringComparison.Ordinal))) return false;
+            if (Count(source, handshake) == 1) return true;
+            // Complete the first development form when the raw Lifecycle
+            // compatibility capability is missing, without another binding.
+            return lifecycleRequired && ReplaceLine(ref next, baseHandshake, handshake);
+        }
         // Admit the original proxy/raw-iteration contract. Unknown direct
         // reads and escapes cannot safely be made lazy by this transform.
-        if (Count(source, "local function DeepReadOnly(tbl, path)") != 1 ||
+        if (!HasProvenRawStatePaths(source) ||
+            Count(source, "local function DeepReadOnly(tbl, path)") != 1 ||
             Count(source, "local function UpdateFrame(delta)") != 1 ||
             Count(source, "local stateProxy = nil") != 1 ||
             Count(source, "stateProxy = DeepReadOnly(State, \"state\")") != 1 ||
@@ -384,17 +431,35 @@ end
             var bytes = staged.TryGetValue(derivedRelative, out var pending)
                 ? pending : File.ReadAllBytes(derivedLive);
             var text = Encoding.UTF8.GetString(bytes);
-            if (TryDerivedProducer(text, out var producer) &&
+            const string lifecycleRelative = "0-Engine/modules/Lifecycle.lua";
+            var lifecyclePath = Path.Combine(modsRoot, "0-Engine", "modules", "Lifecycle.lua");
+            var needsLifecycle = host.Contains("Lifecycle.Init(Events, State, Logger)", StringComparison.Ordinal);
+            string? lifecycleSource = null;
+            string? lifecycleNext = null;
+            var lifecycleSafe = !needsLifecycle;
+            if (needsLifecycle && File.Exists(lifecyclePath))
+            {
+                lifecycleSource = Encoding.UTF8.GetString(staged.TryGetValue(lifecycleRelative, out var pendingLifecycle)
+                    ? pendingLifecycle : File.ReadAllBytes(lifecyclePath));
+                lifecycleSafe = TryDerivedLifecycle(lifecycleSource, out lifecycleNext);
+            }
+            if (lifecycleSafe && TryDerivedProducer(text, out var producer) &&
                 TryDerivedHost(host, out var hostNext) &&
                 TrySampleController(schedulerText, out var sampleScheduler))
             {
                 compatible++;
+                var lifecycleChanged = lifecycleNext != lifecycleSource;
+                if (lifecycleChanged)
+                {
+                    staged[lifecycleRelative] = Encoding.UTF8.GetBytes(lifecycleNext!);
+                    counts[lifecycleRelative] = counts.GetValueOrDefault(lifecycleRelative) + 1;
+                }
                 if (producer != text)
                 {
                     staged[derivedRelative] = Encoding.UTF8.GetBytes(producer);
                     counts[derivedRelative] = counts.GetValueOrDefault(derivedRelative) + 1;
                 }
-                if (producer != text || hostNext != host || sampleScheduler != Encoding.UTF8.GetString(scheduler))
+                if (producer != text || hostNext != host || lifecycleChanged || sampleScheduler != Encoding.UTF8.GetString(scheduler))
                 {
                     applied++;
                     manifest.Add(new { type = "SEMANTIC_RULE", Owner = "0-Engine",
@@ -409,7 +474,7 @@ end
             {
                 skipped.Add(new { type = "SEMANTIC_RULE", Owner = "0-Engine",
                     RuleId = "0engine-demand-derived-scalar-sample",
-                    reason = "Camera scalar/proxy access or sample controller not proven; preserve original sampling." });
+                    reason = "Camera scalar/proxy access, raw Lifecycle state ownership or sample controller not proven; preserve original sampling." });
             }
         }
         if (compatible > 0)
@@ -426,8 +491,9 @@ end
 
     private static int Count(string source, string value) =>
         (source.Length - source.Replace(value, "", StringComparison.Ordinal).Length) / value.Length;
+    private static string NormalizeLf(string value) => value.Replace("\r\n", "\n", StringComparison.Ordinal);
     private static string Newlines(string source, string value) =>
-        source.Contains("\r\n", StringComparison.Ordinal) ? value.Replace("\n", "\r\n") : value;
+        source.Contains("\r\n", StringComparison.Ordinal) ? NormalizeLf(value).Replace("\n", "\r\n") : NormalizeLf(value);
     private static Regex Line(string value) => new(
         @"(?m)^(?<indent>[ \t]*)" + Regex.Escape(value) + @"[ \t]*(?=\r?$)");
     private static bool ReplaceLine(ref string source, string anchor, string replacement)
@@ -436,7 +502,7 @@ end
         if (matches.Count != 1) return false;
         var match = matches[0];
         var indent = match.Groups["indent"].Value;
-        var body = Newlines(source, indent + replacement.Replace("\n", "\n" + indent));
+        var body = Newlines(source, indent + NormalizeLf(replacement).Replace("\n", "\n" + indent));
         source = source.Remove(match.Index, match.Length).Insert(match.Index, body);
         return true;
     }

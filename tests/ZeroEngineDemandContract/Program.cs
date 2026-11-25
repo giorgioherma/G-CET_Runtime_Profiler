@@ -68,6 +68,7 @@ return SpatialHash
 """;
     var derived = File.ReadAllText("tests/ZeroEngineDemandContract/DerivedFixture.lua");
     var derivedHost = File.ReadAllText("tests/ZeroEngineDemandContract/DerivedHostFixture.lua");
+    var lifecycle = File.ReadAllText("tests/ZeroEngineDemandContract/LifecycleFixture.lua");
     var moduleDir = Path.Combine(root, "0-Engine", "modules");
     Directory.CreateDirectory(moduleDir);
     var privateSource = args.Length == 2 && args[0] == "--stock";
@@ -79,6 +80,7 @@ return SpatialHash
         spatial = File.ReadAllText(Path.Combine(author, "modules", "SpatialHash.lua"));
         derived = File.ReadAllText(Path.Combine(author, "modules", "DerivedState.lua"));
         derivedHost = host;
+        lifecycle = File.ReadAllText(Path.Combine(author, "modules", "Lifecycle.lua"));
     }
     File.WriteAllText(Path.Combine(moduleDir, "Proximity.lua"), proximity);
     File.WriteAllText(Path.Combine(moduleDir, "SpatialHash.lua"), spatial);
@@ -115,16 +117,22 @@ return SpatialHash
     // Keep the existing spatial fixture independent; exercise the new
     // scalar transformation using the same production generator stage.
     File.WriteAllText(Path.Combine(moduleDir, "DerivedState.lua"), derived);
+    File.WriteAllText(Path.Combine(moduleDir, "Lifecycle.lua"), lifecycle);
+    Check(ZeroEngineDemandSource.TryDerivedProducer(derived, out _), "actual camera producer proof");
+    Check(ZeroEngineDemandSource.TryDerivedHost(derivedHost, out _), "actual scalar host proof");
+    Check(ZeroEngineDemandSource.TryDerivedLifecycle(lifecycle, out _), "actual raw Lifecycle ownership proof");
+    Check(!ZeroEngineDemandSource.TryDerivedLifecycle(lifecycle.Replace("State = state", "State = state\n    externalState = State"), out _), "unproved raw Lifecycle escape accepted");
     var scalarFramework = new FixedZeroEngineBuild(new Dictionary<string, byte[]> {
         [ZeroEngineDemandSource.InitPath] = Encoding.UTF8.GetBytes(derivedHost),
         [ZeroEngineDemandSource.SchedulerPath] = Encoding.UTF8.GetBytes(scheduler)
     }, "", "", "", "");
     var scalarStage = new Dictionary<string, byte[]>();
     var scalarCount = ZeroEngineDemandSource.TryStage(root, ref scalarFramework, scalarStage, new(), new(), new());
-    Check(scalarCount == (privateSource ? 3 : 1), "central scalar sample admission");
+    Check(scalarCount == (privateSource ? 3 : 1), "central scalar sample admission: " + scalarCount);
     var scalarHost = scalarFramework.Files[ZeroEngineDemandSource.InitPath];
     var scalarScheduler = scalarFramework.Files[ZeroEngineDemandSource.SchedulerPath];
     var scalarModule = scalarStage["0-Engine/modules/DerivedState.lua"];
+    var scalarLifecycle = scalarStage["0-Engine/modules/Lifecycle.lua"];
     Check(ZeroEngineDemandSource.TryStage(root, ref scalarFramework, scalarStage, new(), new(), new()) == 0,
         "central scalar repeat generation");
     Check(scalarHost.SequenceEqual(scalarFramework.Files[ZeroEngineDemandSource.InitPath]) &&
@@ -164,6 +172,7 @@ return SpatialHash
     File.WriteAllBytes(Path.Combine(ns, "Scheduler.lua"), scalarScheduler);
     File.WriteAllBytes(Path.Combine(root, "0-Engine", "init.lua"), scalarHost);
     File.WriteAllBytes(Path.Combine(moduleDir, "DerivedState.lua"), scalarModule);
+    File.WriteAllBytes(Path.Combine(moduleDir, "Lifecycle.lua"), scalarLifecycle);
     void RunScalar(string scenario)
     {
         var psi = new ProcessStartInfo("lua5.4") { UseShellExecute = false };
@@ -177,6 +186,10 @@ return SpatialHash
         RunScalar(scenario);
     File.WriteAllText(Path.Combine(moduleDir, "DerivedState.lua"), derived);
     RunScalar("old-producer");
+    File.WriteAllBytes(Path.Combine(moduleDir, "DerivedState.lua"), scalarModule);
+    File.WriteAllText(Path.Combine(moduleDir, "Lifecycle.lua"), lifecycle);
+    RunScalar("old-lifecycle");
+    File.WriteAllBytes(Path.Combine(moduleDir, "Lifecycle.lua"), scalarLifecycle);
     File.WriteAllBytes(Path.Combine(moduleDir, "DerivedState.lua"), scalarModule);
     File.WriteAllText(Path.Combine(ns, "Scheduler.lua"), scheduler);
     RunScalar("old-controller");
