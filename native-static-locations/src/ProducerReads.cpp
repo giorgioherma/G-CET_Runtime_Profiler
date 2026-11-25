@@ -142,7 +142,9 @@ bool Read(CBaseFunction* fn,IScriptable* receiver,CBaseFunction* caller,rtti::IT
     return Invoke(fn,receiver,caller,type,&result,argType,&value);
 }
 
-struct Pose {Vector4 position{};Quaternion orientation{};EulerAngles euler{};};
+// The SDK Vector4 wrapper does not itself declare the engine's stronger
+// alignment. Keep all actual pose result slots naturally 16-byte aligned.
+struct alignas(16) Pose {Vector4 position{};Quaternion orientation{};EulerAngles euler{};};
 void ReadPose(IScriptable* context,CStackFrame* frame,int32_t* out,int64_t) {
     Receiver receiver;
     Vector4* pos=nullptr;Quaternion* orientation=nullptr;float* yaw=nullptr;
@@ -158,11 +160,25 @@ void ReadPose(IScriptable* context,CStackFrame* frame,int32_t* out,int64_t) {
     auto* posFn=Resolve(b->position,cls,"GetWorldPosition",false,b->vec);
     auto* oriFn=Resolve(b->orientation,cls,"GetWorldOrientation",false,b->quat);
     auto* yawFn=Resolve(b->euler,b->quaternionClass,"ToEulerAngles",true,b->angles,b->quat);
+    // Capture the actual entry generation, not a reference to the mutable
+    // thread-local lease. A nested producer call may reset/rebind that lease.
+    const auto generation=b->generation;
+    auto* const registry=b->registry;
+    auto current=[&]{
+        return g_generation.load(std::memory_order_acquire)==generation&&
+               CRTTISystem::Get()==registry&&receiver.instance->GetType()==cls;
+    };
     Pose sample;
-    auto result=ReadOrdered(sample,[&]{return posFn&&oriFn&&yawFn;},
+    auto result=ReadOrdered(sample,[&]{return posFn&&oriFn&&yawFn;},current,
         [&](Pose& p){return Read(posFn,receiver.instance,frame->func,b->vec,p.position);},
-        [&](Pose& p){return Read(oriFn,receiver.instance,frame->func,b->quat,p.orientation);},
-        [&](Pose& p){return Read(yawFn,context,frame->func,b->angles,p.euler,b->quat,p.orientation);});
+        [&](Pose& p){
+            auto* live=Resolve(b->orientation,cls,"GetWorldOrientation",false,b->quat);
+            return Read(live,receiver.instance,frame->func,b->quat,p.orientation);
+        },
+        [&](Pose& p){
+            auto* live=Resolve(b->euler,b->quaternionClass,"ToEulerAngles",true,b->angles,b->quat);
+            return Read(live,context,frame->func,b->angles,p.euler,b->quat,p.orientation);
+        });
     *out=static_cast<int32_t>(result);
     if(result==Result::Complete){*pos=sample.position;*orientation=sample.orientation;*yaw=sample.euler.Yaw;}
 }
@@ -195,14 +211,26 @@ void ReadBoard(IScriptable*,CStackFrame* frame,int32_t* out,int64_t) {
     if constexpr(LastBool)if(!b->bools||!b->boolKey)return;
     auto* intFn=Resolve(b->readInt,cls,"GetInt",false,b->ints,b->intKey);
     auto* boolFn=LastBool?Resolve(b->readBool,cls,"GetBool",false,b->bools,b->boolKey):nullptr;
+    const auto generation=b->generation;
+    auto* const registry=b->registry;
+    auto current=[&]{
+        return g_generation.load(std::memory_order_acquire)==generation&&
+               CRTTISystem::Get()==registry&&receiver.instance->GetType()==cls;
+    };
     struct Values {std::array<int32_t,4> ints{};bool last=false;} sample;
-    auto result=ReadOrdered(sample,[&]{return intFn&&(!LastBool||boolFn);},
+    auto nextInt=[&](Values& v,size_t i){
+        auto* live=Resolve(b->readInt,cls,"GetInt",false,b->ints,b->intKey);
+        return Read(live,receiver.instance,frame->func,b->ints,v.ints[i],b->intKey,keys[i]);
+    };
+    auto result=ReadOrdered(sample,[&]{return intFn&&(!LastBool||boolFn);},current,
         [&](Values& v){return Read(intFn,receiver.instance,frame->func,b->ints,v.ints[0],b->intKey,keys[0]);},
-        [&](Values& v){return Read(intFn,receiver.instance,frame->func,b->ints,v.ints[1],b->intKey,keys[1]);},
-        [&](Values& v){return Read(intFn,receiver.instance,frame->func,b->ints,v.ints[2],b->intKey,keys[2]);},
+        [&](Values& v){return nextInt(v,1);},
+        [&](Values& v){return nextInt(v,2);},
         [&](Values& v){
-            if constexpr(LastBool)return Read(boolFn,receiver.instance,frame->func,b->bools,v.last,b->boolKey,boolKey);
-            else return Read(intFn,receiver.instance,frame->func,b->ints,v.ints[3],b->intKey,keys[3]);
+            if constexpr(LastBool){
+                auto* live=Resolve(b->readBool,cls,"GetBool",false,b->bools,b->boolKey);
+                return Read(live,receiver.instance,frame->func,b->bools,v.last,b->boolKey,boolKey);
+            }else return nextInt(v,3);
         });
     *out=static_cast<int32_t>(result);
     if(result!=Result::Complete)return;
