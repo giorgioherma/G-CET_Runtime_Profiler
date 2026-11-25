@@ -1358,7 +1358,10 @@ end
             var expected=line[0].Groups["indent"].Value+NormalizeLf(fragment).Replace("\n","\n"+line[0].Groups["indent"].Value);
             var following=Proof(candidate[(line[0].Index+line[0].Length)..]);
             if(following.StartsWith("\n"+expected,StringComparison.Ordinal))return true;
-            if(Count(Proof(candidate),expected)!=0)return false;
+            // The session observer itself owns one reset call. It is not
+            // the independent invalidation callback's partial fragment.
+            var other=Proof(candidate).Replace(NormalizeLf(ProviderSessionObserver),"",StringComparison.Ordinal);
+            if(Count(other,expected)!=0)return false;
             return AfterLine(ref candidate,anchor,fragment);
         }
         if(!Upgrade(ProviderCacheOld,ProviderCacheCurrent)||
