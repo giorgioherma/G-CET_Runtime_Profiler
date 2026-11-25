@@ -193,8 +193,8 @@ return Engine
         sd==sdPartial&&sh==shPartial,"shared derived host-only partial");
     Check(ZeroEngineDemandSource.TrySharedDerivedProviders(sd,sharedHost,out sdPartial,out shPartial,out _)&&
         sd==sdPartial&&sh==shPartial,"shared derived module-only partial");
-    var drift=sharedHost.Replace("return __gcetGetSharedProvider(\"CAMERA_SYSTEM\")","return Game.GetCameraSystem()");
-    Check(ZeroEngineDemandSource.TrySharedDerivedProviders(sharedModule,drift,out var sdDrift,out _,out var sgDrift)&&
+    var sharedProviderDrift=sharedHost.Replace("return __gcetGetSharedProvider(\"CAMERA_SYSTEM\")","return Game.GetCameraSystem()");
+    Check(ZeroEngineDemandSource.TrySharedDerivedProviders(sharedModule,sharedProviderDrift,out var sdDrift,out _,out var sgDrift)&&
         sgDrift.Length==4&&sdDrift.Contains("Game.GetCameraSystem()")&&!sgDrift.Contains("GetCameraSystem"),
         "independent provider refusal must not reject all other dependencies");
     Check(!ZeroEngineDemandSource.TrySharedDerivedProviders("local Game = {}\n"+sharedModule,sharedHost,out _,out _,out _),
