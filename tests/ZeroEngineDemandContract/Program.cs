@@ -216,7 +216,7 @@ return Engine
     // Actual canonical provider body, source-shaped original session hooks.
     var sessionHost=sharedHost.Replace("local __gcetSharedProviderValues = {}","""
 local isSessionLoaded
-local function UpdateFrame()
+local function UpdateFrame(delta)
     local okLive, liveLoaded = pcall(GameSession.IsLoaded)
     if okLive then
         isSessionLoaded = liveLoaded
