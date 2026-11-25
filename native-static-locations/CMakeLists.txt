@@ -20,6 +20,9 @@ add_test(NAME native_player_snapshot COMMAND gcet_player_snapshot_test)
 add_executable(gcet_demand_frame_cache_test tests/DemandFrameCacheTests.cpp)
 target_include_directories(gcet_demand_frame_cache_test PRIVATE include)
 add_test(NAME native_demand_frame_cache COMMAND gcet_demand_frame_cache_test)
+add_executable(gcet_ordered_producer_read_test tests/OrderedProducerReadTests.cpp)
+target_include_directories(gcet_ordered_producer_read_test PRIVATE include)
+add_test(NAME native_ordered_producer_read COMMAND gcet_ordered_producer_read_test)
 # The native identity proof does not require the game SDK. Run it before
 # downloading/compiling the large SDK, then test the actual linked build too.
 if(WIN32)
@@ -43,7 +46,7 @@ if(GCET_BUILD_PLUGIN)
     GIT_TAG f9ad5334362a8a0815baf58f47615697485feb52
     GIT_SHALLOW FALSE)
   FetchContent_MakeAvailable(red4ext_sdk)
-  add_library(GCETStaticLocations SHARED src/Plugin.cpp)
+  add_library(GCETStaticLocations SHARED src/Plugin.cpp src/ProducerReads.cpp)
   target_link_libraries(GCETStaticLocations PRIVATE gcet_static_core RED4ext::SDK gcet_cet_dispatch_identity)
   target_include_directories(GCETStaticLocations PRIVATE include)
   set_target_properties(GCETStaticLocations PROPERTIES OUTPUT_NAME "GCETStaticLocations")

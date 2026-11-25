@@ -4,6 +4,7 @@
 #include "DemandFrameCache.hpp"
 #include "DiagnosticProbe.hpp"
 #include "CETLiveObserver.hpp"
+#include "ProducerReads.hpp"
 #include <cmath>
 #include <RED4ext/Scripting/Utils.hpp>
 #include <RED4ext/Scripting/Natives/ScriptGameInstance.hpp>
@@ -457,6 +458,7 @@ namespace {
         rtti->RegisterFunction(fn);
     }
     void PostRegisterTypes() {
+        gcet::producer::RegisterProducerReads();
         const char* armNames[]={"id","armed"};
         const char* armTypes[]={"Int32","Bool"};
         const char* positionNames[]={"x","y","z"};
