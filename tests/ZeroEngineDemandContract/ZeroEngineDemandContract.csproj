@@ -9,5 +9,6 @@
     <Compile Include="../../src/G.CETProfiler.Core/Services/ZeroEngineDemandSource.cs" Link="ZeroEngineDemandSource.cs" />
     <Compile Include="../../src/G.CETProfiler.Core/Services/ZeroEngineObserverDemandSource.cs" Link="ZeroEngineObserverDemandSource.cs" />
     <Compile Include="../../src/G.CETProfiler.Core/Services/GenericObserverGuardSource.cs" Link="GenericObserverGuardSource.cs" />
+    <Compile Include="../../src/G.CETProfiler.Core/Services/SharedProviderCatalog.cs" Link="SharedProviderCatalog.cs" />
   </ItemGroup>
 </Project>

@@ -730,7 +730,7 @@ local function resolveLookPitch()
     return ok and result or 0
 end
 """;
-        var normalized = source.Replace("\r\n", "\n", StringComparison.Ordinal);
+        var normalized = DerivedSharedProof(source);
         if (Count(normalized, NormalizeLf(pureReader)) != 1 || Count(normalized, NormalizeLf(protectedReader)) != 1 ||
             Regex.Matches(source, @"\blookPitch\b").Count != 3 ||
             Regex.Matches(source, @"\bresolveLookPitch\b").Count != 2 ||
@@ -1090,7 +1090,7 @@ end
         // field uses, transition events, prior-value dependency or custom
         // native side effects. Weapon type, death, cover, time and district
         // remain at their original phase and cadence.
-        var normalized=NormalizeLf(source);
+        var normalized=DerivedSharedProof(source);
         if(Count(normalized,NormalizeLf(HasWeaponReader))!=1||
            Count(normalized,NormalizeLf(WorkspotReader))!=1||
            Count(source,"local pollThrottle = 6")!=1||
@@ -1181,6 +1181,182 @@ end
             contract="GCET_CADENCED_SCALAR_SNAPSHOT_V2",sourceProof=true,
             fields=new[]{"hasWeapon","isInWorkspot"},rawExposureRetainsOriginalCadence=true,
             callbackOrCadenceChanged=false,nativeReadCountChanged=false,policy="ORIGINAL_PHASE_HISTORICAL_SNAPSHOT"});
+        return 1;
+    }
+
+
+    // Shared stable system handles are independent of historical value
+    // sampling. Reuse the EXISTING root provider at the original read site,
+    // never cache a mutable camera vector, weapon, PSM state or time value.
+    private const string SharedDerivedLocal =
+        "local __gcetDerivedProviders = {} -- G-CET derived shared provider dependency v1";
+    private const string SharedDerivedSetter = """
+function DerivedState.__gcetSetSharedProviders(providers)
+    __gcetDerivedProviders = providers or {}
+end
+""";
+    private const string SharedDerivedHostBegin = "-- G-CET derived shared provider binding v1";
+    private static IEnumerable<SharedProviderAuthorization> StableDerivedProviders =>
+        SharedProviderCatalog.RuntimeProviders.Where(p=>p.Category=="SYSTEM_HANDLE");
+    private static string SharedDerivedRead(string getter) =>
+        "(__gcetDerivedProviders."+getter+" or Game."+getter+")()";
+    // Normalize for EXISTING exact reader proofs only. Never strip authored
+    // content from staged output; complete missing bridge pieces below.
+    private static string DerivedSharedProof(string source)
+    {
+        if(!source.Contains(SharedDerivedLocal,StringComparison.Ordinal)&&
+           !source.Contains(SharedDerivedSetter.Split('\n')[0].TrimEnd('\r'),StringComparison.Ordinal))
+            return NormalizeLf(source);
+        var proof=NormalizeLf(source);
+        foreach(var p in StableDerivedProviders)
+            proof=proof.Replace(SharedDerivedRead(p.Getter),"Game."+p.Getter+"()",StringComparison.Ordinal);
+        return proof;
+    }
+    private static bool RootProviderProven(string host,SharedProviderAuthorization p)
+    {
+        var text=NormalizeLf(host);
+        // Existing fixed-runtime source owns stable system lifetime. Do not
+        // use an arbitrary similarly named function or compatibility cache.
+        const string epoch = """
+local function __gcetSyncSharedProviderEpoch()
+    local player = GetPlayer()
+    if __gcetSharedProviderEpoch ~= player then
+        __gcetSharedProviderEpoch = player
+        __gcetSharedProviderValues = {}
+        __gcetScriptableSystemValues = {}
+    end
+end
+""";
+        const string cache = """
+local function __gcetGetSharedProvider(key)
+    __gcetSyncSharedProviderEpoch()
+    local value = __gcetSharedProviderValues[key]
+    if value == nil then
+        local getter = __gcetSharedProviderGetters[key]
+        if getter ~= nil then
+            value = getter()
+            if value ~= nil then
+                __gcetSharedProviderValues[key] = value
+            end
+        end
+    end
+    return value
+end
+""";
+        // Allow trivia/whitespace-equivalent producer methods; other actual
+        // cache shapes remain untouched until independently proven.
+        var body="function Engine."+p.Getter+"()\n    return __gcetGetSharedProvider(\""+p.Provider+"\")\nend";
+        var getter=p.Provider+" = function() return Game."+p.Getter+"() end,";
+        if(Count(text,NormalizeLf(epoch))!=1||Count(text,NormalizeLf(cache))!=1||
+            Count(text,body)!=1||Count(text,"    "+getter)!=1||
+            Count(text,"local function GetPlayer()\n    return State.player()\nend")!=1)
+            return false;
+        var code=WithoutLuaTrivia(host);
+        return Regex.Matches(code,@"\bEngine\s*\.\s*"+Regex.Escape(p.Getter)+@"\s*(?:=|\(\s*\))").Count>=1&&
+            Regex.Matches(code,@"\bfunction\s+Engine\s*\.\s*"+Regex.Escape(p.Getter)+@"\s*\(").Count==1&&
+            !Regex.IsMatch(code,@"\bEngine\s*\.\s*"+Regex.Escape(p.Getter)+@"\s*=");
+    }
+
+    internal static bool TrySharedDerivedProviders(string module,string host,out string moduleNext,
+        out string hostNext,out string[] getters)
+    {
+        moduleNext=module;hostNext=host;getters=[];
+        var moduleCode=WithoutLuaTrivia(module);
+        // Own the actual module export and existing host initialization, not
+        // a version or a fixed mod list. Retain author functions and timing.
+        if(Regex.Matches(moduleCode,@"\blocal\s+DerivedState\s*=\s*\{").Count!=1||
+           Count(moduleCode,"function DerivedState.Init(events)")!=1||
+           Count(moduleCode,"return DerivedState")!=1||
+           Regex.IsMatch(moduleCode,@"\b(?:local\s+Game\b|Game\s*=|function\s+\w+\s*\([^)]*\bGame\b)")||
+           Regex.IsMatch(moduleCode,@"\bGame\s*(?:\[|$)")||
+           Regex.IsMatch(moduleCode,@"\bGame\s*\.\s*\w+\s*=")||
+           Count(WithoutLuaTrivia(host),"DerivedState.Init(Events)")!=1)
+            return false;
+        var m=module;var h=host;
+        var hasLocal=Count(m,SharedDerivedLocal)==1;
+        var hasSetter=Count(NormalizeLf(m),NormalizeLf(SharedDerivedSetter))==1;
+        if(Count(m,SharedDerivedLocal)>1||Count(m,"function DerivedState.__gcetSetSharedProviders(")!=(hasSetter?1:0))
+            return false;
+        // Recognize exactly our own prior expressions. Reject unknown alias
+        // uses, name collisions or manually altered setter semantics.
+        var residual=NormalizeLf(m);
+        if(hasLocal)residual=residual.Replace(SharedDerivedLocal,"",StringComparison.Ordinal);
+        if(hasSetter)residual=residual.Replace(NormalizeLf(SharedDerivedSetter),"",StringComparison.Ordinal);
+        foreach(var p in StableDerivedProviders)
+            residual=residual.Replace(SharedDerivedRead(p.Getter),"Game."+p.Getter+"()",StringComparison.Ordinal);
+        if(Regex.IsMatch(WithoutLuaTrivia(residual),@"\b__gcetDerivedProviders\b|\b__gcetSetSharedProviders\b"))
+            return false;
+        var selected=new List<string>();
+        foreach(var p in StableDerivedProviders)
+        {
+            if(!RootProviderProven(host,p))continue;
+            // Rewrite only direct single local assignment statements. The
+            // receiver-consuming method and its original pcall stay intact.
+            var pat=@"(?m)^(?<prefix>[ \t]*local[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*)Game\s*\.\s*"+
+                Regex.Escape(p.Getter)+@"\s*\(\s*\)(?<end>[ \t]*\r?$)";
+            var re=new Regex(pat,RegexOptions.CultureInvariant);
+            // Raw/source and lexical counts must agree; never rewrite a
+            // string literal, long comment or non-code lookalike.
+            var raw=re.Matches(m).Count;
+            if(raw!=re.Matches(WithoutLuaTrivia(m)).Count)continue;
+            var present=Count(WithoutLuaTrivia(m),SharedDerivedRead(p.Getter));
+            if(raw==0&&present==0)continue;
+            m=re.Replace(m,x=>x.Groups["prefix"].Value+SharedDerivedRead(p.Getter)+x.Groups["end"].Value);
+            selected.Add(p.Getter);
+        }
+        if(selected.Count==0)return false;
+        if(!hasLocal)
+        {
+            var declaration=Regex.Matches(m,@"(?m)^local[ \t]+DerivedState[ \t]*=[ \t]*\{[^\r\n]*\}[ \t]*(?=\r?$)");
+            if(declaration.Count!=1||!AfterLine(ref m,declaration[0].Value,SharedDerivedLocal))return false;
+        }
+        if(!hasSetter&&!BeforeLine(ref m,"return DerivedState",SharedDerivedSetter))return false;
+        // A partially applied/older bridge is rebuilt only from the exact
+        // owned syntactic shape, never from an author-defined setter.
+        var begin=Regex.Escape(SharedDerivedHostBegin);
+        var bridgePattern=@"(?m)^[ \t]*"+begin+@"\r?\n[ \t]*if type\(DerivedState\.__gcetSetSharedProviders\) == ""function"" then\r?\n[ \t]*DerivedState\.__gcetSetSharedProviders\(\{\r?\n(?:[ \t]*Get[A-Za-z0-9_]+ = Engine\.Get[A-Za-z0-9_]+,\r?\n)+[ \t]*\}\)\r?\n[ \t]*end[ \t]*(?:\r?\n|$)";
+        var bridges=Regex.Matches(h,bridgePattern);
+        if(bridges.Count>1||Count(h,SharedDerivedHostBegin)!=bridges.Count)return false;
+        if(bridges.Count==1)
+        {
+            var owned=bridges[0];
+            foreach(Match entry in Regex.Matches(owned.Value,@"\b(Get[A-Za-z0-9_]+) = Engine\.(Get[A-Za-z0-9_]+),"))
+                if(entry.Groups[1].Value!=entry.Groups[2].Value||
+                   !StableDerivedProviders.Any(p=>p.Getter==entry.Groups[1].Value))return false;
+            h=h.Remove(owned.Index,owned.Length);
+        }
+        if(Regex.IsMatch(WithoutLuaTrivia(h),@"\b__gcetSetSharedProviders\b"))return false;
+        var binding=SharedDerivedHostBegin+"\nif type(DerivedState.__gcetSetSharedProviders) == \"function\" then\n"+
+            "    DerivedState.__gcetSetSharedProviders({\n"+
+            string.Join("\n",selected.OrderBy(x=>x,StringComparer.Ordinal).Select(x=>"        "+x+" = Engine."+x+","))+
+            "\n    })\nend";
+        if(!AfterLine(ref h,"DerivedState.Init(Events)",binding))return false;
+        moduleNext=m;hostNext=h;getters=selected.OrderBy(x=>x,StringComparer.Ordinal).ToArray();
+        return true;
+    }
+
+    internal static int TryStageSharedDerivedProviders(string modsRoot,ref FixedZeroEngineBuild framework,
+        Dictionary<string,byte[]> staged,Dictionary<string,int> counts,List<object> manifest)
+    {
+        const string relative="0-Engine/modules/DerivedState.lua";
+        var path=Path.Combine(modsRoot,"0-Engine","modules","DerivedState.lua");
+        if(!File.Exists(path)||!framework.Files.TryGetValue(InitPath,out var hb))return 0;
+        var module=Encoding.UTF8.GetString(staged.TryGetValue(relative,out var pb)?pb:File.ReadAllBytes(path));
+        var host=Encoding.UTF8.GetString(hb);
+        if(!TrySharedDerivedProviders(module,host,out var mn,out var hn,out var getters)||
+           (module==mn&&host==hn))return 0;
+        if(module!=mn){
+            staged[relative]=Encoding.UTF8.GetBytes(mn);
+            counts[relative]=counts.GetValueOrDefault(relative)+1;
+        }
+        var files=framework.Files.ToDictionary(x=>x.Key,x=>x.Value,StringComparer.OrdinalIgnoreCase);
+        files[InitPath]=Encoding.UTF8.GetBytes(hn);
+        framework=framework with{Files=files,FixedInitSha256=Convert.ToHexString(
+            SHA256.HashData(files[InitPath])).ToLowerInvariant()};
+        manifest.Add(new{type="FRAMEWORK_SHARED_PROVIDER_DEPENDENCY",Owner="0-Engine",file=relative,
+            contract="GCET_SHARED_DERIVED_SYSTEM_HANDLES_V1",getters,sourceProof=true,
+            callbackOrCadenceChanged=false,mutableStateReadsChanged=false,
+            providerOwner="0-Engine:existing-root-provider",nativeReadSavings="RUNTIME_MEASUREMENT_PENDING"});
         return 1;
     }
 

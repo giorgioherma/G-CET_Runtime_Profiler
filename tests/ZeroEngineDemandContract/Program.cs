@@ -115,6 +115,104 @@ return SpatialHash
         "zones[zoneCounter] = zone", "zones[zoneCounter] = zone\n    zones[999] = zone"),
         "Proximity", out _), "unproved extra registry mutation accepted");
 
+
+    // Use the canonical root shared-provider shape and original module
+    // readers. This is independent of the observer/dormancy contracts.
+    var sharedGetterNames=new[]{"GetCameraSystem","GetTransactionSystem","GetWorkspotSystem","GetTimeSystem","GetScriptableSystemsContainer"};
+    var sharedModule=privateSource?derived:"""
+local DerivedState = {}
+local Events
+function DerivedState.Init(events)
+    Events = events
+end
+function DerivedState.Update(player)
+    local cam = Game.GetCameraSystem()
+    local value = cam:GetActiveCameraForward()
+    local ts = Game.GetTransactionSystem()
+    local item = ts:GetItemInSlot(player)
+    local ws = Game.GetWorkspotSystem()
+    local active = ws:IsActorInWorkspot(player)
+    local time = Game.GetTimeSystem()
+    local clock = time:GetGameTime()
+    local container = Game.GetScriptableSystemsContainer()
+    return value,item,active,clock,container:Get("AnySystem")
+end
+return DerivedState
+""";
+    var sharedHost="""
+local DerivedState = require("modules/DerivedState")
+local Engine = {}
+local State = {player=function() return TestPlayer end}
+local function GetPlayer()
+    return State.player()
+end
+local __gcetSharedProviderValues = {}
+local __gcetScriptableSystemValues = {}
+local __gcetSharedProviderEpoch = nil
+local __gcetSharedProviderGetters = {
+"""+ "\n"+string.Join("\n",SharedProviderCatalog.RuntimeProviders.Select(p=>
+        "    "+p.Provider+" = function() return Game."+p.Getter+"() end,"))+ "\n"+"""
+}
+local function __gcetSyncSharedProviderEpoch()
+    local player = GetPlayer()
+    if __gcetSharedProviderEpoch ~= player then
+        __gcetSharedProviderEpoch = player
+        __gcetSharedProviderValues = {}
+        __gcetScriptableSystemValues = {}
+    end
+end
+local function __gcetGetSharedProvider(key)
+    __gcetSyncSharedProviderEpoch()
+    local value = __gcetSharedProviderValues[key]
+    if value == nil then
+        local getter = __gcetSharedProviderGetters[key]
+        if getter ~= nil then
+            value = getter()
+            if value ~= nil then
+                __gcetSharedProviderValues[key] = value
+            end
+        end
+    end
+    return value
+end
+"""+ "\n"+string.Join("\n",SharedProviderCatalog.RuntimeProviders.Select(p=>
+        "function Engine."+p.Getter+"()\n    return __gcetGetSharedProvider(\""+p.Provider+"\")\nend"))+"\n"+"""
+function Engine.Init(Events)
+    DerivedState.Init(Events)
+end
+function Engine.Update(player)
+    return DerivedState.Update(player)
+end
+return Engine
+""";
+    Check(ZeroEngineDemandSource.TrySharedDerivedProviders(sharedModule,sharedHost,out var sd,out var sh,out var sg)
+        && sg.OrderBy(x=>x).SequenceEqual(sharedGetterNames.OrderBy(x=>x)), "shared derived stable getter proof");
+    Check(ZeroEngineDemandSource.TrySharedDerivedProviders(sd,sh,out var sdRepeat,out var shRepeat,out _)&&
+        sd==sdRepeat&&sh==shRepeat,"shared derived repeated generation");
+    Check(ZeroEngineDemandSource.TrySharedDerivedProviders(sharedModule,sh,out var sdPartial,out var shPartial,out _)&&
+        sd==sdPartial&&sh==shPartial,"shared derived host-only partial");
+    Check(ZeroEngineDemandSource.TrySharedDerivedProviders(sd,sharedHost,out sdPartial,out shPartial,out _)&&
+        sd==sdPartial&&sh==shPartial,"shared derived module-only partial");
+    var drift=sharedHost.Replace("return __gcetGetSharedProvider(\"CAMERA_SYSTEM\")","return Game.GetCameraSystem()");
+    Check(ZeroEngineDemandSource.TrySharedDerivedProviders(sharedModule,drift,out var sdDrift,out _,out var sgDrift)&&
+        sgDrift.Length==4&&sdDrift.Contains("Game.GetCameraSystem()")&&!sgDrift.Contains("GetCameraSystem"),
+        "independent provider refusal must not reject all other dependencies");
+    Check(!ZeroEngineDemandSource.TrySharedDerivedProviders("local Game = {}\n"+sharedModule,sharedHost,out _,out _,out _),
+        "shadowed Game refused");
+    if(!privateSource)
+    {
+        File.WriteAllText(Path.Combine(root,"shared-stock-module.lua"),sharedModule);
+        File.WriteAllText(Path.Combine(root,"shared-generated-module.lua"),sd);
+        File.WriteAllText(Path.Combine(root,"shared-stock-host.lua"),sharedHost);
+        File.WriteAllText(Path.Combine(root,"shared-generated-host.lua"),sh);
+        var psi=new ProcessStartInfo("lua5.4"){UseShellExecute=false};
+        psi.ArgumentList.Add("tests/ZeroEngineDemandContract/ExecuteSharedDerived.lua");
+        psi.ArgumentList.Add(root);
+        using var process=Process.Start(psi)!;process.WaitForExit();
+        Check(process.ExitCode==0,"shared derived actual generated execution");
+    }
+    Console.WriteLine("DerivedState existing shared-provider dependencies: five stable families, independent refusal, partial and repeat PASS");
+
     // Actual pose closure from the installed host. Verify generated output
     // keeps the receiver, call order, nil handling and failure barrier.
     var poseFixture="""

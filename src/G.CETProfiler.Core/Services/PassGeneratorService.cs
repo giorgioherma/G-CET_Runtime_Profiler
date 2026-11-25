@@ -195,6 +195,8 @@ public static class PassGeneratorService
         var lifecyclePlayerTransforms = ZeroEngineDemandSource.TryStageLifecyclePlayer(modsRoot, ref fixedRuntime, staged, appliedTransformsByFile, transformManifest);
         var cadencedScalarTransforms = ZeroEngineDemandSource.TryStageCadencedDerived(modsRoot, ref fixedRuntime, staged, appliedTransformsByFile, transformManifest);
         centralDemandTransforms += poseReaderTransforms + frameEmitterTransforms + lifecyclePlayerTransforms + cadencedScalarTransforms;
+        var sharedDerivedTransforms = ZeroEngineDemandSource.TryStageSharedDerivedProviders(modsRoot, ref fixedRuntime, staged, appliedTransformsByFile, transformManifest);
+        centralDemandTransforms += sharedDerivedTransforms;
         var observerDemandTransforms = ZeroEngineObserverDemandSource.TryStage(
             ref fixedRuntime, effectiveRuntime.Native?.HasObserverDemand == true,
             out var observerDemandIntegrated);
@@ -205,7 +207,7 @@ public static class PassGeneratorService
         centralDemandTransforms += observerDemandTransforms;
         // The pose reader is a mechanical generic transform, not a semantic rule.
         // It still participates in framework-only generation eligibility.
-        genericInfrastructureTransformCount += centralDemandTransforms - poseReaderTransforms - frameEmitterTransforms - lifecyclePlayerTransforms - cadencedScalarTransforms;
+        genericInfrastructureTransformCount += centralDemandTransforms - poseReaderTransforms - frameEmitterTransforms - lifecyclePlayerTransforms - cadencedScalarTransforms - sharedDerivedTransforms;
 
         // Direct, source-proven Game.GetPlayer():GetWorldPosition() only:
         // typed native forced-live getter plus original fail-open fallback.
