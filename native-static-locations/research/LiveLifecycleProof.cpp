@@ -59,8 +59,9 @@ void NTAPI Finally(BOOLEAN abnormal,void*) {
 // For the fixture's finally-only scope, translate the dispatch context before
 // forwarding to the REAL Windows C-specific handler. The actual fault PC in
 // EXCEPTION_RECORD is deliberately left untouched for diagnostics.
-EXCEPTION_DISPOSITION NTAPI Bridge(PEXCEPTION_RECORD exception,ULONG64 frame,
-                                  PCONTEXT context,PDISPATCHER_CONTEXT dispatch) {
+EXCEPTION_DISPOSITION NTAPI Bridge(PEXCEPTION_RECORD exception,PVOID frame,
+                                  PCONTEXT context,PVOID dispatcherContext) {
+    auto* dispatch=static_cast<PDISPATCHER_CONTEXT>(dispatcherContext);
     auto& f=*current;
     const auto base=reinterpret_cast<DWORD64>(f.base);
     Check(dispatch->ImageBase==base&&dispatch->ControlPc>=base+Island&&
