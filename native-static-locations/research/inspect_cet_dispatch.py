@@ -539,6 +539,15 @@ def branch_proof(pe, matches, layouts):
                         for ins in instructions), f"{name}: incoming branch inside guard")
         result[name]["rax_dead_before_use"] = {"active": prove_rax_dead(active), "empty": prove_rax_dead(empty)}
         result[name]["guard_bytes"] = pe.read_rva(guard, active - guard).hex()
+        execute = addresses["ExecuteChain"]
+        direct = [i.address for i in instructions
+                  if i.group(CS_GRP_CALL) and i.operands and i.operands[0].type == X86_OP_IMM
+                  and i.operands[0].imm == execute]
+        scan = [r for r in range(start, end-4)
+                if pe.read_rva(r,1) == b"\xe8" and r+5+unpack("<i",pe.read_rva(r+1,4),0)[0] == execute]
+        require(len(direct)==1 and scan==direct,
+                f"{name}: production ExecuteChain callsite scanner differs from decoded instruction")
+        result[name]["execute_callsite"] = hex(direct[0])
         result[name]["guard_context"] = [describe(i) for i in instructions
                                          if guard - 48 <= i.address < active + 64]
         result[name]["empty_context"] = [describe(i) for i in instructions
@@ -715,30 +724,32 @@ def lock_proof(pe, matches, layouts, branches, pdb, pdb_path, pdbutil):
         item={"acquire_rva":hex(acquire.address),"operation":expected,"lock_argument":f"{lea.mnemonic} {lea.op_str}",
               "member_offset":offset,"owner_register":owner_reg,"singleton_slot":hex(singleton) if singleton is not None else None,
               "lock_calls":[{"rva":hex(i.address),"operation":op} for i,op in lock_calls]}
-        if guard is not None:
-            # Explore all normal intra-function paths with an ownership bit.
-            # A guard reached on any path without the shared lock is a failure.
+        protected_sites = ([guard, int(branches[name]["execute_callsite"],16)] if guard is not None
+                           else [0x107f0c] if name=="Clear" else [])
+        for protected in protected_sites:
             calls={i.address:op for i,op in lock_calls}
             pending=[(start,False)];seen=set();arrivals=set()
             while pending:
                 at,held=pending.pop()
                 if (at,held) in seen:continue
                 seen.add((at,held))
-                if at==guard:
+                if at==protected:
                     arrivals.add(held);continue
                 ins=by_addr.get(at)
                 if ins is None or ins.group(CS_GRP_RET):continue
                 op=calls.get(at)
-                if op=="_Smtx_lock_shared":held=True
-                if op=="_Smtx_unlock_shared":held=False
+                if op==expected:held=True
+                if op in ("_Smtx_unlock_shared","_Smtx_unlock_exclusive"):held=False
                 if ins.group(CS_GRP_JUMP):
                     require(ins.operands and ins.operands[0].type==X86_OP_IMM,
-                            f"{name}: indirect branch before guard proof at {at:#x}")
+                            f"{name}: indirect branch before protected-site proof at {at:#x}")
                     pending.append((ins.operands[0].imm,held))
                     if ins.mnemonic=="jmp":continue
                 pending.append((at+ins.size,held))
-            require(arrivals=={True},f"{name}: guard not dominated by shared acquisition: {arrivals}")
-            item["normal_paths_guard_held"]=True
+            require(arrivals=={True},f"{name}: site {protected:#x} not dominated by acquisition: {arrivals}")
+        if protected_sites:
+            item["normal_paths_protected_sites_held"]=[hex(x) for x in protected_sites]
+            if guard is not None:item["normal_paths_guard_held"]=True
         result[name]=item
     slots=[result[k]["singleton_slot"] for k in ("HookRunPureScriptFunction","HandleOverridenFunction","Clear")]
     require(None not in slots and len(set(slots))==1,f"singleton owner loads not proven common: {slots}")
@@ -925,6 +936,8 @@ def inspect(release, symbols, pdbutil=None):
             layouts = class_layouts(pdb, pdb_path, pdbutil)
         print("VERIFIED COMPILED LAYOUTS:", json.dumps(layouts), flush=True)
         branches = branch_proof(pe, matches, layouts)
+        require(pe.read_rva(0x107f0c,5)==bytes.fromhex("498b5c2430"),
+                "production Clear locked instruction differs")
         personalities = personality_proof(pe, matches, pdb)
         print("VERIFIED EXCEPTION PERSONALITIES:", json.dumps(personalities), flush=True)
         with tempfile.TemporaryDirectory() as tmp:

@@ -23,7 +23,7 @@ add_test(NAME native_demand_frame_cache COMMAND gcet_demand_frame_cache_test)
 # The native identity proof does not require the game SDK. Run it before
 # downloading/compiling the large SDK, then test the actual linked build too.
 if(WIN32)
-  add_library(gcet_cet_dispatch_identity STATIC src/CETDispatchIdentity.cpp)
+  add_library(gcet_cet_dispatch_identity STATIC src/CETDispatchIdentity.cpp src/CETLiveObserver.cpp)
   target_include_directories(gcet_cet_dispatch_identity PUBLIC include)
   target_link_libraries(gcet_cet_dispatch_identity PUBLIC bcrypt)
   add_executable(gcet_cet_dispatch_identity_test tests/CETDispatchIdentityTests.cpp)

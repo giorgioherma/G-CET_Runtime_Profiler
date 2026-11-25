@@ -3,7 +3,7 @@
 #include "PlayerSnapshot.hpp"
 #include "DemandFrameCache.hpp"
 #include "DiagnosticProbe.hpp"
-#include "CETDispatchIdentity.hpp"
+#include "CETLiveObserver.hpp"
 #include <cmath>
 #include <RED4ext/Scripting/Utils.hpp>
 #include <RED4ext/Scripting/Natives/ScriptGameInstance.hpp>
@@ -419,17 +419,26 @@ namespace {
             default:*out=g_index.Metric(metric);return;
         }
     }
-    // Explicit developer-only read of the already loaded CET image. No
-    // observer hook or per-frame call is installed by this capability probe.
-    void CETDispatchProbe(RED4ext::IScriptable*,RED4ext::CStackFrame* f,int32_t* out,int64_t) {
-        f->code++;
-        *out=static_cast<int32_t>(gcet::cet_dispatch::CheckLoadedCET());
+    void ObserverPrepare(RED4ext::IScriptable*,RED4ext::CStackFrame* f,bool* out,int64_t) {
+        RED4ext::CName klass{},method{};
+        RED4ext::GetParameter(f,&klass);RED4ext::GetParameter(f,&method);f->code++;
+        auto* rtti=RED4ext::CRTTISystem::Get();
+        auto* type=rtti?rtti->GetClass(klass):nullptr;
+        auto* target=type?type->GetFunction(method):nullptr;
+        *out=target&&target->parent&&gcet::cet_dispatch::PrepareObserver(
+            reinterpret_cast<uintptr_t>(target->parent),target->fullName.hash);
     }
-    // Explicit owner-layout/startup snapshot only. This does not authorize
-    // attachment or acquire the CET lock (the caller may already hold it).
-    void CETOwnerProbe(RED4ext::IScriptable*,RED4ext::CStackFrame* f,int32_t* out,int64_t) {
-        f->code++;
-        *out=static_cast<int32_t>(gcet::cet_dispatch::CheckLoadedOwner());
+    void ObserverBind(RED4ext::IScriptable*,RED4ext::CStackFrame* f,int32_t* out,int64_t) {
+        f->code++;*out=gcet::cet_dispatch::BindObserver();
+    }
+    void ObserverDemand(RED4ext::IScriptable*,RED4ext::CStackFrame* f,bool* out,int64_t) {
+        int32_t handle=0;bool active=true;
+        RED4ext::GetParameter(f,&handle);RED4ext::GetParameter(f,&active);f->code++;
+        *out=gcet::cet_dispatch::SetObserverDemand(handle,active);
+    }
+    void ObserverRelease(RED4ext::IScriptable*,RED4ext::CStackFrame* f,bool* out,int64_t) {
+        int32_t handle=0;RED4ext::GetParameter(f,&handle);f->code++;
+        *out=gcet::cet_dispatch::ReleaseObserver(handle);
     }
     template <typename T>
     void RegisterFunction(const char* name, RED4ext::ScriptingFunction_t<T> handler,
@@ -451,8 +460,15 @@ namespace {
         const char* indexNames[]={"index"};
         const char* intTypes[]={"Int32"};
         RegisterFunction("GCETStaticReady",Ready,"Bool",nullptr,nullptr,0);
-        RegisterFunction("GCETCETDispatchProbe",CETDispatchProbe,"Int32",nullptr,nullptr,0);
-        RegisterFunction("GCETCETOwnerProbe",CETOwnerProbe,"Int32",nullptr,nullptr,0);
+        const char* observerNames[]={"klass","method"};
+        const char* observerTypes[]={"CName","CName"};
+        const char* demandNames[]={"handle","active"};
+        const char* demandTypes[]={"Int32","Bool"};
+        const char* handleNames[]={"handle"};
+        RegisterFunction("GCETObserverPrepare",ObserverPrepare,"Bool",observerNames,observerTypes,2);
+        RegisterFunction("GCETObserverBind",ObserverBind,"Int32",nullptr,nullptr,0);
+        RegisterFunction("GCETObserverSetDemand",ObserverDemand,"Bool",demandNames,demandTypes,2);
+        RegisterFunction("GCETObserverRelease",ObserverRelease,"Bool",handleNames,intTypes,1);
         RegisterFunction("GCETStaticCoordinatorState",CoordinatorStatus,"Int32",nullptr,nullptr,0);
         RegisterFunction("GCETStaticLastPlayerError",LastPlayerCode,"Int32",nullptr,nullptr,0);
         const char* radiusNames[]={"radius"};
@@ -563,6 +579,7 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle handle,
         }
         RED4ext::CRTTISystem::Get()->AddPostRegisterCallback(PostRegisterTypes);
     } else if (reason == RED4ext::v1::EMainReason::Unload) {
+        gcet::cet_dispatch::RetireObserver();
         g_onDemandPosition.Reset();g_positionLastReadValid=false;
         g_playerSnapshot.Exit();g_coordinator.Exit(); g_index.Clear(); g_loaded=false;
         g_logger=nullptr;

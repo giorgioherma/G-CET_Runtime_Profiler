@@ -100,7 +100,7 @@ int wmain(int argc,wchar_t** argv){
         const auto* sections=IMAGE_FIRST_SECTION(nt);
         for(unsigned i=0;i<nt->FileHeader.NumberOfSections;++i){
             const auto& s=sections[i];
-            if(s.Characteristics&IMAGE_SCN_MEM_EXECUTE)
+            if(s.SizeOfRawData)
                 std::memcpy(scratch.data()+s.VirtualAddress,image+s.VirtualAddress,s.SizeOfRawData);
         }
         Check(CheckImage(path,scratch.data())==Identity::ExactImage,"scratch identity baseline");

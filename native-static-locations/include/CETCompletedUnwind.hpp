@@ -14,11 +14,13 @@ namespace gcet::cet_dispatch {
 inline bool BuildCompletedFrameUnwind(std::span<const uint8_t> original,
                                       uint32_t handlerRva,
                                       std::vector<uint8_t>& output) {
-    if(original.size()<4||original[0]!=0x19||!handlerRva)return false;
+    if(original.size()<4)return false;
+    const bool handler=original[0]==0x19;
+    if((!handler&&original[0]!=0x01)||handler!=bool(handlerRva))return false;
     const unsigned count=original[2],padded=(count+1)&~1u;
-    const size_t end=4+2*padded;
-    if(!count||original.size()<end+4)return false;
-    std::vector<uint8_t> next(original.begin(),original.begin()+end+4);
+    const size_t end=4+2*padded, size=end+(handler?4:0);
+    if(!count||original.size()<size)return false;
+    std::vector<uint8_t> next(original.begin(),original.begin()+size);
     next[1]=0;
     unsigned previous=original[1];
     for(unsigned i=0;i<count;){
@@ -39,7 +41,7 @@ inline bool BuildCompletedFrameUnwind(std::span<const uint8_t> original,
         if(i+slots>count)return false;
         code[0]=0;i+=slots;
     }
-    std::memcpy(next.data()+end,&handlerRva,4);
+    if(handler)std::memcpy(next.data()+end,&handlerRva,4);
     output.swap(next);
     return true;
 }

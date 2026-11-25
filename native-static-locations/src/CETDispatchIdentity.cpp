@@ -16,13 +16,17 @@ namespace {
 // Native target identity is intentionally distinct from Lua source eligibility.
 constexpr char kSha[] = "43a7b94698979703f9dfa2b0950607c9a88f53b84bbf09a8e593c7e218d41059";
 constexpr uint32_t kImageSize = 7536640;
-struct Range { uint32_t begin, end; };
+struct Range { uint32_t begin, end; bool executable=true; };
 constexpr Range kRanges[] = {
     {0x1080b0, 0x108882}, // complete pure-script dispatch body
     {0x108890, 0x1092c8}, // complete native-stack dispatch body
     {0x1092d0, 0x1092e0}, // ExecuteChain entry
     {0x10adf0, 0x10ae00}, // Override entry
-    {0x107ee0, 0x107ef0}, // Clear entry
+    {0x107ee0, 0x107f11}, // Clear prologue, acquisition and locked invalidation site
+    {0x564a28, 0x564a8c}, // original GS/FH4 personality
+    {0x6751c4, 0x6751e0, false}, // Clear unwind header/slots
+    {0x675204, 0x675234, false}, // pure dispatch unwind/handler data
+    {0x6752c4, 0x6752f0, false}, // native dispatch unwind/handler data
     {0x15f590, 0x15f5a0}  // ToLua entry
 };
 struct ModuleRef {
@@ -172,7 +176,7 @@ Identity CheckImage(const std::filesystem::path& file,const void* mappedImage,Pr
                 IMAGE_SECTION_HEADER section{};
                 if(!ReadAt(bytes,sectionStart+i*sizeof(section),section))
                     return Identity::UnsupportedFile;
-                if(!(section.Characteristics&IMAGE_SCN_MEM_EXECUTE)||range.begin<section.VirtualAddress)
+                if((range.executable&&!(section.Characteristics&IMAGE_SCN_MEM_EXECUTE))||range.begin<section.VirtualAddress)
                     continue;
                 uint32_t offset=range.begin-section.VirtualAddress;
                 size_t count=range.end-range.begin;

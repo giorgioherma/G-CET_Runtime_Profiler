@@ -94,10 +94,10 @@ public native func GCETPlayerVector4Valid() -> Bool;
 public native func GCETPlayerPositionCacheHits() -> Int64;
 public native func GCETPlayerPositionEngineReads() -> Int64;
 
-// Developer-only explicit read-only identity probe: 1 exact official CET
-// loaded image/ranges, 0 absent, -1 foreign file, -2 changed loaded code,
-// -3 read failure. No hook installed and no gameplay optimization implied.
-public native func GCETCETDispatchProbe() -> Int32;
-// 1 coherent owner snapshot, 2 not initialized, 0 absent; -1 unsupported image,
-// -2 read failure, -3 inconsistent. No lifetime lease or hook permission.
-public native func GCETCETOwnerProbe() -> Int32;
+// Shared host observer capability. Prepare outside the observed callback;
+// Bind only within the original source-proven sole Before callback.
+// A false/zero result retains stock CET dispatch.
+public native func GCETObserverPrepare(klass: CName, method: CName) -> Bool;
+public native func GCETObserverBind() -> Int32;
+public native func GCETObserverSetDemand(handle: Int32, active: Bool) -> Bool;
+public native func GCETObserverRelease(handle: Int32) -> Bool;

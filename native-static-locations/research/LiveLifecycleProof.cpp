@@ -7,6 +7,7 @@
 #include "CETStacklessGate.hpp"
 #include "GuardAttachment.hpp"
 #include "CETCompletedUnwind.hpp"
+#include "CETObserverIslands.hpp"
 #include <array>
 #include <atomic>
 #include <cstdint>
@@ -90,7 +91,59 @@ void UnwindInfo(uint8_t* dst,uint8_t prologue,uint8_t offset,uint32_t handler,bo
     const uint8_t info[]={0x19,prologue,1,0,offset,r15?uint8_t{0xf0}:uint8_t{0xe0},0,0};
     std::memcpy(dst,info,sizeof(info));Word32(dst+8,handler);
 }
+// Same emitter as the native DLL, in the existing lifecycle executable.
+// The entry tail preserves the original ten-argument shape; Clear uses
+// the actual original five-byte MOV with both original flag outcomes.
+static void CheckProductionIslands(){
+    auto arena=std::make_unique<GuardArena>();Check(arena->Base()!=nullptr,"island arena");
+    auto* p=arena->Base();
+    struct Control {std::atomic<uint8_t> armed{0};uint64_t owner=GetCurrentThreadId(),name=0x12345678;};
+    auto* ctl=new(p+4096+1024) Control;
+    const uint8_t original[]={0xb8,1,0,0,0,0xc3},scope[]={0xb8,2,0,0,0,0xc3};
+    std::memcpy(p+128,original,sizeof(original));std::memcpy(p+160,scope,sizeof(scope));
+    EmitDiscoveryTail(p,reinterpret_cast<uintptr_t>(&ctl->armed),reinterpret_cast<uintptr_t>(&ctl->owner),
+                      reinterpret_cast<uintptr_t>(&ctl->name),reinterpret_cast<uintptr_t>(p+160),
+                      reinterpret_cast<uintptr_t>(p+128));
+    // push rbx; push r12; mov r12,rcx; cmp edx,0; jmp clear island
+    const uint8_t entry[]={0x53,0x41,0x54,0x49,0x89,0xcc,0x83,0xfa,0,0xe9,0,0,0,0};
+    std::memcpy(p+256,entry,sizeof(entry));WriteRelative(p+266,reinterpret_cast<uintptr_t>(p+512));
+    // MOV RBX from original R12+0x30, then preserve flags in SETE and
+    // return the low RBX value plus the original comparison result.
+    const uint8_t resume[]={0x0f,0x94,0xc0,0x0f,0xb6,0xc0,0x01,0xd8,0x41,0x5c,0x5b,0xc3};
+    std::memcpy(p+288,resume,sizeof(resume));
+    const std::array<uint8_t,5> stock{0x49,0x8b,0x5c,0x24,0x30};
+    EmitLockedClear(p+512,reinterpret_cast<uintptr_t>(&arena->Epoch().ClearDepthWord()),
+                    reinterpret_cast<uintptr_t>(&ctl->armed),stock,reinterpret_cast<uintptr_t>(p+288));
+    // Actual handlerless completed-frame encoding for Clear.
+    const uint8_t originalUnwind[]={0x01,3,2,0,3,0xc0,1,0x30};
+    std::vector<uint8_t> completed;
+    Check(BuildCompletedFrameUnwind(originalUnwind,0,completed),"handlerless Clear unwind");
+    std::memcpy(p+768,completed.data(),completed.size());
+    std::memcpy(p+800,originalUnwind,sizeof(originalUnwind));
+    std::array<RUNTIME_FUNCTION,4> table{};
+    table[0]={256,300,800};table[1]={512,512+static_cast<uint32_t>(LockedClearIslandSize),768};
+    Check(arena->Seal(table,2),"production islands RX/table");
+    using Invoke=int(*)(void*);
+    auto tail=reinterpret_cast<Invoke>(p);
+    std::array<uint64_t,2> fn{0,ctl->name},foreign{0,0x999};
+    uintptr_t chain=reinterpret_cast<uintptr_t>(fn.data()),other=reinterpret_cast<uintptr_t>(foreign.data());
+    Check(tail(&chain)==1,"disarmed stock tail");
+    ctl->armed=1;
+    Check(tail(&chain)==2&&tail(&other)==1,"target-only armed scope");
+    std::thread otherThread([&]{Check(tail(&chain)==1,"foreign-thread discovery scope");});otherThread.join();
+    using Clear=int(*)(void*,int);
+    auto clear=reinterpret_cast<Clear>(p+256);
+    std::array<uint64_t,8> args{};args[6]=17;
+    auto before=arena->Epoch().Current();
+    Check(clear(args.data(),0)==18&&arena->Epoch().Current()==0&&ctl->armed==0,"Clear ZF, MOV and invalidation");
+    Check(arena->Epoch().CompleteLockedClear()&&arena->Epoch().Current()!=before,"fresh Clear epoch");
+    ctl->armed=1;
+    Check(clear(args.data(),1)==17&&arena->Epoch().Current()==0&&ctl->armed==0,"Clear NZF, MOV and invalidation");
+    Check(arena->ReclaimMetadataAfterDrain(),"retire production island fixture");
+    std::cout<<"Production discovery/locked Clear islands, target/thread scope, both flags and epoch PASS\n";
+}
 int main(){
+    CheckProductionIslands();
     auto arena=std::make_unique<GuardArena>();Check(arena->Base()!=nullptr,"fixture arena");
     auto* p=arena->Base();
     auto owner=std::make_shared<std::shared_mutex>();
