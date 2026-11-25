@@ -22,7 +22,7 @@ internal sealed class ZeroEngineService
 
         var text = File.ReadAllText(paths.ZeroInit);
         if (text.Contains(manifest.ZeroEngine.ProfilerBridgeMarker, StringComparison.Ordinal))
-            return HasComposedUpdate(text)
+            return IsExistingAdaptiveBridgeSafe(text)
                 ? new ZeroFileState("profiler-bridge", "ADAPTIVE PROFILER BRIDGE PRESENT")
                 : new ZeroFileState("unsafe", "OLDER TEMPORARY PROFILER BRIDGE - RESTORE FIRST");
 
@@ -173,24 +173,32 @@ internal sealed class ZeroEngineService
         """(?<comment>--\[(?<ce>=*)\[.*?\]\k<ce>\]|--[^\r\n]*)|(?<long>\[(?<le>=*)\[.*?\]\k<le>\])|(?<quoted>"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*')|[A-Za-z_][A-Za-z0-9_]*|\S""",
         RegexOptions.Singleline | RegexOptions.CultureInvariant);
 
-    private bool TryComposeAdaptiveBridge(string source, out string patched)
-    {
-        patched = source;
-        if (source.Contains(manifest.ZeroEngine.ProfilerBridgeMarker, StringComparison.Ordinal))
-            return HasComposedUpdate(source);
 
-        // No duplicate names or partially foreign bridge state. The original
-        // author source must remain the only input for a fresh transaction.
-        if (source.Contains("__CETRP_", StringComparison.Ordinal)) return false;
-        if (!Regex.IsMatch(source, @"(?m)^\s*(local\s+)?Engine\s*=\s*\{")) return false;
+    // Existing marker-only handoffs are deliberately not claimed or
+    // rewritten. Refuse the actual legacy defect, rather than all old
+    // markers: an appended independent update with an existing or
+    // potentially indirect original update is not a transparent baseline.
+    private bool IsExistingAdaptiveBridgeSafe(string source)
+    {
+        if (HasComposedUpdate(source)) return true;
+        var markerIndex = source.IndexOf(manifest.ZeroEngine.ProfilerBridgeMarker,
+            StringComparison.Ordinal);
         var tokens = AdaptiveTokens.Matches(source).Cast<Match>()
             .Where(t => !t.Groups["comment"].Success).ToArray();
-        var last = tokens.Length - 1;
-        if (last >= 0 && tokens[last].Value == ";") last--;
-        if (last < 1 || tokens[last - 1].Value != "return" || tokens[last].Value != "Engine")
-            return false;
+        if (!TryCollectLiteralUpdates(tokens, out var updates)) return false;
+        if (!updates.Any(index => index > markerIndex)) return true;
+        return updates.Count == 1 &&
+            !HasPotentialIndirectRegistration(tokens.Where(t => t.Index < markerIndex));
+    }
 
-        var updates = new List<int>();
+    private static bool HasPotentialIndirectRegistration(IEnumerable<Match> tokens) =>
+        tokens.Any(t => t.Value is
+            "require" or "dofile" or "load" or "loadfile" or "loadstring" or
+            "getfenv" or "setfenv" or "_G" or "_ENV");
+
+    private static bool TryCollectLiteralUpdates(Match[] tokens, out List<int> updates)
+    {
+        updates = new List<int>();
         for (var i = 0; i < tokens.Length; i++)
         {
             var token = tokens[i];
@@ -211,12 +219,31 @@ internal sealed class ZeroEngineService
                 updates.Add(token.Index);
         }
 
+        return true;
+    }
+
+    private bool TryComposeAdaptiveBridge(string source, out string patched)
+    {
+        patched = source;
+        if (source.Contains(manifest.ZeroEngine.ProfilerBridgeMarker, StringComparison.Ordinal))
+            return IsExistingAdaptiveBridgeSafe(source);
+
+        // No duplicate names or partially foreign bridge state. The original
+        // author source must remain the only input for a fresh transaction.
+        if (source.Contains("__CETRP_", StringComparison.Ordinal)) return false;
+        if (!Regex.IsMatch(source, @"(?m)^\s*(local\s+)?Engine\s*=\s*\{")) return false;
+        var tokens = AdaptiveTokens.Matches(source).Cast<Match>()
+            .Where(t => !t.Groups["comment"].Success).ToArray();
+        var last = tokens.Length - 1;
+        if (last >= 0 && tokens[last].Value == ";") last--;
+        if (last < 1 || tokens[last - 1].Value != "return" || tokens[last].Value != "Engine")
+            return false;
+
+        if (!TryCollectLiteralUpdates(tokens, out var updates)) return false;
         // With no visible host update, a loader could still have installed
         // an effective callback. Never append a competing registration in
         // that case. Simple hosts without any loader retain adaptive support.
-        if (updates.Count == 0 && tokens.Any(t => t.Value is
-                "require" or "dofile" or "load" or "loadfile" or "loadstring" or
-                "getfenv" or "setfenv" or "_G" or "_ENV"))
+        if (updates.Count == 0 && HasPotentialIndirectRegistration(tokens))
             return false;
 
         var export = tokens[last - 1].Index;

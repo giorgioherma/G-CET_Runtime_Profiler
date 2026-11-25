@@ -112,12 +112,28 @@ registerForEvent -- comment between tokens
 return Engine
 """, "named");
 
+    // Preserve the existing handoff/ownership contract for a marker-only
+    // host and a legacy bridge that has no original callback to replace.
+    foreach (var existing in new[]
+    {
+        "local Engine={}\n-- CET_RUNTIME_PROFILER_ADAPTIVE_SCHEDULER_BEGIN v2\nreturn Engine",
+        "local Engine={}\n-- CET_RUNTIME_PROFILER_ADAPTIVE_SCHEDULER_BEGIN v2\nregisterForEvent('onUpdate', function() end)\nreturn Engine"
+    })
+    {
+        File.WriteAllText(paths.ZeroInit, existing);
+        var before = File.ReadAllBytes(paths.ZeroInit);
+        Check(manager.GetInitState(paths).Kind == "profiler-bridge", "safe preexisting handoff rejected");
+        manager.AddAdaptiveProfilerSchedulerBridge(paths.ZeroInit);
+        Check(before.SequenceEqual(File.ReadAllBytes(paths.ZeroInit)), "preexisting handoff was rewritten");
+    }
+
     foreach (var source in new[]
     {
         "local Engine={}\nlocal register = registerForEvent\nregister('onUpdate', function() end)\nreturn Engine",
         "local Engine={}\nregisterForEvent(eventName, function() end)\nreturn Engine",
         "local Engine={}\nrequire('unknown')\nreturn Engine",
-        "-- CET_RUNTIME_PROFILER_ADAPTIVE_SCHEDULER_BEGIN v2\nlocal Engine={}\nreturn Engine",
+        "local Engine={}\nregisterForEvent('onUpdate', function() record('original') end)\n-- CET_RUNTIME_PROFILER_ADAPTIVE_SCHEDULER_BEGIN v2\nregisterForEvent('onUpdate', function() record('profiler') end)\nreturn Engine",
+        "local Engine={}\nrequire('unknown')\n-- CET_RUNTIME_PROFILER_ADAPTIVE_SCHEDULER_BEGIN v2\nregisterForEvent('onUpdate', function() end)\nreturn Engine",
         "local Engine={}\nreturn Engine\n-- no actual exported table after a dynamic wrapper\n"
             + "other()"
     })
