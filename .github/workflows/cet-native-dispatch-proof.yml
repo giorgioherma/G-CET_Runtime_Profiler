@@ -6,6 +6,7 @@ on:
     branches: [dev/native-fixed-cache-player-state]
     paths:
       - 'native-static-locations/research/**'
+      - 'native-static-locations/include/CETObserverBinding.hpp'
       - '.github/workflows/cet-native-dispatch-proof.yml'
   workflow_dispatch:
 
@@ -71,3 +72,9 @@ jobs:
           if ($asi.Count -ne 1) { throw 'official ASI missing or ambiguous' }
           & 'build/entry-proof/Release/gcet_dispatch_entry_proof.exe' $asi[0].FullName
           if ($LASTEXITCODE -ne 0) { throw 'entry-lifecycle proof failed' }
+      - name: Execute compiled membership and observer lifetime contract
+        shell: pwsh
+        run: |
+          & 'build/entry-proof/Release/gcet_observer_binding_proof.exe'
+          if ($LASTEXITCODE -ne 0) { throw 'observer binding proof failed' }
+

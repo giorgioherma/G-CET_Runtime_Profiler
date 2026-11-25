@@ -19,3 +19,5 @@ target_include_directories(gcet_research_detours PUBLIC "${detours_SOURCE_DIR}/s
 add_executable(gcet_dispatch_entry_proof EntryLifecycleProof.cpp ../src/CETDispatchIdentity.cpp)
 target_include_directories(gcet_dispatch_entry_proof PRIVATE ../include)
 target_link_libraries(gcet_dispatch_entry_proof PRIVATE gcet_research_detours bcrypt)
+add_executable(gcet_observer_binding_proof ObserverBindingProof.cpp)
+target_include_directories(gcet_observer_binding_proof PRIVATE ../include)
