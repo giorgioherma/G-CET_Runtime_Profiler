@@ -618,7 +618,7 @@ end)
     // Additive opt-in native location host. The prior profiler/0-Engine native
     // payload is unchanged; the RED4ext plugin remains independently installed.
     // An absent native API must not disable any author discovery callback.
-    private static byte[] AddNativeLocationBridge(byte[] source)
+    internal static byte[] AddNativeLocationBridge(byte[] source)
     {
         const string marker = "-- G-CET native static location host v1";
         var hasBom = source.Length >= 3 && source[0] == 0xEF &&
@@ -626,24 +626,31 @@ end)
         var text = hasBom
             ? Encoding.UTF8.GetString(source, 3, source.Length - 3)
             : Encoding.UTF8.GetString(source);
-        if (text.Contains(marker, StringComparison.Ordinal))
-        {
-            if (!text.Contains("GCETNativeLocationHost", StringComparison.Ordinal) ||
-                !text.Contains("NativeLocationHost:shutdown()", StringComparison.Ordinal))
-                throw new InvalidOperationException("Partial or foreign native location host bridge.");
-            return source;
-        }
+        var hasBridge = text.Contains(marker, StringComparison.Ordinal);
+        if (hasBridge && (!text.Contains("GCETNativeLocationHost", StringComparison.Ordinal) ||
+            !text.Contains("NativeLocationHost:shutdown()", StringComparison.Ordinal)))
+            throw new InvalidOperationException("Partial or foreign native location host bridge.");
         var exports = Regex.Matches(text,
             @"(?m)^[ \t]*return[ \t]+(?<name>[A-Za-z_][A-Za-z0-9_]*)[ \t]*;?[ \t]*(?:--[^\r\n]*)?\r?$",
             RegexOptions.CultureInvariant);
         if (exports.Count == 0)
+        {
+            if (hasBridge) return source;
             throw new InvalidOperationException("Native location host requires a final 0-Engine export.");
+        }
         var last = exports[^1];
         if (!Regex.IsMatch(text[(last.Index + last.Length)..],
                 @"\A(?:\s|--[^\r\n]*)*\z", RegexOptions.CultureInvariant))
             throw new InvalidOperationException("0-Engine export cannot safely host native location bridge.");
         var name = last.Groups["name"].Value;
-        var block = $$"""
+        if (hasBridge)
+        {
+            // Complete a previously generated bridge in the current source,
+            // rather than restoring an old host or adding a corrective pass.
+            return TryComposeNativeLocationShutdown(text, name, marker, out var composed)
+                && composed != text ? EncodeLikeOriginal(source, composed) : source;
+        }
+        var block = $"""
             {{marker}}
             do
                 local runtime={{name}}
@@ -673,12 +680,116 @@ end)
 
             """;
         var inserted = text.Insert(last.Index, block + "\n");
-        var body=Encoding.UTF8.GetBytes(inserted);
-        if (!hasBom) return body;
-        var output=new byte[body.Length+3];
-        output[0]=0xEF;output[1]=0xBB;output[2]=0xBF;
-        Buffer.BlockCopy(body,0,output,3,body.Length);
-        return output;
+        // A host with ambiguous native registration ownership must not receive
+        // a competing cleanup registration. Its other generic work can proceed.
+        if (!TryComposeNativeLocationShutdown(inserted, name, marker, out var next))
+            return source;
+        return EncodeLikeOriginal(source, next);
+    }
+
+    private const string NativeShutdownMarker = "-- G-CET native location composed shutdown v1";
+    // Tokenize Lua strings/comments as atomic tokens. A quoted example or
+    // comment must never be interpreted as an actual native registration.
+    private static readonly Regex NativeShutdownTokens = new(
+        """(?<comment>--\[(?<ce>=*)\[.*?\]\k<ce>\]|--[^\r\n]*)|(?<long>\[(?<le>=*)\[.*?\]\k<le>\])|(?<quoted>"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*')|[A-Za-z_][A-Za-z0-9_]*|\S""",
+        RegexOptions.Singleline | RegexOptions.CultureInvariant);
+
+    private static bool TryComposeNativeLocationShutdown(
+        string text, string name, string marker, out string next)
+    {
+        next = text;
+        const string tableName = "__gcetNativeShutdown";
+        if (text.Contains(NativeShutdownMarker, StringComparison.Ordinal))
+            return text.Contains("function __gcetNativeShutdown.Register(", StringComparison.Ordinal)
+                && text.Contains("__gcetNativeShutdown.Run = function", StringComparison.Ordinal)
+                && text.Contains("registerForEvent(\"onShutdown\", __gcetNativeShutdown.Run)", StringComparison.Ordinal);
+        if (text.Contains(tableName, StringComparison.Ordinal)) return false;
+
+        var markerIndex = text.IndexOf(marker, StringComparison.Ordinal);
+        var tokens = NativeShutdownTokens.Matches(text).Cast<Match>()
+            .Where(t => !t.Groups["comment"].Success).ToArray();
+        // Recognize the actual former source-generated cleanup body. Never
+        // mistake a customized author's shutdown for our removable callback.
+        var cleanupShape = $"""
+            registerForEvent("onShutdown",function()
+                if type({{name}})=="table" and type({{name}}.GCET)=="table" and
+                    type({{name}}.GCET.NativeLocationHost)=="table" then
+                    {{name}}.GCET.NativeLocationHost:shutdown()
+                end
+            end)
+            """;
+        var shape = NativeShutdownTokens.Matches(cleanupShape).Cast<Match>()
+            .Select(t => t.Value).ToArray();
+        var author = new List<int>();
+        var cleanup = -1;
+        for (var i = 0; i < tokens.Length; i++)
+        {
+            var token = tokens[i];
+            if (token.Value is "'registerForEvent'" or "\"registerForEvent\"") return false;
+            if (token.Value != "registerForEvent") continue;
+            if (i + 4 >= tokens.Length ||
+                (i > 0 && tokens[i - 1].Value is "." or ":" or "function" or "local") ||
+                tokens[i + 1].Value != "(" || !tokens[i + 2].Groups["quoted"].Success ||
+                tokens[i + 3].Value != "," || tokens[i + 2].Value.Contains('\\'))
+                return false;
+            if (tokens[i + 2].Value is not ("'onShutdown'" or "\"onShutdown\"")) continue;
+            if (token.Index > markerIndex &&
+                tokens.Skip(i).Take(shape.Length).Select(t => t.Value).SequenceEqual(shape))
+            {
+                if (cleanup >= 0) return false;
+                cleanup = i;
+            }
+            else author.Add(i);
+        }
+        if (cleanup < 0) return false;
+        // No explicit author shutdown: retain the previous cleanup-only path.
+        // Do not create an unused wrapper or change ordinary registration.
+        if (author.Count == 0) return true;
+
+        var functionToken = tokens[cleanup + 4];
+        var endToken = tokens[cleanup + shape.Length - 1];
+        var body = text[functionToken.Index..endToken.Index];
+        const string prefix = """
+            -- G-CET native location composed shutdown v1
+            local __gcetNativeShutdown = {}
+            function __gcetNativeShutdown.Register(event, callback, ...)
+                if type(callback) ~= "function" then
+                    return registerForEvent(event, callback, ...)
+                end
+                local result = registerForEvent(event, function(...)
+                    -- Save author state first, even when its callback returns
+                    -- early. Cleanup is owed even if author persistence fails.
+                    local ok, err = pcall(callback, ...)
+                    local clean, cleanErr = pcall(__gcetNativeShutdown.Run)
+                    if not ok then error(err, 0) end
+                    if not clean then error(cleanErr, 0) end
+                end, ...)
+                __gcetNativeShutdown.registered = true
+                return result
+            end
+            """;
+        var nl = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        string Lines(string value) => value.Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace("\n", nl, StringComparison.Ordinal);
+        var fallback = """
+            if not __gcetNativeShutdown.registered then
+                registerForEvent("onShutdown", __gcetNativeShutdown.Run)
+            end
+            """;
+        var edits = author.Select(i => (Index: tokens[i].Index,
+            Length: tokens[i].Length, Text: tableName + ".Register")).ToList();
+        edits.Add((tokens[cleanup].Index,
+            endToken.Index + endToken.Length - tokens[cleanup].Index,
+            tableName + ".Run = " + body + nl + Lines(fallback)));
+        var builder = new StringBuilder(text);
+        foreach (var edit in edits.OrderByDescending(x => x.Index))
+            builder.Remove(edit.Index, edit.Length).Insert(edit.Index, edit.Text);
+        builder.Insert(0, Lines(prefix) + nl);
+        var candidate = builder.ToString();
+        if (LuaLocalBudgetAnalyzer.Analyze(candidate).MaxActiveLocals > LuaLocalBudgetAnalyzer.Limit)
+            return false;
+        next = candidate;
+        return true;
     }
 
     private static void AddWorkloadModules(

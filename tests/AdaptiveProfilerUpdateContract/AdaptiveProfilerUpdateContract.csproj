@@ -7,6 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../src/G.CETProfiler.Core/Services/ZeroEngineService.cs" Link="ZeroEngineService.cs" />
+    <Compile Include="../../src/G.CETProfiler.Core/Services/FixedZeroEngineRuntime.cs" Link="FixedZeroEngineRuntime.cs" />
     <Compile Include="../../src/G.CETProfiler.Core/Services/LuaLocalBudgetAnalyzer.cs" Link="LuaLocalBudgetAnalyzer.cs" />
     <Compile Include="../../src/G.CETProfiler.Core/Services/FileSystemService.cs" Link="FileSystemService.cs" />
     <Compile Include="../../src/G.CETProfiler.Core/Models/PackageManifest.cs" Link="PackageManifest.cs" />

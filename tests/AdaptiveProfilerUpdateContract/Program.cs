@@ -33,6 +33,7 @@ try
         manager.AddAdaptiveProfilerSchedulerBridge(paths.ZeroInit);
         var generated = File.ReadAllText(paths.ZeroInit);
         var original = File.ReadAllText(authorPath);
+        NativeLocationShutdownContract.CheckStock(author);
         var bridgeStart = generated.IndexOf("-- CET_RUNTIME_PROFILER_ADAPTIVE_SCHEDULER_BEGIN v2",
             StringComparison.Ordinal);
         var bridgeEnd = generated.IndexOf("-- CET_RUNTIME_PROFILER_ADAPTIVE_SCHEDULER_END v2",
@@ -59,6 +60,7 @@ try
         Console.WriteLine("Private untouched 0-Engine: original source preserved, composed update and idempotence PASS");
         return;
     }
+    NativeLocationShutdownContract.Run(root);
     var harness = Path.GetFullPath("tests/AdaptiveProfilerUpdateContract/Execute.lua");
     var stock = """
 local Engine = {}
