@@ -46,7 +46,7 @@ struct alignas(8) Chain {
 };
 struct FixtureContext {
     uint8_t* base=nullptr;
-    std::array<PersonalityMap,2> maps{};
+    GuardArena* arena=nullptr;
     PEXCEPTION_ROUTINE personality=nullptr;
     std::atomic<unsigned> abnormalCleanups{0},unexpectedCleanups{0},mappedSearch{0},mappedUnwind{0};
 };
@@ -61,7 +61,8 @@ EXCEPTION_DISPOSITION NTAPI Bridge(PEXCEPTION_RECORD exception,PVOID frame,
     auto* dispatch=static_cast<PDISPATCHER_CONTEXT>(dispatcherContext);
     auto& f=*current;
     DISPATCHER_CONTEXT mapped{};
-    for(auto& map:f.maps){
+    for(size_t i=0;i<2;++i){
+        auto& map=f.arena->Map(i);
         if(!map.Translate(*dispatch,mapped))continue;
         if(exception->ExceptionFlags&(EXCEPTION_UNWINDING|EXCEPTION_EXIT_UNWIND))
             ++f.mappedUnwind;
@@ -98,7 +99,7 @@ int main(){
           "MSVC compiled shared mutex ABI differs");
     Check(sizeof(SRWLOCK)==sizeof(*owner),"native Windows SRW storage differs");
     std::weak_ptr<std::shared_mutex> weak=owner;
-    FixtureContext f;f.base=p;current=&f;
+    FixtureContext f;f.base=p;f.arena=arena.get();current=&f;
     auto ntdll=GetModuleHandleW(L"ntdll.dll");
     f.personality=reinterpret_cast<PEXCEPTION_ROUTINE>(GetProcAddress(ntdll,"__C_specific_handler"));
     Check(f.personality!=nullptr,"Windows C-specific handler unavailable");
@@ -133,15 +134,15 @@ int main(){
         std::memcpy(p+completedInfo,completed.data(),completed.size());
         table[i]={entry,entry+OriginalEnd,info};
         table[i+2]={island,island+static_cast<uint32_t>(gate.Code().size()),completedInfo};
-        auto& map=f.maps[i];map.imageBase=base;map.original=table[i];map.island=table[i+2];
+        auto& map=arena->Map(i);map.imageBase=base;map.original=table[i];map.island=table[i+2];
         map.originalHandler=f.personality;map.originalHandlerData=p+info+12;map.originalPc=base+entry+Guard;
         auto& edit=edits[i];edit.address=p+entry+Guard;
         std::memcpy(edit.stock.data(),edit.address,edit.stock.size());
         edit.installed=Redirect(base+entry+Guard,base+island);
         runs[i]=reinterpret_cast<Run>(p+entry);
     }
-    Check(arena->Seal(table,table.size()),"register owned two-gate arena");
     GuardAttachment attachment(std::move(arena),owner,edits);
+    Check(attachment.Seal(table,table.size()),"register owned two-gate arena");
     owner.reset();
     Check(!weak.expired(),"attachment did not retain lock owner");
     auto retained=weak.lock();
@@ -248,8 +249,8 @@ int main(){
         DWORD64 foundBase=0;
         Check(RtlLookupFunctionEntry(base+island,&foundBase,nullptr)==nullptr,"stale runtime function table");
     }
-    current=nullptr;
+    current=nullptr;f.arena=nullptr;
     std::cout<<"Integrated paired gate lifecycle: actual SEH search/unwind, demand/reload, busy retirement, "
              <<"rollback and exact restoration; 32 synchronized cycles, "<<calls.load()
-             <<" concurrent calls, "<<busyCount<<" busy refusals, drained arena/table/owner PASS\\n";
+             <<" concurrent calls, "<<busyCount<<" busy refusals, drained arena/table/owner PASS\n";
 }

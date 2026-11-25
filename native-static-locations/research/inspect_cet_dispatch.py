@@ -243,6 +243,27 @@ class PDB:
             off += length + 2
 
 
+def global_data_records(pdb, pe):
+    """Read linked CodeView S_LDATA32/S_GDATA32 records from the same PDB."""
+    dbi = pdb.stream(3)
+    sym_stream, = unpack("<H", dbi, 20)
+    records = pdb.stream(sym_stream)
+    off = 0
+    while off < len(records):
+        length, kind = unpack("<HH", records, off)
+        require(length >= 2, "invalid CodeView data record length")
+        payload = take(records, off + 4, length - 2)
+        if kind in (0x110c, 0x110d):
+            type_index, address, segment = unpack("<IIH", payload, 0)
+            name, sep, _ = payload[10:].partition(b"\0")
+            require(sep, "unterminated global data symbol")
+            if 1 <= segment <= len(pe.sections):
+                sec = pe.sections[segment-1]
+                if address < max(sec[1], sec[3]):
+                    yield name.decode("utf-8", errors="replace"), type_index, sec[2]+address, sec[5]
+        off += length + 2
+
+
 def numeric(data, pos):
     leaf, = unpack("<H", data, pos)
     if leaf < 0x8000:
@@ -802,6 +823,36 @@ def owner_layout_proof(pe, pdb, pdb_path, pdbutil, layouts, locks):
                 for ins in instructions for op in ins.operands
                 if op.type == X86_OP_MEM and op.mem.base == X86_REG_RIP and
                 ins.address + ins.size + op.mem.disp == slot]
+    # The file-static owning unique_ptr is different from FunctionOverride's
+    # observer pointer. Resolve its exact data symbol and embedded pointer
+    # type in the matched PDB. Report unresolved records rather than infer an
+    # address from a neighbouring global or a source-only symbol.
+    root_candidates = []
+    slot_candidates = []
+    for name, type_index, rva, flags in global_data_records(pdb, pe):
+        if name == "s_pInstance" or name.startswith("?s_pInstance@@"):
+            if type_index not in types.classes:
+                continue
+            full = types.layout(type_index)
+            if not full["name"].startswith("std::unique_ptr<CET,"):
+                continue
+            member_off, pointer_type = types.field(int(full["type_index"],16), ("_Mypair", "_Myval2"))
+            require(types.full_index(types.pointer_target(pointer_type)) == int(owner["type_index"],16),
+                    "root singleton unique_ptr does not own exact CET")
+            require(member_off + 8 <= full["size"] and flags & 0x80000000,
+                    "root singleton storage invalid")
+            record = {"symbol": name, "object_rva": hex(rva), "pointer_rva": hex(rva+member_off),
+                      "pointer_offset": member_off, "owner_type": full["name"]}
+            if record not in root_candidates:
+                root_candidates.append(record)
+        if name == "s_pOverride" or name.startswith("?s_pOverride@@"):
+            if type_index in types.types and types.types[type_index][0] == 0x1002:
+                if types.full_index(types.pointer_target(type_index)) == int(override["type_index"],16):
+                    record = {"symbol": name, "rva": hex(rva)}
+                    if record not in slot_candidates:
+                        slot_candidates.append(record)
+    require(all(int(x["rva"],16)==slot for x in slot_candidates),
+            "PDB FunctionOverride singleton disagrees with compiled dispatch")
     initialized = vm["fields"].get("m_initialized")
     require(initialized is not None and initialized["type"].startswith("0x0030"),
             "LuaVM startup-complete marker is not a compiled bool")
@@ -810,6 +861,8 @@ def owner_layout_proof(pe, pdb, pdb_path, pdbutil, layouts, locks):
             "startup-complete marker outside embedded LuaVM")
     return {"startup_marker_cet_offset": init_offset,
             "startup_marker_vm_offset": initialized["offset"],
+            "root_singleton_candidates": root_candidates,
+            "override_singleton_data_symbols": slot_candidates,
             "embedded_members": members, "cet_size": owner["size"],
             "override_relative_offset": relative, "mutex_relative_offset": lock_offset,
             "scripting_back_pointer_offset": back["offset"], "singleton_slot": hex(slot),

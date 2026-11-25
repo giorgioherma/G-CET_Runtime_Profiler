@@ -5,6 +5,7 @@
 // the product. No recurring scheduler, polling, or extra dispatch lock.
 #include "CETExistingMutex.hpp"
 #include "CETObserverBinding.hpp"
+#include "CETCompletedUnwind.hpp"
 #include <windows.h>
 #include <array>
 #include <cstdint>
@@ -160,8 +161,9 @@ class GuardArena {
     };
     NativeData* data_=nullptr;
     std::array<RUNTIME_FUNCTION,4> functions_{};
+    std::array<cet_dispatch::PersonalityMap,2> maps_{};
     size_t count_=0;
-    bool registered_=false;
+    bool registered_=false, uncertain_=false;
 public:
     GuardArena(){
         base_=static_cast<uint8_t*>(VirtualAlloc(nullptr,Bytes,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE));
@@ -171,7 +173,7 @@ public:
     GuardArena& operator=(const GuardArena&)=delete;
     ~GuardArena(){
         // The attachment owner must retire the table before destruction.
-        if(registered_)std::abort();
+        if(registered_||uncertain_)std::abort();
         if(data_)data_->~NativeData();
         if(base_)VirtualFree(base_,0,MEM_RELEASE);
     }
@@ -180,8 +182,11 @@ public:
     cet_dispatch::ObserverBinding& Binding()noexcept{return data_->binding;}
     const auto& Entries()const noexcept{return functions_;}
     bool Registered()const noexcept{return registered_;}
+    bool MustRetain()const noexcept{return registered_||uncertain_;}
+    cet_dispatch::PersonalityMap& Map(size_t i)noexcept{return maps_[i];}
+    const auto& Maps()const noexcept{return maps_;}
     bool Seal(const std::array<RUNTIME_FUNCTION,4>& functions,size_t count)noexcept{
-        if(!base_||registered_||!count||count>functions_.size())return false;
+        if(!base_||registered_||uncertain_||!count||count>functions_.size())return false;
         DWORD previous=0;
         for(size_t i=0;i<count;++i){
             const auto& f=functions[i];
@@ -200,6 +205,7 @@ public:
     // Caller owns the independent drain proof. A failed deletion retains
     // the whole arena; no table pointer or code may be freed underneath OS.
     bool ReclaimMetadataAfterDrain()noexcept{
+        if(uncertain_)return false;
         if(!registered_)return true;
         if(!RtlDeleteFunctionTable(functions_.data()))return false;
         registered_=false;
@@ -208,6 +214,7 @@ public:
             if(RtlLookupFunctionEntry(reinterpret_cast<DWORD64>(base_)+functions_[i].BeginAddress,
                                       &foundBase,nullptr)!=nullptr){
                 // Unexpected outstanding table identity; keep storage.
+                uncertain_=true;
                 return false;
             }
         }
@@ -240,10 +247,13 @@ public:
         // than release code/table/lock references. This is a bounded one
         // session safety fallback in the research process, not a live CET
         // unload or process-lifetime module-pinning policy.
-        if(state_&&state_->arena&&state_->arena->Registered())(void)state_.release();
+        if(state_&&state_->arena&&(state_->arena->MustRetain()||state_->phase==AttachmentPhase::Unsafe))(void)state_.release();
     }
     AttachmentPhase Phase()const noexcept{return state_?state_->phase:AttachmentPhase::Restored;}
     GuardArena* Arena()const noexcept{return state_?state_->arena.get():nullptr;}
+    bool Seal(const std::array<RUNTIME_FUNCTION,4>& functions,size_t count)noexcept{
+        return Owned()&&state_->phase==AttachmentPhase::Prepared&&state_->arena&&state_->arena->Seal(functions,count);
+    }
     GuardResult Attach(int failBefore=-1){
         if(!Owned()||!state_->arena||!state_->arena->Registered()||
            (state_->phase!=AttachmentPhase::Prepared&&state_->phase!=AttachmentPhase::Restored))
@@ -281,7 +291,10 @@ public:
         if(!Owned()||!allUsersJoined||state_->phase!=AttachmentPhase::Restored)return false;
         // Recheck stock spans under the same lease before metadata removal.
         if(state_->guards.Change(false)!=GuardResult::Success)return false;
-        if(!state_->arena->ReclaimMetadataAfterDrain())return false;
+        if(!state_->arena->ReclaimMetadataAfterDrain()){
+            if(!state_->arena->Registered())state_->phase=AttachmentPhase::Unsafe;
+            return false;
+        }
         state_.reset();
         return true;
     }
