@@ -213,6 +213,131 @@ internal static class ZeroEngineDemandSource
         return 1;
     }
 
+
+    private const string FrameDemandMarker = "-- G-CET frame emitter demand v1";
+    private const string FrameDemandBind = "local __gcetDemand = require('modules/G-CET/Scheduler').Demand";
+    private const string FrameDemandState = """
+-- G-CET frame emitter demand v1
+local __gcetFrameDemandHandles = {}
+local __gcetFrameDemandReady = type(__gcetDemand) == "table" and
+    type(__gcetDemand.TrackFrame) == "function" and type(__gcetDemand.IsDue) == "function"
+""";
+    private const string FrameEmitterLoop = """
+    for interval, emitter in pairs(frameEmitters) do
+        if currentFrame % interval == 0 then
+            emitter:trigger(currentFrame)
+        end
+    end
+""";
+    private const string FrameEmitterCreate = """
+    if not frameEmitters[interval] then
+        frameEmitters[interval] = EventEmitter.new()
+    end
+""";
+    private const string FrameEmitterRemove = """
+            if frameEmitters[interval] and frameEmitters[interval]:getListenerCount() == 0 then
+                frameEmitters[interval] = nil
+            end
+""";
+    private const string FrameEmitterCreateTracked = """
+    if not frameEmitters[interval] then
+        frameEmitters[interval] = EventEmitter.new()
+        if __gcetFrameDemandReady then
+            __gcetFrameDemandHandles[interval] = __gcetDemand.TrackFrame("FrameEmitters", interval)
+        end
+    end
+""";
+    private const string FrameEmitterRemoveTracked = """
+            if frameEmitters[interval] and frameEmitters[interval]:getListenerCount() == 0 then
+                frameEmitters[interval] = nil
+                local demandHandle = __gcetFrameDemandHandles[interval]
+                if demandHandle then
+                    demandHandle.Cancel()
+                    __gcetFrameDemandHandles[interval] = nil
+                end
+            end
+""";
+    private const string FrameEmitterLoopTracked = """
+    if not __gcetFrameDemandReady or __gcetDemand.IsDue("FrameEmitters", currentFrame) then
+        for interval, emitter in pairs(frameEmitters) do
+            if currentFrame % interval == 0 then
+                emitter:trigger(currentFrame)
+            end
+        end
+    end
+""";
+
+    // Frame consumers are a dependency of the host's successful pose phase.
+    // Connect the actual interval buckets to the same exact-deadline controller.
+    // Keep the author's pairs traversal, modulo, emitter mutation and listener
+    // delivery semantics. Unknown/disabled legacy subscriptions remain tracked.
+    internal static bool TryFrameEmitters(string source, out string next)
+    {
+        next = source;
+        var candidate = source;
+        var code = WithoutLuaTrivia(source);
+        if (Count(code,"local frameEmitters = {}") != 1 ||
+            Count(code,"function Engine.OnFrame(interval, fn, source)") != 1 ||
+            Count(code,"local innerHandle = frameEmitters[interval]:subscribe(fn, source)") != 1)
+            return false;
+        // Prove every registry use, allowing the existing read-only overlay
+        // traversal and unrelated custom code. Do not require its presence.
+        var registry = Regex.Replace(code,
+            @"\blocal\s+frameEmitters\s*=\s*\{\s*\}|\bpairs\s*\(\s*frameEmitters\s*\)|\bframeEmitters\s*\[\s*interval\s*\]", "");
+        if (Regex.IsMatch(registry,@"\bframeEmitters\b")) return false;
+        var refs = Regex.Matches(code,@"\bframeEmitters\s*\[\s*interval\s*\]").Count;
+        if (refs != 6) return false;
+        var traversals=Regex.Matches(code,@"\bpairs\s*\(\s*frameEmitters\s*\)").Count;
+        if (traversals is <1 or >2 ||
+            Regex.Matches(code,@"(?m)^[ \t]*for interval, emitter in pairs\(frameEmitters\) do[ \t]*(?=\r*$)").Count!=traversals)
+            return false;
+        // A second traversal is admitted only for the stock diagnostic reader,
+        // with no callbacks, writes, or external escape of the emitter.
+        if (Regex.Matches(code,@"\bpairs\s*\(\s*frameEmitters\s*\)").Count == 2 &&
+            Count(code,"table.insert(intervals, { interval = interval, listeners = emitter:getListenerCount(), emitter = emitter })") != 1)
+            return false;
+        var normalized = Regex.Replace(candidate,@"\r+\n","\n");
+        bool state = normalized.Contains(FrameDemandState,StringComparison.Ordinal);
+        bool created = normalized.Contains(FrameEmitterCreateTracked,StringComparison.Ordinal);
+        bool removed = normalized.Contains(FrameEmitterRemoveTracked,StringComparison.Ordinal);
+        bool loop = normalized.Contains(FrameEmitterLoopTracked,StringComparison.Ordinal);
+        // Each generated fragment can exist independently; complete only
+        // missing fragments. Do not duplicate partially customized helpers.
+        if (Count(source,FrameDemandMarker)!=(state?1:0) ||
+            Count(source,"__gcetFrameDemandHandles")!=(state?1:0)+(created?1:0)+(removed?2:0) ||
+            Count(source,"__gcetFrameDemandReady")!=(state?1:0)+(created?1:0)+(loop?1:0))
+            return false;
+        if (Count(candidate,FrameDemandBind)==0)
+        {
+            if (candidate.Contains("__gcetDemand",StringComparison.Ordinal) ||
+                !BeforeLine(ref candidate,"local function UpdateFrame(delta)",FrameDemandBind))
+                return false;
+        }
+        if(Count(candidate,FrameDemandBind)!=1)return false;
+        if(!state&&!AfterLine(ref candidate,FrameDemandBind,FrameDemandState))return false;
+        if(!created&&!ReplaceUniqueLines(ref candidate,FrameEmitterCreate,FrameEmitterCreateTracked))return false;
+        if(!removed&&!ReplaceUniqueLines(ref candidate,FrameEmitterRemove,FrameEmitterRemoveTracked))return false;
+        if(!loop&&!ReplaceUniqueLines(ref candidate,FrameEmitterLoop,FrameEmitterLoopTracked))return false;
+        next=candidate;return true;
+    }
+
+    internal static int TryStageFrameEmitters(ref FixedZeroEngineBuild framework,List<object> manifest)
+    {
+        if(!framework.Files.TryGetValue(InitPath,out var hb)||
+           !framework.Files.TryGetValue(SchedulerPath,out var sb))return 0;
+        var host=Encoding.UTF8.GetString(hb);var scheduler=Encoding.UTF8.GetString(sb);
+        if(!TryFrameEmitters(host,out var hn)||!TryScheduler(scheduler,out var sn)||
+           (hn==host&&sn==scheduler))return 0;
+        var files=framework.Files.ToDictionary(p=>p.Key,p=>p.Value,StringComparer.OrdinalIgnoreCase);
+        files[InitPath]=Encoding.UTF8.GetBytes(hn);files[SchedulerPath]=Encoding.UTF8.GetBytes(sn);
+        framework=framework with{Files=files,FixedInitSha256=Convert.ToHexString(
+            SHA256.HashData(files[InitPath])).ToLowerInvariant()};
+        manifest.Add(new{type="FRAMEWORK_FRAME_DEMAND",Owner="0-Engine",file=InitPath,
+            contract="GCET_FRAMEWORK_FRAME_DEMAND_V1",sourceProof=true,
+            callbackOrCadenceChanged=false,PolicyClass="CENTRAL_EXACT_FRAME_DEMAND"});
+        return 1;
+    }
+
     private const string DerivedMarker = "-- G-CET derived sample demand v1";
     private const string SampleMarker = "-- G-CET demand sample slots v1";
     private const string DerivedHostMarker = "-- G-CET derived sample host v1";

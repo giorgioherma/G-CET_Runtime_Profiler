@@ -166,6 +166,96 @@ return UpdateFrame
         Check(poseProcess.ExitCode==0,"generated pose execution failed");
     }
 
+
+    // The host's original frame registry is another consumer of the shared
+    // successful-pose phase. Exercise actual registry-owned demand, not an
+    // independent timer or synthetic callback queue.
+    var frameEmitterHost="""
+local EventEmitter = require('modules/EventEmitter')
+local Engine = {}
+local frameEmitters = {}
+local currentFrame = 0
+local function UpdateFrame(delta)
+    currentFrame = currentFrame + 1
+    for interval, emitter in pairs(frameEmitters) do
+        if currentFrame % interval == 0 then
+            emitter:trigger(currentFrame)
+        end
+    end
+end
+function Engine.OnFrame(interval, fn, source)
+    if type(interval) ~= "number" or interval < 1 then
+        return { unsubscribe = function() end }
+    end
+    interval = math.floor(interval)
+    if not frameEmitters[interval] then
+        frameEmitters[interval] = EventEmitter.new()
+    end
+    local innerHandle = frameEmitters[interval]:subscribe(fn, source)
+    return {
+        unsubscribe = function()
+            innerHandle.unsubscribe()
+            if frameEmitters[interval] and frameEmitters[interval]:getListenerCount() == 0 then
+                frameEmitters[interval] = nil
+            end
+        end
+    }
+end
+Engine.UpdateFrame=UpdateFrame
+return Engine
+""";
+    Check(ZeroEngineDemandSource.TryFrameEmitters(frameEmitterHost,out var frameEmitterNext)&&
+        frameEmitterNext!=frameEmitterHost,"frame emitter producer demand");
+    Check(ZeroEngineDemandSource.TryFrameEmitters(frameEmitterNext,out var frameEmitterRepeat)&&
+        frameEmitterRepeat==frameEmitterNext,"frame emitter repeat");
+    foreach(var missing in new[]{"state","register","remove","dispatch"})
+    {
+        // Strip only one complete generated fragment from the production
+        // result. The remaining source must be completed byte-identically.
+        var incomplete=missing switch {
+            "state"=>System.Text.RegularExpressions.Regex.Replace(frameEmitterNext,
+                @"(?m)^-- G-CET frame emitter demand v1\r?\nlocal __gcetFrameDemandHandles = \{\}\r?\nlocal __gcetFrameDemandReady = [^\r\n]+\r?\n    type\(__gcetDemand.TrackFrame\)[^\r\n]+\r?\n",""),
+            "register"=>System.Text.RegularExpressions.Regex.Replace(frameEmitterNext,
+                @"(?m)^        if __gcetFrameDemandReady then\r?\n            __gcetFrameDemandHandles\[interval\] = [^\r\n]+\r?\n        end\r?\n",""),
+            "remove"=>System.Text.RegularExpressions.Regex.Replace(frameEmitterNext,
+                @"(?m)^                local demandHandle = __gcetFrameDemandHandles\[interval\]\r?\n                if demandHandle then\r?\n                    demandHandle.Cancel\(\)\r?\n                    __gcetFrameDemandHandles\[interval\] = nil\r?\n                end\r?\n",""),
+            _=>frameEmitterNext.Replace(
+                "    if not __gcetFrameDemandReady or __gcetDemand.IsDue(\"FrameEmitters\", currentFrame) then\n        for interval, emitter in pairs(frameEmitters) do\n            if currentFrame % interval == 0 then\n                emitter:trigger(currentFrame)\n            end\n        end\n    end",
+                "    for interval, emitter in pairs(frameEmitters) do\n        if currentFrame % interval == 0 then\n            emitter:trigger(currentFrame)\n        end\n    end")
+        };
+        Check(incomplete!=frameEmitterNext&&ZeroEngineDemandSource.TryFrameEmitters(incomplete,out var completed)&&
+            completed==frameEmitterNext,"frame emitter partial completion: "+missing);
+    }
+    var frameEmitterCustom="-- custom header\r\n"+frameEmitterHost.Replace("\n","\r\n")+"\r\n-- custom trailer";
+    Check(ZeroEngineDemandSource.TryFrameEmitters(frameEmitterCustom,out var frameEmitterCustomNext)&&
+        frameEmitterCustomNext.StartsWith("-- custom header\r\n")&&
+        frameEmitterCustomNext.EndsWith("\r\n-- custom trailer"),"frame emitter compatible source");
+    Check(!ZeroEngineDemandSource.TryFrameEmitters(frameEmitterHost.Replace(
+        "local frameEmitters = {}","local frameEmitters = {}\nlocal external = frameEmitters"),out _),
+        "escaped frame emitter registry must remain unchanged");
+    if(privateSource)
+    {
+        Check(ZeroEngineDemandSource.TryFrameEmitters(Encoding.UTF8.GetString(generatedHost),out var actualFrameHost),
+            "private stock frame emitter ownership");
+        Check(ZeroEngineDemandSource.TryFrameEmitters(actualFrameHost,out var actualFrameRepeat)&&
+            actualFrameRepeat==actualFrameHost,"private frame emitter idempotence");
+    }
+    else
+    {
+        var frameRoot=Path.Combine(root,"frame");
+        var frameModules=Path.Combine(frameRoot,"modules","G-CET");
+        Directory.CreateDirectory(frameModules);
+        File.WriteAllText(Path.Combine(frameRoot,"original.lua"),frameEmitterHost);
+        File.WriteAllText(Path.Combine(frameRoot,"generated.lua"),frameEmitterNext);
+        File.WriteAllBytes(Path.Combine(frameModules,"Scheduler.lua"),generatedScheduler);
+        File.WriteAllText(Path.Combine(frameRoot,"old-scheduler.lua"),scheduler);
+        var framePsi=new ProcessStartInfo("lua5.4"){UseShellExecute=false};
+        framePsi.ArgumentList.Add("tests/ZeroEngineDemandContract/ExecuteFrameEmitters.lua");
+        framePsi.ArgumentList.Add(frameRoot);
+        using var frameProcess=Process.Start(framePsi)!;frameProcess.WaitForExit();
+        Check(frameProcess.ExitCode==0,"generated frame emitter execution");
+    }
+
     // Keep the existing spatial fixture independent; exercise the new
     // scalar transformation using the same production generator stage.
     File.WriteAllText(Path.Combine(moduleDir, "DerivedState.lua"), derived);

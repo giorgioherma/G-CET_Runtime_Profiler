@@ -1793,8 +1793,24 @@ try {
         throw 'Packaged pose helper or original failure barrier missing.'
     }
 } finally { $poseArchive.Dispose() }
+$frameDemandTransforms = @($generatedManifest.transforms | Where-Object {
+    $_.type -eq 'FRAMEWORK_FRAME_DEMAND'
+})
+if ($frameDemandTransforms.Count -ne 1) {
+    throw 'Expected exactly one source-proven frame emitter demand transform on the stock host fixture.'
+}
+$frameDemandEntry = $frameDemandTransforms[0]
+if ([string]$frameDemandEntry.contract -ne 'GCET_FRAMEWORK_FRAME_DEMAND_V1' -or
+    [string]$frameDemandEntry.file -ne '0-Engine/init.lua' -or
+    !$frameDemandEntry.sourceProof -or $frameDemandEntry.callbackOrCadenceChanged -or
+    $poseHost -notmatch 'TrackFrame\("FrameEmitters", interval\)' -or
+    $poseHost -notmatch 'IsDue\("FrameEmitters", currentFrame\)' -or
+    $poseHost -notmatch 'demandHandle.Cancel\(\)') {
+    throw 'Packaged frame emitter demand lost registry ownership or original cadence.'
+}
 $expectedPassTransforms = $expectedGenericTransforms + $expectedSharedTransforms +
-    $nativeReadReuseTransforms.Count + $readCoordinatorTransforms.Count + $poseReaderTransforms.Count
+    $nativeReadReuseTransforms.Count + $readCoordinatorTransforms.Count + $poseReaderTransforms.Count +
+    $frameDemandTransforms.Count
 if ([int]$resolved.pass.TransformCount -ne $expectedPassTransforms) {
     if (Test-Path -LiteralPath $resolved.pass.ManifestPath -PathType Leaf) {
         $failedManifest = Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
