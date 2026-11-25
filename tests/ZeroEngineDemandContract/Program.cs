@@ -339,6 +339,33 @@ return Engine
         ZeroEngineDemandSource.TryCadencedDerivedHost(cadenceHostNext,out var cadenceHostRepeat)&&cadenceHostRepeat==cadenceHostNext&&
         ZeroEngineDemandSource.TryCadencedController(cadenceSchedulerNext,out var cadenceSchedulerRepeat)&&cadenceSchedulerRepeat==cadenceSchedulerNext,
         "cadenced scalar repeat generation");
+    Check(ZeroEngineDemandSource.TrySampleController(cadenceSchedulerNext,out var originalSampleRepeat)&&
+        originalSampleRepeat==cadenceSchedulerNext,"original scalar scope must compose with cadence slots");
+    // Exercise the production stage with every independent missing
+    // component, then repeat the complete output through its real entrypoint.
+    var cadenceStageRoot=Path.Combine(root,"cadence-stage");
+    var cadenceStageDir=Path.Combine(cadenceStageRoot,"0-Engine","modules");
+    Directory.CreateDirectory(cadenceStageDir);
+    foreach(var missing in new[]{"all","host","module","scheduler","none"})
+    {
+        var h=missing is "all" or "host"?cadencePitchHost:cadenceHostNext;
+        var m=missing is "all" or "module"?cadencePitch:cadenceModuleNext;
+        var sc=missing is "all" or "scheduler"?cadencePitchScheduler:cadenceSchedulerNext;
+        File.WriteAllText(Path.Combine(cadenceStageDir,"DerivedState.lua"),m);
+        var fw=new FixedZeroEngineBuild(new Dictionary<string,byte[]>{
+            [ZeroEngineDemandSource.InitPath]=Encoding.UTF8.GetBytes(h),
+            [ZeroEngineDemandSource.SchedulerPath]=Encoding.UTF8.GetBytes(sc)
+        },"","","","");
+        var ss=new Dictionary<string,byte[]>();
+        Check(ZeroEngineDemandSource.TryStageCadencedDerived(cadenceStageRoot,ref fw,ss,new(),new())==
+            (missing=="none"?0:1),"complete cadenced source: "+missing);
+        Check(Encoding.UTF8.GetString(fw.Files[ZeroEngineDemandSource.InitPath])==cadenceHostNext&&
+            Encoding.UTF8.GetString(fw.Files[ZeroEngineDemandSource.SchedulerPath])==cadenceSchedulerNext&&
+            (ss.TryGetValue("0-Engine/modules/DerivedState.lua",out var mb)?Encoding.UTF8.GetString(mb):m)==cadenceModuleNext,
+            "cadenced partial output differs: "+missing);
+        Check(ZeroEngineDemandSource.TryStageCadencedDerived(cadenceStageRoot,ref fw,ss,new(),new())==0,
+            "cadenced repeat after actual stage: "+missing);
+    }
     Check(!ZeroEngineDemandSource.TryCadencedDerivedProducer(cadencePitch.Replace(
         "cached.hasWeapon = resolveHasWeapon(player)","cached.hasWeapon = resolveHasWeapon(player)\n        externalConsumer(cached.hasWeapon)"),out _),
         "internal field dependency must stay eager");

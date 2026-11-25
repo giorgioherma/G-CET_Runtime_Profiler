@@ -602,15 +602,22 @@ if not pcOk then pcOk, pc = pcall(Game.GetPlayer) end
         next = source;
         if (source.Contains(SampleMarker, StringComparison.Ordinal))
         {
-            if (Count(source, "function demand.DefineSample(") != 1 ||
-                Count(source, "function sample.Offer(") != 1 ||
-                Count(source, "function sample.Read(") != 1 ||
-                Count(source, "function sample.Expose(") != 1 ||
-                Count(source, "function sample.Reset(") != 1) return false;
+            // Other sample families use private locals with the same names.
+            // Prove the actual DefineSample scope, not a module-wide method
+            // count which rejects a valid composed runtime on pass two.
+            var scope = Regex.Matches(source,
+                @"(?m)^(?<indent>[ \t]*)function demand\.DefineSample\([^\r\n]+\)[ \t]*\r*\n(?<body>[\s\S]*?)^\k<indent>end[ \t]*(?=\r*$)");
+            if (scope.Count != 1 || Count(source, "function demand.DefineSample(") != 1)
+                return false;
+            var sample = scope[0].Value;
+            if (Count(sample, "function sample.Offer(") != 1 ||
+                Count(sample, "function sample.Read(") != 1 ||
+                Count(sample, "function sample.Expose(") != 1 ||
+                Count(sample, "function sample.Reset(") != 1) return false;
             if (source.Contains("demand.SampleEpochVersion = 1", StringComparison.Ordinal))
-                return Count(source, "local offeredEpoch") == 1 &&
-                    Count(source, "offeredEpoch = epoch()") == 1 &&
-                    Count(source, "offeredEpoch ~= epoch()") == 1;
+                return Count(sample, "local offeredEpoch") == 1 &&
+                    Count(sample, "offeredEpoch = epoch()") == 1 &&
+                    Count(sample, "offeredEpoch ~= epoch()") == 1;
             // Complete the earlier development sample slot in place.
             // Epoch identity comes from the existing host frame clock.
             var candidate = source;
