@@ -4,6 +4,7 @@
 // Native entry/branch adapters must supply proven current CET lock ownership,
 // dispatch identity and lifetime. No scheduler, no CET object mutation.
 #include <atomic>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -175,4 +176,72 @@ private:
     GuardState state_;
     Handle next_=0;
 };
+
+ // Generic individual-context mirror. Experimental until the live
+ // registration/slot identity and authoritative mutation boundary are proven.
+ // No native gameplay predicate, scheduler or per-dispatch subscriber scan.
+ enum class ObserverPhase : uint8_t { Before, After };
+ struct IndividualIdentity {
+     uintptr_t chain=0, context=0;
+     ObserverPhase phase=ObserverPhase::Before;
+     bool operator==(const IndividualIdentity&)const=default;
+     explicit operator bool()const noexcept{return chain&&context;}
+ };
+ template<size_t Capacity=256>
+ class IndividualObserverBindings {
+     static_assert(Capacity>=2 && (Capacity&(Capacity-1))==0);
+     using Handle=uint64_t;
+     struct Entry {
+         IndividualIdentity id{};
+         DispatchEpoch::Token token=0;
+         Handle handle=0;
+         bool active=true;
+     };
+     const DispatchEpoch& epoch_;
+     const uint64_t owner_;
+     std::array<Entry,Capacity> entries_{};
+     Handle next_=0;
+     bool Owner(uint64_t thread)const noexcept{return owner_&&thread==owner_;}
+     static size_t Index(IndividualIdentity id)noexcept{
+         // Direct-mapped bounded lookup; collision refuses only the affected
+         // binding. No probing, allocation or chain-wide search on dispatch.
+         auto h=(id.context>>4)^(id.chain>>4)^(id.context>>13);
+         h^=static_cast<uint64_t>(id.phase)*0x9e3779b97f4a7c15ull;
+         return static_cast<size_t>(h)&(Capacity-1);
+     }
+     Entry* ByHandle(Handle h)noexcept{
+         if(!h)return nullptr;
+         auto& e=entries_[h&(Capacity-1)];
+         return e.handle==h&&epoch_.Matches(e.token)?&e:nullptr;
+     }
+ public:
+     IndividualObserverBindings(const DispatchEpoch& epoch,uint64_t owner)noexcept:epoch_(epoch),owner_(owner){}
+     IndividualObserverBindings(const IndividualObserverBindings&)=delete;
+     IndividualObserverBindings& operator=(const IndividualObserverBindings&)=delete;
+     // The caller must prove exact original callback ownership, and invalidate
+     // the epoch before any mutation that can destroy/reuse a Context.
+     Handle Bind(uint64_t thread,DispatchEpoch::Token token,IndividualIdentity id)noexcept{
+         if(!Owner(thread)||!id||!epoch_.Matches(token))return 0;
+         const auto slot=Index(id);auto& e=entries_[slot];
+         if(e.handle&&epoch_.Matches(e.token))return e.id==id?e.handle:0;
+         if(next_>=(std::numeric_limits<Handle>::max()/Capacity)-1)return 0;
+         const auto handle=(++next_)*Capacity+slot;
+         e={id,token,handle,true};return handle;
+     }
+     bool SetDemand(uint64_t thread,Handle h,bool active)noexcept{
+         if(!Owner(thread))return false;
+         auto* e=ByHandle(h);if(!e)return false;
+         e->active=active;return true;
+     }
+     bool Release(uint64_t thread,Handle h)noexcept{
+         if(!Owner(thread))return false;
+         auto* e=ByHandle(h);if(!e)return false;
+         *e={};return true;
+     }
+     bool CanSkip(uint64_t thread,IndividualIdentity id)const noexcept{
+         if(!Owner(thread)||!id)return false;
+         const auto& e=entries_[Index(id)];
+         return e.handle&&!e.active&&e.id==id&&epoch_.Matches(e.token);
+     }
+ };
 }

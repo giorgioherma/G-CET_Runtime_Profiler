@@ -31,7 +31,53 @@ struct Fixture {
         });
     }
 };
+void MixedContexts(){
+    DispatchEpoch epoch;
+    IndividualObserverBindings<256> bindings(epoch,17);
+    std::array<IndividualIdentity,35> ids{};
+    std::array<uint64_t,35> handles{};
+    for(size_t i=0;i<ids.size();++i){
+        ids[i]={0x1000,0x4000+i*16,ObserverPhase::Before};
+        handles[i]=bindings.Bind(17,epoch.Current(),ids[i]);
+        Check(handles[i]!=0,"distinct context binding");
+        Check(bindings.SetDemand(17,handles[i],false),"sleep distinct context");
+    }
+    // A foreign context is deliberately in the middle of the author order.
+    const IndividualIdentity foreign{0x1000,0x9000,ObserverPhase::Before};
+    const IndividualIdentity after{0x1000,ids[1].context,ObserverPhase::After};
+    Check(!bindings.CanSkip(17,foreign)&&!bindings.CanSkip(17,after),"unknown phase/context retained");
+    Check(!bindings.CanSkip(18,ids[0]),"foreign thread retained");
+    Check(bindings.SetDemand(17,handles[0],true),"wake first");
+    std::array<int,36> trace{};size_t used=0,eliminated=0;
+    auto invoke=[&](size_t i){
+        if(bindings.CanSkip(17,ids[i])){++eliminated;return;}
+        trace[used++]=static_cast<int>(i);
+        if(i==0)Check(bindings.SetDemand(17,handles[2],true),"same-dispatch wake later");
+        if(i==2)Check(bindings.SetDemand(17,handles[3],false),"same-dispatch sleep later");
+    };
+    for(size_t i=0;i<35;++i){
+        if(i==1&&!bindings.CanSkip(17,foreign))trace[used++]=99;
+        invoke(i);
+    }
+    Check(used==3&&trace[0]==0&&trace[1]==99&&trace[2]==2&&eliminated==33,
+          "mixed chain preserves order and same-dispatch demand");
+    Check(bindings.SetDemand(17,handles[2],false),"sleep after invocation");
+    Check(bindings.Release(17,handles[4])&&!bindings.CanSkip(17,ids[4]),"release retains stock");
+    auto old=handles[5];
+    {DispatchEpoch::Invalidation clear(epoch);
+        Check(!bindings.CanSkip(17,ids[5]),"clear invalidates all contexts");}
+    Check(!bindings.SetDemand(17,old,false)&&!bindings.CanSkip(17,ids[5]),"stale epoch");
+    auto fresh=bindings.Bind(17,epoch.Current(),ids[5]);
+    Check(fresh&&fresh!=old&&!bindings.CanSkip(17,ids[5]),"address reuse begins active");
+    IndividualObserverBindings<2> bounded(epoch,17);
+    auto a=bounded.Bind(17,epoch.Current(),ids[0]);
+    Check(a&&bounded.SetDemand(17,a,false),"bounded slot");
+    Check(!bounded.Bind(17,epoch.Current(),ids[2]),"collision refuses only affected binding");
+    Check(bounded.CanSkip(17,ids[0])&&!bounded.CanSkip(17,ids[2]),"collision safe");
+    std::cout<<"Individual mixed-context mirror: 33 of 35 modeled managed invocations eliminated, foreign order and immediate wake retained; no marshalling savings claimed\\n";
+}
 int main(){
+    MixedContexts();
     Fixture f;
     auto first=f.Read();
     Check(static_cast<bool>(first)&&first.context==f.context&&f.pointerReads==1,"sole Before identity");

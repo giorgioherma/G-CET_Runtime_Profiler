@@ -643,6 +643,23 @@ def observer_loop_evidence(pe, matches, layouts, pdb):
                       "calls":[describe(x) for x in body if x.group(CS_GRP_CALL)],
                       "context":[describe(x) for x in body[:160]],
                       "truncated":len(body)>160})
+    # Confirm the observed original iterator/Context load and exact tail.
+    # The skip boundary is not a hook authorization: record adjacent blocks
+    # for full register/cleanup/unwind proof without editing the CET image.
+    before = next((x for x in loops if x["start"]=="0x1093e0"), None)
+    require(before is not None and before["backedge"]=="0x109625",
+            "Before candidate moved")
+    require(pe.read_rva(0x1093e0,6)==bytes.fromhex("488b3e8b4710"),
+            "Before Context load changed")
+    require(pe.read_rva(0x10961c,15)==bytes.fromhex("4883c608483b7424700f85b5fdffff"),
+            "Before iterator tail changed")
+    require(not any(x.group(CS_GRP_JUMP) and x.operands and
+                    x.operands[0].type==X86_OP_IMM and
+                    0x1093e0<x.operands[0].imm<0x1093e6 for x in ins),
+            "incoming edge into Context load")
+    print("BEFORE LOOP NEIGHBORHOOD:",json.dumps({
+        "entry_setup":[describe(x) for x in ins if 0x109330<=x.address<0x1093e0],
+        "loop_exit":[describe(x) for x in ins if 0x10962b<=x.address<0x109720]}),flush=True)
     return {"entry_path":[hex(x) for x in path],
             "body_extent":[hex(start),hex(end)],"unwind_rva":hex(unwind),
             "before_offset":chain["fields"]["Before"]["offset"],
