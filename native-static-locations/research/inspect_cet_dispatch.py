@@ -567,6 +567,91 @@ def branch_proof(pe, matches, layouts):
     return result
 
 
+def observer_loop_evidence(pe, matches, layouts, pdb):
+    """Locate actual observer callback loop evidence in the matched binary.
+
+    This is intentionally read-only. A chain-wide ExecuteScope does not
+    identify the individual Context invoking a managed bind. Do not grant
+    a mixed-chain sleep authorization based on a count or a guessed slot.
+    """
+    from capstone import Cs, CS_ARCH_X86, CS_MODE_64, CS_GRP_CALL, CS_GRP_JUMP
+    from capstone.x86_const import X86_OP_IMM, X86_OP_MEM, X86_REG_RIP
+    cs = Cs(CS_ARCH_X86, CS_MODE_64)
+    cs.detail = True
+    start = int(matches["ExecuteChain"][0]["rva"], 16)
+    records = {a: (b, u) for a, b, u in struct.iter_unpack(
+        "<III", pe.read_rva(*pe.exception_directory))}
+    # MSVC may emit a short entry thunk. Follow only a decoded direct jump
+    # to an independently recorded function entry, never an arbitrary RVA.
+    path = []
+    for _ in range(4):
+        require(start in records and start not in path,
+                "ExecuteChain body lacks independent unwind extent")
+        path.append(start)
+        end, unwind = records[start]
+        ins = list(cs.disasm(pe.read_rva(start, end-start), start))
+        require(ins and ins[-1].address + ins[-1].size == end,
+                "ExecuteChain partial body decode")
+        if (ins[0].mnemonic == "jmp" and ins[0].operands and
+                ins[0].operands[0].type == X86_OP_IMM):
+            start = ins[0].operands[0].imm
+            continue
+        break
+    else:
+        raise ValueError("ExecuteChain thunk depth exceeded")
+    symbols = {}
+    for name, section, offset in pdb.public_records(pe):
+        if 1 <= section <= len(pe.sections):
+            symbols.setdefault(pe.sections[section-1][2]+offset, []).append(name)
+    imports = pe.imports()
+    chain = layouts["FunctionOverride::CallChain"]
+    context = layouts["FunctionOverride::Context"]
+    def describe(i):
+        reads, writes = i.regs_access()
+        item = {"rva":hex(i.address), "bytes":i.bytes.hex(),
+                "instruction":f"{i.mnemonic} {i.op_str}",
+                "reads":[i.reg_name(r) for r in reads],
+                "writes":[i.reg_name(r) for r in writes]}
+        if i.group(CS_GRP_CALL) and i.operands:
+            op = i.operands[0]
+            if op.type == X86_OP_IMM:
+                item["callee_symbols"] = symbols.get(op.imm, [])[:4]
+            elif op.type == X86_OP_MEM and op.mem.base == X86_REG_RIP:
+                target = i.address+i.size+op.mem.disp
+                item["import"] = imports.get(target)
+        return item
+    by_address = {i.address:i for i in ins}
+    # A backwards conditional edge with a call in its interval is a
+    # candidate callback loop, not proof that the call invokes Lua or that
+    # the current iterator is a particular Context. Report its exact
+    # instructions and live registers for the next admission step.
+    loops = []
+    for i in ins:
+        if not i.group(CS_GRP_JUMP) or i.mnemonic == "jmp" or not i.operands:
+            continue
+        op = i.operands[0]
+        if op.type != X86_OP_IMM or not start <= op.imm < i.address:
+            continue
+        require(op.imm in by_address, "loop target not an instruction boundary")
+        body = [x for x in ins if op.imm <= x.address <= i.address]
+        if not any(x.group(CS_GRP_CALL) for x in body):
+            continue
+        # Bound diagnostics, not eligibility. Large/ambiguous loops still
+        # report their entry and call sites; no machine code is generated.
+        loops.append({"start":hex(op.imm), "backedge":hex(i.address),
+                      "instruction_count":len(body),
+                      "calls":[describe(x) for x in body if x.group(CS_GRP_CALL)],
+                      "context":[describe(x) for x in body[:160]],
+                      "truncated":len(body)>160})
+    return {"entry_path":[hex(x) for x in path],
+            "body_extent":[hex(start),hex(end)],"unwind_rva":hex(unwind),
+            "before_offset":chain["fields"]["Before"]["offset"],
+            "after_offset":chain["fields"]["After"]["offset"],
+            "script_function_offset":context["fields"]["ScriptFunction"]["offset"],
+            "candidate_loops":loops,
+            "scope":"READ_ONLY_CANDIDATE_EVIDENCE; exact individual slot identity and skip edge NOT PROVEN"}
+
+
 def personality_proof(pe, matches, pdb):
     from capstone import Cs, CS_ARCH_X86, CS_MODE_64, CS_GRP_CALL, CS_GRP_JUMP
     from capstone.x86_const import X86_OP_MEM, X86_OP_IMM, X86_REG_RIP
@@ -927,7 +1012,7 @@ def inspect(release, symbols, pdbutil=None):
                 evidence["symbol"] = name
                 if evidence not in matches[target]:
                     matches[target].append(evidence)
-    layouts, branches, personalities, locks, ownership = None, None, None, None, None
+    layouts, branches, personalities, locks, ownership, observer_loops = None, None, None, None, None, None
     if pdbutil is not None:
         require(all(len(v) == 1 for v in matches.values()), "unresolved dispatcher symbols")
         with tempfile.TemporaryDirectory() as tmp:
@@ -936,6 +1021,8 @@ def inspect(release, symbols, pdbutil=None):
             layouts = class_layouts(pdb, pdb_path, pdbutil)
         print("VERIFIED COMPILED LAYOUTS:", json.dumps(layouts), flush=True)
         branches = branch_proof(pe, matches, layouts)
+        observer_loops = observer_loop_evidence(pe, matches, layouts, pdb)
+        print("OBSERVER LOOP CANDIDATE EVIDENCE:", json.dumps(observer_loops), flush=True)
         require(pe.read_rva(0x107f0c,5)==bytes.fromhex("498b5c2430"),
                 "production Clear locked instruction differs")
         personalities = personality_proof(pe, matches, pdb)
@@ -961,6 +1048,7 @@ def inspect(release, symbols, pdbutil=None):
     return {
         "layouts": layouts,
         "pre_marshalling_branches": branches,
+        "observer_loop_candidate_evidence": observer_loops,
         "exception_personalities": personalities,
         "dispatch_lock": locks,
         "embedded_owner": ownership,
