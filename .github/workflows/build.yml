@@ -57,6 +57,11 @@ jobs:
       - uses: actions/checkout@v5
       - name: Install Lua interpreter for development smoke test
         run: sudo apt-get update -qq && sudo apt-get install -y -qq lua5.4
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+      - name: Execute generated adaptive profiler against CET single-slot registration
+        run: dotnet run --project tests/AdaptiveProfilerUpdateContract/AdaptiveProfilerUpdateContract.csproj -c Release
       - name: Test source-generated G-GC CET controls, idle cost and pressure budget
         run: |
           python3 - <<'PY'

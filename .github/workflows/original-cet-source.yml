@@ -45,6 +45,13 @@ jobs:
           node-version: '22'
           package-manager-cache: false
 
+      - name: Verify adaptive profiler composition on private untouched host
+        shell: pwsh
+        run: |
+          $engine = Join-Path $env:GITHUB_WORKSPACE 'ci-private-stack/bin/x64/plugins/cyber_engine_tweaks/mods/0-Engine/init.lua'
+          dotnet run --project tests/AdaptiveProfilerUpdateContract/AdaptiveProfilerUpdateContract.csproj -c Release -- --stock $engine
+          if ($LASTEXITCODE -ne 0) { throw 'Adaptive profiler original-source composition failed.' }
+
       - name: Generated Lua structural checker fixture contract
         run: node tests/ValidateGeneratedLuaInvariantsContract.cjs
 

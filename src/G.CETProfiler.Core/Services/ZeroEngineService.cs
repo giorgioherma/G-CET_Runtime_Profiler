@@ -22,7 +22,9 @@ internal sealed class ZeroEngineService
 
         var text = File.ReadAllText(paths.ZeroInit);
         if (text.Contains(manifest.ZeroEngine.ProfilerBridgeMarker, StringComparison.Ordinal))
-            return new ZeroFileState("profiler-bridge", "ADAPTIVE PROFILER BRIDGE PRESENT");
+            return HasComposedUpdate(text)
+                ? new ZeroFileState("profiler-bridge", "ADAPTIVE PROFILER BRIDGE PRESENT")
+                : new ZeroFileState("unsafe", "OLDER TEMPORARY PROFILER BRIDGE - RESTORE FIRST");
 
         // The current Resolver runtime owns one namespaced Scheduler, with
         // its own Update dispatch. Never install a second adaptive profiler
@@ -133,42 +135,129 @@ internal sealed class ZeroEngineService
         return hasRequire && hasInit && hasUpdate && hasEngineApi && hasModApi;
     }
 
+    // Keep the existing transaction marker for backup/restore and Resolver
+    // original-source recovery; distinguish the corrected bridge structurally.
+    private const string ComposedUpdateMarker = "-- CETRP_COMPOSED_UPDATE_V1";
+
+    private static bool HasComposedUpdate(string source) =>
+        source.Contains(ComposedUpdateMarker, StringComparison.Ordinal) &&
+        source.Contains("local function __CETRP_RegisterAdaptiveUpdate(", StringComparison.Ordinal) &&
+        source.Contains("__CETRP_RunAdaptiveFrame = function(", StringComparison.Ordinal) &&
+        source.Contains("CET_RUNTIME_PROFILER_ADAPTIVE_SCHEDULER_END v2", StringComparison.Ordinal);
+
     public bool IsAdaptiveCompatible(string initPath)
     {
         if (!File.Exists(initPath)) return false;
-
-        var text = File.ReadAllText(initPath);
-        if (text.Contains(manifest.ZeroEngine.ProfilerBridgeMarker, StringComparison.Ordinal))
-            return true;
-
-        var hasReturn = Regex.IsMatch(text, @"(?m)^[ \t]*return[ \t]+Engine[ \t]*\r?$");
-        var hasEngineTable = Regex.IsMatch(text, @"(?m)^\s*(local\s+)?Engine\s*=\s*\{");
-        return hasReturn && hasEngineTable;
+        return TryComposeAdaptiveBridge(File.ReadAllText(initPath), out _);
     }
 
     public void AddAdaptiveProfilerSchedulerBridge(string initPath)
     {
         var text = File.ReadAllText(initPath);
-        if (text.Contains(manifest.ZeroEngine.ProfilerBridgeMarker, StringComparison.Ordinal))
-            return;
-
-        if (!IsAdaptiveCompatible(initPath))
+        if (!TryComposeAdaptiveBridge(text, out var patched))
             throw new InvalidOperationException(
-                "0-Engine init.lua structure is not recognized as safe for adaptive Scheduler injection. " +
-                "No 0-Engine files were changed. Use 'Core profiler only - leave 0-Engine untouched' instead.");
+                "0-Engine init.lua update registration cannot be safely composed. " +
+                "Restore any older temporary profiler bridge or use 'Core profiler only - leave 0-Engine untouched'.");
 
-        var matches = Regex.Matches(text, @"(?m)^[ \t]*return[ \t]+Engine[ \t]*\r?$");
-        if (matches.Count == 0)
-            throw new InvalidOperationException("0-Engine export anchor was not found.");
-
-        var anchor = matches[^1];
-        var patched = text[..anchor.Index] + AdaptiveBridge + text[anchor.Index..];
-
+        if (patched == text) return;
         File.WriteAllText(initPath, patched, new UTF8Encoding(false));
 
-        if (!File.ReadAllText(initPath).Contains(manifest.ZeroEngine.ProfilerBridgeMarker, StringComparison.Ordinal))
+        if (!File.ReadAllText(initPath).Contains(ComposedUpdateMarker, StringComparison.Ordinal))
             throw new InvalidOperationException("Adaptive 0-Engine profiler bridge verification failed.");
     }
+
+    // Tokenize only what this source transformation needs. Quoted strings,
+    // Lua long strings and comments cannot masquerade as registration calls.
+    // Unrecognized indirect registrations are not rewritten.
+    private static readonly Regex AdaptiveTokens = new(
+        """(?<comment>--\[(?<ce>=*)\[.*?\]\k<ce>\]|--[^\r\n]*)|(?<long>\[(?<le>=*)\[.*?\]\k<le>\])|(?<quoted>"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*')|[A-Za-z_][A-Za-z0-9_]*|\S""",
+        RegexOptions.Singleline | RegexOptions.CultureInvariant);
+
+    private bool TryComposeAdaptiveBridge(string source, out string patched)
+    {
+        patched = source;
+        if (source.Contains(manifest.ZeroEngine.ProfilerBridgeMarker, StringComparison.Ordinal))
+            return HasComposedUpdate(source);
+
+        // No duplicate names or partially foreign bridge state. The original
+        // author source must remain the only input for a fresh transaction.
+        if (source.Contains("__CETRP_", StringComparison.Ordinal)) return false;
+        if (!Regex.IsMatch(source, @"(?m)^\s*(local\s+)?Engine\s*=\s*\{")) return false;
+        var tokens = AdaptiveTokens.Matches(source).Cast<Match>()
+            .Where(t => !t.Groups["comment"].Success).ToArray();
+        var last = tokens.Length - 1;
+        if (last >= 0 && tokens[last].Value == ";") last--;
+        if (last < 1 || tokens[last - 1].Value != "return" || tokens[last].Value != "Engine")
+            return false;
+
+        var updates = new List<int>();
+        for (var i = 0; i < tokens.Length; i++)
+        {
+            var token = tokens[i];
+            if (token.Value is "'registerForEvent'" or "\"registerForEvent\"")
+                return false;
+            if (token.Value != "registerForEvent") continue;
+
+            // Preserve the exact original native registration point. Only
+            // a direct call with a literal event is eligible; aliases, member
+            // calls, reassignment and dynamic event names need core-only.
+            if (i + 3 >= tokens.Length ||
+                (i > 0 && tokens[i - 1].Value is "." or ":" or "function" or "local") ||
+                tokens[i + 1].Value != "(" || !tokens[i + 2].Groups["quoted"].Success ||
+                tokens[i + 3].Value != "," || tokens[i + 2].Value.Contains('\\'))
+                return false;
+
+            if (tokens[i + 2].Value is "'onUpdate'" or "\"onUpdate\"")
+                updates.Add(token.Index);
+        }
+
+        // With no visible host update, a loader could still have installed
+        // an effective callback. Never append a competing registration in
+        // that case. Simple hosts without any loader retain adaptive support.
+        if (updates.Count == 0 && tokens.Any(t => t.Value is
+                "require" or "dofile" or "load" or "loadfile" or "loadstring" or
+                "getfenv" or "setfenv" or "_G" or "_ENV"))
+            return false;
+
+        var export = tokens[last - 1].Index;
+        var builder = new StringBuilder(source);
+        var bridge = AdaptiveBridge;
+        if (updates.Count == 0)
+            bridge += "\nregisterForEvent(\"onUpdate\", __CETRP_RunAdaptiveFrame)\n";
+
+        builder.Insert(export, bridge + "\n");
+        // Replace only the callee token, leaving each original closure,
+        // arguments, lexical scope and registration order intact.
+        for (var i = updates.Count - 1; i >= 0; i--)
+        {
+            builder.Remove(updates[i], "registerForEvent".Length);
+            builder.Insert(updates[i], "__CETRP_RegisterAdaptiveUpdate");
+        }
+        builder.Insert(0, AdaptiveUpdatePrefix + "\n");
+        var candidate = builder.ToString();
+        if (LuaLocalBudgetAnalyzer.Analyze(candidate).MaxActiveLocals > LuaLocalBudgetAnalyzer.Limit)
+            return false;
+        patched = candidate;
+        return true;
+    }
+
+    private const string AdaptiveUpdatePrefix = """
+-- CETRP_COMPOSED_UPDATE_V1
+local __CETRP_RunAdaptiveFrame
+local function __CETRP_RegisterAdaptiveUpdate(event, callback, ...)
+    if type(callback) ~= "function" then
+        return registerForEvent(event, callback, ...)
+    end
+    return registerForEvent(event, function(...)
+        -- CET ignores callback return values. An unhandled original error
+        -- must still reach CET's original error boundary; no extra pcall here.
+        callback(...)
+        if __CETRP_RunAdaptiveFrame then
+            pcall(__CETRP_RunAdaptiveFrame, ...)
+        end
+    end, ...)
+end
+""";
 
     private const string AdaptiveBridge = """
 -- CET_RUNTIME_PROFILER_ADAPTIVE_SCHEDULER_BEGIN v2
@@ -262,7 +351,7 @@ end
 local __CETRP_Frame = 0
 local __CETRP_GameClock = 0
 local __CETRP_LastRealClock = os.clock()
-registerForEvent("onUpdate", function(delta)
+__CETRP_RunAdaptiveFrame = function(delta)
     delta = tonumber(delta) or 0
     __CETRP_Frame = __CETRP_Frame + 1
     __CETRP_GameClock = __CETRP_GameClock + delta
@@ -301,7 +390,7 @@ registerForEvent("onUpdate", function(delta)
         player = player,
         state = state
     })
-end)
+end
 -- CET_RUNTIME_PROFILER_ADAPTIVE_SCHEDULER_END v2
 
 """;

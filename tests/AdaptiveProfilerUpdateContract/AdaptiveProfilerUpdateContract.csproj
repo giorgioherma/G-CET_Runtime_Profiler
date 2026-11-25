@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/G.CETProfiler.Core/Services/ZeroEngineService.cs" Link="ZeroEngineService.cs" />
+    <Compile Include="../../src/G.CETProfiler.Core/Services/LuaLocalBudgetAnalyzer.cs" Link="LuaLocalBudgetAnalyzer.cs" />
+    <Compile Include="../../src/G.CETProfiler.Core/Services/FileSystemService.cs" Link="FileSystemService.cs" />
+    <Compile Include="../../src/G.CETProfiler.Core/Models/PackageManifest.cs" Link="PackageManifest.cs" />
+    <Compile Include="../../src/G.CETProfiler.Core/Models/ProfilerPaths.cs" Link="ProfilerPaths.cs" />
+  </ItemGroup>
+</Project>
