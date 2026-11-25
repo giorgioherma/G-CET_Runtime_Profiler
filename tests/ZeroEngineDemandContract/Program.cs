@@ -66,6 +66,8 @@ function SpatialHash.Update(frame)
 end
 return SpatialHash
 """;
+    var derived = File.ReadAllText("tests/ZeroEngineDemandContract/DerivedFixture.lua");
+    var derivedHost = File.ReadAllText("tests/ZeroEngineDemandContract/DerivedHostFixture.lua");
     var moduleDir = Path.Combine(root, "0-Engine", "modules");
     Directory.CreateDirectory(moduleDir);
     var privateSource = args.Length == 2 && args[0] == "--stock";
@@ -75,6 +77,8 @@ return SpatialHash
         host = File.ReadAllText(Path.Combine(author, "init.lua"));
         proximity = File.ReadAllText(Path.Combine(author, "modules", "Proximity.lua"));
         spatial = File.ReadAllText(Path.Combine(author, "modules", "SpatialHash.lua"));
+        derived = File.ReadAllText(Path.Combine(author, "modules", "DerivedState.lua"));
+        derivedHost = host;
     }
     File.WriteAllText(Path.Combine(moduleDir, "Proximity.lua"), proximity);
     File.WriteAllText(Path.Combine(moduleDir, "SpatialHash.lua"), spatial);
@@ -108,6 +112,27 @@ return SpatialHash
     Check(!ZeroEngineDemandSource.TryProducer(proximity.Replace(
         "zones[zoneCounter] = zone", "zones[zoneCounter] = zone\n    zones[999] = zone"),
         "Proximity", out _), "unproved extra registry mutation accepted");
+    // Keep the existing spatial fixture independent; exercise the new
+    // scalar transformation using the same production generator stage.
+    File.WriteAllText(Path.Combine(moduleDir, "DerivedState.lua"), derived);
+    var scalarFramework = new FixedZeroEngineBuild(new Dictionary<string, byte[]> {
+        [ZeroEngineDemandSource.InitPath] = Encoding.UTF8.GetBytes(derivedHost),
+        [ZeroEngineDemandSource.SchedulerPath] = Encoding.UTF8.GetBytes(scheduler)
+    }, "", "", "", "");
+    var scalarStage = new Dictionary<string, byte[]>();
+    var scalarCount = ZeroEngineDemandSource.TryStage(root, ref scalarFramework, scalarStage, new(), new(), new());
+    Check(scalarCount == (privateSource ? 3 : 1), "central scalar sample admission");
+    var scalarHost = scalarFramework.Files[ZeroEngineDemandSource.InitPath];
+    var scalarScheduler = scalarFramework.Files[ZeroEngineDemandSource.SchedulerPath];
+    var scalarModule = scalarStage["0-Engine/modules/DerivedState.lua"];
+    Check(ZeroEngineDemandSource.TryStage(root, ref scalarFramework, scalarStage, new(), new(), new()) == 0,
+        "central scalar repeat generation");
+    Check(scalarHost.SequenceEqual(scalarFramework.Files[ZeroEngineDemandSource.InitPath]) &&
+        scalarScheduler.SequenceEqual(scalarFramework.Files[ZeroEngineDemandSource.SchedulerPath]) &&
+        scalarModule.SequenceEqual(scalarStage["0-Engine/modules/DerivedState.lua"]), "scalar repeat changed bytes");
+    Check(!ZeroEngineDemandSource.TryDerivedProducer(derived.Replace(
+        "cached.lookPitch = resolveLookPitch()", "cached.lookPitch = resolveLookPitch()\n    print(cached.lookPitch)"),
+        out _), "internal scalar dependency must refuse");
     if (privateSource)
     {
         Console.WriteLine("Private stock 0-Engine central demand generation and idempotence PASS");
@@ -136,5 +161,27 @@ return SpatialHash
         staged["0-Engine/modules/Proximity.lua"]);
     File.WriteAllText(Path.Combine(ns, "Scheduler.lua"), scheduler);
     RunLua("missing-controller");
+    File.WriteAllBytes(Path.Combine(ns, "Scheduler.lua"), scalarScheduler);
+    File.WriteAllBytes(Path.Combine(root, "0-Engine", "init.lua"), scalarHost);
+    File.WriteAllBytes(Path.Combine(moduleDir, "DerivedState.lua"), scalarModule);
+    void RunScalar(string scenario)
+    {
+        var psi = new ProcessStartInfo("lua5.4") { UseShellExecute = false };
+        psi.ArgumentList.Add("tests/ZeroEngineDemandContract/ExecuteDerived.lua");
+        psi.ArgumentList.Add(Path.Combine(root, "0-Engine"));
+        psi.ArgumentList.Add(scenario);
+        using var process = Process.Start(psi)!; process.WaitForExit();
+        Check(process.ExitCode == 0, "generated scalar execution failed: " + scenario);
+    }
+    foreach (var scenario in new[] { "scalar", "raw-root", "raw-derived", "raw-module", "raw-root-before-update" })
+        RunScalar(scenario);
+    File.WriteAllText(Path.Combine(moduleDir, "DerivedState.lua"), derived);
+    RunScalar("old-producer");
+    File.WriteAllBytes(Path.Combine(moduleDir, "DerivedState.lua"), scalarModule);
+    File.WriteAllText(Path.Combine(ns, "Scheduler.lua"), scheduler);
+    RunScalar("old-controller");
+    File.WriteAllText(Path.Combine(root, "0-Engine", "init.lua"), derivedHost);
+    File.WriteAllBytes(Path.Combine(ns, "Scheduler.lua"), scalarScheduler);
+    RunScalar("old-host");
 }
 finally { Directory.Delete(root, true); }

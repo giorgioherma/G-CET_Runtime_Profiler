@@ -187,9 +187,10 @@ public static class PassGeneratorService
 
         // Central scheduler demand uses the current composed producer source.
         // This precedes native inventory and mod-specific semantics.
-        genericInfrastructureTransformCount += ZeroEngineDemandSource.TryStage(
+        var centralDemandTransforms = ZeroEngineDemandSource.TryStage(
             modsRoot, ref fixedRuntime, staged, appliedTransformsByFile,
             transformManifest, skipped);
+        genericInfrastructureTransformCount += centralDemandTransforms;
 
         // Direct, source-proven Game.GetPlayer():GetWorldPosition() only:
         // typed native forced-live getter plus original fail-open fallback.
@@ -266,7 +267,7 @@ public static class PassGeneratorService
             throw new InvalidOperationException(
                 "Marmur Bank blacklist violation: generated output targets " + forbiddenOutput);
 
-        if (staged.Count == 0 && availableLocations.OwnerCounts.Count == 0)
+        if (staged.Count == 0 && availableLocations.OwnerCounts.Count == 0 && centralDemandTransforms == 0)
         {
             // An already-admitted authored rule may still fail its injector's
             // independent source or lifecycle proof. Do not hide that failure

@@ -141,6 +141,195 @@ internal static class ZeroEngineDemandSource
         return true;
     }
 
+    private const string DerivedMarker = "-- G-CET derived sample demand v1";
+    private const string SampleMarker = "-- G-CET demand sample slots v1";
+    private const string DerivedHostMarker = "-- G-CET derived sample host v1";
+
+    // Extend the same scheduler-owned demand table. A sample is offered
+    // at its original producer phase. Scalar getters resolve only when
+    // requested; an escaped raw table requires continuous original sampling.
+    internal static bool TrySampleController(string source, out string next)
+    {
+        next = source;
+        if (source.Contains(SampleMarker, StringComparison.Ordinal))
+            return Count(source, "function demand.DefineSample(") == 1 &&
+                Count(source, "function sample.Offer(") == 1 &&
+                Count(source, "function sample.Read(") == 1 &&
+                Count(source, "function sample.Expose(") == 1 &&
+                Count(source, "function sample.Reset(") == 1;
+        if (source.Contains("DefineSample", StringComparison.Ordinal)) return false;
+        return BeforeLine(ref next, "Scheduler.Demand = demand", SampleController);
+    }
+
+    internal static bool TryDerivedProducer(string source, out string next)
+    {
+        next = source;
+        const string getter = "function DerivedState.Get()";
+        const string update = "cached.lookPitch = resolveLookPitch()";
+        const string reset = "cached.lookPitch = 0";
+        const string export = "return DerivedState";
+        if (source.Contains(DerivedMarker, StringComparison.Ordinal))
+            return Count(source, "function DerivedState.__gcetEnableDemand(") == 1 &&
+                Count(source, "function DerivedState.__gcetPeek(") == 1 &&
+                Count(source, "function DerivedState.__gcetReadField(") == 1 &&
+                Count(source, "function DerivedState.__gcetExpose(") == 1 &&
+                Count(source, "__gcetPitchSample.Offer()") == 1 &&
+                Count(source, "__gcetPitchSample.Reset()") == 1 &&
+                Count(source, "__gcetPitchSample.Expose()") == 3;
+        // The admitted producer is a pure scalar camera read with no
+        // transition event, internal consumer or native reference retained.
+        // Unproved changes to its body/other accesses retain original polling.
+        const string pureReader = """
+local function resolveLookPitchInner()
+    local camSys = Game.GetCameraSystem()
+    if not camSys then return 0 end
+    local fwd = camSys:GetActiveCameraForward()
+    if not fwd then return 0 end
+    local clamped = math.max(-1.0, math.min(1.0, fwd.z))
+    return math.deg(math.asin(clamped))
+end
+""";
+        const string protectedReader = """
+local function resolveLookPitch()
+    local ok, result = pcall(resolveLookPitchInner)
+    return ok and result or 0
+end
+""";
+        var normalized = source.Replace("\r\n", "\n", StringComparison.Ordinal);
+        if (Count(normalized, pureReader) != 1 || Count(normalized, protectedReader) != 1 ||
+            Regex.Matches(source, @"\blookPitch\b").Count != 3 ||
+            Regex.Matches(source, @"\bresolveLookPitch\b").Count != 2 ||
+            Count(source, "function DerivedState.Update(player)") != 1 ||
+            Count(source, "function DerivedState.Reset()") != 1 ||
+            Count(source, getter) != 1 ||
+            Count(normalized, getter + "\n    return cached\nend") != 1 ||
+            source.Contains("__gcetPitch", StringComparison.Ordinal))
+            return false;
+        // Do not move the original read phase or introduce another timer.
+        // The host handshake must succeed before this module may skip a read.
+        if (!BeforeLine(ref next, "function DerivedState.Update(player)",
+                DerivedMarker + "\nlocal __gcetPitchSample, __gcetRawExposed = nil, false") ||
+            !ReplaceLine(ref next, update,
+                "if __gcetPitchSample then __gcetPitchSample.Offer() else " + update + " end") ||
+            !AfterLine(ref next, reset, "if __gcetPitchSample then __gcetPitchSample.Reset() end") ||
+            !AfterLine(ref next, getter,
+                "__gcetRawExposed = true\nif __gcetPitchSample then __gcetPitchSample.Expose() end") ||
+            !BeforeLine(ref next, export, DerivedAdapter))
+        {
+            next = source;
+            return false;
+        }
+        return true;
+    }
+
+    internal static bool TryDerivedHost(string source, out string next)
+    {
+        next = source;
+        const string bind = "local __gcetDemand = require('modules/G-CET/Scheduler').Demand";
+        const string read = "local v = tbl[k]";
+        const string raw = "return next, tbl, nil";
+        const string update = "State.derived = DerivedState.Get()";
+        const string handshake = "__gcetDerivedDemand = type(DerivedState.__gcetEnableDemand) == 'function' and type(DerivedState.__gcetPeek) == 'function' and type(DerivedState.__gcetReadField) == 'function' and type(DerivedState.__gcetExpose) == 'function' and DerivedState.__gcetEnableDemand(__gcetDemand)";
+        const string readHook = "if __gcetDerivedDemand and tbl == State.derived then DerivedState.__gcetReadField(tbl, k) end";
+        const string rawHook = "if __gcetDerivedDemand then if tbl == State then DerivedState.__gcetExpose() elseif tbl == State.derived then DerivedState.__gcetExpose(tbl) end end";
+        const string peek = "State.derived = __gcetDerivedDemand and DerivedState.__gcetPeek() or DerivedState.Get()";
+        if (source.Contains(DerivedHostMarker, StringComparison.Ordinal))
+            return Count(source, handshake) == 1 && Count(source, readHook) == 1 &&
+                Count(source, rawHook) == 1 && Count(source, peek) == 1 &&
+                Count(source, "local __gcetDerivedDemand = false") == 1;
+        // Admit the original proxy/raw-iteration contract. Unknown direct
+        // reads and escapes cannot safely be made lazy by this transform.
+        if (Count(source, "local function DeepReadOnly(tbl, path)") != 1 ||
+            Count(source, "local function UpdateFrame(delta)") != 1 ||
+            Count(source, "local stateProxy = nil") != 1 ||
+            Count(source, "stateProxy = DeepReadOnly(State, \"state\")") != 1 ||
+            Count(source, "function Engine.GetState()") != 1 ||
+            Count(source, "pcall(DerivedState.Update, player)") != 1 ||
+            Count(source, "DerivedState.Get()") != 1 ||
+            Regex.Matches(source, @"\bState\.derived\b").Count !=
+                1 + Count(source, "State.derived.district") ||
+            source.Contains("__gcetDerivedDemand", StringComparison.Ordinal) ||
+            source.Contains("lookPitch", StringComparison.Ordinal))
+            return false;
+        if (Count(next, bind) == 0 &&
+            !BeforeLine(ref next, "local function UpdateFrame(delta)", bind))
+            return false;
+        if (Count(next, bind) != 1 ||
+            !BeforeLine(ref next, "local function DeepReadOnly(tbl, path)",
+                DerivedHostMarker + "\nlocal __gcetDerivedDemand = false") ||
+            !AfterLine(ref next, bind, handshake) ||
+            !BeforeLine(ref next, read, readHook) ||
+            !BeforeLine(ref next, raw, rawHook) ||
+            !ReplaceLine(ref next, update, peek))
+        {
+            next = source;
+            return false;
+        }
+        return true;
+    }
+
+    internal const string SampleController = """
+-- G-CET demand sample slots v1
+local samples = {}
+function demand.DefineSample(key, produce)
+    if samples[key] or type(produce) ~= "function" then return nil end
+    local sample = {}
+    local available, sampled, exposed = false, false, false
+    function sample.Read()
+        if not available or sampled then return end
+        sampled = true
+        produce()
+    end
+    function sample.Offer()
+        available, sampled = true, false
+        if exposed then sample.Read() end
+    end
+    function sample.Expose()
+        -- A raw reference has no unsubscribe handle. Preserve future
+        -- author-phase updates for the lifetime of this escaped table.
+        exposed = true
+        sample.Read()
+    end
+    function sample.Reset()
+        available, sampled = false, false
+        -- Keep exposure: the author resets the same retained table.
+    end
+    samples[key] = sample
+    return sample
+end
+""";
+
+    internal const string DerivedAdapter = """
+function DerivedState.__gcetEnableDemand(controller)
+    if __gcetPitchSample then return true end
+    if type(controller) ~= "table" or type(controller.DefineSample) ~= "function" then return false end
+    __gcetPitchSample = controller.DefineSample("DerivedState.lookPitch", function()
+        cached.lookPitch = resolveLookPitch()
+    end)
+    if not __gcetPitchSample then return false end
+    if __gcetRawExposed then __gcetPitchSample.Expose() end
+    return true
+end
+
+-- Only the matching host uses this non-escaping internal accessor.
+function DerivedState.__gcetPeek()
+    return cached
+end
+
+function DerivedState.__gcetReadField(tbl, key)
+    if tbl == cached and key == "lookPitch" and __gcetPitchSample then
+        __gcetPitchSample.Read()
+    end
+end
+
+function DerivedState.__gcetExpose(tbl)
+    if tbl == nil or tbl == cached then
+        __gcetRawExposed = true
+        if __gcetPitchSample then __gcetPitchSample.Expose() end
+    end
+end
+""";
+
     // Compose on top of the actual staged generic module, never replace a
     // live module with a historical copy. Commit a service only when all three
     // pieces (scheduler, registry and host) are proved. No demand API emitted
@@ -185,6 +374,43 @@ internal static class ZeroEngineDemandSource
                     gameplayVerification = "PENDING_COMBINED_BATCH" });
             }
             host = hostNext;
+        }
+        // Independent scalar producer slice. Reuse the exact same
+        // scheduler instance and preserve author sampling if any side drifts.
+        const string derivedRelative = "0-Engine/modules/DerivedState.lua";
+        var derivedLive = Path.Combine(modsRoot, "0-Engine", "modules", "DerivedState.lua");
+        if (File.Exists(derivedLive))
+        {
+            var bytes = staged.TryGetValue(derivedRelative, out var pending)
+                ? pending : File.ReadAllBytes(derivedLive);
+            var text = Encoding.UTF8.GetString(bytes);
+            if (TryDerivedProducer(text, out var producer) &&
+                TryDerivedHost(host, out var hostNext) &&
+                TrySampleController(schedulerText, out var sampleScheduler))
+            {
+                compatible++;
+                if (producer != text)
+                {
+                    staged[derivedRelative] = Encoding.UTF8.GetBytes(producer);
+                    counts[derivedRelative] = counts.GetValueOrDefault(derivedRelative) + 1;
+                }
+                if (producer != text || hostNext != host || sampleScheduler != Encoding.UTF8.GetString(scheduler))
+                {
+                    applied++;
+                    manifest.Add(new { type = "SEMANTIC_RULE", Owner = "0-Engine",
+                        RuleId = "0engine-demand-derived-scalar-sample", sourceProof = true,
+                        Handler = "ZeroEngineDemandSource", PolicyClass = "CENTRAL_ON_DEMAND_SCALAR",
+                        gameplayVerification = "PENDING_COMBINED_BATCH" });
+                }
+                host = hostNext;
+                schedulerText = sampleScheduler;
+            }
+            else
+            {
+                skipped.Add(new { type = "SEMANTIC_RULE", Owner = "0-Engine",
+                    RuleId = "0engine-demand-derived-scalar-sample",
+                    reason = "Camera scalar/proxy access or sample controller not proven; preserve original sampling." });
+            }
         }
         if (compatible > 0)
         {
