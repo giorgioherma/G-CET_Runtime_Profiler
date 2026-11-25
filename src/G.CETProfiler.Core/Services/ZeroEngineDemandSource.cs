@@ -986,7 +986,7 @@ end
         sample.Read(player)
     end
 """;
-            var initialV2=CadencedSampleController.Replace(NormalizeLf(directOffer),NormalizeLf(initialV2Offer),StringComparison.Ordinal);
+            var initialV2=NormalizeLf(CadencedSampleController).Replace(NormalizeLf(directOffer),NormalizeLf(initialV2Offer),StringComparison.Ordinal);
             var legacy=initialV2.Replace("demand.CadencedSampleVersion = 2","demand.CadencedSampleVersion = 1",StringComparison.Ordinal)
                 .Replace("        sample.Read(player)","        if exposed then sample.Read(player) end",StringComparison.Ordinal);
             var v2=Count(Flat(source),Flat(initialV2))==1;
@@ -994,7 +994,7 @@ end
             if(v2==v1)return false;
             var upgraded=source;
             if(v1&&!ReplaceLine(ref upgraded,"demand.CadencedSampleVersion = 1","demand.CadencedSampleVersion = 2"))return false;
-            var previous=v2?initialV2Offer:initialV2Offer.Replace("sample.Read(player)\n","if exposed then sample.Read(player) end\n",StringComparison.Ordinal);
+            var previous=v2?NormalizeLf(initialV2Offer):NormalizeLf(initialV2Offer).Replace("sample.Read(player)\n","if exposed then sample.Read(player) end\n",StringComparison.Ordinal);
             // Replace the single proven old Offer block, preserving its
             // generated enclosing indentation and all unrelated source.
             var offer=Regex.Matches(upgraded,@"(?m)^(?<indent>[ \t]*)function sample\.Offer\(player\)[ \t]*(?=\r*$)");

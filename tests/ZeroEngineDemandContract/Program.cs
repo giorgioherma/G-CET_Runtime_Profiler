@@ -355,9 +355,23 @@ return Engine
     Check(ZeroEngineDemandSource.TryDerivedProducer(legacyModule,out var migratedPitch)&&
         ZeroEngineDemandSource.TryCadencedDerivedProducer(migratedPitch,out var migratedModule)&&migratedModule==cadenceModuleNext,
         "former deferred module must upgrade in one generation");
-    Check(ZeroEngineDemandSource.TrySampleController(legacyScheduler,out var migratedController)&&
-        ZeroEngineDemandSource.TryCadencedController(migratedController,out var migratedScheduler)&&migratedScheduler==cadenceSchedulerNext,
-        "former deferred scheduler must upgrade in one generation");
+    Check(ZeroEngineDemandSource.TrySampleController(legacyScheduler,out var migratedController),
+        "former deferred camera slot must upgrade in one generation");
+    Check(ZeroEngineDemandSource.TryCadencedController(migratedController,out var migratedScheduler),
+        "former deferred six-frame slots must upgrade in one generation");
+    Check(migratedScheduler==cadenceSchedulerNext,
+        "former deferred scheduler must converge byte-for-byte to current output");
+    // Exercise both checkout line-ending forms even on Linux, where the
+    // raw C# template and actual installed Lua files can otherwise differ.
+    foreach(var eol in new[]{"\n","\r\n"})
+    {
+        string Lines(string value)=>value.Replace("\r\n","\n").Replace("\n",eol);
+        Check(ZeroEngineDemandSource.TrySampleController(Lines(legacyScheduler),out var migratedLinePitch),
+            "camera migration failed for line-ending form");
+        Check(ZeroEngineDemandSource.TryCadencedController(migratedLinePitch,out var migratedLineCadenced)&&
+            migratedLineCadenced==Lines(cadenceSchedulerNext),
+            "cadenced migration failed for line-ending form");
+    }
     // Exercise the production stage with every independent missing
     // component, then repeat the complete output through its real entrypoint.
     var cadenceStageRoot=Path.Combine(root,"cadence-stage");
