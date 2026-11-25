@@ -62,7 +62,7 @@ end
 local h1,h2
 h1=E.Subscribe("PlayerAction",function(v)
     trace[#trace+1]="a:"..v
-    if v=="remove" then h1.unsubscribe();h2.unsubscribe() end
+    if v=="remove" then h2.unsubscribe();h1.unsubscribe() end
 end)
 h2=E.Subscribe("PlayerAction",function(v)trace[#trace+1]="b:"..v end)
 fire("wake")

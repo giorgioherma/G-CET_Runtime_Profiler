@@ -423,6 +423,20 @@ end
         const string list="for name, _ in pairs(Events) do table.insert(names, name) end";
         const string overlay="for name, emitter in pairs(Events) do local count = emitter:getListenerCount() totalSubs = totalSubs + count table.insert(names, { name = name, count = count, emitter = emitter }) end";
         if(ShapeCount(t,list)!=1||ShapeCount(t,overlay)!=1)return false;
+        if(ShapeCount(t,"pairs(Events)")!=2||ShapeCount(t,"return names")!=1)return false;
+        for(int i=0;i<t.Length;++i)
+        {
+            if(t[i].Value!="names")continue;
+            if(At(t,i-1,"local","names","=","{","}")||
+               At(t,i-1,"local","names",",","totalSubs","=","{","}",",","0")||
+               At(t,i-4,"table",".","insert","(","names",",","name",")")||
+               At(t,i-4,"table",".","insert","(","names",",","{","name","=","name",",","count","=","count",",","emitter","=","emitter","}",")")||
+               At(t,i-4,"table",".","sort","(","names",")")||
+               At(t,i-4,"table",".","sort","(","names",",","function","(","a",",","b",")","return","a",".","name","<","b",".","name","end",")")||
+               At(t,i-1,"return","names")||At(t,i-3,"tostring","(","#","names",")")||
+               At(t,i-2,"ipairs","(","names",")"))continue;
+            return false;
+        }
         if(ShapeCount(t,"Lifecycle.Init(Events, State, Logger)")!=1||
            ShapeCount(t,"DerivedState.Init(Events)")!=1||ShapeCount(t,"BlackboardCache.Init(Events)")!=1)return false;
         for(int i=0;i<t.Length;++i)
@@ -450,6 +464,7 @@ end
                 At(t,i-2,"for","name","emitter")||At(t,i-3,"for","name",",","emitter")||
                 At(t,i-3,"for","interval",",","emitter")||
                 At(t,i,"emitter",":","getListenerCount","(",")")||
+                At(t,i,"emitter",":","trigger","(","currentFrame",")")||
                 At(t,i,"emitter","=","emitter","}")||At(t,i-2,"emitter","=","emitter")||
                 At(t,i-2,"entry",".","emitter",":","getListenerSources","(",")"));
     }
@@ -523,10 +538,11 @@ end
         // The host may already have other independent ActionRouter callbacks;
         // the sole native gate refuses the actual mixed chain without edits.
         var host=Encoding.UTF8.GetString(hb);var scheduler=Encoding.UTF8.GetString(sb);
+        var effectiveFiles=framework.Files;
         string? Load(string name)
         {
             var relative="0-Engine/modules/"+name+".lua";
-            if(framework.Files.TryGetValue(relative,out var bytes)||staged.TryGetValue(relative,out bytes))
+            if(staged.TryGetValue(relative,out var bytes)||effectiveFiles.TryGetValue(relative,out bytes))
                 return Encoding.UTF8.GetString(bytes);
             var path=Path.Combine(modsRoot,"0-Engine","modules",name+".lua");
             return File.Exists(path)?File.ReadAllText(path):null;
