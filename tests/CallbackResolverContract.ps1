@@ -1808,9 +1808,28 @@ if ([string]$frameDemandEntry.contract -ne 'GCET_FRAMEWORK_FRAME_DEMAND_V1' -or
     $poseHost -notmatch 'demandHandle.Cancel\(\)') {
     throw 'Packaged frame emitter demand lost registry ownership or original cadence.'
 }
+$providerLifetimeTransforms = @($generatedManifest.transforms | Where-Object {
+    $_.type -eq 'FRAMEWORK_SHARED_PROVIDER_SESSION_LIFETIME'
+})
+if ($providerLifetimeTransforms.Count -ne 1) {
+    throw 'Expected exactly one source-proven shared provider lifetime transform.'
+}
+$providerLifetimeEntry = $providerLifetimeTransforms[0]
+if ([string]$providerLifetimeEntry.contract -ne 'GCET_SHARED_PROVIDER_SESSION_LIFETIME_V1' -or
+    [string]$providerLifetimeEntry.file -ne '0-Engine/init.lua' -or
+    !$providerLifetimeEntry.sourceProof -or $providerLifetimeEntry.extraNativeReads -or
+    $providerLifetimeEntry.extraCallbacks -or $providerLifetimeEntry.callbackOrCadenceChanged -or
+    [regex]::Matches($poseHost, '-- G-CET shared provider session lifetime v1').Count -ne 1 -or
+    [regex]::Matches($poseHost, 'function Engine\.__gcetResetSharedProviderCaches\(').Count -ne 1 -or
+    $poseHost -notmatch 'values == __gcetSharedProviderValues' -or
+    $poseHost -notmatch 'Engine\.__gcetObserveProviderSession\(loaded\)' -or
+    $poseHost -notmatch 'Engine\.__gcetObserveProviderSession\(sessionState\.isLoaded\)' -or
+    $poseHost -notmatch 'DerivedState\.Reset\(\)\s+Engine\.__gcetResetSharedProviderCaches\(\)') {
+    throw 'Packaged provider lifetime transform lost session ownership, reentrant fill safety or original callbacks.'
+}
 $expectedPassTransforms = $expectedGenericTransforms + $expectedSharedTransforms +
     $nativeReadReuseTransforms.Count + $readCoordinatorTransforms.Count + $poseReaderTransforms.Count +
-    $frameDemandTransforms.Count
+    $frameDemandTransforms.Count + $providerLifetimeTransforms.Count
 if ([int]$resolved.pass.TransformCount -ne $expectedPassTransforms) {
     if (Test-Path -LiteralPath $resolved.pass.ManifestPath -PathType Leaf) {
         $failedManifest = Get-Content -LiteralPath $resolved.pass.ManifestPath -Raw | ConvertFrom-Json
