@@ -114,6 +114,61 @@ public:
         for(auto at:fallback_)Fix(at,fallback);
         for(auto at:sleep_)Fix(at,empty);
     }
+    // Individual Before loop gate for the actual CET 1.37.1 instruction
+    // boundary: mov rdi,[rsi]; mov eax,[rdi+0x10]. Chain is in the original
+    // stack slot [rsp+0x68]. Both outgoing paths use the original frame.
+    // Caller must prove exact loop identity/liveness/unwind and lifetime;
+    // this constructor alone does not authorize a live patch.
+    template<size_t Capacity>
+    StacklessGate(uintptr_t base,const IndividualObserverBindings<Capacity>& bindings,
+                  const DispatchEpoch& epoch,uintptr_t activeEdge,uintptr_t nextEdge)
+        :base_(base),r15_(false){
+        using Entry=typename IndividualObserverBindings<Capacity>::Entry;
+        static_assert(std::is_standard_layout_v<Entry> && sizeof(Entry)<=127 && Capacity<=0x7fffffff);
+        constexpr auto id=offsetof(Entry,id);
+        constexpr auto chain=id+offsetof(IndividualIdentity,chain);
+        constexpr auto context=id+offsetof(IndividualIdentity,context);
+        constexpr auto phase=id+offsetof(IndividualIdentity,phase);
+        constexpr auto token=offsetof(Entry,token),handle=offsetof(Entry,handle),active=offsetof(Entry,active);
+        static_assert(active<=127&&token<=127&&handle<=127&&context<=127&&chain<=127&&phase<=127);
+        const auto owner=reinterpret_cast<uintptr_t>(&bindings.OwnerWord());
+        const auto sleeping=reinterpret_cast<uintptr_t>(&bindings.SleepingWord());
+        const auto table=reinterpret_cast<uintptr_t>(bindings.Entries().data());
+        const auto ep=reinterpret_cast<uintptr_t>(&epoch.EpochWord());
+        const auto depth=reinterpret_cast<uintptr_t>(&epoch.ClearDepthWord());
+        // Original Context load. Only RAX and RCX are scratch; the emitted
+        // fallback replays the exact original EAX load before resuming.
+        Bytes({0x48,0x8b,0x3e}); // mov rdi,[rsi]
+        Bytes({0x65,0x48,0x8b,0x04,0x25,0x48,0,0,0});CmpState(owner);NE();
+        CmpZero(sleeping,true);E();
+        CmpZero(depth,true);NE();
+        // Same direct-mapped index as IndividualObserverBindings::Index
+        // for Before (phase zero). No per-dispatch subscriber scan.
+        Bytes({0x48,0x89,0xf8,0x48,0xc1,0xe8,4}); // rax=context>>4
+        Bytes({0x48,0x8b,0x4c,0x24,0x68,0x48,0xc1,0xe9,4,0x48,0x31,0xc8});
+        Bytes({0x48,0x89,0xf9,0x48,0xc1,0xe9,13,0x48,0x31,0xc8});
+        Bytes({0x25});Dword(static_cast<uint32_t>(Capacity-1));
+        Bytes({0x48,0x6b,0xc0,static_cast<uint8_t>(sizeof(Entry))});
+        Bytes({0x48,0x8d,0x0d});Rip(table);Bytes({0x48,0x01,0xc8});
+        Bytes({0x48,0x39,0x78,static_cast<uint8_t>(context)});NE();
+        Bytes({0x48,0x8b,0x4c,0x24,0x68});
+        Bytes({0x48,0x39,0x48,static_cast<uint8_t>(chain)});NE();
+        Bytes({0x80,0x78,static_cast<uint8_t>(phase),0});NE();
+        Bytes({0x48,0x83,0x78,static_cast<uint8_t>(handle),0});E();
+        Bytes({0x80,0x78,static_cast<uint8_t>(active),0});NE();
+        Bytes({0x48,0x8b,0x0d});Rip(ep);
+        Bytes({0x48,0x39,0x48,static_cast<uint8_t>(token)});NE();
+        CmpZero(depth,true);NE();
+        // Skip BEFORE any callback temporary or Lua stack object is made.
+        // Original iterator advance overwrites flags; conditional tails
+        // avoid the Windows x64 epilogue interpretation of a bare JMP.
+        Bytes({0x39,0xc0});Exit(0x84,nextEdge);
+        const auto fallback=base_+code_.size();
+        Bytes({0x8b,0x47,0x10}); // original mov eax,[rdi+0x10]
+        // CMP RCX,RCX is safe: RCX/flags are dead at original cmp EAX,-2.
+        Bytes({0x48,0x39,0xc9});Exit(0x84,activeEdge);
+        for(auto at:fallback_)Fix(at,fallback);
+    }
     const std::vector<uint8_t>& Code() const noexcept {return code_;}
 };
 }

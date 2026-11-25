@@ -190,6 +190,7 @@ private:
  template<size_t Capacity=256>
  class IndividualObserverBindings {
      static_assert(Capacity>=2 && (Capacity&(Capacity-1))==0);
+ public:
      using Handle=uint64_t;
      struct Entry {
          IndividualIdentity id{};
@@ -197,10 +198,12 @@ private:
          Handle handle=0;
          bool active=true;
      };
+ private:
      const DispatchEpoch& epoch_;
      const uint64_t owner_;
      std::array<Entry,Capacity> entries_{};
      Handle next_=0;
+     uint64_t sleeping_=0;
      bool Owner(uint64_t thread)const noexcept{return owner_&&thread==owner_;}
      static size_t Index(IndividualIdentity id)noexcept{
          // Direct-mapped bounded lookup; collision refuses only the affected
@@ -216,6 +219,9 @@ private:
      }
  public:
      IndividualObserverBindings(const DispatchEpoch& epoch,uint64_t owner)noexcept:epoch_(epoch),owner_(owner){}
+     const auto& Entries()const noexcept{return entries_;}
+     const uint64_t& OwnerWord()const noexcept{return owner_;}
+     const uint64_t& SleepingWord()const noexcept{return sleeping_;}
      IndividualObserverBindings(const IndividualObserverBindings&)=delete;
      IndividualObserverBindings& operator=(const IndividualObserverBindings&)=delete;
      // The caller must prove exact original callback ownership, and invalidate
@@ -226,20 +232,26 @@ private:
          if(e.handle&&epoch_.Matches(e.token))return e.id==id?e.handle:0;
          if(next_>=(std::numeric_limits<Handle>::max()/Capacity)-1)return 0;
          const auto handle=(++next_)*Capacity+slot;
+         if(e.handle&&!e.active)--sleeping_;
          e={id,token,handle,true};return handle;
      }
      bool SetDemand(uint64_t thread,Handle h,bool active)noexcept{
          if(!Owner(thread))return false;
          auto* e=ByHandle(h);if(!e)return false;
-         e->active=active;return true;
+         if(e->active!=active){
+             if(active)--sleeping_;else ++sleeping_;
+             e->active=active;
+         }
+         return true;
      }
      bool Release(uint64_t thread,Handle h)noexcept{
          if(!Owner(thread))return false;
          auto* e=ByHandle(h);if(!e)return false;
+         if(!e->active)--sleeping_;
          *e={};return true;
      }
      bool CanSkip(uint64_t thread,IndividualIdentity id)const noexcept{
-         if(!Owner(thread)||!id)return false;
+         if(!Owner(thread)||!id||!sleeping_)return false;
          const auto& e=entries_[Index(id)];
          return e.handle&&!e.active&&e.id==id&&epoch_.Matches(e.token);
      }

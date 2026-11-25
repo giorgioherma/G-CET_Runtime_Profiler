@@ -657,8 +657,44 @@ def observer_loop_evidence(pe, matches, layouts, pdb):
                     x.operands[0].type==X86_OP_IMM and
                     0x1093e0<x.operands[0].imm<0x1093e6 for x in ins),
             "incoming edge into Context load")
+    # The native individual island uses RAX/RCX only (besides the
+    # original RDI Context load). Verify both actual resume paths.
+    from capstone import CS_GRP_RET
+    def dead_on_path(entry, aliases, full, call_argument):
+        pending, seen, kills = [entry], set(), []
+        while pending:
+            at=pending.pop()
+            if at in seen: continue
+            seen.add(at)
+            x=by_address.get(at)
+            require(x is not None, "unknown individual guard successor")
+            rd, wr=x.regs_access()
+            require(not aliases.intersection(x.reg_name(r) for r in rd),
+                    f"individual guard scratch live at {at:#x}: {x.mnemonic} {x.op_str}")
+            if full.intersection(x.reg_name(r) for r in wr):
+                require(x.mnemonic in ("mov","lea","movzx","movsxd","pop"),
+                        "unproven scratch register kill")
+                kills.append(hex(at));continue
+            if x.group(CS_GRP_CALL):
+                require(not call_argument, "scratch is live as Win64 call argument")
+                kills.append(hex(at));continue
+            require(not x.group(CS_GRP_RET), "scratch reaches return")
+            if x.group(CS_GRP_JUMP):
+                require(x.operands and x.operands[0].type==X86_OP_IMM,
+                        "indirect branch before scratch kill")
+                pending.append(x.operands[0].imm)
+                if x.mnemonic=="jmp":continue
+            pending.append(at+x.size)
+        require(kills, "no scratch kill")
+        return sorted(kills)
+    rcx={"rcx","ecx","cx","cl","ch"}
+    rax={"rax","eax","ax","al","ah"}
+    scratch={"active_rcx":dead_on_path(0x1093e6,rcx,{"rcx","ecx"},True),
+             "next_rcx":dead_on_path(0x10961c,rcx,{"rcx","ecx"},True),
+             "next_rax":dead_on_path(0x10961c,rax,{"rax","eax"},False)}
+    print("INDIVIDUAL BEFORE SCRATCH PROOF:",json.dumps(scratch),flush=True)
     print("BEFORE LOOP NEIGHBORHOOD:",json.dumps({
-        "entry_setup":[describe(x) for x in ins if 0x109330<=x.address<0x1093e0],
+        "entry_setup":[describe(x) for x in ins if start<=x.address<0x1093e0],
         "loop_exit":[describe(x) for x in ins if 0x10962b<=x.address<0x109720]}),flush=True)
     return {"entry_path":[hex(x) for x in path],
             "body_extent":[hex(start),hex(end)],"unwind_rva":hex(unwind),
