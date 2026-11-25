@@ -4,6 +4,7 @@
 #include "CETDispatchIdentity.hpp"
 #include "CETStacklessGate.hpp"
 #include "GuardUnwindProof.hpp"
+#include "CETExistingMutex.hpp"
 #include <windows.h>
 #include <array>
 #include <cstring>
@@ -11,6 +12,11 @@
 #include <iostream>
 #include <new>
 #include <stdexcept>
+#include <atomic>
+#include <memory>
+#include <shared_mutex>
+#include <thread>
+#include <cstdlib>
 
 namespace gcet::research {
 inline void Require(bool value,const char* message){if(!value)throw std::runtime_error(message);}
@@ -42,51 +48,221 @@ inline uintptr_t Destination(uintptr_t source,const PatchBytes& bytes){
 inline bool Equal(const uint8_t* p,const PatchBytes& bytes){
     return std::memcmp(p,bytes.data(),bytes.size())==0;
 }
-// On a quiescent private image only. Do not generalize this into a live
-// patch API: installation, error recovery and thread ownership are separate.
-class PrivateGuards {
+// Research transaction. Only MEM_PRIVATE executable pages are admitted.
+// The caller supplies an owning reference to the lock and keeps the
+// private image/islands alive until exact restoration. The live CET owner
+// and production lifetime admission are deliberately NOT inferred here.
+enum class GuardResult { Success, Busy, Refused, RolledBack, Unsafe };
+struct GuardEdit {
+    uint8_t* address;
+    PatchBytes stock, installed;
+};
+class SynchronizedPrivateGuards {
+    std::shared_ptr<std::shared_mutex> owner_;
+    std::array<GuardEdit,2> edits_;
+    bool installed_=false, unsafe_=false;
 public:
-    PrivateGuards(uint8_t* image,std::array<uintptr_t,2> islands):image_(image){
+    SynchronizedPrivateGuards(std::shared_ptr<std::shared_mutex> owner,
+                              std::array<GuardEdit,2> edits)
+        :owner_(std::move(owner)),edits_(edits){}
+    SynchronizedPrivateGuards(const SynchronizedPrivateGuards&)=delete;
+    SynchronizedPrivateGuards& operator=(const SynchronizedPrivateGuards&)=delete;
+    // Never silently release the fixture's owner while code might still
+    // refer to its islands. Production retirement requires a retained arena
+    // on failure, not this test-only fatal invariant.
+    ~SynchronizedPrivateGuards(){if(installed_||unsafe_)std::abort();}
+    GuardResult Change(bool install,int failBefore=-1){
+        if(unsafe_)return GuardResult::Unsafe;
+        if(!owner_)return GuardResult::Refused;
+        cet_dispatch::ExistingMutexLease lease(owner_->native_handle());
+        if(!lease)return GuardResult::Busy;
+        if(install==installed_)return install?GuardResult::Refused:GuardResult::Success;
+        SYSTEM_INFO info{};GetSystemInfo(&info);
+        const auto pageSize=static_cast<uintptr_t>(info.dwPageSize);
+        if(!pageSize)return GuardResult::Refused;
+        std::array<uint8_t*,2> pages{};
+        std::array<DWORD,2> protections{};
+        size_t pageCount=0;
+        // Preflight BOTH sites and their complete pages before any mutation.
+        for(const auto& e:edits_){
+            auto at=reinterpret_cast<uintptr_t>(e.address);
+            if(!at||at%pageSize+e.stock.size()>pageSize)return GuardResult::Refused;
+            MEMORY_BASIC_INFORMATION mbi{};
+            if(VirtualQuery(e.address,&mbi,sizeof(mbi))!=sizeof(mbi)||
+               mbi.State!=MEM_COMMIT||mbi.Type!=MEM_PRIVATE||
+               mbi.Protect!=PAGE_EXECUTE_READ||
+               !Equal(e.address,installed_?e.installed:e.stock))return GuardResult::Refused;
+            auto* page=reinterpret_cast<uint8_t*>(at-at%pageSize);
+            if(!pageCount||pages[0]!=page)pages[pageCount++]=page;
+        }
+        const auto a=reinterpret_cast<uintptr_t>(edits_[0].address);
+        const auto b=reinterpret_cast<uintptr_t>(edits_[1].address);
+        if((a<=b?b-a:a-b)<edits_[0].stock.size())return GuardResult::Refused;
+        size_t opened=0;
+        auto closePages=[&](){
+            bool ok=true;
+            while(opened){
+                --opened;DWORD unused=0;
+                if(!VirtualProtect(pages[opened],pageSize,protections[opened],&unused))ok=false;
+            }
+            return ok;
+        };
+        // Keep execute permission for unrelated instructions on these pages.
+        // Only the two proven guarded spans may be rewritten.
+        for(size_t i=0;i<pageCount;++i){
+            DWORD old=0;
+            if(!VirtualProtect(pages[i],pageSize,PAGE_EXECUTE_READWRITE,&old)){
+                if(!closePages()){unsafe_=true;return GuardResult::Unsafe;}
+                return GuardResult::Refused;
+            }
+            protections[opened++]=old;
+            if(old!=PAGE_EXECUTE_READ){
+                if(!closePages()){unsafe_=true;return GuardResult::Unsafe;}
+                return GuardResult::Refused;
+            }
+        }
+        size_t written=0;
+        bool ok=true;
+        for(size_t i=0;i<edits_.size();++i){
+            if(static_cast<int>(i)==failBefore){ok=false;break;}
+            const auto& e=edits_[i];const auto& bytes=install?e.installed:e.stock;
+            std::memcpy(e.address,bytes.data(),bytes.size());++written;
+            if(!Equal(e.address,bytes)){ok=false;break;}
+        }
+        auto flush=[&](){
+            bool success=true;
+            for(size_t i=0;i<written;++i)
+                if(!FlushInstructionCache(GetCurrentProcess(),edits_[i].address,
+                                          edits_[i].stock.size()))success=false;
+            return success;
+        };
+        if(ok&&!flush())ok=false;
+        bool rollbackOK=true;
+        if(!ok){
+            for(size_t i=0;i<written;++i){
+                const auto& e=edits_[i];const auto& previous=installed_?e.installed:e.stock;
+                std::memcpy(e.address,previous.data(),previous.size());
+                if(!Equal(e.address,previous))rollbackOK=false;
+            }
+            if(!flush())rollbackOK=false;
+        }
+        if(!closePages()||!rollbackOK){unsafe_=true;return GuardResult::Unsafe;}
+        if(ok)installed_=install;
+        for(const auto& e:edits_){
+            MEMORY_BASIC_INFORMATION mbi{};
+            if(!Equal(e.address,installed_?e.installed:e.stock)||
+               VirtualQuery(e.address,&mbi,sizeof(mbi))!=sizeof(mbi)||
+               mbi.Protect!=PAGE_EXECUTE_READ){unsafe_=true;return GuardResult::Unsafe;}
+        }
+        return ok?GuardResult::Success:GuardResult::RolledBack;
+    }
+};
+class PrivateGuards {
+    std::shared_ptr<std::shared_mutex> owner_=std::make_shared<std::shared_mutex>();
+    std::array<GuardEdit,2> edits_{};
+    std::unique_ptr<SynchronizedPrivateGuards> transaction_;
+public:
+    PrivateGuards(uint8_t* image,std::array<uintptr_t,2> islands){
         MEMORY_BASIC_INFORMATION mbi{};
         Require(VirtualQuery(image,&mbi,sizeof(mbi))==sizeof(mbi)&&
                 mbi.AllocationBase==image&&mbi.Type==MEM_PRIVATE,"test requires private allocation");
         for(size_t i=0;i<2;++i){
-            Require(Equal(image+Sites[i].guard,Sites[i].stock),"guard bytes differ");
-            patches_[i]=Redirect(reinterpret_cast<uintptr_t>(image+Sites[i].guard),islands[i]);
+            auto* address=image+Sites[i].guard;
+            Require(Equal(address,Sites[i].stock),"guard bytes differ");
+            edits_[i]={address,Sites[i].stock,Redirect(reinterpret_cast<uintptr_t>(address),islands[i])};
         }
+        transaction_=std::make_unique<SynchronizedPrivateGuards>(owner_,edits_);
     }
     bool Apply(int failBefore=-1){
-        // Preflight the whole pair before touching the first guard.
-        for(size_t i=0;i<2;++i)if(!Equal(image_+Sites[i].guard,Sites[i].stock))return false;
-        for(size_t i=0;i<2;++i){
-            if(static_cast<int>(i)==failBefore||!Write(i,patches_[i])){
-                Restore();return false;
+        auto result=transaction_->Change(true,failBefore);
+        Require(result!=GuardResult::Unsafe,"private guard apply unsafe");
+        return result==GuardResult::Success;
+    }
+    void Restore(){Require(transaction_->Change(false)==GuardResult::Success,"private guard restoration failed");}
+    const PatchBytes& Patch(size_t i)const{return edits_[i].installed;}
+};
+
+// Two independently callable sites share the same RX page with unrelated
+// code. The two guarded callers use the fixture's existing shared lock;
+// the unrelated caller does not. Prove execute remains available throughout
+// repeated attachment/restore, and explicit owner retention across busy
+// refusal, rollback and foreign-byte refusal.
+inline void CheckSynchronizedGuardLifetime(){
+    struct Arena {
+        uint8_t* p=static_cast<uint8_t*>(VirtualAlloc(nullptr,4096,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE));
+        ~Arena(){if(p)VirtualFree(p,0,MEM_RELEASE);}
+    } arena;
+    Require(arena.p!=nullptr,"synchronized guard arena");
+    auto* p=arena.p;
+    PatchBytes stock{0xb8,1,0,0,0,0xc3,0x90,0x90,0x90,0x90,0x90};
+    PatchBytes installed=stock;installed[1]=2;
+    const std::array<GuardEdit,2> edits{{{p,stock,installed},{p+32,stock,installed}}};
+    for(const auto& e:edits)std::memcpy(e.address,stock.data(),stock.size());
+    std::memcpy(p+64,stock.data(),stock.size());
+    DWORD old=0;
+    Require(VirtualProtect(p,4096,PAGE_EXECUTE_READ,&old)!=0&&
+            FlushInstructionCache(GetCurrentProcess(),p,4096)!=0,"fixture code RX");
+    using Run=int(*)();
+    auto first=reinterpret_cast<Run>(p),second=reinterpret_cast<Run>(p+32),unrelated=reinterpret_cast<Run>(p+64);
+    auto owner=std::make_shared<std::shared_mutex>();
+    std::weak_ptr<std::shared_mutex> weak=owner;
+    {
+        SynchronizedPrivateGuards absent({},edits);
+        Require(absent.Change(true)==GuardResult::Refused,"unowned lock admitted");
+        SynchronizedPrivateGuards tx(owner,edits);
+        owner.reset();
+        Require(!weak.expired(),"transaction did not retain lock owner");
+        auto retained=weak.lock();
+        std::atomic<bool> held=false,release=false,stop=false,invalid=false;
+        std::atomic<unsigned> calls=0,unrelatedCalls=0;
+        std::thread inFlight([&]{
+            std::shared_lock read(*retained);
+            held.store(true,std::memory_order_release);
+            while(!release.load(std::memory_order_acquire))std::this_thread::yield();
+        });
+        while(!held.load(std::memory_order_acquire))std::this_thread::yield();
+        const auto busy=tx.Change(true);
+        release.store(true,std::memory_order_release);inFlight.join();
+        Require(busy==GuardResult::Busy&&first()==1&&second()==1,"busy mutated guard pair");
+        Require(tx.Change(true,1)==GuardResult::RolledBack&&first()==1&&second()==1,"second-site rollback");
+        Require(tx.Change(true)==GuardResult::Success&&first()==2&&second()==2,"pair install");
+        Require(tx.Change(false,1)==GuardResult::RolledBack&&first()==2&&second()==2,"restore rollback");
+        Require(tx.Change(false)==GuardResult::Success&&first()==1&&second()==1,"pair restore");
+        std::thread worker([&]{
+            while(!stop.load(std::memory_order_acquire)){
+                {std::shared_lock read(*retained);
+                 if(first()!=second())invalid=true;
+                 ++calls;}
+                std::this_thread::yield();
+            }
+        });
+        std::thread neighbor([&]{
+            while(!stop.load(std::memory_order_acquire)){
+                if(unrelated()!=1)invalid=true;
+                ++unrelatedCalls;
+                std::this_thread::yield();
+            }
+        });
+        while(calls.load()<100||unrelatedCalls.load()<100)std::this_thread::yield();
+        // Retrying only in this stress fixture, not an attachment policy.
+        for(int i=0;i<32;++i){
+            for(bool enable:{true,false}){
+                GuardResult result;
+                do {result=tx.Change(enable);if(result==GuardResult::Busy)std::this_thread::yield();}
+                while(result==GuardResult::Busy);
+                if(result!=GuardResult::Success)std::abort();
             }
         }
-        return true;
+        stop.store(true,std::memory_order_release);worker.join();neighbor.join();
+        Require(!invalid&&first()==1&&second()==1&&unrelated()==1,"concurrent pair or neighbor changed");
+        Require(calls>=100&&unrelatedCalls>=100,"insufficient concurrent execution");
+        retained.reset();
+        Require(!weak.expired(),"owner retired before transaction destruction");
+        std::cout<<"Synchronized two-site attach/restore, owner retention, busy and rollback, "
+                 <<calls.load()<<" guarded and "<<unrelatedCalls.load()<<" unrelated RX-page calls PASS\\n";
     }
-    void Restore(){
-        for(size_t i=0;i<2;++i){
-            auto* p=image_+Sites[i].guard;
-            if(Equal(p,Sites[i].stock))continue;
-            Require(Equal(p,patches_[i]),"unexpected code drift during private restore");
-            Require(Write(i,Sites[i].stock),"private guard restoration failed");
-        }
-    }
-    const PatchBytes& Patch(size_t i)const{return patches_[i];}
-private:
-    bool Write(size_t i,const PatchBytes& bytes){
-        auto* p=image_+Sites[i].guard;
-        DWORD old=0,discard=0;
-        if(!VirtualProtect(p,bytes.size(),PAGE_READWRITE,&old))return false;
-        std::memcpy(p,bytes.data(),bytes.size());
-        Require(VirtualProtect(p,bytes.size(),old,&discard)!=0,"restore original page protection");
-        Require(FlushInstructionCache(GetCurrentProcess(),p,bytes.size())!=0,"flush private guard");
-        return Equal(p,bytes);
-    }
-    uint8_t* image_;
-    std::array<PatchBytes,2> patches_{};
-};
+    Require(weak.expired(),"restored transaction retained owner indefinitely");
+}
 struct GuardData {
     cet_dispatch::DispatchEpoch epoch;
     cet_dispatch::ObserverBinding binding{epoch,GetCurrentThreadId()};
@@ -94,6 +270,7 @@ struct GuardData {
 
 inline void CheckGuardRedirect(const std::filesystem::path& path,uint8_t* image,size_t imageSize){
     using namespace cet_dispatch;
+    CheckSynchronizedGuardLifetime();
     Require(CheckImage(path,image)==Identity::ExactImage,"private guard baseline");
     auto* code=image+imageSize;
     auto* data=new(code+4096) GuardData;
