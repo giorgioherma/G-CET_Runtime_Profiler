@@ -4,7 +4,7 @@
 #include "CETDispatchIdentity.hpp"
 #include "CETStacklessGate.hpp"
 #include "GuardUnwindProof.hpp"
-#include "CETExistingMutex.hpp"
+#include "GuardAttachment.hpp"
 #include <windows.h>
 #include <array>
 #include <cstring>
@@ -28,135 +28,6 @@ struct GuardSite {
 inline constexpr GuardSite Sites[]={
     {0x10834f,0x10835a,0x1087e9,true,{0x41,0x80,0x7f,0x70,0,0x0f,0x85,0x8f,0x04,0,0}},
     {0x108b41,0x108b4c,0x109200,false,{0x41,0x80,0x7e,0x70,0,0x0f,0x85,0xb4,0x06,0,0}}
-};
-using PatchBytes=std::array<uint8_t,11>;
-inline PatchBytes Redirect(uintptr_t from,uintptr_t to){
-    const auto next=from+5;
-    const auto distance=to>=next?to-next:next-to;
-    Require(distance<=uint64_t(to>=next?INT32_MAX:2147483648ull),"branch outside rel32 range");
-    int64_t delta=to>=next?int64_t(distance):-int64_t(distance);
-    PatchBytes result{0xe9,0,0,0,0,0x90,0x90,0x90,0x90,0x90,0x90};
-    int32_t rel=static_cast<int32_t>(delta);
-    std::memcpy(result.data()+1,&rel,4);
-    return result;
-}
-inline uintptr_t Destination(uintptr_t source,const PatchBytes& bytes){
-    int32_t rel=0;std::memcpy(&rel,bytes.data()+1,4);
-    Require(bytes[0]==0xe9,"not rel32 jump");
-    return static_cast<uintptr_t>(static_cast<int64_t>(source+5)+rel);
-}
-inline bool Equal(const uint8_t* p,const PatchBytes& bytes){
-    return std::memcmp(p,bytes.data(),bytes.size())==0;
-}
-// Research transaction. Only MEM_PRIVATE executable pages are admitted.
-// The caller supplies an owning reference to the lock and keeps the
-// private image/islands alive until exact restoration. The live CET owner
-// and production lifetime admission are deliberately NOT inferred here.
-enum class GuardResult { Success, Busy, Refused, RolledBack, Unsafe };
-struct GuardEdit {
-    uint8_t* address;
-    PatchBytes stock, installed;
-};
-class SynchronizedPrivateGuards {
-    std::shared_ptr<std::shared_mutex> owner_;
-    std::array<GuardEdit,2> edits_;
-    bool installed_=false, unsafe_=false;
-public:
-    SynchronizedPrivateGuards(std::shared_ptr<std::shared_mutex> owner,
-                              std::array<GuardEdit,2> edits)
-        :owner_(std::move(owner)),edits_(edits){}
-    SynchronizedPrivateGuards(const SynchronizedPrivateGuards&)=delete;
-    SynchronizedPrivateGuards& operator=(const SynchronizedPrivateGuards&)=delete;
-    // Never silently release the fixture's owner while code might still
-    // refer to its islands. Production retirement requires a retained arena
-    // on failure, not this test-only fatal invariant.
-    ~SynchronizedPrivateGuards(){if(installed_||unsafe_)std::abort();}
-    GuardResult Change(bool install,int failBefore=-1){
-        if(unsafe_)return GuardResult::Unsafe;
-        if(!owner_)return GuardResult::Refused;
-        cet_dispatch::ExistingMutexLease lease(owner_->native_handle());
-        if(!lease)return GuardResult::Busy;
-        if(install&&installed_)return GuardResult::Refused;
-        SYSTEM_INFO info{};GetSystemInfo(&info);
-        const auto pageSize=static_cast<uintptr_t>(info.dwPageSize);
-        if(!pageSize)return GuardResult::Refused;
-        std::array<uint8_t*,2> pages{};
-        std::array<DWORD,2> protections{};
-        size_t pageCount=0;
-        // Preflight BOTH sites and their complete pages before any mutation.
-        for(const auto& e:edits_){
-            auto at=reinterpret_cast<uintptr_t>(e.address);
-            if(!at||at%pageSize+e.stock.size()>pageSize)return GuardResult::Refused;
-            MEMORY_BASIC_INFORMATION mbi{};
-            if(VirtualQuery(e.address,&mbi,sizeof(mbi))!=sizeof(mbi)||
-               mbi.State!=MEM_COMMIT||mbi.Type!=MEM_PRIVATE||
-               mbi.Protect!=PAGE_EXECUTE_READ||
-               !Equal(e.address,installed_?e.installed:e.stock))return GuardResult::Refused;
-            auto* page=reinterpret_cast<uint8_t*>(at-at%pageSize);
-            if(!pageCount||pages[0]!=page)pages[pageCount++]=page;
-        }
-        const auto a=reinterpret_cast<uintptr_t>(edits_[0].address);
-        const auto b=reinterpret_cast<uintptr_t>(edits_[1].address);
-        if((a<=b?b-a:a-b)<edits_[0].stock.size())return GuardResult::Refused;
-        if(!install&&!installed_)return GuardResult::Success;
-        size_t opened=0;
-        auto closePages=[&](){
-            bool ok=true;
-            while(opened){
-                --opened;DWORD unused=0;
-                if(!VirtualProtect(pages[opened],pageSize,protections[opened],&unused))ok=false;
-            }
-            return ok;
-        };
-        // Keep execute permission for unrelated instructions on these pages.
-        // Only the two proven guarded spans may be rewritten.
-        for(size_t i=0;i<pageCount;++i){
-            DWORD old=0;
-            if(!VirtualProtect(pages[i],pageSize,PAGE_EXECUTE_READWRITE,&old)){
-                if(!closePages()){unsafe_=true;return GuardResult::Unsafe;}
-                return GuardResult::Refused;
-            }
-            protections[opened++]=old;
-            if(old!=PAGE_EXECUTE_READ){
-                if(!closePages()){unsafe_=true;return GuardResult::Unsafe;}
-                return GuardResult::Refused;
-            }
-        }
-        size_t written=0;
-        bool ok=true;
-        for(size_t i=0;i<edits_.size();++i){
-            if(static_cast<int>(i)==failBefore){ok=false;break;}
-            const auto& e=edits_[i];const auto& bytes=install?e.installed:e.stock;
-            std::memcpy(e.address,bytes.data(),bytes.size());++written;
-            if(!Equal(e.address,bytes)){ok=false;break;}
-        }
-        auto flush=[&](){
-            bool success=true;
-            for(size_t i=0;i<written;++i)
-                if(!FlushInstructionCache(GetCurrentProcess(),edits_[i].address,
-                                          edits_[i].stock.size()))success=false;
-            return success;
-        };
-        if(ok&&!flush())ok=false;
-        bool rollbackOK=true;
-        if(!ok){
-            for(size_t i=0;i<written;++i){
-                const auto& e=edits_[i];const auto& previous=installed_?e.installed:e.stock;
-                std::memcpy(e.address,previous.data(),previous.size());
-                if(!Equal(e.address,previous))rollbackOK=false;
-            }
-            if(!flush())rollbackOK=false;
-        }
-        if(!closePages()||!rollbackOK){unsafe_=true;return GuardResult::Unsafe;}
-        if(ok)installed_=install;
-        for(const auto& e:edits_){
-            MEMORY_BASIC_INFORMATION mbi{};
-            if(!Equal(e.address,installed_?e.installed:e.stock)||
-               VirtualQuery(e.address,&mbi,sizeof(mbi))!=sizeof(mbi)||
-               mbi.Protect!=PAGE_EXECUTE_READ){unsafe_=true;return GuardResult::Unsafe;}
-        }
-        return ok?GuardResult::Success:GuardResult::RolledBack;
-    }
 };
 class PrivateGuards {
     std::shared_ptr<std::shared_mutex> owner_=std::make_shared<std::shared_mutex>();

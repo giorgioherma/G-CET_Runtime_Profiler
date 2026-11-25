@@ -5,7 +5,8 @@
 #define NOMINMAX
 #include <windows.h>
 #include "CETStacklessGate.hpp"
-#include "CETExistingMutex.hpp"
+#include "GuardAttachment.hpp"
+#include "CETCompletedUnwind.hpp"
 #include <array>
 #include <atomic>
 #include <cstdint>
@@ -21,13 +22,11 @@
 using namespace gcet::cet_dispatch;
 void Check(bool ok,const char* why){if(!ok){std::cerr<<why<<"\n";std::abort();}}
 using Run=int(*)(const void*);
-constexpr uint32_t Guard=5,Active=16,Empty=32,OriginalEnd=48,Island=128;
-constexpr uint32_t OriginalThunk=896,BridgeThunk=928,FinallyThunk=960;
-constexpr uint32_t OriginalInfo=1024,IslandInfo=1088;
-struct Data {
-    DispatchEpoch epoch;
-    ObserverBinding binding{epoch,GetCurrentThreadId()};
-};
+using namespace gcet::research;
+constexpr uint32_t Guard=5,Active=16,Empty=32,OriginalEnd=48;
+constexpr uint32_t Entries[]={0,128},Islands[]={512,1024};
+constexpr uint32_t OriginalThunk=2048,BridgeThunk=2080,FinallyThunk=2112;
+constexpr uint32_t OriginalInfos[]={2304,2432},IslandInfos[]={2560,2688};
 struct alignas(8) Chain {
     std::array<std::byte,120> bytes{};
     uintptr_t callback=0x5000;
@@ -47,7 +46,7 @@ struct alignas(8) Chain {
 };
 struct FixtureContext {
     uint8_t* base=nullptr;
-    RUNTIME_FUNCTION functions[2]{};
+    std::array<PersonalityMap,2> maps{};
     PEXCEPTION_ROUTINE personality=nullptr;
     std::atomic<unsigned> abnormalCleanups{0},unexpectedCleanups{0},mappedSearch{0},mappedUnwind{0};
 };
@@ -57,27 +56,20 @@ void NTAPI Finally(BOOLEAN abnormal,void*) {
     if(abnormal)++current->abnormalCleanups;
     else ++current->unexpectedCleanups;
 }
-// For the fixture's finally-only scope, translate the dispatch context before
-// forwarding to the REAL Windows C-specific handler. The actual fault PC in
-// EXCEPTION_RECORD is deliberately left untouched for diagnostics.
 EXCEPTION_DISPOSITION NTAPI Bridge(PEXCEPTION_RECORD exception,PVOID frame,
                                   PCONTEXT context,PVOID dispatcherContext) {
     auto* dispatch=static_cast<PDISPATCHER_CONTEXT>(dispatcherContext);
     auto& f=*current;
-    const auto base=reinterpret_cast<DWORD64>(f.base);
-    Check(dispatch->ImageBase==base&&dispatch->ControlPc>=base+Island&&
-          dispatch->ControlPc<base+f.functions[1].EndAddress,"unexpected island dispatcher context");
-    DISPATCHER_CONTEXT mapped=*dispatch;
-    mapped.ControlPc=base+Guard;
-    mapped.FunctionEntry=&f.functions[0];
-    mapped.HandlerData=f.base+OriginalInfo+12;
-    mapped.LanguageHandler=f.personality;
-    if(exception->ExceptionFlags&(EXCEPTION_UNWINDING|EXCEPTION_EXIT_UNWIND))
-        ++f.mappedUnwind;
-    else ++f.mappedSearch;
-    auto result=f.personality(exception,frame,context,&mapped);
-    dispatch->ScopeIndex=mapped.ScopeIndex;
-    return result;
+    DISPATCHER_CONTEXT mapped{};
+    for(auto& map:f.maps){
+        if(!map.Translate(*dispatch,mapped))continue;
+        if(exception->ExceptionFlags&(EXCEPTION_UNWINDING|EXCEPTION_EXIT_UNWIND))
+            ++f.mappedUnwind;
+        else ++f.mappedSearch;
+        return map.Forward(exception,frame,context,*dispatch,mapped);
+    }
+    Check(false,"foreign island dispatcher context");
+    return ExceptionContinueSearch;
 }
 int FaultCall(Run run,const void* chain){
     // Separate POD-only function: MSVC disallows __try in functions requiring
@@ -91,164 +83,173 @@ void Thunk(uint8_t* dst,uintptr_t target){
     std::memcpy(dst,body,sizeof(body));std::memcpy(dst+2,&target,8);
 }
 void Word32(uint8_t* dst,uint32_t word){std::memcpy(dst,&word,4);}
-void UnwindInfo(uint8_t* dst,uint8_t prologue,uint8_t offset,uint32_t handler){
+void UnwindInfo(uint8_t* dst,uint8_t prologue,uint8_t offset,uint32_t handler,bool r15){
     // Version 1, EHANDLER|UHANDLER, one UWOP_PUSH_NONVOL r15,
     // padded unwind slots, followed by handler RVA.
-    const uint8_t info[]={0x19,prologue,1,0,offset,0xf0,0,0};
+    const uint8_t info[]={0x19,prologue,1,0,offset,r15?uint8_t{0xf0}:uint8_t{0xe0},0,0};
     std::memcpy(dst,info,sizeof(info));Word32(dst+8,handler);
 }
-struct Arena{
-    uint8_t* p=static_cast<uint8_t*>(VirtualAlloc(nullptr,8192,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE));
-    ~Arena(){if(p)VirtualFree(p,0,MEM_RELEASE);}
-};
-class FixturePatch{
-    uint8_t* code_;
-    std::array<uint8_t,11> stock_{},jump_{};
-    bool installed_=false;
-public:
-    // Only callers holding the fixture's exclusive admission lock may write.
-    explicit FixturePatch(uint8_t* code):code_(code){
-        std::memcpy(stock_.data(),code+Guard,stock_.size());
-        jump_.fill(0x90);jump_[0]=0xe9;
-        const int32_t delta=Island-(Guard+5);std::memcpy(jump_.data()+1,&delta,4);
-    }
-    void Set(bool enabled){
-        if(enabled==installed_)return;
-        auto& expected=installed_?jump_:stock_;
-        auto& next=enabled?jump_:stock_;
-        Check(std::memcmp(code_+Guard,expected.data(),expected.size())==0,"fixture code drift");
-        DWORD old=0,unused=0;
-        Check(VirtualProtect(code_,4096,PAGE_READWRITE,&old)!=0&&old==PAGE_EXECUTE_READ,"fixture write protection");
-        std::memcpy(code_+Guard,next.data(),next.size());
-        Check(VirtualProtect(code_,4096,old,&unused)!=0,"fixture RX restore");
-        Check(FlushInstructionCache(GetCurrentProcess(),code_,4096)!=0,"fixture instruction flush");
-        installed_=enabled;
-    }
-    bool Stock() const {return !installed_&&std::memcmp(code_+Guard,stock_.data(),stock_.size())==0;}
-};
 int main(){
-    Arena arena;Check(arena.p!=nullptr,"fixture arena");
-    auto* p=arena.p;auto* data=new(p+4096) Data;
+    auto arena=std::make_unique<GuardArena>();Check(arena->Base()!=nullptr,"fixture arena");
+    auto* p=arena->Base();
+    auto owner=std::make_shared<std::shared_mutex>();
+    auto* nativeHandle=owner->native_handle();
+    Check(sizeof(*owner)==sizeof(void*)&&reinterpret_cast<void*>(nativeHandle)==owner.get(),
+          "MSVC compiled shared mutex ABI differs");
+    Check(sizeof(SRWLOCK)==sizeof(*owner),"native Windows SRW storage differs");
+    std::weak_ptr<std::shared_mutex> weak=owner;
     FixtureContext f;f.base=p;current=&f;
     auto ntdll=GetModuleHandleW(L"ntdll.dll");
     f.personality=reinterpret_cast<PEXCEPTION_ROUTINE>(GetProcAddress(ntdll,"__C_specific_handler"));
     Check(f.personality!=nullptr,"Windows C-specific handler unavailable");
-    // Real original guard and two returns. Push r15; mov r15,rcx;
-    // cmp byte ptr [r15+70h],0; jne empty.
-    const uint8_t original[]={0x41,0x57,0x49,0x89,0xcf,
-        0x41,0x80,0x7f,0x70,0,0x0f,0x85,0x10,0,0,0};
-    std::memcpy(p,original,sizeof(original));
-    const uint8_t active[]={0xb8,1,0,0,0,0x41,0x5f,0xc3};
-    const uint8_t empty[]={0xb8,2,0,0,0,0x41,0x5f,0xc3};
-    std::memcpy(p+Active,active,sizeof(active));std::memcpy(p+Empty,empty,sizeof(empty));
-    StacklessGate gate(reinterpret_cast<uintptr_t>(p+Island),true,data->binding.Guard(),data->epoch,
-                       reinterpret_cast<uintptr_t>(p+Active),reinterpret_cast<uintptr_t>(p+Empty));
-    Check(Island+gate.Code().size()<OriginalThunk,"gate overlaps handler thunks");
-    std::memcpy(p+Island,gate.Code().data(),gate.Code().size());
+    const auto base=reinterpret_cast<DWORD64>(p);
+    std::array<GuardEdit,2> edits{};
+    std::array<RUNTIME_FUNCTION,4> table{};
+    std::array<Run,2> runs{};
     Thunk(p+OriginalThunk,reinterpret_cast<uintptr_t>(f.personality));
     Thunk(p+BridgeThunk,reinterpret_cast<uintptr_t>(&Bridge));
     Thunk(p+FinallyThunk,reinterpret_cast<uintptr_t>(&Finally));
-    UnwindInfo(p+OriginalInfo,2,2,OriginalThunk);
-    // Real SCOPE_TABLE_AMD64: one termination handler in original guard.
-    Word32(p+OriginalInfo+12,1);
-    Word32(p+OriginalInfo+16,Guard);
-    Word32(p+OriginalInfo+20,Active);
-    Word32(p+OriginalInfo+24,FinallyThunk);
-    Word32(p+OriginalInfo+28,0);
-    // The island establishes NO frame: use equivalent completed prologue
-    // unwind slots and our translating language-handler entry.
-    UnwindInfo(p+IslandInfo,0,0,BridgeThunk);
-    f.functions[0]={0,OriginalEnd,OriginalInfo};
-    f.functions[1]={Island,Island+static_cast<uint32_t>(gate.Code().size()),IslandInfo};
-    Check(RtlAddFunctionTable(f.functions,2,reinterpret_cast<DWORD64>(p))!=FALSE,"register fixture unwind table");
-    DWORD old=0;Check(VirtualProtect(p,4096,PAGE_EXECUTE_READ,&old)!=0,"fixture code RX");
-    Check(FlushInstructionCache(GetCurrentProcess(),p,4096)!=0,"initial flush");
-    const auto run=reinterpret_cast<Run>(p);
-    FixturePatch patch(p);
-    Chain chain;
+    for(size_t i=0;i<2;++i){
+        const bool r15=i==0;const auto entry=Entries[i],island=Islands[i];
+        const uint8_t original[]={0x41,r15?uint8_t{0x57}:uint8_t{0x56},0x49,0x89,r15?uint8_t{0xcf}:uint8_t{0xce},
+            0x41,0x80,r15?uint8_t{0x7f}:uint8_t{0x7e},0x70,0,0x0f,0x85,0x10,0,0,0};
+        const uint8_t active[]={0xb8,1,0,0,0,0x41,r15?uint8_t{0x5f}:uint8_t{0x5e},0xc3};
+        const uint8_t empty[]={0xb8,2,0,0,0,0x41,r15?uint8_t{0x5f}:uint8_t{0x5e},0xc3};
+        std::memcpy(p+entry,original,sizeof(original));
+        std::memcpy(p+entry+Active,active,sizeof(active));
+        std::memcpy(p+entry+Empty,empty,sizeof(empty));
+        StacklessGate gate(base+island,r15,arena->Binding().Guard(),arena->Epoch(),
+                           base+entry+Active,base+entry+Empty);
+        Check(gate.Code().size()<512,"gate overlap");
+        std::memcpy(p+island,gate.Code().data(),gate.Code().size());
+        const auto info=OriginalInfos[i],completedInfo=IslandInfos[i];
+        UnwindInfo(p+info,2,2,OriginalThunk,r15);
+        Word32(p+info+12,1);Word32(p+info+16,entry+Guard);
+        Word32(p+info+20,entry+Active);Word32(p+info+24,FinallyThunk);Word32(p+info+28,0);
+        std::vector<uint8_t> completed;
+        Check(BuildCompletedFrameUnwind(std::span<const uint8_t>(p+info,12),BridgeThunk,completed),
+              "completed frame metadata");
+        Check(completed.size()<128,"metadata capacity");
+        std::memcpy(p+completedInfo,completed.data(),completed.size());
+        table[i]={entry,entry+OriginalEnd,info};
+        table[i+2]={island,island+static_cast<uint32_t>(gate.Code().size()),completedInfo};
+        auto& map=f.maps[i];map.imageBase=base;map.original=table[i];map.island=table[i+2];
+        map.originalHandler=f.personality;map.originalHandlerData=p+info+12;map.originalPc=base+entry+Guard;
+        auto& edit=edits[i];edit.address=p+entry+Guard;
+        std::memcpy(edit.stock.data(),edit.address,edit.stock.size());
+        edit.installed=Redirect(base+entry+Guard,base+island);
+        runs[i]=reinterpret_cast<Run>(p+entry);
+    }
+    Check(arena->Seal(table,table.size()),"register owned two-gate arena");
+    GuardAttachment attachment(std::move(arena),owner,edits);
+    owner.reset();
+    Check(!weak.expired(),"attachment did not retain lock owner");
+    auto retained=weak.lock();
+    Chain chain,foreign;
+    auto verify=[&](const void* bytes,int expected,const char* why){
+        std::shared_lock read(*retained);
+        for(auto run:runs)Check(run(bytes)==expected,why);
+    };
+    auto faultBoth=[&](const void* bytes){
+        std::shared_lock read(*retained);
+        for(auto run:runs)Check(FaultCall(run,bytes)==-1,"SEH fault propagation");
+    };
     auto* inaccessible=VirtualAlloc(nullptr,4096,MEM_RESERVE|MEM_COMMIT,PAGE_NOACCESS);
     Check(inaccessible!=nullptr,"fault page");
-    Check(run(chain.bytes.data())==1,"stock dispatch");
-    Check(FaultCall(run,inaccessible)==-1&&f.abnormalCleanups==1,"stock exception did not run original finally once");
-    patch.Set(true);
-    Check(FaultCall(run,inaccessible)==-1&&f.abnormalCleanups==2&&f.mappedSearch==1&&f.mappedUnwind==1,
-          "island fault did not translate search and unwind to original finally");
+    verify(chain.bytes.data(),1,"stock dispatch");
+    faultBoth(inaccessible);Check(f.abnormalCleanups==2,"stock original finally counts");
+    Check(attachment.Attach(1)==GuardResult::RolledBack,"injected attach rollback");
+    verify(chain.bytes.data(),1,"rolled back attachment");
+    Check(attachment.Attach()==GuardResult::Success,"attach both actual gates");
+    faultBoth(inaccessible);
+    Check(f.abnormalCleanups==4&&f.mappedSearch==2&&f.mappedUnwind==2,
+          "both island faults must preserve search, unwind, finally");
     auto id=chain.Identity();Check(static_cast<bool>(id),"binding fixture identity");
-    auto handle=data->binding.Bind(GetCurrentThreadId(),data->epoch.Current(),id);
-    Check(handle&&data->binding.SetDemand(GetCurrentThreadId(),handle,false),"dormant binding");
-    Check(run(chain.bytes.data())==2,"live patched fixture bypass");
-    Check(data->binding.SetDemand(GetCurrentThreadId(),handle,true)&&run(chain.bytes.data())==1,"wake");
-    patch.Set(false);
-    Check(FaultCall(run,inaccessible)==-1&&f.abnormalCleanups==3&&f.mappedSearch==1&&f.mappedUnwind==1,
-          "restored exception semantics");
-    Check(f.unexpectedCleanups==0,"unexpected termination cleanup");
-    std::cout<<"Real SEH stock/island/restored faults, translated search and unwind, original finally exactly once PASS\n";
-    VirtualFree(inaccessible,0,MEM_RELEASE);
-
-    // Fixture-owned admission boundary, not a guessed live CET lock.
-    // Hold one call lease while attempting exclusive mutation, then stress
-    // real running machine code across repeated install/restore cycles.
-    std::shared_mutex admission;
-    auto* nativeHandle=admission.native_handle();
-    Check(sizeof(admission)==sizeof(void*)&&reinterpret_cast<void*>(nativeHandle)==&admission,
-          "MSVC compiled shared mutex ABI differs");
-    Check(sizeof(SRWLOCK)==sizeof(admission),"native Windows SRW storage differs");
-    std::atomic<bool> held=false,release=false,stop=false;
+    auto handle=attachment.Bind(id);
+    Check(handle&&attachment.SetDemand(handle,false),"demand sleep");
+    verify(chain.bytes.data(),2,"both gates dormant");
+    verify(foreign.bytes.data(),1,"foreign chain remains active");
+    Check(attachment.SetDemand(handle,true),"demand wake");
+    verify(chain.bytes.data(),1,"immediate wake");
+    Check(attachment.SetDemand(handle,false),"second sleep");
+    {DispatchEpoch::Invalidation clear(attachment.Arena()->Epoch());
+     verify(chain.bytes.data(),1,"Clear in progress");}
+    verify(chain.bytes.data(),1,"reused Context after Clear");
+    Check(!attachment.SetDemand(handle,false),"stale handle after reload");
+    auto rebound=attachment.Bind(id);
+    Check(rebound&&rebound!=handle&&attachment.SetDemand(rebound,false),"rebind new epoch");
+    verify(chain.bytes.data(),2,"new epoch sleep");
+    // Retirement while in flight: invalidate before refusing busy, then
+    // retain all backing resources and deny further stale demand changes.
+    std::atomic<bool> held=false,release=false,stop=false,invalid=false;
     std::atomic<unsigned> calls=0;
     std::thread inFlight([&]{
-        std::shared_lock read(admission);
+        std::shared_lock read(*retained);
         held.store(true,std::memory_order_release);
         while(!release.load(std::memory_order_acquire))std::this_thread::yield();
-        Check(run(chain.bytes.data())==1,"held dispatch");
+        for(auto run:runs)if(run(chain.bytes.data())!=1)invalid=true;
     });
     while(!held.load(std::memory_order_acquire))std::this_thread::yield();
-    {ExistingMutexLease lease(nativeHandle);Check(!lease,"attachment admitted while dispatch lease held");}
+    const auto busy=attachment.Retire();
+    Check(busy==GuardResult::Busy&&attachment.Phase()==AttachmentPhase::Retiring&&
+          attachment.Arena()->Registered()&&!attachment.SetDemand(rebound,false),"busy retirement lost resources");
+    Check(!attachment.ReclaimAfterDrain(false)&&!attachment.ReclaimAfterDrain(true),"unrestored resources reclaimed");
     release.store(true,std::memory_order_release);inFlight.join();
+    verify(chain.bytes.data(),1,"busy retirement must fail open");
+    Check(attachment.Retire(1)==GuardResult::RolledBack&&attachment.Arena()->Registered(),
+          "restore rollback retained registered arena");
+    verify(chain.bytes.data(),1,"rolled-back retirement must stay active");
+    Check(attachment.Retire()==GuardResult::Success,"restore both gates");
+    faultBoth(inaccessible);
+    Check(f.abnormalCleanups==6&&f.mappedSearch==2&&f.mappedUnwind==2&&f.unexpectedCleanups==0,
+          "restored original exception semantics");
+    VirtualFree(inaccessible,0,MEM_RELEASE);
+    Check(!invalid,"foreign in-flight dispatch changed");
+    // Preserve the existing concurrent native shared/exclusive lock proof;
+    // now the real paired gate transaction and its resources are exercised.
     std::vector<std::thread> workers;
     for(int i=0;i<4;++i)workers.emplace_back([&]{
         while(!stop.load(std::memory_order_acquire)){
-            {
-                std::shared_lock read(admission);
-                Check(run(chain.bytes.data())==1,"concurrent dispatch changed");
-                calls.fetch_add(1,std::memory_order_relaxed);
-            }
+            {std::shared_lock read(*retained);
+             for(auto run:runs)if(run(chain.bytes.data())!=1)invalid=true;
+             ++calls;}
             std::this_thread::yield();
         }
     });
     while(calls.load(std::memory_order_relaxed)<100)std::this_thread::yield();
-    // Same mutex the compiled dispatch callers already use. The
-    // transaction tries once per fixture attempt; busy is a safe refusal,
-    // not a scheduler retry loop in production.
-    unsigned busy=0;
+    unsigned busyCount=0;
     for(int i=0;i<32;++i){
         for(bool install:{true,false}){
             for(;;){
-                ExistingMutexLease write(nativeHandle);
-                if(write){
-                    patch.Set(install);
-                    Check(install?run(chain.bytes.data())==1:patch.Stock(),"synchronized guard transaction");
-                    break;
-                }
-                ++busy;
-                std::this_thread::yield();
+                auto result=install?attachment.Attach():attachment.Retire();
+                if(result==GuardResult::Success)break;
+                if(result!=GuardResult::Busy)std::abort();
+                ++busyCount;std::this_thread::yield();
             }
-            std::this_thread::yield();
         }
     }
+    // Original shared_mutex reader exclusion through the same native handle.
+    // Workers are stopped before this deterministic nonblocking assertion.
+    Check(!attachment.ReclaimAfterDrain(false),"metadata reclaimed before drain");
+    stop.store(true,std::memory_order_release);for(auto& t:workers)t.join();
+    Check(!invalid&&calls>=100,"concurrent dispatch changed");
     {ExistingMutexLease lease(nativeHandle);Check(static_cast<bool>(lease),"idle original mutex lease");
      std::atomic<bool> blocked=false;
-     std::thread challenger([&]{bool got=admission.try_lock_shared();blocked=!got;if(got)admission.unlock_shared();});
-     challenger.join();Check(blocked,"exclusive SRW lease failed to block compiled shared reader");}
-    Check(admission.try_lock(),"original mutex not released by adapter");admission.unlock();
-    std::cout<<"Actual Windows SRW exclusive lease interoperates with compiled shared_mutex, busy refusals="<<busy<<" PASS\n";
-    stop.store(true,std::memory_order_release);
-    for(auto& t:workers)t.join();
-    // Only after admission is closed and all users joined is metadata/code
-    // eligible for removal. Check actual OS table removal.
-    Check(patch.Stock()&&RtlDeleteFunctionTable(f.functions)!=FALSE,"teardown registration");
-    DWORD64 base=0;
-    Check(RtlLookupFunctionEntry(reinterpret_cast<DWORD64>(p+Island),&base,nullptr)==nullptr,"stale function table");
-    data->~Data();current=nullptr;
-    std::cout<<"Concurrent fixture dispatch, in-flight refusal, 32 synchronized attach/restore cycles, "
-             <<calls.load()<<" calls and drained function-table removal PASS\n";
+     std::thread challenger([&]{bool got=retained->try_lock_shared();blocked=!got;if(got)retained->unlock_shared();});
+     challenger.join();Check(blocked,"exclusive lease failed to block shared reader");}
+    Check(retained->try_lock(),"original mutex not released by adapter");retained->unlock();
+    Check(attachment.Phase()==AttachmentPhase::Restored&&attachment.Arena()->Registered(),
+          "restored state did not retain arena until drain");
+    for(const auto& e:edits)Check(Equal(e.address,e.stock),"exact guard restoration");
+    retained.reset();Check(!weak.expired(),"owner released before reclaim");
+    Check(attachment.ReclaimAfterDrain(true)&&attachment.Arena()==nullptr&&weak.expired(),
+          "drained table/arena/owner reclamation");
+    for(auto island:Islands){
+        DWORD64 foundBase=0;
+        Check(RtlLookupFunctionEntry(base+island,&foundBase,nullptr)==nullptr,"stale runtime function table");
+    }
+    current=nullptr;
+    std::cout<<"Integrated paired gate lifecycle: actual SEH search/unwind, demand/reload, busy retirement, "
+             <<"rollback and exact restoration; 32 synchronized cycles, "<<calls.load()
+             <<" concurrent calls, "<<busyCount<<" busy refusals, drained arena/table/owner PASS\\n";
 }

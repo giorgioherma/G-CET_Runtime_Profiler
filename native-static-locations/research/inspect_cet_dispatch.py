@@ -802,7 +802,15 @@ def owner_layout_proof(pe, pdb, pdb_path, pdbutil, layouts, locks):
                 for ins in instructions for op in ins.operands
                 if op.type == X86_OP_MEM and op.mem.base == X86_REG_RIP and
                 ins.address + ins.size + op.mem.disp == slot]
-    return {"embedded_members": members, "cet_size": owner["size"],
+    initialized = vm["fields"].get("m_initialized")
+    require(initialized is not None and initialized["type"].startswith("0x0030"),
+            "LuaVM startup-complete marker is not a compiled bool")
+    init_offset = chain[0][0]["fields"]["m_vm"]["offset"] + initialized["offset"]
+    require(initialized["offset"] < vm["size"] and init_offset < owner["size"],
+            "startup-complete marker outside embedded LuaVM")
+    return {"startup_marker_cet_offset": init_offset,
+            "startup_marker_vm_offset": initialized["offset"],
+            "embedded_members": members, "cet_size": owner["size"],
             "override_relative_offset": relative, "mutex_relative_offset": lock_offset,
             "scripting_back_pointer_offset": back["offset"], "singleton_slot": hex(slot),
             "lifetime_symbol_evidence": candidates,
