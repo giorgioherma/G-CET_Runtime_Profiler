@@ -595,6 +595,132 @@ def personality_proof(pe, matches, pdb):
         if any(k in v.lower() for k in ("handler", "cxxthrow", "unwind"))), "functions": result}
 
 
+def lock_proof(pe, matches, layouts, branches, pdb, pdb_path, pdbutil):
+    from capstone import Cs, CS_ARCH_X86, CS_MODE_64, CS_GRP_CALL, CS_GRP_JUMP, CS_GRP_RET
+    from capstone.x86_const import X86_OP_MEM, X86_OP_IMM, X86_OP_REG, X86_REG_RIP
+    cs = Cs(CS_ARCH_X86, CS_MODE_64)
+    cs.detail = True
+    imports = pe.imports()
+    symbols = {}
+    for name, segment, offset in pdb.public_records(pe):
+        if 1 <= segment <= len(pe.sections):
+            symbols.setdefault(pe.sections[segment-1][2]+offset, []).append(name)
+    types = TypeLayouts(pdb, pdb_path, pdbutil)
+    owner = layouts["FunctionOverride"]
+    lock = owner["fields"]["m_lock"]
+    mutex = types.layout(types.member_index(lock))
+    require(mutex["size"] == 8 and mutex["fields"].get("_Myhandle", {}).get("offset") == 0,
+            f"unexpected compiled shared mutex ABI: {mutex}")
+    offset = lock["offset"]
+    ops = ("_Smtx_lock_shared", "_Smtx_unlock_shared",
+           "_Smtx_lock_exclusive", "_Smtx_unlock_exclusive")
+
+    def operation(ins):
+        if not ins.group(CS_GRP_CALL) or not ins.operands:
+            return None
+        op = ins.operands[0]
+        if op.type == X86_OP_IMM:
+            target = op.imm
+            names = symbols.get(target, [])
+            # Confirm the actual imported symbol, not merely a PDB name.
+            first = next(cs.disasm(pe.read_rva(target, 6), target), None)
+            if not first or first.mnemonic != "jmp" or not first.operands:
+                return None
+            op = first.operands[0]
+            if op.type != X86_OP_MEM or op.mem.base != X86_REG_RIP:
+                return None
+            imported = imports.get(first.address+first.size+op.mem.disp, "")
+        elif op.type == X86_OP_MEM and op.mem.base == X86_REG_RIP:
+            imported = imports.get(ins.address+ins.size+op.mem.disp, "")
+        else:
+            return None
+        dll, _, name = imported.partition("!")
+        return name if dll.lower() == "msvcp140.dll" and name in ops else None
+
+    result = {}
+    for name in ("HookRunPureScriptFunction", "HandleOverridenFunction", "Clear", "Override"):
+        start, end = pe.function_extent(int(matches[name][0]["rva"],16))
+        instructions = list(cs.disasm(pe.read_rva(start,end-start), start))
+        by_addr = {i.address:i for i in instructions}
+        lock_calls = [(i,operation(i)) for i in instructions if i.group(CS_GRP_CALL)]
+        lock_calls = [(i,op) for i,op in lock_calls if op]
+        print("LOCK CALLS", name, [(hex(i.address),op) for i,op in lock_calls],flush=True)
+        guard = int(branches[name]["compare_rva"],16) if name in branches else None
+        expected = "_Smtx_lock_shared" if guard else "_Smtx_lock_exclusive"
+        acquires = [i for i,op in lock_calls if op==expected and (guard is None or i.address<guard)]
+        for i in acquires:
+            index = instructions.index(i)
+            print("LOCK ACQUIRE CONTEXT",name,[(hex(j.address),j.mnemonic,j.op_str)
+                    for j in instructions[max(0,index-16):index+2]],flush=True)
+        require(len(acquires)==1,f"{name}: no unique compiled {expected} before guard")
+        acquire=acquires[0]
+        # Backtrack the argument to a direct LEA of the verified lock member.
+        # Stop on unknown writes or branches, never guess a register origin.
+        reg = "rcx"
+        index=instructions.index(acquire)
+        lea=None
+        for ins in reversed(instructions[max(0,index-16):index]):
+            if ins.group(CS_GRP_JUMP) or ins.group(CS_GRP_CALL):
+                break
+            reads,writes=ins.regs_access()
+            if reg not in [ins.reg_name(v) for v in writes]:
+                continue
+            if len(ins.operands)==2 and ins.operands[0].type==X86_OP_REG:
+                src=ins.operands[1]
+                if ins.mnemonic=="mov" and src.type==X86_OP_REG:
+                    reg=ins.reg_name(src.reg)
+                    continue
+                if ins.mnemonic=="lea" and src.type==X86_OP_MEM and src.mem.disp==offset and not src.mem.index:
+                    lea=ins
+            break
+        require(lea is not None,f"{name}: lock argument is not proven member +{offset:#x}")
+        owner_reg=lea.reg_name(lea.operands[1].mem.base)
+        singleton=None
+        # Find the last assignment to the base register before the LEA.
+        # Report direct RIP-relative owner loads; entry-this for Override
+        # is independently source-defined. Branch dominance is tested below.
+        for ins in reversed(instructions[:instructions.index(lea)]):
+            if owner_reg not in [ins.reg_name(v) for v in ins.regs_access()[1]]:
+                continue
+            if ins.mnemonic=="mov" and len(ins.operands)==2:
+                src=ins.operands[1]
+                if src.type==X86_OP_MEM and src.mem.base==X86_REG_RIP:
+                    singleton=ins.address+ins.size+src.mem.disp
+            break
+        item={"acquire_rva":hex(acquire.address),"operation":expected,"lock_argument":f"{lea.mnemonic} {lea.op_str}",
+              "member_offset":offset,"owner_register":owner_reg,"singleton_slot":hex(singleton) if singleton is not None else None,
+              "lock_calls":[{"rva":hex(i.address),"operation":op} for i,op in lock_calls]}
+        if guard is not None:
+            # Explore all normal intra-function paths with an ownership bit.
+            # A guard reached on any path without the shared lock is a failure.
+            calls={i.address:op for i,op in lock_calls}
+            pending=[(start,False)];seen=set();arrivals=set()
+            while pending:
+                at,held=pending.pop()
+                if (at,held) in seen:continue
+                seen.add((at,held))
+                if at==guard:
+                    arrivals.add(held);continue
+                ins=by_addr.get(at)
+                if ins is None or ins.group(CS_GRP_RET):continue
+                op=calls.get(at)
+                if op=="_Smtx_lock_shared":held=True
+                if op=="_Smtx_unlock_shared":held=False
+                if ins.group(CS_GRP_JUMP):
+                    require(ins.operands and ins.operands[0].type==X86_OP_IMM,
+                            f"{name}: indirect branch before guard proof at {at:#x}")
+                    pending.append((ins.operands[0].imm,held))
+                    if ins.mnemonic=="jmp":continue
+                pending.append((at+ins.size,held))
+            require(arrivals=={True},f"{name}: guard not dominated by shared acquisition: {arrivals}")
+            item["normal_paths_guard_held"]=True
+        result[name]=item
+    slots=[result[k]["singleton_slot"] for k in ("HookRunPureScriptFunction","HandleOverridenFunction","Clear")]
+    require(None not in slots and len(set(slots))==1,f"singleton owner loads not proven common: {slots}")
+    return {"mutex":mutex,"singleton_slot":slots[0],"functions":result,
+            "scope":"normal guard paths and compiled CRT lock ABI; singleton destruction/lifetime and entry patching not proven"}
+
+
 def check_pair(pe, pdb):
     require(pe.identity == pdb.identity, "PE/PDB GUID or age mismatch")
 
@@ -633,7 +759,7 @@ def inspect(release, symbols, pdbutil=None):
                 evidence["symbol"] = name
                 if evidence not in matches[target]:
                     matches[target].append(evidence)
-    layouts, branches, personalities = None, None, None
+    layouts, branches, personalities, locks = None, None, None, None
     if pdbutil is not None:
         require(all(len(v) == 1 for v in matches.values()), "unresolved dispatcher symbols")
         with tempfile.TemporaryDirectory() as tmp:
@@ -644,6 +770,11 @@ def inspect(release, symbols, pdbutil=None):
         branches = branch_proof(pe, matches, layouts)
         personalities = personality_proof(pe, matches, pdb)
         print("VERIFIED EXCEPTION PERSONALITIES:", json.dumps(personalities), flush=True)
+        with tempfile.TemporaryDirectory() as tmp:
+            pdb_path = Path(tmp) / "verified.pdb"
+            pdb_path.write_bytes(pdb.data)
+            locks = lock_proof(pe, matches, layouts, branches, pdb, pdb_path, pdbutil)
+        print("VERIFIED DISPATCH LOCK:", json.dumps(locks), flush=True)
         field = layouts["FunctionOverride::CallChain"]["fields"]["IsEmpty"]
         original_offset = field["offset"]
         field["offset"] = layouts["FunctionOverride::CallChain"]["size"] + 4096
@@ -659,6 +790,7 @@ def inspect(release, symbols, pdbutil=None):
         "layouts": layouts,
         "pre_marshalling_branches": branches,
         "exception_personalities": personalities,
+        "dispatch_lock": locks,
         "wrong_offset_negative_test": "PASS" if pdbutil is not None else "NOT_RUN",
         "source_commit": SOURCE,
         "asi_sha256": sha(image),

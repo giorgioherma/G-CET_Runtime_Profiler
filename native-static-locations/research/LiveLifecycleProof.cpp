@@ -5,6 +5,7 @@
 #define NOMINMAX
 #include <windows.h>
 #include "CETStacklessGate.hpp"
+#include "CETExistingMutex.hpp"
 #include <array>
 #include <atomic>
 #include <cstdint>
@@ -188,6 +189,11 @@ int main(){
     // Hold one call lease while attempting exclusive mutation, then stress
     // real running machine code across repeated install/restore cycles.
     std::shared_mutex admission;
+    auto* nativeHandle=admission.native_handle();
+    Check(sizeof(admission)==sizeof(void*)&&reinterpret_cast<void*>(nativeHandle)==&admission,
+          "MSVC compiled shared mutex ABI differs");
+    auto api=ExistingMutexApi::Resolve(GetModuleHandleW(L"msvcp140.dll"));
+    Check(static_cast<bool>(api),"actual MSVC shared mutex runtime imports unavailable");
     std::atomic<bool> held=false,release=false,stop=false;
     std::atomic<unsigned> calls=0;
     std::thread inFlight([&]{
@@ -197,7 +203,7 @@ int main(){
         Check(run(chain.bytes.data())==1,"held dispatch");
     });
     while(!held.load(std::memory_order_acquire))std::this_thread::yield();
-    Check(!admission.try_lock(),"attachment admitted while dispatch lease held");
+    {ExistingMutexLease lease(api,nativeHandle);Check(!lease,"attachment admitted while dispatch lease held");}
     release.store(true,std::memory_order_release);inFlight.join();
     std::vector<std::thread> workers;
     for(int i=0;i<4;++i)workers.emplace_back([&]{
@@ -211,17 +217,31 @@ int main(){
         }
     });
     while(calls.load(std::memory_order_relaxed)<100)std::this_thread::yield();
+    // Same mutex the compiled dispatch callers already use. The
+    // transaction tries once per fixture attempt; busy is a safe refusal,
+    // not a scheduler retry loop in production.
+    unsigned busy=0;
     for(int i=0;i<32;++i){
-        {
-            std::unique_lock write(admission);
-            patch.Set(true);Check(run(chain.bytes.data())==1,"active owner after attach");
-        }
-        std::this_thread::yield();
-        {
-            std::unique_lock write(admission);
-            patch.Set(false);Check(patch.Stock(),"stock bytes after concurrent restore");
+        for(bool install:{true,false}){
+            for(;;){
+                ExistingMutexLease write(api,nativeHandle);
+                if(write){
+                    patch.Set(install);
+                    Check(install?run(chain.bytes.data())==1:patch.Stock(),"synchronized guard transaction");
+                    break;
+                }
+                ++busy;
+                std::this_thread::yield();
+            }
+            std::this_thread::yield();
         }
     }
+    {ExistingMutexLease lease(api,nativeHandle);Check(static_cast<bool>(lease),"idle original mutex lease");
+     std::atomic<bool> blocked=false;
+     std::thread challenger([&]{bool got=admission.try_lock_shared();blocked=!got;if(got)admission.unlock_shared();});
+     challenger.join();Check(blocked,"exclusive CRT lease failed to block compiled shared reader");}
+    Check(admission.try_lock(),"original mutex not released by adapter");admission.unlock();
+    std::cout<<"Actual MSVC CRT exclusive lease interoperates with compiled shared_mutex, busy refusals="<<busy<<" PASS\n";
     stop.store(true,std::memory_order_release);
     for(auto& t:workers)t.join();
     // Only after admission is closed and all users joined is metadata/code

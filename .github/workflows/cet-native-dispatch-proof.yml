@@ -9,6 +9,7 @@ on:
       - 'native-static-locations/include/CETObserverBinding.hpp'
       - 'native-static-locations/include/CETStacklessGate.hpp'
       - 'native-static-locations/include/CETCompletedUnwind.hpp'
+      - 'native-static-locations/include/CETExistingMutex.hpp'
       - '.github/workflows/cet-native-dispatch-proof.yml'
   workflow_dispatch:
 
