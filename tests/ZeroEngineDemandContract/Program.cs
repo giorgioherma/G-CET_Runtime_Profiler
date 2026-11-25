@@ -117,10 +117,24 @@ return SpatialHash
     File.WriteAllBytes(Path.Combine(ns, "Scheduler.lua"), generatedScheduler);
     File.WriteAllBytes(Path.Combine(root, "0-Engine", "init.lua"), generatedHost);
     foreach (var pair in staged) File.WriteAllBytes(Path.Combine(root, pair.Key), pair.Value);
-    var psi = new ProcessStartInfo("lua5.4") { UseShellExecute = false };
-    psi.ArgumentList.Add("tests/ZeroEngineDemandContract/Execute.lua");
-    psi.ArgumentList.Add(Path.Combine(root, "0-Engine"));
-    using var process = Process.Start(psi)!; process.WaitForExit();
-    Check(process.ExitCode == 0, "actual generated scheduler/producer/host execution failed");
+    void RunLua(string scenario)
+    {
+        var psi = new ProcessStartInfo("lua5.4") { UseShellExecute = false };
+        psi.ArgumentList.Add("tests/ZeroEngineDemandContract/Execute.lua");
+        psi.ArgumentList.Add(Path.Combine(root, "0-Engine"));
+        psi.ArgumentList.Add(scenario);
+        using var process = Process.Start(psi)!; process.WaitForExit();
+        Check(process.ExitCode == 0, "actual generated execution failed: " + scenario);
+    }
+    RunLua("complete");
+    // An overlay may contain the generated host but an author producer wins
+    // source precedence. It must retain stock work and delivery, not silently
+    // lose callbacks just because no demand was tracked.
+    File.WriteAllText(Path.Combine(moduleDir, "Proximity.lua"), proximity);
+    RunLua("missing-producer");
+    File.WriteAllBytes(Path.Combine(moduleDir, "Proximity.lua"),
+        staged["0-Engine/modules/Proximity.lua"]);
+    File.WriteAllText(Path.Combine(ns, "Scheduler.lua"), scheduler);
+    RunLua("missing-controller");
 }
 finally { Directory.Delete(root, true); }

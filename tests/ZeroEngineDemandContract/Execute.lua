@@ -13,6 +13,15 @@ end
 local function hit(key)
     return function(f) hits[key] = hits[key] or {}; table.insert(hits[key], f) end
 end
+if arg[2] ~= "complete" then
+    local a = P.RegisterZone({throttle=5, callback=hit("fallback")})
+    advance(10)
+    assert(table.concat(hits.fallback,",")=="5,10", "partial overlay lost callbacks")
+    assert(counts["proximity-pass"]==10, "partial overlay must keep stock cadence")
+    a.unregister()
+    print("Partial overlay fallback PASS: " .. arg[2])
+    return
+end
 advance(10)
 assert(next(counts)==nil, "zero registrations must execute no producer scans")
 local a = P.RegisterZone({throttle=5, callback=hit("five")})

@@ -50,6 +50,9 @@ internal static class ZeroEngineDemandSource
             registry + "[" + removalKey + "].__gcetDemand then " +
             registry + "[" + removalKey + "].__gcetDemand.Cancel() end";
         var bind = "local __gcetDemand = require('modules/G-CET/Scheduler').Demand";
+        var capability = service + ".__gcetDemand = __gcetDemand";
+        var validate = "if type(__gcetDemand) ~= 'table' or type(__gcetDemand.TrackFrame) ~= 'function' or type(__gcetDemand.IsDue) ~= 'function' then __gcetDemand = nil end";
+        var attachGuard = prox ? "if __gcetDemand then" : "if __gcetDemand and setData.config.pollRadiusSq then";
         var oldAdd = registry + "[" + key + "] = " + record;
         var oldRemove = registry + "[" + removalKey + "] = nil";
         // Check unique registry mutation and original cadence. Private
@@ -66,17 +69,38 @@ internal static class ZeroEngineDemandSource
                 @"\[[^\r\n]+\][ \t]*=[ \t]*").Count != 2)
             return false;
 
-        if (source.Contains(marker, StringComparison.Ordinal))
-            return Count(source, bind) == 1 && Count(source, attach) == 1 &&
-                Count(source, detach) == 1 && Count(source, oldAdd) == 1 &&
-                Count(source, oldRemove) == 1;
-        if (source.Contains("__gcetDemand", StringComparison.Ordinal)) return false;
         var candidate = source;
-        if (!AfterLine(ref candidate, "local " + registry + " = {}", marker + "\n" + bind) ||
-            !AfterLine(ref candidate, oldAdd,
-                prox ? attach : "if setData.config.pollRadiusSq then\n    " + attach + "\nend") ||
-            !BeforeLine(ref candidate, oldRemove, detach))
-            return false;
+        if (source.Contains(marker, StringComparison.Ordinal))
+        {
+            if (Count(source, bind) != 1 || Count(source, attach) != 1 ||
+                Count(source, detach) != 1 || Count(source, oldAdd) != 1 ||
+                Count(source, oldRemove) != 1) return false;
+            if (Count(source, capability) == 1 && Count(source, validate) == 1 &&
+                Count(source, attachGuard) == 1) return true;
+            // Complete the earlier development form only when its exact
+            // registration and removal contracts remain intact.
+            if (source.Contains(capability, StringComparison.Ordinal) ||
+                source.Contains(validate, StringComparison.Ordinal) ||
+                source.Contains(attachGuard, StringComparison.Ordinal)) return false;
+            if (!AfterLine(ref candidate, bind, validate + "\n" + capability))
+                return false;
+            if (prox)
+            {
+                if (!ReplaceLine(ref candidate, attach, attachGuard + "\n    " + attach + "\nend"))
+                    return false;
+            }
+            else if (!ReplaceLine(ref candidate, "if setData.config.pollRadiusSq then", attachGuard))
+                return false;
+        }
+        else
+        {
+            if (source.Contains("__gcetDemand", StringComparison.Ordinal)) return false;
+            if (!AfterLine(ref candidate, "local " + registry + " = {}",
+                    marker + "\n" + bind + "\n" + validate + "\n" + capability) ||
+                !AfterLine(ref candidate, oldAdd, attachGuard + "\n    " + attach + "\nend") ||
+                !BeforeLine(ref candidate, oldRemove, detach))
+                return false;
+        }
         next = candidate;
         return true;
     }
@@ -86,15 +110,24 @@ internal static class ZeroEngineDemandSource
         next = source;
         var marker = "-- G-CET demand dispatch v1: " + service;
         var original = "pcall(" + service + ".Update, currentFrame)";
-        var gate = "if __gcetDemand.IsDue(\"" + service + "\", currentFrame) then";
+        var oldGate = "if __gcetDemand.IsDue(\"" + service + "\", currentFrame) then";
+        // A partial installation may have the host but not the matching
+        // producer/scheduler. Never suppress original work in that state.
+        var gate = "if not __gcetDemand or " + service + ".__gcetDemand ~= __gcetDemand or __gcetDemand.IsDue(\"" + service + "\", currentFrame) then";
         var bind = "local __gcetDemand = require('modules/G-CET/Scheduler').Demand";
         if (!source.Contains("local function UpdateFrame(delta)", StringComparison.Ordinal) ||
             !source.Contains(service + ".SetPlayerPos(pos)", StringComparison.Ordinal) ||
             Count(source, original) != 1)
             return false;
-        if (source.Contains(marker, StringComparison.Ordinal))
-            return Count(source, bind) == 1 && Count(source, gate) == 1;
         var candidate = source;
+        if (source.Contains(marker, StringComparison.Ordinal))
+        {
+            if (Count(source, bind) != 1) return false;
+            if (Count(source, gate) == 1) return true;
+            if (!ReplaceLine(ref candidate, oldGate, gate)) return false;
+            next = candidate;
+            return true;
+        }
         if (Count(candidate, bind) == 0)
         {
             if (candidate.Contains("__gcetDemand", StringComparison.Ordinal) ||
