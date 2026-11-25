@@ -7,6 +7,9 @@ No installed files, game process, or profiler payload are opened or modified.
 import argparse
 import hashlib
 import json
+import re
+import subprocess
+import tempfile
 import struct
 import uuid
 import zipfile
@@ -66,6 +69,7 @@ class PE:
         require(optional_size >= 168 and unpack("<I", data, opt + 108)[0] > 6,
                 "PE lacks debug data directory")
         self.image_size, = unpack("<I", data, opt + 56)
+        self.exception_directory = unpack("<II", data, opt + 112 + 3 * 8)
         self.sections = []
         for i in range(count):
             off = opt + optional_size + 40 * i
@@ -93,6 +97,14 @@ class PE:
             if base <= rva and rva - base + size <= rawsize:
                 return take(self.data, pointer + rva - base, size)
         raise ValueError("RVA not backed by PE section bytes")
+
+    def function_extent(self, start):
+        rva, size = self.exception_directory
+        require(size > 0 and size % 12 == 0, "bad x64 exception directory")
+        ends = [end for begin, end, _ in struct.iter_unpack("<III", self.read_rva(rva, size))
+                if begin == start and end > begin]
+        require(len(ends) == 1, f"no unique x64 runtime function at {start:#x}")
+        return start, ends[0]
 
     def function(self, segment, offset):
         require(1 <= segment <= len(self.sections), "invalid symbol section")
@@ -150,6 +162,20 @@ class PDB:
                 f"missing PDB stream {index}")
         return self.join(*self.streams[index])
 
+    def type_records(self):
+        tpi = self.stream(2)
+        header, first, last, size = unpack("<IIII", tpi, 4)
+        data = take(tpi, header, size)
+        records = {}
+        pos = 0
+        for index in range(first, last):
+            length, kind = unpack("<HH", data, pos)
+            require(length >= 2, "invalid TPI record length")
+            records[index] = (kind, take(data, pos + 4, length - 2))
+            pos += length + 2
+        require(pos == len(data), "TPI record range mismatch")
+        return records
+
     def public_records(self, pe):
         dbi = self.stream(3)
         require(unpack("<I", dbi, 8)[0] == self.identity[1], "DBI age mismatch")
@@ -187,11 +213,140 @@ class PDB:
             off += length + 2
 
 
+def numeric(data, pos):
+    leaf, = unpack("<H", data, pos)
+    if leaf < 0x8000:
+        return leaf, pos + 2
+    formats = {0x8000: "<b", 0x8001: "<h", 0x8002: "<H",
+               0x8003: "<i", 0x8004: "<I", 0x8009: "<q", 0x800a: "<Q"}
+    require(leaf in formats, f"unsupported numeric leaf {leaf:#x}")
+    fmt = formats[leaf]
+    return unpack(fmt, data, pos + 2)[0], pos + 2 + struct.calcsize(fmt)
+
+
+def class_layouts(pdb, pdb_path, pdbutil):
+    targets = {
+        "FunctionOverride": ("m_functions", "m_trampolines", "m_pScripting", "m_lock"),
+        "FunctionOverride::CallChain": ("Trampoline", "pScripting", "Before", "After", "Overrides", "IsEmpty", "CollectGarbage"),
+        "FunctionOverride::Context": ("ScriptFunction", "Environment", "Forward"),
+    }
+    types = pdb.type_records()
+    candidates = {name: [] for name in targets}
+    for index, (kind, data) in types.items():
+        if kind not in (0x1504, 0x1505):
+            continue
+        _, props, fields, _, _ = unpack("<HHIII", data, 0)
+        if props & 0x80 or not fields:
+            continue
+        size, off = numeric(data, 16)
+        name = data[off:].split(b"\0", 1)[0].decode("utf-8", errors="replace")
+        if name in candidates:
+            candidates[name].append((index, fields, size))
+    result = {}
+    for name, expected in targets.items():
+        unique = list(dict.fromkeys(candidates[name]))
+        require(len(unique) == 1, f"missing or ambiguous full PDB type: {name}: {unique}")
+        index, fields, size = unique[0]
+        seen, members, queue = set(), {}, [fields]
+        while queue:
+            field_index = queue.pop()
+            require(field_index not in seen, "cyclic field-list continuation")
+            seen.add(field_index)
+            require(types[field_index][0] == 0x1203, "not a field list")
+            output = subprocess.check_output(
+                [pdbutil, "dump", "-types", f"-type-index=0x{field_index:x}", str(pdb_path)],
+                text=True, stderr=subprocess.STDOUT)
+            for match in re.finditer(r"\[name = \x60([^\x60]+)\x60, Type = ([^,]+), offset = (0x[0-9a-fA-F]+|\d+), attrs =", output):
+                member, member_type, off = match.groups()
+                offset = int(off, 16 if off.startswith("0x") else 10)
+                require(0 <= offset < size, f"{name}.{member} outside class")
+                require(member not in members, f"duplicate field {name}.{member}")
+                members[member] = {"offset": offset, "type": member_type}
+            queue.extend(int(x, 16) for x in re.findall(r"continuation = (0x[0-9a-fA-F]+)", output))
+        missing = set(expected) - members.keys()
+        require(not missing, f"missing PDB members: {name}: {sorted(missing)}; field dump: {output[:1800]}")
+        result[name] = {"size": size, "type_index": hex(index), "fields": members}
+    return result
+
+
+def branch_proof(pe, matches, layouts):
+    from capstone import Cs, CS_ARCH_X86, CS_MODE_64, CS_GRP_JUMP, CS_GRP_RET, CS_GRP_CALL
+    from capstone.x86_const import X86_OP_IMM, X86_OP_MEM
+    cs = Cs(CS_ARCH_X86, CS_MODE_64)
+    cs.detail = True
+    off = layouts["FunctionOverride::CallChain"]["fields"]["IsEmpty"]["offset"]
+    result = {}
+    addresses = {name: int(values[0]["rva"], 16) for name, values in matches.items()
+                 if len(values) == 1}
+    require(all(x in addresses for x in ("ToLua", "ExecuteChain")), "dispatch symbols not unique")
+    for name in ("HookRunPureScriptFunction", "HandleOverridenFunction"):
+        start, end = pe.function_extent(addresses[name])
+        instructions = list(cs.disasm(pe.read_rva(start, end - start), start))
+        by_addr = {i.address: i for i in instructions}
+        require(instructions and instructions[-1].address + instructions[-1].size == end,
+                f"partial decode: {name}")
+        candidates = []
+        for i in instructions:
+            if i.mnemonic != "cmp" or len(i.operands) != 2:
+                continue
+            lhs, rhs = i.operands
+            if not (lhs.type == X86_OP_MEM and lhs.size == 1 and lhs.mem.disp == off
+                    and rhs.type == X86_OP_IMM and rhs.imm == 0):
+                continue
+            branch = by_addr.get(i.address + i.size)
+            if not branch or branch.mnemonic not in ("je", "jne") or branch.operands[0].type != X86_OP_IMM:
+                continue
+            target = branch.operands[0].imm
+            fall = branch.address + branch.size
+
+            def walk(entry):
+                seen, pending, calls, indirect, exits = set(), [entry], set(), set(), set()
+                while pending:
+                    address = pending.pop()
+                    if address in seen:
+                        continue
+                    seen.add(address)
+                    ins = by_addr.get(address)
+                    if ins is None:
+                        exits.add(hex(address))
+                        continue
+                    next_addr = address + ins.size
+                    if ins.group(CS_GRP_RET):
+                        exits.add(hex(address))
+                        continue
+                    if ins.group(CS_GRP_CALL):
+                        if ins.operands and ins.operands[0].type == X86_OP_IMM:
+                            calls.add(ins.operands[0].imm)
+                        else:
+                            indirect.add(hex(address))
+                    if ins.group(CS_GRP_JUMP):
+                        if ins.operands and ins.operands[0].type == X86_OP_IMM:
+                            pending.append(ins.operands[0].imm)
+                        else:
+                            indirect.add(hex(address))
+                        if ins.mnemonic == "jmp":
+                            continue
+                    pending.append(next_addr)
+                return {"direct_targets": [key for key in ("ToLua", "ExecuteChain") if addresses[key] in calls],
+                        "indirect_sites": len(indirect), "exits": sorted(exits)}
+
+            active_edge, empty_edge = (target, fall) if branch.mnemonic == "je" else (fall, target)
+            active, empty = walk(active_edge), walk(empty_edge)
+            if set(active["direct_targets"]) == {"ToLua", "ExecuteChain"} and not empty["direct_targets"]:
+                candidates.append({"compare_rva": hex(i.address), "compare": f"{i.mnemonic} {i.op_str}",
+                                   "branch_rva": hex(branch.address), "branch": f"{branch.mnemonic} {branch.op_str}",
+                                   "active_edge": hex(active_edge), "empty_edge": hex(empty_edge),
+                                   "active": active, "empty": empty})
+        require(len(candidates) == 1, f"{name}: expected one pre-marshalling branch, found {len(candidates)}")
+        result[name] = {"extent": [hex(start), hex(end)], **candidates[0]}
+    return result
+
+
 def check_pair(pe, pdb):
     require(pe.identity == pdb.identity, "PE/PDB GUID or age mismatch")
 
 
-def inspect(release, symbols):
+def inspect(release, symbols, pdbutil=None):
     with checked_archive(release, RELEASE["cet_1.37.1.zip"]) as z:
         names = [n for n in z.namelist()
                  if Path(n.replace("\\", "/")).name.lower() == "cyber_engine_tweaks.asi"]
@@ -225,7 +380,30 @@ def inspect(release, symbols):
                 evidence["symbol"] = name
                 if evidence not in matches[target]:
                     matches[target].append(evidence)
+    layouts, branches = None, None
+    if pdbutil is not None:
+        require(all(len(v) == 1 for v in matches.values()), "unresolved dispatcher symbols")
+        with tempfile.TemporaryDirectory() as tmp:
+            pdb_path = Path(tmp) / "verified.pdb"
+            pdb_path.write_bytes(pdb.data)
+            layouts = class_layouts(pdb, pdb_path, pdbutil)
+        print("VERIFIED COMPILED LAYOUTS:", json.dumps(layouts), flush=True)
+        branches = branch_proof(pe, matches, layouts)
+        field = layouts["FunctionOverride::CallChain"]["fields"]["IsEmpty"]
+        original_offset = field["offset"]
+        field["offset"] = layouts["FunctionOverride::CallChain"]["size"] + 4096
+        try:
+            branch_proof(pe, matches, layouts)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("wrong CallChain member offset accepted")
+        finally:
+            field["offset"] = original_offset
     return {
+        "layouts": layouts,
+        "pre_marshalling_branches": branches,
+        "wrong_offset_negative_test": "PASS" if pdbutil is not None else "NOT_RUN",
         "source_commit": SOURCE,
         "asi_sha256": sha(image),
         "pdb_sha256": sha(pdb.data),
@@ -236,7 +414,7 @@ def inspect(release, symbols):
         "negative_identity_test": "PASS",
         "symbols": matches,
         "missing_or_ambiguous": [k for k, v in matches.items() if len(v) != 1],
-        "scope": "offline symbol discovery only; no detour, ABI or gameplay proof",
+        "scope": "offline symbol/layout/control-flow evidence; no detour, live ABI or gameplay proof",
     }
 
 
@@ -244,8 +422,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("release", type=Path)
     parser.add_argument("symbols", type=Path)
+    parser.add_argument("--pdbutil", help="require compiled layout and control-flow proof using LLVM and Capstone")
     args = parser.parse_args()
-    report = inspect(args.release, args.symbols)
+    report = inspect(args.release, args.symbols, args.pdbutil)
     print(json.dumps(report, indent=2))
     # Missing public symbols are a research finding, not permission to attach.
     # Report exact unresolved targets; the later attachment gate must prove them.

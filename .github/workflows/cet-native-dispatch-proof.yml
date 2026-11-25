@@ -27,8 +27,16 @@ jobs:
           base=https://github.com/maximegmd/CyberEngineTweaks/releases/download/v1.37.1
           curl -fL --retry 3 "$base/cet_1.37.1.zip" -o "$RUNNER_TEMP/cet_1.37.1.zip"
           curl -fL --retry 3 "$base/windows-latest-x64-release-pdb.zip" -o "$RUNNER_TEMP/windows-latest-x64-release-pdb.zip"
-      - name: Verify ASI and PDB identity and locate dispatcher symbols
+      - name: Install offline disassembly and CodeView tools
         shell: bash
         run: |
           set -euo pipefail
-          python native-static-locations/research/inspect_cet_dispatch.py "$RUNNER_TEMP/cet_1.37.1.zip" "$RUNNER_TEMP/windows-latest-x64-release-pdb.zip"
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq llvm
+          python -m pip install 'capstone==5.0.6'
+          command -v llvm-pdbutil
+      - name: Verify ASI and PDB identity, compiled layouts and both dispatch branches
+        shell: bash
+        run: |
+          set -euo pipefail
+          python native-static-locations/research/inspect_cet_dispatch.py "$RUNNER_TEMP/cet_1.37.1.zip" "$RUNNER_TEMP/windows-latest-x64-release-pdb.zip" --pdbutil "$(command -v llvm-pdbutil)"
