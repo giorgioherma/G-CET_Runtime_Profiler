@@ -93,3 +93,8 @@ public native func GCETPlayerVector4Live() -> Vector4;
 public native func GCETPlayerVector4Valid() -> Bool;
 public native func GCETPlayerPositionCacheHits() -> Int64;
 public native func GCETPlayerPositionEngineReads() -> Int64;
+
+// Developer-only explicit read-only identity probe: 1 exact official CET
+// loaded image/ranges, 0 absent, -1 foreign file, -2 changed loaded code,
+// -3 read failure. No hook installed and no gameplay optimization implied.
+public native func GCETCETDispatchProbe() -> Int32;

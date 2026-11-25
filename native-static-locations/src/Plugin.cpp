@@ -3,6 +3,7 @@
 #include "PlayerSnapshot.hpp"
 #include "DemandFrameCache.hpp"
 #include "DiagnosticProbe.hpp"
+#include "CETDispatchIdentity.hpp"
 #include <cmath>
 #include <RED4ext/Scripting/Utils.hpp>
 #include <RED4ext/Scripting/Natives/ScriptGameInstance.hpp>
@@ -418,6 +419,12 @@ namespace {
             default:*out=g_index.Metric(metric);return;
         }
     }
+    // Explicit developer-only read of the already loaded CET image. No
+    // observer hook or per-frame call is installed by this capability probe.
+    void CETDispatchProbe(RED4ext::IScriptable*,RED4ext::CStackFrame* f,int32_t* out,int64_t) {
+        f->code++;
+        *out=static_cast<int32_t>(gcet::cet_dispatch::CheckLoadedCET());
+    }
     template <typename T>
     void RegisterFunction(const char* name, RED4ext::ScriptingFunction_t<T> handler,
                           const char* outType, const char* const* paramNames,
@@ -438,6 +445,7 @@ namespace {
         const char* indexNames[]={"index"};
         const char* intTypes[]={"Int32"};
         RegisterFunction("GCETStaticReady",Ready,"Bool",nullptr,nullptr,0);
+        RegisterFunction("GCETCETDispatchProbe",CETDispatchProbe,"Int32",nullptr,nullptr,0);
         RegisterFunction("GCETStaticCoordinatorState",CoordinatorStatus,"Int32",nullptr,nullptr,0);
         RegisterFunction("GCETStaticLastPlayerError",LastPlayerCode,"Int32",nullptr,nullptr,0);
         const char* radiusNames[]={"radius"};

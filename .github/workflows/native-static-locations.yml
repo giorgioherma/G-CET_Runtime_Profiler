@@ -78,6 +78,19 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'RED4ext plugin build failed' }
           ctest --test-dir build/static-locations -C Release --output-on-failure
           if ($LASTEXITCODE -ne 0) { throw 'Native core tests failed' }
+      - name: Verify read-only attachment identity on actual official CET image
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $archive = Join-Path $env:RUNNER_TEMP 'cet_1.37.1.zip'
+          $release = Join-Path $env:RUNNER_TEMP 'cet-1.37.1-identity'
+          Invoke-WebRequest -Uri 'https://github.com/maximegmd/CyberEngineTweaks/releases/download/v1.37.1/cet_1.37.1.zip' -OutFile $archive
+          if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne '1855017796a27f518199f5b7d7210ef1db7a5c5f0af468c68e04e6e666ad248c') { throw 'Official CET release archive identity mismatch' }
+          Expand-Archive -LiteralPath $archive -DestinationPath $release
+          $asi = @(Get-ChildItem -LiteralPath $release -Recurse -File -Filter 'cyber_engine_tweaks.asi')
+          if ($asi.Count -ne 1) { throw 'Official ASI missing or ambiguous' }
+          & 'build/static-locations/Release/gcet_cet_dispatch_identity_test.exe' $asi[0].FullName
+          if ($LASTEXITCODE -ne 0) { throw 'CET loaded-image identity contract failed' }
       - name: Verify typed native Vector4 ABI in compiled DLL
         shell: pwsh
         run: |
