@@ -92,6 +92,15 @@ public:
         return a;
     }
     bool Matches(Token token) const noexcept {return token&&Current()==token;}
+    // The compiled Clear site already holds exclusive CET ownership. Its
+    // stackless island writes this sentinel without touching registers/flags.
+    // Only a verified new invocation under the shared lock may rearm it.
+    static constexpr uint64_t LockedClearSentinel=std::numeric_limits<uint64_t>::max();
+    void Disable() noexcept {clearDepth_.store(LockedClearSentinel,std::memory_order_release);}
+    bool CompleteLockedClear() noexcept {
+        if(clearDepth_.load(std::memory_order_acquire)!=LockedClearSentinel)return false;
+        Advance();clearDepth_.store(0,std::memory_order_release);return Current()!=0;
+    }
     // Read-only access for a verified x64 machine gate. The epoch remains
     // authoritative here; no separate invalidation mirror.
     const std::atomic<Token>& EpochWord() const noexcept {return epoch_;}

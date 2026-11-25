@@ -19,5 +19,6 @@ public:
     ExistingMutexLease& operator=(const ExistingMutexLease&)=delete;
     ~ExistingMutexLease(){if(handle_)ReleaseSRWLockExclusive(handle_);}
     explicit operator bool()const noexcept{return handle_!=nullptr;}
+    bool Owns(void* handle)const noexcept{return handle_&&handle_==handle;}
 };
 }
