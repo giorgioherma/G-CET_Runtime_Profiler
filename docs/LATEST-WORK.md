@@ -1,3 +1,6 @@
+## 2026-11-25 — Correct lock ABI against exact official image
+- Proof #18 (45609853746) binary lock proof and Windows lease failed: MSVCP140 does not export assumed _Smtx API. #19 (45609983841) exact diagnostic reveals CET's _Smtx_lock_shared at 0x563880 is a direct jump to KERNEL32!AcquireSRWLockShared; unlock at 0x563890 -> ReleaseSRWLockShared, exclusive release 0x563888 -> ReleaseSRWLockExclusive. Pure acquisition 0x108125 uses RCX loaded from singleton slot 0x6dd930 then ADD RCX,0x100. Correct analyzer to prove actual Windows SRW imports and ADD or LEA argument shape. Use direct nonblocking TryAcquireSRWLockExclusive and ReleaseSRWLockExclusive on proven existing native handle, not CRT export lookup. Preserve strict path proof and shared reader exclusion tests. CI pending; no live attach.
+
 ## 2026-11-25 — Existing compiled CET admission lock proof and CRT lease
 - Native #82 SUCCESS 2/2 (45606176432), both core and plugin build completed. No production pin.
 - Extend official release/PDB proof to verify concrete std::shared_mutex/_Myhandle layout and actual MSVCP140 _Smtx lock imports, shared acquisition dominates both guard sites, same singleton + member offset and exclusive Clear/Override. Emit exact call contexts for debugging; refuse if structural proof fails.

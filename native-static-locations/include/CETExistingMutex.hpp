@@ -3,35 +3,21 @@
 #include <cstdint>
 
 namespace gcet::cet_dispatch {
-// Install/restore only. The caller must hold a proven lifetime boundary
-// for the original owner and must NOT already own its shared/exclusive lock.
-// Resolve from the same loaded MSVCP140 runtime as the verified CET import.
-// A busy lock fails closed; never block the game thread or add hot-path work.
-struct ExistingMutexApi {
-    using Try=int(__cdecl*)(void*) noexcept;
-    using Unlock=void(__cdecl*)(void*) noexcept;
-    Try tryExclusive=nullptr;
-    Unlock unlockExclusive=nullptr;
-    static ExistingMutexApi Resolve(HMODULE runtime) noexcept {
-        if(!runtime)return {};
-        return {
-            reinterpret_cast<Try>(GetProcAddress(runtime,"_Smtx_try_lock_exclusive")),
-            reinterpret_cast<Unlock>(GetProcAddress(runtime,"_Smtx_unlock_exclusive"))
-        };
-    }
-    explicit operator bool()const noexcept{return tryExclusive&&unlockExclusive;}
-};
+// Install/restore only. Official CET's linked _Smtx_* thunks jump directly
+// to Kernel32 SRW APIs. Caller must prove original owner lifetime and that
+// it does not already own the lock. No waiting or hot-path work here.
 class ExistingMutexLease {
-    ExistingMutexApi api_{};
-    void* handle_=nullptr;
+    PSRWLOCK handle_=nullptr;
 public:
-    ExistingMutexLease(ExistingMutexApi api,void* handle)noexcept:api_(api){
-        if(api&&handle&&reinterpret_cast<uintptr_t>(handle)%alignof(void*)==0&&api.tryExclusive(handle))
-            handle_=handle;
+    explicit ExistingMutexLease(void* handle) noexcept {
+        static_assert(sizeof(SRWLOCK)==sizeof(void*));
+        if(handle&&reinterpret_cast<uintptr_t>(handle)%alignof(SRWLOCK)==0&&
+           TryAcquireSRWLockExclusive(static_cast<PSRWLOCK>(handle)))
+            handle_=static_cast<PSRWLOCK>(handle);
     }
     ExistingMutexLease(const ExistingMutexLease&)=delete;
     ExistingMutexLease& operator=(const ExistingMutexLease&)=delete;
-    ~ExistingMutexLease(){if(handle_)api_.unlockExclusive(handle_);}
+    ~ExistingMutexLease(){if(handle_)ReleaseSRWLockExclusive(handle_);}
     explicit operator bool()const noexcept{return handle_!=nullptr;}
 };
 }

@@ -612,8 +612,10 @@ def lock_proof(pe, matches, layouts, branches, pdb, pdb_path, pdbutil):
     require(mutex["size"] == 8 and mutex["fields"].get("_Myhandle", {}).get("offset") == 0,
             f"unexpected compiled shared mutex ABI: {mutex}")
     offset = lock["offset"]
-    ops = ("_Smtx_lock_shared", "_Smtx_unlock_shared",
-           "_Smtx_lock_exclusive", "_Smtx_unlock_exclusive")
+    ops = {"AcquireSRWLockShared":"_Smtx_lock_shared",
+           "ReleaseSRWLockShared":"_Smtx_unlock_shared",
+           "AcquireSRWLockExclusive":"_Smtx_lock_exclusive",
+           "ReleaseSRWLockExclusive":"_Smtx_unlock_exclusive"}
 
     def operation(ins):
         if not ins.group(CS_GRP_CALL) or not ins.operands:
@@ -635,29 +637,13 @@ def lock_proof(pe, matches, layouts, branches, pdb, pdb_path, pdbutil):
         else:
             return None
         dll, _, name = imported.partition("!")
-        return name if dll.lower() == "msvcp140.dll" and name in ops else None
+        return ops.get(name) if dll.lower() == "kernel32.dll" else None
 
     result = {}
     for name in ("HookRunPureScriptFunction", "HandleOverridenFunction", "Clear", "Override"):
         start, end = pe.function_extent(int(matches[name][0]["rva"],16))
         instructions = list(cs.disasm(pe.read_rva(start,end-start), start))
         by_addr = {i.address:i for i in instructions}
-        if name in branches:
-            g=int(branches[name]["compare_rva"],16)
-            for i in instructions:
-                if i.address>=g:break
-                if i.group(CS_GRP_CALL) and i.operands:
-                    op=i.operands[0]
-                    dest=op.imm if op.type==X86_OP_IMM else None
-                    if dest is not None:
-                        dis=[(hex(x.address),x.mnemonic,x.op_str,
-                             imports.get(x.address+x.size+x.operands[0].mem.disp,"")
-                             if x.operands and x.operands[0].type==X86_OP_MEM and x.operands[0].mem.base==X86_REG_RIP else "")
-                             for x in cs.disasm(pe.read_rva(dest,48),dest)]
-                        print("PRE-GUARD CALL",name,hex(i.address),hex(dest),symbols.get(dest,[]),dis,flush=True)
-                    else:
-                        print("PRE-GUARD CALL",name,hex(i.address),i.op_str,flush=True)
-            print("PRE-GUARD CODE",name,[(hex(i.address),i.mnemonic,i.op_str) for i in instructions if i.address<g],flush=True)
         lock_calls = [(i,operation(i)) for i in instructions if i.group(CS_GRP_CALL)]
         lock_calls = [(i,op) for i,op in lock_calls if op]
         print("LOCK CALLS", name, [(hex(i.address),op) for i,op in lock_calls],flush=True)
@@ -688,9 +674,11 @@ def lock_proof(pe, matches, layouts, branches, pdb, pdb_path, pdbutil):
                     continue
                 if ins.mnemonic=="lea" and src.type==X86_OP_MEM and src.mem.disp==offset and not src.mem.index:
                     lea=ins
+                elif ins.mnemonic=="add" and src.type==X86_OP_IMM and src.imm==offset:
+                    lea=ins
             break
         require(lea is not None,f"{name}: lock argument is not proven member +{offset:#x}")
-        owner_reg=lea.reg_name(lea.operands[1].mem.base)
+        owner_reg=lea.reg_name(lea.operands[1].mem.base if lea.mnemonic=="lea" else lea.operands[0].reg)
         singleton=None
         # Find the last assignment to the base register before the LEA.
         # Report direct RIP-relative owner loads; entry-this for Override

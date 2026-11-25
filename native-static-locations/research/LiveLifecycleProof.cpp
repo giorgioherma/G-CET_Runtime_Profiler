@@ -192,8 +192,7 @@ int main(){
     auto* nativeHandle=admission.native_handle();
     Check(sizeof(admission)==sizeof(void*)&&reinterpret_cast<void*>(nativeHandle)==&admission,
           "MSVC compiled shared mutex ABI differs");
-    auto api=ExistingMutexApi::Resolve(GetModuleHandleW(L"msvcp140.dll"));
-    Check(static_cast<bool>(api),"actual MSVC shared mutex runtime imports unavailable");
+    Check(sizeof(SRWLOCK)==sizeof(admission),"native Windows SRW storage differs");
     std::atomic<bool> held=false,release=false,stop=false;
     std::atomic<unsigned> calls=0;
     std::thread inFlight([&]{
@@ -203,7 +202,7 @@ int main(){
         Check(run(chain.bytes.data())==1,"held dispatch");
     });
     while(!held.load(std::memory_order_acquire))std::this_thread::yield();
-    {ExistingMutexLease lease(api,nativeHandle);Check(!lease,"attachment admitted while dispatch lease held");}
+    {ExistingMutexLease lease(nativeHandle);Check(!lease,"attachment admitted while dispatch lease held");}
     release.store(true,std::memory_order_release);inFlight.join();
     std::vector<std::thread> workers;
     for(int i=0;i<4;++i)workers.emplace_back([&]{
@@ -224,7 +223,7 @@ int main(){
     for(int i=0;i<32;++i){
         for(bool install:{true,false}){
             for(;;){
-                ExistingMutexLease write(api,nativeHandle);
+                ExistingMutexLease write(nativeHandle);
                 if(write){
                     patch.Set(install);
                     Check(install?run(chain.bytes.data())==1:patch.Stock(),"synchronized guard transaction");
@@ -236,12 +235,12 @@ int main(){
             std::this_thread::yield();
         }
     }
-    {ExistingMutexLease lease(api,nativeHandle);Check(static_cast<bool>(lease),"idle original mutex lease");
+    {ExistingMutexLease lease(nativeHandle);Check(static_cast<bool>(lease),"idle original mutex lease");
      std::atomic<bool> blocked=false;
      std::thread challenger([&]{bool got=admission.try_lock_shared();blocked=!got;if(got)admission.unlock_shared();});
-     challenger.join();Check(blocked,"exclusive CRT lease failed to block compiled shared reader");}
+     challenger.join();Check(blocked,"exclusive SRW lease failed to block compiled shared reader");}
     Check(admission.try_lock(),"original mutex not released by adapter");admission.unlock();
-    std::cout<<"Actual MSVC CRT exclusive lease interoperates with compiled shared_mutex, busy refusals="<<busy<<" PASS\n";
+    std::cout<<"Actual Windows SRW exclusive lease interoperates with compiled shared_mutex, busy refusals="<<busy<<" PASS\n";
     stop.store(true,std::memory_order_release);
     for(auto& t:workers)t.join();
     // Only after admission is closed and all users joined is metadata/code
