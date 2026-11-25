@@ -24,9 +24,48 @@ struct View {
     void* value=nullptr;
     ~View(){if(value)UnmapViewOfFile(value);}
 };
+static void CheckOwnerContract(){
+    using namespace gcet::cet_dispatch;
+    struct Allocation {
+        void* p=nullptr;
+        ~Allocation(){if(p)VirtualFree(p,0,MEM_RELEASE);}
+    } image{VirtualAlloc(nullptr,0x6de000,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE)},
+      owner{VirtualAlloc(nullptr,OwnerLayout::CETSize,MEM_RESERVE|MEM_COMMIT,PAGE_READWRITE)};
+    Check(image.p&&owner.p,"owner snapshot fixture allocation");
+    auto* bytes=static_cast<uint8_t*>(image.p);
+    auto* data=static_cast<uint8_t*>(owner.p);
+    const auto root=reinterpret_cast<uintptr_t>(data);
+    auto word=[](uint8_t* at,uintptr_t v){std::memcpy(at,&v,sizeof(v));};
+    Check(InspectOwnerSnapshot(nullptr)==OwnerStatus::ReadFailure,"null owner image");
+    Check(InspectOwnerSnapshot(bytes)==OwnerStatus::NotInitialized,"empty owner slots");
+    word(bytes+OwnerLayout::RootSlot,root);
+    Check(InspectOwnerSnapshot(bytes)==OwnerStatus::NotInitialized,"partially published owner");
+    word(bytes+OwnerLayout::OverrideSlot,root+OwnerLayout::OverrideOffset);
+    word(data+OwnerLayout::OverrideOffset+OwnerLayout::ScriptingBackPointer,root+OwnerLayout::ScriptingOffset);
+    Check(InspectOwnerSnapshot(bytes)==OwnerStatus::NotInitialized,"startup incomplete");
+    data[OwnerLayout::StartupMarker]=1;
+    Check(InspectOwnerSnapshot(bytes)==OwnerStatus::ReadySnapshot,"coherent compiled layout");
+    data[OwnerLayout::StartupMarker]=2;
+    Check(InspectOwnerSnapshot(bytes)==OwnerStatus::Inconsistent,"invalid startup bool");
+    data[OwnerLayout::StartupMarker]=1;
+    word(bytes+OwnerLayout::OverrideSlot,root+OwnerLayout::OverrideOffset+8);
+    Check(InspectOwnerSnapshot(bytes)==OwnerStatus::Inconsistent,"foreign override owner");
+    word(bytes+OwnerLayout::OverrideSlot,root+OwnerLayout::OverrideOffset);
+    word(data+OwnerLayout::OverrideOffset+OwnerLayout::ScriptingBackPointer,root);
+    Check(InspectOwnerSnapshot(bytes)==OwnerStatus::Inconsistent,"foreign scripting back pointer");
+    word(data+OwnerLayout::OverrideOffset+OwnerLayout::ScriptingBackPointer,root+OwnerLayout::ScriptingOffset);
+    DWORD old=0,unused=0;
+    Check(VirtualProtect(data,OwnerLayout::CETSize,PAGE_NOACCESS,&old)!=FALSE,"inaccessible owner fixture");
+    Check(InspectOwnerSnapshot(bytes)==OwnerStatus::ReadFailure,"inaccessible owner accepted");
+    Check(VirtualProtect(data,OwnerLayout::CETSize,old,&unused)!=FALSE,"restore owner fixture");
+    Check(InspectOwnerSnapshot(bytes)==OwnerStatus::ReadySnapshot,"restored owner rejected");
+    std::cout<<"Owner snapshot absent/partial/startup/inconsistent/unreadable/coherent PASS\n";
+}
 int wmain(int argc,wchar_t** argv){
     try {
         Check(CheckLoadedCET()==Identity::Unavailable,"probe must not load missing CET");
+        Check(gcet::cet_dispatch::CheckLoadedOwner()==gcet::cet_dispatch::OwnerStatus::AbsentModule,"owner probe must not load CET");
+        CheckOwnerContract();
         if(argc==1){std::cout<<"Absent-module probe PASS\n";return 0;}
         Check(argc==2,"expected exact official ASI path");
         std::filesystem::path path(argv[1]);
@@ -48,6 +87,8 @@ int wmain(int argc,wchar_t** argv){
             <<" disk=0x"<<detail.diskImageBase<<" mapped=0x"<<detail.mappedImageBase
             <<" view=0x"<<reinterpret_cast<uintptr_t>(view.value)<<std::dec<<"\n";
         Check(official==Identity::ExactImage,"official mapped CET identity rejected");
+        Check(gcet::cet_dispatch::InspectOwnerSnapshot(view.value)==gcet::cet_dispatch::OwnerStatus::NotInitialized,
+              "uninitialized official image falsely ready");
         Check(CheckImage(path,nullptr)==Identity::LoadedCodeMismatch,"invalid loaded image accepted");
         // Independent scratch copy of the image header and all inspected code.
         // Deliberately do not write to the release mapping or a loaded module.

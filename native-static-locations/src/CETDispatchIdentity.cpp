@@ -69,6 +69,42 @@ bool EqualMapped(const void* mapped,uint32_t rva,const unsigned char* expected,s
     }
     return true;
 }
+template<class T> bool ReadProcessValue(uintptr_t address,T& value) noexcept {
+    if(!address||address>UINTPTR_MAX-sizeof(T))return false;
+    SIZE_T read=0;
+    return ReadProcessMemory(GetCurrentProcess(),reinterpret_cast<const void*>(address),
+                             &value,sizeof(T),&read)!=FALSE&&read==sizeof(T);
+}
+bool WritableOwnerRange(uintptr_t address,size_t size) noexcept {
+    if(!address||address>UINTPTR_MAX-size)return false;
+    MEMORY_BASIC_INFORMATION mbi{};
+    if(VirtualQuery(reinterpret_cast<const void*>(address),&mbi,sizeof(mbi))!=sizeof(mbi))return false;
+    const auto start=reinterpret_cast<uintptr_t>(mbi.BaseAddress);
+    return mbi.State==MEM_COMMIT&&mbi.Type==MEM_PRIVATE&&mbi.Protect==PAGE_READWRITE&&
+           address>=start&&address-start<=mbi.RegionSize&&size<=mbi.RegionSize-(address-start);
+}
+}
+
+OwnerStatus InspectOwnerSnapshot(const void* verifiedImage) noexcept {
+    const auto base=reinterpret_cast<uintptr_t>(verifiedImage);
+    if(!base||base>UINTPTR_MAX-OwnerLayout::OverrideSlot-sizeof(uintptr_t))return OwnerStatus::ReadFailure;
+    uintptr_t root=0,overrideOwner=0;
+    if(!ReadProcessValue(base+OwnerLayout::RootSlot,root)||
+       !ReadProcessValue(base+OwnerLayout::OverrideSlot,overrideOwner))return OwnerStatus::ReadFailure;
+    if(!root||!overrideOwner)return OwnerStatus::NotInitialized;
+    if((root&7)||root>UINTPTR_MAX-OwnerLayout::CETSize||
+       overrideOwner!=root+OwnerLayout::OverrideOffset)return OwnerStatus::Inconsistent;
+    if(!WritableOwnerRange(root,OwnerLayout::CETSize))return OwnerStatus::ReadFailure;
+    uintptr_t scripting=0,rootAgain=0,overrideAgain=0;
+    uint8_t initialized=0,initializedAgain=0;
+    if(!ReadProcessValue(overrideOwner+OwnerLayout::ScriptingBackPointer,scripting)||
+       !ReadProcessValue(root+OwnerLayout::StartupMarker,initialized)||
+       !ReadProcessValue(base+OwnerLayout::RootSlot,rootAgain)||
+       !ReadProcessValue(base+OwnerLayout::OverrideSlot,overrideAgain)||
+       !ReadProcessValue(root+OwnerLayout::StartupMarker,initializedAgain))return OwnerStatus::ReadFailure;
+    if(root!=rootAgain||overrideOwner!=overrideAgain||initialized!=initializedAgain||
+       scripting!=root+OwnerLayout::ScriptingOffset||initialized>1)return OwnerStatus::Inconsistent;
+    return initialized==1?OwnerStatus::ReadySnapshot:OwnerStatus::NotInitialized;
 }
 
 Identity CheckImage(const std::filesystem::path& file,const void* mappedImage,ProbeDetail* detail) noexcept {
@@ -152,6 +188,21 @@ Identity CheckImage(const std::filesystem::path& file,const void* mappedImage,Pr
         stage("verified");
         return Identity::ExactImage;
     }catch(...){return Identity::ReadFailure;}
+}
+
+OwnerStatus CheckLoadedOwner() noexcept {
+    try {
+        ModuleRef module;
+        if(!GetModuleHandleExW(0,L"cyber_engine_tweaks.asi",&module.value))
+            return OwnerStatus::AbsentModule;
+        wchar_t path[32768];
+        DWORD count=GetModuleFileNameW(module.value,path,static_cast<DWORD>(std::size(path)));
+        if(!count||count>=std::size(path))return OwnerStatus::ReadFailure;
+        const auto identity=CheckImage(std::filesystem::path(std::wstring(path,count)),module.value);
+        if(identity!=Identity::ExactImage)
+            return identity==Identity::ReadFailure?OwnerStatus::ReadFailure:OwnerStatus::UnsupportedImage;
+        return InspectOwnerSnapshot(module.value);
+    }catch(...){return OwnerStatus::ReadFailure;}
 }
 
 Identity CheckLoadedCET() noexcept {

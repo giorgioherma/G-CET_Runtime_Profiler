@@ -425,6 +425,12 @@ namespace {
         f->code++;
         *out=static_cast<int32_t>(gcet::cet_dispatch::CheckLoadedCET());
     }
+    // Explicit owner-layout/startup snapshot only. This does not authorize
+    // attachment or acquire the CET lock (the caller may already hold it).
+    void CETOwnerProbe(RED4ext::IScriptable*,RED4ext::CStackFrame* f,int32_t* out,int64_t) {
+        f->code++;
+        *out=static_cast<int32_t>(gcet::cet_dispatch::CheckLoadedOwner());
+    }
     template <typename T>
     void RegisterFunction(const char* name, RED4ext::ScriptingFunction_t<T> handler,
                           const char* outType, const char* const* paramNames,
@@ -446,6 +452,7 @@ namespace {
         const char* intTypes[]={"Int32"};
         RegisterFunction("GCETStaticReady",Ready,"Bool",nullptr,nullptr,0);
         RegisterFunction("GCETCETDispatchProbe",CETDispatchProbe,"Int32",nullptr,nullptr,0);
+        RegisterFunction("GCETCETOwnerProbe",CETOwnerProbe,"Int32",nullptr,nullptr,0);
         RegisterFunction("GCETStaticCoordinatorState",CoordinatorStatus,"Int32",nullptr,nullptr,0);
         RegisterFunction("GCETStaticLastPlayerError",LastPlayerCode,"Int32",nullptr,nullptr,0);
         const char* radiusNames[]={"radius"};

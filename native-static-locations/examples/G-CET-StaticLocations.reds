@@ -98,3 +98,6 @@ public native func GCETPlayerPositionEngineReads() -> Int64;
 // loaded image/ranges, 0 absent, -1 foreign file, -2 changed loaded code,
 // -3 read failure. No hook installed and no gameplay optimization implied.
 public native func GCETCETDispatchProbe() -> Int32;
+// 1 coherent owner snapshot, 2 not initialized, 0 absent; -1 unsupported image,
+// -2 read failure, -3 inconsistent. No lifetime lease or hook permission.
+public native func GCETCETOwnerProbe() -> Int32;

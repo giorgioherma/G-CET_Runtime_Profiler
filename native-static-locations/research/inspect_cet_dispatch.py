@@ -851,14 +851,26 @@ def owner_layout_proof(pe, pdb, pdb_path, pdbutil, layouts, locks):
                     record = {"symbol": name, "rva": hex(rva)}
                     if record not in slot_candidates:
                         slot_candidates.append(record)
-    require(all(int(x["rva"],16)==slot for x in slot_candidates),
-            "PDB FunctionOverride singleton disagrees with compiled dispatch")
+    require(len(root_candidates)==1 and len(slot_candidates)==1 and
+            int(slot_candidates[0]["rva"],16)==slot,
+            "unique compiled root and override singleton data identity not proven")
     initialized = vm["fields"].get("m_initialized")
     require(initialized is not None and initialized["type"].startswith("0x0030"),
             "LuaVM startup-complete marker is not a compiled bool")
     init_offset = chain[0][0]["fields"]["m_vm"]["offset"] + initialized["offset"]
     require(initialized["offset"] < vm["size"] and init_offset < owner["size"],
             "startup-complete marker outside embedded LuaVM")
+    # Cross-check the exact constants consumed by the actual native owner probe.
+    native_header = Path(__file__).resolve().parent.parent / "include" / "CETDispatchIdentity.hpp"
+    native_text = native_header.read_text(encoding="utf-8")
+    expected = {"RootSlot": int(root_candidates[0]["pointer_rva"],16),
+                "OverrideSlot": slot, "CETSize": owner["size"],
+                "ScriptingOffset": sum(x["offset"] for x in members[:2]),
+                "OverrideOffset": relative, "MutexOffset": lock_offset,
+                "ScriptingBackPointer": back["offset"], "StartupMarker": init_offset}
+    for key,value in expected.items():
+        found = re.findall(r"static constexpr uint32_t\s+"+key+r"\s*=\s*(0x[0-9a-fA-F]+|[0-9]+)\s*;", native_text)
+        require(len(found)==1 and int(found[0],0)==value, f"native owner constant mismatch: {key}")
     return {"startup_marker_cet_offset": init_offset,
             "startup_marker_vm_offset": initialized["offset"],
             "root_singleton_candidates": root_candidates,
