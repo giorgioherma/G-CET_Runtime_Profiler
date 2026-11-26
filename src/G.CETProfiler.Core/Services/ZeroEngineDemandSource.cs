@@ -288,6 +288,256 @@ internal static class ZeroEngineDemandSource
         next=plain;return true;
     }
 
+    private const string ExactEulerHelperName="__gcetReadExactPositionEuler";
+    private const string ExactEulerState="local __gcetExactEulerNative, __gcetExactEulerResolved";
+    private const string ExactEulerHelper="""
+-- G-CET exact position/Euler ordered producer v1
+local function __gcetReadExactPositionEuler(receiver, yawOnly)
+    if not __gcetExactEulerResolved then
+        __gcetExactEulerResolved = true
+        local ok, fn = pcall(function() return Game.GCETReadPlayerPositionEulerV1 end)
+        if ok and type(fn) == "function" then __gcetExactEulerNative = fn end
+    end
+    local position, angles
+    if __gcetExactEulerNative then
+        local status, p, e = __gcetExactEulerNative(receiver)
+        if status == 1 then
+            if p == nil or e == nil then error("G-CET exact Euler result invalid", 0) end
+            position, angles = p, e
+        elseif status ~= 0 then
+            error("G-CET exact Euler read failed", 0)
+        end
+        -- Unsupported is guaranteed to precede the first engine read.
+    end
+    if position == nil then
+        position = receiver:GetWorldPosition()
+        angles = receiver:GetWorldOrientation():ToEulerAngles()
+    end
+    if yawOnly then return position, angles.yaw end
+    return position, angles
+end
+""";
+    private static readonly Regex EulerStockPair=new(
+        @"(?m)^(?<indent>[ \t]*)local[ \t]+(?<p>[A-Za-z_]\w*)[ \t]*=[ \t]*(?<r>[A-Za-z_]\w*)\s*:\s*GetWorldPosition\(\)[ \t]*\r?\n\k<indent>local[ \t]+(?<e>[A-Za-z_]\w*)[ \t]*=[ \t]*\k<r>\s*:\s*GetWorldOrientation\(\)\s*:\s*ToEulerAngles\(\)(?<yaw>\s*\.yaw)?[ \t]*(?=\r?$)",
+        RegexOptions.CultureInvariant);
+    private static readonly Regex EulerGeneratedPair=new(
+        @"(?m)^(?<indent>[ \t]*)local[ \t]+(?<p>[A-Za-z_]\w*),[ \t]*(?<e>[A-Za-z_]\w*)[ \t]*=[ \t]*"+ExactEulerHelperName+@"\((?<r>[A-Za-z_]\w*),[ \t]*(?<yaw>true|false)\)[ \t]*(?=\r?$)",
+        RegexOptions.CultureInvariant);
+    // The local binding must still exist at the second read and cannot
+    // have been captured by any intervening closure. Balanced intervening
+    // blocks are allowed, but never movement of either getter past them.
+    private static bool StableLocalPlayer(string code,int at,string name,bool sharedGetter)
+    {
+        var id=Regex.Escape(name);
+        var origin=Regex.Matches(code[..at],@"(?m)^[ \t]*local[ \t]+"+id+
+            @"[ \t]*=[ \t]*(?:Game\s*\.\s*GetPlayer"+(sharedGetter?"|__gcetGetPlayer":"")+
+            @")\s*\(\s*\)[ \t]*(?=\r?$)");
+        if(origin.Count==0)return false;
+        var last=origin[^1];
+        var between=code[(last.Index+last.Length)..at];
+        if(Regex.IsMatch(between,@"\b(?:function|goto)\b|::|(?<![\w.])"+id+
+            @"\s*(?:,\s*[A-Za-z_]\w*)*\s*=(?!=)|\blocal\s+"+id+@"\b"))return false;
+        var stack=new Stack<string>();
+        bool awaitingDo=false;
+        foreach(Match token in Regex.Matches(between,@"\b(?:if|for|while|repeat|do|until|end|else|elseif)\b"))
+        {
+            switch(token.Value)
+            {
+                case "if":stack.Push("if");break;
+                case "for":case "while":
+                    if(awaitingDo)return false;
+                    stack.Push("loop");awaitingDo=true;break;
+                case "do":
+                    if(awaitingDo)awaitingDo=false;else stack.Push("do");
+                    break;
+                case "repeat":stack.Push("repeat");break;
+                case "until":if(stack.Count==0||stack.Pop()!="repeat")return false;break;
+                case "end":if(stack.Count==0||stack.Pop()=="repeat"||awaitingDo)return false;break;
+                case "else":case "elseif":if(stack.Count==0||stack.Peek()!="if")return false;break;
+            }
+        }
+        return stack.Count==0&&!awaitingDo;
+    }
+    // Preserve the position of an existing helper relative to other
+    // independently generated provider headers. Known partial fragments
+    // are composed in this same generation, never a corrective pass.
+    private static bool RemoveKnownHeader(ref string source,string state,string helper,
+        string slot,out bool present)
+    {
+        present=false;
+        if(source.Contains(slot,StringComparison.Ordinal))return false;
+        var parts=new[]{Newlines(source,state+"\n"),Newlines(source,helper+"\n\n")};
+        var found=new List<(int At,string Value)>();
+        foreach(var part in parts)
+        {
+            var count=Count(source,part);
+            if(count>1)return false;
+            if(count==1)found.Add((source.IndexOf(part,StringComparison.Ordinal),part));
+        }
+        if(found.Count==0)return true;
+        present=true;
+        var first=found.Min(x=>x.At);
+        foreach(var part in found.OrderByDescending(x=>x.At))
+            source=source.Remove(part.At,part.Value.Length);
+        source=source.Insert(first,slot);
+        return true;
+    }
+    private static bool IsCodeSpan(string code,Match m,Regex shape)=>
+        shape.IsMatch(code.Substring(m.Index,m.Length));
+    internal static bool TryComposeExactPosePairs(string source,bool enabled,out string next,out int sites)
+    {
+        next=source;sites=0;
+        const string slot="-- G-CET exact Euler insertion slot\n";
+        if(!enabled&&!source.Contains(ExactEulerHelperName,StringComparison.Ordinal)&&
+            !source.Contains(ExactEulerState,StringComparison.Ordinal))return false;
+        var candidate=source;
+        if(!RemoveKnownHeader(ref candidate,ExactEulerState,ExactEulerHelper,slot,out var hasHeader))
+            return false;
+        var code=MaskLuaTrivia(candidate);
+        // Normalize only the exact known generated pair shape; retain any
+        // unrecognized custom helper or collision untouched.
+        var generated=EulerGeneratedPair.Matches(candidate).Cast<Match>().Where(m=>
+            IsCodeSpan(code,m,EulerGeneratedPair)).ToArray();
+        var b=new StringBuilder(candidate);
+        foreach(var m in generated.Reverse())
+        {
+            string G(string k)=>m.Groups[k].Value;
+            b.Remove(m.Index,m.Length).Insert(m.Index,G("indent")+"local "+G("p")+" = "+G("r")+
+                ":GetWorldPosition()"+Newlines(source,"\n")+G("indent")+"local "+G("e")+" = "+G("r")+
+                ":GetWorldOrientation():ToEulerAngles()"+(G("yaw")=="true"?".yaw":""));
+        }
+        candidate=b.ToString();
+        code=MaskLuaTrivia(candidate);
+        if(Regex.IsMatch(code,@"\b(?:__gcetReadExactPositionEuler|__gcetExactEulerNative|__gcetExactEulerResolved)\b"))
+            return false;
+        if(enabled)
+        {
+            // Local Game bindings or replacement of the facade are unknown.
+            if(Regex.IsMatch(code,@"\blocal\s+Game\b|\bGame\s*(?:\.\s*GetPlayer\s*)?=(?!=)|\bfunction[^\(\r\n]*\([^)]*\bGame\b[^)]*\)"))
+                return false;
+            var sharedGetter=candidate.Contains("-- G-CET shared provider: PLAYER",StringComparison.Ordinal)&&
+                Regex.Matches(code,@"\blocal\s+function\s+__gcetGetPlayer\(\)[\s\S]*?return\s+Game\.GetPlayer\(\)\s*end").Count==1;
+            // The source match itself must be code, not quoted or commented
+            // text. Match original text too so no author comment is deleted.
+            var pairs=EulerStockPair.Matches(candidate).Cast<Match>().Where(m=>
+                IsCodeSpan(code,m,EulerStockPair)&&
+                new[]{"p","e","r"}.Select(k=>m.Groups[k].Value).Distinct(StringComparer.Ordinal).Count()==3&&
+                StableLocalPlayer(code,m.Index,m.Groups["r"].Value,sharedGetter)).ToArray();
+            b=new StringBuilder(candidate);
+            foreach(var m in pairs.Reverse())
+            {
+                string G(string k)=>m.Groups[k].Value;
+                b.Remove(m.Index,m.Length).Insert(m.Index,G("indent")+"local "+G("p")+", "+G("e")+" = "+
+                    ExactEulerHelperName+"("+G("r")+", "+(m.Groups["yaw"].Success?"true":"false")+")");
+            }
+            candidate=b.ToString();sites=pairs.Length;
+        }
+        var header=sites>0?Newlines(source,ExactEulerState+"\n"+ExactEulerHelper+"\n\n"):"";
+        candidate=hasHeader?candidate.Replace(slot,header,StringComparison.Ordinal):header+candidate;
+        next=candidate;
+        if(next==source){sites=0;return false;}
+        return true;
+    }
+
+    private const string PsmBatchName="__gcetReadPsmBatch";
+    private const string PsmBatchState="local __gcetPsmBatchInt, __gcetPsmBatchBool, __gcetPsmBatchResolved";
+    private const string PsmBatchHelper="""
+-- G-CET ordered PSM reads v1
+local function __gcetReadPsmBatch(board, k1, k2, k3, k4, lastBool)
+    if not __gcetPsmBatchResolved then
+        __gcetPsmBatchResolved = true
+        local ok, fn = pcall(function() return Game.GCETReadBlackboard4IntV1 end)
+        if ok and type(fn) == "function" then __gcetPsmBatchInt = fn end
+        ok, fn = pcall(function() return Game.GCETReadBlackboard3IntBoolV1 end)
+        if ok and type(fn) == "function" then __gcetPsmBatchBool = fn end
+    end
+    local fn
+    if lastBool then fn = __gcetPsmBatchBool else fn = __gcetPsmBatchInt end
+    if fn then
+        local status, a, b, c, d = fn(board, k1, k2, k3, k4)
+        if status == 1 then
+            if type(a) ~= "number" or type(b) ~= "number" or type(c) ~= "number" or
+                (lastBool and type(d) ~= "boolean") or
+                (not lastBool and type(d) ~= "number") then
+                error("G-CET typed PSM result invalid", 0)
+            end
+            return a, b, c, d
+        end
+        if status ~= 0 then error("G-CET typed PSM read failed", 0) end
+    end
+    local a = board:GetInt(k1)
+    local b = board:GetInt(k2)
+    local c = board:GetInt(k3)
+    if lastBool then return a, b, c, board:GetBool(k4) end
+    return a, b, c, board:GetInt(k4)
+end
+""";
+    private const string PsmFieldRead=@"(?<name>[A-Za-z_]\w*)[ \t]*=[ \t]*playerBB:(?<getter>GetInt|GetBool)\(\s*__gcetPsmFields\.(?<field>[A-Za-z_]\w*)\s*\)";
+    private static Regex PsmStockGroup()=>new(@"(?m)^(?<indent>[ \t]*)local[ \t]+"+PsmFieldRead+
+        @"[ \t]*\r?\n\k<indent>local[ \t]+"+PsmFieldRead+
+        @"[ \t]*\r?\n\k<indent>local[ \t]+"+PsmFieldRead+
+        @"[ \t]*\r?\n\k<indent>local[ \t]+"+PsmFieldRead+@"[ \t]*(?=\r?$)");
+    private static readonly Regex PsmGeneratedGroup=new(
+        @"(?m)^(?<indent>[ \t]*)local[ \t]+(?<name>[A-Za-z_]\w*),[ \t]*(?<name>[A-Za-z_]\w*),[ \t]*(?<name>[A-Za-z_]\w*),[ \t]*(?<name>[A-Za-z_]\w*)[ \t]*=[ \t]*"+
+        PsmBatchName+@"\(playerBB, __gcetPsmFields\.(?<field>[A-Za-z_]\w*), __gcetPsmFields\.(?<field>[A-Za-z_]\w*), __gcetPsmFields\.(?<field>[A-Za-z_]\w*), __gcetPsmFields\.(?<field>[A-Za-z_]\w*), (?<bool>true|false)\)[ \t]*(?=\r?$)");
+    // Called by the existing PSM owner before its complete immutable-key
+    // ownership proof, then after that proof to compose the native variant.
+    // No mutable value is cached and no read/event is moved across a phase.
+    internal static bool TryNormalizePsmBatches(string source,out string plain)
+    {
+        plain=source;
+        const string slot="-- G-CET PSM insertion slot\n";
+        var candidate=source;
+        if(!RemoveKnownHeader(ref candidate,PsmBatchState,PsmBatchHelper,slot,out var hadHeader))
+            return false;
+        var code=MaskLuaTrivia(candidate);
+        var groups=PsmGeneratedGroup.Matches(candidate).Cast<Match>().Where(m=>
+            IsCodeSpan(code,m,PsmGeneratedGroup)).ToArray();
+        var b=new StringBuilder(candidate);
+        foreach(var m in groups.Reverse())
+        {
+            var names=m.Groups["name"].Captures;var fields=m.Groups["field"].Captures;
+            var indent=m.Groups["indent"].Value;
+            var lastBool=m.Groups["bool"].Value=="true";
+            var lines=Enumerable.Range(0,4).Select(i=>indent+"local "+names[i].Value+
+                " = playerBB:"+(i==3&&lastBool?"GetBool":"GetInt")+"(__gcetPsmFields."+fields[i].Value+")");
+            b.Remove(m.Index,m.Length).Insert(m.Index,string.Join(Newlines(source,"\n"),lines));
+        }
+        candidate=b.ToString();
+        if(Regex.IsMatch(MaskLuaTrivia(candidate),@"\b(?:__gcetReadPsmBatch|__gcetPsmBatchInt|__gcetPsmBatchBool|__gcetPsmBatchResolved)\b"))
+            return false;
+        plain=hadHeader?candidate.Replace(slot,"",StringComparison.Ordinal):candidate;
+        return true;
+    }
+    internal static bool TryComposePsmBatches(string plain,out string next,out int batches)
+    {
+        next=plain;batches=0;
+        var code=MaskLuaTrivia(plain);
+        if(Regex.IsMatch(code,@"\b(?:__gcetReadPsmBatch|__gcetPsmBatchInt|__gcetPsmBatchBool|__gcetPsmBatchResolved|local\s+Game)\b|\bGame\s*=(?!=)"))return false;
+        var start=Regex.Matches(code,@"(?m)^function[ \t]+BlackboardCache\.Update\s*\(\s*player\s*\)[ \t]*(?=\r?$)");
+        if(start.Count!=1)return false;
+        var end=Regex.Match(code[start[0].Index..],@"(?m)^end[ \t]*(?=\r?$)");
+        if(!end.Success)return false;
+        var shape=PsmStockGroup();
+        var matches=shape.Matches(plain).Cast<Match>().Where(m=>
+            m.Index>start[0].Index&&m.Index+m.Length<start[0].Index+end.Index&&
+            IsCodeSpan(code,m,shape)&&m.Groups["getter"].Captures.Take(3).All(g=>g.Value=="GetInt")&&
+            m.Groups["name"].Captures.Select(g=>g.Value).Distinct().Count()==4&&
+            m.Groups["field"].Captures.Select(g=>g.Value).Distinct().Count()==4).ToArray();
+        if(matches.Length==0)return false;
+        var b=new StringBuilder(plain);
+        foreach(var m in matches.Reverse())
+        {
+            var names=m.Groups["name"].Captures.Select(g=>g.Value);
+            var fields=m.Groups["field"].Captures.Select(g=>"__gcetPsmFields."+g.Value);
+            var lastBool=m.Groups["getter"].Captures[3].Value=="GetBool";
+            b.Remove(m.Index,m.Length).Insert(m.Index,m.Groups["indent"].Value+"local "+string.Join(", ",names)+
+                " = "+PsmBatchName+"(playerBB, "+string.Join(", ",fields)+", "+(lastBool?"true":"false")+")");
+        }
+        b.Insert(start[0].Index,Newlines(plain,PsmBatchState+"\n"+PsmBatchHelper+"\n\n"));
+        next=b.ToString();batches=matches.Length;return true;
+    }
+
     internal const string SpatialHostPath="0-Engine/modules/GCETNativeLocationHost.lua";
     private const string SpatialArmHelper="""
 -- G-CET explicit coarse spatial freshness v1

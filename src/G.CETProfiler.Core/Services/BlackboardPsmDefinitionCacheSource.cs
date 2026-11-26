@@ -235,7 +235,7 @@ internal static class BlackboardPsmDefinitionCacheSource
         Dictionary<string, byte[]> staged,
         Dictionary<string, int> appliedTransformsByFile,
         List<object> transformManifest,
-        List<object> skipped)
+        List<object> skipped,bool typedNativeAvailable=false)
     {
         var livePath = Path.Combine(modsRoot, "0-Engine", "modules",
             "BlackboardCache2.lua");
@@ -247,18 +247,36 @@ internal static class BlackboardPsmDefinitionCacheSource
         // Historical capture established the benefit. Admission for updated
         // sources is governed by the complete 12-key source/lifecycle proof,
         // not by captured line numbers or current-session activity.
-        if (!TryTransform(current, out var transformed, out var reason))
+        if(!ZeroEngineDemandSource.TryNormalizePsmBatches(Encoding.UTF8.GetString(current),out var plain))
         {
-            if (reason != "ALREADY_SATISFIED")
-                skipped.Add(new { type = "SEMANTIC_RULE",
-                    Owner = "0-Engine", RuleId = "0engine-psm-definitions-cache-stage-a",
-                    reason });
+            skipped.Add(new{type="NATIVE_PSM_ORDERED_READS",file=Relative,reason="Unknown generated batch ownership"});
             return false;
         }
+        var baseline=Encoding.UTF8.GetBytes(plain);
+        var keysChanged=TryTransform(baseline,out var transformed,out var reason);
+        if(!keysChanged&&reason!="ALREADY_SATISFIED")
+        {
+            skipped.Add(new {type="SEMANTIC_RULE",Owner="0-Engine",
+                RuleId="0engine-psm-definitions-cache-stage-a",reason});
+            return false;
+        }
+        var batches=0;
+        if(typedNativeAvailable&&ZeroEngineDemandSource.TryComposePsmBatches(
+            Encoding.UTF8.GetString(transformed),out var combined,out batches))
+        {
+            if(LuaLocalBudgetAnalyzer.Analyze(combined).MaxActiveLocals<=LuaLocalBudgetAnalyzer.Limit)
+                transformed=Encoding.UTF8.GetBytes(combined);
+            else
+            {
+                batches=0;
+                skipped.Add(new{type="NATIVE_PSM_ORDERED_READS",file=Relative,reason="LUA_LOCAL_LIMIT"});
+            }
+        }
+        if(current.AsSpan().SequenceEqual(transformed))return false;
         staged[Relative] = transformed;
         appliedTransformsByFile[Relative] =
             appliedTransformsByFile.GetValueOrDefault(Relative)+1;
-        transformManifest.Add(new
+        if(keysChanged)transformManifest.Add(new
         {
             type = "SEMANTIC_RULE",
             RuleId = "0engine-psm-definitions-cache-stage-a",
@@ -272,6 +290,12 @@ internal static class BlackboardPsmDefinitionCacheSource
             nativeMethodCaching = false,
             callbackOrCadenceChanged = false,
             gameplayVerification = "PENDING"
+        });
+        if(batches>0)transformManifest.Add(new{
+            type="NATIVE_PSM_ORDERED_READS",file=Relative,sourceProof=true,batches,
+            originalReads=batches*4,typedCrossings=batches,mutableValueCache=false,
+            originalReadOrderPreserved=true,callbackOrCadenceChanged=false,
+            runtimePerformance="NOT_MEASURED"
         });
         return true;
     }

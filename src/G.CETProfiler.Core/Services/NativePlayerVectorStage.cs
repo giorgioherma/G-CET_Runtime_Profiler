@@ -221,7 +221,7 @@ end
     internal static int TryStage(string modsRoot,
         Dictionary<string,byte[]> staged,
         Dictionary<string,int> appliedTransformsByFile,
-        List<object> transformManifest,List<object> skipped)
+        List<object> transformManifest,List<object> skipped,bool typedPositionEuler=false)
     {
         var root=Path.GetFullPath(modsRoot);
         var prefix=root.TrimEnd(Path.DirectorySeparatorChar)+Path.DirectorySeparatorChar;
@@ -257,7 +257,18 @@ end
                     skipped.Add(new{type="NATIVE_PLAYER_POSITION_FRAME_DISPLAY",file=key,reason="LUA_LOCAL_LIMIT"});
                 }
             }
-            if(!liveChanged&&!displayChanged)continue;
+            var pairChanged=ZeroEngineDemandSource.TryComposeExactPosePairs(result,typedPositionEuler,out var posePairs,out var pairSites);
+            if(pairChanged)
+            {
+                if(LuaLocalBudgetAnalyzer.Analyze(posePairs).MaxActiveLocals<=LuaLocalBudgetAnalyzer.Limit)
+                    result=posePairs;
+                else
+                {
+                    pairChanged=false;
+                    skipped.Add(new{type="NATIVE_EXACT_POSITION_EULER",file=key,reason="LUA_LOCAL_LIMIT"});
+                }
+            }
+            if(!liveChanged&&!displayChanged&&!pairChanged)continue;
             if(LuaLocalBudgetAnalyzer.Analyze(result).MaxActiveLocals>
                LuaLocalBudgetAnalyzer.Limit)
             {
@@ -271,7 +282,7 @@ end
             staged[key]=bytes;
             // A display upgrade of an existing live helper is one additional
             // transform; stock direct replacements are already counted.
-            var changes=count>0?count:1;
+            var changes=count+(displayChanged&&count==0?1:0)+(pairChanged?Math.Max(1,pairSites):0);
             appliedTransformsByFile[key]=appliedTransformsByFile.GetValueOrDefault(key)+changes;
             if(count>0)transformManifest.Add(new {
                 type="NATIVE_PLAYER_VECTOR_LIVE", contract=Contract,file=key,
@@ -291,6 +302,14 @@ end
                 freshness="READ_ONLY_DISPLAY_FRAME_SAMPLE_NOT_EXACT_GAMEPLAY",
                 originalFallback="EXISTING_STRICT_LIVE_HELPER",runtimePerformance="NOT_MEASURED",
                 addsRecurringProducer=false
+            });
+            if(pairChanged)transformManifest.Add(new{
+                type="NATIVE_EXACT_POSITION_EULER",file=key,sourceProof=true,
+                exactPairs=pairSites,backend=typedPositionEuler?"EXISTING_ORDERED_NATIVE_POSE":"AUTHOR_EXACT_READS",
+                engineReadsPerPairUnchanged=3,originalGetterOrderPreserved=true,
+                nativeCrossingsPerPair=typedPositionEuler?1:3,
+                coarseSpatialDonation=typedPositionEuler,
+                runtimePerformance="NOT_MEASURED",addsRecurringProducer=false
             });
             applied+=changes;
         }

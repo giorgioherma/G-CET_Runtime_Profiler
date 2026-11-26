@@ -170,12 +170,13 @@ public static class PassGeneratorService
         // rewrites before any semantic source injection.
         // Explicitly reviewed 0-Engine Stage A: the 12 immutable PSM
         // definition keys, not the blackboard handle/getters/callback cadence.
-        // Requires all 12 allocation-producing callsites in the active capture,
-        // exact source hash and author lifecycle anchors; unknown source fails
-        // closed. This is independent of the 62 per-mod semantic catalog.
+        // Historical evidence and current definition/lifecycle proof.
+        // Optional existing native ordered reads preserve all 12 state
+        // acquisitions and original transition publication phase.
         if (BlackboardPsmDefinitionCacheSource.TryStage(
                 captureRoot, modsRoot, staged,
-                appliedTransformsByFile, transformManifest, skipped))
+                appliedTransformsByFile, transformManifest, skipped,
+                effectiveRuntime.Native?.HasTypedBlackboardRead == true))
             ++genericInfrastructureTransformCount;
 
         // Reviewed 0-Engine same-update allocation batch. Independent exact
@@ -218,7 +219,7 @@ public static class PassGeneratorService
         // the direct chain would be hidden inside __gcetGetPlayer().
         var nativePlayerVectorCount=NativePlayerVectorStage.TryStage(
             modsRoot,staged,appliedTransformsByFile,
-            transformManifest,skipped);
+            transformManifest,skipped,effectiveRuntime.Native?.HasTypedPositionEuler == true);
 
         // Hotscenes personal opt-in was already applied before captured generic
         // dispatch, so local capacity is available on the FIRST generation.
