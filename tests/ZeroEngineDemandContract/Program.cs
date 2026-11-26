@@ -372,6 +372,13 @@ return UpdateFrame
     Check(!ZeroEngineDemandSource.TrySharedSpatialHost(spatialSource.Replace(
         "assert(native(\"GCETStaticArm\",key,true)==true)","customArm(key)"),true,out _),
         "foreign registration drift must not authorize coarse freshness");
+    Check(!ZeroEngineDemandSource.TrySharedSpatialHost(spatialSource.Replace(
+        "Schedule.Every(0.10,","Schedule.Every(0.01,"),true,out _),
+        "changed host delivery cadence must keep exact acquisition");
+    var commentSpatial="--[=[\nassert(native(\"GCETStaticArm\",key,true)==true)\n]=]\n"+spatialSource;
+    Check(ZeroEngineDemandSource.TrySharedSpatialHost(commentSpatial,true,out var commentShared)&&
+        commentShared.StartsWith(commentSpatial[..commentSpatial.IndexOf("-- G-CET native location host",StringComparison.Ordinal)],StringComparison.Ordinal),
+        "comment-only fake arm must not affect source admission or be rewritten");
     Check(ZeroEngineDemandSource.TryComposePoseReader(typedPose,true,out var sharedPose,true)&&
           sharedPose.Contains("Game.GCETReadSharedPlayerPoseV1"),"shared typed backend upgrade");
     Check(ZeroEngineDemandSource.TryComposePoseReader(sharedPose,true,out var sharedPoseAgain,true)&&
@@ -407,6 +414,15 @@ return UpdateFrame
         Check(ZeroEngineDemandSource.TryStagePose(ref poseStock,new(),false)==1&&
             ZeroEngineDemandSource.TryStagePose(ref poseStock,new(),false)==0,
             "actual private old-bundle downgrade");
+        var actualSharedFiles=poseStock.Files.ToDictionary(x=>x.Key,x=>x.Value,StringComparer.OrdinalIgnoreCase);
+        actualSharedFiles[ZeroEngineDemandSource.SpatialHostPath]=Encoding.UTF8.GetBytes(spatialSource);
+        poseStock=poseStock with{Files=actualSharedFiles};
+        Check(ZeroEngineDemandSource.TryStagePose(ref poseStock,new(),true,true)==1&&
+            Encoding.UTF8.GetString(poseStock.Files[ZeroEngineDemandSource.InitPath]).Contains("GCETReadSharedPlayerPoseV1")&&
+            Encoding.UTF8.GetString(poseStock.Files[ZeroEngineDemandSource.SpatialHostPath]).Contains("GCETStaticArmCoarseSpatialV1"),
+            "actual private untouched host and shared spatial registration compose");
+        Check(ZeroEngineDemandSource.TryStagePose(ref poseStock,new(),true,true)==0,
+            "actual private shared production repeat");
     }
     else
     {

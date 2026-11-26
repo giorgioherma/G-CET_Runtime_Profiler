@@ -311,19 +311,27 @@ end
         const string oldCall="native(\"GCETStaticArm\",key,true)";
         const string newCall="__gcetArmSharedSpatial(key)";
         var armLine=new Regex(@"(?m)^(?<indent>[ \t]*)assert\((?<call>native\(\s*""GCETStaticArm""\s*,\s*key\s*,\s*true\s*\)|__gcetArmSharedSpatial\(\s*key\s*\))\s*==\s*true\)[ \t]*(?=\r?$)",RegexOptions.CultureInvariant);
-        var matches=armLine.Matches(candidate).Cast<Match>().ToArray();
-        // Verify exactly the two author-owned attach paths; don't admit an
-        // additional foreign arm or disable a customized helper.
-        var attach=Regex.Matches(candidate,@"(?m)^function Host:attach\([^\r\n]*\)");
-        var compiled=Regex.Matches(candidate,@"(?m)^function Host:attachCompiled\([^\r\n]*\)");
-        var site=Regex.Matches(candidate,@"(?m)^function Host:attachPerSite\([^\r\n]*\)");
-        if(matches.Length!=2||attach.Count!=1||compiled.Count!=1||site.Count!=1||
-           !(attach[0].Index<matches[0].Index&&matches[0].Index<compiled[0].Index&&
-             compiled[0].Index<matches[1].Index&&matches[1].Index<site[0].Index)||
-           Count(candidate,"local function native(name,...)")!=1||
-           Count(candidate,"function Host.new(engine)")!=1||
-           Count(candidate,"function Host:shutdown()")!=1||
+        var code=MaskLuaTrivia(candidate);
+        var matches=armLine.Matches(candidate).Cast<Match>().Where(m=>
+            code.AsSpan(m.Index+m.Groups["indent"].Length,6).SequenceEqual("assert".AsSpan())).ToArray();
+        // The two registrations must be real code in their respective
+        // lifecycle functions, not a comment/string or assumed file order.
+        // Admission also requires the actual existing 100 ms asynchronous
+        // host delivery contract; faster/custom synchronous hosts remain exact.
+        var attach=Regex.Matches(code,@"(?ms)^function Host:attach\([^\r\n]*\)[ \t]*\r?\n.*?^end[ \t]*(?=\r?$)");
+        var compiled=Regex.Matches(code,@"(?ms)^function Host:attachCompiled\([^\r\n]*\)[ \t]*\r?\n.*?^end[ \t]*(?=\r?$)");
+        bool Owns(Match scope,Match arm)=>arm.Index>scope.Index&&arm.Index+arm.Length<scope.Index+scope.Length;
+        if(matches.Length!=2||attach.Count!=1||compiled.Count!=1||
+           matches.Count(m=>Owns(attach[0],m))!=1||matches.Count(m=>Owns(compiled[0],m))!=1||
+           Count(code,"local function native(name,...)")!=1||
+           Count(code,"function Host.new(engine)")!=1||
+           Count(code,"function Host:shutdown()")!=1||
            Count(candidate,"GCETStaticArmCoarseSpatialV1")!=0)return false;
+        if(enabled&&
+           (Regex.Matches(code,@"\bclient\s*\.\s*Schedule\s*\.\s*Every\s*\(\s*0?\.10*\s*,\s*\{").Count!=1||
+            Regex.Matches(code,@"function\(\)\s*self:step\(\)\s*end").Count!=1||
+            Count(code,"function Host:_tick()")!=1||
+            Count(code,"function Host:step()")!=1))return false;
         var stripped=candidate;
         foreach(var m in matches.Reverse())
             stripped=stripped.Remove(m.Index,m.Length);
@@ -369,7 +377,8 @@ end
             sourceProof=true,nativeReadCountChanged=false,callbackOrCadenceChanged=false,
             backend=share?"EXPERIMENTAL_EXACT_POSE_COARSE_SPATIAL_SHARED_SAMPLE":
                 nativeAvailable?"OPTIONAL_ORDERED_TYPED_POSE_V1":"ORIGINAL_CET_READS",
-            sharedSpatialAdmitted=share,exactGameplayFreshnessUnchanged=true,
+            sharedSpatialAdmitted=share,conditionalSpatialAcquisitionReuse=share,
+            exactGameplayFreshnessUnchanged=true,
             runtimePerformance="NOT_MEASURED"});
         return 1;
     }
@@ -943,9 +952,13 @@ end
 
     // Ignore comments and literal contents when checking for an additional
     // raw State alias. Quoted/dynamic State indexing is not admitted.
+    private const string LuaTriviaPattern =
+        """--\[(?<ce>=*)\[.*?\]\k<ce>\]|--[^\r\n]*|\[(?<le>=*)\[.*?\]\k<le>\]|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'""";
     private static string WithoutLuaTrivia(string source) => Regex.Replace(source,
-        """--\[(?<ce>=*)\[.*?\]\k<ce>\]|--[^\r\n]*|\[(?<le>=*)\[.*?\]\k<le>\]|"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'""",
-        " ", RegexOptions.Singleline | RegexOptions.CultureInvariant);
+        LuaTriviaPattern," ",RegexOptions.Singleline|RegexOptions.CultureInvariant);
+    private static string MaskLuaTrivia(string source) => Regex.Replace(source,
+        LuaTriviaPattern,m=>new string(m.Value.Select(c=>c=='\r'||c=='\n'?c:' ').ToArray()),
+        RegexOptions.Singleline|RegexOptions.CultureInvariant);
 
     private static bool HasProvenRawStatePaths(string source)
     {
