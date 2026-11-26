@@ -8,7 +8,8 @@ namespace GCETRuntimeProfiler.Core.Services;
 /// Source-first opt-in at the exact direct Game.GetPlayer():GetWorldPosition
 /// expression. No semantic equivalence is asserted for PlayerPuppet:self or
 /// aliases. The guarded provider invokes the on-demand STRICT-LIVE native
-/// getter, never the unverified phase-shared cache, and falls back to the
+/// getter for gameplay; read-only formatted display has an independent opt-in.
+/// Both paths fall back to the
 /// original expression if native ABI is missing or invalid.
 /// </summary>
 internal static class NativePlayerVectorStage
@@ -63,7 +64,138 @@ internal static class NativePlayerVectorStage
             return true;
         }
         var nl=original.Contains("\r\n",StringComparison.Ordinal)?"\r\n":"\n";
-        var header=string.Join(nl,new []{
+        var header=LiveHeader(nl);
+        output=header+builder;
+        count=matches.Length;
+        return true;
+    }
+
+
+    // The native provider already owns a single frame-keyed position sample.
+    // Admit ONLY a bounded display expression: checkbox-controlled, formatted
+    // XYZ, and one ImGui.Text sink with no other uses of the position or the
+    // formatted values. Never infer gameplay freshness from a frame number.
+    internal const string FrameDisplayMarker="-- G-CET native player position frame display v1";
+    private const string DisplayRead="__gcetReadFrameDisplayPosition";
+    private const string DisplaySample="__gcetFrameDisplaySample";
+    private const string FrameDisplayHeader="""
+-- G-CET native player position frame display v1
+local __gcetFrameDisplayRead, __gcetFrameDisplayValid, __gcetFrameDisplayResolved
+local function __gcetReadFrameDisplayPosition()
+    if not __gcetFrameDisplayResolved then
+        __gcetFrameDisplayResolved = true
+        local ok, caps = pcall(function() return Game.GCETPlayerCapabilities() end)
+        if ok and type(caps) == "number" and math.floor(caps / 128) % 2 == 1 then
+            local rok, read = pcall(function() return Game.GCETPlayerVector4 end)
+            local vok, valid = pcall(function() return Game.GCETPlayerVector4Valid end)
+            if rok and vok and type(read) == "function" and type(valid) == "function" then
+                __gcetFrameDisplayRead, __gcetFrameDisplayValid = read, valid
+            end
+        end
+    end
+    if not __gcetFrameDisplayRead then return nil end
+    local ok, value = pcall(__gcetFrameDisplayRead)
+    if not ok or value == nil then return nil end
+    local vok, valid = pcall(__gcetFrameDisplayValid)
+    if vok and valid == true then return value end
+    return nil
+end
+""";
+    private static readonly Regex DisplayScope=new(
+        @"(?ms)^function[ \t]+[A-Za-z_]\w*:[A-Za-z_]\w*[ \t]*\([ \t]*\)[ \t]*\r?\n.*?^end[ \t]*(?=\r?$)",
+        RegexOptions.CultureInvariant);
+    private const string DisplayGetter=Helper+@"\s*\(\s*\)";
+    private const string Quoted=@"(?:""[^""\r\n]*""|'[^'\r\n]*')";
+    private const string Precision=@"(?:""%\.2f""|'%\.2f')";
+    private const string DisplayGuard=@"\Afunction[ \t]+[A-Za-z_]\w*:[A-Za-z_]\w*[ \t]*\([ \t]*\)[ \t]*\r?\n"+
+        @"[ \t]*self\.(?<flag>[A-Za-z_]\w*)\s*=\s*ImGui\.Checkbox\(\s*"+Quoted+
+        @",\s*self\.\k<flag>\s*\)[ \t]*\r?\n[ \t]*if\s+self\.\k<flag>\s+then[ \t]*\r?\n";
+    private static string FormatField(string field,string expression)=>@"(?<indent"+field+@">[ \t]*)local[ \t]+(?<"+field+
+        @">[A-Za-z_]\w*)[ \t]*=[ \t]*string\.format\(\s*"+Precision+@",\s*"+expression+
+        @"\s*\."+field+@"\s*\)[ \t]*\r?\n";
+    private const string DisplaySink=@"[ \t]*ImGui\.Text\(\s*"+Quoted+@"\s*\.\.\s*\k<x>\s*\.\.\s*"+
+        Quoted+@"\s*\.\.\s*\k<y>\s*\.\.\s*"+Quoted+@"\s*\.\.\s*\k<z>\s*\)[ \t]*(?=\r?$)";
+    private static readonly Regex DisplayTriple=new(DisplayGuard+
+        FormatField("x","(?<gx>"+DisplayGetter+")")+
+        FormatField("y","(?<gy>"+DisplayGetter+")")+
+        FormatField("z","(?<gz>"+DisplayGetter+")")+DisplaySink,
+        RegexOptions.CultureInvariant|RegexOptions.Multiline);
+    private static readonly Regex DisplayAlias=new(DisplayGuard+
+        @"[ \t]*local[ \t]+(?<pos>[A-Za-z_]\w*)[ \t]*=[ \t]*(?<gpos>"+DisplayGetter+@")[ \t]*\r?\n"+
+        FormatField("x",@"\k<pos>")+FormatField("y",@"\k<pos>")+FormatField("z",@"\k<pos>")+DisplaySink,
+        RegexOptions.CultureInvariant|RegexOptions.Multiline);
+    private static readonly Regex DisplayNames=new(@"\b__gcet(?:FrameDisplay(?:Sample|Read|Valid|Resolved)|ReadFrameDisplayPosition)\b",RegexOptions.CultureInvariant);
+
+    internal static bool TryFrameDisplay(string original,out string output,out int sites)
+    {
+        output=original;sites=0;
+        if(!original.Contains(Marker,StringComparison.Ordinal))return false;
+        var nl=original.Contains("\r\n",StringComparison.Ordinal)?"\r\n":"\n";
+        var liveHeader=LiveHeader(nl);
+        if(original.Split(liveHeader,StringSplitOptions.None).Length!=2)return false;
+        var code=NativeReadReuseSource.MaskNonCode(original);
+        if(ShadowGame.IsMatch(code)||Regex.IsMatch(code,
+            @"\blocal\s+(?:ImGui|string)\b|\b(?:ImGui|string)(?:\s*\.\s*(?:Text|Checkbox|format))?\s*=(?!=)|\bfunction\s+[^(\r\n]*\([^)\r\n]*\b(?:ImGui|string)\b[^)\r\n]*\)"))
+            return false;
+        var header=FrameDisplayHeader.Replace("\r\n","\n",StringComparison.Ordinal).Replace("\n",nl,StringComparison.Ordinal)+nl+nl;
+        var hasHeader=original.Contains(FrameDisplayMarker,StringComparison.Ordinal);
+        var headerAt=original.IndexOf(header,StringComparison.Ordinal);
+        if(hasHeader!=(headerAt>=0)||original.Split(header,StringSplitOptions.None).Length>2)return false;
+        // Existing display adapters are recognized structurally, not by the
+        // presence of a marker. Normalize only known generated fragments in
+        // the candidate scope, and re-prove the entire original display sink.
+        var outside=code.ToCharArray();
+        void Mask(int start,int length){for(int j=start;j<start+length;j++)
+            if(outside[j]!='\r'&&outside[j]!='\n')outside[j]=' ';}
+        if(hasHeader)Mask(headerAt,header.Length);
+        var edits=new List<(int start,int length,string value,int count)>();
+        var admitted=0;
+        foreach(Match fn in DisplayScope.Matches(code))
+        {
+            var actual=original.Substring(fn.Index,fn.Length);
+            var plain=Regex.Replace(actual,
+                @"(?m)^[ \t]*local "+DisplaySample+@" = "+DisplayRead+@"\(\)[ \t]*\r?\n","");
+            plain=plain.Replace("("+DisplaySample+" or "+Helper+"())",Helper+"()",StringComparison.Ordinal)
+                .Replace("("+DisplayRead+"() or "+Helper+"())",Helper+"()",StringComparison.Ordinal);
+            if(DisplayNames.IsMatch(NativeReadReuseSource.MaskNonCode(plain)))continue;
+            var m=DisplayTriple.Match(plain);
+            var triple=m.Success;
+            if(!triple)m=DisplayAlias.Match(plain);
+            if(!m.Success)continue;
+            var plainCode=NativeReadReuseSource.MaskNonCode(plain);
+            int Uses(string name)=>Regex.Matches(plainCode,@"\b"+Regex.Escape(name)+@"\b").Count;
+            var names=new[]{"x","y","z"}.Select(k=>m.Groups[k].Value).ToArray();
+            if(names.Distinct(StringComparer.Ordinal).Count()!=3||names.Any(n=>Uses(n)!=2))continue;
+            if(!triple&&(names.Contains(m.Groups["pos"].Value)||Uses(m.Groups["pos"].Value)!=4))continue;
+            var groups=(triple?new[]{"gx","gy","gz"}:new[]{"gpos"}).Select(k=>m.Groups[k]).ToArray();
+            if(groups.Any(g=>!Regex.IsMatch(plainCode.Substring(g.Index,g.Length),@"\A"+DisplayGetter+@"\z")))continue;
+            // All three component accesses are contiguous, pure formatting.
+            // Read once per panel and preserve EACH original strict call on
+            // unsupported/invalid native capability; no periodic subscription.
+            var b=new StringBuilder(plain);
+            foreach(var g in groups.Reverse())b.Remove(g.Index,g.Length).Insert(g.Index,
+                "("+(triple?DisplaySample:DisplayRead+"()")+" or "+g.Value+")");
+            if(triple)b.Insert(m.Groups["indentx"].Index,m.Groups["indentx"].Value+
+                "local "+DisplaySample+" = "+DisplayRead+"()"+nl);
+            var next=b.ToString();
+            // Do not remove unknown prior display code even in a matching
+            // function. Only the original or known exact generated forms
+            // are allowed, including independently missing header/adapter.
+            Mask(fn.Index,fn.Length);
+            admitted+=groups.Length;
+            if(next!=actual)edits.Add((fn.Index,fn.Length,next,groups.Length));
+        }
+        if(admitted==0||DisplayNames.IsMatch(new string(outside)))return false;
+        if(edits.Count==0&&hasHeader)return false;
+        var builder=new StringBuilder(original);
+        foreach(var e in edits.AsEnumerable().Reverse())builder.Remove(e.start,e.length).Insert(e.start,e.value);
+        if(!hasHeader)builder.Insert(0,header);
+        output=builder.ToString();sites=edits.Sum(e=>e.count);
+        if(sites==0)sites=admitted; // a missing exact adapter was restored
+        return output!=original;
+    }
+
+    private static string LiveHeader(string nl)=>string.Join(nl,new []{
             Marker,
             "local __gcetNativeLive, __gcetNativeValid",
             "do",
@@ -84,10 +216,6 @@ internal static class NativePlayerVectorStage
             "end",
             ""
         });
-        output=header+builder;
-        count=matches.Length;
-        return true;
-    }
 
     internal static int TryStage(string modsRoot,
         Dictionary<string,byte[]> staged,
@@ -116,7 +244,10 @@ internal static class NativePlayerVectorStage
             var key=relative;
             var input=staged.TryGetValue(key,out var current)?current:original;
             var text=NativeReadReuseSource.Decode(input);
-            if(!TryTransform(text,out var result,out var count))continue;
+            var liveChanged=TryTransform(text,out var result,out var count);
+            var displayChanged=TryFrameDisplay(result,out var display,out var displaySites);
+            if(displayChanged)result=display;
+            if(!liveChanged&&!displayChanged)continue;
             if(LuaLocalBudgetAnalyzer.Analyze(result).MaxActiveLocals>
                LuaLocalBudgetAnalyzer.Limit)
             {
@@ -128,8 +259,11 @@ internal static class NativePlayerVectorStage
             var bytes=Encoding.UTF8.GetBytes(result);
             if(bom)bytes=[0xef,0xbb,0xbf,..bytes];
             staged[key]=bytes;
-            appliedTransformsByFile[key]=appliedTransformsByFile.GetValueOrDefault(key)+count;
-            transformManifest.Add(new {
+            // A display upgrade of an existing live helper is one additional
+            // transform; stock direct replacements are already counted.
+            var changes=count>0?count:1;
+            appliedTransformsByFile[key]=appliedTransformsByFile.GetValueOrDefault(key)+changes;
+            if(count>0)transformManifest.Add(new {
                 type="NATIVE_PLAYER_VECTOR_LIVE", contract=Contract,file=key,
                 replacedOccurrences=count,receiverProof="DIRECT_GAME_GETPLAYER_EXPRESSION",
                 source="ALL_INSTALLED_LUA_NOT_CAPTURE_GATED",
@@ -139,7 +273,16 @@ internal static class NativePlayerVectorStage
                 runtimeCapability="GCETPlayerVector4Live+GCETPlayerVector4Valid",
                 savings="NOT_MEASURED",doesNotRetireCallback=true
             });
-            applied+=count;
+            if(displayChanged)transformManifest.Add(new {
+                type="NATIVE_PLAYER_POSITION_FRAME_DISPLAY",file=key,
+                contract="GCET_NATIVE_PLAYER_FRAME_DISPLAY_V1",sourceProof=true,
+                displayReadSites=displaySites,producerOwner="GCETStaticLocations.DemandFrameCache",
+                backend="EXISTING_NATIVE_FRAME_SAMPLE",runtimeCapabilityBit=128,
+                freshness="READ_ONLY_DISPLAY_FRAME_SAMPLE_NOT_EXACT_GAMEPLAY",
+                originalFallback="EXISTING_STRICT_LIVE_HELPER",runtimePerformance="NOT_MEASURED",
+                addsRecurringProducer=false
+            });
+            applied+=changes;
         }
         return applied;
     }

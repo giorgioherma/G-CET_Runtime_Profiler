@@ -1410,6 +1410,71 @@ try
     Check(!(bool)vector.Invoke(null,vectorAgain)!,
         "Native player stage is not idempotent after incremental source update");
 
+
+    // Two source-shaped independent diagnostic panels (actual DAV/DriveBus
+    // acquisition and display forms), not a mod-name authorization.
+    var displayTransform=vectorType.GetMethod("TryFrameDisplay",
+        BindingFlags.Static|BindingFlags.NonPublic|BindingFlags.Public)!;
+    var panelA="""
+        function D:Position()
+            self.visible = ImGui.Checkbox("Position", self.visible)
+            if self.visible then
+                local x = string.format("%.2f", Game.GetPlayer():GetWorldPosition().x)
+                local y = string.format("%.2f", Game.GetPlayer():GetWorldPosition().y)
+                local z = string.format("%.2f", Game.GetPlayer():GetWorldPosition().z)
+                ImGui.Text("[world]X:" .. x .. ", Y:" .. y .. ", Z:" .. z)
+                local strict = Game.GetPlayer():GetWorldPosition()
+                useForGameplay(strict)
+            end
+        end
+        """;
+    var panelB="""
+        function B:Position()
+            self.visible = ImGui.Checkbox("Position", self.visible)
+            if self.visible then
+                local pos = Game.GetPlayer():GetWorldPosition()
+                local x = string.format('%.2f', pos.x)
+                local y = string.format('%.2f', pos.y)
+                local z = string.format('%.2f', pos.z)
+                ImGui.Text("X:" .. x .. ", Y:" .. y .. ", Z:" .. z)
+            end
+        end
+        """.Replace("\n","\r\n",StringComparison.Ordinal);
+    string LiveDisplay(string source)
+    {
+        object?[] args=[source,null,0];
+        Check((bool)vector.Invoke(null,args)!,"stock native display live stage");
+        return (string)args[1]!;
+    }
+    string Display(string source,int expected)
+    {
+        object?[] args=[source,null,0];
+        Check((bool)displayTransform.Invoke(null,args)! && (int)args[2]==expected,
+            "source-proven display upgrade "+expected);
+        return (string)args[1]!;
+    }
+    var aLive=LiveDisplay(panelA);
+    var aDisplay=Display(aLive,3);
+    var bDisplay=Display(LiveDisplay(panelB),1);
+    Check(aDisplay.Contains("local __gcetFrameDisplaySample = __gcetReadFrameDisplayPosition()") &&
+        aDisplay.Contains("local strict = __gcetNativePlayerWorldPosition()") &&
+        bDisplay.Contains("local pos = (__gcetReadFrameDisplayPosition() or __gcetNativePlayerWorldPosition())"),
+        "independent display sample and exact gameplay reader");
+    foreach(var output in new[]{aDisplay,bDisplay})
+    {
+        object?[] repeat=[output,null,0];
+        Check(!(bool)displayTransform.Invoke(null,repeat)! && (string)repeat[1]! == output,
+            "display repeat must add no changes");
+    }
+    var headerEnd=aDisplay.IndexOf("-- G-CET native player Vector4 on-demand live v1",StringComparison.Ordinal);
+    Check(headerEnd>0&&Display(aDisplay[headerEnd..],3)==aDisplay,
+        "missing display adapter partial completion");
+    object?[] drift=[aLive.Replace("useForGameplay(strict)","useForGameplay(strict, x)"),null,0];
+    Check(!(bool)displayTransform.Invoke(null,drift)!,"display local escaped into gameplay");
+    object?[] aliasDrift=[LiveDisplay(panelB.Replace("ImGui.Text(\"X:", "consume(pos)\r\n        ImGui.Text(\"X:")),null,0];
+    Check(!(bool)displayTransform.Invoke(null,aliasDrift)!,"display vector escaped into gameplay");
+    Console.WriteLine("Native independent display source: stock, existing live, CRLF, partial, repeat, gameplay drift PASS");
+
     // Player ownership evidence is built from callback registration metadata
     // and source analysis; it must not equate PlayerPuppet class context with
     // the receiver of unrelated NPC getter calls.
